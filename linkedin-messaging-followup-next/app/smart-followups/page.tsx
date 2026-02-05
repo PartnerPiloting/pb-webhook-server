@@ -217,6 +217,7 @@ function SmartFollowupsContent() {
   const [isBatchTagging, setIsBatchTagging] = useState(false);
   const [batchTagResult, setBatchTagResult] = useState(null);
   const [tagProgress, setTagProgress] = useState<{ current: number; total: number; name: string } | null>(null);
+  const [showTagDetails, setShowTagDetails] = useState(false);
   
   const chatInputRef = useRef(null);
   const analysisRef = useRef(null);
@@ -559,7 +560,7 @@ function SmartFollowupsContent() {
       skipped: 0,
       errors: 0,
       tagCounts: {} as Record<string, number>,
-      details: [] as Array<{ name: string; status: string; tags?: string[]; error?: string }>
+      details: [] as Array<{ name: string; status: string; tags?: string[]; reasoning?: string; error?: string }>
     };
     
     try {
@@ -603,10 +604,15 @@ function SmartFollowupsContent() {
             tagResult.suggestedTags.forEach((tag: string) => {
               results.tagCounts[tag] = (results.tagCounts[tag] || 0) + 1;
             });
-            results.details.push({ name: leadName, status: 'tagged', tags: tagResult.suggestedTags });
+            results.details.push({ 
+              name: leadName, 
+              status: 'tagged', 
+              tags: tagResult.suggestedTags,
+              reasoning: tagResult.reasoning || ''
+            });
           } else {
             results.skipped++;
-            results.details.push({ name: leadName, status: 'no-tags' });
+            results.details.push({ name: leadName, status: 'no-tags', reasoning: 'AI found no applicable tags' });
           }
           
           results.processed++;
@@ -648,6 +654,13 @@ function SmartFollowupsContent() {
       setTagProgress(null);
     }
   };
+
+  // Count untagged leads for button display
+  const allLeadsForTagging = [...leads, ...awaitingLeads];
+  const untaggedCount = allLeadsForTagging.filter(lead => {
+    const tags = extractTags(lead.notes || '');
+    return tags.length === 0;
+  }).length;
 
   const getTagBadges = (notes) => {
     const tags = extractTags(notes);
@@ -717,22 +730,30 @@ function SmartFollowupsContent() {
           </div>
           
           <div className="flex items-center gap-2">
-            <button
-              onClick={() => handleBatchTag(true)}
-              disabled={isBatchTagging}
-              className="px-3 py-1.5 text-sm font-medium text-blue-600 hover:text-blue-900 hover:bg-blue-50 rounded-lg transition-colors disabled:opacity-50"
-              title="Preview what tags would be applied (no changes made)"
-            >
-              {isBatchTagging && tagProgress ? `⏳ ${tagProgress.current}/${tagProgress.total}` : '👁️ Preview Tags'}
-            </button>
-            <button
-              onClick={() => handleBatchTag(false)}
-              disabled={isBatchTagging}
-              className="px-3 py-1.5 text-sm font-medium text-purple-600 hover:text-purple-900 hover:bg-purple-50 rounded-lg transition-colors disabled:opacity-50"
-              title="Apply AI tags to all leads with follow-up dates"
-            >
-              {isBatchTagging && tagProgress ? `⏳ ${tagProgress.current}/${tagProgress.total}` : '🏷️ Apply Tags'}
-            </button>
+            {untaggedCount > 0 ? (
+              <>
+                <button
+                  onClick={() => handleBatchTag(true)}
+                  disabled={isBatchTagging}
+                  className="px-3 py-1.5 text-sm font-medium text-blue-600 hover:text-blue-900 hover:bg-blue-50 rounded-lg transition-colors disabled:opacity-50"
+                  title="Preview what tags would be applied (no changes made)"
+                >
+                  {isBatchTagging && tagProgress ? `⏳ ${tagProgress.current}/${tagProgress.total}` : `👁️ Preview ${untaggedCount}`}
+                </button>
+                <button
+                  onClick={() => handleBatchTag(false)}
+                  disabled={isBatchTagging}
+                  className="px-3 py-1.5 text-sm font-medium text-purple-600 hover:text-purple-900 hover:bg-purple-50 rounded-lg transition-colors disabled:opacity-50"
+                  title={`Apply AI tags to ${untaggedCount} untagged leads`}
+                >
+                  {isBatchTagging && tagProgress ? `⏳ ${tagProgress.current}/${tagProgress.total}` : `🏷️ Tag ${untaggedCount} leads`}
+                </button>
+              </>
+            ) : (
+              <span className="px-3 py-1.5 text-sm font-medium text-gray-400">
+                ✓ All tagged
+              </span>
+            )}
             <button
               onClick={loadFollowups}
               className="px-3 py-1.5 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
@@ -756,8 +777,8 @@ function SmartFollowupsContent() {
         
         {/* Batch Tag Result Banner */}
         {batchTagResult && (
-          <div className={`px-6 py-3 border-b ${batchTagResult.error ? 'bg-red-50 border-red-200' : batchTagResult.dryRun ? 'bg-blue-50 border-blue-200' : 'bg-green-50 border-green-200'}`}>
-            <div className="flex items-center justify-between">
+          <div className={`border-b ${batchTagResult.error ? 'bg-red-50 border-red-200' : batchTagResult.dryRun ? 'bg-blue-50 border-blue-200' : 'bg-green-50 border-green-200'}`}>
+            <div className="px-6 py-3 flex items-center justify-between">
               <div>
                 {batchTagResult.error ? (
                   <span className="text-red-700">❌ {batchTagResult.error}</span>
@@ -778,13 +799,45 @@ function SmartFollowupsContent() {
                   </div>
                 )}
               </div>
-              <button 
-                onClick={() => setBatchTagResult(null)}
-                className="text-gray-400 hover:text-gray-600"
-              >
-                ✕
-              </button>
+              <div className="flex items-center gap-2">
+                {batchTagResult.details && batchTagResult.details.length > 0 && (
+                  <button 
+                    onClick={() => setShowTagDetails(!showTagDetails)}
+                    className="text-sm underline hover:no-underline"
+                  >
+                    {showTagDetails ? 'Hide details' : 'Show details'}
+                  </button>
+                )}
+                <button 
+                  onClick={() => { setBatchTagResult(null); setShowTagDetails(false); }}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  ✕
+                </button>
+              </div>
             </div>
+            
+            {/* Details list */}
+            {showTagDetails && batchTagResult.details && (
+              <div className="px-6 py-3 border-t border-gray-200 bg-white max-h-64 overflow-y-auto">
+                <div className="space-y-2 text-sm">
+                  {batchTagResult.details
+                    .filter((d: { status: string }) => d.status === 'tagged')
+                    .map((detail: { name: string; tags?: string[]; reasoning?: string }, idx: number) => (
+                    <div key={idx} className="border-b border-gray-100 pb-2">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium">{detail.name}</span>
+                        <span className="text-gray-400">→</span>
+                        <span className="text-purple-600">{detail.tags?.join(', ')}</span>
+                      </div>
+                      {detail.reasoning && (
+                        <div className="text-gray-500 text-xs mt-1 italic">"{detail.reasoning}"</div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
