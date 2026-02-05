@@ -202,8 +202,8 @@ router.get('/leads/follow-ups', async (req, res) => {
       sort: [
         { field: 'Follow-Up Date', direction: 'asc' },
         { field: 'First Name', direction: 'asc' }
-      ],
-      maxRecords: 50 // Memory limit protection
+      ]
+      // No maxRecords limit - return all leads needing follow-up
     }).all();
 
     logger.info(`LinkedIn Routes: Found ${leads.length} follow-ups for client ${req.client.clientId}`);
