@@ -1434,15 +1434,15 @@ export default function QuickUpdateModal({
               </button>
               <button
                 onClick={handleSave}
-                disabled={!selectedLead || isSaving || isDetectingTags || (!activeSection && noteContent.trim())}
+                disabled={!selectedLead || isSaving || (!activeSection && noteContent.trim())}
                 title={!activeSection && noteContent.trim() ? 'Please select a source first' : ''}
                 className={`px-6 py-2 rounded-lg font-medium transition-colors ${
-                  selectedLead && !isSaving && !isDetectingTags && (activeSection || !noteContent.trim())
+                  selectedLead && !isSaving && (activeSection || !noteContent.trim())
                     ? 'bg-blue-600 text-white hover:bg-blue-700'
                     : 'bg-gray-300 text-gray-500 cursor-not-allowed'
                 }`}
               >
-                {isDetectingTags ? 'Analyzing...' : isSaving ? 'Saving...' : !activeSection && noteContent.trim() ? 'Select Source' : 'Save'}
+                {isSaving ? 'Saving...' : !activeSection && noteContent.trim() ? 'Select Source' : 'Save'}
               </button>
               <button
                 onClick={handleNew}
