@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef, Suspense } from 'react';
 import Layout from '../../components/Layout';
-import { getFollowUps, generateFollowupMessage, updateLead } from '../../services/api';
+import { getFollowUps, generateFollowupMessage, updateLead, detectLeadTags } from '../../services/api';
 import { getCurrentClientId } from '../../utils/clientUtils';
 
 /**
@@ -125,22 +125,29 @@ const calculatePriorityScore = (lead) => {
       effectiveOverdue = daysOverdue;
     }
     
-    // If #promised tag exists, overdue INCREASES priority (you made a commitment!)
-    // Otherwise, overdue decreases priority (going stale)
-    if (hasPromisedTag && effectiveOverdue > 0) {
-      priorityScore += Math.min(25, effectiveOverdue * 3); // +3 per day overdue, up to +25
-    } else if (effectiveOverdue > 14) {
+    // Overdue logic - leads with automated tags are handled by cron job
+    // Other overdue leads get penalized if stale
+    if (effectiveOverdue > 14) {
       // Only penalize if actually stale (no recent contact)
       priorityScore -= Math.min(20, effectiveOverdue * 2);
     }
   }
   
   // Tag-based scoring
+  // Automated tags (#promised, #agreed-to-meet, #no-show) get LOWER priority
+  // because the cron job will handle these automatically via email drafts
+  const hasAgreedToMeet = notes.toLowerCase().includes('#agreed-to-meet');
+  const hasNoShow = notes.includes('#no-show');
+  
+  if (hasPromisedTag || hasAgreedToMeet || hasNoShow) {
+    // These are handled by automation - push to bottom of list
+    priorityScore -= 50;
+  }
+  
+  // Other tags still affect priority normally
   if (notes.toLowerCase().includes('#warm-response')) priorityScore += 20;
-  if (hasPromisedTag) priorityScore += 25;
-  if (notes.toLowerCase().includes('#agreed-to-meet')) priorityScore += 25; // They said yes to meeting!
   if (notes.includes('#hot')) priorityScore += 15;
-  if (notes.includes('#no-show') || notes.includes('#cancelled')) priorityScore += 10;
+  if (notes.includes('#cancelled')) priorityScore += 10;
   if (notes.toLowerCase().includes('#rescheduled')) priorityScore += 5;
   if (notes.includes('#cold')) priorityScore -= 15;
   if (notes.includes('#moving-on')) priorityScore -= 30;
@@ -209,6 +216,7 @@ function SmartFollowupsContent() {
   const [actionMessage, setActionMessage] = useState(null);
   const [isBatchTagging, setIsBatchTagging] = useState(false);
   const [batchTagResult, setBatchTagResult] = useState(null);
+  const [tagProgress, setTagProgress] = useState<{ current: number; total: number; name: string } | null>(null);
   
   const chatInputRef = useRef(null);
   const analysisRef = useRef(null);
@@ -279,7 +287,7 @@ function SmartFollowupsContent() {
       topPicks.sort((a, b) => b.priorityScore - a.priorityScore);
       awaiting.sort((a, b) => (b.daysSinceSent ?? 0) - (a.daysSinceSent ?? 0));
       
-      setLeads(topPicks.slice(0, 50));
+      setLeads(topPicks); // Show all leads, no limit
       setAwaitingLeads(awaiting);
     } catch (err) {
       console.error('Failed to load follow-ups:', err);
@@ -531,40 +539,113 @@ function SmartFollowupsContent() {
     return { text: 'Normal', color: 'text-gray-600 bg-gray-50' };
   };
 
-  // Batch tag historical leads
+  // Batch tag leads using frontend loop with progress
   const handleBatchTag = async (dryRun = false) => {
+    // Get all leads from both tabs
+    const allLeads = [...leads, ...awaitingLeads];
+    
+    if (allLeads.length === 0) {
+      setBatchTagResult({ error: 'No leads to process' });
+      return;
+    }
+    
     setIsBatchTagging(true);
     setBatchTagResult(null);
+    setTagProgress({ current: 0, total: allLeads.length, name: '' });
+    
+    const results = {
+      processed: 0,
+      tagged: 0,
+      skipped: 0,
+      errors: 0,
+      tagCounts: {} as Record<string, number>,
+      details: [] as Array<{ name: string; status: string; tags?: string[]; error?: string }>
+    };
     
     try {
-      const clientId = getCurrentClientId();
-      const response = await fetch('/api/smart-followups/batch-tag-leads', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-client-id': clientId || '',
-        },
-        body: JSON.stringify({ mode: 'add', dryRun }),
-      });
-      
-      const data = await response.json();
-      
-      if (!response.ok) {
-        throw new Error(data.error || 'Batch tagging failed');
+      for (let i = 0; i < allLeads.length; i++) {
+        const lead = allLeads[i];
+        const leadName = `${lead.firstName} ${lead.lastName}`.trim();
+        
+        // Update progress
+        setTagProgress({ current: i + 1, total: allLeads.length, name: leadName });
+        
+        // Check if lead already has tags
+        const existingTags = extractTags(lead.notes || '');
+        if (existingTags.length > 0) {
+          results.skipped++;
+          results.details.push({ name: leadName, status: 'skipped' });
+          continue;
+        }
+        
+        try {
+          // Call detect-tags endpoint
+          const tagResult = await detectLeadTags({
+            notes: lead.notes || '',
+            linkedinMessages: lead.linkedinMessages || '',
+            emailContent: '',
+            leadName
+          });
+          
+          if (tagResult.suggestedTags && tagResult.suggestedTags.length > 0) {
+            if (!dryRun) {
+              // Apply tags by updating the lead
+              const currentNotes = lead.notes || '';
+              const tagsLine = `Tags: ${tagResult.suggestedTags.join(' ')}`;
+              const updatedNotes = currentNotes.startsWith('Tags:') 
+                ? currentNotes.replace(/^Tags:.*$/m, tagsLine)
+                : `${tagsLine}\n\n${currentNotes}`;
+              
+              await updateLead(lead.id, { notes: updatedNotes });
+            }
+            
+            results.tagged++;
+            tagResult.suggestedTags.forEach((tag: string) => {
+              results.tagCounts[tag] = (results.tagCounts[tag] || 0) + 1;
+            });
+            results.details.push({ name: leadName, status: 'tagged', tags: tagResult.suggestedTags });
+          } else {
+            results.skipped++;
+            results.details.push({ name: leadName, status: 'no-tags' });
+          }
+          
+          results.processed++;
+          
+        } catch (err) {
+          console.error(`Error tagging ${leadName}:`, err);
+          results.errors++;
+          results.details.push({ name: leadName, status: 'error', error: err instanceof Error ? err.message : 'Unknown error' });
+        }
+        
+        // Small delay between requests to avoid rate limiting
+        await new Promise(resolve => setTimeout(resolve, 100));
       }
       
-      setBatchTagResult(data);
+      setBatchTagResult({
+        success: true,
+        dryRun,
+        summary: {
+          totalLeads: allLeads.length,
+          processed: results.processed,
+          tagged: results.tagged,
+          skipped: results.skipped,
+          errors: results.errors,
+          tagCounts: results.tagCounts
+        },
+        details: results.details
+      });
       
       // Refresh the list if we actually tagged leads
-      if (!dryRun && data.summary?.tagged > 0) {
+      if (!dryRun && results.tagged > 0) {
         loadFollowups();
       }
       
     } catch (err) {
       console.error('Batch tag error:', err);
-      setBatchTagResult({ error: err.message });
+      setBatchTagResult({ error: err instanceof Error ? err.message : 'Batch tagging failed' });
     } finally {
       setIsBatchTagging(false);
+      setTagProgress(null);
     }
   };
 
@@ -642,7 +723,7 @@ function SmartFollowupsContent() {
               className="px-3 py-1.5 text-sm font-medium text-blue-600 hover:text-blue-900 hover:bg-blue-50 rounded-lg transition-colors disabled:opacity-50"
               title="Preview what tags would be applied (no changes made)"
             >
-              {isBatchTagging ? '⏳ Checking...' : '👁️ Preview Tags'}
+              {isBatchTagging && tagProgress ? `⏳ ${tagProgress.current}/${tagProgress.total}` : '👁️ Preview Tags'}
             </button>
             <button
               onClick={() => handleBatchTag(false)}
@@ -650,7 +731,7 @@ function SmartFollowupsContent() {
               className="px-3 py-1.5 text-sm font-medium text-purple-600 hover:text-purple-900 hover:bg-purple-50 rounded-lg transition-colors disabled:opacity-50"
               title="Apply AI tags to all leads with follow-up dates"
             >
-              {isBatchTagging ? '⏳ Tagging...' : '🏷️ Apply Tags'}
+              {isBatchTagging && tagProgress ? `⏳ ${tagProgress.current}/${tagProgress.total}` : '🏷️ Apply Tags'}
             </button>
             <button
               onClick={loadFollowups}
@@ -660,6 +741,18 @@ function SmartFollowupsContent() {
             </button>
           </div>
         </div>
+        
+        {/* Progress Banner */}
+        {tagProgress && (
+          <div className="px-6 py-3 border-b bg-blue-50 border-blue-200">
+            <div className="flex items-center">
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600 mr-3"></div>
+              <span className="text-blue-700">
+                Processing {tagProgress.current} of {tagProgress.total}: <span className="font-medium">{tagProgress.name}</span>
+              </span>
+            </div>
+          </div>
+        )}
         
         {/* Batch Tag Result Banner */}
         {batchTagResult && (
