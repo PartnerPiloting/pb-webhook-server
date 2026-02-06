@@ -7229,6 +7229,8 @@ RESPONSE STYLE:
 - Show exact slot times from CALENDAR AVAILABILITY (they are 30-minute slots)
 - Do NOT combine or expand slots - show them exactly as provided
 - For vague requests like "next week", summarize the key available times
+- When listing times, use simple bullet points with a single asterisk (e.g., "* Tuesday, February 11th at 10:00 am")
+- Do NOT use markdown bold (**text**) - the output gets copy-pasted to LinkedIn where markdown doesn't render
 
 CRITICAL RULES:
 - ONLY report appointments that are in the CALENDAR AVAILABILITY or YOUR SCHEDULED APPOINTMENTS sections below
