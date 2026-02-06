@@ -320,6 +320,9 @@ function getSectionsSummary(currentNotes) {
     
     const summary = {};
     for (const [key, content] of Object.entries(sections)) {
+        // Skip non-string entries (tags is an array)
+        if (typeof content !== 'string') continue;
+        
         if (content && content.trim()) {
             const lines = content.trim().split('\n');
             // Try to extract last date from first line (newest message)
