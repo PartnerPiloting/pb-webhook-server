@@ -1365,7 +1365,11 @@ export const quickUpdateLead = async (leadId, updates) => {
     return response.data;
   } catch (error) {
     console.error('Quick update error:', error.response?.data || error.message);
-    throw new Error(error.response?.data?.error || 'Failed to update lead');
+    const errorData = error.response?.data;
+    const message = errorData?.details 
+      ? `${errorData.error}: ${errorData.details}` 
+      : (errorData?.error || 'Failed to update lead');
+    throw new Error(message);
   }
 };
 
