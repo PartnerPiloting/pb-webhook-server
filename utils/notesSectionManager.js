@@ -37,6 +37,9 @@ const SECTION_HEADERS = {
 
 const LEGACY_SEPARATOR = '───────────────────────────────';
 
+// Meeting block separator (used by Fathom and other meeting note-takers)
+const MEETING_BLOCK_SEPARATOR = '━━━━━━━━━━━━━━━━━━━━━━━━━';
+
 // Section display order (first = top of notes)
 const SECTION_ORDER = ['linkedin', 'manual', 'salesnav', 'email', 'meeting'];
 
@@ -270,14 +273,25 @@ function updateSection(currentNotes, sectionKey, newContent, options = {}) {
     
     // Update the section
     if (append) {
-        // For email: merge and sort all messages by date/time (newest first)
         if (sections[sectionKey] && sortMessages) {
-            sections[sectionKey] = mergeAndSortMessages(sections[sectionKey], newContent.trim(), true);
+            // Use block-based sorting for meetings (multi-line blocks separated by ━━━)
+            if (sectionKey === 'meeting') {
+                sections[sectionKey] = mergeAndSortBlocks(sections[sectionKey], newContent.trim(), true);
+            } else {
+                // For email/manual: merge and sort individual messages by date/time (newest first)
+                sections[sectionKey] = mergeAndSortMessages(sections[sectionKey], newContent.trim(), true);
+            }
         } else if (sections[sectionKey]) {
             // Fallback: simple prepend (newest at top)
             sections[sectionKey] = `${newContent.trim()}\n${sections[sectionKey].trim()}`;
         } else {
-            sections[sectionKey] = newContent.trim();
+            // First content for this section
+            if (sectionKey === 'meeting') {
+                // Ensure meeting blocks have proper separators
+                sections[sectionKey] = `${MEETING_BLOCK_SEPARATOR}\n${newContent.trim()}\n${MEETING_BLOCK_SEPARATOR}`;
+            } else {
+                sections[sectionKey] = newContent.trim();
+            }
         }
     } else if (replace) {
         // For LinkedIn/SalesNav: complete replacement
@@ -325,14 +339,10 @@ function getSectionsSummary(currentNotes) {
         
         if (content && content.trim()) {
             const lines = content.trim().split('\n');
-            // Try to extract last date from first line (newest message)
-            let lastDate = null;
-            if (lines.length > 0) {
-                const dateMatch = lines[0].match(/^(\d{2}-\d{2}-\d{2})/);
-                if (dateMatch) {
-                    lastDate = dateMatch[1];
-                }
-            }
+            
+            // Use extractNewestDate to find the most recent date in any format
+            // This handles DD-MM-YY, Month DD YYYY, [Recorded DD/MM/YYYY], etc.
+            const lastDate = extractNewestDate(content);
             
             summary[key] = {
                 lineCount: lines.length,
@@ -518,6 +528,179 @@ function mergeAndSortMessages(existingContent, newContent, newestFirst = true) {
 }
 
 /**
+ * Extract the newest date from content that may contain various date formats
+ * Returns date in DD-MM-YY format for display, or null if no date found
+ * @param {string} content - Content to search for dates
+ * @returns {string|null} Newest date in DD-MM-YY format, or null
+ */
+function extractNewestDate(content) {
+    if (!content || typeof content !== 'string') {
+        return null;
+    }
+    
+    const dates = [];
+    
+    // Month name to number mapping
+    const monthMap = { 
+        jan: 0, january: 0, feb: 1, february: 1, mar: 2, march: 2, 
+        apr: 3, april: 3, may: 4, jun: 5, june: 5, 
+        jul: 6, july: 6, aug: 7, august: 7, sep: 8, september: 8, 
+        oct: 9, october: 9, nov: 10, november: 10, dec: 11, december: 11 
+    };
+    
+    // Pattern 1: DD-MM-YY (standard message/manual note format)
+    const ddmmyyPattern = /(\d{2})-(\d{2})-(\d{2})/g;
+    let match;
+    while ((match = ddmmyyPattern.exec(content)) !== null) {
+        const [, day, month, year] = match;
+        const fullYear = 2000 + parseInt(year, 10);
+        dates.push(new Date(fullYear, parseInt(month, 10) - 1, parseInt(day, 10)));
+    }
+    
+    // Pattern 2: [Recorded DD/MM/YYYY, H:MM am/pm] (Fathom meeting notes)
+    const recordedPattern = /\[Recorded\s+(\d{2})\/(\d{2})\/(\d{4})/gi;
+    while ((match = recordedPattern.exec(content)) !== null) {
+        const [, day, month, year] = match;
+        dates.push(new Date(parseInt(year, 10), parseInt(month, 10) - 1, parseInt(day, 10)));
+    }
+    
+    // Pattern 3: Month DD, YYYY (meeting header format)
+    const monthDayYearPattern = /(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+(\d{1,2}),?\s+(\d{4})/gi;
+    while ((match = monthDayYearPattern.exec(content)) !== null) {
+        const monthNum = monthMap[match[1].toLowerCase().slice(0, 3)];
+        const day = parseInt(match[2], 10);
+        const year = parseInt(match[3], 10);
+        dates.push(new Date(year, monthNum, day));
+    }
+    
+    // Pattern 4: DD/MM/YYYY (alternate date format)
+    const ddmmyyyyPattern = /(\d{2})\/(\d{2})\/(\d{4})/g;
+    while ((match = ddmmyyyyPattern.exec(content)) !== null) {
+        const [, day, month, year] = match;
+        dates.push(new Date(parseInt(year, 10), parseInt(month, 10) - 1, parseInt(day, 10)));
+    }
+    
+    if (dates.length === 0) {
+        return null;
+    }
+    
+    // Find the newest date
+    const newest = dates.reduce((a, b) => a > b ? a : b);
+    
+    // Format as DD-MM-YY for display
+    const day = String(newest.getDate()).padStart(2, '0');
+    const month = String(newest.getMonth() + 1).padStart(2, '0');
+    const year = String(newest.getFullYear()).slice(-2);
+    
+    return `${day}-${month}-${year}`;
+}
+
+/**
+ * Split meeting content into blocks (separated by ━━━ lines)
+ * @param {string} content - Meeting section content
+ * @returns {string[]} Array of meeting blocks
+ */
+function splitMeetingBlocks(content) {
+    if (!content || typeof content !== 'string') {
+        return [];
+    }
+    
+    // Split by the separator pattern (multiple ━ characters)
+    const blocks = content.split(/━{10,}/);
+    
+    // Clean up and filter empty blocks
+    return blocks
+        .map(block => block.trim())
+        .filter(block => block.length > 0);
+}
+
+/**
+ * Extract date from a meeting block for sorting
+ * @param {string} block - A single meeting block
+ * @returns {Date} Date for sorting (or very old date if none found)
+ */
+function extractMeetingBlockDate(block) {
+    const monthMap = { 
+        jan: 0, january: 0, feb: 1, february: 1, mar: 2, march: 2, 
+        apr: 3, april: 3, may: 4, jun: 5, june: 5, 
+        jul: 6, july: 6, aug: 7, august: 7, sep: 8, september: 8, 
+        oct: 9, october: 9, nov: 10, november: 10, dec: 11, december: 11 
+    };
+    
+    // Try [Recorded DD/MM/YYYY, H:MM am/pm] first (most precise)
+    const recordedMatch = block.match(/\[Recorded\s+(\d{2})\/(\d{2})\/(\d{4}),?\s*(\d{1,2}):(\d{2})\s*(am|pm)?/i);
+    if (recordedMatch) {
+        const [, day, month, year, hour, minute, ampm] = recordedMatch;
+        let hours = parseInt(hour, 10);
+        if (ampm) {
+            if (ampm.toLowerCase() === 'pm' && hours !== 12) hours += 12;
+            if (ampm.toLowerCase() === 'am' && hours === 12) hours = 0;
+        }
+        return new Date(parseInt(year, 10), parseInt(month, 10) - 1, parseInt(day, 10), hours, parseInt(minute, 10));
+    }
+    
+    // Try Month DD, YYYY (meeting header format)
+    const monthMatch = block.match(/(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+(\d{1,2}),?\s+(\d{4})/i);
+    if (monthMatch) {
+        const monthNum = monthMap[monthMatch[1].toLowerCase().slice(0, 3)];
+        const day = parseInt(monthMatch[2], 10);
+        const year = parseInt(monthMatch[3], 10);
+        return new Date(year, monthNum, day);
+    }
+    
+    // Try DD/MM/YYYY
+    const slashMatch = block.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+    if (slashMatch) {
+        const [, day, month, year] = slashMatch;
+        return new Date(parseInt(year, 10), parseInt(month, 10) - 1, parseInt(day, 10));
+    }
+    
+    // No date found - return very old date
+    return new Date(0);
+}
+
+/**
+ * Merge and sort meeting blocks, keeping each meeting as a unit
+ * @param {string} existingContent - Existing meeting section content
+ * @param {string} newContent - New meeting content to add
+ * @param {boolean} newestFirst - Sort newest first (default true)
+ * @returns {string} Merged and sorted meeting content
+ */
+function mergeAndSortBlocks(existingContent, newContent, newestFirst = true) {
+    const existingBlocks = splitMeetingBlocks(existingContent);
+    const newBlocks = splitMeetingBlocks(newContent);
+    
+    // Combine all blocks
+    const allBlocks = [...existingBlocks, ...newBlocks];
+    
+    // Remove duplicates based on block content (normalize whitespace for comparison)
+    const seen = new Set();
+    const uniqueBlocks = allBlocks.filter(block => {
+        const normalized = block.replace(/\s+/g, ' ').trim();
+        if (seen.has(normalized)) {
+            return false;
+        }
+        seen.add(normalized);
+        return true;
+    });
+    
+    // Sort blocks by date
+    uniqueBlocks.sort((a, b) => {
+        const dateA = extractMeetingBlockDate(a);
+        const dateB = extractMeetingBlockDate(b);
+        if (newestFirst) {
+            return dateB.getTime() - dateA.getTime();
+        } else {
+            return dateA.getTime() - dateB.getTime();
+        }
+    });
+    
+    // Rebuild with separators between blocks
+    const separator = MEETING_BLOCK_SEPARATOR;
+    return uniqueBlocks.map(block => `${separator}\n${block}\n${separator}`).join('\n\n');
+}
+
+/**
  * Format date for manual notes (DD-MM-YY)
  * @param {Date} date - Date to format (defaults to now)
  * @returns {string} Formatted date DD-MM-YY
@@ -553,6 +736,7 @@ module.exports = {
     SECTION_HEADERS,
     SECTION_ORDER,
     LEGACY_SEPARATOR,
+    MEETING_BLOCK_SEPARATOR,
     VALID_TAGS,
     // Section functions
     parseNotesIntoSections,
@@ -571,5 +755,10 @@ module.exports = {
     formatManualNoteDate,
     addManualNote,
     parseFormattedMessages,
-    mergeAndSortMessages
+    mergeAndSortMessages,
+    // Meeting block utilities
+    extractNewestDate,
+    splitMeetingBlocks,
+    extractMeetingBlockDate,
+    mergeAndSortBlocks
 };
