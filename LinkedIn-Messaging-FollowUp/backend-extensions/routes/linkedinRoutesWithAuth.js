@@ -956,6 +956,7 @@ router.get('/leads/lookup', async (req, res) => {
           aiScore: r.fields['AI Score'],
           status: r.fields['Status'] || '',
           followUpDate: r.fields['Follow-Up Date'] || '',
+          ceaseFup: r.fields['Cease FUP'] || '',
           notes: r.fields['Notes'] || ''
         }));
       }
@@ -978,6 +979,7 @@ router.get('/leads/lookup', async (req, res) => {
         aiScore: r.fields['AI Score'],
         status: r.fields['Status'] || '',
         followUpDate: r.fields['Follow-Up Date'] || '',
+        ceaseFup: r.fields['Cease FUP'] || '',
         notes: r.fields['Notes'] || ''
       }));
     }
@@ -1042,6 +1044,7 @@ router.get('/leads/lookup', async (req, res) => {
         aiScore: r.fields['AI Score'],
         status: r.fields['Status'] || '',
         followUpDate: r.fields['Follow-Up Date'] || '',
+        ceaseFup: r.fields['Cease FUP'] || '',
         notes: r.fields['Notes'] || ''
       }));
     }
