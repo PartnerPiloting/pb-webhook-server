@@ -274,8 +274,9 @@ const StartHereContent: React.FC = () => {
         });
     };
 
+    const willOpen = !openTopics[id];
+    
     setOpenTopics(prev => {
-      const willOpen = !prev[id];
       const next: Record<string, boolean> = { [id]: willOpen }; // exclusive topic
       if (willOpen) {
         const state = topicLoadState[id];
@@ -285,6 +286,14 @@ const StartHereContent: React.FC = () => {
       }
       return next;
     });
+    
+    // Scroll expanded topic into view so user sees the content they just opened
+    if (willOpen) {
+      setTimeout(() => {
+        const el = document.getElementById(`topic-${id}`);
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }, 100);
+    }
   };
 
   const copyTopicLink = (topicId: string) => {
