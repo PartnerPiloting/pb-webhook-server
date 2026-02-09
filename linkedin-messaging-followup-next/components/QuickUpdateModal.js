@@ -1392,6 +1392,29 @@ export default function QuickUpdateModal({
                   </button>
                 )}
               </div>
+              
+              {/* Cease/Reactivate Follow-up Button - under follow-up date */}
+              {selectedLead && (
+                <div className="mt-3">
+                  {(selectedLead.ceaseFup === 'Yes' || selectedLead['Cease FUP'] === 'Yes') ? (
+                    <button
+                      onClick={handleReactivateFollowup}
+                      disabled={isSaving}
+                      className="w-full px-3 py-2 text-sm font-medium text-green-700 bg-green-50 border border-green-200 rounded-lg hover:bg-green-100 transition-colors disabled:opacity-50"
+                    >
+                      ▶️ Reactivate Follow-up
+                    </button>
+                  ) : (
+                    <button
+                      onClick={handleCeaseFollowup}
+                      disabled={isSaving}
+                      className="w-full px-3 py-2 text-sm font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-lg hover:bg-amber-100 transition-colors disabled:opacity-50"
+                    >
+                      ⏹️ Cease Follow-up
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
             
             {/* Email */}
@@ -1462,38 +1485,6 @@ export default function QuickUpdateModal({
               </div>
             )}
             
-            {/* Cease/Reactivate Follow-up Button */}
-            {selectedLead && (
-              <div className="mt-6 pt-4 border-t border-gray-200">
-                {(selectedLead.ceaseFup === 'Yes' || selectedLead['Cease FUP'] === 'Yes') ? (
-                  <>
-                    <button
-                      onClick={handleReactivateFollowup}
-                      disabled={isSaving}
-                      className="w-full px-4 py-2 text-sm font-medium text-green-700 bg-green-50 border border-green-200 rounded-lg hover:bg-green-100 transition-colors disabled:opacity-50"
-                    >
-                      ▶️ Reactivate Follow-up
-                    </button>
-                    <p className="text-xs text-gray-500 mt-1 text-center">
-                      Resume pursuing this lead
-                    </p>
-                  </>
-                ) : (
-                  <>
-                    <button
-                      onClick={handleCeaseFollowup}
-                      disabled={isSaving}
-                      className="w-full px-4 py-2 text-sm font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-lg hover:bg-amber-100 transition-colors disabled:opacity-50"
-                    >
-                      ⏹️ Cease Follow-up
-                    </button>
-                    <p className="text-xs text-gray-500 mt-1 text-center">
-                      Stop pursuing this lead
-                    </p>
-                  </>
-                )}
-              </div>
-            )}
           </div>
         </div>
         
