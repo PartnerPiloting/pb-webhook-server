@@ -115,6 +115,7 @@ const LeadDetailModal = ({
                 priority: safeRender(lead.priority || lead['Priority']),
                 linkedinConnectionStatus: safeRender(lead.linkedinConnectionStatus || lead['LinkedIn Connection Status']),
                 followUpDate: safeRender(lead.followUpDate || lead['Follow-Up Date']),
+                ceaseFup: lead.ceaseFup || lead['Cease FUP'] || '',
                 notes: safeRender(lead.notes || lead['Notes']),
                 lastMessageDate: safeRender(lead.lastMessageDate || lead['Last Message Date']),
                 postsRelevancePercentage: lead.postsRelevancePercentage || lead['Posts Relevance Percentage'],
