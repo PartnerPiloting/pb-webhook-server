@@ -1319,6 +1319,7 @@ router.get('/leads/:id', async (req, res) => {
       priority: f['Priority'],
       linkedinConnectionStatus: f['LinkedIn Connection Status'],
       followUpDate: f['Follow-Up Date'],
+      ceaseFup: f['Cease FUP'],
       followUpNotes: f['Follow Up Notes'],
       notes: f['Notes'],
       linkedinMessages: f['LinkedIn Messages'],
