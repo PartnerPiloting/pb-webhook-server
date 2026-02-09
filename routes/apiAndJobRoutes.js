@@ -9880,7 +9880,7 @@ router.get("/api/admin/add-cease-fup-field", async (req, res) => {
       clients = [{ clientId: 'Client Template', baseId: TEMPLATE_BASE_ID }];
     } else {
       const Airtable = require('airtable');
-      const masterBase = Airtable.base(process.env.MASTER_CLIENTS_BASE_ID);
+      const masterBase = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process.env.MASTER_CLIENTS_BASE_ID);
       
       const records = await masterBase('Client Master').select({
         fields: ['Client ID', 'Airtable Base ID', 'Smart FUP']
