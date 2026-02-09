@@ -431,6 +431,99 @@ Nudges + transcript context solves all three.
 
 ---
 
+## Decision 13: Smart FUP State Table Lifecycle
+
+**Question:** When should records in Smart FUP State be deleted?
+
+**Decision:** Don't delete. Let records go "stale" and overwrite when needed.
+
+**Behavior:**
+- Records persist even when lead is ceased or date pushed to future
+- When lead becomes due again, cron runs and overwrites stale record
+- Table is self-managing through upserts
+
+**Rationale:**
+- Simpler - no delete logic needed
+- No harm - UI filters anyway
+- If user un-ceases a lead, we just regenerate
+- Avoids race conditions
+
+---
+
+## Decision 14: AI Suggested Follow-Up Date
+
+**Question:** Should AI suggest follow-up dates separately from user-set dates?
+
+**Decision:** Yes. Add two fields to Smart FUP State table.
+
+**New fields:**
+- `AI Suggested FUP Date` (date) - AI's recommendation
+- `AI Date Reasoning` (text) - e.g., "They said 'next week' on Feb 3"
+
+**Behavior:**
+- AI suggestion is advisory only
+- Does NOT change the `Follow-Up Date` in Leads table
+- User can "Accept" suggestion in UI → copies to Leads table
+- If user ignores, nothing happens automatically
+
+**User date precedence (Option C):**
+- If user has set a Follow-Up Date, never second-guess it
+- AI only generates suggestions when no date is set
+- Keeps system quiet and trustworthy
+
+---
+
+## Decision 15: Safety Net for Forgotten Dates
+
+**Question:** How do we catch leads with activity but no Follow-Up Date?
+
+**Decision:** Two-stage filter with 14-day window.
+
+**Stage 1 - Airtable filter (broad):**
+```
+AND(
+  OR({Cease FUP} != 'Yes', {Cease FUP} = BLANK()),
+  OR({Follow-Up Date} = BLANK(), {Follow-Up Date} = ''),
+  LAST_MODIFIED_TIME() >= DATEADD(TODAY(), -14, 'days')
+)
+```
+Returns ~50-100 candidates, not 12k+.
+
+**Stage 2 - Code/AI filter (smart):**
+- Examine Notes content
+- Does it contain conversation indicators? (message timestamps, LinkedIn conversation, etc.)
+- If no → Skip (probably just data cleanup)
+- If yes → AI generates suggested date, include in queue
+
+**Rationale:**
+- Efficient (Airtable does heavy lifting)
+- Accurate (AI confirms it's actually a conversation)
+- No false positives from typo fixes or email updates
+
+---
+
+## Decision 16: Updated Smart FUP State Table Schema
+
+**Final field list:**
+
+| Field | Type | Purpose |
+|-------|------|---------|
+| Client ID | Single line text (Primary) | Client identifier |
+| Lead ID | Single line text | Airtable record ID |
+| Lead Email | Email | For Fathom matching |
+| Lead LinkedIn Profile | URL | For quick access |
+| Generated Time | Date with time | When AI last ran |
+| Story | Long text | AI summary of relationship |
+| Priority | Single select (High/Medium/Low) | AI-determined urgency |
+| Waiting On | Single select (User/Lead/None) | Who owes next action |
+| Suggested Message | Long text | AI-generated follow-up message |
+| Recommended Channel | Single select (LinkedIn/Email/None) | Best channel for this lead |
+| Fathom Transcripts | Long text | Stored meeting transcripts |
+| AI Suggested FUP Date | Date | AI's recommended follow-up date |
+| AI Date Reasoning | Long text | Why AI suggested this date |
+
+---
+
 ---
 ---
 
