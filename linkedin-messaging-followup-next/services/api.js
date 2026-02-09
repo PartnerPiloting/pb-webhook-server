@@ -542,11 +542,12 @@ export const updateLead = async (leadId, updateData) => {
   'linkedinConnectionStatus': 'LinkedIn Connection Status',
   'postsActioned': 'Posts Actioned',
   'searchTerms': 'Search Terms',
-  'searchTokensCanonical': 'Search Tokens (canonical)'
+  'searchTokensCanonical': 'Search Tokens (canonical)',
+  'ceaseFup': 'Cease FUP'
     };
     
     // List of fields that need empty string converted to null
-    const emptyStringToNullFields = ['source', 'status', 'priority', 'linkedinConnectionStatus', 'followUpDate'];
+    const emptyStringToNullFields = ['source', 'status', 'priority', 'linkedinConnectionStatus', 'followUpDate', 'ceaseFup'];
     
   Object.keys(updateData).forEach(frontendField => {
       const backendField = fieldMapping[frontendField];
