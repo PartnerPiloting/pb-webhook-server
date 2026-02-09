@@ -10009,4 +10009,44 @@ router.get("/api/admin/add-cease-fup-field", async (req, res) => {
   }
 });
 
+// ---------------------------------------------------------------
+// Smart Follow-Up Sweep Endpoint
+// Runs the daily sweep to populate Smart FUP State table
+// Can be triggered manually or by cron
+// ---------------------------------------------------------------
+router.get("/api/smart-followup/sweep", async (req, res) => {
+  const { runSweep } = require('../services/smartFollowUpService');
+  
+  try {
+    const { 
+      clientId,      // Optional: specific client to process
+      dryRun,        // 'true' to preview without writing
+      limit,         // Max leads per client (for testing)
+      forceAll       // 'true' to reprocess all leads
+    } = req.query;
+    
+    logger.info(`Smart Follow-Up sweep triggered: clientId=${clientId || 'ALL'}, dryRun=${dryRun}, limit=${limit}`);
+    
+    const results = await runSweep({
+      clientId: clientId || null,
+      dryRun: dryRun === 'true',
+      limit: limit ? parseInt(limit, 10) : null,
+      forceAll: forceAll === 'true'
+    });
+    
+    res.json({
+      success: true,
+      message: 'Smart Follow-Up sweep complete',
+      results
+    });
+    
+  } catch (error) {
+    logger.error('Smart Follow-Up sweep error:', error.message, error.stack);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
 module.exports = router;
