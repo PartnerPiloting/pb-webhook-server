@@ -387,6 +387,7 @@ export const getLeadById = async (leadId) => {
       location: lead.location || lead['Location'],
       rawProfileData: lead.rawProfileData || lead['Raw Profile Data'],
   followUpDate: lead.followUpDate,
+  ceaseFup: lead.ceaseFup || lead['Cease FUP'],
   source: lead.source,
   status: lead.status,
   priority: lead.priority,
