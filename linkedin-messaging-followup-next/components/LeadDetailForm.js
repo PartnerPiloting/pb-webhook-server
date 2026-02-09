@@ -214,6 +214,26 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating, onDelete }) => {
     setHasChanges(false);
   };
 
+  // Handle reactivate follow-up
+  const handleReactivateFollowup = () => {
+    if (!lead) return;
+    
+    const dateStr = new Date().toLocaleDateString('en-AU', { day: '2-digit', month: 'short', year: '2-digit' });
+    const reactivateNote = `\n\n## MANUAL\nReactivated follow-up\n[${dateStr}]`;
+    const updatedNotes = (formData.notes || '') + reactivateNote;
+    
+    // Update form data and trigger update
+    const reactivateData = {
+      ...formData,
+      notes: updatedNotes,
+      ceaseFup: 'No'
+    };
+    
+    setFormData(reactivateData);
+    onUpdate(reactivateData);
+    setHasChanges(false);
+  };
+
   // Return null if no lead is provided
   if (!lead) {
     return null;
@@ -253,16 +273,28 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating, onDelete }) => {
             {hasChanges ? 'You have unsaved changes' : 'All changes saved'}
           </div>
           
-          {/* Cease Follow-up Button */}
-          <button
-            type="button"
-            onClick={handleCeaseFollowup}
-            className="inline-flex items-center px-3 py-2 text-sm font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-md hover:bg-amber-100 focus:outline-none focus:ring-2 focus:ring-amber-500 disabled:opacity-50"
-            disabled={isUpdating || isDeleting}
-            title="Stop pursuing this lead"
-          >
-            ⏹️ Cease Follow-up
-          </button>
+          {/* Cease/Reactivate Follow-up Button */}
+          {(lead.ceaseFup === 'Yes' || formData.ceaseFup === 'Yes') ? (
+            <button
+              type="button"
+              onClick={handleReactivateFollowup}
+              className="inline-flex items-center px-3 py-2 text-sm font-medium text-green-700 bg-green-50 border border-green-200 rounded-md hover:bg-green-100 focus:outline-none focus:ring-2 focus:ring-green-500 disabled:opacity-50"
+              disabled={isUpdating || isDeleting}
+              title="Resume pursuing this lead"
+            >
+              ▶️ Reactivate
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={handleCeaseFollowup}
+              className="inline-flex items-center px-3 py-2 text-sm font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-md hover:bg-amber-100 focus:outline-none focus:ring-2 focus:ring-amber-500 disabled:opacity-50"
+              disabled={isUpdating || isDeleting}
+              title="Stop pursuing this lead"
+            >
+              ⏹️ Cease Follow-up
+            </button>
+          )}
           
           {/* Delete Button - Separated on left side */}
           <button
