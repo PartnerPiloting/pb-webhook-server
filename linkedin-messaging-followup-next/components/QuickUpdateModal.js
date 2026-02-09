@@ -1465,7 +1465,7 @@ export default function QuickUpdateModal({
             {/* Cease/Reactivate Follow-up Button */}
             {selectedLead && (
               <div className="mt-6 pt-4 border-t border-gray-200">
-                {selectedLead.ceaseFup === 'Yes' ? (
+                {(selectedLead.ceaseFup === 'Yes' || selectedLead['Cease FUP'] === 'Yes') ? (
                   <>
                     <button
                       onClick={handleReactivateFollowup}
