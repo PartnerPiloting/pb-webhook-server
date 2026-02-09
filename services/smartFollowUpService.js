@@ -433,14 +433,14 @@ async function runSweep(options = {}) {
     // Filter to specific client if requested
     let clientRecords = allClients;
     if (clientId) {
-      clientRecords = allClients.filter(c => c.fields['Client ID'] === clientId);
+      clientRecords = allClients.filter(c => c.clientId === clientId);
     }
     
     logger.info(`Found ${clientRecords.length} client(s) to process`);
     
     for (const client of clientRecords) {
-      const cid = client.fields['Client ID'];
-      const baseId = client.fields['Leads Base'];
+      const cid = client.clientId;
+      const baseId = client.airtableBaseId;
       
       if (!baseId) {
         logger.warn(`Client ${cid} has no Leads Base configured - skipping`);
@@ -450,8 +450,10 @@ async function runSweep(options = {}) {
       const clientResult = await sweepClient({
         clientId: cid,
         baseId: baseId,
-        clientType: client.fields['Client Type'] || 'A',
-        fupInstructions: client.fields['FUP AI Instructions'] || '',
+        // Note: clientType and fupInstructions may not be in getAllClients yet
+        // TODO: Add these fields to clientService.js getAllClients
+        clientType: client.clientType || 'A',
+        fupInstructions: client.fupInstructions || '',
         dryRun,
         limit,
         forceAll,
