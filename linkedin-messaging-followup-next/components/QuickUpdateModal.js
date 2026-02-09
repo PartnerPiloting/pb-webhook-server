@@ -692,6 +692,34 @@ export default function QuickUpdateModal({
     }
   };
 
+  const handleReactivateFollowup = async () => {
+    if (!selectedLead) return;
+    
+    setIsSaving(true);
+    setError(null);
+    
+    try {
+      const existingNotes = selectedLead.notes || '';
+      const dateStr = new Date().toLocaleDateString('en-AU', { day: '2-digit', month: 'short', year: '2-digit' });
+      const reactivateNote = `\n\n## MANUAL\nReactivated follow-up\n[${dateStr}]`;
+      
+      await quickUpdateLead(selectedLead.id, {
+        ceaseFup: 'No',
+        replaceNotes: existingNotes + reactivateNote
+      });
+      
+      setSaveSuccess({ leadName: `${selectedLead.firstName || ''} ${selectedLead.lastName || ''}`.trim() || 'Lead' });
+      setSelectedLead(prev => ({ ...prev, ceaseFup: 'No', notes: existingNotes + reactivateNote }));
+      setHasUnsavedChanges(false);
+      
+      setTimeout(() => setSaveSuccess(null), 3000);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const handleNew = () => {
     if (hasUnsavedChanges) {
       setShowUnsavedWarning(true);
@@ -1434,19 +1462,36 @@ export default function QuickUpdateModal({
               </div>
             )}
             
-            {/* Cease Follow-up Button */}
+            {/* Cease/Reactivate Follow-up Button */}
             {selectedLead && (
               <div className="mt-6 pt-4 border-t border-gray-200">
-                <button
-                  onClick={handleCeaseFollowup}
-                  disabled={isSaving}
-                  className="w-full px-4 py-2 text-sm font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-lg hover:bg-amber-100 transition-colors disabled:opacity-50"
-                >
-                  ⏹️ Cease Follow-up
-                </button>
-                <p className="text-xs text-gray-500 mt-1 text-center">
-                  Stop pursuing this lead
-                </p>
+                {selectedLead.ceaseFup === 'Yes' ? (
+                  <>
+                    <button
+                      onClick={handleReactivateFollowup}
+                      disabled={isSaving}
+                      className="w-full px-4 py-2 text-sm font-medium text-green-700 bg-green-50 border border-green-200 rounded-lg hover:bg-green-100 transition-colors disabled:opacity-50"
+                    >
+                      ▶️ Reactivate Follow-up
+                    </button>
+                    <p className="text-xs text-gray-500 mt-1 text-center">
+                      Resume pursuing this lead
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      onClick={handleCeaseFollowup}
+                      disabled={isSaving}
+                      className="w-full px-4 py-2 text-sm font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-lg hover:bg-amber-100 transition-colors disabled:opacity-50"
+                    >
+                      ⏹️ Cease Follow-up
+                    </button>
+                    <p className="text-xs text-gray-500 mt-1 text-center">
+                      Stop pursuing this lead
+                    </p>
+                  </>
+                )}
               </div>
             )}
           </div>
