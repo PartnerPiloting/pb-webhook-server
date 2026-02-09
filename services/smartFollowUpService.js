@@ -14,6 +14,7 @@ require('dotenv').config();
 const Airtable = require('airtable');
 const { createLogger } = require('../utils/contextLogger');
 const { SMART_FUP_STATE_FIELDS } = require('../scripts/setup-smart-fup-airtable');
+const { getAllClients } = require('./clientService');
 
 // Create module-level logger
 const logger = createLogger({
@@ -50,6 +51,7 @@ let masterBase = null;
 
 /**
  * Initialize connection to the Master Clients base
+ * Uses same pattern as clientService.js for consistency
  */
 function initializeMasterBase() {
   if (masterBase) return masterBase;
@@ -61,8 +63,12 @@ function initializeMasterBase() {
     throw new Error('AIRTABLE_API_KEY environment variable is not set');
   }
 
-  masterBase = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY })
-    .base(process.env.MASTER_CLIENTS_BASE_ID);
+  // Configure Airtable globally (same pattern as clientService.js)
+  Airtable.configure({
+    apiKey: process.env.AIRTABLE_API_KEY
+  });
+
+  masterBase = Airtable.base(process.env.MASTER_CLIENTS_BASE_ID);
   
   logger.info('Master base initialized for Smart FUP');
   return masterBase;
@@ -70,12 +76,17 @@ function initializeMasterBase() {
 
 /**
  * Get a client's Airtable base by base ID
+ * Uses same pattern as clientService.js for consistency
  */
 function getClientBase(baseId) {
   if (!process.env.AIRTABLE_API_KEY) {
     throw new Error('AIRTABLE_API_KEY environment variable is not set');
   }
-  return new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(baseId);
+  // Configure Airtable globally (same pattern as clientService.js)
+  Airtable.configure({
+    apiKey: process.env.AIRTABLE_API_KEY
+  });
+  return Airtable.base(baseId);
 }
 
 // ============================================
@@ -455,23 +466,14 @@ async function runSweep(options = {}) {
   };
   
   try {
-    const base = initializeMasterBase();
+    // Use existing clientService which handles Airtable auth correctly
+    const allClients = await getAllClients();
     
-    // Get clients to process
-    let filterFormula = '';
+    // Filter to specific client if requested
+    let clientRecords = allClients;
     if (clientId) {
-      filterFormula = `{Client ID} = '${clientId}'`;
+      clientRecords = allClients.filter(c => c.fields['Client ID'] === clientId);
     }
-    
-    const clientRecords = await base('Client Master').select({
-      filterByFormula: filterFormula || undefined,
-      fields: [
-        'Client ID',
-        'Leads Base',
-        'Client Type',
-        'FUP AI Instructions',
-      ]
-    }).all();
     
     logger.info(`Found ${clientRecords.length} client(s) to process`);
     
