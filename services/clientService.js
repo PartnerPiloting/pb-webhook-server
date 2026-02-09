@@ -132,6 +132,11 @@ async function getAllClients() {
                 // Portal access token for secure client access
                 const portalToken = record.get('Portal Token') || null;
                 
+                // Smart Follow-Up configuration
+                const clientType = record.get('Client Type') || 'A - Partner Selection';
+                const fupInstructions = record.get('FUP AI Instructions') || '';
+                const fathomApiKey = record.get('Fathom API Key') || null;
+                
                 clients.push({
                     id: record.id,
                     clientId: clientId,
@@ -171,6 +176,10 @@ async function getAllClients() {
                     coachNotes: coachNotes,
                     // Portal access token
                     portalToken: portalToken,
+                    // Smart Follow-Up configuration
+                    clientType: clientType,
+                    fupInstructions: fupInstructions,
+                    fathomApiKey: fathomApiKey,
                     // Store raw record for fire-and-forget field access
                     rawRecord: record
                 });

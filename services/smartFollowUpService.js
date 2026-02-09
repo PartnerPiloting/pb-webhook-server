@@ -450,9 +450,7 @@ async function runSweep(options = {}) {
       const clientResult = await sweepClient({
         clientId: cid,
         baseId: baseId,
-        // Note: clientType and fupInstructions may not be in getAllClients yet
-        // TODO: Add these fields to clientService.js getAllClients
-        clientType: client.clientType || 'A',
+        clientType: client.clientType || 'A - Partner Selection',
         fupInstructions: client.fupInstructions || '',
         dryRun,
         limit,
