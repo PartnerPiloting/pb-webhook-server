@@ -274,7 +274,7 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating, onDelete }) => {
           </div>
           
           {/* Cease/Reactivate Follow-up Button */}
-          {(lead.ceaseFup === 'Yes' || formData.ceaseFup === 'Yes') ? (
+          {(lead.ceaseFup === 'Yes' || lead['Cease FUP'] === 'Yes' || formData.ceaseFup === 'Yes') ? (
             <button
               type="button"
               onClick={handleReactivateFollowup}
