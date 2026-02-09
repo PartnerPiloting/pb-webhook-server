@@ -189,6 +189,31 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating, onDelete }) => {
     }
   };
 
+  // Handle cease follow-up
+  const handleCeaseFollowup = () => {
+    if (!lead) return;
+    
+    if (!window.confirm('Are you sure you want to cease follow-up for this lead? This marks them as no longer needing follow-up.')) {
+      return;
+    }
+    
+    const dateStr = new Date().toLocaleDateString('en-AU', { day: '2-digit', month: 'short', year: '2-digit' });
+    const ceaseNote = `\n\n## MANUAL\n#moving-on - Ceased follow-up\n[${dateStr}]`;
+    const updatedNotes = (formData.notes || '') + ceaseNote;
+    
+    // Update form data and trigger update
+    const ceaseData = {
+      ...formData,
+      notes: updatedNotes,
+      followUpDate: '',
+      ceaseFup: 'Yes'
+    };
+    
+    setFormData(ceaseData);
+    onUpdate(ceaseData);
+    setHasChanges(false);
+  };
+
   // Return null if no lead is provided
   if (!lead) {
     return null;
@@ -227,6 +252,17 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating, onDelete }) => {
           <div className="text-sm text-gray-500">
             {hasChanges ? 'You have unsaved changes' : 'All changes saved'}
           </div>
+          
+          {/* Cease Follow-up Button */}
+          <button
+            type="button"
+            onClick={handleCeaseFollowup}
+            className="inline-flex items-center px-3 py-2 text-sm font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-md hover:bg-amber-100 focus:outline-none focus:ring-2 focus:ring-amber-500 disabled:opacity-50"
+            disabled={isUpdating || isDeleting}
+            title="Stop pursuing this lead"
+          >
+            ⏹️ Cease Follow-up
+          </button>
           
           {/* Delete Button - Separated on left side */}
           <button

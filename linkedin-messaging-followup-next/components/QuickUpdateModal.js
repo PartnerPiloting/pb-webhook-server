@@ -658,6 +658,40 @@ export default function QuickUpdateModal({
     }
   };
 
+  const handleCeaseFollowup = async () => {
+    if (!selectedLead) return;
+    
+    if (!window.confirm('Are you sure you want to cease follow-up for this lead? This marks them as no longer needing follow-up.')) {
+      return;
+    }
+    
+    setIsSaving(true);
+    setError(null);
+    
+    try {
+      const existingNotes = selectedLead.notes || '';
+      const dateStr = new Date().toLocaleDateString('en-AU', { day: '2-digit', month: 'short', year: '2-digit' });
+      const ceaseNote = `\n\n## MANUAL\n#moving-on - Ceased follow-up\n[${dateStr}]`;
+      
+      await quickUpdateLead(selectedLead.id, {
+        followUpDate: null,
+        ceaseFup: 'Yes',
+        replaceNotes: existingNotes + ceaseNote
+      });
+      
+      setSaveSuccess({ leadName: `${selectedLead.firstName || ''} ${selectedLead.lastName || ''}`.trim() || 'Lead' });
+      setFollowUpDate('');
+      setSelectedLead(prev => ({ ...prev, followUpDate: '', ceaseFup: 'Yes', notes: existingNotes + ceaseNote }));
+      setHasUnsavedChanges(false);
+      
+      setTimeout(() => setSaveSuccess(null), 3000);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const handleNew = () => {
     if (hasUnsavedChanges) {
       setShowUnsavedWarning(true);
@@ -1397,6 +1431,22 @@ export default function QuickUpdateModal({
                     </div>
                   )}
                 </div>
+              </div>
+            )}
+            
+            {/* Cease Follow-up Button */}
+            {selectedLead && (
+              <div className="mt-6 pt-4 border-t border-gray-200">
+                <button
+                  onClick={handleCeaseFollowup}
+                  disabled={isSaving}
+                  className="w-full px-4 py-2 text-sm font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-lg hover:bg-amber-100 transition-colors disabled:opacity-50"
+                >
+                  ⏹️ Cease Follow-up
+                </button>
+                <p className="text-xs text-gray-500 mt-1 text-center">
+                  Stop pursuing this lead
+                </p>
               </div>
             )}
           </div>
