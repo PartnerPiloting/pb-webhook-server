@@ -14,7 +14,7 @@ require('dotenv').config();
 const Airtable = require('airtable');
 const { createLogger } = require('../utils/contextLogger');
 const { SMART_FUP_STATE_FIELDS } = require('../scripts/setup-smart-fup-airtable');
-const { getAllClients } = require('./clientService');
+const { getAllClients, getClientBase, initializeClientsBase } = require('./clientService');
 
 // Create module-level logger
 const logger = createLogger({
@@ -47,47 +47,8 @@ const LEAD_FIELDS = {
 // BASE CONNECTIONS
 // ============================================
 
-let masterBase = null;
-
-/**
- * Initialize connection to the Master Clients base
- * Uses same pattern as clientService.js for consistency
- */
-function initializeMasterBase() {
-  if (masterBase) return masterBase;
-
-  if (!process.env.MASTER_CLIENTS_BASE_ID) {
-    throw new Error('MASTER_CLIENTS_BASE_ID environment variable is not set');
-  }
-  if (!process.env.AIRTABLE_API_KEY) {
-    throw new Error('AIRTABLE_API_KEY environment variable is not set');
-  }
-
-  // Configure Airtable globally (same pattern as clientService.js)
-  Airtable.configure({
-    apiKey: process.env.AIRTABLE_API_KEY
-  });
-
-  masterBase = Airtable.base(process.env.MASTER_CLIENTS_BASE_ID);
-  
-  logger.info('Master base initialized for Smart FUP');
-  return masterBase;
-}
-
-/**
- * Get a client's Airtable base by base ID
- * Uses same pattern as clientService.js for consistency
- */
-function getClientBase(baseId) {
-  if (!process.env.AIRTABLE_API_KEY) {
-    throw new Error('AIRTABLE_API_KEY environment variable is not set');
-  }
-  // Configure Airtable globally (same pattern as clientService.js)
-  Airtable.configure({
-    apiKey: process.env.AIRTABLE_API_KEY
-  });
-  return Airtable.base(baseId);
-}
+// Note: Using getClientBase and initializeClientsBase from clientService.js
+// to avoid duplication. initializeClientsBase() returns Master Clients base.
 
 // ============================================
 // TWO-STAGE FILTER LOGIC
@@ -232,7 +193,7 @@ async function analyzeLeadNotes(lead, clientInstructions, clientType) {
  * Find existing Smart FUP State record for a client+lead combination
  */
 async function findExistingStateRecord(clientId, leadId) {
-  const base = initializeMasterBase();
+  const base = initializeClientsBase();
   
   try {
     const records = await base('Smart FUP State').select({
@@ -251,7 +212,7 @@ async function findExistingStateRecord(clientId, leadId) {
  * Upsert a Smart FUP State record
  */
 async function upsertStateRecord(clientId, lead, aiOutput, dryRun = false) {
-  const base = initializeMasterBase();
+  const base = initializeClientsBase();
   const leadId = lead.id;
   
   const recordData = {
