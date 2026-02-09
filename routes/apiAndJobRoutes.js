@@ -9835,4 +9835,178 @@ router.get("/api/validate-coach/:coachId", async (req, res) => {
   }
 });
 
+/**
+ * GET /api/admin/add-cease-fup-field
+ * Add "Cease FUP" field to Airtable Leads tables
+ * 
+ * Query params:
+ *   - target: "template" | "all" | specific client ID (default: template)
+ *   - dryRun: "true" | "false" (default: true for safety)
+ * 
+ * Examples:
+ *   /api/admin/add-cease-fup-field?target=template&dryRun=true
+ *   /api/admin/add-cease-fup-field?target=template&dryRun=false
+ *   /api/admin/add-cease-fup-field?target=all&dryRun=false
+ */
+router.get("/api/admin/add-cease-fup-field", async (req, res) => {
+  const logger = createLogger({ runId: 'ADMIN', clientId: 'SYSTEM', operation: 'add_cease_fup_field' });
+  
+  const FIELD_NAME = 'Cease FUP';
+  const LEADS_TABLE_NAME = 'Leads';
+  const TEMPLATE_BASE_ID = 'app6W6k9GiDUlktvt';
+  
+  const FIELD_DEFINITION = {
+    name: FIELD_NAME,
+    type: 'singleSelect',
+    options: {
+      choices: [
+        { name: 'Yes', color: 'redBright' },
+        { name: 'No', color: 'greenBright' }
+      ]
+    }
+  };
+  
+  try {
+    const target = req.query.target || 'template';
+    const dryRun = req.query.dryRun !== 'false'; // Default to true for safety
+    
+    logger.info(`Add Cease FUP field - target: ${target}, dryRun: ${dryRun}`);
+    
+    const results = [];
+    let clients = [];
+    
+    // Determine which bases to process
+    if (target === 'template') {
+      clients = [{ clientId: 'Client Template', baseId: TEMPLATE_BASE_ID }];
+    } else {
+      const Airtable = require('airtable');
+      const masterBase = Airtable.base(process.env.MASTER_CLIENTS_BASE_ID);
+      
+      const records = await masterBase('Client Master').select({
+        fields: ['Client ID', 'Airtable Base ID', 'Smart FUP']
+      }).all();
+      
+      for (const record of records) {
+        const clientId = record.get('Client ID');
+        const baseId = record.get('Airtable Base ID');
+        const smartFup = record.get('Smart FUP');
+        
+        if (!baseId) continue;
+        
+        // Filter by specific client or all
+        if (target !== 'all' && clientId !== target) continue;
+        
+        clients.push({ clientId, baseId, smartFup });
+      }
+    }
+    
+    if (clients.length === 0) {
+      return res.json({
+        success: false,
+        error: 'No clients found matching criteria',
+        target,
+        dryRun
+      });
+    }
+    
+    // Process each client
+    for (const client of clients) {
+      const result = { clientId: client.clientId, baseId: client.baseId };
+      
+      try {
+        // Get table ID
+        const tablesResponse = await fetch(`https://api.airtable.com/v0/meta/bases/${client.baseId}/tables`, {
+          headers: { 'Authorization': `Bearer ${process.env.AIRTABLE_API_KEY}` }
+        });
+        
+        if (!tablesResponse.ok) {
+          result.status = 'error';
+          result.error = `Failed to get tables: ${tablesResponse.status}`;
+          results.push(result);
+          continue;
+        }
+        
+        const tablesData = await tablesResponse.json();
+        const leadsTable = tablesData.tables.find(t => t.name === LEADS_TABLE_NAME);
+        
+        if (!leadsTable) {
+          result.status = 'error';
+          result.error = `Table "${LEADS_TABLE_NAME}" not found`;
+          results.push(result);
+          continue;
+        }
+        
+        // Check if field already exists
+        const fieldExists = leadsTable.fields.some(f => f.name === FIELD_NAME);
+        
+        if (fieldExists) {
+          result.status = 'skipped';
+          result.message = 'Field already exists';
+          results.push(result);
+          continue;
+        }
+        
+        if (dryRun) {
+          result.status = 'would_add';
+          result.message = 'Would add field (dry run)';
+          results.push(result);
+          continue;
+        }
+        
+        // Add the field
+        const addResponse = await fetch(`https://api.airtable.com/v0/meta/bases/${client.baseId}/tables/${leadsTable.id}/fields`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${process.env.AIRTABLE_API_KEY}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(FIELD_DEFINITION)
+        });
+        
+        if (!addResponse.ok) {
+          const errorText = await addResponse.text();
+          result.status = 'error';
+          result.error = `Failed to add field: ${addResponse.status} - ${errorText}`;
+          results.push(result);
+          continue;
+        }
+        
+        result.status = 'success';
+        result.message = 'Field added successfully';
+        results.push(result);
+        
+      } catch (err) {
+        result.status = 'error';
+        result.error = err.message;
+        results.push(result);
+      }
+    }
+    
+    // Summary
+    const summary = {
+      success: results.filter(r => r.status === 'success').length,
+      skipped: results.filter(r => r.status === 'skipped').length,
+      wouldAdd: results.filter(r => r.status === 'would_add').length,
+      errors: results.filter(r => r.status === 'error').length
+    };
+    
+    logger.info(`Cease FUP field operation complete: ${JSON.stringify(summary)}`);
+    
+    res.json({
+      success: true,
+      target,
+      dryRun,
+      summary,
+      results
+    });
+    
+  } catch (error) {
+    logger.error('Add Cease FUP field error:', error.message, error.stack);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
 module.exports = router;
