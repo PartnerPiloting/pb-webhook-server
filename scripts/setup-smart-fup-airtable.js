@@ -50,6 +50,10 @@ const SMART_FUP_STATE_FIELDS = {
   RECOMMENDED_CHANNEL: 'Recommended Channel', // Single select: LinkedIn / Email / None
   WAITING_ON: 'Waiting On',         // Single select: User / Lead / None
   
+  // AI follow-up date suggestion (Decision 14)
+  AI_SUGGESTED_FUP_DATE: 'AI Suggested FUP Date', // Date - AI's recommended follow-up date
+  AI_DATE_REASONING: 'AI Date Reasoning', // Long text - why AI suggested this date
+  
   // Fathom data
   FATHOM_TRANSCRIPTS: 'Fathom Transcripts', // Long text - synced transcripts
 };
