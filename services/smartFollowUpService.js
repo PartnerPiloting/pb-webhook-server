@@ -12,9 +12,11 @@
 
 require('dotenv').config();
 const Airtable = require('airtable');
+const { HarmCategory, HarmBlockThreshold } = require('@google-cloud/vertexai');
 const { createLogger } = require('../utils/contextLogger');
 const { SMART_FUP_STATE_FIELDS } = require('../scripts/setup-smart-fup-airtable');
 const { getAllClients, getClientBase, initializeClientsBase } = require('./clientService');
+const { vertexAIClient } = require('../config/geminiClient');
 
 // Create module-level logger
 const logger = createLogger({
@@ -112,73 +114,225 @@ function hasConversationActivity(notes) {
 }
 
 // ============================================
-// AI ANALYSIS (Placeholder for now)
+// AI ANALYSIS (Gemini)
 // ============================================
 
+// Model configuration - using Flash for speed
+const SMART_FUP_MODEL = 'gemini-2.0-flash';
+const AI_TIMEOUT_MS = 30000; // 30 second timeout
+
 /**
- * Analyze a lead's Notes to generate AI outputs
- * TODO: Implement actual AI call (Gemini)
- * 
- * For now, returns placeholder data for testing the pipeline
+ * Build the system prompt for Smart Follow-Up analysis
+ */
+function buildSmartFupSystemPrompt(clientType, clientInstructions) {
+  // Extract client type letter (A/B/C) from full value like "A - Partner Selection"
+  const typeCode = clientType ? clientType.charAt(0).toUpperCase() : 'A';
+  
+  let philosophyContext = '';
+  if (typeCode === 'A') {
+    philosophyContext = `
+FOLLOW-UP PHILOSOPHY (Type A - Partner Selection):
+- Early conviction over perfect timing
+- Energy as filter - comfortable losing people who don't resonate
+- Selection > reply rate - you're choosing partners, not chasing leads
+- Leadership signalling, not chasing
+- "Come with me if this resonates" posture
+- Enthusiasm is intentional, not accidental
+- Don't optimise for reply rate - optimise for resonance`;
+  } else if (typeCode === 'B') {
+    philosophyContext = `
+FOLLOW-UP PHILOSOPHY (Type B - Client Acquisition):
+- Softer sequencing, nurture before conviction
+- Reply rate matters more
+- Optimised for momentum and pipeline`;
+  }
+
+  return `You are a Smart Follow-Up AI assistant. Your task is to analyze the conversation notes for a lead and provide actionable follow-up recommendations.
+
+${philosophyContext}
+
+${clientInstructions ? `CLIENT-SPECIFIC INSTRUCTIONS:\n${clientInstructions}\n` : ''}
+
+ANALYSIS TASK:
+Given the lead's Notes (containing conversation history), you must determine:
+
+1. STORY: A brief 2-3 sentence summary of the relationship so far. What stage are they at? What was discussed?
+
+2. WAITING_ON: Who should act next?
+   - "User" = The lead replied/messaged, and the user (our client) owes a response. This is HIGH priority.
+   - "Lead" = The user sent a message/email, waiting for the lead to respond
+   - "None" = No active conversation thread or unclear
+
+3. PRIORITY: How urgent is this follow-up?
+   - "High" = Lead replied and needs response, OR had a meeting, OR showed strong interest
+   - "Medium" = Normal follow-up cadence, nothing urgent
+   - "Low" = Cold lead, minimal engagement, or long time since contact
+
+4. RECOMMENDED_CHANNEL: Best way to follow up
+   - "LinkedIn" = Default for most follow-ups
+   - "Email" = If email is available and conversation was via email, or more formal follow-up needed
+   - "None" = Cannot determine or no follow-up needed
+
+5. SUGGESTED_MESSAGE: A short, personalised follow-up message (2-4 sentences). 
+   - Make it specific to their conversation history
+   - Match the client's follow-up philosophy
+   - Keep it under 500 characters for LinkedIn
+
+6. AI_SUGGESTED_DATE: If no follow-up date is set, suggest when to follow up (YYYY-MM-DD format)
+   - Look for time references in notes ("next week", "in a few days", "Monday")
+   - Default to 3-5 days if unclear
+
+7. AI_DATE_REASONING: One sentence explaining why you suggested that date
+
+OUTPUT FORMAT:
+Return a JSON object with these exact keys:
+{
+  "story": "...",
+  "waitingOn": "User" | "Lead" | "None",
+  "priority": "High" | "Medium" | "Low",
+  "recommendedChannel": "LinkedIn" | "Email" | "None",
+  "suggestedMessage": "...",
+  "aiSuggestedDate": "YYYY-MM-DD" | null,
+  "aiDateReasoning": "..." | null
+}`;
+}
+
+/**
+ * Analyze a lead's Notes using Gemini AI
  */
 async function analyzeLeadNotes(lead, clientInstructions, clientType) {
   const notes = lead.fields[LEAD_FIELDS.NOTES] || '';
+  const firstName = lead.fields[LEAD_FIELDS.FIRST_NAME] || 'Lead';
+  const lastName = lead.fields[LEAD_FIELDS.LAST_NAME] || '';
+  const email = lead.fields[LEAD_FIELDS.EMAIL] || '';
+  const hasFollowUpDate = !!lead.fields[LEAD_FIELDS.FOLLOW_UP_DATE];
   
-  // Placeholder AI analysis - replace with actual Gemini call
-  // For testing, we generate deterministic outputs based on notes content
+  // If no Gemini client available, fall back to placeholder
+  if (!vertexAIClient) {
+    logger.warn('Gemini client not available, using placeholder logic');
+    return generatePlaceholderAnalysis(lead, notes, firstName);
+  }
   
-  // Determine waiting_on based on notes patterns
+  try {
+    const model = vertexAIClient.getGenerativeModel({
+      model: SMART_FUP_MODEL,
+      systemInstruction: { parts: [{ text: buildSmartFupSystemPrompt(clientType, clientInstructions) }] },
+      safetySettings: [
+        { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+        { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
+        { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
+        { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+      ],
+      generationConfig: {
+        temperature: 0.3, // Slightly creative but mostly deterministic
+        responseMimeType: 'application/json',
+        maxOutputTokens: 1024
+      }
+    });
+
+    const userPrompt = `Analyze this lead and provide follow-up recommendations.
+
+LEAD INFO:
+- Name: ${firstName} ${lastName}
+- Email: ${email || 'Not available'}
+- Has Follow-Up Date Set: ${hasFollowUpDate ? 'Yes' : 'No'}
+
+NOTES/CONVERSATION HISTORY:
+${notes || '[No notes recorded]'}
+
+Today's date is: ${new Date().toISOString().split('T')[0]}`;
+
+    const requestPayload = {
+      contents: [{ role: 'user', parts: [{ text: userPrompt }] }]
+    };
+
+    // Race between API call and timeout
+    const callPromise = model.generateContent(requestPayload);
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('Smart FUP AI analysis timed out')), AI_TIMEOUT_MS);
+    });
+
+    const result = await Promise.race([callPromise, timeoutPromise]);
+
+    if (!result || !result.response) {
+      throw new Error('Gemini API returned no response');
+    }
+
+    const candidate = result.response.candidates?.[0];
+    if (!candidate?.content?.parts?.[0]?.text) {
+      throw new Error('AI returned no content');
+    }
+
+    const responseText = candidate.content.parts[0].text;
+    
+    // Parse the JSON response
+    let aiOutput;
+    try {
+      aiOutput = JSON.parse(responseText);
+    } catch (parseError) {
+      logger.error(`Failed to parse AI response as JSON: ${responseText.substring(0, 200)}`);
+      throw new Error('AI response was not valid JSON');
+    }
+    
+    // Validate and normalize the output
+    return {
+      story: aiOutput.story || `Relationship with ${firstName}`,
+      priority: ['High', 'Medium', 'Low'].includes(aiOutput.priority) ? aiOutput.priority : 'Medium',
+      waitingOn: ['User', 'Lead', 'None'].includes(aiOutput.waitingOn) ? aiOutput.waitingOn : 'None',
+      suggestedMessage: aiOutput.suggestedMessage || '',
+      recommendedChannel: ['LinkedIn', 'Email', 'None'].includes(aiOutput.recommendedChannel) ? aiOutput.recommendedChannel : 'LinkedIn',
+      aiSuggestedDate: (!hasFollowUpDate && aiOutput.aiSuggestedDate) ? aiOutput.aiSuggestedDate : null,
+      aiDateReasoning: (!hasFollowUpDate && aiOutput.aiDateReasoning) ? aiOutput.aiDateReasoning : null,
+    };
+    
+  } catch (error) {
+    logger.error(`AI analysis failed for lead ${lead.id}: ${error.message}`);
+    // Fall back to placeholder on error
+    return generatePlaceholderAnalysis(lead, notes, firstName);
+  }
+}
+
+/**
+ * Generate placeholder analysis when AI is unavailable
+ */
+function generatePlaceholderAnalysis(lead, notes, firstName) {
   let waitingOn = 'None';
-  if (/they replied|their response|waiting to hear/i.test(notes)) {
+  if (/they replied|their response|waiting to hear|replied saying|responded with/i.test(notes)) {
     waitingOn = 'Lead';
-  } else if (/need to follow up|should reach out|owe them/i.test(notes)) {
+  } else if (/need to follow up|should reach out|owe them|I need to|I should/i.test(notes)) {
     waitingOn = 'User';
   }
   
-  // Determine priority
   let priority = 'Medium';
   if (waitingOn === 'User') {
-    priority = 'High'; // They replied, user owes response
-  } else if (/meeting|call scheduled/i.test(notes)) {
-    priority = 'High'; // Had meeting engagement
+    priority = 'High';
+  } else if (/meeting|call scheduled|spoke with|had a call/i.test(notes)) {
+    priority = 'High';
   } else if (!notes || notes.length < 100) {
-    priority = 'Low'; // Minimal engagement
+    priority = 'Low';
   }
   
-  // Determine channel
   let channel = 'LinkedIn';
   if (lead.fields[LEAD_FIELDS.EMAIL] && /email/i.test(notes)) {
     channel = 'Email';
   }
   
-  // Generate story placeholder
-  const firstName = lead.fields[LEAD_FIELDS.FIRST_NAME] || 'Lead';
-  const story = `[AI Placeholder] Relationship with ${firstName}. ` +
-    `Notes contain ${notes.length} characters. ` +
-    `Last activity detected in notes. Waiting on: ${waitingOn}.`;
-  
-  // Generate suggested message placeholder
-  const suggestedMessage = `[AI Placeholder] Hi ${firstName}, ` +
-    `following up on our previous conversation. ` +
-    `Would love to reconnect and hear how things are going.`;
-  
-  // AI suggested date - placeholder logic
+  const hasFollowUpDate = !!lead.fields[LEAD_FIELDS.FOLLOW_UP_DATE];
   let aiSuggestedDate = null;
   let aiDateReasoning = null;
   
-  if (!lead.fields[LEAD_FIELDS.FOLLOW_UP_DATE]) {
-    // No user date set - AI suggests one
+  if (!hasFollowUpDate) {
     const suggestDate = new Date();
-    suggestDate.setDate(suggestDate.getDate() + 3); // Suggest 3 days from now
+    suggestDate.setDate(suggestDate.getDate() + 3);
     aiSuggestedDate = suggestDate.toISOString().split('T')[0];
-    aiDateReasoning = '[AI Placeholder] No follow-up date set. Suggesting 3 days from now based on typical follow-up cadence.';
+    aiDateReasoning = '[Placeholder] No follow-up date set. Suggesting 3 days from now.';
   }
   
   return {
-    story,
+    story: `[AI Unavailable] Relationship with ${firstName}. Notes contain ${notes.length} characters.`,
     priority,
     waitingOn,
-    suggestedMessage,
+    suggestedMessage: `[AI Unavailable] Hi ${firstName}, following up on our previous conversation.`,
     recommendedChannel: channel,
     aiSuggestedDate,
     aiDateReasoning,
