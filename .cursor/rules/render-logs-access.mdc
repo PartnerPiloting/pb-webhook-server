@@ -1,0 +1,48 @@
+---
+description: AI can query Render logs directly via API endpoint
+alwaysApply: true
+---
+
+# Render Logs Access
+
+When debugging production issues, you can query Render logs directly instead of asking the user to check them.
+
+## Endpoint
+
+```
+GET https://pb-webhook-server.onrender.com/debug-render-logs
+Authorization: Bearer Diamond9753!!@@pb
+```
+
+## Query Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `minutes` | number | 30 | Fetch logs from last N minutes |
+| `startTime` | ISO string | - | Specific start time (UTC) |
+| `endTime` | ISO string | - | Specific end time (UTC) |
+| `limit` | number | 200 | Max number of log entries |
+| `search` | string | - | Filter logs containing this text (case-insensitive) |
+
+## Example Queries
+
+```powershell
+# Recent errors
+$headers = @{"Authorization"="Bearer Diamond9753!!@@pb"}
+Invoke-WebRequest -Uri "https://pb-webhook-server.onrender.com/debug-render-logs?minutes=30&search=ERROR" -Headers $headers
+
+# Specific time window
+Invoke-WebRequest -Uri "https://pb-webhook-server.onrender.com/debug-render-logs?startTime=2026-02-10T10:24:00Z&endTime=2026-02-10T10:25:00Z" -Headers $headers
+
+# Inbound email logs
+Invoke-WebRequest -Uri "https://pb-webhook-server.onrender.com/debug-render-logs?search=INBOUND-EMAIL&minutes=60" -Headers $headers
+```
+
+## When to Use
+
+- User reports something isn't working
+- Need to investigate webhook failures
+- Checking if a feature is being triggered
+- Debugging errors in production
+
+**Do not ask the user to check Render logs manually** - query them yourself using this endpoint.
