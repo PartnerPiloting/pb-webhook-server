@@ -778,4 +778,73 @@ This is successful if:
 
 ---
 
+## Decision 17: AI Date Suggestion - Refined Logic
+
+**Date:** 2026-02-10
+
+**Context:** Original design had AI only suggesting dates when user had none set. With UI enforcement requiring FUP date or Cease, needed to reconsider AI's role.
+
+**Problem:** 
+- Emails via BCC to track@ update notes automatically
+- User not in UI to see/accept AI suggestions
+- AI should detect date references ("let's talk next Tuesday") from new notes
+
+**Decision:** AI actively suggests dates, using incremental notes analysis.
+
+**Core principle:** AI only speaks when there's new information, and respects user's explicit acknowledgment.
+
+**Workflow:**
+1. Notes updated (email via track@, manual entry, etc.)
+2. Sweep detects unprocessed notes (current length > Last Processed Length)
+3. AI analyzes ONLY the new portion of notes (chars from Last Processed to end)
+4. AI may set/update AI Suggested FUP Date + Reasoning
+5. Lead appears in Smart Follow-ups at MIN(User Date, AI Date)
+6. User sees both dates, can "Acknowledge" to clear AI date
+7. Acknowledged = AI date cleared, user keeps or updates their own date
+8. No new notes = AI stays silent (no nagging)
+9. New notes arrive = AI re-analyzes new portion, may suggest again
+
+**New fields in Smart FUP State:**
+- `User FUP Date` (date) - Cached copy from Leads table for sorting
+- `Last Processed Notes Length` (number) - To detect new notes
+
+**Sweep logic:**
+1. Query leads modified in last 7 days (catches user date changes too)
+2. For each lead:
+   - Always update cached User FUP Date (keep in sync)
+   - Compare notes length to Last Processed Notes Length
+   - If length increased → analyze new notes portion for date references
+   - Update AI Date/Reasoning if found, else leave as-is
+   - Update Last Processed Notes Length
+
+**Smart Follow-ups display:**
+- Sort by MIN(User FUP Date, AI Suggested FUP Date)
+- Show both dates when AI has a suggestion
+- "Acknowledge" button clears AI date
+
+**Key behaviors:**
+- AI can bring leads forward in queue (earlier than user's date)
+- Once acknowledged, AI stays quiet until NEW notes arrive
+- Only analyzes incremental notes (efficient, avoids stale context)
+- User date changes are synced via the 7-day modified window
+
+**Updated Smart FUP State Schema:**
+
+| Field | Type | Purpose |
+|-------|------|---------|
+| Lead ID | Link | Reference to Leads table |
+| Lead Name | Text | Display name |
+| User FUP Date | Date | Cached from Leads for MIN sorting |
+| AI Suggested FUP Date | Date | AI's recommendation |
+| AI Date Reasoning | Long text | Why AI suggested this date |
+| Last Processed Notes Length | Number | Detect new notes (chars) |
+| Story | Long text | AI relationship summary |
+| Waiting On | Select | User/Lead/None |
+| Priority | Select | High/Medium/Low |
+| Recommended Channel | Select | LinkedIn/Email/None |
+| Suggested Message | Long text | AI-generated follow-up |
+| Generated Time | DateTime | When record last processed |
+
+---
+
 *End of specification*
