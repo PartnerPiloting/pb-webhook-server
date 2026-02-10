@@ -22,24 +22,26 @@ Authorization: Bearer Diamond9753!!@@pb
 | `startTime` | ISO string | - | Specific start time (UTC) |
 | `endTime` | ISO string | - | Specific end time (UTC) |
 | `limit` | number | 200 | Max number of log entries |
-| `search` | string | - | Filter logs containing this text (case-insensitive) |
+| `search` | string | - | Server-side filter (unreliable - prefer local filtering with findstr) |
 
 ## Example Queries
 
-**IMPORTANT**: On Windows, use `curl.exe` (not PowerShell's `Invoke-WebRequest` which times out).
+**IMPORTANT**: 
+- On Windows, use `curl.exe` (not PowerShell's `Invoke-WebRequest` which times out)
+- The server-side `search` parameter can be unreliable - prefer fetching logs and filtering locally with `findstr /i`
 
 ```bash
 # Recent logs (last 5 minutes)
 curl.exe -s -H "Authorization: Bearer Diamond9753!!@@pb" "https://pb-webhook-server.onrender.com/debug-render-logs?minutes=5&limit=50"
 
-# Search for errors
-curl.exe -s -H "Authorization: Bearer Diamond9753!!@@pb" "https://pb-webhook-server.onrender.com/debug-render-logs?minutes=30&search=ERROR"
+# Best approach: fetch logs and filter locally (more reliable than server-side search)
+curl.exe -s -H "Authorization: Bearer Diamond9753!!@@pb" "https://pb-webhook-server.onrender.com/debug-render-logs?minutes=30&limit=200" | findstr /i "INBOUND-EMAIL"
 
-# Specific time window (UTC)
-curl.exe -s -H "Authorization: Bearer Diamond9753!!@@pb" "https://pb-webhook-server.onrender.com/debug-render-logs?startTime=2026-02-10T10:24:00Z&endTime=2026-02-10T10:25:00Z"
+# Specific time window (UTC) - remember Render dashboard shows AEST, subtract 11 hours for UTC
+curl.exe -s -H "Authorization: Bearer Diamond9753!!@@pb" "https://pb-webhook-server.onrender.com/debug-render-logs?startTime=2026-02-10T10:24:00Z&endTime=2026-02-10T10:30:00Z&limit=100"
 
-# Inbound email logs
-curl.exe -s -H "Authorization: Bearer Diamond9753!!@@pb" "https://pb-webhook-server.onrender.com/debug-render-logs?search=INBOUND-EMAIL&minutes=60"
+# Search for errors (local filtering is more reliable)
+curl.exe -s -H "Authorization: Bearer Diamond9753!!@@pb" "https://pb-webhook-server.onrender.com/debug-render-logs?minutes=60&limit=300" | findstr /i "ERROR WARN"
 ```
 
 ## When to Use
