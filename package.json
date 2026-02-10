@@ -50,6 +50,7 @@
     "form-data": "^4.0.0",
     "googleapis": "^169.0.0",
     "luxon": "^3.6.1",
+    "multer": "^2.0.2",
     "node-fetch": "^2.7.0",
     "nodemailer": "^7.0.6",
     "openai": "^4.69.0",
