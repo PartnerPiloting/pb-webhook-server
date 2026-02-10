@@ -10106,6 +10106,92 @@ router.get("/api/admin/add-cease-fup-field", async (req, res) => {
 });
 
 // ---------------------------------------------------------------
+// Fathom Test Endpoint
+// Tests connectivity to Fathom API using client's API key
+// ---------------------------------------------------------------
+router.get("/api/smart-followup/fathom-test", async (req, res) => {
+  const fathomLogger = createLogger({ runId: 'FATHOM-TEST', clientId: 'SYSTEM', operation: 'fathom_test' });
+  const { getAllClients } = require('../services/clientService');
+  
+  try {
+    const { clientId, limit = 5 } = req.query;
+    
+    if (!clientId) {
+      return res.status(400).json({ success: false, error: 'clientId is required' });
+    }
+    
+    // Get client to retrieve Fathom API key
+    const allClients = await getAllClients();
+    const client = allClients.find(c => c.clientId === clientId);
+    
+    if (!client) {
+      return res.status(404).json({ success: false, error: `Client ${clientId} not found` });
+    }
+    
+    if (!client.fathomApiKey) {
+      return res.json({ 
+        success: false, 
+        error: 'No Fathom API Key configured for this client',
+        hint: 'Add Fathom API Key to Client Master in Airtable'
+      });
+    }
+    
+    fathomLogger.info(`Testing Fathom API for client: ${clientId}`);
+    
+    // Call Fathom API
+    const fetch = (await import('node-fetch')).default;
+    const fathomUrl = new URL('https://api.fathom.ai/external/v1/meetings');
+    fathomUrl.searchParams.set('limit', limit);
+    fathomUrl.searchParams.set('include_transcript', 'false'); // Just test connectivity first
+    fathomUrl.searchParams.set('include_summary', 'true');
+    
+    const response = await fetch(fathomUrl.toString(), {
+      method: 'GET',
+      headers: {
+        'X-Api-Key': client.fathomApiKey,
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      fathomLogger.error(`Fathom API error: ${response.status} - ${errorText}`);
+      return res.status(response.status).json({ 
+        success: false, 
+        error: `Fathom API returned ${response.status}`,
+        details: errorText
+      });
+    }
+    
+    const data = await response.json();
+    
+    fathomLogger.info(`Fathom API success: ${data.items?.length || 0} meetings returned`);
+    
+    // Return summary (not full transcripts for test)
+    res.json({
+      success: true,
+      message: 'Fathom API connection successful',
+      meetingCount: data.items?.length || 0,
+      meetings: (data.items || []).map(m => ({
+        title: m.title || m.meeting_title,
+        date: m.created_at,
+        url: m.url,
+        invitees: (m.calendar_invitees || []).map(i => ({ name: i.name, email: i.email })),
+        hasSummary: !!m.default_summary,
+        recordedBy: m.recorded_by?.name
+      }))
+    });
+    
+  } catch (error) {
+    fathomLogger.error('Fathom test error:', error.message, error.stack);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// ---------------------------------------------------------------
 // Smart Follow-Up Queue Endpoint
 // Returns the follow-up queue from Smart FUP State table
 // Used by the Smart Follow-ups UI page
