@@ -275,22 +275,33 @@ router.get('/leads/search', async (req, res) => {
     // Track if any filters are applied (for total count optimization)
     const hasFilters = (searchTerm && searchTerm.trim() !== '') || (priority && priority !== 'all') || (searchTerms && searchTerms.trim() !== '');
     
-    // Add name and LinkedIn URL search filter (only if search term provided)
+    // Add name, email, and LinkedIn URL search filter (only if search term provided)
     if (searchTerm && searchTerm.trim() !== '') {
-      // Split search term into words for better name matching
-      const searchWords = searchTerm.toLowerCase().trim().split(/\s+/);
+      const trimmedSearch = searchTerm.trim();
       
-      // Create search conditions for each word
-      const wordSearches = searchWords.map(word => 
-        `OR(
-          SEARCH(LOWER("${word}"), LOWER({First Name})) > 0,
-          SEARCH(LOWER("${word}"), LOWER({Last Name})) > 0,
-          SEARCH(LOWER("${word}"), LOWER({LinkedIn Profile URL})) > 0
-        )`
-      );
+      // Check if search term is an email address (same pattern as /api/calendar/lookup-lead)
+      const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedSearch);
       
-      // Join with AND so "sally kuter" finds records that match "sally" AND "kuter"
-      filterParts.push(`AND(${wordSearches.join(', ')})`);
+      if (isEmail) {
+        // Email lookup - exact match on Email field
+        filterParts.push(`LOWER({Email}) = LOWER('${trimmedSearch}')`);
+        logger.info('LinkedIn Routes: Email search detected, using exact match');
+      } else {
+        // Split search term into words for better name matching
+        const searchWords = trimmedSearch.toLowerCase().split(/\s+/);
+        
+        // Create search conditions for each word
+        const wordSearches = searchWords.map(word => 
+          `OR(
+            SEARCH(LOWER("${word}"), LOWER({First Name})) > 0,
+            SEARCH(LOWER("${word}"), LOWER({Last Name})) > 0,
+            SEARCH(LOWER("${word}"), LOWER({LinkedIn Profile URL})) > 0
+          )`
+        );
+        
+        // Join with AND so "sally kuter" finds records that match "sally" AND "kuter"
+        filterParts.push(`AND(${wordSearches.join(', ')})`);
+      }
     }
 
     // Add search terms filter with boolean logic support
