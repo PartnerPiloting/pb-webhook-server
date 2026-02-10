@@ -4,6 +4,7 @@
 
 const express = require('express');
 const router = express.Router();
+const multer = require('multer');
 const { createLogger } = require('../utils/contextLogger');
 const inboundEmailService = require('../services/inboundEmailService');
 
@@ -14,11 +15,25 @@ const logger = createLogger({
     operation: 'inbound-email-routes' 
 });
 
+// Configure multer for handling multipart/form-data (emails with attachments)
+// We use memory storage since we only need the form fields, not the attachment files
+const upload = multer({ 
+    storage: multer.memoryStorage(),
+    limits: {
+        fileSize: 25 * 1024 * 1024, // 25MB max file size
+        files: 10 // Max 10 attachments
+    }
+});
+
 /**
  * POST /api/webhooks/inbound-email
  * 
  * Mailgun inbound email webhook endpoint
  * Receives emails sent to *@mail.australiansidehustles.com.au
+ * 
+ * Mailgun sends webhooks as:
+ * - application/x-www-form-urlencoded for emails without attachments
+ * - multipart/form-data for emails with attachments
  * 
  * Flow:
  * 1. Validate Mailgun signature
@@ -27,14 +42,19 @@ const logger = createLogger({
  * 4. Update lead notes with email content
  * 5. Set follow-up date to +14 days
  */
-router.post('/api/webhooks/inbound-email', async (req, res) => {
+router.post('/api/webhooks/inbound-email', upload.any(), async (req, res) => {
     const startTime = Date.now();
     
     try {
         logger.info('📧 Inbound email webhook received');
         
-        // Mailgun sends form-urlencoded data
+        // Mailgun sends form-urlencoded data (or multipart/form-data with attachments)
         const mailgunData = req.body;
+        
+        // Log attachment info if present (handled by multer)
+        if (req.files && req.files.length > 0) {
+            logger.info(`📎 Email has ${req.files.length} attachment(s)`);
+        }
         
         // Log basic info (not full content for privacy)
         logger.info(`From: ${mailgunData.sender || mailgunData.from}`);
