@@ -10118,15 +10118,17 @@ router.get("/api/smart-followup/sweep", async (req, res) => {
     const { 
       clientId,      // Optional: specific client to process
       dryRun,        // 'true' to preview without writing
-      limit          // Max leads per client (for testing)
+      limit,         // Max leads per client (for testing)
+      forceAll       // 'true' to re-analyze ALL leads regardless of notes changes
     } = req.query;
     
-    sweepLogger.info(`Smart Follow-Up sweep triggered: clientId=${clientId || 'ALL'}, dryRun=${dryRun}, limit=${limit}`);
+    sweepLogger.info(`Smart Follow-Up sweep triggered: clientId=${clientId || 'ALL'}, dryRun=${dryRun}, limit=${limit}, forceAll=${forceAll}`);
     
     const results = await runSweep({
       clientId: clientId || null,
       dryRun: dryRun === 'true',
-      limit: limit ? parseInt(limit, 10) : null
+      limit: limit ? parseInt(limit, 10) : null,
+      forceAll: forceAll === 'true'
     });
     
     res.json({
