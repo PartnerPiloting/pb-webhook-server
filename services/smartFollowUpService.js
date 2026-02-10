@@ -29,9 +29,6 @@ const logger = createLogger({
 // CONSTANTS
 // ============================================
 
-// How many days back to look for "recent activity" safety net
-const SAFETY_NET_DAYS = 14;
-
 // Leads table field names
 const LEAD_FIELDS = {
   FIRST_NAME: 'First Name',
@@ -53,64 +50,28 @@ const LEAD_FIELDS = {
 // to avoid duplication. initializeClientsBase() returns Master Clients base.
 
 // ============================================
-// TWO-STAGE FILTER LOGIC
+// FILTER LOGIC
 // ============================================
 
 /**
- * Stage 1: Airtable filter - get candidate leads
+ * Build Airtable filter for candidate leads
  * Returns leads that are:
- * - Not ceased
- * - AND (Follow-Up Date <= today OR no Follow-Up Date but recently modified)
+ * - Not ceased (Cease FUP != 'Yes')
+ * - AND have a Follow-Up Date on or before today
+ * 
+ * Note: Safety net logic was removed because the UI now enforces that every lead
+ * must have either a Follow-Up Date OR Cease FUP = 'Yes'. This makes the filter
+ * much simpler and more efficient.
  */
 function buildCandidateFilter() {
   const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
   
-  // Build the filter formula
-  // Note: LAST_MODIFIED_TIME() returns record modification time
+  // Simple filter: not ceased AND has follow-up date due
   return `AND(
     OR({${LEAD_FIELDS.CEASE_FUP}} != 'Yes', {${LEAD_FIELDS.CEASE_FUP}} = BLANK()),
-    OR(
-      AND({${LEAD_FIELDS.FOLLOW_UP_DATE}} != '', {${LEAD_FIELDS.FOLLOW_UP_DATE}} <= '${today}'),
-      AND(
-        OR({${LEAD_FIELDS.FOLLOW_UP_DATE}} = '', {${LEAD_FIELDS.FOLLOW_UP_DATE}} = BLANK()),
-        LAST_MODIFIED_TIME() >= DATEADD(TODAY(), -${SAFETY_NET_DAYS}, 'days')
-      )
-    )
+    {${LEAD_FIELDS.FOLLOW_UP_DATE}} != '',
+    {${LEAD_FIELDS.FOLLOW_UP_DATE}} <= '${today}'
   )`.replace(/\s+/g, ' ').trim();
-}
-
-/**
- * Stage 2: Code filter - check if Notes indicate conversation activity
- * Returns true if the lead should be processed
- */
-function hasConversationActivity(notes) {
-  if (!notes || typeof notes !== 'string') return false;
-  
-  // Look for conversation indicators
-  const indicators = [
-    // Date patterns in notes (e.g., "[05-Feb-26]", "2026-02-05")
-    /\[\d{1,2}-[A-Za-z]{3}-\d{2}\]/,
-    /\d{4}-\d{2}-\d{2}/,
-    // LinkedIn message patterns
-    /linkedin message/i,
-    /sent message/i,
-    /replied/i,
-    /response from/i,
-    // Meeting patterns
-    /meeting/i,
-    /call with/i,
-    /spoke with/i,
-    /fathom/i,
-    // Email patterns
-    /email sent/i,
-    /emailed/i,
-    // Manual note headers
-    /## MANUAL/i,
-    /## LinkedIn/i,
-    /## Email/i,
-  ];
-  
-  return indicators.some(pattern => pattern.test(notes));
 }
 
 // ============================================
@@ -430,7 +391,6 @@ async function upsertStateRecord(clientId, lead, aiOutput, dryRun = false) {
  * @param {string} options.fupInstructions - Client's FUP AI Instructions
  * @param {boolean} options.dryRun - If true, don't write to Airtable
  * @param {number} options.limit - Max leads to process (for testing)
- * @param {boolean} options.forceAll - Process all leads regardless of change detection
  * 
  * @returns {Object} Summary of results
  */
@@ -441,30 +401,27 @@ async function sweepClient(options) {
     clientType = 'A',
     fupInstructions = '',
     dryRun = false, 
-    limit = null,
-    forceAll = false 
+    limit = null
   } = options;
   
-  logger.info(`Starting sweep for client: ${clientId} (dryRun=${dryRun}, limit=${limit}, forceAll=${forceAll})`);
+  logger.info(`Starting sweep for client: ${clientId} (dryRun=${dryRun}, limit=${limit})`);
   
   const results = {
     clientId,
     started: new Date().toISOString(),
     candidatesFound: 0,
-    passedStage2: 0,
     processed: 0,
     created: 0,
     updated: 0,
-    skipped: 0,
     errors: [],
   };
   
   try {
     const clientBase = getClientBase(baseId);
     
-    // Stage 1: Get candidate leads from Airtable
+    // Get candidate leads from Airtable (not ceased AND follow-up date due)
     const filterFormula = buildCandidateFilter();
-    logger.info(`Stage 1 filter: ${filterFormula}`);
+    logger.info(`Filter: ${filterFormula}`);
     
     const selectOptions = {
       filterByFormula: filterFormula,
@@ -481,46 +438,18 @@ async function sweepClient(options) {
       ],
     };
     
-    // Note: limit is applied AFTER Stage 2 filtering, not here
-    // This ensures limit=10 gives you 10 processed leads, not 10 candidates
+    // Apply limit at query level if specified
+    if (limit) {
+      selectOptions.maxRecords = limit;
+    }
     
     const candidates = await clientBase('Leads').select(selectOptions).all();
     results.candidatesFound = candidates.length;
-    logger.info(`Stage 1: Found ${candidates.length} candidate leads`);
+    logger.info(`Found ${candidates.length} leads with due follow-up dates`);
     
-    // Stage 2: Filter by conversation activity (for safety net leads)
-    // When forceAll=true, bypass Stage 2 and process all candidates
-    let leadsToProcess = [];
-    
-    for (const lead of candidates) {
-      const hasFollowUpDate = !!lead.fields[LEAD_FIELDS.FOLLOW_UP_DATE];
-      
-      if (forceAll) {
-        // Force mode - process all candidates without Stage 2 filter
-        leadsToProcess.push(lead);
-      } else if (hasFollowUpDate) {
-        // Lead has a follow-up date set - include it
-        leadsToProcess.push(lead);
-      } else {
-        // Safety net lead - check if Notes indicate conversation
-        const notes = lead.fields[LEAD_FIELDS.NOTES] || '';
-        if (hasConversationActivity(notes)) {
-          leadsToProcess.push(lead);
-        } else {
-          results.skipped++;
-          logger.debug(`Skipped ${lead.id} - no conversation activity detected`);
-        }
-      }
-    }
-    
-    results.passedStage2 = leadsToProcess.length;
-    logger.info(`Stage 2: ${leadsToProcess.length} leads passed conversation check`);
-    
-    // Apply limit AFTER Stage 2 filtering
-    if (limit && leadsToProcess.length > limit) {
-      logger.info(`Applying limit: processing ${limit} of ${leadsToProcess.length} leads`);
-      leadsToProcess = leadsToProcess.slice(0, limit);
-    }
+    // All candidates are ready to process (no Stage 2 filtering needed anymore)
+    // The filter already ensures: not ceased AND has follow-up date due
+    let leadsToProcess = candidates;
     
     // Process each lead
     for (const lead of leadsToProcess) {
@@ -565,7 +494,6 @@ async function sweepClient(options) {
  * @param {string} options.clientId - Optional: specific client to process
  * @param {boolean} options.dryRun - If true, don't write to Airtable
  * @param {number} options.limit - Max leads per client (for testing)
- * @param {boolean} options.forceAll - Process all leads regardless of change detection
  * 
  * @returns {Object} Summary of all results
  */
@@ -573,15 +501,14 @@ async function runSweep(options = {}) {
   const { 
     clientId = null, 
     dryRun = false, 
-    limit = null,
-    forceAll = false 
+    limit = null
   } = options;
   
   logger.info(`Starting Smart Follow-Up sweep (dryRun=${dryRun}, clientId=${clientId || 'ALL'})`);
   
   const overallResults = {
     started: new Date().toISOString(),
-    options: { clientId, dryRun, limit, forceAll },
+    options: { clientId, dryRun, limit },
     clients: [],
     totalProcessed: 0,
     totalCreated: 0,
@@ -617,7 +544,6 @@ async function runSweep(options = {}) {
         fupInstructions: client.fupInstructions || '',
         dryRun,
         limit,
-        forceAll,
       });
       
       overallResults.clients.push(clientResult);
@@ -646,8 +572,6 @@ module.exports = {
   runSweep,
   sweepClient,
   buildCandidateFilter,
-  hasConversationActivity,
   analyzeLeadNotes,
   LEAD_FIELDS,
-  SAFETY_NET_DAYS,
 };

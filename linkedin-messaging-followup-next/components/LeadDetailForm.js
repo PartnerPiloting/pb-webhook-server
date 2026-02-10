@@ -159,9 +159,21 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating, onDelete }) => {
     setHasChanges(true);
   }, [isDev]);
 
+  // State for validation errors
+  const [validationError, setValidationError] = useState('');
+
   // Handle form submission
   const handleSubmit = (e) => {
     e.preventDefault();
+    
+    // Validate: require either follow-up date OR cease FUP
+    if (!formData.followUpDate && formData.ceaseFup !== 'Yes') {
+      setValidationError('Please enter a Follow-up Date or click "Cease Follow-up"');
+      return;
+    }
+    
+    setValidationError(''); // Clear any previous error
+    
     if (hasChanges) {
   if (isDev) { try { console.debug('[LeadDetailForm] submitting update', formData); } catch {} }
       onUpdate(formData);
@@ -211,6 +223,7 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating, onDelete }) => {
     };
     
     setFormData(ceaseData);
+    setValidationError(''); // Clear validation error since cease FUP is now set
     onUpdate(ceaseData);
     setHasChanges(false);
   };
@@ -373,6 +386,13 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating, onDelete }) => {
         </div>
       </div>
 
+      {/* Validation Error */}
+      {validationError && (
+        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-md">
+          {validationError}
+        </div>
+      )}
+
       {/* Follow-up Date Section */}
       <div className="space-y-6">
         <h4 className="text-lg font-semibold text-gray-900 border-b border-gray-200 pb-2 flex items-center">
@@ -389,8 +409,13 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating, onDelete }) => {
                 <input
                   type="date"
                   value={formData.followUpDate || ''}
-                  onChange={(e) => handleChange('followUpDate', e.target.value)}
-                  className="w-48 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  onChange={(e) => {
+                    handleChange('followUpDate', e.target.value);
+                    setValidationError(''); // Clear error when user enters a date
+                  }}
+                  className={`w-48 px-3 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
+                    validationError ? 'border-red-400' : 'border-gray-300'
+                  }`}
                 />
                 <button
                   type="button"
