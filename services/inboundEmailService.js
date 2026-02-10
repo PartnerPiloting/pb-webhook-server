@@ -2288,79 +2288,121 @@ function extractForwardedRecipients(body) {
     
     if (!body) return result;
     
-    // Find the forwarded header block
-    // Gmail: "---------- Forwarded message ---------"
-    // Then: "From: Name <email>"
-    //       "Date: ..."
-    //       "Subject: ..."
-    //       "To: Name <email>, Name2 <email2>"
-    //       "Cc: ..."
+    // Helper to check if an email is a tracking address (should be skipped)
+    const isTrackingAddress = (email) => {
+        if (!email) return false;
+        const lower = email.toLowerCase();
+        return lower.includes('track@') || 
+               lower.includes('mail.australiansidehustles') ||
+               lower.includes('mail.partnerbuild');
+    };
     
-    // Extract To: line from forwarded headers
-    // Pattern handles multi-line To headers
-    const toPatterns = [
-        /\nTo:\s*([^\n]+(?:\n\s+[^\n]+)*)/i,  // Standard "To:" header
-        /\nTo:\s*(.+?)(?=\n(?:Cc|Subject|Date|From):|\n\n)/is  // Until next header
-    ];
-    
-    for (const pattern of toPatterns) {
-        const toMatch = body.match(pattern);
-        if (toMatch) {
-            const toLine = toMatch[1].replace(/\n\s+/g, ' ').trim();
-            logger.info(`Forwarded email - found To line: "${toLine}"`);
-            
-            // Parse all email addresses from the To line
-            const emailMatches = toLine.matchAll(/<([^>]+)>/g);
-            for (const match of emailMatches) {
-                const email = match[1].toLowerCase().trim();
-                // Try to extract name before the <email>
-                const beforeEmail = toLine.substring(0, toLine.indexOf(match[0])).split(',').pop()?.trim() || '';
-                result.to.push({
-                    email,
-                    name: beforeEmail || email.split('@')[0]
-                });
-            }
-            
-            // Also try plain emails without angle brackets
-            if (result.to.length === 0) {
-                const plainEmails = toLine.match(/[^\s<,]+@[^\s>,]+/g);
-                if (plainEmails) {
-                    for (const email of plainEmails) {
-                        result.to.push({
-                            email: email.toLowerCase().trim(),
-                            name: email.split('@')[0]
-                        });
-                    }
+    // Helper to extract emails from a line
+    const extractEmailsFromLine = (line) => {
+        const emails = [];
+        // First try angle bracket format: Name <email>
+        const bracketMatches = line.matchAll(/<([^>]+@[^>]+)>/g);
+        for (const match of bracketMatches) {
+            const email = match[1].toLowerCase().trim();
+            const beforeEmail = line.substring(0, line.indexOf(match[0])).split(',').pop()?.trim() || '';
+            emails.push({
+                email,
+                name: beforeEmail || email.split('@')[0]
+            });
+        }
+        // If no bracket emails, try plain emails
+        if (emails.length === 0) {
+            const plainEmails = line.match(/[^\s<,]+@[^\s>,]+/g);
+            if (plainEmails) {
+                for (const email of plainEmails) {
+                    emails.push({
+                        email: email.toLowerCase().trim(),
+                        name: email.split('@')[0]
+                    });
                 }
             }
-            break;
+        }
+        return emails;
+    };
+    
+    // Find ALL forwarded message blocks (for nested forwards)
+    // Gmail: "---------- Forwarded message ---------"
+    const forwardMarkerRegex = /-{5,}\s*Forwarded message\s*-{5,}/gi;
+    const forwardMarkers = [...body.matchAll(forwardMarkerRegex)];
+    logger.info(`Found ${forwardMarkers.length} forwarded message block(s)`);
+    
+    // Extract To: recipients from ALL forward blocks, filtering out tracking addresses
+    const allToRecipients = [];
+    
+    for (let i = 0; i < forwardMarkers.length; i++) {
+        const startIdx = forwardMarkers[i].index;
+        const endIdx = i < forwardMarkers.length - 1 ? forwardMarkers[i + 1].index : body.length;
+        const block = body.substring(startIdx, endIdx);
+        
+        // Extract To: from this block
+        const toMatch = block.match(/\nTo:\s*([^\n]+(?:\n\s+[^\n]+)*)/i);
+        if (toMatch) {
+            const toLine = toMatch[1].replace(/\n\s+/g, ' ').trim();
+            const emails = extractEmailsFromLine(toLine);
+            
+            for (const emailObj of emails) {
+                if (!isTrackingAddress(emailObj.email)) {
+                    logger.info(`Forward block ${i + 1}: found non-tracking To: ${emailObj.email}`);
+                    allToRecipients.push(emailObj);
+                } else {
+                    logger.info(`Forward block ${i + 1}: skipping tracking address To: ${emailObj.email}`);
+                }
+            }
+        }
+        
+        // Also extract From: from each block (for replies being forwarded)
+        const fromMatch = block.match(/\nFrom:\s*(?:[^\n<]*)<([^>]+)>/i);
+        if (fromMatch && !isTrackingAddress(fromMatch[1])) {
+            // Store the From from deepest block as result.from
+            result.from = fromMatch[1].toLowerCase().trim();
         }
     }
     
-    // Extract Cc: line similarly
-    const ccMatch = body.match(/\nCc:\s*([^\n]+(?:\n\s+[^\n]+)*)/i);
-    if (ccMatch) {
+    // Also look for "On ... <email> wrote:" patterns (quoted replies)
+    // This catches the original sender in a reply chain
+    const wrotePatterns = [
+        /On\s+[^<]+<([^>]+@[^>]+)>\s+wrote:/gi,
+        /On\s+.+?,\s+([^\s<]+@[^\s>]+)\s+wrote:/gi
+    ];
+    
+    for (const pattern of wrotePatterns) {
+        const matches = [...body.matchAll(pattern)];
+        for (const match of matches) {
+            const email = match[1].toLowerCase().trim();
+            if (!isTrackingAddress(email) && !allToRecipients.some(r => r.email === email)) {
+                logger.info(`Found email from quoted reply: ${email}`);
+                allToRecipients.push({
+                    email,
+                    name: email.split('@')[0],
+                    source: 'quoted-reply'
+                });
+            }
+        }
+    }
+    
+    // Use all non-tracking recipients
+    result.to = allToRecipients;
+    
+    // Extract Cc: from all blocks
+    const ccMatches = body.matchAll(/\nCc:\s*([^\n]+(?:\n\s+[^\n]+)*)/gi);
+    for (const ccMatch of ccMatches) {
         const ccLine = ccMatch[1].replace(/\n\s+/g, ' ').trim();
         logger.info(`Forwarded email - found Cc line: "${ccLine}"`);
         
-        const emailMatches = ccLine.matchAll(/<([^>]+)>/g);
-        for (const match of emailMatches) {
-            result.cc.push({
-                email: match[1].toLowerCase().trim(),
-                name: ''
-            });
+        const emails = extractEmailsFromLine(ccLine);
+        for (const emailObj of emails) {
+            if (!isTrackingAddress(emailObj.email) && !result.cc.some(c => c.email === emailObj.email)) {
+                result.cc.push(emailObj);
+            }
         }
     }
     
-    // Extract original From for attribution
-    const fromMatch = body.match(/\nFrom:\s*([^\n<]+)<([^>]+)>/i) || 
-                      body.match(/\nFrom:\s*([^\n]+)/i);
-    if (fromMatch) {
-        result.from = fromMatch[2] || fromMatch[1]?.trim();
-        logger.info(`Forwarded email - original sender: ${result.from}`);
-    }
-    
-    // Extract subject
+    // Extract subject from first forward block
     const subjectMatch = body.match(/\nSubject:\s*([^\n]+)/i);
     if (subjectMatch) {
         result.subject = subjectMatch[1].trim();
@@ -2370,6 +2412,9 @@ function extractForwardedRecipients(body) {
     }
     
     logger.info(`Forwarded email parsing: found ${result.to.length} To recipients, ${result.cc.length} Cc recipients`);
+    if (result.to.length > 0) {
+        logger.info(`To recipients: ${result.to.map(r => `${r.email}${r.source ? ` (${r.source})` : ''}`).join(', ')}`);
+    }
     return result;
 }
 
