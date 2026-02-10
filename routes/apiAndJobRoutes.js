@@ -1054,6 +1054,102 @@ router.get("/debug-render-api", async (_req, res) => {
 });
 
 /**
+ * Fetch raw Render logs for a specific time range
+ * GET /api/debug-render-logs?startTime=ISO&endTime=ISO&limit=100&search=pattern
+ * Auth: Bearer PB_WEBHOOK_SECRET
+ */
+router.get("/debug-render-logs", async (req, res) => {
+  const logger = createLogger({ runId: 'DEBUG_LOGS', clientId: 'SYSTEM', operation: 'fetch_render_logs' });
+  
+  // Check auth
+  const authHeader = req.headers.authorization;
+  const secret = process.env.PB_WEBHOOK_SECRET || process.env.DEBUG_API_KEY;
+  if (!authHeader || !authHeader.includes(secret)) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  
+  try {
+    const axios = require('axios');
+    const RENDER_API_KEY = process.env.RENDER_API_KEY;
+    const RENDER_SERVICE_ID = process.env.RENDER_SERVICE_ID;
+    const RENDER_OWNER_ID = process.env.RENDER_OWNER_ID;
+    
+    if (!RENDER_API_KEY || !RENDER_SERVICE_ID || !RENDER_OWNER_ID) {
+      return res.status(500).json({
+        error: 'Missing Render API configuration',
+        hasApiKey: !!RENDER_API_KEY,
+        hasServiceId: !!RENDER_SERVICE_ID,
+        hasOwnerId: !!RENDER_OWNER_ID
+      });
+    }
+    
+    // Parse query params
+    const limit = parseInt(req.query.limit) || 200;
+    const search = req.query.search || null;
+    const minutes = parseInt(req.query.minutes) || 30;
+    
+    // Calculate time range
+    const endTime = req.query.endTime || new Date().toISOString();
+    const startTime = req.query.startTime || new Date(Date.now() - minutes * 60 * 1000).toISOString();
+    
+    logger.info(`Fetching logs from ${startTime} to ${endTime}, limit: ${limit}`);
+    
+    const params = new URLSearchParams({
+      ownerId: RENDER_OWNER_ID,
+      limit: limit.toString(),
+      direction: 'forward',
+      resource: RENDER_SERVICE_ID,
+      startTime: startTime,
+      endTime: endTime
+    });
+    
+    const logsUrl = `https://api.render.com/v1/logs?${params.toString()}`;
+    
+    const logsResponse = await axios.get(logsUrl, {
+      headers: {
+        'Accept': 'application/json',
+        'Authorization': `Bearer ${RENDER_API_KEY}`
+      },
+      timeout: 30000
+    });
+    
+    let logs = logsResponse.data.logs || [];
+    
+    // Filter by search term if provided
+    if (search && logs.length > 0) {
+      const searchLower = search.toLowerCase();
+      logs = logs.filter(log => {
+        const message = (log.message || log.text || '').toLowerCase();
+        return message.includes(searchLower);
+      });
+      logger.info(`Filtered to ${logs.length} logs matching "${search}"`);
+    }
+    
+    // Format logs for readability
+    const formattedLogs = logs.map(log => ({
+      timestamp: log.timestamp,
+      message: log.message || log.text || ''
+    }));
+    
+    res.json({
+      success: true,
+      timeRange: { startTime, endTime },
+      totalLogs: formattedLogs.length,
+      hasMore: logsResponse.data.hasMore,
+      search: search || null,
+      logs: formattedLogs
+    });
+    
+  } catch (error) {
+    logger.error('Failed to fetch logs', { error: error.message });
+    res.status(500).json({
+      error: error.message,
+      status: error.response?.status
+    });
+  }
+});
+
+/**
  * Get the status of any running or recent Smart Resume processes
  */
 router.get("/debug-smart-resume-status", async (req, res) => {
