@@ -26,16 +26,20 @@ Authorization: Bearer Diamond9753!!@@pb
 
 ## Example Queries
 
-```powershell
-# Recent errors
-$headers = @{"Authorization"="Bearer Diamond9753!!@@pb"}
-Invoke-WebRequest -Uri "https://pb-webhook-server.onrender.com/debug-render-logs?minutes=30&search=ERROR" -Headers $headers
+**IMPORTANT**: On Windows, use `curl.exe` (not PowerShell's `Invoke-WebRequest` which times out).
 
-# Specific time window
-Invoke-WebRequest -Uri "https://pb-webhook-server.onrender.com/debug-render-logs?startTime=2026-02-10T10:24:00Z&endTime=2026-02-10T10:25:00Z" -Headers $headers
+```bash
+# Recent logs (last 5 minutes)
+curl.exe -s -H "Authorization: Bearer Diamond9753!!@@pb" "https://pb-webhook-server.onrender.com/debug-render-logs?minutes=5&limit=50"
+
+# Search for errors
+curl.exe -s -H "Authorization: Bearer Diamond9753!!@@pb" "https://pb-webhook-server.onrender.com/debug-render-logs?minutes=30&search=ERROR"
+
+# Specific time window (UTC)
+curl.exe -s -H "Authorization: Bearer Diamond9753!!@@pb" "https://pb-webhook-server.onrender.com/debug-render-logs?startTime=2026-02-10T10:24:00Z&endTime=2026-02-10T10:25:00Z"
 
 # Inbound email logs
-Invoke-WebRequest -Uri "https://pb-webhook-server.onrender.com/debug-render-logs?search=INBOUND-EMAIL&minutes=60" -Headers $headers
+curl.exe -s -H "Authorization: Bearer Diamond9753!!@@pb" "https://pb-webhook-server.onrender.com/debug-render-logs?search=INBOUND-EMAIL&minutes=60"
 ```
 
 ## When to Use
