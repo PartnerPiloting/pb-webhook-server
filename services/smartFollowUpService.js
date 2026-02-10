@@ -434,6 +434,7 @@ async function upsertStateRecord(clientId, lead, aiOutput, options = {}) {
  * @param {string} options.fupInstructions - Client's FUP AI Instructions
  * @param {boolean} options.dryRun - If true, don't write to Airtable
  * @param {number} options.limit - Max leads to process (for testing)
+ * @param {boolean} options.forceAll - If true, re-analyze ALL leads regardless of notes changes
  * 
  * @returns {Object} Summary of results
  */
@@ -444,10 +445,11 @@ async function sweepClient(options) {
     clientType = 'A',
     fupInstructions = '',
     dryRun = false, 
-    limit = null
+    limit = null,
+    forceAll = false
   } = options;
   
-  logger.info(`Starting sweep for client: ${clientId} (dryRun=${dryRun}, limit=${limit})`);
+  logger.info(`Starting sweep for client: ${clientId} (dryRun=${dryRun}, limit=${limit}, forceAll=${forceAll})`);
   
   const results = {
     clientId,
@@ -513,13 +515,16 @@ async function sweepClient(options) {
         
         let aiOutput = null;
         
-        // Decision 17: Only run AI analysis if notes have grown
-        if (currentNotesLength > previousNotesLength) {
-          // Extract only the NEW portion of notes for analysis
-          const newNotesPortion = notes.slice(previousNotesLength);
-          logger.info(`Lead ${lead.id}: New notes detected (${previousNotesLength} -> ${currentNotesLength}), analyzing new portion (${newNotesPortion.length} chars)`);
+        // Decision 17: Only run AI analysis if notes have grown (or forceAll is set)
+        const hasNewNotes = currentNotesLength > previousNotesLength;
+        
+        if (forceAll || hasNewNotes) {
+          // When forceAll, analyze full notes; otherwise just the new portion
+          const newNotesPortion = forceAll ? null : notes.slice(previousNotesLength);
+          const analyzeMode = forceAll ? 'forceAll' : `new notes (${previousNotesLength} -> ${currentNotesLength})`;
+          logger.info(`Lead ${lead.id}: Analyzing - ${analyzeMode}`);
           
-          // Run AI analysis on new notes, but pass full lead for context
+          // Run AI analysis (null newNotesPortion = analyze full notes)
           aiOutput = await analyzeLeadNotes(lead, fupInstructions, clientType, newNotesPortion);
           results.aiAnalyzed++;
         } else {
@@ -570,6 +575,7 @@ async function sweepClient(options) {
  * @param {string} options.clientId - Optional: specific client to process
  * @param {boolean} options.dryRun - If true, don't write to Airtable
  * @param {number} options.limit - Max leads per client (for testing)
+ * @param {boolean} options.forceAll - If true, re-analyze ALL leads regardless of notes changes
  * 
  * @returns {Object} Summary of all results
  */
@@ -577,14 +583,15 @@ async function runSweep(options = {}) {
   const { 
     clientId = null, 
     dryRun = false, 
-    limit = null
+    limit = null,
+    forceAll = false
   } = options;
   
-  logger.info(`Starting Smart Follow-Up sweep (dryRun=${dryRun}, clientId=${clientId || 'ALL'})`);
+  logger.info(`Starting Smart Follow-Up sweep (dryRun=${dryRun}, clientId=${clientId || 'ALL'}, forceAll=${forceAll})`);
   
   const overallResults = {
     started: new Date().toISOString(),
-    options: { clientId, dryRun, limit },
+    options: { clientId, dryRun, limit, forceAll },
     clients: [],
     totalProcessed: 0,
     totalCreated: 0,
@@ -620,6 +627,7 @@ async function runSweep(options = {}) {
         fupInstructions: client.fupInstructions || '',
         dryRun,
         limit,
+        forceAll,
       });
       
       overallResults.clients.push(clientResult);
