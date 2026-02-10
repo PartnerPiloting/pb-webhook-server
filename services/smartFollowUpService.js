@@ -481,9 +481,8 @@ async function sweepClient(options) {
       ],
     };
     
-    if (limit) {
-      selectOptions.maxRecords = limit;
-    }
+    // Note: limit is applied AFTER Stage 2 filtering, not here
+    // This ensures limit=10 gives you 10 processed leads, not 10 candidates
     
     const candidates = await clientBase('Leads').select(selectOptions).all();
     results.candidatesFound = candidates.length;
@@ -491,7 +490,7 @@ async function sweepClient(options) {
     
     // Stage 2: Filter by conversation activity (for safety net leads)
     // When forceAll=true, bypass Stage 2 and process all candidates
-    const leadsToProcess = [];
+    let leadsToProcess = [];
     
     for (const lead of candidates) {
       const hasFollowUpDate = !!lead.fields[LEAD_FIELDS.FOLLOW_UP_DATE];
@@ -516,6 +515,12 @@ async function sweepClient(options) {
     
     results.passedStage2 = leadsToProcess.length;
     logger.info(`Stage 2: ${leadsToProcess.length} leads passed conversation check`);
+    
+    // Apply limit AFTER Stage 2 filtering
+    if (limit && leadsToProcess.length > limit) {
+      logger.info(`Applying limit: processing ${limit} of ${leadsToProcess.length} leads`);
+      leadsToProcess = leadsToProcess.slice(0, limit);
+    }
     
     // Process each lead
     for (const lead of leadsToProcess) {
