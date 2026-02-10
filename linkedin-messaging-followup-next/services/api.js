@@ -1641,6 +1641,54 @@ export const detectLeadTags = async ({ notes, linkedinMessages, emailContent, le
   }
 };
 
+/**
+ * Get the Smart Follow-up queue from the Smart FUP State table
+ * Returns AI-analyzed leads that are due for follow-up
+ * @returns {Promise<{success: boolean, count: number, queue: Array}>}
+ */
+export const getSmartFollowupQueue = async () => {
+  try {
+    const clientId = getCurrentClientId();
+    if (!clientId) {
+      throw new Error('Client ID not available. Please ensure user is authenticated.');
+    }
+    
+    const response = await api.get('/smart-followup/queue', {
+      params: { clientId },
+      timeout: 30000
+    });
+    
+    return response.data;
+  } catch (error) {
+    console.error('Get Smart Follow-up queue error:', error.message);
+    throw error;
+  }
+};
+
+/**
+ * Acknowledge an AI-suggested follow-up date (clears it)
+ * @param {string} leadId - The Lead ID (Airtable record ID)
+ * @returns {Promise<{success: boolean, message: string}>}
+ */
+export const acknowledgeAiDate = async (leadId) => {
+  try {
+    const clientId = getCurrentClientId();
+    if (!clientId) {
+      throw new Error('Client ID not available. Please ensure user is authenticated.');
+    }
+    
+    const response = await api.post('/smart-followup/acknowledge', {
+      clientId,
+      leadId
+    });
+    
+    return response.data;
+  } catch (error) {
+    console.error('Acknowledge AI date error:', error.message);
+    throw error;
+  }
+};
+
 export default api;
 
 // Export helper functions for use in components

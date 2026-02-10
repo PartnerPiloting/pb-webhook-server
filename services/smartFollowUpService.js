@@ -649,6 +649,146 @@ async function runSweep(options = {}) {
 }
 
 // ============================================
+// QUEUE RETRIEVAL (for UI)
+// ============================================
+
+/**
+ * Get the Smart Follow-up queue for a client
+ * Returns records from Smart FUP State, sorted by MIN(User FUP Date, AI Suggested FUP Date)
+ * 
+ * @param {string} clientId - Client ID to fetch queue for
+ * @returns {Array} Array of queue items ready for UI display
+ */
+async function getSmartFollowupQueue(clientId) {
+  const base = initializeClientsBase();
+  const today = new Date().toISOString().split('T')[0];
+  
+  try {
+    // Fetch all Smart FUP State records for this client
+    // Filter: has a date that's due (user OR AI date <= today)
+    const filterFormula = `AND(
+      {${SMART_FUP_STATE_FIELDS.CLIENT_ID}} = '${clientId}',
+      OR(
+        AND({${SMART_FUP_STATE_FIELDS.USER_FUP_DATE}} != '', {${SMART_FUP_STATE_FIELDS.USER_FUP_DATE}} <= '${today}'),
+        AND({${SMART_FUP_STATE_FIELDS.AI_SUGGESTED_FUP_DATE}} != '', {${SMART_FUP_STATE_FIELDS.AI_SUGGESTED_FUP_DATE}} <= '${today}')
+      )
+    )`.replace(/\s+/g, ' ').trim();
+    
+    logger.info(`Queue filter for ${clientId}: ${filterFormula}`);
+    
+    const records = await base('Smart FUP State').select({
+      filterByFormula: filterFormula,
+    }).all();
+    
+    logger.info(`Found ${records.length} queue items for ${clientId}`);
+    
+    // Transform and sort by effective date (MIN of user and AI dates)
+    const queue = records.map(record => {
+      const fields = record.fields;
+      const userDate = fields[SMART_FUP_STATE_FIELDS.USER_FUP_DATE] || null;
+      const aiDate = fields[SMART_FUP_STATE_FIELDS.AI_SUGGESTED_FUP_DATE] || null;
+      
+      // Calculate effective date (MIN of the two)
+      let effectiveDate = null;
+      if (userDate && aiDate) {
+        effectiveDate = userDate < aiDate ? userDate : aiDate;
+      } else {
+        effectiveDate = userDate || aiDate;
+      }
+      
+      // Calculate days overdue
+      let daysOverdue = 0;
+      if (effectiveDate) {
+        const effDate = new Date(effectiveDate);
+        const todayDate = new Date(today);
+        daysOverdue = Math.max(0, Math.floor((todayDate.getTime() - effDate.getTime()) / (1000 * 60 * 60 * 24)));
+      }
+      
+      return {
+        id: record.id,
+        leadId: fields[SMART_FUP_STATE_FIELDS.LEAD_ID] || '',
+        leadEmail: fields[SMART_FUP_STATE_FIELDS.LEAD_EMAIL] || '',
+        leadLinkedin: fields[SMART_FUP_STATE_FIELDS.LEAD_LINKEDIN] || '',
+        generatedTime: fields[SMART_FUP_STATE_FIELDS.GENERATED_TIME] || '',
+        // User's follow-up date
+        userFupDate: userDate,
+        // AI suggestion
+        aiSuggestedDate: aiDate,
+        aiDateReasoning: fields[SMART_FUP_STATE_FIELDS.AI_DATE_REASONING] || null,
+        // Effective date for sorting
+        effectiveDate,
+        daysOverdue,
+        // AI-generated content
+        story: fields[SMART_FUP_STATE_FIELDS.STORY] || '',
+        priority: fields[SMART_FUP_STATE_FIELDS.PRIORITY] || 'Medium',
+        waitingOn: fields[SMART_FUP_STATE_FIELDS.WAITING_ON] || 'None',
+        suggestedMessage: fields[SMART_FUP_STATE_FIELDS.SUGGESTED_MESSAGE] || '',
+        recommendedChannel: fields[SMART_FUP_STATE_FIELDS.RECOMMENDED_CHANNEL] || 'LinkedIn',
+      };
+    });
+    
+    // Sort by: Priority (High first), then by effectiveDate (oldest first)
+    const priorityOrder = { 'High': 0, 'Medium': 1, 'Low': 2 };
+    queue.sort((a, b) => {
+      // First by priority
+      const pDiff = (priorityOrder[a.priority] || 1) - (priorityOrder[b.priority] || 1);
+      if (pDiff !== 0) return pDiff;
+      
+      // Then by effective date (oldest first = most overdue)
+      if (a.effectiveDate && b.effectiveDate) {
+        return a.effectiveDate.localeCompare(b.effectiveDate);
+      }
+      return 0;
+    });
+    
+    return queue;
+    
+  } catch (error) {
+    logger.error(`Failed to get queue for ${clientId}: ${error.message}`);
+    throw error;
+  }
+}
+
+/**
+ * Acknowledge an AI-suggested date (clears it from the record)
+ * User has seen the suggestion and doesn't need it anymore
+ * 
+ * @param {string} clientId - Client ID
+ * @param {string} leadId - Lead ID (Airtable record ID from Leads table)
+ * @returns {Object} Result of the update
+ */
+async function acknowledgeAiDate(clientId, leadId) {
+  const base = initializeClientsBase();
+  
+  try {
+    // Find the state record
+    const existing = await findExistingStateRecord(clientId, leadId);
+    
+    if (!existing) {
+      throw new Error(`No Smart FUP State record found for ${clientId}/${leadId}`);
+    }
+    
+    // Clear the AI date fields
+    const updated = await base('Smart FUP State').update(existing.id, {
+      [SMART_FUP_STATE_FIELDS.AI_SUGGESTED_FUP_DATE]: null,
+      [SMART_FUP_STATE_FIELDS.AI_DATE_REASONING]: null,
+    });
+    
+    logger.info(`Acknowledged (cleared) AI date for ${clientId}/${leadId}`);
+    
+    return { 
+      success: true, 
+      recordId: updated.id,
+      message: 'AI date cleared'
+    };
+    
+  } catch (error) {
+    logger.error(`Failed to acknowledge AI date: ${error.message}`);
+    throw error;
+  }
+}
+
+// ============================================
 // EXPORTS
 // ============================================
 
@@ -657,5 +797,7 @@ module.exports = {
   sweepClient,
   buildCandidateFilter,
   analyzeLeadNotes,
+  getSmartFollowupQueue,
+  acknowledgeAiDate,
   LEAD_FIELDS,
 };

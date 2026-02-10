@@ -10106,6 +10106,75 @@ router.get("/api/admin/add-cease-fup-field", async (req, res) => {
 });
 
 // ---------------------------------------------------------------
+// Smart Follow-Up Queue Endpoint
+// Returns the follow-up queue from Smart FUP State table
+// Used by the Smart Follow-ups UI page
+// ---------------------------------------------------------------
+router.get("/api/smart-followup/queue", async (req, res) => {
+  const queueLogger = createLogger({ runId: 'SMART-FUP-QUEUE', clientId: 'SYSTEM', operation: 'smart_followup_queue' });
+  const { getSmartFollowupQueue, acknowledgeAiDate } = require('../services/smartFollowUpService');
+  
+  try {
+    const { clientId } = req.query;
+    
+    if (!clientId) {
+      return res.status(400).json({ success: false, error: 'clientId is required' });
+    }
+    
+    queueLogger.info(`Fetching Smart Follow-Up queue for client: ${clientId}`);
+    
+    const queue = await getSmartFollowupQueue(clientId);
+    
+    res.json({
+      success: true,
+      count: queue.length,
+      queue
+    });
+    
+  } catch (error) {
+    queueLogger.error('Smart Follow-Up queue error:', error.message, error.stack);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// ---------------------------------------------------------------
+// Smart Follow-Up Acknowledge AI Date Endpoint
+// Clears the AI Suggested FUP Date (user acknowledged it)
+// ---------------------------------------------------------------
+router.post("/api/smart-followup/acknowledge", async (req, res) => {
+  const ackLogger = createLogger({ runId: 'SMART-FUP-ACK', clientId: 'SYSTEM', operation: 'smart_followup_acknowledge' });
+  const { acknowledgeAiDate } = require('../services/smartFollowUpService');
+  
+  try {
+    const { clientId, leadId } = req.body;
+    
+    if (!clientId || !leadId) {
+      return res.status(400).json({ success: false, error: 'clientId and leadId are required' });
+    }
+    
+    ackLogger.info(`Acknowledging AI date for ${clientId}/${leadId}`);
+    
+    const result = await acknowledgeAiDate(clientId, leadId);
+    
+    res.json({
+      success: true,
+      message: 'AI date acknowledged and cleared',
+      result
+    });
+    
+  } catch (error) {
+    ackLogger.error('Smart Follow-Up acknowledge error:', error.message, error.stack);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// ---------------------------------------------------------------
 // Smart Follow-Up Sweep Endpoint
 // Runs the daily sweep to populate Smart FUP State table
 // Can be triggered manually or by cron
