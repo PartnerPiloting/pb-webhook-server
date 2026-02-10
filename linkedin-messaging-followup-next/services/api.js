@@ -458,6 +458,11 @@ export const createLead = async (leadData) => {
       }
     });
     
+    // Handle "No follow-up needed" checkbox → Cease FUP field
+    if (leadData.noFollowUpNeeded === true) {
+      backendData['Cease FUP'] = 'Yes';
+    }
+    
     // Wrap initial notes with Manual Notes section header and timestamp
     if (backendData['Notes'] && backendData['Notes'].trim()) {
       const today = new Date();

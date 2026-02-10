@@ -596,6 +596,16 @@ export default function QuickUpdateModal({
     
     setError(null);
     
+    // Validate: require either follow-up date OR cease FUP
+    // Check what the final state will be after this save
+    const finalFollowUpDate = followUpDate || selectedLead.followUpDate;
+    const isCeased = selectedLead.ceaseFup === 'Yes' || selectedLead['Cease FUP'] === 'Yes';
+    
+    if (!finalFollowUpDate && !isCeased) {
+      setError('Please enter a Follow-up Date or click "Cease Follow-up"');
+      return;
+    }
+    
     // Build updates object
     const updates = {};
     

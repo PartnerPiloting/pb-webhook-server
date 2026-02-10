@@ -26,6 +26,7 @@ const NewLeadForm = ({ onLeadCreated }) => {
     
     notes: '',
     followUpDate: '',
+    noFollowUpNeeded: false, // If true, sets Cease FUP = 'Yes'
     source: 'Follow-Up Personally', // Default value
     status: 'On The Radar', // Default value
     priority: '',
@@ -129,6 +130,16 @@ const NewLeadForm = ({ onLeadCreated }) => {
         return false;
       }
     }
+    
+    // Require either a follow-up date OR "No follow-up needed" checkbox
+    if (!formData.followUpDate && !formData.noFollowUpNeeded) {
+      setMessage({ 
+        type: 'error', 
+        text: 'Please enter a Follow-up Date or check "No follow-up needed"' 
+      });
+      return false;
+    }
+    
     return true;
   };
 
@@ -186,6 +197,7 @@ const NewLeadForm = ({ onLeadCreated }) => {
         
         notes: '',
         followUpDate: '',
+        noFollowUpNeeded: false,
         source: 'Follow-Up Personally', // Keep default
         status: 'On The Radar', // Keep default
         priority: '',
@@ -231,6 +243,7 @@ const NewLeadForm = ({ onLeadCreated }) => {
       
       notes: '',
       followUpDate: '',
+      noFollowUpNeeded: false,
       source: 'Follow-Up Personally',
       status: 'On The Radar',
       priority: '',
@@ -552,11 +565,41 @@ const NewLeadForm = ({ onLeadCreated }) => {
                 <input
                   type="date"
                   value={formData.followUpDate}
-                  onChange={(e) => handleChange('followUpDate', e.target.value)}
+                  onChange={(e) => {
+                    handleChange('followUpDate', e.target.value);
+                    // Clear "no follow-up needed" if a date is entered
+                    if (e.target.value) {
+                      handleChange('noFollowUpNeeded', false);
+                    }
+                  }}
                   className="px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                  disabled={formData.noFollowUpNeeded}
                 />
+              </div>
+            </div>
+            
+            <div className="flex">
+              <label className="w-32 text-sm font-medium text-gray-700 flex-shrink-0 py-2">
+                &nbsp;
+              </label>
+              <div className="flex-1">
+                <label className="inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={formData.noFollowUpNeeded}
+                    onChange={(e) => {
+                      handleChange('noFollowUpNeeded', e.target.checked);
+                      // Clear follow-up date if "no follow-up" is checked
+                      if (e.target.checked) {
+                        handleChange('followUpDate', '');
+                      }
+                    }}
+                    className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                  />
+                  <span className="ml-2 text-sm text-gray-700">No follow-up needed</span>
+                </label>
                 <p className="text-xs text-gray-500 mt-1">
-                  Leave blank for no follow-up
+                  Check this to track the lead without scheduling follow-ups
                 </p>
               </div>
             </div>
