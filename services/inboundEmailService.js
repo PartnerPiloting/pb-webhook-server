@@ -2470,11 +2470,24 @@ async function processInboundEmail(mailgunData) {
         }
     }
 
-    // Step 2: Collect all potential leads (To + CC)
+    // Step 2: Collect all potential leads (To + CC + From for forwarded replies)
     const potentialLeads = [];
     
+    // Build list of client's own email addresses to filter out
+    const clientEmails = new Set();
+    const primaryEmail = (client.clientEmailAddress || '').toLowerCase().trim();
+    if (primaryEmail) clientEmails.add(primaryEmail);
+    if (client.rawRecord) {
+        const altEmails = client.rawRecord.get('Alternative Email Addresses') || '';
+        altEmails.split(';').forEach(e => {
+            const email = e.trim().toLowerCase();
+            if (email) clientEmails.add(email);
+        });
+    }
+    logger.info(`Client emails to filter: ${Array.from(clientEmails).join(', ')}`);
+    
     // If this was a forwarded email, use the extracted recipients
-    if (forwardedRecipients && forwardedRecipients.to.length > 0) {
+    if (forwardedRecipients && (forwardedRecipients.to.length > 0 || forwardedRecipients.from)) {
         for (const fwdTo of forwardedRecipients.to) {
             potentialLeads.push({ email: fwdTo.email, name: fwdTo.name, source: 'forwarded-to' });
         }
@@ -2483,7 +2496,15 @@ async function processInboundEmail(mailgunData) {
                 potentialLeads.push({ email: fwdCc.email, name: fwdCc.name, source: 'forwarded-cc' });
             }
         }
-        logger.info(`Using ${potentialLeads.length} recipients from forwarded email`);
+        // Also add the From field - handles forwarded inbound replies from leads
+        if (forwardedRecipients.from) {
+            const fromEmail = forwardedRecipients.from.toLowerCase().trim();
+            if (!potentialLeads.some(p => p.email === fromEmail)) {
+                potentialLeads.push({ email: fromEmail, name: '', source: 'forwarded-from' });
+                logger.info(`Added forwarded From address as potential lead: ${fromEmail}`);
+            }
+        }
+        logger.info(`Using ${potentialLeads.length} recipients from forwarded email (To + Cc + From)`);
     } else {
         // Normal BCC flow - add primary recipient (To)
         if (leadEmail) {
@@ -2501,15 +2522,24 @@ async function processInboundEmail(mailgunData) {
         }
     }
     
-    logger.info(`Processing ${potentialLeads.length} potential leads (To + CC)`);
+    // Filter out client's own email addresses from potential leads
+    const filteredLeads = potentialLeads.filter(p => {
+        if (clientEmails.has(p.email.toLowerCase())) {
+            logger.info(`Filtering out client's own email from potential leads: ${p.email}`);
+            return false;
+        }
+        return true;
+    });
+    
+    logger.info(`Processing ${filteredLeads.length} potential leads (after filtering client emails)`);
     
     
-    if (potentialLeads.length === 0) {
-        logger.info('No potential leads found in To or CC - ignoring');
+    if (filteredLeads.length === 0) {
+        logger.info('No potential leads found after filtering - ignoring');
         return {
             success: false,
             error: 'no_recipients',
-            message: 'No recipients found to process',
+            message: 'No recipients found to process (all were client emails or tracking addresses)',
             ignored: true
         };
     }
@@ -2525,7 +2555,7 @@ async function processInboundEmail(mailgunData) {
         errors: []
     };
     
-    for (const potential of potentialLeads) {
+    for (const potential of filteredLeads) {
         const lead = await findLeadByEmail(client, potential.email);
         
         if (!lead) {
@@ -2568,10 +2598,10 @@ async function processInboundEmail(mailgunData) {
     
     // Determine overall success
     results.success = results.leadsUpdated.length > 0;
-    results.totalProcessed = potentialLeads.length;
+    results.totalProcessed = filteredLeads.length;
     results.totalUpdated = results.leadsUpdated.length;
     
-    if (results.leadsUpdated.length === 0 && results.leadsNotFound.length === potentialLeads.length) {
+    if (results.leadsUpdated.length === 0 && results.leadsNotFound.length === filteredLeads.length) {
         // None of the recipients were leads - this is fine, just ignore
         logger.info('No recipients were leads in the system - ignoring email');
         results.ignored = true;
