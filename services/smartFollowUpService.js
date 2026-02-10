@@ -53,24 +53,26 @@ const LEAD_FIELDS = {
 // FILTER LOGIC
 // ============================================
 
+// How many days back to look for modified leads
+const MODIFIED_WINDOW_DAYS = 7;
+
 /**
  * Build Airtable filter for candidate leads
  * Returns leads that are:
  * - Not ceased (Cease FUP != 'Yes')
- * - AND have a Follow-Up Date on or before today
+ * - AND modified in last 7 days (catches notes updates and user date changes)
  * 
- * Note: Safety net logic was removed because the UI now enforces that every lead
- * must have either a Follow-Up Date OR Cease FUP = 'Yes'. This makes the filter
- * much simpler and more efficient.
+ * Decision 17: We query by modification time to catch:
+ * - Notes updated (email via track@, manual entry)
+ * - User FUP date changes
+ * Then we compare notes length to decide if AI re-analysis is needed.
  */
 function buildCandidateFilter() {
-  const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
-  
-  // Simple filter: not ceased AND has follow-up date due
+  // Query leads modified in the last N days that aren't ceased
   return `AND(
     OR({${LEAD_FIELDS.CEASE_FUP}} != 'Yes', {${LEAD_FIELDS.CEASE_FUP}} = BLANK()),
     {${LEAD_FIELDS.FOLLOW_UP_DATE}} != '',
-    {${LEAD_FIELDS.FOLLOW_UP_DATE}} <= '${today}'
+    LAST_MODIFIED_TIME() >= DATEADD(TODAY(), -${MODIFIED_WINDOW_DAYS}, 'days')
   )`.replace(/\s+/g, ' ').trim();
 }
 
@@ -160,9 +162,16 @@ Return a JSON object with these exact keys:
 
 /**
  * Analyze a lead's Notes using Gemini AI
+ * 
+ * @param {Object} lead - Lead record from Airtable
+ * @param {string} clientInstructions - Client's FUP AI Instructions
+ * @param {string} clientType - Client type (A/B/C)
+ * @param {string} [newNotesPortion] - Optional: only the NEW notes to focus on (Decision 17)
+ *                                     If provided, AI will focus analysis on new content
+ *                                     but still has full notes for context
  */
-async function analyzeLeadNotes(lead, clientInstructions, clientType) {
-  const notes = lead.fields[LEAD_FIELDS.NOTES] || '';
+async function analyzeLeadNotes(lead, clientInstructions, clientType, newNotesPortion = null) {
+  const fullNotes = lead.fields[LEAD_FIELDS.NOTES] || '';
   const firstName = lead.fields[LEAD_FIELDS.FIRST_NAME] || 'Lead';
   const lastName = lead.fields[LEAD_FIELDS.LAST_NAME] || '';
   const email = lead.fields[LEAD_FIELDS.EMAIL] || '';
@@ -171,7 +180,7 @@ async function analyzeLeadNotes(lead, clientInstructions, clientType) {
   // If no Gemini client available, fall back to placeholder
   if (!vertexAIClient) {
     logger.warn('Gemini client not available, using placeholder logic');
-    return generatePlaceholderAnalysis(lead, notes, firstName);
+    return generatePlaceholderAnalysis(lead, fullNotes, firstName);
   }
   
   try {
@@ -191,6 +200,20 @@ async function analyzeLeadNotes(lead, clientInstructions, clientType) {
       }
     });
 
+    // Decision 17: If we have a newNotesPortion, focus analysis on it
+    // but provide full notes for context understanding
+    let notesSection;
+    if (newNotesPortion) {
+      notesSection = `FULL CONVERSATION HISTORY (for context):
+${fullNotes || '[No notes recorded]'}
+
+--- NEW CONTENT TO ANALYZE (focus your recommendations on this) ---
+${newNotesPortion}`;
+    } else {
+      notesSection = `NOTES/CONVERSATION HISTORY:
+${fullNotes || '[No notes recorded]'}`;
+    }
+
     const userPrompt = `Analyze this lead and provide follow-up recommendations.
 
 LEAD INFO:
@@ -198,8 +221,7 @@ LEAD INFO:
 - Email: ${email || 'Not available'}
 - Has Follow-Up Date Set: ${hasFollowUpDate ? 'Yes' : 'No'}
 
-NOTES/CONVERSATION HISTORY:
-${notes || '[No notes recorded]'}
+${notesSection}
 
 Today's date is: ${new Date().toISOString().split('T')[0]}`;
 
@@ -249,7 +271,7 @@ Today's date is: ${new Date().toISOString().split('T')[0]}`;
   } catch (error) {
     logger.error(`AI analysis failed for lead ${lead.id}: ${error.message}`);
     // Fall back to placeholder on error
-    return generatePlaceholderAnalysis(lead, notes, firstName);
+    return generatePlaceholderAnalysis(lead, fullNotes, firstName);
   }
 }
 
@@ -325,51 +347,72 @@ async function findExistingStateRecord(clientId, leadId) {
 
 /**
  * Upsert a Smart FUP State record
+ * 
+ * @param {string} clientId - Client ID
+ * @param {Object} lead - Lead record from Airtable
+ * @param {Object} aiOutput - AI analysis output (may be null if no new notes)
+ * @param {Object} options - Additional options
+ * @param {number} options.notesLength - Current notes length to store
+ * @param {string} options.userFupDate - User's follow-up date from Leads table
+ * @param {Object} options.existingRecord - Existing state record (to avoid re-query)
+ * @param {boolean} options.dryRun - If true, don't write to Airtable
  */
-async function upsertStateRecord(clientId, lead, aiOutput, dryRun = false) {
+async function upsertStateRecord(clientId, lead, aiOutput, options = {}) {
+  const { notesLength = 0, userFupDate = null, existingRecord = null, dryRun = false } = options;
   const base = initializeClientsBase();
   const leadId = lead.id;
   
+  // Always include these fields (synced every sweep)
   const recordData = {
     [SMART_FUP_STATE_FIELDS.CLIENT_ID]: clientId,
     [SMART_FUP_STATE_FIELDS.LEAD_ID]: leadId,
     [SMART_FUP_STATE_FIELDS.LEAD_EMAIL]: lead.fields[LEAD_FIELDS.EMAIL] || '',
     [SMART_FUP_STATE_FIELDS.LEAD_LINKEDIN]: lead.fields[LEAD_FIELDS.LINKEDIN_URL] || '',
     [SMART_FUP_STATE_FIELDS.GENERATED_TIME]: new Date().toISOString(),
-    [SMART_FUP_STATE_FIELDS.STORY]: aiOutput.story,
-    [SMART_FUP_STATE_FIELDS.PRIORITY]: aiOutput.priority,
-    [SMART_FUP_STATE_FIELDS.SUGGESTED_MESSAGE]: aiOutput.suggestedMessage,
-    [SMART_FUP_STATE_FIELDS.RECOMMENDED_CHANNEL]: aiOutput.recommendedChannel,
-    [SMART_FUP_STATE_FIELDS.WAITING_ON]: aiOutput.waitingOn,
+    [SMART_FUP_STATE_FIELDS.LAST_PROCESSED_NOTES_LENGTH]: notesLength,
   };
   
-  // Add AI suggested date fields if present
-  if (aiOutput.aiSuggestedDate) {
-    recordData[SMART_FUP_STATE_FIELDS.AI_SUGGESTED_FUP_DATE] = aiOutput.aiSuggestedDate;
+  // Always sync User FUP Date from Leads table
+  if (userFupDate) {
+    recordData[SMART_FUP_STATE_FIELDS.USER_FUP_DATE] = userFupDate;
   }
-  if (aiOutput.aiDateReasoning) {
-    recordData[SMART_FUP_STATE_FIELDS.AI_DATE_REASONING] = aiOutput.aiDateReasoning;
+  
+  // Only update AI fields if we have new AI output
+  if (aiOutput) {
+    recordData[SMART_FUP_STATE_FIELDS.STORY] = aiOutput.story;
+    recordData[SMART_FUP_STATE_FIELDS.PRIORITY] = aiOutput.priority;
+    recordData[SMART_FUP_STATE_FIELDS.SUGGESTED_MESSAGE] = aiOutput.suggestedMessage;
+    recordData[SMART_FUP_STATE_FIELDS.RECOMMENDED_CHANNEL] = aiOutput.recommendedChannel;
+    recordData[SMART_FUP_STATE_FIELDS.WAITING_ON] = aiOutput.waitingOn;
+    
+    // Add AI suggested date fields if present
+    if (aiOutput.aiSuggestedDate) {
+      recordData[SMART_FUP_STATE_FIELDS.AI_SUGGESTED_FUP_DATE] = aiOutput.aiSuggestedDate;
+    }
+    if (aiOutput.aiDateReasoning) {
+      recordData[SMART_FUP_STATE_FIELDS.AI_DATE_REASONING] = aiOutput.aiDateReasoning;
+    }
   }
   
   if (dryRun) {
-    logger.info(`[DRY RUN] Would upsert: ${clientId} / ${leadId}`);
-    return { dryRun: true, data: recordData };
+    logger.info(`[DRY RUN] Would upsert: ${clientId} / ${leadId} (aiAnalyzed=${!!aiOutput})`);
+    return { dryRun: true, data: recordData, aiAnalyzed: !!aiOutput };
   }
   
   try {
-    // Check if record exists
-    const existing = await findExistingStateRecord(clientId, leadId);
+    // Use provided existing record or query for it
+    const existing = existingRecord || await findExistingStateRecord(clientId, leadId);
     
     if (existing) {
       // Update existing record
       const updated = await base('Smart FUP State').update(existing.id, recordData);
-      logger.info(`Updated state record for ${clientId}/${leadId}`);
-      return { action: 'updated', recordId: updated.id };
+      logger.info(`Updated state record for ${clientId}/${leadId} (aiAnalyzed=${!!aiOutput})`);
+      return { action: 'updated', recordId: updated.id, aiAnalyzed: !!aiOutput };
     } else {
       // Create new record
       const created = await base('Smart FUP State').create(recordData);
       logger.info(`Created state record for ${clientId}/${leadId}`);
-      return { action: 'created', recordId: created.id };
+      return { action: 'created', recordId: created.id, aiAnalyzed: !!aiOutput };
     }
   } catch (error) {
     logger.error(`Error upserting state record: ${error.message}`);
@@ -447,18 +490,51 @@ async function sweepClient(options) {
     results.candidatesFound = candidates.length;
     logger.info(`Found ${candidates.length} leads with due follow-up dates`);
     
-    // All candidates are ready to process (no Stage 2 filtering needed anymore)
-    // The filter already ensures: not ceased AND has follow-up date due
+    // Apply limit if specified
     let leadsToProcess = candidates;
+    if (limit && leadsToProcess.length > limit) {
+      leadsToProcess = leadsToProcess.slice(0, limit);
+    }
+    
+    // Track stats for Decision 17 logic
+    results.aiAnalyzed = 0;
+    results.dateOnlySync = 0;
     
     // Process each lead
     for (const lead of leadsToProcess) {
       try {
-        // Analyze with AI (placeholder for now)
-        const aiOutput = await analyzeLeadNotes(lead, fupInstructions, clientType);
+        const notes = lead.fields[LEAD_FIELDS.NOTES] || '';
+        const currentNotesLength = notes.length;
+        const userFupDate = lead.fields[LEAD_FIELDS.FOLLOW_UP_DATE] || null;
         
-        // Upsert to Smart FUP State
-        const upsertResult = await upsertStateRecord(clientId, lead, aiOutput, dryRun);
+        // Fetch existing state record to check for notes changes
+        const existingRecord = await findExistingStateRecord(clientId, lead.id);
+        const previousNotesLength = existingRecord?.fields?.[SMART_FUP_STATE_FIELDS.LAST_PROCESSED_NOTES_LENGTH] || 0;
+        
+        let aiOutput = null;
+        
+        // Decision 17: Only run AI analysis if notes have grown
+        if (currentNotesLength > previousNotesLength) {
+          // Extract only the NEW portion of notes for analysis
+          const newNotesPortion = notes.slice(previousNotesLength);
+          logger.info(`Lead ${lead.id}: New notes detected (${previousNotesLength} -> ${currentNotesLength}), analyzing new portion (${newNotesPortion.length} chars)`);
+          
+          // Run AI analysis on new notes, but pass full lead for context
+          aiOutput = await analyzeLeadNotes(lead, fupInstructions, clientType, newNotesPortion);
+          results.aiAnalyzed++;
+        } else {
+          // No new notes - just sync User FUP Date, don't re-analyze
+          logger.info(`Lead ${lead.id}: No new notes (length=${currentNotesLength}), syncing date only`);
+          results.dateOnlySync++;
+        }
+        
+        // Upsert to Smart FUP State (always syncs User FUP Date)
+        const upsertResult = await upsertStateRecord(clientId, lead, aiOutput, {
+          notesLength: currentNotesLength,
+          userFupDate,
+          existingRecord,
+          dryRun
+        });
         
         results.processed++;
         if (upsertResult.action === 'created') results.created++;

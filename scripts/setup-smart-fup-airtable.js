@@ -43,6 +43,9 @@ const SMART_FUP_STATE_FIELDS = {
   // AI generation metadata
   GENERATED_TIME: 'Generated Time', // Date with time - when AI last ran
   
+  // User's follow-up date (cached from Leads table for MIN sorting - Decision 17)
+  USER_FUP_DATE: 'User FUP Date',   // Date - cached copy from Leads table
+  
   // AI outputs
   STORY: 'Story',                   // Long text - AI-generated summary
   PRIORITY: 'Priority',             // Single select: High / Medium / Low
@@ -50,9 +53,12 @@ const SMART_FUP_STATE_FIELDS = {
   RECOMMENDED_CHANNEL: 'Recommended Channel', // Single select: LinkedIn / Email / None
   WAITING_ON: 'Waiting On',         // Single select: User / Lead / None
   
-  // AI follow-up date suggestion (Decision 14)
+  // AI follow-up date suggestion (Decision 14, refined in Decision 17)
   AI_SUGGESTED_FUP_DATE: 'AI Suggested FUP Date', // Date - AI's recommended follow-up date
   AI_DATE_REASONING: 'AI Date Reasoning', // Long text - why AI suggested this date
+  
+  // Notes change detection (Decision 17)
+  LAST_PROCESSED_NOTES_LENGTH: 'Last Processed Notes Length', // Number - chars processed
   
   // Fathom data
   FATHOM_TRANSCRIPTS: 'Fathom Transcripts', // Long text - synced transcripts
