@@ -10107,11 +10107,11 @@ router.get("/api/admin/add-cease-fup-field", async (req, res) => {
 
 // ---------------------------------------------------------------
 // Fathom Test Endpoint
-// Tests connectivity to Fathom API using client's API key
+// Finds leads with meeting indicators and tries to match to Fathom
 // ---------------------------------------------------------------
 router.get("/api/smart-followup/fathom-test", async (req, res) => {
   const fathomLogger = createLogger({ runId: 'FATHOM-TEST', clientId: 'SYSTEM', operation: 'fathom_test' });
-  const { getAllClients } = require('../services/clientService');
+  const { getAllClients, getClientBase } = require('../services/clientService');
   
   try {
     const { clientId, limit = 5 } = req.query;
@@ -10120,7 +10120,7 @@ router.get("/api/smart-followup/fathom-test", async (req, res) => {
       return res.status(400).json({ success: false, error: 'clientId is required' });
     }
     
-    // Get client to retrieve Fathom API key
+    // Get client to retrieve Fathom API key and base ID
     const allClients = await getAllClients();
     const client = allClients.find(c => c.clientId === clientId);
     
@@ -10136,14 +10136,50 @@ router.get("/api/smart-followup/fathom-test", async (req, res) => {
       });
     }
     
-    fathomLogger.info(`Testing Fathom API for client: ${clientId}`);
+    fathomLogger.info(`Testing Fathom matching for client: ${clientId}`);
     
-    // Call Fathom API
+    // Step 1: Find leads with meeting indicators in notes
+    const clientBase = getClientBase(client.airtableBaseId);
+    const meetingKeywords = ['meeting', 'call', 'zoom', 'fathom', 'spoke with', 'caught up', 'chat with'];
+    
+    // Get leads with emails and notes containing meeting keywords
+    const leads = await clientBase('Leads').select({
+      filterByFormula: `AND(
+        {Email} != '',
+        OR(
+          FIND('meeting', LOWER({Notes})) > 0,
+          FIND('call', LOWER({Notes})) > 0,
+          FIND('zoom', LOWER({Notes})) > 0,
+          FIND('fathom', LOWER({Notes})) > 0,
+          FIND('spoke with', LOWER({Notes})) > 0
+        )
+      )`,
+      fields: ['First Name', 'Last Name', 'Email', 'Notes'],
+      maxRecords: 50
+    }).all();
+    
+    fathomLogger.info(`Found ${leads.length} leads with meeting indicators in notes`);
+    
+    if (leads.length === 0) {
+      return res.json({
+        success: true,
+        message: 'No leads found with meeting indicators in notes',
+        leadsChecked: 0,
+        fathomMeetings: 0,
+        matches: []
+      });
+    }
+    
+    // Step 2: Fetch Fathom meetings (last 90 days)
     const fetch = (await import('node-fetch')).default;
+    const ninetyDaysAgo = new Date();
+    ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+    
     const fathomUrl = new URL('https://api.fathom.ai/external/v1/meetings');
-    fathomUrl.searchParams.set('limit', limit);
-    fathomUrl.searchParams.set('include_transcript', 'false'); // Just test connectivity first
+    fathomUrl.searchParams.set('limit', '100');
+    fathomUrl.searchParams.set('include_transcript', 'false');
     fathomUrl.searchParams.set('include_summary', 'true');
+    fathomUrl.searchParams.set('created_after', ninetyDaysAgo.toISOString());
     
     const response = await fetch(fathomUrl.toString(), {
       method: 'GET',
@@ -10163,23 +10199,60 @@ router.get("/api/smart-followup/fathom-test", async (req, res) => {
       });
     }
     
-    const data = await response.json();
+    const fathomData = await response.json();
+    const meetings = fathomData.items || [];
     
-    fathomLogger.info(`Fathom API success: ${data.items?.length || 0} meetings returned`);
+    fathomLogger.info(`Fetched ${meetings.length} Fathom meetings from last 90 days`);
     
-    // Return summary (not full transcripts for test)
+    // Step 3: Build email-to-meetings map from Fathom
+    const emailToMeetings = new Map();
+    for (const meeting of meetings) {
+      const invitees = meeting.calendar_invitees || [];
+      for (const invitee of invitees) {
+        if (invitee.email) {
+          const email = invitee.email.toLowerCase();
+          if (!emailToMeetings.has(email)) {
+            emailToMeetings.set(email, []);
+          }
+          emailToMeetings.get(email).push({
+            title: meeting.title || meeting.meeting_title,
+            date: meeting.created_at,
+            url: meeting.url,
+            hasSummary: !!meeting.default_summary?.markdown_formatted
+          });
+        }
+      }
+    }
+    
+    fathomLogger.info(`Built email map with ${emailToMeetings.size} unique attendee emails`);
+    
+    // Step 4: Match leads to Fathom meetings
+    const matches = [];
+    for (const lead of leads) {
+      const leadEmail = (lead.fields['Email'] || '').toLowerCase();
+      if (leadEmail && emailToMeetings.has(leadEmail)) {
+        const leadMeetings = emailToMeetings.get(leadEmail);
+        matches.push({
+          leadId: lead.id,
+          leadName: `${lead.fields['First Name'] || ''} ${lead.fields['Last Name'] || ''}`.trim(),
+          leadEmail: leadEmail,
+          fathomMeetings: leadMeetings.slice(0, 3) // Show up to 3 meetings
+        });
+        
+        if (matches.length >= parseInt(limit)) break;
+      }
+    }
+    
+    fathomLogger.info(`Found ${matches.length} lead-to-Fathom matches`);
+    
     res.json({
       success: true,
-      message: 'Fathom API connection successful',
-      meetingCount: data.items?.length || 0,
-      meetings: (data.items || []).map(m => ({
-        title: m.title || m.meeting_title,
-        date: m.created_at,
-        url: m.url,
-        invitees: (m.calendar_invitees || []).map(i => ({ name: i.name, email: i.email })),
-        hasSummary: !!m.default_summary,
-        recordedBy: m.recorded_by?.name
-      }))
+      message: `Found ${matches.length} leads with matching Fathom meetings`,
+      leadsWithMeetingNotes: leads.length,
+      fathomMeetingsChecked: meetings.length,
+      uniqueAttendeeEmails: emailToMeetings.size,
+      matchCount: matches.length,
+      matches: matches
     });
     
   } catch (error) {
