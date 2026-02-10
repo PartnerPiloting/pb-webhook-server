@@ -490,12 +490,16 @@ async function sweepClient(options) {
     logger.info(`Stage 1: Found ${candidates.length} candidate leads`);
     
     // Stage 2: Filter by conversation activity (for safety net leads)
+    // When forceAll=true, bypass Stage 2 and process all candidates
     const leadsToProcess = [];
     
     for (const lead of candidates) {
       const hasFollowUpDate = !!lead.fields[LEAD_FIELDS.FOLLOW_UP_DATE];
       
-      if (hasFollowUpDate) {
+      if (forceAll) {
+        // Force mode - process all candidates without Stage 2 filter
+        leadsToProcess.push(lead);
+      } else if (hasFollowUpDate) {
         // Lead has a follow-up date set - include it
         leadsToProcess.push(lead);
       } else {
