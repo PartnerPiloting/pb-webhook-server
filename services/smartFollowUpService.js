@@ -122,10 +122,22 @@ async function fetchFathomTranscripts(email, fathomApiKey) {
       let transcriptText = '';
       if (meeting.transcript && Array.isArray(meeting.transcript)) {
         transcriptText = meeting.transcript.map(utterance => {
-          // speaker is an object with display_name
-          const speakerName = utterance.speaker?.display_name || 'Speaker';
-          const text = utterance.text || '';
-          const timestamp = utterance.timestamp || '';
+          // Handle primitive (string) - some APIs return plain strings
+          if (typeof utterance === 'string') return utterance;
+          if (typeof utterance !== 'object' || utterance === null) return '';
+          
+          // Speaker: object with display_name (Fathom API). Never pass object to template.
+          const speakerName = (typeof utterance.speaker === 'string')
+            ? utterance.speaker
+            : (utterance.speaker?.display_name || utterance.speaker?.name || 'Speaker');
+          // Text: must be string. Never output [object Object] - extract or empty.
+          let text = utterance.text ?? utterance.content ?? utterance.value;
+          if (typeof text !== 'string') {
+            text = (text && typeof text === 'object')
+              ? (text.text ?? text.content ?? text.raw ?? text.value ?? '')
+              : '';
+          }
+          const timestamp = (typeof utterance.timestamp === 'string') ? utterance.timestamp : '';
           return `[${timestamp}] ${speakerName}: ${text}`;
         }).join('\n');
       }
@@ -174,9 +186,10 @@ async function fetchFathomTranscripts(email, fathomApiKey) {
  * 
  * @param {string} notes - Lead's notes field
  * @param {Object} existingRecord - Existing Smart FUP State record (if any)
+ * @param {boolean} forceRefresh - If true, always fetch (e.g. when forceAll sweep)
  * @returns {Object} { shouldFetch: boolean, meetingNotesLength: number }
  */
-function shouldFetchFathomTranscripts(notes, existingRecord) {
+function shouldFetchFathomTranscripts(notes, existingRecord, forceRefresh = false) {
   // Get meeting section content
   const meetingNotes = getSection(notes || '', 'meeting');
   const meetingNotesLength = meetingNotes.length;
@@ -184,6 +197,11 @@ function shouldFetchFathomTranscripts(notes, existingRecord) {
   // No meeting notes section = no Fathom fetch needed
   if (meetingNotesLength === 0) {
     return { shouldFetch: false, meetingNotesLength: 0 };
+  }
+  
+  // Force refresh (e.g. forceAll) overwrites bad cached data
+  if (forceRefresh) {
+    return { shouldFetch: true, meetingNotesLength };
   }
   
   // Get existing values from state record
@@ -690,8 +708,8 @@ async function sweepClient(options) {
         let fathomTranscripts = null;
         let meetingNotesLength = 0;
         
-        // Check if Fathom transcripts should be fetched
-        const fathomCheck = shouldFetchFathomTranscripts(notes, existingRecord);
+        // Check if Fathom transcripts should be fetched (forceAll refreshes cached data)
+        const fathomCheck = shouldFetchFathomTranscripts(notes, existingRecord, forceAll);
         meetingNotesLength = fathomCheck.meetingNotesLength;
         
         if (fathomCheck.shouldFetch && fathomApiKey && leadEmail) {
