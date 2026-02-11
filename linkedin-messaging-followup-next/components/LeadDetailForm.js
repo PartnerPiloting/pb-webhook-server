@@ -168,7 +168,7 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating, onDelete }) => {
     
     // Validate: require either follow-up date OR cease FUP
     if (!formData.followUpDate && formData.ceaseFup !== 'Yes') {
-      setValidationError('Please enter a Follow-up Date or click "Cease Follow-up"');
+      setValidationError('Please enter a Follow-up Date or click "No follow-up"');
       return;
     }
     
@@ -202,16 +202,12 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating, onDelete }) => {
     }
   };
 
-  // Handle cease follow-up
+  // Handle no follow-up
   const handleCeaseFollowup = () => {
     if (!lead) return;
     
-    if (!window.confirm('Are you sure you want to cease follow-up for this lead? This marks them as no longer needing follow-up.')) {
-      return;
-    }
-    
     const dateStr = new Date().toLocaleDateString('en-AU', { day: '2-digit', month: 'short', year: '2-digit' });
-    const ceaseNote = `\n\n## MANUAL\n#moving-on - Ceased follow-up\n[${dateStr}]`;
+    const ceaseNote = `\n\n## MANUAL\n#moving-on - No follow-up\n[${dateStr}]`;
     const updatedNotes = (formData.notes || '') + ceaseNote;
     
     // Update form data and trigger update
@@ -304,9 +300,9 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating, onDelete }) => {
               onClick={handleCeaseFollowup}
               className="inline-flex items-center px-3 py-2 text-sm font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-md hover:bg-amber-100 focus:outline-none focus:ring-2 focus:ring-amber-500 disabled:opacity-50"
               disabled={isUpdating || isDeleting}
-              title="Stop pursuing this lead"
+              title="Mark as no follow-up"
             >
-              ⏹️ Cease Follow-up
+              ⏹️ No follow-up
             </button>
           )}
           
