@@ -360,6 +360,21 @@
     return cleaned;
   }
   
+  // Strip LinkedIn UI text that gets concatenated with contact name when copying
+  // Handles: "Rhys Cassidy Profile", "Rhys CassidyStatus is online", "Rhys Cassidy ProfileStatus is online"
+  function stripLinkedInUISuffixes(text) {
+    if (!text || typeof text !== 'string') return text || '';
+    let cleaned = text;
+    // Strip in order - handle concatenated forms first (no space before suffix)
+    cleaned = cleaned.replace(/ProfileStatus\s*is\s*(online|offline|busy|away)\s*$/i, '');
+    cleaned = cleaned.replace(/Status\s*is\s*(online|offline|busy|away)\s*$/i, '');
+    cleaned = cleaned.replace(/\s*Profile\s*$/i, '');  // "Name Profile" or "NameProfile"
+    cleaned = cleaned.replace(/Profile\s*$/i, '');     // "NameProfile" (concatenated)
+    cleaned = cleaned.replace(/\s*Active\s*now\s*$/i, '');
+    cleaned = cleaned.replace(/\s*is\s*(online|offline|busy|away)\s*$/i, '');
+    return cleaned.trim();
+  }
+  
   // Smart name comparison - handles variations like "duncanmurcott" vs "Duncan Murcott"
   function namesMatch(name1, name2) {
     if (!name1 || !name2) return false;
@@ -742,19 +757,13 @@
     }
     
     // Pattern 3: First line of clipboard is often the contact name header
-    // LinkedIn messaging copy format typically starts with: "Name\n1st degree connection\n..."
-    // Sometimes LinkedIn concatenates status without space: "NameStatus is online"
+    // LinkedIn messaging copy format: "Name" or "Name Profile" or "NameStatus is online" etc.
     const lines = clipboardText.split('\n').map(l => l.trim()).filter(l => l);
     if (lines.length > 0) {
       let firstLine = lines[0];
       
-      // Strip LinkedIn status indicators (may be concatenated without space)
-      // e.g., "Rhys CassidyStatus is online" -> "Rhys Cassidy"
-      firstLine = firstLine
-        .replace(/Status is (online|offline|busy|away)$/i, '')
-        .replace(/ is (online|offline|busy|away)$/i, '')
-        .replace(/Active now$/i, '')
-        .replace(/\s+$/, ''); // Trim trailing whitespace
+      // Strip ALL known LinkedIn UI suffixes (order matters for concatenated forms)
+      firstLine = stripLinkedInUISuffixes(firstLine);
       
       // Check if first line looks like a name (1-4 words, starts with capital, no special chars)
       const words = firstLine.split(/\s+/).filter(w => w.length > 0);
