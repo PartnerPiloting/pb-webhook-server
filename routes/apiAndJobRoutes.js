@@ -10265,6 +10265,69 @@ router.get("/api/smart-followup/fathom-test", async (req, res) => {
 });
 
 // ---------------------------------------------------------------
+// Fathom Transcript Structure Debug - See actual API response structure
+// ---------------------------------------------------------------
+router.get("/api/smart-followup/fathom-structure", async (req, res) => {
+  const { getAllClients } = require('../services/clientService');
+  
+  try {
+    const { clientId } = req.query;
+    
+    if (!clientId) {
+      return res.status(400).json({ success: false, error: 'clientId is required' });
+    }
+    
+    const allClients = await getAllClients();
+    const client = allClients.find(c => c.clientId === clientId);
+    
+    if (!client?.fathomApiKey) {
+      return res.status(404).json({ success: false, error: 'Client or Fathom API key not found' });
+    }
+    
+    const fetch = (await import('node-fetch')).default;
+    const fathomUrl = new URL('https://api.fathom.ai/external/v1/meetings');
+    fathomUrl.searchParams.set('limit', '1');
+    fathomUrl.searchParams.set('include_transcript', 'true');
+    fathomUrl.searchParams.set('include_summary', 'true');
+    
+    const response = await fetch(fathomUrl.toString(), {
+      method: 'GET',
+      headers: {
+        'X-Api-Key': client.fathomApiKey,
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    if (!response.ok) {
+      return res.status(response.status).json({ success: false, error: await response.text() });
+    }
+    
+    const data = await response.json();
+    const meeting = data.items?.[0];
+    
+    if (!meeting) {
+      return res.json({ success: true, message: 'No meetings found' });
+    }
+    
+    // Return structure info
+    res.json({
+      success: true,
+      meetingKeys: Object.keys(meeting),
+      transcriptType: typeof meeting.transcript,
+      transcriptIsArray: Array.isArray(meeting.transcript),
+      transcriptLength: Array.isArray(meeting.transcript) ? meeting.transcript.length : null,
+      firstUtterance: Array.isArray(meeting.transcript) ? meeting.transcript[0] : null,
+      utteranceKeys: Array.isArray(meeting.transcript) && meeting.transcript[0] ? Object.keys(meeting.transcript[0]) : null,
+      summaryType: typeof meeting.default_summary,
+      summaryKeys: meeting.default_summary ? Object.keys(meeting.default_summary) : null
+    });
+    
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// ---------------------------------------------------------------
 // Fathom Debug Endpoint - Check why Fathom isn't being fetched for a lead
 // ---------------------------------------------------------------
 router.get("/api/smart-followup/fathom-debug", async (req, res) => {
