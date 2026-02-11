@@ -213,26 +213,29 @@ function shouldFetchFathomTranscripts(notes, existingRecord, forceRefresh = fals
 // FILTER LOGIC
 // ============================================
 
-// How many days back to look for modified leads
+// How many days back to look for modified leads (for AI re-analysis decision only)
 const MODIFIED_WINDOW_DAYS = 7;
 
 /**
  * Build Airtable filter for candidate leads
  * Returns leads that are:
  * - Not ceased (Cease FUP != 'Yes')
- * - AND modified in last 7 days (catches notes updates and user date changes)
+ * - Have a Follow-Up Date set
+ * - EITHER due/past-due (date <= today) OR modified in last 7 days
  * 
- * Decision 17: We query by modification time to catch:
- * - Notes updated (email via track@, manual entry)
- * - User FUP date changes
- * Then we compare notes length to decide if AI re-analysis is needed.
+ * The 7-day window (Decision 17) controls whether we RUN AI - not who appears in the queue.
+ * All due leads must be in the sweep so they get Smart FUP State records and appear in queue.
+ * For leads not modified recently: we do date-only sync (no AI). For modified leads: we run AI if notes grew.
  */
 function buildCandidateFilter() {
-  // Query leads modified in the last N days that aren't ceased
+  const today = new Date().toISOString().split('T')[0];
   return `AND(
     OR({${LEAD_FIELDS.CEASE_FUP}} != 'Yes', {${LEAD_FIELDS.CEASE_FUP}} = BLANK()),
     {${LEAD_FIELDS.FOLLOW_UP_DATE}} != '',
-    LAST_MODIFIED_TIME() >= DATEADD(TODAY(), -${MODIFIED_WINDOW_DAYS}, 'days')
+    OR(
+      {${LEAD_FIELDS.FOLLOW_UP_DATE}} <= '${today}',
+      LAST_MODIFIED_TIME() >= DATEADD(TODAY(), -${MODIFIED_WINDOW_DAYS}, 'days')
+    )
   )`.replace(/\s+/g, ' ').trim();
 }
 
