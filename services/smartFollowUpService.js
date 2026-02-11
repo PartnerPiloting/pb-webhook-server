@@ -510,6 +510,8 @@ async function upsertStateRecord(clientId, lead, aiOutput, options = {}) {
   const recordData = {
     [SMART_FUP_STATE_FIELDS.CLIENT_ID]: clientId,
     [SMART_FUP_STATE_FIELDS.LEAD_ID]: leadId,
+    [SMART_FUP_STATE_FIELDS.LEAD_FIRST_NAME]: lead.fields[LEAD_FIELDS.FIRST_NAME] || '',
+    [SMART_FUP_STATE_FIELDS.LEAD_LAST_NAME]: lead.fields[LEAD_FIELDS.LAST_NAME] || '',
     [SMART_FUP_STATE_FIELDS.LEAD_EMAIL]: lead.fields[LEAD_FIELDS.EMAIL] || '',
     [SMART_FUP_STATE_FIELDS.LEAD_LINKEDIN]: lead.fields[LEAD_FIELDS.LINKEDIN_URL] || '',
     [SMART_FUP_STATE_FIELDS.GENERATED_TIME]: new Date().toISOString(),
