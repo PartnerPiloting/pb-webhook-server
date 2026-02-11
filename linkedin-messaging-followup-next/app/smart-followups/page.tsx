@@ -232,7 +232,7 @@ function SmartFollowupsContent() {
         'Cease FUP': 'Yes'
       });
       
-      setActionMessage({ type: 'success', text: 'Follow-up ceased. Lead removed from queue.' });
+      setActionMessage({ type: 'success', text: 'No follow-up. Lead removed from queue.' });
       moveToNextItem();
       loadQueue();
     } catch (err) {
@@ -517,7 +517,7 @@ function SmartFollowupsContent() {
                       onClick={handleCeaseFollowup}
                       className="px-2.5 py-1 text-xs font-medium text-red-600 bg-red-50 hover:bg-red-100 rounded-md"
                     >
-                      ⏹️ Cease
+                      ⏹️ No follow-up
                     </button>
                   </div>
                 </div>

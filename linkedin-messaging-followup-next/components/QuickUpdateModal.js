@@ -602,7 +602,7 @@ export default function QuickUpdateModal({
     const isCeased = selectedLead.ceaseFup === 'Yes' || selectedLead['Cease FUP'] === 'Yes';
     
     if (!finalFollowUpDate && !isCeased) {
-      setError('Please enter a Follow-up Date or click "Cease Follow-up"');
+      setError('Please enter a Follow-up Date or click "No follow-up"');
       return;
     }
     
@@ -671,17 +671,13 @@ export default function QuickUpdateModal({
   const handleCeaseFollowup = async () => {
     if (!selectedLead) return;
     
-    if (!window.confirm('Are you sure you want to cease follow-up for this lead? This marks them as no longer needing follow-up.')) {
-      return;
-    }
-    
     setIsSaving(true);
     setError(null);
     
     try {
       const existingNotes = selectedLead.notes || '';
       const dateStr = new Date().toLocaleDateString('en-AU', { day: '2-digit', month: 'short', year: '2-digit' });
-      const ceaseNote = `\n\n## MANUAL\n#moving-on - Ceased follow-up\n[${dateStr}]`;
+      const ceaseNote = `\n\n## MANUAL\n#moving-on - No follow-up\n[${dateStr}]`;
       
       await quickUpdateLead(selectedLead.id, {
         followUpDate: null,
@@ -1420,7 +1416,7 @@ export default function QuickUpdateModal({
                       disabled={isSaving}
                       className="w-full px-3 py-2 text-sm font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-lg hover:bg-amber-100 transition-colors disabled:opacity-50"
                     >
-                      ⏹️ Cease Follow-up
+                      ⏹️ No follow-up
                     </button>
                   )}
                 </div>
