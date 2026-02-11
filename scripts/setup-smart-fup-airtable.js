@@ -37,6 +37,8 @@ const SMART_FUP_STATE_FIELDS = {
   
   // Lead identification
   LEAD_ID: 'Lead ID',               // Single line text - Airtable record ID
+  LEAD_FIRST_NAME: 'Lead First Name', // Single line text
+  LEAD_LAST_NAME: 'Lead Last Name',   // Single line text
   LEAD_EMAIL: 'Lead Email',         // Email - for Fathom matching
   LEAD_LINKEDIN: 'Lead LinkedIn Profile', // URL - quick access for messaging
   
