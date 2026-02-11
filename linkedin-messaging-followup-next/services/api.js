@@ -1644,6 +1644,7 @@ export const detectLeadTags = async ({ notes, linkedinMessages, emailContent, le
 /**
  * Get the Smart Follow-up queue from the Smart FUP State table
  * Returns AI-analyzed leads that are due for follow-up
+ * Note: Smart-followup routes are at /api/smart-followup/* (not under /api/linkedin)
  * @returns {Promise<{success: boolean, count: number, queue: Array}>}
  */
 export const getSmartFollowupQueue = async () => {
@@ -1653,9 +1654,11 @@ export const getSmartFollowupQueue = async () => {
       throw new Error('Client ID not available. Please ensure user is authenticated.');
     }
     
-    const response = await api.get('/smart-followup/queue', {
+    const base = getBackendBase();
+    const response = await axios.get(`${base}/api/smart-followup/queue`, {
       params: { clientId },
-      timeout: 30000
+      timeout: 30000,
+      headers: getAuthenticatedHeaders()
     });
     
     return response.data;
@@ -1677,9 +1680,12 @@ export const acknowledgeAiDate = async (leadId) => {
       throw new Error('Client ID not available. Please ensure user is authenticated.');
     }
     
-    const response = await api.post('/smart-followup/acknowledge', {
+    const base = getBackendBase();
+    const response = await axios.post(`${base}/api/smart-followup/acknowledge`, {
       clientId,
       leadId
+    }, {
+      headers: getAuthenticatedHeaders()
     });
     
     return response.data;
