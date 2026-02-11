@@ -118,35 +118,20 @@ async function fetchFathomTranscripts(email, fathomApiKey) {
     // Extract transcripts from matching meetings (already included in response)
     const transcripts = [];
     for (const meeting of matchingMeetings.slice(0, 5)) { // Limit to 5 most recent
-      // Format transcript - it may be an array of utterance objects or a string
+      // Format transcript - array of utterance objects: { speaker: { display_name }, text, timestamp }
       let transcriptText = '';
-      if (meeting.transcript) {
-        if (Array.isArray(meeting.transcript)) {
-          // Transcript is array of utterance objects: { speaker, text, start_time, etc. }
-          transcriptText = meeting.transcript.map(utterance => {
-            const speaker = utterance.speaker || utterance.speaker_name || 'Speaker';
-            const text = utterance.text || utterance.content || '';
-            return `${speaker}: ${text}`;
-          }).join('\n');
-        } else if (typeof meeting.transcript === 'string') {
-          transcriptText = meeting.transcript;
-        } else {
-          // Unknown format - stringify it
-          transcriptText = JSON.stringify(meeting.transcript, null, 2);
-        }
+      if (meeting.transcript && Array.isArray(meeting.transcript)) {
+        transcriptText = meeting.transcript.map(utterance => {
+          // speaker is an object with display_name
+          const speakerName = utterance.speaker?.display_name || 'Speaker';
+          const text = utterance.text || '';
+          const timestamp = utterance.timestamp || '';
+          return `[${timestamp}] ${speakerName}: ${text}`;
+        }).join('\n');
       }
       
-      // Format summary - it may also be an object
-      let summaryText = '';
-      if (meeting.default_summary?.markdown_formatted) {
-        summaryText = meeting.default_summary.markdown_formatted;
-      } else if (meeting.summary) {
-        if (typeof meeting.summary === 'string') {
-          summaryText = meeting.summary;
-        } else if (meeting.summary.markdown_formatted) {
-          summaryText = meeting.summary.markdown_formatted;
-        }
-      }
+      // Summary is at default_summary.markdown_formatted
+      const summaryText = meeting.default_summary?.markdown_formatted || '';
       
       if (transcriptText || summaryText) {
         transcripts.push({
