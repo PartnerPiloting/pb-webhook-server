@@ -809,7 +809,7 @@ This is successful if:
 - `Last Processed Notes Length` (number) - To detect new notes
 
 **Sweep logic:**
-1. Query leads modified in last 7 days (catches user date changes too)
+1. Query leads: (Follow-Up Date <= today) OR (modified in last 7 days). The 7-day window controls AI re-analysis, not who appears in queue. All due leads must be sweeped so they get Smart FUP State records.
 2. For each lead:
    - Always update cached User FUP Date (keep in sync)
    - Compare notes length to Last Processed Notes Length
