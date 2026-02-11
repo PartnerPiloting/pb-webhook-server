@@ -59,6 +59,7 @@ const SMART_FUP_STATE_FIELDS = {
   
   // Notes change detection (Decision 17)
   LAST_PROCESSED_NOTES_LENGTH: 'Last Processed Notes Length', // Number - chars processed
+  LAST_PROCESSED_MEETING_NOTES_LENGTH: 'Last Processed Meeting Notes Length', // Number - meeting section chars
   
   // Fathom data
   FATHOM_TRANSCRIPTS: 'Fathom Transcripts', // Long text - synced transcripts
