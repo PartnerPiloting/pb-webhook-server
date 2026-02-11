@@ -103,11 +103,11 @@ async function fetchFathomTranscripts(email, fathomApiKey) {
     const data = await response.json();
     const meetings = data.items || [];
     
-    // Filter meetings that include this email as an attendee
+    // Filter meetings that include this email as an invitee
     const matchingMeetings = meetings.filter(meeting => {
-      const attendees = meeting.attendees || [];
-      return attendees.some(a => 
-        a.email && a.email.toLowerCase() === email.toLowerCase()
+      const invitees = meeting.calendar_invitees || [];
+      return invitees.some(invitee => 
+        invitee.email && invitee.email.toLowerCase() === email.toLowerCase()
       );
     });
     
