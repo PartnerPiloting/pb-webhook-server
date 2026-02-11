@@ -142,15 +142,12 @@ async function fetchFathomTranscripts(email, fathomApiKey) {
         }).join('\n');
       }
       
-      // Summary is at default_summary.markdown_formatted
-      const summaryText = meeting.default_summary?.markdown_formatted || '';
-      
-      if (transcriptText || summaryText) {
+      // Store transcript only - AI will read full transcript; summary adds noise
+      if (transcriptText) {
         transcripts.push({
           date: meeting.created_at,
           title: meeting.title || meeting.meeting_title || 'Meeting',
-          transcript: transcriptText,
-          summary: summaryText
+          transcript: transcriptText
         });
       }
     }
@@ -159,16 +156,9 @@ async function fetchFathomTranscripts(email, fathomApiKey) {
       return null;
     }
     
-    // Format transcripts for storage (include summary if available)
+    // Format transcripts for storage (transcript only, no summary)
     return transcripts.map(t => {
-      let content = `=== ${t.title} (${t.date}) ===\n`;
-      if (t.summary) {
-        content += `SUMMARY:\n${t.summary}\n\n`;
-      }
-      if (t.transcript) {
-        content += `TRANSCRIPT:\n${t.transcript}`;
-      }
-      return content;
+      return `=== ${t.title} (${t.date}) ===\n${t.transcript}`;
     }).join('\n\n---\n\n');
     
   } catch (err) {
