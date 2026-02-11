@@ -743,10 +743,20 @@
     
     // Pattern 3: First line of clipboard is often the contact name header
     // LinkedIn messaging copy format typically starts with: "Name\n1st degree connection\n..."
+    // Sometimes LinkedIn concatenates status without space: "NameStatus is online"
     const lines = clipboardText.split('\n').map(l => l.trim()).filter(l => l);
     if (lines.length > 0) {
-      const firstLine = lines[0];
-      // Check if first line looks like a name (2-4 words, starts with capital, no special chars)
+      let firstLine = lines[0];
+      
+      // Strip LinkedIn status indicators (may be concatenated without space)
+      // e.g., "Rhys CassidyStatus is online" -> "Rhys Cassidy"
+      firstLine = firstLine
+        .replace(/Status is (online|offline|busy|away)$/i, '')
+        .replace(/ is (online|offline|busy|away)$/i, '')
+        .replace(/Active now$/i, '')
+        .replace(/\s+$/, ''); // Trim trailing whitespace
+      
+      // Check if first line looks like a name (1-4 words, starts with capital, no special chars)
       const words = firstLine.split(/\s+/).filter(w => w.length > 0);
       if (words.length >= 1 && words.length <= 4 && 
           firstLine.length >= 3 && firstLine.length <= 60 &&
