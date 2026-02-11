@@ -55,7 +55,7 @@ const LEAD_FIELDS = {
 // FATHOM INTEGRATION
 // ============================================
 
-const FATHOM_API_BASE = 'https://api.fathom.video/v1';
+const FATHOM_API_BASE = 'https://api.fathom.ai/external/v1';
 const FATHOM_TIMEOUT_MS = 30000;
 
 /**
@@ -71,13 +71,23 @@ async function fetchFathomTranscripts(email, fathomApiKey) {
   }
   
   try {
-    // Fetch meetings with timeout
+    // Fetch meetings from last 90 days with timeout
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), FATHOM_TIMEOUT_MS);
     
-    const response = await fetch(`${FATHOM_API_BASE}/meetings`, {
+    const ninetyDaysAgo = new Date();
+    ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+    
+    const meetingsUrl = new URL(`${FATHOM_API_BASE}/meetings`);
+    meetingsUrl.searchParams.set('limit', '100');
+    meetingsUrl.searchParams.set('include_transcript', 'true');
+    meetingsUrl.searchParams.set('include_summary', 'true');
+    meetingsUrl.searchParams.set('created_after', ninetyDaysAgo.toISOString());
+    
+    const response = await fetch(meetingsUrl.toString(), {
+      method: 'GET',
       headers: {
-        'Authorization': `Bearer ${fathomApiKey}`,
+        'X-Api-Key': fathomApiKey,
         'Content-Type': 'application/json'
       },
       signal: controller.signal
@@ -91,13 +101,13 @@ async function fetchFathomTranscripts(email, fathomApiKey) {
     }
     
     const data = await response.json();
-    const meetings = data.meetings || [];
+    const meetings = data.items || [];
     
-    // Filter meetings that include this email as a participant
+    // Filter meetings that include this email as an attendee
     const matchingMeetings = meetings.filter(meeting => {
-      const participants = meeting.participants || [];
-      return participants.some(p => 
-        p.email && p.email.toLowerCase() === email.toLowerCase()
+      const attendees = meeting.attendees || [];
+      return attendees.some(a => 
+        a.email && a.email.toLowerCase() === email.toLowerCase()
       );
     });
     
@@ -105,29 +115,16 @@ async function fetchFathomTranscripts(email, fathomApiKey) {
       return null;
     }
     
-    // Fetch transcripts for matching meetings
+    // Extract transcripts from matching meetings (already included in response)
     const transcripts = [];
     for (const meeting of matchingMeetings.slice(0, 5)) { // Limit to 5 most recent
-      try {
-        const transcriptResp = await fetch(`${FATHOM_API_BASE}/meetings/${meeting.id}/transcript`, {
-          headers: {
-            'Authorization': `Bearer ${fathomApiKey}`,
-            'Content-Type': 'application/json'
-          }
+      if (meeting.transcript) {
+        transcripts.push({
+          date: meeting.created_at,
+          title: meeting.title || 'Meeting',
+          transcript: meeting.transcript,
+          summary: meeting.summary || ''
         });
-        
-        if (transcriptResp.ok) {
-          const transcriptData = await transcriptResp.json();
-          if (transcriptData.transcript) {
-            transcripts.push({
-              date: meeting.created_at || meeting.date,
-              title: meeting.title || 'Meeting',
-              transcript: transcriptData.transcript
-            });
-          }
-        }
-      } catch (err) {
-        logger.warn(`Failed to fetch transcript for meeting ${meeting.id}: ${err.message}`);
       }
     }
     
@@ -135,10 +132,15 @@ async function fetchFathomTranscripts(email, fathomApiKey) {
       return null;
     }
     
-    // Format transcripts for storage
-    return transcripts.map(t => 
-      `=== ${t.title} (${t.date}) ===\n${t.transcript}`
-    ).join('\n\n---\n\n');
+    // Format transcripts for storage (include summary if available)
+    return transcripts.map(t => {
+      let content = `=== ${t.title} (${t.date}) ===\n`;
+      if (t.summary) {
+        content += `SUMMARY:\n${t.summary}\n\nTRANSCRIPT:\n`;
+      }
+      content += t.transcript;
+      return content;
+    }).join('\n\n---\n\n');
     
   } catch (err) {
     if (err.name === 'AbortError') {
