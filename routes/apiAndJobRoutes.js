@@ -10265,6 +10265,94 @@ router.get("/api/smart-followup/fathom-test", async (req, res) => {
 });
 
 // ---------------------------------------------------------------
+// Fathom Debug Endpoint - Check why Fathom isn't being fetched for a lead
+// ---------------------------------------------------------------
+router.get("/api/smart-followup/fathom-debug", async (req, res) => {
+  const debugLogger = createLogger({ runId: 'FATHOM-DEBUG', clientId: 'SYSTEM', operation: 'fathom_debug' });
+  const { getAllClients, getClientBase, initializeClientsBase } = require('../services/clientService');
+  const { getSection } = require('../utils/notesSectionManager');
+  const { SMART_FUP_STATE_FIELDS } = require('../scripts/setup-smart-fup-airtable');
+  
+  try {
+    const { clientId, leadId } = req.query;
+    
+    if (!clientId || !leadId) {
+      return res.status(400).json({ success: false, error: 'clientId and leadId are required' });
+    }
+    
+    // Get client config
+    const allClients = await getAllClients();
+    const client = allClients.find(c => c.clientId === clientId);
+    
+    if (!client) {
+      return res.status(404).json({ success: false, error: `Client ${clientId} not found` });
+    }
+    
+    // Get lead from Leads table
+    const clientBase = getClientBase(client.airtableBaseId);
+    let lead;
+    try {
+      lead = await clientBase('Leads').find(leadId);
+    } catch (e) {
+      return res.status(404).json({ success: false, error: `Lead ${leadId} not found` });
+    }
+    
+    const notes = lead.fields['Notes'] || '';
+    const email = lead.fields['Email'] || '';
+    
+    // Get meeting section
+    const meetingNotes = getSection(notes, 'meeting');
+    const meetingNotesLength = meetingNotes.length;
+    
+    // Get existing Smart FUP State record
+    const masterBase = initializeClientsBase();
+    const stateRecords = await masterBase('Smart FUP State').select({
+      filterByFormula: `AND({Client ID} = '${clientId}', {Lead ID} = '${leadId}')`,
+      maxRecords: 1
+    }).all();
+    
+    const existingRecord = stateRecords.length > 0 ? stateRecords[0] : null;
+    const existingTranscripts = existingRecord?.fields?.[SMART_FUP_STATE_FIELDS.FATHOM_TRANSCRIPTS] || '';
+    const previousMeetingNotesLength = existingRecord?.fields?.[SMART_FUP_STATE_FIELDS.LAST_PROCESSED_MEETING_NOTES_LENGTH] || 0;
+    
+    // Evaluate shouldFetch conditions
+    const hasNoTranscripts = !existingTranscripts;
+    const meetingNotesGrew = meetingNotesLength > previousMeetingNotesLength;
+    const hasMeetingContent = meetingNotesLength > 0;
+    const shouldFetch = hasMeetingContent && (hasNoTranscripts || meetingNotesGrew);
+    
+    res.json({
+      success: true,
+      debug: {
+        leadId,
+        leadName: `${lead.fields['First Name'] || ''} ${lead.fields['Last Name'] || ''}`.trim(),
+        email,
+        hasFathomApiKey: !!client.fathomApiKey,
+        notesLength: notes.length,
+        meetingNotesLength,
+        meetingNotesPreview: meetingNotes.substring(0, 200) + (meetingNotes.length > 200 ? '...' : ''),
+        existingStateRecord: !!existingRecord,
+        existingTranscriptsLength: existingTranscripts.length,
+        previousMeetingNotesLength,
+        conditions: {
+          hasMeetingContent,
+          hasNoTranscripts,
+          meetingNotesGrew,
+          shouldFetch,
+          hasEmail: !!email,
+          hasFathomApiKey: !!client.fathomApiKey,
+          wouldAttemptFetch: shouldFetch && !!client.fathomApiKey && !!email
+        }
+      }
+    });
+    
+  } catch (error) {
+    debugLogger.error(`Fathom debug error: ${error.message}`);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// ---------------------------------------------------------------
 // Smart Follow-Up Queue Endpoint
 // Returns the follow-up queue from Smart FUP State table
 // Used by the Smart Follow-ups UI page
