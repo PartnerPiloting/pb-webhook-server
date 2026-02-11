@@ -702,8 +702,9 @@
     // Find all senders using LinkedIn's format patterns
     const allSenders = new Set();
     
-    // Pattern 1: "Name sent the following message at HH:MM AM/PM"
-    const sentPattern = /^(.+?)\s+sent the following message at/gm;
+    // Pattern 1: "Name sent the following message(s) at HH:MM AM/PM"
+    // Handle both singular "message" and plural "messages"
+    const sentPattern = /^(.+?)\s+sent the following messages? at/gm;
     let match;
     while ((match = sentPattern.exec(clipboardText)) !== null) {
       const name = match[1].trim();
@@ -726,8 +727,6 @@
       }
     }
     
-    if (allSenders.size === 0) return '';
-    
     // Filter out client's name
     const otherPeople = Array.from(allSenders).filter(name => {
       if (!clientFirstName) return true;  // No client info, keep all
@@ -740,6 +739,27 @@
     // so that the visible header name will be used instead
     if (otherPeople.length > 0) {
       return stripCredentialSuffixes(otherPeople[0]);
+    }
+    
+    // Pattern 3: First line of clipboard is often the contact name header
+    // LinkedIn messaging copy format typically starts with: "Name\n1st degree connection\n..."
+    const lines = clipboardText.split('\n').map(l => l.trim()).filter(l => l);
+    if (lines.length > 0) {
+      const firstLine = lines[0];
+      // Check if first line looks like a name (2-4 words, starts with capital, no special chars)
+      const words = firstLine.split(/\s+/).filter(w => w.length > 0);
+      if (words.length >= 1 && words.length <= 4 && 
+          firstLine.length >= 3 && firstLine.length <= 60 &&
+          /^[A-Z]/.test(firstLine) && 
+          !firstLine.includes('@') && !firstLine.includes('/') &&
+          !firstLine.includes(':') && !firstLine.match(/^\d/) &&
+          // Skip if it's a degree indicator line
+          !firstLine.match(/^\d+(st|nd|rd|th)\s+degree/i) &&
+          // Skip if it's the client's own name
+          firstLine.toLowerCase() !== clientName.toLowerCase()) {
+        console.log('[NA Extension] Using first line as contact name:', firstLine);
+        return stripCredentialSuffixes(firstLine);
+      }
     }
     
     // No other person found - this means clipboard only contains client's own messages
