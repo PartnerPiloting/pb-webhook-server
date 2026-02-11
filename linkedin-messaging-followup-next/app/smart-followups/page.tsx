@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef, Suspense } from 'react';
 import Layout from '../../components/Layout';
 import { getSmartFollowupQueue, acknowledgeAiDate, generateFollowupMessage, updateLead } from '../../services/api';
-import { getCurrentClientId } from '../../utils/clientUtils';
+import { getCurrentClientId, getClientProfile } from '../../utils/clientUtils';
 
 /**
  * Smart Follow-ups Page v2 - Rebuilt based on Smart Follow-Up Decisions doc
@@ -93,7 +93,11 @@ function SmartFollowupsContent() {
   
   const chatInputRef = useRef<HTMLInputElement>(null);
   
-  const isOwner = getCurrentClientId() === 'Guy-Wilson';
+  // Owner check: Guy-Wilson (case-insensitive). Layout only renders children after init, so client should be ready.
+  const clientId = getCurrentClientId();
+  const profileClientId = getClientProfile()?.client?.clientId;
+  const effectiveClientId = clientId || profileClientId;
+  const isOwner = effectiveClientId?.toLowerCase() === 'guy-wilson';
 
   // Load on mount
   useEffect(() => {
@@ -357,6 +361,18 @@ function SmartFollowupsContent() {
   };
 
   // Access control
+  if (!effectiveClientId) {
+    return (
+      <Layout>
+        <div className="flex items-center justify-center min-h-[60vh]">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+            <p className="text-gray-500">Checking access...</p>
+          </div>
+        </div>
+      </Layout>
+    );
+  }
   if (!isOwner) {
     return (
       <Layout>
