@@ -17,6 +17,8 @@ const { createLogger } = require('../utils/contextLogger');
 const { SMART_FUP_STATE_FIELDS } = require('../scripts/setup-smart-fup-airtable');
 const { getAllClients, getClientBase, initializeClientsBase } = require('./clientService');
 const { vertexAIClient } = require('../config/geminiClient');
+const { getSection } = require('../utils/notesSectionManager');
+const fetch = require('node-fetch');
 
 // Create module-level logger
 const logger = createLogger({
@@ -48,6 +50,137 @@ const LEAD_FIELDS = {
 
 // Note: Using getClientBase and initializeClientsBase from clientService.js
 // to avoid duplication. initializeClientsBase() returns Master Clients base.
+
+// ============================================
+// FATHOM INTEGRATION
+// ============================================
+
+const FATHOM_API_BASE = 'https://api.fathom.video/v1';
+const FATHOM_TIMEOUT_MS = 30000;
+
+/**
+ * Fetch Fathom transcripts for a lead's email
+ * 
+ * @param {string} email - Lead's email address
+ * @param {string} fathomApiKey - Fathom API key
+ * @returns {string|null} Combined transcripts or null if none found
+ */
+async function fetchFathomTranscripts(email, fathomApiKey) {
+  if (!email || !fathomApiKey) {
+    return null;
+  }
+  
+  try {
+    // Fetch meetings with timeout
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), FATHOM_TIMEOUT_MS);
+    
+    const response = await fetch(`${FATHOM_API_BASE}/meetings`, {
+      headers: {
+        'Authorization': `Bearer ${fathomApiKey}`,
+        'Content-Type': 'application/json'
+      },
+      signal: controller.signal
+    });
+    
+    clearTimeout(timeout);
+    
+    if (!response.ok) {
+      logger.warn(`Fathom API error: ${response.status} ${response.statusText}`);
+      return null;
+    }
+    
+    const data = await response.json();
+    const meetings = data.meetings || [];
+    
+    // Filter meetings that include this email as a participant
+    const matchingMeetings = meetings.filter(meeting => {
+      const participants = meeting.participants || [];
+      return participants.some(p => 
+        p.email && p.email.toLowerCase() === email.toLowerCase()
+      );
+    });
+    
+    if (matchingMeetings.length === 0) {
+      return null;
+    }
+    
+    // Fetch transcripts for matching meetings
+    const transcripts = [];
+    for (const meeting of matchingMeetings.slice(0, 5)) { // Limit to 5 most recent
+      try {
+        const transcriptResp = await fetch(`${FATHOM_API_BASE}/meetings/${meeting.id}/transcript`, {
+          headers: {
+            'Authorization': `Bearer ${fathomApiKey}`,
+            'Content-Type': 'application/json'
+          }
+        });
+        
+        if (transcriptResp.ok) {
+          const transcriptData = await transcriptResp.json();
+          if (transcriptData.transcript) {
+            transcripts.push({
+              date: meeting.created_at || meeting.date,
+              title: meeting.title || 'Meeting',
+              transcript: transcriptData.transcript
+            });
+          }
+        }
+      } catch (err) {
+        logger.warn(`Failed to fetch transcript for meeting ${meeting.id}: ${err.message}`);
+      }
+    }
+    
+    if (transcripts.length === 0) {
+      return null;
+    }
+    
+    // Format transcripts for storage
+    return transcripts.map(t => 
+      `=== ${t.title} (${t.date}) ===\n${t.transcript}`
+    ).join('\n\n---\n\n');
+    
+  } catch (err) {
+    if (err.name === 'AbortError') {
+      logger.warn(`Fathom API timeout for email: ${email}`);
+    } else {
+      logger.warn(`Fathom fetch error for ${email}: ${err.message}`);
+    }
+    return null;
+  }
+}
+
+/**
+ * Check if Fathom transcripts should be fetched for a lead
+ * 
+ * @param {string} notes - Lead's notes field
+ * @param {Object} existingRecord - Existing Smart FUP State record (if any)
+ * @returns {Object} { shouldFetch: boolean, meetingNotesLength: number }
+ */
+function shouldFetchFathomTranscripts(notes, existingRecord) {
+  // Get meeting section content
+  const meetingNotes = getSection(notes || '', 'meeting');
+  const meetingNotesLength = meetingNotes.length;
+  
+  // No meeting notes section = no Fathom fetch needed
+  if (meetingNotesLength === 0) {
+    return { shouldFetch: false, meetingNotesLength: 0 };
+  }
+  
+  // Get existing values from state record
+  const existingTranscripts = existingRecord?.fields?.[SMART_FUP_STATE_FIELDS.FATHOM_TRANSCRIPTS] || '';
+  const previousMeetingNotesLength = existingRecord?.fields?.[SMART_FUP_STATE_FIELDS.LAST_PROCESSED_MEETING_NOTES_LENGTH] || 0;
+  
+  // Fetch if:
+  // 1. Has meeting notes content AND no cached transcripts, OR
+  // 2. Meeting notes section grew since last processed
+  const hasNoTranscripts = !existingTranscripts;
+  const meetingNotesGrew = meetingNotesLength > previousMeetingNotesLength;
+  
+  const shouldFetch = hasNoTranscripts || meetingNotesGrew;
+  
+  return { shouldFetch, meetingNotesLength };
+}
 
 // ============================================
 // FILTER LOGIC
@@ -353,12 +486,21 @@ async function findExistingStateRecord(clientId, leadId) {
  * @param {Object} aiOutput - AI analysis output (may be null if no new notes)
  * @param {Object} options - Additional options
  * @param {number} options.notesLength - Current notes length to store
+ * @param {number} options.meetingNotesLength - Current meeting section length to store
+ * @param {string} options.fathomTranscripts - Fetched Fathom transcripts (if any)
  * @param {string} options.userFupDate - User's follow-up date from Leads table
  * @param {Object} options.existingRecord - Existing state record (to avoid re-query)
  * @param {boolean} options.dryRun - If true, don't write to Airtable
  */
 async function upsertStateRecord(clientId, lead, aiOutput, options = {}) {
-  const { notesLength = 0, userFupDate = null, existingRecord = null, dryRun = false } = options;
+  const { 
+    notesLength = 0, 
+    meetingNotesLength = 0,
+    fathomTranscripts = null,
+    userFupDate = null, 
+    existingRecord = null, 
+    dryRun = false 
+  } = options;
   const base = initializeClientsBase();
   const leadId = lead.id;
   
@@ -370,11 +512,17 @@ async function upsertStateRecord(clientId, lead, aiOutput, options = {}) {
     [SMART_FUP_STATE_FIELDS.LEAD_LINKEDIN]: lead.fields[LEAD_FIELDS.LINKEDIN_URL] || '',
     [SMART_FUP_STATE_FIELDS.GENERATED_TIME]: new Date().toISOString(),
     [SMART_FUP_STATE_FIELDS.LAST_PROCESSED_NOTES_LENGTH]: notesLength,
+    [SMART_FUP_STATE_FIELDS.LAST_PROCESSED_MEETING_NOTES_LENGTH]: meetingNotesLength,
   };
   
   // Always sync User FUP Date from Leads table
   if (userFupDate) {
     recordData[SMART_FUP_STATE_FIELDS.USER_FUP_DATE] = userFupDate;
+  }
+  
+  // Update Fathom transcripts if we fetched new ones
+  if (fathomTranscripts) {
+    recordData[SMART_FUP_STATE_FIELDS.FATHOM_TRANSCRIPTS] = fathomTranscripts;
   }
   
   // Only update AI fields if we have new AI output
@@ -432,6 +580,7 @@ async function upsertStateRecord(clientId, lead, aiOutput, options = {}) {
  * @param {string} options.baseId - Client's Airtable base ID
  * @param {string} options.clientType - Client type (A/B/C)
  * @param {string} options.fupInstructions - Client's FUP AI Instructions
+ * @param {string} options.fathomApiKey - Client's Fathom API key (optional)
  * @param {boolean} options.dryRun - If true, don't write to Airtable
  * @param {number} options.limit - Max leads to process (for testing)
  * @param {boolean} options.forceAll - If true, re-analyze ALL leads regardless of notes changes
@@ -444,6 +593,7 @@ async function sweepClient(options) {
     baseId, 
     clientType = 'A',
     fupInstructions = '',
+    fathomApiKey = null,
     dryRun = false, 
     limit = null,
     forceAll = false
@@ -501,6 +651,7 @@ async function sweepClient(options) {
     // Track stats for Decision 17 logic
     results.aiAnalyzed = 0;
     results.dateOnlySync = 0;
+    results.fathomFetched = 0;
     
     // Process each lead
     for (const lead of leadsToProcess) {
@@ -508,12 +659,28 @@ async function sweepClient(options) {
         const notes = lead.fields[LEAD_FIELDS.NOTES] || '';
         const currentNotesLength = notes.length;
         const userFupDate = lead.fields[LEAD_FIELDS.FOLLOW_UP_DATE] || null;
+        const leadEmail = lead.fields[LEAD_FIELDS.EMAIL] || null;
         
         // Fetch existing state record to check for notes changes
         const existingRecord = await findExistingStateRecord(clientId, lead.id);
         const previousNotesLength = existingRecord?.fields?.[SMART_FUP_STATE_FIELDS.LAST_PROCESSED_NOTES_LENGTH] || 0;
         
         let aiOutput = null;
+        let fathomTranscripts = null;
+        let meetingNotesLength = 0;
+        
+        // Check if Fathom transcripts should be fetched
+        const fathomCheck = shouldFetchFathomTranscripts(notes, existingRecord);
+        meetingNotesLength = fathomCheck.meetingNotesLength;
+        
+        if (fathomCheck.shouldFetch && fathomApiKey && leadEmail) {
+          logger.info(`Lead ${lead.id}: Fetching Fathom transcripts for ${leadEmail}`);
+          fathomTranscripts = await fetchFathomTranscripts(leadEmail, fathomApiKey);
+          if (fathomTranscripts) {
+            results.fathomFetched++;
+            logger.info(`Lead ${lead.id}: Fathom transcripts fetched (${fathomTranscripts.length} chars)`);
+          }
+        }
         
         // Decision 17: Only run AI analysis if notes have grown (or forceAll is set)
         const hasNewNotes = currentNotesLength > previousNotesLength;
@@ -536,6 +703,8 @@ async function sweepClient(options) {
         // Upsert to Smart FUP State (always syncs User FUP Date)
         const upsertResult = await upsertStateRecord(clientId, lead, aiOutput, {
           notesLength: currentNotesLength,
+          meetingNotesLength,
+          fathomTranscripts,
           userFupDate,
           existingRecord,
           dryRun
@@ -625,6 +794,7 @@ async function runSweep(options = {}) {
         baseId: baseId,
         clientType: client.clientType || 'A - Partner Selection',
         fupInstructions: client.fupInstructions || '',
+        fathomApiKey: client.fathomApiKey || null,
         dryRun,
         limit,
         forceAll,
