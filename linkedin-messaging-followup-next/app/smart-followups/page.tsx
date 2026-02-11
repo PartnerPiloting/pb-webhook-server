@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef, Suspense } from 'react';
 import Layout from '../../components/Layout';
 import { getSmartFollowupQueue, acknowledgeAiDate, generateFollowupMessage, updateLead } from '../../services/api';
-import { getCurrentClientId, getClientProfile } from '../../utils/clientUtils';
+import { getCurrentClientId, getClientProfile, getCurrentClientProfile } from '../../utils/clientUtils';
 
 /**
  * Smart Follow-ups Page v2 - Rebuilt based on Smart Follow-Up Decisions doc
@@ -93,10 +93,48 @@ function SmartFollowupsContent() {
   
   const chatInputRef = useRef<HTMLInputElement>(null);
   
-  // Owner check: Guy-Wilson (case-insensitive). Layout only renders children after init, so client should be ready.
-  const clientId = getCurrentClientId();
-  const profileClientId = getClientProfile()?.client?.clientId;
-  const effectiveClientId = clientId || profileClientId;
+  // Resolve client ID from: utils cache, profile, URL params, or retry
+  const getClientFromSources = () => {
+    if (typeof window === 'undefined') return null;
+    const fromUtils = getCurrentClientId() || getClientProfile()?.client?.clientId;
+    if (fromUtils) return fromUtils;
+    const params = new URLSearchParams(window.location.search);
+    return params.get('client') || params.get('clientId') || params.get('testClient') || null;
+  };
+  
+  const [resolvedClientId, setResolvedClientId] = useState<string | null>(() => getClientFromSources());
+  
+  const refreshClient = async () => {
+    try {
+      await getCurrentClientProfile();
+      setResolvedClientId(getClientFromSources());
+    } catch (e) {
+      console.error('Failed to refresh client:', e);
+    }
+  };
+  
+  useEffect(() => {
+    const id = getClientFromSources();
+    if (id) {
+      setResolvedClientId(id);
+      return;
+    }
+    // Retry - Layout init can lag
+    let attempts = 0;
+    const interval = setInterval(() => {
+      attempts++;
+      const id2 = getClientFromSources();
+      if (id2) {
+        setResolvedClientId(id2);
+        clearInterval(interval);
+      } else if (attempts >= 15) {
+        clearInterval(interval);
+      }
+    }, 200);
+    return () => clearInterval(interval);
+  }, []);
+  
+  const effectiveClientId = resolvedClientId;
   const isOwner = effectiveClientId?.toLowerCase() === 'guy-wilson';
 
   // Load on mount
@@ -367,7 +405,14 @@ function SmartFollowupsContent() {
         <div className="flex items-center justify-center min-h-[60vh]">
           <div className="text-center">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
-            <p className="text-gray-500">Checking access...</p>
+            <p className="text-gray-500 mb-4">Checking access...</p>
+            <p className="text-sm text-gray-400 mb-4">Ensure you logged in with your portal link (contains ?token=...)</p>
+            <button
+              onClick={refreshClient}
+              className="px-4 py-2 text-sm font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg"
+            >
+              Retry
+            </button>
           </div>
         </div>
       </Layout>
