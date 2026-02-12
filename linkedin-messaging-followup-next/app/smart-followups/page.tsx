@@ -115,10 +115,12 @@ function SmartFollowupsContent() {
   const [calendarDate, setCalendarDate] = useState('');
   const [currentFupDate, setCurrentFupDate] = useState<string | null>(null);
   const [draftFupDate, setDraftFupDate] = useState<string | null>(null);
+  const [currentFollowUpYes, setCurrentFollowUpYes] = useState(true);
+  const [draftFollowUpYes, setDraftFollowUpYes] = useState(true);
   const [isSavingFup, setIsSavingFup] = useState(false);
   
   const chatInputRef = useRef<HTMLInputElement>(null);
-  const hasUnsavedFupChanges = currentFupDate !== draftFupDate;
+  const hasUnsavedFupChanges = (currentFupDate !== draftFupDate) || (currentFollowUpYes !== draftFollowUpYes);
   
   // Resolve client ID from: utils cache, profile, URL params, or retry
   const getClientFromSources = () => {
@@ -229,13 +231,18 @@ function SmartFollowupsContent() {
     setCalendarDate('');
     setCurrentFupDate(null);
     setDraftFupDate(null);
+    setCurrentFollowUpYes(true);
+    setDraftFollowUpYes(true);
     try {
       const lead = await getLeadById(item.leadId);
       setLeadNotes(lead?.notes || lead?.['Notes'] || '');
       const fup = lead?.followUpDate || lead?.['Follow-Up Date'] || null;
       const fupStr = fup ? (typeof fup === 'string' ? fup.split('T')[0] : fup) : null;
+      const ceased = lead?.ceaseFup === 'Yes' || lead?.['Cease FUP'] === 'Yes';
       setCurrentFupDate(fupStr);
       setDraftFupDate(fupStr);
+      setCurrentFollowUpYes(!ceased);
+      setDraftFollowUpYes(!ceased);
     } catch {
       setLeadNotes('');
     }
@@ -243,7 +250,7 @@ function SmartFollowupsContent() {
 
   const handleSelectLead = (item: QueueItem) => {
     if (item.id === selectedItem?.id) return;
-    if (hasUnsavedFupChanges && !window.confirm('You have unsaved changes to the follow-up date. Discard?')) {
+    if (hasUnsavedFupChanges && !window.confirm('You have unsaved follow-up changes. Discard?')) {
       return;
     }
     selectItem(item);
@@ -333,25 +340,8 @@ function SmartFollowupsContent() {
     }
   };
 
-  const handleCeaseFollowup = async () => {
-    if (!selectedItem) return;
-    
-    try {
-      await updateLead(selectedItem.leadId, { 
-        'Follow-Up Date': null,
-        'Cease FUP': 'Yes'
-      });
-      
-      setActionMessage({ type: 'success', text: 'No follow-up. Lead removed from queue.' });
-      moveToNextItem();
-      loadQueue();
-    } catch (err) {
-      console.error('Failed to cease follow-up:', err);
-      setActionMessage({ type: 'error', text: 'Failed to update lead.' });
-    }
-  };
-
   const updateDraftFup = (days: number) => {
+    setDraftFollowUpYes(true);
     const newDate = new Date();
     newDate.setDate(newDate.getDate() + days);
     setDraftFupDate(newDate.toISOString().split('T')[0]);
@@ -359,28 +349,46 @@ function SmartFollowupsContent() {
 
   const applyCalendarDate = () => {
     if (calendarDate) {
+      setDraftFollowUpYes(true);
       setDraftFupDate(calendarDate);
       setShowCalendar(false);
       setCalendarDate('');
     }
   };
 
-  const handleSaveFupDate = async () => {
-    if (!selectedItem || !draftFupDate || draftFupDate === currentFupDate) return;
+  const handleSaveFup = async () => {
+    if (!selectedItem) return;
+    // Follow Up No: clear date, set Cease FUP; Follow Up Yes: require date
+    if (draftFollowUpYes && !draftFupDate) {
+      setActionMessage({ type: 'error', text: 'Please set a follow-up date when Follow Up is Yes.' });
+      return;
+    }
+    if (!hasUnsavedFupChanges) return;
     
     setIsSavingFup(true);
+    setActionMessage(null);
     try {
-      await snoozeSmartFollowup(selectedItem.leadId, draftFupDate);
-      setCurrentFupDate(draftFupDate);
-      setActionMessage({ type: 'success', text: `Follow-up date saved: ${formatDateLong(draftFupDate)}` });
-      await loadQueue();
-      const today = new Date().toISOString().split('T')[0];
-      if (draftFupDate > today) {
+      if (draftFollowUpYes) {
+        await snoozeSmartFollowup(selectedItem.leadId, draftFupDate!);
+        setCurrentFupDate(draftFupDate);
+        setCurrentFollowUpYes(true);
+        setActionMessage({ type: 'success', text: `Follow-up date saved: ${formatDateLong(draftFupDate)}` });
+      } else {
+        await updateLead(selectedItem.leadId, { followUpDate: null, ceaseFup: 'Yes' });
+        setCurrentFupDate(null);
+        setCurrentFollowUpYes(false);
+        setDraftFupDate(null);
+        setActionMessage({ type: 'success', text: 'No follow-up. Lead removed from queue.' });
         moveToNextItem();
       }
+      await loadQueue();
+      if (draftFollowUpYes) {
+        const today = new Date().toISOString().split('T')[0];
+        if (draftFupDate! > today) moveToNextItem();
+      }
     } catch (err) {
-      console.error('Failed to save follow-up date:', err);
-      setActionMessage({ type: 'error', text: 'Failed to update follow-up date.' });
+      console.error('Failed to save follow-up:', err);
+      setActionMessage({ type: 'error', text: 'Failed to update lead.' });
     } finally {
       setIsSavingFup(false);
     }
@@ -399,7 +407,7 @@ function SmartFollowupsContent() {
   };
 
   const handleSkipToNext = () => {
-    if (hasUnsavedFupChanges && !window.confirm('You have unsaved changes to the follow-up date. Discard?')) {
+    if (hasUnsavedFupChanges && !window.confirm('You have unsaved follow-up changes. Discard?')) {
       return;
     }
     moveToNextItem();
@@ -595,7 +603,7 @@ function SmartFollowupsContent() {
           {/* Left panel - Lead list (narrow: widest name + padding) */}
           <div className="w-52 shrink-0 border-r border-gray-200 overflow-y-auto">
             {(isLoading || isRebuilding) ? (
-              <div className="flex flex-col items-center justify-center h-full gap-4 p-4">
+                    <div className="flex flex-col items-center justify-center h-full gap-4 p-4">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
                 <span className="text-sm text-gray-500 text-center">
                   {isRebuilding ? 'Rebuilding' : 'Loading'}… {loadSeconds}s
@@ -682,30 +690,50 @@ function SmartFollowupsContent() {
                       <span className="text-xs text-purple-600">AI: {formatDate(selectedItem.aiSuggestedDate)}</span>
                     )}
                     <div className="flex items-center gap-1.5 ml-auto flex-wrap">
-                      <span className="text-xs text-gray-500">From today:</span>
-                      <button onClick={() => updateDraftFup(7)} className="px-2 py-0.5 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded" title="1 week from today">+1w</button>
-                      <button onClick={() => updateDraftFup(14)} className="px-2 py-0.5 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded" title="2 weeks from today">+2w</button>
-                      <button onClick={() => updateDraftFup(30)} className="px-2 py-0.5 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded" title="1 month from today">+1m</button>
-                      {showCalendar ? (
-                        <span className="flex items-center gap-1">
-                          <input
-                            type="date"
-                            value={calendarDate}
-                            min={new Date().toISOString().split('T')[0]}
-                            onChange={(e) => setCalendarDate(e.target.value)}
-                            className="text-xs border border-gray-300 rounded px-1.5 py-0.5"
-                          />
-                          <button onClick={applyCalendarDate} className="px-2 py-0.5 text-xs font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 rounded">Set</button>
-                          <button onClick={() => { setShowCalendar(false); setCalendarDate(''); }} className="text-gray-500 hover:text-gray-700 text-xs">✕</button>
-                        </span>
-                      ) : (
-                        <button onClick={() => setShowCalendar(true)} className="px-2 py-0.5 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded" title="Pick a date">📅</button>
+                      <span className="text-xs text-gray-500">Follow Up:</span>
+                      <button
+                        onClick={() => { setDraftFollowUpYes(true); setDraftFupDate(currentFupDate); }}
+                        className={`px-2 py-0.5 text-xs font-medium rounded ${draftFollowUpYes ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                      >
+                        Yes
+                      </button>
+                      <button
+                        onClick={() => { setDraftFollowUpYes(false); setDraftFupDate(null); }}
+                        className={`px-2 py-0.5 text-xs font-medium rounded ${!draftFollowUpYes ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                      >
+                        No
+                      </button>
+                      {draftFollowUpYes && (
+                        <>
+                          <span className="text-xs text-gray-500 ml-1">From today:</span>
+                          <button onClick={() => updateDraftFup(7)} className="px-2 py-0.5 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded" title="1 week from today">+1w</button>
+                          <button onClick={() => updateDraftFup(14)} className="px-2 py-0.5 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded" title="2 weeks from today">+2w</button>
+                          <button onClick={() => updateDraftFup(30)} className="px-2 py-0.5 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded" title="1 month from today">+1m</button>
+                          {showCalendar ? (
+                            <span className="flex items-center gap-1">
+                              <input
+                                type="date"
+                                value={calendarDate}
+                                min={new Date().toISOString().split('T')[0]}
+                                onChange={(e) => setCalendarDate(e.target.value)}
+                                className="text-xs border border-gray-300 rounded px-1.5 py-0.5"
+                              />
+                              <button onClick={applyCalendarDate} className="px-2 py-0.5 text-xs font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 rounded">Set</button>
+                              <button onClick={() => { setShowCalendar(false); setCalendarDate(''); }} className="text-gray-500 hover:text-gray-700 text-xs">✕</button>
+                            </span>
+                          ) : (
+                            <button onClick={() => setShowCalendar(true)} className="px-2 py-0.5 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded" title="Pick a date">📅</button>
+                          )}
+                        </>
                       )}
-                      {hasUnsavedFupChanges && (
-                        <button onClick={handleSaveFupDate} disabled={isSavingFup} className="px-2 py-0.5 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 rounded ml-1 disabled:opacity-50">Save</button>
-                      )}
-                      <span className="text-xs font-medium text-gray-700">{hasUnsavedFupChanges ? 'FUP (unsaved):' : 'Current FUP:'} {draftFupDate ? formatDateLong(draftFupDate) : 'Not set'}</span>
-                      <button onClick={handleCeaseFollowup} className="px-2 py-0.5 text-xs font-medium text-red-600 bg-red-50 hover:bg-red-100 rounded ml-1">⏹ No follow-up</button>
+                      <span className="text-xs font-medium text-gray-700 ml-1">{hasUnsavedFupChanges ? '(unsaved)' : ''} {draftFollowUpYes ? (draftFupDate ? formatDateLong(draftFupDate) : 'Not set') : 'Cleared'}</span>
+                      <button
+                        onClick={handleSaveFup}
+                        disabled={isSavingFup || !hasUnsavedFupChanges || (draftFollowUpYes && !draftFupDate)}
+                        className="px-2 py-0.5 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 rounded ml-1 disabled:opacity-50"
+                      >
+                        Save
+                      </button>
                     </div>
                     {selectedItem.leadLinkedin && (
                       <a
