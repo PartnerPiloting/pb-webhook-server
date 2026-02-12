@@ -940,13 +940,14 @@ async function getSmartFollowupQueue(clientId) {
       const baseId = client?.airtableBaseId;
       if (baseId) {
         const clientBase = getClientBase(baseId);
-        const futureFupRecords = await clientBase('Leads').select({
-          filterByFormula: `{${LEAD_FIELDS.FOLLOW_UP_DATE}} > '${today}'`,
-          fields: [LEAD_FIELDS.FOLLOW_UP_DATE],
+        // Exclude leads with future FUP date OR Cease FUP = Yes
+        const excludeRecords = await clientBase('Leads').select({
+          filterByFormula: `OR({${LEAD_FIELDS.FOLLOW_UP_DATE}} > '${today}', {${LEAD_FIELDS.CEASE_FUP}} = 'Yes')`,
+          fields: [LEAD_FIELDS.FOLLOW_UP_DATE, LEAD_FIELDS.CEASE_FUP],
           maxRecords: 500
         }).all();
-        const futureFupLeadIds = new Set(futureFupRecords.map(r => r.id));
-        filteredQueue = queue.filter(q => !futureFupLeadIds.has(q.leadId));
+        const excludeLeadIds = new Set(excludeRecords.map(r => r.id));
+        filteredQueue = queue.filter(q => !excludeLeadIds.has(q.leadId));
         // Batch fetch names for items that need enrichment (small parallel batches)
         const needNames = filteredQueue.filter(q => !q.leadFirstName && !q.leadLastName && q.leadId);
         if (needNames.length > 0) {
@@ -964,8 +965,8 @@ async function getSmartFollowupQueue(clientId) {
             }
           }
         }
-        if (futureFupLeadIds.size > 0) {
-          logger.info(`Filtered out ${futureFupLeadIds.size} lead(s) with future FUP date in Leads table`);
+        if (excludeLeadIds.size > 0) {
+          logger.info(`Filtered out ${excludeLeadIds.size} lead(s) with future FUP or Cease FUP in Leads table`);
         }
       }
     } catch (e) {
