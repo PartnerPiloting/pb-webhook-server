@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef, Suspense } from 'react';
 import Layout from '../../components/Layout';
-import { getSmartFollowupQueue, acknowledgeAiDate, generateFollowupMessage, updateLead } from '../../services/api';
+import { getSmartFollowupQueue, acknowledgeAiDate, generateFollowupMessage, updateLead, getLeadById } from '../../services/api';
 import { getCurrentClientId, getClientProfile, getCurrentClientProfile } from '../../utils/clientUtils';
 
 /**
@@ -25,7 +25,10 @@ interface QueueItem {
   id: string;               // Smart FUP State record ID
   leadId: string;           // Leads table record ID
   leadEmail: string;
+  leadFirstName: string;
+  leadLastName: string;
   leadLinkedin: string;
+  fathomTranscripts?: string;
   generatedTime: string;
   // Dates
   userFupDate: string | null;
@@ -74,6 +77,14 @@ const formatDate = (dateStr: string | null): string => {
   return date.toLocaleDateString('en-AU', { day: 'numeric', month: 'short' });
 };
 
+/**
+ * Get display name (first + last) or fallback to email
+ */
+const getDisplayName = (item: QueueItem): string => {
+  const name = [item.leadFirstName, item.leadLastName].filter(Boolean).join(' ').trim();
+  return name || item.leadEmail || item.leadId;
+};
+
 // ============================================
 // MAIN COMPONENT
 // ============================================
@@ -90,6 +101,8 @@ function SmartFollowupsContent() {
   const [copySuccess, setCopySuccess] = useState(false);
   const [actionMessage, setActionMessage] = useState<{ type: string; text: string } | null>(null);
   const [emailSending, setEmailSending] = useState(false);
+  const [leadNotes, setLeadNotes] = useState<string>('');
+  const [notesExpanded, setNotesExpanded] = useState(false);
   
   const chatInputRef = useRef<HTMLInputElement>(null);
   
@@ -175,12 +188,20 @@ function SmartFollowupsContent() {
     }
   };
 
-  const selectItem = (item: QueueItem) => {
+  const selectItem = async (item: QueueItem) => {
     setSelectedItem(item);
-    // Pre-populate with AI-generated message if available
     setGeneratedMessage(item.suggestedMessage || '');
     setChatHistory([]);
     setActionMessage(null);
+    setLeadNotes('');
+    setNotesExpanded(false);
+    // Fetch full notes for collapsible section and chat context
+    try {
+      const lead = await getLeadById(item.leadId);
+      setLeadNotes(lead?.notes || lead?.['Notes'] || '');
+    } catch {
+      setLeadNotes('');
+    }
   };
 
   /**
@@ -214,7 +235,9 @@ function SmartFollowupsContent() {
           story: selectedItem.story,
           waitingOn: selectedItem.waitingOn,
           priority: selectedItem.priority,
-          name: selectedItem.firstName || 'there'
+          name: getDisplayName(selectedItem),
+          notes: leadNotes,
+          fathomTranscripts: selectedItem.fathomTranscripts
         }
       });
       setGeneratedMessage(result.message);
@@ -315,7 +338,7 @@ function SmartFollowupsContent() {
 
   const handleChatSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!chatInput.trim() || isGenerating) return;
+    if (!chatInput.trim() || isGenerating || !selectedItem) return;
     
     const input = chatInput.trim();
     setChatInput('');
@@ -326,7 +349,6 @@ function SmartFollowupsContent() {
       return;
     }
     if (input.toLowerCase().includes('list nudge')) {
-      // Placeholder for nudges feature
       setChatHistory(prev => [
         ...prev,
         { role: 'user', content: input },
@@ -335,7 +357,30 @@ function SmartFollowupsContent() {
       return;
     }
     
-    await handleGenerateMessage(input);
+    // Free-form Q&A - send to AI with full lead context
+    setChatHistory(prev => [...prev, { role: 'user', content: input }]);
+    setIsGenerating(true);
+    try {
+      const result = await generateFollowupMessage(selectedItem.leadId, {
+        query: input,
+        context: {
+          story: selectedItem.story,
+          notes: leadNotes,
+          fathomTranscripts: selectedItem.fathomTranscripts,
+          name: getDisplayName(selectedItem)
+        }
+      });
+      const answer = (result as { answer?: string }).answer || (result as { message?: string }).message || 'No response.';
+      setChatHistory(prev => [...prev, { role: 'assistant', content: answer }]);
+    } catch (err) {
+      console.error('Chat Q&A error:', err);
+      setChatHistory(prev => [
+        ...prev,
+        { role: 'assistant', content: `Failed to get answer: ${err instanceof Error ? err.message : 'Unknown error'}` }
+      ]);
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
   const handleSetFollowupFromChat = async (message: string) => {
@@ -486,7 +531,7 @@ function SmartFollowupsContent() {
                       <div className="flex items-center gap-2">
                         <span className="text-xs font-medium text-gray-400">#{index + 1}</span>
                         <h3 className="font-medium text-gray-900 truncate text-sm">
-                          {item.leadEmail || item.leadId}
+                          {getDisplayName(item)}
                         </h3>
                       </div>
                       <div className="mt-1 flex items-center gap-2 flex-wrap">
@@ -520,7 +565,7 @@ function SmartFollowupsContent() {
                   <div className="flex items-start justify-between">
                     <div>
                       <h2 className="text-lg font-semibold text-gray-900">
-                        {selectedItem.leadEmail || selectedItem.leadId}
+                        {getDisplayName(selectedItem)}
                       </h2>
                       <p className="text-sm text-gray-500">
                         Channel: {selectedItem.recommendedChannel}
@@ -585,10 +630,30 @@ function SmartFollowupsContent() {
 
                 {/* Main content area */}
                 <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                  {/* AI Story / Context */}
-                  <div className="bg-blue-50 rounded-lg border border-blue-200 p-4">
-                    <h3 className="font-medium text-blue-900 mb-2">📖 Story so far</h3>
-                    <p className="text-sm text-blue-800">{selectedItem.story || 'No story generated yet.'}</p>
+                  {/* Collapsible: Story + full notes */}
+                  <div className="bg-blue-50 rounded-lg border border-blue-200 overflow-hidden">
+                    <button
+                      type="button"
+                      onClick={() => setNotesExpanded(prev => !prev)}
+                      className="w-full px-4 py-3 flex items-center justify-between hover:bg-blue-100/50 transition-colors"
+                    >
+                      <h3 className="font-medium text-blue-900">📖 Story so far &amp; notes</h3>
+                      <span className="text-blue-600 text-sm">{notesExpanded ? '▼ Collapse' : '▶ Expand'}</span>
+                    </button>
+                    {notesExpanded && (
+                      <div className="px-4 pb-4 space-y-3 border-t border-blue-200/50 pt-3">
+                        <div>
+                          <h4 className="text-xs font-medium text-blue-700 uppercase tracking-wide mb-1">Story so far</h4>
+                          <p className="text-sm text-blue-800">{selectedItem.story || 'No story generated yet.'}</p>
+                        </div>
+                        <div>
+                          <h4 className="text-xs font-medium text-blue-700 uppercase tracking-wide mb-1">Full notes</h4>
+                          <div className="text-sm text-blue-800 whitespace-pre-wrap bg-white/60 rounded p-3 max-h-64 overflow-y-auto">
+                            {leadNotes || 'No notes.'}
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                   
                   {/* AI Date Suggestion - with Acknowledge button */}
@@ -611,17 +676,38 @@ function SmartFollowupsContent() {
                     </div>
                   )}
 
-                  {/* Message generation */}
+                  {/* Chat Q&A - main feature */}
+                  <div className="bg-white rounded-lg border border-gray-200">
+                    <div className="px-4 py-2 border-b border-gray-200">
+                      <h3 className="font-medium text-gray-900">💬 Ask anything about this lead</h3>
+                    </div>
+                    <div className="p-4">
+                      {chatHistory.length > 0 && (
+                        <div className="mb-4 space-y-2 max-h-48 overflow-y-auto">
+                          {chatHistory.map((msg, i) => (
+                            <div key={i} className={`text-sm p-2 rounded-lg ${msg.role === 'user' ? 'bg-blue-100 text-blue-800 ml-8' : 'bg-gray-100 text-gray-800 mr-8'}`}>
+                              {msg.content}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      <p className="text-xs text-gray-500 mb-2">
+                        e.g. &quot;What did we discuss last time?&quot;, &quot;Prepare talking points for this call&quot;, &quot;Any follow-up Zoom booked?&quot;
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Suggested Message - sometimes relevant (e.g. follow-up Zoom booked) */}
                   <div className="bg-gray-50 rounded-lg border border-gray-200">
                     <div className="px-4 py-2 border-b border-gray-200 flex items-center justify-between">
-                      <h3 className="font-medium text-gray-900">💬 Suggested Message</h3>
+                      <h3 className="font-medium text-gray-900">✨ Suggested Message</h3>
                       {!generatedMessage && (
                         <button
                           onClick={() => handleGenerateMessage()}
                           disabled={isGenerating}
                           className="px-3 py-1 text-sm font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg disabled:opacity-50"
                         >
-                          {isGenerating ? 'Generating...' : '✨ Generate'}
+                          {isGenerating ? 'Generating...' : 'Generate'}
                         </button>
                       )}
                     </div>
@@ -638,18 +724,6 @@ function SmartFollowupsContent() {
                           <div className="bg-white rounded-lg p-4 border border-gray-200 whitespace-pre-wrap text-gray-800">
                             {generatedMessage}
                           </div>
-                          
-                          {chatHistory.length > 0 && (
-                            <div className="mt-3 space-y-2">
-                              {chatHistory.map((msg, i) => (
-                                <div key={i} className={`text-sm p-2 rounded-lg ${msg.role === 'user' ? 'bg-blue-100 text-blue-800 ml-8' : 'bg-gray-100 text-gray-800 mr-8'}`}>
-                                  {msg.content}
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                          
-                          {/* Message actions */}
                           <div className="mt-3 flex flex-wrap gap-2">
                             <button
                               onClick={handleCopyMessage}
@@ -675,7 +749,7 @@ function SmartFollowupsContent() {
                         </>
                       ) : (
                         <p className="text-sm text-gray-500 italic text-center py-4">
-                          Click "Generate" to create a suggested message
+                          Click &quot;Generate&quot; for a suggested LinkedIn message (optional – e.g. when no call booked)
                         </p>
                       )}
                     </div>
@@ -690,7 +764,7 @@ function SmartFollowupsContent() {
                       type="text"
                       value={chatInput}
                       onChange={(e) => setChatInput(e.target.value)}
-                      placeholder="Refine message, 'set follow-up to 2 weeks', 'add note: xyz', 'list nudges'..."
+                      placeholder="Ask anything, e.g. 'What did we discuss?' or 'set follow-up to 2 weeks'..."
                       className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
                       disabled={isGenerating}
                     />
