@@ -1695,6 +1695,60 @@ export const acknowledgeAiDate = async (leadId) => {
   }
 };
 
+/**
+ * Snooze a lead - updates both Leads and Smart FUP State so lead disappears from queue immediately
+ * @param {string} leadId - The Lead ID (Airtable record ID)
+ * @param {string} followUpDate - New follow-up date (YYYY-MM-DD)
+ * @returns {Promise<{success: boolean, followUpDate: string}>}
+ */
+export const snoozeSmartFollowup = async (leadId, followUpDate) => {
+  try {
+    const clientId = getCurrentClientId();
+    if (!clientId) {
+      throw new Error('Client ID not available. Please ensure user is authenticated.');
+    }
+    
+    const base = getBackendBase();
+    const response = await axios.post(`${base}/api/smart-followup/snooze`, {
+      leadId,
+      followUpDate
+    }, {
+      headers: getAuthenticatedHeaders()
+    });
+    
+    return response.data;
+  } catch (error) {
+    console.error('Snooze error:', error.message);
+    throw error;
+  }
+};
+
+/**
+ * Trigger the Smart Follow-up sweep (rebuild) - populates Smart FUP State via AI analysis
+ * Run before starting FUP's for the day. Can take 2-10 min depending on lead count.
+ * @returns {Promise<{success: boolean, results: Object}>}
+ */
+export const triggerSmartFollowupRebuild = async () => {
+  try {
+    const clientId = getCurrentClientId();
+    if (!clientId) {
+      throw new Error('Client ID not available. Please ensure user is authenticated.');
+    }
+    
+    const base = getBackendBase();
+    const response = await axios.get(`${base}/api/smart-followup/sweep`, {
+      params: { clientId },
+      timeout: 600000, // 10 min - sweep can process many leads
+      headers: getAuthenticatedHeaders()
+    });
+    
+    return response.data;
+  } catch (error) {
+    console.error('Smart Follow-up rebuild error:', error.message);
+    throw error;
+  }
+};
+
 export default api;
 
 // Export helper functions for use in components

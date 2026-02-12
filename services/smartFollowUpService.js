@@ -290,7 +290,7 @@ Given the lead's Notes (containing conversation history), you must determine:
    - "None" = No active conversation thread or unclear
 
 3. PRIORITY: How urgent is this follow-up?
-   - "High" = Lead replied and needs response, OR had a meeting, OR showed strong interest
+   - "High" = Lead replied and needs response, OR had a meeting, OR showed strong interest, OR lead said "yes let's meet" / agreed to meet, user suggested times but didn't hear back, OR lead had something urgent come up and messaged to cancel (they showed intent, worth re-engaging)
    - "Medium" = Normal follow-up cadence, nothing urgent
    - "Low" = Cold lead, minimal engagement, or long time since contact
 
@@ -932,14 +932,41 @@ async function getSmartFollowupQueue(clientId) {
       };
     });
     
+    // Leads table as source of truth: exclude leads whose Follow-Up Date in Leads is in the future
+    let filteredQueue = queue;
+    try {
+      const client = await getClientById(clientId);
+      const baseId = client?.airtableBaseId;
+      if (baseId) {
+        const clientBase = getClientBase(baseId);
+        const toRemove = new Set();
+        for (const item of queue) {
+          if (!item.leadId) continue;
+          try {
+            const leadRecord = await clientBase('Leads').find(item.leadId);
+            const fup = leadRecord.fields[LEAD_FIELDS.FOLLOW_UP_DATE] || null;
+            const fupStr = fup ? (typeof fup === 'string' ? fup.split('T')[0] : String(fup).split('T')[0]) : null;
+            if (fupStr && fupStr > today) {
+              toRemove.add(item.id);
+            }
+          } catch (e) {
+            logger.debug(`Could not fetch lead ${item.leadId} for FUP filter: ${e.message}`);
+          }
+        }
+        filteredQueue = queue.filter(q => !toRemove.has(q.id));
+        if (toRemove.size > 0) {
+          logger.info(`Filtered out ${toRemove.size} lead(s) with future FUP date in Leads table`);
+        }
+      }
+    } catch (e) {
+      logger.warn(`Leads table FUP filter failed: ${e.message}`);
+    }
+    
     // Sort by: Priority (High first), then by effectiveDate (oldest first)
     const priorityOrder = { 'High': 0, 'Medium': 1, 'Low': 2 };
-    queue.sort((a, b) => {
-      // First by priority
+    filteredQueue.sort((a, b) => {
       const pDiff = (priorityOrder[a.priority] || 1) - (priorityOrder[b.priority] || 1);
       if (pDiff !== 0) return pDiff;
-      
-      // Then by effective date (oldest first = most overdue)
       if (a.effectiveDate && b.effectiveDate) {
         return a.effectiveDate.localeCompare(b.effectiveDate);
       }
@@ -947,7 +974,7 @@ async function getSmartFollowupQueue(clientId) {
     });
     
     // Enrich names from Leads table when Smart FUP State has empty names
-    const needNames = queue.filter(q => !q.leadFirstName && !q.leadLastName);
+    const needNames = filteredQueue.filter(q => !q.leadFirstName && !q.leadLastName);
     if (needNames.length > 0) {
       try {
         const client = await getClientById(clientId);
@@ -974,12 +1001,37 @@ async function getSmartFollowupQueue(clientId) {
       }
     }
     
-    return queue;
+    return filteredQueue;
     
   } catch (error) {
     logger.error(`Failed to get queue for ${clientId}: ${error.message}`);
     throw error;
   }
+}
+
+/**
+ * Snooze a lead: update both Leads table and Smart FUP State so the lead disappears from queue immediately
+ * 
+ * @param {string} clientId - Client ID
+ * @param {string} leadId - Lead ID (Airtable record ID from Leads table)
+ * @param {string} followUpDate - New follow-up date (YYYY-MM-DD)
+ * @param {string} baseId - Client's Airtable base ID (for Leads table)
+ * @returns {Object} Result
+ */
+async function snoozeLead(clientId, leadId, followUpDate, baseId) {
+  const clientBase = getClientBase(baseId);
+  const stateBase = initializeClientsBase();
+  
+  await clientBase('Leads').update(leadId, { [LEAD_FIELDS.FOLLOW_UP_DATE]: followUpDate });
+  
+  const existing = await findExistingStateRecord(clientId, leadId);
+  if (existing) {
+    await stateBase('Smart FUP State').update(existing.id, {
+      [SMART_FUP_STATE_FIELDS.USER_FUP_DATE]: followUpDate,
+    });
+  }
+  
+  return { success: true, followUpDate };
 }
 
 /**
@@ -1032,5 +1084,6 @@ module.exports = {
   analyzeLeadNotes,
   getSmartFollowupQueue,
   acknowledgeAiDate,
+  snoozeLead,
   LEAD_FIELDS,
 };
