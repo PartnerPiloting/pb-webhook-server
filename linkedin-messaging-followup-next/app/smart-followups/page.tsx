@@ -755,22 +755,45 @@ function SmartFollowupsContent() {
                   )}
                 </div>
 
-                {/* Main content: outer scroll + sticky chat input at bottom */}
+                {/* Main content: outer scroll - chat (large) + input, then notes */}
                 <div className="flex-1 flex flex-col min-h-0">
-                  {/* Scrollable content area - everything scrolls together, notes expand fully */}
+                  {/* Scrollable content area - chat scrolls out of view with notes */}
                   <div className="flex-1 overflow-y-auto min-h-0">
-                    <div className="p-4 space-y-2 bg-gray-50/50">
-                      {chatHistory.length === 0 ? (
-                        <p className="text-sm text-gray-500 py-4">
-                          Ask anything about this lead – e.g. &quot;What did we discuss last time?&quot;, &quot;Prepare talking points for this call&quot;, &quot;Any follow-up Zoom booked?&quot;
-                        </p>
-                      ) : (
-                        chatHistory.map((msg, i) => (
-                          <div key={i} className={`text-sm p-3 rounded-lg max-w-[85%] ${msg.role === 'user' ? 'bg-blue-100 text-blue-800 ml-auto' : 'bg-white border border-gray-200 text-gray-800'}`}>
-                            {msg.content}
-                          </div>
-                        ))
-                      )}
+                    {/* Chat - large area, input directly under */}
+                    <div className="min-h-[400px] flex flex-col bg-gray-50/50">
+                      <div className="flex-1 p-4 space-y-2">
+                        {chatHistory.length === 0 ? (
+                          <p className="text-sm text-gray-500 py-4">
+                            Ask anything about this lead – e.g. &quot;What did we discuss last time?&quot;, &quot;Prepare talking points for this call&quot;, &quot;Any follow-up Zoom booked?&quot;
+                          </p>
+                        ) : (
+                          chatHistory.map((msg, i) => (
+                            <div key={i} className={`text-sm p-3 rounded-lg max-w-[85%] ${msg.role === 'user' ? 'bg-blue-100 text-blue-800 ml-auto' : 'bg-white border border-gray-200 text-gray-800'}`}>
+                              {msg.content}
+                            </div>
+                          ))
+                        )}
+                      </div>
+                      <div className="p-3 border-t border-gray-200 bg-white shrink-0">
+                        <form onSubmit={handleChatSubmit} className="flex gap-2">
+                          <input
+                            ref={chatInputRef}
+                            type="text"
+                            value={chatInput}
+                            onChange={(e) => setChatInput(e.target.value)}
+                            placeholder="Ask anything, e.g. 'What did we discuss?' or 'set follow-up to 2 weeks'..."
+                            className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                            disabled={isGenerating}
+                          />
+                          <button
+                            type="submit"
+                            disabled={isGenerating || !chatInput.trim()}
+                            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 text-sm font-medium"
+                          >
+                            Send
+                          </button>
+                        </form>
+                      </div>
                     </div>
                     <div className="p-4 space-y-4 border-t border-gray-200">
                     <div className="bg-blue-50 rounded-lg border border-blue-200 overflow-hidden">
@@ -877,27 +900,6 @@ function SmartFollowupsContent() {
                       </button>
                     </div>
                     </div>
-                  </div>
-                  {/* Chat input - sticky at bottom, always visible */}
-                  <div className="shrink-0 p-3 border-t border-gray-200 bg-white">
-                    <form onSubmit={handleChatSubmit} className="flex gap-2">
-                      <input
-                        ref={chatInputRef}
-                        type="text"
-                        value={chatInput}
-                        onChange={(e) => setChatInput(e.target.value)}
-                        placeholder="Ask anything, e.g. 'What did we discuss?' or 'set follow-up to 2 weeks'..."
-                        className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
-                        disabled={isGenerating}
-                      />
-                      <button
-                        type="submit"
-                        disabled={isGenerating || !chatInput.trim()}
-                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 text-sm font-medium"
-                      >
-                        Send
-                      </button>
-                    </form>
                   </div>
                 </div>
               </>
