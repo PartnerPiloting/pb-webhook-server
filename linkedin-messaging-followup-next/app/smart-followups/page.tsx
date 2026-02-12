@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef, Suspense } from 'react';
 import Layout from '../../components/Layout';
-import { getSmartFollowupQueue, acknowledgeAiDate, generateFollowupMessage, updateLead, getLeadById, snoozeSmartFollowup } from '../../services/api';
+import { getSmartFollowupQueue, acknowledgeAiDate, generateFollowupMessage, updateLead, getLeadById, snoozeSmartFollowup, triggerSmartFollowupRebuild } from '../../services/api';
 import { getCurrentClientId, getClientProfile, getCurrentClientProfile } from '../../utils/clientUtils';
 
 /**
@@ -98,6 +98,7 @@ const getDisplayName = (item: QueueItem): string => {
 function SmartFollowupsContent() {
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isRebuilding, setIsRebuilding] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedItem, setSelectedItem] = useState<QueueItem | null>(null);
   const [generatedMessage, setGeneratedMessage] = useState('');
@@ -545,11 +546,23 @@ function SmartFollowupsContent() {
           </div>
           
           <button
-            onClick={loadQueue}
-            disabled={isLoading}
+            onClick={async () => {
+              setIsRebuilding(true);
+              setError(null);
+              try {
+                await triggerSmartFollowupRebuild();
+                await loadQueue();
+              } catch (err) {
+                setError(err instanceof Error ? err.message : 'Rebuild failed');
+              } finally {
+                setIsRebuilding(false);
+              }
+            }}
+            disabled={isLoading || isRebuilding}
             className="px-3 py-1.5 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50"
+            title="Run AI analysis on due leads and rebuild queue. Use before starting FUP's for the day."
           >
-            {isLoading ? '...' : '🔄 Refresh'}
+            {isRebuilding ? 'Rebuilding…' : '🔨 Rebuild'}
           </button>
         </div>
 
@@ -632,15 +645,14 @@ function SmartFollowupsContent() {
                         ? '⏳ Waiting on them'
                         : '📋 Follow-up due'}
                     </span>
-                    <span className="text-xs font-medium">{hasUnsavedFupChanges ? 'FUP date (unsaved):' : 'Current FUP:'} {draftFupDate ? formatDateLong(draftFupDate) : 'Not set'}</span>
                     {selectedItem.aiSuggestedDate && (
                       <span className="text-xs text-purple-600">AI: {formatDate(selectedItem.aiSuggestedDate)}</span>
                     )}
                     <div className="flex items-center gap-1.5 ml-auto flex-wrap">
-                      <span className="text-xs text-gray-500">Set FUP:</span>
-                      <button onClick={() => updateDraftFup(7)} className="px-2 py-0.5 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded">+1w</button>
-                      <button onClick={() => updateDraftFup(14)} className="px-2 py-0.5 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded">+2w</button>
-                      <button onClick={() => updateDraftFup(30)} className="px-2 py-0.5 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded">+1m</button>
+                      <span className="text-xs text-gray-500">From today:</span>
+                      <button onClick={() => updateDraftFup(7)} className="px-2 py-0.5 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded" title="1 week from today">+1w</button>
+                      <button onClick={() => updateDraftFup(14)} className="px-2 py-0.5 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded" title="2 weeks from today">+2w</button>
+                      <button onClick={() => updateDraftFup(30)} className="px-2 py-0.5 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded" title="1 month from today">+1m</button>
                       {showCalendar ? (
                         <span className="flex items-center gap-1">
                           <input
@@ -659,6 +671,7 @@ function SmartFollowupsContent() {
                       {hasUnsavedFupChanges && (
                         <button onClick={handleSaveFupDate} disabled={isSavingFup} className="px-2 py-0.5 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 rounded ml-1 disabled:opacity-50">Save</button>
                       )}
+                      <span className="text-xs font-medium text-gray-700">{hasUnsavedFupChanges ? 'FUP (unsaved):' : 'Current FUP:'} {draftFupDate ? formatDateLong(draftFupDate) : 'Not set'}</span>
                       <button onClick={handleCeaseFollowup} className="px-2 py-0.5 text-xs font-medium text-red-600 bg-red-50 hover:bg-red-100 rounded ml-1">⏹ No follow-up</button>
                     </div>
                     {selectedItem.leadLinkedin && (
