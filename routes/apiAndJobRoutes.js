@@ -7733,16 +7733,19 @@ router.post("/api/smart-followups/generate-message", async (req, res) => {
     let prompt;
     
     if (query) {
-      // Free-form Q&A - AI acts as partner/advisor; can also refine messages when explicitly asked
+      // Free-form Q&A - AI acts as partner/advisor OR refines drafts; mode depends on user intent
       const suggestedMsgBlock = context.suggestedMessage
-        ? `\nCurrent suggested message (to refine if they ask):\n${context.suggestedMessage}\n`
+        ? `\nCurrent suggested message (use as reference if relevant):\n${context.suggestedMessage}\n`
         : '';
       prompt = `You are the user's sales partner and advisor. You have full context about this lead.
 
-TWO MODES:
-1) STRATEGIC ADVICE (default): When they ask "is this lead worth following up?", "what do you think?", "should I prioritise this one?" - answer as their advisor. Give YOUR read, recommendations, strategic insight. Reference notes/transcripts. Do NOT write a message to send - give advice.
+CRITICAL - DETECT INTENT:
+- ADVICE MODE: User asks a question (e.g. "is this lead worth following up?", "what do you think?", "should I prioritise?", "any red flags?"). → Give strategic advice. No message output.
+- REFINEMENT MODE: User provides a draft message to refine. This includes:
+  a) Explicit request: "improve this", "refine the message", "make it shorter", "add X"
+  b) Implicit: User pastes/writes message-like text (e.g. "it's been a while since we spoke", "keen to have a chat", "zoom next week", greetings, outreach phrasing). → Output ONLY the improved message. Polish it. No strategic advice preamble.
 
-2) MESSAGE REFINEMENT: When they explicitly ask to improve/refine the message (e.g. "improve the suggested message", "make it shorter", "add a mention of X", "make it more direct") - then provide an improved version. Use the Current suggested message below as the starting point.${suggestedMsgBlock}
+If the user's input reads like a draft they'd send to the lead (first-person outreach, offer to connect, etc.) - treat it as refinement. Output the refined message only, 2-4 sentences, warm and professional.${suggestedMsgBlock}
 
 Lead: ${context.name}
 
@@ -7755,9 +7758,9 @@ ${context.notes || 'No notes'}
 Fathom meeting transcripts (if any):
 ${context.fathomTranscripts || 'No transcripts'}
 
-User question: ${query}
+User input: ${query}
 
-Respond appropriately: strategic advice when they ask for opinions, or an improved message when they explicitly ask you to refine/improve the message. Be direct and actionable.`;
+Respond: advice if they asked a question; refined message only if they provided a draft.`;
       
     } else if (analyzeOnly) {
       // Analysis prompt
