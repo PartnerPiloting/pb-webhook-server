@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef, Suspense } from 'react';
 import Layout from '../../components/Layout';
-import { getSmartFollowupQueue, acknowledgeAiDate, generateFollowupMessage, updateLead, getLeadById } from '../../services/api';
+import { getSmartFollowupQueue, acknowledgeAiDate, generateFollowupMessage, updateLead, getLeadById, snoozeSmartFollowup } from '../../services/api';
 import { getCurrentClientId, getClientProfile, getCurrentClientProfile } from '../../utils/clientUtils';
 
 /**
@@ -77,6 +77,12 @@ const formatDate = (dateStr: string | null): string => {
   return date.toLocaleDateString('en-AU', { day: 'numeric', month: 'short' });
 };
 
+const formatDateLong = (dateStr: string | null): string => {
+  if (!dateStr) return '';
+  const date = new Date(dateStr);
+  return date.toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+};
+
 /**
  * Get display name (first + last) or fallback to email
  */
@@ -103,8 +109,14 @@ function SmartFollowupsContent() {
   const [emailSending, setEmailSending] = useState(false);
   const [leadNotes, setLeadNotes] = useState<string>('');
   const [notesExpanded, setNotesExpanded] = useState(false);
+  const [showCalendar, setShowCalendar] = useState(false);
+  const [calendarDate, setCalendarDate] = useState('');
+  const [currentFupDate, setCurrentFupDate] = useState<string | null>(null);
+  const [draftFupDate, setDraftFupDate] = useState<string | null>(null);
+  const [isSavingFup, setIsSavingFup] = useState(false);
   
   const chatInputRef = useRef<HTMLInputElement>(null);
+  const hasUnsavedFupChanges = currentFupDate !== draftFupDate;
   
   // Resolve client ID from: utils cache, profile, URL params, or retry
   const getClientFromSources = () => {
@@ -195,13 +207,28 @@ function SmartFollowupsContent() {
     setActionMessage(null);
     setLeadNotes('');
     setNotesExpanded(false);
-    // Fetch full notes for collapsible section and chat context
+    setShowCalendar(false);
+    setCalendarDate('');
+    setCurrentFupDate(null);
+    setDraftFupDate(null);
     try {
       const lead = await getLeadById(item.leadId);
       setLeadNotes(lead?.notes || lead?.['Notes'] || '');
+      const fup = lead?.followUpDate || lead?.['Follow-Up Date'] || null;
+      const fupStr = fup ? (typeof fup === 'string' ? fup.split('T')[0] : fup) : null;
+      setCurrentFupDate(fupStr);
+      setDraftFupDate(fupStr);
     } catch {
       setLeadNotes('');
     }
+  };
+
+  const handleSelectLead = (item: QueueItem) => {
+    if (item.id === selectedItem?.id) return;
+    if (hasUnsavedFupChanges && !window.confirm('You have unsaved changes to the follow-up date. Discard?')) {
+      return;
+    }
+    selectItem(item);
   };
 
   /**
@@ -306,34 +333,58 @@ function SmartFollowupsContent() {
     }
   };
 
-  const handleSnooze = async (days: number) => {
-    if (!selectedItem) return;
-    
+  const updateDraftFup = (days: number) => {
     const newDate = new Date();
     newDate.setDate(newDate.getDate() + days);
-    const formattedDate = newDate.toISOString().split('T')[0];
+    setDraftFupDate(newDate.toISOString().split('T')[0]);
+  };
+
+  const applyCalendarDate = () => {
+    if (calendarDate) {
+      setDraftFupDate(calendarDate);
+      setShowCalendar(false);
+      setCalendarDate('');
+    }
+  };
+
+  const handleSaveFupDate = async () => {
+    if (!selectedItem || !draftFupDate || draftFupDate === currentFupDate) return;
     
+    setIsSavingFup(true);
     try {
-      await updateLead(selectedItem.leadId, { 'Follow-Up Date': formattedDate });
-      
-      const label = days >= 7 ? `${Math.round(days / 7)} week${days >= 14 ? 's' : ''}` : `${days} days`;
-      setActionMessage({ type: 'success', text: `Snoozed for ${label} (${formattedDate})` });
-      moveToNextItem();
-      loadQueue();
+      await snoozeSmartFollowup(selectedItem.leadId, draftFupDate);
+      setCurrentFupDate(draftFupDate);
+      setActionMessage({ type: 'success', text: `Follow-up date saved: ${formatDateLong(draftFupDate)}` });
+      await loadQueue();
+      const today = new Date().toISOString().split('T')[0];
+      if (draftFupDate > today) {
+        moveToNextItem();
+      }
     } catch (err) {
-      console.error('Failed to snooze:', err);
+      console.error('Failed to save follow-up date:', err);
       setActionMessage({ type: 'error', text: 'Failed to update follow-up date.' });
+    } finally {
+      setIsSavingFup(false);
     }
   };
 
   const moveToNextItem = () => {
     if (!selectedItem) return;
     const currentIndex = queue.findIndex(q => q.id === selectedItem.id);
-    if (currentIndex < queue.length - 1) {
+    if (currentIndex >= 0 && currentIndex < queue.length - 1) {
       selectItem(queue[currentIndex + 1]);
+    } else if (currentIndex < 0 && queue.length > 0) {
+      selectItem(queue[0]);
     } else {
       setSelectedItem(null);
     }
+  };
+
+  const handleSkipToNext = () => {
+    if (hasUnsavedFupChanges && !window.confirm('You have unsaved changes to the follow-up date. Discard?')) {
+      return;
+    }
+    moveToNextItem();
   };
 
   const handleChatSubmit = async (e: React.FormEvent) => {
@@ -372,7 +423,11 @@ function SmartFollowupsContent() {
         }
       });
       const answer = (result as { answer?: string }).answer || (result as { message?: string }).message || 'No response.';
+      const isRefinedMessage = (result as { isRefinedMessage?: boolean }).isRefinedMessage;
       setChatHistory(prev => [...prev, { role: 'assistant', content: answer }]);
+      if (isRefinedMessage && answer) {
+        setGeneratedMessage(answer);
+      }
     } catch (err) {
       console.error('Chat Q&A error:', err);
       setChatHistory(prev => [
@@ -522,7 +577,7 @@ function SmartFollowupsContent() {
                   return (
                     <div
                       key={item.id}
-                      onClick={() => selectItem(item)}
+                      onClick={() => handleSelectLead(item)}
                       className={`p-3 cursor-pointer transition-colors ${
                         selectedItem?.id === item.id
                           ? 'bg-blue-50 border-l-4 border-blue-500'
@@ -577,17 +632,33 @@ function SmartFollowupsContent() {
                         ? '⏳ Waiting on them'
                         : '📋 Follow-up due'}
                     </span>
-                    {selectedItem.userFupDate && (
-                      <span className="text-xs text-gray-500">User date: {formatDate(selectedItem.userFupDate)}</span>
-                    )}
+                    <span className="text-xs font-medium">{hasUnsavedFupChanges ? 'FUP date (unsaved):' : 'Current FUP:'} {draftFupDate ? formatDateLong(draftFupDate) : 'Not set'}</span>
                     {selectedItem.aiSuggestedDate && (
                       <span className="text-xs text-purple-600">AI: {formatDate(selectedItem.aiSuggestedDate)}</span>
                     )}
-                    <div className="flex items-center gap-1.5 ml-auto">
-                      <span className="text-xs text-gray-500">Snooze:</span>
-                      <button onClick={() => handleSnooze(7)} className="px-2 py-0.5 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded">+1w</button>
-                      <button onClick={() => handleSnooze(14)} className="px-2 py-0.5 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded">+2w</button>
-                      <button onClick={() => handleSnooze(30)} className="px-2 py-0.5 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded">+1m</button>
+                    <div className="flex items-center gap-1.5 ml-auto flex-wrap">
+                      <span className="text-xs text-gray-500">Set FUP:</span>
+                      <button onClick={() => updateDraftFup(7)} className="px-2 py-0.5 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded">+1w</button>
+                      <button onClick={() => updateDraftFup(14)} className="px-2 py-0.5 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded">+2w</button>
+                      <button onClick={() => updateDraftFup(30)} className="px-2 py-0.5 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded">+1m</button>
+                      {showCalendar ? (
+                        <span className="flex items-center gap-1">
+                          <input
+                            type="date"
+                            value={calendarDate}
+                            min={new Date().toISOString().split('T')[0]}
+                            onChange={(e) => setCalendarDate(e.target.value)}
+                            className="text-xs border border-gray-300 rounded px-1.5 py-0.5"
+                          />
+                          <button onClick={applyCalendarDate} className="px-2 py-0.5 text-xs font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 rounded">Set</button>
+                          <button onClick={() => { setShowCalendar(false); setCalendarDate(''); }} className="text-gray-500 hover:text-gray-700 text-xs">✕</button>
+                        </span>
+                      ) : (
+                        <button onClick={() => setShowCalendar(true)} className="px-2 py-0.5 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded" title="Pick a date">📅</button>
+                      )}
+                      {hasUnsavedFupChanges && (
+                        <button onClick={handleSaveFupDate} disabled={isSavingFup} className="px-2 py-0.5 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 rounded ml-1 disabled:opacity-50">Save</button>
+                      )}
                       <button onClick={handleCeaseFollowup} className="px-2 py-0.5 text-xs font-medium text-red-600 bg-red-50 hover:bg-red-100 rounded ml-1">⏹ No follow-up</button>
                     </div>
                     {selectedItem.leadLinkedin && (
@@ -735,13 +806,6 @@ function SmartFollowupsContent() {
                               >
                                 {emailSending ? '...' : '📧 Email to me'}
                               </button>
-                              <button
-                                onClick={() => handleGenerateMessage()}
-                                disabled={isGenerating}
-                                className="px-2 py-1 text-xs font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 rounded disabled:opacity-50"
-                              >
-                                🔄 Regenerate
-                              </button>
                             </div>
                           </>
                         ) : (
@@ -754,7 +818,7 @@ function SmartFollowupsContent() {
 
                     <div className="flex justify-end">
                       <button
-                        onClick={moveToNextItem}
+                        onClick={handleSkipToNext}
                         disabled={queue.findIndex(q => q.id === selectedItem.id) >= queue.length - 1}
                         className="px-3 py-1.5 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg disabled:opacity-50"
                       >
