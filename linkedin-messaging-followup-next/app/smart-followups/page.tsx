@@ -499,8 +499,8 @@ function SmartFollowupsContent() {
 
         {/* Content */}
         <div className="flex h-full" style={{ height: 'calc(100% - 65px)' }}>
-          {/* Left panel - Lead list */}
-          <div className="w-1/4 border-r border-gray-200 overflow-y-auto">
+          {/* Left panel - Lead list (narrow: widest name + padding) */}
+          <div className="w-52 shrink-0 border-r border-gray-200 overflow-y-auto">
             {isLoading ? (
               <div className="flex items-center justify-center h-full">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
@@ -560,50 +560,46 @@ function SmartFollowupsContent() {
           <div className="flex-1 flex flex-col overflow-hidden">
             {selectedItem ? (
               <>
-                {/* Lead header */}
-                <div className="p-4 border-b border-gray-200 bg-white">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <h2 className="text-lg font-semibold text-gray-900">
-                        {getDisplayName(selectedItem)}
-                      </h2>
-                      <p className="text-sm text-gray-500">
-                        Channel: {selectedItem.recommendedChannel}
-                      </p>
-                      <p className="text-sm mt-1">
-                        <span className={`font-medium ${selectedItem.waitingOn === 'User' ? 'text-orange-600' : 'text-blue-600'}`}>
-                          {selectedItem.waitingOn === 'User' 
-                            ? '💬 They replied - you owe a response' 
-                            : selectedItem.waitingOn === 'Lead'
-                            ? '⏳ Waiting on them'
-                            : '📋 Follow-up due'}
-                        </span>
-                      </p>
-                      {/* Date info */}
-                      <div className="text-xs text-gray-500 mt-1 space-x-3">
-                        {selectedItem.userFupDate && (
-                          <span>User date: {formatDate(selectedItem.userFupDate)}</span>
-                        )}
-                        {selectedItem.aiSuggestedDate && (
-                          <span className="text-purple-600">AI suggests: {formatDate(selectedItem.aiSuggestedDate)}</span>
-                        )}
-                      </div>
+                {/* Lead header - compact: name, story/status, snooze in one row */}
+                <div className="px-4 py-3 border-b border-gray-200 bg-white">
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                    <h2 className="text-lg font-semibold text-gray-900">
+                      {getDisplayName(selectedItem)}
+                    </h2>
+                    <span className="text-sm text-gray-500">
+                      Channel: {selectedItem.recommendedChannel}
+                    </span>
+                    <span className={`text-sm font-medium ${selectedItem.waitingOn === 'User' ? 'text-orange-600' : 'text-blue-600'}`}>
+                      {selectedItem.waitingOn === 'User' 
+                        ? '💬 They replied' 
+                        : selectedItem.waitingOn === 'Lead'
+                        ? '⏳ Waiting on them'
+                        : '📋 Follow-up due'}
+                    </span>
+                    {selectedItem.userFupDate && (
+                      <span className="text-xs text-gray-500">User date: {formatDate(selectedItem.userFupDate)}</span>
+                    )}
+                    {selectedItem.aiSuggestedDate && (
+                      <span className="text-xs text-purple-600">AI: {formatDate(selectedItem.aiSuggestedDate)}</span>
+                    )}
+                    <div className="flex items-center gap-1.5 ml-auto">
+                      <span className="text-xs text-gray-500">Snooze:</span>
+                      <button onClick={() => handleSnooze(7)} className="px-2 py-0.5 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded">+1w</button>
+                      <button onClick={() => handleSnooze(14)} className="px-2 py-0.5 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded">+2w</button>
+                      <button onClick={() => handleSnooze(30)} className="px-2 py-0.5 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded">+1m</button>
+                      <button onClick={handleCeaseFollowup} className="px-2 py-0.5 text-xs font-medium text-red-600 bg-red-50 hover:bg-red-100 rounded ml-1">⏹ No follow-up</button>
                     </div>
-                    <div className="flex items-center gap-2">
-                      {selectedItem.leadLinkedin && (
-                        <a
-                          href={selectedItem.leadLinkedin}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="px-3 py-1.5 text-sm font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors"
-                        >
-                          🔗 LinkedIn
-                        </a>
-                      )}
-                    </div>
+                    {selectedItem.leadLinkedin && (
+                      <a
+                        href={selectedItem.leadLinkedin}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="px-2.5 py-1 text-sm font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg"
+                      >
+                        🔗 LinkedIn
+                      </a>
+                    )}
                   </div>
-                  
-                  {/* Action message */}
                   {actionMessage && (
                     <div className={`mt-2 text-sm px-3 py-1.5 rounded-lg ${
                       actionMessage.type === 'success' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'
@@ -611,180 +607,159 @@ function SmartFollowupsContent() {
                       {actionMessage.text}
                     </div>
                   )}
-                  
-                  {/* Action buttons */}
-                  <div className="mt-3 flex items-center gap-2 flex-wrap">
-                    <span className="text-xs text-gray-500 font-medium">Snooze:</span>
-                    <button onClick={() => handleSnooze(7)} className="px-2.5 py-1 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md">+1 week</button>
-                    <button onClick={() => handleSnooze(14)} className="px-2.5 py-1 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md">+2 weeks</button>
-                    <button onClick={() => handleSnooze(30)} className="px-2.5 py-1 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md">+1 month</button>
-                    <div className="border-l border-gray-300 h-4 mx-2"></div>
-                    <button
-                      onClick={handleCeaseFollowup}
-                      className="px-2.5 py-1 text-xs font-medium text-red-600 bg-red-50 hover:bg-red-100 rounded-md"
-                    >
-                      ⏹️ No follow-up
-                    </button>
-                  </div>
                 </div>
 
-                {/* Main content area */}
-                <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                  {/* Collapsible: Story + full notes */}
-                  <div className="bg-blue-50 rounded-lg border border-blue-200 overflow-hidden">
-                    <button
-                      type="button"
-                      onClick={() => setNotesExpanded(prev => !prev)}
-                      className="w-full px-4 py-3 flex items-center justify-between hover:bg-blue-100/50 transition-colors"
-                    >
-                      <h3 className="font-medium text-blue-900">📖 Story so far &amp; notes</h3>
-                      <span className="text-blue-600 text-sm">{notesExpanded ? '▼ Collapse' : '▶ Expand'}</span>
-                    </button>
-                    {notesExpanded && (
-                      <div className="px-4 pb-4 space-y-3 border-t border-blue-200/50 pt-3">
-                        <div>
-                          <h4 className="text-xs font-medium text-blue-700 uppercase tracking-wide mb-1">Story so far</h4>
-                          <p className="text-sm text-blue-800">{selectedItem.story || 'No story generated yet.'}</p>
-                        </div>
-                        <div>
-                          <h4 className="text-xs font-medium text-blue-700 uppercase tracking-wide mb-1">Full notes</h4>
-                          <div className="text-sm text-blue-800 whitespace-pre-wrap bg-white/60 rounded p-3 max-h-64 overflow-y-auto">
-                            {leadNotes || 'No notes.'}
+                {/* Main content: Chat (big) + Story, Suggested Message below */}
+                <div className="flex-1 flex flex-col min-h-0">
+                  {/* Chat - main feature: big window + input (takes most vertical space) */}
+                  <div className="flex-[2] flex flex-col min-h-0 border-b border-gray-200">
+                    <div className="flex-1 min-h-[200px] overflow-y-auto p-4 space-y-2 bg-gray-50/50">
+                      {chatHistory.length === 0 ? (
+                        <p className="text-sm text-gray-500 py-4">
+                          Ask anything about this lead – e.g. &quot;What did we discuss last time?&quot;, &quot;Prepare talking points for this call&quot;, &quot;Any follow-up Zoom booked?&quot;
+                        </p>
+                      ) : (
+                        chatHistory.map((msg, i) => (
+                          <div key={i} className={`text-sm p-3 rounded-lg max-w-[85%] ${msg.role === 'user' ? 'bg-blue-100 text-blue-800 ml-auto' : 'bg-white border border-gray-200 text-gray-800'}`}>
+                            {msg.content}
                           </div>
+                        ))
+                      )}
+                    </div>
+                    <div className="p-3 border-t border-gray-200 bg-white shrink-0">
+                      <form onSubmit={handleChatSubmit} className="flex gap-2">
+                        <input
+                          ref={chatInputRef}
+                          type="text"
+                          value={chatInput}
+                          onChange={(e) => setChatInput(e.target.value)}
+                          placeholder="Ask anything, e.g. 'What did we discuss?' or 'set follow-up to 2 weeks'..."
+                          className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                          disabled={isGenerating}
+                        />
+                        <button
+                          type="submit"
+                          disabled={isGenerating || !chatInput.trim()}
+                          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 text-sm font-medium"
+                        >
+                          Send
+                        </button>
+                      </form>
+                    </div>
+                  </div>
+
+                  {/* Scrollable: Story, AI Date, Suggested Message */}
+                  <div className="flex-1 overflow-y-auto p-4 space-y-4 min-h-0">
+                    <div className="bg-blue-50 rounded-lg border border-blue-200 overflow-hidden">
+                      <button
+                        type="button"
+                        onClick={() => setNotesExpanded(prev => !prev)}
+                        className="w-full px-4 py-2 flex items-center justify-between hover:bg-blue-100/50 transition-colors"
+                      >
+                        <h3 className="font-medium text-blue-900 text-sm">📖 Story so far &amp; notes</h3>
+                        <span className="text-blue-600 text-xs">{notesExpanded ? '▼' : '▶'}</span>
+                      </button>
+                      {notesExpanded && (
+                        <div className="px-4 pb-4 space-y-3 border-t border-blue-200/50 pt-3">
+                          <div>
+                            <h4 className="text-xs font-medium text-blue-700 uppercase tracking-wide mb-1">Story so far</h4>
+                            <p className="text-sm text-blue-800">{selectedItem.story || 'No story generated yet.'}</p>
+                          </div>
+                          <div>
+                            <h4 className="text-xs font-medium text-blue-700 uppercase tracking-wide mb-1">Full notes</h4>
+                            <div className="text-sm text-blue-800 whitespace-pre-wrap bg-white/60 rounded p-3 max-h-48 overflow-y-auto">
+                              {leadNotes || 'No notes.'}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {selectedItem.aiSuggestedDate && (
+                      <div className="bg-purple-50 rounded-lg border border-purple-200 p-3">
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <h3 className="font-medium text-purple-900 text-sm">🤖 AI Suggested Date: {formatDate(selectedItem.aiSuggestedDate)}</h3>
+                            {selectedItem.aiDateReasoning && (
+                              <p className="text-xs text-purple-700 mt-1">{selectedItem.aiDateReasoning}</p>
+                            )}
+                          </div>
+                          <button
+                            onClick={handleAcknowledgeAiDate}
+                            className="px-2 py-1 text-xs font-medium text-purple-600 bg-white border border-purple-300 hover:bg-purple-100 rounded shrink-0"
+                          >
+                            ✓ Acknowledge
+                          </button>
                         </div>
                       </div>
                     )}
-                  </div>
-                  
-                  {/* AI Date Suggestion - with Acknowledge button */}
-                  {selectedItem.aiSuggestedDate && (
-                    <div className="bg-purple-50 rounded-lg border border-purple-200 p-4">
-                      <div className="flex items-start justify-between">
-                        <div>
-                          <h3 className="font-medium text-purple-900 mb-1">🤖 AI Suggested Date: {formatDate(selectedItem.aiSuggestedDate)}</h3>
-                          {selectedItem.aiDateReasoning && (
-                            <p className="text-sm text-purple-700">{selectedItem.aiDateReasoning}</p>
-                          )}
-                        </div>
-                        <button
-                          onClick={handleAcknowledgeAiDate}
-                          className="px-3 py-1.5 text-sm font-medium text-purple-600 bg-white border border-purple-300 hover:bg-purple-100 rounded-lg transition-colors"
-                        >
-                          ✓ Acknowledge
-                        </button>
+
+                    <div className="bg-gray-50 rounded-lg border border-gray-200">
+                      <div className="px-4 py-2 border-b border-gray-200 flex items-center justify-between">
+                        <h3 className="font-medium text-gray-900 text-sm">✨ Suggested Message</h3>
+                        {!generatedMessage && (
+                          <button
+                            onClick={() => handleGenerateMessage()}
+                            disabled={isGenerating}
+                            className="px-3 py-1 text-xs font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg disabled:opacity-50"
+                          >
+                            {isGenerating ? '...' : 'Generate'}
+                          </button>
+                        )}
+                      </div>
+                      <div className="p-4">
+                        {isGenerating && !generatedMessage ? (
+                          <div className="flex items-center justify-center h-16">
+                            <div className="flex items-center gap-2 text-gray-500 text-sm">
+                              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+                              <span>Generating...</span>
+                            </div>
+                          </div>
+                        ) : generatedMessage ? (
+                          <>
+                            <div className="bg-white rounded-lg p-3 border border-gray-200 whitespace-pre-wrap text-gray-800 text-sm">
+                              {generatedMessage}
+                            </div>
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              <button
+                                onClick={handleCopyMessage}
+                                className={`px-2 py-1 text-xs font-medium rounded ${copySuccess ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                              >
+                                {copySuccess ? '✓ Copied!' : '📋 Copy'}
+                              </button>
+                              <button
+                                onClick={handleEmailToMe}
+                                disabled={emailSending}
+                                className="px-2 py-1 text-xs font-medium bg-indigo-100 text-indigo-700 hover:bg-indigo-200 rounded disabled:opacity-50"
+                              >
+                                {emailSending ? '...' : '📧 Email to me'}
+                              </button>
+                              <button
+                                onClick={() => handleGenerateMessage()}
+                                disabled={isGenerating}
+                                className="px-2 py-1 text-xs font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 rounded disabled:opacity-50"
+                              >
+                                🔄 Regenerate
+                              </button>
+                            </div>
+                          </>
+                        ) : (
+                          <p className="text-xs text-gray-500 italic py-2">
+                            Click &quot;Generate&quot; for a suggested LinkedIn message (optional)
+                          </p>
+                        )}
                       </div>
                     </div>
-                  )}
 
-                  {/* Chat Q&A - main feature */}
-                  <div className="bg-white rounded-lg border border-gray-200">
-                    <div className="px-4 py-2 border-b border-gray-200">
-                      <h3 className="font-medium text-gray-900">💬 Ask anything about this lead</h3>
+                    <div className="flex justify-end">
+                      <button
+                        onClick={moveToNextItem}
+                        disabled={queue.findIndex(q => q.id === selectedItem.id) >= queue.length - 1}
+                        className="px-3 py-1.5 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg disabled:opacity-50"
+                      >
+                        Skip to next →
+                      </button>
                     </div>
-                    <div className="p-4">
-                      {chatHistory.length > 0 && (
-                        <div className="mb-4 space-y-2 max-h-48 overflow-y-auto">
-                          {chatHistory.map((msg, i) => (
-                            <div key={i} className={`text-sm p-2 rounded-lg ${msg.role === 'user' ? 'bg-blue-100 text-blue-800 ml-8' : 'bg-gray-100 text-gray-800 mr-8'}`}>
-                              {msg.content}
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                      <p className="text-xs text-gray-500 mb-2">
-                        e.g. &quot;What did we discuss last time?&quot;, &quot;Prepare talking points for this call&quot;, &quot;Any follow-up Zoom booked?&quot;
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Suggested Message - sometimes relevant (e.g. follow-up Zoom booked) */}
-                  <div className="bg-gray-50 rounded-lg border border-gray-200">
-                    <div className="px-4 py-2 border-b border-gray-200 flex items-center justify-between">
-                      <h3 className="font-medium text-gray-900">✨ Suggested Message</h3>
-                      {!generatedMessage && (
-                        <button
-                          onClick={() => handleGenerateMessage()}
-                          disabled={isGenerating}
-                          className="px-3 py-1 text-sm font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg disabled:opacity-50"
-                        >
-                          {isGenerating ? 'Generating...' : 'Generate'}
-                        </button>
-                      )}
-                    </div>
-                    <div className="p-4">
-                      {isGenerating && !generatedMessage ? (
-                        <div className="flex items-center justify-center h-20">
-                          <div className="flex items-center gap-2 text-gray-500">
-                            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
-                            <span>Generating...</span>
-                          </div>
-                        </div>
-                      ) : generatedMessage ? (
-                        <>
-                          <div className="bg-white rounded-lg p-4 border border-gray-200 whitespace-pre-wrap text-gray-800">
-                            {generatedMessage}
-                          </div>
-                          <div className="mt-3 flex flex-wrap gap-2">
-                            <button
-                              onClick={handleCopyMessage}
-                              className={`px-3 py-1.5 text-sm font-medium rounded-lg ${copySuccess ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
-                            >
-                              {copySuccess ? '✓ Copied!' : '📋 Copy'}
-                            </button>
-                            <button
-                              onClick={handleEmailToMe}
-                              disabled={emailSending}
-                              className="px-3 py-1.5 text-sm font-medium bg-indigo-100 text-indigo-700 hover:bg-indigo-200 rounded-lg disabled:opacity-50"
-                            >
-                              {emailSending ? 'Sending...' : '📧 Email to me'}
-                            </button>
-                            <button
-                              onClick={() => handleGenerateMessage()}
-                              disabled={isGenerating}
-                              className="px-3 py-1.5 text-sm font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 rounded-lg disabled:opacity-50"
-                            >
-                              🔄 Regenerate
-                            </button>
-                          </div>
-                        </>
-                      ) : (
-                        <p className="text-sm text-gray-500 italic text-center py-4">
-                          Click &quot;Generate&quot; for a suggested LinkedIn message (optional – e.g. when no call booked)
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Chat input */}
-                <div className="p-4 border-t border-gray-200 bg-white">
-                  <form onSubmit={handleChatSubmit} className="flex gap-2">
-                    <input
-                      ref={chatInputRef}
-                      type="text"
-                      value={chatInput}
-                      onChange={(e) => setChatInput(e.target.value)}
-                      placeholder="Ask anything, e.g. 'What did we discuss?' or 'set follow-up to 2 weeks'..."
-                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
-                      disabled={isGenerating}
-                    />
-                    <button
-                      type="submit"
-                      disabled={isGenerating || !chatInput.trim()}
-                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 text-sm font-medium"
-                    >
-                      Send
-                    </button>
-                  </form>
-                  
-                  <div className="mt-2 flex justify-end">
-                    <button
-                      onClick={moveToNextItem}
-                      disabled={queue.findIndex(q => q.id === selectedItem.id) >= queue.length - 1}
-                      className="px-3 py-1.5 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg disabled:opacity-50"
-                    >
-                      Skip to next →
-                    </button>
                   </div>
                 </div>
               </>
