@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef, Suspense } from 'react';
 import Layout from '../../components/Layout';
-import { getSmartFollowupQueue, acknowledgeAiDate, generateFollowupMessage, updateLead, getLeadById, snoozeSmartFollowup, triggerSmartFollowupRebuild } from '../../services/api';
+import { getSmartFollowupQueue, acknowledgeAiDate, generateFollowupMessage, updateLead, getLeadById, snoozeSmartFollowup, triggerSmartFollowupRebuild, replaceFupInstructions, reviewFupInstructions } from '../../services/api';
 import { getCurrentClientId, getClientProfile, getCurrentClientProfile } from '../../utils/clientUtils';
 
 /**
@@ -105,11 +105,17 @@ function SmartFollowupsContent() {
   const [generatedMessage, setGeneratedMessage] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [chatInput, setChatInput] = useState('');
-  const [chatHistory, setChatHistory] = useState<Array<{ role: string; content: string }>>([]);
+  const [chatHistory, setChatHistory] = useState<Array<{ role: string; content: string; imageData?: string; imageMime?: string; integratedInstructions?: string }>>([]);
+  const [instructionsReviewDraft, setInstructionsReviewDraft] = useState<string | null>(null);
+  const [instructionsReviewFeedback, setInstructionsReviewFeedback] = useState<string | null>(null);
+  const [isSavingInstructions, setIsSavingInstructions] = useState(false);
+  const [isReviewingInstructions, setIsReviewingInstructions] = useState(false);
+  const [pendingImage, setPendingImage] = useState<{ data: string; mimeType: string } | null>(null);
   const [copySuccess, setCopySuccess] = useState(false);
   const [actionMessage, setActionMessage] = useState<{ type: string; text: string } | null>(null);
   const [emailSending, setEmailSending] = useState(false);
   const [leadNotes, setLeadNotes] = useState<string>('');
+  const [leadLinkedinMessages, setLeadLinkedinMessages] = useState<string>('');
   const [notesExpanded, setNotesExpanded] = useState(false);
   const [showCalendar, setShowCalendar] = useState(false);
   const [calendarDate, setCalendarDate] = useState('');
@@ -226,6 +232,7 @@ function SmartFollowupsContent() {
     setChatHistory([]);
     setActionMessage(null);
     setLeadNotes('');
+    setLeadLinkedinMessages('');
     setNotesExpanded(false);
     setShowCalendar(false);
     setCalendarDate('');
@@ -236,6 +243,7 @@ function SmartFollowupsContent() {
     try {
       const lead = await getLeadById(item.leadId);
       setLeadNotes(lead?.notes || lead?.['Notes'] || '');
+      setLeadLinkedinMessages(lead?.linkedinMessages || lead?.['LinkedIn Messages'] || '');
       const fup = lead?.followUpDate || lead?.['Follow-Up Date'] || null;
       const fupStr = fup ? (typeof fup === 'string' ? fup.split('T')[0] : fup) : null;
       const ceased = lead?.ceaseFup === 'Yes' || lead?.['Cease FUP'] === 'Yes';
@@ -245,6 +253,7 @@ function SmartFollowupsContent() {
       setDraftFollowUpYes(!ceased);
     } catch {
       setLeadNotes('');
+      setLeadLinkedinMessages('');
     }
   };
 
@@ -281,25 +290,34 @@ function SmartFollowupsContent() {
     if (!selectedItem) return;
     setIsGenerating(true);
     try {
+      const client = getClientProfile()?.client;
       const result = await generateFollowupMessage(selectedItem.leadId, {
         ...(refinement ? { refinement } : {}),
+        clientType: client?.clientType || 'A - Partner Selection',
+        fupInstructions: client?.fupInstructions || '',
         context: {
           story: selectedItem.story,
           waitingOn: selectedItem.waitingOn,
           priority: selectedItem.priority,
           name: getDisplayName(selectedItem),
           notes: leadNotes,
-          fathomTranscripts: selectedItem.fathomTranscripts
+          fathomTranscripts: selectedItem.fathomTranscripts,
+          linkedinMessages: leadLinkedinMessages,
+          score: selectedItem.status,
+          status: selectedItem.status,
+          tags: []
         }
       });
       setGeneratedMessage(result.message);
-      
+      const softenedExplanation = (result as { softenedExplanation?: string }).softenedExplanation;
       if (refinement) {
         setChatHistory(prev => [
           ...prev,
           { role: 'user', content: refinement },
-          { role: 'assistant', content: 'Updated the message based on your feedback.' }
+          { role: 'assistant', content: softenedExplanation || 'Updated the message based on your feedback.' }
         ]);
+      } else if (softenedExplanation) {
+        setChatHistory(prev => [...prev, { role: 'assistant', content: softenedExplanation }]);
       }
     } catch (err) {
       console.error('Failed to generate message:', err);
@@ -413,11 +431,33 @@ function SmartFollowupsContent() {
     moveToNextItem();
   };
 
+  const handlePaste = async (e: React.ClipboardEvent) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (const item of items) {
+      if (item.type.startsWith('image/')) {
+        e.preventDefault();
+        const file = item.getAsFile();
+        if (!file) continue;
+        const reader = new FileReader();
+        reader.onload = () => {
+          const data = reader.result as string;
+          const base64 = data.includes(',') ? data.split(',')[1]! : data;
+          setPendingImage({ data: base64, mimeType: file.type || 'image/png' });
+        };
+        reader.readAsDataURL(file);
+        return;
+      }
+    }
+  };
+
   const handleChatSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!chatInput.trim() || isGenerating || !selectedItem) return;
+    const hasInput = chatInput.trim();
+    const hasImage = !!pendingImage;
+    if ((!hasInput && !hasImage) || isGenerating || !selectedItem) return;
     
-    const input = chatInput.trim();
+    const input = chatInput.trim() || (hasImage ? 'What does this image show? Please analyze it in the context of this lead.' : '');
     setChatInput('');
     
     // Handle special commands
@@ -434,23 +474,40 @@ function SmartFollowupsContent() {
       return;
     }
     
-    // Free-form Q&A - send to AI with full lead context
-    setChatHistory(prev => [...prev, { role: 'user', content: input }]);
+    // Free-form Q&A - send to AI with full lead context (optionally with pasted image)
+    const imageToSend = pendingImage;
+    setPendingImage(null);
+    setChatHistory(prev => [...prev, {
+      role: 'user',
+      content: input,
+      ...(imageToSend ? { imageData: imageToSend.data, imageMime: imageToSend.mimeType } : {})
+    }]);
     setIsGenerating(true);
     try {
+      const client = getClientProfile()?.client;
       const result = await generateFollowupMessage(selectedItem.leadId, {
         query: input,
+        clientType: client?.clientType || 'A - Partner Selection',
+        fupInstructions: client?.fupInstructions || '',
+        imageData: imageToSend?.data,
+        imageMime: imageToSend?.mimeType,
         context: {
           story: selectedItem.story,
           notes: leadNotes,
           fathomTranscripts: selectedItem.fathomTranscripts,
           name: getDisplayName(selectedItem),
-          suggestedMessage: generatedMessage || selectedItem.suggestedMessage || ''
+          suggestedMessage: generatedMessage || selectedItem.suggestedMessage || '',
+          linkedinMessages: leadLinkedinMessages
         }
       });
       const answer = (result as { answer?: string }).answer || (result as { message?: string }).message || 'No response.';
       const isRefinedMessage = (result as { isRefinedMessage?: boolean }).isRefinedMessage;
-      setChatHistory(prev => [...prev, { role: 'assistant', content: answer }]);
+      const integratedInstructions = (result as { integratedInstructions?: string }).integratedInstructions;
+      setChatHistory(prev => [...prev, { role: 'assistant', content: answer, integratedInstructions }]);
+      if (integratedInstructions) {
+        setInstructionsReviewDraft(integratedInstructions);
+        setInstructionsReviewFeedback(null);
+      }
       if (isRefinedMessage && answer) {
         setGeneratedMessage(answer);
       }
@@ -502,6 +559,43 @@ function SmartFollowupsContent() {
         { role: 'assistant', content: 'Try "set follow-up to 2 weeks" or "set follow-up to 1 month"' }
       ]);
     }
+  };
+
+  const handleSaveInstructions = async () => {
+    const toSave = instructionsReviewDraft ?? '';
+    if (!toSave.trim()) return;
+    setIsSavingInstructions(true);
+    try {
+      await replaceFupInstructions(toSave);
+      setActionMessage({ type: 'success', text: 'FUP AI Instructions updated. Future messages will use them.' });
+      setInstructionsReviewDraft(null);
+      setInstructionsReviewFeedback(null);
+      await getCurrentClientProfile();
+    } catch (err) {
+      setActionMessage({ type: 'error', text: err instanceof Error ? err.message : 'Failed to save instructions' });
+    } finally {
+      setIsSavingInstructions(false);
+    }
+  };
+
+  const handleReviewInstructions = async () => {
+    const toReview = instructionsReviewDraft ?? '';
+    if (!toReview.trim()) return;
+    setIsReviewingInstructions(true);
+    setInstructionsReviewFeedback(null);
+    try {
+      const result = await reviewFupInstructions(toReview);
+      setInstructionsReviewFeedback((result as { feedback?: string }).feedback || 'No feedback.');
+    } catch (err) {
+      setInstructionsReviewFeedback(`Failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    } finally {
+      setIsReviewingInstructions(false);
+    }
+  };
+
+  const handleCloseInstructionsReview = () => {
+    setInstructionsReviewDraft(null);
+    setInstructionsReviewFeedback(null);
   };
 
   const handleCopyMessage = async () => {
@@ -769,32 +863,95 @@ function SmartFollowupsContent() {
                         ) : (
                           chatHistory.map((msg, i) => (
                             <div key={i} className={`text-sm p-3 rounded-lg max-w-[85%] ${msg.role === 'user' ? 'bg-blue-100 text-blue-800 ml-auto' : 'bg-white border border-gray-200 text-gray-800'}`}>
+                              {msg.imageData && (
+                                <div className="mb-2">
+                                  <img src={`data:${msg.imageMime || 'image/png'};base64,${msg.imageData}`} alt="Pasted" className="max-w-[200px] max-h-[150px] rounded border border-gray-200" />
+                                </div>
+                              )}
                               {msg.content}
+                              {msg.role === 'assistant' && msg.integratedInstructions && (
+                                <div className="mt-2 pt-2 border-t border-gray-200">
+                                  <p className="text-xs font-medium text-amber-700 mb-1">💡 Pattern detected – review and save below</p>
+                                </div>
+                              )}
                             </div>
                           ))
                         )}
                       </div>
                       <div className="p-3 border-t border-gray-200 bg-white shrink-0">
-                        <form onSubmit={handleChatSubmit} className="flex gap-2">
-                          <input
-                            ref={chatInputRef}
-                            type="text"
-                            value={chatInput}
-                            onChange={(e) => setChatInput(e.target.value)}
-                            placeholder="Ask anything, e.g. 'What did we discuss?' or 'set follow-up to 2 weeks'..."
-                            className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
-                            disabled={isGenerating}
-                          />
-                          <button
-                            type="submit"
-                            disabled={isGenerating || !chatInput.trim()}
-                            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 text-sm font-medium"
-                          >
-                            Send
-                          </button>
+                        <form onSubmit={handleChatSubmit} className="flex flex-col gap-2">
+                          {pendingImage && (
+                            <div className="flex items-center gap-2 text-sm text-gray-600">
+                              <img src={`data:${pendingImage.mimeType};base64,${pendingImage.data}`} alt="Attached" className="h-12 w-auto rounded border border-gray-200" />
+                              <span>Image attached – add a question or send to analyze</span>
+                              <button type="button" onClick={() => setPendingImage(null)} className="text-red-600 hover:text-red-700 text-xs">Remove</button>
+                            </div>
+                          )}
+                          <div className="flex gap-2">
+                            <input
+                              ref={chatInputRef}
+                              type="text"
+                              value={chatInput}
+                              onChange={(e) => setChatInput(e.target.value)}
+                              onPaste={handlePaste}
+                              placeholder="Ask anything, paste an image to analyze, or 'set follow-up to 2 weeks'..."
+                              className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                              disabled={isGenerating}
+                            />
+                            <button
+                              type="submit"
+                              disabled={isGenerating || (!chatInput.trim() && !pendingImage)}
+                              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 text-sm font-medium"
+                            >
+                              Send
+                            </button>
+                          </div>
                         </form>
                       </div>
                     </div>
+                    {instructionsReviewDraft !== null && (
+                      <div className="p-4 border-t border-amber-200 bg-amber-50/80">
+                        <h3 className="text-sm font-medium text-amber-900 mb-2">Review and update your instructions</h3>
+                        <p className="text-xs text-amber-800 mb-2">Edit below, optionally ask AI to review, then Save when ready.</p>
+                        <textarea
+                          value={instructionsReviewDraft}
+                          onChange={(e) => setInstructionsReviewDraft(e.target.value)}
+                          rows={8}
+                          className="w-full px-3 py-2 border border-amber-300 rounded-lg text-sm font-mono bg-white"
+                          placeholder="FUP AI Instructions"
+                        />
+                        {instructionsReviewFeedback && (
+                          <div className="mt-2 p-2 bg-white border border-amber-200 rounded text-sm text-gray-700">
+                            <span className="font-medium text-amber-800">AI review:</span> {instructionsReviewFeedback}
+                          </div>
+                        )}
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={handleSaveInstructions}
+                            disabled={isSavingInstructions}
+                            className="px-3 py-1.5 text-sm font-medium text-white bg-amber-600 hover:bg-amber-700 rounded disabled:opacity-50"
+                          >
+                            {isSavingInstructions ? 'Saving…' : 'Save'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleReviewInstructions}
+                            disabled={isReviewingInstructions}
+                            className="px-3 py-1.5 text-sm font-medium text-amber-800 bg-amber-100 hover:bg-amber-200 rounded disabled:opacity-50"
+                          >
+                            {isReviewingInstructions ? 'Reviewing…' : 'Ask AI to review'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleCloseInstructionsReview}
+                            className="px-3 py-1.5 text-sm font-medium text-gray-600 hover:text-gray-800"
+                          >
+                            Close
+                          </button>
+                        </div>
+                      </div>
+                    )}
                     <div className="p-4 space-y-4 border-t border-gray-200">
                     <div className="bg-blue-50 rounded-lg border border-blue-200 overflow-hidden">
                       <button

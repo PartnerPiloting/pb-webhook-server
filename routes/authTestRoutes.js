@@ -60,7 +60,9 @@ router.get('/test', authenticateUserWithTestMode, async (req, res) => {
         googleCalendarEmail: req.client.googleCalendarEmail || null,
         coachId: req.client.coach || null,
         coachName: coachName,
-        coachEmail: coachEmail
+        coachEmail: coachEmail,
+        clientType: req.client.clientType || 'A - Partner Selection',
+        fupInstructions: req.client.fupInstructions || ''
       },
       authentication: {
         wpUserId: req.wpUserId || 'test mode',

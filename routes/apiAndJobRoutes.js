@@ -7714,11 +7714,14 @@ router.post("/api/smart-followups/generate-message", async (req, res) => {
       return res.status(400).json({ error: 'Client ID required' });
     }
 
-    const { leadId, refinement, analyzeOnly, context, query } = req.body;
+    const { leadId, refinement, analyzeOnly, context, query, clientType, fupInstructions, imageData, imageMime } = req.body;
     
     if (!context) {
       return res.status(400).json({ error: 'context is required' });
     }
+    
+    const effectiveClientType = clientType || 'A - Partner Selection';
+    const effectiveFupInstructions = (fupInstructions && String(fupInstructions).trim()) || '';
     
     logger.info(`Smart follow-ups ${query ? 'chat' : analyzeOnly ? 'analysis' : 'message generation'} request for: ${context.name}`);
 
@@ -7737,15 +7740,24 @@ router.post("/api/smart-followups/generate-message", async (req, res) => {
       const suggestedMsgBlock = context.suggestedMessage
         ? `\nCurrent suggested message (use as reference if relevant):\n${context.suggestedMessage}\n`
         : '';
+      const clientInstructionsBlock = effectiveFupInstructions
+        ? `\nClient-specific instructions (follow these when giving advice or refining messages):\n${effectiveFupInstructions}\n`
+        : '';
+      const leadTailoringBlock = effectiveClientType.toUpperCase().includes('A - PARTNER') || effectiveClientType.toUpperCase().startsWith('A')
+        ? `
+LEAD TAILORING (Type A): The user is mainly partner-seeking but will settle for leads who want to be clients first and hopes to transition them. Infer from the lead's notes/conversation whether they seem partner/builder potential or client-only. When a lead clearly wants to be a client (not a builder), soften the message and explain: "I've softened the message for this lead as it looks like they're more client-focused than builder-focused. I can make it stronger if you like." When giving advice or refining, mention this when relevant.`
+        : '';
       prompt = `You are the user's sales partner and advisor. You have full context about this lead.
-
+Client Type: ${effectiveClientType}${leadTailoringBlock}${clientInstructionsBlock}
 CRITICAL - DETECT INTENT:
 - ADVICE MODE: User asks a question (e.g. "is this lead worth following up?", "what do you think?", "should I prioritise?", "any red flags?"). → Give strategic advice. No message output.
 - REFINEMENT MODE: User provides a draft message to refine. This includes:
   a) Explicit request: "improve this", "refine the message", "make it shorter", "add X"
   b) Implicit: User pastes/writes message-like text (e.g. "it's been a while since we spoke", "keen to have a chat", "zoom next week", greetings, outreach phrasing). → Output ONLY the improved message. Polish it. No strategic advice preamble.
 
-If the user's input reads like a draft they'd send to the lead (first-person outreach, offer to connect, etc.) - treat it as refinement. Output the refined message only, 2-4 sentences, warm and professional.${suggestedMsgBlock}
+If the user's input reads like a draft they'd send to the lead (first-person outreach, offer to connect, etc.) - treat it as refinement. Output the refined message only, 2-4 sentences, warm and professional.
+
+IMPORTANT: When outputting a REFINED MESSAGE (not advice), you MUST start your response with exactly: REFINED_MESSAGE: (then the message on the next line). This tells the app to push it to the Suggested Message section. When giving ADVICE, do NOT use this prefix.${suggestedMsgBlock}
 
 Lead: ${context.name}
 
@@ -7758,14 +7770,27 @@ ${context.notes || 'No notes'}
 Fathom meeting transcripts (if any):
 ${context.fathomTranscripts || 'No transcripts'}
 
+Recent LinkedIn conversation (if any):
+${context.linkedinMessages || 'No conversation history'}
+
 User input: ${query}
 
-Respond: advice if they asked a question; refined message only if they provided a draft.`;
+Respond: advice if they asked a question; refined message only if they provided a draft.
+
+SELF-LEARNING: When the user describes modifying your message (e.g. "you gave me X, I changed it to Y" or "I edited your suggestion to say..."), analyze if there is a general, reusable pattern. If yes:
+1. Integrate the new pattern with their EXISTING instructions above. Merge, avoid duplicates, consolidate similar points, resolve contradictions.
+2. Output the FULL integrated text (everything that should be in FUP AI Instructions) in this exact format:
+INTEGRATED_INSTRUCTIONS:
+[full merged instructions text - the complete updated instructions, nothing else]
+If no general pattern applies, say NO_PATTERN. The user will review and confirm before any change is saved.`;
       
     } else if (analyzeOnly) {
       // Analysis prompt
+      const clientInstructionsBlock = effectiveFupInstructions
+        ? `\nClient-specific instructions (factor into your analysis):\n${effectiveFupInstructions}\n`
+        : '';
       prompt = `You are a sales coach analyzing a lead for follow-up strategy.
-
+Client Type: ${effectiveClientType}${clientInstructionsBlock}
 Lead Information:
 - Name: ${context.name}
 - AI Score: ${context.score || 'N/A'} (higher is better fit)
@@ -7789,8 +7814,17 @@ Be concise and actionable. If you notice patterns (e.g., multiple cancellations,
       
     } else {
       // Message generation prompt
+      const clientInstructionsBlock = effectiveFupInstructions
+        ? `\nClient-specific instructions (follow these when writing the message):\n${effectiveFupInstructions}\n`
+        : '';
+      const leadTailoringBlock = effectiveClientType.toUpperCase().includes('A - PARTNER') || effectiveClientType.toUpperCase().startsWith('A')
+        ? `
+LEAD TAILORING (Type A): The user is mainly partner-seeking but will settle for leads who want to be clients first. Infer from the lead's notes/conversation whether they seem partner/builder potential or client-only. When a lead clearly wants to be a client (not a builder), soften the message. If you soften, you MUST also output a brief explanation after the message in this format:
+SOFTENED_EXPLANATION: I've softened the message for this lead as it looks like they're more client-focused than builder-focused. I can make it stronger if you like.
+If you do NOT soften (lead shows partner potential), do not output SOFTENED_EXPLANATION.`
+        : '';
       const basePrompt = `You are writing a LinkedIn follow-up message for a professional.
-
+Client Type: ${effectiveClientType}${leadTailoringBlock}${clientInstructionsBlock}
 Lead Information:
 - Name: ${context.name}
 - AI Score: ${context.score || 'N/A'}
@@ -7827,9 +7861,23 @@ Write an improved version incorporating this feedback.`;
       }
     }
 
+    // Build request: text-only or multimodal (text + image)
+    const hasImage = imageData && typeof imageData === 'string' && imageData.length > 0;
+    const requestPayload = hasImage
+      ? {
+          contents: [{
+            role: 'user',
+            parts: [
+              { text: prompt },
+              { inlineData: { mimeType: imageMime || 'image/png', data: imageData } }
+            ]
+          }]
+        }
+      : prompt;
+
     // Generate content using the pre-initialized model
-    logger.info('Calling Gemini for smart follow-ups...');
-    const result = await geminiConfig.geminiModel.generateContent(prompt);
+    logger.info(`Calling Gemini for smart follow-ups...${hasImage ? ' (with image)' : ''}`);
+    const result = await geminiConfig.geminiModel.generateContent(requestPayload);
     
     // Handle different response formats from Vertex AI SDK (same as calendar-chat)
     let text;
@@ -7847,16 +7895,132 @@ Write an improved version incorporating this feedback.`;
     logger.info(`Gemini response received (${text.length} chars)`);
 
     if (query) {
-      res.json({ answer: text });
+      const refinedPrefix = 'REFINED_MESSAGE:';
+      const integratedPrefix = 'INTEGRATED_INSTRUCTIONS:';
+      const trimmed = text.trim();
+      const isRefinedMessage = trimmed.toUpperCase().startsWith(refinedPrefix.toUpperCase());
+      let integratedInstructions = null;
+      let displayAnswer = trimmed;
+      const integratedIdx = trimmed.toUpperCase().indexOf(integratedPrefix.toUpperCase());
+      if (integratedIdx >= 0) {
+        const afterPrefix = trimmed.slice(integratedIdx + integratedPrefix.length).trim();
+        integratedInstructions = afterPrefix;
+        displayAnswer = trimmed.slice(0, integratedIdx).trim();
+      }
+      if (isRefinedMessage) {
+        displayAnswer = displayAnswer.replace(/^REFINED_MESSAGE:[\s\n]*/i, '').trim();
+      }
+      res.json({ answer: displayAnswer, isRefinedMessage: !!isRefinedMessage, integratedInstructions: integratedInstructions || undefined });
     } else if (analyzeOnly) {
       res.json({ analysis: text });
     } else {
-      res.json({ message: text });
+      let message = text;
+      let softenedExplanation = null;
+      const softPrefix = 'SOFTENED_EXPLANATION:';
+      const softIdx = text.toUpperCase().indexOf(softPrefix.toUpperCase());
+      if (softIdx >= 0) {
+        softenedExplanation = text.slice(softIdx + softPrefix.length).trim();
+        message = text.slice(0, softIdx).trim();
+      }
+      res.json({ message, softenedExplanation: softenedExplanation || undefined });
     }
 
   } catch (error) {
     logger.error('Smart follow-ups error:', error.message, error.stack);
     res.status(500).json({ error: `Message generation failed: ${error.message}` });
+  }
+});
+
+// ============================================================================
+// SMART FOLLOW-UPS - FUP INSTRUCTIONS (SELF-LEARNING)
+// ============================================================================
+/**
+ * PUT /api/smart-followups/fup-instructions
+ * Replaces the client's FUP AI Instructions (used after user reviews integrated instructions)
+ */
+router.put("/api/smart-followups/fup-instructions", async (req, res) => {
+  const logger = createLogger({ runId: 'SMART-FOLLOWUPS', clientId: req.headers['x-client-id'] || 'unknown', operation: 'replace-fup-instructions' });
+  const clientService = require('../services/clientService.js');
+  const Airtable = require('airtable');
+
+  try {
+    const clientId = req.headers['x-client-id'];
+    if (!clientId) {
+      return res.status(400).json({ error: 'Client ID required' });
+    }
+
+    const { instructions } = req.body;
+    if (instructions === undefined || instructions === null) {
+      return res.status(400).json({ error: 'instructions is required' });
+    }
+    const instructionsStr = String(instructions);
+
+    const client = await clientService.getClientById(clientId);
+    if (!client) {
+      return res.status(404).json({ error: 'Client not found' });
+    }
+
+    const base = Airtable.base(process.env.MASTER_CLIENTS_BASE_ID);
+    await base('Clients').update(client.id, { 'FUP AI Instructions': instructionsStr });
+
+    logger.info(`Replaced FUP instructions for ${clientId}`);
+    res.json({ success: true, message: 'FUP AI Instructions updated' });
+  } catch (error) {
+    logger.error('Replace FUP instructions error:', error.message, error.stack);
+    res.status(500).json({ error: `Failed to update instructions: ${error.message}` });
+  }
+});
+
+/**
+ * POST /api/smart-followups/review-instructions
+ * AI reviews the instructions and gives feedback (optional step before save)
+ */
+router.post("/api/smart-followups/review-instructions", async (req, res) => {
+  const logger = createLogger({ runId: 'SMART-FOLLOWUPS', clientId: req.headers['x-client-id'] || 'unknown', operation: 'review-instructions' });
+
+  try {
+    const clientId = req.headers['x-client-id'];
+    if (!clientId) {
+      return res.status(400).json({ error: 'Client ID required' });
+    }
+
+    const { instructions } = req.body;
+    if (!instructions || typeof instructions !== 'string') {
+      return res.status(400).json({ error: 'instructions is required' });
+    }
+
+    const geminiConfig = require('../config/geminiClient.js');
+    if (!geminiConfig || !geminiConfig.geminiModel) {
+      return res.status(500).json({ error: 'AI service not available' });
+    }
+
+    const prompt = `You are the AI that will use these instructions when helping a user with follow-up messages. Review the following FUP AI Instructions and give brief feedback:
+
+1. Is anything unclear or ambiguous that could confuse you when applying them?
+2. Are there any contradictions?
+3. Any suggestions to improve clarity?
+
+Instructions to review:
+---
+${instructions}
+---
+
+Respond with 2-4 sentences. Be concise. If no issues, say "These look clear and ready to use."`;
+
+    const result = await geminiConfig.geminiModel.generateContent(prompt);
+    let text;
+    if (result.response && typeof result.response.text === 'function') {
+      text = result.response.text();
+    } else if (result.response && result.response.candidates?.[0]?.content?.parts?.[0]?.text) {
+      text = result.response.candidates[0].content.parts[0].text;
+    } else {
+      throw new Error('Unexpected AI response format');
+    }
+
+    res.json({ feedback: text.trim() });
+  } catch (error) {
+    logger.error('Review instructions error:', error.message, error.stack);
+    res.status(500).json({ error: `Failed to review: ${error.message}` });
   }
 });
 
@@ -8831,7 +8995,8 @@ router.put("/api/update-client/:clientId", async (req, res) => {
       maxPostBatchesPerDayGuardrail: CLIENT_FIELDS.MAX_POST_BATCHES_PER_DAY_GUARDRAIL,
       postScrapeBatchSize: CLIENT_FIELDS.POST_SCRAPE_BATCH_SIZE,
       processingStream: CLIENT_FIELDS.PROCESSING_STREAM,
-      postAccessEnabled: CLIENT_FIELDS.POST_ACCESS_ENABLED
+      postAccessEnabled: CLIENT_FIELDS.POST_ACCESS_ENABLED,
+      fupInstructions: 'FUP AI Instructions'
     };
     
     const updateFields = {};
@@ -10479,6 +10644,40 @@ router.get("/api/smart-followup/queue", async (req, res) => {
       success: false,
       error: error.message
     });
+  }
+});
+
+// ---------------------------------------------------------------
+// Smart Follow-Up Snooze Endpoint
+// Updates both Leads table and Smart FUP State so lead disappears from queue immediately
+// ---------------------------------------------------------------
+router.post("/api/smart-followup/snooze", async (req, res) => {
+  const snoozeLogger = createLogger({ runId: 'SMART-FUP-SNOOZE', clientId: req.headers['x-client-id'] || 'unknown', operation: 'snooze' });
+  const { snoozeLead } = require('../services/smartFollowUpService');
+  const { getClientById } = require('../services/clientService');
+  
+  try {
+    const clientId = req.headers['x-client-id'] || req.body.clientId;
+    if (!clientId) {
+      return res.status(400).json({ success: false, error: 'Client ID required (x-client-id header or body)' });
+    }
+    const { leadId, followUpDate } = req.body;
+    if (!leadId || !followUpDate) {
+      return res.status(400).json({ success: false, error: 'leadId and followUpDate are required' });
+    }
+    
+    const client = await getClientById(clientId);
+    if (!client || !client.airtableBaseId) {
+      return res.status(400).json({ success: false, error: 'Client base not found' });
+    }
+    
+    const result = await snoozeLead(clientId, leadId, followUpDate, client.airtableBaseId);
+    snoozeLogger.info(`Snoozed ${leadId} to ${followUpDate}`);
+    
+    res.json({ success: true, ...result });
+  } catch (error) {
+    snoozeLogger.error('Snooze error:', error.message, error.stack);
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
