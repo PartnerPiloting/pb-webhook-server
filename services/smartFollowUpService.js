@@ -15,7 +15,7 @@ const Airtable = require('airtable');
 const { HarmCategory, HarmBlockThreshold } = require('@google-cloud/vertexai');
 const { createLogger } = require('../utils/contextLogger');
 const { SMART_FUP_STATE_FIELDS } = require('../scripts/setup-smart-fup-airtable');
-const { getAllClients, getClientBase, initializeClientsBase } = require('./clientService');
+const { getAllClients, getClientBase, getClientById, initializeClientsBase } = require('./clientService');
 const { vertexAIClient } = require('../config/geminiClient');
 const { getSection } = require('../utils/notesSectionManager');
 const fetch = require('node-fetch');
@@ -910,6 +910,8 @@ async function getSmartFollowupQueue(clientId) {
         id: record.id,
         leadId: fields[SMART_FUP_STATE_FIELDS.LEAD_ID] || '',
         leadEmail: fields[SMART_FUP_STATE_FIELDS.LEAD_EMAIL] || '',
+        leadFirstName: fields[SMART_FUP_STATE_FIELDS.LEAD_FIRST_NAME] || '',
+        leadLastName: fields[SMART_FUP_STATE_FIELDS.LEAD_LAST_NAME] || '',
         leadLinkedin: fields[SMART_FUP_STATE_FIELDS.LEAD_LINKEDIN] || '',
         generatedTime: fields[SMART_FUP_STATE_FIELDS.GENERATED_TIME] || '',
         // User's follow-up date
@@ -926,6 +928,7 @@ async function getSmartFollowupQueue(clientId) {
         waitingOn: fields[SMART_FUP_STATE_FIELDS.WAITING_ON] || 'None',
         suggestedMessage: fields[SMART_FUP_STATE_FIELDS.SUGGESTED_MESSAGE] || '',
         recommendedChannel: fields[SMART_FUP_STATE_FIELDS.RECOMMENDED_CHANNEL] || 'LinkedIn',
+        fathomTranscripts: fields[SMART_FUP_STATE_FIELDS.FATHOM_TRANSCRIPTS] || '',
       };
     });
     
@@ -942,6 +945,34 @@ async function getSmartFollowupQueue(clientId) {
       }
       return 0;
     });
+    
+    // Enrich names from Leads table when Smart FUP State has empty names
+    const needNames = queue.filter(q => !q.leadFirstName && !q.leadLastName);
+    if (needNames.length > 0) {
+      try {
+        const client = await getClientById(clientId);
+        const baseId = client?.airtableBaseId;
+        if (baseId) {
+          const clientBase = getClientBase(baseId);
+          for (const item of needNames) {
+            if (!item.leadId) continue;
+            try {
+              const leadRecord = await clientBase('Leads').find(item.leadId);
+              const fn = leadRecord.fields[LEAD_FIELDS.FIRST_NAME] || '';
+              const ln = leadRecord.fields[LEAD_FIELDS.LAST_NAME] || '';
+              if (fn || ln) {
+                item.leadFirstName = fn;
+                item.leadLastName = ln;
+              }
+            } catch (e) {
+              logger.debug(`Could not fetch lead ${item.leadId} for name enrichment: ${e.message}`);
+            }
+          }
+        }
+      } catch (e) {
+        logger.warn(`Name enrichment from Leads failed: ${e.message}`);
+      }
+    }
     
     return queue;
     
