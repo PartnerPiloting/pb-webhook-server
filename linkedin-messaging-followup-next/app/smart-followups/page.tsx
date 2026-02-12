@@ -99,6 +99,7 @@ function SmartFollowupsContent() {
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRebuilding, setIsRebuilding] = useState(false);
+  const [loadSeconds, setLoadSeconds] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [selectedItem, setSelectedItem] = useState<QueueItem | null>(null);
   const [generatedMessage, setGeneratedMessage] = useState('');
@@ -184,6 +185,9 @@ function SmartFollowupsContent() {
   const loadQueue = async () => {
     setIsLoading(true);
     setError(null);
+    setLoadSeconds(0);
+    const start = Date.now();
+    const timer = setInterval(() => setLoadSeconds(Math.floor((Date.now() - start) / 1000)), 1000);
     try {
       const response = await getSmartFollowupQueue();
       
@@ -197,6 +201,7 @@ function SmartFollowupsContent() {
       console.error('Failed to load Smart Follow-up queue:', err);
       setError(err instanceof Error ? err.message : 'Failed to load queue');
     } finally {
+      clearInterval(timer);
       setIsLoading(false);
     }
   };
@@ -489,14 +494,17 @@ function SmartFollowupsContent() {
     }
   };
 
-  const getPriorityBadge = (priority: 'High' | 'Medium' | 'Low') => {
-    switch (priority) {
-      case 'High':
+  const getPriorityBadge = (priority: 'High' | 'Medium' | 'Low' | string) => {
+    const p = (priority || 'Medium').toString().toLowerCase();
+    switch (p) {
+      case 'high':
         return { text: 'High', bgColor: 'bg-red-100', textColor: 'text-red-700' };
-      case 'Medium':
+      case 'medium':
         return { text: 'Medium', bgColor: 'bg-amber-100', textColor: 'text-amber-700' };
-      case 'Low':
+      case 'low':
         return { text: 'Low', bgColor: 'bg-gray-100', textColor: 'text-gray-600' };
+      default:
+        return { text: 'Medium', bgColor: 'bg-amber-100', textColor: 'text-amber-700' };
     }
   };
 
@@ -549,12 +557,16 @@ function SmartFollowupsContent() {
             onClick={async () => {
               setIsRebuilding(true);
               setError(null);
+              setLoadSeconds(0);
+              const start = Date.now();
+              const timer = setInterval(() => setLoadSeconds(Math.floor((Date.now() - start) / 1000)), 1000);
               try {
                 await triggerSmartFollowupRebuild();
                 await loadQueue();
               } catch (err) {
                 setError(err instanceof Error ? err.message : 'Rebuild failed');
               } finally {
+                clearInterval(timer);
                 setIsRebuilding(false);
               }
             }}
@@ -562,7 +574,7 @@ function SmartFollowupsContent() {
             className="px-3 py-1.5 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50"
             title="Run AI analysis on due leads and rebuild queue. Use before starting FUP's for the day."
           >
-            {isRebuilding ? 'Rebuilding…' : '🔨 Rebuild'}
+            {isRebuilding ? `Rebuilding… ${loadSeconds}s` : '🔨 Rebuild'}
           </button>
         </div>
 
@@ -570,9 +582,18 @@ function SmartFollowupsContent() {
         <div className="flex h-full" style={{ height: 'calc(100% - 65px)' }}>
           {/* Left panel - Lead list (narrow: widest name + padding) */}
           <div className="w-52 shrink-0 border-r border-gray-200 overflow-y-auto">
-            {isLoading ? (
-              <div className="flex items-center justify-center h-full">
+            {(isLoading || isRebuilding) ? (
+              <div className="flex flex-col items-center justify-center h-full gap-4 p-4">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                <span className="text-sm text-gray-500 text-center">
+                  {isRebuilding ? 'Rebuilding' : 'Loading'}… {loadSeconds}s
+                </span>
+                {queue.length > 0 && (
+                  <span className="text-xs text-gray-400 text-center block" title={queue.map(getDisplayName).join(', ')}>
+                    {queue.slice(0, 3).map(getDisplayName).join(', ')}
+                    {queue.length > 3 && ` +${queue.length - 3} more`}
+                  </span>
+                )}
               </div>
             ) : error ? (
               <div className="p-4 text-red-600">{error}</div>

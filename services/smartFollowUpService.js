@@ -933,6 +933,7 @@ async function getSmartFollowupQueue(clientId) {
     });
     
     // Leads table as source of truth: exclude leads whose Follow-Up Date in Leads is in the future
+    // Fetch leads in parallel (batched) to avoid N sequential calls timing out
     let filteredQueue = queue;
     try {
       const client = await getClientById(clientId);
@@ -940,17 +941,32 @@ async function getSmartFollowupQueue(clientId) {
       if (baseId) {
         const clientBase = getClientBase(baseId);
         const toRemove = new Set();
-        for (const item of queue) {
-          if (!item.leadId) continue;
-          try {
-            const leadRecord = await clientBase('Leads').find(item.leadId);
-            const fup = leadRecord.fields[LEAD_FIELDS.FOLLOW_UP_DATE] || null;
-            const fupStr = fup ? (typeof fup === 'string' ? fup.split('T')[0] : String(fup).split('T')[0]) : null;
-            if (fupStr && fupStr > today) {
-              toRemove.add(item.id);
+        const BATCH_SIZE = 10;
+        const itemsWithLeadId = queue.filter(q => q.leadId);
+        for (let i = 0; i < itemsWithLeadId.length; i += BATCH_SIZE) {
+          const batch = itemsWithLeadId.slice(i, i + BATCH_SIZE);
+          const results = await Promise.all(batch.map(async (item) => {
+            try {
+              const leadRecord = await clientBase('Leads').find(item.leadId);
+              const fup = leadRecord.fields[LEAD_FIELDS.FOLLOW_UP_DATE] || null;
+              const fupStr = fup ? (typeof fup === 'string' ? fup.split('T')[0] : String(fup).split('T')[0]) : null;
+              return { item, fupStr, leadRecord };
+            } catch (e) {
+              logger.debug(`Could not fetch lead ${item.leadId} for FUP filter: ${e.message}`);
+              return { item, fupStr: null, leadRecord: null };
             }
-          } catch (e) {
-            logger.debug(`Could not fetch lead ${item.leadId} for FUP filter: ${e.message}`);
+          }));
+          for (const { item, fupStr, leadRecord } of results) {
+            if (fupStr && fupStr > today) toRemove.add(item.id);
+            // Enrich names from this fetch to avoid a second round
+            if (leadRecord && (!item.leadFirstName && !item.leadLastName)) {
+              const fn = leadRecord.fields[LEAD_FIELDS.FIRST_NAME] || '';
+              const ln = leadRecord.fields[LEAD_FIELDS.LAST_NAME] || '';
+              if (fn || ln) {
+                item.leadFirstName = fn;
+                item.leadLastName = ln;
+              }
+            }
           }
         }
         filteredQueue = queue.filter(q => !toRemove.has(q.id));
@@ -963,9 +979,10 @@ async function getSmartFollowupQueue(clientId) {
     }
     
     // Sort by: Priority (High first), then by effectiveDate (oldest first)
-    const priorityOrder = { 'High': 0, 'Medium': 1, 'Low': 2 };
+    const priorityOrder = { 'high': 0, 'medium': 1, 'low': 2 };
+    const getPriorityOrder = (p) => priorityOrder[String(p || 'medium').toLowerCase()] ?? 1;
     filteredQueue.sort((a, b) => {
-      const pDiff = (priorityOrder[a.priority] || 1) - (priorityOrder[b.priority] || 1);
+      const pDiff = getPriorityOrder(a.priority) - getPriorityOrder(b.priority);
       if (pDiff !== 0) return pDiff;
       if (a.effectiveDate && b.effectiveDate) {
         return a.effectiveDate.localeCompare(b.effectiveDate);
@@ -973,34 +990,7 @@ async function getSmartFollowupQueue(clientId) {
       return 0;
     });
     
-    // Enrich names from Leads table when Smart FUP State has empty names
-    const needNames = filteredQueue.filter(q => !q.leadFirstName && !q.leadLastName);
-    if (needNames.length > 0) {
-      try {
-        const client = await getClientById(clientId);
-        const baseId = client?.airtableBaseId;
-        if (baseId) {
-          const clientBase = getClientBase(baseId);
-          for (const item of needNames) {
-            if (!item.leadId) continue;
-            try {
-              const leadRecord = await clientBase('Leads').find(item.leadId);
-              const fn = leadRecord.fields[LEAD_FIELDS.FIRST_NAME] || '';
-              const ln = leadRecord.fields[LEAD_FIELDS.LAST_NAME] || '';
-              if (fn || ln) {
-                item.leadFirstName = fn;
-                item.leadLastName = ln;
-              }
-            } catch (e) {
-              logger.debug(`Could not fetch lead ${item.leadId} for name enrichment: ${e.message}`);
-            }
-          }
-        }
-      } catch (e) {
-        logger.warn(`Name enrichment from Leads failed: ${e.message}`);
-      }
-    }
-    
+    // Name enrichment is done in the FUP filter pass above (single pass)
     return filteredQueue;
     
   } catch (error) {
