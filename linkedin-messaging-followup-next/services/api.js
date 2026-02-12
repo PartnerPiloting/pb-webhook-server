@@ -1591,6 +1591,88 @@ export const generateFollowupMessage = async (leadId, options = {}) => {
 };
 
 /**
+ * Replace FUP AI Instructions (self-learning - after user reviews integrated version)
+ * @param {string} instructions - The full instructions text to save
+ * @returns {Promise<{success: boolean}>}
+ */
+export const replaceFupInstructions = async (instructions) => {
+  try {
+    const clientId = getCurrentClientId();
+    const token = getCurrentPortalToken();
+    const devKey = getCurrentDevKey();
+
+    if (!clientId) {
+      throw new Error('Client ID not available. Please ensure user is authenticated.');
+    }
+
+    const headers = {
+      'Content-Type': 'application/json',
+      'x-client-id': clientId,
+    };
+    if (token) headers['x-portal-token'] = token;
+    if (devKey) headers['x-dev-key'] = devKey;
+
+    const response = await fetch('/api/smart-followups/fup-instructions', {
+      method: 'PUT',
+      headers,
+      body: JSON.stringify({ instructions }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to update instructions');
+    }
+
+    return data;
+  } catch (error) {
+    console.error('Replace FUP instructions error:', error.message);
+    throw error;
+  }
+};
+
+/**
+ * Ask AI to review instructions before save (optional step)
+ * @param {string} instructions - The instructions text to review
+ * @returns {Promise<{feedback: string}>}
+ */
+export const reviewFupInstructions = async (instructions) => {
+  try {
+    const clientId = getCurrentClientId();
+    const token = getCurrentPortalToken();
+    const devKey = getCurrentDevKey();
+
+    if (!clientId) {
+      throw new Error('Client ID not available. Please ensure user is authenticated.');
+    }
+
+    const headers = {
+      'Content-Type': 'application/json',
+      'x-client-id': clientId,
+    };
+    if (token) headers['x-portal-token'] = token;
+    if (devKey) headers['x-dev-key'] = devKey;
+
+    const response = await fetch('/api/smart-followups/review-instructions', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ instructions }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to review instructions');
+    }
+
+    return data;
+  } catch (error) {
+    console.error('Review FUP instructions error:', error.message);
+    throw error;
+  }
+};
+
+/**
  * Detect tags for a lead using AI analysis
  * @param {Object} params - Parameters for tag detection
  * @param {string} params.notes - Lead's manual notes
