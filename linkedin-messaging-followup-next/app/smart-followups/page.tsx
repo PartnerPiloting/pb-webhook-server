@@ -195,8 +195,20 @@ function SmartFollowupsContent() {
         throw new Error(response.error || 'Failed to load queue');
       }
       
-      // Queue is already sorted by backend (Priority, then effectiveDate)
-      setQueue(response.queue || []);
+      // Sort by Priority (High first), then effectiveDate - ensure order even if backend differs
+      const getOrder = (p: string) => {
+        const s = String(p || 'medium').toLowerCase().trim();
+        if (s.startsWith('high')) return 0;
+        if (s.startsWith('low')) return 2;
+        return 1;
+      };
+      const sorted = (response.queue || []).slice().sort((a, b) => {
+        const diff = getOrder(a.priority) - getOrder(b.priority);
+        if (diff !== 0) return diff;
+        if (a.effectiveDate && b.effectiveDate) return a.effectiveDate.localeCompare(b.effectiveDate);
+        return 0;
+      });
+      setQueue(sorted);
     } catch (err) {
       console.error('Failed to load Smart Follow-up queue:', err);
       setError(err instanceof Error ? err.message : 'Failed to load queue');

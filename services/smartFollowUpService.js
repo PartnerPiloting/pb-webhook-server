@@ -933,45 +933,39 @@ async function getSmartFollowupQueue(clientId) {
     });
     
     // Leads table as source of truth: exclude leads whose Follow-Up Date in Leads is in the future
-    // Fetch leads in parallel (batched) to avoid N sequential calls timing out
+    // Single bulk query: fetch all lead IDs with future FUP date (one API call instead of N)
     let filteredQueue = queue;
     try {
       const client = await getClientById(clientId);
       const baseId = client?.airtableBaseId;
       if (baseId) {
         const clientBase = getClientBase(baseId);
-        const toRemove = new Set();
-        const BATCH_SIZE = 10;
-        const itemsWithLeadId = queue.filter(q => q.leadId);
-        for (let i = 0; i < itemsWithLeadId.length; i += BATCH_SIZE) {
-          const batch = itemsWithLeadId.slice(i, i + BATCH_SIZE);
-          const results = await Promise.all(batch.map(async (item) => {
-            try {
-              const leadRecord = await clientBase('Leads').find(item.leadId);
-              const fup = leadRecord.fields[LEAD_FIELDS.FOLLOW_UP_DATE] || null;
-              const fupStr = fup ? (typeof fup === 'string' ? fup.split('T')[0] : String(fup).split('T')[0]) : null;
-              return { item, fupStr, leadRecord };
-            } catch (e) {
-              logger.debug(`Could not fetch lead ${item.leadId} for FUP filter: ${e.message}`);
-              return { item, fupStr: null, leadRecord: null };
-            }
-          }));
-          for (const { item, fupStr, leadRecord } of results) {
-            if (fupStr && fupStr > today) toRemove.add(item.id);
-            // Enrich names from this fetch to avoid a second round
-            if (leadRecord && (!item.leadFirstName && !item.leadLastName)) {
-              const fn = leadRecord.fields[LEAD_FIELDS.FIRST_NAME] || '';
-              const ln = leadRecord.fields[LEAD_FIELDS.LAST_NAME] || '';
-              if (fn || ln) {
-                item.leadFirstName = fn;
-                item.leadLastName = ln;
+        const futureFupRecords = await clientBase('Leads').select({
+          filterByFormula: `{${LEAD_FIELDS.FOLLOW_UP_DATE}} > '${today}'`,
+          fields: [LEAD_FIELDS.FOLLOW_UP_DATE],
+          maxRecords: 500
+        }).all();
+        const futureFupLeadIds = new Set(futureFupRecords.map(r => r.id));
+        filteredQueue = queue.filter(q => !futureFupLeadIds.has(q.leadId));
+        // Batch fetch names for items that need enrichment (small parallel batches)
+        const needNames = filteredQueue.filter(q => !q.leadFirstName && !q.leadLastName && q.leadId);
+        if (needNames.length > 0) {
+          const BATCH_SIZE = 10;
+          for (let i = 0; i < needNames.length; i += BATCH_SIZE) {
+            const batch = needNames.slice(i, i + BATCH_SIZE);
+            const results = await Promise.all(batch.map(item =>
+              clientBase('Leads').find(item.leadId).then(r => ({ item, r })).catch(() => ({ item, r: null }))
+            ));
+            for (const { item, r } of results) {
+              if (r && (!item.leadFirstName && !item.leadLastName)) {
+                item.leadFirstName = r.fields[LEAD_FIELDS.FIRST_NAME] || '';
+                item.leadLastName = r.fields[LEAD_FIELDS.LAST_NAME] || '';
               }
             }
           }
         }
-        filteredQueue = queue.filter(q => !toRemove.has(q.id));
-        if (toRemove.size > 0) {
-          logger.info(`Filtered out ${toRemove.size} lead(s) with future FUP date in Leads table`);
+        if (futureFupLeadIds.size > 0) {
+          logger.info(`Filtered out ${futureFupLeadIds.size} lead(s) with future FUP date in Leads table`);
         }
       }
     } catch (e) {
@@ -979,11 +973,16 @@ async function getSmartFollowupQueue(clientId) {
     }
     
     // Sort by: Priority (High first), then by effectiveDate (oldest first)
-    const priorityOrder = { 'high': 0, 'medium': 1, 'low': 2 };
-    const getPriorityOrder = (p) => priorityOrder[String(p || 'medium').toLowerCase()] ?? 1;
+    const getPriorityOrder = (p) => {
+      const s = String(p || 'medium').toLowerCase().trim();
+      if (s.startsWith('high')) return 0;
+      if (s.startsWith('low')) return 2;
+      return 1; // medium or unknown
+    };
     filteredQueue.sort((a, b) => {
-      const pDiff = getPriorityOrder(a.priority) - getPriorityOrder(b.priority);
-      if (pDiff !== 0) return pDiff;
+      const pA = getPriorityOrder(a.priority);
+      const pB = getPriorityOrder(b.priority);
+      if (pA !== pB) return pA - pB;
       if (a.effectiveDate && b.effectiveDate) {
         return a.effectiveDate.localeCompare(b.effectiveDate);
       }
