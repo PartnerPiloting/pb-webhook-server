@@ -367,7 +367,8 @@ function SmartFollowupsContent() {
           story: selectedItem.story,
           notes: leadNotes,
           fathomTranscripts: selectedItem.fathomTranscripts,
-          name: getDisplayName(selectedItem)
+          name: getDisplayName(selectedItem),
+          suggestedMessage: generatedMessage || selectedItem.suggestedMessage || ''
         }
       });
       const answer = (result as { answer?: string }).answer || (result as { message?: string }).message || 'No response.';

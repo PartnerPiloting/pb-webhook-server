@@ -7714,13 +7714,13 @@ router.post("/api/smart-followups/generate-message", async (req, res) => {
       return res.status(400).json({ error: 'Client ID required' });
     }
 
-    const { leadId, refinement, analyzeOnly, context } = req.body;
+    const { leadId, refinement, analyzeOnly, context, query } = req.body;
     
     if (!context) {
       return res.status(400).json({ error: 'context is required' });
     }
     
-    logger.info(`Smart follow-ups ${analyzeOnly ? 'analysis' : 'message generation'} request for: ${context.name}`);
+    logger.info(`Smart follow-ups ${query ? 'chat' : analyzeOnly ? 'analysis' : 'message generation'} request for: ${context.name}`);
 
     // Get Gemini model from config (same pattern as calendar-chat)
     const geminiConfig = require('../config/geminiClient.js');
@@ -7732,7 +7732,34 @@ router.post("/api/smart-followups/generate-message", async (req, res) => {
     // Build the prompt
     let prompt;
     
-    if (analyzeOnly) {
+    if (query) {
+      // Free-form Q&A - AI acts as partner/advisor; can also refine messages when explicitly asked
+      const suggestedMsgBlock = context.suggestedMessage
+        ? `\nCurrent suggested message (to refine if they ask):\n${context.suggestedMessage}\n`
+        : '';
+      prompt = `You are the user's sales partner and advisor. You have full context about this lead.
+
+TWO MODES:
+1) STRATEGIC ADVICE (default): When they ask "is this lead worth following up?", "what do you think?", "should I prioritise this one?" - answer as their advisor. Give YOUR read, recommendations, strategic insight. Reference notes/transcripts. Do NOT write a message to send - give advice.
+
+2) MESSAGE REFINEMENT: When they explicitly ask to improve/refine the message (e.g. "improve the suggested message", "make it shorter", "add a mention of X", "make it more direct") - then provide an improved version. Use the Current suggested message below as the starting point.${suggestedMsgBlock}
+
+Lead: ${context.name}
+
+Story so far (AI summary):
+${context.story || 'No summary'}
+
+Full Notes:
+${context.notes || 'No notes'}
+
+Fathom meeting transcripts (if any):
+${context.fathomTranscripts || 'No transcripts'}
+
+User question: ${query}
+
+Respond appropriately: strategic advice when they ask for opinions, or an improved message when they explicitly ask you to refine/improve the message. Be direct and actionable.`;
+      
+    } else if (analyzeOnly) {
       // Analysis prompt
       prompt = `You are a sales coach analyzing a lead for follow-up strategy.
 
@@ -7816,7 +7843,9 @@ Write an improved version incorporating this feedback.`;
     
     logger.info(`Gemini response received (${text.length} chars)`);
 
-    if (analyzeOnly) {
+    if (query) {
+      res.json({ answer: text });
+    } else if (analyzeOnly) {
       res.json({ analysis: text });
     } else {
       res.json({ message: text });
