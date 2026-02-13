@@ -723,15 +723,43 @@ function extractRecipientEmail(mailgunData) {
 }
 
 /**
+ * Extract CC header from Mailgun message-headers (JSON array of [name, value] pairs)
+ * @param {string} messageHeaders - Raw message-headers string from Mailgun
+ * @returns {string|null} CC header value or null
+ */
+function extractCcFromMessageHeaders(messageHeaders) {
+    if (!messageHeaders || typeof messageHeaders !== 'string') return null;
+    try {
+        const headers = JSON.parse(messageHeaders);
+        if (!Array.isArray(headers)) return null;
+        for (const pair of headers) {
+            if (Array.isArray(pair) && pair.length >= 2) {
+                const name = (pair[0] || '').toString().trim();
+                if (name.toLowerCase() === 'cc') {
+                    return (pair[1] || '').toString().trim() || null;
+                }
+            }
+        }
+    } catch (e) {
+        logger.warn(`Failed to parse message-headers for CC: ${e.message}`);
+    }
+    return null;
+}
+
+/**
  * Extract all CC email addresses from Mailgun data
+ * Checks top-level Cc/cc, then message-headers JSON
  * @param {Object} mailgunData - Raw Mailgun webhook data
  * @returns {Array<{email: string, name: string}>} Array of CC recipients
  */
 function extractCcRecipients(mailgunData) {
-    const ccHeader = mailgunData.Cc || 
-                     mailgunData.cc || 
-                     (mailgunData.message && mailgunData.message.headers && mailgunData.message.headers.cc) ||
-                     '';
+    let ccHeader = mailgunData.Cc || 
+                  mailgunData.cc || 
+                  (mailgunData.message && mailgunData.message.headers && mailgunData.message.headers.cc) ||
+                  '';
+    if (!ccHeader && mailgunData['message-headers']) {
+        ccHeader = extractCcFromMessageHeaders(mailgunData['message-headers']) || '';
+    }
     
     if (!ccHeader) {
         return [];
