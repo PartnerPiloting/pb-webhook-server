@@ -2,37 +2,127 @@
 
 import React, { useState, useMemo } from 'react';
 
+// Email thread separator (matches backend)
+const EMAIL_BLOCK_SEP = /\n-{3,}\n/;
+// Meeting block separator
+const MEETING_BLOCK_SEP = /━{10,}/;
+
 /**
- * Convert URLs in text to clickable links
- * @param {string} text - Text that may contain URLs
- * @returns {React.ReactNode[]} Array of text and link elements
+ * Shorten URL for display (domain + path hint)
  */
-function linkifyText(text) {
+function shortenUrl(url) {
+  try {
+    const u = new URL(url);
+    const host = u.hostname.replace(/^www\./, '');
+    const path = u.pathname !== '/' ? u.pathname.slice(0, 30) + (u.pathname.length > 30 ? '…' : '') : '';
+    return path ? `${host}${path}` : host;
+  } catch {
+    return url.length > 40 ? url.slice(0, 37) + '…' : url;
+  }
+}
+
+/**
+ * Convert URLs to clickable links with shortened display
+ */
+function linkifyText(text, shortLinks = true) {
   if (!text) return text;
-  
-  // URL regex - matches http/https URLs
   const urlRegex = /(https?:\/\/[^\s<>"]+)/g;
   const parts = text.split(urlRegex);
-  
   return parts.map((part, index) => {
-    if (urlRegex.test(part)) {
-      // Reset regex lastIndex since we're reusing it
-      urlRegex.lastIndex = 0;
+    if (/^https?:\/\//.test(part)) {
+      const label = shortLinks ? shortenUrl(part) : part;
       return (
-        <a 
+        <a
           key={index}
           href={part}
           target="_blank"
           rel="noopener noreferrer"
           className="text-blue-600 hover:text-blue-800 hover:underline"
+          title={part}
           onClick={(e) => e.stopPropagation()}
         >
-          {part}
+          {label} ↗
         </a>
       );
     }
     return part;
   });
+}
+
+/**
+ * Collapse [image: ...] placeholders to compact pill
+ */
+function collapseImagePlaceholders(text) {
+  if (!text || typeof text !== 'string') return text;
+  return text.replace(/\[image:\s*([^\]]*)\]/gi, (_, label) => {
+    const short = (label || 'image').trim().slice(0, 20);
+    return short ? ` [📷 ${short}] ` : ' [📷] ';
+  });
+}
+
+/**
+ * Strip common corporate footer/disclaimer
+ */
+function stripFooter(text) {
+  if (!text || typeof text !== 'string') return text;
+  const footerPatterns = [
+    /\n\s*This email and any attachments may contain confidential[\s\S]*$/i,
+    /\n\s*This message and any attachment[\s\S]*$/i,
+    /\n\s*CONFIDENTIALITY NOTICE[\s\S]*$/i,
+    /\n\s*Disclaimer[\s\S]*$/i
+  ];
+  let result = text;
+  for (const p of footerPatterns) {
+    const match = result.match(p);
+    if (match) {
+      result = result.slice(0, match.index).trim();
+      break;
+    }
+  }
+  return result;
+}
+
+/**
+ * Split content into main + quoted sections for collapsible display
+ */
+function splitQuotedSections(text) {
+  if (!text || typeof text !== 'string') return { main: text, quoted: [] };
+  const onWrote = /On\s+.+?wrote:\s*/i;
+  const idx = text.search(onWrote);
+  if (idx === -1) return { main: text, quoted: [] };
+  const main = text.slice(0, idx).trim();
+  const rest = text.slice(idx);
+  const quotedMatch = rest.match(/On\s+(.+?)wrote:\s*([\s\S]*)/i);
+  const quoted = quotedMatch
+    ? [{ header: `Quoted: ${quotedMatch[1].trim()}`, body: quotedMatch[2].trim().slice(0, 800) }]
+    : [];
+  return { main, quoted };
+}
+
+/**
+ * Split email section into thread blocks
+ */
+function splitEmailBlocks(content) {
+  if (!content || !content.trim()) return [];
+  return content.split(EMAIL_BLOCK_SEP).map(b => b.trim()).filter(Boolean);
+}
+
+/**
+ * Split meeting section into blocks
+ */
+function splitMeetingBlocks(content) {
+  if (!content || !content.trim()) return [];
+  return content.split(MEETING_BLOCK_SEP).map(b => b.trim()).filter(Boolean);
+}
+
+/**
+ * Get block title (first line or subject)
+ */
+function getBlockTitle(block, fallback = 'Thread') {
+  const first = block.split('\n')[0]?.trim() || '';
+  if (first.toLowerCase().startsWith('subject:')) return first.slice(8).trim() || fallback;
+  if (first.length > 50) return first.slice(0, 47) + '…';
+  return first || fallback;
 }
 
 /**
@@ -241,6 +331,106 @@ function extractLastDate(lines) {
   return null;
 }
 
+/** Max lines before "Show more" */
+const SHOW_MORE_THRESHOLD = 15;
+
+/**
+ * Render a single block with readability enhancements
+ */
+function ReadableBlock({ content, defaultExpanded = false }) {
+  const [showMore, setShowMore] = useState(false);
+  const processed = useMemo(() => {
+    let t = collapseImagePlaceholders(content);
+    t = stripFooter(t);
+    return t;
+  }, [content]);
+  const lines = processed.split('\n');
+  const isLong = lines.length > SHOW_MORE_THRESHOLD;
+  const displayLines = showMore || !isLong ? lines : lines.slice(0, SHOW_MORE_THRESHOLD);
+  const { main, quoted } = splitQuotedSections(displayLines.join('\n'));
+  const hasQuoted = quoted.length > 0;
+
+  return (
+    <div className="space-y-2">
+      <div className="whitespace-pre-wrap text-sm text-gray-800 font-mono leading-relaxed break-words">
+        {linkifyText(main)}
+      </div>
+      {hasQuoted && (
+        <details className="mt-2 border border-gray-200 rounded overflow-hidden">
+          <summary className="px-3 py-2 bg-gray-50 cursor-pointer text-xs text-gray-600 hover:bg-gray-100">
+            {quoted[0].header}
+          </summary>
+          <div className="px-3 py-2 text-xs text-gray-500 whitespace-pre-wrap font-mono">
+            {linkifyText(quoted[0].body)}
+          </div>
+        </details>
+      )}
+      {isLong && !showMore && (
+        <button
+          type="button"
+          className="text-xs text-blue-600 hover:underline"
+          onClick={() => setShowMore(true)}
+        >
+          Show more ({lines.length - SHOW_MORE_THRESHOLD} lines)
+        </button>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Section content: sub-collapsibles for email/meeting, flat for others
+ */
+function SectionContent({ sectionKey, content }) {
+  const [expandedBlocks, setExpandedBlocks] = useState({});
+  const blocks = useMemo(() => {
+    if (!content) return [];
+    if (sectionKey === 'email') return splitEmailBlocks(content);
+    if (sectionKey === 'meeting') return splitMeetingBlocks(content);
+    return null;
+  }, [sectionKey, content]);
+
+  const toggleBlock = (i) => {
+    setExpandedBlocks(prev => ({ ...prev, [i]: !prev[i] }));
+  };
+
+  if (!content) return <span className="text-gray-400 italic">No content</span>;
+  if (blocks && blocks.length > 1) {
+    return (
+      <div className="space-y-2">
+        {blocks.map((block, i) => {
+          const isExp = expandedBlocks[i] ?? (i === 0);
+          const title = getBlockTitle(block, sectionKey === 'email' ? 'Email thread' : 'Meeting');
+          return (
+            <div key={i} className="border border-gray-200 rounded-lg overflow-hidden">
+              <button
+                type="button"
+                className="w-full px-3 py-2 flex items-center justify-between bg-gray-50 hover:bg-gray-100 text-left text-sm"
+                onClick={() => toggleBlock(i)}
+              >
+                <span className="font-medium text-gray-700 truncate">{title}</span>
+                <svg className={`w-4 h-4 shrink-0 transform ${isExp ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+              {isExp && (
+                <div className="p-3 border-t border-gray-100">
+                  <ReadableBlock content={block} />
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+  return (
+    <div>
+      <ReadableBlock content={content} defaultExpanded />
+    </div>
+  );
+}
+
 /**
  * Section icon components
  */
@@ -415,9 +605,7 @@ export default function CollapsibleNotes({
               {/* Section Content */}
               {isExpanded && (
                 <div className="p-4 border-t border-gray-100">
-                  <pre className="whitespace-pre-wrap text-sm text-gray-800 font-mono leading-relaxed">
-                    {section.content ? linkifyText(section.content) : <span className="text-gray-400 italic">No content</span>}
-                  </pre>
+                  <SectionContent sectionKey={section.key} content={section.content} />
                 </div>
               )}
             </div>

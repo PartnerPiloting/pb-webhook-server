@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Email Readability - Improved Layout Mockup</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { 
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
+      max-width: 720px; 
+      margin: 2rem auto; 
+      padding: 0 1rem;
+      color: #1f2937;
+      line-height: 1.5;
+    }
+    h1 { font-size: 1.25rem; margin-bottom: 1.5rem; color: #111; }
+    .email-container {
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      overflow: hidden;
+      background: #fff;
+    }
+    .email-header {
+      background: #f9fafb;
+      padding: 1rem 1.25rem;
+      border-bottom: 1px solid #e5e7eb;
+      font-size: 0.875rem;
+    }
+    .email-header strong { color: #374151; }
+    .email-body { padding: 1.25rem; }
+    
+    /* Main message - prominent */
+    .main-message {
+      background: #f0f9ff;
+      border-left: 4px solid #0ea5e9;
+      padding: 1rem 1.25rem;
+      margin-bottom: 1rem;
+      border-radius: 0 6px 6px 0;
+    }
+    .message-meta {
+      font-size: 0.75rem;
+      color: #6b7280;
+      margin-bottom: 0.5rem;
+    }
+    .message-content {
+      font-size: 0.9375rem;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+    }
+    .message-content p { margin: 0 0 0.25rem 0; }
+    .message-content p:last-child { margin-bottom: 0; }
+    
+    /* Collapsible quoted section */
+    .quoted-section {
+      border: 1px solid #e5e7eb;
+      border-radius: 6px;
+      margin-top: 1rem;
+      overflow: hidden;
+    }
+    .quoted-toggle {
+      width: 100%;
+      padding: 0.75rem 1rem;
+      background: #f9fafb;
+      border: none;
+      cursor: pointer;
+      text-align: left;
+      font-size: 0.875rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      color: #6b7280;
+    }
+    .quoted-toggle:hover { background: #f3f4f6; }
+    .quoted-toggle .chevron {
+      transition: transform 0.2s;
+      color: #9ca3af;
+    }
+    .quoted-toggle[aria-expanded="true"] .chevron { transform: rotate(90deg); }
+    .quoted-toggle .label { flex: 1; }
+    .quoted-toggle .badge {
+      font-size: 0.7rem;
+      background: #e5e7eb;
+      padding: 0.15rem 0.5rem;
+      border-radius: 4px;
+      color: #6b7280;
+    }
+    .quoted-content {
+      padding: 1rem 1.25rem;
+      font-size: 0.875rem;
+      color: #4b5563;
+      border-top: 1px solid #e5e7eb;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+    .quoted-content[hidden] { display: none; }
+    
+    /* Short links */
+    .link-short {
+      color: #2563eb;
+      text-decoration: none;
+      font-size: 0.875rem;
+    }
+    .link-short:hover { text-decoration: underline; }
+    .link-short::after { content: " ↗"; font-size: 0.7em; opacity: 0.7; }
+    
+    /* Image placeholder - compact */
+    .img-placeholder {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
+      font-size: 0.75rem;
+      color: #9ca3af;
+      background: #f3f4f6;
+      padding: 0.15rem 0.4rem;
+      border-radius: 4px;
+    }
+    
+    /* Footer collapse */
+    .footer-toggle {
+      margin-top: 1rem;
+      padding: 0.5rem 0;
+      font-size: 0.75rem;
+      color: #9ca3af;
+      background: none;
+      border: none;
+      cursor: pointer;
+      text-decoration: underline;
+    }
+    .footer-toggle:hover { color: #6b7280; }
+    .footer-content {
+      font-size: 0.75rem;
+      color: #9ca3af;
+      padding: 0.75rem;
+      background: #f9fafb;
+      border-radius: 4px;
+      margin-top: 0.5rem;
+    }
+    .footer-content[hidden] { display: none; }
+    
+    /* Show more for long content */
+    .show-more {
+      font-size: 0.8rem;
+      color: #2563eb;
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 0.25rem 0;
+      margin-top: 0.5rem;
+    }
+    .show-more:hover { text-decoration: underline; }
+    .content-preview { max-height: 8em; overflow: hidden; position: relative; }
+    .content-preview::after {
+      content: '';
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 2em;
+      background: linear-gradient(transparent, white);
+    }
+    .content-expanded .content-preview { max-height: none; }
+    .content-expanded .content-preview::after { display: none; }
+    .content-expanded .show-more { display: none; }
+  </style>
+</head>
+<body>
+  <h1>Email Readability Mockup — How it would look</h1>
+  
+  <div class="email-container">
+    <div class="email-header">
+      <strong>Email</strong> · Last: 13-02-26 · 2 threads
+    </div>
+    
+    <div class="email-body">
+      <!-- Main/latest message - clearly highlighted -->
+      <div class="main-message">
+        <div class="message-meta">Paul Faix · Fri, 13 Feb 2026 at 21:19</div>
+        <div class="message-content">
+          <p>Hi Guy,</p>
+          <p>Here are the notes from our catch up. Key points:</p>
+          <p>• Campaign 2 results – we'll review and adjust</p>
+          <p>• LinkedIn connection strategy – using AI blaze, Quick Update, Follow-up Manager</p>
+          <p>• Save to Portal Chrome extension</p>
+          <p>• Refilling campaigns, auto calendar booking</p>
+          <p>• Connecting you with Sam Noble</p>
+          <p>• Finding saved searches in Sales Navigator</p>
+          <p>
+            Meeting notes: <a href="#" class="link-short" title="https://docs.google.com/document/d/abc123">Meeting notes ↗</a><br>
+            Recording: <a href="#" class="link-short" title="https://drive.google.com/video/xyz">Video recording ↗</a>
+          </p>
+          <p><span class="img-placeholder">📷 Paul Faix</span> <span class="img-placeholder">📷 Document</span> <span class="img-placeholder">📷 Video</span></p>
+        </div>
+      </div>
+
+      <!-- Collapsible: Quoted/forwarded message -->
+      <div class="quoted-section">
+        <button class="quoted-toggle" type="button" aria-expanded="false" onclick="toggleQuoted(this)">
+          <span class="chevron">▶</span>
+          <span class="label">Quoted message from Gemini · 13 Feb 2026, 2:08 PM</span>
+          <span class="badge">Meeting notes</span>
+        </button>
+        <div class="quoted-content" hidden>
+          <div class="content-preview">
+            <strong>Paul & Guy Catch Up</strong> — Feb 13, 2026<br><br>
+            Topics discussed: Campaign 2 results, LinkedIn strategy, AI tools, Save to Portal extension, 
+            refilling campaigns, calendar booking, Sam Noble intro, Sales Navigator saved searches.
+            <br><br>
+            Additional details: Reviewing Campaign 2 performance metrics. Discussed adjusting the LinkedIn 
+            connection approach. Paul mentioned the AI blaze tool and Quick Update feature. We looked at 
+            the Follow-up Manager. Save to Portal Chrome extension was demonstrated. Plans for refilling 
+            campaigns and setting up automatic calendar booking. Paul will connect Guy with Sam Noble. 
+            Also covered finding saved searches in Sales Navigator.
+          </div>
+          <button class="show-more" onclick="this.parentElement.classList.add('content-expanded')">Show more</button>
+          <br><br>
+          <a href="#" class="link-short">Full meeting notes ↗</a>
+          <span class="img-placeholder">📷</span>
+        </div>
+      </div>
+
+      <!-- Collapsible: Another nested forward (if present) -->
+      <div class="quoted-section">
+        <button class="quoted-toggle" type="button" aria-expanded="false" onclick="toggleQuoted(this)">
+          <span class="chevron">▶</span>
+          <span class="label">Earlier forward · 13 Feb 2026</span>
+          <span class="badge">Original</span>
+        </button>
+        <div class="quoted-content" hidden>
+          Subject: Notes from Paul & Guy Catch Up<br>
+          From: Gemini &lt;gemini-notes@google.com&gt;<br>
+          [Condensed content – expand to view full quoted text]
+        </div>
+      </div>
+
+      <!-- Collapsible footer -->
+      <button class="footer-toggle" type="button" onclick="toggleFooter(this)">
+        Show disclaimer
+      </button>
+      <div class="footer-content" hidden>
+        This email and any attachments may contain confidential and legally privileged information. 
+        If you are not the intended recipient, please delete this email and notify the sender.
+      </div>
+    </div>
+  </div>
+
+  <!-- Second thread example (collapsible by subject) -->
+  <div class="email-container" style="margin-top: 1.5rem;">
+    <div class="email-header">
+      <strong>Re: Project X</strong> · 12 Feb 2026
+    </div>
+    <div class="email-body">
+      <div class="main-message">
+        <div class="message-meta">John Smith · Wed, 12 Feb 2026 at 3:45 PM</div>
+        <div class="message-content">
+          <p>Sounds good, let's schedule for next week.</p>
+          <p>Here's the doc: <a href="#" class="link-short">Project spec ↗</a></p>
+        </div>
+      </div>
+      <div class="quoted-section">
+        <button class="quoted-toggle" type="button" aria-expanded="false" onclick="toggleQuoted(this)">
+          <span class="chevron">▶</span>
+          <span class="label">Your earlier message · 11 Feb 2026</span>
+        </button>
+        <div class="quoted-content" hidden>
+          I've reviewed the proposal. We can move forward with Phase 1.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <p style="margin-top: 2rem; font-size: 0.875rem; color: #6b7280;">
+    <strong>Improvements shown:</strong> Main message highlighted, paragraph breaks, short links, compact image placeholders, 
+    collapsible quoted sections, collapsible footer, multiple threads as separate blocks.
+  </p>
+
+  <script>
+    function toggleQuoted(btn) {
+      const expanded = btn.getAttribute('aria-expanded') === 'true';
+      btn.setAttribute('aria-expanded', !expanded);
+      btn.nextElementSibling.hidden = expanded;
+    }
+    function toggleFooter(btn) {
+      const content = btn.nextElementSibling;
+      const isHidden = content.hidden;
+      content.hidden = !isHidden;
+      btn.textContent = isHidden ? 'Hide disclaimer' : 'Show disclaimer';
+    }
+  </script>
+</body>
+</html>

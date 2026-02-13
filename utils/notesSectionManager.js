@@ -40,6 +40,9 @@ const LEGACY_SEPARATOR = '──────────────────
 // Meeting block separator (used by Fathom and other meeting note-takers)
 const MEETING_BLOCK_SEPARATOR = '━━━━━━━━━━━━━━━━━━━━━━━━━';
 
+// Email thread separator (between different email threads when appending)
+const EMAIL_BLOCK_SEPARATOR = '\n---\n';
+
 // Section display order (first = top of notes)
 const SECTION_ORDER = ['linkedin', 'manual', 'salesnav', 'email', 'meeting'];
 
@@ -277,8 +280,11 @@ function updateSection(currentNotes, sectionKey, newContent, options = {}) {
             // Use block-based sorting for meetings (multi-line blocks separated by ━━━)
             if (sectionKey === 'meeting') {
                 sections[sectionKey] = mergeAndSortBlocks(sections[sectionKey], newContent.trim(), true);
+            } else if (sectionKey === 'email') {
+                // Email: block-based by thread (separated by ---), newest first
+                sections[sectionKey] = mergeAndSortEmailBlocks(sections[sectionKey], newContent.trim(), true);
             } else {
-                // For email/manual: merge and sort individual messages by date/time (newest first)
+                // For manual: merge and sort individual messages by date/time (newest first)
                 sections[sectionKey] = mergeAndSortMessages(sections[sectionKey], newContent.trim(), true);
             }
         } else if (sections[sectionKey]) {
@@ -593,6 +599,67 @@ function extractNewestDate(content) {
     const year = String(newest.getFullYear()).slice(-2);
     
     return `${day}-${month}-${year}`;
+}
+
+/**
+ * Split email content into blocks (threads separated by ---)
+ * @param {string} content - Email section content
+ * @returns {string[]} Array of email thread blocks
+ */
+function splitEmailBlocks(content) {
+    if (!content || typeof content !== 'string') {
+        return [];
+    }
+    const trimmed = content.trim();
+    if (!trimmed) return [];
+    // Split by --- separator (with optional surrounding newlines)
+    const blocks = trimmed.split(/\n-{3,}\n/);
+    return blocks.map(b => b.trim()).filter(b => b.length > 0);
+}
+
+/**
+ * Extract date from an email block for sorting (from first DD-MM-YY line)
+ * @param {string} block - A single email thread block
+ * @returns {Date} Date for sorting (or very old date if none found)
+ */
+function extractEmailBlockDate(block) {
+    if (!block) return new Date(0);
+    const ddmmyyMatch = block.match(/(\d{2})-(\d{2})-(\d{2})\s+(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+    if (ddmmyyMatch) {
+        const [, day, month, year, hour, minute, ampm] = ddmmyyMatch;
+        const fullYear = 2000 + parseInt(year, 10);
+        let hours = parseInt(hour, 10);
+        if (ampm && ampm.toUpperCase() === 'PM' && hours !== 12) hours += 12;
+        if (ampm && ampm.toUpperCase() === 'AM' && hours === 12) hours = 0;
+        return new Date(fullYear, parseInt(month, 10) - 1, parseInt(day, 10), hours, parseInt(minute, 10));
+    }
+    return new Date(0);
+}
+
+/**
+ * Merge and sort email blocks (threads), keeping each thread as a unit
+ * @param {string} existingContent - Existing email section content
+ * @param {string} newContent - New email thread to add
+ * @param {boolean} newestFirst - Sort newest first (default true)
+ * @returns {string} Merged and sorted email content
+ */
+function mergeAndSortEmailBlocks(existingContent, newContent, newestFirst = true) {
+    const existingBlocks = splitEmailBlocks(existingContent);
+    const newBlocks = splitEmailBlocks(newContent);
+    const allBlocks = [...existingBlocks, ...newBlocks];
+    const seen = new Set();
+    const uniqueBlocks = allBlocks.filter(block => {
+        const normalized = block.replace(/\s+/g, ' ').trim();
+        if (seen.has(normalized)) return false;
+        seen.add(normalized);
+        return true;
+    });
+    uniqueBlocks.sort((a, b) => {
+        const dateA = extractEmailBlockDate(a);
+        const dateB = extractEmailBlockDate(b);
+        return newestFirst ? dateB.getTime() - dateA.getTime() : dateA.getTime() - dateB.getTime();
+    });
+    return uniqueBlocks.join(EMAIL_BLOCK_SEPARATOR);
 }
 
 /**
