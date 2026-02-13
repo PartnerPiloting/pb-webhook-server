@@ -59,6 +59,7 @@ router.post('/api/webhooks/inbound-email', upload.any(), async (req, res) => {
         // Log basic info (not full content for privacy)
         logger.info(`From: ${mailgunData.sender || mailgunData.from}`);
         logger.info(`To: ${mailgunData.To || mailgunData.to}`);
+        logger.info(`Cc: ${mailgunData.Cc || mailgunData.cc || '(none)'}`);
         logger.info(`Subject: ${mailgunData.subject}`);
         logger.info(`Recipient (BCC): ${mailgunData.recipient}`);
 
