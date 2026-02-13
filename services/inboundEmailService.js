@@ -498,8 +498,8 @@ function formatTimestamp(date) {
 /**
  * Send error notification email to sender
  * @param {string} toEmail - Recipient email
- * @param {string} errorType - 'client_not_found' or 'lead_not_found'
- * @param {Object} context - Additional context (leadEmail, etc.)
+ * @param {string} errorType - 'client_not_found' | 'lead_not_found' | 'leads_not_found'
+ * @param {Object} context - Additional context (leadEmail, leadsNotFound, clientName, etc.)
  */
 async function sendErrorNotification(toEmail, errorType, context = {}) {
     const https = require('https');
@@ -512,7 +512,8 @@ async function sendErrorNotification(toEmail, errorType, context = {}) {
 
     const subjects = {
         client_not_found: '❌ Email Not Recognized - ASH Portal',
-        lead_not_found: '❌ Lead Not Found - ASH Portal'
+        lead_not_found: '❌ Lead Not Found - ASH Portal',
+        leads_not_found: '📧 Email not logged – lead not found'
     };
 
     const bodies = {
@@ -537,7 +538,31 @@ Please check:
 If you need help, contact your coach.
 
 Best,
-ASH Portal Team`
+ASH Portal Team`,
+
+        leads_not_found: (() => {
+            const leads = context.leadsNotFound || [];
+            const recipientLines = leads.map(l =>
+                l.name ? `${l.name} (${l.email})` : l.email
+            ).join('\n• ');
+            const recipientBlock = recipientLines ? `• ${recipientLines}` : '• (unknown)';
+            return `Hi${context.clientName ? ` ${context.clientName}` : ''},
+
+We received your BCC email but couldn't match the recipient(s) to any leads in your dashboard.
+
+**Recipient(s):**
+${recipientBlock}
+
+This can happen when:
+• The lead isn't in your dashboard yet
+• The email in their profile doesn't match the one you used
+• The name matches more than one lead, so we couldn't be sure which one
+
+**What to do:** Add the lead to your dashboard, or update their email address to match what you're using.
+
+Best,
+ASH Portal Team`;
+        })()
     };
 
     const emailData = {
@@ -2672,9 +2697,12 @@ async function processInboundEmail(mailgunData) {
         }
         
         if (!lead) {
-            // Silently skip - not a lead in the system
             logger.info(`${potential.source.toUpperCase()} recipient ${potential.email} is not a lead - skipping`);
-            results.leadsNotFound.push({ email: potential.email, source: potential.source });
+            results.leadsNotFound.push({
+                email: potential.email,
+                name: potential.name || '',
+                source: potential.source
+            });
             continue;
         }
         
@@ -2715,9 +2743,12 @@ async function processInboundEmail(mailgunData) {
     results.totalUpdated = results.leadsUpdated.length;
     
     if (results.leadsUpdated.length === 0 && results.leadsNotFound.length === filteredLeads.length) {
-        // None of the recipients were leads - this is fine, just ignore
-        logger.info('No recipients were leads in the system - ignoring email');
+        logger.info('No recipients were leads in the system - notifying client');
         results.ignored = true;
+        await sendErrorNotification(client.clientEmailAddress, 'leads_not_found', {
+            leadsNotFound: results.leadsNotFound,
+            clientName: client.clientFirstName || client.clientName
+        });
     }
     
     return results;
