@@ -611,6 +611,58 @@ function extractSenderName(fromHeader) {
 }
 
 /**
+ * Extract display name from email header value (e.g. "Duncan Murcott <email@example.com>")
+ * Parses from top of header - the part before the angle brackets
+ * @param {string} headerValue - Raw header value like "Duncan Murcott <duncan@example.com>"
+ * @returns {string|null} The display name or null if not present
+ */
+function extractNameFromEmailHeader(headerValue) {
+    if (!headerValue || typeof headerValue !== 'string') return null;
+    const trimmed = headerValue.trim();
+    const match = trimmed.match(/^([^<]+)</);
+    if (match) {
+        const name = match[1].trim().replace(/^["']|["']$/g, '');
+        return name.length >= 2 ? name : null;
+    }
+    return null;
+}
+
+/**
+ * Extract recipient name from To header for name-based lead fallback
+ * @param {Object} mailgunData - Raw Mailgun webhook data
+ * @returns {string|null} The recipient's display name from To header
+ */
+function extractRecipientName(mailgunData) {
+    const toHeader = mailgunData.To || mailgunData.to ||
+        (mailgunData.message && mailgunData.message.headers && mailgunData.message.headers.to) ||
+        '';
+    return extractNameFromEmailHeader(toHeader);
+}
+
+/**
+ * Extract lead name from email body when headers lack it.
+ * Parses thread top-to-bottom for "On ... Name <email> wrote:" patterns.
+ * @param {string} bodyPlain - Email body text
+ * @param {string} recipientEmail - Email to match (case-insensitive)
+ * @returns {string|null} Display name if found in thread, else null
+ */
+function extractNameFromBodyForRecipient(bodyPlain, recipientEmail) {
+    if (!bodyPlain || !recipientEmail) return null;
+    const emailLower = recipientEmail.toLowerCase().trim();
+    // Match "On ... Name <email> wrote:" or "Name <email> wrote:" - Gmail/Outlook style
+    const pattern = /(?:On\s+[^:]+:\s*)?([^<\n]+?)\s*<([^>]+)>\s*wrote:/gi;
+    let match;
+    while ((match = pattern.exec(bodyPlain)) !== null) {
+        const name = match[1].trim().replace(/^["']|["']$/g, '');
+        const email = match[2].toLowerCase().trim();
+        if (email === emailLower && name.length >= 2) {
+            return name;
+        }
+    }
+    return null;
+}
+
+/**
  * Extract recipient email from various email headers
  * @param {Object} mailgunData - Raw Mailgun webhook data
  * @returns {string|null} The lead's email address
@@ -2551,9 +2603,10 @@ async function processInboundEmail(mailgunData) {
         }
         logger.info(`Using ${potentialLeads.length} recipients from forwarded email (To + Cc + From)`);
     } else {
-        // Normal BCC flow - add primary recipient (To)
+        // Normal BCC flow - add primary recipient (To) with name from header for fallback lookup
         if (leadEmail) {
-            potentialLeads.push({ email: leadEmail, source: 'to' });
+            const toName = extractRecipientName(mailgunData);
+            potentialLeads.push({ email: leadEmail, name: toName || '', source: 'to' });
         }
         
         // Add CC recipients
@@ -2601,7 +2654,22 @@ async function processInboundEmail(mailgunData) {
     };
     
     for (const potential of filteredLeads) {
-        const lead = await findLeadByEmail(client, potential.email);
+        let lead = await findLeadByEmail(client, potential.email);
+        
+        // Name-based fallback: when email lookup fails, try matching by name
+        // Parse from top (headers) to bottom (body) - use header name first, then body
+        if (!lead) {
+            let nameToTry = potential.name && potential.name.trim().length >= 2
+                ? potential.name.trim()
+                : extractNameFromBodyForRecipient(bodyPlain, potential.email);
+            if (nameToTry) {
+                const nameSearch = await findLeadByName(client, nameToTry, null);
+                if (nameSearch.matchType === 'unique' && nameSearch.lead) {
+                    lead = nameSearch.lead;
+                    logger.info(`Email lookup failed for ${potential.email}; matched by name "${nameToTry}" (unique match)`);
+                }
+            }
+        }
         
         if (!lead) {
             // Silently skip - not a lead in the system
