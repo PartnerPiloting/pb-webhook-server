@@ -126,6 +126,7 @@ function SmartFollowupsContent() {
   const [isSavingFup, setIsSavingFup] = useState(false);
   
   const chatInputRef = useRef<HTMLInputElement>(null);
+  const instructionsPanelRef = useRef<HTMLDivElement>(null);
   const hasUnsavedFupChanges = (currentFupDate !== draftFupDate) || (currentFollowUpYes !== draftFollowUpYes);
   
   // Resolve client ID from: utils cache, profile, URL params, or retry
@@ -598,6 +599,13 @@ function SmartFollowupsContent() {
     setInstructionsReviewFeedback(null);
   };
 
+  const handleOpenEditInstructions = () => {
+    const current = getClientProfile()?.client?.fupInstructions || '';
+    setInstructionsReviewDraft(current);
+    setInstructionsReviewFeedback(null);
+    setTimeout(() => instructionsPanelRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
+  };
+
   const handleCopyMessage = async () => {
     try {
       await navigator.clipboard.writeText(generatedMessage);
@@ -667,29 +675,38 @@ function SmartFollowupsContent() {
             </span>
           </div>
           
-          <button
-            onClick={async () => {
-              setIsRebuilding(true);
-              setError(null);
-              setLoadSeconds(0);
-              const start = Date.now();
-              const timer = setInterval(() => setLoadSeconds(Math.floor((Date.now() - start) / 1000)), 1000);
-              try {
-                await triggerSmartFollowupRebuild();
-                await loadQueue();
-              } catch (err) {
-                setError(err instanceof Error ? err.message : 'Rebuild failed');
-              } finally {
-                clearInterval(timer);
-                setIsRebuilding(false);
-              }
-            }}
-            disabled={isLoading || isRebuilding}
-            className="px-3 py-1.5 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50"
-            title="Run AI analysis on due leads and rebuild queue. Use before starting FUP's for the day."
-          >
-            {isRebuilding ? `Rebuilding… ${loadSeconds}s` : '🔨 Rebuild'}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleOpenEditInstructions}
+              className="px-3 py-1.5 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+              title="Edit your FUP AI Instructions – add, change, or review what the AI follows when generating messages"
+            >
+              ✏️ Edit instructions
+            </button>
+            <button
+              onClick={async () => {
+                setIsRebuilding(true);
+                setError(null);
+                setLoadSeconds(0);
+                const start = Date.now();
+                const timer = setInterval(() => setLoadSeconds(Math.floor((Date.now() - start) / 1000)), 1000);
+                try {
+                  await triggerSmartFollowupRebuild();
+                  await loadQueue();
+                } catch (err) {
+                  setError(err instanceof Error ? err.message : 'Rebuild failed');
+                } finally {
+                  clearInterval(timer);
+                  setIsRebuilding(false);
+                }
+              }}
+              disabled={isLoading || isRebuilding}
+              className="px-3 py-1.5 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50"
+              title="Run AI analysis on due leads and rebuild queue. Use before starting FUP's for the day."
+            >
+              {isRebuilding ? `Rebuilding… ${loadSeconds}s` : '🔨 Rebuild'}
+            </button>
+          </div>
         </div>
 
         {/* Content */}
@@ -910,7 +927,7 @@ function SmartFollowupsContent() {
                       </div>
                     </div>
                     {instructionsReviewDraft !== null && (
-                      <div className="p-4 border-t border-amber-200 bg-amber-50/80">
+                      <div ref={instructionsPanelRef} className="p-4 border-t border-amber-200 bg-amber-50/80">
                         <h3 className="text-sm font-medium text-amber-900 mb-2">Review and update your instructions</h3>
                         <p className="text-xs text-amber-800 mb-2">Edit below, optionally ask AI to review, then Save when ready.</p>
                         <textarea
@@ -1061,11 +1078,58 @@ function SmartFollowupsContent() {
                 </div>
               </>
             ) : (
-              <div className="flex-1 flex items-center justify-center text-gray-500">
-                <div className="text-center">
-                  <div className="text-5xl mb-4">👈</div>
-                  <p className="text-lg">Select a lead to get started</p>
-                </div>
+              <div className="flex-1 flex flex-col overflow-y-auto">
+                {instructionsReviewDraft === null ? (
+                  <div className="flex-1 flex items-center justify-center text-gray-500">
+                    <div className="text-center">
+                      <div className="text-5xl mb-4">👈</div>
+                      <p className="text-lg">Select a lead to get started</p>
+                    </div>
+                  </div>
+                ) : null}
+                {instructionsReviewDraft !== null && (
+                  <div ref={instructionsPanelRef} className="p-6 max-w-2xl mx-auto">
+                    <h3 className="text-sm font-medium text-amber-900 mb-2">Edit your FUP AI Instructions</h3>
+                    <p className="text-xs text-amber-800 mb-2">Add or edit instructions. The AI uses these when generating messages and giving advice.</p>
+                    <textarea
+                      value={instructionsReviewDraft}
+                      onChange={(e) => setInstructionsReviewDraft(e.target.value)}
+                      rows={10}
+                      className="w-full px-3 py-2 border border-amber-300 rounded-lg text-sm font-mono bg-white"
+                      placeholder="FUP AI Instructions"
+                    />
+                    {instructionsReviewFeedback && (
+                      <div className="mt-2 p-2 bg-white border border-amber-200 rounded text-sm text-gray-700">
+                        <span className="font-medium text-amber-800">AI review:</span> {instructionsReviewFeedback}
+                      </div>
+                    )}
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={handleSaveInstructions}
+                        disabled={isSavingInstructions}
+                        className="px-3 py-1.5 text-sm font-medium text-white bg-amber-600 hover:bg-amber-700 rounded disabled:opacity-50"
+                      >
+                        {isSavingInstructions ? 'Saving…' : 'Save'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleReviewInstructions}
+                        disabled={isReviewingInstructions}
+                        className="px-3 py-1.5 text-sm font-medium text-amber-800 bg-amber-100 hover:bg-amber-200 rounded disabled:opacity-50"
+                      >
+                        {isReviewingInstructions ? 'Reviewing…' : 'Ask AI to review'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleCloseInstructionsReview}
+                        className="px-3 py-1.5 text-sm font-medium text-gray-600 hover:text-gray-800"
+                      >
+                        Close
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
