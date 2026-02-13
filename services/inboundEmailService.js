@@ -415,11 +415,11 @@ async function updateLeadWithEmail(client, lead, emailData) {
         processedContent += `${timestamp.date} ${timestamp.time} - ${senderName} - ${cleanContent}`;
     }
 
-    // Update the Email section in notes - REPLACE mode
-    // We replace because the new email contains the full thread history
+    // Update the Email section in notes - APPEND mode
+    // Each new email thread is appended; multiple threads are kept as separate blocks
     const noteUpdateResult = updateSection(lead.notes || '', 'email', processedContent, { 
-        append: false, 
-        replace: true 
+        append: true, 
+        replace: false 
     });
 
     // Calculate follow-up date (+14 days)
