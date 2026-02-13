@@ -2012,9 +2012,7 @@ async function processMeetingNotetakerEmail(client, emailData, provider) {
             };
         }
         
-        // Send success notification
-        await sendMeetingSuccessNotification(client.clientEmailAddress, lead, meetingData, provider);
-        
+        // No success email - only notify on failure (lead not found, error, etc.)
         return {
             success: true,
             type: 'meeting_notes',

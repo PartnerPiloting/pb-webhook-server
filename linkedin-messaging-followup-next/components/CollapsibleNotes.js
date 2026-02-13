@@ -61,6 +61,24 @@ function collapseImagePlaceholders(text) {
 }
 
 /**
+ * Collapse "From: ... Date: ... Subject: ..." email headers to reduce clutter
+ */
+function collapseEmailHeaders(text) {
+  if (!text || typeof text !== 'string') return text;
+  // Match "From: X Date: Y" or "From: X\nDate: Y" blocks
+  return text.replace(
+    /From:\s*[^\n]+(?:\n?\s*Date:\s*[^\n]+)?(?:\n?\s*Subject:\s*[^\n]+)?(?:\n?\s*To:\s*[^\n]+)?/gi,
+    (m) => {
+      const fromMatch = m.match(/From:\s*([^<\n]+(?:<[^>]+>)?)/i);
+      const dateMatch = m.match(/Date:\s*([^\n]+)/i);
+      const from = fromMatch ? fromMatch[1].trim().replace(/\s+/g, ' ').slice(0, 40) : '';
+      const date = dateMatch ? dateMatch[1].trim().replace(/\s+/g, ' ').slice(0, 30) : '';
+      return `\n[Forwarded: ${from}${date ? ` · ${date}` : ''}]\n\n`;
+    }
+  );
+}
+
+/**
  * Strip common corporate footer/disclaimer
  */
 function stripFooter(text) {
@@ -335,12 +353,49 @@ function extractLastDate(lines) {
 const SHOW_MORE_THRESHOLD = 15;
 
 /**
+ * Render text with paragraph spacing and message-line styling
+ */
+function renderReadableContent(text) {
+  if (!text) return null;
+  const paragraphs = text.split(/\n\n+/);
+  return paragraphs.map((para, i) => {
+    const lines = para.split('\n');
+    const isMessageLine = /^\d{2}-\d{2}-\d{2}\s+\d{1,2}:\d{2}\s+[AP]M\s+-/i;
+    return (
+      <div key={i} className="mb-4 last:mb-0">
+        {lines.map((line, j) => {
+          const trimmed = line.trim();
+          if (!trimmed) return <br key={j} />;
+          if (isMessageLine.test(trimmed)) {
+            const parts = trimmed.split(' - ');
+            const meta = parts.slice(0, 2).join(' - '); // "DD-MM-YY HH:MM AM - Sender"
+            const msg = parts.slice(2).join(' - ');     // "message content"
+            return (
+              <div key={j} className="mb-3 pl-0">
+                <span className="text-xs text-gray-500 font-medium">{meta}</span>
+                {msg && <span className="text-gray-700"> — {linkifyText(msg)}</span>}
+              </div>
+            );
+          }
+          return (
+            <p key={j} className="mb-2 text-gray-800 leading-relaxed last:mb-0">
+              {linkifyText(trimmed)}
+            </p>
+          );
+        })}
+      </div>
+    );
+  });
+}
+
+/**
  * Render a single block with readability enhancements
  */
 function ReadableBlock({ content, defaultExpanded = false }) {
   const [showMore, setShowMore] = useState(false);
   const processed = useMemo(() => {
     let t = collapseImagePlaceholders(content);
+    t = collapseEmailHeaders(t);
     t = stripFooter(t);
     return t;
   }, [content]);
@@ -351,17 +406,17 @@ function ReadableBlock({ content, defaultExpanded = false }) {
   const hasQuoted = quoted.length > 0;
 
   return (
-    <div className="space-y-2">
-      <div className="whitespace-pre-wrap text-sm text-gray-800 font-mono leading-relaxed break-words">
-        {linkifyText(main)}
+    <div className="space-y-3 max-w-prose">
+      <div className="text-sm text-gray-800 leading-relaxed break-words">
+        {renderReadableContent(main)}
       </div>
       {hasQuoted && (
         <details className="mt-2 border border-gray-200 rounded overflow-hidden">
           <summary className="px-3 py-2 bg-gray-50 cursor-pointer text-xs text-gray-600 hover:bg-gray-100">
             {quoted[0].header}
           </summary>
-          <div className="px-3 py-2 text-xs text-gray-500 whitespace-pre-wrap font-mono">
-            {linkifyText(quoted[0].body)}
+          <div className="px-3 py-2 text-sm text-gray-600 leading-relaxed">
+            {renderReadableContent(quoted[0].body)}
           </div>
         </details>
       )}
@@ -397,7 +452,7 @@ function SectionContent({ sectionKey, content }) {
   if (!content) return <span className="text-gray-400 italic">No content</span>;
   if (blocks && blocks.length > 1) {
     return (
-      <div className="space-y-2">
+      <div className="space-y-3">
         {blocks.map((block, i) => {
           const isExp = expandedBlocks[i] ?? (i === 0);
           const title = getBlockTitle(block, sectionKey === 'email' ? 'Email thread' : 'Meeting');
@@ -405,7 +460,7 @@ function SectionContent({ sectionKey, content }) {
             <div key={i} className="border border-gray-200 rounded-lg overflow-hidden">
               <button
                 type="button"
-                className="w-full px-3 py-2 flex items-center justify-between bg-gray-50 hover:bg-gray-100 text-left text-sm"
+                className="w-full px-4 py-3 flex items-center justify-between bg-gray-50 hover:bg-gray-100 text-left text-sm"
                 onClick={() => toggleBlock(i)}
               >
                 <span className="font-medium text-gray-700 truncate">{title}</span>
@@ -414,7 +469,7 @@ function SectionContent({ sectionKey, content }) {
                 </svg>
               </button>
               {isExp && (
-                <div className="p-3 border-t border-gray-100">
+                <div className="p-4 border-t border-gray-100 bg-white">
                   <ReadableBlock content={block} />
                 </div>
               )}
