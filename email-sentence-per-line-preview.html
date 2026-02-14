@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Email Display — One Sentence Per Line</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { 
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
+      max-width: 680px; 
+      margin: 2rem auto; 
+      padding: 0 1rem;
+      color: #1f2937;
+      line-height: 1.6;
+    }
+    h1 { font-size: 1.25rem; margin-bottom: 0.5rem; color: #111; }
+    .subtitle { font-size: 0.875rem; color: #6b7280; margin-bottom: 1.5rem; }
+    .block { border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; margin-bottom: 1.5rem; }
+    .block-header { padding: 0.75rem 1rem; background: #f9fafb; font-weight: 500; color: #374151; }
+    .block-body { padding: 1rem; background: #fff; border-top: 1px solid #e5e7eb; }
+    .msg-meta { font-size: 0.75rem; color: #6b7280; font-weight: 500; margin-bottom: 0.5rem; }
+    .forwarded-badge { font-size: 0.75rem; color: #6b7280; background: #f3f4f6; padding: 0.35rem 0.6rem; border-radius: 4px; margin: 0.5rem 0; display: inline-block; }
+    .sentence-line { margin-bottom: 0.35rem; }
+    .bullet { margin-left: 1rem; margin-bottom: 0.35rem; }
+    .img-pill { font-size: 0.75rem; color: #9ca3af; background: #f3f4f6; padding: 0.15rem 0.4rem; border-radius: 4px; }
+    .link { color: #2563eb; text-decoration: none; }
+    .link:hover { text-decoration: underline; }
+    .max-prose { max-width: 65ch; }
+  </style>
+</head>
+<body>
+  <h1>Email Display — One Sentence Per Line</h1>
+  <p class="subtitle">Each sentence on its own line for easier scanning</p>
+
+  <!-- Thread 1 -->
+  <div class="block">
+    <div class="block-header">Fwd: Notes: 'Paul & Guy Catch Up' 13 Feb 2026</div>
+    <div class="block-body max-prose">
+      <p class="msg-meta">14-02-26 7:19 AM - Guy Wilson</p>
+      <div class="forwarded-badge">[Forwarded: Paul Faix · Fri, 13 Feb 2026 at 21:19]</div>
+      
+      <p class="sentence-line">Hi Guy, Great catching up with you today.</p>
+      <p class="sentence-line">As promised, meeting minutes below.</p>
+      <p class="sentence-line">Kind regards, Paul</p>
+      <p class="sentence-line"><span class="img-pill">📷 Paul Faix</span></p>
+
+      <div class="forwarded-badge">[Forwarded: Gemini · Fri, 13 Feb 2026 at 14:08]</div>
+      
+      <p class="sentence-line">Notes from 'Paul & Guy Catch Up'</p>
+      <p class="sentence-line">These notes have been sent to Invited guests in your organisation.</p>
+      <p class="sentence-line"><a href="#" class="link">Open meeting notes ↗</a></p>
+      <p class="sentence-line">The content was auto-generated on February 13, 2026, 1:02 PM AWST, and may contain errors.</p>
+      
+      <p class="sentence-line" style="font-weight: 600; margin-top: 0.75rem;">Summary</p>
+      <p class="sentence-line">Paul Faix and Guy Wilson reviewed the results of Campaign 2, confirming its success in sending invites and garnering positive replies.</p>
+      <p class="sentence-line">They discussed Paul Faix's effective but intrusive LinkedIn connection strategy.</p>
+      <p class="sentence-line">They decided to adjust the automated connection campaign's follow-up delay to ten days to allow Paul Faix sufficient time for personalized outreach and follow-up to new connections using the "AI blaze" tool.</p>
+      <p class="sentence-line">Guy Wilson introduced the "Quick Update" and "Follow-up Manager" features for streamlined conversation tracking.</p>
+      <p class="sentence-line">Guy Wilson offered a "Save to Portal" Chrome extension to Paul Faix.</p>
+      <p class="sentence-line">Paul Faix committed to refilling Campaign 1 and 2.</p>
+      <p class="sentence-line">The next meeting was scheduled for Friday, March 27th.</p>
+      
+      <p class="sentence-line" style="font-weight: 600; margin-top: 0.75rem;">Suggested next steps</p>
+      <p class="bullet">• Paul Faix will look into how to refill Campaign 1 and Campaign 2 using the resources in the portal after the meeting.</p>
+      <p class="bullet">• Paul Faix will set up the automatic calendar booking feature by following the guide in the portal under 'A better way to book meetings without the mental load'.</p>
+      <p class="bullet">• Guy Wilson will connect Paul Faix and Sam Noble via an email introduction.</p>
+      <p class="bullet">• Paul Faix will find the saved searches in sales navigator and do it straight after the meeting.</p>
+      <p class="bullet">• Paul Faix will send the meeting minutes to Guy Wilson.</p>
+      
+      <p class="sentence-line"><span class="img-pill">📷 Meeting records</span> <span class="img-pill">📷 Document</span> <a href="#" class="link">Notes by Gemini ↗</a> <span class="img-pill">📷 Video</span> <a href="#" class="link">Recording ↗</a></p>
+    </div>
+  </div>
+
+  <!-- Thread 2 -->
+  <div class="block">
+    <div class="block-header">Fwd: One poweful thing I forgot to mention</div>
+    <div class="block-body max-prose">
+      <p class="msg-meta">14-02-26 7:17 AM - Guy Wilson</p>
+      <div class="forwarded-badge">[Forwarded: Guy Wilson · Sat, 14 Feb 2026 at 06:26]</div>
+      
+      <p class="sentence-line">Hi Paul, As always, it was great catching up on Friday.</p>
+      <p class="sentence-line">I'm really thrilled to see the results you're already getting from the system.</p>
+      <p class="sentence-line">I showed you how to save your LinkedIn messages to your lead page using the quick update.</p>
+      <p class="sentence-line">Even easier is the ability to save emails.</p>
+      <p class="sentence-line">All you need to do is put track@mail.australiansidehustles.com.au in the BCC of the email or forward it to that address.</p>
+      <p class="sentence-line">The content of your email will then show in the Notes section of your lead under the collapsible Email Section.</p>
+      <p class="sentence-line">For example, you could email the conversation notes you receive from a Google Meet.</p>
+      <p class="sentence-line">Talk Soon (I know a) Guy</p>
+    </div>
+  </div>
+
+  <p style="font-size: 0.875rem; color: #6b7280;">
+    <strong>Note:</strong> This would require a sentence-splitting step when saving or displaying. 
+    Simple approach: split on period + space, or use a sentence tokenizer for edge cases.
+  </p>
+</body>
+</html>

@@ -1,11 +1,16 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
-
-// Email thread separator (matches backend)
-const EMAIL_BLOCK_SEP = /\n-{3,}\n/;
-// Meeting block separator
-const MEETING_BLOCK_SEP = /━{10,}/;
+import {
+  collapseImagePlaceholders,
+  collapseEmailHeaders,
+  stripFooter,
+  splitIntoSentences,
+  splitQuotedSections,
+  splitEmailBlocks,
+  splitMeetingBlocks,
+  getBlockTitle
+} from '../../utils/notesDisplayUtils';
 
 /**
  * Shorten URL for display (domain + path hint)
@@ -47,100 +52,6 @@ function linkifyText(text, shortLinks = true) {
     }
     return part;
   });
-}
-
-/**
- * Collapse [image: ...] placeholders to compact pill
- */
-function collapseImagePlaceholders(text) {
-  if (!text || typeof text !== 'string') return text;
-  return text.replace(/\[image:\s*([^\]]*)\]/gi, (_, label) => {
-    const short = (label || 'image').trim().slice(0, 20);
-    return short ? ` [📷 ${short}] ` : ' [📷] ';
-  });
-}
-
-/**
- * Collapse "From: ... Date: ... Subject: ..." email headers to reduce clutter
- */
-function collapseEmailHeaders(text) {
-  if (!text || typeof text !== 'string') return text;
-  // Match "From: X Date: Y" or "From: X\nDate: Y" blocks
-  return text.replace(
-    /From:\s*[^\n]+(?:\n?\s*Date:\s*[^\n]+)?(?:\n?\s*Subject:\s*[^\n]+)?(?:\n?\s*To:\s*[^\n]+)?/gi,
-    (m) => {
-      const fromMatch = m.match(/From:\s*([^<\n]+(?:<[^>]+>)?)/i);
-      const dateMatch = m.match(/Date:\s*([^\n]+)/i);
-      const from = fromMatch ? fromMatch[1].trim().replace(/\s+/g, ' ').slice(0, 40) : '';
-      const date = dateMatch ? dateMatch[1].trim().replace(/\s+/g, ' ').slice(0, 30) : '';
-      return `\n[Forwarded: ${from}${date ? ` · ${date}` : ''}]\n\n`;
-    }
-  );
-}
-
-/**
- * Strip common corporate footer/disclaimer
- */
-function stripFooter(text) {
-  if (!text || typeof text !== 'string') return text;
-  const footerPatterns = [
-    /\n\s*This email and any attachments may contain confidential[\s\S]*$/i,
-    /\n\s*This message and any attachment[\s\S]*$/i,
-    /\n\s*CONFIDENTIALITY NOTICE[\s\S]*$/i,
-    /\n\s*Disclaimer[\s\S]*$/i
-  ];
-  let result = text;
-  for (const p of footerPatterns) {
-    const match = result.match(p);
-    if (match) {
-      result = result.slice(0, match.index).trim();
-      break;
-    }
-  }
-  return result;
-}
-
-/**
- * Split content into main + quoted sections for collapsible display
- */
-function splitQuotedSections(text) {
-  if (!text || typeof text !== 'string') return { main: text, quoted: [] };
-  const onWrote = /On\s+.+?wrote:\s*/i;
-  const idx = text.search(onWrote);
-  if (idx === -1) return { main: text, quoted: [] };
-  const main = text.slice(0, idx).trim();
-  const rest = text.slice(idx);
-  const quotedMatch = rest.match(/On\s+(.+?)wrote:\s*([\s\S]*)/i);
-  const quoted = quotedMatch
-    ? [{ header: `Quoted: ${quotedMatch[1].trim()}`, body: quotedMatch[2].trim().slice(0, 800) }]
-    : [];
-  return { main, quoted };
-}
-
-/**
- * Split email section into thread blocks
- */
-function splitEmailBlocks(content) {
-  if (!content || !content.trim()) return [];
-  return content.split(EMAIL_BLOCK_SEP).map(b => b.trim()).filter(Boolean);
-}
-
-/**
- * Split meeting section into blocks
- */
-function splitMeetingBlocks(content) {
-  if (!content || !content.trim()) return [];
-  return content.split(MEETING_BLOCK_SEP).map(b => b.trim()).filter(Boolean);
-}
-
-/**
- * Get block title (first line or subject)
- */
-function getBlockTitle(block, fallback = 'Thread') {
-  const first = block.split('\n')[0]?.trim() || '';
-  if (first.toLowerCase().startsWith('subject:')) return first.slice(8).trim() || fallback;
-  if (first.length > 50) return first.slice(0, 47) + '…';
-  return first || fallback;
 }
 
 /**
@@ -397,6 +308,7 @@ function ReadableBlock({ content, defaultExpanded = false }) {
     let t = collapseImagePlaceholders(content);
     t = collapseEmailHeaders(t);
     t = stripFooter(t);
+    t = splitIntoSentences(t);
     return t;
   }, [content]);
   const lines = processed.split('\n');
