@@ -378,7 +378,13 @@ async function scoreChunk(records, clientId, clientBase, runId = 'UNKNOWN') {
             }
         } catch (airtableError) { 
             log.error(`Airtable update error for skipped leads: ${airtableError.message}`);
-            await alertAdmin("Airtable Update Failed (Skipped Leads in batchScorer)", `Client: ${clientId || 'unknown'}\nError: ${String(airtableError)}`);
+            // Don't alert for missing select option - client's Scoring Status field may not have "Skipped – Missing Critical Data"
+            const isMissingSelectOption = /INVALID_MULTIPLE_CHOICE_OPTIONS|create new select option/i.test(String(airtableError));
+            if (!isMissingSelectOption) {
+                await alertAdmin("Airtable Update Failed (Skipped Leads in batchScorer)", `Client: ${clientId || 'unknown'}\nError: ${String(airtableError)}`);
+            } else {
+                log.warn(`Skipped leads update failed (client missing "Skipped – Missing Critical Data" option) - not alerting`);
+            }
         }
     }
 
