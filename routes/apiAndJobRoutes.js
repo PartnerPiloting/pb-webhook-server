@@ -7425,10 +7425,12 @@ CALENDAR DATA RANGE:
     }));
     
     // Build calendar context with both appointments and availability (compact format)
+    // APPOINTMENTS: only show BUSY (opaque) events - free/transparent events (e.g. all-day reminders) do NOT block time
     if (eventDays.length > 0) {
-      calendarContext = `\n\nAPPOINTMENTS:\n${eventDays.map(d => 
-        `${d.day}: ${d.events.length > 0 ? d.events.map(e => `${e.displayTime}-${e.summary}`).join(', ') : '-'}`
-      ).join('\n')}`;
+      calendarContext = `\n\nAPPOINTMENTS:\n${eventDays.map(d => {
+        const busyEvents = d.events.filter(e => !e.isFree);
+        return `${d.day}: ${busyEvents.length > 0 ? busyEvents.map(e => `${e.displayTime}-${e.summary}`).join(', ') : '-'}`;
+      }).join('\n')}`;
     }
     
     if (availabilitySlots.length > 0) {
