@@ -2013,6 +2013,7 @@ async function processMeetingNotetakerEmail(client, emailData, provider) {
         }
         
         // No success email - only notify on failure (lead not found, error, etc.)
+        logger.info(`Meeting notes saved for ${lead.firstName} ${lead.lastName} - NOT sending success email (disabled)`);
         return {
             success: true,
             type: 'meeting_notes',
@@ -2217,6 +2218,7 @@ ASH Portal`
  */
 async function sendMeetingSuccessNotification(toEmail, lead, meetingData, provider) {
     // Success notifications disabled - only failure emails are sent
+    logger.warn('sendMeetingSuccessNotification called but DISABLED - not sending (should not happen with current code)');
     return;
 }
 
