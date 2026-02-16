@@ -300,21 +300,30 @@ function renderReadableContent(text) {
 }
 
 /**
+ * Sections that use email-style formatting (sentence-per-line, collapse headers, etc.)
+ * LinkedIn and Sales Navigator preserve original line breaks and structure.
+ */
+const EMAIL_STYLE_SECTIONS = ['email', 'meeting'];
+
+/**
  * Render a single block with readability enhancements
  */
-function ReadableBlock({ content, defaultExpanded = false }) {
+function ReadableBlock({ content, defaultExpanded = false, sectionKey }) {
   const [showMore, setShowMore] = useState(false);
+  const useEmailFormatting = EMAIL_STYLE_SECTIONS.includes(sectionKey);
   const processed = useMemo(() => {
     let t = collapseImagePlaceholders(content);
-    t = collapseEmailHeaders(t);
-    t = stripFooter(t);
-    t = splitIntoSentences(t);
+    if (useEmailFormatting) {
+      t = collapseEmailHeaders(t);
+      t = stripFooter(t);
+      t = splitIntoSentences(t);
+    }
     return t;
-  }, [content]);
+  }, [content, useEmailFormatting]);
   const lines = processed.split('\n');
   const isLong = lines.length > SHOW_MORE_THRESHOLD;
   const displayLines = showMore || !isLong ? lines : lines.slice(0, SHOW_MORE_THRESHOLD);
-  const { main, quoted } = splitQuotedSections(displayLines.join('\n'));
+  const { main, quoted } = useEmailFormatting ? splitQuotedSections(displayLines.join('\n')) : { main: displayLines.join('\n'), quoted: [] };
   const hasQuoted = quoted.length > 0;
 
   return (
@@ -382,7 +391,7 @@ function SectionContent({ sectionKey, content }) {
               </button>
               {isExp && (
                 <div className="p-4 border-t border-gray-100 bg-white">
-                  <ReadableBlock content={block} />
+                  <ReadableBlock content={block} sectionKey={sectionKey} />
                 </div>
               )}
             </div>
@@ -393,7 +402,7 @@ function SectionContent({ sectionKey, content }) {
   }
   return (
     <div>
-      <ReadableBlock content={content} defaultExpanded />
+      <ReadableBlock content={content} defaultExpanded sectionKey={sectionKey} />
     </div>
   );
 }
