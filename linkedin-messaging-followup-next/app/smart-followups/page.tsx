@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef, Suspense } from 'react';
 import Layout from '../../components/Layout';
 import { getSmartFollowupQueue, acknowledgeAiDate, generateFollowupMessage, updateLead, getLeadById, snoozeSmartFollowup, triggerSmartFollowupRebuild, replaceFupInstructions, reviewFupInstructions } from '../../services/api';
-import { getCurrentClientId, getClientProfile, getCurrentClientProfile } from '../../utils/clientUtils';
+import { getCurrentClientId, getClientProfile, getCurrentClientProfile, buildAuthUrl } from '../../utils/clientUtils';
 
 /**
  * Smart Follow-ups Page v2 - Rebuilt based on Smart Follow-Up Decisions doc
@@ -846,6 +846,24 @@ function SmartFollowupsContent() {
                         Save
                       </button>
                     </div>
+                    <a
+                      href={buildAuthUrl(selectedItem.leadLinkedin ? `/quick-update?linkedinUrl=${encodeURIComponent(selectedItem.leadLinkedin)}` : `/quick-update?lead=${encodeURIComponent(selectedItem.leadId)}`)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-2.5 py-1 text-sm font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg"
+                      title="Quick Update - add notes for this lead"
+                    >
+                      ✏️ Quick Update
+                    </a>
+                    <a
+                      href={buildAuthUrl(selectedItem.leadLinkedin ? `/calendar-booking?linkedinUrl=${encodeURIComponent(selectedItem.leadLinkedin)}` : `/calendar-booking?lead=${encodeURIComponent(selectedItem.leadId)}`)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-2.5 py-1 text-sm font-medium text-purple-600 bg-purple-50 hover:bg-purple-100 rounded-lg"
+                      title="Book a meeting with this lead"
+                    >
+                      📅 Book Meeting
+                    </a>
                     {selectedItem.leadLinkedin && (
                       <a
                         href={selectedItem.leadLinkedin}
