@@ -353,7 +353,9 @@ export function buildAuthUrl(path) {
   }
   
   const queryString = params.toString();
-  return queryString ? `${path}?${queryString}` : path;
+  if (!queryString) return path;
+  const separator = path.includes('?') ? '&' : '?';
+  return `${path}${separator}${queryString}`;
 }
 
 export default {
