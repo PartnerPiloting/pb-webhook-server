@@ -2209,67 +2209,15 @@ ASH Portal`
 
 /**
  * Send notification when meeting notes are saved successfully
+ * DISABLED: We only notify on failure (lead not found, error, etc.) per user preference.
  * @param {string} toEmail - Recipient email
  * @param {Object} lead - Lead object
  * @param {Object} meetingData - Parsed meeting data
  * @param {string} provider - Provider name
  */
 async function sendMeetingSuccessNotification(toEmail, lead, meetingData, provider) {
-    const https = require('https');
-    const querystring = require('querystring');
-    
-    if (!process.env.MAILGUN_API_KEY || !process.env.MAILGUN_DOMAIN) {
-        logger.warn('Mailgun not configured - skipping notification');
-        return;
-    }
-    
-    const leadName = `${lead.firstName} ${lead.lastName}`.trim();
-    
-    const emailData = {
-        from: `ASH Portal <noreply@${process.env.MAILGUN_DOMAIN}>`,
-        to: toEmail,
-        subject: `✅ Meeting Note Saved - ${leadName}`,
-        text: `Hi,
-
-Your ${provider} meeting notes have been saved to ${leadName}'s record.
-
-${meetingData.duration ? `Duration: ${meetingData.duration}` : ''}
-${meetingData.meetingLink ? `Meeting Link: ${meetingData.meetingLink}` : ''}
-
-View in your dashboard to see the notes.
-
-Best,
-ASH Portal`
-    };
-    
-    const postData = querystring.stringify(emailData);
-    
-    return new Promise((resolve) => {
-        const req = https.request({
-            hostname: 'api.mailgun.net',
-            port: 443,
-            path: `/v3/${process.env.MAILGUN_DOMAIN}/messages`,
-            method: 'POST',
-            auth: `api:${process.env.MAILGUN_API_KEY}`,
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-                'Content-Length': Buffer.byteLength(postData)
-            }
-        }, (res) => {
-            let responseData = '';
-            res.on('data', chunk => responseData += chunk);
-            res.on('end', () => {
-                if (res.statusCode >= 200 && res.statusCode < 300) {
-                    logger.info(`Meeting success notification sent to ${toEmail} for ${leadName}`);
-                }
-                resolve({ sent: res.statusCode < 300 });
-            });
-        });
-        
-        req.on('error', () => resolve({ sent: false }));
-        req.write(postData);
-        req.end();
-    });
+    // Success notifications disabled - only failure emails are sent
+    return;
 }
 
 /**
