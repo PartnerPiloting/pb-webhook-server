@@ -8,6 +8,7 @@
 require('dotenv').config();
 const { createLogger } = require('../utils/contextLogger');
 const { updateSection, getSection } = require('../utils/notesSectionManager');
+const { logNotesChange } = require('../utils/notesAuditLogger');
 const clientService = require('./clientService');
 const { createBaseInstance } = require('../config/airtableClient');
 
@@ -443,6 +444,16 @@ async function updateLeadWithEmail(client, lead, emailData) {
     });
     if (noteUpdateResult.skippedDuplicate) {
         logger.info(`Skipped duplicate email for lead ${lead.id} (${lead.email}) - subject matched`);
+        logger.info(`[EMAIL-DEBUG] result: SKIPPED - no update needed`);
+        // CRITICAL: Don't update the lead at all when skipping duplicate
+        // This prevents any risk of data loss from parse/rebuild cycle
+        return {
+            id: lead.id,
+            updatedFields: [],
+            followUpDate: null,
+            messageCount: 0,
+            skippedDuplicate: true
+        };
     }
     logger.info(`[EMAIL-DEBUG] result: lineCount old=${noteUpdateResult.lineCount?.old} new=${noteUpdateResult.lineCount?.new} ${noteUpdateResult.lineCount?.new > noteUpdateResult.lineCount?.old ? 'APPENDED' : noteUpdateResult.lineCount?.new < noteUpdateResult.lineCount?.old ? 'DECREASED' : 'UNCHANGED'}`);
 
@@ -456,6 +467,20 @@ async function updateLeadWithEmail(client, lead, emailData) {
         'Notes': noteUpdateResult.notes,
         'Follow-Up Date': followUpDateStr
     };
+
+    // AUDIT: Log every Notes modification
+    logNotesChange({
+        leadId: lead.id,
+        leadEmail: lead.email,
+        source: 'inbound-email',
+        notesBefore: currentNotes,
+        notesAfter: noteUpdateResult.notes,
+        metadata: { 
+            subject: subject,
+            messagesCount: messages.length,
+            skippedDuplicate: noteUpdateResult.skippedDuplicate || false
+        }
+    });
 
     const updatedRecords = await clientBase('Leads').update([
         { id: lead.id, fields: updates }
