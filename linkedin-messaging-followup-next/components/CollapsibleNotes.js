@@ -260,8 +260,8 @@ function extractLastDate(lines) {
   return null;
 }
 
-/** Max lines before "Show more" */
-const SHOW_MORE_THRESHOLD = 15;
+/** Max lines before "Show more" - increased so email threads show more content by default */
+const SHOW_MORE_THRESHOLD = 40;
 
 /**
  * Render text with paragraph spacing and message-line styling

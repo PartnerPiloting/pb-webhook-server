@@ -1486,7 +1486,7 @@ router.patch('/leads/:id', async (req, res) => {
   try {
     const airtableBase = await getAirtableBase(req);
     const leadId = req.params.id;
-    const updates = req.body || {};
+    const updates = { ...(req.body || {}) };
     if (!updates || typeof updates !== 'object' || Array.isArray(updates)) {
       return res.status(400).json({ error: 'Body must be an object of fields to update' });
     }
@@ -1494,6 +1494,36 @@ router.patch('/leads/:id', async (req, res) => {
     if (Object.prototype.hasOwnProperty.call(updates, 'Posts Actioned')) {
       logger.warn(`[LinkedIn Routes] PATCH: Posts Actioned set to`, updates['Posts Actioned'], 'for lead', leadId, 'by client', req.client?.clientId || 'unknown');
     }
+    
+    // When Notes is included, ALWAYS preserve server email/meeting sections
+    // These are managed by inbound email and Fathom - Portal's cache may be stale
+    if (updates.Notes !== undefined) {
+      try {
+        const currentRecord = await airtableBase('Leads').find(leadId);
+        const serverNotes = currentRecord.get('Notes') || currentRecord.fields?.['Notes'] || '';
+        if (serverNotes && serverNotes.trim()) {
+          const serverSections = parseNotesIntoSections(serverNotes);
+          const clientSections = parseNotesIntoSections(updates.Notes);
+          
+          let preserved = false;
+          if (serverSections.email && serverSections.email.trim()) {
+            clientSections.email = serverSections.email;
+            preserved = true;
+          }
+          if (serverSections.meeting && serverSections.meeting.trim()) {
+            clientSections.meeting = serverSections.meeting;
+            preserved = true;
+          }
+          updates.Notes = rebuildNotesFromSections(clientSections);
+          if (preserved) {
+            logger.info('LinkedIn Routes: PATCH - preserved server email/meeting sections');
+          }
+        }
+      } catch (mergeErr) {
+        logger.warn('LinkedIn Routes: PATCH could not merge Notes:', mergeErr.message);
+      }
+    }
+    
     logger.info('LinkedIn Routes: Generic PATCH applying fields:', updates);
     const updatedRecords = await airtableBase('Leads').update([{ id: leadId, fields: updates }]);
     if (!updatedRecords || !updatedRecords.length) return res.status(404).json({ error: 'Lead not found' });
