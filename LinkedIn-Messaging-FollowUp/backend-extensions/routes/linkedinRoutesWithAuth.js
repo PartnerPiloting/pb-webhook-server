@@ -1,5 +1,6 @@
 const express = require('express');
 const { createLogger } = require('../../../utils/contextLogger');
+const { logNotesChange } = require('../../../utils/notesAuditLogger');
 const { stripCredentialSuffixes } = require('../../../utils/nameNormalizer');
 const geminiConfig = require('../../../config/geminiClient');
 const logger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'api' });
@@ -1525,6 +1526,25 @@ router.patch('/leads/:id', async (req, res) => {
     }
     
     logger.info('LinkedIn Routes: Generic PATCH applying fields:', updates);
+    
+    // AUDIT: Log Notes modifications from Portal PATCH
+    if (updates.Notes !== undefined) {
+      try {
+        const currentRecord = await airtableBase('Leads').find(leadId);
+        const notesBefore = currentRecord.get('Notes') || currentRecord.fields?.['Notes'] || '';
+        logNotesChange({
+          leadId: leadId,
+          leadEmail: currentRecord.get('Lead Email') || 'unknown',
+          source: 'portal-patch',
+          notesBefore: notesBefore,
+          notesAfter: updates.Notes,
+          metadata: { clientId: req.client?.clientId }
+        });
+      } catch (auditErr) {
+        logger.warn('LinkedIn Routes: PATCH audit log failed:', auditErr.message);
+      }
+    }
+    
     const updatedRecords = await airtableBase('Leads').update([{ id: leadId, fields: updates }]);
     if (!updatedRecords || !updatedRecords.length) return res.status(404).json({ error: 'Lead not found' });
     return res.json({ id: updatedRecords[0].id, fields: updatedRecords[0].fields });
@@ -1586,6 +1606,24 @@ router.put('/leads/:id', async (req, res) => {
         }
       } catch (mergeErr) {
         logger.warn('LinkedIn Routes: Could not merge Notes (using client version):', mergeErr.message);
+      }
+    }
+
+    // AUDIT: Log Notes modifications from Portal PUT
+    if (updates.Notes !== undefined) {
+      try {
+        const currentRecord = await airtableBase('Leads').find(leadId);
+        const notesBefore = currentRecord.get('Notes') || currentRecord.fields?.['Notes'] || '';
+        logNotesChange({
+          leadId: leadId,
+          leadEmail: currentRecord.get('Lead Email') || 'unknown',
+          source: 'portal-put',
+          notesBefore: notesBefore,
+          notesAfter: updates.Notes,
+          metadata: { clientId: req.client?.clientId }
+        });
+      } catch (auditErr) {
+        logger.warn('LinkedIn Routes: PUT audit log failed:', auditErr.message);
       }
     }
 
