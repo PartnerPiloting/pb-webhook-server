@@ -7,7 +7,7 @@
 
 require('dotenv').config();
 const { createLogger } = require('../utils/contextLogger');
-const { updateSection } = require('../utils/notesSectionManager');
+const { updateSection, getSection } = require('../utils/notesSectionManager');
 const clientService = require('./clientService');
 const { createBaseInstance } = require('../config/airtableClient');
 
@@ -17,6 +17,15 @@ const logger = createLogger({
     clientId: 'SYSTEM', 
     operation: 'inbound-email-service' 
 });
+
+// Per-lead lock to serialize concurrent updates (prevents race overwrites)
+const leadUpdateLocks = new Map();
+async function withLeadLock(leadId, fn) {
+    const existing = leadUpdateLocks.get(leadId) || Promise.resolve();
+    const ourPromise = existing.then(() => fn()).finally(() => leadUpdateLocks.delete(leadId));
+    leadUpdateLocks.set(leadId, ourPromise);
+    return ourPromise;
+}
 
 // Import email-reply-parser for robust email thread parsing
 const EmailReplyParser = require('email-reply-parser');
@@ -380,6 +389,8 @@ async function updateLeadWithEmail(client, lead, emailData) {
     } catch (fetchErr) {
         logger.warn(`Could not re-fetch lead ${lead.id} for latest notes, using cached: ${fetchErr.message}`);
     }
+    const existingEmailSection = getSection(currentNotes, 'email');
+    logger.info(`[EMAIL-DEBUG] lead=${lead.id} notesLen=${(currentNotes || '').length} hasEmailHeader=${(currentNotes || '').includes('=== EMAIL CORRESPONDENCE ===')} existingEmailLen=${existingEmailSection.length}`);
 
     // Use client's timezone for reference date
     let referenceDate = new Date();
@@ -433,6 +444,7 @@ async function updateLeadWithEmail(client, lead, emailData) {
     if (noteUpdateResult.skippedDuplicate) {
         logger.info(`Skipped duplicate email for lead ${lead.id} (${lead.email}) - subject matched`);
     }
+    logger.info(`[EMAIL-DEBUG] result: lineCount old=${noteUpdateResult.lineCount?.old} new=${noteUpdateResult.lineCount?.new} ${noteUpdateResult.lineCount?.new > noteUpdateResult.lineCount?.old ? 'APPENDED' : noteUpdateResult.lineCount?.new < noteUpdateResult.lineCount?.old ? 'DECREASED' : 'UNCHANGED'}`);
 
     // Calculate follow-up date (+14 days)
     const followUpDate = new Date(referenceDate);
@@ -2686,15 +2698,15 @@ async function processInboundEmail(mailgunData) {
             continue;
         }
         
-        // Update this lead with email content
+        // Update this lead with email content (serialized per lead to prevent race overwrites)
         try {
-            const result = await updateLeadWithEmail(client, lead, {
+            const result = await withLeadLock(lead.id, () => updateLeadWithEmail(client, lead, {
                 subject,
                 bodyPlain,
                 bodyHtml,
                 timestamp,
                 senderName
-            });
+            }));
             
             results.leadsUpdated.push({
                 leadId: lead.id,
