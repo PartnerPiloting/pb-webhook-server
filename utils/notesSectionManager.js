@@ -255,6 +255,30 @@ function rebuildNotesFromSections(sections) {
 }
 
 /**
+ * Normalize an email block for deduplication comparison.
+ * Replaces our variable timestamps (DD-MM-YY HH:MM AM/PM) so webhook retries match.
+ * @param {string} block - Email block content
+ * @returns {string} Normalized string for comparison
+ */
+function normalizeEmailBlockForDedupe(block) {
+    if (!block || typeof block !== 'string') return '';
+    return block
+        .replace(/\d{2}-\d{2}-\d{2}\s+\d{1,2}:\d{2}\s*[AP]M/gi, '[TS]')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+/**
+ * Get the first (most recent) email block from section content.
+ * Handles both ---EMAIL-THREAD--- and legacy --- separators.
+ */
+function getFirstEmailBlock(content) {
+    if (!content || !content.trim()) return '';
+    const blocks = content.trim().split(/\n---(?:EMAIL-THREAD---)?\n/);
+    return (blocks[0] || '').trim();
+}
+
+/**
  * Update a specific section in the notes
  * @param {string} currentNotes - Current notes content
  * @param {string} sectionKey - Section to update: 'linkedin', 'manual', 'salesnav', 'email'
@@ -277,10 +301,25 @@ function updateSection(currentNotes, sectionKey, newContent, options = {}) {
     // Update the section
     if (append) {
         if (sections[sectionKey]) {
-            // Simple prepend (newest at top) - no merge/sort/dedupe to avoid data loss
+            // Simple prepend (newest at top)
             if (sectionKey === 'meeting') {
                 sections[sectionKey] = `${MEETING_BLOCK_SEPARATOR}\n${newContent.trim()}\n${MEETING_BLOCK_SEPARATOR}\n\n${sections[sectionKey].trim()}`;
             } else if (sectionKey === 'email') {
+                // Dedupe: skip if new content matches most recent block (webhook retries)
+                const firstBlock = getFirstEmailBlock(sections[sectionKey]);
+                if (firstBlock) {
+                    const normNew = normalizeEmailBlockForDedupe(newContent.trim());
+                    const normFirst = normalizeEmailBlockForDedupe(firstBlock);
+                    if (normNew && normFirst && normNew === normFirst) {
+                        // Duplicate - don't append, return unchanged
+                        const rebuiltNotes = rebuildNotesFromSections(sections);
+                        return {
+                            notes: rebuiltNotes,
+                            previousContent,
+                            lineCount: { old: oldLineCount, new: sections[sectionKey].split('\n').length }
+                        };
+                    }
+                }
                 sections[sectionKey] = `${newContent.trim()}\n${EMAIL_BLOCK_SEPARATOR}\n${sections[sectionKey].trim()}`;
             } else {
                 sections[sectionKey] = `${newContent.trim()}\n${sections[sectionKey].trim()}`;
