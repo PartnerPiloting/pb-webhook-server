@@ -334,6 +334,19 @@ function getFirstEmailBlock(content) {
 function updateSection(currentNotes, sectionKey, newContent, options = {}) {
     const { append = false, replace = true } = options;
     
+    // ==========================================================================
+    // SURGICAL INSERT FOR EMAIL SECTION
+    // Instead of parse-rebuild (which can lose content), we do direct string
+    // manipulation: find the email header and insert new content right after it.
+    // This cannot lose content because we never touch anything else.
+    // ==========================================================================
+    if (sectionKey === 'email' && append) {
+        return updateEmailSectionSurgical(currentNotes, newContent);
+    }
+    
+    // For all other sections, use the existing parse-rebuild approach
+    // (This is safe for 'replace' operations and meeting notes)
+    
     // Parse current notes
     const sections = parseNotesIntoSections(currentNotes || '');
     
@@ -347,58 +360,6 @@ function updateSection(currentNotes, sectionKey, newContent, options = {}) {
             // Simple prepend (newest at top)
             if (sectionKey === 'meeting') {
                 sections[sectionKey] = `${MEETING_BLOCK_SEPARATOR}\n${newContent.trim()}\n${MEETING_BLOCK_SEPARATOR}\n\n${sections[sectionKey].trim()}`;
-            } else if (sectionKey === 'email') {
-                const existingEmailLen = (sections[sectionKey] || '').length;
-                debugLog.info(`[EMAIL-DEBUG] updateSection: existingEmailLen=${existingEmailLen} action=${existingEmailLen > 0 ? 'APPEND' : 'FIRST_CONTENT'}`);
-                // Dedupe: skip ONLY if subject AND content body are nearly identical (true webhook retries)
-                // Don't skip just because subject matches - updated threads have same subject but new content
-                const firstBlock = getFirstEmailBlock(sections[sectionKey]);
-                if (firstBlock) {
-                    const newTrimmed = newContent.trim();
-                    const subjectNew = getEmailBlockSubject(newTrimmed);
-                    const subjectFirst = getEmailBlockSubject(firstBlock);
-                    // Strip forward headers and subject to get actual message body for comparison
-                    // Forward headers look like: "---------- Forwarded message ---------\nFrom: ...\nDate: ...\nSubject: ...\nTo: ...\n\n"
-                    const stripHeadersForCompare = (text) => {
-                        return text
-                            .replace(/^Subject:.*\n?/im, '')           // Remove subject line
-                            .replace(/-{5,}\s*Forwarded message\s*-{5,}/gi, '')  // Remove forward marker
-                            .replace(/^From:.*\n?/gim, '')             // Remove From: lines
-                            .replace(/^Date:.*\n?/gim, '')             // Remove Date: lines
-                            .replace(/^To:.*\n?/gim, '')               // Remove To: lines
-                            .replace(/^Cc:.*\n?/gim, '')               // Remove Cc: lines
-                            .replace(/^\d{2}-\d{2}-\d{2}\s+\d{1,2}:\d{2}\s*[AP]M\s*-\s*[^-]+\s*-\s*/gim, '')  // Remove our timestamp headers
-                            .replace(/\s+/g, ' ')                      // Normalize whitespace
-                            .trim();
-                    };
-                    const contentNew = stripHeadersForCompare(newTrimmed).substring(0, 200);
-                    const contentFirst = stripHeadersForCompare(firstBlock).substring(0, 200);
-                    // Strip Re:/Fwd:/FW: prefixes for comparison (forwards and replies to same thread)
-                    const stripSubjectPrefixes = (subj) => {
-                        return subj.replace(/^(re:\s*|fwd?:\s*|fw:\s*)+/gi, '').trim();
-                    };
-                    const subjectNewClean = stripSubjectPrefixes(subjectNew);
-                    const subjectFirstClean = stripSubjectPrefixes(subjectFirst);
-                    // Only skip if BOTH subject AND content start are identical (true duplicate)
-                    const subjectMatch = subjectNewClean.length >= 5 && subjectFirstClean.length >= 5 &&
-                        subjectNewClean.toLowerCase() === subjectFirstClean.toLowerCase();
-                    const contentMatch = contentNew.length >= 20 && contentFirst.length >= 20 &&
-                        contentNew.toLowerCase() === contentFirst.toLowerCase();
-                    const isDuplicate = subjectMatch && contentMatch;
-                    debugLog.info(`[EMAIL-DEBUG] dedupe check: subjectMatch=${subjectMatch} (${subjectNewClean} vs ${subjectFirstClean}) contentMatch=${contentMatch} isDuplicate=${isDuplicate}`);
-                    debugLog.info(`[EMAIL-DEBUG] contentNew preview: "${contentNew.substring(0, 80)}..."`);
-                    if (isDuplicate) {
-                        // CRITICAL: Return ORIGINAL notes unchanged, not rebuilt
-                        // Rebuilding can lose content if parsing is imperfect
-                        return {
-                            notes: currentNotes,  // Return original, untouched
-                            previousContent,
-                            lineCount: { old: oldLineCount, new: oldLineCount },
-                            skippedDuplicate: true
-                        };
-                    }
-                }
-                sections[sectionKey] = `${newContent.trim()}\n${EMAIL_BLOCK_SEPARATOR}\n${sections[sectionKey].trim()}`;
             } else {
                 sections[sectionKey] = `${newContent.trim()}\n${sections[sectionKey].trim()}`;
             }
@@ -420,19 +381,133 @@ function updateSection(currentNotes, sectionKey, newContent, options = {}) {
     // Rebuild notes
     const rebuiltNotes = rebuildNotesFromSections(sections);
     
-    // SANITY CHECK: Warn if rebuild lost significant content
-    const originalLen = currentNotes ? currentNotes.length : 0;
-    const rebuiltLen = rebuiltNotes ? rebuiltNotes.length : 0;
-    if (rebuiltLen < originalLen * 0.8 && originalLen > 100) {
-        debugLog.warn(`[EMAIL-DEBUG] CONTENT LOSS DETECTED: original=${originalLen} rebuilt=${rebuiltLen} (lost ${originalLen - rebuiltLen} chars)`);
-    }
-    
     return {
         notes: rebuiltNotes,
         previousContent,
         lineCount: {
             old: oldLineCount,
             new: newLineCount
+        }
+    };
+}
+
+/**
+ * SURGICAL INSERT for email section - avoids parse-rebuild cycle entirely.
+ * Finds the email header and inserts new content directly after it.
+ * This approach cannot lose content because it never touches anything outside
+ * the insertion point.
+ * 
+ * @param {string} currentNotes - Current notes content
+ * @param {string} newContent - New email content to insert
+ * @returns {{ notes: string, previousContent: string, lineCount: object, skippedDuplicate?: boolean }}
+ */
+function updateEmailSectionSurgical(currentNotes, newContent) {
+    const notes = currentNotes || '';
+    const emailHeader = SECTION_HEADERS.email; // '=== EMAIL CORRESPONDENCE ==='
+    const headerIndex = notes.indexOf(emailHeader);
+    
+    debugLog.info(`[SURGICAL-INSERT] Starting: notesLen=${notes.length} headerFound=${headerIndex !== -1}`);
+    
+    // Case 1: No email header exists yet - need to add the section
+    if (headerIndex === -1) {
+        debugLog.info(`[SURGICAL-INSERT] No email header found - adding new email section`);
+        
+        // Find where to insert the email section (before MEETING NOTES if exists, or at end)
+        const meetingHeader = SECTION_HEADERS.meeting;
+        const meetingIndex = notes.indexOf(meetingHeader);
+        
+        const newEmailSection = `${emailHeader}\n${newContent.trim()}`;
+        
+        let updatedNotes;
+        if (meetingIndex !== -1) {
+            // Insert before meeting notes
+            updatedNotes = notes.substring(0, meetingIndex) + newEmailSection + '\n\n' + notes.substring(meetingIndex);
+        } else {
+            // Append at end
+            updatedNotes = notes.trim() + '\n\n' + newEmailSection;
+        }
+        
+        return {
+            notes: updatedNotes,
+            previousContent: '',
+            lineCount: { old: 0, new: newContent.trim().split('\n').length }
+        };
+    }
+    
+    // Case 2: Email header exists - check for duplicate, then insert
+    const insertPosition = headerIndex + emailHeader.length;
+    
+    // Extract content after header for duplicate check (first ~800 chars is enough)
+    const contentAfterHeader = notes.substring(insertPosition, insertPosition + 800).trim();
+    
+    // Get first email block for comparison
+    const firstBlock = getFirstEmailBlock(contentAfterHeader);
+    
+    if (firstBlock) {
+        // Duplicate detection logic (same as before)
+        const newTrimmed = newContent.trim();
+        const subjectNew = getEmailBlockSubject(newTrimmed);
+        const subjectFirst = getEmailBlockSubject(firstBlock);
+        
+        const stripHeadersForCompare = (text) => {
+            return text
+                .replace(/^Subject:.*\n?/im, '')
+                .replace(/-{5,}\s*Forwarded message\s*-{5,}/gi, '')
+                .replace(/^From:.*\n?/gim, '')
+                .replace(/^Date:.*\n?/gim, '')
+                .replace(/^To:.*\n?/gim, '')
+                .replace(/^Cc:.*\n?/gim, '')
+                .replace(/^\d{2}-\d{2}-\d{2}\s+\d{1,2}:\d{2}\s*[AP]M\s*-\s*[^-]+\s*-\s*/gim, '')
+                .replace(/\s+/g, ' ')
+                .trim();
+        };
+        
+        const contentNew = stripHeadersForCompare(newTrimmed).substring(0, 200);
+        const contentFirst = stripHeadersForCompare(firstBlock).substring(0, 200);
+        
+        const stripSubjectPrefixes = (subj) => {
+            return subj.replace(/^(re:\s*|fwd?:\s*|fw:\s*)+/gi, '').trim();
+        };
+        
+        const subjectNewClean = stripSubjectPrefixes(subjectNew);
+        const subjectFirstClean = stripSubjectPrefixes(subjectFirst);
+        
+        const subjectMatch = subjectNewClean.length >= 5 && subjectFirstClean.length >= 5 &&
+            subjectNewClean.toLowerCase() === subjectFirstClean.toLowerCase();
+        const contentMatch = contentNew.length >= 20 && contentFirst.length >= 20 &&
+            contentNew.toLowerCase() === contentFirst.toLowerCase();
+        const isDuplicate = subjectMatch && contentMatch;
+        
+        debugLog.info(`[SURGICAL-INSERT] dedupe: subjectMatch=${subjectMatch} (${subjectNewClean} vs ${subjectFirstClean}) contentMatch=${contentMatch} isDuplicate=${isDuplicate}`);
+        
+        if (isDuplicate) {
+            debugLog.info(`[SURGICAL-INSERT] Duplicate detected - returning original notes unchanged`);
+            return {
+                notes: currentNotes,  // Return ORIGINAL, untouched
+                previousContent: contentAfterHeader,
+                lineCount: { old: contentAfterHeader.split('\n').length, new: contentAfterHeader.split('\n').length },
+                skippedDuplicate: true
+            };
+        }
+    }
+    
+    // Not a duplicate - do the surgical insert
+    // Insert new content right after the header, with separator after it
+    const beforeInsert = notes.substring(0, insertPosition);
+    const afterInsert = notes.substring(insertPosition);
+    
+    const insertContent = `\n${newContent.trim()}\n${EMAIL_BLOCK_SEPARATOR}`;
+    
+    const updatedNotes = beforeInsert + insertContent + afterInsert;
+    
+    debugLog.info(`[SURGICAL-INSERT] Success: originalLen=${notes.length} newLen=${updatedNotes.length} added=${updatedNotes.length - notes.length} chars`);
+    
+    return {
+        notes: updatedNotes,
+        previousContent: contentAfterHeader,
+        lineCount: { 
+            old: contentAfterHeader.split('\n').length, 
+            new: contentAfterHeader.split('\n').length + newContent.trim().split('\n').length + 1 
         }
     };
 }
