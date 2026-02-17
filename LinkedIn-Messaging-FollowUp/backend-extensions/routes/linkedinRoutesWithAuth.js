@@ -1526,10 +1526,10 @@ router.put('/leads/:id', async (req, res) => {
       logger.warn(`[LinkedIn Routes] PUT: Posts Actioned set to`, updates['Posts Actioned'], 'for lead', leadId, 'by client', req.client?.clientId || 'unknown');
     }
 
-    // When Portal sends Notes, merge: preserve server-managed sections (email, meeting)
-    // to avoid overwriting content added by inbound email or Fathom - BUT only when
-    // client has content (might be stale). If client sends empty, user intentionally
-    // deleted - respect that.
+    // When Portal sends Notes, ALWAYS preserve server-managed sections (email, meeting).
+    // These sections are populated by inbound email and Fathom - Portal doesn't edit them.
+    // The Portal's cached notes may be stale (loaded before email arrived), so we must
+    // merge server sections into whatever the Portal sends.
     if (updates.Notes !== undefined) {
       try {
         const currentRecord = await airtableBase('Leads').find(leadId);
@@ -1537,17 +1537,20 @@ router.put('/leads/:id', async (req, res) => {
         if (serverNotes && serverNotes.trim()) {
           const serverSections = parseNotesIntoSections(serverNotes);
           const clientSections = parseNotesIntoSections(updates.Notes);
-          const clientEmail = (clientSections.email || '').trim();
-          const clientMeeting = (clientSections.meeting || '').trim();
-          // Only preserve when client has content (stale overwrite risk); empty = intentional delete
-          if (serverSections.email && serverSections.email.trim() && clientEmail.length > 0) {
+          
+          // ALWAYS preserve server email/meeting sections - Portal never edits these
+          // This prevents stale Portal cache from wiping out newly-arrived emails
+          let preserved = false;
+          if (serverSections.email && serverSections.email.trim()) {
             clientSections.email = serverSections.email;
+            preserved = true;
           }
-          if (serverSections.meeting && serverSections.meeting.trim() && clientMeeting.length > 0) {
+          if (serverSections.meeting && serverSections.meeting.trim()) {
             clientSections.meeting = serverSections.meeting;
+            preserved = true;
           }
           updates.Notes = rebuildNotesFromSections(clientSections);
-          if (clientEmail.length > 0 || clientMeeting.length > 0) {
+          if (preserved) {
             logger.info('LinkedIn Routes: Merged Notes - preserved server email/meeting sections');
           }
         }
