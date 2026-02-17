@@ -1,0 +1,64 @@
+# Searching Render Logs Properly
+
+## NEVER DO THIS
+
+```bash
+# BAD - findstr/grep on raw JSON output truncates lines and misses matches
+curl.exe ... | findstr /i "search-term"
+
+# BAD - grep on JSON files matches but truncates, leading to false negatives
+rg "search-term" temp-logs.json
+```
+
+## ALWAYS DO THIS
+
+When searching Render logs, ALWAYS use this two-step approach:
+
+### Step 1: Fetch logs to a single file
+
+```bash
+curl.exe -s -H "Authorization: Bearer Diamond9753!!@@pb" "https://pb-webhook-server.onrender.com/debug-render-logs?minutes=120&limit=500" -o temp-render-logs.json
+```
+
+### Step 2: Parse JSON and search message fields with Node.js
+
+```bash
+node -e "
+const fs = require('fs');
+const j = JSON.parse(fs.readFileSync('temp-render-logs.json','utf8'));
+console.log('Time range:', j.timeRange);
+console.log('Total logs:', j.logs?.length);
+
+// Search within parsed messages - CASE INSENSITIVE
+const matches = j.logs?.filter(l => (l.message || '').toLowerCase().includes('search-term'));
+console.log('Matches:', matches?.length);
+matches?.forEach(l => console.log(l.timestamp, l.message?.substring(0,300)));
+"
+```
+
+## Why This Matters
+
+- JSON log entries are single-line objects containing the entire log message
+- Shell tools (findstr, grep) truncate long lines and don't parse JSON
+- Searching raw JSON text can miss matches inside escaped strings
+- Parsing first, then searching the actual message content, is reliable
+
+## For Inbound Email Specifically
+
+When debugging inbound email issues, search for `INBOUND-EMAIL` to get all related logs:
+
+```bash
+node -e "
+const fs = require('fs');
+const j = JSON.parse(fs.readFileSync('temp-render-logs.json','utf8'));
+const inbound = j.logs?.filter(l => (l.message || '').includes('INBOUND-EMAIL'));
+console.log('INBOUND-EMAIL logs:', inbound?.length);
+inbound?.forEach(l => console.log(l.timestamp, (l.message||'').substring(0,220)));
+"
+```
+
+## One File, One Search
+
+- Do NOT create multiple temp log files with different time ranges
+- Fetch once with a wide time range, search that one file
+- Delete temp files when done to avoid confusion
