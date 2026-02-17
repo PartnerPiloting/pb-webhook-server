@@ -259,13 +259,12 @@ function rebuildNotesFromSections(sections) {
  * @param {string} sectionKey - Section to update: 'linkedin', 'manual', 'salesnav', 'email'
  * @param {string} newContent - New content for the section
  * @param {Object} options - Update options
- * @param {boolean} options.append - If true, merge with existing content (for email)
+ * @param {boolean} options.append - If true, prepend new content (newest at top)
  * @param {boolean} options.replace - If true, replace entire section content
- * @param {boolean} options.sortMessages - If true, merge and sort messages by date/time (default true for append)
  * @returns {{ notes: string, previousContent: string, lineCount: { old: number, new: number } }}
  */
 function updateSection(currentNotes, sectionKey, newContent, options = {}) {
-    const { append = false, replace = true, sortMessages = true } = options;
+    const { append = false, replace = true } = options;
     
     // Parse current notes
     const sections = parseNotesIntoSections(currentNotes || '');
@@ -276,24 +275,18 @@ function updateSection(currentNotes, sectionKey, newContent, options = {}) {
     
     // Update the section
     if (append) {
-        if (sections[sectionKey] && sortMessages) {
-            // Use block-based sorting for meetings (multi-line blocks separated by ━━━)
+        if (sections[sectionKey]) {
+            // Simple prepend (newest at top) - no merge/sort/dedupe to avoid data loss
             if (sectionKey === 'meeting') {
-                sections[sectionKey] = mergeAndSortBlocks(sections[sectionKey], newContent.trim(), true);
+                sections[sectionKey] = `${MEETING_BLOCK_SEPARATOR}\n${newContent.trim()}\n${MEETING_BLOCK_SEPARATOR}\n\n${sections[sectionKey].trim()}`;
             } else if (sectionKey === 'email') {
-                // Email: block-based by thread (separated by ---), newest first
-                sections[sectionKey] = mergeAndSortEmailBlocks(sections[sectionKey], newContent.trim(), true);
+                sections[sectionKey] = `${newContent.trim()}\n${EMAIL_BLOCK_SEPARATOR}\n${sections[sectionKey].trim()}`;
             } else {
-                // For manual: merge and sort individual messages by date/time (newest first)
-                sections[sectionKey] = mergeAndSortMessages(sections[sectionKey], newContent.trim(), true);
+                sections[sectionKey] = `${newContent.trim()}\n${sections[sectionKey].trim()}`;
             }
-        } else if (sections[sectionKey]) {
-            // Fallback: simple prepend (newest at top)
-            sections[sectionKey] = `${newContent.trim()}\n${sections[sectionKey].trim()}`;
         } else {
             // First content for this section
             if (sectionKey === 'meeting') {
-                // Ensure meeting blocks have proper separators
                 sections[sectionKey] = `${MEETING_BLOCK_SEPARATOR}\n${newContent.trim()}\n${MEETING_BLOCK_SEPARATOR}`;
             } else {
                 sections[sectionKey] = newContent.trim();
