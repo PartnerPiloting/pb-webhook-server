@@ -269,6 +269,19 @@ function normalizeEmailBlockForDedupe(block) {
 }
 
 /**
+ * Extract a stable "fingerprint" for deduplication.
+ * parseGmailThread can produce different output on re-sends (timestamps, fragment parsing),
+ * so we compare the first 500 chars of normalized content (subject + body start).
+ * Strip Gmail forwarded headers so re-forwards match the original.
+ */
+function getEmailBlockFingerprint(block) {
+    let norm = normalizeEmailBlockForDedupe(block);
+    if (!norm) return '';
+    norm = norm.replace(/-{5,}\s*Forwarded message\s*-{5,}/gi, '').replace(/\s+/g, ' ').trim();
+    return norm.slice(0, 500);
+}
+
+/**
  * Get the first (most recent) email block from section content.
  * Handles both ---EMAIL-THREAD--- and legacy --- separators.
  */
@@ -305,18 +318,25 @@ function updateSection(currentNotes, sectionKey, newContent, options = {}) {
             if (sectionKey === 'meeting') {
                 sections[sectionKey] = `${MEETING_BLOCK_SEPARATOR}\n${newContent.trim()}\n${MEETING_BLOCK_SEPARATOR}\n\n${sections[sectionKey].trim()}`;
             } else if (sectionKey === 'email') {
-                // Dedupe: skip if new content matches most recent block (webhook retries)
+                // Dedupe: skip if new content matches most recent block (webhook retries, re-forwards)
                 const firstBlock = getFirstEmailBlock(sections[sectionKey]);
                 if (firstBlock) {
-                    const normNew = normalizeEmailBlockForDedupe(newContent.trim());
-                    const normFirst = normalizeEmailBlockForDedupe(firstBlock);
-                    if (normNew && normFirst && normNew === normFirst) {
-                        // Duplicate - don't append, return unchanged
+                    const fpNew = getEmailBlockFingerprint(newContent.trim());
+                    const fpFirst = getEmailBlockFingerprint(firstBlock);
+                    // Match if identical or first 250 chars match (subject + body start)
+                    const compareLen = 250;
+                    const isDuplicate = fpNew && fpFirst && (
+                        fpNew === fpFirst ||
+                        (fpNew.length >= 100 && fpFirst.length >= 100 &&
+                         fpNew.slice(0, compareLen) === fpFirst.slice(0, compareLen))
+                    );
+                    if (isDuplicate) {
                         const rebuiltNotes = rebuildNotesFromSections(sections);
                         return {
                             notes: rebuiltNotes,
                             previousContent,
-                            lineCount: { old: oldLineCount, new: sections[sectionKey].split('\n').length }
+                            lineCount: { old: oldLineCount, new: sections[sectionKey].split('\n').length },
+                            skippedDuplicate: true
                         };
                     }
                 }
