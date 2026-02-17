@@ -328,13 +328,19 @@ function updateSection(currentNotes, sectionKey, newContent, options = {}) {
                     };
                     const contentNew = stripHeadersForCompare(newTrimmed).substring(0, 200);
                     const contentFirst = stripHeadersForCompare(firstBlock).substring(0, 200);
+                    // Strip Re:/Fwd:/FW: prefixes for comparison (forwards and replies to same thread)
+                    const stripSubjectPrefixes = (subj) => {
+                        return subj.replace(/^(re:\s*|fwd?:\s*|fw:\s*)+/gi, '').trim();
+                    };
+                    const subjectNewClean = stripSubjectPrefixes(subjectNew);
+                    const subjectFirstClean = stripSubjectPrefixes(subjectFirst);
                     // Only skip if BOTH subject AND content start are identical (true duplicate)
-                    const subjectMatch = subjectNew.length >= 5 && subjectFirst.length >= 5 &&
-                        subjectNew.toLowerCase() === subjectFirst.toLowerCase();
+                    const subjectMatch = subjectNewClean.length >= 5 && subjectFirstClean.length >= 5 &&
+                        subjectNewClean.toLowerCase() === subjectFirstClean.toLowerCase();
                     const contentMatch = contentNew.length >= 20 && contentFirst.length >= 20 &&
                         contentNew.toLowerCase() === contentFirst.toLowerCase();
                     const isDuplicate = subjectMatch && contentMatch;
-                    debugLog.info(`[EMAIL-DEBUG] dedupe check: subjectMatch=${subjectMatch} contentMatch=${contentMatch} isDuplicate=${isDuplicate}`);
+                    debugLog.info(`[EMAIL-DEBUG] dedupe check: subjectMatch=${subjectMatch} (${subjectNewClean} vs ${subjectFirstClean}) contentMatch=${contentMatch} isDuplicate=${isDuplicate}`);
                     debugLog.info(`[EMAIL-DEBUG] contentNew preview: "${contentNew.substring(0, 80)}..."`);
                     if (isDuplicate) {
                         const rebuiltNotes = rebuildNotesFromSections(sections);
