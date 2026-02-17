@@ -482,6 +482,20 @@ async function updateLeadWithEmail(client, lead, emailData) {
         }
     });
 
+    // CRITICAL DEBUG: Log exactly what we're sending to Airtable
+    const notesToWrite = noteUpdateResult.notes;
+    const hasEmailHeader = notesToWrite.includes('=== EMAIL CORRESPONDENCE ===');
+    const emailHeaderPos = notesToWrite.indexOf('=== EMAIL CORRESPONDENCE ===');
+    const emailSeparatorCount = (notesToWrite.match(/---EMAIL-THREAD---/g) || []).length;
+    logger.info(`[AIRTABLE-WRITE] lead=${lead.id} notesLen=${notesToWrite.length} hasEmailHeader=${hasEmailHeader} emailHeaderPos=${emailHeaderPos} separatorCount=${emailSeparatorCount}`);
+    logger.info(`[AIRTABLE-WRITE] first200="${notesToWrite.substring(0, 200).replace(/\n/g, '\\n')}"`);
+    logger.info(`[AIRTABLE-WRITE] last200="${notesToWrite.substring(notesToWrite.length - 200).replace(/\n/g, '\\n')}"`);
+    // Also log around the email header
+    if (emailHeaderPos !== -1) {
+        const emailSnippet = notesToWrite.substring(emailHeaderPos, emailHeaderPos + 300);
+        logger.info(`[AIRTABLE-WRITE] emailSection="${emailSnippet.replace(/\n/g, '\\n')}"`);
+    }
+
     const updatedRecords = await clientBase('Leads').update([
         { id: lead.id, fields: updates }
     ]);
