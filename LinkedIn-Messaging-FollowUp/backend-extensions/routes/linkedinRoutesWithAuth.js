@@ -1527,7 +1527,9 @@ router.put('/leads/:id', async (req, res) => {
     }
 
     // When Portal sends Notes, merge: preserve server-managed sections (email, meeting)
-    // to avoid overwriting content added by inbound email or Fathom/meeting note-takers.
+    // to avoid overwriting content added by inbound email or Fathom - BUT only when
+    // client has content (might be stale). If client sends empty, user intentionally
+    // deleted - respect that.
     if (updates.Notes !== undefined) {
       try {
         const currentRecord = await airtableBase('Leads').find(leadId);
@@ -1535,15 +1537,19 @@ router.put('/leads/:id', async (req, res) => {
         if (serverNotes && serverNotes.trim()) {
           const serverSections = parseNotesIntoSections(serverNotes);
           const clientSections = parseNotesIntoSections(updates.Notes);
-          // Use server's email and meeting sections (source of truth from inbound/Fathom)
-          if (serverSections.email && serverSections.email.trim()) {
+          const clientEmail = (clientSections.email || '').trim();
+          const clientMeeting = (clientSections.meeting || '').trim();
+          // Only preserve when client has content (stale overwrite risk); empty = intentional delete
+          if (serverSections.email && serverSections.email.trim() && clientEmail.length > 0) {
             clientSections.email = serverSections.email;
           }
-          if (serverSections.meeting && serverSections.meeting.trim()) {
+          if (serverSections.meeting && serverSections.meeting.trim() && clientMeeting.length > 0) {
             clientSections.meeting = serverSections.meeting;
           }
           updates.Notes = rebuildNotesFromSections(clientSections);
-          logger.info('LinkedIn Routes: Merged Notes - preserved server email/meeting sections');
+          if (clientEmail.length > 0 || clientMeeting.length > 0) {
+            logger.info('LinkedIn Routes: Merged Notes - preserved server email/meeting sections');
+          }
         }
       } catch (mergeErr) {
         logger.warn('LinkedIn Routes: Could not merge Notes (using client version):', mergeErr.message);
