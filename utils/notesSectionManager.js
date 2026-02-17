@@ -346,7 +346,7 @@ function updateSection(currentNotes, sectionKey, newContent, options = {}) {
                         // CRITICAL: Return ORIGINAL notes unchanged, not rebuilt
                         // Rebuilding can lose content if parsing is imperfect
                         return {
-                            notes: notes,  // Return original, untouched
+                            notes: currentNotes,  // Return original, untouched
                             previousContent,
                             lineCount: { old: oldLineCount, new: oldLineCount },
                             skippedDuplicate: true
@@ -376,7 +376,7 @@ function updateSection(currentNotes, sectionKey, newContent, options = {}) {
     const rebuiltNotes = rebuildNotesFromSections(sections);
     
     // SANITY CHECK: Warn if rebuild lost significant content
-    const originalLen = notes ? notes.length : 0;
+    const originalLen = currentNotes ? currentNotes.length : 0;
     const rebuiltLen = rebuiltNotes ? rebuiltNotes.length : 0;
     if (rebuiltLen < originalLen * 0.8 && originalLen > 100) {
         debugLog.warn(`[EMAIL-DEBUG] CONTENT LOSS DETECTED: original=${originalLen} rebuilt=${rebuiltLen} (lost ${originalLen - rebuiltLen} chars)`);
