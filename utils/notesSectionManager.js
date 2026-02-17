@@ -305,13 +305,23 @@ function updateSection(currentNotes, sectionKey, newContent, options = {}) {
             } else if (sectionKey === 'email') {
                 const existingEmailLen = (sections[sectionKey] || '').length;
                 debugLog.info(`[EMAIL-DEBUG] updateSection: existingEmailLen=${existingEmailLen} action=${existingEmailLen > 0 ? 'APPEND' : 'FIRST_CONTENT'}`);
-                // Dedupe: skip if subject matches most recent block (webhook retries, re-forwards)
+                // Dedupe: skip ONLY if subject AND content body are nearly identical (true webhook retries)
+                // Don't skip just because subject matches - updated threads have same subject but new content
                 const firstBlock = getFirstEmailBlock(sections[sectionKey]);
                 if (firstBlock) {
-                    const subjectNew = getEmailBlockSubject(newContent.trim());
+                    const newTrimmed = newContent.trim();
+                    const subjectNew = getEmailBlockSubject(newTrimmed);
                     const subjectFirst = getEmailBlockSubject(firstBlock);
-                    const isDuplicate = subjectNew.length >= 5 && subjectFirst.length >= 5 &&
+                    // Get content WITHOUT subject line for comparison
+                    const contentNew = newTrimmed.replace(/^Subject:.*\n?/i, '').trim().substring(0, 200);
+                    const contentFirst = firstBlock.replace(/^Subject:.*\n?/i, '').trim().substring(0, 200);
+                    // Only skip if BOTH subject AND content start are identical (true duplicate)
+                    const subjectMatch = subjectNew.length >= 5 && subjectFirst.length >= 5 &&
                         subjectNew.toLowerCase() === subjectFirst.toLowerCase();
+                    const contentMatch = contentNew.length >= 20 && contentFirst.length >= 20 &&
+                        contentNew.toLowerCase() === contentFirst.toLowerCase();
+                    const isDuplicate = subjectMatch && contentMatch;
+                    debugLog.info(`[EMAIL-DEBUG] dedupe check: subjectMatch=${subjectMatch} contentMatch=${contentMatch} isDuplicate=${isDuplicate}`);
                     if (isDuplicate) {
                         const rebuiltNotes = rebuildNotesFromSections(sections);
                         return {
