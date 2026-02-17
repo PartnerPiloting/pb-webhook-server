@@ -312,9 +312,22 @@ function updateSection(currentNotes, sectionKey, newContent, options = {}) {
                     const newTrimmed = newContent.trim();
                     const subjectNew = getEmailBlockSubject(newTrimmed);
                     const subjectFirst = getEmailBlockSubject(firstBlock);
-                    // Get content WITHOUT subject line for comparison
-                    const contentNew = newTrimmed.replace(/^Subject:.*\n?/i, '').trim().substring(0, 200);
-                    const contentFirst = firstBlock.replace(/^Subject:.*\n?/i, '').trim().substring(0, 200);
+                    // Strip forward headers and subject to get actual message body for comparison
+                    // Forward headers look like: "---------- Forwarded message ---------\nFrom: ...\nDate: ...\nSubject: ...\nTo: ...\n\n"
+                    const stripHeadersForCompare = (text) => {
+                        return text
+                            .replace(/^Subject:.*\n?/im, '')           // Remove subject line
+                            .replace(/-{5,}\s*Forwarded message\s*-{5,}/gi, '')  // Remove forward marker
+                            .replace(/^From:.*\n?/gim, '')             // Remove From: lines
+                            .replace(/^Date:.*\n?/gim, '')             // Remove Date: lines
+                            .replace(/^To:.*\n?/gim, '')               // Remove To: lines
+                            .replace(/^Cc:.*\n?/gim, '')               // Remove Cc: lines
+                            .replace(/^\d{2}-\d{2}-\d{2}\s+\d{1,2}:\d{2}\s*[AP]M\s*-\s*[^-]+\s*-\s*/gim, '')  // Remove our timestamp headers
+                            .replace(/\s+/g, ' ')                      // Normalize whitespace
+                            .trim();
+                    };
+                    const contentNew = stripHeadersForCompare(newTrimmed).substring(0, 200);
+                    const contentFirst = stripHeadersForCompare(firstBlock).substring(0, 200);
                     // Only skip if BOTH subject AND content start are identical (true duplicate)
                     const subjectMatch = subjectNew.length >= 5 && subjectFirst.length >= 5 &&
                         subjectNew.toLowerCase() === subjectFirst.toLowerCase();
@@ -322,6 +335,7 @@ function updateSection(currentNotes, sectionKey, newContent, options = {}) {
                         contentNew.toLowerCase() === contentFirst.toLowerCase();
                     const isDuplicate = subjectMatch && contentMatch;
                     debugLog.info(`[EMAIL-DEBUG] dedupe check: subjectMatch=${subjectMatch} contentMatch=${contentMatch} isDuplicate=${isDuplicate}`);
+                    debugLog.info(`[EMAIL-DEBUG] contentNew preview: "${contentNew.substring(0, 80)}..."`);
                     if (isDuplicate) {
                         const rebuiltNotes = rebuildNotesFromSections(sections);
                         return {
