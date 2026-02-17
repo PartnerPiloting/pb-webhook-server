@@ -504,6 +504,17 @@ async function updateLeadWithEmail(client, lead, emailData) {
         throw new Error('Failed to update lead record');
     }
 
+    // CRITICAL: Verify what Airtable actually returned
+    const returnedNotes = updatedRecords[0]?.fields?.['Notes'] || updatedRecords[0]?.get?.('Notes') || '(not in response)';
+    const returnedLen = typeof returnedNotes === 'string' ? returnedNotes.length : 0;
+    const sentLen = notesToWrite.length;
+    if (returnedLen !== sentLen && returnedLen > 0) {
+        logger.error(`[AIRTABLE-VERIFY] MISMATCH! sent=${sentLen} returned=${returnedLen} diff=${sentLen - returnedLen}`);
+        logger.error(`[AIRTABLE-VERIFY] returned first200="${String(returnedNotes).substring(0, 200).replace(/\n/g, '\\n')}"`);
+    } else {
+        logger.info(`[AIRTABLE-VERIFY] OK: sent=${sentLen} returned=${returnedLen}`);
+    }
+
     logger.info(`Updated lead ${lead.id} with ${messages.length} messages, follow-up: ${followUpDateStr}`);
 
     return {
