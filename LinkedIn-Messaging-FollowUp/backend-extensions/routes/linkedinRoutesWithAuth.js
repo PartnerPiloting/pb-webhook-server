@@ -915,7 +915,7 @@ router.get('/leads/by-linkedin-url', async (req, res) => {
 // =========================================================================
 
 const { parseConversation } = require('../../../utils/messageParser');
-const { updateSection, getSectionsSummary, addManualNote, setTags, getTags } = require('../../../utils/notesSectionManager');
+const { updateSection, getSectionsSummary, addManualNote, setTags, getTags, parseNotesIntoSections, rebuildNotesFromSections } = require('../../../utils/notesSectionManager');
 
 /**
  * GET /api/linkedin/leads/lookup
@@ -1507,6 +1507,8 @@ router.patch('/leads/:id', async (req, res) => {
 /**
  * PUT /api/linkedin/leads/:id
  * Update a specific lead (same as PATCH for compatibility)
+ * When Notes is included: preserves server-managed sections (email, meeting) to avoid
+ * Portal overwriting content added by inbound email or meeting note-takers.
  */
 router.put('/leads/:id', async (req, res) => {
   logger.info('LinkedIn Routes: PUT /leads/:id called');
@@ -1515,13 +1517,37 @@ router.put('/leads/:id', async (req, res) => {
   try {
     const airtableBase = await getAirtableBase(req);
     const leadId = req.params.id;
-    const updates = req.body;
+    const updates = { ...req.body };
     
     logger.info('LinkedIn Routes: Updating lead:', leadId, 'with data:', updates);
 
     // Defensive log: track any attempt to toggle Posts Actioned via API
     if (updates && Object.prototype.hasOwnProperty.call(updates, 'Posts Actioned')) {
       logger.warn(`[LinkedIn Routes] PUT: Posts Actioned set to`, updates['Posts Actioned'], 'for lead', leadId, 'by client', req.client?.clientId || 'unknown');
+    }
+
+    // When Portal sends Notes, merge: preserve server-managed sections (email, meeting)
+    // to avoid overwriting content added by inbound email or Fathom/meeting note-takers.
+    if (updates.Notes !== undefined) {
+      try {
+        const currentRecord = await airtableBase('Leads').find(leadId);
+        const serverNotes = currentRecord.get('Notes') || currentRecord.fields?.['Notes'] || '';
+        if (serverNotes && serverNotes.trim()) {
+          const serverSections = parseNotesIntoSections(serverNotes);
+          const clientSections = parseNotesIntoSections(updates.Notes);
+          // Use server's email and meeting sections (source of truth from inbound/Fathom)
+          if (serverSections.email && serverSections.email.trim()) {
+            clientSections.email = serverSections.email;
+          }
+          if (serverSections.meeting && serverSections.meeting.trim()) {
+            clientSections.meeting = serverSections.meeting;
+          }
+          updates.Notes = rebuildNotesFromSections(clientSections);
+          logger.info('LinkedIn Routes: Merged Notes - preserved server email/meeting sections');
+        }
+      } catch (mergeErr) {
+        logger.warn('LinkedIn Routes: Could not merge Notes (using client version):', mergeErr.message);
+      }
     }
 
     // Update the lead in Airtable
