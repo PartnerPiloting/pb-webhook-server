@@ -4,8 +4,8 @@
  * Used by CollapsibleNotes and testable without env vars.
  */
 
-// Email thread separator (matches backend)
-const EMAIL_BLOCK_SEP = /\n-{3,}\n/;
+// Email thread separator (matches backend - must NOT be plain "---" which appears in email bodies)
+const EMAIL_BLOCK_SEP = /\n---EMAIL-THREAD---\n/;
 // Meeting block separator
 const MEETING_BLOCK_SEP = /━{10,}/;
 
@@ -76,7 +76,7 @@ function splitQuotedSections(text) {
   const rest = text.slice(idx);
   const quotedMatch = rest.match(/On\s+(.+?)wrote:\s*([\s\S]*)/i);
   const quoted = quotedMatch
-    ? [{ header: `Quoted: ${quotedMatch[1].trim()}`, body: quotedMatch[2].trim().slice(0, 800) }]
+    ? [{ header: `Quoted: ${quotedMatch[1].trim()}`, body: quotedMatch[2].trim() }]
     : [];
   return { main, quoted };
 }

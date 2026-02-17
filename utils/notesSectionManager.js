@@ -41,7 +41,8 @@ const LEGACY_SEPARATOR = '──────────────────
 const MEETING_BLOCK_SEPARATOR = '━━━━━━━━━━━━━━━━━━━━━━━━━';
 
 // Email thread separator (between different email threads when appending)
-const EMAIL_BLOCK_SEPARATOR = '\n---\n';
+// Must NOT be "---" alone - that appears in email bodies (signatures, horizontal rules) and causes false splits
+const EMAIL_BLOCK_SEPARATOR = '\n---EMAIL-THREAD---\n';
 
 // Section display order (first = top of notes)
 const SECTION_ORDER = ['linkedin', 'manual', 'salesnav', 'email', 'meeting'];
@@ -595,7 +596,7 @@ function extractNewestDate(content) {
 }
 
 /**
- * Split email content into blocks (threads separated by ---)
+ * Split email content into blocks (threads separated by ---EMAIL-THREAD---)
  * @param {string} content - Email section content
  * @returns {string[]} Array of email thread blocks
  */
@@ -605,8 +606,7 @@ function splitEmailBlocks(content) {
     }
     const trimmed = content.trim();
     if (!trimmed) return [];
-    // Split by --- separator (with optional surrounding newlines)
-    const blocks = trimmed.split(/\n-{3,}\n/);
+    const blocks = trimmed.split(/\n---EMAIL-THREAD---\n/);
     return blocks.map(b => b.trim()).filter(b => b.length > 0);
 }
 
