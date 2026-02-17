@@ -47,6 +47,9 @@ const EMAIL_BLOCK_SEPARATOR = '\n---EMAIL-THREAD---\n';
 // Section display order (first = top of notes)
 const SECTION_ORDER = ['linkedin', 'manual', 'salesnav', 'email', 'meeting'];
 
+const { createLogger } = require('./contextLogger');
+const debugLog = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'notes-section' });
+
 /**
  * Parse tags from the start of notes
  * Tags line format: "Tags: #tag1 #tag2 #tag3"
@@ -300,6 +303,8 @@ function updateSection(currentNotes, sectionKey, newContent, options = {}) {
             if (sectionKey === 'meeting') {
                 sections[sectionKey] = `${MEETING_BLOCK_SEPARATOR}\n${newContent.trim()}\n${MEETING_BLOCK_SEPARATOR}\n\n${sections[sectionKey].trim()}`;
             } else if (sectionKey === 'email') {
+                const existingEmailLen = (sections[sectionKey] || '').length;
+                debugLog.info(`[EMAIL-DEBUG] updateSection: existingEmailLen=${existingEmailLen} action=${existingEmailLen > 0 ? 'APPEND' : 'FIRST_CONTENT'}`);
                 // Dedupe: skip if subject matches most recent block (webhook retries, re-forwards)
                 const firstBlock = getFirstEmailBlock(sections[sectionKey]);
                 if (firstBlock) {
