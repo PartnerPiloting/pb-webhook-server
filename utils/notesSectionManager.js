@@ -152,6 +152,9 @@ function parseNotesIntoSections(notes) {
         return { tags: [], linkedin: '', manual: '', salesnav: '', email: '', meeting: '', legacy: '' };
     }
     
+    // DEBUG: Log input length
+    debugLog.info(`[PARSE-DEBUG] parseNotesIntoSections called with ${notes.length} chars`);
+    
     // First extract tags
     const { tags, notesWithoutTags } = parseTagsFromNotes(notes);
 
@@ -188,6 +191,14 @@ function parseNotesIntoSections(notes) {
                 .trim();
             
             sections[key] = sectionContent;
+            
+            // DEBUG: Log what we extracted for each section
+            debugLog.info(`[PARSE-DEBUG] Section ${key}: headerIndex=${headerIndex} endIndex=${endIndex} contentLen=${sectionContent.length}`);
+            if (key === 'email' && sectionContent.length < 500 && notes.length > 5000) {
+                debugLog.warn(`[PARSE-DEBUG] SUSPICIOUS: Email section only ${sectionContent.length} chars but notes are ${notes.length} chars!`);
+                debugLog.warn(`[PARSE-DEBUG] Email content preview: "${sectionContent.substring(0, 200)}"`);
+                debugLog.warn(`[PARSE-DEBUG] Notes preview around email header: "${notes.substring(Math.max(0, headerIndex - 50), headerIndex + 500)}"`);
+            }
         }
     }
     
@@ -219,6 +230,12 @@ function parseNotesIntoSections(notes) {
             sections.legacy = notesWithoutTags.trim();
         }
     }
+    
+    // DEBUG: Log final parsed result
+    const totalExtracted = (sections.linkedin?.length || 0) + (sections.manual?.length || 0) + 
+        (sections.salesnav?.length || 0) + (sections.email?.length || 0) + 
+        (sections.meeting?.length || 0) + (sections.legacy?.length || 0);
+    debugLog.info(`[PARSE-DEBUG] Parsing complete: input=${notes.length} totalExtracted=${totalExtracted} email=${sections.email?.length || 0} meeting=${sections.meeting?.length || 0} legacy=${sections.legacy?.length || 0}`);
     
     return sections;
 }
