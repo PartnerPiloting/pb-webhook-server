@@ -421,6 +421,9 @@ async function updateLeadWithEmail(client, lead, emailData) {
         append: true, 
         replace: false 
     });
+    if (noteUpdateResult.skippedDuplicate) {
+        logger.info(`Skipped duplicate email for lead ${lead.id} (${lead.email}) - fingerprint matched`);
+    }
 
     // Calculate follow-up date (+14 days)
     const followUpDate = new Date(referenceDate);
@@ -2210,17 +2213,9 @@ ASH Portal`
 
 /**
  * Send notification when meeting notes are saved successfully
- * DISABLED: We only notify on failure (lead not found, error, etc.) per user preference.
- * @param {string} toEmail - Recipient email
- * @param {Object} lead - Lead object
- * @param {Object} meetingData - Parsed meeting data
- * @param {string} provider - Provider name
+ * REMOVED: Success emails disabled per user preference. Only failure emails are sent.
+ * (Function deleted - no code path calls it.)
  */
-async function sendMeetingSuccessNotification(toEmail, lead, meetingData, provider) {
-    // Success notifications disabled - only failure emails are sent
-    logger.warn('sendMeetingSuccessNotification called but DISABLED - not sending (should not happen with current code)');
-    return;
-}
 
 /**
  * Send notification when there's an error processing meeting notes
