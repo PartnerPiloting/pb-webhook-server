@@ -375,7 +375,7 @@ function SectionContent({ sectionKey, content }) {
     return (
       <div className="space-y-3">
         {blocks.map((block, i) => {
-          const isExp = expandedBlocks[i] ?? (i === 0);
+          const isExp = expandedBlocks[i] ?? false;
           const title = getBlockTitle(block, sectionKey === 'email' ? 'Email thread' : 'Meeting');
           return (
             <div key={i} className="border border-gray-200 rounded-lg overflow-hidden">
