@@ -422,7 +422,7 @@ async function updateLeadWithEmail(client, lead, emailData) {
         replace: false 
     });
     if (noteUpdateResult.skippedDuplicate) {
-        logger.info(`Skipped duplicate email for lead ${lead.id} (${lead.email}) - fingerprint matched`);
+        logger.info(`Skipped duplicate email for lead ${lead.id} (${lead.email}) - subject matched`);
     }
 
     // Calculate follow-up date (+14 days)
