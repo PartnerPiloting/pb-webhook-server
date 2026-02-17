@@ -157,6 +157,9 @@ function parseNotesIntoSections(notes) {
     
     // First extract tags
     const { tags, notesWithoutTags } = parseTagsFromNotes(notes);
+    
+    // DEBUG: Log after tags extraction
+    debugLog.info(`[PARSE-DEBUG] After tags extraction: notesWithoutTags=${notesWithoutTags.length} chars (lost ${notes.length - notesWithoutTags.length} to tags line)`);
 
     const sections = { tags, linkedin: '', manual: '', salesnav: '', email: '', meeting: '', legacy: '' };
     
@@ -169,20 +172,45 @@ function parseNotesIntoSections(notes) {
         if (headerIndex !== -1) {
             // Find where this section ends (next section header or legacy separator)
             let endIndex = remainingContent.length;
+            let endSetBy = 'default (end of content)';
+            
+            // DEBUG: Log initial state for email section
+            if (key === 'email') {
+                debugLog.info(`[PARSE-DEBUG] EMAIL: headerIndex=${headerIndex} headerLen=${header.length} searchFrom=${headerIndex + header.length} defaultEndIndex=${endIndex}`);
+            }
             
             // Check for other section headers after this one
             for (const otherHeader of Object.values(SECTION_HEADERS)) {
                 if (otherHeader === header) continue;
                 const otherIndex = remainingContent.indexOf(otherHeader, headerIndex + header.length);
+                
+                // DEBUG: Log each header check for email section
+                if (key === 'email') {
+                    debugLog.info(`[PARSE-DEBUG] EMAIL: checking "${otherHeader.substring(4, 20)}..." found=${otherIndex !== -1} index=${otherIndex}`);
+                }
+                
                 if (otherIndex !== -1 && otherIndex < endIndex) {
                     endIndex = otherIndex;
+                    endSetBy = otherHeader;
                 }
             }
             
             // Check for legacy separator
             const sepIndex = remainingContent.indexOf(LEGACY_SEPARATOR, headerIndex + header.length);
+            
+            // DEBUG: Log legacy separator check for email section
+            if (key === 'email') {
+                debugLog.info(`[PARSE-DEBUG] EMAIL: checking LEGACY_SEPARATOR found=${sepIndex !== -1} index=${sepIndex}`);
+            }
+            
             if (sepIndex !== -1 && sepIndex < endIndex) {
                 endIndex = sepIndex;
+                endSetBy = 'LEGACY_SEPARATOR';
+            }
+            
+            // DEBUG: Log final endIndex decision for email section
+            if (key === 'email') {
+                debugLog.info(`[PARSE-DEBUG] EMAIL: FINAL endIndex=${endIndex} setBy="${endSetBy}" expectedContentLen=${endIndex - (headerIndex + header.length)}`);
             }
             
             // Extract section content (without header)
