@@ -372,6 +372,15 @@ async function updateLeadWithEmail(client, lead, emailData) {
     // Use existing airtableClient pattern
     const clientBase = createBaseInstance(client.airtableBaseId);
 
+    // Re-fetch lead to get latest notes (avoids overwriting when multiple emails or other updates)
+    let currentNotes = lead.notes || '';
+    try {
+        const freshRecord = await clientBase('Leads').find(lead.id);
+        currentNotes = freshRecord.get('Notes') || freshRecord.fields?.['Notes'] || currentNotes;
+    } catch (fetchErr) {
+        logger.warn(`Could not re-fetch lead ${lead.id} for latest notes, using cached: ${fetchErr.message}`);
+    }
+
     // Use client's timezone for reference date
     let referenceDate = new Date();
     const clientTimezone = client.timezone;
@@ -417,7 +426,7 @@ async function updateLeadWithEmail(client, lead, emailData) {
 
     // Update the Email section in notes - APPEND mode
     // Each new email thread is appended; multiple threads are kept as separate blocks
-    const noteUpdateResult = updateSection(lead.notes || '', 'email', processedContent, { 
+    const noteUpdateResult = updateSection(currentNotes, 'email', processedContent, { 
         append: true, 
         replace: false 
     });
