@@ -6,8 +6,10 @@
 
 // Email thread separator (matches backend - must NOT be plain "---" which appears in email bodies)
 const EMAIL_BLOCK_SEP = /\n---EMAIL-THREAD---\n/;
-// Meeting block separator
+// Meeting block separator (primary: heavy horizontal line from notesSectionManager)
 const MEETING_BLOCK_SEP = /━{10,}/;
+// Fallback: split on double newline before next meeting header (═ or 📹) - handles legacy/merged content
+const MEETING_BLOCK_FALLBACK = /\n\n(?=═{20,}|📹\s)/;
 
 /**
  * Collapse [image: ...] placeholders to compact pill
@@ -90,19 +92,33 @@ function splitEmailBlocks(content) {
 }
 
 /**
- * Split meeting section into blocks
+ * Split meeting section into blocks.
+ * Primary: split on ━━ separator (used when appending via inbound email).
+ * Fallback: split on double newline before next meeting header (═ or 📹) - handles legacy/merged content.
  */
 function splitMeetingBlocks(content) {
   if (!content || !content.trim()) return [];
-  return content.split(MEETING_BLOCK_SEP).map(b => b.trim()).filter(Boolean);
+  let blocks = content.split(MEETING_BLOCK_SEP).map(b => b.trim()).filter(Boolean);
+  // If only one block but it contains multiple meeting headers (4+ ═══ = 2+ meetings), try fallback split
+  if (blocks.length === 1 && (content.match(/═{20,}/g) || []).length >= 4) {
+    blocks = content.split(MEETING_BLOCK_FALLBACK).map(b => b.trim()).filter(Boolean);
+  }
+  return blocks;
 }
 
 /**
  * Get block title (first line or subject)
+ * For meeting blocks: prefer 📹 line (Name | date | duration)
  */
 function getBlockTitle(block, fallback = 'Thread') {
-  const first = block.split('\n')[0]?.trim() || '';
+  const lines = block.split('\n').map(l => l.trim()).filter(Boolean);
+  const first = lines[0] || '';
   if (first.toLowerCase().startsWith('subject:')) return first.slice(8).trim() || fallback;
+  // For meeting blocks: look for 📹 line (Name | date | duration)
+  if (fallback === 'Meeting') {
+    const videoLine = lines.find(l => l.startsWith('📹'));
+    if (videoLine) return videoLine.replace(/^📹\s*/, '').trim().slice(0, 60) || fallback;
+  }
   if (first.length > 50) return first.slice(0, 47) + '…';
   return first || fallback;
 }
