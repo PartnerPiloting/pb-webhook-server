@@ -1433,29 +1433,14 @@ export default function QuickUpdateModal({
               )}
             </div>
             
-            {/* Priority */}
+            {/* Priority - saved via main Save button (same as Follow-up Date, Email, Phone) */}
             <div className="mb-4">
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Priority
               </label>
               <select
                 value={priority}
-                onChange={async (e) => {
-                  const val = e.target.value || '';
-                  const prevVal = priority;
-                  setPriority(val);
-                  if (!selectedLead) return;
-                  try {
-                    await quickUpdateLead(selectedLead.id, { priority: val || null });
-                    setSelectedLead(prev => prev ? { ...prev, priority: val || null, 'Priority': val || null } : null);
-                    setSaveSuccess({ leadName: `${selectedLead.firstName || ''} ${selectedLead.lastName || ''}`.trim() || 'Lead' });
-                    setTimeout(() => setSaveSuccess(null), 2000);
-                  } catch (err) {
-                    console.error('Failed to update priority:', err);
-                    setPriority(prevVal);
-                    setError(err.message || 'Failed to update priority');
-                  }
-                }}
+                onChange={(e) => setPriority(e.target.value || '')}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm bg-white"
               >
                 <option value="">—</option>
