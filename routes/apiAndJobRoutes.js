@@ -7006,6 +7006,58 @@ router.get("/api/calendar/setup-info", async (req, res) => {
   }
 });
 
+// Get next upcoming meeting with a lead (by attendee email)
+// Used by Smart FUP to show "Next meeting: ..." when calendar is connected
+router.get("/api/calendar/upcoming-meeting-with-lead", async (req, res) => {
+  const logger = createLogger({ runId: 'CALENDAR', clientId: req.headers['x-client-id'] || 'unknown', operation: 'upcoming-meeting' });
+  try {
+    const clientId = req.headers['x-client-id'] || req.query.clientId;
+    const leadEmail = req.query.leadEmail;
+
+    if (!clientId) {
+      return res.status(400).json({ error: 'Client ID required (x-client-id header or clientId query)' });
+    }
+    if (!leadEmail || !String(leadEmail).trim()) {
+      return res.json({ meeting: null });
+    }
+
+    const lookupResponse = await fetch(
+      `https://api.airtable.com/v0/${process.env.MASTER_CLIENTS_BASE_ID}/Clients?filterByFormula=LOWER({Client ID})=LOWER('${clientId}')&fields[]=Google Calendar Email&fields[]=Timezone`,
+      { headers: { 'Authorization': `Bearer ${process.env.AIRTABLE_API_KEY}` } }
+    );
+    if (!lookupResponse.ok) {
+      return res.status(500).json({ error: 'Failed to lookup client' });
+    }
+    const data = await lookupResponse.json();
+    if (!data.records || data.records.length === 0) {
+      return res.json({ meeting: null });
+    }
+    const record = data.records[0];
+    const calendarEmail = record.fields['Google Calendar Email'];
+    const timezone = record.fields['Timezone'] || 'Australia/Brisbane';
+
+    if (!calendarEmail) {
+      return res.json({ meeting: null });
+    }
+
+    const calendarService = require('../config/calendarServiceAccount.js');
+    const { meeting, error } = await calendarService.getUpcomingMeetingsWithAttendee(
+      calendarEmail,
+      String(leadEmail).trim(),
+      90,
+      timezone
+    );
+
+    if (error) {
+      logger.warn(`Upcoming meeting lookup error for ${clientId}: ${error}`);
+    }
+    return res.json({ meeting: meeting || null, error: error || null });
+  } catch (error) {
+    logger.error('Upcoming meeting error:', error.message);
+    return res.status(500).json({ error: error.message });
+  }
+});
+
 router.post("/api/calendar/chat", async (req, res) => {
   const logger = createLogger({ runId: 'CALENDAR', clientId: req.headers['x-client-id'] || 'unknown', operation: 'calendar-chat' });
   

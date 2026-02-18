@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef, Suspense } from 'react';
 import Layout from '../../components/Layout';
-import { getSmartFollowupQueue, acknowledgeAiDate, generateFollowupMessage, updateLead, getLeadById, snoozeSmartFollowup, triggerSmartFollowupRebuild, replaceFupInstructions, reviewFupInstructions } from '../../services/api';
+import { getSmartFollowupQueue, acknowledgeAiDate, generateFollowupMessage, updateLead, getLeadById, snoozeSmartFollowup, triggerSmartFollowupRebuild, replaceFupInstructions, reviewFupInstructions, getUpcomingMeetingWithLead } from '../../services/api';
 import { getCurrentClientId, getClientProfile, getCurrentClientProfile, buildAuthUrl } from '../../utils/clientUtils';
 
 /**
@@ -118,6 +118,7 @@ function SmartFollowupsContent() {
   const [emailSending, setEmailSending] = useState(false);
   const [leadNotes, setLeadNotes] = useState<string>('');
   const [leadLinkedinMessages, setLeadLinkedinMessages] = useState<string>('');
+  const [upcomingMeeting, setUpcomingMeeting] = useState<{ summary: string; displayDate: string } | null>(null);
   const [notesExpanded, setNotesExpanded] = useState(false);
   const [showCalendar, setShowCalendar] = useState(false);
   const [calendarDate, setCalendarDate] = useState('');
@@ -236,6 +237,7 @@ function SmartFollowupsContent() {
     setActionMessage(null);
     setLeadNotes('');
     setLeadLinkedinMessages('');
+    setUpcomingMeeting(null);
     setNotesExpanded(false);
     setShowCalendar(false);
     setCalendarDate('');
@@ -244,9 +246,13 @@ function SmartFollowupsContent() {
     setCurrentFollowUpYes(true);
     setDraftFollowUpYes(true);
     try {
-      const lead = await getLeadById(item.leadId);
+      const [lead, meetingResult] = await Promise.all([
+        getLeadById(item.leadId),
+        (item.leadEmail ? getUpcomingMeetingWithLead(item.leadEmail) : Promise.resolve({ meeting: null })),
+      ]);
       setLeadNotes(lead?.notes || lead?.['Notes'] || '');
       setLeadLinkedinMessages(lead?.linkedinMessages || lead?.['LinkedIn Messages'] || '');
+      setUpcomingMeeting(meetingResult?.meeting ? { summary: meetingResult.meeting.summary, displayDate: meetingResult.meeting.displayDate } : null);
       const fup = lead?.followUpDate || lead?.['Follow-Up Date'] || null;
       const fupStr = fup ? (typeof fup === 'string' ? fup.split('T')[0] : fup) : null;
       const ceased = lead?.ceaseFup === 'Yes' || lead?.['Cease FUP'] === 'Yes';
@@ -257,6 +263,7 @@ function SmartFollowupsContent() {
     } catch {
       setLeadNotes('');
       setLeadLinkedinMessages('');
+      setUpcomingMeeting(null);
     }
   };
 
@@ -1042,6 +1049,12 @@ function SmartFollowupsContent() {
                       </button>
                       {notesExpanded && (
                         <div className="px-4 pb-4 space-y-3 border-t border-blue-200/50 pt-3">
+                          {upcomingMeeting && (
+                            <div className="bg-green-50 rounded-lg border border-green-200 px-3 py-2">
+                              <h4 className="text-xs font-medium text-green-800 uppercase tracking-wide mb-0.5">📅 Next meeting</h4>
+                              <p className="text-sm text-green-900">{upcomingMeeting.summary} – {upcomingMeeting.displayDate}</p>
+                            </div>
+                          )}
                           <div>
                             <h4 className="text-xs font-medium text-blue-700 uppercase tracking-wide mb-1">Story so far</h4>
                             <p className="text-sm text-blue-800">{selectedItem.story || 'No story generated yet.'}</p>

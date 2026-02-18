@@ -412,6 +412,85 @@ async function getBatchAvailability(calendarEmail, dates, startHour = 9, endHour
     }
 }
 
+/**
+ * Get the next upcoming meeting(s) where the given attendee email is invited
+ * Used by Smart FUP to show "Next meeting: ..." when a future meeting exists with the lead
+ *
+ * @param {string} calendarEmail - The calendar to check (client's Google Calendar Email)
+ * @param {string} attendeeEmail - Lead's email to match in event attendees
+ * @param {number} daysAhead - How many days ahead to search (default 90)
+ * @param {string} timezone - Timezone for date range (e.g., 'Australia/Brisbane')
+ * @returns {Promise<{meeting: {summary, start, end, displayDate} | null, error?: string}>}
+ */
+async function getUpcomingMeetingsWithAttendee(calendarEmail, attendeeEmail, daysAhead = 90, timezone = 'Australia/Brisbane') {
+    if (!calendarClient) {
+        return { meeting: null, error: 'Calendar service not initialized' };
+    }
+    if (!attendeeEmail || !attendeeEmail.trim()) {
+        return { meeting: null };
+    }
+
+    const normalizedLeadEmail = attendeeEmail.trim().toLowerCase();
+    if (!normalizedLeadEmail) return { meeting: null };
+
+    try {
+        const now = new Date();
+        const endDate = new Date(now);
+        endDate.setDate(endDate.getDate() + daysAhead);
+
+        const response = await calendarClient.events.list({
+            calendarId: calendarEmail,
+            timeMin: now.toISOString(),
+            timeMax: endDate.toISOString(),
+            singleEvents: true,
+            orderBy: 'startTime',
+            maxResults: 100,
+        });
+
+        const items = response.data.items || [];
+        const match = items.find(event => {
+            const attendees = event.attendees || [];
+            return attendees.some(a => String(a.email || '').toLowerCase() === normalizedLeadEmail);
+        });
+
+        if (!match) {
+            return { meeting: null };
+        }
+
+        const start = match.start?.dateTime || match.start?.date;
+        const end = match.end?.dateTime || match.end?.date;
+        const summary = match.summary || '(No title)';
+
+        if (!start) return { meeting: null };
+
+        const startDate = new Date(start);
+        const displayDate = startDate.toLocaleString('en-AU', {
+            weekday: 'short',
+            day: 'numeric',
+            month: 'short',
+            year: 'numeric',
+            hour: 'numeric',
+            minute: '2-digit',
+            timeZone: timezone,
+        });
+
+        return {
+            meeting: {
+                summary,
+                start,
+                end: end || '',
+                displayDate,
+            },
+        };
+    } catch (error) {
+        console.error('[CalendarServiceAccount] getUpcomingMeetingsWithAttendee error:', error.message);
+        if (error.code === 404) {
+            return { meeting: null, error: `Calendar not shared with service account` };
+        }
+        return { meeting: null, error: error.message };
+    }
+}
+
 module.exports = {
     calendarClient,
     serviceAccountEmail,
@@ -419,4 +498,5 @@ module.exports = {
     getFreeSlotsForDate,
     getEventsForDate,
     getBatchAvailability,
+    getUpcomingMeetingsWithAttendee,
 };
