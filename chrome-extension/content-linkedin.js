@@ -376,6 +376,7 @@
   }
   
   // Smart name comparison - handles variations like "duncanmurcott" vs "Duncan Murcott"
+  // and URL slugs like "kjlangdon" vs "Ken Langdon"
   function namesMatch(name1, name2) {
     if (!name1 || !name2) return false;
     
@@ -395,6 +396,23 @@
     const first1 = name1.split(' ')[0];
     const first2 = name2.split(' ')[0];
     if (first1 === first2 && first1.length >= 3) return true;
+    
+    // URL slug vs display name: "kjlangdon" (from /in/kjlangdon) vs "Ken Langdon"
+    // Slug often = initials + lastname. Check if slug ends with display name's last name.
+    const slug = noSpaces1.includes(' ') ? null : noSpaces1;
+    const displayName = name2.trim();
+    const displayWords = displayName.split(/\s+/).filter(w => w.length > 0);
+    if (slug && displayWords.length >= 2) {
+      const lastName = displayWords[displayWords.length - 1].toLowerCase();
+      if (lastName.length >= 3 && slug.toLowerCase().endsWith(lastName)) return true;
+    }
+    // Same check in reverse (name2 could be the slug)
+    const slug2 = noSpaces2.includes(' ') ? null : noSpaces2;
+    const displayWords1 = name1.trim().split(/\s+/).filter(w => w.length > 0);
+    if (slug2 && displayWords1.length >= 2) {
+      const lastName1 = displayWords1[displayWords1.length - 1].toLowerCase();
+      if (lastName1.length >= 3 && slug2.toLowerCase().endsWith(lastName1)) return true;
+    }
     
     return false;
   }
@@ -533,17 +551,23 @@
           );
         }
         
-        // Compare names - if they don't match, show error
+        // Compare names - if they don't match, ask instead of reject
         const visibleNormalized = visibleContactName.toLowerCase().trim();
         const clipboardNormalized = clipboardContactName.toLowerCase().trim();
         
         const match = namesMatch(visibleNormalized, clipboardNormalized);
         
         if (!match) {
-          throw new Error(
-            `You're viewing ${visibleContactName}'s conversation, but your clipboard contains ${clipboardContactName}'s messages. ` +
-            `Please copy the current conversation first (Ctrl+A then Ctrl+C in the message area).`
+          const confirmed = await showConfirmDialog(
+            `You're viewing ${visibleContactName}'s conversation, but your clipboard contains ${clipboardContactName}'s messages. Continue anyway?`,
+            'Continue',
+            'Cancel'
           );
+          if (!confirmed) {
+            updateButtonState('ready');
+            isProcessing = false;
+            return;
+          }
         }
       }
       
@@ -558,10 +582,16 @@
           const match = namesMatch(visibleNormalized, clipboardNormalized);
           
           if (!match) {
-            throw new Error(
-              `You're viewing ${visibleContactName}'s conversation, but your clipboard contains ${clipboardContactName}'s messages. ` +
-              `Please copy the current conversation first (Ctrl+A then Ctrl+C in the message area).`
+            const confirmed = await showConfirmDialog(
+              `You're viewing ${visibleContactName}'s conversation, but your clipboard contains ${clipboardContactName}'s messages. Continue anyway?`,
+              'Continue',
+              'Cancel'
             );
+            if (!confirmed) {
+              updateButtonState('ready');
+              isProcessing = false;
+              return;
+            }
           }
         }
       }
@@ -574,10 +604,21 @@
         throw new Error('Could not determine contact name. Please ensure you have copied the conversation.');
       }
       
+      // Get LinkedIn profile URL when on profile page (for reliable lead lookup)
+      let linkedInUrl = null;
+      if (path.startsWith('/in/')) {
+        const slugMatch = path.match(/\/in\/([^\/]+)/);
+        if (slugMatch) {
+          const slug = slugMatch[1].replace(/\/$/, '');
+          linkedInUrl = `https://www.linkedin.com/in/${slug}`;
+        }
+      }
+      
       // Store data for portal to pick up
       const portalData = {
         contactName: contactName,
         conversationText: clipboardText,
+        linkedInUrl: linkedInUrl,
         timestamp: Date.now()
       };
       
@@ -592,6 +633,9 @@
       const env = authData?.environment || 'production';
       const portalBase = PORTAL_URLS[env] || PORTAL_URLS.production;
       let portalUrl = `${portalBase}/quick-update?from=extension`;
+      if (linkedInUrl) {
+        portalUrl += `&linkedinUrl=${encodeURIComponent(linkedInUrl)}`;
+      }
       
       if (authData?.portalToken) {
         portalUrl += `&token=${encodeURIComponent(authData.portalToken)}`;
@@ -1184,6 +1228,58 @@
           <span class="na-btn-text">Save to Portal</span>
         `;
     }
+  }
+  
+  // Show confirmation dialog - returns Promise<boolean> (true = confirm, false = cancel)
+  function showConfirmDialog(message, confirmText = 'Continue', cancelText = 'Cancel') {
+    return new Promise((resolve) => {
+      const existing = document.getElementById('na-confirm-dialog');
+      if (existing) existing.remove();
+      
+      const overlay = document.createElement('div');
+      overlay.id = 'na-confirm-dialog';
+      overlay.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0,0,0,0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 2147483647;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      `;
+      
+      const box = document.createElement('div');
+      box.style.cssText = `
+        background: white;
+        border-radius: 8px;
+        padding: 24px;
+        max-width: 400px;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+      `;
+      
+      box.innerHTML = `
+        <p style="margin: 0 0 20px; font-size: 14px; line-height: 1.5; color: #333;">${message}</p>
+        <div style="display: flex; gap: 12px; justify-content: flex-end;">
+          <button id="na-confirm-cancel" style="padding: 8px 16px; border: 1px solid #ccc; background: white; border-radius: 6px; cursor: pointer; font-size: 14px;">${cancelText}</button>
+          <button id="na-confirm-ok" style="padding: 8px 16px; border: none; background: #0a66c2; color: white; border-radius: 6px; cursor: pointer; font-size: 14px;">${confirmText}</button>
+        </div>
+      `;
+      
+      overlay.appendChild(box);
+      document.body.appendChild(overlay);
+      
+      const cleanup = () => {
+        overlay.remove();
+      };
+      
+      box.querySelector('#na-confirm-ok').onclick = () => { cleanup(); resolve(true); };
+      box.querySelector('#na-confirm-cancel').onclick = () => { cleanup(); resolve(false); };
+      overlay.onclick = (e) => { if (e.target === overlay) { cleanup(); resolve(false); } };
+    });
   }
   
   // Show toast notification
