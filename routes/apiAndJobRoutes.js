@@ -7716,7 +7716,7 @@ router.post("/api/smart-followups/generate-message", async (req, res) => {
       return res.status(400).json({ error: 'Client ID required' });
     }
 
-    const { leadId, refinement, analyzeOnly, context, query, clientType, fupInstructions, imageData, imageMime } = req.body;
+    const { leadId, refinement, analyzeOnly, context, query, clientType, fupInstructions, imageData, imageMime, images } = req.body;
     
     if (!context) {
       return res.status(400).json({ error: 'context is required' });
@@ -7863,22 +7863,27 @@ Write an improved version incorporating this feedback.`;
       }
     }
 
-    // Build request: text-only or multimodal (text + image)
-    const hasImage = imageData && typeof imageData === 'string' && imageData.length > 0;
-    const requestPayload = hasImage
+    // Build request: text-only or multimodal (text + up to 5 images)
+    const imageList = Array.isArray(images) && images.length > 0
+      ? images.slice(0, 5).filter(img => img?.data && typeof img.data === 'string')
+      : (imageData && typeof imageData === 'string' && imageData.length > 0)
+        ? [{ data: imageData, mimeType: imageMime || 'image/png' }]
+        : [];
+    const hasImages = imageList.length > 0;
+    const requestPayload = hasImages
       ? {
           contents: [{
             role: 'user',
             parts: [
               { text: prompt },
-              { inlineData: { mimeType: imageMime || 'image/png', data: imageData } }
+              ...imageList.map(img => ({ inlineData: { mimeType: img.mimeType || 'image/png', data: img.data } }))
             ]
           }]
         }
       : prompt;
 
     // Generate content using the pre-initialized model
-    logger.info(`Calling Gemini for smart follow-ups...${hasImage ? ' (with image)' : ''}`);
+    logger.info(`Calling Gemini for smart follow-ups...${hasImages ? ` (with ${imageList.length} image(s))` : ''}`);
     const result = await geminiConfig.geminiModel.generateContent(requestPayload);
     
     // Handle different response formats from Vertex AI SDK (same as calendar-chat)
