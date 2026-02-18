@@ -968,6 +968,27 @@ function detectMeetingNotetaker(fromEmail, subject, bodyPlain) {
  * @param {string} provider - Detected provider name
  * @returns {{contactName: string|null, alternateNames: Array, meetingLink: string|null, duration: string|null, date: string|null, company: string|null}}
  */
+function htmlToStructuredText(html) {
+    if (!html || typeof html !== 'string') return '';
+    try {
+        return html
+            .replace(/<br\s*\/?>/gi, '\n')
+            .replace(/<\/(div|p|li|tr|h[1-6])>/gi, '\n')
+            .replace(/<(div|p|li|tr|h[1-6])[^>]*>/gi, '\n')
+            .replace(/<[^>]+>/g, '')
+            .replace(/&nbsp;/g, ' ')
+            .replace(/&amp;/g, '&')
+            .replace(/&lt;/g, '<')
+            .replace(/&gt;/g, '>')
+            .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(parseInt(n, 10)))
+            .replace(/\n{3,}/g, '\n\n')
+            .trim();
+    } catch (e) {
+        logger.warn(`htmlToStructuredText failed: ${e.message}`);
+        return '';
+    }
+}
+
 function parseMeetingNotetakerEmail(subject, bodyPlain, bodyHtml, provider) {
     const result = {
         contactName: null,
@@ -983,8 +1004,18 @@ function parseMeetingNotetakerEmail(subject, bodyPlain, bodyHtml, provider) {
         meetingSummary: null     // Full meeting summary (contains Purpose, Takeaways, Topics, Next Steps)
     };
     
-    const body = bodyPlain || '';
+    let body = bodyPlain || '';
     const html = bodyHtml || '';
+    // For Fathom: if plain text lacks structure, try HTML conversion (Fathom sends HTML emails)
+    if (provider === 'fathom' && html.length > 200) {
+        const htmlText = htmlToStructuredText(html);
+        const plainHasStructure = /Meeting Purpose|Key Takeaways|Meeting Summary/i.test(body);
+        const htmlHasStructure = /Meeting Purpose|Key Takeaways|Meeting Summary/i.test(htmlText);
+        if (htmlHasStructure && (!plainHasStructure || htmlText.length > body.length * 1.2)) {
+            logger.info('Using HTML-derived text for Fathom (better structure)');
+            body = htmlText;
+        }
+    }
     
     // Email regex for detection
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -1297,6 +1328,7 @@ function parseMeetingNotetakerEmail(subject, bodyPlain, bodyHtml, provider) {
             .replace(/General Template.*$/gim, '')
             .replace(/Customize.*Change Template/gi, '')
             .replace(/^[•\-]\s*Change Template\s*$/gim, '')  // Standalone "Change Template" bullet
+            .replace(/^[^\n]*Change Template[^\n]*$/gim, '')  // Any line containing "Change Template"
             .replace(/^[•\-]\s*Customize\s*$/gim, '')  // Standalone "Customize" bullet
             // Remove email quote markers (> at start of line or standalone >)
             .replace(/^\s*>\s*$/gm, '')  // Standalone > on a line
@@ -1390,12 +1422,12 @@ function parseMeetingNotetakerEmail(subject, bodyPlain, bodyHtml, provider) {
         // Clean up the text first
         summaryText = cleanMeetingText(summaryText);
         
-        // Format main section headers
+        // Format main section headers (flexible: match at line start, with/without trailing newline)
         summaryText = summaryText
-            .replace(/^Meeting Purpose\s*$/gim, '\n━━━ MEETING PURPOSE ━━━')
-            .replace(/^Key Takeaways\s*$/gim, '\n━━━ KEY TAKEAWAYS ━━━')
-            .replace(/^Topics[^\n]*$/gim, '\n━━━ TOPICS ━━━')
-            .replace(/^Next Steps\s*$/gim, '\n━━━ NEXT STEPS ━━━');
+            .replace(/(^|\n)\s*Meeting Purpose\s*(?=\n|$)/gim, '$1\n━━━ MEETING PURPOSE ━━━\n')
+            .replace(/(^|\n)\s*Key Takeaways\s*(?=\n|$)/gim, '$1\n━━━ KEY TAKEAWAYS ━━━\n')
+            .replace(/(^|\n)\s*Topics\s*(?=\n|$)/gim, '$1\n━━━ TOPICS ━━━\n')
+            .replace(/(^|\n)\s*Next Steps\s*(?=\n|$)/gim, '$1\n━━━ NEXT STEPS ━━━\n');
         
         // Format sub-section headers (like "WordPress Page Creation", "Go-to-Market & Networking")
         // These are lines that are capitalized words, end of line, not bullet points

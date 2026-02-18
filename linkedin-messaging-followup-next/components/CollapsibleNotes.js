@@ -9,6 +9,7 @@ import {
   splitQuotedSections,
   splitEmailBlocks,
   splitMeetingBlocks,
+  stripMeetingBlockHeader,
   getBlockTitle
 } from '../../utils/notesDisplayUtils';
 
@@ -391,7 +392,10 @@ function SectionContent({ sectionKey, content }) {
               </button>
               {isExp && (
                 <div className="p-4 border-t border-gray-100 bg-white">
-                  <ReadableBlock content={block} sectionKey={sectionKey} />
+                  <ReadableBlock
+                    content={sectionKey === 'meeting' ? stripMeetingBlockHeader(block) : block}
+                    sectionKey={sectionKey}
+                  />
                 </div>
               )}
             </div>
@@ -402,7 +406,11 @@ function SectionContent({ sectionKey, content }) {
   }
   return (
     <div>
-      <ReadableBlock content={content} defaultExpanded sectionKey={sectionKey} />
+      <ReadableBlock
+        content={sectionKey === 'meeting' ? stripMeetingBlockHeader(content) : content}
+        defaultExpanded
+        sectionKey={sectionKey}
+      />
     </div>
   );
 }

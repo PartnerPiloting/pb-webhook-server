@@ -124,6 +124,29 @@ function splitMeetingBlocks(content) {
 }
 
 /**
+ * Strip redundant header lines from meeting block content for display.
+ * The block title already shows [Recorded...] and 📹 Name | date | duration,
+ * so we remove them from the expanded body to avoid duplication.
+ */
+function stripMeetingBlockHeader(block) {
+  if (!block || typeof block !== 'string') return block;
+  const lines = block.split('\n');
+  const result = [];
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const trimmed = line.trim();
+    // Skip [Recorded DD/MM/YYYY, ...] line
+    if (/^\[Recorded\s+\d{2}\/\d{2}\/\d{4}[^\]]*\]\s*$/.test(trimmed)) continue;
+    // Skip 📹 Name | date | duration line (already in block title)
+    if (/^📹\s+[^\n]+\|[^\n]+\|[^\n]+/.test(trimmed) || (trimmed.startsWith('📹') && trimmed.includes('|'))) continue;
+    // Skip leading separator lines (═══ or ━━━) before real content
+    if (result.length === 0 && /^[═━─]{5,}\s*$/.test(trimmed)) continue;
+    result.push(line);
+  }
+  return result.join('\n').trim();
+}
+
+/**
  * Get block title (first line or subject)
  * For meeting blocks: prefer 📹 line (Name | date | duration)
  */
@@ -184,6 +207,7 @@ module.exports = {
   splitQuotedSections,
   splitEmailBlocks,
   splitMeetingBlocks,
+  stripMeetingBlockHeader,
   getBlockTitle,
   processForDisplay
 };
