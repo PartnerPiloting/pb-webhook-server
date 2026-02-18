@@ -146,7 +146,7 @@
         return;
       }
       
-      console.log('[NA Extension] Received clipboard data for:', data.contactName);
+      console.log('[NA Extension] Received clipboard data for:', data.contactName, data.linkedInUrl ? '(with LinkedIn URL)' : '');
       
       // Wait for the Quick Update form to be ready
       waitForQuickUpdateForm(data);
@@ -170,17 +170,19 @@
       if (searchInput) {
         clearInterval(checkInterval);
         
-        // Step 1: Pre-fill the search with contact name FIRST
-        // This triggers a React re-render/search, so we do it before clicking LinkedIn
-        if (data.contactName) {
+        // When linkedInUrl is in the URL, Quick Update modal loads the lead by URL - skip search fill
+        const urlParams = new URLSearchParams(window.location.search);
+        const hasLinkedInUrl = urlParams.get('linkedinUrl') || data.linkedInUrl;
+        
+        if (!hasLinkedInUrl && data.contactName) {
+          // Pre-fill the search with contact name - triggers React re-render/search
           const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
           nativeInputValueSetter.call(searchInput, data.contactName);
           searchInput.dispatchEvent(new Event('input', { bubbles: true }));
         }
         
-        // Step 2: Wait for the lead to be SELECTED (blue card appears)
-        // This is important because selectLead() clears the form, so we must wait for it to complete
-        console.log('[NA Extension] Search input filled, waiting for lead to be selected...');
+        // Wait for the lead to be SELECTED (blue card appears)
+        console.log('[NA Extension]', hasLinkedInUrl ? 'Lead loading by URL, waiting...' : 'Search filled, waiting for lead to be selected...');
         waitForLeadSelection(data);
         
       } else if (attempts >= maxAttempts) {
