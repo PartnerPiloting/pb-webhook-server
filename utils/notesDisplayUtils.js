@@ -8,8 +8,10 @@
 const EMAIL_BLOCK_SEP = /\n---EMAIL-THREAD---\n/;
 // Meeting block separator (primary: heavy horizontal line from notesSectionManager)
 const MEETING_BLOCK_SEP = /━{10,}/;
-// Fallback: split on double newline before next meeting header (═ or 📹) - handles legacy/merged content
-const MEETING_BLOCK_FALLBACK = /\n\n(?=═{20,}|📹\s)/;
+// Fallback 1: split on double newline before next meeting header (═ or 📹) - handles legacy/merged content
+const MEETING_BLOCK_FALLBACK = /\r?\n\r?\n+(?=[═=]{20,}|📹\s)/;
+// Fallback 2: split before each 📹 line that starts a meeting header (Name | date | duration)
+const MEETING_BLOCK_FALLBACK_VIDEO = /\r?\n\r?\n+(?=📹\s[^\n]+\|)/;
 
 /**
  * Collapse [image: ...] placeholders to compact pill
@@ -94,14 +96,25 @@ function splitEmailBlocks(content) {
 /**
  * Split meeting section into blocks.
  * Primary: split on ━━ separator (used when appending via inbound email).
- * Fallback: split on double newline before next meeting header (═ or 📹) - handles legacy/merged content.
+ * Fallback: split on double newline before next meeting header - handles legacy/merged content.
  */
 function splitMeetingBlocks(content) {
   if (!content || !content.trim()) return [];
   let blocks = content.split(MEETING_BLOCK_SEP).map(b => b.trim()).filter(Boolean);
-  // If only one block but it contains multiple meeting headers (4+ ═══ = 2+ meetings), try fallback split
-  if (blocks.length === 1 && (content.match(/═{20,}/g) || []).length >= 4) {
-    blocks = content.split(MEETING_BLOCK_FALLBACK).map(b => b.trim()).filter(Boolean);
+  // If only one block, try fallbacks for legacy/merged content
+  if (blocks.length === 1) {
+    // Trigger if: multiple [Recorded...] lines, or multiple 📹 lines, or 4+ ═/=
+    const recordedCount = (content.match(/\[Recorded\s+\d{2}\/\d{2}\/\d{4}/g) || []).length;
+    const videoCount = (content.match(/📹\s/g) || []).length;
+    const eqCount = (content.match(/[═=]{20,}/g) || []).length;
+    const hasMultipleMeetings = recordedCount >= 2 || videoCount >= 2 || eqCount >= 4;
+    if (hasMultipleMeetings) {
+      // Try fallback 1 (═ or 📹), then fallback 2 (📹 Name | date)
+      blocks = content.split(MEETING_BLOCK_FALLBACK).map(b => b.trim()).filter(Boolean);
+      if (blocks.length <= 1) {
+        blocks = content.split(MEETING_BLOCK_FALLBACK_VIDEO).map(b => b.trim()).filter(Boolean);
+      }
+    }
   }
   return blocks;
 }
