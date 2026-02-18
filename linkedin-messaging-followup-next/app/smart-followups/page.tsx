@@ -499,6 +499,7 @@ function SmartFollowupsContent() {
         clientType: client?.clientType || 'A - Partner Selection',
         fupInstructions: client?.fupInstructions || '',
         images: imagesToSend.length > 0 ? imagesToSend : undefined,
+        chatHistory: chatHistory.map(m => ({ role: m.role, content: m.content })),
         context: {
           story: selectedItem.story,
           notes: leadNotes,

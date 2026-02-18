@@ -7716,7 +7716,7 @@ router.post("/api/smart-followups/generate-message", async (req, res) => {
       return res.status(400).json({ error: 'Client ID required' });
     }
 
-    const { leadId, refinement, analyzeOnly, context, query, clientType, fupInstructions, imageData, imageMime, images } = req.body;
+    const { leadId, refinement, analyzeOnly, context, query, clientType, fupInstructions, imageData, imageMime, images, chatHistory } = req.body;
     
     if (!context) {
       return res.status(400).json({ error: 'context is required' });
@@ -7749,17 +7749,20 @@ router.post("/api/smart-followups/generate-message", async (req, res) => {
         ? `
 LEAD TAILORING (Type A): The user is mainly partner-seeking but will settle for leads who want to be clients first and hopes to transition them. Infer from the lead's notes/conversation whether they seem partner/builder potential or client-only. When a lead clearly wants to be a client (not a builder), soften the message and explain: "I've softened the message for this lead as it looks like they're more client-focused than builder-focused. I can make it stronger if you like." When giving advice or refining, mention this when relevant.`
         : '';
-      prompt = `You are the user's sales partner and advisor. You have full context about this lead.
+      prompt = `You are the user's sales partner and advisor. You have full context about this lead. Be conversational and helpful like ChatGPT - answer general questions, follow-ups, and clarifications naturally. Don't be rigid about modes.
+
 Client Type: ${effectiveClientType}${leadTailoringBlock}${clientInstructionsBlock}
-CRITICAL - DETECT INTENT:
-- ADVICE MODE: User asks a question (e.g. "is this lead worth following up?", "what do you think?", "should I prioritise?", "any red flags?"). → Give strategic advice. No message output.
-- REFINEMENT MODE: User provides a draft message to refine. This includes:
-  a) Explicit request: "improve this", "refine the message", "make it shorter", "add X"
-  b) Implicit: User pastes/writes message-like text (e.g. "it's been a while since we spoke", "keen to have a chat", "zoom next week", greetings, outreach phrasing). → Output ONLY the improved message. Polish it. No strategic advice preamble.
 
-If the user's input reads like a draft they'd send to the lead (first-person outreach, offer to connect, etc.) - treat it as refinement. Output the refined message only, 2-4 sentences, warm and professional.
+RESPONSE MODES (choose based on intent - when unclear, be helpful and conversational):
+- STRATEGIC ADVICE: User asks about the lead (e.g. "is this lead worth following up?", "what do you think?", "should I prioritise?", "any red flags?"). → Give advice. No REFINED_MESSAGE prefix.
+- MESSAGE REFINEMENT: User wants a message for the lead. This includes:
+  a) Explicit: "improve this", "refine", "make it shorter", "use that message but change X to Y", "I liked your original - use that but with [slight change]"
+  b) Implicit: User pastes/writes message-like text (first-person outreach, offer to connect, etc.)
+  c) Follow-up edits: "use the first message you gave me", "can you use that but just add X" - apply the specific change they request to the message they're referring to
+  → Output ONLY the refined/edited message. Start with: REFINED_MESSAGE: (then the message on the next line)
+- GENERAL: Questions about you, the chat, clarifications, "do you see X?", "can you answer that?" → Answer naturally. No REFINED_MESSAGE prefix.
 
-IMPORTANT: When outputting a REFINED MESSAGE (not advice), you MUST start your response with exactly: REFINED_MESSAGE: (then the message on the next line). This tells the app to push it to the Suggested Message section. When giving ADVICE, do NOT use this prefix.${suggestedMsgBlock}
+When the user references a prior message ("that message", "your first message", "the original") and asks for a small change, output the revised message with REFINED_MESSAGE:. Apply their requested change precisely.${suggestedMsgBlock}
 
 Lead: ${context.name}
 
@@ -7775,9 +7778,9 @@ ${context.fathomTranscripts || 'No transcripts'}
 Recent LinkedIn conversation (if any):
 ${context.linkedinMessages || 'No conversation history'}
 
-User input: ${query}
+${chatHistory && Array.isArray(chatHistory) && chatHistory.length > 0 ? `Previous conversation in this chat:\n${chatHistory.map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`).join('\n')}\n\n` : ''}Current user input: ${query}
 
-Respond: advice if they asked a question; refined message only if they provided a draft.
+Respond helpfully. Use the conversation history above when the user refers to "that message", "your first message", "the original", etc. If outputting a refined message for the lead, start with REFINED_MESSAGE:.
 
 SELF-LEARNING: When the user describes modifying your message (e.g. "you gave me X, I changed it to Y" or "I edited your suggestion to say..."), analyze if there is a general, reusable pattern. If yes:
 1. Integrate the new pattern with their EXISTING instructions above. Merge, avoid duplicates, consolidate similar points, resolve contradictions.
