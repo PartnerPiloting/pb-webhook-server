@@ -1806,6 +1806,30 @@ export const snoozeSmartFollowup = async (leadId, followUpDate) => {
 };
 
 /**
+ * Get next upcoming meeting with a lead (by attendee email)
+ * Requires client's Google Calendar to be shared with service account
+ * @param {string} leadEmail - Lead's email to match in calendar attendees
+ * @returns {Promise<{meeting: {summary, start, end, displayDate} | null, error?: string}>}
+ */
+export const getUpcomingMeetingWithLead = async (leadEmail) => {
+  try {
+    if (!leadEmail || !String(leadEmail).trim()) {
+      return { meeting: null };
+    }
+    const base = getBackendBase();
+    const response = await axios.get(`${base}/api/calendar/upcoming-meeting-with-lead`, {
+      params: { leadEmail: String(leadEmail).trim() },
+      headers: getAuthenticatedHeaders(),
+      timeout: 10000,
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Upcoming meeting lookup error:', error.message);
+    return { meeting: null };
+  }
+};
+
+/**
  * Trigger the Smart Follow-up sweep (rebuild) - populates Smart FUP State via AI analysis
  * Run before starting FUP's for the day. Can take 2-10 min depending on lead count.
  * @returns {Promise<{success: boolean, results: Object}>}
