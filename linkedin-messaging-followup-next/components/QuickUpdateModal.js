@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { lookupLead, quickUpdateLead, previewParse, getLeadNotesSummary, updateClientTimezone, createLead } from '../services/api';
+import { lookupLead, quickUpdateLead, previewParse, getLeadNotesSummary, updateClientTimezone, createLead, updateLead } from '../services/api';
 import { buildAuthUrl } from '../utils/clientUtils';
 import CollapsibleNotes from './CollapsibleNotes';
 
@@ -112,6 +112,7 @@ export default function QuickUpdateModal({
   const [parsePreview, setParsePreview] = useState(null);
   
   const [followUpDate, setFollowUpDate] = useState('');
+  const [priority, setPriority] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   
@@ -378,6 +379,7 @@ export default function QuickUpdateModal({
     setNoteContent('');
     setParsePreview(null);
     setFollowUpDate('');
+    setPriority('');
     setEmail('');
     setPhone('');
     setNotesSummary(null);
@@ -422,6 +424,7 @@ export default function QuickUpdateModal({
         setSelectedLead(null);
         setNotesSummary(null);
         setFollowUpDate('');
+        setPriority('');
         setEmail('');
         setPhone('');
         setNoteContent('');
@@ -486,6 +489,7 @@ export default function QuickUpdateModal({
     
     // Pre-fill contact fields
     setFollowUpDate(lead.followUpDate || '');
+    setPriority(lead.priority || lead['Priority'] || '');
     setEmail(lead.email || '');
     setPhone(lead.phone || '');
     
@@ -1421,6 +1425,38 @@ export default function QuickUpdateModal({
                   )}
                 </div>
               )}
+            </div>
+            
+            {/* Priority */}
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Priority
+              </label>
+              <select
+                value={priority}
+                onChange={async (e) => {
+                  const val = e.target.value || '';
+                  const prevVal = priority;
+                  setPriority(val);
+                  if (!selectedLead) return;
+                  try {
+                    await updateLead(selectedLead.id, { priority: val || null });
+                    setSelectedLead(prev => prev ? { ...prev, priority: val || null, 'Priority': val || null } : null);
+                    setSaveSuccess({ leadName: `${selectedLead.firstName || ''} ${selectedLead.lastName || ''}`.trim() || 'Lead' });
+                    setTimeout(() => setSaveSuccess(null), 2000);
+                  } catch (err) {
+                    console.error('Failed to update priority:', err);
+                    setPriority(prevVal);
+                    setError(err.message || 'Failed to update priority');
+                  }
+                }}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm bg-white"
+              >
+                <option value="">—</option>
+                <option value="One">1</option>
+                <option value="Two">2</option>
+                <option value="Three">3</option>
+              </select>
             </div>
             
             {/* Email */}
