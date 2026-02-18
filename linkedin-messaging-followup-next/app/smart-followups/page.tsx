@@ -105,12 +105,13 @@ function SmartFollowupsContent() {
   const [generatedMessage, setGeneratedMessage] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [chatInput, setChatInput] = useState('');
-  const [chatHistory, setChatHistory] = useState<Array<{ role: string; content: string; imageData?: string; imageMime?: string; integratedInstructions?: string }>>([]);
+  const [chatHistory, setChatHistory] = useState<Array<{ role: string; content: string; images?: Array<{ data: string; mimeType: string }>; integratedInstructions?: string }>>([]);
   const [instructionsReviewDraft, setInstructionsReviewDraft] = useState<string | null>(null);
   const [instructionsReviewFeedback, setInstructionsReviewFeedback] = useState<string | null>(null);
   const [isSavingInstructions, setIsSavingInstructions] = useState(false);
   const [isReviewingInstructions, setIsReviewingInstructions] = useState(false);
-  const [pendingImage, setPendingImage] = useState<{ data: string; mimeType: string } | null>(null);
+  const MAX_IMAGES = 5;
+  const [pendingImages, setPendingImages] = useState<Array<{ data: string; mimeType: string }>>([]);
   const [copySuccess, setCopySuccess] = useState(false);
   const [actionMessage, setActionMessage] = useState<{ type: string; text: string } | null>(null);
   const [emailSending, setEmailSending] = useState(false);
@@ -444,7 +445,10 @@ function SmartFollowupsContent() {
         reader.onload = () => {
           const data = reader.result as string;
           const base64 = data.includes(',') ? data.split(',')[1]! : data;
-          setPendingImage({ data: base64, mimeType: file.type || 'image/png' });
+          setPendingImages(prev => {
+            if (prev.length >= MAX_IMAGES) return prev;
+            return [...prev, { data: base64, mimeType: file.type || 'image/png' }];
+          });
         };
         reader.readAsDataURL(file);
         return;
@@ -452,13 +456,17 @@ function SmartFollowupsContent() {
     }
   };
 
+  const removePendingImage = (index: number) => {
+    setPendingImages(prev => prev.filter((_, i) => i !== index));
+  };
+
   const handleChatSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const hasInput = chatInput.trim();
-    const hasImage = !!pendingImage;
-    if ((!hasInput && !hasImage) || isGenerating || !selectedItem) return;
+    const hasImages = pendingImages.length > 0;
+    if ((!hasInput && !hasImages) || isGenerating || !selectedItem) return;
     
-    const input = chatInput.trim() || (hasImage ? 'What does this image show? Please analyze it in the context of this lead.' : '');
+    const input = chatInput.trim() || (hasImages ? (pendingImages.length === 1 ? 'What does this image show? Please analyze it in the context of this lead.' : `What do these ${pendingImages.length} images show? Please analyze them together in the context of this lead.`) : '');
     setChatInput('');
     
     // Handle special commands
@@ -475,13 +483,13 @@ function SmartFollowupsContent() {
       return;
     }
     
-    // Free-form Q&A - send to AI with full lead context (optionally with pasted image)
-    const imageToSend = pendingImage;
-    setPendingImage(null);
+    // Free-form Q&A - send to AI with full lead context (optionally with pasted images)
+    const imagesToSend = [...pendingImages];
+    setPendingImages([]);
     setChatHistory(prev => [...prev, {
       role: 'user',
       content: input,
-      ...(imageToSend ? { imageData: imageToSend.data, imageMime: imageToSend.mimeType } : {})
+      ...(imagesToSend.length > 0 ? { images: imagesToSend } : {})
     }]);
     setIsGenerating(true);
     try {
@@ -490,8 +498,7 @@ function SmartFollowupsContent() {
         query: input,
         clientType: client?.clientType || 'A - Partner Selection',
         fupInstructions: client?.fupInstructions || '',
-        imageData: imageToSend?.data,
-        imageMime: imageToSend?.mimeType,
+        images: imagesToSend.length > 0 ? imagesToSend : undefined,
         context: {
           story: selectedItem.story,
           notes: leadNotes,
@@ -898,9 +905,11 @@ function SmartFollowupsContent() {
                         ) : (
                           chatHistory.map((msg, i) => (
                             <div key={i} className={`text-sm p-3 rounded-lg max-w-[85%] ${msg.role === 'user' ? 'bg-blue-100 text-blue-800 ml-auto' : 'bg-white border border-gray-200 text-gray-800'}`}>
-                              {msg.imageData && (
-                                <div className="mb-2">
-                                  <img src={`data:${msg.imageMime || 'image/png'};base64,${msg.imageData}`} alt="Pasted" className="max-w-[200px] max-h-[150px] rounded border border-gray-200" />
+                              {msg.images && msg.images.length > 0 && (
+                                <div className="mb-2 flex flex-wrap gap-2">
+                                  {msg.images.map((img, j) => (
+                                    <img key={j} src={`data:${img.mimeType || 'image/png'};base64,${img.data}`} alt="Pasted" className="max-w-[200px] max-h-[150px] rounded border border-gray-200" />
+                                  ))}
                                 </div>
                               )}
                               {msg.content}
@@ -915,11 +924,15 @@ function SmartFollowupsContent() {
                       </div>
                       <div className="p-3 border-t border-gray-200 bg-white shrink-0">
                         <form onSubmit={handleChatSubmit} className="flex flex-col gap-2">
-                          {pendingImage && (
-                            <div className="flex items-center gap-2 text-sm text-gray-600">
-                              <img src={`data:${pendingImage.mimeType};base64,${pendingImage.data}`} alt="Attached" className="h-12 w-auto rounded border border-gray-200" />
-                              <span>Image attached – add a question or send to analyze</span>
-                              <button type="button" onClick={() => setPendingImage(null)} className="text-red-600 hover:text-red-700 text-xs">Remove</button>
+                          {pendingImages.length > 0 && (
+                            <div className="flex flex-wrap items-center gap-2 text-sm text-gray-600">
+                              {pendingImages.map((img, idx) => (
+                                <div key={idx} className="relative inline-block">
+                                  <img src={`data:${img.mimeType};base64,${img.data}`} alt="Attached" className="h-12 w-auto rounded border border-gray-200" />
+                                  <button type="button" onClick={() => removePendingImage(idx)} className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-xs rounded-full hover:bg-red-600" title="Remove">×</button>
+                                </div>
+                              ))}
+                              <span>{pendingImages.length} image{pendingImages.length !== 1 ? 's' : ''} attached – add a question or send to analyze (max {MAX_IMAGES})</span>
                             </div>
                           )}
                           <div className="flex gap-2">
@@ -929,13 +942,13 @@ function SmartFollowupsContent() {
                               value={chatInput}
                               onChange={(e) => setChatInput(e.target.value)}
                               onPaste={handlePaste}
-                              placeholder="Ask anything, paste an image to analyze, or 'set follow-up to 2 weeks'..."
+                              placeholder="Ask anything, paste images to analyze (up to 5), or 'set follow-up to 2 weeks'..."
                               className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
                               disabled={isGenerating}
                             />
                             <button
                               type="submit"
-                              disabled={isGenerating || (!chatInput.trim() && !pendingImage)}
+                              disabled={isGenerating || (!chatInput.trim() && pendingImages.length === 0)}
                               className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 text-sm font-medium"
                             >
                               Send

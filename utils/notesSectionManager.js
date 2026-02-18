@@ -37,8 +37,8 @@ const SECTION_HEADERS = {
 
 const LEGACY_SEPARATOR = '───────────────────────────────';
 
-// Meeting block separator (used by Fathom and other meeting note-takers)
-const MEETING_BLOCK_SEPARATOR = '━━━━━━━━━━━━━━━━━━━━━━━━━';
+// Meeting block separator (ASCII - avoids Unicode stripping in Airtable/Portal)
+const MEETING_BLOCK_SEPARATOR = '\n---MEETING-BLOCK---\n';
 
 // Email thread separator (between different email threads when appending)
 // Must NOT be "---" alone - that appears in email bodies (signatures, horizontal rules) and causes false splits
@@ -855,7 +855,7 @@ function mergeAndSortEmailBlocks(existingContent, newContent, newestFirst = true
 }
 
 /**
- * Split meeting content into blocks (separated by ━━━ lines)
+ * Split meeting content into blocks (separated by ---MEETING-BLOCK---)
  * @param {string} content - Meeting section content
  * @returns {string[]} Array of meeting blocks
  */
@@ -864,8 +864,7 @@ function splitMeetingBlocks(content) {
         return [];
     }
     
-    // Split by the separator pattern (multiple ━ characters)
-    const blocks = content.split(/━{10,}/);
+    const blocks = content.split(/\n---MEETING-BLOCK---\n/);
     
     // Clean up and filter empty blocks
     return blocks

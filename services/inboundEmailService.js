@@ -1841,21 +1841,26 @@ async function updateLeadWithMeetingNotes(client, lead, meetingData, provider) {
         }
     }
     
-    // Format timestamp in client's timezone
+    // Format timestamp - prefer meeting date from Fathom when available for consistency with header
     let timestamp;
-    const clientTimezone = client.timezone || 'Australia/Brisbane';
-    try {
-        timestamp = new Date().toLocaleString('en-AU', { 
-            timeZone: clientTimezone,
-            day: '2-digit',
-            month: '2-digit', 
-            year: 'numeric',
-            hour: 'numeric',
-            minute: '2-digit',
-            hour12: true
-        });
-    } catch (e) {
-        timestamp = new Date().toLocaleString('en-AU');
+    if (meetingData.date) {
+        // Use Fathom's date format (e.g. "February 17, 2026") to match the header line
+        timestamp = meetingData.date;
+    } else {
+        const clientTimezone = client.timezone || 'Australia/Brisbane';
+        try {
+            timestamp = new Date().toLocaleString('en-AU', { 
+                timeZone: clientTimezone,
+                day: '2-digit',
+                month: '2-digit', 
+                year: 'numeric',
+                hour: 'numeric',
+                minute: '2-digit',
+                hour12: true
+            });
+        } catch (e) {
+            timestamp = new Date().toLocaleString('en-AU');
+        }
     }
     
     // Build clean meeting note entry
