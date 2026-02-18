@@ -39,6 +39,7 @@ interface QueueItem {
   // AI-generated content
   story: string;
   priority: 'High' | 'Medium' | 'Low';
+  userPriority?: string | null;  // User-defined from Leads: One, Two, Three, or blank
   waitingOn: 'User' | 'Lead' | 'None';
   suggestedMessage: string;
   recommendedChannel: 'LinkedIn' | 'Email' | 'None';
@@ -759,6 +760,11 @@ function SmartFollowupsContent() {
                     >
                       <div className="flex items-center gap-2">
                         <span className="text-xs font-medium text-gray-400">#{index + 1}</span>
+                        {item.userPriority && (
+                          <span className="text-xs font-semibold text-amber-600 w-4" title={`Priority ${item.userPriority}`}>
+                            {item.userPriority === 'One' ? '1' : item.userPriority === 'Two' ? '2' : item.userPriority === 'Three' ? '3' : ''}
+                          </span>
+                        )}
                         <h3 className="font-medium text-gray-900 truncate text-sm">
                           {getDisplayName(item)}
                         </h3>
@@ -797,6 +803,29 @@ function SmartFollowupsContent() {
                     </h2>
                     <span className="text-sm text-gray-500">
                       Channel: {selectedItem.recommendedChannel}
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <span className="text-xs text-gray-500">Priority:</span>
+                      <select
+                        value={selectedItem.userPriority || ''}
+                        onChange={async (e) => {
+                          const val = e.target.value || '';
+                          try {
+                            await updateLead(selectedItem.leadId, { priority: val || null });
+                            setSelectedItem(prev => prev ? { ...prev, userPriority: val || null } : null);
+                            loadQueue();
+                          } catch (err) {
+                            console.error('Failed to update priority:', err);
+                            setActionMessage({ type: 'error', text: 'Failed to update priority' });
+                          }
+                        }}
+                        className="text-xs border border-gray-300 rounded px-1.5 py-0.5 bg-white"
+                      >
+                        <option value="">—</option>
+                        <option value="One">1</option>
+                        <option value="Two">2</option>
+                        <option value="Three">3</option>
+                      </select>
                     </span>
                     <span className={`text-sm font-medium ${selectedItem.waitingOn === 'User' ? 'text-orange-600' : 'text-blue-600'}`}>
                       {selectedItem.waitingOn === 'User' 

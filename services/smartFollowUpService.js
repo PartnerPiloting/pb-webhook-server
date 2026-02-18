@@ -948,19 +948,22 @@ async function getSmartFollowupQueue(clientId) {
         }).all();
         const excludeLeadIds = new Set(excludeRecords.map(r => r.id));
         filteredQueue = queue.filter(q => !excludeLeadIds.has(q.leadId));
-        // Batch fetch names for items that need enrichment (small parallel batches)
-        const needNames = filteredQueue.filter(q => !q.leadFirstName && !q.leadLastName && q.leadId);
-        if (needNames.length > 0) {
+        // Batch fetch from Leads: Priority (user-defined) for all items, names for items that need enrichment
+        const toEnrich = filteredQueue.filter(q => q.leadId);
+        if (toEnrich.length > 0) {
           const BATCH_SIZE = 10;
-          for (let i = 0; i < needNames.length; i += BATCH_SIZE) {
-            const batch = needNames.slice(i, i + BATCH_SIZE);
+          for (let i = 0; i < toEnrich.length; i += BATCH_SIZE) {
+            const batch = toEnrich.slice(i, i + BATCH_SIZE);
             const results = await Promise.all(batch.map(item =>
               clientBase('Leads').find(item.leadId).then(r => ({ item, r })).catch(() => ({ item, r: null }))
             ));
             for (const { item, r } of results) {
-              if (r && (!item.leadFirstName && !item.leadLastName)) {
-                item.leadFirstName = r.fields[LEAD_FIELDS.FIRST_NAME] || '';
-                item.leadLastName = r.fields[LEAD_FIELDS.LAST_NAME] || '';
+              if (r) {
+                item.userPriority = r.fields[LEAD_FIELDS.PRIORITY] || null; // One, Two, Three, or blank
+                if (!item.leadFirstName && !item.leadLastName) {
+                  item.leadFirstName = r.fields[LEAD_FIELDS.FIRST_NAME] || '';
+                  item.leadLastName = r.fields[LEAD_FIELDS.LAST_NAME] || '';
+                }
               }
             }
           }
@@ -973,16 +976,26 @@ async function getSmartFollowupQueue(clientId) {
       logger.warn(`Leads table FUP filter failed: ${e.message}`);
     }
     
-    // Sort by: Priority (High first), then by effectiveDate (oldest first)
-    const getPriorityOrder = (p) => {
+    // Sort by: userPriority (One→Two→Three→blank), then AI priority (High→Medium→Low), then effectiveDate (oldest first)
+    const getUserPriorityOrder = (up) => {
+      const s = String(up || '').trim();
+      if (s === 'One') return 0;
+      if (s === 'Two') return 1;
+      if (s === 'Three') return 2;
+      return 3; // blank or unknown
+    };
+    const getAiPriorityOrder = (p) => {
       const s = String(p || 'medium').toLowerCase().trim();
       if (s.startsWith('high')) return 0;
       if (s.startsWith('low')) return 2;
       return 1; // medium or unknown
     };
     filteredQueue.sort((a, b) => {
-      const pA = getPriorityOrder(a.priority);
-      const pB = getPriorityOrder(b.priority);
+      const uA = getUserPriorityOrder(a.userPriority);
+      const uB = getUserPriorityOrder(b.userPriority);
+      if (uA !== uB) return uA - uB;
+      const pA = getAiPriorityOrder(a.priority);
+      const pB = getAiPriorityOrder(b.priority);
       if (pA !== pB) return pA - pB;
       if (a.effectiveDate && b.effectiveDate) {
         return a.effectiveDate.localeCompare(b.effectiveDate);
