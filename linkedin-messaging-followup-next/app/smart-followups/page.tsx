@@ -128,7 +128,7 @@ function SmartFollowupsContent() {
   const [draftFollowUpYes, setDraftFollowUpYes] = useState(true);
   const [isSavingFup, setIsSavingFup] = useState(false);
   
-  const chatInputRef = useRef<HTMLInputElement>(null);
+  const chatInputRef = useRef<HTMLTextAreaElement>(null);
   const instructionsPanelRef = useRef<HTMLDivElement>(null);
   const hasUnsavedFupChanges = (currentFupDate !== draftFupDate) || (currentFollowUpYes !== draftFollowUpYes);
   
@@ -193,6 +193,14 @@ function SmartFollowupsContent() {
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, [isOwner]);
+
+  // Auto-resize chat textarea (ChatGPT-style: grows as you type, scrolls when max height)
+  useEffect(() => {
+    const el = chatInputRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, 128)}px`;
+  }, [chatInput]);
 
   const loadQueue = async () => {
     setIsLoading(true);
@@ -972,15 +980,21 @@ function SmartFollowupsContent() {
                               <span>{pendingImages.length} image{pendingImages.length !== 1 ? 's' : ''} attached – add a question or send to analyze (max {MAX_IMAGES})</span>
                             </div>
                           )}
-                          <div className="flex gap-2">
-                            <input
+                          <div className="flex gap-2 items-end">
+                            <textarea
                               ref={chatInputRef}
-                              type="text"
                               value={chatInput}
                               onChange={(e) => setChatInput(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' && !e.shiftKey) {
+                                  e.preventDefault();
+                                  handleChatSubmit(e as unknown as React.FormEvent);
+                                }
+                              }}
                               onPaste={handlePaste}
-                              placeholder="Ask anything, paste images to analyze (up to 5), or 'set follow-up to 2 weeks'..."
-                              className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                              placeholder="Ask anything, paste images to analyze (up to 5), or 'set follow-up to 2 weeks'... (Shift+Enter for new line)"
+                              rows={1}
+                              className="flex-1 min-h-[42px] max-h-32 overflow-y-auto resize-none px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
                               disabled={isGenerating}
                             />
                             <button
