@@ -8,9 +8,11 @@
 const EMAIL_BLOCK_SEP = /\n---EMAIL-THREAD---\n/;
 // Meeting block separator (primary: heavy horizontal line from notesSectionManager)
 const MEETING_BLOCK_SEP = /━{10,}/;
-// Fallback 1: split on double newline before next meeting header (═ or 📹) - handles legacy/merged content
+// Fallback 1: split on newline before [Recorded DD/MM/YYYY] - each meeting block starts with this (from screenshot)
+const MEETING_BLOCK_FALLBACK_RECORDED = /\r?\n(?=\[Recorded\s+\d{2}\/\d{2}\/\d{4})/;
+// Fallback 2: split on double newline before next meeting header (═ or 📹)
 const MEETING_BLOCK_FALLBACK = /\r?\n\r?\n+(?=[═=]{20,}|📹\s)/;
-// Fallback 2: split before each 📹 line that starts a meeting header (Name | date | duration)
+// Fallback 3: split before each 📹 line that starts a meeting header (Name | date | duration)
 const MEETING_BLOCK_FALLBACK_VIDEO = /\r?\n\r?\n+(?=📹\s[^\n]+\|)/;
 
 /**
@@ -103,14 +105,16 @@ function splitMeetingBlocks(content) {
   let blocks = content.split(MEETING_BLOCK_SEP).map(b => b.trim()).filter(Boolean);
   // If only one block, try fallbacks for legacy/merged content
   if (blocks.length === 1) {
-    // Trigger if: multiple [Recorded...] lines, or multiple 📹 lines, or 4+ ═/=
     const recordedCount = (content.match(/\[Recorded\s+\d{2}\/\d{2}\/\d{4}/g) || []).length;
     const videoCount = (content.match(/📹\s/g) || []).length;
     const eqCount = (content.match(/[═=]{20,}/g) || []).length;
     const hasMultipleMeetings = recordedCount >= 2 || videoCount >= 2 || eqCount >= 4;
     if (hasMultipleMeetings) {
-      // Try fallback 1 (═ or 📹), then fallback 2 (📹 Name | date)
-      blocks = content.split(MEETING_BLOCK_FALLBACK).map(b => b.trim()).filter(Boolean);
+      // Fallback 1: split before each [Recorded DD/MM/YYYY] line (matches screenshot format)
+      blocks = content.split(MEETING_BLOCK_FALLBACK_RECORDED).map(b => b.trim()).filter(Boolean);
+      if (blocks.length <= 1) {
+        blocks = content.split(MEETING_BLOCK_FALLBACK).map(b => b.trim()).filter(Boolean);
+      }
       if (blocks.length <= 1) {
         blocks = content.split(MEETING_BLOCK_FALLBACK_VIDEO).map(b => b.trim()).filter(Boolean);
       }
