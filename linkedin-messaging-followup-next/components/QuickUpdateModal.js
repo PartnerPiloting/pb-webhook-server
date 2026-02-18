@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { lookupLead, quickUpdateLead, previewParse, getLeadNotesSummary, updateClientTimezone, createLead, updateLead } from '../services/api';
+import { lookupLead, quickUpdateLead, previewParse, getLeadNotesSummary, updateClientTimezone, createLead } from '../services/api';
 import { buildAuthUrl } from '../utils/clientUtils';
 import CollapsibleNotes from './CollapsibleNotes';
 
@@ -182,11 +182,12 @@ export default function QuickUpdateModal({
     const hasChanges = noteContent.trim() !== '' || 
       (selectedLead && (
         followUpDate !== (selectedLead.followUpDate || '') ||
+        priority !== (selectedLead.priority || selectedLead['Priority'] || '') ||
         email !== (selectedLead.email || '') ||
         phone !== (selectedLead.phone || '')
       ));
     setHasUnsavedChanges(hasChanges);
-  }, [noteContent, followUpDate, email, phone, selectedLead]);
+  }, [noteContent, followUpDate, priority, email, phone, selectedLead]);
 
   // Search function - called on Enter or button click
   const performSearch = async (query) => {
@@ -624,6 +625,9 @@ export default function QuickUpdateModal({
     if (followUpDate !== (selectedLead.followUpDate || '')) {
       updates.followUpDate = followUpDate || null;
     }
+    if (priority !== (selectedLead.priority || selectedLead['Priority'] || '')) {
+      updates.priority = priority || null;
+    }
     if (email !== (selectedLead.email || '')) {
       updates.email = email;
     }
@@ -656,6 +660,8 @@ export default function QuickUpdateModal({
         email: result.lead?.email || email,
         phone: result.lead?.phone || phone,
         followUpDate: result.lead?.followUpDate || followUpDate,
+        priority: result.lead?.priority ?? priority,
+        'Priority': result.lead?.priority ?? priority,
         notes: result.lead?.notes || prev.notes
       }));
       setNotesSummary(result.lead?.notesSummary);
@@ -1440,7 +1446,7 @@ export default function QuickUpdateModal({
                   setPriority(val);
                   if (!selectedLead) return;
                   try {
-                    await updateLead(selectedLead.id, { priority: val || null });
+                    await quickUpdateLead(selectedLead.id, { priority: val || null });
                     setSelectedLead(prev => prev ? { ...prev, priority: val || null, 'Priority': val || null } : null);
                     setSaveSuccess({ leadName: `${selectedLead.firstName || ''} ${selectedLead.lastName || ''}`.trim() || 'Lead' });
                     setTimeout(() => setSaveSuccess(null), 2000);

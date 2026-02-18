@@ -1802,7 +1802,7 @@ router.patch('/leads/:id/quick-update', async (req, res) => {
   try {
     const airtableBase = await getAirtableBase(req);
     const leadId = req.params.id;
-    const { section, content, replaceNotes, followUpDate, email, phone, parseRaw = true, tags, ceaseFup } = req.body;
+    const { section, content, replaceNotes, followUpDate, email, phone, priority, parseRaw = true, tags, ceaseFup } = req.body;
     
     // If replaceNotes is provided, skip section validation (full replacement mode)
     if (replaceNotes !== undefined) {
@@ -1898,6 +1898,9 @@ router.patch('/leads/:id/quick-update', async (req, res) => {
     if (ceaseFup !== undefined) {
       updates['Cease FUP'] = ceaseFup || null;
     }
+    if (priority !== undefined) {
+      updates['Priority'] = priority || null;
+    }
     
     // Handle tags if provided
     if (tags && Array.isArray(tags)) {
@@ -1947,6 +1950,7 @@ router.patch('/leads/:id/quick-update', async (req, res) => {
         phone: updatedLead.fields['Phone'] || '',
         followUpDate: updatedLead.fields['Follow-Up Date'] || '',
         ceaseFup: updatedLead.fields['Cease FUP'] || '',
+        priority: updatedLead.fields['Priority'] || '',
         notes: updatedLead.fields['Notes'] || '',
         notesSummary: getSectionsSummary(updatedLead.fields['Notes'] || ''),
         tags: getTags(updatedLead.fields['Notes'] || '')
