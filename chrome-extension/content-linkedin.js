@@ -367,17 +367,18 @@
   }
   
   // Strip LinkedIn UI text that gets concatenated with contact name when copying
-  // Handles: "Rhys Cassidy Profile", "Rhys CassidyStatus is online", "Rhys Cassidy ProfileStatus is online"
+  // Handles: "Rhys Cassidy Profile", "Rhys CassidyStatus is online", "Clarence LingStatus is reachable"
   function stripLinkedInUISuffixes(text) {
     if (!text || typeof text !== 'string') return text || '';
     let cleaned = text;
+    const statusWords = '(online|offline|busy|away|reachable)';
     // Strip in order - handle concatenated forms first (no space before suffix)
-    cleaned = cleaned.replace(/ProfileStatus\s*is\s*(online|offline|busy|away)\s*$/i, '');
-    cleaned = cleaned.replace(/Status\s*is\s*(online|offline|busy|away)\s*$/i, '');
+    cleaned = cleaned.replace(new RegExp(`ProfileStatus\\s*is\\s*${statusWords}\\s*$`, 'i'), '');
+    cleaned = cleaned.replace(new RegExp(`Status\\s*is\\s*${statusWords}\\s*$`, 'i'), '');
     cleaned = cleaned.replace(/\s*Profile\s*$/i, '');  // "Name Profile" or "NameProfile"
     cleaned = cleaned.replace(/Profile\s*$/i, '');     // "NameProfile" (concatenated)
     cleaned = cleaned.replace(/\s*Active\s*now\s*$/i, '');
-    cleaned = cleaned.replace(/\s*is\s*(online|offline|busy|away)\s*$/i, '');
+    cleaned = cleaned.replace(new RegExp(`\\s*is\\s*${statusWords}\\s*$`, 'i'), '');
     return cleaned.trim();
   }
   
