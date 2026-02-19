@@ -96,16 +96,20 @@
     }
   }
   
-  // Apply fetched config
+  // Apply fetched config - only assign valid values to avoid "cannot read properties of undefined"
   function applyConfig(config) {
-    if (config.popup_selectors?.value) {
-      activeConfig.popup_selectors = config.popup_selectors.value;
+    if (!config || typeof config !== 'object') return;
+    const popupVal = config.popup_selectors?.value;
+    if (Array.isArray(popupVal) && popupVal.length > 0) {
+      activeConfig.popup_selectors = popupVal;
     }
-    if (config.name_selectors?.value) {
-      activeConfig.name_selectors = config.name_selectors.value;
+    const nameVal = config.name_selectors?.value;
+    if (Array.isArray(nameVal) && nameVal.length > 0) {
+      activeConfig.name_selectors = nameVal;
     }
-    if (config.page_patterns?.value) {
-      activeConfig.page_patterns = config.page_patterns.value;
+    const patternsVal = config.page_patterns?.value;
+    if (patternsVal && typeof patternsVal === 'object' && !Array.isArray(patternsVal)) {
+      activeConfig.page_patterns = patternsVal;
     }
   }
   
@@ -280,8 +284,10 @@
     const path = window.location.pathname;
     
     // Check against remote config patterns
-    for (const pattern of Object.keys(activeConfig.page_patterns)) {
-      if (activeConfig.page_patterns[pattern]) {
+    const pagePatterns = activeConfig?.page_patterns && typeof activeConfig.page_patterns === 'object'
+      ? activeConfig.page_patterns : DEFAULT_CONFIG.page_patterns;
+    for (const pattern of Object.keys(pagePatterns)) {
+      if (pagePatterns[pattern]) {
         if (pattern === '/' && path === '/') return true;
         if (pattern !== '/' && path.startsWith(pattern)) return true;
       }
@@ -457,7 +463,8 @@
       const isProfilePage = path.startsWith('/in/');
       
       // Multiple ways to detect if messaging popup is open (using remote config)
-      const popupIndicators = activeConfig.popup_selectors.map(selector => {
+      const popupSelectors = Array.isArray(activeConfig?.popup_selectors) ? activeConfig.popup_selectors : DEFAULT_CONFIG.popup_selectors;
+      const popupIndicators = popupSelectors.map(selector => {
         try {
           return document.querySelector(selector);
         } catch (e) {
@@ -656,7 +663,8 @@
     } catch (error) {
       console.error('[NA Extension] Error:', error);
       updateButtonState('error');
-      showToast(error.message, 'error');
+      const msg = error?.message || 'Something went wrong. Try copying the conversation again.';
+      showToast(msg.includes('undefined') ? 'Please reload the extension and try again.' : msg, 'error');
       
       setTimeout(() => {
         updateButtonState('ready');
@@ -760,8 +768,9 @@
     if (!clipboardText) return '';
     
     // Derive client name from clientId (format: "Guy-Wilson" -> "Guy Wilson")
-    const clientName = clientId ? clientId.replace(/-/g, ' ') : '';
-    const clientFirstName = clientName.split(' ')[0].toLowerCase();
+    const clientName = (typeof clientId === 'string' && clientId) ? clientId.replace(/-/g, ' ') : '';
+    const clientFirstName = (clientName.split(' ') || [])[0];
+    const clientFirst = typeof clientFirstName === 'string' ? clientFirstName.toLowerCase() : '';
     
     // Find all senders using LinkedIn's format patterns
     const allSenders = new Set();
@@ -793,9 +802,10 @@
     
     // Filter out client's name
     const otherPeople = Array.from(allSenders).filter(name => {
-      if (!clientFirstName) return true;  // No client info, keep all
-      const senderFirstName = name.split(' ')[0].toLowerCase();
-      return senderFirstName !== clientFirstName && name.toLowerCase() !== clientName.toLowerCase();
+      if (!clientFirst) return true;  // No client info, keep all
+      const senderFirstName = (name.split(' ') || [])[0];
+      const senderFirst = typeof senderFirstName === 'string' ? senderFirstName.toLowerCase() : '';
+      return senderFirst !== clientFirst && name.toLowerCase() !== clientName.toLowerCase();
     });
     
     // Return first other person found (with credentials stripped)
@@ -824,7 +834,7 @@
           // Skip if it's a degree indicator line
           !firstLine.match(/^\d+(st|nd|rd|th)\s+degree/i) &&
           // Skip if it's the client's own name
-          firstLine.toLowerCase() !== clientName.toLowerCase()) {
+          (!clientName || firstLine.toLowerCase() !== clientName.toLowerCase())) {
         console.log('[NA Extension] Using first line as contact name:', firstLine);
         return stripCredentialSuffixes(firstLine);
       }
