@@ -596,7 +596,7 @@
         }
       }
       
-      // Use clipboard name as primary (most reliable - matches what was copied)
+      // Use clipboard name as primary - this is the person whose messages we're saving (e.g. Tanya)
       // Fallback to visible header if clipboard parsing failed
       let contactName = clipboardContactName || visibleContactName;
       
@@ -604,9 +604,14 @@
         throw new Error('Could not determine contact name. Please ensure you have copied the conversation.');
       }
       
-      // Get LinkedIn profile URL when on profile page (for reliable lead lookup)
+      // Only use page URL when names match - otherwise the page might show a different person
+      // (e.g. viewing Turnerinternational's profile but clipboard has Tanya's messages)
+      const visibleNorm = (visibleContactName || '').toLowerCase().trim();
+      const clipboardNorm = (clipboardContactName || '').toLowerCase().trim();
+      const namesMatched = visibleContactName && clipboardContactName && namesMatch(visibleNorm, clipboardNorm);
+      
       let linkedInUrl = null;
-      if (path.startsWith('/in/')) {
+      if (namesMatched && path.startsWith('/in/')) {
         const slugMatch = path.match(/\/in\/([^\/]+)/);
         if (slugMatch) {
           const slug = slugMatch[1].replace(/\/$/, '');
