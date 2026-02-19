@@ -7323,6 +7323,12 @@ SMART SCHEDULING (when finding mutually good times):
 - When suggesting times, consider what the time will be for BOTH parties
 - If a time would be outside business hours for the lead (e.g., 8am ${leadCity} time), mention this or suggest a later time
 - Example: If user is free at 10am ${yourTimezone.split('/').pop()?.replace('_', ' ')} but that's only ${sameTimezone ? '10am' : '8am'} in ${leadCity}, that might be too early for ${leadFirstName}
+
+LEAST BUSY DAYS (IMPORTANT):
+- When the user asks for times on their "least busy" days, "quiet days", "days with fewer meetings", or similar, you MUST prioritize days with FEWER appointments
+- Each day in the calendar data shows [X mtg] = number of meetings that day. Lower = less busy
+- ALWAYS pick times from the lightest days first (e.g. [0 mtg] or [1 mtg] before [4 mtg])
+- If the user said "least busy days" and you suggest times from a heavy day, you have failed - go back and choose lighter days
 ${context.conversationHint ? `\nFROM CONVERSATION: "${context.conversationHint}"` : ''}
 ${leadContactInfo ? '\nLEAD CONTACT INFO:\n' + leadContactInfo : ''}
 
@@ -7384,6 +7390,7 @@ CRITICAL RULES:
 - ONLY report appointments that are in the CALENDAR AVAILABILITY or YOUR SCHEDULED APPOINTMENTS sections below
 - NEVER invent fake appointments
 - When suggesting times, pick from CALENDAR AVAILABILITY that DON'T conflict with YOUR SCHEDULED APPOINTMENTS
+- When user asks for "least busy" / "quiet" days: ONLY suggest times from days with the LOWEST [X mtg] count. Ignore heavy days.
 - Slots marked with ⓘ are AVAILABLE but overlap with a "free" calendar entry (e.g., family reminders). Treat these as available times, but you can optionally mention the overlap if relevant.
 
 ACTIONS (put at the VERY END of your response):
@@ -7478,25 +7485,29 @@ CALENDAR DATA RANGE:
     
     // Build calendar context with both appointments and availability (compact format)
     // APPOINTMENTS: only show BUSY (opaque) events - free/transparent events (e.g. all-day reminders) do NOT block time
+    // Include [X mtg] per day so AI can prioritize "least busy" days
     if (eventDays.length > 0) {
-      calendarContext = `\n\nAPPOINTMENTS:\n${eventDays.map(d => {
+      calendarContext = `\n\nAPPOINTMENTS (each day shows [X mtg] = meeting count - use for "least busy" preference):\n${eventDays.map(d => {
         const busyEvents = d.events.filter(e => !e.isFree);
-        return `${d.day}: ${busyEvents.length > 0 ? busyEvents.map(e => `${e.displayTime}-${e.summary}`).join(', ') : '-'}`;
+        const mtgLabel = `[${busyEvents.length} mtg]`;
+        return `${d.day} ${mtgLabel}: ${busyEvents.length > 0 ? busyEvents.map(e => `${e.displayTime}-${e.summary}`).join(', ') : '-'}`;
       }).join('\n')}`;
     }
     
     if (availabilitySlots.length > 0) {
       // Format free slots with soft conflict indicators
-      // Soft conflicts are events marked as "free/available" in the calendar - not true blocks but worth noting
-      calendarContext += `\n\nFREE SLOTS (30min):\n${availabilitySlots.map(s => {
-        if (s.freeSlots.length === 0) return `${s.day}: Busy`;
+      // Include [X mtg] per day so AI can prioritize "least busy" days
+      calendarContext += `\n\nFREE SLOTS (30min) - pick from lighter days when user asks for "least busy":\n${availabilitySlots.map(s => {
+        const busyCount = s.events?.filter(e => !e.isFree).length ?? 0;
+        const mtgLabel = `[${busyCount} mtg]`;
+        if (s.freeSlots.length === 0) return `${s.day} ${mtgLabel}: Busy`;
         // Show up to 16 slots per day (covers 9am-5pm fully) - was 6 which truncated afternoon availability
         const slotDisplays = s.freeSlots.slice(0, 16).map(f => {
           const timeDisplay = f.displayRange || f.display;
           // Add ⓘ indicator if there's a soft conflict (overlapping "free" event)
           return f.softConflict ? `${timeDisplay}ⓘ` : timeDisplay;
         });
-        return `${s.day}: ${slotDisplays.join(', ')}`;
+        return `${s.day} ${mtgLabel}: ${slotDisplays.join(', ')}`;
       }).join('\n')}`;
       
       // If any slots have soft conflicts, add a legend
