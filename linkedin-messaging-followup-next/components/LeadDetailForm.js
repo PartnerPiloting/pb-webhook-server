@@ -168,7 +168,7 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating, onDelete }) => {
     
     // Validate: require either follow-up date OR cease FUP
     if (!formData.followUpDate && formData.ceaseFup !== 'Yes') {
-      setValidationError('Please enter a Follow-up Date or click "No follow-up"');
+      setValidationError('Please enter a Follow-up Date or click "Don\'t follow up"');
       return;
     }
     
@@ -300,9 +300,9 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating, onDelete }) => {
               onClick={handleCeaseFollowup}
               className="inline-flex items-center px-3 py-2 text-sm font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-md hover:bg-amber-100 focus:outline-none focus:ring-2 focus:ring-amber-500 disabled:opacity-50"
               disabled={isUpdating || isDeleting}
-              title="Mark as no follow-up"
+              title="Don't follow up"
             >
-              ⏹️ No follow-up
+              ⏹️ Don't follow up
             </button>
           )}
           
@@ -406,7 +406,9 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating, onDelete }) => {
                   type="date"
                   value={formData.followUpDate || ''}
                   onChange={(e) => {
-                    handleChange('followUpDate', e.target.value);
+                    const val = e.target.value;
+                    handleChange('followUpDate', val);
+                    if (val) handleChange('ceaseFup', 'No'); // Setting date clears "Don't follow up"
                     setValidationError(''); // Clear error when user enters a date
                   }}
                   className={`w-48 px-3 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${

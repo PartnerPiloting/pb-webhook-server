@@ -414,7 +414,7 @@ function SmartFollowupsContent() {
         setCurrentFupDate(null);
         setCurrentFollowUpYes(false);
         setDraftFupDate(null);
-        setActionMessage({ type: 'success', text: 'No follow-up. Lead removed from queue.' });
+        setActionMessage({ type: 'success', text: 'Don\'t follow up. Lead removed from queue.' });
         moveToNextItem();
       }
       await loadQueue();

@@ -458,7 +458,7 @@ export const createLead = async (leadData) => {
       }
     });
     
-    // Handle "No follow-up needed" checkbox → Cease FUP field
+    // Handle "Don't follow up" checkbox → Cease FUP field
     if (leadData.noFollowUpNeeded === true) {
       backendData['Cease FUP'] = 'Yes';
     }

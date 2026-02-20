@@ -135,7 +135,7 @@ const NewLeadForm = ({ onLeadCreated }) => {
     if (!formData.followUpDate && !formData.noFollowUpNeeded) {
       setMessage({ 
         type: 'error', 
-        text: 'Please enter a Follow-up Date or check "No follow-up needed"' 
+        text: 'Please enter a Follow-up Date or check "Don\'t follow up"' 
       });
       return false;
     }
@@ -596,10 +596,10 @@ const NewLeadForm = ({ onLeadCreated }) => {
                     }}
                     className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
                   />
-                  <span className="ml-2 text-sm text-gray-700">No follow-up needed</span>
+                  <span className="ml-2 text-sm text-gray-700">Don't follow up</span>
                 </label>
                 <p className="text-xs text-gray-500 mt-1">
-                  Check this to track the lead without scheduling follow-ups
+                  Check to mark this lead as no follow-up needed
                 </p>
               </div>
             </div>
