@@ -172,6 +172,10 @@ export async function getCurrentClientProfile() {
           throw new Error(errorData.message || 'Our database service (Airtable) is experiencing a temporary outage. Please try again later.');
         }
       } catch (parseErr) {
+        // Re-throw our intentional error (JSON.parse throws SyntaxError)
+        if (!(parseErr instanceof SyntaxError)) {
+          throw parseErr;
+        }
         // If JSON parsing fails, continue with generic error
       }
       
