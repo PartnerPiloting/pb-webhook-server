@@ -538,8 +538,8 @@ export default function OnboardClientPage() {
                         <span className="text-sm">Generating secure token...</span>
                       </div>
                     ) : portalToken ? (
-                      <div className="flex gap-2 items-center">
-                        <code className="flex-1 text-sm bg-gray-50 px-3 py-2 rounded border border-gray-200 text-gray-800 break-all">
+                      <div className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
+                        <code className="flex-1 min-w-0 text-sm bg-gray-50 px-3 py-2 rounded border border-gray-200 text-gray-800 break-all overflow-x-auto">
                           {`https://pb-webhook-server.vercel.app/?token=${portalToken}`}
                         </code>
                         <button

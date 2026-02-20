@@ -2084,12 +2084,8 @@ router.post("/api/regenerate-my-token", async (req, res) => {
     // Generate a new secure 24-character token
     const newToken = crypto.randomBytes(18).toString('base64url');
     
-    // Determine portal URL based on environment
-    const isStaging = process.env.RENDER_SERVICE_NAME?.includes('staging') || 
-                      process.env.NODE_ENV === 'development';
-    const portalBaseUrl = isStaging 
-      ? 'https://pb-webhook-server-staging.vercel.app'
-      : 'https://pb-webhook-server.vercel.app';
+    // Always use production portal URL (main) - clients receive links that work in production
+    const portalBaseUrl = 'https://pb-webhook-server.vercel.app';
     const portalUrl = `${portalBaseUrl}/?token=${newToken}`;
     
     // Update Airtable
@@ -9214,12 +9210,8 @@ router.post("/api/coached-clients/:coachClientId/regenerate-token/:clientId", as
     // Generate a secure 24-character token
     const newToken = crypto.randomBytes(18).toString('base64url');
     
-    // Determine portal URL based on environment
-    const isStaging = process.env.RENDER_SERVICE_NAME?.includes('staging') || 
-                      process.env.NODE_ENV === 'development';
-    const portalBaseUrl = isStaging 
-      ? 'https://pb-webhook-server-staging.vercel.app'
-      : 'https://pb-webhook-server.vercel.app';
+    // Always use production portal URL (main) - clients receive links that work in production
+    const portalBaseUrl = 'https://pb-webhook-server.vercel.app';
     const portalUrl = `${portalBaseUrl}/?token=${newToken}`;
     
     // Update Airtable (use recordId from getClientsByCoach)
