@@ -168,6 +168,9 @@ export async function getCurrentClientProfile() {
         if (errorData.code === 'CLIENT_INACTIVE') {
           throw new Error(errorData.message || 'Your account is not currently active. Please contact your coach.');
         }
+        if (errorData.code === 'SERVICE_UNAVAILABLE') {
+          throw new Error(errorData.message || 'Our database service (Airtable) is experiencing a temporary outage. Please try again later.');
+        }
       } catch (parseErr) {
         // If JSON parsing fails, continue with generic error
       }

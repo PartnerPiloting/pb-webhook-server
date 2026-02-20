@@ -157,7 +157,9 @@ const Layout = ({ children }) => {
       let errorMessage = null;
       const msg = String(error?.message || '');
       
-      if (msg.includes('portal link has been updated') || msg.includes('contact your coach for your new secure link')) {
+      if (msg.includes('database service (Airtable)') || msg.includes('temporary outage')) {
+        errorMessage = 'Our database service (Airtable) is experiencing a temporary outage. Please try again later.';
+      } else if (msg.includes('portal link has been updated') || msg.includes('contact your coach for your new secure link')) {
         errorMessage = 'Your portal link has been updated for security. Please contact your coach for your new secure link.';
       } else if (msg.includes('Invalid') && msg.includes('link')) {
         errorMessage = 'Invalid access link. Please contact your coach for a valid link.';
