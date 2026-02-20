@@ -607,7 +607,7 @@ export default function QuickUpdateModal({
     const isCeased = selectedLead.ceaseFup === 'Yes' || selectedLead['Cease FUP'] === 'Yes';
     
     if (!finalFollowUpDate && !isCeased) {
-      setError('Please enter a Follow-up Date or click "No follow-up"');
+      setError('Please enter a Follow-up Date or click "Don\'t follow up"');
       return;
     }
     
@@ -624,6 +624,10 @@ export default function QuickUpdateModal({
     // Add contact updates if changed
     if (followUpDate !== (selectedLead.followUpDate || '')) {
       updates.followUpDate = followUpDate || null;
+      // Setting a follow-up date clears "Don't follow up" - ensure backend gets it
+      if (selectedLead.ceaseFup === 'Yes' || selectedLead['Cease FUP'] === 'Yes') {
+        updates.ceaseFup = 'No';
+      }
     }
     if (priority !== (selectedLead.priority || selectedLead['Priority'] || '')) {
       updates.priority = priority || null;
@@ -660,6 +664,8 @@ export default function QuickUpdateModal({
         email: result.lead?.email || email,
         phone: result.lead?.phone || phone,
         followUpDate: result.lead?.followUpDate || followUpDate,
+        ceaseFup: result.lead?.ceaseFup ?? prev.ceaseFup,
+        'Cease FUP': result.lead?.['Cease FUP'] ?? prev['Cease FUP'],
         priority: result.lead?.priority ?? priority,
         'Priority': result.lead?.priority ?? priority,
         notes: result.lead?.notes || prev.notes
@@ -1375,7 +1381,11 @@ export default function QuickUpdateModal({
               <input
                 type="date"
                 value={followUpDate}
-                onChange={(e) => setFollowUpDate(e.target.value)}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setFollowUpDate(val);
+                  if (val && selectedLead) setSelectedLead(prev => ({ ...prev, ceaseFup: 'No' })); // Setting date clears "Don't follow up"
+                }}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
               />
               <div className="flex gap-2 mt-2">
@@ -1383,7 +1393,9 @@ export default function QuickUpdateModal({
                   onClick={() => {
                     const d = new Date();
                     d.setDate(d.getDate() + 7);
-                    setFollowUpDate(d.toISOString().split('T')[0]);
+                    const dateStr = d.toISOString().split('T')[0];
+                    setFollowUpDate(dateStr);
+                    if (selectedLead) setSelectedLead(prev => ({ ...prev, ceaseFup: 'No' })); // Setting date clears "Don't follow up"
                   }}
                   className="px-3 py-1 text-xs bg-gray-100 hover:bg-gray-200 rounded transition-colors"
                 >
@@ -1393,7 +1405,9 @@ export default function QuickUpdateModal({
                   onClick={() => {
                     const d = new Date();
                     d.setDate(d.getDate() + 14);
-                    setFollowUpDate(d.toISOString().split('T')[0]);
+                    const dateStr = d.toISOString().split('T')[0];
+                    setFollowUpDate(dateStr);
+                    if (selectedLead) setSelectedLead(prev => ({ ...prev, ceaseFup: 'No' })); // Setting date clears "Don't follow up"
                   }}
                   className="px-3 py-1 text-xs bg-gray-100 hover:bg-gray-200 rounded transition-colors"
                 >
@@ -1426,7 +1440,7 @@ export default function QuickUpdateModal({
                       disabled={isSaving}
                       className="w-full px-3 py-2 text-sm font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-lg hover:bg-amber-100 transition-colors disabled:opacity-50"
                     >
-                      ⏹️ No follow-up
+                      ⏹️ Don't follow up
                     </button>
                   )}
                 </div>
