@@ -319,6 +319,17 @@ async function authenticateUserWithTestMode(req, res, next) {
         
     } catch (error) {
         logger.error('AuthMiddleware: Error during authentication:', error);
+        // Airtable outage (500 SERVER_ERROR or 503 SERVICE_UNAVAILABLE) - show user-friendly message
+        const isAirtableOutage = (error.error === 'SERVER_ERROR' || error.error === 'SERVICE_UNAVAILABLE') ||
+            (error.statusCode === 500 || error.statusCode === 503) ||
+            (error.message && error.message.includes('Try again. If the problem persists'));
+        if (isAirtableOutage) {
+            return res.status(503).json({
+                status: 'error',
+                code: 'SERVICE_UNAVAILABLE',
+                message: 'Our database service (Airtable) is experiencing a temporary outage. Please try again later.'
+            });
+        }
         return res.status(500).json({
             status: 'error',
             code: 'AUTH_ERROR',
