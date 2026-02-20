@@ -63,12 +63,8 @@ const CoachedClients = () => {
       
       if (data.success && data.token) {
         const token = data.token;
-        // Use portalUrl from backend (environment-aware), or construct based on current host
-        const isStaging = typeof window !== 'undefined' && window.location.hostname.includes('staging');
-        const fallbackBase = isStaging 
-          ? 'https://pb-webhook-server-staging.vercel.app'
-          : 'https://pb-webhook-server.vercel.app';
-        const url = data.portalUrl || `${fallbackBase}/?token=${token}`;
+        // Use portalUrl from backend, or construct with production URL (main)
+        const url = data.portalUrl || `https://pb-webhook-server.vercel.app/?token=${token}`;
         setGeneratedTokens(prev => ({
           ...prev,
           [clientId]: { token, url, copied: false }
@@ -354,7 +350,7 @@ const CoachedClients = () => {
                   <div className="mt-3 p-2 bg-green-50 border border-green-200 rounded-lg">
                     <p className="text-xs font-medium text-green-700 mb-1">🔐 New Portal URL:</p>
                     <div className="flex gap-2 items-center">
-                      <code className="flex-1 text-xs bg-white px-2 py-1 rounded border border-green-200 text-gray-700 truncate">
+                      <code className="flex-1 min-w-0 text-xs bg-white px-2 py-1 rounded border border-green-200 text-gray-700 break-all">
                         {generatedTokens[client.clientId].url}
                       </code>
                       <button
