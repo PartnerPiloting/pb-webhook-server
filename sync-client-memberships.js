@@ -157,20 +157,20 @@ async function syncClientMemberships() {
             const membershipCheck = await pmproService.checkUserMembership(wpUserId);
 
             if (membershipCheck.error) {
-                console.error(`❌ ERROR: ${membershipCheck.error}`);
-                console.error(`   → Setting Status to Paused`);
+                // FAIL-SAFE: On API/verification error, do NOT change status - leave as-is.
+                // Prevents valid members from being incorrectly paused due to timeouts, network blips, etc.
+                console.error(`⚠️ Could not verify membership: ${membershipCheck.error}`);
+                console.error(`   → SKIPPING - leaving status unchanged (${currentStatus}) - will retry on next sync`);
                 
-                await updateClientStatus(client.id, 'Paused', membershipCheck.error, null);
-                
-                results.paused++;
-                results.errors++;
+                results.skipped++;
                 results.processed++;
                 results.details.push({
                     clientId,
                     clientName,
-                    action: 'paused',
-                    reason: membershipCheck.error,
-                    error: true
+                    action: 'skipped',
+                    reason: `API error - could not verify: ${membershipCheck.error}`,
+                    status: currentStatus,
+                    unverifiable: true
                 });
                 continue;
             }

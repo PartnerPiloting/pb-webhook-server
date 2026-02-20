@@ -6230,21 +6230,21 @@ router.post("/api/sync-client-statuses", async (req, res) => {
       const membershipCheck = await pmproService.checkUserMembership(wpUserId);
 
       if (membershipCheck.error) {
-        logger.error(`❌ ERROR checking membership for ${clientName}: ${membershipCheck.error}`);
-        console.error(`[MEMBERSHIP_SYNC_ERROR] Client "${clientName}" (${clientId}) - ${membershipCheck.error} - setting Status to Paused`);
+        // FAIL-SAFE: On API/verification error, do NOT change status - leave as-is.
+        // Prevents valid members from being incorrectly paused due to timeouts, network blips, etc.
+        logger.warn(`⚠️ Could not verify membership for ${clientName}: ${membershipCheck.error}`);
+        logger.warn(`   → Leaving status unchanged (${currentStatus}) - will retry on next sync`);
+        console.error(`[MEMBERSHIP_SYNC] Client "${clientName}" (${clientId}) - ${membershipCheck.error} - SKIPPING (status unchanged: ${currentStatus})`);
         
-        // Update status to Paused
-        await updateClientStatus(client.id, 'Paused', membershipCheck.error, null);
-        
-        results.paused++;
-        results.errors++;
+        results.skipped++;
         results.processed++;
         results.details.push({
           clientId,
           clientName,
-          action: 'paused',
-          reason: membershipCheck.error,
-          error: true
+          action: 'skipped',
+          reason: `API error - could not verify: ${membershipCheck.error}`,
+          status: currentStatus,
+          unverifiable: true
         });
         continue;
       }
