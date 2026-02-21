@@ -99,12 +99,33 @@ async function getValidPMProLevels() {
 }
 
 /**
+ * Parse PMPro API response into membershipLevel object
+ * Handles both 'id' and 'ID' (PHP/JSON serialization can vary)
+ */
+function parsePmproLevelResponse(data) {
+    if (!data) return null;
+    const levelId = data.id ?? data.ID ?? data.level_id;
+    if (levelId == null || levelId === '' || levelId === 0) return null;
+    let expiryDate = data.enddate ?? data.end_date ?? data.expiration_date ?? data.expiration ?? data.expires ?? null;
+    if (expiryDate && typeof expiryDate === 'string' && /^\d+$/.test(expiryDate)) {
+        const timestamp = parseInt(expiryDate, 10) * 1000;
+        expiryDate = new Date(timestamp).toISOString().split('T')[0];
+    }
+    return {
+        id: parseInt(levelId, 10),
+        name: data.name || data.level_name || 'Unknown',
+        expiryDate
+    };
+}
+
+/**
  * Get WordPress user's PMPro membership level
  * Uses WordPress REST API with admin credentials
  * @param {number} wpUserId - WordPress user ID
+ * @param {Object} options - Optional { clientEmail: string } for fallback lookup when user_id returns nothing
  * @returns {Promise<Object>} Membership info { hasValidMembership: boolean, levelId: number|null, levelName: string|null, error: string|null }
  */
-async function checkUserMembership(wpUserId) {
+async function checkUserMembership(wpUserId, options = {}) {
     try {
         // Validate environment variables
         const wpBaseUrl = process.env.WP_BASE_URL;
@@ -133,46 +154,64 @@ async function checkUserMembership(wpUserId) {
         
         // Option 1: Try PMPro REST API endpoint (preferred method)
         let membershipLevel = null;
-        try {
-            const pmproUrl = `${wpBaseUrl}/wp-json/pmpro/v1/get_membership_level_for_user?user_id=${wpUserId}`;
-            logger.info(`Trying PMPro API: ${pmproUrl}`);
-            const pmproResponse = await axios.get(pmproUrl, { headers, timeout: 10000 });
-            
-            logger.info(`PMPro API response:`, JSON.stringify(pmproResponse.data, null, 2));
-            
-            if (pmproResponse.data && pmproResponse.data.id) {
-                // Try multiple possible field names for expiry date
-                let expiryDate = pmproResponse.data.enddate || 
-                                   pmproResponse.data.end_date || 
-                                   pmproResponse.data.expiration_date || 
-                                   pmproResponse.data.expiration || 
-                                   pmproResponse.data.expires ||
-                                   null;
-                
-                // Convert Unix timestamp to date string if needed
-                if (expiryDate && typeof expiryDate === 'string' && /^\d+$/.test(expiryDate)) {
-                    // It's a Unix timestamp (string of digits)
-                    const timestamp = parseInt(expiryDate, 10) * 1000; // Convert to milliseconds
-                    expiryDate = new Date(timestamp).toISOString().split('T')[0]; // Format as YYYY-MM-DD
+        const tryPmproApi = async (url, label) => {
+            try {
+                const response = await axios.get(url, { headers, timeout: 10000 });
+                const data = response.data;
+                logger.info(`PMPro API (${label}) response:`, JSON.stringify(data, null, 2));
+                if (Array.isArray(data) && data.length > 0) {
+                    return parsePmproLevelResponse(data[0]);
                 }
-                
-                membershipLevel = {
-                    id: parseInt(pmproResponse.data.id, 10),
-                    name: pmproResponse.data.name || 'Unknown',
-                    expiryDate: expiryDate
-                };
-                logger.info(`✅ PMPro membership found via API: Level ${membershipLevel.id} (${membershipLevel.name}), Expiry: ${membershipLevel.expiryDate || 'None (lifetime)'}`);
-                logger.info(`📋 Full PMPro response fields: ${Object.keys(pmproResponse.data).join(', ')}`);
-            } else if (pmproResponse.data === false || pmproResponse.data === null) {
-                // PMPro returns false/null when user has no membership
-                logger.info(`PMPro API returned no membership for user ${wpUserId}`);
+                if (data && typeof data === 'object' && !Array.isArray(data)) {
+                    return parsePmproLevelResponse(data);
+                }
+                if (data === false || data === null) {
+                    logger.info(`PMPro API returned no membership (${label})`);
+                    return null;
+                }
+                return null;
+            } catch (err) {
+                logger.warn(`PMPro API error (${label}): ${err.message}`);
+                if (err.response?.status === 404) {
+                    logger.info(`PMPro API endpoint not found - REST API may not be enabled`);
+                }
+                return null;
             }
-        } catch (pmproError) {
-            // Log the error but continue - PMPro API might not be available
-            logger.warn(`PMPro API error (will try fallback): ${pmproError.message}`);
-            if (pmproError.response?.status === 404) {
-                logger.info(`PMPro API endpoint not found - this site may not have PMPro REST API enabled`);
+        };
+
+        membershipLevel = await tryPmproApi(
+            `${wpBaseUrl}/wp-json/pmpro/v1/get_membership_level_for_user?user_id=${wpUserId}`,
+            'get_membership_level_for_user'
+        );
+
+        // Fallback: try plural endpoint (returns array) - some PMPro versions differ
+        if (!membershipLevel) {
+            membershipLevel = await tryPmproApi(
+                `${wpBaseUrl}/wp-json/pmpro/v1/get_membership_levels_for_user?user_id=${wpUserId}`,
+                'get_membership_levels_for_user'
+            );
+        }
+
+        // Fallback: try by email if user_id returned nothing (handles wrong/stale WP User IDs in Master Clients)
+        if (!membershipLevel && options.clientEmail) {
+            logger.info(`Trying PMPro lookup by email: ${options.clientEmail}`);
+            membershipLevel = await tryPmproApi(
+                `${wpBaseUrl}/wp-json/pmpro/v1/get_membership_level_for_user?email=${encodeURIComponent(options.clientEmail)}`,
+                'get_membership_level_for_user (email)'
+            );
+            if (!membershipLevel) {
+                membershipLevel = await tryPmproApi(
+                    `${wpBaseUrl}/wp-json/pmpro/v1/get_membership_levels_for_user?email=${encodeURIComponent(options.clientEmail)}`,
+                    'get_membership_levels_for_user (email)'
+                );
             }
+            if (membershipLevel) {
+                logger.info(`✅ Found membership via email lookup - WP User ID in Master Clients may be wrong for this client`);
+            }
+        }
+
+        if (membershipLevel) {
+            logger.info(`✅ PMPro membership found: Level ${membershipLevel.id} (${membershipLevel.name}), Expiry: ${membershipLevel.expiryDate || 'None (lifetime)'}`);
         }
 
         // Option 2: If PMPro API not available, try WordPress user meta (less reliable)
@@ -221,13 +260,14 @@ async function checkUserMembership(wpUserId) {
         }
 
         // If still no membership found, user doesn't have an active membership
+        // This is a SUCCESSFUL verification (we confirmed no membership) - error stays null
         if (!membershipLevel) {
             logger.info(`No active PMPro membership found for WordPress User ID ${wpUserId}`);
             return {
                 hasValidMembership: false,
                 levelId: null,
                 levelName: null,
-                error: 'No active PMPro membership found'
+                error: null  // Successfully verified - no membership. Sync will pause client.
             };
         }
 
@@ -238,12 +278,13 @@ async function checkUserMembership(wpUserId) {
         logger.info(`Membership validation: Level ${membershipLevel.id} (type: ${typeof membershipLevel.id}) is ${isValid ? 'VALID' : 'INVALID'}`);
         logger.info(`Valid levels: ${JSON.stringify(validLevels)} (types: ${validLevels.map(l => typeof l).join(', ')})`);
 
+        // Both valid and invalid membership are successful verifications - error stays null
         return {
             hasValidMembership: isValid,
             levelId: membershipLevel.id,
             levelName: membershipLevel.name,
             expiryDate: membershipLevel.expiryDate, // Include expiry date for Airtable sync
-            error: isValid ? null : `Membership level ${membershipLevel.id} is not in valid levels list`
+            error: null  // Successfully verified. Sync will activate or pause based on hasValidMembership.
         };
 
     } catch (error) {
@@ -290,15 +331,15 @@ async function testWordPressConnection() {
             'Content-Type': 'application/json'
         };
 
-        // Test basic WordPress API
+        // Test basic WordPress API (15s timeout - WordPress can be slow, Render cold start)
         const wpApiUrl = `${wpBaseUrl}/wp-json/wp/v2`;
-        const wpResponse = await axios.get(wpApiUrl, { headers, timeout: 5000 });
+        const wpResponse = await axios.get(wpApiUrl, { headers, timeout: 15000 });
 
         // Test PMPro API endpoint
         let pmproApiAvailable = false;
         try {
             const pmproUrl = `${wpBaseUrl}/wp-json/pmpro/v1`;
-            await axios.get(pmproUrl, { headers, timeout: 5000 });
+            await axios.get(pmproUrl, { headers, timeout: 15000 });
             pmproApiAvailable = true;
         } catch (e) {
             // PMPro API might not be available
@@ -320,8 +361,50 @@ async function testWordPressConnection() {
     }
 }
 
+/**
+ * Diagnostic: Call PMPro API directly and return raw response
+ * Use this to check if authentication (Application Password) is the problem
+ * @param {number} userId - WordPress user ID to check (e.g. 70 for Paul-Faix)
+ * @returns {Promise<Object>} Raw response: statusCode, authIssue, body, error
+ */
+async function testPmproMembershipApi(userId) {
+    const result = { userId, url: null, statusCode: null, authIssue: false, body: null, error: null };
+    try {
+        const wpBaseUrl = process.env.WP_BASE_URL;
+        const wpUsername = process.env.WP_ADMIN_USERNAME;
+        const wpPassword = process.env.WP_ADMIN_PASSWORD;
+
+        if (!wpBaseUrl || !wpUsername || !wpPassword) {
+            result.error = 'WordPress credentials not configured';
+            return result;
+        }
+
+        const authString = Buffer.from(`${wpUsername}:${wpPassword}`).toString('base64');
+        const url = `${wpBaseUrl}/wp-json/pmpro/v1/get_membership_level_for_user?user_id=${userId}`;
+        result.url = url;
+
+        const headers = {
+            'Authorization': `Basic ${authString}`,
+            'Content-Type': 'application/json'
+        };
+
+        const response = await axios.get(url, { headers, timeout: 10000 });
+        result.statusCode = response.status;
+        result.body = response.data;
+        result.authIssue = false;
+        return result;
+    } catch (err) {
+        result.statusCode = err.response?.status ?? null;
+        result.body = err.response?.data ?? null;
+        result.error = err.message;
+        result.authIssue = (err.response?.status === 401 || err.response?.status === 403);
+        return result;
+    }
+}
+
 module.exports = {
     getValidPMProLevels,
     checkUserMembership,
-    testWordPressConnection
+    testWordPressConnection,
+    testPmproMembershipApi
 };

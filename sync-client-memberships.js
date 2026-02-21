@@ -153,8 +153,10 @@ async function syncClientMemberships() {
 
             console.log(`   WP User ID: ${wpUserId}`);
 
-            // Check PMPro membership
-            const membershipCheck = await pmproService.checkUserMembership(wpUserId);
+            // Check PMPro membership (pass email for fallback lookup if user_id returns nothing)
+            const membershipCheck = await pmproService.checkUserMembership(wpUserId, {
+                clientEmail: client.clientEmailAddress || null
+            });
 
             if (membershipCheck.error) {
                 // FAIL-SAFE: On API/verification error, do NOT change status - leave as-is.
