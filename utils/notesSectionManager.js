@@ -412,18 +412,23 @@ function updateEmailSectionSurgical(currentNotes, newContent) {
     if (headerIndex === -1) {
         debugLog.info(`[SURGICAL-INSERT] No email header found - adding new email section`);
         
-        // Find where to insert the email section (before MEETING NOTES if exists, or at end)
+        // CRITICAL: Insert BEFORE the legacy separator so the UI shows it under "Email" tab, not "Legacy Notes"
+        // The CollapsibleNotes parser treats everything after the separator as legacy
+        const sepIndex = notes.indexOf(LEGACY_SEPARATOR);
         const meetingHeader = SECTION_HEADERS.meeting;
         const meetingIndex = notes.indexOf(meetingHeader);
         
         const newEmailSection = `${emailHeader}\n${newContent.trim()}`;
         
         let updatedNotes;
-        if (meetingIndex !== -1) {
+        if (sepIndex !== -1) {
+            // Insert before legacy separator (so email appears in Email tab, not Legacy)
+            updatedNotes = notes.substring(0, sepIndex).trim() + '\n\n' + newEmailSection + '\n\n' + notes.substring(sepIndex);
+        } else if (meetingIndex !== -1) {
             // Insert before meeting notes
             updatedNotes = notes.substring(0, meetingIndex) + newEmailSection + '\n\n' + notes.substring(meetingIndex);
         } else {
-            // Append at end
+            // Append at end (no separator or meeting section)
             updatedNotes = notes.trim() + '\n\n' + newEmailSection;
         }
         
