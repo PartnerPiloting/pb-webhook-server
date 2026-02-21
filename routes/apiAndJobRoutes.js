@@ -6222,8 +6222,10 @@ router.post("/api/sync-client-statuses", async (req, res) => {
 
       logger.info(`🔍 WordPress User ID: ${wpUserId} - checking membership...`);
 
-      // Check PMPro membership
-      const membershipCheck = await pmproService.checkUserMembership(wpUserId);
+      // Check PMPro membership (pass email for fallback lookup if user_id returns nothing)
+      const membershipCheck = await pmproService.checkUserMembership(wpUserId, {
+        clientEmail: client.clientEmailAddress || null
+      });
 
       if (membershipCheck.error) {
         // FAIL-SAFE: On API/verification error, do NOT change status - leave as-is.
@@ -6382,6 +6384,31 @@ async function updateClientStatus(recordId, newStatus, reason, expiryDate = null
 }
 
 /**
+ * GET /api/debug/pmpro-test?userId=70
+ * Diagnostic: Call PMPro API directly, return raw response
+ * Use to check if Application Password / auth is the problem
+ */
+router.get("/api/debug/pmpro-test", async (req, res) => {
+  try {
+    const userId = parseInt(req.query.userId || '70', 10);
+    const result = await pmproService.testPmproMembershipApi(userId);
+    res.json({
+      success: !result.error,
+      ...result,
+      interpretation: result.authIssue
+        ? 'AUTH PROBLEM: 401/403 means credentials rejected. Use Application Password (not regular password) in WP_ADMIN_PASSWORD.'
+        : result.statusCode === 200 && result.body
+          ? 'API responded. Check body for membership data.'
+          : result.error
+            ? `Request failed: ${result.error}`
+            : 'Check statusCode and body.'
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/**
  * GET /api/test-wordpress-connection
  * Test WordPress connection and PMPro API availability
  */
@@ -6456,8 +6483,10 @@ router.post("/api/check-client-membership/:clientId", async (req, res) => {
       });
     }
 
-    // Check membership
-    const membershipCheck = await pmproService.checkUserMembership(wpUserId);
+    // Check membership (pass email for fallback lookup)
+    const membershipCheck = await pmproService.checkUserMembership(wpUserId, {
+      clientEmail: client.clientEmailAddress || null
+    });
     
     res.json({
       success: true,
@@ -6465,6 +6494,7 @@ router.post("/api/check-client-membership/:clientId", async (req, res) => {
         clientId: client.clientId,
         clientName: client.clientName,
         wpUserId: wpUserId,
+        clientEmail: client.clientEmailAddress || null,
         currentStatus: client.status
       },
       membership: membershipCheck,
