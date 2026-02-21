@@ -111,13 +111,13 @@ async function syncClientMemberships() {
             const clientName = client.clientName;
             const wpUserId = client.wpUserId;
             const currentStatus = client.status;
-            const statusManagement = client.statusManagement || 'Automatic';
+            const statusManagement = (client.statusManagement || 'Automatic').toString().trim();
 
             console.log(`\n[${i + 1}/${allClients.length}] ${clientName} (${clientId})`);
             console.log('─'.repeat(60));
 
-            // Skip if Status Management is set to "Manual"
-            if (statusManagement === 'Manual') {
+            // Skip if Status Management is set to "Manual" (case-insensitive)
+            if (statusManagement.toLowerCase() === 'manual') {
                 console.log(`⏭️ SKIPPING: Status Management set to "Manual"`);
                 console.log(`   Current Status: ${currentStatus} (manually managed)`);
                 results.skipped++;
@@ -288,12 +288,27 @@ async function syncClientMemberships() {
         console.error(`Error: ${error.message}`);
         console.error(`Stack: ${error.stack}`);
         console.error('');
-        
+
         logger.error('❌ Membership sync failed', {
             error: error.message,
             stack: error.stack
         });
-        
+
+        // Email admin on sync failure (cron runs this script)
+        try {
+            const { sendAlertEmail } = require('./services/emailNotificationService');
+            await sendAlertEmail(
+                '❌ PMPro Membership Sync Failed',
+                `<h2>Daily membership sync failed</h2>
+                <p><strong>Error:</strong> ${error.message}</p>
+                <p><strong>Time:</strong> ${new Date().toISOString()}</p>
+                <pre>${error.stack || ''}</pre>
+                <p>Check Render logs for details.</p>`
+            );
+        } catch (emailErr) {
+            console.error('Failed to send alert email:', emailErr.message);
+        }
+
         process.exit(1);
     }
 }
