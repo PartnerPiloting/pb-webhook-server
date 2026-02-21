@@ -21,7 +21,8 @@ const {
   CLIENT_RUN_FIELDS,
   JOB_TRACKING_FIELDS, 
   CLIENT_RUN_STATUS_VALUES,
-  CREDENTIAL_FIELDS
+  CREDENTIAL_FIELDS,
+  MASTER_TABLES
 } = require("../constants/airtableUnifiedConstants.js");
 const { validateFieldNames, createValidatedObject } = require('../utils/airtableFieldValidator');
 
