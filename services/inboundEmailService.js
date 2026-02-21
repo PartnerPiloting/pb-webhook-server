@@ -1085,6 +1085,28 @@ function parseMeetingNotetakerEmail(subject, bodyPlain, bodyHtml, provider) {
         logger.info(`No "with" found in subject: "${cleanSubject}"`);
     }
     
+    // Fallback: "Recap for 'X Meeting'" - extract X when subject has generic Fathom format
+    // Handles impromptu meetings where Zoom uses "Impromptu Zoom Meeting" but Fathom body has "Akil Merchant Meeting"
+    if (!result.contactName && !subjectName) {
+        const recapMatch = cleanSubject.match(/Recap for\s+['"](.+?)['"]\s*$/i);
+        if (recapMatch) {
+            let quoted = recapMatch[1].trim();
+            // Strip trailing " Meeting" if present
+            if (/^\s*Meeting\s*$/i.test(quoted)) {
+                quoted = '';
+            } else {
+                quoted = quoted.replace(/\s+Meeting\s*$/i, '').trim();
+            }
+            // Skip generic meeting titles (impromptu, zoom, sync, standup, etc.)
+            const genericWords = /\b(impromptu|zoom|google|teams|sync|standup|weekly|daily|review|call|catch.?up|check.?in)\b/i;
+            if (quoted && quoted.length >= 3 && !genericWords.test(quoted) && /\s/.test(quoted)) {
+                // Looks like "FirstName LastName" (has space, not generic)
+                result.contactName = quoted;
+                logger.info(`Found contact name from Recap subject: "${result.contactName}"`);
+            }
+        }
+    }
+    
     // Look for full name in email body (Fathom shows "Rick Van Driel and Guy meeting" as heading)
     // This catches cases where subject has company name but body has actual person names
     const bodyNamePatterns = [
@@ -1169,6 +1191,25 @@ function parseMeetingNotetakerEmail(subject, bodyPlain, bodyHtml, provider) {
                 result.contactName = firstPerson;
                 logger.info(`Found person name in body: "${firstPerson}"`);
             }
+        }
+    }
+    
+    // Fallback: "FirstName LastName Meeting" anywhere in body (handles impromptu meetings where
+    // Fathom uses calendar title in subject but actual meeting name in body, e.g. "Akil Merchant Meeting")
+    if (!result.contactName) {
+        const nameMeetingPattern = /\b([A-Z][a-zà-ÿ]+(?:\s+[A-Za-zà-ÿ-]+)+)\s+Meeting\b/g;
+        const genericWords = /\b(impromptu|zoom|google|teams|sync|standup|weekly|daily|review|call)\b/i;
+        let bestMatch = null;
+        for (const match of body.matchAll(nameMeetingPattern)) {
+            const name = match[1].trim();
+            if (name.split(/\s+/).length >= 2 && !genericWords.test(name) && name.length < 40) {
+                bestMatch = name;
+                logger.info(`Found "X Meeting" pattern in body: "${name}"`);
+                break; // Use first valid match
+            }
+        }
+        if (bestMatch) {
+            result.contactName = bestMatch;
         }
     }
     
@@ -1412,6 +1453,29 @@ function parseMeetingNotetakerEmail(subject, bodyPlain, bodyHtml, provider) {
         
         result.actionItems = cleanedItems.join('\n');
         logger.info(`Extracted ${cleanedItems.length} action items`);
+        
+        // Use assignee names as contact fallback (e.g. "— Akil Merchant" or "assigned to Akil Merchant")
+        if (!result.contactName && result.actionItems) {
+            const assigneePatterns = [
+                /[—–-]\s*([A-Z][a-zà-ÿ]+(?:\s+[A-Za-zà-ÿ-]+)+)\s*$/gm,
+                /assigned to\s+([A-Z][a-zà-ÿ]+(?:\s+[A-Za-zà-ÿ-]+)+)/gi
+            ];
+            const clientFirstNames = ['guy', 'desiree']; // Skip if assignee is likely the client
+            for (const pattern of assigneePatterns) {
+                for (const match of result.actionItems.matchAll(pattern)) {
+                    const name = match[1].trim();
+                    if (name.split(/\s+/).length >= 2 && name.length < 30) {
+                        const first = name.split(/\s+/)[0].toLowerCase();
+                        if (!clientFirstNames.includes(first)) {
+                            result.contactName = name;
+                            logger.info(`Found contact from action items assignee: "${name}"`);
+                            break;
+                        }
+                    }
+                }
+                if (result.contactName) break;
+            }
+        }
     }
     
     // Extract Meeting Summary section (contains Purpose, Key Takeaways, Topics, Next Steps)
