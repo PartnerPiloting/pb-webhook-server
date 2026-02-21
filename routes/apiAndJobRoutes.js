@@ -6182,12 +6182,12 @@ router.post("/api/sync-client-statuses", async (req, res) => {
       const clientName = client.clientName;
       const wpUserId = client.wpUserId;
       const currentStatus = client.status;
-      const statusManagement = client.statusManagement || 'Automatic'; // Default to Automatic if not set
+      const statusManagement = (client.statusManagement || 'Automatic').toString().trim();
 
       logger.info(`\n--- Processing: ${clientName} (${clientId}) ---`);
 
-      // Skip if Status Management is set to "Manual"
-      if (statusManagement === 'Manual') {
+      // Skip if Status Management is set to "Manual" (case-insensitive - Airtable may store differently)
+      if (statusManagement.toLowerCase() === 'manual') {
         logger.info(`⏭️ SKIPPING: ${clientName} has Status Management set to "Manual"`);
         results.skipped++;
         results.details.push({
@@ -6345,7 +6345,22 @@ router.post("/api/sync-client-statuses", async (req, res) => {
       stack: error.stack
     });
     console.error('[MEMBERSHIP_SYNC_ERROR] Fatal error during client status sync:', error.message);
-    
+
+    // Email admin on sync failure
+    try {
+      const { sendAlertEmail } = require('../services/emailNotificationService');
+      await sendAlertEmail(
+        '❌ PMPro Membership Sync Failed',
+        `<h2>Client Status Sync Failed</h2>
+        <p><strong>Error:</strong> ${error.message}</p>
+        <p><strong>Time:</strong> ${new Date().toISOString()}</p>
+        <pre>${error.stack || ''}</pre>
+        <p>Check Render logs for details.</p>`
+      );
+    } catch (emailErr) {
+      logger.error('Failed to send sync failure alert email:', emailErr.message);
+    }
+
     res.status(500).json({
       success: false,
       error: 'Client status sync failed',
@@ -6799,15 +6814,15 @@ router.get("/api/test-membership-sync", async (req, res) => {
       const clientName = client.clientName;
       const wpUserId = client.wpUserId;
       const currentStatus = client.status;
-      const statusManagement = client.statusManagement || 'Automatic';
+      const statusManagement = (client.statusManagement || 'Automatic').toString().trim();
       
       console.log(`🔍 Checking: ${clientName} (${clientId})`);
       console.log(`   WordPress User ID: ${wpUserId || 'Not set'}`);
       console.log(`   Current Status: ${currentStatus}`);
       console.log(`   Status Management: ${statusManagement}`);
       
-      // Skip if Status Management is set to "Manual"
-      if (statusManagement === 'Manual') {
+      // Skip if Status Management is set to "Manual" (case-insensitive)
+      if (statusManagement.toLowerCase() === 'manual') {
         console.log(`   ⏭️ Skipping: Status Management set to "Manual"\n`);
         results.skipped++;
         results.details.push({
