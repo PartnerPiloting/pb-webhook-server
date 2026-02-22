@@ -259,6 +259,111 @@ router.post('/api/webhooks/inbound-email/test', async (req, res) => {
 });
 
 /**
+ * POST /api/webhooks/inbound-email/test-ref-code
+ * Sends a test "lead not found" email with a ref code to verify the pipeline.
+ * Checks whether ref appears in subject and body when delivered.
+ * Requires: Authorization: Bearer <DEBUG_API_KEY or PB_WEBHOOK_SECRET>
+ * Body (optional): { toEmail: "your@email.com" } - defaults to guyralphwilson@gmail.com
+ */
+router.post('/api/webhooks/inbound-email/test-ref-code', async (req, res) => {
+    const authHeader = req.headers.authorization;
+    const debugKey = process.env.DEBUG_API_KEY || process.env.PB_WEBHOOK_SECRET;
+
+    if (!authHeader || !authHeader.includes(debugKey)) {
+        return res.status(401).json({ error: 'Unauthorized - debug key required' });
+    }
+
+    if (!process.env.MAILGUN_API_KEY || !process.env.MAILGUN_DOMAIN) {
+        return res.status(503).json({ error: 'Mailgun not configured' });
+    }
+
+    const toEmail = (req.body && req.body.toEmail) || 'guyralphwilson@gmail.com';
+    const ref = Math.random().toString(36).substring(2, 6).toUpperCase();
+
+    const subject = `📧 Email not logged – lead not found (Ref: ${ref})`;
+    const body = `Hi Guy,
+
+We received your BCC email but couldn't match the recipient(s) to any leads in your dashboard.
+
+**Recipient(s):**
+• beny_yarda@me.com
+
+This can happen when:
+• The lead isn't in your dashboard yet
+• The email in their profile doesn't match the one you used
+• The name matches more than one lead, so we couldn't be sure which one
+
+**What to do:** Add the lead to your dashboard, or update their email address to match what you're using.
+
+Best,
+ASH Portal Team
+
+Ref: ${ref}`;
+
+    logger.info(`TEST-REF-CODE: Sending to ${toEmail}, ref=${ref}, bodyLength=${body.length}, bodyEndsWithRef=${body.endsWith(`Ref: ${ref}`)}`);
+
+    const https = require('https');
+    const querystring = require('querystring');
+
+    const emailData = {
+        from: `ASH Portal <noreply@${process.env.MAILGUN_DOMAIN}>`,
+        to: toEmail,
+        subject,
+        text: body
+    };
+
+    const data = querystring.stringify(emailData);
+    const auth = Buffer.from(`api:${process.env.MAILGUN_API_KEY}`).toString('base64');
+
+    const options = {
+        hostname: 'api.mailgun.net',
+        port: 443,
+        path: `/v3/${process.env.MAILGUN_DOMAIN}/messages`,
+        method: 'POST',
+        headers: {
+            'Authorization': `Basic ${auth}`,
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Content-Length': data.length
+        }
+    };
+
+    return new Promise((resolve) => {
+        const req2 = https.request(options, (mailgunRes) => {
+            let responseData = '';
+            mailgunRes.on('data', chunk => responseData += chunk);
+            mailgunRes.on('end', () => {
+                if (mailgunRes.statusCode >= 200 && mailgunRes.statusCode < 300) {
+                    logger.info(`TEST-REF-CODE: Sent successfully to ${toEmail}`);
+                    res.status(200).json({
+                        sent: true,
+                        ref,
+                        toEmail,
+                        message: 'Check your inbox. Ref should appear in subject and at end of body.'
+                    });
+                } else {
+                    logger.error(`TEST-REF-CODE: Mailgun error ${mailgunRes.statusCode} ${responseData}`);
+                    res.status(500).json({
+                        sent: false,
+                        error: 'Mailgun rejected',
+                        details: responseData
+                    });
+                }
+                resolve();
+            });
+        });
+
+        req2.on('error', (err) => {
+            logger.error(`TEST-REF-CODE: Request error ${err.message}`);
+            res.status(500).json({ sent: false, error: err.message });
+            resolve();
+        });
+
+        req2.write(data);
+        req2.end();
+    });
+});
+
+/**
  * POST /api/webhooks/inbound-email/clear-cache
  * Clear the client cache (useful after adding Alternative Email Addresses)
  */
