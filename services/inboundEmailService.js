@@ -21,6 +21,10 @@ const logger = createLogger({
 
 // Per-lead lock to serialize concurrent updates (prevents race overwrites)
 const leadUpdateLocks = new Map();
+
+// Dedupe lead-not-found emails (Mailgun retries / multi-instance can cause duplicates)
+const leadNotFoundDedup = new Map();
+const LEAD_NOT_FOUND_DEDUP_MS = 90 * 1000;
 async function withLeadLock(leadId, fn) {
     const existing = leadUpdateLocks.get(leadId) || Promise.resolve();
     const ourPromise = existing.then(() => fn()).finally(() => leadUpdateLocks.delete(leadId));
@@ -576,6 +580,11 @@ function formatTimestamp(date) {
  * @param {Object} context - Additional context (leadEmail, leadsNotFound, clientName, etc.)
  */
 async function sendErrorNotification(toEmail, errorType, context = {}) {
+    // leads_not_found: always use sendLeadNotFoundEmail (with ref code) - single code path
+    if (errorType === 'leads_not_found') {
+        return sendLeadNotFoundEmail(toEmail, context.leadsNotFound || [], context.clientName || '');
+    }
+
     const https = require('https');
     const querystring = require('querystring');
 
@@ -587,7 +596,7 @@ async function sendErrorNotification(toEmail, errorType, context = {}) {
     const subjects = {
         client_not_found: '❌ Email Not Recognized - ASH Portal',
         lead_not_found: '❌ Lead Not Found - ASH Portal',
-        leads_not_found: '📧 Email not logged – lead not found'
+        leads_not_found: '📧 Email not logged – lead not found' // unused - delegated above
     };
 
     const bodies = {
@@ -2731,6 +2740,58 @@ function extractForwardedRecipients(body) {
 }
 
 /**
+ * Extract all email addresses from full body (angle-bracket format)
+ * Catches emails in nested forwards that structured parsing may miss (e.g. To: Ben Yardley <ben.yardley@me.com>)
+ * @param {string} body - Full email body
+ * @param {Set<string>} clientEmails - Client's own emails to skip
+ * @param {Array<{email: string}>} existing - Already-extracted emails to avoid duplicates
+ * @returns {Array<{email: string, name: string, source: string}>}
+ */
+function extractEmailsFromFullBody(body, clientEmails = new Set(), existing = []) {
+    const added = [];
+    if (!body || typeof body !== 'string') return added;
+
+    const isTrackingAddress = (email) => {
+        if (!email) return false;
+        const lower = email.toLowerCase();
+        return lower.includes('track@') ||
+            lower.includes('mail.australiansidehustles') ||
+            lower.includes('mail.partnerbuild');
+    };
+
+    const existingSet = new Set(existing.map(e => e.email?.toLowerCase()).filter(Boolean));
+
+    logger.info(`Body-extract: scanning full body (${body.length} chars)`);
+
+    const bracketRegex = /<([^>]+@[^>]+)>/g;
+    const seen = new Set();
+    let match;
+    while ((match = bracketRegex.exec(body)) !== null) {
+        const email = match[1].toLowerCase().trim();
+        if (seen.has(email)) continue;
+        seen.add(email);
+        if (isTrackingAddress(email)) continue;
+        if (clientEmails.has(email)) continue;
+        if (existingSet.has(email)) continue;
+        // Skip common noise addresses
+        const local = email.split('@')[0] || '';
+        if (/^(noreply|no-reply|donotreply|do-not-reply|mailer-daemon)$/i.test(local)) continue;
+
+        const nameMatch = body.substring(Math.max(0, match.index - 80), match.index).match(/([A-Za-z][A-Za-z\s.-]+)\s*$/);
+        const name = nameMatch ? nameMatch[1].trim() : email.split('@')[0];
+        added.push({ email, name: name || '', source: 'body-extract' });
+    }
+
+    if (added.length > 0) {
+        logger.info(`Body-extract: found ${added.length} emails in body: ${added.map(a => a.email).join(', ')}`);
+        logger.info(`Body-extract: added ${added.length} new to potential leads (source: body-extract)`);
+    } else {
+        logger.info(`Body-extract: found 0 new emails in body (after filtering)`);
+    }
+    return added;
+}
+
+/**
  * Main processing function for inbound emails
  * @param {Object} mailgunData - Parsed Mailgun webhook payload
  * @returns {Promise<Object>} Processing result
@@ -2879,7 +2940,18 @@ async function processInboundEmail(mailgunData) {
             potentialLeads.push({ email: cc.email, name: cc.name, source: 'cc' });
         }
     }
-    
+
+    // Whole-body scan for forwarded emails only (catches nested To: Ben Yardley <ben.yardley@me.com> etc.)
+    if (forwardedRecipients && bodyPlain) {
+        const bodyExtracted = extractEmailsFromFullBody(bodyPlain, clientEmails, potentialLeads);
+        for (const b of bodyExtracted) {
+            potentialLeads.push(b);
+        }
+        if (bodyExtracted.length > 0) {
+            logger.info(`Body-extract: ${potentialLeads.length} total potential leads after adding ${bodyExtracted.length} from body`);
+        }
+    }
+
     // Filter out client's own email addresses from potential leads
     const filteredLeads = potentialLeads.filter(p => {
         if (clientEmails.has(p.email.toLowerCase())) {
@@ -2980,7 +3052,20 @@ async function processInboundEmail(mailgunData) {
     if (results.leadsUpdated.length === 0 && results.leadsNotFound.length === filteredLeads.length) {
         logger.info('No recipients were leads in the system - notifying client');
         results.ignored = true;
-        await sendLeadNotFoundEmail(client.clientEmailAddress, results.leadsNotFound, client.clientFirstName || client.clientName);
+        // Dedupe: Mailgun retries or multi-instance can cause duplicate emails
+        const dedupKey = `${senderEmail}|${recipient}|${subject}|${timestamp}`;
+        const now = Date.now();
+        const lastSent = leadNotFoundDedup.get(dedupKey);
+        if (lastSent && (now - lastSent) < LEAD_NOT_FOUND_DEDUP_MS) {
+            logger.info(`LEAD_NOT_FOUND: Skipping duplicate (sent ${Math.round((now - lastSent) / 1000)}s ago)`);
+        } else {
+            leadNotFoundDedup.set(dedupKey, now);
+            // Prune old entries
+            for (const [k, v] of leadNotFoundDedup.entries()) {
+                if (now - v > LEAD_NOT_FOUND_DEDUP_MS) leadNotFoundDedup.delete(k);
+            }
+            await sendLeadNotFoundEmail(client.clientEmailAddress, results.leadsNotFound, client.clientFirstName || client.clientName);
+        }
     }
     
     return results;
