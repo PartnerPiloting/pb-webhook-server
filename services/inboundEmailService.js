@@ -687,6 +687,98 @@ ASH Portal Team`;
 }
 
 /**
+ * Send lead-not-found email with ref code (simple direct path - proven to work)
+ * Uses same Mailgun pattern as test-ref-code endpoint.
+ * @param {string} toEmail - Recipient email
+ * @param {Array} leadsNotFound - [{ email, name, source }]
+ * @param {string} clientName - Client first name for greeting
+ * @returns {Promise<{sent: boolean, ref?: string}>}
+ */
+async function sendLeadNotFoundEmail(toEmail, leadsNotFound = [], clientName = '') {
+    const https = require('https');
+    const querystring = require('querystring');
+
+    if (!process.env.MAILGUN_API_KEY || !process.env.MAILGUN_DOMAIN) {
+        logger.error('Cannot send lead-not-found email - Mailgun not configured');
+        return { sent: false };
+    }
+
+    const ref = Math.random().toString(36).substring(2, 6).toUpperCase();
+    const recipientLines = (leadsNotFound || []).map(l =>
+        l.name ? `${l.name} (${l.email})` : l.email
+    ).join('\n• ');
+    const recipientBlock = recipientLines ? `• ${recipientLines}` : '• (unknown)';
+
+    const subject = `📧 Email not logged – lead not found (Ref: ${ref})`;
+    const body = `Hi${clientName ? ` ${clientName}` : ''},
+
+We received your BCC email but couldn't match the recipient(s) to any leads in your dashboard.
+
+**Recipient(s):**
+${recipientBlock}
+
+This can happen when:
+• The lead isn't in your dashboard yet
+• The email in their profile doesn't match the one you used
+• The name matches more than one lead, so we couldn't be sure which one
+
+**What to do:** Add the lead to your dashboard, or update their email address to match what you're using.
+
+Best,
+ASH Portal Team
+
+Ref: ${ref}`;
+
+    logger.info(`LEAD_NOT_FOUND: Sending to ${toEmail}, ref=${ref}, recipients=${(leadsNotFound || []).map(l => l.email).join(', ')}`);
+
+    const emailData = {
+        from: `ASH Portal <noreply@${process.env.MAILGUN_DOMAIN}>`,
+        to: toEmail,
+        subject,
+        text: body
+    };
+
+    const data = querystring.stringify(emailData);
+    const auth = Buffer.from(`api:${process.env.MAILGUN_API_KEY}`).toString('base64');
+
+    const options = {
+        hostname: 'api.mailgun.net',
+        port: 443,
+        path: `/v3/${process.env.MAILGUN_DOMAIN}/messages`,
+        method: 'POST',
+        headers: {
+            'Authorization': `Basic ${auth}`,
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Content-Length': data.length
+        }
+    };
+
+    return new Promise((resolve) => {
+        const req = https.request(options, (res) => {
+            let responseData = '';
+            res.on('data', chunk => responseData += chunk);
+            res.on('end', () => {
+                if (res.statusCode >= 200 && res.statusCode < 300) {
+                    logger.info(`Lead-not-found email sent to ${toEmail} (Ref: ${ref})`);
+                    resolve({ sent: true, ref });
+                } else {
+                    logger.error(`Failed to send lead-not-found email: ${res.statusCode} ${responseData}`);
+                    resolve({ sent: false });
+                }
+            });
+        });
+
+        req.on('error', (error) => {
+            logger.error(`Error sending lead-not-found email: ${error.message}`);
+            resolve({ sent: false });
+        });
+
+        req.write(data);
+        req.end();
+    });
+}
+
+/**
  * Extract sender name from email From header
  * @param {string} fromHeader - e.g. "Guy Wilson <guyralphwilson@gmail.com>"
  * @returns {string} The sender's name, or email if no name found
@@ -2888,10 +2980,7 @@ async function processInboundEmail(mailgunData) {
     if (results.leadsUpdated.length === 0 && results.leadsNotFound.length === filteredLeads.length) {
         logger.info('No recipients were leads in the system - notifying client');
         results.ignored = true;
-        await sendErrorNotification(client.clientEmailAddress, 'leads_not_found', {
-            leadsNotFound: results.leadsNotFound,
-            clientName: client.clientFirstName || client.clientName
-        });
+        await sendLeadNotFoundEmail(client.clientEmailAddress, results.leadsNotFound, client.clientFirstName || client.clientName);
     }
     
     return results;
