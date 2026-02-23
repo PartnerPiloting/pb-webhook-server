@@ -17,6 +17,33 @@ let validLevelsCache = null;
 let validLevelsCacheTimestamp = null;
 const CACHE_DURATION_MS = 5 * 60 * 1000; // 5 minutes
 
+// WordPress/PMPro API: longer timeout for Australia–US latency, retries for transient failures
+const WP_API_TIMEOUT_MS = 20000;  // 20 seconds (was 10)
+const WP_API_MAX_RETRIES = 3;
+const WP_API_RETRY_DELAY_MS = 2000;
+
+/**
+ * Axios GET with retries for timeout, network errors, 5xx
+ */
+async function axiosGetWithRetry(url, headers, label) {
+    let lastErr;
+    for (let attempt = 1; attempt <= WP_API_MAX_RETRIES; attempt++) {
+        try {
+            const response = await axios.get(url, { headers, timeout: WP_API_TIMEOUT_MS });
+            return response;
+        } catch (err) {
+            lastErr = err;
+            const isRetryable = err.code === 'ECONNABORTED' || err.code === 'ETIMEDOUT' ||
+                err.code === 'ECONNREFUSED' || err.code === 'ENOTFOUND' ||
+                (err.response && err.response.status >= 500);
+            if (!isRetryable || attempt === WP_API_MAX_RETRIES) throw err;
+            logger.warn(`PMPro API (${label}) attempt ${attempt} failed: ${err.message}. Retrying in ${WP_API_RETRY_DELAY_MS}ms...`);
+            await new Promise(r => setTimeout(r, WP_API_RETRY_DELAY_MS));
+        }
+    }
+    throw lastErr;
+}
+
 /**
  * Get valid PMPro membership levels from Airtable
  * @returns {Promise<Array<number>>} Array of valid PMPro level IDs
@@ -156,7 +183,7 @@ async function checkUserMembership(wpUserId, options = {}) {
         let membershipLevel = null;
         const tryPmproApi = async (url, label) => {
             try {
-                const response = await axios.get(url, { headers, timeout: 10000 });
+                const response = await axiosGetWithRetry(url, headers, label);
                 const data = response.data;
                 logger.info(`PMPro API (${label}) response:`, JSON.stringify(data, null, 2));
                 if (Array.isArray(data) && data.length > 0) {
@@ -174,6 +201,14 @@ async function checkUserMembership(wpUserId, options = {}) {
                 logger.warn(`PMPro API error (${label}): ${err.message}`);
                 if (err.response?.status === 404) {
                     logger.info(`PMPro API endpoint not found - REST API may not be enabled`);
+                    return null; // Try next endpoint
+                }
+                // Timeout, network errors, 5xx: propagate so sync skips instead of incorrectly pausing
+                const isVerificationFailure = err.code === 'ECONNABORTED' || err.code === 'ETIMEDOUT' ||
+                    err.code === 'ECONNREFUSED' || err.code === 'ENOTFOUND' ||
+                    (err.response && err.response.status >= 500);
+                if (isVerificationFailure) {
+                    throw err;
                 }
                 return null;
             }
@@ -220,7 +255,7 @@ async function checkUserMembership(wpUserId, options = {}) {
             try {
                 // Get user with context=edit to see meta fields
                 const userMetaUrl = `${wpBaseUrl}/wp-json/wp/v2/users/${wpUserId}?context=edit`;
-                const metaResponse = await axios.get(userMetaUrl, { headers, timeout: 10000 });
+                const metaResponse = await axiosGetWithRetry(userMetaUrl, headers, 'user_meta');
                 
                 // PMPro stores membership level in user meta as 'membership_level' or 'pmpro_membership_level'
                 const meta = metaResponse.data.meta || {};
@@ -237,8 +272,6 @@ async function checkUserMembership(wpUserId, options = {}) {
                 }
             } catch (metaError) {
                 logger.warn(`User meta fallback failed: ${metaError.message}`);
-                // If both methods fail, we'll treat it as no membership
-                // Don't throw error - just log it
                 if (metaError.response?.status === 401) {
                     logger.error(`401 Unauthorized - WordPress API credentials may lack permission to view user ${wpUserId}`);
                     return {
@@ -255,6 +288,13 @@ async function checkUserMembership(wpUserId, options = {}) {
                         levelName: null,
                         error: `WordPress User ID ${wpUserId} not found in WordPress`
                     };
+                }
+                // Timeout, network errors, 5xx: propagate so sync skips instead of incorrectly pausing
+                const isVerificationFailure = metaError.code === 'ECONNABORTED' || metaError.code === 'ETIMEDOUT' ||
+                    metaError.code === 'ECONNREFUSED' || metaError.code === 'ENOTFOUND' ||
+                    (metaError.response && metaError.response.status >= 500);
+                if (isVerificationFailure) {
+                    throw metaError;
                 }
             }
         }

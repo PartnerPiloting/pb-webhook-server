@@ -6330,6 +6330,28 @@ router.post("/api/sync-client-statuses", async (req, res) => {
     logger.info('\n✅ Client status sync complete!');
     logger.info(`📊 Summary: ${results.activated} activated, ${results.paused} paused, ${results.skipped} unchanged, ${results.errors} errors`);
 
+    // Email admin if any clients were skipped due to API/verification errors (timeout, etc.)
+    const unverifiable = results.details.filter(d => d.unverifiable);
+    if (unverifiable.length > 0) {
+      try {
+        const { sendAlertEmail } = require('../services/emailNotificationService');
+        const listHtml = unverifiable.map(d => 
+          `<li><strong>${d.clientName}</strong> (${d.clientId}): ${d.reason}</li>`
+        ).join('');
+        await sendAlertEmail(
+          '⚠️ PMPro Membership Sync: Some Clients Could Not Be Verified',
+          `<h2>WordPress/PMPro API Issues During Sync</h2>
+          <p><strong>${unverifiable.length}</strong> client(s) were skipped because membership could not be verified (timeout, network error, etc.). Their status was left unchanged.</p>
+          <p><strong>Time:</strong> ${new Date().toISOString()}</p>
+          <h3>Affected clients:</h3>
+          <ul>${listHtml}</ul>
+          <p>Consider checking WordPress/PMPro performance. Status will be retried on next sync.</p>`
+        );
+      } catch (emailErr) {
+        logger.error('Failed to send unverifiable-clients alert email:', emailErr.message);
+      }
+    }
+
     // Invalidate client cache to ensure next read gets fresh data
     clientService.clearCache();
 
@@ -6865,29 +6887,26 @@ router.get("/api/test-membership-sync", async (req, res) => {
       }
       
       try {
-        // Check membership
-        const membershipCheck = await pmproService.checkUserMembership(wpUserId);
+        // Check membership (pass email for fallback lookup)
+        const membershipCheck = await pmproService.checkUserMembership(wpUserId, {
+          clientEmail: client.clientEmailAddress || null
+        });
         
-        // Handle errors from membership check
+        // Handle errors from membership check - FAIL-SAFE: do NOT change status on API/verification errors
+        // Prevents valid members from being incorrectly paused due to timeouts, network blips, etc.
         if (membershipCheck.error) {
-          console.log(`   ❌ ERROR: ${membershipCheck.error}`);
-          console.log(`   → Setting Status to Paused\n`);
+          console.log(`   ⚠️ Could not verify membership: ${membershipCheck.error}`);
+          console.log(`   → SKIPPING - leaving status unchanged (${currentStatus}) - will retry on next sync\n`);
           
-          Airtable.configure({ apiKey: process.env.AIRTABLE_API_KEY });
-          const base = Airtable.base(process.env.MASTER_CLIENTS_BASE_ID);
-          await base(MASTER_TABLES.CLIENTS).update(client.id, {
-            [CLIENT_FIELDS.STATUS]: 'Paused'
-          });
-          
-          results.paused++;
-          results.errors++;
+          results.skipped++;
           results.processed++;
           results.details.push({
             clientId,
             clientName,
-            action: 'paused',
-            reason: membershipCheck.error,
-            error: true
+            action: 'skipped',
+            reason: `API error - could not verify: ${membershipCheck.error}`,
+            status: currentStatus,
+            unverifiable: true
           });
           continue;
         }

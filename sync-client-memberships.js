@@ -278,6 +278,28 @@ async function syncClientMemberships() {
             console.log('');
         }
 
+        // Email admin if any clients were skipped due to API/verification errors (timeout, etc.)
+        const unverifiable = results.details.filter(d => d.unverifiable);
+        if (unverifiable.length > 0) {
+            try {
+                const { sendAlertEmail } = require('./services/emailNotificationService');
+                const listHtml = unverifiable.map(d =>
+                    `<li><strong>${d.clientName}</strong> (${d.clientId}): ${d.reason}</li>`
+                ).join('');
+                await sendAlertEmail(
+                    '⚠️ PMPro Membership Sync: Some Clients Could Not Be Verified',
+                    `<h2>WordPress/PMPro API Issues During Sync</h2>
+                    <p><strong>${unverifiable.length}</strong> client(s) were skipped because membership could not be verified (timeout, network error, etc.). Their status was left unchanged.</p>
+                    <p><strong>Time:</strong> ${new Date().toISOString()}</p>
+                    <h3>Affected clients:</h3>
+                    <ul>${listHtml}</ul>
+                    <p>Consider checking WordPress/PMPro performance. Status will be retried on next sync.</p>`
+                );
+            } catch (emailErr) {
+                console.error('Failed to send unverifiable-clients alert email:', emailErr.message);
+            }
+        }
+
         logger.info('✅ Membership sync completed successfully', results);
         process.exit(0);
 
