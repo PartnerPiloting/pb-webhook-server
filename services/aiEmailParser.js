@@ -17,8 +17,8 @@ const { HarmCategory, HarmBlockThreshold } = require('@google-cloud/vertexai');
 // Use the existing Gemini client from config
 const { vertexAIClient } = require('../config/geminiClient');
 
-// Use Gemini Flash for speed (email parsing doesn't need Pro)
-const EMAIL_PARSER_MODEL = 'gemini-2.0-flash';
+// Use GEMINI_MODEL_ID (default gemini-2.5-flash for speed)
+const EMAIL_PARSER_MODEL = process.env.GEMINI_MODEL_ID || 'gemini-2.5-flash';
 const PARSER_TIMEOUT_MS = 30000; // 30 second timeout
 
 /**

@@ -243,8 +243,8 @@ function buildCandidateFilter() {
 // AI ANALYSIS (Gemini)
 // ============================================
 
-// Model configuration - using Flash for speed
-const SMART_FUP_MODEL = 'gemini-2.0-flash';
+// Model configuration - use GEMINI_MODEL_ID (default gemini-2.5-flash for speed)
+const SMART_FUP_MODEL = process.env.GEMINI_MODEL_ID || 'gemini-2.5-flash';
 const AI_TIMEOUT_MS = 30000; // 30 second timeout
 
 /**
