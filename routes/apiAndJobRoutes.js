@@ -7394,6 +7394,12 @@ LEAST BUSY DAYS (IMPORTANT):
 - Each day in the calendar data shows [X mtg] = number of meetings that day. Lower = less busy
 - ALWAYS pick times from the lightest days first (e.g. [0 mtg] or [1 mtg] before [4 mtg])
 - If the user said "least busy days" and you suggest times from a heavy day, you have failed - go back and choose lighter days
+- ONLY suggest weekdays (Monday-Friday). Never suggest Saturday or Sunday.
+
+"A MORNING AND AFTERNOON SESSION" (when user wants example options):
+- When the user asks for "a morning and afternoon session", "a morning and afternoon option", or similar (singular phrasing), suggest exactly 2 times total: one morning slot and one afternoon slot
+- Pick from different weekdays on their least busy days (e.g. "10am Tuesday" and "2pm Wednesday")
+- Do NOT list morning and afternoon for every day - offer just 2 example times
 ${context.conversationHint ? `\nFROM CONVERSATION: "${context.conversationHint}"` : ''}
 ${leadContactInfo ? '\nLEAD CONTACT INFO:\n' + leadContactInfo : ''}
 
