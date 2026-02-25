@@ -7403,11 +7403,18 @@ LEAST BUSY DAYS (IMPORTANT):
 
 MESSAGE READY TO COPY-PASTE (when user shares a draft to send to the lead):
 - When the user pastes or types a draft message they want to send to the lead (e.g. with placeholders like [Day], [Date], or template slots "10 AM", "2 PM", "4 PM"), you MUST:
-  1. Pick the suggested times from calendar (2 times: one morning, one afternoon, from least busy weekdays)
-  2. Fill in the placeholders with the actual dates and times (e.g. "Tuesday, March 3rd at 10:00 am", "Wednesday, March 4th at 2:00 pm")
-  3. Return your brief intro and suggested times, then the COMPLETE filled message ready to copy-paste
-  4. End with exactly: READY TO COPY: on its own line, then a blank line, then the full message (no placeholders, actual dates/times filled in). The user will copy this and paste it to the lead (e.g. LinkedIn).
-- Use the lead's timezone for any times in the message (e.g. "all AEDT" if lead is in Australia). ONLY use the lead's actual location from context - never assume a different location (e.g. if lead is in Ballarat, Australia, do NOT say Los Angeles).
+  1. Count the placeholders in the user's template - if they have 3 slots, fill 3; if 2, fill 2. When no template, use 2 (one morning, one afternoon).
+  2. Pick times from calendar in CHRONOLOGICAL order (earliest date first). Pick from least busy weekdays.
+  3. For EACH time, add the lead's local time in parentheses ONLY when user and lead are in different timezones. ${sameTimezone ? 'CURRENTLY SAME TIMEZONE - do NOT add "(X in [city])" to any times; it would be redundant.' : `Different timezones - add lead time for each, e.g. "Thursday, March 5th at 10 AM (11 AM in Vic)". Use short labels: Vic, Bne, Syd.`}
+  4. Fill in the placeholders with actual dates/times. Format times as "10 AM" not "10:00 am" for LinkedIn.
+  5. End with exactly: READY TO COPY: on its own line, then a blank line, then the full message ONLY (no preamble like "Here's the message for..."). The content after READY TO COPY: must be exactly what the user pastes to the lead - nothing else.
+  6. FORMATTING - use clear spacing for readability:
+     - Blank line after the greeting (e.g. after "Hi Vijaya,")
+     - Blank line between paragraphs
+     - Blank line before the bullet list of times
+     - Blank line after the bullet list, before the closing
+     - Blank line before the sign-off (e.g. "Best, Guy")
+- Use the lead's actual location from context - never assume a different location (e.g. if lead is in Ballarat, Australia, do NOT say Los Angeles).
 ${context.conversationHint ? `\nFROM CONVERSATION: "${context.conversationHint}"` : ''}
 ${leadContactInfo ? '\nLEAD CONTACT INFO:\n' + leadContactInfo : ''}
 
