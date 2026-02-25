@@ -76,8 +76,27 @@ function CalendarBookingContent() {
   const [leadTimezone, setLeadTimezone] = useState<string>('');
   const [yourTimezone, setYourTimezone] = useState<string>('Australia/Brisbane');
   const [leadDisplayTime, setLeadDisplayTime] = useState<string>('');
+  const [copySuccessMsgIdx, setCopySuccessMsgIdx] = useState<number | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const chatInputRef = useRef<HTMLTextAreaElement>(null);
+
+  // Extract message for lead from "READY TO COPY:" delimiter (from Smart Booking Assistant)
+  const extractMessageForLead = (content: string): string | null => {
+    const match = content.match(/READY TO COPY:\s*\n\n([\s\S]*)/i);
+    return match ? match[1].trim() : null;
+  };
+
+  const handleCopyMessageForLead = async (content: string, msgIdx: number) => {
+    const message = extractMessageForLead(content);
+    if (!message) return;
+    try {
+      await navigator.clipboard.writeText(message);
+      setCopySuccessMsgIdx(msgIdx);
+      setTimeout(() => setCopySuccessMsgIdx(null), 2000);
+    } catch (err) {
+      console.error('Failed to copy:', err);
+    }
+  };
   
   // Confirmation message state
   const [showConfirmation, setShowConfirmation] = useState(false);
@@ -1473,6 +1492,17 @@ ${yourFirstName}`;
                               </div>
                               <pre className="whitespace-pre-wrap font-sans text-green-800">{msg.content}</pre>
                               
+                              {/* Copy message for lead (when AI returns READY TO COPY:) */}
+                              {extractMessageForLead(msg.content) && (
+                                <div className="mt-3">
+                                  <button
+                                    onClick={() => handleCopyMessageForLead(msg.content, idx)}
+                                    className="px-3 py-1.5 bg-blue-600 text-white rounded text-xs hover:bg-blue-700 flex items-center gap-1.5"
+                                  >
+                                    {copySuccessMsgIdx === idx ? '✓ Copied!' : '📋 Copy message for lead'}
+                                  </button>
+                                </div>
+                              )}
                               {/* Booking action button */}
                               {msg.bookingAction && (
                                 <div className="mt-3 p-2 bg-white border border-green-300 rounded">
