@@ -7147,7 +7147,7 @@ router.post("/api/calendar/chat", async (req, res) => {
     const getTimezoneFromLocation = (location) => {
       const locationLower = (location || '').toLowerCase();
       
-      if (locationLower.includes('sydney') || locationLower.includes('melbourne') || locationLower.includes('canberra')) {
+      if (locationLower.includes('sydney') || locationLower.includes('melbourne') || locationLower.includes('canberra') || locationLower.includes('victoria') || locationLower.includes('ballarat')) {
         return 'Australia/Sydney';
       }
       if (locationLower.includes('brisbane') || locationLower.includes('queensland')) {
@@ -7400,6 +7400,14 @@ LEAST BUSY DAYS (IMPORTANT):
 - When the user asks for "a morning and afternoon session", "a morning and afternoon option", or similar (singular phrasing), suggest exactly 2 times total: one morning slot and one afternoon slot
 - Pick from different weekdays on their least busy days (e.g. "10am Tuesday" and "2pm Wednesday")
 - Do NOT list morning and afternoon for every day - offer just 2 example times
+
+MESSAGE READY TO COPY-PASTE (when user shares a draft to send to the lead):
+- When the user pastes or types a draft message they want to send to the lead (e.g. with placeholders like [Day], [Date], or template slots "10 AM", "2 PM", "4 PM"), you MUST:
+  1. Pick the suggested times from calendar (2 times: one morning, one afternoon, from least busy weekdays)
+  2. Fill in the placeholders with the actual dates and times (e.g. "Tuesday, March 3rd at 10:00 am", "Wednesday, March 4th at 2:00 pm")
+  3. Return your brief intro and suggested times, then the COMPLETE filled message ready to copy-paste
+  4. End with exactly: READY TO COPY: on its own line, then a blank line, then the full message (no placeholders, actual dates/times filled in). The user will copy this and paste it to the lead (e.g. LinkedIn).
+- Use the lead's timezone for any times in the message (e.g. "all AEDT" if lead is in Australia). ONLY use the lead's actual location from context - never assume a different location (e.g. if lead is in Ballarat, Australia, do NOT say Los Angeles).
 ${context.conversationHint ? `\nFROM CONVERSATION: "${context.conversationHint}"` : ''}
 ${leadContactInfo ? '\nLEAD CONTACT INFO:\n' + leadContactInfo : ''}
 
