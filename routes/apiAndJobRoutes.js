@@ -7460,6 +7460,13 @@ CRITICAL RULES:
 - When user asks for "least busy" / "quiet" days: ONLY suggest times from days with the LOWEST [X mtg] count. Ignore heavy days.
 - Slots marked with ⓘ are AVAILABLE but overlap with a "free" calendar entry (e.g., family reminders). Treat these as available times, but you can optionally mention the overlap if relevant.
 
+MORNING vs AFTERNOON (STRICT DEFINITIONS - use these exactly):
+- MORNING = slots that START before 12:00 pm (noon). Examples: 9:00 am, 9:30 am, 10:00 am, 10:30 am, 11:00 am, 11:30 am.
+- AFTERNOON = slots that are 12:00 pm (noon) or later. 12:00 pm is the START of afternoon, NOT the end of morning. Examples: 12:00 pm, 12:30 pm, 1:00 pm, 2:00 pm, 3:00 pm, 4:00 pm, 4:30 pm.
+- When the user asks for "afternoon" slots: include 12:00 pm, 12:30 pm, 1:00 pm, 2:00 pm, etc. - ALL times from noon onwards.
+- When the user asks for "morning" slots: include only times before noon (9am through 11:30 am).
+- ALWAYS scan the ENTIRE FREE SLOTS list for each day. Do NOT stop at the first few slots. Each day may have slots spanning 9am-5pm - you must check every slot listed to correctly identify morning vs afternoon availability.
+
 ACTIONS (put at the VERY END of your response):
 When setting a time, add this on its own line at the end:
 ACTION: {"type":"setBookingTime","dateTime":"2026-01-08T14:00:00","timezone":"${yourTimezone}"}
@@ -7501,10 +7508,16 @@ CALENDAR DATA RANGE:
     }
     
     // Parse time-of-day keywords
-    if (msgLower.includes('morning')) {
+    // When user asks for BOTH morning AND afternoon, fetch full day (9-17) - don't restrict to one
+    const wantsMorning = msgLower.includes('morning');
+    const wantsAfternoon = msgLower.includes('afternoon') || msgLower.includes('arvo');
+    if (wantsMorning && wantsAfternoon) {
+      startHour = 9;
+      endHour = 17;
+    } else if (msgLower.includes('morning')) {
       startHour = 9;
       endHour = 12;
-    } else if (msgLower.includes('afternoon') || msgLower.includes('arvo')) {
+    } else if (wantsAfternoon) {
       startHour = 12;
       endHour = 17;
     } else if (msgLower.includes('evening')) {
