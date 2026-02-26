@@ -6199,6 +6199,10 @@ router.get("/api/sync-client-statuses/manual", async (req, res) => {
       } catch (e) { logger.error('Failed to send alert:', e.message); }
     }
     clientService.clearCache();
+    try {
+      const { sendAlertEmail } = require('../services/emailNotificationService');
+      await sendAlertEmail('✅ PMPro Manual Pull Sync Succeeded', `<h2>Manual pull sync completed</h2><p><strong>Time:</strong> ${new Date().toISOString()}</p><p>${results.activated} activated, ${results.paused} paused, ${results.skipped} skipped.</p>`);
+    } catch (e) { /* ignore */ }
     res.json({ success: true, message: 'Manual pull sync completed', results });
   } catch (error) {
     logger.error('Manual pull sync failed:', error.message);
@@ -6388,9 +6392,20 @@ router.post("/api/pmpro-sync-push", express.json(), async (req, res) => {
     logger.error('PMPro sync push failed:', error.message);
     try {
       const { sendAlertEmail } = require('../services/emailNotificationService');
+      const secret = process.env.PB_WEBHOOK_SECRET || '';
+      const manualUrl = secret
+        ? `https://pb-webhook-server.onrender.com/api/sync-client-statuses/manual?secret=${encodeURIComponent(secret)}`
+        : 'https://pb-webhook-server.onrender.com/api/sync-client-statuses/manual?secret=YOUR_SECRET';
       await sendAlertEmail(
         '❌ PMPro Sync Push Failed',
-        `<h2>Push-based membership sync failed</h2><p><strong>Error:</strong> ${error.message}</p><p><strong>Time:</strong> ${new Date().toISOString()}</p><pre>${error.stack || ''}</pre>`
+        `<h2>Push-based membership sync failed</h2>
+        <p><strong>Error:</strong> ${error.message}</p>
+        <p><strong>Time:</strong> ${new Date().toISOString()}</p>
+        <pre>${(error.stack || '').substring(0, 2000)}</pre>
+        <h3>Manual backup</h3>
+        <p>As a temporary fix, run the pull sync by opening this link in your browser:</p>
+        <p><a href="${manualUrl}">${manualUrl}</a></p>
+        <p>Note: Pull sync calls WordPress and may timeout if WordPress is slow.</p>`
       );
     } catch (e) { /* ignore */ }
     res.status(500).json({ success: false, error: 'Sync failed', message: error.message });
