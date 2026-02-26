@@ -17,8 +17,8 @@ let validLevelsCache = null;
 let validLevelsCacheTimestamp = null;
 const CACHE_DURATION_MS = 5 * 60 * 1000; // 5 minutes
 
-// WordPress/PMPro API: longer timeout for Australia–US latency, retries for transient failures
-const WP_API_TIMEOUT_MS = 20000;  // 20 seconds (was 10)
+// WordPress/PMPro API: 5 min timeout - slow WordPress can take 1-2 min; if we hit 5 min, something else is wrong
+const WP_API_TIMEOUT_MS = 5 * 60 * 1000;  // 5 minutes (was 20 seconds)
 const WP_API_MAX_RETRIES = 3;
 const WP_API_RETRY_DELAY_MS = 2000;
 
