@@ -6422,6 +6422,38 @@ async function updateClientStatus(recordId, newStatus, reason, expiryDate = null
 }
 
 /**
+ * In-memory store for PMPro webhooks from WordPress (staged diagnostics)
+ * Entries expire after 5 minutes
+ */
+const pmproWebhookStore = [];
+const PMPRO_WEBHOOK_TTL_MS = 5 * 60 * 1000;
+
+function addPmproWebhook(entry) {
+  const now = Date.now();
+  pmproWebhookStore.push({ ...entry, receivedAt: now });
+  // Keep only last 50 entries and those within TTL
+  while (pmproWebhookStore.length > 50 || (pmproWebhookStore[0] && now - pmproWebhookStore[0].receivedAt > PMPRO_WEBHOOK_TTL_MS)) {
+    pmproWebhookStore.shift();
+  }
+}
+
+function getRecentPmproWebhooks(sinceMs = 60000) {
+  const cutoff = Date.now() - sinceMs;
+  return pmproWebhookStore.filter(w => w.receivedAt >= cutoff);
+}
+
+/**
+ * POST /api/debug/pmpro-webhook-received
+ * Receives webhooks from WordPress WPCode snippet (staged diagnostics)
+ * Body: { stage, route?, ip?, timestamp? }
+ */
+router.post("/api/debug/pmpro-webhook-received", express.json(), (req, res) => {
+  const { stage, route, ip, timestamp } = req.body || {};
+  addPmproWebhook({ stage, route, ip, timestamp });
+  res.status(200).json({ ok: true });
+});
+
+/**
  * GET /api/debug/pmpro-test?userId=70
  * Diagnostic: Call PMPro API directly, return raw response
  * Use to check if Application Password / auth is the problem
@@ -6430,10 +6462,14 @@ router.get("/api/debug/pmpro-test", async (req, res) => {
   try {
     const userId = parseInt(req.query.userId || '70', 10);
     const timeoutMs = parseInt(req.query.timeout, 10) || 10000;
+    const startTime = Date.now();
     const result = await pmproService.testPmproMembershipApi(userId, timeoutMs);
+    const webhooks = getRecentPmproWebhooks(timeoutMs + 10000);
     res.json({
       success: !result.error,
       ...result,
+      webhooks,
+      webhookStages: webhooks.map(w => w.stage),
       interpretation: result.authIssue
         ? 'AUTH PROBLEM: 401/403 means credentials rejected. Use Application Password (not regular password) in WP_ADMIN_PASSWORD.'
         : result.statusCode === 200 && result.body
