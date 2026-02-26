@@ -6462,8 +6462,9 @@ router.get("/api/debug/pmpro-test", async (req, res) => {
   try {
     const userId = parseInt(req.query.userId || '70', 10);
     const timeoutMs = parseInt(req.query.timeout, 10) || 10000;
+    const endpoint = req.query.endpoint || 'pmpro';
     const startTime = Date.now();
-    const result = await pmproService.testPmproMembershipApi(userId, timeoutMs);
+    const result = await pmproService.testPmproMembershipApi(userId, timeoutMs, endpoint);
     const webhooks = getRecentPmproWebhooks(timeoutMs + 10000);
     res.json({
       success: !result.error,

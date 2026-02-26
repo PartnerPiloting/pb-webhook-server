@@ -408,8 +408,8 @@ async function testWordPressConnection() {
  * @param {number} [timeoutMs] - Optional timeout in ms (default 10000)
  * @returns {Promise<Object>} Raw response: statusCode, authIssue, body, error
  */
-async function testPmproMembershipApi(userId, timeoutMs = 10000) {
-    const result = { userId, url: null, statusCode: null, authIssue: false, body: null, error: null };
+async function testPmproMembershipApi(userId, timeoutMs = 10000, endpoint = 'pmpro') {
+    const result = { userId, url: null, statusCode: null, authIssue: false, body: null, error: null, endpoint };
     try {
         const wpBaseUrl = process.env.WP_BASE_URL;
         const wpUsername = process.env.WP_ADMIN_USERNAME;
@@ -421,7 +421,15 @@ async function testPmproMembershipApi(userId, timeoutMs = 10000) {
         }
 
         const authString = Buffer.from(`${wpUsername}:${wpPassword}`).toString('base64');
-        const url = `${wpBaseUrl}/wp-json/pmpro/v1/get_membership_level_for_user?user_id=${userId}`;
+        
+        let url;
+        if (endpoint === 'wp-users') {
+            url = `${wpBaseUrl}/wp-json/wp/v2/users/me`;
+        } else if (endpoint === 'wp-user-id') {
+            url = `${wpBaseUrl}/wp-json/wp/v2/users/${userId}`;
+        } else {
+            url = `${wpBaseUrl}/wp-json/pmpro/v1/get_membership_level_for_user?user_id=${userId}`;
+        }
         result.url = url;
 
         const headers = {
