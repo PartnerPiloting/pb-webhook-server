@@ -215,6 +215,12 @@ async function checkOperationStatus(clientId, operation) {
             return { completed: false, reason: `Last run ${Math.round(hoursSinceRun)} hours ago (>24h)` };
         }
         
+        // For lead_scoring: if last run scored 0 leads, don't skip - something may have gone wrong
+        const lastCount = status.lastRunCount != null ? Number(status.lastRunCount) : null;
+        if (operation === 'lead_scoring' && lastCount === 0) {
+            return { completed: false, reason: 'Last run scored 0 leads - retrying', lastRun: status.lastRunDate, count: 0 };
+        }
+        
         return { 
             completed: true, 
             reason: `Completed ${Math.round(hoursSinceRun)}h ago`,
@@ -325,56 +331,26 @@ async function checkUnscoredPostsCount(clientId) {
 moduleLogger.info(`🔍 TRACE: checkUnscoredPostsCount function defined`);
 
 moduleLogger.info(`🔍 TRACE: About to define determineClientWorkflow function`);
+/**
+ * Always run all operations for every active client. No 24h skip checks.
+ * Lead scoring only processes "To Be Scored" leads; post ops handle their own eligibility.
+ */
 async function determineClientWorkflow(client) {
     moduleLogger.info(`🔍 WORKFLOW-DEBUG: ========== determineClientWorkflow CALLED for ${client.clientName} (${client.clientId}) ==========`);
     
     const operations = ['lead_scoring', 'post_harvesting', 'post_scoring'];
-    moduleLogger.info(`🔍 WORKFLOW-DEBUG: Operations to check: ${operations.join(', ')}`);
     
     const workflow = {
         clientId: client.clientId,
         clientName: client.clientName,
         serviceLevel: client.serviceLevel,
-        needsProcessing: false,
-        operationsToRun: [],
+        needsProcessing: true,
+        operationsToRun: [...operations],
         statusSummary: {}
     };
     
-    moduleLogger.info(`🔍 WORKFLOW-DEBUG: Starting operation status checks for ${client.clientName}...`);
-    
-    moduleLogger.info(`🔍 [WORKFLOW-DEBUG] Determining workflow for ${client.clientName} (${client.clientId})`);
-    
-    // Check each operation status
-    for (const operation of operations) {
-        moduleLogger.info(`🔍 [WORKFLOW-DEBUG] Checking operation: ${operation}`);
-        
-        const status = await checkOperationStatus(client.clientId, operation);
-        moduleLogger.info(`🔍 [WORKFLOW-DEBUG] Operation ${operation} status:`, JSON.stringify(status));
-        workflow.statusSummary[operation] = status;
-        
-        // SIMPLIFIED LOGIC: Always run post operations (post_harvesting, post_scoring)
-        // They will handle their own service level checks and log to Progress Log
-        if (operation === 'post_harvesting' || operation === 'post_scoring') {
-            moduleLogger.info(`✅ [WORKFLOW-DEBUG] ${operation} will always run (handles own eligibility + Progress Log)`);
-            workflow.needsProcessing = true;
-            workflow.operationsToRun.push(operation);
-            continue;
-        }
-        
-        // For lead_scoring, check if it needs to run based on completion status
-        if (!status.completed) {
-            moduleLogger.info(`✅ [WORKFLOW-DEBUG] Operation ${operation} will be executed (status.completed=false)`);
-            workflow.needsProcessing = true;
-            workflow.operationsToRun.push(operation);
-        } else {
-            moduleLogger.info(`⏭️ [WORKFLOW-DEBUG] Operation ${operation} skipped (status.completed=true)`);
-        }
-    }
-    
-    moduleLogger.info(`🔍 [WORKFLOW-DEBUG] Final workflow for ${client.clientName}:`);
-    moduleLogger.info(`   - needsProcessing: ${workflow.needsProcessing}`);
-    moduleLogger.info(`   - operationsToRun: ${workflow.operationsToRun.join(', ') || 'NONE'}`);
-    moduleLogger.info(`   - statusSummary:`, JSON.stringify(workflow.statusSummary, null, 2));
+    moduleLogger.info(`🔍 [WORKFLOW-DEBUG] Running all operations for ${client.clientName} (no skip checks)`);
+    moduleLogger.info(`   - operationsToRun: ${workflow.operationsToRun.join(', ')}`);
     
     return workflow;
 }
@@ -676,7 +652,7 @@ async function main() {
             // Log more details about post_scoring status if it's going to be executed
             if (workflow.operationsToRun.includes('post_scoring')) {
                 const postScoringStatus = workflow.statusSummary['post_scoring'];
-                if (postScoringStatus.overrideReason) {
+                if (postScoringStatus?.overrideReason) {
                     log(`   📌 POST SCORING: ${postScoringStatus.overrideReason}`);
                     if (postScoringStatus.originalStatus) {
                         log(`   📌 Original reason: ${postScoringStatus.originalStatus.reason}`);
