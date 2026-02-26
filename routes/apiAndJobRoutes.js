@@ -6160,6 +6160,57 @@ const clientService = require('../services/clientService');
 // =============================================================================
 
 /**
+ * GET /api/sync-client-statuses/manual?secret=XXX
+ * Manual pull sync - clickable link for when push fails.
+ * Same logic as POST. Use as backup if push doesn't run.
+ */
+router.get("/api/sync-client-statuses/manual", async (req, res) => {
+  const secret = req.query.secret;
+  if (!secret || secret !== process.env.PB_WEBHOOK_SECRET) {
+    return res.status(401).json({ success: false, error: 'Invalid or missing secret' });
+  }
+  const logger = createLogger({ runId: 'membership-sync-manual', clientId: 'SYSTEM', operation: 'sync-client-statuses-manual' });
+  try {
+    logger.info('🔄 Manual pull sync started...');
+    const allClients = await clientService.getAllClients();
+    logger.info(`📋 Found ${allClients.length} clients to check`);
+    const membershipByWpUserId = {};
+    for (const client of allClients) {
+      const wpUserId = client.wpUserId;
+      const statusManagement = (client.statusManagement || 'Automatic').toString().trim();
+      if (statusManagement.toLowerCase() === 'manual') continue;
+      if (!wpUserId || wpUserId === 0) continue;
+      logger.info(`🔍 Checking PMPro for wpUserId ${wpUserId} (${client.clientName})...`);
+      const membershipCheck = await pmproService.checkUserMembership(wpUserId, { clientEmail: client.clientEmailAddress || null });
+      if (membershipCheck.error) {
+        membershipByWpUserId[wpUserId] = { unverifiable: true };
+      } else {
+        membershipByWpUserId[wpUserId] = { hasValidMembership: membershipCheck.hasValidMembership, levelId: membershipCheck.levelId, levelName: membershipCheck.levelName, expiryDate: membershipCheck.expiryDate };
+      }
+    }
+    const results = await applyMembershipSyncToClients(allClients, membershipByWpUserId, logger);
+    logger.info(`📊 Summary: ${results.activated} activated, ${results.paused} paused, ${results.skipped} skipped`);
+    const unverifiable = results.details.filter(d => d.unverifiable);
+    if (unverifiable.length > 0) {
+      try {
+        const { sendAlertEmail } = require('../services/emailNotificationService');
+        const listHtml = unverifiable.map(d => `<li><strong>${d.clientName}</strong> (${d.clientId}): ${d.reason}</li>`).join('');
+        await sendAlertEmail('⚠️ PMPro Membership Sync (Manual): Some Clients Could Not Be Verified', `<h2>WordPress/PMPro API Issues During Manual Sync</h2><p><strong>${unverifiable.length}</strong> client(s) were skipped.</p><p><strong>Time:</strong> ${new Date().toISOString()}</p><ul>${listHtml}</ul>`);
+      } catch (e) { logger.error('Failed to send alert:', e.message); }
+    }
+    clientService.clearCache();
+    res.json({ success: true, message: 'Manual pull sync completed', results });
+  } catch (error) {
+    logger.error('Manual pull sync failed:', error.message);
+    try {
+      const { sendAlertEmail } = require('../services/emailNotificationService');
+      await sendAlertEmail('❌ PMPro Manual Pull Sync Failed', `<h2>Manual Sync Failed</h2><p><strong>Error:</strong> ${error.message}</p><p><strong>Time:</strong> ${new Date().toISOString()}</p><pre>${error.stack || ''}</pre>`);
+    } catch (e) { /* ignore */ }
+    res.status(500).json({ success: false, error: 'Sync failed', message: error.message });
+  }
+});
+
+/**
  * POST /api/sync-client-statuses
  * PULL-BASED SYNC (current working version)
  * Our server calls PMPro REST API for each client. Can timeout if WordPress is slow.
