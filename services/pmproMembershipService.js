@@ -405,9 +405,10 @@ async function testWordPressConnection() {
  * Diagnostic: Call PMPro API directly and return raw response
  * Use this to check if authentication (Application Password) is the problem
  * @param {number} userId - WordPress user ID to check (e.g. 70 for Paul-Faix)
+ * @param {number} [timeoutMs] - Optional timeout in ms (default 10000)
  * @returns {Promise<Object>} Raw response: statusCode, authIssue, body, error
  */
-async function testPmproMembershipApi(userId) {
+async function testPmproMembershipApi(userId, timeoutMs = 10000) {
     const result = { userId, url: null, statusCode: null, authIssue: false, body: null, error: null };
     try {
         const wpBaseUrl = process.env.WP_BASE_URL;
@@ -428,7 +429,7 @@ async function testPmproMembershipApi(userId) {
             'Content-Type': 'application/json'
         };
 
-        const response = await axios.get(url, { headers, timeout: 10000 });
+        const response = await axios.get(url, { headers, timeout: timeoutMs });
         result.statusCode = response.status;
         result.body = response.data;
         result.authIssue = false;

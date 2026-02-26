@@ -6429,7 +6429,8 @@ async function updateClientStatus(recordId, newStatus, reason, expiryDate = null
 router.get("/api/debug/pmpro-test", async (req, res) => {
   try {
     const userId = parseInt(req.query.userId || '70', 10);
-    const result = await pmproService.testPmproMembershipApi(userId);
+    const timeoutMs = parseInt(req.query.timeout, 10) || 10000;
+    const result = await pmproService.testPmproMembershipApi(userId, timeoutMs);
     res.json({
       success: !result.error,
       ...result,
