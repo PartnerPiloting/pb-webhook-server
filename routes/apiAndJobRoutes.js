@@ -6195,7 +6195,9 @@ router.get("/api/sync-client-statuses/manual", async (req, res) => {
       try {
         const { sendAlertEmail } = require('../services/emailNotificationService');
         const listHtml = unverifiable.map(d => `<li><strong>${d.clientName}</strong> (${d.clientId}): ${d.reason}</li>`).join('');
-        await sendAlertEmail('⚠️ PMPro Membership Sync (Manual): Some Clients Could Not Be Verified', `<h2>WordPress/PMPro API Issues During Manual Sync</h2><p><strong>${unverifiable.length}</strong> client(s) were skipped.</p><p><strong>Time:</strong> ${new Date().toISOString()}</p><ul>${listHtml}</ul>`);
+        const manualUrl = process.env.PB_WEBHOOK_SECRET ? `https://pb-webhook-server.onrender.com/api/sync-client-statuses/manual?secret=${encodeURIComponent(process.env.PB_WEBHOOK_SECRET)}` : null;
+        const manualSection = manualUrl ? `<h3>Try manually</h3><p><a href="${manualUrl}">${manualUrl}</a></p>` : '';
+        await sendAlertEmail('⚠️ PMPro Membership Sync (Manual): Some Clients Could Not Be Verified', `<h2>WordPress/PMPro API Issues During Manual Sync</h2><p><strong>${unverifiable.length}</strong> client(s) were skipped.</p><p><strong>Time:</strong> ${new Date().toISOString()}</p><ul>${listHtml}</ul>${manualSection}`);
       } catch (e) { logger.error('Failed to send alert:', e.message); }
     }
     clientService.clearCache();
@@ -6271,6 +6273,8 @@ router.post("/api/sync-client-statuses", async (req, res) => {
         const listHtml = unverifiable.map(d => 
           `<li><strong>${d.clientName}</strong> (${d.clientId}): ${d.reason}</li>`
         ).join('');
+        const manualUrl = process.env.PB_WEBHOOK_SECRET ? `https://pb-webhook-server.onrender.com/api/sync-client-statuses/manual?secret=${encodeURIComponent(process.env.PB_WEBHOOK_SECRET)}` : null;
+        const manualSection = manualUrl ? `<h3>Try manually</h3><p><a href="${manualUrl}">${manualUrl}</a></p>` : '';
         await sendAlertEmail(
           '⚠️ PMPro Membership Sync: Some Clients Could Not Be Verified',
           `<h2>WordPress/PMPro API Issues During Sync</h2>
@@ -6278,7 +6282,8 @@ router.post("/api/sync-client-statuses", async (req, res) => {
           <p><strong>Time:</strong> ${new Date().toISOString()}</p>
           <h3>Affected clients:</h3>
           <ul>${listHtml}</ul>
-          <p>Consider checking WordPress/PMPro performance. Status will be retried on next sync.</p>`
+          <p>Consider checking WordPress/PMPro performance. Status will be retried on next sync.</p>
+          ${manualSection}`
         );
       } catch (emailErr) {
         logger.error('Failed to send unverifiable-clients alert email:', emailErr.message);
