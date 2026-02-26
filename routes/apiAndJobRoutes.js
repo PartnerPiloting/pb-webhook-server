@@ -6147,10 +6147,23 @@ const pmproService = require('../services/pmproMembershipService');
 const clientService = require('../services/clientService');
 // CLIENT_FIELDS already imported at top of file
 
+// =============================================================================
+// MEMBERSHIP SYNC - TWO MODES
+// =============================================================================
+// 1. PULL (current): POST /api/sync-client-statuses - Our server calls PMPro REST API per client.
+//    Triggered by: Render cron (cron-pmpro-membership-sync-daily-main)
+//    Can timeout if WordPress/PMPro is slow. Preserved as fallback.
+//
+// 2. PUSH (preferred): POST /api/pmpro-sync-push - WordPress pushes membership data to us.
+//    Triggered by: Cron hits WordPress URL → WPCode snippet POSTs to this endpoint.
+//    More reliable - no external API calls from our side.
+// =============================================================================
+
 /**
  * POST /api/sync-client-statuses
- * Sync all client statuses based on WordPress PMPro memberships
- * Updates Status field to Active or Paused based on membership validity
+ * PULL-BASED SYNC (current working version)
+ * Our server calls PMPro REST API for each client. Can timeout if WordPress is slow.
+ * Preserved as fallback. Prefer push-based sync when available.
  */
 router.post("/api/sync-client-statuses", async (req, res) => {
   const logger = createLogger({ 
@@ -6160,172 +6173,37 @@ router.post("/api/sync-client-statuses", async (req, res) => {
   });
 
   try {
-    logger.info('🔄 Starting client status sync based on PMPro memberships...');
+    logger.info('🔄 Starting client status sync based on PMPro memberships (PULL mode)...');
 
-    // Get all clients from Master Clients base
     const allClients = await clientService.getAllClients();
     logger.info(`📋 Found ${allClients.length} clients to check`);
 
-    const results = {
-      total: allClients.length,
-      processed: 0,
-      activated: 0,
-      paused: 0,
-      errors: 0,
-      skipped: 0,
-      details: []
-    };
-
-    // Process each client
+    // Build membership map by calling PMPro API for each client with wpUserId
+    const membershipByWpUserId = {};
     for (const client of allClients) {
-      const clientId = client.clientId;
-      const clientName = client.clientName;
       const wpUserId = client.wpUserId;
-      const currentStatus = client.status;
       const statusManagement = (client.statusManagement || 'Automatic').toString().trim();
+      if (statusManagement.toLowerCase() === 'manual') continue;
+      if (!wpUserId || wpUserId === 0) continue;
 
-      logger.info(`\n--- Processing: ${clientName} (${clientId}) ---`);
-
-      // Skip if Status Management is set to "Manual" (case-insensitive - Airtable may store differently)
-      if (statusManagement.toLowerCase() === 'manual') {
-        logger.info(`⏭️ SKIPPING: ${clientName} has Status Management set to "Manual"`);
-        results.skipped++;
-        results.details.push({
-          clientId,
-          clientName,
-          action: 'skipped',
-          reason: 'Status Management set to Manual',
-          status: currentStatus
-        });
-        continue;
-      }
-
-      // Check if WordPress User ID exists
-      if (!wpUserId || wpUserId === 0) {
-        logger.error(`❌ ERROR: ${clientName} has no WordPress User ID`);
-        console.error(`[MEMBERSHIP_SYNC_ERROR] Client "${clientName}" (${clientId}) has no WordPress User ID - setting Status to Paused`);
-        
-        // Update status to Paused
-        await updateClientStatus(client.id, 'Paused', 'No WordPress User ID configured', null);
-        
-        results.paused++;
-        results.errors++;
-        results.processed++;
-        results.details.push({
-          clientId,
-          clientName,
-          action: 'paused',
-          reason: 'No WordPress User ID',
-          error: true
-        });
-        continue;
-      }
-
-      logger.info(`🔍 WordPress User ID: ${wpUserId} - checking membership...`);
-
-      // Check PMPro membership (pass email for fallback lookup if user_id returns nothing)
+      logger.info(`🔍 Checking PMPro for wpUserId ${wpUserId} (${client.clientName})...`);
       const membershipCheck = await pmproService.checkUserMembership(wpUserId, {
         clientEmail: client.clientEmailAddress || null
       });
 
       if (membershipCheck.error) {
-        // FAIL-SAFE: On API/verification error, do NOT change status - leave as-is.
-        // Prevents valid members from being incorrectly paused due to timeouts, network blips, etc.
-        logger.warn(`⚠️ Could not verify membership for ${clientName}: ${membershipCheck.error}`);
-        logger.warn(`   → Leaving status unchanged (${currentStatus}) - will retry on next sync`);
-        console.error(`[MEMBERSHIP_SYNC] Client "${clientName}" (${clientId}) - ${membershipCheck.error} - SKIPPING (status unchanged: ${currentStatus})`);
-        
-        results.skipped++;
-        results.processed++;
-        results.details.push({
-          clientId,
-          clientName,
-          action: 'skipped',
-          reason: `API error - could not verify: ${membershipCheck.error}`,
-          status: currentStatus,
-          unverifiable: true
-        });
-        continue;
-      }
-
-      // Determine what the status should be
-      const shouldBeActive = membershipCheck.hasValidMembership;
-      const newStatus = shouldBeActive ? 'Active' : 'Paused';
-      
-      // Log membership info
-      if (membershipCheck.hasValidMembership) {
-        logger.info(`✅ Valid membership: Level ${membershipCheck.levelId} (${membershipCheck.levelName})`);
+        membershipByWpUserId[wpUserId] = { unverifiable: true };
       } else {
-        logger.warn(`⚠️ Invalid or no membership - Level: ${membershipCheck.levelId || 'none'}`);
+        membershipByWpUserId[wpUserId] = {
+          hasValidMembership: membershipCheck.hasValidMembership,
+          levelId: membershipCheck.levelId,
+          levelName: membershipCheck.levelName,
+          expiryDate: membershipCheck.expiryDate
+        };
       }
-
-      // Check if status changed OR if we need to update expiry date
-      const statusChanged = currentStatus !== newStatus;
-      const expiryNeedsUpdate = membershipCheck.expiryDate !== undefined; // Always update expiry if we have it
-      
-      logger.info(`🔍 Update check: statusChanged=${statusChanged}, expiryNeedsUpdate=${expiryNeedsUpdate}, expiryDate=${membershipCheck.expiryDate}`);
-      
-      if (statusChanged || expiryNeedsUpdate) {
-        if (statusChanged) {
-          logger.info(`🔄 Updating status: ${currentStatus} → ${newStatus}`);
-        }
-        if (expiryNeedsUpdate && !statusChanged) {
-          logger.info(`📅 Updating expiry date: ${membershipCheck.expiryDate || 'None'}`);
-        }
-        
-        const reason = shouldBeActive 
-          ? `Valid PMPro membership (Level ${membershipCheck.levelId})`
-          : (membershipCheck.levelId 
-              ? `Invalid PMPro level ${membershipCheck.levelId}` 
-              : 'No active PMPro membership');
-        
-        // Always include expiry date in the update
-        await updateClientStatus(client.id, newStatus, reason, membershipCheck.expiryDate);
-        
-        if (statusChanged) {
-          if (newStatus === 'Active') {
-            results.activated++;
-            console.log(`[MEMBERSHIP_SYNC] ✅ Client "${clientName}" (${clientId}) activated - has valid PMPro membership (Level ${membershipCheck.levelId})`);
-          } else {
-            results.paused++;
-            console.log(`[MEMBERSHIP_SYNC] ⏸️ Client "${clientName}" (${clientId}) paused - ${reason}`);
-          }
-          
-          results.details.push({
-            clientId,
-            clientName,
-            action: newStatus.toLowerCase(),
-            previousStatus: currentStatus,
-            newStatus: newStatus,
-            reason: reason,
-            membershipLevel: membershipCheck.levelId
-          });
-        } else {
-          // Status unchanged but expiry updated
-          results.skipped++;
-          results.details.push({
-            clientId,
-            clientName,
-            action: 'unchanged',
-            status: currentStatus,
-            membershipLevel: membershipCheck.levelId,
-            expiryUpdated: true
-          });
-        }
-      } else {
-        logger.info(`✓ Status unchanged: ${currentStatus}`);
-        results.skipped++;
-        results.details.push({
-          clientId,
-          clientName,
-          action: 'unchanged',
-          status: currentStatus,
-          membershipLevel: membershipCheck.levelId
-        });
-      }
-
-      results.processed++;
     }
+
+    const results = await applyMembershipSyncToClients(allClients, membershipByWpUserId, logger);
 
     logger.info('\n✅ Client status sync complete!');
     logger.info(`📊 Summary: ${results.activated} activated, ${results.paused} paused, ${results.skipped} unchanged, ${results.errors} errors`);
@@ -6390,6 +6268,188 @@ router.post("/api/sync-client-statuses", async (req, res) => {
     });
   }
 });
+
+/**
+ * POST /api/pmpro-sync-push
+ * PUSH-BASED SYNC (preferred)
+ * WordPress pushes membership data to us via WPCode snippet + cron.
+ * No external API calls from our side - more reliable than pull.
+ *
+ * Body: { secret: string, memberships: [{ wpUserId, levelId, levelName, enddate? }] }
+ * Auth: secret must match PB_WEBHOOK_SECRET (or Authorization: Bearer <secret>)
+ */
+router.post("/api/pmpro-sync-push", express.json(), async (req, res) => {
+  const logger = createLogger({ runId: 'pmpro-sync-push', clientId: 'SYSTEM', operation: 'pmpro-sync-push' });
+
+  try {
+    const { secret, memberships } = req.body || {};
+    const authHeader = req.headers.authorization;
+    const providedSecret = secret || (authHeader && authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null);
+    const expectedSecret = process.env.PB_WEBHOOK_SECRET;
+
+    if (!expectedSecret || providedSecret !== expectedSecret) {
+      logger.warn('PMPro sync push: Unauthorized - invalid or missing secret');
+      return res.status(401).json({ success: false, error: 'Unauthorized - invalid or missing secret' });
+    }
+
+    if (!Array.isArray(memberships)) {
+      return res.status(400).json({ success: false, error: 'memberships must be an array' });
+    }
+
+    logger.info(`🔄 PMPro sync push: received ${memberships.length} membership records`);
+
+    const validLevels = await pmproService.getValidPMProLevels();
+
+    const membershipByWpUserId = {};
+    for (const m of memberships) {
+      const wpUserId = m.wpUserId ?? m.userId ?? m.user_id;
+      if (wpUserId == null) continue;
+
+      const levelId = m.levelId ?? m.level_id ?? m.id;
+      const levelName = m.levelName ?? m.level_name ?? m.name ?? 'Unknown';
+      let expiryDate = m.expiryDate ?? m.enddate ?? m.end_date ?? null;
+      if (expiryDate && typeof expiryDate === 'string' && /^\d+$/.test(expiryDate)) {
+        const ts = parseInt(expiryDate, 10) * 1000;
+        expiryDate = new Date(ts).toISOString().split('T')[0];
+      } else if (expiryDate && typeof expiryDate === 'number') {
+        expiryDate = new Date(expiryDate * 1000).toISOString().split('T')[0];
+      }
+
+      const hasValidMembership = levelId != null && validLevels.includes(parseInt(levelId, 10));
+
+      membershipByWpUserId[wpUserId] = membershipByWpUserId[String(wpUserId)] = {
+        hasValidMembership,
+        levelId: levelId != null ? parseInt(levelId, 10) : null,
+        levelName,
+        expiryDate
+      };
+    }
+
+    const allClients = await clientService.getAllClients();
+    const results = await applyMembershipSyncToClients(allClients, membershipByWpUserId, logger);
+
+    clientService.clearCache();
+
+    logger.info(`✅ PMPro sync push complete: ${results.activated} activated, ${results.paused} paused, ${results.skipped} skipped`);
+
+    res.json({ success: true, message: 'PMPro sync push completed', results });
+  } catch (error) {
+    logger.error('PMPro sync push failed:', error.message);
+    try {
+      const { sendAlertEmail } = require('../services/emailNotificationService');
+      await sendAlertEmail(
+        '❌ PMPro Sync Push Failed',
+        `<h2>Push-based membership sync failed</h2><p><strong>Error:</strong> ${error.message}</p><p><strong>Time:</strong> ${new Date().toISOString()}</p><pre>${error.stack || ''}</pre>`
+      );
+    } catch (e) { /* ignore */ }
+    res.status(500).json({ success: false, error: 'Sync failed', message: error.message });
+  }
+});
+
+/**
+ * Shared sync logic: apply membership data to clients and update Airtable.
+ * Used by both PULL (sync-client-statuses) and PUSH (pmpro-sync-push) flows.
+ *
+ * @param {Array} allClients - Clients from clientService.getAllClients()
+ * @param {Object} membershipByWpUserId - Map of wpUserId -> { hasValidMembership, levelId, levelName, expiryDate }
+ *   If wpUserId not in map: treated as no membership (will pause).
+ *   Use { unverifiable: true } to skip (leave status unchanged) - for pull flow when API errors.
+ * @param {Object} logger - Context logger
+ * @returns {Object} results - { total, processed, activated, paused, errors, skipped, details }
+ */
+async function applyMembershipSyncToClients(allClients, membershipByWpUserId, logger) {
+  const results = {
+    total: allClients.length,
+    processed: 0,
+    activated: 0,
+    paused: 0,
+    errors: 0,
+    skipped: 0,
+    details: []
+  };
+
+  for (const client of allClients) {
+    const clientId = client.clientId;
+    const clientName = client.clientName;
+    const wpUserId = client.wpUserId;
+    const currentStatus = client.status;
+    const statusManagement = (client.statusManagement || 'Automatic').toString().trim();
+
+    logger.info(`\n--- Processing: ${clientName} (${clientId}) ---`);
+
+    if (statusManagement.toLowerCase() === 'manual') {
+      logger.info(`⏭️ SKIPPING: ${clientName} has Status Management set to "Manual"`);
+      results.skipped++;
+      results.details.push({ clientId, clientName, action: 'skipped', reason: 'Status Management set to Manual', status: currentStatus });
+      continue;
+    }
+
+    if (!wpUserId || wpUserId === 0) {
+      logger.error(`❌ ERROR: ${clientName} has no WordPress User ID`);
+      await updateClientStatus(client.id, 'Paused', 'No WordPress User ID configured', null);
+      results.paused++;
+      results.errors++;
+      results.processed++;
+      results.details.push({ clientId, clientName, action: 'paused', reason: 'No WordPress User ID', error: true });
+      continue;
+    }
+
+    const membershipCheck = membershipByWpUserId[wpUserId] ?? membershipByWpUserId[String(wpUserId)];
+
+    if (membershipCheck && membershipCheck.unverifiable) {
+      logger.warn(`⚠️ Could not verify membership for ${clientName} - leaving status unchanged (${currentStatus})`);
+      results.skipped++;
+      results.processed++;
+      results.details.push({ clientId, clientName, action: 'skipped', reason: 'API error - could not verify', status: currentStatus, unverifiable: true });
+      continue;
+    }
+
+    const hasMembershipData = membershipCheck !== undefined && membershipCheck !== null;
+
+    if (!hasMembershipData) {
+      logger.info(`🔍 No membership data for wpUserId ${wpUserId} - treating as no membership`);
+    }
+
+    const m = hasMembershipData ? membershipCheck : { hasValidMembership: false, levelId: null, levelName: null, expiryDate: null };
+    const shouldBeActive = m.hasValidMembership;
+    const newStatus = shouldBeActive ? 'Active' : 'Paused';
+
+    if (m.hasValidMembership) {
+      logger.info(`✅ Valid membership: Level ${m.levelId} (${m.levelName})`);
+    } else {
+      logger.warn(`⚠️ Invalid or no membership - Level: ${m.levelId || 'none'}`);
+    }
+
+    const statusChanged = currentStatus !== newStatus;
+    const expiryNeedsUpdate = m.expiryDate !== undefined;
+
+    if (statusChanged || expiryNeedsUpdate) {
+      const reason = shouldBeActive
+        ? `Valid PMPro membership (Level ${m.levelId})`
+        : (m.levelId ? `Invalid PMPro level ${m.levelId}` : 'No active PMPro membership');
+      await updateClientStatus(client.id, newStatus, reason, m.expiryDate);
+
+      if (statusChanged) {
+        if (newStatus === 'Active') results.activated++;
+        else results.paused++;
+        results.details.push({
+          clientId, clientName, action: newStatus.toLowerCase(),
+          previousStatus: currentStatus, newStatus, reason, membershipLevel: m.levelId
+        });
+      } else {
+        results.skipped++;
+        results.details.push({ clientId, clientName, action: 'unchanged', status: currentStatus, membershipLevel: m.levelId, expiryUpdated: true });
+      }
+    } else {
+      logger.info(`✓ Status unchanged: ${currentStatus}`);
+      results.skipped++;
+      results.details.push({ clientId, clientName, action: 'unchanged', status: currentStatus, membershipLevel: m.levelId });
+    }
+    results.processed++;
+  }
+
+  return results;
+}
 
 /**
  * Helper function to update client status in Airtable
