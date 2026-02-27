@@ -1983,9 +1983,10 @@ async function findLeadByDomainOnly(client, domain) {
  * @param {Object} lead - Lead object (with id, notes)
  * @param {Object} meetingData - Parsed meeting data
  * @param {string} provider - Note-taker provider name
+ * @param {string[]} addlAttendees - Optional list of attendee names for multi-attendee header
  * @returns {Promise<Object>} Update result
  */
-async function updateLeadWithMeetingNotes(client, lead, meetingData, provider) {
+async function updateLeadWithMeetingNotes(client, lead, meetingData, provider, addlAttendees = []) {
     const clientBase = createBaseInstance(client.airtableBaseId);
     
     // Check for duplicate - if meeting link already exists in notes, skip
@@ -2042,6 +2043,11 @@ async function updateLeadWithMeetingNotes(client, lead, meetingData, provider) {
     
     let noteEntry = `${separator}\n${headerParts.join(' | ')}\n${separator}`;
     
+    // Multi-attendee indicator when meeting was saved to 2+ profiles
+    if (addlAttendees && addlAttendees.length >= 2) {
+        noteEntry += `\n\n👥 Multi-attendee meeting (${addlAttendees.join(', ')})`;
+    }
+    
     // Action Items (with assignees)
     if (meetingData.actionItems) {
         noteEntry += `\n\n✅ ACTION ITEMS\n${meetingData.actionItems}`;
@@ -2091,18 +2097,124 @@ async function updateLeadWithMeetingNotes(client, lead, meetingData, provider) {
 }
 
 /**
+ * Find a lead from an "Add to" item (email or name)
+ * @param {Object} client - Client object
+ * @param {{email?: string, name?: string}} item - Add to item
+ * @param {Object} meetingData - Parsed meeting data (for company hint on name search)
+ * @returns {Promise<{lead: Object|null, error?: string, matches?: Array}>}
+ */
+async function findLeadForAddToItem(client, item, meetingData) {
+    if (item.email) {
+        const lead = await findLeadByEmail(client, item.email);
+        return { lead };
+    }
+    if (item.name) {
+        const searchResult = await findLeadByName(client, item.name, meetingData.company);
+        if (searchResult.matchType === 'ambiguous') {
+            return { lead: null, error: 'multiple_leads', matches: searchResult.allMatches };
+        }
+        return { lead: searchResult.lead };
+    }
+    return { lead: null };
+}
+
+/**
+ * Process meeting note-taker email for multiple leads (Add to: flow)
+ * @param {Object} client - Client object
+ * @param {Object} meetingData - Parsed meeting data
+ * @param {string} provider - Provider name
+ * @param {Array<{email?: string, name?: string}>} addToRecipients - Recipients from Add to:
+ * @returns {Promise<Object>} Aggregate result
+ */
+async function processMeetingNotetakerMultiLead(client, meetingData, provider, addToRecipients) {
+    const leads = [];
+    const notFound = [];
+    const ambiguous = [];
+    const duplicates = [];
+
+    for (const item of addToRecipients) {
+        const { lead, error, matches } = await findLeadForAddToItem(client, item, meetingData);
+        if (error === 'multiple_leads') {
+            ambiguous.push({ item: item.email || item.name, matches });
+            continue;
+        }
+        if (!lead) {
+            notFound.push(item.email || item.name);
+            continue;
+        }
+        leads.push(lead);
+    }
+
+    if (ambiguous.length > 0) {
+        const first = ambiguous[0];
+        await sendMeetingMultipleLeadsNotification(client.clientEmailAddress, meetingData, provider, first.matches);
+        return {
+            success: false,
+            error: 'multiple_leads',
+            message: `Found ${first.matches.length} leads named "${first.item}" - please use email to specify`,
+            ambiguous
+        };
+    }
+
+    if (leads.length === 0) {
+        await sendMeetingLeadNotFoundNotification(client.clientEmailAddress, meetingData, provider);
+        return {
+            success: false,
+            error: 'lead_not_found',
+            message: `No leads found for: ${notFound.join(', ')}`
+        };
+    }
+
+    // Build attendee names for multi-attendee header (when 2+ leads)
+    const addlAttendees = leads.length >= 2
+        ? leads.map(l => `${l.firstName} ${l.lastName}`.trim()).filter(Boolean)
+        : [];
+
+    let savedCount = 0;
+    const savedLeads = [];
+
+    for (const lead of leads) {
+        const updateResult = await updateLeadWithMeetingNotes(client, lead, meetingData, provider, addlAttendees);
+        if (updateResult.duplicate) {
+            duplicates.push(`${lead.firstName} ${lead.lastName}`.trim());
+        } else {
+            savedCount++;
+            savedLeads.push({ id: lead.id, name: `${lead.firstName} ${lead.lastName}`.trim() });
+        }
+    }
+
+    logger.info(`Meeting notes: saved to ${savedCount} lead(s), ${duplicates.length} duplicate(s) skipped`);
+    return {
+        success: true,
+        type: 'meeting_notes',
+        provider,
+        leadIds: savedLeads.map(l => l.id),
+        leadNames: savedLeads.map(l => l.name),
+        savedCount,
+        duplicatesSkipped: duplicates.length,
+        duplicates,
+        notFound: notFound.length > 0 ? notFound : undefined,
+        message: leads.length >= 2 ? `Multi-attendee meeting saved to ${savedCount} profile(s)` : undefined
+    };
+}
+
+/**
  * Process a meeting note-taker email
  * @param {Object} client - Client object
  * @param {Object} emailData - Email data (subject, bodyPlain, bodyHtml, etc.)
  * @param {string} provider - Detected provider name
+ * @param {Array<{email?: string, name?: string}>} addToRecipients - Optional "Add to:" recipients
  * @returns {Promise<Object>} Processing result
  */
-async function processMeetingNotetakerEmail(client, emailData, provider) {
+async function processMeetingNotetakerEmail(client, emailData, provider, addToRecipients = []) {
     const { subject, bodyPlain, bodyHtml } = emailData;
     
     logger.info(`Processing ${provider} meeting note-taker email for client ${client.clientId}`);
     logger.info(`Subject: "${subject}"`);
     logger.info(`Body length: ${(bodyPlain || '').length} chars`);
+    if (addToRecipients.length > 0) {
+        logger.info(`Add to: ${addToRecipients.length} recipient(s) specified`);
+    }
     
     // Wrap everything in try-catch to ensure we always respond
     let meetingData = null;
@@ -2116,6 +2228,11 @@ async function processMeetingNotetakerEmail(client, emailData, provider) {
             error: 'parse_error',
             message: `Failed to parse meeting email: ${parseError.message}`
         };
+    }
+    
+    // Multi-lead flow: "Add to: email1, email2" or "Add to: Name1; Name2"
+    if (addToRecipients.length > 0) {
+        return await processMeetingNotetakerMultiLead(client, meetingData, provider, addToRecipients);
     }
     
     if (!meetingData.contactName && !meetingData.contactEmail && !meetingData.company && !meetingData.firstNameOnly && meetingData.alternateNames.length === 0) {
@@ -2562,6 +2679,57 @@ ASH Portal`
  * @param {string} subject - Email subject (optional)
  * @returns {boolean}
  */
+/**
+ * Parse "Add to:" recipients from body (before forward marker) or subject line.
+ * Supports flexible separators: comma, semicolon, or "and".
+ * Examples: "Add to: james@x.com, olivier@y.com" or "Add to: James; Olivier and Guy"
+ * @param {string} body - Email body
+ * @param {string} subject - Email subject
+ * @returns {Array<{email?: string, name?: string}>} Recipients to add meeting notes to
+ */
+function parseAddToRecipients(body, subject = '') {
+    const result = [];
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+    const extractList = (text) => {
+        if (!text || typeof text !== 'string') return [];
+        // Match "Add to:", "add to:", "Also add to:", "Save to:", "For:" (case insensitive)
+        const match = text.match(/(?:add\s+to|also\s+add\s+to|save\s+to|for)\s*:\s*([^\n\[\]]+)/i);
+        if (!match) return [];
+        const listStr = match[1].trim();
+        // Split on comma, semicolon, or " and " (flexible separators)
+        const items = listStr.split(/\s*[,;]\s*|\s+and\s+/i).map(s => s.trim()).filter(Boolean);
+        return items;
+    };
+
+    // Try body first (content before forward marker)
+    const forwardMarker = /-{5,}\s*Forwarded message\s*-{5,}/i;
+    const bodyPreForward = body ? body.split(forwardMarker)[0] : '';
+    let items = extractList(bodyPreForward);
+
+    // Fallback: subject line - e.g. "Fwd: Recap... [add to: james@x.com, olivier@y.com]"
+    if (items.length === 0 && subject) {
+        const subjectMatch = subject.match(/\[?\s*add\s+to\s*:\s*([^\]]+)\]?/i);
+        if (subjectMatch) {
+            const listStr = subjectMatch[1].trim();
+            items = listStr.split(/\s*[,;]\s*|\s+and\s+/i).map(s => s.trim()).filter(Boolean);
+        }
+    }
+
+    for (const item of items) {
+        if (emailRegex.test(item)) {
+            result.push({ email: item.toLowerCase().trim() });
+        } else if (item.length >= 2) {
+            result.push({ name: item });
+        }
+    }
+
+    if (result.length > 0) {
+        logger.info(`Add to: parsed ${result.length} recipient(s): ${result.map(r => r.email || r.name).join(', ')}`);
+    }
+    return result;
+}
+
 function isForwardedEmail(body, subject = '') {
     // Check subject for forward indicators (Fwd:, FW:, Fwd, etc.)
     if (subject) {
@@ -2878,13 +3046,12 @@ async function processInboundEmail(mailgunData) {
         
         if (meetingDetection.isMeetingNotetaker) {
             logger.info(`🎥 Processing ${meetingDetection.provider} meeting note-taker email`);
-            
-            // Process as meeting note-taker (lookup by name, not email)
+            const addToRecipients = parseAddToRecipients(bodyPlain, subject);
             return await processMeetingNotetakerEmail(client, {
                 subject: forwardedRecipients?.subject || subject,
                 bodyPlain,
                 bodyHtml
-            }, meetingDetection.provider);
+            }, meetingDetection.provider, addToRecipients);
         }
     }
 
