@@ -8974,6 +8974,7 @@ router.patch("/api/calendar/update-lead", async (req, res) => {
  * - serviceLevel: "1-Lead Scoring", "2-Post Scoring", etc.
  * 
  * Optional fields:
+ * - coachId: Coach's Client ID (e.g., Guy-Wilson) - saved to Coach field
  * - linkedinUrl: Client's LinkedIn profile URL
  * - timezone: IANA timezone (defaults to Australia/Brisbane)
  * - phone: Phone number
@@ -8992,6 +8993,7 @@ router.post("/api/onboard-client", async (req, res) => {
       wordpressUserId,
       airtableBaseId,
       serviceLevel,
+      coachId,
       linkedinUrl,
       timezone = 'Australia/Brisbane',
       phone,
@@ -9137,6 +9139,7 @@ router.post("/api/onboard-client", async (req, res) => {
     };
     
     // Add optional fields if provided
+    if (coachId) newClientRecord['Coach'] = coachId.trim();
     if (linkedinUrl) newClientRecord['LinkedIn URL'] = linkedinUrl.trim();
     if (phone) newClientRecord['Phone'] = phone.trim();
     if (googleCalendarEmail) newClientRecord[CLIENT_FIELDS.GOOGLE_CALENDAR_EMAIL] = googleCalendarEmail.trim();
@@ -9148,7 +9151,20 @@ router.post("/api/onboard-client", async (req, res) => {
     
     logger.info(`Client ${clientId} created successfully with record ID: ${createdRecord.id}`);
     
-    // Step 5: Create client tasks from templates
+    // Step 5: Generate portal token and save to Airtable
+    let portalToken = null;
+    let portalUrl = null;
+    try {
+      portalToken = crypto.randomBytes(18).toString('base64url');
+      const portalBaseUrl = 'https://pb-webhook-server.vercel.app';
+      portalUrl = `${portalBaseUrl}/?token=${portalToken}`;
+      await masterBase('Clients').update(createdRecord.id, { 'Portal Token': portalToken });
+      logger.info(`Generated portal token for ${clientId}`);
+    } catch (tokenError) {
+      logger.error(`Failed to generate portal token for ${clientId}: ${tokenError.message}`);
+    }
+    
+    // Step 6: Create client tasks from templates
     let taskResult = { tasksCreated: 0 };
     try {
       taskResult = await clientService.createClientTasksFromTemplates(createdRecord.id, clientName);
@@ -9162,6 +9178,8 @@ router.post("/api/onboard-client", async (req, res) => {
       success: true,
       clientId,
       recordId: createdRecord.id,
+      portalToken,
+      portalUrl,
       validation: validationResults,
       createdFields: Object.keys(newClientRecord),
       tasksCreated: taskResult.tasksCreated,
@@ -9325,6 +9343,7 @@ router.put("/api/update-client/:clientId", async (req, res) => {
       wordpressUserId: CLIENT_FIELDS.WORDPRESS_USER_ID,
       airtableBaseId: CLIENT_FIELDS.AIRTABLE_BASE_ID,
       serviceLevel: CLIENT_FIELDS.SERVICE_LEVEL,
+      coachId: 'Coach',
       timezone: CLIENT_FIELDS.TIMEZONE,
       status: CLIENT_FIELDS.STATUS,
       statusManagement: CLIENT_FIELDS.STATUS_MANAGEMENT,
