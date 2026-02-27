@@ -116,6 +116,27 @@ track@mail.australiansidehustles.com.au
 
 **Pro tip**: Set up an email rule/filter to auto-BCC this address.
 
+### Multi-lead meeting notes (Fathom back-to-back meetings)
+
+When you forward a Fathom recap to track@ and want it saved to **multiple leads** (e.g. back-to-back meetings), add an "Add to:" line before the forwarded content or in the subject:
+
+**In the body** (before the forwarded message):
+```
+Add to: james@hotmail.com, olivier@example.com
+```
+
+**In the subject** (optional):
+```
+Fwd: Recap... [add to: james@hotmail.com, olivier@example.com]
+```
+
+**Flexible separators:** Comma, semicolon, or "and" all work:
+- `james@x.com; olivier@y.com`
+- `James McGuire and Olivier Reuland`
+- `james@x.com, olivier@y.com and guy@z.com`
+
+You can use emails or names. The full meeting notes are saved to each matching lead, with a "👥 Multi-attendee meeting" header. Duplicates are skipped per lead (same meeting link = already saved).
+
 ### Email Flow Example
 
 **Client sends:**
