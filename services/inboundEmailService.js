@@ -1208,12 +1208,26 @@ function parseMeetingNotetakerEmail(subject, bodyPlain, bodyHtml, provider) {
         }
     }
     
+    // Look for "X & Y catch up" pattern (e.g. "Keith & Guy catch up") - combine with subject "Sinclair" -> "Keith Sinclair"
+    if (!result.contactName && subjectName && /^\s*[A-Za-zà-ÿ]+\s*$/.test(subjectName.trim())) {
+        const ampMatch = body.match(/^([A-Z][a-zà-ÿ]+)\s+&\s+([A-Z][a-zà-ÿ]+)\s+(?:meeting|catch[\s-]*up|sync|call|check[\s-]*in)?\s*$/im);
+        if (ampMatch) {
+            const first = ampMatch[1].trim();
+            const second = ampMatch[2].trim();
+            const combined = `${first} ${subjectName.trim()}`;
+            const combined2 = `${second} ${subjectName.trim()}`;
+            result.contactName = combined;
+            result.alternateNames.push(combined2);
+            logger.info(`Found "X & Y" pattern: "${first} & ${second}" + subject "${subjectName}" -> trying "${combined}" and "${combined2}"`);
+        }
+    }
+    
     // Look for full name in email body (Fathom shows "Rick Van Driel and Guy meeting" as heading)
     // This catches cases where subject has company name but body has actual person names
     const bodyNamePatterns = [
         // Fathom: "Rick Van Driel and Guy meeting" or "Agnieszka Caruso meeting" as a heading line
         // Must NOT start with Meeting/Call/Recap (those are headings, not names)
-        /^(?!(?:Meeting|Call|Recap|Your)\b)([A-Z][a-zà-ÿ]+(?:\s+[A-Za-zà-ÿ-]+)*(?:\s+and\s+[A-Z][a-zà-ÿ]+)?)\s+meeting\s*$/im,
+        /^(?!(?:Meeting|Call|Recap|Your)\b)([A-Z][a-zà-ÿ]+(?:\s+[A-Za-zà-ÿ-]+)*(?:\s+(?:and|&)\s+[A-Z][a-zà-ÿ]+)?)\s+meeting\s*$/im,
         // Generic: "FirstName LastName" on its own line - but NOT "Meeting With" etc.
         /^(?!(?:Meeting|Call|Recap|Your|View|Watch|Listen)\b)([A-Z][a-zà-ÿ]+\s+[A-Z][a-zà-ÿ]+)\s*$/m
     ];
@@ -1224,10 +1238,11 @@ function parseMeetingNotetakerEmail(subject, bodyPlain, bodyHtml, provider) {
             let bodyName = match[1].trim();
             logger.info(`Found potential name in body: "${bodyName}"`);
             
-            // Check if this contains multiple people: "Rick Van Driel and Guy"
-            // Split on " and " to extract individual names
-            if (bodyName.toLowerCase().includes(' and ')) {
-                const people = bodyName.split(/\s+and\s+/i);
+            // Check if this contains multiple people: "Rick Van Driel and Guy" or "Keith & Guy"
+            // Split on " and " or " & " to extract individual names
+            const hasMultiple = bodyName.toLowerCase().includes(' and ') || bodyName.includes(' & ');
+            if (hasMultiple) {
+                const people = bodyName.split(/\s+(?:and|&)\s+/i);
                 logger.info(`Detected multiple people in meeting: ${people.join(', ')}`);
                 
                 // First person is usually the primary contact (the external person)
@@ -1281,13 +1296,13 @@ function parseMeetingNotetakerEmail(subject, bodyPlain, bodyHtml, provider) {
     if (!result.contactName) {
         logger.info(`No contact name yet, searching body more aggressively`);
         
-        // Look for "FirstName LastName and OtherName meeting" pattern
-        const aggressivePattern = /^([A-Z][a-z]+(?:\s+(?:Van\s+)?[A-Za-z-]+)+)\s+(?:and\s+[A-Z][a-z]+\s+)?meeting/im;
+        // Look for "FirstName LastName and OtherName meeting" or "FirstName LastName & OtherName meeting"
+        const aggressivePattern = /^([A-Z][a-z]+(?:\s+(?:Van\s+)?[A-Za-z-]+)+)\s+(?:(?:and|&)\s+[A-Z][a-z]+\s+)?meeting/im;
         const aggressiveMatch = body.match(aggressivePattern);
         if (aggressiveMatch) {
             const foundName = aggressiveMatch[1].trim();
-            // Extract just the first person if there's "and"
-            const firstPerson = foundName.split(/\s+and\s+/i)[0].trim();
+            // Extract just the first person if there's "and" or "&"
+            const firstPerson = foundName.split(/\s+(?:and|&)\s+/i)[0].trim();
             if (firstPerson.split(/\s+/).length >= 2) {
                 result.contactName = firstPerson;
                 logger.info(`Found person name in body: "${firstPerson}"`);
@@ -2693,10 +2708,16 @@ function parseAddToRecipients(body, subject = '') {
 
     const extractList = (text) => {
         if (!text || typeof text !== 'string') return [];
-        // Match "Add to:", "add to:", "Also add to:", "Save to:", "For:" (case insensitive)
-        const match = text.match(/(?:add\s+to|also\s+add\s+to|save\s+to|for)\s*:\s*([^\n\[\]]+)/i);
+        // Match "Add to:", "add to:", "add keith sinclair", "Also add to:", "Save to:", "For:" (case insensitive)
+        // Colon and "to" are optional so "add keith sinclair" works
+        const match = text.match(/(?:add\s+(?:to\s*)?|also\s+add\s+to|save\s+to|for)\s*:?\s*([^\n\[\]]+)/i);
         if (!match) return [];
         const listStr = match[1].trim();
+        // Skip common false positives (e.g. "add the meeting")
+        const skipPhrases = ['the meeting', 'the notes', 'this', 'meeting', 'notes'];
+        if (skipPhrases.some(p => listStr.toLowerCase() === p || listStr.toLowerCase().startsWith(p + ' '))) {
+            return [];
+        }
         // Split on comma, semicolon, or " and " (flexible separators)
         const items = listStr.split(/\s*[,;]\s*|\s+and\s+/i).map(s => s.trim()).filter(Boolean);
         return items;
@@ -2707,9 +2728,9 @@ function parseAddToRecipients(body, subject = '') {
     const bodyPreForward = body ? body.split(forwardMarker)[0] : '';
     let items = extractList(bodyPreForward);
 
-    // Fallback: subject line - e.g. "Fwd: Recap... [add to: james@x.com, olivier@y.com]"
+    // Fallback: subject line - e.g. "Fwd: Recap... [add to: james@x.com]" or "[add keith sinclair]"
     if (items.length === 0 && subject) {
-        const subjectMatch = subject.match(/\[?\s*add\s+to\s*:\s*([^\]]+)\]?/i);
+        const subjectMatch = subject.match(/\[?\s*add\s+(?:to\s*:?\s*)?([^\]]+)\]?/i);
         if (subjectMatch) {
             const listStr = subjectMatch[1].trim();
             items = listStr.split(/\s*[,;]\s*|\s+and\s+/i).map(s => s.trim()).filter(Boolean);
