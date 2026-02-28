@@ -124,6 +124,26 @@ async function getScoredLeadsCount24h(clientData) {
 }
 
 /**
+ * Check if client has ever had any leads scored (used to skip early-onboarding clients).
+ * @param {Object} clientData - Client data with airtableBaseId
+ * @returns {Promise<boolean>} True if at least one lead has ever been scored
+ */
+async function hasEverHadLeadsScored(clientData) {
+    try {
+        if (!clientData.airtableBaseId) return true; // Can't check - err on side of sending (don't miss valid alerts)
+        const base = clientService.getClientBase(clientData.airtableBaseId);
+        const records = await base('Leads').select({
+            filterByFormula: `{Date Scored} != ''`,
+            maxRecords: 1
+        }).firstPage();
+        return records && records.length > 0;
+    } catch (error) {
+        console.error(`❌ Error checking ever-scored for ${clientData.clientId}:`, error);
+        return true; // Can't check - err on side of sending (don't miss valid alerts)
+    }
+}
+
+/**
  * Look up client in jobTrackingNotes map (case-insensitive, trimmed)
  * @param {Object} jobTrackingNotes - Map of clientName -> leadsProcessed
  * @param {string} clientName - Client name to look up
@@ -224,21 +244,30 @@ async function checkClientScoringActivity(options = {}) {
                                 results.suppressedClients.push({ clientName: client.clientName, clientId: client.clientId, reason: clientResult.suppressReason, ourLeads });
                                 console.log(`⏸️  Suppressing: discrepancy - we scored ${ourLeads} leads`);
                             } else {
-                                // Client in notes with 0 leads - legitimate, send email
-                                clientResult.ourLeadsProcessed = 0;
-                                console.log(`📧 Sending no-leads alert to ${client.clientEmailAddress}`);
-                                const emailResult = await emailNotificationService.sendTemplatedEmail(
-                                    client,
-                                    NO_LEADS_TEMPLATE_ID
-                                );
-                                if (emailResult.success) {
-                                    results.emailsSent++;
-                                    clientResult.emailSent = true;
-                                    console.log(`✅ Alert email sent to ${client.clientEmailAddress}`);
+                                // Client in notes with 0 leads - check if they've ever had leads scored (skip early onboarding)
+                                const everScored = await hasEverHadLeadsScored(client);
+                                if (!everScored) {
+                                    clientResult.suppressed = true;
+                                    clientResult.suppressReason = 'Never had leads scored - early onboarding';
+                                    results.suppressedClients.push({ clientName: client.clientName, clientId: client.clientId, reason: clientResult.suppressReason });
+                                    console.log(`⏸️  Suppressing: never had leads scored (early onboarding)`);
                                 } else {
-                                    results.emailsFailed++;
-                                    clientResult.emailError = emailResult.error;
-                                    console.log(`❌ Failed to send alert email: ${emailResult.error}`);
+                                    // Legitimate: they've had leads scored before, now 0 - send email (e.g. Paul-Faix situation)
+                                    clientResult.ourLeadsProcessed = 0;
+                                    console.log(`📧 Sending no-leads alert to ${client.clientEmailAddress}`);
+                                    const emailResult = await emailNotificationService.sendTemplatedEmail(
+                                        client,
+                                        NO_LEADS_TEMPLATE_ID
+                                    );
+                                    if (emailResult.success) {
+                                        results.emailsSent++;
+                                        clientResult.emailSent = true;
+                                        console.log(`✅ Alert email sent to ${client.clientEmailAddress}`);
+                                    } else {
+                                        results.emailsFailed++;
+                                        clientResult.emailError = emailResult.error;
+                                        console.log(`❌ Failed to send alert email: ${emailResult.error}`);
+                                    }
                                 }
                             }
                         }
@@ -457,5 +486,6 @@ module.exports = {
     checkScoringPipelineHealth,
     parseJobTrackingClientNotes,
     getScoredLeadsCount24h,
+    hasEverHadLeadsScored,
     sendAdminSummary
 };
