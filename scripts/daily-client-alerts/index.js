@@ -5,10 +5,77 @@
 require('dotenv').config();
 const clientService = require('../../services/clientService');
 const emailNotificationService = require('../../services/emailNotificationService');
-const Airtable = require('airtable');
+const airtableClient = require('../../config/airtableClient');
+const { MASTER_TABLES } = require('../../constants/airtableUnifiedConstants');
 
 // Template ID for "no leads scored in 72 hours" emails
 const NO_LEADS_TEMPLATE_ID = 'no-leads-scored-72-hours';
+
+/** Hours to look back for a completed scoring run (technical glitch detection) */
+const PIPELINE_HEALTH_HOURS = 48;
+
+/**
+ * Check if scoring pipeline ran successfully in the last N hours (technical glitch detection).
+ * Returns { healthy: boolean, lastCompletedRun: object|null, systemNotes: string|null, message: string }
+ */
+async function checkScoringPipelineHealth() {
+    try {
+        const base = airtableClient.getMasterClientsBase();
+        const cutoff = new Date(Date.now() - PIPELINE_HEALTH_HOURS * 60 * 60 * 1000).toISOString();
+
+        const records = await base(MASTER_TABLES.JOB_TRACKING).select({
+            filterByFormula: `AND({Status} = 'Completed', IS_AFTER({Start Time}, '${cutoff}'))`,
+            maxRecords: 1,
+            sort: [{ field: 'Start Time', direction: 'desc' }]
+        }).firstPage();
+
+        if (records && records.length > 0) {
+            const r = records[0];
+            const systemNotes = r.get('System Notes') || '';
+            return {
+                healthy: true,
+                lastCompletedRun: { runId: r.get('Run ID'), startTime: r.get('Start Time') },
+                systemNotes,
+                message: `Pipeline healthy: last completed run ${r.get('Run ID')} at ${r.get('Start Time')}`
+            };
+        }
+
+        return {
+            healthy: false,
+            lastCompletedRun: null,
+            systemNotes: null,
+            message: `No completed scoring run in last ${PIPELINE_HEALTH_HOURS} hours - possible technical glitch`
+        };
+    } catch (error) {
+        console.error('❌ Error checking pipeline health:', error);
+        return {
+            healthy: false,
+            lastCompletedRun: null,
+            systemNotes: null,
+            message: `Pipeline health check failed: ${error.message}`
+        };
+    }
+}
+
+/**
+ * Parse Job Tracking System Notes to extract per-client leads processed.
+ * Format: "ClientName: N leads" or "ClientName: N leads (failed); "
+ * @param {string} systemNotes - Raw System Notes from Job Tracking
+ * @returns {Object} Map of clientName (trimmed) -> leadsProcessed (number)
+ */
+function parseJobTrackingClientNotes(systemNotes) {
+    const map = {};
+    if (!systemNotes || typeof systemNotes !== 'string') return map;
+    // Match "ClientName: N leads" or "ClientName: N leads (failed)"
+    const regex = /([^:]+):\s*(\d+)\s+leads(?:\s+\(failed\))?/g;
+    let m;
+    while ((m = regex.exec(systemNotes)) !== null) {
+        const clientName = m[1].trim();
+        const leads = parseInt(m[2], 10);
+        map[clientName] = leads;
+    }
+    return map;
+}
 
 /**
  * Get scored leads count for a client in the last 72 hours
@@ -57,10 +124,31 @@ async function getScoredLeadsCount24h(clientData) {
 }
 
 /**
+ * Look up client in jobTrackingNotes map (case-insensitive, trimmed)
+ * @param {Object} jobTrackingNotes - Map of clientName -> leadsProcessed
+ * @param {string} clientName - Client name to look up
+ * @returns {number|null} leadsProcessed if found, null otherwise
+ */
+function getLeadsFromJobTracking(jobTrackingNotes, clientName) {
+    if (!jobTrackingNotes || typeof jobTrackingNotes !== 'object') return null;
+    const key = (clientName || '').trim();
+    if (jobTrackingNotes[key] !== undefined) return jobTrackingNotes[key];
+    const keyLower = key.toLowerCase();
+    for (const k of Object.keys(jobTrackingNotes)) {
+        if (k.trim().toLowerCase() === keyLower) return jobTrackingNotes[k];
+    }
+    return null;
+}
+
+/**
  * Check all active service level 2+ clients for scoring activity
+ * @param {Object} options - Options
+ * @param {boolean} options.suppressClientAlerts - If true, do not send client emails (e.g. when technical glitch detected)
+ * @param {Object} options.jobTrackingNotes - Map of clientName -> leadsProcessed from most recent completed run
  * @returns {Promise<Object>} Results summary
  */
-async function checkClientScoringActivity() {
+async function checkClientScoringActivity(options = {}) {
+    const { suppressClientAlerts = false, jobTrackingNotes = {} } = options;
     try {
         console.log("🔍 Starting daily client scoring activity check...");
         
@@ -79,7 +167,8 @@ async function checkClientScoringActivity() {
             emailsSent: 0,
             emailsFailed: 0,
             details: [],
-            errors: []
+            errors: [],
+            suppressedClients: []
         };
 
         // Check each client's scoring activity
@@ -98,7 +187,10 @@ async function checkClientScoringActivity() {
                     hasEmail: hasEmail,
                     needsAlert: scoredCount === 0,
                     emailSent: false,
-                    emailError: null
+                    emailError: null,
+                    suppressed: false,
+                    suppressReason: null,
+                    ourLeadsProcessed: null
                 };
 
                 if (scoredCount > 0) {
@@ -111,21 +203,44 @@ async function checkClientScoringActivity() {
                     if (hasEmail) {
                         results.clientsWithEmail++;
                         
-                        // Send alert email
-                        console.log(`📧 Sending no-leads alert to ${client.clientEmailAddress}`);
-                        const emailResult = await emailNotificationService.sendTemplatedEmail(
-                            client,
-                            NO_LEADS_TEMPLATE_ID
-                        );
-                        
-                        if (emailResult.success) {
-                            results.emailsSent++;
-                            clientResult.emailSent = true;
-                            console.log(`✅ Alert email sent to ${client.clientEmailAddress}`);
+                        if (suppressClientAlerts) {
+                            clientResult.suppressed = true;
+                            clientResult.suppressReason = 'Pipeline unhealthy (technical glitch suspected)';
+                            results.suppressedClients.push({ clientName: client.clientName, clientId: client.clientId, reason: clientResult.suppressReason });
+                            console.log(`⏸️  Suppressing client alert (technical glitch suspected)`);
                         } else {
-                            results.emailsFailed++;
-                            clientResult.emailError = emailResult.error;
-                            console.log(`❌ Failed to send alert email: ${emailResult.error}`);
+                            const ourLeads = getLeadsFromJobTracking(jobTrackingNotes, client.clientName);
+                            if (ourLeads === null) {
+                                // Client not in Job Tracking - we didn't process them
+                                clientResult.suppressed = true;
+                                clientResult.suppressReason = 'Not in Job Tracking (we did not process them)';
+                                results.suppressedClients.push({ clientName: client.clientName, clientId: client.clientId, reason: clientResult.suppressReason });
+                                console.log(`⏸️  Suppressing: client not in Job Tracking`);
+                            } else if (ourLeads > 0) {
+                                // Discrepancy: we scored leads but their data shows 0
+                                clientResult.suppressed = true;
+                                clientResult.suppressReason = `Discrepancy: we scored ${ourLeads} leads but their data shows 0`;
+                                clientResult.ourLeadsProcessed = ourLeads;
+                                results.suppressedClients.push({ clientName: client.clientName, clientId: client.clientId, reason: clientResult.suppressReason, ourLeads });
+                                console.log(`⏸️  Suppressing: discrepancy - we scored ${ourLeads} leads`);
+                            } else {
+                                // Client in notes with 0 leads - legitimate, send email
+                                clientResult.ourLeadsProcessed = 0;
+                                console.log(`📧 Sending no-leads alert to ${client.clientEmailAddress}`);
+                                const emailResult = await emailNotificationService.sendTemplatedEmail(
+                                    client,
+                                    NO_LEADS_TEMPLATE_ID
+                                );
+                                if (emailResult.success) {
+                                    results.emailsSent++;
+                                    clientResult.emailSent = true;
+                                    console.log(`✅ Alert email sent to ${client.clientEmailAddress}`);
+                                } else {
+                                    results.emailsFailed++;
+                                    clientResult.emailError = emailResult.error;
+                                    console.log(`❌ Failed to send alert email: ${emailResult.error}`);
+                                }
+                            }
                         }
                     } else {
                         results.clientsWithoutEmail++;
@@ -156,10 +271,16 @@ async function checkClientScoringActivity() {
 /**
  * Send admin summary email about the daily check
  * @param {Object} results - Results from checkClientScoringActivity
+ * @param {Object} options - Options
+ * @param {Object} options.pipelineHealth - Result from checkScoringPipelineHealth
  */
-async function sendAdminSummary(results) {
+async function sendAdminSummary(results, options = {}) {
     try {
         console.log("\n📊 Preparing admin summary email...");
+        const { pipelineHealth } = options;
+        const pipelineSection = pipelineHealth && !pipelineHealth.healthy
+            ? `<p style="color: #b45309;"><strong>⚠️ Technical glitch detected:</strong> ${pipelineHealth.message}. Client alerts were suppressed.</p>`
+            : pipelineHealth ? `<p style="color: #059669;"><strong>✅ Pipeline healthy:</strong> ${pipelineHealth.message}</p>` : '';
 
         const summaryHtml = `
         <h2>Daily Client Scoring Activity Report</h2>
@@ -169,6 +290,7 @@ async function sendAdminSummary(results) {
             month: 'long', 
             day: 'numeric' 
         })}</p>
+        ${pipelineSection}
         
         <h3>Summary</h3>
         <ul>
@@ -190,16 +312,38 @@ async function sendAdminSummary(results) {
             </tr>
             ${results.details
                 .filter(d => d.needsAlert)
-                .map(d => `
+                .map(d => {
+                    let status = d.emailError ? `Error: ${d.emailError}` : d.emailSent ? 'Success' : 'No email address';
+                    if (d.suppressed) status = `Suppressed: ${d.suppressReason}`;
+                    else if (d.emailSent && d.ourLeadsProcessed !== undefined) status = `Success (we processed them, ${d.ourLeadsProcessed} leads scored)`;
+                    return `
                 <tr>
                     <td style="padding: 8px;">${d.clientName} (${d.clientId})</td>
                     <td style="padding: 8px;">${d.clientEmail || 'No email'}</td>
-                    <td style="padding: 8px;">${d.emailSent ? '✅ Yes' : '❌ No'}</td>
-                    <td style="padding: 8px;">${d.emailError ? `Error: ${d.emailError}` : d.emailSent ? 'Success' : 'No email address'}</td>
+                    <td style="padding: 8px;">${d.emailSent ? '✅ Yes' : d.suppressed ? '⏸️ Suppressed' : '❌ No'}</td>
+                    <td style="padding: 8px;">${status}</td>
                 </tr>
-                `).join('')}
+                `;
+                }).join('')}
         </table>
         ` : '<p><em>All clients had scoring activity in the last 48 hours.</em></p>'}
+
+        ${results.suppressedClients && results.suppressedClients.length > 0 ? `
+        <h3>Suppressed Client Emails (No-Leads Email Not Sent)</h3>
+        <p><em>These clients would have received a "no leads scored" email but we suppressed it. Review to ensure we are not falsely suppressing.</em></p>
+        <table border="1" style="border-collapse: collapse; width: 100%;">
+            <tr style="background-color: #fef3c7;">
+                <th style="padding: 8px; text-align: left;">Client</th>
+                <th style="padding: 8px; text-align: left;">Reason</th>
+            </tr>
+            ${results.suppressedClients.map(s => `
+            <tr>
+                <td style="padding: 8px;">${s.clientName} (${s.clientId})</td>
+                <td style="padding: 8px;">${s.reason}</td>
+            </tr>
+            `).join('')}
+        </table>
+        ` : ''}
 
         ${results.errors.length > 0 ? `
         <h3>Errors</h3>
@@ -230,8 +374,33 @@ async function main() {
     console.log(`Timestamp: ${new Date().toISOString()}`);
     
     try {
-        // Check all clients for scoring activity
-        const results = await checkClientScoringActivity();
+        // Technical glitch detection: check if pipeline ran successfully in last 48h
+        const pipelineHealth = await checkScoringPipelineHealth();
+        console.log(`📊 Pipeline health: ${pipelineHealth.message}`);
+        
+        if (!pipelineHealth.healthy) {
+            await emailNotificationService.sendAlertEmail(
+                '⚠️ Scoring Pipeline: Possible Technical Glitch',
+                `<h2>Technical Glitch Detection</h2>
+                <p><strong>${pipelineHealth.message}</strong></p>
+                <p>No completed scoring run found in Job Tracking in the last ${PIPELINE_HEALTH_HOURS} hours.</p>
+                <p>Client alerts have been <strong>suppressed</strong> to avoid misleading "no leads scored" emails.</p>
+                <p><strong>Action:</strong> Investigate Render logs and Job Tracking. Fix before the 3-day window expires.</p>
+                <p><em>Generated at ${new Date().toISOString()}</em></p>`
+            );
+            console.log('📧 Admin alert sent - client alerts suppressed');
+        }
+
+        // Parse Job Tracking notes for per-client validation (only when pipeline healthy)
+        const jobTrackingNotes = pipelineHealth.healthy && pipelineHealth.systemNotes
+            ? parseJobTrackingClientNotes(pipelineHealth.systemNotes)
+            : {};
+
+        // Check all clients for scoring activity (suppress client emails if pipeline unhealthy)
+        const results = await checkClientScoringActivity({
+            suppressClientAlerts: !pipelineHealth.healthy,
+            jobTrackingNotes
+        });
         
         // Log summary
         console.log("\n📊 DAILY CHECK SUMMARY:");
@@ -241,8 +410,8 @@ async function main() {
         console.log(`Alert Emails Sent: ${results.emailsSent}`);
         console.log(`Email Failures: ${results.emailsFailed}`);
         
-        // Send admin summary
-        await sendAdminSummary(results);
+        // Send admin summary (include pipeline health context)
+        await sendAdminSummary(results, { pipelineHealth });
         
         console.log("\n✅ Daily Client Alerts System completed successfully");
         
@@ -285,6 +454,8 @@ if (require.main === module) {
 module.exports = {
     main,
     checkClientScoringActivity,
+    checkScoringPipelineHealth,
+    parseJobTrackingClientNotes,
     getScoredLeadsCount24h,
     sendAdminSummary
 };

@@ -508,19 +508,66 @@ async function updateClientRun(runId, clientId, updates) {
  * @returns {Promise<Object>} The updated record
  */
 async function completeJobRun(runId, success = true, notes = '') {
-  // CRR REDESIGN: Removed END_TIME and STATUS updates (replaced by Progress Log)
   const updates = {};
-  
+  const endTime = new Date().toISOString();
+
   if (notes) {
-    updates[JOB_TRACKING_FIELDS.SYSTEM_NOTES] = `${notes}\nRun ${success ? 'completed' : 'failed'} at ${new Date().toISOString()}`;
+    updates[JOB_TRACKING_FIELDS.SYSTEM_NOTES] = `${notes}\nRun ${success ? 'completed' : 'failed'} at ${endTime}`;
   }
-  
-  // If no updates, just return success without calling Airtable
-  if (Object.keys(updates).length === 0) {
-    return { success: true, message: 'No updates needed (Status/Time fields deprecated)' };
-  }
-  
+
+  // Set Status and End Time so Job Tracking reflects actual completion (fixes stuck "Running" status)
+  updates[JOB_TRACKING_FIELDS.STATUS] = success ? 'Completed' : 'Failed';
+  updates[JOB_TRACKING_FIELDS.END_TIME] = endTime;
+
   return await updateJobTracking(runId, updates);
+}
+
+/**
+ * Append per-client lead scoring info to Job Tracking System Notes (non-destructive).
+ * Use when multiple clients complete independently - each appends their result.
+ * @param {string} runId - Run ID (may include client suffix; base will be used)
+ * @param {string} clientName - Client display name
+ * @param {number} leadsProcessed - Number of leads scored for this client
+ * @param {boolean} success - Whether this client's run succeeded
+ * @returns {Promise<Object>} Update result
+ */
+async function appendLeadScoringToJobTracking(runId, clientName, leadsProcessed, success = true) {
+  const base = initialize();
+  const runIdSystem = require('./runIdSystem');
+  const baseRunId = runIdSystem.getBaseRunId(runIdSystem.validateAndStandardizeRunId(runId));
+  if (!baseRunId) {
+    logger.warn(`appendLeadScoringToJobTracking: Could not get base run ID from ${runId}`);
+    return { skipped: true, reason: 'invalid_run_id' };
+  }
+
+  try {
+    const records = await base(JOB_TRACKING_TABLE).select({
+      filterByFormula: `{${JOB_TRACKING_FIELDS.RUN_ID}} = '${baseRunId}'`,
+      maxRecords: 1
+    }).firstPage();
+
+    if (!records || records.length === 0) {
+      logger.warn(`appendLeadScoringToJobTracking: No Job Tracking record for ${baseRunId}`);
+      return { skipped: true, reason: 'record_not_found' };
+    }
+
+    const record = records[0];
+    const existingNotes = record.get(JOB_TRACKING_FIELDS.SYSTEM_NOTES) || '';
+    const appendText = `${clientName}: ${leadsProcessed} leads${success ? '' : ' (failed)'}; `;
+    const newNotes = existingNotes + appendText;
+    const endTime = new Date().toISOString();
+
+    await base(JOB_TRACKING_TABLE).update(record.id, {
+      [JOB_TRACKING_FIELDS.SYSTEM_NOTES]: newNotes,
+      [JOB_TRACKING_FIELDS.STATUS]: success ? 'Completed' : 'Failed',
+      [JOB_TRACKING_FIELDS.END_TIME]: endTime
+    });
+    logger.info(`appendLeadScoringToJobTracking: Appended "${appendText.trim()}" for ${baseRunId}`);
+    return { success: true };
+  } catch (error) {
+    logger.warn(`appendLeadScoringToJobTracking failed: ${error.message}`);
+    return { success: false, error: error.message };
+  }
 }
 
 // Removed findClientRunByTimestampPrefix function - we now use only exact run ID matching
@@ -707,6 +754,7 @@ module.exports = {
   updateClientRun,
   completeJobRun,
   completeClientRun,
+  appendLeadScoringToJobTracking,
   updateAggregateMetrics,
   checkRunRecordExists
 };

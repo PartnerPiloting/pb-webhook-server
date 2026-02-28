@@ -1059,6 +1059,7 @@ async function run(req, res, dependencies) {
 
                 clientResults.push({
                     clientId,
+                    clientName: client.clientName || clientId,
                     processed: clientProcessed,
                     successful: clientSuccessful,
                     failed: clientFailed,
@@ -1146,6 +1147,7 @@ async function run(req, res, dependencies) {
 
                 clientResults.push({
                     clientId,
+                    clientName: client.clientName || clientId,
                     processed: 0,
                     successful: 0,
                     failed: 0,
@@ -1181,10 +1183,20 @@ async function run(req, res, dependencies) {
                 await airtableService.updateAggregateMetrics(runId);
                 
                 const success = totalFailed === 0;
-                const notes = `Processed ${totalLeadsProcessed} leads across ${clientsToProcess.length} clients`;
-                
-                systemLogger.info(`Completing job tracking record for run ${runId}...`);
-                await airtableService.completeJobRun(runId, success, notes);
+                // Per-client append: each client adds "ClientName: X leads; " to Job Tracking System Notes
+                let anyAppended = false;
+                for (const cr of clientResults) {
+                    const clientName = cr.clientName || cr.clientId || 'Unknown';
+                    const clientSuccess = (cr.failed || 0) === 0;
+                    const appendResult = await airtableService.appendLeadScoringToJobTracking(runId, clientName, cr.processed || 0, clientSuccess);
+                    if (!appendResult.skipped) anyAppended = true;
+                }
+                if (!anyAppended) {
+                    // Fallback: use legacy completeJobRun if append not available (e.g. record not found)
+                    const notes = `Processed ${totalLeadsProcessed} leads across ${clientsToProcess.length} clients`;
+                    systemLogger.info(`Completing job tracking record for run ${runId} (fallback)...`);
+                    await airtableService.completeJobRun(runId, success, notes);
+                }
             } catch (error) {
                 systemLogger.warn(`Failed to update/complete job tracking record: ${error.message}`);
             }
