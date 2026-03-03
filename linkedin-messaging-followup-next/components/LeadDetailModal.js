@@ -200,7 +200,7 @@ const LeadDetailModal = ({
                   {storyError}
                 </p>
               ) : hasRealStory ? (
-                <div className="text-sm text-gray-700 bg-blue-50/50 rounded-md px-3 py-2 border border-blue-100">
+                <div className="text-sm text-gray-700 bg-blue-50/50 rounded-md px-3 py-2 border border-blue-100 max-h-[24rem] overflow-y-auto whitespace-pre-wrap">
                   {storySoFar}
                 </div>
               ) : isAiUnavailableFallback(storySoFar) ? (
