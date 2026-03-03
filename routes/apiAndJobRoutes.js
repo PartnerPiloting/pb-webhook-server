@@ -10971,6 +10971,35 @@ router.get("/api/smart-followup/fathom-debug", async (req, res) => {
 });
 
 // ---------------------------------------------------------------
+// Smart Follow-Up State (Story) for a Single Lead
+// Returns the AI-generated "story so far" for Lead Search detail view
+// ---------------------------------------------------------------
+router.get("/api/smart-followup/state", async (req, res) => {
+  const stateLogger = createLogger({ runId: 'SMART-FUP-STATE', clientId: req.headers['x-client-id'] || 'unknown', operation: 'smart_followup_state' });
+  const { getSmartFollowupStoryForLead } = require('../services/smartFollowUpService');
+
+  try {
+    const clientId = req.headers['x-client-id'] || req.query.clientId;
+    const leadId = req.query.leadId;
+
+    if (!clientId || !leadId) {
+      return res.status(400).json({ success: false, error: 'clientId and leadId are required (x-client-id header and leadId query param)' });
+    }
+
+    const result = await getSmartFollowupStoryForLead(clientId, leadId);
+
+    if (!result) {
+      return res.json({ success: true, story: null });
+    }
+
+    res.json({ success: true, story: result.story || null });
+  } catch (error) {
+    stateLogger.error(`Smart Follow-up state error: ${error.message}`, error.stack);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// ---------------------------------------------------------------
 // Smart Follow-Up Queue Endpoint
 // Returns the follow-up queue from Smart FUP State table
 // Used by the Smart Follow-ups UI page

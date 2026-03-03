@@ -1724,6 +1724,34 @@ export const detectLeadTags = async ({ notes, linkedinMessages, emailContent, le
 };
 
 /**
+ * Get the Smart Follow-up "story so far" for a single lead (for Lead Search detail view).
+ * Returns the AI-generated relationship summary if the lead has a Smart FUP State record.
+ * @param {string} leadId - Lead ID (Airtable record ID from Leads table)
+ * @returns {Promise<{ story: string | null }>}
+ */
+export const getSmartFollowupStory = async (leadId) => {
+  try {
+    const clientId = getCurrentClientId();
+    if (!clientId || !leadId) {
+      return { story: null };
+    }
+
+    const base = getBackendBase();
+    const response = await axios.get(`${base}/api/smart-followup/state`, {
+      params: { leadId },
+      timeout: 10000,
+      headers: getAuthenticatedHeaders()
+    });
+
+    const story = response.data?.story ?? null;
+    return { story };
+  } catch (error) {
+    console.warn('Get Smart Follow-up story error:', error.message);
+    return { story: null };
+  }
+};
+
+/**
  * Get the Smart Follow-up queue from the Smart FUP State table
  * Returns AI-analyzed leads that are due for follow-up
  * Note: Smart-followup routes are at /api/smart-followup/* (not under /api/linkedin)
