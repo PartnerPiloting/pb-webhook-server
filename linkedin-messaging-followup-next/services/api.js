@@ -1831,8 +1831,8 @@ export const getUpcomingMeetingWithLead = async (leadEmail) => {
 
 /**
  * Trigger the Smart Follow-up sweep (rebuild) - populates Smart FUP State via AI analysis
- * Run before starting FUP's for the day. Can take 2-10 min depending on lead count.
- * @returns {Promise<{success: boolean, results: Object}>}
+ * Uses fire-and-forget: returns immediately (202), sweep runs in background. Avoids timeout for large lead counts.
+ * @returns {Promise<{success: boolean, message: string, note?: string}>}
  */
 export const triggerSmartFollowupRebuild = async () => {
   try {
@@ -1843,8 +1843,8 @@ export const triggerSmartFollowupRebuild = async () => {
     
     const base = getBackendBase();
     const response = await axios.get(`${base}/api/smart-followup/sweep`, {
-      params: { clientId },
-      timeout: 600000, // 10 min - sweep can process many leads
+      params: { clientId, async: 'true' },
+      timeout: 15000, // 15s - we expect 202 quickly; sweep runs in background
       headers: getAuthenticatedHeaders()
     });
     
