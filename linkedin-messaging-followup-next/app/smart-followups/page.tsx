@@ -711,12 +711,16 @@ function SmartFollowupsContent() {
               onClick={async () => {
                 setIsRebuilding(true);
                 setError(null);
+                setActionMessage(null);
                 setLoadSeconds(0);
                 const start = Date.now();
                 const timer = setInterval(() => setLoadSeconds(Math.floor((Date.now() - start) / 1000)), 1000);
                 try {
                   await triggerSmartFollowupRebuild();
-                  await loadQueue();
+                  setActionMessage({
+                    type: 'success',
+                    text: 'Rebuild started in background. Refresh in 2–5 minutes to see updated results.'
+                  });
                 } catch (err) {
                   setError(err instanceof Error ? err.message : 'Rebuild failed');
                 } finally {
@@ -728,7 +732,15 @@ function SmartFollowupsContent() {
               className="px-3 py-1.5 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50"
               title="Run AI analysis on due leads and rebuild queue. Use before starting FUP's for the day."
             >
-              {isRebuilding ? `Rebuilding… ${loadSeconds}s` : '🔨 Rebuild'}
+              {isRebuilding ? `Starting… ${loadSeconds}s` : '🔨 Rebuild'}
+            </button>
+            <button
+              onClick={() => { setError(null); loadQueue(); }}
+              disabled={isLoading}
+              className="px-3 py-1.5 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50"
+              title="Refresh the queue to see latest results"
+            >
+              ↻ Refresh
             </button>
           </div>
         </div>

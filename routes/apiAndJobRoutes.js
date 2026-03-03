@@ -11082,29 +11082,43 @@ router.get("/api/smart-followup/sweep", async (req, res) => {
   const sweepLogger = createLogger({ runId: 'SMART-FUP-SWEEP', clientId: 'SYSTEM', operation: 'smart_followup_sweep' });
   const { runSweep } = require('../services/smartFollowUpService');
   
-  try {
-    const { 
-      clientId,      // Optional: specific client to process
-      dryRun,        // 'true' to preview without writing
-      limit,         // Max leads per client (for testing)
-      forceAll       // 'true' to re-analyze ALL leads regardless of notes changes
-    } = req.query;
-    
-    sweepLogger.info(`Smart Follow-Up sweep triggered: clientId=${clientId || 'ALL'}, dryRun=${dryRun}, limit=${limit}, forceAll=${forceAll}`);
-    
-    const results = await runSweep({
-      clientId: clientId || null,
-      dryRun: dryRun === 'true',
-      limit: limit ? parseInt(limit, 10) : null,
-      forceAll: forceAll === 'true'
+  const { 
+    clientId,      // Optional: specific client to process
+    dryRun,        // 'true' to preview without writing
+    limit,         // Max leads per client (for testing)
+    forceAll,      // 'true' to re-analyze ALL leads regardless of notes changes
+    async: asyncMode  // 'true' = fire-and-forget, return 202 immediately
+  } = req.query;
+  
+  const sweepOptions = {
+    clientId: clientId || null,
+    dryRun: dryRun === 'true',
+    limit: limit ? parseInt(limit, 10) : null,
+    forceAll: forceAll === 'true'
+  };
+  
+  sweepLogger.info(`Smart Follow-Up sweep triggered: clientId=${clientId || 'ALL'}, dryRun=${dryRun}, limit=${limit}, forceAll=${forceAll}, async=${asyncMode}`);
+  
+  // Fire-and-forget: return 202 immediately, run sweep in background (avoids timeout for large lead counts)
+  if (asyncMode === 'true') {
+    res.status(202).json({
+      success: true,
+      message: 'Smart Follow-Up sweep started in background',
+      note: 'Refresh the page in 2-5 minutes to see updated results'
     });
-    
+    runSweep(sweepOptions).catch(err => {
+      sweepLogger.error('Background sweep failed:', err.message, err.stack);
+    });
+    return;
+  }
+  
+  try {
+    const results = await runSweep(sweepOptions);
     res.json({
       success: true,
       message: 'Smart Follow-Up sweep complete',
       results
     });
-    
   } catch (error) {
     sweepLogger.error('Smart Follow-Up sweep error:', error.message, error.stack);
     res.status(500).json({
