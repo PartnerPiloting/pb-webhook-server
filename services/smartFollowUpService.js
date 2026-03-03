@@ -415,17 +415,24 @@ Today's date is: ${new Date().toISOString().split('T')[0]}`;
     let responseText = candidate.content.parts[0].text;
     if (typeof responseText !== 'string') responseText = String(responseText || '');
 
-    // Extract JSON - Gemini sometimes wraps in markdown or adds extra text
+    // Extract JSON - same patterns as batchScorer and apiAndJobRoutes (handle markdown, truncation)
     const extractJson = (raw) => {
       const trimmed = raw.trim();
-      // Try direct parse first
+      // 1. Direct parse
       try { return JSON.parse(trimmed); } catch (_) {}
-      // Strip markdown code blocks
-      const codeBlock = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/);
-      if (codeBlock) {
-        try { return JSON.parse(codeBlock[1].trim()); } catch (_) {}
+      // 2. batchScorer-style: strip ```json and ``` from start/end
+      let cleaned = trimmed.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '').trim();
+      try { return JSON.parse(cleaned); } catch (_) {}
+      // 3. apiAndJobRoutes-style: explicit block strip
+      if (trimmed.startsWith('```json')) {
+        cleaned = trimmed.replace(/^```json\n?/, '').replace(/\n?```$/, '').trim();
+        try { return JSON.parse(cleaned); } catch (_) {}
       }
-      // Find first { ... } object
+      if (trimmed.startsWith('```')) {
+        cleaned = trimmed.replace(/^```\n?/, '').replace(/\n?```$/, '').trim();
+        try { return JSON.parse(cleaned); } catch (_) {}
+      }
+      // 4. Find first { ... } object (nested brace matching)
       const start = trimmed.indexOf('{');
       if (start >= 0) {
         let depth = 0;
@@ -438,6 +445,11 @@ Today's date is: ${new Date().toISOString().split('T')[0]}`;
           try { return JSON.parse(trimmed.slice(start, end + 1)); } catch (_) {}
         }
       }
+      // 5. dirty-json fallback (handles malformed/trailing commas etc)
+      try {
+        const dirtyJSON = require('dirty-json');
+        return dirtyJSON.parse(cleaned || trimmed);
+      } catch (_) {}
       return null;
     };
 
