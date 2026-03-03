@@ -180,74 +180,70 @@ const LeadDetailModal = ({
             </div>
           </div>
 
-          {/* Story so far - generated on demand */}
-          <div className="px-6 pt-4 pb-2 border-b border-gray-100">
-            <div className="flex items-center justify-between gap-3 mb-2">
-              <h3 className="text-sm font-medium text-blue-900 flex items-center gap-1.5">
-                <span aria-hidden>📖</span> Story so far
-              </h3>
-              <button
-                type="button"
-                onClick={handleGenerateStory}
-                disabled={storyGenerating}
-                className="text-sm font-medium text-blue-600 hover:text-blue-800 disabled:text-gray-400 disabled:cursor-not-allowed"
-              >
-                {storyGenerating ? 'Generating…' : 'Generate story so far'}
-              </button>
+          {/* Content - Story, Upcoming meeting, then form (match Follow-up Date / Notes heading style) */}
+          <div className="px-6 py-6 space-y-6">
+            {/* Story so far - bold heading like Follow-up Date */}
+            <div className="space-y-3">
+              <h4 className="text-lg font-semibold text-gray-900 border-b border-gray-200 pb-2 flex items-center justify-between gap-3">
+                <span>📖 Story so far</span>
+                <button
+                  type="button"
+                  onClick={handleGenerateStory}
+                  disabled={storyGenerating}
+                  className="text-sm font-medium text-blue-600 hover:text-blue-800 disabled:text-gray-400 disabled:cursor-not-allowed"
+                >
+                  {storyGenerating ? 'Generating…' : 'Generate story so far'}
+                </button>
+              </h4>
+              {storyError ? (
+                <p className="text-sm text-amber-700 bg-amber-50 rounded-md px-3 py-2 border border-amber-200">
+                  {storyError}
+                </p>
+              ) : hasRealStory ? (
+                <div className="text-sm text-gray-700 bg-blue-50/50 rounded-md px-3 py-2 border border-blue-100">
+                  {storySoFar}
+                </div>
+              ) : isAiUnavailableFallback(storySoFar) ? (
+                <p className="text-sm text-amber-700 bg-amber-50 rounded-md px-3 py-2 border border-amber-200">
+                  Story generation failed — please try again.
+                </p>
+              ) : !storyGenerating ? (
+                <p className="text-sm text-gray-500 italic">
+                  Click &quot;Generate story so far&quot; to create a summary from this lead&apos;s notes.
+                </p>
+              ) : null}
             </div>
-            {storyError ? (
-              <p className="text-sm text-amber-700 bg-amber-50 rounded-md px-3 py-2 border border-amber-200">
-                {storyError}
-              </p>
-            ) : hasRealStory ? (
-              <div className="text-sm text-gray-700 bg-blue-50/50 rounded-md px-3 py-2 border border-blue-100">
-                {storySoFar}
-              </div>
-            ) : isAiUnavailableFallback(storySoFar) ? (
-              <p className="text-sm text-amber-700 bg-amber-50 rounded-md px-3 py-2 border border-amber-200">
-                Story generation failed — try again or run Rebuild in Smart Follow-ups.
-              </p>
-            ) : !storyGenerating ? (
-              <p className="text-sm text-gray-500 italic">
-                Click &quot;Generate story so far&quot; to create a summary from this lead&apos;s notes.
-              </p>
-            ) : null}
-          </div>
 
-          {/* Upcoming meeting - check calendar (may be slow) */}
-          <div className="px-6 pt-4 pb-2 border-b border-gray-100">
-            <div className="flex items-center justify-between gap-3 mb-2">
-              <h3 className="text-sm font-medium text-blue-900 flex items-center gap-1.5">
-                <span aria-hidden>📅</span> Upcoming meeting
-              </h3>
-              <button
-                type="button"
-                onClick={handleCheckUpcomingMeeting}
-                disabled={!hasEmail || upcomingMeetingLoading}
-                className="text-sm font-medium text-blue-600 hover:text-blue-800 disabled:text-gray-400 disabled:cursor-not-allowed"
-              >
-                {upcomingMeetingLoading ? 'Checking…' : 'Check calendar'}
-              </button>
+            {/* Upcoming meeting - bold heading like Follow-up Date */}
+            <div className="space-y-3">
+              <h4 className="text-lg font-semibold text-gray-900 border-b border-gray-200 pb-2 flex items-center justify-between gap-3">
+                <span>📅 Upcoming meeting</span>
+                <button
+                  type="button"
+                  onClick={handleCheckUpcomingMeeting}
+                  disabled={!hasEmail || upcomingMeetingLoading}
+                  className="text-sm font-medium text-blue-600 hover:text-blue-800 disabled:text-gray-400 disabled:cursor-not-allowed"
+                >
+                  {upcomingMeetingLoading ? 'Checking…' : 'Check calendar'}
+                </button>
+              </h4>
+              {!hasEmail ? (
+                <p className="text-sm text-gray-500 italic">Add an email to this lead to check your calendar.</p>
+              ) : upcomingMeeting ? (
+                <div className="text-sm text-green-900 bg-green-50 rounded-md px-3 py-2 border border-green-200">
+                  {upcomingMeeting.summary} – {upcomingMeeting.displayDate}
+                </div>
+              ) : upcomingMeetingError ? (
+                <p className={`text-sm rounded-md px-3 py-2 border ${upcomingMeetingError === 'no_meeting' ? 'text-gray-600 bg-gray-50 border-gray-200' : 'text-amber-700 bg-amber-50 border-amber-200'}`}>
+                  {upcomingMeetingError === 'no_meeting' ? 'No upcoming meeting found in the next 90 days.' : upcomingMeetingError}
+                </p>
+              ) : !upcomingMeetingLoading ? (
+                <p className="text-sm text-gray-500 italic">
+                  Click &quot;Check calendar&quot; to see if a meeting is booked (checks next 90 days).
+                </p>
+              ) : null}
             </div>
-            {!hasEmail ? (
-              <p className="text-sm text-gray-500 italic">Add an email to this lead to check your calendar.</p>
-            ) : upcomingMeeting ? (
-              <div className="text-sm text-green-900 bg-green-50 rounded-md px-3 py-2 border border-green-200">
-                {upcomingMeeting.summary} – {upcomingMeeting.displayDate}
-              </div>
-            ) : upcomingMeetingError ? (
-              <p className={`text-sm rounded-md px-3 py-2 border ${upcomingMeetingError === 'no_meeting' ? 'text-gray-600 bg-gray-50 border-gray-200' : 'text-amber-700 bg-amber-50 border-amber-200'}`}>
-                {upcomingMeetingError === 'no_meeting' ? 'No upcoming meeting found in the next 90 days.' : upcomingMeetingError}
-              </p>
-            ) : !upcomingMeetingLoading ? (
-              <p className="text-sm text-gray-500 italic">
-                Click &quot;Check calendar&quot; to see if a meeting is booked (checks next 90 days).
-              </p>
-            ) : null}
-          </div>
-          
-          {/* Content */}
-          <div className="px-6 py-6 h-full">
+
             <LeadDetailForm
               lead={{
                 id: lead.id || lead['Profile Key'],

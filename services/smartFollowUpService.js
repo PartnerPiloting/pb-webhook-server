@@ -245,7 +245,7 @@ function buildCandidateFilter() {
 
 // Model configuration - use GEMINI_MODEL_ID (default gemini-2.5-flash for speed)
 const SMART_FUP_MODEL = process.env.GEMINI_MODEL_ID || 'gemini-2.5-flash';
-const AI_TIMEOUT_MS = 30000; // 30 second timeout
+const AI_TIMEOUT_MS = parseInt(process.env.GEMINI_TIMEOUT_MS || '90000', 10) || 90000; // 90s default (was 30s) - large notes can be slow
 
 /**
  * Build the system prompt for Smart Follow-Up analysis
@@ -1070,6 +1070,11 @@ async function generateStoryForLead(clientId, leadId) {
     const story = aiOutput?.story || '';
     if (!story || !String(story).trim()) {
       return { error: 'Story generation returned empty' };
+    }
+
+    // Detect placeholder when Gemini fails - return error instead of showing it
+    if (String(story).toUpperCase().includes('[AI UNAVAILABLE]')) {
+      return { error: 'AI service temporarily unavailable. Please try again in a moment.' };
     }
 
     return { story: String(story).trim() };
