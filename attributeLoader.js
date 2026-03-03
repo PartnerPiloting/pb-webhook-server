@@ -361,12 +361,41 @@ async function updateAttributeWithClientBase(attributeId, data, clientBase, logg
     if (data.signals !== undefined) updateFields["Signals"] = data.signals;
     if (data.examples !== undefined) updateFields["Examples"] = data.examples;
     
-    if (data.active === true) {
-      updateFields["Active"] = true;
+    // Active: Airtable checkboxes are finicky - must explicitly set true/false, use typecast for conversion
+    // Handle both boolean and string "true"/"false" from JSON/form
+    let activeValue;
+    if (data.active === undefined) activeValue = undefined;
+    else activeValue = (data.active === true || String(data.active).toLowerCase() === 'true');
+    if (activeValue !== undefined) {
+      updateFields["Active"] = activeValue;
+      logger.info('updateAttributeWithClientBase', `Setting Active=${activeValue} (type: ${typeof updateFields["Active"]})`);
     }
-    // If false/undefined, don't include field - Airtable will uncheck automatically
 
-    const record = await clientBase(TABLE_NAME).update(attributeId, updateFields);
+    const table = clientBase(TABLE_NAME);
+    const updateOpts = { typecast: true }; // Helps Airtable accept checkbox boolean values
+
+    let record;
+    try {
+      record = await table.update(attributeId, updateFields, updateOpts);
+    } catch (firstErr) {
+      // Fallback: Airtable checkboxes sometimes reject false when combined with other fields.
+      // Retry with Active-only update if we get INVALID_VALUE or similar.
+      const isCheckboxError = firstErr.message?.includes('cannot accept') ||
+        firstErr.message?.includes('INVALID_VALUE') ||
+        (firstErr.statusCode === 422);
+      if (isCheckboxError && activeValue === false && Object.keys(updateFields).length > 1) {
+        logger.info('updateAttributeWithClientBase', `Retrying Active=false as separate update after: ${firstErr.message}`);
+        // First save non-Active fields
+        const { Active, ...rest } = updateFields;
+        if (Object.keys(rest).length > 0) {
+          await table.update(attributeId, rest, updateOpts);
+        }
+        // Then update Active alone
+        record = await table.update(attributeId, { Active: false }, updateOpts);
+      } else {
+        throw firstErr;
+      }
+    }
     
     // Clear cache since live data changed
     cache = null;
