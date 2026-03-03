@@ -1682,6 +1682,67 @@ router.put('/leads/:id', async (req, res) => {
 });
 
 /**
+ * DELETE /api/linkedin/leads/:id
+ * Delete a lead from Airtable (permanently removes the record)
+ */
+router.delete('/leads/:id', async (req, res) => {
+  logger.info('LinkedIn Routes: DELETE /leads/:id called');
+  logger.info(`LinkedIn Routes: Authenticated client: ${req.client.clientName} (${req.client.clientId})`);
+
+  try {
+    const airtableBase = await getAirtableBase(req);
+    const leadId = req.params.id;
+
+    if (!leadId || typeof leadId !== 'string' || !leadId.trim()) {
+      return res.status(400).json({ error: 'Lead ID is required' });
+    }
+
+    // Verify the record exists before attempting delete (Airtable returns generic error for non-existent records)
+    let record;
+    try {
+      record = await airtableBase('Leads').find(leadId);
+    } catch (findErr) {
+      if (findErr.statusCode === 404) {
+        return res.status(404).json({ error: 'Lead not found' });
+      }
+      throw findErr;
+    }
+
+    if (!record) {
+      return res.status(404).json({ error: 'Lead not found' });
+    }
+
+    // Delete the record from Airtable
+    await airtableBase('Leads').destroy(leadId);
+
+    const deletedLead = {
+      id: record.id,
+      recordId: record.id,
+      firstName: record.fields?.['First Name'],
+      lastName: record.fields?.['Last Name'],
+      linkedinProfileUrl: record.fields?.['LinkedIn Profile URL']
+    };
+
+    logger.info('LinkedIn Routes: Lead deleted successfully:', deletedLead.firstName, deletedLead.lastName);
+    res.json({
+      success: true,
+      message: 'Lead deleted successfully',
+      deleted: deletedLead
+    });
+
+  } catch (error) {
+    logger.error('LinkedIn Routes: Error deleting lead:', error);
+    if (error.statusCode === 404) {
+      return res.status(404).json({ error: 'Lead not found' });
+    }
+    res.status(500).json({
+      error: 'Failed to delete lead',
+      details: error.message
+    });
+  }
+});
+
+/**
  * POST /api/linkedin/leads
  * Creates a new lead in Airtable
  */
