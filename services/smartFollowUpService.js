@@ -283,6 +283,7 @@ ANALYSIS TASK:
 Given the lead's Notes (containing conversation history), you must determine:
 
 1. STORY: A brief 2-3 sentence summary of the relationship so far. What stage are they at? What was discussed?
+   IMPORTANT - Generic content: Scan the EMAIL CORRESPONDENCE section (if present). If you see any generic content the user has SENT to this lead (articles, thought pieces, pieces they wrote, newsletters, value-add content) - include a clear summary of what was sent so they know not to send it again. Examples: "Generic content already sent: Advocacy Pods article." or "No generic content sent." If no email section exists, say "No generic content sent."
 
 2. WAITING_ON: Who should act next?
    - "User" = The lead replied/messaged, and the user (our client) owes a response. This is HIGH priority.
