@@ -1038,6 +1038,31 @@ async function snoozeLead(clientId, leadId, followUpDate, baseId) {
 }
 
 /**
+ * Get Smart FUP State story for a single lead (for Lead Search detail view).
+ * Returns story if the lead has a Smart FUP State record, null otherwise.
+ *
+ * @param {string} clientId - Client ID
+ * @param {string} leadId - Lead ID (Airtable record ID from Leads table)
+ * @returns {Promise<{ story: string } | null>} Story text or null if no record
+ */
+async function getSmartFollowupStoryForLead(clientId, leadId) {
+  try {
+    const existing = await findExistingStateRecord(clientId, leadId);
+    if (!existing || !existing.fields) {
+      return null;
+    }
+    const story = existing.fields[SMART_FUP_STATE_FIELDS.STORY] || '';
+    if (!story || !String(story).trim()) {
+      return { story: '' };
+    }
+    return { story: String(story).trim() };
+  } catch (error) {
+    logger.warn(`Error fetching story for ${clientId}/${leadId}: ${error.message}`);
+    return null;
+  }
+}
+
+/**
  * Acknowledge an AI-suggested date (clears it from the record)
  * User has seen the suggestion and doesn't need it anymore
  * 
@@ -1086,6 +1111,7 @@ module.exports = {
   buildCandidateFilter,
   analyzeLeadNotes,
   getSmartFollowupQueue,
+  getSmartFollowupStoryForLead,
   acknowledgeAiDate,
   snoozeLead,
   LEAD_FIELDS,

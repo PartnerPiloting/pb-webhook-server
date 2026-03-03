@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import HelpButton from './HelpButton';
 import LeadDetailForm from './LeadDetailForm';
+import { getSmartFollowupStory } from '../services/api';
 
 const LeadDetailModal = ({ 
   lead, 
@@ -11,11 +12,46 @@ const LeadDetailModal = ({
   isUpdating = false 
 }) => {
   const [isMounted, setIsMounted] = useState(false);
+  const [storySoFar, setStorySoFar] = useState(null);
+  const [storyLoading, setStoryLoading] = useState(false);
 
   // Fix hydration issues by only rendering on client side
   useEffect(() => {
     setIsMounted(true);
   }, []);
+
+  // Fetch "story so far" when lead is selected (from Smart FUP State)
+  useEffect(() => {
+    if (!isOpen || !lead) {
+      setStorySoFar(null);
+      return;
+    }
+    const leadId = lead.id || lead['Profile Key'];
+    if (!leadId) {
+      setStorySoFar(null);
+      return;
+    }
+    let cancelled = false;
+    setStoryLoading(true);
+    setStorySoFar(null);
+    getSmartFollowupStory(leadId)
+      .then(({ story }) => {
+        if (!cancelled) {
+          setStorySoFar(story);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setStorySoFar(null);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setStoryLoading(false);
+        }
+      });
+    return () => { cancelled = true; };
+  }, [isOpen, lead?.id, lead?.['Profile Key']]);
 
   // Handle escape key
   useEffect(() => {
@@ -99,6 +135,24 @@ const LeadDetailModal = ({
                 </button>
               </div>
             </div>
+          </div>
+
+          {/* Story so far - from Smart FUP State (when available) */}
+          <div className="px-6 pt-4 pb-2 border-b border-gray-100">
+            <h3 className="text-sm font-medium text-blue-900 mb-2 flex items-center gap-1.5">
+              <span aria-hidden>📖</span> Story so far
+            </h3>
+            {storyLoading ? (
+              <div className="text-sm text-gray-500 italic">Loading...</div>
+            ) : storySoFar && storySoFar.trim() ? (
+              <div className="text-sm text-gray-700 bg-blue-50/50 rounded-md px-3 py-2 border border-blue-100">
+                {storySoFar}
+              </div>
+            ) : (
+              <p className="text-sm text-gray-500 italic">
+                No story yet — add to Smart Follow-ups and run Rebuild to generate.
+              </p>
+            )}
           </div>
           
           {/* Content */}
