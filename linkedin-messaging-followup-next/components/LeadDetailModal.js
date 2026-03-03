@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import HelpButton from './HelpButton';
 import LeadDetailForm from './LeadDetailForm';
-import { getSmartFollowupStory } from '../services/api';
+import { generateSmartFollowupStory, getUpcomingMeetingWithLead } from '../services/api';
 
 const LeadDetailModal = ({ 
   lead, 
@@ -13,45 +13,26 @@ const LeadDetailModal = ({
 }) => {
   const [isMounted, setIsMounted] = useState(false);
   const [storySoFar, setStorySoFar] = useState(null);
-  const [storyLoading, setStoryLoading] = useState(false);
+  const [storyGenerating, setStoryGenerating] = useState(false);
+  const [storyError, setStoryError] = useState(null);
+  const [upcomingMeeting, setUpcomingMeeting] = useState(null);
+  const [upcomingMeetingLoading, setUpcomingMeetingLoading] = useState(false);
+  const [upcomingMeetingError, setUpcomingMeetingError] = useState(null);
 
   // Fix hydration issues by only rendering on client side
   useEffect(() => {
     setIsMounted(true);
   }, []);
 
-  // Fetch "story so far" when lead is selected (from Smart FUP State)
+  // Reset story and meeting state when modal closes or lead changes
   useEffect(() => {
     if (!isOpen || !lead) {
       setStorySoFar(null);
-      return;
+      setStoryError(null);
+      setUpcomingMeeting(null);
+      setUpcomingMeetingError(null);
     }
-    const leadId = lead.id || lead['Profile Key'];
-    if (!leadId) {
-      setStorySoFar(null);
-      return;
-    }
-    let cancelled = false;
-    setStoryLoading(true);
-    setStorySoFar(null);
-    getSmartFollowupStory(leadId)
-      .then(({ story }) => {
-        if (!cancelled) {
-          setStorySoFar(story);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setStorySoFar(null);
-        }
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setStoryLoading(false);
-        }
-      });
-    return () => { cancelled = true; };
-  }, [isOpen, lead?.id, lead?.['Profile Key']]);
+  }, [isOpen, lead?.id]);
 
   // Handle escape key
   useEffect(() => {
@@ -83,6 +64,68 @@ const LeadDetailModal = ({
     if (value === null || value === undefined) return '';
     if (typeof value === 'object') return '';
     return String(value);
+  };
+
+  // Treat "[AI Unavailable]..." fallback as "AI failed" - don't show raw technical message
+  const isAiUnavailableFallback = (s) =>
+    s && typeof s === 'string' && s.trim().toUpperCase().includes('[AI UNAVAILABLE]');
+  const hasRealStory = storySoFar && storySoFar.trim() && !isAiUnavailableFallback(storySoFar);
+
+  const notes = (lead?.notes || lead?.['Notes'] || '').trim();
+  const hasNotes = notes.length > 0;
+
+  const handleGenerateStory = async () => {
+    if (!hasNotes) {
+      setStoryError('There are no notes for this lead.');
+      return;
+    }
+    const leadId = lead?.id || lead?.['Profile Key'];
+    if (!leadId) return;
+
+    setStoryError(null);
+    setStoryGenerating(true);
+    try {
+      const result = await generateSmartFollowupStory(leadId);
+      if (result.story) {
+        setStorySoFar(result.story);
+      } else {
+        setStoryError(result.error === 'no_notes' || result.noNotes
+          ? 'There are no notes for this lead.'
+          : (result.error || 'Failed to generate story'));
+      }
+    } catch (err) {
+      setStoryError(err.message || 'Failed to generate story');
+    } finally {
+      setStoryGenerating(false);
+    }
+  };
+
+  const leadEmail = (lead?.email || lead?.['Email'] || '').trim();
+  const hasEmail = leadEmail.length > 0;
+
+  const handleCheckUpcomingMeeting = async () => {
+    if (!hasEmail) {
+      setUpcomingMeetingError('No email for this lead — cannot check calendar.');
+      return;
+    }
+    setUpcomingMeetingError(null);
+    setUpcomingMeeting(null);
+    setUpcomingMeetingLoading(true);
+    try {
+      const result = await getUpcomingMeetingWithLead(leadEmail);
+      if (result?.meeting) {
+        setUpcomingMeeting({ summary: result.meeting.summary, displayDate: result.meeting.displayDate });
+        setUpcomingMeetingError(null);
+      } else {
+        setUpcomingMeeting(null);
+        setUpcomingMeetingError(result?.error ? `Error: ${result.error}` : 'no_meeting');
+      }
+    } catch (err) {
+      setUpcomingMeeting(null);
+      setUpcomingMeetingError(err.message || 'Failed to check calendar.');
+    } finally {
+      setUpcomingMeetingLoading(false);
+    }
   };
 
   return (
@@ -137,22 +180,70 @@ const LeadDetailModal = ({
             </div>
           </div>
 
-          {/* Story so far - from Smart FUP State (when available) */}
+          {/* Story so far - generated on demand */}
           <div className="px-6 pt-4 pb-2 border-b border-gray-100">
-            <h3 className="text-sm font-medium text-blue-900 mb-2 flex items-center gap-1.5">
-              <span aria-hidden>📖</span> Story so far
-            </h3>
-            {storyLoading ? (
-              <div className="text-sm text-gray-500 italic">Loading...</div>
-            ) : storySoFar && storySoFar.trim() ? (
+            <div className="flex items-center justify-between gap-3 mb-2">
+              <h3 className="text-sm font-medium text-blue-900 flex items-center gap-1.5">
+                <span aria-hidden>📖</span> Story so far
+              </h3>
+              <button
+                type="button"
+                onClick={handleGenerateStory}
+                disabled={storyGenerating}
+                className="text-sm font-medium text-blue-600 hover:text-blue-800 disabled:text-gray-400 disabled:cursor-not-allowed"
+              >
+                {storyGenerating ? 'Generating…' : 'Generate story so far'}
+              </button>
+            </div>
+            {storyError ? (
+              <p className="text-sm text-amber-700 bg-amber-50 rounded-md px-3 py-2 border border-amber-200">
+                {storyError}
+              </p>
+            ) : hasRealStory ? (
               <div className="text-sm text-gray-700 bg-blue-50/50 rounded-md px-3 py-2 border border-blue-100">
                 {storySoFar}
               </div>
-            ) : (
-              <p className="text-sm text-gray-500 italic">
-                No story yet — add to Smart Follow-ups and run Rebuild to generate.
+            ) : isAiUnavailableFallback(storySoFar) ? (
+              <p className="text-sm text-amber-700 bg-amber-50 rounded-md px-3 py-2 border border-amber-200">
+                Story generation failed — try again or run Rebuild in Smart Follow-ups.
               </p>
-            )}
+            ) : !storyGenerating ? (
+              <p className="text-sm text-gray-500 italic">
+                Click &quot;Generate story so far&quot; to create a summary from this lead&apos;s notes.
+              </p>
+            ) : null}
+          </div>
+
+          {/* Upcoming meeting - check calendar (may be slow) */}
+          <div className="px-6 pt-4 pb-2 border-b border-gray-100">
+            <div className="flex items-center justify-between gap-3 mb-2">
+              <h3 className="text-sm font-medium text-blue-900 flex items-center gap-1.5">
+                <span aria-hidden>📅</span> Upcoming meeting
+              </h3>
+              <button
+                type="button"
+                onClick={handleCheckUpcomingMeeting}
+                disabled={!hasEmail || upcomingMeetingLoading}
+                className="text-sm font-medium text-blue-600 hover:text-blue-800 disabled:text-gray-400 disabled:cursor-not-allowed"
+              >
+                {upcomingMeetingLoading ? 'Checking…' : 'Check calendar'}
+              </button>
+            </div>
+            {!hasEmail ? (
+              <p className="text-sm text-gray-500 italic">Add an email to this lead to check your calendar.</p>
+            ) : upcomingMeeting ? (
+              <div className="text-sm text-green-900 bg-green-50 rounded-md px-3 py-2 border border-green-200">
+                {upcomingMeeting.summary} – {upcomingMeeting.displayDate}
+              </div>
+            ) : upcomingMeetingError ? (
+              <p className={`text-sm rounded-md px-3 py-2 border ${upcomingMeetingError === 'no_meeting' ? 'text-gray-600 bg-gray-50 border-gray-200' : 'text-amber-700 bg-amber-50 border-amber-200'}`}>
+                {upcomingMeetingError === 'no_meeting' ? 'No upcoming meeting found in the next 90 days.' : upcomingMeetingError}
+              </p>
+            ) : !upcomingMeetingLoading ? (
+              <p className="text-sm text-gray-500 italic">
+                Click &quot;Check calendar&quot; to see if a meeting is booked (checks next 90 days).
+              </p>
+            ) : null}
           </div>
           
           {/* Content */}

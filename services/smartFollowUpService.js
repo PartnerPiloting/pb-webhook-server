@@ -1038,6 +1038,48 @@ async function snoozeLead(clientId, leadId, followUpDate, baseId) {
 }
 
 /**
+ * Generate story on-demand for a single lead (reuses analyzeLeadNotes logic).
+ * Used when user clicks "Generate story so far" in Lead Search detail.
+ *
+ * @param {string} clientId - Client ID
+ * @param {string} leadId - Lead ID (Airtable record ID from Leads table)
+ * @returns {Promise<{ story: string } | { noNotes: true } | { error: string }>}
+ */
+async function generateStoryForLead(clientId, leadId) {
+  try {
+    const client = await getClientById(clientId);
+    if (!client || !client.airtableBaseId) {
+      return { error: 'Client not found' };
+    }
+
+    const clientBase = getClientBase(client.airtableBaseId);
+    const leadRecord = await clientBase('Leads').find(leadId);
+    if (!leadRecord || !leadRecord.fields) {
+      return { error: 'Lead not found' };
+    }
+
+    const notes = leadRecord.fields[LEAD_FIELDS.NOTES] || '';
+    if (!notes || !String(notes).trim()) {
+      return { noNotes: true };
+    }
+
+    const fupInstructions = client.fupInstructions || '';
+    const clientType = client.clientType || 'A - Partner Selection';
+    const aiOutput = await analyzeLeadNotes(leadRecord, fupInstructions, clientType, null);
+
+    const story = aiOutput?.story || '';
+    if (!story || !String(story).trim()) {
+      return { error: 'Story generation returned empty' };
+    }
+
+    return { story: String(story).trim() };
+  } catch (error) {
+    logger.error(`generateStoryForLead failed for ${clientId}/${leadId}: ${error.message}`);
+    return { error: error.message };
+  }
+}
+
+/**
  * Get Smart FUP State story for a single lead (for Lead Search detail view).
  * Returns story if the lead has a Smart FUP State record, null otherwise.
  *
@@ -1112,6 +1154,7 @@ module.exports = {
   analyzeLeadNotes,
   getSmartFollowupQueue,
   getSmartFollowupStoryForLead,
+  generateStoryForLead,
   acknowledgeAiDate,
   snoozeLead,
   LEAD_FIELDS,
