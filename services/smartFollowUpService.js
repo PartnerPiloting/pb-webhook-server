@@ -332,8 +332,9 @@ Return a JSON object with these exact keys:
  * @param {string} [newNotesPortion] - Optional: only the NEW notes to focus on (Decision 17)
  *                                     If provided, AI will focus analysis on new content
  *                                     but still has full notes for context
+ * @param {{ includeErrorOnFallback?: boolean }} [options] - If includeErrorOnFallback, add _aiError to placeholder
  */
-async function analyzeLeadNotes(lead, clientInstructions, clientType, newNotesPortion = null) {
+async function analyzeLeadNotes(lead, clientInstructions, clientType, newNotesPortion = null, options = {}) {
   const fullNotes = lead.fields[LEAD_FIELDS.NOTES] || '';
   const firstName = lead.fields[LEAD_FIELDS.FIRST_NAME] || 'Lead';
   const lastName = lead.fields[LEAD_FIELDS.LAST_NAME] || '';
@@ -343,7 +344,9 @@ async function analyzeLeadNotes(lead, clientInstructions, clientType, newNotesPo
   // If no Gemini client available, fall back to placeholder
   if (!vertexAIClient) {
     logger.warn('Gemini client not available, using placeholder logic');
-    return generatePlaceholderAnalysis(lead, fullNotes, firstName);
+    const out = generatePlaceholderAnalysis(lead, fullNotes, firstName);
+    if (options.includeErrorOnFallback) out._aiError = 'Gemini client not available';
+    return out;
   }
   
   try {
@@ -433,8 +436,9 @@ Today's date is: ${new Date().toISOString().split('T')[0]}`;
     
   } catch (error) {
     logger.error(`AI analysis failed for lead ${lead.id}: ${error.message}`);
-    // Fall back to placeholder on error
-    return generatePlaceholderAnalysis(lead, fullNotes, firstName);
+    const out = generatePlaceholderAnalysis(lead, fullNotes, firstName);
+    if (options.includeErrorOnFallback) out._aiError = error.message;
+    return out;
   }
 }
 
@@ -1065,16 +1069,17 @@ async function generateStoryForLead(clientId, leadId) {
 
     const fupInstructions = client.fupInstructions || '';
     const clientType = client.clientType || 'A - Partner Selection';
-    const aiOutput = await analyzeLeadNotes(leadRecord, fupInstructions, clientType, null);
+    const aiOutput = await analyzeLeadNotes(leadRecord, fupInstructions, clientType, null, { includeErrorOnFallback: true });
 
     const story = aiOutput?.story || '';
     if (!story || !String(story).trim()) {
       return { error: 'Story generation returned empty' };
     }
 
-    // Detect placeholder when Gemini fails - return error instead of showing it
+    // Detect placeholder when Gemini fails - return actual error if we have it
     if (String(story).toUpperCase().includes('[AI UNAVAILABLE]')) {
-      return { error: 'AI service temporarily unavailable. Please try again in a moment.' };
+      const actualError = aiOutput._aiError || 'AI analysis failed';
+      return { error: actualError };
     }
 
     return { story: String(story).trim() };
