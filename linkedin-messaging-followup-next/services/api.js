@@ -1724,6 +1724,37 @@ export const detectLeadTags = async ({ notes, linkedinMessages, emailContent, le
 };
 
 /**
+ * Generate story on-demand for a single lead (uses same AI logic as Smart FUP sweep).
+ * @param {string} leadId - Lead ID (Airtable record ID from Leads table)
+ * @returns {Promise<{ story: string } | { error: string, noNotes?: boolean }>}
+ */
+export const generateSmartFollowupStory = async (leadId) => {
+  try {
+    const clientId = getCurrentClientId();
+    if (!clientId || !leadId) {
+      return { error: 'Client or lead not available' };
+    }
+
+    const base = getBackendBase();
+    const response = await axios.post(`${base}/api/smart-followup/generate-story`, { leadId }, {
+      timeout: 60000,
+      headers: getAuthenticatedHeaders()
+    });
+
+    if (response.data?.success && response.data?.story) {
+      return { story: response.data.story };
+    }
+    return { error: response.data?.message || 'Unknown error' };
+  } catch (error) {
+    const data = error.response?.data;
+    if (data?.error === 'no_notes') {
+      return { error: 'no_notes', noNotes: true };
+    }
+    return { error: data?.message || data?.error || error.message || 'Failed to generate story' };
+  }
+};
+
+/**
  * Get the Smart Follow-up "story so far" for a single lead (for Lead Search detail view).
  * Returns the AI-generated relationship summary if the lead has a Smart FUP State record.
  * @param {string} leadId - Lead ID (Airtable record ID from Leads table)

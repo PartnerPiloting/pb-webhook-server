@@ -10971,6 +10971,38 @@ router.get("/api/smart-followup/fathom-debug", async (req, res) => {
 });
 
 // ---------------------------------------------------------------
+// Smart Follow-Up Generate Story (on-demand)
+// Generates story using same analyzeLeadNotes logic as sweep
+// ---------------------------------------------------------------
+router.post("/api/smart-followup/generate-story", async (req, res) => {
+  const genLogger = createLogger({ runId: 'SMART-FUP-GEN', clientId: req.headers['x-client-id'] || 'unknown', operation: 'generate_story' });
+  const { generateStoryForLead } = require('../services/smartFollowUpService');
+
+  try {
+    const clientId = req.headers['x-client-id'] || req.body.clientId;
+    const leadId = req.body.leadId;
+
+    if (!clientId || !leadId) {
+      return res.status(400).json({ success: false, error: 'clientId and leadId are required (x-client-id header and leadId in body)' });
+    }
+
+    const result = await generateStoryForLead(clientId, leadId);
+
+    if (result.noNotes) {
+      return res.status(400).json({ success: false, error: 'no_notes', message: 'There are no notes for this lead.' });
+    }
+    if (result.error) {
+      return res.status(500).json({ success: false, error: result.error });
+    }
+
+    res.json({ success: true, story: result.story });
+  } catch (error) {
+    genLogger.error(`Generate story error: ${error.message}`, error.stack);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// ---------------------------------------------------------------
 // Smart Follow-Up State (Story) for a Single Lead
 // Returns the AI-generated "story so far" for Lead Search detail view
 // ---------------------------------------------------------------
