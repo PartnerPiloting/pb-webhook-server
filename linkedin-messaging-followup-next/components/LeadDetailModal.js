@@ -184,7 +184,7 @@ const LeadDetailModal = ({
           <div className="px-6 py-6 space-y-6">
             {/* Story so far - bold heading like Follow-up Date */}
             <div className="space-y-3">
-              <h4 className="text-lg font-semibold text-gray-900 border-b border-gray-200 pb-2 flex items-center justify-between gap-3">
+              <h4 className="text-lg font-semibold text-gray-900 border-b border-gray-200 pb-2 flex items-center gap-3">
                 <span>📖 Story so far</span>
                 <button
                   type="button"
@@ -216,7 +216,7 @@ const LeadDetailModal = ({
 
             {/* Upcoming meeting - bold heading like Follow-up Date */}
             <div className="space-y-3">
-              <h4 className="text-lg font-semibold text-gray-900 border-b border-gray-200 pb-2 flex items-center justify-between gap-3">
+              <h4 className="text-lg font-semibold text-gray-900 border-b border-gray-200 pb-2 flex items-center gap-3">
                 <span>📅 Upcoming meeting</span>
                 <button
                   type="button"
