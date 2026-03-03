@@ -412,14 +412,38 @@ Today's date is: ${new Date().toISOString().split('T')[0]}`;
       throw new Error('AI returned no content');
     }
 
-    const responseText = candidate.content.parts[0].text;
-    
-    // Parse the JSON response
-    let aiOutput;
-    try {
-      aiOutput = JSON.parse(responseText);
-    } catch (parseError) {
-      logger.error(`Failed to parse AI response as JSON: ${responseText.substring(0, 200)}`);
+    let responseText = candidate.content.parts[0].text;
+    if (typeof responseText !== 'string') responseText = String(responseText || '');
+
+    // Extract JSON - Gemini sometimes wraps in markdown or adds extra text
+    const extractJson = (raw) => {
+      const trimmed = raw.trim();
+      // Try direct parse first
+      try { return JSON.parse(trimmed); } catch (_) {}
+      // Strip markdown code blocks
+      const codeBlock = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/);
+      if (codeBlock) {
+        try { return JSON.parse(codeBlock[1].trim()); } catch (_) {}
+      }
+      // Find first { ... } object
+      const start = trimmed.indexOf('{');
+      if (start >= 0) {
+        let depth = 0;
+        let end = -1;
+        for (let i = start; i < trimmed.length; i++) {
+          if (trimmed[i] === '{') depth++;
+          if (trimmed[i] === '}') { depth--; if (depth === 0) { end = i; break; } }
+        }
+        if (end > start) {
+          try { return JSON.parse(trimmed.slice(start, end + 1)); } catch (_) {}
+        }
+      }
+      return null;
+    };
+
+    const aiOutput = extractJson(responseText);
+    if (!aiOutput || typeof aiOutput !== 'object') {
+      logger.error(`Failed to parse AI response as JSON: ${responseText.substring(0, 300)}`);
       throw new Error('AI response was not valid JSON');
     }
     
