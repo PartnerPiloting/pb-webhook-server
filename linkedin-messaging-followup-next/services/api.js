@@ -1737,7 +1737,7 @@ export const generateSmartFollowupStory = async (leadId) => {
 
     const base = getBackendBase();
     const response = await axios.post(`${base}/api/smart-followup/generate-story`, { leadId }, {
-      timeout: 60000,
+      timeout: 120000, // 2 min - cold start + large notes can be slow
       headers: getAuthenticatedHeaders()
     });
 
