@@ -142,6 +142,13 @@ function getMasterClientsBase() {
     return createBaseInstance(process.env.MASTER_CLIENTS_BASE_ID);
 }
 
+/**
+ * Alias for getMasterClientsBase - used by runRecordAdapterSimple and other services
+ */
+function getMasterBase() {
+    return getMasterClientsBase();
+}
+
 // Export the initialized base instance (UNCHANGED - maintains backward compatibility)
 module.exports = airtableBaseInstance;
 
@@ -151,3 +158,4 @@ module.exports.getClientBase = getClientBase;
 module.exports.clearBaseCache = clearBaseCache;
 module.exports.getDefaultBase = getDefaultBase;
 module.exports.getMasterClientsBase = getMasterClientsBase;
+module.exports.getMasterBase = getMasterBase;
