@@ -661,6 +661,53 @@ function SmartFollowupsContent() {
     setTimeout(() => instructionsPanelRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
   };
 
+  const handleRebuild = async () => {
+    setIsRebuilding(true);
+    setError(null);
+    setActionMessage(null);
+    setLoadSeconds(0);
+    const start = Date.now();
+    const timer = setInterval(() => setLoadSeconds(Math.floor((Date.now() - start) / 1000)), 1000);
+    try {
+      await triggerSmartFollowupRebuild();
+      setActionMessage({ type: 'success', text: 'Rebuild started. Checking status…' });
+      const pollInterval = 10000;
+      const maxWait = 15 * 60 * 1000;
+      const pollStart = Date.now();
+      const poll = async () => {
+        const status = await getSweepStatus();
+        if (status.status === 'completed') {
+          const r = status.results || {};
+          const errCount = r.totalErrors ?? (r.errors?.length ?? 0);
+          const msg = errCount > 0
+            ? `Rebuild complete. ${r.processed ?? 0} leads processed. ${errCount} had errors.`
+            : `Rebuild complete. ${r.processed ?? 0} leads processed. 0 errors.`;
+          setActionMessage({ type: errCount > 0 ? 'error' : 'success', text: msg });
+          setSweepStatus(status);
+          loadQueue();
+          return;
+        }
+        if (status.status === 'failed') {
+          setActionMessage({ type: 'error', text: `Rebuild failed: ${status.error || 'Unknown error'}` });
+          setSweepStatus(status);
+          return;
+        }
+        if (Date.now() - pollStart < maxWait) {
+          setTimeout(poll, pollInterval);
+        } else {
+          setActionMessage({ type: 'success', text: 'Rebuild may still be running. Try Refresh in a few minutes.' });
+        }
+      };
+      setTimeout(poll, pollInterval);
+      await new Promise(r => setTimeout(r, 3000));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Rebuild failed');
+    } finally {
+      clearInterval(timer);
+      setIsRebuilding(false);
+    }
+  };
+
   const handleCopyMessage = async () => {
     try {
       await navigator.clipboard.writeText(generatedMessage);
@@ -740,53 +787,7 @@ function SmartFollowupsContent() {
               ✏️ Edit instructions
             </button>
             <button
-              onClick={async () => {
-                setIsRebuilding(true);
-                setError(null);
-                setActionMessage(null);
-                setLoadSeconds(0);
-                const start = Date.now();
-                const timer = setInterval(() => setLoadSeconds(Math.floor((Date.now() - start) / 1000)), 1000);
-                try {
-                  await triggerSmartFollowupRebuild();
-                  setActionMessage({ type: 'success', text: 'Rebuild started. Checking status…' });
-                  // Poll for completion (every 10s, max 15 min)
-                  const pollInterval = 10000;
-                  const maxWait = 15 * 60 * 1000;
-                  const pollStart = Date.now();
-                  const poll = async (): Promise<void> => {
-                    const status = await getSweepStatus();
-                    if (status.status === 'completed') {
-                      const r = status.results || {};
-                      const errCount = r.totalErrors ?? (r.errors?.length ?? 0);
-                      const msg = errCount > 0
-                        ? `Rebuild complete. ${r.processed ?? 0} leads processed. ${errCount} had errors.`
-                        : `Rebuild complete. ${r.processed ?? 0} leads processed. 0 errors.`;
-                      setActionMessage({ type: errCount > 0 ? 'error' : 'success', text: msg });
-                      setSweepStatus(status);
-                      loadQueue();
-                      return;
-                    }
-                    if (status.status === 'failed') {
-                      setActionMessage({ type: 'error', text: `Rebuild failed: ${status.error || 'Unknown error'}` });
-                      setSweepStatus(status);
-                      return;
-                    }
-                    if (Date.now() - pollStart < maxWait) {
-                      setTimeout(poll, pollInterval);
-                    } else {
-                      setActionMessage({ type: 'success', text: 'Rebuild may still be running. Try Refresh in a few minutes.' });
-                    }
-                  };
-                  setTimeout(poll, pollInterval);
-                  await new Promise(r => setTimeout(r, 3000));
-                } catch (err) {
-                  setError(err instanceof Error ? err.message : 'Rebuild failed');
-                } finally {
-                  clearInterval(timer);
-                  setIsRebuilding(false);
-                }
-              }}
+              onClick={handleRebuild}
               disabled={isLoading || isRebuilding}
               className="px-3 py-1.5 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50"
               title="Run AI analysis on due leads and rebuild queue. Use before starting FUP's for the day."
@@ -1195,7 +1196,6 @@ function SmartFollowupsContent() {
                       >
                         Skip to next →
                       </button>
-                    </div>
                     </div>
                   </div>
                 </div>
