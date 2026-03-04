@@ -7,6 +7,55 @@ const { MASTER_TABLES, CLIENT_RUN_FIELDS, JOB_TRACKING_FIELDS } = require('../co
 const runIdSystem = require('../services/runIdSystem');
 
 /**
+ * Parse Progress Logs to compute wall clock and total processing time
+ * Progress Log format: [HH:mm:ss] Message (e.g. [12:01:28] ✅ Lead Scoring: Completed (10/10, 195s, 123 tokens))
+ */
+function computeProcessingTimeFromProgressLogs(progressLogs) {
+  const result = { wallClockSeconds: null, totalComputeSeconds: null, formatted: null };
+  if (!progressLogs || progressLogs.length === 0) return result;
+
+  const allText = progressLogs.join('\n');
+  const timestampRe = /\[(\d{1,2}):(\d{2}):(\d{2})\]/g;
+  const durationRe = /(\d+)s/g; // Match "195s", "5s" etc. in Completed lines
+
+  let minSec = Infinity;
+  let maxSec = -Infinity;
+  let match;
+  while ((match = timestampRe.exec(allText)) !== null) {
+    const sec = parseInt(match[1], 10) * 3600 + parseInt(match[2], 10) * 60 + parseInt(match[3], 10);
+    minSec = Math.min(minSec, sec);
+    maxSec = Math.max(maxSec, sec);
+  }
+
+  let totalCompute = 0;
+  while ((match = durationRe.exec(allText)) !== null) {
+    totalCompute += parseInt(match[1], 10);
+  }
+
+  if (minSec !== Infinity && maxSec !== -Infinity) {
+    result.wallClockSeconds = maxSec - minSec;
+  }
+  if (totalCompute > 0) {
+    result.totalComputeSeconds = totalCompute;
+  }
+
+  const parts = [];
+  if (result.wallClockSeconds != null) {
+    const m = Math.floor(result.wallClockSeconds / 60);
+    const s = result.wallClockSeconds % 60;
+    parts.push(`Wall clock: ${m}m ${s}s`);
+  }
+  if (result.totalComputeSeconds != null) {
+    const m = Math.floor(result.totalComputeSeconds / 60);
+    const s = result.totalComputeSeconds % 60;
+    parts.push(`Total compute: ${m}m ${s}s`);
+  }
+  result.formatted = parts.length ? parts.join(' | ') : null;
+
+  return result;
+}
+
+/**
  * Run the Client Run Results diagnostic
  * @param {string} [runIdArg] - Optional specific run ID to check
  * @returns {Promise<Object>} Diagnostic result
@@ -82,19 +131,24 @@ async function runDiagnostic(runIdArg = null) {
           hasMetrics,
           profilesScored: profilesScored ?? null,
           postsScored: postsScored ?? null,
-          progressLogPreview: hasProgressLog ? progressLog.trim().split('\n').slice(-3).join('\n') : null
+          progressLogPreview: hasProgressLog ? progressLog.trim().split('\n').slice(-3).join('\n') : null,
+          progressLogFull: hasProgressLog ? progressLog : null
         };
       });
 
       const withProgressLog = records.filter(r => r.hasProgressLog).length;
       const withMetrics = records.filter(r => r.hasMetrics).length;
 
-      result.clientRunResults.records = records;
+      // Compute total processing time from Progress Log
+      const timing = computeProcessingTimeFromProgressLogs(records.map(r => r.progressLogFull).filter(Boolean));
+
+      result.clientRunResults.records = records.map(({ progressLogFull, ...r }) => r);
       result.clientRunResults.summary = {
         total: records.length,
         withProgressLog,
         withMetrics
       };
+      result.clientRunResults.processingTime = timing;
 
       result.success = true;
 
