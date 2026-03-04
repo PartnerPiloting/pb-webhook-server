@@ -187,6 +187,67 @@ function SmartFollowupsContent() {
     }
   }, [isOwner]);
 
+  // Check sweep status on mount (e.g. user returned after navigating away during rebuild)
+  useEffect(() => {
+    if (!isOwner) return;
+    let cancelled = false;
+    const check = async () => {
+      const status = await getSweepStatus();
+      if (cancelled) return;
+      if (status.status === 'running') {
+        setIsRebuilding(true);
+        setActionMessage({ type: 'success', text: 'Rebuild in progress. Please wait – this ensures you\'re working with the latest analysis.' });
+        const poll = async () => {
+          if (cancelled) return;
+          const s = await getSweepStatus();
+          if (cancelled) return;
+          if (s.status === 'completed') {
+            const r = s.results || {};
+            const candidates = r.candidatesFound ?? r.processed ?? 0;
+            const processed = r.processed ?? 0;
+            const aiAnalyzed = r.aiAnalyzed ?? 0;
+            const errCount = r.totalErrors ?? (r.errors?.length ?? 0);
+            const msg = candidates === 0
+              ? 'Rebuild complete. 0 leads in Leads table matched the sweep filter (due date or modified in last 7 days). Queue may still show leads from earlier runs.'
+              : errCount > 0
+                ? `Rebuild complete. ${candidates} candidates found, ${processed} processed (${aiAnalyzed} AI-analyzed). ${errCount} had errors.`
+                : `Rebuild complete. ${candidates} candidates found, ${processed} processed (${aiAnalyzed} AI-analyzed). 0 errors.`;
+            setActionMessage({ type: errCount > 0 ? 'error' : 'success', text: msg });
+            setSweepStatus(s);
+            loadQueue();
+            setIsRebuilding(false);
+            return;
+          }
+          if (s.status === 'failed') {
+            setActionMessage({ type: 'error', text: `Rebuild failed: ${s.error || 'Unknown error'}` });
+            setSweepStatus(s);
+            setIsRebuilding(false);
+            return;
+          }
+          setTimeout(poll, 10000);
+        };
+        setTimeout(poll, 10000);
+      } else if (status.status === 'completed' || status.status === 'failed') {
+        const r = status.results || {};
+        const candidates = r.candidatesFound ?? r.processed ?? 0;
+        const processed = r.processed ?? 0;
+        const aiAnalyzed = r.aiAnalyzed ?? 0;
+        const errCount = r.totalErrors ?? (r.errors?.length ?? 0);
+        const msg = status.status === 'failed'
+          ? `Rebuild failed: ${status.error || 'Unknown error'}`
+          : candidates === 0
+            ? 'Rebuild complete. 0 leads in Leads table matched the sweep filter (due date or modified in last 7 days). Queue may still show leads from earlier runs.'
+            : errCount > 0
+              ? `Rebuild complete. ${candidates} candidates found, ${processed} processed (${aiAnalyzed} AI-analyzed). ${errCount} had errors.`
+              : `Rebuild complete. ${candidates} candidates found, ${processed} processed (${aiAnalyzed} AI-analyzed). 0 errors.`;
+        setActionMessage({ type: status.status === 'failed' || errCount > 0 ? 'error' : 'success', text: msg });
+        setSweepStatus(status);
+      }
+    };
+    check();
+    return () => { cancelled = true; };
+  }, [isOwner]);
+
   // Auto-refresh on tab visibility
   useEffect(() => {
     const handleVisibilityChange = () => {
@@ -670,7 +731,7 @@ function SmartFollowupsContent() {
     const timer = setInterval(() => setLoadSeconds(Math.floor((Date.now() - start) / 1000)), 1000);
     try {
       await triggerSmartFollowupRebuild();
-      setActionMessage({ type: 'success', text: 'Rebuild started. Checking status…' });
+      setActionMessage({ type: 'success', text: 'Rebuild in progress. Please wait – this ensures you\'re working with the latest analysis.' });
       const pollInterval = 10000;
       const maxWait = 15 * 60 * 1000;
       const pollStart = Date.now();
@@ -678,10 +739,18 @@ function SmartFollowupsContent() {
         const status = await getSweepStatus();
         if (status.status === 'completed') {
           const r = status.results || {};
+          const candidates = r.candidatesFound ?? r.processed ?? 0;
+          const processed = r.processed ?? 0;
+          const aiAnalyzed = r.aiAnalyzed ?? 0;
           const errCount = r.totalErrors ?? (r.errors?.length ?? 0);
-          const msg = errCount > 0
-            ? `Rebuild complete. ${r.processed ?? 0} leads processed. ${errCount} had errors.`
-            : `Rebuild complete. ${r.processed ?? 0} leads processed. 0 errors.`;
+          let msg: string;
+          if (candidates === 0) {
+            msg = 'Rebuild complete. 0 leads in Leads table matched the sweep filter (due date or modified in last 7 days). Queue may still show leads from earlier runs.';
+          } else if (errCount > 0) {
+            msg = `Rebuild complete. ${candidates} candidates found, ${processed} processed (${aiAnalyzed} AI-analyzed). ${errCount} had errors.`;
+          } else {
+            msg = `Rebuild complete. ${candidates} candidates found, ${processed} processed (${aiAnalyzed} AI-analyzed). 0 errors.`;
+          }
           setActionMessage({ type: errCount > 0 ? 'error' : 'success', text: msg });
           setSweepStatus(status);
           loadQueue();
