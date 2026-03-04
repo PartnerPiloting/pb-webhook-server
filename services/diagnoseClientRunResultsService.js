@@ -29,7 +29,7 @@ async function runDiagnostic(runIdArg = null) {
         filterByFormula: runIdArg
           ? `FIND('${runIdArg}', {${JOB_TRACKING_FIELDS.RUN_ID}}) > 0`
           : '{Stream} >= 1',
-        sort: [{ field: 'Last Updated', direction: 'desc' }],
+        sort: [{ field: JOB_TRACKING_FIELDS.RUN_ID, direction: 'desc' }],
         maxRecords: runIdArg ? 5 : 10
       }).firstPage();
 
@@ -127,7 +127,7 @@ async function getMostRecentSmartResumeRunId(masterBase) {
   try {
     const records = await masterBase(MASTER_TABLES.JOB_TRACKING).select({
       filterByFormula: '{Stream} >= 1',
-      sort: [{ field: 'Last Updated', direction: 'desc' }],
+      sort: [{ field: JOB_TRACKING_FIELDS.RUN_ID, direction: 'desc' }],
       maxRecords: 1
     }).firstPage();
     return records?.[0]?.get(JOB_TRACKING_FIELDS.RUN_ID) || null;
