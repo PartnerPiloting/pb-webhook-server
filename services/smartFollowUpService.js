@@ -363,7 +363,7 @@ async function analyzeLeadNotes(lead, clientInstructions, clientType, newNotesPo
       generationConfig: {
         temperature: 0.3, // Slightly creative but mostly deterministic
         responseMimeType: 'application/json',
-        maxOutputTokens: 1024
+        maxOutputTokens: 2048  // Increased from 1024 - story + generic content can be long
       }
     });
 
