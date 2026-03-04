@@ -1902,7 +1902,7 @@ export const triggerSmartFollowupRebuild = async () => {
     
     const base = getBackendBase();
     const response = await axios.get(`${base}/api/smart-followup/sweep`, {
-      params: { clientId, async: 'true' },
+      params: { clientId, async: 'true', forceAll: 'true' },
       timeout: 15000, // 15s - we expect 202 quickly; sweep runs in background
       headers: getAuthenticatedHeaders()
     });
@@ -1911,6 +1911,26 @@ export const triggerSmartFollowupRebuild = async () => {
   } catch (error) {
     console.error('Smart Follow-up rebuild error:', error.message);
     throw error;
+  }
+};
+
+/**
+ * Get sweep status (for polling after Rebuild).
+ * @returns {Promise<{status: string, startedAt?: string, completedAt?: string, results?: object, error?: string}>}
+ */
+export const getSweepStatus = async () => {
+  try {
+    const clientId = getCurrentClientId();
+    if (!clientId) return { status: 'none' };
+    const base = getBackendBase();
+    const response = await axios.get(`${base}/api/smart-followup/sweep-status`, {
+      params: { clientId },
+      headers: getAuthenticatedHeaders()
+    });
+    return response.data;
+  } catch (err) {
+    console.warn('Get sweep status error:', err.message);
+    return { status: 'none' };
   }
 };
 

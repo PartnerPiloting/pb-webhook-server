@@ -11135,6 +11135,22 @@ router.post("/api/smart-followup/acknowledge", async (req, res) => {
 });
 
 // ---------------------------------------------------------------
+// Smart Follow-Up Sweep Status (in-memory, per clientId)
+// ---------------------------------------------------------------
+const sweepStatusByClient = {};
+function setSweepStatus(clientId, status, resultsOrError) {
+  const key = clientId || 'ALL';
+  const now = new Date().toISOString();
+  const prev = sweepStatusByClient[key];
+  sweepStatusByClient[key] = {
+    status,
+    startedAt: status === 'running' ? now : (prev?.startedAt || now),
+    completedAt: status !== 'running' ? now : null,
+    ...(resultsOrError || {})
+  };
+}
+
+// ---------------------------------------------------------------
 // Smart Follow-Up Sweep Endpoint
 // Runs the daily sweep to populate Smart FUP State table
 // Can be triggered manually or by cron
@@ -11162,14 +11178,30 @@ router.get("/api/smart-followup/sweep", async (req, res) => {
   
   // Fire-and-forget: return 202 immediately, run sweep in background (avoids timeout for large lead counts)
   if (asyncMode === 'true') {
+    const cid = clientId || null;
+    setSweepStatus(cid, 'running');
     res.status(202).json({
       success: true,
       message: 'Smart Follow-Up sweep started in background',
       note: 'Refresh the page in 2-5 minutes to see updated results'
     });
-    runSweep(sweepOptions).catch(err => {
-      sweepLogger.error('Background sweep failed:', err.message, err.stack);
-    });
+    runSweep(sweepOptions)
+      .then((results) => {
+        const allErrors = (results.clients || []).flatMap(c => (c.errors || []).map(e => ({ ...e, clientId: c.clientId })));
+        setSweepStatus(cid, 'completed', {
+          results: {
+            processed: results.totalProcessed || 0,
+            created: results.totalCreated || 0,
+            updated: results.totalUpdated || 0,
+            errors: allErrors,
+            totalErrors: allErrors.length
+          }
+        });
+      })
+      .catch(err => {
+        sweepLogger.error('Background sweep failed:', err.message, err.stack);
+        setSweepStatus(cid, 'failed', { error: err.message });
+      });
     return;
   }
   
@@ -11187,6 +11219,19 @@ router.get("/api/smart-followup/sweep", async (req, res) => {
       error: error.message
     });
   }
+});
+
+// ---------------------------------------------------------------
+// Smart Follow-Up Sweep Status (for polling after Rebuild)
+// ---------------------------------------------------------------
+router.get("/api/smart-followup/sweep-status", async (req, res) => {
+  const { clientId } = req.query;
+  const key = clientId || 'ALL';
+  const status = sweepStatusByClient[key];
+  if (!status) {
+    return res.json({ status: 'none', message: 'No recent sweep for this client' });
+  }
+  res.json(status);
 });
 
 module.exports = router;

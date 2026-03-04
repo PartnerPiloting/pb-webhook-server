@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef, Suspense } from 'react';
 import Layout from '../../components/Layout';
-import { getSmartFollowupQueue, acknowledgeAiDate, generateFollowupMessage, updateLead, getLeadById, snoozeSmartFollowup, triggerSmartFollowupRebuild, replaceFupInstructions, reviewFupInstructions, getUpcomingMeetingWithLead } from '../../services/api';
+import { getSmartFollowupQueue, acknowledgeAiDate, generateFollowupMessage, updateLead, getLeadById, snoozeSmartFollowup, triggerSmartFollowupRebuild, getSweepStatus, generateSmartFollowupStory, replaceFupInstructions, reviewFupInstructions, getUpcomingMeetingWithLead } from '../../services/api';
 import { getCurrentClientId, getClientProfile, getCurrentClientProfile, buildAuthUrl } from '../../utils/clientUtils';
 
 /**
@@ -127,6 +127,10 @@ function SmartFollowupsContent() {
   const [currentFollowUpYes, setCurrentFollowUpYes] = useState(true);
   const [draftFollowUpYes, setDraftFollowUpYes] = useState(true);
   const [isSavingFup, setIsSavingFup] = useState(false);
+  const [storySoFar, setStorySoFar] = useState<string | null>(null);
+  const [storyGenerating, setStoryGenerating] = useState(false);
+  const [storyError, setStoryError] = useState<string | null>(null);
+  const [sweepStatus, setSweepStatus] = useState<{ results?: { errors?: Array<{ leadName?: string; error?: string }> }; error?: string } | null>(null);
   
   const chatInputRef = useRef<HTMLTextAreaElement>(null);
   const instructionsPanelRef = useRef<HTMLDivElement>(null);
@@ -243,6 +247,8 @@ function SmartFollowupsContent() {
     setGeneratedMessage(item.suggestedMessage || '');
     setChatHistory([]);
     setActionMessage(null);
+    setStorySoFar(null);
+    setStoryError(null);
     setLeadNotes('');
     setLeadLinkedinMessages('');
     setUpcomingMeeting(null);
@@ -286,6 +292,31 @@ function SmartFollowupsContent() {
   /**
    * Acknowledge the AI-suggested date (clears it)
    */
+  const handleGenerateStory = async () => {
+    if (!selectedItem) return;
+    const notes = leadNotes || selectedItem.notes || '';
+    if (!notes.trim()) {
+      setStoryError('There are no notes for this lead.');
+      return;
+    }
+    setStoryError(null);
+    setStoryGenerating(true);
+    try {
+      const result = await generateSmartFollowupStory(selectedItem.leadId);
+      if (result.story) {
+        setStorySoFar(result.story);
+      } else {
+        setStoryError(result.error === 'no_notes' || result.noNotes
+          ? 'There are no notes for this lead.'
+          : (result.error || 'Failed to generate story'));
+      }
+    } catch (err) {
+      setStoryError(err instanceof Error ? err.message : 'Failed to generate story');
+    } finally {
+      setStoryGenerating(false);
+    }
+  };
+
   const handleAcknowledgeAiDate = async () => {
     if (!selectedItem || !selectedItem.aiSuggestedDate) return;
     
@@ -314,7 +345,7 @@ function SmartFollowupsContent() {
         clientType: client?.clientType || 'A - Partner Selection',
         fupInstructions: client?.fupInstructions || '',
         context: {
-          story: selectedItem.story,
+          story: storySoFar || selectedItem.story || '',
           waitingOn: selectedItem.waitingOn,
           priority: selectedItem.priority,
           name: getDisplayName(selectedItem),
@@ -517,7 +548,7 @@ function SmartFollowupsContent() {
         images: imagesToSend.length > 0 ? imagesToSend : undefined,
         chatHistory: chatHistory.map(m => ({ role: m.role, content: m.content })),
         context: {
-          story: selectedItem.story,
+          story: storySoFar || selectedItem.story || '',
           notes: leadNotes,
           fathomTranscripts: selectedItem.fathomTranscripts,
           name: getDisplayName(selectedItem),
@@ -718,11 +749,36 @@ function SmartFollowupsContent() {
                 const timer = setInterval(() => setLoadSeconds(Math.floor((Date.now() - start) / 1000)), 1000);
                 try {
                   await triggerSmartFollowupRebuild();
-                  setActionMessage({
-                    type: 'success',
-                    text: 'Rebuild started in background. Refresh in 2–5 minutes to see updated results.'
-                  });
-                  // Keep "Rebuild started" state for 3s so user sees clear feedback
+                  setActionMessage({ type: 'success', text: 'Rebuild started. Checking status…' });
+                  // Poll for completion (every 10s, max 15 min)
+                  const pollInterval = 10000;
+                  const maxWait = 15 * 60 * 1000;
+                  const pollStart = Date.now();
+                  const poll = async (): Promise<void> => {
+                    const status = await getSweepStatus();
+                    if (status.status === 'completed') {
+                      const r = status.results || {};
+                      const errCount = r.totalErrors ?? (r.errors?.length ?? 0);
+                      const msg = errCount > 0
+                        ? `Rebuild complete. ${r.processed ?? 0} leads processed. ${errCount} had errors.`
+                        : `Rebuild complete. ${r.processed ?? 0} leads processed. 0 errors.`;
+                      setActionMessage({ type: errCount > 0 ? 'error' : 'success', text: msg });
+                      setSweepStatus(status);
+                      loadQueue();
+                      return;
+                    }
+                    if (status.status === 'failed') {
+                      setActionMessage({ type: 'error', text: `Rebuild failed: ${status.error || 'Unknown error'}` });
+                      setSweepStatus(status);
+                      return;
+                    }
+                    if (Date.now() - pollStart < maxWait) {
+                      setTimeout(poll, pollInterval);
+                    } else {
+                      setActionMessage({ type: 'success', text: 'Rebuild may still be running. Try Refresh in a few minutes.' });
+                    }
+                  };
+                  setTimeout(poll, pollInterval);
                   await new Promise(r => setTimeout(r, 3000));
                 } catch (err) {
                   setError(err instanceof Error ? err.message : 'Rebuild failed');
@@ -738,7 +794,7 @@ function SmartFollowupsContent() {
               {isRebuilding ? (loadSeconds >= 3 ? 'Rebuild started ✓' : `Starting… ${loadSeconds}s`) : '🔨 Rebuild'}
             </button>
             <button
-              onClick={() => { setError(null); setActionMessage(null); loadQueue(); }}
+              onClick={() => { setError(null); setActionMessage(null); setSweepStatus(null); loadQueue(); }}
               disabled={isLoading}
               className="px-3 py-1.5 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50"
               title="Refresh the queue to see latest results"
@@ -749,10 +805,22 @@ function SmartFollowupsContent() {
           </div>
           {/* Success/error message - always visible in header */}
           {actionMessage && (
-            <div className={`text-sm px-3 py-1.5 rounded-lg ${
-              actionMessage.type === 'success' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'
-            }`}>
-              {actionMessage.text}
+            <div className="space-y-1">
+              <div className={`text-sm px-3 py-1.5 rounded-lg ${
+                actionMessage.type === 'success' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'
+              }`}>
+                {actionMessage.text}
+              </div>
+              {sweepStatus?.results?.errors && sweepStatus.results.errors.length > 0 && (
+                <details className="text-xs text-gray-600 px-3 py-1">
+                  <summary className="cursor-pointer hover:text-gray-800">Show error details</summary>
+                  <ul className="mt-1 list-disc list-inside space-y-0.5">
+                    {sweepStatus.results.errors.map((e, i) => (
+                      <li key={i}>{e.leadName || 'Lead'}: {e.error || 'Unknown'}</li>
+                    ))}
+                  </ul>
+                </details>
+              )}
             </div>
           )}
         </div>
@@ -953,78 +1021,8 @@ function SmartFollowupsContent() {
                   </div>
                 </div>
 
-                {/* Main content: outer scroll - chat (large) + input, then notes */}
-                <div className="flex-1 flex flex-col min-h-0">
-                  {/* Scrollable content area - chat scrolls out of view with notes */}
-                  <div className="flex-1 overflow-y-auto min-h-0">
-                    {/* Chat - large area, input directly under */}
-                    <div className="min-h-[400px] flex flex-col bg-gray-50/50">
-                      <div className="flex-1 p-4 space-y-2">
-                        {chatHistory.length === 0 ? (
-                          <p className="text-sm text-gray-500 py-4">
-                            Ask anything about this lead – e.g. &quot;What did we discuss last time?&quot;, &quot;Prepare talking points for this call&quot;, &quot;Any follow-up Zoom booked?&quot;
-                          </p>
-                        ) : (
-                          chatHistory.map((msg, i) => (
-                            <div key={i} className={`text-sm p-3 rounded-lg max-w-[85%] ${msg.role === 'user' ? 'bg-blue-100 text-blue-800 ml-auto' : 'bg-white border border-gray-200 text-gray-800'}`}>
-                              {msg.images && msg.images.length > 0 && (
-                                <div className="mb-2 flex flex-wrap gap-2">
-                                  {msg.images.map((img, j) => (
-                                    <img key={j} src={`data:${img.mimeType || 'image/png'};base64,${img.data}`} alt="Pasted" className="max-w-[200px] max-h-[150px] rounded border border-gray-200" />
-                                  ))}
-                                </div>
-                              )}
-                              {msg.content}
-                              {msg.role === 'assistant' && msg.integratedInstructions && (
-                                <div className="mt-2 pt-2 border-t border-gray-200">
-                                  <p className="text-xs font-medium text-amber-700 mb-1">💡 Pattern detected – review and save below</p>
-                                </div>
-                              )}
-                            </div>
-                          ))
-                        )}
-                      </div>
-                      <div className="p-3 border-t border-gray-200 bg-white shrink-0">
-                        <form onSubmit={handleChatSubmit} className="flex flex-col gap-2">
-                          {pendingImages.length > 0 && (
-                            <div className="flex flex-wrap items-center gap-2 text-sm text-gray-600">
-                              {pendingImages.map((img, idx) => (
-                                <div key={idx} className="relative inline-block">
-                                  <img src={`data:${img.mimeType};base64,${img.data}`} alt="Attached" className="h-12 w-auto rounded border border-gray-200" />
-                                  <button type="button" onClick={() => removePendingImage(idx)} className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-xs rounded-full hover:bg-red-600" title="Remove">×</button>
-                                </div>
-                              ))}
-                              <span>{pendingImages.length} image{pendingImages.length !== 1 ? 's' : ''} attached – add a question or send to analyze (max {MAX_IMAGES})</span>
-                            </div>
-                          )}
-                          <div className="flex gap-2 items-end">
-                            <textarea
-                              ref={chatInputRef}
-                              value={chatInput}
-                              onChange={(e) => setChatInput(e.target.value)}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter' && !e.shiftKey) {
-                                  e.preventDefault();
-                                  handleChatSubmit(e as unknown as React.FormEvent);
-                                }
-                              }}
-                              onPaste={handlePaste}
-                              placeholder="Ask anything, paste images to analyze (up to 5), or 'set follow-up to 2 weeks'... (Shift+Enter for new line)"
-                              rows={1}
-                              className="flex-1 min-h-[42px] max-h-32 overflow-y-auto resize-none px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
-                              disabled={isGenerating}
-                            />
-                            <button
-                              type="submit"
-                              disabled={isGenerating || (!chatInput.trim() && pendingImages.length === 0)}
-                              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 text-sm font-medium"
-                            >
-                              Send
-                            </button>
-                          </div>
-                        </form>
-                      </div>
-                    </div>
+                {/* Main content: Story so far, notes, suggested message */}
+                <div className="flex-1 flex flex-col min-h-0 overflow-y-auto">
                     {instructionsReviewDraft !== null && (
                       <div ref={instructionsPanelRef} className="p-4 border-t border-amber-200 bg-amber-50/80">
                         <h3 className="text-sm font-medium text-amber-900 mb-2">Review and update your instructions</h3>
@@ -1069,35 +1067,53 @@ function SmartFollowupsContent() {
                       </div>
                     )}
                     <div className="p-4 space-y-4 border-t border-gray-200">
-                    <div className="bg-blue-50 rounded-lg border border-blue-200 overflow-hidden">
+                    {/* Story so far - matches Lead form layout */}
+                    <div className="space-y-3">
+                      <h4 className="text-lg font-semibold text-gray-900 border-b border-gray-200 pb-2 flex items-center gap-3">
+                        <span>📖 Story so far</span>
+                        <button
+                          type="button"
+                          onClick={handleGenerateStory}
+                          disabled={storyGenerating}
+                          className="text-sm font-medium text-blue-600 hover:text-blue-800 disabled:text-gray-400 disabled:cursor-not-allowed"
+                        >
+                          {storyGenerating ? 'Generating…' : 'Generate story so far'}
+                        </button>
+                      </h4>
+                      {storyError ? (
+                        <p className="text-sm text-amber-700 bg-amber-50 rounded-md px-3 py-2 border border-amber-200">{storyError}</p>
+                      ) : storySoFar ? (
+                        <div className="text-sm text-gray-700 bg-blue-50/50 rounded-md px-3 py-2 border border-blue-100 max-h-[24rem] overflow-y-auto whitespace-pre-wrap">
+                          {storySoFar}
+                        </div>
+                      ) : !storyGenerating ? (
+                        <p className="text-sm text-gray-500 italic">
+                          Click &quot;Generate story so far&quot; to create a summary from this lead&apos;s notes.
+                        </p>
+                      ) : null}
+                    </div>
+
+                    {/* Upcoming meeting */}
+                    {upcomingMeeting && (
+                      <div className="bg-green-50 rounded-lg border border-green-200 px-3 py-2">
+                        <h4 className="text-xs font-medium text-green-800 uppercase tracking-wide mb-0.5">📅 Next meeting</h4>
+                        <p className="text-sm text-green-900">{upcomingMeeting.summary} – {upcomingMeeting.displayDate}</p>
+                      </div>
+                    )}
+
+                    {/* Full notes - collapsible */}
+                    <div className="space-y-2">
                       <button
                         type="button"
                         onClick={() => setNotesExpanded(prev => !prev)}
-                        className="w-full px-4 py-2 flex items-center justify-between hover:bg-blue-100/50 transition-colors"
+                        className="w-full px-3 py-2 flex items-center justify-between hover:bg-gray-50 rounded-lg transition-colors text-left"
                       >
-                        <h3 className="font-medium text-blue-900 text-sm">📖 Story so far &amp; notes</h3>
-                        <span className="text-blue-600 text-xs">{notesExpanded ? '▼' : '▶'}</span>
+                        <h4 className="text-sm font-medium text-gray-700">Full notes</h4>
+                        <span className="text-gray-500 text-xs">{notesExpanded ? '▼' : '▶'}</span>
                       </button>
                       {notesExpanded && (
-                        <div className="px-4 pb-4 space-y-3 border-t border-blue-200/50 pt-3">
-                          {upcomingMeeting && (
-                            <div className="bg-green-50 rounded-lg border border-green-200 px-3 py-2">
-                              <h4 className="text-xs font-medium text-green-800 uppercase tracking-wide mb-0.5">📅 Next meeting</h4>
-                              <p className="text-sm text-green-900">{upcomingMeeting.summary} – {upcomingMeeting.displayDate}</p>
-                            </div>
-                          )}
-                          <div>
-                            <h4 className="text-xs font-medium text-blue-700 uppercase tracking-wide mb-1">Story so far</h4>
-                            <div className="text-sm text-blue-800 bg-blue-50/50 rounded-md px-3 py-2 border border-blue-100 max-h-[24rem] overflow-y-auto whitespace-pre-wrap">
-                              {selectedItem.story || 'No story generated yet.'}
-                            </div>
-                          </div>
-                          <div>
-                            <h4 className="text-xs font-medium text-blue-700 uppercase tracking-wide mb-1">Full notes</h4>
-                            <div className="text-sm text-blue-800 whitespace-pre-wrap bg-white/60 rounded p-3">
-                              {leadNotes || 'No notes.'}
-                            </div>
-                          </div>
+                        <div className="text-sm text-gray-700 whitespace-pre-wrap bg-white/60 rounded p-3 border border-gray-200">
+                          {leadNotes || 'No notes.'}
                         </div>
                       )}
                     </div>
