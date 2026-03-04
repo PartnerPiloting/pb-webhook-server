@@ -20,6 +20,7 @@ require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 const BASE_URL = process.env.API_PUBLIC_BASE_URL || process.env.RENDER_EXTERNAL_URL || 'https://pb-webhook-server.onrender.com';
 const AUTH_SECRET = process.env.PB_WEBHOOK_SECRET;
 const DEPLOY_WAIT_SEC = parseInt(process.env.DEPLOY_WAIT_SEC || '150', 10); // 2.5 min default
+const SKIP_DEPLOY = process.env.SKIP_DEPLOY === 'true'; // Set to just test without pushing
 
 async function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -42,7 +43,13 @@ async function main() {
 
   if (!AUTH_SECRET) {
     console.error('ERROR: PB_WEBHOOK_SECRET must be set in .env');
+    console.error('   Or: set PB_WEBHOOK_SECRET=your_secret node scripts/deploy-and-test-crr-diagnostic.js');
     process.exit(1);
+  }
+
+  if (SKIP_DEPLOY) {
+    console.log('SKIP_DEPLOY=true - testing existing deployment only');
+    console.log('');
   }
 
   console.log('1. Staging changes...');
@@ -54,8 +61,10 @@ async function main() {
   ];
   run(`git add ${filesToAdd.join(' ')}`, { ignoreError: true });
   const status = run('git status --short', { ignoreError: true }) || '';
-  if (!status.trim()) {
-    console.log('   No changes to commit (already up to date?)');
+  if (!status.trim() || SKIP_DEPLOY) {
+    if (!SKIP_DEPLOY) {
+      console.log('   No changes to commit (already up to date?)');
+    }
     console.log('   Proceeding to test existing deployment...');
   } else {
     console.log('   Staged:', status.trim().split('\n').join(', '));
@@ -68,12 +77,16 @@ async function main() {
     run('git push origin main');
     console.log('   Pushed.');
     console.log('');
-    console.log(`4. Waiting ${DEPLOY_WAIT_SEC}s for Render to deploy...`);
-    for (let i = DEPLOY_WAIT_SEC; i > 0; i -= 30) {
-      process.stdout.write(`   ${i}s remaining...\r`);
-      await sleep(Math.min(30, i) * 1000);
+    if (SKIP_DEPLOY) {
+      console.log('4. Skipping deploy wait (SKIP_DEPLOY=true)');
+    } else {
+      console.log(`4. Waiting ${DEPLOY_WAIT_SEC}s for Render to deploy...`);
+      for (let i = DEPLOY_WAIT_SEC; i > 0; i -= 30) {
+        process.stdout.write(`   ${i}s remaining...\r`);
+        await sleep(Math.min(30, i) * 1000);
+      }
+      console.log('   Wait complete.');
     }
-    console.log('   Wait complete.');
   }
 
   console.log('');
