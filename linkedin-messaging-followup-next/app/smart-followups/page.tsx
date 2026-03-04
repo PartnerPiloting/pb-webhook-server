@@ -1083,7 +1083,9 @@ function SmartFollowupsContent() {
                           )}
                           <div>
                             <h4 className="text-xs font-medium text-blue-700 uppercase tracking-wide mb-1">Story so far</h4>
-                            <p className="text-sm text-blue-800">{selectedItem.story || 'No story generated yet.'}</p>
+                            <div className="text-sm text-blue-800 bg-blue-50/50 rounded-md px-3 py-2 border border-blue-100 max-h-[24rem] overflow-y-auto whitespace-pre-wrap">
+                              {selectedItem.story || 'No story generated yet.'}
+                            </div>
                           </div>
                           <div>
                             <h4 className="text-xs font-medium text-blue-700 uppercase tracking-wide mb-1">Full notes</h4>
