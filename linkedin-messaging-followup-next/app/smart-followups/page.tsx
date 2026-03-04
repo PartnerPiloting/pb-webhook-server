@@ -691,15 +691,16 @@ function SmartFollowupsContent() {
     <Layout>
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden" style={{ height: 'calc(100vh - 220px)' }}>
         {/* Header */}
-        <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between bg-gray-50">
-          <div className="flex items-center gap-4">
-            <h1 className="text-xl font-semibold text-gray-900">🎯 Smart Follow-ups</h1>
-            <span className="text-sm text-gray-500">
-              {queue.length} lead{queue.length !== 1 ? 's' : ''} need attention
-            </span>
-          </div>
-          
-          <div className="flex items-center gap-2">
+        <div className="px-6 py-4 border-b border-gray-200 flex flex-col gap-2 bg-gray-50">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <h1 className="text-xl font-semibold text-gray-900">🎯 Smart Follow-ups</h1>
+              <span className="text-sm text-gray-500">
+                {queue.length} lead{queue.length !== 1 ? 's' : ''} need attention
+              </span>
+            </div>
+            
+            <div className="flex items-center gap-2">
             <button
               onClick={handleOpenEditInstructions}
               className="px-3 py-1.5 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
@@ -721,6 +722,8 @@ function SmartFollowupsContent() {
                     type: 'success',
                     text: 'Rebuild started in background. Refresh in 2–5 minutes to see updated results.'
                   });
+                  // Keep "Rebuild started" state for 3s so user sees clear feedback
+                  await new Promise(r => setTimeout(r, 3000));
                 } catch (err) {
                   setError(err instanceof Error ? err.message : 'Rebuild failed');
                 } finally {
@@ -732,10 +735,10 @@ function SmartFollowupsContent() {
               className="px-3 py-1.5 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50"
               title="Run AI analysis on due leads and rebuild queue. Use before starting FUP's for the day."
             >
-              {isRebuilding ? `Starting… ${loadSeconds}s` : '🔨 Rebuild'}
+              {isRebuilding ? (loadSeconds >= 3 ? 'Rebuild started ✓' : `Starting… ${loadSeconds}s`) : '🔨 Rebuild'}
             </button>
             <button
-              onClick={() => { setError(null); loadQueue(); }}
+              onClick={() => { setError(null); setActionMessage(null); loadQueue(); }}
               disabled={isLoading}
               className="px-3 py-1.5 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50"
               title="Refresh the queue to see latest results"
@@ -743,6 +746,15 @@ function SmartFollowupsContent() {
               ↻ Refresh
             </button>
           </div>
+          </div>
+          {/* Success/error message - always visible in header */}
+          {actionMessage && (
+            <div className={`text-sm px-3 py-1.5 rounded-lg ${
+              actionMessage.type === 'success' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'
+            }`}>
+              {actionMessage.text}
+            </div>
+          )}
         </div>
 
         {/* Content */}
@@ -939,13 +951,6 @@ function SmartFollowupsContent() {
                       </a>
                     )}
                   </div>
-                  {actionMessage && (
-                    <div className={`mt-2 text-sm px-3 py-1.5 rounded-lg ${
-                      actionMessage.type === 'success' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'
-                    }`}>
-                      {actionMessage.text}
-                    </div>
-                  )}
                 </div>
 
                 {/* Main content: outer scroll - chat (large) + input, then notes */}
