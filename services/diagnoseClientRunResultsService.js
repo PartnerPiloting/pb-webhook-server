@@ -43,7 +43,8 @@ function computeProcessingTimeFromProgressLogs(progressLogs) {
   if (result.wallClockSeconds != null) {
     const m = Math.floor(result.wallClockSeconds / 60);
     const s = result.wallClockSeconds % 60;
-    parts.push(`Wall clock: ${m}m ${s}s`);
+    result.wallClockFormatted = m > 0 ? `${m}m ${s}s` : `${s}s`;
+    parts.push(`Wall clock: ${result.wallClockFormatted}`);
   }
   if (result.totalComputeSeconds != null) {
     const m = Math.floor(result.totalComputeSeconds / 60);
@@ -190,4 +191,36 @@ async function getMostRecentSmartResumeRunId(masterBase) {
   }
 }
 
-module.exports = { runDiagnostic };
+/**
+ * Get processing time for the previous run (for email report)
+ * Current run's jobs haven't finished when email is sent, so we show the prior run's timing
+ */
+async function getPreviousRunProcessingTime(currentRunId) {
+  try {
+    const masterBase = getMasterClientsBase();
+    const baseRunId = runIdSystem.getBaseRunId(currentRunId) || currentRunId;
+
+    // Get runs with Run ID < current (older runs), sorted desc to get most recent older run
+    const records = await masterBase(MASTER_TABLES.JOB_TRACKING).select({
+      filterByFormula: `AND({Stream} >= 1, {${JOB_TRACKING_FIELDS.RUN_ID}} < '${baseRunId}')`,
+      sort: [{ field: JOB_TRACKING_FIELDS.RUN_ID, direction: 'desc' }],
+      maxRecords: 1
+    }).firstPage();
+
+    const prevRunId = records?.[0]?.get(JOB_TRACKING_FIELDS.RUN_ID);
+    if (!prevRunId) return null;
+
+    const result = await runDiagnostic(prevRunId);
+    const pt = result.clientRunResults?.processingTime;
+    if (!pt?.wallClockFormatted && !pt?.formatted) return null;
+    return {
+      runId: prevRunId,
+      formatted: pt.wallClockFormatted || pt.formatted,
+      fullFormatted: pt.formatted
+    };
+  } catch {
+    return null;
+  }
+}
+
+module.exports = { runDiagnostic, getPreviousRunProcessingTime };

@@ -116,7 +116,8 @@ class EmailReportingService {
             successRate,
             executionResults,
             skippedClients,
-            errors
+            errors,
+            previousRunProcessingTime
         } = reportData;
         
         const successClass = successRate >= 90 ? 'success' : successRate >= 70 ? 'warning' : 'error';
@@ -231,6 +232,12 @@ class EmailReportingService {
             <th>Clients Skipped</th>
             <td>${clientsSkipped?.length || 0}</td>
         </tr>
+        ${previousRunProcessingTime ? `
+        <tr>
+            <th>Previous Run Processing Time</th>
+            <td colspan="3">Run ${previousRunProcessingTime.runId} completed in <strong>${previousRunProcessingTime.formatted}</strong></td>
+        </tr>
+        ` : ''}
     </table>
     
     ${executionResults && executionResults.length > 0 ? `
@@ -494,6 +501,17 @@ class EmailReportingService {
                 reportData.successRate = successRate;
             }
             
+            // Fetch previous run's processing time for success reports (current run's jobs haven't finished yet)
+            if (!isFailureReport && reportData.runId) {
+                try {
+                    const { getPreviousRunProcessingTime } = require('./diagnoseClientRunResultsService');
+                    const prevTiming = await getPreviousRunProcessingTime(reportData.runId);
+                    reportData.previousRunProcessingTime = prevTiming;
+                } catch (err) {
+                    logger.warn('Could not fetch previous run processing time:', err.message);
+                }
+            }
+
             const subject = isFailureReport 
                 ? `🚨 Smart Resume Processing Failed - Stream ${reportData.stream}`
                 : `✅ Smart Resume Processing Complete - Stream ${reportData.stream} (${successRateFormatted} success)`;
