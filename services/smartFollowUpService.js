@@ -598,9 +598,11 @@ async function upsertStateRecord(clientId, lead, aiOutput, options = {}) {
     recordData[SMART_FUP_STATE_FIELDS.FATHOM_TRANSCRIPTS] = fathomTranscripts;
   }
   
+  // Story is now on-demand (Generate button in UI) - clear cached story
+  recordData[SMART_FUP_STATE_FIELDS.STORY] = '';
+
   // Only update AI fields if we have new AI output
   if (aiOutput) {
-    recordData[SMART_FUP_STATE_FIELDS.STORY] = aiOutput.story;
     recordData[SMART_FUP_STATE_FIELDS.PRIORITY] = aiOutput.priority;
     recordData[SMART_FUP_STATE_FIELDS.SUGGESTED_MESSAGE] = aiOutput.suggestedMessage;
     recordData[SMART_FUP_STATE_FIELDS.RECOMMENDED_CHANNEL] = aiOutput.recommendedChannel;
@@ -765,8 +767,17 @@ async function sweepClient(options) {
           logger.info(`Lead ${lead.id}: Analyzing - ${analyzeMode}`);
           
           // Run AI analysis (null newNotesPortion = analyze full notes)
-          aiOutput = await analyzeLeadNotes(lead, fupInstructions, clientType, newNotesPortion);
+          aiOutput = await analyzeLeadNotes(lead, fupInstructions, clientType, newNotesPortion, { includeErrorOnFallback: true });
           results.aiAnalyzed++;
+          // Track placeholder (AI failure) so status can report it
+          if (aiOutput?.story && String(aiOutput.story).toUpperCase().includes('[AI UNAVAILABLE]')) {
+            const leadName = [lead.fields[LEAD_FIELDS.FIRST_NAME], lead.fields[LEAD_FIELDS.LAST_NAME]].filter(Boolean).join(' ').trim() || lead.id;
+            results.errors.push({
+              leadId: lead.id,
+              leadName: leadName || lead.id,
+              error: aiOutput._aiError || 'AI analysis failed'
+            });
+          }
         } else {
           // No new notes - just sync User FUP Date, don't re-analyze
           logger.info(`Lead ${lead.id}: No new notes (length=${currentNotesLength}), syncing date only`);
