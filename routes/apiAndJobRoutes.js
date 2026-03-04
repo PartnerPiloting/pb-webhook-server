@@ -1151,6 +1151,30 @@ router.get("/debug-render-logs", async (req, res) => {
 });
 
 /**
+ * Client Run Results diagnostic - verify CRR table is being updated
+ * GET /api/debug-client-run-results?runId=260304-020121
+ * Auth: Bearer PB_WEBHOOK_SECRET (same as debug-render-logs)
+ */
+router.get("/debug-client-run-results", async (req, res) => {
+  const authHeader = req.headers.authorization;
+  const secret = process.env.PB_WEBHOOK_SECRET || process.env.DEBUG_API_KEY;
+  if (!authHeader || !authHeader.includes(secret)) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  try {
+    const { runDiagnostic } = require('../services/diagnoseClientRunResultsService');
+    const runId = req.query.runId || null;
+    const result = await runDiagnostic(runId);
+    return res.json(result);
+  } catch (error) {
+    const logger = createLogger({ runId: 'DEBUG_CRR', clientId: 'SYSTEM', operation: 'debug_client_run_results' });
+    logger.error('Client Run Results diagnostic failed', { error: error.message });
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
  * Get the status of any running or recent Smart Resume processes
  */
 router.get("/debug-smart-resume-status", async (req, res) => {
