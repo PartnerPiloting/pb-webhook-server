@@ -283,7 +283,7 @@ ANALYSIS TASK:
 Given the lead's Notes (containing conversation history), you must determine:
 
 1. STORY: A brief 2-3 sentence summary of the relationship so far. What stage are they at? What was discussed?
-   IMPORTANT - Generic content: Scan the EMAIL CORRESPONDENCE section (if present). If you see any generic content the user has SENT to this lead (articles, thought pieces, pieces they wrote, newsletters, value-add content) - include a clear summary of what was sent so they know not to send it again. Examples: "Generic content already sent: Advocacy Pods article." or "No generic content sent." If no email section exists, say "No generic content sent."
+   IMPORTANT - Generic content: Scan the EMAIL CORRESPONDENCE section (if present). If you see generic content the user has SENT (articles, thought pieces, newsletters) - add ONE short line only, e.g. "Generic content sent: Advocacy Pods article." or "No generic content sent." Keep it brief. Do NOT include raw email snippets or quoted text.
 
 2. WAITING_ON: Who should act next?
    - "User" = The lead replied/messaged, and the user (our client) owes a response. This is HIGH priority.
@@ -363,7 +363,7 @@ async function analyzeLeadNotes(lead, clientInstructions, clientType, newNotesPo
       generationConfig: {
         temperature: 0.3, // Slightly creative but mostly deterministic
         responseMimeType: 'application/json',
-        maxOutputTokens: 2048  // Increased from 1024 - story + generic content can be long
+        maxOutputTokens: 4096  // Long notes + generic content summary; avoid truncation
       }
     });
 
