@@ -194,11 +194,12 @@ router.get('/leads/follow-ups', async (req, res) => {
     const airtableBase = await getAirtableBase(req);
 
     // Get leads with Follow-Up Date set (including overdue dates)
-    // This includes leads with follow-up dates today or earlier as per frontend expectations
+    // Exclude leads with Cease FUP = Yes (user has marked "don't follow up")
     const leads = await airtableBase('Leads').select({
       filterByFormula: `AND(
         {Follow-Up Date} != '',
-        {Follow-Up Date} <= TODAY()
+        {Follow-Up Date} <= TODAY(),
+        OR({Cease FUP} != 'Yes', {Cease FUP} = BLANK())
       )`,
       sort: [
         { field: 'Follow-Up Date', direction: 'asc' },
