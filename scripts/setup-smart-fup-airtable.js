@@ -68,6 +68,26 @@ const SMART_FUP_STATE_FIELDS = {
 };
 
 /**
+ * Smart FUP Sweep Status Table Fields
+ * Table Name: "Smart FUP Sweep Status"
+ */
+const SWEEP_STATUS_FIELDS = {
+  CLIENT_ID: 'Client ID',
+  STATUS: 'Status',
+  STARTED_AT: 'Started At',
+  COMPLETED_AT: 'Completed At',
+  CANDIDATES_FOUND: 'Candidates Found',
+  PROCESSED: 'Processed',
+  AI_ANALYZED: 'AI Analyzed',
+  CREATED: 'Created',
+  UPDATED: 'Updated',
+  TOTAL_ERRORS: 'Total Errors',
+  ERROR_DETAILS: 'Error Details',
+};
+
+const SWEEP_STATUS_OPTIONS = ['Running', 'Completed', 'Failed'];
+
+/**
  * Priority options for Smart FUP State
  */
 const PRIORITY_OPTIONS = ['High', 'Medium', 'Low'];
@@ -231,6 +251,8 @@ async function run() {
 // Export for use in other modules
 module.exports = {
   SMART_FUP_STATE_FIELDS,
+  SWEEP_STATUS_FIELDS,
+  SWEEP_STATUS_OPTIONS,
   CLIENT_MASTER_NEW_FIELDS,
   PRIORITY_OPTIONS,
   CHANNEL_OPTIONS,

@@ -11135,19 +11135,92 @@ router.post("/api/smart-followup/acknowledge", async (req, res) => {
 });
 
 // ---------------------------------------------------------------
-// Smart Follow-Up Sweep Status (in-memory, per clientId)
+// Smart Follow-Up Sweep Status (Airtable - persistent)
 // ---------------------------------------------------------------
-const sweepStatusByClient = {};
-function setSweepStatus(clientId, status, resultsOrError) {
+const SWEEP_STATUS_TABLE = 'Smart FUP Sweep Status';
+const { SWEEP_STATUS_FIELDS } = require('../scripts/setup-smart-fup-airtable');
+
+async function upsertSweepStatusToAirtable(clientId, status, resultsOrError) {
   const key = clientId || 'ALL';
+  const base = require('../services/clientService').initializeClientsBase();
   const now = new Date().toISOString();
-  const prev = sweepStatusByClient[key];
-  sweepStatusByClient[key] = {
-    status,
-    startedAt: status === 'running' ? now : (prev?.startedAt || now),
-    completedAt: status !== 'running' ? now : null,
-    ...(resultsOrError || {})
+  const statusCapitalized = status.charAt(0).toUpperCase() + status.slice(1); // running -> Running
+
+  const recordData = {
+    [SWEEP_STATUS_FIELDS.CLIENT_ID]: key,
+    [SWEEP_STATUS_FIELDS.STATUS]: statusCapitalized,
+    [SWEEP_STATUS_FIELDS.STARTED_AT]: status === 'running' ? now : undefined,
+    [SWEEP_STATUS_FIELDS.COMPLETED_AT]: status === 'running' ? null : (status !== 'running' ? now : undefined),
+    [SWEEP_STATUS_FIELDS.CANDIDATES_FOUND]: resultsOrError?.results?.candidatesFound,
+    [SWEEP_STATUS_FIELDS.PROCESSED]: resultsOrError?.results?.processed,
+    [SWEEP_STATUS_FIELDS.AI_ANALYZED]: resultsOrError?.results?.aiAnalyzed,
+    [SWEEP_STATUS_FIELDS.CREATED]: resultsOrError?.results?.created,
+    [SWEEP_STATUS_FIELDS.UPDATED]: resultsOrError?.results?.updated,
+    [SWEEP_STATUS_FIELDS.TOTAL_ERRORS]: resultsOrError?.results?.totalErrors,
+    [SWEEP_STATUS_FIELDS.ERROR_DETAILS]: resultsOrError?.error || (resultsOrError?.results?.errors?.length
+      ? JSON.stringify(resultsOrError.results.errors)
+      : undefined),
   };
+  // Remove undefined values (keep null for clearing fields)
+  Object.keys(recordData).forEach(k => recordData[k] === undefined && delete recordData[k]);
+
+  try {
+    const escapedKey = String(key).replace(/'/g, "''");
+    const records = await base(SWEEP_STATUS_TABLE).select({
+      filterByFormula: `{${SWEEP_STATUS_FIELDS.CLIENT_ID}} = '${escapedKey}'`,
+      maxRecords: 1
+    }).firstPage();
+
+    if (records.length > 0) {
+      await base(SWEEP_STATUS_TABLE).update(records[0].id, recordData);
+    } else {
+      await base(SWEEP_STATUS_TABLE).create(recordData);
+    }
+  } catch (err) {
+    console.error('[SweepStatus] Airtable upsert failed:', err.message);
+  }
+}
+
+async function getSweepStatusFromAirtable(clientId) {
+  const key = clientId || 'ALL';
+  const base = require('../services/clientService').initializeClientsBase();
+  try {
+    const escapedKey = String(key).replace(/'/g, "''");
+    const records = await base(SWEEP_STATUS_TABLE).select({
+      filterByFormula: `{${SWEEP_STATUS_FIELDS.CLIENT_ID}} = '${escapedKey}'`,
+      maxRecords: 1
+    }).firstPage();
+
+    if (records.length === 0) return { status: 'none', message: 'No recent sweep for this client' };
+
+    const f = records[0].fields;
+    const statusVal = (f[SWEEP_STATUS_FIELDS.STATUS] || '').toLowerCase();
+    const results = {
+      processed: f[SWEEP_STATUS_FIELDS.PROCESSED] ?? 0,
+      created: f[SWEEP_STATUS_FIELDS.CREATED] ?? 0,
+      updated: f[SWEEP_STATUS_FIELDS.UPDATED] ?? 0,
+      candidatesFound: f[SWEEP_STATUS_FIELDS.CANDIDATES_FOUND] ?? 0,
+      aiAnalyzed: f[SWEEP_STATUS_FIELDS.AI_ANALYZED] ?? 0,
+      totalErrors: f[SWEEP_STATUS_FIELDS.TOTAL_ERRORS] ?? 0,
+    };
+    let errors = [];
+    try {
+      const errDetails = f[SWEEP_STATUS_FIELDS.ERROR_DETAILS];
+      if (errDetails) errors = JSON.parse(errDetails);
+    } catch (_) {}
+    results.errors = errors;
+
+    return {
+      status: statusVal === 'running' ? 'running' : statusVal === 'failed' ? 'failed' : 'completed',
+      startedAt: f[SWEEP_STATUS_FIELDS.STARTED_AT],
+      completedAt: f[SWEEP_STATUS_FIELDS.COMPLETED_AT],
+      results: statusVal === 'completed' || statusVal === 'failed' ? results : undefined,
+      error: statusVal === 'failed' ? (f[SWEEP_STATUS_FIELDS.ERROR_DETAILS] || 'Unknown error') : undefined,
+    };
+  } catch (err) {
+    console.error('[SweepStatus] Airtable read failed:', err.message);
+    return { status: 'none', message: 'Failed to read sweep status' };
+  }
 }
 
 // ---------------------------------------------------------------
@@ -11179,28 +11252,33 @@ router.get("/api/smart-followup/sweep", async (req, res) => {
   // Fire-and-forget: return 202 immediately, run sweep in background (avoids timeout for large lead counts)
   if (asyncMode === 'true') {
     const cid = clientId || null;
-    setSweepStatus(cid, 'running');
+    upsertSweepStatusToAirtable(cid, 'running').catch(e => sweepLogger.warn('Sweep status write failed:', e.message));
     res.status(202).json({
       success: true,
       message: 'Smart Follow-Up sweep started in background',
       note: 'Refresh the page in 2-5 minutes to see updated results'
     });
     runSweep(sweepOptions)
-      .then((results) => {
-        const allErrors = (results.clients || []).flatMap(c => (c.errors || []).map(e => ({ ...e, clientId: c.clientId })));
-        setSweepStatus(cid, 'completed', {
+      .then(async (results) => {
+        const clients = results.clients || [];
+        const allErrors = clients.flatMap(c => (c.errors || []).map(e => ({ ...e, clientId: c.clientId })));
+        const candidatesFound = clients.reduce((sum, c) => sum + (c.candidatesFound || 0), 0);
+        const aiAnalyzed = clients.reduce((sum, c) => sum + (c.aiAnalyzed || 0), 0);
+        await upsertSweepStatusToAirtable(cid, 'completed', {
           results: {
             processed: results.totalProcessed || 0,
             created: results.totalCreated || 0,
             updated: results.totalUpdated || 0,
+            candidatesFound,
+            aiAnalyzed,
             errors: allErrors,
             totalErrors: allErrors.length
           }
         });
       })
-      .catch(err => {
+      .catch(async err => {
         sweepLogger.error('Background sweep failed:', err.message, err.stack);
-        setSweepStatus(cid, 'failed', { error: err.message });
+        await upsertSweepStatusToAirtable(cid, 'failed', { error: err.message });
       });
     return;
   }
@@ -11223,15 +11301,17 @@ router.get("/api/smart-followup/sweep", async (req, res) => {
 
 // ---------------------------------------------------------------
 // Smart Follow-Up Sweep Status (for polling after Rebuild)
+// Reads from Airtable - persistent across restarts
 // ---------------------------------------------------------------
 router.get("/api/smart-followup/sweep-status", async (req, res) => {
   const { clientId } = req.query;
   const key = clientId || 'ALL';
-  const status = sweepStatusByClient[key];
-  if (!status) {
-    return res.json({ status: 'none', message: 'No recent sweep for this client' });
+  try {
+    const status = await getSweepStatusFromAirtable(key);
+    res.json(status);
+  } catch (err) {
+    res.json({ status: 'none', message: 'Failed to read sweep status' });
   }
-  res.json(status);
 });
 
 module.exports = router;
