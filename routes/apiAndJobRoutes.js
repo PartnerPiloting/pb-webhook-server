@@ -11324,13 +11324,40 @@ router.get("/api/smart-followup/sweep", async (req, res) => {
   sweepLogger.info(`Smart Follow-Up sweep triggered: clientId=${clientId || 'ALL'}, dryRun=${dryRun}, limit=${sweepOptions.limit}, offset=${sweepOptions.offset}, batchMode=${sweepOptions.batchMode}, forceAll=${forceAll}, async=${asyncMode}`);
   
   // Chunked mode: sync, process one batch, return hasMore for frontend to loop
+  // Write status to Airtable so returning users see progress
   if (batchSz) {
+    const cid = clientId || null;
+    if (off === 0) {
+      upsertSweepStatusToAirtable(cid, 'running').catch(e => sweepLogger.warn('Chunked status write failed:', e.message));
+    }
     try {
       const results = await runSweep(sweepOptions);
       const totalCandidates = results.clients?.[0]?.candidatesFound ?? 0;
       const processed = results.totalProcessed ?? 0;
       const nextOffset = off + processed;
       const hasMore = nextOffset < totalCandidates;
+      const allErrors = results.clients?.flatMap(c => c.errors || []) || [];
+      const candidatesFound = results.clients?.reduce((s, c) => s + (c.candidatesFound || 0), 0) || totalCandidates;
+      const aiAnalyzed = results.clients?.reduce((s, c) => s + (c.aiAnalyzed || 0), 0) || 0;
+
+      if (hasMore) {
+        await upsertSweepStatusToAirtable(cid, 'running', {
+          results: { processed: nextOffset, candidatesFound, aiAnalyzed, errors: allErrors, totalErrors: allErrors.length }
+        }).catch(e => sweepLogger.warn('Chunked status write failed:', e.message));
+      } else {
+        await upsertSweepStatusToAirtable(cid, 'completed', {
+          results: {
+            processed: nextOffset,
+            created: results.totalCreated ?? 0,
+            updated: results.totalUpdated ?? 0,
+            candidatesFound,
+            aiAnalyzed,
+            errors: allErrors,
+            totalErrors: allErrors.length
+          }
+        }).catch(e => sweepLogger.warn('Chunked status write failed:', e.message));
+      }
+
       return res.json({
         success: true,
         processed,
@@ -11339,10 +11366,11 @@ router.get("/api/smart-followup/sweep", async (req, res) => {
         hasMore,
         created: results.totalCreated ?? 0,
         updated: results.totalUpdated ?? 0,
-        errors: results.clients?.flatMap(c => c.errors || []) || [],
+        errors: allErrors,
       });
     } catch (error) {
       sweepLogger.error('Chunked sweep error:', error.message, error.stack);
+      await upsertSweepStatusToAirtable(cid, 'failed', { error: error.message }).catch(() => {});
       return res.status(500).json({ success: false, error: error.message });
     }
   }
