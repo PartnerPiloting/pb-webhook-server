@@ -760,77 +760,27 @@ function SmartFollowupsContent() {
     const start = Date.now();
     const timer = setInterval(() => setLoadSeconds(Math.floor((Date.now() - start) / 1000)), 1000);
     try {
-      await triggerSmartFollowupRebuild();
-      setActionMessage({ type: 'success', text: 'Rebuild started in background. Refresh in 2–5 minutes to see updated results.' });
-      const pollInterval = 5000; // Poll every 5s for progress updates
-      const maxWait = 15 * 60 * 1000;
-      const pollStart = Date.now();
-      let pollCount = 0;
-      let lastProcessed = -1;
-      let stuckAtZeroSince = 0;
-      const poll = async () => {
-        pollCount++;
-        const status = await getSweepStatus();
-        if (status.status === 'completed') {
-          const r = status.results || {};
-          const candidates = r.candidatesFound ?? r.processed ?? 0;
-          const processed = r.processed ?? 0;
-          const aiAnalyzed = r.aiAnalyzed ?? 0;
-          const errCount = r.totalErrors ?? (r.errors?.length ?? 0);
-          let msg: string;
-          if (candidates === 0) {
-            msg = 'Rebuild complete. 0 leads in Leads table matched the sweep filter (due date or modified in last 7 days). Queue may still show leads from earlier runs.';
-          } else if (errCount > 0) {
-            msg = `Rebuild complete. ${candidates} candidates found, ${processed} processed (${aiAnalyzed} AI-analyzed). ${errCount} had errors.`;
-          } else {
-            msg = `Rebuild complete. ${candidates} candidates found, ${processed} processed (${aiAnalyzed} AI-analyzed). 0 errors.`;
-          }
-          setActionMessage({ type: errCount > 0 ? 'error' : 'success', text: msg });
-          setSweepStatus(status);
-          setSweepProgress(null);
-          loadQueue();
-          return;
-        }
-        if (status.status === 'failed') {
-          setActionMessage({ type: 'error', text: `Rebuild failed: ${status.error || 'Unknown error'}` });
-          setSweepStatus(status);
-          setSweepProgress(null);
-          return;
-        }
-        if (status.status === 'running' && status.results) {
-          const r = status.results;
-          const total = r.candidatesFound ?? 0;
-          const done = r.processed ?? 0;
-          const ai = r.aiAnalyzed ?? 0;
-          const currentName = r.currentLeadName || null;
-          if (done === 0 && lastProcessed < 0) stuckAtZeroSince = Date.now();
-          lastProcessed = done;
-          setSweepProgress({ processed: done, candidatesFound: total, aiAnalyzed: ai, currentLeadName: currentName });
-          const namePart = currentName ? ` — up to ${currentName}` : '';
-          const stuckMinutes = stuckAtZeroSince > 0 ? (Date.now() - stuckAtZeroSince) / 60000 : 0;
-          const waitHint = done === 0 && total > 0
-            ? (stuckMinutes >= 2 ? ' (no progress for 2+ min — try Refresh or Rebuild again)' : ' (first lead ~30–60 sec — please wait)')
-            : '';
-          setActionMessage({
-            type: 'success',
-            text: total > 0
-              ? `Processing… ${done} of ${total} leads${ai > 0 ? ` (${ai} AI-analyzed)` : ''}${namePart}${waitHint}`
-              : 'Rebuild started. Analyzing leads…',
-          });
-        }
-        // If status is 'none' after several polls, status table may not exist – don't wait forever
-        if (status.status === 'none' && pollCount >= 3) {
-          setActionMessage({ type: 'success', text: 'Rebuild started. Click Refresh in 2–5 minutes to see updated results.' });
-          return;
-        }
-        if (Date.now() - pollStart < maxWait) {
-          setTimeout(poll, pollInterval);
-        } else {
-          setActionMessage({ type: 'success', text: 'Rebuild may still be running. Click Refresh when ready.' });
-        }
-      };
-      setTimeout(poll, pollInterval);
-      await new Promise(r => setTimeout(r, 3000));
+      const result = await triggerSmartFollowupRebuild((processed, totalCandidates) => {
+        setSweepProgress({ processed, candidatesFound: totalCandidates, aiAnalyzed: processed, currentLeadName: null });
+        setActionMessage({
+          type: 'success',
+          text: `Processing… ${processed} of ${totalCandidates} leads`,
+        });
+      });
+      const { processed, totalCandidates, created, updated, errors } = result;
+      const errCount = errors?.length ?? 0;
+      let msg: string;
+      if (totalCandidates === 0) {
+        msg = 'Rebuild complete. 0 leads in Leads table matched the sweep filter (due date or modified in last 7 days). Queue may still show leads from earlier runs.';
+      } else if (errCount > 0) {
+        msg = `Rebuild complete. ${totalCandidates} candidates found, ${processed} processed (${created} created, ${updated} updated). ${errCount} had errors.`;
+      } else {
+        msg = `Rebuild complete. ${totalCandidates} candidates found, ${processed} processed (${created} created, ${updated} updated). 0 errors.`;
+      }
+      setActionMessage({ type: errCount > 0 ? 'error' : 'success', text: msg });
+      setSweepStatus(errCount > 0 ? { results: { errors } } : null);
+      setSweepProgress(null);
+      loadQueue();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Rebuild failed');
     } finally {

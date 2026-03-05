@@ -673,11 +673,13 @@ async function sweepClient(options) {
     fathomApiKey = null,
     dryRun = false, 
     limit = null,
+    offset = 0,
+    batchMode = false,
     forceAll = false,
     onProgress = null
   } = options;
   
-  logger.info(`Starting sweep for client: ${clientId} (dryRun=${dryRun}, limit=${limit}, forceAll=${forceAll})`);
+  logger.info(`Starting sweep for client: ${clientId} (dryRun=${dryRun}, limit=${limit}, offset=${offset}, forceAll=${forceAll})`);
   
   const results = {
     clientId,
@@ -711,8 +713,8 @@ async function sweepClient(options) {
       ],
     };
     
-    // Apply limit at query level if specified
-    if (limit) {
+    // In batch mode, fetch all to get total and slice; else limit at query level if specified
+    if (limit && offset === 0 && !batchMode) {
       selectOptions.maxRecords = limit;
     }
     
@@ -721,11 +723,10 @@ async function sweepClient(options) {
     logger.info(`Found ${candidates.length} leads with due follow-up dates`);
     if (onProgress) onProgress({ ...results });
 
-    // Apply limit if specified
-    let leadsToProcess = candidates;
-    if (limit && leadsToProcess.length > limit) {
-      leadsToProcess = leadsToProcess.slice(0, limit);
-    }
+    // Slice to batch [offset, offset+limit] when limit set; otherwise process all
+    const leadsToProcess = limit
+      ? candidates.slice(offset, offset + limit)
+      : candidates;
     
     // Track stats for Decision 17 logic
     results.aiAnalyzed = 0;
@@ -845,11 +846,13 @@ async function runSweep(options = {}) {
     clientId = null, 
     dryRun = false, 
     limit = null,
+    offset = 0,
+    batchMode = false,
     forceAll = false,
     onProgress = null
   } = options;
   
-  logger.info(`Starting Smart Follow-Up sweep (dryRun=${dryRun}, clientId=${clientId || 'ALL'}, forceAll=${forceAll})`);
+  logger.info(`Starting Smart Follow-Up sweep (dryRun=${dryRun}, clientId=${clientId || 'ALL'}, limit=${limit}, offset=${offset}, forceAll=${forceAll})`);
   
   const overallResults = {
     started: new Date().toISOString(),
@@ -890,6 +893,8 @@ async function runSweep(options = {}) {
         fathomApiKey: client.fathomApiKey || null,
         dryRun,
         limit,
+        offset,
+        batchMode: batchMode || (limit && offset > 0),
         forceAll,
         onProgress,
       });
