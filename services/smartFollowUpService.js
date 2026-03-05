@@ -802,7 +802,7 @@ async function sweepClient(options) {
         if (upsertResult.action === 'created') results.created++;
         if (upsertResult.action === 'updated') results.updated++;
         const leadName = [lead.fields[LEAD_FIELDS.FIRST_NAME], lead.fields[LEAD_FIELDS.LAST_NAME]].filter(Boolean).join(' ').trim() || lead.fields[LEAD_FIELDS.EMAIL] || 'Lead';
-        if (onProgress && (results.processed % 2 === 0 || results.processed === leadsToProcess.length)) {
+        if (onProgress) {
           onProgress({ ...results, currentLeadName: leadName });
         }
       } catch (error) {

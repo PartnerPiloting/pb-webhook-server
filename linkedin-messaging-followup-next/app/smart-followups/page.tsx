@@ -250,7 +250,8 @@ function SmartFollowupsContent() {
             const nm = rr.currentLeadName || null;
             setSweepProgress({ processed: dn, candidatesFound: tot, aiAnalyzed: rr.aiAnalyzed ?? 0, currentLeadName: nm });
             const np = nm ? ` — up to ${nm}` : '';
-            setActionMessage({ type: 'success', text: tot > 0 ? `Processing… ${dn} of ${tot} leads${np}` : 'Rebuild in progress. Please wait…' });
+            const wh = dn === 0 && tot > 0 ? ' (first lead ~30–60 sec — please wait)' : '';
+            setActionMessage({ type: 'success', text: tot > 0 ? `Processing… ${dn} of ${tot} leads${np}${wh}` : 'Rebuild in progress. Please wait…' });
           }
           setTimeout(poll, 5000);
         };
@@ -765,6 +766,8 @@ function SmartFollowupsContent() {
       const maxWait = 15 * 60 * 1000;
       const pollStart = Date.now();
       let pollCount = 0;
+      let lastProcessed = -1;
+      let stuckAtZeroSince = 0;
       const poll = async () => {
         pollCount++;
         const status = await getSweepStatus();
@@ -800,12 +803,18 @@ function SmartFollowupsContent() {
           const done = r.processed ?? 0;
           const ai = r.aiAnalyzed ?? 0;
           const currentName = r.currentLeadName || null;
+          if (done === 0 && lastProcessed < 0) stuckAtZeroSince = Date.now();
+          lastProcessed = done;
           setSweepProgress({ processed: done, candidatesFound: total, aiAnalyzed: ai, currentLeadName: currentName });
           const namePart = currentName ? ` — up to ${currentName}` : '';
+          const stuckMinutes = stuckAtZeroSince > 0 ? (Date.now() - stuckAtZeroSince) / 60000 : 0;
+          const waitHint = done === 0 && total > 0
+            ? (stuckMinutes >= 2 ? ' (no progress for 2+ min — try Refresh or Rebuild again)' : ' (first lead ~30–60 sec — please wait)')
+            : '';
           setActionMessage({
             type: 'success',
             text: total > 0
-              ? `Processing… ${done} of ${total} leads${ai > 0 ? ` (${ai} AI-analyzed)` : ''}${namePart}`
+              ? `Processing… ${done} of ${total} leads${ai > 0 ? ` (${ai} AI-analyzed)` : ''}${namePart}${waitHint}`
               : 'Rebuild started. Analyzing leads…',
           });
         }
