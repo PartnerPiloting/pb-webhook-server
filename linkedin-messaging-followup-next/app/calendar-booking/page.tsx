@@ -1366,82 +1366,69 @@ ${yourFirstName}`;
               )}
             </div>
 
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <h2 className="text-lg font-semibold text-gray-800">Lead Details</h2>
+            <div className="border border-gray-200 rounded-lg p-3 bg-gray-50/50">
+              <div className="flex items-center justify-between mb-1">
+                <h2 className="text-sm font-semibold text-gray-800">Lead Details</h2>
                 {leadRecordId && (
                   <button
                     onClick={handleSaveLeadDetails}
                     disabled={lookingUpLead}
-                    className="px-3 py-1 text-sm bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50"
+                    className="px-2 py-0.5 text-xs bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50"
                   >
                     {lookingUpLead ? 'Saving...' : '💾 Save'}
                   </button>
                 )}
               </div>
               {leadRecordId && (
-                <p className="text-xs text-gray-500 mb-3">
+                <p className="text-xs text-gray-500 mb-2">
                   If you click Save, changes to Location, Email, or Phone will be saved to the lead&apos;s record.
                 </p>
               )}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Lead Name
-                  </label>
+                  <label className="block text-xs font-medium text-gray-700 mb-0.5">Lead Name</label>
                   <input
                     type="text"
                     value={formData.leadName}
                     onChange={(e) => setFormData({...formData, leadName: e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                    className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Lead Location
-                    <span className="text-gray-500 text-xs ml-1">(for timezone)</span>
-                  </label>
+                  <label className="block text-xs font-medium text-gray-700 mb-0.5">Location <span className="text-gray-500">(tz)</span></label>
                   <input
                     type="text"
                     value={formData.leadLocation}
                     onChange={(e) => setFormData({...formData, leadLocation: e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                    className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded"
                     placeholder="Sydney, Australia"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Lead Email
-                    <span className="text-gray-500 text-xs ml-1">(optional - adds as guest)</span>
-                  </label>
+                  <label className="block text-xs font-medium text-gray-700 mb-0.5">Email <span className="text-gray-500">(guest)</span></label>
                   <input
                     type="email"
                     value={formData.leadEmail}
                     onChange={(e) => setFormData({...formData, leadEmail: e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                    className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Lead Phone
-                  </label>
+                  <label className="block text-xs font-medium text-gray-700 mb-0.5">Phone</label>
                   <input
                     type="text"
                     value={formData.leadPhone}
                     onChange={(e) => setFormData({...formData, leadPhone: e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                    className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded"
                   />
                 </div>
-                <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Booking Time Preference
-                    <span className="text-gray-500 text-xs ml-1">(from conversation)</span>
-                  </label>
+                <div className="col-span-2 md:col-span-4">
+                  <label className="block text-xs font-medium text-gray-700 mb-0.5">Booking Time Preference</label>
                   <input
                     type="text"
                     value={formData.conversationHint}
                     onChange={(e) => setFormData({...formData, conversationHint: e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                    className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded"
                     placeholder="e.g. Wednesday arvo next week"
                   />
                 </div>
@@ -1450,23 +1437,20 @@ ${yourFirstName}`;
 
             {/* Chat Section for Booking */}
             {clientInfo.calendarConnected && (
-              <div className="border-t pt-6 mt-6">
-                <h2 className="text-lg font-semibold text-gray-800 mb-4">📅 Smart Booking Assistant</h2>
-                
-                {formData.conversationHint && (
-                  <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
-                    <span className="text-sm text-blue-800">
-                      💬 From conversation: &quot;{formData.conversationHint}&quot;
+              <div className="border-t pt-4 mt-4 flex flex-col min-h-0" style={{ flex: '1 1 auto' }}>
+                <div className="flex items-center gap-2 mb-2 shrink-0">
+                  <h2 className="text-sm font-semibold text-gray-800">📅 Smart Booking Assistant</h2>
+                  {formData.conversationHint && (
+                    <span className="text-xs text-blue-700 truncate max-w-[200px]" title={formData.conversationHint}>
+                      💬 &quot;{formData.conversationHint}&quot;
                     </span>
-                  </div>
-                )}
+                  )}
+                </div>
                 
-                <div className="bg-gray-50 rounded-lg p-4 mb-4 min-h-72 max-h-96 overflow-y-auto">
+                <div className="bg-gray-50 rounded-lg p-3 mb-3 min-h-[60px] max-h-40 overflow-y-auto shrink-0">
                   {chatMessages.length === 0 ? (
-                    <div className="text-gray-500 text-center py-8">
-                      <p className="mb-2">🤖 Ask me about your availability!</p>
-                      <p className="text-sm">I can check any date in the next 90 days.</p>
-                      <p className="text-sm mt-1">Try: &quot;What&apos;s free Thursday?&quot; or &quot;Check end of February&quot;</p>
+                    <div className="text-gray-500 text-center py-4 text-sm">
+                      <p>🤖 Ask me about your availability! Try: &quot;What&apos;s free Thursday?&quot;</p>
                     </div>
                   ) : (
                     <div className="space-y-3">
@@ -1575,21 +1559,21 @@ ${yourFirstName}`;
                   )}
                 </div>
                 
-                <div className="flex gap-2">
+                <div className="flex gap-2 shrink-0">
                   <textarea
                     ref={chatInputRef}
                     value={chatInput}
                     onChange={(e) => setChatInput(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), handleChatSend())}
                     placeholder="Book a call anytime in the next 90 days..."
-                    className="flex-1 px-4 py-2 border border-gray-300 rounded-md text-sm resize-y min-h-[80px]"
-                    rows={4}
+                    className="flex-1 px-4 py-3 border border-gray-300 rounded-lg text-base resize-y min-h-[200px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    rows={8}
                     disabled={chatLoading}
                   />
                   <button
                     onClick={handleChatSend}
                     disabled={chatLoading || !chatInput.trim()}
-                    className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-md font-medium disabled:bg-gray-400 self-end"
+                    className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-medium disabled:bg-gray-400 self-end"
                   >
                     {chatLoading ? 'Thinking...' : 'Ask AI'}
                   </button>
