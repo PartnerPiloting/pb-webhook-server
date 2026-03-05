@@ -191,8 +191,9 @@ function SmartFollowupsContent() {
   }, [isOwner]);
 
   // Check sweep status on mount (e.g. user returned after navigating away during rebuild)
-  // When we find status='running' on mount, we always treat it as interrupted - we can't know
-  // if a rebuild is actively running when the user just opened the page; it's almost certainly stale.
+  // Chunked flow writes Running during rebuild - if we find it, poll and show progress unless stuck
+  const STUCK_AT_ZERO_MS = 2 * 60 * 1000;
+  const STALE_RUNNING_MS = 20 * 60 * 1000;
   useEffect(() => {
     if (!isOwner) return;
     let cancelled = false;
@@ -200,7 +201,60 @@ function SmartFollowupsContent() {
       const status = await getSweepStatus();
       if (cancelled) return;
       if (status.status === 'running') {
-        setActionMessage({ type: 'success', text: 'The last rebuild is either still in progress, or did not complete. Would you like to reset?', resetPrompt: true });
+        const startedAt = status.startedAt ? new Date(status.startedAt).getTime() : Date.now();
+        const elapsed = Date.now() - startedAt;
+        const processed = status.results?.processed ?? 0;
+        const total = status.results?.candidatesFound ?? 0;
+        const isStuck = processed === 0 && total > 0 && elapsed > STUCK_AT_ZERO_MS;
+        const isStale = elapsed > STALE_RUNNING_MS;
+        if (isStuck || isStale) {
+          setActionMessage({ type: 'success', text: 'The last rebuild is either still in progress, or did not complete. Would you like to reset?', resetPrompt: true });
+          return;
+        }
+        setRebuildStartedAt(startedAt);
+        setIsRebuilding(true);
+        setSweepProgress({ processed, candidatesFound: total, aiAnalyzed: status.results?.aiAnalyzed ?? 0, currentLeadName: null });
+        setActionMessage({ type: 'success', text: `Processing… ${processed} of ${total} leads` });
+        const poll = async () => {
+          if (cancelled) return;
+          const s = await getSweepStatus();
+          if (cancelled) return;
+          if (s.status === 'completed') {
+            const res = s.results || {};
+            const candidates = res.candidatesFound ?? res.processed ?? 0;
+            const proc = res.processed ?? 0;
+            const aiAnalyzed = res.aiAnalyzed ?? 0;
+            const errCount = res.totalErrors ?? (res.errors?.length ?? 0);
+            const msg = candidates === 0
+              ? 'Rebuild complete. 0 leads in Leads table matched the sweep filter (due date or modified in last 7 days). Queue may still show leads from earlier runs.'
+              : errCount > 0
+                ? `Rebuild complete. ${candidates} candidates found, ${proc} processed (${aiAnalyzed} AI-analyzed). ${errCount} had errors.`
+                : `Rebuild complete. ${candidates} candidates found, ${proc} processed (${aiAnalyzed} AI-analyzed). 0 errors.`;
+            setActionMessage({ type: errCount > 0 ? 'error' : 'success', text: msg });
+            setSweepStatus(s);
+            setSweepProgress(null);
+            setRebuildStartedAt(null);
+            loadQueue();
+            setIsRebuilding(false);
+            return;
+          }
+          if (s.status === 'failed') {
+            setActionMessage({ type: 'error', text: `Rebuild failed: ${s.error || 'Unknown error'}` });
+            setSweepStatus(s);
+            setSweepProgress(null);
+            setRebuildStartedAt(null);
+            setIsRebuilding(false);
+            return;
+          }
+          if (s.status === 'running' && s.results) {
+            const tot = s.results.candidatesFound ?? 0;
+            const dn = s.results.processed ?? 0;
+            setSweepProgress({ processed: dn, candidatesFound: tot, aiAnalyzed: s.results.aiAnalyzed ?? 0, currentLeadName: null });
+            setActionMessage({ type: 'success', text: `Processing… ${dn} of ${tot} leads` });
+          }
+          setTimeout(poll, 5000);
+        };
+        setTimeout(poll, 5000);
         return;
       }
       if (status.status === 'completed' || status.status === 'failed') {
