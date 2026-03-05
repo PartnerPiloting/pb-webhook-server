@@ -83,9 +83,17 @@ const SWEEP_STATUS_FIELDS = {
   UPDATED: 'Updated',
   TOTAL_ERRORS: 'Total Errors',
   ERROR_DETAILS: 'Error Details',
+  CURRENT_LEAD_NAME: 'Current Lead', // Optional: shows which lead is being processed (Single line text)
 };
 
 const SWEEP_STATUS_OPTIONS = ['Running', 'Completed', 'Failed'];
+
+/**
+ * Smart FUP Sweep Status table (create manually in Airtable if needed).
+ * Fields: Client ID, Status, Started At, Completed At, Candidates Found, Processed,
+ * AI Analyzed, Created, Updated, Total Errors, Error Details, Current Lead (optional).
+ * Current Lead = Single line text, shows which lead is being processed during rebuild.
+ */
 
 /**
  * Priority options for Smart FUP State
