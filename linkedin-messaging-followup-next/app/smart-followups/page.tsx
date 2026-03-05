@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef, Suspense } from 'react';
 import Layout from '../../components/Layout';
-import { getSmartFollowupQueue, acknowledgeAiDate, generateFollowupMessage, updateLead, getLeadById, snoozeSmartFollowup, triggerSmartFollowupRebuild, getSweepStatus, generateSmartFollowupStory, replaceFupInstructions, reviewFupInstructions, getUpcomingMeetingWithLead } from '../../services/api';
+import { getSmartFollowupQueue, acknowledgeAiDate, generateFollowupMessage, updateLead, getLeadById, snoozeSmartFollowup, triggerSmartFollowupRebuild, getSweepStatus, resetSweepStatus, generateSmartFollowupStory, replaceFupInstructions, reviewFupInstructions, getUpcomingMeetingWithLead } from '../../services/api';
 import { getCurrentClientId, getClientProfile, getCurrentClientProfile, buildAuthUrl } from '../../utils/clientUtils';
 
 /**
@@ -114,7 +114,7 @@ function SmartFollowupsContent() {
   const MAX_IMAGES = 5;
   const [pendingImages, setPendingImages] = useState<Array<{ data: string; mimeType: string }>>([]);
   const [copySuccess, setCopySuccess] = useState(false);
-  const [actionMessage, setActionMessage] = useState<{ type: string; text: string } | null>(null);
+  const [actionMessage, setActionMessage] = useState<{ type: string; text: string; resetPrompt?: boolean } | null>(null);
   const [emailSending, setEmailSending] = useState(false);
   const [leadNotes, setLeadNotes] = useState<string>('');
   const [leadLinkedinMessages, setLeadLinkedinMessages] = useState<string>('');
@@ -200,7 +200,7 @@ function SmartFollowupsContent() {
       const status = await getSweepStatus();
       if (cancelled) return;
       if (status.status === 'running') {
-        setActionMessage({ type: 'success', text: 'Previous rebuild may have been interrupted. Click Refresh to see current data, or Rebuild to run again.' });
+        setActionMessage({ type: 'success', text: 'The last rebuild is either still in progress, or did not complete. Would you like to reset?', resetPrompt: true });
         return;
       }
       if (status.status === 'completed' || status.status === 'failed') {
@@ -858,14 +858,39 @@ function SmartFollowupsContent() {
                     </span>
                   )}
                 </span>
-                <button
-                  onClick={() => { setActionMessage(null); setSweepStatus(null); setSweepProgress(null); }}
-                  className="shrink-0 text-gray-500 hover:text-gray-700 p-0.5 rounded"
-                  title="Dismiss"
-                  aria-label="Dismiss"
-                >
-                  ✕
-                </button>
+                {actionMessage.resetPrompt ? (
+                  <span className="flex items-center gap-2 shrink-0">
+                    <button
+                      onClick={async () => {
+                        try {
+                          await resetSweepStatus();
+                          setActionMessage(null);
+                          loadQueue();
+                        } catch (e) {
+                          setActionMessage({ type: 'error', text: 'Reset failed. Try Refresh or Rebuild.' });
+                        }
+                      }}
+                      className="px-2 py-0.5 text-xs font-medium bg-green-600 text-white rounded hover:bg-green-700"
+                    >
+                      Yes
+                    </button>
+                    <button
+                      onClick={() => { setActionMessage(null); loadQueue(); }}
+                      className="px-2 py-0.5 text-xs font-medium bg-gray-200 text-gray-700 rounded hover:bg-gray-300"
+                    >
+                      No
+                    </button>
+                  </span>
+                ) : (
+                  <button
+                    onClick={() => { setActionMessage(null); setSweepStatus(null); setSweepProgress(null); }}
+                    className="shrink-0 text-gray-500 hover:text-gray-700 p-0.5 rounded"
+                    title="Dismiss"
+                    aria-label="Dismiss"
+                  >
+                    ✕
+                  </button>
+                )}
               </div>
               {sweepProgress && sweepProgress.candidatesFound > 0 && (
                 <div className="px-3 py-1">
