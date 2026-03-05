@@ -1952,6 +1952,19 @@ export const getSweepStatus = async () => {
   }
 };
 
+/**
+ * Reset stuck sweep status (sets to Completed so user can proceed)
+ */
+export const resetSweepStatus = async () => {
+  const clientId = getCurrentClientId();
+  if (!clientId) throw new Error('Client ID not available');
+  const base = getBackendBase();
+  const response = await axios.post(`${base}/api/smart-followup/sweep-reset`, { clientId }, {
+    headers: getAuthenticatedHeaders()
+  });
+  return response.data;
+};
+
 export default api;
 
 // Export helper functions for use in components

@@ -11470,6 +11470,20 @@ router.get("/api/cron/smart-followup-sweep", async (req, res) => {
 });
 
 // ---------------------------------------------------------------
+// Smart Follow-Up Sweep - Reset stuck status
+// Sets status to Completed so user can proceed (clears "Running" when hung)
+// ---------------------------------------------------------------
+router.post("/api/smart-followup/sweep-reset", async (req, res) => {
+  const clientId = req.body?.clientId || req.query?.clientId || 'Guy-Wilson';
+  try {
+    await upsertSweepStatusToAirtable(clientId, 'completed', { results: { processed: 0, candidatesFound: 0 } });
+    return res.json({ success: true, message: 'Status reset' });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ---------------------------------------------------------------
 // Smart Follow-Up Sweep Status (for polling after Rebuild)
 // Reads from Airtable - persistent across restarts
 // ---------------------------------------------------------------
