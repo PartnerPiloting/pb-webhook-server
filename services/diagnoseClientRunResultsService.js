@@ -6,6 +6,9 @@ const { getMasterClientsBase } = require('../config/airtableClient');
 const { MASTER_TABLES, CLIENT_RUN_FIELDS, JOB_TRACKING_FIELDS } = require('../constants/airtableUnifiedConstants');
 const runIdSystem = require('../services/runIdSystem');
 
+// Cost per 1K tokens (Gemini/Vertex - conservative estimate, likely to reduce over time)
+const COST_PER_1K_TOKENS = 0.003;
+
 /**
  * Parse Progress Logs to compute wall clock and total processing time
  * Progress Log format: [HH:mm:ss] Message (e.g. [12:01:28] ✅ Lead Scoring: Completed (10/10, 195s, 123 tokens))
@@ -143,13 +146,26 @@ async function runDiagnostic(runIdArg = null) {
       // Compute total processing time from Progress Log
       const timing = computeProcessingTimeFromProgressLogs(records.map(r => r.progressLogFull).filter(Boolean));
 
+      // Sum tokens and estimate cost (from Airtable fields - more reliable than parsing Progress Log)
+      let totalTokens = 0;
+      for (const rec of crrRecords) {
+        const pt = rec.get(CLIENT_RUN_FIELDS.PROFILE_SCORING_TOKENS);
+        const pot = rec.get(CLIENT_RUN_FIELDS.POST_SCORING_TOKENS);
+        totalTokens += (pt && !isNaN(pt) ? Number(pt) : 0) + (pot && !isNaN(pot) ? Number(pot) : 0);
+      }
+      const estimatedCost = totalTokens > 0 ? (totalTokens / 1000) * COST_PER_1K_TOKENS : null;
+
       result.clientRunResults.records = records.map(({ progressLogFull, ...r }) => r);
       result.clientRunResults.summary = {
         total: records.length,
         withProgressLog,
         withMetrics
       };
-      result.clientRunResults.processingTime = timing;
+      result.clientRunResults.processingTime = {
+        ...timing,
+        totalTokens: totalTokens || null,
+        estimatedCost: estimatedCost != null ? `$${estimatedCost.toFixed(2)}` : null
+      };
 
       result.success = true;
 
@@ -216,7 +232,9 @@ async function getPreviousRunProcessingTime(currentRunId) {
     return {
       runId: prevRunId,
       formatted: pt.wallClockFormatted || pt.formatted,
-      fullFormatted: pt.formatted
+      fullFormatted: pt.formatted,
+      estimatedCost: pt.estimatedCost || null,
+      totalTokens: pt.totalTokens || null
     };
   } catch {
     return null;
