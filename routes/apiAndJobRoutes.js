@@ -6872,19 +6872,21 @@ router.get("/api/verify-client-access/:clientId", async (req, res) => {
 // ---------------------------------------------------------------
 router.get("/api/test-daily-alerts", async (req, res) => {
   try {
-    console.log("🧪 Manual test of daily-client-alerts script starting...");
+    const adminOnly = req.query.adminOnly === 'true' || req.query.adminOnly === '1';
+    console.log(`🧪 Manual test of daily-client-alerts script starting... (adminOnly=${adminOnly})`);
     
     // Import the script
     const dailyClientAlerts = require('../scripts/daily-client-alerts/index.js');
     
-    // Run it
-    const results = await dailyClientAlerts.main();
+    // Run it (adminOnly=true skips client emails - only admin summary sent)
+    const results = await dailyClientAlerts.main({ adminOnly });
     
     console.log("✅ Daily alerts script completed successfully");
     
     res.json({
       success: true,
-      message: "Daily client alerts script executed successfully",
+      message: adminOnly ? "Daily client alerts (admin-only test) - no client emails sent" : "Daily client alerts script executed successfully",
+      adminOnly,
       results: results
     });
     
