@@ -354,6 +354,26 @@ async function sendAdminSummary(results, options = {}) {
             <li><strong>Email Failures:</strong> ${results.emailsFailed}</li>
         </ul>
 
+        <h3>Clients With Scoring Activity (Last 72 Hours)</h3>
+        ${results.clientsWithScoring > 0 ? `
+        <table border="1" style="border-collapse: collapse; width: 100%;">
+            <tr style="background-color: #d1fae5;">
+                <th style="padding: 8px; text-align: left;">Client</th>
+                <th style="padding: 8px; text-align: left;">Email</th>
+                <th style="padding: 8px; text-align: left;">Leads Scored</th>
+            </tr>
+            ${results.details
+                .filter(d => !d.needsAlert && d.scoredLeads24h > 0)
+                .map(d => `
+                <tr>
+                    <td style="padding: 8px;">${d.clientName} (${d.clientId})</td>
+                    <td style="padding: 8px;">${d.clientEmail || 'No email'}</td>
+                    <td style="padding: 8px;">${d.scoredLeads24h}</td>
+                </tr>
+                `).join('')}
+        </table>
+        ` : '<p><em>No clients had scoring activity in the last 72 hours.</em></p>'}
+
         <h3>Clients Without Scoring Activity (Last 72 Hours)</h3>
         ${results.clientsWithoutScoring > 0 ? `
         <table border="1" style="border-collapse: collapse; width: 100%;">
