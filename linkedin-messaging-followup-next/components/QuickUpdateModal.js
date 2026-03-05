@@ -1329,30 +1329,21 @@ export default function QuickUpdateModal({
               </div>
             )}
             
-            {/* Current Notes Summary */}
-            {selectedLead && notesSummary && (
+            {/* Current Notes - expandable sections with down arrows (same as Lead Search) */}
+            {selectedLead && (
               <div className="mt-6">
                 <h4 className="text-sm font-medium text-gray-700 mb-2">Current Notes</h4>
-                <div className="space-y-2">
-                  {Object.entries(notesSummary).map(([key, info]) => (
-                    info.hasContent && (
-                      <div key={key} className="bg-white border border-gray-200 rounded p-3">
-                        <div className="flex justify-between items-center text-sm">
-                          <span className="font-medium capitalize text-gray-700">{key}</span>
-                          <span className="text-gray-500">{info.lineCount} lines</span>
-                        </div>
-                        {info.lastDate && (
-                          <div className="text-xs text-gray-400 mt-1">
-                            Last update: {info.lastDate}
-                          </div>
-                        )}
-                      </div>
-                    )
-                  ))}
-                  {!Object.values(notesSummary).some(s => s.hasContent) && (
-                    <div className="text-sm text-gray-400 italic">No notes yet</div>
-                  )}
-                </div>
+                <p className="text-xs text-gray-500 mb-2">Click section headers to expand. Click Edit to modify.</p>
+                {selectedLead.notes ? (
+                  <CollapsibleNotes
+                    notes={cleanLinkedInNoise(selectedLead.notes)}
+                    maxHeight={200}
+                    defaultExpanded={false}
+                    showLineNumbers={true}
+                  />
+                ) : (
+                  <div className="text-sm text-gray-400 italic">No notes yet</div>
+                )}
               </div>
             )}
             
