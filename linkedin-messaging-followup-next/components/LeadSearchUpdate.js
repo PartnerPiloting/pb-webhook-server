@@ -311,6 +311,20 @@ const LeadSearchUpdate = () => {
     }
   };
 
+  // Handle inline field updates (email, phone, priority) - keep UI in sync after API save
+  const handleQuickFieldUpdate = (leadId, updates) => {
+    setLeads((prev) =>
+      prev.map((l) => {
+        const id = l.id || l.recordId || l['Profile Key'];
+        if (id !== leadId) return l;
+        return { ...l, ...updates };
+      })
+    );
+    if (selectedLead && (selectedLead.id === leadId || selectedLead.recordId === leadId || selectedLead['Profile Key'] === leadId)) {
+      setSelectedLead((prev) => (prev ? { ...prev, ...updates } : null));
+    }
+  };
+
   // Handle sort change from table - triggers new API call with server-side sorting
   const handleSortChange = (newSortField, newSortDirection) => {
     console.log(`🔀 Sort changed: ${newSortField} ${newSortDirection}`);
@@ -340,6 +354,7 @@ const LeadSearchUpdate = () => {
         selectedLead={selectedLead}
         isLoading={isLoading}
         onSearch={handleEnhancedSearch}
+        onQuickFieldUpdate={handleQuickFieldUpdate}
         sortField={sortField}
         sortDirection={sortDirection}
         onSortChange={handleSortChange}
