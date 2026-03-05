@@ -234,8 +234,8 @@ class EmailReportingService {
         </tr>
         ${previousRunProcessingTime ? `
         <tr>
-            <th>Previous Run Processing Time</th>
-            <td colspan="3">Run ${previousRunProcessingTime.runId} completed in <strong>${previousRunProcessingTime.formatted}</strong></td>
+            <th>Previous Run</th>
+            <td colspan="3">Run ${previousRunProcessingTime.runId} completed in <strong>${previousRunProcessingTime.formatted}</strong>${previousRunProcessingTime.estimatedCost ? ` (est. AI cost ${previousRunProcessingTime.estimatedCost})` : ''}</td>
         </tr>
         ` : ''}
     </table>
