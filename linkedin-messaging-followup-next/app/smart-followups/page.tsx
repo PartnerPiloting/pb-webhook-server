@@ -189,6 +189,7 @@ function SmartFollowupsContent() {
   }, [isOwner]);
 
   // Check sweep status on mount (e.g. user returned after navigating away during rebuild)
+  const STALE_RUNNING_MS = 20 * 60 * 1000; // 20 min - treat 'running' as stale if older
   useEffect(() => {
     if (!isOwner) return;
     let cancelled = false;
@@ -196,18 +197,33 @@ function SmartFollowupsContent() {
       const status = await getSweepStatus();
       if (cancelled) return;
       if (status.status === 'running') {
+        const startedAt = status.startedAt ? new Date(status.startedAt).getTime() : 0;
+        const isStale = startedAt > 0 && Date.now() - startedAt > STALE_RUNNING_MS;
+        if (isStale) {
+          setActionMessage({ type: 'success', text: 'Previous rebuild may have been interrupted. Click Refresh to see current data, or Rebuild to run again.' });
+          return;
+        }
         setIsRebuilding(true);
-        setActionMessage({ type: 'success', text: 'Rebuild in progress. Please wait – this ensures you\'re working with the latest analysis.' });
+        const r = status.results || {};
+        const total = r.candidatesFound ?? 0;
+        const done = r.processed ?? 0;
+        const currentName = r.currentLeadName || null;
+        setSweepProgress({ processed: done, candidatesFound: total, aiAnalyzed: r.aiAnalyzed ?? 0, currentLeadName: currentName });
+        const namePart = currentName ? ` — up to ${currentName}` : '';
+        setActionMessage({
+          type: 'success',
+          text: total > 0 ? `Processing… ${done} of ${total} leads${namePart}` : 'Rebuild in progress. Please wait…',
+        });
         const poll = async () => {
           if (cancelled) return;
           const s = await getSweepStatus();
           if (cancelled) return;
           if (s.status === 'completed') {
-            const r = s.results || {};
-            const candidates = r.candidatesFound ?? r.processed ?? 0;
-            const processed = r.processed ?? 0;
-            const aiAnalyzed = r.aiAnalyzed ?? 0;
-            const errCount = r.totalErrors ?? (r.errors?.length ?? 0);
+            const res = s.results || {};
+            const candidates = res.candidatesFound ?? res.processed ?? 0;
+            const processed = res.processed ?? 0;
+            const aiAnalyzed = res.aiAnalyzed ?? 0;
+            const errCount = res.totalErrors ?? (res.errors?.length ?? 0);
             const msg = candidates === 0
               ? 'Rebuild complete. 0 leads in Leads table matched the sweep filter (due date or modified in last 7 days). Queue may still show leads from earlier runs.'
               : errCount > 0
@@ -215,6 +231,7 @@ function SmartFollowupsContent() {
                 : `Rebuild complete. ${candidates} candidates found, ${processed} processed (${aiAnalyzed} AI-analyzed). 0 errors.`;
             setActionMessage({ type: errCount > 0 ? 'error' : 'success', text: msg });
             setSweepStatus(s);
+            setSweepProgress(null);
             loadQueue();
             setIsRebuilding(false);
             return;
@@ -222,12 +239,22 @@ function SmartFollowupsContent() {
           if (s.status === 'failed') {
             setActionMessage({ type: 'error', text: `Rebuild failed: ${s.error || 'Unknown error'}` });
             setSweepStatus(s);
+            setSweepProgress(null);
             setIsRebuilding(false);
             return;
           }
-          setTimeout(poll, 10000);
+          if (s.status === 'running' && s.results) {
+            const rr = s.results;
+            const tot = rr.candidatesFound ?? 0;
+            const dn = rr.processed ?? 0;
+            const nm = rr.currentLeadName || null;
+            setSweepProgress({ processed: dn, candidatesFound: tot, aiAnalyzed: rr.aiAnalyzed ?? 0, currentLeadName: nm });
+            const np = nm ? ` — up to ${nm}` : '';
+            setActionMessage({ type: 'success', text: tot > 0 ? `Processing… ${dn} of ${tot} leads${np}` : 'Rebuild in progress. Please wait…' });
+          }
+          setTimeout(poll, 5000);
         };
-        setTimeout(poll, 10000);
+        setTimeout(poll, 5000);
       } else if (status.status === 'completed' || status.status === 'failed') {
         const r = status.results || {};
         const candidates = r.candidatesFound ?? r.processed ?? 0;
