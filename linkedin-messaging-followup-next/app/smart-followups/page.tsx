@@ -192,6 +192,7 @@ function SmartFollowupsContent() {
 
   // Check sweep status on mount (e.g. user returned after navigating away during rebuild)
   const STALE_RUNNING_MS = 20 * 60 * 1000; // 20 min - treat 'running' as stale if older
+  const STUCK_AT_ZERO_MS = 2 * 60 * 1000;  // 2 min at 0 processed = stuck
   useEffect(() => {
     if (!isOwner) return;
     let cancelled = false;
@@ -200,8 +201,12 @@ function SmartFollowupsContent() {
       if (cancelled) return;
       if (status.status === 'running') {
         const startedAt = status.startedAt ? new Date(status.startedAt).getTime() : Date.now();
-        const isStale = startedAt > 0 && Date.now() - startedAt > STALE_RUNNING_MS;
-        if (isStale) {
+        const elapsed = Date.now() - startedAt;
+        const processed = status.results?.processed ?? 0;
+        const total = status.results?.candidatesFound ?? 0;
+        const isStale = startedAt > 0 && elapsed > STALE_RUNNING_MS;
+        const isStuckAtZero = processed === 0 && total > 0 && elapsed > STUCK_AT_ZERO_MS;
+        if (isStale || isStuckAtZero) {
           setActionMessage({ type: 'success', text: 'Previous rebuild may have been interrupted. Click Refresh to see current data, or Rebuild to run again.' });
           return;
         }
