@@ -11303,20 +11303,51 @@ router.get("/api/smart-followup/sweep", async (req, res) => {
     clientId,      // Optional: specific client to process
     dryRun,        // 'true' to preview without writing
     limit,         // Max leads per client (for testing)
+    offset,        // For chunked mode: skip this many leads
+    batchSize,     // For chunked mode: process this many per request
     forceAll,      // 'true' to re-analyze ALL leads regardless of notes changes
-    async: asyncMode  // 'true' = fire-and-forget, return 202 immediately
+    async: asyncMode  // 'true' = fire-and-forget (legacy, not recommended)
   } = req.query;
+  
+  const batchSz = batchSize ? parseInt(batchSize, 10) : null;
+  const off = offset ? parseInt(offset, 10) : 0;
   
   const sweepOptions = {
     clientId: clientId || null,
     dryRun: dryRun === 'true',
-    limit: limit ? parseInt(limit, 10) : null,
+    limit: batchSz || (limit ? parseInt(limit, 10) : null),
+    offset: batchSz ? off : 0,
+    batchMode: !!batchSz,
     forceAll: forceAll === 'true'
   };
   
-  sweepLogger.info(`Smart Follow-Up sweep triggered: clientId=${clientId || 'ALL'}, dryRun=${dryRun}, limit=${limit}, forceAll=${forceAll}, async=${asyncMode}`);
+  sweepLogger.info(`Smart Follow-Up sweep triggered: clientId=${clientId || 'ALL'}, dryRun=${dryRun}, limit=${sweepOptions.limit}, offset=${sweepOptions.offset}, batchMode=${sweepOptions.batchMode}, forceAll=${forceAll}, async=${asyncMode}`);
   
-  // Fire-and-forget: return 202 immediately, run sweep in background (avoids timeout for large lead counts)
+  // Chunked mode: sync, process one batch, return hasMore for frontend to loop
+  if (batchSz) {
+    try {
+      const results = await runSweep(sweepOptions);
+      const totalCandidates = results.clients?.[0]?.candidatesFound ?? 0;
+      const processed = results.totalProcessed ?? 0;
+      const nextOffset = off + processed;
+      const hasMore = nextOffset < totalCandidates;
+      return res.json({
+        success: true,
+        processed,
+        totalCandidates,
+        nextOffset: hasMore ? nextOffset : null,
+        hasMore,
+        created: results.totalCreated ?? 0,
+        updated: results.totalUpdated ?? 0,
+        errors: results.clients?.flatMap(c => c.errors || []) || [],
+      });
+    } catch (error) {
+      sweepLogger.error('Chunked sweep error:', error.message, error.stack);
+      return res.status(500).json({ success: false, error: error.message });
+    }
+  }
+  
+  // Legacy fire-and-forget: return 202 immediately, run sweep in background
   if (asyncMode === 'true') {
     const cid = clientId || null;
     let omitCurrentLead = false; // Set true if Current Lead field doesn't exist in Airtable

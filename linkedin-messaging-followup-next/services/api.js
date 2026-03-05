@@ -1888,30 +1888,48 @@ export const getUpcomingMeetingWithLead = async (leadEmail) => {
   }
 };
 
+const BATCH_SIZE = 5;
+const BATCH_TIMEOUT_MS = 120000; // 2 min per batch
+
 /**
- * Trigger the Smart Follow-up sweep (rebuild) - populates Smart FUP State via AI analysis
- * Uses fire-and-forget: returns immediately (202), sweep runs in background. Avoids timeout for large lead counts.
- * @returns {Promise<{success: boolean, message: string, note?: string}>}
+ * Trigger the Smart Follow-up sweep (rebuild) - chunked mode.
+ * Processes leads in batches of 5, each request completes before the next.
+ * @param {Function} onProgress - (processed, totalCandidates) => void
+ * @returns {Promise<{processed: number, totalCandidates: number, created: number, updated: number, errors: array}>}
  */
-export const triggerSmartFollowupRebuild = async () => {
-  try {
-    const clientId = getCurrentClientId();
-    if (!clientId) {
-      throw new Error('Client ID not available. Please ensure user is authenticated.');
-    }
-    
-    const base = getBackendBase();
-    const response = await axios.get(`${base}/api/smart-followup/sweep`, {
-      params: { clientId, async: 'true', forceAll: 'true' },
-      timeout: 15000, // 15s - we expect 202 quickly; sweep runs in background
-      headers: getAuthenticatedHeaders()
-    });
-    
-    return response.data;
-  } catch (error) {
-    console.error('Smart Follow-up rebuild error:', error.message);
-    throw error;
+export const triggerSmartFollowupRebuild = async (onProgress) => {
+  const clientId = getCurrentClientId();
+  if (!clientId) {
+    throw new Error('Client ID not available. Please ensure user is authenticated.');
   }
+  const base = getBackendBase();
+  const headers = getAuthenticatedHeaders();
+  let offset = 0;
+  let totalProcessed = 0;
+  let totalCreated = 0;
+  let totalUpdated = 0;
+  let allErrors = [];
+  let totalCandidates = 0;
+
+  while (true) {
+    const response = await axios.get(`${base}/api/smart-followup/sweep`, {
+      params: { clientId, batchSize: BATCH_SIZE, offset, forceAll: 'true' },
+      timeout: BATCH_TIMEOUT_MS,
+      headers
+    });
+    const data = response.data;
+    if (!data.success) throw new Error(data.error || 'Sweep failed');
+    totalProcessed += data.processed ?? 0;
+    totalCreated += data.created ?? 0;
+    totalUpdated += data.updated ?? 0;
+    if (data.errors?.length) allErrors = allErrors.concat(data.errors);
+    totalCandidates = data.totalCandidates ?? totalCandidates;
+    if (typeof onProgress === 'function') onProgress(totalProcessed, totalCandidates);
+    if (!data.hasMore) break;
+    offset = data.nextOffset ?? (offset + (data.processed ?? 0));
+  }
+
+  return { processed: totalProcessed, totalCandidates, created: totalCreated, updated: totalUpdated, errors: allErrors };
 };
 
 /**
