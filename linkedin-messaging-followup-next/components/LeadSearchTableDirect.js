@@ -2,6 +2,7 @@
 import React, { useState, useMemo } from 'react';
 import dynamic from 'next/dynamic';
 import InlineEditableText, { validators, formatters } from './InlineEditableText';
+import InlineEditableSelect from './InlineEditableSelect';
 
 // Lazy load inline editor so first paint stays light
 const InlineSearchTermsEditor = dynamic(() => import('./InlineSearchTermsEditor'), { ssr: false, loading: () => <span className="text-xs text-gray-400">…</span> });
@@ -152,6 +153,18 @@ export default function LeadSearchTableDirect({
       );
     }
     if (key === 'linkedinProfileUrl') return renderLinkedIn(lead);
+    if (key === 'Priority') {
+      return (
+        <InlineEditableSelect
+          lead={lead}
+          field="priority"
+          value={lead['Priority'] || lead.priority || ''}
+          options={['One', 'Two', 'Three']}
+          placeholder="—"
+          onUpdated={(val) => onQuickFieldUpdate && onQuickFieldUpdate(lead.id || lead.recordId || lead['Profile Key'], { priority: val, Priority: val })}
+        />
+      );
+    }
     if (key === 'AI Score') {
       const score = lead[key];
       if (!score) return <span className="text-gray-400">-</span>;
