@@ -11250,6 +11250,47 @@ async function getSweepStatusFromAirtable(clientId) {
 }
 
 // ---------------------------------------------------------------
+// Smart Follow-Up Sweep - Test Harness (sync, small batch)
+// Proves backend can complete. Auth: Bearer PB_WEBHOOK_SECRET
+// ---------------------------------------------------------------
+router.get("/api/smart-followup/sweep-test", async (req, res) => {
+  const auth = req.headers.authorization;
+  const secret = process.env.PB_WEBHOOK_SECRET;
+  if (!secret || auth !== `Bearer ${secret}`) {
+    return res.status(401).json({ ok: false, error: 'Unauthorized' });
+  }
+  const sweepLogger = createLogger({ runId: 'SMART-FUP-TEST', clientId: 'SYSTEM', operation: 'smart_followup_sweep_test' });
+  const limit = Math.min(parseInt(req.query.limit, 10) || 2, 5);
+  const clientId = req.query.clientId || 'Guy-Wilson';
+  sweepLogger.info(`Sweep test: clientId=${clientId}, limit=${limit} (sync)`);
+  try {
+    const { runSweep } = require('../services/smartFollowUpService');
+    const results = await runSweep({ clientId, dryRun: false, limit, forceAll: false });
+    const total = results.totalProcessed ?? 0;
+    const created = results.totalCreated ?? 0;
+    const updated = results.totalUpdated ?? 0;
+    const errors = results.clients?.flatMap((c) => c.errors || []) || [];
+    return res.json({
+      ok: true,
+      pass: true,
+      message: 'Backend completed synchronously',
+      processed: total,
+      created,
+      updated,
+      errorCount: errors.length,
+      errors: errors.slice(0, 5),
+    });
+  } catch (err) {
+    sweepLogger.error('Sweep test failed:', err.message, err.stack);
+    return res.status(500).json({
+      ok: false,
+      pass: false,
+      error: err.message,
+    });
+  }
+});
+
+// ---------------------------------------------------------------
 // Smart Follow-Up Sweep Endpoint
 // Runs the daily sweep to populate Smart FUP State table
 // Can be triggered manually or by cron
@@ -11341,6 +11382,59 @@ router.get("/api/smart-followup/sweep", async (req, res) => {
       success: false,
       error: error.message
     });
+  }
+});
+
+// ---------------------------------------------------------------
+// Smart Follow-Up Sweep - Cron Fallback
+// When web-triggered sweep gets stuck (Render kills background after 202),
+// cron hits this endpoint to run the sweep in the request context.
+// Auth: Bearer PB_WEBHOOK_SECRET
+// ---------------------------------------------------------------
+router.get("/api/cron/smart-followup-sweep", async (req, res) => {
+  const auth = req.headers.authorization;
+  const secret = process.env.PB_WEBHOOK_SECRET;
+  if (!secret || auth !== `Bearer ${secret}`) {
+    return res.status(401).json({ ok: false, error: 'Unauthorized' });
+  }
+  const sweepLogger = createLogger({ runId: 'SMART-FUP-CRON', clientId: 'SYSTEM', operation: 'smart_followup_cron' });
+  const clientId = req.query.clientId || 'Guy-Wilson';
+  try {
+    const status = await getSweepStatusFromAirtable(clientId);
+    if (status.status !== 'running') {
+      return res.json({ ok: true, skipped: true, reason: `status=${status.status}` });
+    }
+    const startedAt = status.startedAt ? new Date(status.startedAt).getTime() : 0;
+    const elapsed = startedAt ? Date.now() - startedAt : 0;
+    const processed = status.results?.processed ?? 0;
+    const stuck = (processed === 0 && elapsed > 2 * 60 * 1000) || elapsed > 20 * 60 * 1000;
+    if (!stuck) {
+      return res.json({ ok: true, skipped: true, reason: `running, ${processed} done, ${Math.floor(elapsed / 1000)}s` });
+    }
+    sweepLogger.info(`Cron running sweep (stuck: ${processed} processed, ${Math.floor(elapsed / 60000)}min elapsed)`);
+    const { runSweep } = require('../services/smartFollowUpService');
+    const results = await runSweep({ clientId });
+    const clients = results.clients || [];
+    const allErrors = clients.flatMap(c => (c.errors || []).map(e => ({ ...e, clientId: c.clientId })));
+    const candidatesFound = clients.reduce((s, c) => s + (c.candidatesFound || 0), 0);
+    const aiAnalyzed = clients.reduce((s, c) => s + (c.aiAnalyzed || 0), 0);
+    await upsertSweepStatusToAirtable(clientId, 'completed', {
+      results: {
+        processed: results.totalProcessed || 0,
+        created: results.totalCreated || 0,
+        updated: results.totalUpdated || 0,
+        candidatesFound,
+        aiAnalyzed,
+        errors: allErrors,
+        totalErrors: allErrors.length
+      }
+    });
+    sweepLogger.info(`Cron sweep complete: ${results.totalProcessed} processed`);
+    return res.json({ ok: true, processed: results.totalProcessed, created: results.totalCreated, updated: results.totalUpdated });
+  } catch (err) {
+    sweepLogger.error('Cron sweep failed:', err.message, err.stack);
+    await upsertSweepStatusToAirtable(clientId, 'failed', { error: err.message }).catch(() => {});
+    return res.status(500).json({ ok: false, error: err.message });
   }
 });
 
