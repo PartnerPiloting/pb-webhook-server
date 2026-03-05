@@ -131,6 +131,7 @@ function SmartFollowupsContent() {
   const [storyGenerating, setStoryGenerating] = useState(false);
   const [storyError, setStoryError] = useState<string | null>(null);
   const [sweepStatus, setSweepStatus] = useState<{ results?: { errors?: Array<{ leadName?: string; error?: string }> }; error?: string } | null>(null);
+  const [sweepProgress, setSweepProgress] = useState<{ processed: number; candidatesFound: number; aiAnalyzed: number; currentLeadName?: string | null } | null>(null);
   
   const chatInputRef = useRef<HTMLTextAreaElement>(null);
   const instructionsPanelRef = useRef<HTMLDivElement>(null);
@@ -726,16 +727,19 @@ function SmartFollowupsContent() {
     setIsRebuilding(true);
     setError(null);
     setActionMessage(null);
+    setSweepProgress(null);
     setLoadSeconds(0);
     const start = Date.now();
     const timer = setInterval(() => setLoadSeconds(Math.floor((Date.now() - start) / 1000)), 1000);
     try {
       await triggerSmartFollowupRebuild();
-      setActionMessage({ type: 'success', text: 'Rebuild in progress. Please wait – this ensures you\'re working with the latest analysis.' });
-      const pollInterval = 10000;
+      setActionMessage({ type: 'success', text: 'Rebuild started in background. Refresh in 2–5 minutes to see updated results.' });
+      const pollInterval = 5000; // Poll every 5s for progress updates
       const maxWait = 15 * 60 * 1000;
       const pollStart = Date.now();
+      let pollCount = 0;
       const poll = async () => {
+        pollCount++;
         const status = await getSweepStatus();
         if (status.status === 'completed') {
           const r = status.results || {};
@@ -753,18 +757,40 @@ function SmartFollowupsContent() {
           }
           setActionMessage({ type: errCount > 0 ? 'error' : 'success', text: msg });
           setSweepStatus(status);
+          setSweepProgress(null);
           loadQueue();
           return;
         }
         if (status.status === 'failed') {
           setActionMessage({ type: 'error', text: `Rebuild failed: ${status.error || 'Unknown error'}` });
           setSweepStatus(status);
+          setSweepProgress(null);
+          return;
+        }
+        if (status.status === 'running' && status.results) {
+          const r = status.results;
+          const total = r.candidatesFound ?? 0;
+          const done = r.processed ?? 0;
+          const ai = r.aiAnalyzed ?? 0;
+          const currentName = r.currentLeadName || null;
+          setSweepProgress({ processed: done, candidatesFound: total, aiAnalyzed: ai, currentLeadName: currentName });
+          const namePart = currentName ? ` — up to ${currentName}` : '';
+          setActionMessage({
+            type: 'success',
+            text: total > 0
+              ? `Processing… ${done} of ${total} leads${ai > 0 ? ` (${ai} AI-analyzed)` : ''}${namePart}`
+              : 'Rebuild started. Analyzing leads…',
+          });
+        }
+        // If status is 'none' after several polls, status table may not exist – don't wait forever
+        if (status.status === 'none' && pollCount >= 3) {
+          setActionMessage({ type: 'success', text: 'Rebuild started. Click Refresh in 2–5 minutes to see updated results.' });
           return;
         }
         if (Date.now() - pollStart < maxWait) {
           setTimeout(poll, pollInterval);
         } else {
-          setActionMessage({ type: 'success', text: 'Rebuild may still be running. Try Refresh in a few minutes.' });
+          setActionMessage({ type: 'success', text: 'Rebuild may still be running. Click Refresh when ready.' });
         }
       };
       setTimeout(poll, pollInterval);
@@ -864,7 +890,7 @@ function SmartFollowupsContent() {
               {isRebuilding ? (loadSeconds >= 3 ? 'Rebuild started ✓' : `Starting… ${loadSeconds}s`) : '🔨 Rebuild'}
             </button>
             <button
-              onClick={() => { setError(null); setActionMessage(null); setSweepStatus(null); loadQueue(); }}
+              onClick={() => { setError(null); setActionMessage(null); setSweepStatus(null); setSweepProgress(null); loadQueue(); }}
               disabled={isLoading}
               className="px-3 py-1.5 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50"
               title="Refresh the queue to see latest results"
@@ -876,11 +902,29 @@ function SmartFollowupsContent() {
           {/* Success/error message - always visible in header */}
           {actionMessage && (
             <div className="space-y-1">
-              <div className={`text-sm px-3 py-1.5 rounded-lg ${
+              <div className={`text-sm px-3 py-1.5 rounded-lg flex items-center justify-between gap-2 ${
                 actionMessage.type === 'success' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'
               }`}>
-                {actionMessage.text}
+                <span>{actionMessage.text}</span>
+                <button
+                  onClick={() => { setActionMessage(null); setSweepStatus(null); setSweepProgress(null); }}
+                  className="shrink-0 text-gray-500 hover:text-gray-700 p-0.5 rounded"
+                  title="Dismiss"
+                  aria-label="Dismiss"
+                >
+                  ✕
+                </button>
               </div>
+              {sweepProgress && sweepProgress.candidatesFound > 0 && (
+                <div className="px-3 py-1">
+                  <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-blue-500 transition-all duration-500"
+                      style={{ width: `${Math.min(100, (sweepProgress.processed / sweepProgress.candidatesFound) * 100)}%` }}
+                    />
+                  </div>
+                </div>
+              )}
               {sweepStatus?.results?.errors && sweepStatus.results.errors.length > 0 && (
                 <details className="text-xs text-gray-600 px-3 py-1">
                   <summary className="cursor-pointer hover:text-gray-800">Show error details</summary>

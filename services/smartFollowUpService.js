@@ -662,6 +662,8 @@ async function upsertStateRecord(clientId, lead, aiOutput, options = {}) {
  * 
  * @returns {Object} Summary of results
  */
+const PROGRESS_UPDATE_INTERVAL = 5; // Write progress to status table every N leads
+
 async function sweepClient(options) {
   const { 
     clientId, 
@@ -671,7 +673,8 @@ async function sweepClient(options) {
     fathomApiKey = null,
     dryRun = false, 
     limit = null,
-    forceAll = false
+    forceAll = false,
+    onProgress = null
   } = options;
   
   logger.info(`Starting sweep for client: ${clientId} (dryRun=${dryRun}, limit=${limit}, forceAll=${forceAll})`);
@@ -716,7 +719,8 @@ async function sweepClient(options) {
     const candidates = await clientBase('Leads').select(selectOptions).all();
     results.candidatesFound = candidates.length;
     logger.info(`Found ${candidates.length} leads with due follow-up dates`);
-    
+    if (onProgress) onProgress({ ...results });
+
     // Apply limit if specified
     let leadsToProcess = candidates;
     if (limit && leadsToProcess.length > limit) {
@@ -797,7 +801,10 @@ async function sweepClient(options) {
         results.processed++;
         if (upsertResult.action === 'created') results.created++;
         if (upsertResult.action === 'updated') results.updated++;
-        
+        const leadName = [lead.fields[LEAD_FIELDS.FIRST_NAME], lead.fields[LEAD_FIELDS.LAST_NAME]].filter(Boolean).join(' ').trim() || lead.fields[LEAD_FIELDS.EMAIL] || 'Lead';
+        if (onProgress && (results.processed % 2 === 0 || results.processed === leadsToProcess.length)) {
+          onProgress({ ...results, currentLeadName: leadName });
+        }
       } catch (error) {
         logger.error(`Error processing lead ${lead.id}: ${error.message}`);
         results.errors.push({
@@ -814,10 +821,11 @@ async function sweepClient(options) {
       error: error.message
     });
   }
-  
+
   results.completed = new Date().toISOString();
+  if (onProgress) onProgress({ ...results });
   logger.info(`Sweep complete for ${clientId}: ${results.processed} processed, ${results.created} created, ${results.updated} updated`);
-  
+
   return results;
 }
 
@@ -837,7 +845,8 @@ async function runSweep(options = {}) {
     clientId = null, 
     dryRun = false, 
     limit = null,
-    forceAll = false
+    forceAll = false,
+    onProgress = null
   } = options;
   
   logger.info(`Starting Smart Follow-Up sweep (dryRun=${dryRun}, clientId=${clientId || 'ALL'}, forceAll=${forceAll})`);
@@ -882,6 +891,7 @@ async function runSweep(options = {}) {
         dryRun,
         limit,
         forceAll,
+        onProgress,
       });
       
       overallResults.clients.push(clientResult);
