@@ -895,6 +895,7 @@ async function run(req, res, dependencies) {
                     
                     clientResults.push({
                         clientId,
+                        clientName: client.clientName || clientId,
                         processed: 0,
                         successful: 0,
                         failed: 0,

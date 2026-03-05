@@ -23,8 +23,12 @@ async function checkScoringPipelineHealth() {
         const base = airtableClient.getMasterClientsBase();
         const cutoff = new Date(Date.now() - PIPELINE_HEALTH_HOURS * 60 * 60 * 1000).toISOString();
 
+        // CRITICAL: Only consider runs that have "ClientName: N leads" format in System Notes.
+        // - smart_resume: cron creates Job Tracking, lead scoring appends "ClientName: N leads"
+        // - lead_scoring: direct lead-scoring runs (if any)
+        // - post_scoring runs do NOT have this format - exclude them to avoid empty jobTrackingNotes
         const records = await base(MASTER_TABLES.JOB_TRACKING).select({
-            filterByFormula: `AND({Status} = 'Completed', IS_AFTER({Start Time}, '${cutoff}'))`,
+            filterByFormula: `AND({Status} = 'Completed', IS_AFTER({Start Time}, '${cutoff}'), OR(FIND('smart_resume', {System Notes}) > 0, FIND('lead_scoring', {System Notes}) > 0))`,
             maxRecords: 1,
             sort: [{ field: 'Start Time', direction: 'desc' }]
         }).firstPage();
@@ -144,31 +148,38 @@ async function hasEverHadLeadsScored(clientData) {
 }
 
 /**
- * Look up client in jobTrackingNotes map (case-insensitive, trimmed)
+ * Look up client in jobTrackingNotes map (case-insensitive, trimmed).
+ * Tries clientName first, then clientId as fallback (batchScorer uses clientId when clientName is absent).
  * @param {Object} jobTrackingNotes - Map of clientName -> leadsProcessed
  * @param {string} clientName - Client name to look up
+ * @param {string} [clientId] - Client ID fallback (e.g. "Paul-Faix" when name is "Paul Faix")
  * @returns {number|null} leadsProcessed if found, null otherwise
  */
-function getLeadsFromJobTracking(jobTrackingNotes, clientName) {
+function getLeadsFromJobTracking(jobTrackingNotes, clientName, clientId) {
     if (!jobTrackingNotes || typeof jobTrackingNotes !== 'object') return null;
-    const key = (clientName || '').trim();
-    if (jobTrackingNotes[key] !== undefined) return jobTrackingNotes[key];
-    const keyLower = key.toLowerCase();
-    for (const k of Object.keys(jobTrackingNotes)) {
-        if (k.trim().toLowerCase() === keyLower) return jobTrackingNotes[k];
-    }
-    return null;
+    const tryLookup = (key) => {
+        if (!key || typeof key !== 'string') return null;
+        const k = key.trim();
+        if (jobTrackingNotes[k] !== undefined) return jobTrackingNotes[k];
+        const keyLower = k.toLowerCase();
+        for (const mapKey of Object.keys(jobTrackingNotes)) {
+            if (mapKey.trim().toLowerCase() === keyLower) return jobTrackingNotes[mapKey];
+        }
+        return null;
+    };
+    return tryLookup(clientName) ?? tryLookup(clientId) ?? null;
 }
 
 /**
  * Check all active service level 2+ clients for scoring activity
  * @param {Object} options - Options
  * @param {boolean} options.suppressClientAlerts - If true, do not send client emails (e.g. when technical glitch detected)
+ * @param {boolean} options.adminOnly - If true, skip client emails (test mode) - only admin summary is sent
  * @param {Object} options.jobTrackingNotes - Map of clientName -> leadsProcessed from most recent completed run
  * @returns {Promise<Object>} Results summary
  */
 async function checkClientScoringActivity(options = {}) {
-    const { suppressClientAlerts = false, jobTrackingNotes = {} } = options;
+    const { suppressClientAlerts = false, adminOnly = false, jobTrackingNotes = {} } = options;
     try {
         console.log("🔍 Starting daily client scoring activity check...");
         
@@ -229,7 +240,7 @@ async function checkClientScoringActivity(options = {}) {
                             results.suppressedClients.push({ clientName: client.clientName, clientId: client.clientId, reason: clientResult.suppressReason });
                             console.log(`⏸️  Suppressing client alert (technical glitch suspected)`);
                         } else {
-                            const ourLeads = getLeadsFromJobTracking(jobTrackingNotes, client.clientName);
+                            const ourLeads = getLeadsFromJobTracking(jobTrackingNotes, client.clientName, client.clientId);
                             if (ourLeads === null) {
                                 // Client not in Job Tracking - we didn't process them
                                 clientResult.suppressed = true;
@@ -254,19 +265,26 @@ async function checkClientScoringActivity(options = {}) {
                                 } else {
                                     // Legitimate: they've had leads scored before, now 0 - send email (e.g. Paul-Faix situation)
                                     clientResult.ourLeadsProcessed = 0;
-                                    console.log(`📧 Sending no-leads alert to ${client.clientEmailAddress}`);
-                                    const emailResult = await emailNotificationService.sendTemplatedEmail(
-                                        client,
-                                        NO_LEADS_TEMPLATE_ID
-                                    );
-                                    if (emailResult.success) {
-                                        results.emailsSent++;
-                                        clientResult.emailSent = true;
-                                        console.log(`✅ Alert email sent to ${client.clientEmailAddress}`);
+                                    if (adminOnly) {
+                                        clientResult.suppressed = true;
+                                        clientResult.suppressReason = 'Test mode - admin only (client email not sent)';
+                                        results.suppressedClients.push({ clientName: client.clientName, clientId: client.clientId, reason: clientResult.suppressReason });
+                                        console.log(`⏸️  Admin-only mode: would have sent to ${client.clientEmailAddress} - skipped`);
                                     } else {
-                                        results.emailsFailed++;
-                                        clientResult.emailError = emailResult.error;
-                                        console.log(`❌ Failed to send alert email: ${emailResult.error}`);
+                                        console.log(`📧 Sending no-leads alert to ${client.clientEmailAddress}`);
+                                        const emailResult = await emailNotificationService.sendTemplatedEmail(
+                                            client,
+                                            NO_LEADS_TEMPLATE_ID
+                                        );
+                                        if (emailResult.success) {
+                                            results.emailsSent++;
+                                            clientResult.emailSent = true;
+                                            console.log(`✅ Alert email sent to ${client.clientEmailAddress}`);
+                                        } else {
+                                            results.emailsFailed++;
+                                            clientResult.emailError = emailResult.error;
+                                            console.log(`❌ Failed to send alert email: ${emailResult.error}`);
+                                        }
                                     }
                                 }
                             }
@@ -302,17 +320,23 @@ async function checkClientScoringActivity(options = {}) {
  * @param {Object} results - Results from checkClientScoringActivity
  * @param {Object} options - Options
  * @param {Object} options.pipelineHealth - Result from checkScoringPipelineHealth
+ * @param {boolean} [options.adminOnly] - True if test mode (client emails skipped)
  */
 async function sendAdminSummary(results, options = {}) {
     try {
         console.log("\n📊 Preparing admin summary email...");
-        const { pipelineHealth } = options;
+        const { pipelineHealth, adminOnly = false } = options;
         const pipelineSection = pipelineHealth && !pipelineHealth.healthy
             ? `<p style="color: #b45309;"><strong>⚠️ Technical glitch detected:</strong> ${pipelineHealth.message}. Client alerts were suppressed.</p>`
             : pipelineHealth ? `<p style="color: #059669;"><strong>✅ Pipeline healthy:</strong> ${pipelineHealth.message}</p>` : '';
 
+        const adminOnlyBanner = adminOnly
+            ? `<p style="background: #fef3c7; padding: 12px; border-radius: 4px;"><strong>🧪 Admin-only test mode:</strong> No client emails were sent. This report shows what would have happened.</p>`
+            : '';
+
         const summaryHtml = `
         <h2>Daily Client Scoring Activity Report</h2>
+        ${adminOnlyBanner}
         <p><strong>Date:</strong> ${new Date().toLocaleDateString('en-AU', { 
             weekday: 'long', 
             year: 'numeric', 
@@ -385,7 +409,7 @@ async function sendAdminSummary(results, options = {}) {
         <p><small>Generated by Daily Client Alerts System at ${new Date().toLocaleString('en-AU')}</small></p>
         `;
 
-        const subject = `Daily Client Scoring Report - ${results.clientsWithoutScoring} alerts sent`;
+        const subject = `Daily Client Scoring Report - ${results.emailsSent} alerts sent${adminOnly ? ' (admin-only test)' : ''}`;
         
         await emailNotificationService.sendAlertEmail(subject, summaryHtml);
         console.log("✅ Admin summary email sent");
@@ -397,9 +421,13 @@ async function sendAdminSummary(results, options = {}) {
 
 /**
  * Main execution function
+ * @param {Object} [options] - Options
+ * @param {boolean} [options.adminOnly] - If true, skip client emails (test mode) - only admin summary sent to you
  */
-async function main() {
+async function main(options = {}) {
+    const { adminOnly = false } = options;
     console.log("🚀 Starting Daily Client Alerts System");
+    if (adminOnly) console.log("🧪 ADMIN-ONLY MODE: Client emails will be skipped - only admin summary will be sent");
     console.log(`Timestamp: ${new Date().toISOString()}`);
     
     try {
@@ -425,9 +453,10 @@ async function main() {
             ? parseJobTrackingClientNotes(pipelineHealth.systemNotes)
             : {};
 
-        // Check all clients for scoring activity (suppress client emails if pipeline unhealthy)
+        // Check all clients for scoring activity (suppress client emails if pipeline unhealthy or adminOnly)
         const results = await checkClientScoringActivity({
             suppressClientAlerts: !pipelineHealth.healthy,
+            adminOnly,
             jobTrackingNotes
         });
         
@@ -440,7 +469,7 @@ async function main() {
         console.log(`Email Failures: ${results.emailsFailed}`);
         
         // Send admin summary (include pipeline health context)
-        await sendAdminSummary(results, { pipelineHealth });
+        await sendAdminSummary(results, { pipelineHealth, adminOnly });
         
         console.log("\n✅ Daily Client Alerts System completed successfully");
         
