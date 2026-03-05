@@ -132,6 +132,8 @@ function SmartFollowupsContent() {
   const [storyError, setStoryError] = useState<string | null>(null);
   const [sweepStatus, setSweepStatus] = useState<{ results?: { errors?: Array<{ leadName?: string; error?: string }> }; error?: string } | null>(null);
   const [sweepProgress, setSweepProgress] = useState<{ processed: number; candidatesFound: number; aiAnalyzed: number; currentLeadName?: string | null } | null>(null);
+  const [rebuildStartedAt, setRebuildStartedAt] = useState<number | null>(null);
+  const [rebuildElapsedSec, setRebuildElapsedSec] = useState<number>(0);
   
   const chatInputRef = useRef<HTMLTextAreaElement>(null);
   const instructionsPanelRef = useRef<HTMLDivElement>(null);
@@ -197,12 +199,13 @@ function SmartFollowupsContent() {
       const status = await getSweepStatus();
       if (cancelled) return;
       if (status.status === 'running') {
-        const startedAt = status.startedAt ? new Date(status.startedAt).getTime() : 0;
+        const startedAt = status.startedAt ? new Date(status.startedAt).getTime() : Date.now();
         const isStale = startedAt > 0 && Date.now() - startedAt > STALE_RUNNING_MS;
         if (isStale) {
           setActionMessage({ type: 'success', text: 'Previous rebuild may have been interrupted. Click Refresh to see current data, or Rebuild to run again.' });
           return;
         }
+        setRebuildStartedAt(startedAt);
         setIsRebuilding(true);
         const r = status.results || {};
         const total = r.candidatesFound ?? 0;
@@ -232,6 +235,7 @@ function SmartFollowupsContent() {
             setActionMessage({ type: errCount > 0 ? 'error' : 'success', text: msg });
             setSweepStatus(s);
             setSweepProgress(null);
+            setRebuildStartedAt(null);
             loadQueue();
             setIsRebuilding(false);
             return;
@@ -240,6 +244,7 @@ function SmartFollowupsContent() {
             setActionMessage({ type: 'error', text: `Rebuild failed: ${s.error || 'Unknown error'}` });
             setSweepStatus(s);
             setSweepProgress(null);
+            setRebuildStartedAt(null);
             setIsRebuilding(false);
             return;
           }
@@ -276,6 +281,15 @@ function SmartFollowupsContent() {
     check();
     return () => { cancelled = true; };
   }, [isOwner]);
+
+  // Update rebuild elapsed time every second when rebuilding (for timestamp in screenshots)
+  useEffect(() => {
+    if (!isRebuilding || !rebuildStartedAt) return;
+    const tick = () => setRebuildElapsedSec(Math.floor((Date.now() - rebuildStartedAt) / 1000));
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [isRebuilding, rebuildStartedAt]);
 
   // Auto-refresh on tab visibility
   useEffect(() => {
@@ -758,6 +772,7 @@ function SmartFollowupsContent() {
     setSweepProgress(null);
     setLoadSeconds(0);
     const start = Date.now();
+    setRebuildStartedAt(start);
     const timer = setInterval(() => setLoadSeconds(Math.floor((Date.now() - start) / 1000)), 1000);
     try {
       const result = await triggerSmartFollowupRebuild((processed, totalCandidates) => {
@@ -786,6 +801,8 @@ function SmartFollowupsContent() {
     } finally {
       clearInterval(timer);
       setIsRebuilding(false);
+      setRebuildStartedAt(null);
+      setRebuildElapsedSec(0);
     }
   };
 
@@ -891,7 +908,14 @@ function SmartFollowupsContent() {
               <div className={`text-sm px-3 py-1.5 rounded-lg flex items-center justify-between gap-2 ${
                 actionMessage.type === 'success' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'
               }`}>
-                <span>{actionMessage.text}</span>
+                <span>
+                  {actionMessage.text}
+                  {isRebuilding && rebuildStartedAt && (
+                    <span className="text-green-600/80 ml-1">
+                      — started {new Date(rebuildStartedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} ({Math.floor(rebuildElapsedSec / 60)}m {rebuildElapsedSec % 60}s)
+                    </span>
+                  )}
+                </span>
                 <button
                   onClick={() => { setActionMessage(null); setSweepStatus(null); setSweepProgress(null); }}
                   className="shrink-0 text-gray-500 hover:text-gray-700 p-0.5 rounded"
