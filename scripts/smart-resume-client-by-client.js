@@ -590,6 +590,16 @@ async function main() {
             
             log(`� PROGRESS: [6/6] No work needed - sending success report...`);
             
+            const { getScoredLeadsCount24h } = require('../scripts/daily-client-alerts/index.js');
+            const skippedWithLeads = await Promise.all(workflows.map(async (w) => {
+                let scoredLeads24h = null;
+                try {
+                    const client = clients.find(c => c.clientId === w.clientId);
+                    if (client?.airtableBaseId) scoredLeads24h = await getScoredLeadsCount24h(client);
+                } catch (e) { /* ignore */ }
+                return { clientName: w.clientName, clientId: w.clientId, reason: 'All operations up to date', scoredLeads24h };
+            }));
+            
             // Send success report for no-work scenario
             await emailService.sendExecutionReport({
                 runId,
@@ -605,10 +615,7 @@ async function main() {
                 totalJobsStarted: 0,
                 successRate: 100,
                 executionResults: [],
-                skippedClients: workflows.map(w => ({
-                    clientName: w.clientName,
-                    reason: 'All operations up to date'
-                })),
+                skippedClients: skippedWithLeads,
                 errors: []
             });
             
@@ -620,6 +627,7 @@ async function main() {
         log(`📊 EXECUTION SUMMARY: ${clientsNeedingWork.length} clients need work, ${workflows.length - clientsNeedingWork.length} clients up to date`);
         log(`📋 Total operations to run: ${clientsNeedingWork.reduce((sum, w) => sum + w.operationsToRun.length, 0)}`);
         
+        const { getScoredLeadsCount24h } = require('../scripts/daily-client-alerts/index.js');
         let totalTriggered = 0;
         let totalJobsStarted = 0;
         const executionResults = [];
@@ -710,11 +718,19 @@ async function main() {
                 }
             }
             
+            // Fetch leads scored (last 72h) for report
+            let scoredLeads24h = null;
+            try {
+                const client = clients.find(c => c.clientId === workflow.clientId);
+                if (client?.airtableBaseId) scoredLeads24h = await getScoredLeadsCount24h(client);
+            } catch (e) { log(`   ⚠️ Could not fetch leads scored: ${e.message}`, 'WARN'); }
+            
             executionResults.push({
                 clientId: workflow.clientId,
                 clientName: workflow.clientName,
                 operationsRun: workflow.operationsToRun,
-                jobs: clientJobs
+                jobs: clientJobs,
+                scoredLeads24h: scoredLeads24h ?? null
             });
             
             // Update client run record on completion
@@ -748,7 +764,16 @@ async function main() {
         
         const runEndTime = Date.now();
         const totalDuration = runEndTime - runStartTime;
-        const clientsSkipped = workflows.filter(w => !w.needsProcessing);
+        const clientsSkippedRaw = workflows.filter(w => !w.needsProcessing);
+        // Enrich skipped clients with leads scored (last 72h)
+        const clientsSkipped = await Promise.all(clientsSkippedRaw.map(async (w) => {
+            let scoredLeads24h = null;
+            try {
+                const client = clients.find(c => c.clientId === w.clientId);
+                if (client?.airtableBaseId) scoredLeads24h = await getScoredLeadsCount24h(client);
+            } catch (e) { /* ignore */ }
+            return { ...w, scoredLeads24h: scoredLeads24h ?? null, reason: w.reason || 'All operations up to date' };
+        }));
         const successRate = totalTriggered > 0 ? Math.round((totalJobsStarted / totalTriggered) * 100) : 100;
         const errors = [];
         

@@ -5767,12 +5767,8 @@ async function executeSmartResume(jobId, stream, leadScoringLimit, postScoringLi
           global.smartResumeActiveProcess.executionTime = Date.now() - smartResumeLockTime;
         }
         
-        // Send success email report
-        await sendSmartResumeReport(jobId, true, {
-          stream: stream,
-          timestamp: Date.now(),
-          executionTime: Date.now() - smartResumeLockTime
-        });
+        // NOTE: Do NOT send report here - the script already sends a comprehensive report.
+        // Sending again caused duplicate Smart Resume emails for the same run.
         
     } catch (moduleError) {
         jobLogger.error(`🚨 MODULE EXECUTION FAILED - ERROR DETAILS:`);
