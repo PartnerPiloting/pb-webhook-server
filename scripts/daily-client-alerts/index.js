@@ -326,6 +326,7 @@ async function sendAdminSummary(results, options = {}) {
     try {
         console.log("\n📊 Preparing admin summary email...");
         const { pipelineHealth, adminOnly = false } = options;
+        const totalLeadsScored = (results.details || []).reduce((sum, d) => sum + (d.scoredLeads24h || 0), 0);
         const pipelineSection = pipelineHealth && !pipelineHealth.healthy
             ? `<p style="color: #b45309;"><strong>⚠️ Technical glitch detected:</strong> ${pipelineHealth.message}. Client alerts were suppressed.</p>`
             : pipelineHealth ? `<p style="color: #059669;"><strong>✅ Pipeline healthy:</strong> ${pipelineHealth.message}</p>` : '';
@@ -348,8 +349,9 @@ async function sendAdminSummary(results, options = {}) {
         <h3>Summary</h3>
         <ul>
             <li><strong>Total Scoring Clients:</strong> ${results.totalClients}</li>
-            <li><strong>Clients with Scoring Activity:</strong> ${results.clientsWithScoring}</li>
+            <li><strong>Clients with Scoring Activity:</strong> ${results.clientsWithScoring} (${totalLeadsScored} leads scored in last 72h)</li>
             <li><strong>Clients without Scoring Activity:</strong> ${results.clientsWithoutScoring}</li>
+            <li><strong>Total Leads Scored (72h):</strong> ${totalLeadsScored}</li>
             <li><strong>Alert Emails Sent:</strong> ${results.emailsSent}</li>
             <li><strong>Email Failures:</strong> ${results.emailsFailed}</li>
         </ul>
@@ -380,6 +382,7 @@ async function sendAdminSummary(results, options = {}) {
             <tr style="background-color: #f2f2f2;">
                 <th style="padding: 8px; text-align: left;">Client</th>
                 <th style="padding: 8px; text-align: left;">Email</th>
+                <th style="padding: 8px; text-align: left;">Leads Scored</th>
                 <th style="padding: 8px; text-align: left;">Alert Sent</th>
                 <th style="padding: 8px; text-align: left;">Status</th>
             </tr>
@@ -393,13 +396,14 @@ async function sendAdminSummary(results, options = {}) {
                 <tr>
                     <td style="padding: 8px;">${d.clientName} (${d.clientId})</td>
                     <td style="padding: 8px;">${d.clientEmail || 'No email'}</td>
+                    <td style="padding: 8px;">${d.scoredLeads24h ?? 0}</td>
                     <td style="padding: 8px;">${d.emailSent ? '✅ Yes' : d.suppressed ? '⏸️ Suppressed' : '❌ No'}</td>
                     <td style="padding: 8px;">${status}</td>
                 </tr>
                 `;
                 }).join('')}
         </table>
-        ` : '<p><em>All clients had scoring activity in the last 48 hours.</em></p>'}
+        ` : '<p><em>All clients had scoring activity in the last 72 hours.</em></p>'}
 
         ${results.suppressedClients && results.suppressedClients.length > 0 ? `
         <h3>Suppressed Client Emails (No-Leads Email Not Sent)</h3>

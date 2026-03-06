@@ -232,6 +232,17 @@ class EmailReportingService {
             <th>Clients Skipped</th>
             <td>${clientsSkipped?.length || 0}</td>
         </tr>
+        ${(() => {
+            const allClients = [...(executionResults || []), ...(skippedClients || [])];
+            const hasLeadsData = allClients.some(c => c.scoredLeads24h != null);
+            if (!hasLeadsData) return '';
+            const totalLeads = allClients.reduce((s, c) => s + (c.scoredLeads24h ?? 0), 0);
+            return `
+        <tr>
+            <th>Leads Scored (72h)</th>
+            <td colspan="3"><strong>${totalLeads}</strong> across all clients</td>
+        </tr>`;
+        })()}
         ${previousRunProcessingTime ? `
         <tr>
             <th>Previous Run</th>
@@ -262,6 +273,8 @@ class EmailReportingService {
             </div>
             
             <div class="client-metrics">
+                ${client.scoredLeads24h != null ? 
+                  `<div class="metric-badge" style="background-color: #d1fae5;">Leads Scored (72h): ${client.scoredLeads24h}</div>` : ''}
                 ${operationsCount > 0 ? 
                   `<div class="metric-badge">Operations: ${operationsCount}</div>
                    <div class="metric-badge">Jobs Started: ${jobCount}</div>` : 
@@ -303,8 +316,9 @@ class EmailReportingService {
             // Handle different client object formats
             const clientName = typeof client === 'object' ? client.clientName : client;
             const reason = typeof client === 'object' && client.reason ? ` - ${client.reason}` : '';
+            const leadsNote = typeof client === 'object' && client.scoredLeads24h != null ? ` (${client.scoredLeads24h} leads in 72h)` : '';
             
-            return `<div class="skipped-client-badge">✓ ${clientName}${reason}</div>`;
+            return `<div class="skipped-client-badge">✓ ${clientName}${leadsNote}${reason}</div>`;
         }).join('')}
     </div>
     ` : ''}
@@ -325,17 +339,6 @@ class EmailReportingService {
             <li>View detailed metrics in Airtable's Client Run Results and Job Tracking tables</li>
             <li>Jobs will complete independently with timeout protection</li>
             <li>Check lead scoring results in your client base</li>
-        </ul>
-    </div>
-</body>
-</html>
-    
-    <div class="footer">
-        <p><strong>Next Steps:</strong></p>
-        <ul>
-            <li>Monitor Airtable Client table for job completion status</li>
-            <li>Jobs will complete independently with timeout protection</li>
-            <li>Next resume will check for any remaining incomplete operations</li>
         </ul>
     </div>
 </body>
@@ -470,6 +473,12 @@ class EmailReportingService {
         if (!this.configured) {
             logger.info('📧 Email not configured - skipping report');
             return { success: false, reason: 'Email not configured' };
+        }
+
+        // Optional: suppress Smart Resume report (use Daily Client Scoring report instead)
+        if (process.env.SUPPRESS_SMART_RESUME_REPORT === 'true' || process.env.SUPPRESS_SMART_RESUME_REPORT === '1') {
+            logger.info('📧 Smart Resume report suppressed (SUPPRESS_SMART_RESUME_REPORT=true)');
+            return { success: true, sent: false, suppressed: true, reason: 'Smart Resume report disabled' };
         }
         
         // Check for duplicate email sends
