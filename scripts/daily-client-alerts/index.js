@@ -17,19 +17,24 @@ const PIPELINE_HEALTH_HOURS = 48;
 /** Hours a run can stay "Running" before we consider it stuck (technical glitch) */
 const STUCK_RUN_THRESHOLD_HOURS = 2;
 
+/** Only consider runs that started within this window (ignore ancient stale records) */
+const STUCK_RUN_LOOKBACK_HOURS = 24;
+
 /**
  * Check if a run started but did not complete (Status=Running for too long).
+ * Only considers runs that started within the last STUCK_RUN_LOOKBACK_HOURS (ignores days-old stale records).
  * Technical glitch email is sent ONLY when this returns stuck.
  * Returns { stuck: boolean, runId?: string, startTime?: string, message: string }
  */
 async function checkStuckRun() {
     try {
         const base = airtableClient.getMasterClientsBase();
-        const cutoff = new Date(Date.now() - STUCK_RUN_THRESHOLD_HOURS * 60 * 60 * 1000).toISOString();
+        const cutoffStuck = new Date(Date.now() - STUCK_RUN_THRESHOLD_HOURS * 60 * 60 * 1000).toISOString();
+        const cutoffRecent = new Date(Date.now() - STUCK_RUN_LOOKBACK_HOURS * 60 * 60 * 1000).toISOString();
 
-        // Find runs that are still "Running" but started more than threshold ago
+        // Find runs that are still "Running", started 2+ hours ago, but within last 24h (ignore ancient stale)
         const records = await base(MASTER_TABLES.JOB_TRACKING).select({
-            filterByFormula: `AND({Status} = 'Running', {Start Time} != '', {Start Time} < '${cutoff}')`,
+            filterByFormula: `AND({Status} = 'Running', {Start Time} != '', {Start Time} < '${cutoffStuck}', IS_AFTER({Start Time}, '${cutoffRecent}'))`,
             maxRecords: 1,
             sort: [{ field: 'Start Time', direction: 'desc' }]
         }).firstPage();
