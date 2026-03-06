@@ -11,12 +11,51 @@ const { MASTER_TABLES } = require('../../constants/airtableUnifiedConstants');
 // Template ID for "no leads scored in 72 hours" emails
 const NO_LEADS_TEMPLATE_ID = 'no-leads-scored-72-hours';
 
-/** Hours to look back for a completed scoring run (technical glitch detection) */
+/** Hours to look back for a completed scoring run (for job tracking notes) */
 const PIPELINE_HEALTH_HOURS = 48;
 
+/** Hours a run can stay "Running" before we consider it stuck (technical glitch) */
+const STUCK_RUN_THRESHOLD_HOURS = 2;
+
 /**
- * Check if scoring pipeline ran successfully in the last N hours (technical glitch detection).
- * Returns { healthy: boolean, lastCompletedRun: object|null, systemNotes: string|null, message: string }
+ * Check if a run started but did not complete (Status=Running for too long).
+ * Technical glitch email is sent ONLY when this returns stuck.
+ * Returns { stuck: boolean, runId?: string, startTime?: string, message: string }
+ */
+async function checkStuckRun() {
+    try {
+        const base = airtableClient.getMasterClientsBase();
+        const cutoff = new Date(Date.now() - STUCK_RUN_THRESHOLD_HOURS * 60 * 60 * 1000).toISOString();
+
+        // Find runs that are still "Running" but started more than threshold ago
+        const records = await base(MASTER_TABLES.JOB_TRACKING).select({
+            filterByFormula: `AND({Status} = 'Running', {Start Time} != '', {Start Time} < '${cutoff}')`,
+            maxRecords: 1,
+            sort: [{ field: 'Start Time', direction: 'desc' }]
+        }).firstPage();
+
+        if (records && records.length > 0) {
+            const r = records[0];
+            const runId = r.get('Run ID');
+            const startTime = r.get('Start Time');
+            return {
+                stuck: true,
+                runId,
+                startTime,
+                message: `Run ${runId} started at ${startTime} but did not complete (stuck in Running for ${STUCK_RUN_THRESHOLD_HOURS}+ hours)`
+            };
+        }
+
+        return { stuck: false, message: 'No stuck runs detected' };
+    } catch (error) {
+        console.error('❌ Error checking for stuck runs:', error);
+        return { stuck: false, message: `Stuck-run check failed: ${error.message}` };
+    }
+}
+
+/**
+ * Get last completed scoring run for job tracking notes (used for per-client validation).
+ * Returns { lastCompletedRun: object|null, systemNotes: string|null, message: string }
  */
 async function checkScoringPipelineHealth() {
     try {
@@ -24,9 +63,6 @@ async function checkScoringPipelineHealth() {
         const cutoff = new Date(Date.now() - PIPELINE_HEALTH_HOURS * 60 * 60 * 1000).toISOString();
 
         // CRITICAL: Only consider runs that have "ClientName: N leads" format in System Notes.
-        // - smart_resume: cron creates Job Tracking, lead scoring appends "ClientName: N leads"
-        // - lead_scoring: direct lead-scoring runs (if any)
-        // - post_scoring runs do NOT have this format - exclude them to avoid empty jobTrackingNotes
         const records = await base(MASTER_TABLES.JOB_TRACKING).select({
             filterByFormula: `AND({Status} = 'Completed', IS_AFTER({Start Time}, '${cutoff}'), OR(FIND('smart_resume', {System Notes}) > 0, FIND('lead_scoring', {System Notes}) > 0))`,
             maxRecords: 1,
@@ -37,23 +73,20 @@ async function checkScoringPipelineHealth() {
             const r = records[0];
             const systemNotes = r.get('System Notes') || '';
             return {
-                healthy: true,
                 lastCompletedRun: { runId: r.get('Run ID'), startTime: r.get('Start Time') },
                 systemNotes,
-                message: `Pipeline healthy: last completed run ${r.get('Run ID')} at ${r.get('Start Time')}`
+                message: `Last completed run ${r.get('Run ID')} at ${r.get('Start Time')}`
             };
         }
 
         return {
-            healthy: false,
             lastCompletedRun: null,
             systemNotes: null,
-            message: `No completed scoring run in last ${PIPELINE_HEALTH_HOURS} hours - possible technical glitch`
+            message: `No completed scoring run in last ${PIPELINE_HEALTH_HOURS} hours`
         };
     } catch (error) {
         console.error('❌ Error checking pipeline health:', error);
         return {
-            healthy: false,
             lastCompletedRun: null,
             systemNotes: null,
             message: `Pipeline health check failed: ${error.message}`
@@ -325,11 +358,11 @@ async function checkClientScoringActivity(options = {}) {
 async function sendAdminSummary(results, options = {}) {
     try {
         console.log("\n📊 Preparing admin summary email...");
-        const { pipelineHealth, adminOnly = false } = options;
+        const { pipelineHealth, stuckRun, adminOnly = false } = options;
         const totalLeadsScored = (results.details || []).reduce((sum, d) => sum + (d.scoredLeads24h || 0), 0);
-        const pipelineSection = pipelineHealth && !pipelineHealth.healthy
-            ? `<p style="color: #b45309;"><strong>⚠️ Technical glitch detected:</strong> ${pipelineHealth.message}. Client alerts were suppressed.</p>`
-            : pipelineHealth ? `<p style="color: #059669;"><strong>✅ Pipeline healthy:</strong> ${pipelineHealth.message}</p>` : '';
+        const pipelineSection = options.stuckRun && options.stuckRun.stuck
+            ? `<p style="color: #b45309;"><strong>⚠️ Technical glitch:</strong> ${options.stuckRun.message}. Client alerts were suppressed.</p>`
+            : pipelineHealth ? `<p style="color: #059669;"><strong>✅ Pipeline:</strong> ${pipelineHealth.message}</p>` : '';
 
         const adminOnlyBanner = adminOnly
             ? `<p style="background: #fef3c7; padding: 12px; border-radius: 4px;"><strong>🧪 Admin-only test mode:</strong> No client emails were sent. This report shows what would have happened.</p>`
@@ -455,31 +488,33 @@ async function main(options = {}) {
     console.log(`Timestamp: ${new Date().toISOString()}`);
     
     try {
-        // Technical glitch detection: check if pipeline ran successfully in last 48h
+        // Technical glitch: ONLY when a run started but did not complete (stuck in Running)
+        const stuckRun = await checkStuckRun();
         const pipelineHealth = await checkScoringPipelineHealth();
-        console.log(`📊 Pipeline health: ${pipelineHealth.message}`);
-        
-        if (!pipelineHealth.healthy) {
+        console.log(`📊 Stuck run check: ${stuckRun.message}`);
+        console.log(`📊 Pipeline: ${pipelineHealth.message}`);
+
+        if (stuckRun.stuck) {
             await emailNotificationService.sendAlertEmail(
-                '⚠️ Scoring Pipeline: Possible Technical Glitch',
-                `<h2>Technical Glitch Detection</h2>
-                <p><strong>${pipelineHealth.message}</strong></p>
-                <p>No completed scoring run found in Job Tracking in the last ${PIPELINE_HEALTH_HOURS} hours.</p>
+                '⚠️ Scoring Pipeline: Run Started But Did Not Complete',
+                `<h2>Technical Glitch: Stuck Run Detected</h2>
+                <p><strong>${stuckRun.message}</strong></p>
+                <p>A run was started but never completed (still stuck in "Running" status after ${STUCK_RUN_THRESHOLD_HOURS}+ hours).</p>
                 <p>Client alerts have been <strong>suppressed</strong> to avoid misleading "no leads scored" emails.</p>
-                <p><strong>Action:</strong> Investigate Render logs and Job Tracking. Fix before the 3-day window expires.</p>
+                <p><strong>Action:</strong> Investigate Render logs and Job Tracking. Check for crashes or hung processes.</p>
                 <p><em>Generated at ${new Date().toISOString()}</em></p>`
             );
-            console.log('📧 Admin alert sent - client alerts suppressed');
+            console.log('📧 Technical glitch alert sent - client alerts suppressed');
         }
 
-        // Parse Job Tracking notes for per-client validation (only when pipeline healthy)
-        const jobTrackingNotes = pipelineHealth.healthy && pipelineHealth.systemNotes
+        // Parse Job Tracking notes for per-client validation (from last completed run)
+        const jobTrackingNotes = pipelineHealth.systemNotes
             ? parseJobTrackingClientNotes(pipelineHealth.systemNotes)
             : {};
 
-        // Check all clients for scoring activity (suppress client emails if pipeline unhealthy or adminOnly)
+        // Check all clients for scoring activity (suppress client emails only when stuck run detected or adminOnly)
         const results = await checkClientScoringActivity({
-            suppressClientAlerts: !pipelineHealth.healthy,
+            suppressClientAlerts: stuckRun.stuck,
             adminOnly,
             jobTrackingNotes
         });
@@ -493,7 +528,7 @@ async function main(options = {}) {
         console.log(`Email Failures: ${results.emailsFailed}`);
         
         // Send admin summary (include pipeline health context)
-        await sendAdminSummary(results, { pipelineHealth, adminOnly });
+        await sendAdminSummary(results, { pipelineHealth, stuckRun, adminOnly });
         
         console.log("\n✅ Daily Client Alerts System completed successfully");
         
