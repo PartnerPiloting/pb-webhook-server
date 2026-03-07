@@ -75,6 +75,9 @@ These variables override the `DEBUG_LEVEL` for specific processes:
 |----------|---------|-----------------|---------|
 | `BATCH_CHUNK_SIZE` | Number of items to process in a batch | Number | `40` |
 | `LEAD_SCORING_LIMIT` | Maximum leads to score in one run | Number | `1000` |
+| `GEMINI_CHUNK_DELAY_MS` | Delay (ms) between chunks to avoid Vertex AI 429 rate limits | Number | `2000` |
+| `GEMINI_429_RETRY_ATTEMPTS` | Max retries for 429/rate limit errors (exponential backoff) | Number | `3` |
+| `GEMINI_429_INITIAL_BACKOFF_MS` | Initial backoff (ms) before first retry; doubles each attempt | Number | `5000` |
 
 ## Development Settings
 

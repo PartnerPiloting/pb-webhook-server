@@ -74,8 +74,21 @@ const CHUNK_SIZE = Math.max(1, parseInt(process.env.BATCH_CHUNK_SIZE || "40", 10
 // ***** INCREASED TIMEOUT FOR DEBUGGING LARGER BATCHES *****
 const GEMINI_TIMEOUT_MS = Math.max(30000, parseInt(process.env.GEMINI_TIMEOUT_MS || "900000", 10)); // 15 minutes
 
+/** Delay (ms) between chunks to avoid Vertex AI 429 rate limits. Set to 0 to disable. */
+const GEMINI_CHUNK_DELAY_MS = Math.max(0, parseInt(process.env.GEMINI_CHUNK_DELAY_MS || "2000", 10));
+
+/** Retry config for 429/RESOURCE_EXHAUSTED: max attempts, initial backoff (ms). Exponential backoff: 5s, 10s, 20s. */
+const GEMINI_429_RETRY_ATTEMPTS = Math.max(1, parseInt(process.env.GEMINI_429_RETRY_ATTEMPTS || "3", 10));
+const GEMINI_429_INITIAL_BACKOFF_MS = Math.max(1000, parseInt(process.env.GEMINI_429_INITIAL_BACKOFF_MS || "5000", 10));
+
+/** Returns true if error is a 429 / rate limit / resource exhausted (retryable). */
+function isRetryableRateLimitError(error) {
+    const msg = String(error?.message || error || '').toLowerCase();
+    return msg.includes('429') || msg.includes('resource exhausted') || msg.includes('resource_exhausted') || msg.includes('too many requests') || msg.includes('rate limit');
+}
+
 // MODIFIED a few turns ago to indicate "Prompt Length Log" to help confirm version - keeping it
-initLogger.info(`▶︎ batchScorer module loaded (DEBUG Profile, High Output, Increased Timeout, filterByFormula, Prompt Length Log). CHUNK_SIZE: ${CHUNK_SIZE}, TIMEOUT: ${GEMINI_TIMEOUT_MS}ms. Ready for dependencies.`);
+initLogger.info(`▶︎ batchScorer module loaded (DEBUG Profile, High Output, Increased Timeout, filterByFormula, Prompt Length Log). CHUNK_SIZE: ${CHUNK_SIZE}, TIMEOUT: ${GEMINI_TIMEOUT_MS}ms, CHUNK_DELAY: ${GEMINI_CHUNK_DELAY_MS}ms, 429_RETRIES: ${GEMINI_429_RETRY_ATTEMPTS}. Ready for dependencies.`);
 
 /* ---------- LEAD PROCESSING QUEUE (Client-Aware Internal Queue) ------------- */
 const queue = [];
@@ -413,67 +426,83 @@ async function scoreChunk(records, clientId, clientBase, runId = 'UNKNOWN') {
     let modelFinishReasonForBatch = null;
     let requestStartTime = Date.now(); // Initialize here so it's available after try/catch
 
-    try {
-        const modelInstanceForRequest = BATCH_SCORER_VERTEX_AI_CLIENT.getGenerativeModel({
-            model: BATCH_SCORER_GEMINI_MODEL_ID, 
-            systemInstruction: { parts: [{ text: systemPromptInstructions }] },
-            safetySettings: [
-                { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
-                { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
-                { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
-                { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
-            ],
-            generationConfig: {
-                temperature: 0,
-                responseMimeType: "application/json",
-                maxOutputTokens: maxOutputForRequest
+    let lastError = null;
+    for (let attempt = 1; attempt <= GEMINI_429_RETRY_ATTEMPTS; attempt++) {
+        try {
+            const modelInstanceForRequest = BATCH_SCORER_VERTEX_AI_CLIENT.getGenerativeModel({
+                model: BATCH_SCORER_GEMINI_MODEL_ID, 
+                systemInstruction: { parts: [{ text: systemPromptInstructions }] },
+                safetySettings: [
+                    { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+                    { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
+                    { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
+                    { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+                ],
+                generationConfig: {
+                    temperature: 0,
+                    responseMimeType: "application/json",
+                    maxOutputTokens: maxOutputForRequest
+                }
+            });
+
+            const requestPayload = {
+                contents: [{ role: "user", parts: [{ text: generationPromptForGemini }] }],
+            };
+            
+            requestStartTime = Date.now(); // Update timing right before API call
+            const callPromise = modelInstanceForRequest.generateContent(requestPayload);
+            const timer = new Promise((_, rej) => setTimeout(() => rej(new Error("Gemini API call timeout for batchScorer chunk")), GEMINI_TIMEOUT_MS));
+            
+            const result = await Promise.race([callPromise, timer]);
+
+            if (!result || !result.response) throw new Error("Gemini API call (batchScorer chunk) returned no response object.");
+            
+            usageMetadataForBatch = result.response.usageMetadata || {};
+            log.info("<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<");
+            log.info(`TOKENS FOR BATCH CALL (Gemini):`);
+            log.info("  Prompt Tokens      :", usageMetadataForBatch.promptTokenCount || "?");
+            log.info("  Candidates Tokens  :", usageMetadataForBatch.candidatesTokenCount || "?");
+            log.info("  Total Tokens       :", usageMetadataForBatch.totalTokenCount || "?");
+            log.info("<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<");
+
+            const candidate = result.response.candidates?.[0];
+            if (!candidate) { 
+                const blockReason = result.response.promptFeedback?.blockReason;
+                let sf = result.response.promptFeedback?.safetyRatings ? ` SafetyRatings: ${JSON.stringify(result.response.promptFeedback.safetyRatings)}`:"";
+                if (blockReason) throw new Error(`Gemini API call (batchScorer chunk) blocked. Reason: ${blockReason}.${sf}`);
+                throw new Error(`Gemini API call (batchScorer chunk) returned no candidates.${sf}`);
             }
-        });
 
-        const requestPayload = {
-            contents: [{ role: "user", parts: [{ text: generationPromptForGemini }] }],
-        };
-        
-        requestStartTime = Date.now(); // Update timing right before API call
-        const callPromise = modelInstanceForRequest.generateContent(requestPayload);
-        const timer = new Promise((_, rej) => setTimeout(() => rej(new Error("Gemini API call timeout for batchScorer chunk")), GEMINI_TIMEOUT_MS));
-        
-        const result = await Promise.race([callPromise, timer]);
+            modelFinishReasonForBatch = candidate.finishReason;
 
-        if (!result || !result.response) throw new Error("Gemini API call (batchScorer chunk) returned no response object.");
-        
-        usageMetadataForBatch = result.response.usageMetadata || {};
-        log.info("<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<");
-        log.info(`TOKENS FOR BATCH CALL (Gemini):`);
-        log.info("  Prompt Tokens      :", usageMetadataForBatch.promptTokenCount || "?");
-        log.info("  Candidates Tokens  :", usageMetadataForBatch.candidatesTokenCount || "?");
-        log.info("  Total Tokens       :", usageMetadataForBatch.totalTokenCount || "?");
-        log.info("<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<");
+            if (candidate.content && candidate.content.parts && candidate.content.parts[0].text) {
+                rawResponseText = candidate.content.parts[0].text;
+            } else { 
+                log.warn(`Candidate had no text content. Finish Reason: ${modelFinishReasonForBatch || 'Unknown'}`);
+            }
 
-        const candidate = result.response.candidates?.[0];
-        if (!candidate) { 
-            const blockReason = result.response.promptFeedback?.blockReason;
-            let sf = result.response.promptFeedback?.safetyRatings ? ` SafetyRatings: ${JSON.stringify(result.response.promptFeedback.safetyRatings)}`:"";
-            if (blockReason) throw new Error(`Gemini API call (batchScorer chunk) blocked. Reason: ${blockReason}.${sf}`);
-            throw new Error(`Gemini API call (batchScorer chunk) returned no candidates.${sf}`);
+            if (modelFinishReasonForBatch === 'MAX_TOKENS') {
+                log.warn(`Gemini API call finished due to MAX_TOKENS (limit was ${maxOutputForRequest}). Output may be truncated. SafetyRatings: ${JSON.stringify(candidate.safetyRatings)}`);
+            } else if (modelFinishReasonForBatch && modelFinishReasonForBatch !== 'STOP') {
+                log.warn(`Gemini API call finished with non-STOP reason: ${modelFinishReasonForBatch}. SafetyRatings: ${JSON.stringify(candidate.safetyRatings)}`);
+            }
+
+            lastError = null;
+            break; // Success - exit retry loop
+        } catch (error) {
+            lastError = error;
+            if (attempt < GEMINI_429_RETRY_ATTEMPTS && isRetryableRateLimitError(error)) {
+                const backoffMs = GEMINI_429_INITIAL_BACKOFF_MS * Math.pow(2, attempt - 1);
+                log.warn(`429/rate limit on attempt ${attempt}/${GEMINI_429_RETRY_ATTEMPTS}. Waiting ${backoffMs}ms before retry...`);
+                await new Promise(resolve => setTimeout(resolve, backoffMs));
+            } else {
+                break; // Non-retryable or last attempt - exit loop
+            }
         }
+    }
 
-        modelFinishReasonForBatch = candidate.finishReason;
-
-        if (candidate.content && candidate.content.parts && candidate.content.parts[0].text) {
-            rawResponseText = candidate.content.parts[0].text;
-        } else { 
-            log.warn(`Candidate had no text content. Finish Reason: ${modelFinishReasonForBatch || 'Unknown'}`);
-        }
-
-        if (modelFinishReasonForBatch === 'MAX_TOKENS') {
-            log.warn(`Gemini API call finished due to MAX_TOKENS (limit was ${maxOutputForRequest}). Output may be truncated. SafetyRatings: ${JSON.stringify(candidate.safetyRatings)}`);
-        } else if (modelFinishReasonForBatch && modelFinishReasonForBatch !== 'STOP') {
-            log.warn(`Gemini API call finished with non-STOP reason: ${modelFinishReasonForBatch}. SafetyRatings: ${JSON.stringify(candidate.safetyRatings)}`);
-        }
-
-    } catch (error) {
-        await logErrorWithStackTrace(error, {
+    if (lastError) {
+        await logErrorWithStackTrace(lastError, {
             runId: runId || 'UNKNOWN',
             clientId: clientId,
             context: `Gemini API call failed for chunk of ${scorable.length} leads`,
@@ -481,7 +510,7 @@ async function scoreChunk(records, clientId, clientBase, runId = 'UNKNOWN') {
             operation: 'geminiAPICall',
         });
         
-        await alertAdmin("Gemini API Call Failed (batchScorer Chunk)", `Client: ${clientId || 'unknown'}\nError: ${error.message}\\nChunk Lead IDs (first 5): ${scorable.slice(0,5).map(s=>s.id).join(', ')}`);
+        await alertAdmin("Gemini API Call Failed (batchScorer Chunk)", `Client: ${clientId || 'unknown'}\nError: ${lastError.message}\\nChunk Lead IDs (first 5): ${scorable.slice(0,5).map(s=>s.id).join(', ')}`);
         const failedUpdates = scorable.map(item => ({ id: item.rec.id, fields: { "Scoring Status": "Failed – API Error", "Date Scored": new Date().toISOString() } }));
         if (failedUpdates.length > 0 && clientBase) for (let i = 0; i < failedUpdates.length; i += 10) await clientBase("Leads").update(failedUpdates.slice(i, i+10)).catch(e => log.error(`Airtable update error for API failed leads: ${e.message}`));
         return { processed: records.length, successful: 0, failed: records.length, tokensUsed: usageMetadataForBatch.totalTokenCount || 0 }; 
@@ -968,7 +997,13 @@ async function run(req, res, dependencies) {
                 }
                 
                 // Process chunks for this client
-                for (const chunk of chunks) {
+                for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
+                    const chunk = chunks[chunkIndex];
+                    // Delay between chunks to avoid Vertex AI 429 rate limits (skip before first chunk)
+                    if (chunkIndex > 0 && GEMINI_CHUNK_DELAY_MS > 0) {
+                        clientLogger.debug(`Waiting ${GEMINI_CHUNK_DELAY_MS}ms before next chunk (rate limit protection)`);
+                        await new Promise(resolve => setTimeout(resolve, GEMINI_CHUNK_DELAY_MS));
+                    }
                     try {
                         const chunkResult = await scoreChunk(chunk, clientId, clientBase, runId);
                         clientProcessed += chunkResult.processed;
