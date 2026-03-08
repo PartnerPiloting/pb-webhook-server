@@ -6195,11 +6195,16 @@ router.get("/api/sync-client-statuses/manual", async (req, res) => {
     const allClients = await clientService.getAllClients();
     logger.info(`📋 Found ${allClients.length} clients to check`);
     const membershipByWpUserId = {};
+    let isFirstCheck = true;
     for (const client of allClients) {
       const wpUserId = client.wpUserId;
       const statusManagement = (client.statusManagement || 'Automatic').toString().trim();
       if (statusManagement.toLowerCase() === 'manual') continue;
       if (!wpUserId || wpUserId === 0) continue;
+      if (!isFirstCheck) {
+        await new Promise(r => setTimeout(r, pmproService.SYNC_INTER_CLIENT_DELAY_MS));
+      }
+      isFirstCheck = false;
       logger.info(`🔍 Checking PMPro for wpUserId ${wpUserId} (${client.clientName})...`);
       const membershipCheck = await pmproService.checkUserMembership(wpUserId, { clientEmail: client.clientEmailAddress || null });
       if (membershipCheck.error) {
@@ -6256,12 +6261,19 @@ router.post("/api/sync-client-statuses", async (req, res) => {
     logger.info(`📋 Found ${allClients.length} clients to check`);
 
     // Build membership map by calling PMPro API for each client with wpUserId
+    // Space out requests to avoid triggering SiteGround's firewall
     const membershipByWpUserId = {};
+    let isFirstCheck = true;
     for (const client of allClients) {
       const wpUserId = client.wpUserId;
       const statusManagement = (client.statusManagement || 'Automatic').toString().trim();
       if (statusManagement.toLowerCase() === 'manual') continue;
       if (!wpUserId || wpUserId === 0) continue;
+
+      if (!isFirstCheck) {
+        await new Promise(r => setTimeout(r, pmproService.SYNC_INTER_CLIENT_DELAY_MS));
+      }
+      isFirstCheck = false;
 
       logger.info(`🔍 Checking PMPro for wpUserId ${wpUserId} (${client.clientName})...`);
       const membershipCheck = await pmproService.checkUserMembership(wpUserId, {
@@ -7021,7 +7033,9 @@ router.get("/api/test-membership-sync", async (req, res) => {
     
     console.log(`Found ${clients.length} clients\n`);
     
-    // Process each client
+    // Process each client with delays to avoid triggering SiteGround's firewall
+    const { SYNC_INTER_CLIENT_DELAY_MS } = require('../services/pmproMembershipService');
+    let isFirstCheck = true;
     for (const client of clients) {
       const clientId = client.clientId;
       const clientName = client.clientName;
@@ -7078,13 +7092,15 @@ router.get("/api/test-membership-sync", async (req, res) => {
       }
       
       try {
-        // Check membership (pass email for fallback lookup)
+        if (!isFirstCheck) {
+          await new Promise(r => setTimeout(r, SYNC_INTER_CLIENT_DELAY_MS));
+        }
+        isFirstCheck = false;
+
         const membershipCheck = await pmproService.checkUserMembership(wpUserId, {
           clientEmail: client.clientEmailAddress || null
         });
         
-        // Handle errors from membership check - FAIL-SAFE: do NOT change status on API/verification errors
-        // Prevents valid members from being incorrectly paused due to timeouts, network blips, etc.
         if (membershipCheck.error) {
           console.log(`   ⚠️ Could not verify membership: ${membershipCheck.error}`);
           console.log(`   → SKIPPING - leaving status unchanged (${currentStatus}) - will retry on next sync\n`);
