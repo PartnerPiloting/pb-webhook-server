@@ -17,10 +17,13 @@ let validLevelsCache = null;
 let validLevelsCacheTimestamp = null;
 const CACHE_DURATION_MS = 5 * 60 * 1000; // 5 minutes
 
-// WordPress/PMPro API: 5 min timeout - slow WordPress can take 1-2 min; if we hit 5 min, something else is wrong
-const WP_API_TIMEOUT_MS = 5 * 60 * 1000;  // 5 minutes (was 20 seconds)
-const WP_API_MAX_RETRIES = 3;
-const WP_API_RETRY_DELAY_MS = 2000;
+// WordPress/PMPro API: 30s timeout - when working, responses come in ~500ms
+const WP_API_TIMEOUT_MS = 30 * 1000;
+const WP_API_MAX_RETRIES = 2;
+const WP_API_RETRY_DELAY_MS = 5000;
+
+// Delay between client checks to avoid triggering SiteGround's firewall
+const SYNC_INTER_CLIENT_DELAY_MS = 5000;
 
 /**
  * Axios GET with retries for timeout, network errors, 5xx
@@ -455,5 +458,6 @@ module.exports = {
     getValidPMProLevels,
     checkUserMembership,
     testWordPressConnection,
-    testPmproMembershipApi
+    testPmproMembershipApi,
+    SYNC_INTER_CLIENT_DELAY_MS
 };

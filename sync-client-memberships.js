@@ -104,7 +104,8 @@ async function syncClientMemberships() {
             details: []
         };
 
-        // Process each client
+        // Process each client with delays to avoid triggering SiteGround's firewall
+        let isFirstCheck = true;
         for (let i = 0; i < allClients.length; i++) {
             const client = allClients[i];
             const clientId = client.clientId;
@@ -116,7 +117,6 @@ async function syncClientMemberships() {
             console.log(`\n[${i + 1}/${allClients.length}] ${clientName} (${clientId})`);
             console.log('─'.repeat(60));
 
-            // Skip if Status Management is set to "Manual" (case-insensitive)
             if (statusManagement.toLowerCase() === 'manual') {
                 console.log(`⏭️ SKIPPING: Status Management set to "Manual"`);
                 console.log(`   Current Status: ${currentStatus} (manually managed)`);
@@ -131,7 +131,6 @@ async function syncClientMemberships() {
                 continue;
             }
 
-            // Check if WordPress User ID exists
             if (!wpUserId || wpUserId === 0) {
                 console.error(`❌ ERROR: No WordPress User ID configured`);
                 console.error(`   → Setting Status to Paused`);
@@ -153,7 +152,11 @@ async function syncClientMemberships() {
 
             console.log(`   WP User ID: ${wpUserId}`);
 
-            // Check PMPro membership (pass email for fallback lookup if user_id returns nothing)
+            if (!isFirstCheck) {
+                await new Promise(r => setTimeout(r, pmproService.SYNC_INTER_CLIENT_DELAY_MS));
+            }
+            isFirstCheck = false;
+
             const membershipCheck = await pmproService.checkUserMembership(wpUserId, {
                 clientEmail: client.clientEmailAddress || null
             });
