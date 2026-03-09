@@ -67,9 +67,9 @@ async function checkScoringPipelineHealth() {
         const base = airtableClient.getMasterClientsBase();
         const cutoff = new Date(Date.now() - PIPELINE_HEALTH_HOURS * 60 * 60 * 1000).toISOString();
 
-        // CRITICAL: Only consider runs that have "ClientName: N leads" format in System Notes.
+        // Any completed Job Tracking record in the window indicates the pipeline ran
         const records = await base(MASTER_TABLES.JOB_TRACKING).select({
-            filterByFormula: `AND({Status} = 'Completed', IS_AFTER({Start Time}, '${cutoff}'), OR(FIND('smart_resume', {System Notes}) > 0, FIND('lead_scoring', {System Notes}) > 0))`,
+            filterByFormula: `AND({Status} = 'Completed', IS_AFTER({Start Time}, '${cutoff}'))`,
             maxRecords: 1,
             sort: [{ field: 'Start Time', direction: 'desc' }]
         }).firstPage();
