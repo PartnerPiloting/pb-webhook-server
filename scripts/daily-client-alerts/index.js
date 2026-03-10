@@ -77,10 +77,14 @@ async function checkScoringPipelineHealth() {
         if (records && records.length > 0) {
             const r = records[0];
             const systemNotes = r.get('System Notes') || '';
+            const startTime = r.get('Start Time');
+            const startTimeAEST = startTime
+                ? new Date(startTime).toLocaleString('en-AU', { timeZone: 'Australia/Brisbane', dateStyle: 'medium', timeStyle: 'short' })
+                : startTime;
             return {
-                lastCompletedRun: { runId: r.get('Run ID'), startTime: r.get('Start Time') },
+                lastCompletedRun: { runId: r.get('Run ID'), startTime },
                 systemNotes,
-                message: `Last completed run ${r.get('Run ID')} at ${r.get('Start Time')}`
+                message: `Last completed run ${r.get('Run ID')} at ${startTimeAEST} (AEST)`
             };
         }
 
