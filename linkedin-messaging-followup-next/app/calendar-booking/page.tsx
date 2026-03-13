@@ -80,6 +80,14 @@ function CalendarBookingContent() {
   const chatEndRef = useRef<HTMLDivElement>(null);
   const chatInputRef = useRef<HTMLTextAreaElement>(null);
 
+  // Quick Pick state
+  const [quickPickExpanded, setQuickPickExpanded] = useState(false);
+  const [selectedSlots, setSelectedSlots] = useState<Array<{ time: string; display: string; leadDisplay: string }>>([]);
+  const [availabilityDays, setAvailabilityDays] = useState<Array<{ date: string; day: string; freeSlots: Array<{ time: string; display: string; leadDisplay: string }> }>>([]);
+  const [loadingAvailability, setLoadingAvailability] = useState(false);
+  const [loadingQuickPickMessage, setLoadingQuickPickMessage] = useState(false);
+  const [quickPickError, setQuickPickError] = useState<string>('');
+
   // Extract message for lead from "READY TO COPY:" delimiter (from Smart Booking Assistant)
   const extractMessageForLead = (content: string): string | null => {
     const match = content.match(/READY TO COPY:\s*\n\n([\s\S]*)/i);
@@ -95,6 +103,57 @@ function CalendarBookingContent() {
       setTimeout(() => setCopySuccessMsgIdx(null), 2000);
     } catch (err) {
       console.error('Failed to copy:', err);
+    }
+  };
+
+  const toggleQuickPickSlot = (slot: { time: string; display: string; leadDisplay: string }) => {
+    setSelectedSlots(prev => {
+      const idx = prev.findIndex(s => s.time === slot.time);
+      if (idx >= 0) return prev.filter((_, i) => i !== idx);
+      if (prev.length >= 3) return prev;
+      return [...prev, slot].sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
+    });
+  };
+
+  const handleGenerateQuickPickMessage = async () => {
+    if (selectedSlots.length === 0 || !clientInfo?.clientId) return;
+    setLoadingQuickPickMessage(true);
+    setQuickPickError('');
+    const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.replace('/api/linkedin', '') || 'https://pb-webhook-server.onrender.com';
+    try {
+      const res = await fetch(`${baseUrl}/api/calendar/quick-pick-message`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-client-id': clientInfo.clientId,
+        },
+        body: JSON.stringify({
+          selectedSlots,
+          context: {
+            yourName: formData.yourName,
+            yourTimezone,
+            leadName: formData.leadName,
+            leadLocation: formData.leadLocation || 'Brisbane',
+            leadTimezone,
+            yourZoom: formData.yourZoom,
+          },
+        }),
+      });
+      const data = await res.json();
+      if (data.error) {
+        setQuickPickError(data.error);
+      } else {
+        setChatMessages(prev => [...prev, {
+          role: 'assistant',
+          content: data.message,
+          timestamp: new Date().toLocaleTimeString(),
+        }]);
+        setSelectedSlots([]);
+      }
+    } catch (err) {
+      setQuickPickError(err instanceof Error ? err.message : 'Failed to generate message');
+    } finally {
+      setLoadingQuickPickMessage(false);
     }
   };
   
@@ -332,6 +391,33 @@ function CalendarBookingContent() {
         });
     }
   }, [clientInfo, calendarVerified, verifyingOnLoad, calendarAccessError]);
+
+  // Fetch availability when Quick Pick is expanded
+  useEffect(() => {
+    if (!quickPickExpanded || !clientInfo?.clientId || !clientInfo.calendarConnected) return;
+    setLoadingAvailability(true);
+    setQuickPickError('');
+    const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.replace('/api/linkedin', '') || 'https://pb-webhook-server.onrender.com';
+    const leadLoc = formData.leadLocation?.trim() || 'Brisbane';
+    fetch(`${baseUrl}/api/calendar/availability?leadLocation=${encodeURIComponent(leadLoc)}`, {
+      headers: { 'x-client-id': clientInfo.clientId },
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (data.error) {
+          setQuickPickError(data.error);
+          setAvailabilityDays([]);
+        } else {
+          setAvailabilityDays(data.days || []);
+          if (data.leadTimezone) setLeadTimezone(data.leadTimezone);
+        }
+      })
+      .catch(err => {
+        setQuickPickError(err.message || 'Failed to load availability');
+        setAvailabilityDays([]);
+      })
+      .finally(() => setLoadingAvailability(false));
+  }, [quickPickExpanded, clientInfo?.clientId, clientInfo?.calendarConnected, formData.leadLocation]);
 
   // Helper to validate timezone
   const isValidTimezone = (tz: string): boolean => {
@@ -1434,6 +1520,72 @@ ${yourFirstName}`;
                 </div>
               </div>
             </div>
+
+            {/* Quick Pick - Pick up to 3 times from calendar */}
+            {clientInfo.calendarConnected && (
+              <div className="border border-gray-200 rounded-lg overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => setQuickPickExpanded(!quickPickExpanded)}
+                  className="w-full px-3 py-2 flex items-center justify-between bg-gray-50 hover:bg-gray-100 text-left"
+                >
+                  <span className="text-sm font-semibold text-gray-800">⚡ Quick Pick</span>
+                  <span className="text-xs text-gray-500">Pick up to 3 times from your calendar</span>
+                  <span className="text-gray-400">{quickPickExpanded ? '▼' : '▶'}</span>
+                </button>
+                {quickPickExpanded && (
+                  <div className="p-3 bg-white border-t border-gray-100">
+                    {loadingAvailability ? (
+                      <p className="text-sm text-gray-500">Loading availability...</p>
+                    ) : quickPickError ? (
+                      <p className="text-sm text-red-600">{quickPickError}</p>
+                    ) : (
+                      <>
+                        <p className="text-xs text-gray-600 mb-2">
+                          Select up to 3 times ({selectedSlots.length}/3 selected)
+                        </p>
+                        <div className="max-h-48 overflow-y-auto space-y-3 mb-3">
+                          {availabilityDays.map(day => (
+                            day.freeSlots.length > 0 && (
+                              <div key={day.date}>
+                                <div className="text-xs font-medium text-gray-700 mb-1">{day.day}</div>
+                                <div className="flex flex-wrap gap-1">
+                                  {day.freeSlots.map(slot => {
+                                    const isSelected = selectedSlots.some(s => s.time === slot.time);
+                                    return (
+                                      <button
+                                        key={slot.time}
+                                        type="button"
+                                        onClick={() => toggleQuickPickSlot(slot)}
+                                        className={`px-2 py-1 text-xs rounded border ${
+                                          isSelected
+                                            ? 'bg-blue-600 text-white border-blue-600'
+                                            : 'bg-white text-gray-700 border-gray-300 hover:border-blue-400'
+                                        }`}
+                                      >
+                                        {slot.leadDisplay || slot.display}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            )
+                          ))}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={handleGenerateQuickPickMessage}
+                          disabled={selectedSlots.length === 0 || loadingQuickPickMessage}
+                          className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                        >
+                          {loadingQuickPickMessage ? 'Generating...' : 'Generate message'}
+                        </button>
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Chat Section for Booking */}
             {clientInfo.calendarConnected && (
