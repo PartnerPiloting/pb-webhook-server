@@ -8061,10 +8061,12 @@ router.post("/api/calendar/quick-pick-message", async (req, res) => {
 
     const leadFirstName = (context.leadName || '').split(' ')[0] || 'there';
     const yourFirstName = (context.yourName || '').split(' ')[0] || '';
-    const leadTimezone = context.leadTimezone || 'Australia/Brisbane';
-    const sameTimezone = (context.yourTimezone || '') === leadTimezone;
+    const yourTimezone = context.yourTimezone || 'Australia/Brisbane';
+    // Resolve lead timezone from location (don't rely on frontend - ensures correct conversion)
+    const leadTimezone = (context.leadLocation && getTimezoneFromLocation(context.leadLocation)) || context.leadTimezone || yourTimezone;
+    const sameTimezone = yourTimezone === leadTimezone;
 
-    // Format times as "Wed, 25 Mar, 10:00 am" in lead's timezone
+    // Format times as "Wed, 25 Mar, 10:00 am" in lead's timezone (converted from user's calendar)
     const formatTimeForMessage = (isoTime, tz) => {
       const date = new Date(isoTime);
       const weekday = date.toLocaleDateString('en-AU', { weekday: 'short', timeZone: tz });
