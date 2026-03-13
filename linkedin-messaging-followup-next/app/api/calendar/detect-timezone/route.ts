@@ -8,6 +8,7 @@ function detectTimezoneFromLocation(location: string): { timezone: string; offse
   if (lower.includes('perth')) return { timezone: 'Australia/Perth', offset: 'AWST (UTC+8)' };
   if (lower.includes('sydney')) return { timezone: 'Australia/Sydney', offset: 'AEDT (UTC+11)' };
   if (lower.includes('melbourne')) return { timezone: 'Australia/Melbourne', offset: 'AEDT (UTC+11)' };
+  if (lower.includes('dandenong') || lower.includes('geelong') || lower.includes('ballarat') || lower.includes('bendigo') || lower.includes('frankston') || lower.includes('werribee') || lower.includes('shepparton') || lower.includes('warrnambool') || lower.includes('traralgon') || lower.includes('mildura')) return { timezone: 'Australia/Melbourne', offset: 'AEDT (UTC+11)' };
   if (lower.includes('brisbane')) return { timezone: 'Australia/Brisbane', offset: 'AEST (UTC+10)' };
   if (lower.includes('adelaide')) return { timezone: 'Australia/Adelaide', offset: 'ACDT (UTC+10:30)' };
   if (lower.includes('darwin')) return { timezone: 'Australia/Darwin', offset: 'ACST (UTC+9:30)' };
