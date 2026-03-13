@@ -8064,7 +8064,16 @@ router.post("/api/calendar/quick-pick-message", async (req, res) => {
     const yourTimezone = context.yourTimezone || 'Australia/Brisbane';
     // Resolve lead timezone from location (don't rely on frontend - ensures correct conversion)
     const leadTimezone = (context.leadLocation && getTimezoneFromLocation(context.leadLocation)) || context.leadTimezone || yourTimezone;
-    const sameTimezone = yourTimezone === leadTimezone;
+    // Only show timezone label when offsets differ (e.g. Brisbane+Melbourne in summer); omit when same (e.g. both UTC+10 in winter)
+    const getOffsetMinutes = (tz) => {
+      const now = new Date();
+      const parts = new Intl.DateTimeFormat('en-US', { timeZone: tz, timeZoneName: 'shortOffset' }).formatToParts(now);
+      const m = (parts.find(p => p.type === 'timeZoneName')?.value || '').match(/GMT([+-])(\d+)(?::(\d+))?/);
+      if (!m) return 0;
+      const sign = m[1] === '+' ? 1 : -1;
+      return sign * (parseInt(m[2], 10) * 60 + parseInt(m[3] || '0', 10));
+    };
+    const sameOffset = getOffsetMinutes(yourTimezone) === getOffsetMinutes(leadTimezone);
 
     // Format times as "Wed, 25 Mar, 10:00 am" in lead's timezone (converted from user's calendar)
     const formatTimeForMessage = (isoTime, tz) => {
@@ -8074,7 +8083,7 @@ router.post("/api/calendar/quick-pick-message", async (req, res) => {
       const month = date.toLocaleDateString('en-AU', { month: 'short', timeZone: tz });
       const time = date.toLocaleTimeString('en-AU', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: tz });
       const base = `${weekday}, ${day} ${month}, ${time}`;
-      return sameTimezone ? base : `${base} (${tz.split('/').pop()})`;
+      return sameOffset ? base : `${base} (${tz.split('/').pop()})`;
     };
 
     const formattedSlots = selectedSlots.map(s => formatTimeForMessage(s.time, leadTimezone));
