@@ -7358,7 +7358,9 @@ router.get("/api/calendar/availability", async (req, res) => {
 
     const getTimezoneFromLocation = (location) => {
       const loc = (location || '').toLowerCase();
-      if (loc.includes('sydney') || loc.includes('melbourne') || loc.includes('canberra') || loc.includes('victoria') || loc.includes('ballarat')) return 'Australia/Sydney';
+      // Victoria and Melbourne metro/suburbs -> Melbourne (not Sydney)
+      if (loc.includes('melbourne') || loc.includes('victoria') || loc.includes('ballarat') || loc.includes('dandenong') || loc.includes('geelong') || loc.includes('bendigo') || loc.includes('frankston') || loc.includes('werribee') || loc.includes('shepparton') || loc.includes('warrnambool') || loc.includes('traralgon') || loc.includes('mildura')) return 'Australia/Melbourne';
+      if (loc.includes('sydney') || loc.includes('canberra') || loc.includes('nsw') || loc.includes('new south wales')) return 'Australia/Sydney';
       if (loc.includes('brisbane') || loc.includes('queensland')) return 'Australia/Brisbane';
       if (loc.includes('perth') || loc.includes('western australia')) return 'Australia/Perth';
       if (loc.includes('adelaide') || loc.includes('south australia')) return 'Australia/Adelaide';
@@ -7456,8 +7458,11 @@ router.post("/api/calendar/chat", async (req, res) => {
     // Helper to get timezone from location
     const getTimezoneFromLocation = (location) => {
       const locationLower = (location || '').toLowerCase();
-      
-      if (locationLower.includes('sydney') || locationLower.includes('melbourne') || locationLower.includes('canberra') || locationLower.includes('victoria') || locationLower.includes('ballarat')) {
+      // Victoria and Melbourne metro/suburbs -> Melbourne (not Sydney)
+      if (locationLower.includes('melbourne') || locationLower.includes('victoria') || locationLower.includes('ballarat') || locationLower.includes('dandenong') || locationLower.includes('geelong') || locationLower.includes('bendigo') || locationLower.includes('frankston') || locationLower.includes('werribee') || locationLower.includes('shepparton') || locationLower.includes('warrnambool') || locationLower.includes('traralgon') || locationLower.includes('mildura')) {
+        return 'Australia/Melbourne';
+      }
+      if (locationLower.includes('sydney') || locationLower.includes('canberra') || locationLower.includes('nsw') || locationLower.includes('new south wales')) {
         return 'Australia/Sydney';
       }
       if (locationLower.includes('brisbane') || locationLower.includes('queensland')) {
@@ -7651,8 +7656,8 @@ router.post("/api/calendar/chat", async (req, res) => {
     const getDisplayCity = (tz, location) => {
       if (location) {
         const loc = location.toLowerCase();
-        if (loc.includes('sydney')) return 'Sydney';
-        if (loc.includes('melbourne')) return 'Melbourne';
+        if (loc.includes('sydney') || loc.includes('nsw') || loc.includes('canberra')) return 'Sydney';
+        if (loc.includes('melbourne') || loc.includes('victoria') || loc.includes('dandenong') || loc.includes('geelong') || loc.includes('ballarat') || loc.includes('bendigo')) return 'Melbourne';
         if (loc.includes('brisbane')) return 'Brisbane';
         if (loc.includes('perth')) return 'Perth';
         if (loc.includes('adelaide')) return 'Adelaide';
