@@ -7326,6 +7326,109 @@ router.get("/api/calendar/upcoming-meeting-with-lead", async (req, res) => {
   }
 });
 
+// Get calendar availability for Quick Pick (next 5 weeks, no AI)
+router.get("/api/calendar/availability", async (req, res) => {
+  const logger = createLogger({ runId: 'CALENDAR', clientId: req.headers['x-client-id'] || 'unknown', operation: 'availability' });
+  try {
+    const clientId = req.headers['x-client-id'] || req.query.clientId;
+    const leadLocation = req.query.leadLocation || '';
+
+    if (!clientId) {
+      return res.status(400).json({ error: 'Client ID required (x-client-id header or clientId query)' });
+    }
+
+    const lookupResponse = await fetch(
+      `https://api.airtable.com/v0/${process.env.MASTER_CLIENTS_BASE_ID}/Clients?filterByFormula=LOWER({Client ID})=LOWER('${clientId}')&fields[]=Google Calendar Email&fields[]=Timezone`,
+      { headers: { 'Authorization': `Bearer ${process.env.AIRTABLE_API_KEY}` } }
+    );
+    if (!lookupResponse.ok) {
+      return res.status(500).json({ error: 'Failed to lookup client' });
+    }
+    const data = await lookupResponse.json();
+    if (!data.records || data.records.length === 0) {
+      return res.status(404).json({ error: 'Client not found' });
+    }
+    const record = data.records[0];
+    const calendarEmail = record.fields['Google Calendar Email'];
+    const yourTimezone = record.fields['Timezone'] || 'Australia/Brisbane';
+
+    if (!calendarEmail) {
+      return res.status(401).json({ error: `Calendar not configured. Share your calendar with: ${require('../config/calendarServiceAccount.js').serviceAccountEmail || 'service account'}` });
+    }
+
+    const getTimezoneFromLocation = (location) => {
+      const loc = (location || '').toLowerCase();
+      if (loc.includes('sydney') || loc.includes('melbourne') || loc.includes('canberra') || loc.includes('victoria') || loc.includes('ballarat')) return 'Australia/Sydney';
+      if (loc.includes('brisbane') || loc.includes('queensland')) return 'Australia/Brisbane';
+      if (loc.includes('perth') || loc.includes('western australia')) return 'Australia/Perth';
+      if (loc.includes('adelaide') || loc.includes('south australia')) return 'Australia/Adelaide';
+      if (loc.includes('darwin') || loc.includes('northern territory')) return 'Australia/Darwin';
+      if (loc.includes('hobart') || loc.includes('tasmania')) return 'Australia/Hobart';
+      if (loc.includes('auckland') || loc.includes('new zealand') || loc.includes('wellington')) return 'Pacific/Auckland';
+      if (loc.includes('singapore')) return 'Asia/Singapore';
+      if (loc.includes('hong kong')) return 'Asia/Hong_Kong';
+      if (loc.includes('tokyo') || loc.includes('japan')) return 'Asia/Tokyo';
+      if (loc.includes('london') || loc.includes('uk') || loc.includes('england')) return 'Europe/London';
+      if (loc.includes('new york') || loc.includes('ny')) return 'America/New_York';
+      if (loc.includes('los angeles') || loc.includes('la') || loc.includes('california')) return 'America/Los_Angeles';
+      return yourTimezone;
+    };
+
+    const formatTimeInTimezone = (isoTime, timezone) => {
+      const date = new Date(isoTime);
+      return date.toLocaleString('en-AU', {
+        weekday: 'short',
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true,
+        timeZone: timezone,
+      });
+    };
+
+    const leadTimezone = leadLocation.trim() ? getTimezoneFromLocation(leadLocation) : yourTimezone;
+
+    const getTodayInTimezone = (tz) => {
+      const now = new Date();
+      const formatter = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' });
+      return formatter.format(now).replace(/\//g, '-');
+    };
+    const todayStr = getTodayInTimezone(yourTimezone);
+    const today = new Date(todayStr + 'T12:00:00');
+    const dates = [];
+    for (let i = 0; i < 35; i++) {
+      const d = new Date(today);
+      d.setDate(d.getDate() + i);
+      dates.push(d.toISOString().split('T')[0]);
+    }
+
+    const calendarService = require('../config/calendarServiceAccount.js');
+    const { days: calendarDays, error: batchError } = await calendarService.getBatchAvailability(
+      calendarEmail, dates, 9, 17, yourTimezone
+    );
+
+    if (batchError) {
+      logger.warn(`Availability error: ${batchError}`);
+      return res.status(500).json({ error: batchError });
+    }
+
+    const availabilitySlots = calendarDays.map(d => ({
+      ...d,
+      freeSlots: d.freeSlots.map(slot => ({
+        time: slot.time,
+        display: slot.display || slot.displayRange,
+        leadDisplay: formatTimeInTimezone(slot.time, leadTimezone),
+      })),
+    }));
+
+    return res.json({ days: availabilitySlots, yourTimezone, leadTimezone });
+  } catch (error) {
+    logger.error('Availability error:', error.message);
+    return res.status(500).json({ error: error.message });
+  }
+});
+
 router.post("/api/calendar/chat", async (req, res) => {
   const logger = createLogger({ runId: 'CALENDAR', clientId: req.headers['x-client-id'] || 'unknown', operation: 'calendar-chat' });
   
@@ -7969,6 +8072,73 @@ CALENDAR DATA RANGE:
   } catch (error) {
     logger.error('Calendar chat error:', error.message, error.stack);
     res.status(500).json({ error: `Chat failed: ${error.message}` });
+  }
+});
+
+// Quick Pick: Generate message from user-selected slots (no conversation hint)
+router.post("/api/calendar/quick-pick-message", async (req, res) => {
+  const logger = createLogger({ runId: 'CALENDAR', clientId: req.headers['x-client-id'] || 'unknown', operation: 'quick-pick' });
+  try {
+    const clientId = req.headers['x-client-id'];
+    if (!clientId) {
+      return res.status(400).json({ error: 'Client ID required' });
+    }
+
+    const { selectedSlots, context } = req.body;
+    if (!selectedSlots || !Array.isArray(selectedSlots) || selectedSlots.length === 0 || selectedSlots.length > 3) {
+      return res.status(400).json({ error: 'selectedSlots required: array of 1-3 slots' });
+    }
+    if (!context || !context.yourName || !context.leadName) {
+      return res.status(400).json({ error: 'context with yourName and leadName required' });
+    }
+
+    const geminiConfig = require('../config/geminiClient.js');
+    if (!geminiConfig || !geminiConfig.geminiModel) {
+      return res.status(500).json({ error: 'AI service not available' });
+    }
+
+    const leadFirstName = (context.leadName || '').split(' ')[0] || 'there';
+    const yourFirstName = (context.yourName || '').split(' ')[0] || '';
+    const sameTimezone = (context.yourTimezone || '') === (context.leadTimezone || '');
+
+    const slotsText = selectedSlots.map((s, i) => `${i + 1}. ${s.leadDisplay || s.display} (ISO: ${s.time})`).join('\n');
+
+    const systemPrompt = `You are a booking assistant. Generate a SHORT, friendly message for the user to copy-paste to their lead (${context.leadName}) offering these meeting times.
+
+RULES:
+1. Use the lead's first name: ${leadFirstName}
+2. List the times EXACTLY as provided in leadDisplay - do NOT reformat or change them
+3. ${sameTimezone ? 'Same timezone - no need to add timezone labels to times' : 'Different timezones - times are already in lead\'s local time (e.g. "Thu 10am (11am Sydney)")'}
+4. Keep it conversational and brief - 3-5 lines max
+5. Include Zoom link if provided: ${context.yourZoom || '(not provided)'}
+6. End with exactly: READY TO COPY: on its own line, then a blank line, then the full message ONLY (no preamble)
+7. Use simple bullet points with * for the times
+8. Do NOT use markdown bold - output gets pasted to LinkedIn
+9. Sign off with "Talk Soon" or "Best" + first name (${yourFirstName})
+
+SELECTED SLOTS (use these exact times):
+${slotsText}
+
+Output format: Your brief intro/explanation, then on a new line "READY TO COPY:", then blank line, then the message.`;
+
+    const result = await geminiConfig.geminiModel.generateContent(systemPrompt);
+    let responseText;
+    if (result.response && typeof result.response.text === 'function') {
+      responseText = result.response.text();
+    } else if (result.response?.candidates?.[0]?.content?.parts?.[0]?.text) {
+      responseText = result.response.candidates[0].content.parts[0].text;
+    } else {
+      throw new Error('Unexpected Gemini response format');
+    }
+
+    return res.json({
+      message: responseText.trim(),
+      leadTimezone: context.leadTimezone,
+      yourTimezone: context.yourTimezone,
+    });
+  } catch (error) {
+    logger.error('Quick pick message error:', error.message);
+    return res.status(500).json({ error: `Failed to generate message: ${error.message}` });
   }
 });
 
