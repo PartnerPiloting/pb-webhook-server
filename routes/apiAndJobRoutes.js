@@ -8092,47 +8092,42 @@ router.post("/api/calendar/quick-pick-message", async (req, res) => {
       return res.status(400).json({ error: 'context with yourName and leadName required' });
     }
 
-    const geminiConfig = require('../config/geminiClient.js');
-    if (!geminiConfig || !geminiConfig.geminiModel) {
-      return res.status(500).json({ error: 'AI service not available' });
-    }
-
     const leadFirstName = (context.leadName || '').split(' ')[0] || 'there';
     const yourFirstName = (context.yourName || '').split(' ')[0] || '';
-    const sameTimezone = (context.yourTimezone || '') === (context.leadTimezone || '');
+    const leadTimezone = context.leadTimezone || 'Australia/Brisbane';
+    const sameTimezone = (context.yourTimezone || '') === leadTimezone;
 
-    const slotsText = selectedSlots.map((s, i) => `${i + 1}. ${s.leadDisplay || s.display} (ISO: ${s.time})`).join('\n');
+    // Format times as "Wed, 25 Mar, 10:00 am" in lead's timezone
+    const formatTimeForMessage = (isoTime, tz) => {
+      const date = new Date(isoTime);
+      const weekday = date.toLocaleDateString('en-AU', { weekday: 'short', timeZone: tz });
+      const day = date.toLocaleDateString('en-AU', { day: 'numeric', timeZone: tz });
+      const month = date.toLocaleDateString('en-AU', { month: 'short', timeZone: tz });
+      const time = date.toLocaleTimeString('en-AU', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: tz });
+      const base = `${weekday}, ${day} ${month}, ${time}`;
+      return sameTimezone ? base : `${base} (${tz.split('/').pop()})`;
+    };
 
-    const systemPrompt = `You are a booking assistant. Generate a SHORT, friendly message for the user to copy-paste to their lead (${context.leadName}) offering these meeting times.
+    const formattedSlots = selectedSlots.map(s => formatTimeForMessage(s.time, leadTimezone));
+    const timesList = formattedSlots.map(t => `* ${t}`).join('\n');
 
-RULES:
-1. Use the lead's first name: ${leadFirstName}
-2. List the times EXACTLY as provided in leadDisplay - do NOT reformat or change them
-3. ${sameTimezone ? 'Same timezone - no need to add timezone labels to times' : 'Different timezones - times are already in lead\'s local time (e.g. "Thu 10am (11am Sydney)")'}
-4. Keep it conversational and brief - 3-5 lines max
-5. Include Zoom link if provided: ${context.yourZoom || '(not provided)'}
-6. End with exactly: READY TO COPY: on its own line, then a blank line, then the full message ONLY (no preamble)
-7. Use simple bullet points with * for the times
-8. Do NOT use markdown bold - output gets pasted to LinkedIn
-9. Sign off with "Talk Soon" or "Best" + first name (${yourFirstName})
+    const messageBody = `Hi ${leadFirstName},
 
-SELECTED SLOTS (use these exact times):
-${slotsText}
+Here are a few times that work for me:
 
-Output format: Your brief intro/explanation, then on a new line "READY TO COPY:", then blank line, then the message.`;
+${timesList}
 
-    const result = await geminiConfig.geminiModel.generateContent(systemPrompt);
-    let responseText;
-    if (result.response && typeof result.response.text === 'function') {
-      responseText = result.response.text();
-    } else if (result.response?.candidates?.[0]?.content?.parts?.[0]?.text) {
-      responseText = result.response.candidates[0].content.parts[0].text;
-    } else {
-      throw new Error('Unexpected Gemini response format');
-    }
+Let me know what suits, and I'll send through a calendar invite with a Zoom link.
+
+Talk Soon
+${yourFirstName}`;
+
+    const responseText = `READY TO COPY:
+
+${messageBody}`;
 
     return res.json({
-      message: responseText.trim(),
+      message: responseText,
       leadTimezone: context.leadTimezone,
       yourTimezone: context.yourTimezone,
     });
