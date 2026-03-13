@@ -37,6 +37,7 @@ const { handleClientError } = require('../utils/errorHandler.js');
 const logCriticalError = async () => {}; // No-op
 // Structured logging for 100% error coverage
 const { createLogger } = require('../utils/contextLogger.js');
+const { getTimezoneFromLocation } = require('../linkedin-messaging-followup-next/lib/timezoneFromLocation.js');
 
 // Module-level logger for routes without specific runId context
 const moduleLogger = createLogger({ runId: 'MODULE_INIT', clientId: 'SYSTEM', operation: 'api_routes' });
@@ -7356,25 +7357,22 @@ router.get("/api/calendar/availability", async (req, res) => {
       return res.status(401).json({ error: `Calendar not configured. Share your calendar with: ${require('../config/calendarServiceAccount.js').serviceAccountEmail || 'service account'}` });
     }
 
-    const getTimezoneFromLocation = (location) => {
-      const loc = (location || '').toLowerCase();
-      // Victoria and Melbourne metro/suburbs -> Melbourne (not Sydney)
-      if (loc.includes('melbourne') || loc.includes('victoria') || loc.includes('ballarat') || loc.includes('dandenong') || loc.includes('geelong') || loc.includes('bendigo') || loc.includes('frankston') || loc.includes('werribee') || loc.includes('shepparton') || loc.includes('warrnambool') || loc.includes('traralgon') || loc.includes('mildura')) return 'Australia/Melbourne';
-      if (loc.includes('sydney') || loc.includes('canberra') || loc.includes('nsw') || loc.includes('new south wales')) return 'Australia/Sydney';
-      if (loc.includes('brisbane') || loc.includes('queensland')) return 'Australia/Brisbane';
-      if (loc.includes('perth') || loc.includes('western australia')) return 'Australia/Perth';
-      if (loc.includes('adelaide') || loc.includes('south australia')) return 'Australia/Adelaide';
-      if (loc.includes('darwin') || loc.includes('northern territory')) return 'Australia/Darwin';
-      if (loc.includes('hobart') || loc.includes('tasmania')) return 'Australia/Hobart';
-      if (loc.includes('auckland') || loc.includes('new zealand') || loc.includes('wellington')) return 'Pacific/Auckland';
-      if (loc.includes('singapore')) return 'Asia/Singapore';
-      if (loc.includes('hong kong')) return 'Asia/Hong_Kong';
-      if (loc.includes('tokyo') || loc.includes('japan')) return 'Asia/Tokyo';
-      if (loc.includes('london') || loc.includes('uk') || loc.includes('england')) return 'Europe/London';
-      if (loc.includes('new york') || loc.includes('ny')) return 'America/New_York';
-      if (loc.includes('los angeles') || loc.includes('la') || loc.includes('california')) return 'America/Los_Angeles';
-      return yourTimezone;
+    const resolveTz = async (loc, fallback) => {
+      const rule = getTimezoneFromLocation(loc);
+      if (rule) return rule;
+      const gemini = require('../config/geminiClient.js');
+      if (!gemini?.geminiModel) return fallback;
+      try {
+        const result = await gemini.geminiModel.generateContent(`What is the IANA timezone for "${loc}"? Reply ONLY with the timezone. Example: America/New_York`);
+        const text = (result.response?.candidates?.[0]?.content?.parts?.[0]?.text || '').trim();
+        const m = text.match(/^[A-Za-z]+\/[A-Za-z_]+$/);
+        if (m) return m[0];
+      } catch (e) {
+        logger.warn(`Gemini timezone fallback failed: ${e.message}`);
+      }
+      return fallback;
     };
+    const leadTimezone = leadLocation.trim() ? await resolveTz(leadLocation, yourTimezone) : yourTimezone;
 
     const formatTimeInTimezone = (isoTime, timezone) => {
       const date = new Date(isoTime);
@@ -7388,8 +7386,6 @@ router.get("/api/calendar/availability", async (req, res) => {
         timeZone: timezone,
       });
     };
-
-    const leadTimezone = leadLocation.trim() ? getTimezoneFromLocation(leadLocation) : yourTimezone;
 
     const getTodayInTimezone = (tz) => {
       const now = new Date();
@@ -7455,54 +7451,21 @@ router.post("/api/calendar/chat", async (req, res) => {
       return res.status(500).json({ error: 'AI service not available' });
     }
 
-    // Helper to get timezone from location
-    const getTimezoneFromLocation = (location) => {
-      const locationLower = (location || '').toLowerCase();
-      // Victoria and Melbourne metro/suburbs -> Melbourne (not Sydney)
-      if (locationLower.includes('melbourne') || locationLower.includes('victoria') || locationLower.includes('ballarat') || locationLower.includes('dandenong') || locationLower.includes('geelong') || locationLower.includes('bendigo') || locationLower.includes('frankston') || locationLower.includes('werribee') || locationLower.includes('shepparton') || locationLower.includes('warrnambool') || locationLower.includes('traralgon') || locationLower.includes('mildura')) {
-        return 'Australia/Melbourne';
+    // Resolve lead timezone: shared rules first, then Gemini fallback for unknowns
+    const resolveLeadTimezone = async (location, fallbackTz) => {
+      const rule = getTimezoneFromLocation(location);
+      if (rule) return rule;
+      if (!geminiConfig?.geminiModel) return fallbackTz;
+      try {
+        const prompt = `What is the IANA timezone identifier for "${location}"? Reply ONLY with the timezone. Example: America/New_York`;
+        const result = await geminiConfig.geminiModel.generateContent(prompt);
+        const text = (result.response?.candidates?.[0]?.content?.parts?.[0]?.text || '').trim();
+        const match = text.match(/^[A-Za-z]+\/[A-Za-z_]+$/);
+        if (match) return match[0];
+      } catch (e) {
+        logger.warn(`Gemini timezone fallback failed for "${location}": ${e.message}`);
       }
-      if (locationLower.includes('sydney') || locationLower.includes('canberra') || locationLower.includes('nsw') || locationLower.includes('new south wales')) {
-        return 'Australia/Sydney';
-      }
-      if (locationLower.includes('brisbane') || locationLower.includes('queensland')) {
-        return 'Australia/Brisbane';
-      }
-      if (locationLower.includes('perth') || locationLower.includes('western australia')) {
-        return 'Australia/Perth';
-      }
-      if (locationLower.includes('adelaide') || locationLower.includes('south australia')) {
-        return 'Australia/Adelaide';
-      }
-      if (locationLower.includes('darwin') || locationLower.includes('northern territory')) {
-        return 'Australia/Darwin';
-      }
-      if (locationLower.includes('hobart') || locationLower.includes('tasmania')) {
-        return 'Australia/Hobart';
-      }
-      if (locationLower.includes('auckland') || locationLower.includes('new zealand') || locationLower.includes('wellington')) {
-        return 'Pacific/Auckland';
-      }
-      if (locationLower.includes('singapore')) {
-        return 'Asia/Singapore';
-      }
-      if (locationLower.includes('hong kong')) {
-        return 'Asia/Hong_Kong';
-      }
-      if (locationLower.includes('tokyo') || locationLower.includes('japan')) {
-        return 'Asia/Tokyo';
-      }
-      if (locationLower.includes('london') || locationLower.includes('uk') || locationLower.includes('england')) {
-        return 'Europe/London';
-      }
-      if (locationLower.includes('new york') || locationLower.includes('ny')) {
-        return 'America/New_York';
-      }
-      if (locationLower.includes('los angeles') || locationLower.includes('la') || locationLower.includes('california')) {
-        return 'America/Los_Angeles';
-      }
-      
-      return 'Australia/Brisbane';
+      return fallbackTz;
     };
 
     // Format time in a specific timezone
@@ -7586,10 +7549,9 @@ router.post("/api/calendar/chat", async (req, res) => {
       return res.status(401).json({ error: calendarError });
     }
 
-    // Detect lead timezone from location (now that yourTimezone is defined)
-    // If lead location is blank/unknown, assume same timezone as user (no conversion)
+    // Detect lead timezone: shared rules first, then Gemini fallback for unknowns
     const leadLocationKnown = context.leadLocation && context.leadLocation.trim() !== '';
-    const leadTimezone = leadLocationKnown ? getTimezoneFromLocation(context.leadLocation) : yourTimezone;
+    const leadTimezone = leadLocationKnown ? await resolveLeadTimezone(context.leadLocation, yourTimezone) : yourTimezone;
 
     // Get today's date IN THE USER'S TIMEZONE (not server time)
     // This ensures "today" and "tomorrow" are correct for the user
