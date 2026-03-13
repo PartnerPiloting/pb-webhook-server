@@ -1332,17 +1332,20 @@ function parseMeetingNotetakerEmail(subject, bodyPlain, bodyHtml, provider) {
     // If subject name looks like a domain, extract company
     if (subjectName && subjectName.includes('.') && !subjectName.includes(' ')) {
         result.company = subjectName;
-        result.contactName = null; // Clear it, it's not a real name
+        // Don't clear contactName if we already found a valid name from the body (e.g. "Barry Lewington" from "Barry Lewington meeting")
+        // The domain branch used to overwrite it, causing "null" in notifications
+        const hasValidNameFromBody = result.contactName && result.contactName.includes(' ') && result.contactName.length > 3;
+        if (!hasValidNameFromBody) {
+            result.contactName = null;
+        }
         
-        // When subject is a domain, look for a single first name in the body
-        // Fathom format: "Meeting with domain.com\nFirstName\nDate • duration"
-        // The first name appears on its own line right after the meeting header
-        // For forwarded emails, we need to find the name AFTER the domain mention
+        // When subject is a domain, look for name in body
+        // Fathom format: "Meeting with domain.com\nBarry Lewington meeting\nDate • duration" OR "FirstName\nDate"
+        const fullNameMeetingPattern = /^([A-Z][a-zà-ÿ]+(?:\s+[A-Za-zà-ÿ-]+)+)\s+meeting\s*$/i;
         const firstNamePattern = /^([A-Z][a-z]+)\s*$/m;
         const bodyLines = body.split('\n').map(l => l.trim()).filter(l => l);
         
         // Find where "Meeting with domain" appears in the body content (not the forwarded Subject: header)
-        // We need to find the ACTUAL Fathom content, not the forwarded email headers
         let startIndex = 0;
         for (let i = 0; i < bodyLines.length; i++) {
             const line = bodyLines[i];
@@ -1363,9 +1366,19 @@ function parseMeetingNotetakerEmail(subject, bodyPlain, bodyHtml, provider) {
             }
         }
         
-        // Look in the next few lines after the domain for a capitalized single name
+        // Look in the next few lines after the domain for "FirstName LastName meeting" or single first name
         for (let i = startIndex; i < Math.min(startIndex + 5, bodyLines.length); i++) {
             const line = bodyLines[i];
+            // First try "Barry Lewington meeting" - extract full name (don't skip lines with "meeting")
+            const fullNameMatch = line.match(fullNameMeetingPattern);
+            if (fullNameMatch) {
+                const name = fullNameMatch[1].trim();
+                if (name.split(/\s+/).length >= 2) {
+                    result.contactName = name;
+                    logger.info(`Found full name in body: "${result.contactName}" (company: ${result.company})`);
+                    break;
+                }
+            }
             // Skip lines that look like headers, dates, or the domain itself
             if (line.toLowerCase().includes('meeting') || 
                 line.toLowerCase().includes('call') ||
@@ -2565,13 +2578,14 @@ async function sendMeetingMultipleLeadsNotification(toEmail, meetingData, provid
         return `${idx + 1}. ${name}${details.length > 0 ? ` (${details.join(', ')})` : ''}`;
     }).join('\n');
     
+    const displayName = meetingData.contactName || meetingData.firstNameOnly || meetingData.company || 'Unknown';
     const emailData = {
         from: `ASH Portal <noreply@${process.env.MAILGUN_DOMAIN}>`,
         to: toEmail,
-        subject: `📹 Meeting Note Not Saved - Multiple Leads Named "${meetingData.contactName}"`,
+        subject: `📹 Meeting Note Not Saved - Multiple Leads Named "${displayName}"`,
         text: `Hi,
 
-We received your ${provider} meeting notes for "${meetingData.contactName}" but found ${matchingLeads.length} leads with that name:
+We received your ${provider} meeting notes for "${displayName}" but found ${matchingLeads.length} leads with that name:
 
 ${leadList}
 
