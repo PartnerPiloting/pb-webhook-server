@@ -8060,23 +8060,9 @@ router.post("/api/calendar/quick-pick-message", async (req, res) => {
       return res.status(400).json({ error: 'context with yourName and leadName required' });
     }
 
-    // Look up yourTimezone from Airtable (same source as availability API) - ensures slot times
-    // are interpreted correctly since availability builds slots in this timezone
-    let yourTimezone = context.yourTimezone || 'Australia/Brisbane';
-    try {
-      const lookupRes = await fetch(
-        `https://api.airtable.com/v0/${process.env.MASTER_CLIENTS_BASE_ID}/Clients?filterByFormula=LOWER({Client ID})=LOWER('${clientId}')&fields[]=Timezone`,
-        { headers: { 'Authorization': `Bearer ${process.env.AIRTABLE_API_KEY}` } }
-      );
-      if (lookupRes.ok) {
-        const lookupData = await lookupRes.json();
-        if (lookupData.records?.[0]?.fields?.Timezone) {
-          yourTimezone = lookupData.records[0].fields.Timezone;
-        }
-      }
-    } catch (e) {
-      logger.warn('Quick pick: could not lookup client timezone from Airtable, using context:', e.message);
-    }
+    // Use context.yourTimezone from frontend - it matches what the user sees (e.g. "Ready (Brisbane)")
+    // and what the availability API used to build the slots. Airtable can be stale or differ.
+    const yourTimezone = context.yourTimezone || 'Australia/Brisbane';
 
     const leadFirstName = (context.leadName || '').split(' ')[0] || 'there';
     const yourFirstName = (context.yourName || '').split(' ')[0] || '';
@@ -8094,12 +8080,9 @@ router.post("/api/calendar/quick-pick-message", async (req, res) => {
     const sameOffset = getOffsetMinutes(yourTimezone) === getOffsetMinutes(leadTimezone);
     const tzLabel = sameOffset ? '' : ` (${leadTimezone.split('/').pop()})`;
 
-    // Use leadDisplay from availability API when present - it was computed correctly when slots were built.
-    // Only recalculate from slot.time if leadDisplay is missing (e.g. from a different source).
+    // Always recalculate from slot.time using context.yourTimezone - don't trust leadDisplay
+    // which may have been computed with a different timezone (e.g. Airtable vs UI mismatch).
     const formatTimeForMessage = (slot) => {
-      if (slot.leadDisplay && typeof slot.leadDisplay === 'string') {
-        return slot.leadDisplay + tzLabel;
-      }
       const date = parseSlotTimeAsUTC(slot.time, yourTimezone);
       if (!date || isNaN(date.getTime())) return String(slot.time);
       const weekday = date.toLocaleDateString('en-AU', { weekday: 'short', timeZone: leadTimezone });
