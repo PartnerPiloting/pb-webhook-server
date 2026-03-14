@@ -136,6 +136,7 @@ function SmartFollowupsContent() {
   const [rebuildElapsedSec, setRebuildElapsedSec] = useState<number>(0);
   
   const chatInputRef = useRef<HTMLTextAreaElement>(null);
+  const chatEndRef = useRef<HTMLDivElement>(null);
   const instructionsPanelRef = useRef<HTMLDivElement>(null);
   const hasUnsavedFupChanges = (currentFupDate !== draftFupDate) || (currentFollowUpYes !== draftFollowUpYes);
   
@@ -305,6 +306,11 @@ function SmartFollowupsContent() {
     el.style.height = 'auto';
     el.style.height = `${Math.min(el.scrollHeight, 128)}px`;
   }, [chatInput]);
+
+  // Scroll chat to bottom when new messages arrive
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [chatHistory]);
 
   const loadQueue = async () => {
     setIsLoading(true);
@@ -1329,6 +1335,69 @@ function SmartFollowupsContent() {
                             Click &quot;Generate&quot; for a suggested LinkedIn message (optional)
                           </p>
                         )}
+                      </div>
+                    </div>
+
+                    {/* Chat with AI - full lead context (notes, Fathom transcripts, LinkedIn) */}
+                    <div className="bg-slate-50 rounded-lg border border-slate-200">
+                      <div className="px-4 py-2 border-b border-slate-200">
+                        <h3 className="font-medium text-gray-900 text-sm">💬 Chat with AI about this lead</h3>
+                        <p className="text-xs text-gray-500 mt-0.5">Ask questions, refine the message, or paste an image. AI has access to notes, Fathom transcripts &amp; LinkedIn.</p>
+                      </div>
+                      <div className="p-4 space-y-3">
+                        {chatHistory.length > 0 && (
+                          <div className="space-y-2 max-h-48 overflow-y-auto">
+                            {chatHistory.map((msg, i) => (
+                              <div
+                                key={i}
+                                className={`text-sm p-2.5 rounded-lg ${
+                                  msg.role === 'user'
+                                    ? 'bg-blue-100 text-blue-800 ml-4'
+                                    : 'bg-white border border-slate-200 text-gray-800 mr-4'
+                                }`}
+                              >
+                                {msg.content}
+                              </div>
+                            ))}
+                            <div ref={chatEndRef} />
+                          </div>
+                        )}
+                        {pendingImages.length > 0 && (
+                          <div className="flex flex-wrap gap-2">
+                            {pendingImages.map((img, i) => (
+                              <div key={i} className="relative">
+                                <img src={`data:${img.mimeType};base64,${img.data}`} alt="" className="h-16 w-16 object-cover rounded border border-gray-300" />
+                                <button
+                                  type="button"
+                                  onClick={() => removePendingImage(i)}
+                                  className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs rounded-full hover:bg-red-600"
+                                  aria-label="Remove image"
+                                >
+                                  ×
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        <form onSubmit={handleChatSubmit} onPaste={handlePaste} className="flex gap-2">
+                          <textarea
+                            ref={chatInputRef}
+                            value={chatInput}
+                            onChange={(e) => setChatInput(e.target.value)}
+                            onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleChatSubmit({ preventDefault: () => {} } as React.FormEvent); } }}
+                            placeholder="Ask about this lead, refine the message (e.g. make it shorter), or paste an image..."
+                            className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm resize-none min-h-[60px] max-h-32 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50"
+                            rows={2}
+                            disabled={isGenerating}
+                          />
+                          <button
+                            type="submit"
+                            disabled={isGenerating || (!chatInput.trim() && pendingImages.length === 0)}
+                            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium self-end shrink-0"
+                          >
+                            {isGenerating ? '...' : 'Send'}
+                          </button>
+                        </form>
                       </div>
                     </div>
 
