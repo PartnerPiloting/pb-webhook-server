@@ -8100,7 +8100,7 @@ router.post("/api/calendar/quick-pick-message", async (req, res) => {
 
     const messageBody = `Hi ${leadFirstName},
 
-Here are a few times that work for me:
+Would any of these times work for you:
 
 ${timesList}
 
