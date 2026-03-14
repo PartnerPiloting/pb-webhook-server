@@ -38,6 +38,7 @@ const logCriticalError = async () => {}; // No-op
 // Structured logging for 100% error coverage
 const { createLogger } = require('../utils/contextLogger.js');
 const { getTimezoneFromLocation } = require('../linkedin-messaging-followup-next/lib/timezoneFromLocation.js');
+const { parseSlotTimeAsUTC } = require('../utils/slotTimeParser.js');
 
 // Module-level logger for routes without specific runId context
 const moduleLogger = createLogger({ runId: 'MODULE_INIT', clientId: 'SYSTEM', operation: 'api_routes' });
@@ -8077,7 +8078,8 @@ router.post("/api/calendar/quick-pick-message", async (req, res) => {
 
     // Format times as "Wed, 25 Mar, 10:00 am" in lead's timezone (converted from user's calendar)
     const formatTimeForMessage = (isoTime, tz) => {
-      const date = new Date(isoTime);
+      const date = parseSlotTimeAsUTC(isoTime, yourTimezone);
+      if (!date || isNaN(date.getTime())) return String(isoTime);
       const weekday = date.toLocaleDateString('en-AU', { weekday: 'short', timeZone: tz });
       const day = date.toLocaleDateString('en-AU', { day: 'numeric', timeZone: tz });
       const month = date.toLocaleDateString('en-AU', { month: 'short', timeZone: tz });
