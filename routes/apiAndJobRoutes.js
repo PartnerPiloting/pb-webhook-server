@@ -8060,9 +8060,26 @@ router.post("/api/calendar/quick-pick-message", async (req, res) => {
       return res.status(400).json({ error: 'context with yourName and leadName required' });
     }
 
+    // Look up yourTimezone from Airtable (same source as availability API) - ensures slot times
+    // are interpreted correctly since availability builds slots in this timezone
+    let yourTimezone = context.yourTimezone || 'Australia/Brisbane';
+    try {
+      const lookupRes = await fetch(
+        `https://api.airtable.com/v0/${process.env.MASTER_CLIENTS_BASE_ID}/Clients?filterByFormula=LOWER({Client ID})=LOWER('${clientId}')&fields[]=Timezone`,
+        { headers: { 'Authorization': `Bearer ${process.env.AIRTABLE_API_KEY}` } }
+      );
+      if (lookupRes.ok) {
+        const lookupData = await lookupRes.json();
+        if (lookupData.records?.[0]?.fields?.Timezone) {
+          yourTimezone = lookupData.records[0].fields.Timezone;
+        }
+      }
+    } catch (e) {
+      logger.warn('Quick pick: could not lookup client timezone from Airtable, using context:', e.message);
+    }
+
     const leadFirstName = (context.leadName || '').split(' ')[0] || 'there';
     const yourFirstName = (context.yourName || '').split(' ')[0] || '';
-    const yourTimezone = context.yourTimezone || 'Australia/Brisbane';
     // Resolve lead timezone from location (don't rely on frontend - ensures correct conversion)
     const leadTimezone = (context.leadLocation && getTimezoneFromLocation(context.leadLocation)) || context.leadTimezone || yourTimezone;
     // Only show timezone label when offsets differ (e.g. Brisbane+Melbourne in summer); omit when same (e.g. both UTC+10 in winter)
