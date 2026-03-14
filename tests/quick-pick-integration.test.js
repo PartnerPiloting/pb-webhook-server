@@ -45,7 +45,7 @@ async function runIntegrationTest() {
   }
   console.log('PASS Test 1: Slot with Z (UTC) -> 4:30 pm (Melbourne)');
 
-  // Test 2: Slot without Z - backend looks up yourTimezone from Airtable. If Brisbane, 15:30 local -> 4:30pm Melbourne.
+  // Test 2: Slot without Z - backend uses context.yourTimezone (Brisbane). 15:30 local -> 4:30pm Melbourne.
   const res2 = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-client-id': CLIENT_ID },
@@ -63,10 +63,10 @@ async function runIntegrationTest() {
   const has430pm2 = msg2.includes('4:30 pm') || msg2.includes('4:30pm');
   const has330pm2 = /3:30\s*pm\s*\(Melbourne\)/i.test(msg2);
   if (!has430pm2 || has330pm2) {
-    console.error('FAIL Test 2 (slot without Z): Expected 4:30 pm (Melbourne). Your Airtable Timezone must be Australia/Brisbane. Got:', msg2.substring(0, 300));
+    console.error('FAIL Test 2 (slot without Z): Expected 4:30 pm (Melbourne). context.yourTimezone must be Australia/Brisbane. Got:', msg2.substring(0, 300));
     return false;
   }
-  console.log('PASS Test 2: Slot without Z (Airtable Brisbane) -> 4:30 pm (Melbourne)');
+  console.log('PASS Test 2: Slot without Z (context Brisbane) -> 4:30 pm (Melbourne)');
 
   console.log('All integration tests passed.');
   return true;
