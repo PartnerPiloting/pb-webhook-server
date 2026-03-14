@@ -8060,36 +8060,39 @@ router.post("/api/calendar/quick-pick-message", async (req, res) => {
       return res.status(400).json({ error: 'context with yourName and leadName required' });
     }
 
-    // Use context.yourTimezone from frontend - it matches what the user sees (e.g. "Ready (Brisbane)")
-    // and what the availability API used to build the slots. Airtable can be stale or differ.
     const yourTimezone = context.yourTimezone || 'Australia/Brisbane';
-
     const leadFirstName = (context.leadName || '').split(' ')[0] || 'there';
     const yourFirstName = (context.yourName || '').split(' ')[0] || '';
-    // Resolve lead timezone from location (don't rely on frontend - ensures correct conversion)
     const leadTimezone = (context.leadLocation && getTimezoneFromLocation(context.leadLocation)) || context.leadTimezone || yourTimezone;
-    // Only show timezone label when offsets differ (e.g. Brisbane+Melbourne in summer); omit when same (e.g. both UTC+10 in winter)
+
     const getOffsetMinutes = (tz) => {
-      const now = new Date();
-      const parts = new Intl.DateTimeFormat('en-US', { timeZone: tz, timeZoneName: 'shortOffset' }).formatToParts(now);
+      const d = new Date();
+      const parts = new Intl.DateTimeFormat('en-US', { timeZone: tz, timeZoneName: 'shortOffset' }).formatToParts(d);
       const m = (parts.find(p => p.type === 'timeZoneName')?.value || '').match(/GMT([+-])(\d+)(?::(\d+))?/);
       if (!m) return 0;
-      const sign = m[1] === '+' ? 1 : -1;
-      return sign * (parseInt(m[2], 10) * 60 + parseInt(m[3] || '0', 10));
+      return (m[1] === '+' ? 1 : -1) * (parseInt(m[2], 10) * 60 + parseInt(m[3] || '0', 10));
     };
     const sameOffset = getOffsetMinutes(yourTimezone) === getOffsetMinutes(leadTimezone);
     const tzLabel = sameOffset ? '' : ` (${leadTimezone.split('/').pop()})`;
 
-    // Always recalculate from slot.time using context.yourTimezone - don't trust leadDisplay
-    // which may have been computed with a different timezone (e.g. Airtable vs UI mismatch).
+    logger.info('Quick pick context:', {
+      yourTimezone, leadTimezone, sameOffset,
+      leadLocation: context.leadLocation,
+      slotCount: selectedSlots.length,
+      slot0: selectedSlots[0]?.time,
+    });
+
+    // slot.time is always UTC (ends with Z) from the availability API's toISOString().
+    // Convert directly to lead's timezone for the message.
     const formatTimeForMessage = (slot) => {
-      const date = parseSlotTimeAsUTC(slot.time, yourTimezone);
-      if (!date || isNaN(date.getTime())) return String(slot.time);
-      const weekday = date.toLocaleDateString('en-AU', { weekday: 'short', timeZone: leadTimezone });
-      const day = date.toLocaleDateString('en-AU', { day: 'numeric', timeZone: leadTimezone });
-      const month = date.toLocaleDateString('en-AU', { month: 'short', timeZone: leadTimezone });
-      const time = date.toLocaleTimeString('en-AU', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: leadTimezone });
-      return `${weekday}, ${day} ${month}, ${time}${tzLabel}`;
+      const date = new Date(slot.time);
+      if (isNaN(date.getTime())) return String(slot.time);
+      const formatted = date.toLocaleString('en-AU', {
+        weekday: 'short', day: 'numeric', month: 'short',
+        hour: 'numeric', minute: '2-digit', hour12: true,
+        timeZone: leadTimezone,
+      });
+      return formatted + tzLabel;
     };
 
     const formattedSlots = selectedSlots.map(s => formatTimeForMessage(s));
@@ -8112,8 +8115,8 @@ ${messageBody}`;
 
     return res.json({
       message: responseText,
-      leadTimezone: context.leadTimezone,
-      yourTimezone: context.yourTimezone,
+      leadTimezone,
+      yourTimezone,
     });
   } catch (error) {
     logger.error('Quick pick message error:', error.message);
