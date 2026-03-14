@@ -1,80 +1,118 @@
 /**
- * Integration test: Quick Pick timezone conversion
- * Calls the quick-pick-message endpoint and verifies timezone conversion.
+ * End-to-end integration test for Quick Pick timezone conversion.
+ *
+ * This test does what the real UI does:
+ * 1. Calls the availability API (same as frontend) to get real slot data
+ * 2. Picks a slot from the response
+ * 3. Sends it to quick-pick-message (same as frontend)
+ * 4. Verifies the message shows the correct time in the lead's timezone
  *
  * Run: BASE_URL=https://pb-webhook-server.onrender.com CLIENT_ID=Guy-Wilson node tests/quick-pick-integration.test.js
- * Or:  BASE_URL=http://localhost:3001 CLIENT_ID=Guy-Wilson node tests/quick-pick-integration.test.js
- *
- * Test 1: Slot with Z (UTC) - real flow from availability API. 3:30pm Brisbane = 05:30 UTC.
- * Test 2: Slot without Z - backend uses yourTimezone from Airtable to interpret as local time.
  */
 
 const BASE_URL = process.env.BASE_URL || 'http://localhost:3001';
 const CLIENT_ID = process.env.CLIENT_ID || 'Guy-Wilson';
+const LEAD_LOCATION = 'Dandenong South, Victoria, Australia';
 
-async function runIntegrationTest() {
-  const url = `${BASE_URL}/api/calendar/quick-pick-message`;
-  const context = {
-    yourName: 'Guy Wilson',
-    yourTimezone: 'Australia/Brisbane',
-    leadName: 'Test Lead',
-    leadLocation: 'Dandenong South, Victoria, Australia',
-    yourZoom: 'https://zoom.us/j/123',
-  };
+let passed = 0;
+let failed = 0;
 
-  // Test 1: Slot with Z (UTC) - 3:30pm Brisbane = 05:30 UTC. Should show 4:30pm Melbourne.
-  const res1 = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-client-id': CLIENT_ID },
-    body: JSON.stringify({
-      selectedSlots: [{ time: '2025-03-27T05:30:00.000Z', display: '3:30 pm', leadDisplay: 'Fri, 27 Mar, 4:30 pm' }],
-      context,
-    }),
-  });
-  const data1 = await res1.json();
-  if (!res1.ok) {
-    console.error('FAIL Test 1: Request failed', res1.status, data1);
-    return false;
+function assert(condition, label, detail) {
+  if (condition) {
+    console.log(`  PASS: ${label}`);
+    passed++;
+  } else {
+    console.error(`  FAIL: ${label}${detail ? ' — ' + detail : ''}`);
+    failed++;
   }
-  const msg1 = data1.message || '';
-  const has430pm1 = msg1.includes('4:30 pm') || msg1.includes('4:30pm');
-  const has330pm1 = /3:30\s*pm\s*\(Melbourne\)/i.test(msg1);
-  if (!has430pm1 || has330pm1) {
-    console.error('FAIL Test 1 (slot with Z): Expected 4:30 pm (Melbourne), got:', msg1.substring(0, 300));
-    return false;
-  }
-  console.log('PASS Test 1: Slot with Z (UTC) -> 4:30 pm (Melbourne)');
-
-  // Test 2: Slot without Z - backend uses context.yourTimezone (Brisbane). 15:30 local -> 4:30pm Melbourne.
-  const res2 = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-client-id': CLIENT_ID },
-    body: JSON.stringify({
-      selectedSlots: [{ time: '2025-03-27T15:30:00', display: '3:30 pm', leadDisplay: 'Fri, 27 Mar, 4:30 pm' }],
-      context,
-    }),
-  });
-  const data2 = await res2.json();
-  if (!res2.ok) {
-    console.error('FAIL Test 2: Request failed', res2.status, data2);
-    return false;
-  }
-  const msg2 = data2.message || '';
-  const has430pm2 = msg2.includes('4:30 pm') || msg2.includes('4:30pm');
-  const has330pm2 = /3:30\s*pm\s*\(Melbourne\)/i.test(msg2);
-  if (!has430pm2 || has330pm2) {
-    console.error('FAIL Test 2 (slot without Z): Expected 4:30 pm (Melbourne). context.yourTimezone must be Australia/Brisbane. Got:', msg2.substring(0, 300));
-    return false;
-  }
-  console.log('PASS Test 2: Slot without Z (context Brisbane) -> 4:30 pm (Melbourne)');
-
-  console.log('All integration tests passed.');
-  return true;
 }
 
-runIntegrationTest()
+async function runTests() {
+  // ── Step 1: Call availability API with Melbourne lead ──
+  console.log('\n1. Fetching availability (leadLocation = Melbourne suburb)...');
+  const availRes = await fetch(
+    `${BASE_URL}/api/calendar/availability?leadLocation=${encodeURIComponent(LEAD_LOCATION)}`,
+    { headers: { 'x-client-id': CLIENT_ID } }
+  );
+  const avail = await availRes.json();
+  if (avail.error) {
+    console.error('Availability API error:', avail.error);
+    process.exit(1);
+  }
+
+  assert(avail.yourTimezone === 'Australia/Brisbane', 'yourTimezone is Brisbane', `got: ${avail.yourTimezone}`);
+  assert(avail.leadTimezone === 'Australia/Melbourne', 'leadTimezone is Melbourne', `got: ${avail.leadTimezone}`);
+
+  // ── Step 2: Pick a real slot from the response ──
+  console.log('\n2. Inspecting slots from availability API...');
+  const dayWithSlots = avail.days?.find(d => d.freeSlots?.length > 0);
+  if (!dayWithSlots) {
+    console.error('No days with free slots found');
+    process.exit(1);
+  }
+
+  const slot = dayWithSlots.freeSlots[0];
+  assert(slot.time.endsWith('Z'), 'slot.time has Z suffix (UTC)', `got: ${slot.time}`);
+  assert(typeof slot.display === 'string' && slot.display.length > 0, 'slot.display exists', `got: ${slot.display}`);
+  assert(typeof slot.leadDisplay === 'string' && slot.leadDisplay.length > 0, 'slot.leadDisplay exists', `got: ${slot.leadDisplay}`);
+
+  // Verify slot.display is YOUR time (Brisbane) and slot.leadDisplay is LEAD time (Melbourne)
+  const date = new Date(slot.time);
+  const brisbaneTime = date.toLocaleTimeString('en-AU', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'Australia/Brisbane' });
+  const melbourneTime = date.toLocaleTimeString('en-AU', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'Australia/Melbourne' });
+  assert(slot.display.includes(brisbaneTime), `slot.display shows Brisbane time (${brisbaneTime})`, `got: ${slot.display}`);
+  assert(slot.leadDisplay.includes(melbourneTime), `slot.leadDisplay shows Melbourne time (${melbourneTime})`, `got: ${slot.leadDisplay}`);
+
+  // ── Step 3: Send slot to quick-pick-message (same as frontend) ──
+  console.log('\n3. Calling quick-pick-message with real slot...');
+  const qpRes = await fetch(`${BASE_URL}/api/calendar/quick-pick-message`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-client-id': CLIENT_ID },
+    body: JSON.stringify({
+      selectedSlots: [slot],
+      context: {
+        yourName: 'Guy Wilson',
+        yourTimezone: avail.yourTimezone,
+        leadName: 'Ray Keefe',
+        leadLocation: LEAD_LOCATION,
+        leadTimezone: avail.leadTimezone,
+        yourZoom: 'https://zoom.us/j/123',
+      },
+    }),
+  });
+  const qp = await qpRes.json();
+  assert(qpRes.ok, 'quick-pick-message returns 200', `got: ${qpRes.status}`);
+
+  const msg = qp.message || '';
+
+  // The message must show Melbourne time, not Brisbane time
+  assert(msg.includes(melbourneTime), `message contains Melbourne time (${melbourneTime})`, `message: ${msg.substring(0, 300)}`);
+  assert(!msg.includes(brisbaneTime + ' (Melbourne)'), `message does NOT show Brisbane time labeled as Melbourne`, `message: ${msg.substring(0, 300)}`);
+
+  // The message should include (Melbourne) label since timezones differ during AEDT
+  const brisOffset = getOffsetMinutes('Australia/Brisbane');
+  const melbOffset = getOffsetMinutes('Australia/Melbourne');
+  if (brisOffset !== melbOffset) {
+    assert(msg.includes('(Melbourne)'), 'message includes (Melbourne) label when offsets differ');
+  } else {
+    assert(!msg.includes('(Melbourne)'), 'message omits timezone label when offsets are same (winter)');
+  }
+
+  // ── Summary ──
+  console.log(`\n${passed} passed, ${failed} failed`);
+  return failed === 0;
+}
+
+function getOffsetMinutes(tz) {
+  const parts = new Intl.DateTimeFormat('en-US', { timeZone: tz, timeZoneName: 'shortOffset' }).formatToParts(new Date());
+  const m = (parts.find(p => p.type === 'timeZoneName')?.value || '').match(/GMT([+-])(\d+)(?::(\d+))?/);
+  if (!m) return 0;
+  return (m[1] === '+' ? 1 : -1) * (parseInt(m[2], 10) * 60 + parseInt(m[3] || '0', 10));
+}
+
+runTests()
   .then(ok => process.exit(ok ? 0 : 1))
   .catch(err => {
-    console.error('FAIL:', err.message);
+    console.error('Test error:', err.message);
     process.exit(1);
   });

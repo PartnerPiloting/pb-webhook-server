@@ -1563,7 +1563,7 @@ ${yourFirstName}`;
                                             : 'bg-white text-gray-700 border-gray-300 hover:border-blue-400'
                                         }`}
                                       >
-                                        {slot.leadDisplay || slot.display}
+                                        {slot.display}
                                       </button>
                                     );
                                   })}
