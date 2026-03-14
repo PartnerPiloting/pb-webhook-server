@@ -8092,20 +8092,24 @@ router.post("/api/calendar/quick-pick-message", async (req, res) => {
       return sign * (parseInt(m[2], 10) * 60 + parseInt(m[3] || '0', 10));
     };
     const sameOffset = getOffsetMinutes(yourTimezone) === getOffsetMinutes(leadTimezone);
+    const tzLabel = sameOffset ? '' : ` (${leadTimezone.split('/').pop()})`;
 
-    // Format times as "Wed, 25 Mar, 10:00 am" in lead's timezone (converted from user's calendar)
-    const formatTimeForMessage = (isoTime, tz) => {
-      const date = parseSlotTimeAsUTC(isoTime, yourTimezone);
-      if (!date || isNaN(date.getTime())) return String(isoTime);
-      const weekday = date.toLocaleDateString('en-AU', { weekday: 'short', timeZone: tz });
-      const day = date.toLocaleDateString('en-AU', { day: 'numeric', timeZone: tz });
-      const month = date.toLocaleDateString('en-AU', { month: 'short', timeZone: tz });
-      const time = date.toLocaleTimeString('en-AU', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: tz });
-      const base = `${weekday}, ${day} ${month}, ${time}`;
-      return sameOffset ? base : `${base} (${tz.split('/').pop()})`;
+    // Use leadDisplay from availability API when present - it was computed correctly when slots were built.
+    // Only recalculate from slot.time if leadDisplay is missing (e.g. from a different source).
+    const formatTimeForMessage = (slot) => {
+      if (slot.leadDisplay && typeof slot.leadDisplay === 'string') {
+        return slot.leadDisplay + tzLabel;
+      }
+      const date = parseSlotTimeAsUTC(slot.time, yourTimezone);
+      if (!date || isNaN(date.getTime())) return String(slot.time);
+      const weekday = date.toLocaleDateString('en-AU', { weekday: 'short', timeZone: leadTimezone });
+      const day = date.toLocaleDateString('en-AU', { day: 'numeric', timeZone: leadTimezone });
+      const month = date.toLocaleDateString('en-AU', { month: 'short', timeZone: leadTimezone });
+      const time = date.toLocaleTimeString('en-AU', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: leadTimezone });
+      return `${weekday}, ${day} ${month}, ${time}${tzLabel}`;
     };
 
-    const formattedSlots = selectedSlots.map(s => formatTimeForMessage(s.time, leadTimezone));
+    const formattedSlots = selectedSlots.map(s => formatTimeForMessage(s));
     const timesList = formattedSlots.map(t => `* ${t}`).join('\n');
 
     const messageBody = `Hi ${leadFirstName},
