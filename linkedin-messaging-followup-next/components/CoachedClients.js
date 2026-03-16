@@ -23,6 +23,10 @@ const CoachedClients = () => {
   const [regeneratingTokenFor, setRegeneratingTokenFor] = useState(null);
   const [generatedTokens, setGeneratedTokens] = useState({}); // { clientId: { token, url, copied } }
   const [tokenError, setTokenError] = useState(null);
+  const [copiedUrlFor, setCopiedUrlFor] = useState(null); // clientId when URL was just copied
+
+  // Production portal base URL for client links (emails to new clients)
+  const PORTAL_BASE_URL = 'https://pb-webhook-server.vercel.app';
 
   // Get dynamic backend URL
   const backendBase = getBackendBase();
@@ -84,7 +88,7 @@ const CoachedClients = () => {
     }
   };
   
-  // Copy URL to clipboard
+  // Copy URL to clipboard (for generated token)
   const handleCopyUrl = (clientId) => {
     const tokenData = generatedTokens[clientId];
     if (tokenData?.url) {
@@ -101,6 +105,24 @@ const CoachedClients = () => {
         }));
       }, 3000);
     }
+  };
+
+  // Copy portal URL to clipboard (for existing token - use in emails)
+  const handleCopyPortalUrl = (client) => {
+    const url = getClientPortalUrl(client);
+    if (url) {
+      navigator.clipboard.writeText(url);
+      setCopiedUrlFor(client.clientId);
+      setTimeout(() => setCopiedUrlFor(null), 3000);
+    }
+  };
+
+  // Get the portal URL for a client (prefer newly generated, else existing token)
+  const getClientPortalUrl = (client) => {
+    const tokenData = generatedTokens[client.clientId];
+    if (tokenData?.url) return tokenData.url;
+    if (client.portalToken) return `${PORTAL_BASE_URL}/?token=${client.portalToken}`;
+    return null;
   };
 
   // Add tasks to a client
@@ -337,6 +359,38 @@ const CoachedClients = () => {
                   <ClipboardDocumentListIcon className="h-4 w-4 text-gray-400" />
                   <ProgressBar progress={client.taskProgress} />
                 </div>
+                
+                {/* Portal URL - for emails to new clients (skip if just regenerated - green box shows it) */}
+                {generatedTokens[client.clientId] ? (
+                  /* Shown in green box below */
+                  null
+                ) : getClientPortalUrl(client) ? (
+                  <div className="mt-3 p-2 bg-slate-50 border border-slate-200 rounded-lg">
+                    <p className="text-xs font-medium text-slate-600 mb-1">🔗 Client portal URL</p>
+                    <div className="flex gap-2 items-center flex-wrap">
+                      <code className="flex-1 min-w-0 text-xs bg-white px-2 py-1.5 rounded border border-slate-200 text-slate-700 break-all">
+                        {getClientPortalUrl(client)}
+                      </code>
+                      <button
+                        onClick={() => handleCopyPortalUrl(client)}
+                        className={`px-2 py-1.5 rounded text-xs font-medium transition-colors shrink-0 ${
+                          copiedUrlFor === client.clientId
+                            ? 'bg-green-600 text-white'
+                            : 'bg-slate-200 text-slate-700 hover:bg-slate-300'
+                        }`}
+                        title="Copy to include in email to client"
+                      >
+                        {copiedUrlFor === client.clientId ? (
+                          <span className="flex items-center gap-1"><CheckIcon className="h-3 w-3" /> Copied!</span>
+                        ) : (
+                          <span className="flex items-center gap-1"><ClipboardDocumentIcon className="h-3 w-3" /> Copy</span>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="mt-2 text-xs text-slate-500 italic">No portal link yet — click &quot;New Token&quot; to generate</p>
+                )}
                 
                 {/* Coach Notes Preview */}
                 {client.coachNotes && (
