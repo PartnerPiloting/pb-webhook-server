@@ -25,6 +25,32 @@ const WP_API_RETRY_DELAY_MS = 5000;
 // Delay between client checks to avoid triggering SiteGround's firewall
 const SYNC_INTER_CLIENT_DELAY_MS = 5000;
 
+// Warm-up: short timeout, we just want to wake the site
+const WP_WARMUP_TIMEOUT_MS = 15 * 1000;
+const WP_WARMUP_POST_DELAY_MS = 4000;
+
+/**
+ * Warm up WordPress before sync - hits a lightweight endpoint to wake shared hosting.
+ * Best-effort: failures are logged but do not block the sync.
+ * Call before starting PMPro membership checks.
+ */
+async function warmUpWordPress() {
+    const wpBaseUrl = process.env.WP_BASE_URL;
+    if (!wpBaseUrl) {
+        logger.warn('WP_BASE_URL not configured, skipping warm-up');
+        return;
+    }
+    const url = `${wpBaseUrl.replace(/\/$/, '')}/wp-json/`;
+    try {
+        logger.info(`🔥 Warming up WordPress (${url})...`);
+        await axios.get(url, { timeout: WP_WARMUP_TIMEOUT_MS });
+        logger.info('🔥 WordPress warm-up OK');
+    } catch (err) {
+        logger.warn(`WordPress warm-up failed (non-blocking): ${err.message}`);
+    }
+    await new Promise(r => setTimeout(r, WP_WARMUP_POST_DELAY_MS));
+}
+
 /**
  * Axios GET with retries for timeout, network errors, 5xx
  */
@@ -459,5 +485,6 @@ module.exports = {
     checkUserMembership,
     testWordPressConnection,
     testPmproMembershipApi,
+    warmUpWordPress,
     SYNC_INTER_CLIENT_DELAY_MS
 };

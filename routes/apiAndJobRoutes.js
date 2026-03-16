@@ -6196,6 +6196,7 @@ router.get("/api/sync-client-statuses/manual", async (req, res) => {
     logger.info('🔄 Manual pull sync started...');
     const allClients = await clientService.getAllClients();
     logger.info(`📋 Found ${allClients.length} clients to check`);
+    await pmproService.warmUpWordPress();
     const membershipByWpUserId = {};
     let isFirstCheck = true;
     for (const client of allClients) {
@@ -6261,6 +6262,7 @@ router.post("/api/sync-client-statuses", async (req, res) => {
 
     const allClients = await clientService.getAllClients();
     logger.info(`📋 Found ${allClients.length} clients to check`);
+    await pmproService.warmUpWordPress();
 
     // Build membership map by calling PMPro API for each client with wpUserId
     // Space out requests to avoid triggering SiteGround's firewall
