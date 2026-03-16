@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, ChangeEvent, FormEvent } from 'react';
+import React, { useState, useEffect, useRef, ChangeEvent, FormEvent } from 'react';
 import { Loader2, CheckCircle, XCircle, AlertCircle, UserPlus, Database, ArrowLeft, Pencil, Search, Settings, ChevronDown, ChevronRight, Inbox, Copy, Check } from 'lucide-react';
 import Link from 'next/link';
 
@@ -175,12 +175,20 @@ export default function OnboardClientPage() {
   const [isGeneratingToken, setIsGeneratingToken] = useState(false);
   const [tokenError, setTokenError] = useState<string | null>(null);
   const [copiedUrl, setCopiedUrl] = useState(false);
+  const successRef = useRef<HTMLDivElement>(null);
   
   // Intake request state
   const [intakeRequests, setIntakeRequests] = useState<IntakeRequest[]>([]);
   const [selectedIntakeId, setSelectedIntakeId] = useState<string>('');
   const [loadingIntakes, setLoadingIntakes] = useState(false);
   
+  // Scroll to success block when onboarding succeeds
+  useEffect(() => {
+    if (result?.success && successRef.current) {
+      successRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, [result?.success]);
+
   // Fetch pending intake requests on mount
   useEffect(() => {
     const fetchIntakeRequests = async () => {
@@ -534,7 +542,7 @@ export default function OnboardClientPage() {
 
         {/* Success Result */}
         {result?.success && (
-          <div className="mb-6 p-6 bg-green-50 border border-green-200 rounded-lg">
+          <div ref={successRef} className="mb-6 p-6 bg-green-50 border border-green-200 rounded-lg">
             <div className="flex items-start gap-3">
               <CheckCircle className="w-6 h-6 text-green-600 mt-0.5" />
               <div className="flex-1">
@@ -546,7 +554,7 @@ export default function OnboardClientPage() {
                     Client Code: <code className="bg-green-100 px-2 py-0.5 rounded">{result.clientId}</code>
                   </p>
                 )}
-                {result.updatedFields && (
+                {Array.isArray(result.updatedFields) && result.updatedFields.length > 0 && (
                   <p className="text-green-700 text-sm mt-2">
                     Updated fields: {result.updatedFields.join(', ')}
                   </p>
@@ -716,7 +724,15 @@ export default function OnboardClientPage() {
         )}
 
         {!result?.success && (mode === 'add' || editClientId) && (
-          <form onSubmit={handleSubmit} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              handleSubmit(e);
+            }}
+            action="#"
+            className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden"
+          >
             {/* Step 1: Client Details */}
             <div className="p-6 border-b border-gray-200">
               <h2 className="text-lg font-semibold text-gray-900 mb-4">
