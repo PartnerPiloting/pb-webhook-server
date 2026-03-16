@@ -1153,7 +1153,7 @@ async function getClientsByCoach(coachClientId) {
         logger.info(`Found ${coachedClients.length} clients coached by ${coachClientId}`);
         
         // Return simplified data for coached clients (no sensitive fields)
-        // Include record ID for task progress lookup
+        // Include record ID for task progress lookup, portalToken for client URL
         return coachedClients.map(c => ({
             recordId: c.id,  // Airtable record ID for task lookup
             clientId: c.clientId,
@@ -1161,7 +1161,8 @@ async function getClientsByCoach(coachClientId) {
             notionProgressUrl: c.notionProgressUrl,
             coachingStatus: c.coachingStatus,
             coachNotes: c.rawRecord?.get('Coach Notes') || null,
-            status: c.status
+            status: c.status,
+            portalToken: c.portalToken || null
         }));
         
     } catch (error) {
