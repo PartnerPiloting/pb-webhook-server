@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, ChangeEvent, FormEvent } from 'react';
-import { Loader2, CheckCircle, XCircle, AlertCircle, UserPlus, Database, ArrowLeft, Pencil, Search, Settings, ChevronDown, ChevronRight, Inbox } from 'lucide-react';
+import { Loader2, CheckCircle, XCircle, AlertCircle, UserPlus, Database, ArrowLeft, Pencil, Search, Settings, ChevronDown, ChevronRight, Inbox, Copy, Check } from 'lucide-react';
 import Link from 'next/link';
 
 // Detect backend URL from current hostname (same pattern as api.js)
@@ -35,6 +35,8 @@ interface OnboardingResult {
   recordId?: string;
   error?: string;
   updatedFields?: string[];
+  portalToken?: string;
+  portalUrl?: string;
 }
 
 interface IntakeRequest {
@@ -172,6 +174,7 @@ export default function OnboardClientPage() {
   const [portalToken, setPortalToken] = useState<string | null>(null);
   const [isGeneratingToken, setIsGeneratingToken] = useState(false);
   const [tokenError, setTokenError] = useState<string | null>(null);
+  const [copiedUrl, setCopiedUrl] = useState(false);
   
   // Intake request state
   const [intakeRequests, setIntakeRequests] = useState<IntakeRequest[]>([]);
@@ -390,6 +393,7 @@ export default function OnboardClientPage() {
     setResult(null);
     setPortalToken(null);
     setTokenError(null);
+    setCopiedUrl(false);
     
     try {
       const apiUrl = getBackendUrl();
@@ -470,6 +474,13 @@ export default function OnboardClientPage() {
     setSelectedIntakeId('');
     setPortalToken(null);
     setTokenError(null);
+    setCopiedUrl(false);
+  };
+
+  const handleCopyUrl = async (url: string) => {
+    await navigator.clipboard.writeText(url);
+    setCopiedUrl(true);
+    setTimeout(() => setCopiedUrl(false), 2000);
   };
 
   const switchMode = (newMode: 'add' | 'edit') => {
@@ -541,10 +552,10 @@ export default function OnboardClientPage() {
                   </p>
                 )}
                 
-                {/* Client Dashboard URL - Token-based (secure) */}
+                {/* Client Portal URL with token - prominent for new client onboarding */}
                 {(result.clientId || editClientId) && (
-                  <div className="mt-4 p-3 bg-white border border-green-200 rounded-lg">
-                    <p className="text-sm font-medium text-gray-700 mb-2">🔐 Secure Client Portal URL (copy & send):</p>
+                  <div className="mt-4 p-4 bg-white border-2 border-blue-200 rounded-lg shadow-sm">
+                    <p className="text-sm font-semibold text-gray-800 mb-2">🔗 Client Portal URL (send this to your client):</p>
                     
                     {isGeneratingToken ? (
                       <div className="flex items-center gap-2 text-gray-600">
@@ -553,18 +564,19 @@ export default function OnboardClientPage() {
                       </div>
                     ) : (portalToken || result.portalUrl) ? (
                       <div className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
-                        <code className="flex-1 min-w-0 text-sm bg-gray-50 px-3 py-2 rounded border border-gray-200 text-gray-800 break-all overflow-x-auto">
+                        <code className="flex-1 min-w-0 text-sm bg-gray-50 px-3 py-2.5 rounded border border-gray-200 text-gray-800 break-all overflow-x-auto font-mono">
                           {result.portalUrl || `https://pb-webhook-server.vercel.app/?token=${portalToken}`}
                         </code>
                         <button
                           type="button"
-                          onClick={() => {
-                            const url = result.portalUrl || `https://pb-webhook-server.vercel.app/?token=${portalToken}`;
-                            navigator.clipboard.writeText(url);
-                          }}
-                          className="px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium whitespace-nowrap"
+                          onClick={() => handleCopyUrl(result.portalUrl || `https://pb-webhook-server.vercel.app/?token=${portalToken}`)}
+                          className="px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium whitespace-nowrap flex items-center justify-center gap-2"
                         >
-                          Copy URL
+                          {copiedUrl ? (
+                            <><Check className="w-4 h-4" /> Copied!</>
+                          ) : (
+                            <><Copy className="w-4 h-4" /> Copy URL</>
+                          )}
                         </button>
                       </div>
                     ) : tokenError ? (
@@ -593,7 +605,7 @@ export default function OnboardClientPage() {
                     
                     {(portalToken || result.portalUrl) && (
                       <p className="text-xs text-gray-500 mt-2">
-                        ✅ This secure link replaces the old ?client= URLs
+                        ✅ Secure token-based link — share this URL with your client to access their portal
                       </p>
                     )}
                   </div>
