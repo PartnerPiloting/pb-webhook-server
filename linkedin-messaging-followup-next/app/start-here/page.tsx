@@ -248,7 +248,26 @@ const StartHereContent: React.FC = () => {
     setOpenSubs({ [id]: !openSubs[id] });
     setOpenTopics({});
   };
-  const toggleTopic = (id:string) => {
+  // If monologue content is literally just a URL, return it; otherwise null
+  const extractSingleUrl = (content: string | undefined): string | null => {
+    if (!content || typeof content !== 'string') return null;
+    const stripped = content.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+    const m = stripped.match(/^(https?:\/\/\S+)$/);
+    if (!m) return null;
+    return m[1].replace(/[.,;:!?)\]]+$/, '') || m[1];
+  };
+
+  const toggleTopic = (id: string, topic?: HelpTopic) => {
+    // If topic content is just a URL, open in new tab and don't expand
+    const body = topic?.body ?? topic?.bodyHtml;
+    if (typeof body === 'string') {
+      const url = extractSingleUrl(body);
+      if (url) {
+        window.open(url, '_blank', 'noopener,noreferrer');
+        return;
+      }
+    }
+
     // Helper to (re)load a topic's content without changing open state
     const loadTopic = (topicId: string) => {
       setTopicLoadState(s=>({...s,[topicId]:'loading'}));
@@ -534,7 +553,7 @@ const StartHereContent: React.FC = () => {
                     <div key={t.id} id={`topic-${t.id}`} className="group">
                       <div className="flex items-center hover:bg-gray-50 transition-colors">
                         <button 
-                          onClick={()=>toggleTopic(t.id)} 
+                          onClick={()=>toggleTopic(t.id, t)} 
                           className="flex-1 flex items-center justify-between gap-3 text-left px-5 py-3 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500"
                         >
                           <span className="flex-1 text-gray-800 leading-snug">
