@@ -1020,7 +1020,7 @@ function SmartFollowupsContent() {
                         <span className="text-xs font-medium text-gray-400">#{index + 1}</span>
                         {item.userPriority && (
                           <span className="text-xs font-semibold text-amber-600 w-4" title={`Priority ${item.userPriority}`}>
-                            {item.userPriority === 'One' ? '1' : item.userPriority === 'Two' ? '2' : item.userPriority === 'Three' ? '3' : ''}
+                            {item.userPriority || ''}
                           </span>
                         )}
                         <h3 className="font-medium text-gray-900 truncate text-sm">
@@ -1080,9 +1080,9 @@ function SmartFollowupsContent() {
                         className="text-xs border border-gray-300 rounded px-1.5 py-0.5 bg-white"
                       >
                         <option value="">—</option>
-                        <option value="One">1</option>
-                        <option value="Two">2</option>
-                        <option value="Three">3</option>
+                        <option value="One">One</option>
+                        <option value="Two">Two</option>
+                        <option value="Three">Three</option>
                       </select>
                     </span>
                     <span className={`text-sm font-medium ${selectedItem.waitingOn === 'User' ? 'text-orange-600' : 'text-blue-600'}`}>

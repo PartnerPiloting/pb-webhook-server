@@ -1449,9 +1449,9 @@ export default function QuickUpdateModal({
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm bg-white"
               >
                 <option value="">—</option>
-                <option value="One">1</option>
-                <option value="Two">2</option>
-                <option value="Three">3</option>
+                <option value="One">One</option>
+                <option value="Two">Two</option>
+                <option value="Three">Three</option>
               </select>
             </div>
             
