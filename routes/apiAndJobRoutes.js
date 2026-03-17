@@ -6581,8 +6581,11 @@ async function updateClientStatus(recordId, newStatus, reason, expiryDate = null
     };
     
     // Add expiry date if provided (null will clear the field)
+    // PMPro "0000-00-00 00:00:00" = lifetime - Airtable rejects it, use null
     if (expiryDate !== undefined) {
-      updateFields[CLIENT_FIELDS.EXPIRY_DATE] = expiryDate;
+      const normalized = (expiryDate && typeof expiryDate === 'string' && expiryDate.startsWith('0000-00-00'))
+        ? null : expiryDate;
+      updateFields[CLIENT_FIELDS.EXPIRY_DATE] = normalized;
     }
     
     await base(MASTER_TABLES.CLIENTS).update(recordId, updateFields);
