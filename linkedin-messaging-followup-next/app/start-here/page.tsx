@@ -249,10 +249,14 @@ const StartHereContent: React.FC = () => {
     setOpenTopics({});
   };
   // If monologue content is literally just a URL, return it; otherwise null
+  // Handles: plain URL, URL in angle brackets (backend autoFormatHelpBody), or URL inside <p> tags
   const extractSingleUrl = (content: string | undefined): string | null => {
     if (!content || typeof content !== 'string') return null;
-    const stripped = content.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
-    const m = stripped.match(/^(https?:\/\/\S+)$/);
+    let stripped = content.replace(/\s+/g, ' ').trim();
+    // Strip common HTML wrappers (<p>, </p>, etc.) but NOT angle-bracket-wrapped URLs like <https://...>
+    stripped = stripped.replace(/<\/?p[^>]*>/gi, '').replace(/<\/?div[^>]*>/gi, '').trim();
+    // Match: plain URL, or URL wrapped in angle brackets (markdown autolink format from backend)
+    const m = stripped.match(/^<?(https?:\/\/[^\s>]+)>?$/);
     if (!m) return null;
     return m[1].replace(/[.,;:!?)\]]+$/, '') || m[1];
   };
