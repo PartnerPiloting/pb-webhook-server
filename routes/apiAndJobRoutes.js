@@ -6404,11 +6404,17 @@ router.post("/api/pmpro-sync-push", express.json(), async (req, res) => {
       const levelId = m.levelId ?? m.level_id ?? m.id;
       const levelName = m.levelName ?? m.level_name ?? m.name ?? 'Unknown';
       let expiryDate = m.expiryDate ?? m.enddate ?? m.end_date ?? null;
-      if (expiryDate && typeof expiryDate === 'string' && /^\d+$/.test(expiryDate)) {
+      // PMPro uses "0000-00-00 00:00:00" for lifetime/no expiry - Airtable rejects it, use null
+      if (expiryDate && typeof expiryDate === 'string' && expiryDate.startsWith('0000-00-00')) {
+        expiryDate = null;
+      } else if (expiryDate && typeof expiryDate === 'string' && /^\d+$/.test(expiryDate)) {
         const ts = parseInt(expiryDate, 10) * 1000;
         expiryDate = new Date(ts).toISOString().split('T')[0];
       } else if (expiryDate && typeof expiryDate === 'number') {
         expiryDate = new Date(expiryDate * 1000).toISOString().split('T')[0];
+      } else if (expiryDate && typeof expiryDate === 'string' && expiryDate.includes('-')) {
+        // Normalize "YYYY-MM-DD HH:MM:SS" to "YYYY-MM-DD" for Airtable
+        expiryDate = expiryDate.split(' ')[0];
       }
 
       const hasValidMembership = levelId != null && validLevels.includes(parseInt(levelId, 10));
