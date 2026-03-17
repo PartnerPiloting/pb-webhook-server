@@ -163,7 +163,10 @@ function parsePmproLevelResponse(data) {
     const levelId = data.id ?? data.ID ?? data.level_id;
     if (levelId == null || levelId === '' || levelId === 0) return null;
     let expiryDate = data.enddate ?? data.end_date ?? data.expiration_date ?? data.expiration ?? data.expires ?? null;
-    if (expiryDate && typeof expiryDate === 'string' && /^\d+$/.test(expiryDate)) {
+    // PMPro uses "0000-00-00 00:00:00" for lifetime - treat as null
+    if (expiryDate && typeof expiryDate === 'string' && expiryDate.startsWith('0000-00-00')) {
+        expiryDate = null;
+    } else if (expiryDate && typeof expiryDate === 'string' && /^\d+$/.test(expiryDate)) {
         const timestamp = parseInt(expiryDate, 10) * 1000;
         expiryDate = new Date(timestamp).toISOString().split('T')[0];
     }
