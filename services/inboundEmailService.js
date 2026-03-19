@@ -2708,57 +2708,10 @@ ASH Portal`
  * @param {string} subject - Email subject (optional)
  * @returns {boolean}
  */
-/**
- * Parse "Add to:" recipients from body (before forward marker) or subject line.
- * Supports flexible separators: comma, semicolon, or "and".
- * Examples: "Add to: james@x.com, olivier@y.com" or "Add to: James; Olivier and Guy"
- * @param {string} body - Email body
- * @param {string} subject - Email subject
- * @returns {Array<{email?: string, name?: string}>} Recipients to add meeting notes to
- */
+const { parseAddToRecipients: parseAddToRecipientsUtil } = require('../utils/addToRecipientsParser');
+
 function parseAddToRecipients(body, subject = '') {
-    const result = [];
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-    const extractList = (text) => {
-        if (!text || typeof text !== 'string') return [];
-        // Match "Add to:", "add to:", "add keith sinclair", "Also add to:", "Save to:", "For:" (case insensitive)
-        // Colon and "to" are optional so "add keith sinclair" works
-        const match = text.match(/(?:add\s+(?:to\s*)?|also\s+add\s+to|save\s+to|for)\s*:?\s*([^\n\[\]]+)/i);
-        if (!match) return [];
-        const listStr = match[1].trim();
-        // Skip common false positives (e.g. "add the meeting")
-        const skipPhrases = ['the meeting', 'the notes', 'this', 'meeting', 'notes'];
-        if (skipPhrases.some(p => listStr.toLowerCase() === p || listStr.toLowerCase().startsWith(p + ' '))) {
-            return [];
-        }
-        // Split on comma, semicolon, or " and " (flexible separators)
-        const items = listStr.split(/\s*[,;]\s*|\s+and\s+/i).map(s => s.trim()).filter(Boolean);
-        return items;
-    };
-
-    // Try body first (content before forward marker)
-    const forwardMarker = /-{5,}\s*Forwarded message\s*-{5,}/i;
-    const bodyPreForward = body ? body.split(forwardMarker)[0] : '';
-    let items = extractList(bodyPreForward);
-
-    // Fallback: subject line - e.g. "Fwd: Recap... [add to: james@x.com]" or "[add keith sinclair]"
-    if (items.length === 0 && subject) {
-        const subjectMatch = subject.match(/\[?\s*add\s+(?:to\s*:?\s*)?([^\]]+)\]?/i);
-        if (subjectMatch) {
-            const listStr = subjectMatch[1].trim();
-            items = listStr.split(/\s*[,;]\s*|\s+and\s+/i).map(s => s.trim()).filter(Boolean);
-        }
-    }
-
-    for (const item of items) {
-        if (emailRegex.test(item)) {
-            result.push({ email: item.toLowerCase().trim() });
-        } else if (item.length >= 2) {
-            result.push({ name: item });
-        }
-    }
-
+    const result = parseAddToRecipientsUtil(body, subject);
     if (result.length > 0) {
         logger.info(`Add to: parsed ${result.length} recipient(s): ${result.map(r => r.email || r.name).join(', ')}`);
     }
@@ -3310,6 +3263,7 @@ module.exports = {
     extractForwardedRecipients,
     // Meeting note-taker functions
     detectMeetingNotetaker,
+    parseAddToRecipients,
     parseMeetingNotetakerEmail,
     processMeetingNotetakerEmail
 };
