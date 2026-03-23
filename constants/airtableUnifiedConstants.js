@@ -87,6 +87,8 @@ const LEAD_FIELDS = {
   
   // Scoring fields
   AI_SCORE: 'AI Score', // Verified against Airtable
+  /** 0–10 integer: Zoom / outbound readiness from Raw Profile Data (see outboundEmailScoreService) */
+  OUTBOUND_EMAIL_SCORE: 'Outbound Email Score',
   AI_PROFILE_ASSESSMENT: 'AI Profile Assessment', // Verified against Airtable
   AI_ATTRIBUTES_DETAIL: 'AI Attributes Detail', // Corrected to match Airtable exactly
   SCORING_STATUS: 'Scoring Status', // Need to verify - might be "Status" in Airtable
