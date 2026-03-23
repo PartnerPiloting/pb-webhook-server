@@ -57,6 +57,7 @@ async function runOutboundEmailScoringBatch({
   const formula = filterFormula(rescoreAll);
 
   const results = [];
+  const scoringFailures = [];
 
   let processed = 0;
   let scored = 0;
@@ -105,6 +106,13 @@ async function runOutboundEmailScoringBatch({
                   if (!result.ok) {
                     failed++;
                     console.warn(`FAIL ${rec.id} (${label}): ${result.error}`);
+                    if (collectResults) {
+                      scoringFailures.push({
+                        id: rec.id,
+                        label,
+                        error: result.error || 'unknown',
+                      });
+                    }
                   } else {
                     scored++;
                     const prev = rec.get(OES_FIELD);
@@ -129,7 +137,15 @@ async function runOutboundEmailScoringBatch({
                   }
                 } catch (e) {
                   failed++;
-                  console.warn(`EXC ${rec.id} (${label}): ${e && e.message ? e.message : e}`);
+                  const msg = e && e.message ? e.message : String(e);
+                  console.warn(`EXC ${rec.id} (${label}): ${msg}`);
+                  if (collectResults) {
+                    scoringFailures.push({
+                      id: rec.id,
+                      label,
+                      error: msg,
+                    });
+                  }
                 }
 
                 await sleep(Math.max(0, delayMs));
@@ -166,6 +182,7 @@ async function runOutboundEmailScoringBatch({
   };
   if (collectResults) {
     out.results = results;
+    out.scoringFailures = scoringFailures;
   }
   return out;
 }
