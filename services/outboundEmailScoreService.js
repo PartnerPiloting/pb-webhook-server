@@ -24,7 +24,7 @@ const MAX_RAW_CHARS = Math.min(Math.max(parseInt(process.env.OES_MAX_RAW_CHARS, 
 /** Same knobs as batchScorer: total attempts (not “retries after first”). */
 const OES_429_RETRY_ATTEMPTS = Math.max(
   1,
-  parseInt(process.env.OES_429_RETRY_ATTEMPTS || process.env.GEMINI_429_RETRY_ATTEMPTS || '3', 10)
+  parseInt(process.env.OES_429_RETRY_ATTEMPTS || process.env.GEMINI_429_RETRY_ATTEMPTS || '5', 10)
 );
 const OES_429_INITIAL_BACKOFF_MS = Math.max(
   1000,
