@@ -1292,6 +1292,62 @@ router.get("/admin/audit-raw-profile-json", async (req, res) => {
 });
 
 /**
+ * Score up to N unscored leads (Outbound Email Score blank, Raw Profile Data non-empty).
+ * POST /admin/score-oes-unscored?clientId=Guy-Wilson&limit=10&apply=true&delayMs=300
+ * Auth: Authorization: Bearer PB_WEBHOOK_SECRET
+ *
+ * apply=true writes Airtable; omit or apply=false for dry run. limit capped at 100.
+ */
+router.post("/admin/score-oes-unscored", async (req, res) => {
+  const authHeader = req.headers.authorization;
+  const secret = process.env.PB_WEBHOOK_SECRET || process.env.DEBUG_API_KEY;
+  if (!authHeader || !secret || !authHeader.includes(secret)) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+
+  if (!process.env.AIRTABLE_API_KEY) {
+    return res.status(500).json({ error: "AIRTABLE_API_KEY not configured" });
+  }
+
+  const q = req.query || {};
+  const clientId = (q.clientId && String(q.clientId).trim()) || "Guy-Wilson";
+  const limit = Math.min(100, Math.max(1, parseInt(q.limit, 10) || 10));
+  const apply = q.apply === "true" || q.apply === true;
+  const delayMs = Math.min(3000, Math.max(0, parseInt(q.delayMs, 10) || 400));
+  const pageSize = Math.min(100, Math.max(1, parseInt(q.pageSize, 10) || 50));
+
+  const logger = createLogger({
+    runId: "OES_HTTP",
+    clientId: "SYSTEM",
+    operation: "score_oes_unscored",
+  });
+
+  try {
+    const { runOutboundEmailScoringBatch } = require("../services/outboundEmailScoringBatchService");
+    const summary = await runOutboundEmailScoringBatch({
+      clientId,
+      limit,
+      apply,
+      rescoreAll: false,
+      pageSize,
+      delayMs,
+      collectResults: true,
+    });
+    logger.info("OES batch finished", {
+      clientId,
+      limit,
+      apply,
+      scored: summary.scored,
+      failed: summary.failed,
+    });
+    return res.json({ success: true, ...summary });
+  } catch (err) {
+    logger.error("OES batch failed", { error: err.message });
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/**
  * Client Run Results diagnostic - verify CRR table is being updated
  * GET /api/debug-client-run-results?runId=260304-020121
  * Auth: Bearer PB_WEBHOOK_SECRET (same as debug-render-logs)
