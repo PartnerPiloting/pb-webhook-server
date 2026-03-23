@@ -32,7 +32,8 @@ function filterFormula(rescoreAll) {
  * @param {boolean} [opts.rescoreAll] score even when OES already set
  * @param {number} [opts.pageSize]
  * @param {number} [opts.delayMs] ms after each lead
- * @returns {Promise<{ processed: number, scored: number, failed: number, skippedEmpty: number, clientId: string, baseId: string, formula: string }>}
+ * @param {boolean} [opts.collectResults] if true, include `results` array (id, label, score, …)
+ * @returns {Promise<{ processed: number, scored: number, failed: number, skippedEmpty: number, clientId: string, baseId: string, formula: string, results?: Array }>}
  */
 async function runOutboundEmailScoringBatch({
   clientId,
@@ -41,6 +42,7 @@ async function runOutboundEmailScoringBatch({
   rescoreAll = false,
   pageSize = 50,
   delayMs = 400,
+  collectResults = false,
 }) {
   const lim = Number(limit);
   const useLimit = Number.isFinite(lim) && lim > 0;
@@ -53,6 +55,8 @@ async function runOutboundEmailScoringBatch({
 
   const base = await getClientBase(clientId);
   const formula = filterFormula(rescoreAll);
+
+  const results = [];
 
   let processed = 0;
   let scored = 0;
@@ -112,6 +116,16 @@ async function runOutboundEmailScoringBatch({
                         { id: rec.id, fields: { [OES_FIELD]: result.score } },
                       ]);
                     }
+                    if (collectResults) {
+                      results.push({
+                        id: rec.id,
+                        label,
+                        score: result.score,
+                        classification: result.classification,
+                        linkedinUrl: rec.get(LEAD_FIELDS.LINKEDIN_PROFILE_URL) || '',
+                        written: !!apply,
+                      });
+                    }
                   }
                 } catch (e) {
                   failed++;
@@ -139,7 +153,7 @@ async function runOutboundEmailScoringBatch({
       );
   });
 
-  return {
+  const out = {
     processed,
     scored,
     failed,
@@ -150,6 +164,10 @@ async function runOutboundEmailScoringBatch({
     apply,
     rescoreAll,
   };
+  if (collectResults) {
+    out.results = results;
+  }
+  return out;
 }
 
 module.exports = {
