@@ -186,9 +186,8 @@ Respond with ONLY valid JSON (no markdown), exactly this shape:
 /**
  * First top-level `{ ... }` with string-aware brace matching (avoids greedy-regex mistakes).
  */
-function sliceFirstBalancedObject(text) {
-  const start = text.indexOf('{');
-  if (start < 0) return null;
+function sliceBalancedObjectFrom(text, start) {
+  if (start < 0 || start >= text.length || text[start] !== '{') return null;
   let depth = 0;
   let inString = false;
   let escape = false;
@@ -214,6 +213,12 @@ function sliceFirstBalancedObject(text) {
     }
   }
   return null;
+}
+
+function sliceFirstBalancedObject(text) {
+  const start = text.indexOf('{');
+  if (start < 0) return null;
+  return sliceBalancedObjectFrom(text, start);
 }
 
 function stripMarkdownCodeFence(text) {
@@ -246,52 +251,68 @@ function extractJsonObject(text) {
     }
   };
 
-  let obj = tryParse(trimmed);
-  if (obj) return obj;
-
-  const balanced = sliceFirstBalancedObject(trimmed);
-  if (balanced) {
-    obj = tryParse(balanced);
+  const trySlice = (slice) => {
+    if (!slice) return null;
+    let obj = tryParse(slice);
     if (obj) return obj;
-    const repaired = repairAndParseJson(balanced);
+    const repaired = repairAndParseJson(slice);
     if (repaired.success) {
       obj = tryObject(repaired.data);
       if (obj) return obj;
     }
+    return null;
+  };
+
+  // Prefer object that contains our keys (avoids false `{` from model prose / thinking).
+  const keyPatterns = [/"zoom_readiness_score"\s*:/g, /"score_breakdown"\s*:/g];
+  for (const keyRegex of keyPatterns) {
+    keyRegex.lastIndex = 0;
+    let match;
+    while ((match = keyRegex.exec(trimmed)) !== null) {
+      const braceStart = trimmed.lastIndexOf('{', match.index);
+      if (braceStart >= 0) {
+        const balanced = sliceBalancedObjectFrom(trimmed, braceStart);
+        const obj = trySlice(balanced);
+        if (obj) return obj;
+      }
+    }
   }
+
+  let obj = tryParse(trimmed);
+  if (obj) return obj;
+
+  const balanced = sliceFirstBalancedObject(trimmed);
+  const fromBalanced = trySlice(balanced);
+  if (fromBalanced) return fromBalanced;
 
   const m = trimmed.match(/\{[\s\S]*\}/);
   if (m) {
-    obj = tryParse(m[0]);
-    if (obj) return obj;
-    const repaired2 = repairAndParseJson(m[0]);
-    if (repaired2.success) {
-      obj = tryObject(repaired2.data);
-      if (obj) return obj;
-    }
+    const fromGreedy = trySlice(m[0]);
+    if (fromGreedy) return fromGreedy;
   }
 
   return null;
 }
 
 function normalizeScorePayload(parsed) {
-  if (!parsed || typeof parsed !== 'object') return null;
-  let n =
-    parsed.zoom_readiness_score != null
-      ? parsed.zoom_readiness_score
-      : parsed.score != null
-        ? parsed.score
-        : parsed.readiness_score;
-  if (typeof n !== 'number' || Number.isNaN(n)) {
-    const asInt = parseInt(String(parsed.zoom_readiness_score), 10);
-    if (Number.isNaN(asInt)) return null;
-    n = asInt;
-  }
-  n = Math.round(n);
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+  const raw =
+    parsed.zoom_readiness_score ??
+    parsed.score ??
+    parsed.readiness_score ??
+    parsed.zoomReadinessScore;
+  if (raw === null || raw === undefined || raw === '') return null;
+  const cleaned = String(raw).trim().replace(/,/g, '');
+  const nFloat = Number(cleaned);
+  if (!Number.isFinite(nFloat)) return null;
+  let n = Math.round(nFloat);
   n = Math.max(0, Math.min(10, n));
+  let breakdown = parsed.score_breakdown;
+  if (breakdown != null && typeof breakdown !== 'object') breakdown = {};
+  if (breakdown == null) breakdown = {};
   return {
     zoom_readiness_score: n,
-    score_breakdown: parsed.score_breakdown || {},
+    score_breakdown: breakdown,
     classification: String(parsed.classification || '').trim() || 'Unknown',
   };
 }
@@ -348,9 +369,9 @@ async function scoreRawProfileForOes(rawProfileText) {
         { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
       ],
       generationConfig: {
-        temperature: 0.2,
+        temperature: 0,
         responseMimeType: 'application/json',
-        maxOutputTokens: 1024,
+        maxOutputTokens: 2048,
       },
     });
 
@@ -398,7 +419,17 @@ ${truncated}${truncatedNote}`;
     const candidate = result?.response?.candidates?.[0];
     const parts = candidate?.content?.parts || [];
     const responseText = parts
-      .map((p) => (typeof p?.text === 'string' ? p.text : ''))
+      .map((p) => {
+        if (typeof p?.text === 'string') return p.text;
+        if (p?.functionCall?.args && typeof p.functionCall.args === 'object') {
+          try {
+            return JSON.stringify(p.functionCall.args);
+          } catch {
+            return '';
+          }
+        }
+        return '';
+      })
       .join('');
     if (!responseText.trim()) {
       return { ok: false, error: 'Model returned no text' };
@@ -407,7 +438,10 @@ ${truncated}${truncatedNote}`;
     const parsed = extractJsonObject(responseText);
     const norm = normalizeScorePayload(parsed);
     if (!norm) {
-      logger.warn('[OES] Unparseable model output', { snippet: responseText.slice(0, 200) });
+      logger.warn('[OES] Unparseable model output', {
+        snippet: responseText.slice(0, 500),
+        finishReason: candidate?.finishReason,
+      });
       return { ok: false, error: 'Could not parse model JSON' };
     }
 
@@ -427,6 +461,8 @@ module.exports = {
   scoreRawProfileForOes,
   rawProfileDataToText,
   buildOesSystemInstruction,
+  extractJsonObject,
+  normalizeScorePayload,
   MAX_RAW_CHARS,
   OES_MODEL,
 };
