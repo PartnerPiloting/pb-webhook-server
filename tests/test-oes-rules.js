@@ -69,6 +69,18 @@ test('IT depth plus consultant mindset (no possessive) avoids penalty', () => {
   assert.strictEqual(r.breakdown.no_future_tech_penalty_raw, 0);
 });
 
+test('IT business partner plus consulting word avoids penalty without mindset phrase', () => {
+  const r = scoreRawProfileForOesRules(
+    JSON.stringify({
+      headline: 'IT Business Partner',
+      summary: 'Partnering with the business on change; internal consulting and delivery.',
+    })
+  );
+  assert.strictEqual(r.ok, true);
+  assert.strictEqual(r.breakdown.future_awareness, 1);
+  assert.strictEqual(r.breakdown.no_future_tech_penalty_raw, 0);
+});
+
 test('plain IC engineer penalty', () => {
   const r = scoreRawProfileForOesRules(
     JSON.stringify({
