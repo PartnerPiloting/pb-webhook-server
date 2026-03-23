@@ -24,6 +24,27 @@ function filterFormula(rescoreAll) {
   return `AND(${hasRaw}, OR({${OES_FIELD}} = BLANK()))`;
 }
 
+/** Optional exact record list (Airtable RECORD_ID). Max 30. */
+function buildOesFilterFormula(rescoreAll, recordIds) {
+  const hasRaw = `LEN(TRIM({${RAW_FIELD}} & "")) > 0`;
+  if (Array.isArray(recordIds) && recordIds.length > 0) {
+    const safeIds = recordIds
+      .slice(0, 30)
+      .map((id) => String(id).trim())
+      .filter((id) => /^rec[a-zA-Z0-9]+$/.test(id));
+    if (safeIds.length === 0) {
+      return filterFormula(rescoreAll);
+    }
+    const idClauses = safeIds.map((id) => `RECORD_ID()='${id}'`).join(', ');
+    let f = `AND(${hasRaw}, OR(${idClauses}))`;
+    if (!rescoreAll) {
+      f = `AND(${f}, OR({${OES_FIELD}} = BLANK()))`;
+    }
+    return f;
+  }
+  return filterFormula(rescoreAll);
+}
+
 /**
  * @param {Object} opts
  * @param {string} opts.clientId
@@ -35,6 +56,7 @@ function filterFormula(rescoreAll) {
  * @param {boolean} [opts.collectResults] if true, include `results` array (id, label, score, …)
  * @param {boolean} [opts.quick] if true, shorter Gemini timeout + fewer 429 retries (better for HTTP / curl)
  * @param {'rules'|'ai'} [opts.oesMode] scoring engine; default rules unless OES_USE_AI=true
+ * @param {string[]} [opts.recordIds] optional Airtable record IDs to score (exact set)
  * @returns {Promise<{ processed: number, scored: number, failed: number, skippedEmpty: number, clientId: string, baseId: string, formula: string, results?: Array }>}
  */
 async function runOutboundEmailScoringBatch({
@@ -47,6 +69,7 @@ async function runOutboundEmailScoringBatch({
   collectResults = false,
   quick = false,
   oesMode,
+  recordIds,
 }) {
   const lim = Number(limit);
   const useLimit = Number.isFinite(lim) && lim > 0;
@@ -71,7 +94,7 @@ async function runOutboundEmailScoringBatch({
   }
 
   const base = await getClientBase(clientId);
-  const formula = filterFormula(rescoreAll);
+  const formula = buildOesFilterFormula(rescoreAll, recordIds);
 
   const results = [];
   const scoringFailures = [];
@@ -149,6 +172,7 @@ async function runOutboundEmailScoringBatch({
                         classification: result.classification,
                         linkedinUrl: rec.get(LEAD_FIELDS.LINKEDIN_PROFILE_URL) || '',
                         written: !!apply,
+                        ...(result.breakdown ? { breakdown: result.breakdown } : {}),
                       });
                     }
                   }
@@ -198,6 +222,7 @@ async function runOutboundEmailScoringBatch({
     rescoreAll,
     quick: !!quick,
     oesMode: resolvedOesMode,
+    ...(Array.isArray(recordIds) && recordIds.length ? { recordIdsRequested: recordIds.length } : {}),
   };
   if (collectResults) {
     out.results = results;
@@ -209,6 +234,7 @@ async function runOutboundEmailScoringBatch({
 module.exports = {
   runOutboundEmailScoringBatch,
   filterFormula,
+  buildOesFilterFormula,
   LEADS_TABLE,
   OES_FIELD,
   RAW_FIELD,
