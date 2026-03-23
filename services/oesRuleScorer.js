@@ -148,7 +148,7 @@ function hasTechDepthForConsultingFuture(blob) {
 
 /** Explicit consulting orientation (not merely job title “consultant”) */
 function hasConsultantMindsetSignal(blob) {
-  return /\b(consulting\s+mindset|consultant(?:'|\u2019)s\s+mindset|consultant\s+approach|internal\s+consultant|acting\s+as\s+(an\s+)?internal\s+consultant)\b/i.test(
+  return /\b(consulting\s+mindset|consultants?\s+mindset|consultant(?:'|\u2019)s\s+mindset|consultant\s+approach|internal\s+consultant|acting\s+as\s+(an\s+)?internal\s+consultant)\b/i.test(
     blob
   );
 }

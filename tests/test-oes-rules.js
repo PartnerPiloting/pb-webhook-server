@@ -57,6 +57,18 @@ test('IT depth plus consultant mindset avoids no-future-tech penalty', () => {
   assert.strictEqual(r.breakdown.no_future_tech_penalty_raw, 0);
 });
 
+test('IT depth plus consultant mindset (no possessive) avoids penalty', () => {
+  const r = scoreRawProfileForOesRules(
+    JSON.stringify({
+      headline: 'IT Consultant',
+      summary: 'Stakeholder engagement with a consultant mindset and delivery focus.',
+    })
+  );
+  assert.strictEqual(r.ok, true);
+  assert.strictEqual(r.breakdown.future_awareness, 1);
+  assert.strictEqual(r.breakdown.no_future_tech_penalty_raw, 0);
+});
+
 test('plain IC engineer penalty', () => {
   const r = scoreRawProfileForOesRules(
     JSON.stringify({
