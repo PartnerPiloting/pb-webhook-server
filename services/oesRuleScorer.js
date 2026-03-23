@@ -7,8 +7,8 @@
  * Tune regexes / thresholds here; adjust compression formula if scores cluster too high/low.
  *
  * If future_awareness stays 0, a heavy raw penalty applies (default −4) so non-tech narratives
- * sink unless they show digital/innovation/AI language. Tech/IT depth plus an explicit consulting
- * orientation (e.g. “consultant’s mindset”) counts as moderate future fit and avoids that penalty.
+ * sink unless they show digital/innovation/AI language. Tech/IT depth plus consulting frame (mindset
+ * phrases or consult* language in narrative) counts as moderate future fit and avoids that penalty.
  * Set OES_NO_FUTURE_TECH_RAW_PENALTY=0 to disable.
  */
 
@@ -140,17 +140,25 @@ function hasFutureModerateSignal(blob) {
 function hasTechDepthForConsultingFuture(blob) {
   return (
     RE.technicalIc.test(blob) ||
-    /\b(information\s+technology|\bit\s+(consultant|manager|lead|director|professional|specialist)|enterprise\s+technology|systems?\s+architect|solution\s+architect|technical\s+lead|tech\s+lead|infrastructure\s+engineer)\b/i.test(
+    /\b(information\s+technology|\bit\s+(consultant|manager|lead|director|professional|specialist|business\s+partner|strategy|operations|delivery|services?|program|project|governance|transformation)|enterprise\s+technology|systems?\s+architect|solution\s+architect|technical\s+lead|tech\s+lead|infrastructure\s+engineer|chief\s+information\s+officer|\bcio\b|senior\s+it\b|(head|director|vp\b|vice\s+president)\s+of\s+it)\b/i.test(
       blob
     )
   );
 }
 
-/** Explicit consulting orientation (not merely job title “consultant”) */
-function hasConsultantMindsetSignal(blob) {
-  return /\b(consulting\s+mindset|consultants?\s+mindset|consultant(?:'|\u2019)s\s+mindset|consultant\s+approach|internal\s+consultant|acting\s+as\s+(an\s+)?internal\s+consultant)\b/i.test(
-    blob
-  );
+/**
+ * Consulting frame for future waiver: explicit mindset phrases, or consult* language in narrative
+ * (still paired with hasTechDepthForConsultingFuture so pure job-title “Consultant” alone is not enough).
+ */
+function hasConsultingFrameForFutureWaive(blob) {
+  if (
+    /\b(consulting\s+mindset|consultants?\s+mindset|consultant(?:'|\u2019)s\s+mindset|consultant\s+approach|internal\s+consultant|acting\s+as\s+(an\s+)?internal\s+consultant)\b/i.test(
+      blob
+    )
+  ) {
+    return true;
+  }
+  return /\b(consultant|consulting|consultative)\b/i.test(blob);
 }
 
 const NO_FUTURE_TECH_RAW_PENALTY = Math.min(
@@ -219,7 +227,7 @@ function scoreRawProfileForOesRules(raw) {
     futureAwareness = 2;
   } else if (hasFutureModerateSignal(blob)) {
     futureAwareness = 1;
-  } else if (hasTechDepthForConsultingFuture(blob) && hasConsultantMindsetSignal(blob)) {
+  } else if (hasTechDepthForConsultingFuture(blob) && hasConsultingFrameForFutureWaive(blob)) {
     futureAwareness = 1;
   }
 
