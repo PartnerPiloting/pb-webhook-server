@@ -1,8 +1,8 @@
 /**
- * Outbound Email Score (OES) — "Zoom readiness" 0–10 from LinkedIn-style raw profile text.
+ * Outbound Email Score (OES) — "Zoom readiness" 0–10 from LinkedIn-style raw profile JSON/text.
  *
- * The scoring rubric is hardcoded below (tune by editing this file). The model applies the
- * rubric to free-form profile JSON/text; we parse structured JSON back and clamp to 0–10 integer.
+ * Default: rule-based scorer (services/oesRuleScorer.js) aligned with the rubric below.
+ * Set OES_USE_AI=true or pass options.oesMode === 'ai' to use Vertex Gemini instead.
  */
 
 require('dotenv').config();
@@ -10,6 +10,7 @@ const { HarmCategory, HarmBlockThreshold } = require('@google-cloud/vertexai');
 const { vertexAIClient } = require('../config/geminiClient');
 const { createLogger } = require('../utils/contextLogger');
 const { repairAndParseJson } = require('../utils/jsonRepair');
+const { scoreRawProfileForOesRules } = require('./oesRuleScorer');
 
 const logger = createLogger({
   runId: 'OES',
@@ -40,6 +41,13 @@ function isRetryableVertexRateLimitError(error) {
     msg.includes('too many requests') ||
     msg.includes('rate limit')
   );
+}
+
+/** Rules unless OES_USE_AI=1 or options.oesMode === 'ai'. */
+function shouldUseOesAi(options = {}) {
+  if (options.oesMode === 'ai') return true;
+  if (options.oesMode === 'rules') return false;
+  return process.env.OES_USE_AI === 'true' || process.env.OES_USE_AI === '1';
 }
 
 /** Full rubric (hardcoded — change here when methodology changes). */
@@ -347,8 +355,19 @@ function rawProfileDataToText(raw) {
  */
 async function scoreRawProfileForOes(rawProfileText, options = {}) {
   const text = rawProfileDataToText(rawProfileText);
-  if (!text) {
+  if (!text || !String(text).trim()) {
     return { ok: false, error: 'Empty raw profile' };
+  }
+
+  if (!shouldUseOesAi(options)) {
+    const r = scoreRawProfileForOesRules(rawProfileText);
+    if (!r.ok) return r;
+    return {
+      ok: true,
+      score: r.score,
+      classification: r.classification,
+      breakdown: r.breakdown,
+    };
   }
 
   const truncated = text.length > MAX_RAW_CHARS ? text.slice(0, MAX_RAW_CHARS) : text;
@@ -358,7 +377,15 @@ async function scoreRawProfileForOes(rawProfileText, options = {}) {
       : '';
 
   if (!vertexAIClient) {
-    return { ok: false, error: 'Vertex/Gemini not configured (GCP_PROJECT_ID, GCP_LOCATION, credentials)' };
+    logger.warn('[OES] AI requested but Vertex not configured; using rule-based scoring');
+    const r = scoreRawProfileForOesRules(rawProfileText);
+    if (!r.ok) return r;
+    return {
+      ok: true,
+      score: r.score,
+      classification: r.classification,
+      breakdown: r.breakdown,
+    };
   }
 
   const callTimeoutMs = Math.min(
@@ -471,8 +498,10 @@ ${truncated}${truncatedNote}`;
 
 module.exports = {
   scoreRawProfileForOes,
+  scoreRawProfileForOesRules,
   rawProfileDataToText,
   buildOesSystemInstruction,
+  shouldUseOesAi,
   extractJsonObject,
   normalizeScorePayload,
   MAX_RAW_CHARS,
