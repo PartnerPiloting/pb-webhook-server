@@ -1,11 +1,13 @@
 /**
  * Rule-based Outbound Email Score (0–10) from LinkedIn-style raw profile JSON/text.
  * Mirrors the rubric in outboundEmailScoreService.buildOesSystemInstruction (no Gemini).
+ *
+ * Calibration: category points are conservative (multi-signal for top buckets); seniority is
+ * capped without other signals; summed points are compressed onto 0–10 (see compressRawSumToDisplayScore).
+ * Tune regexes / thresholds here; adjust compression formula if scores cluster too high/low.
  */
 
 const RE = {
-  inflectionStrong:
-    /\b(advisor|adviser|consulting|consultant|fractional|portfolio\s+career|non-executive|non executive|\bned\b|board\s+(member|director|role)|independent\s+(advisor|consultant)|\bbuilding\b|\bexploring\b|helping\s+organisations?\s+navigate|navigate\s+change)\b/i,
   inflectionModerate:
     /\b(transformation|organizational\s+change|organisational\s+change|strategic\s+change|next\s+chapter|career\s+transition|portfolio\s+life)\b/i,
   collabStrong:
@@ -85,6 +87,35 @@ function countFirstPersonPhrases(blob) {
   return m ? m.length : 0;
 }
 
+/** Distinct “movement / next chapter” strong themes (need 2+ or 1+moderate for max inflection). */
+function countInflectionStrongGroups(blob) {
+  let n = 0;
+  if (/\b(advisor|adviser|consulting|consultant|fractional)\b/i.test(blob)) n++;
+  if (/\b(portfolio\s+career|non-executive|non\s+executive|\bned\b|board\s+(member|director|role))\b/i.test(blob)) n++;
+  if (/\b(independent\s+(advisor|consultant))\b/i.test(blob)) n++;
+  if (/\b(building|exploring)\b/i.test(blob)) n++;
+  if (/\bhelping\s+organisations?\s+navigate|navigate\s+change\b/i.test(blob)) n++;
+  return n;
+}
+
+/** Collaboration evidence strength (multiple signals needed for 3/3). */
+function collaborationStrength(blob) {
+  let w = 0;
+  if (RE.collabStrong.test(blob)) w += 2;
+  if (RE.collabModerate.test(blob)) w += 1;
+  if (/\b(leadership)\b/i.test(blob) && RE.collabModerate.test(blob)) w += 0.5;
+  return w;
+}
+
+/**
+ * Map summed rubric points (~0–13 before negatives) onto 0–10 with compression so
+ * “everything maxes” is rare. Tuned for outbound prioritisation, not exam grades.
+ */
+function compressRawSumToDisplayScore(rawSum) {
+  const x = Math.max(-4, Math.min(15, rawSum));
+  return Math.max(0, Math.min(10, Math.round(x * 0.62 + 1.35)));
+}
+
 function classify(score) {
   if (score >= 9) return 'Pod Builder Potential';
   if (score >= 7) return 'High Priority';
@@ -117,38 +148,63 @@ function scoreRawProfileForOesRules(raw) {
     return { ok: false, error: 'Empty raw profile' };
   }
 
+  const moderate = RE.inflectionModerate.test(blob);
+  const longT = hasLongTenureSignal(blob);
+  const strongGroups = countInflectionStrongGroups(blob);
+
   let inflection = 0;
-  if (RE.inflectionStrong.test(blob)) {
+  if (strongGroups >= 2 || (strongGroups >= 1 && moderate)) {
     inflection = 4;
-  } else {
-    const moderate = RE.inflectionModerate.test(blob);
-    const longT = hasLongTenureSignal(blob);
-    if (moderate || longT) inflection = 3;
-    else if (RE.seniorStrong.test(blob) || RE.seniorModerate.test(blob)) inflection = 1;
+  } else if (strongGroups === 1) {
+    inflection = 3;
+  } else if (moderate && longT) {
+    inflection = 3;
+  } else if (moderate || longT) {
+    inflection = 2;
+  } else if (RE.seniorStrong.test(blob) || RE.seniorModerate.test(blob)) {
+    inflection = 1;
   }
 
   let collaboration = 0;
-  if (RE.collabStrong.test(blob)) collaboration = 3;
-  else if (RE.collabModerate.test(blob)) collaboration = 2;
-  else if (/\b(leadership|teams?\b|people)\b/i.test(blob)) collaboration = 1;
+  const collabW = collaborationStrength(blob);
+  if (collabW >= 3) collaboration = 3;
+  else if (collabW >= 2) collaboration = 2;
+  else if (collabW >= 1) collaboration = 1;
+  else if (/\bteam(s)?\b/i.test(blob) && /\blead(er|ing)?\b/i.test(blob)) collaboration = 1;
 
   let futureAwareness = 0;
-  if (RE.futureStrong.test(blob)) futureAwareness = 2;
-  else if (RE.futureModerate.test(blob) || /\bstrategy\b/i.test(blob)) futureAwareness = 1;
+  if (RE.futureStrong.test(blob)) {
+    futureAwareness = 2;
+  } else if (RE.futureModerate.test(blob)) {
+    futureAwareness = 1;
+  } else if (/\b(digital|business)\s+strategy\b/i.test(blob)) {
+    futureAwareness = 1;
+  }
 
   let expression = 0;
   const fp = countFirstPersonPhrases(blob);
-  if (RE.expressionStrong.test(blob) || fp >= 12) expression = 2;
-  else if (fp >= 5) expression = 1;
+  if (RE.expressionStrong.test(blob) || fp >= 22) {
+    expression = 2;
+  } else if (fp >= 10) {
+    expression = 1;
+  }
 
   let seniority = 0;
-  if (RE.seniorJunior.test(blob)) seniority = 0;
-  else if (RE.seniorStrong.test(blob)) seniority = 2;
-  else if (RE.seniorModerate.test(blob)) seniority = 1;
+  if (RE.seniorJunior.test(blob)) {
+    seniority = 0;
+  } else {
+    const hasSubstance =
+      inflection >= 2 || collaboration >= 2 || futureAwareness >= 1 || expression >= 1;
+    if (RE.seniorStrong.test(blob)) {
+      seniority = hasSubstance ? 2 : 1;
+    } else if (RE.seniorModerate.test(blob)) {
+      seniority = hasSubstance ? 1 : 0;
+    }
+  }
 
   let negativeAdjustment = 0;
   const narrativeLen = blob.replace(/\s+/g, ' ').length;
-  const hasMovement = RE.inflectionStrong.test(blob) || RE.inflectionModerate.test(blob) || hasLongTenureSignal(blob);
+  const hasMovement = strongGroups >= 1 || moderate || longT;
 
   if (narrativeLen < 120 && !hasMovement && RE.seniorStrong.test(blob)) {
     negativeAdjustment += 2;
@@ -166,7 +222,7 @@ function scoreRawProfileForOesRules(raw) {
   }
 
   const rawSum = inflection + collaboration + futureAwareness + expression + seniority - negativeAdjustment;
-  const score = Math.max(0, Math.min(10, Math.round(rawSum)));
+  const score = compressRawSumToDisplayScore(rawSum);
 
   const breakdown = {
     inflection,
@@ -175,6 +231,7 @@ function scoreRawProfileForOesRules(raw) {
     expression,
     seniority,
     negative_adjustment: -negativeAdjustment,
+    raw_sum: Math.round(rawSum * 10) / 10,
   };
 
   return {
@@ -189,4 +246,5 @@ module.exports = {
   scoreRawProfileForOesRules,
   buildSearchBlob,
   classify,
+  compressRawSumToDisplayScore,
 };
