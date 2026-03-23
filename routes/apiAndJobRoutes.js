@@ -1191,10 +1191,12 @@ router.post(
       return res.status(500).json({ error: "AIRTABLE_API_KEY not configured" });
     }
 
-    const clientId = (req.body.clientId && String(req.body.clientId).trim()) || "Guy-Wilson";
-    const apply = req.body.apply === "true" || req.body.apply === true;
-    const previewMax = Math.max(0, parseInt(req.body.previewMax, 10) || 20);
-    const maxUpdatesRaw = req.body.maxUpdates;
+    // Multer leaves req.body undefined for non–multipart requests; JSON uses express.json().
+    const body = req.body || {};
+    const clientId = (body.clientId && String(body.clientId).trim()) || "Guy-Wilson";
+    const apply = body.apply === "true" || body.apply === true;
+    const previewMax = Math.max(0, parseInt(body.previewMax, 10) || 20);
+    const maxUpdatesRaw = body.maxUpdates;
     const maxUpdates =
       maxUpdatesRaw !== undefined && maxUpdatesRaw !== ""
         ? Math.max(1, parseInt(maxUpdatesRaw, 10) || 1)
@@ -1210,8 +1212,8 @@ router.post(
     try {
       if (req.file && req.file.buffer) {
         mapResult = buildEmailMapFromBuffer(req.file.buffer, req.file.originalname || "");
-      } else if (req.body.sheetUrl && String(req.body.sheetUrl).trim()) {
-        mapResult = await buildEmailMapFromPublicCsvUrl(String(req.body.sheetUrl).trim());
+      } else if (body.sheetUrl && String(body.sheetUrl).trim()) {
+        mapResult = await buildEmailMapFromPublicCsvUrl(String(body.sheetUrl).trim());
       } else {
         return res.status(400).json({
           error:
