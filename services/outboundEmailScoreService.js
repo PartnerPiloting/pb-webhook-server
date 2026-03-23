@@ -340,9 +340,12 @@ function rawProfileDataToText(raw) {
 }
 
 /**
+ * @param {object} [options]
+ * @param {number} [options.timeoutMs] per Gemini attempt (clamped 15s–180s)
+ * @param {number} [options.max429Attempts] total Vertex attempts on 429 backoff (min 1, max 10)
  * @returns {Promise<{ ok: true, score: number, classification: string, breakdown: object } | { ok: false, error: string }>}
  */
-async function scoreRawProfileForOes(rawProfileText) {
+async function scoreRawProfileForOes(rawProfileText, options = {}) {
   const text = rawProfileDataToText(rawProfileText);
   if (!text) {
     return { ok: false, error: 'Empty raw profile' };
@@ -357,6 +360,15 @@ async function scoreRawProfileForOes(rawProfileText) {
   if (!vertexAIClient) {
     return { ok: false, error: 'Vertex/Gemini not configured (GCP_PROJECT_ID, GCP_LOCATION, credentials)' };
   }
+
+  const callTimeoutMs = Math.min(
+    Math.max(parseInt(options.timeoutMs, 10) || OES_TIMEOUT_MS, 15000),
+    180000
+  );
+  const maxAttempts = Math.max(
+    1,
+    Math.min(parseInt(options.max429Attempts, 10) || OES_429_RETRY_ATTEMPTS, 10)
+  );
 
   try {
     const model = vertexAIClient.getGenerativeModel({
@@ -386,22 +398,22 @@ ${truncated}${truncatedNote}`;
 
     let result = null;
     let lastCallError = null;
-    for (let attempt = 1; attempt <= OES_429_RETRY_ATTEMPTS; attempt++) {
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
         const callPromise = model.generateContent(requestPayload);
         const timeoutPromise = new Promise((_, reject) => {
-          setTimeout(() => reject(new Error('OES scoring timed out')), OES_TIMEOUT_MS);
+          setTimeout(() => reject(new Error('OES scoring timed out')), callTimeoutMs);
         });
         result = await Promise.race([callPromise, timeoutPromise]);
         lastCallError = null;
         break;
       } catch (e) {
         lastCallError = e;
-        if (attempt < OES_429_RETRY_ATTEMPTS && isRetryableVertexRateLimitError(e)) {
+        if (attempt < maxAttempts && isRetryableVertexRateLimitError(e)) {
           const backoffMs = OES_429_INITIAL_BACKOFF_MS * Math.pow(2, attempt - 1);
           logger.warn('[OES] Vertex rate limit, backing off and retrying', {
             attempt,
-            maxAttempts: OES_429_RETRY_ATTEMPTS,
+            maxAttempts,
             backoffMs,
           });
           await new Promise((r) => setTimeout(r, backoffMs));

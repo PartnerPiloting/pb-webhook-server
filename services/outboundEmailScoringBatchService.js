@@ -33,6 +33,7 @@ function filterFormula(rescoreAll) {
  * @param {number} [opts.pageSize]
  * @param {number} [opts.delayMs] ms after each lead
  * @param {boolean} [opts.collectResults] if true, include `results` array (id, label, score, …)
+ * @param {boolean} [opts.quick] if true, shorter Gemini timeout + fewer 429 retries (better for HTTP / curl)
  * @returns {Promise<{ processed: number, scored: number, failed: number, skippedEmpty: number, clientId: string, baseId: string, formula: string, results?: Array }>}
  */
 async function runOutboundEmailScoringBatch({
@@ -43,10 +44,15 @@ async function runOutboundEmailScoringBatch({
   pageSize = 50,
   delayMs = 400,
   collectResults = false,
+  quick = false,
 }) {
   const lim = Number(limit);
   const useLimit = Number.isFinite(lim) && lim > 0;
   const maxProcessed = useLimit ? lim : Number.POSITIVE_INFINITY;
+
+  const scoreOpts = quick
+    ? { timeoutMs: 55000, max429Attempts: 2 }
+    : undefined;
 
   const client = await clientService.getClientById(clientId);
   if (!client) {
@@ -102,7 +108,7 @@ async function runOutboundEmailScoringBatch({
                   rec.id;
 
                 try {
-                  const result = await scoreRawProfileForOes(raw);
+                  const result = await scoreRawProfileForOes(raw, scoreOpts);
                   if (!result.ok) {
                     failed++;
                     console.warn(`FAIL ${rec.id} (${label}): ${result.error}`);
@@ -179,6 +185,7 @@ async function runOutboundEmailScoringBatch({
     formula,
     apply,
     rescoreAll,
+    quick: !!quick,
   };
   if (collectResults) {
     out.results = results;
