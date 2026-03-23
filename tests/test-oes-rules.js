@@ -44,6 +44,19 @@ test('no future tech applies raw penalty when future_awareness is 0', () => {
   assert.strictEqual(r.breakdown.no_future_tech_penalty_raw, -4);
 });
 
+test('IT depth plus consultant mindset avoids no-future-tech penalty', () => {
+  const r = scoreRawProfileForOesRules(
+    JSON.stringify({
+      headline: 'IT Manager',
+      summary:
+        'Enterprise technology and stakeholder engagement. I bring a consultant’s mindset to internal delivery.',
+    })
+  );
+  assert.strictEqual(r.ok, true);
+  assert.strictEqual(r.breakdown.future_awareness, 1);
+  assert.strictEqual(r.breakdown.no_future_tech_penalty_raw, 0);
+});
+
 test('plain IC engineer penalty', () => {
   const r = scoreRawProfileForOesRules(
     JSON.stringify({
