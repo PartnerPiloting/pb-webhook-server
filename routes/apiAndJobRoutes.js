@@ -1251,6 +1251,47 @@ router.post(
 );
 
 /**
+ * Audit Raw Profile Data JSON for a client base (no AI).
+ * GET /admin/audit-raw-profile-json?clientId=Guy-Wilson&limit=1000&pageSize=100&sampleErrors=25
+ * Auth: Authorization: Bearer PB_WEBHOOK_SECRET (same as debug-render-logs)
+ */
+router.get("/admin/audit-raw-profile-json", async (req, res) => {
+  const authHeader = req.headers.authorization;
+  const secret = process.env.PB_WEBHOOK_SECRET || process.env.DEBUG_API_KEY;
+  if (!authHeader || !secret || !authHeader.includes(secret)) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+
+  if (!process.env.AIRTABLE_API_KEY) {
+    return res.status(500).json({ error: "AIRTABLE_API_KEY not configured" });
+  }
+
+  const clientId = (req.query.clientId && String(req.query.clientId).trim()) || "Guy-Wilson";
+  const limit = parseInt(req.query.limit, 10) || 1000;
+  const pageSize = parseInt(req.query.pageSize, 10) || 100;
+  const sampleErrors = parseInt(req.query.sampleErrors, 10) || 25;
+
+  try {
+    const { runRawProfileDataAudit } = require("../services/auditRawProfileDataService");
+    const result = await runRawProfileDataAudit({
+      clientId,
+      limit,
+      pageSize,
+      sampleErrors,
+    });
+    return res.json(result);
+  } catch (err) {
+    const logger = createLogger({
+      runId: "AUDIT_RAW_JSON",
+      clientId: "SYSTEM",
+      operation: "audit_raw_profile_json",
+    });
+    logger.error("Raw profile JSON audit failed", { error: err.message });
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/**
  * Client Run Results diagnostic - verify CRR table is being updated
  * GET /api/debug-client-run-results?runId=260304-020121
  * Auth: Bearer PB_WEBHOOK_SECRET (same as debug-render-logs)
