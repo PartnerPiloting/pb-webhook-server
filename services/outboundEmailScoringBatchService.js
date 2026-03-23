@@ -34,6 +34,7 @@ function filterFormula(rescoreAll) {
  * @param {number} [opts.delayMs] ms after each lead
  * @param {boolean} [opts.collectResults] if true, include `results` array (id, label, score, …)
  * @param {boolean} [opts.quick] if true, shorter Gemini timeout + fewer 429 retries (better for HTTP / curl)
+ * @param {'rules'|'ai'} [opts.oesMode] scoring engine; default rules unless OES_USE_AI=true
  * @returns {Promise<{ processed: number, scored: number, failed: number, skippedEmpty: number, clientId: string, baseId: string, formula: string, results?: Array }>}
  */
 async function runOutboundEmailScoringBatch({
@@ -45,14 +46,24 @@ async function runOutboundEmailScoringBatch({
   delayMs = 400,
   collectResults = false,
   quick = false,
+  oesMode,
 }) {
   const lim = Number(limit);
   const useLimit = Number.isFinite(lim) && lim > 0;
   const maxProcessed = useLimit ? lim : Number.POSITIVE_INFINITY;
 
-  const scoreOpts = quick
-    ? { timeoutMs: 55000, max429Attempts: 2 }
-    : undefined;
+  const scoreOpts = {
+    ...(quick ? { timeoutMs: 55000, max429Attempts: 2 } : {}),
+    ...(oesMode === 'ai' || oesMode === 'rules' ? { oesMode } : {}),
+  };
+  const passScoreOpts = Object.keys(scoreOpts).length > 0 ? scoreOpts : undefined;
+
+  const resolvedOesMode =
+    oesMode === 'ai' || oesMode === 'rules'
+      ? oesMode
+      : process.env.OES_USE_AI === 'true' || process.env.OES_USE_AI === '1'
+        ? 'ai'
+        : 'rules';
 
   const client = await clientService.getClientById(clientId);
   if (!client) {
@@ -108,7 +119,7 @@ async function runOutboundEmailScoringBatch({
                   rec.id;
 
                 try {
-                  const result = await scoreRawProfileForOes(raw, scoreOpts);
+                  const result = await scoreRawProfileForOes(raw, passScoreOpts);
                   if (!result.ok) {
                     failed++;
                     console.warn(`FAIL ${rec.id} (${label}): ${result.error}`);
@@ -186,6 +197,7 @@ async function runOutboundEmailScoringBatch({
     apply,
     rescoreAll,
     quick: !!quick,
+    oesMode: resolvedOesMode,
   };
   if (collectResults) {
     out.results = results;

@@ -1294,7 +1294,8 @@ router.get("/admin/audit-raw-profile-json", async (req, res) => {
 /**
  * Score up to N unscored leads (Outbound Email Score blank, Raw Profile Data non-empty).
  * POST /admin/score-oes-unscored?clientId=Guy-Wilson&limit=10&apply=true&delayMs=300
- * Add quick=true for shorter per-lead Gemini timeout and fewer 429 retries (avoids multi-minute HTTP hangs).
+ * Add quick=true for shorter per-lead Gemini timeout and fewer 429 retries (only when ai=true).
+ * Default scoring is rule-based (no Gemini). Add ai=true to use Vertex Gemini for this request.
  * Auth: Authorization: Bearer PB_WEBHOOK_SECRET
  *
  * apply=true writes Airtable; omit or apply=false for dry run. limit capped at 100.
@@ -1315,6 +1316,7 @@ router.post("/admin/score-oes-unscored", async (req, res) => {
   const limit = Math.min(100, Math.max(1, parseInt(q.limit, 10) || 10));
   const apply = q.apply === "true" || q.apply === true;
   const quick = q.quick === "true" || q.quick === true;
+  const oesMode = q.ai === "true" || q.ai === true ? "ai" : "rules";
   let delayMs = Math.min(3000, Math.max(0, parseInt(q.delayMs, 10) || 400));
   if (quick) {
     delayMs = Math.min(delayMs, 400);
@@ -1338,12 +1340,14 @@ router.post("/admin/score-oes-unscored", async (req, res) => {
       delayMs,
       collectResults: true,
       quick,
+      oesMode,
     });
     logger.info("OES batch finished", {
       clientId,
       limit,
       apply,
       quick,
+      oesMode,
       scored: summary.scored,
       failed: summary.failed,
     });
