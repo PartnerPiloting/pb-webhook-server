@@ -5,6 +5,9 @@
  * Calibration: category points are conservative (multi-signal for top buckets); seniority is
  * capped without other signals; summed points are compressed onto 0–10 (see compressRawSumToDisplayScore).
  * Tune regexes / thresholds here; adjust compression formula if scores cluster too high/low.
+ *
+ * If future_awareness stays 0, a heavy raw penalty applies (default −4) so non-tech narratives
+ * sink unless they show digital/innovation/AI language. Set OES_NO_FUTURE_TECH_RAW_PENALTY=0 to disable.
  */
 
 const RE = {
@@ -14,8 +17,6 @@ const RE = {
     /\b(collaboration|partnerships?|ecosystem|connecting\s+people|community\s+building|\bcommunity\b.*\bnetwork|\badvocacy\b|mentoring|building\s+relationships|network\s+of)\b/i,
   collabModerate:
     /\b(stakeholder\s+engagement|cross-?functional|cross\s+functional|people\s+leadership|team\s+leadership)\b/i,
-  futureStrong:
-    /\b(\bai\b|artificial\s+intelligence|machine\s+learning|\bml\b|automation|future\s+of\s+work|disruption|disruptive\s+innovation|\binnovation\b)\b/i,
   futureModerate:
     /\b(digital\s+transformation|digital\s+strategy|change\s+management|business\s+transformation)\b/i,
   expressionStrong: /\b(i\s+believe|i\s+help|i\s+work|i\s+lead|i\s+am\s+passionate|i'm\s+passionate|i\s+love\s+to|my\s+mission|my\s+approach)\b/i,
@@ -116,6 +117,28 @@ function compressRawSumToDisplayScore(rawSum) {
   return Math.max(0, Math.min(10, Math.round(x * 0.62 + 1.35)));
 }
 
+/** Strong tech / AI / future-of-work cues → futureAwareness = 2 */
+function hasFutureStrongSignal(blob) {
+  return /\b(\bai\b|artificial\s+intelligence|generative\s+ai|gen\s*ai|machine\s+learning|\bml\b|\bllm\b|large\s+language|chatgpt|gpt-?\d|automation|future\s+of\s+work|disruption|disruptive\s+innovation)\b/i.test(
+    blob
+  );
+}
+
+/** Moderate digital / change / innovation language → futureAwareness = 1 */
+function hasFutureModerateSignal(blob) {
+  return (
+    RE.futureModerate.test(blob) ||
+    /\b(digital|business)\s+strategy\b/i.test(blob) ||
+    /\binnovation\b/i.test(blob) ||
+    /\b(emerging\s+tech|technology\s+leadership|tech-?enabled)\b/i.test(blob)
+  );
+}
+
+const NO_FUTURE_TECH_RAW_PENALTY = Math.min(
+  8,
+  Math.max(0, parseInt(process.env.OES_NO_FUTURE_TECH_RAW_PENALTY || '4', 10))
+);
+
 function classify(score) {
   if (score >= 9) return 'Pod Builder Potential';
   if (score >= 7) return 'High Priority';
@@ -173,13 +196,14 @@ function scoreRawProfileForOesRules(raw) {
   else if (/\bteam(s)?\b/i.test(blob) && /\blead(er|ing)?\b/i.test(blob)) collaboration = 1;
 
   let futureAwareness = 0;
-  if (RE.futureStrong.test(blob)) {
+  if (hasFutureStrongSignal(blob)) {
     futureAwareness = 2;
-  } else if (RE.futureModerate.test(blob)) {
-    futureAwareness = 1;
-  } else if (/\b(digital|business)\s+strategy\b/i.test(blob)) {
+  } else if (hasFutureModerateSignal(blob)) {
     futureAwareness = 1;
   }
+
+  const noFutureTechPenalty =
+    futureAwareness === 0 && NO_FUTURE_TECH_RAW_PENALTY > 0 ? NO_FUTURE_TECH_RAW_PENALTY : 0;
 
   let expression = 0;
   const fp = countFirstPersonPhrases(blob);
@@ -221,7 +245,14 @@ function scoreRawProfileForOesRules(raw) {
     negativeAdjustment += 1;
   }
 
-  const rawSum = inflection + collaboration + futureAwareness + expression + seniority - negativeAdjustment;
+  const rawSum =
+    inflection +
+    collaboration +
+    futureAwareness +
+    expression +
+    seniority -
+    negativeAdjustment -
+    noFutureTechPenalty;
   const score = compressRawSumToDisplayScore(rawSum);
 
   const breakdown = {
@@ -231,6 +262,7 @@ function scoreRawProfileForOesRules(raw) {
     expression,
     seniority,
     negative_adjustment: -negativeAdjustment,
+    no_future_tech_penalty_raw: noFutureTechPenalty > 0 ? -noFutureTechPenalty : 0,
     raw_sum: Math.round(rawSum * 10) / 10,
   };
 

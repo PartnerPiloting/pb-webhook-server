@@ -1299,6 +1299,8 @@ router.get("/admin/audit-raw-profile-json", async (req, res) => {
  * Auth: Authorization: Bearer PB_WEBHOOK_SECRET
  *
  * apply=true writes Airtable; omit or apply=false for dry run. limit capped at 100.
+ * rescoreAll=true scores leads even when Outbound Email Score is already set (re-run same batch).
+ * recordIds=rec1,rec2,... optional exact leads (use with rescoreAll=true to re-score same rows).
  */
 router.post("/admin/score-oes-unscored", async (req, res) => {
   const authHeader = req.headers.authorization;
@@ -1322,6 +1324,14 @@ router.post("/admin/score-oes-unscored", async (req, res) => {
     delayMs = Math.min(delayMs, 400);
   }
   const pageSize = Math.min(100, Math.max(1, parseInt(q.pageSize, 10) || 50));
+  const rescoreAll = q.rescoreAll === "true" || q.rescoreAll === true;
+  const recordIds = q.recordIds
+    ? String(q.recordIds)
+        .split(/[\s,]+/)
+        .map((s) => s.trim())
+        .filter(Boolean)
+        .slice(0, 30)
+    : undefined;
 
   const logger = createLogger({
     runId: "OES_HTTP",
@@ -1335,12 +1345,13 @@ router.post("/admin/score-oes-unscored", async (req, res) => {
       clientId,
       limit,
       apply,
-      rescoreAll: false,
+      rescoreAll,
       pageSize,
       delayMs,
       collectResults: true,
       quick,
       oesMode,
+      recordIds,
     });
     logger.info("OES batch finished", {
       clientId,
@@ -1348,6 +1359,7 @@ router.post("/admin/score-oes-unscored", async (req, res) => {
       apply,
       quick,
       oesMode,
+      rescoreAll,
       scored: summary.scored,
       failed: summary.failed,
     });
