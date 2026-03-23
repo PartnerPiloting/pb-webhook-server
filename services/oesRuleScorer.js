@@ -7,7 +7,9 @@
  * Tune regexes / thresholds here; adjust compression formula if scores cluster too high/low.
  *
  * If future_awareness stays 0, a heavy raw penalty applies (default −4) so non-tech narratives
- * sink unless they show digital/innovation/AI language. Set OES_NO_FUTURE_TECH_RAW_PENALTY=0 to disable.
+ * sink unless they show digital/innovation/AI language. Tech/IT depth plus an explicit consulting
+ * orientation (e.g. “consultant’s mindset”) counts as moderate future fit and avoids that penalty.
+ * Set OES_NO_FUTURE_TECH_RAW_PENALTY=0 to disable.
  */
 
 const RE = {
@@ -134,6 +136,23 @@ function hasFutureModerateSignal(blob) {
   );
 }
 
+/** IT / engineering depth (broader than technicalIc) for consulting-tech waive */
+function hasTechDepthForConsultingFuture(blob) {
+  return (
+    RE.technicalIc.test(blob) ||
+    /\b(information\s+technology|\bit\s+(consultant|manager|lead|director|professional|specialist)|enterprise\s+technology|systems?\s+architect|solution\s+architect|technical\s+lead|tech\s+lead|infrastructure\s+engineer)\b/i.test(
+      blob
+    )
+  );
+}
+
+/** Explicit consulting orientation (not merely job title “consultant”) */
+function hasConsultantMindsetSignal(blob) {
+  return /\b(consulting\s+mindset|consultant(?:'|\u2019)s\s+mindset|consultant\s+approach|internal\s+consultant|acting\s+as\s+(an\s+)?internal\s+consultant)\b/i.test(
+    blob
+  );
+}
+
 const NO_FUTURE_TECH_RAW_PENALTY = Math.min(
   8,
   Math.max(0, parseInt(process.env.OES_NO_FUTURE_TECH_RAW_PENALTY || '4', 10))
@@ -199,6 +218,8 @@ function scoreRawProfileForOesRules(raw) {
   if (hasFutureStrongSignal(blob)) {
     futureAwareness = 2;
   } else if (hasFutureModerateSignal(blob)) {
+    futureAwareness = 1;
+  } else if (hasTechDepthForConsultingFuture(blob) && hasConsultantMindsetSignal(blob)) {
     futureAwareness = 1;
   }
 
