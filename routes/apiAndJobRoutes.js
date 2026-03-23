@@ -1,7 +1,13 @@
 // routes/apiAndJobRoutes.js
 
 const express = require("express");
+const multer = require("multer");
 const router = express.Router();
+
+const backfillLeadEmailsUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 35 * 1024 * 1024 },
+});
 const fetch = (...args) =>
   import("node-fetch").then(({ default: f }) => f(...args));
 const dirtyJSON = require('dirty-json');
@@ -1151,6 +1157,96 @@ router.get("/debug-render-logs", async (req, res) => {
     });
   }
 });
+
+/**
+ * Backfill blank Lead emails from CSV/XLSX (profile_url + email) or public CSV URL.
+ * POST /admin/backfill-lead-emails
+ * Auth: Authorization: Bearer PB_WEBHOOK_SECRET (or DEBUG_API_KEY) — same as debug-render-logs
+ *
+ * multipart/form-data:
+ *   file: optional .csv or .xlsx
+ *   sheetUrl: optional public CSV URL (if no file)
+ *   clientId: default Guy-Wilson
+ *   apply: "true" to write (default dry run)
+ *   previewMax: number (default 20)
+ *   maxUpdates: cap when apply (omit = all matches)
+ */
+router.post(
+  "/admin/backfill-lead-emails",
+  backfillLeadEmailsUpload.single("file"),
+  async (req, res) => {
+    const logger = createLogger({
+      runId: "BACKFILL_EMAIL",
+      clientId: "SYSTEM",
+      operation: "backfill_lead_emails",
+    });
+
+    const authHeader = req.headers.authorization;
+    const secret = process.env.PB_WEBHOOK_SECRET || process.env.DEBUG_API_KEY;
+    if (!authHeader || !secret || !authHeader.includes(secret)) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    if (!process.env.AIRTABLE_API_KEY) {
+      return res.status(500).json({ error: "AIRTABLE_API_KEY not configured" });
+    }
+
+    const clientId = (req.body.clientId && String(req.body.clientId).trim()) || "Guy-Wilson";
+    const apply = req.body.apply === "true" || req.body.apply === true;
+    const previewMax = Math.max(0, parseInt(req.body.previewMax, 10) || 20);
+    const maxUpdatesRaw = req.body.maxUpdates;
+    const maxUpdates =
+      maxUpdatesRaw !== undefined && maxUpdatesRaw !== ""
+        ? Math.max(1, parseInt(maxUpdatesRaw, 10) || 1)
+        : Number.POSITIVE_INFINITY;
+
+    const {
+      buildEmailMapFromBuffer,
+      buildEmailMapFromPublicCsvUrl,
+      runBackfillLeadEmails,
+    } = require("../services/backfillLeadEmailsFromExportService");
+
+    let mapResult;
+    try {
+      if (req.file && req.file.buffer) {
+        mapResult = buildEmailMapFromBuffer(req.file.buffer, req.file.originalname || "");
+      } else if (req.body.sheetUrl && String(req.body.sheetUrl).trim()) {
+        mapResult = await buildEmailMapFromPublicCsvUrl(String(req.body.sheetUrl).trim());
+      } else {
+        return res.status(400).json({
+          error:
+            'Send multipart field "file" (.csv or .xlsx) or form field "sheetUrl" (public CSV URL).',
+        });
+      }
+    } catch (parseErr) {
+      logger.warn("Backfill email map parse failed", { error: parseErr.message });
+      return res.status(400).json({ error: parseErr.message });
+    }
+
+    const { map: urlToEmail, warnings: parserWarnings } = mapResult;
+
+    try {
+      const result = await runBackfillLeadEmails({
+        clientId,
+        urlToEmail,
+        parserWarnings,
+        apply,
+        previewMax,
+        maxUpdates,
+      });
+      logger.info("Backfill lead emails completed", {
+        clientId,
+        apply,
+        matchedLeads: result.matchedLeads,
+        applied: result.applied,
+      });
+      return res.json({ success: true, ...result });
+    } catch (err) {
+      logger.error("Backfill lead emails failed", { error: err.message });
+      return res.status(500).json({ success: false, error: err.message });
+    }
+  }
+);
 
 /**
  * Client Run Results diagnostic - verify CRR table is being updated
