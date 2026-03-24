@@ -1,4 +1,5 @@
 const express = require('express');
+const multer = require('multer');
 const { createLogger } = require('../../../utils/contextLogger');
 const { logNotesChange } = require('../../../utils/notesAuditLogger');
 const { stripCredentialSuffixes } = require('../../../utils/nameNormalizer');
@@ -12,6 +13,23 @@ const geminiModelId = geminiConfig ? geminiConfig.geminiModelId : null;
 console.log('✅ linkedinRoutesWithAuth.js loaded - logger initialized:', typeof logger);
 
 const router = express.Router();
+
+const leadEmailCsvUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 35 * 1024 * 1024 },
+});
+
+function requireGuyWilsonOwner(req, res) {
+  const cid = req.client && String(req.client.clientId);
+  if (cid !== 'Guy-Wilson') {
+    res.status(403).json({
+      success: false,
+      error: 'This action is only available for the owner account.',
+    });
+    return false;
+  }
+  return true;
+}
 
 // Import authentication middleware
 const { authenticateUserWithTestMode } = require('../../../middleware/authMiddleware');
@@ -742,6 +760,139 @@ router.get('/leads/export', async (req, res) => {
     res.status(500).json({ error: 'Failed to export leads', details: error.message });
   }
 });
+
+/**
+ * GET /api/linkedin/leads/blank-email-urls
+ * Owner (Guy-Wilson): all LinkedIn profile URLs for leads with blank Email (for LinkedHelper Email Finder).
+ */
+router.get('/leads/blank-email-urls', async (req, res) => {
+  if (!requireGuyWilsonOwner(req, res)) return;
+  logger.info('LinkedIn Routes: GET /leads/blank-email-urls');
+  try {
+    const airtableBase = await getAirtableBase(req);
+    const {
+      BLANK_EMAIL_FORMULA,
+      LINKEDIN_FIELD,
+      EMAIL_FIELD,
+    } = require('../../../services/backfillLeadEmailsFromExportService');
+    const { normalizeLinkedInUrl } = require('../../../utils/pbPostsSync');
+
+    const MAX_URLS = 25000;
+    const urls = [];
+    const seenNorm = new Set();
+
+    await new Promise((resolve, reject) => {
+      airtableBase('Leads')
+        .select({
+          filterByFormula: BLANK_EMAIL_FORMULA,
+          pageSize: 100,
+          fields: [LINKEDIN_FIELD, EMAIL_FIELD],
+          sort: [{ field: 'First Name' }, { field: 'Last Name' }],
+        })
+        .eachPage(
+          (records, fetchNextPage) => {
+            for (const rec of records) {
+              if (urls.length >= MAX_URLS) {
+                return resolve();
+              }
+              const raw = rec.get(LINKEDIN_FIELD);
+              if (raw == null || !String(raw).trim()) continue;
+              const norm = normalizeLinkedInUrl(raw);
+              if (!norm || seenNorm.has(norm)) continue;
+              seenNorm.add(norm);
+              let u = String(raw).trim();
+              if (!/^https?:\/\//i.test(u)) {
+                u = `https://${u}`;
+              }
+              urls.push(u);
+            }
+            if (urls.length >= MAX_URLS) {
+              return resolve();
+            }
+            fetchNextPage();
+          },
+          (err) => {
+            if (err) reject(err);
+            else resolve();
+          }
+        );
+    });
+
+    res.json({
+      success: true,
+      total: urls.length,
+      truncated: urls.length >= MAX_URLS,
+      urls,
+    });
+  } catch (error) {
+    logger.error('LinkedIn Routes: Error in /leads/blank-email-urls:', error);
+    res.status(500).json({ success: false, error: error.message || 'Failed to load URLs' });
+  }
+});
+
+/**
+ * POST /api/linkedin/leads/upload-emails-csv
+ * Owner: multipart file (CSV/XLSX) with profile URL + email; updates Airtable only when Email is blank (same rules as admin backfill).
+ */
+router.post(
+  '/leads/upload-emails-csv',
+  leadEmailCsvUpload.single('file'),
+  async (req, res) => {
+    if (!requireGuyWilsonOwner(req, res)) return;
+    logger.info('LinkedIn Routes: POST /leads/upload-emails-csv');
+    if (!req.file || !req.file.buffer) {
+      return res.status(400).json({
+        success: false,
+        error: 'Upload a CSV or Excel file (field name: file).',
+      });
+    }
+
+    const clientId = req.client.clientId;
+    const body = req.body || {};
+    const apply = body.apply === 'true' || body.apply === true;
+    const previewMax = Math.max(0, parseInt(body.previewMax, 10) || 20);
+    const maxUpdatesRaw = body.maxUpdates;
+    const maxUpdates =
+      maxUpdatesRaw !== undefined && maxUpdatesRaw !== ''
+        ? Math.max(1, parseInt(maxUpdatesRaw, 10) || 1)
+        : Number.POSITIVE_INFINITY;
+
+    try {
+      const {
+        buildEmailMapFromBuffer,
+        runBackfillLeadEmails,
+      } = require('../../../services/backfillLeadEmailsFromExportService');
+
+      const mapResult = buildEmailMapFromBuffer(
+        req.file.buffer,
+        req.file.originalname || ''
+      );
+      const { map: urlToEmail, warnings: parserWarnings } = mapResult;
+
+      if (parserWarnings.length && urlToEmail.size === 0) {
+        return res.status(400).json({
+          success: false,
+          error: parserWarnings.join(' '),
+          warnings: parserWarnings,
+        });
+      }
+
+      const result = await runBackfillLeadEmails({
+        clientId,
+        urlToEmail,
+        parserWarnings,
+        apply,
+        previewMax,
+        maxUpdates,
+      });
+
+      res.json({ success: true, ...result });
+    } catch (error) {
+      logger.error('LinkedIn Routes: Error in /leads/upload-emails-csv:', error);
+      res.status(500).json({ success: false, error: error.message || 'Upload failed' });
+    }
+  }
+);
 
 /**
  * GET /api/linkedin/leads/search-token-suggestions

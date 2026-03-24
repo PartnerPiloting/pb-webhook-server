@@ -17,13 +17,25 @@ const EMAIL_FIELD = 'Email';
 
 const BLANK_EMAIL_FORMULA = `AND(OR({${EMAIL_FIELD}} = BLANK(), {${EMAIL_FIELD}} = ""), LEN(TRIM({${LINKEDIN_FIELD}} & "")) > 0)`;
 
+function isValidLeadEmail(email) {
+  const s = String(email).trim();
+  if (!s) return false;
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
+}
+
 function rowUrlEmail(row) {
   const lower = {};
   for (const [k, v] of Object.entries(row)) {
     lower[String(k).trim().toLowerCase()] = v;
   }
-  const url = String(lower.profile_url || lower['linkedin url'] || lower['linkedin profile url'] || '').trim();
-  const email = String(lower.email || '').trim();
+  const url = String(
+    lower.profile_url ||
+      lower['linkedin url'] ||
+      lower['linkedin profile url'] ||
+      lower.linkedin_profile_url ||
+      ''
+  ).trim();
+  const email = String(lower.email || lower['email address'] || '').trim();
   return { url, email };
 }
 
@@ -32,7 +44,7 @@ function mapFromRows(rows, warnings) {
   const w = warnings || [];
   for (const row of rows) {
     const { url, email } = rowUrlEmail(row);
-    if (!url || !email || !email.includes('@')) continue;
+    if (!url || !isValidLeadEmail(email)) continue;
     const norm = normalizeLinkedInUrl(url);
     if (!norm) continue;
     if (map.has(norm) && map.get(norm).toLowerCase() !== email.toLowerCase()) {
@@ -79,8 +91,14 @@ function parseCsvText(text) {
   if (!lines.length) return { map: new Map(), warnings: ['CSV is empty'] };
 
   const header = lines[0].split(',').map((c) => c.trim().replace(/^"|"$/g, '').toLowerCase());
-  const urlIdx = header.findIndex((h) => h === 'profile_url' || h === 'linkedin url' || h === 'linkedin profile url');
-  const emailIdx = header.findIndex((h) => h === 'email');
+  const urlIdx = header.findIndex(
+    (h) =>
+      h === 'profile_url' ||
+      h === 'linkedin url' ||
+      h === 'linkedin profile url' ||
+      h === 'linkedin_profile_url'
+  );
+  const emailIdx = header.findIndex((h) => h === 'email' || h === 'email address');
   const warnings = [];
   if (urlIdx < 0 || emailIdx < 0) {
     warnings.push(`Expected header columns profile_url and email; got: ${header.join(', ')}`);
@@ -101,7 +119,7 @@ function parseCsvText(text) {
       url = line.slice(0, firstComma).trim().replace(/^"|"$/g, '');
       email = line.slice(firstComma + 1).trim().replace(/^"|"$/g, '').replace(/""/g, '"');
     }
-    if (!url || !email || !email.includes('@')) continue;
+    if (!url || !isValidLeadEmail(email)) continue;
     const norm = normalizeLinkedInUrl(url);
     if (!norm) continue;
     if (map.has(norm) && map.get(norm).toLowerCase() !== email.toLowerCase()) {
@@ -260,6 +278,7 @@ module.exports = {
   LINKEDIN_FIELD,
   EMAIL_FIELD,
   BLANK_EMAIL_FORMULA,
+  isValidLeadEmail,
   buildEmailMapFromBuffer,
   buildEmailMapFromFilePath,
   buildEmailMapFromPublicCsvUrl,
