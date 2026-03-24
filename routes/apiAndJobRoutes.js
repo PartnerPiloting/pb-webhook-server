@@ -1208,6 +1208,41 @@ router.get("/debug-gmail-oauth-env", async (req, res) => {
 });
 
 /**
+ * POST /debug-gmail-send-test
+ * Sends one plain-text test email (subject/body "test") to a fixed allowlisted address.
+ * Auth: Bearer PB_WEBHOOK_SECRET (same as debug-render-logs).
+ */
+router.post("/debug-gmail-send-test", async (req, res) => {
+  const authHeader = req.headers.authorization;
+  const secret = process.env.PB_WEBHOOK_SECRET || process.env.DEBUG_API_KEY;
+  if (!secret || !authHeader || !authHeader.includes(secret)) {
+    return res.status(401).json({ ok: false, error: "Unauthorized" });
+  }
+
+  const allowlistedTo = "taniaadelewilson@gmail.com";
+
+  try {
+    const { sendTextEmail } = require("../services/gmailApiService.js");
+    const result = await sendTextEmail({
+      to: allowlistedTo,
+      subject: "test",
+      text: "test",
+    });
+    return res.json({
+      ok: true,
+      to: allowlistedTo,
+      messageId: result.id,
+      threadId: result.threadId,
+    });
+  } catch (e) {
+    return res.status(500).json({
+      ok: false,
+      error: e.message || String(e),
+    });
+  }
+});
+
+/**
  * Backfill blank Lead emails from CSV/XLSX (profile_url + email) or public CSV URL.
  * POST /admin/backfill-lead-emails
  * Auth: Authorization: Bearer PB_WEBHOOK_SECRET (or DEBUG_API_KEY) — same as debug-render-logs
