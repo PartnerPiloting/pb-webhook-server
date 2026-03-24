@@ -63,9 +63,21 @@ Other rules (same as before):
 - **Gmail:** `services/gmailApiService.js`, OAuth env vars on Render.
 - **Debug:** `GET /debug-gmail-oauth-env`, `POST /debug-gmail-send-test` (Bearer auth; test-only recipient) — do not use as production bulk API.
 
+## Airtable field names (Leads) — confirmed
+
+| Use | Field name |
+|-----|------------|
+| Email | **Email** |
+| First name (greeting) | **First Name** |
+| Conversation / exclude if active | **Notes** |
+| Pipeline status | **Scoring Status** |
+| When scored | **Date Scored** |
+| Sort key (desc) | **Outbound Email Score Order** |
+| Numeric score; 0 = opt-out | **Outbound Email Score** |
+| Already sent | **Outbound Email Sent At** |
+
 ## Open / TBD
 
-- Exact Airtable **field names** for **Notes**, **Outbound Email Score Order**, **Outbound Email Score**, **Date Scored**, lead **email**, **first name**. **Confirmed:** **`Scoring Status`**, **`Outbound Email Sent At`**.
 - Airtable **globals** shape for caps and template references.
 - Timezone for “Saturday/Sunday morning.”
 - Final rules for **edge cases** (Notes with only punctuation, etc.).
