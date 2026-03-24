@@ -16,7 +16,7 @@ Send personalized individual emails from **Guy Wilson &lt;guyralphwilson@gmail.c
 
 - Target **~100 Saturday morning** and **~100 Sunday morning** (define “morning” as a **time window**, not a single burst).
 - **Spread sends** within the window with **jitter**; use **light content variants** (not only `[Name]`) to reduce “identical blast” signals.
-- **Configurable cap:** max sends per run/day via **env** and/or **Airtable global parameters**.
+- **Configurable cap:** max sends per run via **env** and/or Airtable table **`Outbound Email Settings`** (single row recommended). **Which calendar days** send is usually **Render cron** (add jobs for extra weekdays later); the table holds **limits / flags**, not the only copy of “Saturday vs Sunday” forever.
 - **Phase 1:** support **small test caps** (e.g. 3–5) before full volume.
 
 ## Template & configuration
@@ -76,8 +76,13 @@ Other rules (same as before):
 | Numeric score; 0 = opt-out | **Outbound Email Score** |
 | Already sent | **Outbound Email Sent At** |
 
+## Outbound Email Settings (Airtable)
+
+- **Table name:** **`Outbound Email Settings`** (in **My Lead–Guywilson** base). One record is enough to start.
+- **Suggested columns later:** e.g. max sends per run, dry-run flag, campaign enabled — exact names TBD when we implement. Per-day caps only if you need different limits on weekend vs weekday.
+
 ## Open / TBD
 
-- Airtable **globals** shape for caps and template references.
+- **Outbound Email Settings** column list + types.
 - Timezone for “Saturday/Sunday morning.”
 - Final rules for **edge cases** (Notes with only punctuation, etc.).
