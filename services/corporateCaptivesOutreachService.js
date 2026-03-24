@@ -298,4 +298,9 @@ module.exports = {
   F,
   notesEffectivelyEmpty,
   leadPassesFilters,
+  applyTemplate,
+  pickRandomSubject,
+  parseDateScoredBrisbane,
+  emailLooksValid,
+  numOrNull,
 };
