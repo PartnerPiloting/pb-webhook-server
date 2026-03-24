@@ -33,7 +33,9 @@
     "show-env-vars": "node scripts/show-env-vars.js",
     "sync-memberships": "node sync-client-memberships.js",
     "test": "echo \"Error: no test specified\" && exit 1",
-    "test:add-to": "node tests/test-add-to-recipients.js"
+    "test:add-to": "node tests/test-add-to-recipients.js",
+    "gmail:oauth-token": "node scripts/gmail-oauth-get-refresh-token.js",
+    "test:gmail-oauth": "node scripts/test-gmail-oauth-env.js"
   },
   "keywords": [],
   "author": "",
