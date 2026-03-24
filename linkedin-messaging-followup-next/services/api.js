@@ -1965,6 +1965,54 @@ export const resetSweepStatus = async () => {
   return response.data;
 };
 
+/**
+ * Owner (Guy-Wilson): all LinkedIn URLs for leads with blank Email — for LinkedHelper Email Finder.
+ */
+export const fetchBlankEmailProfileUrls = async () => {
+  const response = await api.get('/leads/blank-email-urls', {
+    timeout: 180000,
+  });
+  return response.data;
+};
+
+/**
+ * Owner (Guy-Wilson): multipart CSV/XLSX with profile URL + email; backfills blank emails only.
+ */
+export const uploadLeadEmailsCsv = async (file, { apply = true, previewMax = 20, maxUpdates } = {}) => {
+  const clientId = getCurrentClientId();
+  if (!clientId) throw new Error('Client ID not available');
+  const token = getCurrentPortalToken();
+  const devKey = getCurrentDevKey();
+  const url = new URL(`${API_BASE_URL}/leads/upload-emails-csv`);
+  url.searchParams.set('client', clientId);
+  const headers = new Headers();
+  headers.set('x-client-id', clientId);
+  if (token) headers.set('x-portal-token', token);
+  if (devKey) headers.set('x-dev-key', devKey);
+  if (typeof window !== 'undefined') {
+    const wpUser = localStorage.getItem('wpUsername');
+    const wpAppPassword = localStorage.getItem('wpAppPassword');
+    if (wpUser && wpAppPassword) {
+      headers.set('Authorization', `Basic ${btoa(`${wpUser}:${wpAppPassword}`)}`);
+    }
+    const wpNonce = document.querySelector('meta[name="wp-nonce"]')?.content;
+    if (wpNonce) headers.set('X-WP-Nonce', wpNonce);
+  }
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('apply', apply ? 'true' : 'false');
+  formData.append('previewMax', String(previewMax));
+  if (maxUpdates != null && maxUpdates !== '') {
+    formData.append('maxUpdates', String(maxUpdates));
+  }
+  const res = await fetch(url.toString(), { method: 'POST', body: formData, headers });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data.error || data.details || `Upload failed (${res.status})`);
+  }
+  return data;
+};
+
 export default api;
 
 // Export helper functions for use in components
