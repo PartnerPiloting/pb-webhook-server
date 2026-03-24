@@ -1492,6 +1492,98 @@ router.post("/admin/score-oes-unscored", async (req, res) => {
 });
 
 /**
+ * Cron-friendly OES: GET so simple schedulers (no POST / no custom headers) can trigger scoring.
+ * Same behaviour as POST /admin/score-oes-unscored (rules by default; unscored-only unless rescoreAll=true).
+ *
+ * GET /api/cron/score-oes-unscored?clientId=Guy-Wilson&limit=100&apply=true&delayMs=300
+ *
+ * Auth (either):
+ *   - Header: Authorization: Bearer PB_WEBHOOK_SECRET
+ *   - Query: secret=<PB_WEBHOOK_SECRET> or webhookSecret=... (avoid if possible; may appear in access logs)
+ *
+ * Query params: clientId, limit (1–100), apply (default true for this route), delayMs, rescoreAll, quick, ai, pageSize, recordIds
+ */
+router.get("/api/cron/score-oes-unscored", async (req, res) => {
+  const secret = process.env.PB_WEBHOOK_SECRET || process.env.DEBUG_API_KEY;
+  const authHeader = req.headers.authorization || "";
+  const qSecret = req.query.secret || req.query.webhookSecret;
+  const bearerOk = secret && authHeader.includes(secret);
+  const queryOk = secret && qSecret && String(qSecret) === secret;
+  if (!secret || (!bearerOk && !queryOk)) {
+    return res.status(401).json({ success: false, error: "Unauthorized" });
+  }
+
+  if (!process.env.AIRTABLE_API_KEY) {
+    return res.status(500).json({ error: "AIRTABLE_API_KEY not configured" });
+  }
+
+  const q = req.query || {};
+  const clientId = (q.clientId && String(q.clientId).trim()) || "Guy-Wilson";
+  const limit = Math.min(100, Math.max(1, parseInt(q.limit, 10) || 50));
+  const apply =
+    q.apply === undefined || q.apply === ""
+      ? true
+      : q.apply === "true" || q.apply === true;
+  const quick = q.quick === "true" || q.quick === true;
+  const oesMode = q.ai === "true" || q.ai === true ? "ai" : "rules";
+  let delayMs = Math.min(3000, Math.max(0, parseInt(q.delayMs, 10) || 400));
+  if (quick) {
+    delayMs = Math.min(delayMs, 400);
+  }
+  const pageSize = Math.min(100, Math.max(1, parseInt(q.pageSize, 10) || 50));
+  const rescoreAll = q.rescoreAll === "true" || q.rescoreAll === true;
+  const recordIds = q.recordIds
+    ? String(q.recordIds)
+        .split(/[\s,]+/)
+        .map((s) => s.trim())
+        .filter(Boolean)
+        .slice(0, 30)
+    : undefined;
+
+  const logger = createLogger({
+    runId: "OES_CRON",
+    clientId: "SYSTEM",
+    operation: "score_oes_unscored_get",
+  });
+
+  try {
+    const { runOutboundEmailScoringBatch } = require("../services/outboundEmailScoringBatchService");
+    const summary = await runOutboundEmailScoringBatch({
+      clientId,
+      limit,
+      apply,
+      rescoreAll,
+      pageSize,
+      delayMs,
+      collectResults: limit <= 25,
+      quick,
+      oesMode,
+      recordIds,
+    });
+    logger.info("OES cron batch finished", {
+      clientId,
+      limit,
+      apply,
+      oesMode,
+      rescoreAll,
+      scored: summary.scored,
+      failed: summary.failed,
+    });
+    const { results, scoringFailures, formula, ...rest } = summary;
+    return res.json({
+      success: true,
+      ...rest,
+      ...(Array.isArray(results) && results.length ? { results } : {}),
+      ...(Array.isArray(scoringFailures) && scoringFailures.length ? { scoringFailures } : {}),
+      formula,
+    });
+  } catch (err) {
+    logger.error("OES cron batch failed", { error: err.message });
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/**
  * Client Run Results diagnostic - verify CRR table is being updated
  * GET /api/debug-client-run-results?runId=260304-020121
  * Auth: Bearer PB_WEBHOOK_SECRET (same as debug-render-logs)
