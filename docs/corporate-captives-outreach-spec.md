@@ -33,15 +33,25 @@ Send personalized individual emails from **Guy Wilson &lt;guyralphwilson@gmail.c
 
 ## Eligibility filters
 
+**Field:** **`Scoring Status`** (Single select). This is **not** the same as numeric **Outbound Email Score** (used for sort + opt-out via **0**).
+
+| `Scoring Status` value | CC email (this axis) |
+|--------------------------|----------------------|
+| **To Be Scored** | **Exclude** (always) |
+| **Scored** | **Include only** if **Date Scored** is set **and** **≥ 60 days** ago |
+| **Manually Excluded** | **Exclude** |
+| **Failed – API Error** | **Exclude** |
+| **Failed – Parse Error** | **Exclude** |
+| **Skipped – Profile Too Thin** | **Exclude** |
+
+Other rules (same as before):
+
 | Rule | Action |
 |------|--------|
 | **Notes** non-blank | Exclude (already in conversation) |
-| **Scoring status** = **To Be Scored** | Exclude (always) |
-| **Scoring status** = **Scored** | Include **only** if **Date Scored** is **≥ 60 days** ago |
-| **Date Scored** empty while status is **Scored** | Exclude until Date Scored is set |
-| Other scoring statuses | Eligible on this axis (other filters still apply) |
-| **Outbound Email Score** = **0** | Treat as **opt-out** for this campaign — exclude |
-| **Outbound Email Sent At** is non-empty | Exclude (already sent this campaign) |
+| **Outbound Email Score** = **0** | Opt-out — **exclude** |
+| **Outbound Email Sent At** non-empty | Exclude (already sent) |
+| Invalid / empty email | Exclude |
 
 ## Idempotency & tracking
 
@@ -55,7 +65,7 @@ Send personalized individual emails from **Guy Wilson &lt;guyralphwilson@gmail.c
 
 ## Open / TBD
 
-- Exact Airtable **field names** for scoring status, Notes, Outbound Email Score Order, Outbound Email Score, Date Scored. **Confirmed:** **`Outbound Email Sent At`** (Date/Time) for idempotency.
+- Exact Airtable **field names** for **Notes**, **Outbound Email Score Order**, **Outbound Email Score**, **Date Scored**, lead **email**, **first name**. **Confirmed:** **`Scoring Status`**, **`Outbound Email Sent At`**.
 - Airtable **globals** shape for caps and template references.
 - Timezone for “Saturday/Sunday morning.”
 - Final rules for **edge cases** (Notes with only punctuation, etc.).
