@@ -38,20 +38,23 @@ Send personalized individual emails from **Guy Wilson &lt;guyralphwilson@gmail.c
 | `Scoring Status` value | CC email (this axis) |
 |--------------------------|----------------------|
 | **To Be Scored** | **Exclude** (always) |
-| **Scored** | **Include only** if **Date Scored** is set **and** **≥ 60 days** ago |
+| **Scored** | **Include only** if **Date Scored** is set **and** **≥ 60 days** ago (**Brisbane** calendar date vs today) |
 | **Manually Excluded** | **Exclude** |
 | **Failed – API Error** | **Exclude** |
 | **Failed – Parse Error** | **Exclude** |
 | **Skipped – Profile Too Thin** | **Exclude** |
+| **Any other / new status** | **Exclude** until explicitly allowed in code |
 
-Other rules (same as before):
+Other rules:
 
 | Rule | Action |
 |------|--------|
-| **Notes** non-blank | Exclude (already in conversation) |
-| **Outbound Email Score** = **0** | Opt-out — **exclude** |
+| **Notes** | Exclude if **not** “empty”: treat as empty only if **blank**, **whitespace-only**, or **`.`** only |
+| **First Name** | **Skip** lead if missing/blank |
+| **Outbound Email Score** | **0** = opt-out — exclude; **blank** = **skip** |
+| **Outbound Email Score Order** | **blank** = **skip** |
 | **Outbound Email Sent At** non-empty | Exclude (already sent) |
-| Invalid / empty email | Exclude |
+| Invalid / empty **Email** | Exclude |
 
 ## Idempotency & tracking
 
