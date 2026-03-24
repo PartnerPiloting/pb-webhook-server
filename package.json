@@ -36,7 +36,8 @@
     "test:add-to": "node tests/test-add-to-recipients.js",
     "gmail:oauth-token": "node scripts/gmail-oauth-get-refresh-token.js",
     "test:gmail-oauth": "node scripts/test-gmail-oauth-env.js",
-    "gmail:send-test": "node scripts/gmail-send-test.js"
+    "gmail:send-test": "node scripts/gmail-send-test.js",
+    "test:cc-outreach": "node tests/corporateCaptivesOutreach.harness.js"
   },
   "keywords": [],
   "author": "",
