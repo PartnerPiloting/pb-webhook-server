@@ -21,9 +21,9 @@ Send personalized individual emails from **Guy Wilson &lt;guyralphwilson@gmail.c
 
 ## Template & configuration
 
-- **Subject + body** should live in **Airtable** (or equivalent) for frequent copy changes — avoid long-term hard-coding.
-- **Links** (Calendly, article/resource): **env** and/or Airtable.
-- **Split:** sending **machinery** in code; **knobs** in env/globals; **people + copy** in Airtable.
+- **Subjects:** **`Email Subject 1`**, **`Email Subject 2`**, **`Email Subject 3`** — code picks **one at random** (non-empty fields only).
+- **Body:** single **`Email Body`** with **`{{FirstName}}`**; links in the body (or env later if you prefer).
+- **Split:** sending **machinery** in code; **knobs** in **Outbound Email Settings**; **people** on **Leads**.
 
 ## List source
 
@@ -79,13 +79,23 @@ Other rules (same as before):
 ## Outbound Email Settings (Airtable)
 
 - **Table name:** **`Outbound Email Settings`** (in **My Lead–Guywilson** base). One record is enough to start.
-- **Fields (confirmed / planned):**
-  - **`Max Sends Per Run`** (Number) — cap per cron invocation.
-  - **`Dry Run`** (Single select: **Yes** / **No**) — **Yes** = select + log only; **no** Gmail send and **no** **`Outbound Email Sent At`** updates. (Single select instead of checkbox for API reliability.)
-- **Later optional:** master enable, per-day caps, min delay between sends.
+- **Primary row label:** **`Name`** = e.g. **`Default`** (or any single label).
+
+| Field | Type | Purpose |
+|--------|------|--------|
+| **`Max Sends Per Run`** | Number | Cap per cron run. |
+| **`Dry Run`** | Single select **Yes** / **No** | **Yes** = no Gmail, no **`Outbound Email Sent At`** updates. |
+| **`Outbound Email Enabled`** | Single select **Yes** / **No** | **No** = job exits immediately. |
+| **`Min Seconds Between Sends`** | Number | Floor spacing; code adds random jitter on top. |
+| **`Email Subject 1`** | Single line | Subject pool (see below). |
+| **`Email Subject 2`** | Single line | Subject pool. |
+| **`Email Subject 3`** | Single line | Subject pool. |
+| **`Email Body`** | Long text | One body for all; placeholder **`{{FirstName}}`**. Links live in the body. |
+
+**Subject choice:** each send **randomly picks one** of **Subject 1 / 2 / 3** that is **non-empty**. If only one is filled, every send uses that one.
 
 ## Open / TBD
 
-- Any extra **Outbound Email Settings** columns beyond **Max Sends Per Run** and **Dry Run**.
+- **Outbound Email Settings:** any further columns (e.g. separate URL fields if not using links in body).
 - Timezone for “Saturday/Sunday morning.”
 - Final rules for **edge cases** (Notes with only punctuation, etc.).
