@@ -41,11 +41,11 @@ Send personalized individual emails from **Guy Wilson &lt;guyralphwilson@gmail.c
 | **Date Scored** empty while status is **Scored** | Exclude until Date Scored is set |
 | Other scoring statuses | Eligible on this axis (other filters still apply) |
 | **Outbound Email Score** = **0** | Treat as **opt-out** for this campaign — exclude |
-| Already sent this campaign | Exclude (requires **sent** + **sent date** fields on lead) |
+| **Outbound Email Sent At** is non-empty | Exclude (already sent this campaign) |
 
 ## Idempotency & tracking
 
-- **Never** send twice to the same lead for this campaign: maintain **sent flag** and **sent date** (and optionally campaign id later).
+- **Never** send twice to the same lead for this campaign: use **`Outbound Email Sent At`** (Date/Time) on Leads — empty = not sent; set when send succeeds (and optionally campaign id later).
 - Guard against overlapping cron runs (claim/lock pattern TBD in implementation).
 
 ## Technical stack (existing)
@@ -55,7 +55,7 @@ Send personalized individual emails from **Guy Wilson &lt;guyralphwilson@gmail.c
 
 ## Open / TBD
 
-- Exact Airtable **field names** for scoring status, Notes, Outbound Email Score Order, Outbound Email Score, Date Scored, sent fields.
+- Exact Airtable **field names** for scoring status, Notes, Outbound Email Score Order, Outbound Email Score, Date Scored. **Confirmed:** **`Outbound Email Sent At`** (Date/Time) for idempotency.
 - Airtable **globals** shape for caps and template references.
 - Timezone for “Saturday/Sunday morning.”
 - Final rules for **edge cases** (Notes with only punctuation, etc.).
