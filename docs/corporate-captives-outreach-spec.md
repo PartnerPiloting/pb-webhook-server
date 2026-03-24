@@ -79,10 +79,13 @@ Other rules (same as before):
 ## Outbound Email Settings (Airtable)
 
 - **Table name:** **`Outbound Email Settings`** (in **My Lead–Guywilson** base). One record is enough to start.
-- **Suggested columns later:** e.g. max sends per run, dry-run flag, campaign enabled — exact names TBD when we implement. Per-day caps only if you need different limits on weekend vs weekday.
+- **Fields (confirmed / planned):**
+  - **`Max Sends Per Run`** (Number) — cap per cron invocation.
+  - **`Dry Run`** (Single select: **Yes** / **No**) — **Yes** = select + log only; **no** Gmail send and **no** **`Outbound Email Sent At`** updates. (Single select instead of checkbox for API reliability.)
+- **Later optional:** master enable, per-day caps, min delay between sends.
 
 ## Open / TBD
 
-- **Outbound Email Settings** column list + types.
+- Any extra **Outbound Email Settings** columns beyond **Max Sends Per Run** and **Dry Run**.
 - Timezone for “Saturday/Sunday morning.”
 - Final rules for **edge cases** (Notes with only punctuation, etc.).
