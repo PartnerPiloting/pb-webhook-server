@@ -1159,6 +1159,55 @@ router.get("/debug-render-logs", async (req, res) => {
 });
 
 /**
+ * GET /debug-gmail-oauth-env
+ * Verifies GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET, GMAIL_REFRESH_TOKEN (refresh → access token).
+ * Does not send email. Auth: Bearer PB_WEBHOOK_SECRET (same as debug-render-logs).
+ */
+router.get("/debug-gmail-oauth-env", async (req, res) => {
+  const authHeader = req.headers.authorization;
+  const secret = process.env.PB_WEBHOOK_SECRET || process.env.DEBUG_API_KEY;
+  if (!secret || !authHeader || !authHeader.includes(secret)) {
+    return res.status(401).json({ ok: false, error: "Unauthorized" });
+  }
+
+  const id = process.env.GOOGLE_OAUTH_CLIENT_ID;
+  const clientSecret = process.env.GOOGLE_OAUTH_CLIENT_SECRET;
+  const refresh = process.env.GMAIL_REFRESH_TOKEN;
+
+  if (!id || !clientSecret || !refresh) {
+    return res.status(200).json({
+      ok: false,
+      error: "Missing Gmail OAuth env vars",
+      hasClientId: !!id,
+      hasClientSecret: !!clientSecret,
+      hasRefreshToken: !!refresh,
+    });
+  }
+
+  try {
+    const { google } = require("googleapis");
+    const oauth2 = new google.auth.OAuth2(id, clientSecret);
+    oauth2.setCredentials({ refresh_token: refresh });
+    const tokenRes = await oauth2.getAccessToken();
+    if (!tokenRes?.token) {
+      return res.status(200).json({
+        ok: false,
+        error: "No access token returned from Google",
+      });
+    }
+    return res.json({
+      ok: true,
+      message: "Gmail OAuth env vars valid (refresh → access token works).",
+    });
+  } catch (e) {
+    return res.status(200).json({
+      ok: false,
+      error: e.message || String(e),
+    });
+  }
+});
+
+/**
  * Backfill blank Lead emails from CSV/XLSX (profile_url + email) or public CSV URL.
  * POST /admin/backfill-lead-emails
  * Auth: Authorization: Bearer PB_WEBHOOK_SECRET (or DEBUG_API_KEY) — same as debug-render-logs
