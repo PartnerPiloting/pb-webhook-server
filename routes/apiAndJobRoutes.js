@@ -1243,6 +1243,43 @@ router.post("/debug-gmail-send-test", async (req, res) => {
 });
 
 /**
+ * GET /admin/corporate-captives-dry-run-preview?clientId=Guy-Wilson&limit=10
+ * HTML page: how emails would look (no sends, no Airtable updates).
+ * Auth: Bearer PB_WEBHOOK_SECRET (same as debug-render-logs).
+ * Query limit: optional override for how many previews to show (defaults to Max Sends Per Run from Airtable).
+ */
+router.get("/admin/corporate-captives-dry-run-preview", async (req, res) => {
+  const authHeader = req.headers.authorization;
+  const secret = process.env.PB_WEBHOOK_SECRET || process.env.DEBUG_API_KEY;
+  if (!secret || !authHeader || !authHeader.includes(secret)) {
+    return res.status(401).type("text/plain").send("Unauthorized");
+  }
+  try {
+    const clientId =
+      (req.query.clientId && String(req.query.clientId).trim()) || "Guy-Wilson";
+    const limitRaw = req.query.limit;
+    const limitOverride =
+      limitRaw !== undefined && limitRaw !== ""
+        ? String(limitRaw).trim()
+        : undefined;
+    const {
+      buildDryRunPreviewHtml,
+      escapeHtml,
+    } = require("../services/corporateCaptivesOutreachService.js");
+    const html = await buildDryRunPreviewHtml({ clientId, limitOverride });
+    return res.status(200).type("html").send(html);
+  } catch (e) {
+    const msg = escapeHtml(e.message || String(e));
+    return res
+      .status(500)
+      .type("html")
+      .send(
+        `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body><h1>Preview error</h1><pre>${msg}</pre></body></html>`
+      );
+  }
+});
+
+/**
  * Backfill blank Lead emails from CSV/XLSX (profile_url + email) or public CSV URL.
  * POST /admin/backfill-lead-emails
  * Auth: Authorization: Bearer PB_WEBHOOK_SECRET (or DEBUG_API_KEY) — same as debug-render-logs

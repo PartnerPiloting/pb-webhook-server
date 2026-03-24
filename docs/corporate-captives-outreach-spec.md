@@ -65,6 +65,7 @@ Other rules:
 
 - **Gmail:** `services/gmailApiService.js`, OAuth env vars on Render.
 - **Debug:** `GET /debug-gmail-oauth-env`, `POST /debug-gmail-send-test` (Bearer auth; test-only recipient) — do not use as production bulk API.
+- **Dry-run preview (HTML):** `GET /admin/corporate-captives-dry-run-preview` — same Bearer auth; optional `clientId`, `limit`. **No sends**, **no Airtable updates**; open in browser to see rendered **Email Body** + subject pool. Skips inter-send delay (preview only).
 
 ## Airtable field names (Leads) — confirmed
 
