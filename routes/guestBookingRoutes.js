@@ -391,15 +391,24 @@ router.get("/guest-book", async (req, res) => {
   const pickHint = document.getElementById('pickHint');
 
   function showErr(t){ msg.textContent = t || ''; }
-  function showLoadErr(t){ loadErr.textContent = t || ''; }
+  function showLoadErr(t){ loadErr.textContent = safeErrText(t) || ''; }
+  /** Never show Google's useless bare string "Error" */
+  function safeErrText(s){
+    if (s == null || s === '') return '';
+    var t = String(s).trim();
+    if (t === 'Error') return 'Booking failed. Please try again or pick another time.';
+    return t;
+  }
   function apiErrMsg(x){
     if (!x) return 'Could not book';
     var e = x.error;
-    if (typeof e === 'string' && e && e !== 'Error') return e;
-    if (e && typeof e === 'object' && e.message) return String(e.message);
-    if (x.message) return String(x.message);
+    var raw = '';
+    if (typeof e === 'string' && e) raw = e;
+    else if (e && typeof e === 'object' && e.message) {
+      raw = String(e.message) === 'Error' && e.reason ? String(e.reason) : String(e.message);
+    } else if (x.message) raw = String(x.message);
+    if (raw) return safeErrText(raw) || 'Could not book';
     try { if (e && typeof e === 'object') return JSON.stringify(e); } catch (_) {}
-    if (e === 'Error') return 'Booking failed. Please try again or pick another time.';
     return 'Could not book';
   }
 
@@ -472,7 +481,7 @@ router.get("/guest-book", async (req, res) => {
   })()
     .then(function(r){ return r.json(); })
     .then(function(data){
-      if(!data.ok){ showLoadErr(data.error || 'Could not load times'); return; }
+      if(!data.ok){ showLoadErr(safeErrText(data.error) || 'Could not load times'); return; }
       days = data.days || [];
       if(data.displayTimezoneLabel){
         var el = document.getElementById('tzLine');
@@ -528,7 +537,10 @@ router.get("/guest-book", async (req, res) => {
           return { __fail: true, msg: 'Could not read server response (HTTP ' + r.status + ').' };
         }
         if (!r.ok) {
-          return { __fail: true, msg: j.error || j.message || ('Request failed (' + r.status + ')') };
+          var failRaw = j.error !== undefined && j.error !== null ? j.error : j.message;
+          var failStr = typeof failRaw === 'string' ? failRaw : (failRaw && failRaw.message ? String(failRaw.message) : '');
+          var mapped = safeErrText(failStr) || ('Request failed (' + r.status + ')');
+          return { __fail: true, msg: mapped };
         }
         return j;
       });
