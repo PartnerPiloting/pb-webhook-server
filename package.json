@@ -39,7 +39,8 @@
     "gmail:send-test": "node scripts/gmail-send-test.js",
     "guest-booking:mint": "node scripts/guest-booking-mint-link.js",
     "guest-book:verify-inline": "node scripts/guest-book-inline-script-verify.js",
-    "guest-book:harness": "node scripts/guest-book-harness.js",
+    "guest-book:harness": "node tests/guest-book-error.test.js && node scripts/guest-book-harness.js",
+    "test:guest-book-error": "node tests/guest-book-error.test.js",
     "diagnose:oauth": "node scripts/diagnose-google-oauth-scopes.js",
     "diagnose:oauth:harness": "node scripts/oauth-diagnostic-harness.js",
     "test:cc-outreach": "node tests/corporateCaptivesOutreach.harness.js"
