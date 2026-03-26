@@ -639,4 +639,105 @@ router.get("/debug-guest-booking-url", (req, res) => {
   res.redirect(302, dest);
 });
 
+/**
+ * GET /debug-guest-book-pipeline?secret=PB_WEBHOOK_SECRET&mode=airtable|calendar|full
+ * Online diagnosis without local .env. mode=airtable: Client Master + event copy only.
+ * mode=calendar: OAuth calendar insert test + delete. mode=full: createGuestMeeting + delete.
+ */
+router.get("/debug-guest-book-pipeline", async (req, res) => {
+  const expected = process.env.PB_WEBHOOK_SECRET || process.env.DEBUG_API_KEY;
+  const q = req.query.secret;
+  if (!expected || typeof q !== "string" || q !== expected) {
+    return res.status(401).json({ ok: false, error: "Unauthorized" });
+  }
+
+  const mode = String(req.query.mode || "airtable").toLowerCase();
+  const steps = [];
+  const push = (name, ok, rest = {}) => {
+    steps.push({ name, ok, ...rest });
+  };
+
+  try {
+    const {
+      fetchHostClientProfile,
+      buildGuestBookingEventDetails,
+    } = require("../services/guestBookingEventBuilder.js");
+
+    const host = await fetchHostClientProfile();
+    push("fetchHostClientProfile", true, {
+      timezone: host.timezone,
+      clientId: host.clientId,
+    });
+
+    const details = await buildGuestBookingEventDetails({
+      leadFullName: "Pipeline Test",
+      leadLinkedIn: "https://www.linkedin.com/in/example",
+      guestNotes: "",
+    });
+    push("buildGuestBookingEventDetails", true, {
+      summaryLen: (details.summary || "").length,
+    });
+
+    if (mode === "airtable") {
+      return res.json({ ok: true, mode, steps });
+    }
+
+    const {
+      createTestEvent,
+      createGuestMeeting,
+    } = require("../services/calendarOAuthService.js");
+    const { google } = require("googleapis");
+    const { getGmailOAuthClient } = require("../services/gmailApiService.js");
+
+    const probeEmail =
+      String(req.query.probeEmail || "").trim() ||
+      "taniaadelewilson@gmail.com";
+
+    if (mode === "calendar") {
+      const r = await createTestEvent({ attendeeEmail: probeEmail });
+      push("createTestEvent", true, { eventId: r.id });
+      const auth = getGmailOAuthClient();
+      const calendar = google.calendar({ version: "v3", auth });
+      await calendar.events.delete({ calendarId: "primary", eventId: r.id });
+      push("deleteEvent", true, { eventId: r.id });
+      return res.json({ ok: true, mode, steps });
+    }
+
+    if (mode === "full") {
+      const start = new Date(Date.now() + 2 * 60 * 60 * 1000);
+      const end = new Date(start.getTime() + 30 * 60 * 1000);
+      const created = await createGuestMeeting({
+        startISO: start.toISOString(),
+        endISO: end.toISOString(),
+        attendeeEmail: probeEmail,
+        summary: `${details.summary} [probe]`,
+        description: details.description,
+        location: details.location,
+      });
+      push("createGuestMeeting", true, { eventId: created.id });
+      const auth = getGmailOAuthClient();
+      const calendar = google.calendar({ version: "v3", auth });
+      await calendar.events.delete({ calendarId: "primary", eventId: created.id });
+      push("deleteEvent", true, {});
+      return res.json({ ok: true, mode, steps });
+    }
+
+    return res
+      .status(400)
+      .json({ ok: false, error: "Unknown mode (use airtable, calendar, full)", steps });
+  } catch (err) {
+    const { serializeBookError, logGuestBookFailure } = require("../services/guestBookError.js");
+    logGuestBookFailure(err);
+    const msg = serializeBookError(err);
+    push("error", false, { message: msg, raw: err.response?.data });
+    return res.status(500).json({
+      ok: false,
+      mode,
+      steps,
+      error: msg,
+      raw: err.response?.data,
+    });
+  }
+});
+
 module.exports = router;
