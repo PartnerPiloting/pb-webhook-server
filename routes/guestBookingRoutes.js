@@ -133,7 +133,7 @@ router.get("/guest-book", async (req, res) => {
 </head>
 <body>
   <h1>Hi ${leadFirst}, looking forward to chatting.</h1>
-  <p class="muted">Here are a few times that might work, or pick from the full list below. Rather email me instead? Just reply to the message I sent you.</p>
+  <p class="muted">Here are a few times that might work, or pick from the full list below.</p>
   <div id="suggested"></div>
   <details>
     <summary>See all times</summary>
