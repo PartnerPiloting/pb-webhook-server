@@ -1208,6 +1208,54 @@ router.get("/debug-gmail-oauth-env", async (req, res) => {
 });
 
 /**
+ * GET /debug-oauth-token-scopes?secret=PB_WEBHOOK_SECRET
+ * Shows which scopes the current refresh token grants (via tokeninfo). Use to fix "insufficient authentication scopes".
+ */
+router.get("/debug-oauth-token-scopes", async (req, res) => {
+  const expected = process.env.PB_WEBHOOK_SECRET || process.env.DEBUG_API_KEY;
+  const q = req.query.secret;
+  if (!expected || typeof q !== "string" || q !== expected) {
+    return res.status(401).json({ ok: false, error: "Unauthorized" });
+  }
+
+  const id = process.env.GOOGLE_OAUTH_CLIENT_ID;
+  const clientSecret = process.env.GOOGLE_OAUTH_CLIENT_SECRET;
+  const refresh = process.env.GMAIL_REFRESH_TOKEN;
+  if (!id || !clientSecret || !refresh) {
+    return res.status(200).json({
+      ok: false,
+      error: "Missing OAuth env vars",
+    });
+  }
+
+  try {
+    const { google } = require("googleapis");
+    const oauth2 = new google.auth.OAuth2(id, clientSecret);
+    oauth2.setCredentials({ refresh_token: refresh });
+    const tokenRes = await oauth2.getAccessToken();
+    const at = tokenRes?.token;
+    if (!at) {
+      return res.json({ ok: false, error: "No access token" });
+    }
+    const ti = await fetch(
+      `https://www.googleapis.com/oauth2/v1/tokeninfo?access_token=${encodeURIComponent(at)}`
+    );
+    const info = await ti.json();
+    return res.json({
+      ok: true,
+      scope: info.scope || null,
+      expiresIn: info.expires_in,
+      audience: info.audience,
+    });
+  } catch (e) {
+    return res.status(200).json({
+      ok: false,
+      error: e.message || String(e),
+    });
+  }
+});
+
+/**
  * POST /debug-gmail-send-test
  * Sends one plain-text test email (subject/body "test") to a fixed allowlisted address.
  * Auth: Bearer PB_WEBHOOK_SECRET (same as debug-render-logs).
