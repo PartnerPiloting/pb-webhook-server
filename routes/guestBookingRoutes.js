@@ -20,6 +20,10 @@ const {
 } = require("../services/guestTimezoneAliases.js");
 const { filterGuestBookingDays } = require("../services/guestBookingDayFilter.js");
 const {
+  serializeBookError,
+  logGuestBookFailure,
+} = require("../services/guestBookError.js");
+const {
   createGuestMeeting,
   assertPrimarySlotFree,
 } = require("../services/calendarOAuthService.js");
@@ -123,79 +127,6 @@ function pickDistributedSlots(days, quickPickStartDate, maxPick) {
 
 function simpleEmailOk(s) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(s || "").trim());
-}
-
-/**
- * Google Calendar often returns error.message === "Error" with the real text in error.errors[0].
- * Never return the bare string "Error" to the browser.
- */
-function nonGenericApiMessage(s) {
-  const t = s == null ? "" : String(s).trim();
-  if (!t || t === "Error") return null;
-  return t;
-}
-
-function serializeBookError(err) {
-  if (!err) return "Booking failed.";
-  const status = err.response?.status;
-  const statusText = err.response?.statusText;
-  const d = err.response?.data;
-
-  if (typeof d === "string" && d.trim()) {
-    const t = d.replace(/\s+/g, " ").trim();
-    return t.length > 280 ? t.slice(0, 280) + "…" : t;
-  }
-
-  const ge = d?.error;
-  if (ge && typeof ge === "object") {
-    const e0 = Array.isArray(ge.errors) ? ge.errors[0] : null;
-    const parts = [];
-    if (e0) {
-      if (e0.message && String(e0.message) !== "Error") parts.push(String(e0.message));
-      if (e0.reason) parts.push(String(e0.reason));
-      if (e0.domain) parts.push(String(e0.domain));
-    }
-    if (ge.message && String(ge.message) !== "Error") parts.push(String(ge.message));
-    const merged = [
-      ...new Set(parts.filter(Boolean).map((p) => String(p))),
-    ].filter((p) => nonGenericApiMessage(p));
-    if (merged.length) {
-      const msg = merged.join(" — ");
-      return status ? `(${status}) ${msg}` : msg;
-    }
-    if (ge.message === "Error" && e0?.reason) {
-      const msg = [e0.reason, e0.domain].filter(Boolean).join(" · ");
-      return status ? `(${status}) ${msg}` : msg;
-    }
-  }
-
-  if (typeof ge === "string" && ge.trim() && ge !== "Error") return ge;
-  {
-    const sub = nonGenericApiMessage(d?.error?.errors?.[0]?.message);
-    if (sub) return status ? `(${status}) ${sub}` : sub;
-  }
-
-  const m = err.message && String(err.message).trim();
-  if (m && m !== "Error") return status ? `(${status}) ${m}` : m;
-
-  if (Array.isArray(err.errors) && err.errors[0]?.message) {
-    const em = nonGenericApiMessage(err.errors[0].message);
-    if (em) return em;
-  }
-  if (err.cause?.message) return String(err.cause.message);
-
-  try {
-    if (d && typeof d === "object") {
-      const s = JSON.stringify(d);
-      if (s.length > 2 && s.length < 800) return s;
-    }
-  } catch (_) {}
-
-  if (status) {
-    const st = statusText ? ` ${statusText}` : "";
-    return `Booking failed (HTTP ${status}${st}). Try again or pick another time.`;
-  }
-  return "Booking failed. Please try again or pick another time.";
 }
 
 router.get("/guest-book", async (req, res) => {
@@ -660,10 +591,7 @@ router.post("/api/guest/book", async (req, res) => {
       htmlLink: created.htmlLink,
     });
   } catch (err) {
-    console.error(
-      "[guest-book]",
-      err?.response?.data || err?.message || err
-    );
+    logGuestBookFailure(err);
     const m = serializeBookError(err);
     if (m.includes("just taken")) {
       return res.status(409).json({ ok: false, error: m });
