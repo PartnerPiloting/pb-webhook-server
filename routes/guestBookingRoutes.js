@@ -125,31 +125,60 @@ function simpleEmailOk(s) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(s || "").trim());
 }
 
-/** Google APIs often set err.message to the useless string "Error" — read response body first */
+/**
+ * Google Calendar often returns error.message === "Error" with the real text in error.errors[0].
+ */
 function serializeBookError(err) {
   if (!err) return "Booking failed.";
+  const status = err.response?.status;
   const d = err.response?.data;
-  const ge = d && typeof d.error === "object" ? d.error : null;
-  if (ge?.message && String(ge.message).trim() !== "Error") {
-    return String(ge.message);
+
+  if (typeof d === "string" && d.trim()) {
+    const t = d.replace(/\s+/g, " ").trim();
+    return t.length > 280 ? t.slice(0, 280) + "…" : t;
   }
-  const g0 = ge?.errors?.[0];
-  if (g0 && (g0.message || g0.reason)) {
-    return String(g0.message || g0.reason);
+
+  const ge = d?.error;
+  if (ge && typeof ge === "object") {
+    const e0 = Array.isArray(ge.errors) ? ge.errors[0] : null;
+    const parts = [];
+    if (e0) {
+      if (e0.message && String(e0.message) !== "Error") parts.push(String(e0.message));
+      if (e0.reason) parts.push(String(e0.reason));
+      if (e0.domain) parts.push(String(e0.domain));
+    }
+    if (ge.message && String(ge.message) !== "Error") parts.push(String(ge.message));
+    const merged = [...new Set(parts.filter(Boolean))];
+    if (merged.length) {
+      const msg = merged.join(" — ");
+      return status ? `(${status}) ${msg}` : msg;
+    }
+    if (ge.message === "Error" && e0?.reason) {
+      const msg = [e0.reason, e0.domain].filter(Boolean).join(" · ");
+      return status ? `(${status}) ${msg}` : msg;
+    }
   }
-  if (typeof d?.error === "string" && d.error.trim()) return d.error;
-  if (d?.error?.errors?.[0]?.message) return String(d.error.errors[0].message);
+
+  if (typeof ge === "string" && ge.trim() && ge !== "Error") return ge;
+  if (d?.error?.errors?.[0]?.message)
+    return String(d.error.errors[0].message);
+
   const m = err.message && String(err.message).trim();
-  if (m && m !== "Error") return m;
+  if (m && m !== "Error") return status ? `(${status}) ${m}` : m;
+
   if (Array.isArray(err.errors) && err.errors[0]?.message) {
     return String(err.errors[0].message);
   }
+  if (err.cause?.message) return String(err.cause.message);
+
   try {
     if (d && typeof d === "object") {
       const s = JSON.stringify(d);
-      if (s.length > 2 && s.length < 500) return s;
+      if (s.length > 2 && s.length < 800) return s;
     }
   } catch (_) {}
+
+  if (status) return `Booking failed (HTTP ${status}). Try again or pick another time.`;
   return "Booking failed. Please try again or pick another time.";
 }
 
@@ -348,6 +377,15 @@ router.get("/guest-book", async (req, res) => {
 
   function showErr(t){ msg.textContent = t || ''; }
   function showLoadErr(t){ loadErr.textContent = t || ''; }
+  function apiErrMsg(x){
+    if (!x) return 'Could not book';
+    var e = x.error;
+    if (typeof e === 'string' && e) return e;
+    if (e && typeof e === 'object' && e.message) return String(e.message);
+    if (x.message) return String(x.message);
+    try { if (e && typeof e === 'object') return JSON.stringify(e); } catch (_) {}
+    return 'Could not book';
+  }
 
   function setSelected(slot){
     selected = slot;
@@ -481,13 +519,13 @@ router.get("/guest-book", async (req, res) => {
     })
     .then(function(data){
       if (data && data.__fail) {
-        showErr(data.msg || 'Could not book');
+        showErr(data.msg || apiErrMsg(data));
         btn.disabled = false;
         btn.textContent = "Let's lock this";
         return;
       }
       if (!data || !data.ok) {
-        showErr((data && data.error) || 'Could not book');
+        showErr(apiErrMsg(data));
         btn.disabled = false;
         btn.textContent = "Let's lock this";
         return;
@@ -605,6 +643,10 @@ router.post("/api/guest/book", async (req, res) => {
       htmlLink: created.htmlLink,
     });
   } catch (err) {
+    console.error(
+      "[guest-book]",
+      err?.response?.data || err?.message || err
+    );
     const m = serializeBookError(err);
     if (m.includes("just taken")) {
       return res.status(409).json({ ok: false, error: m });
