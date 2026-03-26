@@ -1278,6 +1278,38 @@ router.get("/debug-gmail-send-test", async (req, res) => {
 });
 
 /**
+ * GET /debug-calendar-create-test?secret=PB_WEBHOOK_SECRET
+ * Creates one 30-min test event ~2 hours from now on your primary calendar;
+ * invites taniaadelewilson@gmail.com (calendar invite email). Browser-friendly auth via query secret.
+ */
+router.get("/debug-calendar-create-test", async (req, res) => {
+  const expected = process.env.PB_WEBHOOK_SECRET || process.env.DEBUG_API_KEY;
+  const q = req.query.secret;
+  if (!expected || typeof q !== "string" || q !== expected) {
+    return res.status(401).json({ ok: false, error: "Unauthorized" });
+  }
+
+  const attendee = "taniaadelewilson@gmail.com";
+
+  try {
+    const { createTestEvent } = require("../services/calendarOAuthService.js");
+    const result = await createTestEvent({ attendeeEmail: attendee });
+    return res.json({
+      ok: true,
+      attendee,
+      eventId: result.id,
+      htmlLink: result.htmlLink,
+      start: result.start,
+    });
+  } catch (e) {
+    return res.status(500).json({
+      ok: false,
+      error: e.message || String(e),
+    });
+  }
+});
+
+/**
  * GET /admin/corporate-captives-dry-run-preview?clientId=Guy-Wilson&limit=10
  * HTML page: how emails would look (no sends, no Airtable updates).
  * Auth: Bearer PB_WEBHOOK_SECRET (same as debug-render-logs).
