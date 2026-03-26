@@ -22,6 +22,8 @@ const { filterGuestBookingDays } = require("../services/guestBookingDayFilter.js
 const {
   serializeBookError,
   logGuestBookFailure,
+  buildGuestBookErrorReport,
+  buildGuestBookValidationReport,
 } = require("../services/guestBookError.js");
 const {
   createGuestMeeting,
@@ -131,26 +133,46 @@ function simpleEmailOk(s) {
 
 /**
  * Shared by POST /api/guest/book and GET /debug-guest-book-harness.
- * @returns {Promise<{ ok: true, eventId: string, htmlLink?: string } | { ok: false, status: number, error: string }>}
+ * @returns {Promise<{ ok: true, eventId: string, htmlLink?: string } | { ok: false, status: number, error: string, errorDetail: string }>}
  */
 async function executeGuestBookOnce({ t, start, attendeeEmail, guestNotes }) {
   let verified;
   try {
     verified = verifyGuestBookingToken(t);
   } catch (e) {
-    return { ok: false, status: 503, error: "not_configured" };
+    const r = buildGuestBookValidationReport(
+      "guest_booking_token_config",
+      "Booking is not configured on the server.",
+      { hint: "GUEST_BOOKING_LINK_SECRET missing or invalid" }
+    );
+    return { ok: false, status: 503, error: r.summary, errorDetail: r.detail };
   }
   if (!verified.ok) {
-    return { ok: false, status: 400, error: verified.error };
+    const r = buildGuestBookValidationReport(
+      "guest_booking_token_verify",
+      `Link problem: ${verified.error}`,
+      { code: verified.error }
+    );
+    return { ok: false, status: 400, error: r.summary, errorDetail: r.detail };
   }
   if (!start || !simpleEmailOk(attendeeEmail)) {
-    return { ok: false, status: 400, error: "start and valid email required" };
+    const r = buildGuestBookValidationReport(
+      "guest_book_request_fields",
+      "start time and a valid email are required.",
+      { hasStart: !!start, attendeeEmail: attendeeEmail ? "[provided]" : "[missing]" }
+    );
+    return { ok: false, status: 400, error: r.summary, errorDetail: r.detail };
   }
 
   const { n, li, e } = verified.payload;
   const startDate = new Date(start);
   if (Number.isNaN(startDate.getTime())) {
-    return { ok: false, status: 400, error: "invalid start time" };
+    const r = buildGuestBookValidationReport(
+      "guest_book_start_parse",
+      "That start time could not be read.",
+      { start: String(start) }
+    );
+    return { ok: false, status: 400, error: r.summary, errorDetail: r.detail };
   }
   const endDate = new Date(startDate.getTime() + 30 * 60 * 1000);
 
@@ -189,11 +211,11 @@ async function executeGuestBookOnce({ t, start, attendeeEmail, guestNotes }) {
     };
   } catch (err) {
     logGuestBookFailure(err);
-    const m = serializeBookError(err);
-    if (m.includes("just taken")) {
-      return { ok: false, status: 409, error: m };
+    const report = buildGuestBookErrorReport(err);
+    if (report.summary.includes("just taken")) {
+      return { ok: false, status: 409, error: report.summary, errorDetail: report.detail };
     }
-    return { ok: false, status: 500, error: m };
+    return { ok: false, status: 500, error: report.summary, errorDetail: report.detail };
   }
 }
 
@@ -328,6 +350,14 @@ router.get("/guest-book", async (req, res) => {
     .primary:hover:not(:disabled){transform:translateY(-1px);box-shadow:0 4px 16px rgba(13,148,136,.45);}
     .primary:disabled{opacity:.45;cursor:not-allowed;transform:none;box-shadow:none;background:#94a3b8;}
     .err{color:#b91c1c;font-size:.9rem;margin-top:10px;}
+    .err-detail-hint{font-size:.72rem;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:#9a3412;margin:12px 0 6px;}
+    .err-detail{
+      display:none;margin-top:10px;padding:14px 16px;text-align:left;
+      background:#fff7ed;border:1px solid #fdba74;border-radius:12px;
+      font-size:.78rem;line-height:1.5;color:#431407;
+      white-space:pre-wrap;word-break:break-word;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+      max-height:min(55vh,420px);overflow-y:auto;
+    }
     .ok{background:#ecfdf5;border:1px solid #6ee7b7;padding:20px;border-radius:var(--radius);max-width:min(1040px,92vw);margin:40px auto;padding-left:24px;padding-right:24px;}
     .empty{padding:20px;text-align:center;color:var(--muted);font-size:.95rem;}
   </style>
@@ -350,6 +380,8 @@ router.get("/guest-book", async (req, res) => {
             <p id="pickHint" class="pick-hint"></p>
           </div>
           <div id="loadErr" class="err"></div>
+          <p id="loadErrDetailHint" class="err-detail-hint" style="display:none">Full diagnostic (copy if you need help)</p>
+          <div id="loadErrDetail" class="err-detail" style="display:none" aria-live="polite"></div>
         </div>
         <div class="col-details">
           <section>
@@ -358,6 +390,8 @@ router.get("/guest-book", async (req, res) => {
             <label for="notes">Anything you’d like to cover? (optional)</label>
             <textarea id="notes" placeholder="Topics, questions, context…"></textarea>
             <div id="msg" class="err"></div>
+            <p id="msgDetailHint" class="err-detail-hint" style="display:none">Full diagnostic (copy if you need help)</p>
+            <div id="msgDetail" class="err-detail" style="display:none" aria-live="polite"></div>
             <button type="button" class="primary" id="btn" disabled>Choose a time to continue</button>
           </section>
         </div>
@@ -390,8 +424,28 @@ router.get("/guest-book", async (req, res) => {
   const btn = document.getElementById('btn');
   const pickHint = document.getElementById('pickHint');
 
-  function showErr(t){ msg.textContent = t || ''; }
-  function showLoadErr(t){ loadErr.textContent = safeErrText(t) || ''; }
+  function setDetailEl(id, hintId, text){
+    var box = document.getElementById(id);
+    var hint = hintId ? document.getElementById(hintId) : null;
+    if (!box) return;
+    if (text) {
+      if (hint) hint.style.display = 'block';
+      box.style.display = 'block';
+      box.textContent = text;
+    } else {
+      if (hint) hint.style.display = 'none';
+      box.style.display = 'none';
+      box.textContent = '';
+    }
+  }
+  function showErr(t, detail){
+    msg.textContent = t || '';
+    setDetailEl('msgDetail', 'msgDetailHint', detail || '');
+  }
+  function showLoadErr(t, detail){
+    loadErr.textContent = safeErrText(t) || '';
+    setDetailEl('loadErrDetail', 'loadErrDetailHint', detail || '');
+  }
   /** Never show Google's useless bare string "Error" */
   function safeErrText(s){
     if (s == null || s === '') return '';
@@ -481,7 +535,10 @@ router.get("/guest-book", async (req, res) => {
   })()
     .then(function(r){ return r.json(); })
     .then(function(data){
-      if(!data.ok){ showLoadErr(safeErrText(data.error) || 'Could not load times'); return; }
+      if(!data.ok){
+        showLoadErr(safeErrText(data.error) || 'Could not load times', data.errorDetail || '');
+        return;
+      }
       days = data.days || [];
       if(data.displayTimezoneLabel){
         var el = document.getElementById('tzLine');
@@ -514,7 +571,7 @@ router.get("/guest-book", async (req, res) => {
     .catch(function(){ showLoadErr('Network error loading times'); });
 
   btn.onclick = function(){
-    showErr('');
+    showErr('', '');
     if(!selected){ showErr('Choose a time first'); return; }
     var email = document.getElementById('email').value.trim();
     if(!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)){ showErr('Please enter a valid email'); return; }
@@ -540,20 +597,20 @@ router.get("/guest-book", async (req, res) => {
           var failRaw = j.error !== undefined && j.error !== null ? j.error : j.message;
           var failStr = typeof failRaw === 'string' ? failRaw : (failRaw && failRaw.message ? String(failRaw.message) : '');
           var mapped = safeErrText(failStr) || ('Request failed (' + r.status + ')');
-          return { __fail: true, msg: mapped };
+          return { __fail: true, msg: mapped, detail: j.errorDetail || '' };
         }
         return j;
       });
     })
     .then(function(data){
       if (data && data.__fail) {
-        showErr(data.msg || apiErrMsg(data));
+        showErr(data.msg || apiErrMsg(data), data.detail);
         btn.disabled = false;
         btn.textContent = "Let's lock this";
         return;
       }
       if (!data || !data.ok) {
-        showErr(apiErrMsg(data));
+        showErr(apiErrMsg(data), data.errorDetail || '');
         btn.disabled = false;
         btn.textContent = "Let's lock this";
         return;
@@ -595,7 +652,16 @@ router.get("/api/guest/availability", async (req, res) => {
       guestEndMinutes: 17 * 60,
     });
     if (error) {
-      return res.status(500).json({ ok: false, error });
+      const r = buildGuestBookValidationReport(
+        "guest_availability_batch",
+        String(error),
+        { step: "getOAuthPrimaryBatchAvailability" }
+      );
+      return res.status(500).json({
+        ok: false,
+        error: r.summary,
+        errorDetail: r.detail,
+      });
     }
     days = filterGuestBookingDays(days, hostTz);
     const quickPickStart = getQuickPickStartDate(hostTz);
@@ -609,9 +675,12 @@ router.get("/api/guest/availability", async (req, res) => {
       suggested,
     });
   } catch (e) {
-    return res
-      .status(500)
-      .json({ ok: false, error: e.message || String(e) });
+    const report = buildGuestBookErrorReport(e);
+    return res.status(500).json({
+      ok: false,
+      error: report.summary,
+      errorDetail: report.detail,
+    });
   }
 });
 
@@ -625,7 +694,11 @@ router.post("/api/guest/book", async (req, res) => {
       htmlLink: out.htmlLink,
     });
   }
-  return res.status(out.status).json({ ok: false, error: out.error });
+  return res.status(out.status).json({
+    ok: false,
+    error: out.error,
+    errorDetail: out.errorDetail,
+  });
 });
 
 /**
@@ -697,6 +770,7 @@ router.get("/debug-guest-book-harness", async (req, res) => {
       ok: false,
       harness: true,
       error: out.error,
+      errorDetail: out.errorDetail,
       startISO,
       guestTz,
     });
