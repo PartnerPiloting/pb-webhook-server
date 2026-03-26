@@ -1243,6 +1243,41 @@ router.post("/debug-gmail-send-test", async (req, res) => {
 });
 
 /**
+ * GET /debug-gmail-send-test?secret=PB_WEBHOOK_SECRET
+ * Same as POST /debug-gmail-send-test but for pasting in a browser (secret in query).
+ * URL-encode the secret if it has special characters. Prefer POST + header when possible.
+ */
+router.get("/debug-gmail-send-test", async (req, res) => {
+  const expected = process.env.PB_WEBHOOK_SECRET || process.env.DEBUG_API_KEY;
+  const q = req.query.secret;
+  if (!expected || typeof q !== "string" || q !== expected) {
+    return res.status(401).json({ ok: false, error: "Unauthorized" });
+  }
+
+  const allowlistedTo = "taniaadelewilson@gmail.com";
+
+  try {
+    const { sendTextEmail } = require("../services/gmailApiService.js");
+    const result = await sendTextEmail({
+      to: allowlistedTo,
+      subject: "test",
+      text: "test",
+    });
+    return res.json({
+      ok: true,
+      to: allowlistedTo,
+      messageId: result.id,
+      threadId: result.threadId,
+    });
+  } catch (e) {
+    return res.status(500).json({
+      ok: false,
+      error: e.message || String(e),
+    });
+  }
+});
+
+/**
  * GET /admin/corporate-captives-dry-run-preview?clientId=Guy-Wilson&limit=10
  * HTML page: how emails would look (no sends, no Airtable updates).
  * Auth: Bearer PB_WEBHOOK_SECRET (same as debug-render-logs).
