@@ -150,12 +150,14 @@ async function runGoogleOAuthDiagnostics() {
       .replace(/\//g, "-");
     const today = new Date(`${todayStr}T12:00:00`);
     const dates = [today.toISOString().split("T")[0]];
-    const { days, error } = await getOAuthPrimaryBatchAvailability(
-      dates,
-      9,
-      17,
-      tz
-    );
+    const { days, error } = await getOAuthPrimaryBatchAvailability(dates, {
+      hostTz: tz,
+      guestTz: tz,
+      hostStartMinutes: 9 * 60 + 30,
+      hostEndMinutes: 16 * 60,
+      guestStartMinutes: 9 * 60,
+      guestEndMinutes: 17 * 60,
+    });
     steps.push({
       name: "guest_availability_helper",
       ok: !error,
