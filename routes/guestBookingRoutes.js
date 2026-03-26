@@ -16,6 +16,9 @@ const {
   isValidIanaTimezone,
 } = require("../services/calendarOAuthAvailability.js");
 const {
+  normalizeTimezoneInput,
+} = require("../services/guestTimezoneAliases.js");
+const {
   createGuestMeeting,
   assertPrimarySlotFree,
 } = require("../services/calendarOAuthService.js");
@@ -72,9 +75,16 @@ function timezoneLabelFromIana(tz) {
   return last.replace(/_/g, " ");
 }
 
+/**
+ * Guest tz: query guestTz or tz. Empty → host (Airtable Timezone for Guy-Wilson, else Brisbane).
+ * Friendly names (Sydney, NSW, Vic, …) → IANA via guestTimezoneAliases.
+ */
 function resolveGuestTimezone(reqQuery, hostTz) {
   const raw = String(reqQuery.guestTz || reqQuery.tz || "").trim();
-  if (raw && isValidIanaTimezone(raw)) return raw;
+  if (!raw) return hostTz;
+  const normalized = normalizeTimezoneInput(raw);
+  if (normalized && isValidIanaTimezone(normalized)) return normalized;
+  if (isValidIanaTimezone(raw)) return raw;
   return hostTz;
 }
 
