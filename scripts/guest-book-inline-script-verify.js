@@ -4,7 +4,7 @@
  */
 const snippet = `(function(){
   var btn = { textContent: "" };
-  btn.textContent = "Let's lock this";
+  btn.textContent = "Let's lock it in";
   btn.textContent = "Locking…";
 })();`;
 
