@@ -1310,6 +1310,43 @@ router.get("/debug-calendar-create-test", async (req, res) => {
 });
 
 /**
+ * GET /debug-guest-booking-preview?secret=...&leadName=...&leadLinkedIn=...&guestNotes=...
+ * Returns summary/description/location as for a real guest booking (no calendar write). Browser-friendly.
+ */
+router.get("/debug-guest-booking-preview", async (req, res) => {
+  const expected = process.env.PB_WEBHOOK_SECRET || process.env.DEBUG_API_KEY;
+  const q = req.query.secret;
+  if (!expected || typeof q !== "string" || q !== expected) {
+    return res.status(401).json({ ok: false, error: "Unauthorized" });
+  }
+
+  const leadName =
+    (req.query.leadName && String(req.query.leadName).trim()) || "Test Lead";
+  const leadLinkedIn =
+    (req.query.leadLinkedIn && String(req.query.leadLinkedIn).trim()) ||
+    "https://www.linkedin.com/in/example";
+  const guestNotes =
+    req.query.guestNotes !== undefined ? String(req.query.guestNotes) : "";
+
+  try {
+    const {
+      buildGuestBookingEventDetails,
+    } = require("../services/guestBookingEventBuilder.js");
+    const details = await buildGuestBookingEventDetails({
+      leadFullName: leadName,
+      leadLinkedIn,
+      guestNotes,
+    });
+    return res.json({ ok: true, ...details });
+  } catch (e) {
+    return res.status(500).json({
+      ok: false,
+      error: e.message || String(e),
+    });
+  }
+});
+
+/**
  * GET /admin/corporate-captives-dry-run-preview?clientId=Guy-Wilson&limit=10
  * HTML page: how emails would look (no sends, no Airtable updates).
  * Auth: Bearer PB_WEBHOOK_SECRET (same as debug-render-logs).
