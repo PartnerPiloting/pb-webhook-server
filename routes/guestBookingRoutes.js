@@ -4,6 +4,7 @@
 const express = require("express");
 const {
   verifyGuestBookingToken,
+  signGuestBookingToken,
 } = require("../services/guestBookingToken.js");
 const {
   fetchHostClientProfile,
@@ -340,6 +341,42 @@ router.post("/api/guest/book", async (req, res) => {
     }
     return res.status(500).json({ ok: false, error: m });
   }
+});
+
+/**
+ * GET /debug-guest-booking-url?secret=PB_WEBHOOK_SECRET&name=...&li=...&email=...
+ * Browser test: redirects to /guest-book with a valid signed token. URL-encode li and email.
+ */
+router.get("/debug-guest-booking-url", (req, res) => {
+  const expected = process.env.PB_WEBHOOK_SECRET || process.env.DEBUG_API_KEY;
+  const q = req.query.secret;
+  if (!expected || typeof q !== "string" || q !== expected) {
+    return res.status(401).type("text/plain").send("Unauthorized");
+  }
+  const name = req.query.name && String(req.query.name).trim();
+  const li = req.query.li && String(req.query.li).trim();
+  const email = req.query.email && String(req.query.email).trim();
+  if (!name || !li || !email) {
+    return res
+      .status(400)
+      .type("text/plain")
+      .send("Required query params: name, li, email (URL-encoded)");
+  }
+  let token;
+  try {
+    token = signGuestBookingToken({
+      n: name,
+      li,
+      e: email,
+      exp: Math.floor(Date.now() / 1000) + 90 * 86400,
+    });
+  } catch (e) {
+    return res.status(500).type("text/plain").send(e.message || String(e));
+  }
+  const host = req.get("host") || "pb-webhook-server.onrender.com";
+  const proto = req.headers["x-forwarded-proto"] || req.protocol || "https";
+  const base = `${proto}://${host}`;
+  res.redirect(302, `${base}/guest-book?t=${encodeURIComponent(token)}`);
 });
 
 module.exports = router;
