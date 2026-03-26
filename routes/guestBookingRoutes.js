@@ -710,6 +710,32 @@ router.post("/api/guest/book", async (req, res) => {
       JSON.stringify({ ok: out.ok, status: out.status, error: out.error ? String(out.error).slice(0, 200) : null })
     );
     if (out.ok) {
+      try {
+        const { sendTextEmail } = require("../services/gmailApiService.js");
+        const hostEmail = process.env.GMAIL_FROM_EMAIL || "guyralphwilson@gmail.com";
+        const when = new Date(start).toLocaleString("en-AU", {
+          timeZone: "Australia/Brisbane",
+          weekday: "short", year: "numeric", month: "short", day: "numeric",
+          hour: "numeric", minute: "2-digit", hour12: true,
+        });
+        await sendTextEmail({
+          to: hostEmail,
+          subject: `Guest booking: ${(verified && verified.payload && verified.payload.n) || "someone"} booked a call`,
+          text: [
+            `A lead just booked via the guest booking link.`,
+            ``,
+            `Who:   ${(verified && verified.payload && verified.payload.n) || "(unknown)"}`,
+            `Email: ${attendeeEmail}`,
+            `LinkedIn: ${(verified && verified.payload && verified.payload.li) || "(none)"}`,
+            `When:  ${when} (Brisbane)`,
+            `Notes: ${guestNotes || "(none)"}`,
+            ``,
+            `Calendar: ${out.htmlLink || "(no link)"}`,
+          ].join("\n"),
+        });
+      } catch (emailErr) {
+        console.error("[guest-book] notification email failed (non-fatal)", emailErr?.message);
+      }
       return res.json({
         ok: true,
         eventId: out.eventId,
@@ -991,6 +1017,241 @@ router.get("/debug-guest-book-pipeline", async (req, res) => {
       raw: err.response?.data,
     });
   }
+});
+
+/**
+ * GET /debug-guest-book-audit?secret=PB_WEBHOOK_SECRET&limit=10
+ * Human-readable pre-send audit: for each lead, shows token, timezone, availability,
+ * event details, and flags warnings. One book+delete probe at the end.
+ * Pass leads as JSON array in query `leads` (url-encoded) or omit to use test samples.
+ * Each lead: { name, email, li, guestTz? }
+ */
+router.get("/debug-guest-book-audit", async (req, res) => {
+  const expected = process.env.PB_WEBHOOK_SECRET || process.env.DEBUG_API_KEY;
+  const q = req.query.secret;
+  if (!expected || typeof q !== "string" || q !== expected) {
+    return res.status(401).json({ ok: false, error: "Unauthorized" });
+  }
+
+  const limitNum = Math.min(Number(req.query.limit) || 10, 500);
+
+  let leads = [];
+  if (req.query.leads) {
+    try {
+      leads = JSON.parse(req.query.leads);
+    } catch (e) {
+      return res.status(400).json({ ok: false, error: "leads must be valid JSON array" });
+    }
+  }
+  if (!leads.length) {
+    leads = [
+      { name: "Test Lead Sydney", email: "test-syd@example.com", li: "https://www.linkedin.com/in/example-syd", guestTz: "Sydney" },
+      { name: "Test Lead Melbourne", email: "test-mel@example.com", li: "https://www.linkedin.com/in/example-mel", guestTz: "Melbourne" },
+      { name: "Test Lead Brisbane", email: "test-bne@example.com", li: "https://www.linkedin.com/in/example-bne", guestTz: "" },
+      { name: "Test Lead Perth", email: "test-per@example.com", li: "https://www.linkedin.com/in/example-per", guestTz: "Perth" },
+    ];
+  }
+  leads = leads.slice(0, limitNum);
+
+  const lines = [];
+  lines.push("=".repeat(70));
+  lines.push("GUEST BOOKING LINK AUDIT REPORT");
+  lines.push(`Generated: ${new Date().toISOString()}`);
+  lines.push(`Leads: ${leads.length}`);
+  lines.push("=".repeat(70));
+
+  let host;
+  try {
+    host = await fetchHostClientProfile();
+    lines.push("");
+    lines.push(`Host: ${host.clientName || host.clientId}`);
+    lines.push(`Host timezone: ${host.timezone}`);
+    lines.push(`Host Airtable base: ${host.airtableBaseId || "(none)"}`);
+  } catch (e) {
+    lines.push("");
+    lines.push(`!! HOST PROFILE FAILED: ${e.message}`);
+    return res.type("text/plain").send(lines.join("\n"));
+  }
+  const hostTz = host.timezone || "Australia/Brisbane";
+
+  const warnings = [];
+  let availabilityResult = null;
+
+  for (let i = 0; i < leads.length; i++) {
+    const lead = leads[i];
+    const num = i + 1;
+    lines.push("");
+    lines.push("-".repeat(70));
+    lines.push(`LEAD ${num}/${leads.length}`);
+    lines.push("-".repeat(70));
+    lines.push(`  Name:     ${lead.name || "(missing)"}`);
+    lines.push(`  Email:    ${lead.email || "(missing)"}`);
+    lines.push(`  LinkedIn: ${lead.li || "(missing)"}`);
+    lines.push(`  Tz input: ${lead.guestTz || "(empty — will use host default)"}`);
+
+    if (!lead.name || !lead.email || !lead.li) {
+      const w = `Lead ${num}: missing name, email, or LinkedIn`;
+      warnings.push(w);
+      lines.push(`  !! WARNING: ${w}`);
+      continue;
+    }
+
+    let token;
+    try {
+      token = signGuestBookingToken({
+        n: lead.name,
+        li: lead.li,
+        e: lead.email,
+        exp: Math.floor(Date.now() / 1000) + 90 * 86400,
+      });
+      lines.push(`  Token:    OK (${token.length} chars)`);
+    } catch (e) {
+      const w = `Lead ${num}: token sign FAILED — ${e.message}`;
+      warnings.push(w);
+      lines.push(`  !! TOKEN FAILED: ${e.message}`);
+      continue;
+    }
+
+    const verified = verifyGuestBookingToken(token);
+    if (!verified.ok) {
+      const w = `Lead ${num}: token verify FAILED — ${verified.error}`;
+      warnings.push(w);
+      lines.push(`  !! TOKEN VERIFY FAILED: ${verified.error}`);
+      continue;
+    }
+    lines.push(`  Verify:   OK`);
+    lines.push(`  Expires:  ${new Date(verified.payload.exp * 1000).toISOString()}`);
+
+    const guestTzRaw = lead.guestTz || "";
+    const resolvedTz = guestTzRaw
+      ? (normalizeTimezoneInput(guestTzRaw) || (isValidIanaTimezone(guestTzRaw) ? guestTzRaw : ""))
+      : "";
+    const effectiveTz = resolvedTz || hostTz;
+    const isFallback = !resolvedTz && guestTzRaw;
+    const isHostDefault = !resolvedTz;
+
+    lines.push(`  Tz resolved: ${effectiveTz}${isFallback ? " !! FALLBACK (input not recognized)" : ""}${isHostDefault && !guestTzRaw ? " (host default, no input)" : ""}`);
+    lines.push(`  Tz label:    ${timezoneLabelFromIana(effectiveTz)}`);
+
+    if (isFallback) {
+      const w = `Lead ${num} (${lead.name}): timezone "${guestTzRaw}" not recognized, fell back to ${hostTz}`;
+      warnings.push(w);
+    }
+
+    if (!availabilityResult) {
+      try {
+        const dates = buildDateRange(hostTz, 35);
+        const { days, error } = await getOAuthPrimaryBatchAvailability(dates, {
+          hostTz,
+          guestTz: effectiveTz,
+          hostStartMinutes: 9 * 60 + 30,
+          hostEndMinutes: 16 * 60,
+          guestStartMinutes: 9 * 60,
+          guestEndMinutes: 17 * 60,
+        });
+        if (error) {
+          lines.push(`  !! AVAILABILITY ERROR: ${error}`);
+          warnings.push(`Lead ${num}: availability error — ${error}`);
+        } else {
+          availabilityResult = { days, forTz: effectiveTz };
+        }
+      } catch (e) {
+        lines.push(`  !! AVAILABILITY EXCEPTION: ${e.message}`);
+        warnings.push(`Lead ${num}: availability exception — ${e.message}`);
+      }
+    }
+
+    if (availabilityResult) {
+      const filteredDays = filterGuestBookingDays(availabilityResult.days, hostTz);
+      const daysWithSlots = filteredDays.filter(d => d.freeSlots?.length);
+      const totalSlots = daysWithSlots.reduce((n, d) => n + d.freeSlots.length, 0);
+      lines.push(`  Availability: ${daysWithSlots.length} days with slots, ${totalSlots} total slots`);
+      if (daysWithSlots.length > 0) {
+        const first = daysWithSlots[0];
+        lines.push(`  First day:  ${first.day} (${first.date}), ${first.freeSlots.length} slots`);
+        lines.push(`  Sample:     ${first.freeSlots.slice(0, 3).map(s => s.display).join(", ")}`);
+      } else {
+        const w = `Lead ${num}: zero available slots`;
+        warnings.push(w);
+        lines.push(`  !! NO SLOTS AVAILABLE`);
+      }
+    }
+
+    try {
+      const details = await buildGuestBookingEventDetails({
+        leadFullName: lead.name,
+        leadLinkedIn: lead.li,
+        guestNotes: "(audit preview)",
+      });
+      lines.push(`  Event summary:  ${details.summary}`);
+      lines.push(`  Event location: ${details.location || "(none)"}`);
+      lines.push(`  Description:    ${(details.description || "").slice(0, 120).replace(/\n/g, " ")}…`);
+    } catch (e) {
+      lines.push(`  !! EVENT DETAILS FAILED: ${e.message}`);
+      warnings.push(`Lead ${num}: event details failed — ${e.message}`);
+    }
+
+    const linkHost = "pb-webhook-server.onrender.com";
+    let linkUrl = `https://${linkHost}/guest-book?t=${encodeURIComponent(token)}`;
+    if (resolvedTz) linkUrl += `&guestTz=${encodeURIComponent(resolvedTz)}`;
+    lines.push(`  Link: ${linkUrl}`);
+  }
+
+  lines.push("");
+  lines.push("=".repeat(70));
+  lines.push("CALENDAR WRITE TEST (book + delete)");
+  lines.push("=".repeat(70));
+  try {
+    const probeEmail = "taniaadelewilson@gmail.com";
+    const t0 = Date.now() + 3 * 60 * 60 * 1000;
+    const startISO = new Date(Math.ceil(t0 / 60000) * 60000).toISOString();
+    const token = signGuestBookingToken({
+      n: "Audit Probe",
+      li: "https://www.linkedin.com/in/audit-probe",
+      e: probeEmail,
+      exp: Math.floor(Date.now() / 1000) + 86400,
+    });
+    const out = await executeGuestBookOnce({
+      t: token,
+      start: startISO,
+      attendeeEmail: probeEmail,
+      guestNotes: "audit-probe",
+    });
+    if (!out.ok) {
+      lines.push(`  !! BOOK FAILED: ${out.error}`);
+      warnings.push(`Calendar write test FAILED: ${out.error}`);
+    } else {
+      lines.push(`  Book: OK (eventId: ${out.eventId})`);
+      try {
+        const { google } = require("googleapis");
+        const { getGmailOAuthClient } = require("../services/gmailApiService.js");
+        const auth = getGmailOAuthClient();
+        const calendar = google.calendar({ version: "v3", auth });
+        await calendar.events.delete({ calendarId: "primary", eventId: out.eventId });
+        lines.push(`  Delete: OK`);
+      } catch (delErr) {
+        lines.push(`  Delete failed (non-fatal): ${delErr.message}`);
+      }
+    }
+  } catch (e) {
+    lines.push(`  !! EXCEPTION: ${e.message}`);
+    warnings.push(`Calendar write test exception: ${e.message}`);
+  }
+
+  lines.push("");
+  lines.push("=".repeat(70));
+  lines.push("SUMMARY");
+  lines.push("=".repeat(70));
+  lines.push(`  Leads checked: ${leads.length}`);
+  lines.push(`  Warnings:      ${warnings.length}`);
+  if (warnings.length) {
+    warnings.forEach((w, i) => lines.push(`    ${i + 1}. ${w}`));
+  } else {
+    lines.push(`  All checks passed.`);
+  }
+  lines.push("");
+
+  return res.type("text/plain").send(lines.join("\n"));
 });
 
 module.exports = router;
