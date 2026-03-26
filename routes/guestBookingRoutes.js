@@ -125,18 +125,31 @@ function simpleEmailOk(s) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(s || "").trim());
 }
 
-/** Google / Express errors often stringify as "Error" — surface API message when possible */
+/** Google APIs often set err.message to the useless string "Error" — read response body first */
 function serializeBookError(err) {
   if (!err) return "Booking failed.";
+  const d = err.response?.data;
+  const ge = d && typeof d.error === "object" ? d.error : null;
+  if (ge?.message && String(ge.message).trim() !== "Error") {
+    return String(ge.message);
+  }
+  const g0 = ge?.errors?.[0];
+  if (g0 && (g0.message || g0.reason)) {
+    return String(g0.message || g0.reason);
+  }
+  if (typeof d?.error === "string" && d.error.trim()) return d.error;
+  if (d?.error?.errors?.[0]?.message) return String(d.error.errors[0].message);
   const m = err.message && String(err.message).trim();
   if (m && m !== "Error") return m;
-  const d = err.response?.data;
-  if (d?.error?.message) return String(d.error.message);
-  if (typeof d?.error === "string") return d.error;
-  if (d?.error?.errors?.[0]?.message) return String(d.error.errors[0].message);
   if (Array.isArray(err.errors) && err.errors[0]?.message) {
     return String(err.errors[0].message);
   }
+  try {
+    if (d && typeof d === "object") {
+      const s = JSON.stringify(d);
+      if (s.length > 2 && s.length < 500) return s;
+    }
+  } catch (_) {}
   return "Booking failed. Please try again or pick another time.";
 }
 
@@ -349,7 +362,7 @@ router.get("/guest-book", async (req, res) => {
       el.classList.toggle('selected', el.dataset.time === slot.time);
     });
     btn.disabled = false;
-    btn.textContent = 'Confirm this time';
+    btn.textContent = 'Let\'s lock this';
     var line = (slot.dayLabel || '') + ' · ' + (slot.display || '');
     pickHint.innerHTML = 'Selected: <strong>' + line.replace(/</g,'') + '</strong>';
     renderDayStrip();
@@ -443,7 +456,7 @@ router.get("/guest-book", async (req, res) => {
     var email = document.getElementById('email').value.trim();
     if(!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)){ showErr('Please enter a valid email'); return; }
     btn.disabled = true;
-    btn.textContent = 'Booking…';
+    btn.textContent = 'Locking…';
     fetch('/api/guest/book', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -470,18 +483,18 @@ router.get("/guest-book", async (req, res) => {
       if (data && data.__fail) {
         showErr(data.msg || 'Could not book');
         btn.disabled = false;
-        btn.textContent = 'Confirm this time';
+        btn.textContent = 'Let\'s lock this';
         return;
       }
       if (!data || !data.ok) {
         showErr((data && data.error) || 'Could not book');
         btn.disabled = false;
-        btn.textContent = 'Confirm this time';
+        btn.textContent = 'Let\'s lock this';
         return;
       }
       document.body.innerHTML = '<div class="ok"><strong>You’re booked.</strong><p style="margin:.75em 0 0;line-height:1.5">Check your email for the Google Calendar invite and tap <strong>Accept</strong> so it’s on your calendar.</p></div>';
     })
-    .catch(function(){ showErr('Network error'); btn.disabled = false; btn.textContent = 'Confirm this time'; });
+    .catch(function(){ showErr('Network error'); btn.disabled = false; btn.textContent = 'Let\'s lock this'; });
   };
 })();
   </script>
