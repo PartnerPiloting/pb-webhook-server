@@ -1,0 +1,20 @@
+---
+description: No local .env — test via committed code and online/deployed endpoints
+alwaysApply: true
+---
+
+# Environment variables are not assumed locally
+
+This workspace often has **no `.env`** and **no local copies** of production secrets (API keys, `GUEST_BOOKING_LINK_SECRET`, OAuth tokens, etc.). Do **not** ask the user to create or fill `.env` for the agent to run tests.
+
+## What to do instead
+
+1. **Add or use committed test code** — harness scripts (`scripts/`), `tests/*.js`), or existing debug routes that are safe to ship.
+2. **Test against the deployed app** — e.g. Render URLs, `curl.exe` to documented endpoints, patterns already in repo rules (e.g. Render logs when applicable).
+3. **Implement and push** the minimal code needed to exercise the flow (harness, logging, debug endpoint with existing auth patterns). **Commit and push** so it runs in CI or on the next deploy.
+4. **Do not** block on “set this in your local `.env`” for the agent to verify behavior; prefer **online** verification and **structured logs** on the server.
+
+## If something truly cannot be done without a secret
+
+- Prefer **server-side** logging (already on Render) and **read logs** via the project’s documented log access (or equivalent).
+- Document the **exact** env var name in code comments or existing env docs, but do not require the user to paste secrets into chat.
