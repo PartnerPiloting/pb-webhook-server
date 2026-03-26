@@ -2,6 +2,7 @@
  * Public guest self-serve booking (Guy-only): signed link → slots → Google Calendar invite.
  */
 const express = require("express");
+const { DateTime } = require("luxon");
 const {
   verifyGuestBookingToken,
   signGuestBookingToken,
@@ -12,6 +13,7 @@ const {
 } = require("../services/guestBookingEventBuilder.js");
 const {
   getOAuthPrimaryBatchAvailability,
+  isValidIanaTimezone,
 } = require("../services/calendarOAuthAvailability.js");
 const {
   createGuestMeeting,
@@ -53,18 +55,54 @@ function buildDateRange(tz, numDays) {
   return dates;
 }
 
-function pickSuggestedSlots(days, maxPick) {
+/** First weekday strictly after today; then skip weekends until Mon–Fri. */
+function getQuickPickStartDate(hostTz) {
+  const todayStr = getTodayInTimezone(hostTz);
+  let dt = DateTime.fromISO(todayStr, { zone: hostTz });
+  let next = dt.plus({ days: 1 });
+  while (next.weekday > 5) next = next.plus({ days: 1 });
+  let after = next.plus({ days: 1 });
+  while (after.weekday > 5) after = after.plus({ days: 1 });
+  return after.toISODate();
+}
+
+function timezoneLabelFromIana(tz) {
+  if (!tz) return "";
+  const last = tz.split("/").pop() || tz;
+  return last.replace(/_/g, " ");
+}
+
+function resolveGuestTimezone(reqQuery, hostTz) {
+  const raw = String(reqQuery.guestTz || reqQuery.tz || "").trim();
+  if (raw && isValidIanaTimezone(raw)) return raw;
+  return hostTz;
+}
+
+/**
+ * Spread across morning / midday / afternoon (first day with enough slots, else fill from next days).
+ */
+function pickDistributedSlots(days, quickPickStartDate, maxPick) {
+  const eligible = days.filter(
+    (d) => d.date >= quickPickStartDate && d.freeSlots?.length
+  );
   const picks = [];
-  for (const day of days) {
-    if (picks.length >= maxPick) break;
-    if (day.freeSlots && day.freeSlots.length > 0) {
+  for (const day of eligible) {
+    const slots = day.freeSlots;
+    const n = slots.length;
+    let idxs;
+    if (n === 1) idxs = [0];
+    else if (n === 2) idxs = [0, 1];
+    else idxs = [0, Math.floor(n / 2), n - 1];
+    for (const i of idxs) {
+      if (picks.length >= maxPick) return picks;
       picks.push({
         date: day.date,
         dayLabel: day.day,
-        time: day.freeSlots[0].time,
-        display: day.freeSlots[0].display,
+        time: slots[i].time,
+        display: slots[i].display,
       });
     }
+    if (picks.length >= maxPick) return picks;
   }
   return picks;
 }
@@ -97,11 +135,13 @@ router.get("/guest-book", async (req, res) => {
 
   const { n, e } = verified.payload;
   const leadFirst = firstNameFromFull(n);
+  const guestTzParam = String(req.query.guestTz || req.query.tz || "").trim();
   const ctx = {
     t: token,
     leadFirst,
     marketingEmail: e,
     leadFullName: n,
+    guestTzParam,
   };
   const ctxJson = JSON.stringify(ctx).replace(/</g, "\\u003c");
 
@@ -259,7 +299,6 @@ router.get("/guest-book", async (req, res) => {
   let daysWithSlots = [];
   let activeDayIndex = 0;
   let selected = null;
-  let tzLabel = '';
   const msg = document.getElementById('msg');
   const loadErr = document.getElementById('loadErr');
   const btn = document.getElementById('btn');
@@ -267,15 +306,6 @@ router.get("/guest-book", async (req, res) => {
 
   function showErr(t){ msg.textContent = t || ''; }
   function showLoadErr(t){ loadErr.textContent = t || ''; }
-
-  function formatTz(tz){
-    if(!tz) return '';
-    try{
-      var parts = new Intl.DateTimeFormat('en-AU',{timeZone:tz,timeZoneName:'short'}).formatToParts(new Date());
-      var name = parts.filter(function(p){ return p.type === 'timeZoneName'; }).map(function(p){ return p.value; }).join('');
-      return name || tz.split('/').pop().replace(/_/g,' ');
-    }catch(_){ return tz.split('/').pop().replace(/_/g,' '); }
-  }
 
   function setSelected(slot){
     selected = slot;
@@ -314,6 +344,10 @@ router.get("/guest-book", async (req, res) => {
       };
       strip.appendChild(chip);
     });
+    requestAnimationFrame(function(){
+      var active = strip.querySelector('.day-chip.active');
+      if (active) active.scrollIntoView({ inline: 'center', behavior: 'smooth', block: 'nearest' });
+    });
   }
 
   function renderSlots(){
@@ -335,16 +369,19 @@ router.get("/guest-book", async (req, res) => {
     });
   }
 
-  fetch('/api/guest/availability?t=' + encodeURIComponent(ctx.t))
+  (function(){
+    var qs = '/api/guest/availability?t=' + encodeURIComponent(ctx.t);
+    if (ctx.guestTzParam) qs += '&guestTz=' + encodeURIComponent(ctx.guestTzParam);
+    return fetch(qs);
+  })()
     .then(function(r){ return r.json(); })
     .then(function(data){
       if(!data.ok){ showLoadErr(data.error || 'Could not load times'); return; }
       days = data.days || [];
-      tzLabel = data.timezone || '';
-      if(tzLabel){
+      if(data.displayTimezoneLabel){
         var el = document.getElementById('tzLine');
         el.style.display = 'block';
-        el.textContent = 'Times are in ' + formatTz(tzLabel) + ' (' + tzLabel.replace(/_/g,' ') + ').';
+        el.textContent = 'Times are in your timezone (' + data.displayTimezoneLabel + ').';
       }
       daysWithSlots = days.filter(function(d){ return d.freeSlots && d.freeSlots.length; });
       var suggested = data.suggested || [];
@@ -421,21 +458,27 @@ router.get("/api/guest/availability", async (req, res) => {
 
   try {
     const host = await fetchHostClientProfile();
-    const tz = host.timezone || "Australia/Brisbane";
-    const dates = buildDateRange(tz, 35);
-    const { days, error } = await getOAuthPrimaryBatchAvailability(
-      dates,
-      9,
-      17,
-      tz
-    );
+    const hostTz = host.timezone || "Australia/Brisbane";
+    const guestTz = resolveGuestTimezone(req.query, hostTz);
+    const dates = buildDateRange(hostTz, 35);
+    const { days, error } = await getOAuthPrimaryBatchAvailability(dates, {
+      hostTz,
+      guestTz,
+      hostStartMinutes: 9 * 60 + 30,
+      hostEndMinutes: 16 * 60,
+      guestStartMinutes: 9 * 60,
+      guestEndMinutes: 17 * 60,
+    });
     if (error) {
       return res.status(500).json({ ok: false, error });
     }
-    const suggested = pickSuggestedSlots(days, 3);
+    const quickPickStart = getQuickPickStartDate(hostTz);
+    const suggested = pickDistributedSlots(days, quickPickStart, 3);
     return res.json({
       ok: true,
-      timezone: tz,
+      timezone: guestTz,
+      hostTimezone: hostTz,
+      displayTimezoneLabel: timezoneLabelFromIana(guestTz),
       days,
       suggested,
     });
@@ -543,7 +586,10 @@ router.get("/debug-guest-booking-url", (req, res) => {
   const host = req.get("host") || "pb-webhook-server.onrender.com";
   const proto = req.headers["x-forwarded-proto"] || req.protocol || "https";
   const base = `${proto}://${host}`;
-  res.redirect(302, `${base}/guest-book?t=${encodeURIComponent(token)}`);
+  const tzQ = (req.query.guestTz || req.query.tz || "").trim();
+  let dest = `${base}/guest-book?t=${encodeURIComponent(token)}`;
+  if (tzQ) dest += `&guestTz=${encodeURIComponent(tzQ)}`;
+  res.redirect(302, dest);
 });
 
 module.exports = router;
