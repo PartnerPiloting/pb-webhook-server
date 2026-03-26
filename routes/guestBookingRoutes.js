@@ -79,30 +79,33 @@ function resolveGuestTimezone(reqQuery, hostTz) {
 }
 
 /**
- * Spread across morning / midday / afternoon (first day with enough slots, else fill from next days).
+ * One quick pick per calendar day for the first `maxPick` eligible days.
+ * Within each day, choose a different time-of-day band: morning / midday / afternoon.
  */
 function pickDistributedSlots(days, quickPickStartDate, maxPick) {
   const eligible = days.filter(
     (d) => d.date >= quickPickStartDate && d.freeSlots?.length
   );
   const picks = [];
-  for (const day of eligible) {
+  /** Position within that day’s slot list: ~25%, ~50%, ~75% */
+  const band = [0.25, 0.5, 0.75];
+  for (let d = 0; d < Math.min(maxPick, eligible.length); d++) {
+    const day = eligible[d];
     const slots = day.freeSlots;
     const n = slots.length;
-    let idxs;
-    if (n === 1) idxs = [0];
-    else if (n === 2) idxs = [0, 1];
-    else idxs = [0, Math.floor(n / 2), n - 1];
-    for (const i of idxs) {
-      if (picks.length >= maxPick) return picks;
-      picks.push({
-        date: day.date,
-        dayLabel: day.day,
-        time: slots[i].time,
-        display: slots[i].display,
-      });
-    }
-    if (picks.length >= maxPick) return picks;
+    const idx =
+      n === 1
+        ? 0
+        : Math.min(
+            Math.floor((n - 1) * band[d]),
+            n - 1
+          );
+    picks.push({
+      date: day.date,
+      dayLabel: day.day,
+      time: slots[idx].time,
+      display: slots[idx].display,
+    });
   }
   return picks;
 }
