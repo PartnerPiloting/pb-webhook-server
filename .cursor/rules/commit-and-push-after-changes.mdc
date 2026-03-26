@@ -1,0 +1,21 @@
+---
+description: After delivering code changes, commit and push unless the user opts out
+alwaysApply: true
+---
+
+# Commit and push after substantive changes
+
+When you finish work that **changes project source code** (not only docs the user asked you to skip, scratch files, or `temp-*.json`), do this **before** considering the task done:
+
+1. **`git status`** — confirm what changed.
+2. **Stage only files that belong to the task** — do not bundle unrelated local edits, `node_modules`, or `temp-*` logs unless the user asked for them.
+3. **`git commit -m "..."`** — one clear sentence describing what changed and why.
+4. **`git push`** to the current branch (usually `main`).
+
+**Exceptions (do not commit/push without explicit instruction):**
+
+- The user said not to commit, to keep changes local, or is still reviewing.
+- Secrets, credentials, or `.env` would be included — fix `.gitignore` or exclude files first.
+- The repo is in a broken state (tests fail, build fails) and the user asked to fix before shipping.
+
+If push fails (auth, network), say what failed and what they need to do; do not claim the work is "done" on the remote without a successful push or a stated exception.
