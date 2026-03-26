@@ -362,7 +362,7 @@ router.get("/guest-book", async (req, res) => {
       el.classList.toggle('selected', el.dataset.time === slot.time);
     });
     btn.disabled = false;
-    btn.textContent = 'Let\'s lock this';
+    btn.textContent = "Let's lock this";
     var line = (slot.dayLabel || '') + ' · ' + (slot.display || '');
     pickHint.innerHTML = 'Selected: <strong>' + line.replace(/</g,'') + '</strong>';
     renderDayStrip();
@@ -483,18 +483,18 @@ router.get("/guest-book", async (req, res) => {
       if (data && data.__fail) {
         showErr(data.msg || 'Could not book');
         btn.disabled = false;
-        btn.textContent = 'Let\'s lock this';
+        btn.textContent = "Let's lock this";
         return;
       }
       if (!data || !data.ok) {
         showErr((data && data.error) || 'Could not book');
         btn.disabled = false;
-        btn.textContent = 'Let\'s lock this';
+        btn.textContent = "Let's lock this";
         return;
       }
       document.body.innerHTML = '<div class="ok"><strong>You’re booked.</strong><p style="margin:.75em 0 0;line-height:1.5">Check your email for the Google Calendar invite and tap <strong>Accept</strong> so it’s on your calendar.</p></div>';
     })
-    .catch(function(){ showErr('Network error'); btn.disabled = false; btn.textContent = 'Let\'s lock this'; });
+    .catch(function(){ showErr('Network error'); btn.disabled = false; btn.textContent = "Let's lock this"; });
   };
 })();
   </script>
