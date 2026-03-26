@@ -130,11 +130,30 @@ router.get("/guest-book", async (req, res) => {
       margin:0;min-height:100vh;background:var(--bg);color:var(--text);
       -webkit-font-smoothing:antialiased;
     }
-    .wrap{max-width:440px;margin:0 auto;padding:28px 18px 48px;}
+    .wrap{max-width:440px;margin:0 auto;padding:28px 18px 48px;transition:max-width .2s ease;}
+    /* Laptop: wider single column, roomier grid */
+    [data-device="laptop"] .wrap{max-width:580px;padding:32px 22px 52px;}
+    /* Desktop: two columns — schedule | details */
+    [data-device="desktop"] .wrap{max-width:1040px;padding:36px 28px 56px;}
     .card{
       background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);
       padding:24px 20px 20px;border:1px solid rgba(226,232,240,.8);
     }
+    [data-device="desktop"] .card{padding:28px 32px 28px;}
+    .card-inner{display:flex;flex-direction:column;gap:0;}
+    [data-device="desktop"] .card-inner{
+      display:grid;grid-template-columns:minmax(0,1fr) minmax(300px,380px);
+      gap:0 36px;align-items:start;
+    }
+    .col-schedule{min-width:0;}
+    [data-device="desktop"] .col-details{
+      border-left:1px solid var(--border);padding-left:32px;margin-left:0;
+      position:sticky;top:28px;
+    }
+    [data-device="desktop"] section{margin-top:0;padding-top:0;border-top:none;}
+    .sub-desktop{display:none;margin:0 0 20px;}
+    [data-device="desktop"] .sub-mobile{display:none;}
+    [data-device="desktop"] .sub-desktop{display:block;}
     h1{font-size:1.35rem;font-weight:650;line-height:1.25;margin:0 0 8px;letter-spacing:-.02em;}
     .sub{color:var(--muted);font-size:.95rem;line-height:1.45;margin:0 0 20px;}
     .tz{font-size:.8rem;color:var(--muted);margin-bottom:16px;padding:8px 12px;background:#f8fafc;border-radius:10px;border:1px solid var(--border);}
@@ -158,6 +177,8 @@ router.get("/guest-book", async (req, res) => {
     .day-chip:hover{border-color:#94a3b8;}
     .day-chip.active{border-color:var(--accent);background:var(--accent-dim);color:var(--accent-hover);}
     .time-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;}
+    [data-device="laptop"] .time-grid{grid-template-columns:repeat(3,1fr);gap:10px;}
+    [data-device="desktop"] .time-grid{grid-template-columns:repeat(3,1fr);gap:10px;}
     .slot-btn{
       padding:14px 12px;border-radius:12px;border:2px solid var(--border);
       background:#fff;font-size:.95rem;font-weight:500;cursor:pointer;color:var(--text);
@@ -181,38 +202,57 @@ router.get("/guest-book", async (req, res) => {
     .primary:hover:not(:disabled){transform:translateY(-1px);box-shadow:0 4px 16px rgba(13,148,136,.45);}
     .primary:disabled{opacity:.45;cursor:not-allowed;transform:none;box-shadow:none;background:#94a3b8;}
     .err{color:#b91c1c;font-size:.9rem;margin-top:10px;}
-    .ok{background:#ecfdf5;border:1px solid #6ee7b7;padding:20px;border-radius:var(--radius);max-width:440px;margin:40px auto;padding-left:24px;padding-right:24px;}
+    .ok{background:#ecfdf5;border:1px solid #6ee7b7;padding:20px;border-radius:var(--radius);max-width:min(1040px,92vw);margin:40px auto;padding-left:24px;padding-right:24px;}
     .empty{padding:20px;text-align:center;color:var(--muted);font-size:.95rem;}
   </style>
 </head>
 <body>
   <div class="wrap">
     <div class="card">
-      <h1>Hi ${leadFirst}, looking forward to chatting.</h1>
-      <p class="sub">Pick a slot below — start with a quick suggestion or choose another day.</p>
-      <div id="tzLine" class="tz" style="display:none"></div>
-      <div id="suggested"></div>
-      <div id="picker" style="display:none">
-        <p class="block-title">Choose a day</p>
-        <div id="dayStrip" class="day-strip" role="tablist" aria-label="Available dates"></div>
-        <p class="block-title" style="margin-top:4px">Choose a time</p>
-        <div id="timeGrid" class="time-grid" role="group" aria-label="Available times"></div>
-        <p id="pickHint" class="pick-hint"></p>
+      <div class="card-inner">
+        <div class="col-schedule">
+          <h1>Hi ${leadFirst}, looking forward to chatting.</h1>
+          <p class="sub sub-mobile">Pick a slot below — start with a quick suggestion or choose another day.</p>
+          <p class="sub sub-desktop">Pick a time on the left, then add your details on the right.</p>
+          <div id="tzLine" class="tz" style="display:none"></div>
+          <div id="suggested"></div>
+          <div id="picker" style="display:none">
+            <p class="block-title">Choose a day</p>
+            <div id="dayStrip" class="day-strip" role="tablist" aria-label="Available dates"></div>
+            <p class="block-title" style="margin-top:4px">Choose a time</p>
+            <div id="timeGrid" class="time-grid" role="group" aria-label="Available times"></div>
+            <p id="pickHint" class="pick-hint"></p>
+          </div>
+          <div id="loadErr" class="err"></div>
+        </div>
+        <div class="col-details">
+          <section>
+            <label for="email">Your email (for the calendar invite)</label>
+            <input id="email" type="email" autocomplete="email" inputmode="email"/>
+            <label for="notes">Anything you’d like to cover? (optional)</label>
+            <textarea id="notes" placeholder="Topics, questions, context…"></textarea>
+            <div id="msg" class="err"></div>
+            <button type="button" class="primary" id="btn" disabled>Choose a time to continue</button>
+          </section>
+        </div>
       </div>
-      <div id="loadErr" class="err"></div>
-      <section>
-        <label for="email">Your email (for the calendar invite)</label>
-        <input id="email" type="email" autocomplete="email" inputmode="email"/>
-        <label for="notes">Anything you’d like to cover? (optional)</label>
-        <textarea id="notes" placeholder="Topics, questions, context…"></textarea>
-        <div id="msg" class="err"></div>
-        <button type="button" class="primary" id="btn" disabled>Choose a time to continue</button>
-      </section>
     </div>
   </div>
   <script type="application/json" id="gctx">${ctxJson}</script>
   <script>
 (function(){
+  function applyDeviceMode(){
+    var w = window.innerWidth || document.documentElement.clientWidth;
+    var mode = 'laptop';
+    if (w < 720) mode = 'mobile';
+    else if (w >= 1200) mode = 'desktop';
+    document.documentElement.setAttribute('data-device', mode);
+  }
+  applyDeviceMode();
+  window.addEventListener('resize', function(){
+    applyDeviceMode();
+  });
+
   const ctx = JSON.parse(document.getElementById('gctx').textContent);
   document.getElementById('email').value = ctx.marketingEmail || '';
   let days = [];
