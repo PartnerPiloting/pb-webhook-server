@@ -25,6 +25,8 @@ async function fetchHostClientProfile(clientId) {
     "LinkedIn URL",
     "Phone",
     "Meeting Link",
+    "Timezone",
+    "Airtable Base ID",
   ];
   const fieldParams = fields.map((f) => `fields[]=${encodeURIComponent(f)}`).join("&");
   const escapedId = id.replace(/\\/g, "\\\\").replace(/'/g, "''");
@@ -51,6 +53,8 @@ async function fetchHostClientProfile(clientId) {
     meetingLink: f["Meeting Link"] || null,
     linkedInUrl: f["LinkedIn URL"] || null,
     phone: f["Phone"] || null,
+    timezone: f["Timezone"] || "Australia/Brisbane",
+    airtableBaseId: f["Airtable Base ID"] || null,
   };
 }
 
