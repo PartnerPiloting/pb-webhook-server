@@ -127,10 +127,18 @@ function simpleEmailOk(s) {
 
 /**
  * Google Calendar often returns error.message === "Error" with the real text in error.errors[0].
+ * Never return the bare string "Error" to the browser.
  */
+function nonGenericApiMessage(s) {
+  const t = s == null ? "" : String(s).trim();
+  if (!t || t === "Error") return null;
+  return t;
+}
+
 function serializeBookError(err) {
   if (!err) return "Booking failed.";
   const status = err.response?.status;
+  const statusText = err.response?.statusText;
   const d = err.response?.data;
 
   if (typeof d === "string" && d.trim()) {
@@ -148,7 +156,9 @@ function serializeBookError(err) {
       if (e0.domain) parts.push(String(e0.domain));
     }
     if (ge.message && String(ge.message) !== "Error") parts.push(String(ge.message));
-    const merged = [...new Set(parts.filter(Boolean))];
+    const merged = [
+      ...new Set(parts.filter(Boolean).map((p) => String(p))),
+    ].filter((p) => nonGenericApiMessage(p));
     if (merged.length) {
       const msg = merged.join(" — ");
       return status ? `(${status}) ${msg}` : msg;
@@ -160,14 +170,17 @@ function serializeBookError(err) {
   }
 
   if (typeof ge === "string" && ge.trim() && ge !== "Error") return ge;
-  if (d?.error?.errors?.[0]?.message)
-    return String(d.error.errors[0].message);
+  {
+    const sub = nonGenericApiMessage(d?.error?.errors?.[0]?.message);
+    if (sub) return status ? `(${status}) ${sub}` : sub;
+  }
 
   const m = err.message && String(err.message).trim();
   if (m && m !== "Error") return status ? `(${status}) ${m}` : m;
 
   if (Array.isArray(err.errors) && err.errors[0]?.message) {
-    return String(err.errors[0].message);
+    const em = nonGenericApiMessage(err.errors[0].message);
+    if (em) return em;
   }
   if (err.cause?.message) return String(err.cause.message);
 
@@ -178,7 +191,10 @@ function serializeBookError(err) {
     }
   } catch (_) {}
 
-  if (status) return `Booking failed (HTTP ${status}). Try again or pick another time.`;
+  if (status) {
+    const st = statusText ? ` ${statusText}` : "";
+    return `Booking failed (HTTP ${status}${st}). Try again or pick another time.`;
+  }
   return "Booking failed. Please try again or pick another time.";
 }
 
@@ -380,10 +396,11 @@ router.get("/guest-book", async (req, res) => {
   function apiErrMsg(x){
     if (!x) return 'Could not book';
     var e = x.error;
-    if (typeof e === 'string' && e) return e;
+    if (typeof e === 'string' && e && e !== 'Error') return e;
     if (e && typeof e === 'object' && e.message) return String(e.message);
     if (x.message) return String(x.message);
     try { if (e && typeof e === 'object') return JSON.stringify(e); } catch (_) {}
+    if (e === 'Error') return 'Booking failed. Please try again or pick another time.';
     return 'Could not book';
   }
 
