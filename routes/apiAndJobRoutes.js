@@ -1256,6 +1256,34 @@ router.get("/debug-oauth-token-scopes", async (req, res) => {
 });
 
 /**
+ * GET /debug-guest-booking-oauth-diagnostic?secret=PB_WEBHOOK_SECRET
+ * Full step-by-step: env → tokeninfo scopes → freebusy → guest availability helper.
+ */
+router.get("/debug-guest-booking-oauth-diagnostic", async (req, res) => {
+  const expected = process.env.PB_WEBHOOK_SECRET || process.env.DEBUG_API_KEY;
+  const q = req.query.secret;
+  if (!expected || typeof q !== "string" || q !== expected) {
+    return res.status(401).json({ ok: false, error: "Unauthorized" });
+  }
+  try {
+    const {
+      runGoogleOAuthDiagnostics,
+      REQUIRED_SCOPES,
+    } = require("../services/googleOAuthDiagnostics.js");
+    const result = await runGoogleOAuthDiagnostics();
+    return res.json({
+      ...result,
+      requiredScopes: REQUIRED_SCOPES,
+    });
+  } catch (e) {
+    return res.status(500).json({
+      ok: false,
+      error: e.message || String(e),
+    });
+  }
+});
+
+/**
  * POST /debug-gmail-send-test
  * Sends one plain-text test email (subject/body "test") to a fixed allowlisted address.
  * Auth: Bearer PB_WEBHOOK_SECRET (same as debug-render-logs).

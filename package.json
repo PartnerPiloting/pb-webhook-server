@@ -38,6 +38,8 @@
     "test:gmail-oauth": "node scripts/test-gmail-oauth-env.js",
     "gmail:send-test": "node scripts/gmail-send-test.js",
     "guest-booking:mint": "node scripts/guest-booking-mint-link.js",
+    "diagnose:oauth": "node scripts/diagnose-google-oauth-scopes.js",
+    "diagnose:oauth:harness": "node scripts/oauth-diagnostic-harness.js",
     "test:cc-outreach": "node tests/corporateCaptivesOutreach.harness.js"
   },
   "keywords": [],
