@@ -22,6 +22,8 @@ const REDIRECT_URI = `http://127.0.0.1:${PORT}${REDIRECT_PATH}`;
 const SCOPES = [
   'https://www.googleapis.com/auth/gmail.send',
   'https://www.googleapis.com/auth/calendar.events',
+  // freebusy.query (guest availability) requires readonly or calendar — not covered by calendar.events alone
+  'https://www.googleapis.com/auth/calendar.readonly',
 ];
 
 const clientId = process.env.GOOGLE_OAUTH_CLIENT_ID;
