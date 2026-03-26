@@ -3120,6 +3120,14 @@ moduleLogger.info("index.js: Environment management endpoints added");
 
 try { const appRoutes = require('./routes/apiAndJobRoutes.js'); app.use(appRoutes); moduleLogger.info("index.js: App/API/Job routes mounted."); } catch(e) { moduleLogger.error("index.js: Error mounting appRoutes", e.message, e.stack); }
 
+try {
+  const guestBookingRoutes = require("./routes/guestBookingRoutes.js");
+  app.use(guestBookingRoutes);
+  moduleLogger.info("index.js: Guest booking routes mounted.");
+} catch (e) {
+  moduleLogger.error("index.js: Error mounting guestBookingRoutes", e.message, e.stack);
+}
+
 // --- BROKEN PORTAL ROUTES REMOVED ---
 // The following routes were removed as they were trying to serve non-existent files:
 // - /linkedin and /linkedin/ routes
