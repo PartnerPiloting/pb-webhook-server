@@ -18,6 +18,7 @@ const {
 const {
   normalizeTimezoneInput,
 } = require("../services/guestTimezoneAliases.js");
+const { filterGuestBookingDays } = require("../services/guestBookingDayFilter.js");
 const {
   createGuestMeeting,
   assertPrimarySlotFree,
@@ -122,6 +123,21 @@ function pickDistributedSlots(days, quickPickStartDate, maxPick) {
 
 function simpleEmailOk(s) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(s || "").trim());
+}
+
+/** Google / Express errors often stringify as "Error" — surface API message when possible */
+function serializeBookError(err) {
+  if (!err) return "Booking failed.";
+  const m = err.message && String(err.message).trim();
+  if (m && m !== "Error") return m;
+  const d = err.response?.data;
+  if (d?.error?.message) return String(d.error.message);
+  if (typeof d?.error === "string") return d.error;
+  if (d?.error?.errors?.[0]?.message) return String(d.error.errors[0].message);
+  if (Array.isArray(err.errors) && err.errors[0]?.message) {
+    return String(err.errors[0].message);
+  }
+  return "Booking failed. Please try again or pick another time.";
 }
 
 router.get("/guest-book", async (req, res) => {
@@ -438,10 +454,27 @@ router.get("/guest-book", async (req, res) => {
         guestNotes: document.getElementById('notes').value.trim()
       })
     })
-    .then(function(r){ return r.json().then(function(j){ return { ok: r.ok, j }; }); })
-    .then(function(x){
-      if(!x.j.ok){
-        showErr(x.j.error || 'Could not book');
+    .then(function(r){
+      return r.text().then(function(text){
+        var j = {};
+        try { if (text) j = JSON.parse(text); } catch (e) {
+          return { __fail: true, msg: 'Could not read server response (HTTP ' + r.status + ').' };
+        }
+        if (!r.ok) {
+          return { __fail: true, msg: j.error || j.message || ('Request failed (' + r.status + ')') };
+        }
+        return j;
+      });
+    })
+    .then(function(data){
+      if (data && data.__fail) {
+        showErr(data.msg || 'Could not book');
+        btn.disabled = false;
+        btn.textContent = 'Confirm this time';
+        return;
+      }
+      if (!data || !data.ok) {
+        showErr((data && data.error) || 'Could not book');
         btn.disabled = false;
         btn.textContent = 'Confirm this time';
         return;
@@ -474,7 +507,7 @@ router.get("/api/guest/availability", async (req, res) => {
     const hostTz = host.timezone || "Australia/Brisbane";
     const guestTz = resolveGuestTimezone(req.query, hostTz);
     const dates = buildDateRange(hostTz, 35);
-    const { days, error } = await getOAuthPrimaryBatchAvailability(dates, {
+    let { days, error } = await getOAuthPrimaryBatchAvailability(dates, {
       hostTz,
       guestTz,
       hostStartMinutes: 9 * 60 + 30,
@@ -485,6 +518,7 @@ router.get("/api/guest/availability", async (req, res) => {
     if (error) {
       return res.status(500).json({ ok: false, error });
     }
+    days = filterGuestBookingDays(days, hostTz);
     const quickPickStart = getQuickPickStartDate(hostTz);
     const suggested = pickDistributedSlots(days, quickPickStart, 3);
     return res.json({
@@ -558,7 +592,7 @@ router.post("/api/guest/book", async (req, res) => {
       htmlLink: created.htmlLink,
     });
   } catch (err) {
-    const m = err.message || String(err);
+    const m = serializeBookError(err);
     if (m.includes("just taken")) {
       return res.status(409).json({ ok: false, error: m });
     }
