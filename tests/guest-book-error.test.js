@@ -3,7 +3,10 @@
  *   node tests/guest-book-error.test.js
  */
 const assert = require("assert");
-const { serializeBookError } = require("../services/guestBookError.js");
+const {
+  serializeBookError,
+  buildGuestBookErrorReport,
+} = require("../services/guestBookError.js");
 
 function assertNotBareError(msg, label) {
   const t = String(msg || "").trim();
@@ -59,5 +62,10 @@ assertNotBareError(serializeBookError(stringBody), "string body");
 const bare = { message: "Error", response: { status: 503, statusText: "Service Unavailable" } };
 assert(serializeBookError(bare).includes("503"));
 assertNotBareError(serializeBookError(bare), "503");
+
+const rep = buildGuestBookErrorReport(google403);
+assert(rep.detail.includes("Insufficient") || rep.detail.includes("insufficientPermissions"));
+assert(rep.detail.includes("WHAT WENT WRONG"));
+assert(rep.detail.includes("RESPONSE BODY"));
 
 console.log("guest-book-error tests: OK");

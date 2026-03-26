@@ -85,6 +85,76 @@ function serializeBookError(err) {
   return "Booking failed. Please try again or pick another time.";
 }
 
+/**
+ * Long plain-text report for the guest UI (not a band-aid string — full context).
+ * @returns {{ summary: string, detail: string }}
+ */
+function buildGuestBookErrorReport(err) {
+  const summary = serializeBookError(err);
+  const lines = [];
+  lines.push("WHAT WENT WRONG");
+  lines.push(summary);
+  lines.push("");
+  lines.push("TECHNICAL DETAILS");
+  if (err?.message && String(err.message).trim()) {
+    lines.push(`Exception / library message: ${String(err.message).trim()}`);
+  }
+  const status = err?.response?.status;
+  const statusText = err?.response?.statusText;
+  if (status != null || statusText) {
+    lines.push(
+      `HTTP: ${status != null ? status : "?"} ${statusText || ""}`.trim()
+    );
+  }
+  if (err?.code != null) {
+    lines.push(`Request error code (e.g. gaxios): ${String(err.code)}`);
+  }
+  const d = normalizeResponseData(err?.response?.data);
+  if (d != null) {
+    lines.push("");
+    lines.push("RESPONSE BODY (Google Calendar API or gateway):");
+    try {
+      const str =
+        typeof d === "string" ? d : JSON.stringify(d, null, 2);
+      lines.push(
+        str.length > 6000
+          ? str.slice(0, 6000) + "\n… [truncated at 6000 characters]"
+          : str
+      );
+    } catch (_) {
+      lines.push(String(d));
+    }
+  } else {
+    lines.push(
+      "(No HTTP response body — failure may be local: timeout, DNS, TLS, or network.)"
+    );
+  }
+  return { summary, detail: lines.join("\n") };
+}
+
+/**
+ * Validation / config failures before any Google call.
+ * @returns {{ summary: string, detail: string }}
+ */
+function buildGuestBookValidationReport(stage, shortMessage, extra = {}) {
+  const lines = [];
+  lines.push("WHAT WENT WRONG");
+  lines.push(shortMessage);
+  lines.push("");
+  lines.push("WHERE IT FAILED");
+  lines.push(String(stage));
+  if (extra && typeof extra === "object" && Object.keys(extra).length) {
+    lines.push("");
+    lines.push("CONTEXT");
+    try {
+      lines.push(JSON.stringify(extra, null, 2));
+    } catch (_) {
+      lines.push(String(extra));
+    }
+  }
+  return { summary: shortMessage, detail: lines.join("\n") };
+}
+
 function logGuestBookFailure(err) {
   try {
     const d = normalizeResponseData(err?.response?.data);
@@ -110,4 +180,6 @@ module.exports = {
   serializeBookError,
   nonGenericApiMessage,
   logGuestBookFailure,
+  buildGuestBookErrorReport,
+  buildGuestBookValidationReport,
 };
