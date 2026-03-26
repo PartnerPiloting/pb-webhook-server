@@ -1254,4 +1254,135 @@ router.get("/debug-guest-book-audit", async (req, res) => {
   return res.type("text/plain").send(lines.join("\n"));
 });
 
+/**
+ * GET /debug-guest-book-weekly-check?secret=PB_WEBHOOK_SECRET&days=4
+ * Scans Render logs for [guest-book] entries over the last N days (default 4).
+ * Emails Guy a summary if any failures found; returns JSON either way.
+ * Designed to run mid-week after a weekend outreach batch.
+ */
+router.get("/debug-guest-book-weekly-check", async (req, res) => {
+  const expected = process.env.PB_WEBHOOK_SECRET || process.env.DEBUG_API_KEY;
+  const q = req.query.secret;
+  if (!expected || typeof q !== "string" || q !== expected) {
+    return res.status(401).json({ ok: false, error: "Unauthorized" });
+  }
+
+  const days = Math.min(Number(req.query.days) || 4, 7);
+  const minutes = days * 24 * 60;
+
+  try {
+    const axios = require("axios");
+    const RENDER_API_KEY = process.env.RENDER_API_KEY;
+    const RENDER_SERVICE_ID = process.env.RENDER_SERVICE_ID;
+    const RENDER_OWNER_ID = process.env.RENDER_OWNER_ID;
+
+    if (!RENDER_API_KEY || !RENDER_SERVICE_ID || !RENDER_OWNER_ID) {
+      return res.status(500).json({
+        ok: false,
+        error: "Render API not configured on server",
+      });
+    }
+
+    const endTime = new Date().toISOString();
+    const startTime = new Date(Date.now() - minutes * 60 * 1000).toISOString();
+
+    const params = new URLSearchParams({
+      ownerId: RENDER_OWNER_ID,
+      limit: "500",
+      direction: "forward",
+      resource: RENDER_SERVICE_ID,
+      startTime,
+      endTime,
+    });
+
+    const logsUrl = `https://api.render.com/v1/logs?${params.toString()}`;
+    const logsResponse = await axios.get(logsUrl, {
+      headers: {
+        Accept: "application/json",
+        Authorization: `Bearer ${RENDER_API_KEY}`,
+      },
+      timeout: 30000,
+    });
+
+    const allLogs = logsResponse.data.logs || [];
+    const guestBookLogs = allLogs.filter((l) => {
+      const msg = (l.message || l.text || "").toLowerCase();
+      return msg.includes("[guest-book]");
+    });
+
+    const failures = guestBookLogs.filter((l) => {
+      const msg = (l.message || l.text || "").toLowerCase();
+      return (
+        msg.includes("error") ||
+        msg.includes("fail") ||
+        msg.includes("uncaught")
+      );
+    });
+
+    const bookings = guestBookLogs.filter((l) => {
+      const msg = (l.message || l.text || "");
+      return msg.includes("POST /api/guest/book") && msg.includes('"ok":true');
+    });
+
+    const summary = {
+      ok: true,
+      window: `${days} days (${startTime} → ${endTime})`,
+      totalGuestBookLogs: guestBookLogs.length,
+      failures: failures.length,
+      bookings: bookings.length,
+      failureDetails: failures.map((l) => ({
+        timestamp: l.timestamp,
+        message: (l.message || l.text || "").slice(0, 500),
+      })),
+    };
+
+    if (failures.length > 0 || req.query.alwaysEmail === "1") {
+      try {
+        const { sendTextEmail } = require("../services/gmailApiService.js");
+        const hostEmail =
+          process.env.GMAIL_FROM_EMAIL || "guyralphwilson@gmail.com";
+        const lines = [
+          `Guest booking weekly check (${days} days)`,
+          ``,
+          `Total [guest-book] log entries: ${guestBookLogs.length}`,
+          `Failures: ${failures.length}`,
+          `Successful bookings logged: ${bookings.length}`,
+          ``,
+        ];
+        if (failures.length) {
+          lines.push(`FAILURE DETAILS:`);
+          failures.forEach((f, i) => {
+            lines.push(`  ${i + 1}. ${f.timestamp}`);
+            lines.push(`     ${(f.message || f.text || "").slice(0, 400)}`);
+            lines.push(``);
+          });
+        } else {
+          lines.push(`No failures found. (Email sent because alwaysEmail=1)`);
+        }
+        await sendTextEmail({
+          to: hostEmail,
+          subject: failures.length
+            ? `Guest booking: ${failures.length} failure(s) in last ${days} days`
+            : `Guest booking: all clear (${days}-day check)`,
+          text: lines.join("\n"),
+        });
+        summary.emailSent = true;
+      } catch (emailErr) {
+        summary.emailSent = false;
+        summary.emailError = emailErr.message;
+      }
+    } else {
+      summary.emailSent = false;
+      summary.emailNote = "No failures — no email sent. Add &alwaysEmail=1 to force.";
+    }
+
+    return res.json(summary);
+  } catch (e) {
+    return res.status(500).json({
+      ok: false,
+      error: e.message || String(e),
+    });
+  }
+});
+
 module.exports = router;

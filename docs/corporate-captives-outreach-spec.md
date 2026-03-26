@@ -6,7 +6,7 @@ Living spec. Update this doc when rules change.
 
 Send personalized individual emails from **Guy Wilson &lt;guyralphwilson@gmail.com&gt;** (Gmail API + OAuth on Render) to a variable number of leads per weekend. **Corporate Captives** is informal vocabulary for the *kind* of recipient — **no** dedicated Airtable segment field is required.
 
-## Relationship to “Hi All”
+## Relationship to "Hi All"
 
 - **Hi All** = people you have **spoken with**; sent (e.g. **Friday**) as **one BCC** newsletter.
 - **CC outreach** = **individual** sends to leads **not** in active conversation.
@@ -14,9 +14,9 @@ Send personalized individual emails from **Guy Wilson &lt;guyralphwilson@gmail.c
 
 ## Volume & timing
 
-- Target **~100 Saturday morning** and **~100 Sunday morning** (define “morning” as a **time window**, not a single burst).
-- **Spread sends** within the window with **jitter**; use **light content variants** (not only `[Name]`) to reduce “identical blast” signals.
-- **Configurable cap:** max sends per run via **env** and/or Airtable table **`Outbound Email Settings`** (single row recommended). **Which calendar days** send is usually **Render cron** (add jobs for extra weekdays later); the table holds **limits / flags**, not the only copy of “Saturday vs Sunday” forever.
+- Target **~100 Saturday morning** and **~100 Sunday morning** (define "morning" as a **time window**, not a single burst).
+- **Spread sends** within the window with **jitter**; use **light content variants** (not only `[Name]`) to reduce "identical blast" signals.
+- **Configurable cap:** max sends per run via **env** and/or Airtable table **`Outbound Email Settings`** (single row recommended). **Which calendar days** send is usually **Render cron** (add jobs for extra weekdays later); the table holds **limits / flags**, not the only copy of "Saturday vs Sunday" forever.
 - **Phase 1:** support **small test caps** (e.g. 3–5) before full volume.
 
 ## Template & configuration
@@ -27,7 +27,7 @@ Send personalized individual emails from **Guy Wilson &lt;guyralphwilson@gmail.c
 
 ## List source
 
-- **Table:** Leads (single-tenant / Guy’s base).
+- **Table:** Leads (single-tenant / Guy's base).
 - **Sort:** **Outbound Email Score Order** descending; take **top N** after filters (N capped by run config).
 - **Skip** invalid / empty email addresses.
 
@@ -49,7 +49,7 @@ Other rules:
 
 | Rule | Action |
 |------|--------|
-| **Notes** | Exclude if **not** “empty”: treat as empty only if **blank**, **whitespace-only**, or **`.`** only |
+| **Notes** | Exclude if **not** "empty": treat as empty only if **blank**, **whitespace-only**, or **`.`** only |
 | **First Name** | **Skip** lead if missing/blank |
 | **Outbound Email Score** | **0** = opt-out — exclude; **blank** = **skip** |
 | **Outbound Email Score Order** | **blank** = **skip** |
@@ -99,8 +99,80 @@ Other rules:
 
 **Subject choice:** each send **randomly picks one** of **Subject 1 / 2 / 3** that is **non-empty**. If only one is filled, every send uses that one.
 
+## Guest booking link (self-serve scheduling)
+
+Each outreach email includes a **signed guest booking link** so the lead can book a 30-minute call directly on Guy's calendar without back-and-forth.
+
+### How it works
+
+1. **Link construction:** The outreach code mints a signed token per lead (name, email, LinkedIn, expiry) using `signGuestBookingToken` and `GUEST_BOOKING_LINK_SECRET`. The link is `https://pb-webhook-server.onrender.com/guest-book?t=TOKEN&guestTz=TIMEZONE`.
+2. **Lead clicks:** They see a date/time picker in their timezone. Weekends and AU public holidays are filtered out. Earliest bookable day is **tomorrow** (no same-day bookings).
+3. **Lead books:** `POST /api/guest/book` checks the slot is free, creates a Google Calendar event (with Zoom link, LinkedIn URLs, any notes), and sends a calendar invite to the lead.
+4. **Guy gets notified:** An email is sent to Guy immediately with who booked, when, their notes, and a link to the calendar event.
+5. **Errors:** If booking fails, the lead sees a detailed diagnostic on screen (not a generic "Error"). The server logs the failure under `[guest-book]` in Render logs.
+
+### Key files
+
+| File | Purpose |
+|------|---------|
+| `routes/guestBookingRoutes.js` | `/guest-book` page, `/api/guest/availability`, `/api/guest/book`, all debug endpoints |
+| `services/guestBookingToken.js` | Sign/verify tokens (`GUEST_BOOKING_LINK_SECRET`, min 16 chars) |
+| `services/guestBookingEventBuilder.js` | Airtable Client Master lookup, calendar event text |
+| `services/calendarOAuthAvailability.js` | Free/busy slots, host vs guest timezone windows |
+| `services/calendarOAuthService.js` | `createGuestMeeting`, `assertPrimarySlotFree` |
+| `services/guestBookingDayFilter.js` | Weekend + AU public holiday filter |
+| `services/guestTimezoneAliases.js` | "Sydney" → `Australia/Sydney`, etc. |
+| `services/guestBookError.js` | Error serialization, detailed reports, `[guest-book]` logging |
+| `services/guestBookingAirtable.js` | Update lead email in Airtable if changed |
+
+### Pre-send audit
+
+Before sending a batch, run the audit to verify every link will work:
+
+```
+GET /debug-guest-book-audit?secret=PB_WEBHOOK_SECRET&leads=[...]
+```
+
+- Pass leads as URL-encoded JSON array: `[{"name":"Jo","email":"jo@x.com","li":"https://linkedin.com/in/jo","guestTz":"Sydney"}, ...]`
+- Returns a plain-text report per lead: token validity, timezone resolution (flags fallbacks), availability count, sample slots, event preview, and the actual link.
+- Ends with a **book + delete** calendar probe to confirm the full path works.
+- Omit `leads` for built-in test samples (Sydney, Melbourne, Brisbane, Perth).
+
+### Post-send monitoring
+
+**Immediate:** Guy gets an email every time someone books.
+
+**Mid-week check:** After a weekend batch, scan for failures:
+
+```
+GET /debug-guest-book-weekly-check?secret=PB_WEBHOOK_SECRET&days=4
+```
+
+- Pulls Render logs for the last N days (default 4, max 7).
+- Filters for `[guest-book]` entries.
+- If **any failures found**: emails Guy a summary with timestamps and error details.
+- If **no failures**: returns JSON `{ failures: 0 }`, no email (add `&alwaysEmail=1` to force).
+- Can be called manually (browser/curl) or wired into the outreach process as a follow-up step.
+
+**Phase 1 (first few batches):** Run both audit (before) and weekly check (after). Read the reports.
+
+**Phase 2 (confident):** Skip the audit. Rely on the booking notification emails and the weekly check. If weekly check returns zero failures, everything worked.
+
+### Other debug endpoints
+
+| Endpoint | Purpose |
+|----------|---------|
+| `GET /debug-guest-booking-url?secret=...&name=...&li=...&email=...` | Mint a link and redirect to booking page (browser test) |
+| `GET /debug-guest-book-harness?secret=...` | Full book + delete on server (no local env needed) |
+| `GET /debug-guest-book-pipeline?secret=...&mode=airtable\|calendar\|full` | Step-by-step probe (Airtable, OAuth, calendar) |
+
+### CORS
+
+The server's own origin (`https://pb-webhook-server.onrender.com`) is in the CORS allowed list. This was a bug that blocked all browser bookings until fixed.
+
 ## Open / TBD
 
 - **Outbound Email Settings:** any further columns (e.g. separate URL fields if not using links in body).
-- Timezone for “Saturday/Sunday morning.”
+- Timezone for "Saturday/Sunday morning."
 - Final rules for **edge cases** (Notes with only punctuation, etc.).
+- Wire weekly check into outreach batch as automatic follow-up step.
