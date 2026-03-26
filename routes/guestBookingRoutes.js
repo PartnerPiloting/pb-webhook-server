@@ -56,9 +56,11 @@ function getTodayInTimezone(tz) {
 function buildDateRange(tz, numDays) {
   const todayStr = getTodayInTimezone(tz);
   const today = new Date(`${todayStr}T12:00:00`);
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 1);
   const dates = [];
   for (let i = 0; i < numDays; i++) {
-    const d = new Date(today);
+    const d = new Date(tomorrow);
     d.setDate(d.getDate() + i);
     dates.push(d.toISOString().split("T")[0]);
   }
