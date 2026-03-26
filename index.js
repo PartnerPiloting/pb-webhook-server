@@ -141,13 +141,14 @@ const cors = require('cors');
 
 const allowedOrigins = [
     /^http:\/\/localhost(:\d+)?$/i,
+    'https://pb-webhook-server.onrender.com',
     'https://pb-webhook-server.vercel.app',
     'https://pb-webhook-server-staging.vercel.app',
     /^https:\/\/[a-z0-9-]+\.vercel\.app$/i,
     'https://australiansidehustles.com.au',
     'https://www.australiansidehustles.com.au',
-    /^chrome-extension:\/\/[a-z0-9]+$/i,  // Allow Chrome extensions (IDs are lowercase alphanumeric)
-    null  // Allow local file:// pages (for admin tools)
+    /^chrome-extension:\/\/[a-z0-9]+$/i,
+    null
 ];
 
 app.use(cors({
