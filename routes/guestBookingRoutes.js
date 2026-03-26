@@ -685,20 +685,49 @@ router.get("/api/guest/availability", async (req, res) => {
 });
 
 router.post("/api/guest/book", async (req, res) => {
-  const { t, start, attendeeEmail, guestNotes } = req.body || {};
-  const out = await executeGuestBookOnce({ t, start, attendeeEmail, guestNotes });
-  if (out.ok) {
-    return res.json({
-      ok: true,
-      eventId: out.eventId,
-      htmlLink: out.htmlLink,
+  try {
+    const bodyType = typeof req.body;
+    const hasBody = req.body != null;
+    const { t, start, attendeeEmail, guestNotes } = req.body || {};
+    console.log(
+      "[guest-book] POST /api/guest/book",
+      JSON.stringify({
+        hasBody,
+        bodyType,
+        hasToken: !!t,
+        tokenLen: t ? String(t).length : 0,
+        start: start || null,
+        attendeeEmail: attendeeEmail || null,
+        hasGuestNotes: !!guestNotes,
+        contentType: req.headers["content-type"] || null,
+      })
+    );
+    const out = await executeGuestBookOnce({ t, start, attendeeEmail, guestNotes });
+    console.log(
+      "[guest-book] executeGuestBookOnce result",
+      JSON.stringify({ ok: out.ok, status: out.status, error: out.error ? String(out.error).slice(0, 200) : null })
+    );
+    if (out.ok) {
+      return res.json({
+        ok: true,
+        eventId: out.eventId,
+        htmlLink: out.htmlLink,
+      });
+    }
+    return res.status(out.status).json({
+      ok: false,
+      error: out.error,
+      errorDetail: out.errorDetail,
+    });
+  } catch (uncaught) {
+    console.error("[guest-book] UNCAUGHT in POST /api/guest/book", uncaught?.message, uncaught?.stack);
+    const report = buildGuestBookErrorReport(uncaught);
+    return res.status(500).json({
+      ok: false,
+      error: report.summary,
+      errorDetail: report.detail,
     });
   }
-  return res.status(out.status).json({
-    ok: false,
-    error: out.error,
-    errorDetail: out.errorDetail,
-  });
 });
 
 /**
