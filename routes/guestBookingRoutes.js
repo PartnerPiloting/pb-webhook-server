@@ -129,6 +129,74 @@ function simpleEmailOk(s) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(s || "").trim());
 }
 
+/**
+ * Shared by POST /api/guest/book and GET /debug-guest-book-harness.
+ * @returns {Promise<{ ok: true, eventId: string, htmlLink?: string } | { ok: false, status: number, error: string }>}
+ */
+async function executeGuestBookOnce({ t, start, attendeeEmail, guestNotes }) {
+  let verified;
+  try {
+    verified = verifyGuestBookingToken(t);
+  } catch (e) {
+    return { ok: false, status: 503, error: "not_configured" };
+  }
+  if (!verified.ok) {
+    return { ok: false, status: 400, error: verified.error };
+  }
+  if (!start || !simpleEmailOk(attendeeEmail)) {
+    return { ok: false, status: 400, error: "start and valid email required" };
+  }
+
+  const { n, li, e } = verified.payload;
+  const startDate = new Date(start);
+  if (Number.isNaN(startDate.getTime())) {
+    return { ok: false, status: 400, error: "invalid start time" };
+  }
+  const endDate = new Date(startDate.getTime() + 30 * 60 * 1000);
+
+  try {
+    await assertPrimarySlotFree(startDate.toISOString(), endDate.toISOString());
+    const details = await buildGuestBookingEventDetails({
+      leadFullName: n,
+      leadLinkedIn: li,
+      guestNotes: guestNotes || "",
+    });
+    const created = await createGuestMeeting({
+      startISO: startDate.toISOString(),
+      endISO: endDate.toISOString(),
+      attendeeEmail,
+      summary: details.summary,
+      description: details.description,
+      location: details.location,
+    });
+
+    try {
+      const host = await fetchHostClientProfile();
+      await maybeUpdateLeadEmailIfChanged({
+        airtableBaseId: host.airtableBaseId,
+        linkedInUrl: li,
+        oldEmail: e,
+        newEmail: attendeeEmail,
+      });
+    } catch (_) {
+      /* non-fatal */
+    }
+
+    return {
+      ok: true,
+      eventId: created.id,
+      htmlLink: created.htmlLink,
+    };
+  } catch (err) {
+    logGuestBookFailure(err);
+    const m = serializeBookError(err);
+    if (m.includes("just taken")) {
+      return { ok: false, status: 409, error: m };
+    }
+    return { ok: false, status: 500, error: m };
+  }
+}
+
 router.get("/guest-book", async (req, res) => {
   const token = req.query.t;
   let verified;
@@ -537,67 +605,135 @@ router.get("/api/guest/availability", async (req, res) => {
 
 router.post("/api/guest/book", async (req, res) => {
   const { t, start, attendeeEmail, guestNotes } = req.body || {};
-  let verified;
-  try {
-    verified = verifyGuestBookingToken(t);
-  } catch (e) {
-    return res.status(503).json({ ok: false, error: "not_configured" });
-  }
-  if (!verified.ok) {
-    return res.status(400).json({ ok: false, error: verified.error });
-  }
-  if (!start || !simpleEmailOk(attendeeEmail)) {
-    return res.status(400).json({ ok: false, error: "start and valid email required" });
-  }
-
-  const { n, li, e } = verified.payload;
-  const startDate = new Date(start);
-  if (Number.isNaN(startDate.getTime())) {
-    return res.status(400).json({ ok: false, error: "invalid start time" });
-  }
-  const endDate = new Date(startDate.getTime() + 30 * 60 * 1000);
-
-  try {
-    await assertPrimarySlotFree(startDate.toISOString(), endDate.toISOString());
-    const details = await buildGuestBookingEventDetails({
-      leadFullName: n,
-      leadLinkedIn: li,
-      guestNotes: guestNotes || "",
-    });
-    const created = await createGuestMeeting({
-      startISO: startDate.toISOString(),
-      endISO: endDate.toISOString(),
-      attendeeEmail,
-      summary: details.summary,
-      description: details.description,
-      location: details.location,
-    });
-
-    try {
-      const host = await fetchHostClientProfile();
-      await maybeUpdateLeadEmailIfChanged({
-        airtableBaseId: host.airtableBaseId,
-        linkedInUrl: li,
-        oldEmail: e,
-        newEmail: attendeeEmail,
-      });
-    } catch (_) {
-      /* non-fatal */
-    }
-
+  const out = await executeGuestBookOnce({ t, start, attendeeEmail, guestNotes });
+  if (out.ok) {
     return res.json({
       ok: true,
-      eventId: created.id,
-      htmlLink: created.htmlLink,
+      eventId: out.eventId,
+      htmlLink: out.htmlLink,
     });
-  } catch (err) {
-    logGuestBookFailure(err);
-    const m = serializeBookError(err);
-    if (m.includes("just taken")) {
-      return res.status(409).json({ ok: false, error: m });
-    }
-    return res.status(500).json({ ok: false, error: m });
   }
+  return res.status(out.status).json({ ok: false, error: out.error });
+});
+
+/**
+ * GET /debug-guest-book-harness?secret=PB_WEBHOOK_SECRET
+ * Full live test: signs token on server, runs same path as POST /api/guest/book, then deletes probe event.
+ * No local .env. Optional: startISO= (UTC ISO), or slot= + guestTz= for wall time, probeEmail=, deleteAfter=0 to keep event.
+ */
+router.get("/debug-guest-book-harness", async (req, res) => {
+  const expected = process.env.PB_WEBHOOK_SECRET || process.env.DEBUG_API_KEY;
+  const q = req.query.secret;
+  if (!expected || typeof q !== "string" || q !== expected) {
+    return res.status(401).json({ ok: false, error: "Unauthorized" });
+  }
+
+  const guestTz =
+    String(req.query.guestTz || "Australia/Sydney").trim() || "Australia/Sydney";
+  const probeEmail =
+    String(req.query.probeEmail || "").trim() ||
+    "taniaadelewilson@gmail.com";
+  const name = String(req.query.name || "Harness Test Lead").trim();
+  const li =
+    String(req.query.li || "https://www.linkedin.com/in/example").trim();
+
+  let startISO = String(req.query.startISO || "").trim();
+  if (!startISO) {
+    const slotQ = String(req.query.slot || "").trim();
+    if (slotQ) {
+      const dt = DateTime.fromISO(slotQ, { zone: guestTz });
+      if (!dt.isValid) {
+        return res.status(400).json({
+          ok: false,
+          error: "Invalid slot (use ISO local time, e.g. 2026-03-28T14:00:00)",
+          guestTz,
+          slot: slotQ,
+        });
+      }
+      startISO = dt.toUTC().toISO();
+    } else {
+      const t0 = Date.now() + 3 * 60 * 60 * 1000;
+      startISO = new Date(Math.ceil(t0 / 60000) * 60000).toISOString();
+    }
+  }
+
+  let token;
+  try {
+    token = signGuestBookingToken({
+      n: name,
+      li,
+      e: probeEmail,
+      exp: Math.floor(Date.now() / 1000) + 14 * 86400,
+    });
+  } catch (e) {
+    return res.status(500).json({
+      ok: false,
+      error: e.message || String(e),
+      hint: "GUEST_BOOKING_LINK_SECRET missing or too short on server",
+    });
+  }
+
+  const out = await executeGuestBookOnce({
+    t: token,
+    start: startISO,
+    attendeeEmail: probeEmail,
+    guestNotes: "debug-guest-book-harness",
+  });
+
+  if (!out.ok) {
+    return res.status(out.status).json({
+      ok: false,
+      harness: true,
+      error: out.error,
+      startISO,
+      guestTz,
+    });
+  }
+
+  const deleteAfter = req.query.deleteAfter !== "0";
+  if (deleteAfter && out.eventId) {
+    try {
+      const { google } = require("googleapis");
+      const { getGmailOAuthClient } = require("../services/gmailApiService.js");
+      const auth = getGmailOAuthClient();
+      const calendar = google.calendar({ version: "v3", auth });
+      await calendar.events.delete({
+        calendarId: "primary",
+        eventId: out.eventId,
+      });
+      return res.json({
+        ok: true,
+        harness: true,
+        message:
+          "Guest book path succeeded; probe calendar event was deleted.",
+        startISO,
+        guestTz,
+        eventId: out.eventId,
+        deletedProbeEvent: true,
+      });
+    } catch (delErr) {
+      return res.json({
+        ok: true,
+        harness: true,
+        warning: delErr.message || String(delErr),
+        startISO,
+        guestTz,
+        eventId: out.eventId,
+        htmlLink: out.htmlLink,
+        deletedProbeEvent: false,
+      });
+    }
+  }
+
+  return res.json({
+    ok: true,
+    harness: true,
+    startISO,
+    guestTz,
+    eventId: out.eventId,
+    htmlLink: out.htmlLink,
+    deletedProbeEvent: false,
+  });
 });
 
 /**
