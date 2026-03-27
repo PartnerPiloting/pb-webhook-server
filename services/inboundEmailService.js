@@ -2367,26 +2367,31 @@ async function processMeetingNotetakerEmail(client, emailData, provider, addToRe
     }
     
     try {
-        let lead = null;
-        let matchedBy = null;
-        
+        // Collect all unique leads found — one forward saves to ALL attendees
+        const foundLeads = [];
+        const seenLeadIds = new Set();
+
+        const addFoundLead = (lead) => {
+            if (lead && !seenLeadIds.has(lead.id)) {
+                foundLeads.push(lead);
+                seenLeadIds.add(lead.id);
+            }
+        };
+
         // PRIORITY 1: Try email lookup first (most reliable)
         if (meetingData.contactEmail) {
             logger.info(`Trying to find lead by email: "${meetingData.contactEmail}"`);
-            lead = await findLeadByEmail(client, meetingData.contactEmail);
-            
-            if (lead) {
-                matchedBy = `email (${meetingData.contactEmail})`;
-                logger.info(`Found lead ${lead.id} by email: ${meetingData.contactEmail}`);
+            const emailLead = await findLeadByEmail(client, meetingData.contactEmail);
+            if (emailLead) {
+                logger.info(`Found lead ${emailLead.id} by email: ${meetingData.contactEmail}`);
+                addFoundLead(emailLead);
             } else {
                 logger.info(`No lead found with email ${meetingData.contactEmail}, falling back to name search`);
             }
         }
-        
-        // PRIORITY 2: Try name lookup if email didn't match
-        if (!lead) {
-            // Build list of names to try: primary name first, then alternates
-            // Build search list, skipping the client's own name (they won't be in their own leads DB)
+
+        // PRIORITY 2: Name lookup — search ALL names, collect ALL unique matches
+        {
             const clientFullNameLower = (client.clientName || '').toLowerCase();
             const namesToTry = [];
             if (meetingData.contactName && meetingData.contactName.toLowerCase() !== clientFullNameLower) {
@@ -2403,78 +2408,55 @@ async function processMeetingNotetakerEmail(client, emailData, provider, addToRe
                     }
                 }
             }
-            
+
             if (namesToTry.length > 0) {
                 logger.info(`Will try ${namesToTry.length} name(s): ${namesToTry.join(', ')}`);
-                
-                // Try each name until we find a match
-                let searchResult = null;
-                let matchedName = null;
-                
                 for (const nameToTry of namesToTry) {
                     logger.info(`Trying to find lead by name: "${nameToTry}"`);
-                    searchResult = await findLeadByName(client, nameToTry, meetingData.company);
-                    
-                    if (searchResult.matchType !== 'none') {
-                        matchedName = nameToTry;
-                        logger.info(`Found match with name "${nameToTry}" (matchType: ${searchResult.matchType})`);
-                        break;
+                    const searchResult = await findLeadByName(client, nameToTry, meetingData.company);
+                    if (searchResult.matchType === 'ambiguous') {
+                        await sendMeetingMultipleLeadsNotification(client.clientEmailAddress, meetingData, provider, searchResult.allMatches);
+                        return {
+                            success: false,
+                            error: 'multiple_leads',
+                            message: `Found ${searchResult.allMatches.length} leads named "${nameToTry}" - please specify which one`,
+                            matches: searchResult.allMatches.map(l => ({
+                                id: l.id,
+                                name: `${l.firstName} ${l.lastName}`.trim(),
+                                company: l.company,
+                                email: l.email
+                            }))
+                        };
                     }
-                    logger.info(`No match for "${nameToTry}", trying next...`);
-                }
-                
-                // Handle name search results
-                if (searchResult && searchResult.matchType === 'ambiguous') {
-                    // Multiple leads with same name, couldn't narrow down
-                    await sendMeetingMultipleLeadsNotification(client.clientEmailAddress, meetingData, provider, searchResult.allMatches);
-                    return {
-                        success: false,
-                        error: 'multiple_leads',
-                        message: `Found ${searchResult.allMatches.length} leads named "${matchedName}" - please specify which one`,
-                        matches: searchResult.allMatches.map(l => ({
-                            id: l.id,
-                            name: `${l.firstName} ${l.lastName}`.trim(),
-                            company: l.company,
-                            email: l.email
-                        }))
-                    };
-                }
-                
-                if (searchResult && searchResult.matchType !== 'none') {
-                    lead = searchResult.lead;
-                    matchedBy = `name (${matchedName})`;
+                    if (searchResult.matchType !== 'none') {
+                        logger.info(`Found match with name "${nameToTry}" (matchType: ${searchResult.matchType})`);
+                        addFoundLead(searchResult.lead);
+                    } else {
+                        logger.info(`No match for "${nameToTry}", continuing...`);
+                    }
                 }
             }
         }
-        
-        // PRIORITY 2.5: Try Fathom usernames (e.g. "elizagilbertson" → Eliza Gilbertson)
-        // Fathom action items sometimes show the user's account username instead of their display name
-        if (!lead && meetingData.actionItemUsernames && meetingData.actionItemUsernames.length > 0) {
-            const clientFullNameLower = (client.clientName || '').toLowerCase().replace(/\s+/g, '');
+
+        // PRIORITY 2.5: Fathom usernames (e.g. "elizagilbertson" → Eliza Gilbertson)
+        if (meetingData.actionItemUsernames && meetingData.actionItemUsernames.length > 0) {
+            const clientUsernameNorm = (client.clientName || '').toLowerCase().replace(/\s+/g, '');
             for (const username of meetingData.actionItemUsernames) {
-                if (username === clientFullNameLower) {
+                if (username === clientUsernameNorm) {
                     logger.info(`Skipping username "${username}" — matches client's own name`);
                     continue;
                 }
                 logger.info(`Trying username lookup: "${username}"`);
                 const usernameMatch = await findLeadByUsername(client, username);
-                if (usernameMatch) {
-                    lead = usernameMatch;
-                    matchedBy = `username (${username})`;
-                    break;
-                }
+                addFoundLead(usernameMatch);
             }
         }
-        
-        // PRIORITY 3: First name only + company domain search
-        // When we only have a first name (e.g., "Michelle") and a company domain (e.g., "discoveryouredge.com.au")
-        if (!lead && meetingData.firstNameOnly && meetingData.company) {
+
+        // PRIORITY 3: First name only + company domain (only when no leads found yet)
+        if (foundLeads.length === 0 && meetingData.firstNameOnly && meetingData.company) {
             logger.info(`Trying first name + company domain search: "${meetingData.firstNameOnly}" at "${meetingData.company}"`);
-            
             const searchResult = await findLeadByFirstNameAndDomain(client, meetingData.firstNameOnly, meetingData.company);
-            
             if (searchResult.matchType === 'ambiguous') {
-                // Multiple leads match first name + domain
                 await sendMeetingMultipleLeadsNotification(client.clientEmailAddress, meetingData, provider, searchResult.allMatches);
                 return {
                     success: false,
@@ -2488,22 +2470,16 @@ async function processMeetingNotetakerEmail(client, emailData, provider, addToRe
                     }))
                 };
             }
-            
             if (searchResult.matchType !== 'none') {
-                lead = searchResult.lead;
-                matchedBy = `first name + domain (${meetingData.firstNameOnly} at ${meetingData.company})`;
+                addFoundLead(searchResult.lead);
             }
         }
-        
-        // PRIORITY 4: Domain-only search (fallback when no name could be extracted)
-        // When we have a company domain but couldn't extract any name
-        if (!lead && meetingData.company && !meetingData.contactName && !meetingData.firstNameOnly) {
+
+        // PRIORITY 4: Domain-only search (only when no leads found yet and no name info)
+        if (foundLeads.length === 0 && meetingData.company && !meetingData.contactName && !meetingData.firstNameOnly) {
             logger.info(`Trying domain-only search: "${meetingData.company}"`);
-            
             const searchResult = await findLeadByDomainOnly(client, meetingData.company);
-            
             if (searchResult.matchType === 'ambiguous') {
-                // Multiple leads at this domain
                 await sendMeetingMultipleLeadsNotification(client.clientEmailAddress, meetingData, provider, searchResult.allMatches);
                 return {
                     success: false,
@@ -2517,17 +2493,15 @@ async function processMeetingNotetakerEmail(client, emailData, provider, addToRe
                     }))
                 };
             }
-            
             if (searchResult.matchType !== 'none') {
-                lead = searchResult.lead;
-                matchedBy = `domain only (${meetingData.company})`;
+                addFoundLead(searchResult.lead);
             }
         }
-        
-        // No match found by email or name
-        if (!lead) {
-            const searchedFor = meetingData.contactEmail 
-                ? `email "${meetingData.contactEmail}"` 
+
+        // No leads found at all
+        if (foundLeads.length === 0) {
+            const searchedFor = meetingData.contactEmail
+                ? `email "${meetingData.contactEmail}"`
                 : `name "${meetingData.contactName || meetingData.alternateNames.join('" or "')}"`;
             logger.warn(`No lead found - searched for: ${searchedFor}`);
             await sendMeetingLeadNotFoundNotification(client.clientEmailAddress, meetingData, provider);
@@ -2537,35 +2511,49 @@ async function processMeetingNotetakerEmail(client, emailData, provider, addToRe
                 message: `No lead found with ${searchedFor} for ${provider} meeting`
             };
         }
-        
-        // Update the lead with meeting notes
-        logger.info(`Updating lead ${lead.id} (${lead.firstName} ${lead.lastName}) with meeting notes`);
-        const updateResult = await updateLeadWithMeetingNotes(client, lead, meetingData, provider);
-        
-        // Check if this was a duplicate
-        if (updateResult.duplicate) {
-            logger.info(`Duplicate meeting note detected for ${lead.firstName} ${lead.lastName} - not sending notification`);
+
+        // Save notes to ALL found leads (multi-attendee support)
+        const addlAttendees = foundLeads.length >= 2
+            ? foundLeads.map(l => `${l.firstName} ${l.lastName}`.trim()).filter(Boolean)
+            : [];
+
+        let savedCount = 0;
+        const savedLeads = [];
+        const duplicateLeads = [];
+
+        for (const lead of foundLeads) {
+            logger.info(`Updating lead ${lead.id} (${lead.firstName} ${lead.lastName}) with meeting notes`);
+            const updateResult = await updateLeadWithMeetingNotes(client, lead, meetingData, provider, addlAttendees);
+            if (updateResult.duplicate) {
+                logger.info(`Duplicate detected for ${lead.firstName} ${lead.lastName} - skipping`);
+                duplicateLeads.push(`${lead.firstName} ${lead.lastName}`.trim());
+            } else {
+                savedCount++;
+                savedLeads.push({ id: lead.id, name: `${lead.firstName} ${lead.lastName}`.trim() });
+            }
+        }
+
+        if (savedCount === 0 && duplicateLeads.length > 0) {
+            logger.info(`All leads were duplicates (${duplicateLeads.join(', ')}) - not sending notification`);
             return {
                 success: true,
                 type: 'meeting_notes_duplicate',
-                provider: provider,
-                leadId: lead.id,
-                leadName: `${lead.firstName} ${lead.lastName}`.trim(),
-                meetingLink: meetingData.meetingLink,
-                message: 'Duplicate - meeting notes already saved'
+                provider,
+                leadNames: duplicateLeads,
+                message: 'Duplicate - meeting notes already saved for all attendees'
             };
         }
-        
-        // No success email - only notify on failure (lead not found, error, etc.)
-        logger.info(`Meeting notes saved for ${lead.firstName} ${lead.lastName} - NOT sending success email (disabled)`);
+
+        logger.info(`Meeting notes saved for: ${savedLeads.map(l => l.name).join(', ')} - NOT sending success email (disabled)`);
         return {
             success: true,
             type: 'meeting_notes',
-            provider: provider,
-            leadId: lead.id,
-            leadName: `${lead.firstName} ${lead.lastName}`.trim(),
-            meetingLink: meetingData.meetingLink,
-            matchedBy: matchedBy
+            provider,
+            leadIds: savedLeads.map(l => l.id),
+            leadNames: savedLeads.map(l => l.name),
+            savedCount,
+            duplicatesSkipped: duplicateLeads.length,
+            meetingLink: meetingData.meetingLink
         };
         
     } catch (error) {
