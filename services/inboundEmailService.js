@@ -1123,6 +1123,7 @@ function htmlToStructuredText(html) {
             .replace(/&gt;/g, '>')
             .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(parseInt(n, 10)))
             .replace(/\n{3,}/g, '\n\n')
+            .split('\n').map(l => l.trim()).join('\n')
             .trim();
     } catch (e) {
         logger.warn(`htmlToStructuredText failed: ${e.message}`);
