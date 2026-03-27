@@ -1074,8 +1074,9 @@ function htmlToStructuredText(html) {
     try {
         return html
             .replace(/<br\s*\/?>/gi, '\n')
-            .replace(/<\/(div|p|li|tr|h[1-6])>/gi, '\n')
-            .replace(/<(div|p|li|tr|h[1-6])[^>]*>/gi, '\n')
+            // Include td/th so table cells (used heavily in Fathom emails) each get their own line
+            .replace(/<\/(div|p|li|tr|td|th|h[1-6])>/gi, '\n')
+            .replace(/<(div|p|li|tr|td|th|h[1-6])[^>]*>/gi, '\n')
             .replace(/<[^>]+>/g, '')
             .replace(/&nbsp;/g, ' ')
             .replace(/&amp;/g, '&')
@@ -1232,8 +1233,9 @@ function parseMeetingNotetakerEmail(subject, bodyPlain, bodyHtml, provider, clie
         // Fathom: "Rick Van Driel and Guy meeting" or "Agnieszka Caruso meeting" as a heading line
         // Must NOT start with Meeting/Call/Recap (those are headings, not names)
         /^(?!(?:Meeting|Call|Recap|Your)\b)([A-Z][a-zà-ÿ]+(?:\s+[A-Za-zà-ÿ-]+)*(?:\s+(?:and|&)\s+[A-Z][a-zà-ÿ]+)?)\s+meeting\s*$/im,
-        // Generic: "FirstName LastName" on its own line - but NOT "Meeting With" etc.
-        /^(?!(?:Meeting|Call|Recap|Your|View|Watch|Listen)\b)([A-Z][a-zà-ÿ]+\s+[A-Z][a-zà-ÿ]+)\s*$/m
+        // Generic: "FirstName LastName" on its own line.
+        // Excludes common Fathom section headers and generic words that look like names.
+        /^(?!(?:Meeting|Call|Recap|Your|View|Watch|Listen|Key|Next|Action|Also|Ask|General|Contact|Date|Time|Duration|Summary|Purpose|Topics|Attendees|Participants|Follow|Review)\b)([A-Z][a-zà-ÿ]+\s+[A-Z][a-zà-ÿ]+)\s*$/m
     ];
     
     for (const pattern of bodyNamePatterns) {
