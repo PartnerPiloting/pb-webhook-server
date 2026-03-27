@@ -43,12 +43,24 @@ function parseAddToRecipients(body, subject = '') {
         }
     }
 
+    // Lowercase prepositions/particles that are allowed inside a proper name
+    const nameParticles = new Set(['de', 'van', 'le', 'la', 'von', 'der', 'den', 'da', 'di', 'du', 'el', 'al', 'bin', 'binte']);
+
+    function looksLikeName(str) {
+        const words = str.trim().split(/\s+/);
+        // Must be 2–4 words (a real person name)
+        if (words.length < 2 || words.length > 4) return false;
+        // Every word must either start with uppercase OR be a known name particle
+        return words.every(w => /^[A-Z]/.test(w) || nameParticles.has(w.toLowerCase()));
+    }
+
     for (const item of items) {
         if (emailRegex.test(item)) {
             result.push({ email: item.toLowerCase().trim() });
-        } else if (item.length >= 2) {
+        } else if (looksLikeName(item)) {
             result.push({ name: item });
         }
+        // Otherwise skip — likely body text that accidentally matched the "add" pattern
     }
 
     return result;

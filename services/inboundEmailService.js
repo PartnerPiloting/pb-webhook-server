@@ -1559,9 +1559,7 @@ function parseMeetingNotetakerEmail(subject, bodyPlain, bodyHtml, provider, clie
             .replace(/View Meeting.*$/gim, '')
             .replace(/Ask Fathom.*$/gim, '');
         
-        // Join continuation lines (lines that start with lowercase or are short fragments)
-        // This fixes "build AI sales page via\nAI-generated HTML" -> single line
-        actionText = actionText.replace(/([a-z])\n\s*([A-Z][a-z]+-?[a-z]*(?:\s|$))/g, '$1 $2');
+        logger.info(`[DEBUG] Action items raw text (first 500): ${actionText.substring(0, 500).replace(/\n/g, '\\n')}`);
         
         const lines = actionText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
         const cleanedItems = [];
@@ -1608,6 +1606,7 @@ function parseMeetingNotetakerEmail(subject, bodyPlain, bodyHtml, provider, clie
         
         result.actionItems = cleanedItems.join('\n');
         logger.info(`Extracted ${cleanedItems.length} action items`);
+        logger.info(`[DEBUG] Cleaned action items: ${result.actionItems.replace(/\n/g, ' | ')}`);
         
         // Extract assignee names from action items.
         // Always add unique assignees to alternateNames (ensures all meeting participants are searchable).
