@@ -1090,7 +1090,7 @@ function htmlToStructuredText(html) {
     }
 }
 
-function parseMeetingNotetakerEmail(subject, bodyPlain, bodyHtml, provider) {
+function parseMeetingNotetakerEmail(subject, bodyPlain, bodyHtml, provider, clientFirstName = '') {
     const result = {
         contactName: null,
         contactEmail: null,  // Email address if "Meeting with email@domain.com"
@@ -1106,9 +1106,12 @@ function parseMeetingNotetakerEmail(subject, bodyPlain, bodyHtml, provider) {
     };
     
     let body = bodyPlain || '';
+    // Track whether contactName was set from the subject line vs body (used later to detect company vs person)
+    let contactNameFromSubject = false;
     const html = bodyHtml || '';
     // For Fathom: if plain text lacks structure, try HTML conversion (Fathom sends HTML emails)
-    if (provider === 'fathom' && html.length > 200) {
+    // NOTE: provider comparison is case-insensitive because detectMeetingNotetaker returns 'Fathom' (capital F)
+    if (provider.toLowerCase() === 'fathom' && html.length > 200) {
         const htmlText = htmlToStructuredText(html);
         const plainHasStructure = /Meeting Purpose|Key Takeaways|Meeting Summary/i.test(body);
         const htmlHasStructure = /Meeting Purpose|Key Takeaways|Meeting Summary/i.test(htmlText);
@@ -1166,10 +1169,10 @@ function parseMeetingNotetakerEmail(subject, bodyPlain, bodyHtml, provider) {
             } else {
                 subjectName = extracted;
                 
-                // Check if this looks like a company name rather than a person
+                // Check if this looks like a company name rather than a person's name
                 const looksLikeCompany = (
                     /^[A-Z]{2,}/.test(extracted) ||  // Starts with multiple caps like "TEAMSolutions"
-                    /\b(group|inc|ltd|llc|corp|company|co|solutions|tech|consulting)\b/i.test(extracted) ||  // Contains company suffix
+                    /\b(group|inc|ltd|llc|corp|company|co\.?|solutions|tech|consulting|services|digital|marketing|media|capital|ventures|partners|holdings|industries|systems|global|international|pty|australia|aust|hub|lab|labs|studio|studios|agency|network|networks|platform|platforms|academy|institute|foundation|management|enterprises|innovations)\b/i.test(extracted) ||
                     !/\s/.test(extracted)  // Single word (likely company name)
                 );
                 
@@ -1178,6 +1181,7 @@ function parseMeetingNotetakerEmail(subject, bodyPlain, bodyHtml, provider) {
                     logger.info(`Subject "${extracted}" looks like company name, not setting as contact`);
                 } else {
                     result.contactName = extracted;
+                    contactNameFromSubject = true;
                     logger.info(`Found contact name in subject: "${result.contactName}"`);
                 }
             }
@@ -1242,13 +1246,33 @@ function parseMeetingNotetakerEmail(subject, bodyPlain, bodyHtml, provider) {
             // Split on " and " or " & " to extract individual names
             const hasMultiple = bodyName.toLowerCase().includes(' and ') || bodyName.includes(' & ');
             if (hasMultiple) {
-                const people = bodyName.split(/\s+(?:and|&)\s+/i);
+                const people = bodyName.split(/\s+(?:and|&)\s+/i).map(p => p.trim());
                 logger.info(`Detected multiple people in meeting: ${people.join(', ')}`);
+                
+                // If the contactName was set from the subject line but doesn't match any of the
+                // body-extracted people, it's the meeting/company title, not a person's name.
+                // e.g. subject "Meeting with Allied Orbit" → body "Eliza Gilbertson and Guy Wilson meeting"
+                // → "Allied Orbit" should become company, "Eliza Gilbertson" should be primary contact.
+                if (result.contactName && contactNameFromSubject && !result.company) {
+                    const subjectNameLower = result.contactName.toLowerCase();
+                    const matchesBodyPerson = people.some(person => {
+                        const personLower = person.toLowerCase();
+                        // Check if the subject name is (or starts with) a person's first name in the body
+                        return personLower === subjectNameLower ||
+                               personLower.split(' ')[0] === subjectNameLower.split(' ')[0];
+                    });
+                    if (!matchesBodyPerson) {
+                        logger.info(`Subject-extracted "${result.contactName}" doesn't match body persons — treating as company name`);
+                        result.company = result.contactName;
+                        result.contactName = null;
+                        contactNameFromSubject = false;
+                    }
+                }
                 
                 // First person is usually the primary contact (the external person)
                 // Second person is often the client (e.g., "Guy")
                 for (let i = 0; i < people.length; i++) {
-                    const personName = people[i].trim();
+                    const personName = people[i];
                     // Skip single names that are likely the client's first name
                     if (personName.split(/\s+/).length >= 2) {
                         // This looks like a full name (FirstName LastName)
@@ -1583,26 +1607,42 @@ function parseMeetingNotetakerEmail(subject, bodyPlain, bodyHtml, provider) {
         result.actionItems = cleanedItems.join('\n');
         logger.info(`Extracted ${cleanedItems.length} action items`);
         
-        // Use assignee names as contact fallback (e.g. "— Akil Merchant" or "assigned to Akil Merchant")
-        if (!result.contactName && result.actionItems) {
+        // Extract assignee names from action items.
+        // Always add unique assignees to alternateNames (ensures all meeting participants are searchable).
+        // If no contactName has been found yet, the first non-client assignee also becomes the primary contact.
+        if (result.actionItems) {
             const assigneePatterns = [
                 /[—–-]\s*([A-Z][a-zà-ÿ]+(?:\s+[A-Za-zà-ÿ-]+)+)\s*$/gm,
                 /assigned to\s+([A-Z][a-zà-ÿ]+(?:\s+[A-Za-zà-ÿ-]+)+)/gi
             ];
-            const clientFirstNames = ['guy', 'desiree']; // Skip if assignee is likely the client
+            // Use the actual client first name if available, otherwise fall back to hardcoded list
+            const excludeFirstNames = clientFirstName
+                ? [clientFirstName.toLowerCase()]
+                : ['guy', 'desiree'];
+            const seenAssignees = new Set(
+                [result.contactName, ...result.alternateNames]
+                    .filter(Boolean)
+                    .map(n => n.toLowerCase())
+            );
+            
             for (const pattern of assigneePatterns) {
                 for (const match of result.actionItems.matchAll(pattern)) {
                     const name = match[1].trim();
                     if (name.split(/\s+/).length >= 2 && name.length < 30) {
                         const first = name.split(/\s+/)[0].toLowerCase();
-                        if (!clientFirstNames.includes(first)) {
-                            result.contactName = name;
-                            logger.info(`Found contact from action items assignee: "${name}"`);
-                            break;
+                        const nameLower = name.toLowerCase();
+                        if (!excludeFirstNames.includes(first) && !seenAssignees.has(nameLower)) {
+                            seenAssignees.add(nameLower);
+                            if (!result.contactName) {
+                                result.contactName = name;
+                                logger.info(`Found contact from action items assignee: "${name}"`);
+                            } else {
+                                result.alternateNames.push(name);
+                                logger.info(`Added action item assignee to alternateNames: "${name}"`);
+                            }
                         }
                     }
                 }
-                if (result.contactName) break;
             }
         }
     }
@@ -2248,7 +2288,7 @@ async function processMeetingNotetakerEmail(client, emailData, provider, addToRe
     let meetingData = null;
     try {
         // Parse the email to extract meeting details
-        meetingData = parseMeetingNotetakerEmail(subject, bodyPlain, bodyHtml, provider);
+        meetingData = parseMeetingNotetakerEmail(subject, bodyPlain, bodyHtml, provider, client.clientFirstName || '');
     } catch (parseError) {
         logger.error(`Error parsing meeting email: ${parseError.message}`);
         return {
@@ -2292,12 +2332,22 @@ async function processMeetingNotetakerEmail(client, emailData, provider, addToRe
         // PRIORITY 2: Try name lookup if email didn't match
         if (!lead) {
             // Build list of names to try: primary name first, then alternates
+            // Build search list, skipping the client's own name (they won't be in their own leads DB)
+            const clientFullNameLower = (client.clientName || '').toLowerCase();
             const namesToTry = [];
-            if (meetingData.contactName) {
+            if (meetingData.contactName && meetingData.contactName.toLowerCase() !== clientFullNameLower) {
                 namesToTry.push(meetingData.contactName);
+            } else if (meetingData.contactName) {
+                logger.info(`Skipping contactName "${meetingData.contactName}" — matches client's own name`);
             }
             if (meetingData.alternateNames && meetingData.alternateNames.length > 0) {
-                namesToTry.push(...meetingData.alternateNames);
+                for (const name of meetingData.alternateNames) {
+                    if (name.toLowerCase() !== clientFullNameLower) {
+                        namesToTry.push(name);
+                    } else {
+                        logger.info(`Skipping alternate name "${name}" — matches client's own name`);
+                    }
+                }
             }
             
             if (namesToTry.length > 0) {
