@@ -372,6 +372,45 @@ async function findLeadByEmail(client, leadEmail) {
 }
 
 /**
+ * Find a lead by concatenated username (e.g. Fathom stores "elizagilbertson" not "Eliza Gilbertson").
+ * Searches LOWER(CONCATENATE({First Name}, {Last Name})) = username.
+ * @param {Object} client
+ * @param {string} username - e.g. "elizagilbertson"
+ * @returns {Promise<Object|null>} Lead object or null
+ */
+async function findLeadByUsername(client, username) {
+    if (!client.airtableBaseId) return null;
+    const clientBase = createBaseInstance(client.airtableBaseId);
+    const u = username.toLowerCase().trim();
+    try {
+        const records = await clientBase('Leads').select({
+            filterByFormula: `LOWER(CONCATENATE({First Name}, {Last Name})) = "${u}"`,
+            maxRecords: 2
+        }).firstPage();
+        if (records && records.length === 1) {
+            const lead = records[0];
+            const name = `${lead.fields['First Name'] || ''} ${lead.fields['Last Name'] || ''}`.trim();
+            logger.info(`Found lead ${lead.id} by username "${u}" → "${name}"`);
+            return {
+                id: lead.id,
+                firstName: lead.fields['First Name'] || '',
+                lastName: lead.fields['Last Name'] || '',
+                email: lead.fields['Email'] || '',
+                notes: lead.fields['Notes'] || '',
+                followUpDate: lead.fields['Follow-Up Date'] || null
+            };
+        }
+        if (records && records.length > 1) {
+            logger.warn(`Multiple leads match username "${u}" — skipping ambiguous match`);
+        }
+        return null;
+    } catch (error) {
+        logger.error(`Error in findLeadByUsername: ${error.message}`);
+        return null;
+    }
+}
+
+/**
  * Update lead with email content
  * Parses the FULL email thread (including quoted replies from the lead)
  * Format: DD-MM-YY HH:MM AM/PM - SenderName - message
@@ -1103,7 +1142,8 @@ function parseMeetingNotetakerEmail(subject, bodyPlain, bodyHtml, provider, clie
         company: null,
         // Rich content from meeting notes
         actionItems: null,       // Action items with assignees
-        meetingSummary: null     // Full meeting summary (contains Purpose, Takeaways, Topics, Next Steps)
+        meetingSummary: null,    // Full meeting summary (contains Purpose, Takeaways, Topics, Next Steps)
+        actionItemUsernames: [] // Fathom-style usernames found as assignees (e.g. "elizagilbertson")
     };
     
     let body = bodyPlain || '';
@@ -1578,10 +1618,22 @@ function parseMeetingNotetakerEmail(subject, bodyPlain, bodyHtml, provider, clie
                                line.split(/\s+/).length >= 2 &&
                                line.split(/\s+/).length <= 4;
             
+            // Check if this looks like a Fathom username (single word, all lowercase, no spaces/special chars)
+            // e.g. "elizagilbertson" — Fathom stores users by their account username, not display name
+            const isUsername = /^[a-z]{4,30}$/.test(line);
+            
             if (isAssignee && currentTask) {
                 // Combine task with assignee
                 cleanedItems.push(`• ${currentTask} — ${line}`);
                 currentTask = '';
+            } else if (isUsername && currentTask) {
+                // Fathom username as assignee — save task without assignee name, record username for later lookup
+                cleanedItems.push(`• ${currentTask}`);
+                currentTask = '';
+                if (!result.actionItemUsernames.includes(line)) {
+                    result.actionItemUsernames.push(line);
+                    logger.info(`Found Fathom username assignee: "${line}"`);
+                }
             } else {
                 // This is task text
                 const cleanLine = line.replace(/^[•\-]\s*/, '').trim();
@@ -2390,6 +2442,25 @@ async function processMeetingNotetakerEmail(client, emailData, provider, addToRe
                 if (searchResult && searchResult.matchType !== 'none') {
                     lead = searchResult.lead;
                     matchedBy = `name (${matchedName})`;
+                }
+            }
+        }
+        
+        // PRIORITY 2.5: Try Fathom usernames (e.g. "elizagilbertson" → Eliza Gilbertson)
+        // Fathom action items sometimes show the user's account username instead of their display name
+        if (!lead && meetingData.actionItemUsernames && meetingData.actionItemUsernames.length > 0) {
+            const clientFullNameLower = (client.clientName || '').toLowerCase().replace(/\s+/g, '');
+            for (const username of meetingData.actionItemUsernames) {
+                if (username === clientFullNameLower) {
+                    logger.info(`Skipping username "${username}" — matches client's own name`);
+                    continue;
+                }
+                logger.info(`Trying username lookup: "${username}"`);
+                const usernameMatch = await findLeadByUsername(client, username);
+                if (usernameMatch) {
+                    lead = usernameMatch;
+                    matchedBy = `username (${username})`;
+                    break;
                 }
             }
         }
