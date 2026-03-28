@@ -272,7 +272,7 @@ async function fetchScoredLeadCandidates(base) {
         F.sentAt,
         F.rawProfile,
         F.lastName,
-        F.linkedInUrl,
+        // Many Guy bases use "LinkedIn Profile URL" only; omit "LinkedIn URL" to avoid Airtable UNKNOWN_FIELD.
         F.linkedInProfileUrl,
       ],
     })
