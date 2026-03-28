@@ -1446,14 +1446,15 @@ router.get("/admin/corporate-captives-dry-run-preview", async (req, res) => {
       limitRaw !== undefined && limitRaw !== ""
         ? String(limitRaw).trim()
         : undefined;
-    const {
-      buildDryRunPreviewHtml,
-      escapeHtml,
-    } = require("../services/corporateCaptivesOutreachService.js");
+    const { buildDryRunPreviewHtml } = require("../services/corporateCaptivesOutreachService.js");
     const html = await buildDryRunPreviewHtml({ clientId, limitOverride });
     return res.status(200).type("html").send(html);
   } catch (e) {
-    const msg = escapeHtml(e.message || String(e));
+    const msg = String(e.message || e || "error")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
     return res
       .status(500)
       .type("html")
