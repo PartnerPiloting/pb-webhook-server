@@ -71,10 +71,20 @@ const LeadDetailModal = ({
     s && typeof s === 'string' && s.trim().toUpperCase().includes('[AI UNAVAILABLE]');
   const hasRealBrief = brief?.story && brief.story.trim() && !isAiUnavailableFallback(brief.story);
 
-  // Render bullet text with each line on its own row
+  // Render bullet text with each line on its own row.
+  // AI sometimes separates bullets with \n, sometimes just runs them inline with •.
+  // We handle both: split on \n first, then fall back to splitting on • if still one block.
   const renderLines = (text) => {
     if (!text) return null;
-    const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+    let lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+    // Fallback: if no newlines but multiple bullets exist, split on the bullet char
+    if (lines.length <= 1 && text.includes('•')) {
+      lines = text
+        .split('•')
+        .map(l => l.trim())
+        .filter(l => l.length > 0)
+        .map(l => `• ${l}`);
+    }
     if (lines.length <= 1) return <p className="text-sm text-gray-800 leading-relaxed">{text}</p>;
     return (
       <div className="space-y-1.5">
