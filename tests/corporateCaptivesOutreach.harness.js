@@ -26,6 +26,7 @@ const {
   buildDryRunPreviewHtml,
   inferOutreachBodyVariant,
   pickBodyTemplate,
+  applyOutreachBodyTemplate,
 } = require("../services/corporateCaptivesOutreachService.js");
 
 function mockRecord(id, fields) {
@@ -110,6 +111,24 @@ function runUnitTests() {
   );
 
   assert.strictEqual(applyTemplate("Hi {{FirstName}}!", "Pat"), "Hi Pat!");
+
+  assert.ok(
+    applyOutreachBodyTemplate(
+      '<a href="{{GuestBookingLink}}">book</a>',
+      "Pat",
+      "https://x.example/guest-book?t=abc"
+    ).includes("https://x.example/guest-book?t=abc")
+  );
+  assert.ok(
+    applyOutreachBodyTemplate("Hi {{FirstName}} link {{GuestBookingLink}}", "Pat", null).includes(
+      "Pat"
+    )
+  );
+  assert.ok(
+    applyOutreachBodyTemplate("x {{GuestBookingLink}}", "A", null).includes(
+      "Guest booking link not generated"
+    )
+  );
 
   const settingsFields = {
     [F.subject1]: "A",
