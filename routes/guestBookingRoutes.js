@@ -369,7 +369,7 @@ router.get("/guest-book", async (req, res) => {
     <div class="card">
       <div class="card-inner">
         <div class="col-schedule">
-          <h1>Hi ${leadFirst}, looking forward to chatting.</h1>
+          <h1>Hi ${leadFirst}, Guy here. Looking forward to chatting.</h1>
           <p class="sub sub-mobile">Pick a slot below — start with a quick suggestion or choose another day.</p>
           <p class="sub sub-desktop">Pick a time on the left, then add your details on the right.</p>
           <div id="tzLine" class="tz" style="display:none"></div>
