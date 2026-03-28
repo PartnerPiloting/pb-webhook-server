@@ -1425,13 +1425,17 @@ router.get("/debug-guest-booking-preview", async (req, res) => {
 /**
  * GET /admin/corporate-captives-dry-run-preview?clientId=Guy-Wilson&limit=10
  * HTML page: how emails would look (no sends, no Airtable updates).
- * Auth: Bearer PB_WEBHOOK_SECRET (same as debug-render-logs).
+ * Auth: Authorization: Bearer PB_WEBHOOK_SECRET — or browser: ?secret=PB_WEBHOOK_SECRET (same value; avoid sharing URL).
  * Query limit: optional override for how many previews to show (defaults to Max Sends Per Run from Airtable).
  */
 router.get("/admin/corporate-captives-dry-run-preview", async (req, res) => {
-  const authHeader = req.headers.authorization;
   const secret = process.env.PB_WEBHOOK_SECRET || process.env.DEBUG_API_KEY;
-  if (!secret || !authHeader || !authHeader.includes(secret)) {
+  const authHeader = req.headers.authorization;
+  const qSecret = req.query.secret;
+  const okBearer = secret && authHeader && authHeader.includes(secret);
+  const okQuery =
+    secret && typeof qSecret === "string" && qSecret === secret;
+  if (!secret || (!okBearer && !okQuery)) {
     return res.status(401).type("text/plain").send("Unauthorized");
   }
   try {
