@@ -26,6 +26,9 @@ const F = {
   bodyOwner: "Email Body (Owner)",
   bodyEmployee: "Email Body (Employee)",
   rawProfile: "Raw Profile Data",
+  lastName: "Last Name",
+  linkedInUrl: "LinkedIn URL",
+  linkedInProfileUrl: "LinkedIn Profile URL",
   maxSends: "Max Sends Per Run",
   dryRun: "Dry Run",
   enabled: "Outbound Email Enabled",
@@ -65,6 +68,61 @@ function pickRandomSubject(settings) {
 function applyTemplate(bodyHtml, firstName) {
   const name = firstName == null ? "" : String(firstName).trim();
   return String(bodyHtml || "").split("{{FirstName}}").join(name);
+}
+
+const MISSING_BOOKING_LINK_HTML =
+  '<span style="color:#b45309;font-size:0.9em">[Guest booking link not generated — need LinkedIn URL, full name, email, and GUEST_BOOKING_LINK_SECRET]</span>';
+
+/**
+ * After {{FirstName}}, replaces {{GuestBookingLink}} with a signed URL or a visible preview stub.
+ */
+function applyOutreachBodyTemplate(bodyHtml, firstName, bookingUrl) {
+  let s = applyTemplate(bodyHtml, firstName);
+  const subst = bookingUrl || MISSING_BOOKING_LINK_HTML;
+  return s.split("{{GuestBookingLink}}").join(subst);
+}
+
+function buildLeadFullNameForBooking(record) {
+  const first = String(record.get(F.firstName) || "").trim();
+  const last = String(record.get(F.lastName) || "").trim();
+  const combined = [first, last].filter(Boolean).join(" ").trim();
+  return combined || first || "";
+}
+
+function getLeadLinkedInUrl(record) {
+  const primary = record.get(F.linkedInUrl);
+  if (primary && String(primary).trim()) return String(primary).trim();
+  const fallback = record.get(F.linkedInProfileUrl);
+  if (fallback && String(fallback).trim()) return String(fallback).trim();
+  return "";
+}
+
+/**
+ * Same signing as scripts/guest-booking-mint-link.js. Returns null if anything missing or signing fails.
+ */
+function mintGuestBookingUrlForLead(record) {
+  const e = String(record.get(F.email) || "").trim();
+  const li = getLeadLinkedInUrl(record);
+  const n = buildLeadFullNameForBooking(record);
+  if (!emailLooksValid(e) || !li || !n) return null;
+  let signGuestBookingToken;
+  try {
+    ({ signGuestBookingToken } = require("./guestBookingToken.js"));
+    const exp = Math.floor(Date.now() / 1000) + 90 * 86400;
+    const token = signGuestBookingToken({ n, li, e, exp });
+    const base = (
+      process.env.GUEST_BOOKING_PUBLIC_BASE || "https://pb-webhook-server.onrender.com"
+    ).replace(/\/$/, "");
+    const { normalizeTimezoneInput } = require("./guestTimezoneAliases.js");
+    const rawTz =
+      process.env.GUEST_BOOKING_DEFAULT_GUEST_TZ ||
+      process.env.GUEST_BOOKING_HOST_TIMEZONE ||
+      "Australia/Brisbane";
+    const guestTz = normalizeTimezoneInput(String(rawTz).trim()) || rawTz;
+    return `${base}/guest-book?t=${encodeURIComponent(token)}&guestTz=${encodeURIComponent(guestTz)}`;
+  } catch {
+    return null;
+  }
 }
 
 function parseProfileObjectForBlob(raw) {
@@ -186,6 +244,9 @@ async function fetchScoredLeadCandidates(base) {
         F.score,
         F.sentAt,
         F.rawProfile,
+        F.lastName,
+        F.linkedInUrl,
+        F.linkedInProfileUrl,
       ],
     })
     .eachPage((page, next) => {
@@ -273,7 +334,8 @@ function buildPreviewRows(eligibleRecords, settings, maxShow) {
     const variant = inferOutreachBodyVariant(rec.get(F.rawProfile));
     const bodyTemplate = pickBodyTemplate(settings.fields, variant);
     const subject = pickRandomSubject(settings.fields);
-    const html = applyTemplate(bodyTemplate, firstName);
+    const bookingUrl = mintGuestBookingUrlForLead(rec);
+    const html = applyOutreachBodyTemplate(bodyTemplate, firstName, bookingUrl);
     return {
       recordId: rec.id,
       to: String(rec.get(F.email) || "").trim(),
@@ -281,6 +343,7 @@ function buildPreviewRows(eligibleRecords, settings, maxShow) {
       html,
       scoreOrder: numOrNull(rec.get(F.scoreOrder)),
       variant,
+      guestBookingLinkOk: Boolean(bookingUrl),
     };
   });
 }
@@ -337,7 +400,10 @@ async function buildDryRunPreviewHtml(options = {}) {
   parts.push(`Outbound Email Enabled: <b>${enabled ? "Yes" : "No"}</b> · Dry Run (setting): <b>${dryRun ? "Yes" : "No"}</b><br>`);
   parts.push(`Max Sends Per Run (Airtable): <b>${maxSends}</b> · Showing up to: <b>${effectiveMax}</b><br>`);
   parts.push(`Scored candidates (pre-filter): <b>${candidates.length}</b> · Eligible after rules: <b>${eligible.length}</b><br>`);
-  parts.push(`Brisbane today: <b>${todayBrisbane.toISODate()}</b> · Date Scored must be on/before: <b>${cutoffDay.toISODate()}</b> (60-day rule)</div>`);
+  parts.push(`Brisbane today: <b>${todayBrisbane.toISODate()}</b> · Date Scored must be on/before: <b>${cutoffDay.toISODate()}</b> (60-day rule)<br>`);
+  parts.push(
+    `Use <code>{{GuestBookingLink}}</code> in email HTML to insert a signed <code>/guest-book</code> URL (or an orange note in preview if something is missing).</div>`
+  );
 
   if (previewRows.length === 0) {
     parts.push("<p><strong>No rows to preview.</strong> Raise Max Sends Per Run or fix filters.</p>");
@@ -346,7 +412,9 @@ async function buildDryRunPreviewHtml(options = {}) {
   for (const row of previewRows) {
     parts.push("<div class='card'>");
     parts.push(`<h2>${escapeHtml(row.to)}</h2>`);
-    parts.push(`<div class='chrome'>Record <code>${escapeHtml(row.recordId)}</code> · Outbound Email Score Order: <b>${row.scoreOrder}</b> · Body variant: <b>${escapeHtml(row.variant)}</b></div>`);
+    parts.push(
+      `<div class='chrome'>Record <code>${escapeHtml(row.recordId)}</code> · Outbound Email Score Order: <b>${row.scoreOrder}</b> · Body variant: <b>${escapeHtml(row.variant)}</b> · Guest booking link: <b>${row.guestBookingLinkOk ? "yes" : "no"}</b></div>`
+    );
     parts.push(`<div class='chrome'><strong>Subject:</strong> ${escapeHtml(row.subject)}</div>`);
     parts.push("<div class='body'>");
     parts.push(row.html);
@@ -372,6 +440,10 @@ module.exports = {
   notesEffectivelyEmpty,
   leadPassesFilters,
   applyTemplate,
+  applyOutreachBodyTemplate,
+  mintGuestBookingUrlForLead,
+  getLeadLinkedInUrl,
+  buildLeadFullNameForBooking,
   pickRandomSubject,
   parseDateScoredBrisbane,
   emailLooksValid,
