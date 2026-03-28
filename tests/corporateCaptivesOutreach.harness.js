@@ -24,6 +24,8 @@ const {
   buildSortedEligible,
   buildPreviewRows,
   buildDryRunPreviewHtml,
+  inferOutreachBodyVariant,
+  pickBodyTemplate,
 } = require("../services/corporateCaptivesOutreachService.js");
 
 function mockRecord(id, fields) {
@@ -131,6 +133,54 @@ function runUnitTests() {
   );
   assert.strictEqual(prev.length, 1);
   assert.ok(prev[0].html.includes("Hi Sam"));
+
+  assert.strictEqual(inferOutreachBodyVariant(""), "employee");
+  assert.strictEqual(
+    inferOutreachBodyVariant(JSON.stringify({ headline: "Founder at Acme" })),
+    "owner"
+  );
+  assert.strictEqual(
+    inferOutreachBodyVariant(
+      JSON.stringify({ headline: "VP Sales at BigCorp Inc" })
+    ),
+    "employee"
+  );
+
+  const dual = pickBodyTemplate(
+    {
+      [F.body]: "DEFAULT",
+      [F.bodyOwner]: "OWNER",
+      [F.bodyEmployee]: "EMP",
+    },
+    "owner"
+  );
+  assert.strictEqual(dual, "OWNER");
+  assert.strictEqual(
+    pickBodyTemplate(
+      { [F.body]: "DEFAULT", [F.bodyOwner]: "", [F.bodyEmployee]: "EMP" },
+      "owner"
+    ),
+    "DEFAULT"
+  );
+
+  const founderFields = {
+    ...goodFields,
+    [F.rawProfile]: JSON.stringify({ headline: "Co-founder | SaaS" }),
+  };
+  const prevOwner = buildPreviewRows(
+    [mockRecord("recFounder", founderFields)],
+    {
+      fields: {
+        ...settingsFields,
+        [F.body]: "<p>Default {{FirstName}}</p>",
+        [F.bodyOwner]: "<p>Owner {{FirstName}}</p>",
+        [F.bodyEmployee]: "<p>Emp {{FirstName}}</p>",
+      },
+    },
+    1
+  );
+  assert.strictEqual(prevOwner[0].variant, "owner");
+  assert.ok(prevOwner[0].html.includes("Owner Sam"));
 
   console.log("All unit checks passed.\n");
 }
