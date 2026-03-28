@@ -1,8 +1,21 @@
 /**
  * Signed payload for public guest booking links (Guy-only).
  * Env: GUEST_BOOKING_LINK_SECRET (min 16 chars).
+ * Env: GUEST_BOOKING_LINK_EXPIRY_DAYS (optional, default 90, clamped 1–365).
  */
 const crypto = require("crypto");
+
+/** Default 90 days; set GUEST_BOOKING_LINK_EXPIRY_DAYS to override (1–365). */
+function getGuestBookingLinkExpiryDays() {
+  const n = parseInt(process.env.GUEST_BOOKING_LINK_EXPIRY_DAYS, 10);
+  if (Number.isFinite(n) && n >= 1 && n <= 365) return n;
+  return 90;
+}
+
+/** Unix seconds for `payload.exp` when minting links. */
+function guestBookingTokenExpiryUnix() {
+  return Math.floor(Date.now() / 1000) + getGuestBookingLinkExpiryDays() * 86400;
+}
 
 function getSecret() {
   const s = process.env.GUEST_BOOKING_LINK_SECRET;
@@ -80,4 +93,6 @@ function verifyGuestBookingToken(token) {
 module.exports = {
   signGuestBookingToken,
   verifyGuestBookingToken,
+  getGuestBookingLinkExpiryDays,
+  guestBookingTokenExpiryUnix,
 };

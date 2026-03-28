@@ -11,6 +11,15 @@ This document provides a comprehensive reference for all environment variables u
 | `MASTER_CLIENTS_BASE_ID` | Base ID for client registry | `appXXX` | N/A (Required) |
 | `PB_WEBHOOK_SECRET` | Authentication for webhooks | Any secure string | N/A (Required) |
 
+## Guest booking links (`/guest-book`)
+
+| Variable | Purpose | Possible Values | Default |
+|----------|---------|-----------------|--------|
+| `GUEST_BOOKING_LINK_SECRET` | HMAC secret for signed booking tokens (min 16 chars) | String | N/A (Required for minting links) |
+| `GUEST_BOOKING_LINK_EXPIRY_DAYS` | How long minted links stay valid | Integer `1`–`365` | `90` |
+
+Used when minting via outreach `{{GuestBookingLink}}` and `scripts/guest-booking-mint-link.js` (when the CLI expiry-days argument is omitted). Some debug harnesses still use shorter fixed expiries.
+
 ## AI Configuration
 
 | Variable | Purpose | Possible Values | Default |

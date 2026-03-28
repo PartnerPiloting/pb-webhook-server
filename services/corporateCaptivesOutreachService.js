@@ -107,8 +107,11 @@ function mintGuestBookingUrlForLead(record) {
   if (!emailLooksValid(e) || !li || !n) return null;
   let signGuestBookingToken;
   try {
-    ({ signGuestBookingToken } = require("./guestBookingToken.js"));
-    const exp = Math.floor(Date.now() / 1000) + 90 * 86400;
+    ({
+      signGuestBookingToken,
+      guestBookingTokenExpiryUnix,
+    } = require("./guestBookingToken.js"));
+    const exp = guestBookingTokenExpiryUnix();
     const token = signGuestBookingToken({ n, li, e, exp });
     const base = (
       process.env.GUEST_BOOKING_PUBLIC_BASE || "https://pb-webhook-server.onrender.com"
