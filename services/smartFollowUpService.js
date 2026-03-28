@@ -1146,26 +1146,27 @@ You will be given:
 Produce a JSON object with these exact keys:
 
 {
-  "story": "2-3 sentence plain-English summary of the relationship. Where did they come from, what stage are they at, what's the mood of the relationship?",
+  "story": "2-3 sentence plain-English summary of the relationship. Where did they come from, what stage are they at, what's the mood of the relationship? Write as flowing prose.",
 
-  "pennyDrops": "Key moments where something clicked for them. What got them interested or engaged? Quote specific things they said if the transcript is available. If no transcript, leave as null.",
+  "pennyDrops": "Key moments where something clicked for them. Use this exact format — one bullet per moment, each on its own line starting with '• '. Quote their actual words where possible. Example:\n• 'I've been coming from referrals and I'm starting to realise I need a system' — showed awareness of the problem\n• Their excitement about the AI scoring system suggests they see a concrete tool they could use\nIf no transcript is available, return null.",
 
-  "linksSent": "A bullet-point list of every article, video, or resource you sent this person. Extract these from the email correspondence section of the notes. If nothing was sent, say 'Nothing sent yet.'",
+  "linksSent": "Every article, video, or resource already sent. One item per line starting with '• '. Include a very short description of each. Example:\n• Short explainer video (5 min) — most profitable move you're not making\n• Advocacy Pods article — build your own pod\nIf nothing was sent, return '• Nothing sent yet.'",
 
-  "preCallReminder": "The single most relevant thing to send them the morning before the meeting. One sentence explaining what to send and why. Base this on where they are in understanding your value proposition.",
+  "preCallReminder": "One sentence only — the single most relevant thing to send the morning before the meeting and why. No bullet points.",
 
-  "meetingOpener": "A specific suggestion for how to open the next meeting. Should feel natural, reference something they actually said or asked about. Max 2 sentences.",
+  "meetingOpener": "A specific, natural opener for the next call — reference something they actually said. Write it as if you are speaking it. Max 2 sentences. No bullet points.",
 
-  "pushOn": "The most promising thread to pull in this meeting. What did they say that suggests genuine interest or a real problem you can help with? Be specific.",
+  "pushOn": "The most promising threads to explore. Use this format — one bullet per thread:\n• [Thread] — [why it matters based on what they said]\nMax 3 bullets.",
 
-  "suggestedMessage": "A short follow-up message (2-4 sentences) to send after the meeting. Personalised to their situation."
+  "suggestedMessage": "A short post-meeting follow-up message (2-4 sentences). Write it ready to copy. No bullet points."
 }
 
 IMPORTANT:
 - Be specific, not generic. Use the lead's actual words when possible.
 - If no Fathom transcript is available, set pennyDrops to null and work only from the notes.
-- Extract links from the email section — look for URLs or descriptions of articles/videos sent.
-- Keep each field concise and scannable — the user reads this just before a call.`;
+- Extract links from the email correspondence section — look for URLs or descriptions of articles/videos sent.
+- Use \\n for line breaks within string values (valid JSON).
+- Keep each field scannable — the user reads this just before a call.`;
 }
 
 /**

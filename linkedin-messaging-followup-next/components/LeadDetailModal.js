@@ -85,6 +85,18 @@ const LeadDetailModal = ({
     setStoryError(null);
     setBrief(null);
     setStoryGenerating(true);
+
+    // Auto-check calendar at the same time if we have an email
+    if (hasEmail && !upcomingMeeting) {
+      setUpcomingMeetingLoading(true);
+      setUpcomingMeetingError(null);
+      getUpcomingMeetingWithLead(leadEmail).then(result => {
+        if (result?.meeting) {
+          setUpcomingMeeting({ summary: result.meeting.summary, displayDate: result.meeting.displayDate });
+        }
+      }).catch(() => {}).finally(() => setUpcomingMeetingLoading(false));
+    }
+
     try {
       const result = await generateSmartFollowupStory(leadId);
       if (result.story) {
@@ -207,6 +219,21 @@ const LeadDetailModal = ({
                 )}
               </div>
 
+              {/* Meeting banner — shown as soon as a meeting is detected */}
+              {(upcomingMeeting || upcomingMeetingLoading) && (
+                <div className={`flex items-center gap-3 rounded-lg px-4 py-3 border ${upcomingMeetingLoading ? 'bg-gray-50 border-gray-200' : 'bg-emerald-50 border-emerald-300'}`}>
+                  <span className="text-lg">📅</span>
+                  {upcomingMeetingLoading ? (
+                    <span className="text-sm text-gray-500">Checking calendar…</span>
+                  ) : (
+                    <div>
+                      <span className="text-sm font-semibold text-emerald-800">Meeting booked: </span>
+                      <span className="text-sm text-emerald-900">{upcomingMeeting.summary} — {upcomingMeeting.displayDate}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {storyError ? (
                 <p className="text-sm text-amber-700 bg-amber-50 rounded-md px-3 py-2 border border-amber-200">
                   {storyError}
@@ -279,10 +306,10 @@ const LeadDetailModal = ({
               ) : null}
             </div>
 
-            {/* Upcoming meeting - bold heading like Follow-up Date */}
-            <div className="space-y-3">
-              <h4 className="text-lg font-semibold text-gray-900 border-b border-gray-200 pb-2 flex items-center gap-3">
-                <span>📅 Upcoming meeting</span>
+            {/* Upcoming meeting — manual check (auto-runs when brief is generated) */}
+            {!upcomingMeeting && (
+              <div className="flex items-center gap-3">
+                <span className="text-sm text-gray-500">📅 No meeting detected yet.</span>
                 <button
                   type="button"
                   onClick={handleCheckUpcomingMeeting}
@@ -291,23 +318,14 @@ const LeadDetailModal = ({
                 >
                   {upcomingMeetingLoading ? 'Checking…' : 'Check calendar'}
                 </button>
-              </h4>
-              {!hasEmail ? (
-                <p className="text-sm text-gray-500 italic">Add an email to this lead to check your calendar.</p>
-              ) : upcomingMeeting ? (
-                <div className="text-sm text-green-900 bg-green-50 rounded-md px-3 py-2 border border-green-200">
-                  {upcomingMeeting.summary} – {upcomingMeeting.displayDate}
-                </div>
-              ) : upcomingMeetingError ? (
-                <p className={`text-sm rounded-md px-3 py-2 border ${upcomingMeetingError === 'no_meeting' ? 'text-gray-600 bg-gray-50 border-gray-200' : 'text-amber-700 bg-amber-50 border-amber-200'}`}>
-                  {upcomingMeetingError === 'no_meeting' ? 'No upcoming meeting found in the next 90 days.' : upcomingMeetingError}
-                </p>
-              ) : !upcomingMeetingLoading ? (
-                <p className="text-sm text-gray-500 italic">
-                  Click &quot;Check calendar&quot; to see if a meeting is booked (checks next 90 days).
-                </p>
-              ) : null}
-            </div>
+                {!hasEmail && (
+                  <span className="text-xs text-gray-400">(add an email to this lead first)</span>
+                )}
+                {upcomingMeetingError && upcomingMeetingError !== 'no_meeting' && (
+                  <span className="text-xs text-amber-700">{upcomingMeetingError}</span>
+                )}
+              </div>
+            )}
 
             <LeadDetailForm
               lead={{
