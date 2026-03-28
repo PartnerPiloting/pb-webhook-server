@@ -4,7 +4,9 @@
  */
 const { DateTime } = require("luxon");
 
-const SETTINGS_TABLE = "Outbound Email Settings";
+/** Override on Render if your base uses a different table name (e.g. `Outbound Email`). */
+const SETTINGS_TABLE =
+  process.env.CC_OUTREACH_SETTINGS_TABLE || "Outbound Email Settings";
 const LEADS_TABLE = "Leads";
 
 const F = {
@@ -75,7 +77,7 @@ function parseDateScoredBrisbane(val) {
 }
 
 /**
- * Load first row of Outbound Email Settings as plain object (field name → value).
+ * Load first row of settings table (`CC_OUTREACH_SETTINGS_TABLE` or default) as plain object.
  */
 async function fetchOutboundEmailSettings(base) {
   const rows = await base(SETTINGS_TABLE)
