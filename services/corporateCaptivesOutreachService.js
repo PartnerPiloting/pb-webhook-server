@@ -248,8 +248,15 @@ async function fetchOutboundEmailSettings(base) {
   return { recordId: rec.id, fields: o };
 }
 
+function maxCandidateRecordsToFetch() {
+  const n = parseInt(process.env.CC_OUTREACH_MAX_CANDIDATES || "2500", 10);
+  if (!Number.isFinite(n) || n < 50) return 2500;
+  return Math.min(n, 10000);
+}
+
 /**
  * Fetch leads that might qualify (narrow Airtable filter); full rules applied in JS.
+ * Capped and score-sorted so large bases don’t time out the HTTP request on Render.
  */
 async function fetchScoredLeadCandidates(base) {
   const records = [];
@@ -258,6 +265,8 @@ async function fetchScoredLeadCandidates(base) {
     `{${F.sentAt}}=BLANK()`,
     `LEN(TRIM({${F.email}}))>3`,
   ].join(",");
+
+  const cap = maxCandidateRecordsToFetch();
 
   await base(LEADS_TABLE)
     .select({
@@ -275,6 +284,8 @@ async function fetchScoredLeadCandidates(base) {
         // Many Guy bases use "LinkedIn Profile URL" only; omit "LinkedIn URL" to avoid Airtable UNKNOWN_FIELD.
         F.linkedInProfileUrl,
       ],
+      sort: [{ field: F.score, direction: "desc" }],
+      maxRecords: cap,
     })
     .eachPage((page, next) => {
       page.forEach((r) => records.push(r));
@@ -458,6 +469,9 @@ async function buildDryRunPreviewHtml(options = {}) {
   parts.push(`Client: <code>${escapeHtml(clientId)}</code><br>`);
   parts.push(`Outbound Email Enabled: <b>${enabled ? "Yes" : "No"}</b> · Dry Run (setting): <b>${dryRun ? "Yes" : "No"}</b><br>`);
   parts.push(`Max Sends Per Run (Airtable): <b>${maxSends}</b> · Showing up to: <b>${effectiveMax}</b><br>`);
+  parts.push(
+    `Airtable fetch cap (sorted by score desc): <b>${maxCandidateRecordsToFetch()}</b> · Loaded: <b>${candidates.length}</b><br>`
+  );
   parts.push(`Scored candidates (pre-filter): <b>${candidates.length}</b> · Eligible after rules: <b>${eligible.length}</b><br>`);
   const minScoreLbl =
     eligibilityOptions.minOutboundScoreFloor != null
