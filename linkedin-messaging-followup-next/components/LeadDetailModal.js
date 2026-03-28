@@ -71,6 +71,20 @@ const LeadDetailModal = ({
     s && typeof s === 'string' && s.trim().toUpperCase().includes('[AI UNAVAILABLE]');
   const hasRealBrief = brief?.story && brief.story.trim() && !isAiUnavailableFallback(brief.story);
 
+  // Render bullet text with each line on its own row
+  const renderLines = (text) => {
+    if (!text) return null;
+    const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+    if (lines.length <= 1) return <p className="text-sm text-gray-800 leading-relaxed">{text}</p>;
+    return (
+      <div className="space-y-1.5">
+        {lines.map((line, i) => (
+          <p key={i} className="text-sm text-gray-800 leading-relaxed">{line}</p>
+        ))}
+      </div>
+    );
+  };
+
   const notes = (lead?.notes || lead?.['Notes'] || '').trim();
   const hasNotes = notes.length > 0;
 
@@ -254,24 +268,24 @@ const LeadDetailModal = ({
                   {/* Penny drops */}
                   {brief.pennyDrops && (
                     <div className="bg-yellow-50 border border-yellow-100 rounded-lg p-4">
-                      <div className="text-xs font-semibold text-yellow-700 uppercase tracking-wide mb-1">💡 Penny drop moments</div>
-                      <p className="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap">{brief.pennyDrops}</p>
+                      <div className="text-xs font-semibold text-yellow-700 uppercase tracking-wide mb-2">💡 Penny drop moments</div>
+                      {renderLines(brief.pennyDrops)}
                     </div>
                   )}
 
                   {/* Push on */}
                   {brief.pushOn && (
                     <div className="bg-orange-50 border border-orange-100 rounded-lg p-4">
-                      <div className="text-xs font-semibold text-orange-700 uppercase tracking-wide mb-1">🎯 What to push on</div>
-                      <p className="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap">{brief.pushOn}</p>
+                      <div className="text-xs font-semibold text-orange-700 uppercase tracking-wide mb-2">🎯 What to push on</div>
+                      {renderLines(brief.pushOn)}
                     </div>
                   )}
 
                   {/* Links sent */}
                   {brief.linksSent && (
                     <div className="bg-purple-50 border border-purple-100 rounded-lg p-4">
-                      <div className="text-xs font-semibold text-purple-700 uppercase tracking-wide mb-1">🔗 Links already sent</div>
-                      <p className="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap">{brief.linksSent}</p>
+                      <div className="text-xs font-semibold text-purple-700 uppercase tracking-wide mb-2">🔗 Links already sent</div>
+                      {renderLines(brief.linksSent)}
                     </div>
                   )}
 
