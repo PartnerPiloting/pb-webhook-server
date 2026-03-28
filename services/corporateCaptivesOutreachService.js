@@ -512,8 +512,151 @@ async function buildDryRunPreviewHtml(options = {}) {
   return parts.join("");
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** Min seconds from settings + random 0..jitter cap (seconds), both from env override on jitter cap. */
+function jitterWaitMs(settingsFields) {
+  const minSecRaw = numOrNull(settingsFields[F.minDelay]);
+  const floorSec = minSecRaw != null && minSecRaw >= 0 ? minSecRaw : 90;
+  const capSec = parseInt(
+    process.env.CC_OUTREACH_JITTER_MAX_SECONDS || String(floorSec),
+    10
+  );
+  const jitterSec = Number.isFinite(capSec) && capSec >= 0 ? capSec : floorSec;
+  return floorSec * 1000 + Math.floor(Math.random() * (jitterSec * 1000 + 1));
+}
+
+/**
+ * Send batch outreach via Gmail; stamps Outbound Email Sent At on success.
+ * Respects Outbound Email Enabled + Dry Run from settings.
+ */
+async function runCorporateCaptivesSendRun(options = {}) {
+  const { createLogger } = require("../utils/contextLogger.js");
+  const { sendHtmlEmail } = require("./gmailApiService.js");
+
+  const clientId = (options.clientId && String(options.clientId).trim()) || "Guy-Wilson";
+  const limitOverride =
+    options.limitOverride != null && options.limitOverride !== ""
+      ? parseInt(String(options.limitOverride).trim(), 10)
+      : null;
+
+  const logger = createLogger({
+    runId: `CC-SEND-${Date.now()}`,
+    clientId,
+    operation: "corporate_captives_send",
+  });
+
+  const { getClientBase } = require("../config/airtableClient.js");
+  const base = await getClientBase(clientId);
+
+  const { fields: settingsFields } = await fetchOutboundEmailSettings(base);
+
+  const enabled = String(settingsFields[F.enabled] || "").toLowerCase() === "yes";
+  if (!enabled) {
+    logger.info("Skip: Outbound Email Enabled is not Yes");
+    return { ok: true, ran: false, reason: "outbound_email_disabled" };
+  }
+
+  const dryRun = String(settingsFields[F.dryRun] || "").toLowerCase() === "yes";
+  if (dryRun) {
+    logger.info("Skip: Dry Run is Yes");
+    return { ok: true, ran: false, reason: "dry_run_yes" };
+  }
+
+  const eligibilityOptions = eligibilityOptionsFromSettingsFields(settingsFields);
+  const candidates = await fetchScoredLeadCandidates(base);
+  const { eligible, rejected } = buildSortedEligible(candidates, eligibilityOptions);
+
+  const maxFromSettings = numOrNull(settingsFields[F.maxSends]);
+  const maxSends =
+    maxFromSettings != null && maxFromSettings >= 0 ? maxFromSettings : 0;
+
+  const effectiveMax =
+    limitOverride != null && !Number.isNaN(limitOverride) && limitOverride >= 0
+      ? limitOverride
+      : maxSends;
+
+  if (effectiveMax <= 0) {
+    return {
+      ok: true,
+      ran: false,
+      reason: "max_sends_zero",
+      eligibleCount: eligible.length,
+      rejectedCount: rejected.length,
+    };
+  }
+
+  const rows = buildPreviewRows(eligible, { fields: settingsFields }, effectiveMax);
+  if (rows.length === 0) {
+    return {
+      ok: true,
+      ran: false,
+      reason: "no_rows_to_send",
+      eligibleCount: eligible.length,
+      rejectedCount: rejected.length,
+    };
+  }
+
+  const results = [];
+
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    if (i > 0) {
+      const ms = jitterWaitMs(settingsFields);
+      logger.info(`Sleep ${ms}ms before next send`);
+      await sleep(ms);
+    }
+
+    if (!row.guestBookingLinkOk) {
+      logger.warn(`Skip ${row.to}: guest booking link not generated`);
+      results.push({
+        recordId: row.recordId,
+        to: row.to,
+        ok: false,
+        error: "guest_booking_link_missing",
+      });
+      continue;
+    }
+
+    try {
+      await sendHtmlEmail({
+        to: row.to,
+        subject: row.subject,
+        html: row.html,
+      });
+      await base(LEADS_TABLE).update([
+        {
+          id: row.recordId,
+          fields: { [F.sentAt]: new Date().toISOString() },
+        },
+      ]);
+      logger.info(`Sent OK ${row.to} record=${row.recordId}`);
+      results.push({ recordId: row.recordId, to: row.to, ok: true });
+    } catch (e) {
+      const msg = e && e.message ? e.message : String(e);
+      logger.error(`Send failed ${row.to}: ${msg}`);
+      results.push({ recordId: row.recordId, to: row.to, ok: false, error: msg });
+    }
+  }
+
+  return {
+    ok: true,
+    ran: true,
+    clientId,
+    attempted: rows.length,
+    sent: results.filter((r) => r.ok).length,
+    failed: results.filter((r) => !r.ok).length,
+    results,
+    eligibleCount: eligible.length,
+    rejectedCount: rejected.length,
+  };
+}
+
 module.exports = {
   buildDryRunPreviewHtml,
+  runCorporateCaptivesSendRun,
   fetchOutboundEmailSettings,
   fetchScoredLeadCandidates,
   buildSortedEligible,

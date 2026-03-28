@@ -1465,6 +1465,42 @@ router.get("/admin/corporate-captives-dry-run-preview", async (req, res) => {
 });
 
 /**
+ * GET|POST /admin/corporate-captives-send-run?secret=...&clientId=Guy-Wilson&limit=1
+ * Sends up to Max Sends Per Run (or &limit=) via Gmail; stamps Outbound Email Sent At on success.
+ * Skips if Outbound Email Enabled ≠ Yes or Dry Run = Yes. Auth: Bearer or ?secret= (same as dry-run preview).
+ */
+async function corporateCaptivesSendRunHandler(req, res) {
+  const secret = process.env.PB_WEBHOOK_SECRET || process.env.DEBUG_API_KEY;
+  const authHeader = req.headers.authorization;
+  const qSecret = req.query.secret;
+  const okBearer = secret && authHeader && authHeader.includes(secret);
+  const okQuery = secret && typeof qSecret === "string" && qSecret === secret;
+  if (!secret || (!okBearer && !okQuery)) {
+    return res.status(401).json({ ok: false, error: "Unauthorized" });
+  }
+  try {
+    const clientId =
+      (req.query.clientId && String(req.query.clientId).trim()) || "Guy-Wilson";
+    const limitRaw = req.query.limit;
+    const limitOverride =
+      limitRaw !== undefined && limitRaw !== ""
+        ? String(limitRaw).trim()
+        : undefined;
+    const { runCorporateCaptivesSendRun } = require("../services/corporateCaptivesOutreachService.js");
+    const out = await runCorporateCaptivesSendRun({ clientId, limitOverride });
+    return res.status(200).json(out);
+  } catch (e) {
+    return res.status(500).json({
+      ok: false,
+      error: e.message || String(e),
+    });
+  }
+}
+
+router.get("/admin/corporate-captives-send-run", corporateCaptivesSendRunHandler);
+router.post("/admin/corporate-captives-send-run", corporateCaptivesSendRunHandler);
+
+/**
  * Backfill blank Lead emails from CSV/XLSX (profile_url + email) or public CSV URL.
  * POST /admin/backfill-lead-emails
  * Auth: Authorization: Bearer PB_WEBHOOK_SECRET (or DEBUG_API_KEY) — same as debug-render-logs
