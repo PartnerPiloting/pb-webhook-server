@@ -68,7 +68,6 @@ function runUnitTests() {
     [F.email]: "x@example.com",
     [F.firstName]: "Sam",
     [F.score]: 10,
-    [F.scoreOrder]: 100,
     [F.dateScored]: "2024-01-01",
   };
   const good = leadPassesFilters(mockRecord("recGOOD", goodFields), cutoff);
@@ -101,9 +100,9 @@ function runUnitTests() {
   );
   assert.strictEqual(tooRecent.ok, false);
 
-  const r1 = mockRecord("a", { ...goodFields, [F.scoreOrder]: 10 });
-  const r2 = mockRecord("b", { ...goodFields, [F.scoreOrder]: 99 });
-  const r3 = mockRecord("c", { ...goodFields, [F.scoreOrder]: 50 });
+  const r1 = mockRecord("a", { ...goodFields, [F.score]: 10 });
+  const r2 = mockRecord("b", { ...goodFields, [F.score]: 99 });
+  const r3 = mockRecord("c", { ...goodFields, [F.score]: 50 });
   const { eligible } = buildSortedEligible([r1, r2, r3], cutoff);
   assert.deepStrictEqual(
     eligible.map((r) => r.id),

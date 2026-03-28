@@ -16,7 +16,6 @@ const F = {
   notes: "Notes",
   scoringStatus: "Scoring Status",
   dateScored: "Date Scored",
-  scoreOrder: "Outbound Email Score Order",
   score: "Outbound Email Score",
   sentAt: "Outbound Email Sent At",
   subject1: "Email Subject 1",
@@ -243,7 +242,6 @@ async function fetchScoredLeadCandidates(base) {
         F.notes,
         F.scoringStatus,
         F.dateScored,
-        F.scoreOrder,
         F.score,
         F.sentAt,
         F.rawProfile,
@@ -290,11 +288,6 @@ function leadPassesFilters(record, cutoffDay) {
     return { ok: false, reason: "Outbound Email Score is 0 (opt-out)" };
   }
 
-  const order = numOrNull(record.get(F.scoreOrder));
-  if (order === null) {
-    return { ok: false, reason: "Outbound Email Score Order blank" };
-  }
-
   const ds = parseDateScoredBrisbane(record.get(F.dateScored));
   if (!ds) {
     return { ok: false, reason: "Date Scored missing" };
@@ -318,9 +311,10 @@ function buildSortedEligible(records, cutoffDay) {
     }
   }
   eligible.sort((a, b) => {
-    const oa = numOrNull(a.get(F.scoreOrder)) ?? -Infinity;
-    const ob = numOrNull(b.get(F.scoreOrder)) ?? -Infinity;
-    return ob - oa;
+    const sa = numOrNull(a.get(F.score)) ?? -Infinity;
+    const sb = numOrNull(b.get(F.score)) ?? -Infinity;
+    if (sb !== sa) return sb - sa;
+    return String(a.id).localeCompare(String(b.id));
   });
   return { eligible, rejected };
 }
@@ -344,7 +338,7 @@ function buildPreviewRows(eligibleRecords, settings, maxShow) {
       to: String(rec.get(F.email) || "").trim(),
       subject,
       html,
-      scoreOrder: numOrNull(rec.get(F.scoreOrder)),
+      outboundScore: numOrNull(rec.get(F.score)),
       variant,
       guestBookingLinkOk: Boolean(bookingUrl),
     };
@@ -416,7 +410,7 @@ async function buildDryRunPreviewHtml(options = {}) {
     parts.push("<div class='card'>");
     parts.push(`<h2>${escapeHtml(row.to)}</h2>`);
     parts.push(
-      `<div class='chrome'>Record <code>${escapeHtml(row.recordId)}</code> · Outbound Email Score Order: <b>${row.scoreOrder}</b> · Body variant: <b>${escapeHtml(row.variant)}</b> · Guest booking link: <b>${row.guestBookingLinkOk ? "yes" : "no"}</b></div>`
+      `<div class='chrome'>Record <code>${escapeHtml(row.recordId)}</code> · Outbound Email Score: <b>${row.outboundScore}</b> · Body variant: <b>${escapeHtml(row.variant)}</b> · Guest booking link: <b>${row.guestBookingLinkOk ? "yes" : "no"}</b></div>`
     );
     parts.push(`<div class='chrome'><strong>Subject:</strong> ${escapeHtml(row.subject)}</div>`);
     parts.push("<div class='body'>");
