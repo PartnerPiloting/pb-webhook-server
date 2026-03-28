@@ -13,7 +13,10 @@
  * to match your Airtable "Timezone" field (e.g. Australia/Sydney).
  */
 require("dotenv").config();
-const { signGuestBookingToken } = require("../services/guestBookingToken.js");
+const {
+  signGuestBookingToken,
+  getGuestBookingLinkExpiryDays,
+} = require("../services/guestBookingToken.js");
 const {
   normalizeTimezoneInput,
 } = require("../services/guestTimezoneAliases.js");
@@ -25,7 +28,11 @@ const base =
 const name = process.argv[2];
 const li = process.argv[3];
 const email = process.argv[4];
-const days = parseInt(process.argv[5] || "90", 10) || 90;
+const daysArg = process.argv[5];
+const days =
+  daysArg !== undefined && String(daysArg).trim() !== ""
+    ? parseInt(daysArg, 10) || getGuestBookingLinkExpiryDays()
+    : getGuestBookingLinkExpiryDays();
 const guestTzArg = process.argv[6];
 
 const defaultMintTz =
