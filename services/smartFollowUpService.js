@@ -1169,11 +1169,23 @@ IMPORTANT:
 - Keep each field scannable — the user reads this just before a call.`;
 }
 
+// Max chars fed to AI for notes and transcript — keeps JSON output well within token limits
+const BRIEF_NOTES_MAX_CHARS = 15000;
+const BRIEF_TRANSCRIPT_MAX_CHARS = 8000;
+
 /**
  * Analyze lead notes + Fathom transcript to produce a full pre-meeting brief.
  */
 async function analyzeLeadNotesForBrief(leadRecord, clientInstructions, clientType, fathomTranscripts) {
-  const fullNotes = leadRecord.fields[LEAD_FIELDS.NOTES] || '';
+  const rawNotes = leadRecord.fields[LEAD_FIELDS.NOTES] || '';
+  // Truncate from the end so we keep the most recent content (bottom of notes)
+  const fullNotes = rawNotes.length > BRIEF_NOTES_MAX_CHARS
+    ? '...[earlier notes truncated]\n\n' + rawNotes.slice(-BRIEF_NOTES_MAX_CHARS)
+    : rawNotes;
+  const truncatedTranscript = fathomTranscripts && fathomTranscripts.length > BRIEF_TRANSCRIPT_MAX_CHARS
+    ? fathomTranscripts.slice(0, BRIEF_TRANSCRIPT_MAX_CHARS) + '\n...[transcript truncated]'
+    : fathomTranscripts;
+
   const firstName = leadRecord.fields[LEAD_FIELDS.FIRST_NAME] || 'Lead';
   const lastName = leadRecord.fields[LEAD_FIELDS.LAST_NAME] || '';
   const email = leadRecord.fields[LEAD_FIELDS.EMAIL] || '';
@@ -1206,12 +1218,12 @@ async function analyzeLeadNotesForBrief(leadRecord, clientInstructions, clientTy
       generationConfig: {
         temperature: 0.4,
         responseMimeType: 'application/json',
-        maxOutputTokens: 4096
+        maxOutputTokens: 8192
       }
     });
 
-    const transcriptSection = fathomTranscripts
-      ? `\n\n=== FATHOM MEETING TRANSCRIPT(S) ===\n${fathomTranscripts}`
+    const transcriptSection = truncatedTranscript
+      ? `\n\n=== FATHOM MEETING TRANSCRIPT(S) ===\n${truncatedTranscript}`
       : '\n\n[No Fathom transcript available — work from notes only]';
 
     const userPrompt = `Prepare a pre-meeting brief for this lead.
@@ -1311,7 +1323,13 @@ async function generateStoryForLead(clientId, leadId) {
 
     const fupInstructions = client.fupInstructions || '';
     const clientType = client.clientType || 'A - Partner Selection';
-    const aiOutput = await analyzeLeadNotesForBrief(leadRecord, fupInstructions, clientType, fathomTranscripts);
+    let aiOutput = await analyzeLeadNotesForBrief(leadRecord, fupInstructions, clientType, fathomTranscripts);
+
+    // If parsing failed and we had a transcript, retry without it (transcript may have made input too large)
+    if (aiOutput?._aiError && fathomTranscripts) {
+      logger.warn(`generateStoryForLead: first attempt failed (${aiOutput._aiError}), retrying without Fathom transcript`);
+      aiOutput = await analyzeLeadNotesForBrief(leadRecord, fupInstructions, clientType, null);
+    }
 
     const story = aiOutput?.story || '';
     if (!story || !String(story).trim()) {
@@ -1331,7 +1349,8 @@ async function generateStoryForLead(clientId, leadId) {
       meetingOpener: aiOutput.meetingOpener || null,
       pushOn: aiOutput.pushOn || null,
       suggestedMessage: aiOutput.suggestedMessage || null,
-      hasFathomTranscript: !!fathomTranscripts,
+      // hasFathomTranscript reflects whether the transcript actually made it into the final AI call
+      hasFathomTranscript: !!fathomTranscripts && !aiOutput._aiError,
     };
   } catch (error) {
     logger.error(`generateStoryForLead failed for ${clientId}/${leadId}: ${error.message}`);
