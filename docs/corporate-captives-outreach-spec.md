@@ -28,12 +28,12 @@ Send personalized individual emails from **Guy Wilson &lt;guyralphwilson@gmail.c
 ## List source
 
 - **Table:** Leads (single-tenant / Guy's base).
-- **Sort:** **Outbound Email Score Order** descending; take **top N** after filters (N capped by run config).
+- **Sort:** **Outbound Email Score** descending (ties broken by Airtable record id); take **top N** after filters (N capped by run config).
 - **Skip** invalid / empty email addresses.
 
 ## Eligibility filters
 
-**Field:** **`Scoring Status`** (Single select). This is **not** the same as numeric **Outbound Email Score** (used for sort + opt-out via **0**).
+**Field:** **`Scoring Status`** (Single select). This is **not** the same as numeric **Outbound Email Score** (used for **sort** + opt-out via **0**).
 
 | `Scoring Status` value | CC email (this axis) |
 |--------------------------|----------------------|
@@ -51,8 +51,7 @@ Other rules:
 |------|--------|
 | **Notes** | Exclude if **not** "empty": treat as empty only if **blank**, **whitespace-only**, or **`.`** only |
 | **First Name** | **Skip** lead if missing/blank |
-| **Outbound Email Score** | **0** = opt-out — exclude; **blank** = **skip** |
-| **Outbound Email Score Order** | **blank** = **skip** |
+| **Outbound Email Score** | **0** = opt-out — exclude; **blank** = **skip**; also used to **order** eligible leads (highest first) |
 | **Outbound Email Sent At** non-empty | Exclude (already sent) |
 | Invalid / empty **Email** | Exclude |
 
@@ -77,8 +76,7 @@ Other rules:
 | Conversation / exclude if active | **Notes** |
 | Pipeline status | **Scoring Status** |
 | When scored | **Date Scored** |
-| Sort key (desc) | **Outbound Email Score Order** |
-| Numeric score; 0 = opt-out | **Outbound Email Score** |
+| Sort (desc) + opt-out at 0 | **Outbound Email Score** |
 | Already sent | **Outbound Email Sent At** |
 
 ## Outbound Email Settings (Airtable)
