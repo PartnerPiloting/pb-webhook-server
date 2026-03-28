@@ -11807,7 +11807,17 @@ router.post("/api/smart-followup/generate-story", async (req, res) => {
       return res.status(500).json({ success: false, error: result.error });
     }
 
-    res.json({ success: true, story: result.story });
+    res.json({
+      success: true,
+      story: result.story,
+      pennyDrops: result.pennyDrops || null,
+      linksSent: result.linksSent || null,
+      preCallReminder: result.preCallReminder || null,
+      meetingOpener: result.meetingOpener || null,
+      pushOn: result.pushOn || null,
+      suggestedMessage: result.suggestedMessage || null,
+      hasFathomTranscript: result.hasFathomTranscript || false,
+    });
   } catch (error) {
     genLogger.error(`Generate story error: ${error.message}`, error.stack);
     res.status(500).json({ success: false, error: error.message });

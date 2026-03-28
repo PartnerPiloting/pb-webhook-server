@@ -1742,7 +1742,16 @@ export const generateSmartFollowupStory = async (leadId) => {
     });
 
     if (response.data?.success && response.data?.story) {
-      return { story: response.data.story };
+      return {
+        story: response.data.story,
+        pennyDrops: response.data.pennyDrops || null,
+        linksSent: response.data.linksSent || null,
+        preCallReminder: response.data.preCallReminder || null,
+        meetingOpener: response.data.meetingOpener || null,
+        pushOn: response.data.pushOn || null,
+        suggestedMessage: response.data.suggestedMessage || null,
+        hasFathomTranscript: response.data.hasFathomTranscript || false,
+      };
     }
     return { error: response.data?.message || 'Unknown error' };
   } catch (error) {
