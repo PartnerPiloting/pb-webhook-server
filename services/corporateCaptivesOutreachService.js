@@ -32,6 +32,8 @@ const F = {
   dryRun: "Dry Run",
   enabled: "Outbound Email Enabled",
   minDelay: "Min Seconds Between Sends",
+  minOutboundScore: "Min Outbound Email Score",
+  minDaysSinceLeadAdded: "Min Days Since Lead Added",
 };
 
 const ALLOWED_SCORING = new Set(["Scored"]);
@@ -204,6 +206,30 @@ function parseDateScoredBrisbane(val) {
   return null;
 }
 
+/** Airtable record `createdTime` → calendar day in Brisbane. */
+function getLeadCreatedDayBrisbane(record) {
+  const raw = record && record._rawJson && record._rawJson.createdTime;
+  if (!raw) return null;
+  const dt = DateTime.fromISO(String(raw), { zone: "utc" })
+    .setZone("Australia/Brisbane")
+    .startOf("day");
+  return dt.isValid ? dt : null;
+}
+
+/**
+ * @param {Object} settingsFields — row from Outbound Email Settings
+ * @returns {{ minOutboundScoreFloor: number | null, minDaysSinceCreated: number | null }}
+ */
+function eligibilityOptionsFromSettingsFields(settingsFields) {
+  const minS = numOrNull(settingsFields[F.minOutboundScore]);
+  const minD = numOrNull(settingsFields[F.minDaysSinceLeadAdded]);
+  return {
+    minOutboundScoreFloor: Number.isFinite(minS) ? minS : null,
+    minDaysSinceCreated:
+      Number.isFinite(minD) && minD >= 0 ? minD : null,
+  };
+}
+
 /**
  * Load first row of settings table (`CC_OUTREACH_SETTINGS_TABLE` or default) as plain object.
  */
@@ -258,7 +284,24 @@ async function fetchScoredLeadCandidates(base) {
   return records;
 }
 
-function leadPassesFilters(record, cutoffDay) {
+/**
+ * @param {import('airtable').Record} record
+ * @param {{ minOutboundScoreFloor?: number | null, minDaysSinceCreated?: number | null }} options
+ *   minOutboundScoreFloor: when set, require score **strictly greater** than this (e.g. 7 → 8+).
+ *   minDaysSinceCreated: when set, require Airtable created day at least N Brisbane calendar days before today.
+ */
+function leadPassesFilters(record, options = {}) {
+  const minOutboundScoreFloor =
+    options.minOutboundScoreFloor != null && Number.isFinite(options.minOutboundScoreFloor)
+      ? options.minOutboundScoreFloor
+      : null;
+  const minDaysSinceCreated =
+    options.minDaysSinceCreated != null &&
+    Number.isFinite(options.minDaysSinceCreated) &&
+    options.minDaysSinceCreated >= 0
+      ? options.minDaysSinceCreated
+      : null;
+
   const status = record.get(F.scoringStatus);
   const statusStr = status == null ? "" : String(status).trim();
 
@@ -288,22 +331,41 @@ function leadPassesFilters(record, cutoffDay) {
     return { ok: false, reason: "Outbound Email Score is 0 (opt-out)" };
   }
 
+  if (minOutboundScoreFloor !== null && !(score > minOutboundScoreFloor)) {
+    return {
+      ok: false,
+      reason: `Outbound Email Score not above ${minOutboundScoreFloor}`,
+    };
+  }
+
   const ds = parseDateScoredBrisbane(record.get(F.dateScored));
   if (!ds) {
     return { ok: false, reason: "Date Scored missing" };
   }
-  if (ds > cutoffDay) {
-    return { ok: false, reason: "Date Scored within 60 days" };
+
+  if (minDaysSinceCreated !== null) {
+    const createdDay = getLeadCreatedDayBrisbane(record);
+    if (!createdDay) {
+      return { ok: false, reason: "Lead created time unknown" };
+    }
+    const todayBrisbane = DateTime.now().setZone("Australia/Brisbane").startOf("day");
+    const oldestOkCreated = todayBrisbane.minus({ days: minDaysSinceCreated });
+    if (createdDay > oldestOkCreated) {
+      return {
+        ok: false,
+        reason: `Lead created within last ${minDaysSinceCreated} days`,
+      };
+    }
   }
 
   return { ok: true, reason: "" };
 }
 
-function buildSortedEligible(records, cutoffDay) {
+function buildSortedEligible(records, eligibilityOptions) {
   const eligible = [];
   const rejected = [];
   for (const r of records) {
-    const check = leadPassesFilters(r, cutoffDay);
+    const check = leadPassesFilters(r, eligibilityOptions);
     if (check.ok) {
       eligible.push(r);
     } else {
@@ -367,10 +429,10 @@ async function buildDryRunPreviewHtml(options = {}) {
   const { fields: settingsFields } = await fetchOutboundEmailSettings(base);
 
   const todayBrisbane = DateTime.now().setZone("Australia/Brisbane").startOf("day");
-  const cutoffDay = todayBrisbane.minus({ days: 60 });
+  const eligibilityOptions = eligibilityOptionsFromSettingsFields(settingsFields);
 
   const candidates = await fetchScoredLeadCandidates(base);
-  const { eligible, rejected } = buildSortedEligible(candidates, cutoffDay);
+  const { eligible, rejected } = buildSortedEligible(candidates, eligibilityOptions);
 
   const maxFromSettings = numOrNull(settingsFields[F.maxSends]);
   const maxSends =
@@ -397,7 +459,17 @@ async function buildDryRunPreviewHtml(options = {}) {
   parts.push(`Outbound Email Enabled: <b>${enabled ? "Yes" : "No"}</b> · Dry Run (setting): <b>${dryRun ? "Yes" : "No"}</b><br>`);
   parts.push(`Max Sends Per Run (Airtable): <b>${maxSends}</b> · Showing up to: <b>${effectiveMax}</b><br>`);
   parts.push(`Scored candidates (pre-filter): <b>${candidates.length}</b> · Eligible after rules: <b>${eligible.length}</b><br>`);
-  parts.push(`Brisbane today: <b>${todayBrisbane.toISODate()}</b> · Date Scored must be on/before: <b>${cutoffDay.toISODate()}</b> (60-day rule)<br>`);
+  const minScoreLbl =
+    eligibilityOptions.minOutboundScoreFloor != null
+      ? `must be &gt; ${escapeHtml(String(eligibilityOptions.minOutboundScoreFloor))}`
+      : escapeHtml("(no minimum — not 0/blank only)");
+  const minDaysLbl =
+    eligibilityOptions.minDaysSinceCreated != null
+      ? escapeHtml(String(eligibilityOptions.minDaysSinceCreated))
+      : escapeHtml("(no minimum age)");
+  parts.push(
+    `Brisbane today: <b>${todayBrisbane.toISODate()}</b> · <b>Date Scored</b> required · Outbound Email Score ${minScoreLbl} · Min days since Airtable <b>created</b>: <b>${minDaysLbl}</b><br>`
+  );
   parts.push(
     `Use <code>{{GuestBookingLink}}</code> in email HTML to insert a signed <code>/guest-book</code> URL (or an orange note in preview if something is missing).</div>`
   );
@@ -434,6 +506,8 @@ module.exports = {
   buildPreviewRows,
   escapeHtml,
   F,
+  eligibilityOptionsFromSettingsFields,
+  getLeadCreatedDayBrisbane,
   notesEffectivelyEmpty,
   leadPassesFilters,
   applyTemplate,

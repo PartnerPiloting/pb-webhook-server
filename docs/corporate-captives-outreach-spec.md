@@ -38,7 +38,7 @@ Send personalized individual emails from **Guy Wilson &lt;guyralphwilson@gmail.c
 | `Scoring Status` value | CC email (this axis) |
 |--------------------------|----------------------|
 | **To Be Scored** | **Exclude** (always) |
-| **Scored** | **Include only** if **Date Scored** is set **and** **≥ 60 days** ago (**Brisbane** calendar date vs today) |
+| **Scored** | **Include only** if **Date Scored** is set (value itself is not age-gated; see **Min Days Since Lead Added** below) |
 | **Manually Excluded** | **Exclude** |
 | **Failed – API Error** | **Exclude** |
 | **Failed – Parse Error** | **Exclude** |
@@ -54,6 +54,13 @@ Other rules:
 | **Outbound Email Score** | **0** = opt-out — exclude; **blank** = **skip**; also used to **order** eligible leads (highest first) |
 | **Outbound Email Sent At** non-empty | Exclude (already sent) |
 | Invalid / empty **Email** | Exclude |
+
+**Outbound Email Settings (eligibility knobs):**
+
+| Field | Action when set |
+|--------|------------------|
+| **`Min Outbound Email Score`** | Require **Outbound Email Score** **strictly greater** than this number (e.g. `7` → only **8+**). Blank = no extra floor beyond “not 0 / not blank”. |
+| **`Min Days Since Lead Added`** | Require the lead’s Airtable **`createdTime`** to be at least **N** **Brisbane** calendar days before **today** (replaces the old fixed “60 days after Date Scored” rule). Blank = no minimum age on created time. |
 
 ## Idempotency & tracking
 
@@ -94,6 +101,9 @@ Other rules:
 | **`Email Subject 2`** | Single line | Subject pool. |
 | **`Email Subject 3`** | Single line | Subject pool. |
 | **`Email Body`** | Long text | One body for all; placeholder **`{{FirstName}}`**. Links live in the body. |
+| **`Min Outbound Email Score`** | Number | Eligible only if score **>** this value (see above). |
+| **`Min Days Since Lead Added`** | Number | Eligible only if Airtable record **created** at least **N** days ago (Brisbane; see above). |
+| **`Email Body (Owner)`** / **`Email Body (Employee)`** | Long text | Optional variant bodies; if blank, **`Email Body`** is used. |
 
 **Subject choice:** each send **randomly picks one** of **Subject 1 / 2 / 3** that is **non-empty**. If only one is filled, every send uses that one.
 
