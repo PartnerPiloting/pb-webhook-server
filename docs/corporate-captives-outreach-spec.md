@@ -72,6 +72,7 @@ Other rules:
 - **Gmail:** `services/gmailApiService.js`, OAuth env vars on Render.
 - **Debug:** `GET /debug-gmail-oauth-env`, `POST /debug-gmail-send-test` (Bearer auth; test-only recipient) — do not use as production bulk API.
 - **Dry-run preview (HTML):** `GET /admin/corporate-captives-dry-run-preview` — **Bearer** auth or browser **`?secret=`** (same value as `PB_WEBHOOK_SECRET`); optional `clientId`, `limit`. **No sends**, **no Airtable updates**; open in browser to see rendered **Email Body** + subject pool. Skips inter-send delay (preview only).
+- **Send run (JSON):** `GET` or `POST /admin/corporate-captives-send-run` — same auth; optional `clientId`, `limit`. Sends up to **Max Sends Per Run** (or `limit`) via Gmail HTML; sets **`Outbound Email Sent At`** on success. **No-op** if **Outbound Email Enabled** ≠ Yes or **Dry Run** = Yes. Skips leads without a valid **guest booking link**.
 - **Local harness:** `npm run test:cc-outreach` — offline unit checks (filters, sort, template). Optional: `CC_OUTREACH_LIVE=1` hits Airtable + builds preview HTML (needs env like production).
 
 ## Airtable field names (Leads) — confirmed
