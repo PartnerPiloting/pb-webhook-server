@@ -3,6 +3,7 @@
  * Spec: docs/corporate-captives-outreach-spec.md
  */
 const { DateTime } = require("luxon");
+const { buildSearchBlob } = require("./oesRuleScorer.js");
 
 /** Override on Render if your base uses a different table name (e.g. `Outbound Email`). */
 const SETTINGS_TABLE =
@@ -22,6 +23,9 @@ const F = {
   subject2: "Email Subject 2",
   subject3: "Email Subject 3",
   body: "Email Body",
+  bodyOwner: "Email Body (Owner)",
+  bodyEmployee: "Email Body (Employee)",
+  rawProfile: "Raw Profile Data",
   maxSends: "Max Sends Per Run",
   dryRun: "Dry Run",
   enabled: "Outbound Email Enabled",
@@ -61,6 +65,70 @@ function pickRandomSubject(settings) {
 function applyTemplate(bodyHtml, firstName) {
   const name = firstName == null ? "" : String(firstName).trim();
   return String(bodyHtml || "").split("{{FirstName}}").join(name);
+}
+
+function parseProfileObjectForBlob(raw) {
+  if (raw == null) return null;
+  if (typeof raw === "object") return raw;
+  const s = String(raw).trim();
+  if (!s) return null;
+  try {
+    return JSON.parse(s);
+  } catch {
+    return null;
+  }
+}
+
+/** Same text blob OES uses, for lightweight owner vs employee routing. */
+function outreachProfileBlob(raw) {
+  const obj = parseProfileObjectForBlob(raw);
+  let textFromRaw = "";
+  if (typeof raw === "string") textFromRaw = raw;
+  else if (obj) {
+    try {
+      textFromRaw = JSON.stringify(obj);
+    } catch {
+      textFromRaw = "";
+    }
+  }
+  return buildSearchBlob(obj, textFromRaw);
+}
+
+/**
+ * Rule-based: "owner" if raw profile reads like primary business owner / founder;
+ * otherwise "employee" (incl. side ventures, corporate roles, unknown).
+ * @returns {"owner"|"employee"}
+ */
+function inferOutreachBodyVariant(raw) {
+  const blob = outreachProfileBlob(raw);
+  if (!blob || !String(blob).trim()) return "employee";
+  const isOwner =
+    /\b(co[- ]?founder|founder)\b/i.test(blob) ||
+    /\b(self[- ]employed|sole\s+trader|sole\s+proprietor)\b/i.test(blob) ||
+    /\bentrepreneur\b/i.test(blob) ||
+    /\bbusiness\s+owner\b/i.test(blob) ||
+    /\b(i\s+)?(founded|started)\s+(my\s+)?(own\s+)?(company|business|startup|firm)\b/i.test(
+      blob
+    );
+  return isOwner ? "owner" : "employee";
+}
+
+function trimSetting(fields, airtableName) {
+  const v = fields[airtableName];
+  if (v == null) return "";
+  return String(v).trim();
+}
+
+/**
+ * Pick HTML body: variant-specific column if set, else legacy Email Body.
+ */
+function pickBodyTemplate(settingsFields, variant) {
+  const fallback = trimSetting(settingsFields, F.body);
+  const ownerB = trimSetting(settingsFields, F.bodyOwner);
+  const empB = trimSetting(settingsFields, F.bodyEmployee);
+  if (variant === "owner" && ownerB) return ownerB;
+  if (variant === "employee" && empB) return empB;
+  return fallback || ownerB || empB || "";
 }
 
 function parseDateScoredBrisbane(val) {
@@ -117,6 +185,7 @@ async function fetchScoredLeadCandidates(base) {
         F.scoreOrder,
         F.score,
         F.sentAt,
+        F.rawProfile,
       ],
     })
     .eachPage((page, next) => {
@@ -198,10 +267,11 @@ function buildSortedEligible(records, cutoffDay) {
  * @param {number} maxShow
  */
 function buildPreviewRows(eligibleRecords, settings, maxShow) {
-  const bodyTemplate = settings.fields[F.body] || "";
   const slice = eligibleRecords.slice(0, Math.max(0, maxShow));
   return slice.map((rec) => {
     const firstName = String(rec.get(F.firstName) || "").trim();
+    const variant = inferOutreachBodyVariant(rec.get(F.rawProfile));
+    const bodyTemplate = pickBodyTemplate(settings.fields, variant);
     const subject = pickRandomSubject(settings.fields);
     const html = applyTemplate(bodyTemplate, firstName);
     return {
@@ -210,6 +280,7 @@ function buildPreviewRows(eligibleRecords, settings, maxShow) {
       subject,
       html,
       scoreOrder: numOrNull(rec.get(F.scoreOrder)),
+      variant,
     };
   });
 }
@@ -275,7 +346,7 @@ async function buildDryRunPreviewHtml(options = {}) {
   for (const row of previewRows) {
     parts.push("<div class='card'>");
     parts.push(`<h2>${escapeHtml(row.to)}</h2>`);
-    parts.push(`<div class='chrome'>Record <code>${escapeHtml(row.recordId)}</code> · Outbound Email Score Order: <b>${row.scoreOrder}</b></div>`);
+    parts.push(`<div class='chrome'>Record <code>${escapeHtml(row.recordId)}</code> · Outbound Email Score Order: <b>${row.scoreOrder}</b> · Body variant: <b>${escapeHtml(row.variant)}</b></div>`);
     parts.push(`<div class='chrome'><strong>Subject:</strong> ${escapeHtml(row.subject)}</div>`);
     parts.push("<div class='body'>");
     parts.push(row.html);
@@ -305,4 +376,7 @@ module.exports = {
   parseDateScoredBrisbane,
   emailLooksValid,
   numOrNull,
+  inferOutreachBodyVariant,
+  pickBodyTemplate,
+  outreachProfileBlob,
 };
