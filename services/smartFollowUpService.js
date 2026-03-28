@@ -1112,6 +1112,155 @@ async function snoozeLead(clientId, leadId, followUpDate, baseId) {
  * @param {string} leadId - Lead ID (Airtable record ID from Leads table)
  * @returns {Promise<{ story: string } | { noNotes: true } | { error: string }>}
  */
+/**
+ * Build the AI prompt for the pre-meeting brief.
+ * Produces richer output than the standard sweep prompt.
+ */
+function buildPreMeetingBriefPrompt(clientType, clientInstructions) {
+  const typeCode = clientType ? clientType.charAt(0).toUpperCase() : 'A';
+  let philosophyContext = '';
+  if (typeCode === 'A') {
+    philosophyContext = `
+FOLLOW-UP PHILOSOPHY (Type A - Partner Selection):
+- Early conviction over perfect timing
+- Selection > reply rate - you're choosing partners, not chasing leads
+- Leadership signalling, not chasing
+- "Come with me if this resonates" posture`;
+  } else if (typeCode === 'B') {
+    philosophyContext = `
+FOLLOW-UP PHILOSOPHY (Type B - Client Acquisition):
+- Softer sequencing, nurture before conviction
+- Reply rate matters more`;
+  }
+
+  return `You are a pre-meeting briefing AI. Your job is to read everything known about a lead and prepare the user for their NEXT meeting with them.
+
+${philosophyContext}
+
+${clientInstructions ? `CLIENT-SPECIFIC INSTRUCTIONS:\n${clientInstructions}\n` : ''}
+
+You will be given:
+- The lead's full Notes (LinkedIn messages, emails, meeting summaries)
+- The full transcript of their most recent Fathom meeting (if available)
+
+Produce a JSON object with these exact keys:
+
+{
+  "story": "2-3 sentence plain-English summary of the relationship. Where did they come from, what stage are they at, what's the mood of the relationship?",
+
+  "pennyDrops": "Key moments where something clicked for them. What got them interested or engaged? Quote specific things they said if the transcript is available. If no transcript, leave as null.",
+
+  "linksSent": "A bullet-point list of every article, video, or resource you sent this person. Extract these from the email correspondence section of the notes. If nothing was sent, say 'Nothing sent yet.'",
+
+  "preCallReminder": "The single most relevant thing to send them the morning before the meeting. One sentence explaining what to send and why. Base this on where they are in understanding your value proposition.",
+
+  "meetingOpener": "A specific suggestion for how to open the next meeting. Should feel natural, reference something they actually said or asked about. Max 2 sentences.",
+
+  "pushOn": "The most promising thread to pull in this meeting. What did they say that suggests genuine interest or a real problem you can help with? Be specific.",
+
+  "suggestedMessage": "A short follow-up message (2-4 sentences) to send after the meeting. Personalised to their situation."
+}
+
+IMPORTANT:
+- Be specific, not generic. Use the lead's actual words when possible.
+- If no Fathom transcript is available, set pennyDrops to null and work only from the notes.
+- Extract links from the email section — look for URLs or descriptions of articles/videos sent.
+- Keep each field concise and scannable — the user reads this just before a call.`;
+}
+
+/**
+ * Analyze lead notes + Fathom transcript to produce a full pre-meeting brief.
+ */
+async function analyzeLeadNotesForBrief(leadRecord, clientInstructions, clientType, fathomTranscripts) {
+  const fullNotes = leadRecord.fields[LEAD_FIELDS.NOTES] || '';
+  const firstName = leadRecord.fields[LEAD_FIELDS.FIRST_NAME] || 'Lead';
+  const lastName = leadRecord.fields[LEAD_FIELDS.LAST_NAME] || '';
+  const email = leadRecord.fields[LEAD_FIELDS.EMAIL] || '';
+
+  const placeholder = {
+    story: '[AI UNAVAILABLE] Could not generate brief.',
+    pennyDrops: null,
+    linksSent: 'Unable to extract.',
+    preCallReminder: null,
+    meetingOpener: null,
+    pushOn: null,
+    suggestedMessage: null,
+  };
+
+  if (!vertexAIClient) {
+    logger.warn('Gemini client not available for pre-meeting brief');
+    return { ...placeholder, _aiError: 'Gemini client not available' };
+  }
+
+  try {
+    const model = vertexAIClient.getGenerativeModel({
+      model: SMART_FUP_MODEL,
+      systemInstruction: { parts: [{ text: buildPreMeetingBriefPrompt(clientType, clientInstructions) }] },
+      safetySettings: [
+        { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+        { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
+        { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
+        { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+      ],
+      generationConfig: {
+        temperature: 0.4,
+        responseMimeType: 'application/json',
+        maxOutputTokens: 4096
+      }
+    });
+
+    const transcriptSection = fathomTranscripts
+      ? `\n\n=== FATHOM MEETING TRANSCRIPT(S) ===\n${fathomTranscripts}`
+      : '\n\n[No Fathom transcript available — work from notes only]';
+
+    const userPrompt = `Prepare a pre-meeting brief for this lead.
+
+LEAD: ${firstName} ${lastName}${email ? ` (${email})` : ''}
+
+NOTES/CONVERSATION HISTORY:
+${fullNotes || '[No notes recorded]'}
+${transcriptSection}
+
+Today's date: ${new Date().toISOString().split('T')[0]}`;
+
+    const callPromise = model.generateContent({
+      contents: [{ role: 'user', parts: [{ text: userPrompt }] }]
+    });
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('Pre-meeting brief AI timed out')), AI_TIMEOUT_MS)
+    );
+
+    const result = await Promise.race([callPromise, timeoutPromise]);
+    const responseText = result?.response?.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!responseText) throw new Error('AI returned no content');
+
+    // Parse JSON — same approach as analyzeLeadNotes
+    const extractJson = (raw) => {
+      const trimmed = raw.trim();
+      try { return JSON.parse(trimmed); } catch (_) {}
+      const cleaned = trimmed.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '').trim();
+      try { return JSON.parse(cleaned); } catch (_) {}
+      const match = trimmed.match(/\{[\s\S]*\}/);
+      if (match) { try { return JSON.parse(match[0]); } catch (_) {} }
+      throw new Error('Could not parse AI JSON response');
+    };
+
+    const parsed = extractJson(responseText);
+    return {
+      story: String(parsed.story || '').trim(),
+      pennyDrops: parsed.pennyDrops ? String(parsed.pennyDrops).trim() : null,
+      linksSent: String(parsed.linksSent || 'Nothing sent yet.').trim(),
+      preCallReminder: parsed.preCallReminder ? String(parsed.preCallReminder).trim() : null,
+      meetingOpener: parsed.meetingOpener ? String(parsed.meetingOpener).trim() : null,
+      pushOn: parsed.pushOn ? String(parsed.pushOn).trim() : null,
+      suggestedMessage: parsed.suggestedMessage ? String(parsed.suggestedMessage).trim() : null,
+    };
+  } catch (error) {
+    logger.error(`analyzeLeadNotesForBrief failed: ${error.message}`);
+    return { ...placeholder, _aiError: error.message };
+  }
+}
+
 async function generateStoryForLead(clientId, leadId) {
   try {
     const client = await getClientById(clientId);
@@ -1130,22 +1279,59 @@ async function generateStoryForLead(clientId, leadId) {
       return { noNotes: true };
     }
 
+    // Try cached Fathom transcripts from Smart FUP State first (free, already fetched by sweep)
+    let fathomTranscripts = null;
+    try {
+      const existingState = await findExistingStateRecord(clientId, leadId);
+      const cached = existingState?.fields?.[SMART_FUP_STATE_FIELDS.FATHOM_TRANSCRIPTS] || '';
+      if (cached && cached.trim()) {
+        fathomTranscripts = cached;
+        logger.info(`generateStoryForLead: using cached Fathom transcripts (${cached.length} chars)`);
+      }
+    } catch (e) {
+      logger.warn(`generateStoryForLead: could not fetch cached transcripts: ${e.message}`);
+    }
+
+    // If nothing cached, do a live Fathom fetch if the client has an API key
+    if (!fathomTranscripts && client.fathomApiKey) {
+      const leadEmail = leadRecord.fields[LEAD_FIELDS.EMAIL] || '';
+      if (leadEmail) {
+        logger.info(`generateStoryForLead: no cached transcripts, fetching from Fathom API for ${leadEmail}`);
+        try {
+          fathomTranscripts = await fetchFathomTranscripts(leadEmail, client.fathomApiKey);
+          if (fathomTranscripts) {
+            logger.info(`generateStoryForLead: live Fathom fetch returned ${fathomTranscripts.length} chars`);
+          }
+        } catch (e) {
+          logger.warn(`generateStoryForLead: live Fathom fetch failed: ${e.message}`);
+        }
+      }
+    }
+
     const fupInstructions = client.fupInstructions || '';
     const clientType = client.clientType || 'A - Partner Selection';
-    const aiOutput = await analyzeLeadNotes(leadRecord, fupInstructions, clientType, null, { includeErrorOnFallback: true });
+    const aiOutput = await analyzeLeadNotesForBrief(leadRecord, fupInstructions, clientType, fathomTranscripts);
 
     const story = aiOutput?.story || '';
     if (!story || !String(story).trim()) {
-      return { error: 'Story generation returned empty' };
+      return { error: 'Brief generation returned empty' };
     }
 
-    // Detect placeholder when Gemini fails - return actual error if we have it
     if (String(story).toUpperCase().includes('[AI UNAVAILABLE]')) {
       const actualError = aiOutput._aiError || 'AI analysis failed';
       return { error: actualError };
     }
 
-    return { story: String(story).trim() };
+    return {
+      story: String(story).trim(),
+      pennyDrops: aiOutput.pennyDrops || null,
+      linksSent: aiOutput.linksSent || null,
+      preCallReminder: aiOutput.preCallReminder || null,
+      meetingOpener: aiOutput.meetingOpener || null,
+      pushOn: aiOutput.pushOn || null,
+      suggestedMessage: aiOutput.suggestedMessage || null,
+      hasFathomTranscript: !!fathomTranscripts,
+    };
   } catch (error) {
     logger.error(`generateStoryForLead failed for ${clientId}/${leadId}: ${error.message}`);
     return { error: error.message };

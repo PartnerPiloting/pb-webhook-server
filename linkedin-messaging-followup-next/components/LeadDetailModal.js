@@ -12,7 +12,7 @@ const LeadDetailModal = ({
   isUpdating = false 
 }) => {
   const [isMounted, setIsMounted] = useState(false);
-  const [storySoFar, setStorySoFar] = useState(null);
+  const [brief, setBrief] = useState(null);
   const [storyGenerating, setStoryGenerating] = useState(false);
   const [storyError, setStoryError] = useState(null);
   const [upcomingMeeting, setUpcomingMeeting] = useState(null);
@@ -24,10 +24,10 @@ const LeadDetailModal = ({
     setIsMounted(true);
   }, []);
 
-  // Reset story and meeting state when modal closes or lead changes
+  // Reset brief and meeting state when modal closes or lead changes
   useEffect(() => {
     if (!isOpen || !lead) {
-      setStorySoFar(null);
+      setBrief(null);
       setStoryError(null);
       setUpcomingMeeting(null);
       setUpcomingMeetingError(null);
@@ -69,7 +69,7 @@ const LeadDetailModal = ({
   // Treat "[AI Unavailable]..." fallback as "AI failed" - don't show raw technical message
   const isAiUnavailableFallback = (s) =>
     s && typeof s === 'string' && s.trim().toUpperCase().includes('[AI UNAVAILABLE]');
-  const hasRealStory = storySoFar && storySoFar.trim() && !isAiUnavailableFallback(storySoFar);
+  const hasRealBrief = brief?.story && brief.story.trim() && !isAiUnavailableFallback(brief.story);
 
   const notes = (lead?.notes || lead?.['Notes'] || '').trim();
   const hasNotes = notes.length > 0;
@@ -83,18 +83,19 @@ const LeadDetailModal = ({
     if (!leadId) return;
 
     setStoryError(null);
+    setBrief(null);
     setStoryGenerating(true);
     try {
       const result = await generateSmartFollowupStory(leadId);
       if (result.story) {
-        setStorySoFar(result.story);
+        setBrief(result);
       } else {
         setStoryError(result.error === 'no_notes' || result.noNotes
           ? 'There are no notes for this lead.'
-          : (result.error || 'Failed to generate story'));
+          : (result.error || 'Failed to generate brief'));
       }
     } catch (err) {
-      setStoryError(err.message || 'Failed to generate story');
+      setStoryError(err.message || 'Failed to generate brief');
     } finally {
       setStoryGenerating(false);
     }
@@ -180,36 +181,100 @@ const LeadDetailModal = ({
             </div>
           </div>
 
-          {/* Content - Story, Upcoming meeting, then form (match Follow-up Date / Notes heading style) */}
+          {/* Content - Pre-meeting brief, Upcoming meeting, then form */}
           <div className="px-6 py-6 space-y-6">
-            {/* Story so far - bold heading like Follow-up Date */}
-            <div className="space-y-3">
-              <h4 className="text-lg font-semibold text-gray-900 border-b border-gray-200 pb-2 flex items-center gap-3">
-                <span>📖 Story so far</span>
+            {/* Pre-Meeting Brief */}
+            <div className="space-y-4">
+              <div className="flex items-center gap-3 border-b border-gray-200 pb-2">
+                <h4 className="text-lg font-semibold text-gray-900">📋 Pre-Meeting Brief</h4>
                 <button
                   type="button"
                   onClick={handleGenerateStory}
                   disabled={storyGenerating}
                   className="text-sm font-medium text-blue-600 hover:text-blue-800 disabled:text-gray-400 disabled:cursor-not-allowed"
                 >
-                  {storyGenerating ? 'Generating…' : 'Generate story so far'}
+                  {storyGenerating ? 'Generating…' : hasRealBrief ? 'Regenerate' : 'Generate brief'}
                 </button>
-              </h4>
+                {hasRealBrief && brief?.hasFathomTranscript && (
+                  <span className="text-xs text-green-700 bg-green-50 border border-green-200 rounded-full px-2 py-0.5">
+                    ✓ Includes Fathom transcript
+                  </span>
+                )}
+                {hasRealBrief && !brief?.hasFathomTranscript && (
+                  <span className="text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded-full px-2 py-0.5">
+                    Notes only — no Fathom transcript found
+                  </span>
+                )}
+              </div>
+
               {storyError ? (
                 <p className="text-sm text-amber-700 bg-amber-50 rounded-md px-3 py-2 border border-amber-200">
                   {storyError}
                 </p>
-              ) : hasRealStory ? (
-                <div className="text-sm text-gray-700 bg-blue-50/50 rounded-md px-3 py-2 border border-blue-100 max-h-[24rem] overflow-y-auto whitespace-pre-wrap">
-                  {storySoFar}
-                </div>
-              ) : isAiUnavailableFallback(storySoFar) ? (
+              ) : isAiUnavailableFallback(brief?.story) ? (
                 <p className="text-sm text-amber-700 bg-amber-50 rounded-md px-3 py-2 border border-amber-200">
-                  Story generation failed — please try again.
+                  Brief generation failed — please try again.
                 </p>
+              ) : hasRealBrief ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+                  {/* Story so far */}
+                  <div className="bg-blue-50 border border-blue-100 rounded-lg p-4 md:col-span-2">
+                    <div className="text-xs font-semibold text-blue-600 uppercase tracking-wide mb-1">📖 Story so far</div>
+                    <p className="text-sm text-gray-800 leading-relaxed">{brief.story}</p>
+                  </div>
+
+                  {/* Penny drops */}
+                  {brief.pennyDrops && (
+                    <div className="bg-yellow-50 border border-yellow-100 rounded-lg p-4">
+                      <div className="text-xs font-semibold text-yellow-700 uppercase tracking-wide mb-1">💡 Penny drop moments</div>
+                      <p className="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap">{brief.pennyDrops}</p>
+                    </div>
+                  )}
+
+                  {/* Push on */}
+                  {brief.pushOn && (
+                    <div className="bg-orange-50 border border-orange-100 rounded-lg p-4">
+                      <div className="text-xs font-semibold text-orange-700 uppercase tracking-wide mb-1">🎯 What to push on</div>
+                      <p className="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap">{brief.pushOn}</p>
+                    </div>
+                  )}
+
+                  {/* Links sent */}
+                  {brief.linksSent && (
+                    <div className="bg-purple-50 border border-purple-100 rounded-lg p-4">
+                      <div className="text-xs font-semibold text-purple-700 uppercase tracking-wide mb-1">🔗 Links already sent</div>
+                      <p className="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap">{brief.linksSent}</p>
+                    </div>
+                  )}
+
+                  {/* Pre-call reminder */}
+                  {brief.preCallReminder && (
+                    <div className="bg-green-50 border border-green-100 rounded-lg p-4">
+                      <div className="text-xs font-semibold text-green-700 uppercase tracking-wide mb-1">☀️ Send the morning before</div>
+                      <p className="text-sm text-gray-800 leading-relaxed">{brief.preCallReminder}</p>
+                    </div>
+                  )}
+
+                  {/* Meeting opener */}
+                  {brief.meetingOpener && (
+                    <div className="bg-indigo-50 border border-indigo-100 rounded-lg p-4">
+                      <div className="text-xs font-semibold text-indigo-700 uppercase tracking-wide mb-1">🎤 How to open the meeting</div>
+                      <p className="text-sm text-gray-800 leading-relaxed italic">&ldquo;{brief.meetingOpener}&rdquo;</p>
+                    </div>
+                  )}
+
+                  {/* Suggested follow-up message */}
+                  {brief.suggestedMessage && (
+                    <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 md:col-span-2">
+                      <div className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1">✉️ Suggested post-meeting message</div>
+                      <p className="text-sm text-gray-800 leading-relaxed italic">&ldquo;{brief.suggestedMessage}&rdquo;</p>
+                    </div>
+                  )}
+                </div>
               ) : !storyGenerating ? (
                 <p className="text-sm text-gray-500 italic">
-                  Click &quot;Generate story so far&quot; to create a summary from this lead&apos;s notes.
+                  Click &quot;Generate brief&quot; to get a pre-meeting summary — includes your Fathom transcript if one exists.
                 </p>
               ) : null}
             </div>
