@@ -29,15 +29,13 @@ const {
   applyOutreachBodyTemplate,
 } = require("../services/corporateCaptivesOutreachService.js");
 
-function mockRecord(id, fields) {
+function mockRecord(id, fields, opts = {}) {
+  const createdTime = opts.createdTime ?? "2018-01-01T00:00:00.000Z";
   return {
     id,
+    _rawJson: { createdTime },
     get: (k) => fields[k],
   };
-}
-
-function brisbaneDay(isoDate) {
-  return DateTime.fromISO(isoDate, { zone: "Australia/Brisbane" }).startOf("day");
 }
 
 function runUnitTests() {
@@ -60,7 +58,10 @@ function runUnitTests() {
   const ds = parseDateScoredBrisbane("2025-01-15");
   assert.ok(ds && ds.toISODate() === "2025-01-15");
 
-  const cutoff = brisbaneDay("2025-06-01");
+  const noExtraGates = {
+    minOutboundScoreFloor: null,
+    minDaysSinceCreated: null,
+  };
 
   const goodFields = {
     [F.scoringStatus]: "Scored",
@@ -70,40 +71,53 @@ function runUnitTests() {
     [F.score]: 10,
     [F.dateScored]: "2024-01-01",
   };
-  const good = leadPassesFilters(mockRecord("recGOOD", goodFields), cutoff);
+  const good = leadPassesFilters(mockRecord("recGOOD", goodFields), noExtraGates);
   assert.strictEqual(good.ok, true, good.reason);
 
   const badScore0 = leadPassesFilters(
     mockRecord("rec1", { ...goodFields, [F.score]: 0 }),
-    cutoff
+    noExtraGates
   );
   assert.strictEqual(badScore0.ok, false);
 
   const badNotes = leadPassesFilters(
     mockRecord("rec2", { ...goodFields, [F.notes]: "talked" }),
-    cutoff
+    noExtraGates
   );
   assert.strictEqual(badNotes.ok, false);
 
   const badStatus = leadPassesFilters(
     mockRecord("rec3", { ...goodFields, [F.scoringStatus]: "To Be Scored" }),
-    cutoff
+    noExtraGates
   );
   assert.strictEqual(badStatus.ok, false);
 
-  const tooRecent = leadPassesFilters(
-    mockRecord("rec4", {
-      ...goodFields,
-      [F.dateScored]: DateTime.now().setZone("Australia/Brisbane").toISODate(),
-    }),
-    cutoff
+  const tooRecentCreated = leadPassesFilters(
+    mockRecord(
+      "rec4",
+      goodFields,
+      { createdTime: DateTime.now().toUTC().toISO() }
+    ),
+    { minOutboundScoreFloor: null, minDaysSinceCreated: 60 }
   );
-  assert.strictEqual(tooRecent.ok, false);
+  assert.strictEqual(tooRecentCreated.ok, false);
+
+  const belowMinScore = leadPassesFilters(mockRecord("rec5", { ...goodFields, [F.score]: 7 }), {
+    minOutboundScoreFloor: 7,
+    minDaysSinceCreated: null,
+  });
+  assert.strictEqual(belowMinScore.ok, false);
+
+  const atMinScorePlus = leadPassesFilters(mockRecord("rec6", { ...goodFields, [F.score]: 8 }), {
+    minOutboundScoreFloor: 7,
+    minDaysSinceCreated: null,
+  });
+  assert.strictEqual(atMinScorePlus.ok, true, atMinScorePlus.reason);
 
   const r1 = mockRecord("a", { ...goodFields, [F.score]: 10 });
   const r2 = mockRecord("b", { ...goodFields, [F.score]: 99 });
   const r3 = mockRecord("c", { ...goodFields, [F.score]: 50 });
-  const { eligible } = buildSortedEligible([r1, r2, r3], cutoff);
+  const { eligible } = buildSortedEligible([r1, r2, r3], noExtraGates);
   assert.deepStrictEqual(
     eligible.map((r) => r.id),
     ["b", "c", "a"]
