@@ -75,7 +75,13 @@ async function buildGuestBookingEventDetails(opts) {
 
   const leadNamePart = (leadFullName && String(leadFullName).trim()) || "Contact";
   const yourNamePart = host.clientName || "Guy Wilson";
-  const summary = `${leadNamePart} and ${yourNamePart} meeting`;
+  /** Shown first in calendar lists so you can tell self-book / outreach apart from other meetings. */
+  const summaryPrefix = (
+    process.env.GUEST_BOOK_EVENT_SUMMARY_PREFIX ?? "[CC outreach]"
+  ).trim();
+  const summary = summaryPrefix
+    ? `${summaryPrefix} — ${leadNamePart} and ${yourNamePart} meeting`
+    : `${leadNamePart} and ${yourNamePart} meeting`;
 
   const descriptionLines = [];
   if (host.meetingLink) {
