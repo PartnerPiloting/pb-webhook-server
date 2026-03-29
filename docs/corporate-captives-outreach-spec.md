@@ -116,7 +116,7 @@ Each outreach email includes a **signed guest booking link** so the lead can boo
 
 1. **Link construction:** The outreach code mints a signed token per lead (name, email, LinkedIn, expiry) using `signGuestBookingToken` and `GUEST_BOOKING_LINK_SECRET`. The link is `https://pb-webhook-server.onrender.com/guest-book?t=TOKEN&guestTz=TIMEZONE`.
 2. **Lead clicks:** They see a date/time picker in their timezone. Weekends and AU public holidays are filtered out. Earliest bookable day is **tomorrow** (no same-day bookings).
-3. **Lead books:** `POST /api/guest/book` checks the slot is free, creates a Google Calendar event (with Zoom link, LinkedIn URLs, any notes), and sends a calendar invite to the lead. Event **title** is prefixed (default **`[CC outreach]`**) so these meetings are easy to spot vs other calls; override with **`GUEST_BOOK_EVENT_SUMMARY_PREFIX`** on Render.
+3. **Lead books:** `POST /api/guest/book` checks the slot is free, creates a Google Calendar event (with Zoom link, LinkedIn URLs, any notes), and sends a calendar invite to the lead. Event **title** is **`{Lead} and {Host} 1st meeting`** (e.g. `Jane Smith and Guy Wilson 1st meeting`). Optional prefix via **`GUEST_BOOK_EVENT_SUMMARY_PREFIX`** on Render (e.g. `[CC outreach]`).
 4. **Guy gets notified:** An email is sent to Guy immediately with who booked, when, their notes, and a link to the calendar event.
 5. **Errors:** If booking fails, the lead sees a detailed diagnostic on screen (not a generic "Error"). The server logs the failure under `[guest-book]` in Render logs.
 
