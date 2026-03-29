@@ -17,7 +17,9 @@ This document provides a comprehensive reference for all environment variables u
 |----------|---------|-----------------|--------|
 | `GUEST_BOOKING_LINK_SECRET` | HMAC secret for signed booking tokens (min 16 chars) | String | N/A (Required for minting links) |
 | `GUEST_BOOKING_LINK_EXPIRY_DAYS` | How long minted links stay valid | Integer `1`–`365` | `90` |
-| `GUEST_BOOK_EVENT_SUMMARY_PREFIX` | Prefix on Google Calendar event **title** for self-book meetings (e.g. outreach vs other calls) | Short label, or empty to omit | `[CC outreach]` |
+| `GUEST_BOOK_EVENT_SUMMARY_PREFIX` | Optional prefix on Google Calendar event **title** for self-book meetings | Short label, or empty | *(empty)* |
+
+Event title is always **`{Lead} and {Host} 1st meeting`** (e.g. `Jane Smith and Guy Wilson 1st meeting`). Set this env var if you want a prefix such as `[CC outreach] —` before that text.
 
 Used when minting via outreach `{{GuestBookingLink}}` and `scripts/guest-booking-mint-link.js` (when the CLI expiry-days argument is omitted). Some debug harnesses still use shorter fixed expiries.
 
