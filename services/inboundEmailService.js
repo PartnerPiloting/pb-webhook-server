@@ -1079,24 +1079,8 @@ function detectMeetingNotetaker(fromEmail, subject, bodyPlain) {
         }
     }
     
-    // Generic detection for unknown providers
-    // Look for common meeting-related patterns
-    const genericPatterns = [
-        /meeting with\s+([^<\n]+)/i,
-        /call with\s+([^<\n]+)/i,
-        /meeting recording/i,
-        /meeting summary/i,
-        /meeting transcript/i
-    ];
-    
-    const hasGenericPattern = genericPatterns.some(p => p.test(subject) || p.test(bodyPlain));
-    const hasMeetingLink = /https?:\/\/[^\s]+\/(call|meeting|record|view)/i.test(bodyPlain);
-    
-    if (hasGenericPattern && hasMeetingLink) {
-        logger.info('Detected generic meeting note-taker email');
-        return { isMeetingNotetaker: true, provider: 'Meeting Notes' };
-    }
-    
+    // Only match known providers above — generic guessing caused false positives
+    // on normal forwarded emails (e.g. introductions mentioning "a call").
     return { isMeetingNotetaker: false, provider: null };
 }
 
