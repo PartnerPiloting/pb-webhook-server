@@ -143,4 +143,53 @@ async function sendHtmlEmail(opts) {
   return { id: data.id, threadId: data.threadId };
 }
 
-module.exports = { sendTextEmail, sendHtmlEmail, getGmailOAuthClient };
+/**
+ * Find or create a Gmail label by name. Returns the label ID.
+ * Caches across calls so we only look up / create once per process.
+ */
+const _labelCache = {};
+async function getOrCreateLabel(gmail, labelName) {
+  if (_labelCache[labelName]) return _labelCache[labelName];
+  const { data } = await gmail.users.labels.list({ userId: "me" });
+  const existing = (data.labels || []).find(
+    (l) => l.name.toLowerCase() === labelName.toLowerCase()
+  );
+  if (existing) {
+    _labelCache[labelName] = existing.id;
+    return existing.id;
+  }
+  const created = await gmail.users.labels.create({
+    userId: "me",
+    requestBody: {
+      name: labelName,
+      labelListVisibility: "labelShow",
+      messageListVisibility: "show",
+    },
+  });
+  _labelCache[labelName] = created.data.id;
+  return created.data.id;
+}
+
+/**
+ * Move a sent message out of Sent and into a custom label.
+ * Silently fails so it never blocks the send flow.
+ */
+async function moveSentToLabel(messageId, labelName) {
+  try {
+    const auth = getGmailOAuthClient();
+    const gmail = google.gmail({ version: "v1", auth });
+    const labelId = await getOrCreateLabel(gmail, labelName);
+    await gmail.users.messages.modify({
+      userId: "me",
+      id: messageId,
+      requestBody: {
+        addLabelIds: [labelId],
+        removeLabelIds: ["SENT"],
+      },
+    });
+  } catch (err) {
+    console.error(`[gmail] Failed to relabel message ${messageId}: ${err.message || err}`);
+  }
+}
+
+module.exports = { sendTextEmail, sendHtmlEmail, getGmailOAuthClient, moveSentToLabel };
