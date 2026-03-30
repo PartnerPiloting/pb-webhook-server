@@ -1469,6 +1469,62 @@ router.get("/admin/corporate-captives-dry-run-preview", async (req, res) => {
  * Sends up to Max Sends Per Run (or &limit=) via Gmail; stamps Outbound Email Sent At on success.
  * Skips if Outbound Email Enabled ≠ Yes or Dry Run = Yes. Auth: Bearer or ?secret= (same as dry-run preview).
  */
+function buildOutreachReportText(out) {
+  const ts = new Date().toLocaleString("en-AU", {
+    timeZone: "Australia/Brisbane",
+    weekday: "short", year: "numeric", month: "short", day: "numeric",
+    hour: "numeric", minute: "2-digit", hour12: true,
+  });
+  const lines = [`CC Outreach Run Report — ${ts}`, ""];
+
+  if (!out.ran) {
+    lines.push(`Run skipped: ${out.reason || "unknown"}`);
+    if (out.eligibleCount != null) lines.push(`Eligible pool: ${out.eligibleCount}`);
+    return lines.join("\n");
+  }
+
+  lines.push(`Attempted: ${out.attempted}`);
+  lines.push(`Sent OK:   ${out.sent}`);
+  lines.push(`Failed:    ${out.failed}`);
+  lines.push(`Eligible pool: ${out.eligibleCount}  |  Rejected: ${out.rejectedCount}`);
+
+  if (out.failed > 0) {
+    lines.push("");
+    lines.push("Failures:");
+    for (const r of (out.results || [])) {
+      if (!r.ok) lines.push(`  - ${r.to}: ${r.error || "unknown error"}`);
+    }
+  }
+
+  if (out.sent > 0 && out.sent <= 20) {
+    lines.push("");
+    lines.push("Sent to:");
+    for (const r of (out.results || [])) {
+      if (r.ok) lines.push(`  - ${r.to}`);
+    }
+  } else if (out.sent > 20) {
+    lines.push("");
+    lines.push(`Sent to ${out.sent} recipients (list omitted for brevity).`);
+  }
+
+  return lines.join("\n");
+}
+
+async function sendOutreachReport(content, isError) {
+  const reportTo = process.env.CC_OUTREACH_REPORT_EMAIL || process.env.GMAIL_FROM_EMAIL || "guyralphwilson@gmail.com";
+  const prefix = isError ? "FAILED" : "OK";
+  try {
+    const { sendTextEmail } = require("../services/gmailApiService.js");
+    await sendTextEmail({
+      to: reportTo,
+      subject: `[CC outreach] Run ${prefix} — ${new Date().toLocaleDateString("en-AU", { timeZone: "Australia/Brisbane" })}`,
+      text: content,
+    });
+  } catch (emailErr) {
+    console.error(`Failed to send outreach report email: ${emailErr.message || emailErr}`);
+  }
+}
+
 async function corporateCaptivesSendRunHandler(req, res) {
   const secret = process.env.PB_WEBHOOK_SECRET || process.env.DEBUG_API_KEY;
   const authHeader = req.headers.authorization;
@@ -1488,8 +1544,11 @@ async function corporateCaptivesSendRunHandler(req, res) {
         : undefined;
     const { runCorporateCaptivesSendRun } = require("../services/corporateCaptivesOutreachService.js");
     const out = await runCorporateCaptivesSendRun({ clientId, limitOverride });
+    await sendOutreachReport(buildOutreachReportText(out), false);
     return res.status(200).json(out);
   } catch (e) {
+    const errText = `CC Outreach Run CRASHED\n\nError: ${e.message || String(e)}\n\nStack: ${e.stack || "(none)"}`;
+    await sendOutreachReport(errText, true);
     return res.status(500).json({
       ok: false,
       error: e.message || String(e),
