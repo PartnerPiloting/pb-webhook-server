@@ -133,12 +133,14 @@ function mintGuestBookingUrlForLead(record) {
       process.env.GUEST_BOOKING_PUBLIC_BASE || "https://pb-webhook-server.onrender.com"
     ).replace(/\/$/, "");
     const { normalizeTimezoneInput } = require("./guestTimezoneAliases.js");
-    const leadTz = tzFromLeadLocation(record.get(F.location));
+    const rawLocation = record.get(F.location) || record.get("Location") || "";
+    const leadTz = tzFromLeadLocation(rawLocation);
     const fallbackRaw =
       process.env.GUEST_BOOKING_DEFAULT_GUEST_TZ ||
       process.env.GUEST_BOOKING_HOST_TIMEZONE ||
       "Australia/Brisbane";
     const guestTz = leadTz || normalizeTimezoneInput(String(fallbackRaw).trim()) || fallbackRaw;
+    console.log(`[CC-OUTREACH-TZ] email=${e} location="${rawLocation}" leadTz="${leadTz}" guestTz="${guestTz}"`);
     return `${base}/guest-book?t=${encodeURIComponent(token)}&guestTz=${encodeURIComponent(guestTz)}`;
   } catch {
     return null;
