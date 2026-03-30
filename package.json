@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js",
+    "start": "node --max-old-space-size=1024 index.js",
     "dev": "nodemon index.js",
     "dev:api": "cross-env PORT=3001 ENABLE_TOP_SCORING_LEADS=true TOP_SCORING_LEADS_DRY_RUN=true nodemon index.js",
     "dev:front": "cross-env NEXT_PUBLIC_API_BASE_URL=http://localhost:3001 npm --prefix linkedin-messaging-followup-next run dev",

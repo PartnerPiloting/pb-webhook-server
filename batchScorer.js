@@ -232,41 +232,25 @@ async function fetchLeads(limit, clientBase, clientId, runId = 'UNKNOWN') {
         log.error(`Failed to list tables: ${tableErr.message}`);
     }
     
-        // Get a count of leads with "To Be Scored" status
+        // Count leads without loading them all into memory
     try {
-        // Special debug for Guy Wilson
-        if (clientId === 'guy-wilson') {
-            log.debug(`About to count Guy Wilson leads with filter: ${filterFormula}`);
-        }
-        
-        const countQuery = await clientBase("Leads")
-            .select({ 
-                filterByFormula: filterFormula 
+        let totalCount = 0;
+        await clientBase("Leads")
+            .select({
+                filterByFormula: filterFormula,
+                fields: [],
+                pageSize: 100
             })
-            .all();
-        log.debug(`TOTAL leads with "To Be Scored" status: ${countQuery.length}`);
-        
-        // Special debug for Guy Wilson
-        if (clientId === 'guy-wilson') {
-            log.debug(`Found ${countQuery.length} leads to score for Guy Wilson`);
-            if (countQuery.length === 0) {
-                try {
-                    // Try to query with double quotes to confirm issue
-                    const doubleQuoteFilter = `{Scoring Status} = "To Be Scored"`;
-                    const doubleQuoteQuery = await clientBase("Leads")
-                        .select({ 
-                            filterByFormula: doubleQuoteFilter
-                        })
-                        .all();
-                    log.debug(`Double quote query found ${doubleQuoteQuery.length} leads`);
-                } catch (doubleQuoteErr) {
-                    log.debug(`Double quote query error: ${doubleQuoteErr.message}`);
-                }
-            }
-        }
+            .eachPage((pageRecords, next) => {
+                totalCount += pageRecords.length;
+                next();
+            });
+        log.debug(`TOTAL leads with "To Be Scored" status: ${totalCount}`);
     } catch (countErr) {
         log.error(`Failed to count leads: ${countErr.message}`);
-    }    try {
+    }
+
+    try {
         await clientBase("Leads") 
             .select({ 
                 maxRecords: limit, 
@@ -771,7 +755,7 @@ async function run(req, res, dependencies) {
     systemLogger.info("Dependencies received and set");
 
     const startTime = Date.now();
-    const limit = Number(req?.query?.limit) || 1000;
+    const limit = Number(req?.query?.limit) || 300;
     const requestedClientId = req?.query?.clientId;
 
     systemLogger.info(`Parameters: limit=${limit}, clientId=${requestedClientId || 'ALL'}`);
