@@ -8316,11 +8316,10 @@ router.post("/api/calendar/chat", async (req, res) => {
       dates.push(d.toISOString().split('T')[0]);
     }
 
-    // Check if timezones have the same offset right now (for timezone display logic)
-    const getOffsetMinutes = (tz) => {
-      const now = new Date();
+    // Check if timezones have the same offset (date-aware for DST transitions)
+    const getOffsetMinutesForDate = (tz, date) => {
       const formatter = new Intl.DateTimeFormat('en-US', { timeZone: tz, timeZoneName: 'shortOffset' });
-      const parts = formatter.formatToParts(now);
+      const parts = formatter.formatToParts(date);
       const offsetPart = parts.find(p => p.type === 'timeZoneName')?.value || '';
       const match = offsetPart.match(/GMT([+-])(\d+)(?::(\d+))?/);
       if (!match) return 0;
@@ -8330,9 +8329,37 @@ router.post("/api/calendar/chat", async (req, res) => {
       return sign * (hours * 60 + minutes);
     };
     
-    const yourOffset = getOffsetMinutes(yourTimezone);
-    const leadOffset = getOffsetMinutes(leadTimezone);
-    const sameTimezone = yourOffset === leadOffset;
+    const now = new Date();
+    const sameTimezone = getOffsetMinutesForDate(yourTimezone, now) === getOffsetMinutesForDate(leadTimezone, now);
+
+    // Detect DST transitions between user and lead in the 90-day booking window
+    let dstTransitionNote = '';
+    if (yourTimezone !== leadTimezone) {
+      const rangeEnd = new Date(today);
+      rangeEnd.setDate(rangeEnd.getDate() + 90);
+      const sameAtEnd = getOffsetMinutesForDate(yourTimezone, rangeEnd) === getOffsetMinutesForDate(leadTimezone, rangeEnd);
+      
+      if (sameTimezone !== sameAtEnd) {
+        let lo = new Date(today);
+        let hi = new Date(rangeEnd);
+        while (hi - lo > 24 * 60 * 60 * 1000) {
+          const mid = new Date((lo.getTime() + hi.getTime()) / 2);
+          const sameMid = getOffsetMinutesForDate(yourTimezone, mid) === getOffsetMinutesForDate(leadTimezone, mid);
+          if (sameMid === sameTimezone) lo = mid;
+          else hi = mid;
+        }
+        const transitionLabel = hi.toLocaleDateString('en-AU', { 
+          weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: yourTimezone 
+        });
+        const userCity = yourTimezone.split('/').pop()?.replace('_', ' ');
+        
+        if (sameAtEnd) {
+          dstTransitionNote = `\nIMPORTANT - DST TRANSITION IN BOOKING WINDOW: Daylight saving ends around ${transitionLabel}. BEFORE that date, ${leadCity} is 1 hour ahead of ${userCity} — show both timezones. ON or AFTER that date, ${leadCity} and ${userCity} are the SAME timezone — do NOT show dual times, just show one time. Always check which side of the transition the meeting date falls on.`;
+        } else {
+          dstTransitionNote = `\nIMPORTANT - DST TRANSITION IN BOOKING WINDOW: Daylight saving starts around ${transitionLabel}. BEFORE that date, ${leadCity} and ${userCity} are the SAME timezone — just show one time. ON or AFTER that date, ${leadCity} is 1 hour ahead — show both timezones. Always check which side of the transition the meeting date falls on.`;
+        }
+      }
+    }
     
     // Extract lead's first name
     const leadFirstName = (context.leadName || '').split(' ')[0] || 'the lead';
@@ -8382,6 +8409,7 @@ TIMEZONE RULES (ALWAYS FOLLOW):
 3. Calendar availability data is in the USER's timezone
 4. The booking/ACTION times are ALWAYS in the USER's timezone - convert from lead's time if needed
 5. When generating a MESSAGE FOR THE LEAD: CONVERT times to the LEAD's timezone (${leadTimezone}) and ${sameTimezone ? 'no need to specify timezone since you are both in the same timezone' : `include "(${leadCity} time)" so ${leadFirstName} knows the timezone`}
+6. The FREE SLOTS data below includes the lead's local time in parentheses ONLY when it differs from the user's time. Use those times directly — do NOT calculate timezone offsets yourself.${dstTransitionNote}
 
 SMART SCHEDULING (when finding mutually good times):
 - Business hours are typically 9am-5pm in each person's timezone
@@ -8480,6 +8508,7 @@ CRITICAL RULES:
 - When suggesting times, pick from CALENDAR AVAILABILITY that DON'T conflict with YOUR SCHEDULED APPOINTMENTS
 - When user asks for "least busy" / "quiet" days: ONLY suggest times from days with the LOWEST [X mtg] count. Ignore heavy days.
 - Slots marked with ⓘ are AVAILABLE but overlap with a "free" calendar entry (e.g., family reminders). Treat these as available times, but you can optionally mention the overlap if relevant.
+- DATE SPECIFICITY: When the user specifies particular days (e.g. "Friday 10th", "on Tuesday", "next Monday and Wednesday") or a start date (e.g. "starting Friday 10th", "from next week"), ONLY suggest times from those exact days or from that date onwards. NEVER suggest times from other dates or earlier dates. If they ask for options across multiple specific days, suggest one option per day — do not cluster all options on a single day.
 
 MORNING vs AFTERNOON (STRICT DEFINITIONS - use these exactly):
 - MORNING = slots that START before 12:00 pm (noon). Examples: 9:00 am, 9:30 am, 10:00 am, 10:30 am, 11:00 am, 11:30 am.
@@ -8578,10 +8607,16 @@ CALENDAR DATA RANGE:
     
     const availabilitySlots = calendarDays.map(d => ({
       ...d,
-      freeSlots: d.freeSlots.map(slot => ({
-        ...slot,
-        leadDisplay: formatTimeInTimezone(slot.time, leadTimezone),
-      })),
+      freeSlots: d.freeSlots.map(slot => {
+        const leadTimeOnly = new Date(slot.time).toLocaleTimeString('en-AU', {
+          hour: 'numeric', minute: '2-digit', timeZone: leadTimezone
+        });
+        return {
+          ...slot,
+          leadDisplay: formatTimeInTimezone(slot.time, leadTimezone),
+          leadTimeOnly,
+        };
+      }),
     }));
     
     // Build calendar context with both appointments and availability (compact format)
@@ -8605,8 +8640,9 @@ CALENDAR DATA RANGE:
         // Show up to 16 slots per day (covers 9am-5pm fully) - was 6 which truncated afternoon availability
         const slotDisplays = s.freeSlots.slice(0, 16).map(f => {
           const timeDisplay = f.displayRange || f.display;
-          // Add ⓘ indicator if there's a soft conflict (overlapping "free" event)
-          return f.softConflict ? `${timeDisplay}ⓘ` : timeDisplay;
+          const showLeadTime = f.leadTimeOnly && f.leadTimeOnly !== f.display;
+          const fullDisplay = showLeadTime ? `${timeDisplay} (${leadCity}: ${f.leadTimeOnly})` : timeDisplay;
+          return f.softConflict ? `${fullDisplay}ⓘ` : fullDisplay;
         });
         return `${s.day} ${mtgLabel}: ${slotDisplays.join(', ')}`;
       }).join('\n')}`;
