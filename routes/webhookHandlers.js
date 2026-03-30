@@ -110,7 +110,6 @@ router.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
                     processedBody = req.body; // Keep as string if parsing fails
                 }
             } else {
-    logCriticalError(e, { operation: 'unknown' }).catch(() => {});
                 processedBody = req.body;
             }
 
