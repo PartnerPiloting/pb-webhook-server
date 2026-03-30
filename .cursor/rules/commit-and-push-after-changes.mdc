@@ -19,3 +19,14 @@ When you finish work that **changes project source code** (not only docs the use
 - The repo is in a broken state (tests fail, build fails) and the user asked to fix before shipping.
 
 If push fails (auth, network), say what failed and what they need to do; do not claim the work is "done" on the remote without a successful push or a stated exception.
+
+## Verifying deploy is live
+
+After pushing, if you need to confirm the deploy is running on Render, call:
+
+```
+curl.exe -s https://pb-webhook-server.onrender.com/deploy-info
+```
+
+This returns `{ "commit": "<short>", "commitFull": "...", "branch": "...", "startedAt": "..." }`.
+Compare `commit` to the hash from `git push` output. No auth required. Do **not** rely on searching application logs for deploy/build messages — they are unreliable.
