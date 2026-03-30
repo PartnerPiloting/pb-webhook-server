@@ -177,6 +177,16 @@ app.get('/basic-test', (req, res) => {
 });
 moduleLogger.info("Basic test route added at /basic-test");
 
+const SERVER_START_TIME = new Date().toISOString();
+app.get('/deploy-info', (req, res) => {
+    res.json({
+        commit: (process.env.RENDER_GIT_COMMIT || 'local').substring(0, 7),
+        commitFull: process.env.RENDER_GIT_COMMIT || 'local',
+        branch: process.env.RENDER_GIT_BRANCH || 'unknown',
+        startedAt: SERVER_START_TIME,
+    });
+});
+
 // Friendly root route to reduce confusion when visiting http://localhost:3001
 app.get('/', (req, res) => {
         res.setHeader('Content-Type', 'text/html; charset=utf-8');
