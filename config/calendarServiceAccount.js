@@ -268,18 +268,19 @@ async function getBatchAvailability(calendarEmail, dates, startHour = 9, endHour
     };
     
     try {
-        const offsetMinutes = getTimezoneOffset(timezone, dates[0]);
-        
         // Get the full date range for batch query
         const firstDate = dates[0];
         const lastDate = dates[dates.length - 1];
         
-        // Query the entire range at once for freebusy
+        // Use per-date offsets for range boundaries to handle DST transitions
+        const firstOffset = getTimezoneOffset(timezone, firstDate);
+        const lastOffset = getTimezoneOffset(timezone, lastDate);
+        
         const rangeStart = new Date(`${firstDate}T00:00:00Z`);
-        rangeStart.setMinutes(rangeStart.getMinutes() - offsetMinutes);
+        rangeStart.setMinutes(rangeStart.getMinutes() - firstOffset);
         
         const rangeEnd = new Date(`${lastDate}T23:59:59Z`);
-        rangeEnd.setMinutes(rangeEnd.getMinutes() - offsetMinutes);
+        rangeEnd.setMinutes(rangeEnd.getMinutes() - lastOffset);
         
         console.log(`[CalendarServiceAccount] Batch query range: ${rangeStart.toISOString()} to ${rangeEnd.toISOString()}`);
         
@@ -338,12 +339,13 @@ async function getBatchAvailability(calendarEmail, dates, startHour = 9, endHour
                 return eventDate === date;
             });
             
-            // Calculate free slots for this date
+            // Calculate free slots for this date (per-day offset handles DST transitions)
+            const dayOffset = getTimezoneOffset(timezone, date);
             const dayStart = new Date(`${date}T${String(startHour).padStart(2, '0')}:00:00Z`);
-            dayStart.setMinutes(dayStart.getMinutes() - offsetMinutes);
+            dayStart.setMinutes(dayStart.getMinutes() - dayOffset);
             
             const dayEnd = new Date(`${date}T${String(endHour).padStart(2, '0')}:00:00Z`);
-            dayEnd.setMinutes(dayEnd.getMinutes() - offsetMinutes);
+            dayEnd.setMinutes(dayEnd.getMinutes() - dayOffset);
             
             // Filter busy periods that overlap with this day's working hours
             const dayBusy = allBusyPeriods.filter(period => {
