@@ -176,9 +176,11 @@ async function getOrCreateLabel(gmail, labelName) {
  */
 async function moveSentToLabel(messageId, labelName) {
   try {
+    console.log(`[gmail-label] Starting relabel for message ${messageId} -> "${labelName}"`);
     const auth = getGmailOAuthClient();
     const gmail = google.gmail({ version: "v1", auth });
     const labelId = await getOrCreateLabel(gmail, labelName);
+    console.log(`[gmail-label] Label ID for "${labelName}": ${labelId}`);
     await gmail.users.messages.modify({
       userId: "me",
       id: messageId,
@@ -187,8 +189,9 @@ async function moveSentToLabel(messageId, labelName) {
         removeLabelIds: ["SENT"],
       },
     });
+    console.log(`[gmail-label] OK: message ${messageId} moved to "${labelName}", removed from SENT`);
   } catch (err) {
-    console.error(`[gmail] Failed to relabel message ${messageId}: ${err.message || err}`);
+    console.log(`[gmail-label] FAILED: message ${messageId}: ${err.message || err}`);
   }
 }
 
