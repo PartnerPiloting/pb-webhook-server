@@ -1475,7 +1475,7 @@ function buildOutreachReportText(out) {
     weekday: "short", year: "numeric", month: "short", day: "numeric",
     hour: "numeric", minute: "2-digit", hour12: true,
   });
-  const lines = [`CC Outreach Run Report — ${ts}`, ""];
+  const lines = [`CC Outreach Run Report - ${ts}`, ""];
 
   if (!out.ran) {
     lines.push(`Run skipped: ${out.reason || "unknown"}`);
@@ -1517,7 +1517,7 @@ async function sendOutreachReport(content, isError) {
     const { sendTextEmail } = require("../services/gmailApiService.js");
     await sendTextEmail({
       to: reportTo,
-      subject: `[CC outreach] Run ${prefix} — ${new Date().toLocaleDateString("en-AU", { timeZone: "Australia/Brisbane" })}`,
+      subject: `[CC outreach] Run ${prefix} - ${new Date().toLocaleDateString("en-AU", { timeZone: "Australia/Brisbane" })}`,
       text: content,
     });
   } catch (emailErr) {
