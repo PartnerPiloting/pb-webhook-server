@@ -8331,6 +8331,27 @@ router.post("/api/calendar/chat", async (req, res) => {
     
     const now = new Date();
     const sameTimezone = getOffsetMinutesForDate(yourTimezone, now) === getOffsetMinutesForDate(leadTimezone, now);
+    
+    // Extract lead's first name
+    const leadFirstName = (context.leadName || '').split(' ')[0] || 'the lead';
+    
+    // City name for display (extract from timezone or location)
+    const getDisplayCity = (tz, location) => {
+      if (location) {
+        const loc = location.toLowerCase();
+        if (loc.includes('sydney') || loc.includes('nsw') || loc.includes('canberra')) return 'Sydney';
+        if (loc.includes('melbourne') || loc.includes('victoria') || loc.includes('dandenong') || loc.includes('geelong') || loc.includes('ballarat') || loc.includes('bendigo')) return 'Melbourne';
+        if (loc.includes('brisbane')) return 'Brisbane';
+        if (loc.includes('perth')) return 'Perth';
+        if (loc.includes('adelaide')) return 'Adelaide';
+        if (loc.includes('auckland')) return 'Auckland';
+        if (loc.includes('singapore')) return 'Singapore';
+      }
+      // Extract from timezone string
+      const city = tz.split('/').pop()?.replace('_', ' ');
+      return city || 'their timezone';
+    };
+    const leadCity = getDisplayCity(leadTimezone, context.leadLocation);
 
     // Detect DST transitions between user and lead in the 90-day booking window
     let dstTransitionNote = '';
@@ -8360,27 +8381,6 @@ router.post("/api/calendar/chat", async (req, res) => {
         }
       }
     }
-    
-    // Extract lead's first name
-    const leadFirstName = (context.leadName || '').split(' ')[0] || 'the lead';
-    
-    // City name for display (extract from timezone or location)
-    const getDisplayCity = (tz, location) => {
-      if (location) {
-        const loc = location.toLowerCase();
-        if (loc.includes('sydney') || loc.includes('nsw') || loc.includes('canberra')) return 'Sydney';
-        if (loc.includes('melbourne') || loc.includes('victoria') || loc.includes('dandenong') || loc.includes('geelong') || loc.includes('ballarat') || loc.includes('bendigo')) return 'Melbourne';
-        if (loc.includes('brisbane')) return 'Brisbane';
-        if (loc.includes('perth')) return 'Perth';
-        if (loc.includes('adelaide')) return 'Adelaide';
-        if (loc.includes('auckland')) return 'Auckland';
-        if (loc.includes('singapore')) return 'Singapore';
-      }
-      // Extract from timezone string
-      const city = tz.split('/').pop()?.replace('_', ' ');
-      return city || 'their timezone';
-    };
-    const leadCity = getDisplayCity(leadTimezone, context.leadLocation);
 
     // Build lead contact info section (only include if available)
     const leadContactInfo = [
