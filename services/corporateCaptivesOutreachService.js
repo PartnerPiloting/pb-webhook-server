@@ -561,7 +561,8 @@ function jitterWaitMs(settingsFields) {
  */
 async function runCorporateCaptivesSendRun(options = {}) {
   const { createLogger } = require("../utils/contextLogger.js");
-  const { sendHtmlEmail } = require("./gmailApiService.js");
+  const { sendHtmlEmail, moveSentToLabel } = require("./gmailApiService.js");
+  const CC_OUTREACH_LABEL = process.env.CC_OUTREACH_GMAIL_LABEL || "CC Outreach";
 
   const clientId = (options.clientId && String(options.clientId).trim()) || "Guy-Wilson";
   const limitOverride =
@@ -648,11 +649,14 @@ async function runCorporateCaptivesSendRun(options = {}) {
     }
 
     try {
-      await sendHtmlEmail({
+      const sendResult = await sendHtmlEmail({
         to: row.to,
         subject: row.subject,
         html: row.html,
       });
+      if (sendResult && sendResult.id) {
+        await moveSentToLabel(sendResult.id, CC_OUTREACH_LABEL);
+      }
       await base(LEADS_TABLE).update([
         {
           id: row.recordId,
