@@ -103,16 +103,24 @@ function getLeadLinkedInUrl(record) {
  * Same signing as scripts/guest-booking-mint-link.js. Returns null if anything missing or signing fails.
  */
 /**
- * Try to derive IANA timezone from lead's Location field (e.g. "Sydney, New South Wales, Australia").
- * Splits on commas and tries each segment against the alias map.
+ * Derive IANA timezone from a free-text location string using substring matching.
+ * Same approach as linkedin-messaging-followup-next/lib/timezoneFromLocation.js.
  */
 function tzFromLeadLocation(location) {
   if (!location || typeof location !== "string") return "";
-  const { normalizeTimezoneInput } = require("./guestTimezoneAliases.js");
-  for (const part of location.split(",")) {
-    const tz = normalizeTimezoneInput(part.trim());
-    if (tz) return tz;
-  }
+  const loc = location.toLowerCase();
+
+  if (loc.includes("melbourne") || loc.includes("victoria") || loc.includes("geelong") || loc.includes("ballarat") || loc.includes("dandenong") || loc.includes("bendigo")) return "Australia/Melbourne";
+  if (loc.includes("sydney") || loc.includes("canberra") || loc.includes("nsw") || loc.includes("new south wales") || loc.includes("wollongong") || loc.includes("newcastle")) return "Australia/Sydney";
+  if (loc.includes("brisbane") || loc.includes("queensland") || loc.includes("gold coast") || loc.includes("sunshine coast") || loc.includes("cairns") || loc.includes("townsville")) return "Australia/Brisbane";
+  if (loc.includes("perth") || loc.includes("western australia")) return "Australia/Perth";
+  if (loc.includes("adelaide") || loc.includes("south australia")) return "Australia/Adelaide";
+  if (loc.includes("darwin") || loc.includes("northern territory")) return "Australia/Darwin";
+  if (loc.includes("hobart") || loc.includes("tasmania") || loc.includes("launceston")) return "Australia/Hobart";
+  if (loc.includes("auckland") || loc.includes("new zealand") || loc.includes("wellington")) return "Pacific/Auckland";
+  if (loc.includes("singapore")) return "Asia/Singapore";
+  if (loc.includes("hong kong")) return "Asia/Hong_Kong";
+  if (loc.includes("london") || loc.includes("england")) return "Europe/London";
   return "";
 }
 
