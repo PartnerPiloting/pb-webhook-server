@@ -34,6 +34,7 @@ const F = {
   minDelay: "Min Seconds Between Sends",
   minOutboundScore: "Min Outbound Email Score",
   minDaysSinceLeadAdded: "Min Days Since Lead Added",
+  location: "Location",
 };
 
 const ALLOWED_SCORING = new Set(["Scored"]);
@@ -101,6 +102,20 @@ function getLeadLinkedInUrl(record) {
 /**
  * Same signing as scripts/guest-booking-mint-link.js. Returns null if anything missing or signing fails.
  */
+/**
+ * Try to derive IANA timezone from lead's Location field (e.g. "Sydney, New South Wales, Australia").
+ * Splits on commas and tries each segment against the alias map.
+ */
+function tzFromLeadLocation(location) {
+  if (!location || typeof location !== "string") return "";
+  const { normalizeTimezoneInput } = require("./guestTimezoneAliases.js");
+  for (const part of location.split(",")) {
+    const tz = normalizeTimezoneInput(part.trim());
+    if (tz) return tz;
+  }
+  return "";
+}
+
 function mintGuestBookingUrlForLead(record) {
   const e = String(record.get(F.email) || "").trim();
   const li = getLeadLinkedInUrl(record);
@@ -118,11 +133,12 @@ function mintGuestBookingUrlForLead(record) {
       process.env.GUEST_BOOKING_PUBLIC_BASE || "https://pb-webhook-server.onrender.com"
     ).replace(/\/$/, "");
     const { normalizeTimezoneInput } = require("./guestTimezoneAliases.js");
-    const rawTz =
+    const leadTz = tzFromLeadLocation(record.get(F.location));
+    const fallbackRaw =
       process.env.GUEST_BOOKING_DEFAULT_GUEST_TZ ||
       process.env.GUEST_BOOKING_HOST_TIMEZONE ||
       "Australia/Brisbane";
-    const guestTz = normalizeTimezoneInput(String(rawTz).trim()) || rawTz;
+    const guestTz = leadTz || normalizeTimezoneInput(String(fallbackRaw).trim()) || fallbackRaw;
     return `${base}/guest-book?t=${encodeURIComponent(token)}&guestTz=${encodeURIComponent(guestTz)}`;
   } catch {
     return null;
@@ -283,6 +299,7 @@ async function fetchScoredLeadCandidates(base) {
         F.lastName,
         // Many Guy bases use "LinkedIn Profile URL" only; omit "LinkedIn URL" to avoid Airtable UNKNOWN_FIELD.
         F.linkedInProfileUrl,
+        F.location,
       ],
       sort: [{ field: F.score, direction: "desc" }],
       maxRecords: cap,
