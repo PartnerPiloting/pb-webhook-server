@@ -171,25 +171,24 @@ async function getOrCreateLabel(gmail, labelName) {
 }
 
 /**
- * Move a sent message out of Sent and into a custom label.
- * Silently fails so it never blocks the send flow.
+ * Tag a sent message with a user label (e.g. CC Outreach).
+ * Gmail API does not allow removing the system SENT label — messages stay in Sent
+ * but also appear under the custom label so you can browse or search them together.
  */
 async function moveSentToLabel(messageId, labelName) {
   try {
-    console.log(`[gmail-label] Starting relabel for message ${messageId} -> "${labelName}"`);
+    console.log(`[gmail-label] Tagging message ${messageId} with "${labelName}"`);
     const auth = getGmailOAuthClient();
     const gmail = google.gmail({ version: "v1", auth });
     const labelId = await getOrCreateLabel(gmail, labelName);
-    console.log(`[gmail-label] Label ID for "${labelName}": ${labelId}`);
     await gmail.users.messages.modify({
       userId: "me",
       id: messageId,
       requestBody: {
         addLabelIds: [labelId],
-        removeLabelIds: ["SENT"],
       },
     });
-    console.log(`[gmail-label] OK: message ${messageId} moved to "${labelName}", removed from SENT`);
+    console.log(`[gmail-label] OK: message ${messageId} has label "${labelName}" (still in Sent; API cannot remove SENT)`);
   } catch (err) {
     console.log(`[gmail-label] FAILED: message ${messageId}: ${err.message || err}`);
   }
