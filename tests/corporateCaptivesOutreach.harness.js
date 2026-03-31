@@ -24,6 +24,7 @@ const {
   buildSortedEligible,
   buildPreviewRows,
   buildDryRunPreviewHtml,
+  classifyOutreachBodyVariant,
   inferOutreachBodyVariant,
   pickBodyTemplate,
   applyOutreachBodyTemplate,
@@ -38,7 +39,7 @@ function mockRecord(id, fields, opts = {}) {
   };
 }
 
-function runUnitTests() {
+async function runUnitTests() {
   console.log("— Unit tests (offline) —\n");
 
   assert.strictEqual(notesEffectivelyEmpty(undefined), true);
@@ -158,7 +159,7 @@ function runUnitTests() {
     Math.random = origRandom;
   }
 
-  const prev = buildPreviewRows(
+  const prev = await buildPreviewRows(
     [mockRecord("recX", goodFields)],
     { fields: { ...settingsFields, [F.body]: "<p>Hi {{FirstName}}</p>" } },
     1
@@ -166,16 +167,29 @@ function runUnitTests() {
   assert.strictEqual(prev.length, 1);
   assert.ok(prev[0].html.includes("Hi Sam"));
 
+  assert.strictEqual(classifyOutreachBodyVariant(""), "default");
   assert.strictEqual(inferOutreachBodyVariant(""), "employee");
+  assert.strictEqual(
+    classifyOutreachBodyVariant(JSON.stringify({ headline: "Founder at Acme" })),
+    "owner"
+  );
   assert.strictEqual(
     inferOutreachBodyVariant(JSON.stringify({ headline: "Founder at Acme" })),
     "owner"
   );
   assert.strictEqual(
-    inferOutreachBodyVariant(
+    classifyOutreachBodyVariant(
       JSON.stringify({ headline: "VP Sales at BigCorp Inc" })
     ),
     "employee"
+  );
+
+  assert.strictEqual(
+    pickBodyTemplate(
+      { [F.body]: "DEFAULT", [F.bodyOwner]: "OWNER", [F.bodyEmployee]: "EMP" },
+      "default"
+    ),
+    "DEFAULT"
   );
 
   const dual = pickBodyTemplate(
@@ -199,7 +213,7 @@ function runUnitTests() {
     ...goodFields,
     [F.rawProfile]: JSON.stringify({ headline: "Co-founder | SaaS" }),
   };
-  const prevOwner = buildPreviewRows(
+  const prevOwner = await buildPreviewRows(
     [mockRecord("recFounder", founderFields)],
     {
       fields: {
@@ -235,7 +249,7 @@ async function runLiveSmoke() {
 }
 
 async function main() {
-  runUnitTests();
+  await runUnitTests();
   await runLiveSmoke();
   console.log("Done.");
 }
