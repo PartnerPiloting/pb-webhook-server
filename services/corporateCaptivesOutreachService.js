@@ -227,8 +227,9 @@ function pickBodyTemplate(settingsFields, variant) {
 
 const CC_PERSONAL_LINE_MODEL =
   process.env.CC_PERSONAL_LINE_MODEL || "gemini-2.5-flash";
-const PERSONAL_LINE_TIMEOUT_MS = 15000;
-const PERSONAL_LINE_FALLBACK = "your background and experience";
+const PERSONAL_LINE_TIMEOUT_MS = 30000;
+const PERSONAL_LINE_MAX_ATTEMPTS = 2;
+const PERSONAL_LINE_FALLBACK = "what you're building";
 
 const DEFAULT_PERSONAL_LINE_PROMPT = `From this LinkedIn profile data, find ONE thing that suggests this person values collaboration, helping others succeed, or building through relationships rather than just transactions.
 
@@ -273,31 +274,38 @@ async function generatePersonalLine(rawProfileStr, promptTemplate, logger) {
 
   const prompt = (promptTemplate || DEFAULT_PERSONAL_LINE_PROMPT).trim();
   const userMessage = `${prompt}\n\n---\nLEAD PROFILE DATA:\n${profileText}\n---`;
+  const model = vertexAIClient.getGenerativeModel({ model: CC_PERSONAL_LINE_MODEL });
 
-  try {
-    const model = vertexAIClient.getGenerativeModel({ model: CC_PERSONAL_LINE_MODEL });
-    const callPromise = model.generateContent({
-      contents: [{ role: "user", parts: [{ text: userMessage }] }],
-    });
-    const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error("Personal line generation timed out")), PERSONAL_LINE_TIMEOUT_MS)
-    );
-    const result = await Promise.race([callPromise, timeoutPromise]);
-    const text = result?.response?.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!text || typeof text !== "string") {
-      if (logger) logger.warn("[PERSONAL-LINE] AI returned no content, using fallback");
-      return PERSONAL_LINE_FALLBACK;
+  for (let attempt = 1; attempt <= PERSONAL_LINE_MAX_ATTEMPTS; attempt++) {
+    try {
+      const callPromise = model.generateContent({
+        contents: [{ role: "user", parts: [{ text: userMessage }] }],
+      });
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("Personal line generation timed out")), PERSONAL_LINE_TIMEOUT_MS)
+      );
+      const result = await Promise.race([callPromise, timeoutPromise]);
+      const text = result?.response?.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (!text || typeof text !== "string") {
+        if (logger) logger.warn(`[PERSONAL-LINE] attempt ${attempt}: AI returned no content`);
+        continue;
+      }
+      let cleaned = text.trim().replace(/^["']|["']$/g, "").replace(/\.+$/, "").trim();
+      if (cleaned.length < 5 || cleaned.length > 300) {
+        if (logger) logger.warn(`[PERSONAL-LINE] attempt ${attempt}: unexpected length (${cleaned.length})`);
+        continue;
+      }
+      return cleaned;
+    } catch (err) {
+      if (logger) logger.error(`[PERSONAL-LINE] attempt ${attempt}: ${err.message}`);
+      if (attempt < PERSONAL_LINE_MAX_ATTEMPTS) {
+        await new Promise((r) => setTimeout(r, 2000));
+      }
     }
-    let cleaned = text.trim().replace(/^["']|["']$/g, "").replace(/\.+$/, "").trim();
-    if (cleaned.length < 5 || cleaned.length > 300) {
-      if (logger) logger.warn(`[PERSONAL-LINE] AI line unexpected length (${cleaned.length}), using fallback`);
-      return PERSONAL_LINE_FALLBACK;
-    }
-    return cleaned;
-  } catch (err) {
-    if (logger) logger.error(`[PERSONAL-LINE] Gemini error: ${err.message}`);
-    return PERSONAL_LINE_FALLBACK;
   }
+
+  if (logger) logger.warn("[PERSONAL-LINE] All attempts failed, using fallback");
+  return PERSONAL_LINE_FALLBACK;
 }
 
 function parseDateScoredBrisbane(val) {
