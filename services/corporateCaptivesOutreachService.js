@@ -256,10 +256,29 @@ RULES:
 - Don't echo their job title back at them — find something deeper
 - Return ONLY the phrase, nothing else`;
 
+async function warmUpGeminiFlash(logger) {
+  if (!vertexAIClient) return;
+  try {
+    if (logger) logger.info("[PERSONAL-LINE] Warming up Gemini Flash...");
+    const model = vertexAIClient.getGenerativeModel({ model: CC_PERSONAL_LINE_MODEL });
+    const warmupPromise = model.generateContent({
+      contents: [{ role: "user", parts: [{ text: "Reply with the single word: ready" }] }],
+    });
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error("warmup timed out")), PERSONAL_LINE_TIMEOUT_MS)
+    );
+    await Promise.race([warmupPromise, timeoutPromise]);
+    await new Promise((r) => setTimeout(r, 2000));
+    if (logger) logger.info("[PERSONAL-LINE] Warmup complete");
+  } catch (err) {
+    if (logger) logger.warn(`[PERSONAL-LINE] Warmup failed (non-fatal): ${err.message}`);
+  }
+}
+
 async function generatePersonalLine(rawProfileStr, promptTemplate, logger) {
   if (!vertexAIClient) {
-    if (logger) logger.warn("[PERSONAL-LINE] Gemini not initialised, using fallback");
-    return PERSONAL_LINE_FALLBACK;
+    if (logger) logger.warn("[PERSONAL-LINE] Gemini not initialised, skipping lead");
+    return null;
   }
 
   const profileText =
@@ -268,8 +287,8 @@ async function generatePersonalLine(rawProfileStr, promptTemplate, logger) {
       : JSON.stringify(rawProfileStr || {}).slice(0, 12000);
 
   if (!profileText || profileText.length < 20) {
-    if (logger) logger.info("[PERSONAL-LINE] Profile data too short, using fallback");
-    return PERSONAL_LINE_FALLBACK;
+    if (logger) logger.info("[PERSONAL-LINE] Profile data too short, skipping lead");
+    return null;
   }
 
   const prompt = (promptTemplate || DEFAULT_PERSONAL_LINE_PROMPT).trim();
@@ -304,8 +323,8 @@ async function generatePersonalLine(rawProfileStr, promptTemplate, logger) {
     }
   }
 
-  if (logger) logger.warn("[PERSONAL-LINE] All attempts failed, using fallback");
-  return PERSONAL_LINE_FALLBACK;
+  if (logger) logger.warn("[PERSONAL-LINE] All attempts failed, skipping lead");
+  return null;
 }
 
 function parseDateScoredBrisbane(val) {
@@ -524,7 +543,12 @@ async function buildPreviewRows(eligibleRecords, settings, maxShow, logger) {
     trimSetting(settings.fields, F.body),
   ].some((tpl) => tpl.includes("{{PersonalLine}}"));
 
+  if (needsPersonalLine) {
+    await warmUpGeminiFlash(logger);
+  }
+
   const rows = [];
+  let skippedNoPersonalLine = 0;
   for (const rec of slice) {
     const firstName = String(rec.get(F.firstName) || "").trim();
     const variant = inferOutreachBodyVariant(rec.get(F.rawProfile));
@@ -539,6 +563,11 @@ async function buildPreviewRows(eligibleRecords, settings, maxShow, logger) {
         promptTemplate,
         logger
       );
+      if (personalLine == null) {
+        skippedNoPersonalLine++;
+        if (logger) logger.warn(`[PERSONAL-LINE] Skipping ${rec.get(F.email)}: AI could not generate a line`);
+        continue;
+      }
       if (logger) logger.info(`[PERSONAL-LINE] ${rec.get(F.email)}: "${personalLine}"`);
     }
 
@@ -553,6 +582,9 @@ async function buildPreviewRows(eligibleRecords, settings, maxShow, logger) {
       guestBookingLinkOk: Boolean(bookingUrl),
       personalLine,
     });
+  }
+  if (skippedNoPersonalLine > 0 && logger) {
+    logger.warn(`[PERSONAL-LINE] ${skippedNoPersonalLine} lead(s) skipped — no personal line generated`);
   }
   return rows;
 }
@@ -826,4 +858,5 @@ module.exports = {
   pickBodyTemplate,
   outreachProfileBlob,
   generatePersonalLine,
+  warmUpGeminiFlash,
 };
