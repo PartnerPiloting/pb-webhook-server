@@ -1525,6 +1525,9 @@ async function sendOutreachReport(content, isError) {
   }
 }
 
+let ccOutreachRunning = false;
+let ccOutreachRunId = null;
+
 async function corporateCaptivesSendRunHandler(req, res) {
   const secret = process.env.PB_WEBHOOK_SECRET || process.env.DEBUG_API_KEY;
   const authHeader = req.headers.authorization;
@@ -1534,26 +1537,51 @@ async function corporateCaptivesSendRunHandler(req, res) {
   if (!secret || (!okBearer && !okQuery)) {
     return res.status(401).json({ ok: false, error: "Unauthorized" });
   }
-  try {
-    const clientId =
-      (req.query.clientId && String(req.query.clientId).trim()) || "Guy-Wilson";
-    const limitRaw = req.query.limit;
-    const limitOverride =
-      limitRaw !== undefined && limitRaw !== ""
-        ? String(limitRaw).trim()
-        : undefined;
-    const { runCorporateCaptivesSendRun } = require("../services/corporateCaptivesOutreachService.js");
-    const out = await runCorporateCaptivesSendRun({ clientId, limitOverride });
-    await sendOutreachReport(buildOutreachReportText(out), false);
-    return res.status(200).json(out);
-  } catch (e) {
-    const errText = `CC Outreach Run CRASHED\n\nError: ${e.message || String(e)}\n\nStack: ${e.stack || "(none)"}`;
-    await sendOutreachReport(errText, true);
-    return res.status(500).json({
+
+  if (ccOutreachRunning) {
+    return res.status(409).json({
       ok: false,
-      error: e.message || String(e),
+      error: "CC outreach run already in progress",
+      runId: ccOutreachRunId,
     });
   }
+
+  const clientId =
+    (req.query.clientId && String(req.query.clientId).trim()) || "Guy-Wilson";
+  const limitRaw = req.query.limit;
+  const limitOverride =
+    limitRaw !== undefined && limitRaw !== ""
+      ? String(limitRaw).trim()
+      : undefined;
+
+  const runId = `CC-SEND-${Date.now()}`;
+  ccOutreachRunning = true;
+  ccOutreachRunId = runId;
+
+  res.status(202).json({
+    ok: true,
+    message: "CC outreach send run started in background",
+    runId,
+    clientId,
+    limit: limitOverride || "(from Airtable settings)",
+    note: "You will receive a report email when the run completes.",
+  });
+
+  const { runCorporateCaptivesSendRun } = require("../services/corporateCaptivesOutreachService.js");
+  runCorporateCaptivesSendRun({ clientId, limitOverride })
+    .then(async (out) => {
+      await sendOutreachReport(buildOutreachReportText(out), false);
+      console.log(`[CC-OUTREACH] Run ${runId} completed: sent=${out.sent || 0} failed=${out.failed || 0}`);
+    })
+    .catch(async (e) => {
+      const errText = `CC Outreach Run CRASHED\n\nRun ID: ${runId}\nError: ${e.message || String(e)}\n\nStack: ${e.stack || "(none)"}`;
+      await sendOutreachReport(errText, true).catch(() => {});
+      console.error(`[CC-OUTREACH] Run ${runId} crashed: ${e.message || e}`);
+    })
+    .finally(() => {
+      ccOutreachRunning = false;
+      ccOutreachRunId = null;
+    });
 }
 
 router.get("/admin/corporate-captives-send-run", corporateCaptivesSendRunHandler);
