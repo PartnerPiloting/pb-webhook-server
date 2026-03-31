@@ -76,6 +76,22 @@ function applyTemplate(bodyHtml, firstName) {
   return String(bodyHtml || "").split("{{FirstName}}").join(name);
 }
 
+/** Line is only ASCII/typographic quotes or backticks (Airtable long text often pasted inside "…"). */
+function isStandaloneQuoteLine(line) {
+  const t = String(line).replace(/\r/g, "").trim();
+  if (!t) return false;
+  return /^["'`\u201c\u201d\u2018\u2019\u00ab\u00bb]+$/.test(t);
+}
+
+/** Drop leading/trailing quote-only lines so sent HTML matches intent. */
+function stripSurroundingStandaloneQuoteLines(html) {
+  const s = String(html || "").replace(/\r\n/g, "\n");
+  const lines = s.split("\n");
+  while (lines.length && isStandaloneQuoteLine(lines[0])) lines.shift();
+  while (lines.length && isStandaloneQuoteLine(lines[lines.length - 1])) lines.pop();
+  return lines.join("\n");
+}
+
 const MISSING_BOOKING_LINK_HTML =
   '<span style="color:#b45309;font-size:0.9em">[Guest booking link not generated — need LinkedIn URL, full name, email, and GUEST_BOOKING_LINK_SECRET]</span>';
 
@@ -89,7 +105,7 @@ function applyOutreachBodyTemplate(bodyHtml, firstName, bookingUrl, personalLine
   if (personalLine != null) {
     s = s.split("{{PersonalLine}}").join(String(personalLine));
   }
-  return s;
+  return stripSurroundingStandaloneQuoteLines(s);
 }
 
 function buildLeadFullNameForBooking(record) {
@@ -351,11 +367,11 @@ async function generatePersonalization(rawProfileStr, promptTemplate, logger, ru
 
       const parsed = extractPersonalizationJson(text);
       if (parsed && typeof parsed === "object" && parsed.personalLine != null) {
-        const cleaned = String(parsed.personalLine)
-          .trim()
-          .replace(/^["']|["']$/g, "")
-          .replace(/\.+$/, "")
-          .trim();
+        let cleaned = String(parsed.personalLine).trim();
+        while (cleaned.length >= 2 && /^["'`\u201c\u201d\u2018\u2019]/.test(cleaned) && /["'`\u201c\u201d\u2018\u2019]$/.test(cleaned)) {
+          cleaned = cleaned.slice(1, -1).trim();
+        }
+        cleaned = cleaned.replace(/\.+$/, "").trim();
         if (cleaned.length < 5 || cleaned.length > 300) {
           if (logger) logger.warn(`[PERSONAL-LINE] attempt ${attempt}: personalLine bad length (${cleaned.length})`);
           continue;
@@ -370,7 +386,11 @@ async function generatePersonalization(rawProfileStr, promptTemplate, logger, ru
         return { personalLine: cleaned, variant, variantSource };
       }
 
-      const cleaned = text.trim().replace(/^["']|["']$/g, "").replace(/\.+$/, "").trim();
+      let cleaned = text.trim();
+      while (cleaned.length >= 2 && /^["'`\u201c\u201d\u2018\u2019]/.test(cleaned) && /["'`\u201c\u201d\u2018\u2019]$/.test(cleaned)) {
+        cleaned = cleaned.slice(1, -1).trim();
+      }
+      cleaned = cleaned.replace(/\.+$/, "").trim();
       if (cleaned.length >= 5 && cleaned.length <= 300 && !/^\s*\{/.test(cleaned)) {
         if (logger) logger.warn(`[PERSONAL-LINE] attempt ${attempt}: plain text reply, variant from rules (${ruleFallbackVariant})`);
         return {
