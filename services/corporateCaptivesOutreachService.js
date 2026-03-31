@@ -37,6 +37,8 @@ const F = {
   minDaysSinceLeadAdded: "Min Days Since Lead Added",
   location: "Location",
   personalLinePrompt: "Personal Line Prompt",
+  /** Long text: one YYYY-MM-DD per line (Brisbane calendar); # starts a comment line */
+  blackoutDates: "Outbound blackout dates",
 };
 
 const ALLOWED_SCORING = new Set(["Scored"]);
@@ -364,6 +366,41 @@ function eligibilityOptionsFromSettingsFields(settingsFields) {
   };
 }
 
+function getTodayBrisbaneISODate() {
+  return DateTime.now().setZone("Australia/Brisbane").startOf("day").toISODate();
+}
+
+/**
+ * Parse blackout list from settings. One YYYY-MM-DD per line; blank lines and lines starting with # ignored.
+ * @returns {Set<string>} ISO dates (yyyy-MM-dd) in Brisbane calendar sense
+ */
+function parseOutboundBlackoutDateSet(raw) {
+  const set = new Set();
+  if (raw == null || raw === "") return set;
+  for (const line of String(raw).split(/\r?\n/)) {
+    const t = line.trim();
+    if (!t || t.startsWith("#")) continue;
+    const part = t.split(/\s+/)[0].trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(part)) continue;
+    const dt = DateTime.fromISO(part, { zone: "Australia/Brisbane" }).startOf("day");
+    if (dt.isValid) set.add(dt.toISODate());
+  }
+  return set;
+}
+
+/**
+ * @returns {{ blocked: boolean, today: string, dates: string[] }}
+ */
+function outboundBlackoutStatus(settingsFields) {
+  const set = parseOutboundBlackoutDateSet(settingsFields[F.blackoutDates]);
+  const today = getTodayBrisbaneISODate();
+  return {
+    blocked: set.has(today),
+    today,
+    dates: Array.from(set).sort(),
+  };
+}
+
 /**
  * Load first row of settings table (`CC_OUTREACH_SETTINGS_TABLE` or default) as plain object.
  */
@@ -631,6 +668,7 @@ async function buildDryRunPreviewHtml(options = {}) {
 
   const dryRun = String(settingsFields[F.dryRun] || "").toLowerCase() === "yes";
   const enabled = String(settingsFields[F.enabled] || "").toLowerCase() === "yes";
+  const blackout = outboundBlackoutStatus(settingsFields);
 
   const parts = [];
   parts.push("<!DOCTYPE html><html><head><meta charset='utf-8'><title>CC outreach — dry-run preview</title>");
@@ -639,6 +677,15 @@ async function buildDryRunPreviewHtml(options = {}) {
   parts.push("<div class='meta'><strong>No emails were sent.</strong><br>");
   parts.push(`Client: <code>${escapeHtml(clientId)}</code><br>`);
   parts.push(`Outbound Email Enabled: <b>${enabled ? "Yes" : "No"}</b> · Dry Run (setting): <b>${dryRun ? "Yes" : "No"}</b><br>`);
+  if (blackout.blocked) {
+    parts.push(
+      `<strong style="color:#b45309">Blackout:</strong> Brisbane today <b>${escapeHtml(blackout.today)}</b> is in <code>Outbound blackout dates</code> — a <em>live</em> send-run would skip; this preview still shows samples.<br>`
+    );
+  } else if (blackout.dates.length > 0) {
+    parts.push(
+      `Blackout dates configured (${blackout.dates.length}): <code>${escapeHtml(blackout.dates.slice(0, 12).join(", "))}${blackout.dates.length > 12 ? "…" : ""}</code> · Today not listed.<br>`
+    );
+  }
   parts.push(`Max Sends Per Run (Airtable): <b>${maxSends}</b> · Showing up to: <b>${effectiveMax}</b><br>`);
   parts.push(
     `Airtable fetch cap (sorted by score desc): <b>${maxCandidateRecordsToFetch()}</b> · Loaded: <b>${candidates.length}</b><br>`
@@ -738,6 +785,17 @@ async function runCorporateCaptivesSendRun(options = {}) {
   if (dryRun) {
     logger.info("Skip: Dry Run is Yes");
     return { ok: true, ran: false, reason: "dry_run_yes" };
+  }
+
+  const blackout = outboundBlackoutStatus(settingsFields);
+  if (blackout.blocked) {
+    logger.info(`Skip: Outbound blackout date (Brisbane ${blackout.today})`);
+    return {
+      ok: true,
+      ran: false,
+      reason: "blackout_date",
+      blackoutDate: blackout.today,
+    };
   }
 
   const eligibilityOptions = eligibilityOptionsFromSettingsFields(settingsFields);
@@ -859,4 +917,7 @@ module.exports = {
   outreachProfileBlob,
   generatePersonalLine,
   warmUpGeminiFlash,
+  outboundBlackoutStatus,
+  parseOutboundBlackoutDateSet,
+  getTodayBrisbaneISODate,
 };
