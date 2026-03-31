@@ -4,6 +4,7 @@
  */
 const { DateTime } = require("luxon");
 const { buildSearchBlob } = require("./oesRuleScorer.js");
+const { vertexAIClient } = require("../config/geminiClient.js");
 
 /** Override on Render if your base uses a different table name (e.g. `Outbound Email`). */
 const SETTINGS_TABLE =
@@ -35,6 +36,7 @@ const F = {
   minOutboundScore: "Min Outbound Email Score",
   minDaysSinceLeadAdded: "Min Days Since Lead Added",
   location: "Location",
+  personalLinePrompt: "Personal Line Prompt",
 };
 
 const ALLOWED_SCORING = new Set(["Scored"]);
@@ -78,10 +80,14 @@ const MISSING_BOOKING_LINK_HTML =
 /**
  * After {{FirstName}}, replaces {{GuestBookingLink}} with a signed URL or a visible preview stub.
  */
-function applyOutreachBodyTemplate(bodyHtml, firstName, bookingUrl) {
+function applyOutreachBodyTemplate(bodyHtml, firstName, bookingUrl, personalLine) {
   let s = applyTemplate(bodyHtml, firstName);
   const subst = bookingUrl || MISSING_BOOKING_LINK_HTML;
-  return s.split("{{GuestBookingLink}}").join(subst);
+  s = s.split("{{GuestBookingLink}}").join(subst);
+  if (personalLine != null) {
+    s = s.split("{{PersonalLine}}").join(String(personalLine));
+  }
+  return s;
 }
 
 function buildLeadFullNameForBooking(record) {
@@ -217,6 +223,81 @@ function pickBodyTemplate(settingsFields, variant) {
   if (variant === "owner" && ownerB) return ownerB;
   if (variant === "employee" && empB) return empB;
   return fallback || ownerB || empB || "";
+}
+
+const CC_PERSONAL_LINE_MODEL =
+  process.env.CC_PERSONAL_LINE_MODEL || "gemini-2.5-flash";
+const PERSONAL_LINE_TIMEOUT_MS = 15000;
+const PERSONAL_LINE_FALLBACK = "your background and experience";
+
+const DEFAULT_PERSONAL_LINE_PROMPT = `From this LinkedIn profile data, find ONE thing that suggests this person values collaboration, helping others succeed, or building through relationships rather than just transactions.
+
+Look at their About/summary section first for statements about advocating for others, lifting people up, creating value through networks, or believing in reciprocity. If nothing explicit, look for clues — mentoring, community building, championing teams, or language that suggests openness over self-promotion. If nothing collaborative, fall back to what they're building or their boldest career move.
+
+Write a short phrase (10-25 words) that completes the sentence "After seeing your profile — [YOUR PHRASE HERE] — I thought I just had to reach out."
+
+GOOD examples:
+- your mission to advance the global AI workforce by connecting the right people, not just filling roles
+- the way you champion your team's growth at Oracle, not just the numbers
+- your belief that the best business outcomes come from genuinely helping others succeed
+- building Gradstack from scratch to solve a problem you saw firsthand
+
+BAD (too generic):
+- your impressive career
+- your great experience in sales
+- your leadership skills
+
+RULES:
+- Australian spelling
+- No quotes around the phrase
+- No full stop at the end
+- Don't start with "I" or "Your" — start with a lowercase word (e.g. "your", "the way", "building")
+- Don't echo their job title back at them — find something deeper
+- Return ONLY the phrase, nothing else`;
+
+async function generatePersonalLine(rawProfileStr, promptTemplate, logger) {
+  if (!vertexAIClient) {
+    if (logger) logger.warn("[PERSONAL-LINE] Gemini not initialised, using fallback");
+    return PERSONAL_LINE_FALLBACK;
+  }
+
+  const profileText =
+    typeof rawProfileStr === "string"
+      ? rawProfileStr.slice(0, 12000)
+      : JSON.stringify(rawProfileStr || {}).slice(0, 12000);
+
+  if (!profileText || profileText.length < 20) {
+    if (logger) logger.info("[PERSONAL-LINE] Profile data too short, using fallback");
+    return PERSONAL_LINE_FALLBACK;
+  }
+
+  const prompt = (promptTemplate || DEFAULT_PERSONAL_LINE_PROMPT).trim();
+  const userMessage = `${prompt}\n\n---\nLEAD PROFILE DATA:\n${profileText}\n---`;
+
+  try {
+    const model = vertexAIClient.getGenerativeModel({ model: CC_PERSONAL_LINE_MODEL });
+    const callPromise = model.generateContent({
+      contents: [{ role: "user", parts: [{ text: userMessage }] }],
+    });
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error("Personal line generation timed out")), PERSONAL_LINE_TIMEOUT_MS)
+    );
+    const result = await Promise.race([callPromise, timeoutPromise]);
+    const text = result?.response?.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!text || typeof text !== "string") {
+      if (logger) logger.warn("[PERSONAL-LINE] AI returned no content, using fallback");
+      return PERSONAL_LINE_FALLBACK;
+    }
+    let cleaned = text.trim().replace(/^["']|["']$/g, "").replace(/\.+$/, "").trim();
+    if (cleaned.length < 5 || cleaned.length > 300) {
+      if (logger) logger.warn(`[PERSONAL-LINE] AI line unexpected length (${cleaned.length}), using fallback`);
+      return PERSONAL_LINE_FALLBACK;
+    }
+    return cleaned;
+  } catch (err) {
+    if (logger) logger.error(`[PERSONAL-LINE] Gemini error: ${err.message}`);
+    return PERSONAL_LINE_FALLBACK;
+  }
 }
 
 function parseDateScoredBrisbane(val) {
@@ -423,17 +504,38 @@ function buildSortedEligible(records, eligibilityOptions) {
  * @param {import('airtable').Record[]} eligibleRecords
  * @param {{ fields: Object }} settings
  * @param {number} maxShow
+ * @param {Object} [logger] — optional contextLogger
  */
-function buildPreviewRows(eligibleRecords, settings, maxShow) {
+async function buildPreviewRows(eligibleRecords, settings, maxShow, logger) {
   const slice = eligibleRecords.slice(0, Math.max(0, maxShow));
-  return slice.map((rec) => {
+  const promptTemplate = trimSetting(settings.fields, F.personalLinePrompt) || "";
+
+  const needsPersonalLine = slice.length > 0 && [
+    pickBodyTemplate(settings.fields, "owner"),
+    pickBodyTemplate(settings.fields, "employee"),
+    trimSetting(settings.fields, F.body),
+  ].some((tpl) => tpl.includes("{{PersonalLine}}"));
+
+  const rows = [];
+  for (const rec of slice) {
     const firstName = String(rec.get(F.firstName) || "").trim();
     const variant = inferOutreachBodyVariant(rec.get(F.rawProfile));
     const bodyTemplate = pickBodyTemplate(settings.fields, variant);
     const subject = pickRandomSubject(settings.fields);
     const bookingUrl = mintGuestBookingUrlForLead(rec);
-    const html = applyOutreachBodyTemplate(bodyTemplate, firstName, bookingUrl);
-    return {
+
+    let personalLine = null;
+    if (needsPersonalLine) {
+      personalLine = await generatePersonalLine(
+        rec.get(F.rawProfile),
+        promptTemplate,
+        logger
+      );
+      if (logger) logger.info(`[PERSONAL-LINE] ${rec.get(F.email)}: "${personalLine}"`);
+    }
+
+    const html = applyOutreachBodyTemplate(bodyTemplate, firstName, bookingUrl, personalLine);
+    rows.push({
       recordId: rec.id,
       to: String(rec.get(F.email) || "").trim(),
       subject,
@@ -441,8 +543,10 @@ function buildPreviewRows(eligibleRecords, settings, maxShow) {
       outboundScore: numOrNull(rec.get(F.score)),
       variant,
       guestBookingLinkOk: Boolean(bookingUrl),
-    };
-  });
+      personalLine,
+    });
+  }
+  return rows;
 }
 
 function escapeHtml(s) {
@@ -483,7 +587,7 @@ async function buildDryRunPreviewHtml(options = {}) {
       ? limitOverride
       : maxSends;
 
-  const previewRows = buildPreviewRows(eligible, { fields: settingsFields }, effectiveMax);
+  const previewRows = await buildPreviewRows(eligible, { fields: settingsFields }, effectiveMax);
 
   const dryRun = String(settingsFields[F.dryRun] || "").toLowerCase() === "yes";
   const enabled = String(settingsFields[F.enabled] || "").toLowerCase() === "yes";
@@ -525,6 +629,9 @@ async function buildDryRunPreviewHtml(options = {}) {
     parts.push(
       `<div class='chrome'>Record <code>${escapeHtml(row.recordId)}</code> · Outbound Email Score: <b>${row.outboundScore}</b> · Body variant: <b>${escapeHtml(row.variant)}</b> · Guest booking link: <b>${row.guestBookingLinkOk ? "yes" : "no"}</b></div>`
     );
+    if (row.personalLine) {
+      parts.push(`<div class='chrome'><strong>Personal Line (AI):</strong> <em>${escapeHtml(row.personalLine)}</em></div>`);
+    }
     parts.push(`<div class='chrome'><strong>Subject:</strong> ${escapeHtml(row.subject)}</div>`);
     parts.push("<div class='body'>");
     parts.push(row.html);
@@ -616,7 +723,7 @@ async function runCorporateCaptivesSendRun(options = {}) {
     };
   }
 
-  const rows = buildPreviewRows(eligible, { fields: settingsFields }, effectiveMax);
+  const rows = await buildPreviewRows(eligible, { fields: settingsFields }, effectiveMax, logger);
   if (rows.length === 0) {
     return {
       ok: true,
@@ -710,4 +817,5 @@ module.exports = {
   inferOutreachBodyVariant,
   pickBodyTemplate,
   outreachProfileBlob,
+  generatePersonalLine,
 };
