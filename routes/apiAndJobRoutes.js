@@ -1604,7 +1604,7 @@ router.get("/admin/backfill-lead-locations", async (req, res) => {
 
   const clientId = (req.query.clientId && String(req.query.clientId).trim()) || "Guy-Wilson";
   const apply = req.query.apply === "true";
-  const limit = Math.min(Math.max(1, parseInt(req.query.limit, 10) || 5000), 10000);
+  const limit = Math.min(Math.max(1, parseInt(req.query.limit, 10) || 500), 10000);
 
   try {
     const { getClientBase } = require("../config/airtableClient.js");
@@ -1660,17 +1660,19 @@ router.get("/admin/backfill-lead-locations", async (req, res) => {
       }
     }
 
+    const hitLimit = records.length >= limit;
     return res.json({
       ok: true,
       clientId,
       apply,
       blankLocationRecords: records.length,
+      hitLimit,
       canBackfillFromProfile: candidates.length,
       updated,
       preview: candidates.slice(0, 30),
       note: apply
         ? `Updated ${updated} records.`
-        : "Dry run — add &apply=true to write. Preview shows first 30.",
+        : `Dry run — add &apply=true to write. Preview shows first 30.${hitLimit ? ` Hit limit of ${limit} — there may be more. Increase &limit= or run again after applying.` : ""}`,
     });
   } catch (e) {
     return res.status(500).json({ ok: false, error: e.message || String(e) });
