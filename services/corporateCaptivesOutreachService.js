@@ -92,6 +92,16 @@ function stripSurroundingStandaloneQuoteLines(html) {
   return lines.join("\n");
 }
 
+/**
+ * Airtable long text often stores `href=""url""` (two dquotes on each side). That is invalid HTML;
+ * clients may drop the link and leave styled text only.
+ */
+function fixDoubledQuoteDelimitedAttrs(html) {
+  return String(html || "")
+    .replace(/\bhref=""([^"]*)""/gi, 'href="$1"')
+    .replace(/\bsrc=""([^"]*)""/gi, 'src="$1"');
+}
+
 const MISSING_BOOKING_LINK_HTML =
   '<span style="color:#b45309;font-size:0.9em">[Guest booking link not generated — need LinkedIn URL, full name, email, and GUEST_BOOKING_LINK_SECRET]</span>';
 
@@ -105,6 +115,7 @@ function applyOutreachBodyTemplate(bodyHtml, firstName, bookingUrl, personalLine
   if (personalLine != null) {
     s = s.split("{{PersonalLine}}").join(String(personalLine));
   }
+  s = fixDoubledQuoteDelimitedAttrs(s);
   return stripSurroundingStandaloneQuoteLines(s);
 }
 

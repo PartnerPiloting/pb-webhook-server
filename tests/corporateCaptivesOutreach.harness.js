@@ -153,6 +153,24 @@ async function runUnitTests() {
     "\nHi Pat\n"
   );
 
+  const doubledHref = applyOutreachBodyTemplate(
+    '<p><a href=""{{GuestBookingLink}}""><strong>Click Here</strong></a></p>',
+    "Natalie",
+    "https://pb.example/guest?t=abc"
+  );
+  assert.ok(
+    doubledHref.includes('href="https://pb.example/guest?t=abc"'),
+    "normalize href=\"\"url\"\" after GuestBookingLink substitution"
+  );
+  assert.ok(!doubledHref.includes('href=""'), "no doubled opening href quotes left");
+
+  const doubledStatic = applyOutreachBodyTemplate(
+    '<a href=""https://gamma.app/docs/x"" target="_blank">doc</a>',
+    "X",
+    null
+  );
+  assert.ok(doubledStatic.includes('href="https://gamma.app/docs/x"'));
+
   const settingsFields = {
     [F.subject1]: "A",
     [F.subject2]: "B",
