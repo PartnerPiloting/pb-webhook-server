@@ -8382,6 +8382,27 @@ router.post("/api/calendar/chat", async (req, res) => {
       }
     }
 
+    const hasDstTransition = dstTransitionNote !== '';
+
+    // Build timezone display instructions that handle DST transitions correctly
+    const tzDisplayRule = hasDstTransition
+      ? `look at the FREE SLOTS data: if the lead's time is shown in parentheses next to a slot, include it. If no parentheses are shown, the times are the same — do NOT mention ${leadCity} time for that date`
+      : (sameTimezone
+        ? 'no need to specify timezone since you are both in the same timezone'
+        : `include "(${leadCity} time)" so ${leadFirstName} knows the timezone`);
+
+    const tzCopyPasteRule = hasDstTransition
+      ? `DST transition in range — check the FREE SLOTS data for each date: if the lead's time is shown in parentheses, include it. If no parentheses, the times are identical — do NOT add "(X in [city])".`
+      : (sameTimezone
+        ? 'CURRENTLY SAME TIMEZONE - do NOT add "(X in [city])" to any times; it would be redundant.'
+        : `Different timezones - add lead time for each, e.g. "Thursday, March 5th at 10 AM (11 AM in Vic)". Use short labels: Vic, Bne, Syd.`);
+
+    const tzConfirmationRule = hasDstTransition
+      ? `Check the meeting date: if it falls after the DST transition (same timezone), just say "Monday, 12 January at 10:00 am". If before (different timezone), convert to ${leadFirstName}'s timezone and include "(${leadCity} time)".`
+      : (sameTimezone
+        ? 'Just say "Monday, 12 January at 10:00 am" - no timezone needed since you\'re both in the same timezone'
+        : `Convert to ${leadFirstName}'s timezone and include "(${leadCity} time)"`);
+
     // Build lead contact info section (only include if available)
     const leadContactInfo = [
       context.leadEmail ? `- Lead's email: ${context.leadEmail}` : null,
@@ -8408,7 +8429,7 @@ TIMEZONE RULES (ALWAYS FOLLOW):
 2. When the LEAD specifies a timezone (e.g. "I can do 11:30 Brisbane"): use that timezone - convert to USER's timezone for the calendar
 3. Calendar availability data is in the USER's timezone
 4. The booking/ACTION times are ALWAYS in the USER's timezone - convert from lead's time if needed
-5. When generating a MESSAGE FOR THE LEAD: CONVERT times to the LEAD's timezone (${leadTimezone}) and ${sameTimezone ? 'no need to specify timezone since you are both in the same timezone' : `include "(${leadCity} time)" so ${leadFirstName} knows the timezone`}
+5. When generating a MESSAGE FOR THE LEAD: CONVERT times to the LEAD's timezone (${leadTimezone}) and ${tzDisplayRule}
 6. The FREE SLOTS data below includes the lead's local time in parentheses ONLY when it differs from the user's time. Use those times directly — do NOT calculate timezone offsets yourself.${dstTransitionNote}
 
 SMART SCHEDULING (when finding mutually good times):
@@ -8433,7 +8454,7 @@ MESSAGE READY TO COPY-PASTE (when user shares a draft to send to the lead):
 - When the user pastes or types a draft message they want to send to the lead (e.g. with placeholders like [Day], [Date], or template slots "10 AM", "2 PM", "4 PM"), you MUST:
   1. Count the placeholders in the user's template - if they have 3 slots, fill 3; if 2, fill 2. When no template, use 2 (one morning, one afternoon).
   2. Pick times from calendar in CHRONOLOGICAL order (earliest date first). Pick from least busy weekdays.
-  3. For EACH time, add the lead's local time in parentheses ONLY when user and lead are in different timezones. ${sameTimezone ? 'CURRENTLY SAME TIMEZONE - do NOT add "(X in [city])" to any times; it would be redundant.' : `Different timezones - add lead time for each, e.g. "Thursday, March 5th at 10 AM (11 AM in Vic)". Use short labels: Vic, Bne, Syd.`}
+  3. For EACH time, add the lead's local time in parentheses ONLY when the times differ. ${tzCopyPasteRule}
   4. Fill in the placeholders with actual dates/times. Format times as "10 AM" not "10:00 am" for LinkedIn.
   5. End with exactly: READY TO COPY: on its own line, then a blank line, then the full message ONLY (no preamble like "Here's the message for..."). The content after READY TO COPY: must be exactly what the user pastes to the lead - nothing else.
   6. FORMATTING - use clear spacing for readability:
@@ -8472,7 +8493,7 @@ BODY:
 - If you have the lead's email, add "(to their-email@example.com)" right after "calendar invite"
 - Then "with a Zoom link for [day, date] at [time]"
 - Add a quick confirmation ask: "Did it come through?"
-- ${sameTimezone ? 'Just say "Monday, 12 January at 10:00 am" - no timezone needed since you\'re both in the same timezone' : `Convert to ${leadFirstName}'s timezone and include "(${leadCity} time)"`}
+- ${tzConfirmationRule}
 
 SIGNATURE:
 - Look at how ${context.yourName} signed their messages in the conversation
@@ -8499,6 +8520,7 @@ RESPONSE STYLE:
 - Do NOT combine or expand slots - show them exactly as provided
 - When listing time options, ALWAYS list them in chronological order (earliest first, latest last)
 - For vague requests like "next week", summarize the key available times
+- CONCISE SUGGESTIONS: When suggesting meeting times, offer 1 well-chosen option per day mentioned (not every 30-minute slot). Pick a good time (e.g. mid-morning or early afternoon) from each day. If the user says "tomorrow or Friday", give 1 option for tomorrow and 1 for Friday — 2 total. Only list more slots if the user explicitly asks (e.g. "show me all available times").
 - When listing times, use simple bullet points with a single asterisk (e.g., "* Tuesday, February 11th at 10:00 am")
 - Do NOT use markdown bold (**text**) - the output gets copy-pasted to LinkedIn where markdown doesn't render
 
