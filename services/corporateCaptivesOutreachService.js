@@ -38,7 +38,7 @@ const F = {
   location: "Location",
   personalLinePrompt: "Personal Line Prompt",
   /** Long text: one YYYY-MM-DD per line (Brisbane calendar); # starts a comment line */
-  blackoutDates: "Outbound blackout dates",
+  blackoutDates: "Outbound Blackout Dates",
 };
 
 const ALLOWED_SCORING = new Set(["Scored"]);
@@ -679,7 +679,7 @@ async function buildDryRunPreviewHtml(options = {}) {
   parts.push(`Outbound Email Enabled: <b>${enabled ? "Yes" : "No"}</b> · Dry Run (setting): <b>${dryRun ? "Yes" : "No"}</b><br>`);
   if (blackout.blocked) {
     parts.push(
-      `<strong style="color:#b45309">Blackout:</strong> Brisbane today <b>${escapeHtml(blackout.today)}</b> is in <code>Outbound blackout dates</code> — a <em>live</em> send-run would skip; this preview still shows samples.<br>`
+      `<strong style="color:#b45309">Blackout:</strong> Brisbane today <b>${escapeHtml(blackout.today)}</b> is in <code>Outbound Blackout Dates</code> — a <em>live</em> send-run would skip; this preview still shows samples.<br>`
     );
   } else if (blackout.dates.length > 0) {
     parts.push(
