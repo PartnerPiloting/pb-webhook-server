@@ -144,6 +144,15 @@ async function runUnitTests() {
     )
   );
 
+  assert.strictEqual(
+    applyOutreachBodyTemplate('"\n\nHi {{FirstName}}\n\n"', "Pat", null, null),
+    "\nHi Pat\n"
+  );
+  assert.strictEqual(
+    applyOutreachBodyTemplate('"\r\n\r\nHi {{FirstName}}\r\n\r\n"', "Pat", null, null),
+    "\nHi Pat\n"
+  );
+
   const settingsFields = {
     [F.subject1]: "A",
     [F.subject2]: "B",
