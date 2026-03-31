@@ -261,9 +261,60 @@ RULES:
 - No full stop at the end
 - Don't start with "I" or "Your" — start with a lowercase word (e.g. "your", "the way", "building")
 - Don't echo their job title back at them — find something deeper
-- Return ONLY the phrase, nothing else`;
+- Follow the OUTPUT FORMAT below (JSON with personalLine + variant)`;
 
-async function generatePersonalLine(rawProfileStr, promptTemplate, logger) {
+/** Appended after your Airtable prompt. Gemini picks which HTML template: employee, owner, or default. */
+const CC_PERSONALIZATION_JSON_SUFFIX = `---
+OUTPUT (mandatory). Respond with ONLY valid JSON. No markdown fences. No other text.
+{"variant":"employee","personalLine":"your phrase here"}
+
+variant must be exactly one of: "employee", "owner", "default"
+- "employee" → use the Email Body (Employee) template (e.g. alongside core role, corporate path).
+- "owner" → use the Email Body (Owner) template (founder, self-employed, principal of own practice, building their own thing).
+- "default" → use the main Email Body template when unclear, thin profile, or neither template fits confidently.
+
+personalLine: 10-25 words; completes: After seeing your profile - [phrase] - I thought it made sense to reach out. Australian spelling. No trailing full stop. Lowercase start.`;
+
+function extractPersonalizationJson(raw) {
+  const trimmed = String(raw).trim();
+  try {
+    return JSON.parse(trimmed);
+  } catch (_) {
+    /* continue */
+  }
+  const cleaned = trimmed
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```\s*$/, "")
+    .trim();
+  try {
+    return JSON.parse(cleaned);
+  } catch (_) {
+    /* continue */
+  }
+  const match = trimmed.match(/\{[\s\S]*\}/);
+  if (match) {
+    try {
+      return JSON.parse(match[0]);
+    } catch (_) {
+      /* continue */
+    }
+  }
+  return null;
+}
+
+/** @returns {"owner"|"employee"|"default"|null} */
+function normalizeTemplateVariant(v) {
+  const s = v == null ? "" : String(v).trim().toLowerCase();
+  if (s === "owner" || s === "employee" || s === "default") return s;
+  return null;
+}
+
+/**
+ * One Gemini call: personal line + which Airtable body field to use.
+ * @param {"owner"|"employee"|"default"} ruleFallbackVariant — from classifyOutreachBodyVariant if AI omits/invalid JSON
+ * @returns {Promise<{ personalLine: string, variant: "owner"|"employee"|"default", variantSource: string } | null>}
+ */
+async function generatePersonalization(rawProfileStr, promptTemplate, logger, ruleFallbackVariant) {
   if (!vertexAIClient) {
     if (logger) logger.warn("[PERSONAL-LINE] Gemini not initialised, skipping lead");
     return null;
@@ -280,7 +331,7 @@ async function generatePersonalLine(rawProfileStr, promptTemplate, logger) {
   }
 
   const prompt = (promptTemplate || DEFAULT_PERSONAL_LINE_PROMPT).trim();
-  const userMessage = `${prompt}\n\n---\nLEAD PROFILE DATA:\n${profileText}\n---`;
+  const userMessage = `${prompt}\n\n${CC_PERSONALIZATION_JSON_SUFFIX}\n\n---\nLEAD PROFILE DATA:\n${profileText}\n---`;
   const model = vertexAIClient.getGenerativeModel({ model: CC_PERSONAL_LINE_MODEL });
 
   for (let attempt = 1; attempt <= PERSONAL_LINE_MAX_ATTEMPTS; attempt++) {
@@ -297,12 +348,39 @@ async function generatePersonalLine(rawProfileStr, promptTemplate, logger) {
         if (logger) logger.warn(`[PERSONAL-LINE] attempt ${attempt}: AI returned no content`);
         continue;
       }
-      let cleaned = text.trim().replace(/^["']|["']$/g, "").replace(/\.+$/, "").trim();
-      if (cleaned.length < 5 || cleaned.length > 300) {
-        if (logger) logger.warn(`[PERSONAL-LINE] attempt ${attempt}: unexpected length (${cleaned.length})`);
-        continue;
+
+      const parsed = extractPersonalizationJson(text);
+      if (parsed && typeof parsed === "object" && parsed.personalLine != null) {
+        const cleaned = String(parsed.personalLine)
+          .trim()
+          .replace(/^["']|["']$/g, "")
+          .replace(/\.+$/, "")
+          .trim();
+        if (cleaned.length < 5 || cleaned.length > 300) {
+          if (logger) logger.warn(`[PERSONAL-LINE] attempt ${attempt}: personalLine bad length (${cleaned.length})`);
+          continue;
+        }
+        let variant = normalizeTemplateVariant(parsed.variant);
+        let variantSource = "ai";
+        if (!variant) {
+          variant = ruleFallbackVariant;
+          variantSource = "rules_fallback";
+          if (logger) logger.warn(`[PERSONAL-LINE] attempt ${attempt}: invalid variant, using rules (${variant})`);
+        }
+        return { personalLine: cleaned, variant, variantSource };
       }
-      return cleaned;
+
+      const cleaned = text.trim().replace(/^["']|["']$/g, "").replace(/\.+$/, "").trim();
+      if (cleaned.length >= 5 && cleaned.length <= 300 && !/^\s*\{/.test(cleaned)) {
+        if (logger) logger.warn(`[PERSONAL-LINE] attempt ${attempt}: plain text reply, variant from rules (${ruleFallbackVariant})`);
+        return {
+          personalLine: cleaned,
+          variant: ruleFallbackVariant,
+          variantSource: "plain_text_fallback",
+        };
+      }
+
+      if (logger) logger.warn(`[PERSONAL-LINE] attempt ${attempt}: could not parse JSON`);
     } catch (err) {
       if (logger) logger.error(`[PERSONAL-LINE] attempt ${attempt}: ${err.message}`);
       if (attempt < PERSONAL_LINE_MAX_ATTEMPTS) {
@@ -595,24 +673,34 @@ async function buildPreviewRows(eligibleRecords, settings, maxShow, logger) {
   let skippedNoPersonalLine = 0;
   for (const rec of slice) {
     const firstName = String(rec.get(F.firstName) || "").trim();
-    const variant = classifyOutreachBodyVariant(rec.get(F.rawProfile));
+    const ruleVariant = classifyOutreachBodyVariant(rec.get(F.rawProfile));
+    let variant = ruleVariant;
+    let variantSource = "rules_only";
 
     const subject = pickRandomSubject(settings.fields);
     const bookingUrl = mintGuestBookingUrlForLead(rec);
 
     let personalLine = null;
     if (needsPersonalLine) {
-      personalLine = await generatePersonalLine(
+      const pers = await generatePersonalization(
         rec.get(F.rawProfile),
         promptTemplate,
-        logger
+        logger,
+        ruleVariant
       );
-      if (personalLine == null) {
+      if (pers == null) {
         skippedNoPersonalLine++;
         if (logger) logger.warn(`[PERSONAL-LINE] Skipping ${rec.get(F.email)}: AI could not generate a line`);
         continue;
       }
-      if (logger) logger.info(`[PERSONAL-LINE] ${rec.get(F.email)}: variant=${variant} "${personalLine}"`);
+      personalLine = pers.personalLine;
+      variant = pers.variant;
+      variantSource = pers.variantSource;
+      if (logger) {
+        logger.info(
+          `[PERSONAL-LINE] ${rec.get(F.email)}: template=${variant} (${variantSource}) rules=${ruleVariant} "${personalLine}"`
+        );
+      }
     }
 
     const bodyTemplate = pickBodyTemplate(settings.fields, variant);
@@ -624,6 +712,8 @@ async function buildPreviewRows(eligibleRecords, settings, maxShow, logger) {
       html,
       outboundScore: numOrNull(rec.get(F.score)),
       variant,
+      ruleVariant,
+      variantSource,
       guestBookingLinkOk: Boolean(bookingUrl),
       personalLine,
     });
@@ -722,7 +812,7 @@ async function buildDryRunPreviewHtml(options = {}) {
     parts.push("<div class='card'>");
     parts.push(`<h2>${escapeHtml(row.to)}</h2>`);
     parts.push(
-      `<div class='chrome'>Record <code>${escapeHtml(row.recordId)}</code> · Outbound Email Score: <b>${row.outboundScore}</b> · Body variant: <b>${escapeHtml(row.variant)}</b> <small>(owner / employee / default = Email Body)</small> · Guest booking link: <b>${row.guestBookingLinkOk ? "yes" : "no"}</b></div>`
+      `<div class='chrome'>Record <code>${escapeHtml(row.recordId)}</code> · Outbound Email Score: <b>${row.outboundScore}</b> · Template: <b>${escapeHtml(row.variant)}</b>${row.variantSource && row.variantSource !== "rules_only" ? ` <small>(Gemini: ${escapeHtml(row.variantSource)}, rules=${escapeHtml(row.ruleVariant || "")})</small>` : ` <small>(rules only)</small>`} · Guest booking link: <b>${row.guestBookingLinkOk ? "yes" : "no"}</b></div>`
     );
     if (row.personalLine) {
       parts.push(`<div class='chrome'><strong>Personal Line (AI):</strong> <em>${escapeHtml(row.personalLine)}</em></div>`);
@@ -924,7 +1014,7 @@ module.exports = {
   inferOutreachBodyVariant,
   pickBodyTemplate,
   outreachProfileBlob,
-  generatePersonalLine,
+  generatePersonalization,
   warmUpGeminiFlash,
   outboundBlackoutStatus,
   parseOutboundBlackoutDateSet,
