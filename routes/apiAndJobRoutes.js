@@ -1588,6 +1588,96 @@ router.get("/admin/corporate-captives-send-run", corporateCaptivesSendRunHandler
 router.post("/admin/corporate-captives-send-run", corporateCaptivesSendRunHandler);
 
 /**
+ * GET /admin/backfill-lead-locations?secret=...&clientId=Guy-Wilson&apply=false&limit=50
+ * Populates blank Location fields from Raw Profile Data.
+ * Dry run by default — pass apply=true to write.
+ */
+router.get("/admin/backfill-lead-locations", async (req, res) => {
+  const secret = process.env.PB_WEBHOOK_SECRET || process.env.DEBUG_API_KEY;
+  const authHeader = req.headers.authorization;
+  const qSecret = req.query.secret;
+  const okBearer = secret && authHeader && authHeader.includes(secret);
+  const okQuery = secret && typeof qSecret === "string" && qSecret === secret;
+  if (!secret || (!okBearer && !okQuery)) {
+    return res.status(401).json({ ok: false, error: "Unauthorized" });
+  }
+
+  const clientId = (req.query.clientId && String(req.query.clientId).trim()) || "Guy-Wilson";
+  const apply = req.query.apply === "true";
+  const limit = Math.min(Math.max(1, parseInt(req.query.limit, 10) || 5000), 10000);
+
+  try {
+    const { getClientBase } = require("../config/airtableClient.js");
+    const base = await getClientBase(clientId);
+    const LEADS_TABLE = "Leads";
+
+    const records = [];
+    await base(LEADS_TABLE)
+      .select({
+        fields: ["Location", "Raw Profile Data", "First Name", "Last Name", "Email"],
+        filterByFormula: `OR({Location}=BLANK(), {Location}="")`,
+        maxRecords: limit,
+      })
+      .eachPage((page, next) => {
+        page.forEach((r) => records.push(r));
+        next();
+      });
+
+    const candidates = [];
+    for (const rec of records) {
+      const rawData = rec.get("Raw Profile Data");
+      if (!rawData) continue;
+      let parsed;
+      try {
+        parsed = typeof rawData === "string" ? JSON.parse(rawData) : rawData;
+      } catch {
+        continue;
+      }
+      const loc = parsed?.location || parsed?.geoLocation || parsed?.locationName || "";
+      if (!loc || !String(loc).trim()) continue;
+      candidates.push({
+        recordId: rec.id,
+        name: `${rec.get("First Name") || ""} ${rec.get("Last Name") || ""}`.trim(),
+        email: rec.get("Email") || "",
+        locationFromProfile: String(loc).trim(),
+      });
+    }
+
+    let updated = 0;
+    if (apply && candidates.length > 0) {
+      const batches = [];
+      for (let i = 0; i < candidates.length; i += 10) {
+        batches.push(candidates.slice(i, i + 10));
+      }
+      for (const batch of batches) {
+        await base(LEADS_TABLE).update(
+          batch.map((c) => ({
+            id: c.recordId,
+            fields: { Location: c.locationFromProfile },
+          }))
+        );
+        updated += batch.length;
+      }
+    }
+
+    return res.json({
+      ok: true,
+      clientId,
+      apply,
+      blankLocationRecords: records.length,
+      canBackfillFromProfile: candidates.length,
+      updated,
+      preview: candidates.slice(0, 30),
+      note: apply
+        ? `Updated ${updated} records.`
+        : "Dry run — add &apply=true to write. Preview shows first 30.",
+    });
+  } catch (e) {
+    return res.status(500).json({ ok: false, error: e.message || String(e) });
+  }
+});
+
+/**
  * Backfill blank Lead emails from CSV/XLSX (profile_url + email) or public CSV URL.
  * POST /admin/backfill-lead-emails
  * Auth: Authorization: Bearer PB_WEBHOOK_SECRET (or DEBUG_API_KEY) — same as debug-render-logs
