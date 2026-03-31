@@ -1467,7 +1467,8 @@ router.get("/admin/corporate-captives-dry-run-preview", async (req, res) => {
 /**
  * GET|POST /admin/corporate-captives-send-run?secret=...&clientId=Guy-Wilson&limit=1
  * Sends up to Max Sends Per Run (or &limit=) via Gmail; stamps Outbound Email Sent At on success.
- * Skips if Outbound Email Enabled ≠ Yes or Dry Run = Yes. Auth: Bearer or ?secret= (same as dry-run preview).
+ * Skips if Outbound Email Enabled ≠ Yes, Dry Run = Yes, or today (Brisbane) is in Outbound blackout dates.
+ * Auth: Bearer or ?secret= (same as dry-run preview).
  */
 function buildOutreachReportText(out) {
   const ts = new Date().toLocaleString("en-AU", {
@@ -1479,6 +1480,11 @@ function buildOutreachReportText(out) {
 
   if (!out.ran) {
     lines.push(`Run skipped: ${out.reason || "unknown"}`);
+    if (out.reason === "blackout_date" && out.blackoutDate) {
+      lines.push(
+        `Brisbane calendar date ${out.blackoutDate} is listed in Outbound blackout dates (Airtable).`
+      );
+    }
     if (out.eligibleCount != null) lines.push(`Eligible pool: ${out.eligibleCount}`);
     return lines.join("\n");
   }
