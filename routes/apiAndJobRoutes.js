@@ -1588,6 +1588,108 @@ router.get("/admin/corporate-captives-send-run", corporateCaptivesSendRunHandler
 router.post("/admin/corporate-captives-send-run", corporateCaptivesSendRunHandler);
 
 /**
+ * GET /admin/backfill-lead-locations-test?secret=...
+ * Diagnostic: fetch Adam's record + small sample to debug Raw Profile Data parsing.
+ */
+router.get("/admin/backfill-lead-locations-test", async (req, res) => {
+  const secret = process.env.PB_WEBHOOK_SECRET || process.env.DEBUG_API_KEY;
+  const qSecret = req.query.secret;
+  const authHeader = req.headers.authorization;
+  const okBearer = secret && authHeader && authHeader.includes(secret);
+  const okQuery = secret && typeof qSecret === "string" && qSecret === secret;
+  if (!secret || (!okBearer && !okQuery)) {
+    return res.status(401).json({ ok: false, error: "Unauthorized" });
+  }
+  try {
+    const { getClientBase } = require("../config/airtableClient.js");
+    const base = await getClientBase("Guy-Wilson");
+
+    // 1. Fetch Adam's record directly by ID
+    const adamId = "rec0D25ttTHh2ez3V";
+    let adamResult = {};
+    try {
+      const adamRec = await base("Leads").find(adamId);
+      const allFieldNames = Object.keys(adamRec.fields);
+      const rawField = adamRec.get("Raw Profile Data");
+      const profileJsonField = adamRec.get("Profile Full JSON");
+      const locationField = adamRec.get("Location");
+      
+      let rawParsed = null;
+      let rawParseError = null;
+      let rawLocationKeys = {};
+      if (rawField) {
+        try {
+          rawParsed = typeof rawField === "string" ? JSON.parse(rawField) : rawField;
+          rawLocationKeys = {
+            location: rawParsed?.location || null,
+            location_name: rawParsed?.location_name || null,
+            locationName: rawParsed?.locationName || null,
+            geoLocation: rawParsed?.geoLocation || null,
+            geo_location: rawParsed?.geo_location || null,
+            city: rawParsed?.city || null,
+          };
+        } catch (e) { rawParseError = e.message; }
+      }
+
+      adamResult = {
+        recordId: adamId,
+        allFieldNames,
+        locationField: locationField || "(blank)",
+        rawProfileDataType: rawField === null ? "null" : typeof rawField,
+        rawProfileDataLength: rawField ? String(rawField).length : 0,
+        rawProfileDataFirst200: rawField ? String(rawField).substring(0, 200) : "(empty)",
+        rawParseError,
+        rawLocationKeys,
+        profileFullJsonType: profileJsonField === null ? "null" : typeof profileJsonField,
+        profileFullJsonLength: profileJsonField ? String(profileJsonField).length : 0,
+      };
+    } catch (e) {
+      adamResult = { error: e.message };
+    }
+
+    // 2. Fetch 10 blank-Location records and inspect each
+    const sampleRecords = [];
+    await base("Leads")
+      .select({
+        fields: ["Location", "Raw Profile Data", "First Name", "Last Name", "Email"],
+        filterByFormula: `OR({Location}=BLANK(), {Location}="")`,
+        maxRecords: 10,
+      })
+      .eachPage((page, next) => {
+        page.forEach((r) => sampleRecords.push(r));
+        next();
+      });
+
+    const sampleResults = sampleRecords.map((rec) => {
+      const raw = rec.get("Raw Profile Data");
+      const result = {
+        recordId: rec.id,
+        name: `${rec.get("First Name") || ""} ${rec.get("Last Name") || ""}`.trim(),
+        hasRawData: !!raw,
+        rawType: raw === null ? "null" : typeof raw,
+        rawLength: raw ? String(raw).length : 0,
+      };
+      if (raw) {
+        try {
+          const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
+          result.topKeys = Object.keys(parsed).slice(0, 10);
+          result.location = parsed?.location || null;
+          result.location_name = parsed?.location_name || null;
+          result.locationName = parsed?.locationName || null;
+        } catch (e) {
+          result.parseError = e.message;
+        }
+      }
+      return result;
+    });
+
+    return res.json({ ok: true, adam: adamResult, sample: sampleResults });
+  } catch (e) {
+    return res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+/**
  * GET /admin/backfill-lead-locations?secret=...&clientId=Guy-Wilson&apply=false&limit=50
  * Populates blank Location fields from Raw Profile Data.
  * Dry run by default — pass apply=true to write.
