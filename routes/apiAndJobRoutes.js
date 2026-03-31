@@ -1624,17 +1624,33 @@ router.get("/admin/backfill-lead-locations", async (req, res) => {
       });
 
     const candidates = [];
+    let noRawData = 0;
+    let hasRawButNoLocation = 0;
+    const sampleKeys = [];
     for (const rec of records) {
       const rawData = rec.get("Raw Profile Data");
-      if (!rawData) continue;
+      if (!rawData) { noRawData++; continue; }
       let parsed;
       try {
         parsed = typeof rawData === "string" ? JSON.parse(rawData) : rawData;
       } catch {
+        noRawData++;
         continue;
       }
-      const loc = parsed?.location || parsed?.geoLocation || parsed?.locationName || "";
-      if (!loc || !String(loc).trim()) continue;
+      const loc =
+        parsed?.location || parsed?.geoLocation || parsed?.locationName ||
+        parsed?.location_name || parsed?.city || parsed?.geo_location || "";
+      if (!loc || !String(loc).trim()) {
+        hasRawButNoLocation++;
+        if (sampleKeys.length < 3) {
+          sampleKeys.push({
+            recordId: rec.id,
+            name: `${rec.get("First Name") || ""} ${rec.get("Last Name") || ""}`.trim(),
+            topLevelKeys: Object.keys(parsed).slice(0, 20),
+          });
+        }
+        continue;
+      }
       candidates.push({
         recordId: rec.id,
         name: `${rec.get("First Name") || ""} ${rec.get("Last Name") || ""}`.trim(),
@@ -1667,8 +1683,11 @@ router.get("/admin/backfill-lead-locations", async (req, res) => {
       apply,
       blankLocationRecords: records.length,
       hitLimit,
+      noRawDataAtAll: noRawData,
+      hasRawButNoLocation,
       canBackfillFromProfile: candidates.length,
       updated,
+      sampleKeysFromRawData: sampleKeys,
       preview: candidates.slice(0, 30),
       note: apply
         ? `Updated ${updated} records.`
