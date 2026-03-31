@@ -256,7 +256,132 @@ RULES:
 - No full stop at the end
 - Don't start with "I" or "Your" — start with a lowercase word (e.g. "your", "the way", "building")
 - Don't echo their job title back at them — find something deeper
-- Return ONLY the phrase, nothing else`;
+- Follow the OUTPUT FORMAT in the next section (JSON with personalLine + variant)`;
+
+/** Appended after every personalization prompt so Airtable copy can stay prose-focused. */
+const CC_PERSONALIZATION_JSON_SUFFIX = `---
+OUTPUT (mandatory). Respond with ONLY a valid JSON object. No markdown code fences. No text before or after.
+Example shape: {"variant":"employee","personalLine":"your philosophy of putting teams first, even when targets tighten"}
+
+variant must be exactly "employee" or "owner":
+- "owner": Founder, self-employed, principal consultant, runs own company/practice/agency, or their profile gives clear equal weight to their own business alongside a job. Use when an "already building something of your own" email would fit better than "alongside your core role".
+- "employee": Primary professional story is working inside someone else's organisation; side projects OK if employment is clearly primary. Use when "alongside their core role" fits. If genuinely unclear, use "employee".
+
+personalLine: 10-25 words; completes: After seeing your profile - [phrase] - I thought it made sense to reach out. Australian spelling. No trailing full stop. Lowercase start (your, the way, how you've, building, etc.).`;
+
+function extractPersonalizationJson(raw) {
+  const trimmed = String(raw).trim();
+  try {
+    return JSON.parse(trimmed);
+  } catch (_) {
+    /* continue */
+  }
+  const cleaned = trimmed
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```\s*$/, "")
+    .trim();
+  try {
+    return JSON.parse(cleaned);
+  } catch (_) {
+    /* continue */
+  }
+  const match = trimmed.match(/\{[\s\S]*\}/);
+  if (match) {
+    try {
+      return JSON.parse(match[0]);
+    } catch (_) {
+      /* continue */
+    }
+  }
+  return null;
+}
+
+function normalizeVariant(v) {
+  const s = v == null ? "" : String(v).trim().toLowerCase();
+  if (s === "owner") return "owner";
+  if (s === "employee") return "employee";
+  return null;
+}
+
+/**
+ * @param {string} ruleBasedVariant — from inferOutreachBodyVariant when AI omits or invalid
+ * @returns {Promise<{ personalLine: string, variant: "owner"|"employee", variantSource: "ai"|"rules_fallback" } | null>}
+ */
+async function generatePersonalization(rawProfileStr, promptTemplate, logger, ruleBasedVariant) {
+  if (!vertexAIClient) {
+    if (logger) logger.warn("[PERSONAL-LINE] Gemini not initialised, skipping lead");
+    return null;
+  }
+
+  const profileText =
+    typeof rawProfileStr === "string"
+      ? rawProfileStr.slice(0, 12000)
+      : JSON.stringify(rawProfileStr || {}).slice(0, 12000);
+
+  if (!profileText || profileText.length < 20) {
+    if (logger) logger.info("[PERSONAL-LINE] Profile data too short, skipping lead");
+    return null;
+  }
+
+  const prompt = (promptTemplate || DEFAULT_PERSONAL_LINE_PROMPT).trim();
+  const userMessage = `${prompt}\n\n${CC_PERSONALIZATION_JSON_SUFFIX}\n\n---\nLEAD PROFILE DATA:\n${profileText}\n---`;
+  const model = vertexAIClient.getGenerativeModel({ model: CC_PERSONAL_LINE_MODEL });
+
+  for (let attempt = 1; attempt <= PERSONAL_LINE_MAX_ATTEMPTS; attempt++) {
+    try {
+      const callPromise = model.generateContent({
+        contents: [{ role: "user", parts: [{ text: userMessage }] }],
+      });
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("Personal line generation timed out")), PERSONAL_LINE_TIMEOUT_MS)
+      );
+      const result = await Promise.race([callPromise, timeoutPromise]);
+      const text = result?.response?.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (!text || typeof text !== "string") {
+        if (logger) logger.warn(`[PERSONAL-LINE] attempt ${attempt}: AI returned no content`);
+        continue;
+      }
+
+      const parsed = extractPersonalizationJson(text);
+      if (parsed && typeof parsed === "object" && parsed.personalLine != null) {
+        let cleaned = String(parsed.personalLine)
+          .trim()
+          .replace(/^["']|["']$/g, "")
+          .replace(/\.+$/, "")
+          .trim();
+        if (cleaned.length < 5 || cleaned.length > 300) {
+          if (logger) logger.warn(`[PERSONAL-LINE] attempt ${attempt}: personalLine bad length (${cleaned.length})`);
+          continue;
+        }
+        let variant = normalizeVariant(parsed.variant);
+        let variantSource = "ai";
+        if (!variant) {
+          variant = ruleBasedVariant === "owner" ? "owner" : "employee";
+          variantSource = "rules_fallback";
+          if (logger) logger.warn(`[PERSONAL-LINE] attempt ${attempt}: invalid variant, using rules (${variant})`);
+        }
+        return { personalLine: cleaned, variant, variantSource };
+      }
+
+      let cleaned = text.trim().replace(/^["']|["']$/g, "").replace(/\.+$/, "").trim();
+      if (cleaned.length >= 5 && cleaned.length <= 300 && !/^\s*\{/.test(cleaned)) {
+        if (logger) logger.warn(`[PERSONAL-LINE] attempt ${attempt}: non-JSON reply, using text + rule variant`);
+        const variant = ruleBasedVariant === "owner" ? "owner" : "employee";
+        return { personalLine: cleaned, variant, variantSource: "rules_fallback" };
+      }
+
+      if (logger) logger.warn(`[PERSONAL-LINE] attempt ${attempt}: could not parse JSON`);
+    } catch (err) {
+      if (logger) logger.error(`[PERSONAL-LINE] attempt ${attempt}: ${err.message}`);
+      if (attempt < PERSONAL_LINE_MAX_ATTEMPTS) {
+        await new Promise((r) => setTimeout(r, 2000));
+      }
+    }
+  }
+
+  if (logger) logger.warn("[PERSONAL-LINE] All attempts failed, skipping lead");
+  return null;
+}
 
 async function warmUpGeminiFlash(logger) {
   if (!vertexAIClient) return;
@@ -275,58 +400,6 @@ async function warmUpGeminiFlash(logger) {
   } catch (err) {
     if (logger) logger.warn(`[PERSONAL-LINE] Warmup failed (non-fatal): ${err.message}`);
   }
-}
-
-async function generatePersonalLine(rawProfileStr, promptTemplate, logger) {
-  if (!vertexAIClient) {
-    if (logger) logger.warn("[PERSONAL-LINE] Gemini not initialised, skipping lead");
-    return null;
-  }
-
-  const profileText =
-    typeof rawProfileStr === "string"
-      ? rawProfileStr.slice(0, 12000)
-      : JSON.stringify(rawProfileStr || {}).slice(0, 12000);
-
-  if (!profileText || profileText.length < 20) {
-    if (logger) logger.info("[PERSONAL-LINE] Profile data too short, skipping lead");
-    return null;
-  }
-
-  const prompt = (promptTemplate || DEFAULT_PERSONAL_LINE_PROMPT).trim();
-  const userMessage = `${prompt}\n\n---\nLEAD PROFILE DATA:\n${profileText}\n---`;
-  const model = vertexAIClient.getGenerativeModel({ model: CC_PERSONAL_LINE_MODEL });
-
-  for (let attempt = 1; attempt <= PERSONAL_LINE_MAX_ATTEMPTS; attempt++) {
-    try {
-      const callPromise = model.generateContent({
-        contents: [{ role: "user", parts: [{ text: userMessage }] }],
-      });
-      const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error("Personal line generation timed out")), PERSONAL_LINE_TIMEOUT_MS)
-      );
-      const result = await Promise.race([callPromise, timeoutPromise]);
-      const text = result?.response?.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (!text || typeof text !== "string") {
-        if (logger) logger.warn(`[PERSONAL-LINE] attempt ${attempt}: AI returned no content`);
-        continue;
-      }
-      let cleaned = text.trim().replace(/^["']|["']$/g, "").replace(/\.+$/, "").trim();
-      if (cleaned.length < 5 || cleaned.length > 300) {
-        if (logger) logger.warn(`[PERSONAL-LINE] attempt ${attempt}: unexpected length (${cleaned.length})`);
-        continue;
-      }
-      return cleaned;
-    } catch (err) {
-      if (logger) logger.error(`[PERSONAL-LINE] attempt ${attempt}: ${err.message}`);
-      if (attempt < PERSONAL_LINE_MAX_ATTEMPTS) {
-        await new Promise((r) => setTimeout(r, 2000));
-      }
-    }
-  }
-
-  if (logger) logger.warn("[PERSONAL-LINE] All attempts failed, skipping lead");
-  return null;
 }
 
 function parseDateScoredBrisbane(val) {
@@ -588,26 +661,37 @@ async function buildPreviewRows(eligibleRecords, settings, maxShow, logger) {
   let skippedNoPersonalLine = 0;
   for (const rec of slice) {
     const firstName = String(rec.get(F.firstName) || "").trim();
-    const variant = inferOutreachBodyVariant(rec.get(F.rawProfile));
-    const bodyTemplate = pickBodyTemplate(settings.fields, variant);
+    const ruleVariant = inferOutreachBodyVariant(rec.get(F.rawProfile));
+    let variant = ruleVariant;
+    let variantSource = "rules_only";
+
     const subject = pickRandomSubject(settings.fields);
     const bookingUrl = mintGuestBookingUrlForLead(rec);
 
     let personalLine = null;
     if (needsPersonalLine) {
-      personalLine = await generatePersonalLine(
+      const pers = await generatePersonalization(
         rec.get(F.rawProfile),
         promptTemplate,
-        logger
+        logger,
+        ruleVariant
       );
-      if (personalLine == null) {
+      if (pers == null) {
         skippedNoPersonalLine++;
         if (logger) logger.warn(`[PERSONAL-LINE] Skipping ${rec.get(F.email)}: AI could not generate a line`);
         continue;
       }
-      if (logger) logger.info(`[PERSONAL-LINE] ${rec.get(F.email)}: "${personalLine}"`);
+      personalLine = pers.personalLine;
+      variant = pers.variant;
+      variantSource = pers.variantSource;
+      if (logger) {
+        logger.info(
+          `[PERSONAL-LINE] ${rec.get(F.email)}: variant=${variant} (${variantSource}) rules=${ruleVariant} "${personalLine}"`
+        );
+      }
     }
 
+    const bodyTemplate = pickBodyTemplate(settings.fields, variant);
     const html = applyOutreachBodyTemplate(bodyTemplate, firstName, bookingUrl, personalLine);
     rows.push({
       recordId: rec.id,
@@ -616,6 +700,8 @@ async function buildPreviewRows(eligibleRecords, settings, maxShow, logger) {
       html,
       outboundScore: numOrNull(rec.get(F.score)),
       variant,
+      ruleVariant,
+      variantSource,
       guestBookingLinkOk: Boolean(bookingUrl),
       personalLine,
     });
@@ -714,7 +800,7 @@ async function buildDryRunPreviewHtml(options = {}) {
     parts.push("<div class='card'>");
     parts.push(`<h2>${escapeHtml(row.to)}</h2>`);
     parts.push(
-      `<div class='chrome'>Record <code>${escapeHtml(row.recordId)}</code> · Outbound Email Score: <b>${row.outboundScore}</b> · Body variant: <b>${escapeHtml(row.variant)}</b> · Guest booking link: <b>${row.guestBookingLinkOk ? "yes" : "no"}</b></div>`
+      `<div class='chrome'>Record <code>${escapeHtml(row.recordId)}</code> · Outbound Email Score: <b>${row.outboundScore}</b> · Body variant: <b>${escapeHtml(row.variant)}</b>${row.variantSource && row.variantSource !== "rules_only" ? ` <small>(${escapeHtml(row.variantSource === "ai" ? "AI" : "AI variant fallback → rules")}, rules=${escapeHtml(row.ruleVariant || row.variant)})</small>` : ""} · Guest booking link: <b>${row.guestBookingLinkOk ? "yes" : "no"}</b></div>`
     );
     if (row.personalLine) {
       parts.push(`<div class='chrome'><strong>Personal Line (AI):</strong> <em>${escapeHtml(row.personalLine)}</em></div>`);
@@ -915,7 +1001,7 @@ module.exports = {
   inferOutreachBodyVariant,
   pickBodyTemplate,
   outreachProfileBlob,
-  generatePersonalLine,
+  generatePersonalization,
   warmUpGeminiFlash,
   outboundBlackoutStatus,
   parseOutboundBlackoutDateSet,
