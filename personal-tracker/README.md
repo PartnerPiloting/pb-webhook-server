@@ -183,7 +183,14 @@ Inspired by real threads (e.g. contact reschedules; you reply and move the meeti
 
 **Code:** `services/coachingClientLookupService.js` (resolves tenant → calls `findLeadByName`), route in `routes/apiAndJobRoutes.js`. Optional Master-only contact field constants remain in `CLIENT_CONTACT_LOOKUP_FIELDS` for future use.
 
-**Your next step after deploy:** Set **`COACHING_LEADS_CLIENT_ID`** on Render (optional), then add a **Custom GPT Action** / **MCP** that calls this GET with the Bearer token.
+**Your next step after deploy:**
+
+1. **(Optional)** In Render → your web service → **Environment**, set **`COACHING_LEADS_CLIENT_ID`** to your Master **Client ID** so ChatGPT does not need to send `clientId` every time.
+2. **Custom GPT:** Create or edit a GPT → **Actions** → **Import** `personal-tracker/openapi-coaching-lead-lookup.yaml` (or paste its contents).
+3. Set **Authentication** to **API key** (or Bearer, depending on UI): paste **`PB_WEBHOOK_SECRET`** as the token (same value you use for debug log access — **never** put it in the YAML file or chat).
+4. **Test** in the GPT: *What is Matthew Bulat’s email?* — If it fails, use **Preview / test** on the action or run `curl.exe` with your secret (see spike section above).
+
+**MCP** can come later; Custom GPT Action is the quickest test.
 
 ## Next steps (when you’re ready to build)
 
