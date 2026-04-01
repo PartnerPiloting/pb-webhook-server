@@ -98,19 +98,30 @@ function mountMcpOAuthForChatGPT(app, log = console) {
     'https://pb-webhook-server.onrender.com'
   ).replace(/\/$/, '');
 
+  const oauthMetadata = () => ({
+    issuer: publicBase,
+    authorization_endpoint: `${publicBase}${BASE}/oauth/authorize`,
+    token_endpoint: `${publicBase}${BASE}/oauth/token`,
+    grant_types_supported: ['client_credentials'],
+    token_endpoint_auth_methods_supported: [
+      'client_secret_post',
+      'client_secret_basic',
+      'none'
+    ],
+    response_types_supported: ['code']
+  });
+
   app.get('/.well-known/oauth-authorization-server', (_req, res) => {
     res.setHeader('Cache-Control', 'public, max-age=300');
+    res.json(oauthMetadata());
+  });
+
+  // Some connectors look for OpenID discovery instead of RFC 8414 only.
+  app.get('/.well-known/openid-configuration', (_req, res) => {
+    res.setHeader('Cache-Control', 'public, max-age=300');
     res.json({
-      issuer: publicBase,
-      authorization_endpoint: `${publicBase}${BASE}/oauth/authorize`,
-      token_endpoint: `${publicBase}${BASE}/oauth/token`,
-      grant_types_supported: ['client_credentials'],
-      token_endpoint_auth_methods_supported: [
-        'client_secret_post',
-        'client_secret_basic',
-        'none'
-      ],
-      response_types_supported: ['code']
+      ...oauthMetadata(),
+      scopes_supported: ['openid']
     });
   });
 
