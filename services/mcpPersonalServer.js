@@ -3,7 +3,9 @@
  * - Streamable HTTP: POST /mcp-personal/mcp
  * - Legacy SSE (ChatGPT "MCP Server URL" often ends in /sse): GET /mcp-personal/sse + POST /mcp-personal/messages
  *
- * Auth: Authorization: Bearer <PB_WEBHOOK_SECRET> (same as other private routes).
+ * Auth: Bearer <token> (OAuth client_credentials or raw PB_WEBHOOK_SECRET) on tool traffic;
+ * GET /sse and MCP handshake-only POSTs (initialize / notifications/initialized) are unauthenticated
+ * so ChatGPT can validate the connector; tools/call requires the secret.
  */
 
 const { z } = require('zod');
@@ -28,6 +30,29 @@ function mcpAuthMiddleware(req, res, next) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
   return next();
+}
+
+/** ChatGPT may hit these before or without Bearer during connector setup; tools/call still requires auth. */
+const MCP_HANDSHAKE_METHODS = new Set([
+  'initialize',
+  'notifications/initialized',
+  'tools/list'
+]);
+
+function mcpBodyIsHandshakeOnly(body) {
+  if (!body || typeof body !== 'object') return false;
+  const items = Array.isArray(body) ? body : [body];
+  if (items.length === 0) return false;
+  return items.every(
+    (b) => b && typeof b.method === 'string' && MCP_HANDSHAKE_METHODS.has(b.method)
+  );
+}
+
+function mcpAuthUnlessHandshakeOnly(req, res, next) {
+  if (req.method === 'POST' && mcpBodyIsHandshakeOnly(req.body)) {
+    return next();
+  }
+  return mcpAuthMiddleware(req, res, next);
 }
 
 function createPersonalMcpServer() {
@@ -193,7 +218,7 @@ function mountPersonalMcp(app, log = console) {
   const sseTransports = {};
 
   // --- Legacy HTTP+SSE (URL often https://host/.../sse) ---
-  app.get(`${BASE}/sse`, mcpAuthMiddleware, async (req, res) => {
+  app.get(`${BASE}/sse`, async (req, res) => {
     try {
       const transport = new SSEServerTransport(`${BASE}/messages`, res);
       sseTransports[transport.sessionId] = transport;
@@ -210,7 +235,7 @@ function mountPersonalMcp(app, log = console) {
     }
   });
 
-  app.post(`${BASE}/messages`, mcpAuthMiddleware, async (req, res) => {
+  app.post(`${BASE}/messages`, mcpAuthUnlessHandshakeOnly, async (req, res) => {
     try {
       const sessionId = req.query.sessionId;
       const transport = sseTransports[sessionId];
@@ -267,15 +292,15 @@ function mountPersonalMcp(app, log = console) {
     }
   };
 
-  app.post(`${BASE}/mcp`, mcpAuthMiddleware, streamableHandler);
-  app.get(`${BASE}/mcp`, mcpAuthMiddleware, (_req, res) => {
+  app.post(`${BASE}/mcp`, mcpAuthUnlessHandshakeOnly, streamableHandler);
+  app.get(`${BASE}/mcp`, (_req, res) => {
     res.status(405).json({
       jsonrpc: '2.0',
       error: { code: -32000, message: 'Method not allowed.' },
       id: null
     });
   });
-  app.delete(`${BASE}/mcp`, mcpAuthMiddleware, (_req, res) => {
+  app.delete(`${BASE}/mcp`, (_req, res) => {
     res.status(405).json({
       jsonrpc: '2.0',
       error: { code: -32000, message: 'Method not allowed.' },
