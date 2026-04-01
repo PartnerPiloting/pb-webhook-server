@@ -84,6 +84,91 @@ function createPersonalMcpServer() {
  * @param {import('express').Express} app
  * @param {{ info?: (m: string) => void }} [log]
  */
+/**
+ * Minimal OAuth2 metadata + client_credentials token endpoint so ChatGPT (Mixed auth)
+ * can exchange OAuth Client Secret for a Bearer token used on MCP routes.
+ */
+function mountMcpOAuthForChatGPT(app, log = console) {
+  const secret = mcpBearerSecret();
+  if (!secret) return;
+
+  const publicBase = (
+    process.env.API_PUBLIC_BASE_URL ||
+    process.env.RENDER_EXTERNAL_URL ||
+    'https://pb-webhook-server.onrender.com'
+  ).replace(/\/$/, '');
+
+  app.get('/.well-known/oauth-authorization-server', (_req, res) => {
+    res.setHeader('Cache-Control', 'public, max-age=300');
+    res.json({
+      issuer: publicBase,
+      authorization_endpoint: `${publicBase}${BASE}/oauth/authorize`,
+      token_endpoint: `${publicBase}${BASE}/oauth/token`,
+      grant_types_supported: ['client_credentials'],
+      token_endpoint_auth_methods_supported: [
+        'client_secret_post',
+        'client_secret_basic',
+        'none'
+      ],
+      response_types_supported: ['code']
+    });
+  });
+
+  app.get(`${BASE}/oauth/authorize`, (_req, res) => {
+    res.status(400).json({
+      error: 'unsupported_response_type',
+      error_description:
+        'Use client_credentials at the token endpoint. In ChatGPT: OAuth Client ID = chatgpt, Client Secret = same value as PB_WEBHOOK_SECRET on Render.'
+    });
+  });
+
+  app.post(`${BASE}/oauth/token`, (req, res) => {
+    try {
+      let grant = req.body && req.body.grant_type;
+      let clientId = (req.body && req.body.client_id) || '';
+      let clientSecret = (req.body && req.body.client_secret) || '';
+
+      const authz = req.headers.authorization || '';
+      if (authz.startsWith('Basic ')) {
+        const decoded = Buffer.from(authz.slice(6), 'base64').toString('utf8');
+        const idx = decoded.indexOf(':');
+        if (idx >= 0) {
+          clientId = decoded.slice(0, idx);
+          clientSecret = decoded.slice(idx + 1);
+        }
+      }
+
+      if (grant !== 'client_credentials') {
+        return res.status(400).json({ error: 'unsupported_grant_type' });
+      }
+      if (!clientSecret || clientSecret !== secret) {
+        return res.status(401).json({ error: 'invalid_client' });
+      }
+      const requiredClientId = process.env.MCP_OAUTH_CLIENT_ID;
+      if (requiredClientId && clientId !== requiredClientId) {
+        return res
+          .status(401)
+          .json({ error: 'invalid_client', error_description: 'invalid client_id' });
+      }
+
+      return res.json({
+        access_token: secret,
+        token_type: 'Bearer',
+        expires_in: 86400
+      });
+    } catch (e) {
+      if (log.error) log.error('mcpPersonalServer oauth/token:', e.message);
+      return res.status(500).json({ error: 'server_error' });
+    }
+  });
+
+  if (log.info) {
+    log.info(
+      'mcpPersonalServer: OAuth GET /.well-known/oauth-authorization-server + POST /mcp-personal/oauth/token'
+    );
+  }
+}
+
 function mountPersonalMcp(app, log = console) {
   const secret = mcpBearerSecret();
   if (!secret) {
@@ -91,6 +176,8 @@ function mountPersonalMcp(app, log = console) {
       log.info('mcpPersonalServer: skipping mount (no PB_WEBHOOK_SECRET / DEBUG_API_KEY / MCP_BEARER_TOKEN)');
     return;
   }
+
+  mountMcpOAuthForChatGPT(app, log);
 
   const sseTransports = {};
 
