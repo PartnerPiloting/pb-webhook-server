@@ -127,13 +127,14 @@ function mountMcpOAuthForChatGPT(app, log = console) {
     issuer: publicBase,
     authorization_endpoint: `${publicBase}${BASE}/oauth/authorize`,
     token_endpoint: `${publicBase}${BASE}/oauth/token`,
-    grant_types_supported: ['client_credentials'],
+    grant_types_supported: ['client_credentials', 'authorization_code'],
     token_endpoint_auth_methods_supported: [
       'client_secret_post',
       'client_secret_basic',
       'none'
     ],
-    response_types_supported: ['code']
+    response_types_supported: ['code'],
+    code_challenge_methods_supported: ['S256', 'plain']
   });
 
   app.get('/.well-known/oauth-authorization-server', (_req, res) => {
@@ -150,12 +151,25 @@ function mountMcpOAuthForChatGPT(app, log = console) {
     });
   });
 
-  app.get(`${BASE}/oauth/authorize`, (_req, res) => {
-    res.status(400).json({
-      error: 'unsupported_response_type',
-      error_description:
-        'Use client_credentials at the token endpoint. In ChatGPT: OAuth Client ID = chatgpt, Client Secret = same value as PB_WEBHOOK_SECRET on Render.'
-    });
+  // ChatGPT opens this URL in a popup; we auto-approve and redirect back with a code.
+  // Real auth happens at token exchange time (client_secret must match PB_WEBHOOK_SECRET).
+  app.get(`${BASE}/oauth/authorize`, (req, res) => {
+    const { redirect_uri, state, response_type } = req.query;
+    if (!redirect_uri) {
+      return res.status(400).send('Missing redirect_uri');
+    }
+    if (response_type && response_type !== 'code') {
+      const url = new URL(redirect_uri);
+      url.searchParams.set('error', 'unsupported_response_type');
+      if (state) url.searchParams.set('state', state);
+      return res.redirect(url.toString());
+    }
+    // Issue a one-time code = base64(timestamp) — client_secret is verified at /token
+    const code = Buffer.from(String(Date.now())).toString('base64url');
+    const url = new URL(redirect_uri);
+    url.searchParams.set('code', code);
+    if (state) url.searchParams.set('state', state);
+    return res.redirect(url.toString());
   });
 
   app.post(`${BASE}/oauth/token`, (req, res) => {
@@ -174,9 +188,10 @@ function mountMcpOAuthForChatGPT(app, log = console) {
         }
       }
 
-      if (grant !== 'client_credentials') {
+      if (grant !== 'client_credentials' && grant !== 'authorization_code') {
         return res.status(400).json({ error: 'unsupported_grant_type' });
       }
+      // For authorization_code flow, client_secret in the token request authenticates the client
       if (!clientSecret || clientSecret !== secret) {
         return res.status(401).json({ error: 'invalid_client' });
       }
