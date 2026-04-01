@@ -33,6 +33,54 @@ It lives inside `pb-webhook-server-dev` so you only ever open **one** Cursor pro
 - Put **`DATABASE_URL`** and other secrets in **Render** (or `.env` locally if you use one — never commit secrets).
 - In **ChatGPT**, attach/configure **MCP** (or equivalent) pointing at the deployed URL and auth.
 
+## How we evolve this doc (before code)
+
+- **Discuss in Cursor** when product ideas come up (nags, gates, what “done” means).
+- **Then update this README** with the decisions so build work isn’t lost in chat history.
+- **ChatGPT** is fine for brainstorming; **this file** is the durable spec for implementation here.
+
+## Lanes (one system, different rules)
+
+| Lane | Role |
+|------|------|
+| **Triage** | What to do today — ordering, snooze, dismiss; inbox/calendar are inputs. |
+| **Commitments** | Promises — who/what/when, sources, don’t drop; stricter than ideas. |
+| **Ideas** | Quick capture — low friction, triage later; separate from commitments in briefings. |
+
+## Daily rhythm (target workflow)
+
+- **During the day:** work as usual; optional quick capture via chat (“note: …”, “I promised …”).
+- **Once daily (optional twice):** open ChatGPT → **briefing** from stored state + **Calendar** for “when”.
+- **Per item:** act, snooze, or dismiss; system updates so noise stays low.
+
+## Calendar vs Gmail (source of truth)
+
+- **“When”** for meetings: prefer **Google Calendar** over parsing email alone.
+- **Daily digest** can look at **tomorrow** (e.g. evening run) for prep / reminders.
+
+## Example: reschedule thread → two gates (simpler than all-in-one AI)
+
+Inspired by real threads (e.g. contact reschedules; you reply and move the meeting).
+
+1. **Gate A — Calendar**  
+   If the **rescheduled event** isn’t reflected on your calendar (right person / time), **nag to fix calendar** (re-book, accept invite, etc.).  
+   Optional escape: “handled outside Google Calendar” for edge cases.
+
+2. **Gate B — Pre-meeting “re-anchor” email**  
+   **Only after** Gate A looks OK: check whether a **scheduled send** (or equivalent) exists to them **morning of the day before** (or confirm manually if Gmail API is ambiguous).  
+   - If satisfied → **no noise**.  
+   - If not → prompt: **schedule now** / **remind again** / **forget (I’m not doing it)**.  
+   Cap snoozes so nothing nags forever.
+
+**Linking** email + calendar + draft/scheduled send across names (“Maarten” / “Marty”) needs **entity matching**; start with **rules + optional confirm** before trusting full auto-silence.
+
+## Build phasing (keep v1 smaller)
+
+1. Capture + simple list in DB + ChatGPT tools (manual dates / check-off).  
+2. **Calendar** integration, then **daily briefing**.  
+3. **Gmail** (and Fathom) ingestion; richer extraction.  
+4. **Gates / gap prompts** (like the two-gate example) once basics are trusted.
+
 ## Next steps (when you’re ready to build)
 
 1. Add a small Node (or reuse repo stack) service under this folder with health check + DB connection.
