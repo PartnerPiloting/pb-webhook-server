@@ -190,7 +190,20 @@ Inspired by real threads (e.g. contact reschedules; you reply and move the meeti
 3. Set **Authentication** to **API key** (or Bearer, depending on UI): paste **`PB_WEBHOOK_SECRET`** as the token (same value you use for debug log access — **never** put it in the YAML file or chat).
 4. **Test** in the GPT: *What is Matthew Bulat’s email?* — If it fails, use **Preview / test** on the action or run `curl.exe` with your secret (see spike section above).
 
-**MCP** can come later; Custom GPT Action is the quickest test.
+### MCP (regular ChatGPT → Apps)
+
+Mounted on the **same** Render service when `PB_WEBHOOK_SECRET` (or `DEBUG_API_KEY` / `MCP_BEARER_TOKEN`) is set:
+
+| Transport | URL to paste in ChatGPT (example) |
+|-----------|-------------------------------------|
+| **Legacy SSE** (form often shows `…/sse`) | `https://pb-webhook-server.onrender.com/mcp-personal/sse` |
+| **Streamable HTTP** (POST) | `https://pb-webhook-server.onrender.com/mcp-personal/mcp` |
+
+**Auth:** ChatGPT must send **`Authorization: Bearer <same secret>`**. If the Apps UI only offers OAuth, pick the option that still lets you supply a **static Bearer/API token** (or use **No authentication** in the UI only if OpenAI allows adding a custom header — otherwise OAuth must be implemented separately).
+
+**Tool:** `lookup_lead_contact` — arguments `name`, optional `company`, optional `clientId` (same behaviour as the REST spike).
+
+**Custom GPT + OpenAPI** remains an alternative if MCP auth in the UI is awkward.
 
 ## Next steps (when you’re ready to build)
 
