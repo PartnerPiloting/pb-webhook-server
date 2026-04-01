@@ -199,7 +199,14 @@ Mounted on the **same** Render service when `PB_WEBHOOK_SECRET` (or `DEBUG_API_K
 | **Legacy SSE** (form often shows `…/sse`) | `https://pb-webhook-server.onrender.com/mcp-personal/sse` |
 | **Streamable HTTP** (POST) | `https://pb-webhook-server.onrender.com/mcp-personal/mcp` |
 
-**Auth (ChatGPT “Mixed” + OAuth fields):** The server exposes **`GET /.well-known/oauth-authorization-server`** and **`POST /mcp-personal/oauth/token`** (`grant_type=client_credentials`). In the app form use **OAuth Client ID:** `chatgpt` (or set **`MCP_OAUTH_CLIENT_ID`** on Render to something else and match it). **OAuth Client Secret:** paste the **same value** as **`PB_WEBHOOK_SECRET`** on Render. **Token endpoint auth method:** `none` is fine if the secret is sent in the token body.
+**Auth (ChatGPT “Mixed” + OAuth fields):** If the UI says **“enter both auth url and token url”**, paste these **exactly**:
+
+- **Authorization / Auth URL:** `https://pb-webhook-server.onrender.com/mcp-personal/oauth/authorize`
+- **Token URL:** `https://pb-webhook-server.onrender.com/mcp-personal/oauth/token`
+
+Discovery (optional): `https://pb-webhook-server.onrender.com/.well-known/oauth-authorization-server` or `/.well-known/openid-configuration`.
+
+**OAuth Client ID:** `chatgpt` (or match **`MCP_OAUTH_CLIENT_ID`** on Render if set). **OAuth Client Secret:** same as **`PB_WEBHOOK_SECRET`**. **Token endpoint auth:** `client_secret_post` or `client_secret_basic`.
 
 Direct **Bearer** / **`X-MCP-Key`** still works for non-OAuth clients.
 
