@@ -3132,6 +3132,13 @@ moduleLogger.info("index.js: Environment management endpoints added");
 try { const appRoutes = require('./routes/apiAndJobRoutes.js'); app.use(appRoutes); moduleLogger.info("index.js: App/API/Job routes mounted."); } catch(e) { moduleLogger.error("index.js: Error mounting appRoutes", e.message, e.stack); }
 
 try {
+  const { mountPersonalMcp } = require('./services/mcpPersonalServer.js');
+  mountPersonalMcp(app, moduleLogger);
+} catch (e) {
+  moduleLogger.error("index.js: Error mounting mcpPersonalServer", e.message, e.stack);
+}
+
+try {
   const guestBookingRoutes = require("./routes/guestBookingRoutes.js");
   app.use(guestBookingRoutes);
   moduleLogger.info("index.js: Guest booking routes mounted.");
