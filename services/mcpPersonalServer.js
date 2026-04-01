@@ -259,6 +259,22 @@ function mountPersonalMcp(app, log = console) {
     }
   });
 
+  // --- POST /sse alias: openai-mcp/1.0.0 POSTs JSON-RPC to the SSE URL ---
+  app.post(`${BASE}/sse`, mcpAuthUnlessHandshakeOnly, async (req, res) => {
+    const server = createPersonalMcpServer();
+    try {
+      const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
+      await server.connect(transport);
+      await transport.handleRequest(req, res, req.body);
+      res.on('close', () => { transport.close(); server.close(); });
+    } catch (err) {
+      log.error && log.error('mcpPersonalServer POST /sse error:', err.message);
+      if (!res.headersSent) {
+        res.status(500).json({ jsonrpc: '2.0', error: { code: -32603, message: 'Internal server error' }, id: null });
+      }
+    }
+  });
+
   // --- Streamable HTTP (stateless POST) ---
   const streamableHandler = async (req, res) => {
     if (req.method !== 'POST') {
