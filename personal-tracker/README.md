@@ -164,6 +164,25 @@ Inspired by real threads (e.g. contact reschedules; you reply and move the meeti
 
 **Coaching track (can trail or overlap):** implement **ASH** shape — `Client` record + tools **`PrepClient`**, **`PostCallUpdate`**, **`GenerateFollowUpEmail`**; touchpoint storage; cheat sheet generation; then Gmail pull for threads when ready.
 
+## Spike (live now): ChatGPT → Airtable client contact lookup
+
+**Goal:** Ask ChatGPT for a **Master Clients** row’s **email, phone, LinkedIn profile URL, location** by **name** (e.g. Matthew Bulat). Convenience test before Postgres/MCP complexity.
+
+**Endpoint (same deploy as pb-webhook server):**
+
+`GET https://pb-webhook-server.onrender.com/coaching/client-contact-lookup?name=<Name>`
+
+**Auth:** `Authorization: Bearer <PB_WEBHOOK_SECRET>` (same secret as `/debug-render-logs`).
+
+**Behaviour:**
+
+- Reads from **Master Clients** table (`Client Name`, `Client Email Address`, and optional columns **Phone**, **LinkedIn Profile URL** or **LinkedIn URL**, **Location** — add these columns in Airtable if missing; empty fields return `null`).
+- Name matching: case-insensitive; `_` treated as space; **multiple matches** → `unique: false` and `matches[]` (disambiguate by `clientId` / `status` / `location`).
+
+**Code:** `services/coachingClientLookupService.js`, route in `routes/apiAndJobRoutes.js`, field names in `constants/airtableUnifiedConstants.js` (`CLIENT_CONTACT_LOOKUP_FIELDS`).
+
+**Your next step after deploy:** Add a **Custom GPT Action** (OpenAPI) or **MCP** that calls this GET with the Bearer token, then try: *“What is Matthew Bulat’s email?”*
+
 ## Next steps (when you’re ready to build)
 
 1. Add a small Node (or reuse repo stack) service under this folder with health check + DB connection.

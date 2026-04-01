@@ -30,6 +30,7 @@ const {
   CREDENTIAL_FIELDS,
   MASTER_TABLES
 } = require("../constants/airtableUnifiedConstants.js");
+const { lookupClientContactsByName } = require('../services/coachingClientLookupService.js');
 const { validateFieldNames, createValidatedObject } = require('../utils/airtableFieldValidator');
 
 // Using centralized status utility functions for consistent behavior
@@ -116,6 +117,62 @@ router.get("/health", (_req, res) => {
     enhanced_audit_system: "loaded",
     timestamp: new Date().toISOString()
   });
+});
+
+/**
+ * Coaching spike: Master Clients contact lookup for ChatGPT / MCP testing.
+ * GET /coaching/client-contact-lookup?name=Matthew+Bulat
+ * Auth: Authorization: Bearer PB_WEBHOOK_SECRET (same pattern as /debug-render-logs)
+ *
+ * Returns email, phone, linkedinProfileUrl, location when those columns exist on Clients.
+ * If multiple rows match the name, returns unique:false and matches[] for disambiguation.
+ */
+router.get("/coaching/client-contact-lookup", async (req, res) => {
+  const authHeader = req.headers.authorization;
+  const secret = process.env.PB_WEBHOOK_SECRET || process.env.DEBUG_API_KEY;
+  if (!authHeader || !secret || !authHeader.includes(secret)) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const name = String(req.query.name || '').trim();
+  if (!name) {
+    return res.status(400).json({ error: 'Missing required query parameter: name' });
+  }
+
+  try {
+    const matches = await lookupClientContactsByName(name);
+    if (matches.length === 0) {
+      return res.json({
+        success: true,
+        unique: true,
+        matchCount: 0,
+        message: 'No client found matching that name',
+        client: null,
+        matches: []
+      });
+    }
+    if (matches.length === 1) {
+      return res.json({
+        success: true,
+        unique: true,
+        matchCount: 1,
+        client: matches[0],
+        matches: matches
+      });
+    }
+    return res.json({
+      success: true,
+      unique: false,
+      matchCount: matches.length,
+      message:
+        'Multiple clients match this name; pick one using clientId or airtableRecordId and call again if you add recordId later',
+      client: null,
+      matches
+    });
+  } catch (err) {
+    moduleLogger.error('coaching/client-contact-lookup error:', err.message);
+    return res.status(500).json({ success: false, error: err.message || 'Lookup failed' });
+  }
 });
 
 // Simple audit test route (no auth required)
