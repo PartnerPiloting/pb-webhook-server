@@ -1879,6 +1879,8 @@ async function findLeadByName(client, contactName, company = null) {
             email: record.fields['Email'] || '',
             company: record.fields['Company'] || '',
             linkedinUrl: record.fields['LinkedIn Profile URL'] || '',
+            phone: record.fields['Phone'] || '',
+            location: record.fields['Location'] || '',
             notes: record.fields['Notes'] || '',
             followUpDate: record.fields['Follow-Up Date'] || null
         }));
@@ -1994,6 +1996,8 @@ async function findLeadByFirstNameAndDomain(client, firstName, domain) {
             email: record.fields['Email'] || '',
             company: record.fields['Company'] || '',
             linkedinUrl: record.fields['LinkedIn Profile URL'] || '',
+            phone: record.fields['Phone'] || '',
+            location: record.fields['Location'] || '',
             notes: record.fields['Notes'] || '',
             followUpDate: record.fields['Follow-Up Date'] || null
         }));
@@ -2071,6 +2075,8 @@ async function findLeadByDomainOnly(client, domain) {
             email: record.fields['Email'] || '',
             company: record.fields['Company'] || '',
             linkedinUrl: record.fields['LinkedIn Profile URL'] || '',
+            phone: record.fields['Phone'] || '',
+            location: record.fields['Location'] || '',
             notes: record.fields['Notes'] || '',
             followUpDate: record.fields['Follow-Up Date'] || null
         }));

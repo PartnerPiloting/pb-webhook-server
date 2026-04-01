@@ -164,24 +164,26 @@ Inspired by real threads (e.g. contact reschedules; you reply and move the meeti
 
 **Coaching track (can trail or overlap):** implement **ASH** shape — `Client` record + tools **`PrepClient`**, **`PostCallUpdate`**, **`GenerateFollowUpEmail`**; touchpoint storage; cheat sheet generation; then Gmail pull for threads when ready.
 
-## Spike (live now): ChatGPT → Airtable client contact lookup
+## Spike (live now): ChatGPT → **Leads** row contact lookup (tenant base)
 
-**Goal:** Ask ChatGPT for a **Master Clients** row’s **email, phone, LinkedIn profile URL, location** by **name** (e.g. Matthew Bulat). Convenience test before Postgres/MCP complexity.
+**Goal:** Ask ChatGPT for a **Lead’s** **email, phone, LinkedIn profile URL, location** by **person name** (e.g. Matthew Bulat). Uses the same **Leads** table and **`findLeadByName`** logic as inbound email / Fathom flows — **not** the Master `Clients` roster row.
 
 **Endpoint (same deploy as pb-webhook server):**
 
-`GET https://pb-webhook-server.onrender.com/coaching/client-contact-lookup?name=<Name>`
+`GET https://pb-webhook-server.onrender.com/coaching/client-contact-lookup?name=<First+Last>&clientId=<MasterClientId>`
+
+- **`name`** — Lead’s **First + Last** as stored in Airtable (same rules as `inboundEmailService.findLeadByName`: hyphens, “Last, First”, etc.).
+- **`clientId`** — Your row on **Master `Clients`** (`Client ID`), e.g. the ID for Guy Wilson’s tenant **unless** you set **`COACHING_LEADS_CLIENT_ID`** (or **`COACHING_LEADS_CLIENT_NAME`**) on Render so ChatGPT can omit it.
+- **`clientName`** (optional) — Match Master `Client Name` if you prefer not to use `clientId`.
+- **`company`** (optional) — Helps disambiguate when several leads share the same name.
 
 **Auth:** `Authorization: Bearer <PB_WEBHOOK_SECRET>` (same secret as `/debug-render-logs`).
 
-**Behaviour:**
+**Response:** `tenantClientId`, `matchType` (`unique` | `narrowed` | `ambiguous` | `none`), `lead` when unique/narrowed, `matches[]` otherwise. Lead fields come from **Leads**: **Email**, **Phone**, **LinkedIn Profile URL**, **Location**, **Company**.
 
-- Reads from **Master Clients** table (`Client Name`, `Client Email Address`, and optional columns **Phone**, **LinkedIn Profile URL** or **LinkedIn URL**, **Location** — add these columns in Airtable if missing; empty fields return `null`).
-- Name matching: case-insensitive; `_` treated as space; **multiple matches** → `unique: false` and `matches[]` (disambiguate by `clientId` / `status` / `location`).
+**Code:** `services/coachingClientLookupService.js` (resolves tenant → calls `findLeadByName`), route in `routes/apiAndJobRoutes.js`. Optional Master-only contact field constants remain in `CLIENT_CONTACT_LOOKUP_FIELDS` for future use.
 
-**Code:** `services/coachingClientLookupService.js`, route in `routes/apiAndJobRoutes.js`, field names in `constants/airtableUnifiedConstants.js` (`CLIENT_CONTACT_LOOKUP_FIELDS`).
-
-**Your next step after deploy:** Add a **Custom GPT Action** (OpenAPI) or **MCP** that calls this GET with the Bearer token, then try: *“What is Matthew Bulat’s email?”*
+**Your next step after deploy:** Set **`COACHING_LEADS_CLIENT_ID`** on Render (optional), then add a **Custom GPT Action** / **MCP** that calls this GET with the Bearer token.
 
 ## Next steps (when you’re ready to build)
 

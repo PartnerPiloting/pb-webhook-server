@@ -30,7 +30,7 @@ const {
   CREDENTIAL_FIELDS,
   MASTER_TABLES
 } = require("../constants/airtableUnifiedConstants.js");
-const { lookupClientContactsByName } = require('../services/coachingClientLookupService.js');
+const { lookupLeadContactByName } = require('../services/coachingClientLookupService.js');
 const { validateFieldNames, createValidatedObject } = require('../utils/airtableFieldValidator');
 
 // Using centralized status utility functions for consistent behavior
@@ -120,12 +120,13 @@ router.get("/health", (_req, res) => {
 });
 
 /**
- * Coaching spike: Master Clients contact lookup for ChatGPT / MCP testing.
- * GET /coaching/client-contact-lookup?name=Matthew+Bulat
+ * Coaching spike: **Leads** table lookup in a tenant's base (reuses inboundEmailService.findLeadByName).
+ * GET /coaching/client-contact-lookup?name=Matthew+Bulat&clientId=YourClientId
+ *   Optional: clientName=Guy+Wilson, company=... (disambiguation)
  * Auth: Authorization: Bearer PB_WEBHOOK_SECRET (same pattern as /debug-render-logs)
  *
- * Returns email, phone, linkedinProfileUrl, location when those columns exist on Clients.
- * If multiple rows match the name, returns unique:false and matches[] for disambiguation.
+ * Resolves tenant from Master **Clients** (clientId / clientName or COACHING_LEADS_CLIENT_ID env),
+ * then reads **Leads** in that base: email, phone, linkedinProfileUrl, location, company.
  */
 router.get("/coaching/client-contact-lookup", async (req, res) => {
   const authHeader = req.headers.authorization;
@@ -136,40 +137,39 @@ router.get("/coaching/client-contact-lookup", async (req, res) => {
 
   const name = String(req.query.name || '').trim();
   if (!name) {
-    return res.status(400).json({ error: 'Missing required query parameter: name' });
+    return res.status(400).json({ error: 'Missing required query parameter: name (lead first + last, e.g. Matthew Bulat)' });
   }
 
+  const tenant = {
+    clientId: String(req.query.clientId || '').trim(),
+    clientName: String(req.query.clientName || '').trim(),
+    company: String(req.query.company || '').trim()
+  };
+
   try {
-    const matches = await lookupClientContactsByName(name);
-    if (matches.length === 0) {
-      return res.json({
-        success: true,
-        unique: true,
-        matchCount: 0,
-        message: 'No client found matching that name',
-        client: null,
-        matches: []
-      });
-    }
-    if (matches.length === 1) {
-      return res.json({
-        success: true,
-        unique: true,
-        matchCount: 1,
-        client: matches[0],
-        matches: matches
-      });
-    }
+    const out = await lookupLeadContactByName(name, tenant);
+    const count = (out.matches || []).length;
+    const unique = out.matchType === 'unique' || out.matchType === 'narrowed';
     return res.json({
       success: true,
-      unique: false,
-      matchCount: matches.length,
+      unique,
+      matchType: out.matchType,
+      matchCount: count,
+      tenantClientId: out.tenantClientId,
+      tenantClientName: out.tenantClientName,
+      lead: out.lead,
+      matches: out.matches,
       message:
-        'Multiple clients match this name; pick one using clientId or airtableRecordId and call again if you add recordId later',
-      client: null,
-      matches
+        count === 0
+          ? 'No lead found with that name in this tenant base (check First/Last in Airtable)'
+          : unique
+            ? null
+            : 'Multiple or ambiguous matches; pass company= to narrow or disambiguate manually'
     });
   } catch (err) {
+    if (err.code === 'TENANT_NOT_FOUND') {
+      return res.status(400).json({ success: false, error: err.message });
+    }
     moduleLogger.error('coaching/client-contact-lookup error:', err.message);
     return res.status(500).json({ success: false, error: err.message || 'Lookup failed' });
   }
