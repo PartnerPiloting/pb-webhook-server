@@ -1786,6 +1786,16 @@ async function findLeadByName(client, contactName, company = null) {
         return result;
     }
     
+    // Detect "Last, First" format (e.g. "Visser, Johann") and swap to "First Last"
+    if (contactName.includes(',')) {
+        const commaParts = contactName.split(',').map(p => p.trim()).filter(Boolean);
+        if (commaParts.length === 2 && commaParts.every(p => p.length >= 2)) {
+            const swapped = `${commaParts[1]} ${commaParts[0]}`;
+            logger.info(`Detected "Last, First" comma format in "${contactName}" — searching as "${swapped}"`);
+            contactName = swapped;
+        }
+    }
+    
     const clientBase = createBaseInstance(client.airtableBaseId);
     const nameParts = contactName.trim().split(/\s+/);
     
