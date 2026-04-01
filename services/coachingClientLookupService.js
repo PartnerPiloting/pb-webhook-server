@@ -13,8 +13,18 @@ const inboundEmailService = require('./inboundEmailService');
  * @param {{ clientId?: string, clientName?: string }} q
  */
 async function resolveTenantClient(q) {
-  const id = (q.clientId || process.env.COACHING_LEADS_CLIENT_ID || '').trim();
-  const nameQ = (q.clientName || process.env.COACHING_LEADS_CLIENT_NAME || '').trim();
+  const id = (
+    q.clientId ||
+    process.env.OWNER_CLIENT_ID ||
+    process.env.COACHING_LEADS_CLIENT_ID ||
+    ''
+  ).trim();
+  const nameQ = (
+    q.clientName ||
+    process.env.OWNER_CLIENT_NAME ||
+    process.env.COACHING_LEADS_CLIENT_NAME ||
+    ''
+  ).trim();
 
   if (id) {
     const all = await clientService.getAllClients();
@@ -59,7 +69,7 @@ async function lookupLeadContactByName(leadName, tenant) {
   const client = await resolveTenantClient(tenant);
   if (!client) {
     const err = new Error(
-      'No tenant client resolved. Pass clientId or clientName query param, or set COACHING_LEADS_CLIENT_ID / COACHING_LEADS_CLIENT_NAME on the server.'
+      'No tenant client resolved. Pass clientId or clientName query param, or set OWNER_CLIENT_ID (or COACHING_LEADS_CLIENT_ID) / OWNER_CLIENT_NAME on the server.'
     );
     err.code = 'TENANT_NOT_FOUND';
     throw err;

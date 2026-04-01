@@ -173,7 +173,7 @@ Inspired by real threads (e.g. contact reschedules; you reply and move the meeti
 `GET https://pb-webhook-server.onrender.com/coaching/client-contact-lookup?name=<First+Last>&clientId=<MasterClientId>`
 
 - **`name`** — Lead’s **First + Last** as stored in Airtable (same rules as `inboundEmailService.findLeadByName`: hyphens, “Last, First”, etc.).
-- **`clientId`** — Your row on **Master `Clients`** (`Client ID`), e.g. the ID for Guy Wilson’s tenant **unless** you set **`COACHING_LEADS_CLIENT_ID`** (or **`COACHING_LEADS_CLIENT_NAME`**) on Render so ChatGPT can omit it.
+- **`clientId`** — Your row on **Master `Clients`** (`Client ID`), e.g. the ID for Guy Wilson’s tenant **unless** you set **`OWNER_CLIENT_ID`** on Render (legacy: `COACHING_LEADS_CLIENT_ID`) so ChatGPT can omit it. Optional **`OWNER_CLIENT_NAME`** matches **Client Name** if you prefer that.
 - **`clientName`** (optional) — Match Master `Client Name` if you prefer not to use `clientId`.
 - **`company`** (optional) — Helps disambiguate when several leads share the same name.
 
@@ -185,7 +185,7 @@ Inspired by real threads (e.g. contact reschedules; you reply and move the meeti
 
 **Your next step after deploy:**
 
-1. **(Optional)** In Render → your web service → **Environment**, set **`COACHING_LEADS_CLIENT_ID`** to your Master **Client ID** so ChatGPT does not need to send `clientId` every time.
+1. **(Optional)** In Render → **Environment**, set **`OWNER_CLIENT_ID`** to your Master **Client ID** (must match the **Client ID** field in Airtable exactly — hyphens vs underscores matter only insofar as they must match that cell; lookup is case-insensitive). Old name `COACHING_LEADS_CLIENT_ID` still works if already set.
 2. **Custom GPT:** Create or edit a GPT → **Actions** → **Import** `personal-tracker/openapi-coaching-lead-lookup.yaml` (or paste its contents).
 3. Set **Authentication** to **API key** (or Bearer, depending on UI): paste **`PB_WEBHOOK_SECRET`** as the token (same value you use for debug log access — **never** put it in the YAML file or chat).
 4. **Test** in the GPT: *What is Matthew Bulat’s email?* — If it fails, use **Preview / test** on the action or run `curl.exe` with your secret (see spike section above).
