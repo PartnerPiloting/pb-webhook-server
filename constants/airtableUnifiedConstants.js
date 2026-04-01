@@ -60,6 +60,14 @@ const CLIENT_FIELDS = {
   ALTERNATIVE_EMAIL_ADDRESSES: 'Alternative Email Addresses' // Semicolon-separated list for inbound email matching
 };
 
+// Optional columns on Master **Clients** table for coaching / ChatGPT convenience lookup (add in Airtable if missing)
+const CLIENT_CONTACT_LOOKUP_FIELDS = {
+  PHONE: 'Phone',
+  LINKEDIN_PROFILE_URL: 'LinkedIn Profile URL',
+  LINKEDIN_URL: 'LinkedIn URL',
+  LOCATION: 'Location'
+};
+
 // Field names for Leads table
 const LEAD_FIELDS = {
   // Identity fields
@@ -395,6 +403,7 @@ module.exports = {
   MASTER_TABLES,
   CLIENT_TABLES,
   CLIENT_FIELDS,
+  CLIENT_CONTACT_LOOKUP_FIELDS,
   LEAD_FIELDS,
   CLIENT_RUN_FIELDS,
   JOB_TRACKING_FIELDS,
