@@ -125,7 +125,7 @@ router.get("/health", (_req, res) => {
  *   Optional: clientName=Guy+Wilson, company=... (disambiguation)
  * Auth: Authorization: Bearer PB_WEBHOOK_SECRET (same pattern as /debug-render-logs)
  *
- * Resolves tenant from Master **Clients** (clientId / clientName or COACHING_LEADS_CLIENT_ID env),
+ * Resolves tenant from Master **Clients** (clientId / clientName or OWNER_CLIENT_ID env),
  * then reads **Leads** in that base: email, phone, linkedinProfileUrl, location, company.
  */
 router.get("/coaching/client-contact-lookup", async (req, res) => {

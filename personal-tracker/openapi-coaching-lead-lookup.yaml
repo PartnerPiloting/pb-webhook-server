@@ -1,6 +1,6 @@
 # Paste into ChatGPT: Custom GPT → Actions → Import from OpenAPI
 # Then set Authentication: API Key → Auth Type: Bearer → Token = your PB_WEBHOOK_SECRET
-# Optional on Render: set COACHING_LEADS_CLIENT_ID so clientId can be omitted from calls.
+# Optional on Render: set OWNER_CLIENT_ID so clientId can be omitted from calls.
 
 openapi: 3.1.0
 info:
@@ -18,7 +18,7 @@ paths:
       summary: Find lead contact details by name
       description: >
         Searches the Leads table in the tenant base. Pass clientId unless the server has
-        COACHING_LEADS_CLIENT_ID set. Use company if multiple people share the same name.
+        OWNER_CLIENT_ID set on the server. Use company if multiple people share the same name.
       security:
         - bearerAuth: []
       parameters:
