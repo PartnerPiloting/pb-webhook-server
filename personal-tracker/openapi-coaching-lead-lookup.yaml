@@ -1,0 +1,107 @@
+# Paste into ChatGPT: Custom GPT → Actions → Import from OpenAPI
+# Then set Authentication: API Key → Auth Type: Bearer → Token = your PB_WEBHOOK_SECRET
+# Optional on Render: set COACHING_LEADS_CLIENT_ID so clientId can be omitted from calls.
+
+openapi: 3.1.0
+info:
+  title: Coaching lead lookup (Leads table)
+  description: >
+    Look up a person in the coach's Airtable Leads table by name.
+    Returns email, phone, LinkedIn URL, location, company when present.
+  version: 1.0.0
+servers:
+  - url: https://pb-webhook-server.onrender.com
+paths:
+  /coaching/client-contact-lookup:
+    get:
+      operationId: lookup_lead_contact
+      summary: Find lead contact details by name
+      description: >
+        Searches the Leads table in the tenant base. Pass clientId unless the server has
+        COACHING_LEADS_CLIENT_ID set. Use company if multiple people share the same name.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: name
+          in: query
+          required: true
+          description: Lead first and last name as in Airtable (e.g. Matthew Bulat)
+          schema:
+            type: string
+        - name: clientId
+          in: query
+          required: false
+          description: Master Clients "Client ID" for whose base to search (omit if env default set)
+          schema:
+            type: string
+        - name: clientName
+          in: query
+          required: false
+          description: Alternative to clientId — Master Clients "Client Name" substring match
+          schema:
+            type: string
+        - name: company
+          in: query
+          required: false
+          description: Helps disambiguate duplicate names
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Lookup result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  unique:
+                    type: boolean
+                  matchType:
+                    type: string
+                    description: unique | narrowed | ambiguous | none
+                  matchCount:
+                    type: integer
+                  tenantClientId:
+                    type: string
+                  tenantClientName:
+                    type: string
+                  lead:
+                    type: object
+                    nullable: true
+                    properties:
+                      airtableRecordId:
+                        type: string
+                      firstName:
+                        type: string
+                      lastName:
+                        type: string
+                      leadName:
+                        type: string
+                      email:
+                        type: string
+                      phone:
+                        type: string
+                      linkedinProfileUrl:
+                        type: string
+                      location:
+                        type: string
+                      company:
+                        type: string
+                  matches:
+                    type: array
+                  message:
+                    type: string
+                    nullable: true
+        "400":
+          description: Bad request (e.g. missing tenant)
+        "401":
+          description: Unauthorized
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: PB_WEBHOOK_SECRET
