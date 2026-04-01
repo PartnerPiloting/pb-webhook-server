@@ -68,6 +68,65 @@ It lives inside `pb-webhook-server-dev` so you only ever open **one** Cursor pro
 
 **Illustrative client pattern (Matthew):** University professor; large prompt library / lead-magnet catalogue; tends to go **very deep** in updates while the coaching aim is to **shift toward what sells** (clarity, one offer, one audience). The system should tag that pattern over time and keep briefings **high-signal**, not a repeat of his full inventory.
 
+## ASH Client Interaction OS (MCP layer spec — imported)
+
+Source: **ASH Client Interaction Operating System (MCP Layer Spec)** (`ASH_Client_Interaction_OS.pdf`). This is the **canonical coaching shape** for the client lane; implementation here should align with it.
+
+**Purpose:** A repeatable system that improves **call quality**, **client outcomes**, **conversion**, and **consistency**.
+
+**Core loop**
+
+1. **Prep** — before the call (brief, cheat sheet).  
+2. **Execute** — the live call (human; OS supports, doesn’t replace).  
+3. **Debrief** — structured update after behaviour signals.  
+4. **Reinforce** — follow-up (e.g. concise email) so direction sticks.
+
+**Principle:** Optimise for **decisions, patterns, and direction** — **not** raw notes.
+
+**Client record (data model)**
+
+| Field | Role |
+|--------|------|
+| `name` | Client identifier |
+| `summary` | Compressed story / context |
+| `patterns` | Recurring behaviours (e.g. overbuilder) |
+| `current_direction` | What we’re steering toward now |
+| `last_shift` | Last meaningful change in stance or focus |
+| `risks` | What might derail (e.g. revert to building) |
+| `commitments` | Client-related commitments (see open question below vs global open loops) |
+| `metrics` | Trackable signals (define per client when we build) |
+| `last_updated` | Freshness |
+
+**MCP-style commands (names from spec)**
+
+| Command | Role |
+|---------|------|
+| **`PrepClient`** | Output a **short call brief**: current pattern, last shift, risk, key question, your role, constraint. |
+| **`PostCallUpdate`** | Update the structured `Client` record from **behaviour signals** (post-call debrief). |
+| **`GenerateFollowUpEmail`** | Produce a **concise, reality-based** follow-up email after the call. |
+
+**`PrepClient` output shape (from spec):** pattern, last shift, risk, key question, your role, constraint.
+
+**Call cheat sheet template (from spec)** — single-screen anchor for Execute:
+
+- **OBJECTIVE** — e.g. drive conversations  
+- **WATCH FOR** — e.g. overbuilding  
+- **KEY QUESTION** — e.g. how many conversations?  
+- **REFRAME** — e.g. not a content problem  
+- **CONSTRAINT** — e.g. no new assets  
+
+**Example in spec (Matthew):** Pattern **Overbuilder**; risk **reverting to building**; key question **how many conversations?**; role **reduce not expand**.
+
+**Summary line from spec:** This system converts **scattered notes** into **structured insight** and **scalable coaching**.
+
+**Map to our earlier coaching ideas:** Analyse email + calendar-aware reply vs call depth + books/YouTube fits **Prep / Reinforce**; persisting touchpoints fits **`PostCallUpdate`** and the `Client` record; **GenerateFollowUpEmail** matches **follow-up after calls** (and can complement ad-hoc “reply to Matthew’s dump” flows).
+
+**Open questions (to resolve when building)**
+
+- **`Client.commitments` vs global “promises” lane:** Same underlying table with a client link, a separate field only for coaching promises, or both — pick one rule so nothing falls between cracks or duplicates.  
+- **`metrics`:** What you want to count first (e.g. conversations/week, assets shipped, call frequency).  
+- **“ASH” acronym:** Not spelled out in the PDF; expand in this doc when you want it on paper.
+
 ## Daily rhythm (target workflow)
 
 - **During the day:** work as usual; optional quick capture via chat (“note: …”, “I promised …”).
@@ -103,7 +162,7 @@ Inspired by real threads (e.g. contact reschedules; you reply and move the meeti
 3. **Gmail** (and Fathom) ingestion; richer extraction.  
 4. **Gates / gap prompts** (like the two-gate example) once basics are trusted.
 
-**Coaching track (can trail or overlap):** client + touchpoint tables, `pre_call_brief` / `save_touchpoint_summary` style tools, then Gmail pull for threads when ready.
+**Coaching track (can trail or overlap):** implement **ASH** shape — `Client` record + tools **`PrepClient`**, **`PostCallUpdate`**, **`GenerateFollowUpEmail`**; touchpoint storage; cheat sheet generation; then Gmail pull for threads when ready.
 
 ## Next steps (when you’re ready to build)
 
