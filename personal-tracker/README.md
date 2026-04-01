@@ -1,6 +1,9 @@
 # Personal tracker (commitments / open loops)
 
-This folder is the home for a **personal system** (separate from webhook business logic) that helps **promises and follow-ups** not fall through the cracks.
+This folder is the home for a **personal system** (separate from webhook business logic) with **two parallel high-level goals** (same backend/MCP where possible, different tools and data shapes):
+
+1. **Open loops / commitments** — don’t miss promises, triage, daily briefing, calendar-aware nudges.  
+2. **Coaching / client context** — quickly get aligned on dense client emails, draft replies, call plans, and resource ideas; **remember** the thread next time via persisted data (not chat memory alone).
 
 It lives inside `pb-webhook-server-dev` so you only ever open **one** Cursor project and one git repo.
 
@@ -46,6 +49,24 @@ It lives inside `pb-webhook-server-dev` so you only ever open **one** Cursor pro
 | **Triage** | What to do today — ordering, snooze, dismiss; inbox/calendar are inputs. |
 | **Commitments** | Promises — who/what/when, sources, don’t drop; stricter than ideas. |
 | **Ideas** | Quick capture — low friction, triage later; separate from commitments in briefings. |
+| **Coaching / clients** | Per-client profile and touchpoints — prep, reply drafts, call talking points, resources; **saved** so the next session starts warm. |
+
+## Parallel objective — coaching / client context (high level)
+
+**Problem today:** Long, detailed client emails (e.g. implementation dumps, catalogues of assets) sit unread because full digestion takes too long — so you delay and carry guilt.
+
+**Target behaviour (with MCP + DB):** In ChatGPT you can ask, in one flow, to **analyse** the thread (paste at first; later pull from Gmail), **draft a short acknowledgment** (you edit/send), **suggest what to say on the upcoming coaching call**, and **suggest books or YouTube** that nudge the client toward the paradigm you want (e.g. buyer/outcome vs. exhaustive product detail). The assistant uses **Calendar** when available: *meeting soon → brief email now, deeper redirect on the call* (or the inverse if a long gap would feel like silence).
+
+**Memory (“next time”):** Continuity requires **persisted** records — client profile, **summaries** of touchpoints (email/Fathom), and decisions — loaded via tools on the next call. Relying only on ChatGPT chat history is **not** enough.
+
+**Implementation notes:**
+
+- **Same MCP server** can expose both **open-loop** tools and **coaching** tools; keep **data and prompts** separated so coaching content doesn’t pollute todo logic.  
+- **Link analysis:** optional and **shallow** in v1 (email body + a few key URLs if needed); crawling whole sites is slow and low ROI early on.  
+- **Resources:** prefer a **small curated list** you maintain plus model suggestions; **verify** titles/links before sending.  
+- **Privacy:** client content is sensitive; tight access, retention, and logging discipline.
+
+**Illustrative client pattern (Matthew):** University professor; large prompt library / lead-magnet catalogue; tends to go **very deep** in updates while the coaching aim is to **shift toward what sells** (clarity, one offer, one audience). The system should tag that pattern over time and keep briefings **high-signal**, not a repeat of his full inventory.
 
 ## Daily rhythm (target workflow)
 
@@ -76,10 +97,13 @@ Inspired by real threads (e.g. contact reschedules; you reply and move the meeti
 
 ## Build phasing (keep v1 smaller)
 
+**Open loops track:**  
 1. Capture + simple list in DB + ChatGPT tools (manual dates / check-off).  
 2. **Calendar** integration, then **daily briefing**.  
 3. **Gmail** (and Fathom) ingestion; richer extraction.  
 4. **Gates / gap prompts** (like the two-gate example) once basics are trusted.
+
+**Coaching track (can trail or overlap):** client + touchpoint tables, `pre_call_brief` / `save_touchpoint_summary` style tools, then Gmail pull for threads when ready.
 
 ## Next steps (when you’re ready to build)
 
