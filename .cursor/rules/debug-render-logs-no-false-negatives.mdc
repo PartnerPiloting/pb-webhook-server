@@ -7,6 +7,8 @@ alwaysApply: true
 
 `GET /debug-render-logs` returns **at most** `limit` lines; **`hasMore` is often true**. One fetch is never enough to treat “not found” as definitive.
 
+**Implementation note (repo):** This endpoint uses Render’s logs API with **`direction=backward`** so the **newest** lines in the window are returned first. Older behavior used `forward`, which returned the **start** of the window first — high volume (cron, warm pings) could **fill the limit** before **recent** lines (e.g. a webhook) appeared, causing false “not found” even with no ingestion delay. If `hasMore` is true, paginate with `nextStartTime` / `nextEndTime` from the response for deeper history.
+
 ## Required procedure (do this every time you hunt for a line or event)
 
 You **must** complete the steps below **before** telling the user an event does not appear in production logs. Softer wording alone is not a substitute.
