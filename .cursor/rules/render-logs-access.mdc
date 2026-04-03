@@ -7,7 +7,7 @@ alwaysApply: true
 
 When debugging production issues, you can query Render logs directly instead of asking the user to check them.
 
-**Investigation default:** For “did X hit production?” or “find this error”, do **not** stop at one small fetch. Follow **`debug-render-logs-no-false-negatives.mdc`**: minimum **`minutes=120`** + **`limit=500`**, save to file, Node-parse `message`, then **second pass** if needed.
+**Investigation default:** For “did X hit production?” or “find this error”, follow **`debug-render-logs-no-false-negatives.mdc`**: **`minutes=120`** + **`limit=500`**, save to file, Node-parse `message`. If the user **just** triggered the event, **poll up to 3 times** with **~60s** between attempts — Render does not document an exact log delay; async delivery and log pipelines mean the first fetch can be empty.
 
 ## Endpoint
 
