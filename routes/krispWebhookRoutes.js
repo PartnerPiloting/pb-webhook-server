@@ -126,16 +126,34 @@ router.post('/webhooks/krisp', (req, res) => {
   }
 
   const body = req.body && typeof req.body === 'object' ? req.body : {};
-  const meetingId = body.krisp_meeting_id ?? body.meeting_id ?? body.id ?? null;
-  const title = body.meeting_title ?? body.title ?? null;
+  const nested =
+    body.data && typeof body.data === 'object' && !Array.isArray(body.data) ? body.data : null;
+  const meetingId =
+    body.krisp_meeting_id ??
+    body.meeting_id ??
+    body.id ??
+    nested?.id ??
+    nested?.meeting_id ??
+    null;
+  const title =
+    body.meeting_title ?? body.title ?? nested?.title ?? nested?.meeting_title ?? nested?.name ?? null;
+  const summaryVal = body.summary ?? nested?.summary;
   const summaryLen =
-    typeof body.summary === 'string' ? body.summary.length : body.summary != null ? JSON.stringify(body.summary).length : 0;
+    typeof summaryVal === 'string'
+      ? summaryVal.length
+      : summaryVal != null
+        ? JSON.stringify(summaryVal).length
+        : 0;
+  const transcriptVal = body.transcripts ?? nested?.transcript ?? nested?.transcripts ?? nested?.text;
   let transcriptLen = 0;
-  if (typeof body.transcripts === 'string') transcriptLen = body.transcripts.length;
-  else if (body.transcripts != null) transcriptLen = JSON.stringify(body.transcripts).length;
+  if (typeof transcriptVal === 'string') transcriptLen = transcriptVal.length;
+  else if (transcriptVal != null) transcriptLen = JSON.stringify(transcriptVal).length;
+
+  const event = typeof body.event === 'string' ? body.event : null;
+  const dataKeys = nested ? Object.keys(nested).join(',') : '';
 
   log.info(
-    `KRISP-WEBHOOK received meetingId=${meetingId ?? 'unknown'} title=${title ? String(title).slice(0, 120) : 'n/a'} summaryChars=${summaryLen} transcriptChars=${transcriptLen} keys=${Object.keys(body).join(',')}`,
+    `KRISP-WEBHOOK received event=${event ?? 'n/a'} meetingId=${meetingId ?? 'unknown'} title=${title ? String(title).slice(0, 120) : 'n/a'} summaryChars=${summaryLen} transcriptChars=${transcriptLen} topKeys=${Object.keys(body).join(',')}${dataKeys ? ` dataKeys=${dataKeys}` : ''}`,
   );
 
   if (process.env.KRISP_WEBHOOK_LOG_FULL_BODY === '1') {
