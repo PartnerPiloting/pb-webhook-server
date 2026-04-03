@@ -1,0 +1,30 @@
+---
+description: Never claim log absence from one limited debug-render-logs fetch; avoid false negatives
+alwaysApply: true
+---
+
+# Debug Render logs — avoid false negatives
+
+`GET /debug-render-logs` returns **at most** `limit` log lines and often sets **`hasMore: true`**. That response is a **slice**, not the full log history.
+
+## Do not say this (wrong)
+
+- “It’s not in the logs” / “Krisp never hit the server” / “Nothing happened” — based on **one** `curl` with default or small `minutes`/`limit`.
+- Treating a failed `findstr` / `grep` on **piped JSON** as proof the string is absent (long lines truncate; escapes break line tools).
+
+## Say this instead (right)
+
+- “I **didn’t find** `<needle>` in **this** batch (**N** lines, last **M** minutes / stated UTC window).”
+- If the user later shows the line in the Render UI, treat that as authoritative; **your batch missed it** (timing, truncation, or search method) — do not argue.
+
+## Before reporting “not found”
+
+1. **Widen the window**: e.g. `minutes=120`–`180` (or longer if the user said “earlier today”).
+2. **Raise `limit`**: e.g. `400`–`500` (max allowed by the endpoint).
+3. If the user gave an approximate event time, use **`startTime` / `endTime` (UTC)** instead of only `minutes`.
+4. **Fetch to a file**, then **parse JSON and search `message`** with Node — follow `.cursor/rules/searching-render-logs.mdc` (do not rely on `findstr` on raw JSON).
+5. If still empty but the user expects a hit: offer **one more** pass (different window) or state clearly that the **API slice may omit** the line and the **Render dashboard search** can still show it.
+
+## When the user pastes a log screenshot
+
+Assume their view is **valid**. Use it to narrow UTC `startTime`/`endTime` and re-query, or adjust the investigation — don’t dismiss it because an earlier automated fetch missed the same line.

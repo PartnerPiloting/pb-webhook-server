@@ -1,3 +1,8 @@
+---
+description: Reliable local search of debug-render-logs JSON (parse then filter)
+alwaysApply: true
+---
+
 # Searching Render Logs Properly
 
 ## NEVER DO THIS
@@ -57,8 +62,8 @@ inbound?.forEach(l => console.log(l.timestamp, (l.message||'').substring(0,220))
 "
 ```
 
-## One File, One Search
+## One file per search pass
 
-- Do NOT create multiple temp log files with different time ranges
-- Fetch once with a wide time range, search that one file
-- Delete temp files when done to avoid confusion
+- Prefer **one** wide fetch (`minutes` + `limit` high), then parse once.
+- If the needle is missing but the user expects it, do a **second** fetch with `startTime`/`endTime` (UTC) or a different window — see `debug-render-logs-no-false-negatives.mdc`.
+- Delete temp files when done (do not commit `temp-render-logs.json`).
