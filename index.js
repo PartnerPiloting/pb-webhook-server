@@ -1775,6 +1775,15 @@ try {
     moduleLogger.error("index.js: Error mounting inbound email routes", e.message, e.stack);
 }
 
+// Krisp meeting webhook (POST JSON; auth via Authorization header — see routes/krispWebhookRoutes.js)
+try {
+    const krispWebhookRoutes = require('./routes/krispWebhookRoutes.js');
+    app.use(krispWebhookRoutes);
+    moduleLogger.info('index.js: Krisp webhook mounted at POST /webhooks/krisp');
+} catch (e) {
+    moduleLogger.error('index.js: Error mounting Krisp webhook routes', e.message, e.stack);
+}
+
 // Top Scoring Leads scaffold (feature gated inside the router module)
 try {
     const mountTopScoringLeads = require('./routes/topScoringLeadsRoutes.js');
