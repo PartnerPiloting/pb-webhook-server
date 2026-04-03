@@ -13,8 +13,8 @@
  * Anyone who guesses the URL can send fake payloads. Turn off when Krisp Authorization header works.
  */
 
-/** @type {boolean} Temporary: accept Krisp POSTs without Authorization (Krisp UI header save broken). Set false + use env or header. */
-const KRISP_WEBHOOK_SKIP_AUTH_HARDCODED = true;
+/** @type {boolean} Set true only to bypass auth while debugging Krisp UI. Prefer Authorization header matching PB_WEBHOOK_SECRET / KRISP_WEBHOOK_INBOUND_SECRET. */
+const KRISP_WEBHOOK_SKIP_AUTH_HARDCODED = false;
 
 const express = require('express');
 const crypto = require('crypto');
