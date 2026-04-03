@@ -77,7 +77,7 @@ router.post('/webhooks/krisp', (req, res) => {
       });
     }
 
-    const authHeader = req.get('authorization') || req.get('Authorization') || '';
+    const authHeader = req.get('x-webhook-secret') || req.get('authorization') || req.get('Authorization') || '';
     const token = normalizeAuthToken(authHeader);
     if (!timingSafeEqualString(token, expected)) {
       const hdrLen = authHeader.length;
