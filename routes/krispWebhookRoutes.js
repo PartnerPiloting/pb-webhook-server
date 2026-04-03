@@ -58,6 +58,33 @@ function krispSkipAuth() {
 router.get('/webhooks/krisp', (_req, res) => {
   res.status(200).json({ ok: true, krisp_webhook: true });
 });
+
+// Temporary debug endpoint — admin-auth protected, reveals secret metadata (not the full value) and tests incoming header.
+router.get('/webhooks/krisp/debug', (req, res) => {
+  const adminAuth = (req.get('authorization') || '').replace(/^Bearer\s+/i, '').trim();
+  const adminOk = adminAuth === (process.env.PB_WEBHOOK_SECRET || '').trim();
+  if (!adminOk) return res.status(401).json({ error: 'admin auth required (PB_WEBHOOK_SECRET)' });
+
+  const raw = process.env.KRISP_WEBHOOK_INBOUND_SECRET || '';
+  const trimmed = raw.trim();
+  const fallbackRaw = process.env.PB_WEBHOOK_SECRET || '';
+  const usingFallback = !process.env.KRISP_WEBHOOK_INBOUND_SECRET;
+  const effective = krispInboundSecret();
+
+  const charCodes = (s) => [...s].map((c, i) => ({ pos: i, char: c === ' ' ? '(space)' : c.length > 1 ? `(multi-byte)` : c, code: c.charCodeAt(0) }));
+
+  res.json({
+    KRISP_WEBHOOK_INBOUND_SECRET_set: !!process.env.KRISP_WEBHOOK_INBOUND_SECRET,
+    raw_length: raw.length,
+    trimmed_length: trimmed.length,
+    effective_length: effective.length,
+    first3: effective.substring(0, 3),
+    last3: effective.substring(effective.length - 3),
+    char_codes: charCodes(effective),
+    using_fallback_PB_WEBHOOK_SECRET: usingFallback,
+    skip_auth: krispSkipAuth(),
+  });
+});
 router.head('/webhooks/krisp', (_req, res) => {
   res.status(204).end();
 });
