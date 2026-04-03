@@ -2,9 +2,10 @@
  * Krisp Webhook API — ingestion stub.
  *
  * Krisp POSTs meeting payloads to your URL. In the Krisp UI, set optional header
- *   Authorization: <secret>
- * and set the same value in Render:
- *   KRISP_WEBHOOK_INBOUND_SECRET=<that exact secret>
+ *   Authorization: Bearer <secret>   (or the raw secret — both work)
+ * Use the same value as your existing admin secret, or a dedicated one:
+ *   KRISP_WEBHOOK_INBOUND_SECRET=<secret>   (preferred if set)
+ *   PB_WEBHOOK_SECRET=<secret>             (used if KRISP_WEBHOOK_INBOUND_SECRET is empty)
  *
  * Optional: KRISP_WEBHOOK_LOG_FULL_BODY=1 logs stringified JSON (large / sensitive — use briefly).
  */
@@ -32,7 +33,11 @@ function timingSafeEqualString(a, b) {
 }
 
 function krispInboundSecret() {
-  return (process.env.KRISP_WEBHOOK_INBOUND_SECRET || '').trim();
+  return (
+    process.env.KRISP_WEBHOOK_INBOUND_SECRET ||
+    process.env.PB_WEBHOOK_SECRET ||
+    ''
+  ).trim();
 }
 
 // Body parsed by global express.json in index.js (10mb limit).
@@ -41,11 +46,12 @@ router.post('/webhooks/krisp', (req, res) => {
   const expected = krispInboundSecret();
 
   if (!expected) {
-    log.error('KRISP-WEBHOOK rejected: KRISP_WEBHOOK_INBOUND_SECRET is not set');
+    log.error('KRISP-WEBHOOK rejected: no secret (set KRISP_WEBHOOK_INBOUND_SECRET or PB_WEBHOOK_SECRET)');
     return res.status(503).json({
       ok: false,
       error: 'server_not_configured',
-      message: 'Set KRISP_WEBHOOK_INBOUND_SECRET on the server to match the Authorization header value in Krisp.',
+      message:
+        'Set KRISP_WEBHOOK_INBOUND_SECRET or PB_WEBHOOK_SECRET on the server to match the Authorization value in Krisp.',
     });
   }
 
