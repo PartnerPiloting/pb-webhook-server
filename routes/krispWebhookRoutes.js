@@ -35,7 +35,8 @@ function krispInboundSecret() {
   return (process.env.KRISP_WEBHOOK_INBOUND_SECRET || '').trim();
 }
 
-router.post('/webhooks/krisp', express.json({ limit: '10mb' }), (req, res) => {
+// Body parsed by global express.json in index.js (10mb limit).
+router.post('/webhooks/krisp', (req, res) => {
   const log = createSafeLogger('SYSTEM', null, 'krisp_webhook');
   const expected = krispInboundSecret();
 
