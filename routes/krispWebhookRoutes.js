@@ -9,10 +9,12 @@
  *
  * Optional: KRISP_WEBHOOK_LOG_FULL_BODY=1 logs stringified JSON (large / sensitive — use briefly).
  *
- * Insecure escape hatch (e.g. Krisp UI cannot save custom headers): set KRISP_WEBHOOK_SKIP_AUTH=1
- * on Render to accept POSTs with no Authorization. Anyone who guesses the URL can send fake payloads.
- * Remove or unset as soon as headers work.
+ * Insecure escape hatch: KRISP_WEBHOOK_SKIP_AUTH_HARDCODED below, or env KRISP_WEBHOOK_SKIP_AUTH=1.
+ * Anyone who guesses the URL can send fake payloads. Turn off when Krisp Authorization header works.
  */
+
+/** @type {boolean} Temporary: accept Krisp POSTs without Authorization (Krisp UI header save broken). Set false + use env or header. */
+const KRISP_WEBHOOK_SKIP_AUTH_HARDCODED = true;
 
 const express = require('express');
 const crypto = require('crypto');
@@ -45,6 +47,7 @@ function krispInboundSecret() {
 }
 
 function krispSkipAuth() {
+  if (KRISP_WEBHOOK_SKIP_AUTH_HARDCODED) return true;
   const v = (process.env.KRISP_WEBHOOK_SKIP_AUTH || '').trim().toLowerCase();
   return v === '1' || v === 'true' || v === 'yes';
 }
