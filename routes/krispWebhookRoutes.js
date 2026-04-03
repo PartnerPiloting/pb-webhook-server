@@ -10,6 +10,7 @@
  *   PB_WEBHOOK_SECRET=<secret>             (used if KRISP_WEBHOOK_INBOUND_SECRET is empty)
  *
  * Optional: KRISP_WEBHOOK_LOG_FULL_BODY=1 logs stringified JSON (large / sensitive — use briefly).
+ * With DATABASE_URL (Render Postgres), each accepted POST is stored in krisp_webhook_events (JSONB).
  *
  * Insecure escape hatch: KRISP_WEBHOOK_SKIP_AUTH_HARDCODED below, or env KRISP_WEBHOOK_SKIP_AUTH=1.
  * Anyone who guesses the URL can send fake payloads. Turn off when Krisp Authorization header works.
@@ -21,6 +22,7 @@ const KRISP_WEBHOOK_SKIP_AUTH_HARDCODED = false;
 const express = require('express');
 const crypto = require('crypto');
 const { createSafeLogger } = require('../utils/loggerHelper');
+const { persistKrispWebhook } = require('../services/krispWebhookDb');
 
 const router = express.Router();
 
@@ -90,7 +92,7 @@ router.head('/webhooks/krisp', (_req, res) => {
 });
 
 // Body parsed by global express.json in index.js (10mb limit).
-router.post('/webhooks/krisp', (req, res) => {
+router.post('/webhooks/krisp', async (req, res) => {
   const log = createSafeLogger('SYSTEM', null, 'krisp_webhook');
   const skipAuth = krispSkipAuth();
   const expected = krispInboundSecret();
@@ -164,10 +166,23 @@ router.post('/webhooks/krisp', (req, res) => {
     }
   }
 
+  let dbSaved = false;
+  try {
+    const r = await persistKrispWebhook({
+      event,
+      krispId: meetingId != null ? String(meetingId) : null,
+      payload: body,
+    });
+    dbSaved = r.ok === true;
+  } catch (e) {
+    log.error(`KRISP-WEBHOOK db persist failed: ${e.message}`);
+  }
+
   return res.status(200).json({
     ok: true,
     received: true,
     krisp_meeting_id: meetingId,
+    db_saved: dbSaved,
   });
 });
 
