@@ -1163,7 +1163,9 @@ router.get("/debug-render-logs", async (req, res) => {
     const params = new URLSearchParams({
       ownerId: RENDER_OWNER_ID,
       limit: limit.toString(),
-      direction: 'forward',
+      // Newest-first within [startTime, endTime]. "forward" returns oldest-first and often
+      // fills the entire limit with early-window noise (cron, warm pings), hiding recent webhooks.
+      direction: 'backward',
       resource: RENDER_SERVICE_ID,
       startTime: startTime,
       endTime: endTime
