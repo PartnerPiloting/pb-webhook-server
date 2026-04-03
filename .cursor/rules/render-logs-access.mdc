@@ -21,28 +21,28 @@ Authorization: Bearer Diamond9753!!@@pb
 | `minutes` | number | 30 | Fetch logs from last N minutes |
 | `startTime` | ISO string | - | Specific start time (UTC) |
 | `endTime` | ISO string | - | Specific end time (UTC) |
-| `limit` | number | 200 | Max number of log entries |
-| `search` | string | - | Server-side filter (unreliable - prefer local filtering with findstr) |
+| `limit` | number | 200 | Max number of log entries (often `hasMore: true` — not full history) |
+| `search` | string | - | Server-side filter (unreliable — prefer fetch + parse; see `searching-render-logs.mdc`) |
 
 ## Example Queries
 
-**IMPORTANT**: 
-- On Windows, use `curl.exe` (not PowerShell's `Invoke-WebRequest` which times out)
-- The server-side `search` parameter can be unreliable - prefer fetching logs and filtering locally with `findstr /i`
+**IMPORTANT**:
+- On Windows, use `curl.exe` (not PowerShell's `Invoke-WebRequest` which times out).
+- One response is a **limited batch** — see `debug-render-logs-no-false-negatives.mdc`. Do not conclude “not in logs” from a single small fetch.
+- **Reliable filter**: save JSON to a file, parse with Node, search `message` fields — see `searching-render-logs.mdc`. Piping huge JSON through `findstr` can **truncate lines** and cause **false negatives**.
 
 ```bash
-# Recent logs (last 5 minutes)
-curl.exe -s -H "Authorization: Bearer Diamond9753!!@@pb" "https://pb-webhook-server.onrender.com/debug-render-logs?minutes=5&limit=50"
+# Recent logs (last 5 minutes) — inspect or parse file
+curl.exe -s -H "Authorization: Bearer Diamond9753!!@@pb" "https://pb-webhook-server.onrender.com/debug-render-logs?minutes=5&limit=50" -o temp-render-logs.json
 
-# Best approach: fetch logs and filter locally (more reliable than server-side search)
-curl.exe -s -H "Authorization: Bearer Diamond9753!!@@pb" "https://pb-webhook-server.onrender.com/debug-render-logs?minutes=30&limit=200" | findstr /i "INBOUND-EMAIL"
+# Wider window + high limit when hunting a specific event
+curl.exe -s -H "Authorization: Bearer Diamond9753!!@@pb" "https://pb-webhook-server.onrender.com/debug-render-logs?minutes=120&limit=500" -o temp-render-logs.json
 
-# Specific time window (UTC) - remember Render dashboard shows AEST, subtract 11 hours for UTC
-curl.exe -s -H "Authorization: Bearer Diamond9753!!@@pb" "https://pb-webhook-server.onrender.com/debug-render-logs?startTime=2026-02-10T10:24:00Z&endTime=2026-02-10T10:30:00Z&limit=100"
-
-# Search for errors (local filtering is more reliable)
-curl.exe -s -H "Authorization: Bearer Diamond9753!!@@pb" "https://pb-webhook-server.onrender.com/debug-render-logs?minutes=60&limit=300" | findstr /i "ERROR WARN"
+# Specific time window (UTC) — Render dashboard may show local time; convert to UTC
+curl.exe -s -H "Authorization: Bearer Diamond9753!!@@pb" "https://pb-webhook-server.onrender.com/debug-render-logs?startTime=2026-02-10T10:24:00Z&endTime=2026-02-10T10:30:00Z&limit=200" -o temp-render-logs.json
 ```
+
+Then filter with the Node snippet in `searching-render-logs.mdc` (not `findstr` on the pipe).
 
 ## When to Use
 
