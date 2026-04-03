@@ -1,30 +1,46 @@
 ---
-description: Never claim log absence from one limited debug-render-logs fetch; avoid false negatives
+description: Mandatory thorough multi-step search of debug-render-logs before concluding absence
 alwaysApply: true
 ---
 
-# Debug Render logs — avoid false negatives
+# Debug Render logs — mandatory thorough search
 
-`GET /debug-render-logs` returns **at most** `limit` log lines and often sets **`hasMore: true`**. That response is a **slice**, not the full log history.
+`GET /debug-render-logs` returns **at most** `limit` lines; **`hasMore` is often true**. One fetch is never enough to treat “not found” as definitive.
 
-## Do not say this (wrong)
+## Required procedure (do this every time you hunt for a line or event)
 
-- “It’s not in the logs” / “Krisp never hit the server” / “Nothing happened” — based on **one** `curl` with default or small `minutes`/`limit`.
-- Treating a failed `findstr` / `grep` on **piped JSON** as proof the string is absent (long lines truncate; escapes break line tools).
+You **must** complete the steps below **before** telling the user an event does not appear in production logs. Softer wording alone is not a substitute.
 
-## Say this instead (right)
+### 1. First pass (wide, high cap)
 
-- “I **didn’t find** `<needle>` in **this** batch (**N** lines, last **M** minutes / stated UTC window).”
-- If the user later shows the line in the Render UI, treat that as authoritative; **your batch missed it** (timing, truncation, or search method) — do not argue.
+- Fetch with **`minutes=120`** (minimum). Use **`minutes=180`** or more if the user said “today”, “this morning”, or an older window.
+- Use **`limit=500`** (use the highest the endpoint allows).
+- Save to a file (never rely only on piped `findstr` / `grep` on raw JSON — truncated lines cause false negatives).
 
-## Before reporting “not found”
+```bash
+curl.exe -s -H "Authorization: Bearer Diamond9753!!@@pb" "https://pb-webhook-server.onrender.com/debug-render-logs?minutes=120&limit=500" -o temp-render-logs.json
+```
 
-1. **Widen the window**: e.g. `minutes=120`–`180` (or longer if the user said “earlier today”).
-2. **Raise `limit`**: e.g. `400`–`500` (max allowed by the endpoint).
-3. If the user gave an approximate event time, use **`startTime` / `endTime` (UTC)** instead of only `minutes`.
-4. **Fetch to a file**, then **parse JSON and search `message`** with Node — follow `.cursor/rules/searching-render-logs.mdc` (do not rely on `findstr` on raw JSON).
-5. If still empty but the user expects a hit: offer **one more** pass (different window) or state clearly that the **API slice may omit** the line and the **Render dashboard search** can still show it.
+### 2. Parse and search correctly
 
-## When the user pastes a log screenshot
+- Parse JSON and filter on **`log.message`** with Node (copy the pattern in `searching-render-logs.mdc`).
+- Search for the **primary needle** and at least one **fallback** (e.g. route fragment `webhooks/krisp`, `401`, `KrispAgent`, error token) in case the log line format differs.
 
-Assume their view is **valid**. Use it to narrow UTC `startTime`/`endTime` and re-query, or adjust the investigation — don’t dismiss it because an earlier automated fetch missed the same line.
+### 3. Second pass if the first pass has no match
+
+Run **at least one** of:
+
+- **`minutes=360`** (or 720) with **`limit=500`**, same file + Node workflow; **or**
+- **`startTime` / `endTime` in UTC** if the user gave an approximate time (convert from their timezone); **or**
+- A second query shifted **after** the user says they just triggered the event (wait + fetch again).
+
+### 4. Only then report
+
+- State what you **ran** (windows, limits, needles, number of passes).
+- If still no match: “**Not found in those batches**” — not “it never happened.”
+
+## Explicit bans
+
+- Do **not** use **`minutes=30`** and **`limit=200`** as your **only** search when looking for a specific webhook or error.
+- Do **not** use **piped `findstr`** on the JSON stream as the **sole** search method.
+- If the user pastes a log screenshot with a timestamp, **must** run a **`startTime`/`endTime`** pass bracketing that moment in **UTC**.

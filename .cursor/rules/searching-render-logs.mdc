@@ -5,6 +5,8 @@ alwaysApply: true
 
 # Searching Render Logs Properly
 
+**Order of operations:** Wide fetch → save file → Node search. For the **minimum widths and second-pass rules**, see `debug-render-logs-no-false-negatives.mdc`.
+
 ## NEVER DO THIS
 
 ```bash
