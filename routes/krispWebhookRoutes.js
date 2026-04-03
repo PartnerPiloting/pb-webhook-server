@@ -80,7 +80,10 @@ router.post('/webhooks/krisp', (req, res) => {
     const authHeader = req.get('authorization') || req.get('Authorization') || '';
     const token = normalizeAuthToken(authHeader);
     if (!timingSafeEqualString(token, expected)) {
-      log.warn('KRISP-WEBHOOK rejected: invalid Authorization');
+      const hdrLen = authHeader.length;
+      const tokLen = token ? token.length : 0;
+      const expLen = expected.length;
+      log.warn(`KRISP-WEBHOOK rejected: invalid Authorization (hdrLen=${hdrLen} tokenLen=${tokLen} expectedLen=${expLen} headerPreview=${authHeader.substring(0, 12)}... ua=${(req.get('user-agent') || '').substring(0, 80)})`);
       return res.status(401).json({ ok: false, error: 'unauthorized' });
     }
   } else {
