@@ -1779,7 +1779,7 @@ try {
 try {
     const krispWebhookRoutes = require('./routes/krispWebhookRoutes.js');
     app.use(krispWebhookRoutes);
-    moduleLogger.info('index.js: Krisp webhook mounted at POST /webhooks/krisp');
+    moduleLogger.info('index.js: Krisp webhook mounted at GET/HEAD/POST /webhooks/krisp');
 } catch (e) {
     moduleLogger.error('index.js: Error mounting Krisp webhook routes', e.message, e.stack);
 }

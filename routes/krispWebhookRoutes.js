@@ -52,6 +52,14 @@ function krispSkipAuth() {
   return v === '1' || v === 'true' || v === 'yes';
 }
 
+// Krisp (and similar UIs) often verify the URL with GET/HEAD before save — POST-only returned 404 and broke "Update".
+router.get('/webhooks/krisp', (_req, res) => {
+  res.status(200).json({ ok: true, krisp_webhook: true });
+});
+router.head('/webhooks/krisp', (_req, res) => {
+  res.status(204).end();
+});
+
 // Body parsed by global express.json in index.js (10mb limit).
 router.post('/webhooks/krisp', (req, res) => {
   const log = createSafeLogger('SYSTEM', null, 'krisp_webhook');
