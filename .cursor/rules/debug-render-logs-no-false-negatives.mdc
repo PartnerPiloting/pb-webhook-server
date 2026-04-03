@@ -26,17 +26,28 @@ curl.exe -s -H "Authorization: Bearer Diamond9753!!@@pb" "https://pb-webhook-ser
 - Parse JSON and filter on **`log.message`** with Node (copy the pattern in `searching-render-logs.mdc`).
 - Search for the **primary needle** and at least one **fallback** (e.g. route fragment `webhooks/krisp`, `401`, `KrispAgent`, error token) in case the log line format differs.
 
-### 3. Second pass if the first pass has no match
+### 3. Just-triggered events — poll before giving up
 
-Run **at least one** of:
+If the user **just** sent a webhook, clicked “test”, finished a deploy, or said “try again / wait a bit”, logs may **not exist on the first request**. Render’s docs do **not** give a guaranteed ingestion delay; treat latency as normal.
+
+**Do this before concluding absence:**
+
+- Perform **up to 3 attempts** total (first fetch + **2 retries**).
+- Pause **about 60 seconds** between attempts (e.g. PowerShell `Start-Sleep -Seconds 60` between `curl.exe` calls).
+- Each attempt: same workflow as steps 1–2 (`minutes=120`, `limit=500`, file + Node). Stop early if the needle appears.
+
+Searching “further back in time” does **not** fix “the line hasn’t been written yet” — **waiting and re-fetching** does.
+
+### 4. Second pass for slice / history misses (different problem)
+
+If there is **still** no match **after** step 2 — and after step 3 **when** the user had just triggered something — run **at least one** of:
 
 - **`minutes=360`** (or 720) with **`limit=500`**, same file + Node workflow; **or**
-- **`startTime` / `endTime` in UTC** if the user gave an approximate time (convert from their timezone); **or**
-- A second query shifted **after** the user says they just triggered the event (wait + fetch again).
+- **`startTime` / `endTime` in UTC** if the user gave an approximate time (convert from their timezone).
 
-### 4. Only then report
+### 5. Only then report
 
-- State what you **ran** (windows, limits, needles, number of passes).
+- State what you **ran** (windows, limits, needles, **poll attempts** if any).
 - If still no match: “**Not found in those batches**” — not “it never happened.”
 
 ## Explicit bans
