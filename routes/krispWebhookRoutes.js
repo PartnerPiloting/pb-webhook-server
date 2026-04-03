@@ -1,8 +1,10 @@
 /**
  * Krisp Webhook API — ingestion stub.
  *
- * Krisp POSTs meeting payloads to your URL. In the Krisp UI, set optional header
- *   Authorization: Bearer <secret>   (or the raw secret — both work)
+ * Krisp POSTs meeting payloads to your URL. Custom header (Krisp often rejects Authorization):
+ *   X-Webhook-Secret: <same as KRISP_WEBHOOK_INBOUND_SECRET or PB_WEBHOOK_SECRET>
+ *   (Krisp UI may truncate display to X-Webhook-Secr — we accept that alias too.)
+ * Or: Authorization: Bearer <secret>   (or raw secret)
  * Use the same value as your existing admin secret, or a dedicated one:
  *   KRISP_WEBHOOK_INBOUND_SECRET=<secret>   (preferred if set)
  *   PB_WEBHOOK_SECRET=<secret>             (used if KRISP_WEBHOOK_INBOUND_SECRET is empty)
@@ -77,7 +79,11 @@ router.post('/webhooks/krisp', (req, res) => {
       });
     }
 
-    const authHeader = req.get('x-webhook-secret') || req.get('authorization') || req.get('Authorization') || '';
+    const authHeader =
+      req.get('x-webhook-secret') ||
+      req.get('x-webhook-secr') ||
+      req.get('authorization') ||
+      '';
     const token = normalizeAuthToken(authHeader);
     if (!timingSafeEqualString(token, expected)) {
       const hdrLen = authHeader.length;
