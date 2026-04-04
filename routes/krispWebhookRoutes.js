@@ -14,6 +14,9 @@
  * Participant emails in payload.data.participants are matched to Leads in Airtable (default client KRISP_COACH_CLIENT_ID or Guy-Wilson); links in krisp_event_leads.
  * HTML portal (admin): GET /krisp-portal?secret=PB_WEBHOOK_SECRET — list; /krisp-portal/event/:id?secret=… — copy text.
  * Test harness (admin): POST /krisp-test/seed?secret=… — one fake row; POST /krisp-test/seed-fixtures?secret=… — 3 backend fixtures; POST /krisp-test/purge?secret=… — remove all harness rows.
+ * POST /krisp-test/relink-event — JSON { "postgresId": "123" } re-runs lead linking for a stored row (after fixing Airtable).
+ *
+ * Unmatched participants (email + name lookup both miss): optional email to ALERT_EMAIL when KRISP_UNMATCHED_EMAIL_ALERT=1 (Mailgun + FROM_EMAIL required). One alert per postgres row (deduped).
  *
  * Insecure escape hatch: KRISP_WEBHOOK_SKIP_AUTH_HARDCODED below, or env KRISP_WEBHOOK_SKIP_AUTH=1.
  * Anyone who guesses the URL can send fake payloads. Turn off when Krisp Authorization header works.
@@ -37,6 +40,7 @@ const {
 } = require('../services/krispWebhookDb');
 const { extractKrispDisplayText, krispEventTypeLabel } = require('../services/krispPayloadText');
 const { linkKrispEventToLeadsByEmail } = require('../services/krispLeadLinkService');
+const { maybeSendKrispUnmatchedAlert } = require('../services/krispUnmatchedAlertService');
 
 const router = express.Router();
 
@@ -256,6 +260,29 @@ router.post('/krisp-test/seed-fixtures', async (req, res) => {
   }
 });
 
+/**
+ * Re-run CRM linking for one stored Krisp row (e.g. after correcting Airtable).
+ * Body or query: postgresId (string or number).
+ */
+router.post('/krisp-test/relink-event', async (req, res) => {
+  if (!pbAdminOk(req)) return res.status(401).json({ error: 'unauthorized (PB_WEBHOOK_SECRET)' });
+  try {
+    const raw = req.body?.postgresId ?? req.body?.postgres_id ?? req.query.postgresId ?? req.query.postgres_id;
+    const n = typeof raw === 'string' ? parseInt(raw.trim(), 10) : Number(raw);
+    if (!Number.isFinite(n) || n < 1) {
+      return res.status(400).json({ error: 'postgresId required (positive integer)' });
+    }
+    const full = await getKrispWebhookEventById(n);
+    if (!full?.payload) {
+      return res.status(404).json({ error: 'krisp_webhook_events row not found', postgresId: String(n) });
+    }
+    const lr = await linkKrispEventToLeadsByEmail(n, full.payload);
+    return res.json({ ok: true, postgres_id: String(n), ...lr });
+  } catch (e) {
+    return res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 router.post('/krisp-test/purge', async (req, res) => {
   if (!pbAdminOk(req)) return res.status(401).json({ error: 'unauthorized (PB_WEBHOOK_SECRET)' });
   try {
@@ -404,6 +431,18 @@ router.post('/webhooks/krisp', async (req, res) => {
       try {
         const lr = await linkKrispEventToLeadsByEmail(r.postgres_id, body);
         leadLinksLinked = lr.linked;
+        if (lr.unmatchedParticipants?.length > 0) {
+          try {
+            await maybeSendKrispUnmatchedAlert({
+              postgresId: String(r.postgres_id),
+              krispId: meetingId != null ? String(meetingId) : null,
+              event: event || null,
+              unmatchedParticipants: lr.unmatchedParticipants,
+            });
+          } catch (alertErr) {
+            log.warn(`KRISP-WEBHOOK unmatched alert failed: ${alertErr.message}`);
+          }
+        }
       } catch (linkErr) {
         log.warn(`KRISP-WEBHOOK lead link failed: ${linkErr.message}`);
       }
