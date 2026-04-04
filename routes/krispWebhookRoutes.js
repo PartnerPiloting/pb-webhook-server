@@ -11,6 +11,7 @@
  *
  * Optional: KRISP_WEBHOOK_LOG_FULL_BODY=1 logs stringified JSON (large / sensitive — use briefly).
  * With DATABASE_URL (Render Postgres), each accepted POST is stored in krisp_webhook_events (JSONB).
+ * Participant emails in payload.data.participants are matched to Leads in Airtable (default client KRISP_COACH_CLIENT_ID or Guy-Wilson); links in krisp_event_leads.
  * HTML portal (admin): GET /krisp-portal?secret=PB_WEBHOOK_SECRET — list; /krisp-portal/event/:id?secret=… — copy text.
  * Test harness (admin): POST /krisp-test/seed?secret=… — one fake row; POST /krisp-test/seed-fixtures?secret=… — 3 backend fixtures; POST /krisp-test/purge?secret=… — remove all harness rows.
  *
@@ -28,10 +29,12 @@ const {
   persistKrispWebhook,
   getKrispWebhookDbSummary,
   getKrispWebhookEventById,
+  getKrispLinksForLead,
   seedManualTestTranscript,
   seedKrispBackendFixtures,
   purgeManualTestTranscripts,
 } = require('../services/krispWebhookDb');
+const { linkKrispEventToLeadsByEmail } = require('../services/krispLeadLinkService');
 
 const router = express.Router();
 
@@ -162,6 +165,20 @@ router.get('/webhooks/krisp/db-summary', async (req, res) => {
   res.json(summary);
 });
 
+// Admin: transcripts linked to an Airtable Lead id (rec…)
+router.get('/webhooks/krisp/links-for-lead', async (req, res) => {
+  const adminAuth = (req.get('authorization') || '').replace(/^Bearer\s+/i, '').trim();
+  const adminOk = adminAuth === (process.env.PB_WEBHOOK_SECRET || '').trim();
+  if (!adminOk) return res.status(401).json({ error: 'admin auth required (PB_WEBHOOK_SECRET)' });
+
+  const leadId = typeof req.query.leadId === 'string' ? req.query.leadId.trim() : '';
+  if (!leadId) return res.status(400).json({ error: 'leadId query required (Airtable record id)' });
+
+  const limit = req.query.limit != null ? parseInt(String(req.query.limit), 10) : 50;
+  const rows = await getKrispLinksForLead(leadId, Number.isFinite(limit) ? limit : 50);
+  res.json({ leadId, count: rows.length, links: rows });
+});
+
 // --- Simple HTML portal (same admin secret as other debug GETs: ?secret=PB_WEBHOOK_SECRET) ---
 router.get('/krisp-portal', async (req, res) => {
   if (!pbAdminOk(req)) {
@@ -208,7 +225,12 @@ router.post('/krisp-test/seed', async (req, res) => {
   try {
     const out = await seedManualTestTranscript();
     if (!out.ok) return res.status(503).json(out);
-    return res.json(out);
+    let linkResult = null;
+    if (out.postgres_id) {
+      const full = await getKrispWebhookEventById(out.postgres_id);
+      if (full?.payload) linkResult = await linkKrispEventToLeadsByEmail(out.postgres_id, full.payload);
+    }
+    return res.json({ ...out, lead_link: linkResult });
   } catch (e) {
     return res.status(500).json({ ok: false, error: e.message });
   }
@@ -219,7 +241,17 @@ router.post('/krisp-test/seed-fixtures', async (req, res) => {
   try {
     const out = await seedKrispBackendFixtures();
     if (!out.ok) return res.status(503).json(out);
-    return res.json(out);
+    const linkSummaries = [];
+    for (const row of out.rows || []) {
+      const full = await getKrispWebhookEventById(row.postgres_id);
+      if (full?.payload) {
+        linkSummaries.push({
+          postgres_id: row.postgres_id,
+          ...(await linkKrispEventToLeadsByEmail(row.postgres_id, full.payload)),
+        });
+      }
+    }
+    return res.json({ ...out, lead_links: linkSummaries });
   } catch (e) {
     return res.status(500).json({ ok: false, error: e.message });
   }
@@ -361,6 +393,7 @@ router.post('/webhooks/krisp', async (req, res) => {
   }
 
   let dbSaved = false;
+  let leadLinksLinked = 0;
   try {
     const r = await persistKrispWebhook({
       event,
@@ -368,6 +401,14 @@ router.post('/webhooks/krisp', async (req, res) => {
       payload: body,
     });
     dbSaved = r.ok === true;
+    if (r.postgres_id) {
+      try {
+        const lr = await linkKrispEventToLeadsByEmail(r.postgres_id, body);
+        leadLinksLinked = lr.linked;
+      } catch (linkErr) {
+        log.warn(`KRISP-WEBHOOK lead link failed: ${linkErr.message}`);
+      }
+    }
   } catch (e) {
     log.error(`KRISP-WEBHOOK db persist failed: ${e.message}`);
   }
@@ -377,6 +418,7 @@ router.post('/webhooks/krisp', async (req, res) => {
     received: true,
     krisp_meeting_id: meetingId,
     db_saved: dbSaved,
+    lead_links_linked: leadLinksLinked,
   });
 });
 
