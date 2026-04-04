@@ -16,7 +16,8 @@
  * Test harness (admin): POST /krisp-test/seed?secret=… — one fake row; POST /krisp-test/seed-fixtures?secret=… — 3 backend fixtures; POST /krisp-test/purge?secret=… — remove all harness rows.
  * POST /krisp-test/relink-event — JSON { "postgresId": "123" } re-runs lead linking for a stored row (after fixing Airtable).
  *
- * Unmatched participants (email + name lookup both miss): optional email to ALERT_EMAIL when KRISP_UNMATCHED_EMAIL_ALERT=1 (Mailgun + FROM_EMAIL required). One alert per postgres row (deduped).
+ * Unmatched participants (email + name lookup both miss): optional email to ALERT_EMAIL when KRISP_UNMATCHED_EMAIL_ALERT=1 (Mailgun + FROM_EMAIL required). One alert per postgres row (deduped). Secure fix + transcript links when PB_WEBHOOK_SECRET or KRISP_PUBLIC_LINK_SECRET is set.
+ * Every conversation summary: KRISP_CONVERSATION_EMAIL_ALERT=1 — email with participants (email, name) + signed transcript link (deduped per row).
  *
  * Insecure escape hatch: KRISP_WEBHOOK_SKIP_AUTH_HARDCODED below, or env KRISP_WEBHOOK_SKIP_AUTH=1.
  * Anyone who guesses the URL can send fake payloads. Turn off when Krisp Authorization header works.
@@ -41,6 +42,7 @@ const {
 const { extractKrispDisplayText, krispEventTypeLabel } = require('../services/krispPayloadText');
 const { linkKrispEventToLeadsByEmail } = require('../services/krispLeadLinkService');
 const { maybeSendKrispUnmatchedAlert } = require('../services/krispUnmatchedAlertService');
+const { maybeSendKrispConversationAlert } = require('../services/krispConversationEmailService');
 
 const router = express.Router();
 
@@ -445,6 +447,17 @@ router.post('/webhooks/krisp', async (req, res) => {
         }
       } catch (linkErr) {
         log.warn(`KRISP-WEBHOOK lead link failed: ${linkErr.message}`);
+      }
+      try {
+        await maybeSendKrispConversationAlert({
+          postgresId: String(r.postgres_id),
+          payload: body,
+          krispId: meetingId != null ? String(meetingId) : null,
+          event: event || null,
+          leadsLinked: leadLinksLinked,
+        });
+      } catch (convErr) {
+        log.warn(`KRISP-WEBHOOK conversation alert failed: ${convErr.message}`);
       }
     }
   } catch (e) {

@@ -52,6 +52,9 @@ async function ensureSchema(client) {
   await client.query(
     `ALTER TABLE krisp_webhook_events ADD COLUMN IF NOT EXISTS unmatched_alert_sent_at TIMESTAMPTZ`,
   );
+  await client.query(
+    `ALTER TABLE krisp_webhook_events ADD COLUMN IF NOT EXISTS conversation_alert_sent_at TIMESTAMPTZ`,
+  );
   schemaEnsured = true;
 }
 
@@ -85,6 +88,44 @@ async function markKrispUnmatchedAlertSent(postgresEventId) {
     await ensureSchema(client);
     await client.query(
       `UPDATE krisp_webhook_events SET unmatched_alert_sent_at = now() WHERE id = $1`,
+      [n],
+    );
+    return { ok: true };
+  } finally {
+    client.release();
+  }
+}
+
+/** @param {string|number} postgresEventId */
+async function getKrispConversationAlertAlreadySent(postgresEventId) {
+  const n = typeof postgresEventId === 'string' ? parseInt(postgresEventId, 10) : Number(postgresEventId);
+  if (!Number.isFinite(n)) return true;
+  const p = getPool();
+  if (!p) return true;
+  const client = await p.connect();
+  try {
+    await ensureSchema(client);
+    const r = await client.query(
+      `SELECT conversation_alert_sent_at FROM krisp_webhook_events WHERE id = $1`,
+      [n],
+    );
+    return !!(r.rows[0] && r.rows[0].conversation_alert_sent_at);
+  } finally {
+    client.release();
+  }
+}
+
+/** @param {string|number} postgresEventId */
+async function markKrispConversationAlertSent(postgresEventId) {
+  const n = typeof postgresEventId === 'string' ? parseInt(postgresEventId, 10) : Number(postgresEventId);
+  if (!Number.isFinite(n)) return { ok: false };
+  const p = getPool();
+  if (!p) return { ok: false };
+  const client = await p.connect();
+  try {
+    await ensureSchema(client);
+    await client.query(
+      `UPDATE krisp_webhook_events SET conversation_alert_sent_at = now() WHERE id = $1`,
       [n],
     );
     return { ok: true };
@@ -405,6 +446,10 @@ module.exports = {
   getKrispLinksForLead,
   getKrispTranscriptRowsForLead,
   getKrispLinksForEvent,
+  getKrispUnmatchedAlertAlreadySent,
+  markKrispUnmatchedAlertSent,
+  getKrispConversationAlertAlreadySent,
+  markKrispConversationAlertSent,
   seedManualTestTranscript,
   seedKrispBackendFixtures,
   purgeManualTestTranscripts,
