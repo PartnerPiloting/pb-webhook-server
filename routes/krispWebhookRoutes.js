@@ -11,6 +11,7 @@
  *
  * Optional: KRISP_WEBHOOK_LOG_FULL_BODY=1 logs stringified JSON (large / sensitive — use briefly).
  * With DATABASE_URL (Render Postgres), each accepted POST is stored in krisp_webhook_events (JSONB).
+ * HTML portal (admin): GET /krisp-portal?secret=PB_WEBHOOK_SECRET — list; /krisp-portal/event/:id?secret=… — copy text.
  *
  * Insecure escape hatch: KRISP_WEBHOOK_SKIP_AUTH_HARDCODED below, or env KRISP_WEBHOOK_SKIP_AUTH=1.
  * Anyone who guesses the URL can send fake payloads. Turn off when Krisp Authorization header works.
@@ -22,7 +23,11 @@ const KRISP_WEBHOOK_SKIP_AUTH_HARDCODED = false;
 const express = require('express');
 const crypto = require('crypto');
 const { createSafeLogger } = require('../utils/loggerHelper');
-const { persistKrispWebhook, getKrispWebhookDbSummary } = require('../services/krispWebhookDb');
+const {
+  persistKrispWebhook,
+  getKrispWebhookDbSummary,
+  getKrispWebhookEventById,
+} = require('../services/krispWebhookDb');
 
 const router = express.Router();
 
@@ -54,6 +59,60 @@ function krispSkipAuth() {
   if (KRISP_WEBHOOK_SKIP_AUTH_HARDCODED) return true;
   const v = (process.env.KRISP_WEBHOOK_SKIP_AUTH || '').trim().toLowerCase();
   return v === '1' || v === 'true' || v === 'yes';
+}
+
+/** Browser-friendly admin check: ?secret= same as PB_WEBHOOK_SECRET, or Authorization: Bearer … */
+function pbAdminOk(req) {
+  const expected = (process.env.PB_WEBHOOK_SECRET || '').trim();
+  if (!expected) return false;
+  const q = typeof req.query.secret === 'string' ? req.query.secret.trim() : '';
+  const auth = normalizeAuthToken(req.get('authorization') || '');
+  return timingSafeEqualString(q, expected) || timingSafeEqualString(auth, expected);
+}
+
+function escapeHtml(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+/** Best-effort transcript / body text from stored Krisp JSON (shape varies by event). */
+function extractKrispDisplayText(payload) {
+  if (!payload || typeof payload !== 'object') return '';
+  const d = payload.data;
+  if (d && typeof d === 'object' && !Array.isArray(d)) {
+    for (const key of ['raw_content', 'transcript', 'text']) {
+      const v = d[key];
+      if (typeof v === 'string' && v.trim()) return v;
+    }
+    if (typeof d.content === 'string' && d.content.trim()) return d.content;
+    if (d.content && typeof d.content === 'object') {
+      try {
+        return JSON.stringify(d.content, null, 2);
+      } catch (_e) {
+        /* fall through */
+      }
+    }
+    for (const sub of ['raw_meeting', 'meeting']) {
+      const o = d[sub];
+      if (o && typeof o === 'object') {
+        if (typeof o.transcript === 'string' && o.transcript.trim()) return o.transcript;
+        if (typeof o.summary === 'string' && o.summary.trim()) return o.summary;
+      }
+    }
+    try {
+      return JSON.stringify(d, null, 2);
+    } catch (_e) {
+      return '';
+    }
+  }
+  try {
+    return JSON.stringify(payload, null, 2);
+  } catch (_e) {
+    return '';
+  }
 }
 
 // Krisp (and similar UIs) often verify the URL with GET/HEAD before save — POST-only returned 404 and broke "Update".
@@ -97,6 +156,92 @@ router.get('/webhooks/krisp/db-summary', async (req, res) => {
   const limit = req.query.limit != null ? parseInt(String(req.query.limit), 10) : 15;
   const summary = await getKrispWebhookDbSummary(Number.isFinite(limit) ? limit : 15);
   res.json(summary);
+});
+
+// --- Simple HTML portal (same admin secret as other debug GETs: ?secret=PB_WEBHOOK_SECRET) ---
+router.get('/krisp-portal', async (req, res) => {
+  if (!pbAdminOk(req)) {
+    res.status(401).type('html')
+      .send(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Krisp portal</title></head><body>
+<p>Unauthorized. Open this page with <code>?secret=</code> your <strong>PB_WEBHOOK_SECRET</strong> (same as other debug URLs), or send header <code>Authorization: Bearer …</code>.</p>
+</body></html>`);
+    return;
+  }
+  const sec = encodeURIComponent(String(req.query.secret || '').trim());
+  const summary = await getKrispWebhookDbSummary(50);
+  if (!summary.database_configured) {
+    res.status(503).type('html').send(`<!DOCTYPE html><html><body><p>Database not configured (${escapeHtml(summary.error || 'unknown')}).</p></body></html>`);
+    return;
+  }
+  if (summary.error) {
+    res.status(500).type('html').send(`<!DOCTYPE html><html><body><p>Error: ${escapeHtml(summary.error)}</p></body></html>`);
+    return;
+  }
+  const rows = summary.recent || [];
+  const list = rows
+    .map(
+      (r) =>
+        `<tr><td>${escapeHtml(String(r.id))}</td><td>${escapeHtml(String(r.received_at))}</td><td>${escapeHtml(String(r.event || ''))}</td><td>${escapeHtml(String(r.krisp_id || ''))}</td><td><a href="/krisp-portal/event/${encodeURIComponent(String(r.id))}?secret=${sec}">Open</a></td></tr>`,
+    )
+    .join('');
+  res.type('html').send(`<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Krisp — saved webhooks</title>
+<style>
+body{font-family:system-ui,sans-serif;max-width:960px;margin:1rem auto;padding:0 1rem}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th,td{border:1px solid #ccc;padding:6px 8px;text-align:left;vertical-align:top}
+th{background:#f5f5f5}
+code{font-size:12px}
+</style></head><body>
+<h1>Saved Krisp webhooks</h1>
+<p>Total rows: <strong>${escapeHtml(String(summary.total_rows))}</strong></p>
+<table><thead><tr><th>ID</th><th>Received</th><th>Event</th><th>Krisp meeting id</th><th></th></tr></thead><tbody>${list || '<tr><td colspan="5">No rows yet.</td></tr>'}</tbody></table>
+</body></html>`);
+});
+
+router.get('/krisp-portal/event/:id', async (req, res) => {
+  if (!pbAdminOk(req)) {
+    res.status(401).type('html')
+      .send(`<!DOCTYPE html><html><body><p>Unauthorized. Add <code>?secret=</code> your PB_WEBHOOK_SECRET.</p></body></html>`);
+    return;
+  }
+  const row = await getKrispWebhookEventById(req.params.id);
+  if (!row) {
+    res.status(404).type('html').send(`<!DOCTYPE html><html><body><p>Not found.</p></body></html>`);
+    return;
+  }
+  const sec = encodeURIComponent(String(req.query.secret || '').trim());
+  const text = extractKrispDisplayText(row.payload);
+  const title = `Event #${row.id} — ${row.event || 'unknown'}`;
+  res.type('html').send(`<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)}</title>
+<style>
+body{font-family:system-ui,sans-serif;max-width:960px;margin:1rem auto;padding:0 1rem}
+textarea{width:100%;min-height:280px;font-family:ui-monospace,monospace;font-size:13px}
+button{padding:8px 14px;font-size:15px;margin:8px 8px 8px 0}
+.meta{color:#444;font-size:14px;margin-bottom:12px}
+a{color:#2563eb}
+</style></head><body>
+<p><a href="/krisp-portal?secret=${sec}">← Back to list</a></p>
+<h1>${escapeHtml(title)}</h1>
+<div class="meta">Received: ${escapeHtml(String(row.received_at))}<br>Krisp id: ${escapeHtml(String(row.krisp_id || '—'))}</div>
+<label for="txt"><strong>Text to copy</strong> (best guess from payload)</label>
+<textarea id="txt" readonly>${escapeHtml(text)}</textarea>
+<p><button type="button" id="copyBtn">Copy to clipboard</button></p>
+<script>
+document.getElementById('copyBtn').addEventListener('click', async function() {
+  var t = document.getElementById('txt');
+  t.select();
+  try {
+    await navigator.clipboard.writeText(t.value);
+    alert('Copied');
+  } catch (e) {
+    document.execCommand('copy');
+    alert('Copied (fallback)');
+  }
+});
+</script>
+</body></html>`);
 });
 
 router.head('/webhooks/krisp', (_req, res) => {

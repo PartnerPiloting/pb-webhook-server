@@ -85,4 +85,28 @@ async function getKrispWebhookDbSummary(limit = 15) {
   }
 }
 
-module.exports = { persistKrispWebhook, getPool, getKrispWebhookDbSummary };
+/**
+ * @param {string|number} id
+ * @returns {Promise<{ id, received_at, event, krisp_id, payload } | null>}
+ */
+async function getKrispWebhookEventById(id) {
+  const n = typeof id === 'string' ? parseInt(id, 10) : Number(id);
+  if (!Number.isFinite(n) || n < 1) return null;
+
+  const p = getPool();
+  if (!p) return null;
+
+  const client = await p.connect();
+  try {
+    await ensureSchema(client);
+    const r = await client.query(
+      `SELECT id, received_at, event, krisp_id, payload FROM krisp_webhook_events WHERE id = $1`,
+      [n],
+    );
+    return r.rows[0] || null;
+  } finally {
+    client.release();
+  }
+}
+
+module.exports = { persistKrispWebhook, getPool, getKrispWebhookDbSummary, getKrispWebhookEventById };
