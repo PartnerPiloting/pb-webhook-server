@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import { getEnvLabel, initializeClient, getClientProfile, getCurrentClientId, buildAuthUrl } from '../utils/clientUtils.js';
-import { MagnifyingGlassIcon, CalendarDaysIcon, UserPlusIcon, TrophyIcon, CogIcon, BookOpenIcon, QuestionMarkCircleIcon, PencilSquareIcon, CalendarIcon, UsersIcon, WrenchScrewdriverIcon, CreditCardIcon, SparklesIcon, EnvelopeIcon } from '@heroicons/react/24/outline';
+import { MagnifyingGlassIcon, CalendarDaysIcon, UserPlusIcon, TrophyIcon, CogIcon, BookOpenIcon, QuestionMarkCircleIcon, PencilSquareIcon, CalendarIcon, UsersIcon, WrenchScrewdriverIcon, CreditCardIcon, SparklesIcon, EnvelopeIcon, MicrophoneIcon } from '@heroicons/react/24/outline';
 import ClientCodeEntry from './ClientCodeEntry';
 import UploadEmailsModal from './UploadEmailsModal';
 
@@ -255,6 +255,14 @@ const Layout = ({ children }) => {
                   >
                     <SparklesIcon className="h-5 w-5" />
                     <span className="hidden sm:inline">Smart Follow-ups</span>
+                  </Link>
+                  <Link
+                    href={buildAuthUrl('/krisp-review')}
+                    className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-violet-600 bg-violet-50 hover:bg-violet-100 rounded-lg transition-colors"
+                    title="Review Krisp transcripts - verify speakers"
+                  >
+                    <MicrophoneIcon className="h-5 w-5" />
+                    <span className="hidden sm:inline">Review Transcripts</span>
                   </Link>
                   <button
                     type="button"

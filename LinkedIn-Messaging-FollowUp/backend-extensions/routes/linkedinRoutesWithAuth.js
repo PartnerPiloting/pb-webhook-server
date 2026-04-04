@@ -1465,6 +1465,8 @@ router.get('/krisp-transcripts-for-lead', async (req, res) => {
         type_label: krispEventTypeLabel(row.event),
         participant_email: row.participant_email,
         match_method: row.match_method,
+        status: row.status || 'new',
+        verified_speakers: row.verified_speakers || null,
         preview,
         full_text: fullText,
       };

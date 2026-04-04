@@ -2060,6 +2060,72 @@ export const getKrispTranscriptsForLead = async (leadId) => {
   }
 };
 
+// ---------------------------------------------------------------------------
+// Krisp review queue (admin / Guy-Wilson only — calls Render directly with devKey as secret)
+// ---------------------------------------------------------------------------
+
+function krispAdminSecret() {
+  return getCurrentDevKey() || '';
+}
+
+export const getKrispReviewQueue = async () => {
+  if (typeof window === 'undefined') return { rows: [], error: 'client_only' };
+  try {
+    const base = getBackendBase();
+    const r = await fetch(`${base}/krisp-review/api/queue?secret=${encodeURIComponent(krispAdminSecret())}`, {
+      cache: 'no-store',
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) return { rows: [], error: d.error || `HTTP ${r.status}` };
+    return { rows: Array.isArray(d.rows) ? d.rows : [], error: null };
+  } catch (e) {
+    return { rows: [], error: e.message };
+  }
+};
+
+export const getKrispReviewEvent = async (id) => {
+  if (typeof window === 'undefined') return { event: null, error: 'client_only' };
+  try {
+    const base = getBackendBase();
+    const r = await fetch(`${base}/krisp-review/api/event/${encodeURIComponent(id)}?secret=${encodeURIComponent(krispAdminSecret())}`, {
+      cache: 'no-store',
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) return { event: null, error: d.error || `HTTP ${r.status}` };
+    return { event: d, error: null };
+  } catch (e) {
+    return { event: null, error: e.message };
+  }
+};
+
+export const saveKrispSpeakers = async (id, speakers) => {
+  try {
+    const base = getBackendBase();
+    const r = await fetch(`${base}/krisp-review/${encodeURIComponent(id)}/speakers?secret=${encodeURIComponent(krispAdminSecret())}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ speakers }),
+    });
+    return await r.json();
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+};
+
+export const updateKrispStatus = async (id, status) => {
+  try {
+    const base = getBackendBase();
+    const r = await fetch(`${base}/krisp-review/${encodeURIComponent(id)}/status?secret=${encodeURIComponent(krispAdminSecret())}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status }),
+    });
+    return await r.json();
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+};
+
 export default api;
 
 // Export helper functions for use in components
