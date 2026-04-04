@@ -121,10 +121,10 @@ async function seedManualTestTranscript() {
     data: {
       note: 'Seeded by POST /krisp-test/seed (safe to delete)',
       raw_content:
-        'FAKE TRANSCRIPT FOR TESTING.\n\nAlice: Hello\nBob: Hi — this is not a real Krisp meeting.',
+        'HARNESS: fake Krisp transcript.\nTania: Thanks for the walkthrough.\nTest User: Agreed — next steps noted.',
       participants: [
-        { email: 'alice.example@test.invalid', first_name: 'Alice', last_name: 'Test' },
-        { email: 'bob.example@test.invalid', first_name: 'Bob', last_name: 'Sample' },
+        { email: 'taniaadelewilson@gmail.com', first_name: 'Tania', last_name: 'Wilson' },
+        { email: 'test@example.com', first_name: 'Test', last_name: 'User' },
       ],
     },
   };
@@ -159,12 +159,10 @@ async function seedKrispBackendFixtures() {
         id: 'test-fixture-transcript-001',
         event: 'transcript_created',
         data: {
-          meeting: { title: 'Fixture: sales call', duration_seconds: 120 },
+          meeting: { title: 'Harness: 1:1 with Tania Wilson', duration_seconds: 180 },
           raw_content:
-            '[Fixture transcript]\nProspect: We need better onboarding.\nYou: I can walk you through that next week.',
-          participants: [
-            { email: 'prospect.fixture@test.invalid', first_name: 'Pat', last_name: 'Prospect' },
-          ],
+            '[Harness — not a real call]\nTania: Let’s align on the timeline.\nYou: Sounds good — I’ll send a summary.',
+          participants: [{ email: 'taniaadelewilson@gmail.com', first_name: 'Tania', last_name: 'Wilson' }],
         },
       },
     },
@@ -175,12 +173,12 @@ async function seedKrispBackendFixtures() {
         id: 'test-fixture-keypoints-002',
         event: 'key_points_generated',
         data: {
-          meeting: { title: 'Fixture: check-in' },
-          content: { bullets: ['Budget Q3', 'Follow up on proposal'] },
-          raw_content: '[Fixture] Summary only — short call.',
+          meeting: { title: 'Harness: trio call' },
+          content: { bullets: ['Tania — contract review', 'Test User — demo follow-up'] },
+          raw_content: '[Harness] Multi-participant summary (fake).',
           participants: [
-            { email: 'manager.fixture@test.invalid', first_name: 'Morgan', last_name: 'Manager' },
-            { email: 'peer.fixture@test.invalid', first_name: 'Peyton', last_name: 'Peer' },
+            { email: 'taniaadelewilson@gmail.com', first_name: 'Tania', last_name: 'Wilson' },
+            { email: 'test@example.com', first_name: 'Test', last_name: 'User' },
           ],
         },
       },
@@ -192,8 +190,8 @@ async function seedKrispBackendFixtures() {
         id: 'test-fixture-unlinked-003',
         event: 'manual_test',
         data: {
-          note: 'Fixture: sparse payload (simulate hard-to-match webhook)',
-          raw_content: 'Third participant unknown@no-email.invalid joined briefly.',
+          note: 'Harness: sparse payload (no structured participants)',
+          raw_content: 'Harness edge case: only test@example.com mentioned in free text — no participant array.',
         },
       },
     },
