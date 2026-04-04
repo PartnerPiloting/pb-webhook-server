@@ -1,0 +1,16 @@
+---
+description: Agent owns Postgres work for this repo — verify and change DB without pushing the user to manual SQL unless unavoidable.
+alwaysApply: true
+---
+
+# Postgres: agent handles it
+
+For **this project** (including Render Postgres, `DATABASE_URL`, `krisp_webhook_events`, and any future tables):
+
+1. **Do not** default to telling the user to open Render Shell and run queries themselves. The agent should **run checks** via **committed scripts**, **one-off `node -e` with `pg`**, or **existing debug/admin patterns** in the repo, consistent with `no-local-env-test-online.mdc` (no reliance on a local `.env` with secrets).
+
+2. When the user asks whether data landed, a migration worked, or the DB is healthy, the agent **investigates**: deploy logs, safe endpoints, or documented harnesses — and only asks the user to click in Render if there is **no** API or script path.
+
+3. When changing schema or persistence code, the agent **implements** migrations or `CREATE TABLE IF NOT EXISTS` patterns already used, **commits** scoped changes, and **pushes** per `commit-and-push-after-changes.mdc` unless the user opted out.
+
+4. **Secrets:** never ask the user to paste `DATABASE_URL` or DB passwords into chat. Use Render dashboard / env already set; redact secrets in logs and replies.
