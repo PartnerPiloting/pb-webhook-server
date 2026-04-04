@@ -12,7 +12,7 @@
  * Optional: KRISP_WEBHOOK_LOG_FULL_BODY=1 logs stringified JSON (large / sensitive — use briefly).
  * With DATABASE_URL (Render Postgres), each accepted POST is stored in krisp_webhook_events (JSONB).
  * HTML portal (admin): GET /krisp-portal?secret=PB_WEBHOOK_SECRET — list; /krisp-portal/event/:id?secret=… — copy text.
- * Test harness (admin): POST /krisp-test/seed?secret=… — fake row; POST /krisp-test/purge?secret=… — remove harness rows only.
+ * Test harness (admin): POST /krisp-test/seed?secret=… — one fake row; POST /krisp-test/seed-fixtures?secret=… — 3 backend fixtures; POST /krisp-test/purge?secret=… — remove all harness rows.
  *
  * Insecure escape hatch: KRISP_WEBHOOK_SKIP_AUTH_HARDCODED below, or env KRISP_WEBHOOK_SKIP_AUTH=1.
  * Anyone who guesses the URL can send fake payloads. Turn off when Krisp Authorization header works.
@@ -29,6 +29,7 @@ const {
   getKrispWebhookDbSummary,
   getKrispWebhookEventById,
   seedManualTestTranscript,
+  seedKrispBackendFixtures,
   purgeManualTestTranscripts,
 } = require('../services/krispWebhookDb');
 
@@ -206,6 +207,17 @@ router.post('/krisp-test/seed', async (req, res) => {
   if (!pbAdminOk(req)) return res.status(401).json({ error: 'unauthorized (PB_WEBHOOK_SECRET)' });
   try {
     const out = await seedManualTestTranscript();
+    if (!out.ok) return res.status(503).json(out);
+    return res.json(out);
+  } catch (e) {
+    return res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+router.post('/krisp-test/seed-fixtures', async (req, res) => {
+  if (!pbAdminOk(req)) return res.status(401).json({ error: 'unauthorized (PB_WEBHOOK_SECRET)' });
+  try {
+    const out = await seedKrispBackendFixtures();
     if (!out.ok) return res.status(503).json(out);
     return res.json(out);
   } catch (e) {

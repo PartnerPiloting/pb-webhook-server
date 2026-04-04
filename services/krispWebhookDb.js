@@ -143,6 +143,86 @@ async function seedManualTestTranscript() {
   }
 }
 
+/**
+ * Backend-only fake rows (no UI). Replaces any prior rows whose krisp_id starts with test-fixture-.
+ * Purge with POST /krisp-test/purge (same as other harness rows).
+ */
+async function seedKrispBackendFixtures() {
+  const p = getPool();
+  if (!p) return { ok: false, error: 'DATABASE_URL not set' };
+
+  const fixtures = [
+    {
+      event: 'transcript_created',
+      krisp_id: 'test-fixture-transcript-001',
+      payload: {
+        id: 'test-fixture-transcript-001',
+        event: 'transcript_created',
+        data: {
+          meeting: { title: 'Fixture: sales call', duration_seconds: 120 },
+          raw_content:
+            '[Fixture transcript]\nProspect: We need better onboarding.\nYou: I can walk you through that next week.',
+          participants: [
+            { email: 'prospect.fixture@test.invalid', first_name: 'Pat', last_name: 'Prospect' },
+          ],
+        },
+      },
+    },
+    {
+      event: 'key_points_generated',
+      krisp_id: 'test-fixture-keypoints-002',
+      payload: {
+        id: 'test-fixture-keypoints-002',
+        event: 'key_points_generated',
+        data: {
+          meeting: { title: 'Fixture: check-in' },
+          content: { bullets: ['Budget Q3', 'Follow up on proposal'] },
+          raw_content: '[Fixture] Summary only — short call.',
+          participants: [
+            { email: 'manager.fixture@test.invalid', first_name: 'Morgan', last_name: 'Manager' },
+            { email: 'peer.fixture@test.invalid', first_name: 'Peyton', last_name: 'Peer' },
+          ],
+        },
+      },
+    },
+    {
+      event: 'manual_test',
+      krisp_id: 'test-fixture-unlinked-003',
+      payload: {
+        id: 'test-fixture-unlinked-003',
+        event: 'manual_test',
+        data: {
+          note: 'Fixture: sparse payload (simulate hard-to-match webhook)',
+          raw_content: 'Third participant unknown@no-email.invalid joined briefly.',
+        },
+      },
+    },
+  ];
+
+  const client = await p.connect();
+  try {
+    await ensureSchema(client);
+    await client.query(`DELETE FROM krisp_webhook_events WHERE krisp_id LIKE 'test-fixture-%'`);
+
+    const inserted = [];
+    for (const f of fixtures) {
+      await client.query(
+        `INSERT INTO krisp_webhook_events (event, krisp_id, payload) VALUES ($1, $2, $3::jsonb)`,
+        [f.event, f.krisp_id, JSON.stringify(f.payload)],
+      );
+      const idR = await client.query(`SELECT id FROM krisp_webhook_events WHERE krisp_id = $1`, [f.krisp_id]);
+      inserted.push({
+        postgres_id: String(idR.rows[0].id),
+        krisp_id: f.krisp_id,
+        event: f.event,
+      });
+    }
+    return { ok: true, count: inserted.length, rows: inserted };
+  } finally {
+    client.release();
+  }
+}
+
 /** Removes rows created by the harness (manual_test or krisp_id prefix test-). */
 async function purgeManualTestTranscripts() {
   const p = getPool();
@@ -168,5 +248,6 @@ module.exports = {
   getKrispWebhookDbSummary,
   getKrispWebhookEventById,
   seedManualTestTranscript,
+  seedKrispBackendFixtures,
   purgeManualTestTranscripts,
 };
