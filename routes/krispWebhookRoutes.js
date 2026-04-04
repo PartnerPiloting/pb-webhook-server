@@ -155,6 +155,78 @@ function krispParticipantSummaryForHarness(payload) {
 }
 
 /**
+ * Rank Google Calendar events vs Krisp's real start/end. Deprioritises multi-day all-day banners (e.g. Easter).
+ * @returns {{ ranked: object[], suggested: object[] }}
+ */
+function rankCalendarEventsForKrispCoreWindow(events, coreStartIso, coreEndIso) {
+  const ks = new Date(coreStartIso).getTime();
+  const ke = new Date(coreEndIso).getTime();
+  if (!Array.isArray(events) || !Number.isFinite(ks) || !Number.isFinite(ke) || ke <= ks) {
+    return { ranked: events || [], suggested: [] };
+  }
+
+  const augmented = events.map((ev) => {
+    const startStr = ev.start;
+    const endStr = ev.end || startStr;
+    const allDay = typeof startStr === 'string' && !String(startStr).includes('T');
+    let overlapMs = 0;
+    let multiDayAllDay = false;
+    let note = '';
+
+    if (allDay) {
+      const sd = String(startStr).slice(0, 10);
+      const edExcl = String(endStr).slice(0, 10);
+      const spanDays = (Date.parse(`${edExcl}T00:00:00.000Z`) - Date.parse(`${sd}T00:00:00.000Z`)) / 86400000;
+      multiDayAllDay = spanDays > 1.05;
+      const rangeStart = Date.parse(`${sd}T00:00:00.000Z`);
+      const rangeEndExcl = Date.parse(`${edExcl}T00:00:00.000Z`);
+      overlapMs = Math.max(0, Math.min(ke, rangeEndExcl) - Math.max(ks, rangeStart));
+      note = multiDayAllDay
+        ? 'all-day multi-day (ignored for suggestions — use timed meeting or manual pick)'
+        : 'all-day event';
+    } else {
+      const es = new Date(startStr).getTime();
+      const ee = new Date(endStr).getTime();
+      if (Number.isFinite(es) && Number.isFinite(ee)) {
+        overlapMs = Math.max(0, Math.min(ke, ee) - Math.max(ks, es));
+      }
+      note = overlapMs > 0 ? 'timed event overlaps Krisp recording window' : 'timed event does not overlap Krisp recording window';
+    }
+
+    let priority = 0;
+    if (multiDayAllDay) priority = 0;
+    else if (!allDay && overlapMs > 0) priority = 3;
+    else if (!allDay) priority = 2;
+    else priority = 1;
+
+    const { start, end, ...rest } = ev;
+    return {
+      ...rest,
+      start,
+      end,
+      match: {
+        overlap_ms: overlapMs,
+        all_day: allDay,
+        multi_day_all_day: multiDayAllDay,
+        priority,
+        note,
+      },
+    };
+  });
+
+  augmented.sort((a, b) => {
+    if (b.match.priority !== a.match.priority) return b.match.priority - a.match.priority;
+    return b.match.overlap_ms - a.match.overlap_ms;
+  });
+
+  const suggested = augmented.filter(
+    (e) => !e.match.multi_day_all_day && !e.match.all_day && e.match.overlap_ms > 0,
+  );
+
+  return { ranked: augmented, suggested };
+}
+
+/**
  * Same calendar source as Smart FUP (`/api/calendar/upcoming-meeting-with-lead`): Airtable Clients → Google Calendar Email.
  * Priority: query calendarEmail → Airtable by clientId (query or env or same default as Krisp linking: DEFAULT_COACH_CLIENT_ID) → env KRISP_CALENDAR_MATCH_EMAIL.
  */
@@ -297,6 +369,7 @@ router.get('/webhooks/krisp/calendar-match-harness', async (req, res) => {
       };
     }
     const cal = await listCalendarEventsWithAttendeesInRange(calendarEmail, win.timeMin, win.timeMax);
+    const { ranked, suggested } = rankCalendarEventsForKrispCoreWindow(cal.events, win.coreStart, win.coreEnd);
     return {
       postgres_id: String(row.id),
       krisp_id: row.krisp_id,
@@ -311,7 +384,13 @@ router.get('/webhooks/krisp/calendar-match-harness', async (req, res) => {
         title: win.meetingTitle,
       },
       krisp_participants: krispParticipantSummaryForHarness(row.payload),
+      calendar_match_hint:
+        suggested.length === 0
+          ? 'No timed calendar event overlaps Krisp start/end. Invite time may differ from when you recorded (e.g. ad-hoc Zoom), or only all-day events touched this window.'
+          : null,
       calendar_events: cal.events,
+      calendar_events_suggested: suggested,
+      calendar_events_ranked: ranked,
       calendar_error: cal.error || null,
     };
   }
