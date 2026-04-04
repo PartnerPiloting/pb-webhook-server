@@ -11,6 +11,7 @@ const {
   getKrispUnmatchedAlertAlreadySent,
   markKrispUnmatchedAlertSent,
 } = require('./krispWebhookDb');
+const { signFixUnmatchedToken, signTranscriptViewToken, linkSecret } = require('../utils/krispPublicTokens');
 
 function escapeHtml(s) {
   return String(s)
@@ -64,9 +65,24 @@ async function maybeSendKrispUnmatchedAlert(params) {
   const base = publicBaseUrl();
   const relinkUrl = `${base}/krisp-test/relink-event`;
 
-  const lines = unmatchedParticipants.map((p) => {
+  const trTok = signTranscriptViewToken(postgresId, 30);
+  const transcriptHref = trTok
+    ? `${base}/krisp/transcript?t=${encodeURIComponent(trTok)}`
+    : null;
+
+  const participantBlocks = unmatchedParticipants.map((p) => {
     const name = [p.first_name, p.last_name].filter(Boolean).join(' ').trim() || '—';
-    return `• ${escapeHtml(p.email || '—')} — ${escapeHtml(name)}`;
+    const email = p.email || '—';
+    const fixTok = signFixUnmatchedToken(postgresId, email, 7);
+    const fixHref = fixTok
+      ? `${base}/krisp/fix-unmatched?t=${encodeURIComponent(fixTok)}`
+      : null;
+    const fixLine = fixHref
+      ? `<br/><a href="${escapeHtml(fixHref)}">Open secure fix form</a> (choose Airtable lead + corrected email/name)`
+      : linkSecret()
+        ? ''
+        : '<br/><em>Fix link needs PB_WEBHOOK_SECRET or KRISP_PUBLIC_LINK_SECRET on server.</em>';
+    return `<li style="margin:8px 0"><strong>${escapeHtml(email)}</strong> — ${escapeHtml(name)}${fixLine}</li>`;
   });
 
   const mailtoSubject = `Krisp CRM fix — postgres id=${postgresId}`;
@@ -85,9 +101,11 @@ Notes:
 <p><strong>Postgres event id:</strong> <code>${escapeHtml(String(postgresId))}</code> — use this in the relink API or when asking support.</p>
 <p><strong>Krisp meeting id:</strong> ${escapeHtml(krispId != null ? String(krispId) : '—')}<br/>
 <strong>Event:</strong> ${escapeHtml(event || '—')}</p>
+${transcriptHref ? `<p><a href="${escapeHtml(transcriptHref)}">View transcript</a> (signed link)</p>` : ''}
 <p><strong>Participants (unmatched):</strong></p>
-<ul style="margin:0;padding-left:1.25rem">${lines.map((l) => `<li style="margin:4px 0">${l}</li>`).join('')}</ul>
-<p><strong>Fix:</strong></p>
+<ul style="margin:0;padding-left:1.25rem">${participantBlocks.join('')}</ul>
+<p><strong>Fix (recommended):</strong> use <strong>Open secure fix form</strong> per participant — updates the Airtable lead you specify and re-runs linking. You will get a confirmation email.</p>
+<p><strong>Or manually:</strong></p>
 <ol>
 <li>Add or fix the lead in Airtable so <strong>Email</strong> matches Krisp (or first+last name matches for name fallback).</li>
 <li>Re-run linking: <code>POST ${escapeHtml(relinkUrl)}</code> with header <code>Authorization: Bearer …</code> (same as other Krisp admin routes) and JSON body: <code>{"postgresId":"${escapeHtml(String(postgresId))}"}</code></li>

@@ -148,8 +148,27 @@ async function linkKrispEventToLeadsByEmail(postgresEventId, payload, opts = {})
   return { linked, checked: emails.length, leadIds, unmatchedParticipants };
 }
 
+/** Human-readable participant rows for emails (includes email string per row). */
+function listKrispParticipants(payload) {
+  const d = payload?.data;
+  if (!d || typeof d !== 'object' || !Array.isArray(d.participants)) return [];
+  const out = [];
+  for (const p of d.participants) {
+    if (!p || typeof p.email !== 'string') continue;
+    const email = p.email.trim();
+    if (!email) continue;
+    out.push({
+      email,
+      first_name: typeof p.first_name === 'string' ? p.first_name : '',
+      last_name: typeof p.last_name === 'string' ? p.last_name : '',
+    });
+  }
+  return out;
+}
+
 module.exports = {
   extractParticipantEmails,
+  listKrispParticipants,
   linkKrispEventToLeadsByEmail,
   DEFAULT_COACH_CLIENT_ID,
 };

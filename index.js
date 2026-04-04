@@ -1784,6 +1784,15 @@ try {
     moduleLogger.error('index.js: Error mounting Krisp webhook routes', e.message, e.stack);
 }
 
+// Krisp public pages (signed-token URLs: /krisp/fix-unmatched, /krisp/transcript — see routes/krispPublicRoutes.js)
+try {
+    const krispPublicRoutes = require('./routes/krispPublicRoutes.js');
+    app.use(krispPublicRoutes);
+    moduleLogger.info('index.js: Krisp public routes mounted at /krisp/*');
+} catch (e) {
+    moduleLogger.error('index.js: Error mounting Krisp public routes', e.message, e.stack);
+}
+
 // Top Scoring Leads scaffold (feature gated inside the router module)
 try {
     const mountTopScoringLeads = require('./routes/topScoringLeadsRoutes.js');
