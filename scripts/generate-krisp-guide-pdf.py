@@ -33,6 +33,7 @@ def strip_inline_md(s: str) -> str:
 def main() -> int:
     try:
         from fpdf import FPDF
+        from fpdf.enums import Align, WrapMode, XPos, YPos
     except ImportError:
         print("Install fpdf2:  pip install fpdf2", file=sys.stderr)
         return 1
@@ -55,13 +56,21 @@ def main() -> int:
     def body():
         pdf.set_font("Helvetica", size=10)
 
+    # fpdf2 defaults new_x=RIGHT after multi_cell — next block then starts off the right margin. Force LMARGIN + NEXT.
     def mc(h: float, text: str) -> None:
-        w = pdf.epw
-        if w < 10:
-            w = pdf.w - 36
+        pdf.set_x(pdf.l_margin)
+        w = pdf.w - pdf.l_margin - pdf.r_margin
         safe = text if text.strip() else " "
         safe = safe.encode("latin-1", "replace").decode("latin-1")
-        pdf.multi_cell(w, h, safe)
+        pdf.multi_cell(
+            w,
+            h,
+            safe,
+            align=Align.L,
+            new_x=XPos.LMARGIN,
+            new_y=YPos.NEXT,
+            wrapmode=WrapMode.CHAR,
+        )
 
     in_fence = False
     for line in lines:
