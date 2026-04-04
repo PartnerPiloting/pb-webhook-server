@@ -44,7 +44,10 @@ const { extractKrispDisplayText, krispEventTypeLabel } = require('../services/kr
 const { linkKrispEventToLeadsByEmail, DEFAULT_COACH_CLIENT_ID } = require('../services/krispLeadLinkService');
 const { maybeSendKrispUnmatchedAlert } = require('../services/krispUnmatchedAlertService');
 const { maybeSendKrispConversationAlert } = require('../services/krispConversationEmailService');
-const { listCalendarEventsWithAttendeesInRange } = require('../config/calendarServiceAccount.js');
+const {
+  listCalendarEventsWithAttendeesInRange,
+  getEventsForDate,
+} = require('../config/calendarServiceAccount.js');
 
 const router = express.Router();
 
@@ -331,11 +334,16 @@ router.get('/webhooks/krisp/db-summary', async (req, res) => {
  * Test harness: load Krisp row(s) from Postgres, derive meeting time from payload, fetch overlapping Google Calendar events (attendees).
  * Admin: ?secret=PB_WEBHOOK_SECRET or Authorization: Bearer …
  * Query: postgresId=7 OR recent=5 (1–20). Calendar: same as Smart FUP (Airtable by clientId / coach env) unless calendarEmail=… overrides. padMinutes=10 (optional).
+ * sameDay=0 — skip extra full-day Brisbane query (default: include all events that local day so timed invites off the Krisp window still appear).
  */
 router.get('/webhooks/krisp/calendar-match-harness', async (req, res) => {
   if (!pbAdminOk(req)) {
     return res.status(401).json({ error: 'admin auth required (PB_WEBHOOK_SECRET or ?secret=)' });
   }
+
+  const harnessIncludeSameDay = !(
+    req.query.sameDay === '0' || req.query.sameDay === 'false' || req.query.sameDay === 'no'
+  );
 
   const calResolved = await resolveCalendarEmailForKrispHarness(req);
   if (!calResolved.calendarEmail) {
@@ -369,7 +377,28 @@ router.get('/webhooks/krisp/calendar-match-harness', async (req, res) => {
       };
     }
     const cal = await listCalendarEventsWithAttendeesInRange(calendarEmail, win.timeMin, win.timeMax);
-    const { ranked, suggested } = rankCalendarEventsForKrispCoreWindow(cal.events, win.coreStart, win.coreEnd);
+
+    let sameDayEvents = [];
+    let brisbaneYmd = null;
+    let sameDayErr = null;
+    if (harnessIncludeSameDay) {
+      brisbaneYmd = new Date(win.coreStart).toLocaleDateString('en-CA', { timeZone: 'Australia/Brisbane' });
+      const dayRes = await getEventsForDate(calendarEmail, brisbaneYmd, 'Australia/Brisbane');
+      sameDayEvents = dayRes.events || [];
+      sameDayErr = dayRes.error || null;
+    }
+
+    const byId = new Map();
+    for (const e of cal.events || []) {
+      if (e.eventId) byId.set(e.eventId, e);
+    }
+    for (const e of sameDayEvents) {
+      if (e.eventId && !byId.has(e.eventId)) byId.set(e.eventId, e);
+      if (!e.eventId) byId.set(`noid:${byId.size}:${e.summary}:${e.start}`, e);
+    }
+    const mergedForRank = [...byId.values()];
+
+    const { ranked, suggested } = rankCalendarEventsForKrispCoreWindow(mergedForRank, win.coreStart, win.coreEnd);
     return {
       postgres_id: String(row.id),
       krisp_id: row.krisp_id,
@@ -386,9 +415,18 @@ router.get('/webhooks/krisp/calendar-match-harness', async (req, res) => {
       krisp_participants: krispParticipantSummaryForHarness(row.payload),
       calendar_match_hint:
         suggested.length === 0
-          ? 'No timed calendar event overlaps Krisp start/end. Invite time may differ from when you recorded (e.g. ad-hoc Zoom), or only all-day events touched this window.'
+          ? 'No timed calendar event overlaps Krisp start/end. Check calendar_events_same_day_brisbane for other meetings that day, or confirm the event is on this Google account and shared with the service account.'
           : null,
+      calendar_events_narrow_window: cal.events,
+      ...(harnessIncludeSameDay
+        ? {
+            brisbane_local_date: brisbaneYmd,
+            calendar_events_same_day_brisbane: sameDayEvents,
+            calendar_same_day_error: sameDayErr,
+          }
+        : {}),
       calendar_events: cal.events,
+      calendar_events_merged_for_match: mergedForRank,
       calendar_events_suggested: suggested,
       calendar_events_ranked: ranked,
       calendar_error: cal.error || null,
