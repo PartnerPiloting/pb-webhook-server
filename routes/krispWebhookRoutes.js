@@ -15,7 +15,7 @@
  * HTML portal (admin): GET /krisp-portal?secret=PB_WEBHOOK_SECRET — list; /krisp-portal/event/:id?secret=… — copy text.
  * Test harness (admin): POST /krisp-test/seed?secret=… — one fake row + same summary email as real webhooks (then purge if you like); POST /krisp-test/seed-fixtures?secret=… — 3 fixtures (no conversation emails); POST /krisp-test/purge?secret=… — remove harness rows.
  * POST /krisp-test/relink-event — JSON { "postgresId": "123" } re-runs lead linking for a stored row (after fixing Airtable).
- * Calendar match harness (admin): GET /webhooks/krisp/calendar-match-harness?secret=…&postgresId=7&calendarEmail=you@gmail.com — compares stored Krisp meeting times to Google Calendar (service account). Optional recent=5 to scan last N rows. Set KRISP_CALENDAR_MATCH_EMAIL on server to omit calendarEmail.
+ * Calendar match harness (admin): GET /webhooks/krisp/calendar-match-harness?secret=…&postgresId=7 — uses same calendar as Smart FUP: Airtable Clients "Google Calendar Email" for clientId (query) or KRISP_CALENDAR_CLIENT_ID / KRISP_COACH_CLIENT_ID. Override with calendarEmail=… or KRISP_CALENDAR_MATCH_EMAIL.
  *
  * Unmatched participants (email + name lookup both miss): optional email to ALERT_EMAIL when KRISP_UNMATCHED_EMAIL_ALERT=1 (Mailgun + FROM_EMAIL required). One alert per postgres row (deduped). Secure fix + transcript links when PB_WEBHOOK_SECRET or KRISP_PUBLIC_LINK_SECRET is set.
  * Every conversation: one email (ALERT_EMAIL or alert default) with all participants + transcript + Copy link (deduped per row).
@@ -154,6 +154,62 @@ function krispParticipantSummaryForHarness(payload) {
   return { sources, emails: [...emails] };
 }
 
+/**
+ * Same calendar source as Smart FUP (`/api/calendar/upcoming-meeting-with-lead`): Airtable Clients → Google Calendar Email.
+ * Priority: query calendarEmail → Airtable by clientId (query or KRISP_CALENDAR_CLIENT_ID or KRISP_COACH_CLIENT_ID) → env KRISP_CALENDAR_MATCH_EMAIL.
+ */
+async function resolveCalendarEmailForKrispHarness(req) {
+  const qCal = typeof req.query.calendarEmail === 'string' ? req.query.calendarEmail.trim() : '';
+  if (qCal) return { calendarEmail: qCal, resolved_via: 'query_calendarEmail', clientId: null };
+
+  const qClient = typeof req.query.clientId === 'string' ? req.query.clientId.trim() : '';
+  const clientId =
+    qClient || (process.env.KRISP_CALENDAR_CLIENT_ID || process.env.KRISP_COACH_CLIENT_ID || '').trim();
+
+  const baseId = process.env.MASTER_CLIENTS_BASE_ID;
+  const apiKey = process.env.AIRTABLE_API_KEY;
+  if (clientId && baseId && apiKey) {
+    const safe = clientId.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    const url = `https://api.airtable.com/v0/${baseId}/Clients?filterByFormula=LOWER({Client ID})=LOWER('${safe}')&fields[]=Google Calendar Email`;
+    try {
+      const r = await fetch(url, { headers: { Authorization: `Bearer ${apiKey}` } });
+      if (!r.ok) {
+        return {
+          calendarEmail: null,
+          resolved_via: null,
+          clientId,
+          error: `Airtable client lookup failed: HTTP ${r.status}`,
+        };
+      }
+      const data = await r.json();
+      const rec = data.records?.[0];
+      const cal = rec?.fields?.['Google Calendar Email'];
+      if (cal && String(cal).trim()) {
+        return { calendarEmail: String(cal).trim(), resolved_via: 'airtable_clients', clientId };
+      }
+      return {
+        calendarEmail: null,
+        resolved_via: null,
+        clientId,
+        error: `No "Google Calendar Email" on Airtable for Client ID: ${clientId}`,
+      };
+    } catch (e) {
+      return { calendarEmail: null, resolved_via: null, clientId, error: e.message };
+    }
+  }
+
+  const envCal = (process.env.KRISP_CALENDAR_MATCH_EMAIL || '').trim();
+  if (envCal) return { calendarEmail: envCal, resolved_via: 'env_KRISP_CALENDAR_MATCH_EMAIL', clientId: null };
+
+  return {
+    calendarEmail: null,
+    resolved_via: null,
+    clientId: clientId || null,
+    error:
+      'No calendar resolved: set query calendarEmail=…, or clientId=…, or server KRISP_COACH_CLIENT_ID (or KRISP_CALENDAR_CLIENT_ID) + Airtable Google Calendar Email, or KRISP_CALENDAR_MATCH_EMAIL',
+  };
+}
+
 // Krisp (and similar UIs) often verify the URL with GET/HEAD before save — POST-only returned 404 and broke "Update".
 router.get('/webhooks/krisp', (_req, res) => {
   res.status(200).json({ ok: true, krisp_webhook: true });
@@ -200,21 +256,21 @@ router.get('/webhooks/krisp/db-summary', async (req, res) => {
 /**
  * Test harness: load Krisp row(s) from Postgres, derive meeting time from payload, fetch overlapping Google Calendar events (attendees).
  * Admin: ?secret=PB_WEBHOOK_SECRET or Authorization: Bearer …
- * Query: postgresId=7 OR recent=5 (1–20). calendarEmail=… or env KRISP_CALENDAR_MATCH_EMAIL. padMinutes=10 (optional).
+ * Query: postgresId=7 OR recent=5 (1–20). Calendar: same as Smart FUP (Airtable by clientId / coach env) unless calendarEmail=… overrides. padMinutes=10 (optional).
  */
 router.get('/webhooks/krisp/calendar-match-harness', async (req, res) => {
   if (!pbAdminOk(req)) {
     return res.status(401).json({ error: 'admin auth required (PB_WEBHOOK_SECRET or ?secret=)' });
   }
 
-  const calendarEmail =
-    (typeof req.query.calendarEmail === 'string' && req.query.calendarEmail.trim()) ||
-    (process.env.KRISP_CALENDAR_MATCH_EMAIL || '').trim();
-  if (!calendarEmail) {
+  const calResolved = await resolveCalendarEmailForKrispHarness(req);
+  if (!calResolved.calendarEmail) {
     return res.status(400).json({
-      error: 'calendarEmail required (query) or set KRISP_CALENDAR_MATCH_EMAIL on the server',
+      error: calResolved.error || 'could not resolve calendar email',
+      hint: 'Uses Airtable "Google Calendar Email" for KRISP_COACH_CLIENT_ID when set (same as smart calendar).',
     });
   }
+  const calendarEmail = calResolved.calendarEmail;
 
   const padRaw = req.query.padMinutes != null ? parseInt(String(req.query.padMinutes), 10) : 10;
   const padMinutes = Number.isFinite(padRaw) ? padRaw : 10;
@@ -258,9 +314,15 @@ router.get('/webhooks/krisp/calendar-match-harness', async (req, res) => {
     };
   }
 
+  const calendarMeta = {
+    calendarEmail,
+    resolved_via: calResolved.resolved_via,
+    clientId: calResolved.clientId,
+  };
+
   if (postgresIdRaw != null && String(postgresIdRaw).trim() !== '') {
     const out = await oneRow(String(postgresIdRaw).trim());
-    return res.json({ harness: 'krisp-calendar-match', calendarEmail, result: out });
+    return res.json({ harness: 'krisp-calendar-match', calendar: calendarMeta, result: out });
   }
 
   if (recent > 0) {
@@ -273,12 +335,12 @@ router.get('/webhooks/krisp/calendar-match-harness', async (req, res) => {
     for (const id of ids) {
       results.push(await oneRow(id));
     }
-    return res.json({ harness: 'krisp-calendar-match', calendarEmail, recent, results });
+    return res.json({ harness: 'krisp-calendar-match', calendar: calendarMeta, recent, results });
   }
 
   return res.status(400).json({
     error: 'pass postgresId=… for one row, or recent=1–20 for last N rows from krisp_webhook_events',
-    hint: 'Also set calendarEmail=… or KRISP_CALENDAR_MATCH_EMAIL',
+    hint: 'Calendar defaults from Airtable (KRISP_COACH_CLIENT_ID) like smart calendar; override with calendarEmail=…',
   });
 });
 
