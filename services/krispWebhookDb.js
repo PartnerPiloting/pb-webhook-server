@@ -109,4 +109,64 @@ async function getKrispWebhookEventById(id) {
   }
 }
 
-module.exports = { persistKrispWebhook, getPool, getKrispWebhookDbSummary, getKrispWebhookEventById };
+/** For live test harness only — obvious fake rows, safe to purge. */
+async function seedManualTestTranscript() {
+  const p = getPool();
+  if (!p) return { ok: false, error: 'DATABASE_URL not set' };
+
+  const krispId = `test-${Date.now()}`;
+  const payload = {
+    id: krispId,
+    event: 'manual_test',
+    data: {
+      note: 'Seeded by POST /krisp-test/seed (safe to delete)',
+      raw_content:
+        'FAKE TRANSCRIPT FOR TESTING.\n\nAlice: Hello\nBob: Hi — this is not a real Krisp meeting.',
+      participants: [
+        { email: 'alice.example@test.invalid', first_name: 'Alice', last_name: 'Test' },
+        { email: 'bob.example@test.invalid', first_name: 'Bob', last_name: 'Sample' },
+      ],
+    },
+  };
+
+  const client = await p.connect();
+  try {
+    await ensureSchema(client);
+    await client.query(
+      `INSERT INTO krisp_webhook_events (event, krisp_id, payload) VALUES ($1, $2, $3::jsonb)`,
+      ['manual_test', krispId, JSON.stringify(payload)],
+    );
+    const idR = await client.query(`SELECT id FROM krisp_webhook_events WHERE krisp_id = $1`, [krispId]);
+    return { ok: true, postgres_id: idR.rows[0].id, krisp_id: krispId };
+  } finally {
+    client.release();
+  }
+}
+
+/** Removes rows created by the harness (manual_test or krisp_id prefix test-). */
+async function purgeManualTestTranscripts() {
+  const p = getPool();
+  if (!p) return { ok: false, error: 'DATABASE_URL not set', deleted: 0 };
+
+  const client = await p.connect();
+  try {
+    await ensureSchema(client);
+    const r = await client.query(`
+      DELETE FROM krisp_webhook_events
+      WHERE event = 'manual_test' OR krisp_id LIKE 'test-%'
+      RETURNING id
+    `);
+    return { ok: true, deleted: r.rowCount, ids: r.rows.map((row) => row.id) };
+  } finally {
+    client.release();
+  }
+}
+
+module.exports = {
+  persistKrispWebhook,
+  getPool,
+  getKrispWebhookDbSummary,
+  getKrispWebhookEventById,
+  seedManualTestTranscript,
+  purgeManualTestTranscripts,
+};
