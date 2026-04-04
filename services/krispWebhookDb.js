@@ -49,7 +49,48 @@ async function ensureSchema(client) {
   await client.query(
     `CREATE INDEX IF NOT EXISTS idx_krisp_event_leads_event ON krisp_event_leads (event_id);`,
   );
+  await client.query(
+    `ALTER TABLE krisp_webhook_events ADD COLUMN IF NOT EXISTS unmatched_alert_sent_at TIMESTAMPTZ`,
+  );
   schemaEnsured = true;
+}
+
+/** @param {string|number} postgresEventId */
+async function getKrispUnmatchedAlertAlreadySent(postgresEventId) {
+  const n = typeof postgresEventId === 'string' ? parseInt(postgresEventId, 10) : Number(postgresEventId);
+  if (!Number.isFinite(n)) return true;
+  const p = getPool();
+  if (!p) return true;
+  const client = await p.connect();
+  try {
+    await ensureSchema(client);
+    const r = await client.query(
+      `SELECT unmatched_alert_sent_at FROM krisp_webhook_events WHERE id = $1`,
+      [n],
+    );
+    return !!(r.rows[0] && r.rows[0].unmatched_alert_sent_at);
+  } finally {
+    client.release();
+  }
+}
+
+/** @param {string|number} postgresEventId */
+async function markKrispUnmatchedAlertSent(postgresEventId) {
+  const n = typeof postgresEventId === 'string' ? parseInt(postgresEventId, 10) : Number(postgresEventId);
+  if (!Number.isFinite(n)) return { ok: false };
+  const p = getPool();
+  if (!p) return { ok: false };
+  const client = await p.connect();
+  try {
+    await ensureSchema(client);
+    await client.query(
+      `UPDATE krisp_webhook_events SET unmatched_alert_sent_at = now() WHERE id = $1`,
+      [n],
+    );
+    return { ok: true };
+  } finally {
+    client.release();
+  }
 }
 
 /**
