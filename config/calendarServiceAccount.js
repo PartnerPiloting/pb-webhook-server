@@ -72,15 +72,24 @@ async function listCalendarEventsWithAttendeesInRange(calendarEmail, timeMin, ti
         return { events: [], error: 'timeMax must be after timeMin' };
     }
     try {
-        const response = await calendarClient.events.list({
-            calendarId: calId,
-            timeMin: t0.toISOString(),
-            timeMax: t1.toISOString(),
-            singleEvents: true,
-            orderBy: 'startTime',
-            maxResults: 50,
-        });
-        const events = (response.data.items || []).map((event) => ({
+        const allItems = [];
+        let pageToken;
+        for (let page = 0; page < 10; page += 1) {
+            const response = await calendarClient.events.list({
+                calendarId: calId,
+                timeMin: t0.toISOString(),
+                timeMax: t1.toISOString(),
+                singleEvents: true,
+                orderBy: 'startTime',
+                maxResults: 250,
+                pageToken: pageToken || undefined,
+            });
+            const items = response.data.items || [];
+            allItems.push(...items);
+            pageToken = response.data.nextPageToken;
+            if (!pageToken) break;
+        }
+        const events = allItems.map((event) => ({
             summary: event.summary || '(No title)',
             start: event.start?.dateTime || event.start?.date,
             end: event.end?.dateTime || event.end?.date,
@@ -222,7 +231,7 @@ async function getFreeSlotsForDate(calendarEmail, date, startHour = 9, endHour =
  * @param {string} calendarEmail - The email of the calendar to check
  * @param {string} date - Date in YYYY-MM-DD format
  * @param {string} timezone - Timezone string (e.g., 'Australia/Brisbane')
- * @returns {Promise<{events: Array<{summary: string, start: string, end: string, location: string, transparency: string, isFree: boolean, attendees: Array<{email: string, displayName: string, responseStatus: string, organizer: boolean, self: boolean}>}>, error?: string}>}
+ * @returns {Promise<{events: Array<{summary: string, start: string, end: string, location: string, eventId: string, htmlLink: string, transparency: string, isFree: boolean, attendees: Array<{email: string, displayName: string, responseStatus: string, organizer: boolean, self: boolean}>}>, error?: string}>}
  */
 async function getEventsForDate(calendarEmail, date, timezone = 'Australia/Brisbane') {
     if (!calendarClient) {
@@ -276,6 +285,8 @@ async function getEventsForDate(calendarEmail, date, timezone = 'Australia/Brisb
             start: event.start?.dateTime || event.start?.date,
             end: event.end?.dateTime || event.end?.date,
             location: event.location || '',
+            eventId: event.id || '',
+            htmlLink: event.htmlLink || '',
             // transparency: 'transparent' = Free/Available, 'opaque' (default) = Busy
             transparency: event.transparency || 'opaque',
             isFree: event.transparency === 'transparent',
