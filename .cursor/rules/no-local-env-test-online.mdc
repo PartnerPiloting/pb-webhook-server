@@ -5,7 +5,7 @@ alwaysApply: true
 
 # Environment variables are not assumed locally
 
-This workspace often has **no `.env`** and **no local copies** of production secrets (API keys, `GUEST_BOOKING_LINK_SECRET`, OAuth tokens, etc.). Do **not** ask the user to create or fill `.env` for the agent to run tests.
+This workspace often has **no `.env`** and **no local copies** of production secrets (API keys, `GUEST_BOOKING_LINK_SECRET`, OAuth tokens, etc.). The user **prefers not to run secret-dependent work on their PC** — treat secrets as **online/hosted only**. Do **not** ask the user to create or fill `.env` for the agent to run tests.
 
 ## What to do instead
 
