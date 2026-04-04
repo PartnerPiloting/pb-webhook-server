@@ -5,7 +5,6 @@
 
 const clientService = require('./clientService');
 const { findLeadByEmail, findLeadByName } = require('./inboundEmailService');
-const { insertKrispEventLead } = require('./krispWebhookDb');
 const { createSafeLogger } = require('../utils/loggerHelper');
 
 const DEFAULT_COACH_CLIENT_ID = (process.env.KRISP_COACH_CLIENT_ID || 'Guy-Wilson').trim();
@@ -107,7 +106,7 @@ async function linkKrispEventToLeadsByEmail(postgresEventId, payload, opts = {})
   }
 
   const participantMap = participantsByEmailLower(payload);
-  const leadIds = [];
+  const linkedLeads = [];
   let linked = 0;
   const unmatchedParticipants = [];
 
@@ -135,37 +134,26 @@ async function linkKrispEventToLeadsByEmail(postgresEventId, payload, opts = {})
       }
 
       if (!lead?.id) {
-        unmatchedParticipants.push({
-          email,
-          first_name: p.first_name,
-          last_name: p.last_name,
-        });
+        unmatchedParticipants.push({ email, first_name: p.first_name, last_name: p.last_name });
         continue;
       }
 
-      const r = await insertKrispEventLead({
-        eventId: postgresEventId,
-        airtableLeadId: lead.id,
-        coachClientId,
-        participantEmail: email,
-        matchMethod,
-      });
-      if (r.inserted) {
-        linked++;
-        leadIds.push(lead.id);
-        log.info(`KRISP-LINK event=${postgresEventId} lead=${lead.id} email=${email} method=${matchMethod}`);
-      }
+      linked++;
+      linkedLeads.push({ leadId: lead.id, email, matchMethod });
+      log.info(`KRISP-LINK event=${postgresEventId} lead=${lead.id} email=${email} method=${matchMethod}`);
     } catch (e) {
       log.warn(`KRISP-LINK error email=${email}: ${e.message}`);
-      unmatchedParticipants.push({
-        email,
-        first_name: p.first_name,
-        last_name: p.last_name,
-      });
+      unmatchedParticipants.push({ email, first_name: p.first_name, last_name: p.last_name });
     }
   }
 
-  return { linked, checked: emails.length, leadIds, unmatchedParticipants };
+  return {
+    linked,
+    checked: emails.length,
+    leadIds: linkedLeads.map(l => l.leadId),
+    linkedLeads,
+    unmatchedParticipants,
+  };
 }
 
 /** Human-readable participant rows for emails (includes email string per row). */

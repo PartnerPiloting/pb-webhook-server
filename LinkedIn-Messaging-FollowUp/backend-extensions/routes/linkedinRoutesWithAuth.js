@@ -1447,26 +1447,29 @@ router.get('/krisp-transcripts-for-lead', async (req, res) => {
       return res.status(404).json({ error: 'Lead not found', leadId });
     }
 
-    const { getKrispTranscriptRowsForLead } = require('../../../services/krispWebhookDb');
-    const { extractKrispDisplayText, krispEventTypeLabel } = require('../../../services/krispPayloadText');
+    const { getMeetingsForLead } = require('../../../services/krispWebhookDb');
     const limit = req.query.limit != null ? parseInt(String(req.query.limit), 10) : 50;
-    const rows = await getKrispTranscriptRowsForLead(leadId, Number.isFinite(limit) ? limit : 50);
-    const transcripts = rows.map((row) => {
-      const fullText = extractKrispDisplayText(row.payload);
-      const preview =
-        fullText.length <= KRISP_TRANSCRIPT_PREVIEW_MAX
-          ? fullText
-          : `${fullText.slice(0, KRISP_TRANSCRIPT_PREVIEW_MAX)}…`;
+    const rows = await getMeetingsForLead(leadId, Number.isFinite(limit) ? limit : 50);
+    // Group by meeting_id (each meeting can appear multiple times if multiple participants match)
+    const byMeeting = new Map();
+    for (const row of rows) {
+      if (!byMeeting.has(row.meeting_id)) byMeeting.set(row.meeting_id, row);
+    }
+    const transcripts = [...byMeeting.values()].map((row) => {
+      const fullText = row.transcript_text || '';
+      const preview = fullText.length <= KRISP_TRANSCRIPT_PREVIEW_MAX
+        ? fullText
+        : `${fullText.slice(0, KRISP_TRANSCRIPT_PREVIEW_MAX)}…`;
       return {
-        event_id: row.event_id,
-        received_at: row.received_at,
+        meeting_id: row.meeting_id,
+        event_id: row.meeting_id,
+        received_at: row.webhook_received_at || row.created_at,
         krisp_id: row.krisp_id,
-        event: row.event,
-        type_label: krispEventTypeLabel(row.event),
-        participant_email: row.participant_email,
+        event: row.webhook_event,
+        type_label: row.webhook_event || 'Krisp',
+        participant_email: row.verified_email,
         match_method: row.match_method,
         status: row.status || 'to_verify',
-        verified_speakers: row.verified_speakers || null,
         preview,
         full_text: fullText,
       };

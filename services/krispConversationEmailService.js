@@ -32,11 +32,11 @@ function reviewPageUrl(postgresId) {
 }
 
 /**
- * @param {{ postgresId: string, payload: object, krispId: string|null, event: string|null, leadsLinked: number }} params
+ * @param {{ postgresId: string, meetingId?: string, payload: object, krispId: string|null, event: string|null, leadsLinked: number }} params
  */
 async function maybeSendKrispConversationAlert(params) {
   const log = createSafeLogger('SYSTEM', null, 'krisp_conversation_email');
-  const { postgresId, payload, krispId, event, leadsLinked } = params;
+  const { postgresId, meetingId, payload, krispId, event, leadsLinked } = params;
 
   try {
     const already = await getKrispConversationAlertAlreadySent(postgresId);
@@ -46,7 +46,7 @@ async function maybeSendKrispConversationAlert(params) {
   }
 
   const participants = listKrispParticipants(payload);
-  const reviewUrl = reviewPageUrl(postgresId);
+  const reviewUrl = reviewPageUrl(meetingId || postgresId);
 
   const participantSummary =
     participants.length > 0
