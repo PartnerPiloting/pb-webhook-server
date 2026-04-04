@@ -1428,6 +1428,55 @@ Write an improved version incorporating this feedback.`;
 });
 
 /**
+ * GET /api/linkedin/krisp-transcripts-for-lead?leadId=rec…
+ * Krisp rows linked to this Airtable lead; requires lead to exist in the authenticated client's base.
+ */
+router.get('/krisp-transcripts-for-lead', async (req, res) => {
+  const KRISP_TRANSCRIPT_PREVIEW_MAX = 500;
+  logger.info('LinkedIn Routes: GET /krisp-transcripts-for-lead');
+  try {
+    const leadId = typeof req.query.leadId === 'string' ? req.query.leadId.trim() : '';
+    if (!leadId) {
+      return res.status(400).json({ error: 'leadId query required (Airtable record id)' });
+    }
+
+    const airtableBase = await getAirtableBase(req);
+    try {
+      await airtableBase('Leads').find(leadId);
+    } catch (_e) {
+      return res.status(404).json({ error: 'Lead not found', leadId });
+    }
+
+    const { getKrispTranscriptRowsForLead } = require('../../../services/krispWebhookDb');
+    const { extractKrispDisplayText, krispEventTypeLabel } = require('../../../services/krispPayloadText');
+    const limit = req.query.limit != null ? parseInt(String(req.query.limit), 10) : 50;
+    const rows = await getKrispTranscriptRowsForLead(leadId, Number.isFinite(limit) ? limit : 50);
+    const transcripts = rows.map((row) => {
+      const fullText = extractKrispDisplayText(row.payload);
+      const preview =
+        fullText.length <= KRISP_TRANSCRIPT_PREVIEW_MAX
+          ? fullText
+          : `${fullText.slice(0, KRISP_TRANSCRIPT_PREVIEW_MAX)}…`;
+      return {
+        event_id: row.event_id,
+        received_at: row.received_at,
+        krisp_id: row.krisp_id,
+        event: row.event,
+        type_label: krispEventTypeLabel(row.event),
+        participant_email: row.participant_email,
+        match_method: row.match_method,
+        preview,
+        full_text: fullText,
+      };
+    });
+    res.json({ leadId, count: transcripts.length, transcripts });
+  } catch (error) {
+    logger.error('LinkedIn Routes: krisp-transcripts-for-lead', error);
+    res.status(500).json({ error: 'Failed to load Krisp transcripts', details: error.message });
+  }
+});
+
+/**
  * GET /api/linkedin/leads/:id
  * Get a specific lead by ID
  */

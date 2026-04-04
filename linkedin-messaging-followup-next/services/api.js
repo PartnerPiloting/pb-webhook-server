@@ -2023,7 +2023,7 @@ export const uploadLeadEmailsCsv = async (file, { apply = true, previewMax = 20,
 };
 
 /**
- * Krisp-linked webhook transcripts for an Airtable lead (Next.js route proxies with PB_WEBHOOK_SECRET).
+ * Krisp-linked webhook transcripts for an Airtable lead (Next proxies to /api/linkedin with portal headers).
  * @param {string} leadId - Airtable record id (rec…)
  * @returns {Promise<{ transcripts: object[], leadId?: string, count?: number, error: string|null }>}
  */
@@ -2041,7 +2041,11 @@ export const getKrispTranscriptsForLead = async (leadId) => {
     if (!res.ok) {
       return {
         transcripts: [],
-        error: data.error || `request failed (${res.status})`,
+        error:
+          data.error ||
+          data.message ||
+          data.details ||
+          `request failed (${res.status})`,
       };
     }
     return {
