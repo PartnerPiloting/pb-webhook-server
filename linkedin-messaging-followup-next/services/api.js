@@ -2061,19 +2061,27 @@ export const getKrispTranscriptsForLead = async (leadId) => {
 };
 
 // ---------------------------------------------------------------------------
-// Krisp review queue (admin / Guy-Wilson only — calls Render directly with devKey as secret)
+// Krisp review queue (Guy-Wilson: portal token + x-client-id, or dev key / PB secret)
 // ---------------------------------------------------------------------------
 
-function krispAdminSecret() {
-  return getCurrentDevKey() || '';
+function krispReviewFetchHeaders() {
+  const h = { 'Content-Type': 'application/json' };
+  try {
+    const ah = getAuthenticatedHeaders();
+    Object.assign(h, ah);
+  } catch {
+    /* no session — request will 401 */
+  }
+  return h;
 }
 
 export const getKrispReviewQueue = async () => {
   if (typeof window === 'undefined') return { rows: [], error: 'client_only' };
   try {
     const base = getBackendBase();
-    const r = await fetch(`${base}/krisp-review/api/queue?secret=${encodeURIComponent(krispAdminSecret())}`, {
+    const r = await fetch(`${base}/krisp-review/api/queue`, {
       cache: 'no-store',
+      headers: krispReviewFetchHeaders(),
     });
     const d = await r.json().catch(() => ({}));
     if (!r.ok) return { rows: [], error: d.error || `HTTP ${r.status}` };
@@ -2087,8 +2095,9 @@ export const getKrispReviewEvent = async (id) => {
   if (typeof window === 'undefined') return { event: null, error: 'client_only' };
   try {
     const base = getBackendBase();
-    const r = await fetch(`${base}/krisp-review/api/event/${encodeURIComponent(id)}?secret=${encodeURIComponent(krispAdminSecret())}`, {
+    const r = await fetch(`${base}/krisp-review/api/event/${encodeURIComponent(id)}`, {
       cache: 'no-store',
+      headers: krispReviewFetchHeaders(),
     });
     const d = await r.json().catch(() => ({}));
     if (!r.ok) return { event: null, error: d.error || `HTTP ${r.status}` };
@@ -2101,9 +2110,9 @@ export const getKrispReviewEvent = async (id) => {
 export const saveKrispSpeakers = async (id, speakers) => {
   try {
     const base = getBackendBase();
-    const r = await fetch(`${base}/krisp-review/${encodeURIComponent(id)}/speakers?secret=${encodeURIComponent(krispAdminSecret())}`, {
+    const r = await fetch(`${base}/krisp-review/${encodeURIComponent(id)}/speakers`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: krispReviewFetchHeaders(),
       body: JSON.stringify({ speakers }),
     });
     return await r.json();
@@ -2115,9 +2124,9 @@ export const saveKrispSpeakers = async (id, speakers) => {
 export const updateKrispStatus = async (id, status) => {
   try {
     const base = getBackendBase();
-    const r = await fetch(`${base}/krisp-review/${encodeURIComponent(id)}/status?secret=${encodeURIComponent(krispAdminSecret())}`, {
+    const r = await fetch(`${base}/krisp-review/${encodeURIComponent(id)}/status`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: krispReviewFetchHeaders(),
       body: JSON.stringify({ status }),
     });
     return await r.json();
