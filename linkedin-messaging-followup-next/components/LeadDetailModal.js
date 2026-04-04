@@ -19,6 +19,7 @@ const LeadDetailModal = ({
   const [upcomingMeeting, setUpcomingMeeting] = useState(null);
   const [upcomingMeetingLoading, setUpcomingMeetingLoading] = useState(false);
   const [upcomingMeetingError, setUpcomingMeetingError] = useState(null);
+  const [krispSectionOpen, setKrispSectionOpen] = useState(false);
   // Fix hydration issues by only rendering on client side
   useEffect(() => {
     setIsMounted(true);
@@ -31,8 +32,17 @@ const LeadDetailModal = ({
       setStoryError(null);
       setUpcomingMeeting(null);
       setUpcomingMeetingError(null);
+      setKrispSectionOpen(false);
     }
   }, [isOpen, lead?.id]);
+
+  useEffect(() => {
+    if (!krispSectionOpen || !isOpen) return;
+    const id = requestAnimationFrame(() => {
+      document.getElementById('lead-detail-krisp-panel')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    });
+    return () => cancelAnimationFrame(id);
+  }, [krispSectionOpen, isOpen]);
 
   // Handle escape key
   useEffect(() => {
@@ -140,10 +150,6 @@ const LeadDetailModal = ({
   const leadEmail = (lead?.email || lead?.['Email'] || '').trim();
   const hasEmail = leadEmail.length > 0;
 
-  const scrollToKrisp = () => {
-    document.getElementById('lead-detail-krisp-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  };
-
   const handleCheckUpcomingMeeting = async () => {
     if (!hasEmail) {
       setUpcomingMeetingError('No email for this lead — cannot check calendar.');
@@ -187,13 +193,6 @@ const LeadDetailModal = ({
                 <div className="text-sm text-gray-500 mt-1">
                   Profile Key: {safeRender(lead.id || lead['Profile Key'])}
                 </div>
-                <button
-                  type="button"
-                  onClick={scrollToKrisp}
-                  className="mt-2 text-xs font-medium text-violet-700 hover:text-violet-900 hover:underline"
-                >
-                  Krisp transcripts ↓
-                </button>
               </div>
               
               <div className="flex items-center gap-3">
@@ -232,13 +231,13 @@ const LeadDetailModal = ({
           <div className="px-6 py-6 space-y-6">
             {/* Pre-Meeting Brief */}
             <div className="space-y-4">
-              <div className="flex items-center gap-3 border-b border-gray-200 pb-2">
-                <h4 className="text-lg font-semibold text-gray-900">📋 Pre-Meeting Brief</h4>
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-gray-200 pb-2">
+                <h4 className="text-lg font-semibold text-gray-900 shrink-0">📋 Pre-Meeting Brief</h4>
                 <button
                   type="button"
                   onClick={handleGenerateStory}
                   disabled={storyGenerating}
-                  className="text-sm font-medium text-blue-600 hover:text-blue-800 disabled:text-gray-400 disabled:cursor-not-allowed"
+                  className="text-sm font-medium text-blue-600 hover:text-blue-800 disabled:text-gray-400 disabled:cursor-not-allowed shrink-0"
                 >
                   {storyGenerating ? 'Generating…' : hasRealBrief ? 'Regenerate' : 'Generate brief'}
                 </button>
@@ -252,6 +251,15 @@ const LeadDetailModal = ({
                     Notes only — no Fathom transcript found
                   </span>
                 )}
+                <button
+                  type="button"
+                  onClick={() => setKrispSectionOpen((o) => !o)}
+                  className="text-sm font-medium text-violet-700 hover:text-violet-900 shrink-0 sm:ml-auto"
+                  aria-expanded={krispSectionOpen}
+                >
+                  {krispSectionOpen ? 'Hide Krisp transcripts' : 'Krisp transcripts'}
+                  <span className="ml-1 text-xs opacity-80" aria-hidden>{krispSectionOpen ? '▲' : '▼'}</span>
+                </button>
               </div>
 
               {/* Meeting banner — shown as soon as a meeting is detected */}
@@ -341,10 +349,14 @@ const LeadDetailModal = ({
               ) : null}
             </div>
 
-            <KrispTranscriptsPanel
-              leadId={lead.id || lead['Profile Key']}
-              wrapperId="lead-detail-krisp-panel"
-            />
+            {krispSectionOpen && (
+              <KrispTranscriptsPanel
+                leadId={lead.id || lead['Profile Key']}
+                wrapperId="lead-detail-krisp-panel"
+                hideOuterTitle
+                className="border-t border-gray-100 mt-4"
+              />
+            )}
 
             {/* Upcoming meeting — manual check (auto-runs when brief is generated) */}
             {!upcomingMeeting && (
