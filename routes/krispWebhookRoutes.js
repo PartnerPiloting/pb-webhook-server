@@ -30,10 +30,12 @@ const {
   getKrispWebhookDbSummary,
   getKrispWebhookEventById,
   getKrispLinksForLead,
+  getKrispTranscriptRowsForLead,
   seedManualTestTranscript,
   seedKrispBackendFixtures,
   purgeManualTestTranscripts,
 } = require('../services/krispWebhookDb');
+const { extractKrispDisplayText, krispEventTypeLabel } = require('../services/krispPayloadText');
 const { linkKrispEventToLeadsByEmail } = require('../services/krispLeadLinkService');
 
 const router = express.Router();
@@ -83,43 +85,6 @@ function escapeHtml(s) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
-}
-
-/** Best-effort transcript / body text from stored Krisp JSON (shape varies by event). */
-function extractKrispDisplayText(payload) {
-  if (!payload || typeof payload !== 'object') return '';
-  const d = payload.data;
-  if (d && typeof d === 'object' && !Array.isArray(d)) {
-    for (const key of ['raw_content', 'transcript', 'text']) {
-      const v = d[key];
-      if (typeof v === 'string' && v.trim()) return v;
-    }
-    if (typeof d.content === 'string' && d.content.trim()) return d.content;
-    if (d.content && typeof d.content === 'object') {
-      try {
-        return JSON.stringify(d.content, null, 2);
-      } catch (_e) {
-        /* fall through */
-      }
-    }
-    for (const sub of ['raw_meeting', 'meeting']) {
-      const o = d[sub];
-      if (o && typeof o === 'object') {
-        if (typeof o.transcript === 'string' && o.transcript.trim()) return o.transcript;
-        if (typeof o.summary === 'string' && o.summary.trim()) return o.summary;
-      }
-    }
-    try {
-      return JSON.stringify(d, null, 2);
-    } catch (_e) {
-      return '';
-    }
-  }
-  try {
-    return JSON.stringify(payload, null, 2);
-  } catch (_e) {
-    return '';
-  }
 }
 
 // Krisp (and similar UIs) often verify the URL with GET/HEAD before save — POST-only returned 404 and broke "Update".
@@ -177,6 +142,40 @@ router.get('/webhooks/krisp/links-for-lead', async (req, res) => {
   const limit = req.query.limit != null ? parseInt(String(req.query.limit), 10) : 50;
   const rows = await getKrispLinksForLead(leadId, Number.isFinite(limit) ? limit : 50);
   res.json({ leadId, count: rows.length, links: rows });
+});
+
+const KRISP_TRANSCRIPT_PREVIEW_MAX = 500;
+
+// Same auth as links-for-lead; includes preview + full_text for portal copy workflow.
+router.get('/webhooks/krisp/transcripts-for-lead', async (req, res) => {
+  const adminAuth = (req.get('authorization') || '').replace(/^Bearer\s+/i, '').trim();
+  const adminOk = adminAuth === (process.env.PB_WEBHOOK_SECRET || '').trim();
+  if (!adminOk) return res.status(401).json({ error: 'admin auth required (PB_WEBHOOK_SECRET)' });
+
+  const leadId = typeof req.query.leadId === 'string' ? req.query.leadId.trim() : '';
+  if (!leadId) return res.status(400).json({ error: 'leadId query required (Airtable record id)' });
+
+  const limit = req.query.limit != null ? parseInt(String(req.query.limit), 10) : 50;
+  const rows = await getKrispTranscriptRowsForLead(leadId, Number.isFinite(limit) ? limit : 50);
+  const transcripts = rows.map((row) => {
+    const fullText = extractKrispDisplayText(row.payload);
+    const preview =
+      fullText.length <= KRISP_TRANSCRIPT_PREVIEW_MAX
+        ? fullText
+        : `${fullText.slice(0, KRISP_TRANSCRIPT_PREVIEW_MAX)}…`;
+    return {
+      event_id: row.event_id,
+      received_at: row.received_at,
+      krisp_id: row.krisp_id,
+      event: row.event,
+      type_label: krispEventTypeLabel(row.event),
+      participant_email: row.participant_email,
+      match_method: row.match_method,
+      preview,
+      full_text: fullText,
+    };
+  });
+  res.json({ leadId, count: transcripts.length, transcripts });
 });
 
 // --- Simple HTML portal (same admin secret as other debug GETs: ?secret=PB_WEBHOOK_SECRET) ---

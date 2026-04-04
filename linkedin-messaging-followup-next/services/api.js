@@ -2022,6 +2022,40 @@ export const uploadLeadEmailsCsv = async (file, { apply = true, previewMax = 20,
   return data;
 };
 
+/**
+ * Krisp-linked webhook transcripts for an Airtable lead (Next.js route proxies with PB_WEBHOOK_SECRET).
+ * @param {string} leadId - Airtable record id (rec…)
+ * @returns {Promise<{ transcripts: object[], leadId?: string, count?: number, error: string|null }>}
+ */
+export const getKrispTranscriptsForLead = async (leadId) => {
+  if (typeof window === 'undefined') {
+    return { transcripts: [], error: 'client_only' };
+  }
+  const id = String(leadId || '').trim();
+  if (!id) return { transcripts: [], error: 'no_lead_id' };
+  try {
+    const headers = getAuthenticatedHeaders();
+    const url = `/api/krisp/transcripts-for-lead?leadId=${encodeURIComponent(id)}`;
+    const res = await fetch(url, { method: 'GET', headers, cache: 'no-store' });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      return {
+        transcripts: [],
+        error: data.error || `request failed (${res.status})`,
+      };
+    }
+    return {
+      leadId: data.leadId,
+      count: data.count,
+      transcripts: Array.isArray(data.transcripts) ? data.transcripts : [],
+      error: null,
+    };
+  } catch (e) {
+    console.error('getKrispTranscriptsForLead error:', e.message);
+    return { transcripts: [], error: e.message || 'fetch failed' };
+  }
+};
+
 export default api;
 
 // Export helper functions for use in components

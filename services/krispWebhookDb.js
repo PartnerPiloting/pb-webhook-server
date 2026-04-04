@@ -312,6 +312,30 @@ async function getKrispLinksForLead(airtableLeadId, limit = 50) {
   }
 }
 
+/** Links for a lead with full webhook payload (for transcript copy / preview). */
+async function getKrispTranscriptRowsForLead(airtableLeadId, limit = 50) {
+  const p = getPool();
+  if (!p) return [];
+  const cap = Math.min(Math.max(Number(limit) || 50, 1), 200);
+  const client = await p.connect();
+  try {
+    await ensureSchema(client);
+    const r = await client.query(
+      `SELECT l.id AS link_id, l.event_id, l.participant_email, l.match_method, l.created_at,
+              e.received_at, e.event, e.krisp_id, e.payload
+       FROM krisp_event_leads l
+       JOIN krisp_webhook_events e ON e.id = l.event_id
+       WHERE l.airtable_lead_id = $1
+       ORDER BY e.received_at DESC
+       LIMIT $2`,
+      [airtableLeadId, cap],
+    );
+    return r.rows;
+  } finally {
+    client.release();
+  }
+}
+
 async function getKrispLinksForEvent(eventId) {
   const n = typeof eventId === 'string' ? parseInt(eventId, 10) : Number(eventId);
   if (!Number.isFinite(n)) return [];
@@ -338,6 +362,7 @@ module.exports = {
   getKrispWebhookEventById,
   insertKrispEventLead,
   getKrispLinksForLead,
+  getKrispTranscriptRowsForLead,
   getKrispLinksForEvent,
   seedManualTestTranscript,
   seedKrispBackendFixtures,
