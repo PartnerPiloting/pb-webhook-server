@@ -310,6 +310,13 @@ router.post('/krisp-test/purge', async (req, res) => {
   }
 });
 
+router.get('/krisp-portal/event/:id/json', async (req, res) => {
+  if (!pbAdminOk(req)) return res.status(401).json({ error: 'unauthorized' });
+  const row = await getKrispWebhookEventById(req.params.id);
+  if (!row) return res.status(404).json({ error: 'not_found' });
+  res.json({ id: row.id, received_at: row.received_at, event: row.event, krisp_id: row.krisp_id, payload: row.payload });
+});
+
 router.get('/krisp-portal/event/:id', async (req, res) => {
   if (!pbAdminOk(req)) {
     res.status(401).type('html')
