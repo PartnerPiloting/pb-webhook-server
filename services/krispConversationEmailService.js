@@ -1,6 +1,6 @@
 /**
  * One summary email per stored Krisp webhook: all participants + transcript (plain text for copy) + link to web Copy button.
- * No feature flag — sends when ALERT_EMAIL is set and Mailgun is configured. Deduped per postgres row.
+ * Sends whenever Mailgun is configured. Recipient: ALERT_EMAIL if set, else same default as sendAlertEmail. Deduped per postgres row.
  */
 
 const { sendAlertEmail } = require('./emailNotificationService');
@@ -40,12 +40,6 @@ async function maybeSendKrispConversationAlert(params) {
     if (already) return { sent: false, reason: 'already_sent' };
   } catch (e) {
     log.warn(`KRISP-CONV dedupe check failed: ${e.message}`);
-  }
-
-  const adminEmail = process.env.ALERT_EMAIL || '';
-  if (!adminEmail) {
-    log.warn('KRISP-CONV skip: no ALERT_EMAIL');
-    return { sent: false, reason: 'no_recipient' };
   }
 
   const participants = listKrispParticipants(payload);
@@ -113,7 +107,8 @@ ${copyButtonHtml}
   const subject = `[Krisp] Meeting — ${postgresId}`;
 
   try {
-    const result = await sendAlertEmail(subject, html, adminEmail, { text: plainText });
+    // null recipient → sendAlertEmail uses ALERT_EMAIL or its built-in default
+    const result = await sendAlertEmail(subject, html, null, { text: plainText });
     if (result.success) {
       await markKrispConversationAlertSent(postgresId);
       log.info(`KRISP-CONV email sent postgres_id=${postgresId}`);
