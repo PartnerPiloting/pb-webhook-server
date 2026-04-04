@@ -5,7 +5,8 @@ import { getKrispTranscriptsForLead } from '../services/api';
 
 /**
  * Krisp webhook rows linked to this Airtable lead (via participant email).
- * @param {{ leadId?: string|null, compact?: boolean, className?: string, wrapperId?: string, hideOuterTitle?: boolean, copyLabel?: string, copyButtonLeft?: boolean }} props
+ * Pass `prefetched` when a parent already fetched (skips duplicate request).
+ * @param {{ prefetched?: { transcripts: object[], error: string|null } }} props
  */
 export default function KrispTranscriptsPanel({
   leadId,
@@ -15,6 +16,7 @@ export default function KrispTranscriptsPanel({
   hideOuterTitle = false,
   copyLabel = 'Copy',
   copyButtonLeft = true,
+  prefetched,
 }) {
   const [transcripts, setTranscripts] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -22,6 +24,7 @@ export default function KrispTranscriptsPanel({
   const [copiedKey, setCopiedKey] = useState(null);
 
   const id = leadId != null ? String(leadId).trim() : '';
+  const usePrefetch = prefetched !== undefined && prefetched !== null;
 
   useEffect(() => {
     if (!id) {
@@ -30,6 +33,7 @@ export default function KrispTranscriptsPanel({
       setLoading(false);
       return;
     }
+    if (usePrefetch) return;
     let cancelled = false;
     setLoading(true);
     setError(null);
@@ -41,7 +45,11 @@ export default function KrispTranscriptsPanel({
       if (!cancelled) setLoading(false);
     });
     return () => { cancelled = true; };
-  }, [id]);
+  }, [id, usePrefetch]);
+
+  const displayTranscripts = usePrefetch ? (prefetched.transcripts || []) : transcripts;
+  const displayError = usePrefetch ? (prefetched.error || null) : error;
+  const displayLoading = usePrefetch ? false : loading;
 
   const handleCopy = useCallback(async (fullText, rowKey) => {
     const text = fullText || '';
@@ -75,24 +83,24 @@ export default function KrispTranscriptsPanel({
       {!hideOuterTitle && (
         <div className={`flex items-center gap-2 ${compact ? 'border-b border-gray-200 pb-2' : 'border-b border-gray-200 pb-2'}`}>
           <h4 className={titleClass}>🎙️ Krisp transcripts</h4>
-          {loading && <span className="text-xs text-gray-500">Loading…</span>}
+          {displayLoading && <span className="text-xs text-gray-500">Loading…</span>}
         </div>
       )}
-      {hideOuterTitle && loading && (
+      {hideOuterTitle && displayLoading && (
         <span className="text-xs text-gray-500">Loading Krisp…</span>
       )}
-      {error && (
+      {displayError && (
         <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
-          {error}
+          {displayError}
         </p>
       )}
-      {!loading && !error && transcripts.length === 0 && (
+      {!displayLoading && !displayError && displayTranscripts.length === 0 && (
         <p className={`text-gray-500 italic ${compact ? 'text-xs' : 'text-sm'}`}>
           No Krisp webhooks linked to this lead yet. Links appear when a saved Krisp payload includes this lead&apos;s email.
         </p>
       )}
       <ul className="space-y-3">
-        {transcripts.map((row) => {
+        {displayTranscripts.map((row) => {
           const rowKey = String(row.event_id ?? row.krisp_id ?? row.received_at);
           const when = row.received_at
             ? new Date(row.received_at).toLocaleString(undefined, {
