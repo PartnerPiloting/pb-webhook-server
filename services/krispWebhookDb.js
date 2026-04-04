@@ -410,7 +410,7 @@ async function getKrispTranscriptRowsForLead(airtableLeadId, limit = 50) {
     await ensureSchema(client);
     const r = await client.query(
       `SELECT l.id AS link_id, l.event_id, l.participant_email, l.match_method, l.created_at,
-              e.received_at, e.event, e.krisp_id, e.payload
+              e.received_at, e.event, e.krisp_id, e.payload, e.status, e.verified_speakers
        FROM krisp_event_leads l
        JOIN krisp_webhook_events e ON e.id = l.event_id
        WHERE l.airtable_lead_id = $1

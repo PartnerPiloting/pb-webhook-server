@@ -865,6 +865,71 @@ document.getElementById('skipBtn').addEventListener('click', async () => {
 </body></html>`);
 });
 
+// JSON API for Next.js frontend
+router.get('/krisp-review/api/queue', async (req, res) => {
+  if (!pbAdminOk(req)) return res.status(401).json({ error: 'unauthorized' });
+  const rows = await getKrispReviewQueue(50);
+  return res.json({ rows });
+});
+
+router.get('/krisp-review/api/event/:id', async (req, res) => {
+  if (!pbAdminOk(req)) return res.status(401).json({ error: 'unauthorized' });
+  const row = await getKrispReviewEventById(req.params.id);
+  if (!row) return res.status(404).json({ error: 'not found' });
+
+  const fullText = extractKrispDisplayText(row.payload);
+  const title = row.payload?.data?.meeting?.title || row.event || 'Krisp meeting';
+  const duration = row.payload?.data?.meeting?.duration_seconds || null;
+
+  let calendarAttendees = [];
+  try {
+    const calResolved = await resolveCalendarEmailForKrispHarness(req);
+    if (calResolved.calendarEmail) {
+      const win = extractKrispMeetingWindowUtc(row.payload, 10);
+      if (!win.error) {
+        const events = await listCalendarEventsWithAttendeesInRange(
+          calResolved.calendarEmail, win.timeMin, win.timeMax,
+        );
+        const { suggested } = rankCalendarEventsForKrispCoreWindow(events, win.coreStart, win.coreEnd);
+        const best = suggested[0];
+        if (best?.attendees) {
+          calendarAttendees = best.attendees
+            .filter(a => a.email && !a.self)
+            .map(a => ({ email: a.email, name: a.displayName || '' }));
+        }
+      }
+    }
+  } catch (_e) { /* calendar optional */ }
+
+  const speakerLabels = [];
+  const lines = fullText.split('\n');
+  const seen = new Set();
+  for (const line of lines) {
+    const m = line.match(/^(Speaker\s*\d+|[^:]{1,40}):\s/);
+    if (m) {
+      const label = m[1].trim();
+      if (label && !label.startsWith('{') && !label.startsWith('[') && !seen.has(label)) {
+        seen.add(label);
+        speakerLabels.push(label);
+      }
+    }
+  }
+
+  return res.json({
+    id: row.id,
+    received_at: row.received_at,
+    event: row.event,
+    krisp_id: row.krisp_id,
+    status: row.status || 'new',
+    verified_speakers: row.verified_speakers || null,
+    title,
+    duration,
+    full_text: fullText,
+    speaker_labels: speakerLabels,
+    calendar_attendees: calendarAttendees,
+  });
+});
+
 // Save verified speakers
 router.post('/krisp-review/:id/speakers', async (req, res) => {
   if (!pbAdminOk(req)) return res.status(401).json({ error: 'unauthorized' });
