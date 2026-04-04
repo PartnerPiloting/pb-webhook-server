@@ -61,6 +61,15 @@ async function ensureSchema(client) {
   await client.query(
     `ALTER TABLE krisp_webhook_events ADD COLUMN IF NOT EXISTS verified_speakers JSONB`,
   );
+  await client.query(
+    `ALTER TABLE krisp_webhook_events ADD COLUMN IF NOT EXISTS status_reason TEXT`,
+  );
+  await client.query(
+    `ALTER TABLE krisp_webhook_events ADD COLUMN IF NOT EXISTS needs_split BOOLEAN NOT NULL DEFAULT FALSE`,
+  );
+  await client.query(
+    `ALTER TABLE krisp_webhook_events ADD COLUMN IF NOT EXISTS parent_event_id BIGINT REFERENCES krisp_webhook_events(id)`,
+  );
   schemaEnsured = true;
 }
 
@@ -446,7 +455,7 @@ async function getKrispLinksForEvent(eventId) {
 /**
  * Review queue: recent rows with status + verified_speakers (no full payload).
  * @param {number} [limit=50]
- * @param {string} [statusFilter='all'] — 'new' | 'speakers_verified' | 'skipped' | 'legacy' (ready/linked) | 'all'
+ * @param {string} [statusFilter='all'] — 'to_verify' | 'verified' | 'skipped' | 'legacy' (old new/speakers_verified/ready/linked) | 'all'
  */
 async function getKrispReviewQueue(limit = 50, statusFilter = 'all') {
   const p = getPool();
@@ -454,20 +463,20 @@ async function getKrispReviewQueue(limit = 50, statusFilter = 'all') {
   const cap = Math.min(Math.max(Number(limit) || 50, 1), 200);
   const f = String(statusFilter || 'all').toLowerCase();
   let where = '';
-  if (f === 'new') {
-    where = ` WHERE status = 'new'`;
-  } else if (f === 'speakers_verified') {
-    where = ` WHERE status = 'speakers_verified'`;
+  if (f === 'to_verify') {
+    where = ` WHERE status = 'to_verify'`;
+  } else if (f === 'verified') {
+    where = ` WHERE status = 'verified'`;
   } else if (f === 'skipped') {
     where = ` WHERE status = 'skipped'`;
   } else if (f === 'legacy') {
-    where = ` WHERE status IN ('ready','linked')`;
+    where = ` WHERE status IN ('new','speakers_verified','ready','linked')`;
   }
   const client = await p.connect();
   try {
     await ensureSchema(client);
     const r = await client.query(
-      `SELECT id, received_at, event, krisp_id, status, verified_speakers,
+      `SELECT id, received_at, event, krisp_id, status, verified_speakers, needs_split, status_reason,
               payload->'data'->'meeting'->>'title' AS meeting_title,
               payload->'data'->'meeting'->>'duration_seconds' AS duration_seconds
        FROM krisp_webhook_events${where} ORDER BY id DESC LIMIT $1`,
@@ -492,7 +501,8 @@ async function getKrispReviewEventById(id) {
   try {
     await ensureSchema(client);
     const r = await client.query(
-      `SELECT id, received_at, event, krisp_id, payload, status, verified_speakers
+      `SELECT id, received_at, event, krisp_id, payload, status, verified_speakers,
+              status_reason, needs_split, parent_event_id
        FROM krisp_webhook_events WHERE id = $1`,
       [n],
     );
@@ -512,7 +522,7 @@ async function saveVerifiedSpeakers(id, speakers) {
   try {
     await ensureSchema(client);
     await client.query(
-      `UPDATE krisp_webhook_events SET verified_speakers = $2::jsonb, status = 'speakers_verified' WHERE id = $1`,
+      `UPDATE krisp_webhook_events SET verified_speakers = $2::jsonb, status = 'verified' WHERE id = $1`,
       [n, JSON.stringify(speakers)],
     );
     return { ok: true };
@@ -521,9 +531,9 @@ async function saveVerifiedSpeakers(id, speakers) {
   }
 }
 
-/** @param {string|number} id @param {string} newStatus */
-async function updateKrispEventStatus(id, newStatus) {
-  const VALID = ['new', 'speakers_verified', 'skipped'];
+/** @param {string|number} id @param {string} newStatus @param {string} [statusReason] */
+async function updateKrispEventStatus(id, newStatus, statusReason) {
+  const VALID = ['to_verify', 'verified', 'skipped'];
   if (!VALID.includes(newStatus)) return { ok: false, error: 'invalid status' };
   const n = typeof id === 'string' ? parseInt(id, 10) : Number(id);
   if (!Number.isFinite(n) || n < 1) return { ok: false };
@@ -532,8 +542,96 @@ async function updateKrispEventStatus(id, newStatus) {
   const client = await p.connect();
   try {
     await ensureSchema(client);
-    await client.query(`UPDATE krisp_webhook_events SET status = $2 WHERE id = $1`, [n, newStatus]);
+    if (statusReason !== undefined) {
+      await client.query(
+        `UPDATE krisp_webhook_events SET status = $2, status_reason = $3 WHERE id = $1`,
+        [n, newStatus, statusReason],
+      );
+    } else {
+      await client.query(`UPDATE krisp_webhook_events SET status = $2 WHERE id = $1`, [n, newStatus]);
+    }
     return { ok: true };
+  } finally {
+    client.release();
+  }
+}
+
+/** Set the initial status + reason after webhook ingest (won't overwrite manual user changes). */
+async function setKrispIngestStatus(id, { status, statusReason, needsSplit }) {
+  const n = typeof id === 'string' ? parseInt(id, 10) : Number(id);
+  if (!Number.isFinite(n) || n < 1) return { ok: false };
+  const p = getPool();
+  if (!p) return { ok: false };
+  const client = await p.connect();
+  try {
+    await ensureSchema(client);
+    await client.query(
+      `UPDATE krisp_webhook_events
+       SET status = $2, status_reason = $3, needs_split = $4
+       WHERE id = $1`,
+      [n, status || 'to_verify', statusReason || null, !!needsSplit],
+    );
+    return { ok: true };
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Create a child event by splitting a parent transcript at a given line number.
+ * Copies the parent row but trims the payload transcript to [splitAtLine..end].
+ * The parent's transcript is trimmed to [0..splitAtLine-1].
+ */
+async function splitKrispEvent(parentId, splitAtLine, transcriptLines) {
+  const n = typeof parentId === 'string' ? parseInt(parentId, 10) : Number(parentId);
+  if (!Number.isFinite(n) || n < 1) return { ok: false, error: 'invalid parent id' };
+  const p = getPool();
+  if (!p) return { ok: false, error: 'no db' };
+
+  const client = await p.connect();
+  try {
+    await ensureSchema(client);
+    const parentRow = await client.query(`SELECT * FROM krisp_webhook_events WHERE id = $1`, [n]);
+    if (parentRow.rows.length === 0) return { ok: false, error: 'parent not found' };
+    const parent = parentRow.rows[0];
+
+    const childPayload = JSON.parse(JSON.stringify(parent.payload));
+    const firstHalf = transcriptLines.slice(0, splitAtLine).join('\n');
+    const secondHalf = transcriptLines.slice(splitAtLine).join('\n');
+
+    const setTranscriptText = (pl, text) => {
+      if (pl?.data?.meeting?.transcripts && Array.isArray(pl.data.meeting.transcripts)) {
+        pl.data.meeting.transcripts = [{ text }];
+      } else if (pl?.data?.transcript !== undefined) {
+        pl.data.transcript = text;
+      } else if (pl?.data?.meeting) {
+        pl.data.meeting.transcripts = [{ text }];
+      } else if (pl?.data) {
+        pl.data.transcript = text;
+      }
+    };
+
+    setTranscriptText(childPayload, secondHalf);
+
+    const parentPayloadCopy = JSON.parse(JSON.stringify(parent.payload));
+    setTranscriptText(parentPayloadCopy, firstHalf);
+
+    const ins = await client.query(
+      `INSERT INTO krisp_webhook_events (event, krisp_id, payload, status, status_reason, parent_event_id)
+       VALUES ($1, $2, $3::jsonb, 'to_verify', 'Split from parent #' || $4::text, $4)
+       RETURNING id`,
+      [parent.event, parent.krisp_id ? `${parent.krisp_id}-split` : null, JSON.stringify(childPayload), n],
+    );
+    const childId = ins.rows[0].id;
+
+    await client.query(
+      `UPDATE krisp_webhook_events SET payload = $2::jsonb, needs_split = FALSE,
+              status_reason = COALESCE(status_reason, '') || ' (split into #' || $3::text || ')'
+       WHERE id = $1`,
+      [n, JSON.stringify(parentPayloadCopy), childId],
+    );
+
+    return { ok: true, parent_id: n, child_id: childId };
   } finally {
     client.release();
   }
@@ -559,4 +657,6 @@ module.exports = {
   getKrispReviewEventById,
   saveVerifiedSpeakers,
   updateKrispEventStatus,
+  setKrispIngestStatus,
+  splitKrispEvent,
 };
