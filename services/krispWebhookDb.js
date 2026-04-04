@@ -55,6 +55,12 @@ async function ensureSchema(client) {
   await client.query(
     `ALTER TABLE krisp_webhook_events ADD COLUMN IF NOT EXISTS conversation_alert_sent_at TIMESTAMPTZ`,
   );
+  await client.query(
+    `ALTER TABLE krisp_webhook_events ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'new'`,
+  );
+  await client.query(
+    `ALTER TABLE krisp_webhook_events ADD COLUMN IF NOT EXISTS verified_speakers JSONB`,
+  );
   schemaEnsured = true;
 }
 
@@ -437,6 +443,90 @@ async function getKrispLinksForEvent(eventId) {
   }
 }
 
+/**
+ * Review queue: recent rows with status + verified_speakers (no full payload).
+ * @param {number} [limit=50]
+ */
+async function getKrispReviewQueue(limit = 50) {
+  const p = getPool();
+  if (!p) return [];
+  const cap = Math.min(Math.max(Number(limit) || 50, 1), 200);
+  const client = await p.connect();
+  try {
+    await ensureSchema(client);
+    const r = await client.query(
+      `SELECT id, received_at, event, krisp_id, status, verified_speakers,
+              payload->'data'->'meeting'->>'title' AS meeting_title,
+              payload->'data'->'meeting'->>'duration_seconds' AS duration_seconds
+       FROM krisp_webhook_events ORDER BY id DESC LIMIT $1`,
+      [cap],
+    );
+    return r.rows;
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Full row for review page (includes payload).
+ * @param {string|number} id
+ */
+async function getKrispReviewEventById(id) {
+  const n = typeof id === 'string' ? parseInt(id, 10) : Number(id);
+  if (!Number.isFinite(n) || n < 1) return null;
+  const p = getPool();
+  if (!p) return null;
+  const client = await p.connect();
+  try {
+    await ensureSchema(client);
+    const r = await client.query(
+      `SELECT id, received_at, event, krisp_id, payload, status, verified_speakers
+       FROM krisp_webhook_events WHERE id = $1`,
+      [n],
+    );
+    return r.rows[0] || null;
+  } finally {
+    client.release();
+  }
+}
+
+/** @param {string|number} id @param {object} speakers */
+async function saveVerifiedSpeakers(id, speakers) {
+  const n = typeof id === 'string' ? parseInt(id, 10) : Number(id);
+  if (!Number.isFinite(n) || n < 1) return { ok: false };
+  const p = getPool();
+  if (!p) return { ok: false };
+  const client = await p.connect();
+  try {
+    await ensureSchema(client);
+    await client.query(
+      `UPDATE krisp_webhook_events SET verified_speakers = $2::jsonb, status = 'speakers_verified' WHERE id = $1`,
+      [n, JSON.stringify(speakers)],
+    );
+    return { ok: true };
+  } finally {
+    client.release();
+  }
+}
+
+/** @param {string|number} id @param {string} newStatus */
+async function updateKrispEventStatus(id, newStatus) {
+  const VALID = ['new', 'speakers_verified', 'ready', 'linked', 'skipped'];
+  if (!VALID.includes(newStatus)) return { ok: false, error: 'invalid status' };
+  const n = typeof id === 'string' ? parseInt(id, 10) : Number(id);
+  if (!Number.isFinite(n) || n < 1) return { ok: false };
+  const p = getPool();
+  if (!p) return { ok: false };
+  const client = await p.connect();
+  try {
+    await ensureSchema(client);
+    await client.query(`UPDATE krisp_webhook_events SET status = $2 WHERE id = $1`, [n, newStatus]);
+    return { ok: true };
+  } finally {
+    client.release();
+  }
+}
+
 module.exports = {
   persistKrispWebhook,
   getPool,
@@ -453,4 +543,8 @@ module.exports = {
   seedManualTestTranscript,
   seedKrispBackendFixtures,
   purgeManualTestTranscripts,
+  getKrispReviewQueue,
+  getKrispReviewEventById,
+  saveVerifiedSpeakers,
+  updateKrispEventStatus,
 };
