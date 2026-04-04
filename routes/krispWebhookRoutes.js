@@ -41,7 +41,7 @@ const {
   purgeManualTestTranscripts,
 } = require('../services/krispWebhookDb');
 const { extractKrispDisplayText, krispEventTypeLabel } = require('../services/krispPayloadText');
-const { linkKrispEventToLeadsByEmail } = require('../services/krispLeadLinkService');
+const { linkKrispEventToLeadsByEmail, DEFAULT_COACH_CLIENT_ID } = require('../services/krispLeadLinkService');
 const { maybeSendKrispUnmatchedAlert } = require('../services/krispUnmatchedAlertService');
 const { maybeSendKrispConversationAlert } = require('../services/krispConversationEmailService');
 const { listCalendarEventsWithAttendeesInRange } = require('../config/calendarServiceAccount.js');
@@ -156,7 +156,7 @@ function krispParticipantSummaryForHarness(payload) {
 
 /**
  * Same calendar source as Smart FUP (`/api/calendar/upcoming-meeting-with-lead`): Airtable Clients → Google Calendar Email.
- * Priority: query calendarEmail → Airtable by clientId (query or KRISP_CALENDAR_CLIENT_ID or KRISP_COACH_CLIENT_ID) → env KRISP_CALENDAR_MATCH_EMAIL.
+ * Priority: query calendarEmail → Airtable by clientId (query or env or same default as Krisp linking: DEFAULT_COACH_CLIENT_ID) → env KRISP_CALENDAR_MATCH_EMAIL.
  */
 async function resolveCalendarEmailForKrispHarness(req) {
   const qCal = typeof req.query.calendarEmail === 'string' ? req.query.calendarEmail.trim() : '';
@@ -164,7 +164,9 @@ async function resolveCalendarEmailForKrispHarness(req) {
 
   const qClient = typeof req.query.clientId === 'string' ? req.query.clientId.trim() : '';
   const clientId =
-    qClient || (process.env.KRISP_CALENDAR_CLIENT_ID || process.env.KRISP_COACH_CLIENT_ID || '').trim();
+    qClient ||
+    (process.env.KRISP_CALENDAR_CLIENT_ID || process.env.KRISP_COACH_CLIENT_ID || '').trim() ||
+    DEFAULT_COACH_CLIENT_ID;
 
   const baseId = process.env.MASTER_CLIENTS_BASE_ID;
   const apiKey = process.env.AIRTABLE_API_KEY;
@@ -206,7 +208,7 @@ async function resolveCalendarEmailForKrispHarness(req) {
     resolved_via: null,
     clientId: clientId || null,
     error:
-      'No calendar resolved: set query calendarEmail=…, or clientId=…, or server KRISP_COACH_CLIENT_ID (or KRISP_CALENDAR_CLIENT_ID) + Airtable Google Calendar Email, or KRISP_CALENDAR_MATCH_EMAIL',
+      'No calendar resolved: add "Google Calendar Email" on the Airtable client (e.g. Guy-Wilson), or pass calendarEmail=…, or set KRISP_CALENDAR_MATCH_EMAIL. Check MASTER_CLIENTS_BASE_ID and AIRTABLE_API_KEY on the server.',
   };
 }
 
