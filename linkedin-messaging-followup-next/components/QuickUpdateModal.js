@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { lookupLead, quickUpdateLead, previewParse, getLeadNotesSummary, updateClientTimezone, createLead } from '../services/api';
 import { buildAuthUrl } from '../utils/clientUtils';
 import CollapsibleNotes from './CollapsibleNotes';
+import KrispTranscriptsPanel from './KrispTranscriptsPanel';
 
 /**
  * Clean up LinkedIn message noise from notes
@@ -1345,6 +1346,15 @@ export default function QuickUpdateModal({
                   <div className="text-sm text-gray-400 italic">No notes yet</div>
                 )}
               </div>
+            )}
+
+            {selectedLead?.id && (
+              <KrispTranscriptsPanel
+                leadId={selectedLead.id}
+                compact
+                wrapperId="quick-update-krisp-panel"
+                className="mt-6"
+              />
             )}
             
             {/* Full Notes View Button */}

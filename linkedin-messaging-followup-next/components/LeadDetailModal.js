@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import HelpButton from './HelpButton';
 import LeadDetailForm from './LeadDetailForm';
-import { generateSmartFollowupStory, getKrispTranscriptsForLead, getUpcomingMeetingWithLead } from '../services/api';
+import { generateSmartFollowupStory, getUpcomingMeetingWithLead } from '../services/api';
+import KrispTranscriptsPanel from './KrispTranscriptsPanel';
 
 const LeadDetailModal = ({ 
   lead, 
@@ -18,11 +19,6 @@ const LeadDetailModal = ({
   const [upcomingMeeting, setUpcomingMeeting] = useState(null);
   const [upcomingMeetingLoading, setUpcomingMeetingLoading] = useState(false);
   const [upcomingMeetingError, setUpcomingMeetingError] = useState(null);
-  const [krispTranscripts, setKrispTranscripts] = useState([]);
-  const [krispLoading, setKrispLoading] = useState(false);
-  const [krispError, setKrispError] = useState(null);
-  const [krispCopiedKey, setKrispCopiedKey] = useState(null);
-
   // Fix hydration issues by only rendering on client side
   useEffect(() => {
     setIsMounted(true);
@@ -35,28 +31,8 @@ const LeadDetailModal = ({
       setStoryError(null);
       setUpcomingMeeting(null);
       setUpcomingMeetingError(null);
-      setKrispTranscripts([]);
-      setKrispError(null);
-      setKrispCopiedKey(null);
     }
   }, [isOpen, lead?.id]);
-
-  useEffect(() => {
-    if (!isOpen || !isMounted || !lead) return;
-    const leadId = lead.id || lead['Profile Key'];
-    if (!leadId) return;
-    let cancelled = false;
-    setKrispLoading(true);
-    setKrispError(null);
-    getKrispTranscriptsForLead(leadId).then((result) => {
-      if (cancelled) return;
-      setKrispTranscripts(result.transcripts || []);
-      setKrispError(result.error || null);
-    }).finally(() => {
-      if (!cancelled) setKrispLoading(false);
-    });
-    return () => { cancelled = true; };
-  }, [isOpen, isMounted, lead?.id, lead?.['Profile Key']]);
 
   // Handle escape key
   useEffect(() => {
@@ -164,26 +140,8 @@ const LeadDetailModal = ({
   const leadEmail = (lead?.email || lead?.['Email'] || '').trim();
   const hasEmail = leadEmail.length > 0;
 
-  const handleCopyKrispTranscript = async (fullText, rowKey) => {
-    const text = fullText || '';
-    try {
-      await navigator.clipboard.writeText(text);
-      setKrispCopiedKey(rowKey);
-      setTimeout(() => setKrispCopiedKey((k) => (k === rowKey ? null : k)), 2000);
-    } catch {
-      try {
-        const ta = document.createElement('textarea');
-        ta.value = text;
-        document.body.appendChild(ta);
-        ta.select();
-        document.execCommand('copy');
-        document.body.removeChild(ta);
-        setKrispCopiedKey(rowKey);
-        setTimeout(() => setKrispCopiedKey((k) => (k === rowKey ? null : k)), 2000);
-      } catch {
-        /* ignore */
-      }
-    }
+  const scrollToKrisp = () => {
+    document.getElementById('lead-detail-krisp-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
   const handleCheckUpcomingMeeting = async () => {
@@ -229,6 +187,13 @@ const LeadDetailModal = ({
                 <div className="text-sm text-gray-500 mt-1">
                   Profile Key: {safeRender(lead.id || lead['Profile Key'])}
                 </div>
+                <button
+                  type="button"
+                  onClick={scrollToKrisp}
+                  className="mt-2 text-xs font-medium text-violet-700 hover:text-violet-900 hover:underline"
+                >
+                  Krisp transcripts ↓
+                </button>
               </div>
               
               <div className="flex items-center gap-3">
@@ -376,75 +341,10 @@ const LeadDetailModal = ({
               ) : null}
             </div>
 
-            {/* Krisp transcripts (linked by participant email → this lead) */}
-            <div className="space-y-3 border-t border-gray-100 pt-6">
-              <div className="flex items-center gap-2 border-b border-gray-200 pb-2">
-                <h4 className="text-lg font-semibold text-gray-900">🎙️ Krisp transcripts</h4>
-                {krispLoading && (
-                  <span className="text-xs text-gray-500">Loading…</span>
-                )}
-              </div>
-              {krispError && (
-                <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
-                  {krispError}
-                </p>
-              )}
-              {!krispLoading && !krispError && krispTranscripts.length === 0 && (
-                <p className="text-sm text-gray-500 italic">
-                  No Krisp webhooks linked to this lead yet. Links appear when a saved Krisp payload includes this lead&apos;s email.
-                </p>
-              )}
-              <ul className="space-y-4">
-                {krispTranscripts.map((row) => {
-                  const rowKey = String(row.event_id ?? row.krisp_id ?? row.received_at);
-                  const when = row.received_at
-                    ? new Date(row.received_at).toLocaleString(undefined, {
-                      dateStyle: 'medium',
-                      timeStyle: 'short',
-                    })
-                    : '—';
-                  const typeLabel = (row.type_label || 'Krisp').trim();
-                  const full = row.full_text || '';
-                  const peek = row.preview || (full ? `${full.slice(0, 500)}${full.length > 500 ? '…' : ''}` : '');
-                  return (
-                    <li
-                      key={rowKey}
-                      className="rounded-lg border border-gray-200 bg-slate-50/80 p-4 space-y-2"
-                    >
-                      <div className="flex flex-wrap items-center gap-2 justify-between">
-                        <div className="flex flex-wrap items-center gap-2 text-sm text-gray-700">
-                          <span className="text-gray-500">{when}</span>
-                          <span
-                            className="text-[10px] font-semibold uppercase tracking-wide text-violet-800 bg-violet-100 border border-violet-200 rounded px-1.5 py-0.5"
-                            title={row.event || typeLabel}
-                          >
-                            {typeLabel}
-                          </span>
-                          {row.krisp_id != null && row.krisp_id !== '' && (
-                            <span className="text-xs text-gray-400 font-mono">id {String(row.krisp_id)}</span>
-                          )}
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => handleCopyKrispTranscript(full, rowKey)}
-                          disabled={!full}
-                          className="shrink-0 text-sm font-medium text-violet-700 hover:text-violet-900 disabled:text-gray-400 disabled:cursor-not-allowed"
-                        >
-                          {krispCopiedKey === rowKey ? 'Copied' : 'Copy for Claude'}
-                        </button>
-                      </div>
-                      {peek ? (
-                        <pre className="text-xs text-gray-600 whitespace-pre-wrap break-words max-h-32 overflow-y-auto bg-white/80 border border-gray-100 rounded p-2 font-sans">
-                          {peek}
-                        </pre>
-                      ) : (
-                        <p className="text-xs text-gray-400">No extractable text in payload.</p>
-                      )}
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
+            <KrispTranscriptsPanel
+              leadId={lead.id || lead['Profile Key']}
+              wrapperId="lead-detail-krisp-panel"
+            />
 
             {/* Upcoming meeting — manual check (auto-runs when brief is generated) */}
             {!upcomingMeeting && (
