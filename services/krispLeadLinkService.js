@@ -10,14 +10,24 @@ const { createSafeLogger } = require('../utils/loggerHelper');
 
 const DEFAULT_COACH_CLIENT_ID = (process.env.KRISP_COACH_CLIENT_ID || 'Guy-Wilson').trim();
 
-/** Collect emails from payload.data.participants[].email */
+/** Collect emails from Krisp payload (checks data.meeting.participants[], data.participants[], and speakers). */
 function extractParticipantEmails(payload) {
   if (!payload || typeof payload !== 'object') return [];
   const d = payload.data;
-  if (!d || typeof d !== 'object' || !Array.isArray(d.participants)) return [];
+  if (!d || typeof d !== 'object') return [];
+
+  const candidates = [];
+  if (Array.isArray(d.participants)) candidates.push(...d.participants);
+  if (d.meeting && typeof d.meeting === 'object' && Array.isArray(d.meeting.participants)) {
+    candidates.push(...d.meeting.participants);
+  }
+  if (d.meeting && typeof d.meeting === 'object' && Array.isArray(d.meeting.speakers)) {
+    candidates.push(...d.meeting.speakers);
+  }
+
   const out = [];
   const seen = new Set();
-  for (const p of d.participants) {
+  for (const p of candidates) {
     if (!p || typeof p.email !== 'string') continue;
     const e = p.email.toLowerCase().trim();
     if (!e || seen.has(e)) continue;
@@ -31,8 +41,18 @@ function extractParticipantEmails(payload) {
 function participantsByEmailLower(payload) {
   const map = new Map();
   const d = payload?.data;
-  if (!d || typeof d !== 'object' || !Array.isArray(d.participants)) return map;
-  for (const p of d.participants) {
+  if (!d || typeof d !== 'object') return map;
+
+  const candidates = [];
+  if (Array.isArray(d.participants)) candidates.push(...d.participants);
+  if (d.meeting && typeof d.meeting === 'object' && Array.isArray(d.meeting.participants)) {
+    candidates.push(...d.meeting.participants);
+  }
+  if (d.meeting && typeof d.meeting === 'object' && Array.isArray(d.meeting.speakers)) {
+    candidates.push(...d.meeting.speakers);
+  }
+
+  for (const p of candidates) {
     if (!p || typeof p.email !== 'string') continue;
     const e = p.email.toLowerCase().trim();
     if (e && !map.has(e)) map.set(e, p);
@@ -151,16 +171,29 @@ async function linkKrispEventToLeadsByEmail(postgresEventId, payload, opts = {})
 /** Human-readable participant rows for emails (includes email string per row). */
 function listKrispParticipants(payload) {
   const d = payload?.data;
-  if (!d || typeof d !== 'object' || !Array.isArray(d.participants)) return [];
+  if (!d || typeof d !== 'object') return [];
+
+  const candidates = [];
+  if (Array.isArray(d.participants)) candidates.push(...d.participants);
+  if (d.meeting && typeof d.meeting === 'object' && Array.isArray(d.meeting.participants)) {
+    candidates.push(...d.meeting.participants);
+  }
+  if (d.meeting && typeof d.meeting === 'object' && Array.isArray(d.meeting.speakers)) {
+    candidates.push(...d.meeting.speakers);
+  }
+
   const out = [];
-  for (const p of d.participants) {
+  const seen = new Set();
+  for (const p of candidates) {
     if (!p || typeof p.email !== 'string') continue;
     const email = p.email.trim();
-    if (!email) continue;
+    if (!email || seen.has(email.toLowerCase())) continue;
+    seen.add(email.toLowerCase());
+    const name = typeof p.name === 'string' ? p.name : '';
     out.push({
       email,
-      first_name: typeof p.first_name === 'string' ? p.first_name : '',
-      last_name: typeof p.last_name === 'string' ? p.last_name : '',
+      first_name: typeof p.first_name === 'string' ? p.first_name : (name.split(' ')[0] || ''),
+      last_name: typeof p.last_name === 'string' ? p.last_name : (name.split(' ').slice(1).join(' ') || ''),
     });
   }
   return out;
