@@ -1358,8 +1358,26 @@ router.post('/webhooks/krisp', async (req, res) => {
       } catch (linkErr) {
         log.warn(`KRISP-WEBHOOK lead link failed: ${linkErr.message}`);
       }
+    }
+  } catch (e) {
+    log.error(`KRISP-WEBHOOK db persist failed: ${e.message}`);
+  }
 
-      // --- Smart status: calendar overlap + AI analysis ---
+  // Return 200 immediately — Krisp webhook timeouts are short.
+  // Heavy work (calendar, AI, email) runs fire-and-forget after the response.
+  res.status(200).json({
+    ok: true,
+    received: true,
+    krisp_meeting_id: meetingId,
+    db_saved: dbSaved,
+    lead_links_linked: leadLinksLinked,
+  });
+
+  // --- Post-response async: calendar check, AI analysis, status, email ---
+  if (postgresId) {
+    const asyncPostgresId = postgresId;
+    const asyncLeadsLinked = leadLinksLinked;
+    setImmediate(async () => {
       let ingestStatus = 'to_verify';
       let statusReason = '';
       let needsSplit = false;
@@ -1381,12 +1399,12 @@ router.post('/webhooks/krisp', async (req, res) => {
               needsSplit = true;
               ingestStatus = 'to_verify';
               statusReason = `${timedOverlaps} calendar events overlap — possible back-to-back calls`;
-            } else if (timedOverlaps === 1 && leadLinksLinked > 0) {
+            } else if (timedOverlaps === 1 && asyncLeadsLinked > 0) {
               ingestStatus = 'verified';
-              statusReason = `Auto-linked ${leadLinksLinked} lead(s), 1 matching calendar event`;
-            } else if (timedOverlaps === 0 && leadLinksLinked > 0) {
+              statusReason = `Auto-linked ${asyncLeadsLinked} lead(s), 1 matching calendar event`;
+            } else if (timedOverlaps === 0 && asyncLeadsLinked > 0) {
               ingestStatus = 'verified';
-              statusReason = `Auto-linked ${leadLinksLinked} lead(s), no calendar overlap`;
+              statusReason = `Auto-linked ${asyncLeadsLinked} lead(s), no calendar overlap`;
             } else {
               ingestStatus = 'to_verify';
               statusReason = timedOverlaps === 0
@@ -1394,22 +1412,21 @@ router.post('/webhooks/krisp', async (req, res) => {
                 : `No leads linked, ${timedOverlaps} calendar event`;
             }
           } else {
-            statusReason = leadLinksLinked > 0
-              ? `Auto-linked ${leadLinksLinked} lead(s); calendar not resolved`
+            statusReason = asyncLeadsLinked > 0
+              ? `Auto-linked ${asyncLeadsLinked} lead(s); calendar not resolved`
               : 'No leads linked; calendar not resolved';
-            ingestStatus = leadLinksLinked > 0 ? 'verified' : 'to_verify';
+            ingestStatus = asyncLeadsLinked > 0 ? 'verified' : 'to_verify';
           }
         } else {
           statusReason = `Calendar check skipped: ${win.error}`;
-          ingestStatus = leadLinksLinked > 0 ? 'verified' : 'to_verify';
+          ingestStatus = asyncLeadsLinked > 0 ? 'verified' : 'to_verify';
         }
       } catch (calErr) {
-        log.warn(`KRISP-WEBHOOK calendar check failed: ${calErr.message}`);
+        log.warn(`KRISP-WEBHOOK async calendar check failed: ${calErr.message}`);
         statusReason = `Calendar check error: ${calErr.message}`;
-        ingestStatus = leadLinksLinked > 0 ? 'verified' : 'to_verify';
+        ingestStatus = asyncLeadsLinked > 0 ? 'verified' : 'to_verify';
       }
 
-      // AI analysis (async, best-effort — don't block response)
       try {
         const transcriptText = extractKrispDisplayText(body);
         if (transcriptText.length >= 50) {
@@ -1424,43 +1441,33 @@ router.post('/webhooks/krisp', async (req, res) => {
           }
         }
       } catch (aiErr) {
-        log.warn(`KRISP-WEBHOOK AI analysis failed: ${aiErr.message}`);
+        log.warn(`KRISP-WEBHOOK async AI analysis failed: ${aiErr.message}`);
       }
 
       try {
-        await setKrispIngestStatus(postgresId, {
+        await setKrispIngestStatus(asyncPostgresId, {
           status: ingestStatus,
           statusReason: statusReason.trim(),
           needsSplit,
         });
-        log.info(`KRISP-WEBHOOK status=${ingestStatus} needsSplit=${needsSplit} reason=${statusReason.trim()}`);
+        log.info(`KRISP-WEBHOOK async status=${ingestStatus} needsSplit=${needsSplit} reason=${statusReason.trim()}`);
       } catch (stErr) {
-        log.warn(`KRISP-WEBHOOK status update failed: ${stErr.message}`);
+        log.warn(`KRISP-WEBHOOK async status update failed: ${stErr.message}`);
       }
 
       try {
         await maybeSendKrispConversationAlert({
-          postgresId: String(postgresId),
+          postgresId: String(asyncPostgresId),
           payload: body,
           krispId: meetingId != null ? String(meetingId) : null,
           event: event || null,
-          leadsLinked: leadLinksLinked,
+          leadsLinked: asyncLeadsLinked,
         });
       } catch (convErr) {
-        log.warn(`KRISP-WEBHOOK conversation alert failed: ${convErr.message}`);
+        log.warn(`KRISP-WEBHOOK async conversation alert failed: ${convErr.message}`);
       }
-    }
-  } catch (e) {
-    log.error(`KRISP-WEBHOOK db persist failed: ${e.message}`);
+    });
   }
-
-  return res.status(200).json({
-    ok: true,
-    received: true,
-    krisp_meeting_id: meetingId,
-    db_saved: dbSaved,
-    lead_links_linked: leadLinksLinked,
-  });
 });
 
 module.exports = router;
