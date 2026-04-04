@@ -34,6 +34,71 @@ try {
     console.error('[CalendarServiceAccount] Failed to initialize:', error.message);
 }
 
+/** Map Google Calendar event.attendees for Krisp / pre-brief enrichment (email + display name). */
+function mapAttendeesFromGoogleEvent(event) {
+    if (!event || !Array.isArray(event.attendees)) return [];
+    return event.attendees
+        .map((a) => ({
+            email: String(a.email || '').trim(),
+            displayName: typeof a.displayName === 'string' ? a.displayName.trim() : '',
+            responseStatus: a.responseStatus || '',
+            organizer: Boolean(a.organizer),
+            self: Boolean(a.self),
+        }))
+        .filter((a) => a.email.length > 0);
+}
+
+/**
+ * Events in [timeMin, timeMax] with attendee list — for matching Krisp meeting windows to calendar.
+ * @param {string} calendarEmail - Calendar id (usually your Google email)
+ * @param {Date|string} timeMin
+ * @param {Date|string} timeMax
+ * @returns {Promise<{ events: Array<{summary, start, end, location, eventId, htmlLink, attendees}>, error?: string }>}
+ */
+async function listCalendarEventsWithAttendeesInRange(calendarEmail, timeMin, timeMax) {
+    if (!calendarClient) {
+        return { events: [], error: 'Calendar service not initialized' };
+    }
+    const calId = calendarEmail != null ? String(calendarEmail).trim() : '';
+    if (!calId) {
+        return { events: [], error: 'calendarEmail required' };
+    }
+    const t0 = timeMin instanceof Date ? timeMin : new Date(timeMin);
+    const t1 = timeMax instanceof Date ? timeMax : new Date(timeMax);
+    if (Number.isNaN(t0.getTime()) || Number.isNaN(t1.getTime())) {
+        return { events: [], error: 'invalid time range' };
+    }
+    if (t1.getTime() <= t0.getTime()) {
+        return { events: [], error: 'timeMax must be after timeMin' };
+    }
+    try {
+        const response = await calendarClient.events.list({
+            calendarId: calId,
+            timeMin: t0.toISOString(),
+            timeMax: t1.toISOString(),
+            singleEvents: true,
+            orderBy: 'startTime',
+            maxResults: 50,
+        });
+        const events = (response.data.items || []).map((event) => ({
+            summary: event.summary || '(No title)',
+            start: event.start?.dateTime || event.start?.date,
+            end: event.end?.dateTime || event.end?.date,
+            location: event.location || '',
+            eventId: event.id || '',
+            htmlLink: event.htmlLink || '',
+            attendees: mapAttendeesFromGoogleEvent(event),
+        }));
+        return { events };
+    } catch (error) {
+        console.error('[CalendarServiceAccount] listCalendarEventsWithAttendeesInRange error:', error.message);
+        if (error.code === 404) {
+            return { events: [], error: `Calendar not accessible. Share with: ${serviceAccountEmail}` };
+        }
+        return { events: [], error: error.message };
+    }
+}
+
 /**
  * Check availability for a calendar using service account
  * The calendar must be shared with the service account email
@@ -157,7 +222,7 @@ async function getFreeSlotsForDate(calendarEmail, date, startHour = 9, endHour =
  * @param {string} calendarEmail - The email of the calendar to check
  * @param {string} date - Date in YYYY-MM-DD format
  * @param {string} timezone - Timezone string (e.g., 'Australia/Brisbane')
- * @returns {Promise<{events: Array<{summary: string, start: string, end: string}>, error?: string}>}
+ * @returns {Promise<{events: Array<{summary: string, start: string, end: string, location: string, transparency: string, isFree: boolean, attendees: Array<{email: string, displayName: string, responseStatus: string, organizer: boolean, self: boolean}>}>, error?: string}>}
  */
 async function getEventsForDate(calendarEmail, date, timezone = 'Australia/Brisbane') {
     if (!calendarClient) {
@@ -214,6 +279,7 @@ async function getEventsForDate(calendarEmail, date, timezone = 'Australia/Brisb
             // transparency: 'transparent' = Free/Available, 'opaque' (default) = Busy
             transparency: event.transparency || 'opaque',
             isFree: event.transparency === 'transparent',
+            attendees: mapAttendeesFromGoogleEvent(event),
         }));
         
         console.log(`[CalendarServiceAccount] Returning ${events.length} events`);
@@ -501,4 +567,5 @@ module.exports = {
     getEventsForDate,
     getBatchAvailability,
     getUpcomingMeetingsWithAttendee,
+    listCalendarEventsWithAttendeesInRange,
 };
