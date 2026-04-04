@@ -138,13 +138,17 @@ export default function KrispTranscriptsPanel({
                     >
                       {typeLabel}
                     </span>
-                    {row.verified_speakers ? (
+                    {row.status === 'verified' ? (
                       <span className="text-[10px] font-semibold uppercase tracking-wide text-green-800 bg-green-100 border border-green-200 rounded px-1.5 py-0.5 shrink-0">
                         Verified
                       </span>
+                    ) : row.status === 'skipped' ? (
+                      <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 bg-gray-100 border border-gray-200 rounded px-1.5 py-0.5 shrink-0">
+                        Skipped
+                      </span>
                     ) : (
                       <span className="text-[10px] font-semibold uppercase tracking-wide text-amber-800 bg-amber-100 border border-amber-200 rounded px-1.5 py-0.5 shrink-0">
-                        Needs review
+                        To verify
                       </span>
                     )}
                     {row.krisp_id != null && row.krisp_id !== '' && (

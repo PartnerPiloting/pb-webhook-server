@@ -36,6 +36,7 @@ const {
   getKrispWebhookEventById,
   getKrispLinksForLead,
   getKrispTranscriptRowsForLead,
+  insertKrispEventLead,
   seedManualTestTranscript,
   seedKrispBackendFixtures,
   purgeManualTestTranscripts,
@@ -43,9 +44,12 @@ const {
   getKrispReviewEventById,
   saveVerifiedSpeakers,
   updateKrispEventStatus,
+  setKrispIngestStatus,
+  splitKrispEvent,
 } = require('../services/krispWebhookDb');
 const { extractKrispDisplayText, krispEventTypeLabel } = require('../services/krispPayloadText');
 const { linkKrispEventToLeadsByEmail, DEFAULT_COACH_CLIENT_ID } = require('../services/krispLeadLinkService');
+const { findLeadByEmail } = require('../services/inboundEmailService');
 const { maybeSendKrispUnmatchedAlert } = require('../services/krispUnmatchedAlertService');
 const { maybeSendKrispConversationAlert } = require('../services/krispConversationEmailService');
 const {
@@ -53,6 +57,7 @@ const {
   getEventsForDate,
 } = require('../config/calendarServiceAccount.js');
 const clientService = require('../services/clientService');
+const { analyzeTranscript } = require('../services/krispTranscriptAnalysisService');
 
 const router = express.Router();
 
@@ -321,6 +326,33 @@ async function resolveCalendarEmailForKrispHarness(req) {
     error:
       'No calendar resolved: add "Google Calendar Email" on the Airtable client (e.g. Guy-Wilson), or pass calendarEmail=…, or set KRISP_CALENDAR_MATCH_EMAIL. Check MASTER_CLIENTS_BASE_ID and AIRTABLE_API_KEY on the server.',
   };
+}
+
+/** Resolve calendar email for automated ingest (no req needed). Same Airtable lookup as harness but without query params. */
+async function resolveCalendarEmailForIngest() {
+  const clientId =
+    (process.env.KRISP_CALENDAR_CLIENT_ID || process.env.KRISP_COACH_CLIENT_ID || '').trim() ||
+    DEFAULT_COACH_CLIENT_ID;
+
+  const baseId = process.env.MASTER_CLIENTS_BASE_ID;
+  const apiKey = process.env.AIRTABLE_API_KEY;
+  if (clientId && baseId && apiKey) {
+    const safe = clientId.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    const url = `https://api.airtable.com/v0/${baseId}/Clients?filterByFormula=LOWER({Client ID})=LOWER('${safe}')&fields[]=Google Calendar Email`;
+    try {
+      const r = await fetch(url, { headers: { Authorization: `Bearer ${apiKey}` } });
+      if (r.ok) {
+        const data = await r.json();
+        const cal = data.records?.[0]?.fields?.['Google Calendar Email'];
+        if (cal && String(cal).trim()) {
+          return { calendarEmail: String(cal).trim(), clientId };
+        }
+      }
+    } catch (_) { /* fall through */ }
+  }
+  const envCal = (process.env.KRISP_CALENDAR_MATCH_EMAIL || '').trim();
+  if (envCal) return { calendarEmail: envCal, clientId: null };
+  return { calendarEmail: null, clientId: clientId || null };
 }
 
 // Krisp (and similar UIs) often verify the URL with GET/HEAD before save — POST-only returned 404 and broke "Update".
@@ -593,17 +625,21 @@ code{font-size:12px}
 // ---------------------------------------------------------------------------
 
 const STATUS_LABELS = {
-  new: 'New',
-  speakers_verified: 'Speakers verified',
+  to_verify: 'To verify',
+  verified: 'Verified',
   skipped: 'Skipped',
+  new: 'Legacy: new',
+  speakers_verified: 'Legacy: speakers verified',
   ready: 'Legacy: ready',
   linked: 'Legacy: linked',
 };
 
 const STATUS_COLOURS = {
-  new: '#ef4444',
-  speakers_verified: '#f59e0b',
+  to_verify: '#f59e0b',
+  verified: '#22c55e',
   skipped: '#94a3b8',
+  new: '#64748b',
+  speakers_verified: '#64748b',
   ready: '#64748b',
   linked: '#64748b',
 };
@@ -641,9 +677,9 @@ router.get('/krisp-review', async (req, res) => {
     return res.status(401).type('html').send(`<!DOCTYPE html><html><body><p>Unauthorized. Add <code>?secret=</code> your PB_WEBHOOK_SECRET.</p></body></html>`);
   }
   const sec = encodeURIComponent(String(req.query.secret || '').trim());
-  const rawF = typeof req.query.status === 'string' ? req.query.status.trim().toLowerCase() : 'new';
-  const allowedF = new Set(['all', 'new', 'speakers_verified', 'skipped', 'legacy']);
-  const statusFilter = allowedF.has(rawF) ? rawF : 'new';
+  const rawF = typeof req.query.status === 'string' ? req.query.status.trim().toLowerCase() : 'to_verify';
+  const allowedF = new Set(['all', 'to_verify', 'verified', 'skipped', 'legacy']);
+  const statusFilter = allowedF.has(rawF) ? rawF : 'to_verify';
   const rows = await getKrispReviewQueue(100, statusFilter);
 
   const rowsHtml = rows.length === 0
@@ -682,7 +718,7 @@ a{color:#2563eb;text-decoration:none;font-weight:500}
 a:hover{text-decoration:underline}
 </style></head><body>
 <h1>Transcript Review Queue</h1>
-<p class="subtitle">Default view: New only. Add <code>?status=all</code> (or speakers_verified, skipped, legacy) to filter. Newest first.</p>
+<p class="subtitle">Default: To verify only. Add <code>?status=all</code> (or verified, skipped, legacy) to filter. Newest first.</p>
 <table>
 <thead><tr><th>#</th><th>When</th><th>Meeting</th><th>Status</th><th>Speakers</th><th></th></tr></thead>
 <tbody>${rowsHtml}</tbody>
@@ -757,15 +793,16 @@ router.get('/krisp-review/:id', async (req, res) => {
     return `<div class="line">${escapeHtml(line)}</div>`;
   }).join('\n');
 
-  const editableStatuses = ['new', 'speakers_verified', 'skipped'];
+  const editableStatuses = ['to_verify', 'verified', 'skipped'];
+  const isLegacy = !editableStatuses.includes(st);
   const statusOptionParts = [];
-  if (st === 'ready' || st === 'linked') {
+  if (isLegacy) {
     statusOptionParts.push(
       `<option value="" disabled selected>${escapeHtml(STATUS_LABELS[st] || st)} — pick a status below</option>`,
     );
   }
   for (const k of editableStatuses) {
-    const sel = k === st && st !== 'ready' && st !== 'linked' ? ' selected' : '';
+    const sel = k === st && !isLegacy ? ' selected' : '';
     statusOptionParts.push(`<option value="${k}"${sel}>${escapeHtml(STATUS_LABELS[k])}</option>`);
   }
   const statusOptions = statusOptionParts.join('');
@@ -914,8 +951,8 @@ document.getElementById('skipBtn').addEventListener('click', async () => {
 router.get('/krisp-review/api/queue', async (req, res) => {
   if (!(await pbKrispReviewApiOk(req))) return res.status(401).json({ error: 'unauthorized' });
   const raw = typeof req.query.status === 'string' ? req.query.status.trim().toLowerCase() : '';
-  const allowed = new Set(['all', 'new', 'speakers_verified', 'skipped', 'legacy']);
-  const statusFilter = allowed.has(raw) ? raw : 'new';
+  const allowed = new Set(['all', 'to_verify', 'verified', 'skipped', 'legacy']);
+  const statusFilter = allowed.has(raw) ? raw : 'to_verify';
   const rows = await getKrispReviewQueue(100, statusFilter);
   return res.json({ rows, statusFilter });
 });
@@ -968,8 +1005,11 @@ router.get('/krisp-review/api/event/:id', async (req, res) => {
     received_at: row.received_at,
     event: row.event,
     krisp_id: row.krisp_id,
-    status: row.status || 'new',
+    status: row.status || 'to_verify',
     verified_speakers: row.verified_speakers || null,
+    status_reason: row.status_reason || null,
+    needs_split: !!row.needs_split,
+    parent_event_id: row.parent_event_id || null,
     title,
     duration,
     full_text: fullText,
@@ -978,7 +1018,7 @@ router.get('/krisp-review/api/event/:id', async (req, res) => {
   });
 });
 
-// Save verified speakers
+// Save verified speakers + create lead links from emails
 router.post('/krisp-review/:id/speakers', async (req, res) => {
   if (!(await pbKrispReviewApiOk(req))) return res.status(401).json({ error: 'unauthorized' });
   const speakers = req.body?.speakers;
@@ -986,7 +1026,34 @@ router.post('/krisp-review/:id/speakers', async (req, res) => {
     return res.status(400).json({ error: 'speakers object required' });
   }
   const result = await saveVerifiedSpeakers(req.params.id, speakers);
-  return res.json(result);
+  if (!result.ok) return res.json(result);
+
+  const linkedEmails = [];
+  const coachClientId = DEFAULT_COACH_CLIENT_ID;
+  try {
+    const client = await clientService.getClientById(coachClientId);
+    if (client?.airtableBaseId) {
+      for (const [, info] of Object.entries(speakers)) {
+        const email = (info?.email || '').trim().toLowerCase();
+        if (!email) continue;
+        try {
+          const lead = await findLeadByEmail(client, email);
+          if (lead?.id) {
+            const lr = await insertKrispEventLead({
+              eventId: req.params.id,
+              airtableLeadId: lead.id,
+              coachClientId,
+              participantEmail: email,
+              matchMethod: 'manual_speaker_verification',
+            });
+            if (lr.inserted) linkedEmails.push(email);
+          }
+        } catch (_) { /* best effort */ }
+      }
+    }
+  } catch (_) { /* client lookup optional */ }
+
+  return res.json({ ...result, linked_emails: linkedEmails });
 });
 
 // Update status
@@ -997,6 +1064,51 @@ router.post('/krisp-review/:id/status', async (req, res) => {
     return res.status(400).json({ error: 'status string required' });
   }
   const result = await updateKrispEventStatus(req.params.id, status);
+  return res.json(result);
+});
+
+// Split transcript into two events
+router.post('/krisp-review/:id/split', async (req, res) => {
+  if (!(await pbKrispReviewApiOk(req))) return res.status(401).json({ error: 'unauthorized' });
+  const splitAtLine = req.body?.splitAtLine;
+  if (typeof splitAtLine !== 'number' || splitAtLine < 1) {
+    return res.status(400).json({ error: 'splitAtLine (1-based line number) required' });
+  }
+  const row = await getKrispReviewEventById(req.params.id);
+  if (!row) return res.status(404).json({ error: 'not found' });
+
+  const fullText = extractKrispDisplayText(row.payload);
+  const lines = fullText.split('\n');
+  if (splitAtLine >= lines.length) {
+    return res.status(400).json({ error: 'splitAtLine beyond transcript length' });
+  }
+
+  const result = await splitKrispEvent(req.params.id, splitAtLine, lines);
+  return res.json(result);
+});
+
+// Run AI analysis on a transcript
+router.post('/krisp-review/:id/analyze', async (req, res) => {
+  if (!(await pbKrispReviewApiOk(req))) return res.status(401).json({ error: 'unauthorized' });
+  const row = await getKrispReviewEventById(req.params.id);
+  if (!row) return res.status(404).json({ error: 'not found' });
+
+  const fullText = extractKrispDisplayText(row.payload);
+  const result = await analyzeTranscript(fullText, {
+    meetingTitle: row.payload?.data?.meeting?.title,
+    durationSeconds: row.payload?.data?.meeting?.duration_seconds,
+  });
+
+  if (result.needsSplit && !result.error) {
+    try {
+      await setKrispIngestStatus(req.params.id, {
+        status: 'to_verify',
+        statusReason: `AI: ${result.splitReason || 'back-to-back detected'}`,
+        needsSplit: true,
+      });
+    } catch (_) { /* best effort */ }
+  }
+
   return res.json(result);
 });
 
@@ -1218,6 +1330,7 @@ router.post('/webhooks/krisp', async (req, res) => {
 
   let dbSaved = false;
   let leadLinksLinked = 0;
+  let postgresId = null;
   try {
     const r = await persistKrispWebhook({
       event,
@@ -1225,14 +1338,15 @@ router.post('/webhooks/krisp', async (req, res) => {
       payload: body,
     });
     dbSaved = r.ok === true;
-    if (r.postgres_id) {
+    postgresId = r.postgres_id || null;
+    if (postgresId) {
       try {
-        const lr = await linkKrispEventToLeadsByEmail(r.postgres_id, body);
+        const lr = await linkKrispEventToLeadsByEmail(postgresId, body);
         leadLinksLinked = lr.linked;
         if (lr.unmatchedParticipants?.length > 0) {
           try {
             await maybeSendKrispUnmatchedAlert({
-              postgresId: String(r.postgres_id),
+              postgresId: String(postgresId),
               krispId: meetingId != null ? String(meetingId) : null,
               event: event || null,
               unmatchedParticipants: lr.unmatchedParticipants,
@@ -1244,9 +1358,89 @@ router.post('/webhooks/krisp', async (req, res) => {
       } catch (linkErr) {
         log.warn(`KRISP-WEBHOOK lead link failed: ${linkErr.message}`);
       }
+
+      // --- Smart status: calendar overlap + AI analysis ---
+      let ingestStatus = 'to_verify';
+      let statusReason = '';
+      let needsSplit = false;
+
+      try {
+        const win = extractKrispMeetingWindowUtc(body, 10);
+        if (!win.error) {
+          const calResolved = await resolveCalendarEmailForIngest();
+          if (calResolved.calendarEmail) {
+            const calResult = await listCalendarEventsWithAttendeesInRange(
+              calResolved.calendarEmail, win.timeMin, win.timeMax,
+            );
+            const { suggested } = rankCalendarEventsForKrispCoreWindow(
+              calResult.events || [], win.coreStart, win.coreEnd,
+            );
+            const timedOverlaps = suggested.length;
+
+            if (timedOverlaps >= 2) {
+              needsSplit = true;
+              ingestStatus = 'to_verify';
+              statusReason = `${timedOverlaps} calendar events overlap — possible back-to-back calls`;
+            } else if (timedOverlaps === 1 && leadLinksLinked > 0) {
+              ingestStatus = 'verified';
+              statusReason = `Auto-linked ${leadLinksLinked} lead(s), 1 matching calendar event`;
+            } else if (timedOverlaps === 0 && leadLinksLinked > 0) {
+              ingestStatus = 'verified';
+              statusReason = `Auto-linked ${leadLinksLinked} lead(s), no calendar overlap`;
+            } else {
+              ingestStatus = 'to_verify';
+              statusReason = timedOverlaps === 0
+                ? 'No leads linked, no calendar overlap'
+                : `No leads linked, ${timedOverlaps} calendar event`;
+            }
+          } else {
+            statusReason = leadLinksLinked > 0
+              ? `Auto-linked ${leadLinksLinked} lead(s); calendar not resolved`
+              : 'No leads linked; calendar not resolved';
+            ingestStatus = leadLinksLinked > 0 ? 'verified' : 'to_verify';
+          }
+        } else {
+          statusReason = `Calendar check skipped: ${win.error}`;
+          ingestStatus = leadLinksLinked > 0 ? 'verified' : 'to_verify';
+        }
+      } catch (calErr) {
+        log.warn(`KRISP-WEBHOOK calendar check failed: ${calErr.message}`);
+        statusReason = `Calendar check error: ${calErr.message}`;
+        ingestStatus = leadLinksLinked > 0 ? 'verified' : 'to_verify';
+      }
+
+      // AI analysis (async, best-effort — don't block response)
+      try {
+        const transcriptText = extractKrispDisplayText(body);
+        if (transcriptText.length >= 50) {
+          const aiResult = await analyzeTranscript(transcriptText, {
+            meetingTitle: title,
+            durationSeconds: body.data?.meeting?.duration_seconds,
+          });
+          if (aiResult.needsSplit && !aiResult.error) {
+            needsSplit = true;
+            ingestStatus = 'to_verify';
+            statusReason += ` | AI: ${aiResult.splitReason || 'back-to-back detected'}`;
+          }
+        }
+      } catch (aiErr) {
+        log.warn(`KRISP-WEBHOOK AI analysis failed: ${aiErr.message}`);
+      }
+
+      try {
+        await setKrispIngestStatus(postgresId, {
+          status: ingestStatus,
+          statusReason: statusReason.trim(),
+          needsSplit,
+        });
+        log.info(`KRISP-WEBHOOK status=${ingestStatus} needsSplit=${needsSplit} reason=${statusReason.trim()}`);
+      } catch (stErr) {
+        log.warn(`KRISP-WEBHOOK status update failed: ${stErr.message}`);
+      }
+
       try {
         await maybeSendKrispConversationAlert({
-          postgresId: String(r.postgres_id),
+          postgresId: String(postgresId),
           payload: body,
           krispId: meetingId != null ? String(meetingId) : null,
           event: event || null,

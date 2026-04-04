@@ -2144,6 +2144,33 @@ export const updateKrispStatus = async (id, status) => {
   }
 };
 
+export const splitKrispTranscript = async (id, splitAtLine) => {
+  try {
+    const base = getBackendBase();
+    const r = await fetch(`${base}/krisp-review/${encodeURIComponent(id)}/split`, {
+      method: 'POST',
+      headers: krispReviewFetchHeaders(),
+      body: JSON.stringify({ splitAtLine }),
+    });
+    return await r.json();
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+};
+
+export const analyzeKrispTranscript = async (id) => {
+  try {
+    const base = getBackendBase();
+    const r = await fetch(`${base}/krisp-review/${encodeURIComponent(id)}/analyze`, {
+      method: 'POST',
+      headers: krispReviewFetchHeaders(),
+    });
+    return await r.json();
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+};
+
 export default api;
 
 // Export helper functions for use in components
