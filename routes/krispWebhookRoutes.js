@@ -13,7 +13,7 @@
  * With DATABASE_URL (Render Postgres), each accepted POST is stored in krisp_webhook_events (JSONB).
  * Participant emails in payload.data.participants are matched to Leads in Airtable (default client KRISP_COACH_CLIENT_ID or Guy-Wilson); links in krisp_event_leads.
  * HTML portal (admin): GET /krisp-portal?secret=PB_WEBHOOK_SECRET — list; /krisp-portal/event/:id?secret=… — copy text.
- * Test harness (admin): POST /krisp-test/seed?secret=… — one fake row; POST /krisp-test/seed-fixtures?secret=… — 3 backend fixtures; POST /krisp-test/purge?secret=… — remove all harness rows.
+ * Test harness (admin): POST /krisp-test/seed?secret=… — one fake row + same summary email as real webhooks (then purge if you like); POST /krisp-test/seed-fixtures?secret=… — 3 fixtures (no conversation emails); POST /krisp-test/purge?secret=… — remove harness rows.
  * POST /krisp-test/relink-event — JSON { "postgresId": "123" } re-runs lead linking for a stored row (after fixing Airtable).
  *
  * Unmatched participants (email + name lookup both miss): optional email to ALERT_EMAIL when KRISP_UNMATCHED_EMAIL_ALERT=1 (Mailgun + FROM_EMAIL required). One alert per postgres row (deduped). Secure fix + transcript links when PB_WEBHOOK_SECRET or KRISP_PUBLIC_LINK_SECRET is set.
@@ -231,11 +231,25 @@ router.post('/krisp-test/seed', async (req, res) => {
     const out = await seedManualTestTranscript();
     if (!out.ok) return res.status(503).json(out);
     let linkResult = null;
+    let conversationEmail = null;
     if (out.postgres_id) {
       const full = await getKrispWebhookEventById(out.postgres_id);
-      if (full?.payload) linkResult = await linkKrispEventToLeadsByEmail(out.postgres_id, full.payload);
+      if (full?.payload) {
+        linkResult = await linkKrispEventToLeadsByEmail(out.postgres_id, full.payload);
+        try {
+          conversationEmail = await maybeSendKrispConversationAlert({
+            postgresId: String(out.postgres_id),
+            payload: full.payload,
+            krispId: out.krisp_id != null ? String(out.krisp_id) : null,
+            event: 'manual_test',
+            leadsLinked: linkResult?.linked ?? 0,
+          });
+        } catch (e) {
+          conversationEmail = { sent: false, reason: e.message };
+        }
+      }
     }
-    return res.json({ ...out, lead_link: linkResult });
+    return res.json({ ...out, lead_link: linkResult, conversation_email: conversationEmail });
   } catch (e) {
     return res.status(500).json({ ok: false, error: e.message });
   }
