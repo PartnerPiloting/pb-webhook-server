@@ -2075,17 +2075,26 @@ function krispReviewFetchHeaders() {
   return h;
 }
 
-export const getKrispReviewQueue = async () => {
+/**
+ * @param {string} [statusFilter='new'] — new | speakers_verified | skipped | legacy | all
+ */
+export const getKrispReviewQueue = async (statusFilter = 'new') => {
   if (typeof window === 'undefined') return { rows: [], error: 'client_only' };
   try {
     const base = getBackendBase();
-    const r = await fetch(`${base}/krisp-review/api/queue`, {
+    const q = new URLSearchParams();
+    q.set('status', statusFilter || 'new');
+    const r = await fetch(`${base}/krisp-review/api/queue?${q.toString()}`, {
       cache: 'no-store',
       headers: krispReviewFetchHeaders(),
     });
     const d = await r.json().catch(() => ({}));
     if (!r.ok) return { rows: [], error: d.error || `HTTP ${r.status}` };
-    return { rows: Array.isArray(d.rows) ? d.rows : [], error: null };
+    return {
+      rows: Array.isArray(d.rows) ? d.rows : [],
+      statusFilter: d.statusFilter || statusFilter,
+      error: null,
+    };
   } catch (e) {
     return { rows: [], error: e.message };
   }
