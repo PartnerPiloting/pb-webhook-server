@@ -15,6 +15,8 @@ const emailTemplateService = require('./emailTemplateService');
 const https = require('https');
 const querystring = require('querystring');
 
+const logCriticalError = async () => {};
+
 /**
  * Send email via Mailgun REST API using native Node.js https
  * @param {Object} emailData - Email data object
@@ -211,29 +213,32 @@ async function sendBulkTemplatedEmails(clientDataList, templateId, options = {})
  * @param {string} subject - Email subject
  * @param {string} htmlBody - HTML email body
  * @param {string} recipient - Recipient email (defaults to admin)
+ * @param {{ text?: string }} [options] - Optional Mailgun plain-text part (e.g. for select-all copy)
  * @returns {Promise<Object>} Email sending result
  */
-async function sendAlertEmail(subject, htmlBody, recipient = null) {
+async function sendAlertEmail(subject, htmlBody, recipient = null, options = {}) {
     try {
         const adminEmail = process.env.ALERT_EMAIL || 'guyralphwilson@gmail.com';
         const fromEmail = process.env.FROM_EMAIL || `noreply@${process.env.MAILGUN_DOMAIN}`;
-        
+
         const emailData = {
             from: fromEmail,
             to: recipient || adminEmail,
             subject: subject,
-            html: htmlBody
+            html: htmlBody,
         };
+        if (options.text && typeof options.text === 'string') {
+            emailData.text = options.text;
+        }
 
         const result = await sendMailgunEmail(emailData);
 
         logger.info(`✅ Alert email sent: ${subject}`);
         return { success: true, mailgunId: result.id, message: result.message };
-
     } catch (error) {
         logger.error(`❌ Error sending alert email:`, error);
+        logCriticalError(error, { operation: 'sendAlertEmail' }).catch(() => {});
         return { success: false, error: error.message };
-    await logCriticalError(error, { operation: 'unknown' }).catch(() => {});
     }
 }
 
