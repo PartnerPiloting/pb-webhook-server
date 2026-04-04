@@ -17,7 +17,7 @@
  * POST /krisp-test/relink-event — JSON { "postgresId": "123" } re-runs lead linking for a stored row (after fixing Airtable).
  *
  * Unmatched participants (email + name lookup both miss): optional email to ALERT_EMAIL when KRISP_UNMATCHED_EMAIL_ALERT=1 (Mailgun + FROM_EMAIL required). One alert per postgres row (deduped). Secure fix + transcript links when PB_WEBHOOK_SECRET or KRISP_PUBLIC_LINK_SECRET is set.
- * Every conversation summary: KRISP_CONVERSATION_EMAIL_ALERT=1 — email with participants (email, name) + signed transcript link (deduped per row).
+ * Every conversation: one email to ALERT_EMAIL with all participants + transcript (plain text for copy) + link to web Copy button (deduped per row; no extra env flag).
  *
  * Insecure escape hatch: KRISP_WEBHOOK_SKIP_AUTH_HARDCODED below, or env KRISP_WEBHOOK_SKIP_AUTH=1.
  * Anyone who guesses the URL can send fake payloads. Turn off when Krisp Authorization header works.
