@@ -14,13 +14,9 @@ import {
 import { getCurrentClientId } from '../../utils/clientUtils';
 
 const STATUS_META: Record<string, { label: string; colour: string }> = {
-  to_verify:         { label: 'To verify',            colour: 'bg-amber-100 text-amber-800 border-amber-200' },
-  verified:          { label: 'Verified',              colour: 'bg-green-100 text-green-800 border-green-200' },
-  skipped:           { label: 'Skipped',               colour: 'bg-gray-100 text-gray-500 border-gray-200' },
-  new:               { label: 'Legacy: new',           colour: 'bg-slate-100 text-slate-600 border-slate-200' },
-  speakers_verified: { label: 'Legacy: verified',      colour: 'bg-slate-100 text-slate-600 border-slate-200' },
-  ready:             { label: 'Legacy: ready',         colour: 'bg-slate-100 text-slate-600 border-slate-200' },
-  linked:            { label: 'Legacy: linked',        colour: 'bg-slate-100 text-slate-600 border-slate-200' },
+  to_verify: { label: 'To verify',  colour: 'bg-amber-100 text-amber-800 border-amber-200' },
+  verified:  { label: 'Verified',   colour: 'bg-green-100 text-green-800 border-green-200' },
+  skipped:   { label: 'Skipped',    colour: 'bg-gray-100 text-gray-500 border-gray-200' },
 };
 
 const EDITABLE_STATUSES = ['to_verify', 'verified', 'skipped'] as const;
@@ -29,7 +25,6 @@ const QUEUE_FILTERS: { value: string; label: string }[] = [
   { value: 'to_verify', label: 'To verify' },
   { value: 'verified', label: 'Verified' },
   { value: 'skipped', label: 'Skipped' },
-  { value: 'legacy', label: 'Legacy (old statuses)' },
   { value: 'all', label: 'Everything' },
 ];
 
@@ -115,12 +110,12 @@ function QueueView({ onSelect }: { onSelect: (id: string) => void }) {
         </thead>
         <tbody className="divide-y divide-gray-100">
           {rows.map((r: any) => {
-            const title = r.meeting_title || r.event || '—';
+            const title = r.title || r.meeting_title || '—';
             const dur = formatDur(r.duration_seconds ? Number(r.duration_seconds) : null);
             return (
               <tr key={r.id} className="hover:bg-violet-50/40 transition-colors">
                 <td className="px-4 py-3 font-mono text-gray-500">{r.id}</td>
-                <td className="px-4 py-3 text-gray-700 whitespace-nowrap">{formatBrisbane(r.received_at)}</td>
+                <td className="px-4 py-3 text-gray-700 whitespace-nowrap">{formatBrisbane(r.webhook_received_at || r.created_at)}</td>
                 <td className="px-4 py-3">
                   <span className="text-gray-900">{title}</span>
                   {dur && <span className="text-gray-400 ml-1 text-xs">({dur})</span>}
@@ -131,9 +126,6 @@ function QueueView({ onSelect }: { onSelect: (id: string) => void }) {
                     <span className="text-[10px] font-semibold uppercase tracking-wide text-orange-800 bg-orange-100 border border-orange-200 rounded px-1.5 py-0.5">
                       Split needed
                     </span>
-                  )}
-                  {r.verified_speakers && (
-                    <span className="text-[10px] font-semibold text-green-700">✓ speakers</span>
                   )}
                 </td>
                 <td className="px-4 py-3 text-right">
@@ -300,12 +292,12 @@ function EventReview({ eventId, onBack }: { eventId: string; onBack: () => void 
       <div>
         <h2 className="text-xl font-bold text-gray-900">{ev.title}</h2>
         <p className="text-sm text-gray-500 mt-1">
-          {formatBrisbane(ev.received_at)}
+          {formatBrisbane(ev.webhook_received_at || ev.created_at)}
           {ev.duration ? ` · ${formatDur(ev.duration)}` : ''}
-          {' · #'}{ev.id}{' · '}
+          {' · Meeting #'}{ev.id}{' · '}
           <Badge status={st} />
-          {ev.parent_event_id && (
-            <span className="ml-2 text-xs text-gray-400">(split from #{ev.parent_event_id})</span>
+          {ev.start_line != null && (
+            <span className="ml-2 text-xs text-gray-400">(lines {ev.start_line}–{ev.end_line})</span>
           )}
         </p>
         {ev.status_reason && (
