@@ -15,6 +15,7 @@
  * HTML portal (admin): GET /krisp-portal?secret=PB_WEBHOOK_SECRET — list; /krisp-portal/event/:id?secret=… — copy text.
  * Test harness (admin): POST /krisp-test/seed?secret=… — one fake row + same summary email as real webhooks (then purge if you like); POST /krisp-test/seed-fixtures?secret=… — 3 fixtures (no conversation emails); POST /krisp-test/purge?secret=… — remove harness rows.
  * POST /krisp-test/relink-event — JSON { "postgresId": "123" } re-runs lead linking for a stored row (after fixing Airtable).
+ * Calendar match harness (admin): GET /webhooks/krisp/calendar-match-harness?secret=…&postgresId=7&calendarEmail=you@gmail.com — compares stored Krisp meeting times to Google Calendar (service account). Optional recent=5 to scan last N rows. Set KRISP_CALENDAR_MATCH_EMAIL on server to omit calendarEmail.
  *
  * Unmatched participants (email + name lookup both miss): optional email to ALERT_EMAIL when KRISP_UNMATCHED_EMAIL_ALERT=1 (Mailgun + FROM_EMAIL required). One alert per postgres row (deduped). Secure fix + transcript links when PB_WEBHOOK_SECRET or KRISP_PUBLIC_LINK_SECRET is set.
  * Every conversation: one email (ALERT_EMAIL or alert default) with all participants + transcript + Copy link (deduped per row).
@@ -43,6 +44,7 @@ const { extractKrispDisplayText, krispEventTypeLabel } = require('../services/kr
 const { linkKrispEventToLeadsByEmail } = require('../services/krispLeadLinkService');
 const { maybeSendKrispUnmatchedAlert } = require('../services/krispUnmatchedAlertService');
 const { maybeSendKrispConversationAlert } = require('../services/krispConversationEmailService');
+const { listCalendarEventsWithAttendeesInRange } = require('../config/calendarServiceAccount.js');
 
 const router = express.Router();
 
@@ -93,6 +95,65 @@ function escapeHtml(s) {
     .replace(/"/g, '&quot;');
 }
 
+/** From stored Krisp JSON: UTC window for calendar search (padded). */
+function extractKrispMeetingWindowUtc(payload, padMinutes = 10) {
+  const m = payload && typeof payload === 'object' ? payload.data?.meeting : null;
+  if (!m || typeof m !== 'object') {
+    return { error: 'payload.data.meeting missing' };
+  }
+  const startRaw = m.start_date ?? m.startDate;
+  const endRaw = m.end_date ?? m.endDate;
+  if (!startRaw || typeof startRaw !== 'string') {
+    return { error: 'meeting.start_date missing' };
+  }
+  const t0 = new Date(startRaw);
+  if (Number.isNaN(t0.getTime())) {
+    return { error: 'invalid meeting.start_date' };
+  }
+  let t1;
+  if (endRaw && typeof endRaw === 'string') {
+    t1 = new Date(endRaw);
+    if (Number.isNaN(t1.getTime())) t1 = new Date(t0.getTime() + 3600000);
+  } else {
+    t1 = new Date(t0.getTime() + 3600000);
+  }
+  const padMs = Math.max(0, Math.min(120, padMinutes)) * 60 * 1000;
+  return {
+    timeMin: new Date(t0.getTime() - padMs),
+    timeMax: new Date(t1.getTime() + padMs),
+    coreStart: t0.toISOString(),
+    coreEnd: t1.toISOString(),
+    calendarEventId: m.calendar_event_id != null ? m.calendar_event_id : null,
+    meetingTitle: typeof m.title === 'string' ? m.title : null,
+  };
+}
+
+function krispParticipantSummaryForHarness(payload) {
+  const d = payload?.data;
+  if (!d || typeof d !== 'object') return { sources: [], emails: [] };
+  const emails = new Set();
+  const sources = [];
+  const add = (arr, label) => {
+    if (!Array.isArray(arr)) return;
+    for (const p of arr) {
+      if (p && typeof p.email === 'string' && p.email.trim()) {
+        const e = p.email.trim().toLowerCase();
+        if (!emails.has(e)) {
+          emails.add(e);
+          const name = [p.first_name, p.last_name].filter(Boolean).join(' ').trim() || (typeof p.name === 'string' ? p.name.trim() : '');
+          sources.push({ from: label, email: p.email.trim(), name });
+        }
+      }
+    }
+  };
+  add(d.participants, 'data.participants');
+  if (d.meeting && typeof d.meeting === 'object') {
+    add(d.meeting.participants, 'data.meeting.participants');
+    add(d.meeting.speakers, 'data.meeting.speakers');
+  }
+  return { sources, emails: [...emails] };
+}
+
 // Krisp (and similar UIs) often verify the URL with GET/HEAD before save — POST-only returned 404 and broke "Update".
 router.get('/webhooks/krisp', (_req, res) => {
   res.status(200).json({ ok: true, krisp_webhook: true });
@@ -134,6 +195,91 @@ router.get('/webhooks/krisp/db-summary', async (req, res) => {
   const limit = req.query.limit != null ? parseInt(String(req.query.limit), 10) : 15;
   const summary = await getKrispWebhookDbSummary(Number.isFinite(limit) ? limit : 15);
   res.json(summary);
+});
+
+/**
+ * Test harness: load Krisp row(s) from Postgres, derive meeting time from payload, fetch overlapping Google Calendar events (attendees).
+ * Admin: ?secret=PB_WEBHOOK_SECRET or Authorization: Bearer …
+ * Query: postgresId=7 OR recent=5 (1–20). calendarEmail=… or env KRISP_CALENDAR_MATCH_EMAIL. padMinutes=10 (optional).
+ */
+router.get('/webhooks/krisp/calendar-match-harness', async (req, res) => {
+  if (!pbAdminOk(req)) {
+    return res.status(401).json({ error: 'admin auth required (PB_WEBHOOK_SECRET or ?secret=)' });
+  }
+
+  const calendarEmail =
+    (typeof req.query.calendarEmail === 'string' && req.query.calendarEmail.trim()) ||
+    (process.env.KRISP_CALENDAR_MATCH_EMAIL || '').trim();
+  if (!calendarEmail) {
+    return res.status(400).json({
+      error: 'calendarEmail required (query) or set KRISP_CALENDAR_MATCH_EMAIL on the server',
+    });
+  }
+
+  const padRaw = req.query.padMinutes != null ? parseInt(String(req.query.padMinutes), 10) : 10;
+  const padMinutes = Number.isFinite(padRaw) ? padRaw : 10;
+
+  const postgresIdRaw = req.query.postgresId ?? req.query.postgres_id;
+  const recentRaw = req.query.recent != null ? parseInt(String(req.query.recent), 10) : 0;
+  const recent = Number.isFinite(recentRaw) ? Math.min(20, Math.max(0, recentRaw)) : 0;
+
+  async function oneRow(idStr) {
+    const row = await getKrispWebhookEventById(idStr);
+    if (!row) {
+      return { postgres_id: idStr, error: 'krisp_webhook_events row not found' };
+    }
+    const win = extractKrispMeetingWindowUtc(row.payload, padMinutes);
+    if (win.error) {
+      return {
+        postgres_id: String(row.id),
+        krisp_id: row.krisp_id,
+        event: row.event,
+        window_error: win.error,
+        krisp_participants: krispParticipantSummaryForHarness(row.payload),
+      };
+    }
+    const cal = await listCalendarEventsWithAttendeesInRange(calendarEmail, win.timeMin, win.timeMax);
+    return {
+      postgres_id: String(row.id),
+      krisp_id: row.krisp_id,
+      event: row.event,
+      received_at: row.received_at,
+      krisp_meeting: {
+        core_start: win.coreStart,
+        core_end: win.coreEnd,
+        padded_search_from: win.timeMin.toISOString(),
+        padded_search_to: win.timeMax.toISOString(),
+        calendar_event_id: win.calendarEventId,
+        title: win.meetingTitle,
+      },
+      krisp_participants: krispParticipantSummaryForHarness(row.payload),
+      calendar_events: cal.events,
+      calendar_error: cal.error || null,
+    };
+  }
+
+  if (postgresIdRaw != null && String(postgresIdRaw).trim() !== '') {
+    const out = await oneRow(String(postgresIdRaw).trim());
+    return res.json({ harness: 'krisp-calendar-match', calendarEmail, result: out });
+  }
+
+  if (recent > 0) {
+    const summary = await getKrispWebhookDbSummary(recent);
+    if (!summary.database_configured) {
+      return res.status(503).json({ error: summary.error || 'database not configured' });
+    }
+    const ids = (summary.recent || []).map((r) => String(r.id));
+    const results = [];
+    for (const id of ids) {
+      results.push(await oneRow(id));
+    }
+    return res.json({ harness: 'krisp-calendar-match', calendarEmail, recent, results });
+  }
+
+  return res.status(400).json({
+    error: 'pass postgresId=… for one row, or recent=1–20 for last N rows from krisp_webhook_events',
+    hint: 'Also set calendarEmail=… or KRISP_CALENDAR_MATCH_EMAIL',
+  });
 });
 
 // Admin: transcripts linked to an Airtable Lead id (rec…)
