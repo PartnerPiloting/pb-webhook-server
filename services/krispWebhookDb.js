@@ -31,6 +31,24 @@ async function ensureSchema(client) {
       payload JSONB NOT NULL
     );
   `);
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS krisp_event_leads (
+      id BIGSERIAL PRIMARY KEY,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      event_id BIGINT NOT NULL REFERENCES krisp_webhook_events(id) ON DELETE CASCADE,
+      airtable_lead_id TEXT NOT NULL,
+      coach_client_id TEXT NOT NULL DEFAULT 'Guy-Wilson',
+      participant_email TEXT,
+      match_method TEXT NOT NULL,
+      UNIQUE (event_id, airtable_lead_id)
+    );
+  `);
+  await client.query(
+    `CREATE INDEX IF NOT EXISTS idx_krisp_event_leads_lead ON krisp_event_leads (airtable_lead_id);`,
+  );
+  await client.query(
+    `CREATE INDEX IF NOT EXISTS idx_krisp_event_leads_event ON krisp_event_leads (event_id);`,
+  );
   schemaEnsured = true;
 }
 
@@ -45,11 +63,11 @@ async function persistKrispWebhook(row) {
   const client = await p.connect();
   try {
     await ensureSchema(client);
-    await client.query(
-      `INSERT INTO krisp_webhook_events (event, krisp_id, payload) VALUES ($1, $2, $3::jsonb)`,
+    const ins = await client.query(
+      `INSERT INTO krisp_webhook_events (event, krisp_id, payload) VALUES ($1, $2, $3::jsonb) RETURNING id`,
       [row.event, row.krispId, JSON.stringify(row.payload)],
     );
-    return { ok: true };
+    return { ok: true, postgres_id: String(ins.rows[0].id) };
   } finally {
     client.release();
   }
@@ -240,11 +258,87 @@ async function purgeManualTestTranscripts() {
   }
 }
 
+/**
+ * @param {{ eventId: number|string, airtableLeadId: string, coachClientId?: string, participantEmail?: string|null, matchMethod?: string }} row
+ */
+async function insertKrispEventLead(row) {
+  const p = getPool();
+  if (!p) return { skipped: true, inserted: false };
+  const eventId = typeof row.eventId === 'string' ? parseInt(row.eventId, 10) : Number(row.eventId);
+  if (!Number.isFinite(eventId)) return { skipped: true, inserted: false };
+
+  const client = await p.connect();
+  try {
+    await ensureSchema(client);
+    const r = await client.query(
+      `INSERT INTO krisp_event_leads (event_id, airtable_lead_id, coach_client_id, participant_email, match_method)
+       VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (event_id, airtable_lead_id) DO NOTHING
+       RETURNING id`,
+      [
+        eventId,
+        row.airtableLeadId,
+        (row.coachClientId || 'Guy-Wilson').trim(),
+        row.participantEmail || null,
+        (row.matchMethod || 'email').trim(),
+      ],
+    );
+    return { inserted: r.rowCount > 0, skipped: false };
+  } finally {
+    client.release();
+  }
+}
+
+async function getKrispLinksForLead(airtableLeadId, limit = 50) {
+  const p = getPool();
+  if (!p) return [];
+  const cap = Math.min(Math.max(Number(limit) || 50, 1), 200);
+  const client = await p.connect();
+  try {
+    await ensureSchema(client);
+    const r = await client.query(
+      `SELECT l.id AS link_id, l.event_id, l.participant_email, l.match_method, l.created_at,
+              e.received_at, e.event, e.krisp_id
+       FROM krisp_event_leads l
+       JOIN krisp_webhook_events e ON e.id = l.event_id
+       WHERE l.airtable_lead_id = $1
+       ORDER BY e.received_at DESC
+       LIMIT $2`,
+      [airtableLeadId, cap],
+    );
+    return r.rows;
+  } finally {
+    client.release();
+  }
+}
+
+async function getKrispLinksForEvent(eventId) {
+  const n = typeof eventId === 'string' ? parseInt(eventId, 10) : Number(eventId);
+  if (!Number.isFinite(n)) return [];
+  const p = getPool();
+  if (!p) return [];
+  const client = await p.connect();
+  try {
+    await ensureSchema(client);
+    const r = await client.query(
+      `SELECT id AS link_id, airtable_lead_id, participant_email, match_method, created_at
+       FROM krisp_event_leads WHERE event_id = $1 ORDER BY id`,
+      [n],
+    );
+    return r.rows;
+  } finally {
+    client.release();
+  }
+}
+
 module.exports = {
   persistKrispWebhook,
   getPool,
   getKrispWebhookDbSummary,
   getKrispWebhookEventById,
+  insertKrispEventLead,
+  getKrispLinksForLead,
+  getKrispLinksForEvent,
   seedManualTestTranscript,
   seedKrispBackendFixtures,
   purgeManualTestTranscripts,
