@@ -52,6 +52,7 @@ const {
   listCalendarEventsWithAttendeesInRange,
   getEventsForDate,
 } = require('../config/calendarServiceAccount.js');
+const clientService = require('../services/clientService');
 
 const router = express.Router();
 
@@ -92,6 +93,37 @@ function pbAdminOk(req) {
   const q = typeof req.query.secret === 'string' ? req.query.secret.trim() : '';
   const auth = normalizeAuthToken(req.get('authorization') || '');
   return timingSafeEqualString(q, expected) || timingSafeEqualString(auth, expected);
+}
+
+function expectedPortalDevKey() {
+  return (process.env.PORTAL_DEV_KEY || process.env.PB_WEBHOOK_SECRET || '').trim();
+}
+
+/**
+ * Krisp review JSON API (Next.js fetch): PB secret, x-dev-key, or portal token + x-client-id for allowed clients.
+ */
+async function pbKrispReviewApiOk(req) {
+  if (pbAdminOk(req)) return true;
+  const expectedDev = expectedPortalDevKey();
+  const dk = (req.get('x-dev-key') || '').trim();
+  if (expectedDev && timingSafeEqualString(dk, expectedDev)) return true;
+
+  const portalToken = (req.get('x-portal-token') || '').trim();
+  const clientIdHeader = (req.get('x-client-id') || '').trim();
+  if (!portalToken || !clientIdHeader) return false;
+
+  try {
+    const client = await clientService.getClientByPortalToken(portalToken);
+    if (!client || client.status !== 'Active') return false;
+    if (String(client.clientId).toLowerCase() !== String(clientIdHeader).toLowerCase()) return false;
+    const allowed = (process.env.KRISP_REVIEW_ALLOWED_CLIENT_IDS || DEFAULT_COACH_CLIENT_ID || 'Guy-Wilson')
+      .split(',')
+      .map((s) => s.trim().toLowerCase())
+      .filter(Boolean);
+    return allowed.includes(String(client.clientId).toLowerCase());
+  } catch (_e) {
+    return false;
+  }
 }
 
 function escapeHtml(s) {
@@ -867,13 +899,13 @@ document.getElementById('skipBtn').addEventListener('click', async () => {
 
 // JSON API for Next.js frontend
 router.get('/krisp-review/api/queue', async (req, res) => {
-  if (!pbAdminOk(req)) return res.status(401).json({ error: 'unauthorized' });
+  if (!(await pbKrispReviewApiOk(req))) return res.status(401).json({ error: 'unauthorized' });
   const rows = await getKrispReviewQueue(50);
   return res.json({ rows });
 });
 
 router.get('/krisp-review/api/event/:id', async (req, res) => {
-  if (!pbAdminOk(req)) return res.status(401).json({ error: 'unauthorized' });
+  if (!(await pbKrispReviewApiOk(req))) return res.status(401).json({ error: 'unauthorized' });
   const row = await getKrispReviewEventById(req.params.id);
   if (!row) return res.status(404).json({ error: 'not found' });
 
@@ -932,7 +964,7 @@ router.get('/krisp-review/api/event/:id', async (req, res) => {
 
 // Save verified speakers
 router.post('/krisp-review/:id/speakers', async (req, res) => {
-  if (!pbAdminOk(req)) return res.status(401).json({ error: 'unauthorized' });
+  if (!(await pbKrispReviewApiOk(req))) return res.status(401).json({ error: 'unauthorized' });
   const speakers = req.body?.speakers;
   if (!speakers || typeof speakers !== 'object') {
     return res.status(400).json({ error: 'speakers object required' });
@@ -943,7 +975,7 @@ router.post('/krisp-review/:id/speakers', async (req, res) => {
 
 // Update status
 router.post('/krisp-review/:id/status', async (req, res) => {
-  if (!pbAdminOk(req)) return res.status(401).json({ error: 'unauthorized' });
+  if (!(await pbKrispReviewApiOk(req))) return res.status(401).json({ error: 'unauthorized' });
   const status = req.body?.status;
   if (!status || typeof status !== 'string') {
     return res.status(400).json({ error: 'status string required' });
