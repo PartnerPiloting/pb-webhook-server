@@ -55,4 +55,34 @@ async function persistKrispWebhook(row) {
   }
 }
 
-module.exports = { persistKrispWebhook, getPool };
+/**
+ * Read-only summary for admin checks (no payload bodies).
+ * @param {number} [limit=15]
+ */
+async function getKrispWebhookDbSummary(limit = 15) {
+  const p = getPool();
+  if (!p) return { database_configured: false, error: 'DATABASE_URL not set' };
+
+  const cap = Math.min(Math.max(Number(limit) || 15, 1), 50);
+  const client = await p.connect();
+  try {
+    await ensureSchema(client);
+    const countR = await client.query('SELECT COUNT(*)::text AS c FROM krisp_webhook_events');
+    const recentR = await client.query(
+      `SELECT id, received_at, event, krisp_id FROM krisp_webhook_events ORDER BY id DESC LIMIT $1`,
+      [cap],
+    );
+    return {
+      database_configured: true,
+      table: 'krisp_webhook_events',
+      total_rows: countR.rows[0].c,
+      recent: recentR.rows,
+    };
+  } catch (e) {
+    return { database_configured: true, error: e.message };
+  } finally {
+    client.release();
+  }
+}
+
+module.exports = { persistKrispWebhook, getPool, getKrispWebhookDbSummary };

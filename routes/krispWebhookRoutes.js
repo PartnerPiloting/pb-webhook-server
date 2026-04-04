@@ -22,7 +22,7 @@ const KRISP_WEBHOOK_SKIP_AUTH_HARDCODED = false;
 const express = require('express');
 const crypto = require('crypto');
 const { createSafeLogger } = require('../utils/loggerHelper');
-const { persistKrispWebhook } = require('../services/krispWebhookDb');
+const { persistKrispWebhook, getKrispWebhookDbSummary } = require('../services/krispWebhookDb');
 
 const router = express.Router();
 
@@ -87,6 +87,18 @@ router.get('/webhooks/krisp/debug', (req, res) => {
     skip_auth: krispSkipAuth(),
   });
 });
+
+// Admin-only: Postgres row counts / recent Krisp rows (no payload JSON).
+router.get('/webhooks/krisp/db-summary', async (req, res) => {
+  const adminAuth = (req.get('authorization') || '').replace(/^Bearer\s+/i, '').trim();
+  const adminOk = adminAuth === (process.env.PB_WEBHOOK_SECRET || '').trim();
+  if (!adminOk) return res.status(401).json({ error: 'admin auth required (PB_WEBHOOK_SECRET)' });
+
+  const limit = req.query.limit != null ? parseInt(String(req.query.limit), 10) : 15;
+  const summary = await getKrispWebhookDbSummary(Number.isFinite(limit) ? limit : 15);
+  res.json(summary);
+});
+
 router.head('/webhooks/krisp', (_req, res) => {
   res.status(204).end();
 });
