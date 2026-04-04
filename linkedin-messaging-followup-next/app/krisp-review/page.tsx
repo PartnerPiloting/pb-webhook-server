@@ -7,12 +7,22 @@ import { getKrispReviewQueue, getKrispReviewEvent, saveKrispSpeakers, updateKris
 import { getCurrentClientId, buildAuthUrl } from '../../utils/clientUtils';
 
 const STATUS_META: Record<string, { label: string; colour: string }> = {
-  new:                { label: 'New',                colour: 'bg-red-100 text-red-800 border-red-200' },
-  speakers_verified:  { label: 'Speakers verified', colour: 'bg-amber-100 text-amber-800 border-amber-200' },
-  ready:              { label: 'Ready',              colour: 'bg-green-100 text-green-800 border-green-200' },
-  linked:             { label: 'Linked to CRM',     colour: 'bg-blue-100 text-blue-800 border-blue-200' },
-  skipped:            { label: 'Skipped',            colour: 'bg-gray-100 text-gray-500 border-gray-200' },
+  new:               { label: 'New',                 colour: 'bg-red-100 text-red-800 border-red-200' },
+  speakers_verified: { label: 'Speakers verified',  colour: 'bg-amber-100 text-amber-800 border-amber-200' },
+  skipped:           { label: 'Skipped',             colour: 'bg-gray-100 text-gray-500 border-gray-200' },
+  ready:             { label: 'Legacy: ready',       colour: 'bg-slate-100 text-slate-700 border-slate-200' },
+  linked:            { label: 'Legacy: linked',      colour: 'bg-slate-100 text-slate-700 border-slate-200' },
 };
+
+const EDITABLE_STATUSES = ['new', 'speakers_verified', 'skipped'] as const;
+
+const QUEUE_FILTERS: { value: string; label: string }[] = [
+  { value: 'new', label: 'New (not dealt with yet)' },
+  { value: 'speakers_verified', label: 'Speakers verified' },
+  { value: 'skipped', label: 'Skipped' },
+  { value: 'legacy', label: 'Legacy (old ready/linked)' },
+  { value: 'all', label: 'Everything' },
+];
 
 function Badge({ status }: { status: string }) {
   const m = STATUS_META[status] || STATUS_META.new;
@@ -42,20 +52,46 @@ function QueueView({ onSelect }: { onSelect: (id: string) => void }) {
   const [rows, setRows] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [filter, setFilter] = useState<string>('new');
 
   useEffect(() => {
     setLoading(true);
-    getKrispReviewQueue().then(r => {
+    getKrispReviewQueue(filter).then(r => {
       setRows(r.rows || []);
       setError(r.error || null);
     }).finally(() => setLoading(false));
-  }, []);
+  }, [filter]);
+
+  const emptyMsg =
+    filter === 'new'
+      ? 'Nothing in the New queue — you’re caught up, or switch the filter above.'
+      : filter === 'all'
+        ? 'No transcripts stored yet.'
+        : 'No rows match this filter.';
 
   if (loading) return <p className="text-gray-500 text-sm py-8 text-center">Loading…</p>;
   if (error) return <p className="text-red-600 text-sm bg-red-50 border border-red-200 rounded-lg p-4">{error}</p>;
-  if (rows.length === 0) return <p className="text-gray-500 italic text-sm py-8 text-center">No transcripts yet.</p>;
 
   return (
+    <div className="space-y-4">
+      <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+        <label htmlFor="krisp-queue-filter" className="text-sm font-medium text-gray-700 shrink-0">
+          Show
+        </label>
+        <select
+          id="krisp-queue-filter"
+          value={filter}
+          onChange={(e) => setFilter(e.target.value)}
+          className="border border-gray-200 rounded-lg px-3 py-2 text-sm max-w-md focus:outline-none focus:ring-2 focus:ring-violet-200 focus:border-violet-400"
+        >
+          {QUEUE_FILTERS.map((f) => (
+            <option key={f.value} value={f.value}>{f.label}</option>
+          ))}
+        </select>
+      </div>
+      {rows.length === 0 ? (
+        <p className="text-gray-500 italic text-sm py-8 text-center border border-dashed border-gray-200 rounded-xl bg-gray-50/80 px-4">{emptyMsg}</p>
+      ) : (
     <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm">
       <table className="w-full text-sm">
         <thead>
@@ -92,6 +128,8 @@ function QueueView({ onSelect }: { onSelect: (id: string) => void }) {
           })}
         </tbody>
       </table>
+    </div>
+      )}
     </div>
   );
 }
@@ -135,6 +173,10 @@ function EventReview({ eventId, onBack }: { eventId: string; onBack: () => void 
   };
 
   const handleStatus = async (st: string) => {
+    if (!st || !EDITABLE_STATUSES.includes(st as (typeof EDITABLE_STATUSES)[number])) {
+      flash('Choose a status');
+      return;
+    }
     const r = await updateKrispStatus(eventId, st);
     if (r.ok) { flash('Status updated'); load(); } else flash('Error: ' + (r.error || 'unknown'));
   };
@@ -247,12 +289,17 @@ function EventReview({ eventId, onBack }: { eventId: string; onBack: () => void 
         <h3 className="font-semibold text-gray-900 mb-3">Status</h3>
         <div className="flex items-center gap-3 flex-wrap">
           <select
-            value={st}
+            value={(['ready', 'linked'] as string[]).includes(st) ? '' : st}
             onChange={e => handleStatus(e.target.value)}
             className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-200"
           >
-            {Object.entries(STATUS_META).map(([k, v]) => (
-              <option key={k} value={k}>{v.label}</option>
+            {(['ready', 'linked'] as string[]).includes(st) && (
+              <option value="" disabled>
+                {(STATUS_META[st]?.label || st)} — choose a status below
+              </option>
+            )}
+            {EDITABLE_STATUSES.map((k) => (
+              <option key={k} value={k}>{STATUS_META[k].label}</option>
             ))}
           </select>
           <button
@@ -300,7 +347,9 @@ function KrispReviewContent() {
           <>
             <div className="mb-5">
               <h1 className="text-2xl font-bold text-gray-900">Transcript Review Queue</h1>
-              <p className="text-sm text-gray-500 mt-1">Verify speakers, then mark ready. Newest first.</p>
+              <p className="text-sm text-gray-500 mt-1">
+                Defaults to <strong>New</strong> only so the list stays short. Use the filter to see other rows. Newest first.
+              </p>
             </div>
             <QueueView onSelect={setSelectedId} />
           </>

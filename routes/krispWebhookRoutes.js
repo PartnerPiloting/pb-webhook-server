@@ -595,17 +595,17 @@ code{font-size:12px}
 const STATUS_LABELS = {
   new: 'New',
   speakers_verified: 'Speakers verified',
-  ready: 'Ready',
-  linked: 'Linked to CRM',
   skipped: 'Skipped',
+  ready: 'Legacy: ready',
+  linked: 'Legacy: linked',
 };
 
 const STATUS_COLOURS = {
   new: '#ef4444',
   speakers_verified: '#f59e0b',
-  ready: '#22c55e',
-  linked: '#3b82f6',
   skipped: '#94a3b8',
+  ready: '#64748b',
+  linked: '#64748b',
 };
 
 function extractUniqueSpeakers(payload) {
@@ -641,7 +641,10 @@ router.get('/krisp-review', async (req, res) => {
     return res.status(401).type('html').send(`<!DOCTYPE html><html><body><p>Unauthorized. Add <code>?secret=</code> your PB_WEBHOOK_SECRET.</p></body></html>`);
   }
   const sec = encodeURIComponent(String(req.query.secret || '').trim());
-  const rows = await getKrispReviewQueue(50);
+  const rawF = typeof req.query.status === 'string' ? req.query.status.trim().toLowerCase() : 'new';
+  const allowedF = new Set(['all', 'new', 'speakers_verified', 'skipped', 'legacy']);
+  const statusFilter = allowedF.has(rawF) ? rawF : 'new';
+  const rows = await getKrispReviewQueue(100, statusFilter);
 
   const rowsHtml = rows.length === 0
     ? '<tr><td colspan="6">No transcripts yet.</td></tr>'
@@ -679,7 +682,7 @@ a{color:#2563eb;text-decoration:none;font-weight:500}
 a:hover{text-decoration:underline}
 </style></head><body>
 <h1>Transcript Review Queue</h1>
-<p class="subtitle">Verify speakers, then mark ready. Newest first.</p>
+<p class="subtitle">Default view: New only. Add <code>?status=all</code> (or speakers_verified, skipped, legacy) to filter. Newest first.</p>
 <table>
 <thead><tr><th>#</th><th>When</th><th>Meeting</th><th>Status</th><th>Speakers</th><th></th></tr></thead>
 <tbody>${rowsHtml}</tbody>
@@ -754,9 +757,18 @@ router.get('/krisp-review/:id', async (req, res) => {
     return `<div class="line">${escapeHtml(line)}</div>`;
   }).join('\n');
 
-  const statusOptions = Object.entries(STATUS_LABELS).map(([k, v]) =>
-    `<option value="${k}"${k === st ? ' selected' : ''}>${v}</option>`
-  ).join('');
+  const editableStatuses = ['new', 'speakers_verified', 'skipped'];
+  const statusOptionParts = [];
+  if (st === 'ready' || st === 'linked') {
+    statusOptionParts.push(
+      `<option value="" disabled selected>${escapeHtml(STATUS_LABELS[st] || st)} — pick a status below</option>`,
+    );
+  }
+  for (const k of editableStatuses) {
+    const sel = k === st && st !== 'ready' && st !== 'linked' ? ' selected' : '';
+    statusOptionParts.push(`<option value="${k}"${sel}>${escapeHtml(STATUS_LABELS[k])}</option>`);
+  }
+  const statusOptions = statusOptionParts.join('');
 
   res.type('html').send(`<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -870,6 +882,7 @@ if (form) form.addEventListener('submit', async (e) => {
 // Update status
 document.getElementById('statusBtn').addEventListener('click', async () => {
   const st = document.getElementById('statusSelect').value;
+  if (!st) { showToast('Pick a status below', 3000); return; }
   try {
     const r = await fetch('/krisp-review/' + EVENT_ID + '/status?secret=' + SECRET, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -900,8 +913,11 @@ document.getElementById('skipBtn').addEventListener('click', async () => {
 // JSON API for Next.js frontend
 router.get('/krisp-review/api/queue', async (req, res) => {
   if (!(await pbKrispReviewApiOk(req))) return res.status(401).json({ error: 'unauthorized' });
-  const rows = await getKrispReviewQueue(50);
-  return res.json({ rows });
+  const raw = typeof req.query.status === 'string' ? req.query.status.trim().toLowerCase() : '';
+  const allowed = new Set(['all', 'new', 'speakers_verified', 'skipped', 'legacy']);
+  const statusFilter = allowed.has(raw) ? raw : 'new';
+  const rows = await getKrispReviewQueue(100, statusFilter);
+  return res.json({ rows, statusFilter });
 });
 
 router.get('/krisp-review/api/event/:id', async (req, res) => {

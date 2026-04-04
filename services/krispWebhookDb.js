@@ -446,11 +446,23 @@ async function getKrispLinksForEvent(eventId) {
 /**
  * Review queue: recent rows with status + verified_speakers (no full payload).
  * @param {number} [limit=50]
+ * @param {string} [statusFilter='all'] — 'new' | 'speakers_verified' | 'skipped' | 'legacy' (ready/linked) | 'all'
  */
-async function getKrispReviewQueue(limit = 50) {
+async function getKrispReviewQueue(limit = 50, statusFilter = 'all') {
   const p = getPool();
   if (!p) return [];
   const cap = Math.min(Math.max(Number(limit) || 50, 1), 200);
+  const f = String(statusFilter || 'all').toLowerCase();
+  let where = '';
+  if (f === 'new') {
+    where = ` WHERE status = 'new'`;
+  } else if (f === 'speakers_verified') {
+    where = ` WHERE status = 'speakers_verified'`;
+  } else if (f === 'skipped') {
+    where = ` WHERE status = 'skipped'`;
+  } else if (f === 'legacy') {
+    where = ` WHERE status IN ('ready','linked')`;
+  }
   const client = await p.connect();
   try {
     await ensureSchema(client);
@@ -458,7 +470,7 @@ async function getKrispReviewQueue(limit = 50) {
       `SELECT id, received_at, event, krisp_id, status, verified_speakers,
               payload->'data'->'meeting'->>'title' AS meeting_title,
               payload->'data'->'meeting'->>'duration_seconds' AS duration_seconds
-       FROM krisp_webhook_events ORDER BY id DESC LIMIT $1`,
+       FROM krisp_webhook_events${where} ORDER BY id DESC LIMIT $1`,
       [cap],
     );
     return r.rows;
@@ -511,7 +523,7 @@ async function saveVerifiedSpeakers(id, speakers) {
 
 /** @param {string|number} id @param {string} newStatus */
 async function updateKrispEventStatus(id, newStatus) {
-  const VALID = ['new', 'speakers_verified', 'ready', 'linked', 'skipped'];
+  const VALID = ['new', 'speakers_verified', 'skipped'];
   if (!VALID.includes(newStatus)) return { ok: false, error: 'invalid status' };
   const n = typeof id === 'string' ? parseInt(id, 10) : Number(id);
   if (!Number.isFinite(n) || n < 1) return { ok: false };
