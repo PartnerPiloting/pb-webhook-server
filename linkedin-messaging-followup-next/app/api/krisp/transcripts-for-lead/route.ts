@@ -11,8 +11,8 @@ function webhookServerBase(): string {
 
 /**
  * GET /api/krisp/transcripts-for-lead?leadId=rec…
- * Proxies to pb-webhook-server with PB_WEBHOOK_SECRET (server-only).
- * Browser sends x-client-id (portal session) — same pattern as calendar lookup.
+ * Proxies to Render /api/linkedin/krisp-transcripts-for-lead with the same headers as the portal
+ * (x-client-id, x-portal-token, x-dev-key) — same pattern as smart-followups / calendar proxies.
  */
 export async function GET(request: Request) {
   try {
@@ -21,30 +21,31 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Client ID required' }, { status: 400 });
     }
 
-    const secret = process.env.PB_WEBHOOK_SECRET?.trim();
-    if (!secret) {
-      return NextResponse.json(
-        { error: 'Krisp transcripts proxy not configured (set PB_WEBHOOK_SECRET on Vercel).' },
-        { status: 503 },
-      );
-    }
-
     const { searchParams } = new URL(request.url);
     const leadId = searchParams.get('leadId')?.trim();
     if (!leadId) {
       return NextResponse.json({ error: 'leadId query required' }, { status: 400 });
     }
 
+    const headers: Record<string, string> = {
+      'x-client-id': clientId.trim(),
+    };
+    const portalToken = request.headers.get('x-portal-token');
+    if (portalToken) {
+      headers['x-portal-token'] = portalToken;
+    }
+    const devKey = request.headers.get('x-dev-key');
+    if (devKey) {
+      headers['x-dev-key'] = devKey;
+    }
+
     const backendUrl = webhookServerBase();
-    const backendResponse = await fetch(
-      `${backendUrl}/webhooks/krisp/transcripts-for-lead?leadId=${encodeURIComponent(leadId)}`,
-      {
-        headers: {
-          Authorization: `Bearer ${secret}`,
-        },
-        cache: 'no-store',
-      },
-    );
+    const targetUrl = `${backendUrl}/api/linkedin/krisp-transcripts-for-lead?leadId=${encodeURIComponent(leadId)}`;
+
+    const backendResponse = await fetch(targetUrl, {
+      headers,
+      cache: 'no-store',
+    });
 
     const data = await backendResponse.json();
     return NextResponse.json(data, {
