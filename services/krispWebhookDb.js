@@ -56,7 +56,13 @@ async function ensureSchema(client) {
     `ALTER TABLE krisp_webhook_events ADD COLUMN IF NOT EXISTS conversation_alert_sent_at TIMESTAMPTZ`,
   );
   await client.query(
-    `ALTER TABLE krisp_webhook_events ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'new'`,
+    `ALTER TABLE krisp_webhook_events ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'to_verify'`,
+  );
+  await client.query(
+    `ALTER TABLE krisp_webhook_events ALTER COLUMN status SET DEFAULT 'to_verify'`,
+  );
+  await client.query(
+    `UPDATE krisp_webhook_events SET status = 'to_verify' WHERE status = 'new'`,
   );
   await client.query(
     `ALTER TABLE krisp_webhook_events ADD COLUMN IF NOT EXISTS verified_speakers JSONB`,
