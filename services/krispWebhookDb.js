@@ -590,6 +590,24 @@ async function syncMeetingReviewStatus(meetingId) {
   } finally { client.release(); }
 }
 
+/** Re-run completion rules for recent meetings (admin). Fixes rows wrongly marked complete before stricter rules. */
+async function recomputeAllKrispMeetingReviewStatuses(limit = 500) {
+  const p = getPool();
+  if (!p) return { ok: false, error: 'DATABASE_URL not set' };
+  const cap = Math.min(Math.max(Number(limit) || 500, 1), 2000);
+  const client = await p.connect();
+  try {
+    await ensureSchema(client);
+    const r = await client.query(`SELECT id FROM krisp_meetings ORDER BY id DESC LIMIT $1`, [cap]);
+    for (const row of r.rows) {
+      await syncMeetingReviewStatusTx(client, row.id);
+    }
+    return { ok: true, recomputed: r.rows.length };
+  } finally {
+    client.release();
+  }
+}
+
 /**
  * Save speaker assignments (role coach|client|other + optional lead). Recomputes incomplete/complete.
  * @param {string|number} meetingId
@@ -739,6 +757,7 @@ module.exports = {
   addMeetingLead,
   removeMeetingLead,
   syncMeetingReviewStatus,
+  recomputeAllKrispMeetingReviewStatuses,
   getMeetingsForLead,
   seedManualTestTranscript,
   purgeManualTestTranscripts,

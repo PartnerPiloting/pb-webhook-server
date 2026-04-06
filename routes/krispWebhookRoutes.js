@@ -30,6 +30,7 @@ const {
   addMeetingLead,
   removeMeetingLead,
   syncMeetingReviewStatus,
+  recomputeAllKrispMeetingReviewStatuses,
   seedManualTestTranscript,
   purgeManualTestTranscripts,
 } = require('../services/krispWebhookDb');
@@ -302,6 +303,17 @@ router.get('/webhooks/krisp/db-summary', async (req, res) => {
   const summary = await getKrispWebhookDbSummary(Number.isFinite(limit) ? limit : 15);
   res.json(summary);
 });
+
+/** Recompute speaker-review status for recent meetings (stricter rules; run once after deploy). GET or POST; admin auth. */
+async function recomputeReviewStatusesHandler(req, res) {
+  if (!pbAdminOk(req)) return res.status(401).json({ error: 'admin auth required' });
+  const rawLim = req.body?.limit != null ? req.body.limit : req.query.limit;
+  const lim = rawLim != null ? parseInt(String(rawLim), 10) : 500;
+  const out = await recomputeAllKrispMeetingReviewStatuses(Number.isFinite(lim) ? lim : 500);
+  res.json(out);
+}
+router.post('/webhooks/krisp/recompute-review-statuses', recomputeReviewStatusesHandler);
+router.get('/webhooks/krisp/recompute-review-statuses', recomputeReviewStatusesHandler);
 
 // ---------------------------------------------------------------------------
 // Calendar match harness (admin)

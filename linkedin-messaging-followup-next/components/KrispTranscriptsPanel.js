@@ -139,16 +139,22 @@ export default function KrispTranscriptsPanel({
                       {typeLabel}
                     </span>
                     {row.status === 'complete' || row.status === 'verified' ? (
-                      <span className="text-[10px] font-semibold uppercase tracking-wide text-green-800 bg-green-100 border border-green-200 rounded px-1.5 py-0.5 shrink-0">
-                        Complete
+                      <span
+                        className="text-[10px] font-semibold uppercase tracking-wide text-green-800 bg-green-100 border border-green-200 rounded px-1.5 py-0.5 shrink-0"
+                        title="Speaker/coach assignment finished in review queue (not Krisp processing)"
+                      >
+                        Review done
                       </span>
                     ) : row.status === 'skipped' ? (
                       <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 bg-gray-100 border border-gray-200 rounded px-1.5 py-0.5 shrink-0">
                         Skipped
                       </span>
                     ) : (
-                      <span className="text-[10px] font-semibold uppercase tracking-wide text-amber-800 bg-amber-100 border border-amber-200 rounded px-1.5 py-0.5 shrink-0">
-                        Incomplete
+                      <span
+                        className="text-[10px] font-semibold uppercase tracking-wide text-amber-800 bg-amber-100 border border-amber-200 rounded px-1.5 py-0.5 shrink-0"
+                        title="Needs coach / client / other assignment in Krisp review"
+                      >
+                        Review needed
                       </span>
                     )}
                     {row.krisp_id != null && row.krisp_id !== '' && (
