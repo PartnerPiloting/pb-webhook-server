@@ -1,12 +1,12 @@
 /**
- * Match Recall participant.email to Airtable leads (same pattern as Krisp).
+ * Match Recall participant.email to Airtable leads.
  */
 
 const clientService = require('./clientService');
 const { findLeadByEmail } = require('./inboundEmailService');
 const { createSafeLogger } = require('../utils/loggerHelper');
 
-const DEFAULT_COACH_CLIENT_ID = (process.env.RECALL_COACH_CLIENT_ID || process.env.KRISP_COACH_CLIENT_ID || 'Guy-Wilson').trim();
+const DEFAULT_COACH_CLIENT_ID = (process.env.RECALL_COACH_CLIENT_ID || 'Guy-Wilson').trim();
 
 /** @param {object} participant Recall participant object */
 function participantEmail(participant) {

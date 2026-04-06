@@ -1784,14 +1784,6 @@ try {
     moduleLogger.error("index.js: Error mounting inbound email routes", e.message, e.stack);
 }
 
-// Krisp meeting webhook (POST JSON; auth via Authorization header — see routes/krispWebhookRoutes.js)
-try {
-    const krispWebhookRoutes = require('./routes/krispWebhookRoutes.js');
-    app.use(krispWebhookRoutes);
-    moduleLogger.info('index.js: Krisp webhook mounted at GET/HEAD/POST /webhooks/krisp');
-} catch (e) {
-    moduleLogger.error('index.js: Error mounting Krisp webhook routes', e.message, e.stack);
-}
 
 // Recall.ai review API + HTML queue (JSON uses express.json — ingest is in recallIngestRoutes)
 try {
@@ -1802,14 +1794,6 @@ try {
     moduleLogger.error('index.js: Error mounting recallWebhookRoutes', e.message, e.stack);
 }
 
-// Krisp public pages (signed-token URLs: /krisp/fix-unmatched, /krisp/transcript — see routes/krispPublicRoutes.js)
-try {
-    const krispPublicRoutes = require('./routes/krispPublicRoutes.js');
-    app.use(krispPublicRoutes);
-    moduleLogger.info('index.js: Krisp public routes mounted at /krisp/*');
-} catch (e) {
-    moduleLogger.error('index.js: Error mounting Krisp public routes', e.message, e.stack);
-}
 
 // Top Scoring Leads scaffold (feature gated inside the router module)
 try {

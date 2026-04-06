@@ -34,7 +34,7 @@ try {
     console.error('[CalendarServiceAccount] Failed to initialize:', error.message);
 }
 
-/** Map Google Calendar event.attendees for Krisp / pre-brief enrichment (email + display name). */
+/** Map Google Calendar event.attendees for pre-brief enrichment (email + display name). */
 function mapAttendeesFromGoogleEvent(event) {
     if (!event || !Array.isArray(event.attendees)) return [];
     return event.attendees
@@ -49,7 +49,7 @@ function mapAttendeesFromGoogleEvent(event) {
 }
 
 /**
- * Events in [timeMin, timeMax] with attendee list — for matching Krisp meeting windows to calendar.
+ * Events in [timeMin, timeMax] with attendee list — for matching meeting windows to calendar.
  * @param {string} calendarEmail - Calendar id (usually your Google email)
  * @param {Date|string} timeMin
  * @param {Date|string} timeMax

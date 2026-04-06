@@ -1,22 +1,32 @@
 /**
- * Recall.ai real-time webhook persistence + meetings (mirrors Krisp model).
+ * Recall.ai real-time webhook persistence + meetings.
  *
  * Tables:
  *   recall_webhook_events — raw payloads
  *   recall_meetings — one row per bot + recording (review queue)
- *   recall_meeting_participants / recall_meeting_leads — same roles as Krisp
+ *   recall_meeting_participants / recall_meeting_leads
  *   recall_utterances — timed segments for per-lead extraction
  *   recall_participant_presence — join/leave from participant_events.*
  */
 
 const { Pool } = require('pg');
-const {
-  extractSpeakerLabels,
-  participantResolvesSpeaker,
-} = require('./krispSpeakerLabels');
 
 let pool;
 let schemaEnsured = false;
+
+function extractSpeakerLabels(text) {
+  if (!text) return [];
+  const labels = new Set();
+  const rx = /^(Speaker \d+|[A-Z][\w ]+?):/gm;
+  let m;
+  while ((m = rx.exec(text)) !== null) labels.add(m[1]);
+  return [...labels];
+}
+
+function participantResolvesSpeaker(p) {
+  if (!p) return false;
+  return !!(p.verified_name || p.verified_email || (p.role && p.role !== 'unknown'));
+}
 
 function getPool() {
   const url = (process.env.DATABASE_URL || '').trim();
@@ -137,6 +147,13 @@ async function ensureSchema(client) {
   await client.query(
     `CREATE INDEX IF NOT EXISTS idx_recall_pres_meeting ON recall_participant_presence (meeting_id, platform_participant_id);`,
   );
+
+  await client.query(`
+    DROP TABLE IF EXISTS krisp_meeting_leads CASCADE;
+    DROP TABLE IF EXISTS krisp_meeting_participants CASCADE;
+    DROP TABLE IF EXISTS krisp_meetings CASCADE;
+    DROP TABLE IF EXISTS krisp_webhook_events CASCADE;
+  `);
 
   schemaEnsured = true;
 }
@@ -461,7 +478,7 @@ async function recordRecallPresence({ meetingId, platformParticipantId, eventKin
 }
 
 // ---------------------------------------------------------------------------
-// Participants / leads (Krisp-compatible semantics)
+// Participants / leads
 // ---------------------------------------------------------------------------
 
 async function upsertRecallMeetingParticipant({

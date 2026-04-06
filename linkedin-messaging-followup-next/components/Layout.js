@@ -257,20 +257,12 @@ const Layout = ({ children }) => {
                     <span className="hidden sm:inline">Smart Follow-ups</span>
                   </Link>
                   <Link
-                    href={buildAuthUrl('/krisp-review')}
-                    className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-violet-600 bg-violet-50 hover:bg-violet-100 rounded-lg transition-colors"
-                    title="Review Krisp transcripts - verify speakers"
-                  >
-                    <MicrophoneIcon className="h-5 w-5" />
-                    <span className="hidden sm:inline">Krisp transcripts</span>
-                  </Link>
-                  <Link
                     href={buildAuthUrl('/recall-review')}
-                    className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-fuchsia-700 bg-fuchsia-50 hover:bg-fuchsia-100 rounded-lg transition-colors"
-                    title="Review Recall.ai transcripts - verify speakers and per-lead segments"
+                    className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-violet-600 bg-violet-50 hover:bg-violet-100 rounded-lg transition-colors"
+                    title="Review meeting transcripts — verify speakers and link to leads"
                   >
                     <MicrophoneIcon className="h-5 w-5" />
-                    <span className="hidden sm:inline">Recall transcripts</span>
+                    <span className="hidden sm:inline">Transcripts</span>
                   </Link>
                   <button
                     type="button"
