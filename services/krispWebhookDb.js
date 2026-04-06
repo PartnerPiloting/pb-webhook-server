@@ -300,21 +300,35 @@ async function getMeetingById(id) {
 /**
  * Review queue: meetings with status.
  * @param {number} [limit=50]
- * @param {string} [statusFilter='to_verify']
+ * @param {string} [statusFilter='all']
+ * @param {{ titleContains?: string }} [opts]
  */
-async function getMeetingQueue(limit = 50, statusFilter = 'all') {
+async function getMeetingQueue(limit = 50, statusFilter = 'all', opts = {}) {
   const p = getPool();
   if (!p) return [];
   const cap = Math.min(Math.max(Number(limit) || 50, 1), 200);
   const f = String(statusFilter || 'all').toLowerCase();
-  let where = '';
-  // Include legacy status values: migration runs on first ensureSchema per process; older rows
-  // may still be to_verify/verified until touched, and the queue must not hide them.
+  const titleQ = typeof opts.titleContains === 'string' ? opts.titleContains.trim() : '';
+
+  const conds = [];
+  // Normalize DB quirks (whitespace / case) and include legacy status values.
   if (f === 'incomplete' || f === 'to_verify') {
-    where = ` WHERE m.status IN ('incomplete', 'to_verify')`;
+    conds.push(`LOWER(TRIM(m.status)) IN ('incomplete', 'to_verify')`);
   } else if (f === 'complete' || f === 'verified') {
-    where = ` WHERE m.status IN ('complete', 'verified')`;
-  } else if (f === 'skipped') where = ` WHERE m.status = 'skipped'`;
+    conds.push(`LOWER(TRIM(m.status)) IN ('complete', 'verified')`);
+  } else if (f === 'skipped') {
+    conds.push(`LOWER(TRIM(m.status)) = 'skipped'`);
+  }
+
+  const params = [];
+  if (titleQ) {
+    conds.push(`POSITION($${params.length + 1}::text IN LOWER(COALESCE(m.title, ''))) > 0`);
+    params.push(titleQ.toLowerCase());
+  }
+
+  const whereSql = conds.length ? ` WHERE ${conds.join(' AND ')}` : '';
+  const limitPl = params.length + 1;
+  params.push(cap);
 
   const client = await p.connect();
   try {
@@ -326,8 +340,8 @@ async function getMeetingQueue(limit = 50, statusFilter = 'all') {
               e.received_at AS webhook_received_at, e.krisp_id
        FROM krisp_meetings m
        JOIN krisp_webhook_events e ON e.id = m.webhook_event_id
-       ${where} ORDER BY m.id DESC LIMIT $1`,
-      [cap],
+       ${whereSql} ORDER BY m.id DESC LIMIT $${limitPl}`,
+      params,
     );
     return r.rows;
   } finally { client.release(); }
