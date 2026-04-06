@@ -114,6 +114,15 @@ function parseTranscriptSpeakerLine(line: string): { label: string; rest: string
   if (mColon) {
     return { label: mColon[1].replace(/\s+/g, ' ').trim(), rest: line.slice(mColon[0].length) };
   }
+  // Krisp sometimes sends "unknown | 00:48" before diarization is resolved
+  const mUnkPipe = line.match(/^unknown\s*\|\s*/i);
+  if (mUnkPipe) {
+    return { label: 'Unknown', rest: line.slice(mUnkPipe[0].length) };
+  }
+  const mPartPipe = line.match(/^(Participant\s*\d+)\s*\|\s*/i);
+  if (mPartPipe) {
+    return { label: mPartPipe[1].replace(/\s+/g, ' ').trim(), rest: line.slice(mPartPipe[0].length) };
+  }
   const mName = line.match(/^([^:]{1,40}):\s/);
   if (mName) {
     const label = mName[1].trim();
@@ -429,7 +438,6 @@ function EventReview({ eventId, onBack }: { eventId: string; onBack: () => void 
   const calAttendees: { email: string; name: string }[] = ev.calendar_attendees || [];
   const st = normalizeReviewStatus(ev.status || 'incomplete');
   const fullText: string = ev.full_text || '';
-  const verified = ev.verified_speakers || {};
   const speakerSamples: Record<string, string[]> = ev.speaker_samples || {};
   const lines = fullText.split('\n');
 
@@ -439,18 +447,18 @@ function EventReview({ eventId, onBack }: { eventId: string; onBack: () => void 
     const isSplitPoint = splitMode && splitLine === lineNum;
     const isAboveSplit = splitMode && splitLine != null && lineNum < splitLine;
 
-    const aiGuess = aiResult?.speakerGuesses;
     let displayLabel = '';
     let rest = line;
     let showColon = true;
 
     if (parsed) {
-      const label = parsed.label;
-      const vName = verified[label]?.name;
-      const aiName = aiGuess?.[label]?.likelyName;
-      displayLabel = vName || aiName || label;
+      // Always show Krisp/diarization labels here (Speaker 1, Unknown | …, etc.) — not CRM-assigned names.
+      displayLabel = parsed.label;
       rest = parsed.rest;
-      const isPipe = /^(Speaker\s*\d+)\s*\|\s*/i.test(line);
+      const isPipe =
+        /^(Speaker\s*\d+)\s*\|\s*/i.test(line) ||
+        /^unknown\s*\|\s*/i.test(line) ||
+        /^(Participant\s*\d+)\s*\|\s*/i.test(line);
       showColon = !isPipe;
     }
 
@@ -514,7 +522,7 @@ function EventReview({ eventId, onBack }: { eventId: string; onBack: () => void 
           <div>
             <p className="font-semibold text-orange-900 text-sm">This transcript may contain back-to-back calls</p>
             <p className="text-xs text-orange-700 mt-1">
-              Multiple calendar events overlap, or AI detected separate conversations. Use the split tool below to separate them.
+              Multiple calendar events overlap, or AI detected separate conversations. Use <strong>Split transcript</strong> in the Transcript section to separate them.
             </p>
           </div>
         </div>
@@ -617,7 +625,49 @@ function EventReview({ eventId, onBack }: { eventId: string; onBack: () => void 
         )}
       </div>
 
-      {/* 2. Speaker assignment */}
+      {/* 2. Transcript — raw labels from Krisp (Speaker 1, Speaker 2, Unknown | …); names you assign appear only after save in CRM/review, not here */}
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+        <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
+          <div>
+            <h3 className="text-base font-semibold text-gray-900">Transcript</h3>
+            <p className="text-xs text-gray-500 mt-0.5">Exactly as Krisp sent it. Map each label to coach/client below.</p>
+          </div>
+          <div className="flex items-center gap-2">
+            {splitMode ? (
+              <>
+                <span className="text-xs text-orange-700">Click a line to set split point</span>
+                {splitLine != null && (
+                  <button
+                    onClick={handleSplit}
+                    disabled={splitting}
+                    className="text-xs px-3 py-1.5 bg-orange-600 text-white rounded-lg hover:bg-orange-700 font-semibold disabled:opacity-50"
+                  >
+                    {splitting ? 'Splitting…' : `Split at line ${splitLine}`}
+                  </button>
+                )}
+                <button
+                  onClick={() => { setSplitMode(false); setSplitLine(null); }}
+                  className="text-xs text-gray-500 hover:text-gray-700 underline"
+                >
+                  Cancel
+                </button>
+              </>
+            ) : (
+              <button
+                onClick={() => setSplitMode(true)}
+                className="text-xs px-3 py-1.5 bg-orange-50 text-orange-700 border border-orange-200 rounded-lg hover:bg-orange-100"
+              >
+                Split transcript
+              </button>
+            )}
+          </div>
+        </div>
+        <div className={`max-h-[min(70vh,520px)] overflow-y-auto text-sm text-gray-700 leading-relaxed font-sans ${splitMode ? 'border-2 border-orange-200 rounded-lg p-2' : ''}`}>
+          {transcriptContent}
+        </div>
+      </div>
+
+      {/* 3. Speaker assignment */}
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5 space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h3 className="text-base font-semibold text-gray-900">Who is each speaker?</h3>
@@ -746,7 +796,7 @@ function EventReview({ eventId, onBack }: { eventId: string; onBack: () => void 
                         type="text"
                         value={row.name}
                         onChange={(e) => setSpeaker(label, { name: e.target.value })}
-                        placeholder={row.role === 'other' ? 'Required for “Other”' : 'Shown on transcript'}
+                        placeholder={row.role === 'other' ? 'Required for “Other”' : 'Optional — not shown in raw transcript above'}
                         className="w-full border border-gray-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-violet-200 focus:border-violet-400"
                       />
                     </div>
@@ -777,45 +827,6 @@ function EventReview({ eventId, onBack }: { eventId: string; onBack: () => void 
             </button>
           </div>
         )}
-      </div>
-
-      {/* Transcript */}
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="font-semibold text-gray-900">Transcript</h3>
-          <div className="flex items-center gap-2">
-            {splitMode ? (
-              <>
-                <span className="text-xs text-orange-700">Click a line to set split point</span>
-                {splitLine != null && (
-                  <button
-                    onClick={handleSplit}
-                    disabled={splitting}
-                    className="text-xs px-3 py-1.5 bg-orange-600 text-white rounded-lg hover:bg-orange-700 font-semibold disabled:opacity-50"
-                  >
-                    {splitting ? 'Splitting…' : `Split at line ${splitLine}`}
-                  </button>
-                )}
-                <button
-                  onClick={() => { setSplitMode(false); setSplitLine(null); }}
-                  className="text-xs text-gray-500 hover:text-gray-700 underline"
-                >
-                  Cancel
-                </button>
-              </>
-            ) : (
-              <button
-                onClick={() => setSplitMode(true)}
-                className="text-xs px-3 py-1.5 bg-orange-50 text-orange-700 border border-orange-200 rounded-lg hover:bg-orange-100"
-              >
-                ✂️ Split transcript
-              </button>
-            )}
-          </div>
-        </div>
-        <div className={`max-h-[500px] overflow-y-auto text-sm text-gray-700 leading-relaxed font-sans ${splitMode ? 'border-2 border-orange-200 rounded-lg p-2' : ''}`}>
-          {transcriptContent}
-        </div>
       </div>
 
       {/* Status */}
