@@ -131,6 +131,15 @@ if (!postAnalysisConfig.attributesTableName || !postAnalysisConfig.promptCompone
 ------------------------------------------------------------------*/
 const app = express();
 
+// Recall.ai real-time webhooks need raw JSON body for HMAC verification (see routes/recallIngestRoutes.js)
+try {
+    const recallIngestRoutes = require('./routes/recallIngestRoutes.js');
+    app.use(recallIngestRoutes);
+    moduleLogger.info('index.js: Recall ingest mounted (before express.json) at GET/HEAD/POST /webhooks/recall');
+} catch (e) {
+    moduleLogger.error('index.js: Error mounting recallIngestRoutes', e.message, e.stack);
+}
+
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" })); // For Mailgun webhooks (form-urlencoded)
 
@@ -1782,6 +1791,15 @@ try {
     moduleLogger.info('index.js: Krisp webhook mounted at GET/HEAD/POST /webhooks/krisp');
 } catch (e) {
     moduleLogger.error('index.js: Error mounting Krisp webhook routes', e.message, e.stack);
+}
+
+// Recall.ai review API + HTML queue (JSON uses express.json — ingest is in recallIngestRoutes)
+try {
+    const recallWebhookRoutes = require('./routes/recallWebhookRoutes.js');
+    app.use(recallWebhookRoutes);
+    moduleLogger.info('index.js: Recall review routes mounted at /recall-review/*');
+} catch (e) {
+    moduleLogger.error('index.js: Error mounting recallWebhookRoutes', e.message, e.stack);
 }
 
 // Krisp public pages (signed-token URLs: /krisp/fix-unmatched, /krisp/transcript — see routes/krispPublicRoutes.js)

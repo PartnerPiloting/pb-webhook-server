@@ -2216,6 +2216,146 @@ export const removeKrispMeetingLead = async (meetingId, airtableLeadId) => {
   }
 };
 
+/** Same portal auth as Krisp review (x-portal-token + x-client-id or admin/dev key). */
+const recallReviewFetchHeaders = krispReviewFetchHeaders;
+
+export const getRecallReviewQueue = async (statusFilter = 'incomplete', titleSearch = '') => {
+  if (typeof window === 'undefined') return { rows: [], error: 'client_only' };
+  try {
+    const base = getBackendBase();
+    const q = new URLSearchParams();
+    q.set('status', statusFilter || 'incomplete');
+    const t = String(titleSearch || '').trim();
+    if (t) q.set('q', t);
+    const r = await fetch(`${base}/recall-review/api/queue?${q.toString()}`, {
+      cache: 'no-store',
+      headers: recallReviewFetchHeaders(),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) return { rows: [], error: d.error || `HTTP ${r.status}` };
+    return {
+      rows: Array.isArray(d.rows) ? d.rows : [],
+      statusFilter: d.statusFilter || statusFilter,
+      error: null,
+    };
+  } catch (e) {
+    return { rows: [], error: e.message };
+  }
+};
+
+export const getRecallReviewEvent = async (id) => {
+  if (typeof window === 'undefined') return { event: null, error: 'client_only' };
+  try {
+    const base = getBackendBase();
+    const r = await fetch(`${base}/recall-review/api/event/${encodeURIComponent(id)}`, {
+      cache: 'no-store',
+      headers: recallReviewFetchHeaders(),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) return { event: null, error: d.error || `HTTP ${r.status}` };
+    return { event: d, error: null };
+  } catch (e) {
+    return { event: null, error: e.message };
+  }
+};
+
+export const saveRecallSpeakers = async (id, speakers) => {
+  try {
+    const base = getBackendBase();
+    const r = await fetch(`${base}/recall-review/${encodeURIComponent(id)}/speakers`, {
+      method: 'POST',
+      headers: recallReviewFetchHeaders(),
+      body: JSON.stringify({ speakers }),
+    });
+    return await r.json();
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+};
+
+export const updateRecallStatus = async (id, status) => {
+  try {
+    const base = getBackendBase();
+    const r = await fetch(`${base}/recall-review/${encodeURIComponent(id)}/status`, {
+      method: 'POST',
+      headers: recallReviewFetchHeaders(),
+      body: JSON.stringify({ status }),
+    });
+    return await r.json();
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+};
+
+export const splitRecallTranscript = async (id, splitAtLine) => {
+  try {
+    const base = getBackendBase();
+    const r = await fetch(`${base}/recall-review/${encodeURIComponent(id)}/split`, {
+      method: 'POST',
+      headers: recallReviewFetchHeaders(),
+      body: JSON.stringify({ splitAtLine }),
+    });
+    return await r.json();
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+};
+
+export const analyzeRecallTranscript = async (id) => {
+  try {
+    const base = getBackendBase();
+    const r = await fetch(`${base}/recall-review/${encodeURIComponent(id)}/analyze`, {
+      method: 'POST',
+      headers: recallReviewFetchHeaders(),
+    });
+    return await r.json();
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+};
+
+export const searchRecallLeadByEmail = async (email) => {
+  try {
+    const base = getBackendBase();
+    const q = new URLSearchParams();
+    q.set('email', email);
+    const r = await fetch(`${base}/recall-review/api/search-lead?${q.toString()}`, {
+      cache: 'no-store',
+      headers: recallReviewFetchHeaders(),
+    });
+    return await r.json();
+  } catch (e) {
+    return { lead: null, error: e.message };
+  }
+};
+
+export const addRecallMeetingLead = async (meetingId, airtableLeadId) => {
+  try {
+    const base = getBackendBase();
+    const r = await fetch(`${base}/recall-review/${encodeURIComponent(meetingId)}/meeting-leads`, {
+      method: 'POST',
+      headers: recallReviewFetchHeaders(),
+      body: JSON.stringify({ airtable_lead_id: airtableLeadId }),
+    });
+    return await r.json();
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+};
+
+export const removeRecallMeetingLead = async (meetingId, airtableLeadId) => {
+  try {
+    const base = getBackendBase();
+    const r = await fetch(
+      `${base}/recall-review/${encodeURIComponent(meetingId)}/meeting-leads/${encodeURIComponent(airtableLeadId)}`,
+      { method: 'DELETE', headers: recallReviewFetchHeaders() },
+    );
+    return await r.json();
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+};
+
 export default api;
 
 // Export helper functions for use in components

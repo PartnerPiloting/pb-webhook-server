@@ -262,7 +262,15 @@ const Layout = ({ children }) => {
                     title="Review Krisp transcripts - verify speakers"
                   >
                     <MicrophoneIcon className="h-5 w-5" />
-                    <span className="hidden sm:inline">Review Transcripts</span>
+                    <span className="hidden sm:inline">Krisp transcripts</span>
+                  </Link>
+                  <Link
+                    href={buildAuthUrl('/recall-review')}
+                    className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-fuchsia-700 bg-fuchsia-50 hover:bg-fuchsia-100 rounded-lg transition-colors"
+                    title="Review Recall.ai transcripts - verify speakers and per-lead segments"
+                  >
+                    <MicrophoneIcon className="h-5 w-5" />
+                    <span className="hidden sm:inline">Recall transcripts</span>
                   </Link>
                   <button
                     type="button"
