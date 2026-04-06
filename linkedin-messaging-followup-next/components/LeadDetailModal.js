@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import HelpButton from './HelpButton';
 import LeadDetailForm from './LeadDetailForm';
-import { generateSmartFollowupStory, getUpcomingMeetingWithLead } from '../services/api';
+import { generateSmartFollowupStory, getUpcomingMeetingWithLead, getRecallTranscriptsForLead } from '../services/api';
 
 const LeadDetailModal = ({ 
   lead, 
@@ -18,6 +18,10 @@ const LeadDetailModal = ({
   const [upcomingMeeting, setUpcomingMeeting] = useState(null);
   const [upcomingMeetingLoading, setUpcomingMeetingLoading] = useState(false);
   const [upcomingMeetingError, setUpcomingMeetingError] = useState(null);
+  const [transcripts, setTranscripts] = useState([]);
+  const [transcriptsOpen, setTranscriptsOpen] = useState(false);
+  const [transcriptsLoading, setTranscriptsLoading] = useState(false);
+  const [copiedIdx, setCopiedIdx] = useState(null);
   // Fix hydration issues by only rendering on client side
   useEffect(() => {
     setIsMounted(true);
@@ -30,6 +34,8 @@ const LeadDetailModal = ({
       setStoryError(null);
       setUpcomingMeeting(null);
       setUpcomingMeetingError(null);
+      setTranscripts([]);
+      setTranscriptsOpen(false);
     }
   }, [isOpen, lead?.id]);
 
@@ -164,6 +170,23 @@ const LeadDetailModal = ({
     } finally {
       setUpcomingMeetingLoading(false);
     }
+  };
+
+  const handleLoadTranscripts = async () => {
+    const leadId = lead?.id || lead?.['Profile Key'];
+    if (!leadId) return;
+    setTranscriptsLoading(true);
+    const r = await getRecallTranscriptsForLead(leadId);
+    setTranscripts(r.transcripts || []);
+    setTranscriptsLoading(false);
+    if (r.transcripts?.length) setTranscriptsOpen(true);
+  };
+
+  const handleCopyTranscript = (text, idx) => {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopiedIdx(idx);
+      setTimeout(() => setCopiedIdx(null), 2000);
+    });
   };
 
   return (
@@ -351,6 +374,57 @@ const LeadDetailModal = ({
                 )}
               </div>
             )}
+
+            {/* Meeting transcripts */}
+            <div className="border-t border-gray-100 pt-3">
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!transcriptsOpen && transcripts.length === 0) handleLoadTranscripts();
+                    else setTranscriptsOpen(o => !o);
+                  }}
+                  className="text-sm font-medium text-violet-700 hover:text-violet-900"
+                >
+                  {transcriptsLoading ? 'Loading…' : transcriptsOpen ? 'Hide transcripts' : 'Meeting transcripts'}
+                  {!transcriptsLoading && <span className="ml-1 text-xs opacity-70">{transcriptsOpen ? '▲' : '▼'}</span>}
+                </button>
+                {transcripts.length > 0 && !transcriptsOpen && (
+                  <span className="text-xs text-gray-400">{transcripts.length} transcript{transcripts.length !== 1 ? 's' : ''}</span>
+                )}
+              </div>
+              {transcriptsOpen && transcripts.length > 0 && (
+                <div className="mt-3 space-y-3">
+                  {transcripts.map((t, idx) => (
+                    <div key={t.meeting_id || idx} className="border border-gray-100 rounded-lg bg-gray-50/60 p-3">
+                      <div className="flex items-center justify-between gap-2 mb-2">
+                        <div className="min-w-0">
+                          <span className="text-sm font-medium text-gray-900">{t.title || 'Meeting'}</span>
+                          {t.received_at && (
+                            <span className="text-xs text-gray-400 ml-2">
+                              {new Date(t.received_at).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })}
+                            </span>
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleCopyTranscript(t.full_text || t.preview || '', idx)}
+                          className="text-xs px-2.5 py-1 rounded-md bg-violet-600 text-white font-medium hover:bg-violet-700 shrink-0"
+                        >
+                          {copiedIdx === idx ? 'Copied!' : 'Copy'}
+                        </button>
+                      </div>
+                      <pre className="text-xs text-gray-600 whitespace-pre-wrap font-sans leading-relaxed max-h-40 overflow-y-auto bg-white border border-gray-100 rounded p-2">
+                        {t.preview || '(empty)'}
+                      </pre>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {transcriptsOpen && transcripts.length === 0 && !transcriptsLoading && (
+                <p className="text-xs text-gray-400 mt-2">No meeting transcripts linked to this lead yet.</p>
+              )}
+            </div>
 
             <LeadDetailForm
               lead={{

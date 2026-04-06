@@ -2022,6 +2022,32 @@ export const uploadLeadEmailsCsv = async (file, { apply = true, previewMax = 20,
   return data;
 };
 
+/**
+ * Recall transcripts linked to an Airtable lead (Next proxies to /api/linkedin with portal headers).
+ */
+export const getRecallTranscriptsForLead = async (leadId) => {
+  if (typeof window === 'undefined') return { transcripts: [], error: 'client_only' };
+  const id = String(leadId || '').trim();
+  if (!id) return { transcripts: [], error: 'no_lead_id' };
+  try {
+    const headers = getAuthenticatedHeaders();
+    const url = `/api/recall/transcripts-for-lead?leadId=${encodeURIComponent(id)}`;
+    const res = await fetch(url, { method: 'GET', headers, cache: 'no-store' });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      return { transcripts: [], error: data.error || data.message || `request failed (${res.status})` };
+    }
+    return {
+      leadId: data.leadId,
+      count: data.count,
+      transcripts: Array.isArray(data.transcripts) ? data.transcripts : [],
+      error: null,
+    };
+  } catch (e) {
+    return { transcripts: [], error: e.message || 'fetch failed' };
+  }
+};
+
 // ---------------------------------------------------------------------------
 // Recall review (portal token + x-client-id, or dev key / PB secret)
 // ---------------------------------------------------------------------------
