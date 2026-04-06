@@ -854,35 +854,133 @@ async function getLeadSegmentsForMeeting(meetingId) {
 async function seedManualTestRecall() {
   const p = getPool();
   if (!p) return { ok: false, error: 'DATABASE_URL not set' };
-  const botId = `test-bot-${Date.now()}`;
-  const recordingId = `test-rec-${Date.now()}`;
-  const payload = {
-    event: 'manual_test',
-    data: {
-      bot: { id: botId, metadata: { meeting_title: 'Harness Recall meeting' } },
-      recording: { id: recordingId },
-      data: {
-        participant: { id: 9001, name: 'Harness User', email: 'test@example.com' },
-        words: [
-          { text: 'Hello ', start_timestamp: { relative: 0.1 }, end_timestamp: { relative: 0.5 } },
-          { text: 'world.', start_timestamp: { relative: 0.5 }, end_timestamp: { relative: 1.0 } },
-        ],
-      },
+  const ts = Date.now();
+  const botId = `test-bot-${ts}`;
+
+  const meetings = [
+    {
+      recordingId: `test-rec-${ts}-a`,
+      title: 'Intro call — Dean Mitchell',
+      duration: 1620,
+      transcript: [
+        'Guy Wilson: Hey Dean, thanks for jumping on. How\'s things your end?',
+        'Dean Mitchell: Yeah good mate, really good. Been flat out with the new gym launch but keen to chat.',
+        'Guy Wilson: Nice one — so tell me, what made you reach out?',
+        'Dean Mitchell: Honestly, I\'ve been coaching people one-on-one for about three years now and I just can\'t scale it anymore. I\'m working sixty-hour weeks and I still can\'t take on new clients.',
+        'Guy Wilson: That\'s really common with coaches at your stage. What does a typical week look like for you right now?',
+        'Dean Mitchell: Monday to Friday I do about six sessions a day, then weekends I\'m doing program writes and admin. My girlfriend is about ready to kill me.',
+        'Guy Wilson: Ha, yeah I\'ve heard that one before. So when you say you can\'t scale, is it more about time or is it the business model itself?',
+        'Dean Mitchell: Both really. I charge seventy dollars a session and I know I should charge more but my clients are all everyday people, not athletes. I feel bad putting prices up.',
+        'Guy Wilson: Makes sense. What if I told you there\'s a way to serve more people at a higher price point without adding hours?',
+        'Dean Mitchell: I mean that\'s the dream isn\'t it? That\'s exactly why I\'m here.',
+        'Guy Wilson: Right. So what we do is help coaches like you build a hybrid model — you keep some one-on-one work but we layer in group coaching, online programs, and a community element. Most of our coaches double their revenue within six months while working fewer hours.',
+        'Dean Mitchell: Okay that sounds great in theory. How does it actually work though? Like, do I need a big social media following?',
+        'Guy Wilson: Not at all. We start with your existing clients and network. The first step is usually mapping out your IP — the stuff you teach every day — and packaging it into a signature program.',
+        'Dean Mitchell: Right. I\'ve thought about doing an online program before but I never know where to start.',
+        'Guy Wilson: That\'s exactly what we help with. We\'ve got templates, tech setup, launch playbooks, the lot. You don\'t have to figure it out alone.',
+        'Dean Mitchell: And what does the investment look like?',
+        'Guy Wilson: We\'ve got a few options — I\'ll send you the details after this call. But typically it\'s a twelve-month partnership. The coaches who commit to it properly see massive results.',
+        'Dean Mitchell: Yeah cool, send that through. I\'m definitely interested. Just need to chat with my business partner about it.',
+        'Guy Wilson: Of course. When do you think you\'d have a decision by?',
+        'Dean Mitchell: Probably by Friday. We\'ve got a catch-up Thursday arvo.',
+        'Guy Wilson: Perfect. I\'ll follow up Friday morning then. Anything else you want to ask before we wrap up?',
+        'Dean Mitchell: Nah that\'s great mate. Really appreciate the time.',
+        'Guy Wilson: Legend. Speak Friday. Cheers Dean.',
+        'Dean Mitchell: Cheers Guy.',
+      ],
+      participants: [
+        { id: 1, name: 'Guy Wilson', role: 'coach' },
+        { id: 2, name: 'Dean Mitchell', email: 'dean@mitchellfit.com.au', role: 'client' },
+      ],
     },
-  };
+    {
+      recordingId: `test-rec-${ts}-b`,
+      title: 'Group strategy session — Julia & George',
+      duration: 2340,
+      transcript: [
+        'Guy Wilson: Alright, Julia and George — welcome. Great to have you both here.',
+        'Julia Chen: Thanks Guy! Really excited about this.',
+        'George Papadopoulos: Yeah same, been looking forward to it.',
+        'Guy Wilson: So just to set the agenda — today we\'re going to look at your Q2 goals and map out a plan. Julia, you want to kick us off?',
+        'Julia Chen: Sure. So my main goal for Q2 is to launch my first group program. I\'ve been doing one-on-one nutrition coaching for two years and I\'m ready to scale.',
+        'Guy Wilson: Love it. What\'s the program going to look like?',
+        'Julia Chen: I\'m thinking an eight-week gut health reset. It\'s what I get asked about the most. I\'d run it as a cohort — maybe twelve to fifteen people.',
+        'Guy Wilson: Smart. Have you priced it yet?',
+        'Julia Chen: I was thinking four-ninety-seven. Is that too low?',
+        'Guy Wilson: For eight weeks with group calls? I\'d say that\'s fair for a first launch. You can always increase for round two. George, what about you?',
+        'George Papadopoulos: Mine\'s different. I want to nail down my content strategy. I\'ve got about two thousand followers on Insta but my engagement is rubbish.',
+        'Guy Wilson: What kind of content are you posting right now?',
+        'George Papadopoulos: Mainly workout videos and the occasional transformation post. But it feels like I\'m shouting into the void.',
+        'Guy Wilson: Yeah, workout videos are the most saturated content in fitness. Here\'s what I\'d suggest — start sharing your coaching philosophy. Why you do what you do. People buy into the person first, then the program.',
+        'George Papadopoulos: That makes sense. I guess I just feel weird talking about myself.',
+        'Julia Chen: George, I felt the same way at first. But honestly, once I started sharing my own health journey, my DMs blew up. People want to know you\'re real.',
+        'George Papadopoulos: Yeah fair point. Okay, I\'ll give it a go.',
+        'Guy Wilson: Good. So action items — Julia, get your program outline done by next Wednesday. George, I want you to post three story-based pieces this week. Sound good?',
+        'Julia Chen: Done.',
+        'George Papadopoulos: Yep, on it.',
+        'Guy Wilson: Brilliant. Let\'s catch up same time next week to review progress. Great session today.',
+        'Julia Chen: Thanks Guy!',
+        'George Papadopoulos: Cheers mate.',
+      ],
+      participants: [
+        { id: 1, name: 'Guy Wilson', role: 'coach' },
+        { id: 3, name: 'Julia Chen', email: 'julia@julianutrition.com', role: 'client' },
+        { id: 4, name: 'George Papadopoulos', email: 'george@ironwillpt.com', role: 'client' },
+      ],
+    },
+  ];
+
   const client = await p.connect();
   try {
     await ensureSchema(client);
-    const evR = await client.query(
-      `INSERT INTO recall_webhook_events (event, bot_id, recording_id, payload) VALUES ($1, $2, $3, $4::jsonb) RETURNING id`,
-      ['manual_test', botId, recordingId, JSON.stringify(payload)],
-    );
-    const mR = await client.query(
-      `INSERT INTO recall_meetings (bot_id, recording_id, title, transcript_text)
-       VALUES ($1, $2, $3, $4) RETURNING id`,
-      [botId, recordingId, 'Harness Recall meeting', 'Participant 9001 | 00:00\nHello world.'],
-    );
-    return { ok: true, postgres_id: String(evR.rows[0].id), meeting_id: String(mR.rows[0].id), bot_id: botId };
+    const results = [];
+
+    for (const m of meetings) {
+      const fullText = m.transcript.join('\n');
+      const payload = { event: 'manual_test', data: { bot: { id: botId }, recording: { id: m.recordingId }, title: m.title } };
+
+      await client.query(
+        `INSERT INTO recall_webhook_events (event, bot_id, recording_id, payload) VALUES ($1, $2, $3, $4::jsonb)`,
+        ['manual_test', botId, m.recordingId, JSON.stringify(payload)],
+      );
+
+      const mR = await client.query(
+        `INSERT INTO recall_meetings (bot_id, recording_id, title, transcript_text, duration_seconds, status)
+         VALUES ($1, $2, $3, $4, $5, 'incomplete') RETURNING id`,
+        [botId, m.recordingId, m.title, fullText, m.duration],
+      );
+      const meetingId = mR.rows[0].id;
+
+      for (const part of m.participants) {
+        await client.query(
+          `INSERT INTO recall_meeting_participants (meeting_id, platform_participant_id, speaker_label, verified_name, verified_email, role)
+           VALUES ($1, $2, $3, $4, $5, $6)
+           ON CONFLICT (meeting_id, speaker_label) DO NOTHING`,
+          [meetingId, part.id, part.name, part.name, part.email || null, part.role || 'unknown'],
+        );
+      }
+
+      let seq = 0;
+      let relTime = 0;
+      for (const line of m.transcript) {
+        const colonIdx = line.indexOf(': ');
+        if (colonIdx < 0) continue;
+        const speakerName = line.slice(0, colonIdx);
+        const text = line.slice(colonIdx + 2);
+        const part = m.participants.find(pp => pp.name === speakerName);
+        const dur = 3 + Math.random() * 8;
+        await client.query(
+          `INSERT INTO recall_utterances (meeting_id, seq, platform_participant_id, participant_name_snapshot, utterance_text, start_rel, end_rel)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          [meetingId, seq++, part?.id || 0, speakerName, text, relTime, relTime + dur],
+        );
+        relTime += dur + 0.5;
+      }
+
+      results.push({ meeting_id: String(meetingId), title: m.title, speakers: m.participants.length, lines: m.transcript.length });
+    }
+
+    return { ok: true, bot_id: botId, meetings: results };
   } finally {
     client.release();
   }
