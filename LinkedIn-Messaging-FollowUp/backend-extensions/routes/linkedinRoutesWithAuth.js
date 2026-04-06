@@ -1429,6 +1429,58 @@ Write an improved version incorporating this feedback.`;
 
 
 /**
+ * GET /api/linkedin/recall-transcripts-for-lead?leadId=rec…
+ * Recall meeting transcripts linked to this Airtable lead.
+ */
+router.get('/recall-transcripts-for-lead', async (req, res) => {
+  logger.info('LinkedIn Routes: GET /recall-transcripts-for-lead');
+  try {
+    const leadId = typeof req.query.leadId === 'string' ? req.query.leadId.trim() : '';
+    if (!leadId) {
+      return res.status(400).json({ error: 'leadId query required (Airtable record id)' });
+    }
+
+    const airtableBase = await getAirtableBase(req);
+    try {
+      await airtableBase('Leads').find(leadId);
+    } catch (_e) {
+      return res.status(404).json({ error: 'Lead not found', leadId });
+    }
+
+    const { getMeetingsForLead } = require('../../../services/recallWebhookDb');
+    const limit = req.query.limit != null ? parseInt(String(req.query.limit), 10) : 50;
+    const rows = await getMeetingsForLead(leadId, Number.isFinite(limit) ? limit : 50);
+    const PREVIEW_MAX = 500;
+    const byMeeting = new Map();
+    for (const row of rows) {
+      if (!byMeeting.has(row.meeting_id)) byMeeting.set(row.meeting_id, row);
+    }
+    const transcripts = [...byMeeting.values()].map((row) => {
+      const fullText = row.transcript_text || '';
+      const preview = fullText.length <= PREVIEW_MAX
+        ? fullText
+        : `${fullText.slice(0, PREVIEW_MAX)}…`;
+      return {
+        meeting_id: row.meeting_id,
+        event_id: row.meeting_id,
+        received_at: row.meeting_start || row.created_at,
+        title: row.title || 'Meeting',
+        participant_email: row.verified_email,
+        match_method: row.match_method,
+        status: row.status || 'incomplete',
+        duration_seconds: row.duration_seconds,
+        preview,
+        full_text: fullText,
+      };
+    });
+    res.json({ leadId, count: transcripts.length, transcripts });
+  } catch (error) {
+    logger.error('LinkedIn Routes: recall-transcripts-for-lead', error);
+    res.status(500).json({ error: 'Failed to load transcripts', details: error.message });
+  }
+});
+
+/**
  * GET /api/linkedin/leads/:id
  * Get a specific lead by ID
  */

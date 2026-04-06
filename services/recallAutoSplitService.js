@@ -1,0 +1,230 @@
+/**
+ * Auto-split service for Recall transcripts.
+ *
+ * When a recording finishes, this service checks the coach's Google Calendar
+ * for that time window. If there were multiple back-to-back appointments,
+ * it uses participant join/leave events to create overlapping child transcripts
+ * — one per appointment — each linked to the relevant lead.
+ *
+ * Split rules:
+ *   1 calendar event  → no split
+ *   2+ events, but no new participant joined near the next event start → no-show, no split
+ *   2+ events, new participant joined ≥15 min past next event start → split using
+ *     overlapping windows (Dean's transcript ends when Dean leaves; Julia's starts when Julia joins)
+ */
+
+const { listCalendarEventsWithAttendeesInRange } = require('../config/calendarServiceAccount');
+const clientService = require('./clientService');
+const { createSafeLogger } = require('../utils/loggerHelper');
+
+const DEFAULT_COACH_CLIENT_ID = (process.env.RECALL_COACH_CLIENT_ID || 'Guy-Wilson').trim();
+const HANDOVER_BUFFER_MS = 5 * 60 * 1000;
+const MIN_MEETING_DURATION_MS = 15 * 60 * 1000;
+
+const log = createSafeLogger('SYSTEM', null, 'recall_auto_split');
+
+/**
+ * Determine whether a meeting should be split and compute the split windows.
+ *
+ * @param {object} meeting  - recall_meetings row (must have meeting_start, meeting_end, id)
+ * @param {object[]} presenceRows - recall_participant_presence rows for this meeting
+ *   Each row: { platform_participant_id, event_kind, abs_ts, rel_seconds }
+ * @param {object[]} participants - recall_meeting_participants rows
+ * @param {string} [coachClientId] - defaults to env / 'Guy-Wilson'
+ *
+ * @returns {Promise<{ shouldSplit: boolean, reason: string, windows?: object[] }>}
+ *   windows[]: { calendarEvent, startRel, endRel, participants: number[] }
+ */
+async function evaluateAutoSplit(meeting, presenceRows, participants, coachClientId) {
+  const cid = coachClientId || DEFAULT_COACH_CLIENT_ID;
+
+  if (!meeting.meeting_start || !meeting.meeting_end) {
+    return { shouldSplit: false, reason: 'no meeting_start/meeting_end on recording' };
+  }
+
+  const recStart = new Date(meeting.meeting_start);
+  const recEnd = new Date(meeting.meeting_end);
+  if (isNaN(recStart) || isNaN(recEnd)) {
+    return { shouldSplit: false, reason: 'invalid meeting times' };
+  }
+
+  let calendarEmail = '';
+  try {
+    const coach = await clientService.getClientById(cid);
+    calendarEmail = coach?.googleCalendarEmail || '';
+  } catch (_) { /* optional */ }
+
+  if (!calendarEmail) {
+    return { shouldSplit: false, reason: 'no calendar email for coach' };
+  }
+
+  const padBefore = new Date(recStart.getTime() - 10 * 60 * 1000);
+  const padAfter = new Date(recEnd.getTime() + 10 * 60 * 1000);
+  const { events: calEvents, error: calErr } = await listCalendarEventsWithAttendeesInRange(
+    calendarEmail, padBefore, padAfter,
+  );
+
+  if (calErr) {
+    log.warn(`calendar lookup failed: ${calErr}`);
+    return { shouldSplit: false, reason: `calendar error: ${calErr}` };
+  }
+
+  const relevant = calEvents.filter(ev => {
+    const s = new Date(ev.start);
+    const e = new Date(ev.end);
+    return s < recEnd && e > recStart;
+  });
+
+  if (relevant.length <= 1) {
+    return { shouldSplit: false, reason: `${relevant.length} calendar event(s) in window — no split needed` };
+  }
+
+  relevant.sort((a, b) => new Date(a.start) - new Date(b.start));
+
+  const coachPids = new Set();
+  for (const p of participants) {
+    if (p.role === 'coach') coachPids.add(Number(p.platform_participant_id));
+  }
+
+  const joinsByPid = new Map();
+  const leavesByPid = new Map();
+  for (const pr of presenceRows) {
+    const pid = Number(pr.platform_participant_id);
+    if (coachPids.has(pid)) continue;
+    const ts = pr.abs_ts ? new Date(pr.abs_ts) : null;
+    const rel = pr.rel_seconds != null ? Number(pr.rel_seconds) : null;
+    if (pr.event_kind === 'join') {
+      if (!joinsByPid.has(pid)) joinsByPid.set(pid, []);
+      joinsByPid.get(pid).push({ ts, rel });
+    } else if (pr.event_kind === 'leave') {
+      if (!leavesByPid.has(pid)) leavesByPid.set(pid, []);
+      leavesByPid.get(pid).push({ ts, rel });
+    }
+  }
+
+  const windows = [];
+  for (let i = 0; i < relevant.length; i++) {
+    const calEv = relevant[i];
+    const calStart = new Date(calEv.start);
+    const calEnd = new Date(calEv.end);
+    const nextCalStart = i < relevant.length - 1 ? new Date(relevant[i + 1].start) : null;
+
+    const windowStartAbs = calStart;
+    const windowEndAbs = nextCalStart || calEnd;
+
+    const pidsInWindow = [];
+    for (const [pid, joins] of joinsByPid) {
+      const joinedDuringWindow = joins.some(j => {
+        if (!j.ts) return false;
+        return j.ts >= new Date(windowStartAbs.getTime() - HANDOVER_BUFFER_MS) &&
+               j.ts <= new Date(windowEndAbs.getTime() + HANDOVER_BUFFER_MS);
+      });
+      if (joinedDuringWindow) pidsInWindow.push(pid);
+    }
+
+    if (i > 0 && pidsInWindow.length === 0) {
+      log.info(`calendar event "${calEv.summary}" appears to be a no-show (no participant joins)`);
+      continue;
+    }
+
+    let startRel = null;
+    let endRel = null;
+
+    if (i === 0) {
+      startRel = 0;
+    } else {
+      let earliestJoin = Infinity;
+      for (const pid of pidsInWindow) {
+        const joins = joinsByPid.get(pid) || [];
+        for (const j of joins) {
+          if (j.rel != null && j.rel < earliestJoin) earliestJoin = j.rel;
+        }
+      }
+      startRel = earliestJoin === Infinity ? null : earliestJoin;
+    }
+
+    if (i === relevant.length - 1 || (i < relevant.length - 1 && windows.length === relevant.length - 1)) {
+      endRel = null;
+    } else {
+      const prevPids = i === 0
+        ? [...joinsByPid.keys()].filter(pid => !pidsInWindow.includes(pid))
+        : (windows[windows.length - 1]?.participants || []);
+
+      let latestLeave = -Infinity;
+      for (const pid of prevPids) {
+        const leaves = leavesByPid.get(pid) || [];
+        for (const lv of leaves) {
+          if (lv.rel != null && lv.rel > latestLeave) latestLeave = lv.rel;
+        }
+      }
+
+      if (latestLeave > -Infinity) {
+        endRel = latestLeave;
+      } else if (startRel != null) {
+        endRel = startRel + HANDOVER_BUFFER_MS / 1000;
+      } else {
+        const offsetMs = calEnd.getTime() - recStart.getTime();
+        endRel = offsetMs / 1000;
+      }
+    }
+
+    windows.push({
+      calendarEvent: { summary: calEv.summary, start: calEv.start, end: calEv.end },
+      startRel,
+      endRel,
+      participants: pidsInWindow,
+    });
+  }
+
+  if (windows.length <= 1) {
+    return { shouldSplit: false, reason: 'only one active appointment (others were no-shows)' };
+  }
+
+  return {
+    shouldSplit: true,
+    reason: `${windows.length} appointments with participants in window`,
+    windows,
+  };
+}
+
+/**
+ * Execute the auto-split: create child meetings with overlapping transcript windows.
+ *
+ * @param {number} meetingId
+ * @param {object[]} windows - from evaluateAutoSplit().windows
+ * @param {object} db - { getMeetingById, splitMeetingByUtteranceWindow } functions
+ */
+async function executeAutoSplit(meetingId, windows, db) {
+  const parent = await db.getMeetingById(meetingId);
+  if (!parent) return { ok: false, error: 'parent meeting not found' };
+
+  const children = [];
+  for (let i = 0; i < windows.length; i++) {
+    const w = windows[i];
+    const title = w.calendarEvent?.summary
+      ? `${w.calendarEvent.summary}`
+      : `${parent.title || 'Meeting'} (part ${i + 1})`;
+
+    const child = await db.createChildMeetingFromUtterances({
+      parentId: meetingId,
+      title,
+      startRel: w.startRel,
+      endRel: w.endRel,
+      participantIds: w.participants,
+      calendarStart: w.calendarEvent?.start || null,
+      calendarEnd: w.calendarEvent?.end || null,
+    });
+
+    children.push({ ...child, window: w });
+  }
+
+  await db.markParentSplit(meetingId, children.map(c => c.childId));
+
+  return { ok: true, parent_id: meetingId, children };
+}
+
+module.exports = {
+  evaluateAutoSplit,
+  executeAutoSplit,
+  DEFAULT_COACH_CLIENT_ID,
+};

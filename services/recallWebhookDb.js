@@ -478,6 +478,135 @@ async function recordRecallPresence({ meetingId, platformParticipantId, eventKin
 }
 
 // ---------------------------------------------------------------------------
+// Utterance-based child meetings (auto-split)
+// ---------------------------------------------------------------------------
+
+async function createChildMeetingFromUtterances({
+  parentId, title, startRel, endRel, participantIds, calendarStart, calendarEnd,
+}) {
+  const pid = typeof parentId === 'string' ? parseInt(parentId, 10) : Number(parentId);
+  const p = getPool();
+  if (!p) return { ok: false, error: 'no db' };
+  const client = await p.connect();
+  try {
+    await ensureSchema(client);
+    const parentRow = await client.query(`SELECT * FROM recall_meetings WHERE id = $1`, [pid]);
+    if (parentRow.rows.length === 0) return { ok: false, error: 'parent not found' };
+    const parent = parentRow.rows[0];
+
+    let whereClause = `meeting_id = $1`;
+    const params = [pid];
+    let paramIdx = 2;
+
+    if (startRel != null) {
+      whereClause += ` AND end_rel >= $${paramIdx}`;
+      params.push(startRel);
+      paramIdx++;
+    }
+    if (endRel != null) {
+      whereClause += ` AND start_rel <= $${paramIdx}`;
+      params.push(endRel);
+      paramIdx++;
+    }
+
+    const uttR = await client.query(
+      `SELECT * FROM recall_utterances WHERE ${whereClause} ORDER BY seq`,
+      params,
+    );
+
+    const lines = uttR.rows.map(u => {
+      const name = u.participant_name_snapshot || `Participant ${u.platform_participant_id}`;
+      return `${name}: ${u.utterance_text}`;
+    });
+    const transcriptText = lines.join('\n');
+
+    const durSec = uttR.rows.length > 0
+      ? Math.ceil((uttR.rows[uttR.rows.length - 1].end_rel || 0) - (uttR.rows[0].start_rel || 0))
+      : null;
+
+    const childRecId = `${parent.recording_id}__auto_${pid}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    const ins = await client.query(
+      `INSERT INTO recall_meetings
+        (bot_id, recording_id, title, transcript_text, duration_seconds,
+         meeting_start, meeting_end, status, status_reason)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 'incomplete',
+         'Auto-split from meeting #' || $8::text)
+       RETURNING id`,
+      [
+        parent.bot_id, childRecId, title, transcriptText, durSec,
+        calendarStart || parent.meeting_start,
+        calendarEnd || parent.meeting_end,
+        pid,
+      ],
+    );
+    const childId = ins.rows[0].id;
+
+    for (const u of uttR.rows) {
+      await client.query(
+        `INSERT INTO recall_utterances
+          (meeting_id, seq, platform_participant_id, participant_name_snapshot, utterance_text, start_rel, end_rel)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [childId, u.seq, u.platform_participant_id, u.participant_name_snapshot, u.utterance_text, u.start_rel, u.end_rel],
+      );
+    }
+
+    const partR = await client.query(
+      `SELECT * FROM recall_meeting_participants WHERE meeting_id = $1`,
+      [pid],
+    );
+    for (const pr of partR.rows) {
+      const isRelevant = participantIds.includes(Number(pr.platform_participant_id))
+        || pr.role === 'coach';
+      if (!isRelevant) continue;
+      await client.query(
+        `INSERT INTO recall_meeting_participants
+          (meeting_id, platform_participant_id, speaker_label, verified_name, verified_email,
+           role, airtable_lead_id, coach_client_id, match_method)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+         ON CONFLICT (meeting_id, speaker_label) DO NOTHING`,
+        [
+          childId, pr.platform_participant_id, pr.speaker_label,
+          pr.verified_name, pr.verified_email, pr.role,
+          pr.airtable_lead_id, pr.coach_client_id, pr.match_method,
+        ],
+      );
+      if (pr.airtable_lead_id) {
+        await client.query(
+          `INSERT INTO recall_meeting_leads (meeting_id, airtable_lead_id, coach_client_id, source)
+           VALUES ($1, $2, $3, 'auto_split')
+           ON CONFLICT (meeting_id, airtable_lead_id) DO NOTHING`,
+          [childId, pr.airtable_lead_id, pr.coach_client_id || 'Guy-Wilson'],
+        );
+      }
+    }
+
+    return { ok: true, childId: String(childId), title, utteranceCount: uttR.rows.length };
+  } finally {
+    client.release();
+  }
+}
+
+async function markParentSplit(meetingId, childIds) {
+  const n = typeof meetingId === 'string' ? parseInt(meetingId, 10) : Number(meetingId);
+  const p = getPool();
+  if (!p) return;
+  const client = await p.connect();
+  try {
+    await client.query(
+      `UPDATE recall_meetings SET
+         status = 'complete',
+         status_reason = 'Auto-split into ' || $2::text || ' child meetings',
+         needs_split = FALSE,
+         updated_at = now()
+       WHERE id = $1`,
+      [n, String(childIds.length)],
+    );
+  } finally {
+    client.release();
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Participants / leads
 // ---------------------------------------------------------------------------
 
@@ -723,6 +852,32 @@ async function saveMeetingSpeakers(meetingId, speakers, opts = {}) {
   }
 }
 
+async function getMeetingsForLead(airtableLeadId, limit = 50) {
+  const p = getPool();
+  if (!p) return [];
+  const client = await p.connect();
+  try {
+    await ensureSchema(client);
+    const r = await client.query(
+      `SELECT m.id AS meeting_id, m.title, m.transcript_text, m.duration_seconds,
+              m.status, m.created_at, m.updated_at, m.meeting_start,
+              ml.airtable_lead_id,
+              p.verified_name, p.verified_email, p.match_method
+       FROM recall_meeting_leads ml
+       JOIN recall_meetings m ON m.id = ml.meeting_id
+       LEFT JOIN recall_meeting_participants p
+         ON p.meeting_id = m.id AND p.airtable_lead_id = ml.airtable_lead_id
+       WHERE ml.airtable_lead_id = $1
+       ORDER BY m.created_at DESC
+       LIMIT $2`,
+      [airtableLeadId, limit],
+    );
+    return r.rows;
+  } finally {
+    client.release();
+  }
+}
+
 /**
  * Per-lead transcript: utterances for platform IDs mapped to that lead, clipped to join→leave windows.
  */
@@ -895,6 +1050,53 @@ async function seedManualTestRecall() {
     },
     {
       recordingId: `test-rec-${ts}-b`,
+      title: 'Back-to-back — Dean then Julia',
+      duration: 3600,
+      meetingStart: new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString(),
+      meetingEnd: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
+      needsSplit: true,
+      transcript: [
+        'Guy Wilson: Hey Dean, good to see you again mate.',
+        'Dean Mitchell: Hey Guy! Yeah good to be back. So I spoke to my business partner.',
+        'Guy Wilson: And?',
+        'Dean Mitchell: We\'re in. We want to do the twelve-month program.',
+        'Guy Wilson: That\'s great news Dean. Let me walk you through the onboarding steps.',
+        'Dean Mitchell: Awesome, fire away.',
+        'Guy Wilson: First thing is we\'ll set you up with access to the platform. You\'ll get your own dashboard where you can see your milestones and resources.',
+        'Dean Mitchell: Sounds good. Is there homework before our next session?',
+        'Guy Wilson: Just one thing — fill out the coaching intake form. It helps me understand where you are now so we can build your roadmap.',
+        'Dean Mitchell: Easy. I\'ll do that tonight.',
+        'Guy Wilson: Perfect. Dean, I\'ve got Julia jumping on next so I\'ll let you go. But really stoked to have you on board.',
+        'Dean Mitchell: Thanks Guy. Chat soon.',
+        'Guy Wilson: Hey Julia! Come on in.',
+        'Julia Chen: Hi Guy! Sorry, am I late?',
+        'Guy Wilson: No no, perfect timing. Dean was just wrapping up. How\'s the gut health program going?',
+        'Julia Chen: So good. I\'ve got fourteen people signed up for the first cohort.',
+        'Guy Wilson: Fourteen! That\'s amazing. Ahead of target.',
+        'Julia Chen: I know right? I priced it at four-ninety-seven like we discussed and it just flew.',
+        'Guy Wilson: Love it. So today I want to look at your delivery plan. How are you structuring the weekly calls?',
+        'Julia Chen: I was thinking Tuesday nights. One hour, group coaching call, then a Q&A at the end.',
+        'Guy Wilson: That works. Make sure you record them — you can repurpose those recordings as bonus content for the next launch.',
+        'Julia Chen: Oh that\'s smart. I hadn\'t thought of that.',
+        'Guy Wilson: It\'s a game changer. Alright Julia, same time next week?',
+        'Julia Chen: Yep! Thanks Guy.',
+        'Guy Wilson: Legend. Talk then.',
+      ],
+      participants: [
+        { id: 1, name: 'Guy Wilson', role: 'coach' },
+        { id: 2, name: 'Dean Mitchell', email: 'dean@mitchellfit.com.au', role: 'client' },
+        { id: 3, name: 'Julia Chen', email: 'julia@julianutrition.com', role: 'client' },
+      ],
+      presence: [
+        { pid: 1, kind: 'join', relSec: 0 },
+        { pid: 2, kind: 'join', relSec: 5 },
+        { pid: 2, kind: 'leave', relSec: 1560 },
+        { pid: 3, kind: 'join', relSec: 1500 },
+        { pid: 3, kind: 'leave', relSec: 3580 },
+      ],
+    },
+    {
+      recordingId: `test-rec-${ts}-c`,
       title: 'Group strategy session — Julia & George',
       duration: 2340,
       transcript: [
@@ -945,9 +1147,9 @@ async function seedManualTestRecall() {
       );
 
       const mR = await client.query(
-        `INSERT INTO recall_meetings (bot_id, recording_id, title, transcript_text, duration_seconds, status)
-         VALUES ($1, $2, $3, $4, $5, 'incomplete') RETURNING id`,
-        [botId, m.recordingId, m.title, fullText, m.duration],
+        `INSERT INTO recall_meetings (bot_id, recording_id, title, transcript_text, duration_seconds, status, needs_split, meeting_start, meeting_end)
+         VALUES ($1, $2, $3, $4, $5, 'incomplete', $6, $7, $8) RETURNING id`,
+        [botId, m.recordingId, m.title, fullText, m.duration, !!m.needsSplit, m.meetingStart || null, m.meetingEnd || null],
       );
       const meetingId = mR.rows[0].id;
 
@@ -977,7 +1179,26 @@ async function seedManualTestRecall() {
         relTime += dur + 0.5;
       }
 
-      results.push({ meeting_id: String(meetingId), title: m.title, speakers: m.participants.length, lines: m.transcript.length });
+      if (m.presence) {
+        const mStart = m.meetingStart ? new Date(m.meetingStart) : new Date();
+        for (const pr of m.presence) {
+          const absTs = new Date(mStart.getTime() + (pr.relSec || 0) * 1000).toISOString();
+          await client.query(
+            `INSERT INTO recall_participant_presence (meeting_id, platform_participant_id, event_kind, abs_ts, rel_seconds)
+             VALUES ($1, $2, $3, $4, $5)`,
+            [meetingId, pr.pid, pr.kind, absTs, pr.relSec],
+          );
+        }
+      }
+
+      results.push({
+        meeting_id: String(meetingId),
+        title: m.title,
+        speakers: m.participants.length,
+        lines: m.transcript.length,
+        has_presence: !!(m.presence && m.presence.length),
+        needs_split: !!m.needsSplit,
+      });
     }
 
     return { ok: true, bot_id: botId, meetings: results };
@@ -1025,6 +1246,9 @@ module.exports = {
   recomputeAllRecallMeetingReviewStatuses,
   saveMeetingSpeakers,
   getLeadSegmentsForMeeting,
+  createChildMeetingFromUtterances,
+  markParentSplit,
+  getMeetingsForLead,
   seedManualTestRecall,
   purgeManualTestRecall,
 };
