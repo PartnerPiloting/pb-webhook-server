@@ -2076,14 +2076,14 @@ function krispReviewFetchHeaders() {
 }
 
 /**
- * @param {string} [statusFilter='new'] — new | speakers_verified | skipped | legacy | all
+ * @param {string} [statusFilter='incomplete'] — incomplete | complete | skipped | all (legacy: to_verify, verified)
  */
-export const getKrispReviewQueue = async (statusFilter = 'new') => {
+export const getKrispReviewQueue = async (statusFilter = 'incomplete') => {
   if (typeof window === 'undefined') return { rows: [], error: 'client_only' };
   try {
     const base = getBackendBase();
     const q = new URLSearchParams();
-    q.set('status', statusFilter || 'new');
+    q.set('status', statusFilter || 'incomplete');
     const r = await fetch(`${base}/krisp-review/api/queue?${q.toString()}`, {
       cache: 'no-store',
       headers: krispReviewFetchHeaders(),
@@ -2165,6 +2165,48 @@ export const analyzeKrispTranscript = async (id) => {
       method: 'POST',
       headers: krispReviewFetchHeaders(),
     });
+    return await r.json();
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+};
+
+export const searchKrispLeadByEmail = async (email) => {
+  try {
+    const base = getBackendBase();
+    const q = new URLSearchParams();
+    q.set('email', email);
+    const r = await fetch(`${base}/krisp-review/api/search-lead?${q.toString()}`, {
+      cache: 'no-store',
+      headers: krispReviewFetchHeaders(),
+    });
+    return await r.json();
+  } catch (e) {
+    return { lead: null, error: e.message };
+  }
+};
+
+export const addKrispMeetingLead = async (meetingId, airtableLeadId) => {
+  try {
+    const base = getBackendBase();
+    const r = await fetch(`${base}/krisp-review/${encodeURIComponent(meetingId)}/meeting-leads`, {
+      method: 'POST',
+      headers: krispReviewFetchHeaders(),
+      body: JSON.stringify({ airtable_lead_id: airtableLeadId }),
+    });
+    return await r.json();
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+};
+
+export const removeKrispMeetingLead = async (meetingId, airtableLeadId) => {
+  try {
+    const base = getBackendBase();
+    const r = await fetch(
+      `${base}/krisp-review/${encodeURIComponent(meetingId)}/meeting-leads/${encodeURIComponent(airtableLeadId)}`,
+      { method: 'DELETE', headers: krispReviewFetchHeaders() },
+    );
     return await r.json();
   } catch (e) {
     return { ok: false, error: e.message };
