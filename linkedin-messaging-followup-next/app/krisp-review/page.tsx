@@ -264,6 +264,9 @@ function EventReview({ eventId, onBack }: { eventId: string; onBack: () => void 
   const [analyzing, setAnalyzing] = useState(false);
   const [aiResult, setAiResult] = useState<any>(null);
 
+  /** Remount shortcut <select> so it resets after each choice. */
+  const [shortcutSeq, setShortcutSeq] = useState<Record<string, number>>({});
+
   const load = useCallback(() => {
     setLoading(true);
     getKrispReviewEvent(eventId).then(r => {
@@ -554,31 +557,28 @@ function EventReview({ eventId, onBack }: { eventId: string; onBack: () => void 
         </div>
       )}
 
-      {/* Meeting leads & speaker assignment */}
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5 space-y-6">
-        <div>
-          <h3 className="font-semibold text-gray-900">Meeting leads</h3>
-          <p className="text-xs text-gray-500 mt-1">
-            Link every client on this call. Status stays <strong>Incomplete</strong> until there is at least one linked lead and every diarized speaker is assigned (coach, a linked lead, or other + name).
-          </p>
-        </div>
+      {/* 1. Clients on this call */}
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5 space-y-4">
+        <h3 className="text-base font-semibold text-gray-900">Clients on this call</h3>
+        <p className="text-sm text-gray-600">
+          Add each client’s lead once. You need at least one before the meeting can be marked complete.
+        </p>
         {meetingLeadRows.length === 0 ? (
-          <p className="text-sm text-gray-500 italic">No leads linked yet.</p>
+          <p className="text-sm text-gray-500">No leads linked yet.</p>
         ) : (
-          <ul className="divide-y divide-gray-100 border border-gray-100 rounded-lg overflow-hidden">
+          <ul className="space-y-2">
             {meetingLeadRows.map((ml: { airtable_lead_id?: string }) => {
               const id = String(ml.airtable_lead_id || '').trim();
               const disp = leadDisplay[id] || { name: `Lead ${shortLeadId(id)}`, email: '' };
               return (
-                <li key={id} className="flex items-center justify-between gap-2 px-3 py-2 text-sm bg-white">
-                  <span className="min-w-0">
+                <li key={id} className="flex items-center justify-between gap-3 text-sm py-2 border-b border-gray-100 last:border-0">
+                  <span className="min-w-0" title={id}>
                     <span className="font-medium text-gray-900">{disp.name}</span>
-                    {disp.email ? <span className="text-gray-500 ml-2">{disp.email}</span> : null}
-                    <span className="text-[10px] font-mono text-gray-400 ml-2">{shortLeadId(id)}</span>
+                    {disp.email ? <span className="text-gray-500 block sm:inline sm:ml-2">{disp.email}</span> : null}
                   </span>
                   <button
                     type="button"
-                    className="text-red-600 text-xs shrink-0 hover:underline"
+                    className="text-red-600 text-sm shrink-0 hover:underline"
                     onClick={() => handleRemoveMeetingLead(id)}
                   >
                     Remove
@@ -588,109 +588,118 @@ function EventReview({ eventId, onBack }: { eventId: string; onBack: () => void 
             })}
           </ul>
         )}
-        <div className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-end">
-          <div className="flex-1 min-w-0">
-            <label htmlFor="krisp-lead-search-email" className="text-xs text-gray-500 font-semibold uppercase tracking-wide">Find lead by email</label>
-            <input
-              id="krisp-lead-search-email"
-              type="email"
-              value={leadSearchEmail}
-              onChange={(e) => setLeadSearchEmail(e.target.value)}
-              className="mt-1 w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-200 focus:border-violet-400"
-              placeholder="email@example.com"
-            />
-          </div>
+        <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+          <input
+            id="krisp-lead-search-email"
+            type="email"
+            value={leadSearchEmail}
+            onChange={(e) => setLeadSearchEmail(e.target.value)}
+            className="flex-1 min-w-0 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-200 focus:border-violet-400"
+            placeholder="Search by email to add a lead"
+          />
           <button
             type="button"
             onClick={handleSearchLead}
             disabled={leadSearchBusy}
-            className="px-4 py-2 bg-violet-600 text-white rounded-lg text-sm font-medium hover:bg-violet-700 disabled:opacity-50"
+            className="px-4 py-2 bg-violet-600 text-white rounded-lg text-sm font-medium hover:bg-violet-700 disabled:opacity-50 sm:w-28"
           >
-            {leadSearchBusy ? 'Searching…' : 'Search'}
+            {leadSearchBusy ? '…' : 'Search'}
           </button>
         </div>
         {leadSearchHit && (
-          <div className="flex flex-wrap items-center gap-3 text-sm bg-violet-50 border border-violet-100 rounded-lg px-3 py-2">
-            <span className="text-gray-800">{leadSearchHit.name} — {leadSearchHit.email}</span>
-            <button type="button" onClick={handleAddMeetingLead} className="text-violet-700 font-semibold hover:underline">
-              Add to meeting
+          <div className="flex flex-wrap items-center gap-2 text-sm text-gray-800 bg-violet-50 border border-violet-100 rounded-lg px-3 py-2">
+            <span>{leadSearchHit.name}</span>
+            <span className="text-gray-500">{leadSearchHit.email}</span>
+            <button type="button" onClick={handleAddMeetingLead} className="text-violet-700 font-medium hover:underline ml-auto">
+              Add
             </button>
           </div>
         )}
+      </div>
 
-        <hr className="border-gray-100" />
-
-        <div className="flex items-center justify-between gap-2">
-          <h3 className="font-semibold text-gray-900">Speakers</h3>
+      {/* 2. Speaker assignment */}
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5 space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h3 className="text-base font-semibold text-gray-900">Who is each speaker?</h3>
           <button
             type="button"
             onClick={handleAnalyze}
             disabled={analyzing}
-            className="text-xs px-3 py-1.5 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-100 disabled:opacity-50 shrink-0"
+            className="text-sm px-3 py-1.5 rounded-lg border border-blue-200 bg-blue-50 text-blue-800 hover:bg-blue-100 disabled:opacity-50"
           >
-            {analyzing ? 'Analyzing…' : '🤖 AI identify speakers'}
+            {analyzing ? 'Working…' : 'AI suggestions'}
           </button>
         </div>
+        <p className="text-sm text-gray-600">
+          For each label below, choose <strong>Coach</strong>, <strong>Client</strong> (pick the linked lead), or <strong>Other</strong> and type a name. Then save.
+        </p>
         {labels.length === 0 ? (
-          <p className="text-sm text-gray-500 italic">No speaker labels detected in transcript.</p>
+          <p className="text-sm text-gray-500">No speaker labels found in this transcript.</p>
         ) : (
-          <div className="space-y-5">
+          <div className="space-y-6">
             {labels.map((label) => {
               const row = speakers[label] || { name: '', email: '', role: 'unknown', airtable_lead_id: '' };
               const samples = speakerSamples[label] || [];
+              const sk = shortcutSeq[label] ?? 0;
               return (
-                <div key={label} className="border border-gray-100 rounded-xl p-4 bg-gray-50/50 space-y-3">
-                  <div className="font-semibold text-gray-800">{label}</div>
-                  {samples.length > 0 && (
-                    <pre className="text-[11px] text-gray-600 bg-white border border-gray-100 rounded-lg p-3 overflow-x-auto whitespace-pre-wrap font-sans leading-relaxed max-h-36 overflow-y-auto">
-                      {samples.join('\n')}
-                    </pre>
-                  )}
-                  <div className="flex flex-wrap gap-1.5 items-center text-xs">
-                    <span className="text-gray-500 font-semibold uppercase tracking-wide mr-1">Quick</span>
-                    <button
-                      type="button"
-                      onClick={() => pickCoach(label)}
-                      className="bg-emerald-50 text-emerald-800 border border-emerald-200 rounded px-2 py-0.5 hover:bg-emerald-100"
+                <div key={label} className="rounded-lg border border-gray-200 bg-gray-50/60 p-4 space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="font-medium text-gray-900">{label}</span>
+                    <select
+                      key={`sc-${label}-${sk}`}
+                      defaultValue=""
+                      className="text-sm border border-gray-200 rounded-lg px-2 py-1.5 bg-white text-gray-700 max-w-[220px]"
+                      aria-label={`Shortcut assign ${label}`}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        if (!v) return;
+                        if (v === '_coach') pickCoach(label);
+                        else if (v === '_other') pickOther(label);
+                        else if (v.startsWith('_c:')) pickClientLead(label, v.slice(3));
+                        else if (v.startsWith('_cal:')) {
+                          const email = decodeURIComponent(v.slice(5));
+                          const att = calAttendees.find((x) => x.email === email);
+                          setSpeaker(label, {
+                            role: 'client',
+                            name: att?.name || email,
+                            email,
+                            airtable_lead_id: '',
+                          });
+                        }
+                        setShortcutSeq((s) => ({ ...s, [label]: (s[label] ?? 0) + 1 }));
+                      }}
                     >
-                      Coach ({coachHint.displayName || 'Coach'})
-                    </button>
-                    {meetingLeadRows.map((ml: { airtable_lead_id?: string }) => {
-                      const lid = String(ml.airtable_lead_id || '').trim();
-                      const dn = leadDisplay[lid]?.name || `Lead ${shortLeadId(lid)}`;
-                      return (
-                        <button
-                          key={lid}
-                          type="button"
-                          onClick={() => pickClientLead(label, lid)}
-                          className="bg-violet-50 text-violet-800 border border-violet-200 rounded px-2 py-0.5 hover:bg-violet-100"
-                        >
-                          Client: {dn}
-                        </button>
-                      );
-                    })}
-                    <button
-                      type="button"
-                      onClick={() => pickOther(label)}
-                      className="bg-amber-50 text-amber-900 border border-amber-200 rounded px-2 py-0.5 hover:bg-amber-100"
-                    >
-                      Other (name only)
-                    </button>
-                    {calAttendees.map((a) => (
-                      <button
-                        key={`${label}-${a.email}`}
-                        type="button"
-                        onClick={() => setSpeaker(label, { role: 'client', name: a.name || a.email, email: a.email, airtable_lead_id: '' })}
-                        className="bg-slate-50 text-slate-700 border border-slate-200 rounded px-2 py-0.5 hover:bg-slate-100"
-                        title="Sets name/email; save to try CRM link by email"
-                      >
-                        Cal: {a.name || a.email}
-                      </button>
-                    ))}
+                      <option value="">Apply shortcut…</option>
+                      <option value="_coach">Coach ({coachHint.displayName || 'Coach'})</option>
+                      {meetingLeadRows.map((ml: { airtable_lead_id?: string }) => {
+                        const lid = String(ml.airtable_lead_id || '').trim();
+                        const dn = leadDisplay[lid]?.name || shortLeadId(lid);
+                        return (
+                          <option key={lid} value={`_c:${lid}`}>Client: {dn}</option>
+                        );
+                      })}
+                      <option value="_other">Other (type name below)</option>
+                      {calAttendees.map((a) => (
+                        <option key={a.email} value={`_cal:${encodeURIComponent(a.email)}`}>
+                          Calendar: {a.name || a.email}
+                        </option>
+                      ))}
+                    </select>
                   </div>
+                  {samples.length > 0 && (
+                    <details className="text-sm group">
+                      <summary className="cursor-pointer text-violet-700 hover:text-violet-900 list-none flex items-center gap-1 [&::-webkit-details-marker]:hidden">
+                        <span className="text-gray-400 group-open:rotate-90 transition-transform inline-block">▸</span>
+                        Transcript sample
+                      </summary>
+                      <pre className="mt-2 text-xs text-gray-600 bg-white border border-gray-100 rounded-lg p-3 whitespace-pre-wrap font-sans leading-relaxed max-h-32 overflow-y-auto">
+                        {samples.join('\n')}
+                      </pre>
+                    </details>
+                  )}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
                     <div>
-                      <label className="text-xs text-gray-500 font-semibold uppercase">Role</label>
+                      <label className="block text-gray-600 mb-1">Role</label>
                       <select
                         value={row.role}
                         onChange={(e) => {
@@ -700,17 +709,17 @@ function EventReview({ eventId, onBack }: { eventId: string; onBack: () => void 
                           else if (role === 'client') setSpeaker(label, { role: 'client' });
                           else setSpeaker(label, { role: 'unknown', airtable_lead_id: '' });
                         }}
-                        className="mt-1 w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-200"
+                        className="w-full border border-gray-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-violet-200"
                       >
-                        <option value="unknown">Unknown</option>
+                        <option value="unknown">Not set</option>
                         <option value="coach">Coach</option>
-                        <option value="client">Client (linked lead)</option>
+                        <option value="client">Client</option>
                         <option value="other">Other</option>
                       </select>
                     </div>
                     {row.role === 'client' && (
                       <div>
-                        <label className="text-xs text-gray-500 font-semibold uppercase">Linked lead</label>
+                        <label className="block text-gray-600 mb-1">Which lead?</label>
                         <select
                           value={row.airtable_lead_id || ''}
                           onChange={(e) => {
@@ -718,12 +727,12 @@ function EventReview({ eventId, onBack }: { eventId: string; onBack: () => void 
                             if (lid) pickClientLead(label, lid);
                             else setSpeaker(label, { role: 'client', airtable_lead_id: '' });
                           }}
-                          className="mt-1 w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-200"
+                          className="w-full border border-gray-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-violet-200"
                         >
-                          <option value="">Select lead…</option>
+                          <option value="">Choose…</option>
                           {meetingLeadRows.map((ml: { airtable_lead_id?: string }) => {
                             const lid = String(ml.airtable_lead_id || '').trim();
-                            const dn = leadDisplay[lid]?.name || `Lead ${shortLeadId(lid)}`;
+                            const dn = leadDisplay[lid]?.name || shortLeadId(lid);
                             return (
                               <option key={lid} value={lid}>{dn}</option>
                             );
@@ -731,26 +740,29 @@ function EventReview({ eventId, onBack }: { eventId: string; onBack: () => void 
                         </select>
                       </div>
                     )}
-                    <div className={row.role === 'client' ? 'sm:col-span-2' : ''}>
-                      <label className="text-xs text-gray-500 font-semibold uppercase">Display name</label>
+                    <div className="sm:col-span-2">
+                      <label className="block text-gray-600 mb-1">Name</label>
                       <input
                         type="text"
                         value={row.name}
                         onChange={(e) => setSpeaker(label, { name: e.target.value })}
-                        placeholder={row.role === 'other' ? 'Name (required for Other)' : 'Name'}
-                        className="mt-1 w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-200 focus:border-violet-400"
+                        placeholder={row.role === 'other' ? 'Required for “Other”' : 'Shown on transcript'}
+                        className="w-full border border-gray-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-violet-200 focus:border-violet-400"
                       />
                     </div>
-                    <div className="sm:col-span-2">
-                      <label className="text-xs text-gray-500 font-semibold uppercase">Email (optional)</label>
+                    <details className="sm:col-span-2 group">
+                      <summary className="cursor-pointer text-sm text-gray-500 hover:text-gray-700 list-none [&::-webkit-details-marker]:hidden">
+                        <span className="text-gray-400 group-open:rotate-90 transition-transform inline-block mr-1">▸</span>
+                        Optional email (CRM match on save)
+                      </summary>
                       <input
                         type="email"
                         value={row.email}
                         onChange={(e) => setSpeaker(label, { email: e.target.value })}
-                        placeholder="Used to match CRM on save"
-                        className="mt-1 w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-200 focus:border-violet-400"
+                        className="mt-2 w-full border border-gray-200 rounded-lg px-3 py-2 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-violet-200 focus:border-violet-400"
+                        placeholder="email@…"
                       />
-                    </div>
+                    </details>
                   </div>
                 </div>
               );
@@ -759,9 +771,9 @@ function EventReview({ eventId, onBack }: { eventId: string; onBack: () => void 
               type="button"
               onClick={handleSaveSpeakers}
               disabled={saving}
-              className="px-5 py-2 bg-gray-900 text-white rounded-lg text-sm font-semibold hover:bg-gray-700 disabled:opacity-50"
+              className="w-full sm:w-auto px-6 py-2.5 bg-gray-900 text-white rounded-lg text-sm font-semibold hover:bg-gray-800 disabled:opacity-50"
             >
-              {saving ? 'Saving…' : 'Save speakers'}
+              {saving ? 'Saving…' : 'Save speaker assignments'}
             </button>
           </div>
         )}
@@ -808,10 +820,7 @@ function EventReview({ eventId, onBack }: { eventId: string; onBack: () => void 
 
       {/* Status */}
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
-        <h3 className="font-semibold text-gray-900 mb-3">Status</h3>
-        <p className="text-xs text-gray-500 mb-2">
-          Saving speakers or leads recalculates <strong>Complete</strong> when rules are met. You can still set <strong>Skipped</strong> manually.
-        </p>
+        <h3 className="text-base font-semibold text-gray-900 mb-3">Meeting status</h3>
         <div className="flex items-center gap-3 flex-wrap">
           <select
             value={st}
