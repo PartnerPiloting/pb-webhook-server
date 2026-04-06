@@ -182,7 +182,21 @@ async function getKrispWebhookDbSummary(limit = 15) {
       `SELECT id, received_at, event, krisp_id FROM krisp_webhook_events ORDER BY id DESC LIMIT $1`,
       [cap],
     );
-    return { database_configured: true, table: 'krisp_webhook_events', total_rows: countR.rows[0].c, recent: recentR.rows };
+    const meetCap = Math.min(cap, 25);
+    const meetingsR = await client.query(
+      `SELECT m.id, m.title, m.status, m.created_at, e.received_at AS webhook_received_at, e.krisp_id
+       FROM krisp_meetings m
+       JOIN krisp_webhook_events e ON e.id = m.webhook_event_id
+       ORDER BY m.id DESC LIMIT $1`,
+      [meetCap],
+    );
+    return {
+      database_configured: true,
+      table: 'krisp_webhook_events',
+      total_rows: countR.rows[0].c,
+      recent: recentR.rows,
+      recent_meetings: meetingsR.rows,
+    };
   } catch (e) {
     return { database_configured: true, error: e.message };
   } finally {
@@ -294,9 +308,13 @@ async function getMeetingQueue(limit = 50, statusFilter = 'all') {
   const cap = Math.min(Math.max(Number(limit) || 50, 1), 200);
   const f = String(statusFilter || 'all').toLowerCase();
   let where = '';
-  if (f === 'incomplete' || f === 'to_verify') where = ` WHERE m.status = 'incomplete'`;
-  else if (f === 'complete' || f === 'verified') where = ` WHERE m.status = 'complete'`;
-  else if (f === 'skipped') where = ` WHERE m.status = 'skipped'`;
+  // Include legacy status values: migration runs on first ensureSchema per process; older rows
+  // may still be to_verify/verified until touched, and the queue must not hide them.
+  if (f === 'incomplete' || f === 'to_verify') {
+    where = ` WHERE m.status IN ('incomplete', 'to_verify')`;
+  } else if (f === 'complete' || f === 'verified') {
+    where = ` WHERE m.status IN ('complete', 'verified')`;
+  } else if (f === 'skipped') where = ` WHERE m.status = 'skipped'`;
 
   const client = await p.connect();
   try {
