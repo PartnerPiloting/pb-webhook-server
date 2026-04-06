@@ -8,6 +8,10 @@
  */
 
 const { Pool } = require('pg');
+const {
+  extractSpeakerLabels,
+  participantResolvesSpeaker,
+} = require('./krispSpeakerLabels');
 
 let pool;
 let schemaEnsured = false;
@@ -51,7 +55,7 @@ async function ensureSchema(client) {
       duration_seconds INT,
       meeting_start TIMESTAMPTZ,
       meeting_end TIMESTAMPTZ,
-      status TEXT NOT NULL DEFAULT 'to_verify',
+      status TEXT NOT NULL DEFAULT 'incomplete',
       status_reason TEXT,
       needs_split BOOLEAN NOT NULL DEFAULT FALSE,
       start_line INT,
@@ -87,6 +91,35 @@ async function ensureSchema(client) {
   await client.query(
     `CREATE INDEX IF NOT EXISTS idx_krisp_mp_lead ON krisp_meeting_participants (airtable_lead_id);`,
   );
+
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS krisp_meeting_leads (
+      id BIGSERIAL PRIMARY KEY,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      meeting_id BIGINT NOT NULL REFERENCES krisp_meetings(id) ON DELETE CASCADE,
+      airtable_lead_id TEXT NOT NULL,
+      coach_client_id TEXT NOT NULL DEFAULT 'Guy-Wilson',
+      source TEXT,
+      UNIQUE (meeting_id, airtable_lead_id)
+    );
+  `);
+  await client.query(
+    `CREATE INDEX IF NOT EXISTS idx_krisp_ml_meeting ON krisp_meeting_leads (meeting_id);`,
+  );
+  await client.query(
+    `CREATE INDEX IF NOT EXISTS idx_krisp_ml_lead ON krisp_meeting_leads (airtable_lead_id);`,
+  );
+
+  await client.query(`ALTER TABLE krisp_meetings ALTER COLUMN status SET DEFAULT 'incomplete'`);
+  await client.query(`UPDATE krisp_meetings SET status = 'incomplete' WHERE status = 'to_verify'`);
+  await client.query(`UPDATE krisp_meetings SET status = 'complete' WHERE status = 'verified'`);
+  await client.query(`
+    INSERT INTO krisp_meeting_leads (meeting_id, airtable_lead_id, coach_client_id, source)
+    SELECT DISTINCT p.meeting_id, p.airtable_lead_id, COALESCE(NULLIF(TRIM(p.coach_client_id), ''), 'Guy-Wilson'), 'migrated_from_participants'
+    FROM krisp_meeting_participants p
+    WHERE p.airtable_lead_id IS NOT NULL AND TRIM(p.airtable_lead_id) <> ''
+    ON CONFLICT (meeting_id, airtable_lead_id) DO NOTHING
+  `);
 
   // Drop old tables that are replaced by the new model (safe: user approved data reset)
   await client.query(`DROP TABLE IF EXISTS krisp_event_leads CASCADE`);
@@ -261,8 +294,8 @@ async function getMeetingQueue(limit = 50, statusFilter = 'all') {
   const cap = Math.min(Math.max(Number(limit) || 50, 1), 200);
   const f = String(statusFilter || 'all').toLowerCase();
   let where = '';
-  if (f === 'to_verify') where = ` WHERE m.status = 'to_verify'`;
-  else if (f === 'verified') where = ` WHERE m.status = 'verified'`;
+  if (f === 'incomplete' || f === 'to_verify') where = ` WHERE m.status = 'incomplete'`;
+  else if (f === 'complete' || f === 'verified') where = ` WHERE m.status = 'complete'`;
   else if (f === 'skipped') where = ` WHERE m.status = 'skipped'`;
 
   const client = await p.connect();
@@ -283,8 +316,11 @@ async function getMeetingQueue(limit = 50, statusFilter = 'all') {
 }
 
 async function updateMeetingStatus(meetingId, newStatus, statusReason) {
-  const VALID = ['to_verify', 'verified', 'skipped'];
-  if (!VALID.includes(newStatus)) return { ok: false, error: 'invalid status' };
+  const VALID = ['incomplete', 'complete', 'skipped', 'to_verify', 'verified'];
+  let st = newStatus;
+  if (st === 'to_verify') st = 'incomplete';
+  if (st === 'verified') st = 'complete';
+  if (!['incomplete', 'complete', 'skipped'].includes(st)) return { ok: false, error: 'invalid status' };
   const n = typeof meetingId === 'string' ? parseInt(meetingId, 10) : Number(meetingId);
   if (!Number.isFinite(n) || n < 1) return { ok: false };
   const p = getPool();
@@ -293,9 +329,9 @@ async function updateMeetingStatus(meetingId, newStatus, statusReason) {
   try {
     await ensureSchema(client);
     if (statusReason !== undefined) {
-      await client.query(`UPDATE krisp_meetings SET status = $2, status_reason = $3 WHERE id = $1`, [n, newStatus, statusReason]);
+      await client.query(`UPDATE krisp_meetings SET status = $2, status_reason = $3 WHERE id = $1`, [n, st, statusReason]);
     } else {
-      await client.query(`UPDATE krisp_meetings SET status = $2 WHERE id = $1`, [n, newStatus]);
+      await client.query(`UPDATE krisp_meetings SET status = $2 WHERE id = $1`, [n, st]);
     }
     return { ok: true };
   } finally { client.release(); }
@@ -311,7 +347,12 @@ async function setMeetingIngestStatus(meetingId, { status, statusReason, needsSp
     await ensureSchema(client);
     await client.query(
       `UPDATE krisp_meetings SET status = $2, status_reason = $3, needs_split = $4 WHERE id = $1`,
-      [n, status || 'to_verify', statusReason || null, !!needsSplit],
+      [
+        n,
+        status === 'to_verify' || status === 'verified' ? 'incomplete' : status || 'incomplete',
+        statusReason || null,
+        !!needsSplit,
+      ],
     );
     return { ok: true };
   } finally { client.release(); }
@@ -354,7 +395,7 @@ async function splitMeeting(meetingId, splitAtLine) {
     const ins = await client.query(
       `INSERT INTO krisp_meetings (webhook_event_id, title, transcript_text, duration_seconds,
               meeting_start, meeting_end, status, status_reason, start_line, end_line)
-       VALUES ($1, $2, $3, NULL, $4, $5, 'to_verify', 'Split from meeting #' || $6::text, $7, $8)
+       VALUES ($1, $2, $3, NULL, $4, $5, 'incomplete', 'Split from meeting #' || $6::text, $7, $8)
        RETURNING id`,
       [
         parent.webhook_event_id,
@@ -416,37 +457,155 @@ async function getParticipantsForMeeting(meetingId) {
   } finally { client.release(); }
 }
 
-/**
- * Save verified speakers for a meeting: bulk upsert all participant rows, set status to verified.
- * @param {string|number} meetingId
- * @param {Record<string, { name: string, email: string }>} speakers
- */
-async function saveMeetingSpeakers(meetingId, speakers) {
+async function listMeetingLeads(meetingId) {
   const n = typeof meetingId === 'string' ? parseInt(meetingId, 10) : Number(meetingId);
-  if (!Number.isFinite(n) || n < 1) return { ok: false };
+  if (!Number.isFinite(n)) return [];
+  const p = getPool();
+  if (!p) return [];
+  const client = await p.connect();
+  try {
+    await ensureSchema(client);
+    const r = await client.query(
+      `SELECT id, meeting_id, airtable_lead_id, coach_client_id, source, created_at
+       FROM krisp_meeting_leads WHERE meeting_id = $1 ORDER BY id`,
+      [n],
+    );
+    return r.rows;
+  } finally { client.release(); }
+}
+
+async function addMeetingLead(meetingId, airtableLeadId, coachClientId = 'Guy-Wilson', source = 'manual') {
+  const mid = typeof meetingId === 'string' ? parseInt(meetingId, 10) : Number(meetingId);
+  const lid = String(airtableLeadId || '').trim();
+  if (!Number.isFinite(mid) || !lid) return { ok: false, error: 'invalid' };
   const p = getPool();
   if (!p) return { ok: false };
   const client = await p.connect();
   try {
     await ensureSchema(client);
-    for (const [label, info] of Object.entries(speakers)) {
-      if (!info || typeof info !== 'object') continue;
-      await client.query(
-        `INSERT INTO krisp_meeting_participants (meeting_id, speaker_label, verified_name, verified_email, match_method)
-         VALUES ($1, $2, $3, $4, 'manual')
-         ON CONFLICT (meeting_id, speaker_label) DO UPDATE SET
-           verified_name = EXCLUDED.verified_name,
-           verified_email = EXCLUDED.verified_email,
-           match_method = 'manual'`,
-        [n, label, info.name || null, info.email || null],
-      );
-    }
-    await client.query(`UPDATE krisp_meetings SET status = 'verified' WHERE id = $1`, [n]);
+    await client.query(
+      `INSERT INTO krisp_meeting_leads (meeting_id, airtable_lead_id, coach_client_id, source)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (meeting_id, airtable_lead_id) DO NOTHING`,
+      [mid, lid, (coachClientId || 'Guy-Wilson').trim(), source || 'manual'],
+    );
+    await syncMeetingReviewStatusTx(client, mid);
     return { ok: true };
   } finally { client.release(); }
 }
 
-/** Meetings linked to a specific Airtable lead (via participants). For lead detail panel. */
+async function removeMeetingLead(meetingId, airtableLeadId) {
+  const mid = typeof meetingId === 'string' ? parseInt(meetingId, 10) : Number(meetingId);
+  const lid = String(airtableLeadId || '').trim();
+  if (!Number.isFinite(mid) || !lid) return { ok: false };
+  const p = getPool();
+  if (!p) return { ok: false };
+  const client = await p.connect();
+  try {
+    await ensureSchema(client);
+    await client.query(`DELETE FROM krisp_meeting_leads WHERE meeting_id = $1 AND airtable_lead_id = $2`, [mid, lid]);
+    await syncMeetingReviewStatusTx(client, mid);
+    return { ok: true };
+  } finally { client.release(); }
+}
+
+async function syncMeetingReviewStatusTx(client, meetingId) {
+  const n = typeof meetingId === 'string' ? parseInt(meetingId, 10) : Number(meetingId);
+  const st = await client.query(`SELECT status FROM krisp_meetings WHERE id = $1`, [n]);
+  if (st.rows[0]?.status === 'skipped') return;
+
+  const tr = await client.query(`SELECT transcript_text FROM krisp_meetings WHERE id = $1`, [n]);
+  const text = tr.rows[0]?.transcript_text || '';
+  const labels = extractSpeakerLabels(text);
+
+  const lc = await client.query(`SELECT COUNT(*)::int AS c FROM krisp_meeting_leads WHERE meeting_id = $1`, [n]);
+  const hasLeads = lc.rows[0].c >= 1;
+
+  if (!hasLeads || labels.length === 0) {
+    await client.query(`UPDATE krisp_meetings SET status = 'incomplete' WHERE id = $1 AND status <> 'skipped'`, [n]);
+    return;
+  }
+
+  const parts = await client.query(
+    `SELECT speaker_label, role, verified_name, verified_email, airtable_lead_id FROM krisp_meeting_participants WHERE meeting_id = $1`,
+    [n],
+  );
+  const byLabel = {};
+  for (const pr of parts.rows) {
+    if (pr.speaker_label) byLabel[pr.speaker_label] = pr;
+  }
+
+  let all = true;
+  for (const lab of labels) {
+    if (!participantResolvesSpeaker(byLabel[lab])) {
+      all = false;
+      break;
+    }
+  }
+
+  const next = all ? 'complete' : 'incomplete';
+  await client.query(`UPDATE krisp_meetings SET status = $2 WHERE id = $1 AND status <> 'skipped'`, [n, next]);
+}
+
+async function syncMeetingReviewStatus(meetingId) {
+  const p = getPool();
+  if (!p) return { ok: false };
+  const client = await p.connect();
+  try {
+    await ensureSchema(client);
+    await syncMeetingReviewStatusTx(client, meetingId);
+    return { ok: true };
+  } finally { client.release(); }
+}
+
+/**
+ * Save speaker assignments (role coach|client|other + optional lead). Recomputes incomplete/complete.
+ * @param {string|number} meetingId
+ * @param {Record<string, { name?: string, email?: string, role?: string, airtable_lead_id?: string }>} speakers
+ * @param {{ coachClientId?: string }} [opts]
+ */
+async function saveMeetingSpeakers(meetingId, speakers, opts = {}) {
+  const n = typeof meetingId === 'string' ? parseInt(meetingId, 10) : Number(meetingId);
+  if (!Number.isFinite(n) || n < 1) return { ok: false };
+  const p = getPool();
+  if (!p) return { ok: false };
+  const coachClientId = (opts.coachClientId || 'Guy-Wilson').trim();
+  const client = await p.connect();
+  try {
+    await ensureSchema(client);
+    for (const [label, info] of Object.entries(speakers || {})) {
+      if (!info || typeof info !== 'object') continue;
+      const name = (info.name || '').trim() || null;
+      const email = (info.email || '').trim() || null;
+      let role = String(info.role || 'unknown').toLowerCase();
+      if (!['coach', 'client', 'other', 'unknown'].includes(role)) role = 'unknown';
+      const leadId = (info.airtable_lead_id || '').trim() || null;
+      await client.query(
+        `INSERT INTO krisp_meeting_participants (meeting_id, speaker_label, verified_name, verified_email, role, airtable_lead_id, coach_client_id, match_method)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, 'manual')
+         ON CONFLICT (meeting_id, speaker_label) DO UPDATE SET
+           verified_name = EXCLUDED.verified_name,
+           verified_email = EXCLUDED.verified_email,
+           role = EXCLUDED.role,
+           airtable_lead_id = EXCLUDED.airtable_lead_id,
+           match_method = 'manual'`,
+        [n, label, name, email, role, leadId, coachClientId],
+      );
+      if (role === 'client' && leadId) {
+        await client.query(
+          `INSERT INTO krisp_meeting_leads (meeting_id, airtable_lead_id, coach_client_id, source)
+           VALUES ($1, $2, $3, 'speaker_assign')
+           ON CONFLICT (meeting_id, airtable_lead_id) DO NOTHING`,
+          [n, leadId, coachClientId],
+        );
+      }
+    }
+    await syncMeetingReviewStatusTx(client, n);
+    return { ok: true };
+  } finally { client.release(); }
+}
+
+/** Meetings linked to a lead via krisp_meeting_leads or legacy participant rows. */
 async function getMeetingsForLead(airtableLeadId, limit = 50) {
   const p = getPool();
   if (!p) return [];
@@ -458,11 +617,14 @@ async function getMeetingsForLead(airtableLeadId, limit = 50) {
       `SELECT m.id AS meeting_id, m.title, m.transcript_text, m.status, m.duration_seconds,
               m.meeting_start, m.created_at, m.status_reason,
               e.received_at AS webhook_received_at, e.krisp_id, e.event AS webhook_event,
-              p.speaker_label, p.verified_name, p.verified_email, p.match_method
-       FROM krisp_meeting_participants p
-       JOIN krisp_meetings m ON m.id = p.meeting_id
+              NULL::text AS speaker_label, NULL::text AS verified_name, NULL::text AS verified_email, NULL::text AS match_method
+       FROM krisp_meetings m
        JOIN krisp_webhook_events e ON e.id = m.webhook_event_id
-       WHERE p.airtable_lead_id = $1
+       WHERE m.id IN (
+         SELECT meeting_id FROM krisp_meeting_leads WHERE airtable_lead_id = $1
+         UNION
+         SELECT meeting_id FROM krisp_meeting_participants WHERE airtable_lead_id = $1
+       )
        ORDER BY m.created_at DESC
        LIMIT $2`,
       [airtableLeadId, cap],
@@ -541,6 +703,10 @@ module.exports = {
   upsertMeetingParticipant,
   getParticipantsForMeeting,
   saveMeetingSpeakers,
+  listMeetingLeads,
+  addMeetingLead,
+  removeMeetingLead,
+  syncMeetingReviewStatus,
   getMeetingsForLead,
   seedManualTestTranscript,
   purgeManualTestTranscripts,

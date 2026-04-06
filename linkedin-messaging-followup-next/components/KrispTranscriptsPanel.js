@@ -138,9 +138,9 @@ export default function KrispTranscriptsPanel({
                     >
                       {typeLabel}
                     </span>
-                    {row.status === 'verified' ? (
+                    {row.status === 'complete' || row.status === 'verified' ? (
                       <span className="text-[10px] font-semibold uppercase tracking-wide text-green-800 bg-green-100 border border-green-200 rounded px-1.5 py-0.5 shrink-0">
-                        Verified
+                        Complete
                       </span>
                     ) : row.status === 'skipped' ? (
                       <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 bg-gray-100 border border-gray-200 rounded px-1.5 py-0.5 shrink-0">
@@ -148,7 +148,7 @@ export default function KrispTranscriptsPanel({
                       </span>
                     ) : (
                       <span className="text-[10px] font-semibold uppercase tracking-wide text-amber-800 bg-amber-100 border border-amber-200 rounded px-1.5 py-0.5 shrink-0">
-                        To verify
+                        Incomplete
                       </span>
                     )}
                     {row.krisp_id != null && row.krisp_id !== '' && (

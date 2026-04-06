@@ -26,9 +26,14 @@ const {
   getParticipantsForMeeting,
   saveMeetingSpeakers,
   getMeetingsForLead,
+  listMeetingLeads,
+  addMeetingLead,
+  removeMeetingLead,
+  syncMeetingReviewStatus,
   seedManualTestTranscript,
   purgeManualTestTranscripts,
 } = require('../services/krispWebhookDb');
+const { extractSpeakerLabels, sampleLinesForSpeaker } = require('../services/krispSpeakerLabels');
 const { extractKrispDisplayText, krispEventTypeLabel } = require('../services/krispPayloadText');
 const { linkKrispEventToLeadsByEmail, DEFAULT_COACH_CLIENT_ID } = require('../services/krispLeadLinkService');
 const { maybeSendKrispUnmatchedAlert } = require('../services/krispUnmatchedAlertService');
@@ -253,23 +258,19 @@ function krispParticipantSummaryForHarness(payload) {
 // ---------------------------------------------------------------------------
 
 const STATUS_LABELS = {
-  to_verify: 'To verify', verified: 'Verified', skipped: 'Skipped',
+  incomplete: 'Incomplete',
+  complete: 'Complete',
+  skipped: 'Skipped',
+  to_verify: 'Incomplete',
+  verified: 'Complete',
 };
 const STATUS_COLOURS = {
-  to_verify: '#f59e0b', verified: '#22c55e', skipped: '#94a3b8',
+  incomplete: '#f59e0b',
+  complete: '#22c55e',
+  skipped: '#94a3b8',
+  to_verify: '#f59e0b',
+  verified: '#22c55e',
 };
-
-function extractUniqueSpeakers(text) {
-  const speakers = new Set();
-  for (const line of (text || '').split('\n')) {
-    const m = line.match(/^(Speaker\s*\d+|[^:]{1,40}):\s/);
-    if (m) {
-      const label = m[1].trim();
-      if (label && !label.startsWith('{') && !label.startsWith('[')) speakers.add(label);
-    }
-  }
-  return [...speakers];
-}
 
 function formatDuration(sec) {
   const s = Number(sec);
@@ -340,8 +341,8 @@ router.get('/webhooks/krisp/calendar-match-harness', async (req, res) => {
 router.get('/krisp-review/api/queue', async (req, res) => {
   if (!(await pbKrispReviewApiOk(req))) return res.status(401).json({ error: 'unauthorized' });
   const raw = typeof req.query.status === 'string' ? req.query.status.trim().toLowerCase() : '';
-  const allowed = new Set(['all', 'to_verify', 'verified', 'skipped']);
-  const statusFilter = allowed.has(raw) ? raw : 'to_verify';
+  const allowed = new Set(['all', 'incomplete', 'complete', 'skipped', 'to_verify', 'verified']);
+  const statusFilter = allowed.has(raw) ? raw : 'incomplete';
   const rows = await getMeetingQueue(100, statusFilter);
   return res.json({ rows, statusFilter });
 });
@@ -352,8 +353,25 @@ router.get('/krisp-review/api/event/:id', async (req, res) => {
   if (!row) return res.status(404).json({ error: 'not found' });
 
   const fullText = row.transcript_text || '';
-  const speakerLabels = extractUniqueSpeakers(fullText);
+  const speakerLabels = extractSpeakerLabels(fullText);
   const participants = await getParticipantsForMeeting(row.id);
+  const meetingLeads = await listMeetingLeads(row.id);
+  const speakerSamples = {};
+  for (const lab of speakerLabels) {
+    speakerSamples[lab] = sampleLinesForSpeaker(fullText, lab, 6);
+  }
+
+  let coachHint = { clientId: DEFAULT_COACH_CLIENT_ID, displayName: 'Coach', calendarEmail: '' };
+  try {
+    const coach = await clientService.getClientById(DEFAULT_COACH_CLIENT_ID);
+    if (coach) {
+      coachHint = {
+        clientId: coach.clientId || DEFAULT_COACH_CLIENT_ID,
+        displayName: (coach.clientName || coach.clientId || 'Coach').trim(),
+        calendarEmail: coach.googleCalendarEmail || coach.calendarEmail || '',
+      };
+    }
+  } catch (_e) { /* optional */ }
 
   // Build verified speakers map from participants
   const verifiedSpeakers = {};
@@ -400,30 +418,33 @@ router.get('/krisp-review/api/event/:id', async (req, res) => {
     duration: row.duration_seconds,
     full_text: fullText,
     speaker_labels: speakerLabels,
+    speaker_samples: speakerSamples,
     verified_speakers: verifiedSpeakers,
     participants,
+    meeting_leads: meetingLeads,
+    coach_hint: coachHint,
     calendar_attendees: calendarAttendees,
   });
 });
 
-// Save verified speakers (creates/updates participant rows + links to CRM)
+// Save speaker assignments (role coach|client|other + optional lead). Recomputes incomplete/complete.
 router.post('/krisp-review/:id/speakers', async (req, res) => {
   if (!(await pbKrispReviewApiOk(req))) return res.status(401).json({ error: 'unauthorized' });
   const speakers = req.body?.speakers;
   if (!speakers || typeof speakers !== 'object') return res.status(400).json({ error: 'speakers object required' });
 
-  const result = await saveMeetingSpeakers(req.params.id, speakers);
+  const coachClientId = DEFAULT_COACH_CLIENT_ID;
+  const result = await saveMeetingSpeakers(req.params.id, speakers, { coachClientId });
   if (!result.ok) return res.json(result);
 
-  // Try to link emails to Airtable leads
   const linkedEmails = [];
-  const coachClientId = DEFAULT_COACH_CLIENT_ID;
   try {
     const client = await clientService.getClientById(coachClientId);
     if (client?.airtableBaseId) {
       for (const [label, info] of Object.entries(speakers)) {
-        const email = (info?.email || '').trim().toLowerCase();
-        if (!email) continue;
+        if (!info || typeof info !== 'object') continue;
+        const email = (info.email || '').trim().toLowerCase();
+        if (!email || (info.airtable_lead_id || '').trim()) continue;
         try {
           const lead = await findLeadByEmail(client, email);
           if (lead?.id) {
@@ -432,18 +453,60 @@ router.post('/krisp-review/:id/speakers', async (req, res) => {
               speakerLabel: label,
               verifiedName: info.name || null,
               verifiedEmail: email,
+              role: info.role || 'client',
               airtableLeadId: lead.id,
               coachClientId,
               matchMethod: 'manual_speaker_verification',
             });
+            await addMeetingLead(req.params.id, lead.id, coachClientId, 'email_resolve');
             linkedEmails.push(email);
           }
         } catch (_) { /* best effort */ }
       }
     }
-  } catch (_) { /* client lookup optional */ }
+  } catch (_) { /* optional */ }
+
+  if (linkedEmails.length) await syncMeetingReviewStatus(req.params.id);
 
   return res.json({ ...result, linked_emails: linkedEmails });
+});
+
+router.post('/krisp-review/:id/meeting-leads', async (req, res) => {
+  if (!(await pbKrispReviewApiOk(req))) return res.status(401).json({ error: 'unauthorized' });
+  const leadId = typeof req.body?.airtable_lead_id === 'string' ? req.body.airtable_lead_id.trim() : '';
+  if (!leadId) return res.status(400).json({ error: 'airtable_lead_id required' });
+  const out = await addMeetingLead(req.params.id, leadId, DEFAULT_COACH_CLIENT_ID, 'manual');
+  return res.json(out);
+});
+
+router.delete('/krisp-review/:id/meeting-leads/:leadId', async (req, res) => {
+  if (!(await pbKrispReviewApiOk(req))) return res.status(401).json({ error: 'unauthorized' });
+  const leadId = String(req.params.leadId || '').trim();
+  if (!leadId) return res.status(400).json({ error: 'leadId required' });
+  const out = await removeMeetingLead(req.params.id, leadId);
+  return res.json(out);
+});
+
+router.get('/krisp-review/api/search-lead', async (req, res) => {
+  if (!(await pbKrispReviewApiOk(req))) return res.status(401).json({ error: 'unauthorized' });
+  const email = typeof req.query.email === 'string' ? req.query.email.trim().toLowerCase() : '';
+  if (!email || !email.includes('@')) return res.status(400).json({ error: 'email query required' });
+  try {
+    const client = await clientService.getClientById(DEFAULT_COACH_CLIENT_ID);
+    if (!client?.airtableBaseId) return res.json({ lead: null, error: 'no_base' });
+    const lead = await findLeadByEmail(client, email);
+    if (!lead?.id) return res.json({ lead: null });
+    const name = [lead.firstName, lead.lastName].filter(Boolean).join(' ').trim() || email;
+    return res.json({
+      lead: {
+        id: lead.id,
+        email: lead.email || email,
+        name,
+      },
+    });
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
 });
 
 router.post('/krisp-review/:id/status', async (req, res) => {
@@ -533,8 +596,8 @@ router.get('/krisp-review', async (req, res) => {
   if (!pbAdminOk(req)) return res.status(401).type('html').send(`<p>Unauthorized.</p>`);
   const sec = encodeURIComponent(String(req.query.secret || '').trim());
   const rawF = typeof req.query.status === 'string' ? req.query.status.trim().toLowerCase() : 'to_verify';
-  const allowedF = new Set(['all', 'to_verify', 'verified', 'skipped']);
-  const statusFilter = allowedF.has(rawF) ? rawF : 'to_verify';
+  const allowedF = new Set(['all', 'incomplete', 'complete', 'skipped', 'to_verify', 'verified']);
+  const statusFilter = allowedF.has(rawF) ? rawF : 'incomplete';
   const rows = await getMeetingQueue(100, statusFilter);
 
   const rowsHtml = rows.length === 0
@@ -543,7 +606,7 @@ router.get('/krisp-review', async (req, res) => {
         const title = r.title || '—';
         const dur = formatDuration(r.duration_seconds);
         const when = formatBrisbane(r.webhook_received_at || r.created_at);
-        const st = r.status || 'to_verify';
+        const st = r.status || 'incomplete';
         const badge = `<span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:12px;font-weight:600;color:#fff;background:${STATUS_COLOURS[st] || '#666'}">${escapeHtml(STATUS_LABELS[st] || st)}</span>`;
         return `<tr><td>${r.id}</td><td>${escapeHtml(when)}</td><td>${escapeHtml(title)}${dur ? ` (${dur})` : ''}</td><td>${badge}${r.needs_split ? ' ⚠️' : ''}</td><td><a href="/krisp-review/${r.id}?secret=${sec}">Review</a></td></tr>`;
       }).join('');
@@ -654,6 +717,7 @@ router.post('/webhooks/krisp', async (req, res) => {
             airtableLeadId: ll.leadId,
             matchMethod: ll.matchMethod || 'auto_email',
           });
+          await addMeetingLead(meetingDbId, ll.leadId, DEFAULT_COACH_CLIENT_ID, 'ingest_auto');
         } catch (_) { /* best effort */ }
       }
 
@@ -688,7 +752,7 @@ router.post('/webhooks/krisp', async (req, res) => {
     const asyncWebhookId = webhookId;
     const asyncLeadsLinked = leadLinksLinked;
     setImmediate(async () => {
-      let ingestStatus = 'to_verify';
+      const ingestStatus = 'incomplete';
       let statusReason = '';
       let needsSplit = false;
 
@@ -705,26 +769,27 @@ router.post('/webhooks/krisp', async (req, res) => {
               needsSplit = true;
               statusReason = `${timedOverlaps} calendar events overlap — possible back-to-back`;
             } else if (timedOverlaps === 1 && asyncLeadsLinked > 0) {
-              ingestStatus = 'verified';
-              statusReason = `Auto-linked ${asyncLeadsLinked} lead(s), 1 calendar event`;
+              statusReason = `Ingest: ${asyncLeadsLinked} lead(s) matched from payload; 1 calendar event — confirm speakers in review`;
             } else if (asyncLeadsLinked > 0) {
-              ingestStatus = 'verified';
-              statusReason = `Auto-linked ${asyncLeadsLinked} lead(s)`;
+              statusReason = `Ingest: ${asyncLeadsLinked} lead(s) matched from payload — confirm speakers in review`;
             } else {
-              statusReason = timedOverlaps === 0 ? 'No leads linked, no calendar overlap' : `No leads linked, ${timedOverlaps} calendar event`;
+              statusReason = timedOverlaps === 0 ? 'No leads linked from payload, no calendar overlap' : `No leads linked from payload, ${timedOverlaps} calendar event`;
             }
           } else {
-            ingestStatus = asyncLeadsLinked > 0 ? 'verified' : 'to_verify';
-            statusReason = asyncLeadsLinked > 0 ? `Auto-linked ${asyncLeadsLinked} lead(s); calendar not resolved` : 'No leads linked; calendar not resolved';
+            statusReason = asyncLeadsLinked > 0
+              ? `Ingest: ${asyncLeadsLinked} lead(s) from payload; calendar not resolved — confirm in review`
+              : 'No leads linked; calendar not resolved';
           }
         } else {
-          ingestStatus = asyncLeadsLinked > 0 ? 'verified' : 'to_verify';
-          statusReason = `Calendar skipped: ${win.error}`;
+          statusReason = asyncLeadsLinked > 0
+            ? `Ingest: ${asyncLeadsLinked} lead(s); calendar skipped (${win.error})`
+            : `Calendar skipped: ${win.error}`;
         }
       } catch (calErr) {
         log.warn(`KRISP-WEBHOOK async calendar failed: ${calErr.message}`);
-        ingestStatus = asyncLeadsLinked > 0 ? 'verified' : 'to_verify';
-        statusReason = `Calendar error: ${calErr.message}`;
+        statusReason = asyncLeadsLinked > 0
+          ? `Ingest: ${asyncLeadsLinked} lead(s); calendar error: ${calErr.message}`
+          : `Calendar error: ${calErr.message}`;
       }
 
       try {

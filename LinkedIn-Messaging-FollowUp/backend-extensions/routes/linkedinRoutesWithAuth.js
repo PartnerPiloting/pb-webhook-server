@@ -1469,7 +1469,7 @@ router.get('/krisp-transcripts-for-lead', async (req, res) => {
         type_label: row.webhook_event || 'Krisp',
         participant_email: row.verified_email,
         match_method: row.match_method,
-        status: row.status || 'to_verify',
+        status: row.status || 'incomplete',
         preview,
         full_text: fullText,
       };
