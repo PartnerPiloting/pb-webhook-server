@@ -2077,13 +2077,16 @@ function krispReviewFetchHeaders() {
 
 /**
  * @param {string} [statusFilter='incomplete'] — incomplete | complete | skipped | all (legacy: to_verify, verified)
+ * @param {string} [titleSearch=''] — optional substring match on meeting title (passed as q=)
  */
-export const getKrispReviewQueue = async (statusFilter = 'incomplete') => {
+export const getKrispReviewQueue = async (statusFilter = 'incomplete', titleSearch = '') => {
   if (typeof window === 'undefined') return { rows: [], error: 'client_only' };
   try {
     const base = getBackendBase();
     const q = new URLSearchParams();
     q.set('status', statusFilter || 'incomplete');
+    const t = String(titleSearch || '').trim();
+    if (t) q.set('q', t);
     const r = await fetch(`${base}/krisp-review/api/queue?${q.toString()}`, {
       cache: 'no-store',
       headers: krispReviewFetchHeaders(),

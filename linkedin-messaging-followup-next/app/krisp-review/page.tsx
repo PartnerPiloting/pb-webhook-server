@@ -132,41 +132,66 @@ function QueueView({ onSelect }: { onSelect: (id: string) => void }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<string>('incomplete');
+  const [titleQ, setTitleQ] = useState('');
+  const [debouncedTitleQ, setDebouncedTitleQ] = useState('');
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedTitleQ(titleQ.trim()), 400);
+    return () => clearTimeout(t);
+  }, [titleQ]);
 
   useEffect(() => {
     setLoading(true);
-    getKrispReviewQueue(filter).then(r => {
+    getKrispReviewQueue(filter, debouncedTitleQ).then(r => {
       setRows(r.rows || []);
       setError(r.error || null);
     }).finally(() => setLoading(false));
-  }, [filter]);
+  }, [filter, debouncedTitleQ]);
 
   const emptyMsg =
-    filter === 'incomplete'
-      ? 'Nothing incomplete — you\'re caught up, or switch the filter above.'
-      : filter === 'all'
-        ? 'No meetings stored yet.'
-        : 'No rows match this filter.';
+    debouncedTitleQ
+      ? 'No meetings match this title for the current filter — try "Everything" or another status.'
+      : filter === 'incomplete'
+        ? 'Nothing incomplete — try "Complete" or "Everything", or search by meeting title below.'
+        : filter === 'all'
+          ? 'No meetings stored yet.'
+          : 'No rows match this filter.';
 
   if (loading) return <p className="text-gray-500 text-sm py-8 text-center">Loading…</p>;
   if (error) return <p className="text-red-600 text-sm bg-red-50 border border-red-200 rounded-lg p-4">{error}</p>;
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
-        <label htmlFor="krisp-queue-filter" className="text-sm font-medium text-gray-700 shrink-0">
-          Show
-        </label>
-        <select
-          id="krisp-queue-filter"
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-          className="border border-gray-200 rounded-lg px-3 py-2 text-sm max-w-md focus:outline-none focus:ring-2 focus:ring-violet-200 focus:border-violet-400"
-        >
-          {QUEUE_FILTERS.map((f) => (
-            <option key={f.value} value={f.value}>{f.label}</option>
-          ))}
-        </select>
+      <div className="flex flex-col gap-3 sm:gap-4">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+          <label htmlFor="krisp-queue-filter" className="text-sm font-medium text-gray-700 shrink-0">
+            Show
+          </label>
+          <select
+            id="krisp-queue-filter"
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            className="border border-gray-200 rounded-lg px-3 py-2 text-sm max-w-md focus:outline-none focus:ring-2 focus:ring-violet-200 focus:border-violet-400"
+          >
+            {QUEUE_FILTERS.map((f) => (
+              <option key={f.value} value={f.value}>{f.label}</option>
+            ))}
+          </select>
+        </div>
+        <div className="flex flex-col sm:flex-row sm:items-end gap-2 sm:gap-3 max-w-xl">
+          <div className="flex-1 min-w-0">
+            <label htmlFor="krisp-queue-title" className="text-sm font-medium text-gray-700">Search title</label>
+            <input
+              id="krisp-queue-title"
+              type="search"
+              value={titleQ}
+              onChange={(e) => setTitleQ(e.target.value)}
+              placeholder="e.g. Dean"
+              className="mt-1 w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-200 focus:border-violet-400"
+            />
+          </div>
+          <p className="text-xs text-gray-500 sm:pb-2">Matches part of the title; uses the same status filter as above.</p>
+        </div>
       </div>
       {rows.length === 0 ? (
         <p className="text-gray-500 italic text-sm py-8 text-center border border-dashed border-gray-200 rounded-xl bg-gray-50/80 px-4">{emptyMsg}</p>

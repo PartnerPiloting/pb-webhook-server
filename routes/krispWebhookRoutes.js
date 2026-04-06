@@ -343,8 +343,9 @@ router.get('/krisp-review/api/queue', async (req, res) => {
   const raw = typeof req.query.status === 'string' ? req.query.status.trim().toLowerCase() : '';
   const allowed = new Set(['all', 'incomplete', 'complete', 'skipped', 'to_verify', 'verified']);
   const statusFilter = allowed.has(raw) ? raw : 'incomplete';
-  const rows = await getMeetingQueue(100, statusFilter);
-  return res.json({ rows, statusFilter });
+  const qTitle = typeof req.query.q === 'string' ? req.query.q.trim() : '';
+  const rows = await getMeetingQueue(200, statusFilter, qTitle ? { titleContains: qTitle } : {});
+  return res.json({ rows, statusFilter, q: qTitle || undefined });
 });
 
 router.get('/krisp-review/api/event/:id', async (req, res) => {
@@ -595,10 +596,11 @@ router.get('/krisp-portal/event/:id/json', async (req, res) => {
 router.get('/krisp-review', async (req, res) => {
   if (!pbAdminOk(req)) return res.status(401).type('html').send(`<p>Unauthorized.</p>`);
   const sec = encodeURIComponent(String(req.query.secret || '').trim());
-  const rawF = typeof req.query.status === 'string' ? req.query.status.trim().toLowerCase() : 'to_verify';
+  const rawF = typeof req.query.status === 'string' ? req.query.status.trim().toLowerCase() : 'incomplete';
   const allowedF = new Set(['all', 'incomplete', 'complete', 'skipped', 'to_verify', 'verified']);
   const statusFilter = allowedF.has(rawF) ? rawF : 'incomplete';
-  const rows = await getMeetingQueue(100, statusFilter);
+  const qHtml = typeof req.query.q === 'string' ? req.query.q.trim() : '';
+  const rows = await getMeetingQueue(200, statusFilter, qHtml ? { titleContains: qHtml } : {});
 
   const rowsHtml = rows.length === 0
     ? '<tr><td colspan="5">No meetings.</td></tr>'
