@@ -63,6 +63,7 @@ function sampleLinesForSpeaker(text, label, maxLines = 6) {
   return out.length ? out : lines.filter((L) => startRe.test(L)).slice(0, maxLines);
 }
 
+/** True only when this diarized label has an explicit review role (not unknown). */
 function participantResolvesSpeaker(p) {
   if (!p || !p.speaker_label) return false;
   const role = String(p.role || 'unknown').toLowerCase();
@@ -71,8 +72,6 @@ function participantResolvesSpeaker(p) {
   if (role === 'coach') return name.length >= 1;
   if (role === 'client') return !!lead;
   if (role === 'other') return name.length >= 1;
-  if (lead) return true;
-  if (name.length >= 1 && String(p.verified_email || '').includes('@')) return true;
   return false;
 }
 
