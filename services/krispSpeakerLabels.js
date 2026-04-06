@@ -18,6 +18,15 @@ function extractSpeakerLabels(text) {
       speakers.add(mColon[1].replace(/\s+/g, ' ').trim());
       continue;
     }
+    if (/^unknown\s*\|/i.test(line)) {
+      speakers.add('Unknown');
+      continue;
+    }
+    const mPartPipe = line.match(/^(Participant\s*\d+)\s*\|/i);
+    if (mPartPipe) {
+      speakers.add(mPartPipe[1].replace(/\s+/g, ' ').trim());
+      continue;
+    }
     const mName = line.match(/^([^:|]{1,40}):\s/);
     if (mName) {
       const label = mName[1].trim();
