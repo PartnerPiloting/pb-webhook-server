@@ -59,8 +59,7 @@ function utteranceBounds(words) {
 }
 
 /**
- * Build Krisp-style transcript chunk: "Participant {id} | mm:ss\n{text}\n\n"
- * so krispSpeakerLabels.extractSpeakerLabels keeps working.
+ * Build transcript chunk: "Participant {id} | mm:ss\n{text}\n\n"
  */
 function formatRecallUtteranceBlock(participant, words) {
   const pid = participant?.id;

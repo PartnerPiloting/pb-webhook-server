@@ -1,5 +1,5 @@
 /**
- * Recall review API + light HTML (mirrors routes/krispWebhookRoutes.js).
+ * Recall review API + light HTML queue.
  */
 
 const express = require('express');
@@ -23,8 +23,26 @@ const {
   seedManualTestRecall,
   purgeManualTestRecall,
 } = require('../services/recallWebhookDb');
-const { extractSpeakerLabels, sampleLinesForSpeaker } = require('../services/krispSpeakerLabels');
-const { analyzeTranscript } = require('../services/krispTranscriptAnalysisService');
+
+function extractSpeakerLabels(text) {
+  if (!text) return [];
+  const labels = new Set();
+  const rx = /^(Speaker \d+|[A-Z][\w ]+?):/gm;
+  let m;
+  while ((m = rx.exec(text)) !== null) labels.add(m[1]);
+  return [...labels];
+}
+
+function sampleLinesForSpeaker(text, label, count = 6) {
+  if (!text || !label) return [];
+  const prefix = label + ':';
+  return text
+    .split('\n')
+    .filter((l) => l.startsWith(prefix))
+    .map((l) => l.slice(prefix.length).trim())
+    .filter(Boolean)
+    .slice(0, count);
+}
 const clientService = require('../services/clientService');
 const { findLeadByEmail } = require('../services/inboundEmailService');
 const { DEFAULT_COACH_CLIENT_ID: RECALL_DEFAULT_COACH } = require('../services/recallLeadLinkService');
@@ -63,7 +81,6 @@ function expectedPortalDevKey() {
 function recallReviewAllowedClientIds() {
   const raw = (
     process.env.RECALL_REVIEW_ALLOWED_CLIENT_IDS
-    || process.env.KRISP_REVIEW_ALLOWED_CLIENT_IDS
     || DEFAULT_COACH_CLIENT_ID
     || 'Guy-Wilson'
   );
@@ -331,23 +348,7 @@ router.post('/recall-review/:id/analyze', async (req, res) => {
   const row = await getMeetingById(req.params.id);
   if (!row) return res.status(404).json({ error: 'not found' });
 
-  const fullText = row.transcript_text || '';
-  const result = await analyzeTranscript(fullText, {
-    meetingTitle: row.title,
-    durationSeconds: row.duration_seconds,
-  });
-
-  if (result.needsSplit && !result.error) {
-    try {
-      await setMeetingIngestStatus(req.params.id, {
-        status: 'to_verify',
-        statusReason: `AI: ${result.splitReason || 'back-to-back detected'}`,
-        needsSplit: true,
-      });
-    } catch (_) { /* best effort */ }
-  }
-
-  return res.json(result);
+  return res.json({ ok: true, note: 'AI transcript analysis not yet wired for Recall' });
 });
 
 router.post('/recall-test/seed', async (req, res) => {

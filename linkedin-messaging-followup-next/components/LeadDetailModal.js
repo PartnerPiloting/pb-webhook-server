@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import HelpButton from './HelpButton';
 import LeadDetailForm from './LeadDetailForm';
-import { generateSmartFollowupStory, getKrispTranscriptsForLead, getUpcomingMeetingWithLead } from '../services/api';
-import KrispTranscriptsPanel from './KrispTranscriptsPanel';
+import { generateSmartFollowupStory, getUpcomingMeetingWithLead } from '../services/api';
 
 const LeadDetailModal = ({ 
   lead, 
@@ -19,9 +18,6 @@ const LeadDetailModal = ({
   const [upcomingMeeting, setUpcomingMeeting] = useState(null);
   const [upcomingMeetingLoading, setUpcomingMeetingLoading] = useState(false);
   const [upcomingMeetingError, setUpcomingMeetingError] = useState(null);
-  const [krispSectionOpen, setKrispSectionOpen] = useState(false);
-  /** idle | loading | ready — prefetch so we only show Krisp UI when transcripts exist */
-  const [krispHead, setKrispHead] = useState({ status: 'idle', transcripts: [], error: null });
   // Fix hydration issues by only rendering on client side
   useEffect(() => {
     setIsMounted(true);
@@ -34,43 +30,9 @@ const LeadDetailModal = ({
       setStoryError(null);
       setUpcomingMeeting(null);
       setUpcomingMeetingError(null);
-      setKrispSectionOpen(false);
-      setKrispHead({ status: 'idle', transcripts: [], error: null });
     }
   }, [isOpen, lead?.id]);
 
-  useEffect(() => {
-    if (!isOpen || !isMounted || !lead) return;
-    const leadId = lead.id || lead['Profile Key'];
-    if (!leadId) return;
-    let cancelled = false;
-    setKrispHead({ status: 'loading', transcripts: [], error: null });
-    getKrispTranscriptsForLead(leadId).then((r) => {
-      if (cancelled) return;
-      setKrispHead({
-        status: 'ready',
-        transcripts: r.transcripts || [],
-        error: r.error || null,
-      });
-    });
-    return () => { cancelled = true; };
-  }, [isOpen, isMounted, lead?.id, lead?.['Profile Key']]);
-
-  useEffect(() => {
-    if (!krispSectionOpen || !isOpen) return;
-    const id = requestAnimationFrame(() => {
-      document.getElementById('lead-detail-krisp-panel')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    });
-    return () => cancelAnimationFrame(id);
-  }, [krispSectionOpen, isOpen]);
-
-  useEffect(() => {
-    const hasKrisp =
-      krispHead.status === 'ready' &&
-      !krispHead.error &&
-      krispHead.transcripts.length > 0;
-    if (!hasKrisp) setKrispSectionOpen(false);
-  }, [krispHead.status, krispHead.error, krispHead.transcripts.length]);
 
   // Handle escape key
   useEffect(() => {
@@ -109,10 +71,6 @@ const LeadDetailModal = ({
     s && typeof s === 'string' && s.trim().toUpperCase().includes('[AI UNAVAILABLE]');
   const hasRealBrief = brief?.story && brief.story.trim() && !isAiUnavailableFallback(brief.story);
 
-  const showKrispTranscripts =
-    krispHead.status === 'ready' &&
-    !krispHead.error &&
-    krispHead.transcripts.length > 0;
 
   // Render bullet text with each line on its own row.
   // AI sometimes separates bullets with \n, sometimes just runs them inline with •.
@@ -284,17 +242,6 @@ const LeadDetailModal = ({
                     Notes only — no Fathom transcript found
                   </span>
                 )}
-                {showKrispTranscripts && (
-                  <button
-                    type="button"
-                    onClick={() => setKrispSectionOpen((o) => !o)}
-                    className="text-sm font-medium text-violet-700 hover:text-violet-900 shrink-0 sm:ml-auto"
-                    aria-expanded={krispSectionOpen}
-                  >
-                    {krispSectionOpen ? 'Hide Krisp transcripts' : 'Krisp transcripts'}
-                    <span className="ml-1 text-xs opacity-80" aria-hidden>{krispSectionOpen ? '▲' : '▼'}</span>
-                  </button>
-                )}
               </div>
 
               {/* Meeting banner — shown as soon as a meeting is detected */}
@@ -383,16 +330,6 @@ const LeadDetailModal = ({
                 </p>
               ) : null}
             </div>
-
-            {krispSectionOpen && showKrispTranscripts && (
-              <KrispTranscriptsPanel
-                leadId={lead.id || lead['Profile Key']}
-                wrapperId="lead-detail-krisp-panel"
-                hideOuterTitle
-                className="border-t border-gray-100 mt-4"
-                prefetched={{ transcripts: krispHead.transcripts, error: null }}
-              />
-            )}
 
             {/* Upcoming meeting — manual check (auto-runs when brief is generated) */}
             {!upcomingMeeting && (

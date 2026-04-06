@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, Suspense, useCallback } from 'react';
+import React, { useState, useEffect, Suspense, useCallback, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Layout from '../../components/Layout';
 import {
@@ -9,7 +9,6 @@ import {
   saveRecallSpeakers,
   updateRecallStatus,
   splitRecallTranscript,
-  analyzeRecallTranscript,
   searchRecallLeadByEmail,
   addRecallMeetingLead,
   removeRecallMeetingLead,
@@ -31,6 +30,17 @@ const QUEUE_FILTERS: { value: string; label: string }[] = [
   { value: 'complete', label: 'Complete' },
   { value: 'skipped', label: 'Skipped' },
   { value: 'all', label: 'Everything' },
+];
+
+const SPEAKER_COLOURS = [
+  { bg: 'bg-violet-100', text: 'text-violet-800', border: 'border-violet-200', highlight: 'bg-violet-50' },
+  { bg: 'bg-emerald-100', text: 'text-emerald-800', border: 'border-emerald-200', highlight: 'bg-emerald-50' },
+  { bg: 'bg-sky-100', text: 'text-sky-800', border: 'border-sky-200', highlight: 'bg-sky-50' },
+  { bg: 'bg-amber-100', text: 'text-amber-800', border: 'border-amber-200', highlight: 'bg-amber-50' },
+  { bg: 'bg-rose-100', text: 'text-rose-800', border: 'border-rose-200', highlight: 'bg-rose-50' },
+  { bg: 'bg-teal-100', text: 'text-teal-800', border: 'border-teal-200', highlight: 'bg-teal-50' },
+  { bg: 'bg-indigo-100', text: 'text-indigo-800', border: 'border-indigo-200', highlight: 'bg-indigo-50' },
+  { bg: 'bg-fuchsia-100', text: 'text-fuchsia-800', border: 'border-fuchsia-200', highlight: 'bg-fuchsia-50' },
 ];
 
 function Badge({ status }: { status: string }) {
@@ -67,69 +77,27 @@ function shortLeadId(id: string) {
   return t.length > 10 ? `${t.slice(0, 8)}…` : t || '?';
 }
 
-function buildLeadDisplay(ev: any): Record<string, { name: string; email: string }> {
-  const map: Record<string, { name: string; email: string }> = {};
-  for (const ml of ev.meeting_leads || []) {
-    const id = String(ml.airtable_lead_id || '').trim();
-    if (!id) continue;
-    map[id] = { name: `Lead ${shortLeadId(id)}`, email: '' };
-  }
-  for (const p of ev.participants || []) {
-    const id = String(p.airtable_lead_id || '').trim();
-    if (!id) continue;
-    const name = String(p.verified_name || '').trim();
-    const email = String(p.verified_email || '').trim();
-    if (name || email) {
-      map[id] = {
-        name: name || map[id]?.name || `Lead ${shortLeadId(id)}`,
-        email: email || map[id]?.email || '',
-      };
-    }
-  }
-  for (const v of Object.values(ev.verified_speakers || {}) as any[]) {
-    if (!v || typeof v !== 'object') continue;
-    const id = String(v.airtable_lead_id || '').trim();
-    if (!id) continue;
-    const name = String(v.name || '').trim();
-    const email = String(v.email || '').trim();
-    if (name || email) {
-      map[id] = {
-        name: name || map[id]?.name || `Lead ${shortLeadId(id)}`,
-        email: email || map[id]?.email || '',
-      };
-    }
-  }
-  return map;
-}
-
 type SpeakerForm = { name: string; email: string; role: string; airtable_lead_id: string };
 
 function parseTranscriptSpeakerLine(line: string): { label: string; rest: string } | null {
   const mPipe = line.match(/^(Speaker\s*\d+)\s*\|\s*/i);
-  if (mPipe) {
-    return { label: mPipe[1].replace(/\s+/g, ' ').trim(), rest: line.slice(mPipe[0].length) };
-  }
+  if (mPipe) return { label: mPipe[1].replace(/\s+/g, ' ').trim(), rest: line.slice(mPipe[0].length) };
   const mColon = line.match(/^(Speaker\s*\d+)\s*:\s/i);
-  if (mColon) {
-    return { label: mColon[1].replace(/\s+/g, ' ').trim(), rest: line.slice(mColon[0].length) };
-  }
-  const mUnkPipe = line.match(/^unknown\s*\|\s*/i);
-  if (mUnkPipe) {
-    return { label: 'Unknown', rest: line.slice(mUnkPipe[0].length) };
-  }
+  if (mColon) return { label: mColon[1].replace(/\s+/g, ' ').trim(), rest: line.slice(mColon[0].length) };
   const mPartPipe = line.match(/^(Participant\s*\d+)\s*\|\s*/i);
-  if (mPartPipe) {
-    return { label: mPartPipe[1].replace(/\s+/g, ' ').trim(), rest: line.slice(mPartPipe[0].length) };
-  }
+  if (mPartPipe) return { label: mPartPipe[1].replace(/\s+/g, ' ').trim(), rest: line.slice(mPartPipe[0].length) };
   const mName = line.match(/^([^:]{1,40}):\s/);
   if (mName) {
     const label = mName[1].trim();
     if (!label || label.startsWith('{') || label.startsWith('[')) return null;
-    if (/^Speaker\s*\d+$/i.test(label)) return null;
     return { label, rest: line.slice(mName[0].length) };
   }
   return null;
 }
+
+/* ------------------------------------------------------------------ */
+/* Queue                                                               */
+/* ------------------------------------------------------------------ */
 
 function QueueView({ onSelect }: { onSelect: (id: string) => void }) {
   const [rows, setRows] = useState<any[]>([]);
@@ -154,9 +122,9 @@ function QueueView({ onSelect }: { onSelect: (id: string) => void }) {
 
   const emptyMsg =
     debouncedTitleQ
-      ? 'No meetings match this title for the current filter — try "Everything" or another status.'
+      ? 'No meetings match this title for the current filter.'
       : filter === 'incomplete'
-        ? 'Nothing incomplete — try "Complete" or "Everything", or search by meeting title below.'
+        ? 'Nothing incomplete — try "Complete" or "Everything".'
         : filter === 'all'
           ? 'No meetings stored yet.'
           : 'No rows match this filter.';
@@ -168,9 +136,7 @@ function QueueView({ onSelect }: { onSelect: (id: string) => void }) {
     <div className="space-y-4">
       <div className="flex flex-col gap-3 sm:gap-4">
         <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
-          <label htmlFor="recall-queue-filter" className="text-sm font-medium text-gray-700 shrink-0">
-            Show
-          </label>
+          <label htmlFor="recall-queue-filter" className="text-sm font-medium text-gray-700 shrink-0">Show</label>
           <select
             id="recall-queue-filter"
             value={filter}
@@ -194,59 +160,209 @@ function QueueView({ onSelect }: { onSelect: (id: string) => void }) {
               className="mt-1 w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-200 focus:border-violet-400"
             />
           </div>
-          <p className="text-xs text-gray-500 sm:pb-2">Matches part of the title; uses the same status filter as above.</p>
         </div>
       </div>
       {rows.length === 0 ? (
         <p className="text-gray-500 italic text-sm py-8 text-center border border-dashed border-gray-200 rounded-xl bg-gray-50/80 px-4">{emptyMsg}</p>
       ) : (
-    <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="bg-gray-50 text-gray-600 text-xs uppercase tracking-wider">
-            <th className="px-4 py-3 text-left font-semibold">#</th>
-            <th className="px-4 py-3 text-left font-semibold">When</th>
-            <th className="px-4 py-3 text-left font-semibold">Meeting</th>
-            <th className="px-4 py-3 text-left font-semibold">Status</th>
-            <th className="px-4 py-3 text-left font-semibold">Flags</th>
-            <th className="px-4 py-3" />
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-gray-100">
-          {rows.map((r: any) => {
-            const title = r.title || r.meeting_title || '—';
-            const dur = formatDur(r.duration_seconds ? Number(r.duration_seconds) : null);
-            return (
-              <tr key={r.id} className="hover:bg-violet-50/40 transition-colors">
-                <td className="px-4 py-3 font-mono text-gray-500">{r.id}</td>
-                <td className="px-4 py-3 text-gray-700 whitespace-nowrap">{formatBrisbane(r.webhook_received_at || r.updated_at || r.created_at)}</td>
-                <td className="px-4 py-3">
-                  <span className="text-gray-900">{title}</span>
-                  {dur && <span className="text-gray-400 ml-1 text-xs">({dur})</span>}
-                </td>
-                <td className="px-4 py-3"><Badge status={r.status || 'incomplete'} /></td>
-                <td className="px-4 py-3 space-x-1">
-                  {r.needs_split && (
-                    <span className="text-[10px] font-semibold uppercase tracking-wide text-orange-800 bg-orange-100 border border-orange-200 rounded px-1.5 py-0.5">
-                      Split needed
-                    </span>
-                  )}
-                </td>
-                <td className="px-4 py-3 text-right">
-                  <button onClick={() => onSelect(String(r.id))} className="text-sm font-medium text-violet-700 hover:text-violet-900 hover:underline">
-                    Review
-                  </button>
-                </td>
+        <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-gray-50 text-gray-600 text-xs uppercase tracking-wider">
+                <th className="px-4 py-3 text-left font-semibold">#</th>
+                <th className="px-4 py-3 text-left font-semibold">When</th>
+                <th className="px-4 py-3 text-left font-semibold">Meeting</th>
+                <th className="px-4 py-3 text-left font-semibold">Status</th>
+                <th className="px-4 py-3 text-left font-semibold">Flags</th>
+                <th className="px-4 py-3" />
               </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {rows.map((r: any) => {
+                const title = r.title || r.meeting_title || '—';
+                const dur = formatDur(r.duration_seconds ? Number(r.duration_seconds) : null);
+                return (
+                  <tr key={r.id} className="hover:bg-violet-50/40 transition-colors">
+                    <td className="px-4 py-3 font-mono text-gray-500">{r.id}</td>
+                    <td className="px-4 py-3 text-gray-700 whitespace-nowrap">{formatBrisbane(r.webhook_received_at || r.updated_at || r.created_at)}</td>
+                    <td className="px-4 py-3">
+                      <span className="text-gray-900">{title}</span>
+                      {dur && <span className="text-gray-400 ml-1 text-xs">({dur})</span>}
+                    </td>
+                    <td className="px-4 py-3"><Badge status={r.status || 'incomplete'} /></td>
+                    <td className="px-4 py-3 space-x-1">
+                      {r.needs_split && (
+                        <span className="text-[10px] font-semibold uppercase tracking-wide text-orange-800 bg-orange-100 border border-orange-200 rounded px-1.5 py-0.5">
+                          Split needed
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <button onClick={() => onSelect(String(r.id))} className="text-sm font-medium text-violet-700 hover:text-violet-900 hover:underline">
+                        Review
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   );
 }
+
+/* ------------------------------------------------------------------ */
+/* Speaker Card (sidebar)                                              */
+/* ------------------------------------------------------------------ */
+
+function SpeakerCard({
+  label,
+  form,
+  colour,
+  coachHint,
+  meetingLeads,
+  leadDisplay,
+  onUpdate,
+  onMatchAirtable,
+  matchBusy,
+  highlightedLabel,
+  onHighlight,
+}: {
+  label: string;
+  form: SpeakerForm;
+  colour: typeof SPEAKER_COLOURS[0];
+  coachHint: { displayName: string; calendarEmail: string };
+  meetingLeads: { airtable_lead_id: string }[];
+  leadDisplay: Record<string, { name: string; email: string }>;
+  onUpdate: (patch: Partial<SpeakerForm>) => void;
+  onMatchAirtable: (label: string, email: string) => void;
+  matchBusy: boolean;
+  highlightedLabel: string | null;
+  onHighlight: (label: string | null) => void;
+}) {
+  const isConfirmed = form.role !== 'unknown' && (form.role === 'coach' || form.role === 'other' || (form.role === 'client' && form.airtable_lead_id));
+  const isActive = highlightedLabel === label;
+
+  return (
+    <div
+      className={`rounded-lg border p-3 transition-all ${colour.border} ${isActive ? colour.bg : 'bg-white'} ${isConfirmed ? 'ring-2 ring-green-300' : ''}`}
+      onMouseEnter={() => onHighlight(label)}
+      onMouseLeave={() => onHighlight(null)}
+    >
+      <div className="flex items-center justify-between gap-2 mb-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className={`inline-block w-3 h-3 rounded-full shrink-0 ${colour.bg} ${colour.border} border`} />
+          <span className="font-semibold text-sm text-gray-900 truncate">{label}</span>
+        </div>
+        {isConfirmed && (
+          <span className="text-green-600 text-sm shrink-0" title="Speaker confirmed">&#10003;</span>
+        )}
+      </div>
+
+      <div className="space-y-2">
+        <div>
+          <label className="block text-xs text-gray-500 mb-0.5">Role</label>
+          <div className="flex gap-1.5 flex-wrap">
+            <button
+              type="button"
+              onClick={() => onUpdate({ role: 'coach', name: coachHint.displayName || 'Coach', email: coachHint.calendarEmail || '', airtable_lead_id: '' })}
+              className={`text-xs px-2.5 py-1 rounded-md border font-medium transition-colors ${
+                form.role === 'coach' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-200 hover:bg-blue-50'
+              }`}
+            >
+              Coach
+            </button>
+            <button
+              type="button"
+              onClick={() => onUpdate({ role: 'client' })}
+              className={`text-xs px-2.5 py-1 rounded-md border font-medium transition-colors ${
+                form.role === 'client' ? 'bg-purple-600 text-white border-purple-600' : 'bg-white text-gray-700 border-gray-200 hover:bg-purple-50'
+              }`}
+            >
+              Client
+            </button>
+            <button
+              type="button"
+              onClick={() => onUpdate({ role: 'other', airtable_lead_id: '' })}
+              className={`text-xs px-2.5 py-1 rounded-md border font-medium transition-colors ${
+                form.role === 'other' ? 'bg-gray-700 text-white border-gray-700' : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
+              }`}
+            >
+              Other
+            </button>
+          </div>
+        </div>
+
+        {form.role === 'client' && meetingLeads.length > 0 && (
+          <div>
+            <label className="block text-xs text-gray-500 mb-0.5">Link to lead</label>
+            <select
+              value={form.airtable_lead_id || ''}
+              onChange={(e) => {
+                const lid = e.target.value;
+                if (lid) {
+                  const d = leadDisplay[lid] || { name: `Lead ${shortLeadId(lid)}`, email: '' };
+                  onUpdate({ airtable_lead_id: lid, name: d.name, email: d.email });
+                } else {
+                  onUpdate({ airtable_lead_id: '' });
+                }
+              }}
+              className="w-full text-xs border border-gray-200 rounded-md px-2 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-violet-200"
+            >
+              <option value="">Choose…</option>
+              {meetingLeads.map((ml) => {
+                const lid = String(ml.airtable_lead_id || '').trim();
+                const dn = leadDisplay[lid]?.name || shortLeadId(lid);
+                return <option key={lid} value={lid}>{dn}</option>;
+              })}
+            </select>
+          </div>
+        )}
+
+        <div>
+          <label className="block text-xs text-gray-500 mb-0.5">Name</label>
+          <input
+            type="text"
+            value={form.name}
+            onChange={(e) => onUpdate({ name: e.target.value })}
+            placeholder="Speaker name"
+            className="w-full text-sm border border-gray-200 rounded-md px-2 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-violet-200"
+          />
+        </div>
+
+        <div>
+          <label className="block text-xs text-gray-500 mb-0.5">Email</label>
+          <div className="flex gap-1">
+            <input
+              type="email"
+              value={form.email}
+              onChange={(e) => onUpdate({ email: e.target.value })}
+              placeholder="email@example.com"
+              className="flex-1 min-w-0 text-sm border border-gray-200 rounded-md px-2 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-violet-200"
+            />
+            {form.email && form.email.includes('@') && form.role !== 'coach' && (
+              <button
+                type="button"
+                onClick={() => onMatchAirtable(label, form.email)}
+                disabled={matchBusy}
+                className="text-[10px] px-2 py-1 rounded-md bg-violet-600 text-white font-medium hover:bg-violet-700 disabled:opacity-50 shrink-0 whitespace-nowrap"
+                title="Find this email in Airtable and link as a lead"
+              >
+                {matchBusy ? '…' : 'Match'}
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Event Review (two-column: transcript + sidebar)                     */
+/* ------------------------------------------------------------------ */
 
 function EventReview({ eventId, onBack }: { eventId: string; onBack: () => void }) {
   const [ev, setEv] = useState<any>(null);
@@ -254,38 +370,78 @@ function EventReview({ eventId, onBack }: { eventId: string; onBack: () => void 
   const [error, setError] = useState<string | null>(null);
   const [speakers, setSpeakers] = useState<Record<string, SpeakerForm>>({});
   const [leadDisplay, setLeadDisplay] = useState<Record<string, { name: string; email: string }>>({});
-  const [leadSearchEmail, setLeadSearchEmail] = useState('');
-  const [leadSearchBusy, setLeadSearchBusy] = useState(false);
-  const [leadSearchHit, setLeadSearchHit] = useState<{ id: string; name: string; email: string } | null>(null);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState('');
   const [splitMode, setSplitMode] = useState(false);
   const [splitLine, setSplitLine] = useState<number | null>(null);
   const [splitting, setSplitting] = useState(false);
-  const [analyzing, setAnalyzing] = useState(false);
-  const [aiResult, setAiResult] = useState<any>(null);
-  const [shortcutSeq, setShortcutSeq] = useState<Record<string, number>>({});
+  const [highlightedLabel, setHighlightedLabel] = useState<string | null>(null);
+  const [matchBusyLabel, setMatchBusyLabel] = useState<string | null>(null);
+  const [leadSearchEmail, setLeadSearchEmail] = useState('');
+  const [leadSearchBusy, setLeadSearchBusy] = useState(false);
+  const [leadSearchHit, setLeadSearchHit] = useState<{ id: string; name: string; email: string } | null>(null);
+  const transcriptRef = useRef<HTMLDivElement>(null);
+
+  function buildLeadDisplayMap(event: any): Record<string, { name: string; email: string }> {
+    const map: Record<string, { name: string; email: string }> = {};
+    for (const ml of event.meeting_leads || []) {
+      const id = String(ml.airtable_lead_id || '').trim();
+      if (!id) continue;
+      map[id] = { name: `Lead ${shortLeadId(id)}`, email: '' };
+    }
+    for (const p of event.participants || []) {
+      const id = String(p.airtable_lead_id || '').trim();
+      if (!id) continue;
+      const name = String(p.verified_name || '').trim();
+      const email = String(p.verified_email || '').trim();
+      if (name || email) {
+        map[id] = { name: name || map[id]?.name || `Lead ${shortLeadId(id)}`, email: email || map[id]?.email || '' };
+      }
+    }
+    for (const v of Object.values(event.verified_speakers || {}) as any[]) {
+      if (!v || typeof v !== 'object') continue;
+      const id = String(v.airtable_lead_id || '').trim();
+      if (!id) continue;
+      const name = String(v.name || '').trim();
+      const email = String(v.email || '').trim();
+      if (name || email) {
+        map[id] = { name: name || map[id]?.name || `Lead ${shortLeadId(id)}`, email: email || map[id]?.email || '' };
+      }
+    }
+    return map;
+  }
 
   const load = useCallback(() => {
     setLoading(true);
     getRecallReviewEvent(eventId).then(r => {
       if (r.event) {
-        setEv(r.event);
-        const vs = r.event.verified_speakers || {};
+        const event = r.event;
+        setEv(event);
+        const vs = event.verified_speakers || {};
+        const coachHint = event.coach_hint || { displayName: 'Coach', calendarEmail: '' };
         const init: Record<string, SpeakerForm> = {};
-        for (const label of (r.event.speaker_labels || [])) {
+        for (const label of (event.speaker_labels || [])) {
           const v = vs[label] || {};
           const roleRaw = String(v.role || 'unknown').toLowerCase();
-          const role = ['coach', 'client', 'other', 'unknown'].includes(roleRaw) ? roleRaw : 'unknown';
-          init[label] = {
-            name: v.name || '',
-            email: v.email || '',
-            role,
-            airtable_lead_id: v.airtable_lead_id || '',
-          };
+
+          let role = ['coach', 'client', 'other', 'unknown'].includes(roleRaw) ? roleRaw : 'unknown';
+          let name = v.name || '';
+          let email = v.email || '';
+
+          if (role === 'unknown' && coachHint.displayName) {
+            const lcLabel = label.toLowerCase();
+            const lcCoach = coachHint.displayName.toLowerCase();
+            if (lcLabel.includes(lcCoach) || lcCoach.includes(lcLabel)) {
+              role = 'coach';
+              name = coachHint.displayName;
+              email = coachHint.calendarEmail || '';
+            }
+          }
+
+          init[label] = { name, email, role, airtable_lead_id: v.airtable_lead_id || '' };
         }
         setSpeakers(init);
-        setLeadDisplay(buildLeadDisplay(r.event));
+        setLeadDisplay(buildLeadDisplayMap(event));
       }
       setError(r.error || null);
     }).finally(() => setLoading(false));
@@ -309,17 +465,14 @@ function EventReview({ eventId, onBack }: { eventId: string; onBack: () => void 
   };
 
   const handleStatus = async (st: string) => {
-    if (!st || !EDITABLE_STATUSES.includes(st as (typeof EDITABLE_STATUSES)[number])) {
-      flash('Choose a status');
-      return;
-    }
+    if (!st || !EDITABLE_STATUSES.includes(st as (typeof EDITABLE_STATUSES)[number])) return;
     const r = await updateRecallStatus(eventId, st);
     if (r.ok) { flash('Status updated'); load(); } else flash('Error: ' + (r.error || 'unknown'));
   };
 
   const handleSplit = async () => {
     if (splitLine == null || splitLine < 1) { flash('Click a line in the transcript to set the split point'); return; }
-    if (!confirm(`Split transcript at line ${splitLine}? This creates a new meeting from line ${splitLine} onwards.`)) return;
+    if (!confirm(`Split transcript at line ${splitLine}?`)) return;
     setSplitting(true);
     const r = await splitRecallTranscript(eventId, splitLine);
     setSplitting(false);
@@ -333,34 +486,34 @@ function EventReview({ eventId, onBack }: { eventId: string; onBack: () => void 
     }
   };
 
-  const handleAnalyze = async () => {
-    setAnalyzing(true);
-    const r = await analyzeRecallTranscript(eventId);
-    setAnalyzing(false);
-    setAiResult(r);
-    if (r.error) flash('AI analysis: ' + r.error);
-    else if (r.needsSplit) flash('AI detected possible back-to-back calls');
-    else flash('AI analysis complete — looks like a single conversation');
+  const handleMatchAirtable = async (label: string, email: string) => {
+    const trimmed = email.trim().toLowerCase();
+    if (!trimmed.includes('@')) { flash('Enter a valid email'); return; }
+    setMatchBusyLabel(label);
+    const r = await searchRecallLeadByEmail(trimmed);
+    setMatchBusyLabel(null);
+    if (r.error) { flash(r.error); return; }
+    if (!r.lead?.id) { flash('No lead found for ' + trimmed); return; }
+    const addR = await addRecallMeetingLead(eventId, r.lead.id);
+    if (!addR.ok && !addR.error?.includes('already')) { flash('Error linking: ' + (addR.error || 'unknown')); return; }
+    setLeadDisplay(d => ({ ...d, [r.lead.id]: { name: r.lead.name || trimmed, email: r.lead.email || trimmed } }));
+    setSpeakers(s => ({
+      ...s,
+      [label]: { ...s[label], role: 'client', airtable_lead_id: r.lead.id, name: r.lead.name || s[label]?.name || trimmed, email: r.lead.email || trimmed },
+    }));
+    flash(`Matched: ${r.lead.name || trimmed}`);
+    load();
   };
 
   const handleSearchLead = async () => {
     const email = leadSearchEmail.trim().toLowerCase();
-    if (!email.includes('@')) {
-      flash('Enter a valid email');
-      return;
-    }
+    if (!email.includes('@')) { flash('Enter a valid email'); return; }
     setLeadSearchBusy(true);
     setLeadSearchHit(null);
     const r = await searchRecallLeadByEmail(email);
     setLeadSearchBusy(false);
-    if (r.error) {
-      flash(r.error || 'Search failed');
-      return;
-    }
-    if (!r.lead?.id) {
-      flash('No lead found for that email');
-      return;
-    }
+    if (r.error) { flash(r.error); return; }
+    if (!r.lead?.id) { flash('No lead found for that email'); return; }
     setLeadSearchHit({ id: r.lead.id, name: r.lead.name || email, email: r.lead.email || email });
   };
 
@@ -368,11 +521,8 @@ function EventReview({ eventId, onBack }: { eventId: string; onBack: () => void 
     if (!leadSearchHit) return;
     const r = await addRecallMeetingLead(eventId, leadSearchHit.id);
     if (r.ok) {
-      setLeadDisplay((d) => ({
-        ...d,
-        [leadSearchHit.id]: { name: leadSearchHit.name, email: leadSearchHit.email },
-      }));
-      flash('Lead linked to meeting');
+      setLeadDisplay(d => ({ ...d, [leadSearchHit.id]: { name: leadSearchHit.name, email: leadSearchHit.email } }));
+      flash('Lead linked');
       setLeadSearchHit(null);
       setLeadSearchEmail('');
       load();
@@ -382,10 +532,7 @@ function EventReview({ eventId, onBack }: { eventId: string; onBack: () => void 
   const handleRemoveMeetingLead = async (leadId: string) => {
     if (!confirm('Remove this lead from the meeting?')) return;
     const r = await removeRecallMeetingLead(eventId, leadId);
-    if (r.ok) {
-      flash('Lead removed');
-      load();
-    } else flash('Error: ' + (r.error || 'unknown'));
+    if (r.ok) { flash('Lead removed'); load(); } else flash('Error: ' + (r.error || 'unknown'));
   };
 
   if (loading) return <p className="text-gray-500 text-sm py-8 text-center">Loading…</p>;
@@ -393,482 +540,276 @@ function EventReview({ eventId, onBack }: { eventId: string; onBack: () => void 
 
   const coachHint = ev.coach_hint || { displayName: 'Coach', calendarEmail: '' };
   const meetingLeadRows: { airtable_lead_id: string }[] = ev.meeting_leads || [];
-  const leadSegments: { airtable_lead_id: string; text: string; utterance_count?: number }[] = ev.lead_segments || [];
+  const labels: string[] = ev.speaker_labels || [];
+  const st = normalizeReviewStatus(ev.status || 'incomplete');
+  const fullText: string = ev.full_text || '';
+  const lines = fullText.split('\n');
+
+  const labelColourMap: Record<string, typeof SPEAKER_COLOURS[0]> = {};
+  labels.forEach((lab, i) => { labelColourMap[lab] = SPEAKER_COLOURS[i % SPEAKER_COLOURS.length]; });
 
   const setSpeaker = (label: string, patch: Partial<SpeakerForm>) => {
-    setSpeakers((s) => ({
+    setSpeakers(s => ({
       ...s,
       [label]: { name: '', email: '', role: 'unknown', airtable_lead_id: '', ...s[label], ...patch },
     }));
   };
 
-  const pickCoach = (label: string) => {
-    setSpeaker(label, {
-      role: 'coach',
-      name: coachHint.displayName || 'Coach',
-      email: coachHint.calendarEmail || '',
-      airtable_lead_id: '',
-    });
-  };
-
-  const pickClientLead = (label: string, leadId: string) => {
-    const d = leadDisplay[leadId] || { name: `Lead ${shortLeadId(leadId)}`, email: '' };
-    setSpeaker(label, {
-      role: 'client',
-      airtable_lead_id: leadId,
-      name: d.name,
-      email: d.email,
-    });
-  };
-
-  const pickOther = (label: string) => {
-    setSpeaker(label, { role: 'other', airtable_lead_id: '' });
-  };
-
-  const labels: string[] = ev.speaker_labels || [];
-  const calAttendees: { email: string; name: string }[] = ev.calendar_attendees || [];
-  const st = normalizeReviewStatus(ev.status || 'incomplete');
-  const fullText: string = ev.full_text || '';
-  const speakerSamples: Record<string, string[]> = ev.speaker_samples || {};
-  const lines = fullText.split('\n');
-
-  const transcriptContent = lines.map((line: string, i: number) => {
-    const parsed = parseTranscriptSpeakerLine(line);
-    const lineNum = i + 1;
-    const isSplitPoint = splitMode && splitLine === lineNum;
-    const isAboveSplit = splitMode && splitLine != null && lineNum < splitLine;
-
-    let displayLabel = '';
-    let rest = line;
-    let showColon = true;
-
-    if (parsed) {
-      displayLabel = parsed.label;
-      rest = parsed.rest;
-      const isPipe =
-        /^(Speaker\s*\d+)\s*\|\s*/i.test(line) ||
-        /^unknown\s*\|\s*/i.test(line) ||
-        /^(Participant\s*\d+)\s*\|\s*/i.test(line);
-      showColon = !isPipe;
-    }
-
-    return (
-      <div
-        key={i}
-        className={`group flex items-start gap-2 py-0.5 rounded transition-colors ${
-          splitMode ? 'cursor-pointer hover:bg-orange-50' : ''
-        } ${isSplitPoint ? 'bg-orange-100 border-t-2 border-orange-500' : ''} ${
-          isAboveSplit ? 'opacity-50' : ''
-        }`}
-        onClick={splitMode ? () => setSplitLine(lineNum) : undefined}
-      >
-        {splitMode && (
-          <span className="text-[10px] text-gray-400 font-mono w-6 text-right shrink-0 pt-0.5 select-none">
-            {lineNum}
-          </span>
-        )}
-        <div className="flex-1 min-w-0">
-          {parsed ? (
-            <>
-              <span className="font-semibold text-violet-800" title={parsed.label}>
-                {showColon ? `${displayLabel}:` : `${displayLabel} | `}
-              </span>
-              <span>{rest}</span>
-            </>
-          ) : (
-            <span>{line}</span>
-          )}
-        </div>
-      </div>
-    );
-  });
+  const confirmedCount = labels.filter(lab => {
+    const f = speakers[lab];
+    return f && f.role !== 'unknown' && (f.role === 'coach' || f.role === 'other' || (f.role === 'client' && f.airtable_lead_id));
+  }).length;
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       <button onClick={onBack} className="text-sm text-violet-700 hover:underline">&larr; Back to queue</button>
 
-      <div>
-        <h2 className="text-xl font-bold text-gray-900">{ev.title}</h2>
-        <p className="text-sm text-gray-500 mt-1">
-          {formatBrisbane(ev.webhook_received_at || ev.created_at)}
-          {ev.duration ? ` · ${formatDur(ev.duration)}` : ''}
-          {' · Meeting #'}{ev.id}{' · '}
-          <Badge status={st} />
-          {ev.recall_bot_id && (
-            <span className="ml-2 text-xs text-gray-400 font-mono" title="Recall bot / recording">
-              bot {String(ev.recall_bot_id).slice(0, 12)}…
-            </span>
-          )}
-          {ev.start_line != null && (
-            <span className="ml-2 text-xs text-gray-400">(lines {ev.start_line}–{ev.end_line})</span>
-          )}
-        </p>
-        {ev.status_reason && (
-          <p className="text-xs text-gray-500 mt-1 bg-gray-50 border border-gray-200 rounded px-3 py-1.5">
-            {ev.status_reason}
+      {/* Header */}
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-xl font-bold text-gray-900">{ev.title}</h2>
+          <p className="text-sm text-gray-500 mt-1">
+            {formatBrisbane(ev.webhook_received_at || ev.created_at)}
+            {ev.duration ? ` · ${formatDur(ev.duration)}` : ''}
+            {' · #'}{ev.id}{' · '}
+            <Badge status={st} />
           </p>
-        )}
-      </div>
-
-      {ev.needs_split && (
-        <div className="bg-orange-50 border border-orange-300 rounded-xl p-4 flex items-start gap-3">
-          <span className="text-orange-600 text-lg">⚠️</span>
-          <div>
-            <p className="font-semibold text-orange-900 text-sm">This transcript may contain back-to-back calls</p>
-            <p className="text-xs text-orange-700 mt-1">
-              AI may flag separate conversations. Use <strong>Split transcript</strong> below if you need two meeting rows.
-            </p>
-          </div>
         </div>
-      )}
-
-      {aiResult && !aiResult.error && (
-        <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
-          <h3 className="font-semibold text-blue-900 text-sm mb-2">AI Analysis</h3>
-          <div className="text-xs text-blue-800 space-y-1">
-            <p><strong>Split needed:</strong> {aiResult.needsSplit ? 'Yes' : 'No'}{aiResult.splitReason ? ` — ${aiResult.splitReason}` : ''}</p>
-            {aiResult.suggestedSplitLine && (
-              <p><strong>Suggested split line:</strong> {aiResult.suggestedSplitLine}</p>
-            )}
-            {aiResult.speakerGuesses && Object.keys(aiResult.speakerGuesses).length > 0 && (
-              <div className="mt-2">
-                <strong>Speaker guesses:</strong>
-                <ul className="mt-1 space-y-0.5">
-                  {Object.entries(aiResult.speakerGuesses).map(([label, info]: [string, any]) => (
-                    <li key={label}>
-                      {label} → {info.likelyName || '?'} ({info.role}, {info.confidence} confidence)
-                      {info.likelyName && (
-                        <button
-                          type="button"
-                          className="ml-2 text-[10px] bg-blue-100 text-blue-700 border border-blue-200 rounded px-1.5 py-0.5 hover:bg-blue-200"
-                          onClick={() => setSpeakers((s) => {
-                            const cur = s[label] || { name: '', email: '', role: 'unknown', airtable_lead_id: '' };
-                            return { ...s, [label]: { ...cur, name: String(info.likelyName || '') } };
-                          })}
-                        >
-                          Use name
-                        </button>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5 space-y-4">
-        <h3 className="text-base font-semibold text-gray-900">Clients on this call</h3>
-        <p className="text-sm text-gray-600">
-          Add each client’s lead once. You need at least one before the meeting can be marked complete.
-        </p>
-        {meetingLeadRows.length === 0 ? (
-          <p className="text-sm text-gray-500">No leads linked yet.</p>
-        ) : (
-          <ul className="space-y-2">
-            {meetingLeadRows.map((ml: { airtable_lead_id?: string }) => {
-              const id = String(ml.airtable_lead_id || '').trim();
-              const disp = leadDisplay[id] || { name: `Lead ${shortLeadId(id)}`, email: '' };
-              return (
-                <li key={id} className="flex items-center justify-between gap-3 text-sm py-2 border-b border-gray-100 last:border-0">
-                  <span className="min-w-0" title={id}>
-                    <span className="font-medium text-gray-900">{disp.name}</span>
-                    {disp.email ? <span className="text-gray-500 block sm:inline sm:ml-2">{disp.email}</span> : null}
-                  </span>
-                  <button
-                    type="button"
-                    className="text-red-600 text-sm shrink-0 hover:underline"
-                    onClick={() => handleRemoveMeetingLead(id)}
-                  >
-                    Remove
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-        <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
-          <input
-            id="recall-lead-search-email"
-            type="email"
-            value={leadSearchEmail}
-            onChange={(e) => setLeadSearchEmail(e.target.value)}
-            className="flex-1 min-w-0 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-200 focus:border-violet-400"
-            placeholder="Search by email to add a lead"
-          />
-          <button
-            type="button"
-            onClick={handleSearchLead}
-            disabled={leadSearchBusy}
-            className="px-4 py-2 bg-violet-600 text-white rounded-lg text-sm font-medium hover:bg-violet-700 disabled:opacity-50 sm:w-28"
-          >
-            {leadSearchBusy ? '…' : 'Search'}
-          </button>
-        </div>
-        {leadSearchHit && (
-          <div className="flex flex-wrap items-center gap-2 text-sm text-gray-800 bg-violet-50 border border-violet-100 rounded-lg px-3 py-2">
-            <span>{leadSearchHit.name}</span>
-            <span className="text-gray-500">{leadSearchHit.email}</span>
-            <button type="button" onClick={handleAddMeetingLead} className="text-violet-700 font-medium hover:underline ml-auto">
-              Add
-            </button>
-          </div>
-        )}
-      </div>
-
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
-        <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
-          <div>
-            <h3 className="text-base font-semibold text-gray-900">Transcript</h3>
-            <p className="text-xs text-gray-500 mt-0.5">
-              Built from Recall <code className="text-[11px]">transcript.data</code> lines (participant + time). Map each label below.
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            {splitMode ? (
-              <>
-                <span className="text-xs text-orange-700">Click a line to set split point</span>
-                {splitLine != null && (
-                  <button
-                    onClick={handleSplit}
-                    disabled={splitting}
-                    className="text-xs px-3 py-1.5 bg-orange-600 text-white rounded-lg hover:bg-orange-700 font-semibold disabled:opacity-50"
-                  >
-                    {splitting ? 'Splitting…' : `Split at line ${splitLine}`}
-                  </button>
-                )}
-                <button
-                  onClick={() => { setSplitMode(false); setSplitLine(null); }}
-                  className="text-xs text-gray-500 hover:text-gray-700 underline"
-                >
-                  Cancel
-                </button>
-              </>
-            ) : (
-              <button
-                onClick={() => setSplitMode(true)}
-                className="text-xs px-3 py-1.5 bg-orange-50 text-orange-700 border border-orange-200 rounded-lg hover:bg-orange-100"
-              >
-                Split transcript
-              </button>
-            )}
-          </div>
-        </div>
-        <div className={`max-h-[min(70vh,520px)] overflow-y-auto text-sm text-gray-700 leading-relaxed font-sans ${splitMode ? 'border-2 border-orange-200 rounded-lg p-2' : ''}`}>
-          {transcriptContent}
-        </div>
-      </div>
-
-      {leadSegments.length > 0 && (
-        <div className="bg-white rounded-xl border border-emerald-200 shadow-sm p-5 space-y-3">
-          <h3 className="text-base font-semibold text-gray-900">Per-lead segments (join → leave)</h3>
-          <p className="text-xs text-gray-500">
-            Text from utterances tied to a lead you mapped on a speaker, limited to Recall <code className="text-[11px]">participant_events.join/leave</code> windows when we have them.
-            If there are no join/leave rows yet, we include all of that participant’s lines.
-          </p>
-          <div className="space-y-4">
-            {leadSegments.map((seg) => {
-              const disp = leadDisplay[seg.airtable_lead_id] || { name: `Lead ${shortLeadId(seg.airtable_lead_id)}`, email: '' };
-              return (
-                <div key={seg.airtable_lead_id} className="border border-gray-100 rounded-lg p-3 bg-emerald-50/40">
-                  <p className="text-sm font-medium text-gray-900">{disp.name}</p>
-                  <p className="text-[11px] text-gray-400 font-mono mb-2">{seg.airtable_lead_id}</p>
-                  <pre className="text-xs text-gray-700 whitespace-pre-wrap font-sans max-h-40 overflow-y-auto bg-white border border-gray-100 rounded p-2">
-                    {seg.text?.trim() ? seg.text : '(No lines in this window yet)'}
-                  </pre>
-                  {seg.utterance_count != null && (
-                    <p className="text-[11px] text-gray-500 mt-1">{seg.utterance_count} utterance(s)</p>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5 space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h3 className="text-base font-semibold text-gray-900">Who is each speaker?</h3>
-          <button
-            type="button"
-            onClick={handleAnalyze}
-            disabled={analyzing}
-            className="text-sm px-3 py-1.5 rounded-lg border border-blue-200 bg-blue-50 text-blue-800 hover:bg-blue-100 disabled:opacity-50"
-          >
-            {analyzing ? 'Working…' : 'AI suggestions'}
-          </button>
-        </div>
-        <p className="text-sm text-gray-600">
-          For each label below, choose <strong>Coach</strong>, <strong>Client</strong> (pick the linked lead), or <strong>Other</strong> and type a name. Then save.
-        </p>
-        {labels.length === 0 ? (
-          <p className="text-sm text-gray-500">No speaker labels found in this transcript.</p>
-        ) : (
-          <div className="space-y-6">
-            {labels.map((label) => {
-              const row = speakers[label] || { name: '', email: '', role: 'unknown', airtable_lead_id: '' };
-              const samples = speakerSamples[label] || [];
-              const sk = shortcutSeq[label] ?? 0;
-              return (
-                <div key={label} className="rounded-lg border border-gray-200 bg-gray-50/60 p-4 space-y-3">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span className="font-medium text-gray-900">{label}</span>
-                    <select
-                      key={`sc-${label}-${sk}`}
-                      defaultValue=""
-                      className="text-sm border border-gray-200 rounded-lg px-2 py-1.5 bg-white text-gray-700 max-w-[220px]"
-                      aria-label={`Shortcut assign ${label}`}
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        if (!v) return;
-                        if (v === '_coach') pickCoach(label);
-                        else if (v === '_other') pickOther(label);
-                        else if (v.startsWith('_c:')) pickClientLead(label, v.slice(3));
-                        else if (v.startsWith('_cal:')) {
-                          const email = decodeURIComponent(v.slice(5));
-                          const att = calAttendees.find((x) => x.email === email);
-                          setSpeaker(label, {
-                            role: 'client',
-                            name: att?.name || email,
-                            email,
-                            airtable_lead_id: '',
-                          });
-                        }
-                        setShortcutSeq((s) => ({ ...s, [label]: (s[label] ?? 0) + 1 }));
-                      }}
-                    >
-                      <option value="">Apply shortcut…</option>
-                      <option value="_coach">Coach ({coachHint.displayName || 'Coach'})</option>
-                      {meetingLeadRows.map((ml: { airtable_lead_id?: string }) => {
-                        const lid = String(ml.airtable_lead_id || '').trim();
-                        const dn = leadDisplay[lid]?.name || shortLeadId(lid);
-                        return (
-                          <option key={lid} value={`_c:${lid}`}>Client: {dn}</option>
-                        );
-                      })}
-                      <option value="_other">Other (type name below)</option>
-                      {calAttendees.map((a) => (
-                        <option key={a.email} value={`_cal:${encodeURIComponent(a.email)}`}>
-                          Calendar: {a.name || a.email}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  {samples.length > 0 && (
-                    <details className="text-sm group">
-                      <summary className="cursor-pointer text-violet-700 hover:text-violet-900 list-none flex items-center gap-1 [&::-webkit-details-marker]:hidden">
-                        <span className="text-gray-400 group-open:rotate-90 transition-transform inline-block">▸</span>
-                        Transcript sample
-                      </summary>
-                      <pre className="mt-2 text-xs text-gray-600 bg-white border border-gray-100 rounded-lg p-3 whitespace-pre-wrap font-sans leading-relaxed max-h-32 overflow-y-auto">
-                        {samples.join('\n')}
-                      </pre>
-                    </details>
-                  )}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
-                    <div>
-                      <label className="block text-gray-600 mb-1">Role</label>
-                      <select
-                        value={row.role}
-                        onChange={(e) => {
-                          const role = e.target.value;
-                          if (role === 'coach') pickCoach(label);
-                          else if (role === 'other') pickOther(label);
-                          else if (role === 'client') setSpeaker(label, { role: 'client' });
-                          else setSpeaker(label, { role: 'unknown', airtable_lead_id: '' });
-                        }}
-                        className="w-full border border-gray-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-violet-200"
-                      >
-                        <option value="unknown">Not set</option>
-                        <option value="coach">Coach</option>
-                        <option value="client">Client</option>
-                        <option value="other">Other</option>
-                      </select>
-                    </div>
-                    {row.role === 'client' && (
-                      <div>
-                        <label className="block text-gray-600 mb-1">Which lead?</label>
-                        <select
-                          value={row.airtable_lead_id || ''}
-                          onChange={(e) => {
-                            const lid = e.target.value;
-                            if (lid) pickClientLead(label, lid);
-                            else setSpeaker(label, { role: 'client', airtable_lead_id: '' });
-                          }}
-                          className="w-full border border-gray-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-violet-200"
-                        >
-                          <option value="">Choose…</option>
-                          {meetingLeadRows.map((ml: { airtable_lead_id?: string }) => {
-                            const lid = String(ml.airtable_lead_id || '').trim();
-                            const dn = leadDisplay[lid]?.name || shortLeadId(lid);
-                            return (
-                              <option key={lid} value={lid}>{dn}</option>
-                            );
-                          })}
-                        </select>
-                      </div>
-                    )}
-                    <div className="sm:col-span-2">
-                      <label className="block text-gray-600 mb-1">Name</label>
-                      <input
-                        type="text"
-                        value={row.name}
-                        onChange={(e) => setSpeaker(label, { name: e.target.value })}
-                        placeholder={row.role === 'other' ? 'Required for “Other”' : 'Optional — not shown in raw transcript above'}
-                        className="w-full border border-gray-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-violet-200 focus:border-violet-400"
-                      />
-                    </div>
-                    <details className="sm:col-span-2 group">
-                      <summary className="cursor-pointer text-sm text-gray-500 hover:text-gray-700 list-none [&::-webkit-details-marker]:hidden">
-                        <span className="text-gray-400 group-open:rotate-90 transition-transform inline-block mr-1">▸</span>
-                        Optional email (CRM match on save)
-                      </summary>
-                      <input
-                        type="email"
-                        value={row.email}
-                        onChange={(e) => setSpeaker(label, { email: e.target.value })}
-                        className="mt-2 w-full border border-gray-200 rounded-lg px-3 py-2 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-violet-200 focus:border-violet-400"
-                        placeholder="email@…"
-                      />
-                    </details>
-                  </div>
-                </div>
-              );
-            })}
-            <button
-              type="button"
-              onClick={handleSaveSpeakers}
-              disabled={saving}
-              className="w-full sm:w-auto px-6 py-2.5 bg-gray-900 text-white rounded-lg text-sm font-semibold hover:bg-gray-800 disabled:opacity-50"
-            >
-              {saving ? 'Saving…' : 'Save speaker assignments'}
-            </button>
-          </div>
-        )}
-      </div>
-
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
-        <h3 className="text-base font-semibold text-gray-900 mb-3">Meeting status</h3>
-        <div className="flex items-center gap-3 flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap">
           <select
             value={st}
             onChange={e => handleStatus(e.target.value)}
-            className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-200"
+            className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-violet-200"
           >
-            {EDITABLE_STATUSES.map((k) => (
-              <option key={k} value={k}>{STATUS_META[k].label}</option>
-            ))}
+            {EDITABLE_STATUSES.map(k => <option key={k} value={k}>{STATUS_META[k].label}</option>)}
           </select>
           <button
             onClick={() => { if (confirm('Skip this transcript?')) handleStatus('skipped'); }}
-            className="text-sm text-red-600 hover:text-red-800 hover:underline"
+            className="text-xs text-red-600 hover:text-red-800 hover:underline"
           >
             Skip
           </button>
         </div>
       </div>
 
+      {ev.needs_split && (
+        <div className="bg-orange-50 border border-orange-300 rounded-xl p-3 flex items-start gap-3 text-sm">
+          <span className="text-orange-600">&#9888;</span>
+          <span className="text-orange-900">This transcript may contain back-to-back calls. Use Split below to separate them.</span>
+        </div>
+      )}
+
+      {/* Two-column layout */}
+      <div className="flex flex-col lg:flex-row gap-4">
+        {/* Left: transcript */}
+        <div className="flex-1 min-w-0">
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+              <h3 className="text-sm font-semibold text-gray-900">Transcript</h3>
+              <div className="flex items-center gap-2">
+                {splitMode ? (
+                  <>
+                    <span className="text-xs text-orange-700">Click a line to set split point</span>
+                    {splitLine != null && (
+                      <button
+                        onClick={handleSplit}
+                        disabled={splitting}
+                        className="text-xs px-3 py-1 bg-orange-600 text-white rounded-lg hover:bg-orange-700 font-semibold disabled:opacity-50"
+                      >
+                        {splitting ? 'Splitting…' : `Split at line ${splitLine}`}
+                      </button>
+                    )}
+                    <button
+                      onClick={() => { setSplitMode(false); setSplitLine(null); }}
+                      className="text-xs text-gray-500 hover:text-gray-700 underline"
+                    >
+                      Cancel
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    onClick={() => setSplitMode(true)}
+                    className="text-xs px-3 py-1 bg-orange-50 text-orange-700 border border-orange-200 rounded-lg hover:bg-orange-100"
+                  >
+                    Split
+                  </button>
+                )}
+              </div>
+            </div>
+            <div
+              ref={transcriptRef}
+              className={`overflow-y-auto text-sm text-gray-700 leading-relaxed font-sans px-4 py-3 ${splitMode ? 'border-2 border-orange-200 rounded-b-lg' : ''}`}
+              style={{ maxHeight: 'calc(100vh - 260px)' }}
+            >
+              {lines.map((line, i) => {
+                const parsed = parseTranscriptSpeakerLine(line);
+                const lineNum = i + 1;
+                const isSplitPoint = splitMode && splitLine === lineNum;
+                const isAboveSplit = splitMode && splitLine != null && lineNum < splitLine;
+                const isHighlighted = parsed && highlightedLabel && parsed.label === highlightedLabel;
+                const speakerColour = parsed ? labelColourMap[parsed.label] : null;
+
+                if (!line.trim()) return <div key={i} className="h-2" />;
+
+                return (
+                  <div
+                    key={i}
+                    className={`group flex items-start gap-2 py-0.5 rounded transition-colors ${
+                      splitMode ? 'cursor-pointer hover:bg-orange-50' : ''
+                    } ${isSplitPoint ? 'bg-orange-100 border-t-2 border-orange-500' : ''} ${
+                      isAboveSplit ? 'opacity-50' : ''
+                    } ${isHighlighted ? (speakerColour?.highlight || 'bg-yellow-50') : ''}`}
+                    onClick={splitMode ? () => setSplitLine(lineNum) : undefined}
+                  >
+                    {splitMode && (
+                      <span className="text-[10px] text-gray-400 font-mono w-6 text-right shrink-0 pt-0.5 select-none">
+                        {lineNum}
+                      </span>
+                    )}
+                    <div className="flex-1 min-w-0">
+                      {parsed ? (
+                        <>
+                          <span
+                            className={`inline-block text-xs font-bold px-1.5 py-0.5 rounded mr-1.5 ${speakerColour ? `${speakerColour.bg} ${speakerColour.text}` : 'bg-gray-100 text-gray-700'}`}
+                          >
+                            {speakers[parsed.label]?.name || parsed.label}
+                          </span>
+                          <span className="text-gray-700">{parsed.rest}</span>
+                        </>
+                      ) : (
+                        <span className="text-gray-500">{line}</span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
+        {/* Right: speaker sidebar */}
+        <div className="w-full lg:w-80 shrink-0">
+          <div className="lg:sticky lg:top-4 space-y-3">
+            {/* Speaker cards */}
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-gray-900">
+                  Speakers
+                  <span className="text-xs text-gray-400 font-normal ml-2">{confirmedCount}/{labels.length} confirmed</span>
+                </h3>
+              </div>
+
+              {labels.length === 0 ? (
+                <p className="text-xs text-gray-500">No speakers found in the transcript.</p>
+              ) : (
+                <div className="space-y-2">
+                  {labels.map(label => (
+                    <SpeakerCard
+                      key={label}
+                      label={label}
+                      form={speakers[label] || { name: '', email: '', role: 'unknown', airtable_lead_id: '' }}
+                      colour={labelColourMap[label]}
+                      coachHint={coachHint}
+                      meetingLeads={meetingLeadRows}
+                      leadDisplay={leadDisplay}
+                      onUpdate={(patch) => setSpeaker(label, patch)}
+                      onMatchAirtable={handleMatchAirtable}
+                      matchBusy={matchBusyLabel === label}
+                      highlightedLabel={highlightedLabel}
+                      onHighlight={setHighlightedLabel}
+                    />
+                  ))}
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={handleSaveSpeakers}
+                disabled={saving}
+                className="w-full px-4 py-2 bg-gray-900 text-white rounded-lg text-sm font-semibold hover:bg-gray-800 disabled:opacity-50 transition-colors"
+              >
+                {saving ? 'Saving…' : 'Save all speakers'}
+              </button>
+            </div>
+
+            {/* Leads linked to meeting */}
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 space-y-2">
+              <h3 className="text-sm font-semibold text-gray-900">Leads on this call</h3>
+              {meetingLeadRows.length === 0 ? (
+                <p className="text-xs text-gray-500">No leads linked yet. Use "Match" on a speaker or search below.</p>
+              ) : (
+                <ul className="space-y-1">
+                  {meetingLeadRows.map((ml) => {
+                    const id = String(ml.airtable_lead_id || '').trim();
+                    const disp = leadDisplay[id] || { name: `Lead ${shortLeadId(id)}`, email: '' };
+                    return (
+                      <li key={id} className="flex items-center justify-between gap-2 text-xs py-1.5 border-b border-gray-50 last:border-0">
+                        <span className="min-w-0 truncate">
+                          <span className="font-medium text-gray-900">{disp.name}</span>
+                          {disp.email && <span className="text-gray-400 ml-1">{disp.email}</span>}
+                        </span>
+                        <button type="button" className="text-red-500 text-xs shrink-0 hover:underline" onClick={() => handleRemoveMeetingLead(id)}>
+                          Remove
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+              <div className="flex gap-1">
+                <input
+                  type="email"
+                  value={leadSearchEmail}
+                  onChange={(e) => setLeadSearchEmail(e.target.value)}
+                  className="flex-1 min-w-0 text-xs border border-gray-200 rounded-md px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-violet-200"
+                  placeholder="Search lead by email"
+                />
+                <button
+                  type="button"
+                  onClick={handleSearchLead}
+                  disabled={leadSearchBusy}
+                  className="text-xs px-3 py-1.5 bg-violet-600 text-white rounded-md font-medium hover:bg-violet-700 disabled:opacity-50"
+                >
+                  {leadSearchBusy ? '…' : 'Find'}
+                </button>
+              </div>
+              {leadSearchHit && (
+                <div className="flex items-center gap-2 text-xs bg-violet-50 border border-violet-100 rounded-md px-2 py-1.5">
+                  <span className="truncate">{leadSearchHit.name} <span className="text-gray-400">{leadSearchHit.email}</span></span>
+                  <button type="button" onClick={handleAddMeetingLead} className="text-violet-700 font-semibold hover:underline shrink-0 ml-auto">
+                    Add
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Per-lead segments */}
+      {(ev.lead_segments || []).length > 0 && (
+        <div className="bg-white rounded-xl border border-emerald-200 shadow-sm p-5 space-y-3">
+          <h3 className="text-base font-semibold text-gray-900">Per-lead segments</h3>
+          <p className="text-xs text-gray-500">
+            Utterances for each lead, scoped to when they were in the meeting (join/leave). If no join/leave data, all of that speaker's lines are shown.
+          </p>
+          <div className="space-y-4">
+            {(ev.lead_segments as any[]).map((seg: any) => {
+              const disp = leadDisplay[seg.airtable_lead_id] || { name: `Lead ${shortLeadId(seg.airtable_lead_id)}`, email: '' };
+              return (
+                <div key={seg.airtable_lead_id} className="border border-gray-100 rounded-lg p-3 bg-emerald-50/40">
+                  <p className="text-sm font-medium text-gray-900">{disp.name}</p>
+                  <pre className="mt-2 text-xs text-gray-700 whitespace-pre-wrap font-sans max-h-40 overflow-y-auto bg-white border border-gray-100 rounded p-2">
+                    {seg.text?.trim() ? seg.text : '(No lines in this window yet)'}
+                  </pre>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Toast */}
       {toast && (
         <div className="fixed bottom-6 right-6 bg-gray-900 text-white px-5 py-3 rounded-xl shadow-lg text-sm font-medium z-50 animate-fade-in">
           {toast}
@@ -877,6 +818,10 @@ function EventReview({ eventId, onBack }: { eventId: string; onBack: () => void 
     </div>
   );
 }
+
+/* ------------------------------------------------------------------ */
+/* Page                                                                */
+/* ------------------------------------------------------------------ */
 
 function RecallReviewContent() {
   const searchParams = useSearchParams();
@@ -897,13 +842,13 @@ function RecallReviewContent() {
 
   return (
     <Layout>
-      <div className="max-w-5xl mx-auto py-6 px-4 sm:px-6">
+      <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6">
         {!selectedId ? (
           <>
             <div className="mb-5">
-              <h1 className="text-2xl font-bold text-gray-900">Recall transcript review</h1>
+              <h1 className="text-2xl font-bold text-gray-900">Transcript review</h1>
               <p className="text-sm text-gray-500 mt-1">
-                Same flow as Krisp: incomplete meetings need leads linked and each diarized label mapped to coach/client. Per-lead text uses join/leave when Recall sends those events.
+                Review meeting transcripts. Confirm who each speaker is, link leads, then mark complete.
               </p>
             </div>
             <QueueView onSelect={setSelectedId} />
