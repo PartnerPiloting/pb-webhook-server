@@ -46,6 +46,7 @@ function sampleLinesForSpeaker(text, label, count = 6) {
 const clientService = require('../services/clientService');
 const { findLeadByEmail } = require('../services/inboundEmailService');
 const { DEFAULT_COACH_CLIENT_ID: RECALL_DEFAULT_COACH } = require('../services/recallLeadLinkService');
+const { createRecallBot } = require('../services/recallBotService');
 
 const DEFAULT_COACH_CLIENT_ID = RECALL_DEFAULT_COACH;
 
@@ -369,6 +370,24 @@ router.post('/recall-test/purge', async (req, res) => {
   } catch (e) {
     return res.status(500).json({ ok: false, error: e.message });
   }
+});
+
+/**
+ * POST /recall-api/create-bot
+ * Body: { meeting_url, join_at? (ISO), transcript_mode? ('prioritize_accuracy' | 'prioritize_low_latency') }
+ * Creates a Recall bot with separate-stream diarization + webhooks to this server's /webhooks/recall.
+ * Auth: PB admin secret (query/header) or portal recall-review auth (same as recall-review API).
+ */
+router.post('/recall-api/create-bot', async (req, res) => {
+  if (!pbAdminOk(req) && !(await pbRecallReviewApiOk(req))) {
+    return res.status(401).json({ error: 'unauthorized' });
+  }
+  const meetingUrl = req.body?.meeting_url || req.body?.meetingUrl;
+  const joinAt = req.body?.join_at || req.body?.joinAt;
+  const transcriptMode = req.body?.transcript_mode || req.body?.transcriptMode;
+  const out = await createRecallBot({ meetingUrl, joinAt, transcriptMode });
+  const status = out.ok ? 200 : typeof out.status === 'number' && out.status >= 400 && out.status < 600 ? out.status : 502;
+  return res.status(status).json(out);
 });
 
 router.get('/recall-review', async (req, res) => {
