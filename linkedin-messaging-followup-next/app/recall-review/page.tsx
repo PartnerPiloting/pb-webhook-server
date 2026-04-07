@@ -380,6 +380,8 @@ function EventReview({ eventId, onBack }: { eventId: string; onBack: () => void 
   const [leadSearchEmail, setLeadSearchEmail] = useState('');
   const [leadSearchBusy, setLeadSearchBusy] = useState(false);
   const [leadSearchHit, setLeadSearchHit] = useState<{ id: string; name: string; email: string } | null>(null);
+  const [copyFeedback, setCopyFeedback] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
   const transcriptRef = useRef<HTMLDivElement>(null);
 
   function buildLeadDisplayMap(event: any): Record<string, { name: string; email: string }> {
@@ -589,8 +591,34 @@ function EventReview({ eventId, onBack }: { eventId: string; onBack: () => void 
           >
             Skip
           </button>
+          <button
+            onClick={() => setShowHelp(h => !h)}
+            className="text-xs px-2 py-1 bg-violet-50 text-violet-600 border border-violet-200 rounded-lg hover:bg-violet-100 font-semibold"
+          >
+            ?
+          </button>
         </div>
       </div>
+
+      {showHelp && (
+        <div className="bg-violet-50 border border-violet-200 rounded-xl p-4 text-sm text-gray-800 space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="font-semibold text-violet-900">How to review a transcript</span>
+            <button onClick={() => setShowHelp(false)} className="text-xs text-gray-400 hover:text-gray-600">Close</button>
+          </div>
+          <ul className="list-disc pl-5 space-y-1.5 text-gray-700">
+            <li><strong>Status dropdown</strong> — Change between Incomplete, Complete, Verified, etc.</li>
+            <li><strong>Skip</strong> — Marks this meeting as not worth reviewing (test call, junk, etc.).</li>
+            <li><strong>Copy</strong> — Copies the full transcript text to your clipboard.</li>
+            {ev.needs_split && <li><strong>Split</strong> — Separates a back-to-back recording into individual meetings. Click Split, pick the line where the second call starts, then confirm.</li>}
+            <li><strong>Coach / Client / Other</strong> — Labels each speaker&apos;s role. Coach = you, Client = the lead, Other = anyone else.</li>
+            <li><strong>Name &amp; Email</strong> — Edit the speaker&apos;s name or email. The email is used to match them to a lead in Airtable.</li>
+            <li><strong>Match</strong> — Searches Airtable for a lead with that email and links them to this meeting.</li>
+            <li><strong>Save all speakers</strong> — Saves any name, role, or email changes you made.</li>
+            <li><strong>Search lead by email + Find</strong> — Manually search for an Airtable lead and link them to this call.</li>
+          </ul>
+        </div>
+      )}
 
       {ev.needs_split && (
         <div className="bg-orange-50 border border-orange-300 rounded-xl p-3 flex items-start gap-3 text-sm">
@@ -607,6 +635,22 @@ function EventReview({ eventId, onBack }: { eventId: string; onBack: () => void 
             <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
               <h3 className="text-sm font-semibold text-gray-900">Transcript</h3>
               <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    const plain = lines.map(l => {
+                      const p = parseTranscriptSpeakerLine(l);
+                      if (p) return `${speakers[p.label]?.name || p.label}: ${p.rest}`;
+                      return l;
+                    }).join('\n');
+                    navigator.clipboard.writeText(plain).then(() => {
+                      setCopyFeedback(true);
+                      setTimeout(() => setCopyFeedback(false), 1500);
+                    });
+                  }}
+                  className="text-xs px-3 py-1 bg-gray-50 text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-100"
+                >
+                  {copyFeedback ? '✓ Copied' : 'Copy'}
+                </button>
                 {splitMode ? (
                   <>
                     <span className="text-xs text-orange-700">Click a line to set split point</span>
@@ -627,12 +671,14 @@ function EventReview({ eventId, onBack }: { eventId: string; onBack: () => void 
                     </button>
                   </>
                 ) : (
-                  <button
-                    onClick={() => setSplitMode(true)}
-                    className="text-xs px-3 py-1 bg-orange-50 text-orange-700 border border-orange-200 rounded-lg hover:bg-orange-100"
-                  >
-                    Split
-                  </button>
+                  ev.needs_split && (
+                    <button
+                      onClick={() => setSplitMode(true)}
+                      className="text-xs px-3 py-1 bg-orange-50 text-orange-700 border border-orange-200 rounded-lg hover:bg-orange-100"
+                    >
+                      Split
+                    </button>
+                  )
                 )}
               </div>
             </div>
