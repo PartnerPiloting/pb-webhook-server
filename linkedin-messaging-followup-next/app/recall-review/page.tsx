@@ -281,7 +281,7 @@ function SpeakerCard({
                 form.role === 'client' ? 'bg-purple-600 text-white border-purple-600' : 'bg-white text-gray-700 border-gray-200 hover:bg-purple-50'
               }`}
             >
-              Client
+              Lead
             </button>
             <button
               type="button"
@@ -611,7 +611,7 @@ function EventReview({ eventId, onBack }: { eventId: string; onBack: () => void 
             <li><strong>Skip</strong> — Marks this meeting as not worth reviewing (test call, junk, etc.).</li>
             <li><strong>Copy</strong> — Copies the full transcript text to your clipboard.</li>
             {ev.needs_split && <li><strong>Split</strong> — Separates a back-to-back recording into individual meetings. Click Split, pick the line where the second call starts, then confirm.</li>}
-            <li><strong>Coach / Client / Other</strong> — Labels each speaker&apos;s role. Coach = you, Client = the lead, Other = anyone else.</li>
+            <li><strong>Coach / Lead / Other</strong> — Labels each speaker&apos;s role. Coach = you, Lead = the person you&apos;re coaching or selling to, Other = anyone else.</li>
             <li><strong>Name &amp; Email</strong> — Edit the speaker&apos;s name or email. The email is used to match them to a lead in Airtable.</li>
             <li><strong>Match</strong> — Searches Airtable for a lead with that email and links them to this meeting.</li>
             <li><strong>Save all speakers</strong> — Saves any name, role, or email changes you made.</li>
