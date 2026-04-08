@@ -118,8 +118,74 @@ async function createRecallBot(opts) {
   }
 }
 
+/**
+ * Retrieve a bot's full data from Recall API, including status_changes.
+ * @param {string} botId - UUID of the bot
+ * @returns {Promise<{ok: boolean, data?: object, error?: string}>}
+ */
+async function retrieveRecallBot(botId) {
+  const apiKey = (process.env.RECALL_API_KEY || '').trim();
+  if (!apiKey) return { ok: false, error: 'RECALL_API_KEY not set' };
+  if (!botId) return { ok: false, error: 'botId required' };
+
+  const base = recallApiBase();
+  const url = `${base}/api/v1/bot/${botId}/`;
+
+  try {
+    const res = await fetch(url, {
+      headers: {
+        Authorization: `Token ${apiKey}`,
+        Accept: 'application/json',
+      },
+    });
+    const text = await res.text();
+    let data;
+    try { data = text ? JSON.parse(text) : {}; } catch { data = { raw: text }; }
+
+    if (!res.ok) {
+      log.warn(`retrieveRecallBot failed ${res.status}: ${text.slice(0, 500)}`);
+      return { ok: false, status: res.status, error: data.detail || `HTTP ${res.status}` };
+    }
+    return { ok: true, data };
+  } catch (e) {
+    log.error(`retrieveRecallBot error: ${e.message}`);
+    return { ok: false, error: e.message };
+  }
+}
+
+/**
+ * Extract meeting start/end from a Recall bot's status_changes array.
+ * start = first in_call_recording created_at
+ * end   = call_ended created_at (or done if no call_ended)
+ */
+function extractMeetingTimesFromBot(botData) {
+  const changes = botData?.status_changes;
+  if (!Array.isArray(changes) || changes.length === 0) return { start: null, end: null };
+
+  let start = null;
+  let end = null;
+
+  for (const ev of changes) {
+    if (ev.code === 'in_call_recording' && !start) {
+      start = ev.created_at || null;
+    }
+    if (ev.code === 'call_ended') {
+      end = ev.created_at || null;
+    }
+  }
+
+  if (!end) {
+    const done = changes.find(e => e.code === 'done');
+    if (done) end = done.created_at || null;
+  }
+
+  return { start, end };
+}
+
 module.exports = {
   createRecallBot,
+  retrieveRecallBot,
+  extractMeetingTimesFromBot,
   recallApiBase,
   inboundWebhookBase,
 };
