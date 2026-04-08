@@ -44,8 +44,11 @@ async function createRecallBot(opts) {
   const base = recallApiBase();
   const webhookUrl = `${inboundWebhookBase()}/webhooks/recall`;
 
+  const botName = opts.botName || process.env.RECALL_BOT_NAME || "Guy's Notetaker";
+
   const body = {
     meeting_url: meetingUrl,
+    bot_name: botName,
     recording_config: {
       transcript: {
         provider: {
