@@ -29,6 +29,7 @@ const {
   participantEmail,
   linkRecallParticipantEmail,
 } = require('../services/recallLeadLinkService');
+const { tryAutoSplitForMeeting } = require('../services/recallAutoSplitService');
 
 const router = express.Router();
 const rawJson = express.raw({ type: 'application/json' });
@@ -266,6 +267,15 @@ router.post('/webhooks/recall', rawJson, async (req, res) => {
           log.warn(`RECALL-WEBHOOK presence failed: ${e.message}`);
         }
       }
+    }
+  }
+
+  if (meetingId && (event === 'bot.done' || event === 'recording.done')) {
+    try {
+      const splitResult = await tryAutoSplitForMeeting(meetingId);
+      log.info(`RECALL-WEBHOOK auto-split check meeting=${meetingId}: split=${splitResult.split || false}, reason=${splitResult.reason || 'n/a'}`);
+    } catch (e) {
+      log.warn(`RECALL-WEBHOOK auto-split failed for meeting=${meetingId}: ${e.message}`);
     }
   }
 

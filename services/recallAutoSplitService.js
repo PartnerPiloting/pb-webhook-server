@@ -35,8 +35,9 @@ const log = createSafeLogger('SYSTEM', null, 'recall_auto_split');
  * @returns {Promise<{ shouldSplit: boolean, reason: string, windows?: object[] }>}
  *   windows[]: { calendarEvent, startRel, endRel, participants: number[] }
  */
-async function evaluateAutoSplit(meeting, presenceRows, participants, coachClientId) {
+async function evaluateAutoSplit(meeting, presenceRows, participants, coachClientId, opts) {
   const cid = coachClientId || DEFAULT_COACH_CLIENT_ID;
+  const calendarEventsOverride = opts?.calendarEvents || null;
 
   if (!meeting.meeting_start || !meeting.meeting_end) {
     return { shouldSplit: false, reason: 'no meeting_start/meeting_end on recording' };
@@ -48,25 +49,31 @@ async function evaluateAutoSplit(meeting, presenceRows, participants, coachClien
     return { shouldSplit: false, reason: 'invalid meeting times' };
   }
 
-  let calendarEmail = '';
-  try {
-    const coach = await clientService.getClientById(cid);
-    calendarEmail = coach?.googleCalendarEmail || '';
-  } catch (_) { /* optional */ }
+  let calEvents;
+  if (calendarEventsOverride) {
+    calEvents = calendarEventsOverride;
+  } else {
+    let calendarEmail = '';
+    try {
+      const coach = await clientService.getClientById(cid);
+      calendarEmail = coach?.googleCalendarEmail || '';
+    } catch (_) { /* optional */ }
 
-  if (!calendarEmail) {
-    return { shouldSplit: false, reason: 'no calendar email for coach' };
-  }
+    if (!calendarEmail) {
+      return { shouldSplit: false, reason: 'no calendar email for coach' };
+    }
 
-  const padBefore = new Date(recStart.getTime() - 10 * 60 * 1000);
-  const padAfter = new Date(recEnd.getTime() + 10 * 60 * 1000);
-  const { events: calEvents, error: calErr } = await listCalendarEventsWithAttendeesInRange(
-    calendarEmail, padBefore, padAfter,
-  );
+    const padBefore = new Date(recStart.getTime() - 10 * 60 * 1000);
+    const padAfter = new Date(recEnd.getTime() + 10 * 60 * 1000);
+    const calResult = await listCalendarEventsWithAttendeesInRange(
+      calendarEmail, padBefore, padAfter,
+    );
 
-  if (calErr) {
-    log.warn(`calendar lookup failed: ${calErr}`);
-    return { shouldSplit: false, reason: `calendar error: ${calErr}` };
+    if (calResult.error) {
+      log.warn(`calendar lookup failed: ${calResult.error}`);
+      return { shouldSplit: false, reason: `calendar error: ${calResult.error}` };
+    }
+    calEvents = calResult.events;
   }
 
   const relevant = calEvents.filter(ev => {
@@ -223,8 +230,43 @@ async function executeAutoSplit(meetingId, windows, db) {
   return { ok: true, parent_id: meetingId, children };
 }
 
+/**
+ * One-call wrapper: load meeting + presence + participants from DB, evaluate, execute if needed.
+ * @param {number|string} meetingId
+ * @param {object} [opts] - { calendarEvents?: object[] } for testing
+ */
+async function tryAutoSplitForMeeting(meetingId, opts) {
+  const db = require('./recallWebhookDb');
+  const meeting = await db.getMeetingById(meetingId);
+  if (!meeting) return { ok: false, error: 'meeting not found' };
+
+  if (meeting.status === 'complete' || meeting.status === 'skipped') {
+    return { ok: false, reason: 'meeting already processed', status: meeting.status };
+  }
+
+  const presenceRows = await db.getPresenceForMeeting(meetingId);
+  const participants = await db.getParticipantsForMeeting(meetingId);
+
+  const evaluation = await evaluateAutoSplit(meeting, presenceRows, participants, null, opts);
+  log.info(`AUTO-SPLIT evaluate meeting=${meetingId}: shouldSplit=${evaluation.shouldSplit}, reason=${evaluation.reason}`);
+
+  if (!evaluation.shouldSplit) {
+    return { ok: true, split: false, reason: evaluation.reason };
+  }
+
+  const result = await executeAutoSplit(meetingId, evaluation.windows, {
+    getMeetingById: db.getMeetingById,
+    createChildMeetingFromUtterances: db.createChildMeetingFromUtterances,
+    markParentSplit: db.markParentSplit,
+  });
+
+  log.info(`AUTO-SPLIT execute meeting=${meetingId}: ok=${result.ok}, children=${result.children?.length || 0}`);
+  return { ok: result.ok, split: true, evaluation, result };
+}
+
 module.exports = {
   evaluateAutoSplit,
   executeAutoSplit,
+  tryAutoSplitForMeeting,
   DEFAULT_COACH_CLIENT_ID,
 };
