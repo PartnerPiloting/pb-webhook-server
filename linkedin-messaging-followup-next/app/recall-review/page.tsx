@@ -8,7 +8,6 @@ import {
   getRecallReviewEvent,
   saveRecallSpeakers,
   updateRecallStatus,
-  splitRecallTranscript,
   searchRecallLeadByEmail,
   addRecallMeetingLead,
   removeRecallMeetingLead,
@@ -191,11 +190,6 @@ function QueueView({ onSelect }: { onSelect: (id: string) => void }) {
                     </td>
                     <td className="px-4 py-3"><Badge status={r.status || 'incomplete'} /></td>
                     <td className="px-4 py-3 space-x-1">
-                      {r.needs_split && (
-                        <span className="text-[10px] font-semibold uppercase tracking-wide text-orange-800 bg-orange-100 border border-orange-200 rounded px-1.5 py-0.5">
-                          Split needed
-                        </span>
-                      )}
                     </td>
                     <td className="px-4 py-3 text-right">
                       <button onClick={() => onSelect(String(r.id))} className="text-sm font-medium text-violet-700 hover:text-violet-900 hover:underline">
@@ -372,9 +366,6 @@ function EventReview({ eventId, onBack }: { eventId: string; onBack: () => void 
   const [leadDisplay, setLeadDisplay] = useState<Record<string, { name: string; email: string }>>({});
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState('');
-  const [splitMode, setSplitMode] = useState(false);
-  const [splitLine, setSplitLine] = useState<number | null>(null);
-  const [splitting, setSplitting] = useState(false);
   const [highlightedLabel, setHighlightedLabel] = useState<string | null>(null);
   const [matchBusyLabel, setMatchBusyLabel] = useState<string | null>(null);
   const [leadSearchEmail, setLeadSearchEmail] = useState('');
@@ -470,22 +461,6 @@ function EventReview({ eventId, onBack }: { eventId: string; onBack: () => void 
     if (!st || !EDITABLE_STATUSES.includes(st as (typeof EDITABLE_STATUSES)[number])) return;
     const r = await updateRecallStatus(eventId, st);
     if (r.ok) { flash('Status updated'); load(); } else flash('Error: ' + (r.error || 'unknown'));
-  };
-
-  const handleSplit = async () => {
-    if (splitLine == null || splitLine < 1) { flash('Click a line in the transcript to set the split point'); return; }
-    if (!confirm(`Split transcript at line ${splitLine}?`)) return;
-    setSplitting(true);
-    const r = await splitRecallTranscript(eventId, splitLine);
-    setSplitting(false);
-    if (r.ok) {
-      flash(`Split done — child meeting #${r.child_id} created`);
-      setSplitMode(false);
-      setSplitLine(null);
-      load();
-    } else {
-      flash('Split failed: ' + (r.error || 'unknown'));
-    }
   };
 
   const handleMatchAirtable = async (label: string, email: string) => {
@@ -610,20 +585,12 @@ function EventReview({ eventId, onBack }: { eventId: string; onBack: () => void 
             <li><strong>Status dropdown</strong> — Change between Incomplete, Complete, Verified, etc.</li>
             <li><strong>Skip</strong> — Marks this meeting as not worth reviewing (test call, junk, etc.).</li>
             <li><strong>Copy</strong> — Copies the full transcript text to your clipboard.</li>
-            {ev.needs_split && <li><strong>Split</strong> — Separates a back-to-back recording into individual meetings. Click Split, pick the line where the second call starts, then confirm.</li>}
             <li><strong>Coach / Lead / Other</strong> — Labels each speaker&apos;s role. Coach = you, Lead = the person you&apos;re coaching or selling to, Other = anyone else.</li>
             <li><strong>Name &amp; Email</strong> — Edit the speaker&apos;s name or email. The email is used to match them to a lead in Airtable.</li>
             <li><strong>Match</strong> — Searches Airtable for a lead with that email and links them to this meeting.</li>
             <li><strong>Save all speakers</strong> — Saves any name, role, or email changes you made.</li>
             <li><strong>Search lead by email + Find</strong> — Manually search for an Airtable lead and link them to this call.</li>
           </ul>
-        </div>
-      )}
-
-      {ev.needs_split && (
-        <div className="bg-orange-50 border border-orange-300 rounded-xl p-3 flex items-start gap-3 text-sm">
-          <span className="text-orange-600">&#9888;</span>
-          <span className="text-orange-900">This transcript may contain back-to-back calls. Use Split below to separate them.</span>
         </div>
       )}
 
@@ -651,47 +618,15 @@ function EventReview({ eventId, onBack }: { eventId: string; onBack: () => void 
                 >
                   {copyFeedback ? '✓ Copied' : 'Copy'}
                 </button>
-                {splitMode ? (
-                  <>
-                    <span className="text-xs text-orange-700">Click a line to set split point</span>
-                    {splitLine != null && (
-                      <button
-                        onClick={handleSplit}
-                        disabled={splitting}
-                        className="text-xs px-3 py-1 bg-orange-600 text-white rounded-lg hover:bg-orange-700 font-semibold disabled:opacity-50"
-                      >
-                        {splitting ? 'Splitting…' : `Split at line ${splitLine}`}
-                      </button>
-                    )}
-                    <button
-                      onClick={() => { setSplitMode(false); setSplitLine(null); }}
-                      className="text-xs text-gray-500 hover:text-gray-700 underline"
-                    >
-                      Cancel
-                    </button>
-                  </>
-                ) : (
-                  ev.needs_split && (
-                    <button
-                      onClick={() => setSplitMode(true)}
-                      className="text-xs px-3 py-1 bg-orange-50 text-orange-700 border border-orange-200 rounded-lg hover:bg-orange-100"
-                    >
-                      Split
-                    </button>
-                  )
-                )}
               </div>
             </div>
             <div
               ref={transcriptRef}
-              className={`overflow-y-auto text-sm text-gray-700 leading-relaxed font-sans px-4 py-3 ${splitMode ? 'border-2 border-orange-200 rounded-b-lg' : ''}`}
+              className="overflow-y-auto text-sm text-gray-700 leading-relaxed font-sans px-4 py-3"
               style={{ maxHeight: 'calc(100vh - 260px)' }}
             >
               {lines.map((line, i) => {
                 const parsed = parseTranscriptSpeakerLine(line);
-                const lineNum = i + 1;
-                const isSplitPoint = splitMode && splitLine === lineNum;
-                const isAboveSplit = splitMode && splitLine != null && lineNum < splitLine;
                 const isHighlighted = parsed && highlightedLabel && parsed.label === highlightedLabel;
                 const speakerColour = parsed ? labelColourMap[parsed.label] : null;
 
@@ -701,17 +636,9 @@ function EventReview({ eventId, onBack }: { eventId: string; onBack: () => void 
                   <div
                     key={i}
                     className={`group flex items-start gap-2 py-0.5 rounded transition-colors ${
-                      splitMode ? 'cursor-pointer hover:bg-orange-50' : ''
-                    } ${isSplitPoint ? 'bg-orange-100 border-t-2 border-orange-500' : ''} ${
-                      isAboveSplit ? 'opacity-50' : ''
-                    } ${isHighlighted ? (speakerColour?.highlight || 'bg-yellow-50') : ''}`}
-                    onClick={splitMode ? () => setSplitLine(lineNum) : undefined}
+                      isHighlighted ? (speakerColour?.highlight || 'bg-yellow-50') : ''
+                    }`}
                   >
-                    {splitMode && (
-                      <span className="text-[10px] text-gray-400 font-mono w-6 text-right shrink-0 pt-0.5 select-none">
-                        {lineNum}
-                      </span>
-                    )}
                     <div className="flex-1 min-w-0">
                       {parsed ? (
                         <>
