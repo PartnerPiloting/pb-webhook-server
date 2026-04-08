@@ -11,7 +11,6 @@ import {
   searchRecallLeadByEmail,
   addRecallMeetingLead,
   removeRecallMeetingLead,
-  createRecallBotManual,
 } from '../../services/api';
 import { getCurrentClientId } from '../../utils/clientUtils';
 
@@ -794,80 +793,6 @@ function EventReview({ eventId, onBack }: { eventId: string; onBack: () => void 
 }
 
 /* ------------------------------------------------------------------ */
-/* Record a Meeting (manual fallback)                                  */
-/* ------------------------------------------------------------------ */
-
-function RecordMeetingButton() {
-  const [open, setOpen] = useState(false);
-  const [url, setUrl] = useState('');
-  const [sending, setSending] = useState(false);
-  const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null);
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    const trimmed = url.trim();
-    if (!trimmed) return;
-    setSending(true);
-    setResult(null);
-    const r = await createRecallBotManual(trimmed);
-    setSending(false);
-    if (r.ok) {
-      setResult({ ok: true, message: 'Bot sent! It will join the meeting shortly.' });
-      setUrl('');
-    } else {
-      setResult({ ok: false, message: r.error || 'Something went wrong.' });
-    }
-  }
-
-  if (!open) {
-    return (
-      <button
-        onClick={() => setOpen(true)}
-        className="inline-flex items-center gap-1.5 bg-violet-600 text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-violet-700 transition-colors shadow-sm"
-      >
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M10 8l6 4-6 4V8z" fill="currentColor" stroke="none"/></svg>
-        Record a meeting
-      </button>
-    );
-  }
-
-  return (
-    <div className="bg-violet-50 border border-violet-200 rounded-xl p-4 max-w-xl">
-      <form onSubmit={handleSubmit} className="flex flex-col sm:flex-row gap-2">
-        <input
-          type="url"
-          value={url}
-          onChange={(e) => { setUrl(e.target.value); setResult(null); }}
-          placeholder="Paste Zoom, Meet or Teams link…"
-          className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-300 focus:border-violet-400"
-          autoFocus
-          disabled={sending}
-        />
-        <div className="flex gap-2">
-          <button
-            type="submit"
-            disabled={sending || !url.trim()}
-            className="bg-violet-600 text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-violet-700 disabled:opacity-50 transition-colors whitespace-nowrap"
-          >
-            {sending ? 'Sending…' : 'Send bot'}
-          </button>
-          <button
-            type="button"
-            onClick={() => { setOpen(false); setResult(null); setUrl(''); }}
-            className="text-sm text-gray-500 hover:text-gray-700 px-2"
-          >
-            Cancel
-          </button>
-        </div>
-      </form>
-      {result && (
-        <p className={`text-sm mt-2 ${result.ok ? 'text-green-700' : 'text-red-600'}`}>{result.message}</p>
-      )}
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
 /* Page                                                                */
 /* ------------------------------------------------------------------ */
 
@@ -893,14 +818,11 @@ function RecallReviewContent() {
       <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6">
         {!selectedId ? (
           <>
-            <div className="mb-5 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900">Transcript review</h1>
-                <p className="text-sm text-gray-500 mt-1">
-                  Review meeting transcripts. Confirm who each speaker is, link leads, then mark complete.
-                </p>
-              </div>
-              <RecordMeetingButton />
+            <div className="mb-5">
+              <h1 className="text-2xl font-bold text-gray-900">Transcript review</h1>
+              <p className="text-sm text-gray-500 mt-1">
+                Review meeting transcripts. Confirm who each speaker is, link leads, then mark complete.
+              </p>
             </div>
             <QueueView onSelect={setSelectedId} />
           </>
