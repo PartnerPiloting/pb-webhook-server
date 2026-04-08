@@ -13,7 +13,7 @@ const { createSafeLogger } = require('../utils/loggerHelper');
 const log = createSafeLogger('SYSTEM', null, 'recall_bot');
 
 function recallApiBase() {
-  const raw = (process.env.RECALL_API_BASE_URL || 'https://us-west-2.recall.ai').trim().replace(/\/$/, '');
+  const raw = (process.env.RECALL_API_BASE_URL || 'https://ap-northeast-1.recall.ai').trim().replace(/\/$/, '');
   return raw;
 }
 
