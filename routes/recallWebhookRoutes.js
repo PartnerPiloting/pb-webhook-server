@@ -47,6 +47,7 @@ const clientService = require('../services/clientService');
 const { findLeadByEmail } = require('../services/inboundEmailService');
 const { DEFAULT_COACH_CLIENT_ID: RECALL_DEFAULT_COACH } = require('../services/recallLeadLinkService');
 const { createRecallBot } = require('../services/recallBotService');
+const { tryAutoSplitForMeeting } = require('../services/recallAutoSplitService');
 
 const DEFAULT_COACH_CLIENT_ID = RECALL_DEFAULT_COACH;
 
@@ -366,6 +367,20 @@ router.post('/recall-test/purge', async (req, res) => {
   if (!pbAdminOk(req)) return res.status(401).json({ error: 'unauthorized' });
   try {
     const out = await purgeManualTestRecall();
+    return res.json(out);
+  } catch (e) {
+    return res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+router.post('/recall-test/auto-split', async (req, res) => {
+  if (!pbAdminOk(req)) return res.status(401).json({ error: 'unauthorized' });
+  try {
+    const meetingId = req.body?.meeting_id;
+    if (!meetingId) return res.status(400).json({ ok: false, error: 'meeting_id required' });
+
+    const calendarEvents = req.body?.calendar_events || null;
+    const out = await tryAutoSplitForMeeting(meetingId, calendarEvents ? { calendarEvents } : undefined);
     return res.json(out);
   } catch (e) {
     return res.status(500).json({ ok: false, error: e.message });

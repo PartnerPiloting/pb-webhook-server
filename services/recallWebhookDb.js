@@ -679,6 +679,24 @@ async function getParticipantsForMeeting(meetingId) {
   }
 }
 
+async function getPresenceForMeeting(meetingId) {
+  const n = typeof meetingId === 'string' ? parseInt(meetingId, 10) : Number(meetingId);
+  if (!Number.isFinite(n)) return [];
+  const p = getPool();
+  if (!p) return [];
+  const client = await p.connect();
+  try {
+    await ensureSchema(client);
+    const r = await client.query(
+      `SELECT platform_participant_id, event_kind, abs_ts, rel_seconds FROM recall_participant_presence WHERE meeting_id = $1 ORDER BY id`,
+      [n],
+    );
+    return r.rows;
+  } finally {
+    client.release();
+  }
+}
+
 async function listMeetingLeads(meetingId) {
   const n = typeof meetingId === 'string' ? parseInt(meetingId, 10) : Number(meetingId);
   if (!Number.isFinite(n)) return [];
@@ -1239,6 +1257,7 @@ module.exports = {
   recordRecallPresence,
   upsertRecallMeetingParticipant,
   getParticipantsForMeeting,
+  getPresenceForMeeting,
   listMeetingLeads,
   addMeetingLead,
   removeMeetingLead,
