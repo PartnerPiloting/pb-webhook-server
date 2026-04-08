@@ -351,6 +351,24 @@ async function setMeetingIngestStatus(meetingId, { status, statusReason, needsSp
   }
 }
 
+async function updateMeetingTimes(meetingId, { meetingStart, meetingEnd }) {
+  const n = typeof meetingId === 'string' ? parseInt(meetingId, 10) : Number(meetingId);
+  if (!Number.isFinite(n) || n < 1) return { ok: false };
+  const p = getPool();
+  if (!p) return { ok: false };
+  const client = await p.connect();
+  try {
+    await ensureSchema(client);
+    await client.query(
+      `UPDATE recall_meetings SET meeting_start = COALESCE($2, meeting_start), meeting_end = COALESCE($3, meeting_end), updated_at = now() WHERE id = $1`,
+      [n, meetingStart || null, meetingEnd || null],
+    );
+    return { ok: true };
+  } finally {
+    client.release();
+  }
+}
+
 async function splitMeeting(meetingId, splitAtLine) {
   const n = typeof meetingId === 'string' ? parseInt(meetingId, 10) : Number(meetingId);
   if (!Number.isFinite(n) || n < 1) return { ok: false, error: 'invalid id' };
@@ -1259,6 +1277,7 @@ module.exports = {
   getMeetingQueue,
   updateMeetingStatus,
   setMeetingIngestStatus,
+  updateMeetingTimes,
   splitMeeting,
   appendRecallUtterance,
   recordRecallPresence,

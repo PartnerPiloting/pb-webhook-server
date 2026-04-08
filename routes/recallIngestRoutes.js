@@ -10,6 +10,7 @@ const { verifyRequestFromRecall } = require('../utils/verifyRecallWebhook');
 const {
   persistRecallWebhookEvent,
   upsertRecallMeeting,
+  updateMeetingTimes,
   appendRecallUtterance,
   recordRecallPresence,
   upsertRecallMeetingParticipant,
@@ -30,6 +31,7 @@ const {
   linkRecallParticipantEmail,
 } = require('../services/recallLeadLinkService');
 const { tryAutoSplitForMeeting } = require('../services/recallAutoSplitService');
+const { retrieveRecallBot, extractMeetingTimesFromBot } = require('../services/recallBotService');
 
 const router = express.Router();
 const rawJson = express.raw({ type: 'application/json' });
@@ -271,6 +273,26 @@ router.post('/webhooks/recall', rawJson, async (req, res) => {
   }
 
   if (meetingId && (event === 'bot.done' || event === 'recording.done')) {
+    // Fetch bot data from Recall API to get meeting start/end times
+    if (botId) {
+      try {
+        const botResult = await retrieveRecallBot(botId);
+        if (botResult.ok && botResult.data) {
+          const times = extractMeetingTimesFromBot(botResult.data);
+          if (times.start || times.end) {
+            await updateMeetingTimes(meetingId, { meetingStart: times.start, meetingEnd: times.end });
+            log.info(`RECALL-WEBHOOK stored meeting times meeting=${meetingId} start=${times.start} end=${times.end}`);
+          } else {
+            log.info(`RECALL-WEBHOOK no meeting times found in bot status_changes for bot=${botId}`);
+          }
+        } else {
+          log.warn(`RECALL-WEBHOOK could not retrieve bot ${botId}: ${botResult.error || 'unknown'}`);
+        }
+      } catch (e) {
+        log.warn(`RECALL-WEBHOOK retrieve bot failed for ${botId}: ${e.message}`);
+      }
+    }
+
     try {
       const splitResult = await tryAutoSplitForMeeting(meetingId);
       log.info(`RECALL-WEBHOOK auto-split check meeting=${meetingId}: split=${splitResult.split || false}, reason=${splitResult.reason || 'n/a'}`);
