@@ -1181,20 +1181,27 @@ async function seedManualTestRecall() {
       }
 
       let seq = 0;
-      let relTime = 0;
+      const pidTimeCursors = {};
+      if (m.presence) {
+        for (const pr of m.presence) {
+          if (pr.kind === 'join') pidTimeCursors[pr.pid] = pr.relSec || 0;
+        }
+      }
       for (const line of m.transcript) {
         const colonIdx = line.indexOf(': ');
         if (colonIdx < 0) continue;
         const speakerName = line.slice(0, colonIdx);
         const text = line.slice(colonIdx + 2);
         const part = m.participants.find(pp => pp.name === speakerName);
+        const pid = part?.id || 0;
         const dur = 3 + Math.random() * 8;
+        const relTime = pidTimeCursors[pid] != null ? pidTimeCursors[pid] : (seq * 5);
         await client.query(
           `INSERT INTO recall_utterances (meeting_id, seq, platform_participant_id, participant_name_snapshot, utterance_text, start_rel, end_rel)
            VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-          [meetingId, seq++, part?.id || 0, speakerName, text, relTime, relTime + dur],
+          [meetingId, seq++, pid, speakerName, text, relTime, relTime + dur],
         );
-        relTime += dur + 0.5;
+        if (pidTimeCursors[pid] != null) pidTimeCursors[pid] = relTime + dur + 0.5;
       }
 
       if (m.presence) {
