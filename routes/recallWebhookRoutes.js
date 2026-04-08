@@ -48,6 +48,7 @@ const { findLeadByEmail } = require('../services/inboundEmailService');
 const { DEFAULT_COACH_CLIENT_ID: RECALL_DEFAULT_COACH } = require('../services/recallLeadLinkService');
 const { createRecallBot } = require('../services/recallBotService');
 const { tryAutoSplitForMeeting } = require('../services/recallAutoSplitService');
+const { getAutoJoinStatus } = require('../services/recallAutoJoinService');
 
 const DEFAULT_COACH_CLIENT_ID = RECALL_DEFAULT_COACH;
 
@@ -385,6 +386,13 @@ router.post('/recall-test/auto-split', async (req, res) => {
   } catch (e) {
     return res.status(500).json({ ok: false, error: e.message });
   }
+});
+
+router.get('/recall-api/auto-join-status', async (req, res) => {
+  if (!pbAdminOk(req) && !(await pbRecallReviewApiOk(req))) {
+    return res.status(401).json({ error: 'unauthorized' });
+  }
+  return res.json(getAutoJoinStatus());
 });
 
 /**

@@ -2200,6 +2200,20 @@ export const removeRecallMeetingLead = async (meetingId, airtableLeadId) => {
   }
 };
 
+export const createRecallBotManual = async (meetingUrl) => {
+  try {
+    const base = getBackendBase();
+    const r = await fetch(`${base}/recall-api/create-bot`, {
+      method: 'POST',
+      headers: recallReviewFetchHeaders(),
+      body: JSON.stringify({ meeting_url: meetingUrl }),
+    });
+    return await r.json();
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+};
+
 export default api;
 
 // Export helper functions for use in components

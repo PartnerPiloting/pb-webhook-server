@@ -1794,6 +1794,15 @@ try {
     moduleLogger.error('index.js: Error mounting recallWebhookRoutes', e.message, e.stack);
 }
 
+// Recall auto-join: check calendar every 2 min, dispatch bots to upcoming meetings
+try {
+    const { startAutoJoin } = require('./services/recallAutoJoinService.js');
+    startAutoJoin();
+    moduleLogger.info('index.js: Recall auto-join scheduler started');
+} catch (e) {
+    moduleLogger.error('index.js: Error starting Recall auto-join', e.message, e.stack);
+}
+
 
 // Top Scoring Leads scaffold (feature gated inside the router module)
 try {
