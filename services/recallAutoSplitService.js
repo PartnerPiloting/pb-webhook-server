@@ -109,39 +109,48 @@ async function evaluateAutoSplit(meeting, presenceRows, participants, coachClien
     }
   }
 
-  const windows = [];
+  // Pass 1: assign participants to each calendar event
+  const slots = [];
   for (let i = 0; i < relevant.length; i++) {
     const calEv = relevant[i];
     const calStart = new Date(calEv.start);
-    const calEnd = new Date(calEv.end);
     const nextCalStart = i < relevant.length - 1 ? new Date(relevant[i + 1].start) : null;
+    const windowEndAbs = nextCalStart || new Date(calEv.end);
 
-    const windowStartAbs = calStart;
-    const windowEndAbs = nextCalStart || calEnd;
-
-    const pidsInWindow = [];
+    const pidsInSlot = [];
     for (const [pid, joins] of joinsByPid) {
-      const joinedDuringWindow = joins.some(j => {
+      const joinedDuringSlot = joins.some(j => {
         if (!j.ts) return false;
-        return j.ts >= new Date(windowStartAbs.getTime() - HANDOVER_BUFFER_MS) &&
+        return j.ts >= new Date(calStart.getTime() - HANDOVER_BUFFER_MS) &&
                j.ts <= new Date(windowEndAbs.getTime() + HANDOVER_BUFFER_MS);
       });
-      if (joinedDuringWindow) pidsInWindow.push(pid);
+      if (joinedDuringSlot) pidsInSlot.push(pid);
     }
 
-    if (i > 0 && pidsInWindow.length === 0) {
+    if (i > 0 && pidsInSlot.length === 0) {
       log.info(`calendar event "${calEv.summary}" appears to be a no-show (no participant joins)`);
+      slots.push(null);
       continue;
     }
+
+    slots.push({ calEv, pids: pidsInSlot });
+  }
+
+  // Pass 2: build overlapping windows using leave/join times
+  const activeSlots = slots.filter(Boolean);
+  const windows = [];
+  for (let idx = 0; idx < activeSlots.length; idx++) {
+    const slot = activeSlots[idx];
+    const nextSlot = idx < activeSlots.length - 1 ? activeSlots[idx + 1] : null;
 
     let startRel = null;
     let endRel = null;
 
-    if (i === 0) {
+    if (idx === 0) {
       startRel = 0;
     } else {
       let earliestJoin = Infinity;
-      for (const pid of pidsInWindow) {
+      for (const pid of slot.pids) {
         const joins = joinsByPid.get(pid) || [];
         for (const j of joins) {
           if (j.rel != null && j.rel < earliestJoin) earliestJoin = j.rel;
@@ -150,15 +159,15 @@ async function evaluateAutoSplit(meeting, presenceRows, participants, coachClien
       startRel = earliestJoin === Infinity ? null : earliestJoin;
     }
 
-    if (i === relevant.length - 1 || (i < relevant.length - 1 && windows.length === relevant.length - 1)) {
+    if (!nextSlot) {
       endRel = null;
     } else {
-      const prevPids = i === 0
-        ? [...joinsByPid.keys()].filter(pid => !pidsInWindow.includes(pid))
-        : (windows[windows.length - 1]?.participants || []);
+      // Departing pids: in this slot but not in the next
+      const nextPidSet = new Set(nextSlot.pids);
+      const departingPids = slot.pids.filter(pid => !nextPidSet.has(pid));
 
       let latestLeave = -Infinity;
-      for (const pid of prevPids) {
+      for (const pid of departingPids) {
         const leaves = leavesByPid.get(pid) || [];
         for (const lv of leaves) {
           if (lv.rel != null && lv.rel > latestLeave) latestLeave = lv.rel;
@@ -167,19 +176,18 @@ async function evaluateAutoSplit(meeting, presenceRows, participants, coachClien
 
       if (latestLeave > -Infinity) {
         endRel = latestLeave;
-      } else if (startRel != null) {
-        endRel = startRel + HANDOVER_BUFFER_MS / 1000;
       } else {
+        const calEnd = new Date(slot.calEv.end);
         const offsetMs = calEnd.getTime() - recStart.getTime();
-        endRel = offsetMs / 1000;
+        endRel = Math.max(0, offsetMs / 1000);
       }
     }
 
     windows.push({
-      calendarEvent: { summary: calEv.summary, start: calEv.start, end: calEv.end },
+      calendarEvent: { summary: slot.calEv.summary, start: slot.calEv.start, end: slot.calEv.end },
       startRel,
       endRel,
-      participants: pidsInWindow,
+      participants: slot.pids,
     });
   }
 
