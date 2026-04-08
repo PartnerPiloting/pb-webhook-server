@@ -73,6 +73,10 @@ async function createRecallBot(opts) {
     body.join_at = String(opts.joinAt).trim();
   }
 
+  if (opts.meetingTitle) {
+    body.metadata = { ...(body.metadata || {}), meeting_title: String(opts.meetingTitle).trim() };
+  }
+
   const url = `${base}/api/v1/bot/`;
 
   try {

@@ -82,6 +82,7 @@ async function listCalendarEventsWithAttendeesInRange(calendarEmail, timeMin, ti
                 singleEvents: true,
                 orderBy: 'startTime',
                 maxResults: 250,
+                conferenceDataVersion: 1,
                 pageToken: pageToken || undefined,
             });
             const items = response.data.items || [];
@@ -96,6 +97,8 @@ async function listCalendarEventsWithAttendeesInRange(calendarEmail, timeMin, ti
             location: event.location || '',
             eventId: event.id || '',
             htmlLink: event.htmlLink || '',
+            description: event.description || '',
+            conferenceData: event.conferenceData || null,
             attendees: mapAttendeesFromGoogleEvent(event),
         }));
         return { events };
