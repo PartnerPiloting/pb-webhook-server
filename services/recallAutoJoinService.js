@@ -27,6 +27,25 @@ const MEETING_URL_PATTERNS = [
 
 const scheduledEventIds = new Map();
 
+function normalizeMeetingUrl(url) {
+  try {
+    const u = new URL(url);
+    if (u.hostname.includes('zoom.us')) return `${u.origin}${u.pathname}`;
+    return `${u.origin}${u.pathname}`;
+  } catch { return url; }
+}
+
+function hasActiveBotForUrl(meetingUrl) {
+  const norm = normalizeMeetingUrl(meetingUrl);
+  const recentCutoff = Date.now() - 4 * 60 * 60 * 1000;
+  for (const [, info] of scheduledEventIds) {
+    if (info.skipped || !info.ok || !info.meetingUrl) continue;
+    if (info.scheduledAt < recentCutoff) continue;
+    if (normalizeMeetingUrl(info.meetingUrl) === norm) return true;
+  }
+  return false;
+}
+
 function extractMeetingUrl(event) {
   if (event.conferenceData) {
     const eps = event.conferenceData.entryPoints;
@@ -96,6 +115,12 @@ async function checkAndDispatchBots() {
 
     if (eventStart.getTime() < now.getTime() - 10 * 60 * 1000) {
       scheduledEventIds.set(eventKey, { scheduledAt: Date.now(), skipped: true, reason: 'started >10min ago' });
+      continue;
+    }
+
+    if (hasActiveBotForUrl(meetingUrl)) {
+      log.info(`auto-join: skipping "${ev.summary}" — bot already active on same meeting link (back-to-back)`);
+      scheduledEventIds.set(eventKey, { scheduledAt: Date.now(), skipped: true, reason: 'bot already on same link' });
       continue;
     }
 
