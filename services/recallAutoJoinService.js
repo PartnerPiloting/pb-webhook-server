@@ -35,13 +35,21 @@ function normalizeMeetingUrl(url) {
   } catch { return url; }
 }
 
-function hasActiveBotForUrl(meetingUrl) {
+function hasActiveBotForUrl(meetingUrl, currentEventStart) {
   const norm = normalizeMeetingUrl(meetingUrl);
-  const recentCutoff = Date.now() - 4 * 60 * 60 * 1000;
+  const now = Date.now();
   for (const [, info] of scheduledEventIds) {
     if (info.skipped || !info.ok || !info.meetingUrl) continue;
-    if (info.scheduledAt < recentCutoff) continue;
-    if (normalizeMeetingUrl(info.meetingUrl) === norm) return true;
+    if (normalizeMeetingUrl(info.meetingUrl) !== norm) continue;
+    if (!info.eventEnd) continue;
+    const endMs = new Date(info.eventEnd).getTime();
+    const bufferMs = 15 * 60 * 1000;
+    if (endMs + bufferMs < now) continue;
+    if (currentEventStart) {
+      const startMs = new Date(currentEventStart).getTime();
+      if (startMs > endMs + bufferMs) continue;
+    }
+    return true;
   }
   return false;
 }
@@ -116,8 +124,8 @@ async function checkAndDispatchBots() {
     const meetingUrl = extractMeetingUrl(ev);
     if (!meetingUrl) {
       log.info(`auto-join: no meeting link found for "${ev.summary}" (location="${ev.location?.substring(0,100)}", hasConferenceData=${!!ev.conferenceData})`);
+      continue;
     }
-    if (!meetingUrl) continue;
 
     const eventStart = new Date(ev.start);
 
@@ -126,7 +134,7 @@ async function checkAndDispatchBots() {
       continue;
     }
 
-    if (hasActiveBotForUrl(meetingUrl)) {
+    if (hasActiveBotForUrl(meetingUrl, ev.start)) {
       log.info(`auto-join: skipping "${ev.summary}" — bot already active on same meeting link (back-to-back)`);
       scheduledEventIds.set(eventKey, { scheduledAt: Date.now(), skipped: true, reason: 'bot already on same link' });
       continue;
@@ -147,6 +155,7 @@ async function checkAndDispatchBots() {
       scheduledEventIds.set(eventKey, {
         scheduledAt: Date.now(),
         meetingUrl,
+        eventEnd: ev.end || null,
         botId: result.recall_response?.id || null,
         ok: result.ok,
         error: result.ok ? null : result.error,
