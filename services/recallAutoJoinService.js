@@ -100,7 +100,12 @@ async function checkAndDispatchBots() {
     return;
   }
 
-  if (!events || events.length === 0) return;
+  if (!events || events.length === 0) {
+    log.info(`auto-join: no calendar events in window ${lookbackStart.toISOString()} → ${lookaheadEnd.toISOString()}`);
+    return;
+  }
+
+  log.info(`auto-join: found ${events.length} event(s) in window: ${events.map(e => `"${e.summary}" at ${e.start}`).join(', ')}`);
 
   cleanupOldEntries();
 
@@ -109,6 +114,9 @@ async function checkAndDispatchBots() {
     if (scheduledEventIds.has(eventKey)) continue;
 
     const meetingUrl = extractMeetingUrl(ev);
+    if (!meetingUrl) {
+      log.info(`auto-join: no meeting link found for "${ev.summary}" (location="${ev.location?.substring(0,100)}", hasConferenceData=${!!ev.conferenceData})`);
+    }
     if (!meetingUrl) continue;
 
     const eventStart = new Date(ev.start);
