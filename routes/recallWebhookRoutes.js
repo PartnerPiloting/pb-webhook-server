@@ -322,7 +322,8 @@ router.get('/recall-review/api/search-lead', async (req, res) => {
   if (!(await pbRecallReviewApiOk(req))) return res.status(401).json({ error: 'unauthorized' });
   const email = typeof req.query.email === 'string' ? req.query.email.trim().toLowerCase() : '';
   const nameQ = typeof req.query.name === 'string' ? req.query.name.trim() : '';
-  if (!email && !nameQ) return res.status(400).json({ error: 'email or name query required' });
+  const linkedinQ = typeof req.query.linkedin === 'string' ? req.query.linkedin.trim() : '';
+  if (!email && !nameQ && !linkedinQ) return res.status(400).json({ error: 'email, name, or linkedin query required' });
   try {
     const client = await clientService.getClientById(DEFAULT_COACH_CLIENT_ID);
     if (!client?.airtableBaseId) return res.json({ lead: null, error: 'no_base' });
@@ -330,6 +331,24 @@ router.get('/recall-review/api/search-lead', async (req, res) => {
     let lead = null;
     if (email && email.includes('@')) {
       lead = await findLeadByEmail(client, email);
+    }
+    if (!lead && linkedinQ && linkedinQ.includes('linkedin.com/')) {
+      const { createBaseInstance } = require('../config/airtableClient');
+      const base = createBaseInstance(client.airtableBaseId);
+      const normalized = linkedinQ.replace(/\/+$/, '').toLowerCase();
+      const records = await base('Leads').select({
+        filterByFormula: `OR(LOWER({LinkedIn Profile URL}) = "${normalized}", LOWER({LinkedIn URL}) = "${normalized}")`,
+        maxRecords: 1,
+      }).firstPage();
+      if (records && records.length > 0) {
+        const rec = records[0];
+        lead = {
+          id: rec.id,
+          firstName: rec.fields['First Name'] || '',
+          lastName: rec.fields['Last Name'] || '',
+          email: rec.fields['Email'] || '',
+        };
+      }
     }
     if (!lead && nameQ && nameQ.length >= 2) {
       const nameResult = await findLeadByName(client, nameQ);
@@ -347,7 +366,7 @@ router.get('/recall-review/api/search-lead', async (req, res) => {
       }
     }
     if (!lead?.id) return res.json({ lead: null });
-    const name = [lead.firstName, lead.lastName].filter(Boolean).join(' ').trim() || email || nameQ;
+    const name = [lead.firstName, lead.lastName].filter(Boolean).join(' ').trim() || email || nameQ || linkedinQ;
     return res.json({
       lead: {
         id: lead.id,

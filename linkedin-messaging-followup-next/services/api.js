@@ -2158,11 +2158,12 @@ export const analyzeRecallTranscript = async (id) => {
   }
 };
 
-export const searchRecallLeadByEmail = async (email) => {
+export const searchRecallLeadByEmail = async (email, linkedinUrl) => {
   try {
     const base = getBackendBase();
     const q = new URLSearchParams();
-    q.set('email', email);
+    if (email) q.set('email', email);
+    if (linkedinUrl) q.set('linkedin', linkedinUrl);
     const r = await fetch(`${base}/recall-review/api/search-lead?${q.toString()}`, {
       cache: 'no-store',
       headers: recallReviewFetchHeaders(),
