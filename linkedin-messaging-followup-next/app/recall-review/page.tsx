@@ -248,7 +248,7 @@ function SpeakerCard({
       <div className="flex items-center justify-between gap-2 mb-2">
         <div className="flex items-center gap-2 min-w-0">
           <span className={`inline-block w-3 h-3 rounded-full shrink-0 ${colour.bg} ${colour.border} border`} />
-          <span className="font-semibold text-sm text-gray-900 truncate">{label}</span>
+          <span className="font-semibold text-sm text-gray-900 truncate">{form.name || label}</span>
         </div>
         {isConfirmed && (
           <span className="text-green-600 text-sm shrink-0" title="Speaker confirmed">&#10003;</span>
@@ -434,10 +434,28 @@ function EventReview({ eventId, onBack }: { eventId: string; onBack: () => void 
             }
           }
 
+          if (role === 'unknown' && v.airtable_lead_id) {
+            role = 'client';
+          }
+          if (role === 'unknown' && name && name.length >= 2) {
+            role = 'client';
+          }
+
           init[label] = { name, email, role, airtable_lead_id: v.airtable_lead_id || '' };
         }
         setSpeakers(init);
         setLeadDisplay(buildLeadDisplayMap(event));
+
+        const allAutoDetected = Object.values(init).every(s => s.role !== 'unknown');
+        const anyUnsaved = Object.values(init).some(s => {
+          const existing = vs[Object.keys(init).find(k => init[k] === s) || ''] || {};
+          return s.role !== (existing.role || 'unknown') || s.name !== (existing.name || '');
+        });
+        if (allAutoDetected && anyUnsaved && Object.keys(init).length > 0) {
+          saveRecallSpeakers(eventId, init).then(sr => {
+            if (sr.ok) setLeadDisplay(buildLeadDisplayMap({ ...event, verified_speakers: init }));
+          });
+        }
       }
       setError(r.error || null);
     }).finally(() => setLoading(false));
