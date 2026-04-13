@@ -423,11 +423,14 @@ function EventReview({ eventId, onBack }: { eventId: string; onBack: () => void 
 
           if (role === 'unknown' && coachHint.displayName) {
             const lcLabel = label.toLowerCase();
+            const lcName = name.toLowerCase();
             const lcCoach = coachHint.displayName.toLowerCase();
-            if (lcLabel.includes(lcCoach) || lcCoach.includes(lcLabel)) {
+            const coachFirst = lcCoach.split(/\s+/)[0];
+            if (lcLabel.includes(lcCoach) || lcCoach.includes(lcLabel)
+                || (coachFirst.length >= 3 && (lcName.includes(coachFirst) || lcLabel.includes(coachFirst)))) {
               role = 'coach';
-              name = coachHint.displayName;
-              email = coachHint.calendarEmail || '';
+              name = name || coachHint.displayName;
+              email = email || coachHint.calendarEmail || '';
             }
           }
 
