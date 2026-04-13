@@ -30,6 +30,8 @@ const {
   participantEmail,
   linkRecallParticipantEmail,
 } = require('../services/recallLeadLinkService');
+const clientService = require('../services/clientService');
+const { findLeadByName } = require('../services/inboundEmailService');
 const { tryAutoSplitForMeeting } = require('../services/recallAutoSplitService');
 const { retrieveRecallBot, extractMeetingTimesFromBot } = require('../services/recallBotService');
 
@@ -76,25 +78,57 @@ function recallQueryTokenOk(req) {
 }
 
 async function tryLinkParticipantToLead(meetingId, participant, coachClientId) {
+  const log = createSafeLogger('SYSTEM', null, 'recall_lead_link');
   const email = participantEmail(participant);
-  if (!email) return;
   const pid = participant?.id != null ? Number(participant.id) : null;
   if (!Number.isFinite(pid)) return;
 
   const speakerLabel = `Participant ${pid}`;
-  const { leadId, matchMethod } = await linkRecallParticipantEmail(email, { coachClientId });
   const name = typeof participant.name === 'string' ? participant.name.trim() : '';
+
+  let leadId = null;
+  let matchMethod = 'unmatched';
+
+  if (email) {
+    const emailResult = await linkRecallParticipantEmail(email, { coachClientId });
+    leadId = emailResult.leadId;
+    matchMethod = emailResult.matchMethod || 'email';
+  }
+
+  if (!leadId && name && name.length >= 3) {
+    try {
+      const coach = await clientService.getClientById(coachClientId);
+      if (coach?.airtableBaseId) {
+        const coachName = (coach.clientName || '').toLowerCase();
+        const nameLC = name.toLowerCase();
+        const isCoach = coachName && (nameLC.includes(coachName.split(/\s+/)[0]) || coachName.includes(nameLC.split(/\s+/)[0]));
+        if (!isCoach) {
+          const nameResult = await findLeadByName(coach, name);
+          if (nameResult.matchType === 'unique' && nameResult.lead?.id) {
+            leadId = nameResult.lead.id;
+            matchMethod = 'name';
+            log.info(`RECALL-LINK matched "${name}" to lead ${leadId} by name`);
+          } else if (nameResult.matchType === 'ambiguous') {
+            log.info(`RECALL-LINK ambiguous name match for "${name}" (${nameResult.allMatches?.length} candidates)`);
+            matchMethod = 'name_ambiguous';
+          }
+        }
+      }
+    } catch (e) {
+      log.warn(`RECALL-LINK name lookup failed for "${name}": ${e.message}`);
+    }
+  }
 
   await upsertRecallMeetingParticipant({
     meetingId,
     platformParticipantId: pid,
     speakerLabel,
     verifiedName: name || null,
-    verifiedEmail: email,
+    verifiedEmail: email || null,
     role: leadId ? 'client' : 'unknown',
     airtableLeadId: leadId || null,
     coachClientId,
-    matchMethod: matchMethod || 'ingest',
+    matchMethod,
   });
 
   if (leadId) {
