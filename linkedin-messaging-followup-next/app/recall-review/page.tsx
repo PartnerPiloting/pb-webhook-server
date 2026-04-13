@@ -236,8 +236,30 @@ function SpeakerCard({
   highlightedLabel: string | null;
   onHighlight: (label: string | null) => void;
 }) {
-  const isConfirmed = form.role !== 'unknown' && (form.role === 'coach' || form.role === 'other' || (form.role === 'client' && form.airtable_lead_id));
+  const isCoach = form.role === 'coach';
+  const isLead = form.role === 'client';
+  const isOther = form.role === 'other';
+  const isConfirmed = isCoach || isOther || (isLead && !!form.airtable_lead_id);
   const isActive = highlightedLabel === label;
+
+  if (isCoach) {
+    return (
+      <div
+        className={`rounded-lg border p-3 transition-all ${colour.border} ${isActive ? colour.bg : 'bg-white'} ring-2 ring-green-300`}
+        onMouseEnter={() => onHighlight(label)}
+        onMouseLeave={() => onHighlight(null)}
+      >
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className={`inline-block w-3 h-3 rounded-full shrink-0 ${colour.bg} ${colour.border} border`} />
+            <span className="font-semibold text-sm text-gray-900 truncate">{form.name || coachHint.displayName || 'Coach'}</span>
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 font-medium">Coach</span>
+          </div>
+          <span className="text-green-600 text-sm shrink-0" title="Coach confirmed">&#10003;</span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -250,8 +272,10 @@ function SpeakerCard({
           <span className={`inline-block w-3 h-3 rounded-full shrink-0 ${colour.bg} ${colour.border} border`} />
           <span className="font-semibold text-sm text-gray-900 truncate">{form.name || label}</span>
         </div>
-        {isConfirmed && (
+        {isConfirmed ? (
           <span className="text-green-600 text-sm shrink-0" title="Speaker confirmed">&#10003;</span>
+        ) : (
+          <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 font-medium">not matched</span>
         )}
       </div>
 
@@ -261,18 +285,9 @@ function SpeakerCard({
           <div className="flex gap-1.5 flex-wrap">
             <button
               type="button"
-              onClick={() => onUpdate({ role: 'coach', name: coachHint.displayName || 'Coach', email: coachHint.calendarEmail || '', airtable_lead_id: '' })}
-              className={`text-xs px-2.5 py-1 rounded-md border font-medium transition-colors ${
-                form.role === 'coach' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-200 hover:bg-blue-50'
-              }`}
-            >
-              Coach
-            </button>
-            <button
-              type="button"
               onClick={() => onUpdate({ role: 'client' })}
               className={`text-xs px-2.5 py-1 rounded-md border font-medium transition-colors ${
-                form.role === 'client' ? 'bg-purple-600 text-white border-purple-600' : 'bg-white text-gray-700 border-gray-200 hover:bg-purple-50'
+                isLead ? 'bg-purple-600 text-white border-purple-600' : 'bg-white text-gray-700 border-gray-200 hover:bg-purple-50'
               }`}
             >
               Lead
@@ -281,7 +296,7 @@ function SpeakerCard({
               type="button"
               onClick={() => onUpdate({ role: 'other', airtable_lead_id: '' })}
               className={`text-xs px-2.5 py-1 rounded-md border font-medium transition-colors ${
-                form.role === 'other' ? 'bg-gray-700 text-white border-gray-700' : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
+                isOther ? 'bg-gray-700 text-white border-gray-700' : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
               }`}
             >
               Other
@@ -289,7 +304,7 @@ function SpeakerCard({
           </div>
         </div>
 
-        {form.role === 'client' && meetingLeads.length > 0 && (
+        {isLead && meetingLeads.length > 0 && (
           <div>
             <label className="block text-xs text-gray-500 mb-0.5">Link to lead</label>
             <select
@@ -326,29 +341,31 @@ function SpeakerCard({
           />
         </div>
 
-        <div>
-          <label className="block text-xs text-gray-500 mb-0.5">Email</label>
-          <div className="flex gap-1">
-            <input
-              type="email"
-              value={form.email}
-              onChange={(e) => onUpdate({ email: e.target.value })}
-              placeholder="email@example.com"
-              className="flex-1 min-w-0 text-sm border border-gray-200 rounded-md px-2 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-violet-200"
-            />
-            {form.email && form.email.includes('@') && form.role !== 'coach' && (
-              <button
-                type="button"
-                onClick={() => onMatchAirtable(label, form.email)}
-                disabled={matchBusy}
-                className="text-[10px] px-2 py-1 rounded-md bg-violet-600 text-white font-medium hover:bg-violet-700 disabled:opacity-50 shrink-0 whitespace-nowrap"
-                title="Find this email in Airtable and link as a lead"
-              >
-                {matchBusy ? '…' : 'Match'}
-              </button>
-            )}
+        {isLead && (
+          <div>
+            <label className="block text-xs text-gray-500 mb-0.5">Email</label>
+            <div className="flex gap-1">
+              <input
+                type="email"
+                value={form.email}
+                onChange={(e) => onUpdate({ email: e.target.value })}
+                placeholder="email@example.com"
+                className="flex-1 min-w-0 text-sm border border-gray-200 rounded-md px-2 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-violet-200"
+              />
+              {form.email && form.email.includes('@') && (
+                <button
+                  type="button"
+                  onClick={() => onMatchAirtable(label, form.email)}
+                  disabled={matchBusy}
+                  className="text-[10px] px-2 py-1 rounded-md bg-violet-600 text-white font-medium hover:bg-violet-700 disabled:opacity-50 shrink-0 whitespace-nowrap"
+                  title="Find this email in Airtable and link as a lead"
+                >
+                  {matchBusy ? '…' : 'Match'}
+                </button>
+              )}
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );
@@ -373,6 +390,7 @@ function EventReview({ eventId, onBack }: { eventId: string; onBack: () => void 
   const [leadSearchHit, setLeadSearchHit] = useState<{ id: string; name: string; email: string } | null>(null);
   const [copyFeedback, setCopyFeedback] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
+  const [speakersDirty, setSpeakersDirty] = useState(false);
   const transcriptRef = useRef<HTMLDivElement>(null);
 
   function buildLeadDisplayMap(event: any): Record<string, { name: string; email: string }> {
@@ -551,6 +569,7 @@ function EventReview({ eventId, onBack }: { eventId: string; onBack: () => void 
       ...s,
       [label]: { name: '', email: '', role: 'unknown', airtable_lead_id: '', ...s[label], ...patch },
     }));
+    setSpeakersDirty(true);
   };
 
   const confirmedCount = labels.filter(lab => {
@@ -689,7 +708,9 @@ function EventReview({ eventId, onBack }: { eventId: string; onBack: () => void 
               <div className="flex items-center justify-between">
                 <h3 className="text-sm font-semibold text-gray-900">
                   Speakers
-                  <span className="text-xs text-gray-400 font-normal ml-2">{confirmedCount}/{labels.length} confirmed</span>
+                  {confirmedCount < labels.length && (
+                    <span className="text-xs text-amber-500 font-normal ml-2">{labels.length - confirmedCount} need{labels.length - confirmedCount === 1 ? 's' : ''} review</span>
+                  )}
                 </h3>
               </div>
 
@@ -716,21 +737,23 @@ function EventReview({ eventId, onBack }: { eventId: string; onBack: () => void 
                 </div>
               )}
 
-              <button
-                type="button"
-                onClick={handleSaveSpeakers}
-                disabled={saving}
-                className="w-full px-4 py-2 bg-gray-900 text-white rounded-lg text-sm font-semibold hover:bg-gray-800 disabled:opacity-50 transition-colors"
-              >
-                {saving ? 'Saving…' : 'Save all speakers'}
-              </button>
+              {speakersDirty && (
+                <button
+                  type="button"
+                  onClick={() => { handleSaveSpeakers(); setSpeakersDirty(false); }}
+                  disabled={saving}
+                  className="w-full px-4 py-2 bg-gray-900 text-white rounded-lg text-sm font-semibold hover:bg-gray-800 disabled:opacity-50 transition-colors"
+                >
+                  {saving ? 'Saving…' : 'Save changes'}
+                </button>
+              )}
             </div>
 
             {/* Leads linked to meeting */}
             <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 space-y-2">
               <h3 className="text-sm font-semibold text-gray-900">Leads on this call</h3>
               {meetingLeadRows.length === 0 ? (
-                <p className="text-xs text-gray-500">No leads linked yet. Use "Match" on a speaker or search below.</p>
+                <p className="text-xs text-gray-500">No leads matched yet. Set a speaker as Lead and enter their email to match, or search below.</p>
               ) : (
                 <ul className="space-y-1">
                   {meetingLeadRows.map((ml) => {
