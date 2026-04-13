@@ -423,6 +423,18 @@ function EventReview({ eventId, onBack }: { eventId: string; onBack: () => void 
         setEv(event);
         const vs = event.verified_speakers || {};
         const coachHint = event.coach_hint || { displayName: 'Coach', calendarEmail: '' };
+        const participants: any[] = event.participants || [];
+        const meetingLeads: any[] = event.meeting_leads || [];
+
+        const participantByLabel: Record<string, any> = {};
+        const participantByName: Record<string, any> = {};
+        for (const p of participants) {
+          if (p.speaker_label) participantByLabel[p.speaker_label] = p;
+          if (p.verified_name) participantByName[p.verified_name.toLowerCase()] = p;
+        }
+
+        const leadIdSet = new Set(meetingLeads.map((ml: any) => String(ml.airtable_lead_id || '').trim()).filter(Boolean));
+
         const init: Record<string, SpeakerForm> = {};
         for (const label of (event.speaker_labels || [])) {
           const v = vs[label] || {};
@@ -431,6 +443,35 @@ function EventReview({ eventId, onBack }: { eventId: string; onBack: () => void 
           let role = ['coach', 'client', 'other', 'unknown'].includes(roleRaw) ? roleRaw : 'unknown';
           let name = v.name || '';
           let email = v.email || '';
+          let leadId = v.airtable_lead_id || '';
+
+          if (!leadId) {
+            const pByLabel = participantByLabel[label];
+            if (pByLabel?.airtable_lead_id) {
+              leadId = pByLabel.airtable_lead_id;
+              name = name || pByLabel.verified_name || '';
+              email = email || pByLabel.verified_email || '';
+            }
+          }
+          if (!leadId && name) {
+            const pByName = participantByName[name.toLowerCase()];
+            if (pByName?.airtable_lead_id) {
+              leadId = pByName.airtable_lead_id;
+              email = email || pByName.verified_email || '';
+            }
+          }
+          if (!leadId && name && leadIdSet.size > 0) {
+            for (const p of participants) {
+              if (p.airtable_lead_id && leadIdSet.has(p.airtable_lead_id)) {
+                const pName = (p.verified_name || '').toLowerCase();
+                if (pName && name.toLowerCase() === pName) {
+                  leadId = p.airtable_lead_id;
+                  email = email || p.verified_email || '';
+                  break;
+                }
+              }
+            }
+          }
 
           if (role === 'unknown' && coachHint.displayName) {
             const lcLabel = label.toLowerCase();
@@ -442,17 +483,18 @@ function EventReview({ eventId, onBack }: { eventId: string; onBack: () => void 
               role = 'coach';
               name = name || coachHint.displayName;
               email = email || coachHint.calendarEmail || '';
+              leadId = '';
             }
           }
 
-          if (role === 'unknown' && v.airtable_lead_id) {
+          if (role === 'unknown' && leadId) {
             role = 'client';
           }
           if (role === 'unknown' && name && name.length >= 2) {
             role = 'client';
           }
 
-          init[label] = { name, email, role, airtable_lead_id: v.airtable_lead_id || '' };
+          init[label] = { name, email, role, airtable_lead_id: leadId };
         }
         setSpeakers(init);
         setLeadDisplay(buildLeadDisplayMap(event));
