@@ -56,7 +56,7 @@ function sampleLinesForSpeaker(text, label, count = 6) {
     .slice(0, count);
 }
 const clientService = require('../services/clientService');
-const { findLeadByEmail } = require('../services/inboundEmailService');
+const { findLeadByEmail, findLeadByName } = require('../services/inboundEmailService');
 const { DEFAULT_COACH_CLIENT_ID: RECALL_DEFAULT_COACH } = require('../services/recallLeadLinkService');
 const { createRecallBot } = require('../services/recallBotService');
 const { tryAutoSplitForMeeting } = require('../services/recallAutoSplitService');
@@ -321,13 +321,33 @@ router.delete('/recall-review/:id/meeting-leads/:leadId', async (req, res) => {
 router.get('/recall-review/api/search-lead', async (req, res) => {
   if (!(await pbRecallReviewApiOk(req))) return res.status(401).json({ error: 'unauthorized' });
   const email = typeof req.query.email === 'string' ? req.query.email.trim().toLowerCase() : '';
-  if (!email || !email.includes('@')) return res.status(400).json({ error: 'email query required' });
+  const nameQ = typeof req.query.name === 'string' ? req.query.name.trim() : '';
+  if (!email && !nameQ) return res.status(400).json({ error: 'email or name query required' });
   try {
     const client = await clientService.getClientById(DEFAULT_COACH_CLIENT_ID);
     if (!client?.airtableBaseId) return res.json({ lead: null, error: 'no_base' });
-    const lead = await findLeadByEmail(client, email);
+
+    let lead = null;
+    if (email && email.includes('@')) {
+      lead = await findLeadByEmail(client, email);
+    }
+    if (!lead && nameQ && nameQ.length >= 2) {
+      const nameResult = await findLeadByName(client, nameQ);
+      if (nameResult.matchType === 'unique' && nameResult.lead) lead = nameResult.lead;
+      if (nameResult.matchType === 'ambiguous') {
+        return res.json({
+          lead: null,
+          ambiguous: true,
+          matches: nameResult.allMatches?.map(l => ({
+            id: l.id,
+            name: [l.firstName, l.lastName].filter(Boolean).join(' ').trim(),
+            email: l.email || '',
+          })),
+        });
+      }
+    }
     if (!lead?.id) return res.json({ lead: null });
-    const name = [lead.firstName, lead.lastName].filter(Boolean).join(' ').trim() || email;
+    const name = [lead.firstName, lead.lastName].filter(Boolean).join(' ').trim() || email || nameQ;
     return res.json({
       lead: {
         id: lead.id,
