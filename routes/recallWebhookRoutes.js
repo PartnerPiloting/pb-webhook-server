@@ -228,6 +228,57 @@ router.get('/recall-review/api/event/:id', async (req, res) => {
     }
   }
 
+  // Cross-reference meeting_leads with speakers to fill in airtable_lead_id gaps
+  const assignedLeadIds = new Set(
+    Object.values(verifiedSpeakers).map(s => s.airtable_lead_id).filter(Boolean)
+  );
+  const unassignedLeads = meetingLeads.filter(ml => !assignedLeadIds.has(ml.airtable_lead_id));
+  if (unassignedLeads.length > 0) {
+    const coachLabel = Object.keys(verifiedSpeakers).find(k => verifiedSpeakers[k].role === 'coach');
+    const nonCoachLabels = speakerLabels.filter(l => l !== coachLabel && !verifiedSpeakers[l]?.airtable_lead_id);
+
+    // Try name matching via Airtable lookup
+    for (const ml of unassignedLeads) {
+      try {
+        const client = await clientService.getClientById(DEFAULT_COACH_CLIENT_ID);
+        if (client?.airtableBaseId) {
+          const { createBaseInstance } = require('../config/airtableClient');
+          const base = createBaseInstance(client.airtableBaseId);
+          const rec = await base('Leads').find(ml.airtable_lead_id);
+          if (rec) {
+            const leadName = [rec.fields['First Name'], rec.fields['Last Name']].filter(Boolean).join(' ').trim().toLowerCase();
+            const leadEmail = (rec.fields['Email'] || '').toLowerCase();
+            for (const lab of nonCoachLabels) {
+              const vs = verifiedSpeakers[lab];
+              if (vs && !vs.airtable_lead_id) {
+                const speakerName = (vs.name || '').toLowerCase();
+                if ((leadName && speakerName && leadName === speakerName) ||
+                    (leadEmail && vs.email && leadEmail === vs.email.toLowerCase())) {
+                  vs.airtable_lead_id = ml.airtable_lead_id;
+                  vs.role = vs.role === 'unknown' ? 'client' : vs.role;
+                  break;
+                }
+              }
+            }
+          }
+        }
+      } catch (_e) { /* best-effort */ }
+    }
+
+    // Fallback: if exactly 1 non-coach speaker and 1 unassigned lead, auto-assign
+    const stillUnassigned = meetingLeads.filter(ml =>
+      !Object.values(verifiedSpeakers).some(s => s.airtable_lead_id === ml.airtable_lead_id)
+    );
+    const unlinkedNonCoach = nonCoachLabels.filter(l => !verifiedSpeakers[l]?.airtable_lead_id);
+    if (stillUnassigned.length === 1 && unlinkedNonCoach.length === 1) {
+      const vs = verifiedSpeakers[unlinkedNonCoach[0]];
+      if (vs) {
+        vs.airtable_lead_id = stillUnassigned[0].airtable_lead_id;
+        vs.role = vs.role === 'unknown' ? 'client' : vs.role;
+      }
+    }
+  }
+
   const leadSegmentInfo = await getLeadSegmentsForMeeting(row.id);
 
   return res.json({
@@ -248,7 +299,10 @@ router.get('/recall-review/api/event/:id', async (req, res) => {
     speaker_samples: speakerSamples,
     verified_speakers: verifiedSpeakers,
     participants,
-    meeting_leads: meetingLeads,
+    meeting_leads: meetingLeads.map(ml => ({
+      ...ml,
+      resolved_name: Object.values(verifiedSpeakers).find(s => s.airtable_lead_id === ml.airtable_lead_id)?.name || null,
+    })),
     coach_hint: coachHint,
     calendar_attendees: [],
     lead_segments: leadSegmentInfo.segments || [],
