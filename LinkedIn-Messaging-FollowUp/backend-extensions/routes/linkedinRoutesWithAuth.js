@@ -1492,7 +1492,7 @@ router.get('/recall-transcripts-for-lead', async (req, res) => {
         preview,
         full_text: fullText,
       };
-    });
+    }));
     res.json({ leadId, count: transcripts.length, transcripts });
   } catch (error) {
     logger.error('LinkedIn Routes: recall-transcripts-for-lead', error);
