@@ -216,30 +216,30 @@ function SpeakerCard({
   form,
   colour,
   coachHint,
-  meetingLeads,
   leadDisplay,
   onUpdate,
   onMatchAirtable,
   matchBusy,
   highlightedLabel,
   onHighlight,
+  onUnlink,
 }: {
   label: string;
   form: SpeakerForm;
   colour: typeof SPEAKER_COLOURS[0];
   coachHint: { displayName: string; calendarEmail: string };
-  meetingLeads: { airtable_lead_id: string }[];
   leadDisplay: Record<string, { name: string; email: string }>;
   onUpdate: (patch: Partial<SpeakerForm>) => void;
-  onMatchAirtable: (label: string, email: string) => void;
+  onMatchAirtable: (label: string, query: string) => void;
   matchBusy: boolean;
   highlightedLabel: string | null;
   onHighlight: (label: string | null) => void;
+  onUnlink: (label: string, leadId: string) => void;
 }) {
   const isCoach = form.role === 'coach';
   const isLead = form.role === 'client';
   const isOther = form.role === 'other';
-  const isConfirmed = isCoach || isOther || (isLead && !!form.airtable_lead_id);
+  const isLinked = isLead && !!form.airtable_lead_id;
   const isActive = highlightedLabel === label;
 
   if (isCoach) {
@@ -261,9 +261,36 @@ function SpeakerCard({
     );
   }
 
+  if (isLinked) {
+    const linkedName = leadDisplay[form.airtable_lead_id]?.name || form.name || label;
+    return (
+      <div
+        className={`rounded-lg border p-3 transition-all ${colour.border} ${isActive ? colour.bg : 'bg-white'} ring-2 ring-green-300`}
+        onMouseEnter={() => onHighlight(label)}
+        onMouseLeave={() => onHighlight(null)}
+      >
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className={`inline-block w-3 h-3 rounded-full shrink-0 ${colour.bg} ${colour.border} border`} />
+            <span className="font-semibold text-sm text-gray-900 truncate">{linkedName}</span>
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 font-medium">Lead</span>
+          </div>
+          <span className="text-green-600 text-sm shrink-0" title="Lead linked">&#10003;</span>
+        </div>
+        <button
+          type="button"
+          onClick={() => onUnlink(label, form.airtable_lead_id)}
+          className="text-[10px] text-gray-400 hover:text-red-500 mt-1"
+        >
+          Unlink
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div
-      className={`rounded-lg border p-3 transition-all ${colour.border} ${isActive ? colour.bg : 'bg-white'} ${isConfirmed ? 'ring-2 ring-green-300' : ''}`}
+      className={`rounded-lg border p-3 transition-all ${colour.border} ${isActive ? colour.bg : 'bg-white'}`}
       onMouseEnter={() => onHighlight(label)}
       onMouseLeave={() => onHighlight(null)}
     >
@@ -272,11 +299,7 @@ function SpeakerCard({
           <span className={`inline-block w-3 h-3 rounded-full shrink-0 ${colour.bg} ${colour.border} border`} />
           <span className="font-semibold text-sm text-gray-900 truncate">{form.name || label}</span>
         </div>
-        {isConfirmed ? (
-          <span className="text-green-600 text-sm shrink-0" title="Speaker confirmed">&#10003;</span>
-        ) : (
-          <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 font-medium">not matched</span>
-        )}
+        <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 font-medium">not matched</span>
       </div>
 
       <div className="space-y-2">
@@ -304,32 +327,6 @@ function SpeakerCard({
           </div>
         </div>
 
-        {isLead && meetingLeads.length > 0 && (
-          <div>
-            <label className="block text-xs text-gray-500 mb-0.5">Link to lead</label>
-            <select
-              value={form.airtable_lead_id || ''}
-              onChange={(e) => {
-                const lid = e.target.value;
-                if (lid) {
-                  const d = leadDisplay[lid] || { name: `Lead ${shortLeadId(lid)}`, email: '' };
-                  onUpdate({ airtable_lead_id: lid, name: d.name, email: d.email });
-                } else {
-                  onUpdate({ airtable_lead_id: '' });
-                }
-              }}
-              className="w-full text-xs border border-gray-200 rounded-md px-2 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-violet-200"
-            >
-              <option value="">Choose…</option>
-              {meetingLeads.map((ml) => {
-                const lid = String(ml.airtable_lead_id || '').trim();
-                const dn = leadDisplay[lid]?.name || shortLeadId(lid);
-                return <option key={lid} value={lid}>{dn}</option>;
-              })}
-            </select>
-          </div>
-        )}
-
         <div>
           <label className="block text-xs text-gray-500 mb-0.5">Name</label>
           <input
@@ -343,24 +340,23 @@ function SpeakerCard({
 
         {isLead && (
           <div>
-            <label className="block text-xs text-gray-500 mb-0.5">Email</label>
+            <label className="block text-xs text-gray-500 mb-0.5">Find lead</label>
             <div className="flex gap-1">
               <input
-                type="email"
+                type="text"
                 value={form.email}
                 onChange={(e) => onUpdate({ email: e.target.value })}
-                placeholder="email@example.com"
+                placeholder="Enter email or LinkedIn URL"
                 className="flex-1 min-w-0 text-sm border border-gray-200 rounded-md px-2 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-violet-200"
               />
-              {form.email && form.email.includes('@') && (
+              {form.email && form.email.trim().length >= 3 && (
                 <button
                   type="button"
                   onClick={() => onMatchAirtable(label, form.email)}
                   disabled={matchBusy}
-                  className="text-[10px] px-2 py-1 rounded-md bg-violet-600 text-white font-medium hover:bg-violet-700 disabled:opacity-50 shrink-0 whitespace-nowrap"
-                  title="Find this email in Airtable and link as a lead"
+                  className="text-xs px-3 py-1 rounded-md bg-violet-600 text-white font-medium hover:bg-violet-700 disabled:opacity-50 shrink-0"
                 >
-                  {matchBusy ? '…' : 'Match'}
+                  {matchBusy ? '…' : 'Search'}
                 </button>
               )}
             </div>
@@ -385,9 +381,6 @@ function EventReview({ eventId, onBack }: { eventId: string; onBack: () => void 
   const [toast, setToast] = useState('');
   const [highlightedLabel, setHighlightedLabel] = useState<string | null>(null);
   const [matchBusyLabel, setMatchBusyLabel] = useState<string | null>(null);
-  const [leadSearchEmail, setLeadSearchEmail] = useState('');
-  const [leadSearchBusy, setLeadSearchBusy] = useState(false);
-  const [leadSearchHit, setLeadSearchHit] = useState<{ id: string; name: string; email: string } | null>(null);
   const [copyFeedback, setCopyFeedback] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const [speakersDirty, setSpeakersDirty] = useState(false);
@@ -502,11 +495,14 @@ function EventReview({ eventId, onBack }: { eventId: string; onBack: () => void 
     if (r.ok) { flash('Status updated'); load(); } else flash('Error: ' + (r.error || 'unknown'));
   };
 
-  const handleMatchAirtable = async (label: string, email: string) => {
-    const trimmed = email.trim().toLowerCase();
-    if (!trimmed.includes('@')) { flash('Enter a valid email'); return; }
+  const handleMatchAirtable = async (label: string, query: string) => {
+    const trimmed = query.trim();
+    if (trimmed.length < 3) { flash('Enter an email or LinkedIn URL'); return; }
     setMatchBusyLabel(label);
-    const r = await searchRecallLeadByEmail(trimmed);
+    const isLinkedIn = trimmed.includes('linkedin.com/');
+    const r = isLinkedIn
+      ? await searchRecallLeadByEmail('', trimmed)
+      : await searchRecallLeadByEmail(trimmed);
     setMatchBusyLabel(null);
     if (r.error) { flash(r.error); return; }
     if (!r.lead?.id) { flash('No lead found for ' + trimmed); return; }
@@ -515,47 +511,32 @@ function EventReview({ eventId, onBack }: { eventId: string; onBack: () => void 
     setLeadDisplay(d => ({ ...d, [r.lead.id]: { name: r.lead.name || trimmed, email: r.lead.email || trimmed } }));
     setSpeakers(s => ({
       ...s,
-      [label]: { ...s[label], role: 'client', airtable_lead_id: r.lead.id, name: r.lead.name || s[label]?.name || trimmed, email: r.lead.email || trimmed },
+      [label]: { ...s[label], role: 'client', airtable_lead_id: r.lead.id, name: r.lead.name || s[label]?.name || '', email: r.lead.email || '' },
     }));
+    setSpeakersDirty(true);
     flash(`Matched: ${r.lead.name || trimmed}`);
     load();
   };
 
-  const handleSearchLead = async () => {
-    const email = leadSearchEmail.trim().toLowerCase();
-    if (!email.includes('@')) { flash('Enter a valid email'); return; }
-    setLeadSearchBusy(true);
-    setLeadSearchHit(null);
-    const r = await searchRecallLeadByEmail(email);
-    setLeadSearchBusy(false);
-    if (r.error) { flash(r.error); return; }
-    if (!r.lead?.id) { flash('No lead found for that email'); return; }
-    setLeadSearchHit({ id: r.lead.id, name: r.lead.name || email, email: r.lead.email || email });
-  };
-
-  const handleAddMeetingLead = async () => {
-    if (!leadSearchHit) return;
-    const r = await addRecallMeetingLead(eventId, leadSearchHit.id);
-    if (r.ok) {
-      setLeadDisplay(d => ({ ...d, [leadSearchHit.id]: { name: leadSearchHit.name, email: leadSearchHit.email } }));
-      flash('Lead linked');
-      setLeadSearchHit(null);
-      setLeadSearchEmail('');
-      load();
-    } else flash('Error: ' + (r.error || 'unknown'));
-  };
-
-  const handleRemoveMeetingLead = async (leadId: string) => {
-    if (!confirm('Remove this lead from the meeting?')) return;
+  const handleUnlinkSpeaker = async (label: string, leadId: string) => {
     const r = await removeRecallMeetingLead(eventId, leadId);
-    if (r.ok) { flash('Lead removed'); load(); } else flash('Error: ' + (r.error || 'unknown'));
+    if (r.ok) {
+      setSpeakers(s => ({
+        ...s,
+        [label]: { ...s[label], airtable_lead_id: '' },
+      }));
+      setSpeakersDirty(true);
+      flash('Lead unlinked');
+      load();
+    } else {
+      flash('Error: ' + (r.error || 'unknown'));
+    }
   };
 
   if (loading) return <p className="text-gray-500 text-sm py-8 text-center">Loading…</p>;
   if (error || !ev) return <p className="text-red-600 text-sm bg-red-50 border border-red-200 rounded-lg p-4">{error || 'Not found'}</p>;
 
   const coachHint = ev.coach_hint || { displayName: 'Coach', calendarEmail: '' };
-  const meetingLeadRows: { airtable_lead_id: string }[] = ev.meeting_leads || [];
   const labels: string[] = ev.speaker_labels || [];
   const st = normalizeReviewStatus(ev.status || 'incomplete');
   const fullText: string = ev.full_text || '';
@@ -625,11 +606,11 @@ function EventReview({ eventId, onBack }: { eventId: string; onBack: () => void 
             <li><strong>Status dropdown</strong> — Change between Incomplete, Complete, Verified, etc.</li>
             <li><strong>Skip</strong> — Marks this meeting as not worth reviewing (test call, junk, etc.).</li>
             <li><strong>Copy</strong> — Copies the full transcript text to your clipboard.</li>
-            <li><strong>Coach / Lead / Other</strong> — Labels each speaker&apos;s role. Coach = you, Lead = the person you&apos;re coaching or selling to, Other = anyone else.</li>
-            <li><strong>Name &amp; Email</strong> — Edit the speaker&apos;s name or email. The email is used to match them to a lead in Airtable.</li>
-            <li><strong>Match</strong> — Searches Airtable for a lead with that email and links them to this meeting.</li>
-            <li><strong>Save all speakers</strong> — Saves any name, role, or email changes you made.</li>
-            <li><strong>Search lead by email + Find</strong> — Manually search for an Airtable lead and link them to this call.</li>
+            <li><strong>Speakers</strong> — The system auto-detects speakers. Coach (you) is always confirmed. Leads found in Airtable are auto-linked with a green tick.</li>
+            <li><strong>Not matched</strong> — If a speaker isn&apos;t found automatically, enter their email or LinkedIn URL and click Search to find and link them.</li>
+            <li><strong>Lead / Other</strong> — Mark a speaker as a Lead (someone you&apos;re coaching or selling to) or Other (anyone else).</li>
+            <li><strong>Unlink</strong> — If a lead was linked incorrectly, click Unlink to remove the connection.</li>
+            <li><strong>Save changes</strong> — Only appears when you&apos;ve made changes that need saving.</li>
           </ul>
         </div>
       )}
@@ -725,13 +706,13 @@ function EventReview({ eventId, onBack }: { eventId: string; onBack: () => void 
                       form={speakers[label] || { name: '', email: '', role: 'unknown', airtable_lead_id: '' }}
                       colour={labelColourMap[label]}
                       coachHint={coachHint}
-                      meetingLeads={meetingLeadRows}
                       leadDisplay={leadDisplay}
                       onUpdate={(patch) => setSpeaker(label, patch)}
                       onMatchAirtable={handleMatchAirtable}
                       matchBusy={matchBusyLabel === label}
                       highlightedLabel={highlightedLabel}
                       onHighlight={setHighlightedLabel}
+                      onUnlink={handleUnlinkSpeaker}
                     />
                   ))}
                 </div>
@@ -749,56 +730,6 @@ function EventReview({ eventId, onBack }: { eventId: string; onBack: () => void 
               )}
             </div>
 
-            {/* Leads linked to meeting */}
-            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 space-y-2">
-              <h3 className="text-sm font-semibold text-gray-900">Leads on this call</h3>
-              {meetingLeadRows.length === 0 ? (
-                <p className="text-xs text-gray-500">No leads matched yet. Set a speaker as Lead and enter their email to match, or search below.</p>
-              ) : (
-                <ul className="space-y-1">
-                  {meetingLeadRows.map((ml) => {
-                    const id = String(ml.airtable_lead_id || '').trim();
-                    const disp = leadDisplay[id] || { name: `Lead ${shortLeadId(id)}`, email: '' };
-                    return (
-                      <li key={id} className="flex items-center justify-between gap-2 text-xs py-1.5 border-b border-gray-50 last:border-0">
-                        <span className="min-w-0 truncate">
-                          <span className="font-medium text-gray-900">{disp.name}</span>
-                          {disp.email && <span className="text-gray-400 ml-1">{disp.email}</span>}
-                        </span>
-                        <button type="button" className="text-red-500 text-xs shrink-0 hover:underline" onClick={() => handleRemoveMeetingLead(id)}>
-                          Remove
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-              <div className="flex gap-1">
-                <input
-                  type="email"
-                  value={leadSearchEmail}
-                  onChange={(e) => setLeadSearchEmail(e.target.value)}
-                  className="flex-1 min-w-0 text-xs border border-gray-200 rounded-md px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-violet-200"
-                  placeholder="Search lead by email"
-                />
-                <button
-                  type="button"
-                  onClick={handleSearchLead}
-                  disabled={leadSearchBusy}
-                  className="text-xs px-3 py-1.5 bg-violet-600 text-white rounded-md font-medium hover:bg-violet-700 disabled:opacity-50"
-                >
-                  {leadSearchBusy ? '…' : 'Find'}
-                </button>
-              </div>
-              {leadSearchHit && (
-                <div className="flex items-center gap-2 text-xs bg-violet-50 border border-violet-100 rounded-md px-2 py-1.5">
-                  <span className="truncate">{leadSearchHit.name} <span className="text-gray-400">{leadSearchHit.email}</span></span>
-                  <button type="button" onClick={handleAddMeetingLead} className="text-violet-700 font-semibold hover:underline shrink-0 ml-auto">
-                    Add
-                  </button>
-                </div>
-              )}
-            </div>
           </div>
         </div>
       </div>
