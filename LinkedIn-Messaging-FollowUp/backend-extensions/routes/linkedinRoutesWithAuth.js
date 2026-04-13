@@ -1447,7 +1447,7 @@ router.get('/recall-transcripts-for-lead', async (req, res) => {
       return res.status(404).json({ error: 'Lead not found', leadId });
     }
 
-    const { getMeetingsForLead } = require('../../../services/recallWebhookDb');
+    const { getMeetingsForLead, getParticipantsForMeeting } = require('../../../services/recallWebhookDb');
     const limit = req.query.limit != null ? parseInt(String(req.query.limit), 10) : 50;
     const rows = await getMeetingsForLead(leadId, Number.isFinite(limit) ? limit : 50);
     const PREVIEW_MAX = 500;
@@ -1455,8 +1455,28 @@ router.get('/recall-transcripts-for-lead', async (req, res) => {
     for (const row of rows) {
       if (!byMeeting.has(row.meeting_id)) byMeeting.set(row.meeting_id, row);
     }
-    const transcripts = [...byMeeting.values()].map((row) => {
-      const fullText = row.transcript_text || '';
+
+    const participantCaches = {};
+    async function replaceParticipantLabels(text, meetingId) {
+      if (!text || !meetingId) return text;
+      if (!participantCaches[meetingId]) {
+        try {
+          participantCaches[meetingId] = await getParticipantsForMeeting(meetingId);
+        } catch { participantCaches[meetingId] = []; }
+      }
+      let result = text;
+      for (const p of participantCaches[meetingId]) {
+        if (p.verified_name && p.speaker_label && p.speaker_label.startsWith('Participant ')) {
+          const escaped = p.speaker_label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          result = result.replace(new RegExp(escaped, 'g'), p.verified_name);
+        }
+      }
+      return result;
+    }
+
+    const transcripts = await Promise.all([...byMeeting.values()].map(async (row) => {
+      const rawText = row.transcript_text || '';
+      const fullText = await replaceParticipantLabels(rawText, row.meeting_id);
       const preview = fullText.length <= PREVIEW_MAX
         ? fullText
         : `${fullText.slice(0, PREVIEW_MAX)}…`;
