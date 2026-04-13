@@ -27,19 +27,31 @@ const {
 function extractSpeakerLabels(text) {
   if (!text) return [];
   const labels = new Set();
-  const rx = /^(Speaker \d+|[A-Z][\w ]+?):/gm;
+  const rxColon = /^(Speaker \d+|[A-Z][\w ]+?):/gm;
   let m;
-  while ((m = rx.exec(text)) !== null) labels.add(m[1]);
+  while ((m = rxColon.exec(text)) !== null) labels.add(m[1]);
+  const rxPipe = /^(Participant \d+)\s*\|/gm;
+  while ((m = rxPipe.exec(text)) !== null) labels.add(m[1]);
   return [...labels];
 }
 
 function sampleLinesForSpeaker(text, label, count = 6) {
   if (!text || !label) return [];
-  const prefix = label + ':';
-  return text
-    .split('\n')
-    .filter((l) => l.startsWith(prefix))
-    .map((l) => l.slice(prefix.length).trim())
+  const prefixColon = label + ':';
+  const prefixPipe = label + ' |';
+  const lines = text.split('\n');
+  const speakerLines = [];
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].startsWith(prefixColon)) {
+      speakerLines.push(lines[i].slice(prefixColon.length).trim());
+    } else if (lines[i].startsWith(prefixPipe)) {
+      const nextLine = lines[i + 1] || '';
+      if (nextLine && !nextLine.startsWith('Participant ') && !nextLine.startsWith('Speaker ')) {
+        speakerLines.push(nextLine.trim());
+      }
+    }
+  }
+  return speakerLines
     .filter(Boolean)
     .slice(0, count);
 }
