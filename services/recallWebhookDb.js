@@ -501,6 +501,7 @@ async function recordRecallPresence({ meetingId, platformParticipantId, eventKin
 
 async function createChildMeetingFromUtterances({
   parentId, title, startRel, endRel, participantIds, calendarStart, calendarEnd,
+  attendeeEmails,
 }) {
   const pid = typeof parentId === 'string' ? parseInt(parentId, 10) : Number(parentId);
   const p = getPool();
@@ -572,6 +573,9 @@ async function createChildMeetingFromUtterances({
       `SELECT * FROM recall_meeting_participants WHERE meeting_id = $1`,
       [pid],
     );
+    // Build a set of attendee emails for this specific calendar event
+    const attendeeSet = new Set((attendeeEmails || []).map(e => e.toLowerCase().trim()));
+
     for (const pr of partR.rows) {
       const isRelevant = participantIds.includes(Number(pr.platform_participant_id))
         || pr.role === 'coach';
@@ -588,14 +592,64 @@ async function createChildMeetingFromUtterances({
           pr.airtable_lead_id, pr.coach_client_id, pr.match_method,
         ],
       );
+
+      // Only create meeting_lead if this participant is an attendee of THIS calendar event
+      // (or if no attendee info is available, fall back to old behavior)
       if (pr.airtable_lead_id) {
-        await client.query(
-          `INSERT INTO recall_meeting_leads (meeting_id, airtable_lead_id, coach_client_id, source)
-           VALUES ($1, $2, $3, 'auto_split')
-           ON CONFLICT (meeting_id, airtable_lead_id) DO NOTHING`,
-          [childId, pr.airtable_lead_id, pr.coach_client_id || 'Guy-Wilson'],
-        );
+        const email = (pr.verified_email || '').toLowerCase().trim();
+        const isAttendee = attendeeSet.size === 0
+          || (email && attendeeSet.has(email));
+        if (isAttendee) {
+          await client.query(
+            `INSERT INTO recall_meeting_leads (meeting_id, airtable_lead_id, coach_client_id, source)
+             VALUES ($1, $2, $3, 'auto_split')
+             ON CONFLICT (meeting_id, airtable_lead_id) DO NOTHING`,
+            [childId, pr.airtable_lead_id, pr.coach_client_id || 'Guy-Wilson'],
+          );
+        }
       }
+    }
+
+    // Also try to find leads from calendar attendees who aren't yet linked
+    if (attendeeSet.size > 0) {
+      try {
+        const clientService = require('./clientService');
+        const { findLeadByEmail } = require('./inboundEmailService');
+        const coachClientId = 'Guy-Wilson';
+        const coachClient = await clientService.getClientById(coachClientId);
+        if (coachClient?.airtableBaseId) {
+          for (const email of attendeeSet) {
+            const existingLead = await client.query(
+              `SELECT 1 FROM recall_meeting_leads WHERE meeting_id = $1 AND airtable_lead_id IN (
+                SELECT airtable_lead_id FROM recall_meeting_participants
+                WHERE meeting_id = $1 AND LOWER(verified_email) = $2
+              )`, [childId, email],
+            );
+            if (existingLead.rows.length > 0) continue;
+
+            const lead = await findLeadByEmail(coachClient, email);
+            if (lead?.id) {
+              await client.query(
+                `INSERT INTO recall_meeting_leads (meeting_id, airtable_lead_id, coach_client_id, source)
+                 VALUES ($1, $2, $3, 'auto_split_attendee')
+                 ON CONFLICT (meeting_id, airtable_lead_id) DO NOTHING`,
+                [childId, lead.id, coachClientId],
+              );
+              // Also update the participant if one matches by name
+              const leadName = [lead.firstName, lead.lastName].filter(Boolean).join(' ').trim();
+              if (leadName) {
+                await client.query(
+                  `UPDATE recall_meeting_participants
+                   SET airtable_lead_id = $1, verified_email = COALESCE(NULLIF(verified_email,''), $2), role = 'client'
+                   WHERE meeting_id = $3 AND LOWER(verified_name) LIKE '%' || LOWER($4) || '%'
+                     AND airtable_lead_id IS NULL`,
+                  [lead.id, email, childId, leadName],
+                );
+              }
+            }
+          }
+        }
+      } catch (_e) { /* best-effort attendee linking */ }
     }
 
     return { ok: true, childId: String(childId), title, utteranceCount: uttR.rows.length };

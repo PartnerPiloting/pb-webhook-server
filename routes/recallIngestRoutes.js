@@ -103,7 +103,15 @@ async function tryLinkParticipantToLead(meetingId, participant, coachClientId) {
         const nameLC = name.toLowerCase();
         const isCoach = coachName && (nameLC.includes(coachName.split(/\s+/)[0]) || coachName.includes(nameLC.split(/\s+/)[0]));
         if (!isCoach) {
-          const nameResult = await findLeadByName(coach, name);
+          let nameResult = await findLeadByName(coach, name);
+          // Fallback: strip company suffix after " - " (e.g. "Gordon Eckel - APAC AI" → "Gordon Eckel")
+          if (nameResult.matchType === 'none' && name.includes(' - ')) {
+            const stripped = name.split(' - ')[0].trim();
+            if (stripped.length >= 3) {
+              log.info(`RECALL-LINK retrying name match with stripped name: "${stripped}" (was "${name}")`);
+              nameResult = await findLeadByName(coach, stripped);
+            }
+          }
           if (nameResult.matchType === 'unique' && nameResult.lead?.id) {
             leadId = nameResult.lead.id;
             matchMethod = 'name';

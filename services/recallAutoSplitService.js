@@ -184,7 +184,12 @@ async function evaluateAutoSplit(meeting, presenceRows, participants, coachClien
     }
 
     windows.push({
-      calendarEvent: { summary: slot.calEv.summary, start: slot.calEv.start, end: slot.calEv.end },
+      calendarEvent: {
+        summary: slot.calEv.summary,
+        start: slot.calEv.start,
+        end: slot.calEv.end,
+        attendees: slot.calEv.attendees || [],
+      },
       startRel,
       endRel,
       participants: slot.pids,
@@ -213,12 +218,25 @@ async function executeAutoSplit(meetingId, windows, db) {
   const parent = await db.getMeetingById(meetingId);
   if (!parent) return { ok: false, error: 'parent meeting not found' };
 
+  // Resolve which attendee emails belong to each window's calendar event
+  const coachEmails = new Set();
+  try {
+    const coach = await clientService.getClientById(DEFAULT_COACH_CLIENT_ID);
+    if (coach?.googleCalendarEmail) coachEmails.add(coach.googleCalendarEmail.toLowerCase());
+    if (coach?.calendarEmail) coachEmails.add(coach.calendarEmail.toLowerCase());
+  } catch (_) { /* optional */ }
+
   const children = [];
   for (let i = 0; i < windows.length; i++) {
     const w = windows[i];
     const title = w.calendarEvent?.summary
       ? `${w.calendarEvent.summary}`
       : `${parent.title || 'Meeting'} (part ${i + 1})`;
+
+    // Get non-coach attendee emails for this specific calendar event
+    const attendeeEmails = (w.calendarEvent?.attendees || [])
+      .map(a => (a.email || '').toLowerCase().trim())
+      .filter(e => e && e.includes('@') && !coachEmails.has(e));
 
     const child = await db.createChildMeetingFromUtterances({
       parentId: meetingId,
@@ -228,6 +246,7 @@ async function executeAutoSplit(meetingId, windows, db) {
       participantIds: w.participants,
       calendarStart: w.calendarEvent?.start || null,
       calendarEnd: w.calendarEvent?.end || null,
+      attendeeEmails,
     });
 
     children.push({ ...child, window: w });
