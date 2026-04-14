@@ -820,6 +820,11 @@ async function removeMeetingLead(meetingId, airtableLeadId) {
   try {
     await ensureSchema(client);
     await client.query(`DELETE FROM recall_meeting_leads WHERE meeting_id = $1 AND airtable_lead_id = $2`, [mid, lid]);
+    await client.query(
+      `UPDATE recall_meeting_participants SET airtable_lead_id = NULL
+       WHERE meeting_id = $1 AND airtable_lead_id = $2`,
+      [mid, lid],
+    );
     await syncMeetingReviewStatusTx(client, mid);
     return { ok: true };
   } finally {
