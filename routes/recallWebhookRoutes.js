@@ -22,6 +22,7 @@ const {
   getLeadSegmentsForMeeting,
   seedManualTestRecall,
   purgeManualTestRecall,
+  getMeetingsForLead,
 } = require('../services/recallWebhookDb');
 
 function extractSpeakerLabels(text) {
@@ -162,6 +163,24 @@ function formatBrisbane(isoStr) {
   } catch {
     return String(isoStr);
   }
+}
+
+async function replaceParticipantLabelsInTranscript(text, meetingId) {
+  if (!text || !meetingId) return text;
+  let rows;
+  try {
+    rows = await getParticipantsForMeeting(meetingId);
+  } catch {
+    return text;
+  }
+  let result = text;
+  for (const p of rows || []) {
+    if (p.verified_name && p.speaker_label && String(p.speaker_label).startsWith('Participant ')) {
+      const escaped = String(p.speaker_label).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      result = result.replace(new RegExp(escaped, 'g'), p.verified_name);
+    }
+  }
+  return result;
 }
 
 // ---------------------------------------------------------------------------
@@ -450,6 +469,81 @@ router.get('/recall-review/api/search-lead', async (req, res) => {
     });
   } catch (e) {
     return res.status(500).json({ error: e.message });
+  }
+});
+
+/**
+ * GET /recall-review/api/latest-transcript-by-email?email=...
+ * Optional: after=ISO8601 (only meetings on/after this instant), format=json|text
+ * Auth: same as other recall-review API (PB_WEBHOOK_SECRET Bearer, x-dev-key, or portal token).
+ * For MCP: use format=text and Authorization Bearer with PB_WEBHOOK_SECRET.
+ */
+router.get('/recall-review/api/latest-transcript-by-email', async (req, res) => {
+  if (!(await pbRecallReviewApiOk(req))) return res.status(401).json({ error: 'unauthorized' });
+  const email = typeof req.query.email === 'string' ? req.query.email.trim().toLowerCase() : '';
+  if (!email || !email.includes('@')) {
+    return res.status(400).json({ error: 'email query parameter required' });
+  }
+  const wantText = String(req.query.format || '').toLowerCase() === 'text'
+    || (req.get('accept') || '').includes('text/plain');
+  const afterRaw = typeof req.query.after === 'string' ? req.query.after.trim() : '';
+  const afterMs = afterRaw ? new Date(afterRaw).getTime() : null;
+  const afterOk = afterMs != null && !Number.isNaN(afterMs);
+
+  try {
+    const coachClient = await clientService.getClientById(DEFAULT_COACH_CLIENT_ID);
+    if (!coachClient?.airtableBaseId) {
+      return res.status(503).json({ error: 'coach_base_not_configured' });
+    }
+    const lead = await findLeadByEmail(coachClient, email);
+    if (!lead?.id) {
+      return res.status(404).json({ ok: false, error: 'lead_not_found', email });
+    }
+    const leadName = [lead.firstName, lead.lastName].filter(Boolean).join(' ').trim() || email;
+    const limit = 100;
+    let rows = await getMeetingsForLead(lead.id, limit);
+    if (afterOk) {
+      rows = rows.filter((r) => {
+        const t = r.meeting_start || r.created_at;
+        if (!t) return false;
+        return new Date(t).getTime() >= afterMs;
+      });
+    }
+    if (!rows || rows.length === 0) {
+      return res.status(404).json({
+        ok: false,
+        error: 'no_meetings',
+        email,
+        leadId: lead.id,
+        leadName,
+      });
+    }
+    const latest = rows[0];
+    const rawText = latest.transcript_text || '';
+    const transcript = await replaceParticipantLabelsInTranscript(rawText, latest.meeting_id);
+
+    if (wantText) {
+      res.type('text/plain; charset=utf-8');
+      return res.send(transcript);
+    }
+
+    return res.json({
+      ok: true,
+      email,
+      leadId: lead.id,
+      leadName,
+      meeting: {
+        id: latest.meeting_id,
+        title: latest.title || 'Meeting',
+        created_at: latest.created_at,
+        meeting_start: latest.meeting_start,
+        duration_seconds: latest.duration_seconds,
+        status: latest.status,
+      },
+      transcript,
+    });
+  } catch (e) {
+    return res.status(500).json({ ok: false, error: e.message });
   }
 });
 
