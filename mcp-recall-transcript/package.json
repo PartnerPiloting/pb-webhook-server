@@ -1,0 +1,18 @@
+{
+  "name": "mcp-recall-transcript",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "MCP server: fetch latest Recall transcript by lead email and save to a local file",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "zod": "^3.24.0"
+  }
+}
