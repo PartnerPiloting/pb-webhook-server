@@ -931,14 +931,9 @@ async function saveMeetingSpeakers(meetingId, speakers, opts = {}) {
            match_method = 'manual'`,
         [n, Number.isFinite(plat) ? plat : null, label, name, email, role, leadId, coachClientId],
       );
-      if (role === 'client' && leadId) {
-        await client.query(
-          `INSERT INTO recall_meeting_leads (meeting_id, airtable_lead_id, coach_client_id, source)
-           VALUES ($1, $2, $3, 'speaker_assign')
-           ON CONFLICT (meeting_id, airtable_lead_id) DO NOTHING`,
-          [n, leadId, coachClientId],
-        );
-      }
+      // Note: meeting_leads are created through explicit linking (search/match),
+      // auto-split attendee matching, or webhook auto-linking — not during speaker save.
+      // This prevents briefly-present speakers from being linked as leads.
     }
     await syncMeetingReviewStatusTx(client, n);
     return { ok: true };
@@ -963,6 +958,7 @@ async function getMeetingsForLead(airtableLeadId, limit = 50) {
        LEFT JOIN recall_meeting_participants p
          ON p.meeting_id = m.id AND p.airtable_lead_id = ml.airtable_lead_id
        WHERE ml.airtable_lead_id = $1
+         AND (m.status_reason IS NULL OR m.status_reason NOT LIKE 'Auto-split%')
        ORDER BY m.created_at DESC
        LIMIT $2`,
       [airtableLeadId, limit],
