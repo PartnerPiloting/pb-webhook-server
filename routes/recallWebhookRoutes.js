@@ -231,6 +231,23 @@ router.get('/recall-review/api/event/:id', async (req, res) => {
     }
   }
 
+  // When transcript uses names instead of "Participant NNN" (e.g. child meetings),
+  // map name-based labels to their participant data
+  for (const lab of speakerLabels) {
+    if (verifiedSpeakers[lab]) continue;
+    const matchByName = participants.find(p =>
+      p.verified_name && p.verified_name.toLowerCase() === lab.toLowerCase()
+    );
+    if (matchByName) {
+      verifiedSpeakers[lab] = {
+        name: matchByName.verified_name || lab,
+        email: matchByName.verified_email || '',
+        role: matchByName.role || 'unknown',
+        airtable_lead_id: matchByName.airtable_lead_id || null,
+      };
+    }
+  }
+
   // Cross-reference meeting_leads with speakers to fill in airtable_lead_id gaps
   const assignedLeadIds = new Set(
     Object.values(verifiedSpeakers).map(s => s.airtable_lead_id).filter(Boolean)
