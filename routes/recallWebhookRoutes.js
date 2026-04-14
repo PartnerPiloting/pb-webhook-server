@@ -27,11 +27,14 @@ const {
 function extractSpeakerLabels(text) {
   if (!text) return [];
   const labels = new Set();
-  const rxColon = /^(Speaker \d+|[A-Z][\w ]+?):/gm;
-  let m;
-  while ((m = rxColon.exec(text)) !== null) labels.add(m[1]);
   const rxPipe = /^(Participant \d+)\s*\|/gm;
+  let m;
   while ((m = rxPipe.exec(text)) !== null) labels.add(m[1]);
+  const rxColon = /^([A-Za-z(][^:\n]{0,50}):\s/gm;
+  while ((m = rxColon.exec(text)) !== null) {
+    const lab = m[1].trim();
+    if (lab && !lab.startsWith('{') && !lab.startsWith('[')) labels.add(lab);
+  }
   return [...labels];
 }
 
