@@ -659,4 +659,123 @@ router.get('/recall-review', async (req, res) => {
 <p class="text-sm text-gray-500">Next.js UI: <code>/recall-review</code> on the portal (Guy-Wilson).</p></body></html>`);
 });
 
+// ---------------------------------------------------------------------------
+// Remote MCP endpoint for Claude.ai browser ("Add custom connector")
+// URL: POST /mcp/:token  where :token = PB_WEBHOOK_SECRET
+// ---------------------------------------------------------------------------
+router.post('/mcp/:token', express.json(), async (req, res) => {
+  const expected = (process.env.PB_WEBHOOK_SECRET || '').trim();
+  if (!expected || req.params.token !== expected) {
+    const id = req.body?.id ?? null;
+    return res.status(401).json({ jsonrpc: '2.0', id, error: { code: -32001, message: 'unauthorized' } });
+  }
+
+  const { method, params, id } = req.body || {};
+
+  if (method === 'initialize') {
+    return res.json({
+      jsonrpc: '2.0', id,
+      result: {
+        protocolVersion: '2024-11-05',
+        capabilities: { tools: {} },
+        serverInfo: { name: 'recall-transcript', version: '1.0.0' },
+      },
+    });
+  }
+
+  // Notifications have no id — acknowledge silently
+  if (!id && method && method.startsWith('notifications/')) {
+    return res.status(204).end();
+  }
+
+  if (method === 'tools/list') {
+    return res.json({
+      jsonrpc: '2.0', id,
+      result: {
+        tools: [
+          {
+            name: 'recall_latest_transcript',
+            description: 'Fetches the latest Recall.ai meeting transcript for a lead. Use when asked for a transcript for a specific person (by email). Returns the formatted transcript text.',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                email: { type: 'string', description: 'The lead\'s email address (must match their Airtable record)' },
+                after: { type: 'string', description: 'Optional ISO 8601 date — only return meetings on or after this date/time' },
+              },
+              required: ['email'],
+            },
+          },
+        ],
+      },
+    });
+  }
+
+  if (method === 'tools/call') {
+    const toolName = params?.name;
+    const args = params?.arguments || {};
+
+    if (toolName !== 'recall_latest_transcript') {
+      return res.json({ jsonrpc: '2.0', id, error: { code: -32602, message: `Unknown tool: ${toolName}` } });
+    }
+
+    const email = (args.email || '').trim().toLowerCase();
+    if (!email || !email.includes('@')) {
+      return res.json({ jsonrpc: '2.0', id, result: { content: [{ type: 'text', text: 'Error: a valid email address is required.' }], isError: true } });
+    }
+
+    try {
+      const coachClient = await clientService.getClientById(DEFAULT_COACH_CLIENT_ID);
+      if (!coachClient?.airtableBaseId) {
+        return res.json({ jsonrpc: '2.0', id, result: { content: [{ type: 'text', text: 'Server config error: coach base not set.' }], isError: true } });
+      }
+      const lead = await findLeadByEmail(coachClient, email);
+      if (!lead?.id) {
+        return res.json({ jsonrpc: '2.0', id, result: { content: [{ type: 'text', text: `No lead found for email: ${email}` }], isError: true } });
+      }
+
+      const leadName = [lead.firstName, lead.lastName].filter(Boolean).join(' ').trim() || email;
+      let rows = await getMeetingsForLead(lead.id, 100);
+
+      if (args.after) {
+        const afterMs = new Date(args.after).getTime();
+        if (!isNaN(afterMs)) {
+          rows = rows.filter((r) => {
+            const t = r.meeting_start || r.created_at;
+            return t && new Date(t).getTime() >= afterMs;
+          });
+        }
+      }
+
+      if (!rows || rows.length === 0) {
+        return res.json({ jsonrpc: '2.0', id, result: { content: [{ type: 'text', text: `No meetings found for ${leadName} (${email}).` }] } });
+      }
+
+      const latest = rows[0];
+      const rawText = latest.transcript_text || '';
+      const transcript = await replaceParticipantLabelsInTranscript(rawText, latest.meeting_id);
+
+      const dateStr = latest.meeting_start || latest.created_at || '';
+      const durMin = latest.duration_seconds ? Math.round(latest.duration_seconds / 60) : null;
+
+      const header = [
+        `Meeting: ${latest.title || 'Meeting'} (#${latest.meeting_id})`,
+        `Lead: ${leadName} (${email})`,
+        dateStr ? `Date: ${dateStr}` : '',
+        durMin ? `Duration: ${durMin} min` : '',
+        '---',
+        '',
+      ].filter(Boolean).join('\n');
+
+      return res.json({
+        jsonrpc: '2.0', id,
+        result: { content: [{ type: 'text', text: header + transcript }] },
+      });
+    } catch (e) {
+      return res.json({ jsonrpc: '2.0', id, result: { content: [{ type: 'text', text: `Error: ${e.message}` }], isError: true } });
+    }
+  }
+
+  return res.json({ jsonrpc: '2.0', id: id ?? null, error: { code: -32601, message: `Method not found: ${method}` } });
+});
+
 module.exports = router;
