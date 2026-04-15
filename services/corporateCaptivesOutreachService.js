@@ -772,6 +772,115 @@ function buildSortedEligible(records, eligibilityOptions) {
   return { eligible, rejected };
 }
 
+function shuffleArrayCopy(arr) {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+/**
+ * Random sample from leads that pass Airtable + eligibility filters (pre–buildPreviewRows audience gate).
+ * Runs Gemini audience classifier per lead with keyword fallback — for stats / harness only.
+ *
+ * @param {{ clientId?: string, sampleSize?: number, delayMs?: number, logger?: object }} options
+ */
+async function runCorporateCaptivesAudienceSample(options = {}) {
+  const clientId =
+    (options.clientId && String(options.clientId).trim()) || "Guy-Wilson";
+  const sampleCap = Math.min(
+    500,
+    Math.max(1, parseInt(String(options.sampleSize ?? 100), 10) || 100)
+  );
+  const delayMs = Math.max(
+    0,
+    parseInt(String(options.delayMs ?? 250), 10) || 0
+  );
+  const logger = options.logger || {
+    info: () => {},
+    warn: () => {},
+    error: () => {},
+  };
+
+  const { getClientBase } = require("../config/airtableClient.js");
+  const base = await getClientBase(clientId);
+  const { fields: settingsFields } = await fetchOutboundEmailSettings(base);
+  const eligibilityOptions = eligibilityOptionsFromSettingsFields(settingsFields);
+
+  const candidates = await fetchScoredLeadCandidates(base);
+  const { eligible, rejected } = buildSortedEligible(candidates, eligibilityOptions);
+
+  if (eligible.length === 0) {
+    return {
+      ok: true,
+      clientId,
+      eligiblePoolSize: 0,
+      rejectedCount: rejected.length,
+      sampleSize: 0,
+      send: 0,
+      skip: 0,
+      aiSend: 0,
+      aiSkip: 0,
+      rulesFallback: 0,
+      sendPercent: null,
+      skipPercent: null,
+    };
+  }
+
+  const pool = shuffleArrayCopy(eligible).slice(0, sampleCap);
+  const n = pool.length;
+
+  let send = 0;
+  let skip = 0;
+  let aiSend = 0;
+  let aiSkip = 0;
+  let rulesFallback = 0;
+
+  for (let i = 0; i < pool.length; i++) {
+    const rec = pool[i];
+    const ai = await classifyOutreachAudienceWithAI(rec.get(F.rawProfile), logger);
+    if (ai != null) {
+      if (ai.send) {
+        send++;
+        aiSend++;
+      } else {
+        skip++;
+        aiSkip++;
+      }
+    } else {
+      rulesFallback++;
+      if (classifyOutreachBodyVariant(rec.get(F.rawProfile)) !== "owner") {
+        send++;
+      } else {
+        skip++;
+      }
+    }
+    if (delayMs > 0 && i < pool.length - 1) {
+      await new Promise((r) => setTimeout(r, delayMs));
+    }
+  }
+
+  const sendPct = n ? Math.round((send / n) * 1000) / 10 : 0;
+  const skipPct = n ? Math.round((skip / n) * 1000) / 10 : 0;
+
+  return {
+    ok: true,
+    clientId,
+    eligiblePoolSize: eligible.length,
+    rejectedCount: rejected.length,
+    sampleSize: n,
+    send,
+    skip,
+    aiSend,
+    aiSkip,
+    rulesFallback,
+    sendPercent: sendPct,
+    skipPercent: skipPct,
+  };
+}
+
 /**
  * @param {import('airtable').Record[]} eligibleRecords
  * @param {{ fields: Object }} settings
@@ -1107,6 +1216,7 @@ async function runCorporateCaptivesSendRun(options = {}) {
 module.exports = {
   buildDryRunPreviewHtml,
   runCorporateCaptivesSendRun,
+  runCorporateCaptivesAudienceSample,
   fetchOutboundEmailSettings,
   fetchScoredLeadCandidates,
   buildSortedEligible,

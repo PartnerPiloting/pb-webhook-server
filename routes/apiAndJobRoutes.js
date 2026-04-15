@@ -1524,6 +1524,52 @@ router.get("/admin/corporate-captives-dry-run-preview", async (req, res) => {
 });
 
 /**
+ * GET /admin/corporate-captives-audience-sample?secret=PB_WEBHOOK_SECRET&sampleSize=100
+ * Random sample of eligible leads (same pool as outreach, before the email body step).
+ * Runs Gemini audience classifier + keyword fallback; returns JSON counts (send vs skip).
+ * Auth: same as /admin/corporate-captives-dry-run-preview (Bearer or ?secret=).
+ * Large sampleSize can take minutes and may hit HTTP timeouts — try sampleSize=30 first.
+ */
+router.get("/admin/corporate-captives-audience-sample", async (req, res) => {
+  const secret = process.env.PB_WEBHOOK_SECRET || process.env.DEBUG_API_KEY;
+  const authHeader = req.headers.authorization;
+  const qSecret = req.query.secret;
+  const okBearer = secret && authHeader && authHeader.includes(secret);
+  const okQuery =
+    secret && typeof qSecret === "string" && qSecret === secret;
+  if (!secret || (!okBearer && !okQuery)) {
+    return res.status(401).json({ ok: false, error: "Unauthorized" });
+  }
+  try {
+    const clientId =
+      (req.query.clientId && String(req.query.clientId).trim()) || "Guy-Wilson";
+    const sampleRaw = req.query.sampleSize;
+    const sampleSize =
+      sampleRaw !== undefined && sampleRaw !== ""
+        ? parseInt(String(sampleRaw).trim(), 10)
+        : 100;
+    const delayRaw = req.query.delayMs;
+    const delayMs =
+      delayRaw !== undefined && delayRaw !== ""
+        ? parseInt(String(delayRaw).trim(), 10)
+        : 250;
+
+    const { runCorporateCaptivesAudienceSample } = require("../services/corporateCaptivesOutreachService.js");
+    const out = await runCorporateCaptivesAudienceSample({
+      clientId,
+      sampleSize: Number.isFinite(sampleSize) ? sampleSize : 100,
+      delayMs: Number.isFinite(delayMs) ? delayMs : 250,
+    });
+    return res.status(200).json(out);
+  } catch (e) {
+    return res.status(500).json({
+      ok: false,
+      error: String(e && e.message ? e.message : e),
+    });
+  }
+});
+
+/**
  * GET|POST /admin/corporate-captives-send-run?secret=...&clientId=Guy-Wilson&limit=1
  * Sends up to Max Sends Per Run (or &limit=) via Gmail; stamps Outbound Email Sent At on success.
  * Skips if Outbound Email Enabled ≠ Yes, Dry Run = Yes, or today (Brisbane) is in Outbound Blackout Dates.
