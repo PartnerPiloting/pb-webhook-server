@@ -106,6 +106,17 @@ const MISSING_BOOKING_LINK_HTML =
   '<span style="color:#b45309;font-size:0.9em">[Guest booking link not generated — need LinkedIn URL, full name, email, and GUEST_BOOKING_LINK_SECRET]</span>';
 
 /**
+ * Hard-coded outreach body for employee/corporate-captive leads.
+ * {{FirstName}} and {{IntroLink}} are replaced at send time.
+ */
+const HARDCODED_EMPLOYEE_BODY = `<p>Hi {{FirstName}},</p>
+<p>We connected on LinkedIn – and after looking at your background, I wanted to reach out directly.</p>
+<p>Having been in business my whole life, I know the moment when you start quietly asking yourself what's actually next.</p>
+<p>Most people at your stage aren't looking to quit and start a business.<br/>They're just aware something needs to shift – and not sure what yet.</p>
+<p>If that's where you're at – <a href="{{IntroLink}}">this could be pivotal</a>. Happy to have a chat.</p>
+<p>(I know a) Guy</p>`;
+
+/**
  * After {{FirstName}}, replaces {{GuestBookingLink}} with a signed URL or a visible preview stub.
  */
 function applyOutreachBodyTemplate(bodyHtml, firstName, bookingUrl, personalLine) {
@@ -686,71 +697,42 @@ function buildSortedEligible(records, eligibilityOptions) {
  */
 async function buildPreviewRows(eligibleRecords, settings, maxShow, logger) {
   const slice = eligibleRecords.slice(0, Math.max(0, maxShow));
-  const promptTemplate = trimSetting(settings.fields, F.personalLinePrompt) || "";
-
-  const needsPersonalLine =
-    slice.length > 0 &&
-    [
-      pickBodyTemplate(settings.fields, "owner"),
-      pickBodyTemplate(settings.fields, "employee"),
-      pickBodyTemplate(settings.fields, "default"),
-    ].some((tpl) => tpl.includes("{{PersonalLine}}"));
-
-  if (needsPersonalLine) {
-    await warmUpGeminiFlash(logger);
-  }
 
   const rows = [];
-  let skippedNoPersonalLine = 0;
+  let skippedOwner = 0;
   for (const rec of slice) {
     const firstName = String(rec.get(F.firstName) || "").trim();
     const ruleVariant = classifyOutreachBodyVariant(rec.get(F.rawProfile));
-    let variant = ruleVariant;
-    let variantSource = "rules_only";
+
+    if (ruleVariant === "owner") {
+      skippedOwner++;
+      if (logger) logger.info(`[OUTREACH] Skipping ${rec.get(F.email)}: classified as owner`);
+      continue;
+    }
 
     const subject = pickRandomSubject(settings.fields);
     const bookingUrl = mintGuestBookingUrlForLead(rec);
 
-    let personalLine = null;
-    if (needsPersonalLine) {
-      const pers = await generatePersonalization(
-        rec.get(F.rawProfile),
-        promptTemplate,
-        logger,
-        ruleVariant
-      );
-      if (pers == null) {
-        skippedNoPersonalLine++;
-        if (logger) logger.warn(`[PERSONAL-LINE] Skipping ${rec.get(F.email)}: AI could not generate a line`);
-        continue;
-      }
-      personalLine = pers.personalLine;
-      variant = pers.variant;
-      variantSource = pers.variantSource;
-      if (logger) {
-        logger.info(
-          `[PERSONAL-LINE] ${rec.get(F.email)}: template=${variant} (${variantSource}) rules=${ruleVariant} "${personalLine}"`
-        );
-      }
-    }
+    let html = HARDCODED_EMPLOYEE_BODY;
+    const name = firstName || "";
+    html = html.split("{{FirstName}}").join(name);
+    html = html.split("{{IntroLink}}").join(bookingUrl || MISSING_BOOKING_LINK_HTML);
 
-    const bodyTemplate = pickBodyTemplate(settings.fields, variant);
-    const html = applyOutreachBodyTemplate(bodyTemplate, firstName, bookingUrl, personalLine);
     rows.push({
       recordId: rec.id,
       to: String(rec.get(F.email) || "").trim(),
       subject,
       html,
       outboundScore: numOrNull(rec.get(F.score)),
-      variant,
+      variant: "employee",
       ruleVariant,
-      variantSource,
+      variantSource: "hardcoded_employee",
       guestBookingLinkOk: Boolean(bookingUrl),
-      personalLine,
+      personalLine: null,
     });
   }
-  if (skippedNoPersonalLine > 0 && logger) {
-    logger.warn(`[PERSONAL-LINE] ${skippedNoPersonalLine} lead(s) skipped — no personal line generated`);
+  if (skippedOwner > 0 && logger) {
+    logger.info(`[OUTREACH] ${skippedOwner} lead(s) skipped — classified as business owner`);
   }
   return rows;
 }
