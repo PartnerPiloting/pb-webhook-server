@@ -184,7 +184,7 @@ function mintGuestBookingUrlForLead(record) {
       "Australia/Brisbane";
     const guestTz = leadTz || normalizeTimezoneInput(String(fallbackRaw).trim()) || fallbackRaw;
     console.log(`[CC-OUTREACH-TZ] email=${e} location="${rawLocation}" leadTz="${leadTz}" guestTz="${guestTz}"`);
-    return `${base}/guest-book?t=${encodeURIComponent(token)}&guestTz=${encodeURIComponent(guestTz)}`;
+    return `${base}/intro?t=${encodeURIComponent(token)}`;
   } catch {
     return null;
   }
