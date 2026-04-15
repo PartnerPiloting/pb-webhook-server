@@ -273,8 +273,37 @@ function pickBodyTemplate(settingsFields, variant) {
 
 const CC_PERSONAL_LINE_MODEL =
   process.env.CC_PERSONAL_LINE_MODEL || "gemini-2.5-flash";
+/** Same model as flash by default; override with CC_OUTREACH_CLASSIFY_MODEL on Render. */
+const CC_OUTREACH_CLASSIFY_MODEL =
+  process.env.CC_OUTREACH_CLASSIFY_MODEL || CC_PERSONAL_LINE_MODEL;
 const PERSONAL_LINE_TIMEOUT_MS = 30000;
 const PERSONAL_LINE_MAX_ATTEMPTS = 2;
+const OUTREACH_CLASSIFY_TIMEOUT_MS = 20000;
+const OUTREACH_CLASSIFY_MAX_ATTEMPTS = 2;
+
+const DEFAULT_OUTREACH_CLASSIFY_PROMPT = `You classify LinkedIn profiles for a narrow B2B outreach aimed at experienced professionals who are "corporate captives" — thinking about what's next, not necessarily quitting to start a business.
+
+Decide outreachFit: "send" or "skip".
+
+SEND (outreachFit: "send") when ANY of these apply:
+- Their primary role is employee, manager, director, or professional working for an employer.
+- They have a side venture, startup, advisory role, or board seat but their main story is still employment or is mixed — include them.
+- They previously founded or sold a business but are now primarily in an employed role.
+- They are a consultant or contractor working inside client organisations (not "my own firm is my product").
+- Profile is thin or ambiguous — prefer "send".
+
+SKIP (outreachFit: "skip") only when:
+- Running their own company is clearly their main occupation and primary income (full-time founder/CEO of their own firm, sole operator living off self-employment).
+- Self-employed / sole trader as the dominant identity with no meaningful corporate anchor.
+- Principal of their own practice where the practice is their sole focus and they are not also anchored in a corporate role.
+
+When uncertain, prefer "send".`;
+
+const OUTREACH_CLASSIFY_JSON_SUFFIX = `---
+OUTPUT (mandatory). Respond with ONLY valid JSON. No markdown fences. No other text.
+{"outreachFit":"send"}
+
+outreachFit must be exactly "send" or "skip" (see rules above).`;
 
 const DEFAULT_PERSONAL_LINE_PROMPT = `From this LinkedIn profile data, find ONE thing that suggests this person values collaboration, helping others succeed, or building through relationships rather than just transactions.
 
@@ -337,6 +366,60 @@ function extractPersonalizationJson(raw) {
       /* continue */
     }
   }
+  return null;
+}
+
+/**
+ * Gemini: send corporate-captives outreach? Includes employees, side ventures alongside a job,
+ * former founders now employed; skips full-time owner-operators as primary income.
+ * @returns {Promise<{ send: boolean, source: "ai" } | null>} null → caller uses keyword rules
+ */
+async function classifyOutreachAudienceWithAI(rawProfileStr, logger) {
+  if (!vertexAIClient) return null;
+
+  const profileText =
+    typeof rawProfileStr === "string"
+      ? rawProfileStr.slice(0, 12000)
+      : JSON.stringify(rawProfileStr || {}).slice(0, 12000);
+
+  if (!profileText || profileText.length < 20) {
+    if (logger) logger.info("[OUTREACH-CLASSIFY] Profile too short for AI, using keyword rules");
+    return null;
+  }
+
+  const prompt = DEFAULT_OUTREACH_CLASSIFY_PROMPT.trim();
+  const userMessage = `${prompt}\n\n${OUTREACH_CLASSIFY_JSON_SUFFIX}\n\n---\nLEAD PROFILE DATA:\n${profileText}\n---`;
+  const model = vertexAIClient.getGenerativeModel({ model: CC_OUTREACH_CLASSIFY_MODEL });
+
+  for (let attempt = 1; attempt <= OUTREACH_CLASSIFY_MAX_ATTEMPTS; attempt++) {
+    try {
+      const callPromise = model.generateContent({
+        contents: [{ role: "user", parts: [{ text: userMessage }] }],
+      });
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("Outreach classify timed out")), OUTREACH_CLASSIFY_TIMEOUT_MS)
+      );
+      const result = await Promise.race([callPromise, timeoutPromise]);
+      const text = result?.response?.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (!text || typeof text !== "string") {
+        if (logger) logger.warn(`[OUTREACH-CLASSIFY] attempt ${attempt}: no content`);
+        continue;
+      }
+      const parsed = extractPersonalizationJson(text);
+      if (parsed && typeof parsed === "object" && parsed.outreachFit != null) {
+        const fit = String(parsed.outreachFit).trim().toLowerCase();
+        if (fit === "send") return { send: true, source: "ai" };
+        if (fit === "skip") return { send: false, source: "ai" };
+      }
+      if (logger) logger.warn(`[OUTREACH-CLASSIFY] attempt ${attempt}: invalid outreachFit`);
+    } catch (err) {
+      if (logger) logger.warn(`[OUTREACH-CLASSIFY] attempt ${attempt}: ${err.message}`);
+      if (attempt < OUTREACH_CLASSIFY_MAX_ATTEMPTS) {
+        await new Promise((r) => setTimeout(r, 1500));
+      }
+    }
+  }
+  if (logger) logger.warn("[OUTREACH-CLASSIFY] All attempts failed, using keyword rules");
   return null;
 }
 
@@ -698,15 +781,34 @@ function buildSortedEligible(records, eligibilityOptions) {
 async function buildPreviewRows(eligibleRecords, settings, maxShow, logger) {
   const slice = eligibleRecords.slice(0, Math.max(0, maxShow));
 
+  if (slice.length > 0 && vertexAIClient) {
+    await warmUpGeminiFlash(logger);
+  }
+
   const rows = [];
-  let skippedOwner = 0;
+  let skippedAudience = 0;
   for (const rec of slice) {
     const firstName = String(rec.get(F.firstName) || "").trim();
     const ruleVariant = classifyOutreachBodyVariant(rec.get(F.rawProfile));
 
-    if (ruleVariant === "owner") {
-      skippedOwner++;
-      if (logger) logger.info(`[OUTREACH] Skipping ${rec.get(F.email)}: classified as owner`);
+    const aiAudience = await classifyOutreachAudienceWithAI(rec.get(F.rawProfile), logger);
+    let send;
+    let audienceSource;
+    if (aiAudience != null) {
+      send = aiAudience.send;
+      audienceSource = aiAudience.source;
+    } else {
+      send = ruleVariant !== "owner";
+      audienceSource = "rules_fallback";
+    }
+
+    if (!send) {
+      skippedAudience++;
+      if (logger) {
+        logger.info(
+          `[OUTREACH] Skipping ${rec.get(F.email)}: audience=skip source=${audienceSource} ruleVariant=${ruleVariant}`
+        );
+      }
       continue;
     }
 
@@ -726,13 +828,14 @@ async function buildPreviewRows(eligibleRecords, settings, maxShow, logger) {
       outboundScore: numOrNull(rec.get(F.score)),
       variant: "employee",
       ruleVariant,
-      variantSource: "hardcoded_employee",
+      variantSource: `hardcoded_employee_${audienceSource}`,
+      audienceSource,
       guestBookingLinkOk: Boolean(bookingUrl),
       personalLine: null,
     });
   }
-  if (skippedOwner > 0 && logger) {
-    logger.info(`[OUTREACH] ${skippedOwner} lead(s) skipped — classified as business owner`);
+  if (skippedAudience > 0 && logger) {
+    logger.info(`[OUTREACH] ${skippedAudience} lead(s) skipped — audience not a fit`);
   }
   return rows;
 }
@@ -825,7 +928,7 @@ async function buildDryRunPreviewHtml(options = {}) {
     parts.push("<div class='card'>");
     parts.push(`<h2>${escapeHtml(row.to)}</h2>`);
     parts.push(
-      `<div class='chrome'>Record <code>${escapeHtml(row.recordId)}</code> · Outbound Email Score: <b>${row.outboundScore}</b> · Template: <b>${escapeHtml(row.variant)}</b>${row.variantSource && row.variantSource !== "rules_only" ? ` <small>(Gemini: ${escapeHtml(row.variantSource)}, rules=${escapeHtml(row.ruleVariant || "")})</small>` : ` <small>(rules only)</small>`} · Guest booking link: <b>${row.guestBookingLinkOk ? "yes" : "no"}</b></div>`
+      `<div class='chrome'>Record <code>${escapeHtml(row.recordId)}</code> · Outbound Email Score: <b>${row.outboundScore}</b> · Template: <b>${escapeHtml(row.variant)}</b> · <small>Audience: <b>${escapeHtml(row.audienceSource || "—")}</b> · ${escapeHtml(row.variantSource || "")} · keyword: ${escapeHtml(row.ruleVariant || "")}</small> · Guest booking link: <b>${row.guestBookingLinkOk ? "yes" : "no"}</b></div>`
     );
     if (row.personalLine) {
       parts.push(`<div class='chrome'><strong>Personal Line (AI):</strong> <em>${escapeHtml(row.personalLine)}</em></div>`);
@@ -1027,6 +1130,7 @@ module.exports = {
   inferOutreachBodyVariant,
   pickBodyTemplate,
   outreachProfileBlob,
+  classifyOutreachAudienceWithAI,
   generatePersonalization,
   warmUpGeminiFlash,
   outboundBlackoutStatus,
