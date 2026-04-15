@@ -6,6 +6,7 @@ const { DateTime } = require("luxon");
 const {
   verifyGuestBookingToken,
   signGuestBookingToken,
+  guestBookingTokenExpiryUnix,
 } = require("../services/guestBookingToken.js");
 const {
   fetchHostClientProfile,
@@ -221,7 +222,13 @@ async function executeGuestBookOnce({ t, start, attendeeEmail, guestNotes }) {
   }
 }
 
-router.get("/guest-book", async (req, res) => {
+/**
+ * GET /intro?t=TOKEN
+ * "Deck-first" landing: verifies token, saves guest identity to localStorage,
+ * shows Gamma presentation full-screen. The "Book a time with Guy" link inside
+ * Gamma points to /guest-book (no token), which picks up identity from storage.
+ */
+router.get("/intro", async (req, res) => {
   const token = req.query.t;
   let verified;
   try {
@@ -243,17 +250,121 @@ router.get("/guest-book", async (req, res) => {
       );
   }
 
-  const { n, e } = verified.payload;
-  const leadFirst = firstNameFromFull(n);
-  const guestTzParam = String(req.query.guestTz || req.query.tz || "").trim();
-  const ctx = {
+  const { n, li, e } = verified.payload;
+  const identity = {
     t: token,
-    leadFirst,
-    marketingEmail: e,
+    leadFirst: firstNameFromFull(n),
     leadFullName: n,
-    guestTzParam,
+    marketingEmail: e,
+    linkedIn: li,
   };
-  const ctxJson = JSON.stringify(ctx).replace(/</g, "\\u003c");
+  const identityJson = JSON.stringify(identity).replace(/</g, "\\u003c");
+  const gammaUrl =
+    process.env.GAMMA_DECK_EMBED_URL ||
+    "https://gamma.app/embed/wky6qo2lmy4c4k2";
+
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>I know a Guy</title>
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box;}
+    html,body{width:100%;height:100%;overflow:hidden;background:#0f172a;}
+    iframe{width:100%;height:100%;border:none;display:block;}
+  </style>
+</head>
+<body>
+  <iframe src="${gammaUrl}" allow="fullscreen" title="I know a Guy"></iframe>
+  <script type="application/json" id="gid">${identityJson}</script>
+  <script>
+  (function(){
+    try {
+      var data = JSON.parse(document.getElementById('gid').textContent);
+      var tz = '';
+      try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone; } catch(e) {}
+      data.timezone = tz;
+      data.savedAt = Date.now();
+      localStorage.setItem('guestBookingIdentity', JSON.stringify(data));
+    } catch(e) {}
+  })();
+  </script>
+</body>
+</html>`;
+  return res.type("html").send(html);
+});
+
+/**
+ * POST /api/guest/identify
+ * Anonymous visitors (no token) provide name + email; server mints a short-lived
+ * token so they can proceed through the normal availability / book flow.
+ */
+router.post("/api/guest/identify", async (req, res) => {
+  const { name, email } = req.body || {};
+  if (
+    !name ||
+    typeof name !== "string" ||
+    !email ||
+    !simpleEmailOk(email)
+  ) {
+    return res
+      .status(400)
+      .json({ ok: false, error: "A valid name and email are required." });
+  }
+  try {
+    const token = signGuestBookingToken({
+      n: name.trim(),
+      li: "direct-booking",
+      e: email.trim(),
+      exp: guestBookingTokenExpiryUnix(),
+    });
+    return res.json({ ok: true, token });
+  } catch (e) {
+    return res
+      .status(500)
+      .json({ ok: false, error: "Could not generate booking token." });
+  }
+});
+
+router.get("/guest-book", async (req, res) => {
+  const token = req.query.t;
+
+  let ctx = null;
+  if (token) {
+    let verified;
+    try {
+      verified = verifyGuestBookingToken(token);
+    } catch (e) {
+      return res
+        .status(503)
+        .type("html")
+        .send(
+          "<!DOCTYPE html><html><body><p>Booking is not available right now.</p></body></html>"
+        );
+    }
+    if (!verified.ok) {
+      return res
+        .status(400)
+        .type("html")
+        .send(
+          `<!DOCTYPE html><html><body><p>Invalid or expired link (${verified.error}).</p></body></html>`
+        );
+    }
+    const { n, e } = verified.payload;
+    ctx = {
+      t: token,
+      leadFirst: firstNameFromFull(n),
+      marketingEmail: e,
+      leadFullName: n,
+      guestTzParam: String(req.query.guestTz || req.query.tz || "").trim(),
+    };
+  }
+
+  const ctxJson = ctx
+    ? JSON.stringify(ctx).replace(/</g, "\\u003c")
+    : "null";
+  const leadFirst = ctx ? ctx.leadFirst : "there";
 
   const html = `<!DOCTYPE html>
 <html lang="en">
@@ -367,9 +478,19 @@ router.get("/guest-book", async (req, res) => {
 <body>
   <div class="wrap">
     <div class="card">
-      <div class="card-inner">
+      <div id="identifySection" style="display:none;padding:24px 20px">
+        <h1>Hey, Guy here. Looking forward to chatting.</h1>
+        <p class="sub">Pop in your details and I'll pull up available times.</p>
+        <label for="identifyName">Your name</label>
+        <input id="identifyName" type="text" autocomplete="name" placeholder="First and last name"/>
+        <label for="identifyEmail" style="margin-top:14px">Your email</label>
+        <input id="identifyEmail" type="email" autocomplete="email" placeholder="you@example.com"/>
+        <button type="button" class="primary" id="identifyBtn" style="margin-top:20px">Show available times</button>
+        <div id="identifyErr" class="err"></div>
+      </div>
+      <div class="card-inner" id="bookingContent">
         <div class="col-schedule">
-          <h1>Hi ${leadFirst}, Guy here. Looking forward to chatting.</h1>
+          <h1 id="greeting">Hi ${leadFirst}, Guy here. Looking forward to chatting.</h1>
           <p class="sub sub-mobile">Pick a slot below — start with a quick suggestion or choose another day.</p>
           <p class="sub sub-desktop">Pick a time on the left, then add your details on the right.</p>
           <div id="tzLine" class="tz" style="display:none"></div>
@@ -415,7 +536,62 @@ router.get("/guest-book", async (req, res) => {
     applyDeviceMode();
   });
 
-  const ctx = JSON.parse(document.getElementById('gctx').textContent);
+  var serverRaw = document.getElementById('gctx').textContent;
+  var ctx = null;
+  try { ctx = (serverRaw && serverRaw !== 'null') ? JSON.parse(serverRaw) : null; } catch(e){}
+
+  if (!ctx || !ctx.t) {
+    try {
+      var stored = localStorage.getItem('guestBookingIdentity');
+      if (stored) {
+        var sd = JSON.parse(stored);
+        if (sd && sd.t && sd.savedAt && (Date.now() - sd.savedAt < 90*24*60*60*1000)) {
+          ctx = {
+            t: sd.t,
+            leadFirst: sd.leadFirst || 'there',
+            marketingEmail: sd.marketingEmail || '',
+            leadFullName: sd.leadFullName || '',
+            guestTzParam: sd.timezone || ''
+          };
+          var h1 = document.getElementById('greeting');
+          if (h1 && ctx.leadFirst && ctx.leadFirst !== 'there') {
+            h1.textContent = 'Hi ' + ctx.leadFirst + ', Guy here. Looking forward to chatting.';
+          }
+        }
+      }
+    } catch(e){}
+  }
+
+  if (ctx && !ctx.guestTzParam) {
+    try { ctx.guestTzParam = Intl.DateTimeFormat().resolvedOptions().timeZone; } catch(e){}
+  }
+
+  if (!ctx || !ctx.t) {
+    document.getElementById('identifySection').style.display = 'block';
+    document.getElementById('bookingContent').style.display = 'none';
+    document.getElementById('identifyBtn').onclick = function(){
+      var nm = document.getElementById('identifyName').value.trim();
+      var em = document.getElementById('identifyEmail').value.trim();
+      var ie = document.getElementById('identifyErr');
+      if (!nm){ ie.textContent='Please enter your name'; return; }
+      if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(em)){ ie.textContent='Please enter a valid email'; return; }
+      ie.textContent='';
+      var ib = document.getElementById('identifyBtn');
+      ib.disabled=true; ib.textContent='Loading\u2026';
+      fetch('/api/guest/identify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:nm,email:em})})
+        .then(function(r){return r.json();})
+        .then(function(d){
+          if(!d.ok){ie.textContent=d.error||'Something went wrong';ib.disabled=false;ib.textContent='Show available times';return;}
+          var tz='';try{tz=Intl.DateTimeFormat().resolvedOptions().timeZone;}catch(e){}
+          var id={t:d.token,leadFirst:nm.split(/\\s+/)[0],leadFullName:nm,marketingEmail:em,timezone:tz,savedAt:Date.now()};
+          try{localStorage.setItem('guestBookingIdentity',JSON.stringify(id));}catch(e){}
+          window.location.reload();
+        })
+        .catch(function(){ie.textContent='Network error. Please try again.';ib.disabled=false;ib.textContent='Show available times';});
+    };
+    return;
+  }
+
   document.getElementById('email').value = ctx.marketingEmail || '';
   let days = [];
   let daysWithSlots = [];
