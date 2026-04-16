@@ -39,6 +39,8 @@ const F = {
   personalLinePrompt: "Personal Line Prompt",
   /** Long text: one YYYY-MM-DD per line (Brisbane calendar); # starts a comment line */
   blackoutDates: "Outbound Blackout Dates",
+  /** Updated by weekly CC digest job after each run */
+  lastWeeklyDigestAt: "Last Weekly Digest At",
 };
 
 const ALLOWED_SCORING = new Set(["Scored"]);

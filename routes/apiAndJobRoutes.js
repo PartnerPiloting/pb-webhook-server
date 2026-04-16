@@ -1570,6 +1570,41 @@ router.get("/admin/corporate-captives-audience-sample", async (req, res) => {
 });
 
 /**
+ * GET /admin/weekly-cc-digest?secret=PB_WEBHOOK_SECRET&clientId=Guy-Wilson&dryRun=1
+ * Summarises CC sends (7d) + guest bookings since last digest; emails CC_WEEKLY_DIGEST_EMAIL (or GMAIL_FROM_EMAIL);
+ * stamps Last Weekly Digest At on settings row unless dryRun=1.
+ * Auth: same as corporate-captives dry-run (Bearer or ?secret=).
+ */
+router.get("/admin/weekly-cc-digest", async (req, res) => {
+  const secret = process.env.PB_WEBHOOK_SECRET || process.env.DEBUG_API_KEY;
+  const authHeader = req.headers.authorization;
+  const qSecret = req.query.secret;
+  const okBearer = secret && authHeader && authHeader.includes(secret);
+  const okQuery =
+    secret && typeof qSecret === "string" && qSecret === secret;
+  if (!secret || (!okBearer && !okQuery)) {
+    return res.status(401).json({ ok: false, error: "Unauthorized" });
+  }
+  try {
+    const clientId =
+      (req.query.clientId && String(req.query.clientId).trim()) || "Guy-Wilson";
+    const dryRun =
+      String(req.query.dryRun || req.query.dry_run || "").toLowerCase() ===
+        "1" ||
+      String(req.query.dryRun || req.query.dry_run || "").toLowerCase() ===
+        "true";
+    const { runCcWeeklyDigest } = require("../services/ccWeeklyDigest.js");
+    const out = await runCcWeeklyDigest({ clientId, dryRun });
+    return res.status(200).json(out);
+  } catch (e) {
+    return res.status(500).json({
+      ok: false,
+      error: String(e && e.message ? e.message : e),
+    });
+  }
+});
+
+/**
  * GET|POST /admin/corporate-captives-send-run?secret=...&clientId=Guy-Wilson&limit=1
  * Sends up to Max Sends Per Run (or &limit=) via Gmail; stamps Outbound Email Sent At on success.
  * Skips if Outbound Email Enabled ≠ Yes, Dry Run = Yes, or today (Brisbane) is in Outbound Blackout Dates.

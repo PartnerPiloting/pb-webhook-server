@@ -32,6 +32,9 @@ const {
 } = require("../services/calendarOAuthService.js");
 const {
   maybeUpdateLeadEmailIfChanged,
+  maybeSetCcIntroClickedAt,
+  maybeSetCcBookingPageVisitedAt,
+  maybeSetGuestBookingCompletedAt,
 } = require("../services/guestBookingAirtable.js");
 
 const router = express.Router();
@@ -211,6 +214,10 @@ async function executeGuestBookOnce({ t, start, attendeeEmail, guestNotes }) {
         oldEmail: e,
         newEmail: attendeeEmail,
       });
+      await maybeSetGuestBookingCompletedAt({
+        airtableBaseId: host.airtableBaseId,
+        linkedInUrl: li,
+      });
     } catch (_) {
       /* non-fatal */
     }
@@ -271,6 +278,22 @@ router.get("/intro", async (req, res) => {
     process.env.GAMMA_DECK_EMBED_URL ||
       "https://gamma.app/embed/wky6qo2lmy4c4k2"
   );
+
+  setImmediate(() => {
+    (async () => {
+      try {
+        const host = await fetchHostClientProfile();
+        if (host.airtableBaseId) {
+          await maybeSetCcIntroClickedAt({
+            airtableBaseId: host.airtableBaseId,
+            linkedInUrl: li,
+          });
+        }
+      } catch (_) {
+        /* non-fatal */
+      }
+    })();
+  });
 
   const html = `<!DOCTYPE html>
 <html lang="en">
@@ -602,6 +625,16 @@ router.get("/guest-book", async (req, res) => {
   }
 
   document.getElementById('email').value = ctx.marketingEmail || '';
+  try {
+    if (sessionStorage.getItem('ccBookingPageTracked') !== '1') {
+      sessionStorage.setItem('ccBookingPageTracked', '1');
+      fetch('/api/guest/track-booking-page', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ t: ctx.t })
+      }).catch(function(){});
+    }
+  } catch (e) {}
   let days = [];
   let daysWithSlots = [];
   let activeDayIndex = 0;
@@ -814,6 +847,40 @@ router.get("/guest-book", async (req, res) => {
   return res.type("html").send(html);
 });
 
+/**
+ * POST /api/guest/track-booking-page
+ * First visit to /guest-book with a valid token — stamps CC Booking Page Visited At once (server dedupes).
+ */
+router.post("/api/guest/track-booking-page", async (req, res) => {
+  const { t } = req.body || {};
+  let verified;
+  try {
+    verified = verifyGuestBookingToken(t);
+  } catch (e) {
+    return res.status(503).json({ ok: false, error: "not_configured" });
+  }
+  if (!verified.ok) {
+    return res.status(400).json({ ok: false, error: verified.error });
+  }
+  const { li } = verified.payload;
+  setImmediate(() => {
+    (async () => {
+      try {
+        const host = await fetchHostClientProfile();
+        if (host.airtableBaseId) {
+          await maybeSetCcBookingPageVisitedAt({
+            airtableBaseId: host.airtableBaseId,
+            linkedInUrl: li,
+          });
+        }
+      } catch (_) {
+        /* non-fatal */
+      }
+    })();
+  });
+  return res.json({ ok: true });
+});
+
 router.get("/api/guest/availability", async (req, res) => {
   let verified;
   try {
@@ -876,6 +943,12 @@ router.post("/api/guest/book", async (req, res) => {
     const bodyType = typeof req.body;
     const hasBody = req.body != null;
     const { t, start, attendeeEmail, guestNotes } = req.body || {};
+    let verified;
+    try {
+      verified = verifyGuestBookingToken(t);
+    } catch (e) {
+      verified = { ok: false, error: "not_configured" };
+    }
     console.log(
       "[guest-book] POST /api/guest/book",
       JSON.stringify({
@@ -905,13 +978,13 @@ router.post("/api/guest/book", async (req, res) => {
         });
         await sendTextEmail({
           to: hostEmail,
-          subject: `Guest booking: ${(verified && verified.payload && verified.payload.n) || "someone"} booked a call`,
+          subject: `Guest booking: ${(verified && verified.ok && verified.payload && verified.payload.n) || "someone"} booked a call`,
           text: [
             `A lead just booked via the guest booking link.`,
             ``,
-            `Who:   ${(verified && verified.payload && verified.payload.n) || "(unknown)"}`,
+            `Who:   ${(verified && verified.ok && verified.payload && verified.payload.n) || "(unknown)"}`,
             `Email: ${attendeeEmail}`,
-            `LinkedIn: ${(verified && verified.payload && verified.payload.li) || "(none)"}`,
+            `LinkedIn: ${(verified && verified.ok && verified.payload && verified.payload.li) || "(none)"}`,
             `When:  ${when} (Brisbane)`,
             `Notes: ${guestNotes || "(none)"}`,
             ``,
