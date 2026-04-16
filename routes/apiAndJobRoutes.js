@@ -1122,6 +1122,7 @@ router.get("/debug-render-api", async (_req, res) => {
 /**
  * Fetch raw Render logs for a specific time range
  * GET /api/debug-render-logs?startTime=ISO&endTime=ISO&limit=100&search=pattern
+ * Optional: &resource=srv-xxx to query a different Render service/cron (defaults to RENDER_SERVICE_ID)
  * Auth: Bearer PB_WEBHOOK_SECRET
  */
 router.get("/debug-render-logs", async (req, res) => {
@@ -1153,12 +1154,17 @@ router.get("/debug-render-logs", async (req, res) => {
     const limit = parseInt(req.query.limit) || 200;
     const search = req.query.search || null;
     const minutes = parseInt(req.query.minutes) || 30;
+    const resourceOverride =
+      typeof req.query.resource === 'string' && req.query.resource.trim()
+        ? req.query.resource.trim()
+        : null;
+    const resourceId = resourceOverride || RENDER_SERVICE_ID;
     
     // Calculate time range
     const endTime = req.query.endTime || new Date().toISOString();
     const startTime = req.query.startTime || new Date(Date.now() - minutes * 60 * 1000).toISOString();
     
-    logger.info(`Fetching logs from ${startTime} to ${endTime}, limit: ${limit}`);
+    logger.info(`Fetching logs from ${startTime} to ${endTime}, limit: ${limit}, resource: ${resourceId}`);
     
     const params = new URLSearchParams({
       ownerId: RENDER_OWNER_ID,
@@ -1166,7 +1172,7 @@ router.get("/debug-render-logs", async (req, res) => {
       // Newest-first within [startTime, endTime]. "forward" returns oldest-first and often
       // fills the entire limit with early-window noise (cron, warm pings), hiding recent webhooks.
       direction: 'backward',
-      resource: RENDER_SERVICE_ID,
+      resource: resourceId,
       startTime: startTime,
       endTime: endTime
     });
@@ -1202,6 +1208,7 @@ router.get("/debug-render-logs", async (req, res) => {
     res.json({
       success: true,
       timeRange: { startTime, endTime },
+      resource: resourceId,
       totalLogs: formattedLogs.length,
       hasMore: logsResponse.data.hasMore,
       search: search || null,
@@ -1213,6 +1220,37 @@ router.get("/debug-render-logs", async (req, res) => {
     res.status(500).json({
       error: error.message,
       status: error.response?.status
+    });
+  }
+});
+
+/**
+ * GET /debug-render-services
+ * Lists every Render service/cron on this owner (id, name, type) so we can look up log resource IDs.
+ * Auth: Bearer PB_WEBHOOK_SECRET (same as debug-render-logs).
+ */
+router.get("/debug-render-services", async (req, res) => {
+  const authHeader = req.headers.authorization;
+  const secret = process.env.PB_WEBHOOK_SECRET || process.env.DEBUG_API_KEY;
+  if (!secret || !authHeader || !authHeader.includes(secret)) {
+    return res.status(401).json({ ok: false, error: 'Unauthorized' });
+  }
+  try {
+    const RenderLogService = require('../services/renderLogService');
+    const svc = new RenderLogService();
+    const services = await svc.getAllServices();
+    const filter =
+      typeof req.query.name === 'string' && req.query.name.trim()
+        ? req.query.name.trim().toLowerCase()
+        : null;
+    const out = filter
+      ? services.filter((s) => (s.name || '').toLowerCase().includes(filter))
+      : services;
+    return res.json({ ok: true, total: out.length, services: out });
+  } catch (e) {
+    return res.status(500).json({
+      ok: false,
+      error: e.message || String(e),
     });
   }
 });
