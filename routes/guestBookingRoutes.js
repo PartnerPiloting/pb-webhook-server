@@ -43,6 +43,14 @@ function firstNameFromFull(n) {
   return s.split(/\s+/)[0];
 }
 
+/** Gamma embeds default to scrollable “doc” view; ?mode=present = slide-style presentation inside the iframe. */
+function ensureGammaPresentModeUrl(raw) {
+  const s = String(raw || "").trim();
+  if (!s) return s;
+  if (/[?&]mode=present\b/i.test(s)) return s;
+  return s.includes("?") ? `${s}&mode=present` : `${s}?mode=present`;
+}
+
 function getTodayInTimezone(tz) {
   const now = new Date();
   const formatter = new Intl.DateTimeFormat("en-CA", {
@@ -259,9 +267,10 @@ router.get("/intro", async (req, res) => {
     linkedIn: li,
   };
   const identityJson = JSON.stringify(identity).replace(/</g, "\\u003c");
-  const gammaUrl =
+  const gammaUrl = ensureGammaPresentModeUrl(
     process.env.GAMMA_DECK_EMBED_URL ||
-    "https://gamma.app/embed/wky6qo2lmy4c4k2";
+      "https://gamma.app/embed/wky6qo2lmy4c4k2"
+  );
 
   const html = `<!DOCTYPE html>
 <html lang="en">
