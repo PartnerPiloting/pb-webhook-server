@@ -266,6 +266,24 @@ async function runUnitTests() {
     );
   }
 
+  const vpFields = {
+    ...goodFields,
+    [F.email]: "vp@example.com",
+    [F.firstName]: "Alex",
+    [F.rawProfile]: JSON.stringify({ headline: "VP Sales at BigCorp Inc" }),
+  };
+  const fillAfterAudienceSkip = await buildPreviewRows(
+    [mockRecord("recFounderOnly", founderFields), mockRecord("recVP", vpFields)],
+    { fields: { ...settingsFields, [F.body]: "<p>Hi {{FirstName}}</p>" } },
+    1
+  );
+  assert.strictEqual(
+    fillAfterAudienceSkip.length,
+    1,
+    "walk past audience skips until target send count (not only first N eligibles)"
+  );
+  assert.strictEqual(fillAfterAudienceSkip[0].to, "vp@example.com");
+
   console.log("All unit checks passed.\n");
 }
 

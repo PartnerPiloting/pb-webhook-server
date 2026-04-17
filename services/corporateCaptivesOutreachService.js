@@ -884,21 +884,27 @@ async function runCorporateCaptivesAudienceSample(options = {}) {
 }
 
 /**
- * @param {import('airtable').Record[]} eligibleRecords
+ * @param {import('airtable').Record[]} eligibleRecords — score-sorted, already eligible
  * @param {{ fields: Object }} settings
- * @param {number} maxShow
+ * @param {number} maxShow — target number of rows **after** the audience gate (not “consider first N only”)
  * @param {Object} [logger] — optional contextLogger
  */
 async function buildPreviewRows(eligibleRecords, settings, maxShow, logger) {
-  const slice = eligibleRecords.slice(0, Math.max(0, maxShow));
+  const target = Math.max(0, maxShow);
+  if (target === 0) return [];
 
-  if (slice.length > 0 && vertexAIClient) {
-    await warmUpGeminiFlash(logger);
-  }
-
+  let warmed = false;
   const rows = [];
   let skippedAudience = 0;
-  for (const rec of slice) {
+
+  for (const rec of eligibleRecords) {
+    if (rows.length >= target) break;
+
+    if (vertexAIClient && !warmed) {
+      await warmUpGeminiFlash(logger);
+      warmed = true;
+    }
+
     const firstName = String(rec.get(F.firstName) || "").trim();
     const ruleVariant = classifyOutreachBodyVariant(rec.get(F.rawProfile));
 
@@ -947,6 +953,11 @@ async function buildPreviewRows(eligibleRecords, settings, maxShow, logger) {
   }
   if (skippedAudience > 0 && logger) {
     logger.info(`[OUTREACH] ${skippedAudience} lead(s) skipped — audience not a fit`);
+  }
+  if (rows.length < target && logger) {
+    logger.info(
+      `[OUTREACH] Built ${rows.length}/${target} send row(s) — ran out of eligible leads before hitting max`
+    );
   }
   return rows;
 }
