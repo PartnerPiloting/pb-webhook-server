@@ -61,7 +61,10 @@ function sampleLinesForSpeaker(text, label, count = 6) {
 }
 const clientService = require('../services/clientService');
 const { findLeadByEmail, findLeadByName } = require('../services/inboundEmailService');
-const { DEFAULT_COACH_CLIENT_ID: RECALL_DEFAULT_COACH } = require('../services/recallLeadLinkService');
+const {
+  DEFAULT_COACH_CLIENT_ID: RECALL_DEFAULT_COACH,
+  linkMeetingByCalendarAttendees,
+} = require('../services/recallLeadLinkService');
 const { createRecallBot } = require('../services/recallBotService');
 const { tryAutoSplitForMeeting } = require('../services/recallAutoSplitService');
 const { getAutoJoinStatus } = require('../services/recallAutoJoinService');
@@ -200,6 +203,33 @@ async function recomputeRecallReviewStatusesHandler(req, res) {
 }
 router.post('/webhooks/recall/recompute-review-statuses', recomputeRecallReviewStatusesHandler);
 router.get('/webhooks/recall/recompute-review-statuses', recomputeRecallReviewStatusesHandler);
+
+/**
+ * Retroactively link a Recall meeting to Airtable leads via the coach's
+ * Google Calendar attendees. Useful for meetings recorded before the
+ * calendar-attendee auto-link was wired in, or when Recall missed a guest's email.
+ *
+ * Query:
+ *   meeting_id (required) — numeric meeting id
+ *   client_id  (optional) — coach client id; defaults to Guy-Wilson
+ */
+async function linkByCalendarAttendeesHandler(req, res) {
+  if (!pbAdminOk(req)) return res.status(401).json({ error: 'admin auth required' });
+  const rawMeetingId = req.body?.meeting_id != null ? req.body.meeting_id : req.query.meeting_id;
+  const meetingId = parseInt(String(rawMeetingId || ''), 10);
+  if (!Number.isFinite(meetingId) || meetingId < 1) {
+    return res.status(400).json({ error: 'meeting_id is required' });
+  }
+  const clientId = (req.body?.client_id || req.query.client_id || DEFAULT_COACH_CLIENT_ID).toString().trim();
+  try {
+    const result = await linkMeetingByCalendarAttendees(meetingId, { coachClientId: clientId });
+    return res.json({ meeting_id: meetingId, coach_client_id: clientId, result });
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
+}
+router.post('/webhooks/recall/link-calendar-attendees', linkByCalendarAttendeesHandler);
+router.get('/webhooks/recall/link-calendar-attendees', linkByCalendarAttendeesHandler);
 
 // ---------------------------------------------------------------------------
 router.get('/recall-review/api/queue', async (req, res) => {
