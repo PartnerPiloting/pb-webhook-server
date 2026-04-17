@@ -29,6 +29,7 @@ const {
   DEFAULT_COACH_CLIENT_ID,
   participantEmail,
   linkRecallParticipantEmail,
+  linkMeetingByCalendarAttendees,
 } = require('../services/recallLeadLinkService');
 const clientService = require('../services/clientService');
 const { findLeadByName } = require('../services/inboundEmailService');
@@ -340,6 +341,17 @@ router.post('/webhooks/recall', rawJson, async (req, res) => {
       log.info(`RECALL-WEBHOOK auto-split check meeting=${meetingId}: split=${splitResult.split || false}, reason=${splitResult.reason || 'n/a'}`);
     } catch (e) {
       log.warn(`RECALL-WEBHOOK auto-split failed for meeting=${meetingId}: ${e.message}`);
+    }
+
+    try {
+      const linkResult = await linkMeetingByCalendarAttendees(meetingId, { coachClientId });
+      if (linkResult.ok) {
+        log.info(`RECALL-WEBHOOK calendar-link meeting=${meetingId}: checked=${linkResult.attendeesChecked || 0}, leadsLinked=${linkResult.leadsLinked || 0}, participantsUpdated=${linkResult.participantsUpdated || 0}${linkResult.note ? ` (${linkResult.note})` : ''}`);
+      } else {
+        log.info(`RECALL-WEBHOOK calendar-link skipped meeting=${meetingId}: ${linkResult.error}`);
+      }
+    } catch (e) {
+      log.warn(`RECALL-WEBHOOK calendar-link failed for meeting=${meetingId}: ${e.message}`);
     }
   }
 
