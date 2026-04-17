@@ -136,6 +136,8 @@ async function linkMeetingByCalendarAttendees(meetingId, opts = {}) {
   const result = { ok: true, attendeesChecked: attendeeEmails.size, leadsLinked: 0, participantsUpdated: 0, unmatched: [] };
   const usedParticipantIds = new Set();
 
+  // Resolve each attendee email to an Airtable lead and attach to the meeting.
+  const leadsFromCalendar = []; // { email, lead }
   for (const email of attendeeEmails) {
     let lead = null;
     try {
@@ -157,43 +159,115 @@ async function linkMeetingByCalendarAttendees(meetingId, opts = {}) {
       log.warn(`addMeetingLead failed for meeting=${meetingId} lead=${lead.id}: ${err.message}`);
     }
 
-    // Try to update a matching participant (by name) that has no lead yet
+    leadsFromCalendar.push({ email, lead });
+  }
+
+  // Pool of speakers eligible to be matched to a lead:
+  // skip the coach, skip any speaker already linked.
+  const eligibleSpeakers = participants.filter(
+    (p) => !p.airtable_lead_id && String(p.role || '').toLowerCase() !== 'coach'
+           && String(p.verified_name || '').trim().length > 0,
+  );
+
+  // Pass 1: try to match each calendar lead to a speaker by name.
+  for (const { email, lead } of leadsFromCalendar) {
     const leadFirst = String(lead.firstName || '').toLowerCase().trim();
     const leadLast = String(lead.lastName || '').toLowerCase().trim();
     if (!leadFirst && !leadLast) continue;
 
-    for (const p of participants) {
-      if (usedParticipantIds.has(p.id)) continue;
-      if (p.airtable_lead_id) continue;
-      const pName = String(p.verified_name || '').toLowerCase().trim();
-      if (!pName) continue;
+    const match = eligibleSpeakers.find((p) => {
+      if (usedParticipantIds.has(p.id)) return false;
+      return participantNameMatchesLead(p.verified_name, leadFirst, leadLast);
+    });
+    if (!match) continue;
 
-      const firstOk = leadFirst ? pName.includes(leadFirst) : true;
-      const lastOk = leadLast ? pName.includes(leadLast) : true;
-      if (!firstOk || !lastOk) continue;
+    try {
+      await upsertRecallMeetingParticipant({
+        meetingId,
+        platformParticipantId: match.platform_participant_id,
+        speakerLabel: match.speaker_label,
+        verifiedName: match.verified_name,
+        verifiedEmail: match.verified_email || email,
+        role: 'client',
+        airtableLeadId: lead.id,
+        coachClientId,
+        matchMethod: 'calendar_attendee',
+      });
+      usedParticipantIds.add(match.id);
+      match.airtable_lead_id = lead.id; // so Pass 2 doesn't touch this row
+      result.participantsUpdated++;
+    } catch (err) {
+      log.warn(`participant update failed for meeting=${meetingId} speaker="${match.speaker_label}": ${err.message}`);
+    }
+  }
 
-      try {
-        await upsertRecallMeetingParticipant({
-          meetingId,
-          platformParticipantId: p.platform_participant_id,
-          speakerLabel: p.speaker_label,
-          verifiedName: p.verified_name,
-          verifiedEmail: p.verified_email || email,
-          role: 'client',
-          airtableLeadId: lead.id,
-          coachClientId,
-          matchMethod: 'calendar_attendee',
-        });
-        usedParticipantIds.add(p.id);
-        result.participantsUpdated++;
-      } catch (err) {
-        log.warn(`participant update failed for meeting=${meetingId} speaker="${p.speaker_label}": ${err.message}`);
-      }
-      break;
+  // Pass 2: 1:1 safety net. If exactly one lead is still unmatched to a
+  // speaker AND exactly one eligible speaker is still unmatched, link them
+  // anyway — this covers nickname / display-name mismatches in 1:1 calls.
+  const unmatchedLeads = leadsFromCalendar.filter(
+    ({ lead }) => ![...usedParticipantIds].some((pid) => {
+      const p = participants.find((q) => q.id === pid);
+      return p && p.airtable_lead_id === lead.id;
+    }),
+  );
+  const unmatchedSpeakers = eligibleSpeakers.filter((p) => !usedParticipantIds.has(p.id) && !p.airtable_lead_id);
+
+  if (unmatchedLeads.length === 1 && unmatchedSpeakers.length === 1) {
+    const { email, lead } = unmatchedLeads[0];
+    const speaker = unmatchedSpeakers[0];
+    try {
+      await upsertRecallMeetingParticipant({
+        meetingId,
+        platformParticipantId: speaker.platform_participant_id,
+        speakerLabel: speaker.speaker_label,
+        verifiedName: speaker.verified_name,
+        verifiedEmail: speaker.verified_email || email,
+        role: 'client',
+        airtableLeadId: lead.id,
+        coachClientId,
+        matchMethod: 'calendar_attendee_1to1',
+      });
+      result.participantsUpdated++;
+      log.info(`1:1 fallback: linked speaker "${speaker.verified_name}" to lead ${lead.id} (${email})`);
+    } catch (err) {
+      log.warn(`1:1 fallback participant update failed for meeting=${meetingId}: ${err.message}`);
     }
   }
 
   return result;
+}
+
+/**
+ * Does the Recall speaker name plausibly refer to the Airtable lead?
+ *
+ * - If speaker is one word (e.g. "Jules"), match on first name only — allow
+ *   either to be a prefix of the other to handle nickname / spelling drift
+ *   (Jules / Julie, Matt / Matthew, Dan / Daniel).
+ * - If speaker has 2+ words, require the last name as well.
+ *
+ * @param {string} speakerName
+ * @param {string} leadFirst   already lower-cased
+ * @param {string} leadLast    already lower-cased
+ */
+function participantNameMatchesLead(speakerName, leadFirst, leadLast) {
+  const pName = String(speakerName || '').toLowerCase().trim();
+  if (!pName) return false;
+  const pParts = pName.split(/\s+/).filter(Boolean);
+  if (pParts.length === 0) return false;
+
+  const speakerFirst = pParts[0];
+
+  const firstNameOk = leadFirst
+    ? (speakerFirst === leadFirst
+        || speakerFirst.startsWith(leadFirst)
+        || leadFirst.startsWith(speakerFirst))
+    : true;
+  if (!firstNameOk) return false;
+
+  if (pParts.length === 1) return true; // one-word speaker name → first-name match is enough
+
+  if (leadLast && !pName.includes(leadLast)) return false;
+  return true;
 }
 
 module.exports = {
