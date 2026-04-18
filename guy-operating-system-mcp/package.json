@@ -1,0 +1,27 @@
+{
+  "name": "guy-operating-system-mcp",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Local MCP server: Notion retrieval and writes for Guy's Operating System workspace",
+  "scripts": {
+    "build": "tsc",
+    "start": "node build/index.js",
+    "dev": "node --import tsx src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@notionhq/client": "^2.2.15",
+    "dotenv": "^16.4.7",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.10",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.2"
+  }
+}

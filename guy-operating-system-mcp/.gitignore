@@ -1,0 +1,6 @@
+node_modules/
+build/
+.env
+write-log.jsonl
+*.log
+.DS_Store
