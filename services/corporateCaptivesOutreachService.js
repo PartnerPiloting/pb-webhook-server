@@ -109,13 +109,13 @@ const MISSING_BOOKING_LINK_HTML =
 
 /**
  * Hard-coded outreach body for employee/corporate-captive leads.
- * {{FirstName}} and {{IntroLink}} are replaced at send time.
+ * {{FirstName}} and {{IntroLink}} are replaced at send time (same URL may appear twice: deck CTA + direct book).
  */
 const HARDCODED_EMPLOYEE_BODY = `<p>Hi {{FirstName}},</p>
 <p>We connected on LinkedIn – and after looking at your background, I wanted to reach out directly.</p>
 <p>Having been in business my whole life, I know the moment when you start quietly asking yourself what's actually next.</p>
 <p>Most people at your stage aren't looking to quit and start a business.<br/>They're just aware something needs to shift – and not sure what yet.</p>
-<p>If that's where you're at – <a href="{{IntroLink}}">this could be pivotal</a>. Happy to have a chat.</p>
+<p>If that's where you're at – <a href="{{IntroLink}}">this could be pivotal</a>. Happy to have a chat — <a href="{{IntroLink}}">book a time here</a>.</p>
 <p>(I know a) Guy</p>`;
 
 /**
