@@ -10,8 +10,39 @@ const { listCalendarEventsWithAttendeesInRange } = require('../config/calendarSe
 const clientService = require('./clientService');
 const { createRecallBot } = require('./recallBotService');
 const { createSafeLogger } = require('../utils/loggerHelper');
+const { sendMailgunEmail } = require('./emailNotificationService');
 
 const log = createSafeLogger('SYSTEM', null, 'recall_auto_join');
+
+const ALERT_EMAIL = process.env.ALERT_EMAIL || 'guyralphwilson@gmail.com';
+const ALERT_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+let lastCreditAlertAt = 0;
+
+async function sendCreditBalanceAlert(meetingTitle) {
+  const now = Date.now();
+  if (now - lastCreditAlertAt < ALERT_COOLDOWN_MS) return;
+  lastCreditAlertAt = now;
+  try {
+    const from = process.env.FROM_EMAIL || `noreply@${process.env.MAILGUN_DOMAIN}`;
+    await sendMailgunEmail({
+      from,
+      to: ALERT_EMAIL,
+      subject: '⚠️ Recall.ai credit balance is empty — bot did not join meeting',
+      text: [
+        `Your Recall.ai credit balance has run out.`,
+        ``,
+        `The bot could not join: "${meetingTitle}"`,
+        ``,
+        `To fix: go to https://ap-northeast-1.recall.ai/dashboard/billing/payment-method and do a one-time top-up.`,
+        ``,
+        `This alert will not repeat for 24 hours.`,
+      ].join('\n'),
+    });
+    log.info('auto-join: sent credit balance alert email');
+  } catch (e) {
+    log.warn(`auto-join: failed to send credit alert email: ${e.message}`);
+  }
+}
 
 const POLL_INTERVAL_MS = 2 * 60 * 1000;
 const LOOKAHEAD_MS = 15 * 60 * 1000;
@@ -165,6 +196,9 @@ async function checkAndDispatchBots() {
         log.info(`auto-join: bot created for "${ev.summary}" bot_id=${result.recall_response?.id}`);
       } else {
         log.warn(`auto-join: bot creation failed for "${ev.summary}": ${result.error}`);
+        if ((result.error || '').toLowerCase().includes('insufficient credit')) {
+          await sendCreditBalanceAlert(ev.summary);
+        }
       }
     } catch (e) {
       log.error(`auto-join: exception dispatching bot for "${ev.summary}": ${e.message}`);
