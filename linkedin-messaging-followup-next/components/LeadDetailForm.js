@@ -98,6 +98,23 @@ const convertToISODate = (dateString) => {
   return `${year}-${month}-${day}`;
 };
 
+/** YYYY-MM-DD for today + days, using local calendar (matches date input semantics). */
+const addDaysFromTodayISO = (days) => {
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+};
+
+const FOLLOW_UP_PRESETS = [
+  { label: '1 week', days: 7 },
+  { label: '2 weeks', days: 14 },
+  { label: '1 month', days: 30 },
+  { label: '2 months', days: 60 }
+];
+
 const LeadDetailForm = ({ lead, onUpdate, isUpdating, onDelete }) => {
   const [formData, setFormData] = useState({});
   const isDev = typeof process !== 'undefined' && process.env && process.env.NODE_ENV !== 'production';
@@ -146,6 +163,16 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating, onDelete }) => {
       [field]: value
     }));
     setHasChanges(true);
+  };
+
+  const applyFollowUpPreset = (days) => {
+    setFormData(prev => ({
+      ...prev,
+      followUpDate: addDaysFromTodayISO(days),
+      ceaseFup: 'No'
+    }));
+    setHasChanges(true);
+    setValidationError('');
   };
 
   // Memoize the search terms change handler to prevent infinite re-renders
@@ -423,6 +450,20 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating, onDelete }) => {
                 >
                   Clear
                 </button>
+              </div>
+              <div className="flex flex-wrap items-center gap-2 mt-2">
+                <span className="text-xs text-gray-500 mr-1">From today:</span>
+                {FOLLOW_UP_PRESETS.map(({ label, days }) => (
+                  <button
+                    key={days}
+                    type="button"
+                    onClick={() => applyFollowUpPreset(days)}
+                    className="px-2.5 py-1 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded transition-colors"
+                    title={`Set follow-up to ${label} from today`}
+                  >
+                    {label}
+                  </button>
+                ))}
               </div>
             </div>
           </div>
