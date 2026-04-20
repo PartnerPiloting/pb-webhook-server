@@ -50,6 +50,7 @@ async function createRecallBot(opts) {
     meeting_url: meetingUrl,
     bot_name: botName,
     recording_config: {
+      retention: { type: 'timed', hours: 168 },
       transcript: {
         provider: {
           recallai_streaming: { mode },
