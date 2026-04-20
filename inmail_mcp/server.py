@@ -23,9 +23,25 @@ load_dotenv()
 mcp = FastMCP("InMail Pipeline")
 
 
+_EN_MONTHS = (
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
+)
+
+
 def _default_status_date() -> str:
     now = datetime.now(timezone.utc)
-    return now.strftime("%B %Y")
+    return f"{_EN_MONTHS[now.month - 1]} {now.year}"
 
 
 @mcp.tool
