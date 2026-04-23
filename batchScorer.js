@@ -81,10 +81,41 @@ const GEMINI_CHUNK_DELAY_MS = Math.max(0, parseInt(process.env.GEMINI_CHUNK_DELA
 const GEMINI_429_RETRY_ATTEMPTS = Math.max(1, parseInt(process.env.GEMINI_429_RETRY_ATTEMPTS || "3", 10));
 const GEMINI_429_INITIAL_BACKOFF_MS = Math.max(1000, parseInt(process.env.GEMINI_429_INITIAL_BACKOFF_MS || "5000", 10));
 
-/** Returns true if error is a 429 / rate limit / resource exhausted (retryable). */
+/**
+ * Returns true if the Vertex/Gemini error looks transient and worth retrying.
+ * Covers both rate-limit (429 / resource exhausted) AND common transient network /
+ * server-side hiccups that Vertex wraps in generic messages (e.g. the SDK's
+ * "exception posting request to model", 5xx, socket resets, DNS blips, timeouts).
+ * Keeping this broad means a brief Google/Vertex/network blip retries silently
+ * instead of instantly failing a whole chunk of leads and emailing an alert.
+ */
 function isRetryableRateLimitError(error) {
     const msg = String(error?.message || error || '').toLowerCase();
-    return msg.includes('429') || msg.includes('resource exhausted') || msg.includes('resource_exhausted') || msg.includes('too many requests') || msg.includes('rate limit');
+    const code = String(error?.code || '').toLowerCase();
+    return (
+        msg.includes('429') ||
+        msg.includes('resource exhausted') ||
+        msg.includes('resource_exhausted') ||
+        msg.includes('too many requests') ||
+        msg.includes('rate limit') ||
+        msg.includes('exception posting request') ||
+        msg.includes('unavailable') ||
+        msg.includes('deadline') ||
+        msg.includes('internal error') ||
+        msg.includes('socket hang up') ||
+        msg.includes('econnreset') ||
+        msg.includes('etimedout') ||
+        msg.includes('enotfound') ||
+        msg.includes('eai_again') ||
+        msg.includes('fetch failed') ||
+        msg.includes('network error') ||
+        msg.includes('timeout') ||
+        /\b5\d\d\b/.test(msg) ||
+        code === 'econnreset' ||
+        code === 'etimedout' ||
+        code === 'enotfound' ||
+        code === 'eai_again'
+    );
 }
 
 // MODIFIED a few turns ago to indicate "Prompt Length Log" to help confirm version - keeping it
@@ -477,7 +508,7 @@ async function scoreChunk(records, clientId, clientBase, runId = 'UNKNOWN') {
             lastError = error;
             if (attempt < GEMINI_429_RETRY_ATTEMPTS && isRetryableRateLimitError(error)) {
                 const backoffMs = GEMINI_429_INITIAL_BACKOFF_MS * Math.pow(2, attempt - 1);
-                log.warn(`429/rate limit on attempt ${attempt}/${GEMINI_429_RETRY_ATTEMPTS}. Waiting ${backoffMs}ms before retry...`);
+                log.warn(`Transient Vertex/Gemini error on attempt ${attempt}/${GEMINI_429_RETRY_ATTEMPTS} (${error?.message || error}). Waiting ${backoffMs}ms before retry...`);
                 await new Promise(resolve => setTimeout(resolve, backoffMs));
             } else {
                 break; // Non-retryable or last attempt - exit loop
