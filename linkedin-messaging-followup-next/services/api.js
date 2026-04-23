@@ -1901,7 +1901,29 @@ const BATCH_SIZE = 5;
 const BATCH_TIMEOUT_MS = 120000; // 2 min per batch
 
 /**
- * Trigger the Smart Follow-up sweep (rebuild) - chunked mode.
+ * Kick off a Smart Follow-up rebuild (server-driven, preferred).
+ * Server chains its own chunks via self-HTTP; browser just polls sweep-status for progress.
+ * You can close the tab — the job keeps running.
+ * @returns {Promise<{success: boolean, alreadyRunning?: boolean, message?: string}>}
+ */
+export const startSmartFollowupRebuild = async () => {
+  const clientId = getCurrentClientId();
+  if (!clientId) {
+    throw new Error('Client ID not available. Please ensure user is authenticated.');
+  }
+  const base = getBackendBase();
+  const headers = getAuthenticatedHeaders();
+  const response = await axios.post(
+    `${base}/api/smart-followup/rebuild-start`,
+    { clientId },
+    { headers, timeout: 30000 }
+  );
+  return response.data;
+};
+
+/**
+ * Legacy: Trigger the Smart Follow-up sweep (rebuild) - browser-driven chunked mode.
+ * Kept as a fallback. Prefer startSmartFollowupRebuild above.
  * Processes leads in batches of 5, each request completes before the next.
  * @param {Function} onProgress - (processed, totalCandidates) => void
  * @returns {Promise<{processed: number, totalCandidates: number, created: number, updated: number, errors: array}>}

@@ -12545,6 +12545,16 @@ router.post("/api/smart-followup/acknowledge", async (req, res) => {
 const SWEEP_STATUS_TABLE = 'Smart FUP Sweep Status';
 const { SWEEP_STATUS_FIELDS } = require('../scripts/setup-smart-fup-airtable');
 
+// Track which optional sweep-status fields Airtable has rejected so we don't retry them every call.
+const _missingSweepStatusFields = new Set();
+
+function _stripUnknownFieldFromError(errorMessage) {
+  if (!errorMessage) return null;
+  // Airtable errors look like: "Unknown field name: \"Last Heartbeat At\""
+  const m = errorMessage.match(/unknown field name:?\s*["']?([^"'\n]+)["']?/i);
+  return m ? m[1].trim() : null;
+}
+
 async function upsertSweepStatusToAirtable(clientId, status, resultsOrError) {
   const key = clientId || 'ALL';
   const base = require('../services/clientService').initializeClientsBase();
@@ -12566,11 +12576,18 @@ async function upsertSweepStatusToAirtable(clientId, status, resultsOrError) {
       ? JSON.stringify(resultsOrError.results.errors)
       : undefined),
     [SWEEP_STATUS_FIELDS.CURRENT_LEAD_NAME]: resultsOrError?.results?.currentLeadName,
+    // Heartbeat: stamp on every write so the UI can tell "still alive" from "stalled".
+    // For completed/failed we also write it, giving the final confirmation time.
+    [SWEEP_STATUS_FIELDS.LAST_HEARTBEAT_AT]: now,
   };
   // Remove undefined values (keep null for clearing fields)
   Object.keys(recordData).forEach(k => recordData[k] === undefined && delete recordData[k]);
+  // Pre-emptively strip fields that Airtable has rejected in previous calls.
+  for (const missing of _missingSweepStatusFields) {
+    delete recordData[missing];
+  }
 
-  try {
+  const tryWrite = async (data) => {
     const escapedKey = String(key).replace(/'/g, "''");
     const records = await base(SWEEP_STATUS_TABLE).select({
       filterByFormula: `{${SWEEP_STATUS_FIELDS.CLIENT_ID}} = '${escapedKey}'`,
@@ -12578,11 +12595,28 @@ async function upsertSweepStatusToAirtable(clientId, status, resultsOrError) {
     }).firstPage();
 
     if (records.length > 0) {
-      await base(SWEEP_STATUS_TABLE).update(records[0].id, recordData);
+      await base(SWEEP_STATUS_TABLE).update(records[0].id, data);
     } else {
-      await base(SWEEP_STATUS_TABLE).create(recordData);
+      await base(SWEEP_STATUS_TABLE).create(data);
     }
+  };
+
+  try {
+    await tryWrite(recordData);
   } catch (err) {
+    const missing = _stripUnknownFieldFromError(err.message);
+    if (missing && recordData[missing] !== undefined) {
+      _missingSweepStatusFields.add(missing);
+      delete recordData[missing];
+      console.warn(`[SweepStatus] Airtable rejected field "${missing}" — will omit from future writes. Add it to the "${SWEEP_STATUS_TABLE}" table to enable richer status reporting.`);
+      try {
+        await tryWrite(recordData);
+        return;
+      } catch (err2) {
+        console.error('[SweepStatus] Airtable upsert retry failed:', err2.message);
+        return;
+      }
+    }
     console.error('[SweepStatus] Airtable upsert failed:', err.message);
   }
 }
@@ -12621,6 +12655,7 @@ async function getSweepStatusFromAirtable(clientId) {
       status: statusVal === 'running' ? 'running' : statusVal === 'failed' ? 'failed' : 'completed',
       startedAt: f[SWEEP_STATUS_FIELDS.STARTED_AT],
       completedAt: f[SWEEP_STATUS_FIELDS.COMPLETED_AT],
+      lastHeartbeatAt: f[SWEEP_STATUS_FIELDS.LAST_HEARTBEAT_AT] || null,
       results: (statusVal === 'completed' || statusVal === 'failed' || statusVal === 'running') ? results : undefined,
       error: statusVal === 'failed' ? (f[SWEEP_STATUS_FIELDS.ERROR_DETAILS] || 'Unknown error') : undefined,
     };
@@ -12628,6 +12663,53 @@ async function getSweepStatusFromAirtable(clientId) {
     console.error('[SweepStatus] Airtable read failed:', err.message);
     return { status: 'none', message: 'Failed to read sweep status' };
   }
+}
+
+// ---------------------------------------------------------------
+// Smart Follow-Up Sweep - Server-Side Chain Helper
+// Fires a self-HTTP call for the next chunk so the server (not the browser) drives the loop.
+// Fire-and-forget: logs any failure but does not block the caller.
+// ---------------------------------------------------------------
+function getOwnBaseUrl() {
+  // RENDER_EXTERNAL_URL is set automatically on Render. Fall back to local dev PORT (usually 3001).
+  return process.env.RENDER_EXTERNAL_URL
+    || process.env.APP_BASE_URL
+    || `http://localhost:${process.env.PORT || 3001}`;
+}
+
+function fireNextSweepChunk({ clientId, batchSize, nextOffset, forceAll, sweepLogger }) {
+  const secret = process.env.PB_WEBHOOK_SECRET;
+  if (!secret) {
+    sweepLogger.error('Cannot auto-chain: PB_WEBHOOK_SECRET not set. Marking sweep failed.');
+    upsertSweepStatusToAirtable(clientId, 'failed', { error: 'Auto-chain misconfigured: PB_WEBHOOK_SECRET missing' }).catch(() => {});
+    return;
+  }
+  const base = getOwnBaseUrl();
+  const params = new URLSearchParams();
+  if (clientId) params.set('clientId', clientId);
+  params.set('batchSize', String(batchSize));
+  params.set('offset', String(nextOffset));
+  if (forceAll) params.set('forceAll', 'true');
+  params.set('autoChain', 'true');
+  const url = `${base}/api/smart-followup/sweep?${params.toString()}`;
+
+  // Small delay lets the current response flush and gives the event loop a breath.
+  setTimeout(() => {
+    fetch(url, {
+      method: 'GET',
+      headers: { 'Authorization': `Bearer ${secret}` },
+    }).then(r => {
+      if (!r.ok) {
+        sweepLogger.error(`Auto-chain next chunk failed: ${r.status} ${r.statusText} (offset=${nextOffset})`);
+        upsertSweepStatusToAirtable(clientId, 'failed', { error: `Auto-chain HTTP ${r.status} at offset ${nextOffset}` }).catch(() => {});
+      } else {
+        sweepLogger.info(`Auto-chained next chunk (offset=${nextOffset})`);
+      }
+    }).catch(err => {
+      sweepLogger.error(`Auto-chain next chunk threw: ${err.message} (offset=${nextOffset})`);
+      upsertSweepStatusToAirtable(clientId, 'failed', { error: `Auto-chain error: ${err.message}` }).catch(() => {});
+    });
+  }, 250);
 }
 
 // ---------------------------------------------------------------
@@ -12687,11 +12769,24 @@ router.get("/api/smart-followup/sweep", async (req, res) => {
     offset,        // For chunked mode: skip this many leads
     batchSize,     // For chunked mode: process this many per request
     forceAll,      // 'true' to re-analyze ALL leads regardless of notes changes
-    async: asyncMode  // 'true' = fire-and-forget (legacy, not recommended)
+    async: asyncMode,  // 'true' = fire-and-forget (legacy, not recommended)
+    autoChain      // 'true' = server fires next chunk via self-HTTP after responding (requires Bearer PB_WEBHOOK_SECRET)
   } = req.query;
   
   const batchSz = batchSize ? parseInt(batchSize, 10) : null;
   const off = offset ? parseInt(offset, 10) : 0;
+  const isAutoChain = autoChain === 'true';
+  
+  // Auto-chain requests can only come from the server itself — require the webhook secret.
+  // This prevents external abuse of the chained sweep (which cascades AI spend).
+  if (isAutoChain) {
+    const secret = process.env.PB_WEBHOOK_SECRET;
+    const authHeader = req.headers.authorization || '';
+    if (!secret || authHeader !== `Bearer ${secret}`) {
+      sweepLogger.warn('autoChain=true rejected: missing or invalid Bearer token');
+      return res.status(401).json({ success: false, error: 'autoChain requires Bearer PB_WEBHOOK_SECRET' });
+    }
+  }
   
   const sweepOptions = {
     clientId: clientId || null,
@@ -12702,17 +12797,36 @@ router.get("/api/smart-followup/sweep", async (req, res) => {
     forceAll: forceAll === 'true'
   };
   
-  sweepLogger.info(`Smart Follow-Up sweep triggered: clientId=${clientId || 'ALL'}, dryRun=${dryRun}, limit=${sweepOptions.limit}, offset=${sweepOptions.offset}, batchMode=${sweepOptions.batchMode}, forceAll=${forceAll}, async=${asyncMode}`);
+  sweepLogger.info(`Smart Follow-Up sweep triggered: clientId=${clientId || 'ALL'}, dryRun=${dryRun}, limit=${sweepOptions.limit}, offset=${sweepOptions.offset}, batchMode=${sweepOptions.batchMode}, forceAll=${forceAll}, async=${asyncMode}, autoChain=${isAutoChain}`);
   
-  // Chunked mode: sync, process one batch, return hasMore for frontend to loop
+  // Chunked mode: sync, process one batch, return hasMore for frontend to loop (or autoChain to self)
   // Write status to Airtable so returning users see progress
   if (batchSz) {
     const cid = clientId || null;
     if (off === 0) {
       upsertSweepStatusToAirtable(cid, 'running').catch(e => sweepLogger.warn('Chunked status write failed:', e.message));
     }
+    // Per-lead heartbeat writer, throttled so we don't hammer Airtable.
+    // onProgress can fire up to once per lead (~every 20-40s), so we only skip if <2s since last write.
+    let lastHeartbeatWriteMs = 0;
+    const progressCallback = (r) => {
+      const nowMs = Date.now();
+      if (nowMs - lastHeartbeatWriteMs < 2000) return;
+      lastHeartbeatWriteMs = nowMs;
+      const cumulativeProcessed = off + (r.processed ?? 0);
+      const payload = {
+        results: {
+          processed: cumulativeProcessed,
+          candidatesFound: r.candidatesFound ?? 0,
+          aiAnalyzed: r.aiAnalyzed ?? 0,
+        }
+      };
+      if (r.currentLeadName) payload.results.currentLeadName = r.currentLeadName;
+      upsertSweepStatusToAirtable(cid, 'running', payload)
+        .catch(e => sweepLogger.warn('Heartbeat status write failed:', e.message));
+    };
     try {
-      const results = await runSweep(sweepOptions);
+      const results = await runSweep({ ...sweepOptions, onProgress: progressCallback });
       const totalCandidates = results.clients?.[0]?.candidatesFound ?? 0;
       const processed = results.totalProcessed ?? 0;
       const nextOffset = off + processed;
@@ -12739,7 +12853,8 @@ router.get("/api/smart-followup/sweep", async (req, res) => {
         }).catch(e => sweepLogger.warn('Chunked status write failed:', e.message));
       }
 
-      return res.json({
+      // Send response back to caller before firing the next chunk.
+      res.json({
         success: true,
         processed,
         totalCandidates,
@@ -12749,6 +12864,20 @@ router.get("/api/smart-followup/sweep", async (req, res) => {
         updated: results.totalUpdated ?? 0,
         errors: allErrors,
       });
+
+      // In autoChain mode, if there is more work, trigger the next chunk via self-HTTP.
+      // Fire-and-forget so the caller's response isn't held. Each chunk is a fresh HTTP request,
+      // which keeps Render's request lifecycle happy and makes the chain survive process restarts.
+      if (hasMore && isAutoChain) {
+        fireNextSweepChunk({
+          clientId: cid,
+          batchSize: batchSz,
+          nextOffset,
+          forceAll: sweepOptions.forceAll,
+          sweepLogger,
+        });
+      }
+      return;
     } catch (error) {
       sweepLogger.error('Chunked sweep error:', error.message, error.stack);
       await upsertSweepStatusToAirtable(cid, 'failed', { error: error.message }).catch(() => {});
@@ -12875,6 +13004,71 @@ router.get("/api/cron/smart-followup-sweep", async (req, res) => {
     sweepLogger.error('Cron sweep failed:', err.message, err.stack);
     await upsertSweepStatusToAirtable(clientId, 'failed', { error: err.message }).catch(() => {});
     return res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ---------------------------------------------------------------
+// Smart Follow-Up Rebuild - Server-Driven Entry Point
+// Called by the UI to kick off a rebuild. The server then chains chunks itself
+// via self-HTTP so the browser doesn't have to stay open.
+// Returns 202 immediately; UI polls /sweep-status for progress.
+// ---------------------------------------------------------------
+router.post("/api/smart-followup/rebuild-start", async (req, res) => {
+  const rebuildLogger = createLogger({ runId: 'SMART-FUP-REBUILD', clientId: req.body?.clientId || req.headers['x-client-id'] || 'unknown', operation: 'smart_followup_rebuild_start' });
+  try {
+    const clientId = req.body?.clientId || req.headers['x-client-id'];
+    if (!clientId) {
+      return res.status(400).json({ success: false, error: 'clientId required' });
+    }
+    const batchSize = Math.max(1, Math.min(parseInt(req.body?.batchSize, 10) || 5, 20));
+    const forceAll = req.body?.forceAll !== false; // default true for rebuild
+
+    // Refuse to start if one is already running — protects against double-click / double-tab races.
+    const current = await getSweepStatusFromAirtable(clientId);
+    if (current.status === 'running') {
+      const startedAt = current.startedAt ? new Date(current.startedAt).getTime() : 0;
+      const heartbeatAt = current.lastHeartbeatAt ? new Date(current.lastHeartbeatAt).getTime() : startedAt;
+      const elapsedSinceHeartbeat = heartbeatAt ? Date.now() - heartbeatAt : Infinity;
+      // If heartbeat is recent (<3 min) we assume a live run — don't start a second one.
+      if (elapsedSinceHeartbeat < 3 * 60 * 1000) {
+        rebuildLogger.info(`Rebuild already running for ${clientId} (heartbeat ${Math.floor(elapsedSinceHeartbeat / 1000)}s ago) — returning existing status`);
+        return res.status(202).json({
+          success: true,
+          alreadyRunning: true,
+          message: 'A rebuild is already in progress for this client.',
+          status: current,
+        });
+      }
+      rebuildLogger.warn(`Stale running status for ${clientId} (heartbeat ${Math.floor(elapsedSinceHeartbeat / 1000)}s ago) — starting fresh run`);
+    }
+
+    if (!process.env.PB_WEBHOOK_SECRET) {
+      rebuildLogger.error('Cannot start rebuild: PB_WEBHOOK_SECRET not set in env');
+      return res.status(500).json({ success: false, error: 'Server misconfigured: PB_WEBHOOK_SECRET missing' });
+    }
+
+    // Write running state with processed=0 so UI shows the kickoff immediately.
+    await upsertSweepStatusToAirtable(clientId, 'running', {
+      results: { processed: 0, candidatesFound: 0, aiAnalyzed: 0 }
+    }).catch(e => rebuildLogger.warn('Initial running status write failed:', e.message));
+
+    // Fire the first chunk via self-HTTP. fireNextSweepChunk handles auth + error capture.
+    fireNextSweepChunk({
+      clientId,
+      batchSize,
+      nextOffset: 0,
+      forceAll,
+      sweepLogger: rebuildLogger,
+    });
+
+    rebuildLogger.info(`Rebuild started for ${clientId} (batchSize=${batchSize}, forceAll=${forceAll})`);
+    return res.status(202).json({
+      success: true,
+      message: 'Rebuild started. Poll /api/smart-followup/sweep-status for progress.',
+    });
+  } catch (error) {
+    rebuildLogger.error('Rebuild start error:', error.message, error.stack);
+    return res.status(500).json({ success: false, error: error.message });
   }
 });
 
