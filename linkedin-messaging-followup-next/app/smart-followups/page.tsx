@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef, Suspense } from 'react';
 import Layout from '../../components/Layout';
-import { getSmartFollowupQueue, acknowledgeAiDate, generateFollowupMessage, updateLead, getLeadById, snoozeSmartFollowup, triggerSmartFollowupRebuild, getSweepStatus, resetSweepStatus, generateSmartFollowupStory, replaceFupInstructions, reviewFupInstructions, getUpcomingMeetingWithLead } from '../../services/api';
+import { getSmartFollowupQueue, acknowledgeAiDate, generateFollowupMessage, updateLead, getLeadById, snoozeSmartFollowup, startSmartFollowupRebuild, getSweepStatus, resetSweepStatus, generateSmartFollowupStory, replaceFupInstructions, reviewFupInstructions, getUpcomingMeetingWithLead } from '../../services/api';
 import { getCurrentClientId, getClientProfile, getCurrentClientProfile, buildAuthUrl } from '../../utils/clientUtils';
 
 /**
@@ -191,92 +191,163 @@ function SmartFollowupsContent() {
     }
   }, [isOwner]);
 
-  // Check sweep status on mount (e.g. user returned after navigating away during rebuild)
-  // Chunked flow writes Running during rebuild - if we find it, poll and show progress unless stuck
-  const STUCK_AT_ZERO_MS = 2 * 60 * 1000;
-  const STALE_RUNNING_MS = 20 * 60 * 1000;
+  // Heartbeat thresholds for server-driven rebuild polling.
+  // The server updates Last Heartbeat At every time a lead finishes (~20-40s cadence; up to ~90s during AI timeouts).
+  const HEARTBEAT_SLOW_SEC = 90;    // amber: "still working, this lead is taking longer than usual"
+  const HEARTBEAT_STALL_SEC = 180;  // red: "no progress — appears stalled"
+  const HEARTBEAT_ABANDON_SEC = 10 * 60; // on mount only: >10 min → prompt reset, don't attach
+
+  // Poll control — refs so callbacks across renders share one cancellation source.
+  const pollCancelledRef = useRef(false);
+  const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const stopStatusPolling = () => {
+    pollCancelledRef.current = true;
+    if (pollTimerRef.current) {
+      clearTimeout(pollTimerRef.current);
+      pollTimerRef.current = null;
+    }
+  };
+
+  type SweepStatusResp = {
+    status: string;
+    startedAt?: string;
+    completedAt?: string;
+    lastHeartbeatAt?: string | null;
+    results?: {
+      processed?: number;
+      candidatesFound?: number;
+      aiAnalyzed?: number;
+      created?: number;
+      updated?: number;
+      totalErrors?: number;
+      currentLeadName?: string | null;
+      errors?: Array<{ leadName?: string; error?: string }>;
+    };
+    error?: string;
+  };
+
+  const applySweepStatusToUi = (s: SweepStatusResp) => {
+    if (s.status === 'running' && s.results) {
+      const total = s.results.candidatesFound ?? 0;
+      const processed = s.results.processed ?? 0;
+      const currentLead = s.results.currentLeadName || null;
+      const heartbeatMs = s.lastHeartbeatAt
+        ? new Date(s.lastHeartbeatAt).getTime()
+        : (s.startedAt ? new Date(s.startedAt).getTime() : 0);
+      const ageSec = heartbeatMs ? Math.floor((Date.now() - heartbeatMs) / 1000) : null;
+
+      setIsRebuilding(true);
+      setRebuildStartedAt(s.startedAt ? new Date(s.startedAt).getTime() : Date.now());
+      setSweepProgress({ processed, candidatesFound: total, aiAnalyzed: s.results.aiAnalyzed ?? 0, currentLeadName: currentLead });
+
+      let text = total > 0
+        ? `Processing… ${processed} of ${total} leads`
+        : `Rebuild starting — finding candidates…`;
+      if (currentLead) text += ` — currently ${currentLead}`;
+
+      let type: 'success' | 'error' = 'success';
+      let resetPrompt = false;
+      if (ageSec !== null) {
+        if (ageSec > HEARTBEAT_STALL_SEC) {
+          type = 'error';
+          text = `⚠️ Rebuild appears stalled — no progress in ${Math.floor(ageSec / 60)}m ${ageSec % 60}s (last ${processed} of ${total || '?'} done). Reset and retry?`;
+          resetPrompt = true;
+        } else if (ageSec > HEARTBEAT_SLOW_SEC) {
+          text += ` (still working — ${ageSec}s since last lead finished)`;
+        }
+      }
+      setActionMessage({ type, text, resetPrompt });
+      return;
+    }
+
+    if (s.status === 'completed') {
+      const r = s.results || {};
+      const candidates = r.candidatesFound ?? r.processed ?? 0;
+      const proc = r.processed ?? 0;
+      const aiAnalyzed = r.aiAnalyzed ?? 0;
+      const errCount = r.totalErrors ?? (r.errors?.length ?? 0);
+      const msg = candidates === 0
+        ? 'Rebuild complete. 0 leads in Leads table matched the sweep filter (due date or modified in last 7 days). Queue may still show leads from earlier runs.'
+        : errCount > 0
+          ? `Rebuild complete. ${candidates} candidates found, ${proc} processed (${aiAnalyzed} AI-analyzed). ${errCount} had errors.`
+          : `Rebuild complete. ${candidates} candidates found, ${proc} processed (${aiAnalyzed} AI-analyzed). 0 errors.`;
+      setActionMessage({ type: errCount > 0 ? 'error' : 'success', text: msg });
+      setSweepStatus(s);
+      setSweepProgress(null);
+      setRebuildStartedAt(null);
+      setIsRebuilding(false);
+      loadQueue();
+      stopStatusPolling();
+      return;
+    }
+
+    if (s.status === 'failed') {
+      setActionMessage({ type: 'error', text: `Rebuild failed: ${s.error || 'Unknown error'}`, resetPrompt: true });
+      setSweepStatus(s);
+      setSweepProgress(null);
+      setRebuildStartedAt(null);
+      setIsRebuilding(false);
+      stopStatusPolling();
+      return;
+    }
+  };
+
+  const startStatusPolling = () => {
+    stopStatusPolling();
+    pollCancelledRef.current = false;
+    const tick = async () => {
+      if (pollCancelledRef.current) return;
+      try {
+        const s = await getSweepStatus();
+        if (pollCancelledRef.current) return;
+        applySweepStatusToUi(s as SweepStatusResp);
+        if (s.status === 'running') {
+          pollTimerRef.current = setTimeout(tick, 5000);
+        }
+      } catch (_) {
+        if (pollCancelledRef.current) return;
+        pollTimerRef.current = setTimeout(tick, 10000);
+      }
+    };
+    tick();
+  };
+
+  // On mount: if a rebuild is already running server-side, attach to it;
+  // if it's completed/failed, show the prior result so the user knows where they stand.
   useEffect(() => {
     if (!isOwner) return;
     let cancelled = false;
     const check = async () => {
-      const status = await getSweepStatus();
+      const status = (await getSweepStatus()) as SweepStatusResp;
       if (cancelled) return;
       if (status.status === 'running') {
-        const startedAt = status.startedAt ? new Date(status.startedAt).getTime() : Date.now();
-        const elapsed = Date.now() - startedAt;
-        const processed = status.results?.processed ?? 0;
-        const total = status.results?.candidatesFound ?? 0;
-        const isStuck = processed === 0 && total > 0 && elapsed > STUCK_AT_ZERO_MS;
-        const isStale = elapsed > STALE_RUNNING_MS;
-        if (isStuck || isStale) {
-          setActionMessage({ type: 'success', text: 'The last rebuild is either still in progress, or did not complete. Would you like to reset?', resetPrompt: true });
+        const heartbeatMs = status.lastHeartbeatAt
+          ? new Date(status.lastHeartbeatAt).getTime()
+          : (status.startedAt ? new Date(status.startedAt).getTime() : 0);
+        const ageSec = heartbeatMs ? Math.floor((Date.now() - heartbeatMs) / 1000) : null;
+        if (ageSec !== null && ageSec > HEARTBEAT_ABANDON_SEC) {
+          // Very stale — most likely a crashed run. Prompt reset without pretending it's live.
+          setActionMessage({
+            type: 'error',
+            text: `The last rebuild is either still in progress, or did not complete (no progress in ${Math.floor(ageSec / 60)} minutes). Would you like to reset?`,
+            resetPrompt: true,
+          });
           return;
         }
-        setRebuildStartedAt(startedAt);
-        setIsRebuilding(true);
-        setSweepProgress({ processed, candidatesFound: total, aiAnalyzed: status.results?.aiAnalyzed ?? 0, currentLeadName: null });
-        setActionMessage({ type: 'success', text: `Processing… ${processed} of ${total} leads` });
-        const poll = async () => {
-          if (cancelled) return;
-          const s = await getSweepStatus();
-          if (cancelled) return;
-          if (s.status === 'completed') {
-            const res = s.results || {};
-            const candidates = res.candidatesFound ?? res.processed ?? 0;
-            const proc = res.processed ?? 0;
-            const aiAnalyzed = res.aiAnalyzed ?? 0;
-            const errCount = res.totalErrors ?? (res.errors?.length ?? 0);
-            const msg = candidates === 0
-              ? 'Rebuild complete. 0 leads in Leads table matched the sweep filter (due date or modified in last 7 days). Queue may still show leads from earlier runs.'
-              : errCount > 0
-                ? `Rebuild complete. ${candidates} candidates found, ${proc} processed (${aiAnalyzed} AI-analyzed). ${errCount} had errors.`
-                : `Rebuild complete. ${candidates} candidates found, ${proc} processed (${aiAnalyzed} AI-analyzed). 0 errors.`;
-            setActionMessage({ type: errCount > 0 ? 'error' : 'success', text: msg });
-            setSweepStatus(s);
-            setSweepProgress(null);
-            setRebuildStartedAt(null);
-            loadQueue();
-            setIsRebuilding(false);
-            return;
-          }
-          if (s.status === 'failed') {
-            setActionMessage({ type: 'error', text: `Rebuild failed: ${s.error || 'Unknown error'}` });
-            setSweepStatus(s);
-            setSweepProgress(null);
-            setRebuildStartedAt(null);
-            setIsRebuilding(false);
-            return;
-          }
-          if (s.status === 'running' && s.results) {
-            const tot = s.results.candidatesFound ?? 0;
-            const dn = s.results.processed ?? 0;
-            setSweepProgress({ processed: dn, candidatesFound: tot, aiAnalyzed: s.results.aiAnalyzed ?? 0, currentLeadName: null });
-            setActionMessage({ type: 'success', text: `Processing… ${dn} of ${tot} leads` });
-          }
-          setTimeout(poll, 5000);
-        };
-        setTimeout(poll, 5000);
+        applySweepStatusToUi(status);
+        startStatusPolling();
         return;
       }
       if (status.status === 'completed' || status.status === 'failed') {
-        const r = status.results || {};
-        const candidates = r.candidatesFound ?? r.processed ?? 0;
-        const processed = r.processed ?? 0;
-        const aiAnalyzed = r.aiAnalyzed ?? 0;
-        const errCount = r.totalErrors ?? (r.errors?.length ?? 0);
-        const msg = status.status === 'failed'
-          ? `Rebuild failed: ${status.error || 'Unknown error'}`
-          : candidates === 0
-            ? 'Rebuild complete. 0 leads in Leads table matched the sweep filter (due date or modified in last 7 days). Queue may still show leads from earlier runs.'
-            : errCount > 0
-              ? `Rebuild complete. ${candidates} candidates found, ${processed} processed (${aiAnalyzed} AI-analyzed). ${errCount} had errors.`
-              : `Rebuild complete. ${candidates} candidates found, ${processed} processed (${aiAnalyzed} AI-analyzed). 0 errors.`;
-        setActionMessage({ type: status.status === 'failed' || errCount > 0 ? 'error' : 'success', text: msg });
-        setSweepStatus(status);
+        applySweepStatusToUi(status);
       }
     };
     check();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      stopStatusPolling();
+    };
   }, [isOwner]);
 
   // Update rebuild elapsed time every second when rebuilding (for timestamp in screenshots)
@@ -767,44 +838,29 @@ function SmartFollowupsContent() {
     setTimeout(() => instructionsPanelRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
   };
 
+  // Server-driven rebuild. We just kick off the job and then poll /sweep-status for progress.
+  // The server chains its own chunks, so the rebuild keeps running even if you close this tab.
   const handleRebuild = async () => {
     setIsRebuilding(true);
     setError(null);
     setActionMessage(null);
+    setSweepStatus(null);
     setSweepProgress(null);
     setLoadSeconds(0);
     const start = Date.now();
     setRebuildStartedAt(start);
-    const timer = setInterval(() => setLoadSeconds(Math.floor((Date.now() - start) / 1000)), 1000);
     try {
-      const result = await triggerSmartFollowupRebuild((processed, totalCandidates) => {
-        setSweepProgress({ processed, candidatesFound: totalCandidates, aiAnalyzed: processed, currentLeadName: null });
-        setActionMessage({
-          type: 'success',
-          text: `Processing… ${processed} of ${totalCandidates} leads`,
-        });
-      });
-      const { processed, totalCandidates, created, updated, errors } = result;
-      const errCount = errors?.length ?? 0;
-      let msg: string;
-      if (totalCandidates === 0) {
-        msg = 'Rebuild complete. 0 leads in Leads table matched the sweep filter (due date or modified in last 7 days). Queue may still show leads from earlier runs.';
-      } else if (errCount > 0) {
-        msg = `Rebuild complete. ${totalCandidates} candidates found, ${processed} processed (${created} created, ${updated} updated). ${errCount} had errors.`;
+      const resp = await startSmartFollowupRebuild();
+      if (resp?.alreadyRunning) {
+        setActionMessage({ type: 'success', text: 'A rebuild is already in progress for this client — watching progress…' });
       } else {
-        msg = `Rebuild complete. ${totalCandidates} candidates found, ${processed} processed (${created} created, ${updated} updated). 0 errors.`;
+        setActionMessage({ type: 'success', text: 'Rebuild started — finding candidates…' });
       }
-      setActionMessage({ type: errCount > 0 ? 'error' : 'success', text: msg });
-      setSweepStatus(errCount > 0 ? { results: { errors } } : null);
-      setSweepProgress(null);
-      loadQueue();
+      startStatusPolling();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Rebuild failed');
-    } finally {
-      clearInterval(timer);
+      setError(err instanceof Error ? err.message : 'Rebuild failed to start');
       setIsRebuilding(false);
       setRebuildStartedAt(null);
-      setRebuildElapsedSec(0);
     }
   };
 
@@ -892,7 +948,7 @@ function SmartFollowupsContent() {
               className="px-3 py-1.5 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50"
               title="Run AI analysis on due leads and rebuild queue. Use before starting FUP's for the day."
             >
-              {isRebuilding ? (loadSeconds >= 3 ? 'Rebuild started ✓' : `Starting… ${loadSeconds}s`) : '🔨 Rebuild'}
+              {isRebuilding ? (rebuildElapsedSec < 3 ? `Starting… ${rebuildElapsedSec}s` : '🔨 Rebuilding…') : '🔨 Rebuild'}
             </button>
             <button
               onClick={() => { setError(null); setActionMessage(null); setSweepStatus(null); setSweepProgress(null); loadQueue(); }}
@@ -922,9 +978,14 @@ function SmartFollowupsContent() {
                   <span className="flex items-center gap-2 shrink-0">
                     <button
                       onClick={async () => {
+                        stopStatusPolling();
                         try {
                           await resetSweepStatus();
                           setActionMessage(null);
+                          setSweepStatus(null);
+                          setSweepProgress(null);
+                          setIsRebuilding(false);
+                          setRebuildStartedAt(null);
                           loadQueue();
                         } catch (e) {
                           setActionMessage({ type: 'error', text: 'Reset failed. Try Refresh or Rebuild.' });
@@ -984,7 +1045,7 @@ function SmartFollowupsContent() {
                     <div className="flex flex-col items-center justify-center h-full gap-4 p-4">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
                 <span className="text-sm text-gray-500 text-center">
-                  {isRebuilding ? 'Rebuilding' : 'Loading'}… {loadSeconds}s
+                  {isRebuilding ? `Rebuilding… ${rebuildElapsedSec}s` : `Loading… ${loadSeconds}s`}
                 </span>
                 {queue.length > 0 && (
                   <span className="text-xs text-gray-400 text-center block" title={queue.map(getDisplayName).join(', ')}>
