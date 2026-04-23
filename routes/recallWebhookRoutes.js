@@ -504,6 +504,7 @@ router.get('/recall-review/api/search-lead', async (req, res) => {
 
 /**
  * GET /recall-review/api/latest-transcript-by-email?email=...
+ * Optional: name=<first last> (fallback if email lookup fails, or if no email given)
  * Optional: after=ISO8601 (only meetings on/after this instant), format=json|text
  * Auth: same as other recall-review API (PB_WEBHOOK_SECRET Bearer, x-dev-key, or portal token).
  * For MCP: use format=text and Authorization Bearer with PB_WEBHOOK_SECRET.
@@ -511,8 +512,11 @@ router.get('/recall-review/api/search-lead', async (req, res) => {
 router.get('/recall-review/api/latest-transcript-by-email', async (req, res) => {
   if (!(await pbRecallReviewApiOk(req))) return res.status(401).json({ error: 'unauthorized' });
   const email = typeof req.query.email === 'string' ? req.query.email.trim().toLowerCase() : '';
-  if (!email || !email.includes('@')) {
-    return res.status(400).json({ error: 'email query parameter required' });
+  const name = typeof req.query.name === 'string' ? req.query.name.trim() : '';
+  const hasEmail = email && email.includes('@');
+  const hasName = name.length >= 2;
+  if (!hasEmail && !hasName) {
+    return res.status(400).json({ error: 'email or name query parameter required' });
   }
   const wantText = String(req.query.format || '').toLowerCase() === 'text'
     || (req.get('accept') || '').includes('text/plain');
@@ -525,11 +529,37 @@ router.get('/recall-review/api/latest-transcript-by-email', async (req, res) => 
     if (!coachClient?.airtableBaseId) {
       return res.status(503).json({ error: 'coach_base_not_configured' });
     }
-    const lead = await findLeadByEmail(coachClient, email);
-    if (!lead?.id) {
-      return res.status(404).json({ ok: false, error: 'lead_not_found', email });
+    let lead = hasEmail ? await findLeadByEmail(coachClient, email) : null;
+    let lookupMethod = lead?.id ? 'email' : null;
+    if (!lead?.id && hasName) {
+      const nameResult = await findLeadByName(coachClient, name);
+      if (nameResult.matchType === 'ambiguous') {
+        return res.status(409).json({
+          ok: false,
+          error: 'name_ambiguous',
+          name,
+          matches: (nameResult.allMatches || []).map((l) => ({
+            id: l.id,
+            name: [l.firstName, l.lastName].filter(Boolean).join(' ').trim(),
+            email: l.email || '',
+            company: l.company || '',
+          })),
+        });
+      }
+      if (nameResult.matchType === 'unique' && nameResult.lead) {
+        lead = nameResult.lead;
+        lookupMethod = 'name';
+      }
     }
-    const leadName = [lead.firstName, lead.lastName].filter(Boolean).join(' ').trim() || email;
+    if (!lead?.id) {
+      return res.status(404).json({
+        ok: false,
+        error: 'lead_not_found',
+        email: email || undefined,
+        name: name || undefined,
+      });
+    }
+    const leadName = [lead.firstName, lead.lastName].filter(Boolean).join(' ').trim() || email || name;
     const limit = 100;
     let rows = await getMeetingsForLead(lead.id, limit);
     if (afterOk) {
@@ -539,13 +569,15 @@ router.get('/recall-review/api/latest-transcript-by-email', async (req, res) => 
         return new Date(t).getTime() >= afterMs;
       });
     }
+    const resolvedEmail = email || (lead.email || '').toLowerCase();
     if (!rows || rows.length === 0) {
       return res.status(404).json({
         ok: false,
         error: 'no_meetings',
-        email,
+        email: resolvedEmail,
         leadId: lead.id,
         leadName,
+        lookupMethod,
       });
     }
     const latest = rows[0];
@@ -559,7 +591,8 @@ router.get('/recall-review/api/latest-transcript-by-email', async (req, res) => 
 
     return res.json({
       ok: true,
-      email,
+      email: resolvedEmail,
+      lookupMethod,
       leadId: lead.id,
       leadName,
       meeting: {
