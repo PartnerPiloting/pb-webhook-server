@@ -34,12 +34,30 @@ const OES_429_INITIAL_BACKOFF_MS = Math.max(
 
 function isRetryableVertexRateLimitError(error) {
   const msg = String(error?.message || error || '').toLowerCase();
+  const code = String(error?.code || '').toLowerCase();
   return (
     msg.includes('429') ||
     msg.includes('resource exhausted') ||
     msg.includes('resource_exhausted') ||
     msg.includes('too many requests') ||
-    msg.includes('rate limit')
+    msg.includes('rate limit') ||
+    msg.includes('exception posting request') ||
+    msg.includes('unavailable') ||
+    msg.includes('deadline') ||
+    msg.includes('internal error') ||
+    msg.includes('socket hang up') ||
+    msg.includes('econnreset') ||
+    msg.includes('etimedout') ||
+    msg.includes('enotfound') ||
+    msg.includes('eai_again') ||
+    msg.includes('fetch failed') ||
+    msg.includes('network error') ||
+    msg.includes('timeout') ||
+    /\b5\d\d\b/.test(msg) ||
+    code === 'econnreset' ||
+    code === 'etimedout' ||
+    code === 'enotfound' ||
+    code === 'eai_again'
   );
 }
 
@@ -438,10 +456,11 @@ ${truncated}${truncatedNote}`;
         lastCallError = e;
         if (attempt < maxAttempts && isRetryableVertexRateLimitError(e)) {
           const backoffMs = OES_429_INITIAL_BACKOFF_MS * Math.pow(2, attempt - 1);
-          logger.warn('[OES] Vertex rate limit, backing off and retrying', {
+          logger.warn('[OES] Transient Vertex error, backing off and retrying', {
             attempt,
             maxAttempts,
             backoffMs,
+            errorMessage: e?.message || String(e),
           });
           await new Promise((r) => setTimeout(r, backoffMs));
         } else {
