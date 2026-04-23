@@ -1,6 +1,6 @@
 # Recall transcript MCP server
 
-Fetches the latest Recall meeting transcript for a lead (by email) from your deployed `pb-webhook-server` and saves it as a `.txt` file on this computer. Cursor / Claude can call it so you do not paste long transcripts by hand.
+Fetches the latest Recall meeting transcript for a lead (by email, or by full name as a fallback) from your deployed `pb-webhook-server` and saves it as a `.txt` file on this computer. Cursor / Claude can call it so you do not paste long transcripts by hand.
 
 ## Setup
 
@@ -42,13 +42,16 @@ Fetches the latest Recall meeting transcript for a lead (by email) from your dep
 
 ## Tool
 
-**`recall_latest_transcript`** — arguments:
+**`recall_latest_transcript`** — arguments (at least one of `email` or `name` is required):
 
-- `email` (required): lead email in Airtable
+- `email` (optional): lead email in Airtable (preferred when known)
+- `name` (optional): lead full name, e.g. `"Jane Doe"`. Used when no email is given, or when the email lookup finds nothing.
 - `after` (optional): ISO 8601 time; only meetings on or after this instant
 - `outputDir` (optional): override output folder for this call only
 
 Returns the absolute path to the saved file and a short summary for the assistant.
+
+If the name matches more than one lead, the tool returns the list of matches (name, email, company, id) so the assistant can ask the user which person they meant, and then retry using that lead's email.
 
 ## Test without Cursor
 

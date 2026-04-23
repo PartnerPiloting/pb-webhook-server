@@ -19,10 +19,11 @@ function safeFilePart(s) {
   return String(s).replace(/[^a-zA-Z0-9._@-]+/g, '_').slice(0, 80);
 }
 
-async function fetchLatestJson(baseUrl, secret, email, after) {
+async function fetchLatestJson(baseUrl, secret, { email, name, after }) {
   const base = baseUrl.replace(/\/$/, '');
   const u = new URL(`${base}/recall-review/api/latest-transcript-by-email`);
-  u.searchParams.set('email', email);
+  if (email) u.searchParams.set('email', email);
+  if (name) u.searchParams.set('name', name);
   if (after) u.searchParams.set('after', after);
 
   const res = await fetch(u.toString(), {
@@ -56,9 +57,18 @@ const server = new McpServer({
 
 server.tool(
   'recall_latest_transcript',
-  'Fetches the latest Recall meeting transcript for a lead from pb-webhook-server (by Airtable email), saves it as a .txt file under Documents/RecallTranscripts (or RECALL_TRANSCRIPT_OUTPUT_DIR), and returns the full path. Use when the user asks for a transcript by email.',
+  'Fetches the latest Recall meeting transcript for a lead from pb-webhook-server, saves it as a .txt file under Documents/RecallTranscripts (or RECALL_TRANSCRIPT_OUTPUT_DIR), and returns the full path. Provide the lead\'s Airtable email; if you do not have the email or it is not found, provide a name (e.g. "Jane Doe") as a fallback. At least one of email or name is required.',
   {
-    email: z.string().email().describe('Lead email in Airtable'),
+    email: z
+      .string()
+      .email()
+      .optional()
+      .describe('Lead email in Airtable (preferred when known)'),
+    name: z
+      .string()
+      .min(2)
+      .optional()
+      .describe('Lead full name (e.g. "Jane Doe") — used if email is not provided or not found'),
     after: z
       .string()
       .optional()
@@ -68,7 +78,14 @@ server.tool(
       .optional()
       .describe('Folder to save the file (optional; overrides default for this call only)'),
   },
-  async ({ email, after, outputDir }) => {
+  async ({ email, name, after, outputDir }) => {
+    if (!email && !name) {
+      return {
+        content: [{ type: 'text', text: 'Provide either an email or a name to look up the lead.' }],
+        isError: true,
+      };
+    }
+
     const secret = (process.env.PB_WEBHOOK_SECRET || process.env.RECALL_TRANSCRIPT_SECRET || '').trim();
     if (!secret) {
       return {
@@ -87,8 +104,23 @@ server.tool(
 
     let data;
     try {
-      data = await fetchLatestJson(base, secret, email, after);
+      data = await fetchLatestJson(base, secret, { email, name, after });
     } catch (e) {
+      if (e.status === 409 && e.body?.error === 'name_ambiguous') {
+        const matches = Array.isArray(e.body.matches) ? e.body.matches : [];
+        const list = matches
+          .map((m, i) => `${i + 1}. ${m.name || '(no name)'} — ${m.email || 'no email'}${m.company ? ` — ${m.company}` : ''} [id: ${m.id}]`)
+          .join('\n');
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Multiple leads match the name "${name}". Ask the user which one, then retry with that lead's email:\n${list}`,
+            },
+          ],
+          isError: true,
+        };
+      }
       const detail = e.body ? `\n${JSON.stringify(e.body, null, 2)}` : '';
       return {
         content: [{ type: 'text', text: `Request failed: ${e.message}${detail}` }],
@@ -108,14 +140,16 @@ server.tool(
 
     const mid = data.meeting?.id ?? 'unknown';
     const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-    const fname = `recall-meeting-${mid}-${safeFilePart(email)}-${stamp}.txt`;
+    const fileIdentifier = data.email || email || data.leadName || name || 'lead';
+    const fname = `recall-meeting-${mid}-${safeFilePart(fileIdentifier)}-${stamp}.txt`;
     const filePath = path.join(dir, fname);
 
     const header = [
       `Title: ${data.meeting?.title || ''}`,
       `Meeting id: ${mid}`,
       `Lead: ${data.leadName || ''} (${data.leadId || ''})`,
-      `Email: ${data.email}`,
+      `Email: ${data.email || '(unknown)'}`,
+      `Lookup method: ${data.lookupMethod || 'email'}`,
       `Saved: ${new Date().toISOString()}`,
       '---',
       '',
