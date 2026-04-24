@@ -344,13 +344,25 @@ function CalendarBookingContent() {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatMessages]);
 
-  // Generate confirmation message when booking time changes
+  // Regenerate the LinkedIn confirmation message whenever any input that affects
+  // it changes — booking time, whether to include the email, who the lead/host
+  // are, the lead's location/timezone, etc.
   useEffect(() => {
     if (bookTime && showConfirmation) {
       generateConfirmationMessage();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bookTime, includeEmailInConfirm, showConfirmation, leadDisplayTime]);
+  }, [
+    bookTime,
+    includeEmailInConfirm,
+    showConfirmation,
+    leadTimezone,
+    yourTimezone,
+    formData.leadName,
+    formData.yourName,
+    formData.leadEmail,
+    formData.leadLocation,
+  ]);
 
   // Load lead by LinkedIn URL from URL parameter
   useEffect(() => {
@@ -926,29 +938,62 @@ function CalendarBookingContent() {
     }
   };
 
+  // Build a friendly city label from a free-form location string or an IANA timezone.
+  // Prefers the user-entered location (e.g. "Mumbai"), falls back to the timezone's
+  // city segment (e.g. "Australia/Perth" -> "Perth", "America/Los_Angeles" -> "Los Angeles").
+  const friendlyCityLabel = (location: string, timezone: string): string => {
+    const fromLocation = (location || '').split(',')[0].trim();
+    if (fromLocation) return fromLocation;
+    if (!timezone) return '';
+    const parts = timezone.split('/');
+    return parts[parts.length - 1].replace(/_/g, ' ');
+  };
+
+  // Format a date in the given timezone as e.g. "Thursday, 7 May at 2:00 pm".
+  // Done in two parts so the wording is consistent across browsers (toLocaleString
+  // glues date + time together with locale-specific punctuation that varies).
+  const formatMeetingTimeInTz = (dt: Date, timezone: string | undefined): string => {
+    const dateOpts: Intl.DateTimeFormatOptions = {
+      weekday: 'long', day: 'numeric', month: 'long',
+      ...(timezone ? { timeZone: timezone } : {}),
+    };
+    const timeOpts: Intl.DateTimeFormatOptions = {
+      hour: 'numeric', minute: '2-digit', hour12: true,
+      ...(timezone ? { timeZone: timezone } : {}),
+    };
+    const datePart = dt.toLocaleDateString('en-AU', dateOpts);
+    const timePart = dt.toLocaleTimeString('en-AU', timeOpts).replace(/\s?(am|pm|AM|PM)/, (_m, p) => ` ${p.toLowerCase()}`);
+    return `${datePart} at ${timePart}`;
+  };
+
   const generateConfirmationMessage = () => {
     const leadFirstName = formData.leadName.split(' ')[0] || 'there';
     const yourFirstName = formData.yourName.split(' ')[0] || '';
-    
-    // Format the meeting time for display
+
     let meetingTimeDisplay = '';
     if (bookTime) {
       const dt = new Date(bookTime);
-      meetingTimeDisplay = dt.toLocaleString('en-AU', {
-        weekday: 'short',
-        month: 'short',
-        day: 'numeric',
-        hour: 'numeric',
-        minute: '2-digit',
-        hour12: true,
-      });
-      
-      // Add lead's timezone if different
-      if (leadDisplayTime && leadDisplayTime !== meetingTimeDisplay) {
-        meetingTimeDisplay = leadDisplayTime;
+      const haveLeadTz = !!leadTimezone;
+      const sameTimezone = haveLeadTz && yourTimezone && leadTimezone === yourTimezone;
+
+      if (haveLeadTz && !sameTimezone) {
+        // Different timezone — show the lead's local time, labelled with their city
+        // so they can never misread it as Brisbane time.
+        const timeInLeadTz = formatMeetingTimeInTz(dt, leadTimezone);
+        const cityLabel = friendlyCityLabel(formData.leadLocation, leadTimezone);
+        meetingTimeDisplay = cityLabel ? `${timeInLeadTz} ${cityLabel} time` : timeInLeadTz;
+      } else if (sameTimezone) {
+        // Same timezone — just the time, no label needed.
+        meetingTimeDisplay = formatMeetingTimeInTz(dt, yourTimezone);
+      } else {
+        // Lead timezone unknown (e.g. user hasn't chatted with the AI yet).
+        // Fall back to OUR time, labelled with OUR city so it's still unambiguous.
+        const timeInOurTz = formatMeetingTimeInTz(dt, yourTimezone);
+        const ourCityLabel = friendlyCityLabel('', yourTimezone);
+        meetingTimeDisplay = ourCityLabel ? `${timeInOurTz} ${ourCityLabel} time` : timeInOurTz;
       }
     }
-    
+
     const emailPart = includeEmailInConfirm && formData.leadEmail 
       ? ` (to ${formData.leadEmail})` 
       : '';
