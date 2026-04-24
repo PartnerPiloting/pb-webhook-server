@@ -106,6 +106,17 @@ function CalendarBookingContent() {
     }
   };
 
+  // Copy the whole assistant message (used when no READY TO COPY: delimiter is present)
+  const handleCopyAssistantMessage = async (content: string, msgIdx: number) => {
+    try {
+      await navigator.clipboard.writeText(content);
+      setCopySuccessMsgIdx(msgIdx);
+      setTimeout(() => setCopySuccessMsgIdx(null), 2000);
+    } catch (err) {
+      console.error('Failed to copy:', err);
+    }
+  };
+
   const toggleQuickPickSlot = (slot: { time: string; display: string; leadDisplay: string }) => {
     setSelectedSlots(prev => {
       const idx = prev.findIndex(s => s.time === slot.time);
@@ -161,6 +172,7 @@ function CalendarBookingContent() {
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [includeEmailInConfirm, setIncludeEmailInConfirm] = useState(true);
   const [confirmationMessage, setConfirmationMessage] = useState('');
+  const [confirmCopied, setConfirmCopied] = useState(false);
 
   // Load client info from URL
   const [showClientPrompt, setShowClientPrompt] = useState(false);
@@ -1004,8 +1016,9 @@ ${yourFirstName}`;
     
     // Show confirmation message section
     setShowConfirmation(true);
+    setConfirmCopied(false);
     generateConfirmationMessage();
-    setSuccess('✅ Google Calendar opened - send confirmation to lead below');
+    setSuccess('✅ Google Calendar opened — confirmation message ready below');
   };
 
   // Show client ID prompt if no client in URL
@@ -1599,7 +1612,7 @@ ${yourFirstName}`;
                   )}
                 </div>
                 
-                <div className="bg-gray-50 rounded-lg p-3 mb-3 min-h-[60px] max-h-40 overflow-y-auto shrink-0">
+                <div className="bg-gray-50 rounded-lg p-3 mb-3 min-h-[120px] max-h-[600px] overflow-y-auto shrink-0">
                   {chatMessages.length === 0 ? (
                     <div className="text-gray-500 text-center py-4 text-sm">
                       <p>🤖 Ask me about your availability! Try: &quot;What&apos;s free Thursday?&quot;</p>
@@ -1610,7 +1623,7 @@ ${yourFirstName}`;
                         <div key={idx}>
                           {/* User messages */}
                           {msg.role === 'user' && (
-                            <div className="text-sm p-3 rounded-lg bg-blue-100 ml-8">
+                            <div className="text-sm p-3 rounded-lg bg-blue-100">
                               <div className="flex justify-between items-start mb-1">
                                 <span className="font-medium text-blue-800">You:</span>
                                 {msg.timestamp && <span className="text-xs text-blue-600">{msg.timestamp}</span>}
@@ -1621,24 +1634,32 @@ ${yourFirstName}`;
                           
                           {/* Assistant messages */}
                           {msg.role === 'assistant' && (
-                            <div className="text-sm p-3 rounded-lg bg-green-50 border border-green-200 mr-8">
-                              <div className="flex justify-between items-start mb-1">
+                            <div className="text-sm p-4 rounded-lg bg-green-50 border border-green-200">
+                              <div className="flex justify-between items-start mb-2">
                                 <span className="font-medium text-green-700">🤖 AI Assistant:</span>
                                 {msg.timestamp && <span className="text-xs text-green-600">{msg.timestamp}</span>}
                               </div>
-                              <pre className="whitespace-pre-wrap font-sans text-green-800">{msg.content}</pre>
+                              <pre className="whitespace-pre-wrap font-sans text-green-800 text-base leading-relaxed">{msg.content}</pre>
                               
-                              {/* Copy message for lead (when AI returns READY TO COPY:) */}
-                              {extractMessageForLead(msg.content) && (
-                                <div className="mt-3">
+                              {/* Copy button - extracts READY TO COPY: portion if present, otherwise copies whole message */}
+                              <div className="mt-3">
+                                {extractMessageForLead(msg.content) ? (
                                   <button
                                     onClick={() => handleCopyMessageForLead(msg.content, idx)}
                                     className="px-3 py-1.5 bg-blue-600 text-white rounded text-xs hover:bg-blue-700 flex items-center gap-1.5"
                                   >
                                     {copySuccessMsgIdx === idx ? '✓ Copied!' : '📋 Copy message for lead'}
                                   </button>
-                                </div>
-                              )}
+                                ) : (
+                                  <button
+                                    onClick={() => handleCopyAssistantMessage(msg.content, idx)}
+                                    className="px-3 py-1.5 bg-blue-600 text-white rounded text-xs hover:bg-blue-700 flex items-center gap-1.5"
+                                    title="Copy this message to clipboard"
+                                  >
+                                    {copySuccessMsgIdx === idx ? '✓ Copied!' : '📋 Copy'}
+                                  </button>
+                                )}
+                              </div>
                               {/* Booking action button */}
                               {msg.bookingAction && (
                                 <div className="mt-3 p-2 bg-white border border-green-300 rounded">
@@ -1679,6 +1700,11 @@ ${yourFirstName}`;
                                       calUrl += `&location=${encodeURIComponent(location)}`;
                                       if (formData.leadEmail) calUrl += `&add=${encodeURIComponent(formData.leadEmail)}`;
                                       window.open(calUrl, '_blank');
+                                      // Reveal the LinkedIn confirmation message panel below the chat.
+                                      // The useEffect on [bookTime, showConfirmation, ...] will populate the message.
+                                      setShowConfirmation(true);
+                                      setConfirmCopied(false);
+                                      setSuccess('✅ Google Calendar opened — confirmation message ready below');
                                     }}
                                     className="px-3 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700"
                                   >
@@ -1691,7 +1717,7 @@ ${yourFirstName}`;
                           
                           {/* Error messages */}
                           {msg.role === 'error' && (
-                            <div className="text-sm p-3 rounded-lg bg-red-50 border border-red-200 mr-8">
+                            <div className="text-sm p-3 rounded-lg bg-red-50 border border-red-200">
                               <div className="flex justify-between items-start mb-1">
                                 <span className="font-medium text-red-700">❌ Error:</span>
                                 {msg.timestamp && <span className="text-xs text-red-600">{msg.timestamp}</span>}
@@ -1702,7 +1728,7 @@ ${yourFirstName}`;
                         </div>
                       ))}
                       {chatLoading && (
-                        <div className="text-sm p-3 rounded-lg bg-green-50 border border-green-200 mr-8">
+                        <div className="text-sm p-3 rounded-lg bg-green-50 border border-green-200">
                           <span className="text-green-700">🤖 Checking calendar...</span>
                         </div>
                       )}
@@ -1710,7 +1736,69 @@ ${yourFirstName}`;
                     </div>
                   )}
                 </div>
-                
+
+                {/* Confirmation message panel — shown after the user clicks "Book a Time".
+                    The pre-written message they paste into LinkedIn once they save the event in Google Calendar. */}
+                {showConfirmation && bookTime && (
+                  <div className="shrink-0 mb-3 bg-blue-50 border border-blue-300 rounded-lg p-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <h3 className="text-sm font-semibold text-blue-900">
+                        📋 Send to {formData.leadName.split(' ')[0] || 'the lead'} on LinkedIn
+                      </h3>
+                      <button
+                        onClick={() => { setShowConfirmation(false); setConfirmationMessage(''); setConfirmCopied(false); }}
+                        className="text-blue-600 hover:text-blue-800 text-sm shrink-0"
+                        title="Dismiss"
+                        aria-label="Dismiss confirmation panel"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                    <p className="text-xs text-blue-700 mb-2">
+                      Once you&apos;ve saved the event in Google Calendar, copy this and paste it into your LinkedIn conversation.
+                    </p>
+                    {formData.leadEmail && (
+                      <label className="flex items-center gap-2 text-xs text-blue-800 mb-2 cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={includeEmailInConfirm}
+                          onChange={(e) => setIncludeEmailInConfirm(e.target.checked)}
+                        />
+                        Mention the email address ({formData.leadEmail})
+                      </label>
+                    )}
+                    <textarea
+                      value={confirmationMessage}
+                      onChange={(e) => { setConfirmationMessage(e.target.value); setConfirmCopied(false); }}
+                      className="w-full px-3 py-2 border border-blue-300 rounded text-sm bg-white text-gray-900 resize-y"
+                      rows={6}
+                    />
+                    <div className="flex gap-2 mt-2">
+                      <button
+                        onClick={async () => {
+                          try {
+                            await navigator.clipboard.writeText(confirmationMessage);
+                            setConfirmCopied(true);
+                            setTimeout(() => setConfirmCopied(false), 2500);
+                          } catch (e) {
+                            setError('Could not copy to clipboard. Select the text manually and copy.');
+                          }
+                        }}
+                        className="px-3 py-1.5 bg-blue-600 text-white rounded text-xs hover:bg-blue-700 font-medium"
+                      >
+                        {confirmCopied ? '✓ Copied!' : '📋 Copy message'}
+                      </button>
+                      <button
+                        onClick={() => generateConfirmationMessage()}
+                        className="px-3 py-1.5 bg-white text-blue-700 rounded text-xs border border-blue-300 hover:bg-blue-50"
+                        title="Rebuild from current details (lead name, time, email setting)"
+                      >
+                        ↻ Reset to default
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 <div className="flex gap-2 shrink-0">
                   <textarea
                     ref={chatInputRef}
