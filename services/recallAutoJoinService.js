@@ -71,6 +71,7 @@ function hasActiveBotForUrl(meetingUrl, currentEventStart) {
   const now = Date.now();
   for (const [, info] of scheduledEventIds) {
     if (info.skipped || !info.ok || !info.meetingUrl) continue;
+    if (info.botDone) continue;
     if (normalizeMeetingUrl(info.meetingUrl) !== norm) continue;
     if (!info.eventEnd) continue;
     const endMs = new Date(info.eventEnd).getTime();
@@ -81,6 +82,18 @@ function hasActiveBotForUrl(meetingUrl, currentEventStart) {
       if (startMs > endMs + bufferMs) continue;
     }
     return true;
+  }
+  return false;
+}
+
+function markBotDone(botId) {
+  if (!botId) return false;
+  for (const [, info] of scheduledEventIds) {
+    if (info.botId === botId) {
+      info.botDone = true;
+      log.info(`auto-join: bot ${botId} marked done — link freed for new meetings`);
+      return true;
+    }
   }
   return false;
 }
@@ -251,4 +264,5 @@ module.exports = {
   checkAndDispatchBots,
   getAutoJoinStatus,
   extractMeetingUrl,
+  markBotDone,
 };

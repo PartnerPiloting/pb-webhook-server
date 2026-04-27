@@ -34,6 +34,7 @@ const {
 const clientService = require('../services/clientService');
 const { findLeadByName } = require('../services/inboundEmailService');
 const { tryAutoSplitForMeeting } = require('../services/recallAutoSplitService');
+const { markBotDone } = require('../services/recallAutoJoinService');
 const { retrieveRecallBot, extractMeetingTimesFromBot } = require('../services/recallBotService');
 
 const router = express.Router();
@@ -313,6 +314,10 @@ router.post('/webhooks/recall', rawJson, async (req, res) => {
         }
       }
     }
+  }
+
+  if (event === 'bot.done' && botId) {
+    try { markBotDone(botId); } catch (e) { log.warn(`RECALL-WEBHOOK markBotDone error: ${e.message}`); }
   }
 
   if (meetingId && (event === 'bot.done' || event === 'recording.done')) {
