@@ -67,7 +67,10 @@ const {
 } = require('../services/recallLeadLinkService');
 const { createRecallBot } = require('../services/recallBotService');
 const { tryAutoSplitForMeeting } = require('../services/recallAutoSplitService');
-const { getAutoJoinStatus } = require('../services/recallAutoJoinService');
+const { getAutoJoinStatus, extractMeetingUrl } = require('../services/recallAutoJoinService');
+const { listCalendarEventsWithAttendeesInRange } = require('../config/calendarServiceAccount');
+
+const REJOIN_NOW_COACH_CLIENT_ID = (process.env.RECALL_COACH_CLIENT_ID || 'Guy-Wilson').trim();
 
 const DEFAULT_COACH_CLIENT_ID = RECALL_DEFAULT_COACH;
 
@@ -694,6 +697,82 @@ router.post('/recall-api/create-bot', async (req, res) => {
   const status = out.ok ? 200 : typeof out.status === 'number' && out.status >= 400 && out.status < 600 ? out.status : 502;
   return res.status(status).json(out);
 });
+
+/**
+ * POST/GET /recall-api/rejoin-now
+ * Finds the calendar event currently in progress (start ≤ now ≤ end + 15min grace) on the
+ * coach's calendar that has a Zoom/Meet/Teams link, and dispatches a fresh Recall bot to it.
+ * Use case: bot was denied/missed the waiting room — one tap to send another knock.
+ * Auth: PB admin secret or portal recall-review auth.
+ */
+const rejoinNowHandler = async (req, res) => {
+  if (!pbAdminOk(req) && !(await pbRecallReviewApiOk(req))) {
+    return res.status(401).json({ error: 'unauthorized' });
+  }
+
+  let calendarEmail = (process.env.RECALL_COACH_CALENDAR_EMAIL || '').trim();
+  if (!calendarEmail) {
+    try {
+      const coach = await clientService.getClientById(REJOIN_NOW_COACH_CLIENT_ID);
+      calendarEmail = coach?.googleCalendarEmail || '';
+    } catch (e) {
+      return res.status(500).json({ ok: false, error: `could not get coach calendar email: ${e.message}` });
+    }
+  }
+  if (!calendarEmail) {
+    return res.status(500).json({ ok: false, error: 'coach calendar email not configured' });
+  }
+
+  const now = new Date();
+  const t0 = new Date(now.getTime() - 15 * 60 * 1000);
+  const t1 = new Date(now.getTime() + 15 * 60 * 1000);
+  const { events, error } = await listCalendarEventsWithAttendeesInRange(calendarEmail, t0, t1);
+  if (error) return res.status(502).json({ ok: false, error: `calendar error: ${error}` });
+
+  const GRACE_MS = 15 * 60 * 1000;
+  const nowMs = now.getTime();
+  const inProgress = (events || [])
+    .map(ev => ({ ev, url: extractMeetingUrl(ev) }))
+    .filter(({ ev, url }) => {
+      if (!url) return false;
+      const start = ev.start ? new Date(ev.start).getTime() : NaN;
+      const end = ev.end ? new Date(ev.end).getTime() : NaN;
+      if (!Number.isFinite(start) || !Number.isFinite(end)) return false;
+      return start <= nowMs && nowMs <= end + GRACE_MS;
+    });
+
+  if (inProgress.length === 0) {
+    return res.status(404).json({ ok: false, error: 'no calendar event in progress with a meeting link' });
+  }
+
+  if (inProgress.length > 1) {
+    return res.status(409).json({
+      ok: false,
+      error: 'multiple events in progress — use /recall-api/create-bot with a specific meeting_url',
+      candidates: inProgress.map(({ ev, url }) => ({
+        summary: ev.summary,
+        start: ev.start,
+        end: ev.end,
+        meetingUrl: url,
+      })),
+    });
+  }
+
+  const { ev, url } = inProgress[0];
+  const out = await createRecallBot({ meetingUrl: url, meetingTitle: ev.summary });
+  if (!out.ok) {
+    const status = typeof out.status === 'number' && out.status >= 400 && out.status < 600 ? out.status : 502;
+    return res.status(status).json({ ok: false, error: out.error, summary: ev.summary, meetingUrl: url });
+  }
+  return res.json({
+    ok: true,
+    summary: ev.summary,
+    meetingUrl: url,
+    botId: out.recall_response?.id || null,
+  });
+};
+router.post('/recall-api/rejoin-now', rejoinNowHandler);
+router.get('/recall-api/rejoin-now', rejoinNowHandler);
 
 router.get('/recall-review', async (req, res) => {
   if (!pbAdminOk(req)) return res.status(401).type('html').send(`<p>Unauthorized.</p>`);

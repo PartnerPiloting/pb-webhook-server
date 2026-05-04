@@ -11,6 +11,7 @@ import {
   searchRecallLeadByEmail,
   addRecallMeetingLead,
   removeRecallMeetingLead,
+  rejoinRecallNow,
 } from '../../services/api';
 import { getCurrentClientId } from '../../utils/clientUtils';
 
@@ -810,6 +811,59 @@ function EventReview({ eventId, onBack }: { eventId: string; onBack: () => void 
 }
 
 /* ------------------------------------------------------------------ */
+/* Rejoin Now button                                                   */
+/* ------------------------------------------------------------------ */
+
+type RejoinResult =
+  | { ok: true; summary?: string; meetingUrl?: string; botId?: string | null }
+  | { ok: false; error?: string; candidates?: Array<{ summary?: string; meetingUrl?: string }> };
+
+function RejoinNowButton() {
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<RejoinResult | null>(null);
+
+  const handleClick = async () => {
+    if (busy) return;
+    setBusy(true);
+    setResult(null);
+    try {
+      const r = (await rejoinRecallNow()) as RejoinResult;
+      setResult(r);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="flex flex-col items-end gap-1">
+      <button
+        type="button"
+        onClick={handleClick}
+        disabled={busy}
+        className={`text-sm font-semibold rounded px-3 py-2 border ${
+          busy
+            ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
+            : 'bg-violet-600 text-white border-violet-700 hover:bg-violet-700'
+        }`}
+        title="Send a fresh Recall bot to the calendar event currently in progress"
+      >
+        {busy ? 'Sending bot…' : 'Rejoin current call'}
+      </button>
+      {result && result.ok && (
+        <span className="text-xs text-emerald-700">
+          Bot dispatched{result.summary ? ` to "${result.summary}"` : ''}. Ask the host to admit it.
+        </span>
+      )}
+      {result && !result.ok && (
+        <span className="text-xs text-rose-700 max-w-[18rem] text-right">
+          {result.error || 'Failed to dispatch bot.'}
+        </span>
+      )}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /* Page                                                                */
 /* ------------------------------------------------------------------ */
 
@@ -835,11 +889,14 @@ function RecallReviewContent() {
       <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6">
         {!selectedId ? (
           <>
-            <div className="mb-5">
-              <h1 className="text-2xl font-bold text-gray-900">Transcript review</h1>
-              <p className="text-sm text-gray-500 mt-1">
-                Review meeting transcripts. Confirm who each speaker is, link leads, then mark complete.
-              </p>
+            <div className="mb-5 flex items-start justify-between gap-4">
+              <div>
+                <h1 className="text-2xl font-bold text-gray-900">Transcript review</h1>
+                <p className="text-sm text-gray-500 mt-1">
+                  Review meeting transcripts. Confirm who each speaker is, link leads, then mark complete.
+                </p>
+              </div>
+              <RejoinNowButton />
             </div>
             <QueueView onSelect={setSelectedId} />
           </>

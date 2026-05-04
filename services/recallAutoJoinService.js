@@ -8,7 +8,7 @@
 
 const { listCalendarEventsWithAttendeesInRange } = require('../config/calendarServiceAccount');
 const clientService = require('./clientService');
-const { createRecallBot } = require('./recallBotService');
+const { createRecallBot, leaveBot } = require('./recallBotService');
 const { createSafeLogger } = require('../utils/loggerHelper');
 const { sendMailgunEmail } = require('./emailNotificationService');
 
@@ -98,6 +98,42 @@ function markBotDone(botId) {
   return false;
 }
 
+/**
+ * Before dispatching a bot for `meetingUrl`, evict any prior bot we tracked at the same URL
+ * whose calendar event has already ended (by `cutoffIso` — typically the new event's start).
+ *
+ * This prevents the duplicate-bot scenario: prior bot stays in a shared Zoom (e.g. PMR) past
+ * its calendar end because new participants joined for the next call, never sends `bot.done`,
+ * and the new bot ends up in the same room alongside it.
+ */
+async function evictStaleBotsOnUrl(meetingUrl, cutoffIso) {
+  const norm = normalizeMeetingUrl(meetingUrl);
+  const cutoffMs = cutoffIso ? new Date(cutoffIso).getTime() : Date.now();
+  const effectiveCutoff = Number.isFinite(cutoffMs) ? Math.max(cutoffMs, Date.now()) : Date.now();
+
+  for (const [, info] of scheduledEventIds) {
+    if (!info.botId || !info.ok || info.botDone) continue;
+    if (!info.meetingUrl) continue;
+    if (normalizeMeetingUrl(info.meetingUrl) !== norm) continue;
+    if (!info.eventEnd) continue;
+    const priorEndMs = new Date(info.eventEnd).getTime();
+    if (!Number.isFinite(priorEndMs)) continue;
+    if (priorEndMs > effectiveCutoff) continue; // prior event still ongoing
+
+    log.info(`auto-join: evicting prior bot ${info.botId} (event ended ${info.eventEnd}) before dispatching new bot for ${meetingUrl}`);
+    try {
+      const out = await leaveBot(info.botId);
+      if (out.ok) {
+        info.botDone = true; // bot.done webhook will follow shortly; mark optimistically
+      } else {
+        log.warn(`auto-join: leaveBot returned ${out.status || ''} ${out.error || ''} for ${info.botId}`);
+      }
+    } catch (e) {
+      log.warn(`auto-join: evict prior bot ${info.botId} threw: ${e.message}`);
+    }
+  }
+}
+
 function extractMeetingUrl(event) {
   if (event.conferenceData) {
     const eps = event.conferenceData.entryPoints;
@@ -163,7 +199,11 @@ async function checkAndDispatchBots() {
 
   for (const ev of events) {
     const eventKey = ev.eventId || `${ev.summary}_${ev.start}`;
-    if (scheduledEventIds.has(eventKey)) continue;
+    const cached = scheduledEventIds.get(eventKey);
+    // Re-evaluate events previously skipped only because a prior bot was on the same link —
+    // that bot may have finished by now (markBotDone via bot.done webhook).
+    const isStaleBackToBackSkip = cached?.skipped && cached.reason === 'bot already on same link';
+    if (cached && !isStaleBackToBackSkip) continue;
 
     const meetingUrl = extractMeetingUrl(ev);
     if (!meetingUrl) {
@@ -186,6 +226,10 @@ async function checkAndDispatchBots() {
 
     const joinAt = new Date(eventStart.getTime() - BOT_JOIN_LEAD_MS);
     const joinAtIso = joinAt > now ? joinAt.toISOString() : undefined;
+
+    // Evict any ghost bot lingering at this URL from a prior calendar event (e.g. PMR back-to-back
+    // where the prior bot never received bot.done because Dean joined right as it was about to leave).
+    await evictStaleBotsOnUrl(meetingUrl, ev.start);
 
     log.info(`auto-join: dispatching bot for "${ev.summary}" at ${ev.start}, join_at=${joinAtIso || 'now'}, url=${meetingUrl}`);
 
