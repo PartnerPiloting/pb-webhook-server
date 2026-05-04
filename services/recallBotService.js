@@ -162,6 +162,39 @@ async function retrieveRecallBot(botId) {
 }
 
 /**
+ * Tell a running bot to leave the meeting. Recording/transcript so far is preserved on Recall's side.
+ * Used to evict a ghost bot from a shared meeting URL before dispatching a fresh bot for the next call.
+ */
+async function leaveBot(botId) {
+  const apiKey = (process.env.RECALL_API_KEY || '').trim();
+  if (!apiKey) return { ok: false, error: 'RECALL_API_KEY not set' };
+  if (!botId) return { ok: false, error: 'botId required' };
+
+  const base = recallApiBase();
+  const url = `${base}/api/v1/bot/${botId}/leave_call/`;
+
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Token ${apiKey}`,
+        Accept: 'application/json',
+      },
+    });
+    const text = await res.text();
+    if (!res.ok) {
+      log.warn(`leaveBot ${botId} failed ${res.status}: ${text.slice(0, 300)}`);
+      return { ok: false, status: res.status, error: text.slice(0, 300) || `HTTP ${res.status}` };
+    }
+    log.info(`leaveBot ${botId} ok`);
+    return { ok: true };
+  } catch (e) {
+    log.error(`leaveBot ${botId} error: ${e.message}`);
+    return { ok: false, error: e.message };
+  }
+}
+
+/**
  * Extract meeting start/end from a Recall bot's status_changes array.
  * start = first in_call_recording created_at
  * end   = call_ended created_at (or done if no call_ended)
@@ -193,6 +226,7 @@ function extractMeetingTimesFromBot(botData) {
 module.exports = {
   createRecallBot,
   retrieveRecallBot,
+  leaveBot,
   extractMeetingTimesFromBot,
   recallApiBase,
   inboundWebhookBase,

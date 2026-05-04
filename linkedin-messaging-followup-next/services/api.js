@@ -2237,6 +2237,19 @@ export const createRecallBotManual = async (meetingUrl) => {
   }
 };
 
+export const rejoinRecallNow = async () => {
+  try {
+    const base = getBackendBase();
+    const r = await fetch(`${base}/recall-api/rejoin-now`, {
+      method: 'POST',
+      headers: recallReviewFetchHeaders(),
+    });
+    return await r.json();
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+};
+
 export default api;
 
 // Export helper functions for use in components
