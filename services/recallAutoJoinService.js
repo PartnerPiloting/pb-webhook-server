@@ -225,6 +225,12 @@ let intervalHandle = null;
 function startAutoJoin() {
   if (intervalHandle) return;
 
+  const disabled = (process.env.RECALL_AUTO_JOIN_DISABLED || '').trim().toLowerCase();
+  if (disabled === '1' || disabled === 'true' || disabled === 'yes') {
+    log.info('auto-join: RECALL_AUTO_JOIN_DISABLED is set — auto-join disabled (use this on staging to avoid duplicate bots from prod)');
+    return;
+  }
+
   const apiKey = (process.env.RECALL_API_KEY || '').trim();
   if (!apiKey) {
     log.info('auto-join: RECALL_API_KEY not set — auto-join disabled');
