@@ -134,6 +134,26 @@ async function evictStaleBotsOnUrl(meetingUrl, cutoffIso) {
   }
 }
 
+/**
+ * The bot should only join if the coach is actually attending.
+ *
+ * Returns true if the event has an attendees list AND the coach's "self" attendee is
+ * either the organizer or has explicitly accepted the invite. This filters out:
+ *   - Events the coach added to their calendar as a marker (responseStatus: "needsAction").
+ *   - Events the coach declined.
+ *   - Events with no attendee list at all (typically personal placeholders).
+ *
+ * Coaching calls (where the coach is organizer + accepted) pass through unaffected.
+ */
+function isCoachAttending(event) {
+  const attendees = Array.isArray(event.attendees) ? event.attendees : [];
+  if (attendees.length === 0) return false;
+  const self = attendees.find(a => a.self);
+  if (!self) return false;
+  if (self.organizer) return true;
+  return String(self.responseStatus || '').toLowerCase() === 'accepted';
+}
+
 function extractMeetingUrl(event) {
   if (event.conferenceData) {
     const eps = event.conferenceData.entryPoints;
@@ -208,6 +228,14 @@ async function checkAndDispatchBots() {
     const meetingUrl = extractMeetingUrl(ev);
     if (!meetingUrl) {
       log.info(`auto-join: no meeting link found for "${ev.summary}" (location="${ev.location?.substring(0,100)}", hasConferenceData=${!!ev.conferenceData})`);
+      continue;
+    }
+
+    if (!isCoachAttending(ev)) {
+      const self = (ev.attendees || []).find(a => a.self);
+      const status = self ? (self.responseStatus || 'unknown') : 'not-on-attendee-list';
+      log.info(`auto-join: skipping "${ev.summary}" — coach not attending (status=${status})`);
+      scheduledEventIds.set(eventKey, { scheduledAt: Date.now(), skipped: true, reason: `coach not attending (${status})` });
       continue;
     }
 
