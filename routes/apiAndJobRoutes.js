@@ -12808,8 +12808,14 @@ router.get("/api/smart-followup/sweep", async (req, res) => {
     }
     // Per-lead heartbeat writer, throttled so we don't hammer Airtable.
     // onProgress can fire up to once per lead (~every 20-40s), so we only skip if <2s since last write.
+    // chunkFinished + lastHeartbeatPromise prevent the fire-and-forget heartbeat from
+    // racing past the awaited final 'completed'/'running' write below — without this,
+    // a heartbeat can land after the final write and revert the row to Running 43/43.
     let lastHeartbeatWriteMs = 0;
+    let lastHeartbeatPromise = Promise.resolve();
+    let chunkFinished = false;
     const progressCallback = (r) => {
+      if (chunkFinished) return;
       const nowMs = Date.now();
       if (nowMs - lastHeartbeatWriteMs < 2000) return;
       lastHeartbeatWriteMs = nowMs;
@@ -12822,11 +12828,13 @@ router.get("/api/smart-followup/sweep", async (req, res) => {
         }
       };
       if (r.currentLeadName) payload.results.currentLeadName = r.currentLeadName;
-      upsertSweepStatusToAirtable(cid, 'running', payload)
+      lastHeartbeatPromise = upsertSweepStatusToAirtable(cid, 'running', payload)
         .catch(e => sweepLogger.warn('Heartbeat status write failed:', e.message));
     };
     try {
       const results = await runSweep({ ...sweepOptions, onProgress: progressCallback });
+      chunkFinished = true;
+      await lastHeartbeatPromise;
       const totalCandidates = results.clients?.[0]?.candidatesFound ?? 0;
       const processed = results.totalProcessed ?? 0;
       const nextOffset = off + processed;
