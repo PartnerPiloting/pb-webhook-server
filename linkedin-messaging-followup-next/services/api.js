@@ -2250,6 +2250,19 @@ export const rejoinRecallNow = async () => {
   }
 };
 
+export const getRecallShareLink = async (meetingId) => {
+  try {
+    const base = getBackendBase();
+    const r = await fetch(`${base}/recall-review/api/share-link/${encodeURIComponent(meetingId)}`, {
+      method: 'GET',
+      headers: recallReviewFetchHeaders(),
+    });
+    return await r.json();
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+};
+
 export default api;
 
 // Export helper functions for use in components

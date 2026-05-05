@@ -91,6 +91,29 @@ function timingSafeEqualString(a, b) {
   return crypto.timingSafeEqual(A, B);
 }
 
+// Public share-link tokens: HMAC of meeting ID with PB_WEBHOOK_SECRET, scoped by purpose.
+// Truncated to 32 hex chars (128 bits) — strong enough for an unguessable share URL.
+// To revoke ALL outstanding share links: rotate PB_WEBHOOK_SECRET on the server.
+function computeShareToken(meetingId) {
+  const secret = (process.env.PB_WEBHOOK_SECRET || '').trim();
+  if (!secret) return '';
+  return crypto.createHmac('sha256', secret).update(`share:${meetingId}`).digest('hex').slice(0, 32);
+}
+
+function verifyShareToken(meetingId, token) {
+  const expected = computeShareToken(meetingId);
+  if (!expected || !token) return false;
+  return timingSafeEqualString(String(token), expected);
+}
+
+function publicBaseUrl(req) {
+  const fromEnv = (process.env.PUBLIC_BASE_URL || '').trim().replace(/\/$/, '');
+  if (fromEnv) return fromEnv;
+  const proto = req.get('x-forwarded-proto') || req.protocol || 'https';
+  const host = req.get('host');
+  return host ? `${proto}://${host}` : 'https://pb-webhook-server.onrender.com';
+}
+
 function pbAdminOk(req) {
   const expected = (process.env.PB_WEBHOOK_SECRET || '').trim();
   if (!expected) return false;
@@ -773,6 +796,86 @@ const rejoinNowHandler = async (req, res) => {
 };
 router.post('/recall-api/rejoin-now', rejoinNowHandler);
 router.get('/recall-api/rejoin-now', rejoinNowHandler);
+
+/**
+ * GET /recall-review/api/share-link/:id
+ * Authenticated. Returns a public share URL for the meeting's transcript.
+ * Anyone with the URL can read the transcript (no login required) — designed for
+ * sending to a non-customer (e.g. "Tony, here's the recording transcript").
+ * Token is HMAC of meeting id + PB_WEBHOOK_SECRET; rotate the secret to revoke.
+ */
+router.get('/recall-review/api/share-link/:id', async (req, res) => {
+  if (!(await pbRecallReviewApiOk(req))) return res.status(401).json({ ok: false, error: 'unauthorized' });
+  const id = req.params.id;
+  const row = await getMeetingById(id);
+  if (!row) return res.status(404).json({ ok: false, error: 'meeting not found' });
+  const token = computeShareToken(id);
+  if (!token) return res.status(500).json({ ok: false, error: 'PB_WEBHOOK_SECRET not configured' });
+  const url = `${publicBaseUrl(req)}/recall-share/${encodeURIComponent(id)}?token=${token}`;
+  return res.json({ ok: true, url, title: row.title || row.meeting_title || '' });
+});
+
+/**
+ * GET /recall-share/:id?token=XXX[&format=html]
+ * PUBLIC endpoint — anyone with a valid token can fetch the transcript as plain text
+ * (default) or a small HTML page with a Copy button (?format=html).
+ * Speaker labels are replaced with verified names where confirmed during review.
+ */
+router.get('/recall-share/:id', async (req, res) => {
+  const id = req.params.id;
+  const token = typeof req.query.token === 'string' ? req.query.token.trim() : '';
+  if (!verifyShareToken(id, token)) {
+    res.status(404).type('text/plain; charset=utf-8');
+    return res.send('Not found.');
+  }
+  const row = await getMeetingById(id);
+  if (!row) {
+    res.status(404).type('text/plain; charset=utf-8');
+    return res.send('Not found.');
+  }
+  const rawText = row.transcript_text || '';
+  const transcript = await replaceParticipantLabelsInTranscript(rawText, row.id);
+  const title = row.title || row.meeting_title || `Meeting ${id}`;
+  const wantHtml = String(req.query.format || '').toLowerCase() === 'html';
+
+  if (!wantHtml) {
+    res.type('text/plain; charset=utf-8');
+    return res.send(transcript || '(transcript not yet available)');
+  }
+
+  // Minimal HTML view with a Copy button — no auth, no nav.
+  const escapeHtml = (s) => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const html = `<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>${escapeHtml(title)} — transcript</title>
+<style>
+  body { font-family: ui-sans-serif, system-ui, sans-serif; max-width: 820px; margin: 0 auto; padding: 24px; color: #111827; background: #f9fafb; }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  .meta { color: #6b7280; font-size: 13px; margin-bottom: 16px; }
+  .actions { margin-bottom: 16px; }
+  button { background: #6d28d9; color: white; border: 0; padding: 8px 14px; border-radius: 6px; font-size: 14px; cursor: pointer; }
+  button:hover { background: #5b21b6; }
+  pre { background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; white-space: pre-wrap; word-wrap: break-word; font-family: ui-monospace, SFMono-Regular, monospace; font-size: 13px; line-height: 1.5; }
+</style>
+</head><body>
+<h1>${escapeHtml(title)}</h1>
+<div class="meta">Transcript shared from Recall review. You can copy this and paste into ChatGPT, Claude, etc.</div>
+<div class="actions"><button id="copyBtn" type="button">Copy transcript</button> <span id="copied" style="color:#059669;font-size:13px;margin-left:8px;display:none">Copied to clipboard.</span></div>
+<pre id="t">${escapeHtml(transcript || '(transcript not yet available)')}</pre>
+<script>
+  document.getElementById('copyBtn').addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(document.getElementById('t').textContent);
+      const el = document.getElementById('copied'); el.style.display = 'inline'; setTimeout(() => { el.style.display = 'none'; }, 2000);
+    } catch (e) { alert('Copy failed: ' + e.message); }
+  });
+</script>
+</body></html>`;
+  res.type('text/html; charset=utf-8');
+  return res.send(html);
+});
 
 router.get('/recall-review', async (req, res) => {
   if (!pbAdminOk(req)) return res.status(401).type('html').send(`<p>Unauthorized.</p>`);

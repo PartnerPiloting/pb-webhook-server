@@ -12,6 +12,7 @@ import {
   addRecallMeetingLead,
   removeRecallMeetingLead,
   rejoinRecallNow,
+  getRecallShareLink,
 } from '../../services/api';
 import { getCurrentClientId } from '../../utils/clientUtils';
 
@@ -98,6 +99,49 @@ function parseTranscriptSpeakerLine(line: string): { label: string; rest: string
 /* ------------------------------------------------------------------ */
 /* Queue                                                               */
 /* ------------------------------------------------------------------ */
+
+function ShareTranscriptButton({ meetingId }: { meetingId: string }) {
+  const [busy, setBusy] = useState(false);
+  const [label, setLabel] = useState('Share');
+
+  const handleClick = async () => {
+    if (busy) return;
+    setBusy(true);
+    setLabel('…');
+    try {
+      const r = await getRecallShareLink(meetingId);
+      if (r && r.ok && r.url) {
+        try {
+          await navigator.clipboard.writeText(r.url);
+          setLabel('Link copied');
+        } catch {
+          // Fallback if clipboard API blocked — show the URL via prompt for manual copy
+          window.prompt('Copy this share link:', r.url);
+          setLabel('Share');
+        }
+      } else {
+        setLabel(r?.error ? 'Failed' : 'Failed');
+      }
+    } catch {
+      setLabel('Failed');
+    } finally {
+      setBusy(false);
+      setTimeout(() => setLabel('Share'), 2500);
+    }
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={handleClick}
+      disabled={busy}
+      className="text-sm font-medium text-violet-700 hover:text-violet-900 hover:underline disabled:text-gray-400"
+      title="Copy a public share link to this transcript (anyone with the link can view)"
+    >
+      {label}
+    </button>
+  );
+}
 
 function QueueView({ onSelect }: { onSelect: (id: string) => void }) {
   const [rows, setRows] = useState<any[]>([]);
@@ -192,7 +236,9 @@ function QueueView({ onSelect }: { onSelect: (id: string) => void }) {
                     <td className="px-4 py-3"><Badge status={r.status || 'incomplete'} /></td>
                     <td className="px-4 py-3 space-x-1">
                     </td>
-                    <td className="px-4 py-3 text-right">
+                    <td className="px-4 py-3 text-right whitespace-nowrap">
+                      <ShareTranscriptButton meetingId={String(r.id)} />
+                      <span className="mx-2 text-gray-300">|</span>
                       <button onClick={() => onSelect(String(r.id))} className="text-sm font-medium text-violet-700 hover:text-violet-900 hover:underline">
                         Review
                       </button>
