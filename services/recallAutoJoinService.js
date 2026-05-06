@@ -342,5 +342,6 @@ module.exports = {
   checkAndDispatchBots,
   getAutoJoinStatus,
   extractMeetingUrl,
+  isCoachAttending,
   markBotDone,
 };
