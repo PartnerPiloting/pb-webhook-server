@@ -715,16 +715,59 @@ function EventReview({ eventId, onBack }: { eventId: string; onBack: () => void 
               <h3 className="text-sm font-semibold text-gray-900">Transcript</h3>
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => {
+                  onClick={async () => {
                     const plain = lines.map(l => {
                       const p = parseTranscriptSpeakerLine(l);
                       if (p) return `${speakers[p.label]?.name || p.label}: ${p.rest}`;
                       return l;
                     }).join('\n');
-                    navigator.clipboard.writeText(plain).then(() => {
-                      setCopyFeedback(true);
-                      setTimeout(() => setCopyFeedback(false), 1500);
-                    });
+
+                    if (!plain.trim()) {
+                      window.alert('Transcript is empty — nothing to copy.');
+                      return;
+                    }
+
+                    // Try the modern Clipboard API first.
+                    try {
+                      if (navigator.clipboard && window.isSecureContext) {
+                        await navigator.clipboard.writeText(plain);
+                        setCopyFeedback(true);
+                        setTimeout(() => setCopyFeedback(false), 1500);
+                        return;
+                      }
+                      throw new Error('clipboard API unavailable');
+                    } catch (err) {
+                      // Fallback 1: legacy execCommand via a hidden textarea (works in many older browsers).
+                      try {
+                        const ta = document.createElement('textarea');
+                        ta.value = plain;
+                        ta.style.position = 'fixed';
+                        ta.style.left = '-9999px';
+                        ta.setAttribute('readonly', '');
+                        document.body.appendChild(ta);
+                        ta.select();
+                        const ok = document.execCommand('copy');
+                        document.body.removeChild(ta);
+                        if (ok) {
+                          setCopyFeedback(true);
+                          setTimeout(() => setCopyFeedback(false), 1500);
+                          return;
+                        }
+                        throw new Error('execCommand copy returned false');
+                      } catch (err2) {
+                        // Fallback 2: open the transcript in a new window so the user can select/copy manually.
+                        const w = window.open('', '_blank');
+                        if (w) {
+                          w.document.write(`<pre style="white-space:pre-wrap;font-family:ui-monospace,monospace;padding:16px;">${plain.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c] as string))}</pre>`);
+                          w.document.close();
+                        } else {
+                          window.alert('Copy failed and the popup was blocked. Please allow popups for this site, or use the Share link instead.');
+                        }
+                        // Surface the underlying error in the dev console for diagnosis.
+                        // eslint-disable-next-line no-console
+                        console.warn('Recall transcript copy failed', err, err2);
+                      }
+                    }
                   }}
                   className="text-xs px-3 py-1 bg-gray-50 text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-100"
                 >
