@@ -173,9 +173,6 @@ function QueueView({ onSelect }: { onSelect: (id: string) => void }) {
           ? 'No meetings stored yet.'
           : 'No rows match this filter.';
 
-  if (loading) return <p className="text-gray-500 text-sm py-8 text-center">Loading…</p>;
-  if (error) return <p className="text-red-600 text-sm bg-red-50 border border-red-200 rounded-lg p-4">{error}</p>;
-
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-3 sm:gap-4">
@@ -204,9 +201,14 @@ function QueueView({ onSelect }: { onSelect: (id: string) => void }) {
               className="mt-1 w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-200 focus:border-violet-400"
             />
           </div>
+          {loading && <span className="text-xs text-gray-400 pb-2 sm:pb-3">Searching…</span>}
         </div>
       </div>
-      {rows.length === 0 ? (
+      {error ? (
+        <p className="text-red-600 text-sm bg-red-50 border border-red-200 rounded-lg p-4">{error}</p>
+      ) : loading && rows.length === 0 ? (
+        <p className="text-gray-500 text-sm py-8 text-center">Loading…</p>
+      ) : rows.length === 0 ? (
         <p className="text-gray-500 italic text-sm py-8 text-center border border-dashed border-gray-200 rounded-xl bg-gray-50/80 px-4">{emptyMsg}</p>
       ) : (
         <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm">
