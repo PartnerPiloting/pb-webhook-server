@@ -834,7 +834,13 @@ router.get('/recall-share/:id', async (req, res) => {
     return res.send('Not found.');
   }
   const rawText = row.transcript_text || '';
-  const transcript = await replaceParticipantLabelsInTranscript(rawText, row.id);
+  const labelled = await replaceParticipantLabelsInTranscript(rawText, row.id);
+  // Strip ASCII control chars (NUL, BEL, etc., keeping \t \n \r) and zero-width Unicode
+  // (U+200B–U+200D, U+2060, U+FEFF). These invisible characters cause Gmail and some other
+  // apps to silently refuse paste even though navigator.clipboard.writeText reports success.
+  const stripCtrlRe = new RegExp('[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F\\x7F]', 'g');
+  const stripZeroWidthRe = new RegExp('[\\u200B-\\u200D\\u2060\\uFEFF]', 'g');
+  const transcript = labelled.replace(stripCtrlRe, '').replace(stripZeroWidthRe, '');
   const title = row.title || row.meeting_title || `Meeting ${id}`;
   const wantHtml = String(req.query.format || '').toLowerCase() === 'html';
 
