@@ -716,11 +716,22 @@ function EventReview({ eventId, onBack }: { eventId: string; onBack: () => void 
               <div className="flex items-center gap-2">
                 <button
                   onClick={async () => {
-                    const plain = lines.map(l => {
+                    const raw = lines.map(l => {
                       const p = parseTranscriptSpeakerLine(l);
                       if (p) return `${speakers[p.label]?.name || p.label}: ${p.rest}`;
                       return l;
                     }).join('\n');
+
+                    // Strip control characters (NUL, BEL, etc.) and zero-width unicode that some
+                    // apps (notably Gmail) refuse to paste. Keep tab, newline, carriage return.
+                    // Built as RegExp from string so the source code is unambiguous (these codepoints
+                    // are invisible if pasted as literals).
+                    const stripCtrlRe = new RegExp('[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F\\x7F]', 'g');
+                    const stripZeroWidthRe = new RegExp('[\\u200B-\\u200D\\u2060\\uFEFF]', 'g');
+                    const plain = raw.replace(stripCtrlRe, '').replace(stripZeroWidthRe, '');
+
+                    // eslint-disable-next-line no-console
+                    console.log(`Recall copy: ${plain.length} chars, ${raw.length - plain.length} stripped, sample: ${JSON.stringify(plain.slice(0, 80))}`);
 
                     if (!plain.trim()) {
                       window.alert('Transcript is empty — nothing to copy.');
