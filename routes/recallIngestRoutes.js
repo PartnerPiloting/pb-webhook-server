@@ -223,6 +223,14 @@ router.post('/webhooks/recall', rawJson, async (req, res) => {
   const { botId, recordingId } = extractRecallIds(body);
   log.info(`RECALL-WEBHOOK event=${event || 'n/a'} bot=${botId || 'n/a'} recording=${recordingId || 'n/a'}`);
 
+  // Mark the bot as done in the auto-join cache BEFORE the recordingId early-return below.
+  // bot.done webhooks legitimately arrive without a recordingId, but we still need to free
+  // up the meeting URL so the next back-to-back event gets a fresh bot dispatched.
+  if (event === 'bot.done' && botId) {
+    try { markBotDone(botId); } catch (e) { log.warn(`RECALL-WEBHOOK markBotDone error: ${e.message}`); }
+    checkAndDispatchBots().catch(e => log.warn(`RECALL-WEBHOOK post-bot.done dispatch error: ${e.message}`));
+  }
+
   if (!botId || !recordingId) {
     return res.status(200).json({ ok: true, received: true, note: 'no bot/recording ids — stored only if db ok' });
   }
@@ -316,12 +324,7 @@ router.post('/webhooks/recall', rawJson, async (req, res) => {
     }
   }
 
-  if (event === 'bot.done' && botId) {
-    try { markBotDone(botId); } catch (e) { log.warn(`RECALL-WEBHOOK markBotDone error: ${e.message}`); }
-    // Trigger immediate re-evaluation so any back-to-back event waiting on this bot's exit
-    // gets its own bot dispatched right away, instead of waiting up to 2 min for the next poll.
-    checkAndDispatchBots().catch(e => log.warn(`RECALL-WEBHOOK post-bot.done dispatch error: ${e.message}`));
-  }
+  // (bot.done handling was moved above the recordingId early-return; see top of handler.)
 
   if (meetingId && (event === 'bot.done' || event === 'recording.done')) {
     // Fetch bot data from Recall API to get meeting start/end times
