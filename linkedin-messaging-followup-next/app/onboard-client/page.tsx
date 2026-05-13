@@ -39,25 +39,6 @@ interface OnboardingResult {
   portalUrl?: string;
 }
 
-interface WpMembership {
-  id: number;
-  name: string;
-  expiryDate: string | null;
-  isValid: boolean;
-}
-
-interface WpLookupResult {
-  status: 'found' | 'not_found' | 'wp_unavailable' | 'error';
-  wpUserId?: number;
-  email?: string | null;
-  displayName?: string | null;
-  firstName?: string | null;
-  lastName?: string | null;
-  roles?: string[];
-  membership?: WpMembership | null;
-  error?: string;
-}
-
 interface IntakeRequest {
   id: string;
   name: string;
@@ -108,32 +89,6 @@ function buildClientUrl(clientCode: string, serviceLevel: string): string {
   const level = getServiceLevelNumber(serviceLevel);
   // Use production URL - this is for onboarding real clients
   return `https://pb-webhook-server.vercel.app/?testClient=${encodeURIComponent(clientCode)}&level=${level}`;
-}
-
-// --- WordPress verification match helpers ---
-function emailsMatch(a?: string | null, b?: string | null): boolean {
-  if (!a || !b) return false;
-  return a.trim().toLowerCase() === b.trim().toLowerCase();
-}
-
-function nameTokens(s?: string | null): string[] {
-  return (s || '').toLowerCase().split(/\s+/).filter(Boolean);
-}
-
-// First and last tokens of the form name must both appear in the WP name(s)
-function namesMatch(
-  formName?: string | null,
-  wpDisplay?: string | null,
-  wpFirst?: string | null,
-  wpLast?: string | null
-): boolean {
-  const form = nameTokens(formName);
-  if (form.length === 0) return false;
-  const wpAll = new Set(nameTokens([wpDisplay, wpFirst, wpLast].filter(Boolean).join(' ')));
-  if (wpAll.size === 0) return false;
-  const first = form[0];
-  const last = form[form.length - 1];
-  return wpAll.has(first) && wpAll.has(last);
 }
 
 // Only two actual service levels in the system
@@ -213,11 +168,6 @@ export default function OnboardClientPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // WordPress User ID verification state
-  const [wpLookupResult, setWpLookupResult] = useState<WpLookupResult | null>(null);
-  const [isVerifyingWp, setIsVerifyingWp] = useState(false);
-  const [wpOverride, setWpOverride] = useState(false);
-
   const [showAdvanced, setShowAdvanced] = useState(false);
   
   // Portal token state
@@ -281,8 +231,6 @@ export default function OnboardClientPage() {
     setError(null);
     setResult(null);
     setValidationResult(null);
-    setWpLookupResult(null);
-    setWpOverride(false);
   };
 
   const handleChange = (e: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
@@ -292,11 +240,6 @@ export default function OnboardClientPage() {
     
     if (name === 'airtableBaseId') {
       setValidationResult(null);
-    }
-    if (name === 'wordpressUserId' || name === 'email' || name === 'clientName') {
-      // Anything that changes the comparison invalidates the previous verification
-      setWpLookupResult(null);
-      setWpOverride(false);
     }
     setResult(null);
     setError(null);
@@ -401,32 +344,6 @@ export default function OnboardClientPage() {
     }
   };
 
-  // Verify WordPress User ID against WP/PMPro
-  const verifyWpUser = async () => {
-    const wpId = formData.wordpressUserId.trim();
-    if (!wpId) {
-      setError('Please enter a WordPress User ID first');
-      return;
-    }
-
-    setIsVerifyingWp(true);
-    setWpLookupResult(null);
-    setWpOverride(false);
-    setError(null);
-
-    try {
-      const apiUrl = getBackendUrl();
-      const response = await fetch(`${apiUrl}/api/wp-user-lookup?wpUserId=${encodeURIComponent(wpId)}`);
-      const data: WpLookupResult = await response.json();
-      setWpLookupResult(data);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Unknown error';
-      setWpLookupResult({ status: 'wp_unavailable', error: message });
-    } finally {
-      setIsVerifyingWp(false);
-    }
-  };
-
   // Generate portal token for a client
   const generatePortalToken = async (clientId: string): Promise<string | null> => {
     setIsGeneratingToken(true);
@@ -478,37 +395,7 @@ export default function OnboardClientPage() {
       setError('Please validate the Airtable base first');
       return;
     }
-
-    // WordPress User ID verification gate (add mode only)
-    if (mode === 'add') {
-      if (!wpLookupResult) {
-        setError('Please verify the WordPress User ID first');
-        return;
-      }
-      const emailMatch = wpLookupResult.status === 'found' &&
-        emailsMatch(formData.email, wpLookupResult.email);
-      const nameMatch = wpLookupResult.status === 'found' &&
-        namesMatch(formData.clientName, wpLookupResult.displayName, wpLookupResult.firstName, wpLookupResult.lastName);
-
-      // Hard blocks — cannot submit even with override
-      if (wpLookupResult.status === 'not_found') {
-        setError('That WordPress User ID does not exist in WordPress. Please correct it before submitting.');
-        return;
-      }
-      if (wpLookupResult.status === 'found' && !emailMatch && !nameMatch) {
-        setError('The WordPress user does not match this client (neither email nor name matches). Please correct the WordPress User ID.');
-        return;
-      }
-
-      // Soft warns — require explicit override
-      const needsOverride = wpLookupResult.status === 'wp_unavailable' ||
-        (wpLookupResult.status === 'found' && !emailMatch);
-      if (needsOverride && !wpOverride) {
-        setError('The WordPress verification has a warning. Tick "Submit anyway" in the verification panel to proceed.');
-        return;
-      }
-    }
-
+    
     setIsSubmitting(true);
     setError(null);
     setResult(null);
@@ -596,8 +483,6 @@ export default function OnboardClientPage() {
     setPortalToken(null);
     setTokenError(null);
     setCopiedUrl(false);
-    setWpLookupResult(null);
-    setWpOverride(false);
   };
 
   const handleCopyUrl = async (url: string) => {
@@ -920,134 +805,17 @@ export default function OnboardClientPage() {
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       WordPress User ID <span className="text-red-500">*</span>
                     </label>
-                    <div className="flex gap-2">
-                      <input
-                        type="number"
-                        name="wordpressUserId"
-                        value={formData.wordpressUserId}
-                        onChange={handleChange}
-                        placeholder="e.g., 123"
-                        className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                        required
-                      />
-                      {mode === 'add' && (
-                        <button
-                          type="button"
-                          onClick={verifyWpUser}
-                          disabled={isVerifyingWp || !formData.wordpressUserId.trim()}
-                          className="px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-sm font-medium whitespace-nowrap inline-flex items-center gap-1.5"
-                          title="Look up this user in WordPress and check email/name match"
-                        >
-                          {isVerifyingWp ? (
-                            <>
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                              <span>Verifying...</span>
-                            </>
-                          ) : (
-                            <span>Verify</span>
-                          )}
-                        </button>
-                      )}
-                    </div>
+                    <input
+                      type="number"
+                      name="wordpressUserId"
+                      value={formData.wordpressUserId}
+                      onChange={handleChange}
+                      placeholder="e.g., 123"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      required
+                    />
                   </div>
                 </div>
-
-                {mode === 'add' && wpLookupResult && (() => {
-                  const r = wpLookupResult;
-                  const emailMatch = r.status === 'found' && emailsMatch(formData.email, r.email);
-                  const nameMatch = r.status === 'found' &&
-                    namesMatch(formData.clientName, r.displayName, r.firstName, r.lastName);
-                  const hardBlock =
-                    r.status === 'not_found' ||
-                    (r.status === 'found' && !emailMatch && !nameMatch);
-                  const needsOverride =
-                    r.status === 'wp_unavailable' ||
-                    (r.status === 'found' && !emailMatch && nameMatch);
-                  // Color scheme
-                  const palette = hardBlock
-                    ? { bg: 'bg-red-50', border: 'border-red-300', text: 'text-red-800', heading: 'text-red-900' }
-                    : needsOverride
-                    ? { bg: 'bg-yellow-50', border: 'border-yellow-300', text: 'text-yellow-800', heading: 'text-yellow-900' }
-                    : { bg: 'bg-green-50', border: 'border-green-300', text: 'text-green-800', heading: 'text-green-900' };
-                  return (
-                    <div className={`p-4 ${palette.bg} border ${palette.border} rounded-lg`}>
-                      {r.status === 'not_found' && (
-                        <>
-                          <div className={`font-semibold ${palette.heading} flex items-center gap-2`}>
-                            <XCircle className="h-5 w-5" />
-                            WordPress User ID {r.wpUserId} does not exist
-                          </div>
-                          <p className={`text-sm mt-1 ${palette.text}`}>
-                            WordPress responded but said no user has this ID. Please correct the ID — you cannot continue with a non-existent user.
-                          </p>
-                        </>
-                      )}
-                      {r.status === 'wp_unavailable' && (
-                        <>
-                          <div className={`font-semibold ${palette.heading} flex items-center gap-2`}>
-                            <AlertCircle className="h-5 w-5" />
-                            Could not reach WordPress
-                          </div>
-                          <p className={`text-sm mt-1 ${palette.text}`}>
-                            {r.error || 'WordPress did not respond. The site may be sleeping or unreachable.'}
-                            {' '}You can try again, or submit anyway if you are confident the User ID is correct.
-                          </p>
-                        </>
-                      )}
-                      {r.status === 'found' && (
-                        <>
-                          <div className={`font-semibold ${palette.heading} flex items-center gap-2`}>
-                            {hardBlock ? <XCircle className="h-5 w-5" /> : needsOverride ? <AlertCircle className="h-5 w-5" /> : <CheckCircle className="h-5 w-5" />}
-                            {hardBlock
-                              ? 'WordPress user does not match this client'
-                              : needsOverride
-                              ? 'Partial match — please review'
-                              : 'WordPress user verified'}
-                          </div>
-                          <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1 text-sm">
-                            <div className={palette.text}>
-                              <span className="font-medium">Email in form:</span> {formData.email || '(blank)'}
-                            </div>
-                            <div className={palette.text}>
-                              <span className="font-medium">Email in WordPress:</span> {r.email || '(none)'}
-                              {emailMatch ? ' ✓' : ' ✗'}
-                            </div>
-                            <div className={palette.text}>
-                              <span className="font-medium">Name in form:</span> {formData.clientName || '(blank)'}
-                            </div>
-                            <div className={palette.text}>
-                              <span className="font-medium">Name in WordPress:</span>{' '}
-                              {r.displayName || [r.firstName, r.lastName].filter(Boolean).join(' ') || '(none)'}
-                              {nameMatch ? ' ✓' : ' ✗'}
-                            </div>
-                            <div className={`${palette.text} sm:col-span-2`}>
-                              <span className="font-medium">PMPro membership:</span>{' '}
-                              {r.membership
-                                ? `${r.membership.name} (Level ${r.membership.id})${r.membership.expiryDate ? ` — expires ${r.membership.expiryDate}` : ' — lifetime'}${r.membership.isValid ? '' : ' (not in valid-levels list)'}`
-                                : 'No active membership'}
-                            </div>
-                          </div>
-                          {hardBlock && (
-                            <p className={`text-sm mt-3 ${palette.text}`}>
-                              Neither the email nor the name matches the user in WordPress. This is almost certainly the wrong User ID — please correct it before submitting.
-                            </p>
-                          )}
-                        </>
-                      )}
-                      {needsOverride && !hardBlock && (
-                        <label className={`flex items-start gap-2 mt-3 cursor-pointer ${palette.text}`}>
-                          <input
-                            type="checkbox"
-                            checked={wpOverride}
-                            onChange={(e) => setWpOverride(e.target.checked)}
-                            className="mt-0.5"
-                          />
-                          <span className="text-sm">Submit anyway — I have reviewed the differences above and the WordPress User ID is correct.</span>
-                        </label>
-                      )}
-                    </div>
-                  );
-                })()}
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
