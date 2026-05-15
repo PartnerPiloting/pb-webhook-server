@@ -155,6 +155,10 @@ async function ensureSchema(client) {
     DROP TABLE IF EXISTS krisp_webhook_events CASCADE;
   `);
 
+  // AI meeting summary (Fathom-style recap) — generated on recording.done.
+  await client.query(`ALTER TABLE recall_meetings ADD COLUMN IF NOT EXISTS summary_json TEXT;`);
+  await client.query(`ALTER TABLE recall_meetings ADD COLUMN IF NOT EXISTS summary_generated_at TIMESTAMPTZ;`);
+
   schemaEnsured = true;
 }
 
@@ -362,6 +366,25 @@ async function updateMeetingTimes(meetingId, { meetingStart, meetingEnd }) {
     await client.query(
       `UPDATE recall_meetings SET meeting_start = COALESCE($2, meeting_start), meeting_end = COALESCE($3, meeting_end), updated_at = now() WHERE id = $1`,
       [n, meetingStart || null, meetingEnd || null],
+    );
+    return { ok: true };
+  } finally {
+    client.release();
+  }
+}
+
+async function saveMeetingSummary(meetingId, summaryJson) {
+  const n = typeof meetingId === 'string' ? parseInt(meetingId, 10) : Number(meetingId);
+  if (!Number.isFinite(n) || n < 1) return { ok: false };
+  const p = getPool();
+  if (!p) return { ok: false };
+  const client = await p.connect();
+  try {
+    await ensureSchema(client);
+    const payload = typeof summaryJson === 'string' ? summaryJson : JSON.stringify(summaryJson);
+    await client.query(
+      `UPDATE recall_meetings SET summary_json = $2, summary_generated_at = now(), updated_at = now() WHERE id = $1`,
+      [n, payload],
     );
     return { ok: true };
   } finally {
@@ -1333,6 +1356,7 @@ module.exports = {
   updateMeetingStatus,
   setMeetingIngestStatus,
   updateMeetingTimes,
+  saveMeetingSummary,
   splitMeeting,
   appendRecallUtterance,
   recordRecallPresence,

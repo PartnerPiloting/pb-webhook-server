@@ -13,6 +13,7 @@ import {
   removeRecallMeetingLead,
   rejoinRecallNow,
   getRecallShareLink,
+  generateRecallSummary,
 } from '../../services/api';
 import { getCurrentClientId } from '../../utils/clientUtils';
 
@@ -140,6 +141,144 @@ function ShareTranscriptButton({ meetingId }: { meetingId: string }) {
     >
       {label}
     </button>
+  );
+}
+
+type MeetingSummary = {
+  purpose?: string;
+  keyTakeaways?: string[];
+  topics?: { heading: string; points: string[] }[];
+  actionItems?: { owner: string; task: string }[];
+  nextSteps?: string[];
+};
+
+function SummaryPanel({
+  eventId, initialSummary, initialText, recipientEmail, recipientName, title,
+}: {
+  eventId: string;
+  initialSummary: MeetingSummary | null;
+  initialText: string;
+  recipientEmail: string;
+  recipientName: string;
+  title: string;
+}) {
+  const [summary, setSummary] = useState<MeetingSummary | null>(initialSummary);
+  const [text, setText] = useState(initialText);
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState('');
+  const [to, setTo] = useState(recipientEmail || '');
+
+  const runGenerate = async (force: boolean) => {
+    if (busy) return;
+    setBusy(true);
+    setNote(force ? 'Regenerating…' : 'Generating…');
+    try {
+      const r = await generateRecallSummary(eventId, force);
+      if (r && r.ok) {
+        setSummary(r.summary);
+        setText(r.summary_text || '');
+        setNote('');
+      } else {
+        setNote(r?.error ? `Failed: ${r.error}` : 'Failed to generate.');
+      }
+    } catch (e: any) {
+      setNote(`Failed: ${e?.message || 'error'}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const sendFromGmail = async () => {
+    const clean = (text || '')
+      .replace(new RegExp('[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F\\x7F]', 'g'), '')
+      .replace(new RegExp('[\\u200B-\\u200D\\u2060\\uFEFF]', 'g'), '');
+    try { await navigator.clipboard.writeText(clean); } catch { /* clipboard optional */ }
+    const subject = `Recap — ${title}`;
+    const url = `https://mail.google.com/mail/?view=cm&fs=1`
+      + `&to=${encodeURIComponent(to)}`
+      + `&su=${encodeURIComponent(subject)}`
+      + `&body=${encodeURIComponent(clean)}`;
+    window.open(url, '_blank', 'noopener');
+    setNote('Opened Gmail. The recap is also on your clipboard if you need to paste it.');
+  };
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+      <div className="flex items-center justify-between gap-2 mb-2">
+        <h3 className="text-sm font-semibold text-gray-900">Meeting summary</h3>
+        <div className="flex items-center gap-3">
+          {summary && (
+            <button onClick={() => runGenerate(true)} disabled={busy}
+              className="text-xs text-gray-500 hover:text-gray-800 hover:underline disabled:text-gray-300">
+              Regenerate
+            </button>
+          )}
+        </div>
+      </div>
+
+      {!summary ? (
+        <div className="text-sm text-gray-500">
+          <p className="mb-2">No summary yet{initialText ? '' : ' (short call, or recorded before summaries were enabled)'}.</p>
+          <button onClick={() => runGenerate(false)} disabled={busy}
+            className={`text-sm font-semibold rounded px-3 py-2 border ${busy ? 'bg-gray-100 text-gray-400 border-gray-200' : 'bg-violet-600 text-white border-violet-700 hover:bg-violet-700'}`}>
+            {busy ? 'Generating…' : 'Generate summary'}
+          </button>
+          {note && <span className="ml-2 text-xs text-rose-700">{note}</span>}
+        </div>
+      ) : (
+        <div className="space-y-3 text-sm text-gray-800">
+          {summary.purpose && (
+            <div><div className="font-semibold text-gray-900">Meeting Purpose</div><p className="mt-0.5">{summary.purpose}</p></div>
+          )}
+          {!!summary.keyTakeaways?.length && (
+            <div>
+              <div className="font-semibold text-gray-900">Key Takeaways</div>
+              <ul className="list-disc pl-5 mt-0.5 space-y-0.5">{summary.keyTakeaways.map((t, i) => <li key={i}>{t}</li>)}</ul>
+            </div>
+          )}
+          {!!summary.topics?.length && (
+            <div>
+              <div className="font-semibold text-gray-900">Topics</div>
+              {summary.topics.map((tp, i) => (
+                <div key={i} className="mt-1">
+                  <div className="font-medium">{tp.heading}</div>
+                  <ul className="list-disc pl-5 space-y-0.5">{tp.points.map((p, j) => <li key={j}>{p}</li>)}</ul>
+                </div>
+              ))}
+            </div>
+          )}
+          {!!summary.actionItems?.length && (
+            <div>
+              <div className="font-semibold text-gray-900">Action Items</div>
+              <ul className="list-disc pl-5 mt-0.5 space-y-0.5">
+                {summary.actionItems.map((a, i) => <li key={i}><strong>{a.owner}:</strong> {a.task}</li>)}
+              </ul>
+            </div>
+          )}
+          {!!summary.nextSteps?.length && (
+            <div>
+              <div className="font-semibold text-gray-900">Next Steps</div>
+              <ul className="list-disc pl-5 mt-0.5 space-y-0.5">{summary.nextSteps.map((n, i) => <li key={i}>{n}</li>)}</ul>
+            </div>
+          )}
+
+          <div className="border-t border-gray-100 pt-3 flex flex-wrap items-center gap-2">
+            <input
+              type="email"
+              value={to}
+              onChange={e => setTo(e.target.value)}
+              placeholder="recipient@email.com"
+              className="text-sm border border-gray-200 rounded px-2 py-1.5 w-56 focus:outline-none focus:ring-2 focus:ring-violet-200"
+            />
+            <button onClick={sendFromGmail}
+              className="text-sm font-semibold rounded px-3 py-2 border bg-violet-600 text-white border-violet-700 hover:bg-violet-700">
+              Send from Gmail{recipientName ? ` to ${recipientName.split(' ')[0]}` : ''}
+            </button>
+            {note && <span className="text-xs text-emerald-700">{note}</span>}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -705,6 +844,15 @@ function EventReview({ eventId, onBack }: { eventId: string; onBack: () => void 
           </ul>
         </div>
       )}
+
+      <SummaryPanel
+        eventId={String(ev.id)}
+        initialSummary={ev.summary || null}
+        initialText={ev.summary_text || ''}
+        recipientEmail={ev.suggested_recipient_email || ''}
+        recipientName={ev.suggested_recipient_name || ''}
+        title={ev.title || `Meeting ${ev.id}`}
+      />
 
       {/* Two-column layout */}
       <div className="flex flex-col lg:flex-row gap-4">

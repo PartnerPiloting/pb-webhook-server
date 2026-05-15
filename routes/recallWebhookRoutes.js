@@ -69,6 +69,18 @@ const { createRecallBot } = require('../services/recallBotService');
 const { tryAutoSplitForMeeting } = require('../services/recallAutoSplitService');
 const { getAutoJoinStatus, extractMeetingUrl } = require('../services/recallAutoJoinService');
 const { listCalendarEventsWithAttendeesInRange } = require('../config/calendarServiceAccount');
+const { generateMeetingSummary, renderSummaryText, normaliseSummary } = require('../services/recallSummaryService');
+
+// Pick the most likely "send to" person: a non-coach speaker with an email.
+function suggestedRecipient(verifiedSpeakers) {
+  for (const s of Object.values(verifiedSpeakers || {})) {
+    if (s && s.role !== 'coach' && s.email) return { email: s.email, name: s.name || '' };
+  }
+  for (const s of Object.values(verifiedSpeakers || {})) {
+    if (s && s.role !== 'coach' && s.name) return { email: '', name: s.name };
+  }
+  return { email: '', name: '' };
+}
 
 const REJOIN_NOW_COACH_CLIENT_ID = (process.env.RECALL_COACH_CLIENT_ID || 'Guy-Wilson').trim();
 
@@ -376,6 +388,16 @@ router.get('/recall-review/api/event/:id', async (req, res) => {
 
   const leadSegmentInfo = await getLeadSegmentsForMeeting(row.id);
 
+  let summary = null;
+  let summaryText = '';
+  if (row.summary_json) {
+    try {
+      summary = normaliseSummary(JSON.parse(row.summary_json));
+      summaryText = renderSummaryText(summary, { title: row.title || `Meeting ${row.id}`, durationSeconds: row.duration_seconds });
+    } catch (_e) { /* malformed summary — treat as none */ }
+  }
+  const recipient = suggestedRecipient(verifiedSpeakers);
+
   return res.json({
     id: row.id,
     created_at: row.created_at,
@@ -402,6 +424,29 @@ router.get('/recall-review/api/event/:id', async (req, res) => {
     calendar_attendees: [],
     lead_segments: leadSegmentInfo.segments || [],
     presence_windows: leadSegmentInfo.windows || [],
+    summary,
+    summary_text: summaryText,
+    summary_generated_at: row.summary_generated_at || null,
+    suggested_recipient_email: recipient.email,
+    suggested_recipient_name: recipient.name,
+  });
+});
+
+/**
+ * POST /recall-review/:id/generate-summary
+ * Generate (or regenerate with ?force=1) the Fathom-style recap on demand.
+ * Used by the review page when a summary isn't present yet (e.g. short call,
+ * or generated before this feature shipped).
+ */
+router.post('/recall-review/:id/generate-summary', async (req, res) => {
+  if (!(await pbRecallReviewApiOk(req))) return res.status(401).json({ ok: false, error: 'unauthorized' });
+  const force = String(req.query.force || req.body?.force || '') === '1';
+  const gen = await generateMeetingSummary(req.params.id, { force });
+  if (!gen.ok) return res.status(502).json({ ok: false, error: gen.error });
+  return res.json({
+    ok: true,
+    summary: gen.summary,
+    summary_text: renderSummaryText(gen.summary, gen.meta),
   });
 });
 

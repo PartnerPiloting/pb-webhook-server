@@ -15,6 +15,7 @@ const {
   recordRecallPresence,
   upsertRecallMeetingParticipant,
   addMeetingLead,
+  getMeetingById,
 } = require('../services/recallWebhookDb');
 const {
   recallEventType,
@@ -36,6 +37,42 @@ const { findLeadByName } = require('../services/inboundEmailService');
 const { tryAutoSplitForMeeting } = require('../services/recallAutoSplitService');
 const { markBotDone, checkAndDispatchBots } = require('../services/recallAutoJoinService');
 const { retrieveRecallBot, extractMeetingTimesFromBot } = require('../services/recallBotService');
+const { generateMeetingSummary, renderSummaryHtml } = require('../services/recallSummaryService');
+const { sendMailgunEmail } = require('../services/emailNotificationService');
+
+const SUMMARY_MIN_SECONDS = 10 * 60;
+const SUMMARY_EMAIL_TO = process.env.ALERT_EMAIL || 'guyralphwilson@gmail.com';
+
+async function maybeEmailMeetingSummary(meetingId) {
+  const log = createSafeLogger('SYSTEM', null, 'recall_webhook');
+  try {
+    const row = await getMeetingById(meetingId);
+    if (!row) return;
+    if (!row.duration_seconds || row.duration_seconds < SUMMARY_MIN_SECONDS) {
+      log.info(`RECALL-WEBHOOK summary skipped meeting=${meetingId}: duration ${row.duration_seconds || 0}s < ${SUMMARY_MIN_SECONDS}s`);
+      return;
+    }
+    const gen = await generateMeetingSummary(meetingId);
+    if (!gen.ok) {
+      log.warn(`RECALL-WEBHOOK summary gen failed meeting=${meetingId}: ${gen.error}`);
+      return;
+    }
+    if (gen.cached) {
+      log.info(`RECALL-WEBHOOK summary already existed meeting=${meetingId} — not re-emailing`);
+      return;
+    }
+    const from = process.env.FROM_EMAIL || `noreply@${process.env.MAILGUN_DOMAIN}`;
+    await sendMailgunEmail({
+      from,
+      to: SUMMARY_EMAIL_TO,
+      subject: `Meeting summary — ${gen.meta.title}`,
+      html: renderSummaryHtml(gen.summary, gen.meta),
+    });
+    log.info(`RECALL-WEBHOOK summary emailed meeting=${meetingId} to ${SUMMARY_EMAIL_TO}`);
+  } catch (e) {
+    log.warn(`RECALL-WEBHOOK summary email error meeting=${meetingId}: ${e.message}`);
+  }
+}
 
 const router = express.Router();
 const rawJson = express.raw({ type: 'application/json' });
@@ -363,6 +400,12 @@ router.post('/webhooks/recall', rawJson, async (req, res) => {
       }
     } catch (e) {
       log.warn(`RECALL-WEBHOOK calendar-link failed for meeting=${meetingId}: ${e.message}`);
+    }
+
+    // Generate the Fathom-style recap once the transcript is final (recording.done) and the
+    // call was long enough to be a real meeting. Emails it to the coach for review/forwarding.
+    if (event === 'recording.done') {
+      await maybeEmailMeetingSummary(meetingId);
     }
   }
 
