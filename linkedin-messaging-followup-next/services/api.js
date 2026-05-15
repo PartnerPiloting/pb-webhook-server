@@ -2125,6 +2125,19 @@ export const getRecallReviewEvent = async (id) => {
   }
 };
 
+export const generateRecallSummary = async (id, force = false) => {
+  try {
+    const base = getBackendBase();
+    const r = await fetch(`${base}/recall-review/${encodeURIComponent(id)}/generate-summary${force ? '?force=1' : ''}`, {
+      method: 'POST',
+      headers: recallReviewFetchHeaders(),
+    });
+    return await r.json();
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+};
+
 export const saveRecallSpeakers = async (id, speakers) => {
   try {
     const base = getBackendBase();
