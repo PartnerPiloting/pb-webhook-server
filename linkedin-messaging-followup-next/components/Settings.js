@@ -611,8 +611,9 @@ const SettingsWithParams = () => {
                 </div>
               </div>
 
-              {/* LinkedIn Post Scoring Criteria */}
-      <div 
+              {/* LEGACY-DISABLED 2026-05-16: LinkedIn Post Scoring Criteria card retired (Apify cost). Resurrect by removing the `false && (` wrapper and matching `)`. */}
+              {false && (
+      <div
                 className="bg-white rounded-lg border border-gray-200 p-6 hover:border-blue-300 cursor-pointer transition-colors"
                 onClick={handleViewPostAttributes}
               >
@@ -633,6 +634,7 @@ const SettingsWithParams = () => {
                   Configure Post Scoring →
                 </div>
               </div>
+              )}
 
               {/* Billing & Invoices */}
               <Link 
