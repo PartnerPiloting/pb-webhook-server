@@ -15,6 +15,7 @@
 
 const { listCalendarEventsWithAttendeesInRange } = require('../config/calendarServiceAccount');
 const clientService = require('./clientService');
+const { extractMeetingUrl, isCoachAttending } = require('./recallAutoJoinService');
 const { createSafeLogger } = require('../utils/loggerHelper');
 
 const DEFAULT_COACH_CLIENT_ID = (process.env.RECALL_COACH_CLIENT_ID || 'Guy-Wilson').trim();
@@ -76,14 +77,32 @@ async function evaluateAutoSplit(meeting, presenceRows, participants, coachClien
     calEvents = calResult.events;
   }
 
-  const relevant = calEvents.filter(ev => {
+  const overlapping = calEvents.filter(ev => {
     const s = new Date(ev.start);
     const e = new Date(ev.end);
     return s < recEnd && e > recStart;
   });
 
+  // Only split based on events that actually look like real meetings — they need a Zoom/Meet/Teams
+  // URL AND the coach must be a confirmed attendee. This stops personal placeholders like a
+  // recurring "Lunch" block (no URL, no other attendees) from being treated as a separate
+  // appointment that the recording must be split for.
+  const relevant = overlapping.filter(ev => {
+    if (!extractMeetingUrl(ev)) return false;
+    if (!isCoachAttending(ev)) return false;
+    return true;
+  });
+
+  if (overlapping.length !== relevant.length) {
+    const dropped = overlapping
+      .filter(ev => !relevant.includes(ev))
+      .map(ev => `"${ev.summary}"`)
+      .join(', ');
+    log.info(`auto-split: ignored ${overlapping.length - relevant.length} non-meeting overlap(s): ${dropped}`);
+  }
+
   if (relevant.length <= 1) {
-    return { shouldSplit: false, reason: `${relevant.length} calendar event(s) in window — no split needed` };
+    return { shouldSplit: false, reason: `${relevant.length} real meeting event(s) in window — no split needed` };
   }
 
   relevant.sort((a, b) => new Date(a.start) - new Date(b.start));

@@ -66,20 +66,30 @@ function normalizeMeetingUrl(url) {
   } catch { return url; }
 }
 
-function hasActiveBotForUrl(meetingUrl, currentEventStart) {
+/**
+ * Is there already a bot at this URL that's still in the room?
+ *
+ * The only authoritative signal is `bot.done` — once Recall confirms the bot has left, we
+ * know the room is free. Until then, assume the bot is still recording (and back-to-back
+ * events on this URL get skipped, with their recording captured by the existing bot and
+ * sliced apart by auto-split later).
+ *
+ * Sanity backstop: if a tracked bot's calendar event ended >4 hours ago and we still haven't
+ * seen `bot.done`, assume the webhook was lost and treat the URL as free. Prevents a stuck
+ * bot from locking a URL forever.
+ */
+const BOT_LIFECYCLE_BACKSTOP_MS = 4 * 60 * 60 * 1000;
+
+function hasActiveBotForUrl(meetingUrl) {
   const norm = normalizeMeetingUrl(meetingUrl);
   const now = Date.now();
   for (const [, info] of scheduledEventIds) {
     if (info.skipped || !info.ok || !info.meetingUrl) continue;
     if (info.botDone) continue;
     if (normalizeMeetingUrl(info.meetingUrl) !== norm) continue;
-    if (!info.eventEnd) continue;
-    const endMs = new Date(info.eventEnd).getTime();
-    const bufferMs = 15 * 60 * 1000;
-    if (endMs + bufferMs < now) continue;
-    if (currentEventStart) {
-      const startMs = new Date(currentEventStart).getTime();
-      if (startMs > endMs + bufferMs) continue;
+    if (info.eventEnd) {
+      const endMs = new Date(info.eventEnd).getTime();
+      if (Number.isFinite(endMs) && endMs + BOT_LIFECYCLE_BACKSTOP_MS < now) continue;
     }
     return true;
   }
@@ -96,6 +106,26 @@ function markBotDone(botId) {
     }
   }
   return false;
+}
+
+/**
+ * The bot should only join if the coach is actually attending.
+ *
+ * Returns true if the event has an attendees list AND the coach's "self" attendee is
+ * either the organizer or has explicitly accepted the invite. This filters out:
+ *   - Events the coach added to their calendar as a marker (responseStatus: "needsAction").
+ *   - Events the coach declined.
+ *   - Events with no attendee list at all (typically personal placeholders).
+ *
+ * Coaching calls (where the coach is organizer + accepted) pass through unaffected.
+ */
+function isCoachAttending(event) {
+  const attendees = Array.isArray(event.attendees) ? event.attendees : [];
+  if (attendees.length === 0) return false;
+  const self = attendees.find(a => a.self);
+  if (!self) return false;
+  if (self.organizer) return true;
+  return String(self.responseStatus || '').toLowerCase() === 'accepted';
 }
 
 function extractMeetingUrl(event) {
@@ -163,11 +193,23 @@ async function checkAndDispatchBots() {
 
   for (const ev of events) {
     const eventKey = ev.eventId || `${ev.summary}_${ev.start}`;
-    if (scheduledEventIds.has(eventKey)) continue;
+    const cached = scheduledEventIds.get(eventKey);
+    // Re-evaluate events previously skipped only because a prior bot was on the same link —
+    // that bot may have finished by now (markBotDone via bot.done webhook).
+    const isStaleBackToBackSkip = cached?.skipped && cached.reason === 'bot already on same link';
+    if (cached && !isStaleBackToBackSkip) continue;
 
     const meetingUrl = extractMeetingUrl(ev);
     if (!meetingUrl) {
       log.info(`auto-join: no meeting link found for "${ev.summary}" (location="${ev.location?.substring(0,100)}", hasConferenceData=${!!ev.conferenceData})`);
+      continue;
+    }
+
+    if (!isCoachAttending(ev)) {
+      const self = (ev.attendees || []).find(a => a.self);
+      const status = self ? (self.responseStatus || 'unknown') : 'not-on-attendee-list';
+      log.info(`auto-join: skipping "${ev.summary}" — coach not attending (status=${status})`);
+      scheduledEventIds.set(eventKey, { scheduledAt: Date.now(), skipped: true, reason: `coach not attending (${status})` });
       continue;
     }
 
@@ -178,8 +220,8 @@ async function checkAndDispatchBots() {
       continue;
     }
 
-    if (hasActiveBotForUrl(meetingUrl, ev.start)) {
-      log.info(`auto-join: skipping "${ev.summary}" — bot already active on same meeting link (back-to-back)`);
+    if (hasActiveBotForUrl(meetingUrl)) {
+      log.info(`auto-join: skipping "${ev.summary}" — bot already in this Zoom room (back-to-back). Recording will cover both calls; auto-split will slice them apart later.`);
       scheduledEventIds.set(eventKey, { scheduledAt: Date.now(), skipped: true, reason: 'bot already on same link' });
       continue;
     }
@@ -270,5 +312,6 @@ module.exports = {
   checkAndDispatchBots,
   getAutoJoinStatus,
   extractMeetingUrl,
+  isCoachAttending,
   markBotDone,
 };

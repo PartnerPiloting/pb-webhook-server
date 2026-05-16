@@ -274,6 +274,14 @@ const Layout = ({ children }) => {
                     <span className="hidden sm:inline">Upload Emails</span>
                   </button>
                   <Link
+                    href={buildAuthUrl('/onboard-client')}
+                    className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-lg transition-colors"
+                    title="Onboard a new client — validate base, create record, mint portal token"
+                  >
+                    <UserPlusIcon className="h-5 w-5" />
+                    <span className="hidden sm:inline">Onboard Client</span>
+                  </Link>
+                  <Link
                     href={buildAuthUrl('/owner-dashboard')}
                     className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-amber-600 bg-amber-50 hover:bg-amber-100 rounded-lg transition-colors"
                     title="Owner Dashboard - admin tools"

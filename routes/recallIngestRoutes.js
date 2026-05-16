@@ -15,6 +15,7 @@ const {
   recordRecallPresence,
   upsertRecallMeetingParticipant,
   addMeetingLead,
+  getMeetingById,
 } = require('../services/recallWebhookDb');
 const {
   recallEventType,
@@ -34,8 +35,44 @@ const {
 const clientService = require('../services/clientService');
 const { findLeadByName } = require('../services/inboundEmailService');
 const { tryAutoSplitForMeeting } = require('../services/recallAutoSplitService');
-const { markBotDone } = require('../services/recallAutoJoinService');
+const { markBotDone, checkAndDispatchBots } = require('../services/recallAutoJoinService');
 const { retrieveRecallBot, extractMeetingTimesFromBot } = require('../services/recallBotService');
+const { generateMeetingSummary, renderSummaryHtml } = require('../services/recallSummaryService');
+const { sendMailgunEmail } = require('../services/emailNotificationService');
+
+const SUMMARY_MIN_SECONDS = 10 * 60;
+const SUMMARY_EMAIL_TO = process.env.ALERT_EMAIL || 'guyralphwilson@gmail.com';
+
+async function maybeEmailMeetingSummary(meetingId) {
+  const log = createSafeLogger('SYSTEM', null, 'recall_webhook');
+  try {
+    const row = await getMeetingById(meetingId);
+    if (!row) return;
+    if (!row.duration_seconds || row.duration_seconds < SUMMARY_MIN_SECONDS) {
+      log.info(`RECALL-WEBHOOK summary skipped meeting=${meetingId}: duration ${row.duration_seconds || 0}s < ${SUMMARY_MIN_SECONDS}s`);
+      return;
+    }
+    const gen = await generateMeetingSummary(meetingId);
+    if (!gen.ok) {
+      log.warn(`RECALL-WEBHOOK summary gen failed meeting=${meetingId}: ${gen.error}`);
+      return;
+    }
+    if (gen.cached) {
+      log.info(`RECALL-WEBHOOK summary already existed meeting=${meetingId} — not re-emailing`);
+      return;
+    }
+    const from = process.env.FROM_EMAIL || `noreply@${process.env.MAILGUN_DOMAIN}`;
+    await sendMailgunEmail({
+      from,
+      to: SUMMARY_EMAIL_TO,
+      subject: `Meeting summary — ${gen.meta.title}`,
+      html: renderSummaryHtml(gen.summary, gen.meta),
+    });
+    log.info(`RECALL-WEBHOOK summary emailed meeting=${meetingId} to ${SUMMARY_EMAIL_TO}`);
+  } catch (e) {
+    log.warn(`RECALL-WEBHOOK summary email error meeting=${meetingId}: ${e.message}`);
+  }
+}
 
 const router = express.Router();
 const rawJson = express.raw({ type: 'application/json' });
@@ -223,6 +260,14 @@ router.post('/webhooks/recall', rawJson, async (req, res) => {
   const { botId, recordingId } = extractRecallIds(body);
   log.info(`RECALL-WEBHOOK event=${event || 'n/a'} bot=${botId || 'n/a'} recording=${recordingId || 'n/a'}`);
 
+  // Mark the bot as done in the auto-join cache BEFORE the recordingId early-return below.
+  // bot.done webhooks legitimately arrive without a recordingId, but we still need to free
+  // up the meeting URL so the next back-to-back event gets a fresh bot dispatched.
+  if (event === 'bot.done' && botId) {
+    try { markBotDone(botId); } catch (e) { log.warn(`RECALL-WEBHOOK markBotDone error: ${e.message}`); }
+    checkAndDispatchBots().catch(e => log.warn(`RECALL-WEBHOOK post-bot.done dispatch error: ${e.message}`));
+  }
+
   if (!botId || !recordingId) {
     return res.status(200).json({ ok: true, received: true, note: 'no bot/recording ids — stored only if db ok' });
   }
@@ -316,9 +361,7 @@ router.post('/webhooks/recall', rawJson, async (req, res) => {
     }
   }
 
-  if (event === 'bot.done' && botId) {
-    try { markBotDone(botId); } catch (e) { log.warn(`RECALL-WEBHOOK markBotDone error: ${e.message}`); }
-  }
+  // (bot.done handling was moved above the recordingId early-return; see top of handler.)
 
   if (meetingId && (event === 'bot.done' || event === 'recording.done')) {
     // Fetch bot data from Recall API to get meeting start/end times
@@ -357,6 +400,12 @@ router.post('/webhooks/recall', rawJson, async (req, res) => {
       }
     } catch (e) {
       log.warn(`RECALL-WEBHOOK calendar-link failed for meeting=${meetingId}: ${e.message}`);
+    }
+
+    // Generate the Fathom-style recap once the transcript is final (recording.done) and the
+    // call was long enough to be a real meeting. Emails it to the coach for review/forwarding.
+    if (event === 'recording.done') {
+      await maybeEmailMeetingSummary(meetingId);
     }
   }
 

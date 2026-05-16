@@ -67,7 +67,22 @@ const {
 } = require('../services/recallLeadLinkService');
 const { createRecallBot } = require('../services/recallBotService');
 const { tryAutoSplitForMeeting } = require('../services/recallAutoSplitService');
-const { getAutoJoinStatus } = require('../services/recallAutoJoinService');
+const { getAutoJoinStatus, extractMeetingUrl } = require('../services/recallAutoJoinService');
+const { listCalendarEventsWithAttendeesInRange } = require('../config/calendarServiceAccount');
+const { generateMeetingSummary, renderSummaryText, normaliseSummary } = require('../services/recallSummaryService');
+
+// Pick the most likely "send to" person: a non-coach speaker with an email.
+function suggestedRecipient(verifiedSpeakers) {
+  for (const s of Object.values(verifiedSpeakers || {})) {
+    if (s && s.role !== 'coach' && s.email) return { email: s.email, name: s.name || '' };
+  }
+  for (const s of Object.values(verifiedSpeakers || {})) {
+    if (s && s.role !== 'coach' && s.name) return { email: '', name: s.name };
+  }
+  return { email: '', name: '' };
+}
+
+const REJOIN_NOW_COACH_CLIENT_ID = (process.env.RECALL_COACH_CLIENT_ID || 'Guy-Wilson').trim();
 
 const DEFAULT_COACH_CLIENT_ID = RECALL_DEFAULT_COACH;
 
@@ -86,6 +101,29 @@ function timingSafeEqualString(a, b) {
   const B = Buffer.from(String(b), 'utf8');
   if (A.length !== B.length) return false;
   return crypto.timingSafeEqual(A, B);
+}
+
+// Public share-link tokens: HMAC of meeting ID with PB_WEBHOOK_SECRET, scoped by purpose.
+// Truncated to 32 hex chars (128 bits) — strong enough for an unguessable share URL.
+// To revoke ALL outstanding share links: rotate PB_WEBHOOK_SECRET on the server.
+function computeShareToken(meetingId) {
+  const secret = (process.env.PB_WEBHOOK_SECRET || '').trim();
+  if (!secret) return '';
+  return crypto.createHmac('sha256', secret).update(`share:${meetingId}`).digest('hex').slice(0, 32);
+}
+
+function verifyShareToken(meetingId, token) {
+  const expected = computeShareToken(meetingId);
+  if (!expected || !token) return false;
+  return timingSafeEqualString(String(token), expected);
+}
+
+function publicBaseUrl(req) {
+  const fromEnv = (process.env.PUBLIC_BASE_URL || '').trim().replace(/\/$/, '');
+  if (fromEnv) return fromEnv;
+  const proto = req.get('x-forwarded-proto') || req.protocol || 'https';
+  const host = req.get('host');
+  return host ? `${proto}://${host}` : 'https://pb-webhook-server.onrender.com';
 }
 
 function pbAdminOk(req) {
@@ -350,6 +388,16 @@ router.get('/recall-review/api/event/:id', async (req, res) => {
 
   const leadSegmentInfo = await getLeadSegmentsForMeeting(row.id);
 
+  let summary = null;
+  let summaryText = '';
+  if (row.summary_json) {
+    try {
+      summary = normaliseSummary(JSON.parse(row.summary_json));
+      summaryText = renderSummaryText(summary, { title: row.title || `Meeting ${row.id}`, durationSeconds: row.duration_seconds });
+    } catch (_e) { /* malformed summary — treat as none */ }
+  }
+  const recipient = suggestedRecipient(verifiedSpeakers);
+
   return res.json({
     id: row.id,
     created_at: row.created_at,
@@ -376,6 +424,29 @@ router.get('/recall-review/api/event/:id', async (req, res) => {
     calendar_attendees: [],
     lead_segments: leadSegmentInfo.segments || [],
     presence_windows: leadSegmentInfo.windows || [],
+    summary,
+    summary_text: summaryText,
+    summary_generated_at: row.summary_generated_at || null,
+    suggested_recipient_email: recipient.email,
+    suggested_recipient_name: recipient.name,
+  });
+});
+
+/**
+ * POST /recall-review/:id/generate-summary
+ * Generate (or regenerate with ?force=1) the Fathom-style recap on demand.
+ * Used by the review page when a summary isn't present yet (e.g. short call,
+ * or generated before this feature shipped).
+ */
+router.post('/recall-review/:id/generate-summary', async (req, res) => {
+  if (!(await pbRecallReviewApiOk(req))) return res.status(401).json({ ok: false, error: 'unauthorized' });
+  const force = String(req.query.force || req.body?.force || '') === '1';
+  const gen = await generateMeetingSummary(req.params.id, { force });
+  if (!gen.ok) return res.status(502).json({ ok: false, error: gen.error });
+  return res.json({
+    ok: true,
+    summary: gen.summary,
+    summary_text: renderSummaryText(gen.summary, gen.meta),
   });
 });
 
@@ -693,6 +764,168 @@ router.post('/recall-api/create-bot', async (req, res) => {
   const out = await createRecallBot({ meetingUrl, joinAt, transcriptMode });
   const status = out.ok ? 200 : typeof out.status === 'number' && out.status >= 400 && out.status < 600 ? out.status : 502;
   return res.status(status).json(out);
+});
+
+/**
+ * POST/GET /recall-api/rejoin-now
+ * Finds the calendar event currently in progress (start ≤ now ≤ end + 15min grace) on the
+ * coach's calendar that has a Zoom/Meet/Teams link, and dispatches a fresh Recall bot to it.
+ * Use case: bot was denied/missed the waiting room — one tap to send another knock.
+ * Auth: PB admin secret or portal recall-review auth.
+ */
+const rejoinNowHandler = async (req, res) => {
+  if (!pbAdminOk(req) && !(await pbRecallReviewApiOk(req))) {
+    return res.status(401).json({ error: 'unauthorized' });
+  }
+
+  let calendarEmail = (process.env.RECALL_COACH_CALENDAR_EMAIL || '').trim();
+  if (!calendarEmail) {
+    try {
+      const coach = await clientService.getClientById(REJOIN_NOW_COACH_CLIENT_ID);
+      calendarEmail = coach?.googleCalendarEmail || '';
+    } catch (e) {
+      return res.status(500).json({ ok: false, error: `could not get coach calendar email: ${e.message}` });
+    }
+  }
+  if (!calendarEmail) {
+    return res.status(500).json({ ok: false, error: 'coach calendar email not configured' });
+  }
+
+  const now = new Date();
+  const t0 = new Date(now.getTime() - 15 * 60 * 1000);
+  const t1 = new Date(now.getTime() + 15 * 60 * 1000);
+  const { events, error } = await listCalendarEventsWithAttendeesInRange(calendarEmail, t0, t1);
+  if (error) return res.status(502).json({ ok: false, error: `calendar error: ${error}` });
+
+  const GRACE_MS = 15 * 60 * 1000;
+  const nowMs = now.getTime();
+  const inProgress = (events || [])
+    .map(ev => ({ ev, url: extractMeetingUrl(ev) }))
+    .filter(({ ev, url }) => {
+      if (!url) return false;
+      const start = ev.start ? new Date(ev.start).getTime() : NaN;
+      const end = ev.end ? new Date(ev.end).getTime() : NaN;
+      if (!Number.isFinite(start) || !Number.isFinite(end)) return false;
+      return start <= nowMs && nowMs <= end + GRACE_MS;
+    });
+
+  if (inProgress.length === 0) {
+    return res.status(404).json({ ok: false, error: 'no calendar event in progress with a meeting link' });
+  }
+
+  if (inProgress.length > 1) {
+    return res.status(409).json({
+      ok: false,
+      error: 'multiple events in progress — use /recall-api/create-bot with a specific meeting_url',
+      candidates: inProgress.map(({ ev, url }) => ({
+        summary: ev.summary,
+        start: ev.start,
+        end: ev.end,
+        meetingUrl: url,
+      })),
+    });
+  }
+
+  const { ev, url } = inProgress[0];
+  const out = await createRecallBot({ meetingUrl: url, meetingTitle: ev.summary });
+  if (!out.ok) {
+    const status = typeof out.status === 'number' && out.status >= 400 && out.status < 600 ? out.status : 502;
+    return res.status(status).json({ ok: false, error: out.error, summary: ev.summary, meetingUrl: url });
+  }
+  return res.json({
+    ok: true,
+    summary: ev.summary,
+    meetingUrl: url,
+    botId: out.recall_response?.id || null,
+  });
+};
+router.post('/recall-api/rejoin-now', rejoinNowHandler);
+router.get('/recall-api/rejoin-now', rejoinNowHandler);
+
+/**
+ * GET /recall-review/api/share-link/:id
+ * Authenticated. Returns a public share URL for the meeting's transcript.
+ * Anyone with the URL can read the transcript (no login required) — designed for
+ * sending to a non-customer (e.g. "Tony, here's the recording transcript").
+ * Token is HMAC of meeting id + PB_WEBHOOK_SECRET; rotate the secret to revoke.
+ */
+router.get('/recall-review/api/share-link/:id', async (req, res) => {
+  if (!(await pbRecallReviewApiOk(req))) return res.status(401).json({ ok: false, error: 'unauthorized' });
+  const id = req.params.id;
+  const row = await getMeetingById(id);
+  if (!row) return res.status(404).json({ ok: false, error: 'meeting not found' });
+  const token = computeShareToken(id);
+  if (!token) return res.status(500).json({ ok: false, error: 'PB_WEBHOOK_SECRET not configured' });
+  const url = `${publicBaseUrl(req)}/recall-share/${encodeURIComponent(id)}?token=${token}`;
+  return res.json({ ok: true, url, title: row.title || row.meeting_title || '' });
+});
+
+/**
+ * GET /recall-share/:id?token=XXX[&format=html]
+ * PUBLIC endpoint — anyone with a valid token can fetch the transcript as plain text
+ * (default) or a small HTML page with a Copy button (?format=html).
+ * Speaker labels are replaced with verified names where confirmed during review.
+ */
+router.get('/recall-share/:id', async (req, res) => {
+  const id = req.params.id;
+  const token = typeof req.query.token === 'string' ? req.query.token.trim() : '';
+  if (!verifyShareToken(id, token)) {
+    res.status(404).type('text/plain; charset=utf-8');
+    return res.send('Not found.');
+  }
+  const row = await getMeetingById(id);
+  if (!row) {
+    res.status(404).type('text/plain; charset=utf-8');
+    return res.send('Not found.');
+  }
+  const rawText = row.transcript_text || '';
+  const labelled = await replaceParticipantLabelsInTranscript(rawText, row.id);
+  // Strip ASCII control chars (NUL, BEL, etc., keeping \t \n \r) and zero-width Unicode
+  // (U+200B–U+200D, U+2060, U+FEFF). These invisible characters cause Gmail and some other
+  // apps to silently refuse paste even though navigator.clipboard.writeText reports success.
+  const stripCtrlRe = new RegExp('[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F\\x7F]', 'g');
+  const stripZeroWidthRe = new RegExp('[\\u200B-\\u200D\\u2060\\uFEFF]', 'g');
+  const transcript = labelled.replace(stripCtrlRe, '').replace(stripZeroWidthRe, '');
+  const title = row.title || row.meeting_title || `Meeting ${id}`;
+  const wantHtml = String(req.query.format || '').toLowerCase() === 'html';
+
+  if (!wantHtml) {
+    res.type('text/plain; charset=utf-8');
+    return res.send(transcript || '(transcript not yet available)');
+  }
+
+  // Minimal HTML view with a Copy button — no auth, no nav.
+  const escapeHtml = (s) => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const html = `<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>${escapeHtml(title)} — transcript</title>
+<style>
+  body { font-family: ui-sans-serif, system-ui, sans-serif; max-width: 820px; margin: 0 auto; padding: 24px; color: #111827; background: #f9fafb; }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  .meta { color: #6b7280; font-size: 13px; margin-bottom: 16px; }
+  .actions { margin-bottom: 16px; }
+  button { background: #6d28d9; color: white; border: 0; padding: 8px 14px; border-radius: 6px; font-size: 14px; cursor: pointer; }
+  button:hover { background: #5b21b6; }
+  pre { background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; white-space: pre-wrap; word-wrap: break-word; font-family: ui-monospace, SFMono-Regular, monospace; font-size: 13px; line-height: 1.5; }
+</style>
+</head><body>
+<h1>${escapeHtml(title)}</h1>
+<div class="meta">Transcript shared from Recall review. You can copy this and paste into ChatGPT, Claude, etc.</div>
+<div class="actions"><button id="copyBtn" type="button">Copy transcript</button> <span id="copied" style="color:#059669;font-size:13px;margin-left:8px;display:none">Copied to clipboard.</span></div>
+<pre id="t">${escapeHtml(transcript || '(transcript not yet available)')}</pre>
+<script>
+  document.getElementById('copyBtn').addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(document.getElementById('t').textContent);
+      const el = document.getElementById('copied'); el.style.display = 'inline'; setTimeout(() => { el.style.display = 'none'; }, 2000);
+    } catch (e) { alert('Copy failed: ' + e.message); }
+  });
+</script>
+</body></html>`;
+  res.type('text/html; charset=utf-8');
+  return res.send(html);
 });
 
 router.get('/recall-review', async (req, res) => {

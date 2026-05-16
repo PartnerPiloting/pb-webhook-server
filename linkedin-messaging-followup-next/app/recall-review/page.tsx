@@ -11,6 +11,9 @@ import {
   searchRecallLeadByEmail,
   addRecallMeetingLead,
   removeRecallMeetingLead,
+  rejoinRecallNow,
+  getRecallShareLink,
+  generateRecallSummary,
 } from '../../services/api';
 import { getCurrentClientId } from '../../utils/clientUtils';
 
@@ -98,6 +101,187 @@ function parseTranscriptSpeakerLine(line: string): { label: string; rest: string
 /* Queue                                                               */
 /* ------------------------------------------------------------------ */
 
+function ShareTranscriptButton({ meetingId }: { meetingId: string }) {
+  const [busy, setBusy] = useState(false);
+  const [label, setLabel] = useState('Share');
+
+  const handleClick = async () => {
+    if (busy) return;
+    setBusy(true);
+    setLabel('…');
+    try {
+      const r = await getRecallShareLink(meetingId);
+      if (r && r.ok && r.url) {
+        try {
+          await navigator.clipboard.writeText(r.url);
+          setLabel('Link copied');
+        } catch {
+          // Fallback if clipboard API blocked — show the URL via prompt for manual copy
+          window.prompt('Copy this share link:', r.url);
+          setLabel('Share');
+        }
+      } else {
+        setLabel(r?.error ? 'Failed' : 'Failed');
+      }
+    } catch {
+      setLabel('Failed');
+    } finally {
+      setBusy(false);
+      setTimeout(() => setLabel('Share'), 2500);
+    }
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={handleClick}
+      disabled={busy}
+      className="text-sm font-medium text-violet-700 hover:text-violet-900 hover:underline disabled:text-gray-400"
+      title="Copy a public share link to this transcript (anyone with the link can view)"
+    >
+      {label}
+    </button>
+  );
+}
+
+type MeetingSummary = {
+  purpose?: string;
+  keyTakeaways?: string[];
+  topics?: { heading: string; points: string[] }[];
+  actionItems?: { owner: string; task: string }[];
+  nextSteps?: string[];
+};
+
+function SummaryPanel({
+  eventId, initialSummary, initialText, recipientEmail, recipientName, title,
+}: {
+  eventId: string;
+  initialSummary: MeetingSummary | null;
+  initialText: string;
+  recipientEmail: string;
+  recipientName: string;
+  title: string;
+}) {
+  const [summary, setSummary] = useState<MeetingSummary | null>(initialSummary);
+  const [text, setText] = useState(initialText);
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState('');
+  const [to, setTo] = useState(recipientEmail || '');
+
+  const runGenerate = async (force: boolean) => {
+    if (busy) return;
+    setBusy(true);
+    setNote(force ? 'Regenerating…' : 'Generating…');
+    try {
+      const r = await generateRecallSummary(eventId, force);
+      if (r && r.ok) {
+        setSummary(r.summary);
+        setText(r.summary_text || '');
+        setNote('');
+      } else {
+        setNote(r?.error ? `Failed: ${r.error}` : 'Failed to generate.');
+      }
+    } catch (e: any) {
+      setNote(`Failed: ${e?.message || 'error'}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const sendFromGmail = async () => {
+    const clean = (text || '')
+      .replace(new RegExp('[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F\\x7F]', 'g'), '')
+      .replace(new RegExp('[\\u200B-\\u200D\\u2060\\uFEFF]', 'g'), '');
+    try { await navigator.clipboard.writeText(clean); } catch { /* clipboard optional */ }
+    const subject = `Recap — ${title}`;
+    const url = `https://mail.google.com/mail/?view=cm&fs=1`
+      + `&to=${encodeURIComponent(to)}`
+      + `&su=${encodeURIComponent(subject)}`
+      + `&body=${encodeURIComponent(clean)}`;
+    window.open(url, '_blank', 'noopener');
+    setNote('Opened Gmail. The recap is also on your clipboard if you need to paste it.');
+  };
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+      <div className="flex items-center justify-between gap-2 mb-2">
+        <h3 className="text-sm font-semibold text-gray-900">Meeting summary</h3>
+        <div className="flex items-center gap-3">
+          {summary && (
+            <button onClick={() => runGenerate(true)} disabled={busy}
+              className="text-xs text-gray-500 hover:text-gray-800 hover:underline disabled:text-gray-300">
+              Regenerate
+            </button>
+          )}
+        </div>
+      </div>
+
+      {!summary ? (
+        <div className="text-sm text-gray-500">
+          <p className="mb-2">No summary yet{initialText ? '' : ' (short call, or recorded before summaries were enabled)'}.</p>
+          <button onClick={() => runGenerate(false)} disabled={busy}
+            className={`text-sm font-semibold rounded px-3 py-2 border ${busy ? 'bg-gray-100 text-gray-400 border-gray-200' : 'bg-violet-600 text-white border-violet-700 hover:bg-violet-700'}`}>
+            {busy ? 'Generating…' : 'Generate summary'}
+          </button>
+          {note && <span className="ml-2 text-xs text-rose-700">{note}</span>}
+        </div>
+      ) : (
+        <div className="space-y-3 text-sm text-gray-800">
+          {summary.purpose && (
+            <div><div className="font-semibold text-gray-900">Meeting Purpose</div><p className="mt-0.5">{summary.purpose}</p></div>
+          )}
+          {!!summary.keyTakeaways?.length && (
+            <div>
+              <div className="font-semibold text-gray-900">Key Takeaways</div>
+              <ul className="list-disc pl-5 mt-0.5 space-y-0.5">{summary.keyTakeaways.map((t, i) => <li key={i}>{t}</li>)}</ul>
+            </div>
+          )}
+          {!!summary.topics?.length && (
+            <div>
+              <div className="font-semibold text-gray-900">Topics</div>
+              {summary.topics.map((tp, i) => (
+                <div key={i} className="mt-1">
+                  <div className="font-medium">{tp.heading}</div>
+                  <ul className="list-disc pl-5 space-y-0.5">{tp.points.map((p, j) => <li key={j}>{p}</li>)}</ul>
+                </div>
+              ))}
+            </div>
+          )}
+          {!!summary.actionItems?.length && (
+            <div>
+              <div className="font-semibold text-gray-900">Action Items</div>
+              <ul className="list-disc pl-5 mt-0.5 space-y-0.5">
+                {summary.actionItems.map((a, i) => <li key={i}><strong>{a.owner}:</strong> {a.task}</li>)}
+              </ul>
+            </div>
+          )}
+          {!!summary.nextSteps?.length && (
+            <div>
+              <div className="font-semibold text-gray-900">Next Steps</div>
+              <ul className="list-disc pl-5 mt-0.5 space-y-0.5">{summary.nextSteps.map((n, i) => <li key={i}>{n}</li>)}</ul>
+            </div>
+          )}
+
+          <div className="border-t border-gray-100 pt-3 flex flex-wrap items-center gap-2">
+            <input
+              type="email"
+              value={to}
+              onChange={e => setTo(e.target.value)}
+              placeholder="recipient@email.com"
+              className="text-sm border border-gray-200 rounded px-2 py-1.5 w-56 focus:outline-none focus:ring-2 focus:ring-violet-200"
+            />
+            <button onClick={sendFromGmail}
+              className="text-sm font-semibold rounded px-3 py-2 border bg-violet-600 text-white border-violet-700 hover:bg-violet-700">
+              Send from Gmail{recipientName ? ` to ${recipientName.split(' ')[0]}` : ''}
+            </button>
+            {note && <span className="text-xs text-emerald-700">{note}</span>}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function QueueView({ onSelect }: { onSelect: (id: string) => void }) {
   const [rows, setRows] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -128,9 +312,6 @@ function QueueView({ onSelect }: { onSelect: (id: string) => void }) {
           ? 'No meetings stored yet.'
           : 'No rows match this filter.';
 
-  if (loading) return <p className="text-gray-500 text-sm py-8 text-center">Loading…</p>;
-  if (error) return <p className="text-red-600 text-sm bg-red-50 border border-red-200 rounded-lg p-4">{error}</p>;
-
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-3 sm:gap-4">
@@ -159,9 +340,14 @@ function QueueView({ onSelect }: { onSelect: (id: string) => void }) {
               className="mt-1 w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-200 focus:border-violet-400"
             />
           </div>
+          {loading && <span className="text-xs text-gray-400 pb-2 sm:pb-3">Searching…</span>}
         </div>
       </div>
-      {rows.length === 0 ? (
+      {error ? (
+        <p className="text-red-600 text-sm bg-red-50 border border-red-200 rounded-lg p-4">{error}</p>
+      ) : loading && rows.length === 0 ? (
+        <p className="text-gray-500 text-sm py-8 text-center">Loading…</p>
+      ) : rows.length === 0 ? (
         <p className="text-gray-500 italic text-sm py-8 text-center border border-dashed border-gray-200 rounded-xl bg-gray-50/80 px-4">{emptyMsg}</p>
       ) : (
         <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm">
@@ -191,7 +377,9 @@ function QueueView({ onSelect }: { onSelect: (id: string) => void }) {
                     <td className="px-4 py-3"><Badge status={r.status || 'incomplete'} /></td>
                     <td className="px-4 py-3 space-x-1">
                     </td>
-                    <td className="px-4 py-3 text-right">
+                    <td className="px-4 py-3 text-right whitespace-nowrap">
+                      <ShareTranscriptButton meetingId={String(r.id)} />
+                      <span className="mx-2 text-gray-300">|</span>
                       <button onClick={() => onSelect(String(r.id))} className="text-sm font-medium text-violet-700 hover:text-violet-900 hover:underline">
                         Review
                       </button>
@@ -657,6 +845,15 @@ function EventReview({ eventId, onBack }: { eventId: string; onBack: () => void 
         </div>
       )}
 
+      <SummaryPanel
+        eventId={String(ev.id)}
+        initialSummary={ev.summary || null}
+        initialText={ev.summary_text || ''}
+        recipientEmail={ev.suggested_recipient_email || ''}
+        recipientName={ev.suggested_recipient_name || ''}
+        title={ev.title || `Meeting ${ev.id}`}
+      />
+
       {/* Two-column layout */}
       <div className="flex flex-col lg:flex-row gap-4">
         {/* Left: transcript */}
@@ -666,16 +863,70 @@ function EventReview({ eventId, onBack }: { eventId: string; onBack: () => void 
               <h3 className="text-sm font-semibold text-gray-900">Transcript</h3>
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => {
-                    const plain = lines.map(l => {
+                  onClick={async () => {
+                    const raw = lines.map(l => {
                       const p = parseTranscriptSpeakerLine(l);
                       if (p) return `${speakers[p.label]?.name || p.label}: ${p.rest}`;
                       return l;
                     }).join('\n');
-                    navigator.clipboard.writeText(plain).then(() => {
-                      setCopyFeedback(true);
-                      setTimeout(() => setCopyFeedback(false), 1500);
-                    });
+
+                    // Strip control characters (NUL, BEL, etc.) and zero-width unicode that some
+                    // apps (notably Gmail) refuse to paste. Keep tab, newline, carriage return.
+                    // Built as RegExp from string so the source code is unambiguous (these codepoints
+                    // are invisible if pasted as literals).
+                    const stripCtrlRe = new RegExp('[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F\\x7F]', 'g');
+                    const stripZeroWidthRe = new RegExp('[\\u200B-\\u200D\\u2060\\uFEFF]', 'g');
+                    const plain = raw.replace(stripCtrlRe, '').replace(stripZeroWidthRe, '');
+
+                    // eslint-disable-next-line no-console
+                    console.log(`Recall copy: ${plain.length} chars, ${raw.length - plain.length} stripped, sample: ${JSON.stringify(plain.slice(0, 80))}`);
+
+                    if (!plain.trim()) {
+                      window.alert('Transcript is empty — nothing to copy.');
+                      return;
+                    }
+
+                    // Try the modern Clipboard API first.
+                    try {
+                      if (navigator.clipboard && window.isSecureContext) {
+                        await navigator.clipboard.writeText(plain);
+                        setCopyFeedback(true);
+                        setTimeout(() => setCopyFeedback(false), 1500);
+                        return;
+                      }
+                      throw new Error('clipboard API unavailable');
+                    } catch (err) {
+                      // Fallback 1: legacy execCommand via a hidden textarea (works in many older browsers).
+                      try {
+                        const ta = document.createElement('textarea');
+                        ta.value = plain;
+                        ta.style.position = 'fixed';
+                        ta.style.left = '-9999px';
+                        ta.setAttribute('readonly', '');
+                        document.body.appendChild(ta);
+                        ta.select();
+                        const ok = document.execCommand('copy');
+                        document.body.removeChild(ta);
+                        if (ok) {
+                          setCopyFeedback(true);
+                          setTimeout(() => setCopyFeedback(false), 1500);
+                          return;
+                        }
+                        throw new Error('execCommand copy returned false');
+                      } catch (err2) {
+                        // Fallback 2: open the transcript in a new window so the user can select/copy manually.
+                        const w = window.open('', '_blank');
+                        if (w) {
+                          w.document.write(`<pre style="white-space:pre-wrap;font-family:ui-monospace,monospace;padding:16px;">${plain.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c] as string))}</pre>`);
+                          w.document.close();
+                        } else {
+                          window.alert('Copy failed and the popup was blocked. Please allow popups for this site, or use the Share link instead.');
+                        }
+                        // Surface the underlying error in the dev console for diagnosis.
+                        // eslint-disable-next-line no-console
+                        console.warn('Recall transcript copy failed', err, err2);
+                      }
+                    }
                   }}
                   className="text-xs px-3 py-1 bg-gray-50 text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-100"
                 >
@@ -810,6 +1061,59 @@ function EventReview({ eventId, onBack }: { eventId: string; onBack: () => void 
 }
 
 /* ------------------------------------------------------------------ */
+/* Rejoin Now button                                                   */
+/* ------------------------------------------------------------------ */
+
+type RejoinResult =
+  | { ok: true; summary?: string; meetingUrl?: string; botId?: string | null }
+  | { ok: false; error?: string; candidates?: Array<{ summary?: string; meetingUrl?: string }> };
+
+function RejoinNowButton() {
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<RejoinResult | null>(null);
+
+  const handleClick = async () => {
+    if (busy) return;
+    setBusy(true);
+    setResult(null);
+    try {
+      const r = (await rejoinRecallNow()) as RejoinResult;
+      setResult(r);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="flex flex-col items-end gap-1">
+      <button
+        type="button"
+        onClick={handleClick}
+        disabled={busy}
+        className={`text-sm font-semibold rounded px-3 py-2 border ${
+          busy
+            ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
+            : 'bg-violet-600 text-white border-violet-700 hover:bg-violet-700'
+        }`}
+        title="Send a fresh Recall bot to the calendar event currently in progress"
+      >
+        {busy ? 'Sending bot…' : 'Rejoin current call'}
+      </button>
+      {result && result.ok && (
+        <span className="text-xs text-emerald-700">
+          Bot dispatched{result.summary ? ` to "${result.summary}"` : ''}. Ask the host to admit it.
+        </span>
+      )}
+      {result && !result.ok && (
+        <span className="text-xs text-rose-700 max-w-[18rem] text-right">
+          {result.error || 'Failed to dispatch bot.'}
+        </span>
+      )}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /* Page                                                                */
 /* ------------------------------------------------------------------ */
 
@@ -835,11 +1139,14 @@ function RecallReviewContent() {
       <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6">
         {!selectedId ? (
           <>
-            <div className="mb-5">
-              <h1 className="text-2xl font-bold text-gray-900">Transcript review</h1>
-              <p className="text-sm text-gray-500 mt-1">
-                Review meeting transcripts. Confirm who each speaker is, link leads, then mark complete.
-              </p>
+            <div className="mb-5 flex items-start justify-between gap-4">
+              <div>
+                <h1 className="text-2xl font-bold text-gray-900">Transcript review</h1>
+                <p className="text-sm text-gray-500 mt-1">
+                  Review meeting transcripts. Confirm who each speaker is, link leads, then mark complete.
+                </p>
+              </div>
+              <RejoinNowButton />
             </div>
             <QueueView onSelect={setSelectedId} />
           </>

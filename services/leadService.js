@@ -116,8 +116,8 @@ async function upsertLead(
         [LEAD_FIELDS.STATUS]: LEAD_STATUS_VALUES.IN_PROCESS, 
         [LEAD_FIELDS.LOCATION]: locationName || originalLeadData.location_name || originalLeadData.location || "",
         [LEAD_FIELDS.DATE_CONNECTED]: safeDate(connectionSince) || safeDate(originalLeadData.connectedAt) || safeDate(originalLeadData.connectionDate) || (currentConnectionStatus === CONNECTION_STATUS_VALUES.CONNECTED && !lead.id ? new Date().toISOString() : null), // Set Date Connected if newly Connected and no previous date
-        [LEAD_FIELDS.EMAIL]: emailAddress || originalLeadData.email || originalLeadData.workEmail || "",
-        [LEAD_FIELDS.PHONE]: phoneNumber || originalLeadData.phone || (originalLeadData.phoneNumbers || [])[0]?.value || "",
+        [LEAD_FIELDS.EMAIL]: emailAddress || originalLeadData.email || originalLeadData.workEmail || originalLeadData.email_1 || originalLeadData.email_2 || "",
+        [LEAD_FIELDS.PHONE]: phoneNumber || originalLeadData.phone || (originalLeadData.phoneNumbers || [])[0]?.value || originalLeadData.phone_1 || originalLeadData.phone_2 || "",
         [LEAD_FIELDS.REFRESHED_AT]: refreshedAt ? new Date(refreshedAt) : (originalLeadData.lastRefreshed ? new Date(originalLeadData.lastRefreshed) : null),
         [LEAD_FIELDS.PROFILE_FULL_JSON]: JSON.stringify(profileForJsonField),
         [LEAD_FIELDS.RAW_PROFILE_DATA]: JSON.stringify(originalLeadData),

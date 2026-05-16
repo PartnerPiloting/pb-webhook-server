@@ -2125,6 +2125,19 @@ export const getRecallReviewEvent = async (id) => {
   }
 };
 
+export const generateRecallSummary = async (id, force = false) => {
+  try {
+    const base = getBackendBase();
+    const r = await fetch(`${base}/recall-review/${encodeURIComponent(id)}/generate-summary${force ? '?force=1' : ''}`, {
+      method: 'POST',
+      headers: recallReviewFetchHeaders(),
+    });
+    return await r.json();
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+};
+
 export const saveRecallSpeakers = async (id, speakers) => {
   try {
     const base = getBackendBase();
@@ -2230,6 +2243,32 @@ export const createRecallBotManual = async (meetingUrl) => {
       method: 'POST',
       headers: recallReviewFetchHeaders(),
       body: JSON.stringify({ meeting_url: meetingUrl }),
+    });
+    return await r.json();
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+};
+
+export const rejoinRecallNow = async () => {
+  try {
+    const base = getBackendBase();
+    const r = await fetch(`${base}/recall-api/rejoin-now`, {
+      method: 'POST',
+      headers: recallReviewFetchHeaders(),
+    });
+    return await r.json();
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+};
+
+export const getRecallShareLink = async (meetingId) => {
+  try {
+    const base = getBackendBase();
+    const r = await fetch(`${base}/recall-review/api/share-link/${encodeURIComponent(meetingId)}`, {
+      method: 'GET',
+      headers: recallReviewFetchHeaders(),
     });
     return await r.json();
   } catch (e) {
