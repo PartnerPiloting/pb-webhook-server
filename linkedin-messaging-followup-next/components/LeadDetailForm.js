@@ -855,12 +855,15 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating, onDelete }) => {
               {lead.aiScore !== null && lead.aiScore !== undefined ? lead.aiScore : 'Not scored'}
             </div>
           </div>
+          {/* LEGACY-DISABLED 2026-05-16: Top Post's Score hidden (Post Scoring/Apify retired). Resurrect by removing the `false && (` wrapper and matching `)`. */}
+          {false && (
           <div className="flex">
             <label className="w-28 text-sm font-medium text-gray-700 flex-shrink-0 py-2">Top Post's Score</label>
             <div className="flex-1 px-3 py-2 bg-gray-100 border border-gray-200 rounded-md text-gray-600 text-sm">
               {lead.postsRelevancePercentage ? `${Math.round(lead.postsRelevancePercentage)}%` : 'No data'}
             </div>
           </div>
+          )}
           <div className="flex">
             <label className="w-28 text-sm font-medium text-gray-700 flex-shrink-0 py-2">AI Attribute Breakdown</label>
             <div className="flex-1 px-3 py-2 bg-gray-100 border border-gray-200 rounded-md text-gray-600 text-sm max-h-40 overflow-y-auto">
