@@ -1,12 +1,30 @@
 "use client";
-import React from "react";
+import React, { useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+
+// LEGACY-DISABLED 2026-05-16: Top Scoring Posts retired (Apify cost).
+// Any direct hit on /top-scoring-posts now redirects home (query params preserved).
+// Original page preserved at the bottom of this file for resurrection.
+
+// Force dynamic rendering for pages that use search parameters
+export const dynamic = 'force-dynamic'
+
+export default function TopScoringPostsPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  useEffect(() => {
+    const qs = searchParams.toString();
+    router.replace(qs ? `/?${qs}` : "/");
+  }, [router, searchParams]);
+  return null;
+}
+
+/* LEGACY ORIGINAL — to resurrect: delete the redirect component above and restore this:
+
 import Layout from "../../components/Layout";
 import TopScoringPosts from "../../components/TopScoringPosts";
 import ErrorBoundary from "../../components/ErrorBoundary";
 import EnvironmentValidator from "../../components/EnvironmentValidator";
-
-// Force dynamic rendering for pages that use search parameters
-export const dynamic = 'force-dynamic'
 
 export default function TopScoringPostsPage() {
   return (
@@ -19,3 +37,5 @@ export default function TopScoringPostsPage() {
     </EnvironmentValidator>
   );
 }
+
+*/
