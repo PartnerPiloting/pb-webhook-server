@@ -122,7 +122,7 @@ const PRESET_TIMEZONE_VALUES = TIMEZONES.filter(t => t.value !== TIMEZONE_OTHER)
 // Always use Post Scoring defaults for all clients
 // (Even Level 1 clients get these values pre-set for when they upgrade)
 const DEFAULT_SETTINGS = {
-  profileScoringTokenLimit: '5000',
+  profileScoringTokenLimit: '6000',
   postScoringTokenLimit: '3000',
   postsDailyTarget: '10',
   leadsBatchSizeForPostCollection: '10',
@@ -143,7 +143,7 @@ const EMPTY_FORM: ClientData = {
   phone: '',
   googleCalendarEmail: '',
   // Advanced settings (Post Scoring defaults)
-  profileScoringTokenLimit: '5000',
+  profileScoringTokenLimit: '6000',
   postScoringTokenLimit: '3000',
   postsDailyTarget: '10',
   leadsBatchSizeForPostCollection: '10',
@@ -287,7 +287,7 @@ export default function OnboardClientPage() {
         googleCalendarEmail: fields['Google Calendar Email'] || '',
         status: fields['Status'] || 'Active',
         // Advanced settings
-        profileScoringTokenLimit: String(fields['Profile Scoring Token Limit'] || '5000'),
+        profileScoringTokenLimit: String(fields['Profile Scoring Token Limit'] || '6000'),
         postScoringTokenLimit: String(fields['Post Scoring Token Limit'] || '0'),
         postsDailyTarget: String(fields['Posts Daily Target'] || '0'),
         leadsBatchSizeForPostCollection: String(fields['Leads Batch Size For Post Collection'] || '0'),

@@ -10503,7 +10503,7 @@ router.post("/api/onboard-client", async (req, res) => {
     // Step 3: Always use Post Scoring defaults for all clients
     // (Even Level 1 clients get these values pre-set for when they upgrade)
     const defaults = {
-      profileScoringTokenLimit: 5000,
+      profileScoringTokenLimit: 6000,
       postScoringTokenLimit: 3000,
       postsDailyTarget: 10,
       leadsBatchSizeForPostCollection: 10,

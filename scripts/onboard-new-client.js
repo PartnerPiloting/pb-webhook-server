@@ -155,7 +155,7 @@ async function createClientRecord(options) {
     'Post Access Enabled': postAccessEnabled ? 'Yes' : null,
     
     // Default token limits
-    'Profile Scoring Token Limit': 5000,
+    'Profile Scoring Token Limit': 6000,
     'Post Scoring Token Limit': 3000,
     
     // Default floor values

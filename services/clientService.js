@@ -105,7 +105,7 @@ async function getAllClients() {
                 // Email notification fields
                 const clientFirstName = record.get('Client First Name') || '';
                 const clientEmailAddress = record.get('Client Email Address') || '';
-                const profileScoringTokenLimit = record.get('Profile Scoring Token Limit') || 5000;
+                const profileScoringTokenLimit = record.get('Profile Scoring Token Limit') || 6000;
                 const postScoringTokenLimit = record.get('Post Scoring Token Limit') || 3000;
                 // Post harvesting scheduler fields (optional)
                 const postsDailyTarget = record.get('Posts Daily Target') || 0;
