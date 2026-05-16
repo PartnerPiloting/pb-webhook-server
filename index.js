@@ -1684,15 +1684,20 @@ try { require("./promptApi")(app, base); moduleLogger.info("index.js: promptApi 
 try { require("./recordApi")(app, base); moduleLogger.info("index.js: recordApi mounted."); } catch(e) { moduleLogger.error("index.js: Error mounting recordApi", e.message, e.stack); }
 try { require("./scoreApi")(app, base, globalGeminiModel); moduleLogger.info("index.js: scoreApi mounted."); } catch(e) { moduleLogger.error("index.js: Error mounting scoreApi", e.message, e.stack); }
 
+// --- LEGACY-DISABLED 2026-05-16: Post Scoring + Apify feature retired (Apify cost). ---
+// Underlying modules (postScoreTestApi.js, postScoreBatchApi.js, postAnalysisService.js,
+// routes/apify*.js, etc.) are intentionally kept intact as dormant legacy code.
+// To resurrect: un-comment this block and the Apify mounts below, plus the
+// frontend nav/Settings/page entries (Layout.js, Settings.js, app/top-scoring-posts).
 // --- NEW: MOUNT POST SCORING APIS ---
-try {
-    // Mounts the API for testing a SINGLE lead's posts
-    require("./postScoreTestApi")(app, base, geminiConfig.vertexAIClient, postAnalysisConfig);
-    // Mounts the API for triggering the BATCH process for ALL pending leads
-    require("./postScoreBatchApi")(app, base, geminiConfig.vertexAIClient, postAnalysisConfig);
-} catch(e) {
-    moduleLogger.error("index.js: Error mounting one of the new Post Scoring APIs", e.message, e.stack);
-}
+// try {
+//     // Mounts the API for testing a SINGLE lead's posts
+//     require("./postScoreTestApi")(app, base, geminiConfig.vertexAIClient, postAnalysisConfig);
+//     // Mounts the API for triggering the BATCH process for ALL pending leads
+//     require("./postScoreBatchApi")(app, base, geminiConfig.vertexAIClient, postAnalysisConfig);
+// } catch(e) {
+//     moduleLogger.error("index.js: Error mounting one of the new Post Scoring APIs", e.message, e.stack);
+// }
 // ------------------------------------
 
 const mountQueue = require("./queueDispatcher");
@@ -1704,14 +1709,18 @@ if (mountQueue && typeof mountQueue === 'function') {
 
 try { const webhookRoutes = require('./routes/webhookHandlers.js'); app.use(webhookRoutes); moduleLogger.info("index.js: Webhook routes mounted."); } catch(e) { moduleLogger.error("index.js: Error mounting webhookRoutes", e.message, e.stack); }
 
-// Mount Apify webhook routes (for LinkedIn posts ingestion)
-try { const apifyWebhookRoutes = require('./routes/apifyWebhookRoutes.js'); app.use(apifyWebhookRoutes); moduleLogger.info("index.js: Apify webhook routes mounted."); } catch(e) { moduleLogger.error("index.js: Error mounting apifyWebhookRoutes", e.message, e.stack); }
-// Mount Apify control routes (start runs programmatically)
-try { const apifyControlRoutes = require('./routes/apifyControlRoutes.js'); app.use(apifyControlRoutes); moduleLogger.info("index.js: Apify control routes mounted."); } catch(e) { moduleLogger.error("index.js: Error mounting apifyControlRoutes", e.message, e.stack); }
-// Mount Apify runs management routes (multi-tenant run tracking)
-try { const apifyRunsRoutes = require('./routes/apifyRunsRoutes.js'); app.use(apifyRunsRoutes); moduleLogger.info("index.js: Apify runs management routes mounted."); } catch(e) { moduleLogger.error("index.js: Error mounting apifyRunsRoutes", e.message, e.stack); }
-// Mount Apify process routes (batch client processing)
-try { const apifyProcessRoutes = require('./routes/apifyProcessRoutes.js'); app.use(apifyProcessRoutes); moduleLogger.info("index.js: Apify process routes mounted."); } catch(e) { moduleLogger.error("index.js: Error mounting apifyProcessRoutes", e.message, e.stack); }
+// --- LEGACY-DISABLED 2026-05-16: Apify LinkedIn-post scraping retired (cost). ---
+// Disabled at the route-mount chokepoint so all underlying routes/services stay
+// intact as dormant legacy. Render dashboard crons hitting /api/apify/* or
+// /run-post-batch-score will now 404 (harmless). Resurrect by un-commenting.
+// // Mount Apify webhook routes (for LinkedIn posts ingestion)
+// try { const apifyWebhookRoutes = require('./routes/apifyWebhookRoutes.js'); app.use(apifyWebhookRoutes); moduleLogger.info("index.js: Apify webhook routes mounted."); } catch(e) { moduleLogger.error("index.js: Error mounting apifyWebhookRoutes", e.message, e.stack); }
+// // Mount Apify control routes (start runs programmatically)
+// try { const apifyControlRoutes = require('./routes/apifyControlRoutes.js'); app.use(apifyControlRoutes); moduleLogger.info("index.js: Apify control routes mounted."); } catch(e) { moduleLogger.error("index.js: Error mounting apifyControlRoutes", e.message, e.stack); }
+// // Mount Apify runs management routes (multi-tenant run tracking)
+// try { const apifyRunsRoutes = require('./routes/apifyRunsRoutes.js'); app.use(apifyRunsRoutes); moduleLogger.info("index.js: Apify runs management routes mounted."); } catch(e) { moduleLogger.error("index.js: Error mounting apifyRunsRoutes", e.message, e.stack); }
+// // Mount Apify process routes (batch client processing)
+// try { const apifyProcessRoutes = require('./routes/apifyProcessRoutes.js'); app.use(apifyProcessRoutes); moduleLogger.info("index.js: Apify process routes mounted."); } catch(e) { moduleLogger.error("index.js: Error mounting apifyProcessRoutes", e.message, e.stack); }
 
 // Use authenticated LinkedIn routes instead of old non-authenticated ones
 try { 
