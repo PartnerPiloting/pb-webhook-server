@@ -248,7 +248,7 @@ Manual workflow:
   aiDescription: 'Personal access token for authenticating...',
   businessPurpose: 'Data Storage Configuration - ...',
   category: 'Data & Storage',
-  stagingValue: 'pat89slmRS6muX8YZ.fc47...',
+  stagingValue: 'pat-REDACTED-TOKEN-ID.fc47...',
   usedInFiles: 'config/airtableClient.js:33, services/...',
   status: 'Active',
   lastSynced: '2025-10-16T10:30:45.000Z',
