@@ -24,9 +24,15 @@ export async function GET(request: Request) {
     );
 
     if (!airtableResponse.ok) {
-      console.error('Airtable query failed:', await airtableResponse.text());
+      const errorText = await airtableResponse.text();
+      console.error('Airtable query failed:', airtableResponse.status, errorText);
+      let airtableMsg = errorText.slice(0, 200);
+      try {
+        const parsed = JSON.parse(errorText);
+        airtableMsg = parsed?.error?.message || parsed?.error?.type || parsed?.error || airtableMsg;
+      } catch {}
       return NextResponse.json(
-        { error: 'Failed to query client database' },
+        { error: `Failed to query client database (Airtable ${airtableResponse.status}: ${airtableMsg})` },
         { status: 500 }
       );
     }

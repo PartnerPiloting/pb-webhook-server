@@ -52,7 +52,7 @@
 - **Field Type:** Single line text
 - **Description:** Current value from staging environment
 - **Auto-populated by:** `npm run doc-env-vars scan` (reads from process.env)
-- **Example:** `pat-REDACTED-TOKEN-ID.fc47...`
+- **Example:** `pat89slmRS6muX8YZ.fc47...`
 - **Note:** Sensitive values are fine here - control access via Airtable permissions
 
 ### 6. Production Value
