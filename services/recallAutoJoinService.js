@@ -194,10 +194,18 @@ async function checkAndDispatchBots() {
   for (const ev of events) {
     const eventKey = ev.eventId || `${ev.summary}_${ev.start}`;
     const cached = scheduledEventIds.get(eventKey);
-    // Re-evaluate events previously skipped only because a prior bot was on the same link —
-    // that bot may have finished by now (markBotDone via bot.done webhook).
-    const isStaleBackToBackSkip = cached?.skipped && cached.reason === 'bot already on same link';
-    if (cached && !isStaleBackToBackSkip) continue;
+    // Detect a calendar reschedule: same eventId, different start. Google keeps the same
+    // event ID when you drag-move an event, so without this the cache silently blocks the
+    // new dispatch ("I already handled this event"). Drop the stale entry and re-evaluate.
+    if (cached && cached.eventStart && cached.eventStart !== ev.start) {
+      log.info(`auto-join: event "${ev.summary}" rescheduled (${cached.eventStart} → ${ev.start}) — invalidating cache and re-dispatching`);
+      scheduledEventIds.delete(eventKey);
+    } else {
+      // Re-evaluate events previously skipped only because a prior bot was on the same link —
+      // that bot may have finished by now (markBotDone via bot.done webhook).
+      const isStaleBackToBackSkip = cached?.skipped && cached.reason === 'bot already on same link';
+      if (cached && !isStaleBackToBackSkip) continue;
+    }
 
     const meetingUrl = extractMeetingUrl(ev);
     if (!meetingUrl) {
@@ -209,20 +217,20 @@ async function checkAndDispatchBots() {
       const self = (ev.attendees || []).find(a => a.self);
       const status = self ? (self.responseStatus || 'unknown') : 'not-on-attendee-list';
       log.info(`auto-join: skipping "${ev.summary}" — coach not attending (status=${status})`);
-      scheduledEventIds.set(eventKey, { scheduledAt: Date.now(), skipped: true, reason: `coach not attending (${status})` });
+      scheduledEventIds.set(eventKey, { scheduledAt: Date.now(), eventStart: ev.start, skipped: true, reason: `coach not attending (${status})` });
       continue;
     }
 
     const eventStart = new Date(ev.start);
 
     if (eventStart.getTime() < now.getTime() - 10 * 60 * 1000) {
-      scheduledEventIds.set(eventKey, { scheduledAt: Date.now(), skipped: true, reason: 'started >10min ago' });
+      scheduledEventIds.set(eventKey, { scheduledAt: Date.now(), eventStart: ev.start, skipped: true, reason: 'started >10min ago' });
       continue;
     }
 
     if (hasActiveBotForUrl(meetingUrl)) {
       log.info(`auto-join: skipping "${ev.summary}" — bot already in this Zoom room (back-to-back). Recording will cover both calls; auto-split will slice them apart later.`);
-      scheduledEventIds.set(eventKey, { scheduledAt: Date.now(), skipped: true, reason: 'bot already on same link' });
+      scheduledEventIds.set(eventKey, { scheduledAt: Date.now(), eventStart: ev.start, skipped: true, reason: 'bot already on same link' });
       continue;
     }
 
@@ -241,6 +249,7 @@ async function checkAndDispatchBots() {
       scheduledEventIds.set(eventKey, {
         scheduledAt: Date.now(),
         meetingUrl,
+        eventStart: ev.start,
         eventEnd: ev.end || null,
         botId: result.recall_response?.id || null,
         ok: result.ok,
@@ -257,7 +266,7 @@ async function checkAndDispatchBots() {
       }
     } catch (e) {
       log.error(`auto-join: exception dispatching bot for "${ev.summary}": ${e.message}`);
-      scheduledEventIds.set(eventKey, { scheduledAt: Date.now(), error: e.message });
+      scheduledEventIds.set(eventKey, { scheduledAt: Date.now(), eventStart: ev.start, error: e.message });
     }
   }
 }
