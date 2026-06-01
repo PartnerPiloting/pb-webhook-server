@@ -58,38 +58,81 @@ function normalizeTactiq(text) {
 }
 
 /**
- * Fathom: typical export shape is two lines per utterance —
- *   "John Smith 00:00:05"
- *   "Hello, how are you?"
- * Sometimes "Name 0:05" or "Name HH:MM:SS". We collapse the pair into "Name: text".
- * Lines that don't match the header pattern pass through untouched.
+ * Fathom: real exports look like
+ *   "Guy Wilson and Roland Illyes - June 01"        ← title line
+ *   "VIEW RECORDING - 34 mins (No highlights): "    ← Fathom watermark + link
+ *   "---"                                            ← separator
+ *   ""
+ *   "0:01 - Guy Wilson"                              ← timestamp + speaker header
+ *   "  That was a mammoth effort..."                 ← indented body
+ *   ""
+ *   "0:27 - Roland Illyes (GRACEX)"
+ *   "  I used to send out..."
+ *
+ * Older exports use "Name HH:MM[:SS]" (name first) — we still handle that as a fallback.
+ *
+ * Output is normalised to canonical "Name: text" lines so the existing speaker parser
+ * and rendering pick up the right labels.
  */
 function normalizeFathom(text) {
-  const lines = basicClean(text).split('\n');
+  let lines = basicClean(text).split('\n');
+
+  // Strip Fathom header: everything up to and including the first "---" separator line.
+  const sepIdx = lines.findIndex(l => /^\s*-{3,}\s*$/.test(l));
+  if (sepIdx >= 0) {
+    lines = lines.slice(sepIdx + 1);
+  } else {
+    // No separator — peel off the "VIEW RECORDING - X mins ..." watermark line if present.
+    lines = lines.filter(l => !/^\s*VIEW RECORDING\b/i.test(l));
+  }
+
   const out = [];
-  // Header line = "Name HH:MM[:SS]" or "Name H:MM[:SS]", name is non-colon, up to ~60 chars.
-  const headerRe = /^\s*([^:0-9\n][^:\n]{0,58}?)\s+\d{1,2}:\d{2}(?::\d{2})?\s*$/;
+  // Modern Fathom: "M:SS - Name" or "H:MM:SS - Name" (en-dash or hyphen tolerated).
+  const tsFirstRe = /^\s*\d{1,2}:\d{2}(?::\d{2})?\s*[-–—]\s*(.+?)\s*$/;
+  // Legacy fallback: "Name HH:MM[:SS]".
+  const nameFirstRe = /^\s*([^:0-9\n][^:\n]{0,58}?)\s+\d{1,2}:\d{2}(?::\d{2})?\s*$/;
+
+  const matchHeader = (line) => {
+    const a = line.match(tsFirstRe);
+    if (a) return a[1].trim();
+    const b = line.match(nameFirstRe);
+    if (b) return b[1].trim();
+    return null;
+  };
+
   for (let i = 0; i < lines.length; i++) {
-    const m = lines[i].match(headerRe);
-    if (m) {
-      // Find the next non-blank line and merge.
+    const name = matchHeader(lines[i]);
+    if (name) {
+      // Skip blank lines after the header.
       let j = i + 1;
       while (j < lines.length && !lines[j].trim()) j++;
       if (j < lines.length) {
-        const name = m[1].trim();
         const body = lines[j].trim();
         out.push(`${name}: ${body}`);
-        // Append any continuation lines (until next blank or next header) under the same speaker.
+        // Continuation lines: indented or non-blank text until the next header / blank-then-header.
         let k = j + 1;
-        while (k < lines.length && lines[k].trim() && !lines[k].match(headerRe)) {
-          out.push(lines[k]);
+        while (k < lines.length) {
+          const trimmed = lines[k].trim();
+          if (!trimmed) {
+            // Blank line — peek ahead; if next non-blank is a header, stop.
+            let p = k + 1;
+            while (p < lines.length && !lines[p].trim()) p++;
+            if (p >= lines.length || matchHeader(lines[p])) break;
+            out.push('');
+            k = p;
+            continue;
+          }
+          if (matchHeader(lines[k])) break;
+          out.push(trimmed);
           k++;
         }
         i = k - 1;
         continue;
       }
     }
-    out.push(lines[i]);
+    // Lines that aren't headers and aren't part of an utterance: drop blank-only ones to keep
+    // the output tidy, otherwise pass through (rare — strays after header strip).
+    if (lines[i].trim()) out.push(lines[i]);
   }
   return out.join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
