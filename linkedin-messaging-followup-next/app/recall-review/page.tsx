@@ -14,6 +14,7 @@ import {
   rejoinRecallNow,
   getRecallShareLink,
   generateRecallSummary,
+  importRecallTranscript,
 } from '../../services/api';
 import { getCurrentClientId } from '../../utils/clientUtils';
 
@@ -1113,6 +1114,145 @@ function RejoinNowButton() {
   );
 }
 
+function ImportTranscriptButton({ onImported }: { onImported: (meetingId: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const [title, setTitle] = useState('');
+  const [source, setSource] = useState<'tactiq' | 'fathom' | 'other'>('tactiq');
+  const [leadEmail, setLeadEmail] = useState('');
+  const [transcriptText, setTranscriptText] = useState('');
+  const [meetingStart, setMeetingStart] = useState('');
+
+  const reset = () => {
+    setTitle(''); setSource('tactiq'); setLeadEmail(''); setTranscriptText('');
+    setMeetingStart(''); setErr('');
+  };
+
+  const handleImport = async () => {
+    if (busy) return;
+    setErr('');
+    if (!title.trim()) { setErr('Title is required.'); return; }
+    if (!transcriptText.trim()) { setErr('Transcript text is required.'); return; }
+    setBusy(true);
+    try {
+      const startIso = meetingStart ? new Date(meetingStart).toISOString() : undefined;
+      const r = await importRecallTranscript({
+        title: title.trim(),
+        source,
+        transcriptText,
+        meetingStart: startIso,
+        durationSeconds: undefined,
+        leadEmail: leadEmail.trim() || undefined,
+      });
+      if (r && r.ok && r.meetingId) {
+        setOpen(false);
+        reset();
+        onImported(String(r.meetingId));
+      } else {
+        setErr(r?.error || 'Import failed.');
+      }
+    } catch (e: any) {
+      setErr(e?.message || 'Import failed.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="text-sm font-semibold rounded px-3 py-2 border bg-white text-violet-700 border-violet-300 hover:bg-violet-50"
+        title="Paste a transcript from Tactiq, Fathom, or anywhere else and bring it into the system"
+      >
+        Import transcript
+      </button>
+
+      {open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => !busy && setOpen(false)}>
+          <div
+            className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+              <h3 className="text-base font-semibold text-gray-900">Import transcript</h3>
+              <button onClick={() => !busy && setOpen(false)} className="text-gray-400 hover:text-gray-600 text-xl leading-none">&times;</button>
+            </div>
+            <div className="p-5 space-y-3">
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-1">Title *</label>
+                <input
+                  type="text"
+                  value={title}
+                  onChange={e => setTitle(e.target.value)}
+                  placeholder="e.g. Polina Kesov and Guy Wilson"
+                  className="w-full text-sm border border-gray-200 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-violet-200"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">Source</label>
+                  <select
+                    value={source}
+                    onChange={e => setSource(e.target.value as any)}
+                    className="w-full text-sm border border-gray-200 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-violet-200"
+                  >
+                    <option value="tactiq">Tactiq</option>
+                    <option value="fathom">Fathom</option>
+                    <option value="other">Other</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">Date / time (optional)</label>
+                  <input
+                    type="datetime-local"
+                    value={meetingStart}
+                    onChange={e => setMeetingStart(e.target.value)}
+                    className="w-full text-sm border border-gray-200 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-violet-200"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-1">Lead email (optional)</label>
+                <input
+                  type="email"
+                  value={leadEmail}
+                  onChange={e => setLeadEmail(e.target.value)}
+                  placeholder="If filled, attaches the meeting to the matching Airtable lead"
+                  className="w-full text-sm border border-gray-200 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-violet-200"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-1">Transcript *</label>
+                <textarea
+                  value={transcriptText}
+                  onChange={e => setTranscriptText(e.target.value)}
+                  rows={14}
+                  placeholder="Paste the full transcript here (Tactiq, Fathom, or other)."
+                  className="w-full text-sm border border-gray-200 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-violet-200 font-mono"
+                />
+              </div>
+              {err && <div className="text-xs text-rose-700">{err}</div>}
+            </div>
+            <div className="px-5 py-3 border-t border-gray-100 flex items-center justify-end gap-2">
+              <button onClick={() => !busy && setOpen(false)} disabled={busy}
+                className="text-sm font-semibold rounded px-3 py-2 border bg-white text-gray-700 border-gray-200 hover:bg-gray-50 disabled:opacity-50">
+                Cancel
+              </button>
+              <button onClick={handleImport} disabled={busy}
+                className={`text-sm font-semibold rounded px-3 py-2 border ${busy ? 'bg-gray-100 text-gray-400 border-gray-200' : 'bg-violet-600 text-white border-violet-700 hover:bg-violet-700'}`}>
+                {busy ? 'Importing…' : 'Import & open'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 /* ------------------------------------------------------------------ */
 /* Page                                                                */
 /* ------------------------------------------------------------------ */
@@ -1146,7 +1286,10 @@ function RecallReviewContent() {
                   Review meeting transcripts. Confirm who each speaker is, link leads, then mark complete.
                 </p>
               </div>
-              <RejoinNowButton />
+              <div className="flex items-start gap-2">
+                <ImportTranscriptButton onImported={(id) => setSelectedId(id)} />
+                <RejoinNowButton />
+              </div>
             </div>
             <QueueView onSelect={setSelectedId} />
           </>

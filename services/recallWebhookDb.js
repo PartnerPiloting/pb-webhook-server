@@ -159,6 +159,9 @@ async function ensureSchema(client) {
   await client.query(`ALTER TABLE recall_meetings ADD COLUMN IF NOT EXISTS summary_json TEXT;`);
   await client.query(`ALTER TABLE recall_meetings ADD COLUMN IF NOT EXISTS summary_generated_at TIMESTAMPTZ;`);
 
+  // Source tag — 'recall' (default) or 'tactiq' / 'fathom' / 'other' for manually-imported transcripts.
+  await client.query(`ALTER TABLE recall_meetings ADD COLUMN IF NOT EXISTS source TEXT;`);
+
   schemaEnsured = true;
 }
 
@@ -368,6 +371,46 @@ async function updateMeetingTimes(meetingId, { meetingStart, meetingEnd }) {
       [n, meetingStart || null, meetingEnd || null],
     );
     return { ok: true };
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Create a recall_meetings row from a manually-imported transcript (Tactiq, Fathom, etc.).
+ * Generates synthetic bot_id/recording_id so the row is distinguishable from real Recall captures.
+ */
+async function insertImportedMeeting({ title, source, transcriptText, meetingStart, durationSeconds }) {
+  const p = getPool();
+  if (!p) return { ok: false, error: 'database not available' };
+  const safeSource = (source || 'other').toString().toLowerCase().slice(0, 32) || 'other';
+  const stamp = Date.now();
+  const rand = Math.floor(Math.random() * 1e9).toString(36);
+  const botId = `manual:${safeSource}:${stamp}-${rand}`;
+  const recordingId = `manual:${safeSource}:rec:${stamp}-${rand}`;
+  const client = await p.connect();
+  try {
+    await ensureSchema(client);
+    const r = await client.query(
+      `INSERT INTO recall_meetings (bot_id, recording_id, title, transcript_text, duration_seconds, meeting_start, meeting_end, status, source)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 'incomplete', $8)
+       RETURNING id`,
+      [
+        botId,
+        recordingId,
+        title || null,
+        transcriptText || null,
+        Number.isFinite(durationSeconds) ? durationSeconds : null,
+        meetingStart || null,
+        meetingStart && Number.isFinite(durationSeconds)
+          ? new Date(new Date(meetingStart).getTime() + durationSeconds * 1000).toISOString()
+          : null,
+        safeSource,
+      ],
+    );
+    return { ok: true, meeting_id: String(r.rows[0].id), bot_id: botId };
+  } catch (e) {
+    return { ok: false, error: e.message };
   } finally {
     client.release();
   }
@@ -1357,6 +1400,7 @@ module.exports = {
   setMeetingIngestStatus,
   updateMeetingTimes,
   saveMeetingSummary,
+  insertImportedMeeting,
   splitMeeting,
   appendRecallUtterance,
   recordRecallPresence,

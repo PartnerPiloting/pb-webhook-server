@@ -70,6 +70,7 @@ const { tryAutoSplitForMeeting } = require('../services/recallAutoSplitService')
 const { getAutoJoinStatus, extractMeetingUrl } = require('../services/recallAutoJoinService');
 const { listCalendarEventsWithAttendeesInRange } = require('../config/calendarServiceAccount');
 const { generateMeetingSummary, renderSummaryText, normaliseSummary } = require('../services/recallSummaryService');
+const { importTranscript } = require('../services/recallImportService');
 
 // Pick the most likely "send to" person: a non-coach speaker with an email.
 function suggestedRecipient(verifiedSpeakers) {
@@ -438,6 +439,36 @@ router.get('/recall-review/api/event/:id', async (req, res) => {
  * Used by the review page when a summary isn't present yet (e.g. short call,
  * or generated before this feature shipped).
  */
+/**
+ * POST /recall-review/api/import-transcript
+ * Accept a manually-pasted transcript (Tactiq, Fathom, or Other) and create a
+ * recall_meetings row that flows through the rest of the system — review queue,
+ * summary, share link, send-from-Gmail — identically to a Recall capture.
+ *
+ * Body: {
+ *   title:           string (required),
+ *   source:          'tactiq' | 'fathom' | 'other',
+ *   transcript_text: string (required),
+ *   meeting_start:   ISO string (optional, defaults to now),
+ *   duration_seconds: number (optional),
+ *   lead_email:      string (optional — used to attach an Airtable lead)
+ * }
+ */
+router.post('/recall-review/api/import-transcript', async (req, res) => {
+  if (!(await pbRecallReviewApiOk(req))) return res.status(401).json({ ok: false, error: 'unauthorized' });
+  const body = req.body || {};
+  const result = await importTranscript({
+    title: body.title,
+    source: body.source,
+    transcriptText: body.transcript_text || body.transcriptText,
+    meetingStart: body.meeting_start || body.meetingStart,
+    durationSeconds: typeof body.duration_seconds === 'number' ? body.duration_seconds : (typeof body.durationSeconds === 'number' ? body.durationSeconds : undefined),
+    leadEmail: body.lead_email || body.leadEmail,
+  });
+  if (!result.ok) return res.status(400).json(result);
+  return res.json(result);
+});
+
 router.post('/recall-review/:id/generate-summary', async (req, res) => {
   if (!(await pbRecallReviewApiOk(req))) return res.status(401).json({ ok: false, error: 'unauthorized' });
   const force = String(req.query.force || req.body?.force || '') === '1';

@@ -2125,6 +2125,27 @@ export const getRecallReviewEvent = async (id) => {
   }
 };
 
+export const importRecallTranscript = async ({ title, source, transcriptText, meetingStart, durationSeconds, leadEmail }) => {
+  try {
+    const base = getBackendBase();
+    const r = await fetch(`${base}/recall-review/api/import-transcript`, {
+      method: 'POST',
+      headers: recallReviewFetchHeaders(),
+      body: JSON.stringify({
+        title,
+        source,
+        transcript_text: transcriptText,
+        meeting_start: meetingStart || undefined,
+        duration_seconds: typeof durationSeconds === 'number' ? durationSeconds : undefined,
+        lead_email: leadEmail || undefined,
+      }),
+    });
+    return await r.json();
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+};
+
 export const generateRecallSummary = async (id, force = false) => {
   try {
     const base = getBackendBase();
