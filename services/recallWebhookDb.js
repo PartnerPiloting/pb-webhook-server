@@ -1025,7 +1025,7 @@ async function getMeetingsForLead(airtableLeadId, limit = 50) {
          ON p.meeting_id = m.id AND p.airtable_lead_id = ml.airtable_lead_id
        WHERE ml.airtable_lead_id = $1
          AND (m.status_reason IS NULL OR m.status_reason NOT LIKE 'Auto-split into%')
-       ORDER BY m.created_at DESC
+       ORDER BY COALESCE(m.meeting_start, m.created_at) DESC
        LIMIT $2`,
       [airtableLeadId, limit],
     );

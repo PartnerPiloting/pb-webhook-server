@@ -402,6 +402,7 @@ router.get('/recall-review/api/event/:id', async (req, res) => {
   return res.json({
     id: row.id,
     created_at: row.created_at,
+    meeting_start: row.meeting_start || null,
     webhook_received_at: row.webhook_received_at,
     recall_bot_id: row.bot_id,
     recall_recording_id: row.recording_id,

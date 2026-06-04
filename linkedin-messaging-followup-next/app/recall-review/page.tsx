@@ -370,7 +370,7 @@ function QueueView({ onSelect }: { onSelect: (id: string) => void }) {
                 return (
                   <tr key={r.id} className="hover:bg-violet-50/40 transition-colors">
                     <td className="px-4 py-3 font-mono text-gray-500">{r.id}</td>
-                    <td className="px-4 py-3 text-gray-700 whitespace-nowrap">{formatBrisbane(r.webhook_received_at || r.updated_at || r.created_at)}</td>
+                    <td className="px-4 py-3 text-gray-700 whitespace-nowrap">{formatBrisbane(r.meeting_start || r.webhook_received_at || r.updated_at || r.created_at)}</td>
                     <td className="px-4 py-3">
                       <span className="text-gray-900">{title}</span>
                       {dur && <span className="text-gray-400 ml-1 text-xs">({dur})</span>}
@@ -798,7 +798,7 @@ function EventReview({ eventId, onBack }: { eventId: string; onBack: () => void 
         <div>
           <h2 className="text-xl font-bold text-gray-900">{ev.title}</h2>
           <p className="text-sm text-gray-500 mt-1">
-            {formatBrisbane(ev.webhook_received_at || ev.created_at)}
+            {formatBrisbane(ev.meeting_start || ev.webhook_received_at || ev.created_at)}
             {ev.duration ? ` · ${formatDur(ev.duration)}` : ''}
             {' · #'}{ev.id}{' · '}
             <Badge status={st} />
@@ -1146,6 +1146,10 @@ function ImportTranscriptButton({ onImported }: { onImported: (meetingId: string
         leadEmail: leadEmail.trim() || undefined,
       });
       if (r && r.ok && r.meetingId) {
+        if (r.leadWarning) {
+          // Linking failed/skipped — make sure the user knows before we navigate away.
+          window.alert(`Transcript imported.\n\n⚠️ ${r.leadWarning}\n\nYou can link it to a lead later from the speaker panel.`);
+        }
         setOpen(false);
         reset();
         onImported(String(r.meetingId));

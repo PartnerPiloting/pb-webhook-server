@@ -144,6 +144,25 @@ function normalizeTranscript(source, text) {
   return basicClean(text).trim();
 }
 
+/**
+ * Normalise a pasted email so easy-to-introduce noise doesn't break the Airtable lookup.
+ * Handles: surrounding whitespace, "mailto:" prefix, <angle brackets>, and — the one that
+ * actually bit us — a trailing full stop / comma / semicolon (e.g. "ken@iibroker.com.au.").
+ * Returns '' if the result doesn't look like an email.
+ */
+function normalizeEmail(raw) {
+  let e = String(raw || '').trim().toLowerCase();
+  if (!e) return '';
+  e = e.replace(/^mailto:/, '');
+  e = e.replace(/^<+/, '').replace(/>+$/, '');
+  e = e.replace(/[.,;:\s]+$/, '');   // strip trailing punctuation/whitespace
+  e = e.replace(/^[.,;:\s]+/, '');   // and any leading noise
+  e = e.trim();
+  // Basic sanity: exactly one @, a dot in the domain, no spaces.
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) return '';
+  return e;
+}
+
 /* ------------------------------------------------------------------ */
 /* Import orchestration                                                */
 /* ------------------------------------------------------------------ */
@@ -186,23 +205,38 @@ async function importTranscript(opts) {
   const meetingId = ins.meeting_id;
   log.info(`import: created meeting=${meetingId} source=${source} title="${title}" len=${transcriptText.length}`);
 
-  // Optional: link to Airtable lead by email.
+  // Optional: link to Airtable lead by email. We surface the outcome so the UI can warn the
+  // user rather than silently saving an unretrievable (lead-less) transcript.
   let leadLinked = false;
-  if (opts.leadEmail) {
-    try {
-      const coach = await clientService.getClientById(coachClientId);
-      if (coach) {
-        const lead = await findLeadByEmail(coach, String(opts.leadEmail).trim());
-        if (lead?.id) {
-          await addMeetingLead(meetingId, lead.id, coachClientId, `import:${source}`);
-          leadLinked = true;
-          log.info(`import: linked meeting=${meetingId} to lead=${lead.id} (${opts.leadEmail})`);
+  let leadWarning = null;
+  let linkedLeadName = null;
+  const rawEmail = (opts.leadEmail || '').trim();
+  if (rawEmail) {
+    const cleanEmail = normalizeEmail(rawEmail);
+    if (!cleanEmail) {
+      leadWarning = `"${rawEmail}" doesn't look like a valid email — transcript saved but not linked to a lead.`;
+      log.info(`import: lead email "${rawEmail}" failed validation for meeting=${meetingId}`);
+    } else {
+      try {
+        const coach = await clientService.getClientById(coachClientId);
+        if (coach) {
+          const lead = await findLeadByEmail(coach, cleanEmail);
+          if (lead?.id) {
+            await addMeetingLead(meetingId, lead.id, coachClientId, `import:${source}`);
+            leadLinked = true;
+            linkedLeadName = [lead.firstName, lead.lastName].filter(Boolean).join(' ').trim() || cleanEmail;
+            log.info(`import: linked meeting=${meetingId} to lead=${lead.id} (${cleanEmail})`);
+          } else {
+            leadWarning = `No Airtable lead found with email ${cleanEmail} — transcript saved but not retrievable by that lead until linked.`;
+            log.info(`import: no Airtable lead matched email=${cleanEmail} for coach=${coachClientId}`);
+          }
         } else {
-          log.info(`import: no Airtable lead matched email=${opts.leadEmail} for coach=${coachClientId}`);
+          leadWarning = 'Coach record not found — transcript saved but not linked.';
         }
+      } catch (e) {
+        leadWarning = `Lead lookup failed (${e.message}) — transcript saved but not linked.`;
+        log.warn(`import: lead-link failed for meeting=${meetingId}: ${e.message}`);
       }
-    } catch (e) {
-      log.warn(`import: lead-link failed for meeting=${meetingId}: ${e.message}`);
     }
   }
 
@@ -216,7 +250,7 @@ async function importTranscript(opts) {
     log.warn(`import: summary exception for meeting=${meetingId}: ${e.message}`);
   }
 
-  return { ok: true, meetingId, leadLinked, summary };
+  return { ok: true, meetingId, leadLinked, linkedLeadName, leadWarning, summary };
 }
 
 module.exports = {
@@ -224,4 +258,5 @@ module.exports = {
   normalizeTranscript,
   normalizeTactiq,
   normalizeFathom,
+  normalizeEmail,
 };
