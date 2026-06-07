@@ -107,6 +107,13 @@ The panel isn't only for LinkedIn *profile* pages. Distinct surfaces, same engin
 - **Post-call (not page-anchored)** — agent-backed chat that drafts the follow-up email
   (see post-call decision below).
 
+**Insert requirement — preserve line breaks.** LinkedIn's composer flattens
+clipboard-pasted newlines into one block (this is why manual copy-paste loses Guy's
+line-per-sentence formatting every time). The "Insert into LinkedIn" path must write to
+the composer DOM directly and emit LinkedIn-style soft breaks (`<br>` / simulated
+Shift+Enter) so formatting is preserved. The Copy fallback can't guarantee this (it goes
+through LinkedIn's paste handler). *(Surfaced 2026-06-08.)*
+
 ### Roles / access
 - The **VA acts as Mr Busy**: logged into *his* LinkedIn and *his* calendar sessions
   (so "whose calendar" is answered by whose session it is). For the **ASH portal**, the VA
