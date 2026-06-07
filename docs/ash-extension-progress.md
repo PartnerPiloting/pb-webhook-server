@@ -96,6 +96,17 @@ Frontend mirrors it on Vercel: `pb-webhook-server.vercel.app` (prod) /
 - **Panel type: injected DOM panel** (not Chrome's native side panel) so the **width is
   adjustable** (drag handle + remembered preference).
 
+### Panel surfaces (front doors the content script must handle)
+The panel isn't only for LinkedIn *profile* pages. Distinct surfaces, same engine:
+- **Profile page** — booking message / outreach draft (reuse Smart Booking Assistant).
+- **Messaging screen** — reply to an inbound message: read the visible thread + the
+  other party's name/headline/profile, draft a reply in Guy's voice (lettered quick-picks
+  + free-form), approve → insert into the "Write a message…" box + Airtable upsert
+  (status → in-conversation, log exchange, set follow-up). Send stays Guy's click.
+  *(Surfaced 2026-06-08 from a real Josiah-Roche reply; see Voice reference example 1.)*
+- **Post-call (not page-anchored)** — agent-backed chat that drafts the follow-up email
+  (see post-call decision below).
+
 ### Roles / access
 - The **VA acts as Mr Busy**: logged into *his* LinkedIn and *his* calendar sessions
   (so "whose calendar" is answered by whose session it is). For the **ASH portal**, the VA
