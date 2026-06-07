@@ -1,0 +1,178 @@
+# ASH Extension — State of Play (living doc)
+
+> **How to use this doc.** This is the single source of truth for the ASH LinkedIn
+> outreach extension + multi-tenant calendar/email work. It is **weekend / after-hours
+> paced** — Guy is in a sales push by day, so this progresses slowly and must never
+> disrupt the day-to-day setup. At the start of each session, read the **"You are here"**
+> section at the bottom first. At the end of each session, update it. Companion to
+> [`ash-extension-plan.md`](ash-extension-plan.md) (the original vision/brief).
+
+---
+
+## The one-line vision
+
+Turn the personalised LinkedIn outreach + booking + post-call workflow into a near
+one-click panel that works identically for Guy, "Mr Busy", and Mr Busy's VA — built
+once, sold as a done-with-you service. The moat is accumulated per-client tuned state,
+not the prompt.
+
+## Iron rules (do not break)
+
+- **Additive only.** Everything is built *alongside* the working single-tenant setup.
+  Guy's daily flow (Google calendar, `/api/calendar/quick-pick-message`, Claude-chat
+  post-call drafting) keeps working untouched until *he* chooses to switch.
+- **Staging-gate before main** for anything wide or frontend (house style).
+- **LinkedIn read + send stay human-at-the-glass.** The panel may *fill* the message
+  box; the human still clicks Send. Never scrape-and-send headless.
+
+---
+
+## Environments & deploy flow (confirmed via Render API, 2026-06-07)
+
+**Branch-per-environment, each auto-deploys on push.** (`render.yaml` is STALE — it claims
+staging tracks `feature/clean-service-boundaries`; ignore it. Render dashboard is the real
+source of truth.)
+
+| Service | Branch | Role |
+|---|---|---|
+| `pb-webhook-server` | `main` | Production backend |
+| `pb-webhook-server-staging` | `staging` | Staging backend |
+| `pb-webhook-server-dev` | `dev` | **Dev backend — our build sandbox** |
+| `pb-webhook-server-hotfix` | `hotfix` | Hotfix |
+| `ash-backend` | `main` | Separate ASH service — **investigate, may be relevant** |
+| `ash-attributes-api` | `master` | Separate ASH service |
+
+Crons follow the same convention (prod crons → `main`, staging crons → `staging`).
+Frontend mirrors it on Vercel: `pb-webhook-server.vercel.app` (prod) /
+`pb-webhook-server-staging.vercel.app` (staging).
+
+**Chosen build approach: dev environment + env-var feature flags, promoted up.**
+1. Build on the **`dev`** branch → deploys to `pb-webhook-server-dev` (private sandbox,
+   zero risk to staging/prod).
+2. Gate each feature behind an **env-var flag, default OFF** (we already gate on
+   `ENVIRONMENT`), so when it reaches `main` production behaviour is unchanged until flipped.
+3. Promote **`dev` → `staging` → `main`** as each small piece proves out.
+4. **Standing discipline (slow-pace hazard):** periodically merge `main` *into* `dev` so dev
+   doesn't drift while it sits between weekend sessions — keeps the eventual promotion clean.
+
+## Decisions locked so far (from the 2026-06-07 planning conversation)
+
+### Calendar + email go multi-tenant via a middleman, behind a thin interface
+- Guy will **not** hold OAuth credentials himself (OAuth maintenance is the nightmare to
+  avoid for a solo operator). A **middleman holds each tenant's connection** and refreshes
+  it; Guy's code just asks plain questions ("what's free?", "create event", "send email").
+- **Chosen middleman: Nylas** (start on the free sandbox). One connect gives a tenant's
+  **calendar AND email** (Gmail or Outlook) through one API. Use **hosted auth** so Nylas
+  is the Google-verified app and Guy avoids Google's restricted-scope security review.
+- Wrap it behind a **thin internal interface** (≈ "get busy times", "create event",
+  "send/read email"). Today's Google code becomes the **Google adapter** behind that
+  interface; Nylas is a second adapter. Swapping providers later is then contained.
+- **Guy's own setup is safe:** either keep him on the Google adapter, or connect his own
+  Google through Nylas's sandbox. His choice, no rewrite either way.
+
+### Why this feature needs the middleman (not just a booking link)
+- The "show live free slots → pick → paste-able message with the times in it" feature
+  must *read* the calendar in real time. A plain booking link can't do that. So a
+  middleman that exposes availability is required (this ruled out the link-only option).
+
+### "Catch 1" (unattended calendar access) — largely dissolved by Fathom
+- The only thing today that touches the calendar **unattended** is the Recall auto-join
+  poller (`services/recallAutoJoinService.js`), which watches the calendar every 2 min to
+  dispatch a recording bot. That's why the server currently needs headless calendar access.
+- **Moving to Fathom removes this from Guy's server**: Fathom watches each user's *own*
+  calendar and auto-joins itself → multi-tenant "for free", provider-agnostic, no
+  per-tenant robot-login to maintain. **Residual to verify:** the back-to-back split /
+  attendee-matching step may still need a small server-side calendar read; confirm whether
+  Fathom's own data can supply attendees instead. See [[project-recall-to-fathom-migration]].
+
+### Booking-from-the-panel = mostly reuse, not rebuild
+- The portal already has a chat-based **"Smart Booking Assistant"** that auto-generates the
+  paste-able message: `linkedin-messaging-followup-next/app/calendar-booking/page.tsx`
+  (calls `/api/calendar/quick-pick-message`; has a `READY TO COPY:` delimiter + copy
+  button; availability is already timezone-aware).
+- **New work for the panel is small:** (1) content script reads the LinkedIn URL/name off
+  the profile and feeds the existing endpoint; (2) add an **"Insert into LinkedIn"** button
+  next to the existing Copy button. Copy already exists as the graceful fallback.
+- **Panel type: injected DOM panel** (not Chrome's native side panel) so the **width is
+  adjustable** (drag handle + remembered preference).
+
+### Roles / access
+- The **VA acts as Mr Busy**: logged into *his* LinkedIn and *his* calendar sessions
+  (so "whose calendar" is answered by whose session it is). For the **ASH portal**, the VA
+  should have **their own login authorised as a seat on Mr Busy's subscription** (audit
+  trail + revocable) rather than sharing Mr Busy's password.
+
+### Post-call email workflow is preserved — same engine, second front door
+- Guy keeps doing "just had a call with X, pull the transcript + lead info, draft an email"
+  in **Claude chat** (his power-user cockpit). Not going away.
+- For the VA, the **same engine** (transcript + lead-data + drafting tools) sits behind an
+  **agent-backed chat in the panel** (Claude Agent SDK / API) with the **per-tenant tool
+  connections** wired server-side. Drafts shown first; send-as-Mr-Busy via Nylas only on
+  the approve-click (matches Guy's "show first, push on go-ahead" rule).
+
+### Provider notes
+- **Nylas** chosen. **Aurinko** = clean Plan B (gateway model, good pricing). **Unipile**
+  adds LinkedIn/WhatsApp under one API — fine for email/calendar, but do **not** use it to
+  *send on LinkedIn* (violates the iron rule; ban risk).
+
+---
+
+## Pricing snapshot (checked 2026-06-07)
+
+| Provider | Entry | Per extra account | Free tier | Fit |
+|---|---|---|---|---|
+| **Nylas** (calendar-only) | $10/mo, 5 accts | $1.50/acct/mo | Sandbox up to 5 | **Best for our scale** (~$48/mo at 30 clients) |
+| Nylas (calendar + email) | $15/mo, 5 accts | $2/acct/mo | Sandbox | Use this — unifies cal + email |
+| Cronofy | $819/mo entry | $0.69/acct | Dev tier (eval only) | Only worth it at large scale |
+| Cal.com Platform | $299/mo, 500 bookings | $0.50–0.99/booking | — | Full booking system; more than we need |
+
+---
+
+## Key code anchors (so future sessions find things fast)
+
+- **Slot read (Google):** `services/calendarOAuthAvailability.js` → `getOAuthPrimaryBatchAvailability()` (the only `freebusy.query` for booking).
+- **Create / check event (Google):** `services/calendarOAuthService.js` → `createGuestMeeting`, `assertPrimarySlotFree`, `createTestEvent`.
+- **Auth chokepoint:** `services/gmailApiService.js` → `getGmailOAuthClient()` (single OAuth helper for cal + Gmail).
+- **Unattended calendar toucher (catch 1):** `services/recallAutoJoinService.js`.
+- **Guest self-serve booking page + flow:** `routes/guestBookingRoutes.js`; event text in `services/guestBookingEventBuilder.js`.
+- **Smart Booking Assistant (message generator + chat UI):** `linkedin-messaging-followup-next/app/calendar-booking/page.tsx` (endpoint `/api/calendar/quick-pick-message`).
+- **Existing Chrome extension scaffold (verify what it already does):** `chrome-extension/` (`content-linkedin.js`, `content-portal.js`, `background.js`, `popup.js`).
+
+---
+
+## Suggested build order (small, resumable steps)
+
+The original plan's order is "prove the brains → rules layer → extension shell → batch/VA".
+For *this* calendar/email/panel thread specifically, the resumable mini-sequence is:
+
+1. **Read the existing `chrome-extension/` scaffold** and write down what's already wired
+   (may shrink everything below).
+2. **Define the thin calendar/email interface** + map the ~4 Google call sites to it
+   (design note, no behaviour change yet).
+3. **Build the Google adapter** = move existing functions behind the interface. Prove
+   Guy's flow is byte-for-byte unchanged on staging.
+4. **Build the Nylas adapter** on the sandbox; connect Guy's own Google through it; prove
+   availability + create-event + send-email parity.
+5. **Thread a per-tenant calendar/mailbox handle** through `fetchHostClientProfile` +
+   the availability/book routes.
+6. **Panel: URL auto-read + "Insert into LinkedIn" button**, reusing the Smart Booking
+   Assistant.
+7. **Post-call agent chat** in the panel (Claude Agent SDK) with per-tenant tools.
+
+(Confirm/adjust this against reality each session — treat as proposal, not gospel.)
+
+---
+
+## ▶ You are here / next pick-up
+
+**As of 2026-06-07:** Planning + decisions captured (above). Environment/deploy flow
+confirmed via Render API (build on `dev`, flag-gated, promote up). **No ASH code written
+yet.** Day-to-day setup is fully intact and untouched.
+
+**Next concrete steps when Guy next sits down (any order, both are read-only recon):**
+- Read the existing `chrome-extension/` scaffold (already env-aware per `manifest.json`) and
+  report what's already wired — likely shrinks the whole build.
+- Investigate the `ash-backend` service (deploys from `main`) — what's already running there,
+  and whether the multi-tenant calendar/email work belongs in it.
+
+Nothing here is committed/deployed; it's all design + recon.
