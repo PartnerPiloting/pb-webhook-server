@@ -117,6 +117,28 @@ Frontend mirrors it on Vercel: `pb-webhook-server.vercel.app` (prod) /
 
 ---
 
+## Voice reference — golden examples (for the drafter)
+
+Real Guy-approved examples to seed/tune the drafter (canonical prompt still lives in
+Notion). Style = Australian spelling, simple " - " dash, short sentences each on its own
+line, "recommend" not "sell", sign-off "(I know a) Guy". Tone = warm peer-to-peer,
+generous, low-pressure; build value/credibility before a soft, time-bound CTA.
+
+**1. Inbound reply → Guy's approved response (2026-06-08; lead: Josiah Roche, fractional SEM)**
+
+Lead's message: *"For sure Guy. I mainly do fractional stuff around SEM"*
+
+Guy's reply (he loved this one):
+> Good to hear back, Josiah.
+> SEM is exactly the kind of thing the people I'm talking to need - a lot of them are working with small business owners who are flying blind on Google Ads.
+> I'm speaking with two or three new business owners and fractional professionals a day, so there's plenty of scope to point work your way.
+> Worth a quick Zoom in the next week or so to see where we might collaborate?
+> (I know a) Guy
+
+Why it works: warm open → mirrors the lead's value onto the network's need → specific
+credibility/scarcity ("two or three a day") → collaboration framing, not selling → soft
+time-bound CTA → sign-off.
+
 ## Pricing snapshot (checked 2026-06-07)
 
 | Provider | Entry | Per extra account | Free tier | Fit |
