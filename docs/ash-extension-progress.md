@@ -557,13 +557,20 @@ knowledge entity** (the asset they own + brag about), NOT a flat feature label (
 feeds the network model. Use **one shared product name** (recognisable when dropped), optional
 personal nickname on top.
 **Shortlist (with flags):**
-- **Remi** ← lead — warm human name like Claude; root hints remember/remind = second-brain; drops well.
-- **The Vault** ← strong alt — the accumulated *edge*, secure & growing (= the stickiness story).
-- **Cortex** — brainy/ownable but a bit cold/techy for the warm brand.
+- ~~**Remi**~~ ← **RULED OUT (2026-06-09): direct collisions in our space** — itsremi.ai (AI CRM/sales
+  assistant, same niche), remio.ai ("AI assistant powered by your experience" = our second-brain
+  positioning), AND Google's "Remy" AI agent looming. Great name = already taken by others incl. Google.
+- **The Vault** ← now the lead metaphor — accumulated *edge*, secure & growing (= stickiness story); a
+  metaphor doesn't collide the way human names do.
+- **Cortex** — brainy/ownable but a bit cold/techy.
 - **Wingman** — on-theme (networking) but gendered → may not suit all clients.
-- AVOID: **Sage** (clashes w/ Sage accounting, adjacent market) · **Echo** (Amazon/Alexa).
-**Decide by:** say top 2-3 out loud to real prospects ("...then Remi drafts it") → pick the one that
-sparks curiosity; then check trademark + domain before committing. Guy's brand call.
+- AVOID: **Sage** (Sage accounting, adjacent market) · **Echo** (Amazon/Alexa) · **Remi/Remy/Remio** (above).
+**Lesson:** warm short human names = the MOST crowded corner of AI naming now → any common first name
+carries this risk. For warmth + ownability go: **metaphor** (Vault), **brand-tied coinage** (tie to
+"I know a Guy"/network = most defensible), or a **genuinely uncommon/coined** name.
+**Next:** run a dedicated **naming pass** — generate candidates AND pre-screen each against web +
+trademark collisions (so options are warm *and* available); + The-Vault-style metaphors. Then check
+IP Australia (our class) + domain before committing. Guy's brand call.
 
 ## Voice reference — golden examples (for the drafter)
 
