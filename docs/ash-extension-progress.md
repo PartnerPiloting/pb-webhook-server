@@ -275,6 +275,14 @@ per-tenant transcript redundancy/fallback.
   waived fee for 3 new paying clients = a great trade (net +2); exposure is only timing + cost
   floor, both fixable. Optional sharpener: discount ladder, or "free while your referrals stay
   subscribed" (vs a permanent waiver that piles up free-but-costly accounts).
+- **Worst-case cost of a "free" (referred-3) client (estimate, 2026-06-08):** AI dominates;
+  Nylas ~$2 + hosting ~$2 are rounding error. Heavy free user, *unprotected*: drafts ~$16 +
+  qualify ~$5 + post-call agent ~$15-30 (token-heavy; ~5× on a premium model) ≈ **~$40-80/mo**.
+  Typical free user ~$15-35/mo. (+~$20 only if Guy provides Fathom; per-tenant model = they
+  connect their own.) **Caps it to ~$0-ceiling:** the agreed floor/usage-cap/BYO-key on free
+  accounts. Truly unbounded only if pathological → that's what the cap is for. **Context:** that
+  client brought 3 paying clients ($450-900/mo new revenue) → a $40-80 free account is <10% of
+  what they generated; hugely net-positive. Instrument real per-client token cost to confirm.
 - **Mr Busy (VA) not the worry — they'll pay $300.** Focus the pricing care on the one-man-band.
 - **Panel beats Claude-chat for *clients*** — counterintuitively MORE consistent: it enforces
   rules + approve-flow + uncertainty-flagging; raw chat lets a non-expert VA wander off-script
