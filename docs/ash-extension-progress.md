@@ -577,9 +577,18 @@ Wingman, Kith, Nous, Knack, Sage/Echo), all taken, several in-space. The real-wo
 trademark + domain because it's novel), and it becomes "a thing" like Claude (cf. Xero/Canva/Vimeo/
 Twilio). Bake in the "I know a Guy" essence (knowing / your people / insider); 2-syllable, warm, sits
 in "save to ___ / my ___".
-**Next: dedicated COINED-name pass** — generate candidates rooted in that essence, screen each for
-domain + trademark BEFORE showing Guy, hand him a warm+short+available shortlist. (Breaks the
-pick-then-find-it's-taken cycle.) Guy's brand call; verify IP Australia + domain before committing.
+**Coined descriptive-root batch ALSO all taken (screened 2026-06-09):** Kin (mykin.ai "AI that knows
+you" — bullseye), Memora (consultant meeting-recall + memory app — bullseye), Kenley (AI for advisory
+& financial services — our exact market), Kindra, Kova. → **the personal-AI / second-brain / memory
+space is the most saturated naming battlefield in tech; descriptive roots (kin/ken/mem/know) are all
+colonised** (and descriptive = legally weakest mark anyway).
+**REAL FIX: go abstract/fanciful** — a coined word with NO literal tie to knowing/memory (cf. Spotify/
+Vercel/Figma/Xero/Stripe — none describe the product). More available AND strongest trademark class;
+the BRAND gives it meaning.
+**DECISION (2026-06-09): PARK naming — it's NOT on the critical path** (launch-time decision; build
+doesn't need it). Use placeholder **"the Brain" / "second brain"** in code+docs now. Run a proper
+abstract-coinage + **real domain/trademark clearance** (IP Australia) exercise near launch — not
+eyeball-screening in chat. Guy's brand call.
 **Next:** run a dedicated **naming pass** — generate candidates AND pre-screen each against web +
 trademark collisions (so options are warm *and* available); + The-Vault-style metaphors. Then check
 IP Australia (our class) + domain before committing. Guy's brand call.
