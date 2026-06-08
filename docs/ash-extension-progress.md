@@ -484,6 +484,26 @@ categories that **break conflict-checking** (two categories meaning the same thi
 → ship a **curated master taxonomy**; if new categories allowed at all, gate them like rules ("we
 already have one that means this?"); **v1: fixed set, no client-created categories** (add gated later).
 
+### Stickiness vision + the reconciliations that protect it (2026-06-09)
+**Signal:** Guy himself is astonished/reliant (an hour for previously-impossible work last night) =
+real product-market fit + the best sales proof (show, don't pitch).
+**Flywheel (right kind of moat):** easy → used more → more accumulated state (rules/history/tuned
+voice) → better results → more reliance → stickier; leaving = abandoning a tuned asset. Earned, not
+trapped (still offer clean export).
+**Reconciliation 1 — client extension vs no-free-categories:** clients *wanting* to extend drives
+stickiness, BUT the thing that makes it sticky (it works beautifully) is the same thing that breaks
+if they create unchecked mess. So **guardrails PROTECT stickiness, not oppose it.** Give clients the
+power/feeling of extending — channeled through the gated, conflict-checked door so it stays clean.
+**Reconciliation 2 — "so good I don't edit" = END STATE of a TUNED instance.** A new client starts
+from the de-identified seed and edits MORE early; **every early edit = the moat being built** (their
+tuned state accumulating) until they too stop editing. Pitch = "great day one, transformative as it
+learns you" — NOT "perfect out of the box" (over-promising disappoints week one).
+**Expansion — "extend to other areas" = real land-and-expand platform upside,** but **nail the wedge
+first** (LinkedIn outreach + post-call); let clients PULL you into adjacent comms once the core is
+solid. Don't let "it can do anything" dilute the wedge.
+**Net:** the discipline (gated extension, curated taxonomy, seed-then-diverge) is not a brake on the
+vision — it's the mechanism that keeps the flywheel spinning. Vision + guardrails = same project.
+
 ## Voice reference — golden examples (for the drafter)
 
 Real Guy-approved examples to seed/tune the drafter (canonical prompt still lives in
