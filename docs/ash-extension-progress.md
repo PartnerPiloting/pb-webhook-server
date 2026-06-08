@@ -6,6 +6,12 @@
 > disrupt the day-to-day setup. At the start of each session, read the **"You are here"**
 > section at the bottom first. At the end of each session, update it. Companion to
 > [`ash-extension-plan.md`](ash-extension-plan.md) (the original vision/brief).
+>
+> **Working rhythm (decided 2026-06-09):** THIS doc (in git) is home base — NOT any single
+> chat. Start a **new, focused chat per area** ("Nylas spike", "de-personalise rules",
+> "Phase 0 recon", etc.); open it with *"where are we on the ASH extension"* and Claude reads
+> this doc to orient. Claude updates + commits this doc at the end of each session. Chats are
+> disposable; the doc accumulates. Don't reload old mega-chats as working context.
 
 ---
 
@@ -726,13 +732,23 @@ pricing (crystallised), and a **7-phase implementation roadmap** all captured ab
 Environment/deploy flow confirmed (build on `dev`, flag-gated, promote up). **No ASH code
 written yet.** Day-to-day setup fully intact and untouched.
 
+**As of 2026-06-09:** Planning extended — full **rules-system design** now captured (Postgres-on-
+Render confirmed; de-personalisation = strip identity not method, via identity-tokens/asset-library/
+voice-seed-then-diverge; integrity-in-code with LLM-proposes-only; curated categories not free;
+gated extension is doable without mess — two-kinds-of-mess; rules editing = edit-as-you-go +
+visibility/history/settings screen; stickiness reconciliations). Still **no ASH code written.**
+
 **Phase 0 progress:** ✓ Extension recon DONE — existing "Network Accelerator" extension will be
 **extended, not rebuilt** (already has multi-tenant auth, LinkedIn scraping, lead lookup, portal
 quick-update, remote-config selectors). See "Existing extension recon" above.
 
-**Next concrete steps:**
+**Next concrete steps (start a fresh chat per item):**
 - Finish Phase 0 recon: read `content-portal.js` + the `/api/linkedin` & `/api/extension-config`
   backend (how `clientId/portalToken` are issued); investigate `ash-backend` / `ash-attributes-api`.
+- De-risking spikes — **Nylas first**; then LinkedIn content-script insert; Fathom.
+- **Rules de-personalisation spike:** Guy pastes ONE section of his Notion rules → Claude returns a
+  de-identified master + variable catalogue + flagged implicit-personal bits.
 - Then Phase 1: define the calendar/email/LLM interfaces + Google adapter (no behaviour change).
+- *(Maybe: a light tidy/consolidation pass on this doc — it has grown organically.)*
 
 Nothing here is committed/deployed; it's all design + recon.
