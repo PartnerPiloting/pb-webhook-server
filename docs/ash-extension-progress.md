@@ -473,15 +473,25 @@ Guy runs it against a real account + observes. Fail fast and cheap.
    profile/thread, and **insert a multi-line message with line breaks preserved**. Proves
    read + insert work on the live DOM.
 3. **Post-call agent on the client's OWN Claude (underpins the self-serve "their cost" model).**
-   NOTE: the spike is NOT testing Claude's *reasoning* (proven tonight) — it tests the **wiring**,
-   which is the real unknown because today's tools are **single-tenant/hardcoded to Guy**
-   (`DEFAULT_CLIENT_ID="Guy-Wilson"`, baked-in base IDs). Unknowns: (a) can the tools be made
-   multi-tenant so a *different* person's Claude gets *their* data *as them* (per-tenant auth)?
-   (b) does a typical client's Claude plan/tier even connect our MCP servers the way Guy's does?
-   (c) how painful is the per-client connector setup (Mr-Busy friction)? Spike = connect ONE 2nd
-   Claude to ONE tool serving that account's data; confirm it reaches the right data as the right
-   tenant. **Load-bearing:** the self-serve "their cost" pricing depends on this being easy; if
-   not, fallback = Guy-run (his cost) → changes the economics. Cheap to prove now.
+   NOT testing Claude's *reasoning* (proven tonight) — it tests the **wiring**, the real unknown
+   because today's tools are **single-tenant/hardcoded to Guy** (`DEFAULT_CLIENT_ID="Guy-Wilson"`,
+   baked-in base IDs). **Lighter de-risk (Guy's preference — no synthetic 2nd Claude needed):**
+   (a) **inventory** Guy's current connectors = the clean-slate recipe (see below); (b) the planned
+   **Max→Standard downgrade IS the tier-test for free** — if Guy's workflow survives on Standard, a
+   Standard client can run it too; (c) **code-review** the custom MCP servers for multi-tenancy
+   (how much "make it tenant-aware" work); (d) **fold the real "another person's Claude reaches
+   their data" proof into onboarding tenant #1** — BUT only after (c) confirms the servers *can* be
+   multi-tenant, else fix before a client's watching. **Load-bearing:** self-serve "their cost"
+   pricing depends on this; fallback = Guy-run (his cost) → changes economics.
+   **⚠ Before downgrading Max→Standard:** verify Standard supports the *connectors/MCP* (not just
+   usage) — else it breaks Guy's OWN nightly workflow.
+
+**Current Claude MCP wiring — the clean-slate recipe (what I can see active 2026-06-08; cross-check
+Guy's connector settings for exact auth):** Google Calendar (availability + create events) · Recall
+(`recall_latest_transcript`) · Notion (rules + follow-up rules + asset library) · Gmail (draft/send/
+search) · Airtable (Leads base) · **inmail-pipeline (custom — the one most likely hardcoded to Guy →
+main multi-tenant work)** · scheduled-tasks (reminders/schedule-send). Standard connectors just
+re-point at the client's accounts; the custom MCP is the piece to make tenant-aware.
 4. **Fathom (underpins transcript capture/migration).** Pull a transcript + attendee/speaker data
    via API/webhook for one account; check it can replace the calendar-read for attendee matching.
 
