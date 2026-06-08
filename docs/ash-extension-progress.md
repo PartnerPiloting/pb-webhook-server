@@ -228,6 +228,20 @@ Cost: token-heavy surface (long transcripts + multi-tool loops + redrafts) → w
 metering/caps matter most. Transcript: tonight argues hard for the Fathom migration +
 per-tenant transcript redundancy/fallback.
 
+### Pricing + delivery model (2026-06-08)
+- **Tier cost to value/usage:** $150 = scoring/Foundation; follow-up + calendar + post-call
+  agent (higher value AND token-heavy) = $300 Advanced tier / add-on. Expensive surface sits
+  behind the higher price (matches existing two-tier model).
+- **Panel beats Claude-chat for *clients*** — counterintuitively MORE consistent: it enforces
+  rules + approve-flow + uncertainty-flagging; raw chat lets a non-expert VA wander off-script
+  and needs each client to wire their own MCPs/accounts (non-starter for Mr Busy). Panel
+  connects once, can still feel like a chat. Claude chat stays Guy's power-user cockpit.
+- **Realism (after the live example):** tech clearly doable (an agent just did the whole chain)
+  → remaining risk is product, not tech. Staged: booking/reply panel soon; full post-call agent
+  later, gated on the per-tenant rules/asset spine. Expect "good enough, VA reviews + approves"
+  first; Guy-level nuance as each client's rules accumulate. Target = "drafts so good they just
+  approve," not full autonomy.
+
 ## Voice reference — golden examples (for the drafter)
 
 Real Guy-approved examples to seed/tune the drafter (canonical prompt still lives in
