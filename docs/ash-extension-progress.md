@@ -448,6 +448,23 @@ Guy reviews → seeds Postgres (versioned rows). Obvious tokens (signature) are 
 hide in assumptions. **Proof step (do first):** de-personalise ONE section to validate the approach
 before converting everything.
 
+### Rules editing UX — edit-as-you-go primary; screen for visibility/history/settings (2026-06-09)
+Not either/or — both, split by job (maps onto the Dialogue/Commit/History layers):
+- **PRIMARY = edit-as-you-go (Dialogue→Commit).** Client reacts to a wrong draft in the flow
+  ("shorter", "don't use that link here", "drop that paragraph") → system proposes a rule change →
+  conflict-check → confirm → commit. Non-expert-friendly, low-friction (→ more tuning → moat), and
+  how rules actually emerge (cf. last night's "leave out the think-of-people bit"). Every change
+  routes through the **one conflict-checked write-door** → non-expert can't create contradictions.
+- **A SCREEN = visibility + history + settings, NOT raw bulk editing.** (a) See the active rules
+  (trust / not a black box); (b) history + one-click revert (the versioned lineage); (c)
+  settings/onboarding = the variable catalogue (name, signoff, assets, timezone, links). Avoid a
+  free-form "edit 200 rules" grid for clients — overwhelms + bypasses conflict-checking.
+- **Guy's "left = current / right = change" is exactly the Commit-layer confirm/diff view** — used
+  at the *moment of change*, reachable from the flow OR the screen. Not a standing edit-all page.
+- **Persona:** a richer "review & curate all rules" editor is more a Guy/admin (master-maintenance)
+  tool; clients need edit-in-flow + view/revert. **MVP:** settings/onboarding screen (early) +
+  edit-in-flow + simple read-only rules+history view; rich management UI later.
+
 ## Voice reference — golden examples (for the drafter)
 
 Real Guy-approved examples to seed/tune the drafter (canonical prompt still lives in
