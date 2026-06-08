@@ -151,6 +151,25 @@ through LinkedIn's paste handler). *(Surfaced 2026-06-08.)*
   Claude-shaped piece; MCP underneath is going cross-vendor and is abstractable.
   *(Surfaced 2026-06-08 — Guy's lock-in concern.)*
 
+### AI cost economics (Guy bears it — but it's small + cappable)
+Guy carries the AI cost as COGS (clients have no AI account). Concern: heavy panel use
+could be substantial. **Reality (ballpark — MUST validate with real metering):**
+- Draft a LinkedIn message: ~1-2¢ on a quality model, ~0.3¢ on a cheap one.
+- Qualify a lead: a fraction of a cent. Post-call email from a transcript: ~4-5¢ (bounded, one per meeting).
+- A *heavy* client (~50 drafts/day + a few calls) ≈ **$10-30/month of AI vs $150-300 revenue** → ~5-15% COGS. Works.
+
+**The real risk is *unbounded* usage** (regenerate-spam, giant pastes, looping agent chats,
+premium model for everything), not normal volume. Controls:
+1. **Right model per job** (cheap for qualify/routine, better only for final drafts/email) — biggest lever.
+2. **Prompt caching** the rules/system prompt (~90% off repeated input).
+3. **Metering + per-client fair-use caps + alerts** — bounds exposure by design.
+4. **Tiered pricing maps to usage** ($150 vs $300 allowances / overage).
+5. **Batch the qualifier overnight** (~50% cheaper).
+
+**Action:** instrument **token-cost-per-client** from the proving step (alongside
+time-per-lead) so pricing is set on real numbers, not estimates. Pressure valve for
+outliers/power-users: optional **BYO API key**. *(Surfaced 2026-06-08 — Guy's cost concern.)*
+
 ## Voice reference — golden examples (for the drafter)
 
 Real Guy-approved examples to seed/tune the drafter (canonical prompt still lives in
