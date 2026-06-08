@@ -459,6 +459,31 @@ hours gone. But elapsed time is then **gated by non-coding things, not typing sp
 first (short test loop); let Claude run + self-check a scoped phase, Guy verifies in the real world.
 → Effort drops a lot; elapsed time ≈ "as fast as Guy can decide + look", not a weekend, not a year.
 
+## De-risking spikes — prove the unknowns BEFORE building around them (2026-06-08)
+Guy's hard-won lesson: avoid "did all the work, then found that bit doesn't work." Fix = cheap
+throwaway **spikes** on the *unproven* pieces first (hours each vs weeks wasted). Do these at the
+very front (Phase 0/0.5), before committing architecture. Pattern: Claude writes the minimal test,
+Guy runs it against a real account + observes. Fail fast and cheap.
+
+**Spike these — priority = risk × how much depends on it:**
+1. **Nylas (TOP — whole multi-tenant connection + cost story rides on it).** Sandbox: connect one
+   Google AND one Outlook; free/busy query; create event; send + read email; confirm hosted-auth
+   avoids Google's verification ordeal. Proves the calendar/email abstraction is real.
+2. **LinkedIn content-script (the extension's fragile core).** Minimal script: read the open
+   profile/thread, and **insert a multi-line message with line breaks preserved**. Proves
+   read + insert work on the live DOM.
+3. **Post-call agent on the client's OWN Claude (underpins the self-serve "their cost" model).**
+   Connect a 2nd Claude account to an MCP server exposing a tool + run a multi-tool task. Proves
+   self-serve delivery + feasible non-technical connect.
+4. **Fathom (underpins transcript capture/migration).** Pull a transcript + attendee/speaker data
+   via API/webhook for one account; check it can replace the calendar-read for attendee matching.
+
+**Don't bother spiking (known tech — design, not feasibility):** Postgres versioned rules table,
+Stripe basics, seat/auth model, encrypted credential storage.
+
+**Honest:** spikes kill the big "fundamental doesn't work" surprises (the ones that burn); they
+don't catch every integration/scale wrinkle — still hugely worth it.
+
 ## Implementation roadmap — single-tenant-Guy → full product (2026-06-08)
 
 Principles: **additive** (Guy's live setup untouched); build on `dev` behind **off-by-default
