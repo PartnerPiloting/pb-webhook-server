@@ -233,18 +233,29 @@ per-tenant transcript redundancy/fallback.
 - **$150/mo** = start-off / basics (scoring etc.) — get them going.
 - **+$50/mo** = the full kit (post-call agent + side panel + everything shown tonight) → full
   stack **$200/mo**. The +$50 IS the progressive-reveal tantalise.
-- **Refer 3 (paying) → the $150 drops off; the $50 stays.** Referrer keeps the full kit for
-  **$50/mo**, which covers processing + now-lighter ongoing coaching; the profit came from the 3
-  they brought.
+- **Maintain 3 active (paying) referrals → the $150 drops off; the $50 stays** (full kit for
+  **$50/mo**, covering processing + now-lighter coaching; profit came from the 3). **Conditional/
+  ongoing:** if a referral churns and isn't replaced (after a **short grace window**), they revert
+  to $200. Turns referrers into ongoing advocates; Guy only waives while 3 paying clients fund it.
+  Frame clearly upfront so the $50→$200 bounce never feels like a surprise penalty.
 - **$300/mo = Mr Busy + VA, done-for-you from day one** (heavy VA coaching, strategy/structure
-  setup, he does his own calls — more Guy-time, but handed to him on a platter).
+  setup, he does his own calls — more Guy-time, platter service). **Same referral deal: maintain 3
+  → drops toward $50** — but tie the drop to the **VA being self-sufficient** (lines up with the
+  time to get 3 referrals), else $50 won't cover perpetual high-touch.
 - *Solves at once:* affordability (solo gets the magic at $200 → $50), referral exposure (the
   $50 floor ≠ $0, stays cost-covered), no-lock-in (carrot not contract), progressive reveal,
   setup recovery (the $200 pre-referral phase).
-- **Guardrails:** (a) "3 on board" = 3 **converted, paying** subs, NOT just intros (protects
-  economics + setup-recovery timing); (b) keep usage-cap/BYO-key so the **$50 floor always ≥ a
-  heavy user's AI cost** (typical fine; heavy can hit $40-80). (c) Open/parked: does the $300
-  tier also carry a referral reward?
+- **Cost reality:** if the post-call agent runs on the **client's own Claude** (their cost), Guy
+  bears only **side panel + batch** ≈ **$5-35/mo even heavy** → $50 floor easily covers it. (Holds
+  only while post-call stays on their Claude; if Guy runs it himself — e.g. Mr Busy consistency —
+  that cost returns, still covered at $200/$300. Keep a light cap vs pathological spam.)
+- **Guardrails:** (a) "3 on board" = 3 **converted, paying** subs, NOT intros; (b) **conditional**
+  — maintain 3 active, with a grace window to replace a churned one; (c) tie **Mr Busy's $50 to VA
+  self-sufficiency**, not just count.
+- **Big-picture (on-brand):** steady-state per *advocate* = $50, so the model runs on **referral
+  flow** (ASH's self-propagating-network premise). Only advocates who brought 3 paying reach $50 →
+  Guy always net ahead; most clients sit at $200/$300. Thin $50 long-tail → health = new entrants
+  + volume of advocates.
 
 - **Tier by SERVICE LEVEL, not by feature (refined 2026-06-08 — supersedes "agent = $300 only").**
   Don't paywall the agent behind $300 — paywall the *done-for-you wrapper*.
