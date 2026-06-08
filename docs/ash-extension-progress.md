@@ -433,39 +433,77 @@ time-bound CTA → sign-off.
 
 ---
 
-## Suggested build order (small, resumable steps)
+## Implementation roadmap — single-tenant-Guy → full product (2026-06-08)
 
-The original plan's order is "prove the brains → rules layer → extension shell → batch/VA".
-For *this* calendar/email/panel thread specifically, the resumable mini-sequence is:
+Principles: **additive** (Guy's live setup untouched); build on `dev` behind **off-by-default
+flags** → staging → main; **prove each piece for Guy before multi-tenant**; simpler surfaces
+before the deep post-call agent; **rules/asset spine before/with the agent**. Phases overlap
+where noted. Treat as proposal — reconcile against reality each session.
 
-1. **Read the existing `chrome-extension/` scaffold** and write down what's already wired
-   (may shrink everything below).
-2. **Define the thin calendar/email interface** + map the ~4 Google call sites to it
-   (design note, no behaviour change yet).
-3. **Build the Google adapter** = move existing functions behind the interface. Prove
-   Guy's flow is byte-for-byte unchanged on staging.
-4. **Build the Nylas adapter** on the sandbox; connect Guy's own Google through it; prove
-   availability + create-event + send-email parity.
-5. **Thread a per-tenant calendar/mailbox handle** through `fetchHostClientProfile` +
-   the availability/book routes.
-6. **Panel: URL auto-read + "Insert into LinkedIn" button**, reusing the Smart Booking
-   Assistant.
-7. **Post-call agent chat** in the panel (Claude Agent SDK) with per-tenant tools.
+**Phase 0 — Recon & foundations (read-only + seams)**
+- Read existing `chrome-extension/` scaffold (env-aware) — record what's wired (likely shrinks Phase 2).
+- Investigate `ash-backend` (main) + `ash-attributes-api` — what runs there, where new work belongs.
+- Confirm dev→staging→main; establish env-var feature-flag pattern (off in prod).
+- Introduce a **tenant/owner ID through the data model** — additive, default = Guy-Wilson (no behaviour change).
 
-(Confirm/adjust this against reality each session — treat as proposal, not gospel.)
+**Phase 1 — Provider abstractions (zero behaviour change for Guy)**
+- Define thin interfaces: calendar (get-busy, create-event), email (send, read), and the **LLM call** (swappable model).
+- **Google adapter** = wrap the existing ~4 calendar funcs + Gmail; prove Guy's booking byte-for-byte unchanged on staging.
+- **Nylas adapter** on free sandbox (hosted auth); connect Guy's own Google via Nylas; parity test (availability, create-event, send/read email).
+- Per-tenant connection/grant storage (encrypted).
+
+**Phase 2 — Custom extension MVP for Guy (booking + reply), single-tenant**
+- Content scripts: read LinkedIn profile + messaging thread (name, URL, headline, thread).
+- **Injected** side panel (adjustable width / drag handle), not native Chrome panel.
+- Booking surface: reuse Smart Booking Assistant / `quick-pick-message`; slots in panel; **Insert (line-break-preserving)** + Copy fallback; Airtable upsert on approve.
+- Messaging-reply surface: read thread → draft (lettered quick-picks + free-form) → insert + Airtable upsert.
+- Dynamic lettered options driven by qualifier verdict. Prove the whole panel for Guy first.
+
+**Phase 3 — Rules + asset spine (the moat) [can overlap Phase 2]**
+- Rules → Postgres, **versioned/append-only** (proposed/active/retired, lineage, one-click revert).
+- Asset library as data: URLs, labels, stage-gates, usage gates ("explain live first").
+- Three layers: **Dialogue** (propose + conflict-check), **Commit** (single write-door, confirmed only), **History** (separate append-only audit).
+- Seed Guy's **master v1** from Notion (the one genuinely manual step).
+- Wire extension drafting (and later the agent) to read rules/assets from the spine.
+
+**Phase 4 — Multi-tenant enablement**
+- Server-side **seat/access model**: gate on "authorised seat on an active subscription" (not user=subscriber); VA = own seat on Mr Busy's sub.
+- **Per-tenant fork** of master rules + assets at signup (seed-then-diverge; master updates seed new clients only, never auto-push).
+- Onboard a 2nd tenant end-to-end (first real one-man-band).
+
+**Phase 5 — Transcript migration (Fathom) + post-call agent**
+- Fathom per-tenant capture (each connects own) + **fallback/redundancy** (Recall missed 2/4).
+- Resolve residual server-side calendar read for attendee-matching / back-to-back split (Fathom data vs calendar).
+- Post-call agent, **two delivery modes**:
+  - *Self-serve* = client's own Claude wired to our tools (MCP connectors) + their rules/data (their AI cost). Mostly = expose tools multi-tenant + connect-onboarding.
+  - *Done-for-you* = Guy-run agent (Claude Agent SDK) + per-tenant connections + **confidence/flagging layer** so a non-expert can trust it.
+
+**Phase 6 — Billing / pricing / metering (Stripe exists)**
+- Tiers: $150 basics, +$50 full kit ($200), $300 done-for-you.
+- **Conditional referral reward:** track 3 *active paying* referrals → waive $150; churn past grace → revert; $300→$50 tied to VA self-sufficiency.
+- Usage metering + light cap (vs spam) + **BYO-key switch** ("tenant key? use it : ours").
+- **Instrument token-cost-per-client** from day one.
+
+**Phase 7 — Productize onboarding + scale**
+- Guided setup; auto-fork master rules; one-click Nylas/Fathom connect; seat invites.
+- Clean export (anti-lock-in). Drive down per-client setup time (Guy's own bottleneck) so it scales past a handful.
+
+**Throughout:** Guy's single-tenant setup stays unchanged; nothing flips on in prod until he chooses.
+**Dependencies:** Spine (P3) underpins multi-tenant (P4) + the agent (P5). Billing (P6) can trail. P2 & P3 can run in parallel.
 
 ---
 
 ## ▶ You are here / next pick-up
 
-**As of 2026-06-07:** Planning + decisions captured (above). Environment/deploy flow
-confirmed via Render API (build on `dev`, flag-gated, promote up). **No ASH code written
-yet.** Day-to-day setup is fully intact and untouched.
+**As of 2026-06-08:** Full planning done — architecture, cost model, model-lock-in,
+pricing (crystallised), and a **7-phase implementation roadmap** all captured above.
+Environment/deploy flow confirmed (build on `dev`, flag-gated, promote up). **No ASH code
+written yet.** Day-to-day setup fully intact and untouched.
 
-**Next concrete steps when Guy next sits down (any order, both are read-only recon):**
-- Read the existing `chrome-extension/` scaffold (already env-aware per `manifest.json`) and
-  report what's already wired — likely shrinks the whole build.
-- Investigate the `ash-backend` service (deploys from `main`) — what's already running there,
-  and whether the multi-tenant calendar/email work belongs in it.
+**Next concrete steps = Phase 0 (read-only recon, any order):**
+- Read the existing `chrome-extension/` scaffold (env-aware per `manifest.json`) — report what's
+  wired; likely shrinks Phase 2.
+- Investigate `ash-backend` (main) + `ash-attributes-api` — what's running, where new work belongs.
+- Then Phase 1: define the calendar/email/LLM interfaces + Google adapter (no behaviour change).
 
 Nothing here is committed/deployed; it's all design + recon.
