@@ -229,9 +229,17 @@ metering/caps matter most. Transcript: tonight argues hard for the Fathom migrat
 per-tenant transcript redundancy/fallback.
 
 ### Pricing + delivery model (2026-06-08)
-- **Tier cost to value/usage:** $150 = scoring/Foundation; follow-up + calendar + post-call
-  agent (higher value AND token-heavy) = $300 Advanced tier / add-on. Expensive surface sits
-  behind the higher price (matches existing two-tier model).
+- **Tier by SERVICE LEVEL, not by feature (refined 2026-06-08 — supersedes "agent = $300 only").**
+  Don't paywall the agent behind $300 — paywall the *done-for-you wrapper*.
+  - **Foundation (~$150) = self-serve:** full tool **incl. the post-call agent**; client does
+    the work themselves (what one-man-bands want); we run the AI on a **fair-use allowance**
+    (solo volume is low → cost is a few $/mo; overage or BYO-key for heavy users).
+  - **Advanced ($300) = done-for-you:** managed onboarding, VA-operable, white-glove, support;
+    we run the AI, cost baked in. Mr Busy pays for *not touching it*, not for the feature.
+  - **No cannibalisation:** cheap tier = you do the work yourself (+ maybe a key), which Mr Busy
+    won't → tiers self-select by behaviour (DIY vs done-for-you = the Type 1 / Type 2 split).
+  - Simple to explain: "Do it yourself for $150, or we do it for you for $300." One-man-bands
+    get tonight's magic at $150 — not "too bad you can't have it".
 - **Panel beats Claude-chat for *clients*** — counterintuitively MORE consistent: it enforces
   rules + approve-flow + uncertainty-flagging; raw chat lets a non-expert VA wander off-script
   and needs each client to wire their own MCPs/accounts (non-starter for Mr Busy). Panel
