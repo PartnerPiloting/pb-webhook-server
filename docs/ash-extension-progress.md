@@ -248,10 +248,22 @@ per-tenant transcript redundancy/fallback.
   setup); full self-serve = setup fee + monthly (~$150-300); done-for-you = higher monthly +
   bigger setup fee.
 - **Guy's setup time is HIS bottleneck (his own "Mr Busy" problem)** — can't hand-hold 30
-  clients. → (a) charge the setup fee now while onboarding is manual; (b) **productise
+  clients. → (a) recover setup cost now while onboarding is manual; (b) **productise
   onboarding** over time (guided setup, auto-fork master rules into the new instance,
-  one-click Nylas/Fathom connect) so per-client setup time + the fee shrink and it scales.
-  Early clients' setup fees fund building that automation.
+  one-click Nylas/Fathom connect) so per-client setup time shrinks and it scales.
+- **One-man-band: amortise, don't front-load (refined 2026-06-08 — Guy's preference).** A big
+  upfront setup fee (~$1,500) scares off the price-sensitive solo. Instead bundle setup +
+  ongoing AI into a flat **~$200/mo** — absorbable, recurring revenue, and value-aligned
+  because onboarding is *gradual* (spread the WORK over time, not just the cost). **Progressive
+  reveal:** start them on basics/booking/extension, build trust, then unveil the post-call
+  agent ("wouldn't you love this too?") once hooked — strong upsell, and it **maps onto the
+  build order** (sales motion = roadmap). Same upskill-over-time motion as Mr Busy's VA on $300.
+  **Guardrail:** amortising shifts churn risk to Guy (early exit = setup labour unrecovered) →
+  protect with a **minimum term (~12 mo)** + spread the onboarding labour to match delivery.
+  Model leans on retention (= the moat, so a bet Guy's built to win); until retention is proven,
+  a small hybrid setup fee de-risks. Sanity-check $200 covers amortised setup + AI + margin over
+  realistic lifetime (comfortable ~18-24mo+, tighter at 12 → hence the term).
+- **Mr Busy (VA) not the worry — they'll pay $300.** Focus the pricing care on the one-man-band.
 - **Panel beats Claude-chat for *clients*** — counterintuitively MORE consistent: it enforces
   rules + approve-flow + uncertainty-flagging; raw chat lets a non-expert VA wander off-script
   and needs each client to wire their own MCPs/accounts (non-starter for Mr Busy). Panel
