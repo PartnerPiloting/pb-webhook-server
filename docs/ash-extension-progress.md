@@ -402,6 +402,11 @@ normal **product requirement** (like "requires Chrome"), NOT a concession. Why:
   doesn't touch their Copilot quota.
 - **Door not shut forever:** the seam allows adding Copilot later for a big client — just don't build
   for it now.
+- **Tailwind, not just a constraint (sales angle):** Claude's best-in-class reputation makes "you'll
+  need Claude" a *reason to lean in*, not a hurdle — Guy is the guide introducing them to the best
+  tool (one-man-band may even shift their other work across). Honest hedge: the requirement does NOT
+  ride on Claude staying #1 — the seam means Guy can move if leadership shifts. Reputation tailwind
+  now + protected later.
 
 ## Voice reference — golden examples (for the drafter)
 
