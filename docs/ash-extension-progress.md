@@ -549,6 +549,22 @@ coordination overhead; his nightly use IS the correction loop. Plus per-tenant a
 **Caution:** "ahead of the curve" isn't the prize — *shipping* is. Risk = staying in elegant-
 architecture mode. The edge only pays off when it runs for real clients → value is in execution now.
 
+### Naming the "second brain" — OPEN (not decided, 2026-06-09)
+Goal: a **proper-noun name** with personality (Claude-style) for the **second-brain / accumulated-
+knowledge entity** (the asset they own + brag about), NOT a flat feature label ("the rules" /
+"Guy's rules"). Must work in conversation: *"I'll teach [Name]" / "[Name] already knows that."*
+**Strategic bonus:** a droppable, intriguing name = **referral fuel** (peers ask "what's that?") →
+feeds the network model. Use **one shared product name** (recognisable when dropped), optional
+personal nickname on top.
+**Shortlist (with flags):**
+- **Remi** ← lead — warm human name like Claude; root hints remember/remind = second-brain; drops well.
+- **The Vault** ← strong alt — the accumulated *edge*, secure & growing (= the stickiness story).
+- **Cortex** — brainy/ownable but a bit cold/techy for the warm brand.
+- **Wingman** — on-theme (networking) but gendered → may not suit all clients.
+- AVOID: **Sage** (clashes w/ Sage accounting, adjacent market) · **Echo** (Amazon/Alexa).
+**Decide by:** say top 2-3 out loud to real prospects ("...then Remi drafts it") → pick the one that
+sparks curiosity; then check trademark + domain before committing. Guy's brand call.
+
 ## Voice reference — golden examples (for the drafter)
 
 Real Guy-approved examples to seed/tune the drafter (canonical prompt still lives in
