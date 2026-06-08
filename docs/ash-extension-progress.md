@@ -504,6 +504,25 @@ solid. Don't let "it can do anything" dilute the wedge.
 **Net:** the discipline (gated extension, curated taxonomy, seed-then-diverge) is not a brake on the
 vision — it's the mechanism that keeps the flywheel spinning. Vision + guardrails = same project.
 
+### Can gated extension be done without mess? Yes — two kinds of mess (2026-06-09)
+**Structural mess** (orphaned versions, dupes, broken lineage, unvalidated writes) = the
+*unrecoverable* kind → **prevented HARD and easily** by standard code: append-only versioned table,
+single write-door, constraints. Bread-and-butter; nothing destroyed (append-only = safety net).
+**Semantic mess** (two rules subtly contradict) = harder, but tamed + recoverable:
+- **Categories shrink it** — check a new rule only against the handful in the same context+type, not
+  all 200.
+- **LLM is good at the bounded task** ("does this contradict these few?"), built suspicious-by-default.
+- **Human confirm** (left/right diff) before commit; **revertible** (append-only) → a slip isn't
+  permanent (surfaces in odd drafts → spot → roll back).
+- → doesn't need to be perfect; "good enough + always recoverable" is enough.
+**Easy path (don't build the clever checker first):** **v1** = schema + write-door + append-only +
+curated categories + confirm-step-that-shows-same-category-rules + one-click revert (safe from day
+one, human eyeballs neighbours). **v2** = add the LLM auto-conflict-checker on top.
+**Caveat:** only genuinely non-trivial/ongoing bit = conflict-checker quality at scale + category
+discipline — tuning/enhancement, never catastrophic (worst case = fix + revert).
+**Note:** the prior decisions (integrity-in-code, categories, append-only/versioned) are exactly what
+make this easy — Guy's been building toward "no mess" all along.
+
 ## Voice reference — golden examples (for the drafter)
 
 Real Guy-approved examples to seed/tune the drafter (canonical prompt still lives in
