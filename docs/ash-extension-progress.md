@@ -258,11 +258,23 @@ per-tenant transcript redundancy/fallback.
   reveal:** start them on basics/booking/extension, build trust, then unveil the post-call
   agent ("wouldn't you love this too?") once hooked — strong upsell, and it **maps onto the
   build order** (sales motion = roadmap). Same upskill-over-time motion as Mr Busy's VA on $300.
-  **Guardrail:** amortising shifts churn risk to Guy (early exit = setup labour unrecovered) →
-  protect with a **minimum term (~12 mo)** + spread the onboarding labour to match delivery.
-  Model leans on retention (= the moat, so a bet Guy's built to win); until retention is proven,
-  a small hybrid setup fee de-risks. Sanity-check $200 covers amortised setup + AI + margin over
-  realistic lifetime (comfortable ~18-24mo+, tighter at 12 → hence the term).
+  **Guardrail (refined 2026-06-08 — NO contractual lock-in).** Guy: skip the 12-mo term — it
+  contradicts the moat philosophy (earn the stay via accumulated value + clean export, never
+  trap; a lock breeds churn-the-moment-they-can). Real commitment = their sunk time + visible
+  results + accumulated tuned state; realistic churn = only going-out-of-business. So protect
+  ONLY the **early window (~months 1-3)** where stickiness is lowest AND setup least recovered:
+  a modest upfront slice / higher first month / small deposit so early exit isn't underwater.
+  After that, rely on natural stickiness. Spread onboarding labour to match payments.
+  Sanity-check $200 covers amortised setup + AI + margin over realistic lifetime.
+- **Referral reward exposure ("refer 3 → fees waived")** — great growth engine (Champion Model),
+  but protect two edges: (a) **define what "free" waives** = the *service fee/margin*, NOT hard
+  costs → keep a **floor covering AI cost** (or move free accounts to BYO-key / a usage cap) so a
+  heavy free user never bleeds Guy; (b) **gate the reward so setup is recovered first** (kicks in
+  after a min active period / once setup recouped) — in practice 3 referrals takes longer than
+  clients expect, so usually past the risk window, but don't rely on timing. **Network view:** one
+  waived fee for 3 new paying clients = a great trade (net +2); exposure is only timing + cost
+  floor, both fixable. Optional sharpener: discount ladder, or "free while your referrals stay
+  subscribed" (vs a permanent waiver that piles up free-but-costly accounts).
 - **Mr Busy (VA) not the worry — they'll pay $300.** Focus the pricing care on the one-man-band.
 - **Panel beats Claude-chat for *clients*** — counterintuitively MORE consistent: it enforces
   rules + approve-flow + uncertainty-flagging; raw chat lets a non-expert VA wander off-script
