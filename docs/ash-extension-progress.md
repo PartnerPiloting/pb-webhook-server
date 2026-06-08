@@ -179,6 +179,18 @@ likely); (2) possible **model/priority-capacity** gating on basic accounts; (3)
 the cost (metered + capped) gives all clients **uniform, controlled** horsepower, which is
 the better product. *(Surfaced 2026-06-08 — Guy's cost concern.)*
 
+**Pricing model — charge for usage (better than BYO-key):** meter each client and bill for
+consumption while keeping Guy's key/model → client bears cost **and** keeps uniform
+horsepower (beats BYO-key's account-tier throttling + quality variance). Stripe already in
+repo (`billingRoutes.js`, `config/stripeClient.js`, `services/invoicePdfService.js`) →
+metered billing is incremental; same metering serves caps + billing.
+**Catch:** (1) variable bills fight the "effortless/predictable" promise Mr Busy buys;
+(2) per-use pricing makes clients *ration* usage → starves the accumulated-usage moat.
+**Sweet spot:** flat subscription + **generous included allowance** (predictable for ~95%,
+encourages free use → feeds moat) + **overage only for true outliers** (caps the tail).
+Set allowance from real metered data; map to $150/$300 tiers. Pure pass-through metering →
+reserve for power users/agencies. *(Surfaced 2026-06-08.)*
+
 ## Voice reference — golden examples (for the drafter)
 
 Real Guy-approved examples to seed/tune the drafter (canonical prompt still lives in
