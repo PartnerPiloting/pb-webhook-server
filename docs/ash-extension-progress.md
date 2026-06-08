@@ -465,6 +465,25 @@ Not either/or — both, split by job (maps onto the Dialogue/Commit/History laye
   tool; clients need edit-in-flow + view/revert. **MVP:** settings/onboarding screen (early) +
   edit-in-flow + simple read-only rules+history view; rich management UI later.
 
+### Rules integrity = code; LLM proposes only; categories curated not free (2026-06-09)
+**Integrity layer MUST be deterministic code; the LLM may interpret/propose but NEVER writes.**
+- **Code (mess-prevention):** schema + constraints (categories, statuses, version#, one-active-
+  version-per-rule, append-only), the **single Commit write-door** (writes only on confirmed
+  proposal; bumps version; flips old→retired), the **History** append-only audit, and the
+  **category taxonomy**.
+- **LLM (interpretation only):** the **Dialogue** step (what did they mean, which rule, does it
+  conflict) → outputs a *structured proposal* → code validates → human confirms → **code writes.**
+- Without the code gate: contradictions, near-duplicates, orphaned versions, broken lineage. (= the
+  plan's "one write-door" principle.)
+**Categories = the scoping structure (correct).** Two axes likely: **context** (booking / reply /
+post-call / follow-up) + **type** (formatting / voice / scheduling / asset-usage / qualifying). Lets
+the drafter load only relevant rules and confines conflict-checking to within-category. The taxonomy
+is part of the code-enforced schema.
+**Refinement — don't let clients freely CREATE categories:** free creation → sprawl + near-duplicate
+categories that **break conflict-checking** (two categories meaning the same thing aren't compared).
+→ ship a **curated master taxonomy**; if new categories allowed at all, gate them like rules ("we
+already have one that means this?"); **v1: fixed set, no client-created categories** (add gated later).
+
 ## Voice reference — golden examples (for the drafter)
 
 Real Guy-approved examples to seed/tune the drafter (canonical prompt still lives in
