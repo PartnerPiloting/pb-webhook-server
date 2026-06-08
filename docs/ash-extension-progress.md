@@ -388,6 +388,18 @@ offer both.
 - Guy already bears **side panel AI + overnight batch** → small, fine.
 - **The remaining decision for the post-call agent is control-vs-zero-cost, NOT affordability.**
 
+### Model per job — extension drafting = Claude, scoring = Gemini (decided 2026-06-08)
+- **Claude** → all **drafting** (booking message, LinkedIn reply, post-call email): voice
+  consistency across surfaces (all sound like Guy), quality on customer-facing output, matches the
+  "powered by Claude" brand.
+- **Gemini Flash (already wired)** → **scoring/qualifying** batch: cheap, high-volume, voice
+  irrelevant. Right-model-per-job — don't pay Claude prices for yes/no classification.
+- **Not rip-and-replace:** keep existing Gemini scoring, ADD a Claude drafting path.
+- Cost delta small (draft ~1-2¢ Claude vs ~0.3¢ Gemini; heavy user ~$16 vs ~$3/mo) — quality worth
+  it. This is a **Claude API key on Guy's backend** (or tenant BYO key) — distinct from the *client's
+  own chat-Claude* that runs the post-call agent (same model, different billing path). All behind the
+  swappable seam.
+
 ### Client AI requirement = Claude, not Copilot (decided 2026-06-08)
 Client can use Copilot/ChatGPT for everything else, but **this project runs on Claude** (their own
 Claude account for the project; Max = Standard confirmed, no tier/connector issue). Frame as a
