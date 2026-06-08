@@ -563,11 +563,15 @@ personal nickname on top.
 - **The Vault** ← now the lead metaphor — accumulated *edge*, secure & growing (= stickiness story); a
   metaphor doesn't collide the way human names do.
 - **Cortex** — brainy/ownable but a bit cold/techy.
-- **Wingman** — on-theme (networking) but gendered → may not suit all clients.
-- AVOID: **Sage** (Sage accounting, adjacent market) · **Echo** (Amazon/Alexa) · **Remi/Remy/Remio** (above).
-**Lesson:** warm short human names = the MOST crowded corner of AI naming now → any common first name
-carries this risk. For warmth + ownability go: **metaphor** (Vault), **brand-tied coinage** (tie to
-"I know a Guy"/network = most defensible), or a **genuinely uncommon/coined** name.
+- ~~**Wingman**~~ ← **RULED OUT (2026-06-09): heavily taken incl. direct same-space collisions** —
+  Wingman/Clari Copilot (sales call-recording + summaries + CRM = ~our post-call agent), Emergent's
+  "Wingman" autonomous agent, Pentagon CDAO Wingman, multiple dating-coach apps. Plus gendered.
+- AVOID: **Sage** (Sage accounting) · **Echo** (Amazon/Alexa) · **Remi/Remy/Remio** · **Wingman** (above).
+**Lesson (compounding):** the *obvious* good names get taken — warm human names (Remi) AND on-the-nose
+metaphors (Wingman) — because they're obvious to everyone. Ad-hoc pick-then-check keeps failing.
+→ Switch to **generate-then-screen** (collision-check BEFORE showing), and **lean distinctive**:
+**brand-tied** (rooted in "I know a Guy"/network = MOST defensible, no competitor can use it),
+**oblique metaphor** (not brain/sage/wingman), or **coined**. Push hardest on brand-tied.
 **Next:** run a dedicated **naming pass** — generate candidates AND pre-screen each against web +
 trademark collisions (so options are warm *and* available); + The-Vault-style metaphors. Then check
 IP Australia (our class) + domain before committing. Guy's brand call.
