@@ -256,6 +256,24 @@ TRUE on cost, BUT that's the BYO-AI path already set aside for clients — it ki
 - Same money outcome, none of the BYO mess. → client pays (via the bill) = yes; client
   BYO-AI-chat wired to our stuff = no (it's the effortless/consistency trap).
 
+### Claude-in-Chrome vs our custom extension (2026-06-08)
+Option: clients use Anthropic's Claude-for-Chrome (their own Claude sub) on LinkedIn instead
+of us building/maintaining a custom extension → no build for us + client bears cost.
+**Functionally worse for the Mr-Busy/VA goal:**
+- No fixed UI / lettered quick-picks → every action is a free-form conversation (slower, not
+  the no-thinking click path a VA needs).
+- General agent operating LinkedIn = slower + less consistent than a purpose-built content
+  script (e.g. the formatting-preserving insert becomes hit-or-miss).
+- Lose our guardrails (rule-enforcement, caps, seat-auth, metering); built on Anthropic's
+  consumer product which can change/gate.
+**Advantages:** no extension to build/maintain; flexible; fast to start (good for piloting).
+**Cost reality check:** Claude-for-Chrome needs a premium sub (~$100-200/mo Max-tier) + usage
+caps per client → likely MORE expensive for the client than us running API (cents/draft) +
+charging margin. Cost-shift is real but probably a worse deal. *(Verify current pricing.)*
+**Resolution:** brains live in our backend either way → support Claude-in-Chrome as a BYO/
+power-user option (and an early pilot path), but the **custom extension is what delivers the
+effortless/consistent product for Mr Busy**. Engine once, two front doors.
+
 ## Voice reference — golden examples (for the drafter)
 
 Real Guy-approved examples to seed/tune the drafter (canonical prompt still lives in
