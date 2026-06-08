@@ -533,6 +533,29 @@ Stripe basics, seat/auth model, encrypted credential storage.
 **Honest:** spikes kill the big "fundamental doesn't work" surprises (the ones that burn); they
 don't catch every integration/scale wrinkle — still hugely worth it.
 
+## Existing extension recon — FOLD IN, don't rebuild (Phase 0, done 2026-06-08)
+There's already a real working extension: **`chrome-extension/` "Network Accelerator – LinkedIn
+Quick Update" v1.0.0** (MV3; content scripts on LinkedIn + portal; background SW → `/api/linkedin/*`).
+**Decision: the new build EXTENDS this — NOT a new extension.** Hard plumbing already present:
+- **Multi-tenant auth already exists** — portal broadcasts `clientId` + `portalToken` (+ devKey,
+  environment) to the extension (`AUTH_BROADCAST`); calls use `x-client-id` / `x-portal-token`
+  headers. → the per-tenant identity / **seat foundation (Phase 4) is largely already here.**
+- **LinkedIn conversation scraping** (`content-linkedin.js`, 1341 lines) = Guy's "save the whole
+  LinkedIn discussion to the portal".
+- **Lead lookup by LinkedIn URL** (`/api/linkedin/leads/lookup`) — same lookup the booking panel needs.
+- **Quick-update to portal** (`/api/linkedin/leads/{id}/quick-update`, `parseRaw`).
+- **Remote-config selectors** (`/api/extension-config`) — selectors served from backend → update
+  server-side when LinkedIn changes layout, no re-publish. **Directly de-risks the LinkedIn-DOM
+  fragility we flagged** (already solved). May soften spike #2.
+- **URL resolution** (internal LinkedIn URL → real `/in/` profile).
+**Evolves (not rebuilt):** today = **clipboard-capture + button/popup** (Ctrl+A/Ctrl+C); add the
+**injected side panel** (adjustable width), **direct page read**, **drafting (booking/reply) +
+line-break-preserving insert**, and calendar/agent — all reusing existing auth + scraping + lookup +
+portal plumbing.
+**Impact:** shrinks Phase 2 (extension MVP not greenfield); Phase 4 (multi-tenant seats) gets a
+running start. **Verify next:** `content-portal.js` (auth broadcast), the `/api/linkedin` +
+`/api/extension-config` backend, and how `clientId/portalToken` are issued.
+
 ## Implementation roadmap — single-tenant-Guy → full product (2026-06-08)
 
 Principles: **additive** (Guy's live setup untouched); build on `dev` behind **off-by-default
@@ -600,10 +623,13 @@ pricing (crystallised), and a **7-phase implementation roadmap** all captured ab
 Environment/deploy flow confirmed (build on `dev`, flag-gated, promote up). **No ASH code
 written yet.** Day-to-day setup fully intact and untouched.
 
-**Next concrete steps = Phase 0 (read-only recon, any order):**
-- Read the existing `chrome-extension/` scaffold (env-aware per `manifest.json`) — report what's
-  wired; likely shrinks Phase 2.
-- Investigate `ash-backend` (main) + `ash-attributes-api` — what's running, where new work belongs.
+**Phase 0 progress:** ✓ Extension recon DONE — existing "Network Accelerator" extension will be
+**extended, not rebuilt** (already has multi-tenant auth, LinkedIn scraping, lead lookup, portal
+quick-update, remote-config selectors). See "Existing extension recon" above.
+
+**Next concrete steps:**
+- Finish Phase 0 recon: read `content-portal.js` + the `/api/linkedin` & `/api/extension-config`
+  backend (how `clientId/portalToken` are issued); investigate `ash-backend` / `ash-attributes-api`.
 - Then Phase 1: define the calendar/email/LLM interfaces + Google adapter (no behaviour change).
 
 Nothing here is committed/deployed; it's all design + recon.
