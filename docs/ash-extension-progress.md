@@ -473,8 +473,15 @@ Guy runs it against a real account + observes. Fail fast and cheap.
    profile/thread, and **insert a multi-line message with line breaks preserved**. Proves
    read + insert work on the live DOM.
 3. **Post-call agent on the client's OWN Claude (underpins the self-serve "their cost" model).**
-   Connect a 2nd Claude account to an MCP server exposing a tool + run a multi-tool task. Proves
-   self-serve delivery + feasible non-technical connect.
+   NOTE: the spike is NOT testing Claude's *reasoning* (proven tonight) — it tests the **wiring**,
+   which is the real unknown because today's tools are **single-tenant/hardcoded to Guy**
+   (`DEFAULT_CLIENT_ID="Guy-Wilson"`, baked-in base IDs). Unknowns: (a) can the tools be made
+   multi-tenant so a *different* person's Claude gets *their* data *as them* (per-tenant auth)?
+   (b) does a typical client's Claude plan/tier even connect our MCP servers the way Guy's does?
+   (c) how painful is the per-client connector setup (Mr-Busy friction)? Spike = connect ONE 2nd
+   Claude to ONE tool serving that account's data; confirm it reaches the right data as the right
+   tenant. **Load-bearing:** the self-serve "their cost" pricing depends on this being easy; if
+   not, fallback = Guy-run (his cost) → changes the economics. Cheap to prove now.
 4. **Fathom (underpins transcript capture/migration).** Pull a transcript + attendee/speaker data
    via API/webhook for one account; check it can replace the calendar-read for attendee matching.
 
