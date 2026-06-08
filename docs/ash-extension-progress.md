@@ -433,6 +433,20 @@ time-bound CTA → sign-off.
 
 ---
 
+## Scope reality check (read before feeling daunted by the roadmap)
+Yes, tonight the scope grew from "a Chrome extension" to **a multi-tenant platform** (provider
+abstraction, post-call agent, rules engine, billing/referral, onboarding automation). But:
+- Most of that is **scope multi-tenant always implied** (per-tenant connections, seats, billing) —
+  revealed and named, not newly invented.
+- It's **de-risked**: a lot already exists (the post-call agent *ran tonight*; Smart Booking
+  Assistant / `quick-pick-message`; Stripe; the extension scaffold; isolated calendar code) → much
+  is *productise*, not *build-from-zero*.
+- The **roadmap is the destination, not one commitment.** Ship the smallest useful slice first
+  (Phase 2 booking panel + line-break insert for Guy), let each phase stand alone. Value arrives
+  early; nothing in prod changes until Guy flips it.
+- Honest: it's a multi-month, weekend-paced, solo effort. The discipline is phasing + additive +
+  "prove for Guy first", not trying to do it all at once.
+
 ## Implementation roadmap — single-tenant-Guy → full product (2026-06-08)
 
 Principles: **additive** (Guy's live setup untouched); build on `dev` behind **off-by-default
