@@ -447,6 +447,18 @@ abstraction, post-call agent, rules engine, billing/referral, onboarding automat
 - Honest: it's a multi-month, weekend-paced, solo effort. The discipline is phasing + additive +
   "prove for Guy first", not trying to do it all at once.
 
+## What actually paces the build (Claude does the coding)
+The **coding time largely collapses** (Claude writes it) — for a solo, that's most of the raw
+hours gone. But elapsed time is then **gated by non-coding things, not typing speed:**
+- **Guy's decisions + review** (weekend-limited) — only he can set rules/voice/pricing/tradeoffs.
+- **Real-world testing** — connect real Nylas/Fathom/Stripe, eyeball bookings/LinkedIn-insert on
+  staging (cloud-test loop has latency; needs Guy to look).
+- **External setup needing Guy's hands** — accounts, Fathom migration, onboarding a real 2nd tenant.
+- **Iterative integration** — LinkedIn DOM + multi-system bugs = test-fix-test cycles (faster, not zero).
+**Accelerators:** pre-decide + capture decisions (like tonight → fewer blocks); smallest-useful-slice
+first (short test loop); let Claude run + self-check a scoped phase, Guy verifies in the real world.
+→ Effort drops a lot; elapsed time ≈ "as fast as Guy can decide + look", not a weekend, not a year.
+
 ## Implementation roadmap — single-tenant-Guy → full product (2026-06-08)
 
 Principles: **additive** (Guy's live setup untouched); build on `dev` behind **off-by-default
