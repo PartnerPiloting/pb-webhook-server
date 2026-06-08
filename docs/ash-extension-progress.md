@@ -242,6 +242,20 @@ per-tenant transcript redundancy/fallback.
   first; Guy-level nuance as each client's rules accumulate. Target = "drafts so good they just
   approve," not full autonomy.
 
+### Cost-bearing vs AI-hosting — keep them separate (2026-06-08)
+Guy's question: client brings own ChatGPT/Copilot wired to our tools → client bears cost?
+TRUE on cost, BUT that's the BYO-AI path already set aside for clients — it kills the product:
+- **Effortless gone:** each client wires MCP into their own AI + own accounts (Airtable/Gmail/
+  Fathom). Mr Busy won't.
+- **Consistency gone:** different model (GPT/Copilot vs tuned Claude) degrades rules/voice.
+- **Control gone:** no rule-enforcement, caps, approve-flow, or flagging in raw chat → VA drifts.
+
+**Separate the two questions:** WHO RUNS the AI vs WHO PAYS.
+- Default: **Guy runs it** (his key/model, behind the panel = consistent / effortless / controlled).
+- **Client bears the cost via PRICING** ($300 tier / usage allowance + overage), not via BYO-AI.
+- Same money outcome, none of the BYO mess. → client pays (via the bill) = yes; client
+  BYO-AI-chat wired to our stuff = no (it's the effortless/consistency trap).
+
 ## Voice reference — golden examples (for the drafter)
 
 Real Guy-approved examples to seed/tune the drafter (canonical prompt still lives in
