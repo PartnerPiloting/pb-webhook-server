@@ -277,6 +277,25 @@ is better spent on our own extension, which returns the fast/consistent one-clic
 as an optional power-user door, but we **don't design for it, support it, or pitch it.** No
 investment there.
 
+### BYO API key feasibility (custom extension backend) (2026-06-08)
+Model: per-tenant "your API key" field; backend runs OUR prompt/model but bills the client's
+key (unlike Claude-in-Chrome, quality/consistency preserved; cost ~off us). **Feasible — tech
+is easy.**
+**Real hurdles are non-technical:**
+- Setup friction: an Anthropic *API* account is a developer/billing console, not a consumer
+  sub → Mr Busy won't create it himself. Mitigation: white-glove onboarding (we set it up on
+  his card once, ~15 min) → viable even for non-technical clients.
+- Even then: we store/secure their keys (liability); we inherit their account health (billing
+  lapse / rate-limit cap → product breaks → our support ticket); low starting rate limits →
+  throttling; client gets a SECOND variable bill (Anthropic) on top of our fee → cuts against
+  "simple/predictable"; we make no usage margin.
+**Where it fits:** cost-conscious / higher-volume / techy clients, or a "BYO-key = lower
+subscription" tier. Not the effortless default.
+**Recommendation — offer BOTH (cheap to support):** backend switch "tenant has own key? use
+it : use ours." Default = we run it + flat fee w/ generous allowance (effortless, one
+predictable bill, we keep control + margin); BYO-key = optional lower-fee tier. Don't choose —
+offer both.
+
 ## Voice reference — golden examples (for the drafter)
 
 Real Guy-approved examples to seed/tune the drafter (canonical prompt still lives in
