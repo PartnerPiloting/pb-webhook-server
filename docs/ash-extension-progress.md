@@ -191,6 +191,43 @@ encourages free use → feeds moat) + **overage only for true outliers** (caps t
 Set allowance from real metered data; map to $150/$300 tiers. Pure pass-through metering →
 reserve for power users/agencies. *(Surfaced 2026-06-08.)*
 
+### Post-call follow-up agent — scope proven by a real session (2026-06-08)
+Guy ran his nightly post-call workflow in Claude chat for 4 leads (James, Mirko, Michelle,
+Tim). This IS the "second front door" agent; the session shows exactly what the client
+version must do. Capabilities exercised: identify lead (name OR pasted calendar invite) →
+look up Airtable record/email (reconcile email discrepancies) → pull transcript from Recall,
+**fall back to Fathom-in-Gmail when Recall missed it (2 of 4 tonight)** → synthesise the call
+(hook, situation, next-call date cross-checked vs calendar) → apply canonical Follow-Up Email
+Rules (self-corrected when a draft drifted; knew stage-gated link rules + asset usage gates) →
+pick + label assets from a library (Vimeo/Gamma/LinkedIn, canonical URLs) → adapt voice per
+persona (peer vs prospect vs deferring; golden paragraph + variants) → check Guy's calendar +
+book a slot + create invite → update Airtable follow-up date → push Gmail draft (HTML spec,
+links plain-text to avoid redirect wrap, BCC tracker, copy pairs) → create scheduled-reminder
+self-emails → reason about strategy ("newsletter?") with rule-based push-back → flag ops
+issues (Recall miss, persona mismatch).
+
+**Why it works tonight (= what the client version needs):**
+1. **Guy's expert judgment in the loop** — he steered constantly ("leave out the
+   think-of-people bit", "too early for a Zoom 1", "take a punt and book it"). A VA/Mr Busy
+   lacks this → agent must encode judgment in rules, be self-checking, and **flag
+   uncertainty** rather than silently send (it already did much of this — encouraging). Mr
+   Busy reviews standouts.
+2. **Accumulated rules + asset library + voice** (Guy's Notion). New client has none → plan's
+   "cold start = seed then diverge": fork Guy's master rules+assets, then tune. **This is the
+   spine AND the real moat** — draft quality comes from here, not the agent (agents commoditising).
+
+**New builds beyond what's already decided:** (a) rules + asset library as **per-tenant
+versioned data** (plan §6/§7) — the spine; (b) the agent wired server-side (Claude Agent SDK)
+with per-tenant connections (Fathom transcript + Nylas email/calendar + lead data + rules);
+(c) a **confidence/flagging layer** so a non-expert can trust it.
+
+**Sequencing (honest):** deepest surface — build the simpler panel (booking / LinkedIn reply)
+first to prove the model; build the per-tenant rules/asset spine in parallel; post-call agent
+comes after. **Guy keeps using it as-is (his Notion + MCPs) throughout — zero disruption.**
+Cost: token-heavy surface (long transcripts + multi-tool loops + redrafts) → where
+metering/caps matter most. Transcript: tonight argues hard for the Fathom migration +
+per-tenant transcript redundancy/fallback.
+
 ## Voice reference — golden examples (for the drafter)
 
 Real Guy-approved examples to seed/tune the drafter (canonical prompt still lives in
