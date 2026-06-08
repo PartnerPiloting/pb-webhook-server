@@ -420,6 +420,34 @@ normal **product requirement** (like "requires Chrome"), NOT a concession. Why:
   ride on Claude staying #1 — the seam means Guy can move if leadership shifts. Reputation tailwind
   now + protected later.
 
+### Rules de-personalisation — Guy's master → per-tenant (design, 2026-06-09)
+**Confirmed:** rules live in **Postgres on Render** (NOT per-client Notion). Notion = human/doc
+tool, not a runtime DB (slow, rate-limited); Postgres = cheap, fast, versioned, tiny data;
+**clients never need Notion** — rules served from Guy's Postgres via the backend.
+
+**Reframe (shrinks the job):** de-personalise ≠ genericise. Clients buy *Guy's method*, so the
+**strategy stays — it's the product.** De-personalising = strip Guy's **identity**, keep his
+**approach.** Three kinds of "personal", handled differently:
+1. **Identity tokens → variables.** `{{host_name}}`, `{{signoff}}` (Guy = "(I know a) Guy"),
+   `{{zoom_link}}`, `{{phone}}`, `{{linkedin}}`, `{{timezone}}`, `{{spelling/locale}}` (AU spelling/
+   AEST), `{{tracking_email}}`, `{{booking_link}}`, `{{target_audience}}`. Rule text references the
+   variable, never the literal; a per-tenant profile table fills them at runtime.
+   **The variable catalogue = the new-client onboarding form.**
+2. **Assets → per-tenant asset library.** Guy's Vimeo/Gamma/newsletter → `{{asset:...}}`; each client
+   supplies their own; **carry over the usage-gates + stage-rules as structure** (e.g. "explain live
+   first", "always include advocacy article", "don't double the CTA").
+3. **Voice → seed-then-diverge.** Golden-paragraph *structure* transfers; Guy's exact words ship as
+   the starting example; each client tunes via approved edits (accumulated state = moat). v1 needs a
+   good *de-identified starting* voice, not a perfect per-client one.
+
+**Conversion = plan's "one manual step" (Notion → master v1), best as a Claude-assisted pass:**
+feed Guy's Notion rules → Claude extracts each rule, flags every personal token **AND implicit
+personalisation** (the hard part — e.g. "two or three new business owners a day", "the people I'm
+talking to"), proposes a variable for each, outputs de-identified master + variable catalogue →
+Guy reviews → seeds Postgres (versioned rows). Obvious tokens (signature) are easy; the sneaky ones
+hide in assumptions. **Proof step (do first):** de-personalise ONE section to validate the approach
+before converting everything.
+
 ## Voice reference — golden examples (for the drafter)
 
 Real Guy-approved examples to seed/tune the drafter (canonical prompt still lives in
