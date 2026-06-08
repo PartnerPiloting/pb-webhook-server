@@ -348,6 +348,18 @@ it : use ours." Default = we run it + flat fee w/ generous allowance (effortless
 predictable bill, we keep control + margin); BYO-key = optional lower-fee tier. Don't choose —
 offer both.
 
+### Simple cost summary (2026-06-08) — stop treating cost as a blocker
+- The AI cost is **small either way**; it is NOT a blocker. Done worrying about affordability.
+- "Tonight's workflow is free because it runs in their own Claude" = only true IF each client runs
+  it on their OWN Claude/ChatGPT account (BYO / their-own-AI path) — which carries setup friction +
+  quality variance + no control, and **Mr Busy won't do it himself.** Not an automatic free lunch —
+  a choice with strings.
+- Two options per workflow, both affordable: **(a) they run it (their AI)** → ~$0 to Guy but BYO
+  tradeoffs (ok for techy DIY solo, not Mr Busy); **(b) Guy runs it (his key)** → small cost
+  (tens of $/mo even heavy), recovered via pricing, full control + consistency.
+- Guy already bears **side panel AI + overnight batch** → small, fine.
+- **The remaining decision for the post-call agent is control-vs-zero-cost, NOT affordability.**
+
 ## Voice reference — golden examples (for the drafter)
 
 Real Guy-approved examples to seed/tune the drafter (canonical prompt still lives in
