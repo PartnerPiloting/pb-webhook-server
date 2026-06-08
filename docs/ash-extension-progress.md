@@ -529,6 +529,26 @@ discipline — tuning/enhancement, never catastrophic (worst case = fix + revert
 **Note:** the prior decisions (integrity-in-code, categories, append-only/versioned) are exactly what
 make this easy — Guy's been building toward "no mess" all along.
 
+### Where this sits vs the frontier (2026-06-09; ref: OpenAI/Thrive self-improving Tax AI)
+**Validation:** OpenAI's published blueprint (self-improving *harness*, not the model; human
+corrections captured as structured data → evals → improvement loop) is the **same category** as our
+rules design (versioned Postgres rules; corrections-in-flow → Dialogue→Commit→History). Converging on
+the same architecture independently = strong signal we're at the right altitude. Ahead of the broad
+SMB/solo market (most use raw ChatGPT).
+**Behind the frontier (honest, and OK):** theirs is more automated (corrections→evals→Codex
+auto-improves harness *code*); ours is human-in-the-loop at the *rules* level (safer, fits our lower
+risk profile). No **evals/measurement layer** yet (a real gap to close later). Theirs is shipped +
+measured; ours designed (single-tenant runs for Guy).
+**Trajectory (LATER, v3+ — don't chase now):** (1) add an **evals layer** that turns corrections into
+*measured* tests/regressions; (2) eventually a Codex-style loop that improves harness code. Keep v1
+human-in-the-loop; don't let the shiny frontier pull off the wedge.
+**Guy's structural edge:** the Thrive project needed FDEs + the client's tax experts to bridge domain
+knowledge. **Guy collapses that** — he's domain expert + first user + (with Claude) builder, zero
+coordination overhead; his nightly use IS the correction loop. Plus per-tenant accumulated-state moat
+> a single enterprise deployment.
+**Caution:** "ahead of the curve" isn't the prize — *shipping* is. Risk = staying in elegant-
+architecture mode. The edge only pays off when it runs for real clients → value is in execution now.
+
 ## Voice reference — golden examples (for the drafter)
 
 Real Guy-approved examples to seed/tune the drafter (canonical prompt still lives in
