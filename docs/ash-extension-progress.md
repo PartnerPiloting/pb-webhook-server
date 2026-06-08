@@ -240,6 +240,18 @@ per-tenant transcript redundancy/fallback.
     won't → tiers self-select by behaviour (DIY vs done-for-you = the Type 1 / Type 2 split).
   - Simple to explain: "Do it yourself for $150, or we do it for you for $300." One-man-bands
     get tonight's magic at $150 — not "too bad you can't have it".
+- **Onboarding is high-touch even for self-serve → flat $150 too cheap for the full stack
+  (refined 2026-06-08).** The agent + extension needs real Guy-time to explain + set up, even
+  for a one-man-band. **Fix: separate ONE-TIME setup from RECURRING.** Charge a **one-time
+  setup/onboarding fee** for the full stack (pays for the setup labour, filters tyre-kickers,
+  improves cash flow); keep the monthly sustainable for a solo. Shape: basics $150/mo (light
+  setup); full self-serve = setup fee + monthly (~$150-300); done-for-you = higher monthly +
+  bigger setup fee.
+- **Guy's setup time is HIS bottleneck (his own "Mr Busy" problem)** — can't hand-hold 30
+  clients. → (a) charge the setup fee now while onboarding is manual; (b) **productise
+  onboarding** over time (guided setup, auto-fork master rules into the new instance,
+  one-click Nylas/Fathom connect) so per-client setup time + the fee shrink and it scales.
+  Early clients' setup fees fund building that automation.
 - **Panel beats Claude-chat for *clients*** — counterintuitively MORE consistent: it enforces
   rules + approve-flow + uncertainty-flagging; raw chat lets a non-expert VA wander off-script
   and needs each client to wire their own MCPs/accounts (non-starter for Mr Busy). Panel
