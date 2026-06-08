@@ -388,6 +388,21 @@ offer both.
 - Guy already bears **side panel AI + overnight batch** → small, fine.
 - **The remaining decision for the post-call agent is control-vs-zero-cost, NOT affordability.**
 
+### Client AI requirement = Claude, not Copilot (decided 2026-06-08)
+Client can use Copilot/ChatGPT for everything else, but **this project runs on Claude** (their own
+Claude account for the project; Max = Standard confirmed, no tier/connector issue). Frame as a
+normal **product requirement** (like "requires Chrome"), NOT a concession. Why:
+- **Consistency/quality (main reason):** tune/build/test/support ONE model; a solo can't maintain a
+  Copilot variant too.
+- **Copilot ≠ drop-in:** its extensibility model differs from Claude connectors → "support Copilot"
+  is potentially a large hidden integration project, not a toggle.
+- **Consistent with "model behind one seam, standardise on Claude now."**
+- Small cost: a Copilot-shop client adds a ~$20 Claude login (done-for-you: the VA uses it, Mr Busy
+  barely notices; self-serve: one extra login) → folds into "their cost". Bonus: separate account =
+  doesn't touch their Copilot quota.
+- **Door not shut forever:** the seam allows adding Copilot later for a big client — just don't build
+  for it now.
+
 ## Voice reference — golden examples (for the drafter)
 
 Real Guy-approved examples to seed/tune the drafter (canonical prompt still lives in
