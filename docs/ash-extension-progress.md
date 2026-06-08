@@ -270,9 +270,12 @@ of us building/maintaining a custom extension → no build for us + client bears
 **Cost reality check:** Claude-for-Chrome needs a premium sub (~$100-200/mo Max-tier) + usage
 caps per client → likely MORE expensive for the client than us running API (cents/draft) +
 charging margin. Cost-shift is real but probably a worse deal. *(Verify current pricing.)*
-**Resolution:** brains live in our backend either way → support Claude-in-Chrome as a BYO/
-power-user option (and an early pilot path), but the **custom extension is what delivers the
-effortless/consistent product for Mr Busy**. Engine once, two front doors.
+**DECISION (2026-06-08): custom extension is THE path; Claude-in-Chrome ruled out as a
+build/product target.** Too weak functionally for the VA goal and no real cost win — effort
+is better spent on our own extension, which returns the fast/consistent one-click flow that
+*is* the product. Brains live in our backend, so it costs nothing to leave Claude-in-Chrome
+as an optional power-user door, but we **don't design for it, support it, or pitch it.** No
+investment there.
 
 ## Voice reference — golden examples (for the drafter)
 
