@@ -567,11 +567,19 @@ personal nickname on top.
   Wingman/Clari Copilot (sales call-recording + summaries + CRM = ~our post-call agent), Emergent's
   "Wingman" autonomous agent, Pentagon CDAO Wingman, multiple dating-coach apps. Plus gendered.
 - AVOID: **Sage** (Sage accounting) · **Echo** (Amazon/Alexa) · **Remi/Remy/Remio** · **Wingman** (above).
-**Lesson (compounding):** the *obvious* good names get taken — warm human names (Remi) AND on-the-nose
-metaphors (Wingman) — because they're obvious to everyone. Ad-hoc pick-then-check keeps failing.
-→ Switch to **generate-then-screen** (collision-check BEFORE showing), and **lean distinctive**:
-**brand-tied** (rooted in "I know a Guy"/network = MOST defensible, no competitor can use it),
-**oblique metaphor** (not brain/sage/wingman), or **coined**. Push hardest on brand-tied.
+**Also ruled out (screened 2026-06-09):** **Kith** (Kith AI Lab / Kith Build agent builders + fashion
+brand) · **Nous** (Nous Group — 750-person Aussie consultancy w/ AI practice; + Nous AI/Labs/Research)
+· **Knack** (no-code AI app builder). **Constraint added: name must be SHORT + daily-natural** — used
+constantly ("save to ___", "my ___"); a tagline like "I know a Guy" is too long for daily use.
+**Meta-conclusion: short REAL English words are saturated in AI/software** — ~6 screened (Remi,
+Wingman, Kith, Nous, Knack, Sage/Echo), all taken, several in-space. The real-word shelf is bare.
+**→ DECISION: coin a word.** Coining = the only path that's short + daily-natural + ownable (get the
+trademark + domain because it's novel), and it becomes "a thing" like Claude (cf. Xero/Canva/Vimeo/
+Twilio). Bake in the "I know a Guy" essence (knowing / your people / insider); 2-syllable, warm, sits
+in "save to ___ / my ___".
+**Next: dedicated COINED-name pass** — generate candidates rooted in that essence, screen each for
+domain + trademark BEFORE showing Guy, hand him a warm+short+available shortlist. (Breaks the
+pick-then-find-it's-taken cycle.) Guy's brand call; verify IP Australia + domain before committing.
 **Next:** run a dedicated **naming pass** — generate candidates AND pre-screen each against web +
 trademark collisions (so options are warm *and* available); + The-Vault-style metaphors. Then check
 IP Australia (our class) + domain before committing. Guy's brand call.
