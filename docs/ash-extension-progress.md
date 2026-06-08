@@ -229,6 +229,23 @@ metering/caps matter most. Transcript: tonight argues hard for the Fathom migrat
 per-tenant transcript redundancy/fallback.
 
 ### Pricing + delivery model (2026-06-08)
+**★ CRYSTALLISED PRICING (2026-06-08 — Guy's model, ties the whole night together):**
+- **$150/mo** = start-off / basics (scoring etc.) — get them going.
+- **+$50/mo** = the full kit (post-call agent + side panel + everything shown tonight) → full
+  stack **$200/mo**. The +$50 IS the progressive-reveal tantalise.
+- **Refer 3 (paying) → the $150 drops off; the $50 stays.** Referrer keeps the full kit for
+  **$50/mo**, which covers processing + now-lighter ongoing coaching; the profit came from the 3
+  they brought.
+- **$300/mo = Mr Busy + VA, done-for-you from day one** (heavy VA coaching, strategy/structure
+  setup, he does his own calls — more Guy-time, but handed to him on a platter).
+- *Solves at once:* affordability (solo gets the magic at $200 → $50), referral exposure (the
+  $50 floor ≠ $0, stays cost-covered), no-lock-in (carrot not contract), progressive reveal,
+  setup recovery (the $200 pre-referral phase).
+- **Guardrails:** (a) "3 on board" = 3 **converted, paying** subs, NOT just intros (protects
+  economics + setup-recovery timing); (b) keep usage-cap/BYO-key so the **$50 floor always ≥ a
+  heavy user's AI cost** (typical fine; heavy can hit $40-80). (c) Open/parked: does the $300
+  tier also carry a referral reward?
+
 - **Tier by SERVICE LEVEL, not by feature (refined 2026-06-08 — supersedes "agent = $300 only").**
   Don't paywall the agent behind $300 — paywall the *done-for-you wrapper*.
   - **Foundation (~$150) = self-serve:** full tool **incl. the post-call agent**; client does
