@@ -168,7 +168,16 @@ premium model for everything), not normal volume. Controls:
 
 **Action:** instrument **token-cost-per-client** from the proving step (alongside
 time-per-lead) so pricing is set on real numbers, not estimates. Pressure valve for
-outliers/power-users: optional **BYO API key**. *(Surfaced 2026-06-08 — Guy's cost concern.)*
+outliers/power-users: optional **BYO API key**.
+
+**BYO-key horsepower caveat:** the key doesn't change the model (Guy's code picks the
+model), so a *same-provider* key = same quality. The real "lower horsepower" risks are on
+the client's *account*: (1) low **rate-limit/usage tier** → throttling under load (most
+likely); (2) possible **model/priority-capacity** gating on basic accounts; (3)
+**downgrade pressure** if the paying client wants a cheaper model. Must be a key for the
+*same provider/model* or quality genuinely drops. → Keep BYO-key outlier-only; Guy bearing
+the cost (metered + capped) gives all clients **uniform, controlled** horsepower, which is
+the better product. *(Surfaced 2026-06-08 — Guy's cost concern.)*
 
 ## Voice reference — golden examples (for the drafter)
 
