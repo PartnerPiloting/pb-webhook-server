@@ -135,6 +135,22 @@ through LinkedIn's paste handler). *(Surfaced 2026-06-08.)*
 
 ---
 
+### AI / model layer (clients need no AI account; model is swappable)
+- **Clients never need Claude, ChatGPT, Copilot, or any AI account.** They use the panel;
+  the panel calls Guy's backend; the backend calls the AI **server-side on Guy's API key**.
+  AI cost is Guy's COGS (already inside the $150/$300 pricing), invisible to the client.
+- Two distinct "Claudes": (1) **engine** = the model powering drafting/qualifying,
+  server-side, Guy's choice; (2) **cockpit** = the claude.ai chat Guy personally uses with
+  MCPs — just his tool, not part of the product.
+- **Only the backend touches the AI.** Extension → backend only; rules DB = model-agnostic
+  text. So the model lives behind one seam.
+- **Decision:** use Claude now (known, strong, existing cockpit), but put the AI call behind
+  a **thin interface** (same adapter discipline as calendar/email) so GPT/Gemini are a
+  contained swap later (prompts re-tune per model). Don't build a multi-model router early —
+  just leave the seam. The post-call **agent** chat (Agent SDK) is the only more
+  Claude-shaped piece; MCP underneath is going cross-vendor and is abstractable.
+  *(Surfaced 2026-06-08 — Guy's lock-in concern.)*
+
 ## Voice reference — golden examples (for the drafter)
 
 Real Guy-approved examples to seed/tune the drafter (canonical prompt still lives in
