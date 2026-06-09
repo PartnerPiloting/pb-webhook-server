@@ -589,6 +589,14 @@ the BRAND gives it meaning.
 doesn't need it). Use placeholder **"the Brain" / "second brain"** in code+docs now. Run a proper
 abstract-coinage + **real domain/trademark clearance** (IP Australia) exercise near launch — not
 eyeball-screening in chat. Guy's brand call.
+**FRONTRUNNER: "Winguy"** (Guy's coinage = win + guy; brand-tied to "I know a Guy"). **First candidate
+to survive first-pass screen** — no exact product/trademark found. Distinctive, short, droppable.
+**Caveats:** (1) pronunciation "WIN-guy" vs "wing-ee" — the latter collides with **Wingy** (existing AI
+"wingman" dating app); (2) crowded "Wing-" assistant neighbourhood incl. **Wing Assistant** (VA/CRM
+company — adjacent field) → confusion/opposition risk; (3) mild residual "guy" gender tilt. **Status:
+advance to REAL clearance** (IP Australia class search + domain winguy.com/.ai/getwinguy + assess the
+Wing/Wingy/Wing-Assistant cluster). A fully abstract name would only add distance from the busy "Wing-"
+space — Winguy trades a little distinctiveness for cleverness + brand-tie. Doesn't block the build.
 **Next:** run a dedicated **naming pass** — generate candidates AND pre-screen each against web +
 trademark collisions (so options are warm *and* available); + The-Vault-style metaphors. Then check
 IP Australia (our class) + domain before committing. Guy's brand call.
