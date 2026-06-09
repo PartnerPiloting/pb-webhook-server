@@ -604,6 +604,18 @@ what it IS; "Winguy" is the name.
 trademark collisions (so options are warm *and* available); + The-Vault-style metaphors. Then check
 IP Australia (our class) + domain before committing. Guy's brand call.
 
+### Terminology — user-facing "the Portal", not "Airtable" (decided 2026-06-09)
+User-facing language = **"the Portal"** (their workspace), NEVER "Airtable". Two reasons: (1)
+non-technical / ownable ("your portal") for clients; (2) **future-proof** — Airtable is a swappable
+backend (→ Postgres later); "the Portal" is the stable abstraction so language + mental model don't
+change if the store does (same behind-a-seam discipline as calendar/email/LLM).
+**Composed vocabulary:** **Winguy** (the assistant/second brain) → saves to **your Portal** (workspace).
+e.g. "Winguy drafted it and popped it in your portal." Agent resolves any phrasing ("update the portal"
+/ "save to my portal") → the actual write (Airtable today).
+**Internal hygiene:** in code/docs stay technically precise — "Portal UI writes to the Airtable store
+(→ Postgres later)" — so the friendly abstraction never blurs the real data flow. User-facing = portal;
+engineering = exact.
+
 ## Voice reference — golden examples (for the drafter)
 
 Real Guy-approved examples to seed/tune the drafter (canonical prompt still lives in
