@@ -604,6 +604,22 @@ what it IS; "Winguy" is the name.
 trademark collisions (so options are warm *and* available); + The-Vault-style metaphors. Then check
 IP Australia (our class) + domain before committing. Guy's brand call.
 
+### Data architecture — two stores, two names (decided 2026-06-09)
+| Store | Holds | User-facing name |
+|---|---|---|
+| **Airtable** (RETAINED — not migrating) | Leads + client/operational data (records) | **the Portal** |
+| **Postgres** (migrated FROM Notion) | Rules, prompts, accumulated knowledge | **Winguy** |
+- **Winguy = the second brain** (rules/prompts/tuned knowledge in Postgres). "the Brain" was just the
+  placeholder — Winguy *is* the brain.
+- The agent **reads Winguy** (how to act) + **reads/writes the Portal** (the records).
+- Two crisp user actions: **"teach/update Winguy"** → rules (Postgres); **"save to the Portal"** →
+  record (Airtable).
+- Why right: leads = relational/high-volume operational data → Airtable fine, no reason to move.
+  Rules/prompts = versioned/append-only/integrity-critical/runtime-queried → Postgres (Notion is bad
+  at this). Right store per data type, not migration for its own sake.
+- **Discipline:** keep the boundary clean — leads stay in Portal/Airtable, rules stay in Winguy/
+  Postgres; don't let one bleed into the other.
+
 ### Terminology — user-facing "the Portal", not "Airtable" (decided 2026-06-09)
 User-facing language = **"the Portal"** (their workspace), NEVER "Airtable". Two reasons: (1)
 non-technical / ownable ("your portal") for clients; (2) **future-proof** — Airtable is a swappable
