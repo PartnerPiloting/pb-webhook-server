@@ -589,14 +589,17 @@ the BRAND gives it meaning.
 doesn't need it). Use placeholder **"the Brain" / "second brain"** in code+docs now. Run a proper
 abstract-coinage + **real domain/trademark clearance** (IP Australia) exercise near launch — not
 eyeball-screening in chat. Guy's brand call.
-**FRONTRUNNER: "Winguy"** (Guy's coinage = win + guy; brand-tied to "I know a Guy"). **First candidate
-to survive first-pass screen** — no exact product/trademark found. Distinctive, short, droppable.
-**Caveats:** (1) pronunciation "WIN-guy" vs "wing-ee" — the latter collides with **Wingy** (existing AI
-"wingman" dating app); (2) crowded "Wing-" assistant neighbourhood incl. **Wing Assistant** (VA/CRM
-company — adjacent field) → confusion/opposition risk; (3) mild residual "guy" gender tilt. **Status:
-advance to REAL clearance** (IP Australia class search + domain winguy.com/.ai/getwinguy + assess the
-Wing/Wingy/Wing-Assistant cluster). A fully abstract name would only add distance from the busy "Wing-"
-space — Winguy trades a little distinctiveness for cleverness + brand-tie. Doesn't block the build.
+**✅ CHOSEN: "Winguy"** (Guy's coinage = win + guy; brand-tied to "I know a Guy"). Survived first-pass
+screen (no exact product/trademark found). **Framing (Guy's call, and a good one): it's a CULTURE/term
+spread by word-of-mouth — like "I know a Guy" — NOT a defended product SKU.** That dissolves most
+collision/trademark worry. Two mechanics confirmed: (1) **Guy sets pronunciation by voice** ("Wing-guy")
+→ on-paper ambiguity is moot; (2) **the agent resolves any variant** ("winguy"/"wing guy"/"wing-guy"/
+typos) automatically — it's an LLM, not a rigid parser, so no magic command word.
+**ONE ACTION (cheap, do soon):** grab **domain + handles** (winguy.com/.ai + socials) so the term has a
+home and no one parks on it.
+**Monitor only (low priority):** a *direct* sales/assistant competitor branding "Winguy/Wingy" (low
+odds; file a basic trademark later only if it ever matters). "the Brain" remains internal shorthand for
+what it IS; "Winguy" is the name.
 **Next:** run a dedicated **naming pass** — generate candidates AND pre-screen each against web +
 trademark collisions (so options are warm *and* available); + The-Vault-style metaphors. Then check
 IP Australia (our class) + domain before committing. Guy's brand call.
