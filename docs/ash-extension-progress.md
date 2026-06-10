@@ -713,8 +713,12 @@ first (short test loop); let Claude run + self-check a scoped phase, Guy verifie
 - **Dividing line = usage intensity, NOT DIY-vs-not.** Mr Busy looks "occasional" but becomes a heavy
   user *by proxy* via a VA → keep as a deliberate **second wave** (more sales/VA effort). Genuine
   poor-fit = peripheral AND won't delegate → let them self-select out, don't spend energy converting.
-- **GTM flywheel:** the real constraint is *finding enough right people*; the product is a tool for
-  *finding the right people* → use Winguy to find Winguy customers (dogfood = acquisition).
+- **GTM flywheel — Winguy triggers the load:** the real constraint is *finding enough right people*;
+  the product is a tool for *finding the right people*, so it manufactures its own demand. Loop:
+  **Winguy powers Guy's outreach → loads the pipeline with right-fit people he meets (his ICP) → his
+  visible results = the demo → they become customers (+3 referrals via the Champion mechanic) → who use
+  Winguy → repeat.** Compounds twice: better Winguy → more right people load in AND higher conversion.
+  Self-selects for the right segment.
 - **Build sequencing: start with what benefits GUY first (Fathom etc.), gradually progress.** Aligned:
   Fathom = highest-value connector; keeps Guy (primary user + craft engine) compounding. **Building for
   Guy's own use does NOT require solving craft-portability yet** — that only gates onboarding the *next*
