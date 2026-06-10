@@ -703,6 +703,24 @@ hours gone. But elapsed time is then **gated by non-coding things, not typing sp
 first (short test loop); let Claude run + self-check a scoped phase, Guy verifies in the real world.
 → Effort drops a lot; elapsed time ≈ "as fast as Guy can decide + look", not a weekend, not a year.
 
+## Target market + go-forward (decided 2026-06-09)
+- **ICP = heavy-usage, outreach-is-their-whole-business people — i.e. people like Guy.** Structural,
+  not preference: the product creates value through *usage* (accumulated state, flywheel, off-script
+  retention). Heavy users hit the magic + stick; occasional users never accumulate enough to feel it.
+- **This ICP also dodges the project's biggest risk** (craft portability/retention): people-like-Guy
+  use it enough, **train it themselves** (build their own craft → don't need Guy's transplanted
+  perfectly), and are most likely to stick. Market instinct = risk reduction.
+- **Dividing line = usage intensity, NOT DIY-vs-not.** Mr Busy looks "occasional" but becomes a heavy
+  user *by proxy* via a VA → keep as a deliberate **second wave** (more sales/VA effort). Genuine
+  poor-fit = peripheral AND won't delegate → let them self-select out, don't spend energy converting.
+- **GTM flywheel:** the real constraint is *finding enough right people*; the product is a tool for
+  *finding the right people* → use Winguy to find Winguy customers (dogfood = acquisition).
+- **Build sequencing: start with what benefits GUY first (Fathom etc.), gradually progress.** Aligned:
+  Fathom = highest-value connector; keeps Guy (primary user + craft engine) compounding. **Building for
+  Guy's own use does NOT require solving craft-portability yet** — that only gates onboarding the *next*
+  person → he can move cleanly on his own setup now. (Caveat: Fathom needs the Recall lookup-chain
+  rewritten — see Strategy handoff.) Fathom work = its own next chat.
+
 ## Strategy handoff (2026-06-09) — reweights the build (from a parallel live-workflow chat)
 A parallel strategy chat (sitting IN the workflow) converged with this doc on the hard parts and
 reweighted the rest. Deltas:
