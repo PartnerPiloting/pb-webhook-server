@@ -703,7 +703,49 @@ hours gone. But elapsed time is then **gated by non-coding things, not typing sp
 first (short test loop); let Claude run + self-check a scoped phase, Guy verifies in the real world.
 → Effort drops a lot; elapsed time ≈ "as fast as Guy can decide + look", not a weekend, not a year.
 
+## Strategy handoff (2026-06-09) — reweights the build (from a parallel live-workflow chat)
+A parallel strategy chat (sitting IN the workflow) converged with this doc on the hard parts and
+reweighted the rest. Deltas:
+- **Moat = integration (wiring) + cross-person craft, NOT the rules.** Correction to earlier "rules =
+  moat": rules are the **portable substance** (~70-80% config, de-personalisable). Defensibility = the
+  connected ecosystem a non-tech person can't assemble + accumulated craft. The product doesn't exist
+  until the data is wired + interacting.
+- **Transcript = the highest-value connector → prioritise it.** Calendar/email are low-moat (bare
+  ChatGPT does them, prove nothing). The transcript is the one input the public chat box can't have →
+  source of voice/tone/human-ness + the fastest "this isn't the AI I already have" moment. Make the
+  transcript feed (Fathom) the bulletproof connector + lead a new client's onboarding with a
+  transcript-grounded draft. (NOTE: Recall→Fathom rewrite of the lookup chain — email-keyed,
+  no-date-filter — must happen BEFORE templating old logic into tenants. Build side agrees.)
+- **Onboarding IS the business, not a setup step.** If integration is the moat, getting non-tech
+  clients across the integration line — fast, repeatable, low marginal effort — is the core product.
+  Reweights Phase 7 from "nicety" to central (sequence still needs ≥1 manual integration first).
+- **Build-spec priority (difficulty = reverse of obvious):** (a) per-tenant data wiring (transcript
+  first) → (b) interpreter/guardrail layer [= our Dialogue/Commit/gated-extension] → (c) templated
+  rules (the easy part).
+- **NEW unsolved problem — cross-person CRAFT portability.** Two learning curves: per-person (= data,
+  ports fine) and cross-person craft (better at the craft generally, from watching Guy) which may live
+  in **Claude chat-memory that does NOT port.** Seed-then-diverge only seeds *explicit rules* → a new
+  tenant may start craft-naive. Needs a design answer (e.g. seed craft via curated exemplars/
+  transcripts). Treat as explicit open question, not "it ports."
+- **NEW north-star metric:** **days from onboard → first OFF-SCRIPT use** (client reaches for it
+  unprompted) = retention has engaged; likely a transcript task. Sharper than time-per-lead.
+- **First-run bar vs "let them train it" (tension):** "great day one, editing = moat-building" assumes
+  editing is welcome. But burned skeptics (James Clements — churned competitor "Relevance" for too many
+  tweaks; call 19 Jun) CHURN on tweak-count. So the FIRST output for a high-stakes prospect may need a
+  higher bar than seed-then-diverge gives → consider Guy hand-tuning first outputs for skeptics.
+
+**OPEN QUESTIONS (decide before/at build):** (1) **Sequencing** — transcript-first (wow/differentiation)
+vs panel-first (ease/wedge)? Likely: build simple panel for Guy's proof, but lead a *new client's*
+onboarding with the transcript. (2) Where does craft live — rules (portable) or memory (not)? The
+clean-Claude test (added as top spike) answers it. (3) First-run bar for skeptics vs train-it-yourself.
+
 ## De-risking spikes — prove the unknowns BEFORE building around them (2026-06-08)
+**SPIKE 0 (do FIRST — added 2026-06-09, gates the whole tenant-template job):** the **clean-Claude
+portability test.** Open a memoryless Claude (none of Guy's accumulated context), wire it to test
+connectors, load the Notion rules, run a real task ("prep me for this call, draft the follow-up").
+The gap between that output and Guy's loaded-environment output = how much magic is **portable text vs
+unportable accumulated context** → turns "70-80% portable" from guess to fact, sizes tenant template
+(2-week vs 2-month), and directly answers the craft-portability open question. Cheap; do before Nylas.
 Guy's hard-won lesson: avoid "did all the work, then found that bit doesn't work." Fix = cheap
 throwaway **spikes** on the *unproven* pieces first (hours each vs weeks wasted). Do these at the
 very front (Phase 0/0.5), before committing architecture. Pattern: Claude writes the minimal test,
