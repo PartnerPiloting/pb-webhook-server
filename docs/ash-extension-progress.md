@@ -966,6 +966,24 @@ provide these) → the Fathom splitter cuts on **calendar-event windows + speake
 using **absolute line time = `recording_start_time` + line `timestamp`** to place each line in its
 event's window, then snapping the boundary to where the external speaker changes (Tom→Alfred→Hrishekesh).
 
+**4b. SPLIT SPIKE — PROVEN on the real 93-min lump (read-only, 2026-06-12).** Ran the algorithm
+against recording `154133762`. Speaker-transition detection found all three handovers precisely
+(first-speaks 11:01:48 / 11:34:55 / 12:04:07 vs scheduled 11:00 / 11:30 / 12:00) **despite every
+call running ~5 min over** — segment 1 even ended on Guy's own handover line ("But Alfred, why don't
+you tell us a bit about yourself…"). A time-only cut would have mis-sliced; the speaker-snap fixed it.
+The only "leakage" was **participant overlap** — Tom stayed talking into Alfred's slot (39 lines),
+Alfred into Hrishekesh's (20) — because this was a rolling **group intro**, not isolated 1:1s. Not a
+boundary error; Fathom simply has no "left the call" signal (Recall had leave-events). Boundary
+detection itself: clean.
+
+**4c. DECISION — overlap accepted; serial cut only (2026-06-12, Guy).** Do NOT build leave-detection
+or spillover-stripping. A few (even 5-10) minutes of the previous person's tail at the end of a
+segment is fine: each segment is majority-correct and every line is speaker-labelled, so it's obvious
+when reading/analysing. Purpose is call analysis + follow-up drafting, not forensic precision. ⇒ the
+Fathom splitter is just: order meetings from calendar → cut at each speaker-transition → done. Fewer
+moving parts, more robust. (A clean back-to-back where one person leaves before the next joins would
+show ~zero leakage anyway; the group-intro case tested here is the hard end and the cut still held.)
+
 **5. This promotes two things from "nice-to-have" to REQUIRED for back-to-back users:**
 - **Calendar read is load-bearing** — without it you can't even know there were N meetings, let
   alone where to cut. Google today → **Nylas per-tenant** for multi-tenant (the doc's flagged residual).
