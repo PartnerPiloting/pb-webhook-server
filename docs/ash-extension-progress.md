@@ -914,6 +914,77 @@ A focused live-workflow chat that pinned down the transcript/capture migration. 
 
 ---
 
+## Fathom API — live verification + back-to-back finding (2026-06-12, session 2)
+
+Ran the read-only Fathom check against Guy's real account. Two big outcomes: STEP 1 is
+effectively already done, and the back-to-back lumping is a **confirmed** problem (not
+dissolved by Fathom, as session 1 had hoped).
+
+**0. Reconciliation — the Fathom read path ALREADY EXISTS in production.** The migration's
+"STEP 1: prove Fathom API returns transcript + attendee data" is effectively complete — it's
+shipped and running:
+- `services/smartFollowUpService.js` → `fetchFathomTranscripts(email, fathomApiKey)` calls
+  `https://api.fathom.ai/external/v1/meetings` (`X-Api-Key`, `include_transcript=true`,
+  90-day window), then **filters by `calendar_invitees[].email` == lead email** — email-keyed
+  matching already implemented. Powers **Smart Follow-Up** + **Meeting Prep** (`docs/MEETING-PREP-FEATURE-HANDOVER.md`).
+- `services/clientService.js` loads a per-client **"Fathom API Key" from Airtable Client Master**
+  (so the key is NOT an env var — it's in Airtable; that's why it isn't on Render/in env).
+- `scripts/fathom-inspect.js` = existing read-only diagnostic probe (same purpose).
+- ⇒ "no ASH code written yet" was stale re: the Fathom *read path*. The ASH **ingest/platform**
+  (landing Fathom into the `recall_meetings` store) is still unbuilt — that's the real STEP 2.
+
+**1. Live shape confirmed (every meeting reliably carries what ingest needs).** Per-line
+transcript `{ timestamp, speaker.display_name, text }`; `title`; scheduled + recording
+start/end (duration derivable); `calendar_invitees[]` (name, email, email_domain, is_external);
+a rich **`default_summary`** ("Enhanced" markdown + timestamped share links) + `share_url`.
+
+**2. One unreliable field — and it's non-load-bearing.** `speaker.matched_calendar_invitee_email`
+is often **null** for the external lead (and `invitee.matched_speaker_display_name` too). Doesn't
+matter, because we don't need it: **lead-link** routes through `is_external` invitee **emails**
+(reliable), **speaker labels** use `display_name` (reliable). Treat the per-line email match as a
+bonus, never a dependency. Notes: one person can appear as **multiple invitee emails** (try ALL
+external); **near-empty transcripts exist** (e.g. a 2-line capture) → degrade gracefully.
+
+**3. ★ BACK-TO-BACK LUMPING — CONFIRMED PROBLEM (the headline).** Tested against the 11 Jun trio
+(Tom Butler 11:00 → Alfred Lee 11:30 → Hrishekesh Shinde 12:00), all in Guy's Zoom **Personal
+Meeting Room** (`/j/9892817976`). Fathom produced **ONE recording** (`154133762`), labelled
+*"Tom Butler"* (first call only):
+- window **11:01 → 12:34 = 93 min**; transcript **1202 lines** spanning `00:00:02`–`01:33:13`;
+- distinct speakers = **Guy + all three leads** (Tom, Alfred, Hrishekesh);
+- **Alfred & Hrishekesh have NO own recording, are NOT invitees, and have NO email anywhere in
+  Fathom** — they exist only as spoken-name labels inside the transcript.
+- ⇒ Same failure shape as Recall (PMI room reuse). Fathom keys recordings to the *room session*,
+  not the calendar event. **The splitter is required, not dissolved.** (Corrects session-1's
+  optimistic read — the 10-meeting sample simply hadn't exposed a true same-room back-to-back.)
+
+**4. SOLUTION (decided) — calendar-anchored Fathom splitter, reusing the existing skeleton.**
+`services/recallAutoSplitService.js` already does back-to-back splitting for Recall: reads the
+coach's Google Calendar for the recording window, detects multiple events, handles no-shows,
+cuts into one child transcript per appointment linked to the right lead. **Reuse that skeleton.**
+The one adaptation: Recall cuts on participant **join/leave presence** events (Fathom doesn't
+provide these) → the Fathom splitter cuts on **calendar-event windows + speaker-name transitions**,
+using **absolute line time = `recording_start_time` + line `timestamp`** to place each line in its
+event's window, then snapping the boundary to where the external speaker changes (Tom→Alfred→Hrishekesh).
+
+**5. This promotes two things from "nice-to-have" to REQUIRED for back-to-back users:**
+- **Calendar read is load-bearing** — without it you can't even know there were N meetings, let
+  alone where to cut. Google today → **Nylas per-tenant** for multi-tenant (the doc's flagged residual).
+- **Airtable name-fallback is load-bearing** — this is the case that proves it. Alfred & Hrishekesh
+  have no email in Fathom at all; the only way to turn a spoken "Alfred Lee" into a lead+email is the
+  calendar event's attendee, or — where the calendar isn't wired — **Airtable by name** (with a
+  confidence flag; flag-don't-guess on ambiguity).
+
+**6. Bonus decision to weigh at ingest time (OPEN):** Fathom already returns a polished
+`default_summary` → consider using it **directly** instead of regenerating via
+`services/recallSummaryService.js` (AI-cost saving). Decide when wiring ingest.
+
+**Run note (for future read-only checks):** the Fathom key lives in Airtable Client Master, and
+Airtable creds live in the Render env group **"Authentication & API Keys"**. A local read-only run
+= source those creds (Render API), let `scripts/fathom-inspect.js` resolve the Fathom key from
+Airtable itself. No env-var sync needed.
+
+---
+
 ## ▶ You are here / next pick-up
 
 **As of 2026-06-08:** Full planning done — architecture, cost model, model-lock-in,
@@ -935,17 +1006,40 @@ identity-matching needs the multi-tenant + multi-provider Nylas calendar layer; 
 kill switch + parallel-run; gate only schema changes on the staging schema). Webhook-bloat prune script shipped
 (`scripts/prune-recall-webhook-events.js`). Still **no ASH code written** — next is the read-only Fathom API check.
 
+**As of 2026-06-12 (session 2):** Read-only Fathom check run against Guy's real account — see
+**"Fathom API — live verification + back-to-back finding"** above. Outcomes: (1) **STEP 1 is
+effectively DONE** — the Fathom read path already ships in Smart Follow-Up / Meeting Prep
+(`fetchFathomTranscripts`, email-keyed; key in Airtable Client Master, not env). (2) Live shape
+confirmed good (per-line transcript+timestamps, invitee emails, rich `default_summary`). (3) **★
+Back-to-back lumping CONFIRMED** — 3 same-room calls became ONE 93-min recording labelled with the
+first lead only; the 2nd/3rd leads have no recording, no invitee entry, no email in Fathom (spoken
+labels only). (4) **Decided fix:** calendar-anchored Fathom splitter reusing the existing
+`recallAutoSplitService` skeleton (swap presence-events → calendar-window + speaker-name transitions).
+(5) Calendar read **and** Airtable name-fallback are now **required** (not optional) for back-to-back
+users. No new ingest code written this session — verification + design only.
+
 **Phase 0 progress:** ✓ Extension recon DONE — existing "Network Accelerator" extension will be
 **extended, not rebuilt** (already has multi-tenant auth, LinkedIn scraping, lead lookup, portal
 quick-update, remote-config selectors). See "Existing extension recon" above.
 
 **Next concrete steps (start a fresh chat per item):**
+- **Fathom ingest (the real STEP 2):** build the additive path that lands a Fathom transcript into
+  the `recall_meetings` store (so Fathom feeds the review-queue/summary/share pipeline Recall feeds),
+  behind the `FATHOM_INGEST_ENABLED` kill switch; trigger = Fathom "new meeting content ready" webhook
+  → pull + normalise. Gate any schema change on the staging Postgres schema first.
+- **Fathom back-to-back splitter:** port `recallAutoSplitService` to Fathom data — calendar-window +
+  speaker-name-transition boundaries (absolute line time = `recording_start_time` + line `timestamp`),
+  one child transcript per appointment linked to the right lead. Recover the hidden 2nd/3rd leads via
+  calendar attendee, with **Airtable name-fallback** where the calendar isn't wired (confidence-flagged).
+- Decide: use Fathom's `default_summary` directly vs regenerate via `recallSummaryService` (cost).
 - Finish Phase 0 recon: read `content-portal.js` + the `/api/linkedin` & `/api/extension-config`
   backend (how `clientId/portalToken` are issued); investigate `ash-backend` / `ash-attributes-api`.
-- De-risking spikes — **Nylas first**; then LinkedIn content-script insert; Fathom.
+- De-risking spikes — **Nylas first** (also underpins multi-tenant calendar read for the splitter);
+  then LinkedIn content-script insert.
 - **Rules de-personalisation spike:** Guy pastes ONE section of his Notion rules → Claude returns a
   de-identified master + variable catalogue + flagged implicit-personal bits.
 - Then Phase 1: define the calendar/email/LLM interfaces + Google adapter (no behaviour change).
 - *(Maybe: a light tidy/consolidation pass on this doc — it has grown organically.)*
 
-Nothing here is committed/deployed; it's all design + recon.
+The Fathom **read path** already ships (Smart Follow-Up / Meeting Prep); the Fathom **ingest +
+splitter** are not built yet. Nothing new deployed this session — verification + design only.
