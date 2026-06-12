@@ -892,6 +892,28 @@ where noted. Treat as proposal — reconcile against reality each session.
 
 ---
 
+## Transcript layer deep-dive (2026-06-12)
+
+A focused live-workflow chat that pinned down the transcript/capture migration. Problem → finding/decision:
+
+1. **Storage worry is dead.** Transcript *reads* come from Postgres (`recall_meetings.transcript_text`), never the recorder. All transcripts total ~4 MB; Postgres is a **flat instance charge** (~$10.50/mo, `basic_256mb`, NOT metered by storage), 63 MB used of a 15 GB disk. 100 clients of transcripts ≈ a few hundred MB → bill barely moves. Airtable was never viable (100k-char field cap; longest transcript already 79k chars). So "rules + transcripts in Postgres for 50–100 clients" costs effectively nothing extra.
+
+2. **The real DB growth was `recall_webhook_events`** — the raw Recall webhook firehose (33 MB = 8× all transcripts; Recall streams hundreds of chunk-events per meeting). Did a one-time prune; committed `scripts/prune-recall-webhook-events.js` (dry-run default, `--commit`, `RETENTION_DAYS=30`). **Decided NOT to cron it** — flat-rate Postgres = no cost pressure; run manually if it ever balloons. Becomes moot post-Fathom (one "ready" event, not a stream).
+
+3. **Capture-model shift (the core change).** Recall = *our server* injects a live bot, real-time chunk stream. **Fathom = the client's Fathom captures** (bot or bot-free, their setup) and fires a **post-event "transcript ready" webhook** → our server pulls the finished transcript + attendees via API. Responsibility moves to the client; we become a downstream consumer; trigger is **per-client**; short processing delay (mins) — fine for our use.
+
+4. **Who pays + Fathom tiers (corrected).** Fathom's **Public API & webhook is on EVERY tier, including Free** (confirmed from Guy's pricing-page screenshots — an earlier automated read wrongly said Team-gated). Free = unlimited transcripts. So accessing a client's transcript **never depends on their tier**. Requiring clients to be paid is a *business choice* (better AI summaries / commitment), not a technical gate. Capture cost stays the client's, never ours.
+
+5. **Multi-source, not Fathom-only.** Build **one normalized-transcript shape + a thin source-mapper per provider**. Ship Fathom API + **universal paste** (`insertImportedMeeting` already exists). Add others (**Fireflies** = strongest alt API; Otter weak/enterprise-gated) **only when a paying client needs it** — build the seam, not all the plugs. Paste = universal fallback → sales pitch becomes "keep your tool", not "switch to Fathom".
+
+6. **Identity is multi-tenant + multi-provider (correction).** "Identity from calendar, not recorder" is solved **for Guy only** (single-tenant, Google). Multi-tenant needs *each client's* calendar across **Google AND Outlook** → the **same Nylas layer**. The transcript matcher should read attendees **through Nylas**, not Google Calendar directly. Delivery decoupling: **ingestion ships independent** (paste/API lands it); calendar identity is **enrichment that trails per tenant**, with graceful fallback to name-only matching. Nylas cost ≈ **$1.50–2/connected account/mo** (per-client, **our** cost vs Fathom = client's), ~$153/mo at 100 clients — <1.5% of revenue.
+
+7. **Build-env decision: main is OK here.** Backend-only, additive, single-user (Guy) → **main acceptable** (avoids env-swap friction Guy dislikes). Protection comes from the **design, not the environment**: additive (new route → existing store, Recall untouched) + **kill switch** (`FATHOM_INGEST_ENABLED`) + **parallel-run** (Fathom shadows Recall until trusted). **One guardrail:** gate any *schema change* on the `staging` Postgres schema first (it already exists in the same DB). Retire Recall only after Fathom earns trust — no big-bang cutover.
+
+8. **Forward sequence:** (1) **prove Fathom API** returns transcript + attendee data (read-only, needs Guy's key) → (2) build additive ingest behind the kill switch → (3) parallel-run vs Recall on real meetings → (4) retire Recall once trusted. Complements the "Recall lookup-chain rewrite" noted in Strategy handoff.
+
+---
+
 ## ▶ You are here / next pick-up
 
 **As of 2026-06-08:** Full planning done — architecture, cost model, model-lock-in,
@@ -904,6 +926,14 @@ Render confirmed; de-personalisation = strip identity not method, via identity-t
 voice-seed-then-diverge; integrity-in-code with LLM-proposes-only; curated categories not free;
 gated extension is doable without mess — two-kinds-of-mess; rules editing = edit-as-you-go +
 visibility/history/settings screen; stickiness reconciliations). Still **no ASH code written.**
+
+**As of 2026-06-12:** Transcript/capture migration pinned down in a focused chat — see **"Transcript layer
+deep-dive (2026-06-12)"** above. Key outcomes: storage is a non-problem (Postgres flat-rate); capture model
+shifts to Fathom's post-event "transcript ready" webhook (we become a downstream consumer); Fathom API is on
+ALL tiers incl Free; build multi-source via a normalized-transcript seam + universal paste (not Fathom-only);
+identity-matching needs the multi-tenant + multi-provider Nylas calendar layer; **build on `main`** (additive +
+kill switch + parallel-run; gate only schema changes on the staging schema). Webhook-bloat prune script shipped
+(`scripts/prune-recall-webhook-events.js`). Still **no ASH code written** — next is the read-only Fathom API check.
 
 **Phase 0 progress:** ✓ Extension recon DONE — existing "Network Accelerator" extension will be
 **extended, not rebuilt** (already has multi-tenant auth, LinkedIn scraping, lead lookup, portal
