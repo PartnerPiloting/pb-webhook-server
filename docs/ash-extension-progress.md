@@ -1069,10 +1069,17 @@ server yet so production is unchanged:
 - **Local test method:** ran both via scripts that source prod creds from Render (Airtable env group
   + Postgres external connection-info) and let the services resolve the Fathom key from Airtable — so
   no env-var sync. Throwaway test scripts were deleted after proving.
-- **Next:** (a) WIRE them — ingest reads the calendar for the recording window; if >1 real meeting,
-  run the splitter and file one row per segment instead of one blob; (b) live calendar read (Google
-  service-account today, already used by `recallAutoSplitService`; Nylas multi-tenant later); (c) the
-  trigger (lean poll over webhook for MVP); (d) the skipped one-row save-and-delete write-path check.
+- **WIRING DONE (2026-06-13, commit aa1fc4c4):** `ingestFathomMeeting` is now split-aware — reads the
+  coach calendar for the recording window (reuses `recallAutoSplitService`'s calendar read + real-meeting
+  filter), and if >1 meeting runs `fathomSplitService` and files **one correctly-named entry per segment**,
+  each lead-matched by calendar email with **NAME fallback**; else files single; graceful degrade to single
+  if calendar unreadable. Dry-run-verified on the real Tom/Alfred/Hrishekesh lump (injected windows): 3
+  named entries, **all 3 leads resolved via NAME fallback** — incl. Alfred & Hrishekesh who have no email in
+  Fathom. So "I had a meeting with Alfred" will find Alfred's own entry. ⇒ the core pipeline is built + proven.
+- **Next:** (a) exercise the **live calendar read** on deploy (only piece not tested locally — Google
+  service-account file isn't reachable from local; the code reuses the proven Recall path); (b) the
+  **trigger** (lean poll over webhook for MVP); (c) the skipped one-row **save-and-delete** write-path check;
+  (d) the **switchover** (Recall off / Fathom on, reversible).
 
 **Phase 0 progress:** ✓ Extension recon DONE — existing "Network Accelerator" extension will be
 **extended, not rebuilt** (already has multi-tenant auth, LinkedIn scraping, lead lookup, portal
