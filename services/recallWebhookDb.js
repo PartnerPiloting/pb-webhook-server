@@ -1,6 +1,12 @@
 /**
  * Recall.ai real-time webhook persistence + meetings.
  *
+ * ⚠ NAMING: the `recall_*` tables are the SOURCE-AGNOSTIC transcript STORE — they hold
+ * transcripts from BOTH Recall.ai AND Fathom (and pasted imports). "recall" here is a
+ * historical label (Recall.ai was the first source), NOT a tie to the Recall.ai service.
+ * `source` column distinguishes the origin ('recall' / 'fathom-api' / 'tactiq' / 'other').
+ * See docs/ash-extension-progress.md → "Terminology trap — recall_ ≠ Recall.ai".
+ *
  * Tables:
  *   recall_webhook_events — raw payloads
  *   recall_meetings — one row per bot + recording (review queue)

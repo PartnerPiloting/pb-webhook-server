@@ -1,6 +1,10 @@
 /**
- * MCP server: fetch latest Recall transcript by lead email, save to disk.
+ * MCP server: fetch the latest meeting transcript for a lead, save to disk.
  * Logs only to stderr (stdout is reserved for MCP JSON-RPC).
+ *
+ * ⚠ NAMING: despite "recall" in the name, this returns the latest transcript for a lead from
+ * the SOURCE-AGNOSTIC store — Recall.ai OR Fathom, whichever filled it. It is NOT tied to the
+ * Recall.ai service. See docs/ash-extension-progress.md → "Terminology trap — recall_ ≠ Recall.ai".
  */
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';

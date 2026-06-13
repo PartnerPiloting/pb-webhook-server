@@ -1,5 +1,11 @@
 /**
  * Recall review API + light HTML queue.
+ *
+ * ⚠ NAMING: "recall" here = the SOURCE-AGNOSTIC transcript store/lookup, not the Recall.ai
+ * service. The /recall-review/api/latest-transcript-by-email endpoint (used by the
+ * recall_latest_transcript MCP that powers Guy's "I had a meeting with X" chat) returns the
+ * latest meeting for a lead regardless of source — Recall.ai OR Fathom. No source filter.
+ * See docs/ash-extension-progress.md → "Terminology trap — recall_ ≠ Recall.ai".
  */
 
 const express = require('express');

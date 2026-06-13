@@ -33,6 +33,23 @@ not the prompt.
 
 ---
 
+## ⚠ Terminology trap — "recall_" ≠ Recall.ai (read this before touching transcript code)
+
+Two different things share the word "Recall" — keep them distinct or you (and Claude) will get confused:
+- **Recall.ai** = a *recording service* (a bot that joins calls and captures transcripts). It is ONE
+  capture **source**; **Fathom** is the other.
+- **`recall_*` names** = historical **labels on the transcript STORE + lookup**, named that way because
+  Recall.ai was the first source. They are **source-agnostic** — they hold/serve transcripts from BOTH
+  Recall.ai and Fathom: Postgres `recall_meetings` / `recall_meeting_leads` (the "tank"); the MCP tool
+  `recall_latest_transcript` + `GET /recall-review/api/latest-transcript-by-email` (the "tap" — finds the
+  latest meeting for a lead, regardless of source); the `recall-review` frontend page.
+
+**Model:** ONE Postgres store (tank). Recall.ai and Fathom are two pipes filling it. The chat's "I had a
+meeting with X" lookup is a tap drawing from the tank — it does NOT care which pipe filled it. "Switch
+Recall off, Fathom on" = close the Recall.ai pipe, open the Fathom pipe; tank + tap unchanged. **Decision
+(2026-06-13): do NOT rename `recall_*` now** (pervasive: DB tables + ~dozen files + the live MCP connector
+Guy's chat binds to; risky mid-migration). Revisit only after Recall.ai is retired, as its own staged job.
+
 ## Environments & deploy flow (confirmed via Render API, 2026-06-07)
 
 **Branch-per-environment, each auto-deploys on push.** (`render.yaml` is STALE — it claims
