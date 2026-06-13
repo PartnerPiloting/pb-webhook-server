@@ -1076,8 +1076,20 @@ server yet so production is unchanged:
   if calendar unreadable. Dry-run-verified on the real Tom/Alfred/Hrishekesh lump (injected windows): 3
   named entries, **all 3 leads resolved via NAME fallback** — incl. Alfred & Hrishekesh who have no email in
   Fathom. So "I had a meeting with Alfred" will find Alfred's own entry. ⇒ the core pipeline is built + proven.
-- **Next:** (a) exercise the **live calendar read** on deploy (only piece not tested locally — Google
-  service-account file isn't reachable from local; the code reuses the proven Recall path); (b) the
+- **CALENDAR ADAPTER + NYLAS DOGFOOD — DONE & PROVEN (2026-06-13, commits 3a334231 + this):**
+  Added `services/calendarProvider.js` — one swappable seam with a `CALENDAR_PROVIDER` switch
+  (`google` default / `nylas`); the Fathom splitter's calendar read routes through it; daily booking
+  untouched. **Guy stood up a Nylas sandbox app (US region) and connected his Google calendar as
+  client #1.** Verified READ-ONLY on real data: Nylas returns his calendar (3 back-to-back meetings +
+  correctly skips Lunch/Dinner/no-URL items). **CAPSTONE: full pipeline dry-run with `CALENDAR_PROVIDER=nylas`
+  live** → the Tom/Alfred/Hrishekesh 93-min Fathom lump split into 3 named segments, **all 3 leads matched
+  by EMAIL** (Nylas supplies the back-to-back leads' emails that Fathom lacked). So the multi-tenant
+  calendar path is proven on Guy himself. **Nylas creds (sandbox):** US region (`api.us.nylas.com`),
+  grant `67c86864-6d13-4258-9777-38063b83eecc`; API key generated (Guy holds a copy) — NOT yet stored on
+  Render. For real tenants the grant moves to an Airtable Client Master field (code already reads
+  `coach.nylasGrantId` then env `NYLAS_GRANT_ID`).
+- **Next:** (a) **store the Nylas creds on Render** (NYLAS_API_KEY / NYLAS_GRANT_ID / NYLAS_API_URI) —
+  note: editing the shared env group may briefly redeploy services, so pick a quiet moment; (b) the
   **trigger** (lean poll over webhook for MVP); (c) the skipped one-row **save-and-delete** write-path check;
   (d) the **switchover** (Recall off / Fathom on, reversible).
 
