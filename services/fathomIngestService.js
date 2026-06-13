@@ -1,26 +1,35 @@
 /**
  * Fathom API ingest — STEP 2 of the Recall -> Fathom migration.
  *
- * Takes a finished Fathom meeting (pulled from the Fathom REST API) and files it
- * into the SAME store a Recall capture uses (recall_meetings + recall_meeting_leads),
- * so it flows through the existing review / summary / share pipeline unchanged.
+ * Takes a finished Fathom meeting (pulled from the Fathom REST API) and files it into the
+ * SAME store a Recall capture uses (recall_meetings + recall_meeting_leads), so it flows
+ * through the existing review / summary / share / "I had a meeting with X" lookup unchanged.
  *
- * ADDITIVE + SAFE BY DESIGN:
- *   - New file; nothing calls it yet. Recall path is untouched.
- *   - The WRITE path is gated behind the FATHOM_INGEST_ENABLED kill switch (default OFF).
- *   - dryRun mode does everything EXCEPT write — fetch, normalise, match the lead — and
- *     returns the would-be result, so we can verify before any data changes.
- *   - Every row is tagged source='fathom-api' (bot_id prefix `manual:fathom-api:`), so a
- *     shadow ingest is always identifiable and reversible in one DELETE (leads cascade).
+ * Split-aware: it checks the coach's calendar for the recording window. If the recording
+ * spans MORE THAN ONE real meeting (a back-to-back), it runs the speaker-transition splitter
+ * (services/fathomSplitService) and files ONE correctly-named entry per meeting, each linked
+ * to that meeting's lead. A single meeting is filed as-is.
  *
- * This is the single-meeting core. The back-to-back splitter and the automatic trigger
- * (webhook/poll) are separate later slices.
+ * ⚠ NAMING: "recall_*" = the source-agnostic transcript store, NOT the Recall.ai service.
+ * See docs/ash-extension-progress.md → "Terminology trap — recall_ ≠ Recall.ai".
+ *
+ * ADDITIVE + SAFE:
+ *   - New file; nothing calls it yet. Recall path untouched.
+ *   - WRITE path gated behind FATHOM_INGEST_ENABLED (default OFF).
+ *   - dryRun does everything EXCEPT write (fetch, split, normalise, match leads).
+ *   - Rows tagged source='fathom-api' (bot_id `manual:fathom-api:`) — identifiable + reversible
+ *     in one DELETE (leads cascade).
+ *   - Calendar read failure degrades gracefully to "single meeting" (files the blob rather
+ *     than crashing); back-to-backs only split when the calendar is readable.
  */
 
 const clientService = require('./clientService');
-const { findLeadByEmail } = require('./inboundEmailService');
+const { findLeadByEmail, findLeadByName } = require('./inboundEmailService');
 const { insertImportedMeeting, addMeetingLead } = require('./recallWebhookDb');
 const { normalizeEmail } = require('./recallImportService');
+const { splitFathomMeeting } = require('./fathomSplitService');
+const { extractMeetingUrl, isCoachAttending } = require('./recallAutoJoinService');
+const { listCalendarEventsWithAttendeesInRange } = require('../config/calendarServiceAccount');
 const { createSafeLogger } = require('../utils/loggerHelper');
 
 const log = createSafeLogger('SYSTEM', null, 'fathom_ingest');
@@ -63,7 +72,7 @@ async function fetchFathomMeeting(recordingId, apiKey, { createdAfter, createdBe
 /**
  * Fathom transcript array -> canonical "[HH:MM:SS] Speaker: text" lines.
  * Matches the format the existing Fathom code already produces (smartFollowUpService),
- * and keeps the per-line timestamp the future back-to-back splitter needs.
+ * and keeps the per-line timestamp the back-to-back splitter needs.
  */
 function normalizeFathomApiTranscript(meeting) {
   const segs = Array.isArray(meeting.transcript) ? meeting.transcript : [];
@@ -79,8 +88,7 @@ function normalizeFathomApiTranscript(meeting) {
         text = (text && typeof text === 'object') ? (text.text ?? text.content ?? '') : '';
       }
       const ts = (typeof u.timestamp === 'string') ? u.timestamp : '';
-      const line = `${ts ? `[${ts}] ` : ''}${speaker}: ${text}`.trim();
-      return line;
+      return `${ts ? `[${ts}] ` : ''}${speaker}: ${text}`.trim();
     })
     .filter(Boolean)
     .join('\n');
@@ -107,11 +115,11 @@ function extractLeadEmails(meeting) {
   return { external, internal };
 }
 
-/** Match external invitee emails to Airtable leads (read-only lookup). */
-async function matchLeads(coach, externalEmails) {
+/** Match a list of emails to Airtable leads (read-only lookup). */
+async function matchLeads(coach, emails) {
   const matched = [];
   const unmatched = [];
-  for (const raw of externalEmails) {
+  for (const raw of emails) {
     const clean = normalizeEmail(raw);
     if (!clean) { unmatched.push(raw); continue; }
     try {
@@ -121,6 +129,7 @@ async function matchLeads(coach, externalEmails) {
           email: clean,
           leadId: lead.id,
           name: [lead.firstName, lead.lastName].filter(Boolean).join(' ').trim() || clean,
+          via: 'email',
         });
       } else {
         unmatched.push(clean);
@@ -134,18 +143,83 @@ async function matchLeads(coach, externalEmails) {
 }
 
 /**
- * Ingest one Fathom meeting.
+ * Resolve the lead for one split segment: try the calendar attendee emails first, then fall
+ * back to matching the spoken lead NAME against Airtable (the back-to-back leads often have no
+ * email in Fathom — only a spoken name — so name-fallback is load-bearing here).
+ */
+async function matchLeadsForSegment(coach, seg) {
+  const byEmail = await matchLeads(coach, seg.leadEmails || []);
+  if (byEmail.matched.length) return { matched: byEmail.matched, method: 'email' };
+  if (seg.leadName) {
+    try {
+      const r = await findLeadByName(coach, seg.leadName);
+      if (r && r.matchType === 'unique' && r.lead?.id) {
+        return {
+          matched: [{
+            leadId: r.lead.id,
+            name: [r.lead.firstName, r.lead.lastName].filter(Boolean).join(' ').trim() || seg.leadName,
+            email: r.lead.email || '',
+            via: 'name',
+          }],
+          method: 'name',
+        };
+      }
+      if (r && r.matchType === 'ambiguous') {
+        return { matched: [], method: 'name_ambiguous', ambiguousCount: (r.allMatches || []).length };
+      }
+    } catch (e) {
+      log.warn(`name match failed for "${seg.leadName}": ${e.message}`);
+    }
+  }
+  return { matched: [], method: 'none' };
+}
+
+/**
+ * Calendar events that overlap the recording window AND look like real meetings (have a
+ * conferencing URL + the coach is an attendee). Reuses the exact filters the Recall splitter
+ * uses. Pass `override` (an array of events) to bypass the live read in tests.
+ */
+async function relevantCalendarEvents(meeting, coach, override) {
+  if (Array.isArray(override)) return override;
+
+  const calEmail = coach.googleCalendarEmail || coach.calendarEmail;
+  if (!calEmail) { log.warn('no coach calendar email — cannot detect back-to-back; treating as single'); return []; }
+
+  const recStart = new Date(meeting.recording_start_time || meeting.scheduled_start_time);
+  const recEnd = new Date(meeting.recording_end_time || meeting.scheduled_end_time);
+  if (Number.isNaN(recStart.getTime()) || Number.isNaN(recEnd.getTime())) return [];
+
+  let result;
+  try {
+    result = await listCalendarEventsWithAttendeesInRange(
+      calEmail,
+      new Date(recStart.getTime() - 10 * 60 * 1000),
+      new Date(recEnd.getTime() + 10 * 60 * 1000),
+    );
+  } catch (e) {
+    log.warn(`calendar read failed: ${e.message} — treating as single`);
+    return [];
+  }
+  if (result.error) { log.warn(`calendar read: ${result.error} — treating as single`); return []; }
+
+  const overlapping = (result.events || []).filter((ev) => new Date(ev.start) < recEnd && new Date(ev.end) > recStart);
+  return overlapping.filter((ev) => extractMeetingUrl(ev) && isCoachAttending(ev));
+}
+
+/**
+ * Ingest one Fathom meeting (split-aware).
  *
  * @param {object} opts
  * @param {string} opts.recordingId        Fathom recording_id (required)
  * @param {string} [opts.coachClientId]    tenant scope (default Guy-Wilson)
- * @param {boolean} [opts.dryRun]          if true: fetch + normalise + match lead, but DO NOT write
+ * @param {boolean} [opts.dryRun]          if true: do everything EXCEPT write
+ * @param {object[]} [opts.calendarEvents] inject calendar events (tests); else read live
  * @param {string} [opts.createdAfter]     ISO bound to find the meeting in the list call
  * @param {string} [opts.createdBefore]    ISO bound
- * @returns {Promise<object>} { ok, dryRun?, plan, transcriptText?, meetingId? }
+ * @returns {Promise<object>} { ok, dryRun?, mode:'single'|'split', plan, ... }
  */
 async function ingestFathomMeeting(opts = {}) {
-  const { recordingId, coachClientId = DEFAULT_COACH_CLIENT_ID, dryRun = false, createdAfter, createdBefore } = opts;
+  const { recordingId, coachClientId = DEFAULT_COACH_CLIENT_ID, dryRun = false, createdAfter, createdBefore, calendarEvents } = opts;
   if (!recordingId) return { ok: false, error: 'recordingId is required' };
 
   const coach = await clientService.getClientById(coachClientId);
@@ -156,6 +230,53 @@ async function ingestFathomMeeting(opts = {}) {
   if (!f.ok) return f;
   const meeting = f.meeting;
 
+  const coachEmails = [coach.googleCalendarEmail, coach.calendarEmail].filter(Boolean);
+  const coachNames = [coach.clientName, 'Guy Wilson'].filter(Boolean);
+  const events = await relevantCalendarEvents(meeting, coach, calendarEvents);
+
+  // ---- SPLIT PATH (back-to-back: >1 real meeting in the window) -----------
+  if (events.length > 1) {
+    const split = splitFathomMeeting(meeting, events, { coachNames, coachEmails });
+    const segPlans = [];
+    for (const seg of split.segments) {
+      const lr = await matchLeadsForSegment(coach, seg);
+      segPlans.push({
+        _transcriptText: seg.transcriptText,
+        title: seg.calendarEvent.summary || `${seg.leadName} meeting`,
+        leadName: seg.leadName,
+        meetingStart: seg.calendarEvent.start || new Date(seg.startMs).toISOString(),
+        durationSeconds: Math.max(0, Math.round((seg.endMs - seg.startMs) / 1000)),
+        transcriptLines: seg.lineCount,
+        transcriptChars: seg.transcriptText.length,
+        matchedLeads: lr.matched,
+        leadMatchMethod: lr.method,
+        strayLines: seg.strayLines,
+      });
+    }
+    const plan = {
+      recordingId: String(meeting.recording_id),
+      mode: 'split',
+      source: SOURCE,
+      segments: segPlans.map(({ _transcriptText, ...rest }) => rest),
+    };
+
+    if (dryRun) return { ok: true, dryRun: true, plan };
+    if (!ingestEnabled()) return { ok: false, error: 'FATHOM_INGEST_ENABLED is not true — write path is disabled', plan };
+
+    const filed = [];
+    for (const sp of segPlans) {
+      const ins = await insertImportedMeeting({ title: sp.title, source: SOURCE, transcriptText: sp._transcriptText, meetingStart: sp.meetingStart, durationSeconds: sp.durationSeconds });
+      if (!ins.ok) { log.warn(`segment insert failed (${sp.title}): ${ins.error}`); continue; }
+      for (const m of sp.matchedLeads) {
+        try { await addMeetingLead(ins.meeting_id, m.leadId, coachClientId, 'fathom-api'); } catch (e) { log.warn(`link lead ${m.leadId} failed: ${e.message}`); }
+      }
+      filed.push({ meetingId: ins.meeting_id, title: sp.title, leads: sp.matchedLeads.length });
+    }
+    log.info(`ingested fathom back-to-back rec=${plan.recordingId} -> ${filed.length} segment meetings`);
+    return { ok: true, mode: 'split', filed, plan };
+  }
+
+  // ---- SINGLE PATH (one meeting, or calendar unreadable) ------------------
   const transcriptText = normalizeFathomApiTranscript(meeting);
   const meta = extractMeta(meeting);
   const emails = extractLeadEmails(meeting);
@@ -163,6 +284,7 @@ async function ingestFathomMeeting(opts = {}) {
 
   const plan = {
     recordingId: String(meeting.recording_id),
+    mode: 'single',
     title: meta.title,
     meetingStart: meta.meetingStart,
     durationSeconds: meta.durationSeconds,
@@ -174,37 +296,20 @@ async function ingestFathomMeeting(opts = {}) {
     source: SOURCE,
   };
 
-  if (dryRun) {
-    return { ok: true, dryRun: true, plan, transcriptText };
-  }
+  if (dryRun) return { ok: true, dryRun: true, plan, transcriptText };
+  if (!ingestEnabled()) return { ok: false, error: 'FATHOM_INGEST_ENABLED is not true — write path is disabled', plan };
 
-  // ---- WRITE PATH (gated) -------------------------------------------------
-  if (!ingestEnabled()) {
-    return { ok: false, error: 'FATHOM_INGEST_ENABLED is not true — write path is disabled', plan };
-  }
-
-  const ins = await insertImportedMeeting({
-    title: meta.title,
-    source: SOURCE,
-    transcriptText,
-    meetingStart: meta.meetingStart,
-    durationSeconds: meta.durationSeconds,
-  });
+  const ins = await insertImportedMeeting({ title: meta.title, source: SOURCE, transcriptText, meetingStart: meta.meetingStart, durationSeconds: meta.durationSeconds });
   if (!ins.ok) return { ok: false, error: ins.error || 'insert failed', plan };
 
   const meetingId = ins.meeting_id;
   const linkedLeads = [];
   for (const m of matched) {
-    try {
-      await addMeetingLead(meetingId, m.leadId, coachClientId, 'fathom-api');
-      linkedLeads.push(m);
-    } catch (e) {
-      log.warn(`failed to link lead ${m.leadId} to meeting ${meetingId}: ${e.message}`);
-    }
+    try { await addMeetingLead(meetingId, m.leadId, coachClientId, 'fathom-api'); linkedLeads.push(m); }
+    catch (e) { log.warn(`failed to link lead ${m.leadId} to meeting ${meetingId}: ${e.message}`); }
   }
-
-  log.info(`ingested fathom meeting rec=${plan.recordingId} -> meeting_id=${meetingId} (${plan.transcriptLines} lines, ${linkedLeads.length} leads)`);
-  return { ok: true, meetingId, botId: ins.bot_id, plan, linkedLeads };
+  log.info(`ingested fathom single rec=${plan.recordingId} -> meeting_id=${meetingId} (${plan.transcriptLines} lines, ${linkedLeads.length} leads)`);
+  return { ok: true, mode: 'single', meetingId, botId: ins.bot_id, plan, linkedLeads };
 }
 
 module.exports = {
@@ -214,6 +319,8 @@ module.exports = {
   extractMeta,
   extractLeadEmails,
   matchLeads,
+  matchLeadsForSegment,
+  relevantCalendarEvents,
   ingestEnabled,
   SOURCE,
 };
