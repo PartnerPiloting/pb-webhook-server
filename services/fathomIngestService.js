@@ -29,7 +29,7 @@ const { insertImportedMeeting, addMeetingLead } = require('./recallWebhookDb');
 const { normalizeEmail } = require('./recallImportService');
 const { splitFathomMeeting } = require('./fathomSplitService');
 const { extractMeetingUrl, isCoachAttending } = require('./recallAutoJoinService');
-const { listCalendarEventsWithAttendeesInRange } = require('../config/calendarServiceAccount');
+const { getMeetingsInWindow } = require('./calendarProvider');
 const { createSafeLogger } = require('../utils/loggerHelper');
 
 const log = createSafeLogger('SYSTEM', null, 'fathom_ingest');
@@ -182,17 +182,15 @@ async function matchLeadsForSegment(coach, seg) {
 async function relevantCalendarEvents(meeting, coach, override) {
   if (Array.isArray(override)) return override;
 
-  const calEmail = coach.googleCalendarEmail || coach.calendarEmail;
-  if (!calEmail) { log.warn('no coach calendar email — cannot detect back-to-back; treating as single'); return []; }
-
   const recStart = new Date(meeting.recording_start_time || meeting.scheduled_start_time);
   const recEnd = new Date(meeting.recording_end_time || meeting.scheduled_end_time);
   if (Number.isNaN(recStart.getTime()) || Number.isNaN(recEnd.getTime())) return [];
 
   let result;
   try {
-    result = await listCalendarEventsWithAttendeesInRange(
-      calEmail,
+    // Routed through the calendar adapter (Google today / Nylas when flipped) — see calendarProvider.js.
+    result = await getMeetingsInWindow(
+      coach,
       new Date(recStart.getTime() - 10 * 60 * 1000),
       new Date(recEnd.getTime() + 10 * 60 * 1000),
     );
@@ -200,7 +198,7 @@ async function relevantCalendarEvents(meeting, coach, override) {
     log.warn(`calendar read failed: ${e.message} — treating as single`);
     return [];
   }
-  if (result.error) { log.warn(`calendar read: ${result.error} — treating as single`); return []; }
+  if (result.error) { log.warn(`calendar read (${result.provider}): ${result.error} — treating as single`); return []; }
 
   const overlapping = (result.events || []).filter((ev) => new Date(ev.start) < recEnd && new Date(ev.end) > recStart);
   return overlapping.filter((ev) => extractMeetingUrl(ev) && isCoachAttending(ev));
