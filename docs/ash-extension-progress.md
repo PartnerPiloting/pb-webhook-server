@@ -1036,6 +1036,27 @@ labels only). (4) **Decided fix:** calendar-anchored Fathom splitter reusing the
 (5) Calendar read **and** Airtable name-fallback are now **required** (not optional) for back-to-back
 users. No new ingest code written this session — verification + design only.
 
+**As of 2026-06-13:** ★ FIRST ASH CODE SHIPPED (supersedes "no ASH code written"). STEP 2 build
+started — two additive, kill-switched modules on `main` (commit 46491640), nothing wired into the
+server yet so production is unchanged:
+- **`services/fathomIngestService.js`** — pull a Fathom meeting → canonical `[ts] Speaker: text`
+  transcript + title/start/duration + **email lead-match** → file via the existing
+  `insertImportedMeeting` (source=`fathom-api`, reversible). Write path gated on
+  `FATHOM_INGEST_ENABLED` (default off); `dryRun` mode verified read-only against the **Recall copy
+  of the same meeting** (Liam McCafferty: same lead, same title, started 1 min apart — and Fathom's
+  120-min lump vs Recall's clean 29-min slot re-confirmed the lumping live).
+- **`services/fathomSplitService.js`** — pure speaker-transition splitter (SERIAL cut, overlap
+  ACCEPTED per the decision above). Proven on the real Tom/Alfred/Hrishekesh 93-min lump → **3
+  correctly-labelled segments**, boundaries exactly on the handovers (seg 1 ends on Guy's "But
+  Alfred, why don't you tell us…" line), 59 accepted overlap-tail lines.
+- **Local test method:** ran both via scripts that source prod creds from Render (Airtable env group
+  + Postgres external connection-info) and let the services resolve the Fathom key from Airtable — so
+  no env-var sync. Throwaway test scripts were deleted after proving.
+- **Next:** (a) WIRE them — ingest reads the calendar for the recording window; if >1 real meeting,
+  run the splitter and file one row per segment instead of one blob; (b) live calendar read (Google
+  service-account today, already used by `recallAutoSplitService`; Nylas multi-tenant later); (c) the
+  trigger (lean poll over webhook for MVP); (d) the skipped one-row save-and-delete write-path check.
+
 **Phase 0 progress:** ✓ Extension recon DONE — existing "Network Accelerator" extension will be
 **extended, not rebuilt** (already has multi-tenant auth, LinkedIn scraping, lead lookup, portal
 quick-update, remote-config selectors). See "Existing extension recon" above.
