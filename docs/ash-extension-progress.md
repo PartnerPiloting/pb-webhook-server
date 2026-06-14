@@ -606,7 +606,7 @@ the BRAND gives it meaning.
 doesn't need it). Use placeholder **"the Brain" / "second brain"** in code+docs now. Run a proper
 abstract-coinage + **real domain/trademark clearance** (IP Australia) exercise near launch — not
 eyeball-screening in chat. Guy's brand call.
-**✅ CHOSEN: "Wingguy"** (Guy's coinage = win + guy; brand-tied to "I know a Guy"). Survived first-pass
+**✅ CHOSEN: "Wingguy"** (Guy's coinage = wing + guy; brand-tied to "I know a Guy"). Survived first-pass
 screen (no exact product/trademark found). **Framing (Guy's call, and a good one): it's a CULTURE/term
 spread by word-of-mouth — like "I know a Guy" — NOT a defended product SKU.** That dissolves most
 collision/trademark worry. Two mechanics confirmed: (1) **Guy sets pronunciation by voice** ("Wing-guy")
