@@ -926,9 +926,12 @@ where noted. Treat as proposal — reconcile against reality each session.
 
 ---
 
-## Transcript layer deep-dive (2026-06-12)
+## Transcript layer deep-dive (2026-06-15)
 
-A focused live-workflow chat that pinned down the transcript/capture migration. Problem → finding/decision:
+A live-workflow recap chat (Render cost cleanup + storage/strategy review). **Correction (2026-06-15):** this
+chat initially failed to notice the Fathom ingest + splitter + `google|nylas` calendar adapter were **already
+built & dry-run-proven on 2026-06-13** (see the dated entries below). Items 1–7 here remain valid strategy/cost;
+item 8's old "forward sequence" was stale and has been replaced with the real go-live list. Problem → finding/decision:
 
 1. **Storage worry is dead.** Transcript *reads* come from Postgres (`recall_meetings.transcript_text`), never the recorder. All transcripts total ~4 MB; Postgres is a **flat instance charge** (~$10.50/mo, `basic_256mb`, NOT metered by storage), 63 MB used of a 15 GB disk. 100 clients of transcripts ≈ a few hundred MB → bill barely moves. Airtable was never viable (100k-char field cap; longest transcript already 79k chars). So "rules + transcripts in Postgres for 50–100 clients" costs effectively nothing extra.
 
@@ -944,7 +947,7 @@ A focused live-workflow chat that pinned down the transcript/capture migration. 
 
 7. **Build-env decision: main is OK here.** Backend-only, additive, single-user (Guy) → **main acceptable** (avoids env-swap friction Guy dislikes). Protection comes from the **design, not the environment**: additive (new route → existing store, Recall untouched) + **kill switch** (`FATHOM_INGEST_ENABLED`) + **parallel-run** (Fathom shadows Recall until trusted). **One guardrail:** gate any *schema change* on the `staging` Postgres schema first (it already exists in the same DB). Retire Recall only after Fathom earns trust — no big-bang cutover.
 
-8. **Forward sequence:** (1) **prove Fathom API** returns transcript + attendee data (read-only, needs Guy's key) → (2) build additive ingest behind the kill switch → (3) parallel-run vs Recall on real meetings → (4) retire Recall once trusted. Complements the "Recall lookup-chain rewrite" noted in Strategy handoff.
+8. **Status (corrected 2026-06-15) — the pipeline is already BUILT (2026-06-13), not pending.** `services/fathomIngestService.js` + `services/fathomSplitService.js` + the `google|nylas` `services/calendarProvider.js` are committed, additive, kill-switched (`FATHOM_INGEST_ENABLED` off), and dry-run-proven — including the **Nylas multi-tenant calendar path on Guy as client #1** (split a 93-min lump into 3 segments, all leads matched by email Nylas supplied). **Remaining = go-live only:** (a) store Nylas creds on Render; (b) build the trigger (lean poll → Fathom webhook later); (c) one real write-path test (`FATHOM_INGEST_ENABLED=true`, ingest one meeting, confirm row, delete); (d) switchover (Fathom on / Recall off, reversible).
 
 ---
 
@@ -1050,13 +1053,14 @@ voice-seed-then-diverge; integrity-in-code with LLM-proposes-only; curated categ
 gated extension is doable without mess — two-kinds-of-mess; rules editing = edit-as-you-go +
 visibility/history/settings screen; stickiness reconciliations). Still **no ASH code written.**
 
-**As of 2026-06-12:** Transcript/capture migration pinned down in a focused chat — see **"Transcript layer
-deep-dive (2026-06-12)"** above. Key outcomes: storage is a non-problem (Postgres flat-rate); capture model
-shifts to Fathom's post-event "transcript ready" webhook (we become a downstream consumer); Fathom API is on
-ALL tiers incl Free; build multi-source via a normalized-transcript seam + universal paste (not Fathom-only);
-identity-matching needs the multi-tenant + multi-provider Nylas calendar layer; **build on `main`** (additive +
-kill switch + parallel-run; gate only schema changes on the staging schema). Webhook-bloat prune script shipped
-(`scripts/prune-recall-webhook-events.js`). Still **no ASH code written** — next is the read-only Fathom API check.
+**As of 2026-06-15:** Render cost cleanup + strategy recap (see **"Transcript layer deep-dive"** above).
+**Infra:** trimmed unused Render web services — **deleted** `pb-webhook-server-dev` + `-hotfix`, **suspended**
+`ash-backend` → bill ~$86 → **~$65 USD/mo** (~$92 AUD). Shipped `scripts/prune-recall-webhook-events.js` (one-off
+prune done; deliberately NOT cronned — flat-rate Postgres = no cost pressure). Confirmed transcript storage is a
+non-problem at scale. **CORRECTION:** this chat first assumed "no ASH code / do the read-only API check next" —
+WRONG: the Fathom ingest + splitter + Nylas adapter were already built & dry-run-proven on 2026-06-13 (entries
+above). **Real next = the go-live list:** store Nylas creds on Render → trigger → one real write-path test → switchover.
+*(Lesson: check actual code + `git log` before asserting build status — planning sections go stale.)*
 
 **As of 2026-06-12 (session 2):** Read-only Fathom check run against Guy's real account — see
 **"Fathom API — live verification + back-to-back finding"** above. Outcomes: (1) **STEP 1 is
@@ -1124,14 +1128,12 @@ Design capture only — no code; day-to-day setup untouched.
 quick-update, remote-config selectors). See "Existing extension recon" above.
 
 **Next concrete steps (start a fresh chat per item):**
-- **Fathom ingest (the real STEP 2):** build the additive path that lands a Fathom transcript into
-  the `recall_meetings` store (so Fathom feeds the review-queue/summary/share pipeline Recall feeds),
-  behind the `FATHOM_INGEST_ENABLED` kill switch; trigger = Fathom "new meeting content ready" webhook
-  → pull + normalise. Gate any schema change on the staging Postgres schema first.
-- **Fathom back-to-back splitter:** port `recallAutoSplitService` to Fathom data — calendar-window +
-  speaker-name-transition boundaries (absolute line time = `recording_start_time` + line `timestamp`),
-  one child transcript per appointment linked to the right lead. Recover the hidden 2nd/3rd leads via
-  calendar attendee, with **Airtable name-fallback** where the calendar isn't wired (confidence-flagged).
+- **Fathom GO-LIVE (ingest + splitter + `google|nylas` adapter are BUILT & dry-run-proven as of 06-13 — this is turn-on, not build):**
+  (a) **store Nylas creds on Render** (`NYLAS_API_KEY` / `NYLAS_GRANT_ID` / `NYLAS_API_URI` — quiet moment; the
+  shared env group can briefly redeploy); (b) build the **trigger** (lean poll for MVP → Fathom "new meeting
+  content ready" webhook later); (c) one real **write-path test** (`FATHOM_INGEST_ENABLED=true`, ingest one meeting,
+  confirm the row, delete it — only ever done in dry-run so far); (d) **switchover** (Recall off / Fathom on, reversible).
+  Gate any schema change on the staging Postgres schema first.
 - Decide: use Fathom's `default_summary` directly vs regenerate via `recallSummaryService` (cost).
 - Finish Phase 0 recon: read `content-portal.js` + the `/api/linkedin` & `/api/extension-config`
   backend (how `clientId/portalToken` are issued); investigate `ash-backend` / `ash-attributes-api`.
@@ -1142,5 +1144,7 @@ quick-update, remote-config selectors). See "Existing extension recon" above.
 - Then Phase 1: define the calendar/email/LLM interfaces + Google adapter (no behaviour change).
 - *(Maybe: a light tidy/consolidation pass on this doc — it has grown organically.)*
 
-The Fathom **read path** already ships (Smart Follow-Up / Meeting Prep); the Fathom **ingest +
-splitter** are not built yet. Nothing new deployed this session — verification + design only.
+The Fathom **read path** ships in production (Smart Follow-Up / Meeting Prep); the Fathom **ingest + splitter +
+`google|nylas` calendar adapter** are **built, additive, kill-switched, and dry-run-proven** (2026-06-13) but
+**not yet live** — remaining work is the go-live list (store Nylas creds on Render → trigger → one real write-path
+test → switchover).
