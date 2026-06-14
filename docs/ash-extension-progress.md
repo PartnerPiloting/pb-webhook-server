@@ -849,6 +849,23 @@ portal plumbing.
 running start. **Verify next:** `content-portal.js` (auth broadcast), the `/api/linkedin` +
 `/api/extension-config` backend, and how `clientId/portalToken` are issued.
 
+## Discovery & onboarding — teaching tenants what's possible (2026-06-14)
+
+From a strategy/workflow chat. Closes a real gap: the doc is deep on *what* the system does but near-silent on *how a new tenant discovers it*. Sits directly under "Onboarding IS the business" — discovery is the front of onboarding.
+
+**Problem.** An agentic, type-what-you-want surface has no visible menu. A new tenant (esp. Mr Busy's VA) opens the panel or talks to Winguy and doesn't know what's available → under-uses it or freezes. Discovery must be *built*; it is not automatic.
+
+**Three tiers — loud → quiet, matched to how fast the need decays after week one:**
+1. **Contextual chips = DISCOVERY ("didn't know I could do that").** The *page* decides what shows. On a LinkedIn profile: Add to Portal / Draft connect-follow-up / Book a Zoom. On a messaging thread: Draft reply / Pull transcript / Save to Portal / Make intro. Max 3-4. **Design for the fade:** track which chips a tenant has used; once learned, retire it and promote an undiscovered one → the strip teaches, then gets out of the way.
+2. **"Winguy" keyword = RECALL ("what were my options again?").** Always-there menu-on-demand, scoped to the current surface; one-tap lines, not a tutorial. ★ Same word as the product name → the trigger is just summoning it by name ("Winguy, what can I do here?"). Keyword and brand unify; LLM resolves variants, so no rigid magic command.
+3. **"What's possible?" page in the Portal = REFERENCE/ONBOARDING.** Worked examples, not a feature list: what it does / the exact phrase to say / what comes back. People learn an agentic system from one full round-trip, not an inventory.
+
+**Two architectural seams (both already consistent with doc principles):**
+- **Extension renders the chips; the backend/MCP does the work.** The extension is the only layer that knows the page and can draw on it; MCP tools are deaf/blind to the UI. Exposing a tool as MCP does NOT make it a chip — chip-to-context is mapped explicitly. Build the extension once to (a) detect page type, (b) look up a chip set from **config**. Adding/changing chips = editing config, not code; per-tenant chip config (broker vs fractional = different default chips + language) → multi-tenant is a setting, not a fork. Same config-driven, behind-a-seam discipline as calendar/email/LLM.
+- **Proactive chaining = a Winguy RULE TYPE, not a CLAUDE.md thing.** The conversational equivalent of a chip: after finishing a task, Winguy offers the obvious next step ("Done — save to the Portal and book the next meeting?") → tenant discovers a capability at the moment it matters. Home = Winguy rules (per-tenant, versioned, conflict-checked) as a context-scoped "next-step/chaining" behaviour in the existing taxonomy — never hardcoded. Canonical chain to seed: transcript → follow-up email → save to Portal → book next meeting. **Reveal-vs-enforce split (= existing "integrity in code, LLM proposes only"):** chaining *offers/reveals* (soft, rule-level); hard guarantees that must fire every time (BCC tracker, link-redirect handling) stay in code, never a chaining rule.
+
+**Net:** chips teach unasked (page-driven), the Winguy keyword reminds on demand, the Portal page explains in depth — and both chips and chaining are per-tenant config/rules, not forks. Discovery is the first surface of "Onboarding IS the business".
+
 ## Implementation roadmap — single-tenant-Guy → full product (2026-06-08)
 
 Principles: **additive** (Guy's live setup untouched); build on `dev` behind **off-by-default
@@ -1092,6 +1109,15 @@ server yet so production is unchanged:
   note: editing the shared env group may briefly redeploy services, so pick a quiet moment; (b) the
   **trigger** (lean poll over webhook for MVP); (c) the skipped one-row **save-and-delete** write-path check;
   (d) the **switchover** (Recall off / Fathom on, reversible).
+
+**As of 2026-06-14:** Discovery & onboarding design captured from a strategy chat — see
+**"Discovery & onboarding — teaching tenants what's possible (2026-06-14)"** above. Closes the gap
+that the doc was deep on *what* the system does but silent on *how a new tenant discovers it*.
+Three-tier discovery (contextual **chips** = discover / **"Winguy" keyword** = recall / Portal
+**"What's possible?" page** = reference), and both chips and **proactive chaining** are per-tenant
+**config/rules, not forks** (chips = extension-rendered from config; chaining = a context-scoped
+Winguy rule type, reveal-not-enforce). Discovery = the front of "Onboarding IS the business".
+Design capture only — no code; day-to-day setup untouched.
 
 **Phase 0 progress:** ✓ Extension recon DONE — existing "Network Accelerator" extension will be
 **extended, not rebuilt** (already has multi-tenant auth, LinkedIn scraping, lead lookup, portal
