@@ -606,17 +606,17 @@ the BRAND gives it meaning.
 doesn't need it). Use placeholder **"the Brain" / "second brain"** in code+docs now. Run a proper
 abstract-coinage + **real domain/trademark clearance** (IP Australia) exercise near launch — not
 eyeball-screening in chat. Guy's brand call.
-**✅ CHOSEN: "Winguy"** (Guy's coinage = win + guy; brand-tied to "I know a Guy"). Survived first-pass
+**✅ CHOSEN: "Wingguy"** (Guy's coinage = win + guy; brand-tied to "I know a Guy"). Survived first-pass
 screen (no exact product/trademark found). **Framing (Guy's call, and a good one): it's a CULTURE/term
 spread by word-of-mouth — like "I know a Guy" — NOT a defended product SKU.** That dissolves most
 collision/trademark worry. Two mechanics confirmed: (1) **Guy sets pronunciation by voice** ("Wing-guy")
-→ on-paper ambiguity is moot; (2) **the agent resolves any variant** ("winguy"/"wing guy"/"wing-guy"/
+→ on-paper ambiguity is moot; (2) **the agent resolves any variant** ("wingguy"/"wing guy"/"wing-guy"/
 typos) automatically — it's an LLM, not a rigid parser, so no magic command word.
-**ONE ACTION (cheap, do soon):** grab **domain + handles** (winguy.com/.ai + socials) so the term has a
+**ONE ACTION (cheap, do soon):** grab **domain + handles** (wingguy.com/.ai + socials) so the term has a
 home and no one parks on it.
-**Monitor only (low priority):** a *direct* sales/assistant competitor branding "Winguy/Wingy" (low
+**Monitor only (low priority):** a *direct* sales/assistant competitor branding "Wingguy/Wingy" (low
 odds; file a basic trademark later only if it ever matters). "the Brain" remains internal shorthand for
-what it IS; "Winguy" is the name.
+what it IS; "Wingguy" is the name.
 **Next:** run a dedicated **naming pass** — generate candidates AND pre-screen each against web +
 trademark collisions (so options are warm *and* available); + The-Vault-style metaphors. Then check
 IP Australia (our class) + domain before committing. Guy's brand call.
@@ -625,16 +625,16 @@ IP Australia (our class) + domain before committing. Guy's brand call.
 | Store | Holds | User-facing name |
 |---|---|---|
 | **Airtable** (RETAINED — not migrating) | Leads + client/operational data (records) | **the Portal** |
-| **Postgres** (migrated FROM Notion) | Rules, prompts, accumulated knowledge | **Winguy** |
-- **Winguy = the second brain** (rules/prompts/tuned knowledge in Postgres). "the Brain" was just the
-  placeholder — Winguy *is* the brain.
-- The agent **reads Winguy** (how to act) + **reads/writes the Portal** (the records).
-- Two crisp user actions: **"teach/update Winguy"** → rules (Postgres); **"save to the Portal"** →
+| **Postgres** (migrated FROM Notion) | Rules, prompts, accumulated knowledge | **Wingguy** |
+- **Wingguy = the second brain** (rules/prompts/tuned knowledge in Postgres). "the Brain" was just the
+  placeholder — Wingguy *is* the brain.
+- The agent **reads Wingguy** (how to act) + **reads/writes the Portal** (the records).
+- Two crisp user actions: **"teach/update Wingguy"** → rules (Postgres); **"save to the Portal"** →
   record (Airtable).
 - Why right: leads = relational/high-volume operational data → Airtable fine, no reason to move.
   Rules/prompts = versioned/append-only/integrity-critical/runtime-queried → Postgres (Notion is bad
   at this). Right store per data type, not migration for its own sake.
-- **Discipline:** keep the boundary clean — leads stay in Portal/Airtable, rules stay in Winguy/
+- **Discipline:** keep the boundary clean — leads stay in Portal/Airtable, rules stay in Wingguy/
   Postgres; don't let one bleed into the other.
 
 ### Terminology — user-facing "the Portal", not "Airtable" (decided 2026-06-09)
@@ -642,8 +642,8 @@ User-facing language = **"the Portal"** (their workspace), NEVER "Airtable". Two
 non-technical / ownable ("your portal") for clients; (2) **future-proof** — Airtable is a swappable
 backend (→ Postgres later); "the Portal" is the stable abstraction so language + mental model don't
 change if the store does (same behind-a-seam discipline as calendar/email/LLM).
-**Composed vocabulary:** **Winguy** (the assistant/second brain) → saves to **your Portal** (workspace).
-e.g. "Winguy drafted it and popped it in your portal." Agent resolves any phrasing ("update the portal"
+**Composed vocabulary:** **Wingguy** (the assistant/second brain) → saves to **your Portal** (workspace).
+e.g. "Wingguy drafted it and popped it in your portal." Agent resolves any phrasing ("update the portal"
 / "save to my portal") → the actual write (Airtable today).
 **Internal hygiene:** in code/docs stay technically precise — "Portal UI writes to the Airtable store
 (→ Postgres later)" — so the friendly abstraction never blurs the real data flow. User-facing = portal;
@@ -730,11 +730,11 @@ first (short test loop); let Claude run + self-check a scoped phase, Guy verifie
 - **Dividing line = usage intensity, NOT DIY-vs-not.** Mr Busy looks "occasional" but becomes a heavy
   user *by proxy* via a VA → keep as a deliberate **second wave** (more sales/VA effort). Genuine
   poor-fit = peripheral AND won't delegate → let them self-select out, don't spend energy converting.
-- **GTM flywheel — Winguy triggers the load:** the real constraint is *finding enough right people*;
+- **GTM flywheel — Wingguy triggers the load:** the real constraint is *finding enough right people*;
   the product is a tool for *finding the right people*, so it manufactures its own demand. Loop:
-  **Winguy powers Guy's outreach → loads the pipeline with right-fit people he meets (his ICP) → his
+  **Wingguy powers Guy's outreach → loads the pipeline with right-fit people he meets (his ICP) → his
   visible results = the demo → they become customers (+3 referrals via the Champion mechanic) → who use
-  Winguy → repeat.** Compounds twice: better Winguy → more right people load in AND higher conversion.
+  Wingguy → repeat.** Compounds twice: better Wingguy → more right people load in AND higher conversion.
   Self-selects for the right segment.
 - **Build sequencing: start with what benefits GUY first (Fathom etc.), gradually progress.** Aligned:
   Fathom = highest-value connector; keeps Guy (primary user + craft engine) compounding. **Building for
@@ -853,18 +853,18 @@ running start. **Verify next:** `content-portal.js` (auth broadcast), the `/api/
 
 From a strategy/workflow chat. Closes a real gap: the doc is deep on *what* the system does but near-silent on *how a new tenant discovers it*. Sits directly under "Onboarding IS the business" — discovery is the front of onboarding.
 
-**Problem.** An agentic, type-what-you-want surface has no visible menu. A new tenant (esp. Mr Busy's VA) opens the panel or talks to Winguy and doesn't know what's available → under-uses it or freezes. Discovery must be *built*; it is not automatic.
+**Problem.** An agentic, type-what-you-want surface has no visible menu. A new tenant (esp. Mr Busy's VA) opens the panel or talks to Wingguy and doesn't know what's available → under-uses it or freezes. Discovery must be *built*; it is not automatic.
 
 **Three tiers — loud → quiet, matched to how fast the need decays after week one:**
 1. **Contextual chips = DISCOVERY ("didn't know I could do that").** The *page* decides what shows. On a LinkedIn profile: Add to Portal / Draft connect-follow-up / Book a Zoom. On a messaging thread: Draft reply / Pull transcript / Save to Portal / Make intro. Max 3-4. **Design for the fade:** track which chips a tenant has used; once learned, retire it and promote an undiscovered one → the strip teaches, then gets out of the way.
-2. **"Winguy" keyword = RECALL ("what were my options again?").** Always-there menu-on-demand, scoped to the current surface; one-tap lines, not a tutorial. ★ Same word as the product name → the trigger is just summoning it by name ("Winguy, what can I do here?"). Keyword and brand unify; LLM resolves variants, so no rigid magic command.
+2. **"Wingguy" keyword = RECALL ("what were my options again?").** Always-there menu-on-demand, scoped to the current surface; one-tap lines, not a tutorial. ★ Same word as the product name → the trigger is just summoning it by name ("Wingguy, what can I do here?"). Keyword and brand unify; LLM resolves variants, so no rigid magic command.
 3. **"What's possible?" page in the Portal = REFERENCE/ONBOARDING.** Worked examples, not a feature list: what it does / the exact phrase to say / what comes back. People learn an agentic system from one full round-trip, not an inventory.
 
 **Two architectural seams (both already consistent with doc principles):**
 - **Extension renders the chips; the backend/MCP does the work.** The extension is the only layer that knows the page and can draw on it; MCP tools are deaf/blind to the UI. Exposing a tool as MCP does NOT make it a chip — chip-to-context is mapped explicitly. Build the extension once to (a) detect page type, (b) look up a chip set from **config**. Adding/changing chips = editing config, not code; per-tenant chip config (broker vs fractional = different default chips + language) → multi-tenant is a setting, not a fork. Same config-driven, behind-a-seam discipline as calendar/email/LLM.
-- **Proactive chaining = a Winguy RULE TYPE, not a CLAUDE.md thing.** The conversational equivalent of a chip: after finishing a task, Winguy offers the obvious next step ("Done — save to the Portal and book the next meeting?") → tenant discovers a capability at the moment it matters. Home = Winguy rules (per-tenant, versioned, conflict-checked) as a context-scoped "next-step/chaining" behaviour in the existing taxonomy — never hardcoded. Canonical chain to seed: transcript → follow-up email → save to Portal → book next meeting. **Reveal-vs-enforce split (= existing "integrity in code, LLM proposes only"):** chaining *offers/reveals* (soft, rule-level); hard guarantees that must fire every time (BCC tracker, link-redirect handling) stay in code, never a chaining rule.
+- **Proactive chaining = a Wingguy RULE TYPE, not a CLAUDE.md thing.** The conversational equivalent of a chip: after finishing a task, Wingguy offers the obvious next step ("Done — save to the Portal and book the next meeting?") → tenant discovers a capability at the moment it matters. Home = Wingguy rules (per-tenant, versioned, conflict-checked) as a context-scoped "next-step/chaining" behaviour in the existing taxonomy — never hardcoded. Canonical chain to seed: transcript → follow-up email → save to Portal → book next meeting. **Reveal-vs-enforce split (= existing "integrity in code, LLM proposes only"):** chaining *offers/reveals* (soft, rule-level); hard guarantees that must fire every time (BCC tracker, link-redirect handling) stay in code, never a chaining rule.
 
-**Net:** chips teach unasked (page-driven), the Winguy keyword reminds on demand, the Portal page explains in depth — and both chips and chaining are per-tenant config/rules, not forks. Discovery is the first surface of "Onboarding IS the business".
+**Net:** chips teach unasked (page-driven), the Wingguy keyword reminds on demand, the Portal page explains in depth — and both chips and chaining are per-tenant config/rules, not forks. Discovery is the first surface of "Onboarding IS the business".
 
 ## Implementation roadmap — single-tenant-Guy → full product (2026-06-08)
 
@@ -1113,10 +1113,10 @@ server yet so production is unchanged:
 **As of 2026-06-14:** Discovery & onboarding design captured from a strategy chat — see
 **"Discovery & onboarding — teaching tenants what's possible (2026-06-14)"** above. Closes the gap
 that the doc was deep on *what* the system does but silent on *how a new tenant discovers it*.
-Three-tier discovery (contextual **chips** = discover / **"Winguy" keyword** = recall / Portal
+Three-tier discovery (contextual **chips** = discover / **"Wingguy" keyword** = recall / Portal
 **"What's possible?" page** = reference), and both chips and **proactive chaining** are per-tenant
 **config/rules, not forks** (chips = extension-rendered from config; chaining = a context-scoped
-Winguy rule type, reveal-not-enforce). Discovery = the front of "Onboarding IS the business".
+Wingguy rule type, reveal-not-enforce). Discovery = the front of "Onboarding IS the business".
 Design capture only — no code; day-to-day setup untouched.
 
 **Phase 0 progress:** ✓ Extension recon DONE — existing "Network Accelerator" extension will be
