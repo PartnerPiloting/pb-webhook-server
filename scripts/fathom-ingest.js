@@ -42,6 +42,7 @@ function argVal(flag) {
 
 const COMMIT = process.argv.includes('--commit');
 const LIST = process.argv.includes('--list');
+const POLL = process.argv.includes('--poll');
 const DELETE_ID = argVal('--delete');
 const COACH = (argVal('--client') || process.env.RECALL_COACH_CLIENT_ID || 'Guy-Wilson').trim();
 // First non-flag, non-consumed token = the recording id.
@@ -101,8 +102,19 @@ async function deleteTestRow(id) {
   }
 }
 
+/** --poll : run one Fathom poll pass (dry-run unless --commit). Exercises the trigger end-to-end. */
+async function runPoll() {
+  const { pollFathomMeetings } = require('../services/fathomPollService');
+  console.log(`\n🔁 Fathom poll pass (${COMMIT ? 'COMMIT' : 'DRY RUN'})`);
+  console.log(`   FATHOM_LIVE_FROM      = ${process.env.FATHOM_LIVE_FROM || '(unset → nothing eligible)'}`);
+  console.log(`   FATHOM_INGEST_ENABLED = ${process.env.FATHOM_INGEST_ENABLED || '(unset)'}\n`);
+  const r = await pollFathomMeetings({ coachClientId: COACH, dryRun: !COMMIT });
+  console.log(JSON.stringify(r, null, 2));
+}
+
 async function main() {
   if (LIST) return listMeetings();
+  if (POLL) return runPoll();
   if (DELETE_ID) return deleteTestRow(DELETE_ID);
 
   if (!RECORDING_ID) {

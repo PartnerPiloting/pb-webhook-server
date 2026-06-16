@@ -1812,6 +1812,16 @@ try {
     moduleLogger.error('index.js: Error starting Recall auto-join', e.message, e.stack);
 }
 
+// Fathom poll: every ~15 min, auto-ingest new Fathom meetings (Recall->Fathom migration "trigger").
+// No-op unless FATHOM_POLL_ENABLED=true AND FATHOM_LIVE_FROM is set; writes still gated by FATHOM_INGEST_ENABLED.
+try {
+    const { startFathomPoll } = require('./services/fathomPollService.js');
+    startFathomPoll();
+    moduleLogger.info('index.js: Fathom poll scheduler init');
+} catch (e) {
+    moduleLogger.error('index.js: Error starting Fathom poll', e.message, e.stack);
+}
+
 
 // Top Scoring Leads scaffold (feature gated inside the router module)
 try {

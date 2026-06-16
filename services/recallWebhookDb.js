@@ -168,6 +168,13 @@ async function ensureSchema(client) {
   // Source tag — 'recall' (default) or 'tactiq' / 'fathom' / 'other' for manually-imported transcripts.
   await client.query(`ALTER TABLE recall_meetings ADD COLUMN IF NOT EXISTS source TEXT;`);
 
+  // Real Fathom recording_id (source='fathom-api' rows only). The bot_id/recording_id columns
+  // hold synthetic values for imports, so this is the dedup key the Fathom poller checks before
+  // ingesting. NOT unique: a back-to-back split files several rows from ONE recording, all sharing
+  // this id — "any row exists for this recording" = already ingested.
+  await client.query(`ALTER TABLE recall_meetings ADD COLUMN IF NOT EXISTS fathom_recording_id TEXT;`);
+  await client.query(`CREATE INDEX IF NOT EXISTS idx_recall_m_fathom_rec ON recall_meetings (fathom_recording_id) WHERE fathom_recording_id IS NOT NULL;`);
+
   schemaEnsured = true;
 }
 
@@ -386,7 +393,7 @@ async function updateMeetingTimes(meetingId, { meetingStart, meetingEnd }) {
  * Create a recall_meetings row from a manually-imported transcript (Tactiq, Fathom, etc.).
  * Generates synthetic bot_id/recording_id so the row is distinguishable from real Recall captures.
  */
-async function insertImportedMeeting({ title, source, transcriptText, meetingStart, durationSeconds }) {
+async function insertImportedMeeting({ title, source, transcriptText, meetingStart, durationSeconds, fathomRecordingId }) {
   const p = getPool();
   if (!p) return { ok: false, error: 'database not available' };
   const safeSource = (source || 'other').toString().toLowerCase().slice(0, 32) || 'other';
@@ -398,8 +405,8 @@ async function insertImportedMeeting({ title, source, transcriptText, meetingSta
   try {
     await ensureSchema(client);
     const r = await client.query(
-      `INSERT INTO recall_meetings (bot_id, recording_id, title, transcript_text, duration_seconds, meeting_start, meeting_end, status, source)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, 'incomplete', $8)
+      `INSERT INTO recall_meetings (bot_id, recording_id, title, transcript_text, duration_seconds, meeting_start, meeting_end, status, source, fathom_recording_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 'incomplete', $8, $9)
        RETURNING id`,
       [
         botId,
@@ -412,11 +419,33 @@ async function insertImportedMeeting({ title, source, transcriptText, meetingSta
           ? new Date(new Date(meetingStart).getTime() + durationSeconds * 1000).toISOString()
           : null,
         safeSource,
+        fathomRecordingId ? String(fathomRecordingId) : null,
       ],
     );
     return { ok: true, meeting_id: String(r.rows[0].id), bot_id: botId };
   } catch (e) {
     return { ok: false, error: e.message };
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Dedup check for the Fathom poller: has ANY row already been filed for this Fathom recording_id?
+ * (A back-to-back split files several rows sharing the id — any one means "already ingested".)
+ */
+async function fathomRecordingIngested(fathomRecordingId) {
+  if (!fathomRecordingId) return false;
+  const p = getPool();
+  if (!p) return false;
+  const client = await p.connect();
+  try {
+    await ensureSchema(client);
+    const r = await client.query(
+      `SELECT 1 FROM recall_meetings WHERE fathom_recording_id = $1 LIMIT 1`,
+      [String(fathomRecordingId)],
+    );
+    return r.rows.length > 0;
   } finally {
     client.release();
   }
@@ -1022,7 +1051,7 @@ async function getMeetingsForLead(airtableLeadId, limit = 50) {
     await ensureSchema(client);
     const r = await client.query(
       `SELECT m.id AS meeting_id, m.title, m.transcript_text, m.duration_seconds,
-              m.status, m.created_at, m.updated_at, m.meeting_start,
+              m.status, m.created_at, m.updated_at, m.meeting_start, m.source,
               ml.airtable_lead_id,
               p.verified_name, p.verified_email, p.match_method
        FROM recall_meeting_leads ml
@@ -1407,6 +1436,7 @@ module.exports = {
   updateMeetingTimes,
   saveMeetingSummary,
   insertImportedMeeting,
+  fathomRecordingIngested,
   splitMeeting,
   appendRecallUtterance,
   recordRecallPresence,

@@ -689,9 +689,56 @@ router.get('/recall-review/api/latest-transcript-by-email', async (req, res) => 
         lookupMethod,
       });
     }
-    const latest = rows[0];
+    // --- Prefer Fathom, with a LOUD fallback to Recall (Recall->Fathom migration) ----------
+    // rows are newest-first. Take the latest meeting, then within its time-cluster (same real
+    // meeting captured by both recorders) prefer a USABLE Fathom copy. If we have to serve a
+    // Recall copy for a meeting on/after FATHOM_LIVE_FROM, say so out loud (the chat surfaces it).
+    const FATHOM_MIN_USABLE_CHARS = 200;
+    const CLUSTER_WINDOW_MS = 30 * 60 * 1000;
+    const liveFromMs = (() => {
+      const raw = String(process.env.FATHOM_LIVE_FROM || '').trim();
+      const ms = raw ? Date.parse(raw) : NaN;
+      return Number.isNaN(ms) ? null : ms;
+    })();
+    const isFathom = (r) => String(r.source || '').toLowerCase().startsWith('fathom');
+    const isUsable = (r) => (r.transcript_text || '').length >= FATHOM_MIN_USABLE_CHARS;
+    const rowMs = (r) => {
+      const t = Date.parse(r.meeting_start || r.created_at);
+      return Number.isNaN(t) ? null : t;
+    };
+
+    let latest;
+    let sourceNotice = null;
+    if (liveFromMs == null) {
+      // Migration behaviour OFF (FATHOM_LIVE_FROM unset): identical to before — latest by time.
+      latest = rows[0];
+    } else {
+      const top = rows[0];
+      const topMs = rowMs(top);
+      const cluster = rows.filter((r) => {
+        const t = rowMs(r);
+        return t != null && topMs != null && Math.abs(t - topMs) <= CLUSTER_WINDOW_MS;
+      });
+      const fathomPick = cluster.find((r) => isFathom(r) && isUsable(r));
+      if (fathomPick) {
+        latest = fathomPick;
+      } else {
+        latest = top;
+        // Loud flag only for meetings on/after the cutoff (don't whinge about historical Recall-only).
+        const eligible = topMs != null && topMs >= liveFromMs;
+        if (eligible && !isFathom(latest)) {
+          const brokenFathom = cluster.some((r) => isFathom(r) && !isUsable(r));
+          sourceNotice = brokenFathom
+            ? '⚠️ Fathom transcript for this meeting looks incomplete — showing the Recall copy instead. Fathom may have failed to capture it.'
+            : '⚠️ No Fathom transcript found for this meeting — showing the Recall copy instead. Fathom may have missed it.';
+        }
+      }
+    }
+
     const rawText = latest.transcript_text || '';
-    const transcript = await replaceParticipantLabelsInTranscript(rawText, latest.meeting_id);
+    let transcript = await replaceParticipantLabelsInTranscript(rawText, latest.meeting_id);
+    // Bake the notice into the transcript text so it surfaces even through the current MCP client.
+    if (sourceNotice) transcript = `${sourceNotice}\n\n${transcript}`;
 
     if (wantText) {
       res.type('text/plain; charset=utf-8');
@@ -711,7 +758,9 @@ router.get('/recall-review/api/latest-transcript-by-email', async (req, res) => 
         meeting_start: latest.meeting_start,
         duration_seconds: latest.duration_seconds,
         status: latest.status,
+        source: latest.source || null,
       },
+      sourceNotice,
       transcript,
     });
   } catch (e) {
