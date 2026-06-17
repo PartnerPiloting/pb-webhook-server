@@ -27,7 +27,7 @@ const clientService = require('./clientService');
 const { findLeadByEmail, findLeadByName } = require('./inboundEmailService');
 const { insertImportedMeeting, addMeetingLead } = require('./recallWebhookDb');
 const { normalizeEmail } = require('./recallImportService');
-const { splitFathomMeeting } = require('./fathomSplitService');
+const { splitFathomMeeting, eventLeadSpeaks } = require('./fathomSplitService');
 const { extractMeetingUrl, isCoachAttending } = require('./recallAutoJoinService');
 const { getMeetingsInWindow } = require('./calendarProvider');
 const { createSafeLogger } = require('../utils/loggerHelper');
@@ -232,9 +232,16 @@ async function ingestFathomMeeting(opts = {}) {
   const coachNames = [coach.clientName, 'Guy Wilson'].filter(Boolean);
   const events = await relevantCalendarEvents(meeting, coach, calendarEvents);
 
-  // ---- SPLIT PATH (back-to-back: >1 real meeting in the window) -----------
-  if (events.length > 1) {
-    const split = splitFathomMeeting(meeting, events, { coachNames, coachEmails });
+  // Guard against FALSE splits: only treat as a real back-to-back the events whose expected lead
+  // ACTUALLY SPEAKS in the recording. A call that overruns into the next booked slot, or a phantom/
+  // duplicated calendar event, leaves a non-attending lead (cancelled/no-show) who never speaks — so
+  // we must not carve a bogus segment under their name. (2026-06-17 Al/Courtney case.) Worst case the
+  // filter is over-eager and we file as a single meeting, which is always safe (lead-matched by email).
+  const speakingEvents = events.filter((ev) => eventLeadSpeaks(meeting, ev, coachNames));
+
+  // ---- SPLIT PATH (back-to-back: >1 real meeting whose lead actually spoke) ----
+  if (speakingEvents.length > 1) {
+    const split = splitFathomMeeting(meeting, speakingEvents, { coachNames, coachEmails });
     const segPlans = [];
     for (const seg of split.segments) {
       const lr = await matchLeadsForSegment(coach, seg);

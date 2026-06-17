@@ -61,6 +61,25 @@ function eventLeadEmails(ev, coachEmails) {
   )];
 }
 
+/**
+ * Does this calendar event's expected lead ACTUALLY SPEAK in the recording?
+ * Guard against false splits: if a call overruns into the next booked slot, or a calendar event
+ * is a phantom/duplicate, the "second meeting" never really happened — its lead (cancelled/no-show)
+ * never speaks. We use this to drop such events before deciding to split, so we never carve a
+ * segment under the wrong person's name. (Real case 2026-06-17: Al's call overran into Courtney's
+ * still-booked-but-cancelled slot → Courtney never spoke, yet a bogus "Courtney" segment was cut.)
+ */
+function eventLeadSpeaks(meeting, ev, coachNames) {
+  const leadName = eventLeadName(ev, coachNames);
+  if (!leadName) return false;
+  const segs = Array.isArray(meeting.transcript) ? meeting.transcript : [];
+  return segs.some((u) => {
+    const speaker = (u && u.speaker && (u.speaker.display_name || u.speaker.name))
+      || (typeof u?.speaker === 'string' ? u.speaker : '');
+    return speakerMatchesLead(speaker, leadName);
+  });
+}
+
 function flattenLines(lines) {
   return lines
     .map((l) => `${l.ts ? `[${l.ts}] ` : ''}${l.speaker}: ${l.text}`.trim())
@@ -133,5 +152,6 @@ module.exports = {
   speakerMatchesLead,
   eventLeadName,
   eventLeadEmails,
+  eventLeadSpeaks,
   tsToSeconds,
 };
