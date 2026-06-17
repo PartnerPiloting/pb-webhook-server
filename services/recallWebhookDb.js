@@ -5,7 +5,7 @@
  * transcripts from BOTH Recall.ai AND Fathom (and pasted imports). "recall" here is a
  * historical label (Recall.ai was the first source), NOT a tie to the Recall.ai service.
  * `source` column distinguishes the origin ('recall' / 'fathom-api' / 'tactiq' / 'other').
- * See docs/ash-extension-progress.md → "Terminology trap — recall_ ≠ Recall.ai".
+ * See docs/wingguy.md → "Terminology trap — recall_ ≠ Recall.ai".
  *
  * Tables:
  *   recall_webhook_events — raw payloads

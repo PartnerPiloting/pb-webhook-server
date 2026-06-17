@@ -11,7 +11,7 @@
  * to that meeting's lead. A single meeting is filed as-is.
  *
  * ⚠ NAMING: "recall_*" = the source-agnostic transcript store, NOT the Recall.ai service.
- * See docs/ash-extension-progress.md → "Terminology trap — recall_ ≠ Recall.ai".
+ * See docs/wingguy.md → "Terminology trap — recall_ ≠ Recall.ai".
  *
  * ADDITIVE + SAFE:
  *   - New file; nothing calls it yet. Recall path untouched.

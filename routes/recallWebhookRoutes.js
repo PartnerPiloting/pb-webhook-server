@@ -5,7 +5,7 @@
  * service. The /recall-review/api/latest-transcript-by-email endpoint (used by the
  * recall_latest_transcript MCP that powers Guy's "I had a meeting with X" chat) returns the
  * latest meeting for a lead regardless of source — Recall.ai OR Fathom. No source filter.
- * See docs/ash-extension-progress.md → "Terminology trap — recall_ ≠ Recall.ai".
+ * See docs/wingguy.md → "Terminology trap — recall_ ≠ Recall.ai".
  */
 
 const express = require('express');

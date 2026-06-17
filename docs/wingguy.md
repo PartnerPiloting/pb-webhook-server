@@ -1,7 +1,8 @@
-# ASH Extension — State of Play (living doc)
+# Wingguy — Product, Build & GTM (living doc)
 
-> **How to use this doc.** This is the single source of truth for the ASH LinkedIn
-> outreach extension + multi-tenant calendar/email work. It is **weekend / after-hours
+> **How to use this doc.** This is the single source of truth for **Wingguy** — the
+> productised LinkedIn outreach + booking + post-call service (Chrome extension +
+> multi-tenant calendar/email + the rules/second-brain). It is **weekend / after-hours
 > paced** — Guy is in a sales push by day, so this progresses slowly and must never
 > disrupt the day-to-day setup. At the start of each session, read the **"You are here"**
 > section at the bottom first. At the end of each session, update it. Companion to
@@ -9,7 +10,7 @@
 >
 > **Working rhythm (decided 2026-06-09):** THIS doc (in git) is home base — NOT any single
 > chat. Start a **new, focused chat per area** ("Nylas spike", "de-personalise rules",
-> "Phase 0 recon", etc.); open it with *"where are we on the ASH extension"* and Claude reads
+> "Phase 0 recon", etc.); open it with *"where are we on Wingguy"* and Claude reads
 > this doc to orient. Claude updates + commits this doc at the end of each session. Chats are
 > disposable; the doc accumulates. Don't reload old mega-chats as working context.
 
