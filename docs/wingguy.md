@@ -1156,7 +1156,7 @@ quick-update, remote-config selectors). See "Existing extension recon" above.
   (c) **switchover** (Recall off) after a clean ~2-3 wk trial. *(Schema change `fathom_recording_id` shipped via the
   additive ensureSchema-ALTER pattern — the `staging` branch is ~2750 commits stale, so it's no longer a usable gate;
   validated via dry-run jobs on prod instead.)*
-- **✅ BUILT 2026-06-17 (commit `c311609a`) — Fathom "content ready" webhook (replaces the poll lag).**
+- **✅ LIVE IN PROD 2026-06-17 (commit `c311609a`) — Fathom "content ready" webhook (replaces the poll lag).**
   **Research confirmed:** Fathom's "new meeting content ready" webhook is real; it signs with the **identical
   Svix HMAC scheme as Recall** (`whsec_` secret + `webhook-id`/`webhook-timestamp`/`webhook-signature` headers,
   signed over `${id}.${timestamp}.${rawBody}`), and the payload carries a **top-level numeric `recording_id`**
@@ -1167,11 +1167,17 @@ quick-update, remote-config selectors). See "Existing extension recon" above.
   OFF), `FATHOM_LIVE_FROM` (must be set), `FATHOM_INGEST_ENABLED` (write). Dedup via `fathomRecordingIngested`;
   always 200-acks; **poll kept as backstop**. Registration helper `scripts/fathom-webhook.js` (`--register`/`--list`/
   `--delete`) prints the `whsec_` to set as `FATHOM_WEBHOOK_SECRET`.
-  **STILL TO DO (go-live, cloud-only):** (1) Render one-off job `node scripts/fathom-webhook.js --register
-  https://pb-webhook-server.onrender.com/webhooks/fathom` → capture `whsec_`. (2) Set `FATHOM_WEBHOOK_SECRET` +
-  `FATHOM_WEBHOOK_ENABLED=true` on Render (env edit redeploys — quiet moment). (3) Probe `GET /webhooks/fathom`;
-  fire Fathom's test webhook (expect 401 unsigned / 200 signed; fake id → "not in fetched window"). (4) Finish a
-  real meeting → confirm it ingests in seconds, then `fathom-ingest.js --poll` (dry-run) reports `already ingested`.
+  **GO-LIVE DONE 2026-06-17 (all via Render API, single-tenant Guy-Wilson):** Registered the webhook with Fathom
+  (`POST /external/v1/webhooks`, id `ZVa_DLhYLngu5Pyx`, `triggered_for:["my_recordings"]`, `include_summary:true`).
+  Set `FATHOM_WEBHOOK_SECRET` (the returned `whsec_…`) + `FATHOM_WEBHOOK_ENABLED=true` on Render → deployed →
+  probe confirms `processing_enabled:true, secret_configured:true, live_from_set:true`. **Verified live end-to-end**
+  with signed Svix POSTs: (A) tampered signature → **401**; (B) valid sig + fake `recording_id` → **200**
+  `processed:false` `"not in fetched window"` (graceful, no crash, no retry-storm); (C) valid sig + real recent
+  recording → **200 `"already ingested"`** (dedup held — poll had already filed it, no double-file). Full chain
+  proven: signature security → process gates → ingest path → dedup → graceful ack. Only un-exercised sliver is a
+  brand-new write *via the webhook* (the 5-min poll files everything before a fresh one exists to catch) — but it's
+  the SAME `ingestFathomMeeting` the poll uses, so the next genuinely-new meeting will file in seconds, with the
+  poll as backstop. **To revoke:** `node scripts/fathom-webhook.js --delete ZVa_DLhYLngu5Pyx` + unset the env flag.
 - **(superseded — original brief) Fathom "content ready" webhook (replaces the poll lag). Verified safe + additive 2026-06-17:**
   Today ingest is a timer (`services/fathomPollService.js`, interval = `FATHOM_POLL_INTERVAL_MS`) that lists recent
   meetings and files new ones. The webhook just turns that pull into a push. **Design:** a new inbound route receives
