@@ -140,6 +140,7 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating, onDelete }) => {
         linkedinProfileUrl: lead.linkedinProfileUrl || '',
         viewInSalesNavigator: lead.viewInSalesNavigator || '',
         email: lead.email || '',
+        altEmails: lead.altEmails || lead['Alt Emails'] || '',
   phone: lead.phone || '',
         location: lead.location || '',
         notes: lead.notes || '',
@@ -163,6 +164,44 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating, onDelete }) => {
       [field]: value
     }));
     setHasChanges(true);
+  };
+
+  // --- Other emails (multi-email per lead) ---------------------------------
+  // Stored as a newline-separated string in formData.altEmails (matches Airtable + the matcher).
+  // Rendered as a list; add is lightly validated, remove rebuilds the string.
+  const [newAltEmail, setNewAltEmail] = useState('');
+  const [altEmailError, setAltEmailError] = useState('');
+
+  const parseAltEmails = (str) => (str || '')
+    .split(/[;,\n]+/)
+    .map(e => e.trim())
+    .filter(Boolean);
+
+  const isValidEmailShape = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
+
+  const addAltEmail = () => {
+    const candidate = (newAltEmail || '').trim().toLowerCase();
+    if (!candidate) return;
+    if (!isValidEmailShape(candidate)) {
+      setAltEmailError("That doesn't look like a valid email address.");
+      return;
+    }
+    const existing = parseAltEmails(formData.altEmails).map(e => e.toLowerCase());
+    const primary = (formData.email || '').trim().toLowerCase();
+    if (candidate === primary || existing.includes(candidate)) {
+      setAltEmailError('That email is already on this lead.');
+      return;
+    }
+    const next = [...parseAltEmails(formData.altEmails), candidate].join('\n');
+    handleChange('altEmails', next);
+    setNewAltEmail('');
+    setAltEmailError('');
+  };
+
+  const removeAltEmail = (index) => {
+    const list = parseAltEmails(formData.altEmails);
+    list.splice(index, 1);
+    handleChange('altEmails', list.join('\n'));
   };
 
   const applyFollowUpPreset = (days) => {
@@ -724,6 +763,53 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating, onDelete }) => {
               className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
               placeholder="email@example.com"
             />
+          </div>
+
+          {/* Other emails — alternate addresses for the same person (e.g. business email used to
+              book a meeting vs the personal email on LinkedIn). The system also adds these
+              automatically when a booking is matched by name. */}
+          <div className="flex">
+            <label className="w-28 text-sm font-medium text-gray-700 flex-shrink-0 py-2">Other emails</label>
+            <div className="flex-1">
+              {parseAltEmails(formData.altEmails).length > 0 && (
+                <div className="space-y-2 mb-2">
+                  {parseAltEmails(formData.altEmails).map((alt, idx) => (
+                    <div key={`${alt}-${idx}`} className="flex items-center gap-2">
+                      <span className="flex-1 px-3 py-2 text-sm bg-gray-50 border border-gray-200 rounded-md break-all">{alt}</span>
+                      <button
+                        type="button"
+                        onClick={() => removeAltEmail(idx)}
+                        aria-label={`Remove ${alt}`}
+                        className="flex-shrink-0 px-3 py-2 text-gray-400 hover:text-red-600"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div className="flex items-center gap-2">
+                <input
+                  type="email"
+                  value={newAltEmail}
+                  onChange={(e) => { setNewAltEmail(e.target.value); if (altEmailError) setAltEmailError(''); }}
+                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addAltEmail(); } }}
+                  className={`flex-1 px-3 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none ${altEmailError ? 'border-red-400' : 'border-gray-300'}`}
+                  placeholder="Add another email…"
+                />
+                <button
+                  type="button"
+                  onClick={addAltEmail}
+                  className="flex-shrink-0 px-3 py-2 text-sm font-medium text-blue-600 border border-blue-200 rounded-md hover:bg-blue-50"
+                >
+                  Add
+                </button>
+              </div>
+              {altEmailError && (
+                <p className="mt-1 text-xs text-red-600">{altEmailError}</p>
+              )}
+              <p className="mt-1 text-xs text-gray-400">Any address here will also find this person. New emails are added automatically when a booking is matched by name.</p>
+            </div>
           </div>
 
           <div className="flex">

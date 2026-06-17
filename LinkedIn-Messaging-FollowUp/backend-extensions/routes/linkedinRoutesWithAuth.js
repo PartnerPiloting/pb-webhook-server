@@ -1501,6 +1501,28 @@ router.get('/recall-transcripts-for-lead', async (req, res) => {
 });
 
 /**
+ * Sanitize the portal-supplied "Alt Emails" value before it hits Airtable.
+ * Splits on newline/semicolon/comma, trims + lowercases each, drops anything that isn't a
+ * plausible email, drops any that equals the primary {Email}, and de-dupes. Returns a
+ * newline-separated string (the storage format read by findLeadByEmail / learnEmailForLead).
+ * This is the server-side safety net mirroring the browser-side validation.
+ */
+function sanitizeAltEmailsString(raw, primaryEmail) {
+  if (raw == null) return '';
+  const primary = String(primaryEmail || '').toLowerCase().trim();
+  const shape = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  const seen = new Set();
+  const out = [];
+  for (const part of String(raw).split(/[;,\n]+/)) {
+    const e = part.trim().toLowerCase();
+    if (!e || !shape.test(e) || e === primary || seen.has(e)) continue;
+    seen.add(e);
+    out.push(e);
+  }
+  return out.join('\n');
+}
+
+/**
  * GET /api/linkedin/leads/:id
  * Get a specific lead by ID
  */
@@ -1546,6 +1568,7 @@ router.get('/leads/:id', async (req, res) => {
       linkedinProfileUrl: f['LinkedIn Profile URL'],
       viewInSalesNavigator: f['View In Sales Navigator'],
       email,
+      altEmails: f['Alt Emails'] || '',
       phone,
       location,
       aiScore: f['AI Score'],
@@ -1793,8 +1816,18 @@ router.put('/leads/:id', async (req, res) => {
     const airtableBase = await getAirtableBase(req);
     const leadId = req.params.id;
     const updates = { ...req.body };
-    
+
     logger.info('LinkedIn Routes: Updating lead:', leadId, 'with data:', updates);
+
+    // Sanitize Alt Emails (multi-email per lead): clean/validate/dedupe and strip the primary.
+    if (updates['Alt Emails'] !== undefined) {
+      let primaryEmail = updates['Email'];
+      if (primaryEmail === undefined) {
+        try { const cur = await airtableBase('Leads').find(leadId); primaryEmail = cur.get('Email'); }
+        catch (e) { logger.warn('LinkedIn Routes: could not read primary Email for Alt Emails sanitize:', e.message); }
+      }
+      updates['Alt Emails'] = sanitizeAltEmailsString(updates['Alt Emails'], primaryEmail);
+    }
 
     // Defensive log: track any attempt to toggle Posts Actioned via API
     if (updates && Object.prototype.hasOwnProperty.call(updates, 'Posts Actioned')) {
@@ -1874,6 +1907,7 @@ router.put('/leads/:id', async (req, res) => {
       linkedinProfileUrl: updatedRecords[0].fields['LinkedIn Profile URL'],
       viewInSalesNavigator: updatedRecords[0].fields['View In Sales Navigator'],
       email: updatedRecords[0].fields['Email'],
+      altEmails: updatedRecords[0].fields['Alt Emails'] || '',
       phone: updatedRecords[0].fields['Phone'],
       notes: updatedRecords[0].fields['Notes'],
       followUpDate: updatedRecords[0].fields['Follow-Up Date'],
