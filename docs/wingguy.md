@@ -8,11 +8,53 @@
 > section at the bottom first. At the end of each session, update it. Companion to
 > [`ash-extension-plan.md`](ash-extension-plan.md) (the original vision/brief).
 >
+> **⚠ Scan-first (so this big doc doesn't grow duplicates):** before adding *anything* new, skim the
+> **🗺 Topic map** directly below and **Ctrl-F the topic across the whole doc** — themes recur here at
+> different dates. Append to / cross-link the existing home (with a dated note) rather than starting a
+> fresh, disconnected entry. Don't trust "I landed on it and that's the whole story" — check the map.
+>
 > **Working rhythm (decided 2026-06-09):** THIS doc (in git) is home base — NOT any single
 > chat. Start a **new, focused chat per area** ("Nylas spike", "de-personalise rules",
 > "Phase 0 recon", etc.); open it with *"where are we on Wingguy"* and Claude reads
 > this doc to orient. Claude updates + commits this doc at the end of each session. Chats are
 > disposable; the doc accumulates. Don't reload old mega-chats as working context.
+
+---
+
+## 🗺 Topic map — where each theme lives (skim before adding; Ctrl-F by section title)
+
+> Listed by **section title** (Ctrl-F to jump — line numbers drift as the doc grows). **⚠ = the topic
+> recurs in several places; read them together before editing, and add new thinking to the cluster
+> (with a date), not as an orphan.** Status/most-current state always lives in **▶ You are here** (bottom)
+> + the linked memories.
+
+- **Orientation:** One-line vision · Iron rules (do not break) · ▶ You are here (read first each session) ·
+  Terminology trap — "recall_" ≠ Recall.ai.
+- **Product surfaces & UX:** Panel surfaces · Booking-from-the-panel · Post-call email workflow · Post-call
+  follow-up agent (scope proven) · Discovery & onboarding (chips / keyword / page) · Existing extension recon ·
+  Free-Claude wedge + the ONE-CONNECTOR design.
+- **⚠ AI model, accounts & who-pays — TWO surfaces, read together** (panel = Guy's API key / his COGS;
+  connector-cockpit = the *client's own Claude* / ~$0 to Guy): AI / model layer · AI cost economics ·
+  Cost-bearing vs AI-hosting · Simple cost summary · Model per job (Claude draft / Gemini score) · Client AI
+  requirement = Claude · BYO API key feasibility · Claude-in-Chrome vs custom extension · Free-Claude wedge ·
+  +$50 Wingguy upsell · 100-client P&L. *(The early "clients need no AI account" line is panel-only — see the
+  scope clarifier on "AI / model layer".)*
+- **⚠ Pricing & delivery** (canonical = "Pricing + delivery model"; refinements scattered): Pricing + delivery
+  model · Pricing snapshot · roadmap Phase 6 · +$50 Wingguy upsell · Economics — path to ~100 · 100-client P&L.
+- **Rules / second-brain engine (= "Wingguy", the Postgres brain):** Data architecture — two stores ·
+  Rules de-personalisation · Rules editing UX · Rules integrity (code gates, LLM proposes only) · Gated
+  extension — two kinds of mess · Stickiness vision · Where this sits vs frontier · Keeping Wingguy directives
+  in Wingguy (not the client's general Claude memory).
+- **Naming & terminology:** Naming the second brain (✅ Wingguy chosen) · name-variant policy (in Naming +
+  Discovery) · Terminology — "the Portal" not Airtable · Terminology trap — "recall_".
+- **Calendar / email / transcript infra:** Middleman (Nylas) · "Catch 1" · Provider notes · Pricing snapshot ·
+  Transcript layer deep-dive · Fathom API — live verification + back-to-back. *(Live status → ▶ You are here +
+  memory `project_recall_to_fathom_migration`.)*
+- **Architecture & build process:** Environments & deploy flow · Implementation roadmap (7 phases) · De-risking
+  spikes · What actually paces the build · Scope reality check · Key code anchors.
+- **GTM / market / scaling:** Target market + go-forward · Strategy handoff · Competitive position · Scaling to
+  ~50 (intro-mesh; NO recurring meetings) · Ideal client = frequency-of-use · Onboarding = activation ·
+  Sequencing the reveal · VA model + cost · Guy's time ~3 days/wk · LinkedIn analogy (renting a solved network).
 
 ---
 
@@ -160,6 +202,13 @@ through LinkedIn's paste handler). *(Surfaced 2026-06-08.)*
 ---
 
 ### AI / model layer (clients need no AI account; model is swappable)
+> **★ Scope clarifier (2026-06-18 — prevents a real mix-up):** the "clients need no AI account / AI is
+> Guy's COGS" model below describes the **EXTENSION PANEL** surface (VA no-thinking flow; backend calls
+> the AI on Guy's key). It is **NOT** the whole story. The later **connector / cockpit** surface (the
+> *client's own Claude*, the free→paid wedge) runs on the **client's** AI account at **~$0 to Guy**.
+> **Two surfaces, two cost models** — read this together with *"Free-Claude wedge + the ONE-CONNECTOR
+> design"*, *"Client AI requirement = Claude"*, *"+$50 Wingguy upsell"*, and *"Keeping Wingguy directives
+> in Wingguy"*. Don't quote the COGS line as if it also covers the connector.
 - **Clients never need Claude, ChatGPT, Copilot, or any AI account.** They use the panel;
   the panel calls Guy's backend; the backend calls the AI **server-side on Guy's API key**.
   AI cost is Guy's COGS (already inside the $150/$300 pricing), invisible to the client.
@@ -613,6 +662,14 @@ spread by word-of-mouth — like "I know a Guy" — NOT a defended product SKU.*
 collision/trademark worry. Two mechanics confirmed: (1) **Guy sets pronunciation by voice** ("Wing-guy")
 → on-paper ambiguity is moot; (2) **the agent resolves any variant** ("wingguy"/"wing guy"/"wing-guy"/
 typos) automatically — it's an LLM, not a rigid parser, so no magic command word.
+**Variant policy (decided 2026-06-18):** *spellings of the chosen name* — WG, Winguy (one g), wing guy,
+wing-guy, typos — **accept silently** (just the brand written loosely). **"Wingman" is the deliberate
+exception:** it's the **ruled-out, competitor-colliding** name (see the struck-through Wingman entry below —
+Clari Copilot's "Wingman" etc.), so do **NOT** silent-alias it. **Serve the request anyway**, but **gently
+sign back as Wingguy** ("yep, that's me — I go by Wingguy") to train the brand. Reject both extremes:
+*silent-accept* trains users into a rival's mark (the exact "default into that" to avoid); *deaf/ignore* is
+bad UX and teaches nothing. Correct **lightly/occasionally — never nag every turn**; spoken form already
+disambiguates (nobody says "Wing-guy" and "Wingman" alike), so this mostly matters for typed shorthand.
 **ONE ACTION (cheap, do soon):** grab **domain + handles** (wingguy.com/.ai + socials) so the term has a
 home and no one parks on it.
 **Monitor only (low priority):** a *direct* sales/assistant competitor branding "Wingguy/Wingy" (low
@@ -1434,6 +1491,16 @@ to *prevent* leakage into native memory (unwinnable — it's Anthropic's, in the
 inert, and **own the save-path** via the existing `teach-rule`/Commit write-door with an **assertive tool
 description** that routes "from now on…" changes to the tool, not native memory. Two concrete to-dos noted.
 Day-to-day setup untouched.
+
+**As of 2026-06-18 (doc hygiene) — TOPIC MAP + DEDUP PASS:** full end-to-end read of the doc. Added a
+**🗺 Topic map** near the top (skim + Ctrl-F before adding, to stop duplicates as it grows) + a **scan-first**
+rule in the header. Reconciled the one genuine contradiction found — the **AI-account / who-pays** story (the
+early "clients need no AI account / Guy's COGS" line is **panel-only**; the connector/cockpit runs on the
+**client's own Claude** at ~$0 to Guy) — via a scope-clarifier note on "AI / model layer". Recorded the
+**name-variant policy** at the Naming section (accept name-spellings silently; **"Wingman" = serve-but-sign-
+back-as-Wingguy, never silent-alias**). No content removed; dated provenance intact. *(A full thematic
+restructure was considered and rejected — it'd flatten the doc's "supersedes/corrected" lineage; navigability
+via the map was the lower-risk fix.)*
 
 **As of 2026-06-08:** Full planning done — architecture, cost model, model-lock-in,
 pricing (crystallised), and a **7-phase implementation roadmap** all captured above.
