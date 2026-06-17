@@ -1142,6 +1142,14 @@ quick-update, remote-config selectors). See "Existing extension recon" above.
 - **Rules de-personalisation spike:** Guy pastes ONE section of his Notion rules → Claude returns a
   de-identified master + variable catalogue + flagged implicit-personal bits.
 - Then Phase 1: define the calendar/email/LLM interfaces + Google adapter (no behaviour change).
+- **Email-identity hardening (LinkedIn personal → business email switch):** a lead is ONE person with
+  MANY emails over time (personal on LinkedIn → business when they book), but matching + lookup key off a
+  single email, so a switch breaks both linking (meeting → lead) and lookup ("pull up X's call"). Real case
+  2026-06-17: Courtney's business email `courtney@mosaicwealth.au` → `lead_not_found`; name lookup still found
+  her (name-fallback = current safety net). Fix: let a lead hold ALL known emails and match/lookup against ANY.
+  Ideal = SELF-HEALING — when a booking's invitee email is unknown but the NAME matches a known lead, auto-record
+  that new email onto the lead (the name-match already runs in ingest; just write back what it learns). Same
+  identity layer as the calendar/Nylas work. Interim habit for Guy: ADD a new email, don't REPLACE the old one.
 - *(Maybe: a light tidy/consolidation pass on this doc — it has grown organically.)*
 
 The Fathom **read path** ships in production (Smart Follow-Up / Meeting Prep); the Fathom **ingest + splitter +
