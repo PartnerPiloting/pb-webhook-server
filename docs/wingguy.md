@@ -58,6 +58,75 @@
 
 ---
 
+## ✅ CANONICAL CURRENT STATE — read this first; trust it over the journal
+
+> **How this doc works now (2026-06-18, restructured for an AI reader).** This block is the
+> **deduplicated, present-tense truth** — trust it for *what is decided / true now*. The short reference
+> sections that follow (vision · iron rules · terminology trap · environments) are stable. Everything from
+> the **═══ JOURNAL ═══** divider down is the **dated decision journal** — provenance only; read it for
+> *why* a thing was decided or *what it superseded*, **never to reconstruct current state** (that's how
+> status goes stale). **Volatile build-status is NOT restated here** — it lives in exactly one place,
+> **▶ You are here** (bottom) + the linked memories. **Discipline: when a decision below changes, edit
+> THIS block AND add a dated journal entry — don't just append and let this drift.**
+
+**What Wingguy is.** Productised LinkedIn outreach + booking + post-call follow-up, sold as a done-with-you
+managed service to a non-technical niche (insurance brokers, financial planners, time-starved fractionals).
+Moat = accumulated per-client tuned state + integration wiring + the "I know a Guy" relationship — NOT
+novelty or rules-as-text.
+
+**Two data stores (user-facing names).** **the Portal** = Airtable (leads/records; swappable→Postgres
+later). **Wingguy** = Postgres (rules/prompts/accumulated knowledge = the "second brain"). The agent reads
+Wingguy (how to act) + reads/writes the Portal (the records).
+
+**Two product surfaces, one backend (key non-obvious distinction).**
+- **Extension panel** — fixed-button, no-thinking VA flow; backend calls the AI **on Guy's key (his COGS)**.
+  Clients need no AI account for *this* surface.
+- **Connector / cockpit** — the **client's own Claude** via **ONE remote MCP connector**; runs on the
+  **client's** AI (~$0 to Guy) = the free→paid wedge. This is why "clients need no AI account" is panel-only.
+
+**AI / model.** Standardise on **Claude** now behind a swappable seam: **Claude = drafting** (voice),
+**Gemini Flash = scoring** (cheap, high-volume). Connector surface needs the client's own Claude account
+(framed as a product requirement, like "requires Chrome").
+
+**Pricing (canonical).** $150/mo basics · **+$50 = Wingguy** → $200 full self-serve · **$300 = done-for-you**
+(Mr Busy + VA). Tier by **service level (DIY vs done-for-you), not feature**. Referral: maintain **3 active
+paying** referrals → $150 drops, **$50 floor** stays (conditional, grace window; $300→$50 tied to VA
+self-sufficiency). Separate **one-time setup** from recurring. **No contractual lock-in** (protect only
+months 1-3). ~100-client steady-state ≈ **AUD ~$265k/yr, ~78% margin** *(planning ballpark)*.
+
+**Architecture (locked).** Additive only — Guy's single-tenant setup untouched until he flips flags ·
+calendar+email multi-tenant via **Nylas** middleman (hosted auth) behind a **thin adapter** (Google = Guy's
+current adapter) · connector auth = a **bolt-on managed provider** (**WorkOS AuthKit** the lead pick), not
+hand-rolled OAuth · rules in **Postgres, versioned/append-only, single conflict-checked write-door** (LLM
+proposes, code writes, curated categories) · **LinkedIn read+send stay human-at-the-glass** (never headless
+send) · build `dev`→staging→main behind off-by-default flags (exception: Fathom backend-only work runs on
+`main`, guarded by design + kill-switch).
+
+**Capture / transcript.** Migrating **Recall.ai → Fathom** (Fathom = client-owned capture + "ready" webhook;
+capture cost stays the client's). `recall_*` names = the **source-agnostic store**, NOT Recall.ai. Back-to-
+back **splitter is required** (calendar-anchored + speaker-transition; serial cut, overlap accepted).
+*Live status → ▶ You are here + memory `project_recall_to_fathom_migration`.*
+
+**GTM.** ICP = **frequency-of-use** (relationship-building is their daily job), not job title. **Wingguy
+manufactures its own demand** (powers Guy's outreach → loads the pipeline with right-fit people → results =
+the demo → referrals via the Champion mechanic). Scale to ~50–100 via three levers: product self-improves +
+**productised onboarding** + a **Wingguy-seeded intro-mesh (NO recurring meetings)**. **Onboarding IS the
+business; its #1 job = activation, not rapport.** Website = credibility + conversion (NOT lead-gen);
+WordPress = single source of truth with a public/Private per-page flag.
+
+**Open questions (unresolved).** (1) **Cross-person craft portability** — does craft live in portable rules
+or non-portable chat-memory? → the clean-Claude spike (Spike 0) answers it. (2) **First-run bar for
+skeptics** vs "let them train it". (3) Multi-tenant refactor **paused** for the sales push (memory
+`project_paused_refactor_state`).
+
+**Backlog — flagged, not yet spec'd.**
+- **Connection follow-up worklist ("where am I up to")** *(flagged 2026-06-18)* — replace Guy's manual scan
+  of LinkedIn recent-connections with a generated list of *where he's up to + what's still outstanding*.
+  New connections already land in the **Portal (Airtable leads table) with a connection date**; the feature
+  = **flag each lead actioned / not-actioned** and surface the not-yet-actioned ones as a worklist (likely
+  sortable by connection date). **Guy-first** (fixes his daily "where was I" friction) **and client-facing**
+  (every client has the same pain). No full spec yet — capture only.
+
 ## The one-line vision
 
 Turn the personalised LinkedIn outreach + booking + post-call workflow into a near
@@ -120,6 +189,8 @@ Frontend mirrors it on Vercel: `pb-webhook-server.vercel.app` (prod) /
 3. Promote **`dev` → `staging` → `main`** as each small piece proves out.
 4. **Standing discipline (slow-pace hazard):** periodically merge `main` *into* `dev` so dev
    doesn't drift while it sits between weekend sessions — keeps the eventual promotion clean.
+
+═══════════════════════════ JOURNAL — provenance below (read for *why*, not current state) ═══════════════════════════
 
 ## Decisions locked so far (from the 2026-06-07 planning conversation)
 
@@ -1501,6 +1572,15 @@ early "clients need no AI account / Guy's COGS" line is **panel-only**; the conn
 back-as-Wingguy, never silent-alias**). No content removed; dated provenance intact. *(A full thematic
 restructure was considered and rejected — it'd flatten the doc's "supersedes/corrected" lineage; navigability
 via the map was the lower-risk fix.)*
+
+**As of 2026-06-18 (doc hygiene, cont.) — CANONICAL STATE BLOCK + restructured for an AI-only reader**
+(Guy confirmed he won't read this doc himself; it exists for Claude). Added **✅ CANONICAL CURRENT STATE** at
+the top — deduplicated, present-tense decisions = the thing to trust — with a **═══ JOURNAL ═══** divider
+before the dated entries (now explicitly provenance/"why", not current state). Volatile build-status is
+deliberately **not** duplicated there (stays here + memories, so it can't drift). Directly targets the
+documented stale-status failure (`feedback_check_code_state_before_status`). **Also flagged a new backlog
+feature** in that block: **Connection follow-up worklist** — a "where am I up to" list driven off the Airtable
+leads table's connection date, flagging each lead actioned/not-actioned; Guy-first + client-facing; no spec yet.
 
 **As of 2026-06-08:** Full planning done — architecture, cost model, model-lock-in,
 pricing (crystallised), and a **7-phase implementation roadmap** all captured above.
