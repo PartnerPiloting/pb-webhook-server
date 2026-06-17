@@ -1159,6 +1159,57 @@ Airtable itself. No env-var sync needed.
 
 ---
 
+## Competitive position & the scaling model to ~50 clients (2026-06-17)
+
+### Competitive position — own the niche the giants won't serve (2026-06-17)
+- **The components are commoditised, and that's fine.** AI drafting, LinkedIn automation,
+  call-recording→CRM, lead scoring — all crowded and getting cheaper (the naming search hit
+  Clari/Wingman, Remi, etc.). Wingguy is **NOT first or alone** at "AI helps with outreach +
+  follow-up." Don't claim "market-leading" in the broad sense — it's false and a search proves it.
+- **The differentiation is the PACKAGING, not any single capability:** a high-touch, done-with-you,
+  per-client-tuned managed service that stitches the WHOLE loop (outreach → call → follow-up → book →
+  CRM) into one accumulating assistant, for a specific **non-technical niche** (brokers / financial
+  planners). Rare for a *structural* reason — **it's deliberately un-VC-friendly**: needs a human in the
+  loop, doesn't scale to millions, nobody funded wants to hand-hold 30–50 one-man-bands.
+- **Reframe the claim:** not "lead the market" (wrong goal for cash-flow-now + ~50 clients) but **own a
+  niche the market leaders structurally refuse to enter.** Category-of-one in a corner no one big will
+  fight for — a *better* place to stand for Guy's goals than market leadership.
+- **Moat = depth + trust + early, NOT novelty** (novelty is copyable): accumulated per-client tuned
+  state + the relationship ("I know a Guy") + being early + niche focus.
+- **Wildcard to watch (don't ignore): does the platform eat the product?** Claude/ChatGPT are getting
+  agentic + connector-rich (this very build rides Claude connectors). A techy user could approximate
+  slices. **Defence holds** — the buyer is non-technical *by definition* and won't assemble it; the
+  tuned state + done-for-you wrapper is exactly what raw Claude doesn't give them. Watch, don't fear.
+
+### Scaling to ~50 without it killing Guy — three levers; community is the third (2026-06-17)
+- **The binding constraint is Guy's time** (his own "Mr Busy" problem — see bottleneck notes above).
+  Scaling = trend *per-client* Guy-time toward zero. Three levers, all required:
+  1. **Product self-improves** → less coaching over time (the accumulated-state flywheel). *(have)*
+  2. **Onboarding productised** → setup shrinks (guided setup, auto-fork rules, one-click connects). *(have)*
+  3. **★ Client community** → support + retention + referrals become **self-sustaining**. *(NEW)* The lever
+     that flips retention & growth from **Guy-powered to self-powered**.
+- **Why community is the keystone (triple duty):**
+  - **Deflects support** off Guy — peers answer peers.
+  - **A SECOND moat = belonging**, on top of the tuned-state moat. Belonging is the **least-copyable**
+    moat — a competitor can clone the software and even the tuned-state idea, but not *Guy's tribe*.
+    ⇒ this also answers the platform-eats-product wildcard above: **the platform can't eat a community.**
+  - **Feeds the referral (Champion) flywheel** — members refer members; the GTM flywheel gets its engine.
+  - **On-brand proof:** clients practising the "a small network outperforms" method **on each other** =
+    living proof the method works.
+- **Honest caveat — community is *different-touch, NOT zero-touch*.** It can ADD load before it removes
+  it. Needs seeding, critical mass, norms, a rhythm, a janitor. **Empty-room problem:** 5 quiet members
+  signals failure, worse than none. Disciplines:
+  - **Sequence it.** Community is the **second** lever to switch on — introduced as Guy *approaches*
+    critical mass, NOT launched into an empty room at client #5. Levers 1 + 2 come first.
+  - **Advocates run it (elegant fusion):** the Champion/referral advocates (already rewarded for bringing
+    3) **become the community leaders** — status + ownership for them, offload for Guy. Reward economics
+    and community governance = one system.
+  - **Keep the wedge:** v1 = ONE cohesive peer community of clients (homogeneous niche = strong cohesion).
+    "Network of networks / facilitating across other groups" = LATER expansion; don't build the cathedral
+    before the chapel fills.
+
+---
+
 ## ▶ You are here / next pick-up
 
 **As of 2026-06-17 — FATHOM MIGRATION IS LIVE (go-live shipped; supersedes the 06-15 "real next = go-live list" below):**
@@ -1189,7 +1240,10 @@ public/Private flag (worldview public, IP Private, Wingguy reads both); content 
 connector (fits free Claude's 1-connector cap → free-tier wedge); connector auth = a **bolt-on provider**
 (WorkOS AuthKit, free to 1M MAU) not hand-rolled OAuth — clients log in once via "Sign in with Google",
 persistent, $0 at our scale. **No code; day-to-day setup untouched.** Next: pick the website read-only
-access path (WordPress REST API + app password) + start the editorial tagging pass on the essays.
+access path (WordPress REST API + app password) + start the editorial tagging pass on the essays. Also added this session: a **competitive-position** note
+(own-the-niche-the-giants-won't-serve; moat = packaging/trust not novelty; platform-eats-product wildcard)
++ the **scaling model** (3 levers; **community = 3rd lever & 2nd moat** — sequence it, advocates run it,
+keep the wedge).
 
 **As of 2026-06-08:** Full planning done — architecture, cost model, model-lock-in,
 pricing (crystallised), and a **7-phase implementation roadmap** all captured above.
