@@ -24,7 +24,7 @@
  */
 
 const clientService = require('./clientService');
-const { findLeadByEmail, findLeadByName } = require('./inboundEmailService');
+const { findLeadByEmail, findLeadByName, learnEmailForLead } = require('./inboundEmailService');
 const { insertImportedMeeting, addMeetingLead } = require('./recallWebhookDb');
 const { normalizeEmail } = require('./recallImportService');
 const { splitFathomMeeting, eventLeadSpeaks } = require('./fathomSplitService');
@@ -107,12 +107,22 @@ function extractMeta(meeting) {
   return { title, meetingStart: start, durationSeconds };
 }
 
-/** Invitee emails — external (the leads) first, de-duped. */
+/**
+ * Invitee emails — external (the leads) first, de-duped. Also returns an email→display-name map
+ * for the external invitees, so the single-meeting path can fall back to a NAME match (and
+ * self-heal the email) when the booking email isn't on any lead yet.
+ */
 function extractLeadEmails(meeting) {
   const inv = Array.isArray(meeting.calendar_invitees) ? meeting.calendar_invitees : [];
-  const external = [...new Set(inv.filter((p) => p && p.is_external && p.email).map((p) => p.email))];
+  const ext = inv.filter((p) => p && p.is_external);
+  const external = [...new Set(ext.filter((p) => p.email).map((p) => p.email))];
   const internal = [...new Set(inv.filter((p) => p && !p.is_external && p.email).map((p) => p.email))];
-  return { external, internal };
+  const externalNames = {};
+  for (const p of ext) {
+    const e = (p.email || '').toLowerCase().trim();
+    if (e && p.name && !externalNames[e]) externalNames[e] = String(p.name).trim();
+  }
+  return { external, internal, externalNames };
 }
 
 /** Match a list of emails to Airtable leads (read-only lookup). */
@@ -162,6 +172,9 @@ async function matchLeadsForSegment(coach, seg) {
             via: 'name',
           }],
           method: 'name',
+          // The segment's booking emails matched NO lead but the NAME did — these are the emails
+          // to self-heal onto the matched lead at write time (see ingestFathomMeeting split path).
+          learnEmails: byEmail.unmatched,
         };
       }
       if (r && r.matchType === 'ambiguous') {
@@ -247,6 +260,7 @@ async function ingestFathomMeeting(opts = {}) {
       const lr = await matchLeadsForSegment(coach, seg);
       segPlans.push({
         _transcriptText: seg.transcriptText,
+        _learnEmails: lr.learnEmails || [],
         title: seg.calendarEvent.summary || `${seg.leadName} meeting`,
         leadName: seg.leadName,
         meetingStart: seg.calendarEvent.start || new Date(seg.startMs).toISOString(),
@@ -262,7 +276,7 @@ async function ingestFathomMeeting(opts = {}) {
       recordingId: String(meeting.recording_id),
       mode: 'split',
       source: SOURCE,
-      segments: segPlans.map(({ _transcriptText, ...rest }) => rest),
+      segments: segPlans.map(({ _transcriptText, _learnEmails, ...rest }) => rest),
     };
 
     if (dryRun) return { ok: true, dryRun: true, plan };
@@ -274,6 +288,12 @@ async function ingestFathomMeeting(opts = {}) {
       if (!ins.ok) { log.warn(`segment insert failed (${sp.title}): ${ins.error}`); continue; }
       for (const m of sp.matchedLeads) {
         try { await addMeetingLead(ins.meeting_id, m.leadId, coachClientId, 'fathom-api'); } catch (e) { log.warn(`link lead ${m.leadId} failed: ${e.message}`); }
+        // SELF-HEAL: lead resolved by NAME — record the booking email(s) that matched nobody.
+        if (sp.leadMatchMethod === 'name') {
+          for (const le of (sp._learnEmails || [])) {
+            try { await learnEmailForLead(coach, m.leadId, le); } catch (e) { log.warn(`self-heal email failed for ${m.leadId}: ${e.message}`); }
+          }
+        }
       }
       filed.push({ meetingId: ins.meeting_id, title: sp.title, leads: sp.matchedLeads.length });
     }
@@ -287,6 +307,34 @@ async function ingestFathomMeeting(opts = {}) {
   const emails = extractLeadEmails(meeting);
   const { matched, unmatched } = await matchLeads(coach, emails.external);
 
+  // Q2(A) — single-meeting NAME fallback: a booking email that matched NO lead still gets a shot
+  // via the invitee's NAME. A UNIQUE name match links the lead and flags the email to self-heal,
+  // so someone booking with a brand-new business email still attaches AND has it learned for next
+  // time. Read-only here (runs in dryRun too, so the plan reflects it); the write happens below.
+  const remainingUnmatched = [];
+  for (const rawEmail of unmatched) {
+    const name = emails.externalNames[String(rawEmail).toLowerCase().trim()];
+    let healed = false;
+    if (name) {
+      try {
+        const r = await findLeadByName(coach, name);
+        if (r && r.matchType === 'unique' && r.lead?.id) {
+          matched.push({
+            email: normalizeEmail(rawEmail) || rawEmail,
+            leadId: r.lead.id,
+            name: [r.lead.firstName, r.lead.lastName].filter(Boolean).join(' ').trim() || name,
+            via: 'name',
+          });
+          healed = true;
+          log.info(`single-path name fallback matched "${name}" -> lead ${r.lead.id} (will learn ${rawEmail})`);
+        } else if (r && r.matchType === 'ambiguous') {
+          log.info(`single-path name fallback: "${name}" ambiguous (${(r.allMatches || []).length}) — left unmatched`);
+        }
+      } catch (e) { log.warn(`single-path name fallback failed for "${name}": ${e.message}`); }
+    }
+    if (!healed) remainingUnmatched.push(rawEmail);
+  }
+
   const plan = {
     recordingId: String(meeting.recording_id),
     mode: 'single',
@@ -297,7 +345,7 @@ async function ingestFathomMeeting(opts = {}) {
     transcriptChars: transcriptText.length,
     externalEmails: emails.external,
     matchedLeads: matched,
-    unmatchedEmails: unmatched,
+    unmatchedEmails: remainingUnmatched,
     source: SOURCE,
   };
 
@@ -312,6 +360,10 @@ async function ingestFathomMeeting(opts = {}) {
   for (const m of matched) {
     try { await addMeetingLead(meetingId, m.leadId, coachClientId, 'fathom-api'); linkedLeads.push(m); }
     catch (e) { log.warn(`failed to link lead ${m.leadId} to meeting ${meetingId}: ${e.message}`); }
+    // SELF-HEAL: lead resolved by NAME — record the booking email so future lookups by it resolve.
+    if (m.via === 'name' && m.email) {
+      try { await learnEmailForLead(coach, m.leadId, m.email); } catch (e) { log.warn(`self-heal email failed for ${m.leadId}: ${e.message}`); }
+    }
   }
   log.info(`ingested fathom single rec=${plan.recordingId} -> meeting_id=${meetingId} (${plan.transcriptLines} lines, ${linkedLeads.length} leads)`);
   return { ok: true, mode: 'single', meetingId, botId: ins.bot_id, plan, linkedLeads };

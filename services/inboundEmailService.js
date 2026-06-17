@@ -22,6 +22,10 @@ const logger = createLogger({
 // Per-lead lock to serialize concurrent updates (prevents race overwrites)
 const leadUpdateLocks = new Map();
 
+// Delimiters the "Alt Emails" field is split on (we WRITE newline-separated; we READ tolerant
+// of newline / semicolon / comma in case a human pasted some). See findLeadByAltEmail + learnEmailForLead.
+const ALT_EMAIL_SPLIT = /[;,\n]+/;
+
 // Dedupe lead-not-found emails (Mailgun retries / multi-instance can cause duplicates)
 const leadNotFoundDedup = new Map();
 const LEAD_NOT_FOUND_DEDUP_MS = 90 * 1000;
@@ -332,35 +336,45 @@ async function findClientByEmail(senderEmail) {
  * @param {string} leadEmail - Email to search for
  * @returns {Promise<Object|null>} Lead record or null
  */
+function mapLeadRecord(rec) {
+    return {
+        id: rec.id,
+        firstName: rec.fields['First Name'] || '',
+        lastName: rec.fields['Last Name'] || '',
+        email: rec.fields['Email'] || '',
+        notes: rec.fields['Notes'] || '',
+        followUpDate: rec.fields['Follow-Up Date'] || null
+    };
+}
+
 async function findLeadByEmail(client, leadEmail) {
     if (!client.airtableBaseId) {
         throw new Error(`Client ${client.clientId} has no Airtable base configured`);
     }
 
     const normalizedEmail = leadEmail.toLowerCase().trim();
-    
+
     // Use existing airtableClient pattern
     const clientBase = createBaseInstance(client.airtableBaseId);
 
     try {
-        // Search for lead by email
+        // PRIMARY: exact match on the canonical {Email} field — the live hot path, unchanged.
         const records = await clientBase('Leads').select({
             filterByFormula: `LOWER({Email}) = "${normalizedEmail}"`,
             maxRecords: 1
         }).firstPage();
 
         if (records && records.length > 0) {
-            const lead = records[0];
-            logger.info(`Found lead ${lead.id} with email ${normalizedEmail} for client ${client.clientId}`);
-            return {
-                id: lead.id,
-                firstName: lead.fields['First Name'] || '',
-                lastName: lead.fields['Last Name'] || '',
-                email: lead.fields['Email'] || '',
-                notes: lead.fields['Notes'] || '',
-                followUpDate: lead.fields['Follow-Up Date'] || null
-            };
+            logger.info(`Found lead ${records[0].id} with email ${normalizedEmail} for client ${client.clientId}`);
+            return mapLeadRecord(records[0]);
         }
+
+        // FALLBACK: a secondary email recorded on the lead's "Alt Emails" field (multi-email per
+        // lead). Additive — only runs when the primary lookup MISSED, so existing matches are
+        // never affected. People change email over time (personal on LinkedIn → business on a
+        // booking); this lets ANY known email resolve to the one person.
+        const altLead = await findLeadByAltEmail(client, normalizedEmail, clientBase);
+        if (altLead) return altLead;
 
         logger.warn(`No lead found with email ${normalizedEmail} for client ${client.clientId}`);
         return null;
@@ -368,6 +382,90 @@ async function findLeadByEmail(client, leadEmail) {
     } catch (error) {
         logger.error(`Error searching for lead: ${error.message}`);
         throw error;
+    }
+}
+
+/**
+ * Look a lead up by a secondary ("also known as") email stored in the {Alt Emails} field.
+ * Two-step to avoid substring false positives (e.g. "jon@x.com" matching "tjon@x.com"):
+ * FIND() narrows to candidates in Airtable, then we confirm EXACT membership in JS.
+ * Degrades silently to null if the {Alt Emails} field doesn't exist in this client's base yet.
+ * @param {Object} client
+ * @param {string} normalizedEmail - already lowercased + trimmed
+ * @param {Object} clientBase - createBaseInstance(...) for this client
+ * @returns {Promise<Object|null>}
+ */
+async function findLeadByAltEmail(client, normalizedEmail, clientBase) {
+    try {
+        const candidates = await clientBase('Leads').select({
+            filterByFormula: `AND({Alt Emails} != "", FIND("${normalizedEmail}", LOWER({Alt Emails})) > 0)`,
+            maxRecords: 5
+        }).firstPage();
+        for (const rec of (candidates || [])) {
+            const alts = String(rec.fields['Alt Emails'] || '')
+                .toLowerCase()
+                .split(ALT_EMAIL_SPLIT)
+                .map(e => e.trim())
+                .filter(Boolean);
+            if (alts.includes(normalizedEmail)) {
+                logger.info(`Found lead ${rec.id} via Alt Emails match "${normalizedEmail}" for client ${client.clientId}`);
+                return mapLeadRecord(rec);
+            }
+        }
+    } catch (error) {
+        // e.g. {Alt Emails} not present in this base — treat as "no match" rather than failing the lookup.
+        logger.warn(`Alt Emails lookup skipped/failed for ${normalizedEmail}: ${error.message}`);
+    }
+    return null;
+}
+
+/**
+ * Self-healing: record a newly-learned email onto a lead's {Alt Emails} field.
+ *
+ * Called when a lead was matched by NAME (uniquely) while an incoming booking/invitee email did
+ * NOT resolve to any lead — so the system "learns" that email and future lookups by it succeed.
+ * Auto-records with no human step: a unique name match is already trusted enough to attach the
+ * whole meeting to that lead, so recording the email is no bigger a leap. Never matches on an
+ * ambiguous name (the callers only pass unique matches), and never throws (best-effort).
+ *
+ * Kill-switch: set EMAIL_SELFHEAL_ENABLED=false to disable the write-back globally.
+ *
+ * @param {Object} client - client object with airtableBaseId
+ * @param {string} leadId - Airtable record id of the matched lead
+ * @param {string} email - the email to learn
+ * @returns {Promise<{learned: boolean, reason?: string}>}
+ */
+async function learnEmailForLead(client, leadId, email) {
+    if (String(process.env.EMAIL_SELFHEAL_ENABLED || 'true').trim().toLowerCase() === 'false') {
+        return { learned: false, reason: 'disabled' };
+    }
+    const normalized = (email || '').toLowerCase().trim();
+    if (!leadId || !normalized || !normalized.includes('@')) {
+        return { learned: false, reason: 'invalid_input' };
+    }
+    if (!client || !client.airtableBaseId) {
+        return { learned: false, reason: 'no_base' };
+    }
+
+    const clientBase = createBaseInstance(client.airtableBaseId);
+    try {
+        const rec = await clientBase('Leads').find(leadId);
+        const primary = String(rec.fields['Email'] || '').toLowerCase().trim();
+        if (primary === normalized) {
+            return { learned: false, reason: 'is_primary' };
+        }
+        const existing = String(rec.fields['Alt Emails'] || '');
+        const existingList = existing.toLowerCase().split(ALT_EMAIL_SPLIT).map(e => e.trim()).filter(Boolean);
+        if (existingList.includes(normalized)) {
+            return { learned: false, reason: 'already_known' };
+        }
+        const updated = existing.trim() ? `${existing.trim()}\n${normalized}` : normalized;
+        await clientBase('Leads').update([{ id: leadId, fields: { 'Alt Emails': updated } }]);
+        logger.info(`[SELF-HEAL] learned email "${normalized}" for lead ${leadId} (client ${client.clientId})`);
+        return { learned: true };
+    } catch (error) {
+        logger.warn(`[SELF-HEAL] could not record "${normalized}" for lead ${leadId}: ${error.message}`);
+        return { learned: false, reason: 'error' };
     }
 }
 
@@ -2379,11 +2477,13 @@ async function processMeetingNotetakerEmail(client, emailData, provider, addToRe
         };
 
         // PRIORITY 1: Try email lookup first (most reliable)
+        let contactEmailMatched = false;
         if (meetingData.contactEmail) {
             logger.info(`Trying to find lead by email: "${meetingData.contactEmail}"`);
             const emailLead = await findLeadByEmail(client, meetingData.contactEmail);
             if (emailLead) {
                 logger.info(`Found lead ${emailLead.id} by email: ${meetingData.contactEmail}`);
+                contactEmailMatched = true;
                 addFoundLead(emailLead);
             } else {
                 logger.info(`No lead found with email ${meetingData.contactEmail}, falling back to name search`);
@@ -2510,6 +2610,13 @@ async function processMeetingNotetakerEmail(client, emailData, provider, addToRe
                 error: 'lead_not_found',
                 message: `No lead found with ${searchedFor} for ${provider} meeting`
             };
+        }
+
+        // SELF-HEAL: the meeting carried a contact email that matched NO lead, but we resolved the
+        // person by NAME. Record that email so future lookups by it succeed. Conservative: only
+        // when exactly one lead was found, so there's no ambiguity about whose email it is.
+        if (meetingData.contactEmail && !contactEmailMatched && foundLeads.length === 1) {
+            await learnEmailForLead(client, foundLeads[0].id, meetingData.contactEmail);
         }
 
         // Save notes to ALL found leads (multi-attendee support)
@@ -3364,6 +3471,7 @@ module.exports = {
     findClientByEmail,
     findLeadByEmail,
     findLeadByName,
+    learnEmailForLead,
     updateLeadWithEmail,
     updateLeadWithMeetingNotes,
     sendErrorNotification,
