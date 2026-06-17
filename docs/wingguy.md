@@ -1181,32 +1181,47 @@ Airtable itself. No env-var sync needed.
   slices. **Defence holds** — the buyer is non-technical *by definition* and won't assemble it; the
   tuned state + done-for-you wrapper is exactly what raw Claude doesn't give them. Watch, don't fear.
 
-### Scaling to ~50 without it killing Guy — three levers; community is the third (2026-06-17)
+### Scaling to ~50 without it killing Guy — three levers; a self-assembling intro-mesh is the third (2026-06-17, refined)
 - **The binding constraint is Guy's time** (his own "Mr Busy" problem — see bottleneck notes above).
   Scaling = trend *per-client* Guy-time toward zero. Three levers, all required:
   1. **Product self-improves** → less coaching over time (the accumulated-state flywheel). *(have)*
   2. **Onboarding productised** → setup shrinks (guided setup, auto-fork rules, one-click connects). *(have)*
-  3. **★ Client community** → support + retention + referrals become **self-sustaining**. *(NEW)* The lever
-     that flips retention & growth from **Guy-powered to self-powered**.
-- **Why community is the keystone (triple duty):**
-  - **Deflects support** off Guy — peers answer peers.
-  - **A SECOND moat = belonging**, on top of the tuned-state moat. Belonging is the **least-copyable**
-    moat — a competitor can clone the software and even the tuned-state idea, but not *Guy's tribe*.
-    ⇒ this also answers the platform-eats-product wildcard above: **the platform can't eat a community.**
-  - **Feeds the referral (Champion) flywheel** — members refer members; the GTM flywheel gets its engine.
-  - **On-brand proof:** clients practising the "a small network outperforms" method **on each other** =
-    living proof the method works.
-- **Honest caveat — community is *different-touch, NOT zero-touch*.** It can ADD load before it removes
-  it. Needs seeding, critical mass, norms, a rhythm, a janitor. **Empty-room problem:** 5 quiet members
-  signals failure, worse than none. Disciplines:
-  - **Sequence it.** Community is the **second** lever to switch on — introduced as Guy *approaches*
-    critical mass, NOT launched into an empty room at client #5. Levers 1 + 2 come first.
-  - **Advocates run it (elegant fusion):** the Champion/referral advocates (already rewarded for bringing
-    3) **become the community leaders** — status + ownership for them, offload for Guy. Reward economics
-    and community governance = one system.
-  - **Keep the wedge:** v1 = ONE cohesive peer community of clients (homogeneous niche = strong cohesion).
-    "Network of networks / facilitating across other groups" = LATER expansion; don't build the cathedral
-    before the chapel fills.
+  3. **★ Client intro-mesh (Wingguy-seeded), NOT a community Guy runs** → support + retention + referrals
+     trend toward **self-sustaining**. *(NEW)* Flips retention & growth from **Guy-powered to self-powered**.
+- **★ HARD CONSTRAINT (Guy, 2026-06-17): NO recurring meetings.** Guy ran weekly networking meetings for
+  years (in-person AND online) + did enormous manual matchmaking — it's a **grind he refuses to return to**.
+  So the third lever is explicitly **NOT** a central community he hosts/moderates (that earlier framing is
+  superseded). It's a **mesh he seeds and steps out of**: 1:1 introductions, members expected to build their
+  own groups. **Separate the grind from the gift** — shed the *labour* (meetings, chasing, facilitation);
+  keep the *introduction itself* (high-value, low-labour — literally the "I know a Guy" brand).
+- **THE lever that keeps it light: Wingguy is the matchmaker; Guy just approves.** The old "enormous work"
+  was three jobs — *spot* who should meet, *draft* the intro, *manage* follow-through. Wingguy takes the
+  first two (Portal network data → **suggest matches**; drafting engine → **write the double-opt-in intro**);
+  Guy is left with a one-click judgment call. Load drops from *facilitate* to *approve a draft*. Built on
+  existing rails (drafting + Portal data) — not new infrastructure.
+- **Other lightness levers:** (a) **double opt-in** intros (ask A, then B, then connect — templated; avoids
+  bad-match cleanup that ADDS load); (b) **pay-it-forward norm** baked into the deal — every client is
+  expected + equipped (by Wingguy) to make their OWN intros → the mesh grows without Guy (the Champion
+  mechanic pointed at *connections*, not just sales); (c) **async "who should you meet" nudges** replace the
+  meeting — Wingguy surfaces 1–2 worth-meeting people; they request → Wingguy drafts → done; (d) **find
+  natural connectors, don't manufacture them** — most people WON'T build a group (fine); spot the few who
+  love it (Wingguy can see who intro's most) + amplify them.
+- **The belonging trade (resolved — a GOOD trade for THIS buyer):** a mesh has weaker *emotional* belonging
+  than a hosted community → thinner "tribe" moat. But that's a moat **this buyer barely values** (time-poor
+  brokers/planners want results + hours back, not a tribe). We swap it for **economic/relational
+  stickiness**, and the weight is carried elsewhere:
+  - **The real moat (accumulated tuned state) is untouched** — community was always only the *second* moat.
+  - **The mesh creates its own rational lock-in:** *"this is where my next valuable connection comes from."*
+    To leave = abandon the tuned asset + unplug the connection pipe + re-train a new tool (triple switching cost).
+  - **The one thing belonging does better — organic word-of-mouth — is already covered** by the deliberate
+    **Champion referral mechanic** (don't lean on tribe-buzz for growth).
+  - **Cheap recovery of some belonging:** a *very light* shared-identity layer — a name for the network +
+    the occasional "X & Y met through this and did Z" success note. Buys belonging with **zero meetings**.
+- **Honest cautions:** (1) **don't bet the scaling relief on clients becoming group-builders** — rare;
+  design so the **mesh delivers value to passive nodes too** (a client who never builds a group but gets
+  good intros is still getting value + still sticky). (2) **Keep the wedge:** v1 = ONE mesh in the
+  homogeneous niche; "network of networks / facilitating across other groups" = LATER expansion (don't build
+  the cathedral before the chapel fills).
 
 ---
 
@@ -1242,8 +1257,10 @@ connector (fits free Claude's 1-connector cap → free-tier wedge); connector au
 persistent, $0 at our scale. **No code; day-to-day setup untouched.** Next: pick the website read-only
 access path (WordPress REST API + app password) + start the editorial tagging pass on the essays. Also added this session: a **competitive-position** note
 (own-the-niche-the-giants-won't-serve; moat = packaging/trust not novelty; platform-eats-product wildcard)
-+ the **scaling model** (3 levers; **community = 3rd lever & 2nd moat** — sequence it, advocates run it,
-keep the wedge).
++ the **scaling model** (3 levers; **3rd lever = a Wingguy-seeded intro-MESH, NOT a community Guy runs** — Guy's hard constraint is NO recurring
+meetings (he's done years of that grind); Wingguy matchmakes + drafts double-opt-in intros, Guy just
+approves; belonging-moat trade resolved as a *good* one for this buyer (emotional belonging →
+economic/relational stickiness, tuned-state carries the weight)).
 
 **As of 2026-06-08:** Full planning done — architecture, cost model, model-lock-in,
 pricing (crystallised), and a **7-phase implementation roadmap** all captured above.
