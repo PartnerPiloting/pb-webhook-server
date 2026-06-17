@@ -1155,7 +1155,23 @@ quick-update, remote-config selectors). See "Existing extension recon" above.
   (c) **switchover** (Recall off) after a clean ~2-3 wk trial. *(Schema change `fathom_recording_id` shipped via the
   additive ensureSchema-ALTER pattern — the `staging` branch is ~2750 commits stale, so it's no longer a usable gate;
   validated via dry-run jobs on prod instead.)*
-- **➡ NEXT UP — Fathom "content ready" webhook (replaces the poll lag). Verified safe + additive 2026-06-17:**
+- **✅ BUILT 2026-06-17 (commit `c311609a`) — Fathom "content ready" webhook (replaces the poll lag).**
+  **Research confirmed:** Fathom's "new meeting content ready" webhook is real; it signs with the **identical
+  Svix HMAC scheme as Recall** (`whsec_` secret + `webhook-id`/`webhook-timestamp`/`webhook-signature` headers,
+  signed over `${id}.${timestamp}.${rawBody}`), and the payload carries a **top-level numeric `recording_id`**
+  (`{recording_id, url, share_url, type:"meeting_content_ready"}`). So the receiver reuses
+  `utils/verifyRecallWebhook.verifyRequestFromRecall` verbatim. **Shipped:** `routes/fathomWebhookRoutes.js`
+  (POST/GET/HEAD `/webhooks/fathom`, mounted before `express.json` in index.js) → verify sig → extract
+  `recording_id` → `ingestFathomMeeting()` (same path as poll). Gates: `FATHOM_WEBHOOK_ENABLED` (process; default
+  OFF), `FATHOM_LIVE_FROM` (must be set), `FATHOM_INGEST_ENABLED` (write). Dedup via `fathomRecordingIngested`;
+  always 200-acks; **poll kept as backstop**. Registration helper `scripts/fathom-webhook.js` (`--register`/`--list`/
+  `--delete`) prints the `whsec_` to set as `FATHOM_WEBHOOK_SECRET`.
+  **STILL TO DO (go-live, cloud-only):** (1) Render one-off job `node scripts/fathom-webhook.js --register
+  https://pb-webhook-server.onrender.com/webhooks/fathom` → capture `whsec_`. (2) Set `FATHOM_WEBHOOK_SECRET` +
+  `FATHOM_WEBHOOK_ENABLED=true` on Render (env edit redeploys — quiet moment). (3) Probe `GET /webhooks/fathom`;
+  fire Fathom's test webhook (expect 401 unsigned / 200 signed; fake id → "not in fetched window"). (4) Finish a
+  real meeting → confirm it ingests in seconds, then `fathom-ingest.js --poll` (dry-run) reports `already ingested`.
+- **(superseded — original brief) Fathom "content ready" webhook (replaces the poll lag). Verified safe + additive 2026-06-17:**
   Today ingest is a timer (`services/fathomPollService.js`, interval = `FATHOM_POLL_INTERVAL_MS`) that lists recent
   meetings and files new ones. The webhook just turns that pull into a push. **Design:** a new inbound route receives
   Fathom's "meeting/recording content ready" callback → verifies the signature → extracts `recording_id` → calls the
