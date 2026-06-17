@@ -1041,6 +1041,124 @@ Airtable itself. No env-var sync needed.
 
 ---
 
+## Website + content strategy, and the one-connector / auth path (2026-06-17)
+
+> Origin: JB's onboarding call (2026-06-17, 09:30). JB was blunt about Guy's public WordPress
+> site — *"it worried the shit out of me… I thought I'd signed up for an MLM… felt hokey and
+> disjoint… if I'd seen it before I talked to you I'd never have talked to you."* That triggered
+> a rethink of what the website is FOR, how it relates to the Portal + Wingguy, and (downstream)
+> how a client's own Claude connects to Wingguy. **Planning only — no code this session.**
+
+### Website's job = credibility + conversion, NOT lead-gen (2026-06-17)
+- Old vision (SEO/inbound lead-magnet → a sellable asset) is **dead by reality vote** — Guy's proven
+  funnel is outbound LinkedIn → discovery call → relationship. Age 74 + wants cash flow now, not a
+  slow-compounding saleable property. Stop asking the site to *generate* demand.
+- **New job:** catch people Guy has *already* reached out to, and don't lose them. (1) don't turn them
+  off (no weird/stale/MLM-vibe stuff); (2) confirm he's a real, substantial operator; (3) give genuine
+  value (the visit itself demonstrates the help); (4) make the next step (the call) easy.
+- **One-line test for every page:** *would this make a skeptical, intelligent prospect who already
+  heard from Guy relax — or reach for the back button?* (= "would JB relax, or bounce?")
+- JB is **proof, not just opinion:** he became a client only because he talked to Guy BEFORE seeing
+  the site. One high-signal target-profile data point > a vote count. "MLM" is a **silent killer** —
+  bouncers never tell you, so "no other complaints" is NOT reassurance.
+- **Calibration (Guy):** not panicked, not bleeding many sales — a **low-burn, compounding** fix, built
+  slowly between sales work. Act, don't drop everything.
+
+### Content lives once, surfaces twice — WordPress as the source of truth (2026-06-17)
+- **The inversion to fix:** Guy's *credible, valuable* material (Portal "Start Here" → "Perspective &
+  Leadership": *Play a Different Game, The Evaporation Problem, The Science Behind a Small Network…,
+  The Champion Model*) is **trapped behind the Portal login**, while the *MLM-smelling* stuff is what's
+  public. Backwards for the funnel.
+- **Model: one source, two surfaces.** WordPress = single source of truth; **visibility = a per-page
+  flag**: public (credibility/prospects) / hidden-but-Portal-readable (Wingguy reads via authenticated
+  REST API) / both. Author once in WordPress; Portal + Wingguy *consume* it. No duplicate "AI knowledge
+  base" — the published pages ARE the knowledge base; edits propagate live.
+- **The cut line solves three things at once:** worldview/"why" content → **public** (builds authority,
+  gives nothing away); operational machinery/"how" (the IP JB worried was exposed) → **Private**
+  (WordPress Private status = gated, Wingguy still reads it, public can't). Match protection to
+  sensitivity: *unlisted* = obscure-not-secure (fine for drafts); *Private* = real gate (IP).
+- Portal "Start Here" stays **lean + operational** ("how to use it this week"); the growing essay
+  *library* belongs on the website (a publishing surface, not onboarding). This also answers Guy's
+  "how do I expand Perspective & Leadership without it getting too big" — it **graduates to the site**.
+
+### Surfacing content: pull (reactive) vs push (worldview) (2026-06-17)
+- Two classes, two delivery modes:
+  - **Reactive** (task-tied) = **pull**: the user's action is the trigger (Follow-Up Manager → *The
+    Evaporation Problem*).
+  - **Worldview** (foundational, e.g. *The Science Behind a Small Network*) = **push**: it has **no
+    natural trigger** — nobody types anything that surfaces it. Don't make it wait for one.
+- **Wingguy manufactures the trigger** for worldview content: (a) offer the question as a **suggested
+  prompt/chip** ("Why is Wingguy targeting so few people? →"); better (b) **let the idea ride on the
+  action's justification** — when Wingguy makes the small-network move it explains it in one line, essay
+  as optional deep-dive. The justification IS the trigger; the user never has to know to ask.
+- **Don't bet on full readership.** Busy people won't read long essays. Essays earn their keep two
+  other ways: (1) **existence = credibility** (an 8-second skim signals depth); (2) **reservoir** —
+  Wingguy distils each into one-line hits delivered in-context. Full essay = opt-in for the curious 10%.
+  ⇒ the website essays *are* Wingguy's knowledge base, also published for credibility. Same asset.
+
+### Build complexity — simple MVP; the real work is editorial (2026-06-17)
+- v1 = three small things on top of what already exists (content store + backend + users + extension):
+  **(1)** a **tagging pass** (reactive vs worldview + a one-line distillation per essay) — editorial;
+  **(2)** a few **suggestion chips** fired by context/stage; **(3)** inline one-liner + a link out.
+  Degrades gracefully — ~80% of value from the dumb version. Personalisation/adaptive-depth = optional
+  polish, resist first.
+- **"Don't re-serve consumed content" = the EASY part:** one per-user record `(user, content_id,
+  surfaced_at, clicked?)`; skip on push if engaged. Rule = "don't *push* what they've consumed" (keep it
+  revisitable); track *surfaced/clicked*, don't model "truly absorbed".
+- **Link vs seeded-chat = layer by depth, don't choose:** inline distillation (first) → "read the full
+  piece" static link (first; credibility) → "Ask Wingguy about this" **seeded chat** (Phase 2 — pre-load
+  the page as context; right medium because worldview invites "yeah but my situation?").
+- Genuine complexity is **editorial** (chunk/distil/tag each essay), not engineering — and it's
+  distillation of stuff Guy already wrote, one piece at a time (fits the slow pace).
+
+### Free-Claude wedge + the ONE-CONNECTOR design (2026-06-17)
+- Reframes the already-locked **"Client AI requirement = Claude"** decision from defensive ("like
+  requires Chrome") to a **growth wedge**: start on **free Claude** → hooked → upgrade. The right buyer
+  (AI believer, values their time, sees a good demo) is easy to sell.
+- **Free Claude is more capable than feared (checked 2026-06-17):** DOES support connectors / remote MCP
+  (incl. **one** custom connector), Sonnet 4.6, web search, memory, file creation. Binding limits =
+  **usage** (~15–40 msgs / 5-hr window — third-party figure), the **1-custom-connector cap**, **no
+  Opus**. ⇒ upgrade trigger = **volume** (you outgrow free *because it's working*) — the honest wedge,
+  not paywalled basics.
+- **★ Design unlock: deliver Wingguy as ONE remote MCP connector** (the server exposes all tools —
+  availability / draft / transcript / follow-up / portal / teach-rule / fetch-article — behind a single
+  connector). Fits free's 1-connector cap → a free user tastes the **real connected** experience.
+- **A bonus, not a difficulty:** the architecture already funnels everything through one backend; "one
+  connector, many tools" is MCP's natural shape; and **we've already shipped an MCP server**
+  (`mcp-recall-transcript`, currently **stdio/local**). Only real work = make it **remote +
+  multi-tenant** (hosted, per-tenant isolation) — the core multi-tenant build we owe anyway.
+- **Scope guard:** the connector is the **cockpit / client's-own-Claude** surface (chat; techy/DIY/
+  free-tier taste). It does **NOT** replace the fixed-button **extension panel** (the no-thinking VA
+  flow). Two surfaces, one backend brain.
+
+### Connector auth — no OAuth nightmare; bolt-on provider; free at our scale (2026-06-17)
+- Guy's scar = **Google-verification OAuth** (restricted-scope review, brand checks, expiring
+  third-party tokens). That flavour is **already outsourced to Nylas** and is NOT coming back.
+- **Claude's connector UI today supports only authless OR OAuth** — **no** user-pasted API key / bearer
+  / custom header (open feature request `anthropics/claude-ai-mcp` #112). So "paste a key" isn't
+  available yet.
+- The OAuth the connector needs is **"log into YOUR app, Wingguy"** — *you* are the authority: no
+  external review board, no approval queue, no Google. And **you don't hand-build it** — bolt on a
+  managed provider that does the MCP OAuth 2.1 dance (DCR / RFC 8707). **Same move as Nylas, one door
+  over.**
+- **Recommended provider: WorkOS AuthKit** (MCP-native; **free to 1,000,000 MAU**). Backups: **Scalekit**
+  ("drop-in OAuth for MCP servers"), **Stytch Connected Apps** (free to 10k). Clerk (50k free) / Auth0
+  (~25k free) also fine. **At ~30 clients every option is $0** — cost is a non-issue for years.
+- **Who logs in = the CLIENTS (+ their VAs)**, each as themselves, into Wingguy — can be **"Sign in with
+  Google"** (no new password). Guy sets it up **once** (landlord installs the door). The bill counts
+  logged-in clients (~30) → free.
+- **Two doors, don't conflate:** (1) *log into Wingguy* → the auth provider; (2) *connect calendar/email*
+  → **Nylas**. Different specialists.
+- **Persistence: log in once, set-and-forget.** Silent background token refresh; clients re-auth only on
+  deliberate disconnect, an account security event (password reset), or long-term total inactivity — a
+  daily user never hits it. Keeping the connection alive = the provider's job (kills the old "tokens
+  silently die" failure).
+- **Free-taste shortcut:** the free/demo connector can be **authless** (non-private magic — distil
+  articles, draft from pasted text, score a pasted profile) → zero auth, fastest "wow"; add the bolt-on
+  login only when the connector reaches **private** per-client data.
+
+---
+
 ## ▶ You are here / next pick-up
 
 **As of 2026-06-17 — FATHOM MIGRATION IS LIVE (go-live shipped; supersedes the 06-15 "real next = go-live list" below):**
@@ -1061,6 +1179,17 @@ The Fathom capture pipeline now runs in **production**, additive + kill-switched
   (Recall off) once the trial is clean for ~2-3 wks; (d) **tenancy** stamping (deferred); (e) ~~email-identity hardening~~
   **✅ SHIPPED 2026-06-17** (multi-email per lead + self-healing write-back — see Next steps). Live status of record =
   memory `project_recall_to_fathom_migration`.
+
+**As of 2026-06-17 (session 2) — WEBSITE + CONTENT STRATEGY + CONNECTOR/AUTH (planning, no code):**
+Triggered by JB's blunt website critique on his 09:30 onboarding call. New section above —
+**"Website + content strategy, and the one-connector / auth path (2026-06-17)"**. Headlines: website's
+job = credibility + conversion (NOT lead-gen); WordPress = single source of truth with a per-page
+public/Private flag (worldview public, IP Private, Wingguy reads both); content surfacing = pull
+(reactive) vs push (worldview — Wingguy manufactures the trigger); deliver Wingguy as **ONE** remote MCP
+connector (fits free Claude's 1-connector cap → free-tier wedge); connector auth = a **bolt-on provider**
+(WorkOS AuthKit, free to 1M MAU) not hand-rolled OAuth — clients log in once via "Sign in with Google",
+persistent, $0 at our scale. **No code; day-to-day setup untouched.** Next: pick the website read-only
+access path (WordPress REST API + app password) + start the editorial tagging pass on the essays.
 
 **As of 2026-06-08:** Full planning done — architecture, cost model, model-lock-in,
 pricing (crystallised), and a **7-phase implementation roadmap** all captured above.
