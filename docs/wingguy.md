@@ -1157,6 +1157,41 @@ Airtable itself. No env-var sync needed.
   articles, draft from pasted text, score a pasted profile) → zero auth, fastest "wow"; add the bolt-on
   login only when the connector reaches **private** per-client data.
 
+### Keeping Wingguy directives in Wingguy, not the client's general Claude memory (2026-06-18)
+**The worry:** client sits in their *own* Claude (the connector/cockpit surface), so when they tune a
+Wingguy behaviour ("from now on greet leads by first name", "never put price in the first email") that
+instruction could land in **their personal Claude memory** instead of in Wingguy — where it'd be invisible
+to us, not shared across their staff/VA, not under our schema, and just clutter in their pile (the original
+"memory filling up" fear). This is the same Layer-2-vs-Layer-3 split: *vendor base rules (ours, baked in)* →
+*client org tuning (theirs, shared)* → *personal memory (theirs, private)* must stay as **layers, not one
+bucket**.
+- **You CAN'T technically forbid it.** Claude's native memory is Anthropic's, lives in the client's own
+  Claude, outside our reach. Building a wall to *prevent* leakage is unwinnable — don't try.
+- **★ The reframe that wins instead: make Wingguy DEAF to general memory.** Wingguy's behaviour is driven
+  **only** by what's in its own store (the Postgres rules — see "Data architecture"). The server-side
+  context is built **solely** from our store; it never reads the client's personal Claude memory. The
+  instant that's true, a leaked copy in general memory is **inert** — Wingguy doesn't look there, so it has
+  zero effect on behaviour. The question flips from the hard one ("stop leaks" — unwinnable) to the easy one
+  we already own ("make sure the real changes land in Wingguy").
+- **Own the save-path with a tool.** This is the existing `teach-rule` tool / the one conflict-checked
+  **Commit write-door** (see "Rules editing UX" + "Rules integrity = code"). A Wingguy behaviour change is
+  only *real* when that tool writes it to the tenant's slice. The leak-vs-save problem reduces to: keep that
+  write-door solid (already designed).
+- **Tool description does the routing.** The lever that makes Claude route a "from now on…" to the tool
+  instead of native memory is an **assertive tool description** that claims the territory, e.g.: *"Use this
+  whenever the user wants to change how Wingguy handles scoring, emails, templates, or any Wingguy
+  behaviour. Always persist Wingguy configuration here — never store it in conversation memory."* Claude
+  leans hard on tool descriptions for routing; this is the single biggest bias lever.
+- **Self-reinforcing, so policing isn't needed.** A rule saved to Wingguy *takes effect*; one muttered into
+  general memory *doesn't* (deaf design) → clients learn the difference without us policing. Worst case of a
+  leak = a harmless no-op, not a corruption.
+- **One habit to train at onboarding:** the verbal tell — *"to change how Wingguy works, say 'Wingguy, from
+  now on…'"* — nudges Claude toward the tool. Even when forgotten, the deaf-to-memory design makes the
+  failure mode benign.
+- **Concrete to-do:** (a) ensure the server-side Wingguy context is assembled **only** from our store, never
+  attempting to read the client's Claude memory; (b) make the `teach-rule`/Commit tool's description
+  aggressively claim ownership of Wingguy config. Those two close the issue.
+
 ---
 
 ## Competitive position & the scaling model to ~50 clients (2026-06-17)
@@ -1390,6 +1425,15 @@ early adopters, raise later, framing flips); VA ~AUD $1.5–2.5k/mo (one VA ~50�
 **100-client P&L ≈ net AUD ~$22k/mo (~$265k/yr, ~78% margin)** with take-rate barely moving revenue;
 **~3 days/week feasible if held** (cap dev + acquisition, hire down creep); LinkedIn = renting a solved
 network, so 100-at-low-touch is gated on productised onboarding + Wingguy-delivered coaching, NOT community.
+
+**As of 2026-06-18 (planning, no code) — DIRECTIVES vs CLIENT'S GENERAL CLAUDE MEMORY:** new subsection
+**"Keeping Wingguy directives in Wingguy, not the client's general Claude memory"** (under the connector/auth
+section). Resolves Guy's worry about onboarding a client whose own Claude already has a full memory: don't try
+to *prevent* leakage into native memory (unwinnable — it's Anthropic's, in their Claude) — instead make
+**Wingguy deaf to general memory** (server context built ONLY from our Postgres store) so any leaked copy is
+inert, and **own the save-path** via the existing `teach-rule`/Commit write-door with an **assertive tool
+description** that routes "from now on…" changes to the tool, not native memory. Two concrete to-dos noted.
+Day-to-day setup untouched.
 
 **As of 2026-06-08:** Full planning done — architecture, cost model, model-lock-in,
 pricing (crystallised), and a **7-phase implementation roadmap** all captured above.
