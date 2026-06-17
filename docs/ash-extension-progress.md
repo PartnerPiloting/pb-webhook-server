@@ -1179,12 +1179,27 @@ quick-update, remote-config selectors). See "Existing extension recon" above.
     Fathom split/segment path, Fathom single path (with a NEW invitee-NAME fallback — was email-only, so a normal
     booking with a brand-new business email previously matched nothing), and the inbound meeting-notetaker path
     (conservative: only when exactly one lead found).
-  - Verified end-to-end on live prod via a Render one-off job: primary lookup intact, an alt-email resolved to the
-    same lead, a genuine miss returned null cleanly. (Courtney's record already had the business email as PRIMARY by
-    the time we looked — the original 404 predated that field being overwritten, which is exactly the lossy
-    single-field behaviour this prevents going forward.)
+  - **Multi-tenant rollout DONE:** `{Alt Emails}` column now exists in ALL 17 client Leads bases (not just Guy's),
+    created via a one-off backend job over the master Clients list using the server Airtable key (idempotent, additive,
+    no data touched). Code degrades gracefully if absent, so this was safe to do incrementally.
+  - **Portal UI SHIPPED 2026-06-17** (commit `07ea07fc`). The lead screen (`LeadDetailForm.js`) now shows the primary
+    Email plus an editable **"Other emails"** list (add box + per-row remove). Light validation on entry: must look like
+    an email, auto lowercased/trimmed, no duplicates / not equal to the primary, inline error. Server mirrors the same
+    sanitize (`sanitizeAltEmailsString` in `linkedinRoutesWithAuth.js` — GET/PUT `/leads/:id` now carry `altEmails`).
+    `api.js` maps `altEmails` ↔ `{Alt Emails}`. Portal `next build` passes. NOTE: no per-email provenance is stored, so
+    the portal can't distinguish auto-learned vs hand-typed emails — the "added automatically" tag from the mockup was
+    deliberately dropped (would need an extra provenance mechanism to be truthful).
+  - **Verified end-to-end on live prod via Render one-off jobs:** (1) READ — primary lookup intact, an alt-email
+    resolved to the same lead, a genuine miss returned null cleanly. (2) WRITE/self-heal — `learnEmailForLead` learned a
+    new email onto a lead, a lookup by it then resolved, and the guards held (dedupe → `already_known`, primary →
+    `is_primary`). (3) SINGLE-PATH name fallback — a fabricated single meeting with a brand-new email + a known name
+    correctly captured the name, missed on email, and resolved the name uniquely to the lead. All test writes cleaned up.
+    (Courtney's record already had the business email as PRIMARY by the time we looked — the original 404 predated that
+    field being overwritten, which is exactly the lossy single-field behaviour this prevents going forward.)
   - Same identity layer as the calendar/Nylas work. Interim habit for Guy is now optional, but still safe: ADD a
     new email, don't REPLACE the old one (the system also learns it automatically on the next booking).
+  - **Only un-exercised sliver:** a literal Fathom recording flowing through and triggering the learn automatically —
+    needs a real new-email booking to occur; every building block + the glue between them is verified.
 - *(Maybe: a light tidy/consolidation pass on this doc — it has grown organically.)*
 
 The Fathom **read path** ships in production (Smart Follow-Up / Meeting Prep); the Fathom **ingest + splitter +
