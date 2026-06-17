@@ -13,6 +13,21 @@
 > different dates. Append to / cross-link the existing home (with a dated note) rather than starting a
 > fresh, disconnected entry. Don't trust "I landed on it and that's the whole story" — check the map.
 >
+> **🔁 Session self-audit (this is YOUR job, Claude — no human reads this doc, so no one else will do it).**
+> The human owns ground-truth + priorities; YOU own keeping this doc clean. Run this every session:
+> 1. **Before adding** — do the scan-first check above (Ctrl-F the topic everywhere).
+> 2. **When something changes a decision** — edit the **✅ Canonical current state** block *and* add a dated
+>    JOURNAL entry. **Never just append and let the canonical block drift** — that's the whole failure this
+>    structure exists to prevent.
+> 3. **Drift check** — confirm the canonical block still matches the newest JOURNAL entries + **▶ You are
+>    here**; reconcile any mismatch (the canonical block wins as "now", the journal explains "why/when").
+> 4. **Stale claims** — mark them `STATUS: SUPERSEDED → <section>` *at the stale spot*, don't only fix it
+>    elsewhere (a partial/grep read must see the correction where it lands).
+> 5. **Volatile build-status** stays in **▶ You are here** + memories ONLY — never copy it into the
+>    canonical block. Update **▶ You are here** at session end.
+> Flag to the human only what needs ground-truth (did X actually ship/work, is this number still right) —
+> the mechanical hygiene is yours to just do.
+>
 > **Working rhythm (decided 2026-06-09):** THIS doc (in git) is home base — NOT any single
 > chat. Start a **new, focused chat per area** ("Nylas spike", "de-personalise rules",
 > "Phase 0 recon", etc.); open it with *"where are we on Wingguy"* and Claude reads
