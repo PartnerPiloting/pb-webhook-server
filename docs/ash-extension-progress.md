@@ -1042,6 +1042,24 @@ Airtable itself. No env-var sync needed.
 
 ## ▶ You are here / next pick-up
 
+**As of 2026-06-17 — FATHOM MIGRATION IS LIVE (go-live shipped; supersedes the 06-15 "real next = go-live list" below):**
+The Fathom capture pipeline now runs in **production**, additive + kill-switched, in its **trial period alongside Recall**
+(Recall still recording as the safety net — NOT yet turned off). Shipped + enabled today:
+- **Auto-ingest trigger** — `services/fathomPollService.js`, in-process poll every **5 min** (`FATHOM_POLL_ENABLED`),
+  gated by `FATHOM_LIVE_FROM` cutoff (`2026-06-16T01:33:23Z`) + `FATHOM_INGEST_ENABLED` for writes; dedup via new
+  `recall_meetings.fathom_recording_id` (idempotent — re-poll never double-files).
+- **Prefer-Fathom + loud fallback** read path — `latest-transcript-by-email` returns the Fathom copy of the latest
+  meeting; when it must serve Recall for a **post-cutoff** meeting it attaches a loud `sourceNotice` (baked into the
+  transcript so the MCP surfaces it). No whinging about historical Recall-only meetings.
+- **Splitter false-split guard** — `fathomSplitService.eventLeadSpeaks`: only split a back-to-back when the second
+  meeting's lead ACTUALLY speaks. Kills phantom splits from overrun-into-cancelled-slot / duplicated calendar events.
+- **Proven on real data:** JB+Julian back-to-back split correctly into two named, lead-matched meetings; Al's call
+  (overran into Courtney's cancelled slot) correctly filed as ONE meeting after the guard. First real write = Shoma.
+- **Remaining:** (a) store Nylas creds on Render (still sandbox-only — prod calendar reads use Google, fine for Guy);
+  (b) Fathom **"new meeting content ready" webhook** to replace/augment the poll (kills the ~5-min lag); (c) **switchover**
+  (Recall off) once the trial is clean for ~2-3 wks; (d) **tenancy** stamping (deferred); (e) **email-identity hardening**
+  (personal→business switch — see Next steps). Live status of record = memory `project_recall_to_fathom_migration`.
+
 **As of 2026-06-08:** Full planning done — architecture, cost model, model-lock-in,
 pricing (crystallised), and a **7-phase implementation roadmap** all captured above.
 Environment/deploy flow confirmed (build on `dev`, flag-gated, promote up). **No ASH code
@@ -1128,12 +1146,14 @@ Design capture only — no code; day-to-day setup untouched.
 quick-update, remote-config selectors). See "Existing extension recon" above.
 
 **Next concrete steps (start a fresh chat per item):**
-- **Fathom GO-LIVE (ingest + splitter + `google|nylas` adapter are BUILT & dry-run-proven as of 06-13 — this is turn-on, not build):**
-  (a) **store Nylas creds on Render** (`NYLAS_API_KEY` / `NYLAS_GRANT_ID` / `NYLAS_API_URI` — quiet moment; the
-  shared env group can briefly redeploy); (b) build the **trigger** (lean poll for MVP → Fathom "new meeting
-  content ready" webhook later); (c) one real **write-path test** (`FATHOM_INGEST_ENABLED=true`, ingest one meeting,
-  confirm the row, delete it — only ever done in dry-run so far); (d) **switchover** (Recall off / Fathom on, reversible).
-  Gate any schema change on the staging Postgres schema first.
+- **Fathom GO-LIVE — DONE 2026-06-17 (was "build trigger + write-path + switchover"):** the **trigger** (5-min poll,
+  `fathomPollService`), real **write-path**, **dedup** column, **prefer-Fathom + loud fallback**, and the splitter
+  **speak-guard** are all SHIPPED and live in prod (kill-switched, trial alongside Recall). See "You are here" above.
+  **Still pending:** (a) store **Nylas creds on Render** (`NYLAS_API_KEY` / `NYLAS_GRANT_ID` / `NYLAS_API_URI` — prod
+  calendar reads use Google today, fine for Guy); (b) Fathom **"content ready" webhook** to kill the ~5-min poll lag;
+  (c) **switchover** (Recall off) after a clean ~2-3 wk trial. *(Schema change `fathom_recording_id` shipped via the
+  additive ensureSchema-ALTER pattern — the `staging` branch is ~2750 commits stale, so it's no longer a usable gate;
+  validated via dry-run jobs on prod instead.)*
 - Decide: use Fathom's `default_summary` directly vs regenerate via `recallSummaryService` (cost).
 - Finish Phase 0 recon: read `content-portal.js` + the `/api/linkedin` & `/api/extension-config`
   backend (how `clientId/portalToken` are issued); investigate `ash-backend` / `ash-attributes-api`.
@@ -1153,6 +1173,7 @@ quick-update, remote-config selectors). See "Existing extension recon" above.
 - *(Maybe: a light tidy/consolidation pass on this doc — it has grown organically.)*
 
 The Fathom **read path** ships in production (Smart Follow-Up / Meeting Prep); the Fathom **ingest + splitter +
-`google|nylas` calendar adapter** are **built, additive, kill-switched, and dry-run-proven** (2026-06-13) but
-**not yet live** — remaining work is the go-live list (store Nylas creds on Render → trigger → one real write-path
-test → switchover).
+`google|nylas` calendar adapter** are now **LIVE in production** (2026-06-17) — auto-ingest poll, prefer-Fathom +
+loud fallback, and the splitter speak-guard all shipped and kill-switched, running in a **trial period alongside
+Recall** (Recall = safety net, not yet off). Remaining = store Nylas creds on Render, the "content ready" webhook
+(to kill the poll lag), and **switchover** (Recall off) after a clean trial.
