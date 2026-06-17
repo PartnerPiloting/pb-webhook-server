@@ -1057,8 +1057,9 @@ The Fathom capture pipeline now runs in **production**, additive + kill-switched
   (overran into Courtney's cancelled slot) correctly filed as ONE meeting after the guard. First real write = Shoma.
 - **Remaining:** (a) store Nylas creds on Render (still sandbox-only — prod calendar reads use Google, fine for Guy);
   (b) Fathom **"new meeting content ready" webhook** to replace/augment the poll (kills the ~5-min lag); (c) **switchover**
-  (Recall off) once the trial is clean for ~2-3 wks; (d) **tenancy** stamping (deferred); (e) **email-identity hardening**
-  (personal→business switch — see Next steps). Live status of record = memory `project_recall_to_fathom_migration`.
+  (Recall off) once the trial is clean for ~2-3 wks; (d) **tenancy** stamping (deferred); (e) ~~email-identity hardening~~
+  **✅ SHIPPED 2026-06-17** (multi-email per lead + self-healing write-back — see Next steps). Live status of record =
+  memory `project_recall_to_fathom_migration`.
 
 **As of 2026-06-08:** Full planning done — architecture, cost model, model-lock-in,
 pricing (crystallised), and a **7-phase implementation roadmap** all captured above.
@@ -1162,14 +1163,28 @@ quick-update, remote-config selectors). See "Existing extension recon" above.
 - **Rules de-personalisation spike:** Guy pastes ONE section of his Notion rules → Claude returns a
   de-identified master + variable catalogue + flagged implicit-personal bits.
 - Then Phase 1: define the calendar/email/LLM interfaces + Google adapter (no behaviour change).
-- **Email-identity hardening (LinkedIn personal → business email switch):** a lead is ONE person with
-  MANY emails over time (personal on LinkedIn → business when they book), but matching + lookup key off a
-  single email, so a switch breaks both linking (meeting → lead) and lookup ("pull up X's call"). Real case
-  2026-06-17: Courtney's business email `courtney@mosaicwealth.au` → `lead_not_found`; name lookup still found
-  her (name-fallback = current safety net). Fix: let a lead hold ALL known emails and match/lookup against ANY.
-  Ideal = SELF-HEALING — when a booking's invitee email is unknown but the NAME matches a known lead, auto-record
-  that new email onto the lead (the name-match already runs in ingest; just write back what it learns). Same
-  identity layer as the calendar/Nylas work. Interim habit for Guy: ADD a new email, don't REPLACE the old one.
+- **Email-identity hardening (LinkedIn personal → business email switch): ✅ SHIPPED 2026-06-17**
+  (commit `5d3e5b19`, verified live). A lead is ONE person with MANY emails over time (personal on LinkedIn →
+  business when they book), but matching + lookup keyed off a single email, so a switch broke both linking
+  (meeting → lead) and lookup ("pull up X's call"). What shipped:
+  - **Multi-email per lead.** New Airtable field `{Alt Emails}` on Leads (newline-separated, lowercase).
+    `findLeadByEmail` now falls back to it ONLY on a primary `{Email}` miss (FIND() narrows, then exact
+    membership check in JS to avoid substring false positives). Every caller — Fathom matcher, inbound/BCC
+    flow, the `latest-transcript-by-email` MCP lookup — inherits ANY-known-email matching for free. Live hot
+    path unchanged; degrades to "not found" if the field is absent in a base.
+  - **Self-healing write-back** (`learnEmailForLead`, services/inboundEmailService.js). When a lead is resolved
+    by a UNIQUE name match while the incoming booking email matched nobody, it appends that email to `{Alt Emails}`
+    so future lookups by it resolve. Auto-records (a unique name match already attaches the whole meeting);
+    never fires on ambiguous; best-effort, never throws. Kill-switch `EMAIL_SELFHEAL_ENABLED=false`. Wired into:
+    Fathom split/segment path, Fathom single path (with a NEW invitee-NAME fallback — was email-only, so a normal
+    booking with a brand-new business email previously matched nothing), and the inbound meeting-notetaker path
+    (conservative: only when exactly one lead found).
+  - Verified end-to-end on live prod via a Render one-off job: primary lookup intact, an alt-email resolved to the
+    same lead, a genuine miss returned null cleanly. (Courtney's record already had the business email as PRIMARY by
+    the time we looked — the original 404 predated that field being overwritten, which is exactly the lossy
+    single-field behaviour this prevents going forward.)
+  - Same identity layer as the calendar/Nylas work. Interim habit for Guy is now optional, but still safe: ADD a
+    new email, don't REPLACE the old one (the system also learns it automatically on the next booking).
 - *(Maybe: a light tidy/consolidation pass on this doc — it has grown organically.)*
 
 The Fathom **read path** ships in production (Smart Follow-Up / Meeting Prep); the Fathom **ingest + splitter +
