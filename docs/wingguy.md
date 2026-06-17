@@ -1225,6 +1225,127 @@ Airtable itself. No env-var sync needed.
 
 ---
 
+## Economics, time-load & targeting — the path to ~100 clients (2026-06-17, session 2 cont.)
+
+> Continues the competitive/scaling thread above — unit economics + how Guy actually runs ~100
+> clients on ~3 days/week. **Planning only — no code.**
+
+### Ideal client = FREQUENCY-OF-USE, not job title (2026-06-17)
+- Stickiness predictor is **behaviour, not title:** *"is consistent outreach / relationship-building a
+  recurring, valued part of their week that they struggle to do reliably?"* High-frequency use → deep
+  accumulated state → sticky → "don't take it away."
+- **Bullseye:** insurance brokers, financial planners — relationship-building IS the daily job.
+- **Fractionals split** (not one segment): (a) **time-starved fractional who values consistency** = GREAT
+  target — "busy" is a *feature* (pain = "I never get round to it"); (b) **fractional for whom outreach is
+  peripheral** = weak — low frequency → thin state → less value/mo → price-sensitive + churnable.
+- **Scoring implication:** filter on *frequency-of-use intent*, not just "broker = yes". Keep the core ICP
+  tight; let the right fractionals in but don't let the adjacent segment dilute the wedge.
+- **Cheapest retention = not signing the wrong-fit client.** Selection is half the stickiness battle.
+
+### Onboarding = relationship investment, delegated; ACTIVATION is the real job (2026-06-17)
+- Reframe: onboarding time isn't pure cost — it **builds the trusted relationship** that itself drives
+  retention. Investment with a return, not overhead.
+- **Delegate the labour, keep the brand:** a people-skilled VA carries the bulk; Guy **drops in briefly**
+  for the high-value touch. **Anchor trust to "Guy's system / Wingguy", NOT the individual VA** → a VA
+  change is a new face, not a lost relationship (kills relationship-layer key-person risk). Same
+  "separate the grind from the gift" principle as the intros.
+- **The catch: relationship is the WRAPPER, activation is the ENGINE.** "Don't take this away from me"
+  only fires for clients who *actually use it + get results*. A warm relationship with an unactivated
+  client still churns. ⇒ onboarding's #1 job = **drive USE to felt-value**, not rapport. Measure "using
+  it + getting results in the first weeks", not "did they enjoy onboarding".
+- **"Onboarding is cheap" is TRUE — but conditional on low churn.** Heavy onboarding is justified by the
+  stickiness it produces; heavy onboarding + leaky retention = the worst quadrant.
+
+### Sequencing — stage the REVEAL, but don't drag out ACTIVATION (2026-06-17)
+- **Reveal (sales comms):** do NOT tantalise with Wingguy on day one. Get them solid on the basics
+  (LinkedHelper + core workflow) first, build trust, then "talk turkey" about Wingguy as the +$50 upgrade
+  (= the documented progressive-reveal). ✓
+- **BUT separate reveal from activation.** The basics (LinkedHelper) are the **LEAST sticky** part —
+  anyone can run LinkedHelper. **Wingguy is the moat.** So the most *churnable* window is the early,
+  basics-only phase, before the stickiness engine is on.
+- ⇒ **Activate Wingguy as soon as the basics are bedded, not as late as you can get away with.** The
+  stickiness clock only starts when Wingguy starts; every extra month basics-only = moat not building +
+  more replaceable. Several months of relationship-rich involvement is good (trust + activation), but bias
+  Wingguy *live* to the earlier side of that window.
+
+### The +$50 Wingguy upsell — penetration price, near-pure margin (2026-06-17)
+- Consistent with the doc's existing **+$50 progressive-reveal**; Guy confirming it, anchored on the
+  Wingguy/Claude layer.
+- **$50 easily converts the right buyer** (below the deliberation threshold for someone who values time +
+  saw a demo). Conversion risk ≈ 0. The real issue is the **opposite: $50 is UNDER-priced vs value.**
+- **The under-pricing is a deliberate, good choice:** low price = **penetration** → max take-rate → max
+  accumulated state (moat) + more mesh nodes + more referrals. AND **near-pure margin** — the Wingguy
+  cockpit runs on the **client's own Claude** (the free→paid wedge), so it costs Guy ~$0 → the $50 is
+  almost all profit.
+- **Moves:** (1) charge it, **don't bundle** into base (keep low-friction entry + the reveal moment);
+  (2) treat $50 as a **launch/penetration price** — **grandfather early adopters at $50** (reward + they
+  generate proof), **charge later cohorts more** once value is proven; (3) **the framing flips** — "+$50
+  add-on" now, but Wingguy becomes the **lead** attraction later (the real differentiator).
+
+### VA model + cost (2026-06-17, checked)
+- A people-skilled full-time VA carries onboarding + continuation tasks (LinkedHelper top-ups, admin); Guy
+  drops in. **2026 rates:** PH direct hire experienced FT (160h) ~USD $700–1,200/mo → **AUD ~$1,100–1,850**;
+  via managed agency ~USD $1,200–2,500 → **AUD ~$1,850–3,800**. Planning number **~AUD $1,500–2,500/mo**
+  direct (~AUD $20–30k/yr).
+- **Capacity (honest):** one good VA covers **~50–80** clients at light steady-state touch *with
+  productised onboarding*; **100 on one VA only if onboarding is genuinely light** — else budget
+  **~1.5–2 VAs** by 100. Productised onboarding decides one VA vs two.
+- **Economics trivial:** ~AUD $2k/mo across 100 = **~AUD $20/client/mo** (<15% of revenue). **Key-person
+  risk:** document SOPs so knowledge isn't in one head + a 2nd VA can slot in.
+
+### 100-client steady-state P&L (2026-06-17, planning ballpark)
+- **Assumptions:** 100 clients, base **$150/mo**, Wingguy **+$50** at **70%** take, **1.5 VAs**
+  (~USD $2,000/mo). Revenue at face-value "$" (USD); VA converted from AUD. *(If client prices are AUD,
+  read the net as AUD directly.)*
+- **Revenue:** base 100×$150 = $15,000 + Wingguy 70×$50 = $3,500 → **$18,500/mo**.
+- **Costs:** VA −$2,000; Guy's AI (panel + scoring; Wingguy runs on client Claude = ~$0) −$700; infra
+  −$300; Stripe ~3% −$550; misc −$300 → **~−$3,850/mo**.
+- **Net ≈ $14,650/mo (USD) ≈ AUD ~$22k/mo ≈ AUD ~$265k/yr, ~78% margin.**
+- **★ Key insights:** (1) **take-rate barely moves the top line** — 60% vs 80% = only ~$1k/mo (because
+  $50 ≪ $150 base) → **don't agonise over take-rate**; the levers are **base price + client count**; $50
+  is a *penetration/moat* price, not a revenue driver. (2) **Wingguy is near-pure margin AND protects the
+  whole $18.5k** (stickiness + coaching-delivery layer). (3) **The fat margin is pre-Guy's-time** — only
+  holds if onboarding is productised + VA carries support, else the hidden cost is Guy's hours. (4) **This
+  is steady-state** — excludes the cost of *getting to* 100 (acquisition + building the machinery).
+- **Swing factors:** referral-floor ($50) clients pull revenue down (but each brought 3 payers = system
+  ahead); $300 done-for-you push it up (but cost more time); churn = the quiet tax (re-onboarding).
+
+### Guy's time at steady state — ~3 days/week is feasible IF held (2026-06-17)
+- **Yes, ~3 days/wk is feasible** at steady-state (machinery built, VA competent, churn low) — but a
+  **ceiling actively held**, not automatic. Rough split: acquisition/sales ~1–1.5d; VA mgmt + escalations
+  ~0.5d; onboarding trust-touches + coaching overflow ~0.5d; product maintenance ~0.5–1d.
+- **The usual killer (support load) is offloaded** here (VA + Wingguy + self-serve) → Guy's days are
+  *front-end* work.
+- **The two things that blow past 3 days if unmanaged:** (1) **acquisition** — the **least-delegable**
+  task (relationship sale; a VA/Wingguy can't do it) → balloons if churn high or still growing; (2)
+  **Guy's urge to keep building Wingguy** — dev time is unbounded (the "elegant-architecture" trap). 3
+  days requires *stopping building* once it's good enough.
+- **Pressure valve:** the economics **buy time back** — a 2nd VA / part-time appointment-setter or closer
+  takes ops or the least-compressible sales off Guy. If 3 creeps to 4, **hire it down** (margin affords it).
+- **NB:** 3 days = *steady-state* figure AFTER the build (build phase is more). For Guy's goals (74,
+  cash-flow, don't-kill-me): ~3 days of mostly the work he enjoys (relationships/sales) for ~AUD $265k/yr
+  = close to the ideal shape he described.
+
+### LinkedIn analogy — you're renting a SOLVED network (2026-06-17)
+- Guy's thesis: LinkedIn works because *the right people are there*, not because of community/meetings →
+  a tool that makes finding/reaching them easier needs no community either. **On the right track**, with
+  two sharpenings:
+- **(1) Not anti-community, anti-MEETING.** LinkedIn *is* a network (latent, passive, high-utility) — just
+  not a *scheduled gathering*. The valuable form of "community" = the **latent network**, not the rah-rah
+  event. That IS the intro-mesh.
+- **(2) The smart move: you're RENTING LinkedIn's already-solved network**, not building one. The cold
+  start is the hardest problem in network businesses (LinkedIn: ~20yrs + hundreds of millions to solve).
+  Guy adds a productivity + coaching layer ON TOP → no need to manufacture belonging, he's **borrowed
+  LinkedIn's network effect.** (Guy's *own* intro-mesh still has a cold-start ramp → a later-compounding
+  bonus, not an early crutch.)
+- **Honest caveat:** LinkedIn's other truth — most users are passive + get little. Guy's argument rides on
+  *"provided people do it + get results"* → the real risk is **activation**, not community.
+- **★ Ties the day together:** "100 clients at low touch" is gated on **productised onboarding +
+  Wingguy-DELIVERED coaching** (today's content-surfacing system = how coaching scales past Guy's
+  calendar), NOT on running a community.
+
+---
+
 ## ▶ You are here / next pick-up
 
 **As of 2026-06-17 — FATHOM MIGRATION IS LIVE (go-live shipped; supersedes the 06-15 "real next = go-live list" below):**
@@ -1261,6 +1382,14 @@ access path (WordPress REST API + app password) + start the editorial tagging pa
 meetings (he's done years of that grind); Wingguy matchmakes + drafts double-opt-in intros, Guy just
 approves; belonging-moat trade resolved as a *good* one for this buyer (emotional belonging →
 economic/relational stickiness, tuned-state carries the weight)).
+**Session-2 cont. (economics + path to 100)** — new section **"Economics, time-load & targeting — the path
+to ~100 clients"**: ICP = frequency-of-use not title (fractionals split); onboarding = delegated
+relationship investment whose real job is **activation** not rapport; stage the reveal but don't drag out
+Wingguy activation (basics = least sticky); **+$50 = penetration price / near-pure margin** (grandfather
+early adopters, raise later, framing flips); VA ~AUD $1.5–2.5k/mo (one VA ~50–80, ~1.5–2 by 100);
+**100-client P&L ≈ net AUD ~$22k/mo (~$265k/yr, ~78% margin)** with take-rate barely moving revenue;
+**~3 days/week feasible if held** (cap dev + acquisition, hire down creep); LinkedIn = renting a solved
+network, so 100-at-low-touch is gated on productised onboarding + Wingguy-delivered coaching, NOT community.
 
 **As of 2026-06-08:** Full planning done — architecture, cost model, model-lock-in,
 pricing (crystallised), and a **7-phase implementation roadmap** all captured above.
