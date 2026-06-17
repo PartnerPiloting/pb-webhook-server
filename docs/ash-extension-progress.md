@@ -1155,6 +1155,20 @@ quick-update, remote-config selectors). See "Existing extension recon" above.
   (c) **switchover** (Recall off) after a clean ~2-3 wk trial. *(Schema change `fathom_recording_id` shipped via the
   additive ensureSchema-ALTER pattern — the `staging` branch is ~2750 commits stale, so it's no longer a usable gate;
   validated via dry-run jobs on prod instead.)*
+- **➡ NEXT UP — Fathom "content ready" webhook (replaces the poll lag). Verified safe + additive 2026-06-17:**
+  Today ingest is a timer (`services/fathomPollService.js`, interval = `FATHOM_POLL_INTERVAL_MS`) that lists recent
+  meetings and files new ones. The webhook just turns that pull into a push. **Design:** a new inbound route receives
+  Fathom's "meeting/recording content ready" callback → verifies the signature → extracts `recording_id` → calls the
+  SAME `ingestFathomMeeting({ recordingId, coachClientId })` the poll already uses. **Why it's safe/additive:** the
+  ingest path is unchanged; double-fire is impossible because every ingest first checks
+  `recallWebhookDb.fathomRecordingIngested(recording_id)` and skips duplicates; existing gates still apply
+  (`FATHOM_INGEST_ENABLED`, `FATHOM_LIVE_FROM`); KEEP THE POLL RUNNING as a backstop during the webhook trial.
+  **First task = research:** confirm from Fathom's API docs whether the "content ready" webhook exists and its exact
+  payload shape + signature/auth scheme (our notes say Fathom has webhooks — verify). **Mirror the existing pattern:**
+  Recall already does signed inbound webhooks (`routes/recallWebhookRoutes.js`, `RECALL_VERIFICATION_SECRET`) — copy
+  that shape for verification + route registration in `index.js`. **New env:** a webhook on/off flag + a Fathom signing
+  secret. **Test live:** register the webhook, book/finish a real Fathom meeting, confirm it ingests within seconds and
+  the poll then reports it as `already ingested` (no double-file).
 - Decide: use Fathom's `default_summary` directly vs regenerate via `recallSummaryService` (cost).
 - Finish Phase 0 recon: read `content-portal.js` + the `/api/linkedin` & `/api/extension-config`
   backend (how `clientId/portalToken` are issued); investigate `ash-backend` / `ash-attributes-api`.
