@@ -140,6 +140,18 @@ try {
     moduleLogger.error('index.js: Error mounting recallIngestRoutes', e.message, e.stack);
 }
 
+// Fathom "content ready" webhook — the PUSH that replaces the ~15-min poll lag. Same Svix HMAC
+// scheme as Recall, so it also mounts BEFORE express.json() to keep the raw body for verification.
+// No-op unless FATHOM_WEBHOOK_ENABLED=true AND FATHOM_LIVE_FROM is set; writes still gated by
+// FATHOM_INGEST_ENABLED; the poll stays running as a backstop. See routes/fathomWebhookRoutes.js.
+try {
+    const fathomWebhookRoutes = require('./routes/fathomWebhookRoutes.js');
+    app.use(fathomWebhookRoutes);
+    moduleLogger.info('index.js: Fathom webhook mounted (before express.json) at GET/HEAD/POST /webhooks/fathom');
+} catch (e) {
+    moduleLogger.error('index.js: Error mounting fathomWebhookRoutes', e.message, e.stack);
+}
+
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" })); // For Mailgun webhooks (form-urlencoded)
 
