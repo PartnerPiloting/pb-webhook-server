@@ -63,7 +63,8 @@
 - **Naming & terminology:** Naming the second brain (✅ Wingguy chosen) · name-variant policy (in Naming +
   Discovery) · Terminology — "the Portal" not Airtable · Terminology trap — "recall_".
 - **Calendar / email / transcript infra:** Middleman (Nylas) · "Catch 1" · Provider notes · Pricing snapshot ·
-  Transcript layer deep-dive · Fathom API — live verification + back-to-back. *(Live status → ▶ You are here +
+  Transcript layer deep-dive · Fathom API — live verification + back-to-back · Speaker reconstruction on
+  transcript ingest (single-speaker / no-diarisation paste path — backlog). *(Live status → ▶ You are here +
   memory `project_recall_to_fathom_migration`.)*
 - **Architecture & build process:** Environments & deploy flow · Implementation roadmap (7 phases) · De-risking
   spikes · What actually paces the build · Scope reality check · Key code anchors.
@@ -141,6 +142,22 @@ skeptics** vs "let them train it". (3) Multi-tenant refactor **paused** for the 
   = **flag each lead actioned / not-actioned** and surface the not-yet-actioned ones as a worklist (likely
   sortable by connection date). **Guy-first** (fixes his daily "where was I" friction) **and client-facing**
   (every client has the same pain). No full spec yet — capture only.
+- **Speaker reconstruction + confirm on transcript ingest** *(flagged 2026-06-18)* — non-Zoom captures (e.g.
+  **Zoom Notes / Tactiq** recording a **Teams or Google Meet** call as a fallback when a guest's own tech
+  fails) arrive with **NO diarisation — every line tagged as the host**, so who-said-what (the things that
+  matter: intros + their *direction*, who-knows-whom, commitments) is unreliable even though both sides'
+  words are captured. Proposed flow: **source dropdown** on import → **single-speaker detection** on ingest
+  → **AI reconstructs** speakers from content (topic anchors + conversational logic) → **human-in-the-loop
+  confirm card** (the critical step: *"the transcript was a bit dodgy and I've done my best — may not be
+  quite right, can you check it?"*; user confirms/corrects intros & recognition lines in chat) → store
+  **only the human-confirmed version** as canonical. Clean multi-speaker transcripts are read first and
+  **pass straight through** — the confirm step fires only when reconstruction was actually needed. Principle:
+  **ground truth can't be automated** — the person who was in the room is the only reliable source for the
+  high-stakes lines; AI detects + reconstructs, the human confirms direction, and **that division IS the
+  feature.** Every multi-tenant tenant hits this on any non-Zoom call. Implementation = an import-flow change
+  in pb-webhook-server (detect → reconstruct → confirm card → store confirmed). Detail + provenance ↓ journal
+  **"Speaker reconstruction on transcript ingest (paste path) — single-speaker / no-diarisation"**; lives
+  next to the universal-paste seam (transcript layer item 5).
 
 ## The one-line vision
 
@@ -1085,7 +1102,7 @@ item 8's old "forward sequence" was stale and has been replaced with the real go
 
 4. **Who pays + Fathom tiers (corrected).** Fathom's **Public API & webhook is on EVERY tier, including Free** (confirmed from Guy's pricing-page screenshots — an earlier automated read wrongly said Team-gated). Free = unlimited transcripts. So accessing a client's transcript **never depends on their tier**. Requiring clients to be paid is a *business choice* (better AI summaries / commitment), not a technical gate. Capture cost stays the client's, never ours.
 
-5. **Multi-source, not Fathom-only.** Build **one normalized-transcript shape + a thin source-mapper per provider**. Ship Fathom API + **universal paste** (`insertImportedMeeting` already exists). Add others (**Fireflies** = strongest alt API; Otter weak/enterprise-gated) **only when a paying client needs it** — build the seam, not all the plugs. Paste = universal fallback → sales pitch becomes "keep your tool", not "switch to Fathom".
+5. **Multi-source, not Fathom-only.** Build **one normalized-transcript shape + a thin source-mapper per provider**. Ship Fathom API + **universal paste** (`insertImportedMeeting` already exists). Add others (**Fireflies** = strongest alt API; Otter weak/enterprise-gated) **only when a paying client needs it** — build the seam, not all the plugs. Paste = universal fallback → sales pitch becomes "keep your tool", not "switch to Fathom". **⚠ Blind spot of this paste path (flagged 2026-06-18):** cross-platform captures (Zoom Notes/Tactiq → Teams/Meet) arrive with **no diarisation** (all lines = host) → needs single-speaker detection + AI reconstruction + a **human-confirm step**. See journal **"Speaker reconstruction on transcript ingest"** + the canonical Backlog block.
 
 6. **Identity is multi-tenant + multi-provider (correction).** "Identity from calendar, not recorder" is solved **for Guy only** (single-tenant, Google). Multi-tenant needs *each client's* calendar across **Google AND Outlook** → the **same Nylas layer**. The transcript matcher should read attendees **through Nylas**, not Google Calendar directly. Delivery decoupling: **ingestion ships independent** (paste/API lands it); calendar identity is **enrichment that trails per tenant**, with graceful fallback to name-only matching. Nylas cost ≈ **$1.50–2/connected account/mo** (per-client, **our** cost vs Fathom = client's), ~$153/mo at 100 clients — <1.5% of revenue.
 
@@ -1181,6 +1198,53 @@ show ~zero leakage anyway; the group-intro case tested here is the hard end and 
 Airtable creds live in the Render env group **"Authentication & API Keys"**. A local read-only run
 = source those creds (Render API), let `scripts/fathom-inspect.js` resolve the Fathom key from
 Airtable itself. No env-var sync needed.
+
+---
+
+## Speaker reconstruction on transcript ingest (paste path) — single-speaker / no-diarisation (2026-06-18)
+
+> **Origin:** a real Guy call (Alicia Rieniets / Alisdair, 18 Jun 2026). Meant to be Zoom; the guest
+> couldn't get Zoom working so they jumped to **Teams**. **Zoom Notes** auto-captured it anyway (its
+> bot-free feature records Zoom, Teams AND Google Meet — a genuinely useful fallback), **but with no
+> speaker diarisation**: the whole transcript came through labelled as the host, and the auto-generated
+> notes **reversed the key introductions** (read "Guy to introduce Alicia to Bill Lang / Robeline" when
+> in fact Alicia was introducing Guy to both, and Guy was introducing Alicia to his son Tom). Gist was
+> fine; the things that matter (intros + direction, who-knows-whom, commitments) were not trustworthy.
+> **This is the universal-paste path's blind spot**, distinct from the Fathom back-to-back *lumping*
+> problem above — see transcript-layer item 5 (universal paste / `insertImportedMeeting`).
+
+**The problem.** Capture tools that record *across* platforms (Zoom Notes / Tactiq → Teams/Meet) export
+**without diarisation — every line tagged as the host.** Both sides' words are present, but who-said-what
+is unreliable. Storing that silently means the high-stakes lines (intro direction, recognition, commitments)
+are quietly wrong. **In multi-tenant this is not an edge case** — every tenant will hit it on any non-Zoom
+call, and a non-expert VA/Mr Busy can't eyeball-correct it the way Guy can.
+
+**Proposed flow (NOT yet spec'd — discuss before building):**
+1. **Source dropdown on the import front-end** — user picks the transcript source (Fathom / Zoom Notes
+   (Tactiq) / other) so the parser knows the format + quirks to expect. *(Ties into the existing
+   "thin source-mapper per provider" seam — item 5.)*
+2. **Single-speaker detection on ingest** — automatically detect when a transcript arrives with only one
+   speaker label, instead of storing it silently.
+3. **AI reconstruction** — when single-speaker (or otherwise dodgy) is detected, rebuild speakers from
+   content using topic anchors + conversational logic.
+4. **Human-in-the-loop confirm step (the critical one)** — after reconstruction, surface a card: *"The
+   original transcript was a bit dodgy and I've done my best to fix it — it may not be quite right. Can you
+   check it first?"* User confirms/corrects the key points **in chat** (especially intros + their direction,
+   and recognition lines like "I know her"). **Only the human-confirmed version is stored as canonical.**
+5. **Pre-read / let-it-through path** — if the incoming transcript already has clean speaker labels, read it
+   first and pass it through **without** forcing the confirm step. The confirm step fires *only* when
+   reconstruction was actually needed.
+
+**Underlying principle.** Ground truth can't be automated — the person who was in the room is the only
+reliable source for the high-stakes lines. AI does **detection + reconstruction**; the human **confirms
+direction**. That division is the feature.
+
+**Fit with what exists.** This is an **import-flow change in pb-webhook-server** layered on the universal
+paste path (`insertImportedMeeting`, item 5) and its normalized-transcript shape — detect single-speaker →
+reconstruct → surface a "confirm key points" card → store the confirmed version as canonical. Orthogonal to
+the Fathom splitter (that solves *lumping* of well-diarised recordings; this solves *missing diarisation* on
+pasted ones). **STATUS: backlog — flagged, not yet spec'd** (see canonical "Backlog" block); capture +
+discussion only, no code.
 
 ---
 
@@ -1577,6 +1641,17 @@ to *prevent* leakage into native memory (unwinnable — it's Anthropic's, in the
 inert, and **own the save-path** via the existing `teach-rule`/Commit write-door with an **assertive tool
 description** that routes "from now on…" changes to the tool, not native memory. Two concrete to-dos noted.
 Day-to-day setup untouched.
+
+**As of 2026-06-18 (capture, no code) — SPEAKER RECONSTRUCTION ON TRANSCRIPT INGEST:** flagged a new backlog
+feature from a real mucked-up call (Alicia/Alisdair, 18 Jun — Zoom→Teams, captured by Zoom Notes with NO
+diarisation; auto-notes reversed the intro direction). Non-Zoom captures arrive all-host-labelled → who-said-
+what is untrustworthy for the lines that matter (intros/direction, who-knows-whom, commitments). Proposed flow
+captured: source dropdown → single-speaker detection → AI reconstruction → **human confirm card** ("done my
+best, may not be right — check it?") → store only the confirmed version; clean transcripts pass straight
+through. Principle: AI detects+reconstructs, the human (who was in the room) confirms direction = the feature.
+Added to the canonical **Backlog** block, a full journal section **"Speaker reconstruction on transcript ingest
+(paste path)"** (sits in the transcript cluster next to the universal-paste seam, item 5), a topic-map pointer,
+and a ⚠ cross-link on the universal-paste item. **Not yet spec'd — discussion + an item to be done.**
 
 **As of 2026-06-18 (doc hygiene) — TOPIC MAP + DEDUP PASS:** full end-to-end read of the doc. Added a
 **🗺 Topic map** near the top (skim + Ctrl-F before adding, to stop duplicates as it grows) + a **scan-first**
