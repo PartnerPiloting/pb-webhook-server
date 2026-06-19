@@ -190,75 +190,102 @@ function getSectionTitle(key) {
   return titles[key] || key;
 }
 
+const MONTH_MAP = { jan: '01', feb: '02', mar: '03', apr: '04', may: '05', jun: '06',
+                    jul: '07', aug: '08', sep: '09', oct: '10', nov: '11', dec: '12' };
+
 /**
- * Extract the most recent date from section content
- * Iterates from TOP to BOTTOM to find the newest entry (LinkedIn/Email show newest first at top)
- * Looks for various date patterns:
- * - DD-MM-YY (LinkedIn/Email: "04-02-26 4:27 PM - Guy Wilson...")
- * - DD/MM/YYYY (Fathom recorded: "[Recorded 04/02/2026, 9:09 pm]")
- * - YYYY-MM-DD (ISO format)
- * - Month DD, YYYY (Meeting notes: "Feb 4, 2026" or "February 4, 2026")
- * - DD Mon YY (e.g., "04 Feb 26")
+ * Normalise a 2- or 4-digit year string to a 4-digit year for comparison.
+ * 2-digit years are treated as 2000-2099 (e.g. "26" -> 2026).
+ */
+function toFullYear(year) {
+  return year.length === 4 ? parseInt(year, 10) : 2000 + parseInt(year, 10);
+}
+
+/**
+ * Parse a single line into a date object, or null if no date is found.
+ * IMPORTANT: day-first formats are parsed explicitly as DD-MM (NOT US MM-DD) and we
+ * never hand the string to `new Date()`, which would misread "19-06-26" as a US date.
+ * Returns { day, month, year, sortKey, display } where:
+ *   - display is the "DD-MM-YY" badge string
+ *   - sortKey is a comparable YYYYMMDD integer
+ * Supported patterns (all anchored/validated so an out-of-range value is rejected, not silently swapped):
+ * - DD-MM-YY at start of line (LinkedIn/Email/Manual: "19-06-26: ...")
+ * - DD/MM/YYYY anywhere (Fathom recorded: "[Recorded 04/02/2026, 9:09 pm]")
+ * - YYYY-MM-DD anywhere (ISO format)
+ * - Month DD, YYYY (meeting notes: "Feb 4, 2026" / "February 4, 2026")
+ * - DD Mon YY (e.g. "04 Feb 26")
+ */
+function parseLineDate(line) {
+  const trimmed = line.trim();
+
+  const build = (day, month, year2or4) => {
+    const d = parseInt(day, 10);
+    const m = parseInt(month, 10);
+    if (m < 1 || m > 12 || d < 1 || d > 31) return null;
+    const fullYear = toFullYear(String(year2or4));
+    const dd = String(d).padStart(2, '0');
+    const mm = String(m).padStart(2, '0');
+    return {
+      sortKey: fullYear * 10000 + m * 100 + d,
+      display: `${dd}-${mm}-${String(fullYear).slice(2)}`,
+    };
+  };
+
+  // DD-MM-YY at start of line (day-first, explicit positions)
+  let match = trimmed.match(/^(\d{2})-(\d{2})-(\d{2})/);
+  if (match) {
+    const result = build(match[1], match[2], match[3]);
+    if (result) return result;
+  }
+
+  // DD/MM/YYYY anywhere (Fathom recorded dates)
+  match = trimmed.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+  if (match) {
+    const result = build(match[1], match[2], match[3]);
+    if (result) return result;
+  }
+
+  // ISO YYYY-MM-DD anywhere
+  match = trimmed.match(/(\d{4})-(\d{2})-(\d{2})/);
+  if (match) {
+    const result = build(match[3], match[2], match[1]);
+    if (result) return result;
+  }
+
+  // Month DD, YYYY (e.g. "February 4, 2026" or "Feb 4, 2026")
+  match = trimmed.match(/(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+(\d{1,2}),?\s+(\d{4}|\d{2})/i);
+  if (match) {
+    const month = MONTH_MAP[match[1].slice(0, 3).toLowerCase()];
+    const result = build(match[2], month, match[3]);
+    if (result) return result;
+  }
+
+  // DD Mon YY (e.g. "04 Feb 26")
+  match = trimmed.match(/(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{2,4})/i);
+  if (match) {
+    const month = MONTH_MAP[match[2].slice(0, 3).toLowerCase()];
+    const result = build(match[1], month, match[3]);
+    if (result) return result;
+  }
+
+  return null;
+}
+
+/**
+ * Extract the most recent date from section content as a "DD-MM-YY" string.
+ * Scans every line and returns the maximum (most recent) date rather than trusting
+ * line order: LinkedIn/Email append newest-first, but Manual notes append oldest-first,
+ * so a "first date wins" approach returned the wrong badge for Manual sections.
  */
 function extractLastDate(lines) {
-  // Pattern 1: DD-MM-YY at start of line (LinkedIn/Email)
-  const ddmmyyPattern = /^(\d{2}-\d{2}-\d{2})/;
-  // Pattern 2: DD/MM/YYYY anywhere (Fathom recorded dates)
-  const ddmmyyyySlashPattern = /(\d{2})\/(\d{2})\/(\d{4})/;
-  // Pattern 3: YYYY-MM-DD anywhere in line
-  const isoPattern = /(\d{4})-(\d{2})-(\d{2})/;
-  // Pattern 4: Month DD, YYYY or Month D, YYYY (e.g., "February 4, 2026" or "Feb 4, 2026")
-  const monthDayYearPattern = /(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+(\d{1,2}),?\s+(\d{4}|\d{2})/i;
-  // Pattern 5: DD Mon YY (e.g., "04 Feb 26")
-  const ddMonYYPattern = /(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{2,4})/i;
-  
-  // Iterate from top to bottom to find the most recent date (newest entries are at top)
-  for (let i = 0; i < lines.length; i++) {
-    const trimmed = lines[i].trim();
-    
-    // Try DD-MM-YY first (most common for LinkedIn/Email)
-    let match = trimmed.match(ddmmyyPattern);
-    if (match) {
-      return match[1];
-    }
-    
-    // Try DD/MM/YYYY (Fathom recorded dates like "[Recorded 04/02/2026, 9:09 pm]")
-    match = trimmed.match(ddmmyyyySlashPattern);
-    if (match) {
-      return `${match[1]}-${match[2]}-${match[3].slice(2)}`;
-    }
-    
-    // Try ISO format YYYY-MM-DD
-    match = trimmed.match(isoPattern);
-    if (match) {
-      return `${match[3]}-${match[2]}-${match[1].slice(2)}`;
-    }
-    
-    // Try Month DD, YYYY format (common in meeting notes)
-    match = trimmed.match(monthDayYearPattern);
-    if (match) {
-      const monthMap = { jan: '01', feb: '02', mar: '03', apr: '04', may: '05', jun: '06', 
-                        jul: '07', aug: '08', sep: '09', oct: '10', nov: '11', dec: '12' };
-      const month = monthMap[match[1].slice(0, 3).toLowerCase()];
-      const day = match[2].padStart(2, '0');
-      let year = match[3];
-      if (year.length === 4) year = year.slice(2);
-      return `${day}-${month}-${year}`;
-    }
-    
-    // Try DD Mon YY format
-    match = trimmed.match(ddMonYYPattern);
-    if (match) {
-      const monthMap = { jan: '01', feb: '02', mar: '03', apr: '04', may: '05', jun: '06', 
-                        jul: '07', aug: '08', sep: '09', oct: '10', nov: '11', dec: '12' };
-      const day = match[1].padStart(2, '0');
-      const month = monthMap[match[2].toLowerCase()];
-      let year = match[3];
-      if (year.length === 4) year = year.slice(2);
-      return `${day}-${month}-${year}`;
+  let best = null;
+  for (const line of lines) {
+    const parsed = parseLineDate(line);
+    if (parsed && (!best || parsed.sortKey > best.sortKey)) {
+      best = parsed;
     }
   }
-  return null;
+  return best ? best.display : null;
 }
 
 /** Max lines before "Show more" - increased so email threads show more content by default */
