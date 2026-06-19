@@ -165,7 +165,12 @@ skeptics** vs "let them train it". (3) Multi-tenant refactor **paused** for the 
     dedicated field** (candidate: the currently-unused `Conversation Stage`, or a new `Thanks Status`).
   - **DESIGN SETTLED 2026-06-19** (detail + provenance ↓ journal *"Connection follow-up worklist / 'Thanks for
     Connecting' — design"*): **inbox-zero** worklist, **oldest-first** (oldest = closest to the LH window deadline).
-    Two views — **Outstanding** (the draining queue) + **All recent** (status-badged, reconcile against LinkedIn).
+    Two views — **Outstanding** (the draining queue, **bounded by a lookback limit** — only connections from the
+    last ~N days, configurable, default ≈ the LH window (~14); solves the **cold-start flood** (without it, day-1
+    shows every historical connection ever) AND keeps the queue bounded forever; this is a **harmless display
+    filter, NOT the dropped mirrored-window** — if it's slightly off LH's value nothing breaks, auto-resolve still
+    comes from the webhook. No separate bulk-clear needed — the lookback shrinks launch to a couple weeks Guy can
+    eyeball-clear) + **All recent** (status-badged, reconcile against LinkedIn).
     Row = name (links to their LinkedIn profile) · headline/company · "connected X days ago" (free from `Date
     Connected`, zero config) · primary one-tap button + secondary. Optimistic remove + undo toast; live "N to
     thank" count badge (the motivator); real "all caught up" empty state. **Status set (locked):** *Outstanding*
@@ -1734,6 +1739,18 @@ name links to the LinkedIn profile, "connected X days ago", primary one-tap butt
 Optimistic-remove + undo toast (no per-row confirm dialog); a live "N to thank" count (the motivator that makes
 it a habit); a real "all caught up" empty state. **Oldest-first** — Guy's call, and it dovetails with the LH
 window: oldest = closest to the deadline before LH auto-sends.
+
+**Lookback limit (2026-06-20) — bounds the queue + solves cold-start.** Outstanding shows only connections from
+the last ~N days (configurable, default ≈ the LH window, ~14). Without it, day-1 launch would dump *every
+historical connection ever* (blank tick-status but a real `Date Connected`) into the queue — thousands, useless.
+With it, launch shows only ~2 weeks and the queue stays bounded forever (rows you never get to just drop off
+screen rather than piling up stale). **Crucially this is NOT a return of the dropped mirrored-window** — it's a
+benign *display filter*; if it's a bit out of step with the real LH window nothing breaks (a few more/fewer days
+shown), because the correctness-critical auto-resolve still comes from the message-sent webhook. Pairs with
+oldest-first (top of a 14-day list = "about to age out, do this now"). **No separate one-time bulk-clear** —
+decided unnecessary (Guy, 2026-06-20): the lookback already shrinks launch to a handful Guy can eyeball and clear
+by hand if some were already done the old way. Possible later nicety: a "last 7 / 14 / 30 days" range toggle on
+screen; v1 = one configured number.
 
 **Status model (locked).** One to-do state + two done-outcomes, both leave the queue:
 - **Outstanding** (blank) — Connected, still in window, no decision yet.
