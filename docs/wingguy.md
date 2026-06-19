@@ -108,8 +108,9 @@ Wingguy (how to act) + reads/writes the Portal (the records).
 **Gemini** = high-volume scoring + meeting summaries + follow-up prep (stays). **OpenAI** = the portal's
 **Start Here** help-Q&A (embeddings RAG + cheap `gpt-4o-mini` escalation) + topic layout — **live, and its
 embeddings have NO Claude equivalent**, so it can't move to Claude; keep it (cheap, peripheral). **Claude** =
-NEW drafting/reasoning (speaker reconstruction now, post-call email later) — **not yet wired into the backend**
-(volatile status → ▶ You are here; "let sleeping babies lie" confirmed with evidence, journal 2026-06-19).
+drafting/reasoning (speaker reconstruction now, post-call email later) — **wired into the backend 2026-06-19**
+(`config/anthropicClient.js`, plain API key, model env-switchable `CLAUDE_MODEL_ID`=`claude-opus-4-8`, gated by `SPEAKER_RECONSTRUCTION_ENABLED`;
+volatile status → ▶ You are here; "let sleeping babies lie" confirmed with evidence, journal 2026-06-19).
 
 **Pricing (canonical).** $150/mo basics · **+$50 = Wingguy** → $200 full self-serve · **$300 = done-for-you**
 (Mr Busy + VA). Tier by **service level (DIY vs done-for-you), not feature**. Referral: maintain **3 active
@@ -149,7 +150,7 @@ skeptics** vs "let them train it". (3) Multi-tenant refactor **paused** for the 
   = **flag each lead actioned / not-actioned** and surface the not-yet-actioned ones as a worklist (likely
   sortable by connection date). **Guy-first** (fixes his daily "where was I" friction) **and client-facing**
   (every client has the same pain). No full spec yet — capture only.
-- **Speaker reconstruction + confirm on transcript ingest** *(flagged 2026-06-18; spec'd + chosen as NEXT BUILD 2026-06-19)* — non-Zoom captures (e.g.
+- **Speaker reconstruction + confirm on transcript ingest** *(flagged 2026-06-18; spec'd 2026-06-19; ✅ BUILT 2026-06-19 — shipped to `main` behind `SPEAKER_RECONSTRUCTION_ENABLED`, default OFF, awaiting cloud test — volatile status → ▶ You are here)* — non-Zoom captures (e.g.
   **Zoom Notes / Tactiq** recording a **Teams or Google Meet** call as a fallback when a guest's own tech
   fails) arrive with **NO diarisation — every line tagged as the host**, so who-said-what (the things that
   matter: intros + their *direction*, who-knows-whom, commitments) is unreliable even though both sides'
@@ -1671,6 +1672,31 @@ bucket**.
 ---
 
 ## ▶ You are here / next pick-up
+
+**As of 2026-06-19 (session 2) — SPEAKER RECONSTRUCTION BUILT + CLAUDE WIRED (shipped to `main`, flag OFF, awaiting cloud test):**
+Claude is now wired into the backend (first consumer of the swappable seam) and the full speaker-reconstruction
+trust layer is built — both halves on `main`, fully inert until the flag flips. Two commits: backend (`config/anthropicClient.js`
++ `@anthropic-ai/sdk` + reconstruction service/endpoints + DB columns) and frontend (the confirm card). **Kill-switch:
+`SPEAKER_RECONSTRUCTION_ENABLED` (default off ⇒ import path behaves exactly as before; `/reconstruct` 403s; the card never renders).**
+- **Claude client:** `config/anthropicClient.js` — `new Anthropic()` reads `ANTHROPIC_API_KEY` (live in the Render "AI Service
+  Configuration" group, linked to main + staging); model env-switchable `CLAUDE_MODEL_ID` (default `claude-opus-4-8`). Adaptive
+  thinking + `effort:high` + streamed + structured output. Gemini/OpenAI untouched.
+- **Detection (plain code, no AI):** `services/speakerReconstructionService.js` `detectSingleSpeaker` counts distinct labels.
+- **Reconstruction (Claude):** re-derives intro direction; a free-text correction propagates across the whole mislabelled stretch.
+- **DB:** `recall_meetings.reconstruction_status` / `reconstruction_json` (additive, auto-migrated via `ensureSchema`). Canonical
+  `transcript_text` NOT overwritten until the human confirms.
+- **Import path:** detect on ingest → if flagged, reconstruct + mark `pending` and **defer the summary** (chosen 2026-06-19:
+  never summarise off a mislabelled transcript) → clean multi-speaker passes straight through with the inline summary as before.
+- **Endpoints:** `POST /recall-review/:id/reconstruct` (run/re-run + correction), `POST /recall-review/:id/confirm-reconstruction`
+  (commit canonical + regen summary off it). Confirm card surfaces ONLY the high-stakes lines + a "run another pass" button.
+- **Branch reality (logged this session):** `staging` (~1mo) and `dev` (~10mo) branches are abandoned + thousands of commits
+  diverged — NOT usable integration targets. Actual workflow = `main` + env-var flags. Frontend shipped to `main` (flag-gated/inert;
+  Vercel build is lenient — `typescript.ignoreBuildErrors`) with the user's explicit go-ahead given the dead staging branch.
+- **REAL NEXT ACTIONS (cloud-only test):** (1) flip `SPEAKER_RECONSTRUCTION_ENABLED=true` on a NON-prod Render service + its paired
+  Vercel; (2) paste the Alicia/Alisdair Zoom-Notes transcript (the origin case) → confirm single-speaker detection fires, Claude
+  reconstructs, the card shows the intro direction, a free-text correction re-renders, confirm regenerates the summary off the
+  corrected text; (3) verify a clean multi-speaker paste passes straight through (no card); (4) once proven, flip the flag on prod.
+  Watch token cost on a real 90-min transcript (re-emits the full transcript; `CLAUDE_RECONSTRUCT_MAX_TOKENS` default 32000).
 
 **As of 2026-06-19 (planning, no code) — NEXT BUILD CHOSEN + provider audit:** The next Wingguy build is the
 **speaker-reconstruction-on-paste** feature (spec locked — see canonical Backlog + journal "Speaker
