@@ -144,12 +144,30 @@ skeptics** vs "let them train it". (3) Multi-tenant refactor **paused** for the 
 `project_paused_refactor_state`).
 
 **Backlog — flagged, not yet spec'd.**
-- **Connection follow-up worklist ("where am I up to")** *(flagged 2026-06-18)* — replace Guy's manual scan
-  of LinkedIn recent-connections with a generated list of *where he's up to + what's still outstanding*.
-  New connections already land in the **Portal (Airtable leads table) with a connection date**; the feature
-  = **flag each lead actioned / not-actioned** and surface the not-yet-actioned ones as a worklist (likely
-  sortable by connection date). **Guy-first** (fixes his daily "where was I" friction) **and client-facing**
-  (every client has the same pain). No full spec yet — capture only.
+- **Connection follow-up worklist ("where am I up to") — aka "Thanks for Connecting"** *(flagged 2026-06-18;
+  ⏳ actively in design 2026-06-19, being hashed out in chat — NOT yet committed/spec'd)* — replace Guy's
+  manual scan of LinkedIn recent-connections with a generated worklist of *where he's up to + what's still
+  outstanding*. New connections already land in the **Portal (Airtable leads table) with a connection date**;
+  the feature = **flag each lead actioned / not-actioned** (status-tick) and surface the not-yet-actioned ones
+  as a worklist (sorted by connection date). The loop: click a lead → opens their LinkedIn profile → human
+  writes the thanks-for-connecting note → (later) the extension does the magic + advances to the next. **Guy-
+  first** (validate the loop on his own daily friction) **then client-facing** (every client has the same
+  pain; in-portal + easy = they'll actually do it, unlike a manual scan).
+  - **VERIFIED 2026-06-19 (ingestion backbone already exists + is multi-tenant — we are NOT building ingestion,
+    only a view + a status to tick on top):** Linked Helper fires `POST /lh-webhook/upsertLeadOnly?client=CLIENT_ID`
+    (`routes/webhookHandlers.js:29`) on connect; resolves the client's own Airtable base and upserts the lead.
+    Connection date is captured to the **`Date Connected`** field (+ a `Days Since Connected` formula already
+    exists; `services/leadService.js:118`); email is written too (`routes/webhookHandlers.js:219`); connection
+    state lives in **`LinkedIn Connection Status`** (`Connected`/`Candidate`/`Pending`). So the queue is just:
+    *Connection Status = Connected, sorted by Date Connected desc, where <tick-field> is blank.*
+  - **WRINKLE (verified 2026-06-19):** the generic **`Status`** field is auto-clobbered to `"In Process"` on
+    EVERY webhook upsert → useless as a "have I dealt with this person" signal. The worklist needs its **own
+    dedicated field** (candidate: the currently-unused `Conversation Stage`, or a new `Thanks Status`).
+  - **Open design questions (in-chat, unresolved):** (A) status set — proposed *blank/new · Sent · Skipped ·
+    Nurture(="keeper") · Dismissed* (confirm whether "let go" vs "keeper" are one status or two); (B) v1 = plain
+    portal list + manual tick vs extension-driven auto-advance (lean: manual tick v1, extension magic v2);
+    (C) freehand note vs AI-suggested draft in v1; (D) scope order (lean: Guy-first, then portal). Naming: "Thanks
+    for Connecting" vs "Connections"/"Follow-ups" — undecided.
 - **Speaker reconstruction + confirm on transcript ingest** *(flagged 2026-06-18; spec'd 2026-06-19; ✅ BUILT 2026-06-19 — shipped to `main` behind `SPEAKER_RECONSTRUCTION_ENABLED`, default OFF, awaiting cloud test — volatile status → ▶ You are here)* — non-Zoom captures (e.g.
   **Zoom Notes / Tactiq** recording a **Teams or Google Meet** call as a fallback when a guest's own tech
   fails) arrive with **NO diarisation — every line tagged as the host**, so who-said-what (the things that
