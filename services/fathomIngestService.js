@@ -335,6 +335,30 @@ async function ingestFathomMeeting(opts = {}) {
     if (!healed) remainingUnmatched.push(rawEmail);
   }
 
+  // Q2(B) — LAST-RESORT speaker fallback: the recording had NO usable calendar invitee (so neither
+  // email nor invitee-name matched anything), e.g. an ad-hoc Zoom with no event. Fall back to the
+  // DOMINANT non-coach SPEAKER's name in the transcript. Only fires when nothing else matched, and
+  // only on a UNIQUE name match, so it never guesses. No email to self-heal here (none was supplied).
+  if (matched.length === 0) {
+    const speaker = dominantSpeakerName(meeting, coachNames);
+    if (speaker) {
+      try {
+        const r = await findLeadByName(coach, speaker);
+        if (r && r.matchType === 'unique' && r.lead?.id) {
+          matched.push({
+            email: '',
+            leadId: r.lead.id,
+            name: [r.lead.firstName, r.lead.lastName].filter(Boolean).join(' ').trim() || speaker,
+            via: 'speaker',
+          });
+          log.info(`single-path speaker fallback matched "${speaker}" -> lead ${r.lead.id}`);
+        } else if (r && r.matchType === 'ambiguous') {
+          log.info(`single-path speaker fallback: "${speaker}" ambiguous (${(r.allMatches || []).length}) — left unmatched`);
+        }
+      } catch (e) { log.warn(`single-path speaker fallback failed for "${speaker}": ${e.message}`); }
+    }
+  }
+
   const plan = {
     recordingId: String(meeting.recording_id),
     mode: 'single',
@@ -369,8 +393,35 @@ async function ingestFathomMeeting(opts = {}) {
   return { ok: true, mode: 'single', meetingId, botId: ins.bot_id, plan, linkedLeads };
 }
 
+/**
+ * The dominant non-coach speaker in a Fathom transcript — the person (other than the coach) with
+ * the most spoken lines. Last-resort lead identity for single recordings with no calendar invitee.
+ * Returns the speaker's display name, or null if only the coach (or nobody) speaks.
+ */
+function dominantSpeakerName(meeting, coachNames = []) {
+  const segs = Array.isArray(meeting.transcript) ? meeting.transcript : [];
+  const coachSet = (coachNames || []).map((n) => String(n).trim().toLowerCase()).filter(Boolean);
+  const isCoach = (name) => {
+    const x = String(name).trim().toLowerCase();
+    if (!x) return true;
+    return coachSet.some((c) => x === c || x.includes(c) || c.includes(x) || x.split(/\s+/)[0] === c.split(/\s+/)[0]);
+  };
+  const counts = new Map();
+  for (const u of segs) {
+    const sp = (u && u.speaker && (u.speaker.display_name || u.speaker.name))
+      || (typeof u?.speaker === 'string' ? u.speaker : '');
+    const name = String(sp || '').trim();
+    if (!name || isCoach(name)) continue;
+    counts.set(name, (counts.get(name) || 0) + 1);
+  }
+  let best = null, bestN = 0;
+  for (const [name, n] of counts) { if (n > bestN) { best = name; bestN = n; } }
+  return best;
+}
+
 module.exports = {
   ingestFathomMeeting,
+  dominantSpeakerName,
   fetchFathomMeeting,
   normalizeFathomApiTranscript,
   extractMeta,
