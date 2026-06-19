@@ -64,7 +64,8 @@
   Discovery) · Terminology — "the Portal" not Airtable · Terminology trap — "recall_".
 - **Calendar / email / transcript infra:** Middleman (Nylas) · "Catch 1" · Provider notes · Pricing snapshot ·
   Transcript layer deep-dive · Fathom API — live verification + back-to-back · Speaker reconstruction on
-  transcript ingest (single-speaker / no-diarisation paste path — backlog). *(Live status → ▶ You are here +
+  transcript ingest (single-speaker / no-diarisation paste path — **spec'd, NEXT BUILD**) · Wiring Claude into
+  the backend + AI-provider audit (2026-06-19). *(Live status → ▶ You are here +
   memory `project_recall_to_fathom_migration`.)*
 - **Architecture & build process:** Environments & deploy flow · Implementation roadmap (7 phases) · De-risking
   spikes · What actually paces the build · Scope reality check · Key code anchors.
@@ -103,6 +104,12 @@ Wingguy (how to act) + reads/writes the Portal (the records).
 **AI / model.** Standardise on **Claude** now behind a swappable seam: **Claude = drafting** (voice),
 **Gemini Flash = scoring** (cheap, high-volume). Connector surface needs the client's own Claude account
 (framed as a product requirement, like "requires Chrome").
+**Provider end-state (audited 2026-06-19): three providers, three different jobs — nothing to migrate.**
+**Gemini** = high-volume scoring + meeting summaries + follow-up prep (stays). **OpenAI** = the portal's
+**Start Here** help-Q&A (embeddings RAG + cheap `gpt-4o-mini` escalation) + topic layout — **live, and its
+embeddings have NO Claude equivalent**, so it can't move to Claude; keep it (cheap, peripheral). **Claude** =
+NEW drafting/reasoning (speaker reconstruction now, post-call email later) — **not yet wired into the backend**
+(volatile status → ▶ You are here; "let sleeping babies lie" confirmed with evidence, journal 2026-06-19).
 
 **Pricing (canonical).** $150/mo basics · **+$50 = Wingguy** → $200 full self-serve · **$300 = done-for-you**
 (Mr Busy + VA). Tier by **service level (DIY vs done-for-you), not feature**. Referral: maintain **3 active
@@ -142,7 +149,7 @@ skeptics** vs "let them train it". (3) Multi-tenant refactor **paused** for the 
   = **flag each lead actioned / not-actioned** and surface the not-yet-actioned ones as a worklist (likely
   sortable by connection date). **Guy-first** (fixes his daily "where was I" friction) **and client-facing**
   (every client has the same pain). No full spec yet — capture only.
-- **Speaker reconstruction + confirm on transcript ingest** *(flagged 2026-06-18)* — non-Zoom captures (e.g.
+- **Speaker reconstruction + confirm on transcript ingest** *(flagged 2026-06-18; spec'd + chosen as NEXT BUILD 2026-06-19)* — non-Zoom captures (e.g.
   **Zoom Notes / Tactiq** recording a **Teams or Google Meet** call as a fallback when a guest's own tech
   fails) arrive with **NO diarisation — every line tagged as the host**, so who-said-what (the things that
   matter: intros + their *direction*, who-knows-whom, commitments) is unreliable even though both sides'
@@ -155,7 +162,11 @@ skeptics** vs "let them train it". (3) Multi-tenant refactor **paused** for the 
   **ground truth can't be automated** — the person who was in the room is the only reliable source for the
   high-stakes lines; AI detects + reconstructs, the human confirms direction, and **that division IS the
   feature.** Every multi-tenant tenant hits this on any non-Zoom call. Implementation = an import-flow change
-  in pb-webhook-server (detect → reconstruct → confirm card → store confirmed). Detail + provenance ↓ journal
+  in pb-webhook-server (detect → reconstruct → confirm card → store confirmed). **Now spec'd (2026-06-19): always show the confirm
+  card + single-speaker detection in plain code (NO AI) + reconstruct only on detection-or-demand + free-text
+  correction that propagates across the mislabelled stretch + surface only the high-stakes lines + regenerate
+  the summary off the corrected version; reconstruction model = Claude `claude-opus-4-8` (a reasoning job, not
+  Gemini-Flash scoring); gated on wiring Claude into the backend first.** Detail + provenance ↓ journal
   **"Speaker reconstruction on transcript ingest (paste path) — single-speaker / no-diarisation"**; lives
   next to the universal-paste seam (transcript layer item 5).
 
@@ -1239,12 +1250,83 @@ call, and a non-expert VA/Mr Busy can't eyeball-correct it the way Guy can.
 reliable source for the high-stakes lines. AI does **detection + reconstruction**; the human **confirms
 direction**. That division is the feature.
 
-**Fit with what exists.** This is an **import-flow change in pb-webhook-server** layered on the universal
-paste path (`insertImportedMeeting`, item 5) and its normalized-transcript shape — detect single-speaker →
-reconstruct → surface a "confirm key points" card → store the confirmed version as canonical. Orthogonal to
-the Fathom splitter (that solves *lumping* of well-diarised recordings; this solves *missing diarisation* on
-pasted ones). **STATUS: backlog — flagged, not yet spec'd** (see canonical "Backlog" block); capture +
-discussion only, no code.
+**Fit with what exists (verified in code 2026-06-19).** The universal paste path is **more built than this
+note implied**: `services/recallImportService.js` → `importTranscript()` already takes a **`source`** param
+(tactiq | fathom | other) with a per-source cleaner (`normalizeTranscript`), links the lead by email with
+graceful warnings, and **generates a Gemini summary inline so the user lands on a fully-populated review page**
+(`recall-review`). So this is **not build-from-scratch** — the gap is the trust layer on top.
+
+**Spec refinements (2026-06-19 — discussed + locked; this is now the chosen NEXT BUILD):**
+- **Always show the confirm card; reconstruct on detection-or-demand.** Don't auto-run a heavy speaker-rebuild
+  on every paste — rebuilding an already-clean transcript risks *introducing* errors. Instead a cheap
+  **single-speaker detection runs every time (plain code — count distinct speaker labels, NO AI)**;
+  reconstruction auto-fires only when detection flags it; a **"run another pass" button** is the manual
+  escalation when detection passed but the human still spots something off (Guy's original instinct).
+- **Free-text correction, the human's words win.** The confirm card is NOT read-only — Guy types the fix in
+  plain language ("no, Alicia introduced me, not the other way round"); AI applies it and re-renders. A single
+  correction usually reveals a **systematic swap**, so the AI **propagates the fix across the whole mislabelled
+  stretch**, not just the one line.
+- **Surface only the high-stakes lines, not the whole transcript** (cf. [[feedback_avoid_overwhelming_lists]]):
+  intro direction, who-knows-whom, commitments. The Alicia failure was the *summary* reversing intro direction
+  — so reconstruction must re-derive the summary/direction and **regenerate the summary off the corrected
+  transcript** afterwards (garbage-in was the root cause).
+- **AI vs no-AI split** (decides where cost lands): **NO AI** → paste, format-clean, lead-link-by-email,
+  single-speaker detection, store. **AI** → summary (today, Gemini), speaker reconstruction (new), high-stakes-
+  line extraction (new), the re-run button. The expensive rebuild only ever runs on flagged transcripts —
+  low-volume + human-gated by design; the *decision* to spend on AI is itself free (the detection is plain code).
+- **Model = Claude, not Gemini Flash.** Reconstruction + getting intro *direction* right is a *reasoning* job,
+  not the cheap classification Flash is for. Per the canonical "Claude drafts / Gemini scores" seam this is the
+  Claude lane: use a strong model (**`claude-opus-4-8`**; `claude-sonnet-4-6` the cheaper step-down), **adaptive
+  thinking**, and **stream** for long (90-min) transcripts. Cost is a non-issue (rare, one-per-meeting,
+  human-gated). Keep Gemini Flash for the high-volume scoring.
+- **Prerequisite: wire Claude into the backend first** (none today). See journal **"Wiring Claude into the
+  backend + AI-provider audit (2026-06-19)"**. This feature is the first concrete consumer of that seam.
+
+Orthogonal to the Fathom splitter (that solves *lumping* of well-diarised recordings; this solves *missing
+diarisation* on pasted ones). **STATUS: spec'd 2026-06-19 → NEXT BUILD, gated on wiring Claude; no code yet.**
+
+---
+
+## Wiring Claude into the backend + AI-provider audit (2026-06-19)
+
+> Origin: planning the speaker-reconstruction build (section above) surfaced that the reconstruction step needs
+> a *reasoning-grade* model — which raised "is Gemini Flash enough?" (no), "what's involved in adding Claude?",
+> and "we run three AI providers — should we consolidate?". All planning; no code this session.
+
+### Claude is not yet wired — and it's a SMALL job (much less than Gemini was)
+- **Today:** Gemini runs via **Vertex AI** (`config/geminiClient.js`) — needs GCP project + location + a
+  **service-account JSON secret file** on Render + a fiddly dated model string (`gemini-2.5-pro-preview-05-06`).
+  That auth setup is exactly what made Gemini a faff. OpenAI is wired via a plain API key
+  (`config/openaiClient.js`). **No Claude client exists.**
+- **Adding Claude is easier than Gemini was**, because the hard part (Vertex auth) simply isn't there:
+  1. **One env var** — `ANTHROPIC_API_KEY` (same shape as OpenAI). No cloud project / location / key file.
+  2. **One package** — `npm install @anthropic-ai/sdk`.
+  3. **A tiny `config/anthropicClient.js`** mirroring the Gemini one but shorter (no project/location/creds).
+  4. The call: `client.messages.create({ model, max_tokens, messages })`.
+- **One new account:** an Anthropic **API/developer** account at console.anthropic.com + a card (separate from
+  any claude.ai chat sub). ~10 min — the only genuinely new setup.
+- **Model IDs are clean/stable** (`claude-opus-4-8`, `claude-sonnet-4-6`, `claude-haiku-4-5`) — none of
+  Gemini's dated-preview-string pain. Make the model **env-switchable** (like `RECALL_SUMMARY_MODEL`).
+- This is the **first concrete Claude wiring behind the long-planned "swappable seam"** (see "AI / model
+  layer"). The bigger later Claude surface (post-call email drafting) reuses the exact same client.
+  **Effort: an afternoon**, most of it the one-time account/billing.
+
+### Provider end-state — three providers, three jobs, nothing to migrate
+Audited what actually calls AI in the live code:
+- **Gemini (Vertex)** — high-volume **lead scoring** (`batchScorer`/`singleScorer`), **meeting summaries**
+  (`recallSummaryService`), **Smart Follow-Up / Meeting Prep** (`smartFollowUpService`), outbound-email
+  scoring, email parsing. The cheap workhorse. **KEEP** — the canonical seam already wants Gemini for scoring.
+- **OpenAI** — powers the portal's **"Start Here" help assistant**: a per-topic **Q&A chat** (`/api/help/qa`,
+  called from `start-here/page.tsx`) doing **embeddings retrieval + `gpt-4o-mini` escalation**, plus a topic
+  **layout formatter** (`generateLayout`). **Live + user-facing, NOT dead code** (verified: routes mounted,
+  frontend calls them, gated on by default). Critically the core is **embeddings, which Claude has NO
+  equivalent for** — so it *can't* move to Claude (would need Voyage or similar). Cheap + peripheral. **KEEP.**
+- **Claude** — NEW drafting/reasoning (speaker reconstruction now, post-call email later). **ADD.**
+- **Decision: do NOT consolidate to one.** Three feels messy, but they're three genuinely different jobs, one
+  of which (embeddings) Claude literally cannot do. "Let sleeping babies lie" — confirmed with evidence, not vibes.
+- **Aside worth remembering:** the help-Q&A RAG is the closest *existing* thing to the future "Wingguy reads
+  the knowledge base" idea — a **prototype to learn from**, not legacy to rip out (ties to the website section's
+  "WordPress = single source of truth, Wingguy reads it via authenticated REST").
 
 ---
 
@@ -1589,6 +1671,23 @@ bucket**.
 ---
 
 ## ▶ You are here / next pick-up
+
+**As of 2026-06-19 (planning, no code) — NEXT BUILD CHOSEN + provider audit:** The next Wingguy build is the
+**speaker-reconstruction-on-paste** feature (spec locked — see canonical Backlog + journal "Speaker
+reconstruction on transcript ingest (paste path)"): always show the confirm card · single-speaker **detection
+in plain code (no AI)** · **reconstruct only on detection-or-demand** (+ a manual "run another pass" button) ·
+free-text correction that **propagates across the mislabelled stretch** · surface only the high-stakes lines
+(intro direction / who-knows-whom / commitments) · **regenerate the summary off the corrected version**. The
+paste path already exists more than the doc implied (`importTranscript` in `recallImportService.js`: source
+dropdown, lead-link, inline Gemini summary, `recall-review` page) — this adds the trust layer. **Reconstruction
+model = Claude `claude-opus-4-8`** (a reasoning job, not Gemini-Flash scoring). **Gated on a prerequisite:
+Claude is NOT yet wired into the backend** — a small job (API key + `@anthropic-ai/sdk` + a tiny
+`config/anthropicClient.js`; needs an Anthropic API account). Provider audit → **end-state = Gemini scores ·
+OpenAI runs the Start Here help-Q&A (embeddings, no Claude equivalent) · Claude drafts/reasons; all three
+intentional, nothing to migrate.** Journal: "Wiring Claude into the backend + AI-provider audit (2026-06-19)".
+**Real next actions:** (1) create the Anthropic API account + add `ANTHROPIC_API_KEY` to Render + `.env.local`;
+(2) add `config/anthropicClient.js` behind the seam; (3) build detect → reconstruct → confirm-card →
+store-confirmed on the existing `importTranscript` path, regenerating the summary from the confirmed transcript.
 
 **As of 2026-06-17 — FATHOM MIGRATION IS LIVE (go-live shipped; supersedes the 06-15 "real next = go-live list" below):**
 The Fathom capture pipeline now runs in **production**, additive + kill-switched, in its **trial period alongside Recall**
