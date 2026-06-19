@@ -1689,14 +1689,18 @@ trust layer is built — both halves on `main`, fully inert until the flag flips
   never summarise off a mislabelled transcript) → clean multi-speaker passes straight through with the inline summary as before.
 - **Endpoints:** `POST /recall-review/:id/reconstruct` (run/re-run + correction), `POST /recall-review/:id/confirm-reconstruction`
   (commit canonical + regen summary off it). Confirm card surfaces ONLY the high-stakes lines + a "run another pass" button.
-- **Branch reality (logged this session):** `staging` (~1mo) and `dev` (~10mo) branches are abandoned + thousands of commits
-  diverged — NOT usable integration targets. Actual workflow = `main` + env-var flags. Frontend shipped to `main` (flag-gated/inert;
-  Vercel build is lenient — `typescript.ignoreBuildErrors`) with the user's explicit go-ahead given the dead staging branch.
-- **REAL NEXT ACTIONS (cloud-only test):** (1) flip `SPEAKER_RECONSTRUCTION_ENABLED=true` on a NON-prod Render service + its paired
-  Vercel; (2) paste the Alicia/Alisdair Zoom-Notes transcript (the origin case) → confirm single-speaker detection fires, Claude
-  reconstructs, the card shows the intro direction, a free-text correction re-renders, confirm regenerates the summary off the
-  corrected text; (3) verify a clean multi-speaker paste passes straight through (no card); (4) once proven, flip the flag on prod.
-  Watch token cost on a real 90-min transcript (re-emits the full transcript; `CLAUDE_RECONSTRUCT_MAX_TOKENS` default 32000).
+- **Env model (clarified by Guy 2026-06-19 — see memory [[feedback_pervasive_change_approach]]):** work in `main` by default;
+  for major/risky work, OVERWRITE the `staging` branch (its Render+Vercel already have the env vars wired) rather than a fresh
+  feature branch. Branches are deliberately NOT kept in sync — `staging`/`dev` staleness is normal, NOT abandonment. Frontend
+  shipped to `main` flag-gated (Vercel build lenient — `typescript.ignoreBuildErrors`).
+- **FLAG IS ON IN PROD (2026-06-19):** `SPEAKER_RECONSTRUCTION_ENABLED=true` set on the prod service (`pb-webhook-server`,
+  `srv-cvqgq53e5dus73fa45ag`) + redeploy triggered. Rationale (Guy): single-tenant (only Guy uses recall-review), low-frequency,
+  not the default path (only fires on single-speaker pastes), graceful failure (fall back to pasting into Claude). Dogfooding IS the test.
+- **REAL NEXT (in-use test, Guy-driven):** next time a dodgy/single-speaker transcript comes up (Alicia/Alisdair Zoom-Notes is the
+  origin case), paste it into recall-review and watch: single-speaker detection fires, Claude reconstructs, the card shows the intro
+  direction, a free-text correction re-renders, confirm regenerates the summary off the corrected text. Clean multi-speaker pastes
+  must pass straight through (no card). Watch token cost on a real 90-min transcript (re-emits the full transcript;
+  `CLAUDE_RECONSTRUCT_MAX_TOKENS` default 32000). If intro direction comes out wrong, no disaster — fall back to manual Claude.
 
 **As of 2026-06-19 (planning, no code) — NEXT BUILD CHOSEN + provider audit:** The next Wingguy build is the
 **speaker-reconstruction-on-paste** feature (spec locked — see canonical Backlog + journal "Speaker
