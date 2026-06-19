@@ -2163,6 +2163,38 @@ export const generateRecallSummary = async (id, force = false) => {
   }
 };
 
+// Run (or re-run) speaker reconstruction. Pass a free-text correction to fix + propagate a
+// mislabelled stretch; omit it for the "Run another pass" button.
+export const reconstructRecallSpeakers = async (id, correction = '') => {
+  try {
+    const base = getBackendBase();
+    const r = await fetch(`${base}/recall-review/${encodeURIComponent(id)}/reconstruct`, {
+      method: 'POST',
+      headers: recallReviewFetchHeaders(),
+      body: JSON.stringify({ correction: correction || undefined }),
+    });
+    return await r.json();
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+};
+
+// Confirm the reconstructed transcript as canonical (regenerates the summary off it).
+// Omit transcript to accept the proposed reconstruction as-is.
+export const confirmRecallReconstruction = async (id, transcript) => {
+  try {
+    const base = getBackendBase();
+    const r = await fetch(`${base}/recall-review/${encodeURIComponent(id)}/confirm-reconstruction`, {
+      method: 'POST',
+      headers: recallReviewFetchHeaders(),
+      body: JSON.stringify(transcript ? { transcript } : {}),
+    });
+    return await r.json();
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+};
+
 export const saveRecallSpeakers = async (id, speakers) => {
   try {
     const base = getBackendBase();

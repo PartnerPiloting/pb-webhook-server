@@ -15,6 +15,8 @@ import {
   getRecallShareLink,
   generateRecallSummary,
   importRecallTranscript,
+  reconstructRecallSpeakers,
+  confirmRecallReconstruction,
 } from '../../services/api';
 import { getCurrentClientId } from '../../utils/clientUtils';
 
@@ -557,6 +559,124 @@ function SpeakerCard({
 }
 
 /* ------------------------------------------------------------------ */
+/* Speaker-reconstruction confirm card                                 */
+/* ------------------------------------------------------------------ */
+// Shown ONLY when the backend flagged a single-speaker / no-diarisation transcript and Claude
+// reconstructed it (reconstruction_status === 'pending'). Surfaces ONLY the high-stakes lines
+// the human-in-the-room must verify — intro direction, who-knows-whom, commitments — not the
+// whole transcript. The human's free-text correction propagates across the mislabelled stretch.
+const HIGH_STAKES_LABELS: Record<string, string> = {
+  intro_direction: 'Introduction',
+  who_knows_whom: 'Who knows whom',
+  commitment: 'Commitment',
+};
+
+function ReconstructionCard(
+  { eventId, reconstruction, onChanged }:
+  { eventId: string; reconstruction: any; onChanged: () => void },
+) {
+  const [correction, setCorrection] = useState('');
+  const [busy, setBusy] = useState<'pass' | 'correct' | 'confirm' | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  const highStakes: any[] = reconstruction?.highStakes || [];
+  const note: string = reconstruction?.note || '';
+
+  const runPass = async () => {
+    setBusy('pass'); setErr(null);
+    const r = await reconstructRecallSpeakers(eventId, '');
+    setBusy(null);
+    if (r.ok) onChanged(); else setErr(r.error || 'Reconstruction failed');
+  };
+
+  const applyCorrection = async () => {
+    if (!correction.trim()) return;
+    setBusy('correct'); setErr(null);
+    const r = await reconstructRecallSpeakers(eventId, correction.trim());
+    setBusy(null);
+    if (r.ok) { setCorrection(''); onChanged(); } else setErr(r.error || 'Correction failed');
+  };
+
+  const confirm = async () => {
+    setBusy('confirm'); setErr(null);
+    const r = await confirmRecallReconstruction(eventId);
+    setBusy(null);
+    if (r.ok) onChanged(); else setErr(r.error || 'Confirm failed');
+  };
+
+  return (
+    <div className="bg-amber-50 border border-amber-300 rounded-xl p-4 space-y-3">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-semibold text-amber-900">⚠ Please check the speakers</h3>
+          <p className="text-sm text-amber-800 mt-0.5">
+            The original transcript was a bit dodgy (it came through with no speaker separation), so
+            I&apos;ve done my best to work out who said what. It may not be quite right — can you check
+            the key points below before I save it?
+          </p>
+        </div>
+      </div>
+
+      {note && <p className="text-xs text-amber-700 italic">{note}</p>}
+
+      {highStakes.length > 0 ? (
+        <ul className="space-y-1.5">
+          {highStakes.map((h, i) => (
+            <li key={i} className="text-sm text-gray-800 flex items-start gap-2">
+              <span className="inline-block text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-amber-200 text-amber-900 shrink-0 mt-0.5">
+                {HIGH_STAKES_LABELS[h.category] || h.category}
+              </span>
+              <span>
+                {h.summary}
+                {h.confidence && h.confidence !== 'high' && (
+                  <span className="text-amber-600 text-xs"> ({h.confidence} confidence)</span>
+                )}
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="text-sm text-gray-600">No high-stakes lines flagged — but please confirm the attribution looks right.</p>
+      )}
+
+      <div className="space-y-1.5">
+        <textarea
+          value={correction}
+          onChange={e => setCorrection(e.target.value)}
+          placeholder="Anything wrong? Tell me in plain words — e.g. 'No, Alicia introduced me, not the other way round.' I'll fix it across the whole transcript."
+          rows={2}
+          className="w-full text-sm border border-amber-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white"
+        />
+        {err && <p className="text-xs text-red-600">{err}</p>}
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={applyCorrection}
+            disabled={!!busy || !correction.trim()}
+            className="text-xs px-3 py-1.5 bg-amber-600 text-white rounded-lg hover:bg-amber-700 font-semibold disabled:opacity-50"
+          >
+            {busy === 'correct' ? 'Applying…' : 'Apply correction'}
+          </button>
+          <button
+            onClick={runPass}
+            disabled={!!busy}
+            className="text-xs px-3 py-1.5 bg-white text-amber-700 border border-amber-300 rounded-lg hover:bg-amber-100 font-semibold disabled:opacity-50"
+          >
+            {busy === 'pass' ? 'Running…' : 'Run another pass'}
+          </button>
+          <button
+            onClick={confirm}
+            disabled={!!busy}
+            className="text-xs px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 font-semibold disabled:opacity-50 ml-auto"
+          >
+            {busy === 'confirm' ? 'Saving…' : 'Looks right — confirm & save'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /* Event Review (two-column: transcript + sidebar)                     */
 /* ------------------------------------------------------------------ */
 
@@ -844,6 +964,14 @@ function EventReview({ eventId, onBack }: { eventId: string; onBack: () => void 
             <li><strong>Save changes</strong> — Only appears when you&apos;ve made changes that need saving.</li>
           </ul>
         </div>
+      )}
+
+      {ev.reconstruction_status === 'pending' && (
+        <ReconstructionCard
+          eventId={String(ev.id)}
+          reconstruction={ev.reconstruction}
+          onChanged={load}
+        />
       )}
 
       <SummaryPanel
