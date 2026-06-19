@@ -12,8 +12,9 @@
 
 const clientService = require('./clientService');
 const { findLeadByEmail } = require('./inboundEmailService');
-const { insertImportedMeeting, addMeetingLead } = require('./recallWebhookDb');
+const { insertImportedMeeting, addMeetingLead, saveReconstruction } = require('./recallWebhookDb');
 const { generateMeetingSummary } = require('./recallSummaryService');
+const speakerReconstruction = require('./speakerReconstructionService');
 const { createSafeLogger } = require('../utils/loggerHelper');
 
 const log = createSafeLogger('SYSTEM', null, 'recall_import');
@@ -240,17 +241,54 @@ async function importTranscript(opts) {
     }
   }
 
-  // Generate the Fathom-style summary inline so the user lands on a fully-populated review page.
+  // Single-speaker / no-diarisation trust layer (flag-gated). Plain-code detection runs on
+  // ingest; if flagged, Claude reconstructs speakers and we mark the meeting 'pending' so the
+  // review page shows the confirm card. We DEFER the summary in that case — generating one off
+  // a mislabelled transcript would surface the exact failure this feature exists to prevent
+  // (reversed intro direction). The summary is generated off the human-confirmed transcript on confirm.
+  let reconstructionStatus = null;
   let summary = null;
-  try {
-    const gen = await generateMeetingSummary(meetingId);
-    if (gen.ok) summary = gen.summary;
-    else log.warn(`import: summary generation failed for meeting=${meetingId}: ${gen.error}`);
-  } catch (e) {
-    log.warn(`import: summary exception for meeting=${meetingId}: ${e.message}`);
+  let needsReconstruction = false;
+  if (speakerReconstruction.isEnabled()) {
+    try {
+      const det = speakerReconstruction.detectSingleSpeaker(transcriptText);
+      needsReconstruction = det.single;
+    } catch (e) {
+      log.warn(`import: single-speaker detection failed for meeting=${meetingId}: ${e.message}`);
+    }
   }
 
-  return { ok: true, meetingId, leadLinked, linkedLeadName, leadWarning, summary };
+  if (needsReconstruction) {
+    log.info(`import: single-speaker detected for meeting=${meetingId} — reconstructing, summary deferred`);
+    try {
+      const recon = await speakerReconstruction.reconstructSpeakers({
+        meetingId,
+        knownNames: linkedLeadName ? [linkedLeadName] : [],
+      });
+      if (recon.ok) {
+        await saveReconstruction(meetingId, recon.reconstruction);
+        reconstructionStatus = 'pending';
+      } else {
+        log.warn(`import: reconstruction failed for meeting=${meetingId}: ${recon.error}`);
+      }
+    } catch (e) {
+      log.warn(`import: reconstruction exception for meeting=${meetingId}: ${e.message}`);
+    }
+  }
+
+  // Clean multi-speaker transcripts (and any flagged transcript where reconstruction couldn't
+  // run) pass straight through with the inline summary, exactly as before.
+  if (reconstructionStatus !== 'pending') {
+    try {
+      const gen = await generateMeetingSummary(meetingId);
+      if (gen.ok) summary = gen.summary;
+      else log.warn(`import: summary generation failed for meeting=${meetingId}: ${gen.error}`);
+    } catch (e) {
+      log.warn(`import: summary exception for meeting=${meetingId}: ${e.message}`);
+    }
+  }
+
+  return { ok: true, meetingId, leadLinked, linkedLeadName, leadWarning, summary, reconstructionStatus };
 }
 
 module.exports = {

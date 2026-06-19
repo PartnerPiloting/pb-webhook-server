@@ -53,6 +53,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.105.0",
     "@google-cloud/vertexai": "^1.10.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "airtable": "^0.12.2",

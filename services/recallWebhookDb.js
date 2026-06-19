@@ -175,6 +175,16 @@ async function ensureSchema(client) {
   await client.query(`ALTER TABLE recall_meetings ADD COLUMN IF NOT EXISTS fathom_recording_id TEXT;`);
   await client.query(`CREATE INDEX IF NOT EXISTS idx_recall_m_fathom_rec ON recall_meetings (fathom_recording_id) WHERE fathom_recording_id IS NOT NULL;`);
 
+  // Speaker reconstruction trust layer (single-speaker / no-diarisation paste path).
+  // reconstruction_status: NULL = clean / not needed (passes straight through), 'pending'
+  // = AI reconstructed, awaiting human confirm, 'confirmed' = human-confirmed canonical.
+  // reconstruction_json: the PROPOSED re-speakered transcript + extracted high-stakes lines
+  // (intro direction / who-knows-whom / commitments) + a confidence note. The canonical
+  // transcript_text is NOT overwritten until the human confirms — ground truth can't be
+  // automated, so the in-the-room person is the only reliable source for the high-stakes lines.
+  await client.query(`ALTER TABLE recall_meetings ADD COLUMN IF NOT EXISTS reconstruction_status TEXT;`);
+  await client.query(`ALTER TABLE recall_meetings ADD COLUMN IF NOT EXISTS reconstruction_json TEXT;`);
+
   schemaEnsured = true;
 }
 
@@ -463,6 +473,51 @@ async function saveMeetingSummary(meetingId, summaryJson) {
     await client.query(
       `UPDATE recall_meetings SET summary_json = $2, summary_generated_at = now(), updated_at = now() WHERE id = $1`,
       [n, payload],
+    );
+    return { ok: true };
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Persist a proposed reconstruction (status -> 'pending') WITHOUT touching the canonical
+ * transcript_text. `reconstruction` is stored as JSON: { transcript, highStakes, note, ... }.
+ */
+async function saveReconstruction(meetingId, reconstruction) {
+  const n = typeof meetingId === 'string' ? parseInt(meetingId, 10) : Number(meetingId);
+  if (!Number.isFinite(n) || n < 1) return { ok: false };
+  const p = getPool();
+  if (!p) return { ok: false };
+  const client = await p.connect();
+  try {
+    await ensureSchema(client);
+    const payload = typeof reconstruction === 'string' ? reconstruction : JSON.stringify(reconstruction);
+    await client.query(
+      `UPDATE recall_meetings SET reconstruction_json = $2, reconstruction_status = 'pending', updated_at = now() WHERE id = $1`,
+      [n, payload],
+    );
+    return { ok: true };
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Commit the human-confirmed transcript as canonical: overwrite transcript_text, mark
+ * reconstruction_status = 'confirmed'. The caller regenerates the summary off this text.
+ */
+async function confirmReconstruction(meetingId, confirmedTranscript) {
+  const n = typeof meetingId === 'string' ? parseInt(meetingId, 10) : Number(meetingId);
+  if (!Number.isFinite(n) || n < 1) return { ok: false, error: 'invalid id' };
+  const p = getPool();
+  if (!p) return { ok: false, error: 'no db' };
+  const client = await p.connect();
+  try {
+    await ensureSchema(client);
+    await client.query(
+      `UPDATE recall_meetings SET transcript_text = $2, reconstruction_status = 'confirmed', updated_at = now() WHERE id = $1`,
+      [n, String(confirmedTranscript || '')],
     );
     return { ok: true };
   } finally {
@@ -1435,6 +1490,8 @@ module.exports = {
   setMeetingIngestStatus,
   updateMeetingTimes,
   saveMeetingSummary,
+  saveReconstruction,
+  confirmReconstruction,
   insertImportedMeeting,
   fathomRecordingIngested,
   splitMeeting,

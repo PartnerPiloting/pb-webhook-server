@@ -29,6 +29,8 @@ const {
   seedManualTestRecall,
   purgeManualTestRecall,
   getMeetingsForLead,
+  saveReconstruction,
+  confirmReconstruction,
 } = require('../services/recallWebhookDb');
 
 function extractSpeakerLabels(text) {
@@ -77,6 +79,7 @@ const { getAutoJoinStatus, extractMeetingUrl } = require('../services/recallAuto
 const { listCalendarEventsWithAttendeesInRange } = require('../config/calendarServiceAccount');
 const { generateMeetingSummary, renderSummaryText, normaliseSummary } = require('../services/recallSummaryService');
 const { importTranscript } = require('../services/recallImportService');
+const speakerReconstruction = require('../services/speakerReconstructionService');
 
 // Pick the most likely "send to" person: a non-coach speaker with an email.
 function suggestedRecipient(verifiedSpeakers) {
@@ -405,6 +408,18 @@ router.get('/recall-review/api/event/:id', async (req, res) => {
   }
   const recipient = suggestedRecipient(verifiedSpeakers);
 
+  // Speaker reconstruction state — drives the confirm card. Only 'pending' shows the card;
+  // 'confirmed'/null pass through. reconstruction_json holds the proposed transcript +
+  // high-stakes lines (we surface only the high-stakes lines + note to the UI, not the whole
+  // proposed transcript).
+  let reconstruction = null;
+  if (row.reconstruction_json) {
+    try {
+      const r = speakerReconstruction.normaliseReconstruction(JSON.parse(row.reconstruction_json));
+      reconstruction = { highStakes: r.highStakes, note: r.note, transcript: r.transcript };
+    } catch (_e) { /* malformed — treat as none */ }
+  }
+
   return res.json({
     id: row.id,
     created_at: row.created_at,
@@ -435,6 +450,8 @@ router.get('/recall-review/api/event/:id', async (req, res) => {
     summary,
     summary_text: summaryText,
     summary_generated_at: row.summary_generated_at || null,
+    reconstruction_status: row.reconstruction_status || null,
+    reconstruction,
     suggested_recipient_email: recipient.email,
     suggested_recipient_name: recipient.name,
   });
@@ -486,6 +503,70 @@ router.post('/recall-review/:id/generate-summary', async (req, res) => {
     summary: gen.summary,
     summary_text: renderSummaryText(gen.summary, gen.meta),
   });
+});
+
+/**
+ * POST /recall-review/:id/reconstruct
+ * Run (or re-run) speaker reconstruction via Claude on a single-speaker / dodgy transcript.
+ * Backs both the "Run another pass" button (no body) and free-text corrections
+ * ({ correction }). Stores the proposal (status -> 'pending') without touching the canonical
+ * transcript; returns only the high-stakes lines + note for the confirm card.
+ */
+router.post('/recall-review/:id/reconstruct', async (req, res) => {
+  if (!(await pbRecallReviewApiOk(req))) return res.status(401).json({ ok: false, error: 'unauthorized' });
+  if (!speakerReconstruction.isEnabled()) return res.status(403).json({ ok: false, error: 'speaker reconstruction is disabled' });
+
+  const correction = typeof req.body?.correction === 'string' ? req.body.correction : '';
+  const recon = await speakerReconstruction.reconstructSpeakers({ meetingId: req.params.id, correction });
+  if (!recon.ok) return res.status(502).json({ ok: false, error: recon.error });
+
+  const saved = await saveReconstruction(req.params.id, recon.reconstruction);
+  if (!saved.ok) return res.status(500).json({ ok: false, error: 'failed to save reconstruction' });
+
+  return res.json({
+    ok: true,
+    reconstruction_status: 'pending',
+    reconstruction: {
+      highStakes: recon.reconstruction.highStakes,
+      note: recon.reconstruction.note,
+      transcript: recon.reconstruction.transcript,
+    },
+  });
+});
+
+/**
+ * POST /recall-review/:id/confirm-reconstruction
+ * Commit the human-confirmed transcript as canonical (overwrite transcript_text, mark
+ * 'confirmed') and regenerate the summary off the corrected transcript. Body { transcript }
+ * lets the UI submit edited text; absent => accept the proposed reconstruction as-is.
+ */
+router.post('/recall-review/:id/confirm-reconstruction', async (req, res) => {
+  if (!(await pbRecallReviewApiOk(req))) return res.status(401).json({ ok: false, error: 'unauthorized' });
+
+  let confirmed = typeof req.body?.transcript === 'string' ? req.body.transcript.trim() : '';
+  if (!confirmed) {
+    const row = await getMeetingById(req.params.id);
+    if (!row) return res.status(404).json({ ok: false, error: 'meeting not found' });
+    if (!row.reconstruction_json) return res.status(400).json({ ok: false, error: 'no reconstruction to confirm' });
+    try {
+      confirmed = speakerReconstruction.normaliseReconstruction(JSON.parse(row.reconstruction_json)).transcript;
+    } catch (_e) { /* fall through */ }
+  }
+  if (!confirmed) return res.status(400).json({ ok: false, error: 'no transcript to confirm' });
+
+  const done = await confirmReconstruction(req.params.id, confirmed);
+  if (!done.ok) return res.status(500).json({ ok: false, error: done.error || 'failed to confirm' });
+
+  // Regenerate the summary off the now-canonical, human-confirmed transcript (garbage-in was
+  // the root cause of the reversed-intro-direction failure, so this must run on the fixed text).
+  let summary = null;
+  let summaryText = '';
+  try {
+    const gen = await generateMeetingSummary(req.params.id, { force: true });
+    if (gen.ok) { summary = gen.summary; summaryText = renderSummaryText(gen.summary, gen.meta); }
+  } catch (_e) { /* summary is best-effort; the canonical transcript is already saved */ }
+
+  return res.json({ ok: true, reconstruction_status: 'confirmed', summary, summary_text: summaryText });
 });
 
 router.post('/recall-review/:id/speakers', async (req, res) => {
