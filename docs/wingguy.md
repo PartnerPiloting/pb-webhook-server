@@ -163,11 +163,31 @@ skeptics** vs "let them train it". (3) Multi-tenant refactor **paused** for the 
   - **WRINKLE (verified 2026-06-19):** the generic **`Status`** field is auto-clobbered to `"In Process"` on
     EVERY webhook upsert → useless as a "have I dealt with this person" signal. The worklist needs its **own
     dedicated field** (candidate: the currently-unused `Conversation Stage`, or a new `Thanks Status`).
-  - **Open design questions (in-chat, unresolved):** (A) status set — proposed *blank/new · Sent · Skipped ·
-    Nurture(="keeper") · Dismissed* (confirm whether "let go" vs "keeper" are one status or two); (B) v1 = plain
-    portal list + manual tick vs extension-driven auto-advance (lean: manual tick v1, extension magic v2);
-    (C) freehand note vs AI-suggested draft in v1; (D) scope order (lean: Guy-first, then portal). Naming: "Thanks
-    for Connecting" vs "Connections"/"Follow-ups" — undecided.
+  - **DESIGN SETTLED 2026-06-19** (detail + provenance ↓ journal *"Connection follow-up worklist / 'Thanks for
+    Connecting' — design"*): **inbox-zero** worklist, **oldest-first** (oldest = closest to the LH window deadline).
+    Two views — **Outstanding** (the draining queue) + **All recent** (status-badged, reconcile against LinkedIn).
+    Row = name (links to their LinkedIn profile) · headline/company · "connected X days ago" (free from `Date
+    Connected`, zero config) · primary one-tap button + secondary. Optimistic remove + undo toast; live "N to
+    thank" count badge (the motivator); real "all caught up" empty state. **Status set (locked):** *Outstanding*
+    (blank) → **Messaged** (Guy's manual tick — he personally reached out via AI Blaze) · **Let go (LH sent)** (left
+    to the LH automated sequence; auto-resolved). "Keeper" = cricket idiom (*let it go through to the keeper* = don't
+    play at it), i.e. = "Let go", NOT "nurture". Both done-states leave the queue → inbox-zero behaviour identical.
+  - **AUTO-RESOLVE via LH message-sent webhook (preferred path):** Guy confirmed LH can fire a webhook at any
+    campaign stage. When Guy DOESN'T personally message, LH sends its automated first message after the window and
+    **pings our webhook → row auto-resolves to "Let go (LH sent)"**. When Guy DOES message, LH detects the
+    correspondence and *suppresses* its send (the "filter out of my list" rule) → no ping → Guy hand-ticks
+    **Messaged**. The two paths can't collide. **Reuse the ONE existing webhook** (`/lh-webhook/upsertLeadOnly`,
+    likely a thin sibling like `/lh-webhook/messageSent` or an `event=` flag — same client-routing + same
+    profile-URL→`Profile Key` matching) so clients configure only one webhook. This **replaces** the earlier
+    mirrored-window + date-lapse idea (no duplicated window value, no drift). **Caveat (the only fly):** the **$8 LH
+    tier caps webhooks at 20/day** (counts firings, not endpoints — reuse does NOT save budget); connection events
+    already consume some today, message-sent is the *only new* consumption. So make the message-sent webhook
+    **optional** — unlimited-tier ($20) clients get auto-clearing; $8 clients leave it off, rows clear on manual
+    let-go (or a simple age fallback). Becomes a *gentle* upsell to the unlimited tier.
+  - **Still open:** (C) v1 note = freehand (Guy uses AI Blaze externally) vs portal AI-suggested draft — lean
+    freehand v1, AI draft is the later extension hook; (D) scope = **Guy-first then portal** (agreed in spirit);
+    extension auto-advance = **v2** (v1 = manual tick); **naming** — "Thanks for Connecting" vs "Connections" /
+    "Follow-ups" — undecided. Needs its own dedicated tick-field (see WRINKLE above).
 - **Speaker reconstruction + confirm on transcript ingest** *(flagged 2026-06-18; spec'd 2026-06-19; ✅ BUILT 2026-06-19 — shipped to `main` behind `SPEAKER_RECONSTRUCTION_ENABLED`, default OFF, awaiting cloud test — volatile status → ▶ You are here)* — non-Zoom captures (e.g.
   **Zoom Notes / Tactiq** recording a **Teams or Google Meet** call as a fallback when a guest's own tech
   fails) arrive with **NO diarisation — every line tagged as the host**, so who-said-what (the things that
@@ -1687,9 +1707,82 @@ bucket**.
   Wingguy-DELIVERED coaching** (today's content-surfacing system = how coaching scales past Guy's
   calendar), NOT on running a community.
 
+### Connection follow-up worklist / "Thanks for Connecting" — design (2026-06-19)
+Design session for the backlog feature flagged 2026-06-18. Backbone re-verified in code first, then the UX +
+status model worked out in chat. Not yet built — this is the agreed spec.
+
+**Backbone re-verified (2026-06-19) — we are NOT building ingestion.** Two-campaign LH flow maps cleanly onto
+the code: (1) profile-extraction campaign captures 2nd-degree leads → `currentConnectionStatus = Candidate`,
+`Date Connected = null` ([leadService.js:98,118](services/leadService.js)); (2) when they accept the connection
+request LH fires again with `Connected`/`degree 1st`/`distance _1` → status flips to Connected and the existing
+record gets `Date Connected` stamped ([leadService.js:156-160](services/leadService.js); handler flags it an
+existing-connection update so scoring is preserved, [webhookHandlers.js:185-194](routes/webhookHandlers.js)).
+So Guy's invariant holds: **null date = extracted-not-yet-connected; has-a-date = actually connected.** Three
+precision notes: the *true* signal is `LinkedIn Connection Status = Connected` (date rides along — key the queue
+on status, sort on date); the stamped date is LH's real `connected_at` if provided, else `now()` as fallback;
+worth eyeballing one real connected record someday to see whether LH actually sends `connected_at` (affects sort
+precision only, not correctness).
+
+**UX = inbox-zero.** The queue IS "where I'm up to" → kills the manual "where did I get to" scan entirely. Two
+views: **Outstanding** (drains to zero) + **All recent** (status-badged reconciliation against LinkedIn). Row:
+name links to the LinkedIn profile, "connected X days ago", primary one-tap button + secondary actions.
+Optimistic-remove + undo toast (no per-row confirm dialog); a live "N to thank" count (the motivator that makes
+it a habit); a real "all caught up" empty state. **Oldest-first** — Guy's call, and it dovetails with the LH
+window: oldest = closest to the deadline before LH auto-sends.
+
+**Status model (locked).** One to-do state + two done-outcomes, both leave the queue:
+- **Outstanding** (blank) — Connected, still in window, no decision yet.
+- **Messaged** — Guy personally reached out (AI Blaze). Hand-ticked. LH suppresses its automated send because it
+  sees the correspondence ("filter out of my list").
+- **Let go (LH sent)** — Guy chose not to personalise; LH's automated sequence handles it. Auto-resolved.
+
+Principle used to keep the set minimal: *a status earns its place only if it changes a downstream behaviour or
+answers a question someone will actually ask.* Messaged-vs-Let-go survives because "how many did I personally
+welcome vs let the sequence handle?" is a real (and client-friendly) number. A "will-be-sent-by-LH" status was
+**rejected** — the portal can't know LH's internal state and it would go stale. **Vocab fix:** "keeper" = cricket
+(*let it go through to the keeper*) = "Let go", NOT "save for nurturing" (Claude had it backwards first pass).
+
+**Auto-resolve mechanism (the key 2026-06-19 decision).** Replaces the earlier mirrored-window + date-lapse idea
+(which Guy was rightly uneasy about — two sources of truth for the window → drift). Guy confirmed **LH can fire a
+webhook at any campaign stage.** So: drop a webhook step right after LH's first-message send → when LH actually
+sends (i.e. Guy let the person go), it pings us → row auto-resolves to **Let go (LH sent)**. Ground-truth event,
+not a guess. The Messaged path never pings (LH suppressed its send), so the two outcomes self-separate. This lets
+us **drop the duplicated window config** entirely; "connected X days ago" comes free from `Date Connected` (no
+config), and we lose only the precise "days-left" countdown (oldest-first covers urgency anyway).
+- **Reuse the ONE existing webhook** — Guy's explicit preference so clients configure only one thing. Our side:
+  `/lh-webhook/upsertLeadOnly` already matches leads by canonical URL→`Profile Key`; the message-sent ping is a
+  thin sibling (`/lh-webhook/messageSent`) or an `event=` flag on the same route — same plumbing, small build.
+- **The one fly — $8 LH tier = 20 webhooks/day.** Counts *firings*, not endpoints, so reusing one URL does NOT
+  save budget. Connection events already consume some; message-sent is the only *new* draw. Mitigation: make the
+  message-sent webhook **optional** — unlimited-tier ($20) clients enable it for auto-clearing; $8 clients leave
+  it off and clear rows on manual let-go (or a simple age fallback). Doubles as a gentle upsell to the unlimited
+  tier (aligns with what Guy already advocates; price-sensitive prospects don't have to walk).
+
+**Build shape.** Guy-first to validate the loop, then client-facing (clients won't do the manual scan Guy does,
+but will use an easy in-portal list). v1 = plain portal list + manual tick + click-through to LinkedIn; **v2 =
+the extension magic** (detect you're on the profile, mark + advance to next). Needs a **dedicated tick-field** in
+Airtable — the generic `Status` is auto-clobbered to "In Process" on every webhook upsert, so it can't carry
+this; candidate = the unused `Conversation Stage`, or a new `Thanks Status`.
+
+**Open / homework.** (1) Guy to confirm the exact LH webhook step + payload (carries profile URL for matching) —
+he's confident it can; (2) v1 note freehand vs AI-suggested draft — lean freehand, AI draft = later extension
+hook; (3) **naming** — "Thanks for Connecting" vs "Connections" / "Follow-ups". Not yet built.
+
 ---
 
 ## ▶ You are here / next pick-up
+
+**As of 2026-06-19 (session 3, planning/no code) — "THANKS FOR CONNECTING" WORKLIST DESIGNED:** Brainstorm-only
+session on the backlog connection-follow-up worklist; backbone re-verified in code, UX + status model settled.
+Full spec → journal *"Connection follow-up worklist / 'Thanks for Connecting' — design (2026-06-19)"* + the
+canonical Backlog entry (now marked DESIGN SETTLED). Headlines: **inbox-zero** list, oldest-first, two views
+(Outstanding + All recent); statuses **Outstanding → Messaged (manual tick) / Let go (LH sent)**; **auto-resolve
+via reusing the ONE existing LH webhook** (message-sent ping → Let go), replacing the mirrored-window idea; the
+only catch = **$8 LH tier's 20-webhooks/day cap** → make message-sent optional (gentle upsell to the $20
+unlimited tier). Guy-first then portal; v1 manual tick, v2 = extension magic. **No code, day-to-day untouched.**
+**Real next:** (1) Guy confirms the exact LH webhook step + payload; (2) decide naming ("Thanks for Connecting"
+vs "Connections"/"Follow-ups"); (3) freehand vs AI-draft for v1; then it's a small build (a view + a dedicated
+Airtable tick-field + a thin message-sent webhook tap).
 
 **As of 2026-06-19 (session 2) — SPEAKER RECONSTRUCTION BUILT + CLAUDE WIRED (shipped to `main`, flag OFF, awaiting cloud test):**
 Claude is now wired into the backend (first consumer of the swappable seam) and the full speaker-reconstruction
