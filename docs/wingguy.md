@@ -181,9 +181,14 @@ skeptics** vs "let them train it". (3) Multi-tenant refactor **paused** for the 
     profile-URL→`Profile Key` matching) so clients configure only one webhook. This **replaces** the earlier
     mirrored-window + date-lapse idea (no duplicated window value, no drift). **Caveat (the only fly):** the **$8 LH
     tier caps webhooks at 20/day** (counts firings, not endpoints — reuse does NOT save budget); connection events
-    already consume some today, message-sent is the *only new* consumption. So make the message-sent webhook
-    **optional** — unlimited-tier ($20) clients get auto-clearing; $8 clients leave it off, rows clear on manual
-    let-go (or a simple age fallback). Becomes a *gentle* upsell to the unlimited tier.
+    already consume some today, message-sent is the *only new* consumption. **But it's self-throttling** (Guy,
+    2026-06-19): #3 fires ONLY for *let-go* leads — working the window properly with AI Blaze suppresses LH's send
+    on most, so the draw is **inversely proportional to engagement**. Worst case = **3 firings per lead lifecycle**
+    (1: into Airtable on extraction · 2: on connect · 3: on message-out). #1+#2 already fit today's volume; #3
+    shrinks the harder you work the list. So the cap really only bites a *disengaged* user (lets everyone fall to
+    automation — getting little value anyway), whose fix is a clean ~$12 LH upgrade. Net: keep message-sent
+    **optional** but treat the cap as a natural ceiling mapping to daily connection volume, not a real blocker —
+    and a confident upsell line, not a hedge.
   - **Still open:** (C) v1 note = freehand (Guy uses AI Blaze externally) vs portal AI-suggested draft — lean
     freehand v1, AI draft is the later extension hook; (D) scope = **Guy-first then portal** (agreed in spirit);
     extension auto-advance = **v2** (v1 = manual tick); **naming** — "Thanks for Connecting" vs "Connections" /
@@ -1752,11 +1757,16 @@ config), and we lose only the precise "days-left" countdown (oldest-first covers
 - **Reuse the ONE existing webhook** — Guy's explicit preference so clients configure only one thing. Our side:
   `/lh-webhook/upsertLeadOnly` already matches leads by canonical URL→`Profile Key`; the message-sent ping is a
   thin sibling (`/lh-webhook/messageSent`) or an `event=` flag on the same route — same plumbing, small build.
-- **The one fly — $8 LH tier = 20 webhooks/day.** Counts *firings*, not endpoints, so reusing one URL does NOT
-  save budget. Connection events already consume some; message-sent is the only *new* draw. Mitigation: make the
-  message-sent webhook **optional** — unlimited-tier ($20) clients enable it for auto-clearing; $8 clients leave
-  it off and clear rows on manual let-go (or a simple age fallback). Doubles as a gentle upsell to the unlimited
-  tier (aligns with what Guy already advocates; price-sensitive prospects don't have to walk).
+- **The "fly" largely dissolves — $8 LH tier = 20 webhooks/day.** Counts *firings*, not endpoints, so reusing
+  one URL does NOT save budget. **But the message-sent draw is self-throttling** (Guy's 2026-06-19 insight, which
+  flips the concern): a lead's webhook lifecycle is at most **3 firings — (1) into Airtable on extraction, (2) on
+  connect, (3) on message-out** — and #3 fires ONLY for *let-go* leads. Working the 14-day window properly with
+  AI Blaze suppresses LH's automated send on the ones you personalise, so #3 is **inversely proportional to
+  engagement**: the harder you work the list, the less it fires. #1+#2 already fit today's volume. So the cap only
+  bites a *disengaged* user (lets everyone fall through to automation — getting little value anyway), and their
+  fix is a clean ~$12 LH upgrade. **Net:** keep message-sent **optional**, but the cap is a natural ceiling that
+  maps to daily connection volume, not a blocker — and a *confident* upsell line to the unlimited tier (aligns
+  with what Guy already advocates), not a hedge that makes price-sensitive prospects walk.
 
 **Build shape.** Guy-first to validate the loop, then client-facing (clients won't do the manual scan Guy does,
 but will use an easy in-portal list). v1 = plain portal list + manual tick + click-through to LinkedIn; **v2 =
