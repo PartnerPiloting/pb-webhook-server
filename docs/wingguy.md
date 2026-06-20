@@ -145,8 +145,8 @@ skeptics** vs "let them train it". (3) Multi-tenant refactor **paused** for the 
 
 **Backlog — flagged, not yet spec'd.**
 - **Connection follow-up worklist ("where am I up to") — aka "Thanks for Connecting"** *(flagged 2026-06-18;
-  design settled 2026-06-19; ✅ **v1 BUILT 2026-06-20** — portal tab + backend route + per-client gate shipped to `main`,
-  Guy-first, awaiting cloud verify; auto-resolve webhook + extension auto-advance still v2. Volatile status → ▶ You are here)* — replace Guy's
+  design settled 2026-06-19; ✅ **v1 BUILT + VERIFIED LIVE 2026-06-20** — portal tab + backend route + per-client gate on `main`,
+  Guy-first; auto-resolve webhook + extension auto-advance still v2. Volatile status → ▶ You are here)* — replace Guy's
   manual scan of LinkedIn recent-connections with a generated worklist of *where he's up to + what's still
   outstanding*. New connections already land in the **Portal (Airtable leads table) with a connection date**;
   the feature = **flag each lead actioned / not-actioned** (status-tick) and surface the not-yet-actioned ones
@@ -1826,8 +1826,8 @@ yet built.
 
 ## ▶ You are here / next pick-up
 
-**As of 2026-06-20 (session 2) — "THANKS FOR CONNECTING" WORKLIST v1 BUILT (Guy-first, per-client gated; shipped to `main`, awaiting cloud verify).**
-The designed worklist tab is now coded end-to-end — additive, gated, daily flow untouched. Built on the schema
+**As of 2026-06-20 (session 2) — "THANKS FOR CONNECTING" WORKLIST v1 BUILT + VERIFIED LIVE (Guy-first, per-client gated; on `main`).**
+The designed worklist tab is now coded end-to-end and proven against Guy's real prod data — additive, gated, daily flow untouched. Built on the schema
 provisioned earlier today (`Thanks Status` on all Leads tables; `Thanks for Connecting` Yes/No + `Connection
 Lookback Days` on master Clients; Guy's gate flipped **Yes**). All on `main` (no `dev`/`staging` service in play here).
 - **Backend gate plumbing:** `clientService` now maps `thanksForConnectingEnabled` (master "Thanks for Connecting"=Yes)
@@ -1842,9 +1842,16 @@ Lookback Days` on master Clients; Guy's gate flipped **Yes**). All on `main` (no
   live "N to thank" badge, row = name→LinkedIn profile · headline/company · "connected X days ago" · **Messaged** (primary) / **Let go**
   (secondary), optimistic remove + Undo toast, "all caught up 🎉" empty state. Nav tab added in `Layout.js` after Top Scoring Leads,
   **gated on `features.thanksForConnecting`** (handshake/wave icon). `next build` passes.
-- **REAL NEXT (cloud verify — this repo is cloud-only):** push → Render+Vercel deploy → open the portal as Guy, confirm the tab
-  shows (and is absent for a non-gated client), the Outstanding queue lists his recent Connected leads oldest-first, Messaged/Let go
-  tick + Undo round-trips to Airtable, All-recent badges render. Then: v1 = freehand note (Guy uses AI Blaze externally); v2 = the
+- **VERIFIED LIVE (2026-06-20, against Guy's prod base via curl + a Render one-off probe job):** `/worklist` 200s with the gate
+  ON for Guy (proves clientService→auth gate→`thanksForConnectingEnabled=true`); filter/sort correct (oldest-first); row mapping
+  populated (name, LinkedIn URL, headline, days-since); `PATCH /lead/:id` round-trips to Airtable (Messaged→count drops→restored to
+  null cleanly). Lookback defaults to 14 (Guy's `Connection Lookback Days` blank). **Data note:** Guy has 436 Connected leads (405
+  dated) but **none within ~120 days** — the LH connection inflow has paused, so the live 14-day Outstanding queue is *correctly*
+  empty right now; widening to days=2000 shows 179 real rows. So nothing to thank *today*; the queue lights up when LH resumes
+  connecting. **One caveat I did NOT verify:** the portal *tab visibility* (Layout reads `features.thanksForConnecting` from
+  `/api/auth/test`, which needs a real portal token — testClient mode returns LINK_UPDATED, so I couldn't curl it). Guy opening his
+  own portal is the final check the tab actually renders for him and is absent for a non-gated client.
+- **REAL NEXT:** Guy eyeball-checks the tab in his portal; then v1 = freehand note (Guy uses AI Blaze externally); v2 = the
   **LH message-sent webhook auto-resolve → "Let go"** (reuse the one LH webhook) + extension auto-advance. Roll out to a 2nd client
   by flipping their master switch to Yes once Guy's happy.
 
