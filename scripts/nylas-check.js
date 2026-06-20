@@ -18,8 +18,11 @@
 try { require('dotenv').config({ path: '.env.local' }); } catch (_) { /* optional */ }
 try { require('dotenv').config(); } catch (_) { /* optional */ }
 
-// Force the Nylas backend for THIS process only (isolated to the job; live behaviour unchanged).
-process.env.CALENDAR_PROVIDER = 'nylas';
+// Default mode forces the Nylas backend for THIS process only (isolated; live behaviour unchanged).
+// Pass --live to NOT force it, so the provider reflects the coach's REAL Airtable setting
+// (`Calendar Provider`) — use this to confirm a flip actually took effect end-to-end.
+const LIVE_MODE = process.argv.includes('--live');
+if (!LIVE_MODE) process.env.CALENDAR_PROVIDER = 'nylas';
 
 const COACH = (process.env.RECALL_COACH_CLIENT_ID || 'Guy-Wilson').trim();
 
