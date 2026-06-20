@@ -136,6 +136,11 @@ async function getAllClients() {
                 const clientType = record.get('Client Type') || 'A - Partner Selection';
                 const fupInstructions = record.get('FUP AI Instructions') || '';
                 const fathomApiKey = record.get('Fathom API Key') || null;
+                // Nylas (multi-tenant calendar/email): per-client grant + which calendar backend to
+                // use. Read from Airtable so each client carries their OWN grant (calendarProvider.js
+                // reads coach.nylasGrantId first, then env). calendarProvider blank => code default 'google'.
+                const nylasGrantId = record.get('Nylas Grant ID') || null;
+                const calendarProvider = record.get('Calendar Provider') || null;
                 
                 clients.push({
                     id: record.id,
@@ -180,6 +185,9 @@ async function getAllClients() {
                     clientType: clientType,
                     fupInstructions: fupInstructions,
                     fathomApiKey: fathomApiKey,
+                    // Nylas multi-tenant calendar (per-client grant + backend choice)
+                    nylasGrantId: nylasGrantId,
+                    calendarProvider: calendarProvider,
                     // Store raw record for fire-and-forget field access
                     rawRecord: record
                 });
