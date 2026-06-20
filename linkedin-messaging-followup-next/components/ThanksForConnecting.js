@@ -56,10 +56,29 @@ async function apiPatch(path, body, cid) {
 
 function connectedAgo(days) {
   if (days === null || days === undefined) return '';
-  if (days <= 0) return 'connected today';
-  if (days === 1) return 'connected yesterday';
-  return `connected ${days} days ago`;
+  if (days <= 0) return 'today';
+  if (days === 1) return 'yesterday';
+  return `${days} days ago`;
 }
+
+function formatDate(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+// "All time" sends a very wide window; the backend caps the row count.
+const ALL_TIME = 36500;
+const WINDOW_OPTIONS = [
+  { value: 7, label: 'Last 7 days' },
+  { value: 14, label: 'Last 14 days' },
+  { value: 30, label: 'Last 30 days' },
+  { value: 60, label: 'Last 60 days' },
+  { value: 90, label: 'Last 90 days' },
+  { value: 365, label: 'Last 12 months' },
+  { value: ALL_TIME, label: 'All time' }
+];
 
 const STATUS_BADGE = {
   'Messaged': 'bg-emerald-100 text-emerald-800 border-emerald-300',
@@ -71,19 +90,21 @@ export default function ThanksForConnecting() {
   const [view, setView] = useState('outstanding'); // 'outstanding' | 'all'
   const [items, setItems] = useState([]);
   const [outstandingCount, setOutstandingCount] = useState(0);
-  const [lookbackDays, setLookbackDays] = useState(null);
+  const [windowDays, setWindowDays] = useState(null); // null = use client's configured default
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [undo, setUndo] = useState(null); // { item, prevStatus, timer }
 
-  const load = useCallback(async (which) => {
+  const load = useCallback(async (which, days) => {
     setLoading(true);
     setError(null);
     try {
-      const data = await apiGet(`/worklist?view=${which}`, clientId);
+      const q = `/worklist?view=${which}` + (days != null ? `&days=${days}` : '');
+      const data = await apiGet(q, clientId);
       setItems(Array.isArray(data?.items) ? data.items : []);
       setOutstandingCount(Number(data?.outstandingCount ?? 0));
-      setLookbackDays(data?.lookbackDays ?? null);
+      // Adopt the client's configured default the first time (so the selector reflects it).
+      if (days == null && data?.lookbackDays != null) setWindowDays(data.lookbackDays);
     } catch (e) {
       setError(e?.message || 'Failed to load worklist');
       setItems([]);
@@ -92,7 +113,7 @@ export default function ThanksForConnecting() {
     }
   }, [clientId]);
 
-  useEffect(() => { load(view); }, [view, load]);
+  useEffect(() => { load(view, windowDays); }, [view, windowDays, load]);
 
   // Apply a status. In Outstanding view the row leaves the queue (optimistic remove + undo).
   const setStatus = useCallback(async (item, newStatus) => {
@@ -123,9 +144,9 @@ export default function ThanksForConnecting() {
       setError(e?.message || 'Failed to update — refreshing');
       if (undo?.timer) clearTimeout(undo.timer);
       setUndo(null);
-      load(view);
+      load(view, windowDays);
     }
-  }, [view, clientId, undo, load]);
+  }, [view, clientId, undo, load, windowDays]);
 
   const doUndo = useCallback(async () => {
     if (!undo) return;
@@ -135,8 +156,8 @@ export default function ThanksForConnecting() {
     try {
       await apiPatch(`/lead/${encodeURIComponent(item.id)}`, { thanksStatus: prevStatus }, clientId);
     } catch (_) {}
-    load(view);
-  }, [undo, clientId, view, load]);
+    load(view, windowDays);
+  }, [undo, clientId, view, load, windowDays]);
 
   const headlineLine = (it) => {
     const parts = [];
@@ -175,9 +196,22 @@ export default function ThanksForConnecting() {
             className={`px-3 py-1.5 rounded text-sm border ${view === 'all' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'}`}
             onClick={() => setView('all')}
           >All recent</button>
-          {lookbackDays != null && (
-            <span className="ml-auto text-xs text-gray-400">Last {lookbackDays} days</span>
-          )}
+          <label className="ml-auto flex items-center gap-2 text-xs text-gray-500">
+            Show
+            <select
+              className="border rounded px-2 py-1 text-sm text-gray-700"
+              value={windowDays ?? 14}
+              onChange={(e) => setWindowDays(Number(e.target.value))}
+            >
+              {(WINDOW_OPTIONS.some(o => o.value === windowDays) || windowDays == null
+                ? WINDOW_OPTIONS
+                : [...WINDOW_OPTIONS, { value: windowDays, label: `Last ${windowDays} days` }]
+                    .sort((a, b) => a.value - b.value)
+              ).map(o => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </label>
         </div>
       </div>
 
@@ -201,9 +235,19 @@ export default function ThanksForConnecting() {
           )}
 
           {!loading && items.length > 0 && (
+            <>
+            <div className="flex items-center gap-4 pb-2 mb-1 border-b text-xs font-medium text-gray-400 uppercase tracking-wide">
+              <div className="w-24 sm:w-32 shrink-0">Connected</div>
+              <div className="flex-1">Lead</div>
+              <div className="shrink-0">Action</div>
+            </div>
             <ul className="divide-y">
               {items.map(it => (
-                <li key={it.id} className="py-3 flex items-start gap-3 flex-wrap">
+                <li key={it.id} className="py-3 flex items-start gap-4">
+                  <div className="w-24 sm:w-32 shrink-0">
+                    <div className="text-sm text-gray-900">{formatDate(it.dateConnected)}</div>
+                    <div className="text-xs text-gray-400">{connectedAgo(it.daysSinceConnected)}</div>
+                  </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
                       {it.linkedinUrl ? (
@@ -220,7 +264,6 @@ export default function ThanksForConnecting() {
                       )}
                     </div>
                     {headlineLine(it) && <div className="text-sm text-gray-600 truncate">{headlineLine(it)}</div>}
-                    <div className="text-xs text-gray-400 mt-0.5">{connectedAgo(it.daysSinceConnected)}</div>
                   </div>
 
                   <div className="flex items-center gap-2 shrink-0">
@@ -249,6 +292,7 @@ export default function ThanksForConnecting() {
                 </li>
               ))}
             </ul>
+            </>
           )}
         </div>
       </div>

@@ -143,7 +143,8 @@ module.exports = function mountThanksForConnecting(app, base) {
     let lookbackDays = gate.lookbackDays;
     if (req.query.days !== undefined) {
       const d = Number(req.query.days);
-      if (Number.isFinite(d) && d > 0) lookbackDays = Math.min(d, 365);
+      // Allow a wide ceiling so an "All time" window in the UI works; MAX_ITEMS still caps the result.
+      if (Number.isFinite(d) && d > 0) lookbackDays = Math.min(d, 36500);
     }
 
     try {
