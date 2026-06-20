@@ -25,6 +25,8 @@
  * Prerequisites (server environment — run via Render one-off job, not locally):
  *   - AIRTABLE_API_KEY (with schema/metadata write permission)
  *   - MASTER_CLIENTS_BASE_ID
+ *   - CLIENT_TEMPLATE_BASE_ID (base id of "My Leads - Client Template" — Guy owns this value;
+ *       the token must also have access to that base, or template steps 403)
  */
 
 require('dotenv').config();
@@ -34,7 +36,9 @@ const Airtable = require('airtable');
 // CONFIGURATION
 // ============================================
 
-const TEMPLATE_BASE_ID = 'app6W6k9GiDUlktvt'; // "My Leads - Client Template"
+// Template base ID comes from the env var (Guy owns the source of truth). Falls back to the
+// previously-hardcoded id only if the env var is unset (which would likely 403 — that's the signal to set it).
+const TEMPLATE_BASE_ID = process.env.CLIENT_TEMPLATE_BASE_ID || 'app6W6k9GiDUlktvt';
 const MASTER_TABLE = 'Clients';               // matches constants/airtableUnifiedConstants MASTER_TABLES.CLIENTS
 const LEADS_TABLE = 'Leads';                  // CLIENT_TABLES.LEADS
 const BASE_ID_FIELD = 'Airtable Base ID';
