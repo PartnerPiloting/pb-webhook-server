@@ -1801,13 +1801,21 @@ clashes with "Follow-Up Manager"). Subtitle **"Welcome your recent connections"*
 style). Icon = handshake/wave. **Placement: after "Top Scoring Leads"** — the last *working* tab, just before the
 Settings + Start-Here utility tabs (keeps that grouping clean without reshuffling).
 
+**Airtable schema PROVISIONED 2026-06-20 (✅ done — was item 3/4 below).** Tick-field = new **`Thanks Status`**
+(singleSelect: *Messaged* / *Let go*; blank = Outstanding) — created on all 17 client Leads tables + the Client
+Template. Lookback = **`Connection Lookback Days`** (number) on the master **Clients** table (empty treated as 14
+by the app). Rolled out via the new reusable tool **`scripts/ensure-client-fields.js`** (idempotent; template is a
+DEFAULT target; `--audit` mode diffs template vs clients; runs via Render one-off job — see
+[[reference_render_jobs_exec]]). Template base id now lives in env var **`CLIENT_TEMPLATE_BASE_ID`**
+(`app6W6k9GiDlJktvt` — the old hardcoded `…GiDUlktvt` was a typo); same pass backfilled the template's missing
+**`Alt Emails`**. Audit confirmed no other all-client field was missing from the template. Memory:
+[[feedback_airtable_field_rollout_includes_template]].
+
 **Open / homework (pre-build).** (1) Guy to confirm the exact LH webhook step + payload (carries profile URL for
 matching) — he's confident it can; this gates only the *auto-resolve enhancement*, NOT v1. (2) v1 note freehand
-vs AI-suggested draft — lean freehand, AI draft = later extension hook. (3) At build start: pick the dedicated
-Airtable tick-field (reuse unused `Conversation Stage` vs new `Thanks Status`) + its exact option set, and decide
-how it's provisioned in every client base (note: `createValidatedObject` silently drops writes to fields that
-don't exist in a client's base — so the field must be ensured per-tenant). (4) Where the per-client lookback
-value lives (Clients table vs Wingguy/Postgres). Not yet built.
+vs AI-suggested draft — lean freehand, AI draft = later extension hook. The remaining build is the **portal UI**
+(the "Thanks for Connecting" tab + the Outstanding / All-recent views reading these now-provisioned fields). Not
+yet built.
 
 ---
 
