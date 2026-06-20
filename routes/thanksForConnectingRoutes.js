@@ -78,10 +78,12 @@ module.exports = function mountThanksForConnecting(app, base) {
   const esc = (s) => String(s).replace(/'/g, "\\'");
 
   function buildFormula(lookbackDays, outstandingOnly) {
+    // Bound the window off {Date Connected} directly (DATETIME_DIFF) rather than the
+    // {Days Since Connected} formula field — that field isn't present in every Leads base.
     const parts = [
       `{${LEAD_FIELDS.LINKEDIN_CONNECTION_STATUS}} = '${esc(CONNECTION_STATUS_VALUES.CONNECTED)}'`,
       `NOT({${LEAD_FIELDS.DATE_CONNECTED}} = BLANK())`,
-      `{${LEAD_FIELDS.DAYS_SINCE_CONNECTED}} <= ${lookbackDays}`
+      `DATETIME_DIFF(TODAY(), {${LEAD_FIELDS.DATE_CONNECTED}}, 'days') <= ${lookbackDays}`
     ];
     if (outstandingOnly) {
       parts.push(`{${THANKS_STATUS_FIELD}} = BLANK()`);
@@ -89,10 +91,17 @@ module.exports = function mountThanksForConnecting(app, base) {
     return `AND(${parts.join(', ')})`;
   }
 
+  function daysSince(dateConnected) {
+    if (!dateConnected) return null;
+    const t = new Date(dateConnected).getTime();
+    if (Number.isNaN(t)) return null;
+    return Math.max(0, Math.floor((Date.now() - t) / 86400000));
+  }
+
   function mapItem(r) {
     const first = r.get(LEAD_FIELDS.FIRST_NAME) || '';
     const last = r.get(LEAD_FIELDS.LAST_NAME) || '';
-    const days = r.get(LEAD_FIELDS.DAYS_SINCE_CONNECTED);
+    const dateConnected = r.get(LEAD_FIELDS.DATE_CONNECTED) || null;
     return {
       id: r.id,
       profileKey: r.get('Profile Key') || null,
@@ -103,8 +112,8 @@ module.exports = function mountThanksForConnecting(app, base) {
       headline: r.get(LEAD_FIELDS.HEADLINE) || '',
       company: r.get(LEAD_FIELDS.COMPANY_NAME) || '',
       jobTitle: r.get(LEAD_FIELDS.JOB_TITLE) || '',
-      dateConnected: r.get(LEAD_FIELDS.DATE_CONNECTED) || null,
-      daysSinceConnected: (days === undefined || days === null) ? null : Number(days),
+      dateConnected,
+      daysSinceConnected: daysSince(dateConnected),
       thanksStatus: r.get(THANKS_STATUS_FIELD) || null
     };
   }
