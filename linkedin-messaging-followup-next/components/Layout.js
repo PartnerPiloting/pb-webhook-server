@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import { getEnvLabel, initializeClient, getClientProfile, getCurrentClientId, buildAuthUrl } from '../utils/clientUtils.js';
-import { MagnifyingGlassIcon, CalendarDaysIcon, UserPlusIcon, TrophyIcon, CogIcon, BookOpenIcon, QuestionMarkCircleIcon, PencilSquareIcon, CalendarIcon, UsersIcon, WrenchScrewdriverIcon, CreditCardIcon, SparklesIcon, EnvelopeIcon, MicrophoneIcon } from '@heroicons/react/24/outline';
+import { MagnifyingGlassIcon, CalendarDaysIcon, UserPlusIcon, TrophyIcon, CogIcon, BookOpenIcon, QuestionMarkCircleIcon, PencilSquareIcon, CalendarIcon, UsersIcon, WrenchScrewdriverIcon, CreditCardIcon, SparklesIcon, EnvelopeIcon, MicrophoneIcon, HandRaisedIcon } from '@heroicons/react/24/outline';
 import ClientCodeEntry from './ClientCodeEntry';
 import UploadEmailsModal from './UploadEmailsModal';
 
@@ -39,7 +39,7 @@ const useClientInitialization = () => {
 };
 
 // Primary navigation tabs (URL params preserved)
-const NavigationWithParams = ({ pathname }) => {
+const NavigationWithParams = ({ pathname, showThanksForConnecting = false }) => {
   const searchParams = useSearchParams();
   const serviceLevel = parseInt(searchParams.get('level') || '2', 10);
   const clientParam = searchParams.get('client') || searchParams.get('testClient') || '';
@@ -48,12 +48,14 @@ const NavigationWithParams = ({ pathname }) => {
     { name: 'Follow-Up Manager', href: '/follow-up', icon: CalendarDaysIcon, description: 'Manage scheduled follow-ups', minLevel: 1 },
     { name: 'New Leads', href: '/new-leads', icon: UserPlusIcon, description: 'Review and process new leads', minLevel: 1 },
     { name: 'Top Scoring Leads', href: '/top-scoring-leads', icon: TrophyIcon, description: 'Pick the best candidates for the next LH batch', minLevel: 1 },
+    // Per-client rollout: only shown when the master "Thanks for Connecting" switch is on (gated below).
+    { name: 'Thanks for Connecting', href: '/thanks-for-connecting', icon: HandRaisedIcon, description: 'Welcome your recent connections', minLevel: 1, gate: 'thanksForConnecting' },
     // LEGACY-DISABLED 2026-05-16: Top Scoring Posts retired (Apify cost). Resurrect by un-commenting.
     // { name: 'Top Scoring Posts', href: '/top-scoring-posts', icon: TrophyIcon, description: 'Leads with high-relevance posts ready for action', minLevel: 2 },
     { name: 'Settings', href: '/settings', icon: CogIcon, description: 'Configure scoring attributes and settings', minLevel: 1 },
     { name: 'Start Here', href: '/start-here', icon: BookOpenIcon, description: 'Onboarding categories and topics', minLevel: 1 }
   ];
-  const items = nav.filter(n => n.minLevel <= serviceLevel);
+  const items = nav.filter(n => n.minLevel <= serviceLevel && (n.gate !== 'thanksForConnecting' || showThanksForConnecting));
   return (
     <nav className="mb-8" aria-label="Primary">
       <div className="flex flex-wrap gap-x-8 gap-y-3 items-stretch">
@@ -123,6 +125,7 @@ const Layout = ({ children }) => {
     if (pathname.startsWith('/follow-up')) return 'lead_follow_up';
     if (pathname.startsWith('/new-leads')) return 'new_lead';
     if (pathname.startsWith('/top-scoring-leads')) return 'top_scoring_leads';
+    if (pathname.startsWith('/thanks-for-connecting')) return 'thanks_for_connecting';
     // LEGACY-DISABLED 2026-05-16: Top Scoring Posts retired (Apify cost).
     // if (pathname.startsWith('/top-scoring-posts')) return 'top_scoring_posts';
     if (pathname.startsWith('/settings')) return 'profile_attributes';
@@ -302,7 +305,7 @@ const Layout = ({ children }) => {
       <div className="w-full px-4 sm:px-6 lg:px-8 py-8">
         {/* Navigation Tabs */}
         <Suspense fallback={<div>Loading navigation...</div>}>
-          <NavigationWithParams pathname={pathname} />
+          <NavigationWithParams pathname={pathname} showThanksForConnecting={clientProfile?.features?.thanksForConnecting === true} />
         </Suspense>
 
         {/* Main Content */}

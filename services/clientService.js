@@ -141,7 +141,12 @@ async function getAllClients() {
                 // reads coach.nylasGrantId first, then env). calendarProvider blank => code default 'google'.
                 const nylasGrantId = record.get('Nylas Grant ID') || null;
                 const calendarProvider = record.get('Calendar Provider') || null;
-                
+                // "Thanks for Connecting" worklist (per-client rollout). Gate = master "Thanks for
+                // Connecting" Yes/No switch; lookback bounds the Outstanding queue (default applied
+                // in the route when blank). Added 2026-06-20.
+                const thanksForConnectingEnabled = record.get('Thanks for Connecting') === 'Yes';
+                const connectionLookbackDays = Number(record.get('Connection Lookback Days')) || null;
+
                 clients.push({
                     id: record.id,
                     clientId: clientId,
@@ -188,6 +193,9 @@ async function getAllClients() {
                     // Nylas multi-tenant calendar (per-client grant + backend choice)
                     nylasGrantId: nylasGrantId,
                     calendarProvider: calendarProvider,
+                    // "Thanks for Connecting" worklist gate + lookback (per-client rollout)
+                    thanksForConnectingEnabled: thanksForConnectingEnabled,
+                    connectionLookbackDays: connectionLookbackDays,
                     // Store raw record for fire-and-forget field access
                     rawRecord: record
                 });

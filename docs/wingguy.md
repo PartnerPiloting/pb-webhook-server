@@ -145,7 +145,8 @@ skeptics** vs "let them train it". (3) Multi-tenant refactor **paused** for the 
 
 **Backlog — flagged, not yet spec'd.**
 - **Connection follow-up worklist ("where am I up to") — aka "Thanks for Connecting"** *(flagged 2026-06-18;
-  ⏳ actively in design 2026-06-19, being hashed out in chat — NOT yet committed/spec'd)* — replace Guy's
+  design settled 2026-06-19; ✅ **v1 BUILT 2026-06-20** — portal tab + backend route + per-client gate shipped to `main`,
+  Guy-first, awaiting cloud verify; auto-resolve webhook + extension auto-advance still v2. Volatile status → ▶ You are here)* — replace Guy's
   manual scan of LinkedIn recent-connections with a generated worklist of *where he's up to + what's still
   outstanding*. New connections already land in the **Portal (Airtable leads table) with a connection date**;
   the feature = **flag each lead actioned / not-actioned** (status-tick) and surface the not-yet-actioned ones
@@ -1824,6 +1825,28 @@ yet built.
 ---
 
 ## ▶ You are here / next pick-up
+
+**As of 2026-06-20 (session 2) — "THANKS FOR CONNECTING" WORKLIST v1 BUILT (Guy-first, per-client gated; shipped to `main`, awaiting cloud verify).**
+The designed worklist tab is now coded end-to-end — additive, gated, daily flow untouched. Built on the schema
+provisioned earlier today (`Thanks Status` on all Leads tables; `Thanks for Connecting` Yes/No + `Connection
+Lookback Days` on master Clients; Guy's gate flipped **Yes**). All on `main` (no `dev`/`staging` service in play here).
+- **Backend gate plumbing:** `clientService` now maps `thanksForConnectingEnabled` (master "Thanks for Connecting"=Yes)
+  + `connectionLookbackDays`; `/api/auth/test` surfaces `features.thanksForConnecting` so the portal shows the tab
+  only for enabled clients.
+- **New route `routes/thanksForConnectingRoutes.js`** (mounted `/api/thanks-for-connecting`): `GET /worklist?view=outstanding|all`
+  (Connected · Date Connected not blank · `Days Since Connected ≤ lookback`; Outstanding also needs `Thanks Status` blank;
+  oldest-first = inbox-zero) + `PATCH /lead/:id {thanksStatus: Messaged|Let go|null}`. **Per-client gate enforced server-side**
+  (403 if off) on top of a process kill-switch `ENABLE_THANKS_FOR_CONNECTING` (default ON; per-client switch is the real rollout control).
+  Lookback default 14 when blank; `?days=` override.
+- **Frontend:** `components/ThanksForConnecting.js` + `app/thanks-for-connecting/page.tsx` — two views (Outstanding / All recent),
+  live "N to thank" badge, row = name→LinkedIn profile · headline/company · "connected X days ago" · **Messaged** (primary) / **Let go**
+  (secondary), optimistic remove + Undo toast, "all caught up 🎉" empty state. Nav tab added in `Layout.js` after Top Scoring Leads,
+  **gated on `features.thanksForConnecting`** (handshake/wave icon). `next build` passes.
+- **REAL NEXT (cloud verify — this repo is cloud-only):** push → Render+Vercel deploy → open the portal as Guy, confirm the tab
+  shows (and is absent for a non-gated client), the Outstanding queue lists his recent Connected leads oldest-first, Messaged/Let go
+  tick + Undo round-trips to Airtable, All-recent badges render. Then: v1 = freehand note (Guy uses AI Blaze externally); v2 = the
+  **LH message-sent webhook auto-resolve → "Let go"** (reuse the one LH webhook) + extension auto-advance. Roll out to a 2nd client
+  by flipping their master switch to Yes once Guy's happy.
 
 **As of 2026-06-20 — FATHOM "CONTENT READY" WEBHOOK + MULTI-TENANT RECORDING FOUNDATIONS + NYLAS CALENDAR DOGFOOD — ALL SHIPPED & VERIFIED LIVE.** Big build session (all additive, kill-switched, Guy-default-safe, daily flow untouched). Full detail → memory `project_recall_to_fathom_migration`. Headlines:
 - **Fathom "content ready" webhook LIVE** (`c311609a`) — push replaces the ~5-min poll lag; same Svix HMAC as Recall (reuses `verifyRecallWebhook`); registered with Fathom (id `ZVa_DLhYLngu5Pyx`); gates `FATHOM_WEBHOOK_ENABLED`+`FATHOM_LIVE_FROM`+`FATHOM_INGEST_ENABLED`; dedup no-op; poll kept as backstop. Verified (tampered→401, fake→graceful, real→"already ingested").

@@ -72,7 +72,9 @@ router.get('/test', authenticateUserWithTestMode, async (req, res) => {
         leadSearch: true,
         leadManagement: true,
         postScoring: (req.client.serviceLevel || 1) >= 2,
-        topScoringPosts: (req.client.serviceLevel || 1) >= 2
+        topScoringPosts: (req.client.serviceLevel || 1) >= 2,
+        // Per-client rollout switch for the "Thanks for Connecting" worklist tab
+        thanksForConnecting: req.client.thanksForConnectingEnabled === true
       }
     };
 

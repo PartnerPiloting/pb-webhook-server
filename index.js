@@ -1846,6 +1846,17 @@ try {
     moduleLogger.error('index.js: Error mounting Top Scoring Leads routes', e.message, e.stack);
 }
 
+// "Thanks for Connecting" worklist (per-client gated inside the router module)
+try {
+    const mountThanksForConnecting = require('./routes/thanksForConnectingRoutes.js');
+    if (typeof mountThanksForConnecting === 'function') {
+        mountThanksForConnecting(app, base);
+        moduleLogger.info('index.js: Thanks for Connecting routes mounted at /api/thanks-for-connecting');
+    }
+} catch(e) {
+    moduleLogger.error('index.js: Error mounting Thanks for Connecting routes', e.message, e.stack);
+}
+
 // EMERGENCY DEBUG ROUTE - Direct in index.js
 app.get('/api/linkedin/debug', (req, res) => {
     res.json({ 
