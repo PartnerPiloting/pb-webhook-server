@@ -72,6 +72,17 @@ const MASTER_FIELDS = [
     type: 'number',
     description: 'Thanks-for-Connecting worklist: only connections from the last N days appear in the Outstanding queue. Set to roughly match this client\'s Linked Helper follow-up window. Empty is treated as 14 by the app. Added 2026-06-20.',
     options: { precision: 0 }
+  },
+  {
+    name: 'Thanks for Connecting',
+    type: 'singleSelect',
+    description: 'Per-client feature switch: show the "Thanks for Connecting" worklist tab in the portal for this client when set to Yes. Blank/No = hidden (default). Roll out client-by-client by flipping to Yes. Added 2026-06-20.',
+    options: {
+      choices: [
+        { name: 'Yes', color: 'greenBright' },
+        { name: 'No', color: 'grayBright' }
+      ]
+    }
   }
 ];
 
