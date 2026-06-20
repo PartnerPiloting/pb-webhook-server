@@ -22,7 +22,7 @@ const { createLogger } = require('../utils/contextLogger');
 const logger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'thanks_for_connecting' });
 const airtableClient = require('../config/airtableClient.js');
 const { getClientById } = require('../services/clientService');
-const { LEAD_FIELDS, CONNECTION_STATUS_VALUES } = require('../constants/airtableUnifiedConstants');
+const { LEAD_FIELDS } = require('../constants/airtableUnifiedConstants');
 
 const THANKS_STATUS_FIELD = 'Thanks Status';
 const VALID_STATUSES = ['Messaged', 'Let go'];
@@ -78,10 +78,13 @@ module.exports = function mountThanksForConnecting(app, base) {
   const esc = (s) => String(s).replace(/'/g, "\\'");
 
   function buildFormula(lookbackDays, outstandingOnly) {
-    // Bound the window off {Date Connected} directly (DATETIME_DIFF) rather than the
+    // "Connected" = has a Date Connected (Guy's funnel: blank = not connected, set = connected).
+    // The {LinkedIn Connection Status} field is NOT a reliable signal here — its "Connected" value
+    // is a stale historical state, while live inflow lands as "Candidate" with a fresh Date Connected
+    // (confirmed against prod 2026-06-20). So we key the queue purely off {Date Connected}.
+    // Window is bounded off {Date Connected} directly (DATETIME_DIFF) rather than the
     // {Days Since Connected} formula field — that field isn't present in every Leads base.
     const parts = [
-      `{${LEAD_FIELDS.LINKEDIN_CONNECTION_STATUS}} = '${esc(CONNECTION_STATUS_VALUES.CONNECTED)}'`,
       `NOT({${LEAD_FIELDS.DATE_CONNECTED}} = BLANK())`,
       `DATETIME_DIFF(TODAY(), {${LEAD_FIELDS.DATE_CONNECTED}}, 'days') <= ${lookbackDays}`
     ];
