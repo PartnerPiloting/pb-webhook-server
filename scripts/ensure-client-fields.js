@@ -16,6 +16,7 @@
  * default — it is the whole point (see memory: feedback_airtable_field_rollout_includes_template).
  *
  * Usage:
+ *   node scripts/ensure-client-fields.js --audit       # compare template vs all clients, list drift (read-only)
  *   node scripts/ensure-client-fields.js --dry-run     # report what's missing, change nothing
  *   node scripts/ensure-client-fields.js               # apply to all clients + template + master
  *   node scripts/ensure-client-fields.js --client=Guy-Wilson   # one client only (still + template/master unless skipped)
@@ -168,21 +169,81 @@ async function getClients(filterClientId) {
 }
 
 // ============================================
+// AUDIT — compare template vs all clients (read-only)
+// ============================================
+
+async function runAudit() {
+  console.log('🔎 Schema audit — template vs clients (Leads table), read-only\n');
+  const clients = await getClients(null);
+  const total = clients.length;
+  console.log(`Scanning ${total} client base(s) + template...\n`);
+
+  const fieldInfo = new Map(); // name -> { count, type }
+  for (const c of clients) {
+    let tables;
+    try { tables = await getTables(c.baseId); }
+    catch (err) { console.log(`  ⚠ ${c.clientId}: ${err.message}`); continue; }
+    const leads = tables.find((t) => t.name === LEADS_TABLE);
+    if (!leads) { console.log(`  ⚠ ${c.clientId}: no Leads table`); continue; }
+    for (const f of leads.fields) {
+      const e = fieldInfo.get(f.name) || { count: 0, type: f.type };
+      e.count++; fieldInfo.set(f.name, e);
+    }
+  }
+
+  let templateFields = new Set();
+  try {
+    const tTables = await getTables(TEMPLATE_BASE_ID);
+    const tLeads = tTables.find((t) => t.name === LEADS_TABLE);
+    templateFields = new Set((tLeads ? tLeads.fields : []).map((f) => f.name));
+  } catch (err) {
+    console.log(`❌ could not read template (${TEMPLATE_BASE_ID}): ${err.message}`);
+    return;
+  }
+
+  const missing = [...fieldInfo.entries()]
+    .filter(([name]) => !templateFields.has(name))
+    .sort((a, b) => b[1].count - a[1].count);
+
+  console.log('\n=== Fields on clients but MISSING from the template ===');
+  if (missing.length === 0) {
+    console.log('  ✅ none — the template already has every field the clients have.');
+  } else {
+    for (const [name, info] of missing) {
+      const flag = info.count === total ? '‼ ALL ' : (info.count * 2 >= total ? '· many ' : '  few  ');
+      console.log(`  ${flag} ${info.count}/${total}  "${name}" (${info.type})`);
+    }
+    console.log('\n  ‼ = on every client → almost certainly belongs on the template too.');
+  }
+
+  const clientFieldNames = new Set(fieldInfo.keys());
+  const templateOnly = [...templateFields].filter((n) => !clientFieldNames.has(n));
+  if (templateOnly.length) {
+    console.log('\n=== On the template but on NO client (template-only / possible cruft) ===');
+    templateOnly.forEach((n) => console.log(`  • "${n}"`));
+  }
+  console.log('\n(audit only — no changes made)');
+}
+
+// ============================================
 // MAIN
 // ============================================
 
 async function run() {
   const args = process.argv.slice(2);
+  const audit = args.includes('--audit');
   const dryRun = args.includes('--dry-run');
   const skipTemplate = args.includes('--skip-template');
   const skipMaster = args.includes('--skip-master');
   const clientArg = args.find((a) => a.startsWith('--client='));
   const filterClientId = clientArg ? clientArg.split('=')[1] : null;
 
-  console.log(`🔧 Ensure client fields${dryRun ? ' — DRY RUN (no changes)' : ''}\n`);
+  console.log(`🔧 Ensure client fields${audit ? ' — AUDIT' : (dryRun ? ' — DRY RUN (no changes)' : '')}\n`);
 
   if (!process.env.AIRTABLE_API_KEY) { console.error('❌ AIRTABLE_API_KEY not set'); process.exit(1); }
   if (!process.env.MASTER_CLIENTS_BASE_ID) { console.error('❌ MASTER_CLIENTS_BASE_ID not set'); process.exit(1); }
+
+  if (audit) { await runAudit(); return; }
 
   // 1) Leads-table fields on every client base
   const clients = await getClients(filterClientId);
