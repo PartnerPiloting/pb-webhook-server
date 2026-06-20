@@ -194,10 +194,13 @@ skeptics** vs "let them train it". (3) Multi-tenant refactor **paused** for the 
     automation — getting little value anyway), whose fix is a clean ~$12 LH upgrade. Net: keep message-sent
     **optional** but treat the cap as a natural ceiling mapping to daily connection volume, not a real blocker —
     and a confident upsell line, not a hedge.
+  - **Naming + placement (DECIDED 2026-06-20):** portal tab **"Thanks for Connecting"** (says exactly what you do;
+    fits existing widths; beats "Connections"/"New Connections"/"Follow-ups" which are ambiguous or clash),
+    subtitle **"Welcome your recent connections"**, icon a handshake/wave. Placed **after "Top Scoring Leads"**
+    (last working tab, before the Settings/Start-Here utility tabs).
   - **Still open:** (C) v1 note = freehand (Guy uses AI Blaze externally) vs portal AI-suggested draft — lean
     freehand v1, AI draft is the later extension hook; (D) scope = **Guy-first then portal** (agreed in spirit);
-    extension auto-advance = **v2** (v1 = manual tick); **naming** — "Thanks for Connecting" vs "Connections" /
-    "Follow-ups" — undecided. Needs its own dedicated tick-field (see WRINKLE above).
+    extension auto-advance = **v2** (v1 = manual tick). Needs its own dedicated tick-field (see WRINKLE above).
 - **Speaker reconstruction + confirm on transcript ingest** *(flagged 2026-06-18; spec'd 2026-06-19; ✅ BUILT 2026-06-19 — shipped to `main` behind `SPEAKER_RECONSTRUCTION_ENABLED`, default OFF, awaiting cloud test — volatile status → ▶ You are here)* — non-Zoom captures (e.g.
   **Zoom Notes / Tactiq** recording a **Teams or Google Meet** call as a fallback when a guest's own tech
   fails) arrive with **NO diarisation — every line tagged as the host**, so who-said-what (the things that
@@ -1791,9 +1794,20 @@ the extension magic** (detect you're on the profile, mark + advance to next). Ne
 Airtable — the generic `Status` is auto-clobbered to "In Process" on every webhook upsert, so it can't carry
 this; candidate = the unused `Conversation Stage`, or a new `Thanks Status`.
 
-**Open / homework.** (1) Guy to confirm the exact LH webhook step + payload (carries profile URL for matching) —
-he's confident it can; (2) v1 note freehand vs AI-suggested draft — lean freehand, AI draft = later extension
-hook; (3) **naming** — "Thanks for Connecting" vs "Connections" / "Follow-ups". Not yet built.
+**Naming + placement (DECIDED 2026-06-20).** Portal tab **"Thanks for Connecting"** (names the job-to-be-done in
+Guy's own words; three words, same footprint as "Lead Search & Update"/"Top Scoring Leads"; beats the
+alternatives — "Connections" reads as the whole list, "New Connections" collides with "New Leads", "Follow-ups"
+clashes with "Follow-Up Manager"). Subtitle **"Welcome your recent connections"** (matches the others' verb+object
+style). Icon = handshake/wave. **Placement: after "Top Scoring Leads"** — the last *working* tab, just before the
+Settings + Start-Here utility tabs (keeps that grouping clean without reshuffling).
+
+**Open / homework (pre-build).** (1) Guy to confirm the exact LH webhook step + payload (carries profile URL for
+matching) — he's confident it can; this gates only the *auto-resolve enhancement*, NOT v1. (2) v1 note freehand
+vs AI-suggested draft — lean freehand, AI draft = later extension hook. (3) At build start: pick the dedicated
+Airtable tick-field (reuse unused `Conversation Stage` vs new `Thanks Status`) + its exact option set, and decide
+how it's provisioned in every client base (note: `createValidatedObject` silently drops writes to fields that
+don't exist in a client's base — so the field must be ensured per-tenant). (4) Where the per-client lookback
+value lives (Clients table vs Wingguy/Postgres). Not yet built.
 
 ---
 
