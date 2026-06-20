@@ -161,6 +161,10 @@ skeptics** vs "let them train it". (3) Multi-tenant refactor **paused** for the 
     exists; `services/leadService.js:118`); email is written too (`routes/webhookHandlers.js:219`); connection
     state lives in **`LinkedIn Connection Status`** (`Connected`/`Candidate`/`Pending`). So the queue is just:
     *Connection Status = Connected, sorted by Date Connected desc, where <tick-field> is blank.*
+    **STATUS: SUPERSEDED 2026-06-20 (live data) → the queue keys off `{Date Connected}` presence ALONE, NOT
+    `{LinkedIn Connection Status}`** — that status field's `Connected` value is stale; live connections land as
+    `Candidate` with a fresh Date Connected. Blank Date Connected = not connected; set = connected. See ▶ You are
+    here + [[reference_connected_means_date_connected_set]].
   - **WRINKLE (verified 2026-06-19):** the generic **`Status`** field is auto-clobbered to `"In Process"` on
     EVERY webhook upsert → useless as a "have I dealt with this person" signal. The worklist needs its **own
     dedicated field** (candidate: the currently-unused `Conversation Stage`, or a new `Thanks Status`).
@@ -1842,15 +1846,20 @@ Lookback Days` on master Clients; Guy's gate flipped **Yes**). All on `main` (no
   live "N to thank" badge, row = name→LinkedIn profile · headline/company · "connected X days ago" · **Messaged** (primary) / **Let go**
   (secondary), optimistic remove + Undo toast, "all caught up 🎉" empty state. Nav tab added in `Layout.js` after Top Scoring Leads,
   **gated on `features.thanksForConnecting`** (handshake/wave icon). `next build` passes.
-- **VERIFIED LIVE (2026-06-20, against Guy's prod base via curl + a Render one-off probe job):** `/worklist` 200s with the gate
-  ON for Guy (proves clientService→auth gate→`thanksForConnectingEnabled=true`); filter/sort correct (oldest-first); row mapping
-  populated (name, LinkedIn URL, headline, days-since); `PATCH /lead/:id` round-trips to Airtable (Messaged→count drops→restored to
-  null cleanly). Lookback defaults to 14 (Guy's `Connection Lookback Days` blank). **Data note:** Guy has 436 Connected leads (405
-  dated) but **none within ~120 days** — the LH connection inflow has paused, so the live 14-day Outstanding queue is *correctly*
-  empty right now; widening to days=2000 shows 179 real rows. So nothing to thank *today*; the queue lights up when LH resumes
-  connecting. **One caveat I did NOT verify:** the portal *tab visibility* (Layout reads `features.thanksForConnecting` from
-  `/api/auth/test`, which needs a real portal token — testClient mode returns LINK_UPDATED, so I couldn't curl it). Guy opening his
-  own portal is the final check the tab actually renders for him and is absent for a non-gated client.
+- **★ DESIGN-PREMISE CORRECTION (2026-06-20, Guy, from live data) — "connected" = `{Date Connected}` is set, NOT
+  `{LinkedIn Connection Status} = 'Connected'`.** The 2026-06-19 spec assumed new connections land as status `Connected`;
+  prod proved otherwise (probe via Render one-off job): the `Connected` status value is a **stale historical state** (newest such
+  lead = 325 days old), while **live inflow lands as `Candidate` with a fresh `Date Connected`** (231 in the last 30 days). Guy's
+  rule: **blank Date Connected = not connected; set = connected** (matches his Airtable "Date Connected is not empty" view = 1,539
+  real connections). So the worklist keys **purely off `{Date Connected}`** (presence + lookback window) and **ignores
+  `{LinkedIn Connection Status}` entirely** (`1e96760a`). See memory [[reference_connected_means_date_connected_set]].
+- **VERIFIED LIVE (2026-06-20, against Guy's prod base via curl + Render probe jobs):** `/worklist` 200s with the gate ON for Guy
+  (proves clientService→auth gate→`thanksForConnectingEnabled=true`); after the filter correction the default 14-day Outstanding
+  queue returns **87 real leads, oldest-first** (14d→0d, names/headlines/LinkedIn URLs populated); `PATCH /lead/:id` round-trips to
+  Airtable (Messaged→count drops→restored to null cleanly). Lookback defaults to 14 (Guy's `Connection Lookback Days` blank).
+  **One caveat I did NOT verify:** the portal *tab visibility* (Layout reads `features.thanksForConnecting` from `/api/auth/test`,
+  which needs a real portal token — testClient mode returns LINK_UPDATED, so I couldn't curl it). Guy opening his own portal is the
+  final check the tab renders for him (and is absent for a non-gated client) and the 87-item Outstanding queue looks right.
 - **REAL NEXT:** Guy eyeball-checks the tab in his portal; then v1 = freehand note (Guy uses AI Blaze externally); v2 = the
   **LH message-sent webhook auto-resolve → "Let go"** (reuse the one LH webhook) + extension auto-advance. Roll out to a 2nd client
   by flipping their master switch to Yes once Guy's happy.
