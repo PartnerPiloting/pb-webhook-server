@@ -1813,6 +1813,12 @@ value lives (Clients table vs Wingguy/Postgres). Not yet built.
 
 ## ▶ You are here / next pick-up
 
+**As of 2026-06-20 — FATHOM "CONTENT READY" WEBHOOK + MULTI-TENANT RECORDING FOUNDATIONS + NYLAS CALENDAR DOGFOOD — ALL SHIPPED & VERIFIED LIVE.** Big build session (all additive, kill-switched, Guy-default-safe, daily flow untouched). Full detail → memory `project_recall_to_fathom_migration`. Headlines:
+- **Fathom "content ready" webhook LIVE** (`c311609a`) — push replaces the ~5-min poll lag; same Svix HMAC as Recall (reuses `verifyRecallWebhook`); registered with Fathom (id `ZVa_DLhYLngu5Pyx`); gates `FATHOM_WEBHOOK_ENABLED`+`FATHOM_LIVE_FROM`+`FATHOM_INGEST_ENABLED`; dedup no-op; poll kept as backstop. Verified (tampered→401, fake→graceful, real→"already ingested").
+- **Multi-tenant recording foundations LIVE** (`6d61f455`) — (#3) `recall_meetings.coach_client_id` stamp (243 rows backfilled to Guy); (#2) `fathomPollService.pollAllFathomTenants()` polls every Active client with a Fathom key under their own id; (#5 data-layer) `getMeetingQueue`/`getMeetingsForLead`/`getMeetingById` take optional `coachClientId` filter (live surfaces still pass nothing → identical for Guy). 12/12 checks via `scripts/test-multitenant-recording.js`. **Deferred (has teeth):** per-request tenant resolution at consuming surfaces, per-tenant webhook URLs.
+- **Nylas calendar dogfood LIVE for Guy as client 0** (`8f26e522`,`7c816eef`) — proper per-client config: `NYLAS_API_KEY` in shared env-group "Authentication & API Keys"; **grant + provider in Airtable Client Master** (`Nylas Grant ID`, `Calendar Provider=nylas`); `clientService` reads both; service-level `NYLAS_*` env vars removed. Verified live (`scripts/nylas-check.js --live` → `provider=nylas` from Airtable, 36 real events). Splitter now reads Guy's calendar via Nylas; degrades to single on failure; Recall backstop. **Calendar ONLY — email/Gmail untouched (Nylas-email = separate deferred step).**
+- **Next picks:** real client #2 onboarding (their Fathom key + Nylas grant + connect flow); per-request tenant resolution; Nylas email piece; and the still-pending Recall-off **switchover** after the clean trial.
+
 **As of 2026-06-19 (session 3, planning/no code) — "THANKS FOR CONNECTING" WORKLIST DESIGNED:** Brainstorm-only
 session on the backlog connection-follow-up worklist; backbone re-verified in code, UX + status model settled.
 Full spec → journal *"Connection follow-up worklist / 'Thanks for Connecting' — design (2026-06-19)"* + the
