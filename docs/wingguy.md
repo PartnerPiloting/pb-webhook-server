@@ -1804,7 +1804,11 @@ Settings + Start-Here utility tabs (keeps that grouping clean without reshufflin
 **Airtable schema PROVISIONED 2026-06-20 (✅ done — was item 3/4 below).** Tick-field = new **`Thanks Status`**
 (singleSelect: *Messaged* / *Let go*; blank = Outstanding) — created on all 17 client Leads tables + the Client
 Template. Lookback = **`Connection Lookback Days`** (number) on the master **Clients** table (empty treated as 14
-by the app). Rolled out via the new reusable tool **`scripts/ensure-client-fields.js`** (idempotent; template is a
+by the app). **Per-client gate = `Thanks for Connecting`** (singleSelect Yes/No) on the master Clients table —
+default off (blank/No); **Guy-Wilson set to Yes**. The portal shows the tab ONLY when this is Yes, so the screen
+ships **Guy-first** and rolls out **client-by-client by flipping the switch** (via `scripts/set-client-flag.js` —
+a reusable one-field setter — or in Airtable). Additive: zero change for any other client until enabled. Rolled
+out via the new reusable tool **`scripts/ensure-client-fields.js`** (idempotent; template is a
 DEFAULT target; `--audit` mode diffs template vs clients; runs via Render one-off job — see
 [[reference_render_jobs_exec]]). Template base id now lives in env var **`CLIENT_TEMPLATE_BASE_ID`**
 (`app6W6k9GiDlJktvt` — the old hardcoded `…GiDUlktvt` was a typo); same pass backfilled the template's missing
