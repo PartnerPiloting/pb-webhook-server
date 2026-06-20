@@ -200,6 +200,7 @@ async function importTranscript(opts) {
     transcriptText,
     meetingStart,
     durationSeconds,
+    coachClientId,
   });
   if (!ins.ok) return { ok: false, error: ins.error || 'failed to insert meeting' };
 

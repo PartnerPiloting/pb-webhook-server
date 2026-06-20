@@ -185,6 +185,15 @@ async function ensureSchema(client) {
   await client.query(`ALTER TABLE recall_meetings ADD COLUMN IF NOT EXISTS reconstruction_status TEXT;`);
   await client.query(`ALTER TABLE recall_meetings ADD COLUMN IF NOT EXISTS reconstruction_json TEXT;`);
 
+  // Tenancy stamp — which coach/tenant OWNS this meeting. The sibling tables
+  // (recall_meeting_participants / recall_meeting_leads) already carry coach_client_id; this puts
+  // it on the meeting itself so the store is queryable per-tenant (review queue, lookup). The
+  // constant DEFAULT backfills every existing row to 'Guy-Wilson' (all current data is Guy's) and
+  // makes the column safe for any insert path that doesn't yet pass it. Multi-tenant trigger work
+  // (multi-client poll, per-tenant webhook) stamps the real owner going forward.
+  await client.query(`ALTER TABLE recall_meetings ADD COLUMN IF NOT EXISTS coach_client_id TEXT DEFAULT 'Guy-Wilson';`);
+  await client.query(`CREATE INDEX IF NOT EXISTS idx_recall_m_coach ON recall_meetings (coach_client_id);`);
+
   schemaEnsured = true;
 }
 
@@ -244,21 +253,22 @@ async function getRecallWebhookDbSummary(limit = 15) {
 // Meetings
 // ---------------------------------------------------------------------------
 
-async function upsertRecallMeeting({ botId, recordingId, title }) {
+async function upsertRecallMeeting({ botId, recordingId, title, coachClientId }) {
   const p = getPool();
   if (!p) return { ok: false };
   if (!botId || !recordingId) return { ok: false, error: 'bot_id and recording_id required' };
+  const owner = (coachClientId || 'Guy-Wilson').toString().trim() || 'Guy-Wilson';
   const client = await p.connect();
   try {
     await ensureSchema(client);
     const r = await client.query(
-      `INSERT INTO recall_meetings (bot_id, recording_id, title)
-       VALUES ($1, $2, $3)
+      `INSERT INTO recall_meetings (bot_id, recording_id, title, coach_client_id)
+       VALUES ($1, $2, $3, $4)
        ON CONFLICT (bot_id, recording_id) DO UPDATE SET
          updated_at = now(),
          title = COALESCE(recall_meetings.title, EXCLUDED.title)
        RETURNING id`,
-      [String(botId), String(recordingId), title || null],
+      [String(botId), String(recordingId), title || null, owner],
     );
     return { ok: true, meeting_id: String(r.rows[0].id) };
   } finally {
@@ -266,14 +276,19 @@ async function upsertRecallMeeting({ botId, recordingId, title }) {
   }
 }
 
-async function getMeetingById(id) {
+async function getMeetingById(id, coachClientId = null) {
   const n = typeof id === 'string' ? parseInt(id, 10) : Number(id);
   if (!Number.isFinite(n) || n < 1) return null;
+  const owner = typeof coachClientId === 'string' ? coachClientId.trim() : '';
   const p = getPool();
   if (!p) return null;
   const client = await p.connect();
   try {
     await ensureSchema(client);
+    // Optional tenant authorization: when coachClientId is given, only return the meeting if it
+    // belongs to that tenant (NULL = default tenant, always allowed). Omit for no scoping.
+    const ownerSql = owner ? ` AND (m.coach_client_id = $2 OR m.coach_client_id IS NULL)` : '';
+    const params = owner ? [n, owner] : [n];
     const r = await client.query(
       `SELECT m.*,
               e.payload,
@@ -285,8 +300,8 @@ async function getMeetingById(id) {
          WHERE bot_id = m.bot_id AND recording_id = m.recording_id
          ORDER BY id DESC LIMIT 1
        ) e ON true
-       WHERE m.id = $1`,
-      [n],
+       WHERE m.id = $1${ownerSql}`,
+      params,
     );
     return r.rows[0] || null;
   } finally {
@@ -301,6 +316,8 @@ async function getMeetingQueue(limit = 50, statusFilter = 'all', opts = {}) {
   const f = String(statusFilter || 'all').toLowerCase();
   const titleQ = typeof opts.titleContains === 'string' ? opts.titleContains.trim() : '';
 
+  const owner = typeof opts.coachClientId === 'string' ? opts.coachClientId.trim() : '';
+
   const conds = [];
   if (f === 'incomplete' || f === 'to_verify') {
     conds.push(`LOWER(TRIM(m.status)) IN ('incomplete', 'to_verify')`);
@@ -314,6 +331,12 @@ async function getMeetingQueue(limit = 50, statusFilter = 'all', opts = {}) {
   if (titleQ) {
     conds.push(`POSITION($${params.length + 1}::text IN LOWER(COALESCE(m.title, ''))) > 0`);
     params.push(titleQ.toLowerCase());
+  }
+  // Optional tenant scope. NULL is treated as the default tenant so a stray un-backfilled row
+  // never vanishes from the owner's view. Omit coachClientId to get every tenant (current behaviour).
+  if (owner) {
+    conds.push(`(m.coach_client_id = $${params.length + 1} OR m.coach_client_id IS NULL)`);
+    params.push(owner);
   }
 
   const whereSql = conds.length ? ` WHERE ${conds.join(' AND ')}` : '';
@@ -403,10 +426,11 @@ async function updateMeetingTimes(meetingId, { meetingStart, meetingEnd }) {
  * Create a recall_meetings row from a manually-imported transcript (Tactiq, Fathom, etc.).
  * Generates synthetic bot_id/recording_id so the row is distinguishable from real Recall captures.
  */
-async function insertImportedMeeting({ title, source, transcriptText, meetingStart, durationSeconds, fathomRecordingId }) {
+async function insertImportedMeeting({ title, source, transcriptText, meetingStart, durationSeconds, fathomRecordingId, coachClientId }) {
   const p = getPool();
   if (!p) return { ok: false, error: 'database not available' };
   const safeSource = (source || 'other').toString().toLowerCase().slice(0, 32) || 'other';
+  const owner = (coachClientId || 'Guy-Wilson').toString().trim() || 'Guy-Wilson';
   const stamp = Date.now();
   const rand = Math.floor(Math.random() * 1e9).toString(36);
   const botId = `manual:${safeSource}:${stamp}-${rand}`;
@@ -415,8 +439,8 @@ async function insertImportedMeeting({ title, source, transcriptText, meetingSta
   try {
     await ensureSchema(client);
     const r = await client.query(
-      `INSERT INTO recall_meetings (bot_id, recording_id, title, transcript_text, duration_seconds, meeting_start, meeting_end, status, source, fathom_recording_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, 'incomplete', $8, $9)
+      `INSERT INTO recall_meetings (bot_id, recording_id, title, transcript_text, duration_seconds, meeting_start, meeting_end, status, source, fathom_recording_id, coach_client_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 'incomplete', $8, $9, $10)
        RETURNING id`,
       [
         botId,
@@ -430,6 +454,7 @@ async function insertImportedMeeting({ title, source, transcriptText, meetingSta
           : null,
         safeSource,
         fathomRecordingId ? String(fathomRecordingId) : null,
+        owner,
       ],
     );
     return { ok: true, meeting_id: String(r.rows[0].id), bot_id: botId };
@@ -703,15 +728,16 @@ async function createChildMeetingFromUtterances({
     const ins = await client.query(
       `INSERT INTO recall_meetings
         (bot_id, recording_id, title, transcript_text, duration_seconds,
-         meeting_start, meeting_end, status, status_reason)
+         meeting_start, meeting_end, status, status_reason, coach_client_id)
        VALUES ($1, $2, $3, $4, $5, $6, $7, 'incomplete',
-         'Auto-split from meeting #' || $8::text)
+         'Auto-split from meeting #' || $8::text, $9)
        RETURNING id`,
       [
         parent.bot_id, childRecId, title, transcriptText, durSec,
         calendarStart || parent.meeting_start,
         calendarEnd || parent.meeting_end,
         pid,
+        parent.coach_client_id || 'Guy-Wilson',
       ],
     );
     const childId = ins.rows[0].id;
@@ -1098,12 +1124,16 @@ async function saveMeetingSpeakers(meetingId, speakers, opts = {}) {
   }
 }
 
-async function getMeetingsForLead(airtableLeadId, limit = 50) {
+async function getMeetingsForLead(airtableLeadId, limit = 50, coachClientId = null) {
   const p = getPool();
   if (!p) return [];
+  const owner = typeof coachClientId === 'string' ? coachClientId.trim() : '';
   const client = await p.connect();
   try {
     await ensureSchema(client);
+    // Optional tenant scope (NULL = default tenant, never hidden). Omit coachClientId for all tenants.
+    const ownerSql = owner ? ` AND (m.coach_client_id = $3 OR m.coach_client_id IS NULL)` : '';
+    const params = owner ? [airtableLeadId, limit, owner] : [airtableLeadId, limit];
     const r = await client.query(
       `SELECT m.id AS meeting_id, m.title, m.transcript_text, m.duration_seconds,
               m.status, m.created_at, m.updated_at, m.meeting_start, m.source,
@@ -1114,10 +1144,10 @@ async function getMeetingsForLead(airtableLeadId, limit = 50) {
        LEFT JOIN recall_meeting_participants p
          ON p.meeting_id = m.id AND p.airtable_lead_id = ml.airtable_lead_id
        WHERE ml.airtable_lead_id = $1
-         AND (m.status_reason IS NULL OR m.status_reason NOT LIKE 'Auto-split into%')
+         AND (m.status_reason IS NULL OR m.status_reason NOT LIKE 'Auto-split into%')${ownerSql}
        ORDER BY COALESCE(m.meeting_start, m.created_at) DESC, m.created_at DESC, m.id DESC
        LIMIT $2`,
-      [airtableLeadId, limit],
+      params,
     );
     return r.rows;
   } finally {

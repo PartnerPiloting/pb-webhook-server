@@ -291,6 +291,7 @@ router.post('/webhooks/recall', rawJson, async (req, res) => {
       botId,
       recordingId,
       title: titleFromRecallPayload(body),
+      coachClientId: DEFAULT_COACH_CLIENT_ID,
     });
     if (ur.ok) meetingId = ur.meeting_id;
   } catch (e) {

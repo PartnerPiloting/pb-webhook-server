@@ -284,7 +284,7 @@ async function ingestFathomMeeting(opts = {}) {
 
     const filed = [];
     for (const sp of segPlans) {
-      const ins = await insertImportedMeeting({ title: sp.title, source: SOURCE, transcriptText: sp._transcriptText, meetingStart: sp.meetingStart, durationSeconds: sp.durationSeconds, fathomRecordingId: String(meeting.recording_id) });
+      const ins = await insertImportedMeeting({ title: sp.title, source: SOURCE, transcriptText: sp._transcriptText, meetingStart: sp.meetingStart, durationSeconds: sp.durationSeconds, fathomRecordingId: String(meeting.recording_id), coachClientId });
       if (!ins.ok) { log.warn(`segment insert failed (${sp.title}): ${ins.error}`); continue; }
       for (const m of sp.matchedLeads) {
         try { await addMeetingLead(ins.meeting_id, m.leadId, coachClientId, 'fathom-api'); } catch (e) { log.warn(`link lead ${m.leadId} failed: ${e.message}`); }
@@ -376,7 +376,7 @@ async function ingestFathomMeeting(opts = {}) {
   if (dryRun) return { ok: true, dryRun: true, plan, transcriptText };
   if (!ingestEnabled()) return { ok: false, error: 'FATHOM_INGEST_ENABLED is not true — write path is disabled', plan };
 
-  const ins = await insertImportedMeeting({ title: meta.title, source: SOURCE, transcriptText, meetingStart: meta.meetingStart, durationSeconds: meta.durationSeconds, fathomRecordingId: String(meeting.recording_id) });
+  const ins = await insertImportedMeeting({ title: meta.title, source: SOURCE, transcriptText, meetingStart: meta.meetingStart, durationSeconds: meta.durationSeconds, fathomRecordingId: String(meeting.recording_id), coachClientId });
   if (!ins.ok) return { ok: false, error: ins.error || 'insert failed', plan };
 
   const meetingId = ins.meeting_id;

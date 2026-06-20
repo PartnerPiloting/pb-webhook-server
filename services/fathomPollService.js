@@ -134,14 +134,59 @@ async function pollFathomMeetings(opts = {}) {
   return summary;
 }
 
+/**
+ * Multi-tenant poll pass — poll EVERY Active client that has a Fathom API key, ingesting each
+ * tenant's meetings under their own clientId (so the store is stamped per-owner). Single-tenant
+ * today (only Guy has a key) and fans out automatically as more clients add one. The same global
+ * gates still apply per tenant inside pollFathomMeetings (FATHOM_LIVE_FROM, FATHOM_INGEST_ENABLED),
+ * and dedup makes re-polling a no-op.
+ *
+ * NOTE: FATHOM_LIVE_FROM is a single global cutoff for now. When real tenants onboard at different
+ * times this should become per-client (an onboarding date on the client record) — flagged, not yet built.
+ *
+ * @returns {Promise<{ok, tenants, ingested, failed, results}>}
+ */
+async function pollAllFathomTenants(opts = {}) {
+  const { dryRun = false, limit = 25 } = opts;
+  let clients;
+  try {
+    clients = await clientService.getAllClients();
+  } catch (e) {
+    log.error(`multi-tenant poll: could not list clients: ${e.message}`);
+    return { ok: false, reason: e.message, tenants: 0, ingested: 0, failed: 0, results: [] };
+  }
+  const tenants = (clients || []).filter(
+    (c) => c && c.fathomApiKey && String(c.status || '').toLowerCase() === 'active',
+  );
+  if (tenants.length === 0) {
+    log.info('multi-tenant poll: no Active clients with a Fathom API key');
+    return { ok: true, tenants: 0, ingested: 0, failed: 0, results: [] };
+  }
+  const results = [];
+  let totIngested = 0, totFailed = 0;
+  for (const c of tenants) {
+    try {
+      const r = await pollFathomMeetings({ coachClientId: c.clientId, dryRun, limit });
+      results.push({ clientId: c.clientId, ...r });
+      totIngested += r.ingested || 0;
+      totFailed += r.failed || 0;
+    } catch (e) {
+      results.push({ clientId: c.clientId, ok: false, reason: e.message });
+      log.warn(`multi-tenant poll: ${c.clientId} failed: ${e.message}`);
+    }
+  }
+  log.info(`multi-tenant poll: ${tenants.length} tenant(s), ingested=${totIngested} failed=${totFailed}${dryRun ? ' (dry-run)' : ''}`);
+  return { ok: true, tenants: tenants.length, ingested: totIngested, failed: totFailed, results };
+}
+
 function startFathomPoll() {
   if (intervalHandle) return;
   if (!pollEnabled()) { log.info('fathom-poll: disabled (FATHOM_POLL_ENABLED not true)'); return; }
   if (liveFromMs() == null) { log.info('fathom-poll: FATHOM_LIVE_FROM not set — not starting'); return; }
-  log.info(`fathom-poll: starting (every ${Math.round(POLL_INTERVAL_MS / 60000)} min)`);
-  setTimeout(() => { pollFathomMeetings().catch((e) => log.error(`first tick: ${e.message}`)); }, 8000);
+  log.info(`fathom-poll: starting multi-tenant (every ${Math.round(POLL_INTERVAL_MS / 60000)} min)`);
+  setTimeout(() => { pollAllFathomTenants().catch((e) => log.error(`first tick: ${e.message}`)); }, 8000);
   intervalHandle = setInterval(() => {
-    pollFathomMeetings().catch((e) => log.error(`tick: ${e.message}`));
+    pollAllFathomTenants().catch((e) => log.error(`tick: ${e.message}`));
   }, POLL_INTERVAL_MS);
 }
 
@@ -162,6 +207,7 @@ function getFathomPollStatus() {
 
 module.exports = {
   pollFathomMeetings,
+  pollAllFathomTenants,
   startFathomPoll,
   stopFathomPoll,
   getFathomPollStatus,
