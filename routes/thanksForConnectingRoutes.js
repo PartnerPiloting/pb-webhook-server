@@ -25,7 +25,13 @@ const { getClientById } = require('../services/clientService');
 const { LEAD_FIELDS } = require('../constants/airtableUnifiedConstants');
 
 const THANKS_STATUS_FIELD = 'Thanks Status';
-const VALID_STATUSES = ['Messaged', 'Let go'];
+const VALID_STATUSES = ['Messaged', 'Skipped'];
+// The option was originally "Let go", renamed to "Skipped" (2026-06-21). Airtable's metadata API
+// can't rename a select choice, so instead we WRITE "Skipped" with typecast (Airtable auto-creates
+// the option) and normalize any legacy "Let go" value to "Skipped" on read. The stale "Let go"
+// choice can be deleted by hand in Airtable later; it's cosmetic.
+const STATUS_ALIASES = { 'Let go': 'Skipped' };
+const normalizeStatus = (s) => (s ? (STATUS_ALIASES[s] || s) : null);
 const DEFAULT_LOOKBACK_DAYS = 14; // ≈ the LH connection window; bounds the queue + solves cold-start flood
 const MAX_ITEMS = 500;            // safety cap on a single worklist fetch
 
@@ -117,7 +123,7 @@ module.exports = function mountThanksForConnecting(app, base) {
       jobTitle: r.get(LEAD_FIELDS.JOB_TITLE) || '',
       dateConnected,
       daysSinceConnected: daysSince(dateConnected),
-      thanksStatus: r.get(THANKS_STATUS_FIELD) || null
+      thanksStatus: normalizeStatus(r.get(THANKS_STATUS_FIELD))
     };
   }
 
@@ -198,14 +204,17 @@ module.exports = function mountThanksForConnecting(app, base) {
 
     const id = req.params.id;
     let { thanksStatus } = req.body || {};
-    if (thanksStatus === '' ) thanksStatus = null;
+    if (thanksStatus === '') thanksStatus = null;
+    if (thanksStatus !== null && STATUS_ALIASES[thanksStatus]) thanksStatus = STATUS_ALIASES[thanksStatus];
     if (thanksStatus !== null && !VALID_STATUSES.includes(thanksStatus)) {
       return res.status(400).json({ error: 'invalid_status', allowed: [...VALID_STATUSES, null] });
     }
 
     try {
       const b = await getBaseForRequest(clientId);
-      await b('Leads').update(id, { [THANKS_STATUS_FIELD]: thanksStatus });
+      // typecast so Airtable auto-creates the "Skipped" option in bases that still only have the
+      // legacy "Let go" choice (metadata rename isn't supported by the API).
+      await b('Leads').update(id, { [THANKS_STATUS_FIELD]: thanksStatus }, { typecast: true });
       res.json({ ok: true, id, thanksStatus });
     } catch (e) {
       logger.error('thanksForConnecting: patch error', e?.message || e);

@@ -50,11 +50,11 @@ const LEADS_FIELDS = [
   {
     name: 'Thanks Status',
     type: 'singleSelect',
-    description: 'Connection-follow-up worklist ("Thanks for Connecting") state. Blank = Outstanding (Connected, in window, not yet decided). Messaged = personally reached out. Let go = left to the LinkedIn Helper automated sequence (incl. auto-resolved by the LH message-sent webhook). Added 2026-06-20.',
+    description: 'Connection-follow-up worklist ("Thanks for Connecting") state. Blank = Outstanding (connected, in window, not yet decided). Messaged = personally reached out. Skipped = left to the LinkedIn Helper automated sequence (incl. auto-resolved by the LH message-sent webhook). Added 2026-06-20. NOTE: bases provisioned 2026-06-20 got a "Let go" choice instead of "Skipped"; the app now writes "Skipped" (auto-created via typecast) and treats legacy "Let go" as "Skipped" — the stale choice can be removed by hand. New bases get "Skipped" from the start.',
     options: {
       choices: [
         { name: 'Messaged', color: 'greenLight2' },
-        { name: 'Let go', color: 'grayLight2' }
+        { name: 'Skipped', color: 'grayLight2' }
       ]
     }
   },

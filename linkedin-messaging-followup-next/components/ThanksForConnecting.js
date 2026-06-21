@@ -82,7 +82,7 @@ const WINDOW_OPTIONS = [
 
 const STATUS_BADGE = {
   'Messaged': 'bg-emerald-100 text-emerald-800 border-emerald-300',
-  'Let go': 'bg-gray-100 text-gray-600 border-gray-300'
+  'Skipped': 'bg-gray-100 text-gray-600 border-gray-300'
 };
 
 export default function ThanksForConnecting() {
@@ -91,6 +91,7 @@ export default function ThanksForConnecting() {
   const [items, setItems] = useState([]);
   const [outstandingCount, setOutstandingCount] = useState(0);
   const [windowDays, setWindowDays] = useState(null); // null = use client's configured default
+  const [sortDir, setSortDir] = useState('oldest'); // 'oldest' | 'newest'
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [undo, setUndo] = useState(null); // { item, prevStatus, timer }
@@ -159,6 +160,16 @@ export default function ThanksForConnecting() {
     load(view, windowDays);
   }, [undo, clientId, view, load, windowDays]);
 
+  // Sort in the UI so order is guaranteed regardless of API order or any caching.
+  const sortedItems = useMemo(() => {
+    const dir = sortDir === 'newest' ? -1 : 1;
+    return [...items].sort((a, b) => {
+      const ta = a.dateConnected ? new Date(a.dateConnected).getTime() : Infinity;
+      const tb = b.dateConnected ? new Date(b.dateConnected).getTime() : Infinity;
+      return (ta - tb) * dir;
+    });
+  }, [items, sortDir]);
+
   const headlineLine = (it) => {
     const parts = [];
     if (it.headline) parts.push(it.headline);
@@ -182,7 +193,7 @@ export default function ThanksForConnecting() {
         </div>
         <p className="text-sm text-gray-600">
           Welcome your recent connections. Click a name to open their LinkedIn profile, send your
-          note, then tick <span className="font-medium">Messaged</span> — or <span className="font-medium">Let go</span> to
+          note, then tick <span className="font-medium">Messaged</span> — or <span className="font-medium">Skipped</span> to
           leave it to the automated sequence.
         </p>
 
@@ -196,22 +207,35 @@ export default function ThanksForConnecting() {
             className={`px-3 py-1.5 rounded text-sm border ${view === 'all' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'}`}
             onClick={() => setView('all')}
           >All recent</button>
-          <label className="ml-auto flex items-center gap-2 text-xs text-gray-500">
-            Show
-            <select
-              className="border rounded px-2 py-1 text-sm text-gray-700"
-              value={windowDays ?? 14}
-              onChange={(e) => setWindowDays(Number(e.target.value))}
-            >
-              {(WINDOW_OPTIONS.some(o => o.value === windowDays) || windowDays == null
-                ? WINDOW_OPTIONS
-                : [...WINDOW_OPTIONS, { value: windowDays, label: `Last ${windowDays} days` }]
-                    .sort((a, b) => a.value - b.value)
-              ).map(o => (
-                <option key={o.value} value={o.value}>{o.label}</option>
-              ))}
-            </select>
-          </label>
+          <div className="ml-auto flex items-center gap-3">
+            <label className="flex items-center gap-2 text-xs text-gray-500">
+              Sort
+              <select
+                className="border rounded px-2 py-1 text-sm text-gray-700"
+                value={sortDir}
+                onChange={(e) => setSortDir(e.target.value)}
+              >
+                <option value="oldest">Oldest first</option>
+                <option value="newest">Most recent first</option>
+              </select>
+            </label>
+            <label className="flex items-center gap-2 text-xs text-gray-500">
+              Show
+              <select
+                className="border rounded px-2 py-1 text-sm text-gray-700"
+                value={windowDays ?? 14}
+                onChange={(e) => setWindowDays(Number(e.target.value))}
+              >
+                {(WINDOW_OPTIONS.some(o => o.value === windowDays) || windowDays == null
+                  ? WINDOW_OPTIONS
+                  : [...WINDOW_OPTIONS, { value: windowDays, label: `Last ${windowDays} days` }]
+                      .sort((a, b) => a.value - b.value)
+                ).map(o => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+            </label>
+          </div>
         </div>
       </div>
 
@@ -242,7 +266,7 @@ export default function ThanksForConnecting() {
               <div className="shrink-0">Action</div>
             </div>
             <ul className="divide-y">
-              {items.map(it => (
+              {sortedItems.map(it => (
                 <li key={it.id} className="py-3 flex items-start gap-4">
                   <div className="w-24 sm:w-32 shrink-0">
                     <div className="text-sm text-gray-900">{formatDate(it.dateConnected)}</div>
@@ -274,12 +298,12 @@ export default function ThanksForConnecting() {
                         title="I personally reached out — remove from the queue"
                       >Messaged</button>
                     )}
-                    {(view === 'outstanding' || it.thanksStatus !== 'Let go') && (
+                    {(view === 'outstanding' || it.thanksStatus !== 'Skipped') && (
                       <button
                         className="px-3 py-1.5 rounded text-sm border bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
-                        onClick={() => setStatus(it, 'Let go')}
-                        title="Leave it to the LinkedIn Helper automated sequence"
-                      >Let go</button>
+                        onClick={() => setStatus(it, 'Skipped')}
+                        title="Skip — leave it to the automated sequence"
+                      >Skipped</button>
                     )}
                     {view === 'all' && it.thanksStatus && (
                       <button
