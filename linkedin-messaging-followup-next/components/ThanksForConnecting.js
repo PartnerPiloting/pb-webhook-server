@@ -92,6 +92,7 @@ export default function ThanksForConnecting() {
   const [outstandingCount, setOutstandingCount] = useState(0);
   const [windowDays, setWindowDays] = useState(null); // null = use client's configured default
   const [sortDir, setSortDir] = useState('oldest'); // 'oldest' | 'newest'
+  const [truncated, setTruncated] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [undo, setUndo] = useState(null); // { item, prevStatus, timer }
@@ -104,6 +105,7 @@ export default function ThanksForConnecting() {
       const data = await apiGet(q, clientId);
       setItems(Array.isArray(data?.items) ? data.items : []);
       setOutstandingCount(Number(data?.outstandingCount ?? 0));
+      setTruncated(!!data?.truncated);
       // Adopt the client's configured default the first time (so the selector reflects it).
       if (days == null && data?.lookbackDays != null) setWindowDays(data.lookbackDays);
     } catch (e) {
@@ -202,7 +204,7 @@ export default function ThanksForConnecting() {
           <button
             className={`px-3 py-1.5 rounded text-sm border ${view === 'outstanding' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'}`}
             onClick={() => setView('outstanding')}
-          >Outstanding</button>
+          >Outstanding Only</button>
           <button
             className={`px-3 py-1.5 rounded text-sm border ${view === 'all' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'}`}
             onClick={() => setView('all')}
@@ -243,6 +245,12 @@ export default function ThanksForConnecting() {
       <div className="bg-white border rounded">
         <div className="p-4">
           {error && <div className="mb-3 text-sm text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2" role="alert">{error}</div>}
+
+          {truncated && (
+            <div className="mb-3 text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+              Showing the {items.length} most recent — there are older connections beyond this. Narrow the window to see them all.
+            </div>
+          )}
 
           {loading && <div className="text-gray-500 py-8 text-center">Loading your recent connections…</div>}
 

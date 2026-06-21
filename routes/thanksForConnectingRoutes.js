@@ -33,7 +33,7 @@ const VALID_STATUSES = ['Messaged', 'Skipped'];
 const STATUS_ALIASES = { 'Let go': 'Skipped' };
 const normalizeStatus = (s) => (s ? (STATUS_ALIASES[s] || s) : null);
 const DEFAULT_LOOKBACK_DAYS = 14; // ≈ the LH connection window; bounds the queue + solves cold-start flood
-const MAX_ITEMS = 500;            // safety cap on a single worklist fetch
+const MAX_ITEMS = 1000;           // safety cap on a single worklist fetch (keeps the MOST RECENT — see sort below)
 
 function parseBoolFlag(val, defaultValue = false) {
   if (val === undefined || val === null || val === '') return defaultValue;
@@ -161,8 +161,10 @@ module.exports = function mountThanksForConnecting(app, base) {
         b('Leads')
           .select({
             filterByFormula: formula,
-            // Oldest first = inbox-zero, closest to the LH window deadline at the top.
-            sort: [{ field: LEAD_FIELDS.DATE_CONNECTED, direction: 'asc' }],
+            // Page MOST-RECENT first so that if the MAX_ITEMS cap trips on a wide window we keep the
+            // recent connections (the ones worth thanking), not the oldest. The UI re-sorts for display
+            // (default oldest-first = inbox-zero); a "thanks for connecting" note is only timely anyway.
+            sort: [{ field: LEAD_FIELDS.DATE_CONNECTED, direction: 'desc' }],
             pageSize: 100
           })
           .eachPage(
@@ -188,6 +190,7 @@ module.exports = function mountThanksForConnecting(app, base) {
         view: outstandingOnly ? 'outstanding' : 'all',
         lookbackDays,
         outstandingCount,
+        truncated: items.length >= MAX_ITEMS, // hit the cap — there may be older rows beyond this
         items
       });
     } catch (e) {
