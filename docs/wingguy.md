@@ -68,7 +68,8 @@
   the backend + AI-provider audit (2026-06-19). *(Live status → ▶ You are here +
   memory `project_recall_to_fathom_migration`.)*
 - **Architecture & build process:** Environments & deploy flow · Implementation roadmap (7 phases) · De-risking
-  spikes · What actually paces the build · Scope reality check · Key code anchors.
+  spikes · What actually paces the build · Scope reality check · Key code anchors · Chrome extension —
+  fork-and-run-two, distribution, cost caps, scope & client lifecycle (2026-06-21).
 - **GTM / market / scaling:** Target market + go-forward · Strategy handoff · Competitive position · Scaling to
   ~50 (intro-mesh; NO recurring meetings) · Ideal client = frequency-of-use · Onboarding = activation ·
   Sequencing the reveal · VA model + cost · Guy's time ~3 days/wk · LinkedIn analogy (renting a solved network).
@@ -673,6 +674,18 @@ normal **product requirement** (like "requires Chrome"), NOT a concession. Why:
 tool, not a runtime DB (slow, rate-limited); Postgres = cheap, fast, versioned, tiny data;
 **clients never need Notion** — rules served from Guy's Postgres via the backend.
 
+**Refinement (2026-06-21) — Guy is a tenant too; he migrates off Notion as well, eventually.** The earlier
+"Guy keeps his Notion + MCPs throughout — zero disruption" line was about *not breaking the day-to-day during
+the build*, NOT a permanent Notion-for-Guy / Postgres-for-clients split. **End state: Notion is a legacy
+SOURCE we migrate FROM — Guy included.** Every tenant (Guy = tenant 0) keeps their brain in Postgres under the
+governed write-door, not Notion. The one Notion→Postgres conversion (below) produces BOTH Guy's own tenant-0
+instance AND the de-personalised shippable template **in the same pass** (extract a rule → decide template-vs-
+Guy-private → seed the right place). **Additive / prove-before-switch (iron rule):** Guy's daily cockpit keeps
+reading Notion until the Postgres path is proven for his own flow, THEN his cockpit re-points (Notion→Postgres
+via the connector) — his working setup never breaks mid-migration. **Storage is the trivial part**; the real
+work is the **editor** (see "Rules editing UX") + that **one-time migration, which only Guy ever has** (clients
+start from the template, never from their own Notion). Cost is a non-issue (flat-rate Postgres, tiny data).
+
 **Reframe (shrinks the job):** de-personalise ≠ genericise. Clients buy *Guy's method*, so the
 **strategy stays — it's the product.** De-personalising = strip Guy's **identity**, keep his
 **approach.** Three kinds of "personal", handled differently:
@@ -1062,7 +1075,12 @@ don't catch every integration/scale wrinkle — still hugely worth it.
 ## Existing extension recon — FOLD IN, don't rebuild (Phase 0, done 2026-06-08)
 There's already a real working extension: **`chrome-extension/` "Network Accelerator – LinkedIn
 Quick Update" v1.0.0** (MV3; content scripts on LinkedIn + portal; background SW → `/api/linkedin/*`).
-**Decision: the new build EXTENDS this — NOT a new extension.** Hard plumbing already present:
+**Decision: the new build EXTENDS this — NOT a new extension.** **[MECHANIC REFINED 2026-06-21 →
+still fold-in/REUSE this code, but by *forking into a parallel `wingguy-extension/` folder* run
+side-by-side with the old installed one, NOT by editing the installed extension in place (so Guy's
+daily flow can't break during the long build); decommission the old when the new is proven. End state
+remains ONE extension. See journal "Chrome extension — fork-and-run-two, distribution, cost caps,
+scope & client lifecycle (2026-06-21)".]** Hard plumbing already present:
 - **Multi-tenant auth already exists** — portal broadcasts `clientId` + `portalToken` (+ devKey,
   environment) to the extension (`AUTH_BROADCAST`); calls use `x-client-id` / `x-portal-token`
   headers. → the per-tenant identity / **seat foundation (Phase 4) is largely already here.**
@@ -1081,6 +1099,82 @@ portal plumbing.
 **Impact:** shrinks Phase 2 (extension MVP not greenfield); Phase 4 (multi-tenant seats) gets a
 running start. **Verify next:** `content-portal.js` (auth broadcast), the `/api/linkedin` +
 `/api/extension-config` backend, and how `clientId/portalToken` are issued.
+
+## Chrome extension — fork-and-run-two, distribution, cost caps, scope & client lifecycle (2026-06-21)
+Planning/discussion only (no code). Guy is ready to start the extension; this settles *how* we start
+plus four operational questions. Read with **Existing extension recon** (above), **AI cost economics**,
+**Cost-bearing vs AI-hosting**, **BYO API key feasibility**, **Claude-in-Chrome vs our custom extension**,
+and **Free-Claude wedge + the ONE-CONNECTOR design**.
+
+**Build mechanic — FORK into a parallel extension, keep the old one running (refines "Existing extension
+recon").** End state = **ONE** extension. But the new build is large and Guy's daily flow depends on the
+current `chrome-extension/`, so we do NOT edit the live one in place. Instead: **copy `chrome-extension/`
+→ a new folder (e.g. `wingguy-extension/`)**, change `name` in the manifest, build the product in the
+copy. The old folder stays byte-for-byte untouched = **zero disruption**. **Two extensions installed
+side-by-side for a while**; when the new one is proven, **decommission the old** (remove the unpacked
+folder). Consistent with "fold in, don't rebuild" — we still reuse all the existing auth/scraping/lookup/
+portal plumbing; we just reuse it by *copying*, not by mutating the installed extension.
+- **Coexistence gotcha:** both content-scripts match `https://www.linkedin.com/*` and inject UI → running
+  both at once **double-injects** (two buttons/panels colliding). The fork must **namespace its DOM
+  ids/classes** (e.g. `wingguy-*`) and be **visually distinct** (colour/label) so they never clash or get
+  confused during the dual-run. Unpacked extensions get separate IDs + isolated `chrome.storage` → no
+  shared-state collision.
+
+**Distribution — unpacked now, "Unlisted" Web Store for client rollout.** Today's install = **Load
+unpacked / developer mode** (per `chrome-extension/README.md`) → **skips Google's review entirely**,
+exactly right for build + dogfood + early trusted clients. Caveat for *wider rollout*: unpacked has
+friction at scale (Chrome's recurring "disable developer-mode extensions" nag; managed/corporate Chrome
+may block unpacked; **no auto-update** → hand each client a new folder to reload). End-state for
+non-technical clients = **Chrome Web Store "Unlisted"** (not publicly discoverable, share by link, gives
+auto-update + kills the dev-mode nag; far lighter than a public listing). Not needed until rollout — stay
+unpacked through the build.
+
+**Who pays for the AI — reaffirm "Guy's key as COGS" for the panel; clarify what "their key" actually
+means (consolidates the 06-08 cost decisions).** Guy floated "hook the client's extension into *their*
+Claude via a key." Clarified the conflation:
+- The client's **Claude.ai subscription ($20+/mo chat) has NO API key** and cannot be plugged into the
+  extension.
+- "A key" = a **separate Anthropic developer/API account**, billed **per-token**, NOT their flat sub.
+  Reaching their *flat sub* is only possible via the **MCP connector into their claude.ai** — and that's
+  the **cockpit/chat surface, not the fixed-button panel**.
+- Three real options for the panel: (1) **Guy's key = COGS** [doc default — small ~$5-35/mo, recovered in
+  $150/$300, uniform quality + full guardrails]; (2) **BYO API key** in Guy's backend [client bears
+  per-token cost, but must create a dev account + Guy custodies the key + inherits their billing/rate-limit
+  health → operational hurdles, not technical]; (3) **MCP connector** [their flat sub, ~$0 to Guy, but
+  different surface]. Architecturally any key lives in the **backend** (extension → backend → AI), **never
+  in the extension** (browser-exposed + bypasses guardrails). **Lean = option 1 with a usage cap (below);
+  BYO-key stays the outlier pressure-valve.**
+
+**Usage caps — yes, and they're what makes "Guy pays" safe (refines "AI cost economics" caps line).**
+Because all AI runs **through Guy's backend**, every use is counted and stoppable — Guy holds the dial (he
+wouldn't with a client's own key).
+- **Cap in client-facing units (drafts/actions), NOT tokens.** "20 drafts/day" is understandable +
+  sellable; "80k tokens" is meaningless to a client. **Meter tokens underneath** as Guy's instrument panel
+  so allowances are set on real cost.
+- **Not all actions cost the same** (a LinkedIn reply is tiny; a post-call email off a 90-min transcript is
+  big). **Start simple** = one "actions" allowance set with margin; **split out the heavy actions**
+  (transcript emails) only if the numbers later show they move the bill.
+- **Watch-then-enforce:** no cap on day 1 (small, trusted client count) — just watch the metered numbers;
+  **add the cap before wider rollout.**
+
+**Out-of-scope use — prevented by design, not policed (crystallises "Panel beats Claude-chat").** The panel
+is **fixed-button, not an open chat** → there's literally no door for "write my kid's essay"; the buttons
+ARE the menu and only carry the jobs Guy builds. Reinforced by: the **backend only has code paths for Guy's
+jobs** (no path = can't happen), **instruction-rules** on any free-text ("you help with LinkedIn outreach +
+post-call follow-up; decline the rest"), and **full visibility** of everything passing through. Only
+watch-spot = wherever free typing is allowed (e.g. "reply in your own words") — instruction-rules keep that
+on-rails.
+
+**Inactive / non-paying clients — central server-side off-switch.** The extension is a **remote control with
+no brains** — every action calls Guy's server, which checks "is this client active?" first. So:
+- **Idle-but-paying** = nothing to do; costs follow usage → an idle client costs ~$0 (the cap covers the
+  binge end; inactivity is the harmless end).
+- **Stops paying** = flip the client **inactive on the server** (single switch, ties to the existing
+  **Stripe** billing — failed payment can flip it, manually or auto). Panel goes dead (buttons remain,
+  return a polite "account paused"), **no AI runs → no cost**, instantly. **Never touch their machine.**
+  Their accumulated/tuned state stays server-side → **reversible in one click** if they return (pick up
+  where they left off, nothing to reinstall). Graceful "paused" beats a silent break. Same per-client gate
+  pattern already used for `features.thanksForConnecting`.
 
 ## Discovery & onboarding — teaching tenants what's possible (2026-06-14)
 
@@ -1833,6 +1927,39 @@ yet built.
 ---
 
 ## ▶ You are here / next pick-up
+
+**As of 2026-06-21 (planning, no code) — CHROME EXTENSION: build mechanic + 4 operational questions settled.**
+Discussion-only session as Guy moves onto the extension (the next real build). Full detail → journal *"Chrome
+extension — fork-and-run-two, distribution, cost caps, scope & client lifecycle (2026-06-21)"*; the stale "NOT
+a new extension" line in **Existing extension recon** is now annotated with the refined mechanic. Headlines:
+- **Build mechanic = FORK, not in-place edit.** Copy `chrome-extension/` → a parallel **`wingguy-extension/`**,
+  build the product in the copy, keep the old installed + working (**zero disruption**), run two side-by-side,
+  decommission the old when proven. Still "fold in, don't rebuild" — reuse the code by *copying*. **Gotcha:**
+  namespace the fork's DOM ids/classes (`wingguy-*`) + make it visually distinct, else both inject on LinkedIn
+  and collide.
+- **Distribution:** unpacked/dev-mode now (**skips Google review** — already the method, fine for build + early
+  trusted clients) → **Chrome Web Store "Unlisted"** at wider client rollout (auto-update, no dev-mode nag).
+- **AI cost:** reaffirm **Guy's-key-as-COGS for the panel**; correction — a client "key" = a per-token *developer*
+  account (their flat Claude.ai sub has NO key; flat-sub reach = the MCP connector = cockpit, not panel); any key
+  lives in the backend, never the extension; **BYO-key = outlier pressure-valve only**.
+- **Caps:** count **drafts/actions (client-facing), meter tokens underneath**; **watch-then-enforce** (no cap day
+  1, add before rollout); one allowance first, split heavy post-call emails only if numbers warrant.
+- **Scope:** **fixed-button panel + backend-only job paths + instruction-rules = out-of-scope blocked by design**
+  (only watch free-text boxes).
+- **Client lifecycle:** **central server-side off-switch** (idle = ~$0/no action; non-paying = flip inactive,
+  ties to Stripe, graceful "paused", reversible, never touch their machine; same gate as `features.thanksForConnecting`).
+- **Multi-tenant content model (clarified this session, captured in "Rules de-personalisation"):** three layers
+  — **code** (one copy, identical for all) · **shippable template** (de-personalised defaults the client owns a
+  copy of, seed-then-diverge) · **un-shippable** (Guy's private originals + each client's generated state). The
+  test for template-vs-private = "would this still be true/useful for someone who isn't me?". Build everything
+  **tenant-keyed from day one** (default = Guy), so going multi-tenant = "stop hardcoding", not a rewrite.
+- **Notion → Postgres (refined):** Notion = a legacy SOURCE everyone migrates FROM, **Guy included** (he's
+  tenant 0). Storage is trivial + cheap; the real work = the rules **editor** + the **one-time migration (only
+  Guy has one)**. Additive/prove-before-switch: Guy's cockpit keeps reading Notion until the Postgres path is
+  proven, then re-points. Most of this was already in the doc; only the "Guy-migrates-too" delta was new.
+- **REAL NEXT:** start the fork — `cp -r chrome-extension wingguy-extension` (rename in manifest) + finish the
+  Phase 0 recon on the auth wiring (`content-portal.js` / `/api/linkedin` / `/api/extension-config`,
+  `clientId`/`portalToken` issuance) before bolting on the injected panel. **No code yet; day-to-day untouched.**
 
 **As of 2026-06-20 (session 2) — "THANKS FOR CONNECTING" WORKLIST v1 BUILT + VERIFIED LIVE (Guy-first, per-client gated; on `main`).**
 The designed worklist tab is now coded end-to-end and proven against Guy's real prod data — additive, gated, daily flow untouched. Built on the schema
