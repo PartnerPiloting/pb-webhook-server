@@ -163,6 +163,8 @@ export default function ContextHelpPanel({ area, isOpen, onClose }) {
         return 'Help: New Lead';
       case 'top_scoring_leads':
         return 'Help: Top Scoring Leads';
+      case 'thanks_for_connecting':
+        return 'Help: Thanks for Connecting';
       case 'top_scoring_posts':
         return 'Help: Top Scoring Posts';
       case 'post_scoring':
