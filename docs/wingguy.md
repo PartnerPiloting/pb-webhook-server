@@ -181,7 +181,11 @@ skeptics** vs "let them train it". (3) Multi-tenant refactor **paused** for the 
     thank" count badge (the motivator); real "all caught up" empty state. **Status set (locked):** *Outstanding*
     (blank) → **Messaged** (Guy's manual tick — he personally reached out via AI Blaze) · **Let go (LH sent)** (left
     to the LH automated sequence; auto-resolved). "Keeper" = cricket idiom (*let it go through to the keeper* = don't
-    play at it), i.e. = "Let go", NOT "nurture". Both done-states leave the queue → inbox-zero behaviour identical.
+    play at it), i.e. = "Let go", NOT "nurture". **(2026-06-21: "Let go" RENAMED to "Skipped" at Guy's request —
+    cleaner/clearer. Airtable metadata API can't rename a select choice, so the app writes "Skipped" via record
+    `typecast` (auto-creates the option) + maps legacy "Let go"→"Skipped" on read; stale "Let go" choice is cosmetic.
+    New bases get "Skipped" from the start. Also this session: Date Connected is the left column + an Oldest/Most-recent
+    sort toggle + a user-selectable window dropdown.)** Both done-states leave the queue → inbox-zero behaviour identical.
   - **AUTO-RESOLVE via LH message-sent webhook (preferred path):** Guy confirmed LH can fire a webhook at any
     campaign stage. When Guy DOESN'T personally message, LH sends its automated first message after the window and
     **pings our webhook → row auto-resolves to "Let go (LH sent)"**. When Guy DOES message, LH detects the
