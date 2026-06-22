@@ -57,7 +57,8 @@
 - **⚠ Pricing & delivery** (canonical = "Pricing + delivery model"; refinements scattered): Pricing + delivery
   model · Pricing snapshot · roadmap Phase 6 · +$50 Wingguy upsell · Economics — path to ~100 · 100-client P&L.
 - **Rules / second-brain engine (= "Wingguy", the Postgres brain):** Data architecture — two stores ·
-  Rules de-personalisation · Rules editing UX · Rules integrity (code gates, LLM proposes only) · Gated
+  Rules de-personalisation · Rules editing UX · Rules integrity (code gates, LLM proposes only) · Where each
+  thing lives — code vs rule vs variable; graceful boundary + flag-to-queue (2026-06-21) · Gated
   extension — two kinds of mess · Stickiness vision · Where this sits vs frontier · Keeping Wingguy directives
   in Wingguy (not the client's general Claude memory).
 - **Naming & terminology:** Naming the second brain (✅ Wingguy chosen) · name-variant policy (in Naming +
@@ -744,6 +745,62 @@ is part of the code-enforced schema.
 categories that **break conflict-checking** (two categories meaning the same thing aren't compared).
 → ship a **curated master taxonomy**; if new categories allowed at all, gate them like rules ("we
 already have one that means this?"); **v1: fixed set, no client-created categories** (add gated later).
+
+### Where each thing lives — code vs rule vs variable; the graceful boundary + flag-to-queue (2026-06-21)
+Worked through with two real cases (Guy's Gmail follow-up habit; the complicated-name ingestion bug). Sharpens
+the multi-tenant content model (see the three-layer note in **▶ You are here** + **Rules de-personalisation**).
+Read with **Keeping Wingguy directives in Wingguy** (the connector-editing sibling) and **Discovery &
+onboarding** (proactive chaining = a rule type).
+
+**1. Not every "rule" is a Wingguy-rule.** Two different things wear the word "rule":
+- **Data-integrity / plumbing** (name parsing, ingestion, dedup) = **CODE** — fixed, identical for all tenants,
+  lives in the repo, the client cannot (and must not) change it. The complicated-name fix is this; Guy did it in
+  Claude Code, which is the tell.
+- **Method / judgment** (greet by first name, no price in email #1, follow-up timing) = a **WINGGUY RULE** —
+  tunable, in Postgres, client-editable through the write-door.
+- Plus a third home: **identity / preference** (name, signoff, links, which follow-up channel) = a **VARIABLE /
+  per-tenant setting** (the onboarding/variable catalogue).
+
+**2. Surface-tells-the-bucket heuristic** (sort per item without agonising — you usually pick the right surface
+by instinct):
+- Reached for **Claude Code** → it's **code** (fixed, all tenants).
+- You'd phrase it as **"from now on, when X, do Y"** in plain English → **tunable rule** (template default,
+  client-editable).
+- It's **"my name / my link / which tool I use"** → **variable / setting** (per-tenant config).
+
+*Worked example — Guy's "save a Gmail/Outlook reminder when they say they'll book" habit splits across all
+three:* the *capability* to set a provider-agnostic reminder = **code** (the email/calendar adapter); *when to
+offer it* = a **tunable chaining-rule** shipped as a default the client can retime or switch off ("people may
+not want that"); *which follow-up channel they use* (portal follow-up vs email reminder vs both) = a
+**per-tenant setting**.
+
+**3. The graceful boundary — when a client asks for something past the tunable surface.** A client may sit in
+their own Claude ("Claude can do anything") and say "fix this." Two readings, handled differently:
+- **"Fix THIS record"** (one wrong name in their Portal) → **in scope, Claude just does it** (Portal write,
+  reversible, tenant-scoped). This is where "Claude can do anything" is correctly true.
+- **"Fix this — it keeps happening"** (the ingestion bug) → that's the **code bucket; the connector has no tool
+  for it.** Right behaviour = **fix the visible record + be honest the systemic part is the setup team's +
+  escalate** — NOT silently ignore, NOT hallucinate a fix (the dangerous one: cheerful "done!" while the names
+  keep arriving wrong). For escalation to be a real action and not a dead end, the connector needs a **"flag an
+  issue to the operator" tool**. It **can't break anything** — there is no tool to touch ingestion code, so the
+  worst case is a benign "I've flagged it" (same safety as "out-of-scope blocked by design"). **Upside:** a
+  client-noticed bug becomes a report Guy fixes **once in code → fixed for every tenant** — the product
+  self-improves from 30 sets of eyes. (Generalises the post-call agent's existing "flag ops issues" behaviour.)
+
+**4. Flag to a QUEUE, not Guy's inbox (the channel design).** The real axis is **interrupt-and-obligate (inbox)
+vs capture-and-review (queue)** — an email implies a promised reply; a queue is signal on Guy's terms.
+- **Default = silent capture to a triage queue** (Airtable table / portal admin view) Guy scans when he chooses;
+  this IS the cross-tenant bug feed (dedup + counts → spot patterns, fix once).
+- **Claude owns the client acknowledgment, not Guy** — "I've logged that for the team," never "Guy will reply."
+  Decouples *client feels heard* from *Guy must respond* (most people want acknowledgment, not a personal reply).
+- **Claude is the first-line filter** — reading the rules it can *explain the reason in the moment* (handles
+  "maybe it was done deliberately") and deflect misunderstandings / dedupe before anything reaches Guy.
+- **In the queue, "intended — dismiss" is a one-click, no-reply outcome** (an email feels like it demands a
+  written explanation back; a queue item doesn't).
+- **Email reserved for rare genuine urgency — and even then a digest**, not per-event pings.
+- **Why it's load-bearing, not cosmetic:** an exposed "email Guy" button rebuilds the hand-holding treadmill the
+  whole low-touch model exists to avoid → it **doesn't scale to ~100 clients on ~3 days/week**;
+  queue-plus-Claude-deflect does. (Protects the scaling model + Guy's time constraint.)
 
 ### Stickiness vision + the reconciliations that protect it (2026-06-09)
 **Signal:** Guy himself is astonished/reliant (an hour for previously-impossible work last night) =
@@ -1953,6 +2010,13 @@ a new extension" line in **Existing extension recon** is now annotated with the 
   copy of, seed-then-diverge) · **un-shippable** (Guy's private originals + each client's generated state). The
   test for template-vs-private = "would this still be true/useful for someone who isn't me?". Build everything
   **tenant-keyed from day one** (default = Guy), so going multi-tenant = "stop hardcoding", not a rewrite.
+  **Sorted further (new section "Where each thing lives — code vs rule vs variable…"):** not every "rule" is a
+  Wingguy-rule (data-integrity/ingestion = CODE, fixed; method/judgment = tunable RULE; identity/preference =
+  VARIABLE); **surface-tells-the-bucket** heuristic (Claude Code = code · "from now on when X" = rule · "my
+  name/link" = variable); the **graceful boundary** (client asks past the tunable surface → fix the in-scope
+  bit, be honest, **escalate via a flag tool**, never ignore/fake; doubles as a cross-tenant bug feed); and the
+  channel = **flag to a QUEUE, not Guy's inbox** (Claude owns the client ack + first-line-filters; email only
+  for rare urgency as a digest — protects the ~100-clients-on-~3-days scaling model).
 - **Notion → Postgres (refined):** Notion = a legacy SOURCE everyone migrates FROM, **Guy included** (he's
   tenant 0). Storage is trivial + cheap; the real work = the rules **editor** + the **one-time migration (only
   Guy has one)**. Additive/prove-before-switch: Guy's cockpit keeps reading Notion until the Postgres path is
