@@ -1332,6 +1332,11 @@ EMAIL — done in CLAUDE CHAT with MCP (the connector/cockpit) → the CLIENT'S 
   transcript synthesis (the Ashley join-email flow: pulls transcript + Gmail + standing rules + the OS/Manifest,
   makes real judgment calls like "join-handoff, not Zoom-1 follow-up → skip the Manifesto/advocacy links").
   Heavy + low-volume + on their dime — Guy already does it well there on Opus.
+- **★ REQUIREMENT (Guy, 2026-06-22): the post-call / connector MCP ALWAYS works on the FULL transcript, never the
+  summary.** Verified current behaviour — `latest-transcript-by-email` returns the whole `transcript_text`
+  (recallWebhookRoutes.js:819), not `summary_json` — and it's a *deliberate requirement*: everything available,
+  highest fidelity, and since it's the client's cost there's no reason to downgrade. **The summary-default
+  optimisation is EXTENSION-ONLY and must never touch the post-call flow.**
 - **What this dissolves:** the post-call **quality** nervousness AND the post-call **cost** exposure both move
   OFF the extension / Guy's key onto the client's Claude. Raw-transcript handling in the extension ≈ not needed
   (summary-default is plenty) → the **summary-vs-raw test drops from "must-do before build" to "nice-to-confirm."**
