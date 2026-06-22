@@ -1323,6 +1323,9 @@ Read with **Chrome extension — fork-and-run-two** (above), **AI cost economics
 - **Usage-counter UX:** **no standing counter in normal paid use** (a visible meter makes people ration → kills the
   heavy use you want); **show "X of 500" during the TRIAL** (motivating + sets up the sale); **a gentle one-off
   warning near the cap** only; keep the **full metering in the backend** (Guy's instrument), invisible to clients.
+  **★ Operator/admin view (Guy, 2026-06-22):** Guy DOES want to see **actions used today** (and cumulative) for his
+  own gauge of daily volume — so surface a **per-day actions counter on the operator/admin side**, just NOT on the
+  client-facing UI. Same data, two audiences: hidden from the client (no intimidation, no relevance), visible to Guy.
 - **Pricing strategy = stickiness-first.** At this cost level price is a **demand/positioning lever, not
   cost-recovery** (you profit at $50 and $100). Start **$50 (penetration)**, **grandfather early adopters**, **raise
   to ~$100 for later cohorts.** Stickiness is **earned by quality + accumulated state, not bought by price** — the
