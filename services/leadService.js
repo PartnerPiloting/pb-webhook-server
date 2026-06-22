@@ -25,7 +25,7 @@ const { safeUpdateMetrics } = require('./runRecordAdapterSimple');
 // Import unified constants
 const { CLIENT_TABLES, LEAD_FIELDS, SCORING_STATUS_VALUES, CONNECTION_STATUS_VALUES, LEAD_STATUS_VALUES, CLIENT_RUN_FIELDS } = require('../constants/airtableUnifiedConstants');
 const { validateFieldNames, createValidatedObject } = require('../utils/airtableFieldValidator');
-const { stripCredentialSuffixes } = require('../utils/nameNormalizer');
+const { stripCredentialSuffixes, isBrokenLastName, deriveNameFromFull } = require('../utils/nameNormalizer');
 
 async function upsertLead(
     lead, 
@@ -71,10 +71,19 @@ async function upsertLead(
 
     // Strip trailing professional credentials (GAICD, CFP, CFO, …) so they don't get stored as
     // part of the name (e.g. "Hepworth GAICD" -> "Hepworth"). Only removes recognised trailing
-    // credentials; a normal multi-word surname is left intact. (A name that is ONLY a credential
-    // can't be recovered here — that's pre-existing data, handled by a separate backfill.)
+    // credentials; a normal multi-word surname is left intact.
     const cleanFirstName = stripCredentialSuffixes(firstName);
-    const cleanLastName = stripCredentialSuffixes(lastName);
+    let cleanLastName = stripCredentialSuffixes(lastName);
+    // Fallback: when Linked Helper collapses the name and the last name comes out broken
+    // (blank, symbol-only like "-", or just a credential like "Gaicd"/"Cfo"), recover the real
+    // surname from the full display name LinkedIn gave us (original_full_name). Only the last
+    // name is replaced; the first name is left as-is.
+    if (isBrokenLastName(cleanLastName)) {
+        const fullName = originalLeadData.original_full_name || originalLeadData.originalFullName
+            || originalLeadData.fullName || originalLeadData.full_name || originalLeadData.name || '';
+        const recovered = deriveNameFromFull(fullName).lastName;
+        if (recovered) cleanLastName = recovered;
+    }
 
     let jobHistory = [
         linkedinJobDateRange ? `Current:\n${linkedinJobDateRange} — ${linkedinJobDescription}` : "",

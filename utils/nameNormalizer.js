@@ -81,8 +81,59 @@ function normalizeNameForMatching(name, lowercase = false) {
   return normalized;
 }
 
+const CREDENTIAL_SET = new Set(CREDENTIAL_SUFFIXES.map((c) => c.toLowerCase()));
+
+/**
+ * Is this Last Name "broken" — i.e. not a usable surname?
+ * True when it's empty, symbol/punctuation-only (e.g. "-", "▪"), or is itself just a
+ * professional credential ("Gaicd", "Cfo"). Used to decide whether to fall back to the
+ * full display name (original_full_name).
+ */
+function isBrokenLastName(last) {
+  const l = (last || '').trim();
+  if (!l) return true;
+  if (!l.replace(/[^A-Za-z]/g, '')) return true; // no letters at all → symbol-only
+  if (CREDENTIAL_SET.has(l.toLowerCase())) return true; // the whole thing is a credential
+  return false;
+}
+
+/**
+ * Clean a LinkedIn display name (e.g. original_full_name) down to just the person's name:
+ * drops trailing credential blobs after a comma, parentheticals, emoji/symbols/decorations
+ * (Δ, ▪, ®), a leading title (Dr./Prof./Mr…), and trailing credential tokens.
+ * "Bree Taylor CFO" -> "Bree Taylor"; "Allan Ryan -Δ" -> "Allan Ryan";
+ * "Dr. Anand Shankaran GAICD, FCPHR" -> "Anand Shankaran".
+ */
+function cleanFullName(fullName) {
+  if (!fullName || typeof fullName !== 'string') return '';
+  let n = fullName.split(',')[0];                  // drop ", CPA, CFA, …"
+  n = n.replace(/\([^)]*\)/g, ' ');                // drop (parentheticals)
+  n = n.replace(/[^A-Za-zÀ-ɏ\s.'-]/g, ' '); // drop emoji / symbols / Δ / ▪ / ®
+  n = n.replace(/\s+/g, ' ').trim();
+  n = n.replace(/^(dr|prof|professor|mr|mrs|ms|miss|mx)\.?\s+/i, ''); // leading title
+  n = stripCredentialSuffixes(n);
+  let tokens = n.split(' ').filter((t) => t && t !== '-' && t !== '.');
+  while (tokens.length > 1 && CREDENTIAL_SET.has(tokens[tokens.length - 1].toLowerCase())) tokens.pop();
+  return tokens.join(' ');
+}
+
+/**
+ * Derive {firstName, lastName} from a full display name. firstName = first token,
+ * lastName = everything after (so compound surnames like "Van Der Berg" survive).
+ * Returns empty strings if fewer than two usable tokens.
+ */
+function deriveNameFromFull(fullName) {
+  const clean = cleanFullName(fullName);
+  const t = clean.split(' ').filter(Boolean);
+  if (t.length < 2) return { firstName: '', lastName: '' };
+  return { firstName: t[0], lastName: t.slice(1).join(' ') };
+}
+
 module.exports = {
   stripCredentialSuffixes,
   normalizeNameForMatching,
+  isBrokenLastName,
+  cleanFullName,
+  deriveNameFromFull,
   CREDENTIAL_SUFFIXES
 };
