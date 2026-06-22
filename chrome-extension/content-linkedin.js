@@ -349,11 +349,15 @@
     'PhD', 'DPhil', 'EdD', 'DBA', 'MBA', 'MPA', 'MSc', 'MA', 'MS', 'MEng', 'MFA',
     'BSc', 'BA', 'BEng', 'BCom', 'BBA', 'LLB', 'LLM', 'JD', 'MD', 'DO',
     'CPA', 'CA', 'CFA', 'CFP', 'FCPA', 'FCA', 'ACA', 'ACCA', 'CIMA', 'CMA',
-    'PMP', 'PRINCE2', 'CSM', 'PMI',
+    'FCMA', 'MAcc', 'BAcc', 'BBus',
+    'CEO', 'CFO', 'COO', 'CIO', 'CTO', 'CMO', 'CISO', 'CHRO', 'CDO', 'CRO', 'CPO',
+    'PMP', 'PRINCE2', 'CSM', 'PMI', 'MSP',
     'CISSP', 'CISM', 'CISA', 'CCNA', 'CCNP', 'AWS', 'GCP', 'MCSE', 'ITIL',
+    'CGEIT', 'CRISC', 'CDPSE',
     'SHRM', 'PHR', 'SPHR', 'GPHR', 'CIPD',
     'RN', 'NP', 'PA', 'FACS', 'FACP', 'FRCS',
-    'PE', 'CEng', 'CPEng', 'FIEAust', 'MIEAust',
+    'PE', 'CEng', 'CPEng', 'FIEAust', 'MIEAust', 'RPEQ', 'EngExec', 'CompIEAust', 'FRAES',
+    'SFHEA', 'FHEA', 'AMIIA', 'AICGG',
     'Esq', 'OAM', 'AM', 'AO', 'AC', 'OM', 'CH', 'CBE', 'OBE', 'MBE', 'KBE', 'DBE',
     'FRSA', 'FRS', 'FIET', 'FBCS', 'FACS'
   ];

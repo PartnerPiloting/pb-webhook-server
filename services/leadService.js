@@ -25,6 +25,7 @@ const { safeUpdateMetrics } = require('./runRecordAdapterSimple');
 // Import unified constants
 const { CLIENT_TABLES, LEAD_FIELDS, SCORING_STATUS_VALUES, CONNECTION_STATUS_VALUES, LEAD_STATUS_VALUES, CLIENT_RUN_FIELDS } = require('../constants/airtableUnifiedConstants');
 const { validateFieldNames, createValidatedObject } = require('../utils/airtableFieldValidator');
+const { stripCredentialSuffixes } = require('../utils/nameNormalizer');
 
 async function upsertLead(
     lead, 
@@ -68,6 +69,13 @@ async function upsertLead(
 
     const originalLeadData = raw || lead;
 
+    // Strip trailing professional credentials (GAICD, CFP, CFO, …) so they don't get stored as
+    // part of the name (e.g. "Hepworth GAICD" -> "Hepworth"). Only removes recognised trailing
+    // credentials; a normal multi-word surname is left intact. (A name that is ONLY a credential
+    // can't be recovered here — that's pre-existing data, handled by a separate backfill.)
+    const cleanFirstName = stripCredentialSuffixes(firstName);
+    const cleanLastName = stripCredentialSuffixes(lastName);
+
     let jobHistory = [
         linkedinJobDateRange ? `Current:\n${linkedinJobDateRange} — ${linkedinJobDescription}` : "",
         linkedinPreviousJobDateRange ? `Previous:\n${linkedinPreviousJobDateRange} — ${linkedinPreviousJobDescription}` : ""
@@ -105,8 +113,8 @@ async function upsertLead(
 
     const fields = {
         [LEAD_FIELDS.LINKEDIN_PROFILE_URL]: finalUrl,
-        [LEAD_FIELDS.FIRST_NAME]: firstName,
-        [LEAD_FIELDS.LAST_NAME]: lastName,
+        [LEAD_FIELDS.FIRST_NAME]: cleanFirstName,
+        [LEAD_FIELDS.LAST_NAME]: cleanLastName,
         [LEAD_FIELDS.HEADLINE]: linkedinHeadline || lhHeadline || originalLeadData.headline || "",
         [LEAD_FIELDS.JOB_TITLE]: linkedinJobTitle || originalLeadData.occupation || originalLeadData.position || "",
         [LEAD_FIELDS.COMPANY_NAME]: linkedinCompanyName || (originalLeadData.company ? originalLeadData.company.name : "") || originalLeadData.organization_1 || "",

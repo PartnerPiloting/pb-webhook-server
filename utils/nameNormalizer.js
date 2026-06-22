@@ -13,16 +13,22 @@ const CREDENTIAL_SUFFIXES = [
   'BSc', 'BA', 'BEng', 'BCom', 'BBA', 'LLB', 'LLM', 'JD', 'MD', 'DO',
   // Accounting & Finance
   'CPA', 'CA', 'CFA', 'CFP', 'FCPA', 'FCA', 'ACA', 'ACCA', 'CIMA', 'CMA',
+  'FCMA', 'MAcc', 'BAcc', 'BBus',
+  // C-suite / role designations people append like credentials
+  'CEO', 'CFO', 'COO', 'CIO', 'CTO', 'CMO', 'CISO', 'CHRO', 'CDO', 'CRO', 'CPO',
   // Project Management
-  'PMP', 'PRINCE2', 'CSM', 'PMI',
+  'PMP', 'PRINCE2', 'CSM', 'PMI', 'MSP',
   // Technology & Security
   'CISSP', 'CISM', 'CISA', 'CCNA', 'CCNP', 'AWS', 'GCP', 'MCSE', 'ITIL',
+  'CGEIT', 'CRISC', 'CDPSE',
   // Human Resources
   'SHRM', 'PHR', 'SPHR', 'GPHR', 'CIPD',
   // Healthcare
   'RN', 'NP', 'PA', 'FACS', 'FACP', 'FRCS',
   // Engineering
-  'PE', 'CEng', 'CPEng', 'FIEAust', 'MIEAust',
+  'PE', 'CEng', 'CPEng', 'FIEAust', 'MIEAust', 'RPEQ', 'EngExec', 'CompIEAust', 'FRAES',
+  // Academia / other professional bodies
+  'SFHEA', 'FHEA', 'AMIIA', 'AICGG',
   // Other common suffixes
   'Esq', 'OAM', 'AM', 'AO', 'AC', 'OM', 'CH', 'CBE', 'OBE', 'MBE', 'KBE', 'DBE',
   'FRSA', 'FRS', 'FIET', 'FBCS', 'FACS'
