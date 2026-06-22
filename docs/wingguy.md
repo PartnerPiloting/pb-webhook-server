@@ -70,7 +70,8 @@
   memory `project_recall_to_fathom_migration`.)*
 - **Architecture & build process:** Environments & deploy flow · Implementation roadmap (7 phases) · De-risking
   spikes · What actually paces the build · Scope reality check · Key code anchors · Chrome extension —
-  fork-and-run-two, distribution, cost caps, scope & client lifecycle (2026-06-21).
+  fork-and-run-two, distribution, cost caps, scope & client lifecycle (2026-06-21) · Extension — panel data model,
+  cost/quality model, commercial model & voice seed (2026-06-22).
 - **GTM / market / scaling:** Target market + go-forward · Strategy handoff · Competitive position · Scaling to
   ~50 (intro-mesh; NO recurring meetings) · Ideal client = frequency-of-use · Onboarding = activation ·
   Sequencing the reveal · VA model + cost · Guy's time ~3 days/wk · LinkedIn analogy (renting a solved network).
@@ -104,8 +105,17 @@ Wingguy (how to act) + reads/writes the Portal (the records).
   **client's** AI (~$0 to Guy) = the free→paid wedge. This is why "clients need no AI account" is panel-only.
 
 **AI / model.** Standardise on **Claude** now behind a swappable seam: **Claude = drafting** (voice),
-**Gemini Flash = scoring** (cheap, high-volume). Connector surface needs the client's own Claude account
+**Gemini = scoring + summaries** (cheap, high-volume). Connector surface needs the client's own Claude account
 (framed as a product requirement, like "requires Chrome").
+**★ Model-tier policy (2026-06-22).** Drafting defaults to **Claude Sonnet**, escalating to **Opus** only when
+the *code* flags a heavy case up front (transcript involved / deep thread / post-call email) OR the human taps
+"sharpen" — NOT Opus-on-everything (the wired `CLAUDE_MODEL_ID` default IS `claude-opus-4-8`, so Sonnet-default
+is a lever to *set*, not leave). **CORRECTION — "Gemini Flash = scoring" is STALE:** verified 2026-06-22 that the
+prod summary/scoring model defaults to **`gemini-2.5-pro-preview-05-06` (2.5 PRO), not Flash** (no
+`GEMINI_MODEL_ID`/`RECALL_SUMMARY_MODEL` override on the service's env vars; env groups not enumerable via the API;
+Guy's read = "pretty sure it's Pro"). Immaterial for summaries (pennies), but **⚠ verify + likely switch to Flash
+before SCALING lead-scoring** (high-volume → ~10× lever). Detail ↓ journal "Extension — panel data model, cost/
+quality model, commercial model & voice seed (2026-06-22)".
 **Provider end-state (audited 2026-06-19): three providers, three different jobs — nothing to migrate.**
 **Gemini** = high-volume scoring + meeting summaries + follow-up prep (stays). **OpenAI** = the portal's
 **Start Here** help-Q&A (embeddings RAG + cheap `gpt-4o-mini` escalation) + topic layout — **live, and its
@@ -119,6 +129,12 @@ volatile status → ▶ You are here; "let sleeping babies lie" confirmed with e
 paying** referrals → $150 drops, **$50 floor** stays (conditional, grace window; $300→$50 tied to VA
 self-sufficiency). Separate **one-time setup** from recurring. **No contractual lock-in** (protect only
 months 1-3). ~100-client steady-state ≈ **AUD ~$265k/yr, ~78% margin** *(planning ballpark)*.
+**Extension/Wingguy commercial model (2026-06-22, stickiness-first):** flat **$50/mo** (the +$50 Wingguy tier)
+after a **500-action free trial** (≈ a month for a typical user; ~$5-8 AI cost on Sonnet); **simple daily action
+cap ~150/day (≈3,000/mo) as a runaway backstop — NOT metered billing** (metering would make clients ration →
+starve the moat). Price is a **demand/stickiness lever, not cost-recovery** — start **$50 (penetration), grandfather
+early adopters, raise to ~$100 for later cohorts.** Detail ↓ journal "Extension — panel data model, cost/quality
+model, commercial model & voice seed (2026-06-22)".
 
 **Architecture (locked).** Additive only — Guy's single-tenant setup untouched until he flips flags ·
 calendar+email multi-tenant via **Nylas** middleman (hosted auth) behind a **thin adapter** (Google = Guy's
@@ -1233,6 +1249,116 @@ no brains** — every action calls Guy's server, which checks "is this client ac
   where they left off, nothing to reinstall). Graceful "paused" beats a silent break. Same per-client gate
   pattern already used for `features.thanksForConnecting`.
 
+## Extension — panel data model, cost/quality model, commercial model & voice seed (2026-06-22)
+Big working session (discussion + live verification; no extension code yet). Continues the 06-21 extension design.
+Read with **Chrome extension — fork-and-run-two** (above), **AI cost economics**, **Rules de-personalisation**,
+**Pricing + delivery model**, and **Claude-in-Chrome vs our custom extension**.
+
+### Panel data model — foreground draft / background capture
+- **Foreground vs background split (the key architecture).** The panel's *foreground* job = **draft the next
+  message** (the high-value thing); message-archiving + contact reconcile happen **silently in the background**,
+  non-blocking. This dissolves the "how long to ingest all messages" worry — the full ingest is housekeeping you
+  never wait on.
+- **Messages.** You click into the thread + read the recent ones (normal LinkedIn UX, foreground); the extension
+  takes the **full snapshot to the Portal in the background**. **Full-snapshot-REPLACE, never delta-merge** (Guy:
+  "copy all + upload = known-right"; delta-merge risks silently missing some). Because YOU open the thread, the
+  script mostly reads what your click already loaded → lowest LinkedIn footprint.
+- **Contact details.** Silent reconcile vs the Portal; **speak only on a mismatch** ("differs from the Portal —
+  here's what/when") = the existing self-healing identity work given a voice. Match → silence.
+- **Unified profile view = Portal record + the LIVE page.** On landing, auto-assemble About (auto-expand "see
+  more"), contact, messages, and **recent posts** (a NEW source — authentic-hook material for drafts), clickless.
+  **Portal = the durable RECORD, not a cache to trust as current** — re-read fresh + replace at the moment you act;
+  the re-pull is **human-triggered when you work a lead**, not a background crawl on every glance (footprint + the
+  human-at-the-glass iron rule). *(Corrects the earlier "first-visit hydrate → warm forever" framing — wrong for
+  messages, which keep growing.)*
+- **Restraint.** Auto-expanding the page you're already on is fine; the thing to avoid is the extension *driving*
+  LinkedIn's UI in the background across many profiles (ban risk).
+
+### Summary-not-raw transcript (cost mechanism — ALREADY BUILT, verified live)
+- The summary is generated once at ingest on **Gemini** and stored in `recall_meetings.summary_json` (+
+  `summary_generated_at`); raw stays in `transcript_text`; it is **cached** (a re-request returns the stored copy —
+  `recallSummaryService.js:84`). So "pay the big read once, cheaply; draft off the one-pager forever after" is real,
+  not to-build.
+- **The drafter reads the SUMMARY by default; pulls the RAW only on shortfall.** Code selects raw up front when:
+  no/empty summary · summary flagged unreliable (reconstruction-pending) · a deep action type configured to need it
+  · the user explicitly asks for specifics/a quote. Otherwise it's **on-demand escalation** — the agent drafts off
+  the summary and calls a "fetch full transcript" tool only if the summary lacks what the task needs. Raw = the
+  expensive exception. (Pulling raw + using Opus tend to fire together — both mean "this is a heavy one.")
+- **Cost:** 60 transcripts/mo ≈ **<$5/mo even on Pro, ~$0.60 on Flash** (once-each + cached). Immaterial.
+
+### Cost / quality model
+- **The real cost driver is DRAFTING, not summaries** — specifically the **agentic multi-tool flows** (Tony-style:
+  check calendar → reconcile Airtable → build invite), which re-send growing context across tool-call rounds, so
+  they cost more than a single draft. Ballpark per complete flow: ~$0.50–1.50 Opus, ~$0.15–0.40 Sonnet+caching.
+  Single drafts: cents. *(Verified the capability live — the Tony booking landed on the real calendar and Tony
+  accepted.)*
+- **Two decisive levers:** **prompt-caching** the rules/voice (the big repeated chunk; most valuable on the
+  multi-round flows) + **model-per-job** (Sonnet-default, Opus-escalation).
+- **Model routing = CODE decides up front from facts** (transcript involved / deep thread / post-call email), NOT
+  the AI judging its own difficulty; PLUS a human **"sharpen" button** (you review every draft anyway). **Start
+  all-Sonnet + button; add code auto-routing later from BACK-TEST evidence.** (Same escalation shape as summary→raw.)
+- **Quality nervousness (real, valid):** Guy runs Opus-on-everything today and loves it; production = Sonnet+summary.
+  **De-risk by TESTING, not faith** — back-test the real threads three ways (**Opus+full vs Sonnet+full vs
+  Sonnet+summary**) and see where (if) it drops; treat the two downgrades (model, context) as **independent**. The
+  architecture is **not a cliff**: any draft is one tap (or one code-flag) from Opus / from raw, and you review every
+  one → cheap-by-default, great-where-it-matters.
+
+### Who-pays — CORRECTED — and the commercial model
+- **CORRECTION to the 06-21 note:** the heavy agentic work lives in the **EXTENSION** (beside LinkedIn), NOT the
+  connector. So it runs on **Guy's backend → Guy's key**. A client's **consumer Claude sub canNOT power a
+  button-panel** (no API; only the *chat-connector* can use a consumer sub). So for the panel it's realistically
+  **(a) Guy's key, billed via pricing**, or **(b) client BYO API key (outlier only)** — *not* "runs on their Claude."
+- **Decision: NO metered billing** (messy + makes clients ration → starves the moat). Instead **flat $50/mo on Guy's
+  key**, kept profitable by **Sonnet-default + caching**, protected by a **simple daily action cap (~150/day ≈
+  3,000/mo) as a runaway backstop** — a safety limit, NOT a billing meter (needn't be cost-accurate).
+- **"Action" = one AI-WRITTEN output you asked for** (a reply / an email / a times-offer-with-draft), including
+  redos. **NOT counted:** background reads (profile auto-load) and deterministic clerical steps (calendar / Airtable
+  / portal writes). *Count the writes, not the reads, not the clerical.*
+- **Cap = 3,000/mo, NOT 1,000.** 1,000 (~45/day) would throttle genuine heavy users = your stickiest/best; 3,000
+  (~150/day) only catches non-human runaway and still sits under $50 on Sonnet (~$30–48 at the ceiling). 1,000 is
+  valid ONLY as a deliberate paid *tier* with a graceful upgrade path.
+- **Free trial = 500 actions** (≈ a month for a typical user; reached in ~3–4 weeks at ~20/day; ~$5–8 AI cost on
+  Sonnet). Consider a **~60-day backstop** so dabbler trials don't linger. A heavy user burning it in ~10 days = the
+  **best conversion moment**, not a problem.
+- **Usage-counter UX:** **no standing counter in normal paid use** (a visible meter makes people ration → kills the
+  heavy use you want); **show "X of 500" during the TRIAL** (motivating + sets up the sale); **a gentle one-off
+  warning near the cap** only; keep the **full metering in the backend** (Guy's instrument), invisible to clients.
+- **Pricing strategy = stickiness-first.** At this cost level price is a **demand/positioning lever, not
+  cost-recovery** (you profit at $50 and $100). Start **$50 (penetration)**, **grandfather early adopters**, **raise
+  to ~$100 for later cohorts.** Stickiness is **earned by quality + accumulated state, not bought by price** — the
+  PMF signal is Guy's own reliance on it.
+
+### Claude-in-Chrome — re-confirmed OUT (today reinforces it)
+Re-examined in light of the cost discussion; stays ruled out as a build/product target (see "Claude-in-Chrome vs our
+custom extension"). Everything designed this session — rules-in-backend, summary/raw selection, Sonnet/Opus routing,
+caps, metering, per-tenant isolation, the formatting-preserving insert — **lives in Guy's backend, which
+Claude-in-Chrome bypasses**; adopting it throws away every control lever. Its one pull (client's Claude sub → $0 to
+Guy) is handled better by **$50 + caps + Sonnet** (cheap *with* control) and by the **connector** for the genuine
+"use their Claude" case (the chat surface). Stays an optional power-user door; not built-for / supported / pitched.
+
+### Voice seed + back-test methodology (from a real message corpus)
+Guy pasted ~20 real LinkedIn threads + his AI Blaze prompt templates → the literal seed of the Wingguy voice/rules
+store (raw stays in Guy's tenant; de-identified → the shippable template).
+- **Templated beats** (his AI Blaze flow): acknowledge → recommend-hook (ONE *interpreted* profile detail tied to
+  "easy to recommend") → vision (refer-each-other / "I reckon you'd fit it well") → open door ("Worth a quick Zoom in
+  the next couple of weeks?") → sig "(I know a) Guy". Plus classify **employee / consultant-owner / both** → different
+  base message.
+- **Implicit judgment rules extracted** (NOT in his prompts — the gold): **take-a-punt-and-book** (decide a near slot
+  vs ping-pong) · **reframe-the-objection-as-a-fit** (Ranya "we don't do startups" → "a plus, not a mismatch") ·
+  **gentle scarcity** to move a staller · **match-the-counterpart's-register** (breezy Liam vs formal Cecile) ·
+  **grace + humanity** on cancellations/glitches.
+- **★ Methodology correction (Guy):** ground truth is **Guy's JUDGMENT, not his sent history.** Some sent messages
+  were rushed — he preferred *my* draft on Rayn (my "genuine no → cheer-and-stop" rule was over-fitting one hurried
+  message; his real preference = warm + a light, genuine door-open). So the bar = **his considered best, not his
+  rushed average** — which IS the product (deliver his best every time). Tuning signal = his **preference on drafts**
+  (edit-as-you-go → the write-door), not mining history; weight his considered/AI-Blaze messages as match-targets,
+  treat rushed manual ones as candidates to judge.
+- **Transcript context-sufficiency check** = a first-class rule: detect **cold** (draft off profile + thread) vs
+  **warm/post-meeting** (pull the transcript first). The Hrishekesh thread (months-deep, calls, ASH signup) is the
+  proof case; the lookup exists (`latest-transcript-by-email`), the new part = the intelligence to know *when* to reach.
+- **Back-test = the go/no-go** for the Sonnet+summary downgrade AND the rule-extraction engine (divergences = unwritten
+  rules to confirm via the write-door).
+
 ## Discovery & onboarding — teaching tenants what's possible (2026-06-14)
 
 From a strategy/workflow chat. Closes a real gap: the doc is deep on *what* the system does but near-silent on *how a new tenant discovers it*. Sits directly under "Onboarding IS the business" — discovery is the front of onboarding.
@@ -1984,6 +2110,34 @@ yet built.
 ---
 
 ## ▶ You are here / next pick-up
+
+**As of 2026-06-22 (discussion + live verification, no extension code) — EXTENSION: panel data model + full cost/
+quality + commercial model settled.** Deep session; full detail → journal *"Extension — panel data model, cost/quality
+model, commercial model & voice seed (2026-06-22)"*; canonical AI-model + pricing lines updated. Headlines:
+- **Panel = foreground draft / background capture.** Draft is the foreground job; full message snapshot
+  (**full-replace, never delta**) + contact reconcile (**speak only on mismatch**) run silently in the background →
+  no ingest wait. **Unified view = Portal record + live page; Portal = record, not cache;** re-pull is human-triggered
+  when working a lead. **Recent posts** added as a draft source. *(Corrected the earlier "hydrate once → warm forever"
+  — wrong for messages.)*
+- **Summary-not-raw is ALREADY BUILT** (`recall_meetings.summary_json`, Gemini, once + cached). Drafter reads the
+  summary; pulls raw only on shortfall (deterministic triggers + on-demand fetch).
+- **Cost driver = drafting, esp. agentic flows** (context re-send across tool rounds), not summaries. Levers:
+  **caching + Sonnet-default/Opus-escalation**; routing decided by **code up front from facts** (transcript / deep
+  thread / post-call) + a human **"sharpen" button**. Start all-Sonnet + button, auto-route later from back-test.
+- **Model finding:** prod summary/scoring defaults to **Gemini 2.5 PRO, not Flash** (canonical corrected; verify +
+  switch to Flash before scaling lead-scoring). Claude client defaults to **Opus** (set Sonnet-default deliberately).
+- **Commercial model:** **flat $50/mo on Guy's key** (NOT metered billing), **500-action free trial**, **~3,000/mo
+  daily-cap backstop (~150/day)**, **"action" = an AI write incl. redos** (not reads/clerical), **no paid counter /
+  trial counter only**, **stickiness-first pricing** ($50 now → grandfather → ~$100 later). **Who-pays CORRECTED:**
+  heavy work is in the EXTENSION (Guy's key), a consumer Claude sub can't power a panel — so Guy's-key-billed-via-
+  pricing, BYO-key outlier-only; the connector is where "their Claude" actually fits.
+- **Claude-in-Chrome re-confirmed OUT** — backend-control reasons reinforced by today's design.
+- **Voice seed banked** from ~20 real threads + AI Blaze prompts (templated beats + implicit judgment rules); **★
+  ground truth = Guy's judgment/preference, not his sent history; bar = considered best, not rushed average.**
+- **REAL NEXT (highest-value, no extension code needed):** run the **back-test** — take the real threads and compare
+  **Opus+full vs Sonnet+full vs Sonnet+summary** to (a) prove the cost-optimised config holds quality before committing
+  and (b) extract implicit rules from the divergences. Then start the fork (`cp -r chrome-extension wingguy-extension`)
+  + Phase-0 auth recon. **No code yet; day-to-day untouched.**
 
 **As of 2026-06-21 (planning, no code) — CHROME EXTENSION: build mechanic + 4 operational questions settled.**
 Discussion-only session as Guy moves onto the extension (the next real build). Full detail → journal *"Chrome
