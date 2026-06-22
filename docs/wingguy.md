@@ -380,6 +380,11 @@ through LinkedIn's paste handler). *(Surfaced 2026-06-08.)*
   trail + revocable) rather than sharing Mr Busy's password.
 
 ### Post-call email workflow is preserved — same engine, second front door
+> **STATUS: REFINED 2026-06-22 → delivery surface changed.** Post-call drafting for clients now runs in the
+> **connector / Claude chat on the CLIENT'S own Claude (their cost)**, NOT "an agent-backed chat *in the panel*
+> on Guy's key" (the line below). Same capability + same engine, cheaper surface — and it keeps the
+> transcript-deep/post-call work (and its cost) off the extension. See journal "Back-test results, model decision
+> & the surface/cost split (2026-06-22)".
 - Guy keeps doing "just had a call with X, pull the transcript + lead info, draft an email"
   in **Claude chat** (his power-user cockpit). Not going away.
 - For the VA, the **same engine** (transcript + lead-data + drafting tools) sits behind an
@@ -1303,6 +1308,38 @@ Read with **Chrome extension — fork-and-run-two** (above), **AI cost economics
   architecture is **not a cliff**: any draft is one tap (or one code-flag) from Opus / from raw, and you review every
   one → cheap-by-default, great-where-it-matters.
 
+### Back-test results, model decision & the surface/cost split (2026-06-22)
+**Back-test run (real):** Opus (me) vs **actual Sonnet** subagents vs Guy's sent messages, on 5 real threads
+(templated / objection / wit / genuine-no / take-a-punt). **DECISION (Guy): Sonnet-default + a manual "sharpen"
+(→Opus) button + code auto-route the heavy/witty.** Evidence:
+- **Sonnet holds as the default on BOTH templated voice AND judgment** — Luke (templated hook) ≈ Opus; Rayn
+  (genuine-no) correctly gracious + didn't push; Maria correctly took-a-punt-and-booked. The bulk of volume is
+  safe on Sonnet → cost model **validated, not assumed**.
+- **Misses cluster into THREE fixable things — only one needs Opus:** (1) **confabulation** (Sonnet invented
+  "no dues, no pitch nights") → fix by **grounding** real network facts + "state only what's given, don't
+  invent" (helps every model; key pre-build catch); (2) **dropped softeners** (Maria omitted Guy's "if not, let
+  me know" easy-out on a proactive booking) → **rule:** "when you book proactively, always leave an easy out";
+  (3) **wit / register-match edge** (Tony's playful "nice hustle") → Sonnet matched the register but the wit was
+  thinner → the genuine **Opus** case → auto-route + the "sharpen" button.
+
+**★ Surface/cost split — the resolution (Guy, 2026-06-22).** The transcript-deep / post-call work does NOT
+belong on the extension at all. Natural flow: **once a call has happened (a transcript exists) the work moves to
+EMAIL — done in CLAUDE CHAT with MCP (the connector/cockpit) → the CLIENT'S OWN Claude → their cost.** So:
+- **Extension surface (Guy's key, Sonnet-default, cheap):** PRE-call LinkedIn — outreach, replies, booking.
+  Touches transcripts rarely; when it does (a reply referencing the last call), **the SUMMARY satisfies** — raw
+  is essentially never needed here.
+- **Connector/chat surface (client's own Claude, THEIR cost):** POST-call — the follow-up email + deep
+  transcript synthesis (the Ashley join-email flow: pulls transcript + Gmail + standing rules + the OS/Manifest,
+  makes real judgment calls like "join-handoff, not Zoom-1 follow-up → skip the Manifesto/advocacy links").
+  Heavy + low-volume + on their dime — Guy already does it well there on Opus.
+- **What this dissolves:** the post-call **quality** nervousness AND the post-call **cost** exposure both move
+  OFF the extension / Guy's key onto the client's Claude. Raw-transcript handling in the extension ≈ not needed
+  (summary-default is plenty) → the **summary-vs-raw test drops from "must-do before build" to "nice-to-confirm."**
+- **Refines the "second front door":** post-call drafting for clients runs in the **connector (their Claude)**,
+  NOT an agent-backed chat *in the panel on Guy's key* (the earlier framing). Same capability, cheaper surface.
+  *(One honest dependency: assumes clients — incl. a VA — run post-call in their own Claude via the connector,
+  which needs their Claude account = the connector surface by design.)*
+
 ### Who-pays — CORRECTED — and the commercial model
 - **CORRECTION to the 06-21 note:** the heavy agentic work lives in the **EXTENSION** (beside LinkedIn), NOT the
   connector. So it runs on **Guy's backend → Guy's key**. A client's **consumer Claude sub canNOT power a
@@ -2137,10 +2174,18 @@ model, commercial model & voice seed (2026-06-22)"*; canonical AI-model + pricin
 - **Claude-in-Chrome re-confirmed OUT** — backend-control reasons reinforced by today's design.
 - **Voice seed banked** from ~20 real threads + AI Blaze prompts (templated beats + implicit judgment rules); **★
   ground truth = Guy's judgment/preference, not his sent history; bar = considered best, not rushed average.**
-- **REAL NEXT (highest-value, no extension code needed):** run the **back-test** — take the real threads and compare
-  **Opus+full vs Sonnet+full vs Sonnet+summary** to (a) prove the cost-optimised config holds quality before committing
-  and (b) extract implicit rules from the divergences. Then start the fork (`cp -r chrome-extension wingguy-extension`)
-  + Phase-0 auth recon. **No code yet; day-to-day untouched.**
+- **★ BACK-TEST DONE (model axis) + DECISION:** ran real Opus-vs-actual-Sonnet on 5 real threads → **Sonnet
+  validated as the default** (holds on templated voice AND judgment); **DECISION = Sonnet-default + manual
+  "sharpen" (Opus) button + code auto-route the heavy/witty.** Three rules fell out: **ground the facts** (no
+  confabulation), **keep the softeners** (easy-out on proactive bookings), **Opus for wit/register-match**.
+- **★ SURFACE/COST SPLIT (resolves the post-call worry):** transcript-deep / post-call work = **CLAUDE CHAT +
+  MCP on the CLIENT'S Claude (their cost)**, NOT the extension; the **extension is the pre-call LinkedIn/booking
+  layer (Guy's key, Sonnet, summary-suffices)**. So post-call quality + cost both move off Guy's key →
+  **summary-vs-raw test downgraded to nice-to-confirm.** (Refines the "second front door" → connector, not panel.)
+- **REAL NEXT:** start the fork (`cp -r chrome-extension wingguy-extension`) + **Phase-0 auth recon**
+  (`content-portal.js` / `/api/extension-config` / how `clientId`+`portalToken` are issued), then the
+  **drafting-agent architecture** design. Optional later: confirm summary-suffices on one real transcript. **No
+  extension code yet; day-to-day untouched.**
 
 **As of 2026-06-21 (planning, no code) — CHROME EXTENSION: build mechanic + 4 operational questions settled.**
 Discussion-only session as Guy moves onto the extension (the next real build). Full detail → journal *"Chrome
