@@ -1423,6 +1423,11 @@ post-call/connector. End-to-end, the agent:
 **server-side, per-tenant** (calendar + Airtable + Notion + Gmail wired to the client), drafts shown first, human
 clicks send. This is the worked brief to design the drafting-agent against. *(Pairs with the Tony booking example
 above — both verified live on Guy's real data.)*
+- **Cost (this is cheap, not a worry):** an agentic booking flow ≈ **15–25¢ each on Sonnet** (~50¢–$1 on Opus) —
+  the multi-tool context re-sends are the cost, tamed by **prompt-caching**; the tool results (calendar / Airtable /
+  Notion) are **small text, NO transcript** (the expensive transcript input lives in the post-call flow, on the
+  client's Claude). And it's **bounded by meetings actually booked** (~tens/month), so all the booking orchestration
+  for a heavy user ≈ **~$8/mo on Sonnet** — comfortably inside $50. *(Ballpark — confirm with metering.)*
 
 ## Discovery & onboarding — teaching tenants what's possible (2026-06-14)
 
