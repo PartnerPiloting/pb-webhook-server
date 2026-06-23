@@ -1404,6 +1404,26 @@ store (raw stays in Guy's tenant; de-identified → the shippable template).
 - **Back-test = the go/no-go** for the Sonnet+summary downgrade AND the rule-extraction engine (divergences = unwritten
   rules to confirm via the write-door).
 
+### Reference example — the full booking flow the extension must do (Ranya, 2026-06-22)
+Guy pasted ONLY the LinkedIn thread into his Claude cockpit; it ran the entire booking orchestration unaided. This
+is the clearest concrete spec of the **extension's drafting-agent architecture** (the next big design question) — and
+it's a **PRE-call booking flow (no transcript) → the EXTENSION surface** (Guy's key, agentic, Sonnet-default), NOT
+post-call/connector. End-to-end, the agent:
+- **Read the thread** → caught that Ranya said "Mon morning works" and gave a new email.
+- **Calendar clash-check** — Mon 29 Jun 10:00 clear; **flagged the back-to-back run** (10:00→12:30, no breathing room)
+  and offered to re-slot.
+- **Airtable reconcile** — new `ranya@realbusinessmatters.com.au` ≠ on-file `ranya_salem@hotmail.com` → moved new to
+  primary, archived old to **Alt Emails**, logged the booking in Notes (= the self-healing identity work, live).
+- **Built the calendar invite from the Notion spec** (guest-first title, Zoom room, her LinkedIn + Guy's details in
+  the body); sent to the new address.
+- **Flagged, didn't guess** — left her "In Process" status + 29 Jun follow-up date as-is and surfaced them for Guy.
+- **Drafted the one-line LinkedIn confirmation** on request.
+
+**For the extension:** same capability, but the thread is **auto-read off the page** (no paste), the agent runs
+**server-side, per-tenant** (calendar + Airtable + Notion + Gmail wired to the client), drafts shown first, human
+clicks send. This is the worked brief to design the drafting-agent against. *(Pairs with the Tony booking example
+above — both verified live on Guy's real data.)*
+
 ## Discovery & onboarding — teaching tenants what's possible (2026-06-14)
 
 From a strategy/workflow chat. Closes a real gap: the doc is deep on *what* the system does but near-silent on *how a new tenant discovers it*. Sits directly under "Onboarding IS the business" — discovery is the front of onboarding.
