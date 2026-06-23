@@ -1321,6 +1321,12 @@ Read with **Chrome extension — fork-and-run-two** (above), **AI cost economics
   me know" easy-out on a proactive booking) → **rule:** "when you book proactively, always leave an easy out";
   (3) **wit / register-match edge** (Tony's playful "nice hustle") → Sonnet matched the register but the wit was
   thinner → the genuine **Opus** case → auto-route + the "sharpen" button.
+- **Added case — hook-selection (Subbu, 2026-06-22):** given a profile whose About + featured content + every recent
+  post centre on one passion (his "AI Balance Sheet" newsletter on AI cost/value), the draft still reached for a
+  **safe career-fact hook** ("recently gone fractional + value-advisory background at ServiceNow/SAP/Oracle") instead
+  of his **passion/featured content** — which Guy's own AI Blaze rule says to check FIRST. Lesson: the
+  **"passion/values/featured-first" hook rule must be actively enforced/grounded**, or the drafter defaults to
+  generic-but-safe. (A grounding rule + a sharpen/auto-Opus candidate.)
 
 **★ Surface/cost split — the resolution (Guy, 2026-06-22).** The transcript-deep / post-call work does NOT
 belong on the extension at all. Natural flow: **once a call has happened (a transcript exists) the work moves to
