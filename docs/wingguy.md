@@ -2292,6 +2292,36 @@ yet built.
 
 ---
 
+## Build plan — vertical slices (2026-06-24)
+> The ordered build sequence for the Wingguy extension. Each slice is proven (on Guy first) before the next.
+> Principle: **prove the pipe → add the hard agentic engine → make it tunable → make it commercial → make it
+> multi-tenant.** Volatile "which slice / done" status lives in ▶ You are here below.
+
+**Slice 1 — Fork + personalised thanks-for-connecting (single-tenant Guy).** Proves the end-to-end plumbing. Fork
+`chrome-extension` → `wingguy-extension` (rename, namespace DOM `wingguy-*`, visually distinct; the old one stays
+installed + untouched). On a LinkedIn profile: read profile (About expanded) + connection thread → campaign-template
+quick-pick buttons (human-picks, from Guy's `\tks`/`\frac`) → ONE backend endpoint behind the existing auth
+middleware (`req.client`) → **templates seeded directly (NO Postgres store yet; do NOT touch the Notion→Postgres
+migration)** → Sonnet draft + prompt-caching → formatting-preserving insert; human clicks send. **No tools** (single
+AI call) — that's why it's first.
+
+**Slice 2 — The conversation engine (replies + booking).** The multi-tool agent. **Gets its own design session
+first** (use the Tony + Ranya worked examples as the brief). Read the WHOLE thread → decide the next move → execute:
+warm reply → offer Zoom times; question/objection → answer/reframe; picks a time → calendar clash-check + create
+invite (Notion spec) + Airtable email-reconcile + confirm; reschedule gracefully. Drafts shown first; human sends.
+
+**Slice 3 — Rules store + management.** Build the Postgres "Wingguy" rules store; **migrate Guy's templates off
+Notion** (the one-time conversion = the de-personalisation pass); the **"manage my templates" screen** (visibility /
+name / enable / "use when" / light edits — NOT a prompt IDE) + **edit-as-you-go** tuning through the write-door.
+
+**Slice 4 — Metering + commercial.** Action counter (**operator daily view** + **client trial counter "X of 500"**);
+the **~3,000/mo cap** backstop; the **$50 flat + 500-action trial** via Stripe. Meter tokens underneath; count
+"actions" (AI writes incl. redos), not reads/clerical.
+
+**Slice 5 — Multi-tenant rollout.** Per-request tenant resolution at the drafting surface; per-tenant config/chips
+(make `extension-config` per-client); the **"sharpen" button + code auto-route to Opus** (from back-test evidence);
+onboard client #2; distribution → **Chrome Web Store "Unlisted"**.
+
 ## ▶ You are here / next pick-up
 
 **As of 2026-06-22 (discussion + live verification, no extension code) — EXTENSION: panel data model + full cost/
@@ -2330,9 +2360,9 @@ model, commercial model & voice seed (2026-06-22)"*; canonical AI-model + pricin
   (`requireServiceLevel`) + `features.*` flags already exist** (free wins); `ash-backend`/`ash-attributes-api` off
   the critical path. Net-new backend = drafting-agent endpoints + action-counter/cap. Detail → "Existing extension
   recon" §VERIFIED. **Runway clear — nothing blocks the fork.**
-- **REAL NEXT:** start the fork (`cp -r chrome-extension wingguy-extension`, rename in manifest, namespace DOM) →
-  the **drafting-agent architecture** design (use the Tony + Ranya worked examples as the brief). Optional later:
-  confirm summary-suffices on one real transcript. **No extension code yet; day-to-day untouched.**
+- **REAL NEXT = Slice 1 of the Build plan (above): Fork + personalised thanks-for-connecting** (single-tenant Guy,
+  no tools, templates seeded directly, Sonnet). Proves the end-to-end plumbing; Slice 2 (the conversation engine)
+  then gets its own design session. **No extension code yet; day-to-day untouched.**
 
 **As of 2026-06-21 (planning, no code) — CHROME EXTENSION: build mechanic + 4 operational questions settled.**
 Discussion-only session as Guy moves onto the extension (the next real build). Full detail → journal *"Chrome
