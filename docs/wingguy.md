@@ -1175,8 +1175,29 @@ scope & client lifecycle (2026-06-21)".]** Hard plumbing already present:
 line-break-preserving insert**, and calendar/agent — all reusing existing auth + scraping + lookup +
 portal plumbing.
 **Impact:** shrinks Phase 2 (extension MVP not greenfield); Phase 4 (multi-tenant seats) gets a
-running start. **Verify next:** `content-portal.js` (auth broadcast), the `/api/linkedin` +
-`/api/extension-config` backend, and how `clientId/portalToken` are issued.
+running start.
+
+**✓ VERIFIED 2026-06-22 (Phase-0 auth recon — the runway is clear, the fork inherits the auth layer):**
+- **Identity = a per-client token.** `Portal Token` is a field on each client's **Master Clients Airtable record**
+  (`clientService.js:133`) — a stable client-specific secret, NOT an expiring JWT. Portal stores `portalToken` +
+  `clientCode` in `localStorage`; `content-portal.js` broadcasts them (`AUTH_BROADCAST`) → `background.js` stores in
+  `chrome.storage.local` → every `/api/linkedin/*` call carries **`x-client-id` + `x-portal-token`** (+ optional
+  `x-dev-key`) (`background.js:137`).
+- **Backend gate:** `authenticateUserWithTestMode` (`middleware/authMiddleware.js:240`) resolves token →
+  `getClientByPortalToken` → `req.client`.
+- **★ Three reuse wins (we get these FREE):** (1) our **"central off-switch" already exists** — the middleware has a
+  built-in **`status !== 'Active'` → 403** (`authMiddleware.js:258`), so flipping a client inactive kills the panel,
+  no new code; (2) **tier gating exists** — `requireServiceLevel` (`authMiddleware.js:205`) maps onto $150/$200/$300
+  + the $50 Wingguy tier; (3) **`features.*` flags** (the `thanksForConnecting` pattern) are how you'd gate
+  "extension enabled".
+- **Notes (not blockers):** token is long-lived (revoke = rotate the field / flip status); the extension needs the
+  portal open at least once to sync creds; `/api/extension-config` serves DOM selectors from an Airtable table but
+  is **GLOBAL, not per-client** (per-tenant chips = a small extension); **no per-client action-counter exists yet**
+  (net-new, as expected — rides the same per-client + gate pattern).
+- **`ash-backend` / `ash-attributes-api`:** NOT referenced anywhere in the extension/auth path → separate Render
+  services, off the critical path, **not a blocker.**
+- ⇒ **Net-new backend work = the drafting-agent endpoints + the action-counter/cap (+ optional per-tenant config).**
+  Nothing in the auth/identity layer blocks the fork.
 
 ## Chrome extension — fork-and-run-two, distribution, cost caps, scope & client lifecycle (2026-06-21)
 Planning/discussion only (no code). Guy is ready to start the extension; this settles *how* we start
@@ -2218,10 +2239,14 @@ model, commercial model & voice seed (2026-06-22)"*; canonical AI-model + pricin
   MCP on the CLIENT'S Claude (their cost)**, NOT the extension; the **extension is the pre-call LinkedIn/booking
   layer (Guy's key, Sonnet, summary-suffices)**. So post-call quality + cost both move off Guy's key →
   **summary-vs-raw test downgraded to nice-to-confirm.** (Refines the "second front door" → connector, not panel.)
-- **REAL NEXT:** start the fork (`cp -r chrome-extension wingguy-extension`) + **Phase-0 auth recon**
-  (`content-portal.js` / `/api/extension-config` / how `clientId`+`portalToken` are issued), then the
-  **drafting-agent architecture** design. Optional later: confirm summary-suffices on one real transcript. **No
-  extension code yet; day-to-day untouched.**
+- **✓ PHASE-0 AUTH RECON DONE (2026-06-22):** auth layer is solid + reusable — per-client `Portal Token` (Airtable)
+  → `x-client-id`/`x-portal-token` headers → `req.client`; **the off-switch (Active→403) and tier gating
+  (`requireServiceLevel`) + `features.*` flags already exist** (free wins); `ash-backend`/`ash-attributes-api` off
+  the critical path. Net-new backend = drafting-agent endpoints + action-counter/cap. Detail → "Existing extension
+  recon" §VERIFIED. **Runway clear — nothing blocks the fork.**
+- **REAL NEXT:** start the fork (`cp -r chrome-extension wingguy-extension`, rename in manifest, namespace DOM) →
+  the **drafting-agent architecture** design (use the Tony + Ranya worked examples as the brief). Optional later:
+  confirm summary-suffices on one real transcript. **No extension code yet; day-to-day untouched.**
 
 **As of 2026-06-21 (planning, no code) — CHROME EXTENSION: build mechanic + 4 operational questions settled.**
 Discussion-only session as Guy moves onto the extension (the next real build). Full detail → journal *"Chrome
