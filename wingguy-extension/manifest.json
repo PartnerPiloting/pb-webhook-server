@@ -1,0 +1,45 @@
+{
+  "manifest_version": 3,
+  "name": "Wingguy (LinkedIn)",
+  "version": "0.1.0",
+  "description": "Wingguy — draft a personalised thanks-for-connecting on any LinkedIn profile, in your voice. You click send.",
+  "permissions": [
+    "storage",
+    "activeTab"
+  ],
+  "host_permissions": [
+    "https://www.linkedin.com/*",
+    "https://pb-webhook-server.vercel.app/*",
+    "https://pb-webhook-server-staging.vercel.app/*",
+    "https://pb-webhook-server.onrender.com/*",
+    "https://pb-webhook-server-staging.onrender.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://www.linkedin.com/*"],
+      "js": ["content-wingguy.js"],
+      "css": ["styles.css"],
+      "run_at": "document_end"
+    },
+    {
+      "matches": ["https://pb-webhook-server.vercel.app/*", "https://pb-webhook-server-staging.vercel.app/*"],
+      "js": ["content-portal.js"]
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

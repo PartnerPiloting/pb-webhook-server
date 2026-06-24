@@ -1,0 +1,9 @@
+Add extension icons here:
+- icon16.png (16x16)
+- icon48.png (48x48)
+- icon128.png (128x128)
+
+You can use any icon design. Recommended: a simple "NA" monogram or a stylized lightning bolt on LinkedIn blue (#0077b5).
+
+For quick testing, you can use placeholder icons from a service like:
+https://via.placeholder.com/128/0077b5/ffffff?text=NA

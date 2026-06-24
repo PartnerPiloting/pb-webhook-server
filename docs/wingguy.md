@@ -2297,7 +2297,8 @@ yet built.
 > Principle: **prove the pipe → add the hard agentic engine → make it tunable → make it commercial → make it
 > multi-tenant.** Volatile "which slice / done" status lives in ▶ You are here below.
 
-**Slice 1 — Fork + personalised thanks-for-connecting (single-tenant Guy).** Proves the end-to-end plumbing. Fork
+**Slice 1 — Fork + personalised thanks-for-connecting (single-tenant Guy). ✅ BUILT 2026-06-24 (on `main`; awaiting
+Guy's live LinkedIn test — volatile status → ▶ You are here).** Proves the end-to-end plumbing. Fork
 `chrome-extension` → `wingguy-extension` (rename, namespace DOM `wingguy-*`, visually distinct; the old one stays
 installed + untouched). On a LinkedIn profile: read profile (About expanded) + connection thread → campaign-template
 quick-pick buttons (human-picks, from Guy's `\tks`/`\frac`) → ONE backend endpoint behind the existing auth
@@ -2323,6 +2324,38 @@ the **~3,000/mo cap** backstop; the **$50 flat + 500-action trial** via Stripe. 
 onboard client #2; distribution → **Chrome Web Store "Unlisted"**.
 
 ## ▶ You are here / next pick-up
+
+**As of 2026-06-24 (session 2) — ★ SLICE 1 BUILT END-TO-END (fork + personalised thanks-for-connecting; on `main`,
+owner-gated to Guy; awaiting Guy's live LinkedIn test).** First Wingguy *code*. All additive, day-to-day untouched.
+What got built:
+- **Backend (additive, owner-gated, on `main`):** new route `routes/wingguyRoutes.js` mounted at **`/api/wingguy`**
+  behind the existing auth middleware (`req.client`) + an **owner gate (`Guy-Wilson` only)** + kill-switch
+  `WINGGUY_DRAFT_ENABLED` (default on). Endpoints: `GET /status` (public — `{enabled, aiConfigured}`),
+  `GET /templates` (the quick-pick set), `POST /draft-thanks` `{templateId, profile}` → `{draft, model}`. **ONE AI
+  call, NO tools.** Model = **Sonnet** (`WINGGUY_DRAFT_MODEL_ID`, default `claude-sonnet-4-6` — deliberately NOT the
+  repo-wide Opus default), **stable voice/rules system block prompt-CACHED** (`cache_control: ephemeral`).
+- **Templates seeded directly** in `config/wingguyTemplates.js` (NO Postgres — Slice 3 owns the store + the
+  Notion→Postgres migration): `tks` (general) + `frac` (fractional), encoding the documented voice beats + the three
+  back-test rules (ground-the-facts / keep-the-softener / passion-first hook). ⚠ The instruction text is reconstructed
+  from the doc's voice seed — **Guy can paste his real `\tks`/`\frac` AI Blaze text to swap them in** (the pipe is
+  identical; the swap is really Slice 3's de-personalisation work).
+- **Extension fork `wingguy-extension/`** (copy of `chrome-extension/`, old one byte-untouched + still installed):
+  manifest renamed **"Wingguy (LinkedIn)"**, DOM namespaced **`wingguy-*`**, **visually distinct (teal)**. Reuses the
+  auth plumbing by copying (`background.js` + `content-portal.js`). **New focused content script `content-wingguy.js`**
+  on `/in/` pages (deliberately does NOT carry the legacy "Save to Portal" messaging surface → no double-injection with
+  the old extension). Flow: teal launcher → reads profile (name/headline/About auto-expand "see more"/light recent
+  activity) → template quick-pick buttons (with "use when" hints) → backend draft → editable panel →
+  **formatting-preserving Insert** into the LinkedIn composer (writes `<p>`-per-line + input event; **Copy** fallback)
+  → human clicks send.
+- **Deferred, in scope (Slice 2+):** replies/booking/conversation engine, Postgres rules store + "manage templates"
+  screen, metering/$50 trial, multi-tenant, auto-advance, campaign auto-tracking, save-reminder-to-Gmail, the
+  soft-default template *suggestion*.
+- **REAL NEXT:** (1) **Guy's live test** — load the unpacked `wingguy-extension/` (dev mode), open his portal once to
+  sync creds, go to a real LinkedIn profile, draft + insert + send; tune the seeded templates / scraping selectors from
+  what he sees. (2) Then **Slice 2 (the conversation engine) gets its own design session** (Tony + Ranya as the brief).
+  *(Automated proof done from here: `/api/wingguy/status` live-checked after deploy; full draft path exercised via a
+  Render one-off job with the dev key — see commit notes. The LinkedIn DOM read + insert can only be proven by Guy on
+  the real page.)*
 
 **As of 2026-06-22 (discussion + live verification, no extension code) — EXTENSION: panel data model + full cost/
 quality + commercial model settled.** Deep session; full detail → journal *"Extension — panel data model, cost/quality

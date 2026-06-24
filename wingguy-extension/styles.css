@@ -1,0 +1,117 @@
+/* Wingguy LinkedIn extension styles — namespaced wingguy-*, teal so it's visually distinct
+   from the legacy Network Accelerator extension running side-by-side. */
+
+:root {
+  --wingguy-teal: #0d9488;
+  --wingguy-teal-dark: #0f766e;
+  --wingguy-ink: #0f172a;
+  --wingguy-muted: #64748b;
+  --wingguy-border: #e2e8f0;
+  --wingguy-warn: #b45309;
+  --wingguy-ok: #15803d;
+}
+
+/* Launcher button (bottom-right, distinct from NA's bottom-right by colour + label) */
+.wingguy-launcher-btn {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 2147483000;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 18px;
+  border: none;
+  border-radius: 999px;
+  background: var(--wingguy-teal);
+  color: #fff;
+  font: 600 14px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  cursor: pointer;
+  box-shadow: 0 6px 18px rgba(13, 148, 136, 0.35);
+  transition: background 0.15s ease, transform 0.1s ease;
+}
+.wingguy-launcher-btn:hover { background: var(--wingguy-teal-dark); transform: translateY(-1px); }
+.wingguy-launcher-mark { font-size: 16px; }
+
+/* Panel */
+.wingguy-panel {
+  position: fixed;
+  bottom: 80px;
+  right: 24px;
+  z-index: 2147483000;
+  width: 380px;
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  border: 1px solid var(--wingguy-border);
+  border-radius: 14px;
+  box-shadow: 0 12px 40px rgba(15, 23, 42, 0.22);
+  font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: var(--wingguy-ink);
+  overflow: hidden;
+}
+.wingguy-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  background: var(--wingguy-teal);
+  color: #fff;
+}
+.wingguy-panel-title { font-weight: 700; font-size: 13px; }
+.wingguy-x {
+  border: none; background: transparent; color: #fff;
+  font-size: 20px; line-height: 1; cursor: pointer; padding: 0 4px;
+}
+.wingguy-panel-body { padding: 14px; overflow-y: auto; }
+
+.wingguy-who { font-weight: 700; margin-bottom: 6px; }
+.wingguy-muted { color: var(--wingguy-muted); font-size: 12.5px; }
+.wingguy-warn { color: var(--wingguy-warn); font-size: 13px; }
+.wingguy-section-label { margin: 12px 0 6px; font-weight: 600; font-size: 12.5px; color: var(--wingguy-muted); text-transform: uppercase; letter-spacing: 0.03em; }
+
+/* Template quick-pick buttons */
+.wingguy-tpl-list { display: flex; flex-direction: column; gap: 8px; }
+.wingguy-tpl {
+  display: flex; flex-direction: column; gap: 2px;
+  text-align: left;
+  padding: 10px 12px;
+  border: 1px solid var(--wingguy-border);
+  border-radius: 10px;
+  background: #f8fafc;
+  cursor: pointer;
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+.wingguy-tpl:hover { border-color: var(--wingguy-teal); background: #f0fdfa; }
+.wingguy-tpl-label { font-weight: 600; }
+.wingguy-tpl-when { font-size: 12px; color: var(--wingguy-muted); }
+
+/* Draft step */
+.wingguy-draft {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--wingguy-border);
+  border-radius: 10px;
+  padding: 10px;
+  font: 13.5px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  resize: vertical;
+  color: var(--wingguy-ink);
+}
+.wingguy-row { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+.wingguy-primary {
+  flex: 1; min-width: 140px;
+  padding: 9px 12px; border: none; border-radius: 8px;
+  background: var(--wingguy-teal); color: #fff; font-weight: 600; cursor: pointer;
+}
+.wingguy-primary:hover { background: var(--wingguy-teal-dark); }
+.wingguy-secondary {
+  padding: 9px 12px; border: 1px solid var(--wingguy-border); border-radius: 8px;
+  background: #fff; color: var(--wingguy-ink); font-weight: 500; cursor: pointer;
+}
+.wingguy-secondary:hover { border-color: var(--wingguy-teal); }
+.wingguy-foot { display: flex; align-items: center; justify-content: space-between; margin-top: 10px; }
+.wingguy-link { border: none; background: none; color: var(--wingguy-teal); cursor: pointer; font-size: 12.5px; padding: 0; }
+.wingguy-status { margin-top: 8px; font-size: 12.5px; min-height: 16px; }
+.wingguy-status.wingguy-ok { color: var(--wingguy-ok); }
+.wingguy-status.wingguy-warn-inline { color: var(--wingguy-warn); }

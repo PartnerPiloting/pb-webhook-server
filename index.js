@@ -1857,6 +1857,17 @@ try {
     moduleLogger.error('index.js: Error mounting Thanks for Connecting routes', e.message, e.stack);
 }
 
+// Wingguy — Slice 1 (personalised thanks-for-connecting drafting; owner-gated to Guy-Wilson)
+try {
+    const mountWingguy = require('./routes/wingguyRoutes.js');
+    if (typeof mountWingguy === 'function') {
+        mountWingguy(app);
+        moduleLogger.info('index.js: Wingguy routes mounted at /api/wingguy');
+    }
+} catch(e) {
+    moduleLogger.error('index.js: Error mounting Wingguy routes', e.message, e.stack);
+}
+
 // EMERGENCY DEBUG ROUTE - Direct in index.js
 app.get('/api/linkedin/debug', (req, res) => {
     res.json({ 
