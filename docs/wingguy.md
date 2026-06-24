@@ -1468,6 +1468,38 @@ above — both verified live on Guy's real data.)*
   client's Claude). And it's **bounded by meetings actually booked** (~tens/month), so all the booking orchestration
   for a heavy user ≈ **~$8/mo on Sonnet** — comfortably inside $50. *(Ballpark — confirm with metering.)*
 
+### Campaign first-message templates + the authoring model (2026-06-24)
+Refines the extension's "first message" function + the client-facing side of template authoring. Read with **Rules
+editing UX**, **Rules de-personalisation**, and the panel functions above.
+
+**The first "thanks for connecting" message = a per-client LIBRARY of campaign templates** (a general one + per-
+campaign ones — e.g. Guy's `\tks` general and `\frac` fractionals; "each client sets up many"). These templates ARE
+content in the per-tenant Wingguy rules store. In the extension, Guy's **AI Blaze shortcodes become labelled
+quick-pick buttons** (no codes to memorise). **Also confirmed an extension function:** **save a reminder draft**
+(with notes + a suggested schedule date) to the client's **Gmail/Outlook**.
+
+**Template SELECTION = human-picked, NOT campaign-auto-tracked (decided 2026-06-24).** We will NOT thread the campaign
+through Linked Helper → lead record → auto-select: too much build + ongoing maintenance + a permanent wrong-template
+failure mode, and it loads the client to keep it tagged. Instead **the human at the glass picks the template** by
+reading the profile + the connection-request message — exactly what Guy does today with `\tks`/`\frac` (everything
+needed to decide is already on screen). **Soft-default sweetener (optional, later):** the panel reads the on-screen
+profile + connection message and *suggests* the likely template (one-line "use when…" on each button) with **"general"
+as the safe fallback**; the human confirms/overrides. No campaign-tracking infrastructure — the AI is reading the
+profile to draft anyway, so proposing the template is the same read. Drops the VA-training load from "recognise cold"
+to "confirm a guess."
+
+**Authoring model — do NOT rebuild AI Blaze for clients (decided 2026-06-24).** Split by who:
+- **Heavy prompt-craft = admin/Guy-side.** The classification + style + substitution logic (the `\tks` "monster") is
+  Guy's craft, baked into the engine. Guy builds the **master library** (AI Blaze or a simple admin editor); it
+  **ships to clients as their starting templates** (seed-then-diverge). Clients never write that.
+- **Client side = light.** Start from a shipped template → give a campaign a name + their angle/example → **tune by
+  reacting to drafts in the flow** (edit-as-you-go → the write-door) as the PRIMARY path, not a form. The client
+  screen is a **"manage my templates"** view (see / name / enable-disable / "use when" hint / light edits), **NOT a
+  raw prompt IDE** (matches "Rules editing UX": the screen = visibility/settings, not bulk authoring).
+- **Sequencing:** white-glove first (Guy sets up each client's templates at onboarding); a self-serve client
+  authoring screen is a later "productise it" step. **v1 may need NO client-facing builder** — just the pick-buttons,
+  conversational tuning, and Guy doing setup.
+
 ## Discovery & onboarding — teaching tenants what's possible (2026-06-14)
 
 From a strategy/workflow chat. Closes a real gap: the doc is deep on *what* the system does but near-silent on *how a new tenant discovers it*. Sits directly under "Onboarding IS the business" — discovery is the front of onboarding.
