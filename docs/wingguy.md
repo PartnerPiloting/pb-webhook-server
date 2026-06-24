@@ -1227,6 +1227,18 @@ may block unpacked; **no auto-update** → hand each client a new folder to relo
 non-technical clients = **Chrome Web Store "Unlisted"** (not publicly discoverable, share by link, gives
 auto-update + kills the dev-mode nag; far lighter than a public listing). Not needed until rollout — stay
 unpacked through the build.
+- **Web Store review risk (LinkedIn extension) — LOW given our design (2026-06-22).** Two separate gates: **Google's
+  review** (judges permissions / honesty / single purpose / data disclosure) and **LinkedIn's own terms** (dislikes
+  *scraping* + *automated* actions). Our **human-at-the-glass** design lands on the safe side of both: we **read the
+  page the user is actively viewing** and help them draft — **they click send** = a *personal productivity
+  assistant* (an accepted category), NOT a scraper / auto-connector / background crawler / bulk-harvester (the risky
+  kind that gets rejected + LinkedIn-targeted). Helped further by the **already-minimal permissions** (`storage`,
+  `activeTab`, linkedin.com + own server only) and the AI running server-side. **To-dos at distribution:** frame it
+  as a personal assistant (avoid "scrape"/"automate" wording), keep permissions minimal + justified, add a privacy
+  policy. **Honest:** Google review can be inconsistent / LinkedIn extensions get an extra look, so not a guaranteed
+  first-pass — but queries are usually wording/permissions, fixable on resubmit. **Backstop: the Web Store is a
+  convenience, NOT a requirement — the unpacked/dev-mode install needs ZERO review, ever, so a rejection is never
+  fatal** (just a clunkier install). Stay unpacked through build/trial; only seek Unlisted at non-technical rollout.
 
 **Who pays for the AI — reaffirm "Guy's key as COGS" for the panel; clarify what "their key" actually
 means (consolidates the 06-08 cost decisions).** Guy floated "hook the client's extension into *their*
