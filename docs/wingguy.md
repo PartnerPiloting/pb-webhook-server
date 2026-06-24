@@ -1500,6 +1500,48 @@ to "confirm a guess."
   authoring screen is a later "productise it" step. **v1 may need NO client-facing builder** — just the pick-buttons,
   conversational tuning, and Guy doing setup.
 
+### Extension core function = an intelligent conversation engine; the LH boundary + triage model (2026-06-24)
+**The truest description of what the extension IS — supersedes the earlier "set of buttons" framing.** Refines the
+campaign-template entry above. (Front-of-funnel; distinct from the post-call "second front door" which is the
+connector/chat.)
+
+**The Linked Helper ↔ extension boundary (the funnel):**
+- **LH sends the connection request.** On acceptance, LH waits a **configurable delay (Guy set it to 14 days)** before
+  sending its OWN *standard* thanks-for-connecting — and **LH suppresses that automated message if a message has
+  already been sent.** That 14-day gap is the **human's runway.**
+- **During the window the human TRIAGES new connections** (= the existing **"Thanks for Connecting" worklist**: the
+  portal queue of recent connections, oldest-first, ~14-day lookback):
+  - **Worthwhile (most)** → send a **personalised** thanks-for-connecting via the extension → **pre-empts LH's
+    standard one** (far more effective).
+  - **Meh** → leave them → LH's standard message handles them after 14 days.
+  - **Not worth it** → ignore entirely.
+- **Worklist = WHO to action (portal); extension = HOW (open profile → pick campaign template → send).** Same
+  triage-and-personalise phase, two surfaces.
+
+**The extension's two phases:**
+1. **Proactive first touch** — triage + the personalised thanks-for-connecting (campaign-template library, human-picks
+   + soft default).
+2. **Conversation engine** — once a lead *comes back / engages*, the extension is **ONE intelligent engine that reads
+   the ENTIRE conversation, works out where things stand, and decides the next move**, then drafts it for approval:
+   warm reply → offer Zoom times; question/objection → answer/reframe; picks a time → book + confirm; needs to move →
+   reschedule gracefully; etc. The discrete "draft reply / book / confirm" items are **moves the one engine picks
+   between by reading the thread**, not separate features.
+
+**The decision logic ("when they say X, do Y") = the encoded judgment from Guy's real examples** — mostly standard,
+**shipped as a standard template, client-tunable** (rules-store + seed-then-diverge). Only the **thanks-for-connecting**
+needs the per-campaign *library*; booking / reply / reschedule are **universal** single templates.
+
+**Scope confirmations (2026-06-24):** extension starts **post-connection** (LH owns the invite + the cold/automated
+sequence); **intros/matchmaking are OUT of the extension** — done in Claude chat via the MCP / email.
+
+**Why this design is strong (hard-won, and it holds up):** it spends Guy's scarcest resource — personal attention —
+only on worthwhile leads while LH cheaply catches the long tail; the **LH-suppress-if-already-messaged linchpin** means
+the two systems never collide and **nothing is dropped** (skip a lead → LH handles it) → forgiving + sustainable for a
+busy person or a VA; the triage discipline also **naturally bounds the AI cost** (the expensive personalised engine
+runs only on the triaged subset, not every connection); and what's productised is the **judgment** (who to personalise,
+what to say, when to push for a Zoom) — the moat, not the software. The triage instinct is a **teachable skill** Guy
+will train clients on.
+
 ## Discovery & onboarding — teaching tenants what's possible (2026-06-14)
 
 From a strategy/workflow chat. Closes a real gap: the doc is deep on *what* the system does but near-silent on *how a new tenant discovers it*. Sits directly under "Onboarding IS the business" — discovery is the front of onboarding.
