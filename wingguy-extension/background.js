@@ -132,7 +132,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   // Wingguy: draft a personalised thanks-for-connecting message
   if (message.type === 'WINGGUY_DRAFT_THANKS') {
-    wingguyDraftThanks(message.templateId, message.profile)
+    wingguyDraftThanks(message.templateId, message.profile, message.conversation)
       .then(data => sendResponse({ success: true, data }))
       .catch(error => sendResponse({ success: false, error: error.message }));
     return true;
@@ -171,14 +171,14 @@ async function wingguyGetTemplates() {
 }
 
 // Wingguy: POST /api/wingguy/draft-thanks
-async function wingguyDraftThanks(templateId, profile) {
+async function wingguyDraftThanks(templateId, profile, conversation) {
   const apiBase = await getWingguyApiBase();
   const headers = await getAuthHeaders();
 
   const response = await fetch(`${apiBase}/draft-thanks`, {
     method: 'POST',
     headers,
-    body: JSON.stringify({ templateId, profile })
+    body: JSON.stringify({ templateId, profile, conversation })
   });
 
   if (!response.ok) {

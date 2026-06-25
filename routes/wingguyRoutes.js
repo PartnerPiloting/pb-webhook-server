@@ -149,7 +149,7 @@ module.exports = function mountWingguy(app) {
       return res.status(500).json({ ok: false, error: 'Claude (ANTHROPIC_API_KEY) is not configured.' });
     }
 
-    const { templateId, profile } = req.body || {};
+    const { templateId, profile, conversation } = req.body || {};
     const template = getTemplate(templateId);
     if (!template) {
       return res.status(400).json({
@@ -162,6 +162,9 @@ module.exports = function mountWingguy(app) {
     if (!profileBlock) {
       return res.status(400).json({ ok: false, error: 'No profile data supplied to draft from.' });
     }
+    // Pass any open thread through too — templates that are follow-up replies (e.g. \frac) react to
+    // their warm reply; templates that don't reference it (e.g. \tks) simply ignore it.
+    const convoBlock = buildConversationBlock(conversation, profile && profile.name);
 
     try {
       const client = getAnthropicClient();
@@ -181,6 +184,7 @@ module.exports = function mountWingguy(app) {
             content:
               `Draft the message for this person. Ground every detail in what's below; ` +
               `if a hook isn't clearly here, stay warm and generic rather than inventing one.\n\n` +
+              `${convoBlock ? `CONVERSATION SO FAR (oldest first):\n${convoBlock}\n\n` : ''}` +
               `PROFILE:\n${profileBlock}`,
           },
         ],

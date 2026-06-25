@@ -148,27 +148,46 @@ STYLE RULES (important):
   frac: {
     id: 'frac',
     label: 'Fractional',
-    useWhen: 'Fractional execs, consultants, advisory / portfolio careers.',
-    instructions: `TEMPLATE: Fractional / consultant angle (Guy's \\frac).
-This person runs a fractional, consulting, advisory or portfolio career. Acknowledge that independent
-path as a deliberate, smart move (never a stop-gap between jobs), and angle the network vision around
-mutual referral between independent operators.
+    useWhen: 'Fractional/consultant who replied warmly - the network follow-up.',
+    instructions: `TEMPLATE: Fractional follow-up reply (Guy's \\frac).
 
-STRUCTURE (follow this shape):
-1. A warm opener: "Great to connect, [First]." (use "Glad that landed, [First]." only if replying to
-   something they said, not for a cold first message).
-2. An INTERPRETED recommend-hook framed as being easy to recommend (e.g. "Someone who can ... is
-   exactly the kind of person you want to be able to recommend quickly.").
-3. The network vision, modestly: fractional professionals who refer each other rather than everyone
-   waving their own flag — then "I reckon you'd fit it well."
-4. A light ask: "Worth a quick Zoom in the next couple of weeks?"
-5. Sign off exactly: (I know a) Guy
+CONTEXT: Guy has ALREADY sent this person a connection message - that he's building a network of
+fractional professionals who only recommend others they trust, and that their profile makes them easy
+to recommend. They have replied warmly. This is Guy's NEXT message, opening the door to a chat. It is
+NOT a generic "thanks for connecting" - it picks up from Guy's network opener and takes one small step
+toward a Zoom. Inputs: the conversation thread (Guy's opener + their reply, if provided) and their profile.
 
-WORKED EXAMPLE (match this voice and shape; adapt to the new person, do NOT copy verbatim):
-"Glad that landed, Mary Anne.
-Someone who can walk into a C-suite conversation and make a complex technology platform make sense - without losing the commercial thread - is exactly the kind of person you want to be able to recommend quickly.
-The network is a simple idea: fractional professionals who refer each other, rather than everyone having to keep waving their own flag. I reckon you'd fit it well.
+FOUR SHORT BEATS, in order - EACH its OWN short paragraph (not one block):
+1. ACKNOWLEDGE - one line reacting to what they actually said in their reply (e.g. "Glad that landed,
+   {firstname}."). If no reply text is provided, open warmly without inventing what they said.
+2. THE RECOMMEND HOOK - one sentence. Pick ONE specific thing from their profile that genuinely makes
+   them easy to recommend, and tie it to recommendability. Check the About/summary FIRST (values,
+   mission, passion), then top skills, featured content, then recent posts. INTERPRET it - don't read
+   it back. End the thought on why it makes them recommendable (e.g. "...which is exactly what makes
+   someone easy to recommend").
+3. THE VISION - one sentence: the network is fractional professionals who refer each other, rather
+   than everyone having to keep waving their own flag. Close with a light "I reckon you'd fit it well".
+4. THE OPEN DOOR - one line: "Worth a quick Zoom in the next couple of weeks?"
+Then the signature.
+
+RULES:
+- 300 to 500 characters. Australian spelling. Use "-" (short dash with spaces) only, never a long dash.
+- Keep it light. No pitch, no selling. Use "recommend", never "sell".
+- Don't make it sound like you're reading their profile back - interpret, don't parrot.
+- If using "I love your philosophy...", say "of" or "to", not "around"; don't tack on tails like
+  "- that really resonates" (saying "I love..." is enough on its own).
+- Signature, on its own line:
+(I know a) Guy
+
+BASE TEMPLATE (vary it - don't fill it in robotically):
+"Glad that landed, {firstname}.
+
+{One sentence lifting a specific profile detail and tying it to why they're easy to recommend}.
+
+The network itself is a simple idea: fractional professionals who refer each other, rather than everyone having to keep waving their own flag. I reckon you'd fit it well.
+
 Worth a quick Zoom in the next couple of weeks?
+
 (I know a) Guy"`,
   },
 };

@@ -568,7 +568,7 @@
   async function draftThanks(profile, thread, templateId) {
     setBody(`<div class="wingguy-muted">Drafting in your voice…</div>`);
     try {
-      const data = await bg({ type: 'WINGGUY_DRAFT_THANKS', templateId, profile });
+      const data = await bg({ type: 'WINGGUY_DRAFT_THANKS', templateId, profile, conversation: thread });
       renderDraftStep(data.draft || '', data.model || '', {
         onRegenerate: () => draftThanks(profile, thread, templateId),
         onBack: () => renderRoute(profile, thread, 'thanks'),
