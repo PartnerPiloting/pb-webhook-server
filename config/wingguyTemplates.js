@@ -55,35 +55,95 @@ const TEMPLATES = {
     label: 'General thanks',
     // One-line "use when…" hint shown on the quick-pick button (soft-default sweetener, Slice 1-lite).
     useWhen: 'Any worthwhile new connection — the default.',
-    instructions: `TEMPLATE: General thanks-for-connecting (Guy's \\tks).
+    instructions: `TEMPLATE: General thanks-for-connecting (Guy's \\tks). Draft from the supplied profile / page text.
 
-LENGTH: aim for 300-500 characters.
-
-CLASSIFY FIRST (silently): decide whether {First name} is an EMPLOYEE, a CONSULTANT / BUSINESS OWNER,
-or BOTH (business owner AND employee). Judge from their Experience section — CONCURRENT roles = both;
-SEQUENTIAL roles = not both. Let this shape the network angle (an owner can refer AND be referred; an
-employee is more "good to know in your field"). Do not state the classification in the message.
-
-STRUCTURE (follow this shape):
-1. "Hi [First name]," then "Thanks for connecting."
-2. A genuine, INTERPRETED compliment on their approach/philosophy (abstract their idea — don't quote a
-   tagline), then say you'd be keen to learn more about what they're doing at [their company] via a
-   quick Zoom.
-3. A modest, GIVING network line — that you talk to collaborative/like-minded people in business all
-   the time and may be able to connect them. (Value to THEM; don't talk yourself up.)
-4. A soft, purpose-named ask: "Would you be up for a quick Zoom in the next couple of weeks to talk
-   about potential two-way collaboration?"
-5. Sign off exactly, on two lines:
+RULES:
+- Message between 300 and 500 characters.
+- Australian spelling.
+- Use "-" rather than a long dash.
+- Signature (always end with these two lines):
 Talk soon
 I know a (Guy)
 
-WORKED EXAMPLE (match this voice and shape exactly; adapt to the new person, do NOT copy verbatim):
-"Hi Josh,
-Thanks for connecting. I love your philosophy of great hires happening by process, not chance - it's a sharp way to think about it. I'd be keen to learn more about what you are doing at RECRUITERDADDY via a quick Zoom.
-I'm speaking with collaborative people in business all the time and may be able to connect you.
-Would you be up for a quick Zoom in the next couple of weeks to talk about potential two-way collaboration?
+STEP 1 — CLASSIFY {firstname} as ONE of: An Employee OR A Consultant/Business Owner OR A Business
+Owner and Employee. Determine this mainly from their Experience section (clues elsewhere too). Look
+for CONCURRENT experience to decide if they are BOTH a business owner and employee; if their roles
+are SEQUENTIAL they are NOT both. Do not state the classification in the message.
+
+STEP 2 — FIND AN INTERESTING POINT to include. PRIORITY — before analysing experience you MUST first
+check: (1) Profile Summary/About — passions, values, what they care about professionally, mission/
+purpose, how they describe themselves; (2) Top Skills — standout capabilities; (3) Featured Content —
+projects/articles/work they've highlighted; (4) Recent Posts — themes, attitudes, topics they engage
+with. Prioritise these OVER job titles — they reveal values, collaboration style/openness, unique
+talents, positive/emotional attitudes, and what they genuinely care about. Also look for emotionally
+positive statements, attitudes toward collaboration, willingness, openness, or special talents across
+their profile and posts. Where a profile statement relates to the value proposition (e.g. "helping
+others grow businesses" aligns with "AI-enabled side ventures"), connect them.
+
+STEP 3 — WRITE, using the matching base message below, personalised with the interesting point. Fill
+any "-" placeholder (e.g. "at -") with the actual business name, or rephrase so no dangling "-" remains.
+
+EMPLOYEE base:
+"Hi {firstname},
+
+Thanks for connecting. Looks like you have achieved a lot at -. I'm speaking with employees who are quietly exploring AI-enabled side ventures alongside their core role.
+
+Is an AI-enabled side venture something you have thought about - perhaps as part of setting up for a next chapter?
+
+If so would you be up for a quick Zoom to discuss?
+
 Talk soon
-I know a (Guy)"`,
+I know a (Guy)"
+
+The "Looks like you have achieved a lot at -" line may be replaced by: (1) nothing, if it doesn't
+sound right; (2) "I love [a positive quote/statement from their profile or post, paraphrased]";
+(3) "I love your attitude towards [e.g. collaboration]"; (4) anything else that genuinely compliments
+them. Example opener: "Thanks for connecting. I spend a lot of time speaking with experienced sales
+and delivery leaders who are thinking ahead - particularly around how AI, networks, and side ventures
+fit alongside their core role."
+
+CONSULTANT/BUSINESS OWNER base:
+"Hi {firstname},
+
+Thanks for connecting. What you are doing at - sounds interesting. I'd be keen to learn more via a quick Zoom.
+
+I'm speaking with collaborative people in business all the time and may be able to connect you.
+
+Would you be up for a quick Zoom in the next couple of weeks to talk about potential two-way collaboration?
+
+Talk soon
+I know a (Guy)"
+
+After "a quick Zoom", if there is something outstanding on their profile you may add a complimentary
+line (same criteria as the employee case). Example: "Hi Justin, Thanks for connecting. Looks like
+you've achieved a lot with Red Tomato. I'm meeting people all the time, and I'd love to learn more
+about you, as I may be able to advocate for you (and potentially you for me). Would you be up for a
+quick Zoom in the next couple of weeks? When are you back on deck? Talk soon (I know a) Guy"
+
+BUSINESS OWNER AND EMPLOYEE base:
+"Hi {firstname},
+
+Thanks for connecting. I can see you are doing a lot with your gig at - as well as your own venture at -.
+
+I'd be keen to learn more about what you are doing via a quick Zoom.
+
+I'm speaking with collaborative people in business all the time and may be able to connect you.
+
+Would you be up for a quick Zoom in the next couple of weeks to talk about potential two-way collaboration?
+
+Talk soon
+I know a (Guy)"
+
+STYLE RULES (important):
+- Keep "I'm speaking with collaborative people in business all the time and may be able to connect you."
+  as its OWN paragraph, never folded into another sentence/paragraph.
+- After "I love ...", do NOT add a tail like "- that really resonates" (saying "I love..." is enough).
+- Don't use "around": say "I love your philosophy of putting people first" (NOT "philosophy around
+  putting people first"); "I love your philosophy to put people first" is also fine.
+- Shorten by naming their business, e.g.: "Thanks for connecting. I love your philosophy of putting
+  people first, even as technology rapidly evolves. I'd be keen to learn more about what you are doing
+  at AI in Motion via a quick Zoom."
+- Try NOT to make the message sound like it is just echoing back what they have on their profile.`,
   },
   frac: {
     id: 'frac',
