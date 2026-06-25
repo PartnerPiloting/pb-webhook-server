@@ -351,18 +351,20 @@
     // contenteditable: insert at the caret (no select-all — like AI Blaze replacing its trigger).
     let inserted = false;
     try { inserted = document.execCommand('insertText', false, normalized); } catch (_) {}
-    if (!inserted) {
-      try {
-        const html = normalized.split('\n').map((l) => `<p>${l ? escapeHtml(l) : '<br>'}</p>`).join('');
-        target.innerHTML = html;
-      } catch (_) {}
+    if (inserted) {
+      // Native insert succeeded — trust it. A strict re-read gives false negatives in LinkedIn's
+      // shadow/React editor (the text is visibly there even when innerText reads stale/elsewhere).
+      target.dispatchEvent(new InputEvent('input', { bubbles: true, cancelable: true, inputType: 'insertText', data: normalized }));
+      return { ok: true };
     }
+    // Fallback only if the native insert was rejected: write paragraphs, then verify THAT path.
+    try {
+      const html = normalized.split('\n').map((l) => `<p>${l ? escapeHtml(l) : '<br>'}</p>`).join('');
+      target.innerHTML = html;
+    } catch (_) {}
     target.dispatchEvent(new InputEvent('input', { bubbles: true, cancelable: true, inputType: 'insertText', data: normalized }));
-
-    // VERIFY it actually landed.
     const after = (target.value != null ? target.value : target.innerText) || '';
-    const probe = normalized.slice(0, 15);
-    if (probe && !after.includes(probe)) {
+    if (normalized.slice(0, 15) && !after.includes(normalized.slice(0, 15))) {
       console.log('[Wingguy] insert did not take. Target was:', describeEl(target));
       logEditableDiagnostics();
       return { ok: false, reason: 'verify-failed' };
@@ -598,6 +600,7 @@
   function renderDraftStep(draft, model, { onRegenerate, onBack }) {
     setBody(`
       <textarea class="wingguy-draft" id="wingguy-draft" rows="16">${escapeHtml(draft)}</textarea>
+      <div class="wingguy-tip">1. Click in LinkedIn's message box &nbsp;→&nbsp; 2. Insert</div>
       <div class="wingguy-row">
         <button class="wingguy-primary" id="wingguy-insert">Insert into LinkedIn</button>
         <button class="wingguy-secondary" id="wingguy-copy">Copy</button>

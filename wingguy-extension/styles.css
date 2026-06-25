@@ -101,6 +101,18 @@
 .wingguy-mode-on { background: var(--wingguy-teal); color: #fff; border-color: var(--wingguy-teal); }
 .wingguy-block { width: 100%; margin-top: 10px; }
 
+/* "click in the box first" tip above the Insert button */
+.wingguy-tip {
+  margin: 8px 0 2px;
+  padding: 5px 9px;
+  border-radius: 7px;
+  background: #f0fdfa;
+  border: 1px solid #99f6e4;
+  color: var(--wingguy-teal-dark);
+  font-size: 12px;
+  font-weight: 600;
+}
+
 /* Template quick-pick buttons */
 .wingguy-tpl-list { display: flex; flex-direction: column; gap: 8px; }
 .wingguy-tpl {
