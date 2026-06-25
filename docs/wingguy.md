@@ -2347,6 +2347,19 @@ the full Slice 2 with its own design session). All additive, day-to-day untouche
   DOM read (profile + open-thread scrape) + the composer insert remain for Guy to prove on a real page.**
 - **Earlier same effort:** robust profile-name read (page → title → `/in/` slug fallback) + launcher moved to mid-right
   so it stops covering the legacy "Save to Portal" button.
+- **★ FORMATTING-PRESERVING INSERT SOLVED — "insert at the cursor", AI-Blaze model (2026-06-25):** the long fight to
+  push the draft into LinkedIn's message box is **working**. Root cause of the struggle: LinkedIn's newer messaging
+  composer isn't a findable light-DOM `contenteditable` (diagnostic showed only `<input>`s + open shadowHosts; the
+  editable is in shadow/React and only mounts when the box is open). **The fix is to stop *finding* the box and instead
+  insert at the user's CURSOR** — exactly how AI Blaze works (Guy confirmed: AI Blaze only inserts when the caret is in
+  the box; its button-only path offers Copy). Mechanism (in `content-wingguy.js`): (1) track the last focused editable
+  via a composed `focusin` listener + `deepActiveElement()` (descends into open shadow roots); (2) the **Insert button
+  uses `mousedown`→`preventDefault()` so it doesn't steal focus** from the message box; (3) insert via
+  `execCommand('insertText')` at the caret (keeps line breaks), `setRangeText` for textarea; (4) **trust a successful
+  `execCommand`** — the earlier strict innerText re-read gave FALSE "didn't take" negatives on the shadow/React editor.
+  **Required UX:** the user must **click into the message box first** (now shown as a "1. Click in the box → 2. Insert"
+  tip). **Copy** is the fallback and now writes `text/html` so a paste also keeps line breaks. *(Verified by Guy: text
+  lands in the box; was only the false-failure message + the non-obvious click-first step left, both now fixed.)*
 - **★ TEMPLATES VOICE-TUNED TO GUY'S REAL AI BLAZE (2026-06-25, from a real A/B — Josh Seaman):** Guy compared
   Wingguy's `tks` draft vs his actual AI Blaze `\tks` and **preferred AI Blaze** (more natural + humble; Wingguy's was
   slightly self-referential — "the network I'm building" — and asserted a trait not on the page). Fix = **few-shot
