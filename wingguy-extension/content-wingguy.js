@@ -154,6 +154,34 @@
     return location.origin + location.pathname.replace(/\/$/, '');
   }
 
+  // Read the OPEN LinkedIn message thread (the overlay you pop, or the /messaging pane), labelling
+  // who said what. Messages are grouped: one .msg-s-message-group__name per run of bubbles from the
+  // same sender, so we carry the last seen name forward across grouped continuations.
+  function scrapeOpenThread() {
+    const items = document.querySelectorAll('.msg-s-event-listitem');
+    if (!items.length) return [];
+    const out = [];
+    let lastSender = '';
+    items.forEach((item) => {
+      const group = item.closest('.msg-s-message-group');
+      const nameEl = group && group.querySelector('.msg-s-message-group__name');
+      if (nameEl) {
+        const n = cleanText(nameEl.textContent);
+        if (n) lastSender = n;
+      }
+      const bodyEl = item.querySelector('.msg-s-event-listitem__body');
+      const text = cleanText(bodyEl && bodyEl.textContent);
+      if (text) out.push({ sender: lastSender || 'Unknown', text });
+    });
+    return out;
+  }
+
+  // Code-side routing (deterministic, no AI): an open thread with real messages = a follow-on reply;
+  // otherwise a first-touch thanks-for-connecting. The human can override in the panel.
+  function classifyMode(thread) {
+    return thread.length >= 1 ? 'reply' : 'thanks';
+  }
+
   // ---- the LinkedIn message composer (insert target) ------------------------
   function findComposer() {
     return qsFirst([
@@ -274,19 +302,43 @@
       }
     }
 
-    renderPickStep(profile);
+    // Read the open thread (if any) and auto-route: ongoing conversation → reply; else → first hello.
+    const thread = scrapeOpenThread();
+    renderRoute(profile, thread, classifyMode(thread));
   }
 
-  function renderPickStep(profile) {
-    const hookHint = profile.about
-      ? `<div class="wingguy-muted">Read About (${profile.about.length} chars)${profile.recentPosts.length ? ` + ${profile.recentPosts.length} activity snippet(s)` : ''}.</div>`
-      : `<div class="wingguy-muted">No About text found — Wingguy will keep it warm and generic.</div>`;
-
-    // If the name had to come from the title/URL (DOM selectors missed), say so — it's the signal
-    // that the on-page scrape needs tuning, and that headline/About may be thin this time.
+  // The top-level view: a mode switch (auto-detected, human-overridable) + the body for that mode.
+  function renderRoute(profile, thread, mode) {
     const degradedNote = profile.nameSource && profile.nameSource !== 'page'
       ? `<div class="wingguy-warn">Read the name from the ${profile.nameSource === 'url' ? 'profile URL' : 'page title'} (couldn't find it in the page) — headline/About may be missing. Still safe to draft.</div>`
       : '';
+
+    const tab = (m, label) =>
+      `<button class="wingguy-mode ${m === mode ? 'wingguy-mode-on' : ''}" data-mode="${m}">${label}</button>`;
+
+    setBody(`
+      <div class="wingguy-who">${escapeHtml(profile.name || '(name not found)')}${profile.headline ? ` — <span class="wingguy-muted">${escapeHtml(profile.headline)}</span>` : ''}</div>
+      ${degradedNote}
+      <div class="wingguy-modes">
+        ${tab('thanks', 'Thanks for connecting')}
+        ${tab('reply', `Reply to conversation${thread.length ? ` (${thread.length})` : ''}`)}
+      </div>
+      <div id="wingguy-mode-body"></div>
+    `);
+
+    document.querySelectorAll('.wingguy-mode').forEach((b) => {
+      b.addEventListener('click', () => renderRoute(profile, thread, b.getAttribute('data-mode')));
+    });
+
+    const body = document.getElementById('wingguy-mode-body');
+    if (mode === 'reply') renderReplyBody(body, profile, thread);
+    else renderThanksBody(body, profile, thread);
+  }
+
+  function renderThanksBody(body, profile, thread) {
+    const hookHint = profile.about
+      ? `<div class="wingguy-muted">Read About (${profile.about.length} chars)${profile.recentPosts.length ? ` + ${profile.recentPosts.length} activity snippet(s)` : ''}.</div>`
+      : `<div class="wingguy-muted">No About text found — Wingguy will keep it warm and generic.</div>`;
 
     const buttons = templates.map((t) =>
       `<button class="wingguy-tpl" data-tpl="${escapeHtml(t.id)}">
@@ -295,32 +347,63 @@
        </button>`
     ).join('');
 
-    setBody(`
-      <div class="wingguy-who">${escapeHtml(profile.name || '(name not found)')}${profile.headline ? ` — <span class="wingguy-muted">${escapeHtml(profile.headline)}</span>` : ''}</div>
-      ${degradedNote}
+    body.innerHTML = `
       ${hookHint}
       <div class="wingguy-section-label">Pick a campaign:</div>
       <div class="wingguy-tpl-list">${buttons}</div>
-    `);
-
-    document.querySelectorAll('.wingguy-tpl').forEach((b) => {
-      b.addEventListener('click', () => draftFor(profile, b.getAttribute('data-tpl')));
+    `;
+    body.querySelectorAll('.wingguy-tpl').forEach((b) => {
+      b.addEventListener('click', () => draftThanks(profile, thread, b.getAttribute('data-tpl')));
     });
   }
 
-  async function draftFor(profile, templateId) {
+  function renderReplyBody(body, profile, thread) {
+    if (!thread.length) {
+      body.innerHTML = `<div class="wingguy-warn">No open conversation found. Open the message thread on this profile (click "Message"), then reopen Wingguy — or use "Thanks for connecting" above.</div>`;
+      return;
+    }
+    const last = thread[thread.length - 1];
+    body.innerHTML = `
+      <div class="wingguy-muted">Ongoing conversation — ${thread.length} message${thread.length > 1 ? 's' : ''} read. Last from <strong>${escapeHtml(last.sender || 'Unknown')}</strong>.</div>
+      <div class="wingguy-section-label">Wingguy will read the whole thread and draft your next message.</div>
+      <button class="wingguy-primary wingguy-block" id="wingguy-draft-reply">Draft reply</button>
+    `;
+    body.querySelector('#wingguy-draft-reply').addEventListener('click', () => draftReply(profile, thread));
+  }
+
+  async function draftThanks(profile, thread, templateId) {
     setBody(`<div class="wingguy-muted">Drafting in your voice…</div>`);
     try {
       const data = await bg({ type: 'WINGGUY_DRAFT_THANKS', templateId, profile });
-      renderDraftStep(profile, templateId, data.draft || '', data.model || '');
+      renderDraftStep(data.draft || '', data.model || '', {
+        onRegenerate: () => draftThanks(profile, thread, templateId),
+        onBack: () => renderRoute(profile, thread, 'thanks'),
+      });
     } catch (e) {
-      setBody(`<div class="wingguy-warn">Draft failed: ${escapeHtml(e.message)}</div>
-        <button class="wingguy-secondary" id="wingguy-back">← Back</button>`);
-      document.getElementById('wingguy-back')?.addEventListener('click', () => renderPickStep(profile));
+      renderError(e, () => renderRoute(profile, thread, 'thanks'));
     }
   }
 
-  function renderDraftStep(profile, templateId, draft, model) {
+  async function draftReply(profile, thread) {
+    setBody(`<div class="wingguy-muted">Reading the conversation and drafting your reply…</div>`);
+    try {
+      const data = await bg({ type: 'WINGGUY_DRAFT_REPLY', profile, conversation: thread });
+      renderDraftStep(data.draft || '', data.model || '', {
+        onRegenerate: () => draftReply(profile, thread),
+        onBack: () => renderRoute(profile, thread, 'reply'),
+      });
+    } catch (e) {
+      renderError(e, () => renderRoute(profile, thread, 'reply'));
+    }
+  }
+
+  function renderError(e, onBack) {
+    setBody(`<div class="wingguy-warn">Draft failed: ${escapeHtml(e.message)}</div>
+      <button class="wingguy-secondary" id="wingguy-back">← Back</button>`);
+    document.getElementById('wingguy-back')?.addEventListener('click', onBack);
+  }
+
+  function renderDraftStep(draft, model, { onRegenerate, onBack }) {
     setBody(`
       <textarea class="wingguy-draft" id="wingguy-draft" rows="9">${escapeHtml(draft)}</textarea>
       <div class="wingguy-row">
@@ -329,7 +412,7 @@
         <button class="wingguy-secondary" id="wingguy-regen">Regenerate</button>
       </div>
       <div class="wingguy-foot">
-        <button class="wingguy-link" id="wingguy-back">← Pick another</button>
+        <button class="wingguy-link" id="wingguy-back">← Back</button>
         <span class="wingguy-muted">${escapeHtml(model)} · you click send</span>
       </div>
       <div class="wingguy-status" id="wingguy-status"></div>
@@ -360,8 +443,8 @@
       }
     });
 
-    document.getElementById('wingguy-regen').addEventListener('click', () => draftFor(profile, templateId));
-    document.getElementById('wingguy-back').addEventListener('click', () => renderPickStep(profile));
+    document.getElementById('wingguy-regen').addEventListener('click', onRegenerate);
+    document.getElementById('wingguy-back').addEventListener('click', onBack);
   }
 
   // ---- lifecycle / SPA navigation ------------------------------------------

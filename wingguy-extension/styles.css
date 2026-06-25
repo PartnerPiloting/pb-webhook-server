@@ -73,6 +73,22 @@
 .wingguy-warn { color: var(--wingguy-warn); font-size: 13px; }
 .wingguy-section-label { margin: 12px 0 6px; font-weight: 600; font-size: 12.5px; color: var(--wingguy-muted); text-transform: uppercase; letter-spacing: 0.03em; }
 
+/* Mode switch (auto-detected first-touch vs reply; human-overridable) */
+.wingguy-modes { display: flex; gap: 6px; margin: 10px 0 4px; }
+.wingguy-mode {
+  flex: 1;
+  padding: 7px 8px;
+  border: 1px solid var(--wingguy-border);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--wingguy-muted);
+  font: 600 12px/1.2 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  cursor: pointer;
+}
+.wingguy-mode:hover { border-color: var(--wingguy-teal); }
+.wingguy-mode-on { background: var(--wingguy-teal); color: #fff; border-color: var(--wingguy-teal); }
+.wingguy-block { width: 100%; margin-top: 10px; }
+
 /* Template quick-pick buttons */
 .wingguy-tpl-list { display: flex; flex-direction: column; gap: 8px; }
 .wingguy-tpl {

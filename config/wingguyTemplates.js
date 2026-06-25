@@ -73,6 +73,33 @@ business-development engine. Acknowledge the fractional/independent path as a de
   },
 };
 
+// Reply-engine instructions (Option A / front edge of Slice 2). Pairs with WINGGUY_VOICE (the
+// cached base style block) for the "draft the next message in an ONGOING conversation" path.
+// This is a SINGLE AI call with NO tools — it drafts the best next message in words. It explicitly
+// has NO calendar/Airtable access, so it must never assert specific availability or claim it booked
+// anything; the real multi-tool booking orchestration is the full Slice 2.
+const WINGGUY_REPLY_INSTRUCTIONS = `TASK: draft Guy's next message in an ONGOING LinkedIn conversation.
+
+Read the WHOLE thread, work out where things stand, then write the single best next message —
+short, in Guy's voice, ready to paste. Pick the move that fits what they actually said:
+- Warm / friendly → move it gently forward; suggest a quick Zoom to catch up. You have NO calendar
+  access, so DON'T state specific times or claim a slot — offer loosely ("maybe early next week?")
+  and ask what suits, with an easy out.
+- A question → answer it directly and briefly.
+- An objection / hesitation → reframe it as a fit, warmly; never get defensive or pushy.
+- They proposed or picked a time → acknowledge warmly and say you'll send an invite. Do NOT invent
+  calendar details or claim you've already booked it.
+- Going quiet / stalling → a light, friendly nudge, maybe gentle scarcity; never heavy.
+- A cancellation / mix-up / tech glitch → lead with grace and humanity.
+
+NON-NEGOTIABLE RULES (same as Guy's voice):
+- GROUND IN THE THREAD. Use only what's actually been said; never invent facts, and never claim an
+  action (booked, sent, attached) you can't actually do here.
+- KEEP THE SOFTENER on anything proactive (a call suggestion, a nudge) — always leave an easy out.
+- MATCH THEIR REGISTER — breezy with breezy, more measured with formal.
+
+OUTPUT: return ONLY the message text, ready to paste. No preamble, no quotes, no explanation.`;
+
 function listTemplates() {
   return Object.values(TEMPLATES).map(({ id, label, useWhen }) => ({ id, label, useWhen }));
 }
@@ -81,4 +108,4 @@ function getTemplate(id) {
   return TEMPLATES[id] || null;
 }
 
-module.exports = { WINGGUY_VOICE, TEMPLATES, listTemplates, getTemplate };
+module.exports = { WINGGUY_VOICE, WINGGUY_REPLY_INSTRUCTIONS, TEMPLATES, listTemplates, getTemplate };

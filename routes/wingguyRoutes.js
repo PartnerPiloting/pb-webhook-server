@@ -23,7 +23,7 @@ const express = require('express');
 const { createLogger } = require('../utils/contextLogger');
 const { authenticateUserWithTestMode } = require('../middleware/authMiddleware');
 const { getAnthropicClient, isAnthropicConfigured } = require('../config/anthropicClient');
-const { WINGGUY_VOICE, listTemplates, getTemplate } = require('../config/wingguyTemplates');
+const { WINGGUY_VOICE, WINGGUY_REPLY_INSTRUCTIONS, listTemplates, getTemplate } = require('../config/wingguyTemplates');
 
 const logger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'wingguy' });
 
@@ -82,6 +82,23 @@ function buildProfileBlock(profile = {}) {
     add('Their connection-request note', profile.connectionMessage);
   }
   return lines.join('\n');
+}
+
+const CONVO_MAX_MESSAGES = 60;   // most recent N messages (bounds tokens on long threads)
+const CONVO_CHAR_CAP = 8000;
+
+// Format the scraped thread as "Sender: text" lines, oldest→newest, labelling who the prospect is
+// so the model knows which side is Guy. Accepts an array of { sender, text }.
+function buildConversationBlock(conversation = [], prospectName = '') {
+  if (!Array.isArray(conversation)) return '';
+  const msgs = conversation
+    .map((m) => ({ sender: String((m && m.sender) || '').trim(), text: String((m && m.text) || '').trim() }))
+    .filter((m) => m.text);
+  if (!msgs.length) return '';
+  const recent = msgs.slice(-CONVO_MAX_MESSAGES);
+  const body = recent.map((m) => `${m.sender || 'Unknown'}: ${m.text}`).join('\n').slice(-CONVO_CHAR_CAP);
+  const who = prospectName ? `\n(The other person is ${prospectName}; the other sender is Guy — draft Guy's next message.)` : '';
+  return `${body}${who}`;
 }
 
 module.exports = function mountWingguy(app) {
@@ -167,6 +184,62 @@ module.exports = function mountWingguy(app) {
       return res.json({ ok: true, draft, model: WINGGUY_DRAFT_MODEL_ID, templateId: template.id });
     } catch (e) {
       logger.error(`[Wingguy] draft-thanks failed: ${e.message}`);
+      return res.status(500).json({ ok: false, error: e.message });
+    }
+  });
+
+  // Draft the next message in an ONGOING conversation (Option A — the reply engine, single AI call,
+  // NO tools). The extension decides thanks-vs-reply in code and routes follow-ons here.
+  router.post('/draft-reply', async (req, res) => {
+    if (!ENABLED) {
+      return res.status(503).json({ ok: false, error: 'Wingguy drafting is disabled.' });
+    }
+    if (!isAnthropicConfigured()) {
+      return res.status(500).json({ ok: false, error: 'Claude (ANTHROPIC_API_KEY) is not configured.' });
+    }
+
+    const { profile, conversation } = req.body || {};
+    const profileBlock = buildProfileBlock(profile);
+    const convoBlock = buildConversationBlock(conversation, profile && profile.name);
+    if (!convoBlock) {
+      return res.status(400).json({ ok: false, error: 'No conversation supplied to reply to.' });
+    }
+
+    try {
+      const client = getAnthropicClient();
+      const userContent =
+        `${profileBlock ? `PROFILE:\n${profileBlock}\n\n` : ''}` +
+        `CONVERSATION SO FAR (oldest first):\n${convoBlock}\n\n` +
+        `Draft Guy's next message.`;
+
+      const response = await client.messages.create({
+        model: WINGGUY_DRAFT_MODEL_ID,
+        max_tokens: DRAFT_MAX_TOKENS,
+        system: [
+          { type: 'text', text: WINGGUY_VOICE, cache_control: { type: 'ephemeral' } },
+          { type: 'text', text: WINGGUY_REPLY_INSTRUCTIONS },
+        ],
+        messages: [{ role: 'user', content: userContent }],
+      });
+
+      if (response.stop_reason === 'refusal') {
+        return res.status(502).json({ ok: false, error: 'Claude declined the request.' });
+      }
+
+      const draft = (response.content || [])
+        .filter((b) => b.type === 'text')
+        .map((b) => b.text)
+        .join('')
+        .trim();
+
+      if (!draft) {
+        return res.status(502).json({ ok: false, error: 'Claude returned an empty draft.' });
+      }
+
+      logger.info(`[Wingguy] drafted reply for ${req.client.clientId} (${draft.length} chars, ${(conversation || []).length} msgs in)`);
+      return res.json({ ok: true, draft, model: WINGGUY_DRAFT_MODEL_ID, mode: 'reply' });
+    } catch (e) {
+      logger.error(`[Wingguy] draft-reply failed: ${e.message}`);
       return res.status(500).json({ ok: false, error: e.message });
     }
   });

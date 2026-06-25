@@ -137,6 +137,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       .catch(error => sendResponse({ success: false, error: error.message }));
     return true;
   }
+
+  // Wingguy: draft the next message in an ongoing conversation
+  if (message.type === 'WINGGUY_DRAFT_REPLY') {
+    wingguyDraftReply(message.profile, message.conversation)
+      .then(data => sendResponse({ success: true, data }))
+      .catch(error => sendResponse({ success: false, error: error.message }));
+    return true;
+  }
 });
 
 // Helper: Get Wingguy API base URL
@@ -176,6 +184,24 @@ async function wingguyDraftThanks(templateId, profile) {
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
     throw new Error(errorData.error || `Draft failed: ${response.status}`);
+  }
+  return response.json();
+}
+
+// Wingguy: POST /api/wingguy/draft-reply
+async function wingguyDraftReply(profile, conversation) {
+  const apiBase = await getWingguyApiBase();
+  const headers = await getAuthHeaders();
+
+  const response = await fetch(`${apiBase}/draft-reply`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ profile, conversation })
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || `Reply draft failed: ${response.status}`);
   }
   return response.json();
 }
