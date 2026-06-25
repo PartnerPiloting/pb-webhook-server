@@ -2347,6 +2347,17 @@ the full Slice 2 with its own design session). All additive, day-to-day untouche
   DOM read (profile + open-thread scrape) + the composer insert remain for Guy to prove on a real page.**
 - **Earlier same effort:** robust profile-name read (page → title → `/in/` slug fallback) + launcher moved to mid-right
   so it stops covering the legacy "Save to Portal" button.
+- **★ TEMPLATES VOICE-TUNED TO GUY'S REAL AI BLAZE (2026-06-25, from a real A/B — Josh Seaman):** Guy compared
+  Wingguy's `tks` draft vs his actual AI Blaze `\tks` and **preferred AI Blaze** (more natural + humble; Wingguy's was
+  slightly self-referential — "the network I'm building" — and asserted a trait not on the page). Fix = **few-shot
+  exemplars**: each template (`tks`, `frac`) now carries its **exact beat-structure + sign-off + a WORKED EXAMPLE of
+  Guy's real output** (Josh `\tks`, Mary Anne `\frac`), and the shared VOICE block leans **plain + GIVING** (value on
+  them, hook must be INTERPRETED not a quoted tagline). Sign-offs corrected: `tks` → "Talk soon / I know a (Guy)",
+  `frac` → "(I know a) Guy". **✓ Proven live:** re-ran Josh `\tks` → output now ≈ his AI Blaze version (same opener,
+  interpreted hook, giving line, two-way-collaboration ask, sign-off). **Few-shot worked example = the single biggest
+  voice lever; pasting Guy's literal shortcode text over the examples is the final close (the Slice 3 migration done
+  early for these two).** Lives in `config/wingguyTemplates.js`. Open nit: Wingguy's hook ran one clause longer than
+  AI Blaze's tighter version.
 - **★ THIN-PROFILE SCRAPE HARDENED (2026-06-25, from a real miss — Mary Anne Lamssies):** symptom = generic draft +
   "couldn't read About"; root cause = LinkedIn **lazy-loads** profile sections (About/Experience absent until scrolled)
   AND structured selectors missed → the model drafted **blind** (the AI Blaze `\frac` only looked better because it had
