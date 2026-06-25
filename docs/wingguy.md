@@ -2328,6 +2328,30 @@ onboard client #2; distribution → **Chrome Web Store "Unlisted"**.
 
 ## ▶ You are here / next pick-up
 
+**★ SESSION CLOSE 2026-06-25 (big build+debug session) — SLICE 1 DONE & PROVEN LIVE ON GUY'S REAL LINKEDIN; both real
+templates installed; insert solved. NEXT CHAT = Slice 2 DESIGN session.** Read the dated bullets below for detail.
+Headlines of where things stand right now:
+- **Slice 1 = DONE and working end-to-end on Guy's real LinkedIn** (fork extension → read profile/thread → pick campaign
+  → Sonnet draft on Guy's key → **insert into LinkedIn's box → Guy sends**). The insert was the hard slog (LinkedIn's new
+  messaging composer is in shadow/React DOM); solved via the **AI-Blaze "insert at the cursor" model** (see the insert
+  bullet below). `\tks` and `\frac` now hold **Guy's FULL literal AI Blaze prompts** (not reconstructions) in
+  `config/wingguyTemplates.js` — `\tks` = 3 base messages (Employee/Consultant-Owner/Both) + classification + style
+  rules; `\frac` = the fractional **follow-up-after-warm-reply** (4 beats), so the panel now feeds the open thread to
+  `draft-thanks` too. All on `main`, owner-gated to Guy.
+- **"Read the conversation → then decide what to show" mechanic is LIVE but SIMPLE** (confirmed to Guy): on open the
+  panel scrapes the thread + `classifyMode()` shows thanks (no thread) vs reply (thread present); the campaign pick
+  inside thanks is human-by-design. **Caveat to verify next session:** thread-reading can miss on LinkedIn's new
+  shadow-DOM build (same quirk that hid the composer) → if the panel shows "thanks" while a real conversation is open,
+  fix `scrapeOpenThread` selectors. The reply path DID read a full thread live (good Nicola Richards draft), so it works.
+- **★ NEXT = Slice 2 DESIGN session (its own chat).** Guy's worry (are we cornering ourselves?) was addressed: NO — the
+  extension shell + read-thread + draft→approve→insert→send loop + auth/backend seam all carry over; Slice 2 adds a
+  **tool-using agent** alongside (decide the move; if booking → check calendar/create invite/reconcile Airtable →
+  confirm). The **user-facing panel keeps the same shape** every situation: *situation → proposed move + draft → approve
+  → insert → send* (booking just adds a "do it?" button + a "working…done" step). The booking intelligence is already
+  PROVEN in Guy's Claude chat (Tony/Ranya examples = the design brief). **De-risk plan agreed: start Slice 2 with a small
+  ONE-TOOL calendar spike** ("they picked a time → check calendar → offer to book") before the full build. Design it
+  first, then build.
+
 **As of 2026-06-25 — ★ OPTION A BUILT: thread-aware auto-routing + reply engine (front edge of Slice 2; on `main`,
 owner-gated; backend proven live, awaiting Guy's live LinkedIn test).** Built on the Slice 1 base when Guy asked for
 "read the conversation and work out whether it's a thanks-for-connecting or a follow-on." Deliberately the SMALL half
