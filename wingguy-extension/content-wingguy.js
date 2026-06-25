@@ -332,8 +332,16 @@
 
   // The top-level view: a mode switch (auto-detected, human-overridable) + the body for that mode.
   function renderRoute(profile, thread, mode) {
-    const degradedNote = profile.nameSource && profile.nameSource !== 'page'
-      ? `<div class="wingguy-warn">Read the name from the ${profile.nameSource === 'url' ? 'profile URL' : 'page title'} (couldn't find it in the page) — headline/About may be missing. Still safe to draft.</div>`
+    // Warn ONLY when the page genuinely came through thin (little/no content to ground on) — NOT just
+    // because the name fell back to the tab title, which is harmless (the title name is correct, and
+    // the raw page text carries the substance). The old warning fired on name-source and cried wolf.
+    const pageLen = (profile.pageText || '').length;
+    const thin = !profile.about && pageLen < 400;
+    if (profile.nameSource && profile.nameSource !== 'page') {
+      console.log(`[Wingguy] name from ${profile.nameSource} (DOM h1 not matched); page content chars=${pageLen}`);
+    }
+    const degradedNote = thin
+      ? `<div class="wingguy-warn">Couldn't read much from this page (${pageLen} chars) — the draft will be generic. Try scrolling the profile to load it, fully open it, or confirm it's a person's /in/ page.</div>`
       : '';
 
     const tab = (m, label) =>
