@@ -2353,8 +2353,11 @@ the full Slice 2 with its own design session). All additive, day-to-day untouche
   exemplars**: each template (`tks`, `frac`) now carries its **exact beat-structure + sign-off + a WORKED EXAMPLE of
   Guy's real output** (Josh `\tks`, Mary Anne `\frac`), and the shared VOICE block leans **plain + GIVING** (value on
   them, hook must be INTERPRETED not a quoted tagline). Sign-offs corrected: `tks` → "Talk soon / I know a (Guy)",
-  `frac` → "(I know a) Guy". **✓ Proven live:** re-ran Josh `\tks` → output now ≈ his AI Blaze version (same opener,
-  interpreted hook, giving line, two-way-collaboration ask, sign-off). **Few-shot worked example = the single biggest
+  `frac` → "(I know a) Guy". **✓ Proven live (BOTH):** re-ran Josh `\tks` → ≈ his AI Blaze version (same opener,
+  interpreted hook, giving line, two-way-collaboration ask, sign-off); and Mary Anne `\frac` → grounded interpreted
+  hook + network-vision + "(I know a) Guy", and it correctly opened **"Great to connect"** (the cold first-touch
+  opener) rather than the example's reply-style "Glad that landed" — i.e. the structure guidance overrode the example
+  where they conflicted. (If Guy ever wants the "Glad that landed" reply variant, that's the Reply-mode job, not cold.) **Few-shot worked example = the single biggest
   voice lever; pasting Guy's literal shortcode text over the examples is the final close (the Slice 3 migration done
   early for these two).** Lives in `config/wingguyTemplates.js`. Open nit: Wingguy's hook ran one clause longer than
   AI Blaze's tighter version.
