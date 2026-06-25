@@ -210,6 +210,36 @@
     return !!(el && (el.offsetParent !== null || el.getClientRects().length));
   }
 
+  // AI-Blaze-style insert: don't hunt for the box — insert wherever the user's CURSOR is. We track the
+  // last editable they focused (works across open shadow roots), and the Insert button is set not to
+  // steal focus, so the message box stays focused when they click it.
+  let lastFocusedEditable = null;
+  function insideWingguy(el) { return !!(el && el.closest && el.closest('#wingguy-panel')); }
+  function isEditableEl(el) {
+    if (!el) return false;
+    const tag = el.tagName;
+    return tag === 'TEXTAREA' || tag === 'INPUT' || el.isContentEditable === true ||
+      (el.getAttribute && el.getAttribute('role') === 'textbox');
+  }
+  // The real focused element, descending into open shadow roots (activeElement only gives the host).
+  function deepActiveElement() {
+    let el = document.activeElement;
+    while (el && el.shadowRoot && el.shadowRoot.activeElement) el = el.shadowRoot.activeElement;
+    return el;
+  }
+  function trackFocus() {
+    const el = deepActiveElement();
+    if (isEditableEl(el) && !insideWingguy(el)) lastFocusedEditable = el;
+  }
+  function resolveInsertTarget() {
+    const active = deepActiveElement();
+    if (isEditableEl(active) && !insideWingguy(active)) return active;
+    if (lastFocusedEditable && isEditableEl(lastFocusedEditable) && !insideWingguy(lastFocusedEditable)) {
+      return lastFocusedEditable;
+    }
+    return findComposer(); // last resort (older surfaces where we can still locate it)
+  }
+
   // Deep query that pierces OPEN shadow roots (LinkedIn's newer messaging build hides the composer in
   // a shadow root, where a plain document.querySelectorAll can't see it). Closed shadow roots remain
   // unreachable by any extension — those fall back to Copy.
@@ -292,52 +322,48 @@
     try { console.log('[Wingguy] composer diagnostic:', collectEditables()); } catch (_) {}
   }
 
-  // Insert preserving line breaks. If the composer isn't mounted yet (collapsed), click the trigger to
-  // open it first. A <textarea>/<input> takes its value via the native setter; a contenteditable goes
-  // through the native input pipeline (execCommand insertText) so LinkedIn's editor observes it.
+  // Insert at the user's CURSOR (AI-Blaze style): target the focused editable (the box they clicked
+  // into), and use the browser's native input pipeline so LinkedIn's editor observes it and keeps the
+  // line breaks. The Insert button is set not to steal focus (see renderDraftStep), so the message box
+  // stays focused when clicked.
   async function insertIntoComposer(text) {
-    let composer = findComposer();
-    if (!composer) {
-      const trigger = findComposeTrigger();
-      if (trigger) {
-        trigger.click();
-        await sleep(450);
-        composer = findComposer();
-      }
-    }
-    if (!composer) { logEditableDiagnostics(); return { ok: false, reason: 'no-composer' }; }
-
     const normalized = String(text).replace(/\r\n/g, '\n').trim();
-    composer.focus();
+    let target = resolveInsertTarget();
+    if (!target) { logEditableDiagnostics(); return { ok: false, reason: 'no-focus' }; }
 
-    const tag = composer.tagName;
+    target.focus();
+    const tag = target.tagName;
+
+    // <textarea>/<input>: insert at the caret via setRangeText (React observes the input event).
     if (tag === 'TEXTAREA' || tag === 'INPUT') {
-      const proto = tag === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
-      const setter = Object.getOwnPropertyDescriptor(proto, 'value').set;
-      setter.call(composer, normalized);
-      composer.dispatchEvent(new Event('input', { bubbles: true }));
+      try {
+        const s = target.selectionStart != null ? target.selectionStart : target.value.length;
+        const e = target.selectionEnd != null ? target.selectionEnd : s;
+        target.setRangeText(normalized, s, e, 'end');
+      } catch (_) {
+        const proto = tag === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+        Object.getOwnPropertyDescriptor(proto, 'value').set.call(target, normalized);
+      }
+      target.dispatchEvent(new Event('input', { bubbles: true }));
       return { ok: true };
     }
 
-    try {
-      const sel = window.getSelection();
-      sel.removeAllRanges();
-      const range = document.createRange();
-      range.selectNodeContents(composer);
-      sel.addRange(range);
-      const ok = document.execCommand('insertText', false, normalized);
-      if (!ok) throw new Error('execCommand insertText returned false');
-    } catch (_) {
-      const html = normalized.split('\n').map((l) => `<p>${l ? escapeHtml(l) : '<br>'}</p>`).join('');
-      composer.innerHTML = html;
+    // contenteditable: insert at the caret (no select-all — like AI Blaze replacing its trigger).
+    let inserted = false;
+    try { inserted = document.execCommand('insertText', false, normalized); } catch (_) {}
+    if (!inserted) {
+      try {
+        const html = normalized.split('\n').map((l) => `<p>${l ? escapeHtml(l) : '<br>'}</p>`).join('');
+        target.innerHTML = html;
+      } catch (_) {}
     }
-    composer.dispatchEvent(new InputEvent('input', { bubbles: true, cancelable: true, inputType: 'insertText', data: normalized }));
+    target.dispatchEvent(new InputEvent('input', { bubbles: true, cancelable: true, inputType: 'insertText', data: normalized }));
 
-    // VERIFY it actually landed — don't claim success if the editor ignored us.
-    const after = (composer.value != null ? composer.value : composer.innerText) || '';
+    // VERIFY it actually landed.
+    const after = (target.value != null ? target.value : target.innerText) || '';
     const probe = normalized.slice(0, 15);
     if (probe && !after.includes(probe)) {
-      console.log('[Wingguy] insert did not take. Target was:', describeEl(composer));
+      console.log('[Wingguy] insert did not take. Target was:', describeEl(target));
       logEditableDiagnostics();
       return { ok: false, reason: 'verify-failed' };
     }
@@ -587,7 +613,10 @@
     const statusEl = document.getElementById('wingguy-status');
     const getText = () => document.getElementById('wingguy-draft').value;
 
-    document.getElementById('wingguy-insert').addEventListener('click', async () => {
+    const insertBtn = document.getElementById('wingguy-insert');
+    // Don't let the button steal focus from the message box (so the cursor stays where it belongs).
+    insertBtn.addEventListener('mousedown', (e) => e.preventDefault());
+    insertBtn.addEventListener('click', async () => {
       const res = await insertIntoComposer(getText());
       if (res.ok) {
         statusEl.textContent = '✓ Inserted — review and click send.';
@@ -595,8 +624,8 @@
         return;
       }
       const msg = res.reason === 'verify-failed'
-        ? 'Found the box but the text didn\'t take. Click inside the message box first (cursor blinking in it), then Insert — or send me the diagnostic below. Copy works meanwhile.'
-        : 'Couldn\'t find the message box. Click into "Write a message…" to open it, then Insert — or send me the diagnostic below. Copy works meanwhile.';
+        ? 'Found the box but the text didn\'t take. Click inside the message box (cursor blinking in it), then Insert — or use Copy. (Send me the diagnostic below if it persists.)'
+        : 'Click inside LinkedIn\'s message box first (so the cursor is blinking in it), then click Insert — or use Copy. (Send me the diagnostic below if it persists.)';
       statusEl.className = 'wingguy-status wingguy-warn-inline';
       statusEl.innerHTML = `${escapeHtml(msg)}<br><button id="wingguy-diag" class="wingguy-secondary" style="margin-top:6px;">📋 Copy diagnostic for Wingguy</button>`;
       document.getElementById('wingguy-diag').addEventListener('click', async (ev) => {
@@ -647,6 +676,9 @@
   function init() {
     refresh();
     watchSpaNavigation();
+    // Remember the last editable the user focused (so Insert can target the message box even though
+    // they then click the Wingguy panel). focusin is composed, so it fires for open shadow roots too.
+    document.addEventListener('focusin', trackFocus, true);
     console.log('[Wingguy] content script ready');
   }
 
