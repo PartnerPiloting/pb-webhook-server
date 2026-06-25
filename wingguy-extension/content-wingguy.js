@@ -344,6 +344,25 @@
     return { ok: true };
   }
 
+  // Copy the draft to the clipboard as BOTH plain text and HTML (one <div> per line). Pasting the
+  // HTML flavour into LinkedIn's composer preserves the line breaks that a plain-text paste flattens.
+  async function copyDraft(text) {
+    const normalized = String(text).replace(/\r\n/g, '\n').trim();
+    const html = normalized.split('\n')
+      .map((l) => (l.trim() ? `<div>${escapeHtml(l)}</div>` : '<div><br></div>'))
+      .join('');
+    try {
+      if (window.ClipboardItem && navigator.clipboard && navigator.clipboard.write) {
+        await navigator.clipboard.write([new ClipboardItem({
+          'text/plain': new Blob([normalized], { type: 'text/plain' }),
+          'text/html': new Blob([html], { type: 'text/html' }),
+        })]);
+        return true;
+      }
+    } catch (_) { /* fall through to plain text */ }
+    try { await navigator.clipboard.writeText(normalized); return true; } catch (_) { return false; }
+  }
+
   // ---- background bridge ----------------------------------------------------
   function bg(message) {
     return new Promise((resolve, reject) => {
@@ -593,11 +612,11 @@
     });
 
     document.getElementById('wingguy-copy').addEventListener('click', async () => {
-      try {
-        await navigator.clipboard.writeText(getText());
-        statusEl.textContent = '✓ Copied.';
+      const ok = await copyDraft(getText());
+      if (ok) {
+        statusEl.textContent = '✓ Copied — click in the message box and paste (Ctrl+V). Line breaks preserved.';
         statusEl.className = 'wingguy-status wingguy-ok';
-      } catch (_) {
+      } else {
         statusEl.textContent = 'Copy blocked by the browser — select the text and copy manually.';
         statusEl.className = 'wingguy-status wingguy-warn-inline';
       }
