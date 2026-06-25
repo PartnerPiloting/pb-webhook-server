@@ -255,6 +255,27 @@
     } catch (_) { /* ignore */ }
   }
 
+  // Human-friendly diagnostic (copied to clipboard from the panel) so we can identify the exact box
+  // without the user opening devtools.
+  function collectEditables() {
+    const els = Array.from(document.querySelectorAll('[contenteditable], textarea, input, [role="textbox"]'));
+    return els.slice(0, 60).map((el) => ({
+      tag: el.tagName,
+      contenteditable: el.getAttribute('contenteditable'),
+      role: el.getAttribute('role'),
+      ariaLabel: el.getAttribute('aria-label'),
+      placeholder: el.getAttribute('placeholder'),
+      cls: String(el.className || '').slice(0, 140),
+      visible: isVisible(el),
+      inMessageArea: (() => { try { return isMessageEditable(el); } catch (_) { return false; } })(),
+    }));
+  }
+  function buildDiagnosticText() {
+    return 'WINGGUY DIAGNOSTIC\n' + JSON.stringify(
+      { path: location.pathname, editables: collectEditables() }, null, 2
+    );
+  }
+
   // Insert preserving line breaks. A <textarea> takes its value via the native setter (so React sees
   // it). A contenteditable goes through the native input pipeline (focus → select-all →
   // execCommand insertText), which LinkedIn's React/Draft editor observes (Send enables) and which
@@ -529,13 +550,23 @@
       if (res.ok) {
         statusEl.textContent = '✓ Inserted — review and click send.';
         statusEl.className = 'wingguy-status wingguy-ok';
-      } else if (res.reason === 'verify-failed') {
-        statusEl.textContent = 'Found the box but the text didn\'t take — click inside the message box first (so the cursor is in it), then Insert. If it still fails: F12 → Console, send me the "[Wingguy]" lines. Copy works meanwhile.';
-        statusEl.className = 'wingguy-status wingguy-warn-inline';
-      } else {
-        statusEl.textContent = 'Couldn\'t find the message box — click into "Write a message…" to open it, then Insert. If it\'s already open: F12 → Console, send me the "[Wingguy]" lines. Copy works meanwhile.';
-        statusEl.className = 'wingguy-status wingguy-warn-inline';
+        return;
       }
+      const msg = res.reason === 'verify-failed'
+        ? 'Found the box but the text didn\'t take. Click inside the message box first (cursor blinking in it), then Insert — or send me the diagnostic below. Copy works meanwhile.'
+        : 'Couldn\'t find the message box. Click into "Write a message…" to open it, then Insert — or send me the diagnostic below. Copy works meanwhile.';
+      statusEl.className = 'wingguy-status wingguy-warn-inline';
+      statusEl.innerHTML = `${escapeHtml(msg)}<br><button id="wingguy-diag" class="wingguy-secondary" style="margin-top:6px;">📋 Copy diagnostic for Wingguy</button>`;
+      document.getElementById('wingguy-diag').addEventListener('click', async (ev) => {
+        const btn = ev.currentTarget;
+        try {
+          await navigator.clipboard.writeText(buildDiagnosticText());
+          btn.textContent = '✓ Copied — now paste it to me in the chat';
+        } catch (_) {
+          console.log(buildDiagnosticText());
+          btn.textContent = 'Clipboard blocked — see F12 → Console instead';
+        }
+      });
     });
 
     document.getElementById('wingguy-copy').addEventListener('click', async () => {
