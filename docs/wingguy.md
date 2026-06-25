@@ -2347,6 +2347,17 @@ the full Slice 2 with its own design session). All additive, day-to-day untouche
   DOM read (profile + open-thread scrape) + the composer insert remain for Guy to prove on a real page.**
 - **Earlier same effort:** robust profile-name read (page → title → `/in/` slug fallback) + launcher moved to mid-right
   so it stops covering the legacy "Save to Portal" button.
+- **★ THIN-PROFILE SCRAPE HARDENED (2026-06-25, from a real miss — Mary Anne Lamssies):** symptom = generic draft +
+  "couldn't read About"; root cause = LinkedIn **lazy-loads** profile sections (About/Experience absent until scrolled)
+  AND structured selectors missed → the model drafted **blind** (the AI Blaze `\frac` only looked better because it had
+  the data; same model + same text ≈ same quality). Fix = **(1)** `autoScrollToLoad()` steps down the page to force lazy
+  sections in, then restores scroll; **(2)** capture `main.innerText` as a **raw `pageText` grounding fallback** — the
+  backend includes it (bounded) when structured About is thin, and the prompt **mines it for the hook + ignores
+  nav/boilerplate**; **(3)** prompt forbids meta "Note:" commentary + `stripMetaCommentary()` backstop; sign-off defaults
+  to **"(I know a) Guy"**. **✓ Proven live:** raw-pageText-only (boilerplate mixed in) → a specific, grounded hook
+  rivalling AI Blaze, no leaked note. Open: does the extension's scroll actually surface About on Guy's real pages (his
+  live retest) — if not, lock exact selectors from his DOM. **Design note for future: raw page text is a legitimate,
+  robust grounding source vs LinkedIn's class churn — keep it.**
 
 **As of 2026-06-24 (session 2) — ★ SLICE 1 BUILT END-TO-END (fork + personalised thanks-for-connecting; on `main`,
 owner-gated to Guy; awaiting Guy's live LinkedIn test).** First Wingguy *code*. All additive, day-to-day untouched.
