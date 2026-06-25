@@ -219,22 +219,26 @@
       '[contenteditable]:not([contenteditable="false"]), textarea, [role="textbox"]'
     )).filter(isVisible);
   }
+  function describeEl(el) {
+    return {
+      tag: el.tagName, contenteditable: el.getAttribute('contenteditable'),
+      role: el.getAttribute('role'), ariaLabel: el.getAttribute('aria-label'),
+      placeholder: el.getAttribute('placeholder'), cls: String(el.className || '').slice(0, 100),
+    };
+  }
+  // Only ever target the MESSAGE area — matching a stray page field caused a silent wrong insert.
+  function isMessageEditable(el) {
+    const al = (el.getAttribute('aria-label') || '').toLowerCase();
+    const ph = (el.getAttribute('placeholder') || '').toLowerCase();
+    return !!el.closest('.msg-form, .msg-overlay-conversation-bubble, .msg-overlay-bubble, .msg-convo-wrapper, .msgs-thread, .msg-overlay, .scaffold-layout__detail')
+      || /message/.test(al) || /message/.test(ph);
+  }
   function findComposer() {
     const all = editableCandidates();
-    if (!all.length) return null;
-    const score = (el) => {
-      let s = 0;
-      const al = (el.getAttribute('aria-label') || '').toLowerCase();
-      const ph = (el.getAttribute('placeholder') || '').toLowerCase();
-      if (el.closest('.msg-form, .msg-overlay-conversation-bubble, .msg-overlay-bubble, .msg-convo-wrapper, .msgs-thread, .scaffold-layout__list-detail')) s += 100;
-      if (/message/.test(al) || /message/.test(ph)) s += 50;
-      if (el.getAttribute('role') === 'textbox') s += 10;
-      if (el.hasAttribute('contenteditable')) s += 5;
-      if (el.closest('header, nav, .search-global-typeahead, .global-nav')) s -= 200;
-      return s;
-    };
-    all.sort((a, b) => score(b) - score(a));
-    return score(all[0]) > -100 ? all[0] : null;
+    const scoped = all.filter(isMessageEditable);
+    const chosen = scoped[scoped.length - 1] || null;  // most-recently-opened thread
+    console.log('[Wingguy] composer search:', { totalEditable: all.length, inMessageArea: scoped.length, chosen: chosen ? describeEl(chosen) : null });
+    return chosen;
   }
 
   // Diagnostic: dump what editable elements exist so we can lock the selector if detection still misses.
@@ -284,6 +288,15 @@
       composer.innerHTML = html;
     }
     composer.dispatchEvent(new InputEvent('input', { bubbles: true, cancelable: true, inputType: 'insertText', data: normalized }));
+
+    // VERIFY it actually landed — don't claim success if the editor ignored us.
+    const after = (composer.value != null ? composer.value : composer.innerText) || '';
+    const probe = normalized.slice(0, 15);
+    if (probe && !after.includes(probe)) {
+      console.log('[Wingguy] insert did not take. Target was:', describeEl(composer));
+      logEditableDiagnostics();
+      return { ok: false, reason: 'verify-failed' };
+    }
     return { ok: true };
   }
 
@@ -516,8 +529,11 @@
       if (res.ok) {
         statusEl.textContent = '✓ Inserted — review and click send.';
         statusEl.className = 'wingguy-status wingguy-ok';
+      } else if (res.reason === 'verify-failed') {
+        statusEl.textContent = 'Found the box but the text didn\'t take — click inside the message box first (so the cursor is in it), then Insert. If it still fails: F12 → Console, send me the "[Wingguy]" lines. Copy works meanwhile.';
+        statusEl.className = 'wingguy-status wingguy-warn-inline';
       } else {
-        statusEl.textContent = 'Couldn\'t find the message box. If it\'s open, press F12 → Console and send me the "[Wingguy] composer not found" line. Meanwhile, use Copy.';
+        statusEl.textContent = 'Couldn\'t find the message box — click into "Write a message…" to open it, then Insert. If it\'s already open: F12 → Console, send me the "[Wingguy]" lines. Copy works meanwhile.';
         statusEl.className = 'wingguy-status wingguy-warn-inline';
       }
     });
