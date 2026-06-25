@@ -2307,7 +2307,10 @@ migration)** → Sonnet draft + prompt-caching → formatting-preserving insert;
 AI call) — that's why it's first.
 
 **Slice 2 — The conversation engine (replies + booking).** The multi-tool agent. **Gets its own design session
-first** (use the Tony + Ranya worked examples as the brief). Read the WHOLE thread → decide the next move → execute:
+first** (use the Tony + Ranya worked examples as the brief). **[PARTIAL — "Option A" pulled forward 2026-06-25: the
+SMALL half (read the open thread → code-classify thanks-vs-reply → single-call contextual reply, NO tools) is BUILT +
+proven live; see ▶ You are here. The BIG half — move-judgment + booking/calendar/Airtable multi-tool orchestration —
+is still the design-session work below.]** Read the WHOLE thread → decide the next move → execute:
 warm reply → offer Zoom times; question/objection → answer/reframe; picks a time → calendar clash-check + create
 invite (Notion spec) + Airtable email-reconcile + confirm; reschedule gracefully. Drafts shown first; human sends.
 
@@ -2324,6 +2327,26 @@ the **~3,000/mo cap** backstop; the **$50 flat + 500-action trial** via Stripe. 
 onboard client #2; distribution → **Chrome Web Store "Unlisted"**.
 
 ## ▶ You are here / next pick-up
+
+**As of 2026-06-25 — ★ OPTION A BUILT: thread-aware auto-routing + reply engine (front edge of Slice 2; on `main`,
+owner-gated; backend proven live, awaiting Guy's live LinkedIn test).** Built on the Slice 1 base when Guy asked for
+"read the conversation and work out whether it's a thanks-for-connecting or a follow-on." Deliberately the SMALL half
+of Slice 2 — read + classify + a single-call contextual reply, **NO tools** (no calendar/Airtable/booking; that stays
+the full Slice 2 with its own design session). All additive, day-to-day untouched.
+- **Auto-routing in CODE (deterministic, no AI):** the panel reads the open LinkedIn thread (`scrapeOpenThread()` —
+  labels who-said-what via `.msg-s-message-group__name` carried across grouped bubbles) and `classifyMode()` routes:
+  real thread → **reply**, else → **thanks-for-connecting**. A **human-overridable mode switch** sits at the top of the
+  panel (auto-detect can be wrong → Guy flips it). Draft step generalised (regenerate/back callbacks), shared by both.
+- **Backend `POST /api/wingguy/draft-reply`** (single Sonnet call, prompt-cached `WINGGUY_VOICE` + new
+  `WINGGUY_REPLY_INSTRUCTIONS`): reads the whole thread + profile, picks the move (warm / question / objection /
+  time-picked / stall / cancellation), drafts the next message. **Honest boundary baked into the prompt:** no calendar
+  access → never asserts specific availability or claims it booked anything; offers loosely + leaves an easy out.
+- **✓ PROVEN LIVE (Render one-off job, real Claude, 2026-06-25):** fed the "Tony / allergic-to-pitches" thread → got a
+  register-matched, objection-defusing, loosely-offered-Zoom reply with the softener intact (`mode:reply`,
+  `claude-sonnet-4-6`). The thanks path (`draft-thanks`) was proven the same way (Jane/fractional). **Only the LinkedIn
+  DOM read (profile + open-thread scrape) + the composer insert remain for Guy to prove on a real page.**
+- **Earlier same effort:** robust profile-name read (page → title → `/in/` slug fallback) + launcher moved to mid-right
+  so it stops covering the legacy "Save to Portal" button.
 
 **As of 2026-06-24 (session 2) — ★ SLICE 1 BUILT END-TO-END (fork + personalised thanks-for-connecting; on `main`,
 owner-gated to Guy; awaiting Guy's live LinkedIn test).** First Wingguy *code*. All additive, day-to-day untouched.
