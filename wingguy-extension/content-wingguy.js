@@ -210,14 +210,27 @@
     return !!(el && (el.offsetParent !== null || el.getClientRects().length));
   }
 
-  // Find the open message box. LinkedIn's markup varies a lot (profile overlay vs /messaging pane vs
-  // new layouts) and the editable may be contenteditable="true" / "plaintext-only" / "" OR a <textarea>.
-  // So: gather ALL editable candidates, keep only VISIBLE ones, and SCORE them — strongly prefer the
-  // message form, penalise the global search/nav — then take the best.
+  // Deep query that pierces OPEN shadow roots (LinkedIn's newer messaging build hides the composer in
+  // a shadow root, where a plain document.querySelectorAll can't see it). Closed shadow roots remain
+  // unreachable by any extension — those fall back to Copy.
+  function deepQueryAll(selector, root = document) {
+    const out = [];
+    const visit = (node) => {
+      let matches = [];
+      try { matches = node.querySelectorAll ? Array.from(node.querySelectorAll(selector)) : []; } catch (_) {}
+      for (const m of matches) out.push(m);
+      let all = [];
+      try { all = node.querySelectorAll ? Array.from(node.querySelectorAll('*')) : []; } catch (_) {}
+      for (const el of all) { if (el.shadowRoot) visit(el.shadowRoot); }
+    };
+    visit(root);
+    return out;
+  }
+
+  // All editable candidates (light DOM + open shadow roots), visible, excluding our own panel.
   function editableCandidates() {
-    return Array.from(document.querySelectorAll(
-      '[contenteditable]:not([contenteditable="false"]), textarea, [role="textbox"]'
-    )).filter(isVisible);
+    return deepQueryAll('[contenteditable]:not([contenteditable="false"]), textarea, [role="textbox"]')
+      .filter((el) => isVisible(el) && !el.closest('#wingguy-panel'));
   }
   function describeEl(el) {
     return {
@@ -241,47 +254,57 @@
     return chosen;
   }
 
-  // Diagnostic: dump what editable elements exist so we can lock the selector if detection still misses.
-  function logEditableDiagnostics() {
-    try {
-      const els = Array.from(document.querySelectorAll('[contenteditable], textarea, input, [role="textbox"]'));
-      const info = els.slice(0, 40).map((el, i) => ({
-        i, tag: el.tagName, contenteditable: el.getAttribute('contenteditable'),
-        role: el.getAttribute('role'), ariaLabel: el.getAttribute('aria-label'),
-        placeholder: el.getAttribute('placeholder'),
-        cls: String(el.className || '').slice(0, 90), visible: isVisible(el),
-      }));
-      console.log('[Wingguy] composer not found. Editable elements on page:', info);
-    } catch (_) { /* ignore */ }
+  // A collapsed "Write a message…" affordance (button/div) that, when clicked, mounts the real editable.
+  function findComposeTrigger() {
+    const cands = deepQueryAll('[aria-label], [placeholder]')
+      .filter((el) => isVisible(el) && !el.closest('#wingguy-panel'));
+    for (const el of cands) {
+      const t = (el.getAttribute('aria-label') || el.getAttribute('placeholder') || '').toLowerCase();
+      if (/write a message|message…|message\.\.\./.test(t)) return el;
+    }
+    return null;
   }
 
-  // Human-friendly diagnostic (copied to clipboard from the panel) so we can identify the exact box
-  // without the user opening devtools.
+  // Human-friendly diagnostic (copied to clipboard from the panel), now shadow-DOM aware.
   function collectEditables() {
-    const els = Array.from(document.querySelectorAll('[contenteditable], textarea, input, [role="textbox"]'));
-    return els.slice(0, 60).map((el) => ({
-      tag: el.tagName,
-      contenteditable: el.getAttribute('contenteditable'),
-      role: el.getAttribute('role'),
-      ariaLabel: el.getAttribute('aria-label'),
-      placeholder: el.getAttribute('placeholder'),
-      cls: String(el.className || '').slice(0, 140),
-      visible: isVisible(el),
-      inMessageArea: (() => { try { return isMessageEditable(el); } catch (_) { return false; } })(),
-    }));
+    const els = deepQueryAll('[contenteditable], textarea, input, [role="textbox"]');
+    let shadowHosts = 0;
+    try { shadowHosts = deepQueryAll('*').filter((e) => e.shadowRoot).length; } catch (_) {}
+    return {
+      shadowHosts,
+      trigger: (() => { const t = findComposeTrigger(); return t ? describeEl(t) : null; })(),
+      editables: els.slice(0, 60).map((el) => ({
+        tag: el.tagName,
+        contenteditable: el.getAttribute('contenteditable'),
+        role: el.getAttribute('role'),
+        ariaLabel: el.getAttribute('aria-label'),
+        placeholder: el.getAttribute('placeholder'),
+        cls: String(el.className || '').slice(0, 140),
+        visible: isVisible(el),
+        inMessageArea: (() => { try { return isMessageEditable(el); } catch (_) { return false; } })(),
+      })),
+    };
   }
   function buildDiagnosticText() {
-    return 'WINGGUY DIAGNOSTIC\n' + JSON.stringify(
-      { path: location.pathname, editables: collectEditables() }, null, 2
-    );
+    return 'WINGGUY DIAGNOSTIC\n' + JSON.stringify({ path: location.pathname, ...collectEditables() }, null, 2);
+  }
+  function logEditableDiagnostics() {
+    try { console.log('[Wingguy] composer diagnostic:', collectEditables()); } catch (_) {}
   }
 
-  // Insert preserving line breaks. A <textarea> takes its value via the native setter (so React sees
-  // it). A contenteditable goes through the native input pipeline (focus → select-all →
-  // execCommand insertText), which LinkedIn's React/Draft editor observes (Send enables) and which
-  // keeps newlines; innerHTML+<p> is the last-ditch fallback.
-  function insertIntoComposer(text) {
-    const composer = findComposer();
+  // Insert preserving line breaks. If the composer isn't mounted yet (collapsed), click the trigger to
+  // open it first. A <textarea>/<input> takes its value via the native setter; a contenteditable goes
+  // through the native input pipeline (execCommand insertText) so LinkedIn's editor observes it.
+  async function insertIntoComposer(text) {
+    let composer = findComposer();
+    if (!composer) {
+      const trigger = findComposeTrigger();
+      if (trigger) {
+        trigger.click();
+        await sleep(450);
+        composer = findComposer();
+      }
+    }
     if (!composer) { logEditableDiagnostics(); return { ok: false, reason: 'no-composer' }; }
 
     const normalized = String(text).replace(/\r\n/g, '\n').trim();
@@ -529,7 +552,7 @@
 
   function renderDraftStep(draft, model, { onRegenerate, onBack }) {
     setBody(`
-      <textarea class="wingguy-draft" id="wingguy-draft" rows="9">${escapeHtml(draft)}</textarea>
+      <textarea class="wingguy-draft" id="wingguy-draft" rows="16">${escapeHtml(draft)}</textarea>
       <div class="wingguy-row">
         <button class="wingguy-primary" id="wingguy-insert">Insert into LinkedIn</button>
         <button class="wingguy-secondary" id="wingguy-copy">Copy</button>
@@ -545,8 +568,8 @@
     const statusEl = document.getElementById('wingguy-status');
     const getText = () => document.getElementById('wingguy-draft').value;
 
-    document.getElementById('wingguy-insert').addEventListener('click', () => {
-      const res = insertIntoComposer(getText());
+    document.getElementById('wingguy-insert').addEventListener('click', async () => {
+      const res = await insertIntoComposer(getText());
       if (res.ok) {
         statusEl.textContent = '✓ Inserted — review and click send.';
         statusEl.className = 'wingguy-status wingguy-ok';
