@@ -99,8 +99,13 @@ later). **Wingguy** = Postgres (rules/prompts/accumulated knowledge = the "secon
 Wingguy (how to act) + reads/writes the Portal (the records).
 
 **Two product surfaces, one backend (key non-obvious distinction).**
-- **Extension panel** — fixed-button, no-thinking VA flow; backend calls the AI **on Guy's key (his COGS)**.
-  Clients need no AI account for *this* surface.
+- **Extension panel** — no-thinking VA flow; backend calls the AI **on Guy's key (his COGS)**.
+  Clients need no AI account for *this* surface. **★ UX SHAPE (2026-06-26): an AI-Blaze-style FULL-SCREEN takeover
+  fired by ONE typed trigger (`/wg`/aliases) from inside the LinkedIn composer; auto-detects phase + campaign
+  template; draft shown highlighted → "insert highlight" → human edits → human clicks Send → on Send the whole
+  thread full-replaces to Airtable.** ("fixed-button" is SUPERSEDED — there IS a refine chat box, the free-text
+  watch-spot, kept on-rails by instruction-rules per "Out-of-scope use".) Detail ↓ journal "Extension UX lock
+  (2026-06-26)".
 - **Connector / cockpit** — the **client's own Claude** via **ONE remote MCP connector**; runs on the
   **client's** AI (~$0 to Guy) = the free→paid wedge. This is why "clients need no AI account" is panel-only.
 
@@ -352,8 +357,10 @@ Frontend mirrors it on Vercel: `pb-webhook-server.vercel.app` (prod) /
 - **New work for the panel is small:** (1) content script reads the LinkedIn URL/name off
   the profile and feeds the existing endpoint; (2) add an **"Insert into LinkedIn"** button
   next to the existing Copy button. Copy already exists as the graceful fallback.
-- **Panel type: injected DOM panel** (not Chrome's native side panel) so the **width is
-  adjustable** (drag handle + remembered preference).
+- **Panel type: injected DOM panel** (not Chrome's native side panel). **STATUS: SUPERSEDED 2026-06-26 →
+  FULL-SCREEN takeover (AI-Blaze model), not an adjustable-width side panel** — roomy, not cramped; still an
+  injected overlay but full-bleed + transient (opens on trigger, closes on Insert). See journal "Extension UX
+  lock (2026-06-26)".
 
 ### Panel surfaces (front doors the content script must handle)
 The panel isn't only for LinkedIn *profile* pages. Distinct surfaces, same engine:
@@ -1301,6 +1308,10 @@ Read with **Chrome extension — fork-and-run-two** (above), **AI cost economics
   takes the **full snapshot to the Portal in the background**. **Full-snapshot-REPLACE, never delta-merge** (Guy:
   "copy all + upload = known-right"; delta-merge risks silently missing some). Because YOU open the thread, the
   script mostly reads what your click already loaded → lowest LinkedIn footprint.
+  - **★ CAPTURE TRIGGER = the Send click (pinned 2026-06-26; was the vague "when you work a lead").** The human
+    clicks LinkedIn Send (iron rule intact — never headless); Wingguy detects the send (**button click AND
+    Enter-to-send**), waits a beat for the just-sent message to render, then full-replace snapshots the whole thread
+    to Airtable. Timing slop is harmless *because* it's full-replace, not delta. Kills Guy's current copy-first chore.
 - **Contact details.** Silent reconcile vs the Portal; **speak only on a mismatch** ("differs from the Portal —
   here's what/when") = the existing self-healing identity work given a voice. Match → silence.
 - **Unified profile view = Portal record + the LIVE page.** On landing, auto-assemble About (auto-expand "see
@@ -1478,7 +1489,15 @@ content in the per-tenant Wingguy rules store. In the extension, Guy's **AI Blaz
 quick-pick buttons** (no codes to memorise). **Also confirmed an extension function:** **save a reminder draft**
 (with notes + a suggested schedule date) to the client's **Gmail/Outlook**.
 
-**Template SELECTION = human-picked, NOT campaign-auto-tracked (decided 2026-06-24).** We will NOT thread the campaign
+**Template SELECTION (decided 2026-06-24; ★ REFINED 2026-06-26 → keyword AUTO-detect, human override).** *The
+2026-06-26 refinement promotes the "soft-default sweetener" below from optional-later to the DEFAULT mechanism:*
+each template carries **detection keywords**, matched against **the on-screen profile + the connection-request note
+that went out**; first match wins, **default = general** if none match, **human overrides** via the template pill in
+the full-screen CONTEXT header. **The rejection of LH-campaign-threading (next sentence) STILL stands** — keyword
+detection reads what's already on screen, it does NOT thread the campaign through Linked Helper. (Live proof: Benjamin
+Chambers' headline "Fractional COO" → keyword "fractional" → auto-picks `\frac`.) Detail ↓ journal "Extension UX lock
+(2026-06-26)". *Original 2026-06-24 reasoning, still valid for why we don't auto-TRACK campaigns:*
+We will NOT thread the campaign
 through Linked Helper → lead record → auto-select: too much build + ongoing maintenance + a permanent wrong-template
 failure mode, and it loads the client to keep it tagged. Instead **the human at the glass picks the template** by
 reading the profile + the connection-request message — exactly what Guy does today with `\tks`/`\frac` (everything
@@ -1541,6 +1560,60 @@ busy person or a VA; the triage discipline also **naturally bounds the AI cost**
 runs only on the triaged subset, not every connection); and what's productised is the **judgment** (who to personalise,
 what to say, when to push for a Zoom) — the moat, not the software. The triage instinct is a **teachable skill** Guy
 will train clients on.
+
+### Extension UX lock — one trigger, full-screen AI-Blaze-style takeover, keyword auto-detect, on-Send capture (2026-06-26)
+Design session (no code) — Guy walked through his **live AI Blaze flow** (two screenshots banked). **This is the chosen
+shape for the whole extension surface**; it supersedes the "teal launcher + adjustable side-panel + human-picks-template"
+framing of Slice 1 / Option A. Read with **Extension core function = an intelligent conversation engine** (above),
+**Panel data model — foreground draft / background capture**, **Campaign first-message templates**, and the
+**▶ You are here** 2026-06-26 block.
+
+**The model = "Wingguy replaces AI Blaze" for this purpose.** Guy's current first-touch flow IS AI Blaze: in LinkedIn's
+"Write a message…" box he types a shortcode (`\tks` general thanks, `\frac` fractional) → AI Blaze takes over the **full
+screen** (roomy, not cramped) → shows the drafted message as a **highlighted block** + a refine chat box + a model
+selector (his says "Sonnet") → **"Insert highlight into page"** drops *only the highlighted text* into the composer → he
+edits in the box → he clicks Send. He loves the look; the only problem is it's a *general* tool. Wingguy reproduces this
+look exactly but purpose-built.
+
+**Five locked decisions (each revises/refines an earlier entry — marked at source):**
+1. **One typed trigger, with aliases** (`/wg` / `\wingguy` / a small set so no one must remember one exact code), fired
+   **from inside the LinkedIn composer** (exactly like `\frac`). REVISES the teal launcher button. Bonus: triggering
+   from the box captures the caret → feeds the already-solved cursor-insert directly, so the "click in the box first"
+   step disappears.
+2. **Full-screen takeover, not the adjustable-width side panel** (SUPERSEDES "Panel type: injected DOM panel… width
+   adjustable" in *Booking-from-the-panel*). Still an injected overlay — just full-bleed + transient (opens on trigger,
+   closes on Insert).
+3. **Keyword auto-detect of the campaign template** (PROMOTES the "soft-default sweetener" in *Campaign first-message
+   templates* from optional-later to the default). Each template carries **detection keywords**, matched against **the
+   on-screen profile + the connection-request note that went out**; first match wins, **default = general**, **human
+   overrides** via the template pill in the CONTEXT header. NOT the rejected LH-campaign-threading (reads what's already
+   on screen) — that rejection still stands. Live proof: Benjamin's "Fractional COO" → "fractional" → `\frac`.
+4. **Highlight-and-insert** — draft shown highlighted; **only the highlighted text inserts** (copy AI Blaze's "Insert
+   highlight into page"). Cleaner than our `stripMetaCommentary()` backstop: the model's surrounding chatter never
+   reaches the composer by construction.
+5. **On-Send → Airtable capture** (PINS the vague "background, when you work a lead" trigger in *Panel data model* to
+   **the Send click**). Human clicks Send (iron rule intact); Wingguy detects the send (button click AND Enter), waits a
+   beat for the sent message to render, then **full-replace** snapshots the whole thread to Airtable. Eliminates Guy's
+   copy-first chore; timing slop harmless because full-replace.
+
+**Why purpose-built matters — a live demo in the screenshot.** AI Blaze, fed Benjamin Chambers' thread where the
+conversation had **moved on to rescheduling the meeting to Friday**, still drafted the **original first-touch opener**,
+then got confused ("Note: this is actually the message already sent Jun 9 — want something else?"). That blindness to
+conversation-state is exactly the job Wingguy's conversation engine does (read the thread → place it → draft the *right*
+move). The general tool's failure = the purpose-built win.
+
+**The unified runtime (both phases, one screen):** `/wg` → full-screen → read page + thread → **(a)** no live reply yet →
+**thanks-for-connecting**, keyword-pick the template (override available); **(b)** they've replied → **conversation
+engine**, read where it stands and pick the move (warm reply / answer objection / offer Zoom times / book a picked time +
+confirm / reschedule gracefully), offering a VA a couple of **reply ideas**. Same screen, same insert + send + capture tail.
+
+**Build sequencing (decided 2026-06-26 — Guy's call):** build the **thanks-for-connecting full-screen screen FIRST** —
+the no-tools phase — because it proves the *entire new shell* (typed trigger · full-screen overlay · keyword auto-detect ·
+highlight-and-insert · on-Send→Airtable capture) on the easy path. Test against Guy's **two real templates already
+installed** (`\tks`, `\frac` in `config/wingguyTemplates.js`); only new template work = **adding detection keywords** to
+each. Then the conversation/booking engine (Slice 2, calendar tools) slots into the *same proven screen*, de-risked by the
+one-tool calendar spike already planned. *(This is what the OLD Slice 1 becomes once re-skinned into the new shell —
+backend draft path already works; the work is the UX shell + auto-detect + capture.)*
 
 ## Discovery & onboarding — teaching tenants what's possible (2026-06-14)
 
@@ -2328,8 +2401,30 @@ onboard client #2; distribution → **Chrome Web Store "Unlisted"**.
 
 ## ▶ You are here / next pick-up
 
+**★ DESIGN SESSION 2026-06-26 (UX revision; NO code) — THE EXTENSION GETS AN AI-BLAZE-STYLE FULL-SCREEN SHELL + ONE
+TRIGGER + KEYWORD AUTO-DETECT + ON-SEND→AIRTABLE CAPTURE. NEXT BUILD = rebuild the thanks-for-connecting phase into the
+new full-screen screen FIRST, then slot Slice 2 (booking tools) into it.** Full detail + provenance → journal *"Extension
+UX lock — one trigger, full-screen AI-Blaze-style takeover, keyword auto-detect, on-Send capture (2026-06-26)"*. Guy
+walked through his live AI Blaze flow (2 screenshots banked). Headlines:
+- **Wingguy replaces AI Blaze for this purpose.** Type a trigger (`/wg`/aliases) **inside LinkedIn's message box** →
+  full-screen takeover (roomy) → draft shown as a **highlighted block** + refine chat box + model selector → **"Insert
+  highlight"** drops only the highlight into the composer → Guy edits → **Guy clicks Send** → on Send, Wingguy
+  **full-replace snapshots the whole thread to Airtable** (kills the copy-first chore).
+- **Auto-detect, two layers:** phase (thanks vs live-reply — *already built* via `classifyMode()`), then in thanks mode
+  the **campaign template by keywords** (matched on profile + connection-request note; default general; human override
+  via the CONTEXT-header pill).
+- **Why purpose-built:** a screenshot caught general AI Blaze drafting the *first-touch opener* on a thread that had
+  already moved to *rescheduling to Friday* — the exact conversation-state blindness Wingguy's engine fixes.
+- **NEXT (sequenced 2026-06-26):** build the **thanks-for-connecting full-screen screen FIRST** — proves the whole new
+  shell (trigger · full-screen · keyword auto-detect · highlight-insert · on-Send capture) on the no-tools phase, tested
+  with the **2 real templates already installed** (`\tks`/`\frac`); only new template work = **add detection keywords**.
+  Then the conversation/booking engine (Slice 2) slots into the same screen, de-risked by the one-tool calendar spike.
+  *(SUPERSEDES the 2026-06-25 "NEXT CHAT = Slice 2 design" line — Slice 2 still comes, but AFTER the thanks phase is
+  re-skinned into the new shell. Backend draft path already works; the work is the UX shell + auto-detect + capture.)*
+
 **★ SESSION CLOSE 2026-06-25 (big build+debug session) — SLICE 1 DONE & PROVEN LIVE ON GUY'S REAL LINKEDIN; both real
-templates installed; insert solved. NEXT CHAT = Slice 2 DESIGN session.** Read the dated bullets below for detail.
+templates installed; insert solved. NEXT CHAT = Slice 2 DESIGN session [SUPERSEDED 2026-06-26 → rebuild thanks phase in
+the new full-screen shell first; see top block].** Read the dated bullets below for detail.
 Headlines of where things stand right now:
 - **Slice 1 = DONE and working end-to-end on Guy's real LinkedIn** (fork extension → read profile/thread → pick campaign
   → Sonnet draft on Guy's key → **insert into LinkedIn's box → Guy sends**). The insert was the hard slog (LinkedIn's new
