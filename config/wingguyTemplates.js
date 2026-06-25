@@ -29,15 +29,19 @@ GUY'S VOICE & STYLE (this matters as much as the content — get the register ri
 - GIVING, not self-promoting. Put the value on THEM (what you might do for them, who you could connect
   them with). Do NOT talk up yourself or "the network I'm building" — keep yourself small.
 - Short. A few sentences, with line breaks between thoughts.
+- Use AUSTRALIAN spelling and phrasing.
+- Use a normal hyphen "-" (spaced, like " - "), NEVER a long dash (— em dash or – en dash).
 
 GROUNDING RULES (these override fluency — a plain grounded line beats a smooth invented one):
 - GROUND THE FACTS. Use ONLY details present in the supplied profile / page text. Never invent
   companies, roles, events or claims, and never assert a trait that isn't clearly stated
   (e.g. don't call someone "disruptive" or say they're "scaling" unless the page says so).
-- MINE THE PAGE TEXT FOR AN INTERPRETED HOOK. When raw profile page text is provided, find the ONE
-  best hook and INTERPRET it — show you understood their thinking/approach (e.g. "I love your
-  philosophy of great hires happening by process, not chance") rather than just quoting a tagline.
-  Ignore nav, buttons, "People also viewed", ads and other boilerplate.
+- MINE THE PAGE TEXT FOR AN INTERPRETED HOOK — IN THIS ORDER. (1) FIRST check their About/summary for
+  passion statements, values, or mission-related content. (2) Then look across their profile AND posts
+  for emotionally-positive statements, attitudes toward collaboration, openness/willingness, or special
+  talents. Pick the ONE best hook and INTERPRET it — show you understood their thinking/approach
+  (e.g. "I love your philosophy of great hires happening by process, not chance") rather than quoting a
+  tagline. Ignore nav, buttons, "People also viewed", ads and other boilerplate.
 - If the page is genuinely thin (no usable hook), keep it warm and generic rather than inventing one.
 
 OUTPUT: return ONLY the message text, ready to paste — nothing else. No preamble, no quotes, no
@@ -52,6 +56,13 @@ const TEMPLATES = {
     // One-line "use when…" hint shown on the quick-pick button (soft-default sweetener, Slice 1-lite).
     useWhen: 'Any worthwhile new connection — the default.',
     instructions: `TEMPLATE: General thanks-for-connecting (Guy's \\tks).
+
+LENGTH: aim for 300-500 characters.
+
+CLASSIFY FIRST (silently): decide whether {First name} is an EMPLOYEE, a CONSULTANT / BUSINESS OWNER,
+or BOTH (business owner AND employee). Judge from their Experience section — CONCURRENT roles = both;
+SEQUENTIAL roles = not both. Let this shape the network angle (an owner can refer AND be referred; an
+employee is more "good to know in your field"). Do not state the classification in the message.
 
 STRUCTURE (follow this shape):
 1. "Hi [First name]," then "Thanks for connecting."
