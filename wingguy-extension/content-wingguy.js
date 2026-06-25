@@ -210,35 +210,67 @@
     return !!(el && (el.offsetParent !== null || el.getClientRects().length));
   }
 
-  // Find the open message box. LinkedIn's markup varies (profile overlay vs /messaging pane vs new
-  // layouts), so try several selectors, accept only VISIBLE matches, and prefer the LAST one (the
-  // most recently opened thread). Final fallback = any visible contenteditable.
+  // Find the open message box. LinkedIn's markup varies a lot (profile overlay vs /messaging pane vs
+  // new layouts) and the editable may be contenteditable="true" / "plaintext-only" / "" OR a <textarea>.
+  // So: gather ALL editable candidates, keep only VISIBLE ones, and SCORE them — strongly prefer the
+  // message form, penalise the global search/nav — then take the best.
+  function editableCandidates() {
+    return Array.from(document.querySelectorAll(
+      '[contenteditable]:not([contenteditable="false"]), textarea, [role="textbox"]'
+    )).filter(isVisible);
+  }
   function findComposer() {
-    const selectors = [
-      '.msg-form__contenteditable[contenteditable="true"]',
-      'div.msg-form__contenteditable',
-      '.msg-form [contenteditable="true"]',
-      '[aria-label*="message" i][contenteditable="true"]',
-      '[contenteditable="true"][role="textbox"]',
-      'div[contenteditable="true"]',
-    ];
-    for (const sel of selectors) {
-      const els = Array.from(document.querySelectorAll(sel)).filter(isVisible);
-      if (els.length) return els[els.length - 1];
-    }
-    return null;
+    const all = editableCandidates();
+    if (!all.length) return null;
+    const score = (el) => {
+      let s = 0;
+      const al = (el.getAttribute('aria-label') || '').toLowerCase();
+      const ph = (el.getAttribute('placeholder') || '').toLowerCase();
+      if (el.closest('.msg-form, .msg-overlay-conversation-bubble, .msg-overlay-bubble, .msg-convo-wrapper, .msgs-thread, .scaffold-layout__list-detail')) s += 100;
+      if (/message/.test(al) || /message/.test(ph)) s += 50;
+      if (el.getAttribute('role') === 'textbox') s += 10;
+      if (el.hasAttribute('contenteditable')) s += 5;
+      if (el.closest('header, nav, .search-global-typeahead, .global-nav')) s -= 200;
+      return s;
+    };
+    all.sort((a, b) => score(b) - score(a));
+    return score(all[0]) > -100 ? all[0] : null;
   }
 
-  // Insert preserving line breaks. LinkedIn's composer is a React/Draft-style editor that IGNORES a
-  // direct innerHTML write (React re-renders over it and Send stays disabled), so we go through the
-  // browser's native input pipeline: focus → select-all → execCommand('insertText'), which React DOES
-  // observe and which keeps newlines as soft breaks. innerHTML+<p> is kept only as a last-ditch fallback.
+  // Diagnostic: dump what editable elements exist so we can lock the selector if detection still misses.
+  function logEditableDiagnostics() {
+    try {
+      const els = Array.from(document.querySelectorAll('[contenteditable], textarea, input, [role="textbox"]'));
+      const info = els.slice(0, 40).map((el, i) => ({
+        i, tag: el.tagName, contenteditable: el.getAttribute('contenteditable'),
+        role: el.getAttribute('role'), ariaLabel: el.getAttribute('aria-label'),
+        placeholder: el.getAttribute('placeholder'),
+        cls: String(el.className || '').slice(0, 90), visible: isVisible(el),
+      }));
+      console.log('[Wingguy] composer not found. Editable elements on page:', info);
+    } catch (_) { /* ignore */ }
+  }
+
+  // Insert preserving line breaks. A <textarea> takes its value via the native setter (so React sees
+  // it). A contenteditable goes through the native input pipeline (focus → select-all →
+  // execCommand insertText), which LinkedIn's React/Draft editor observes (Send enables) and which
+  // keeps newlines; innerHTML+<p> is the last-ditch fallback.
   function insertIntoComposer(text) {
     const composer = findComposer();
-    if (!composer) return { ok: false, reason: 'no-composer' };
+    if (!composer) { logEditableDiagnostics(); return { ok: false, reason: 'no-composer' }; }
 
     const normalized = String(text).replace(/\r\n/g, '\n').trim();
     composer.focus();
+
+    const tag = composer.tagName;
+    if (tag === 'TEXTAREA' || tag === 'INPUT') {
+      const proto = tag === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+      const setter = Object.getOwnPropertyDescriptor(proto, 'value').set;
+      setter.call(composer, normalized);
+      composer.dispatchEvent(new Event('input', { bubbles: true }));
+      return { ok: true };
+    }
+
     try {
       const sel = window.getSelection();
       sel.removeAllRanges();
@@ -485,7 +517,7 @@
         statusEl.textContent = '✓ Inserted — review and click send.';
         statusEl.className = 'wingguy-status wingguy-ok';
       } else {
-        statusEl.textContent = 'Open the LinkedIn message box first (click "Message"), then Insert. Use Copy as a fallback.';
+        statusEl.textContent = 'Couldn\'t find the message box. If it\'s open, press F12 → Console and send me the "[Wingguy] composer not found" line. Meanwhile, use Copy.';
         statusEl.className = 'wingguy-status wingguy-warn-inline';
       }
     });
