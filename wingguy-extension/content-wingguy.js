@@ -41,6 +41,24 @@
     return String(s)
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  // LinkedIn lazy-renders profile sections (About/Experience aren't in the DOM until scrolled near).
+  // Step down the page to force them to load, then restore the user's scroll position. This is the
+  // "auto-expand the page you're already on" restraint — NOT driving LinkedIn across profiles.
+  async function autoScrollToLoad() {
+    try {
+      const startY = window.scrollY;
+      const step = Math.max(500, Math.floor(window.innerHeight * 0.9));
+      const maxY = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
+      for (let y = step; y <= maxY; y += step) {
+        window.scrollTo(0, y);
+        await sleep(110);
+      }
+      window.scrollTo(0, startY);
+      await sleep(150);
+    } catch (_) { /* non-fatal */ }
+  }
 
   // ---- profile scraping (best-effort, multiple fallbacks) -------------------
   // LinkedIn's DOM is volatile; selectors are intentionally redundant. In the productised
@@ -107,6 +125,7 @@
   }
 
   async function scrapeProfile() {
+    await autoScrollToLoad();   // force lazy sections (About/Experience) into the DOM
     await expandAboutSeeMore();
     const nameEl = qsFirst([
       'main h1',
@@ -121,23 +140,26 @@
     if (!name) { name = nameFromTitle(); if (name) nameSource = 'title'; }
     if (!name) { name = nameFromSlug(); if (name) nameSource = 'url'; }
 
-    // Headline + location: only trust these when we actually found the name element in the DOM
-    // (otherwise we'd risk scraping unrelated text into the draft — grounding matters).
-    let headline = '';
-    let location = '';
-    if (nameEl) {
-      const topCard = nameEl.closest('section') || document;
-      const headlineEl = qsFirst(
-        ['div.text-body-medium.break-words', '.pv-text-details__left-panel .text-body-medium', 'div.text-body-medium'],
-        topCard
-      );
-      headline = cleanText(headlineEl && headlineEl.textContent);
-      const locationEl = qsFirst(
-        ['span.text-body-small.inline.t-black--light.break-words', '.pv-text-details__left-panel .text-body-small'],
-        topCard
-      );
-      location = cleanText(locationEl && locationEl.textContent);
-    }
+    // Headline + location: search the top card (anchored on the name element when found, else the
+    // top-card container). Junk risk is bounded because pageText below is the real grounding net.
+    const topCard = (nameEl && nameEl.closest('section')) ||
+      document.querySelector('.pv-top-card, .ph5.pb5, main section') || document;
+    const headlineEl = qsFirst(
+      ['div.text-body-medium.break-words', '.pv-text-details__left-panel .text-body-medium', 'div.text-body-medium'],
+      topCard
+    );
+    let headline = cleanText(headlineEl && headlineEl.textContent);
+    const locationEl = qsFirst(
+      ['span.text-body-small.inline.t-black--light.break-words', '.pv-text-details__left-panel .text-body-small'],
+      topCard
+    );
+    let location = cleanText(locationEl && locationEl.textContent);
+
+    // RAW FALLBACK: the whole profile's visible text. Robust to LinkedIn's class churn — when the
+    // structured selectors miss, the model still gets real content to hook on (like AI Blaze does).
+    const mainEl = document.querySelector('main') || document.body;
+    const pageText = (mainEl.innerText || '')
+      .replace(/\n{3,}/g, '\n\n').replace(/[ \t]+/g, ' ').trim().slice(0, 6000);
 
     return {
       name,
@@ -146,6 +168,7 @@
       profileUrl: location_origin_path(),
       about: readAbout(),
       recentPosts: readRecentActivity(),
+      pageText,
       nameSource,
     };
   }
@@ -275,7 +298,7 @@
 
   async function openPanel() {
     const panel = panelShell();
-    setBody(`<div class="wingguy-muted">Reading this profile…</div>`);
+    setBody(`<div class="wingguy-muted">Reading this profile… (scanning the page)</div>`);
 
     // Auth check first — gives a clear message instead of a cryptic 401.
     let auth;
@@ -286,7 +309,7 @@
     }
 
     const profile = await scrapeProfile();
-    if (!profile.name && !profile.headline && !profile.about) {
+    if (!profile.name && !profile.headline && !profile.about && !profile.pageText) {
       setBody(`<div class="wingguy-warn">Couldn't read anything from this page. Make sure you're on a person's /in/ profile, then reopen.</div>`);
       return;
     }
@@ -336,9 +359,14 @@
   }
 
   function renderThanksBody(body, profile, thread) {
-    const hookHint = profile.about
-      ? `<div class="wingguy-muted">Read About (${profile.about.length} chars)${profile.recentPosts.length ? ` + ${profile.recentPosts.length} activity snippet(s)` : ''}.</div>`
-      : `<div class="wingguy-muted">No About text found — Wingguy will keep it warm and generic.</div>`;
+    let hookHint;
+    if (profile.about) {
+      hookHint = `<div class="wingguy-muted">Read About (${profile.about.length} chars)${profile.recentPosts.length ? ` + ${profile.recentPosts.length} activity snippet(s)` : ''}.</div>`;
+    } else if (profile.pageText) {
+      hookHint = `<div class="wingguy-muted">Read the profile page (${profile.pageText.length} chars of content) — will hook on what's there.</div>`;
+    } else {
+      hookHint = `<div class="wingguy-muted">No profile text found — Wingguy will keep it warm and generic.</div>`;
+    }
 
     const buttons = templates.map((t) =>
       `<button class="wingguy-tpl" data-tpl="${escapeHtml(t.id)}">

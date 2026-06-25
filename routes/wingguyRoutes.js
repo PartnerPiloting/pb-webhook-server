@@ -81,7 +81,27 @@ function buildProfileBlock(profile = {}) {
   if (profile.connectionMessage) {
     add('Their connection-request note', profile.connectionMessage);
   }
+  // Raw page-text fallback: included when the structured About is thin, so the model still has real
+  // content to hook on (robust to LinkedIn's class churn). Bounded; the prompt tells it to ignore boilerplate.
+  if (!profile.about && profile.pageText) {
+    lines.push('Raw profile page text (mine for the hook; ignore nav/buttons/"People also viewed"):');
+    lines.push(String(profile.pageText).slice(0, PROFILE_CHAR_CAP));
+  }
   return lines.join('\n');
+}
+
+// Defensive strip: occasionally the model appends a meta "Note: ..." or "*Note ...*" line explaining
+// the draft (more likely when the profile was thin). Such commentary must never reach a paste-ready
+// message. Remove a trailing block that is clearly meta — conservatively, only at the end.
+function stripMetaCommentary(text) {
+  const lines = String(text).split('\n');
+  while (lines.length) {
+    const last = lines[lines.length - 1].trim();
+    if (last === '') { lines.pop(); continue; }
+    if (/^[*_(\[]*\s*note\b/i.test(last) || /^\*.*\*$/.test(last)) { lines.pop(); continue; }
+    break;
+  }
+  return lines.join('\n').trim();
 }
 
 const CONVO_MAX_MESSAGES = 60;   // most recent N messages (bounds tokens on long threads)
@@ -170,11 +190,13 @@ module.exports = function mountWingguy(app) {
         return res.status(502).json({ ok: false, error: 'Claude declined the request.' });
       }
 
-      const draft = (response.content || [])
-        .filter((b) => b.type === 'text')
-        .map((b) => b.text)
-        .join('')
-        .trim();
+      const draft = stripMetaCommentary(
+        (response.content || [])
+          .filter((b) => b.type === 'text')
+          .map((b) => b.text)
+          .join('')
+          .trim()
+      );
 
       if (!draft) {
         return res.status(502).json({ ok: false, error: 'Claude returned an empty draft.' });
@@ -226,11 +248,13 @@ module.exports = function mountWingguy(app) {
         return res.status(502).json({ ok: false, error: 'Claude declined the request.' });
       }
 
-      const draft = (response.content || [])
-        .filter((b) => b.type === 'text')
-        .map((b) => b.text)
-        .join('')
-        .trim();
+      const draft = stripMetaCommentary(
+        (response.content || [])
+          .filter((b) => b.type === 'text')
+          .map((b) => b.text)
+          .join('')
+          .trim()
+      );
 
       if (!draft) {
         return res.status(502).json({ ok: false, error: 'Claude returned an empty draft.' });

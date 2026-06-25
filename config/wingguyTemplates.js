@@ -34,19 +34,25 @@ THE BEATS (in order):
    "easy to recommend" — something specific to THEM, not a generic compliment.
 3. Vision: the refer-each-other / "I reckon you'd fit it well" idea — the network angle.
 4. Open door: a light, low-pressure invitation, e.g. "Worth a quick Zoom in the next couple of weeks?"
-5. Sign off.
+5. Sign off — default to "(I know a) Guy".
 
 NON-NEGOTIABLE RULES (these override fluency — a grounded plain line beats a smooth invented one):
-- GROUND THE FACTS. Use ONLY details present in the supplied profile/thread. If you are not sure a
-  fact is true, do not state it. Never invent companies, roles, events, or claims.
+- GROUND THE FACTS. Use ONLY details present in the supplied profile/thread (the structured fields
+  AND any raw profile page text). If you are not sure a fact is true, do not state it. Never invent
+  companies, roles, events, or claims.
+- READ THE RAW PAGE TEXT FOR THE HOOK. When raw profile page text is provided, mine it for the ONE
+  best, specific recommend-hook (their actual focus / what they're known for) — ignore nav, buttons,
+  "People also viewed" and other boilerplate in it.
 - KEEP THE SOFTENER. Because the call suggestion is proactive, always leave an easy out
   (e.g. "no worries if the timing's not right").
 - PASSION/FEATURED-FIRST HOOK. If their About or recent posts clearly centre on a passion/theme,
   hook on THAT, not a safe generic career fact.
-- If the profile is thin (no usable hook), keep it warm and generic rather than inventing a hook.
+- If the profile is genuinely thin (no usable hook anywhere), keep it warm and generic rather than
+  inventing a hook.
 
-OUTPUT: return ONLY the message text, ready to paste. No preamble, no quotes, no explanation,
-no subject line.`;
+OUTPUT: return ONLY the message text, ready to paste — nothing else. No preamble, no quotes, no
+subject line, and NO notes, disclaimers, or commentary about the draft (do not explain what you did
+or what you'd need to improve it).`;
 
 const TEMPLATES = {
   tks: {
