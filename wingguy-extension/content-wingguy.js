@@ -85,34 +85,68 @@
     return Array.from(new Set(items)).slice(0, 3);
   }
 
+  // Name fallbacks for when LinkedIn's DOM selectors miss (markup shifts, or the messaging
+  // overlay is open over the profile). On an /in/ page we can almost always recover a name from
+  // the page title or the URL slug, so the panel proceeds rather than dead-ending.
+  function nameFromTitle() {
+    let t = (document.title || '').split('|')[0].trim();   // "Jane Doe" or "(3) Jane Doe"
+    t = t.replace(/^\(\d+\)\s*/, '').trim();               // strip notification count
+    return t && !/^linkedin$/i.test(t) ? t : '';
+  }
+  function nameFromSlug() {
+    const m = location.pathname.match(/^\/in\/([^/]+)/);
+    if (!m) return '';
+    let parts = decodeURIComponent(m[1]).split('-').filter(Boolean);
+    // Drop trailing id-ish tokens (LinkedIn appends a hash/number to disambiguate slugs).
+    while (parts.length > 1) {
+      const last = parts[parts.length - 1];
+      if (/\d/.test(last) || /^[0-9a-f]{6,}$/i.test(last)) parts.pop();
+      else break;
+    }
+    return parts.map((p) => p.charAt(0).toUpperCase() + p.slice(1)).join(' ');
+  }
+
   async function scrapeProfile() {
     await expandAboutSeeMore();
-    const nameEl = qsFirst(['main h1', 'h1.text-heading-xlarge', '.pv-top-card h1', 'h1']);
-    const name = cleanText(nameEl && nameEl.textContent);
+    const nameEl = qsFirst([
+      'main h1',
+      'h1.text-heading-xlarge',
+      '.pv-top-card h1',
+      'section.artdeco-card h1',
+      'main section h1',
+      'h1',
+    ]);
+    let name = cleanText(nameEl && nameEl.textContent);
+    let nameSource = name ? 'page' : '';
+    if (!name) { name = nameFromTitle(); if (name) nameSource = 'title'; }
+    if (!name) { name = nameFromSlug(); if (name) nameSource = 'url'; }
 
-    // Headline = the body-medium line right under the name (within the top card).
-    const topCard = nameEl ? nameEl.closest('section') || document : document;
-    const headlineEl = qsFirst(
-      ['div.text-body-medium.break-words', '.pv-text-details__left-panel .text-body-medium', 'div.text-body-medium'],
-      topCard
-    );
-    const headline = cleanText(headlineEl && headlineEl.textContent);
-
-    const locationEl = qsFirst(
-      ['span.text-body-small.inline.t-black--light.break-words', '.pv-text-details__left-panel .text-body-small'],
-      topCard
-    );
-    const location = cleanText(locationEl && locationEl.textContent);
-
-    const profileUrl = location_origin_path();
+    // Headline + location: only trust these when we actually found the name element in the DOM
+    // (otherwise we'd risk scraping unrelated text into the draft — grounding matters).
+    let headline = '';
+    let location = '';
+    if (nameEl) {
+      const topCard = nameEl.closest('section') || document;
+      const headlineEl = qsFirst(
+        ['div.text-body-medium.break-words', '.pv-text-details__left-panel .text-body-medium', 'div.text-body-medium'],
+        topCard
+      );
+      headline = cleanText(headlineEl && headlineEl.textContent);
+      const locationEl = qsFirst(
+        ['span.text-body-small.inline.t-black--light.break-words', '.pv-text-details__left-panel .text-body-small'],
+        topCard
+      );
+      location = cleanText(locationEl && locationEl.textContent);
+    }
 
     return {
       name,
       headline,
       location,
-      profileUrl,
+      profileUrl: location_origin_path(),
       about: readAbout(),
       recentPosts: readRecentActivity(),
+      nameSource,
     };
   }
 
@@ -224,8 +258,8 @@
     }
 
     const profile = await scrapeProfile();
-    if (!profile.name) {
-      setBody(`<div class="wingguy-warn">Couldn't read this profile. Make sure you're on a person's /in/ page.</div>`);
+    if (!profile.name && !profile.headline && !profile.about) {
+      setBody(`<div class="wingguy-warn">Couldn't read anything from this page. Make sure you're on a person's /in/ profile, then reopen.</div>`);
       return;
     }
 
@@ -248,6 +282,12 @@
       ? `<div class="wingguy-muted">Read About (${profile.about.length} chars)${profile.recentPosts.length ? ` + ${profile.recentPosts.length} activity snippet(s)` : ''}.</div>`
       : `<div class="wingguy-muted">No About text found — Wingguy will keep it warm and generic.</div>`;
 
+    // If the name had to come from the title/URL (DOM selectors missed), say so — it's the signal
+    // that the on-page scrape needs tuning, and that headline/About may be thin this time.
+    const degradedNote = profile.nameSource && profile.nameSource !== 'page'
+      ? `<div class="wingguy-warn">Read the name from the ${profile.nameSource === 'url' ? 'profile URL' : 'page title'} (couldn't find it in the page) — headline/About may be missing. Still safe to draft.</div>`
+      : '';
+
     const buttons = templates.map((t) =>
       `<button class="wingguy-tpl" data-tpl="${escapeHtml(t.id)}">
          <span class="wingguy-tpl-label">${escapeHtml(t.label)}</span>
@@ -256,7 +296,8 @@
     ).join('');
 
     setBody(`
-      <div class="wingguy-who">${escapeHtml(profile.name)}${profile.headline ? ` — <span class="wingguy-muted">${escapeHtml(profile.headline)}</span>` : ''}</div>
+      <div class="wingguy-who">${escapeHtml(profile.name || '(name not found)')}${profile.headline ? ` — <span class="wingguy-muted">${escapeHtml(profile.headline)}</span>` : ''}</div>
+      ${degradedNote}
       ${hookHint}
       <div class="wingguy-section-label">Pick a campaign:</div>
       <div class="wingguy-tpl-list">${buttons}</div>

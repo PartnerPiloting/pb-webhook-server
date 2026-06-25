@@ -11,11 +11,12 @@
   --wingguy-ok: #15803d;
 }
 
-/* Launcher button (bottom-right, distinct from NA's bottom-right by colour + label) */
+/* Launcher button (mid-right, clear of the legacy NA "Save to Portal" button at bottom-right) */
 .wingguy-launcher-btn {
   position: fixed;
-  bottom: 24px;
+  top: 45vh;
   right: 24px;
+  bottom: auto;
   z-index: 2147483000;
   display: flex;
   align-items: center;
@@ -36,11 +37,12 @@
 /* Panel */
 .wingguy-panel {
   position: fixed;
-  bottom: 80px;
+  top: 12vh;
   right: 24px;
+  bottom: auto;
   z-index: 2147483000;
   width: 380px;
-  max-height: 70vh;
+  max-height: 76vh;
   display: flex;
   flex-direction: column;
   background: #fff;
