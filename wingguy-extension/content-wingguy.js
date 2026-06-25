@@ -206,30 +206,52 @@
   }
 
   // ---- the LinkedIn message composer (insert target) ------------------------
-  function findComposer() {
-    return qsFirst([
-      '.msg-form__contenteditable[contenteditable="true"]',
-      '[contenteditable="true"][role="textbox"]',
-      'div.msg-form__contenteditable',
-      '[aria-label*="Write a message" i][contenteditable="true"]',
-    ]);
+  function isVisible(el) {
+    return !!(el && (el.offsetParent !== null || el.getClientRects().length));
   }
 
-  // Formatting-preserving insert: LinkedIn's composer is a Quill-style contenteditable that wraps
-  // each line in <p>. Pasting through the clipboard flattens newlines (the bug we exist to fix), so
-  // we write the DOM directly as paragraphs and fire an input event so LinkedIn enables Send.
+  // Find the open message box. LinkedIn's markup varies (profile overlay vs /messaging pane vs new
+  // layouts), so try several selectors, accept only VISIBLE matches, and prefer the LAST one (the
+  // most recently opened thread). Final fallback = any visible contenteditable.
+  function findComposer() {
+    const selectors = [
+      '.msg-form__contenteditable[contenteditable="true"]',
+      'div.msg-form__contenteditable',
+      '.msg-form [contenteditable="true"]',
+      '[aria-label*="message" i][contenteditable="true"]',
+      '[contenteditable="true"][role="textbox"]',
+      'div[contenteditable="true"]',
+    ];
+    for (const sel of selectors) {
+      const els = Array.from(document.querySelectorAll(sel)).filter(isVisible);
+      if (els.length) return els[els.length - 1];
+    }
+    return null;
+  }
+
+  // Insert preserving line breaks. LinkedIn's composer is a React/Draft-style editor that IGNORES a
+  // direct innerHTML write (React re-renders over it and Send stays disabled), so we go through the
+  // browser's native input pipeline: focus → select-all → execCommand('insertText'), which React DOES
+  // observe and which keeps newlines as soft breaks. innerHTML+<p> is kept only as a last-ditch fallback.
   function insertIntoComposer(text) {
     const composer = findComposer();
     if (!composer) return { ok: false, reason: 'no-composer' };
 
-    const lines = String(text).replace(/\r\n/g, '\n').split('\n');
-    const html = lines.map((l) => `<p>${l.trim() ? escapeHtml(l) : '<br>'}</p>`).join('');
-
+    const normalized = String(text).replace(/\r\n/g, '\n').trim();
     composer.focus();
-    composer.innerHTML = html;
-    // Nudge LinkedIn's editor state: input event (content changed) + a keyup for good measure.
-    composer.dispatchEvent(new InputEvent('input', { bubbles: true, cancelable: true }));
-    composer.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true }));
+    try {
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      const range = document.createRange();
+      range.selectNodeContents(composer);
+      sel.addRange(range);
+      const ok = document.execCommand('insertText', false, normalized);
+      if (!ok) throw new Error('execCommand insertText returned false');
+    } catch (_) {
+      const html = normalized.split('\n').map((l) => `<p>${l ? escapeHtml(l) : '<br>'}</p>`).join('');
+      composer.innerHTML = html;
+    }
+    composer.dispatchEvent(new InputEvent('input', { bubbles: true, cancelable: true, inputType: 'insertText', data: normalized }));
     return { ok: true };
   }
 
