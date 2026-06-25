@@ -341,7 +341,7 @@
       console.log(`[Wingguy] name from ${profile.nameSource} (DOM h1 not matched); page content chars=${pageLen}`);
     }
     const degradedNote = thin
-      ? `<div class="wingguy-warn">Couldn't read much from this page (${pageLen} chars) — the draft will be generic. Try scrolling the profile to load it, fully open it, or confirm it's a person's /in/ page.</div>`
+      ? `<div class="wingguy-notice">Heads up — Wingguy couldn't pull much detail from this page, so the draft will be more generic. Make sure you're on the person's profile and it's finished loading, then try again.</div>`
       : '';
 
     const tab = (m, label) =>
