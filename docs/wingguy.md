@@ -2465,12 +2465,14 @@ and capture REFUSES to save an unscoped scrape; (3) senders read "Unknown" → `
 first) + a `dumpSenderDiag` fallback. **So the THANKS-FOR-CONNECTING LOOP IS FULLY PROVEN END-TO-END.** Known v1 nit
 (not blocking): capture carries no per-message timestamps yet (neutral time; order preserved) — a later fidelity pass.
 **NEXT = Slice 2** (the tool-using conversation/booking engine into the same screen). **★ Slice 2 DESIGN PASS DONE
-2026-06-26** (journal "Slice 2 — booking engine design"): **it's mostly REUSE** — `/api/calendar/availability` +
-`/quick-pick-message` + `/chat` (booking brain) + `/lookup-lead` already exist and auth on `x-client-id` (which the
-extension already sends). **Build first = the "Suggest times" SPIKE** (availability → quick-pick-message → drafted times
-message in the reply panel; NO new backend). Then confirm-a-time via the existing **prefilled-Google-Calendar-URL**
-(human confirms; no server-side create-event yet) + optional Airtable Follow-up sync. **Awaiting Guy's call on 2 design
-Qs:** auto-pick slots vs in-panel picker; prefilled-GCal-URL vs server-side auto-create. Real timestamp capture also
+2026-06-26** (journal "Slice 2 — booking engine design"): mostly REUSE (`/api/calendar/availability` +
+`/quick-pick-message` + `/chat` + `/lookup-lead`, all `x-client-id`). **Guy's design calls (2026-06-26): auto-pick slots;
+SERVER-SIDE auto-create the invite** (not the prefilled-URL interim). **✅ "SUGGEST TIMES" SPIKE BUILT (`7af12047`,
+awaiting Guy's live test):** reply view → "📅 Suggest times" → `availability` (lead location → tz-aware slots) →
+auto-pick first slot on up to 3 distinct days → `quick-pick-message` → drafted times message → insert → send. Pure reuse,
+no new backend (`WG_CAL_AVAILABILITY`/`WG_CAL_QUICKPICK` in background.js). **NEXT after the spike tests = build the
+NEW `POST /api/calendar/create-event`** (server-side invite, Guy's choice) + Airtable Follow-up/status sync, wired to a
+"Book it" action when a lead agrees a time (lead email via `/lookup-lead`). Real per-message timestamp capture also
 shipped this session (`fed2217a`).
 
 **★ BUILT 2026-06-26 (session 1) — THE FULL-SCREEN SHELL + `/wg` TRIGGER + KEYWORD AUTO-DETECT ARE
