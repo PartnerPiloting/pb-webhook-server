@@ -2476,10 +2476,19 @@ earliest 9:30 (soft floor), last start 16:30, 3 slots, 30-min, no buffer (back-t
 **soft 12:00–12:45 lunch hold** (skipped when auto-suggesting, still bookable on request). Picker (`pickSlotsByPrefs`,
 unit-tested): prefer ≥preferred then relax to earliest only to fill, skip lunch, drop post-last-start, exclude weekends,
 one per day. **★ Code/rule/variable split made concrete:** these are user-owned PREFERENCES (variables); timezone-correct-
-for-both-parties + no-double-book stay HARD rules in the calendar code, never user-editable. **NEXT = build `POST
-/api/calendar/create-event`** (server-side invite, Guy's choice) + Airtable Follow-up/status sync, as a "Book it" action
-when a lead agrees a time (lead email via `/lookup-lead`); then the Postgres prefs store + conversational editing (the
-seam already isolates this). Real per-message timestamp capture also shipped this session (`fed2217a`).
+for-both-parties + no-double-book stay HARD rules in the calendar code, never user-editable. **★ BOOKING = via NYLAS, decided 2026-06-26** (Guy: emails stay on the
+client's own Claude/connector — NOT the extension; the extension creates the calendar entry agentically like his
+Claude+MCP does, multi-tenant). **✅ NYLAS READ CONFIRMED LIVE ON PROD 2026-06-26** (re-ran `scripts/nylas-check.js` via a
+Render one-off job → 50 real events off Guy's calendar, `provider=nylas`, grant alive carried from Airtable `Nylas Grant
+ID`). **The read foundation already exists + works:** swappable seam `services/calendarProvider.js` (`getMeetingsInWindow`,
+Google|Nylas, per-coach `calendarProvider`), per-client grant in `clientService.js` (`Nylas Grant ID` + `Calendar
+Provider`), Nylas v3 event mapping — currently used by the Fathom splitter, default Google. **So Nylas is NOT a
+from-scratch build.** **NEXT = the WRITE side:** (1) add `createEvent(coach, details)` to `calendarProvider.js` (Nylas
+`POST /v3/grants/{grantId}/events` + `notify_participants:true`); (2) **prove an EXTERNAL invite actually emails the
+guest** (one controlled write test — grant's write scope is unverified; may need a read+write reconnect if it 403s);
+(3) a `/create-event` endpoint + wire the extension's confirm-then-book (lead email via `/lookup-lead`) + Airtable
+Follow-up sync. Then the Postgres prefs store + conversational editing (seam already isolates this). Real per-message
+timestamp capture also shipped this session (`fed2217a`).
 
 **★ BUILT 2026-06-26 (session 1) — THE FULL-SCREEN SHELL + `/wg` TRIGGER + KEYWORD AUTO-DETECT ARE
 ON `main`, owner-gated; backend healthy + auto-detect unit-tested.** Commit
