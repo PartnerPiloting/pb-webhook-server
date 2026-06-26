@@ -24,6 +24,7 @@ const { createLogger } = require('../utils/contextLogger');
 const { authenticateUserWithTestMode } = require('../middleware/authMiddleware');
 const { getAnthropicClient, isAnthropicConfigured } = require('../config/anthropicClient');
 const { WINGGUY_VOICE, WINGGUY_REPLY_INSTRUCTIONS, listTemplates, getTemplate, detectTemplate } = require('../config/wingguyTemplates');
+const { getBookingPrefs } = require('../config/wingguyBookingPrefs');
 
 const logger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'wingguy' });
 
@@ -138,6 +139,12 @@ module.exports = function mountWingguy(app) {
   // The quick-pick button set for the panel.
   router.get('/templates', (req, res) => {
     res.json({ ok: true, templates: listTemplates() });
+  });
+
+  // Per-tenant booking preferences (the SEAM — Guy's defaults for now, Postgres later). The extension
+  // reads these to pick which slots to offer; hard timezone/clash rules stay in the calendar code.
+  router.get('/booking-prefs', (req, res) => {
+    res.json({ ok: true, prefs: getBookingPrefs(req.client && req.client.clientId) });
   });
 
   // Draft a personalised thanks-for-connecting message.

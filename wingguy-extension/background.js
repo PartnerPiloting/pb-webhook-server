@@ -152,6 +152,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  // Wingguy Slice 2: per-tenant booking preferences (the seam — Guy's defaults for now).
+  if (message.type === 'WG_BOOKING_PREFS') {
+    wingguyGetBookingPrefs()
+      .then(data => sendResponse({ success: true, data }))
+      .catch(error => sendResponse({ success: false, error: error.message }));
+    return true;
+  }
+
   // Wingguy Slice 2 (booking spike): real calendar availability + the times message.
   if (message.type === 'WG_CAL_AVAILABILITY') {
     wgCal('GET', `/availability?leadLocation=${encodeURIComponent(message.leadLocation || '')}`)
@@ -208,6 +216,18 @@ async function wingguyGetTemplates() {
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
     throw new Error(errorData.error || `Templates fetch failed: ${response.status}`);
+  }
+  return response.json();
+}
+
+// Wingguy: GET /api/wingguy/booking-prefs
+async function wingguyGetBookingPrefs() {
+  const apiBase = await getWingguyApiBase();
+  const headers = await getAuthHeaders();
+  const response = await fetch(`${apiBase}/booking-prefs`, { method: 'GET', headers });
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || `Booking prefs fetch failed: ${response.status}`);
   }
   return response.json();
 }

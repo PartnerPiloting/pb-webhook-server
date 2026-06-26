@@ -859,22 +859,63 @@
   // message (the one he sends when a lead asks to meet). Pure reuse of the existing booking endpoints
   // (/api/calendar/availability + /quick-pick-message); NO booking/invite yet (that's the next step).
   // Auto-picks a few slots (Guy's choice); he edits the wording before sending.
+  // Mirrors config/wingguyBookingPrefs.js — used only if the backend prefs fetch fails.
+  const FALLBACK_PREFS = {
+    preferredStart: '10:00', earliestStart: '09:30', lastStart: '16:30',
+    slotsToOffer: 3, meetingLengthMins: 30, bufferMins: 0, excludeWeekends: true,
+    lunch: { start: '12:00', durationMins: 45, soft: true },
+  };
+  function hhmmToMin(s) { const m = String(s || '').match(/(\d{1,2}):(\d{2})/); return m ? (+m[1]) * 60 + (+m[2]) : 0; }
+  function displayToMin(s) {
+    const m = String(s || '').match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+    if (!m) return null;
+    let h = (+m[1]) % 12; if (/PM/i.test(m[3])) h += 12;
+    return h * 60 + (+m[2]);
+  }
+  function isWeekendDate(date) {
+    const d = new Date(`${date}T12:00:00`);
+    const g = d.getDay();
+    return g === 0 || g === 6;
+  }
+  // Pick up to N slots, one per day, honouring the tenant's preferences (preferred start, last start,
+  // soft lunch hold, weekends). Soft preference: try the preferred-start floor first, then relax to the
+  // earliest-allowed floor to fill any remaining options. Times are the CLIENT's local (the `display`
+  // field); timezone-correctness for the lead is already guaranteed server-side.
+  function pickSlotsByPrefs(days, prefs) {
+    const len = prefs.meetingLengthMins || 30;
+    const last = hhmmToMin(prefs.lastStart);
+    const lunchStart = hhmmToMin(prefs.lunch && prefs.lunch.start);
+    const lunchEnd = lunchStart + ((prefs.lunch && prefs.lunch.durationMins) || 0);
+    const eligibleDays = (days || []).filter((d) => !(prefs.excludeWeekends && isWeekendDate(d.date)));
+    const ok = (mins, floor) =>
+      mins != null && mins >= floor && mins <= last &&
+      !(prefs.lunch && prefs.lunch.soft && mins < lunchEnd && (mins + len) > lunchStart); // skip the soft lunch hold
+    const gather = (floor, taken) => {
+      const out = [];
+      for (const d of eligibleDays) {
+        if (taken.size >= prefs.slotsToOffer) break; // taken is the shared running total (incl. earlier passes)
+        const slot = (d.freeSlots || []).find((s) => ok(displayToMin(s.display), floor) && !taken.has(s.time));
+        if (slot) { out.push(slot); taken.add(slot.time); }
+      }
+      return out;
+    };
+    const taken = new Set();
+    const picks = gather(hhmmToMin(prefs.preferredStart), taken);
+    if (picks.length < prefs.slotsToOffer) picks.push(...gather(hhmmToMin(prefs.earliestStart), taken)); // soft fallback
+    return picks.slice(0, prefs.slotsToOffer).map((s) => ({ time: s.time, display: s.display, leadDisplay: s.leadDisplay }));
+  }
+
   async function suggestTimes(profile, thread) {
     setBody(`<div class="wingguy-muted">Checking your calendar for open times…</div>`);
     try {
+      let prefs = FALLBACK_PREFS;
+      try { const p = await bg({ type: 'WG_BOOKING_PREFS' }); if (p && p.prefs) prefs = p.prefs; } catch (_) { /* use fallback */ }
+
       const leadLocation = profile.location || '';
       const avail = await bg({ type: 'WG_CAL_AVAILABILITY', leadLocation });
-      const days = (avail && avail.days) || [];
-
-      // Auto-pick the first open slot on each of up to 3 distinct days (spread, not 3-in-a-row).
-      const picks = [];
-      for (const d of days) {
-        if (picks.length >= 3) break;
-        const slot = (d.freeSlots || [])[0];
-        if (slot) picks.push({ time: slot.time, display: slot.display, leadDisplay: slot.leadDisplay });
-      }
+      const picks = pickSlotsByPrefs((avail && avail.days) || [], prefs);
       if (!picks.length) {
-        setBody(`<div class="wingguy-warn">No open slots found in your calendar window. Switch to "Reply" above to draft a message instead.</div>`);
+        setBody(`<div class="wingguy-warn">No open slots match your booking preferences in this window. Switch to "Reply" above to draft a message instead.</div>`);
         return;
       }
 
