@@ -14,6 +14,12 @@ const WINGGUY_ENDPOINTS = {
   staging: 'https://pb-webhook-server-staging.onrender.com/api/wingguy'
 };
 
+// Calendar/booking endpoints (Slice 2 — reused as-is; they auth on x-client-id which we already send).
+const CALENDAR_ENDPOINTS = {
+  production: 'https://pb-webhook-server.onrender.com/api/calendar',
+  staging: 'https://pb-webhook-server-staging.onrender.com/api/calendar'
+};
+
 // Listen for messages from content scripts and popup
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   
@@ -145,7 +151,43 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       .catch(error => sendResponse({ success: false, error: error.message }));
     return true;
   }
+
+  // Wingguy Slice 2 (booking spike): real calendar availability + the times message.
+  if (message.type === 'WG_CAL_AVAILABILITY') {
+    wgCal('GET', `/availability?leadLocation=${encodeURIComponent(message.leadLocation || '')}`)
+      .then(data => sendResponse({ success: true, data }))
+      .catch(error => sendResponse({ success: false, error: error.message }));
+    return true;
+  }
+  if (message.type === 'WG_CAL_QUICKPICK') {
+    wgCal('POST', '/quick-pick-message', { selectedSlots: message.selectedSlots, context: message.context })
+      .then(data => sendResponse({ success: true, data }))
+      .catch(error => sendResponse({ success: false, error: error.message }));
+    return true;
+  }
 });
+
+// Helper: Wingguy calendar API call (x-client-id auth via getAuthHeaders).
+async function getCalendarApiBase() {
+  return new Promise((resolve) => {
+    chrome.storage.local.get(['environment'], (data) => {
+      const env = data.environment || 'production';
+      resolve(CALENDAR_ENDPOINTS[env] || CALENDAR_ENDPOINTS.production);
+    });
+  });
+}
+async function wgCal(method, path, body) {
+  const base = await getCalendarApiBase();
+  const headers = await getAuthHeaders();
+  const opts = { method, headers };
+  if (body !== undefined) opts.body = JSON.stringify(body);
+  const response = await fetch(`${base}${path}`, opts);
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || `Calendar ${path} failed: ${response.status}`);
+  }
+  return response.json();
+}
 
 // Helper: Get Wingguy API base URL
 async function getWingguyApiBase() {

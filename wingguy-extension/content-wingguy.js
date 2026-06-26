@@ -848,6 +848,49 @@
       const data = await bg({ type: 'WINGGUY_DRAFT_REPLY', profile, conversation: thread });
       renderDraftStep(data.draft || '', data.model || '', {
         onRegenerate: () => draftReply(profile, thread),
+        onSuggestTimes: () => suggestTimes(profile, thread),
+      });
+    } catch (e) {
+      renderError(e, () => renderRoute(profile, thread, 'reply'));
+    }
+  }
+
+  // Slice 2 SPIKE — "Suggest times": check Guy's real calendar and draft the "here are some times"
+  // message (the one he sends when a lead asks to meet). Pure reuse of the existing booking endpoints
+  // (/api/calendar/availability + /quick-pick-message); NO booking/invite yet (that's the next step).
+  // Auto-picks a few slots (Guy's choice); he edits the wording before sending.
+  async function suggestTimes(profile, thread) {
+    setBody(`<div class="wingguy-muted">Checking your calendar for open times…</div>`);
+    try {
+      const leadLocation = profile.location || '';
+      const avail = await bg({ type: 'WG_CAL_AVAILABILITY', leadLocation });
+      const days = (avail && avail.days) || [];
+
+      // Auto-pick the first open slot on each of up to 3 distinct days (spread, not 3-in-a-row).
+      const picks = [];
+      for (const d of days) {
+        if (picks.length >= 3) break;
+        const slot = (d.freeSlots || [])[0];
+        if (slot) picks.push({ time: slot.time, display: slot.display, leadDisplay: slot.leadDisplay });
+      }
+      if (!picks.length) {
+        setBody(`<div class="wingguy-warn">No open slots found in your calendar window. Switch to "Reply" above to draft a message instead.</div>`);
+        return;
+      }
+
+      const context = {
+        yourName: 'Guy Wilson',
+        yourTimezone: avail.yourTimezone,
+        leadName: profile.name || '',
+        leadLocation,
+        leadTimezone: avail.leadTimezone,
+      };
+      const qp = await bg({ type: 'WG_CAL_QUICKPICK', selectedSlots: picks, context });
+      let msg = (qp && qp.message) || '';
+      msg = msg.replace(/^\s*READY TO COPY:\s*/i, '').trim(); // strip the portal's copy delimiter
+
+      renderDraftStep(msg, `times · ${picks.length} slots`, {
+        onRegenerate: () => suggestTimes(profile, thread),
       });
     } catch (e) {
       renderError(e, () => renderRoute(profile, thread, 'reply'));
@@ -863,7 +906,7 @@
   // The draft view (full-screen): the editable message + Insert/Copy/Regenerate. In thanks mode it
   // also shows the auto-detected template as a pill with a one-tap override to the other templates.
   function renderDraftStep(draft, model, opts = {}) {
-    const { onRegenerate, templateId, autoDetected, onPickTemplate } = opts;
+    const { onRegenerate, templateId, autoDetected, onPickTemplate, onSuggestTimes } = opts;
 
     // Pill + override (thanks mode only — templateId present).
     let pillHtml = '';
@@ -887,6 +930,7 @@
         <button class="wingguy-primary" id="wingguy-insert">Insert into LinkedIn</button>
         <button class="wingguy-secondary" id="wingguy-copy">Copy</button>
         <button class="wingguy-secondary" id="wingguy-regen">Regenerate</button>
+        ${onSuggestTimes ? '<button class="wingguy-secondary" id="wingguy-suggest">📅 Suggest times</button>' : ''}
       </div>
       <div class="wingguy-foot">
         <span class="wingguy-muted">${escapeHtml(model)} · you click send</span>
@@ -941,6 +985,7 @@
     });
 
     document.getElementById('wingguy-regen').addEventListener('click', onRegenerate);
+    if (onSuggestTimes) document.getElementById('wingguy-suggest').addEventListener('click', onSuggestTimes);
   }
 
   // ---- lifecycle / SPA navigation ------------------------------------------
