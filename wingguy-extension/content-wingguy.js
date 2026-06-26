@@ -30,6 +30,7 @@
 
   let currentUrl = location.href;
   let templates = null; // cached [{ id, label, useWhen, detectionKeywords, isDefault }]
+  let lastScrapeScoped = false; // did the last thread scrape isolate a single conversation container?
 
   // ---- page detection -------------------------------------------------------
   function isProfilePage() {
@@ -190,25 +191,79 @@
   // Read the OPEN LinkedIn message thread (the overlay you pop, or the /messaging pane), labelling
   // who said what. Messages are grouped: one .msg-s-message-group__name per run of bubbles from the
   // same sender, so we carry the last seen name forward across grouped continuations.
-  function scrapeOpenThread() {
-    // Shadow-aware: LinkedIn's newer messaging (esp. the profile message bubble) renders the thread
-    // inside an OPEN shadow root, where a plain document.querySelectorAll finds nothing — the same
-    // reason the composer needed deepQueryAll. Pierce open shadow roots so the connection note (the
-    // FIRST message, which the template auto-detect keys off) is actually read.
-    const items = deepQueryAll('.msg-s-event-listitem');
-    if (!items.length) return [];
+  // Which conversation container to read. LinkedIn can have SEVERAL message bubbles open at once, so a
+  // page-wide query mixes threads together (Vera + Doug bug, 2026-06-26). Scope to the ONE conversation
+  // anchored on the box the user is acting in (the composer they typed /wg in or sent from).
+  const CONVO_SELECTORS = [
+    '.msg-overlay-conversation-bubble',
+    '.msg-convo-wrapper',
+    '.msg-thread',
+    '.msg-s-message-list-container',
+    '.scaffold-layout__detail',
+  ].join(',');
+
+  // Walk one step up the tree, crossing OPEN shadow boundaries (a shadow root's parent is the root;
+  // hop to its .host to continue in the outer tree). Plain .closest() can't cross shadow boundaries.
+  function ascendNode(node) {
+    if (!node) return null;
+    const p = node.parentNode;
+    if (p) return (p.nodeType === 11 && p.host) ? p.host : p; // 11 = ShadowRoot/DocumentFragment
+    return node.host || null;
+  }
+  function closestConversationContainer(el) {
+    let node = el, steps = 0;
+    while (node && steps++ < 300) {
+      if (node.nodeType === 1 && node.matches) {
+        try { if (node.matches(CONVO_SELECTORS)) return node; } catch (_) {}
+      }
+      node = ascendNode(node);
+    }
+    return null;
+  }
+
+  // Best-effort sender for a message item: the group name, else a profile link's label, else the
+  // avatar's alt text (LinkedIn sets it to the sender's name), else a per-item name node.
+  function senderForItem(item, group) {
+    const tries = [];
+    if (group) {
+      const n = group.querySelector('.msg-s-message-group__name');
+      if (n) tries.push(n.textContent);
+      const link = group.querySelector('.msg-s-message-group__profile-link, a[href*="/in/"]');
+      if (link) tries.push(link.getAttribute('aria-label') || link.textContent);
+      const img = group.querySelector('img[alt]');
+      if (img) tries.push(img.getAttribute('alt'));
+    }
+    const selfName = item.querySelector('.msg-s-event-listitem__name');
+    if (selfName) tries.push(selfName.textContent);
+    for (const t of tries) {
+      const c = cleanText(t);
+      if (c && c.length < 80 && !/^(open the options|message|see |reactions?)/i.test(c)) return c;
+    }
+    return '';
+  }
+
+  // Read the OPEN LinkedIn thread for the conversation the user is acting in. Shadow-aware (the newer
+  // messaging build renders inside open shadow roots) AND scoped to a single conversation container so
+  // multiple open bubbles don't bleed into one another.
+  function scrapeOpenThread(anchorEl) {
+    const anchor = anchorEl || lastFocusedEditable || deepActiveElement();
+    const container = anchor ? closestConversationContainer(anchor) : null;
+    lastScrapeScoped = !!container;
+    const root = container || document;
+    const items = deepQueryAll('.msg-s-event-listitem', root);
     const out = [];
     let lastSender = '';
     items.forEach((item) => {
       const group = item.closest('.msg-s-message-group');
-      const nameEl = group && group.querySelector('.msg-s-message-group__name');
-      if (nameEl) {
-        const n = cleanText(nameEl.textContent);
-        if (n) lastSender = n;
-      }
+      const name = senderForItem(item, group);
+      if (name) lastSender = name;
       const bodyEl = item.querySelector('.msg-s-event-listitem__body');
       const text = cleanText(bodyEl && bodyEl.textContent);
       if (text) out.push({ sender: lastSender || 'Unknown', text });
+    });
+    console.log('[Wingguy] thread scrape:', {
+      scopedTo: container ? (String(container.className || '').split(' ')[0] || 'container') : 'NONE→document',
+      items: items.length, firstSender: out[0] && out[0].sender,
     });
     return out;
   }
@@ -506,6 +561,12 @@
       if (!isProfilePage()) return;                 // need the /in/ URL to look the lead up
       const thread = scrapeOpenThread();
       if (!thread.length) { console.log('[Wingguy] capture skipped — no thread read'); return; }
+      // Never save a thread we couldn't isolate to one conversation — that's how Vera+Doug got mixed.
+      if (!lastScrapeScoped) {
+        console.log('[Wingguy] capture skipped — could not isolate a single conversation');
+        showCaptureToast("Couldn't isolate the conversation — not saved. Send me the console line.", true);
+        return;
+      }
 
       const profileUrl = location_origin_path();
       const content = formatThreadForApi(thread);
