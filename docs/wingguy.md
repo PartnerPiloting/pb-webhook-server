@@ -2411,8 +2411,21 @@ onboard client #2; distribution → **Chrome Web Store "Unlisted"**.
 
 ## ▶ You are here / next pick-up
 
-**★ BUILT 2026-06-26 (same day as the design below) — THE FULL-SCREEN SHELL + `/wg` TRIGGER + KEYWORD AUTO-DETECT ARE
-ON `main`, owner-gated; backend healthy + auto-detect unit-tested; AWAITING GUY'S LIVE LINKEDIN TEST.** Commit
+**★ BUILT 2026-06-26 (session 2) — ON-SEND → PORTAL CAPTURE shipped (commit `fcf76bae`); the full-screen shell +
+auto-detect were PROVEN LIVE on a real lead (Vera) first.** The thanks-for-connecting loop is now end-to-end: `/wg` →
+full-screen → auto-detect template → draft → insert → **Guy clicks Send → Wingguy full-replace snapshots the whole
+thread onto the lead's Portal record** (kills the manual copy). Capture reuses the legacy "Save to Portal" path exactly
+(scrape → format LinkedIn-style raw → `LOOKUP_LEAD` → `QUICK_UPDATE {section:'linkedin'}` → backend `parseConversation`
+REPLACES the `linkedin` section of the **Notes** field — there's no dedicated conversation field; both background
+handlers already existed in the fork). Send detection = shadow-aware send-button click (composedPath) + Enter, debounced,
+1200ms settle. **Bug fixed earlier this session (Vera):** thread read returned empty → auto-detect fell back to General;
+fixed by making `scrapeOpenThread` shadow-aware + `classifyMode` prospect-aware (Guy's own connection note alone stays
+THANKS) — `fractional` now detects correctly. **AWAITING GUY'S LIVE TEST of the capture** (send a message, confirm the
+thread lands on the Portal record's Notes/linkedin section; v1 has no per-message timestamps yet — neutral time, order
+preserved). **NEXT after that = Slice 2** (booking tools into the same screen; one-tool calendar spike first).
+
+**★ BUILT 2026-06-26 (session 1) — THE FULL-SCREEN SHELL + `/wg` TRIGGER + KEYWORD AUTO-DETECT ARE
+ON `main`, owner-gated; backend healthy + auto-detect unit-tested.** Commit
 `f2d1f5d1`. This is the thanks-for-connecting phase rebuilt into the new shell (the no-tools path that proves the whole
 UX). What shipped:
 - **Backend auto-detect (`routes/wingguyRoutes.js` + `config/wingguyTemplates.js`):** `POST /draft-thanks` now accepts
