@@ -1588,6 +1588,12 @@ look exactly but purpose-built.
    on-screen profile + the connection-request note that went out**; first match wins, **default = general**, **human
    overrides** via the template pill in the CONTEXT header. NOT the rejected LH-campaign-threading (reads what's already
    on screen) — that rejection still stands. Live proof: Benjamin's "Fractional COO" → "fractional" → `\frac`.
+   **★ NOTE SOURCE RESOLVED (2026-06-26, Guy's screenshot):** the connection-request note is the **FIRST message in the
+   LinkedIn thread** (Benjamin's May 30: *"I'm building a network of **Fractional** Professionals…"*) — which the
+   extension **already scrapes** (`scrapeOpenThread()`). So NO Airtable dependency to read the note; the profile headline
+   ("Fractional COO") is a free belt-and-braces fallback (match either → same answer). **Concrete first-test rule
+   (locked):** *first message contains "fractional" → `\frac`, else `\tks` (default).* One keyword on `\frac`, none on
+   `\tks` (catch-all).
 4. **Highlight-and-insert** — draft shown highlighted; **only the highlighted text inserts** (copy AI Blaze's "Insert
    highlight into page"). Cleaner than our `stripMetaCommentary()` backstop: the model's surrounding chatter never
    reaches the composer by construction.
@@ -1611,8 +1617,12 @@ confirm / reschedule gracefully), offering a VA a couple of **reply ideas**. Sam
 the no-tools phase — because it proves the *entire new shell* (typed trigger · full-screen overlay · keyword auto-detect ·
 highlight-and-insert · on-Send→Airtable capture) on the easy path. Test against Guy's **two real templates already
 installed** (`\tks`, `\frac` in `config/wingguyTemplates.js`); only new template work = **adding detection keywords** to
-each. Then the conversation/booking engine (Slice 2, calendar tools) slots into the *same proven screen*, de-risked by the
-one-tool calendar spike already planned. *(This is what the OLD Slice 1 becomes once re-skinned into the new shell —
+each (the first-test rule above). **★ Keywords-as-CONFIG now, editor-SCREEN later (clarified 2026-06-26):** the template
+*editor* UI (AI Blaze's Label/Shortcut/prompt-body screen) is a SEPARATE, later piece — the client-facing "manage my
+templates" surface (2026-06-24 Authoring model; Postgres rules store = Slice 3). We do NOT need it to test: detection
+keywords are just a field hand-added to the seeded config. Don't read "build the thanks screen first" as "build the
+editor first." Then the conversation/booking engine (Slice 2, calendar tools) slots into the *same proven screen*,
+de-risked by the one-tool calendar spike already planned. *(This is what the OLD Slice 1 becomes once re-skinned into the new shell —
 backend draft path already works; the work is the UX shell + auto-detect + capture.)*
 
 ## Discovery & onboarding — teaching tenants what's possible (2026-06-14)
