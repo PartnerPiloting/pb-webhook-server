@@ -221,25 +221,50 @@
     return null;
   }
 
-  // Best-effort sender for a message item: the group name, else a profile link's label, else the
-  // avatar's alt text (LinkedIn sets it to the sender's name), else a per-item name node.
-  function senderForItem(item, group) {
-    const tries = [];
-    if (group) {
-      const n = group.querySelector('.msg-s-message-group__name');
-      if (n) tries.push(n.textContent);
-      const link = group.querySelector('.msg-s-message-group__profile-link, a[href*="/in/"]');
-      if (link) tries.push(link.getAttribute('aria-label') || link.textContent);
-      const img = group.querySelector('img[alt]');
-      if (img) tries.push(img.getAttribute('alt'));
-    }
-    const selfName = item.querySelector('.msg-s-event-listitem__name');
-    if (selfName) tries.push(selfName.textContent);
-    for (const t of tries) {
-      const c = cleanText(t);
-      if (c && c.length < 80 && !/^(open the options|message|see |reactions?)/i.test(c)) return c;
+  // Best-effort sender for a message item. The sender name lives in the message GROUP header (avatar
+  // alt-text / name node / profile link) that wraps a run of items. Class names vary across LinkedIn
+  // builds and the overlay bubble, so cast a wide net and validate the text actually looks like a name.
+  function looksLikeName(t) {
+    return !!t && t.length >= 2 && t.length < 60 && /[A-Za-z]/.test(t) &&
+      !/(message|reaction|status|sent the following|edited|open the options|see more|today|yesterday|active now|· )/i.test(t);
+  }
+  function senderForItem(item) {
+    const group = item.closest('.msg-s-message-group, [class*="message-group"], li, [role="listitem"]') || item;
+    const cands = [];
+    group.querySelectorAll('img[alt]').forEach((im) => cands.push(im.getAttribute('alt')));            // avatar alt = name
+    group.querySelectorAll('.msg-s-message-group__name, [class*="message-group__name"], [class*="event-listitem__name"]')
+      .forEach((e) => cands.push(e.textContent));
+    group.querySelectorAll('a[href*="/in/"]').forEach((a) => cands.push(a.getAttribute('aria-label') || a.textContent));
+    for (const c of cands) {
+      const t = cleanText(c);
+      if (looksLikeName(t)) return t;
     }
     return '';
+  }
+
+  // When every sender came back Unknown, dump the structure once so we can lock the right selector
+  // from the real DOM (paste the console line). Shadow-aware ancestor walk + nearby name candidates.
+  function dumpSenderDiag(items) {
+    try {
+      const first = items[0];
+      if (!first) return;
+      const ancestors = [];
+      let n = first, steps = 0;
+      while (n && steps++ < 10) {
+        if (n.nodeType === 1) ancestors.push((n.tagName || '') + '.' + String(n.className || '').trim().replace(/\s+/g, '.').slice(0, 70));
+        n = ascendNode(n);
+      }
+      let scope = first;
+      for (let i = 0; i < 4 && ascendNode(scope); i++) scope = ascendNode(scope);
+      const names = [];
+      if (scope && scope.querySelectorAll) {
+        scope.querySelectorAll('img[alt], a[href*="/in/"], [class*="name"]').forEach((e) => {
+          const t = cleanText((e.getAttribute && e.getAttribute('alt')) || e.textContent);
+          if (t) names.push(`${e.tagName}[${String(e.className || '').slice(0, 36)}]: ${t.slice(0, 40)}`);
+        });
+      }
+      console.log('[Wingguy] SENDER DIAG (paste this to fix names):\n ancestors:', ancestors, '\n name-candidates:', names.slice(0, 14));
+    } catch (e) { console.log('[Wingguy] sender diag failed:', e.message); }
   }
 
   // Read the OPEN LinkedIn thread for the conversation the user is acting in. Shadow-aware (the newer
@@ -254,8 +279,7 @@
     const out = [];
     let lastSender = '';
     items.forEach((item) => {
-      const group = item.closest('.msg-s-message-group');
-      const name = senderForItem(item, group);
+      const name = senderForItem(item);
       if (name) lastSender = name;
       const bodyEl = item.querySelector('.msg-s-event-listitem__body');
       const text = cleanText(bodyEl && bodyEl.textContent);
@@ -265,6 +289,7 @@
       scopedTo: container ? (String(container.className || '').split(' ')[0] || 'container') : 'NONE→document',
       items: items.length, firstSender: out[0] && out[0].sender,
     });
+    if (out.length && out.every((m) => m.sender === 'Unknown')) dumpSenderDiag(items);
     return out;
   }
 
