@@ -2418,11 +2418,16 @@ thread onto the lead's Portal record** (kills the manual copy). Capture reuses t
 (scrape → format LinkedIn-style raw → `LOOKUP_LEAD` → `QUICK_UPDATE {section:'linkedin'}` → backend `parseConversation`
 REPLACES the `linkedin` section of the **Notes** field — there's no dedicated conversation field; both background
 handlers already existed in the fork). Send detection = shadow-aware send-button click (composedPath) + Enter, debounced,
-1200ms settle. **Bug fixed earlier this session (Vera):** thread read returned empty → auto-detect fell back to General;
-fixed by making `scrapeOpenThread` shadow-aware + `classifyMode` prospect-aware (Guy's own connection note alone stays
-THANKS) — `fractional` now detects correctly. **AWAITING GUY'S LIVE TEST of the capture** (send a message, confirm the
-thread lands on the Portal record's Notes/linkedin section; v1 has no per-message timestamps yet — neutral time, order
-preserved). **NEXT after that = Slice 2** (booking tools into the same screen; one-tool calendar spike first).
+1200ms settle. **✅ CAPTURE PROVEN LIVE (Jane, end of session) — right thread only (no bleed), correct senders.** Three
+bugs fixed in-session to get there: (1) thread read empty → auto-detect fell back to General → `scrapeOpenThread` made
+shadow-aware + `classifyMode` prospect-aware (Guy's own note alone stays THANKS); (2) shadow-aware scrape then over-read
+ALL open bubbles (Vera+Doug mixed) → scoped to the single conversation container anchored on the box the user acts in,
+and capture REFUSES to save an unscoped scrape; (3) senders read "Unknown" → `senderForItem` hardened (avatar alt-text
+first) + a `dumpSenderDiag` fallback. **So the THANKS-FOR-CONNECTING LOOP IS FULLY PROVEN END-TO-END.** Known v1 nit
+(not blocking): capture carries no per-message timestamps yet (neutral time; order preserved) — a later fidelity pass.
+**NEXT = Slice 2** (the tool-using conversation/booking engine into the same screen; start with the one-tool calendar
+spike — "they picked/asked a time → check calendar → propose real times → book" — likely reusing the existing
+`/api/calendar/quick-pick-message` Smart Booking path; design-pass first per the plan).
 
 **★ BUILT 2026-06-26 (session 1) — THE FULL-SCREEN SHELL + `/wg` TRIGGER + KEYWORD AUTO-DETECT ARE
 ON `main`, owner-gated; backend healthy + auto-detect unit-tested.** Commit
