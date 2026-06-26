@@ -2483,11 +2483,15 @@ Render one-off job → 50 real events off Guy's calendar, `provider=nylas`, gran
 ID`). **The read foundation already exists + works:** swappable seam `services/calendarProvider.js` (`getMeetingsInWindow`,
 Google|Nylas, per-coach `calendarProvider`), per-client grant in `clientService.js` (`Nylas Grant ID` + `Calendar
 Provider`), Nylas v3 event mapping — currently used by the Fathom splitter, default Google. **So Nylas is NOT a
-from-scratch build.** **NEXT = the WRITE side:** (1) add `createEvent(coach, details)` to `calendarProvider.js` (Nylas
-`POST /v3/grants/{grantId}/events` + `notify_participants:true`); (2) **prove an EXTERNAL invite actually emails the
-guest** (one controlled write test — grant's write scope is unverified; may need a read+write reconnect if it 403s);
-(3) a `/create-event` endpoint + wire the extension's confirm-then-book (lead email via `/lookup-lead`) + Airtable
-Follow-up sync. Then the Postgres prefs store + conversational editing (seam already isolates this). Real per-message
+from-scratch build.** **✅ NYLAS WRITE PROVEN LIVE ON PROD 2026-06-26** — `scripts/nylas-write-test.js` via a Render
+one-off job created a real event on Guy's calendar (HTTP 200, id `7et6h3j0…`) with external guest
+`taniaadelewilson@gmail.com` and `notify_participants:true`. **So the grant HAS write scope (no reconnect needed) and
+external invites send.** (Awaiting Guy's human confirm that Tania received the email + then delete the test event:
+`node scripts/nylas-write-test.js --delete 7et6h3j00arg8um619qslvdfuc`.) **The whole calendar read+write foundation is now
+proven.** **NEXT = productionise it:** (1) add `createEvent(coach, details)` to `calendarProvider.js` (mirror the test:
+Nylas `POST /v3/grants/{grantId}/events?notify_participants=true`, behind the same seam as the read); (2) a `/create-event`
+endpoint + wire the extension's confirm-then-book (lead email via `/lookup-lead`, Zoom link, title from the Notion spec)
++ Airtable Follow-up sync. Then the Postgres prefs store + conversational editing (seam already isolates this). Real per-message
 timestamp capture also shipped this session (`fed2217a`).
 
 **★ BUILT 2026-06-26 (session 1) — THE FULL-SCREEN SHELL + `/wg` TRIGGER + KEYWORD AUTO-DETECT ARE
