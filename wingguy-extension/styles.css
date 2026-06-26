@@ -183,3 +183,23 @@
 .wingguy-status { margin-top: 8px; font-size: 12.5px; min-height: 16px; }
 .wingguy-status.wingguy-ok { color: var(--wingguy-ok); }
 .wingguy-status.wingguy-warn-inline { color: var(--wingguy-warn); }
+
+/* On-Send capture toast (bottom-centre, auto-dismiss) */
+.wingguy-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 28px;
+  transform: translateX(-50%);
+  z-index: 2147483600;
+  max-width: 80vw;
+  padding: 10px 16px;
+  border-radius: 10px;
+  background: var(--wingguy-teal);
+  color: #fff;
+  font: 600 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.3);
+  opacity: 1;
+  transition: opacity 0.4s ease;
+}
+.wingguy-toast-err { background: var(--wingguy-warn); }
+.wingguy-toast-out { opacity: 0; }

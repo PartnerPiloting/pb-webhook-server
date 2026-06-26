@@ -469,6 +469,102 @@
     });
   }
 
+  // ---- on-Send → Portal capture (the background half) -----------------------
+  // When the human clicks LinkedIn's Send (iron rule: never headless), snapshot the WHOLE thread and
+  // full-replace it onto the lead's Portal record. Reuses the legacy "Save to Portal" path exactly:
+  //   scrape thread → format as LinkedIn-style raw text → LOOKUP_LEAD by profile URL → QUICK_UPDATE
+  //   { section:'linkedin' } (the backend parseConversation() parses it and REPLACES the linkedin
+  //   section of the Notes field — there's no dedicated conversation field). Kills the manual copy.
+
+  // Mirror the legacy formatConversationForApi shape so the server-side parser handles it identically.
+  // (We don't carry per-message timestamps yet, so emit a neutral time — the parser tolerates it and
+  // message order is preserved from the DOM. Timestamp fidelity is a later refinement.)
+  function formatThreadForApi(thread) {
+    const out = [];
+    for (const m of thread) {
+      const sender = (m.sender || 'Unknown').trim();
+      const time = '12:00 PM';
+      out.push(`${sender} sent the following message at ${time}`);
+      out.push(`${sender}   ${time}`);
+      out.push(m.text || '');
+      out.push('');
+    }
+    return out.join('\n');
+  }
+
+  let lastCaptureAt = 0;
+  function scheduleCapture() {
+    const now = Date.now();
+    if (now - lastCaptureAt < 3000) return;  // debounce: one capture per send (button + Enter both fire)
+    lastCaptureAt = now;
+    // Wait a beat so the message we just sent has rendered into the thread before we snapshot.
+    setTimeout(captureConversationToPortal, 1200);
+  }
+
+  async function captureConversationToPortal() {
+    try {
+      if (!isProfilePage()) return;                 // need the /in/ URL to look the lead up
+      const thread = scrapeOpenThread();
+      if (!thread.length) { console.log('[Wingguy] capture skipped — no thread read'); return; }
+
+      const profileUrl = location_origin_path();
+      const content = formatThreadForApi(thread);
+
+      const lookup = await bg({ type: 'LOOKUP_LEAD', linkedinUrl: profileUrl });
+      const leads = (lookup && lookup.leads) || [];
+      if (!leads.length) {
+        console.log('[Wingguy] capture: no matching lead in portal for', profileUrl);
+        return;                                     // quiet — not every message is to a portal lead
+      }
+      const lead = leads[0];
+      await bg({ type: 'QUICK_UPDATE', leadId: lead.id, content, section: 'linkedin' });
+      const who = `${lead.firstName || ''} ${lead.lastName || ''}`.trim() || 'lead';
+      console.log(`[Wingguy] captured ${thread.length} messages to ${who}`);
+      showCaptureToast(`✓ Saved ${thread.length} messages to ${who}`);
+    } catch (e) {
+      console.log('[Wingguy] capture failed:', e.message);
+      showCaptureToast(`Couldn't save to the Portal: ${e.message}`, true);
+    }
+  }
+
+  // A send happened if the click landed on LinkedIn's send button (shadow-aware via composedPath).
+  function looksLikeSendButton(el) {
+    if (!el || el.nodeType !== 1 || !el.closest) return false;
+    const btn = el.closest('button');
+    if (!btn) return false;
+    const cls = String(btn.className || '');
+    const al = (btn.getAttribute('aria-label') || '').toLowerCase();
+    const txt = (btn.textContent || '').trim().toLowerCase();
+    const inMsgForm = !!btn.closest('.msg-form, .msg-form__send-toggle, .msg-overlay, .msg-overlay-conversation-bubble, .msgs-thread');
+    return /msg-form__send/.test(cls) || (inMsgForm && (al === 'send' || txt === 'send'));
+  }
+  function onSendClick(e) {
+    const path = (e.composedPath && e.composedPath()) || [e.target];
+    for (const el of path) {
+      if (looksLikeSendButton(el)) { console.log('[Wingguy] send button clicked'); scheduleCapture(); return; }
+    }
+  }
+  // LinkedIn also sends on Enter (without Shift) from the composer.
+  function onSendKeydown(e) {
+    if (e.key !== 'Enter' || e.shiftKey) return;
+    const target = deepActiveElement();
+    if (!isEditableEl(target) || insideWingguy(target)) return;
+    if (!isMessageEditableSafe(target)) return;
+    scheduleCapture();
+  }
+
+  // Brief, unobtrusive toast for capture feedback (separate from the panel; bottom-centre).
+  function showCaptureToast(text, isError) {
+    try {
+      const t = document.createElement('div');
+      t.className = `wingguy-toast${isError ? ' wingguy-toast-err' : ''}`;
+      t.textContent = text;
+      document.body.appendChild(t);
+      setTimeout(() => { t.classList.add('wingguy-toast-out'); }, 2800);
+      setTimeout(() => { t.remove(); }, 3300);
+    } catch (_) { /* non-fatal */ }
+  }
+
   // ---- UI: launcher + full-screen overlay -----------------------------------
   function injectLauncher() {
     if (!isProfilePage()) return;
@@ -762,6 +858,9 @@
     // Typed trigger (/wg etc.) inside the composer — composed keyup crosses open shadow boundaries.
     document.addEventListener('keyup', onComposerKeyup, true);
     document.addEventListener('keydown', onKeydown, true);
+    // On-Send capture: detect the send button click (and Enter-to-send) → snapshot thread to the Portal.
+    document.addEventListener('click', onSendClick, true);
+    document.addEventListener('keydown', onSendKeydown, true);
     console.log('[Wingguy] content script ready (type /wg in the message box, or click the launcher)');
   }
 
