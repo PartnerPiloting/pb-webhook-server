@@ -191,7 +191,11 @@
   // who said what. Messages are grouped: one .msg-s-message-group__name per run of bubbles from the
   // same sender, so we carry the last seen name forward across grouped continuations.
   function scrapeOpenThread() {
-    const items = document.querySelectorAll('.msg-s-event-listitem');
+    // Shadow-aware: LinkedIn's newer messaging (esp. the profile message bubble) renders the thread
+    // inside an OPEN shadow root, where a plain document.querySelectorAll finds nothing — the same
+    // reason the composer needed deepQueryAll. Pierce open shadow roots so the connection note (the
+    // FIRST message, which the template auto-detect keys off) is actually read.
+    const items = deepQueryAll('.msg-s-event-listitem');
     if (!items.length) return [];
     const out = [];
     let lastSender = '';
@@ -209,10 +213,20 @@
     return out;
   }
 
-  // Code-side routing (deterministic, no AI): an open thread with real messages = a follow-on reply;
-  // otherwise a first-touch thanks-for-connecting. The human can override in the panel.
-  function classifyMode(thread) {
-    return thread.length >= 1 ? 'reply' : 'thanks';
+  // Code-side routing (deterministic, no AI): it's a REPLY only when the PROSPECT has actually said
+  // something. A thread that contains only Guy's own outbound (e.g. just the connection-request note)
+  // is still a first-touch THANKS — otherwise we'd misread Guy's own note as "a conversation". The
+  // human can override with the mode switch.
+  function classifyMode(thread, prospectName) {
+    if (!thread.length) return 'thanks';
+    const pn = String(prospectName || '').toLowerCase().trim();
+    const first = pn.split(/\s+/)[0];
+    if (!first) return 'reply'; // can't identify the prospect → assume a conversation
+    const prospectSpoke = thread.some((m) => {
+      const s = String(m.sender || '').toLowerCase();
+      return s.includes(first) || (pn && s.includes(pn));
+    });
+    return prospectSpoke ? 'reply' : 'thanks';
   }
 
   // ---- the LinkedIn message composer (insert target) ------------------------
@@ -547,9 +561,12 @@
       }
     }
 
-    // Read the open thread (if any) and auto-route: ongoing conversation → reply; else → first hello.
-    const thread = scrapeOpenThread();
-    renderRoute(profile, thread, classifyMode(thread));
+    // Read the open thread (if any) and auto-route. A freshly-opened message bubble renders its
+    // history async, so if the first read is empty, give it a beat and try once more before deciding.
+    let thread = scrapeOpenThread();
+    if (!thread.length) { await sleep(400); thread = scrapeOpenThread(); }
+    console.log('[Wingguy] thread messages read:', thread.length, thread.map((m) => m.sender));
+    renderRoute(profile, thread, classifyMode(thread, profile.name));
   }
 
   function templateLabel(id) {
