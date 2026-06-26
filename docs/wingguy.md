@@ -1625,6 +1625,45 @@ editor first." Then the conversation/booking engine (Slice 2, calendar tools) sl
 de-risked by the one-tool calendar spike already planned. *(This is what the OLD Slice 1 becomes once re-skinned into the new shell —
 backend draft path already works; the work is the UX shell + auto-detect + capture.)*
 
+### Slice 2 — booking engine design (2026-06-26 design pass; codebase-verified)
+Design pass (no Slice-2 code yet) after the thanks-for-connecting loop proved out. Read with **Extension core function =
+an intelligent conversation engine**, **Reference example — the full booking flow (Ranya)**, and **Booking-from-the-panel**.
+**★ Headline: Slice 2 is MOSTLY REUSE, not new backend.** A codebase audit found the booking infrastructure already
+exists and (crucially) every calendar endpoint authenticates on **`x-client-id` alone — which the extension already
+sends** — so the panel can call them with the headers it has.
+
+**Reusable today (all `/api/calendar/*`, in `routes/apiAndJobRoutes.js`; availability in `config/calendarServiceAccount.js`):**
+- `GET /availability?leadLocation=` → timezone-aware free slots (`days[]` each with `freeSlots[{time, display, leadDisplay}]`);
+  timezone resolved from the lead's location (rules + Gemini fallback).
+- `POST /quick-pick-message` `{selectedSlots[], context}` → a **ready-to-paste "here are some times" message** in the
+  lead's timezone (the "I've got these times in mind" message Guy sends today).
+- `POST /chat` `{message, messages[], context}` → the **Gemini booking brain** (timezone rules, least-busy-day bias);
+  returns a message + optional `action:setBookingTime`.
+- `GET /lookup-lead?query=` (URL/email/name) → lead record incl. **email** (needed for the invite); `PATCH /update-lead`
+  → writes location/email/phone; `POST /extract-profile` → parse a raw paste.
+
+**Genuinely missing (the only real build):**
+- **Calendar invite CREATION is not server-side.** Today the Next.js UI just opens a **prefilled Google Calendar URL**
+  (`calendar-booking/page.tsx`) for a human to confirm + send. No `POST /create-event`.
+- **No booking→Airtable status/Follow-up-Date sync** on a confirmed meeting (update-lead only does location/email/phone).
+
+**The design (booking as a move inside the same `/wg` reply panel):**
+- **One-tool calendar SPIKE (build first, pure reuse, NO new backend):** in reply mode, a **"Suggest times"** action →
+  `availability` (leadLocation from the profile/record) → pick a few slots → `quick-pick-message` → drafted times message
+  in the panel → insert → send. Proves calendar-in-extension end-to-end with zero backend work.
+- **Then "confirm a picked time":** detect the lead chose a time → **reuse the prefilled-Google-Calendar-URL approach**
+  (open it for Guy to confirm + send — human-at-the-glass, NO new backend) rather than building server-side create-event
+  first → optionally `update-lead`/Follow-up-Date. Server-side auto-create + RSVP polling = later automation, not now.
+- **Decide-the-move** (auto-offer vs a manual "Suggest times" button) starts **manual**; folding it into the conversation
+  engine's auto-routing is a later step.
+
+**Open decisions for Guy (flagged, not yet locked):** (1) slot selection = **auto-pick a few** vs an in-panel picker
+(lean auto-pick first, picker later); (2) invite = **prefilled GCal URL (human confirms, no backend)** vs server-side
+auto-create (lean prefilled-URL interim — less build, keeps the iron rule); (3) the lead **email** for the invite comes
+from the Airtable record via `lookup-lead` (confirm that's reliably populated). **Single-tenant notes:** Brisbane TZ +
+one shared Google service account are hardcoded defaults (fine for Guy; revisit at multi-tenant). **NEXT = build the
+"Suggest times" spike** once Guy picks on (1)/(2).
+
 ## Discovery & onboarding — teaching tenants what's possible (2026-06-14)
 
 From a strategy/workflow chat. Closes a real gap: the doc is deep on *what* the system does but near-silent on *how a new tenant discovers it*. Sits directly under "Onboarding IS the business" — discovery is the front of onboarding.
@@ -2425,9 +2464,14 @@ ALL open bubbles (Vera+Doug mixed) → scoped to the single conversation contain
 and capture REFUSES to save an unscoped scrape; (3) senders read "Unknown" → `senderForItem` hardened (avatar alt-text
 first) + a `dumpSenderDiag` fallback. **So the THANKS-FOR-CONNECTING LOOP IS FULLY PROVEN END-TO-END.** Known v1 nit
 (not blocking): capture carries no per-message timestamps yet (neutral time; order preserved) — a later fidelity pass.
-**NEXT = Slice 2** (the tool-using conversation/booking engine into the same screen; start with the one-tool calendar
-spike — "they picked/asked a time → check calendar → propose real times → book" — likely reusing the existing
-`/api/calendar/quick-pick-message` Smart Booking path; design-pass first per the plan).
+**NEXT = Slice 2** (the tool-using conversation/booking engine into the same screen). **★ Slice 2 DESIGN PASS DONE
+2026-06-26** (journal "Slice 2 — booking engine design"): **it's mostly REUSE** — `/api/calendar/availability` +
+`/quick-pick-message` + `/chat` (booking brain) + `/lookup-lead` already exist and auth on `x-client-id` (which the
+extension already sends). **Build first = the "Suggest times" SPIKE** (availability → quick-pick-message → drafted times
+message in the reply panel; NO new backend). Then confirm-a-time via the existing **prefilled-Google-Calendar-URL**
+(human confirms; no server-side create-event yet) + optional Airtable Follow-up sync. **Awaiting Guy's call on 2 design
+Qs:** auto-pick slots vs in-panel picker; prefilled-GCal-URL vs server-side auto-create. Real timestamp capture also
+shipped this session (`fed2217a`).
 
 **★ BUILT 2026-06-26 (session 1) — THE FULL-SCREEN SHELL + `/wg` TRIGGER + KEYWORD AUTO-DETECT ARE
 ON `main`, owner-gated; backend healthy + auto-detect unit-tested.** Commit
