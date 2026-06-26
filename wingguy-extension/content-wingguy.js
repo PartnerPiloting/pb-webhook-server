@@ -242,6 +242,20 @@
     return '';
   }
 
+  // Best-effort message time ("5:41 PM"). LinkedIn shows it in the group header / a <time> element;
+  // grouped consecutive messages share the header time, so the caller carries the last seen time
+  // forward. Falls back to scanning the item text for an H:MM AM/PM token.
+  function timeForItem(item) {
+    const group = item.closest('.msg-s-message-group, [class*="message-group"]') || item;
+    const tnode = group.querySelector('time, .msg-s-message-group__timestamp, [class*="timestamp"]') ||
+      item.querySelector('time, [class*="timestamp"]');
+    let raw = cleanText(tnode && ((tnode.getAttribute && tnode.getAttribute('aria-label')) || tnode.textContent));
+    let m = raw.match(/\d{1,2}:\d{2}\s*(?:AM|PM)/i);
+    if (m) return m[0].replace(/\s+/g, ' ');
+    m = cleanText(item.textContent).match(/\b\d{1,2}:\d{2}\s*(?:AM|PM)\b/i);
+    return m ? m[0].replace(/\s+/g, ' ') : '';
+  }
+
   // When every sender came back Unknown, dump the structure once so we can lock the right selector
   // from the real DOM (paste the console line). Shadow-aware ancestor walk + nearby name candidates.
   function dumpSenderDiag(items) {
@@ -275,21 +289,35 @@
     const container = anchor ? closestConversationContainer(anchor) : null;
     lastScrapeScoped = !!container;
     const root = container || document;
-    const items = deepQueryAll('.msg-s-event-listitem', root);
+    // Walk message items AND the day-heading separators in order, so each message can carry the day it
+    // fell under (real dates on the record) plus its time. Sender/time carry forward across a group's
+    // continuation bubbles (only the first bubble shows the name/time).
+    const nodes = deepQueryAll('.msg-s-event-listitem, .msg-s-message-list__time-heading, [class*="time-heading"]', root);
     const out = [];
-    let lastSender = '';
-    items.forEach((item) => {
-      const name = senderForItem(item);
-      if (name) lastSender = name;
-      const bodyEl = item.querySelector('.msg-s-event-listitem__body');
+    const msgItems = [];
+    let lastSender = '', curDay = '', lastTime = '';
+    nodes.forEach((node) => {
+      if (!node.matches) return;
+      const isItem = node.matches('.msg-s-event-listitem');
+      if (!isItem) {
+        if (node.matches('.msg-s-message-list__time-heading, [class*="time-heading"]')) {
+          const d = cleanText(node.textContent);
+          if (d && d.length < 30) curDay = d;   // e.g. "JUN 17" / "Today"
+        }
+        return;
+      }
+      msgItems.push(node);
+      const name = senderForItem(node); if (name) lastSender = name;
+      const time = timeForItem(node); if (time) lastTime = time;
+      const bodyEl = node.querySelector('.msg-s-event-listitem__body');
       const text = cleanText(bodyEl && bodyEl.textContent);
-      if (text) out.push({ sender: lastSender || 'Unknown', text });
+      if (text) out.push({ sender: lastSender || 'Unknown', text, day: curDay, time: lastTime });
     });
     console.log('[Wingguy] thread scrape:', {
       scopedTo: container ? (String(container.className || '').split(' ')[0] || 'container') : 'NONE→document',
-      items: items.length, firstSender: out[0] && out[0].sender,
+      items: msgItems.length, firstSender: out[0] && out[0].sender, firstTime: out[0] && out[0].time,
     });
-    if (out.length && out.every((m) => m.sender === 'Unknown')) dumpSenderDiag(items);
+    if (out.length && out.every((m) => m.sender === 'Unknown')) dumpSenderDiag(msgItems);
     return out;
   }
 
@@ -561,9 +589,11 @@
   // message order is preserved from the DOM. Timestamp fidelity is a later refinement.)
   function formatThreadForApi(thread) {
     const out = [];
+    let lastDay = '';
     for (const m of thread) {
       const sender = (m.sender || 'Unknown').trim();
-      const time = '12:00 PM';
+      const time = (m.time && /\d{1,2}:\d{2}/.test(m.time)) ? m.time : '12:00 PM';
+      if (m.day && m.day !== lastDay) { out.push(m.day); lastDay = m.day; } // day header → real dates on the record
       out.push(`${sender} sent the following message at ${time}`);
       out.push(`${sender}   ${time}`);
       out.push(m.text || '');
