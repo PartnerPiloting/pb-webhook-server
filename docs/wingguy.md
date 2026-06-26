@@ -2411,6 +2411,30 @@ onboard client #2; distribution → **Chrome Web Store "Unlisted"**.
 
 ## ▶ You are here / next pick-up
 
+**★ BUILT 2026-06-26 (same day as the design below) — THE FULL-SCREEN SHELL + `/wg` TRIGGER + KEYWORD AUTO-DETECT ARE
+ON `main`, owner-gated; backend healthy + auto-detect unit-tested; AWAITING GUY'S LIVE LINKEDIN TEST.** Commit
+`f2d1f5d1`. This is the thanks-for-connecting phase rebuilt into the new shell (the no-tools path that proves the whole
+UX). What shipped:
+- **Backend auto-detect (`routes/wingguyRoutes.js` + `config/wingguyTemplates.js`):** `POST /draft-thanks` now accepts
+  `templateId:"auto"` → `detectTemplate(profile, conversation)` matches each template's **`detectionKeywords`** against
+  the **connection-request note (= first thread message) + profile**; **`fractional` → `\frac`, else `\tks`** (the locked
+  first-test rule). Returns `templateId`/`templateLabel`/`autoDetected` so the panel shows the pill. Detection is **one
+  keyword on `\frac`, none on `\tks`** (catch-all). **Unit-tested 4/4 locally** (first-message match, profile-headline
+  fallback, default, empty). Prod `/api/wingguy/status` = healthy after deploy.
+- **Extension (`wingguy-extension/content-wingguy.js` + `styles.css` + `manifest.json`):** type **`/wg`** (or
+  `/wingguy`/`/wingman`, slash-prefixed) **inside LinkedIn's message box** → a **FULL-SCREEN overlay** takes over (the
+  teal launcher is KEPT as a reliable fallback). CONTEXT header shows who + a **mode switch** (thanks/reply,
+  auto-routed, overridable) + the **auto-detected template pill with one-tap override** to the other template. Auto-drafts
+  on open; **"Insert into LinkedIn"** drops the message at the cursor (the proven AI-Blaze cursor-insert) and **closes the
+  overlay** so Guy edits + sends. All `wingguy-*` namespaced, teal, no double-inject with the legacy extension.
+- **NEXT (in order):** (1) **Guy's live test** — reload the unpacked `wingguy-extension/`, open the portal once to sync
+  creds, go to a real LinkedIn profile/thread, type `/wg`, confirm: trigger fires on the shadow-DOM composer · full-screen
+  looks right · auto-detect picks `\frac` on a fractional / `\tks` otherwise · insert lands. **Watch-items** (known
+  LinkedIn-DOM risk): the typed-trigger keyup on the shadow/React composer and `scrapeOpenThread` selectors — if `/wg`
+  doesn't fire, use the launcher and grab the console; if thread doesn't read, the override pill + mode switch still let
+  him proceed. (2) **On-Send → Airtable capture** (the background half — detect Send, full-replace snapshot the thread to
+  the Portal; needs the lead-write path wired). (3) Then **Slice 2** booking tools into the same screen.
+
 **★ DESIGN SESSION 2026-06-26 (UX revision; NO code) — THE EXTENSION GETS AN AI-BLAZE-STYLE FULL-SCREEN SHELL + ONE
 TRIGGER + KEYWORD AUTO-DETECT + ON-SEND→AIRTABLE CAPTURE. NEXT BUILD = rebuild the thanks-for-connecting phase into the
 new full-screen screen FIRST, then slot Slice 2 (booking tools) into it.** Full detail + provenance → journal *"Extension
