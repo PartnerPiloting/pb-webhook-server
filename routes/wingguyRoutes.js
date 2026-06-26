@@ -23,7 +23,7 @@ const express = require('express');
 const { createLogger } = require('../utils/contextLogger');
 const { authenticateUserWithTestMode } = require('../middleware/authMiddleware');
 const { getAnthropicClient, isAnthropicConfigured } = require('../config/anthropicClient');
-const { WINGGUY_VOICE, WINGGUY_REPLY_INSTRUCTIONS, listTemplates, getTemplate } = require('../config/wingguyTemplates');
+const { WINGGUY_VOICE, WINGGUY_REPLY_INSTRUCTIONS, listTemplates, getTemplate, detectTemplate } = require('../config/wingguyTemplates');
 
 const logger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'wingguy' });
 
@@ -149,12 +149,18 @@ module.exports = function mountWingguy(app) {
       return res.status(500).json({ ok: false, error: 'Claude (ANTHROPIC_API_KEY) is not configured.' });
     }
 
-    const { templateId, profile, conversation } = req.body || {};
+    const { templateId: requestedTemplateId, profile, conversation } = req.body || {};
+
+    // Auto-detect when the extension sends "auto" (or nothing): pick the campaign template by matching
+    // detection keywords against the connection-request note (first thread message) + profile. The
+    // human can override by sending a specific id. Detection logic lives in the templates config.
+    const autoDetected = !requestedTemplateId || requestedTemplateId === 'auto';
+    const templateId = autoDetected ? detectTemplate(profile, conversation) : requestedTemplateId;
     const template = getTemplate(templateId);
     if (!template) {
       return res.status(400).json({
         ok: false,
-        error: `Unknown templateId "${templateId}". Valid: ${listTemplates().map((t) => t.id).join(', ')}`,
+        error: `Unknown templateId "${requestedTemplateId}". Valid: ${listTemplates().map((t) => t.id).join(', ')}, or "auto".`,
       });
     }
 
@@ -206,8 +212,15 @@ module.exports = function mountWingguy(app) {
         return res.status(502).json({ ok: false, error: 'Claude returned an empty draft.' });
       }
 
-      logger.info(`[Wingguy] drafted thanks template=${template.id} for ${req.client.clientId} (${draft.length} chars)`);
-      return res.json({ ok: true, draft, model: WINGGUY_DRAFT_MODEL_ID, templateId: template.id });
+      logger.info(`[Wingguy] drafted thanks template=${template.id}${autoDetected ? ' (auto)' : ''} for ${req.client.clientId} (${draft.length} chars)`);
+      return res.json({
+        ok: true,
+        draft,
+        model: WINGGUY_DRAFT_MODEL_ID,
+        templateId: template.id,
+        templateLabel: template.label,
+        autoDetected,
+      });
     } catch (e) {
       logger.error(`[Wingguy] draft-thanks failed: ${e.message}`);
       return res.status(500).json({ ok: false, error: e.message });

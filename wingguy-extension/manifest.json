@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Wingguy (LinkedIn)",
   "version": "0.1.0",
-  "description": "Wingguy — draft a personalised thanks-for-connecting on any LinkedIn profile, in your voice. You click send.",
+  "description": "Wingguy — type /wg in a LinkedIn message box for a full-screen assistant that drafts your next message in your voice (auto-detecting the campaign). You click send.",
   "permissions": [
     "storage",
     "activeTab"

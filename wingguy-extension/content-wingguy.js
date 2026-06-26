@@ -1,25 +1,35 @@
-// content-wingguy.js — Wingguy Slice 1 (personalised thanks-for-connecting on LinkedIn profiles).
+// content-wingguy.js — Wingguy on LinkedIn (the AI-Blaze-style full-screen shell).
 //
-// Surface: a LinkedIn PROFILE page (/in/...). Flow:
-//   read profile (name, headline, About auto-expanded, light recent activity)
-//   -> campaign quick-pick buttons (General / Fractional, served by the backend)
-//   -> backend drafts in Guy's voice (Sonnet) -> shown in an editable panel
-//   -> formatting-preserving INSERT into the LinkedIn message composer (+ Copy fallback)
-//   -> human clicks send.
+// Surface: a LinkedIn PROFILE page (/in/...) — works whether the messaging overlay is open or not.
+// Flow (matches Guy's AI Blaze muscle memory):
+//   type a trigger (/wg, /wingguy, /wingman) INSIDE LinkedIn's "Write a message…" box  (or click the
+//     teal launcher as a fallback)
+//   -> a FULL-SCREEN overlay takes over (roomy, not cramped)
+//   -> Wingguy reads the profile + the open thread and auto-routes:
+//        no live reply yet -> THANKS-FOR-CONNECTING, auto-detecting the campaign template by keyword
+//          (connection-request note / profile contains "fractional" -> \frac, else \tks; human override)
+//        they've replied      -> REPLY (read the whole thread, draft the next move)
+//   -> backend drafts in Guy's voice (Sonnet) -> shown editable in the overlay
+//   -> "Insert into LinkedIn" drops it at the cursor in the message box and CLOSES the overlay
+//   -> human edits + clicks send.
 //
-// FORK HYGIENE: every DOM id/class is namespaced `wingguy-*` and the UI is visually distinct
-// (teal) so it never collides with the legacy "Network Accelerator" extension running side-by-side.
-// This script deliberately does NOT carry the legacy messaging "Save to Portal" surface — that's a
-// different feature and keeping it would double-inject with the old extension.
+// FORK HYGIENE: every DOM id/class is namespaced `wingguy-*` and the UI is visually distinct (teal)
+// so it never collides with the legacy "Network Accelerator" extension running side-by-side. This
+// script deliberately does NOT carry the legacy messaging "Save to Portal" surface.
 
 (function () {
   'use strict';
 
   const LAUNCHER_ID = 'wingguy-launcher-btn';
-  const PANEL_ID = 'wingguy-panel';
+  const OVERLAY_ID = 'wingguy-overlay';
+  const PANEL_ID = 'wingguy-panel'; // the modal inside the overlay; kept as the id the insert code excludes
+
+  // Typed triggers (slash-prefixed only, so they never fire inside normal prose). Longest first so
+  // "/wingguy" wins over "/wg" when both would match the tail.
+  const TRIGGERS = ['/wingguy', '\\wingguy', '/wingman', '\\wingman', '/wg', '\\wg'];
 
   let currentUrl = location.href;
-  let templates = null; // cached [{ id, label, useWhen }]
+  let templates = null; // cached [{ id, label, useWhen, detectionKeywords, isDefault }]
 
   // ---- page detection -------------------------------------------------------
   function isProfilePage() {
@@ -62,7 +72,7 @@
 
   // ---- profile scraping (best-effort, multiple fallbacks) -------------------
   // LinkedIn's DOM is volatile; selectors are intentionally redundant. In the productised
-  // version these move to remote extension-config; for Slice 1 sensible defaults + Copy fallback.
+  // version these move to remote extension-config; for now sensible defaults + Copy fallback.
   async function expandAboutSeeMore() {
     // Click the About section's "see more" so the full text is in the DOM before we read it.
     try {
@@ -214,7 +224,7 @@
   // last editable they focused (works across open shadow roots), and the Insert button is set not to
   // steal focus, so the message box stays focused when they click it.
   let lastFocusedEditable = null;
-  function insideWingguy(el) { return !!(el && el.closest && el.closest('#wingguy-panel')); }
+  function insideWingguy(el) { return !!(el && el.closest && el.closest('#wingguy-overlay')); }
   function isEditableEl(el) {
     if (!el) return false;
     const tag = el.tagName;
@@ -257,10 +267,10 @@
     return out;
   }
 
-  // All editable candidates (light DOM + open shadow roots), visible, excluding our own panel.
+  // All editable candidates (light DOM + open shadow roots), visible, excluding our own overlay.
   function editableCandidates() {
     return deepQueryAll('[contenteditable]:not([contenteditable="false"]), textarea, [role="textbox"]')
-      .filter((el) => isVisible(el) && !el.closest('#wingguy-panel'));
+      .filter((el) => isVisible(el) && !el.closest('#wingguy-overlay'));
   }
   function describeEl(el) {
     return {
@@ -276,6 +286,9 @@
     return !!el.closest('.msg-form, .msg-overlay-conversation-bubble, .msg-overlay-bubble, .msg-convo-wrapper, .msgs-thread, .msg-overlay, .scaffold-layout__detail')
       || /message/.test(al) || /message/.test(ph);
   }
+  function isMessageEditableSafe(el) {
+    try { return isMessageEditable(el); } catch (_) { return false; }
+  }
   function findComposer() {
     const all = editableCandidates();
     const scoped = all.filter(isMessageEditable);
@@ -287,7 +300,7 @@
   // A collapsed "Write a message…" affordance (button/div) that, when clicked, mounts the real editable.
   function findComposeTrigger() {
     const cands = deepQueryAll('[aria-label], [placeholder]')
-      .filter((el) => isVisible(el) && !el.closest('#wingguy-panel'));
+      .filter((el) => isVisible(el) && !el.closest('#wingguy-overlay'));
     for (const el of cands) {
       const t = (el.getAttribute('aria-label') || el.getAttribute('placeholder') || '').toLowerCase();
       if (/write a message|message…|message\.\.\./.test(t)) return el;
@@ -311,7 +324,7 @@
         placeholder: el.getAttribute('placeholder'),
         cls: String(el.className || '').slice(0, 140),
         visible: isVisible(el),
-        inMessageArea: (() => { try { return isMessageEditable(el); } catch (_) { return false; } })(),
+        inMessageArea: isMessageEditableSafe(el),
       })),
     };
   }
@@ -323,9 +336,9 @@
   }
 
   // Insert at the user's CURSOR (AI-Blaze style): target the focused editable (the box they clicked
-  // into), and use the browser's native input pipeline so LinkedIn's editor observes it and keeps the
-  // line breaks. The Insert button is set not to steal focus (see renderDraftStep), so the message box
-  // stays focused when clicked.
+  // into / typed the trigger in), and use the browser's native input pipeline so LinkedIn's editor
+  // observes it and keeps the line breaks. The Insert button is set not to steal focus, so the message
+  // box stays focused when clicked.
   async function insertIntoComposer(text) {
     const normalized = String(text).replace(/\r\n/g, '\n').trim();
     let target = resolveInsertTarget();
@@ -391,6 +404,45 @@
     try { await navigator.clipboard.writeText(normalized); return true; } catch (_) { return false; }
   }
 
+  // ---- typed trigger (/wg etc.) from inside the composer --------------------
+  // Match a trigger at the very end of the box's text (they just typed it). Longest first.
+  function matchedTrigger(text) {
+    const tail = String(text || '').slice(-12).toLowerCase();
+    for (const tr of TRIGGERS) {
+      if (tail.endsWith(tr)) return tr;
+    }
+    return null;
+  }
+  // Remove the trigger token the user typed, so it doesn't linger in the message box.
+  function stripTrigger(target, n) {
+    try {
+      if (target.tagName === 'TEXTAREA' || target.tagName === 'INPUT') {
+        const end = target.selectionStart != null ? target.selectionStart : (target.value || '').length;
+        const start = Math.max(0, end - n);
+        target.setRangeText('', start, end, 'end');
+        target.dispatchEvent(new Event('input', { bubbles: true }));
+      } else {
+        target.focus();
+        for (let i = 0; i < n; i++) document.execCommand('delete', false);
+        target.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'deleteContentBackward' }));
+      }
+    } catch (_) { /* non-fatal — worst case the trigger text stays; user can clear it */ }
+  }
+  function onComposerKeyup() {
+    if (document.getElementById(OVERLAY_ID)) return;          // already open
+    const target = deepActiveElement();
+    if (!isEditableEl(target) || insideWingguy(target)) return;
+    if (!isMessageEditableSafe(target)) return;               // only inside the message box
+    const text = (target.tagName === 'TEXTAREA' || target.tagName === 'INPUT')
+      ? (target.value || '') : (target.textContent || '');
+    const tr = matchedTrigger(text);
+    if (!tr) return;
+    console.log('[Wingguy] trigger typed:', tr);
+    stripTrigger(target, tr.length);
+    lastFocusedEditable = target;                              // remember the box for the insert
+    openPanel();
+  }
+
   // ---- background bridge ----------------------------------------------------
   function bg(message) {
     return new Promise((resolve, reject) => {
@@ -403,7 +455,7 @@
     });
   }
 
-  // ---- UI: launcher + panel -------------------------------------------------
+  // ---- UI: launcher + full-screen overlay -----------------------------------
   function injectLauncher() {
     if (!isProfilePage()) return;
     if (document.getElementById(LAUNCHER_ID)) return;
@@ -411,7 +463,7 @@
     const btn = document.createElement('button');
     btn.id = LAUNCHER_ID;
     btn.className = 'wingguy-launcher-btn';
-    btn.title = 'Wingguy — draft a thanks-for-connecting';
+    btn.title = 'Wingguy — or type /wg in the message box';
     btn.innerHTML = `<span class="wingguy-launcher-mark">✦</span><span class="wingguy-launcher-text">Wingguy</span>`;
     btn.addEventListener('click', togglePanel);
     document.body.appendChild(btn);
@@ -423,29 +475,41 @@
   }
 
   function closePanel() {
-    document.getElementById(PANEL_ID)?.remove();
+    document.getElementById(OVERLAY_ID)?.remove();
   }
 
   async function togglePanel() {
-    const existing = document.getElementById(PANEL_ID);
-    if (existing) { existing.remove(); return; }
+    if (document.getElementById(OVERLAY_ID)) { closePanel(); return; }
     await openPanel();
   }
 
-  function panelShell() {
-    const panel = document.createElement('div');
-    panel.id = PANEL_ID;
-    panel.className = 'wingguy-panel';
-    panel.innerHTML = `
-      <div class="wingguy-panel-head">
-        <span class="wingguy-panel-title">✦ Wingguy — thanks for connecting</span>
-        <button class="wingguy-x" title="Close" id="wingguy-close">×</button>
+  // The full-screen overlay shell: a backdrop + a centred modal with a CONTEXT header.
+  function overlayShell() {
+    const overlay = document.createElement('div');
+    overlay.id = OVERLAY_ID;
+    overlay.className = 'wingguy-overlay';
+    overlay.innerHTML = `
+      <div id="${PANEL_ID}" class="wingguy-modal" role="dialog" aria-label="Wingguy">
+        <div class="wingguy-modal-head">
+          <div class="wingguy-context">
+            <span class="wingguy-context-label">CONTEXT</span>
+            <span class="wingguy-context-sub" id="wingguy-context-sub"></span>
+          </div>
+          <button class="wingguy-x" title="Close (Esc)" id="wingguy-close">×</button>
+        </div>
+        <div class="wingguy-modal-body" id="wingguy-body"></div>
       </div>
-      <div class="wingguy-panel-body" id="wingguy-body"></div>
     `;
-    document.body.appendChild(panel);
-    panel.querySelector('#wingguy-close').addEventListener('click', closePanel);
-    return panel;
+    document.body.appendChild(overlay);
+    overlay.querySelector('#wingguy-close').addEventListener('click', closePanel);
+    // Click the dim backdrop (outside the modal) to close; Esc to close.
+    overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) closePanel(); });
+    return overlay;
+  }
+
+  function setContextSub(html) {
+    const el = document.getElementById('wingguy-context-sub');
+    if (el) el.innerHTML = html;
   }
 
   function setBody(html) {
@@ -455,7 +519,7 @@
   }
 
   async function openPanel() {
-    const panel = panelShell();
+    overlayShell();
     setBody(`<div class="wingguy-muted">Reading this profile… (scanning the page)</div>`);
 
     // Auth check first — gives a clear message instead of a cryptic 401.
@@ -472,7 +536,7 @@
       return;
     }
 
-    // Load the template buttons (cached after first fetch).
+    // Load the templates (cached after first fetch) — used for the override list + pill labels.
     if (!templates) {
       try {
         const data = await bg({ type: 'WINGGUY_GET_TEMPLATES' });
@@ -488,90 +552,61 @@
     renderRoute(profile, thread, classifyMode(thread));
   }
 
-  // The top-level view: a mode switch (auto-detected, human-overridable) + the body for that mode.
+  function templateLabel(id) {
+    const t = (templates || []).find((x) => x.id === id);
+    return t ? t.label : id;
+  }
+
+  // The CONTEXT header: who we're drafting for + a mode switch (auto-detected, human-overridable).
+  function renderContext(profile, thread, mode) {
+    const who = `${escapeHtml(profile.name || '(name not found)')}${profile.headline ? ` <span class="wingguy-muted">· ${escapeHtml(profile.headline)}</span>` : ''}`;
+    const tab = (m, label) =>
+      `<button class="wingguy-mode ${m === mode ? 'wingguy-mode-on' : ''}" data-mode="${m}">${label}</button>`;
+    setContextSub(`
+      <span class="wingguy-context-who">${who}</span>
+      <span class="wingguy-modes">
+        ${tab('thanks', 'Thanks for connecting')}
+        ${tab('reply', `Reply${thread.length ? ` (${thread.length})` : ''}`)}
+      </span>
+    `);
+    document.querySelectorAll('#wingguy-context-sub .wingguy-mode').forEach((b) => {
+      b.addEventListener('click', () => renderRoute(profile, thread, b.getAttribute('data-mode')));
+    });
+  }
+
+  // Top-level: set the header, then auto-draft for the chosen mode (AI-Blaze "it just shows you the
+  // message"). Thanks mode auto-detects the campaign template; reply mode runs the reply engine.
   function renderRoute(profile, thread, mode) {
-    // Warn ONLY when the page genuinely came through thin (little/no content to ground on) — NOT just
-    // because the name fell back to the tab title, which is harmless (the title name is correct, and
-    // the raw page text carries the substance). The old warning fired on name-source and cried wolf.
+    renderContext(profile, thread, mode);
     const pageLen = (profile.pageText || '').length;
-    const thin = !profile.about && pageLen < 400;
     if (profile.nameSource && profile.nameSource !== 'page') {
       console.log(`[Wingguy] name from ${profile.nameSource} (DOM h1 not matched); page content chars=${pageLen}`);
     }
-    const degradedNote = thin
-      ? `<div class="wingguy-notice">Heads up — Wingguy couldn't pull much detail from this page, so the draft will be more generic. Make sure you're on the person's profile and it's finished loading, then try again.</div>`
-      : '';
-
-    const tab = (m, label) =>
-      `<button class="wingguy-mode ${m === mode ? 'wingguy-mode-on' : ''}" data-mode="${m}">${label}</button>`;
-
-    setBody(`
-      <div class="wingguy-who">${escapeHtml(profile.name || '(name not found)')}${profile.headline ? ` — <span class="wingguy-muted">${escapeHtml(profile.headline)}</span>` : ''}</div>
-      ${degradedNote}
-      <div class="wingguy-modes">
-        ${tab('thanks', 'Thanks for connecting')}
-        ${tab('reply', `Reply to conversation${thread.length ? ` (${thread.length})` : ''}`)}
-      </div>
-      <div id="wingguy-mode-body"></div>
-    `);
-
-    document.querySelectorAll('.wingguy-mode').forEach((b) => {
-      b.addEventListener('click', () => renderRoute(profile, thread, b.getAttribute('data-mode')));
-    });
-
-    const body = document.getElementById('wingguy-mode-body');
-    if (mode === 'reply') renderReplyBody(body, profile, thread);
-    else renderThanksBody(body, profile, thread);
-  }
-
-  function renderThanksBody(body, profile, thread) {
-    let hookHint;
-    if (profile.about) {
-      hookHint = `<div class="wingguy-muted">Read About (${profile.about.length} chars)${profile.recentPosts.length ? ` + ${profile.recentPosts.length} activity snippet(s)` : ''}.</div>`;
-    } else if (profile.pageText) {
-      hookHint = `<div class="wingguy-muted">Read the profile page (${profile.pageText.length} chars of content) — will hook on what's there.</div>`;
+    if (mode === 'reply') {
+      if (!thread.length) {
+        setBody(`<div class="wingguy-warn">No open conversation found. Open the message thread (click "Message"), then reopen Wingguy — or switch to "Thanks for connecting" above.</div>`);
+        return;
+      }
+      draftReply(profile, thread);
     } else {
-      hookHint = `<div class="wingguy-muted">No profile text found — Wingguy will keep it warm and generic.</div>`;
+      autoDraftThanks(profile, thread, null); // null → let the backend auto-detect the template
     }
-
-    const buttons = templates.map((t) =>
-      `<button class="wingguy-tpl" data-tpl="${escapeHtml(t.id)}">
-         <span class="wingguy-tpl-label">${escapeHtml(t.label)}</span>
-         <span class="wingguy-tpl-when">${escapeHtml(t.useWhen || '')}</span>
-       </button>`
-    ).join('');
-
-    body.innerHTML = `
-      ${hookHint}
-      <div class="wingguy-section-label">Pick a campaign:</div>
-      <div class="wingguy-tpl-list">${buttons}</div>
-    `;
-    body.querySelectorAll('.wingguy-tpl').forEach((b) => {
-      b.addEventListener('click', () => draftThanks(profile, thread, b.getAttribute('data-tpl')));
-    });
   }
 
-  function renderReplyBody(body, profile, thread) {
-    if (!thread.length) {
-      body.innerHTML = `<div class="wingguy-warn">No open conversation found. Open the message thread on this profile (click "Message"), then reopen Wingguy — or use "Thanks for connecting" above.</div>`;
-      return;
-    }
-    const last = thread[thread.length - 1];
-    body.innerHTML = `
-      <div class="wingguy-muted">Ongoing conversation — ${thread.length} message${thread.length > 1 ? 's' : ''} read. Last from <strong>${escapeHtml(last.sender || 'Unknown')}</strong>.</div>
-      <div class="wingguy-section-label">Wingguy will read the whole thread and draft your next message.</div>
-      <button class="wingguy-primary wingguy-block" id="wingguy-draft-reply">Draft reply</button>
-    `;
-    body.querySelector('#wingguy-draft-reply').addEventListener('click', () => draftReply(profile, thread));
-  }
-
-  async function draftThanks(profile, thread, templateId) {
-    setBody(`<div class="wingguy-muted">Drafting in your voice…</div>`);
+  async function autoDraftThanks(profile, thread, forcedTemplateId) {
+    setBody(`<div class="wingguy-muted">Reading the profile and drafting in your voice…</div>`);
     try {
-      const data = await bg({ type: 'WINGGUY_DRAFT_THANKS', templateId, profile, conversation: thread });
+      const data = await bg({
+        type: 'WINGGUY_DRAFT_THANKS',
+        templateId: forcedTemplateId || 'auto',
+        profile,
+        conversation: thread,
+      });
       renderDraftStep(data.draft || '', data.model || '', {
-        onRegenerate: () => draftThanks(profile, thread, templateId),
-        onBack: () => renderRoute(profile, thread, 'thanks'),
+        onRegenerate: () => autoDraftThanks(profile, thread, data.templateId),
+        templateId: data.templateId,
+        autoDetected: !!data.autoDetected,
+        onPickTemplate: (id) => autoDraftThanks(profile, thread, id),
       });
     } catch (e) {
       renderError(e, () => renderRoute(profile, thread, 'thanks'));
@@ -584,7 +619,6 @@
       const data = await bg({ type: 'WINGGUY_DRAFT_REPLY', profile, conversation: thread });
       renderDraftStep(data.draft || '', data.model || '', {
         onRegenerate: () => draftReply(profile, thread),
-        onBack: () => renderRoute(profile, thread, 'reply'),
       });
     } catch (e) {
       renderError(e, () => renderRoute(profile, thread, 'reply'));
@@ -597,17 +631,35 @@
     document.getElementById('wingguy-back')?.addEventListener('click', onBack);
   }
 
-  function renderDraftStep(draft, model, { onRegenerate, onBack }) {
+  // The draft view (full-screen): the editable message + Insert/Copy/Regenerate. In thanks mode it
+  // also shows the auto-detected template as a pill with a one-tap override to the other templates.
+  function renderDraftStep(draft, model, opts = {}) {
+    const { onRegenerate, templateId, autoDetected, onPickTemplate } = opts;
+
+    // Pill + override (thanks mode only — templateId present).
+    let pillHtml = '';
+    if (templateId) {
+      const others = (templates || []).filter((t) => t.id !== templateId);
+      const overrideBtns = others.map((t) =>
+        `<button class="wingguy-pill-alt" data-tpl="${escapeHtml(t.id)}" title="${escapeHtml(t.useWhen || '')}">${escapeHtml(t.label)}</button>`
+      ).join('');
+      pillHtml = `
+        <div class="wingguy-pillbar">
+          <span class="wingguy-pill">${escapeHtml(templateLabel(templateId))}${autoDetected ? ' · auto' : ''}</span>
+          ${others.length ? `<span class="wingguy-pill-switch">Not right? ${overrideBtns}</span>` : ''}
+        </div>`;
+    }
+
     setBody(`
-      <textarea class="wingguy-draft" id="wingguy-draft" rows="16">${escapeHtml(draft)}</textarea>
-      <div class="wingguy-tip">1. Click in LinkedIn's message box &nbsp;→&nbsp; 2. Insert</div>
+      ${pillHtml}
+      <textarea class="wingguy-draft" id="wingguy-draft" rows="12">${escapeHtml(draft)}</textarea>
+      <div class="wingguy-tip">Type <strong>/wg</strong> in the message box to open this · then <strong>Insert</strong> drops the message at your cursor</div>
       <div class="wingguy-row">
         <button class="wingguy-primary" id="wingguy-insert">Insert into LinkedIn</button>
         <button class="wingguy-secondary" id="wingguy-copy">Copy</button>
         <button class="wingguy-secondary" id="wingguy-regen">Regenerate</button>
       </div>
       <div class="wingguy-foot">
-        <button class="wingguy-link" id="wingguy-back">← Back</button>
         <span class="wingguy-muted">${escapeHtml(model)} · you click send</span>
       </div>
       <div class="wingguy-status" id="wingguy-status"></div>
@@ -616,14 +668,19 @@
     const statusEl = document.getElementById('wingguy-status');
     const getText = () => document.getElementById('wingguy-draft').value;
 
+    // Template override buttons.
+    document.querySelectorAll('.wingguy-pill-alt').forEach((b) => {
+      b.addEventListener('click', () => onPickTemplate && onPickTemplate(b.getAttribute('data-tpl')));
+    });
+
     const insertBtn = document.getElementById('wingguy-insert');
     // Don't let the button steal focus from the message box (so the cursor stays where it belongs).
     insertBtn.addEventListener('mousedown', (e) => e.preventDefault());
     insertBtn.addEventListener('click', async () => {
       const res = await insertIntoComposer(getText());
       if (res.ok) {
-        statusEl.textContent = '✓ Inserted — review and click send.';
-        statusEl.className = 'wingguy-status wingguy-ok';
+        // AI-Blaze behaviour: drop it in the box and get out of the way so they can edit + send.
+        closePanel();
         return;
       }
       const msg = res.reason === 'verify-failed'
@@ -655,7 +712,6 @@
     });
 
     document.getElementById('wingguy-regen').addEventListener('click', onRegenerate);
-    document.getElementById('wingguy-back').addEventListener('click', onBack);
   }
 
   // ---- lifecycle / SPA navigation ------------------------------------------
@@ -676,13 +732,20 @@
     window.addEventListener('popstate', () => setTimeout(refresh, 600));
   }
 
+  function onKeydown(e) {
+    if (e.key === 'Escape' && document.getElementById(OVERLAY_ID)) closePanel();
+  }
+
   function init() {
     refresh();
     watchSpaNavigation();
     // Remember the last editable the user focused (so Insert can target the message box even though
     // they then click the Wingguy panel). focusin is composed, so it fires for open shadow roots too.
     document.addEventListener('focusin', trackFocus, true);
-    console.log('[Wingguy] content script ready');
+    // Typed trigger (/wg etc.) inside the composer — composed keyup crosses open shadow boundaries.
+    document.addEventListener('keyup', onComposerKeyup, true);
+    document.addEventListener('keydown', onKeydown, true);
+    console.log('[Wingguy] content script ready (type /wg in the message box, or click the launcher)');
   }
 
   if (document.readyState === 'loading') {

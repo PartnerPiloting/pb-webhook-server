@@ -55,6 +55,9 @@ const TEMPLATES = {
     label: 'General thanks',
     // One-line "use when…" hint shown on the quick-pick button (soft-default sweetener, Slice 1-lite).
     useWhen: 'Any worthwhile new connection — the default.',
+    // No detection keywords → tks is the CATCH-ALL default (used when nothing more specific matches).
+    detectionKeywords: [],
+    isDefault: true,
     instructions: `TEMPLATE: General thanks-for-connecting (Guy's \\tks). Draft from the supplied profile / page text.
 
 RULES:
@@ -149,6 +152,10 @@ STYLE RULES (important):
     id: 'frac',
     label: 'Fractional',
     useWhen: 'Fractional/consultant who replied warmly - the network follow-up.',
+    // Auto-detect rule (Guy, 2026-06-26): if the connection-request note (= the first message in the
+    // thread) — or the profile — mentions "fractional", use \frac; otherwise fall through to \tks.
+    // Kept deliberately to ONE keyword for the first test; widen later (e.g. portfolio career) if needed.
+    detectionKeywords: ['fractional'],
     instructions: `TEMPLATE: Fractional follow-up reply (Guy's \\frac).
 
 CONTEXT: Guy has ALREADY sent this person a connection message - that he's building a network of
@@ -219,12 +226,51 @@ NON-NEGOTIABLE RULES (same as Guy's voice):
 
 OUTPUT: return ONLY the message text, ready to paste. No preamble, no quotes, no explanation.`;
 
+// The id used when nothing more specific matches (the catch-all).
+const DEFAULT_TEMPLATE_ID = (Object.values(TEMPLATES).find((t) => t.isDefault) || { id: 'tks' }).id;
+
 function listTemplates() {
-  return Object.values(TEMPLATES).map(({ id, label, useWhen }) => ({ id, label, useWhen }));
+  return Object.values(TEMPLATES).map(({ id, label, useWhen, detectionKeywords, isDefault }) =>
+    ({ id, label, useWhen, detectionKeywords: detectionKeywords || [], isDefault: !!isDefault }));
 }
 
 function getTemplate(id) {
   return TEMPLATES[id] || null;
 }
 
-module.exports = { WINGGUY_VOICE, WINGGUY_REPLY_INSTRUCTIONS, TEMPLATES, listTemplates, getTemplate };
+// Auto-pick the campaign template by matching each template's detectionKeywords against the on-screen
+// context: the connection-request note (= the FIRST message in the scraped thread) PLUS the profile
+// (headline/about/raw page text) as a belt-and-braces fallback. First keyworded match wins; if none
+// match we return the catch-all default. ONE source of truth for the matching logic (server-side) —
+// the extension just sends what it scraped and renders the returned templateId as the pill.
+// Keep the match dead simple (case-insensitive substring) so it's predictable and explainable.
+function detectTemplate(profile = {}, conversation = []) {
+  const firstMsg = (Array.isArray(conversation) && conversation.length)
+    ? String((conversation[0] && conversation[0].text) || '')
+    : '';
+  const context = [
+    firstMsg,
+    profile.connectionMessage,
+    profile.headline,
+    profile.about,
+    profile.pageText,
+  ].filter(Boolean).join('\n').toLowerCase();
+
+  for (const t of Object.values(TEMPLATES)) {
+    const kws = t.detectionKeywords || [];
+    if (kws.length && kws.some((k) => context.includes(String(k).toLowerCase()))) {
+      return t.id;
+    }
+  }
+  return DEFAULT_TEMPLATE_ID;
+}
+
+module.exports = {
+  WINGGUY_VOICE,
+  WINGGUY_REPLY_INSTRUCTIONS,
+  TEMPLATES,
+  DEFAULT_TEMPLATE_ID,
+  listTemplates,
+  getTemplate,
+  detectTemplate,
+};
