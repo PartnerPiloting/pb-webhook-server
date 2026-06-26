@@ -2467,13 +2467,19 @@ first) + a `dumpSenderDiag` fallback. **So the THANKS-FOR-CONNECTING LOOP IS FUL
 **NEXT = Slice 2** (the tool-using conversation/booking engine into the same screen). **★ Slice 2 DESIGN PASS DONE
 2026-06-26** (journal "Slice 2 — booking engine design"): mostly REUSE (`/api/calendar/availability` +
 `/quick-pick-message` + `/chat` + `/lookup-lead`, all `x-client-id`). **Guy's design calls (2026-06-26): auto-pick slots;
-SERVER-SIDE auto-create the invite** (not the prefilled-URL interim). **✅ "SUGGEST TIMES" SPIKE BUILT (`7af12047`,
-awaiting Guy's live test):** reply view → "📅 Suggest times" → `availability` (lead location → tz-aware slots) →
-auto-pick first slot on up to 3 distinct days → `quick-pick-message` → drafted times message → insert → send. Pure reuse,
-no new backend (`WG_CAL_AVAILABILITY`/`WG_CAL_QUICKPICK` in background.js). **NEXT after the spike tests = build the
-NEW `POST /api/calendar/create-event`** (server-side invite, Guy's choice) + Airtable Follow-up/status sync, wired to a
-"Book it" action when a lead agrees a time (lead email via `/lookup-lead`). Real per-message timestamp capture also
-shipped this session (`fed2217a`).
+SERVER-SIDE auto-create the invite** (not the prefilled-URL interim). **✅ "SUGGEST TIMES" SPIKE BUILT (`7af12047`)** then **✅ OPTION A — PER-TENANT BOOKING PREFERENCES seam (`0a0a6223`,
+awaiting Guy's live test):** reply view → "📅 Suggest times" reads the tenant's prefs and picks accordingly →
+`quick-pick-message` → drafted times message → insert → send. **Prefs seam = `config/wingguyBookingPrefs.js`
+`getBookingPrefs(clientId)`** (code defaults now, **Postgres later** — set conversationally, migrated from Notion, Guy =
+tenant 0), surfaced by `GET /api/wingguy/booking-prefs`. **Guy's defaults (locked 2026-06-26):** preferred start 10:00,
+earliest 9:30 (soft floor), last start 16:30, 3 slots, 30-min, no buffer (back-to-back OK), exclude weekends unless told,
+**soft 12:00–12:45 lunch hold** (skipped when auto-suggesting, still bookable on request). Picker (`pickSlotsByPrefs`,
+unit-tested): prefer ≥preferred then relax to earliest only to fill, skip lunch, drop post-last-start, exclude weekends,
+one per day. **★ Code/rule/variable split made concrete:** these are user-owned PREFERENCES (variables); timezone-correct-
+for-both-parties + no-double-book stay HARD rules in the calendar code, never user-editable. **NEXT = build `POST
+/api/calendar/create-event`** (server-side invite, Guy's choice) + Airtable Follow-up/status sync, as a "Book it" action
+when a lead agrees a time (lead email via `/lookup-lead`); then the Postgres prefs store + conversational editing (the
+seam already isolates this). Real per-message timestamp capture also shipped this session (`fed2217a`).
 
 **★ BUILT 2026-06-26 (session 1) — THE FULL-SCREEN SHELL + `/wg` TRIGGER + KEYWORD AUTO-DETECT ARE
 ON `main`, owner-gated; backend healthy + auto-detect unit-tested.** Commit
