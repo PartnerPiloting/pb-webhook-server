@@ -123,6 +123,7 @@ module.exports = function mountThanksForConnecting(app, base) {
       jobTitle: r.get(LEAD_FIELDS.JOB_TITLE) || '',
       dateConnected,
       daysSinceConnected: daysSince(dateConnected),
+      aiScore: r.get(LEAD_FIELDS.AI_SCORE) ?? null,
       thanksStatus: normalizeStatus(r.get(THANKS_STATUS_FIELD))
     };
   }

@@ -85,6 +85,21 @@ const STATUS_BADGE = {
   'Skipped': 'bg-gray-100 text-gray-600 border-gray-300'
 };
 
+// Tint the AI profile score by band so a strong fit pops at a glance (higher = better fit).
+function scoreBadgeClass(score) {
+  const n = Number(score);
+  if (!Number.isFinite(n)) return 'bg-gray-100 text-gray-600 border-gray-300';
+  if (n >= 80) return 'bg-emerald-100 text-emerald-800 border-emerald-300';
+  if (n >= 50) return 'bg-amber-100 text-amber-800 border-amber-300';
+  return 'bg-gray-100 text-gray-600 border-gray-300';
+}
+
+function formatScore(score) {
+  if (score === null || score === undefined || score === '') return null;
+  const n = Number(score);
+  return Number.isFinite(n) ? Math.round(n) : String(score);
+}
+
 export default function ThanksForConnecting() {
   const clientId = useMemo(() => buildClientId(), []);
   const [view, setView] = useState('outstanding'); // 'outstanding' | 'all'
@@ -288,6 +303,14 @@ export default function ThanksForConnecting() {
                         </a>
                       ) : (
                         <span className="font-medium text-gray-900">{it.name || '(no name)'}</span>
+                      )}
+                      {formatScore(it.aiScore) !== null && (
+                        <span
+                          className={`text-xs px-2 py-0.5 rounded-full border font-semibold ${scoreBadgeClass(it.aiScore)}`}
+                          title="AI profile score (higher = better fit)"
+                        >
+                          {formatScore(it.aiScore)}
+                        </span>
                       )}
                       {view === 'all' && it.thanksStatus && (
                         <span className={`text-xs px-2 py-0.5 rounded border ${STATUS_BADGE[it.thanksStatus] || 'bg-gray-100 text-gray-600 border-gray-300'}`}>
