@@ -25,7 +25,8 @@ const { authenticateUserWithTestMode } = require('../middleware/authMiddleware')
 const { getAnthropicClient, isAnthropicConfigured } = require('../config/anthropicClient');
 const { WINGGUY_VOICE, WINGGUY_REPLY_INSTRUCTIONS, listTemplates, getTemplate, detectTemplate } = require('../config/wingguyTemplates');
 const { getBookingPrefs } = require('../config/wingguyBookingPrefs');
-const { createCalendarEvent } = require('../services/calendarProvider');
+const { createBookingEvent } = require('../services/wingguyCalendar');
+const { runWingguyChatTurn } = require('../services/wingguyChat');
 const clientService = require('../services/clientService');
 
 const logger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'wingguy' });
@@ -300,53 +301,60 @@ module.exports = function mountWingguy(app) {
   router.post('/book', async (req, res) => {
     if (!ENABLED) return res.status(503).json({ ok: false, error: 'Wingguy is disabled.' });
     const { startISO, durationMins, leadEmail, leadName, leadLinkedIn, title, note } = req.body || {};
-    if (!startISO) return res.status(400).json({ ok: false, error: 'startISO required' });
-    if (!leadEmail) return res.status(400).json({ ok: false, error: 'leadEmail required (the invite needs a guest address)' });
-    const start = new Date(startISO);
-    if (isNaN(start.getTime())) return res.status(400).json({ ok: false, error: 'invalid startISO' });
-
     try {
       // Full coach record (carries nylasGrantId + clientName) — req.client is the lighter auth object.
       const coach = await clientService.getClientById(req.client.clientId);
       if (!coach) return res.status(500).json({ ok: false, error: 'coach record not found' });
 
-      const prefs = getBookingPrefs(coach.clientId);
-      const len = Number(durationMins) > 0 ? Number(durationMins) : (prefs.meetingLengthMins || 30);
-      const end = new Date(start.getTime() + len * 60000);
-      const coachName = coach.clientName || 'Guy Wilson';
-      const finalTitle = (title && String(title).trim()) || `${leadName || 'Lead'} & ${coachName}`;
-      const zoom = prefs.yourZoom || '';
+      const result = await createBookingEvent(coach, { startISO, durationMins, leadEmail, leadName, leadLinkedIn, title, note });
+      if (!result.ok) return res.status(502).json({ ok: false, error: result.error });
 
-      // Build the invite body the way the coach lays it out (Guy's template = the default):
-      //   Zoom: <room>
-      //   <Lead Name>: <lead LinkedIn>
-      //   <Coach Name>: <coach LinkedIn> | <coach phone>
-      const descLines = [];
-      if (note) descLines.push(String(note));
-      if (zoom) descLines.push(`Zoom: ${zoom}`);
-      if (leadLinkedIn) descLines.push(`${leadName || 'Guest'}: ${leadLinkedIn}`);
-      const coachContacts = [prefs.coachLinkedIn, prefs.coachPhone].filter(Boolean).join(' | ');
-      if (coachContacts) descLines.push(`${coachName}: ${coachContacts}`);
+      logger.info(`[Wingguy] booked event ${result.eventId} for ${coach.clientId} guest=${leadEmail} @ ${result.start}`);
+      return res.json(result);
+    } catch (e) {
+      logger.error(`[Wingguy] book failed: ${e.message}`);
+      return res.status(500).json({ ok: false, error: e.message });
+    }
+  });
 
-      const reminders = Array.isArray(prefs.reminders) && prefs.reminders.length
-        ? { use_default: false, overrides: prefs.reminders.map((r) => ({ reminder_minutes: r.minutes, reminder_method: r.method })) }
-        : undefined;
+  // The Slice 2 BIG half — the tool-using CHAT agent (2026-06-27). Guy chats with it in the panel;
+  // it checks his real calendar and books, and keeps a current LinkedIn message draft. STATELESS:
+  // the panel sends the running `messages` array each turn (including prior tool blocks) + the
+  // on-screen `profile`/`conversation` + the lead's email (looked up by the panel). The agent loop
+  // lives in services/wingguyChat.js so this route and the cloud test share ONE implementation.
+  // Returns the updated `messages` (to resend next turn), the latest assistant `reply` (chat), the
+  // `draft` (the LinkedIn message Guy edits/accepts and sends), and `booked` (set once an invite is made).
+  router.post('/chat', async (req, res) => {
+    if (!ENABLED) return res.status(503).json({ ok: false, error: 'Wingguy is disabled.' });
+    if (!isAnthropicConfigured()) {
+      return res.status(500).json({ ok: false, error: 'Claude (ANTHROPIC_API_KEY) is not configured.' });
+    }
 
-      const result = await createCalendarEvent(coach, {
-        title: finalTitle,
-        description: descLines.join('\n'),
-        startISO: start.toISOString(),
-        endISO: end.toISOString(),
-        attendees: [{ email: leadEmail, name: leadName || '' }],
-        location: zoom || undefined,
-        reminders,
+    const { profile = {}, conversation = [], messages = [], leadEmail } = req.body || {};
+    if (!Array.isArray(messages) || !messages.length) {
+      return res.status(400).json({ ok: false, error: 'messages[] required (the chat so far).' });
+    }
+
+    try {
+      const coach = await clientService.getClientById(req.client.clientId);
+      if (!coach) return res.status(500).json({ ok: false, error: 'coach record not found' });
+
+      const result = await runWingguyChatTurn({
+        coach,
+        profile,
+        conversation,
+        messages,
+        leadEmail,
+        // Reuse the route's grounding-block formatting so the agent sees the same shape as the other endpoints.
+        profileBlock: buildProfileBlock(profile),
+        convoBlock: buildConversationBlock(conversation, profile && profile.name),
       });
       if (!result.ok) return res.status(502).json({ ok: false, error: result.error });
 
-      logger.info(`[Wingguy] booked event ${result.eventId} for ${coach.clientId} guest=${leadEmail} @ ${start.toISOString()}`);
-      return res.json({ ok: true, eventId: result.eventId, title: finalTitle, start: start.toISOString(), durationMins: len });
+      logger.info(`[Wingguy] chat turn for ${coach.clientId}: ${result.messages.length} msgs, draft=${result.draft ? 'yes' : 'no'}, booked=${result.booked ? result.booked.eventId : 'no'}`);
+      return res.json(result);
     } catch (e) {
-      logger.error(`[Wingguy] book failed: ${e.message}`);
+      logger.error(`[Wingguy] chat failed: ${e.message}`);
       return res.status(500).json({ ok: false, error: e.message });
     }
   });

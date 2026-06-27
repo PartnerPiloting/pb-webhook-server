@@ -2477,6 +2477,34 @@ onboard client #2; distribution → **Chrome Web Store "Unlisted"**.
 
 ## ▶ You are here / next pick-up
 
+**★ DECISION 2026-06-27 — SLICE 2 "BIG HALF" = A FROM-SCRATCH CLAUDE TOOL-USING CHAT AGENT IN THE PANEL.
+NO booking form, NO fixed buttons, NOT the portal's Gemini assistant.** This supersedes the form-based "📌 Book it"
++ "📅 Suggest times" approach (those are RETIRED for this purpose; the `renderBookForm`/fixed-button code comes out
+when the chat lands). **Guy's call + reasoning (2026-06-27):** he wants a **pure chat-driven, maximally flexible**
+experience — "just a chat, and I can always ask for a change." It emulates his **proven Claude+MCP cloud-chat flow**
+(today he copies the LinkedIn convo into Claude, chats, and it suggests times / books beautifully and flexibly). His
+banked **Tony/Ranya examples = the design brief + eval cases.**
+- **Why NOT reuse the portal's Smart Booking Assistant (`POST /api/calendar/chat`, routes/apiAndJobRoutes.js:8578):**
+  read it closely — it's **Gemini emitting a magic `ACTION:{…}` string** that a regex parses to drive **portal form/UI
+  actions** (openCalendar, setBookingTime). That's "AI bolted onto forms," not a chat agent. Retrofitting it to
+  book-anything-via-chat fights its design — starting clean is *less* work than the retrofit. (It WAS in the old Slice 2
+  reuse list; superseded here.) Also: it runs Gemini, breaking Guy's tuned **Claude voice**.
+- **Shape to build:** **`POST /api/wingguy/chat`** — a **Claude (Sonnet 4.6) tool-use loop**, STATELESS (panel sends the
+  running message history each turn; backend executes tools server-side, loops until Claude's text turn). **Tools:**
+  `check_availability`, `lookup_lead_email`, `book_meeting` (wraps the PROVEN Nylas `/api/wingguy/book` path),
+  `propose_message` (pins the editable LinkedIn draft, separate from chat). **"From scratch" is only the BRAIN** — the
+  HANDS are already proven (availability read, Airtable email lookup, Nylas invite write). The one genuinely-hard part =
+  **timezone/DST correctness**; borrow the *logic* (not the Gemini prompt) from `/api/calendar/chat`.
+- **Locked product rules (from this + the 2026-06-27 design chat):** (1) lead comms stay **100% LinkedIn** — Wingguy
+  NEVER emails the lead; the **calendar invite (option A) is the only thing hitting their inbox**, guest email looked up
+  from **Airtable via the LinkedIn URL**. (2) **Confirm-first** — the agent asks before it ever books (system-prompt
+  enforced, like cloud chat). (3) Booking → a **past-tense "invite's on its way" LinkedIn draft** → Guy edits/accepts →
+  Insert → **Guy sends**. (4) On `/wg` over a live thread, **Reply mode auto-selects + auto-drafts** (already built via
+  `classifyMode`); the chat is where Guy then steers it.
+- **NEXT = build `/api/wingguy/chat` (agent loop) → cloud-test via a Render one-off job against the Tony/Ranya examples →
+  then the panel chat UI (pinned editable draft + chat box, replacing the form/buttons) → Guy live-tests.** Model =
+  Sonnet 4.6 (WINGGUY_DRAFT_MODEL_ID), consistent with the rest of Wingguy.
+
 **★ BUILT 2026-06-26 (session 2) — ON-SEND → PORTAL CAPTURE shipped (commit `fcf76bae`); the full-screen shell +
 auto-detect were PROVEN LIVE on a real lead (Vera) first.** The thanks-for-connecting loop is now end-to-end: `/wg` →
 full-screen → auto-detect template → draft → insert → **Guy clicks Send → Wingguy full-replace snapshots the whole
