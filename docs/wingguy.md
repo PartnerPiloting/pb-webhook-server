@@ -2501,9 +2501,23 @@ banked **Tony/Ranya examples = the design brief + eval cases.**
   enforced, like cloud chat). (3) Booking → a **past-tense "invite's on its way" LinkedIn draft** → Guy edits/accepts →
   Insert → **Guy sends**. (4) On `/wg` over a live thread, **Reply mode auto-selects + auto-drafts** (already built via
   `classifyMode`); the chat is where Guy then steers it.
-- **NEXT = build `/api/wingguy/chat` (agent loop) → cloud-test via a Render one-off job against the Tony/Ranya examples →
-  then the panel chat UI (pinned editable draft + chat box, replacing the form/buttons) → Guy live-tests.** Model =
-  Sonnet 4.6 (WINGGUY_DRAFT_MODEL_ID), consistent with the rest of Wingguy.
+- **✅ BACKEND AGENT BUILT + PROVEN LIVE ON PROD 2026-06-27 (commit `ef741fec`, on `main`, owner-gated, deployed +
+  healthy).** `POST /api/wingguy/chat` runs a Claude (Sonnet 4.6) tool-use loop. Code: `services/wingguyChat.js`
+  (the loop + the 3 tools + confirm-first system prompt; deps-injectable for tests), `services/wingguyCalendar.js`
+  (`getAvailabilityForCoach` = proven calendar read returning both-sides display strings + `createBookingEvent` = the
+  proven Nylas write, now shared by `/book`), `config/wingguyTemplates.js` `WINGGUY_AGENT_INSTRUCTIONS`. **Cloud test
+  `scripts/wingguy-chat-test.js`** (Render one-off job `job-d8vnqsbsq97s738j6tk0`, real Claude + real calendar read,
+  booking STUBBED) PASSED all three checks: turn 1 read the real calendar (64 busy periods/30 days) → offered 3 slots in
+  a Guy-voice LinkedIn draft with the lead's Melbourne times + tz note; turn 2 "book the first one" → it **confirmed
+  first** (did NOT book); turn 3 "yes" → `book_meeting` + a past-tense "invite's on its way" draft. **Render prod service
+  = `srv-cvqgq53e5dus73fa45ag`** (the id in `scripts/deploy-to-render.js` is STALE/wrong). **Tuning note for later:** the
+  agent picks valid open slots but didn't strictly prefer Guy's 10:00 start — fine for v1, can strengthen the instruction.
+- **NEXT = the EXTENSION CHAT PANEL UI** — replace `renderBookForm` + the fixed "📅 Suggest times"/"📌 Book it" buttons
+  in `wingguy-extension/content-wingguy.js` with a chat surface: a **pinned editable draft** (Insert/Copy → Guy sends) +
+  a **chat box** wired to a new `WG_CHAT` background handler → `POST /api/wingguy/chat`. The panel seeds the running
+  `messages` array, passes the scraped `profile`/`conversation` + the lead's email (existing `WG_CAL_LOOKUP`), and renders
+  `reply` (chat) + `draft` (pinned) each turn. On `/wg` over a live thread, Reply mode auto-selects + auto-kicks the first
+  agent turn. Then Guy live-tests. Model = Sonnet 4.6 (WINGGUY_DRAFT_MODEL_ID), consistent with the rest of Wingguy.
 
 **★ BUILT 2026-06-26 (session 2) — ON-SEND → PORTAL CAPTURE shipped (commit `fcf76bae`); the full-screen shell +
 auto-detect were PROVEN LIVE on a real lead (Vera) first.** The thanks-for-connecting loop is now end-to-end: `/wg` →
