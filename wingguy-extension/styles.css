@@ -184,6 +184,20 @@
 .wingguy-status.wingguy-ok { color: var(--wingguy-ok); }
 .wingguy-status.wingguy-warn-inline { color: var(--wingguy-warn); }
 
+/* Book-it confirm form */
+.wingguy-field { display: flex; flex-direction: column; gap: 4px; margin: 12px 0; }
+.wingguy-label { font-weight: 600; font-size: 12.5px; color: var(--wingguy-muted); }
+.wingguy-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 9px 11px;
+  border: 1px solid var(--wingguy-border);
+  border-radius: 9px;
+  font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: var(--wingguy-ink);
+}
+.wingguy-input:focus { outline: none; border-color: var(--wingguy-teal); }
+
 /* On-Send capture toast (bottom-centre, auto-dismiss) */
 .wingguy-toast {
   position: fixed;

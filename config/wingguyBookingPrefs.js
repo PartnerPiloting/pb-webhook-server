@@ -20,6 +20,7 @@ const DEFAULT_PREFS = {
   meetingLengthMins: 30,     // default meeting length
   bufferMins: 0,             // breathing room between meetings — none (back-to-back is fine)
   excludeWeekends: true,     // never offer Sat/Sun unless explicitly overridden
+  yourZoom: 'https://us04web.zoom.us/j/9892817976', // coach's standing meeting room (goes on the invite)
   // Soft lunch hold: keep this window free when AUTO-suggesting, but it's still bookable if a lead
   // specifically wants it (the human can take it and have lunch after).
   lunch: { start: '12:00', durationMins: 45, soft: true },

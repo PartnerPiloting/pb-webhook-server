@@ -133,4 +133,61 @@ function mapNylasStatus(s) {
   return 'needsAction';
 }
 
-module.exports = { getMeetingsInWindow, activeProvider, mapNylasEvent, mapNylasStatus };
+/* ---- WRITE: create an event + invite the guest (proven via scripts/nylas-write-test.js) --------- */
+/**
+ * @param {object} coach  client record (needs nylasGrantId for the nylas backend)
+ * @param {object} details { title, description, startISO, endISO, attendees:[{email,name}], location }
+ * @returns {Promise<{ok:boolean, eventId?:string, htmlLink?:string, error?:string, provider:string}>}
+ */
+async function createCalendarEvent(coach, details) {
+  const provider = activeProvider(coach);
+  if (provider === 'nylas') return createViaNylas(coach, details);
+  // The Google service account is READ-ONLY (calendar.readonly) — no write path there by design.
+  return { ok: false, error: `create-event not supported on provider '${provider}' (Google service account is read-only — use Nylas)`, provider };
+}
+
+async function createViaNylas(coach, details) {
+  const apiKey = process.env.NYLAS_API_KEY;
+  const grantId = (coach && coach.nylasGrantId) || process.env.NYLAS_GRANT_ID;
+  const apiUri = (process.env.NYLAS_API_URI || 'https://api.us.nylas.com').replace(/\/$/, '');
+  const calendarId = (coach && coach.nylasCalendarId) || process.env.NYLAS_CALENDAR_ID || 'primary';
+  if (!apiKey || !grantId) return { ok: false, error: 'NYLAS_API_KEY / grant not configured', provider: 'nylas' };
+
+  const startSec = Math.floor(new Date(details.startISO).getTime() / 1000);
+  const endSec = Math.floor(new Date(details.endISO).getTime() / 1000);
+  if (!startSec || !endSec || endSec <= startSec) return { ok: false, error: 'invalid start/end time', provider: 'nylas' };
+
+  const u = new URL(`${apiUri}/v3/grants/${grantId}/events`);
+  u.searchParams.set('calendar_id', calendarId);
+  u.searchParams.set('notify_participants', 'true'); // emails the guest the invite
+  const body = {
+    title: details.title || 'Meeting',
+    description: details.description || '',
+    when: { start_time: startSec, end_time: endSec },
+    participants: (details.attendees || [])
+      .filter((a) => a && a.email)
+      .map((a) => ({ email: String(a.email).trim(), name: a.name || '' })),
+  };
+  if (details.location) body.location = details.location;
+
+  let res;
+  try {
+    res = await fetch(u.toString(), {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify(body),
+    });
+  } catch (e) {
+    return { ok: false, error: `nylas request failed: ${e.message}`, provider: 'nylas' };
+  }
+  const text = await res.text();
+  if (!res.ok) {
+    log.warn(`[calendarProvider] nylas create failed HTTP ${res.status}: ${text.slice(0, 200)}`);
+    return { ok: false, error: `nylas HTTP ${res.status}: ${text.slice(0, 200)}`, provider: 'nylas' };
+  }
+  let json = {}; try { json = JSON.parse(text); } catch (_) { /* leave empty */ }
+  const ev = json.data || json;
+  return { ok: true, eventId: ev.id, htmlLink: ev.html_link || '', provider: 'nylas' };
+}
+
+module.exports = { getMeetingsInWindow, createCalendarEvent, activeProvider, mapNylasEvent, mapNylasStatus };

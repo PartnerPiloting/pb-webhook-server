@@ -25,6 +25,8 @@ const { authenticateUserWithTestMode } = require('../middleware/authMiddleware')
 const { getAnthropicClient, isAnthropicConfigured } = require('../config/anthropicClient');
 const { WINGGUY_VOICE, WINGGUY_REPLY_INSTRUCTIONS, listTemplates, getTemplate, detectTemplate } = require('../config/wingguyTemplates');
 const { getBookingPrefs } = require('../config/wingguyBookingPrefs');
+const { createCalendarEvent } = require('../services/calendarProvider');
+const clientService = require('../services/clientService');
 
 const logger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'wingguy' });
 
@@ -288,6 +290,52 @@ module.exports = function mountWingguy(app) {
       return res.json({ ok: true, draft, model: WINGGUY_DRAFT_MODEL_ID, mode: 'reply' });
     } catch (e) {
       logger.error(`[Wingguy] draft-reply failed: ${e.message}`);
+      return res.status(500).json({ ok: false, error: e.message });
+    }
+  });
+
+  // Create the calendar invite (the proven Nylas write path) when a lead has agreed a time. Human-
+  // confirmed in the panel first (confirm-then-book). Builds a guest-first title + puts the coach's
+  // Zoom on it, invites the lead (notify on). Airtable follow-up sync is a later add.
+  router.post('/book', async (req, res) => {
+    if (!ENABLED) return res.status(503).json({ ok: false, error: 'Wingguy is disabled.' });
+    const { startISO, durationMins, leadEmail, leadName, title, note } = req.body || {};
+    if (!startISO) return res.status(400).json({ ok: false, error: 'startISO required' });
+    if (!leadEmail) return res.status(400).json({ ok: false, error: 'leadEmail required (the invite needs a guest address)' });
+    const start = new Date(startISO);
+    if (isNaN(start.getTime())) return res.status(400).json({ ok: false, error: 'invalid startISO' });
+
+    try {
+      // Full coach record (carries nylasGrantId + clientName) — req.client is the lighter auth object.
+      const coach = await clientService.getClientById(req.client.clientId);
+      if (!coach) return res.status(500).json({ ok: false, error: 'coach record not found' });
+
+      const prefs = getBookingPrefs(coach.clientId);
+      const len = Number(durationMins) > 0 ? Number(durationMins) : (prefs.meetingLengthMins || 30);
+      const end = new Date(start.getTime() + len * 60000);
+      const coachName = coach.clientName || 'Guy Wilson';
+      const finalTitle = (title && String(title).trim()) || `${leadName || 'Lead'} and ${coachName}`;
+      const zoom = prefs.yourZoom || '';
+
+      const descLines = [];
+      if (note) descLines.push(String(note));
+      if (zoom) descLines.push(`Zoom: ${zoom}`);
+      descLines.push('Booked via Wingguy.');
+
+      const result = await createCalendarEvent(coach, {
+        title: finalTitle,
+        description: descLines.join('\n'),
+        startISO: start.toISOString(),
+        endISO: end.toISOString(),
+        attendees: [{ email: leadEmail, name: leadName || '' }],
+        location: zoom || undefined,
+      });
+      if (!result.ok) return res.status(502).json({ ok: false, error: result.error });
+
+      logger.info(`[Wingguy] booked event ${result.eventId} for ${coach.clientId} guest=${leadEmail} @ ${start.toISOString()}`);
+      return res.json({ ok: true, eventId: result.eventId, title: finalTitle, start: start.toISOString(), durationMins: len });
+    } catch (e) {
+      logger.error(`[Wingguy] book failed: ${e.message}`);
       return res.status(500).json({ ok: false, error: e.message });
     }
   });

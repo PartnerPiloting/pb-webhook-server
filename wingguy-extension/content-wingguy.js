@@ -849,6 +849,7 @@
       renderDraftStep(data.draft || '', data.model || '', {
         onRegenerate: () => draftReply(profile, thread),
         onSuggestTimes: () => suggestTimes(profile, thread),
+        onBookIt: () => bookIt(profile, thread),
       });
     } catch (e) {
       renderError(e, () => renderRoute(profile, thread, 'reply'));
@@ -932,10 +933,68 @@
 
       renderDraftStep(msg, `times · ${picks.length} slots`, {
         onRegenerate: () => suggestTimes(profile, thread),
+        onBookIt: () => bookIt(profile, thread),
       });
     } catch (e) {
       renderError(e, () => renderRoute(profile, thread, 'reply'));
     }
+  }
+
+  // "Book it": confirm-then-create the calendar invite (the proven Nylas write path). Pre-fills the
+  // guest email from the Portal lead record; the human sets/confirms the agreed time, then we create
+  // the event server-side and email the guest. NO LinkedIn send is involved — this is the calendar only.
+  async function bookIt(profile, thread) {
+    setBody(`<div class="wingguy-muted">Looking up ${escapeHtml(profile.name || 'the lead')}…</div>`);
+    let email = '';
+    try {
+      const r = await bg({ type: 'WG_CAL_LOOKUP', query: profile.profileUrl || profile.name || '' });
+      if (r && r.found && r.email) email = r.email;
+    } catch (_) { /* manual entry below */ }
+    renderBookForm(profile, thread, email);
+  }
+
+  function renderBookForm(profile, thread, email) {
+    setBody(`
+      <div class="wingguy-who">Book a meeting with ${escapeHtml(profile.name || 'this lead')}</div>
+      <div class="wingguy-field">
+        <label class="wingguy-label">Date &amp; time (your time)</label>
+        <input type="datetime-local" id="wg-book-when" class="wingguy-input">
+      </div>
+      <div class="wingguy-field">
+        <label class="wingguy-label">Guest email</label>
+        <input type="email" id="wg-book-email" class="wingguy-input" value="${escapeHtml(email || '')}" placeholder="name@company.com">
+        ${email ? '<span class="wingguy-muted">Pre-filled from the Portal — change if needed.</span>' : '<span class="wingguy-muted">Not on file — enter the address the invite should go to.</span>'}
+      </div>
+      <div class="wingguy-muted">Creates the invite on your calendar and emails the guest (30 min, your Zoom room). You're not sending anything on LinkedIn here.</div>
+      <div class="wingguy-row">
+        <button class="wingguy-primary" id="wg-book-create">Create invite</button>
+        <button class="wingguy-secondary" id="wg-book-back">← Back</button>
+      </div>
+      <div class="wingguy-status" id="wg-book-status"></div>
+    `);
+
+    document.getElementById('wg-book-back').addEventListener('click', () => renderRoute(profile, thread, 'reply'));
+    const statusEl = document.getElementById('wg-book-status');
+    const createBtn = document.getElementById('wg-book-create');
+    createBtn.addEventListener('click', async () => {
+      const whenVal = document.getElementById('wg-book-when').value;
+      const emailVal = (document.getElementById('wg-book-email').value || '').trim();
+      if (!whenVal) { statusEl.className = 'wingguy-status wingguy-warn-inline'; statusEl.textContent = 'Pick a date and time first.'; return; }
+      if (!emailVal) { statusEl.className = 'wingguy-status wingguy-warn-inline'; statusEl.textContent = 'Enter the guest email — the invite needs somewhere to go.'; return; }
+      const startISO = new Date(whenVal).toISOString(); // datetime-local is local time → ISO/UTC
+      createBtn.disabled = true;
+      statusEl.className = 'wingguy-status';
+      statusEl.textContent = 'Creating the invite…';
+      try {
+        const data = await bg({ type: 'WG_BOOK', payload: { startISO, leadEmail: emailVal, leadName: profile.name || '' } });
+        statusEl.className = 'wingguy-status wingguy-ok';
+        statusEl.innerHTML = `✓ Invite created and sent to <strong>${escapeHtml(emailVal)}</strong> — it's on your calendar.`;
+      } catch (e) {
+        createBtn.disabled = false;
+        statusEl.className = 'wingguy-status wingguy-warn-inline';
+        statusEl.textContent = `Couldn't book: ${e.message}`;
+      }
+    });
   }
 
   function renderError(e, onBack) {
@@ -947,7 +1006,7 @@
   // The draft view (full-screen): the editable message + Insert/Copy/Regenerate. In thanks mode it
   // also shows the auto-detected template as a pill with a one-tap override to the other templates.
   function renderDraftStep(draft, model, opts = {}) {
-    const { onRegenerate, templateId, autoDetected, onPickTemplate, onSuggestTimes } = opts;
+    const { onRegenerate, templateId, autoDetected, onPickTemplate, onSuggestTimes, onBookIt } = opts;
 
     // Pill + override (thanks mode only — templateId present).
     let pillHtml = '';
@@ -972,6 +1031,7 @@
         <button class="wingguy-secondary" id="wingguy-copy">Copy</button>
         <button class="wingguy-secondary" id="wingguy-regen">Regenerate</button>
         ${onSuggestTimes ? '<button class="wingguy-secondary" id="wingguy-suggest">📅 Suggest times</button>' : ''}
+        ${onBookIt ? '<button class="wingguy-secondary" id="wingguy-bookit">📌 Book it</button>' : ''}
       </div>
       <div class="wingguy-foot">
         <span class="wingguy-muted">${escapeHtml(model)} · you click send</span>
@@ -1027,6 +1087,7 @@
 
     document.getElementById('wingguy-regen').addEventListener('click', onRegenerate);
     if (onSuggestTimes) document.getElementById('wingguy-suggest').addEventListener('click', onSuggestTimes);
+    if (onBookIt) document.getElementById('wingguy-bookit').addEventListener('click', onBookIt);
   }
 
   // ---- lifecycle / SPA navigation ------------------------------------------

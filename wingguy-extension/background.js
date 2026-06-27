@@ -173,7 +173,33 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       .catch(error => sendResponse({ success: false, error: error.message }));
     return true;
   }
+  // Look up the lead (for the invite's guest email) by profile URL / name.
+  if (message.type === 'WG_CAL_LOOKUP') {
+    wgCal('GET', `/lookup-lead?query=${encodeURIComponent(message.query || '')}`)
+      .then(data => sendResponse({ success: true, data }))
+      .catch(error => sendResponse({ success: false, error: error.message }));
+    return true;
+  }
+  // Create the calendar invite (Nylas write) once the human has confirmed the time + guest.
+  if (message.type === 'WG_BOOK') {
+    wingguyBook(message.payload)
+      .then(data => sendResponse({ success: true, data }))
+      .catch(error => sendResponse({ success: false, error: error.message }));
+    return true;
+  }
 });
+
+// Wingguy: POST /api/wingguy/book
+async function wingguyBook(payload) {
+  const apiBase = await getWingguyApiBase();
+  const headers = await getAuthHeaders();
+  const response = await fetch(`${apiBase}/book`, { method: 'POST', headers, body: JSON.stringify(payload || {}) });
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || `Book failed: ${response.status}`);
+  }
+  return response.json();
+}
 
 // Helper: Wingguy calendar API call (x-client-id auth via getAuthHeaders).
 async function getCalendarApiBase() {
