@@ -1667,8 +1667,13 @@ so it's not a rewrite):**
 - **Invite LAYOUT = a per-tenant invite template.** The `/book` endpoint assembles the invite (title/description) inline
   with a minimal body. Make it a **template** keyed per tenant, with **Guy's set layout as the shipped default** (he's
   asked — it includes the lead's **LinkedIn URL**, his details, guest-first title — sourced from his Notion invite spec,
-  the Ranya example). Same seed-then-diverge model as the message templates; lives in the per-tenant store (Postgres). *(To
-  capture: paste Guy's real invite layout to bank as the default seed.)*
+  the Ranya example). Same seed-then-diverge model as the message templates; lives in the per-tenant store (Postgres).
+  *(✅ CAPTURED + IMPLEMENTED as the single-tenant default 2026-06-26, `ae7c630a`, from Guy's real Ranya invite: title
+  `{Lead} & {Coach}`; 3-line body `Zoom: <room>` / `<Lead>: <lead LinkedIn>` / `<Coach>: <coach LinkedIn> | <phone>`;
+  reminders 20-min popup + 1-day email. New booking prefs hold Guy's values — `coachLinkedIn`, `coachPhone`, `reminders`;
+  lead LinkedIn comes from the scraped `profile.profileUrl`. Nylas shape PROVEN via the write test incl. reminders
+  (create + delete HTTP 200). The per-tenant TEMPLATE SYSTEM, tunable in Postgres, is still the multi-tenant job — this
+  just makes Guy's invites correct now + banks the seed.)*
 - **Conferencing = a per-tenant setting, NOT a hardcoded room.** Today `yourZoom` is a fixed-room default in
   `wingguyBookingPrefs.js`. Real tenants split two ways: **(a) fixed personal room** (Guy) vs **(b) a fresh link per
   meeting** (auto-generated). (b) = Nylas conferencing auto-create (`conferencing.autocreate`, grant needs the provider
