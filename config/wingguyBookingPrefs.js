@@ -21,6 +21,15 @@ const DEFAULT_PREFS = {
   bufferMins: 0,             // breathing room between meetings — none (back-to-back is fine)
   excludeWeekends: true,     // never offer Sat/Sun unless explicitly overridden
   yourZoom: 'https://us04web.zoom.us/j/9892817976', // coach's standing meeting room (goes on the invite)
+  // Invite-template identity (the "variable" bucket) — used to build the calendar invite body the way
+  // Guy lays his out. Per-tenant later; Guy's values are the shipped default + the seed for the template.
+  coachLinkedIn: 'https://www.linkedin.com/in/guy-wilson-safeur/',
+  coachPhone: '0414 975 509',
+  // Calendar reminders on the invite (Guy's: a 20-min popup + a 1-day email).
+  reminders: [
+    { minutes: 20, method: 'popup' },
+    { minutes: 1440, method: 'email' },
+  ],
   // Soft lunch hold: keep this window free when AUTO-suggesting, but it's still bookable if a lead
   // specifically wants it (the human can take it and have lunch after).
   lunch: { start: '12:00', durationMins: 45, soft: true },

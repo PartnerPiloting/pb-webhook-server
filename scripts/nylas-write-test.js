@@ -57,9 +57,15 @@ async function main() {
   u.searchParams.set('notify_participants', 'true'); // <-- the bit that emails the guest
   const body = {
     title: 'Wingguy WRITE TEST — please ignore (will be deleted)',
-    description: 'Automated test that Wingguy can create a calendar event and email an external guest. Safe to ignore.',
+    // Mirror the real /book invite shape: multi-line description + reminders (the one new Nylas field
+    // beyond the proven create) so this test also validates that exact shape before /book relies on it.
+    description: 'Wingguy write test.\nZoom: https://us04web.zoom.us/j/9892817976\nTest Guest: https://www.linkedin.com/in/example\nGuy Wilson: https://www.linkedin.com/in/guy-wilson-safeur/ | 0414 975 509',
     when: { start_time: startSec, end_time: endSec },
     participants: [{ email: guest, name: 'Test Guest' }],
+    reminders: { use_default: false, overrides: [
+      { reminder_minutes: 20, reminder_method: 'popup' },
+      { reminder_minutes: 1440, reminder_method: 'email' },
+    ] },
   };
 
   console.log(`   guest     : ${guest}`);

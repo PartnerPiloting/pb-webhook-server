@@ -299,7 +299,7 @@ module.exports = function mountWingguy(app) {
   // Zoom on it, invites the lead (notify on). Airtable follow-up sync is a later add.
   router.post('/book', async (req, res) => {
     if (!ENABLED) return res.status(503).json({ ok: false, error: 'Wingguy is disabled.' });
-    const { startISO, durationMins, leadEmail, leadName, title, note } = req.body || {};
+    const { startISO, durationMins, leadEmail, leadName, leadLinkedIn, title, note } = req.body || {};
     if (!startISO) return res.status(400).json({ ok: false, error: 'startISO required' });
     if (!leadEmail) return res.status(400).json({ ok: false, error: 'leadEmail required (the invite needs a guest address)' });
     const start = new Date(startISO);
@@ -314,13 +314,23 @@ module.exports = function mountWingguy(app) {
       const len = Number(durationMins) > 0 ? Number(durationMins) : (prefs.meetingLengthMins || 30);
       const end = new Date(start.getTime() + len * 60000);
       const coachName = coach.clientName || 'Guy Wilson';
-      const finalTitle = (title && String(title).trim()) || `${leadName || 'Lead'} and ${coachName}`;
+      const finalTitle = (title && String(title).trim()) || `${leadName || 'Lead'} & ${coachName}`;
       const zoom = prefs.yourZoom || '';
 
+      // Build the invite body the way the coach lays it out (Guy's template = the default):
+      //   Zoom: <room>
+      //   <Lead Name>: <lead LinkedIn>
+      //   <Coach Name>: <coach LinkedIn> | <coach phone>
       const descLines = [];
       if (note) descLines.push(String(note));
       if (zoom) descLines.push(`Zoom: ${zoom}`);
-      descLines.push('Booked via Wingguy.');
+      if (leadLinkedIn) descLines.push(`${leadName || 'Guest'}: ${leadLinkedIn}`);
+      const coachContacts = [prefs.coachLinkedIn, prefs.coachPhone].filter(Boolean).join(' | ');
+      if (coachContacts) descLines.push(`${coachName}: ${coachContacts}`);
+
+      const reminders = Array.isArray(prefs.reminders) && prefs.reminders.length
+        ? { use_default: false, overrides: prefs.reminders.map((r) => ({ reminder_minutes: r.minutes, reminder_method: r.method })) }
+        : undefined;
 
       const result = await createCalendarEvent(coach, {
         title: finalTitle,
@@ -329,6 +339,7 @@ module.exports = function mountWingguy(app) {
         endISO: end.toISOString(),
         attendees: [{ email: leadEmail, name: leadName || '' }],
         location: zoom || undefined,
+        reminders,
       });
       if (!result.ok) return res.status(502).json({ ok: false, error: result.error });
 

@@ -169,6 +169,7 @@ async function createViaNylas(coach, details) {
       .map((a) => ({ email: String(a.email).trim(), name: a.name || '' })),
   };
   if (details.location) body.location = details.location;
+  if (details.reminders) body.reminders = details.reminders; // { use_default, overrides:[{reminder_minutes,reminder_method}] }
 
   let res;
   try {

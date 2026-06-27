@@ -986,7 +986,7 @@
       statusEl.className = 'wingguy-status';
       statusEl.textContent = 'Creating the invite…';
       try {
-        const data = await bg({ type: 'WG_BOOK', payload: { startISO, leadEmail: emailVal, leadName: profile.name || '' } });
+        const data = await bg({ type: 'WG_BOOK', payload: { startISO, leadEmail: emailVal, leadName: profile.name || '', leadLinkedIn: profile.profileUrl || '' } });
         statusEl.className = 'wingguy-status wingguy-ok';
         statusEl.innerHTML = `✓ Invite created and sent to <strong>${escapeHtml(emailVal)}</strong> — it's on your calendar.`;
       } catch (e) {
