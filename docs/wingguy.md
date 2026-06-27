@@ -2486,9 +2486,9 @@ Provider`), Nylas v3 event mapping — currently used by the Fathom splitter, de
 from-scratch build.** **✅ NYLAS WRITE PROVEN LIVE ON PROD 2026-06-26** — `scripts/nylas-write-test.js` via a Render
 one-off job created a real event on Guy's calendar (HTTP 200, id `7et6h3j0…`) with external guest
 `taniaadelewilson@gmail.com` and `notify_participants:true`. **So the grant HAS write scope (no reconnect needed) and
-external invites send.** (Awaiting Guy's human confirm that Tania received the email + then delete the test event:
-`node scripts/nylas-write-test.js --delete 7et6h3j00arg8um619qslvdfuc`.) **The whole calendar read+write foundation is now
-proven.** **NEXT = productionise it:** (1) add `createEvent(coach, details)` to `calendarProvider.js` (mirror the test:
+external invites send.** ✅ **Guy confirmed Tania received the invite in her inbox; the test event was then deleted (HTTP
+200, `--delete`, notify on → cancellation clears the guest's side too).** So **create → external invite → cancel** are ALL
+proven end-to-end. **The whole calendar read+write foundation is now proven.** **NEXT = productionise it:** (1) add `createEvent(coach, details)` to `calendarProvider.js` (mirror the test:
 Nylas `POST /v3/grants/{grantId}/events?notify_participants=true`, behind the same seam as the read); (2) a `/create-event`
 endpoint + wire the extension's confirm-then-book (lead email via `/lookup-lead`, Zoom link, title from the Notion spec)
 + Airtable Follow-up sync. Then the Postgres prefs store + conversational editing (seam already isolates this). Real per-message
