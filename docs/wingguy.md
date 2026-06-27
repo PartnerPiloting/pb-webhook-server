@@ -1677,8 +1677,19 @@ so it's not a rewrite):**
 - **Conferencing = a per-tenant setting, NOT a hardcoded room.** Today `yourZoom` is a fixed-room default in
   `wingguyBookingPrefs.js`. Real tenants split two ways: **(a) fixed personal room** (Guy) vs **(b) a fresh link per
   meeting** (auto-generated). (b) = Nylas conferencing auto-create (`conferencing.autocreate`, grant needs the provider
-  linked) or the client's own Zoom/Meet. So model it as `{ mode: 'fixed'|'autocreate', url? }` per tenant. **NEXT = build the
-"Suggest times" spike** once Guy picks on (1)/(2).
+  linked) or the client's own Zoom/Meet. So model it as `{ mode: 'fixed'|'autocreate', url? }` per tenant.
+  **Provider-agnostic (confirmed in discussion 2026-06-26):** because everything routes through Nylas, a client on
+  **Microsoft Outlook** connects + reads/writes **identically** to Google (proven on Guy's Google; Outlook is designed-for —
+  verify on the first real Outlook grant). Per-meeting auto-link is cleanest on the calendar's **native** tool — **Teams**
+  for Outlook, **Meet** for Google; a per-meeting **Zoom** link specifically needs the client's Zoom linked to Nylas (extra
+  step). No architectural wall — just the unbuilt `autocreate` mode.
+- **Client booking onboarding — envisioned flow (2026-06-26).** A new client's setup = **(1) connect their calendar in one
+  click** (Nylas hosted auth → their own Google/Outlook login → grant stored; Guy never touches their credentials); **(2)
+  inherit Guy's proven defaults** (preferred times, invite layout, reminders — seed-then-diverge); **(3) make it theirs** —
+  own name/LinkedIn/phone, own hours/prefs, conferencing mode — ideally set **conversationally** ("start me at 9, skip
+  Fridays, here's my Zoom") + a light settings screen, never code. **Delivery: white-glove first** (Guy does it with them on
+  an onboarding call) **→ productise** into a guided "connect → tune → go" wizard. Foundations proven (Nylas connect+write;
+  settings behind seams); **NOT built = the self-serve connect flow + per-tenant settings storage** (= the multi-tenant build).
 
 ## Discovery & onboarding — teaching tenants what's possible (2026-06-14)
 
