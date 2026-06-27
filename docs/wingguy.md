@@ -2488,10 +2488,16 @@ one-off job created a real event on Guy's calendar (HTTP 200, id `7et6h3j0…`) 
 `taniaadelewilson@gmail.com` and `notify_participants:true`. **So the grant HAS write scope (no reconnect needed) and
 external invites send.** ✅ **Guy confirmed Tania received the invite in her inbox; the test event was then deleted (HTTP
 200, `--delete`, notify on → cancellation clears the guest's side too).** So **create → external invite → cancel** are ALL
-proven end-to-end. **The whole calendar read+write foundation is now proven.** **NEXT = productionise it:** (1) add `createEvent(coach, details)` to `calendarProvider.js` (mirror the test:
-Nylas `POST /v3/grants/{grantId}/events?notify_participants=true`, behind the same seam as the read); (2) a `/create-event`
-endpoint + wire the extension's confirm-then-book (lead email via `/lookup-lead`, Zoom link, title from the Notion spec)
-+ Airtable Follow-up sync. Then the Postgres prefs store + conversational editing (seam already isolates this). Real per-message
+proven end-to-end. **The whole calendar read+write foundation is now proven.** **✅ "BOOK IT" BUILT (`1f6d4737`, on `main`, owner-gated, deployed + healthy; awaiting Guy's live test):**
+(1) `createCalendarEvent(coach, details)` added to `calendarProvider.js` behind the same seam as the read (Nylas
+`POST /v3/grants/{grantId}/events?notify_participants=true`, mirrors the proven test; Google path = "read-only, use
+Nylas"); (2) `POST /api/wingguy/book` (owner-gated) resolves the full coach (nylasGrantId + clientName), builds a
+guest-first title + puts the coach Zoom (new `yourZoom` booking pref) on the invite, creates the event inviting the lead;
+(3) extension **"📌 Book it"** button in the reply + times views → a confirm form (date/time + guest email pre-filled via
+`/api/calendar/lookup-lead`) → `WG_BOOK` → invite created + emailed. **No LinkedIn send involved (calendar only).**
+**Deferred:** Airtable Follow-up/status sync on book; auto-detecting the agreed time from the thread (manual datetime
+entry for now); multi-tenant per-client `yourZoom`/grant onboarding (Nylas hosted-auth connect flow). **NEXT after Guy's
+live test = those deferred bits, as they prove needed in real use.** Then the Postgres prefs store + conversational editing (seam already isolates this). Real per-message
 timestamp capture also shipped this session (`fed2217a`).
 
 **★ BUILT 2026-06-26 (session 1) — THE FULL-SCREEN SHELL + `/wg` TRIGGER + KEYWORD AUTO-DETECT ARE
