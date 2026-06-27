@@ -842,20 +842,138 @@
     }
   }
 
+  // ── Slice 2 BIG half: reply mode IS a tool-using CHAT (2026-06-27) ─────────────────────────
+  // A pinned editable draft (Insert/Copy → Guy sends) above a chat box wired to POST
+  // /api/wingguy/chat (via WG_CHAT). The agent reads the thread, checks Guy's real calendar, books
+  // (confirm-first), and keeps the LinkedIn draft current. Guy steers it conversationally. The lead's
+  // email (for the invite) is looked up in the background and passed each turn. STATELESS backend:
+  // we resend the running `messages` array (incl. tool blocks) each turn and store what comes back.
+  let chatState = null; // { profile, thread, messages, leadEmail, draft }
+
   async function draftReply(profile, thread) {
-    setBody(`<div class="wingguy-muted">Reading the conversation and drafting your reply…</div>`);
+    chatState = { profile, thread, messages: [], leadEmail: '', draft: '' };
+    renderChatShell();
+    // Look up the lead's email (for the calendar invite) in the background — non-blocking.
+    bg({ type: 'WG_CAL_LOOKUP', query: profile.profileUrl || profile.name || '' })
+      .then((r) => { if (r && r.found && r.email) chatState.leadEmail = r.email; })
+      .catch(() => { /* agent will ask Guy to add it if booking is attempted */ });
+    // Auto-kick the first turn so it reads the thread and proposes the next message (hidden prompt).
+    sendChatTurn(
+      '(Opened from the LinkedIn conversation above. Read where things stand and give me the best next message to send — and if it\'s time to offer a meeting, suggest some times.)',
+      { hidden: true }
+    );
+  }
+
+  function renderChatShell() {
+    setBody(`
+      <div class="wingguy-chat">
+        <div class="wingguy-draftwrap" id="wg-draftwrap" style="display:none;">
+          <div class="wingguy-draftlabel">Message to send <span class="wingguy-muted">— edit or accept, then Insert</span></div>
+          <textarea class="wingguy-draft" id="wingguy-draft" rows="6"></textarea>
+          <div class="wingguy-row">
+            <button class="wingguy-primary" id="wingguy-insert">Insert into LinkedIn</button>
+            <button class="wingguy-secondary" id="wingguy-copy">Copy</button>
+          </div>
+          <div class="wingguy-status" id="wingguy-status"></div>
+        </div>
+        <div class="wingguy-chatlog" id="wg-chatlog"></div>
+        <div class="wingguy-chatinput">
+          <textarea id="wg-chat-text" rows="2" placeholder="Talk to Wingguy — e.g. “suggest some times”, “book the Tuesday one”, “make it warmer”"></textarea>
+          <button class="wingguy-primary" id="wg-chat-send">Send</button>
+        </div>
+      </div>
+    `);
+
+    const getText = () => (document.getElementById('wingguy-draft') || {}).value || '';
+    const statusEl = () => document.getElementById('wingguy-status');
+
+    const insertBtn = document.getElementById('wingguy-insert');
+    insertBtn.addEventListener('mousedown', (e) => e.preventDefault()); // keep the composer's caret
+    insertBtn.addEventListener('click', async () => {
+      const res = await insertIntoComposer(getText());
+      if (res.ok) { closePanel(); return; }
+      const s = statusEl();
+      s.className = 'wingguy-status wingguy-warn-inline';
+      s.textContent = 'Click inside LinkedIn\'s message box first (cursor blinking in it), then Insert — or use Copy.';
+    });
+    document.getElementById('wingguy-copy').addEventListener('click', async () => {
+      const ok = await copyDraft(getText());
+      const s = statusEl();
+      s.className = ok ? 'wingguy-status wingguy-ok' : 'wingguy-status wingguy-warn-inline';
+      s.textContent = ok ? '✓ Copied — click in the message box and paste (Ctrl+V).' : 'Copy blocked — select the text and copy manually.';
+    });
+
+    const textEl = document.getElementById('wg-chat-text');
+    const fire = () => {
+      const t = (textEl.value || '').trim();
+      if (!t) return;
+      textEl.value = '';
+      sendChatTurn(t);
+    };
+    document.getElementById('wg-chat-send').addEventListener('click', fire);
+    textEl.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); fire(); } });
+    textEl.focus();
+  }
+
+  function appendBubble(role, text) {
+    const log = document.getElementById('wg-chatlog');
+    if (!log) return null;
+    const div = document.createElement('div');
+    div.className = `wingguy-bubble wingguy-bubble-${role}`;
+    div.textContent = text;
+    log.appendChild(div);
+    log.scrollTop = log.scrollHeight;
+    return div;
+  }
+
+  function setChatDraft(text) {
+    if (chatState) chatState.draft = text;
+    const ta = document.getElementById('wingguy-draft');
+    const wrap = document.getElementById('wg-draftwrap');
+    if (ta) ta.value = text;
+    if (wrap) wrap.style.display = '';
+    if (ta) ta.scrollIntoView({ block: 'nearest' });
+  }
+
+  async function sendChatTurn(text, opts = {}) {
+    if (!chatState || chatState.busy) return;
+    chatState.busy = true;
+    const sendBtn = document.getElementById('wg-chat-send');
+    if (sendBtn) { sendBtn.disabled = true; sendBtn.textContent = '…'; }
+    if (!opts.hidden) appendBubble('me', text);
+    chatState.messages.push({ role: 'user', content: text });
+    const thinking = appendBubble('wg', '…');
     try {
-      const data = await bg({ type: 'WINGGUY_DRAFT_REPLY', profile, conversation: thread });
-      renderDraftStep(data.draft || '', data.model || '', {
-        onRegenerate: () => draftReply(profile, thread),
-        onSuggestTimes: () => suggestTimes(profile, thread),
-        onBookIt: () => bookIt(profile, thread),
+      const data = await bg({
+        type: 'WG_CHAT',
+        payload: {
+          profile: chatState.profile,
+          conversation: chatState.thread,
+          messages: chatState.messages,
+          leadEmail: chatState.leadEmail || undefined,
+        },
       });
+      if (thinking) thinking.remove();
+      // The server returns the FULL running history (incl. tool blocks) — store it for the next turn.
+      if (data && Array.isArray(data.messages)) chatState.messages = data.messages;
+      const reply = (data && data.reply) || '';
+      if (reply) appendBubble('wg', reply);
+      if (data && data.draft) setChatDraft(data.draft);
+      if (data && data.booked) appendBubble('sys', `✓ Calendar invite created${data.booked.title ? ` — ${data.booked.title}` : ''}.`);
+      if (!reply && !(data && data.draft)) appendBubble('wg', '(No response — try rephrasing.)');
     } catch (e) {
-      renderError(e, () => renderRoute(profile, thread, 'reply'));
+      if (thinking) thinking.remove();
+      appendBubble('sys', `Couldn't reach Wingguy: ${e.message}`);
+    } finally {
+      if (chatState) chatState.busy = false;
+      const btn = document.getElementById('wg-chat-send');
+      if (btn) { btn.disabled = false; btn.textContent = 'Send'; }
     }
   }
 
+  // ⚠ SUPERSEDED 2026-06-27 — the functions below (suggestTimes / bookIt / renderBookForm + the
+  // FALLBACK_PREFS picker) were the form-based spike. Reply mode is now the chat agent above; these
+  // are no longer called (kept temporarily for reference, safe to delete next pass).
   // Slice 2 SPIKE — "Suggest times": check Guy's real calendar and draft the "here are some times"
   // message (the one he sends when a lead asks to meet). Pure reuse of the existing booking endpoints
   // (/api/calendar/availability + /quick-pick-message); NO booking/invite yet (that's the next step).

@@ -187,6 +187,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       .catch(error => sendResponse({ success: false, error: error.message }));
     return true;
   }
+  // Wingguy Slice 2 (chat agent): one turn of the tool-using booking chat. Returns
+  // { reply, draft, booked, messages } — the panel resends `messages` each turn.
+  if (message.type === 'WG_CHAT') {
+    wingguyChat(message.payload)
+      .then(data => sendResponse({ success: true, data }))
+      .catch(error => sendResponse({ success: false, error: error.message }));
+    return true;
+  }
 });
 
 // Wingguy: POST /api/wingguy/book
@@ -197,6 +205,18 @@ async function wingguyBook(payload) {
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
     throw new Error(errorData.error || `Book failed: ${response.status}`);
+  }
+  return response.json();
+}
+
+// Wingguy: POST /api/wingguy/chat (the tool-using chat agent)
+async function wingguyChat(payload) {
+  const apiBase = await getWingguyApiBase();
+  const headers = await getAuthHeaders();
+  const response = await fetch(`${apiBase}/chat`, { method: 'POST', headers, body: JSON.stringify(payload || {}) });
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || `Chat failed: ${response.status}`);
   }
   return response.json();
 }

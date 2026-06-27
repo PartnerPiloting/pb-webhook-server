@@ -2512,12 +2512,19 @@ banked **Tony/Ranya examples = the design brief + eval cases.**
   first** (did NOT book); turn 3 "yes" → `book_meeting` + a past-tense "invite's on its way" draft. **Render prod service
   = `srv-cvqgq53e5dus73fa45ag`** (the id in `scripts/deploy-to-render.js` is STALE/wrong). **Tuning note for later:** the
   agent picks valid open slots but didn't strictly prefer Guy's 10:00 start — fine for v1, can strengthen the instruction.
-- **NEXT = the EXTENSION CHAT PANEL UI** — replace `renderBookForm` + the fixed "📅 Suggest times"/"📌 Book it" buttons
-  in `wingguy-extension/content-wingguy.js` with a chat surface: a **pinned editable draft** (Insert/Copy → Guy sends) +
-  a **chat box** wired to a new `WG_CHAT` background handler → `POST /api/wingguy/chat`. The panel seeds the running
-  `messages` array, passes the scraped `profile`/`conversation` + the lead's email (existing `WG_CAL_LOOKUP`), and renders
-  `reply` (chat) + `draft` (pinned) each turn. On `/wg` over a live thread, Reply mode auto-selects + auto-kicks the first
-  agent turn. Then Guy live-tests. Model = Sonnet 4.6 (WINGGUY_DRAFT_MODEL_ID), consistent with the rest of Wingguy.
+- **✅ EXTENSION CHAT PANEL UI BUILT 2026-06-27 (awaiting Guy's live test).** Reply mode IS the chat now:
+  `draftReply()` in `wingguy-extension/content-wingguy.js` renders a **pinned editable draft** (Insert/Copy → Guy sends,
+  reusing the proven `insertIntoComposer`) above a **chat box**, wired to a new `WG_CHAT` background handler →
+  `POST /api/wingguy/chat`. On open it looks up the lead's email (`WG_CAL_LOOKUP`, non-blocking) and auto-kicks a hidden
+  first turn so it reads the thread and proposes the next message; each turn it stores the server's full `messages`
+  (incl. tool blocks) and renders `reply` (chat bubble) + `draft` (pinned) + a "✓ invite created" line when `booked`.
+  Chat bubble CSS added to `styles.css`. The old form-based `suggestTimes`/`bookIt`/`renderBookForm` are marked
+  SUPERSEDED (dead, safe to delete next pass). On `/wg` over a live thread, `classifyMode` still auto-selects Reply →
+  the chat. **No backend change — it calls the already-proven `/chat`.**
+- **NEXT = Guy's live test of the panel** (reload the unpacked `wingguy-extension/`, open a real LinkedIn thread, `/wg`
+  → Reply → chat: "suggest times" / "book the X one" / "yes"). Watch-items: the lead-email lookup populating before a
+  book attempt (else the agent asks Guy to add it); the composer insert landing the pinned draft. Tuning notes still
+  open: prefer Guy's 10:00 start more strongly; stale prod service id in `scripts/deploy-to-render.js`.
 
 **★ BUILT 2026-06-26 (session 2) — ON-SEND → PORTAL CAPTURE shipped (commit `fcf76bae`); the full-screen shell +
 auto-detect were PROVEN LIVE on a real lead (Vera) first.** The thanks-for-connecting loop is now end-to-end: `/wg` →
