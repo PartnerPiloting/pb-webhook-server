@@ -1661,7 +1661,18 @@ sends** — so the panel can call them with the headers it has.
 (lean auto-pick first, picker later); (2) invite = **prefilled GCal URL (human confirms, no backend)** vs server-side
 auto-create (lean prefilled-URL interim — less build, keeps the iron rule); (3) the lead **email** for the invite comes
 from the Airtable record via `lookup-lead` (confirm that's reliably populated). **Single-tenant notes:** Brisbane TZ +
-one shared Google service account are hardcoded defaults (fine for Guy; revisit at multi-tenant). **NEXT = build the
+one shared Google service account are hardcoded defaults (fine for Guy; revisit at multi-tenant).
+**★ MULTI-TENANT TIDY-UP BACKLOG for booking (flagged 2026-06-26, build later — the current code already isolates these
+so it's not a rewrite):**
+- **Invite LAYOUT = a per-tenant invite template.** The `/book` endpoint assembles the invite (title/description) inline
+  with a minimal body. Make it a **template** keyed per tenant, with **Guy's set layout as the shipped default** (he's
+  asked — it includes the lead's **LinkedIn URL**, his details, guest-first title — sourced from his Notion invite spec,
+  the Ranya example). Same seed-then-diverge model as the message templates; lives in the per-tenant store (Postgres). *(To
+  capture: paste Guy's real invite layout to bank as the default seed.)*
+- **Conferencing = a per-tenant setting, NOT a hardcoded room.** Today `yourZoom` is a fixed-room default in
+  `wingguyBookingPrefs.js`. Real tenants split two ways: **(a) fixed personal room** (Guy) vs **(b) a fresh link per
+  meeting** (auto-generated). (b) = Nylas conferencing auto-create (`conferencing.autocreate`, grant needs the provider
+  linked) or the client's own Zoom/Meet. So model it as `{ mode: 'fixed'|'autocreate', url? }` per tenant. **NEXT = build the
 "Suggest times" spike** once Guy picks on (1)/(2).
 
 ## Discovery & onboarding — teaching tenants what's possible (2026-06-14)
