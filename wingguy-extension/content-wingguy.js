@@ -852,7 +852,7 @@
       <div class="wingguy-chat">
         <div class="wingguy-draftwrap" id="wg-draftwrap" style="display:none;">
           <div class="wingguy-draftlabel">Message to send <span class="wingguy-muted">— edit or accept, then Insert</span></div>
-          <textarea class="wingguy-draft" id="wingguy-draft" rows="6"></textarea>
+          <textarea class="wingguy-draft" id="wingguy-draft" rows="10"></textarea>
           <div class="wingguy-row">
             <button class="wingguy-primary" id="wingguy-insert">Insert into LinkedIn</button>
             <button class="wingguy-secondary" id="wingguy-copy">Copy</button>
@@ -937,9 +937,14 @@
     if (chatState) chatState.draft = text;
     const ta = document.getElementById('wingguy-draft');
     const wrap = document.getElementById('wg-draftwrap');
-    if (ta) ta.value = text;
     if (wrap) wrap.style.display = '';
-    if (ta) ta.scrollIntoView({ block: 'nearest' });
+    if (ta) {
+      ta.value = text;
+      // Auto-grow to show the whole message (no inner scrollbar), capped so it can't take the whole screen.
+      ta.style.height = 'auto';
+      ta.style.height = Math.min(ta.scrollHeight + 4, Math.round(window.innerHeight * 0.45)) + 'px';
+      ta.scrollIntoView({ block: 'nearest' });
+    }
   }
 
   async function sendChatTurn(text, opts = {}) {
