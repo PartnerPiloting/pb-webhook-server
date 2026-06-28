@@ -2477,6 +2477,24 @@ onboard client #2; distribution → **Chrome Web Store "Unlisted"**.
 
 ## ▶ You are here / next pick-up
 
+**★ UNIFIED CHAT 2026-06-28 — Thanks + Reply collapsed into ONE chat surface (the "just a chat" end-state).** Trigger:
+on a real lead (Greg Abbey, a fractional CMO who replied warmly + shared two LinkedIn URLs), `/wg` auto-picked "Reply"
+→ the booking chat, which was the wrong surface (a warm follow-up isn't a booking moment), and Thanks mode had no chat
+to refine. **Fix:** removed the Thanks/Reply mode tabs; the panel now ALWAYS opens the chat agent, which works out the
+move itself (thanks opener / warm-reply follow-up / reply / suggest times / book). Built: `WINGGUY_AGENT_INSTRUCTIONS`
+rewritten to the whole lifecycle; the route now detects the campaign template (`\tks`/`\frac`) server-side and passes
+its real voice-tuned structure into the agent context (`runWingguyChatTurn({campaignTemplate})` → `buildContext`), so
+opener/follow-up drafts match Guy's templates. Extension: `renderRoute`/`renderContext` simplified, `draftReply`→
+`startChat` with a kickoff that differs for a fresh connection (opener) vs an open thread. `classifyMode`/
+`autoDraftThanks`/`renderDraftStep` are now dead (left in place, safe to delete next pass).
+- **SHARED LINKS — slug-level weave (decided 2026-06-28).** The agent mines the topic from a shared LinkedIn URL's slug
+  (e.g. `…marketingthatmeansbusiness…` / `youre-already-doing-marketing` → weave that theme in) and NEVER claims to have
+  read the article. **Why not fetch the article:** a SERVER fetch isn't logged in → LinkedIn login wall → near-empty;
+  only a BROWSER/extension fetch rides Guy's session, and even then feed `/posts/` are JS-rendered (need render+scrape,
+  some account-risk) while `/pulse/` articles are more static/readable. True reading = a later browser-side enhancement.
+- **Cloud test extended** (`scripts/wingguy-chat-test.js`): Scenario B = Greg warm reply + URLs → expects a fractional
+  follow-up that weaves the marketing topic and does NOT push times.
+
 **★ DECISION 2026-06-27 — SLICE 2 "BIG HALF" = A FROM-SCRATCH CLAUDE TOOL-USING CHAT AGENT IN THE PANEL.
 NO booking form, NO fixed buttons, NOT the portal's Gemini assistant.** This supersedes the form-based "📌 Book it"
 + "📅 Suggest times" approach (those are RETIRED for this purpose; the `renderBookForm`/fixed-button code comes out

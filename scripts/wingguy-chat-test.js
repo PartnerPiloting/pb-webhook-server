@@ -11,6 +11,7 @@
 // Single-tenant Guy: coach = Guy-Wilson.
 
 const { runWingguyChatTurn } = require('../services/wingguyChat');
+const { detectTemplate, getTemplate } = require('../config/wingguyTemplates');
 
 const COACH = { clientId: 'Guy-Wilson', clientName: 'Guy Wilson' };
 const LEAD_EMAIL = 'taniaadelewilson@gmail.com'; // a test guest (no real invite — booking is stubbed)
@@ -62,7 +63,8 @@ async function main() {
     `Name: ${PROFILE.name}\nHeadline: ${PROFILE.headline}\nLocation: ${PROFILE.location}\nLinkedIn URL: ${PROFILE.profileUrl}`;
   const convoBlock = CONVERSATION.map((m) => `${m.sender}: ${m.text}`).join('\n');
 
-  const base = { coach: COACH, profile: PROFILE, conversation: CONVERSATION, leadEmail: LEAD_EMAIL, profileBlock, convoBlock, deps };
+  const campaignTemplate = getTemplate(detectTemplate(PROFILE, CONVERSATION));
+  const base = { coach: COACH, profile: PROFILE, conversation: CONVERSATION, leadEmail: LEAD_EMAIL, profileBlock, convoBlock, campaignTemplate, deps };
 
   // Turn 1 — Guy asks it to suggest times. Expect: check_availability + propose_message (times offer).
   let messages = [{ role: 'user', content: 'She’s keen to meet — suggest a few times we could do and draft the LinkedIn reply.' }];
@@ -81,10 +83,38 @@ async function main() {
   let r3 = await runWingguyChatTurn({ ...base, messages });
   show('TURN 3 — "yes, do it" (expect book_meeting + confirmation draft)', r3);
 
-  console.log('\n\n=== SUMMARY ===');
+  console.log('\n\n=== SUMMARY (booking flow) ===');
   console.log('Turn 1 offered times:', r1.draft ? 'yes' : 'NO');
   console.log('Turn 2 held back booking (confirm-first):', !(r2.booked) ? 'yes' : 'NO — it booked without explicit confirm!');
   console.log('Turn 3 booked after confirm:', r3.booked ? 'yes' : 'NO');
+
+  // ── Scenario B: Greg — warm reply from a fractional pro who shared LinkedIn URLs.
+  // Expect a fractional-style FOLLOW-UP that nods to the marketing topic from the link slug,
+  // WITHOUT pushing specific times (no calendar tool on this turn).
+  const gregProfile = {
+    name: 'Greg Abbey',
+    headline: 'Founder and Fractional CMO | Strategic Marketing Partner',
+    location: 'Australia',
+    profileUrl: 'https://www.linkedin.com/in/gregabbey1/',
+  };
+  const gregConvo = [
+    { sender: 'Guy', text: "Hi Greg, I'm building a network of Fractional Professionals who only recommend others they trust. Looking at your profile - I think you'd be easy to recommend. (I know a) Guy" },
+    { sender: 'Greg', text: "Hi Guy, Thanks for reaching out and it's great to connect. I really like you (I know a)... very memorable! Here are a few of my latest musings on LinkedIn... https://www.linkedin.com/posts/gregabbey1_marketingthatmeansbusiness-activity-7475733258148909058-yRQ7 https://www.linkedin.com/pulse/youre-already-doing-marketing-greg-abbey-7bfnc/ Take care and speak soon. Cheers, Greg" },
+  ];
+  const gregProfileBlock = `Name: ${gregProfile.name}\nHeadline: ${gregProfile.headline}\nLocation: ${gregProfile.location}\nLinkedIn URL: ${gregProfile.profileUrl}`;
+  const gregConvoBlock = gregConvo.map((m) => `${m.sender}: ${m.text}`).join('\n');
+  const gregTpl = getTemplate(detectTemplate(gregProfile, gregConvo));
+  const rg = await runWingguyChatTurn({
+    coach: COACH, profile: gregProfile, conversation: gregConvo, leadEmail: LEAD_EMAIL,
+    profileBlock: gregProfileBlock, convoBlock: gregConvoBlock, campaignTemplate: gregTpl, deps,
+    messages: [{ role: 'user', content: '(Opened from the LinkedIn conversation above. Read where things stand and give me the best next message to send — and if it\'s time to offer a meeting, suggest some times.)' }],
+  });
+  show('SCENARIO B — Greg warm reply + shared URL (expect fractional follow-up, weaves the topic, NO time-pushing)', rg);
+  console.log('\n=== SUMMARY (Greg) ===');
+  console.log('Detected template:', gregTpl ? gregTpl.id : '(none)');
+  console.log('Produced a draft:', rg.draft ? 'yes' : 'NO');
+  console.log('Did NOT call calendar:', !toolCallsIn(rg.messages).includes('check_availability') ? 'yes' : 'NO — it checked the calendar unprompted');
+  console.log('Nods to the link topic:', /market/i.test(rg.draft || '') ? 'yes (mentions marketing)' : 'maybe not — check the draft');
 }
 
 main().then(() => process.exit(0)).catch((e) => { console.error('TEST FAILED:', e); process.exit(1); });

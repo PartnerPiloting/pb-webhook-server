@@ -339,12 +339,17 @@ module.exports = function mountWingguy(app) {
       const coach = await clientService.getClientById(req.client.clientId);
       if (!coach) return res.status(500).json({ ok: false, error: 'coach record not found' });
 
+      // Detect the campaign template (\tks / \frac …) from the profile + thread and pass its real
+      // voice-tuned structure to the agent, so opener / warm-reply drafts match Guy's templates.
+      const campaignTemplate = getTemplate(detectTemplate(profile, conversation));
+
       const result = await runWingguyChatTurn({
         coach,
         profile,
         conversation,
         messages,
         leadEmail,
+        campaignTemplate,
         // Reuse the route's grounding-block formatting so the agent sees the same shape as the other endpoints.
         profileBlock: buildProfileBlock(profile),
         convoBlock: buildConversationBlock(conversation, profile && profile.name),

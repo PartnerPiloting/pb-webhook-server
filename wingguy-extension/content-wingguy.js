@@ -778,7 +778,7 @@
     let thread = scrapeOpenThread();
     if (!thread.length) { await sleep(400); thread = scrapeOpenThread(); }
     console.log('[Wingguy] thread messages read:', thread.length, thread.map((m) => m.sender));
-    renderRoute(profile, thread, classifyMode(thread, profile.name));
+    renderRoute(profile, thread);
   }
 
   function templateLabel(id) {
@@ -786,40 +786,22 @@
     return t ? t.label : id;
   }
 
-  // The CONTEXT header: who we're drafting for + a mode switch (auto-detected, human-overridable).
-  function renderContext(profile, thread, mode) {
+  // The CONTEXT header: just who we're working with. (The old Thanks/Reply mode tabs are gone —
+  // 2026-06-28 — the unified chat agent works out the move itself; Guy steers it in chat.)
+  function renderContext(profile) {
     const who = `${escapeHtml(profile.name || '(name not found)')}${profile.headline ? ` <span class="wingguy-muted">· ${escapeHtml(profile.headline)}</span>` : ''}`;
-    const tab = (m, label) =>
-      `<button class="wingguy-mode ${m === mode ? 'wingguy-mode-on' : ''}" data-mode="${m}">${label}</button>`;
-    setContextSub(`
-      <span class="wingguy-context-who">${who}</span>
-      <span class="wingguy-modes">
-        ${tab('thanks', 'Thanks for connecting')}
-        ${tab('reply', `Reply${thread.length ? ` (${thread.length})` : ''}`)}
-      </span>
-    `);
-    document.querySelectorAll('#wingguy-context-sub .wingguy-mode').forEach((b) => {
-      b.addEventListener('click', () => renderRoute(profile, thread, b.getAttribute('data-mode')));
-    });
+    setContextSub(`<span class="wingguy-context-who">${who}</span>`);
   }
 
-  // Top-level: set the header, then auto-draft for the chosen mode (AI-Blaze "it just shows you the
-  // message"). Thanks mode auto-detects the campaign template; reply mode runs the reply engine.
-  function renderRoute(profile, thread, mode) {
-    renderContext(profile, thread, mode);
+  // Top-level: set the header, then open the unified chat. The agent reads the profile + thread and
+  // works out the move (thanks opener / warm-reply follow-up / reply / suggest times / book).
+  function renderRoute(profile, thread) {
+    renderContext(profile);
     const pageLen = (profile.pageText || '').length;
     if (profile.nameSource && profile.nameSource !== 'page') {
       console.log(`[Wingguy] name from ${profile.nameSource} (DOM h1 not matched); page content chars=${pageLen}`);
     }
-    if (mode === 'reply') {
-      if (!thread.length) {
-        setBody(`<div class="wingguy-warn">No open conversation found. Open the message thread (click "Message"), then reopen Wingguy — or switch to "Thanks for connecting" above.</div>`);
-        return;
-      }
-      draftReply(profile, thread);
-    } else {
-      autoDraftThanks(profile, thread, null); // null → let the backend auto-detect the template
-    }
+    startChat(profile, thread);
   }
 
   async function autoDraftThanks(profile, thread, forcedTemplateId) {
@@ -842,26 +824,27 @@
     }
   }
 
-  // ── Slice 2 BIG half: reply mode IS a tool-using CHAT (2026-06-27) ─────────────────────────
+  // ── Slice 2 BIG half: the WHOLE panel is one tool-using CHAT (unified 2026-06-28) ───────────
   // A pinned editable draft (Insert/Copy → Guy sends) above a chat box wired to POST
-  // /api/wingguy/chat (via WG_CHAT). The agent reads the thread, checks Guy's real calendar, books
-  // (confirm-first), and keeps the LinkedIn draft current. Guy steers it conversationally. The lead's
-  // email (for the invite) is looked up in the background and passed each turn. STATELESS backend:
-  // we resend the running `messages` array (incl. tool blocks) each turn and store what comes back.
+  // /api/wingguy/chat (via WG_CHAT). The agent reads the profile + thread and works out the move
+  // itself (thanks opener / warm-reply follow-up / reply / suggest times / book), drafts in Guy's
+  // voice using his campaign templates, and Guy steers it conversationally. The lead's email (for
+  // the invite) is looked up in the background and passed each turn. STATELESS backend: we resend
+  // the running `messages` array (incl. tool blocks) each turn and store what comes back.
   let chatState = null; // { profile, thread, messages, leadEmail, draft }
 
-  async function draftReply(profile, thread) {
+  async function startChat(profile, thread) {
     chatState = { profile, thread, messages: [], leadEmail: '', draft: '' };
     renderChatShell();
     // Look up the lead's email (for the calendar invite) in the background — non-blocking.
     bg({ type: 'WG_CAL_LOOKUP', query: profile.profileUrl || profile.name || '' })
       .then((r) => { if (r && r.found && r.email) chatState.leadEmail = r.email; })
       .catch(() => { /* agent will ask Guy to add it if booking is attempted */ });
-    // Auto-kick the first turn so it reads the thread and proposes the next message (hidden prompt).
-    sendChatTurn(
-      '(Opened from the LinkedIn conversation above. Read where things stand and give me the best next message to send — and if it\'s time to offer a meeting, suggest some times.)',
-      { hidden: true }
-    );
+    // Auto-kick the first turn (hidden). The kickoff differs for a fresh connection vs an open thread.
+    const kickoff = (thread && thread.length)
+      ? '(Opened from the LinkedIn conversation above. Read where things stand and give me the best next message to send — and if it\'s time to offer a meeting, suggest some times.)'
+      : '(Opened on this connection — no reply from them yet. Draft my thanks-for-connecting opener in my voice, using the campaign template.)';
+    sendChatTurn(kickoff, { hidden: true });
   }
 
   function renderChatShell() {
@@ -937,7 +920,7 @@
     log.appendChild(div);
     log.scrollTop = log.scrollHeight;
     const steps = firstTurn
-      ? ['Reading the conversation…', 'Checking your calendar…', 'Applying your booking rules…', 'Writing your message…']
+      ? ['Reading the conversation…', 'Working out the best next message…', 'Writing your draft…']
       : ['Thinking…', 'Checking your calendar…', 'Writing your message…'];
     const textEl = div.querySelector('.wingguy-thinking-text');
     textEl.textContent = steps[0];

@@ -58,11 +58,15 @@ const AGENT_TOOLS = [
 
 // Compact, grounded context for the agent. `buildProfileBlock` / `buildConversationBlock` are passed
 // in so the formatting stays identical to the rest of Wingguy (the route owns those helpers).
-function buildContext({ profileBlock, convoBlock, leadEmail, coachName, prefs }) {
+function buildContext({ profileBlock, convoBlock, leadEmail, coachName, prefs, campaignTemplate }) {
+  const tplBlock = campaignTemplate && campaignTemplate.instructions
+    ? `CAMPAIGN TEMPLATE — "${campaignTemplate.label || campaignTemplate.id}" (use this for the opener / warm-reply message; it's Guy's real structure & voice — match its beats and sign-off):\n${campaignTemplate.instructions}\n\n`
+    : '';
   return (
     `CONTEXT FOR THIS CHAT (you are helping Guy with this lead):\n\n` +
     `${profileBlock ? `LEAD PROFILE:\n${profileBlock}\n\n` : ''}` +
     `${convoBlock ? `LINKEDIN CONVERSATION SO FAR (oldest first):\n${convoBlock}\n\n` : ''}` +
+    `${tplBlock}` +
     `LEAD EMAIL FOR THE INVITE: ${leadEmail ? leadEmail : '(not on file — ask Guy to add it before booking)'}\n` +
     `COACH NAME: ${coachName || 'Guy Wilson'}\n` +
     `GUY'S BOOKING PREFERENCES (JSON): ${JSON.stringify(prefs)}`
@@ -71,7 +75,7 @@ function buildContext({ profileBlock, convoBlock, leadEmail, coachName, prefs })
 
 // Run one chat turn (which may involve several tool round-trips) to completion.
 // Returns { ok, reply, draft, booked, messages, model }.
-async function runWingguyChatTurn({ coach, profile = {}, conversation = [], messages = [], leadEmail, profileBlock = '', convoBlock = '', deps = {} }) {
+async function runWingguyChatTurn({ coach, profile = {}, conversation = [], messages = [], leadEmail, profileBlock = '', convoBlock = '', campaignTemplate = null, deps = {} }) {
   const client = deps.client || getAnthropicClient();
   const getAvailability = deps.getAvailabilityForCoach || wingguyCalendar.getAvailabilityForCoach;
   const bookMeeting = deps.createBookingEvent || wingguyCalendar.createBookingEvent;
@@ -80,7 +84,7 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
   const system = [
     { type: 'text', text: WINGGUY_VOICE },
     { type: 'text', text: WINGGUY_AGENT_INSTRUCTIONS, cache_control: { type: 'ephemeral' } },
-    { type: 'text', text: buildContext({ profileBlock, convoBlock, leadEmail, coachName: coach.clientName, prefs }) },
+    { type: 'text', text: buildContext({ profileBlock, convoBlock, leadEmail, coachName: coach.clientName, prefs, campaignTemplate }) },
   ];
 
   const convo = messages.map((m) => ({ role: m.role, content: m.content }));
