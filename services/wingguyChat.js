@@ -17,7 +17,7 @@ const wingguyCalendar = require('./wingguyCalendar');
 const MODEL_ID = process.env.WINGGUY_DRAFT_MODEL_ID || 'claude-sonnet-4-6';
 const CHAT_MAX_TOKENS = 1500;
 const MAX_TOOL_ITERATIONS = 8;     // safety cap on the agent loop
-const AVAIL_MAX_DAYS = 21;         // bound the availability tool result (tokens)
+const AVAIL_MAX_DAYS = 14;         // bound the availability tool result (tokens) — ~2 working weeks
 const AVAIL_MAX_SLOTS_PER_DAY = 8;
 
 const AGENT_TOOLS = [

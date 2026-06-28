@@ -926,6 +926,30 @@
     return div;
   }
 
+  // A "working…" bubble: spinner + a status line that walks the steps the agent actually runs
+  // (indicative timing, not live-wired). Returns { stop() } which clears the timer and removes it.
+  function showThinking(firstTurn) {
+    const log = document.getElementById('wg-chatlog');
+    if (!log) return { stop() {} };
+    const div = document.createElement('div');
+    div.className = 'wingguy-bubble wingguy-bubble-wg wingguy-thinking';
+    div.innerHTML = '<span class="wingguy-spinner"></span><span class="wingguy-thinking-text"></span>';
+    log.appendChild(div);
+    log.scrollTop = log.scrollHeight;
+    const steps = firstTurn
+      ? ['Reading the conversation…', 'Checking your calendar…', 'Applying your booking rules…', 'Writing your message…']
+      : ['Thinking…', 'Checking your calendar…', 'Writing your message…'];
+    const textEl = div.querySelector('.wingguy-thinking-text');
+    textEl.textContent = steps[0];
+    let i = 0;
+    const timer = setInterval(() => {
+      i = Math.min(i + 1, steps.length - 1);
+      textEl.textContent = steps[i];
+      log.scrollTop = log.scrollHeight;
+    }, 2200);
+    return { stop() { clearInterval(timer); div.remove(); } };
+  }
+
   function setChatDraft(text) {
     if (chatState) chatState.draft = text;
     const ta = document.getElementById('wingguy-draft');
@@ -942,7 +966,7 @@
     if (sendBtn) { sendBtn.disabled = true; sendBtn.textContent = '…'; }
     if (!opts.hidden) appendBubble('me', text);
     chatState.messages.push({ role: 'user', content: text });
-    const thinking = appendBubble('wg', '…');
+    const thinking = showThinking(!!opts.hidden);
     try {
       const data = await bg({
         type: 'WG_CHAT',
@@ -953,7 +977,7 @@
           leadEmail: chatState.leadEmail || undefined,
         },
       });
-      if (thinking) thinking.remove();
+      thinking.stop();
       // The server returns the FULL running history (incl. tool blocks) — store it for the next turn.
       if (data && Array.isArray(data.messages)) chatState.messages = data.messages;
       const reply = (data && data.reply) || '';
@@ -962,7 +986,7 @@
       if (data && data.booked) appendBubble('sys', `✓ Calendar invite created${data.booked.title ? ` — ${data.booked.title}` : ''}.`);
       if (!reply && !(data && data.draft)) appendBubble('wg', '(No response — try rephrasing.)');
     } catch (e) {
-      if (thinking) thinking.remove();
+      thinking.stop();
       appendBubble('sys', `Couldn't reach Wingguy: ${e.message}`);
     } finally {
       if (chatState) chatState.busy = false;

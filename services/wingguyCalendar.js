@@ -16,7 +16,7 @@ const { getBookingPrefs } = require('../config/wingguyBookingPrefs');
 const { createCalendarEvent } = require('./calendarProvider');
 
 const DEFAULT_TZ = 'Australia/Brisbane';
-const DAYS_TO_SCAN = 30;     // how far ahead to look (the agent filters "next week" etc. itself)
+const DAYS_TO_SCAN = 21;     // ~3 weeks ahead — enough for the working-week spread + fallback (smaller = faster fetch)
 const DAY_START_HOUR = 9;    // business-hours window the free/busy scan considers
 const DAY_END_HOUR = 17;
 
