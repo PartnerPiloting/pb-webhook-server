@@ -36,6 +36,14 @@
   function isProfilePage() {
     return /^\/in\//.test(location.pathname);
   }
+  function isMessagingPage() {
+    return /^\/messaging\//.test(location.pathname);
+  }
+  // Normalise any LinkedIn profile href to a clean https://www.linkedin.com/in/<slug> (strip query/hash).
+  function normalizeInUrl(href) {
+    const m = String(href || '').match(/\/in\/([^/?#]+)/);
+    return m ? `https://www.linkedin.com/in/${m[1]}` : '';
+  }
 
   // ---- small DOM helpers ----------------------------------------------------
   function qsFirst(selectors, root = document) {
@@ -135,9 +143,54 @@
     return parts.map((p) => p.charAt(0).toUpperCase() + p.slice(1)).join(' ');
   }
 
+  // On a /messaging/ page the rich profile (About/posts) isn't loaded, but the open thread's HEADER
+  // carries the participant's name, headline and a link to their /in/ profile. Read those so CONTEXT
+  // shows the right person and the email lookup (by /in/ URL) works. Scoped to the conversation the
+  // user is acting in (the box they typed /wg in), else the active detail pane. DOM-fragile by nature
+  // — logs a diagnostic when it can't find a clean name so the selectors can be locked from real DOM.
+  function scrapeMessagingHeader() {
+    const anchor = (lastFocusedEditable && document.contains(lastFocusedEditable)) ? lastFocusedEditable : null;
+    const convo = (anchor && closestConversationContainer(anchor)) || document.querySelector(CONVO_SELECTORS);
+    const pane = (convo && (convo.closest('.scaffold-layout__detail, .msg-overlay-conversation-bubble') || convo)) || document;
+
+    // Name + profile link from the thread header (try specific → generic; validate it looks like a name).
+    const linkSelectors = [
+      '.msg-thread__link-to-profile',
+      '[class*="title-bar"] a[href*="/in/"]',
+      '[class*="entity-lockup"] a[href*="/in/"]',
+      'h2 a[href*="/in/"]',
+      'a[href*="/in/"]',
+    ];
+    let nameLink = null;
+    for (const sel of linkSelectors) {
+      for (const el of pane.querySelectorAll(sel)) {
+        if (looksLikeName(cleanText(el.getAttribute('aria-label') || el.textContent))) { nameLink = el; break; }
+      }
+      if (nameLink) break;
+    }
+    const name = nameLink ? cleanText(nameLink.getAttribute('aria-label') || nameLink.textContent) : '';
+    const profileUrl = nameLink ? normalizeInUrl(nameLink.getAttribute('href')) : '';
+
+    // Headline (best-effort) from the header subtitle / lockup near the name.
+    let headline = '';
+    for (const sel of ['[class*="title-bar__subtitle"]', '[class*="entity-lockup__entity-info"]', '[class*="entity-lockup__subtitle"]', '[class*="__occupation"]']) {
+      const t = cleanText((pane.querySelector(sel) || {}).textContent);
+      if (t && t.length < 200 && !/active now|online|reachable|· $/i.test(t)) { headline = t; break; }
+    }
+
+    if (!name || /^messaging$/i.test(name)) {
+      console.log('[Wingguy] messaging-header scrape weak — name:', JSON.stringify(name), 'url:', profileUrl, '— paste this if CONTEXT shows the wrong person.');
+    } else {
+      console.log('[Wingguy] messaging-header →', name, '|', headline || '(no headline)', '|', profileUrl || '(no /in/ url)');
+    }
+    return { name, headline, profileUrl };
+  }
+
   async function scrapeProfile() {
-    await autoScrollToLoad();   // force lazy sections (About/Experience) into the DOM
-    await expandAboutSeeMore();
+    if (!isMessagingPage()) {
+      await autoScrollToLoad();   // force lazy sections (About/Experience) into the DOM (profile pages only)
+      await expandAboutSeeMore();
+    }
     const nameEl = qsFirst([
       'main h1',
       'h1.text-heading-xlarge',
@@ -172,7 +225,7 @@
     const pageText = (mainEl.innerText || '')
       .replace(/\n{3,}/g, '\n\n').replace(/[ \t]+/g, ' ').trim().slice(0, 6000);
 
-    return {
+    const base = {
       name,
       headline,
       location,
@@ -182,6 +235,21 @@
       pageText,
       nameSource,
     };
+
+    // On a messaging page, the h1/page values are the messaging UI ("Messaging"), and profileUrl is
+    // the thread URL — useless for the email lookup. Override with the thread header (name/headline/
+    // /in/ URL) and suppress profile-only fields that aren't loaded here (so the agent grounds the
+    // reply in the conversation, not messaging-UI junk).
+    if (isMessagingPage()) {
+      const h = scrapeMessagingHeader();
+      if (h.name) { base.name = h.name; base.nameSource = 'messaging-header'; }
+      if (h.headline) base.headline = h.headline;
+      if (h.profileUrl) base.profileUrl = h.profileUrl;
+      base.about = '';
+      base.recentPosts = [];
+      base.pageText = '';
+    }
+    return base;
   }
 
   function location_origin_path() {
