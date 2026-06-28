@@ -2493,7 +2493,18 @@ opener/follow-up drafts match Guy's templates. Extension: `renderRoute`/`renderC
   only a BROWSER/extension fetch rides Guy's session, and even then feed `/posts/` are JS-rendered (need render+scrape,
   some account-risk) while `/pulse/` articles are more static/readable. True reading = a later browser-side enhancement.
 - **Cloud test extended** (`scripts/wingguy-chat-test.js`): Scenario B = Greg warm reply + URLs → expects a fractional
-  follow-up that weaves the marketing topic and does NOT push times.
+  follow-up that weaves the marketing topic and does NOT push times. **Both scenarios PASSED on prod** (job
+  `job-d90bbe6gvqtc739c9lv0`): Greg → detected `frac`, drafted the follow-up nodding to "marketing that means business",
+  did NOT call the calendar; booking flow still spreads/confirms/books.
+- **UX polish 2026-06-28:** chat draft box now AUTO-GROWS to fit the whole message (capped ~45vh; chat-log trimmed to
+  30vh) — the pinned "Message to send" was scrolling inside a small box. Modal max-height 92vh.
+- **★ MESSAGING-PAGE LEAD READ 2026-06-28 (`10f663da`).** From the messaging INBOX, `scrapeProfile` was reading the page
+  h1 ("Messaging") + the thread URL → CONTEXT showed "Messaging" and the email lookup couldn't match. Now on
+  `/messaging/` pages it reads the open thread's HEADER (name + headline + `/in/` link, scoped to the conversation the
+  user acted in via `closestConversationContainer`), normalises the URL, and suppresses About/posts/pageText (not loaded
+  there). Fixes name + email-lookup from messaging; About/posts still need the profile page (decided: NOT worth
+  hidden-tab/private-API scraping — conversation grounds the reply). DOM-fragile: logs a diagnostic if it can't find a
+  clean name — if CONTEXT still shows "Messaging" on Guy's real DOM, lock the header selectors from his console line.
 
 **★ DECISION 2026-06-27 — SLICE 2 "BIG HALF" = A FROM-SCRATCH CLAUDE TOOL-USING CHAT AGENT IN THE PANEL.
 NO booking form, NO fixed buttons, NOT the portal's Gemini assistant.** This supersedes the form-based "📌 Book it"
