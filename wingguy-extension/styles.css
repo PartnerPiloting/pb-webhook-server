@@ -43,7 +43,7 @@
   display: flex;
   align-items: flex-start;
   justify-content: center;
-  padding: 6vh 16px 16px;
+  padding: 4vh 16px 16px;
   overflow-y: auto;
   font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   color: var(--wingguy-ink);
@@ -51,7 +51,7 @@
 .wingguy-modal {
   width: 100%;
   max-width: 860px;
-  max-height: 86vh;
+  max-height: 92vh;
   display: flex;
   flex-direction: column;
   background: #fff;
@@ -231,7 +231,8 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
-  max-height: 340px;
+  max-height: 52vh;
+  min-height: 220px;
   overflow-y: auto;
   padding: 4px 2px;
 }
