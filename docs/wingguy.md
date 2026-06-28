@@ -2683,6 +2683,27 @@ Headlines of where things stand right now:
   ONE-TOOL calendar spike** ("they picked a time → check calendar → offer to book") before the full build. Design it
   first, then build.
 
+**As of 2026-06-29 — RECALL SHUT-OFF READINESS: the guest-meeting gap + its fix (live data check, no code).** Checked
+the prod store (last ~12d) comparing Recall vs Fathom coverage during the parallel trial. Findings:
+- **Fathom is strong** — captured the large majority of meetings, often with *longer* transcripts than Recall; the
+  back-to-back splitter is filing per-lead entries live. Most of Recall's "extra" rows are duplicates / tiny no-show
+  stubs, not real coverage Fathom lacks.
+- **★ Gap = guest-hosted meetings.** A few substantial meetings Recall caught but Fathom missed (recurring *Alasdair
+  Bell*; *Paul* walkthrough) — meetings hosted on **someone else's platform** where Guy is a guest and Fathom's
+  recorder wasn't admitted (Recall's bot was). Not a bug — a "whose recorder gets let in" problem. (Lianne Grove =
+  no-show, ignore.)
+- **Fix = Fathom bot-free DESKTOP capture** (now on Windows): records Guy's machine audio locally regardless of host
+  → no bot-admission battle; lands in the same Fathom library → flows through the existing ingest with **NO new code**.
+  Enable: install `fathom.video/download/win`, log in to the **SAME** Fathom account (key in Airtable Client Master),
+  connect calendar, turn on **Auto-record**, use bot-free / "Capture Now".
+- **Zoom API ruled out** for this — only the *host* can pull a Zoom recording/transcript via API; as a guest Guy can't
+  reach others' recordings.
+- **Go-live gate before flipping Recall off:** (1) enable desktop capture + Auto-record; (2) test on a real
+  guest-hosted meeting; (3) **verify the desktop capture carries calendar-invitee data so lead-matching still links
+  the right lead** (else it falls back to name-match) — the one unverified assumption. THEN set env
+  **`RECALL_AUTO_JOIN_DISABLED=true`** (reversible; stops usage-based Recall cost). **Keep Recall ON until that test
+  passes** — guest meetings are exactly what it's still catching.
+
 **As of 2026-06-25 — ★ OPTION A BUILT: thread-aware auto-routing + reply engine (front edge of Slice 2; on `main`,
 owner-gated; backend proven live, awaiting Guy's live LinkedIn test).** Built on the Slice 1 base when Guy asked for
 "read the conversation and work out whether it's a thanks-for-connecting or a follow-on." Deliberately the SMALL half
