@@ -73,6 +73,21 @@ function buildContext({ profileBlock, convoBlock, leadEmail, coachName, prefs, c
   );
 }
 
+// Minutes-since-midnight from "9:30" / "09:30" (prefs) or a display string like "9:00 am" / "9:00 AM-9:30 AM".
+function hhmmToMin(s) { const m = String(s || '').match(/(\d{1,2}):(\d{2})/); return m ? (+m[1]) * 60 + (+m[2]) : null; }
+function minFromDisplay(s) {
+  const m = String(s || '').match(/(\d{1,2}):(\d{2})\s*(am|pm)/i);
+  if (!m) return null;
+  let h = (+m[1]) % 12; if (/pm/i.test(m[3])) h += 12;
+  return h * 60 + (+m[2]);
+}
+// HARD bounds: never surface slots before earliestStart or after lastStart (the agent doesn't reliably
+// hold the soft floor on its own — enforce it on the data so a sub-9:30 / post-16:30 slot can't be offered).
+function withinBounds(slot, eMin, lMin) {
+  const m = minFromDisplay(slot.display);
+  return m == null ? true : (m >= eMin && m <= lMin);
+}
+
 // Run one chat turn (which may involve several tool round-trips) to completion.
 // Returns { ok, reply, draft, booked, messages, model }.
 async function runWingguyChatTurn({ coach, profile = {}, conversation = [], messages = [], leadEmail, profileBlock = '', convoBlock = '', campaignTemplate = null, deps = {} }) {
@@ -94,8 +109,11 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
   const runTool = async (name, input) => {
     if (name === 'check_availability') {
       const avail = await getAvailability(coach.clientId, profile.location || '');
+      const eMin = hhmmToMin(prefs.earliestStart) ?? 0;
+      const lMin = hhmmToMin(prefs.lastStart) ?? 24 * 60;
       const days = (avail.days || [])
-        .filter((d) => d.freeSlots && d.freeSlots.length)
+        .map((d) => ({ ...d, freeSlots: (d.freeSlots || []).filter((s) => withinBounds(s, eMin, lMin)) }))
+        .filter((d) => d.freeSlots.length)
         .slice(0, AVAIL_MAX_DAYS)
         .map((d) => ({ ...d, freeSlots: d.freeSlots.slice(0, AVAIL_MAX_SLOTS_PER_DAY) }));
       return { yourTimezone: avail.yourTimezone, leadTimezone: avail.leadTimezone, days };
