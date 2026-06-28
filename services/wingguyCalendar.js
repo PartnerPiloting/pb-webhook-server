@@ -74,6 +74,9 @@ async function getAvailabilityForCoach(clientId, leadLocation = '') {
   const mapped = (days || []).map((d) => ({
     date: d.date,
     day: d.day,
+    // How many real meetings Guy already has that day (busy/opaque events only) — the agent prefers
+    // the least-busy days, so it can spread bookings instead of stacking them.
+    meetingCount: (d.events || []).filter((e) => !e.isFree).length,
     freeSlots: (d.freeSlots || []).map((s) => ({
       time: s.time,
       display: s.display || s.displayRange,

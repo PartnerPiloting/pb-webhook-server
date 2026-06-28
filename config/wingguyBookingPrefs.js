@@ -13,13 +13,21 @@
 // user-editable. Preferences only choose WHICH valid slots to prefer/offer.
 
 const DEFAULT_PREFS = {
-  preferredStart: '10:00',   // start offering from here normally
-  earliestStart: '09:30',    // soft floor — only used if needed to fill the requested number of slots
+  // Time-of-day bounds (soft).
+  earliestStart: '09:30',    // soft floor — only drop this early as a FALLBACK to fill the options
   lastStart: '16:30',        // last meeting may START by this time
   slotsToOffer: 3,           // how many options to put in the "here are some times" message
   meetingLengthMins: 30,     // default meeting length
-  bufferMins: 0,             // breathing room between meetings — none (back-to-back is fine)
-  excludeWeekends: true,     // never offer Sat/Sun unless explicitly overridden
+  excludeWeekends: true,     // weekdays only unless explicitly overridden
+  // How the options are chosen — Guy's locked prefs (2026-06-28). The agent applies these as a
+  // FALLBACK LADDER: (best) spread across the next working week on the least-busy days, varied
+  // times of day, ≥1 clear day's notice → (then) allow back-to-back / same-day → (then) drop toward
+  // the 9:30 earliest. Always fill slotsToOffer if availability allows.
+  minLeadDays: 1,            // at least one CLEAR day's notice — earliest option = the day AFTER tomorrow (never today/tomorrow)
+  preferSpreadOverWeek: true,// spread the options across the next working week, not clustered on adjacent days
+  preferLeastBusyDays: true, // bias toward days with the FEWEST existing meetings (availability gives each day's meetingCount)
+  spreadAcrossDay: true,     // vary the time of day across the options (a morning, a midday, an afternoon) — not all mornings
+  bufferMins: 0,             // no enforced gap — back-to-back is allowed only as a fallback (see ladder)
   yourZoom: 'https://us04web.zoom.us/j/9892817976', // coach's standing meeting room (goes on the invite)
   // Invite-template identity (the "variable" bucket) — used to build the calendar invite body the way
   // Guy lays his out. Per-tenant later; Guy's values are the shipped default + the seed for the template.

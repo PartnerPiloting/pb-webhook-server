@@ -2523,8 +2523,16 @@ banked **Tony/Ranya examples = the design brief + eval cases.**
   the chat. **No backend change — it calls the already-proven `/chat`.**
 - **NEXT = Guy's live test of the panel** (reload the unpacked `wingguy-extension/`, open a real LinkedIn thread, `/wg`
   → Reply → chat: "suggest times" / "book the X one" / "yes"). Watch-items: the lead-email lookup populating before a
-  book attempt (else the agent asks Guy to add it); the composer insert landing the pinned draft. Tuning notes still
-  open: prefer Guy's 10:00 start more strongly; stale prod service id in `scripts/deploy-to-render.js`.
+  book attempt (else the agent asks Guy to add it); the composer insert landing the pinned draft.
+- **★ BOOKING-TIME RULES REFINED 2026-06-28 (from a real miss — Mary Anne, who got offered three back-to-back mornings
+  starting tomorrow).** Replaced the old "prefer 10:00 start" with a FALLBACK LADDER (Guy's words): (1) IDEAL — spread
+  the options across the NEXT WORKING WEEK, one per day, on the LEAST-BUSY days first, with VARIED times of day (morning/
+  midday/afternoon), and ≥1 CLEAR day's notice (never today/tomorrow); (2) if no clean spread → allow back-to-back/
+  same-day; (3) still short → drop toward 9:30 earliest. Timezone/DST stays a HARD rule (Guy's own call: not a
+  preference). Built: `config/wingguyBookingPrefs.js` (dropped `preferredStart`; added `minLeadDays`/`preferSpreadOverWeek`/
+  `preferLeastBusyDays`/`spreadAcrossDay`), `services/wingguyCalendar.js` now returns per-day `meetingCount` so
+  "least-busy" works, and `WINGGUY_AGENT_INSTRUCTIONS` encodes the ladder. All overridable in chat. *(Open: stale prod
+  service id in `scripts/deploy-to-render.js` — prod is `srv-cvqgq53e5dus73fa45ag`.)*
 
 **★ BUILT 2026-06-26 (session 2) — ON-SEND → PORTAL CAPTURE shipped (commit `fcf76bae`); the full-screen shell +
 auto-detect were PROVEN LIVE on a real lead (Vera) first.** The thanks-for-connecting loop is now end-to-end: `/wg` →
