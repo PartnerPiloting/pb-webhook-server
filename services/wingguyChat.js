@@ -23,24 +23,40 @@ const AVAIL_MAX_SLOTS_PER_DAY = 8;
 const AGENT_TOOLS = [
   {
     name: 'check_availability',
-    description: 'Look at Guy\'s real calendar and return open meeting slots (timezone-correct for both Guy and the lead). Call this before suggesting or booking times. Returns days, each with "meetingCount" (how many meetings Guy already has that day — prefer the lowest) and "freeSlots"; each slot has "time" (ISO start — pass to book_meeting), "display" (Guy\'s time) and "leadDisplay" (the lead\'s time).',
+    description: 'Look at Guy\'s real calendar and return open meeting slots (timezone-correct for both Guy and the lead). Call this before suggesting or booking times. Returns days, each with "meetingCount" (how many meetings Guy already has that day — prefer the lowest) and "freeSlots"; each slot has "time" (ISO start — pass to book_meeting), "display" (Guy\'s time) and "leadDisplay" (the lead\'s time). Guy\'s lunch (12:00–12:45) is held back by default and won\'t appear.',
     input_schema: {
       type: 'object',
       properties: {
         rangeHint: { type: 'string', description: 'Optional note about what Guy asked for, e.g. "next week" or "mornings only". Informational; you still filter the returned days yourself.' },
+        includeLunch: { type: 'boolean', description: 'Set true ONLY when Guy explicitly wants a lunch-time meeting — then the held-back 12:00–12:45 slots are included. Leave unset/false otherwise.' },
       },
     },
   },
   {
     name: 'book_meeting',
-    description: 'Create the real calendar invite and email the lead the standard invite (Guy\'s Zoom + reminders are added automatically). ONLY call this after Guy has explicitly confirmed the specific date and time in chat. Use a "time" value returned by check_availability as startISO.',
+    description: 'Create the real calendar invite and email the lead the standard invite (Guy\'s Zoom + reminders are added automatically). ONLY call this after Guy has explicitly confirmed the specific date and time in chat. Use an ISO start that came from check_availability (a slot\'s "time") OR from check_time (its "startISO") — never build the ISO yourself. If the time CLASHES with an existing meeting, this tool refuses unless you pass confirmDoubleBook:true — so first tell Guy about the clash, get his explicit yes, then re-call with confirmDoubleBook:true.',
     input_schema: {
       type: 'object',
       properties: {
-        startISO: { type: 'string', description: 'The meeting start as an ISO timestamp — use a slot\'s "time" from check_availability.' },
+        startISO: { type: 'string', description: 'The meeting start as an ISO timestamp — a slot\'s "time" from check_availability or "startISO" from check_time.' },
         durationMins: { type: 'number', description: 'Optional meeting length in minutes; omit to use Guy\'s default.' },
+        confirmDoubleBook: { type: 'boolean', description: 'Set true ONLY after Guy has explicitly OK\'d booking over an existing meeting. Leave false/omitted normally — the tool will refuse a clashing time and tell you what it clashes with so you can ask Guy first.' },
       },
       required: ['startISO'],
+    },
+  },
+  {
+    name: 'check_time',
+    description: 'Verify a SPECIFIC time Guy (or the lead) proposed — including off-grid times (e.g. 2:15) or times you didn\'t offer. Pass the calendar date + a clock time + whose timezone it\'s in; the system converts it correctly (never do timezone math yourself), then reports both-side display strings and any CLASH with an existing meeting. Use this whenever Guy names a particular time rather than picking one of your offered slots, THEN confirm with him before book_meeting. A clash does NOT block booking (Guy can choose to double-book) — it just must be surfaced.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        date: { type: 'string', description: 'The calendar date in YYYY-MM-DD (work it out from the conversation / check_availability days).' },
+        time: { type: 'string', description: 'The clock time, e.g. "14:00" or "2:15pm".' },
+        side: { type: 'string', enum: ['coach', 'lead'], description: '"coach" if the time is in Guy\'s timezone (default), "lead" if Guy gave it in the lead\'s timezone.' },
+        durationMins: { type: 'number', description: 'Optional meeting length in minutes; omit to use Guy\'s default.' },
+      },
+      required: ['date', 'time'],
     },
   },
   {
@@ -52,6 +68,7 @@ const AGENT_TOOLS = [
         intro: { type: 'string', description: 'Opening line(s) before the times, in Guy\'s voice.' },
         slotTimes: { type: 'array', items: { type: 'string' }, description: 'ISO start times chosen from check_availability (the slot "time" field).' },
         outro: { type: 'string', description: 'Closing line(s) after the times, e.g. "Just let me know what suits and I\'ll send a Zoom link."' },
+        includeLunch: { type: 'boolean', description: 'Set true ONLY when Guy explicitly wants to offer a lunch-time slot — otherwise lunch (12:00–12:45) is dropped from the list.' },
       },
       required: ['slotTimes'],
     },
@@ -133,6 +150,8 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
   const client = deps.client || getAnthropicClient();
   const getAvailability = deps.getAvailabilityForCoach || wingguyCalendar.getAvailabilityForCoach;
   const bookMeeting = deps.createBookingEvent || wingguyCalendar.createBookingEvent;
+  const checkProposedTime = deps.checkProposedTime || wingguyCalendar.checkProposedTime;
+  const getClashesForISO = deps.getClashesForISO || wingguyCalendar.getClashesForISO;
   const prefs = getBookingPrefs(coach.clientId);
 
   const system = [
@@ -155,8 +174,9 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
       const aTz = avail.yourTimezone || 'Australia/Brisbane';
       const aLen = prefs.meetingLengthMins || 30;
       const days = (avail.days || [])
-        // soft lunch hold is stripped HERE too (not just in propose_times) so the model never even sees a coach-lunch slot as free
-        .map((d) => ({ ...d, freeSlots: (d.freeSlots || []).filter((s) => withinBounds(s, eMin, lMin) && !inLunch(s.time, aTz, prefs, aLen)) }))
+        // soft lunch hold is stripped HERE too (not just in propose_times) so the model never even sees a coach-lunch
+        // slot as free — UNLESS Guy explicitly asked for a lunch-time meeting (input.includeLunch), then surface them.
+        .map((d) => ({ ...d, freeSlots: (d.freeSlots || []).filter((s) => withinBounds(s, eMin, lMin) && (input.includeLunch || !inLunch(s.time, aTz, prefs, aLen))) }))
         .filter((d) => d.freeSlots.length)
         .slice(0, AVAIL_MAX_DAYS)
         .map((d) => ({ ...d, freeSlots: d.freeSlots.slice(0, AVAIL_MAX_SLOTS_PER_DAY) }));
@@ -176,7 +196,7 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
         if (isNaN(Date.parse(iso))) { dropped.push({ iso, why: 'invalid' }); continue; }
         const cMin = minutesInTz(iso, tz);
         if (cMin == null || cMin < eMin || cMin > lMin) { dropped.push({ iso, why: 'outside your booking hours' }); continue; }
-        if (inLunch(iso, tz, prefs, len)) { dropped.push({ iso, why: 'lunch hold' }); continue; }
+        if (!input.includeLunch && inLunch(iso, tz, prefs, len)) { dropped.push({ iso, why: 'lunch hold' }); continue; }
         kept.push(iso);
       }
       const ordered = [...new Set(kept)].sort((a, b) => Date.parse(a) - Date.parse(b)); // earliest-first, deduped
@@ -189,8 +209,50 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
       currentDraft = [intro, bullets, outro].filter(Boolean).join('\n\n');
       return { ok: true, offered: ordered.length, dropped };
     }
+    if (name === 'check_time') {
+      const r = await checkProposedTime(coach.clientId, {
+        date: input.date,
+        time: input.time,
+        side: input.side || 'coach',
+        leadLocation: profile.location || '',
+        durationMins: input.durationMins,
+      });
+      if (!r.ok) return r;
+      // Soft, overridable flags (bounds + lunch are Guy's prefs, not hard rules) — surfaced so the
+      // agent can warn, NOT to block.
+      const tz = r.yourTimezone || 'Australia/Brisbane';
+      const eMin = hhmmToMin(prefs.earliestStart);
+      const lMin = hhmmToMin(prefs.lastStart);
+      const cMin = minutesInTz(r.startISO, tz);
+      const withinHours = (eMin == null || lMin == null || cMin == null) ? true : (cMin >= eMin && cMin <= lMin);
+      const hitsLunch = inLunch(r.startISO, tz, prefs, r.durationMins);
+      return {
+        ok: true,
+        startISO: r.startISO,
+        durationMins: r.durationMins,
+        display: r.display,
+        leadDisplay: r.leadDisplay,
+        free: r.clashes.length === 0,
+        clashes: r.clashes,
+        withinHours,
+        hitsLunch,
+      };
+    }
     if (name === 'book_meeting') {
       if (!leadEmail) return { ok: false, error: 'No lead email on file — ask Guy to add the lead\'s email before booking.' };
+      // No-ACCIDENTAL-double-book guard (the one thing code still enforces): refuse a clashing time
+      // unless Guy has explicitly OK'd it (confirmDoubleBook). Conscious double-booking is allowed.
+      if (!input.confirmDoubleBook) {
+        const clashes = await getClashesForISO(coach.clientId, input.startISO, input.durationMins);
+        if (clashes.length) {
+          return {
+            ok: false,
+            clash: true,
+            clashes,
+            error: `That time clashes with: ${clashes.map((c) => `${c.summary} (${c.display})`).join('; ')}. Tell Guy and, if he still wants it, re-call book_meeting with confirmDoubleBook:true.`,
+          };
+        }
+      }
       const result = await bookMeeting(coach, {
         startISO: input.startISO,
         durationMins: input.durationMins,

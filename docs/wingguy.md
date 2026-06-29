@@ -2477,6 +2477,19 @@ onboard client #2; distribution → **Chrome Web Store "Unlisted"**.
 
 ## ▶ You are here / next pick-up
 
+**★ BOOKING = WARN, DON'T BLOCK (decided 2026-06-30; reverses a previously-locked iron rule).** Reviewing the deferred
+Slice-2 bits, Guy re-scoped how the agent handles a time that's off-grid or clashing. **New product rule:** the agent
+NEVER hard-blocks a time — Guy is always the decision-maker. (1) Guy can propose ANY time (on or off the availability grid),
+and the agent works with it rather than only offering times from its own scan. (2) If a proposed time CLASHES with an
+existing meeting (or is outside Guy's hours / off the 30-min grid), the agent must SURFACE that clearly ("heads up — you've
+already got X then; book it anyway as a double-booking?") and proceed ONLY on Guy's explicit yes. (3) **Double-booking is
+now ALLOWED** when consciously confirmed + clearly flagged — it is NO LONGER a hard rule. **The ONLY remaining
+non-overridable hard rule = timezone-correct-for-both-parties** (Guy's own call). This supersedes the locked
+"no-double-book = HARD rule, never user-editable" line in the code/rule/variable split. **STATUS: doc updated (this entry +
+the split note + the deferred re-scope); CODE CHANGE IN PROGRESS** — agent instructions (add the "Guy proposed a specific
+time" + clash-warn branch; relax the strict check_availability grounding so an arbitrary time can pass with a clash flag),
+`book_meeting`/`check_availability` path, + a cloud test case for "lead/Guy proposed a specific time → verify → warn-or-book".
+
 **★ UNIFIED CHAT 2026-06-28 — Thanks + Reply collapsed into ONE chat surface (the "just a chat" end-state).** Trigger:
 on a real lead (Greg Abbey, a fractional CMO who replied warmly + shared two LinkedIn URLs), `/wg` auto-picked "Reply"
 → the booking chat, which was the wrong surface (a warm follow-up isn't a booking moment), and Thanks mode had no chat
@@ -2589,7 +2602,10 @@ earliest 9:30 (soft floor), last start 16:30, 3 slots, 30-min, no buffer (back-t
 **soft 12:00–12:45 lunch hold** (skipped when auto-suggesting, still bookable on request). Picker (`pickSlotsByPrefs`,
 unit-tested): prefer ≥preferred then relax to earliest only to fill, skip lunch, drop post-last-start, exclude weekends,
 one per day. **★ Code/rule/variable split made concrete:** these are user-owned PREFERENCES (variables); timezone-correct-
-for-both-parties + no-double-book stay HARD rules in the calendar code, never user-editable. **★ BOOKING = via NYLAS, decided 2026-06-26** (Guy: emails stay on the
+for-both-parties stays a HARD rule in the calendar code, never user-editable. **(SUPERSEDED 2026-06-30: "no-double-book"
+is NO LONGER a hard rule — see journal "Booking = warn, don't block (2026-06-30)". Double-booking is now ALLOWED when Guy
+explicitly confirms it, provided the clash is clearly surfaced first. Timezone correctness remains the only non-overridable
+hard rule.)** **★ BOOKING = via NYLAS, decided 2026-06-26** (Guy: emails stay on the
 client's own Claude/connector — NOT the extension; the extension creates the calendar entry agentically like his
 Claude+MCP does, multi-tenant). **✅ NYLAS READ CONFIRMED LIVE ON PROD 2026-06-26** (re-ran `scripts/nylas-check.js` via a
 Render one-off job → 50 real events off Guy's calendar, `provider=nylas`, grant alive carried from Airtable `Nylas Grant
@@ -2608,9 +2624,17 @@ Nylas"); (2) `POST /api/wingguy/book` (owner-gated) resolves the full coach (nyl
 guest-first title + puts the coach Zoom (new `yourZoom` booking pref) on the invite, creates the event inviting the lead;
 (3) extension **"📌 Book it"** button in the reply + times views → a confirm form (date/time + guest email pre-filled via
 `/api/calendar/lookup-lead`) → `WG_BOOK` → invite created + emailed. **No LinkedIn send involved (calendar only).**
-**Deferred:** Airtable Follow-up/status sync on book; auto-detecting the agreed time from the thread (manual datetime
-entry for now); multi-tenant per-client `yourZoom`/grant onboarding (Nylas hosted-auth connect flow). **NEXT after Guy's
-live test = those deferred bits, as they prove needed in real use.** Then the Postgres prefs store + conversational editing (seam already isolates this). Real per-message
+**Deferred:** ~~Airtable Follow-up/status sync on book~~ **(2026-06-30: DROPPED as a must-do — visibility is already
+covered. The lead modal does a LIVE calendar read by the lead's email (`LeadDetailModal.js` → `/api/calendar/upcoming-
+meeting-with-lead` → `getUpcomingMeetingsWithAttendee`, 90-day forward window) and shows a green "Meeting booked: …"
+banner; Wingguy books the invite using the SAME Airtable-looked-up email, so a booked meeting auto-appears with no sync.
+Only revisit a stored status field IF we later need list-level filtering ("show all leads with a meeting"), sequence-halt
+(stop LH/thanks nurture on book), or post-meeting history (the live read is upcoming-only).)~~; ~~auto-detecting the agreed
+time from the thread (manual datetime entry for now)~~ **(2026-06-30: the manual datetime FORM is gone — the chat agent
+reads the whole thread and drives booking conversationally ("They PICKED A TIME → BOOK IT" + confirm-first). RE-SCOPED to
+the "warn, don't block" work — see journal "Booking = warn, don't block (2026-06-30)" + ▶ top of You-are-here.)**;
+multi-tenant per-client `yourZoom`/grant onboarding (Nylas
+hosted-auth connect flow). **NEXT after Guy's live test = those deferred bits, as they prove needed in real use.** Then the Postgres prefs store + conversational editing (seam already isolates this). Real per-message
 timestamp capture also shipped this session (`fed2217a`).
 
 **★ BUILT 2026-06-26 (session 1) — THE FULL-SCREEN SHELL + `/wg` TRIGGER + KEYWORD AUTO-DETECT ARE

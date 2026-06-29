@@ -11,6 +11,7 @@
 // Hard rules (no double-book, timezone correctness) stay here in code; soft prefs live in
 // config/wingguyBookingPrefs.js and are applied by the agent.
 
+const { DateTime } = require('luxon');
 const { getTimezoneFromLocation } = require('../linkedin-messaging-followup-next/lib/timezoneFromLocation.js');
 const { getBookingPrefs } = require('../config/wingguyBookingPrefs');
 const { createCalendarEvent } = require('./calendarProvider');
@@ -87,6 +88,79 @@ async function getAvailabilityForCoach(clientId, leadLocation = '') {
   return { yourTimezone, leadTimezone, days: mapped };
 }
 
+// ── "Warn, don't block" booking (2026-06-30) ────────────────────────────────────────────────────
+// Guy can propose ANY time (on/off the availability grid). Timezone correctness stays a HARD rule in
+// code (luxon does the wall-clock→instant conversion so the model never does tz math); clash with an
+// existing meeting is SURFACED, never silently blocked — a conscious double-book is allowed upstream.
+
+// Build a DST-correct UTC ISO from a wall-clock date+time interpreted in a given IANA timezone.
+// Accepts 24h ("14:00") or 12h ("2:00pm" / "2 pm") time. Returns null if it can't be parsed.
+function wallClockToISO(date, time, timezone) {
+  const t = String(time || '').trim().replace(/\s+/g, '').toLowerCase();
+  const stamp = `${String(date || '').trim()} ${t}`;
+  for (const fmt of ['yyyy-MM-dd H:mm', 'yyyy-MM-dd h:mma', 'yyyy-MM-dd ha', 'yyyy-MM-dd h:mm']) {
+    const dt = DateTime.fromFormat(stamp, fmt, { zone: timezone });
+    if (dt.isValid) return dt.toUTC().toISO();
+  }
+  return null;
+}
+
+// Busy meetings (opaque events only) on the candidate's day that overlap [start, end). Returns
+// [{ summary, display }] — empty means the window is free. `display` is in the coach's timezone.
+async function clashesForWindow(calendarEmail, yourTimezone, startISO, len) {
+  const start = new Date(startISO);
+  const end = new Date(start.getTime() + len * 60000);
+  const dateInCoachTz = DateTime.fromJSDate(start).setZone(yourTimezone).toFormat('yyyy-MM-dd');
+  const calendarService = require('../config/calendarServiceAccount.js');
+  const { days, error } = await calendarService.getBatchAvailability(
+    calendarEmail, [dateInCoachTz], DAY_START_HOUR, DAY_END_HOUR, yourTimezone
+  );
+  if (error) throw new Error(error);
+  const events = (days && days[0] && days[0].events) || [];
+  return events
+    .filter((e) => !e.isFree && e.start && e.end)
+    .filter((e) => {
+      const es = new Date(e.start).getTime();
+      const ee = new Date(e.end).getTime();
+      return Number.isFinite(es) && Number.isFinite(ee) && es < end.getTime() && ee > start.getTime();
+    })
+    .map((e) => ({ summary: e.summary || '(busy)', display: formatInTz(e.start, yourTimezone) }));
+}
+
+// Verify a SPECIFIC proposed time (Guy's words → date/time/side). Code owns the timezone conversion
+// and the clash read; returns both-side display strings + any clashes so the agent can WARN before
+// booking. Returns { ok, startISO, durationMins, display, leadDisplay, yourTimezone, leadTimezone, clashes }.
+async function checkProposedTime(clientId, { date, time, side = 'coach', leadLocation = '', durationMins }) {
+  const { calendarEmail, timezone: yourTimezone } = await getCoachCalendarInfo(clientId);
+  const leadTimezone = (leadLocation && getTimezoneFromLocation(leadLocation)) || yourTimezone;
+  const tz = side === 'lead' ? leadTimezone : yourTimezone;
+  const startISO = wallClockToISO(date, time, tz);
+  if (!startISO) return { ok: false, error: `Couldn't read "${date} ${time}" as a time — give a date (YYYY-MM-DD) and a clock time (e.g. 14:00 or 2:00pm).` };
+  const prefs = getBookingPrefs(clientId);
+  const len = Number(durationMins) > 0 ? Number(durationMins) : (prefs.meetingLengthMins || 30);
+  const clashes = await clashesForWindow(calendarEmail, yourTimezone, startISO, len);
+  return {
+    ok: true,
+    startISO,
+    durationMins: len,
+    yourTimezone,
+    leadTimezone,
+    display: formatInTz(startISO, yourTimezone),
+    leadDisplay: formatInTz(startISO, leadTimezone),
+    clashes,
+  };
+}
+
+// Clash check for an already-resolved ISO instant (used by book_meeting's no-accidental-double-book
+// guard). Returns [{ summary, display }].
+async function getClashesForISO(clientId, startISO, durationMins) {
+  const { calendarEmail, timezone: yourTimezone } = await getCoachCalendarInfo(clientId);
+  const prefs = getBookingPrefs(clientId);
+  const len = Number(durationMins) > 0 ? Number(durationMins) : (prefs.meetingLengthMins || 30);
+  if (isNaN(new Date(startISO).getTime())) return [];
+  return clashesForWindow(calendarEmail, yourTimezone, startISO, len);
+}
+
 // Build the invite the way the coach lays it out and create it via the proven seam (Nylas write).
 // Shared by POST /book (the legacy form path) and the chat agent's book_meeting tool so there's ONE
 // booking implementation. Returns { ok, eventId, title, start, durationMins } or { ok:false, error }.
@@ -128,4 +202,4 @@ async function createBookingEvent(coach, { startISO, durationMins, leadEmail, le
   return { ok: true, eventId: result.eventId, title: finalTitle, start: start.toISOString(), durationMins: len };
 }
 
-module.exports = { getAvailabilityForCoach, createBookingEvent };
+module.exports = { getAvailabilityForCoach, createBookingEvent, checkProposedTime, getClashesForISO };
