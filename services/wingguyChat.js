@@ -44,8 +44,21 @@ const AGENT_TOOLS = [
     },
   },
   {
+    name: 'propose_times',
+    description: 'Use THIS (not propose_message) whenever you are offering the lead one or more meeting times. Pass intro + outro text in Guy\'s voice, plus slotTimes = the chosen slots\' "time" ISO values from check_availability. The system SORTS them earliest-first, DROPS any outside Guy\'s booking hours or in his lunch hold, formats them in the lead\'s timezone, and assembles the final message — so you don\'t format or order the list yourself. If it reports it dropped slots and too few remain, pick replacement slots and call again. If the lead\'s timezone differs from Guy\'s, note that in your intro/outro.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        intro: { type: 'string', description: 'Opening line(s) before the times, in Guy\'s voice.' },
+        slotTimes: { type: 'array', items: { type: 'string' }, description: 'ISO start times chosen from check_availability (the slot "time" field).' },
+        outro: { type: 'string', description: 'Closing line(s) after the times, e.g. "Just let me know what suits and I\'ll send a Zoom link."' },
+      },
+      required: ['slotTimes'],
+    },
+  },
+  {
     name: 'propose_message',
-    description: 'Set the LinkedIn message draft that Guy will edit/accept and send to the lead. Call this whenever you have a message for Guy to send (offering times, confirming a booking, etc.). Plain text only — no markdown.',
+    description: 'Set the LinkedIn message draft Guy will edit/accept and send — for any SINGLE message (thanks opener, warm-reply follow-up, a reply, the post-booking "invite\'s on its way" confirmation). For OFFERING TIMES use propose_times instead. Plain text only — no markdown.',
     input_schema: {
       type: 'object',
       properties: {
@@ -87,6 +100,32 @@ function withinBounds(slot, eMin, lMin) {
   const m = minFromDisplay(slot.display);
   return m == null ? true : (m >= eMin && m <= lMin);
 }
+// Minutes-since-midnight of an ISO instant IN a given timezone (for coach-hours/lunch checks).
+function minutesInTz(iso, tz) {
+  const s = new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: tz });
+  return hhmmToMin(s);
+}
+// True if a slot START overlaps the coach's SOFT lunch hold, checked in the COACH's timezone.
+// Centralised so check_availability (don't even offer the slot) and propose_times (backstop) agree —
+// the bug was that only the backstop applied it, so a coach-noon slot could be surfaced and offered.
+function inLunch(iso, tz, prefs, len) {
+  if (!(prefs && prefs.lunch && prefs.lunch.soft)) return false;
+  const lunchStart = hhmmToMin(prefs.lunch.start);
+  if (lunchStart == null) return false;
+  const lunchEnd = lunchStart + ((prefs.lunch && prefs.lunch.durationMins) || 0);
+  const cMin = minutesInTz(iso, tz);
+  if (cMin == null) return false;
+  return cMin < lunchEnd && (cMin + (len || 0)) > lunchStart;
+}
+// Format a slot for the LinkedIn message in the lead's timezone, Guy's style: "Wed 1 July, 1:30 pm".
+function fmtSlot(iso, tz) {
+  const d = new Date(iso);
+  const wd = d.toLocaleString('en-AU', { weekday: 'short', timeZone: tz });
+  const day = d.toLocaleString('en-AU', { day: 'numeric', timeZone: tz });
+  const mo = d.toLocaleString('en-AU', { month: 'long', timeZone: tz });
+  const tm = d.toLocaleString('en-AU', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: tz }).toLowerCase();
+  return `${wd} ${day} ${mo}, ${tm}`;
+}
 
 // Run one chat turn (which may involve several tool round-trips) to completion.
 // Returns { ok, reply, draft, booked, messages, model }.
@@ -105,18 +144,50 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
   const convo = messages.map((m) => ({ role: m.role, content: m.content }));
   let currentDraft = null;
   let bookedEvent = null;
+  let availTz = {}; // { yourTimezone, leadTimezone } captured from check_availability, used by propose_times
 
   const runTool = async (name, input) => {
     if (name === 'check_availability') {
       const avail = await getAvailability(coach.clientId, profile.location || '');
+      availTz = { yourTimezone: avail.yourTimezone, leadTimezone: avail.leadTimezone };
       const eMin = hhmmToMin(prefs.earliestStart) ?? 0;
       const lMin = hhmmToMin(prefs.lastStart) ?? 24 * 60;
+      const aTz = avail.yourTimezone || 'Australia/Brisbane';
+      const aLen = prefs.meetingLengthMins || 30;
       const days = (avail.days || [])
-        .map((d) => ({ ...d, freeSlots: (d.freeSlots || []).filter((s) => withinBounds(s, eMin, lMin)) }))
+        // soft lunch hold is stripped HERE too (not just in propose_times) so the model never even sees a coach-lunch slot as free
+        .map((d) => ({ ...d, freeSlots: (d.freeSlots || []).filter((s) => withinBounds(s, eMin, lMin) && !inLunch(s.time, aTz, prefs, aLen)) }))
         .filter((d) => d.freeSlots.length)
         .slice(0, AVAIL_MAX_DAYS)
         .map((d) => ({ ...d, freeSlots: d.freeSlots.slice(0, AVAIL_MAX_SLOTS_PER_DAY) }));
       return { yourTimezone: avail.yourTimezone, leadTimezone: avail.leadTimezone, days };
+    }
+    if (name === 'propose_times') {
+      // CODE-OWNED time list: enforce order + Guy's hours + soft lunch-skip + lead-timezone formatting,
+      // so none of those depend on the model getting it right.
+      const tz = availTz.yourTimezone || 'Australia/Brisbane';
+      const leadTz = availTz.leadTimezone || tz;
+      const eMin = hhmmToMin(prefs.earliestStart) ?? 0;
+      const lMin = hhmmToMin(prefs.lastStart) ?? 24 * 60;
+      const len = prefs.meetingLengthMins || 30;
+      const dropped = [];
+      const kept = [];
+      for (const iso of (Array.isArray(input.slotTimes) ? input.slotTimes : [])) {
+        if (isNaN(Date.parse(iso))) { dropped.push({ iso, why: 'invalid' }); continue; }
+        const cMin = minutesInTz(iso, tz);
+        if (cMin == null || cMin < eMin || cMin > lMin) { dropped.push({ iso, why: 'outside your booking hours' }); continue; }
+        if (inLunch(iso, tz, prefs, len)) { dropped.push({ iso, why: 'lunch hold' }); continue; }
+        kept.push(iso);
+      }
+      const ordered = [...new Set(kept)].sort((a, b) => Date.parse(a) - Date.parse(b)); // earliest-first, deduped
+      if (!ordered.length) {
+        return { ok: false, error: 'None of those slots are valid (all outside your hours / in lunch). Pick different slots from check_availability.', dropped };
+      }
+      const bullets = ordered.map((iso) => `- ${fmtSlot(iso, leadTz)}`).join('\n');
+      const intro = String(input.intro || '').trim();
+      const outro = String(input.outro || '').trim();
+      currentDraft = [intro, bullets, outro].filter(Boolean).join('\n\n');
+      return { ok: true, offered: ordered.length, dropped };
     }
     if (name === 'book_meeting') {
       if (!leadEmail) return { ok: false, error: 'No lead email on file — ask Guy to add the lead\'s email before booking.' };
@@ -177,4 +248,4 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
   return { ok: true, reply: assistantText, draft: currentDraft, booked: bookedEvent, messages: convo, model: MODEL_ID };
 }
 
-module.exports = { runWingguyChatTurn, AGENT_TOOLS };
+module.exports = { runWingguyChatTurn, AGENT_TOOLS, inLunch };
