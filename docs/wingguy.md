@@ -2477,6 +2477,32 @@ onboard client #2; distribution → **Chrome Web Store "Unlisted"**.
 
 ## ▶ You are here / next pick-up
 
+**★ FULL MULTI-TENANT NYLAS — IN PROGRESS (2026-06-30).** Guy asked to finish making Wingguy booking
+fully multi-tenant (he'd already moved the WRITE to per-client Nylas; this closes the rest). Three gaps
+were identified; **2 of 3 DONE + pushed to `main`, additive + Guy-safe + unit-tested:**
+- **✅ Gap 1 — availability READ + clash detection now per-client Nylas (read/write parity).** Commit `7d440855`.
+  Booking-write was already per-tenant Nylas, but the READ only worked via the Google service account (a
+  calendar shared with us), so a Nylas-only client could be booked but their free/busy couldn't be read.
+  Now: a client with a Google Calendar Email shared with the service account keeps the proven Google read
+  (Guy, untouched, *regardless of the global provider flag*); a Nylas-grant-ONLY client reads via their grant.
+  `services/wingguyCalendar.js`: `getCoachCalendarInfo` also returns Nylas Grant ID + Calendar Provider (no
+  longer throws on a missing Google email); `readsViaNylas`/`coachForNylas` pick the path; `buildDaysFromBusy`
+  = pure luxon slot generator (busy events → free 30-min slots, business hours + day boundaries in the coach's
+  tz). `getAvailabilityForCoach` + `clashesForWindow` branch; signatures unchanged. `tests/wingguy-nylas-
+  availability.test.js` (14 assertions).
+- **✅ Gap 2 — per-client booking IDENTITY on the invite (Zoom + contacts).** Commit `4357b813`. `clientService`
+  loads optional `Booking Zoom Link` / `Coach LinkedIn URL` / `Coach Phone Number` onto the coach; `createBookingEvent`
+  prefers them, falls back to the shared default (Guy's). ADDITIVE: blank/absent fields = identical to today.
+  ⚠ Those three Airtable fields don't exist yet — booking falls back to Guy's defaults until they're added
+  (to BOTH Master Clients base AND the Client Template — see [[feedback_airtable_field_rollout_includes_template]];
+  pattern = idempotent `--template` script). Non-blocking.
+- **⏳ Gap 3 — the self-serve "connect your calendar" flow (Nylas hosted auth → save grant). NOT STARTED.**
+  This is the only piece needing GUY's input: (a) confirm the Nylas app is set up for HOSTED AUTH (client_id/secret
+  + which providers) and (b) register a redirect URI on our domain; then the code = an auth-start route + a callback
+  that exchanges the code for a grant and writes `Nylas Grant ID` + `Calendar Provider='nylas'` to the client's record.
+  Can't be end-to-end proven without a real 2nd tenant. (Guy edited `onboard-client/page.tsx` this session — check
+  what's already there before building the UI entry point.) **NEXT = brief Guy on the Nylas-dashboard specifics, then build.**
+
 **★ BOOKING = WARN, DON'T BLOCK (decided 2026-06-30; reverses a previously-locked iron rule).** Reviewing the deferred
 Slice-2 bits, Guy re-scoped how the agent handles a time that's off-grid or clashing. **New product rule:** the agent
 NEVER hard-blocks a time — Guy is always the decision-maker. (1) Guy can propose ANY time (on or off the availability grid),
