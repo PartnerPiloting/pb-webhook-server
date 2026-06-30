@@ -2291,6 +2291,41 @@ bucket**.
   tight; let the right fractionals in but don't let the adjacent segment dilute the wedge.
 - **Cheapest retention = not signing the wrong-fit client.** Selection is half the stickiness battle.
 
+### What actually drives results — friction-removal, the right outreach, NOT prose polish (2026-06-30)
+> The honest causal model under the stickiness thesis. Sharpens **Stickiness vision** + **ACTIVATION is the
+> real job** with what results actually come from — and the give-first strategy that produces them.
+
+**Value = friction-removal, not eloquence.** The barrier for a busy operator was never "my messages aren't good
+enough" — constructing a thoughtful personalised message per person is mentally expensive, so it doesn't get done,
+or gets done in bursts then stops. The AI makes the task cost ~nothing → it happens **consistently** → consistency
+is the real results channel. It also raises the quality **floor** (a tired human at 9pm sends generic; the AI sends
+consistently-personalised regardless of operator state) — for a busy operator the floor + low variance beat peak
+eloquence.
+
+**Results-driver hierarchy (honest order):** targeting/list → offer/reason-to-care → credibility →
+persistence/consistency → **then** message craft. Eloquence is a *second-order* lever on the COLD reply rate;
+strongest at (a) clearing the spam / "delete-on-sight" filter via genuine personalisation and (b) converting
+ALREADY-ENGAGED threads (reply-handling is far more quality-sensitive than the opener). The quality jump Guy *feels*
+reading an Opus draft exceeds the jump the *recipient* feels — felt-quality ≠ results-quality.
+
+**★ Mis-attribution is the trap + measure to beat it.** Believing "the magnificent messages win" risks
+under-investing in what moves the needle more — targeting, offer, the strategy/coaching layer, and consistency (the
+VA's real gift). Fix by making results **attributable**: track reply + booking rate per client vs a baseline.
+Payoffs: (1) learn where lift truly comes from (eloquence vs consistency vs coaching); (2) "your reply rate went
+X→Y since we started" is the strongest stickiness lever — **attributed results stick; ambient quality doesn't.**
+(Distinct from the AI eval/regression "measurement" gap noted ~line 895; this is outreach-results attribution.)
+
+**Give-first thesis — why it's the first-order lever.** Reach out based on "what they DO / how I could promote
+them", NOT "what they HAVE" (extractive). It works *because Guy's business is structurally reciprocal* (a
+mutual-referral network) — so give-first is **congruent with the real offer, not a manipulation tactic**; that
+congruence is why it doesn't read as a trick. Three tensions to hold: (1) **AI-at-scale knife-edge** — give-first
+inverts into a *tell* if it goes formulaic → raises the stakes on "interpret, don't parrot / real details only"
+(the give-first bet and the grounding discipline are the same bet); (2) **must go somewhere** — give-*first* with a
+credible two-way frame + gentle ask, not give-*only* that converts nobody; (3) **slower, compounding,
+less-attributable funnel** → a client-expectation job ("this builds, it doesn't spike") — the thing most likely to
+wobble an impatient client in week 3. This is where evangelism energy belongs, above prose polish — the prose only
+*expresses* the intention; intention + targeting is what wins.
+
 ### Onboarding = relationship investment, delegated; ACTIVATION is the real job (2026-06-17)
 - Reframe: onboarding time isn't pure cost — it **builds the trusted relationship** that itself drives
   retention. Investment with a return, not overhead.
@@ -2369,6 +2404,22 @@ bucket**.
 - **Open question (2026-06-30):** at ~10 clients, does each bring their own VA, or does Guy provide the VA layer?
   The answer sets how much to standardise the VA workflow vs the tool.
 
+### VA trust architecture — AI-as-author is a TRUST feature, not just quality (2026-06-30)
+> Extends **Client-side VA operating model** above. Why a principal lets a VA touch their outreach at all.
+- **The delegation unlock.** A reputation-sensitive principal won't hand outreach to a VA's own judgment ("will they
+  say the wrong thing in MY name, to MY network?"). The AI defuses it: the VA isn't exercising taste — the AI
+  (carrying the principal's voice) constructs; the VA operates the machine. What the principal trusts shifts from
+  **"the VA's writing/judgment"** (scary) to **"my own system, run consistently"** (easy to grant).
+- **★ This expands the market, not just efficiency.** It makes a delegation most principals would *never otherwise
+  do* psychologically possible → you reach reputation-conscious people who'd hand outreach to "my AI, operated by a
+  VA" but never to a VA alone. Bonus: VA turnover is low-risk — a new VA presses the same buttons, the voice never
+  changes (the client-side view of "anchor trust to the system, not the individual VA").
+- **Flip-side — it raises the stakes on AI reliability.** The same design that makes it trustworthy (the VA doesn't
+  second-guess the output) removes the human author who'd *catch a bad one*. A button-presser sends the
+  day-of-week error, the bounced email, the off-tone line. So the trust model is only as strong as the AI's
+  grounding **plus** the principal's by-exception gate → the real-run bugs (see **Risks surfaced by real runs**) are
+  load-bearing in the VA world, not cosmetic.
+
 ### 100-client steady-state P&L (2026-06-17, planning ballpark)
 - **Assumptions:** 100 clients, base **$150/mo**, Wingguy **+$50** at **70%** take, **1.5 VAs**
   (~USD $2,000/mo). Revenue at face-value "$" (USD); VA converted from AUD. *(If client prices are AUD,
@@ -2385,6 +2436,25 @@ bucket**.
   is steady-state** — excludes the cost of *getting to* 100 (acquisition + building the machinery).
 - **Swing factors:** referral-floor ($50) clients pull revenue down (but each brought 3 payers = system
   ahead); $300 done-for-you push it up (but cost more time); churn = the quiet tax (re-onboarding).
+
+### Extension AI cost — per-client estimate + why the tiers cover it (2026-06-30)
+> Grounds the panel-AI line item. Current rates (checked 2026-06-30 via claude-api): **Opus 4.8 $5/$25 per MTok
+> in/out; Sonnet 4.6 $3/$15**; cache-read ~10% of input (the big instruction block is cached, so the agent loop is
+> cheap). The extension runs on **Guy's** API key (`wingguyChat.js` → `getAnthropicClient`), not the client's Claude.
+- **Unit costs (Opus, cached):** a single message draft ≈ **~$0.10**; a full booking flow
+  (availability→propose→confirm→book→confirm) ≈ **~$0.50–0.75** — matches the back-test figures.
+- **Per active VA-run client/month** (~120 openers + ~60 replies + ~12 bookings): **~$28 all-Opus, ~$20 with
+  openers on Sonnet.** Scaled: light/passive ~$7–12; typical active ~$15–30; very aggressive all-Opus up to ~$40.
+- **★ Cost tracks the tier on its own.** The $300 VA tier absorbs even the heaviest case (~13% of revenue, covered
+  ~8×). The $50 solo tier is naturally LIGHT — the one-man band bought it *because* they're too busy to drive heavy
+  volume → low usage → covered comfortably. The cost driver (volume) and the expensive tier (VA) coincide; no
+  usage-metering needed — the segmentation self-aligns price and cost.
+- **Backstops for the rare heavy-$50 outlier** (a non-busy solo grinding it; margin compresses but stays positive):
+  (1) **keep openers on Sonnet** — the high-volume templated case where Sonnet is proven fine, the single biggest
+  cost lever; (2) the **per-client usage cap**.
+- **P&L correction:** the existing 100-client P&L treats Wingguy as ~$0 (runs on client Claude). For the *extension*
+  that's wrong. Budget **~$1,000–1,500/mo** at ~70 Wingguy clients (vs the ~$700 "Guy's AI" line) — still a small
+  slice, margin stays high, and the cost lands in the tier ($300 VA) that covers it.
 
 ### Guy's time at steady state — ~3 days/week is feasible IF held (2026-06-17)
 - **Yes, ~3 days/wk is feasible** at steady-state (machinery built, VA competent, churn low) — but a
