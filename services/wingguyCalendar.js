@@ -14,29 +14,50 @@
 const { DateTime } = require('luxon');
 const { getTimezoneFromLocation } = require('../linkedin-messaging-followup-next/lib/timezoneFromLocation.js');
 const { getBookingPrefs } = require('../config/wingguyBookingPrefs');
-const { createCalendarEvent } = require('./calendarProvider');
+const { createCalendarEvent, getMeetingsInWindow } = require('./calendarProvider');
 
 const DEFAULT_TZ = 'Australia/Brisbane';
 const DAYS_TO_SCAN = 21;     // ~3 weeks ahead — enough for the working-week spread + fallback (smaller = faster fetch)
 const DAY_START_HOUR = 9;    // business-hours window the free/busy scan considers
 const DAY_END_HOUR = 17;
 
-// Coach calendar identity (Google Calendar Email + Timezone) from the Master Clients base —
-// same lookup the /api/calendar/availability route does, kept self-contained here.
+// Coach calendar identity from the Master Clients base. Returns BOTH the Google service-account
+// share (calendarEmail) AND the per-tenant Nylas grant, so callers can pick the right read path:
+//   - a client who shared their calendar with our service account (Guy) → Google read (proven, untouched)
+//   - a Nylas-only client (onboarded via hosted auth — no service-account share) → Nylas read
+// Does NOT throw on a missing Google email anymore — a Nylas-only client is valid. Throws only if
+// NEITHER path is possible (no email and no grant).
 async function getCoachCalendarInfo(clientId) {
   const url =
     `https://api.airtable.com/v0/${process.env.MASTER_CLIENTS_BASE_ID}/Clients` +
     `?filterByFormula=LOWER({Client ID})=LOWER('${clientId}')` +
-    `&fields[]=Google Calendar Email&fields[]=Timezone`;
+    `&fields[]=Google Calendar Email&fields[]=Timezone&fields[]=Nylas Grant ID&fields[]=Calendar Provider`;
   const resp = await fetch(url, { headers: { Authorization: `Bearer ${process.env.AIRTABLE_API_KEY}` } });
   if (!resp.ok) throw new Error(`client calendar lookup failed (${resp.status})`);
   const data = await resp.json();
   const rec = data.records && data.records[0];
   if (!rec) throw new Error(`client "${clientId}" not found in Master Clients base`);
-  const calendarEmail = rec.fields['Google Calendar Email'];
+  const calendarEmail = rec.fields['Google Calendar Email'] || null;
   const timezone = rec.fields['Timezone'] || DEFAULT_TZ;
-  if (!calendarEmail) throw new Error('Google Calendar Email not set for this client — share the calendar with the service account first.');
-  return { calendarEmail, timezone };
+  const nylasGrantId = rec.fields['Nylas Grant ID'] || null;
+  const calendarProvider = rec.fields['Calendar Provider'] || null;
+  if (!calendarEmail && !nylasGrantId) {
+    throw new Error('No calendar for this client — share a calendar with the service account (Google) or connect via Nylas first.');
+  }
+  return { calendarEmail, timezone, nylasGrantId, calendarProvider };
+}
+
+// Which read path a coach uses. ADDITIVE + Guy-safe: if the client shared a Google calendar with our
+// service account, keep reading via Google (Guy's proven path) — even if the global provider flag is
+// nylas. Only a Nylas-grant-ONLY client (no service-account share) reads via Nylas. So onboarding a new
+// tenant via hosted auth gives them a working read+write without ever touching Guy's setup.
+function readsViaNylas(info) {
+  return !info.calendarEmail && !!info.nylasGrantId;
+}
+
+// Minimal coach-shaped object for calendarProvider.getMeetingsInWindow (per-tenant Nylas read).
+function coachForNylas(info) {
+  return { calendarProvider: 'nylas', nylasGrantId: info.nylasGrantId, googleCalendarEmail: info.calendarEmail || '' };
 }
 
 function formatInTz(isoTime, timezone) {
@@ -52,23 +73,73 @@ function todayInTz(tz) {
   return fmt.format(new Date());
 }
 
+// Time-only display in a timezone, matching the Google path's slot.display style ("9:30 am").
+function timeOnlyInTz(isoTime, timezone) {
+  return new Date(isoTime).toLocaleTimeString('en-AU', {
+    hour: 'numeric', minute: '2-digit', hour12: true, timeZone: timezone,
+  }).toLowerCase();
+}
+
+// Pure, testable: turn a coach's BUSY meetings into free 30-min slots across N days, in the SAME shape
+// getBatchAvailability returns (so the Nylas read drops into getAvailabilityForCoach unchanged). Day
+// boundaries + the business-hours window are computed in the COACH's timezone via luxon (DST-correct).
+//   busyEvents: [{ start, end }] ISO instants (the coach's real meetings)
+//   dates:      [YYYY-MM-DD] in the coach's timezone
+// Returns [{ date, day, meetingCount, freeSlots: [{ time, display, leadDisplay }] }].
+function buildDaysFromBusy({ busyEvents, dates, yourTimezone, leadTimezone, startHour = DAY_START_HOUR, endHour = DAY_END_HOUR, slotMins = 30 }) {
+  const busy = (busyEvents || [])
+    .map((e) => ({ s: new Date(e.start).getTime(), e: new Date(e.end).getTime() }))
+    .filter((b) => Number.isFinite(b.s) && Number.isFinite(b.e) && b.e > b.s);
+  const overlaps = (s, e) => busy.some((b) => b.s < e && b.e > s);
+  const slotMs = slotMins * 60000;
+
+  return dates.map((date) => {
+    const dayStart = DateTime.fromISO(`${date}T00:00`, { zone: yourTimezone }).set({ hour: startHour, minute: 0, second: 0, millisecond: 0 });
+    const dayEnd = dayStart.set({ hour: endHour, minute: 0 });
+    const dayStartMs = dayStart.toMillis();
+    const dayEndMs = dayEnd.toMillis();
+    const freeSlots = [];
+    for (let t = dayStartMs; t + slotMs <= dayEndMs; t += slotMs) {
+      if (overlaps(t, t + slotMs)) continue;
+      const iso = new Date(t).toISOString();
+      freeSlots.push({ time: iso, display: timeOnlyInTz(iso, yourTimezone), leadDisplay: formatInTz(iso, leadTimezone) });
+    }
+    return {
+      date,
+      day: dayStart.toFormat('ccc'),
+      meetingCount: busy.filter((b) => b.s < dayEndMs && b.e > dayStartMs).length,
+      freeSlots,
+    };
+  });
+}
+
 // Returns { yourTimezone, leadTimezone, days: [{ date, day, freeSlots: [{ time, display, leadDisplay }] }] }
 // `time` is the slot's start as an ISO string — the agent passes it straight to book_meeting (no math).
 async function getAvailabilityForCoach(clientId, leadLocation = '') {
-  const { calendarEmail, timezone: yourTimezone } = await getCoachCalendarInfo(clientId);
+  const info = await getCoachCalendarInfo(clientId);
+  const yourTimezone = info.timezone;
   const leadTimezone = (leadLocation && getTimezoneFromLocation(leadLocation)) || yourTimezone;
 
-  const start = new Date(`${todayInTz(yourTimezone)}T12:00:00`);
+  const dateStr = todayInTz(yourTimezone);
   const dates = [];
   for (let i = 0; i < DAYS_TO_SCAN; i++) {
-    const d = new Date(start);
-    d.setDate(d.getDate() + i);
-    dates.push(d.toISOString().split('T')[0]);
+    dates.push(DateTime.fromISO(`${dateStr}T12:00`, { zone: yourTimezone }).plus({ days: i }).toFormat('yyyy-MM-dd'));
   }
 
+  // Nylas-only client (no service-account share) → read busy events via their grant and build slots.
+  if (readsViaNylas(info)) {
+    const windowStart = DateTime.fromISO(`${dates[0]}T00:00`, { zone: yourTimezone }).toJSDate();
+    const windowEnd = DateTime.fromISO(`${dates[dates.length - 1]}T23:59`, { zone: yourTimezone }).toJSDate();
+    const { events, error } = await getMeetingsInWindow(coachForNylas(info), windowStart, windowEnd);
+    if (error) throw new Error(`nylas availability read failed: ${error}`);
+    const days = buildDaysFromBusy({ busyEvents: events, dates, yourTimezone, leadTimezone });
+    return { yourTimezone, leadTimezone, days };
+  }
+
+  // Google service-account read (Guy's proven path — unchanged).
   const calendarService = require('../config/calendarServiceAccount.js');
   const { days, error } = await calendarService.getBatchAvailability(
-    calendarEmail, dates, DAY_START_HOUR, DAY_END_HOUR, yourTimezone
+    info.calendarEmail, dates, DAY_START_HOUR, DAY_END_HOUR, yourTimezone
   );
   if (error) throw new Error(error);
 
@@ -105,18 +176,32 @@ function wallClockToISO(date, time, timezone) {
   return null;
 }
 
-// Busy meetings (opaque events only) on the candidate's day that overlap [start, end). Returns
-// [{ summary, display }] — empty means the window is free. `display` is in the coach's timezone.
-async function clashesForWindow(calendarEmail, yourTimezone, startISO, len) {
+// Busy meetings on the candidate's day that overlap [start, end). Returns [{ summary, display }] —
+// empty means the window is free. `display` is in the coach's timezone. Provider-aware: a Nylas-only
+// client reads via their grant, Guy via the Google service account (proven path).
+async function clashesForWindow(info, startISO, len) {
+  const yourTimezone = info.timezone;
   const start = new Date(startISO);
   const end = new Date(start.getTime() + len * 60000);
   const dateInCoachTz = DateTime.fromJSDate(start).setZone(yourTimezone).toFormat('yyyy-MM-dd');
-  const calendarService = require('../config/calendarServiceAccount.js');
-  const { days, error } = await calendarService.getBatchAvailability(
-    calendarEmail, [dateInCoachTz], DAY_START_HOUR, DAY_END_HOUR, yourTimezone
-  );
-  if (error) throw new Error(error);
-  const events = (days && days[0] && days[0].events) || [];
+
+  let events;
+  if (readsViaNylas(info)) {
+    const dayStart = DateTime.fromISO(`${dateInCoachTz}T00:00`, { zone: yourTimezone }).toJSDate();
+    const dayEnd = DateTime.fromISO(`${dateInCoachTz}T23:59`, { zone: yourTimezone }).toJSDate();
+    const r = await getMeetingsInWindow(coachForNylas(info), dayStart, dayEnd);
+    if (r.error) throw new Error(`nylas clash read failed: ${r.error}`);
+    // Nylas events returned are real (busy) meetings — no transparency flag, treat all as busy.
+    events = (r.events || []).map((e) => ({ ...e, isFree: false }));
+  } else {
+    const calendarService = require('../config/calendarServiceAccount.js');
+    const { days, error } = await calendarService.getBatchAvailability(
+      info.calendarEmail, [dateInCoachTz], DAY_START_HOUR, DAY_END_HOUR, yourTimezone
+    );
+    if (error) throw new Error(error);
+    events = (days && days[0] && days[0].events) || [];
+  }
+
   return events
     .filter((e) => !e.isFree && e.start && e.end)
     .filter((e) => {
@@ -131,14 +216,15 @@ async function clashesForWindow(calendarEmail, yourTimezone, startISO, len) {
 // and the clash read; returns both-side display strings + any clashes so the agent can WARN before
 // booking. Returns { ok, startISO, durationMins, display, leadDisplay, yourTimezone, leadTimezone, clashes }.
 async function checkProposedTime(clientId, { date, time, side = 'coach', leadLocation = '', durationMins }) {
-  const { calendarEmail, timezone: yourTimezone } = await getCoachCalendarInfo(clientId);
+  const info = await getCoachCalendarInfo(clientId);
+  const yourTimezone = info.timezone;
   const leadTimezone = (leadLocation && getTimezoneFromLocation(leadLocation)) || yourTimezone;
   const tz = side === 'lead' ? leadTimezone : yourTimezone;
   const startISO = wallClockToISO(date, time, tz);
   if (!startISO) return { ok: false, error: `Couldn't read "${date} ${time}" as a time — give a date (YYYY-MM-DD) and a clock time (e.g. 14:00 or 2:00pm).` };
   const prefs = getBookingPrefs(clientId);
   const len = Number(durationMins) > 0 ? Number(durationMins) : (prefs.meetingLengthMins || 30);
-  const clashes = await clashesForWindow(calendarEmail, yourTimezone, startISO, len);
+  const clashes = await clashesForWindow(info, startISO, len);
   return {
     ok: true,
     startISO,
@@ -154,11 +240,11 @@ async function checkProposedTime(clientId, { date, time, side = 'coach', leadLoc
 // Clash check for an already-resolved ISO instant (used by book_meeting's no-accidental-double-book
 // guard). Returns [{ summary, display }].
 async function getClashesForISO(clientId, startISO, durationMins) {
-  const { calendarEmail, timezone: yourTimezone } = await getCoachCalendarInfo(clientId);
+  const info = await getCoachCalendarInfo(clientId);
   const prefs = getBookingPrefs(clientId);
   const len = Number(durationMins) > 0 ? Number(durationMins) : (prefs.meetingLengthMins || 30);
   if (isNaN(new Date(startISO).getTime())) return [];
-  return clashesForWindow(calendarEmail, yourTimezone, startISO, len);
+  return clashesForWindow(info, startISO, len);
 }
 
 // Build the invite the way the coach lays it out and create it via the proven seam (Nylas write).
@@ -202,4 +288,4 @@ async function createBookingEvent(coach, { startISO, durationMins, leadEmail, le
   return { ok: true, eventId: result.eventId, title: finalTitle, start: start.toISOString(), durationMins: len };
 }
 
-module.exports = { getAvailabilityForCoach, createBookingEvent, checkProposedTime, getClashesForISO };
+module.exports = { getAvailabilityForCoach, createBookingEvent, checkProposedTime, getClashesForISO, buildDaysFromBusy };
