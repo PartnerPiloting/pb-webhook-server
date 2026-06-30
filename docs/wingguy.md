@@ -830,6 +830,21 @@ vs capture-and-review (queue)** — an email implies a promised reply; a queue i
   whole low-touch model exists to avoid → it **doesn't scale to ~100 clients on ~3 days/week**;
   queue-plus-Claude-deflect does. (Protects the scaling model + Guy's time constraint.)
 
+### Rules edit-authority — who may change which layer (2026-06-30)
+> Sharpens the three-layer model (**Rules de-personalisation**) + the flag-to-queue note above with an explicit
+> *who-edits-what* matrix, prompted by the VA case.
+- **Foundation layer = Guy / platform ONLY.** A change here hits every tenant — never client-editable.
+- **Client layer = the client's own.** A one-man-band edits **their own** layer freely (edit-as-you-go from the chat
+  is fine for them) — but **never the foundation.**
+- **A VA edits NOTHING — flags only.** Operating ≠ authoring; the operator never mutates the voice/brand (that's how
+  quality drifts). The VA's doubts and the brain's misses go to the **suggestion queue**; the principal/Guy author
+  the change.
+- **★ Guy is the two-hat case** — platform owner **and** client-zero. Editing rules from the chat, he must know
+  **"is this *mine* or *everyone's*?"** Right now (client-zero) the two are fused, so it doesn't bite; with real
+  clients, an in-chat tweak Guy *thinks* is just his own voice could silently **move the floor under all tenants.**
+  The "edit from the chat" convenience that's perfect solo becomes a liability at scale → exactly why the controlled
+  write-door exists.
+
 ### Stickiness vision + the reconciliations that protect it (2026-06-09)
 **Signal:** Guy himself is astonished/reliant (an hour for previously-impossible work last night) =
 real product-market fit + the best sales proof (show, don't pitch).
@@ -1395,6 +1410,27 @@ EMAIL — done in CLAUDE CHAT with MCP (the connector/cockpit) → the CLIENT'S 
   *(One honest dependency: assumes clients — incl. a VA — run post-call in their own Claude via the connector,
   which needs their Claude account = the connector surface by design.)*
 
+### Why the extension trails Claude-Chat — three levers BEYOND model choice (2026-06-30)
+> The model axis is already settled above (Sonnet-default / Opus-escalate). But comparing real Claude-Chat outputs
+> (Christopher, Vicki) against `services/wingguyChat.js` showed the chat-quality gap is **not only** the model —
+> three other levers, all cheap:
+- **Data-reach (the "timeline touch"):** Claude Chat lists the meetings *around* a slot ("1:45 Daniel / 2:30
+  Michelle (ends 3:15) / 3:30 ← slots in / 4:00 JB"). The extension **can't** — `check_availability` hands the model
+  a `meetingCount` (a number) + free gaps, **not the named neighbouring meetings.** `services/wingguyCalendar.js`
+  already *fetches* those events and then discards their names down to a count. **Fix = pass the day's real events
+  through** (+ one line in the brief allowing the model to show them). Small; the data's already in hand.
+- **"Permission to elaborate":** `wingguyChat.js` tells the agent to **"keep chat replies short"** (~line 257). That
+  muzzles the proactive/presentational coda *even on Opus*. Loosen it so it may present richly **when useful** (a
+  clash, a booking summary) while staying terse on routine turns.
+- **A touch is only real if a tool backs it (the Vicki coda):** the chat offered "check if she's in Airtable by
+  LinkedIn URL → log her as an **On The Radar** lead." The agent has **no Airtable tool** (its tools: availability,
+  booking, time-check, message-draft). In the extension, **it can only honestly offer what it has a tool for** →
+  this is a small **new tool** to build, not a model setting. (The calendar slot-drop it offered it *can* already
+  back via `check_availability`.)
+- **Net:** model + thinking/token settings buy the *voice*; these three buy the *touches*. Expect "~90% of
+  Claude-Chat", not a byte-identical twin (the chat has its own scaffolding we don't control) — 90% is the right
+  place to stop for a client-facing booker.
+
 ### Who-pays — CORRECTED — and the commercial model
 - **CORRECTION to the 06-21 note:** the heavy agentic work lives in the **EXTENSION** (beside LinkedIn), NOT the
   connector. So it runs on **Guy's backend → Guy's key**. A client's **consumer Claude sub canNOT power a
@@ -1690,6 +1726,25 @@ so it's not a rewrite):**
   Fridays, here's my Zoom") + a light settings screen, never code. **Delivery: white-glove first** (Guy does it with them on
   an onboarding call) **→ productise** into a guided "connect → tune → go" wizard. Foundations proven (Nylas connect+write;
   settings behind seams); **NOT built = the self-serve connect flow + per-tenant settings storage** (= the multi-tenant build).
+
+### Risks surfaced by real runs — calendar source-of-truth, email re-poisoning, day-of-week (2026-06-30)
+> From running real threads through Claude-Chat vs Wingguy (Christopher Walters). Bugs/risks to design against — not
+> all fixed yet.
+- **Calendar source-of-truth mismatch:** Wingguy reads availability via **Nylas**; Guy's Claude-Chat reads via the
+  **Google Calendar** connector. They can see **different events** → the same slot showed "clear" in one and
+  "clashes (Dean & Guy Results)" in the other. **Pick ONE authoritative availability source per tenant** and make
+  both front doors read it; otherwise clash answers contradict.
+- **Client-zero conflation:** the clash-check runs against **Guy's** calendar because Guy is the lead's coach here.
+  Multi-tenant must check the **client's** calendar — the design question is hidden while Guy tests on himself.
+- **Email source-poisoning (re-introduces a fixed error):** the wrong address (`chris_d_walters@yahoo…`) lives on the
+  lead's **LinkedIn profile**, so any profile re-sync **re-overwrites** the corrected gmail → the invite bounces
+  again. **Corrections must be source-protected** (sticky over re-pulls), and a booking *move* must **re-invite the
+  corrected address and drop the bounced one** — not just "the calendar has gmail somewhere."
+- **Day-of-week labelling bug:** Wingguy reported "**Wednesday** 2 July" for a date that's a **Thursday** (and a
+  stale event was titled "Rebooked for **Friday**", never a Friday) → day-of-week is being derived/stored wrong
+  somewhere; looks systematic. Verify the day-name derivation in the booking/clash path.
+- (Static personal Zoom-room collision also hit — already addressed by the **per-client Zoom** work; cross-ref, not
+  re-logged.)
 
 ## Discovery & onboarding — teaching tenants what's possible (2026-06-14)
 
@@ -2286,6 +2341,33 @@ bucket**.
   **~1.5–2 VAs** by 100. Productised onboarding decides one VA vs two.
 - **Economics trivial:** ~AUD $2k/mo across 100 = **~AUD $20/client/mo** (<15% of revenue). **Key-person
   risk:** document SOPs so knowledge isn't in one head + a 2nd VA can slot in.
+
+### Client-side VA operating model — the principal's VA drives Wingguy (2026-06-30)
+> New delivery shape, distinct from **VA model + cost** above (that's GUY's VA scaling GUY's ops). Here the
+> **client's own VA** operates Wingguy on the client's behalf. Surfaced by a real case: Paul Faye (Perth client,
+> too busy to act on the system) + his VA April. Planning only — no code.
+- **★ The real competitor is the client's TIME, not another tool.** Paul stalled not because the system's bad but
+  because he has no time — his own words ("not your fault, not the system's"). A great tool a busy principal must
+  drive himself has a built-in activation failure. **The VA *is* time** → the VA model attacks activation/churn
+  head-on (sharpens **ACTIVATION is the real job**).
+- **Three-role split:** **VA operates · the AI voices · the principal approves BY EXCEPTION.** The brain supplies
+  the voice, so the VA needn't write well or "be" the principal; the principal is the quality gate, not the author.
+- **Don't rebuild the bottleneck.** The premise is "principal too busy" — a gate that needs him on every message
+  puts the bottleneck back. The busier the principal, the more the VA+brain must run WITHOUT him → higher bar on
+  (a) the brain's voice and (b) the VA's judgment about *when to escalate*. LinkedIn (low stakes, templated) is safe
+  to run nearly unattended; **post-meeting email is where principal-time creeps back** (higher stakes, bespoke) —
+  design to minimise it.
+- **Governance = the same flag-to-queue, with a person-split:** the VA edits **no rules** — she flags; the principal
+  (or Guy) authors rule changes centrally. (See **Rules edit-authority** under **Where each thing lives**.)
+- **The fork — walk the light side first:** (a) **client supplies their own VA** (Paul→April) = light for Guy (sell
+  tool + playbook + train the VA); (b) **Guy supplies the VAs** = becomes a BPO/agency — heavier, later. Don't drift
+  into (b) by accident.
+- **Lighthouse + pricing:** busy principals *with VAs* are a tight, talkative network → "I finally have a VA who
+  sounds like me and books meetings" is the referral line. Treat **Paul+April as a proof asset**, and **price the
+  VA-operated version as a premium / done-with-you tier — NOT the $50 self-serve add-on** (it delivers outcomes, not
+  a tool).
+- **Open question (2026-06-30):** at ~10 clients, does each bring their own VA, or does Guy provide the VA layer?
+  The answer sets how much to standardise the VA workflow vs the tool.
 
 ### 100-client steady-state P&L (2026-06-17, planning ballpark)
 - **Assumptions:** 100 clients, base **$150/mo**, Wingguy **+$50** at **70%** take, **1.5 VAs**
