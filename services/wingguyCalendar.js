@@ -261,14 +261,18 @@ async function createBookingEvent(coach, { startISO, durationMins, leadEmail, le
   const end = new Date(start.getTime() + len * 60000);
   const coachName = coach.clientName || 'Guy Wilson';
   const finalTitle = (title && String(title).trim()) || `${leadName || 'Lead'} & ${coachName}`;
-  const zoom = prefs.yourZoom || '';
+  // Per-client invite identity wins; the shared default (Guy's) is the fallback so Guy is unchanged
+  // and a new tenant only needs these fields filled to make invites carry THEIR Zoom/contacts.
+  const zoom = coach.bookingZoom || prefs.yourZoom || '';
+  const coachLinkedIn = coach.coachLinkedInUrl || prefs.coachLinkedIn;
+  const coachPhoneNo = coach.coachPhone || prefs.coachPhone;
 
   // Invite body in the coach's layout (Zoom / lead's LinkedIn / coach contacts).
   const descLines = [];
   if (note) descLines.push(String(note));
   if (zoom) descLines.push(`Zoom: ${zoom}`);
   if (leadLinkedIn) descLines.push(`${leadName || 'Guest'}: ${leadLinkedIn}`);
-  const coachContacts = [prefs.coachLinkedIn, prefs.coachPhone].filter(Boolean).join(' | ');
+  const coachContacts = [coachLinkedIn, coachPhoneNo].filter(Boolean).join(' | ');
   if (coachContacts) descLines.push(`${coachName}: ${coachContacts}`);
 
   const reminders = Array.isArray(prefs.reminders) && prefs.reminders.length
