@@ -2439,22 +2439,40 @@ wobble an impatient client in week 3. This is where evangelism energy belongs, a
 
 ### Extension AI cost — per-client estimate + why the tiers cover it (2026-06-30)
 > Grounds the panel-AI line item. Current rates (checked 2026-06-30 via claude-api): **Opus 4.8 $5/$25 per MTok
-> in/out; Sonnet 4.6 $3/$15**; cache-read ~10% of input (the big instruction block is cached, so the agent loop is
+> in/out; Sonnet 5 $3/$15 standard ($2/$10 intro through 2026-08-31); Sonnet 4.6 now legacy**; cache-read ~10% of input (the big instruction block is cached, so the agent loop is
 > cheap). The extension runs on **Guy's** API key (`wingguyChat.js` → `getAnthropicClient`), not the client's Claude.
 - **Unit costs (Opus, cached):** a single message draft ≈ **~$0.10**; a full booking flow
   (availability→propose→confirm→book→confirm) ≈ **~$0.50–0.75** — matches the back-test figures.
 - **Per active VA-run client/month** (~120 openers + ~60 replies + ~12 bookings): **~$28 all-Opus, ~$20 with
-  openers on Sonnet.** Scaled: light/passive ~$7–12; typical active ~$15–30; very aggressive all-Opus up to ~$40.
+  openers on Sonnet 5.** Scaled: light/passive ~$7–12; typical active ~$15–30; very aggressive all-Opus up to ~$40.
 - **★ Cost tracks the tier on its own.** The $300 VA tier absorbs even the heaviest case (~13% of revenue, covered
   ~8×). The $50 solo tier is naturally LIGHT — the one-man band bought it *because* they're too busy to drive heavy
   volume → low usage → covered comfortably. The cost driver (volume) and the expensive tier (VA) coincide; no
   usage-metering needed — the segmentation self-aligns price and cost.
 - **Backstops for the rare heavy-$50 outlier** (a non-busy solo grinding it; margin compresses but stays positive):
-  (1) **keep openers on Sonnet** — the high-volume templated case where Sonnet is proven fine, the single biggest
+  (1) **keep openers on Sonnet 5** — the high-volume templated case where Sonnet is proven fine, the single biggest
   cost lever; (2) the **per-client usage cap**.
 - **P&L correction:** the existing 100-client P&L treats Wingguy as ~$0 (runs on client Claude). For the *extension*
   that's wrong. Budget **~$1,000–1,500/mo** at ~70 Wingguy clients (vs the ~$700 "Guy's AI" line) — still a small
   slice, margin stays high, and the cost lands in the tier ($300 VA) that covers it.
+
+### Sonnet 5 (launched 2026-06-30) resets the model choice — swap now, back-test to replace Opus (2026-06-30)
+> Confirmed on Anthropic's official model docs + launch coverage. Model ID `claude-sonnet-5`; **$3/$15 standard,
+> $2/$10 intro through 2026-08-31**; 1M context, fast latency, adaptive thinking, effort defaults to `high`.
+> Sonnet 4.6 is now **legacy**. Sonnet 5 is "close to Opus 4.8 at lower prices" (Anthropic) — closes most of the
+> benchmark gap at 40–60% lower cost.
+- **Swap 4.6 → Sonnet 5 now (unconditional).** Strict upgrade at the same price (cheaper on intro); 4.6 is legacy.
+  Covers the templated openers + background tier — pure win, low risk. Code: `WINGGUY_DRAFT_MODEL_ID` /
+  `MODEL_ID` in `services/wingguyChat.js` (currently defaults to `claude-sonnet-4-6`).
+- **★ Opus decision is now RE-OPENED — Sonnet 5 may replace it for client-facing too.** We chose Opus for
+  client-facing only because Sonnet *4.6* fell short on voice/judgment — a premise Sonnet 5 changes. **But the
+  benchmarks measure agentic/coding, NOT voice** (a real voice test found intelligence-rank ≠ copywriting), so
+  **back-test Sonnet 5 vs Opus on Guy's real voice + booking-judgment threads before moving client-facing off
+  Opus.** Holds → collapse to ONE model (Sonnet 5 everywhere: ~40% cheaper → ~$17/active client, faster, simpler);
+  doesn't → keep the escalate-to-Opus routing for the witty/tangled minority. **Opus is now "prove you still need
+  it," not the assumed client-facing default.**
+- **Intro window = test now.** $2/$10 through Aug 31 is Anthropic nudging real-workload testing; do the voice
+  back-test inside that window.
 
 ### Guy's time at steady state — ~3 days/week is feasible IF held (2026-06-17)
 - **Yes, ~3 days/wk is feasible** at steady-state (machinery built, VA competent, churn low) — but a
