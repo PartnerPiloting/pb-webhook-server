@@ -18,6 +18,7 @@
 const { getAnthropicClient } = require('../config/anthropicClient');
 const { WINGGUY_VOICE, WINGGUY_AGENT_INSTRUCTIONS } = require('./../config/wingguyTemplates');
 const { getBookingPrefs } = require('../config/wingguyBookingPrefs');
+const { getVoicePrefs } = require('../config/wingguyVoicePrefs');
 const wingguyCalendar = require('./wingguyCalendar');
 
 const MODEL_ID = process.env.WINGGUY_DRAFT_MODEL_ID || 'claude-sonnet-5';
@@ -96,17 +97,46 @@ const AGENT_TOOLS = [
   },
 ];
 
+// Pick the exact sign-off line for THIS draft (CODE — deterministic; the model just uses it verbatim).
+// Default to the FULL tagline ("(I know a) Guy"); drop to the plain name ("Guy") only when the coach's
+// PREVIOUS message in this thread was itself signed off plain (they'd already trimmed the tagline). This
+// matches Guy's "trimming is easy, re-adding is laborious → err fuller" rule. Tenant-agnostic: the names
+// and tagline all come from the per-tenant voice prefs — nothing hardcoded here.
+function chooseSignoff(conversation, coachName, vp) {
+  const full = vp.signoffTagline ? `${vp.signoffTagline} ${vp.signoffName}` : vp.signoffName;
+  if (!vp.signoffTagline) return full;                    // no tagline configured → always the plain name
+  const first = String(coachName || vp.signoffName || '').trim().split(/\s+/)[0].toLowerCase();
+  const coachMsgs = (Array.isArray(conversation) ? conversation : [])
+    .filter((m) => m && m.text && String(m.sender || '').toLowerCase().includes(first));
+  if (!coachMsgs.length) return full;                     // no prior coach message → default to the tagline
+  const tail = String(coachMsgs[coachMsgs.length - 1].text || '').toLowerCase().slice(-60);
+  if (tail.includes(vp.signoffTagline.toLowerCase())) return full;         // prev used the tagline → keep it
+  if (tail.includes(vp.signoffName.toLowerCase())) return vp.signoffName;   // prev signed plain → stay plain
+  return full;                                            // prev had no clear sign-off → err fuller
+}
+
 // Compact, grounded context for the agent. `buildProfileBlock` / `buildConversationBlock` are passed
 // in so the formatting stays identical to the rest of Wingguy (the route owns those helpers).
-function buildContext({ profileBlock, convoBlock, leadEmail, coachName, prefs, campaignTemplate }) {
+function buildContext({ profileBlock, convoBlock, leadEmail, coachName, prefs, campaignTemplate, voice }) {
   const tplBlock = campaignTemplate && campaignTemplate.instructions
     ? `CAMPAIGN TEMPLATE — "${campaignTemplate.label || campaignTemplate.id}" (use this for the opener / warm-reply message; it's Guy's real structure & voice — match its beats and sign-off):\n${campaignTemplate.instructions}\n\n`
     : '';
+  // Greeting + sign-off house style. Values come from the per-tenant voice prefs; the sign-off string is
+  // already decided in code (chooseSignoff) so the model just uses it verbatim.
+  const who = (coachName || 'Guy Wilson').split(/\s+/)[0];
+  const voiceBlock = voice ? (
+    `GREETING & SIGN-OFF — ${who}'s house style (keep it; the human trims it on a given message if they don't want it):\n` +
+    (voice.greetWithFirstName
+      ? `- OPEN every message with a warm greeting that uses the LEAD'S FIRST NAME, fitting the moment: "Hi <First>," on a first/cold touch; "Great, <First> —" / "Perfect, <First> —" / "Thanks, <First> —" when replying to something they said. Always work their first name in — people like seeing their name.\n`
+      : '') +
+    `- SIGN OFF with EXACTLY this closing line: "${voice.signoff}". Use it verbatim as the last line; do not add or drop the tagline yourself — that choice is already made for you.\n\n`
+  ) : '';
   return (
     `CONTEXT FOR THIS CHAT (you are helping Guy with this lead):\n\n` +
     `${profileBlock ? `LEAD PROFILE:\n${profileBlock}\n\n` : ''}` +
     `${convoBlock ? `LINKEDIN CONVERSATION SO FAR (oldest first):\n${convoBlock}\n\n` : ''}` +
     `${tplBlock}` +
+    `${voiceBlock}` +
     `LEAD EMAIL FOR THE INVITE: ${leadEmail ? leadEmail : '(not on file — ask Guy to add it before booking)'}\n` +
     `COACH NAME: ${coachName || 'Guy Wilson'}\n` +
     `GUY'S BOOKING PREFERENCES (JSON): ${JSON.stringify(prefs)}`
@@ -163,11 +193,16 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
   const checkProposedTime = deps.checkProposedTime || wingguyCalendar.checkProposedTime;
   const getClashesForISO = deps.getClashesForISO || wingguyCalendar.getClashesForISO;
   const prefs = getBookingPrefs(coach.clientId);
+  // Per-tenant greeting + sign-off house style (VARIABLE), with the exact sign-off decided in code
+  // (CODE) from this thread's previous coach message. The behaviour (RULE) is generic; only the values
+  // are per-tenant, so this is multi-tenant-ready — see config/wingguyVoicePrefs.js.
+  const vp = getVoicePrefs(coach.clientId);
+  const voice = { greetWithFirstName: vp.greetWithFirstName, signoff: chooseSignoff(conversation, coach.clientName, vp) };
 
   const system = [
     { type: 'text', text: WINGGUY_VOICE },
     { type: 'text', text: WINGGUY_AGENT_INSTRUCTIONS, cache_control: { type: 'ephemeral' } },
-    { type: 'text', text: buildContext({ profileBlock, convoBlock, leadEmail, coachName: coach.clientName, prefs, campaignTemplate }) },
+    { type: 'text', text: buildContext({ profileBlock, convoBlock, leadEmail, coachName: coach.clientName, prefs, campaignTemplate, voice }) },
   ];
 
   const convo = messages.map((m) => ({ role: m.role, content: m.content }));

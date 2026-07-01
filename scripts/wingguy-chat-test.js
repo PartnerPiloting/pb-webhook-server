@@ -141,6 +141,28 @@ async function main() {
   console.log('\n=== SUMMARY (Vanessa / unanswered opener) ===');
   console.log('Produced a draft (did NOT hedge):', rv.draft ? 'yes' : 'NO — it hedged instead of drafting!');
   console.log('Did NOT call calendar:', !toolCallsIn(rv.messages).includes('check_availability') ? 'yes' : 'NO — checked the calendar unprompted');
+
+  // ── Scenario D: VOICE — greeting + "match the previous" sign-off. Deepti-like thread where Guy's LAST
+  // message was signed off PLAIN "Guy" (no tagline). Expect: draft greets her by first name AND signs off
+  // plain "Guy" (NOT "(I know a) Guy"), per the trim-don't-re-add rule (config/wingguyVoicePrefs.js).
+  const deeptiProfile = { name: 'Deepti Vittal', headline: 'Managing Director', location: 'Australia', profileUrl: 'https://www.linkedin.com/in/deepti-vittal-example/' };
+  const deeptiConvo = [
+    { sender: 'Guy', text: "Hi Deepti, thanks so much - I'll look Lavinia up! Would you be up for a quick 30 min Zoom in the next couple of weeks? Guy" },
+    { sender: 'Deepti', text: 'Hi Guy, yes would love to connect to explore options! Can we schedule something over the next week?' },
+  ];
+  const dTpl = getTemplate(detectTemplate(deeptiProfile, deeptiConvo));
+  const rd = await runWingguyChatTurn({
+    coach: COACH, profile: deeptiProfile, conversation: deeptiConvo, leadEmail: LEAD_EMAIL,
+    profileBlock: `Name: ${deeptiProfile.name}\nHeadline: ${deeptiProfile.headline}`,
+    convoBlock: deeptiConvo.map((m) => `${m.sender}: ${m.text}`).join('\n'), campaignTemplate: dTpl, deps,
+    messages: [{ role: 'user', content: 'Draft a warm reply moving us toward a Zoom.' }],
+  });
+  show('SCENARIO D — voice: greeting + match-previous sign-off (previous message was plain "Guy")', rd);
+  const dDraft = (rd.draft || '').trim();
+  console.log('\n=== SUMMARY (Deepti / voice) ===');
+  console.log('Greets by first name:', /deepti/i.test(dDraft) ? 'yes' : 'NO — no first-name greeting');
+  console.log('Signs off plain "Guy" (matched previous, no tagline):',
+    /\bGuy\s*$/.test(dDraft) && !/\(I know a\)\s*Guy\s*$/i.test(dDraft) ? 'yes' : 'NO — check the sign-off');
 }
 
 main().then(() => process.exit(0)).catch((e) => { console.error('TEST FAILED:', e); process.exit(1); });
