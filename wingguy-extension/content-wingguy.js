@@ -797,6 +797,17 @@
         if (real && !/\/in\/ACoA/i.test(real)) { console.log('[Wingguy] resolved internal URL →', real); profileUrl = real; }
         else console.log('[Wingguy] could not resolve internal URL to a vanity slug:', profileUrl);
       }
+      // SELF-TEST ALARM — if the URL is STILL the internal /in/ACoA form here, the un-scramble step
+      // (resolveAcoaToVanity) failed. That is the ONE miss that means the resolver itself broke — as
+      // opposed to the person simply not being in the Portal. An ACoA can never match a vanity URL, so
+      // stop now and shout DISTINCTLY, so this regression can never again hide as a generic "no matching
+      // lead" miss (it's how the original bug went unnoticed for so long). See journal 2026-07-01.
+      if (/\/in\/ACoA/i.test(profileUrl)) {
+        console.error('[Wingguy] ⚠ UN-SCRAMBLE FAILED — link is still the internal /in/ACoA form:', profileUrl,
+          '— resolveAcoaToVanity() may be broken (LinkedIn page shape changed?).');
+        showCaptureToast("Didn't save — couldn't un-scramble this person's LinkedIn link. The resolve step may have broken (not just a missing lead). Flag this: \"un-scramble broke\".", true);
+        return;
+      }
       const thread = scrapeOpenThread();
       if (!thread.length) {
         console.log('[Wingguy] capture skipped — no thread read');
