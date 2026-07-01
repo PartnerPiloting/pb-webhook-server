@@ -177,7 +177,10 @@
   }
 
   function scrapeMessagingHeader() {
-    const anchor = (lastFocusedEditable && document.contains(lastFocusedEditable)) ? lastFocusedEditable : null;
+    // NOTE: .isConnected (not document.contains) — the messaging composer lives in an open shadow root,
+    // and document.contains() can't see into shadow DOM, so it wrongly reported the box as "gone" and we
+    // fell back to the profile behind the bubble. isConnected traverses shadow boundaries.
+    const anchor = (lastFocusedEditable && lastFocusedEditable.isConnected) ? lastFocusedEditable : null;
     const convo = (anchor && closestConversationContainer(anchor)) || document.querySelector(CONVO_SELECTORS);
     const pane = (convo && (convo.closest('.scaffold-layout__detail, .msg-overlay-conversation-bubble') || convo)) || document;
     // Scope to the header region so we don't pull a name/link out of a message bubble body.
@@ -238,7 +241,10 @@
   // floating over it: that's how we tell "Deepti's bubble open on Todd's profile" (act on Deepti) from
   // "just Todd's profile" (act on Todd). document.contains guards a stale, since-closed bubble.
   function activeThreadContainer() {
-    const anchor = (lastFocusedEditable && document.contains(lastFocusedEditable)) ? lastFocusedEditable : null;
+    // NOTE: .isConnected (not document.contains) — the messaging composer lives in an open shadow root,
+    // and document.contains() can't see into shadow DOM, so it wrongly reported the box as "gone" and we
+    // fell back to the profile behind the bubble. isConnected traverses shadow boundaries.
+    const anchor = (lastFocusedEditable && lastFocusedEditable.isConnected) ? lastFocusedEditable : null;
     return anchor ? closestConversationContainer(anchor) : null;
   }
 
