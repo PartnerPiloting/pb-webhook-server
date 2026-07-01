@@ -134,10 +134,15 @@ Wingguy (how to act) + reads/writes the Portal (the records).
   sees it. That's the 2026-07-01 "Matthew" drift: chat read the FRESH Notion rules and drafted the full opener; the
   extension read its STALE code copy and drafted a weak nudge. **Fix direction:** the extension must READ Guy's Wingguy
   rules FROM Notion (the same "LinkedIn outreach" pages chat edits) — directly, or via a per-tenant store synced from
-  Notion — so *"update my rules in Notion"* reaches BOTH surfaces. **Multi-tenant end-state:** one rules store PER
-  TENANT that both surfaces read; the AUTHORING surface differs by tenant — **Guy authors via Notion**, other clients
-  author via the **portal write-door** (→ Postgres). ⚠ Today's stage-reading fix was made in CODE, so until that pipe
-  exists it must ALSO be written into Guy's Notion *Outreach Rules* page to keep his master current.
+  Notion — so *"update my rules in Notion"* reaches BOTH surfaces. **The store: NOTION NOW → POSTGRES END-STATE (already in the doc — see
+  "Rules de-personalisation", 2026-06-09).** Notion is a **LEGACY SOURCE we migrate FROM — Guy INCLUDED (tenant 0)**;
+  it is explicitly **NOT** a permanent "Notion-for-Guy / Postgres-for-clients" split. End state: EVERY tenant's brain
+  lives in **Postgres** under the governed write-door, and BOTH surfaces read it. Guy keeps authoring in Notion ONLY
+  until the Postgres path is proven for his own flow, then his cockpit **re-points Notion→Postgres**. So "the one
+  source both surfaces read" = **Notion today, Postgres after the one-time Notion→Postgres conversion** (which also
+  produces the de-personalised shippable template for other clients, same pass). ⚠ Today's stage-reading fix was made
+  in CODE, so until the extension reads the store it must ALSO be written into Guy's CURRENT master (his Notion
+  *Outreach Rules*) to keep it current.
 
 **AI / model.** Standardise on **Claude** now behind a swappable seam: **Claude = drafting** (voice),
 **Gemini = scoring + summaries** (cheap, high-volume). Connector surface needs the client's own Claude account
@@ -2689,9 +2694,10 @@ assistant, separate from client-facing Wingguy"*) + the Notion "00 — Master Br
   rules by telling Claude chat *"update my rules in Notion"*; Notion is his master, NOT an orphan to retire. The drift
   that started this session (chat drafted the full frac opener for Matthew, the extension drafted a weak nudge) was the
   **EXTENSION reading a STALE hard-coded copy** (`config/wingguyTemplates.js`) instead of Guy's fresh Notion rules.
-  Fix path: make the extension **READ Guy's Wingguy rules FROM Notion** (or a per-tenant store synced from it);
-  end-state = one rules store PER TENANT read by both surfaces, authored via **Notion (Guy)** / **portal write-door
-  (other clients → Postgres)**.
+  Fix path: make the extension **READ Guy's Wingguy rules FROM the store** (Notion now);
+  end-state = one **Postgres** rules store PER TENANT read by both surfaces — **Notion is a legacy source migrated FROM,
+  Guy included (tenant 0); NOT a permanent Notion-for-Guy / Postgres-for-others split** (see "Rules de-personalisation").
+  Guy reads Notion only until the Postgres path is proven for his flow, then re-points **Notion→Postgres**.
 - **Why it kept getting revisited:** the outreach rules live in Guy's Notion (his authoring surface, where he edits
   them daily), but the extension hard-codes its OWN copy and never reads Notion — so every Notion edit silently drifts
   the two apart. Root cause named: **the extension doesn't read Guy's Notion master.** (Correction 2026-07-01: an
@@ -2702,7 +2708,7 @@ assistant, separate from client-facing Wingguy"*) + the Notion "00 — Master Br
 
 **▶▶ SESSION CLOSE 2026-07-01 — START THE NEXT CHAT HERE (TL;DR over the dated entries below).** Wingguy chat runs on
 **Sonnet 5** (thinking disabled) and is working end-to-end on Guy's real leads: draft quality, booking (two-step
-confirm-first), the greeting + sign-off **house style** (config-seam `wingguyVoicePrefs`), and Portal **enrichment**. **★ Latest (`35365e4e`): fixed the extension drafting a weak "your note got buried" NUDGE instead of the real opener for a just-connected lead (Matthew) — it now reads the conversation STAGE (the connection-request handshake note ≠ the pitch), cloud-test verified. This SUPERSEDES the `b70f78d5` "unanswered opener → nudge" rule. See the ★ STAGE-READING FIX entry below.** **★ ALSO SETTLED this session (now CANONICAL up top): Penguy-vs-Wingguy + two-surfaces-one-brain — extension = LinkedIn slice ONLY; Claude chat = the FULL lifecycle (same LinkedIn job + the post-discovery-call EMAIL/calendar phase the extension won't do); both MUST read ONE shared Wingguy source of truth — and for Guy that source is NOTION (he authors rules via "update my rules in Notion"; the EXTENSION is the outlier that hard-codes a stale copy). NEXT ACTION = (1) mirror today's code-only stage fix INTO Guy's Notion Outreach Rules so his master is current; (2) build the extension to READ Guy's Wingguy rules FROM Notion (or a per-tenant store synced from it) so "update my rules in Notion" flows to both surfaces. Do NOT retire Notion — it's Guy's authoring master.**
+confirm-first), the greeting + sign-off **house style** (config-seam `wingguyVoicePrefs`), and Portal **enrichment**. **★ Latest (`35365e4e`): fixed the extension drafting a weak "your note got buried" NUDGE instead of the real opener for a just-connected lead (Matthew) — it now reads the conversation STAGE (the connection-request handshake note ≠ the pitch), cloud-test verified. This SUPERSEDES the `b70f78d5` "unanswered opener → nudge" rule. See the ★ STAGE-READING FIX entry below.** **★ ALSO SETTLED this session (now CANONICAL up top): Penguy-vs-Wingguy + two-surfaces-one-brain — extension = LinkedIn slice ONLY; Claude chat = the FULL lifecycle (same LinkedIn job + the post-discovery-call EMAIL/calendar phase the extension won't do); both MUST read ONE shared Wingguy source of truth — for Guy that store is NOTION NOW → POSTGRES end-state (Notion is a legacy source we migrate FROM, Guy = tenant 0; he authors via "update my rules in Notion"; the EXTENSION is the outlier that hard-codes a stale copy). NEXT ACTION = (1) mirror today's code-only stage fix INTO Guy's Notion Outreach Rules so his master is current; (2) build the extension to READ Guy's Wingguy rules FROM Notion (or a per-tenant store synced from it) so "update my rules in Notion" flows to both surfaces. Do NOT retire Notion — it's Guy's authoring master.**
 Today's big theme = **hardening the extension against real-run bugs** (bubble-over-profile person, internal `/in/ACoA`
 URLs, on-send capture misses, and wrong-person saves) — details in the entries below. **⚠ Guy must be on the LATEST
 extension reload** to have the full set (client-side; reload + tab refresh, not deploy-gated). **Open watch-items:**
