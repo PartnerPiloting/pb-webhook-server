@@ -738,13 +738,14 @@
     return out.join('\n');
   }
 
-  let lastCaptureAt = 0;
+  let captureTimer = null;
   function scheduleCapture() {
-    const now = Date.now();
-    if (now - lastCaptureAt < 3000) return;  // debounce: one capture per send (button + Enter both fire)
-    lastCaptureAt = now;
-    // Wait a beat so the message we just sent has rendered into the thread before we snapshot.
-    setTimeout(captureConversationToPortal, 1200);
+    // TRAILING debounce: fire once ~1.8s after the LAST send in a burst. Sending a message often fires
+    // several sends in a row (emoji reactions + a text message; button-click + Enter both fire) — a
+    // leading debounce would snapshot after the FIRST and miss the final message. Resetting the timer on
+    // each send means we snapshot once the burst has settled and the last message has rendered.
+    if (captureTimer) clearTimeout(captureTimer);
+    captureTimer = setTimeout(() => { captureTimer = null; captureConversationToPortal(); }, 1800);
   }
 
   async function captureConversationToPortal() {
@@ -753,15 +754,24 @@
       // (a floating bubble — even one open over someone ELSE'S profile — or the /messaging/ pane), read
       // it from THAT thread's header so we save to the right person. Only fall back to the page URL when
       // acting directly on a profile with no thread in play.
-      const profileUrl = (isMessagingPage() || activeThreadContainer())
-        ? scrapeMessagingHeader().profileUrl
-        : location_origin_path();
+      const fromThread = () => (isMessagingPage() || activeThreadContainer());
+      let profileUrl = fromThread() ? scrapeMessagingHeader().profileUrl : location_origin_path();
+      // The header can be mid-render right after a send — one quick retry before giving up.
+      if ((!profileUrl || !/\/in\//.test(profileUrl)) && fromThread()) {
+        await sleep(800);
+        profileUrl = scrapeMessagingHeader().profileUrl;
+      }
       if (!profileUrl || !/\/in\//.test(profileUrl)) {
         console.log('[Wingguy] capture skipped — no /in/ profile URL for this thread');
+        showCaptureToast("Didn't save to the Portal — couldn't read whose thread this is. Reopen the conversation and resend, or send me the console line.", true);
         return;
       }
       const thread = scrapeOpenThread();
-      if (!thread.length) { console.log('[Wingguy] capture skipped — no thread read'); return; }
+      if (!thread.length) {
+        console.log('[Wingguy] capture skipped — no thread read');
+        showCaptureToast("Didn't save — couldn't read the conversation from the page.", true);
+        return;
+      }
       // Never save a thread we couldn't isolate to one conversation — that's how Vera+Doug got mixed.
       if (!lastScrapeScoped) {
         console.log('[Wingguy] capture skipped — could not isolate a single conversation');
@@ -775,7 +785,8 @@
       const leads = (lookup && lookup.leads) || [];
       if (!leads.length) {
         console.log('[Wingguy] capture: no matching lead in portal for', profileUrl);
-        return;                                     // quiet — not every message is to a portal lead
+        showCaptureToast(`Didn't save — no matching lead in your Portal for ${profileUrl.replace('https://www.linkedin.com', '')}.`, true);
+        return;
       }
       const lead = leads[0];
       await bg({ type: 'QUICK_UPDATE', leadId: lead.id, content, section: 'linkedin' });
