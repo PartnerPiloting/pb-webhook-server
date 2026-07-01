@@ -2647,6 +2647,28 @@ onboard client #2; distribution → **Chrome Web Store "Unlisted"**.
 
 ## ▶ You are here / next pick-up
 
+**★ EXTENSION HARDENING BATCH — real-run bugs from Guy's live testing (2026-07-01, through `90498460`, on `main`).**
+A run of `content-wingguy.js` fixes found by using it on real leads (all client-side → need extension reload + tab
+refresh; NOT deploy-gated):
+- **Bubble-over-profile = wrong person (`12f36dce`,`4ea63f55`,`2b87f168`).** Typing `/wg` in a floating message bubble
+  open over someone ELSE'S `/in/` profile drafted for the profile behind it (Deepti's bubble on Todd's page → drafted
+  Todd). Root cause (from live console): `activeThreadContainer`/`scrapeMessagingHeader` guarded the anchor with
+  `document.contains()`, which **can't see into shadow DOM** — LinkedIn's composer is in an open shadow root, so it
+  reported the box as "gone" and fell back to the profile. Fix: `.isConnected` (shadow-aware). Plus `scrapeProfile`
+  now treats "a thread is open" (not just the URL) as messaging context, and the header read got robust (name from
+  heading text, not just a link).
+- **Internal member-id URL (`d8eedd59`).** In a thread LinkedIn often links the internal `/in/ACoA…` member-id, not
+  the vanity URL Airtable stores → lookup misses → save skipped. Fix: prefer a vanity `/in/` link; else resolve the
+  ACoA URL via the existing `RESOLVE_LINKEDIN_URL` background redirect-follow before lookup.
+- **On-send capture hardening (`c074a657`).** LEADING→TRAILING debounce (emoji reactions + text fire several sends;
+  snapshot after the LAST), one retry on the header read, and a toast on EVERY skip path (no more silent misses —
+  this is how Guy caught the internal-URL bug live).
+- **★ Wrong-person SAVE guard (`90498460`) — the important one.** A *missed* save is safe; a *wrong* save silently
+  corrupts a record (James's chat was found written onto Neville's record). Before QUICK_UPDATE, the lead matched by
+  URL must appear as a participant in the scraped thread (name vs senders); else refuse + toast. Turns silent
+  corruption into a visible refusal. **⚠ Watch for other stray cross-saves from before the guard** — clean by hand
+  (did James→Tony→Neville this session). Only guards when senders are readable (won't false-refuse on Unknown).
+
 **★ GREETING + SIGN-OFF HOUSE STYLE, MULTI-TENANT-READY (2026-07-01, `5260e335`+`5097647d`, on `main`).** Guy's
 request: always open with a warm first-name greeting; sign off `(I know a) Guy` by default but drop to plain `Guy`
 when his previous message in the thread was already plain (trim-don't-re-add). Built the multi-tenant-correct way per
