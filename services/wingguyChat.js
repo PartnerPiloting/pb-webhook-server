@@ -129,7 +129,8 @@ function buildContext({ profileBlock, convoBlock, leadEmail, coachName, prefs, c
     (voice.greetWithFirstName
       ? `- OPEN every message with a warm greeting that uses the LEAD'S FIRST NAME, fitting the moment: "Hi <First>," on a first/cold touch; "Great, <First> —" / "Perfect, <First> —" / "Thanks, <First> —" when replying to something they said. Always work their first name in — people like seeing their name.\n`
       : '') +
-    `- SIGN OFF with EXACTLY this closing line: "${voice.signoff}". Use it verbatim as the last line; do not add or drop the tagline yourself — that choice is already made for you.\n\n`
+    `- SIGN OFF with EXACTLY this closing line: "${voice.signoff}". Use it verbatim as the last line; do not add or drop the tagline yourself — that choice is already made for you.\n` +
+    `- When you OFFER TIMES (propose_times), put the greeting in the intro; the sign-off is appended automatically, so DON'T put a sign-off in the outro.\n\n`
   ) : '';
   return (
     `CONTEXT FOR THIS CHAT (you are helping Guy with this lead):\n\n` +
@@ -197,7 +198,7 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
   // (CODE) from this thread's previous coach message. The behaviour (RULE) is generic; only the values
   // are per-tenant, so this is multi-tenant-ready — see config/wingguyVoicePrefs.js.
   const vp = getVoicePrefs(coach.clientId);
-  const voice = { greetWithFirstName: vp.greetWithFirstName, signoff: chooseSignoff(conversation, coach.clientName, vp) };
+  const voice = { greetWithFirstName: vp.greetWithFirstName, signoff: chooseSignoff(conversation, coach.clientName, vp), name: vp.signoffName };
 
   const system = [
     { type: 'text', text: WINGGUY_VOICE },
@@ -250,8 +251,21 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
       }
       const bullets = ordered.map((iso) => `- ${fmtSlot(iso, leadTz)}`).join('\n');
       const intro = String(input.intro || '').trim();
-      const outro = String(input.outro || '').trim();
-      currentDraft = [intro, bullets, outro].filter(Boolean).join('\n\n');
+      let outro = String(input.outro || '').trim();
+      // Code owns the sign-off on a times message (the model composes intro/outro but often omits it, or
+      // adds the wrong variant). Strip any trailing sign-off line the model tacked on, then append the
+      // tenant's chosen sign-off (chooseSignoff already decided tagline vs plain).
+      if (voice && voice.name) {
+        const esc = voice.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const parts = outro.split('\n');
+        while (parts.length) {
+          const last = parts[parts.length - 1].trim();
+          if (last === '' || (last.length <= 18 && new RegExp('\\b' + esc + '\\b', 'i').test(last))) { parts.pop(); continue; }
+          break;
+        }
+        outro = parts.join('\n').trim();
+      }
+      currentDraft = [intro, bullets, outro].filter(Boolean).join('\n\n') + (voice && voice.signoff ? `\n\n${voice.signoff}` : '');
       return { ok: true, offered: ordered.length, dropped };
     }
     if (name === 'check_time') {
