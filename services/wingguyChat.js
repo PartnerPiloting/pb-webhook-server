@@ -5,7 +5,8 @@
 // and keeps a LinkedIn message draft ready to send (propose_message). Stateless: the caller passes
 // the running `messages` array each turn (including prior tool blocks).
 //
-// Model = Sonnet 4.6 by default (WINGGUY_DRAFT_MODEL_ID), consistent with the rest of Wingguy.
+// Model = Sonnet 5 by default (WINGGUY_DRAFT_MODEL_ID); swapped from Sonnet 4.6 (now legacy) 2026-06-30 —
+// strict upgrade at the same price. Whether Sonnet 5 also replaces Opus on client-facing is a pending voice back-test.
 // `deps` lets the test inject stubs (e.g. a no-op book) so it can prove the brain without creating
 // real events.
 
@@ -14,7 +15,7 @@ const { WINGGUY_VOICE, WINGGUY_AGENT_INSTRUCTIONS } = require('./../config/wingg
 const { getBookingPrefs } = require('../config/wingguyBookingPrefs');
 const wingguyCalendar = require('./wingguyCalendar');
 
-const MODEL_ID = process.env.WINGGUY_DRAFT_MODEL_ID || 'claude-sonnet-4-6';
+const MODEL_ID = process.env.WINGGUY_DRAFT_MODEL_ID || 'claude-sonnet-5';
 const CHAT_MAX_TOKENS = 1500;
 const MAX_TOOL_ITERATIONS = 8;     // safety cap on the agent loop
 const AVAIL_MAX_DAYS = 14;         // bound the availability tool result (tokens) — ~2 working weeks
