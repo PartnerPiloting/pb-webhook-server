@@ -200,8 +200,20 @@
     return { name, headline, profileUrl };
   }
 
+  // The conversation the user is acting in, if any — the thread that contains the box they typed /wg in
+  // (or last focused). Crucially this is non-null even on a /in/ PROFILE page when a message bubble is
+  // floating over it: that's how we tell "Deepti's bubble open on Todd's profile" (act on Deepti) from
+  // "just Todd's profile" (act on Todd). document.contains guards a stale, since-closed bubble.
+  function activeThreadContainer() {
+    const anchor = (lastFocusedEditable && document.contains(lastFocusedEditable)) ? lastFocusedEditable : null;
+    return anchor ? closestConversationContainer(anchor) : null;
+  }
+
   async function scrapeProfile() {
-    if (!isMessagingPage()) {
+    // If the user is acting inside a message thread — including a floating conversation bubble open OVER
+    // someone else's /in/ profile — the person meant is the one in the THREAD, not the profile behind it.
+    const inThread = isMessagingPage() || !!activeThreadContainer();
+    if (!inThread) {
       await autoScrollToLoad();   // force lazy sections (About/Experience) into the DOM (profile pages only)
       await expandAboutSeeMore();
     }
@@ -250,11 +262,11 @@
       nameSource,
     };
 
-    // On a messaging page, the h1/page values are the messaging UI ("Messaging"), and profileUrl is
-    // the thread URL — useless for the email lookup. Override with the thread header (name/headline/
-    // /in/ URL) and suppress profile-only fields that aren't loaded here (so the agent grounds the
-    // reply in the conversation, not messaging-UI junk).
-    if (isMessagingPage()) {
+    // When acting in a thread, the page values are the WRONG person: on /messaging/ the h1 is the
+    // messaging UI ("Messaging"); on a bubble-over-profile the h1 is the profile BEHIND the bubble
+    // (Todd, not Deepti). Either way, override name/headline/URL from the open thread's header and
+    // suppress the profile-only fields (about/posts/pageText belong to the wrong person here).
+    if (inThread) {
       const h = scrapeMessagingHeader();
       if (h.name) { base.name = h.name; base.nameSource = 'messaging-header'; }
       if (h.headline) base.headline = h.headline;
@@ -697,9 +709,13 @@
 
   async function captureConversationToPortal() {
     try {
-      // We need the person's /in/ URL to look the lead up. On a profile page that's the page URL; on the
-      // messaging surface (full page or a floating bubble) we read it from the open thread's header.
-      const profileUrl = isProfilePage() ? location_origin_path() : scrapeMessagingHeader().profileUrl;
+      // We need the person's /in/ URL to look the lead up. If the send happened inside a message thread
+      // (a floating bubble — even one open over someone ELSE'S profile — or the /messaging/ pane), read
+      // it from THAT thread's header so we save to the right person. Only fall back to the page URL when
+      // acting directly on a profile with no thread in play.
+      const profileUrl = (isMessagingPage() || activeThreadContainer())
+        ? scrapeMessagingHeader().profileUrl
+        : location_origin_path();
       if (!profileUrl || !/\/in\//.test(profileUrl)) {
         console.log('[Wingguy] capture skipped — no /in/ profile URL for this thread');
         return;
