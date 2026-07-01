@@ -71,6 +71,8 @@ function buildProfileBlock(profile = {}) {
   add('Headline', profile.headline);
   add('Location', profile.location);
   add('Current role/company', profile.currentRole);
+  add('Job title', profile.jobTitle);
+  add('Company', profile.companyName);
   add('LinkedIn URL', profile.profileUrl);
   if (profile.about) {
     add('About (their own words)', String(profile.about).slice(0, PROFILE_CHAR_CAP));
@@ -91,6 +93,28 @@ function buildProfileBlock(profile = {}) {
     lines.push('Raw profile page text (mine for the hook; ignore nav/buttons/"People also viewed"):');
     lines.push(String(profile.pageText).slice(0, PROFILE_CHAR_CAP));
   }
+
+  // Private CRM context pulled from the Portal (Airtable) by enrichProfileFromPortal(). Fenced + clearly
+  // labelled so the model uses it for angle/tone/timing but NEVER quotes or reveals it to the lead.
+  const portal = [];
+  const addPortal = (label, val) => {
+    const v = (val == null ? '' : String(val)).trim();
+    if (v) portal.push(`${label}: ${v}`);
+  };
+  if (profile.ceaseFup) {
+    addPortal('⚠ DO-NOT-FOLLOW-UP flag is SET — do not draft a chase; only respond if the lead re-initiated', profile.ceaseFup);
+  }
+  addPortal('CRM status', profile.status);
+  addPortal('Follow-up due', profile.followUpDate);
+  addPortal('AI assessment of this lead', profile.aiProfileAssessment && String(profile.aiProfileAssessment).slice(0, PROFILE_CHAR_CAP));
+  addPortal('Your private notes on them', profile.notes);
+  addPortal('Your follow-up notes', profile.followUpNotes);
+  if (portal.length) {
+    lines.push('');
+    lines.push('FROM YOUR PORTAL — private CRM context (informs the angle, tone and timing; NEVER quote, paraphrase, reveal or hint at any of it to the lead):');
+    portal.forEach((p) => lines.push(`  - ${p}`));
+  }
+
   return lines.join('\n');
 }
 
@@ -123,6 +147,80 @@ function buildConversationBlock(conversation = [], prospectName = '') {
   const body = recent.map((m) => `${m.sender || 'Unknown'}: ${m.text}`).join('\n').slice(-CONVO_CHAR_CAP);
   const who = prospectName ? `\n(The other person is ${prospectName}; the other sender is Guy — draft Guy's next message.)` : '';
   return `${body}${who}`;
+}
+
+// The approved enrichment set — map an Airtable Leads record's fields to the profile shape we draft from.
+// (Deliberately curated, not the whole record: what helps the reply/rebook without bloating cost/latency.)
+function portalFieldsFromRecord(f = {}) {
+  return {
+    name: [f['First Name'], f['Last Name']].filter(Boolean).join(' ').trim(),
+    headline: f['Headline'],
+    jobTitle: f['Job Title'],
+    companyName: f['Company Name'] || f['Company'],
+    location: f['Location'],
+    about: f['About'],
+    aiProfileAssessment: f['AI Profile Assessment'],
+    notes: f['Notes'],
+    followUpNotes: f['Follow Up Notes'],
+    status: f['Status'],
+    followUpDate: f['Follow-Up Date'],
+    ceaseFup: f['Cease FUP'],
+  };
+}
+
+// Best-effort: enrich the scraped profile with the lead's stored Portal (Airtable) record, keyed by the
+// LinkedIn profile URL Wingguy already extracts (name as fallback). This is what lets a reply/rebook from
+// the MESSAGES draw on real context — it fills the gaps the page didn't provide (About/headline aren't in
+// the messaging DOM) and adds CRM-only signal the DOM never has (AI assessment, your notes, status,
+// follow-up date, do-not-FUP flag). Same 'Leads' read the portal uses. NEVER throws into the request —
+// on any miss/error it returns the original page profile so drafting still proceeds.
+async function enrichProfileFromPortal(req, profile = {}) {
+  try {
+    if (!req.client || !req.client.airtableBaseId) return profile;
+    const url = String(profile.profileUrl || '');
+    const slugMatch = url.match(/linkedin\.com\/in\/([^/?#]+)/i);
+    const name = String(profile.name || '').trim();
+    if (!slugMatch && !name) return profile;
+
+    const base = clientService.getClientBase(req.client.airtableBaseId);
+    if (!base) return profile;
+
+    let records = [];
+    if (slugMatch) {
+      const slug = slugMatch[1].toLowerCase();
+      records = await base('Leads').select({
+        filterByFormula: `SEARCH("${slug}", LOWER({LinkedIn Profile URL}))`,
+        maxRecords: 3,
+      }).firstPage();
+    }
+    if (!records.length && name) {
+      const parts = name.split(/\s+/);
+      const first = (parts[0] || '').toLowerCase();
+      const last = (parts.length > 1 ? parts[parts.length - 1] : '').toLowerCase();
+      const formula = last
+        ? `AND(SEARCH("${first}", LOWER({First Name})), SEARCH("${last}", LOWER({Last Name})))`
+        : `OR(SEARCH("${first}", LOWER({First Name})), SEARCH("${first}", LOWER({Last Name})))`;
+      records = await base('Leads').select({ filterByFormula: formula, maxRecords: 3 }).firstPage();
+    }
+    if (!records.length) {
+      logger.info(`[Wingguy] enrich: no Portal match for ${slugMatch ? slugMatch[1] : name}`);
+      return profile;
+    }
+
+    // The live page wins where it has a value; the Portal fills gaps AND supplies the CRM-only fields
+    // (which are never on the page, so the loop always attaches them).
+    const portal = portalFieldsFromRecord(records[0].fields || {});
+    const merged = { ...profile };
+    for (const [k, v] of Object.entries(portal)) {
+      const has = merged[k] != null && String(merged[k]).trim() !== '';
+      if (!has && v != null && String(v).trim() !== '') merged[k] = v;
+    }
+    logger.info(`[Wingguy] enrich: merged Portal record ${records[0].id} (status=${portal.status || '—'}, ceaseFup=${portal.ceaseFup ? 'yes' : 'no'})`);
+    return merged;
+  } catch (e) {
+    logger.error(`[Wingguy] enrich failed (continuing with page profile): ${e.message}`);
+    return profile;
+  }
 }
 
 module.exports = function mountWingguy(app) {
@@ -339,20 +437,24 @@ module.exports = function mountWingguy(app) {
       const coach = await clientService.getClientById(req.client.clientId);
       if (!coach) return res.status(500).json({ ok: false, error: 'coach record not found' });
 
+      // Enrich the scraped profile with the lead's stored Portal record (About/headline the messaging DOM
+      // lacks + CRM-only context: AI assessment, your notes, status, follow-up date, do-not-FUP flag).
+      const enriched = await enrichProfileFromPortal(req, profile);
+
       // Detect the campaign template (\tks / \frac …) from the profile + thread and pass its real
       // voice-tuned structure to the agent, so opener / warm-reply drafts match Guy's templates.
-      const campaignTemplate = getTemplate(detectTemplate(profile, conversation));
+      const campaignTemplate = getTemplate(detectTemplate(enriched, conversation));
 
       const result = await runWingguyChatTurn({
         coach,
-        profile,
+        profile: enriched,
         conversation,
         messages,
         leadEmail,
         campaignTemplate,
         // Reuse the route's grounding-block formatting so the agent sees the same shape as the other endpoints.
-        profileBlock: buildProfileBlock(profile),
-        convoBlock: buildConversationBlock(conversation, profile && profile.name),
+        profileBlock: buildProfileBlock(enriched),
+        convoBlock: buildConversationBlock(conversation, enriched && enriched.name),
       });
       if (!result.ok) return res.status(502).json({ ok: false, error: result.error });
 
