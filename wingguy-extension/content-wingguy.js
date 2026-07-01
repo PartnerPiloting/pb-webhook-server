@@ -806,8 +806,25 @@
         return;
       }
       const lead = leads[0];
+      const who = `${lead.firstName || ''} ${lead.lastName || ''}`.trim() || 'that lead';
+
+      // SAFETY — never write one lead's conversation onto another's record (the James-chat-on-Neville's-
+      // record bug). The lead we matched (by URL) MUST appear as a participant in this thread. If the
+      // thread's senders are readable and the lead isn't among them, refuse and say so — a visible
+      // "didn't save, mismatch" is always safer than silently corrupting a record.
+      const leadFirst = String(lead.firstName || '').trim().toLowerCase();
+      const leadLast = String(lead.lastName || '').trim().toLowerCase();
+      const knownSenders = [...new Set(thread.map((m) => String(m.sender || '').toLowerCase().trim()))]
+        .filter((s) => s && s !== 'unknown');
+      const leadInThread = knownSenders.some((s) =>
+        (leadFirst && s.includes(leadFirst)) || (leadLast.length > 2 && s.includes(leadLast)));
+      if (knownSenders.length && !leadInThread) {
+        console.log(`[Wingguy] capture BLOCKED — "${who}" (matched by URL) is not a participant in this thread. Senders: [${knownSenders.join(', ')}]`);
+        showCaptureToast(`Didn't save — this conversation isn't with ${who} (safety check). Nothing was written.`, true);
+        return;
+      }
+
       await bg({ type: 'QUICK_UPDATE', leadId: lead.id, content, section: 'linkedin' });
-      const who = `${lead.firstName || ''} ${lead.lastName || ''}`.trim() || 'lead';
       console.log(`[Wingguy] captured ${thread.length} messages to ${who}`);
       showCaptureToast(`✓ Saved ${thread.length} messages to ${who}`);
     } catch (e) {
