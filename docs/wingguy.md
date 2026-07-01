@@ -2647,6 +2647,17 @@ onboard client #2; distribution → **Chrome Web Store "Unlisted"**.
 
 ## ▶ You are here / next pick-up
 
+**▶▶ SESSION CLOSE 2026-07-01 — START THE NEXT CHAT HERE (TL;DR over the dated entries below).** Wingguy chat runs on
+**Sonnet 5** (thinking disabled) and is working end-to-end on Guy's real leads: draft quality, booking (two-step
+confirm-first), the greeting + sign-off **house style** (config-seam `wingguyVoicePrefs`), and Portal **enrichment**.
+Today's big theme = **hardening the extension against real-run bugs** (bubble-over-profile person, internal `/in/ACoA`
+URLs, on-send capture misses, and wrong-person saves) — details in the entries below. **⚠ Guy must be on the LATEST
+extension reload** to have the full set (client-side; reload + tab refresh, not deploy-gated). **Open watch-items:**
+(1) stray cross-saves made BEFORE the wrong-person guard shipped — clean by hand if spotted (did James/Tony/Neville
+this session); (2) the self-serve **rules write-door** is still roadmap (greeting/voice is a config seam I edit today —
+first live instance of the code/rule/variable split); (3) **Sonnet 5 vs Opus** for client-facing is still an open
+voice back-test. Next chat opens with *"where are we on Wingguy"* → read this doc.
+
 **★ EXTENSION HARDENING BATCH — real-run bugs from Guy's live testing (2026-07-01, through `90498460`, on `main`).**
 A run of `content-wingguy.js` fixes found by using it on real leads (all client-side → need extension reload + tab
 refresh; NOT deploy-gated):
