@@ -192,6 +192,24 @@ async function main() {
   console.log('Greets by first name:', /deepti/i.test(dDraft) ? 'yes' : 'NO — no first-name greeting');
   console.log('Signs off plain "Guy" (matched previous, no tagline):',
     /\bGuy\s*$/.test(dDraft) && !/\(I know a\)\s*Guy\s*$/i.test(dDraft) ? 'yes' : 'NO — check the sign-off');
+  // ── Scenario F: GENERAL (\tks) opener — non-fractional fresh connection, handshake note only, no reply.
+  // The \tks campaign keeps its OWN sign-off "Talk soon / I know a (Guy)" (Guy's call 2026-07-01), which must
+  // WIN over the unified voice-prefs "(I know a) Guy". Expect a tks opener signing off with "Talk soon".
+  const genProfile = { name: 'Sam Carter', headline: 'Operations Manager at Northwind Logistics', location: 'Sydney, Australia', profileUrl: 'https://www.linkedin.com/in/sam-carter-example/' };
+  const genConvo = [{ sender: 'Guy', text: "Hi Sam, thanks for connecting - looks like you've built up real depth at Northwind. Talk soon\nI know a (Guy)" }];
+  const genTpl = getTemplate(detectTemplate(genProfile, genConvo));
+  const rf = await runWingguyChatTurn({
+    coach: COACH, profile: genProfile, conversation: genConvo, leadEmail: LEAD_EMAIL,
+    profileBlock: `Name: ${genProfile.name}\nHeadline: ${genProfile.headline}\nLocation: ${genProfile.location}\nLinkedIn URL: ${genProfile.profileUrl}`,
+    convoBlock: genConvo.map((m) => `${m.sender}: ${m.text}`).join('\n'), campaignTemplate: genTpl, deps,
+    messages: [{ role: 'user', content: '(Opened from the LinkedIn conversation above. Read where things stand and give me the best next message to send.)' }],
+  });
+  show('SCENARIO F — general (\\tks) opener (expect the \\tks sign-off "Talk soon / I know a (Guy)", NOT "(I know a) Guy")', rf);
+  const fDraft = (rf.draft || '').trim();
+  console.log('\n=== SUMMARY (Sam / \\tks sign-off) ===');
+  console.log('Detected template:', genTpl ? genTpl.id : '(none)');
+  console.log('Signs off with "Talk soon":', /talk soon/i.test(fDraft) ? 'yes' : 'NO — tks sign-off not applied');
+  console.log('Uses "I know a (Guy)" form:', /I know a \(Guy\)/i.test(fDraft) ? 'yes' : 'NO — check the sign-off form');
 }
 
 main().then(() => process.exit(0)).catch((e) => { console.error('TEST FAILED:', e); process.exit(1); });

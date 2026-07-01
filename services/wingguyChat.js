@@ -198,7 +198,11 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
   // (CODE) from this thread's previous coach message. The behaviour (RULE) is generic; only the values
   // are per-tenant, so this is multi-tenant-ready — see config/wingguyVoicePrefs.js.
   const vp = getVoicePrefs(coach.clientId);
-  const voice = { greetWithFirstName: vp.greetWithFirstName, signoff: chooseSignoff(conversation, coach.clientName, vp), name: vp.signoffName };
+  // Sign-off precedence: a campaign that defines its OWN sign-off (e.g. `\tks` = "Talk soon / I know a (Guy)")
+  // WINS; otherwise fall back to the per-tenant voice-prefs sign-off (with its trim-don't-re-add logic). Guy's
+  // call 2026-07-01 — the general campaign keeps "Talk soon", `\frac` (no template signoff) stays on voice-prefs.
+  const campaignSignoff = campaignTemplate && campaignTemplate.signoff;
+  const voice = { greetWithFirstName: vp.greetWithFirstName, signoff: campaignSignoff || chooseSignoff(conversation, coach.clientName, vp), name: vp.signoffName };
 
   const system = [
     { type: 'text', text: WINGGUY_VOICE },

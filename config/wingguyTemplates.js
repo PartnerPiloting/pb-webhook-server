@@ -58,6 +58,10 @@ const TEMPLATES = {
     // No detection keywords → tks is the CATCH-ALL default (used when nothing more specific matches).
     detectionKeywords: [],
     isDefault: true,
+    // This campaign keeps its OWN sign-off (Guy's call 2026-07-01) — it must win over the unified
+    // voice-prefs sign-off. `\frac` has no `signoff` here, so it falls through to the voice-prefs sign-off.
+    signoff: `Talk soon
+I know a (Guy)`,
     instructions: `TEMPLATE: General thanks-for-connecting (Guy's \\tks). Draft from the supplied profile / page text.
 
 RULES:
