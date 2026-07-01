@@ -102,17 +102,22 @@ const AGENT_TOOLS = [
 // PREVIOUS message in this thread was itself signed off plain (they'd already trimmed the tagline). This
 // matches Guy's "trimming is easy, re-adding is laborious → err fuller" rule. Tenant-agnostic: the names
 // and tagline all come from the per-tenant voice prefs — nothing hardcoded here.
-function chooseSignoff(conversation, coachName, vp) {
-  const full = vp.signoffTagline ? `${vp.signoffTagline} ${vp.signoffName}` : vp.signoffName;
-  if (!vp.signoffTagline) return full;                    // no tagline configured → always the plain name
+function chooseSignoff(conversation, coachName, vp, campaignSignoff) {
+  // The "full" sign-off: a campaign's OWN sign-off wins (e.g. `\tks` = "Talk soon / I know a (Guy)"),
+  // else the per-tenant voice-prefs full sign-off ("(I know a) Guy"). The trim-to-plain logic below still
+  // applies on top of whichever "full" it is, so a thread where Guy already went plain stays plain.
+  const full = campaignSignoff || (vp.signoffTagline ? `${vp.signoffTagline} ${vp.signoffName}` : vp.signoffName);
+  const plain = String(vp.signoffName || '').trim();
   const first = String(coachName || vp.signoffName || '').trim().split(/\s+/)[0].toLowerCase();
   const coachMsgs = (Array.isArray(conversation) ? conversation : [])
     .filter((m) => m && m.text && String(m.sender || '').toLowerCase().includes(first));
-  if (!coachMsgs.length) return full;                     // no prior coach message → default to the tagline
+  if (!coachMsgs.length || !plain) return full;           // opener (or no name) → full
   const tail = String(coachMsgs[coachMsgs.length - 1].text || '').toLowerCase().slice(-60);
-  if (tail.includes(vp.signoffTagline.toLowerCase())) return full;         // prev used the tagline → keep it
-  if (tail.includes(vp.signoffName.toLowerCase())) return vp.signoffName;   // prev signed plain → stay plain
-  return full;                                            // prev had no clear sign-off → err fuller
+  // Trim-don't-re-add: stay plain ONLY if Guy's previous message signed off with just the name — no tagline,
+  // no "talk soon", no "i know a". Otherwise keep the full form. (Trimming is easy; re-adding is laborious.)
+  const usedExtras = /i know a|talk soon/.test(tail) || (vp.signoffTagline && tail.includes(vp.signoffTagline.toLowerCase()));
+  if (!usedExtras && tail.includes(plain.toLowerCase())) return plain;     // prev signed plain → stay plain
+  return full;
 }
 
 // Compact, grounded context for the agent. `buildProfileBlock` / `buildConversationBlock` are passed
@@ -198,11 +203,11 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
   // (CODE) from this thread's previous coach message. The behaviour (RULE) is generic; only the values
   // are per-tenant, so this is multi-tenant-ready — see config/wingguyVoicePrefs.js.
   const vp = getVoicePrefs(coach.clientId);
-  // Sign-off precedence: a campaign that defines its OWN sign-off (e.g. `\tks` = "Talk soon / I know a (Guy)")
-  // WINS; otherwise fall back to the per-tenant voice-prefs sign-off (with its trim-don't-re-add logic). Guy's
-  // call 2026-07-01 — the general campaign keeps "Talk soon", `\frac` (no template signoff) stays on voice-prefs.
+  // Sign-off: a campaign's own sign-off (e.g. `\tks` = "Talk soon / I know a (Guy)") is the "full" form; the
+  // trim-don't-re-add logic in chooseSignoff still applies on top (a thread where Guy already went plain stays
+  // plain). `\frac` has no template signoff, so it uses the voice-prefs "(I know a) Guy" full form. Guy's call 2026-07-01.
   const campaignSignoff = campaignTemplate && campaignTemplate.signoff;
-  const voice = { greetWithFirstName: vp.greetWithFirstName, signoff: campaignSignoff || chooseSignoff(conversation, coach.clientName, vp), name: vp.signoffName };
+  const voice = { greetWithFirstName: vp.greetWithFirstName, signoff: chooseSignoff(conversation, coach.clientName, vp, campaignSignoff), name: vp.signoffName };
 
   const system = [
     { type: 'text', text: WINGGUY_VOICE },
