@@ -2649,7 +2649,7 @@ onboard client #2; distribution → **Chrome Web Store "Unlisted"**.
 
 **▶▶ SESSION CLOSE 2026-07-01 — START THE NEXT CHAT HERE (TL;DR over the dated entries below).** Wingguy chat runs on
 **Sonnet 5** (thinking disabled) and is working end-to-end on Guy's real leads: draft quality, booking (two-step
-confirm-first), the greeting + sign-off **house style** (config-seam `wingguyVoicePrefs`), and Portal **enrichment**.
+confirm-first), the greeting + sign-off **house style** (config-seam `wingguyVoicePrefs`), and Portal **enrichment**. **★ Latest (`35365e4e`): fixed the extension drafting a weak "your note got buried" NUDGE instead of the real opener for a just-connected lead (Matthew) — it now reads the conversation STAGE (the connection-request handshake note ≠ the pitch), cloud-test verified. This SUPERSEDES the `b70f78d5` "unanswered opener → nudge" rule. See the ★ STAGE-READING FIX entry below.**
 Today's big theme = **hardening the extension against real-run bugs** (bubble-over-profile person, internal `/in/ACoA`
 URLs, on-send capture misses, and wrong-person saves) — details in the entries below. **⚠ Guy must be on the LATEST
 extension reload** to have the full set (client-side; reload + tab refresh, not deploy-gated). **Open watch-items:**
@@ -2657,6 +2657,29 @@ extension reload** to have the full set (client-side; reload + tab refresh, not 
 this session); (2) the self-serve **rules write-door** is still roadmap (greeting/voice is a config seam I edit today —
 first live instance of the code/rule/variable split); (3) **Sonnet 5 vs Opus** for client-facing is still an open
 voice back-test. Next chat opens with *"where are we on Wingguy"* → read this doc.
+
+**★ STAGE-READING FIX — the handshake note is NOT the pitch (2026-07-01, `35365e4e`, on `main`, cloud-test verified).**
+Guy hit it live: on a just-connected fractional (Matthew) whose thread held ONLY his connection-request note, the extension
+drafted a weak "floating back up your feed" NUDGE, while his Claude+MCP (given the same lead) produced the full frac opener with
+the Zoom ask. Root cause: the agent's phase rule counted ANY Guy-outbound-with-no-reply as "opener already sent → nudge", so the
+connection-request note (which never asks for a meeting) was misread as the pitch. Fix (`config/wingguyTemplates.js`,
+`WINGGUY_AGENT_INSTRUCTIONS`): replaced the brittle decision tree with a tenant-agnostic **"how to read a Wingguy conversation"**
+brief — read the SIGNALS (has the lead replied? has a meeting actually been asked for yet? which campaign?) then map onto STAGES.
+Stage 1 (handshake note only, no meeting asked, no reply) → draft the REAL opener (frac beats + Zoom ask); the NUDGE (stage 2)
+only fires once a real meeting-ask opener has gone out and gone quiet. Written tenant-agnostic ("the coach", not hardcoded Guy),
+leaning on the `coachName`/campaign-template/voice values already in context — drops into the multi-tenant model without rework
+(the surrounding instruction block is still Guy-hardcoded; a full de-Guy pass is deferred, not part of this fix).
+- **⚠ SUPERSEDES the 2026-06-16 "unanswered opener → nudge" rule (`b70f78d5`).** That treated the handshake note as "opener
+  already sent"; the Vanessa case is byte-for-byte the SAME thread state as Matthew, so the test flipped — cloud-test **Scenario C**
+  now expects the FULL opener, and new **Scenario E** covers the genuine pitched-but-quiet nudge. Guy's real b70f78d5 requirement
+  (ALWAYS DRAFT, never hedge) is untouched — only WHAT stage 1 drafts changed (nudge → real opener).
+- **Verified green via the cloud test (`scripts/wingguy-chat-test.js`, Render one-off job on the live `35365e4e` deploy):**
+  C (Vanessa, handshake-only) → full frac opener + "Worth a quick Zoom…"; E (Owen, real Zoom-ask opener sent + no reply) → light
+  nudge, no re-pitch; B (Greg warm reply) → frac follow-up weaving his post topic; D (Deepti) → first-name greet + matched plain
+  sign-off; booking flow → two-step confirm-first then book after "yes". No regressions. Backend change — no extension reload needed.
+- **Open:** (a) the MCP still relies on Guy briefing it per-chat — unifying BOTH surfaces on this ONE shared brief (so they can't
+  drift apart again) is the obvious next step, not yet done; (b) stage detection now leans on the thread scrape being complete —
+  if an earlier real opener is missed by the scrape, stage 1 could re-pitch someone already pitched; watch in live use.
 
 **★ EXTENSION HARDENING BATCH — real-run bugs from Guy's live testing (2026-07-01, through `90498460`, on `main`).**
 A run of `content-wingguy.js` fixes found by using it on real leads (all client-side → need extension reload + tab
@@ -2713,7 +2736,9 @@ Two fixes, both verified on prod via the cloud test (`scripts/wingguy-chat-test.
   "yes" books; Greg fractional scenario weaves the topic + doesn't push times.
 - **`MODEL_ID` default is now `claude-sonnet-5`.** Fall back via `WINGGUY_DRAFT_MODEL_ID=claude-sonnet-4-6` if ever
   needed (switch at the default, not per-turn — a mid-conversation model switch invalidates the prompt cache).
-- **★ Second Sonnet-5 over-caution tune (`b70f78d5`).** Flip side of the eager-booking fix: on a connection whose
+- **★ Second Sonnet-5 over-caution tune (`b70f78d5`).** STATUS: PARTLY SUPERSEDED (2026-07-01 — see the ★ STAGE-READING FIX
+  above). The "handshake note only → nudge" behaviour is REVERSED (that thread state now drafts the real opener); the **ALWAYS
+  DRAFT / never-hedge** rule below STILL STANDS. Flip side of the eager-booking fix: on a connection whose
   opener had already been SENT but not answered, Sonnet 5 (more deliberate) HEDGED — "no reply yet, want me to draft a
   nudge or just wait?" — instead of drafting. Fixed in `WINGGUY_AGENT_INSTRUCTIONS`: split the no-reply branch (opener
   not-yet-sent → thanks opener; opener sent + unanswered → light follow-up nudge, never re-send, never say "wait"), plus
