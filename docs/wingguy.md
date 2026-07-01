@@ -2659,9 +2659,20 @@ bailing, so sends from the messages auto-save to the lead's record. The panel fl
 (`scrapeProfile`→messaging header + email lookup), so this just opened the doors. **⚠ NEEDS GUY'S LIVE TEST** (reload
 the unpacked extension → open a message thread → confirm the teal button appears, `/wg` opens the panel, and a sent
 reply toasts "Saved N messages"). DOM-fragile: if the launcher doesn't show or the header scrape is weak, the
-console logs a diagnostic to lock selectors from his real DOM. **NOT YET DONE (deferred, flagged this session):** the
-richer enrichment — using the looked-up Portal record (About/notes/history) to feed the agent's context on messaging,
-not just the email — is still a follow-up; today the messaging path only fetches the email for booking.
+console logs a diagnostic to lock selectors from his real DOM.
+
+**★ PORTAL ENRICHMENT INTO THE DRAFT (2026-07-01, `62f6d2fa`, pushed to `main`).** Follow-on to the messaging surface:
+the `/api/wingguy/chat` agent used to draft only from the LinkedIn-page scrape, so on messaging (About/headline blank
+there) it went in thin, and CRM context was never available on ANY surface. Now the `/chat` route enriches server-side,
+keyed by the same `/in/` URL Wingguy already extracts (name fallback), reusing the portal's own `Leads` read
+(`clientService.getClientBase`): `enrichProfileFromPortal()` merges the approved set — about, headline, jobTitle,
+companyName, location, **aiProfileAssessment, notes, followUpNotes, status, followUpDate, ceaseFup**. Live page wins where
+it has a value; the Portal fills gaps + supplies the CRM-only fields. `buildProfileBlock()` renders a clearly-fenced
+"FROM YOUR PORTAL — private CRM context" section that tells the model to use it for angle/tone/timing but NEVER quote/reveal
+it to the lead (do-not-FUP flag surfaced prominently). Best-effort — never throws into the request. Works on BOTH surfaces
+(profile pages gain CRM context; messaging gains About/headline + CRM context). **⚠ NEEDS LIVE VERIFICATION** (open a chat
+on a scored lead → confirm the draft reflects their About/assessment/notes; check the console `[Wingguy] enrich: merged
+Portal record …` line). ⓘ Re-queries Airtable once per chat turn (cheap, keeps data fresh); optimise later if needed.
 
 **★ FULL MULTI-TENANT NYLAS — IN PROGRESS (2026-06-30).** Guy asked to finish making Wingguy booking
 fully multi-tenant (he'd already moved the WRITE to per-client Nylas; this closes the rest). Three gaps
