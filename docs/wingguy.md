@@ -2647,6 +2647,24 @@ onboard client #2; distribution → **Chrome Web Store "Unlisted"**.
 
 ## ▶ You are here / next pick-up
 
+**★ SONNET 5 SWAP BROKE THE CHAT AGENT → REVERTED TO 4.6 (2026-07-01, `8a1b08e1`, on `main`). SUPERSEDES the
+"swap 4.6 → Sonnet 5 now (unconditional)" call below.** Yesterday's `claude-sonnet-5` default (`e0aac716`) broke the
+LinkedIn panel: on a normal profile the auto-draft came back **"(No response — try rephrasing)"**. Root cause (proven
+by live prod probes, not a guess): **Sonnet 5 is real + accepted by the API, but it thinks by default**, and in the
+tool-using agent loop with the small `CHAT_MAX_TOKENS` the turn returned no reply/no draft. Fix: reverted the chat
+`MODEL_ID` default to `claude-sonnet-4-6` (the model that logged `draft=yes` all week) AND added
+`CHAT_THINKING={type:'disabled'}` on the `messages.create` (latency-sensitive panel; the agent drafts/books, doesn't
+deep-reason; and it's the seam that makes thinking-by-default models usable here). **Service restored.**
+- **Sonnet 5 IS viable with thinking OFF — verified via the cloud test** (`scripts/wingguy-chat-test.js`, run with
+  `WINGGUY_DRAFT_MODEL_ID=claude-sonnet-5`): full quality drafts, correct `check_availability`/`propose_times`/
+  `propose_message`, Greg fractional scenario perfect. **The empty-turn failure is gone.**
+- **⚠ ONE behavioral delta blocks the flip:** Sonnet 5 is MORE EAGER on booking — on "book the first one" it books
+  immediately, where 4.6 holds back for an explicit confirm (`Turn 2 held back: NO` on S5 vs `yes` on 4.6). This is
+  exactly the "voice/judgment back-test" the swap note anticipated. **NEXT = Guy's call:** stay on 4.6 (safe, now
+  live), OR tighten the confirm-first line in `WINGGUY_AGENT_INSTRUCTIONS`, re-run the cloud test on Sonnet 5, and flip
+  the default only when it goes green. Everything is env-switchable via `WINGGUY_DRAFT_MODEL_ID` (mid-conversation
+  model switches invalidate prompt cache, so switch at the default, not per-turn).
+
 **★ MESSAGING SURFACE OPENED UP (2026-07-01, `bbba054e`, pushed to `main`).** Guy hit the gap live: from the
 LinkedIn **messages** (full `/messaging/` page or a floating conversation bubble — no `/in/` profile page in
 play, e.g. a lead asking to rebook), neither the teal launcher NOR `/wg` appeared, and replies didn't auto-save.
