@@ -116,9 +116,11 @@ async function main() {
   console.log('Did NOT call calendar:', !toolCallsIn(rg.messages).includes('check_availability') ? 'yes' : 'NO — it checked the calendar unprompted');
   console.log('Nods to the link topic:', /market/i.test(rg.draft || '') ? 'yes (mentions marketing)' : 'maybe not — check the draft');
 
-  // ── Scenario C: opener SENT, no reply (Vanessa-like — panel opened on a connection whose
-  // thanks-for-connecting opener has been sitting unanswered). Regression guard: Wingguy must DRAFT a
-  // light follow-up nudge, NOT hedge with "no reply yet, want me to wait?" (Sonnet 5 was too cautious).
+  // ── Scenario C: CONNECTED, HANDSHAKE NOTE ONLY, no reply (Matthew/Vanessa-like — panel opened on a
+  // connection whose thread holds ONLY Guy's connection-request note, which never asked for a meeting).
+  // The Matthew fix: the handshake note is NOT the pitch, so Wingguy must draft the FULL opener (the frac
+  // beats + the Zoom ask), NOT a bare "your note got buried" nudge. (Supersedes the old 2026-06-16 rule
+  // that treated the handshake note as "opener already sent → nudge".)
   const vanProfile = {
     name: 'Vanessa Wilton',
     headline: 'Commercial & Creative Leader · Operations, Brand, NPD, Marketing/Design · Ex-Founder',
@@ -134,13 +136,40 @@ async function main() {
   const rv = await runWingguyChatTurn({
     coach: COACH, profile: vanProfile, conversation: vanConvo, leadEmail: LEAD_EMAIL,
     profileBlock: vanProfileBlock, convoBlock: vanConvoBlock, campaignTemplate: vanTpl, deps,
-    // The exact kickoff the extension sends when the thread has messages (Guy's own unanswered opener).
+    // The exact kickoff the extension sends when the thread has messages (Guy's own handshake note).
     messages: [{ role: 'user', content: '(Opened from the LinkedIn conversation above. Read where things stand and give me the best next message to send — and if it\'s time to offer a meeting, suggest some times.)' }],
   });
-  show('SCENARIO C — opener sent, no reply (expect a follow-up nudge draft, NOT a "wait" hedge)', rv);
-  console.log('\n=== SUMMARY (Vanessa / unanswered opener) ===');
-  console.log('Produced a draft (did NOT hedge):', rv.draft ? 'yes' : 'NO — it hedged instead of drafting!');
+  show('SCENARIO C — connected, handshake note only (expect the FULL frac opener WITH a Zoom ask, NOT a nudge)', rv);
+  console.log('\n=== SUMMARY (Vanessa / handshake note only — the Matthew fix) ===');
+  console.log('Produced a draft:', rv.draft ? 'yes' : 'NO — no draft!');
+  console.log('Drafted the real opener (asks for a Zoom/call, not a bare nudge):',
+    /\b(zoom|call|chat|catch up|catch-up)\b/i.test(rv.draft || '') ? 'yes' : 'NO — looks like a nudge, not the opener');
   console.log('Did NOT call calendar:', !toolCallsIn(rv.messages).includes('check_availability') ? 'yes' : 'NO — checked the calendar unprompted');
+
+  // ── Scenario E: PITCHED BUT QUIET — Guy's REAL opener (which already asked for a Zoom) has gone out
+  // and there's still no reply. THIS is the genuine nudge case: draft a light follow-up nudge (don't
+  // re-send the whole pitch, don't hedge with "want me to wait?"). Distinguishes stage 2 from stage 1.
+  const quietProfile = {
+    name: 'Owen Blake',
+    headline: 'Fractional COO | Operations & Scale for founder-led SMEs',
+    location: 'Brisbane, Australia',
+    profileUrl: 'https://www.linkedin.com/in/owen-blake-example/',
+  };
+  const quietConvo = [
+    { sender: 'Guy', text: "Hi Owen, great to connect. Your operations-and-scale background with founder-led SMEs is exactly what makes someone easy to recommend. The network is a simple idea: fractional pros who refer each other rather than everyone waving their own flag - I reckon you'd fit it well. Worth a quick Zoom in the next couple of weeks? (I know a) Guy" },
+  ];
+  const quietTpl = getTemplate(detectTemplate(quietProfile, quietConvo));
+  const re = await runWingguyChatTurn({
+    coach: COACH, profile: quietProfile, conversation: quietConvo, leadEmail: LEAD_EMAIL,
+    profileBlock: `Name: ${quietProfile.name}\nHeadline: ${quietProfile.headline}\nLocation: ${quietProfile.location}\nLinkedIn URL: ${quietProfile.profileUrl}`,
+    convoBlock: quietConvo.map((m) => `${m.sender}: ${m.text}`).join('\n'), campaignTemplate: quietTpl, deps,
+    messages: [{ role: 'user', content: '(Opened from the LinkedIn conversation above. Read where things stand and give me the best next message to send — and if it\'s time to offer a meeting, suggest some times.)' }],
+  });
+  show('SCENARIO E — pitched but quiet (real Zoom-ask opener sent, no reply → expect a light NUDGE)', re);
+  console.log('\n=== SUMMARY (Owen / pitched but quiet) ===');
+  console.log('Produced a draft (did NOT hedge):', re.draft ? 'yes' : 'NO — it hedged instead of drafting!');
+  console.log('Did NOT call calendar:', !toolCallsIn(re.messages).includes('check_availability') ? 'yes' : 'NO — checked the calendar unprompted');
+  console.log('   (eyeball: should be a short nudge, not a re-send of the full pitch)');
 
   // ── Scenario D: VOICE — greeting + "match the previous" sign-off. Deepti-like thread where Guy's LAST
   // message was signed off PLAIN "Guy" (no tagline). Expect: draft greets her by first name AND signs off
