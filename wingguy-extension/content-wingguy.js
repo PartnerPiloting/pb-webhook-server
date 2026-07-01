@@ -213,11 +213,18 @@
         if (looksLikeName(t)) { name = t; break; }
       }
     }
-    // URL: the first /in/ link in the header (name OR avatar), else anywhere in the pane.
+    // URL: prefer a VANITY slug. LinkedIn message headers often link to the internal member-id form
+    // (/in/ACoAAB...), which won't match the vanity URL stored in the Portal → the lookup misses. Take the
+    // first NON-ACoA /in/ link; only fall back to an internal one if that's all there is (the capture path
+    // resolves it to the vanity URL before looking the lead up).
     let profileUrl = '';
-    for (const a of [...header.querySelectorAll('a[href*="/in/"]'), ...pane.querySelectorAll('a[href*="/in/"]')]) {
+    const inLinks = [...header.querySelectorAll('a[href*="/in/"]'), ...pane.querySelectorAll('a[href*="/in/"]')];
+    for (const a of inLinks) {
       const u = normalizeInUrl(a.getAttribute('href'));
-      if (u) { profileUrl = u; break; }
+      if (u && !/\/in\/ACoA/i.test(u)) { profileUrl = u; break; }
+    }
+    if (!profileUrl) {
+      for (const a of inLinks) { const u = normalizeInUrl(a.getAttribute('href')); if (u) { profileUrl = u; break; } }
     }
 
     // Headline (best-effort) from the header subtitle / lockup near the name.
@@ -765,6 +772,16 @@
         console.log('[Wingguy] capture skipped — no /in/ profile URL for this thread');
         showCaptureToast("Didn't save to the Portal — couldn't read whose thread this is. Reopen the conversation and resend, or send me the console line.", true);
         return;
+      }
+      // LinkedIn's internal member-id URL (/in/ACoA...) won't match the vanity URL stored in Airtable —
+      // resolve it to the real profile URL by following the redirect (background does the credentialed fetch).
+      if (/\/in\/ACoA/i.test(profileUrl)) {
+        try {
+          const r = await bg({ type: 'RESOLVE_LINKEDIN_URL', internalUrl: profileUrl });
+          const real = r && r.realUrl && normalizeInUrl(r.realUrl);
+          if (real && !/\/in\/ACoA/i.test(real)) { console.log('[Wingguy] resolved internal URL →', real); profileUrl = real; }
+          else console.log('[Wingguy] internal URL did not resolve to a vanity slug:', r && r.realUrl);
+        } catch (e) { console.log('[Wingguy] URL resolve failed:', e.message); }
       }
       const thread = scrapeOpenThread();
       if (!thread.length) {
