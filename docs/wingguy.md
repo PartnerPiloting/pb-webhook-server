@@ -2647,6 +2647,22 @@ onboard client #2; distribution → **Chrome Web Store "Unlisted"**.
 
 ## ▶ You are here / next pick-up
 
+**★ GREETING + SIGN-OFF HOUSE STYLE, MULTI-TENANT-READY (2026-07-01, `5260e335`+`5097647d`, on `main`).** Guy's
+request: always open with a warm first-name greeting; sign off `(I know a) Guy` by default but drop to plain `Guy`
+when his previous message in the thread was already plain (trim-don't-re-add). Built the multi-tenant-correct way per
+"Where each thing lives — code vs rule vs variable" (nothing tenant-specific hardcoded):
+- **VARIABLE** = `config/wingguyVoicePrefs.js` — the SEAM (mirrors `wingguyBookingPrefs.js`): `getVoicePrefs(clientId)`
+  → `{ greetWithFirstName, signoffName:'Guy', signoffTagline:'(I know a)' }`. Guy's values are the defaults now;
+  per-tenant overrides/self-edit land later (their record + the rules write-door). Multi-tenant = fill in values, no rework.
+- **CODE** = `wingguyChat.chooseSignoff()` deterministically picks tagline-vs-plain from the thread's previous coach
+  message (verified all 3 branches). And `propose_times` now strips any model sign-off + appends the chosen one (the
+  times-message draft is code-assembled, so it was coming out sign-off-less — caught by the cloud test, then fixed).
+- **RULE** = `buildContext` voice block: greet with first name fitting the moment; sign off the code-chosen line verbatim.
+- **Verified on Sonnet 5** via cloud test Scenario D (Deepti-like, prev plain → greets "Hi Deepti," + plain "Guy"),
+  booking/Greg/Vanessa unchanged. Backend change — no extension reload needed.
+- **This is the first live instance of the code/rule/variable split in the extension** — the pattern to reuse for the
+  next tunable (and the thing the rules write-door will eventually let clients edit themselves).
+
 **★ SONNET 5 NOW LIVE — thinking disabled + firmer confirm-first (2026-07-01, `dcdf99ca`, on `main`). RESOLVES the
 outage below; this is the state of the "swap 4.6 → Sonnet 5" call.** Timeline: the first swap to `claude-sonnet-5`
 (`e0aac716`, 2026-06-30) broke the panel — on a normal profile the auto-draft came back **"(No response — try
