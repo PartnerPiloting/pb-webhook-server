@@ -2647,6 +2647,22 @@ onboard client #2; distribution → **Chrome Web Store "Unlisted"**.
 
 ## ▶ You are here / next pick-up
 
+**★ MESSAGING SURFACE OPENED UP (2026-07-01, `bbba054e`, pushed to `main`).** Guy hit the gap live: from the
+LinkedIn **messages** (full `/messaging/` page or a floating conversation bubble — no `/in/` profile page in
+play, e.g. a lead asking to rebook), neither the teal launcher NOR `/wg` appeared, and replies didn't auto-save.
+Root cause: launcher injection, the `/wg` trigger's message-box gate, and `captureConversationToPortal()` were all
+gated to `isProfilePage()`. Fix (`content-wingguy.js`, additive): `shouldShowLauncher()`/`hasOpenMessageThread()`
+show the launcher whenever a thread is open on any page (+ a polling `syncLauncher()` for bubbles that open/close
+without a URL change); `/wg` now fires on the messaging surface even if the composer markup varies/is shadowed;
+`captureConversationToPortal()` derives the `/in/` URL from the thread header (`scrapeMessagingHeader`) instead of
+bailing, so sends from the messages auto-save to the lead's record. The panel flow already handled messaging
+(`scrapeProfile`→messaging header + email lookup), so this just opened the doors. **⚠ NEEDS GUY'S LIVE TEST** (reload
+the unpacked extension → open a message thread → confirm the teal button appears, `/wg` opens the panel, and a sent
+reply toasts "Saved N messages"). DOM-fragile: if the launcher doesn't show or the header scrape is weak, the
+console logs a diagnostic to lock selectors from his real DOM. **NOT YET DONE (deferred, flagged this session):** the
+richer enrichment — using the looked-up Portal record (About/notes/history) to feed the agent's context on messaging,
+not just the email — is still a follow-up; today the messaging path only fetches the email for booking.
+
 **★ FULL MULTI-TENANT NYLAS — IN PROGRESS (2026-06-30).** Guy asked to finish making Wingguy booking
 fully multi-tenant (he'd already moved the WRITE to per-client Nylas; this closes the rest). Three gaps
 were identified; **2 of 3 DONE + pushed to `main`, additive + Guy-safe + unit-tested:**
