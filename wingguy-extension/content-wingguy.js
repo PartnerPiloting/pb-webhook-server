@@ -1,6 +1,8 @@
 // content-wingguy.js — Wingguy on LinkedIn (the AI-Blaze-style full-screen shell).
 //
-// Surface: a LinkedIn PROFILE page (/in/...) — works whether the messaging overlay is open or not.
+// Surfaces: a LinkedIn PROFILE page (/in/...) AND the MESSAGING surface (the full /messaging/ page or a
+//   floating conversation bubble on any page) — where there's no profile page, Wingguy reads the open
+//   thread's header (name + headline + /in/ link) and looks the person up in the Portal to enrich.
 // Flow (matches Guy's AI Blaze muscle memory):
 //   type a trigger (/wg, /wingguy, /wingman) INSIDE LinkedIn's "Write a message…" box  (or click the
 //     teal launcher as a fallback)
@@ -43,6 +45,18 @@
   function normalizeInUrl(href) {
     const m = String(href || '').match(/\/in\/([^/?#]+)/);
     return m ? `https://www.linkedin.com/in/${m[1]}` : '';
+  }
+  // Is a LinkedIn message thread actually open right now? True on the full /messaging/ detail pane AND
+  // when a floating conversation bubble is expanded on ANY page (feed, profile, search, etc.). This is
+  // what lets Wingguy offer itself from the messages, where there's no /in/ profile page in play.
+  function hasOpenMessageThread() {
+    return !!document.querySelector(
+      '.msg-overlay-conversation-bubble .msg-form, .msg-convo-wrapper, .msg-thread, .scaffold-layout__detail .msg-s-message-list-container'
+    );
+  }
+  // Show the launcher / accept the /wg trigger on profiles AND on the messaging surface.
+  function shouldShowLauncher() {
+    return isProfilePage() || isMessagingPage() || hasOpenMessageThread();
   }
 
   // ---- small DOM helpers ----------------------------------------------------
@@ -622,7 +636,9 @@
     if (document.getElementById(OVERLAY_ID)) return;          // already open
     const target = deepActiveElement();
     if (!isEditableEl(target) || insideWingguy(target)) return;
-    if (!isMessageEditableSafe(target)) return;               // only inside the message box
+    // Only fire inside a message box. LinkedIn's messaging-page composer markup varies (and can sit in
+    // a shadow root), so on the messaging surface also accept any editable — the user typed /wg on purpose.
+    if (!isMessageEditableSafe(target) && !isMessagingPage() && !hasOpenMessageThread()) return;
     const text = (target.tagName === 'TEXTAREA' || target.tagName === 'INPUT')
       ? (target.value || '') : (target.textContent || '');
     const tr = matchedTrigger(text);
@@ -681,7 +697,13 @@
 
   async function captureConversationToPortal() {
     try {
-      if (!isProfilePage()) return;                 // need the /in/ URL to look the lead up
+      // We need the person's /in/ URL to look the lead up. On a profile page that's the page URL; on the
+      // messaging surface (full page or a floating bubble) we read it from the open thread's header.
+      const profileUrl = isProfilePage() ? location_origin_path() : scrapeMessagingHeader().profileUrl;
+      if (!profileUrl || !/\/in\//.test(profileUrl)) {
+        console.log('[Wingguy] capture skipped — no /in/ profile URL for this thread');
+        return;
+      }
       const thread = scrapeOpenThread();
       if (!thread.length) { console.log('[Wingguy] capture skipped — no thread read'); return; }
       // Never save a thread we couldn't isolate to one conversation — that's how Vera+Doug got mixed.
@@ -691,7 +713,6 @@
         return;
       }
 
-      const profileUrl = location_origin_path();
       const content = formatThreadForApi(thread);
 
       const lookup = await bg({ type: 'LOOKUP_LEAD', linkedinUrl: profileUrl });
@@ -751,7 +772,7 @@
 
   // ---- UI: launcher + full-screen overlay -----------------------------------
   function injectLauncher() {
-    if (!isProfilePage()) return;
+    if (!shouldShowLauncher()) return;
     if (document.getElementById(LAUNCHER_ID)) return;
 
     const btn = document.createElement('button');
@@ -1290,8 +1311,15 @@
 
   // ---- lifecycle / SPA navigation ------------------------------------------
   function refresh() {
-    if (isProfilePage()) injectLauncher();
+    if (shouldShowLauncher()) injectLauncher();
     else removeLauncher();
+  }
+
+  // Lighter sync for the polling tick: keep the launcher in step with message bubbles that open/close
+  // without a URL change — but never tear it down (or close the panel) while the panel is open.
+  function syncLauncher() {
+    if (shouldShowLauncher()) injectLauncher();
+    else if (!document.getElementById(OVERLAY_ID)) removeLauncher();
   }
 
   function watchSpaNavigation() {
@@ -1301,6 +1329,8 @@
         closePanel();
         // small delay so the new profile DOM settles
         setTimeout(refresh, 600);
+      } else {
+        syncLauncher(); // catch floating message bubbles opening/closing (no navigation)
       }
     }, 1000);
     window.addEventListener('popstate', () => setTimeout(refresh, 600));
