@@ -80,6 +80,14 @@
 
 ---
 
+## ⚖️ OPEN CONFLICTS — need Guy's ruling (from the 2026-07-01 consolidation audit)
+> Genuine "which is true now?" items the audit surfaced that I could NOT resolve mechanically. Resolve, then delete from here.
+1. **Outreach vocabulary: "ASH / two-way collaboration / advocacy network" (Notion Outreach Rules) vs "fractional network" (extension `tks`/`frac` templates).** Same core idea, different words. Which is the current campaign language? (Then align the other surface.)
+2. **Calendar source-of-truth mismatch.** The extension reads availability via **Nylas**; Guy's Claude chat reads via the **Google Calendar connector** → the same slot has shown "free" in one and "clash" in the other (journal ~1768). Which is authoritative, and how do we make both read the same free/busy?
+3. **Extension cost / P&L.** Confirmed the extension runs on **Guy's key** (~$1,000–1,500/mo @ ~70 clients), which the "~78% margin, ~$265k/yr" 100-client P&L never counted. Does the margin/pricing need redoing, or is it acceptable COGS?
+4. **Opus vs Sonnet 5 for client-facing drafting.** Re-opened back-test (2026-06-30) — is running it a near-term priority, or park it? (Booking-chat is already on Sonnet 5.)
+5. **Who runs the heavy agentic work — confirm the reconciliation.** Booking-chat = the **extension**, on Guy's key; post-call email/transcript = **Claude chat**, on the client's Claude. The journal has both framings unreconciled (~1425 vs ~1470) — confirm this split is right.
+
 ## ✅ CANONICAL CURRENT STATE — read this first; trust it over the journal
 
 > **How this doc works now (2026-06-18, restructured for an AI reader).** This block is the
@@ -114,7 +122,8 @@ Wingguy (how to act) + reads/writes the Portal (the records).
 
 **Two SURFACES run Wingguy — ONE shared brain (this is the non-obvious, oft-revisited bit).**
 - **The LinkedIn extension — the LinkedIn slice ONLY.** Human-at-the-glass on LinkedIn: outreach + booking. It
-  **STOPS at LinkedIn** — it does NOT touch email/calendar or the post-call phase. Backend calls the AI on Guy's key
+  **STOPS at LinkedIn** — it does NOT touch email/calendar or the post-call phase, and it **starts post-connection**
+  (intros/matchmaking are OUT of the extension — those happen in Claude chat / the MCP). Backend calls the AI on Guy's key
   (his COGS); clients need no AI account for this surface. **★ UX SHAPE (2026-06-26): AI-Blaze-style FULL-SCREEN
   takeover fired by ONE typed trigger (`/wg`/aliases) from the LinkedIn composer; auto-detects phase + campaign
   template; draft highlighted → "insert highlight" → human edits → human clicks Send → on Send the thread
@@ -156,6 +165,10 @@ prod summary/scoring model defaults to **`gemini-2.5-pro-preview-05-06` (2.5 PRO
 Guy's read = "pretty sure it's Pro"). Immaterial for summaries (pennies), but **⚠ verify + likely switch to Flash
 before SCALING lead-scoring** (high-volume → ~10× lever). Detail ↓ journal "Extension — panel data model, cost/
 quality model, commercial model & voice seed (2026-06-22)".
+**★ UPDATE (2026-06-30) — Sonnet 5 is live.** The Wingguy chat drafting default is now `claude-sonnet-5`
+(`WINGGUY_DRAFT_MODEL_ID`, thinking disabled; `claude-sonnet-4-6` = fallback). The **Opus-for-client-facing
+escalation is RE-OPENED** — back-test Sonnet 5 vs Opus before keeping Opus (open item → ▶ You are here). The backend
+`CLAUDE_MODEL_ID` (speaker-reconstruction etc.) is a SEPARATE knob, still `claude-opus-4-8`.
 **Provider end-state (audited 2026-06-19): three providers, three different jobs — nothing to migrate.**
 **Gemini** = high-volume scoring + meeting summaries + follow-up prep (stays). **OpenAI** = the portal's
 **Start Here** help-Q&A (embeddings RAG + cheap `gpt-4o-mini` escalation) + topic layout — **live, and its
@@ -169,6 +182,10 @@ volatile status → ▶ You are here; "let sleeping babies lie" confirmed with e
 paying** referrals → $150 drops, **$50 floor** stays (conditional, grace window; $300→$50 tied to VA
 self-sufficiency). Separate **one-time setup** from recurring. **No contractual lock-in** (protect only
 months 1-3). ~100-client steady-state ≈ **AUD ~$265k/yr, ~78% margin** *(planning ballpark)*.
+**★ CORRECTION (2026-06-30): the EXTENSION runs on GUY's API key (his COGS), NOT the client's Claude — only the
+connector / Claude-chat surface is ~$0 to Guy.** Est. extension AI ≈ **$1,000–1,500/mo at ~70 Wingguy clients**; the
+~78%-margin figure above did NOT account for this, so the margin needs a re-check. (The $50/mo model already assumes
+~$5–8/client AI on Guy's key.)
 **Extension/Wingguy commercial model (2026-06-22, stickiness-first):** flat **$50/mo** (the +$50 Wingguy tier)
 after a **500-action free trial** (≈ a month for a typical user; ~$5-8 AI cost on Sonnet); **simple daily action
 cap ~150/day (≈3,000/mo) as a runaway backstop — NOT metered billing** (metering would make clients ration →
@@ -180,13 +197,13 @@ model, commercial model & voice seed (2026-06-22)".
 calendar+email multi-tenant via **Nylas** middleman (hosted auth) behind a **thin adapter** (Google = Guy's
 current adapter) · connector auth = a **bolt-on managed provider** (**WorkOS AuthKit** the lead pick), not
 hand-rolled OAuth · rules in **Postgres, versioned/append-only, single conflict-checked write-door** (LLM
-proposes, code writes, curated categories) · **LinkedIn read+send stay human-at-the-glass** (never headless
+proposes, code writes, curated categories; **edit-authority by layer — foundation = Guy/platform ONLY, clients edit their own rules via the write-door, a VA edits NOTHING (flags only)**) · **LinkedIn read+send stay human-at-the-glass** (never headless
 send) · build `dev`→staging→main behind off-by-default flags (exception: Fathom backend-only work runs on
 `main`, guarded by design + kill-switch).
 
 **Capture / transcript.** Migrating **Recall.ai → Fathom** (Fathom = client-owned capture + "ready" webhook;
 capture cost stays the client's). `recall_*` names = the **source-agnostic store**, NOT Recall.ai. Back-to-
-back **splitter is required** (calendar-anchored + speaker-transition; serial cut, overlap accepted).
+back **splitter is required** (calendar-anchored + speaker-transition; serial cut, overlap accepted). **Post-call / connector work ALWAYS uses the FULL transcript; the summary-default cost optimisation is EXTENSION-ONLY and never touches the post-call flow.**
 *Live status → ▶ You are here + memory `project_recall_to_fathom_migration`.*
 
 **GTM.** ICP = **frequency-of-use** (relationship-building is their daily job), not job title. **Wingguy
@@ -705,7 +722,7 @@ offer both.
 - **Claude** → all **drafting** (booking message, LinkedIn reply, post-call email): voice
   consistency across surfaces (all sound like Guy), quality on customer-facing output, matches the
   "powered by Claude" brand.
-- **Gemini Flash (already wired)** → **scoring/qualifying** batch: cheap, high-volume, voice
+- **[⚠ SUPERSEDED 2026-06-22 → prod scoring/summary actually defaults to `gemini-2.5-pro-preview`, not Flash; see canonical AI/model note]** **Gemini Flash (already wired)** → **scoring/qualifying** batch: cheap, high-volume, voice
   irrelevant. Right-model-per-job — don't pay Claude prices for yes/no classification.
 - **Not rip-and-replace:** keep existing Gemini scoring, ADD a Claude drafting path.
 - Cost delta small (draft ~1-2¢ Claude vs ~0.3¢ Gemini; heavy user ~$16 vs ~$3/mo) — quality worth
@@ -734,7 +751,7 @@ normal **product requirement** (like "requires Chrome"), NOT a concession. Why:
   now + protected later.
 
 ### Rules de-personalisation — Guy's master → per-tenant (design, 2026-06-09)
-**Confirmed:** rules live in **Postgres on Render** (NOT per-client Notion). Notion = human/doc
+**⚠ SUPERSEDED/CLARIFIED (2026-07-01): this reads as "Postgres now, not Notion"; the CURRENT truth is NOTION NOW → POSTGRES END-STATE (Guy included, tenant 0) — see the canonical "IRON REQUIREMENT" block.** **Confirmed:** rules live in **Postgres on Render** (NOT per-client Notion). Notion = human/doc
 tool, not a runtime DB (slow, rate-limited); Postgres = cheap, fast, versioned, tiny data;
 **clients never need Notion** — rules served from Guy's Postgres via the backend.
 
@@ -975,7 +992,7 @@ colonised** (and descriptive = legally weakest mark anyway).
 **REAL FIX: go abstract/fanciful** — a coined word with NO literal tie to knowing/memory (cf. Spotify/
 Vercel/Figma/Xero/Stripe — none describe the product). More available AND strongest trademark class;
 the BRAND gives it meaning.
-**DECISION (2026-06-09): PARK naming — it's NOT on the critical path** (launch-time decision; build
+**[⚠ SUPERSEDED (later, same era) → the name was CHOSEN: "Wingguy". Ignore this PARK decision.]** **DECISION (2026-06-09): PARK naming — it's NOT on the critical path** (launch-time decision; build
 doesn't need it). Use placeholder **"the Brain" / "second brain"** in code+docs now. Run a proper
 abstract-coinage + **real domain/trademark clearance** (IP Australia) exercise near launch — not
 eyeball-screening in chat. Guy's brand call.
@@ -1326,7 +1343,7 @@ wouldn't with a client's own key).
   **add the cap before wider rollout.**
 
 **Out-of-scope use — prevented by design, not policed (crystallises "Panel beats Claude-chat").** The panel
-is **fixed-button, not an open chat** → there's literally no door for "write my kid's essay"; the buttons
+is **fixed-button, not an open chat** [⚠ SUPERSEDED 2026-06-26: the UX lock added a refine chat box — the "no free-text door" premise below no longer holds; see canonical] → there's literally no door for "write my kid's essay"; the buttons
 ARE the menu and only carry the jobs Guy builds. Reinforced by: the **backend only has code paths for Guy's
 jobs** (no path = can't happen), **instruction-rules** on any free-text ("you help with LinkedIn outreach +
 post-call follow-up; decline the rest"), and **full visibility** of everything passing through. Only
@@ -2177,7 +2194,7 @@ Audited what actually calls AI in the live code:
   (`mcp-recall-transcript`, currently **stdio/local**). Only real work = make it **remote +
   multi-tenant** (hosted, per-tenant isolation) — the core multi-tenant build we owe anyway.
 - **Scope guard:** the connector is the **cockpit / client's-own-Claude** surface (chat; techy/DIY/
-  free-tier taste). It does **NOT** replace the fixed-button **extension panel** (the no-thinking VA
+  free-tier taste). It does **NOT** replace the fixed-button **extension panel** [⚠ "fixed-button" SUPERSEDED 2026-06-26 → full-screen takeover with a refine chat box; see canonical] (the no-thinking VA
   flow). Two surfaces, one backend brain.
 
 ### Connector auth — no OAuth nightmare; bolt-on provider; free at our scale (2026-06-17)
