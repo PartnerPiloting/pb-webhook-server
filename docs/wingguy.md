@@ -71,7 +71,9 @@
 - **Architecture & build process:** Environments & deploy flow · Implementation roadmap (7 phases) · De-risking
   spikes · What actually paces the build · Scope reality check · Key code anchors · Chrome extension —
   fork-and-run-two, distribution, cost caps, scope & client lifecycle (2026-06-21) · Extension — panel data model,
-  cost/quality model, commercial model & voice seed (2026-06-22).
+  cost/quality model, commercial model & voice seed (2026-06-22) · **★ Penguy vs Wingguy — two brains (by purpose) + two
+  surfaces (extension = LinkedIn-only, Claude chat = full lifecycle incl. post-call email/calendar), ONE shared source
+  of truth (canonical, SETTLED 2026-07-01)**.
 - **GTM / market / scaling:** Target market + go-forward · Strategy handoff · Competitive position · Scaling to
   ~50 (intro-mesh; NO recurring meetings) · Ideal client = frequency-of-use · Onboarding = activation ·
   Sequencing the reveal · VA model + cost · Guy's time ~3 days/wk · LinkedIn analogy (renting a solved network).
@@ -98,16 +100,39 @@ novelty or rules-as-text.
 later). **Wingguy** = Postgres (rules/prompts/accumulated knowledge = the "second brain"). The agent reads
 Wingguy (how to act) + reads/writes the Portal (the records).
 
-**Two product surfaces, one backend (key non-obvious distinction).**
-- **Extension panel** — no-thinking VA flow; backend calls the AI **on Guy's key (his COGS)**.
-  Clients need no AI account for *this* surface. **★ UX SHAPE (2026-06-26): an AI-Blaze-style FULL-SCREEN takeover
-  fired by ONE typed trigger (`/wg`/aliases) from inside the LinkedIn composer; auto-detects phase + campaign
-  template; draft shown highlighted → "insert highlight" → human edits → human clicks Send → on Send the whole
-  thread full-replaces to Airtable.** ("fixed-button" is SUPERSEDED — there IS a refine chat box, the free-text
-  watch-spot, kept on-rails by instruction-rules per "Out-of-scope use".) Detail ↓ journal "Extension UX lock
-  (2026-06-26)".
-- **Connector / cockpit** — the **client's own Claude** via **ONE remote MCP connector**; runs on the
-  **client's** AI (~$0 to Guy) = the free→paid wedge. This is why "clients need no AI account" is panel-only.
+**★ PENGUY vs WINGGUY — two brains, split by PURPOSE (SETTLED 2026-07-01; do NOT re-litigate).**
+- **Wingguy = the client-relationship LIFECYCLE brain.** Everything that moves a specific lead/prospect/client
+  forward: LinkedIn outreach → book a discovery call → the **post-call phase (which moves into EMAIL)** → ongoing
+  follow-up. This is the productised thing EVERY client uses; **Guy is client #1** (his personal voice/templates =
+  his *tenant config inside Wingguy*, not a separate system). Its rules = voice, campaign templates (`tks`/`frac`),
+  the conversation-stage logic, objection handling, booking, and post-call email/calendar nurture.
+- **Penguy = Guy's PERSONAL creation & admin brain.** Guy's own writing + running the business: newsletters,
+  thought-leadership emails (Mindset Mastery, Getting Better Results), strategy, decision log, building-the-system,
+  personal/health. NOT tied to advancing a lead. Mastered in **Notion** ("00 — Master Brief" + manifest), fired by
+  the claude.ai account instruction on *email / newsletter / "Penguy"*. See memory `project_penguy_personal_assistant`.
+- **The tell:** advancing a specific lead/client relationship → **Wingguy**; Guy's own writing/admin/building → **Penguy**.
+
+**Two SURFACES run Wingguy — ONE shared brain (this is the non-obvious, oft-revisited bit).**
+- **The LinkedIn extension — the LinkedIn slice ONLY.** Human-at-the-glass on LinkedIn: outreach + booking. It
+  **STOPS at LinkedIn** — it does NOT touch email/calendar or the post-call phase. Backend calls the AI on Guy's key
+  (his COGS); clients need no AI account for this surface. **★ UX SHAPE (2026-06-26): AI-Blaze-style FULL-SCREEN
+  takeover fired by ONE typed trigger (`/wg`/aliases) from the LinkedIn composer; auto-detects phase + campaign
+  template; draft highlighted → "insert highlight" → human edits → human clicks Send → on Send the thread
+  full-replaces to Airtable.** ("fixed-button" SUPERSEDED — there IS a refine chat box.) Detail ↓ journal "Extension
+  UX lock (2026-06-26)".
+- **Claude chat (the connector / cockpit) — the FULL Wingguy lifecycle.** It must (a) do the SAME LinkedIn outreach
+  job as the extension (paste a profile/thread → the SAME draft), AND (b) do the part the extension WON'T: from the
+  discovery call onward the relationship goes to **EMAIL**, so Claude chat **reads the actual emails + calendar** and
+  drafts/manages that phase. Runs on the **client's own Claude** (~$0 to Guy) = the free→paid wedge. (Claude chat is
+  ALSO where Penguy runs; the account instruction routes by task — email/newsletter/"Penguy" → Penguy, LinkedIn
+  outreach or post-call lead email → Wingguy.)
+- **★ IRON REQUIREMENT — ONE shared source of truth for Wingguy rules.** The extension and Claude-chat-doing-Wingguy
+  read the SAME Wingguy rules — NEVER a private copy each. (Two copies = the 2026-07-01 "Matthew" drift: outreach
+  rules had one copy in Penguy's Notion AND another in the extension's code, so chat drafted the full opener while the
+  extension drafted a weak nudge.) **Interim (now):** rules live in code (`config/wingguyTemplates.js`); the orphaned
+  LinkedIn-outreach copy in Penguy's Notion is being RETIRED so it can't drift. **End-state (roadmap):** the Wingguy
+  rules store (Postgres second-brain) is the single master BOTH surfaces read via one connector — Guy is his own first
+  connector-client.
 
 **AI / model.** Standardise on **Claude** now behind a swappable seam: **Claude = drafting** (voice),
 **Gemini = scoring + summaries** (cheap, high-volume). Connector surface needs the client's own Claude account
@@ -2645,11 +2670,30 @@ the **~3,000/mo cap** backstop; the **$50 flat + 500-action trial** via Stripe. 
 (make `extension-config` per-client); the **"sharpen" button + code auto-route to Opus** (from back-test evidence);
 onboard client #2; distribution → **Chrome Web Store "Unlisted"**.
 
+## Penguy vs Wingguy + two-surfaces-one-brain — SETTLED & documented (2026-07-01)
+Provenance for the canonical **"PENGUY vs WINGGUY"** + **"Two SURFACES run Wingguy"** blocks up top. Guy's intent,
+stated explicitly this session and confirmed against his claude.ai account instruction (*"This is my personal
+assistant, separate from client-facing Wingguy"*) + the Notion "00 — Master Brief" manifest:
+- **Penguy = personal** (his writing/newsletters/thought-leadership emails + strategy + building-the-system),
+  mastered in **Notion**, fired on *email/newsletter/"Penguy"*. **Wingguy = the client-lifecycle product** (LinkedIn
+  outreach → book a discovery call → post-call **email/calendar** → follow-up); **Guy is client #1** (his voice =
+  tenant config inside Wingguy).
+- **Extension = the LinkedIn slice ONLY** (stops at LinkedIn). **Claude chat = the FULL lifecycle** — the SAME
+  LinkedIn job as the extension PLUS the post-discovery-call **EMAIL + calendar** phase the extension won't do.
+- **Both surfaces MUST read ONE shared Wingguy source of truth.** The drift that started this session (chat drafted
+  the full frac opener for Matthew, the extension drafted a weak nudge) was TWO copies of the outreach rules — one in
+  Penguy's Notion, one in the extension's code. Fix path: **retire the orphaned Notion LinkedIn-outreach copy**;
+  interim master = code (`config/wingguyTemplates.js`); end-state master = the **Postgres Wingguy rules store** read by
+  BOTH surfaces via one connector.
+- **Why it kept getting revisited:** the outreach rules were historically BUILT inside Penguy's Notion (before the
+  extension existed), so the client-facing rules lived in the personal brain. That misfiling is the root cause — now
+  named, so it doesn't have to be rediscovered again.
+
 ## ▶ You are here / next pick-up
 
 **▶▶ SESSION CLOSE 2026-07-01 — START THE NEXT CHAT HERE (TL;DR over the dated entries below).** Wingguy chat runs on
 **Sonnet 5** (thinking disabled) and is working end-to-end on Guy's real leads: draft quality, booking (two-step
-confirm-first), the greeting + sign-off **house style** (config-seam `wingguyVoicePrefs`), and Portal **enrichment**. **★ Latest (`35365e4e`): fixed the extension drafting a weak "your note got buried" NUDGE instead of the real opener for a just-connected lead (Matthew) — it now reads the conversation STAGE (the connection-request handshake note ≠ the pitch), cloud-test verified. This SUPERSEDES the `b70f78d5` "unanswered opener → nudge" rule. See the ★ STAGE-READING FIX entry below.**
+confirm-first), the greeting + sign-off **house style** (config-seam `wingguyVoicePrefs`), and Portal **enrichment**. **★ Latest (`35365e4e`): fixed the extension drafting a weak "your note got buried" NUDGE instead of the real opener for a just-connected lead (Matthew) — it now reads the conversation STAGE (the connection-request handshake note ≠ the pitch), cloud-test verified. This SUPERSEDES the `b70f78d5` "unanswered opener → nudge" rule. See the ★ STAGE-READING FIX entry below.** **★ ALSO SETTLED this session (now CANONICAL up top): Penguy-vs-Wingguy + two-surfaces-one-brain — extension = LinkedIn slice ONLY; Claude chat = the FULL lifecycle (same LinkedIn job + the post-discovery-call EMAIL/calendar phase the extension won't do); both MUST read ONE shared Wingguy source of truth. NEXT ACTION = diff the Notion "Outreach Rules"/"LinkedIn Templates" pages vs `config/wingguyTemplates.js`, fold any gaps into Wingguy, then retire the orphaned Notion LinkedIn-outreach mode.**
 Today's big theme = **hardening the extension against real-run bugs** (bubble-over-profile person, internal `/in/ACoA`
 URLs, on-send capture misses, and wrong-person saves) — details in the entries below. **⚠ Guy must be on the LATEST
 extension reload** to have the full set (client-side; reload + tab refresh, not deploy-gated). **Open watch-items:**
