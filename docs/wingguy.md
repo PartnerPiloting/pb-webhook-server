@@ -136,6 +136,14 @@ Wingguy (how to act) + reads/writes the Portal (the records).
   drafts/manages that phase. Runs on the **client's own Claude** (~$0 to Guy) = the free→paid wedge. (Claude chat is
   ALSO where Penguy runs; the account instruction routes by task — email/newsletter/"Penguy" → Penguy, LinkedIn
   outreach or post-call lead email → Wingguy.)
+  - **⚠ Slash-command collision + fix (2026-07-01).** On LinkedIn `/` is the extension's trigger; in Claude `/` is
+    Anthropic's command prefix — different parser we don't own. A client trained to lead with `/WG` on LinkedIn will
+    eventually type it in Claude and hit the raw "Unknown command: /wg" (reads as broken though nothing is). The Claude
+    surface is really **paste-and-go**, so the slash was never the main path there. **Fix = register `/wg` + `/wingguy`
+    as skills in each client's Claude at provisioning time** — folder name IS the command, no aliases, so two folders;
+    `disable-model-invocation: true` so they fire ONLY on the typed slash (a nudge to paste, not real behaviour).
+    Copy-ready template + per-client checklist: `docs/provisioning/claude-chat-skills/`. Fold the copy step into
+    onboarding right next to "install the extension" so no tenant ends up with the raw error.
 - **★ IRON REQUIREMENT — ONE shared source of truth for Wingguy rules, and for GUY that source is NOTION.** Guy
   actively AUTHORS his rules by telling Claude chat *"update my rules in Notion"* — Notion is his real, daily single
   source of truth (his own System Rule #1: *"nothing is mastered locally or in Claude Projects"*). So **Notion is NOT
