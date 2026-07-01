@@ -1059,8 +1059,19 @@
   async function startChat(profile, thread) {
     chatState = { profile, thread, messages: [], leadEmail: '', draft: '' };
     renderChatShell();
+    // The lead's email (for the calendar invite) is keyed off the profile URL. On the messaging surface
+    // that URL is the scrambled /in/ACoA… form, which the lookup can't match → no email → the booking
+    // tool can't build an invite and the agent reports it "can't write" (Deepti, 2026-07-01 — proven in
+    // prod logs). Resolve it to the vanity slug first (same fix the save path uses); if that fails, fall
+    // back to the NAME so we never query with a URL that's guaranteed to miss.
+    let lookupUrl = profile.profileUrl || '';
+    if (/\/in\/ACoA/i.test(lookupUrl)) {
+      const real = await resolveAcoaToVanity(lookupUrl);
+      if (real && !/\/in\/ACoA/i.test(real)) { profile.profileUrl = real; lookupUrl = real; console.log('[Wingguy] chat resolved internal URL →', real); }
+    }
+    const lookupQuery = (/\/in\/ACoA/i.test(lookupUrl) ? '' : lookupUrl) || profile.name || '';
     // Look up the lead's email (for the calendar invite) in the background — non-blocking.
-    bg({ type: 'WG_CAL_LOOKUP', query: profile.profileUrl || profile.name || '' })
+    bg({ type: 'WG_CAL_LOOKUP', query: lookupQuery })
       .then((r) => { if (r && r.found && r.email) chatState.leadEmail = r.email; })
       .catch(() => { /* agent will ask Guy to add it if booking is attempted */ });
     // Auto-kick the first turn (hidden). The kickoff differs for a fresh connection vs an open thread.
