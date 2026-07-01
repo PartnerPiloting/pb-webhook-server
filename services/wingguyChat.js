@@ -5,11 +5,13 @@
 // and keeps a LinkedIn message draft ready to send (propose_message). Stateless: the caller passes
 // the running `messages` array each turn (including prior tool blocks).
 //
-// Model = Sonnet 4.6 by default (WINGGUY_DRAFT_MODEL_ID). NOTE (2026-07-01): a swap to `claude-sonnet-5`
-// on 2026-06-30 broke the panel — Sonnet 5 thinks by default, and with tools + the small CHAT_MAX_TOKENS
-// the turn returned no reply/no draft ("(No response — try rephrasing)"). Reverted to restore service.
-// Sonnet 5 works with `thinking: {type:'disabled'}` (verified live) — CHAT_THINKING below is that seam;
-// env-select the model to re-attempt once the cloud test (scripts/wingguy-chat-test.js) passes on it.
+// Model = Sonnet 5 by default (WINGGUY_DRAFT_MODEL_ID), with thinking DISABLED (CHAT_THINKING below).
+// History (2026-07-01): the first 2026-06-30 swap to `claude-sonnet-5` broke the panel — Sonnet 5 thinks by
+// default, and with tools + the small CHAT_MAX_TOKENS the turn returned no reply/no draft ("(No response —
+// try rephrasing)"). Fix = disable thinking (this agentic booking chat is latency-sensitive and drafts/books
+// rather than deep-reasons) + a firmer two-step confirm-before-booking instruction (Sonnet 5 is more eager).
+// Verified on Sonnet 5 via the cloud test (scripts/wingguy-chat-test.js): full drafts, correct tool use, and
+// the confirm-first flow holds. Fall back to `claude-sonnet-4-6` via WINGGUY_DRAFT_MODEL_ID if ever needed.
 // `deps` lets the test inject stubs (e.g. a no-op book) so it can prove the brain without creating
 // real events.
 
@@ -18,7 +20,7 @@ const { WINGGUY_VOICE, WINGGUY_AGENT_INSTRUCTIONS } = require('./../config/wingg
 const { getBookingPrefs } = require('../config/wingguyBookingPrefs');
 const wingguyCalendar = require('./wingguyCalendar');
 
-const MODEL_ID = process.env.WINGGUY_DRAFT_MODEL_ID || 'claude-sonnet-4-6';
+const MODEL_ID = process.env.WINGGUY_DRAFT_MODEL_ID || 'claude-sonnet-5';
 // Disable thinking for this agentic booking chat: it's latency-sensitive (interactive panel) and the tool
 // loop drafts/books rather than deep-reasons. Also the seam that makes thinking-by-default models (Sonnet 5)
 // usable here without the empty-turn failure. Harmless on Sonnet 4.6 (no default thinking).
