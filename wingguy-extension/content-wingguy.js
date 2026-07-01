@@ -959,9 +959,55 @@
     `;
     document.body.appendChild(overlay);
     overlay.querySelector('#wingguy-close').addEventListener('click', closePanel);
-    // Click the dim backdrop (outside the modal) to close; Esc to close.
-    overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) closePanel(); });
+    // No dim backdrop / click-outside-to-close: the overlay is click-through so the
+    // LinkedIn page stays usable. Close via the × button or Esc. The panel floats and
+    // can be dragged by its header so you can see (and use) the page underneath.
+    makeDraggable(overlay.querySelector('#' + PANEL_ID));
     return overlay;
+  }
+
+  // Drag the panel by its CONTEXT header. On first grab we switch the modal from the
+  // centring flex flow to fixed left/top (seeded from its current on-screen box) so it
+  // stays put wherever it's dropped. Grabs that start on the × button are ignored.
+  function makeDraggable(modal) {
+    if (!modal) return;
+    const head = modal.querySelector('.wingguy-modal-head');
+    if (!head) return;
+    let startX = 0, startY = 0, baseLeft = 0, baseTop = 0, dragging = false;
+
+    const onMove = (e) => {
+      if (!dragging) return;
+      const dx = e.clientX - startX, dy = e.clientY - startY;
+      // Keep at least a sliver on-screen so the panel can't be lost off an edge.
+      const maxLeft = window.innerWidth - 60;
+      const maxTop = window.innerHeight - 40;
+      modal.style.left = Math.min(Math.max(baseLeft + dx, 60 - modal.offsetWidth), maxLeft) + 'px';
+      modal.style.top = Math.min(Math.max(baseTop + dy, 0), maxTop) + 'px';
+    };
+    const onUp = () => {
+      dragging = false;
+      document.removeEventListener('mousemove', onMove, true);
+      document.removeEventListener('mouseup', onUp, true);
+    };
+
+    head.addEventListener('mousedown', (e) => {
+      if (e.button !== 0) return;                       // left button only
+      if (e.target.closest('#wingguy-close')) return;   // don't hijack the close button
+      const rect = modal.getBoundingClientRect();
+      if (!modal.classList.contains('wingguy-floating')) {
+        // Freeze current position, then switch to fixed left/top for free movement.
+        modal.classList.add('wingguy-floating');
+        modal.style.width = rect.width + 'px';
+        modal.style.left = rect.left + 'px';
+        modal.style.top = rect.top + 'px';
+      }
+      startX = e.clientX; startY = e.clientY;
+      baseLeft = rect.left; baseTop = rect.top;
+      dragging = true;
+      document.addEventListener('mousemove', onMove, true);
+      document.addEventListener('mouseup', onUp, true);
+      e.preventDefault();
+    });
   }
 
   function setContextSub(html) {

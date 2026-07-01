@@ -39,7 +39,11 @@
   position: fixed;
   inset: 0;
   z-index: 2147483600;
-  background: rgba(15, 23, 42, 0.55);
+  /* No dim backdrop: the overlay is just a positioning shell — transparent and
+     click-through so the LinkedIn page underneath stays fully visible and usable.
+     Only the modal itself catches pointer events (see .wingguy-modal). */
+  background: transparent;
+  pointer-events: none;
   display: flex;
   align-items: flex-start;
   justify-content: center;
@@ -58,6 +62,14 @@
   border-radius: 16px;
   box-shadow: 0 24px 70px rgba(15, 23, 42, 0.4);
   overflow: hidden;
+  /* Re-enable interaction on the panel itself (overlay is click-through). */
+  pointer-events: auto;
+}
+/* Once the user starts dragging, JS switches the modal to fixed positioning and
+   drives left/top directly, taking it out of the centring flex flow. */
+.wingguy-modal.wingguy-floating {
+  position: fixed;
+  width: auto;
 }
 .wingguy-modal-head {
   display: flex;
@@ -66,7 +78,11 @@
   gap: 12px;
   padding: 16px 20px;
   border-bottom: 1px solid var(--wingguy-border);
+  /* Drag handle for the floating panel. */
+  cursor: move;
+  user-select: none;
 }
+.wingguy-modal-head .wingguy-x { cursor: pointer; }
 .wingguy-context { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .wingguy-context-label {
   font-weight: 800; font-size: 12px; letter-spacing: 0.08em;
