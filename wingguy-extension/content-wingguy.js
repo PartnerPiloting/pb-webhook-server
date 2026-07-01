@@ -162,38 +162,71 @@
   // shows the right person and the email lookup (by /in/ URL) works. Scoped to the conversation the
   // user is acting in (the box they typed /wg in), else the active detail pane. DOM-fragile by nature
   // — logs a diagnostic when it can't find a clean name so the selectors can be locked from real DOM.
+  // Dump the header DOM once when we can't cleanly read a name — so the exact selectors can be locked
+  // from the real (bubble vs full-page) markup instead of guessing.
+  function dumpHeaderDiag(root) {
+    try {
+      const bits = [];
+      (root || document).querySelectorAll('h1,h2,h3,[class*="title"],[class*="entity-title"],[class*="lockup"],a[href*="/in/"]').forEach((e) => {
+        const t = cleanText((e.getAttribute && e.getAttribute('aria-label')) || e.textContent).slice(0, 40);
+        const href = e.getAttribute && e.getAttribute('href');
+        bits.push(`${e.tagName}[${String(e.className || '').slice(0, 44)}]${href ? ' href=' + String(href).slice(0, 46) : ''}: ${t}`);
+      });
+      console.log('[Wingguy] HEADER DIAG (paste this to fix the name):', bits.slice(0, 20));
+    } catch (e) { console.log('[Wingguy] header diag failed:', e.message); }
+  }
+
   function scrapeMessagingHeader() {
     const anchor = (lastFocusedEditable && document.contains(lastFocusedEditable)) ? lastFocusedEditable : null;
     const convo = (anchor && closestConversationContainer(anchor)) || document.querySelector(CONVO_SELECTORS);
     const pane = (convo && (convo.closest('.scaffold-layout__detail, .msg-overlay-conversation-bubble') || convo)) || document;
+    // Scope to the header region so we don't pull a name/link out of a message bubble body.
+    const header = pane.querySelector('header, [class*="overlay-bubble-header"], [class*="title-bar"], [class*="thread__header"], [class*="thread-header"]') || pane;
 
-    // Name + profile link from the thread header (try specific → generic; validate it looks like a name).
-    const linkSelectors = [
+    // NAME and URL are read SEPARATELY — in an overlay bubble the name is a heading (text, not a link) and
+    // the /in/ link is usually the avatar (no text). Requiring both on one element (the old bug) missed it.
+    // Name: header title/heading text (validated to look like a name), then a named /in/ link as fallback.
+    let name = '';
+    const nameSelectors = [
       '.msg-thread__link-to-profile',
-      '[class*="title-bar"] a[href*="/in/"]',
-      '[class*="entity-lockup"] a[href*="/in/"]',
-      'h2 a[href*="/in/"]',
-      'a[href*="/in/"]',
+      '.msg-overlay-bubble-header__title',
+      '.msg-entity-lockup__entity-title',
+      '[class*="overlay-bubble-header"] [class*="title"]',
+      '[class*="title-bar"] [class*="title"]',
+      '[class*="entity-lockup__entity-title"]',
+      '[class*="entity-title"]',
+      'h2', 'h3',
     ];
-    let nameLink = null;
-    for (const sel of linkSelectors) {
-      for (const el of pane.querySelectorAll(sel)) {
-        if (looksLikeName(cleanText(el.getAttribute('aria-label') || el.textContent))) { nameLink = el; break; }
+    for (const sel of nameSelectors) {
+      for (const el of header.querySelectorAll(sel)) {
+        const t = cleanText(el.getAttribute('aria-label') || el.textContent);
+        if (looksLikeName(t)) { name = t; break; }
       }
-      if (nameLink) break;
+      if (name) break;
     }
-    const name = nameLink ? cleanText(nameLink.getAttribute('aria-label') || nameLink.textContent) : '';
-    const profileUrl = nameLink ? normalizeInUrl(nameLink.getAttribute('href')) : '';
+    if (!name) {
+      for (const a of pane.querySelectorAll('a[href*="/in/"]')) {
+        const t = cleanText(a.getAttribute('aria-label') || a.textContent);
+        if (looksLikeName(t)) { name = t; break; }
+      }
+    }
+    // URL: the first /in/ link in the header (name OR avatar), else anywhere in the pane.
+    let profileUrl = '';
+    for (const a of [...header.querySelectorAll('a[href*="/in/"]'), ...pane.querySelectorAll('a[href*="/in/"]')]) {
+      const u = normalizeInUrl(a.getAttribute('href'));
+      if (u) { profileUrl = u; break; }
+    }
 
     // Headline (best-effort) from the header subtitle / lockup near the name.
     let headline = '';
     for (const sel of ['[class*="title-bar__subtitle"]', '[class*="entity-lockup__entity-info"]', '[class*="entity-lockup__subtitle"]', '[class*="__occupation"]']) {
-      const t = cleanText((pane.querySelector(sel) || {}).textContent);
+      const t = cleanText((header.querySelector(sel) || pane.querySelector(sel) || {}).textContent);
       if (t && t.length < 200 && !/active now|online|reachable|· $/i.test(t)) { headline = t; break; }
     }
 
     if (!name || /^messaging$/i.test(name)) {
-      console.log('[Wingguy] messaging-header scrape weak — name:', JSON.stringify(name), 'url:', profileUrl, '— paste this if CONTEXT shows the wrong person.');
+      console.log('[Wingguy] messaging-header scrape WEAK — name:', JSON.stringify(name), 'url:', profileUrl || '(none)', '— paste the HEADER DIAG below.');
+      dumpHeaderDiag(header);
     } else {
       console.log('[Wingguy] messaging-header →', name, '|', headline || '(no headline)', '|', profileUrl || '(no /in/ url)');
     }
@@ -213,6 +246,7 @@
     // If the user is acting inside a message thread — including a floating conversation bubble open OVER
     // someone else's /in/ profile — the person meant is the one in the THREAD, not the profile behind it.
     const inThread = isMessagingPage() || !!activeThreadContainer();
+    console.log('[Wingguy] scrapeProfile: inThread=', inThread, '(msgPage=', isMessagingPage(), 'bubble/thread=', !!activeThreadContainer(), ')');
     if (!inThread) {
       await autoScrollToLoad();   // force lazy sections (About/Experience) into the DOM (profile pages only)
       await expandAboutSeeMore();
