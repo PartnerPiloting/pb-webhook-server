@@ -46,6 +46,23 @@
     const m = String(href || '').match(/\/in\/([^/?#]+)/);
     return m ? `https://www.linkedin.com/in/${m[1]}` : '';
   }
+  // Resolve LinkedIn's internal member-id URL (/in/ACoA…) to the real vanity /in/<slug>.
+  // A message thread only ever links the ACoA form, and LinkedIn does NOT redirect it — a HEAD/GET
+  // returns 200 on the ACoA URL itself, so the old "follow the redirect" resolve was a silent no-op
+  // (it handed back the ACoA unchanged → lookup missed → save skipped). But the profile HTML embeds
+  // the owner's "vanityName", so GET the page IN-PAGE (same-origin → the logged-in session is carried,
+  // which a background-worker fetch can't guarantee) and read the slug out. Verified live 2026-07-01.
+  async function resolveAcoaToVanity(acoaUrl) {
+    try {
+      const res = await fetch(acoaUrl, { method: 'GET', credentials: 'include' });
+      if (!res.ok) return '';
+      const html = await res.text();
+      const m = html.match(/vanityName\\?":\\?"([a-zA-Z0-9\-]{2,100})/);
+      return m ? `https://www.linkedin.com/in/${m[1]}` : '';
+    } catch (_) {
+      return '';
+    }
+  }
   // Is a LinkedIn message thread actually open right now? True on the full /messaging/ detail pane AND
   // when a floating conversation bubble is expanded on ANY page (feed, profile, search, etc.). This is
   // what lets Wingguy offer itself from the messages, where there's no /in/ profile page in play.
@@ -774,14 +791,11 @@
         return;
       }
       // LinkedIn's internal member-id URL (/in/ACoA...) won't match the vanity URL stored in Airtable —
-      // resolve it to the real profile URL by following the redirect (background does the credentialed fetch).
+      // resolve it in-page by reading the profile's vanityName (LinkedIn does NOT redirect the ACoA form).
       if (/\/in\/ACoA/i.test(profileUrl)) {
-        try {
-          const r = await bg({ type: 'RESOLVE_LINKEDIN_URL', internalUrl: profileUrl });
-          const real = r && r.realUrl && normalizeInUrl(r.realUrl);
-          if (real && !/\/in\/ACoA/i.test(real)) { console.log('[Wingguy] resolved internal URL →', real); profileUrl = real; }
-          else console.log('[Wingguy] internal URL did not resolve to a vanity slug:', r && r.realUrl);
-        } catch (e) { console.log('[Wingguy] URL resolve failed:', e.message); }
+        const real = await resolveAcoaToVanity(profileUrl);
+        if (real && !/\/in\/ACoA/i.test(real)) { console.log('[Wingguy] resolved internal URL →', real); profileUrl = real; }
+        else console.log('[Wingguy] could not resolve internal URL to a vanity slug:', profileUrl);
       }
       const thread = scrapeOpenThread();
       if (!thread.length) {

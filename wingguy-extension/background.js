@@ -426,31 +426,25 @@ function updateBadge(isAuthenticated) {
   }
 }
 
-// Resolve LinkedIn internal ID URL to real profile URL by following redirects
+// Resolve LinkedIn's internal member-id URL (/in/ACoA…) to the real vanity /in/<slug>.
+// NOTE: LinkedIn does NOT redirect the ACoA URL — a HEAD/GET returns 200 on the ACoA URL itself,
+// so the old "follow the redirect" approach was a no-op. Instead GET the page and read the owner's
+// "vanityName" out of the embedded JSON. The primary resolve now runs IN-PAGE in the content script
+// (same-origin → the logged-in session is carried); this background copy is kept correct as a fallback,
+// but a service-worker fetch may not carry the LinkedIn session, in which case it returns '' safely.
 async function resolveLinkedInUrl(internalUrl) {
   console.log('[NA Extension] Resolving LinkedIn URL:', internalUrl);
-  
+
   try {
-    // Make a HEAD request and follow redirects
-    const response = await fetch(internalUrl, {
-      method: 'HEAD',
-      redirect: 'follow',
-      credentials: 'include'
-    });
-    
-    // The final URL after redirects
-    const finalUrl = response.url;
-    console.log('[NA Extension] Resolved to:', finalUrl);
-    
-    // Extract just the profile path without query params
-    const url = new URL(finalUrl);
-    if (url.pathname.startsWith('/in/')) {
-      return url.origin + url.pathname;
-    }
-    
-    return finalUrl;
+    const response = await fetch(internalUrl, { method: 'GET', credentials: 'include' });
+    if (!response.ok) return '';
+    const html = await response.text();
+    const m = html.match(/vanityName\\?":\\?"([a-zA-Z0-9\-]{2,100})/);
+    const resolved = m ? `https://www.linkedin.com/in/${m[1]}` : '';
+    console.log('[NA Extension] Resolved to:', resolved || '(no vanityName found)');
+    return resolved;
   } catch (error) {
     console.error('[NA Extension] Failed to resolve URL:', error);
-    throw error;
+    return '';
   }
 }
