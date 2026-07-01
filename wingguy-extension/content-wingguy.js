@@ -779,11 +779,13 @@
       // it from THAT thread's header so we save to the right person. Only fall back to the page URL when
       // acting directly on a profile with no thread in play.
       const fromThread = () => (isMessagingPage() || activeThreadContainer());
-      let profileUrl = fromThread() ? scrapeMessagingHeader().profileUrl : location_origin_path();
+      let hdr = fromThread() ? scrapeMessagingHeader() : { profileUrl: location_origin_path(), name: '' };
+      let profileUrl = hdr.profileUrl;
       // The header can be mid-render right after a send — one quick retry before giving up.
       if ((!profileUrl || !/\/in\//.test(profileUrl)) && fromThread()) {
         await sleep(800);
-        profileUrl = scrapeMessagingHeader().profileUrl;
+        hdr = scrapeMessagingHeader();
+        profileUrl = hdr.profileUrl;
       }
       if (!profileUrl || !/\/in\//.test(profileUrl)) {
         console.log('[Wingguy] capture skipped — no /in/ profile URL for this thread');
@@ -841,8 +843,14 @@
       const leadLast = String(lead.lastName || '').trim().toLowerCase();
       const knownSenders = [...new Set(thread.map((m) => String(m.sender || '').toLowerCase().trim()))]
         .filter((s) => s && s !== 'unknown');
-      const leadInThread = knownSenders.some((s) =>
-        (leadFirst && s.includes(leadFirst)) || (leadLast.length > 2 && s.includes(leadLast)));
+      const nameMatches = (hay) => !!hay && ((leadFirst && hay.includes(leadFirst)) || (leadLast.length > 2 && hay.includes(leadLast)));
+      // A lead counts as a participant if they've SENT a message OR they're the person the thread is WITH
+      // (the header name). A freshly-connected lead who hasn't replied yet is never a "sender", so the
+      // sender-only check wrongly blocked EVERY first-contact save (Alexis/Bruce, 2026-07-01). The header
+      // name is who we just matched by URL, so it confirms identity without weakening the wrong-person
+      // guard — a URL that matched someone NOT named in the header or the senders is still refused.
+      const headerName = String((hdr && hdr.name) || '').toLowerCase();
+      const leadInThread = knownSenders.some(nameMatches) || nameMatches(headerName);
       if (knownSenders.length && !leadInThread) {
         console.log(`[Wingguy] capture BLOCKED — "${who}" (matched by URL) is not a participant in this thread. Senders: [${knownSenders.join(', ')}]`);
         showCaptureToast(`Didn't save — this conversation isn't with ${who} (safety check). Nothing was written.`, true);
