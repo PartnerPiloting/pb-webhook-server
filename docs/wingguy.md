@@ -2647,23 +2647,25 @@ onboard client #2; distribution → **Chrome Web Store "Unlisted"**.
 
 ## ▶ You are here / next pick-up
 
-**★ SONNET 5 SWAP BROKE THE CHAT AGENT → REVERTED TO 4.6 (2026-07-01, `8a1b08e1`, on `main`). SUPERSEDES the
-"swap 4.6 → Sonnet 5 now (unconditional)" call below.** Yesterday's `claude-sonnet-5` default (`e0aac716`) broke the
-LinkedIn panel: on a normal profile the auto-draft came back **"(No response — try rephrasing)"**. Root cause (proven
-by live prod probes, not a guess): **Sonnet 5 is real + accepted by the API, but it thinks by default**, and in the
-tool-using agent loop with the small `CHAT_MAX_TOKENS` the turn returned no reply/no draft. Fix: reverted the chat
-`MODEL_ID` default to `claude-sonnet-4-6` (the model that logged `draft=yes` all week) AND added
-`CHAT_THINKING={type:'disabled'}` on the `messages.create` (latency-sensitive panel; the agent drafts/books, doesn't
-deep-reason; and it's the seam that makes thinking-by-default models usable here). **Service restored.**
-- **Sonnet 5 IS viable with thinking OFF — verified via the cloud test** (`scripts/wingguy-chat-test.js`, run with
-  `WINGGUY_DRAFT_MODEL_ID=claude-sonnet-5`): full quality drafts, correct `check_availability`/`propose_times`/
-  `propose_message`, Greg fractional scenario perfect. **The empty-turn failure is gone.**
-- **⚠ ONE behavioral delta blocks the flip:** Sonnet 5 is MORE EAGER on booking — on "book the first one" it books
-  immediately, where 4.6 holds back for an explicit confirm (`Turn 2 held back: NO` on S5 vs `yes` on 4.6). This is
-  exactly the "voice/judgment back-test" the swap note anticipated. **NEXT = Guy's call:** stay on 4.6 (safe, now
-  live), OR tighten the confirm-first line in `WINGGUY_AGENT_INSTRUCTIONS`, re-run the cloud test on Sonnet 5, and flip
-  the default only when it goes green. Everything is env-switchable via `WINGGUY_DRAFT_MODEL_ID` (mid-conversation
-  model switches invalidate prompt cache, so switch at the default, not per-turn).
+**★ SONNET 5 NOW LIVE — thinking disabled + firmer confirm-first (2026-07-01, `dcdf99ca`, on `main`). RESOLVES the
+outage below; this is the state of the "swap 4.6 → Sonnet 5" call.** Timeline: the first swap to `claude-sonnet-5`
+(`e0aac716`, 2026-06-30) broke the panel — on a normal profile the auto-draft came back **"(No response — try
+rephrasing)"**. Root cause (proven by live prod probes, not a guess): **Sonnet 5 is real + API-accepted, but it thinks
+by default**, and in the tool-using agent loop with the small `CHAT_MAX_TOKENS` the turn returned no reply/no draft.
+Two fixes, both verified on prod via the cloud test (`scripts/wingguy-chat-test.js`):
+1. **`CHAT_THINKING={type:'disabled'}` on the chat `messages.create`** (`8a1b08e1`) — this agentic booking chat is
+   latency-sensitive and drafts/books rather than deep-reasons; disabling thinking is the seam that makes thinking-by-
+   default models usable here. Killed the empty-turn failure.
+2. **Firmer two-step confirm-before-booking instruction** (`90cd1a58`) — Sonnet 5 is more literal/eager and read "book
+   the first one" as the go-ahead (booked immediately; 4.6 held back). Rewrote the rule so a request to book = Guy
+   CHOOSING the time, and the agent must read the day/time back and wait for a separate explicit yes. **Restores the
+   two-step on Sonnet 5; 4.6 re-run confirmed no regression.**
+- **Verified green on BOTH models:** Turn 1 offers times; Turn 2 "book the first one" HOLDS BACK for confirm; Turn 3
+  "yes" books; Greg fractional scenario weaves the topic + doesn't push times.
+- **`MODEL_ID` default is now `claude-sonnet-5`.** Fall back via `WINGGUY_DRAFT_MODEL_ID=claude-sonnet-4-6` if ever
+  needed (switch at the default, not per-turn — a mid-conversation model switch invalidates the prompt cache).
+- **Open follow-up (Guy's earlier back-test):** whether Sonnet 5 also replaces **Opus** on client-facing (journal
+  "Sonnet 5 … resets the model choice") is still a voice back-test, separate from this booking-chat swap.
 
 **★ MESSAGING SURFACE OPENED UP (2026-07-01, `bbba054e`, pushed to `main`).** Guy hit the gap live: from the
 LinkedIn **messages** (full `/messaging/` page or a floating conversation bubble — no `/in/` profile page in
