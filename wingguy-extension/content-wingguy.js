@@ -339,6 +339,14 @@
       base.recentPosts = [];
       base.pageText = '';
     }
+    // Un-scramble the internal /in/ACoA… member-id URL to the vanity slug ONCE, here at the source, so
+    // EVERY downstream consumer (context display, lead + email lookups, booking, the invite link) works on
+    // the messaging surface — where the header only ever exposes the ACoA form. Doing it here means no
+    // individual call site can forget to resolve. See journal 2026-07-01 (the Deepti booking miss).
+    if (base.profileUrl && /\/in\/ACoA/i.test(base.profileUrl)) {
+      const real = await resolveAcoaToVanity(base.profileUrl);
+      if (real && !/\/in\/ACoA/i.test(real)) { console.log('[Wingguy] scrapeProfile resolved internal URL →', real); base.profileUrl = real; }
+    }
     return base;
   }
 
@@ -1059,17 +1067,11 @@
   async function startChat(profile, thread) {
     chatState = { profile, thread, messages: [], leadEmail: '', draft: '' };
     renderChatShell();
-    // The lead's email (for the calendar invite) is keyed off the profile URL. On the messaging surface
-    // that URL is the scrambled /in/ACoA… form, which the lookup can't match → no email → the booking
-    // tool can't build an invite and the agent reports it "can't write" (Deepti, 2026-07-01 — proven in
-    // prod logs). Resolve it to the vanity slug first (same fix the save path uses); if that fails, fall
-    // back to the NAME so we never query with a URL that's guaranteed to miss.
-    let lookupUrl = profile.profileUrl || '';
-    if (/\/in\/ACoA/i.test(lookupUrl)) {
-      const real = await resolveAcoaToVanity(lookupUrl);
-      if (real && !/\/in\/ACoA/i.test(real)) { profile.profileUrl = real; lookupUrl = real; console.log('[Wingguy] chat resolved internal URL →', real); }
-    }
-    const lookupQuery = (/\/in\/ACoA/i.test(lookupUrl) ? '' : lookupUrl) || profile.name || '';
+    // profile.profileUrl is already un-scrambled at the source (scrapeProfile). Guard anyway: never look
+    // the lead up by a scrambled /in/ACoA… URL (it's guaranteed to miss → no email → booking can't build
+    // the invite and the agent reports it "can't write", Deepti 2026-07-01) — fall back to the name.
+    const u = profile.profileUrl || '';
+    const lookupQuery = (/\/in\/ACoA/i.test(u) ? '' : u) || profile.name || '';
     // Look up the lead's email (for the calendar invite) in the background — non-blocking.
     bg({ type: 'WG_CAL_LOOKUP', query: lookupQuery })
       .then((r) => { if (r && r.found && r.email) chatState.leadEmail = r.email; })
@@ -1311,7 +1313,11 @@
     setBody(`<div class="wingguy-muted">Looking up ${escapeHtml(profile.name || 'the lead')}…</div>`);
     let email = '';
     try {
-      const r = await bg({ type: 'WG_CAL_LOOKUP', query: profile.profileUrl || profile.name || '' });
+      // Guard against the scrambled /in/ACoA… URL (already resolved at source, but never query with it —
+      // it's guaranteed to miss); fall back to the name so the email pre-fill still has a chance.
+      const u = profile.profileUrl || '';
+      const q = (/\/in\/ACoA/i.test(u) ? '' : u) || profile.name || '';
+      const r = await bg({ type: 'WG_CAL_LOOKUP', query: q });
       if (r && r.found && r.email) email = r.email;
     } catch (_) { /* manual entry below */ }
     renderBookForm(profile, thread, email);
