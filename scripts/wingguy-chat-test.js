@@ -115,6 +115,32 @@ async function main() {
   console.log('Produced a draft:', rg.draft ? 'yes' : 'NO');
   console.log('Did NOT call calendar:', !toolCallsIn(rg.messages).includes('check_availability') ? 'yes' : 'NO — it checked the calendar unprompted');
   console.log('Nods to the link topic:', /market/i.test(rg.draft || '') ? 'yes (mentions marketing)' : 'maybe not — check the draft');
+
+  // ── Scenario C: opener SENT, no reply (Vanessa-like — panel opened on a connection whose
+  // thanks-for-connecting opener has been sitting unanswered). Regression guard: Wingguy must DRAFT a
+  // light follow-up nudge, NOT hedge with "no reply yet, want me to wait?" (Sonnet 5 was too cautious).
+  const vanProfile = {
+    name: 'Vanessa Wilton',
+    headline: 'Commercial & Creative Leader · Operations, Brand, NPD, Marketing/Design · Ex-Founder',
+    location: 'Sydney, New South Wales, Australia',
+    profileUrl: 'https://www.linkedin.com/in/vanessawilton/',
+  };
+  const vanConvo = [
+    { sender: 'Guy', text: "Hi Vanessa, I'm building a network of Fractional Professionals who only recommend others they trust. Looking at your profile - I think you'd be easy to recommend. (I know a) Guy" },
+  ];
+  const vanProfileBlock = `Name: ${vanProfile.name}\nHeadline: ${vanProfile.headline}\nLocation: ${vanProfile.location}\nLinkedIn URL: ${vanProfile.profileUrl}`;
+  const vanConvoBlock = vanConvo.map((m) => `${m.sender}: ${m.text}`).join('\n');
+  const vanTpl = getTemplate(detectTemplate(vanProfile, vanConvo));
+  const rv = await runWingguyChatTurn({
+    coach: COACH, profile: vanProfile, conversation: vanConvo, leadEmail: LEAD_EMAIL,
+    profileBlock: vanProfileBlock, convoBlock: vanConvoBlock, campaignTemplate: vanTpl, deps,
+    // The exact kickoff the extension sends when the thread has messages (Guy's own unanswered opener).
+    messages: [{ role: 'user', content: '(Opened from the LinkedIn conversation above. Read where things stand and give me the best next message to send — and if it\'s time to offer a meeting, suggest some times.)' }],
+  });
+  show('SCENARIO C — opener sent, no reply (expect a follow-up nudge draft, NOT a "wait" hedge)', rv);
+  console.log('\n=== SUMMARY (Vanessa / unanswered opener) ===');
+  console.log('Produced a draft (did NOT hedge):', rv.draft ? 'yes' : 'NO — it hedged instead of drafting!');
+  console.log('Did NOT call calendar:', !toolCallsIn(rv.messages).includes('check_availability') ? 'yes' : 'NO — checked the calendar unprompted');
 }
 
 main().then(() => process.exit(0)).catch((e) => { console.error('TEST FAILED:', e); process.exit(1); });
