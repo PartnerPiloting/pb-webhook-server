@@ -2664,6 +2664,14 @@ Two fixes, both verified on prod via the cloud test (`scripts/wingguy-chat-test.
   "yes" books; Greg fractional scenario weaves the topic + doesn't push times.
 - **`MODEL_ID` default is now `claude-sonnet-5`.** Fall back via `WINGGUY_DRAFT_MODEL_ID=claude-sonnet-4-6` if ever
   needed (switch at the default, not per-turn — a mid-conversation model switch invalidates the prompt cache).
+- **★ Second Sonnet-5 over-caution tune (`b70f78d5`).** Flip side of the eager-booking fix: on a connection whose
+  opener had already been SENT but not answered, Sonnet 5 (more deliberate) HEDGED — "no reply yet, want me to draft a
+  nudge or just wait?" — instead of drafting. Fixed in `WINGGUY_AGENT_INSTRUCTIONS`: split the no-reply branch (opener
+  not-yet-sent → thanks opener; opener sent + unanswered → light follow-up nudge, never re-send, never say "wait"), plus
+  an **ALWAYS DRAFT** rule (every turn leaves a ready draft; never end with only a question). New cloud-test Scenario C
+  (Vanessa-like unanswered opener) locks it: verified on Sonnet 5 it now drafts a proper nudge; booking + Greg unchanged.
+  Pattern to remember: **Sonnet 5 is more literal/deliberate — expect to nudge behaviour with explicit instructions in
+  both directions (rein IN eager booking, push OUT over-cautious hedging).**
 - **Open follow-up (Guy's earlier back-test):** whether Sonnet 5 also replaces **Opus** on client-facing (journal
   "Sonnet 5 … resets the model choice") is still a voice back-test, separate from this booking-chat swap.
 
