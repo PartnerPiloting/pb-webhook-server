@@ -80,15 +80,6 @@
 
 ---
 
-## ✅ CONSOLIDATION AUDIT OUTCOMES (2026-07-01) — ALL RESOLVED
-> The genuine "which is true now?" items the 2026-07-01 consolidation audit surfaced — all now resolved with Guy. Kept as a provenance record; prune or fold into the journal when stale. Current truth for each lives in the canonical block / code / Notion as noted. **Remaining human to-dos (not blockers):** (#1) point the Master Brief manifest away from the non-existent "LinkedIn Templates" page; (#2) for always-on "primary calendar only" in every chat, add a one-liner to the claude.ai account "Instructions for Claude" box (Claude can't edit it).
-1. ✅ **RESOLVED (2026-07-01) — not a conflict, it's TWO CAMPAIGNS.** `\frac` (keyword "fractional") + `\tks` (general default) = the extension's existing routing. Canonical wording = Guy's AI Blaze paste in Notion, unchanged (`\frac` = the "Winning Formula" block on "03 — Conversations & Messaging"; `\tks` = "The Prompt Behind the Magic"). **Verified the extension mirrors BOTH word-for-word — no drift.** (The "ASH / two-way collaboration" I flagged was the general campaign's underlying philosophy, not a rival vocabulary.) Minor tidy-ups: (a) ✅ **RESOLVED (2026-07-01, `55e354e1`, cloud-test green): Guy's call — `\tks` KEEPS "Talk soon / I know a (Guy)".** A campaign's own sign-off is the "full" form; the trim-to-plain logic still applies on top (`\frac`, booking, and the plain-match all verified unchanged). (b) ⏳ the Master Brief manifest points to a non-existent "LinkedIn Templates" page — Notion cleanup pending Guy's call on where it should point (`\tks` = "The Prompt Behind the Magic"; `\frac` = the "Winning Formula" block).
-2. ✅ **RESOLVED (2026-07-01) — authoritative source = PRIMARY calendar (per tenant via a "Calendar Scope" setting; default Primary only).** Root cause: the extension's free/busy queries ONE calendar (`calendarServiceAccount.js` → `items:[{id: calendarEmail}]` = Guy's primary), while Guy's Claude-chat Google connector reads ALL his calendars — so it flagged secondary-calendar events (e.g. "Dean & Guy Results") as clashes the extension didn't see. Guy wants **primary only** → the extension is ALREADY correct (no change); the CHAT was over-reading. Fix: added a **Calendar Scope** rule to Guy's Notion Master Brief (System Rules) — chat checks availability against ONLY the primary calendar (Guy = tenant-0, scope = primary only). **Multi-tenant (later):** one per-client `Calendar Scope` field (Primary only / All connected) + scope the Nylas/Google free/busy query to it — NO per-calendar-ID list needed unless a client ever wants a hand-picked subset. ⚠ Chat-side enforcement relies on the brief being loaded in that chat; for always-on, Guy may add a one-liner to his claude.ai account instruction (Claude can't edit that box). NOTE: a separate **day-of-week labelling bug** from the same journal entry is still open (see #6 below).
-3. ✅ **RESOLVED (2026-07-01) — cost is real but comfortably covered; no action.** The extension runs on Guy's key (~$1–1.5k/mo @ ~70 clients), not ~$0. Covered by the $50 tier per the "tiers cover it" analysis (heavy usage → $300 VA tier absorbs it ~8×; $50 solo is naturally light). **Sonnet 5 (out 2026-06-30, ~40% cheaper, already live in the extension and performing brilliantly) cuts it further AND removes the need to escalate to Opus.** Guy: "$50 extra is going to cover it, no problem." Real margin dips from the stale ~78% (never counted extension AI) to ~mid-70s — still healthy. Stale "~$0 / 78%" P&L line marked corrected in the journal.
-4. ✅ **RESOLVED (2026-07-01) — Sonnet 5 is the client-facing default; no back-test needed.** Sonnet 5 is live in the extension and performing brilliantly (Guy's verdict), which alleviated the need for Opus. Opus stays available as an escalation lever (heavy cases / "sharpen") but isn't the default and no formal Opus-vs-Sonnet-5 back-test is required.
-5. ✅ **RESOLVED (2026-07-01) — split confirmed.** Booking + LinkedIn outreach = the **extension** on Guy's key; post-call email + transcript-deep work = **Claude chat** on the client's own Claude. The two journal lines (~1425 / ~1496) describe different STAGES, not a contradiction. Matches the canonical two-surfaces block.
-6. ✅ **RESOLVED/VERIFIED (2026-07-01) — not present in current code.** Checked all three weekday-derivation points — `wingguyChat.js` `fmtSlot`, `wingguyCalendar.js` `buildDaysFromBusy` (luxon `toFormat('ccc')`), `calendarServiceAccount.js` `getBatchAvailability` dayLabel — ALL timezone-aware. The live cloud test's day labels ALL match the real calendar (1 Jul=Wed, 2=Thu, 3=Fri, 9=Thu, 10=Fri, 14=Tue — every label correct). And `createBookingEvent` puts NO weekday in the event title, so the old "Rebooked for Friday" can't be generated now. The historical bug was older code / stale-or-manual event data — not reproducible. (Matches Guy's memory: "it was in the past.")
-
 ## ✅ CANONICAL CURRENT STATE — read this first; trust it over the journal
 
 > **How this doc works now (2026-06-18, restructured for an AI reader).** This block is the
@@ -136,71 +127,52 @@ Wingguy (how to act) + reads/writes the Portal (the records).
   drafts/manages that phase. Runs on the **client's own Claude** (~$0 to Guy) = the free→paid wedge. (Claude chat is
   ALSO where Penguy runs; the account instruction routes by task — email/newsletter/"Penguy" → Penguy, LinkedIn
   outreach or post-call lead email → Wingguy.)
-  - **⚠ Slash-command collision + fix (2026-07-01).** On LinkedIn `/` is the extension's trigger; in Claude `/` is
-    Anthropic's command prefix — different parser we don't own. A client trained to lead with `/WG` on LinkedIn will
-    eventually type it in Claude and hit the raw "Unknown command: /wg" (reads as broken though nothing is). The Claude
-    surface is really **paste-and-go**, so the slash was never the main path there. **Fix = register `/wg` + `/wingguy`
-    as skills in each client's Claude at provisioning time** — folder name IS the command, no aliases, so two folders;
-    `disable-model-invocation: true` so they fire ONLY on the typed slash (a nudge to paste, not real behaviour).
-    Copy-ready template + per-client checklist: `docs/provisioning/claude-chat-skills/`. Fold the copy step into
-    onboarding right next to "install the extension" so no tenant ends up with the raw error.
-- **★ IRON REQUIREMENT — ONE shared source of truth for Wingguy rules, and for GUY that source is NOTION.** Guy
-  actively AUTHORS his rules by telling Claude chat *"update my rules in Notion"* — Notion is his real, daily single
-  source of truth (his own System Rule #1: *"nothing is mastered locally or in Claude Projects"*). So **Notion is NOT
-  an orphan to retire — it IS the authoring master.** The drift runs the OTHER way: **the EXTENSION is the outlier** —
-  it hard-codes a copy of the rules in `config/wingguyTemplates.js`, so when Guy updates Notion the extension never
-  sees it. That's the 2026-07-01 "Matthew" drift: chat read the FRESH Notion rules and drafted the full opener; the
-  extension read its STALE code copy and drafted a weak nudge. **Fix direction:** the extension must READ Guy's Wingguy
-  rules FROM Notion (the same "LinkedIn outreach" pages chat edits) — directly, or via a per-tenant store synced from
-  Notion — so *"update my rules in Notion"* reaches BOTH surfaces. **The store: NOTION NOW → POSTGRES END-STATE (already in the doc — see
-  "Rules de-personalisation", 2026-06-09).** Notion is a **LEGACY SOURCE we migrate FROM — Guy INCLUDED (tenant 0)**;
-  it is explicitly **NOT** a permanent "Notion-for-Guy / Postgres-for-clients" split. End state: EVERY tenant's brain
-  lives in **Postgres** under the governed write-door, and BOTH surfaces read it. Guy keeps authoring in Notion ONLY
-  until the Postgres path is proven for his own flow, then his cockpit **re-points Notion→Postgres**. So "the one
-  source both surfaces read" = **Notion today, Postgres after the one-time Notion→Postgres conversion** (which also
-  produces the de-personalised shippable template for other clients, same pass). ⚠ Today's stage-reading fix was made
-  in CODE, so until the extension reads the store it must ALSO be written into Guy's CURRENT master (his Notion
-  *Outreach Rules*) to keep it current.
+  - **⚠ Slash-command collision + fix (2026-07-01).** In Claude, `/` is Anthropic's command prefix, so a client
+    trained on `/wg` will eventually type it there and hit a raw "Unknown command" (reads as broken). **Fix =
+    register `/wg` + `/wingguy` as skills in each client's Claude at provisioning** (`disable-model-invocation: true`
+    → fires only on the typed slash, nudges to paste). Template + checklist: `docs/provisioning/claude-chat-skills/`;
+    fold into onboarding beside "install the extension".
+- **★ IRON REQUIREMENT — ONE shared source of truth for Wingguy rules; BOTH surfaces read it. The store =
+  NOTION NOW → POSTGRES END-STATE.** Guy authors today via *"update my rules in Notion"* (his System Rule #1);
+  Notion is a **legacy source we migrate FROM — Guy included (tenant 0)**, explicitly NOT a permanent
+  Notion-for-Guy / Postgres-for-clients split. End state: every tenant's brain in **Postgres** behind the governed
+  write-door, read by both surfaces; Guy re-points Notion→Postgres once the path is proven (the one-time conversion
+  also yields the de-personalised shippable template — see journal "Rules de-personalisation", 2026-06-09).
+  **The EXTENSION is the outlier:** it hard-codes a rules copy in `config/wingguyTemplates.js` and never reads the
+  store — that gap caused the 2026-07-01 "Matthew" drift (chat read fresh Notion → full opener; extension read its
+  stale copy → weak nudge). **Fix direction = teach the extension to read the store.** Until then, any rule changed
+  in code must ALSO be mirrored into Guy's Notion (done for the stage-reading fix — Outreach Rules §14).
 
-**AI / model.** Standardise on **Claude** now behind a swappable seam: **Claude = drafting** (voice),
-**Gemini = scoring + summaries** (cheap, high-volume). Connector surface needs the client's own Claude account
-(framed as a product requirement, like "requires Chrome").
-**★ Model-tier policy (2026-06-22).** Drafting defaults to **Claude Sonnet**, escalating to **Opus** only when
-the *code* flags a heavy case up front (transcript involved / deep thread / post-call email) OR the human taps
-"sharpen" — NOT Opus-on-everything (the wired `CLAUDE_MODEL_ID` default IS `claude-opus-4-8`, so Sonnet-default
-is a lever to *set*, not leave). **CORRECTION — "Gemini Flash = scoring" is STALE:** verified 2026-06-22 that the
-prod summary/scoring model defaults to **`gemini-2.5-pro-preview-05-06` (2.5 PRO), not Flash** (no
-`GEMINI_MODEL_ID`/`RECALL_SUMMARY_MODEL` override on the service's env vars; env groups not enumerable via the API;
-Guy's read = "pretty sure it's Pro"). Immaterial for summaries (pennies), but **⚠ verify + likely switch to Flash
-before SCALING lead-scoring** (high-volume → ~10× lever). Detail ↓ journal "Extension — panel data model, cost/
-quality model, commercial model & voice seed (2026-06-22)".
-**★ UPDATE (2026-06-30) — Sonnet 5 is live.** The Wingguy chat drafting default is now `claude-sonnet-5`
-(`WINGGUY_DRAFT_MODEL_ID`, thinking disabled; `claude-sonnet-4-6` = fallback). The **Opus-for-client-facing
-escalation is RESOLVED (2026-07-01)** — **Sonnet 5 is the client-facing default** (live + performing well; no back-test needed); Opus stays as an escalation lever (heavy cases / "sharpen") but isn't required. The backend
-`CLAUDE_MODEL_ID` (speaker-reconstruction etc.) is a SEPARATE knob, still `claude-opus-4-8`.
-**Provider end-state (audited 2026-06-19): three providers, three different jobs — nothing to migrate.**
-**Gemini** = high-volume scoring + meeting summaries + follow-up prep (stays). **OpenAI** = the portal's
-**Start Here** help-Q&A (embeddings RAG + cheap `gpt-4o-mini` escalation) + topic layout — **live, and its
-embeddings have NO Claude equivalent**, so it can't move to Claude; keep it (cheap, peripheral). **Claude** =
-drafting/reasoning (speaker reconstruction now, post-call email later) — **wired into the backend 2026-06-19**
-(`config/anthropicClient.js`, plain API key, model env-switchable `CLAUDE_MODEL_ID`=`claude-opus-4-8`, gated by `SPEAKER_RECONSTRUCTION_ENABLED`;
-volatile status → ▶ You are here; "let sleeping babies lie" confirmed with evidence, journal 2026-06-19).
+**AI / model.** Standardise on **Claude** behind a swappable seam: **Claude = drafting** (voice), **Gemini =
+scoring + summaries** (cheap, high-volume). The connector surface needs the client's own Claude account (a product
+requirement, like "requires Chrome").
+**Drafting (current, settled 2026-07-01):** **Sonnet 5 is the client-facing default** — `WINGGUY_DRAFT_MODEL_ID` =
+`claude-sonnet-5`, **thinking disabled** (the seam that makes thinking-by-default models usable in the latency-
+sensitive agent loop; 4.6 = fallback). Live + performing well; the Opus-vs-Sonnet-5 back-test question is RESOLVED —
+no back-test needed. **Opus stays as an escalation lever only** (code flags a heavy case — transcript / deep thread /
+post-call email — or the human taps "sharpen"), never Opus-on-everything. The backend `CLAUDE_MODEL_ID`
+(speaker reconstruction etc.; wired 2026-06-19 via `config/anthropicClient.js`, gated by
+`SPEAKER_RECONSTRUCTION_ENABLED`) is a SEPARATE knob, still `claude-opus-4-8`.
+**Scoring/summaries:** prod actually defaults to **Gemini 2.5 PRO, not Flash** (verified 2026-06-22 — no
+`GEMINI_MODEL_ID` override set). Immaterial for summaries (pennies), but **⚠ verify + likely switch to Flash before
+SCALING lead-scoring** (high-volume → ~10× lever).
+**Provider end-state (audited 2026-06-19): three providers, three jobs — nothing to migrate.** Gemini =
+scoring/summaries/follow-up prep · OpenAI = the portal's Start-Here help-Q&A (embeddings RAG — no Claude equivalent;
+keep, cheap, peripheral) · Claude = drafting/reasoning. Detail ↓ journal 2026-06-19 + 2026-06-22 entries.
 
 **Pricing (canonical).** $150/mo basics · **+$50 = Wingguy** → $200 full self-serve · **$300 = done-for-you**
 (Mr Busy + VA). Tier by **service level (DIY vs done-for-you), not feature**. Referral: maintain **3 active
 paying** referrals → $150 drops, **$50 floor** stays (conditional, grace window; $300→$50 tied to VA
-self-sufficiency). Separate **one-time setup** from recurring. **No contractual lock-in** (protect only
-months 1-3). ~100-client steady-state ≈ **AUD ~$265k/yr, ~78% margin** *(planning ballpark)*.
-**★ CORRECTION (2026-06-30): the EXTENSION runs on GUY's API key (his COGS), NOT the client's Claude — only the
-connector / Claude-chat surface is ~$0 to Guy.** Est. extension AI ≈ **$1,000–1,500/mo at ~70 Wingguy clients**; the
-~78%-margin figure above did NOT account for this, so the margin needs a re-check. (The $50/mo model already assumes
-~$5–8/client AI on Guy's key.)
-**Extension/Wingguy commercial model (2026-06-22, stickiness-first):** flat **$50/mo** (the +$50 Wingguy tier)
-after a **500-action free trial** (≈ a month for a typical user; ~$5-8 AI cost on Sonnet); **simple daily action
-cap ~150/day (≈3,000/mo) as a runaway backstop — NOT metered billing** (metering would make clients ration →
-starve the moat). Price is a **demand/stickiness lever, not cost-recovery** — start **$50 (penetration), grandfather
-early adopters, raise to ~$100 for later cohorts.** Detail ↓ journal "Extension — panel data model, cost/quality
-model, commercial model & voice seed (2026-06-22)".
+self-sufficiency). Separate **one-time setup** from recurring. **No contractual lock-in** (protect only months 1-3).
+**Cost reality (corrected 2026-06-30; resolved 2026-07-01):** the **extension runs on GUY's key** (his COGS —
+only the connector surface is ~$0 to Guy): ≈$1–1.5k/mo at ~70 Wingguy clients, so the ~100-client ballpark reads
+**~AUD $265k/yr at ~mid-70s% margin** (the old "78%" never counted extension AI). **Comfortably covered by the $50
+tier** — heavy usage self-lands on the $300 VA tier (absorbs it ~8×), $50 solos run light, and Sonnet 5 (~40%
+cheaper) shrinks it further. No metering needed.
+**Commercial model (2026-06-22, stickiness-first):** flat **$50/mo** after a **500-action free trial** (≈ a month
+typical; ~$5-8 AI cost); daily action cap **~150/day as a runaway backstop — NOT metered billing** (metering makes
+clients ration → starves the moat). Price = **demand/stickiness lever, not cost-recovery**: start $50 (penetration),
+grandfather early adopters, ~$100 for later cohorts. Detail ↓ journal 2026-06-22 + "Extension AI cost" 2026-06-30.
 
 **Architecture (locked).** Additive only — Guy's single-tenant setup untouched until he flips flags ·
 calendar+email multi-tenant via **Nylas** middleman (hosted auth) behind a **thin adapter** (Google = Guy's
@@ -227,93 +199,26 @@ or non-portable chat-memory? → the clean-Claude spike (Spike 0) answers it. (2
 skeptics** vs "let them train it". (3) Multi-tenant refactor **paused** for the sales push (memory
 `project_paused_refactor_state`).
 
-**Backlog — flagged, not yet spec'd.**
-- **Connection follow-up worklist ("where am I up to") — aka "Thanks for Connecting"** *(flagged 2026-06-18;
-  design settled 2026-06-19; ✅ **v1 BUILT + VERIFIED LIVE 2026-06-20** — portal tab + backend route + per-client gate on `main`,
-  Guy-first; auto-resolve webhook + extension auto-advance still v2. Volatile status → ▶ You are here)* — replace Guy's
-  manual scan of LinkedIn recent-connections with a generated worklist of *where he's up to + what's still
-  outstanding*. New connections already land in the **Portal (Airtable leads table) with a connection date**;
-  the feature = **flag each lead actioned / not-actioned** (status-tick) and surface the not-yet-actioned ones
-  as a worklist (sorted by connection date). The loop: click a lead → opens their LinkedIn profile → human
-  writes the thanks-for-connecting note → (later) the extension does the magic + advances to the next. **Guy-
-  first** (validate the loop on his own daily friction) **then client-facing** (every client has the same
-  pain; in-portal + easy = they'll actually do it, unlike a manual scan).
-  - **VERIFIED 2026-06-19 (ingestion backbone already exists + is multi-tenant — we are NOT building ingestion,
-    only a view + a status to tick on top):** Linked Helper fires `POST /lh-webhook/upsertLeadOnly?client=CLIENT_ID`
-    (`routes/webhookHandlers.js:29`) on connect; resolves the client's own Airtable base and upserts the lead.
-    Connection date is captured to the **`Date Connected`** field (+ a `Days Since Connected` formula already
-    exists; `services/leadService.js:118`); email is written too (`routes/webhookHandlers.js:219`); connection
-    state lives in **`LinkedIn Connection Status`** (`Connected`/`Candidate`/`Pending`). So the queue is just:
-    *Connection Status = Connected, sorted by Date Connected desc, where <tick-field> is blank.*
-    **STATUS: SUPERSEDED 2026-06-20 (live data) → the queue keys off `{Date Connected}` presence ALONE, NOT
-    `{LinkedIn Connection Status}`** — that status field's `Connected` value is stale; live connections land as
-    `Candidate` with a fresh Date Connected. Blank Date Connected = not connected; set = connected. See ▶ You are
-    here + [[reference_connected_means_date_connected_set]].
-  - **WRINKLE (verified 2026-06-19):** the generic **`Status`** field is auto-clobbered to `"In Process"` on
-    EVERY webhook upsert → useless as a "have I dealt with this person" signal. The worklist needs its **own
-    dedicated field** (candidate: the currently-unused `Conversation Stage`, or a new `Thanks Status`).
-  - **DESIGN SETTLED 2026-06-19** (detail + provenance ↓ journal *"Connection follow-up worklist / 'Thanks for
-    Connecting' — design"*): **inbox-zero** worklist, **oldest-first** (oldest = closest to the LH window deadline).
-    Two views — **Outstanding** (the draining queue, **bounded by a lookback limit** — only connections from the
-    last ~N days, configurable, default ≈ the LH window (~14); solves the **cold-start flood** (without it, day-1
-    shows every historical connection ever) AND keeps the queue bounded forever; this is a **harmless display
-    filter, NOT the dropped mirrored-window** — if it's slightly off LH's value nothing breaks, auto-resolve still
-    comes from the webhook. No separate bulk-clear needed — the lookback shrinks launch to a couple weeks Guy can
-    eyeball-clear) + **All recent** (status-badged, reconcile against LinkedIn).
-    Row = name (links to their LinkedIn profile) · headline/company · "connected X days ago" (free from `Date
-    Connected`, zero config) · primary one-tap button + secondary. Optimistic remove + undo toast; live "N to
-    thank" count badge (the motivator); real "all caught up" empty state. **Status set (locked):** *Outstanding*
-    (blank) → **Messaged** (Guy's manual tick — he personally reached out via AI Blaze) · **Let go (LH sent)** (left
-    to the LH automated sequence; auto-resolved). "Keeper" = cricket idiom (*let it go through to the keeper* = don't
-    play at it), i.e. = "Let go", NOT "nurture". **(2026-06-21: "Let go" RENAMED to "Skipped" at Guy's request —
-    cleaner/clearer. Airtable metadata API can't rename a select choice, so the app writes "Skipped" via record
-    `typecast` (auto-creates the option) + maps legacy "Let go"→"Skipped" on read; stale "Let go" choice is cosmetic.
-    New bases get "Skipped" from the start. Also this session: Date Connected is the left column + an Oldest/Most-recent
-    sort toggle + a user-selectable window dropdown.)** Both done-states leave the queue → inbox-zero behaviour identical.
-  - **AUTO-RESOLVE via LH message-sent webhook (preferred path):** Guy confirmed LH can fire a webhook at any
-    campaign stage. When Guy DOESN'T personally message, LH sends its automated first message after the window and
-    **pings our webhook → row auto-resolves to "Let go (LH sent)"**. When Guy DOES message, LH detects the
-    correspondence and *suppresses* its send (the "filter out of my list" rule) → no ping → Guy hand-ticks
-    **Messaged**. The two paths can't collide. **Reuse the ONE existing webhook** (`/lh-webhook/upsertLeadOnly`,
-    likely a thin sibling like `/lh-webhook/messageSent` or an `event=` flag — same client-routing + same
-    profile-URL→`Profile Key` matching) so clients configure only one webhook. This **replaces** the earlier
-    mirrored-window + date-lapse idea (no duplicated window value, no drift). **Caveat (the only fly):** the **$8 LH
-    tier caps webhooks at 20/day** (counts firings, not endpoints — reuse does NOT save budget); connection events
-    already consume some today, message-sent is the *only new* consumption. **But it's self-throttling** (Guy,
-    2026-06-19): #3 fires ONLY for *let-go* leads — working the window properly with AI Blaze suppresses LH's send
-    on most, so the draw is **inversely proportional to engagement**. Worst case = **3 firings per lead lifecycle**
-    (1: into Airtable on extraction · 2: on connect · 3: on message-out). #1+#2 already fit today's volume; #3
-    shrinks the harder you work the list. So the cap really only bites a *disengaged* user (lets everyone fall to
-    automation — getting little value anyway), whose fix is a clean ~$12 LH upgrade. Net: keep message-sent
-    **optional** but treat the cap as a natural ceiling mapping to daily connection volume, not a real blocker —
-    and a confident upsell line, not a hedge.
-  - **Naming + placement (DECIDED 2026-06-20):** portal tab **"Thanks for Connecting"** (says exactly what you do;
-    fits existing widths; beats "Connections"/"New Connections"/"Follow-ups" which are ambiguous or clash),
-    subtitle **"Welcome your recent connections"**, icon a handshake/wave. Placed **after "Top Scoring Leads"**
-    (last working tab, before the Settings/Start-Here utility tabs).
-  - **Still open:** (C) v1 note = freehand (Guy uses AI Blaze externally) vs portal AI-suggested draft — lean
-    freehand v1, AI draft is the later extension hook; (D) scope = **Guy-first then portal** (agreed in spirit);
-    extension auto-advance = **v2** (v1 = manual tick). Needs its own dedicated tick-field (see WRINKLE above).
-- **Speaker reconstruction + confirm on transcript ingest** *(flagged 2026-06-18; spec'd 2026-06-19; ✅ BUILT 2026-06-19 — shipped to `main` behind `SPEAKER_RECONSTRUCTION_ENABLED`, default OFF, awaiting cloud test — volatile status → ▶ You are here)* — non-Zoom captures (e.g.
-  **Zoom Notes / Tactiq** recording a **Teams or Google Meet** call as a fallback when a guest's own tech
-  fails) arrive with **NO diarisation — every line tagged as the host**, so who-said-what (the things that
-  matter: intros + their *direction*, who-knows-whom, commitments) is unreliable even though both sides'
-  words are captured. Proposed flow: **source dropdown** on import → **single-speaker detection** on ingest
-  → **AI reconstructs** speakers from content (topic anchors + conversational logic) → **human-in-the-loop
-  confirm card** (the critical step: *"the transcript was a bit dodgy and I've done my best — may not be
-  quite right, can you check it?"*; user confirms/corrects intros & recognition lines in chat) → store
-  **only the human-confirmed version** as canonical. Clean multi-speaker transcripts are read first and
-  **pass straight through** — the confirm step fires only when reconstruction was actually needed. Principle:
-  **ground truth can't be automated** — the person who was in the room is the only reliable source for the
-  high-stakes lines; AI detects + reconstructs, the human confirms direction, and **that division IS the
-  feature.** Every multi-tenant tenant hits this on any non-Zoom call. Implementation = an import-flow change
-  in pb-webhook-server (detect → reconstruct → confirm card → store confirmed). **Now spec'd (2026-06-19): always show the confirm
-  card + single-speaker detection in plain code (NO AI) + reconstruct only on detection-or-demand + free-text
-  correction that propagates across the mislabelled stretch + surface only the high-stakes lines + regenerate
-  the summary off the corrected version; reconstruction model = Claude `claude-opus-4-8` (a reasoning job, not
-  Gemini-Flash scoring); gated on wiring Claude into the backend first.** Detail + provenance ↓ journal
-  **"Speaker reconstruction on transcript ingest (paste path) — single-speaker / no-diarisation"**; lives
-  next to the universal-paste seam (transcript layer item 5).
+**Backlog — flagged; current state only (full designs live in the journal).**
+- **"Thanks for Connecting" worklist** *(✅ v1 BUILT + VERIFIED LIVE 2026-06-20 — portal tab + backend route +
+  per-client gate on `main`, Guy-first; volatile status → ▶ You are here)* — inbox-zero worklist of recent
+  connections still to be welcomed; kills the manual "where did I get to" scan. **Queue = `{Date Connected}` is
+  SET** (NOT `LinkedIn Connection Status` — that field is stale; see
+  [[reference_connected_means_date_connected_set]]), with its **own tick-field** (the generic `Status` is clobbered
+  on every webhook upsert). Statuses: *Outstanding* (blank) → **Messaged** (manual tick) · **Skipped** (renamed from
+  "Let go" 2026-06-21). **Oldest-first**, lookback-bounded (default ≈ the LH window ~14d — solves cold-start flood).
+  **v2 = auto-resolve via an LH message-sent webhook** (reuse the one existing webhook; the $8-tier 20-firings/day
+  cap is self-throttling — worst case 3/lead lifecycle) + extension auto-advance. Full design ↓ journal
+  *"Connection follow-up worklist / 'Thanks for Connecting' — design (2026-06-19)"* (incl. detail moved from here
+  in the 2026-07-01 shrink pass).
+- **Speaker reconstruction on transcript ingest** *(✅ BUILT 2026-06-19 on `main` behind
+  `SPEAKER_RECONSTRUCTION_ENABLED` default OFF; volatile status → ▶ You are here)* — no-diarisation captures
+  (e.g. Zoom Notes/Tactiq fallback on a Teams/Meet call) arrive with every line tagged as the host. Flow:
+  single-speaker **detection in plain code** (no AI) → **Claude Opus reconstructs** who-said-what (reasoning job,
+  `CLAUDE_MODEL_ID`) → **human confirm card, always shown** (free-text correction propagates; only the high-stakes
+  lines surfaced; **ground truth can't be automated — that division IS the feature**) → store **only the confirmed
+  version** + regenerate the summary from it. Full spec ↓ journal *"Speaker reconstruction on transcript ingest
+  (paste path)"*.
 
 ## The one-line vision
 
@@ -2581,7 +2486,9 @@ record gets `Date Connected` stamped ([leadService.js:156-160](services/leadServ
 existing-connection update so scoring is preserved, [webhookHandlers.js:185-194](routes/webhookHandlers.js)).
 So Guy's invariant holds: **null date = extracted-not-yet-connected; has-a-date = actually connected.** Three
 precision notes: the *true* signal is `LinkedIn Connection Status = Connected` (date rides along — key the queue
-on status, sort on date); the stamped date is LH's real `connected_at` if provided, else `now()` as fallback;
+on status, sort on date) **[⚠ SUPERSEDED 2026-06-20 by live data → key off `{Date Connected}` presence ALONE; the
+status field's `Connected` is stale, live connections land as `Candidate` with a fresh date — see
+[[reference_connected_means_date_connected_set]]]**; the stamped date is LH's real `connected_at` if provided, else `now()` as fallback;
 worth eyeballing one real connected record someday to see whether LH actually sends `connected_at` (affects sort
 precision only, not correctness).
 
@@ -2649,6 +2556,12 @@ alternatives — "Connections" reads as the whole list, "New Connections" collid
 clashes with "Follow-Up Manager"). Subtitle **"Welcome your recent connections"** (matches the others' verb+object
 style). Icon = handshake/wave. **Placement: after "Top Scoring Leads"** — the last *working* tab, just before the
 Settings + Start-Here utility tabs (keeps that grouping clean without reshuffling).
+
+**"Let go" → "Skipped" rename (2026-06-21; moved from the canonical block in the 2026-07-01 shrink pass).**
+Renamed at Guy's request (cleaner/clearer). Airtable's metadata API can't rename a select choice, so the app writes
+"Skipped" via record `typecast` (auto-creates the option) and maps legacy "Let go"→"Skipped" on read; the stale
+"Let go" choice is cosmetic; new bases get "Skipped" from the start. Same session: Date Connected became the left
+column + an Oldest/Most-recent sort toggle + a user-selectable window dropdown.
 
 **Airtable schema PROVISIONED 2026-06-20 (✅ done — was item 3/4 below).** Tick-field = new **`Thanks Status`**
 (singleSelect: *Messaged* / *Let go*; blank = Outstanding) — created on all 17 client Leads tables + the Client
@@ -2730,6 +2643,34 @@ assistant, separate from client-facing Wingguy"*) + the Notion "00 — Master Br
   earlier version of this entry wrongly said "retire the Notion copy / code is master" — that would break Guy's
   "update my rules in Notion" workflow. Notion stays the authoring master; the extension must be taught to read it.)
 
+## Consolidation audit — the 6 "which is true now?" items + resolutions (2026-07-01)
+> Provenance for the consolidation pass. A five-way audit of this journal against the canonical block surfaced six
+> genuine conflicts/questions; all were resolved with Guy the same day. Current truth for each now lives in the
+> canonical block / code / Notion — this entry is the record of what was asked and answered.
+1. **Outreach vocabulary — NOT a conflict; two campaigns.** `\frac` (keyword "fractional") + `\tks` (general
+   default); canonical wording = Guy's AI Blaze paste in Notion (`\frac` = the "Winning Formula" block on "03 —
+   Conversations & Messaging"; `\tks` = "The Prompt Behind the Magic"). Verified the extension mirrors both
+   word-for-word. Guy's call: **`\tks` KEEPS "Talk soon / I know a (Guy)"** — implemented `55e354e1` (campaign
+   sign-off = the "full" form; trim-to-plain still applies on top), cloud-test green. Leftover: the Master Brief
+   manifest points to a non-existent "LinkedIn Templates" page (Notion cleanup pending Guy's call).
+2. **Calendar source-of-truth = PRIMARY calendar** (per tenant via a future `Calendar Scope` field, default
+   Primary only; no per-calendar-ID list unless a client wants a hand-picked subset). Root cause of the mismatch:
+   the extension's free/busy queries ONE calendar (Guy's primary — already correct) while Guy's Claude-chat Google
+   connector read ALL calendars → flagged secondary-calendar events ("Dean & Guy Results") as clashes. Fix = a
+   **Calendar Scope rule added to Guy's Notion Master Brief** (chat reads primary only). ⚠ Chat-side enforcement
+   needs the brief loaded; always-on = a one-liner in the claude.ai account instruction box (Guy's to-do).
+3. **Extension cost — real but covered.** Runs on Guy's key (~$1–1.5k/mo @ ~70 clients), not ~$0; covered per the
+   "tiers cover it" analysis; Sonnet 5 (~40% cheaper) shrinks it further. Guy: "$50 extra is going to cover it, no
+   problem." Margin reads ~mid-70s, not the old 78% (stale P&L line marked corrected).
+4. **Sonnet 5 = the client-facing default; no Opus back-test needed** (live + performing brilliantly — Guy's
+   verdict). Opus stays as an escalation lever only.
+5. **Who-runs-what split confirmed:** booking + LinkedIn = extension on Guy's key; post-call email/transcript =
+   Claude chat on the client's Claude. The two journal framings (~1425/~1496) describe different STAGES.
+6. **Day-of-week bug — verified NOT in current code.** All three weekday-derivation points timezone-aware
+   (`fmtSlot` / `buildDaysFromBusy` luxon / `getBatchAvailability` dayLabel); live cloud-test day labels all match
+   the real calendar; `createBookingEvent` puts no weekday in event titles (so "Rebooked for Friday" can't be
+   generated). Historical bug = older code / stale data.
+
 ## ▶ You are here / next pick-up
 
 **▶▶ SESSION CLOSE 2026-07-01 (session 2: "2 brains + doc consolidation") — START THE NEXT CHAT HERE.**
@@ -2737,14 +2678,17 @@ Today SETTLED the architecture (canonical up top: Penguy=personal/Notion; Winggu
 slice; Claude chat=full lifecycle; ONE shared store = Notion now → Postgres end-state) and shipped the **stage-reading
 fix** (`35365e4e`: handshake note ≠ pitch → full opener, nudge only after a real Zoom-ask went quiet; cloud-test green)
 plus **`\tks` keeps "Talk soon / I know a (Guy)"** (`55e354e1`, campaign sign-off wins, trim-to-plain intact). Ran the
-**consolidation audit — ALL 6 conflict items RESOLVED** (see "Consolidation Audit Outcomes" block up top): calendar
+**consolidation audit — ALL 6 conflict items RESOLVED** (journal: *"Consolidation audit — the 6 'which is true now?' items"*): calendar
 scope = PRIMARY only (chat fixed via Notion rule; extension already right), extension cost covered by the $50 tier,
 **Sonnet 5 = client-facing default (no Opus back-test needed)**, who-runs-what confirmed, day-of-week bug verified gone.
 **Open (Guy's to-dos):** (1) Master Brief manifest still points at non-existent "LinkedIn Templates" (targets: `\tks`
 = "The Prompt Behind the Magic", `\frac` = the "Winning Formula" block — Claude can fix in Notion on a word); (2) add
 "primary calendar only" one-liner to the claude.ai account instructions box for always-on. **Next build candidates:**
 Nylas Gap 3 (self-serve connect flow — needs Guy's Nylas dashboard input), the 3 booking-identity Airtable fields,
-extension-reads-the-store (kills the hard-coded rules copy). Older entries below are provenance.
+extension-reads-the-store (kills the hard-coded rules copy). **Also done this session: the charter SHRINK PASS** —
+canonical block tightened ~250→~140 lines (same truth, fewer words; backlog detail moved to its journal sections;
+audit outcomes moved to the journal entry above). **Discipline going forward: keep the charter SHORT — fold, don't
+append.** Older entries below are provenance.
 
 **(previous close, superseded by the above) ▶▶ SESSION CLOSE 2026-07-01 — earlier session TL;DR:** Wingguy chat runs on
 **Sonnet 5** (thinking disabled) and is working end-to-end on Guy's real leads: draft quality, booking (two-step
