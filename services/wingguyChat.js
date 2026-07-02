@@ -34,7 +34,7 @@ const AVAIL_MAX_SLOTS_PER_DAY = 8;
 const AGENT_TOOLS = [
   {
     name: 'check_availability',
-    description: 'Look at Guy\'s real calendar and return open meeting slots (timezone-correct for both Guy and the lead). Call this before suggesting or booking times. Returns days, each with "meetingCount" (how many meetings Guy already has that day — prefer the lowest) and "freeSlots"; each slot has "time" (ISO start — pass to book_meeting), "display" (Guy\'s time) and "leadDisplay" (the lead\'s time). Guy\'s lunch (12:00–12:45) is held back by default and won\'t appear.',
+    description: 'Look at Guy\'s real calendar and return open meeting slots (timezone-correct for both Guy and the lead). Call this before suggesting or booking times. Returns days, each with "meetingCount" (how many meetings Guy already has that day — prefer the lowest) and "freeSlots"; each slot has "time" (ISO start — pass to book_meeting/propose_times), "display" (Guy\'s time), "leadDisplay" (the lead\'s time), and "label" (EXACTLY how that slot will read in the message, e.g. "Wed 8 July, 9:30 am"). The "time" ISO is opaque and every day has a look-alike slot, so ALWAYS pick a slot by matching its "label" to the day+time you intend, then pass THAT slot\'s "time" — this stops you grabbing the right time on the wrong day. Guy\'s lunch (12:00–12:45) is held back by default and won\'t appear.',
     input_schema: {
       type: 'object',
       properties: {
@@ -72,7 +72,7 @@ const AGENT_TOOLS = [
   },
   {
     name: 'propose_times',
-    description: 'Use THIS (not propose_message) whenever you are offering the lead one or more meeting times. Pass intro + outro text in Guy\'s voice, plus slotTimes = the chosen slots\' "time" ISO values from check_availability. The system SORTS them earliest-first, DROPS any outside Guy\'s booking hours or in his lunch hold, formats them in the lead\'s timezone, and assembles the final message — so you don\'t format or order the list yourself. If it reports it dropped slots and too few remain, pick replacement slots and call again. If the lead\'s timezone differs from Guy\'s, note that in your intro/outro.',
+    description: 'Use THIS (not propose_message) whenever you are offering the lead one or more meeting times. Pass intro + outro text in Guy\'s voice, plus slotTimes = the chosen slots\' "time" ISO values from check_availability (choose each slot by its "label", then pass that slot\'s "time"). The system SORTS them earliest-first, DROPS any outside Guy\'s booking hours or in his lunch hold, formats them in the lead\'s timezone, and assembles the final message — so you don\'t format or order the list yourself. It returns "offeredTimes": the exact date+time lines it wrote into the draft — when you tell Guy what you offered, QUOTE those, never restate the dates from memory (that is how the summary and the real draft drift apart). If it reports it dropped slots and too few remain, pick replacement slots and call again. If the lead\'s timezone differs from Guy\'s, note that in your intro/outro.',
     input_schema: {
       type: 'object',
       properties: {
@@ -227,6 +227,7 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
       const eMin = hhmmToMin(prefs.earliestStart) ?? 0;
       const lMin = hhmmToMin(prefs.lastStart) ?? 24 * 60;
       const aTz = avail.yourTimezone || 'Australia/Brisbane';
+      const leadTz = avail.leadTimezone || aTz;
       const aLen = prefs.meetingLengthMins || 30;
       const days = (avail.days || [])
         // soft lunch hold is stripped HERE too (not just in propose_times) so the model never even sees a coach-lunch
@@ -234,7 +235,11 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
         .map((d) => ({ ...d, freeSlots: (d.freeSlots || []).filter((s) => withinBounds(s, eMin, lMin) && (input.includeLunch || !inLunch(s.time, aTz, prefs, aLen))) }))
         .filter((d) => d.freeSlots.length)
         .slice(0, AVAIL_MAX_DAYS)
-        .map((d) => ({ ...d, freeSlots: d.freeSlots.slice(0, AVAIL_MAX_SLOTS_PER_DAY) }));
+        // `label` = EXACTLY how this slot will read in the message (lead tz, same fmtSlot as propose_times).
+        // The "time" ISO is opaque, so pairing each ISO with its legible date+time gives the model a reliable
+        // anchor to pick by — the fix for it grabbing the right time on the WRONG day (two Thu slots for a
+        // Wed/Thu/Fri spread, 2026-07-02). Selecting by label, not the bare ISO, keeps intent and draft aligned.
+        .map((d) => ({ ...d, freeSlots: d.freeSlots.slice(0, AVAIL_MAX_SLOTS_PER_DAY).map((s) => ({ ...s, label: fmtSlot(s.time, leadTz) })) }));
       return { yourTimezone: avail.yourTimezone, leadTimezone: avail.leadTimezone, days };
     }
     if (name === 'propose_times') {
@@ -275,7 +280,11 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
         outro = parts.join('\n').trim();
       }
       currentDraft = [intro, bullets, outro].filter(Boolean).join('\n\n') + (voice && voice.signoff ? `\n\n${voice.signoff}` : '');
-      return { ok: true, offered: ordered.length, dropped };
+      // Echo back the EXACT lines written into the draft so the model's chat summary to Guy is grounded in
+      // what was actually rendered — not re-derived from memory (which is how the summary said "Wed 8 July"
+      // while the draft said "Thu 9 July", 2026-07-02). The agent must quote these, not restate dates itself.
+      const offeredTimes = ordered.map((iso) => fmtSlot(iso, leadTz));
+      return { ok: true, offered: ordered.length, offeredTimes, dropped };
     }
     if (name === 'check_time') {
       const r = await checkProposedTime(coach.clientId, {
