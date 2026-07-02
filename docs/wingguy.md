@@ -2732,7 +2732,21 @@ assistant, separate from client-facing Wingguy"*) + the Notion "00 — Master Br
 
 ## ▶ You are here / next pick-up
 
-**▶▶ SESSION CLOSE 2026-07-01 — START THE NEXT CHAT HERE (TL;DR over the dated entries below).** Wingguy chat runs on
+**▶▶ SESSION CLOSE 2026-07-01 (session 2: "2 brains + doc consolidation") — START THE NEXT CHAT HERE.**
+Today SETTLED the architecture (canonical up top: Penguy=personal/Notion; Wingguy=client-lifecycle; extension=LinkedIn
+slice; Claude chat=full lifecycle; ONE shared store = Notion now → Postgres end-state) and shipped the **stage-reading
+fix** (`35365e4e`: handshake note ≠ pitch → full opener, nudge only after a real Zoom-ask went quiet; cloud-test green)
+plus **`\tks` keeps "Talk soon / I know a (Guy)"** (`55e354e1`, campaign sign-off wins, trim-to-plain intact). Ran the
+**consolidation audit — ALL 6 conflict items RESOLVED** (see "Consolidation Audit Outcomes" block up top): calendar
+scope = PRIMARY only (chat fixed via Notion rule; extension already right), extension cost covered by the $50 tier,
+**Sonnet 5 = client-facing default (no Opus back-test needed)**, who-runs-what confirmed, day-of-week bug verified gone.
+**Open (Guy's to-dos):** (1) Master Brief manifest still points at non-existent "LinkedIn Templates" (targets: `\tks`
+= "The Prompt Behind the Magic", `\frac` = the "Winning Formula" block — Claude can fix in Notion on a word); (2) add
+"primary calendar only" one-liner to the claude.ai account instructions box for always-on. **Next build candidates:**
+Nylas Gap 3 (self-serve connect flow — needs Guy's Nylas dashboard input), the 3 booking-identity Airtable fields,
+extension-reads-the-store (kills the hard-coded rules copy). Older entries below are provenance.
+
+**(previous close, superseded by the above) ▶▶ SESSION CLOSE 2026-07-01 — earlier session TL;DR:** Wingguy chat runs on
 **Sonnet 5** (thinking disabled) and is working end-to-end on Guy's real leads: draft quality, booking (two-step
 confirm-first), the greeting + sign-off **house style** (config-seam `wingguyVoicePrefs`), and Portal **enrichment**. **★ Latest (`35365e4e`): fixed the extension drafting a weak "your note got buried" NUDGE instead of the real opener for a just-connected lead (Matthew) — it now reads the conversation STAGE (the connection-request handshake note ≠ the pitch), cloud-test verified. This SUPERSEDES the `b70f78d5` "unanswered opener → nudge" rule. See the ★ STAGE-READING FIX entry below.** **★ ALSO SETTLED this session (now CANONICAL up top): Penguy-vs-Wingguy + two-surfaces-one-brain — extension = LinkedIn slice ONLY; Claude chat = the FULL lifecycle (same LinkedIn job + the post-discovery-call EMAIL/calendar phase the extension won't do); both MUST read ONE shared Wingguy source of truth — for Guy that store is NOTION NOW → POSTGRES end-state (Notion is a legacy source we migrate FROM, Guy = tenant 0; he authors via "update my rules in Notion"; the EXTENSION is the outlier that hard-codes a stale copy). NEXT ACTION = (1) mirror today's code-only stage fix INTO Guy's Notion Outreach Rules so his master is current; (2) build the extension to READ Guy's Wingguy rules FROM Notion (or a per-tenant store synced from it) so "update my rules in Notion" flows to both surfaces. Do NOT retire Notion — it's Guy's authoring master.**
 Today's big theme = **hardening the extension against real-run bugs** (bubble-over-profile person, internal `/in/ACoA`
