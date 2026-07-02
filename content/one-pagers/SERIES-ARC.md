@@ -21,6 +21,13 @@ One library, two woven series:
 - Shared-core pieces get per-series closing blocks (same sermon, different altar call) - one piece, one optional per-series outro, ~1.2x writing effort not 2x.
 - Send log stays per-piece: converts don't get pieces re-sent with the other ending.
 
+## Pacing decisions (2026-07-03)
+
+- **Interleave, don't front-load philosophy.** Client series alternates paradigm → craft so every why gets its how within a week; clients mid-campaign get fixes (e.g. 20-second thank-you) in week 3-4, not week 9. Alternation rhythm is what earns read-every-issue status.
+- **Drip ≠ education channel.** Drip = presence/top-of-mind (slowness is the feature - 18 months of runway); library = self-paced education. Don't speed the drip; point the impatient at the library.
+- **Standing footer in every piece**, per-audience: client = "impatient for the how-to? library here, pick what's biting you" (problem-shaped craft titles enable pick-and-choose); prospect = "want to read ahead?". The footer click IS the intent signal (prospect = buying signal, client = coaching signal → surface on Airtable record).
+- **Publish ≠ send.** Pieces go to the library immediately when finished; the series drip stays weekly. Writing pace (2-3/week while hot) runs ahead of send pace - fills the library fast, gives the drip months of runway.
+
 ## Pieces
 
 | Order | Slug | Working title | Penny-drop |
