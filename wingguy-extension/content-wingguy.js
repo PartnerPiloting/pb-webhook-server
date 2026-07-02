@@ -1055,6 +1055,12 @@
     let thread = scrapeOpenThread();
     if (!thread.length) { await sleep(400); thread = scrapeOpenThread(); }
     console.log('[Wingguy] thread messages read:', thread.length, thread.map((m) => m.sender));
+    // Snapshot the thread to the Portal on OPEN too — not just on send — so a lead's reply that you
+    // READ but haven't answered still lands on their record (previously capture only fired on your
+    // own send). Reuses the exact on-send path + its guards (needs a /in/ URL and the lead as a
+    // participant; skips silently otherwise, never overwriting with an empty/foreign thread). The
+    // 1.8s debounce coalesces with a send if you open then reply, so it still captures just once.
+    if (thread.length) scheduleCapture();
     renderRoute(profile, thread);
   }
 
