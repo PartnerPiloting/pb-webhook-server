@@ -8,6 +8,19 @@ Source: Guy's brain dumps, 2026-07-02/03. Status: living document.
 Pain → failed default → selection → mechanism → expectations → feasibility → vision.
 Each piece is one paradigm shift ("penny-drop"). Each stands alone; together they read as a book.
 
+## Structure (refined 2026-07-03)
+
+Three content layers:
+- **Paradigm** - the why (see-saw, choose the room). True for both audiences.
+- **Craft** - what to say/do in practice (thank-you messages, discovery call content, campaign prep). Mostly insider-only - without the paradigm it reads as random tactics. This is the "hints and tips from Guy" clients hang out for.
+- **Mechanics** - which button does what. Portal help system's job, NEVER the series'.
+
+One library, two woven series:
+- **Prospect series** = paradigm spine only, possibility endings.
+- **Client series** = paradigm + craft interleaved; each craft piece follows the paradigm piece it operationalises (why → how-in-practice rhythm). Application endings ("this week, do X in your campaign").
+- Shared-core pieces get per-series closing blocks (same sermon, different altar call) - one piece, one optional per-series outro, ~1.2x writing effort not 2x.
+- Send log stays per-piece: converts don't get pieces re-sent with the other ending.
+
 ## Pieces
 
 | Order | Slug | Working title | Penny-drop |
@@ -15,8 +28,10 @@ Each piece is one paradigm shift ("penny-drop"). Each stands alone; together the
 | 10 | feast-or-famine | Overcoming feast or famine | The see-saw is structural, not a discipline problem - networking treated as an activity always loses to billable work; treat it as infrastructure. |
 | 20 | pleasing-methods | Pleasing methods, pleasing results | Breakfast networking (BNI et al) feels like networking but doesn't produce a network: $3,500/yr, honeymoon of fresh faces, then KPI-forced referrals to an unfiltered room you didn't design. Jaded by year two. |
 | 30 | choose-the-room | Choose the room | You're allowed to SELECT your network - filter from LinkedIn, filter again on attitude/attributes - instead of working with whoever bought a breakfast ticket. Network quality is an upstream selection decision. |
+| 35 | twenty-second-thank-you | The 20-second thank-you | CRAFT + paradigm bridge, works for BOTH audiences. Everyone bulk-sends "thanks for connecting" because handcrafted-at-scale used to be impossible - the habit is a relic of a dead constraint. Now: 20 seconds each, and if selection is high and the message is built off THEIR profile, a discovery call is extremely likely. Hook: Guy's confession - "I was bulk-sending myself until a month ago." Personalisation economics flipped. |
 | 40 | reason-to-follow-up | A reason to follow up | Why great coffees die: "let's refer each other" never happens because there's nothing to talk about next. Relationships persist on shared motion, not goodwill - you need something else to talk about, a reason to come back. |
-| 45 | first-discovery-call | What your first discovery call is actually for | (From day-one discussion - paradigm shift on discovery calls; most people have the wrong take, which makes them ineffective and hard.) |
+| 45 | first-discovery-call | What your first discovery call is actually for | Paradigm - most people have the wrong take on discovery calls, which makes them ineffective and hard. Both audiences. |
+| 47 | discovery-call-craft | What to say in the discovery call | CRAFT, insider-only. Follows 45 (operationalises it). Clients' first felt problem after landing calls: "then what do I say?" Not a tool topic - practice content, needs the paradigm as context so prospects don't get it yet. |
 | 50 | patience-curve | The patience curve | People expect results far sooner than realistic, quit at month three, and conclude networking "doesn't work." Compounding always looks flat early. Consistency + patience are the whole game. |
 | 60 | four-hours-not-forty | Four hours, not forty | Tech is expected now, not a differentiator - what it changes is friction/cognitive load. "Prep me for today's meetings." Networking lapses because of mental load, and mental load is now removable. |
 | 70 | nodes | Nodes | The crescendo: not you networking alone, but a filtered network where everyone is networking - same attitude, high quality, introducing across nodes. Only lands after 10-60 built the foundations (delivered as one speech it goes in one ear and out the other). |
