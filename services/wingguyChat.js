@@ -20,6 +20,7 @@ const { WINGGUY_VOICE, WINGGUY_AGENT_INSTRUCTIONS } = require('./../config/wingg
 const { getBookingPrefs } = require('../config/wingguyBookingPrefs');
 const { getVoicePrefs } = require('../config/wingguyVoicePrefs');
 const wingguyCalendar = require('./wingguyCalendar');
+const wingguyLeads = require('./wingguyLeads');
 
 const MODEL_ID = process.env.WINGGUY_DRAFT_MODEL_ID || 'claude-sonnet-5';
 // Disable thinking for this agentic booking chat: it's latency-sensitive (interactive panel) and the tool
@@ -93,6 +94,17 @@ const AGENT_TOOLS = [
         message: { type: 'string', description: 'The LinkedIn message text, in Guy\'s voice, ready to send.' },
       },
       required: ['message'],
+    },
+  },
+  {
+    name: 'update_lead_email',
+    description: 'Update THIS lead\'s email in Guy\'s CRM (Airtable). Use it when the lead gives a better email in the thread — e.g. a work address the invite should go to. Set "primaryEmail" to make it the lead\'s main address: the current primary is automatically kept as one of their other emails (never lost), and book_meeting will then send the invite to the new primary. Use "otherEmails" to file extra addresses without changing the primary. Only THIS lead is affected, and ONLY the email fields — you cannot change any other CRM field. If it reports it couldn\'t find the lead\'s record, tell Guy to make the change in the Portal.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        primaryEmail: { type: 'string', description: 'The address to make this lead\'s PRIMARY email (the invite address). The current primary is moved into their other emails.' },
+        otherEmails: { type: 'array', items: { type: 'string' }, description: 'Extra addresses to file under this lead\'s other/alternate emails (without changing the primary).' },
+      },
     },
   },
 ];
@@ -192,12 +204,15 @@ function fmtSlot(iso, tz) {
 
 // Run one chat turn (which may involve several tool round-trips) to completion.
 // Returns { ok, reply, draft, booked, messages, model }.
-async function runWingguyChatTurn({ coach, profile = {}, conversation = [], messages = [], leadEmail, profileBlock = '', convoBlock = '', campaignTemplate = null, deps = {} }) {
+async function runWingguyChatTurn({ coach, profile = {}, conversation = [], messages = [], leadEmail, airtableBaseId = null, leadRecordId = null, profileBlock = '', convoBlock = '', campaignTemplate = null, deps = {} }) {
   const client = deps.client || getAnthropicClient();
   const getAvailability = deps.getAvailabilityForCoach || wingguyCalendar.getAvailabilityForCoach;
   const bookMeeting = deps.createBookingEvent || wingguyCalendar.createBookingEvent;
   const checkProposedTime = deps.checkProposedTime || wingguyCalendar.checkProposedTime;
   const getClashesForISO = deps.getClashesForISO || wingguyCalendar.getClashesForISO;
+  const updateLeadEmails = deps.updateLeadEmails || wingguyLeads.updateLeadEmails;
+  // Mutable so update_lead_email can re-point the invite at a new primary within this turn.
+  let currentLeadEmail = leadEmail;
   const prefs = getBookingPrefs(coach.clientId);
   // Per-tenant greeting + sign-off house style (VARIABLE), with the exact sign-off decided in code
   // (CODE) from this thread's previous coach message. The behaviour (RULE) is generic; only the values
@@ -315,8 +330,19 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
         hitsLunch,
       };
     }
+    if (name === 'update_lead_email') {
+      const primaryEmail = String((input && input.primaryEmail) || '').trim();
+      const otherEmails = Array.isArray(input && input.otherEmails) ? input.otherEmails : [];
+      if (!primaryEmail && !otherEmails.length) {
+        return { ok: false, error: 'Nothing to update — pass primaryEmail and/or otherEmails.' };
+      }
+      const r = await updateLeadEmails(airtableBaseId, leadRecordId, { setPrimary: primaryEmail, addOthers: otherEmails });
+      // If the primary changed, the calendar invite should now go to the new address (this turn onward).
+      if (r && r.ok && r.changed && r.primaryEmail) currentLeadEmail = r.primaryEmail;
+      return r;
+    }
     if (name === 'book_meeting') {
-      if (!leadEmail) return { ok: false, error: 'No lead email on file — ask Guy to add the lead\'s email before booking.' };
+      if (!currentLeadEmail) return { ok: false, error: 'No lead email on file — ask Guy to add the lead\'s email before booking.' };
       // No-ACCIDENTAL-double-book guard (the one thing code still enforces): refuse a clashing time
       // unless Guy has explicitly OK'd it (confirmDoubleBook). Conscious double-booking is allowed.
       if (!input.confirmDoubleBook) {
@@ -333,7 +359,7 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
       const result = await bookMeeting(coach, {
         startISO: input.startISO,
         durationMins: input.durationMins,
-        leadEmail,
+        leadEmail: currentLeadEmail,
         leadName: profile.name || '',
         leadLinkedIn: profile.profileUrl || '',
       });

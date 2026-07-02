@@ -215,6 +215,9 @@ async function enrichProfileFromPortal(req, profile = {}) {
       const has = merged[k] != null && String(merged[k]).trim() !== '';
       if (!has && v != null && String(v).trim() !== '') merged[k] = v;
     }
+    // Carry the matched record id so the chat agent can WRITE back (update_lead_email). Non-enumerable-ish
+    // underscore key: buildProfileBlock/detectTemplate read named fields only, so it never reaches the model.
+    merged._leadRecordId = records[0].id;
     logger.info(`[Wingguy] enrich: merged Portal record ${records[0].id} (status=${portal.status || '—'}, ceaseFup=${portal.ceaseFup ? 'yes' : 'no'})`);
     return merged;
   } catch (e) {
@@ -451,6 +454,9 @@ module.exports = function mountWingguy(app) {
         conversation,
         messages,
         leadEmail,
+        // CRM write seam for update_lead_email: the lead's base + the record id the enrich step matched.
+        airtableBaseId: req.client && req.client.airtableBaseId,
+        leadRecordId: enriched && enriched._leadRecordId,
         campaignTemplate,
         // Reuse the route's grounding-block formatting so the agent sees the same shape as the other endpoints.
         profileBlock: buildProfileBlock(enriched),
