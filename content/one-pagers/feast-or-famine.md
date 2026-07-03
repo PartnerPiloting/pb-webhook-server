@@ -3,7 +3,7 @@ slug: feast-or-famine
 title: Overcoming feast or famine
 series: network-building-rethought
 order: 10
-status: draft
+status: final
 audience: outsider-safe
 ---
 
@@ -31,4 +31,4 @@ So here's the question worth sitting with this week: **if your network heard fro
 
 That's the possibility this series is about. The tools to make it real - without cloning yourself - are better than they've ever been. More on that next time.
 
-<!-- WIP notes: Guy approved direction ("love the article") but flagged it reads too-polished/AI. Pending: a voice pass folding in more Guy-specifics. Dashes converted to short-dash style 2026-07-03. Not final. -->
+<!-- Approved final by Guy 2026-07-03 ("absolutely perfect, wouldn't change anything") after reviewing the formatted HTML render. Earlier too-polished flag withdrawn on review. -->
