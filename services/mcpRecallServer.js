@@ -17,6 +17,7 @@
 const { z } = require('zod');
 const { McpServer } = require('@modelcontextprotocol/sdk/server/mcp.js');
 const { StreamableHTTPServerTransport } = require('@modelcontextprotocol/sdk/server/streamableHttp.js');
+const { SSEServerTransport } = require('@modelcontextprotocol/sdk/server/sse.js');
 const express = require('express');
 
 const clientService = require('./clientService');
@@ -276,10 +277,43 @@ function mountRecallMcp(app, log = console) {
     }
   });
 
-  // Spec allows 405 for GET/DELETE when streaming/sessions aren't offered (stateless mode).
-  app.get(`${BASE}/:token`, (req, res) => {
-    hit(req, 'GET');
-    res.status(405).json({ jsonrpc: '2.0', id: null, error: { code: -32000, message: 'Method not allowed.' } });
+  // Legacy HTTP+SSE transport: some client surfaces open a GET stream on the endpoint URL
+  // rather than POSTing streamable HTTP. Serve both (same dual-transport pattern as
+  // mcpPersonalServer): GET opens the SSE stream, POST :token/messages carries the session.
+  const sseTransports = {};
+  app.get(`${BASE}/:token`, async (req, res) => {
+    hit(req, authOk(req) ? 'GET-sse auth=ok' : 'GET auth=BAD');
+    if (!authOk(req)) {
+      return res.status(401).json({ jsonrpc: '2.0', id: null, error: { code: -32001, message: 'unauthorized' } });
+    }
+    try {
+      const transport = new SSEServerTransport(`${BASE}/${encodeURIComponent(req.params.token)}/messages`, res);
+      sseTransports[transport.sessionId] = transport;
+      res.on('close', () => { delete sseTransports[transport.sessionId]; });
+      const server = createRecallMcpServer();
+      await server.connect(transport);
+    } catch (err) {
+      log.error && log.error('mcpRecallServer SSE error:', err.message);
+      if (!res.headersSent) res.status(500).end('MCP SSE error');
+    }
+  });
+  app.post(`${BASE}/:token/messages`, express.json({ limit: '2mb' }), async (req, res) => {
+    hit(req, 'sse-message');
+    if (!authOk(req)) {
+      return res.status(401).json({ jsonrpc: '2.0', id: null, error: { code: -32001, message: 'unauthorized' } });
+    }
+    try {
+      const transport = sseTransports[req.query.sessionId];
+      if (!transport) {
+        return res.status(400).json({ jsonrpc: '2.0', id: null, error: { code: -32000, message: 'No valid SSE session' } });
+      }
+      await transport.handlePostMessage(req, res, req.body);
+    } catch (err) {
+      log.error && log.error('mcpRecallServer sse-message error:', err.message);
+      if (!res.headersSent) {
+        res.status(500).json({ jsonrpc: '2.0', id: null, error: { code: -32603, message: err.message } });
+      }
+    }
   });
   app.delete(`${BASE}/:token`, (req, res) => {
     hit(req, 'DELETE');

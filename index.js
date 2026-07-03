@@ -131,6 +131,17 @@ if (!postAnalysisConfig.attributesTableName || !postAnalysisConfig.promptCompone
 ------------------------------------------------------------------*/
 const app = express();
 
+// Probe log (2026-07-03): claude.ai chat sessions fail to use the MCP connectors while the
+// settings page succeeds — and any knock on a path VARIANT (e.g. an /sse suffix) would 404
+// silently with no trace. Log every connector-shaped request path so we can see exactly
+// which doors the chat runtime tries.
+app.use((req, _res, next) => {
+  if (/mcp|sse/i.test(req.path)) {
+    console.log(`MCP-PROBE ${req.method} ${req.path.slice(0, 100)} ua="${String(req.headers['user-agent'] || '').slice(0, 40)}"`);
+  }
+  next();
+});
+
 // Recall.ai real-time webhooks need raw JSON body for HMAC verification (see routes/recallIngestRoutes.js)
 try {
     const recallIngestRoutes = require('./routes/recallIngestRoutes.js');
