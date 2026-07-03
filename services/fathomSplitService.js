@@ -37,18 +37,52 @@ function speakerMatchesLead(speaker, leadName) {
 /**
  * Best-guess the lead's name for a calendar event:
  *   1. a non-coach attendee's displayName, else
- *   2. parse the summary "<Lead> and <Coach> meeting".
+ *   2. parse the summary — split on the pairing separators ("X and Y", "X & Y", "X / Y",
+ *      "X + Y"), clean each side, drop the coach, return the survivor.
+ *
+ * MUST return a name that never contains the coach — or '' when no lead can be parsed.
+ * (2026-07-03: the old fallback returned the WHOLE title for "&"/"/" separators, so
+ * "Luke Swithenbank & Guy Wilson" made the coach's own lines match as the lead: the
+ * eventLeadSpeaks guard passed for phantom events and split bounds collapsed to line 0.
+ * '' is the safe failure — the event can't claim speech, worst case we file as single.)
  */
 function eventLeadName(ev, coachNames) {
-  const coachSet = new Set((coachNames || []).map((n) => String(n).toLowerCase()));
+  const coach = (coachNames || []).map((n) => String(n).trim()).filter(Boolean);
+  const isCoachish = (name) => coach.some((c) => speakerMatchesLead(name, c));
   const att = (ev.attendees || []).find(
-    (a) => a.displayName && !coachSet.has(String(a.displayName).toLowerCase()) && !a.self && !a.organizer,
+    (a) => a.displayName && !isCoachish(a.displayName) && !a.self && !a.organizer,
   );
   if (att && att.displayName) return att.displayName.trim();
-  const sum = String(ev.summary || '');
-  const m = sum.match(/^(.*?)\s+and\s+/i); // "Tom Butler and Guy Wilson meeting"
-  if (m) return m[1].trim();
-  return sum.trim();
+  const sum = String(ev.summary || '').trim();
+  const parts = sum.split(/\s+(?:and|&|\/|\+)\s+/i)
+    .map((s) => s.split(/\s+-\s+/)[0].replace(/\s+meeting\s*$/i, '').trim()) // "Alasdair Bell - 45min Meeting" -> "Alasdair Bell"
+    .filter(Boolean);
+  const leads = parts.filter((s) => !isCoachish(s));
+  return leads.length ? leads[0] : '';
+}
+
+/** The speaker's calendar-matched email on a Fathom transcript utterance, if Fathom supplied one. */
+function speakerEmailOf(u) {
+  const e = (u && u.speaker && typeof u.speaker === 'object')
+    ? (u.speaker.matched_calendar_invitee_email || u.speaker.email || '')
+    : '';
+  return String(e).trim().toLowerCase();
+}
+
+/**
+ * Drop duplicate calendar events (same lead, same start) before split decisions.
+ * (2026-07-03: Guy duplicated an event on-screen mid-call to book the next one; the copy sat
+ * on the same slot and the splitter treated one meeting as a back-to-back with itself.)
+ */
+function dedupeMeetingEvents(events, coachNames) {
+  const seen = new Set();
+  return (events || []).filter((ev) => {
+    const lead = eventLeadName(ev, coachNames) || String(ev.summary || '');
+    const key = `${lead.toLowerCase()}|${ev.start}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 /** Lead emails for an event = attendee emails that aren't the coach's. */
@@ -69,11 +103,17 @@ function eventLeadEmails(ev, coachEmails) {
  * segment under the wrong person's name. (Real case 2026-06-17: Al's call overran into Courtney's
  * still-booked-but-cancelled slot → Courtney never spoke, yet a bogus "Courtney" segment was cut.)
  */
-function eventLeadSpeaks(meeting, ev, coachNames) {
+function eventLeadSpeaks(meeting, ev, coachNames, coachEmails) {
   const leadName = eventLeadName(ev, coachNames);
-  if (!leadName) return false;
+  const leadEmails = new Set(eventLeadEmails(ev, coachEmails || []));
+  if (!leadName && !leadEmails.size) return false;
   const segs = Array.isArray(meeting.transcript) ? meeting.transcript : [];
   return segs.some((u) => {
+    // Zoom display names often differ from calendar names (2026-07-03: Andrew Bain spoke as
+    // "bobba") — Fathom's speaker→invitee email match is the reliable identity when present.
+    const email = speakerEmailOf(u);
+    if (email && leadEmails.has(email)) return true;
+    if (!leadName) return false;
     const speaker = (u && u.speaker && (u.speaker.display_name || u.speaker.name))
       || (typeof u?.speaker === 'string' ? u.speaker : '');
     return speakerMatchesLead(speaker, leadName);
@@ -104,20 +144,24 @@ function splitFathomMeeting(meeting, events, opts = {}) {
     absMs: recStartMs + tsToSeconds(u && u.timestamp) * 1000,
     ts: (u && typeof u.timestamp === 'string') ? u.timestamp : '',
     speaker: (u && u.speaker && (u.speaker.display_name || u.speaker.name)) || (typeof u?.speaker === 'string' ? u.speaker : 'Speaker'),
+    email: speakerEmailOf(u),
     text: (u && typeof u.text === 'string') ? u.text : '',
   }));
 
-  const evs = (events || [])
+  const evs = dedupeMeetingEvents(events, coachNames)
     .map((ev) => ({ ev, leadName: eventLeadName(ev, coachNames), leadEmails: eventLeadEmails(ev, coachEmails) }))
     .sort((a, b) => Date.parse(a.ev.start) - Date.parse(b.ev.start));
 
   if (evs.length <= 1) {
-    return { shouldSplit: false, reason: `${evs.length} meeting event(s) in window — no split`, segments: [] };
+    return { shouldSplit: false, reason: `${evs.length} meeting event(s) in window after dedupe — no split`, segments: [] };
   }
 
-  // Boundary per meeting = when its lead first speaks (fallback to scheduled start).
+  // Boundary per meeting = when its lead first speaks (email match beats name match — Zoom
+  // display names drift; fallback to scheduled start).
+  const lineIsLead = (l, e) => (l.email && e.leadEmails.includes(l.email))
+    || (e.leadName ? speakerMatchesLead(l.speaker, e.leadName) : false);
   const bounds = evs.map((e) => {
-    const hit = segs.find((l) => speakerMatchesLead(l.speaker, e.leadName));
+    const hit = segs.find((l) => lineIsLead(l, e));
     return hit ? hit.absMs : Date.parse(e.ev.start);
   });
   const recEndMs = Date.parse(meeting.recording_end_time || meeting.scheduled_end_time || 0) || (segs.length ? segs[segs.length - 1].absMs + 1 : recStartMs + 1);
@@ -129,8 +173,8 @@ function splitFathomMeeting(meeting, events, opts = {}) {
     const speakerCounts = {};
     lines.forEach((l) => { speakerCounts[l.speaker] = (speakerCounts[l.speaker] || 0) + 1; });
     // stray = lines spoken by ANOTHER meeting's lead (overlap tail — accepted, just reported)
-    const otherLeads = evs.filter((_, k) => k !== i).map((x) => x.leadName);
-    const strayLines = lines.filter((l) => otherLeads.some((ol) => speakerMatchesLead(l.speaker, ol))).length;
+    const others = evs.filter((_, k) => k !== i);
+    const strayLines = lines.filter((l) => others.some((o) => lineIsLead(l, o))).length;
     return {
       leadName: e.leadName,
       leadEmails: e.leadEmails,
@@ -153,5 +197,7 @@ module.exports = {
   eventLeadName,
   eventLeadEmails,
   eventLeadSpeaks,
+  dedupeMeetingEvents,
+  speakerEmailOf,
   tsToSeconds,
 };

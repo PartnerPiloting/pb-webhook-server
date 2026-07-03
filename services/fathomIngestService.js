@@ -27,7 +27,7 @@ const clientService = require('./clientService');
 const { findLeadByEmail, findLeadByName, learnEmailForLead } = require('./inboundEmailService');
 const { insertImportedMeeting, addMeetingLead } = require('./recallWebhookDb');
 const { normalizeEmail } = require('./recallImportService');
-const { splitFathomMeeting, eventLeadSpeaks } = require('./fathomSplitService');
+const { splitFathomMeeting, eventLeadSpeaks, dedupeMeetingEvents } = require('./fathomSplitService');
 const { extractMeetingUrl, isCoachAttending } = require('./recallAutoJoinService');
 const { getMeetingsInWindow } = require('./calendarProvider');
 const { createSafeLogger } = require('../utils/loggerHelper');
@@ -250,11 +250,17 @@ async function ingestFathomMeeting(opts = {}) {
   // duplicated calendar event, leaves a non-attending lead (cancelled/no-show) who never speaks — so
   // we must not carve a bogus segment under their name. (2026-06-17 Al/Courtney case.) Worst case the
   // filter is over-eager and we file as a single meeting, which is always safe (lead-matched by email).
-  const speakingEvents = events.filter((ev) => eventLeadSpeaks(meeting, ev, coachNames));
+  // Dedupe first (2026-07-03: an on-screen event duplication made one meeting look back-to-back
+  // with itself), and let the guard also match speakers by Fathom's invitee-email identity.
+  const uniqueEvents = dedupeMeetingEvents(events, coachNames);
+  const speakingEvents = uniqueEvents.filter((ev) => eventLeadSpeaks(meeting, ev, coachNames, coachEmails));
 
   // ---- SPLIT PATH (back-to-back: >1 real meeting whose lead actually spoke) ----
-  if (speakingEvents.length > 1) {
-    const split = splitFathomMeeting(meeting, speakingEvents, { coachNames, coachEmails });
+  const split = speakingEvents.length > 1
+    ? splitFathomMeeting(meeting, speakingEvents, { coachNames, coachEmails })
+    : null;
+  if (split && !split.shouldSplit) log.info(`split declined (${split.reason}) — filing as single`);
+  if (split && split.shouldSplit) {
     const segPlans = [];
     for (const seg of split.segments) {
       const lr = await matchLeadsForSegment(coach, seg);
