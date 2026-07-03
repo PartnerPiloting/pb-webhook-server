@@ -60,6 +60,14 @@ One library, two woven series:
 - Node-builder's path: select highly from LinkedIn → work with a coach → prepare campaigns → send → learn online discovery calls.
 - Referral reciprocity inside the system: "you'll introduce people that could be introduced to me, vice versa."
 
+## Launch threshold (2026-07-03)
+
+The drip does NOT start until every step on the map links to a real piece - email #1's footer promises "the whole process on one page," and coming-soon links turn the wow into a shrug (no second first-click). Minimum launch inventory (~9): the map (#12), feast-or-famine (#10), Daniel story (#15), and the seven journey-step pieces (#30, #32, #35, #37, #45, #40, #70). Post-launch arrivals: #47 craft companion, #20, #50, #60 - nothing on the map promises them. Engine gets built in parallel; both finish together.
+
+## Titles rule (2026-07-03)
+
+Titles are content: the map shows all titles at once and that scan is itself a paradigm-shifting read (a manifesto in 14 lines) - each title does work unclicked. RULE: a title must state or provoke its piece's penny-drop, never merely name the topic. "How to follow up effectively" fails; "A reason to follow up" passes. "Why I'll never send you a Calendly link" is the benchmark.
+
 ## Jump-ahead rule (2026-07-03)
 
 Impatient readers WILL leap from the library straight to their pain point (e.g. #32) unprepared. Never gate or scold ("read these first" = syllabus = Calendly mistake in another costume; jumpers are the highest-intent readers). Instead:
