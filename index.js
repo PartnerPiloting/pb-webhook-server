@@ -3239,6 +3239,13 @@ try {
 }
 
 try {
+  const { mountHelloMcp } = require('./services/mcpHelloServer.js');
+  mountHelloMcp(app, moduleLogger);
+} catch (e) {
+  moduleLogger.error("index.js: Error mounting mcpHelloServer", e.message, e.stack);
+}
+
+try {
   const guestBookingRoutes = require("./routes/guestBookingRoutes.js");
   app.use(guestBookingRoutes);
   moduleLogger.info("index.js: Guest booking routes mounted.");
