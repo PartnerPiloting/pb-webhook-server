@@ -1212,12 +1212,16 @@ router.post('/mcp/:token', express.json(), async (req, res) => {
   const { method, params, id } = req.body || {};
 
   if (method === 'initialize') {
+    // Echo the client's protocol version when it's one we can serve (claude.ai sends its
+    // preferred version; answering with an ancient one risks being treated as degraded).
+    const requested = String(params?.protocolVersion || '').trim();
+    const KNOWN = new Set(['2024-11-05', '2025-03-26', '2025-06-18']);
     return res.json({
       jsonrpc: '2.0', id,
       result: {
-        protocolVersion: '2024-11-05',
-        capabilities: { tools: {} },
-        serverInfo: { name: 'recall-transcript', version: '1.0.0' },
+        protocolVersion: KNOWN.has(requested) ? requested : '2025-06-18',
+        capabilities: { tools: { listChanged: false } },
+        serverInfo: { name: 'recall-transcript', version: '1.1.0' },
       },
     });
   }
@@ -1225,6 +1229,21 @@ router.post('/mcp/:token', express.json(), async (req, res) => {
   // Notifications have no id — acknowledge silently
   if (!id && method && method.startsWith('notifications/')) {
     return res.status(204).end();
+  }
+
+  // Modern clients probe these even when we have nothing to offer — answering "method not
+  // found" can get the server quietly demoted, so give well-formed empty answers instead.
+  if (method === 'ping') {
+    return res.json({ jsonrpc: '2.0', id, result: {} });
+  }
+  if (method === 'prompts/list') {
+    return res.json({ jsonrpc: '2.0', id, result: { prompts: [] } });
+  }
+  if (method === 'resources/list') {
+    return res.json({ jsonrpc: '2.0', id, result: { resources: [] } });
+  }
+  if (method === 'resources/templates/list') {
+    return res.json({ jsonrpc: '2.0', id, result: { resourceTemplates: [] } });
   }
 
   if (method === 'tools/list') {
