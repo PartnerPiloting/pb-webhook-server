@@ -933,6 +933,22 @@ what it IS; "Wingguy" is the name.
 trademark collisions (so options are warm *and* available); + The-Vault-style metaphors. Then check
 IP Australia (our class) + domain before committing. Guy's brand call.
 
+### Website/business rename: "Australian Side Hustles" → "I know a guy" (WANTED, parked — 2026-07-03)
+
+Separate from the assistant name above — this is the **website/business identity**. On the 2026-07-03
+call, Alasdair Bell said flat-out the site should be called **"I know a guy"**, not Australian Side
+Hustles. Guy's reaction (verbatim): *"It's irking me like you… that's exactly what I want to do and
+call it… I never want to sell it, so I don't have to be a brand other than me."* Key context:
+- "Australian Side Hustles" is a **3-years-ago starting point the business has outgrown** — and
+  Alasdair is not the first to say so; this feedback has come up before.
+- The rename is **wanted, not debated** — the only blocker is priority ("can't prioritise it high
+  enough because I've got these other things to do first").
+- It would **unify the brand family**: Wingguy was coined brand-tied to "I know a Guy", the drip
+  series teaches the referral sentence ("I know a guy" IS the product moment), and the nodes vision
+  is literally people saying it about each other.
+- When website/branding work next comes up, **surface this first** — don't let it be re-derived or
+  forgotten. Don't push a rename unprompted before then.
+
 ### Data architecture — two stores, two names (decided 2026-06-09)
 | Store | Holds | User-facing name |
 |---|---|---|
