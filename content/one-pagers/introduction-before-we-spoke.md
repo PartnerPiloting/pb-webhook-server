@@ -3,7 +3,7 @@ slug: introduction-before-we-spoke
 title: The introduction I made before we'd even spoken
 series: network-building-rethought
 order: 15
-status: draft
+status: final
 audience: outsider-safe
 ---
 
@@ -33,4 +33,4 @@ And notice the direction it flowed. I didn't get a referral - I gave one, to som
 
 That's where this series is heading. Next: why the way most of us were taught to network makes stories like this one basically impossible.
 
-<!-- Revised 2026-07-03 per Guy: names changed to protect the innocent (Andrew/Rob are pseudonyms for Daniel Buckton/Keith Sinclair - permission gate resolved by anonymising, "names changed" declared in-text). Selection passage now carries the two-filter structure: first cut everyone does (industry, years of experience, recent LinkedIn activity) then ATTITUDE as the filter that does the real work (mirrors Guy's scoring attributes - long-term mindset, learner's mindset, collaborative spirit vs cynicism). Closing tease points at #20 (post-launch) - retease to the map if that bothers. -->
+<!-- Approved final by Guy 2026-07-03 ("perfect, wouldn't change a thing"). Revised 2026-07-03 per Guy: names changed to protect the innocent (Andrew/Rob are pseudonyms for Daniel Buckton/Keith Sinclair - permission gate resolved by anonymising, "names changed" declared in-text). Selection passage now carries the two-filter structure: first cut everyone does (industry, years of experience, recent LinkedIn activity) then ATTITUDE as the filter that does the real work (mirrors Guy's scoring attributes - long-term mindset, learner's mindset, collaborative spirit vs cynicism). Closing tease points at #20 (post-launch) - retease to the map if that bothers. -->
