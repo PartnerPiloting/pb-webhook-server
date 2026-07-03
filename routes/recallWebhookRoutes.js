@@ -1197,7 +1197,12 @@ router.delete('/mcp/:token', (req, res) => {
 
 router.post('/mcp/:token', express.json(), async (req, res) => {
   const expected = (process.env.PB_WEBHOOK_SECRET || '').trim();
-  const authOk = expected && req.params.token === expected;
+  // URL-safe alias (2026-07-03): the legacy secret contains "!!@@" — a raw "@" in a URL, which
+  // claude.ai's connector plumbing now appears to reject client-side (refresh/chat produce NO
+  // request at all). MCP_CONNECTOR_TOKEN is a clean hex token for the connector URL; the old
+  // secret keeps working so nothing else breaks.
+  const alt = (process.env.MCP_CONNECTOR_TOKEN || '').trim();
+  const authOk = (expected && req.params.token === expected) || (alt && req.params.token === alt);
   logMcpConnectorHit(req, authOk ? 'auth=ok' : 'auth=BAD');
   if (!authOk) {
     const id = req.body?.id ?? null;
