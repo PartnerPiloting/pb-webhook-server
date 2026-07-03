@@ -218,6 +218,11 @@ async function enrichProfileFromPortal(req, profile = {}) {
     // Carry the matched record id so the chat agent can WRITE back (update_lead_email). Non-enumerable-ish
     // underscore key: buildProfileBlock/detectTemplate read named fields only, so it never reaches the model.
     merged._leadRecordId = records[0].id;
+    // Carry the lead's stored email too (same underscore-key convention → never reaches the model), so the
+    // chat route can use it as the invite address when the panel didn't pass one. Closes the "agent says it
+    // can't book — no email" gap where the panel's own email lookup came through empty but the Portal has it
+    // (Mary Anne, 2026-07-03): the invite email now comes from the SAME enriched record the context is built on.
+    merged._leadEmail = (records[0].fields && records[0].fields['Email']) || '';
     logger.info(`[Wingguy] enrich: merged Portal record ${records[0].id} (status=${portal.status || '—'}, ceaseFup=${portal.ceaseFup ? 'yes' : 'no'})`);
     return merged;
   } catch (e) {
@@ -453,7 +458,10 @@ module.exports = function mountWingguy(app) {
         profile: enriched,
         conversation,
         messages,
-        leadEmail,
+        // Prefer the email the panel looked up; fall back to the enriched Portal record's email so booking
+        // works whenever the lead has an email in Airtable, even if the panel's async lookup came through
+        // empty (Mary Anne, 2026-07-03 — the agent then wrongly reported "no email" until pushback).
+        leadEmail: leadEmail || (enriched && enriched._leadEmail) || '',
         // CRM write seam for update_lead_email: the lead's base + the record id the enrich step matched.
         airtableBaseId: req.client && req.client.airtableBaseId,
         leadRecordId: enriched && enriched._leadRecordId,
