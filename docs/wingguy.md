@@ -145,7 +145,8 @@ Wingguy (how to act) + reads/writes the Portal (the records).
   **★ Convergence roadmap DECIDED 2026-07-04 (order: rules store → extension reads it → per-client connector
   tokens → booking/thread-capture tools on the ONE connector, renamed "Wingguy" → Chrome Web Store last, on
   demand). NO apostrophes in claude.ai connector names (silent chat-side failure — issue #537). Detail ↓
-  "▶ You are here" 2026-07-04 close.**
+  "▶ You are here" 2026-07-04 close. Step-1 detailed design APPROVED 2026-07-04 ↓ journal "Rules store
+  (roadmap step 1) — detailed design" (schema/write-door/import + VA-roles + transition policy).**
 
 **AI / model.** Standardise on **Claude** behind a swappable seam: **Claude = drafting** (voice), **Gemini =
 scoring + summaries** (cheap, high-volume). The connector surface needs the client's own Claude account (a product
@@ -2691,9 +2692,169 @@ assistant, separate from client-facing Wingguy"*) + the Notion "00 — Master Br
    the real calendar; `createBookingEvent` puts no weekday in event titles (so "Rebooked for Friday" can't be
    generated). Historical bug = older code / stale data.
 
+## Rules store (roadmap step 1) — detailed design, APPROVED (2026-07-04, session 2)
+
+> The build design for convergence-roadmap step 1 (canonical block → "Convergence roadmap"). Drafted + approved
+> with Guy 2026-07-04. Implements the decisions already locked in **Rules de-personalisation**, **Rules editing
+> UX**, **Rules integrity = code**, and **Rules edit-authority** — read those for the *why*; this entry is the *what*.
+
+**Scope fence.** IN: Postgres schema · rules-store service with the write-door · MCP tools (read/propose/commit
+from chat) · one-time Notion import (tenant-0 rows + de-personalised template rows in the same pass). OUT
+(later steps, unchanged): switching chat/extension reads to the store (step 2 — `config/wingguyTemplates.js`
+stays live + untouched), per-client tokens/authz (step 3), the LLM semantic conflict-checker (v2), rules
+screens, the suggestion-queue build. Step 1 is purely additive — nothing that drafts a message today changes.
+
+**Tables (4 + audit; house style = `recallWebhookDb.js` pattern: lazy `Pool`, `ensureSchema`
+CREATE-IF-NOT-EXISTS in the service, tenant key = the existing `coach_client_id` convention, `'Guy-Wilson'` =
+tenant 0; no migration framework).**
+- **`wingguy_rules`** — the store. **Append-only:** every row = one version of one rule; an edit inserts
+  version n+1 and flips n to `retired`; never UPDATE body / never DELETE; revert = insert a fresh version
+  copying an old body. Columns: `rule_key` (stable slug) · `tenant_id` (NULL for foundation/template) ·
+  `layer` CHECK IN (`foundation`,`template`,`client`) · `context` CHECK IN (`global`,`outreach`,`reply`,
+  `booking`,`post-call`,`follow-up`) · `rule_type` CHECK IN (`voice`,`formatting`,`stage-logic`,`scheduling`,
+  `asset-usage`,`qualifying`) · **`campaign` TEXT NULL** (added at Guy's ask — a campaign, e.g. `tks`/`frac`/a
+  new LinkedHelper campaign, = a named bundle of rules; creating a campaign = creating its rule-set through
+  the door, NO code change) · `version` · `body` (markdown; `{{variables}}` + `{{asset:key}}` only, never
+  literals) · `change_note` · `created_by` · `status` (`active`/`retired`) · timestamps. Partial unique index
+  = one active version per (layer, tenant, rule_key). Taxonomy enums are **provisional until the proof pass**
+  (adjust CHECKs before full import if a real rule doesn't fit). Layer semantics: **foundation** = platform-
+  wide, runtime-read by all tenants, Guy-only edits · **template** = the de-personalised seed, NOT runtime-
+  read — provisioning copies template rows into a new client's layer (seed-then-diverge; onboarding = copy
+  the brain + fill ~10 identity variables, NOT a literal clone signing "(I know a) Guy") · **client** = the
+  tenant's own. **No cross-layer shadowing in v1** — runtime read = foundation ∪ client(tenant).
+- **`wingguy_variable_catalog`** (`var_key`, description, required, example — discovered by the de-pass;
+  literally becomes the onboarding form) + **`wingguy_tenant_variables`** (tenant's values, unique per
+  tenant+key, history-logged).
+- **`wingguy_assets`** — per-tenant asset library (tenant_id, asset_key, kind, url, status). Usage GATES are
+  asset-usage RULES referencing `{{asset:key}}`; this table holds only each tenant's concrete link.
+- **`wingguy_rule_history`** — the separate append-only audit (actor, action ∈ commit/retire/revert/import/
+  variable-set, rule_key, from/to version, detail JSONB).
+
+**Write-door: `services/wingguyRulesStore.js` — the ONLY code path that inserts** (tools + import script all
+route through it; the import dogfoods the door day one). Functions: `getActiveRules({tenantId, context?})` ·
+**`renderRulesBlock({tenantId, contexts})`** (resolves variables/assets → prompt-ready text; **this is the
+exact function step 2 calls** — building it now shrinks step 2 to "swap the source, delete the config file") ·
+`proposeRule()` (**pure read, no write**: current version + diff + the other active rules in the same
+context+type — the v1 "human eyeballs the neighbours" check per the 2026-06-09 easy path — + `expected_version`)
+· `commitRule()` (validates taxonomy, rejects if `expected_version` ≠ live active version = structural
+conflict check, inserts n+1 + retires n + history, one transaction) · `revertRule` · `setVariable`/
+`getVariables`/`setAsset`. Edit-authority enforcement (foundation=Guy, client=own, VA=nothing) lands with
+step-3 identities; in step 1 every caller is Guy — the door just logs the layer prominently.
+
+**Exposure: 6 MCP tools on BOTH transports** (`/mcp` legacy for Claude Code + `/mcp2` for claude.ai):
+`wingguy_rules_list` · `wingguy_rule_get` (with history) · `wingguy_rule_propose` · `wingguy_rule_commit` ·
+`wingguy_rule_revert` · `wingguy_variables`. Tenant hard-wired `Guy-Wilson` behind the existing token — no new
+auth surface. Propose→commit split enforces LLM-proposes/code-writes/human-confirms in chat (no tool writes
+without a proposal in hand). ⚠ These are the connector's first NON-transcript tools → triggers the
+roadmap's "rename connector → Wingguy" rule (no apostrophe — safe). Recommendation = rename when these ship;
+**Guy's call, still open.**
+
+**One-time Notion import (Guy = tenant 0; per the 2026-06-09 conversion design — one pass, two outputs).**
+- **Phase A — proof pass, ONE section first** (default candidate: Outreach Rules): Claude reads it via the
+  Notion MCP → extracted atomic rules with proposed key/context/type, every identity token (incl. the sneaky
+  implicit ones) → `{{variable}}`, template-vs-Guy-private split per rule, implied variable catalogue — ALL
+  reviewed by Guy BEFORE anything touches Postgres. Validates the approach + taxonomy for the cost of one section.
+- **Phase B — full pass**, section by section, each reviewed as a diff-style summary (paste-and-diff, not a
+  200-item checklist). Output = ONE seed JSON: template rules + Guy's client-layer rules + variable values + assets.
+- **Phase C — seed THROUGH the write-door** (`scripts/import-wingguy-rules.js`, `actor='import'`).
+  **⚠ The seed JSON is NEVER committed — the repo is PUBLIC and the rules are the moat.** Run path: locally
+  against the Render Postgres EXTERNAL connection URL (one-time, `.env.local` pattern). Re-running is harmless
+  by construction (append-only → new versions).
+- **Phase D — verify, don't switch:** read-back vs Notion + a smoke script (`scripts/wingguy-rules-smoke.js`,
+  Render one-off job: commit a throwaway rule to a `smoke-test` tenant, read, revert, check history).
+  **Notion stays Guy's authoring master after import** — mirror discipline continues until the step-2 flip.
+
+**Testing.** `tests/wingguy-rules-store.test.js` — taxonomy validation, version bumping, expected-version
+rejection, variable resolution, foundation∪client merge; injected fake pool; **synthetic rule content only**
+(public repo). Live bar = the smoke job green on the prod deploy.
+
+**★ VA / roles mechanics (Q&A-settled this session; builds at step 3, seams left ready now).**
+- **Operating vs authoring:** a VA *uses* Wingguy unrestricted (draft/edit-by-hand/book/send); the guard is
+  ONLY on mutating stored rules.
+- **Identity = the per-PERSON connector token; capability = the role on its record** (`owner`/`va`/`platform`).
+  The role flag can't stand alone — a chat request carries no session; the token is how the server *proves*
+  which record is knocking. Same pattern as today's `/mcp2/<token>`, just one key per person. **Discipline:
+  the VA gets her OWN token — never the owner's** (shared token = indistinguishable). Minting = one row + one
+  connector URL (near-zero admin: no expiry, revoke = delete/rotate the row). Roles are **three, coarse, in
+  code** — no per-person permission checkboxes (that's where admin overhead breeds). WorkOS AuthKit stays the
+  polished later swap — it changes how the key is *obtained*, not the role machinery.
+- **VA flow = IDENTICAL until the terminal step:** same dialogue, same proposal+diff+neighbours; at confirm,
+  role=va → the door parks the fully-formed proposal in an **approvals queue** (`wingguy_rule_proposals`,
+  status pending, proposed_by, expected_version) instead of committing; Claude acknowledges ("logged for
+  approval" — Claude owns the acknowledgment, per flag-to-queue). Queue-not-inbox: no pings; owner/Guy review
+  on their terms.
+- **Review outcomes = THREE, and approve-with-edits is the expected-common case:** approve as-is ·
+  **approve-with-edits** (reviewer has full authority — the VA's proposal is superseded by an owner-authored
+  version based on it, committed on the spot; history keeps the honest lineage *proposed-by-VA /
+  modified+approved-by-owner*; the VA's original is retained — useful signal on suggestion quality) · dismiss
+  (one click, no essay owed). **The eventual screen gets an edit box, not two buttons.** Stale-proposal
+  protection: approval blocked if the rule moved since proposing (expected_version) — "re-check", never
+  silent overwrite.
+- **Guy's two-hat case:** the door makes "is this MINE (tenant 0) or EVERYONE'S (foundation)?" an unskippable
+  explicit choice on every Guy edit.
+
+**★ Transition policy (Q&A-settled this session — how Guy keeps daily-driving through the change).**
+- **No staging for this stream.** Backend, additive, flag-guarded → the main+flag pattern (per the
+  pervasive-change house rule; Fathom precedent). ONE environment in Guy's head; his live thrashing on main
+  IS the QA model — the flag caps any catch at "flip back, minutes".
+- **Step 1 = zero contact with the daily flow** (scaffolding beside the house). **Step 2 = the one real risk
+  moment**, handled by: `WINGGUY_RULES_SOURCE=config` default (store path ships dark; flip = one Render env
+  var) + a **shadow-compare week** (server also renders what the store WOULD say, logs diffs while Guy works
+  normally; flip only after clean) + **morning-of re-import** so the store goes live on current Notion.
+- **ONE master at a time — NO two-way sync, ever, by design** (two masters = the Matthew bug rebuilt; shapes
+  diverge anyway: structured versioned atoms vs prose). Before flip: Notion master, "sync" = re-run the
+  import. **Flip day (one announced day, not a blur):** authoring re-points to chat/the store; the claude.ai
+  account instruction updated; Notion rules pages get a loud **"ARCHIVED [date] — live rules now in the
+  Wingguy store; edits here do nothing"** banner. After: Notion = frozen archive; nothing flows back. (If Guy
+  misses reading rules in Notion: a one-way regenerated read-only EXPORT is a cheap later add — a printout,
+  not a master. Skip for v1.) The one-sentence discipline: *before flip day edit Notion; after, tell Wingguy
+  in chat — never both.*
+- **Flip posture = GUT IT OUT (Guy's call): the authoring layer is a one-way door regardless of bugs.**
+  Post-flip content problems fix FORWARD (a bad rule = a chat edit through the door, versioned, per-rule
+  revert — easier than the old edit-Notion+mirror-to-code); they never justify flipping back. The env-var
+  kill-switch survives as a **fire extinguisher only** — hard plumbing outage mid-workday → reads fall back
+  for hours while the bug is fixed, **authoring stays in the store** (one-master never breaks). **Boat-burning
+  scheduled:** after ~2 weeks of stable normal use, DELETE the `wingguyTemplates.js` hard-coded copy (step 2's
+  payoff — Matthew-drift class killed permanently) — at which point the extinguisher goes too. Pick a flip
+  morning with a normal working day behind it (a quiet-Friday flip proves nothing).
+- **`wingguy_status` tool** (which rules source is live · version counts · last change) — "where am I" becomes
+  askable instead of reconstructed.
+
+**Build order (≈3 sittings; session structure = one chat per sitting, doc carries continuity):**
+(1) **Build sitting** — schema + store service + write-door + unit tests; then MCP tools + smoke, deploy, smoke
+green on prod. (2) **Proof-pass sitting** — Phase A with Guy reviewing. (3) **Import sitting** — Phases B–D.
+The step-2 flip gets its own later session.
+
+**Open decisions for the top of the build sitting:** (1) **the Notion corpus list** — which pages ARE the
+Wingguy rules (the only blocking one; Penguy/Master Brief material explicitly excluded; Claude can propose a
+list from Notion search for yes/no) · (2) proof section (default: Outreach Rules) · (3) connector rename
+timing ("Wingguy" when the tools ship vs wait for step 4) · (4) taxonomy sign-off (provisional until the
+proof pass).
+
 ## ▶ You are here / next pick-up
 
-**▶▶ SESSION CLOSE 2026-07-04 ("splitter fixes + connector saga + convergence roadmap") — START THE NEXT CHAT HERE.**
+**▶▶ SESSION CLOSE 2026-07-04 (session 2: "rules-store step-1 detailed design — APPROVED, build next") — START THE NEXT CHAT HERE.**
+Design-only session (nothing built, nothing deployed). The full detailed design for **convergence-roadmap
+step 1** (Postgres rules store + minimal write-door + one-time Notion import, Guy = tenant 0) was drafted,
+Q&A'd and **APPROVED** — now banked as journal entry **"Rules store (roadmap step 1) — detailed design"**
+(directly above): schema (5 tables, append-only versioned, curated taxonomy + **campaign tag**), the
+write-door service (`renderRulesBlock` = the step-2 seam), 6 MCP tools on both transports, the 4-phase
+Notion import (proof-section first; seed JSON never committed — public repo). Q&A locked: **VA mechanics**
+(role rides the per-person connector token; VA = same flow, terminal step parks in an approvals queue;
+**approve-with-edits = the expected review path** — screen needs an edit box, not two buttons) · **tokens**
+(identity=token, capability=role; 3 coarse roles in code; near-zero admin; AuthKit = later swap) ·
+**transition** (no staging — main + `WINGGUY_RULES_SOURCE` flag + shadow-compare week; ONE master at a time,
+NO two-way Notion↔Postgres sync ever; flip day = one-way door for authoring, gut-it-out, kill-switch =
+fire-extinguisher-only; delete `wingguyTemplates.js` copy after ~2 weeks stable) · **onboarding vision
+confirmed** (new client = copy the template brain + fill ~10 identity variables, then diverge via chat).
+**NEXT SITTING = the build sitting:** schema + `services/wingguyRulesStore.js` + write-door + tests → MCP
+tools + smoke script → deploy → smoke green on prod. **⚠ Needs from Guy at the top of it: the Notion corpus
+list** (which pages are the Wingguy rules); defaults if he shrugs: proof section = Outreach Rules, rename
+connector → "Wingguy" when the tools ship, taxonomy provisional. Separate watch-item unchanged: **Wed 9 July
+triple-header = first live splitter test** (Luke S 10:00 → Julian 10:30 → Andrew 11:00) — glance at the
+review queue after (own short chat, don't braid into the build sitting).
+
+**(previous close) ▶▶ SESSION CLOSE 2026-07-04 ("splitter fixes + connector saga + convergence roadmap").**
 Three workstreams landed across 3–4 July:
 - **Fathom back-to-back splitter: 3 bugs found via the 3-July calls, FIXED same day** (`257cf38`+`e14ad4ee`, live, regression-replayed in `tests/test-fathom-split-fixes.js`): (1) coach-name loophole — `eventLeadName` now parses `&`/`/`/`and`/`+` titles and strips the coach (root cause of phantom/cross-filed segments); (2) calendar-event dedupe (on-screen duplicated event made one meeting look back-to-back with itself); (3) speaker identity via Fathom's invitee-email match ("bobba" = Andrew Bain) **plus Guy's timing rule** (unknown new voice first speaking within −5/+15 min of a booking's start = that booking's lead; no-show slots stay unclaimed) **plus `needs_split` ⚠ flag** when a multi-booking recording files as one lump. Prod data repaired (10224=Luke S 31m · new 10229=Andrew Bain · 10226 relabelled Kaprilian · phantoms deleted). **Wed 9 July triple-header (Luke S 10:00 → Julian 10:30 → Andrew 11:00) = first live test — glance at the review queue after.**
 - **Claude.ai connector saga SOLVED — two real bugs, one absurd:** (a) an **apostrophe in the connector NAME silently breaks chat-side tool discovery** (settings/handshakes fine; chats never surface the tools; proven by A/B hello-world connectors; filed as anthropics/claude-ai-mcp**#537**) — **rule: NO apostrophes/special chars in claude.ai connector names, ever**; (b) the legacy URL embedding the `!!@@` secret is rejected client-side (zero requests). Connector is now **"Meeting Transcripts"** → `/mcp2/<MCP_CONNECTOR_TOKEN>` on the official SDK (`services/mcpRecallServer.js`, streamable+SSE); legacy `/mcp/:token` kept (Claude Code still uses it; also gained the fathom tools + modern dialect); `/mcp-hello` = deletable repro case; `MCP-PROBE`/`MCP2-CONNECTOR` access logging kept (invaluable: answers "did claude.ai even knock"). **New store-bypass tools: `fathom_list_meetings` + `fathom_transcript`** ("get it from Fathom" when the pipeline mangles/delays a meeting).
