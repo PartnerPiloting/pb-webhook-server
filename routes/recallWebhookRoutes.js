@@ -1176,9 +1176,30 @@ function fathomDirectMeetingMatches(m, query) {
 // Remote MCP endpoint for Claude.ai browser ("Add custom connector")
 // URL: POST /mcp/:token  where :token = PB_WEBHOOK_SECRET
 // ---------------------------------------------------------------------------
+// Diagnostic access log (2026-07-03): claude.ai chats intermittently report this connector as
+// absent and there is otherwise NO trace of whether the client ever reached us. Log every hit
+// so "never knocked" (claude.ai side) can be told apart from "knocked and we fumbled it".
+function logMcpConnectorHit(req, note) {
+  const ua = String(req.headers['user-agent'] || '').slice(0, 60);
+  const rpc = req.body?.method || 'n/a';
+  console.log(`MCP-CONNECTOR ${req.method} rpc=${rpc} ${note || ''} ua="${ua}"`);
+}
+
+// Non-POST probes (some MCP clients open a GET stream or send DELETE on session close).
+router.get('/mcp/:token', (req, res) => {
+  logMcpConnectorHit(req, 'GET-probe');
+  res.status(405).json({ jsonrpc: '2.0', id: null, error: { code: -32000, message: 'Use POST' } });
+});
+router.delete('/mcp/:token', (req, res) => {
+  logMcpConnectorHit(req, 'DELETE-probe');
+  res.status(405).json({ jsonrpc: '2.0', id: null, error: { code: -32000, message: 'Use POST' } });
+});
+
 router.post('/mcp/:token', express.json(), async (req, res) => {
   const expected = (process.env.PB_WEBHOOK_SECRET || '').trim();
-  if (!expected || req.params.token !== expected) {
+  const authOk = expected && req.params.token === expected;
+  logMcpConnectorHit(req, authOk ? 'auth=ok' : 'auth=BAD');
+  if (!authOk) {
     const id = req.body?.id ?? null;
     return res.status(401).json({ jsonrpc: '2.0', id, error: { code: -32001, message: 'unauthorized' } });
   }
