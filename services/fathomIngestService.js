@@ -27,7 +27,7 @@ const clientService = require('./clientService');
 const { findLeadByEmail, findLeadByName, learnEmailForLead } = require('./inboundEmailService');
 const { insertImportedMeeting, addMeetingLead } = require('./recallWebhookDb');
 const { normalizeEmail } = require('./recallImportService');
-const { splitFathomMeeting, eventLeadSpeaks, dedupeMeetingEvents } = require('./fathomSplitService');
+const { splitFathomMeeting, dedupeMeetingEvents, resolveSpeakingEvents } = require('./fathomSplitService');
 const { extractMeetingUrl, isCoachAttending } = require('./recallAutoJoinService');
 const { getMeetingsInWindow } = require('./calendarProvider');
 const { createSafeLogger } = require('../utils/loggerHelper');
@@ -251,9 +251,10 @@ async function ingestFathomMeeting(opts = {}) {
   // we must not carve a bogus segment under their name. (2026-06-17 Al/Courtney case.) Worst case the
   // filter is over-eager and we file as a single meeting, which is always safe (lead-matched by email).
   // Dedupe first (2026-07-03: an on-screen event duplication made one meeting look back-to-back
-  // with itself), and let the guard also match speakers by Fathom's invitee-email identity.
+  // with itself). The guard matches speakers by Fathom's invitee-email identity, by name, or by
+  // the timing fallback (a brand-new voice arriving at a booking's slot — the "bobba" rule).
   const uniqueEvents = dedupeMeetingEvents(events, coachNames);
-  const speakingEvents = uniqueEvents.filter((ev) => eventLeadSpeaks(meeting, ev, coachNames, coachEmails));
+  const speakingEvents = resolveSpeakingEvents(meeting, uniqueEvents, { coachNames, coachEmails });
 
   // ---- SPLIT PATH (back-to-back: >1 real meeting whose lead actually spoke) ----
   const split = speakingEvents.length > 1
@@ -264,11 +265,15 @@ async function ingestFathomMeeting(opts = {}) {
     const segPlans = [];
     for (const seg of split.segments) {
       const lr = await matchLeadsForSegment(coach, seg);
+      if (seg.leadMatchedBy === 'timing') {
+        log.info(`segment "${seg.leadName}" attributed by TIMING (new voice "${seg.adoptedSpeaker}" at slot time) — identity from booking email; verify in review`);
+      }
       segPlans.push({
         _transcriptText: seg.transcriptText,
         _learnEmails: lr.learnEmails || [],
         title: seg.calendarEvent.summary || `${seg.leadName} meeting`,
         leadName: seg.leadName,
+        leadMatchedBy: seg.leadMatchedBy,
         meetingStart: seg.calendarEvent.start || new Date(seg.startMs).toISOString(),
         durationSeconds: Math.max(0, Math.round((seg.endMs - seg.startMs) / 1000)),
         transcriptLines: seg.lineCount,
@@ -308,6 +313,11 @@ async function ingestFathomMeeting(opts = {}) {
   }
 
   // ---- SINGLE PATH (one meeting, or calendar unreadable) ------------------
+  // Lump suspect: multiple real bookings overlapped this recording but we couldn't confirm
+  // more than one lead — file as ONE meeting (safe) and flag it ⚠️ in the review queue so a
+  // possibly-multi-call lump announces itself instead of hiding behind a fat duration.
+  const lumpSuspect = uniqueEvents.length > 1;
+  if (lumpSuspect) log.info(`single path with ${uniqueEvents.length} overlapping bookings — flagging needs_split for review`);
   const transcriptText = normalizeFathomApiTranscript(meeting);
   const meta = extractMeta(meeting);
   const emails = extractLeadEmails(meeting);
@@ -376,13 +386,14 @@ async function ingestFathomMeeting(opts = {}) {
     externalEmails: emails.external,
     matchedLeads: matched,
     unmatchedEmails: remainingUnmatched,
+    lumpSuspect,
     source: SOURCE,
   };
 
   if (dryRun) return { ok: true, dryRun: true, plan, transcriptText };
   if (!ingestEnabled()) return { ok: false, error: 'FATHOM_INGEST_ENABLED is not true — write path is disabled', plan };
 
-  const ins = await insertImportedMeeting({ title: meta.title, source: SOURCE, transcriptText, meetingStart: meta.meetingStart, durationSeconds: meta.durationSeconds, fathomRecordingId: String(meeting.recording_id), coachClientId });
+  const ins = await insertImportedMeeting({ title: meta.title, source: SOURCE, transcriptText, meetingStart: meta.meetingStart, durationSeconds: meta.durationSeconds, fathomRecordingId: String(meeting.recording_id), coachClientId, needsSplit: lumpSuspect });
   if (!ins.ok) return { ok: false, error: ins.error || 'insert failed', plan };
 
   const meetingId = ins.meeting_id;

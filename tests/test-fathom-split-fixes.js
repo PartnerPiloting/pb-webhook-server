@@ -18,6 +18,7 @@ const {
   eventLeadName,
   eventLeadSpeaks,
   dedupeMeetingEvents,
+  resolveSpeakingEvents,
 } = require('../services/fathomSplitService');
 
 const COACH_NAMES = ['Guy Wilson'];
@@ -129,5 +130,54 @@ assert.strictEqual(
 const speaking = dedupeMeetingEvents([kaprilianEvent, alasdairEvent], COACH_NAMES)
   .filter((ev) => eventLeadSpeaks(afternoon, ev, COACH_NAMES, COACH_EMAILS));
 assert.strictEqual(speaking.length, 1, 'afternoon must file as a SINGLE meeting (no split)');
+
+// ---- Timing fallback ("bobba rule"): unknown voice arrives at a booking's slot ----
+// Same morning, but Fathom supplied NO email tags at all — name matching alone cannot tie
+// "bobba" to Andrew Bain. The timing rule must: a new voice first speaking at 10:31, next to
+// Andrew's 10:30 booking, is Andrew. Identity (lead record) still comes from the booking email.
+const morningNoEmails = {
+  ...morning,
+  transcript: morning.transcript.map((u) => ({
+    timestamp: u.timestamp,
+    speaker: { display_name: u.speaker.display_name }, // strip matched_calendar_invitee_email
+    text: u.text,
+  })),
+};
+
+const speakingNoEmails = resolveSpeakingEvents(morningNoEmails, [lukeEvent, lukeDupEvent, andrewEvent], {
+  coachNames: COACH_NAMES, coachEmails: COACH_EMAILS,
+});
+assert.strictEqual(speakingNoEmails.length, 2, 'timing rule must rescue Andrew\'s event without email tags');
+
+const tSplit = splitFathomMeeting(morningNoEmails, speakingNoEmails, { coachNames: COACH_NAMES, coachEmails: COACH_EMAILS });
+assert.strictEqual(tSplit.shouldSplit, true);
+assert.strictEqual(tSplit.segments[1].leadName, 'Andrew Bain');
+assert.strictEqual(tSplit.segments[1].leadMatchedBy, 'timing', 'Andrew segment must be marked as timing-attributed');
+assert.strictEqual(tSplit.segments[1].adoptedSpeaker, 'bobba', 'the adopted transcript alias is reported');
+assert.strictEqual(tSplit.segments[0].leadMatchedBy, 'identity', 'Luke still matches by name');
+assert.strictEqual(tSplit.segments[0].lineCount, 4, 'boundary still lands at bobba\'s first line (31:10)');
+assert.ok(!tSplit.segments[0].transcriptText.includes('Excellent.'), 'no Andrew speech leaks into Luke');
+
+// No-show slot stays ignored: no NEW voice appears near the phantom booking, so the timing
+// rule must NOT fire (the 2026-06-17 overrun-into-cancelled-slot case stays safe).
+const phantomEvent = {
+  summary: 'Courtney Chan & Guy Wilson',
+  start: '2026-07-03T00:30:00Z', end: '2026-07-03T01:00:00Z',
+  attendees: [{ email: 'courtney@example.com' }, { email: 'guyralphwilson@gmail.com', self: true, organizer: true }],
+};
+const lukeOnly = {
+  ...morning,
+  transcript: morning.transcript.filter((u) => u.speaker.display_name !== 'bobba'), // Luke's call just runs long
+};
+const speakingPhantom = resolveSpeakingEvents(lukeOnly, [lukeEvent, phantomEvent], {
+  coachNames: COACH_NAMES, coachEmails: COACH_EMAILS,
+});
+assert.strictEqual(speakingPhantom.length, 1, 'a no-show booking must not be adopted by the timing rule');
+
+// Afternoon via the full guard: still files as single.
+const speakingAfternoon = resolveSpeakingEvents(afternoon, [kaprilianEvent, alasdairEvent], {
+  coachNames: COACH_NAMES, coachEmails: COACH_EMAILS,
+});
+assert.strictEqual(speakingAfternoon.length, 1, 'afternoon still resolves to a single real meeting');
 
 console.log('test-fathom-split-fixes: all assertions passed');

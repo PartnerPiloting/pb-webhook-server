@@ -95,6 +95,79 @@ function eventLeadEmails(ev, coachEmails) {
   )];
 }
 
+const TIMING_BEFORE_MS = 5 * 60 * 1000;  // a lead may join a little early…
+const TIMING_AFTER_MS = 15 * 60 * 1000;  // …or run up to 15 min late (window per Guy, 2026-07-03)
+
+/** Meeting transcript → uniform lines with absolute time + speaker identity. */
+function transcriptLines(meeting) {
+  const recStartMs = Date.parse(meeting.recording_start_time || meeting.scheduled_start_time || 0);
+  return (Array.isArray(meeting.transcript) ? meeting.transcript : []).map((u) => ({
+    absMs: recStartMs + tsToSeconds(u && u.timestamp) * 1000,
+    ts: (u && typeof u.timestamp === 'string') ? u.timestamp : '',
+    speaker: (u && u.speaker && (u.speaker.display_name || u.speaker.name)) || (typeof u?.speaker === 'string' ? u.speaker : 'Speaker'),
+    email: speakerEmailOf(u),
+    text: (u && typeof u.text === 'string') ? u.text : '',
+  }));
+}
+
+/** Does this transcript line belong to the event's lead? Email identity beats name matching. */
+function lineMatchesEvent(l, e) {
+  return (l.email && e.leadEmails.includes(l.email))
+    || (e.leadName ? speakerMatchesLead(l.speaker, e.leadName) : false);
+}
+
+/**
+ * TIMING FALLBACK (Guy's rule, 2026-07-03): when a booking's lead can't be identified by
+ * email or name (Zoom alias like "bobba" with no Fathom email tag), attribute to that booking
+ * any BRAND-NEW voice — one matching no event's lead and not the coach — whose first words land
+ * within [start − 5 min, start + 15 min] of the booking. Nearest arrival wins; each voice is
+ * claimable by one event only. Returns Map<evEntry, first line of the adopted speaker>.
+ * A no-show slot stays unclaimed (no new voice appears), so phantom events are still ignored.
+ */
+function adoptUnknownSpeakers(lines, evs, coachNames, coachEmails) {
+  const coachEmailSet = new Set((coachEmails || []).map((e) => String(e).toLowerCase()));
+  const isCoach = (l) => (l.email && coachEmailSet.has(l.email))
+    || (coachNames || []).some((c) => speakerMatchesLead(l.speaker, c));
+
+  const firstBySpeaker = new Map();
+  for (const l of lines) if (!firstBySpeaker.has(l.speaker)) firstBySpeaker.set(l.speaker, l);
+  const unknown = [...firstBySpeaker.values()]
+    .filter((l) => !isCoach(l) && !evs.some((e) => lineMatchesEvent(l, e)));
+
+  const adopted = new Map();
+  const claimed = new Set();
+  for (const e of evs) {
+    if (lines.some((l) => lineMatchesEvent(l, e))) continue; // identified directly — no adoption needed
+    const startMs = Date.parse(e.ev.start);
+    const candidates = unknown
+      .filter((l) => !claimed.has(l.speaker)
+        && l.absMs >= startMs - TIMING_BEFORE_MS && l.absMs <= startMs + TIMING_AFTER_MS)
+      .sort((a, b) => Math.abs(a.absMs - startMs) - Math.abs(b.absMs - startMs));
+    if (candidates.length) {
+      adopted.set(e, candidates[0]);
+      claimed.add(candidates[0].speaker);
+    }
+  }
+  return adopted;
+}
+
+/**
+ * The events that qualify as REAL meetings in this recording: dedupe, then keep an event iff
+ * its lead speaks (email/name match) OR the timing fallback finds a new voice at its slot.
+ * This is the guard the ingest uses to decide single vs back-to-back.
+ */
+function resolveSpeakingEvents(meeting, events, opts = {}) {
+  const coachNames = opts.coachNames || ['Guy Wilson'];
+  const coachEmails = opts.coachEmails || [];
+  const lines = transcriptLines(meeting);
+  const evs = dedupeMeetingEvents(events, coachNames)
+    .map((ev) => ({ ev, leadName: eventLeadName(ev, coachNames), leadEmails: eventLeadEmails(ev, coachEmails) }));
+  const adopted = adoptUnknownSpeakers(lines, evs, coachNames, coachEmails);
+  return evs
+    .filter((e) => adopted.has(e) || lines.some((l) => lineMatchesEvent(l, e)))
+    .map((e) => e.ev);
+}
+
 /**
  * Does this calendar event's expected lead ACTUALLY SPEAK in the recording?
  * Guard against false splits: if a call overruns into the next booked slot, or a calendar event
@@ -139,14 +212,7 @@ function splitFathomMeeting(meeting, events, opts = {}) {
   const coachNames = opts.coachNames || ['Guy Wilson'];
   const coachEmails = opts.coachEmails || [];
 
-  const recStartMs = Date.parse(meeting.recording_start_time || meeting.scheduled_start_time || 0);
-  const segs = (Array.isArray(meeting.transcript) ? meeting.transcript : []).map((u) => ({
-    absMs: recStartMs + tsToSeconds(u && u.timestamp) * 1000,
-    ts: (u && typeof u.timestamp === 'string') ? u.timestamp : '',
-    speaker: (u && u.speaker && (u.speaker.display_name || u.speaker.name)) || (typeof u?.speaker === 'string' ? u.speaker : 'Speaker'),
-    email: speakerEmailOf(u),
-    text: (u && typeof u.text === 'string') ? u.text : '',
-  }));
+  const segs = transcriptLines(meeting);
 
   const evs = dedupeMeetingEvents(events, coachNames)
     .map((ev) => ({ ev, leadName: eventLeadName(ev, coachNames), leadEmails: eventLeadEmails(ev, coachEmails) }))
@@ -156,14 +222,17 @@ function splitFathomMeeting(meeting, events, opts = {}) {
     return { shouldSplit: false, reason: `${evs.length} meeting event(s) in window after dedupe — no split`, segments: [] };
   }
 
-  // Boundary per meeting = when its lead first speaks (email match beats name match — Zoom
-  // display names drift; fallback to scheduled start).
-  const lineIsLead = (l, e) => (l.email && e.leadEmails.includes(l.email))
-    || (e.leadName ? speakerMatchesLead(l.speaker, e.leadName) : false);
-  const bounds = evs.map((e) => {
-    const hit = segs.find((l) => lineIsLead(l, e));
-    return hit ? hit.absMs : Date.parse(e.ev.start);
+  // Boundary per meeting = when its lead first speaks: email identity, then name match, then
+  // a timing-adopted new voice (see adoptUnknownSpeakers), then the scheduled start.
+  const adopted = adoptUnknownSpeakers(segs, evs, coachNames, coachEmails);
+  const idFor = evs.map((e) => {
+    const hit = segs.find((l) => lineMatchesEvent(l, e));
+    if (hit) return { at: hit.absMs, by: 'identity' };
+    const a = adopted.get(e);
+    if (a) return { at: a.absMs, by: 'timing', speaker: a.speaker };
+    return { at: Date.parse(e.ev.start), by: 'schedule' };
   });
+  const bounds = idFor.map((x) => x.at);
   const recEndMs = Date.parse(meeting.recording_end_time || meeting.scheduled_end_time || 0) || (segs.length ? segs[segs.length - 1].absMs + 1 : recStartMs + 1);
 
   const segments = evs.map((e, i) => {
@@ -174,9 +243,11 @@ function splitFathomMeeting(meeting, events, opts = {}) {
     lines.forEach((l) => { speakerCounts[l.speaker] = (speakerCounts[l.speaker] || 0) + 1; });
     // stray = lines spoken by ANOTHER meeting's lead (overlap tail — accepted, just reported)
     const others = evs.filter((_, k) => k !== i);
-    const strayLines = lines.filter((l) => others.some((o) => lineIsLead(l, o))).length;
+    const strayLines = lines.filter((l) => others.some((o) => lineMatchesEvent(l, o))).length;
     return {
       leadName: e.leadName,
+      leadMatchedBy: idFor[i].by, // 'identity' | 'timing' | 'schedule'
+      adoptedSpeaker: idFor[i].speaker || null, // transcript alias claimed via the timing rule (e.g. "bobba")
       leadEmails: e.leadEmails,
       calendarEvent: { summary: e.ev.summary, start: e.ev.start, end: e.ev.end },
       startMs: lo,
@@ -198,6 +269,8 @@ module.exports = {
   eventLeadEmails,
   eventLeadSpeaks,
   dedupeMeetingEvents,
+  resolveSpeakingEvents,
+  adoptUnknownSpeakers,
   speakerEmailOf,
   tsToSeconds,
 };

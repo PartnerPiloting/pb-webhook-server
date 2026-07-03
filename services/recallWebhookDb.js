@@ -426,7 +426,7 @@ async function updateMeetingTimes(meetingId, { meetingStart, meetingEnd }) {
  * Create a recall_meetings row from a manually-imported transcript (Tactiq, Fathom, etc.).
  * Generates synthetic bot_id/recording_id so the row is distinguishable from real Recall captures.
  */
-async function insertImportedMeeting({ title, source, transcriptText, meetingStart, durationSeconds, fathomRecordingId, coachClientId }) {
+async function insertImportedMeeting({ title, source, transcriptText, meetingStart, durationSeconds, fathomRecordingId, coachClientId, needsSplit }) {
   const p = getPool();
   if (!p) return { ok: false, error: 'database not available' };
   const safeSource = (source || 'other').toString().toLowerCase().slice(0, 32) || 'other';
@@ -439,8 +439,8 @@ async function insertImportedMeeting({ title, source, transcriptText, meetingSta
   try {
     await ensureSchema(client);
     const r = await client.query(
-      `INSERT INTO recall_meetings (bot_id, recording_id, title, transcript_text, duration_seconds, meeting_start, meeting_end, status, source, fathom_recording_id, coach_client_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, 'incomplete', $8, $9, $10)
+      `INSERT INTO recall_meetings (bot_id, recording_id, title, transcript_text, duration_seconds, meeting_start, meeting_end, status, source, fathom_recording_id, coach_client_id, needs_split)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 'incomplete', $8, $9, $10, $11)
        RETURNING id`,
       [
         botId,
@@ -455,6 +455,7 @@ async function insertImportedMeeting({ title, source, transcriptText, meetingSta
         safeSource,
         fathomRecordingId ? String(fathomRecordingId) : null,
         owner,
+        needsSplit === true, // ⚠️ in the review queue — e.g. a multi-booking recording filed as one lump
       ],
     );
     return { ok: true, meeting_id: String(r.rows[0].id), bot_id: botId };
