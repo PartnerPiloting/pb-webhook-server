@@ -1124,6 +1124,55 @@ router.get('/recall-review', async (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
+// Fathom-direct helpers for the MCP tools below.
+//
+// These hit the Fathom REST API and BYPASS the transcript store entirely — the fallback
+// path for "get it straight from Fathom" when the ingest/split pipeline has mangled or
+// not yet filed a meeting (2026-07-03 back-to-back incident). Note: Fathom returns whole
+// RECORDINGS, so a back-to-back morning comes back as one blob with timestamps + speakers.
+// ---------------------------------------------------------------------------
+const FATHOM_DIRECT_API_BASE = 'https://api.fathom.ai/external/v1';
+
+async function fathomDirectFetchMeetings(apiKey, { includeTranscript = false, createdAfter } = {}) {
+  const u = new URL(`${FATHOM_DIRECT_API_BASE}/meetings`);
+  u.searchParams.set('limit', '25');
+  if (includeTranscript) u.searchParams.set('include_transcript', 'true');
+  if (createdAfter) u.searchParams.set('created_after', createdAfter);
+  const r = await fetch(u.toString(), { headers: { 'X-Api-Key': apiKey, 'Content-Type': 'application/json' } });
+  if (!r.ok) throw new Error(`Fathom API ${r.status} ${r.statusText}`);
+  const data = await r.json();
+  return data.items || data.meetings || data.data || [];
+}
+
+function fathomDirectMeetingSummary(m) {
+  const start = m.recording_start_time || m.scheduled_start_time || m.created_at || '';
+  const end = m.recording_end_time || m.scheduled_end_time || '';
+  let durMin = null;
+  if (start && end) {
+    const d = (Date.parse(end) - Date.parse(start)) / 60000;
+    if (Number.isFinite(d) && d > 0) durMin = Math.round(d);
+  }
+  const invitees = (m.calendar_invitees || m.invitees || [])
+    .filter((p) => p && p.is_external)
+    .map((p) => `${p.name || '?'} <${p.email || '?'}>`);
+  return {
+    recordingId: String(m.recording_id ?? m.id ?? '?'),
+    title: m.title || m.meeting_title || '(untitled)',
+    start,
+    durMin,
+    invitees,
+  };
+}
+
+/** Case-insensitive match of a fathom meeting against a free-text query (title or invitee name/email). */
+function fathomDirectMeetingMatches(m, query) {
+  const q = String(query || '').trim().toLowerCase();
+  if (!q) return true;
+  const s = fathomDirectMeetingSummary(m);
+  return s.title.toLowerCase().includes(q) || s.invitees.some((i) => i.toLowerCase().includes(q));
+}
+
+// ---------------------------------------------------------------------------
 // Remote MCP endpoint for Claude.ai browser ("Add custom connector")
 // URL: POST /mcp/:token  where :token = PB_WEBHOOK_SECRET
 // ---------------------------------------------------------------------------
@@ -1159,7 +1208,7 @@ router.post('/mcp/:token', express.json(), async (req, res) => {
         tools: [
           {
             name: 'recall_latest_transcript',
-            description: 'Fetches the latest Recall.ai meeting transcript for a lead. Use when asked for a transcript for a specific person (by email). Returns the formatted transcript text.',
+            description: 'Fetches the latest meeting transcript for a lead from the reviewed transcript STORE (meetings already filed and split per person). Use when asked for a transcript for a specific person (by email). Returns the formatted transcript text. If the result looks wrong (missing, empty, or contains a different person\'s call), fall back to fathom_transcript to pull the raw recording straight from Fathom.',
             inputSchema: {
               type: 'object',
               properties: {
@@ -1167,6 +1216,29 @@ router.post('/mcp/:token', express.json(), async (req, res) => {
                 after: { type: 'string', description: 'Optional ISO 8601 date — only return meetings on or after this date/time' },
               },
               required: ['email'],
+            },
+          },
+          {
+            name: 'fathom_list_meetings',
+            description: 'Lists the most recent Fathom recordings (title, start time, duration, external invitees, recording_id) straight from the Fathom API, bypassing the transcript store. Use to see what Fathom captured — e.g. to find the right recording before calling fathom_transcript.',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                query: { type: 'string', description: 'Optional filter — matches meeting title or invitee name/email (case-insensitive)' },
+                after: { type: 'string', description: 'Optional ISO 8601 date — only recordings created on or after this date/time' },
+              },
+            },
+          },
+          {
+            name: 'fathom_transcript',
+            description: 'Fetches a verbatim meeting transcript DIRECTLY from Fathom, bypassing the transcript store. Use when the user says to get it "from Fathom", or when recall_latest_transcript returns nothing/wrong content. NOTE: Fathom returns whole recordings — a back-to-back session comes back as ONE transcript covering all its calls (use timestamps + speaker names to find the right portion). Identify the recording by recording_id (from fathom_list_meetings), or by query (title/invitee match — most recent match wins).',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                recording_id: { type: 'string', description: 'Fathom recording_id (from fathom_list_meetings) — most precise' },
+                query: { type: 'string', description: 'Title or invitee name/email to match (most recent matching recording is returned)' },
+                after: { type: 'string', description: 'Optional ISO 8601 date — only consider recordings created on or after this date/time' },
+              },
             },
           },
         ],
@@ -1177,6 +1249,64 @@ router.post('/mcp/:token', express.json(), async (req, res) => {
   if (method === 'tools/call') {
     const toolName = params?.name;
     const args = params?.arguments || {};
+
+    // --- Fathom-direct tools (bypass the store; see helpers above) ---------
+    if (toolName === 'fathom_list_meetings' || toolName === 'fathom_transcript') {
+      try {
+        const coachClient = await clientService.getClientById(DEFAULT_COACH_CLIENT_ID);
+        if (!coachClient?.fathomApiKey) {
+          return res.json({ jsonrpc: '2.0', id, result: { content: [{ type: 'text', text: 'Server config error: no Fathom API key for the coach client.' }], isError: true } });
+        }
+
+        if (toolName === 'fathom_list_meetings') {
+          let items = await fathomDirectFetchMeetings(coachClient.fathomApiKey, { createdAfter: args.after });
+          items = items.filter((m) => fathomDirectMeetingMatches(m, args.query));
+          if (!items.length) {
+            return res.json({ jsonrpc: '2.0', id, result: { content: [{ type: 'text', text: 'No Fathom recordings matched.' }] } });
+          }
+          const lines = items.map((m) => {
+            const s = fathomDirectMeetingSummary(m);
+            return `- recording_id=${s.recordingId} | "${s.title}" | start=${s.start}${s.durMin ? ` | ${s.durMin} min` : ''}${s.invitees.length ? ` | invitees: ${s.invitees.join(', ')}` : ''}`;
+          });
+          return res.json({ jsonrpc: '2.0', id, result: { content: [{ type: 'text', text: `Fathom recordings (newest window, ${items.length} shown):\n${lines.join('\n')}` }] } });
+        }
+
+        // fathom_transcript
+        if (!args.recording_id && !(args.query || '').trim()) {
+          return res.json({ jsonrpc: '2.0', id, result: { content: [{ type: 'text', text: 'Provide recording_id (from fathom_list_meetings) or a query (title / invitee name / email).' }], isError: true } });
+        }
+        const items = await fathomDirectFetchMeetings(coachClient.fathomApiKey, { includeTranscript: true, createdAfter: args.after });
+        let meeting = null;
+        if (args.recording_id) {
+          meeting = items.find((m) => String(m.recording_id ?? m.id) === String(args.recording_id));
+        } else {
+          const matches = items.filter((m) => fathomDirectMeetingMatches(m, args.query));
+          matches.sort((a, b) => Date.parse(fathomDirectMeetingSummary(b).start || 0) - Date.parse(fathomDirectMeetingSummary(a).start || 0));
+          meeting = matches[0] || null;
+        }
+        if (!meeting) {
+          return res.json({ jsonrpc: '2.0', id, result: { content: [{ type: 'text', text: 'No matching Fathom recording found in the recent window. Try fathom_list_meetings to see what is available.' }], isError: true } });
+        }
+
+        const { normalizeFathomApiTranscript } = require('../services/fathomIngestService');
+        const transcript = normalizeFathomApiTranscript(meeting);
+        if (!transcript) {
+          return res.json({ jsonrpc: '2.0', id, result: { content: [{ type: 'text', text: 'Recording found but its transcript is empty (Fathom may still be processing it).' }], isError: true } });
+        }
+        const s = fathomDirectMeetingSummary(meeting);
+        const header = [
+          `Fathom recording: "${s.title}" (recording_id=${s.recordingId})`,
+          `Start: ${s.start}${s.durMin ? ` | Duration: ${s.durMin} min` : ''}`,
+          s.invitees.length ? `External invitees: ${s.invitees.join(', ')}` : '',
+          'Source: Fathom API direct (raw recording — may span back-to-back calls; check timestamps/speakers)',
+          '---',
+          '',
+        ].filter(Boolean).join('\n');
+        return res.json({ jsonrpc: '2.0', id, result: { content: [{ type: 'text', text: header + transcript }] } });
+      } catch (e) {
+        return res.json({ jsonrpc: '2.0', id, result: { content: [{ type: 'text', text: `Fathom API error: ${e.message}` }], isError: true } });
+      }
+    }
 
     if (toolName !== 'recall_latest_transcript') {
       return res.json({ jsonrpc: '2.0', id, error: { code: -32602, message: `Unknown tool: ${toolName}` } });
