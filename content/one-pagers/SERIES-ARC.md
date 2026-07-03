@@ -58,6 +58,14 @@ One library, two woven series:
 - Node-builder's path: select highly from LinkedIn → work with a coach → prepare campaigns → send → learn online discovery calls.
 - Referral reciprocity inside the system: "you'll introduce people that could be introduced to me, vice versa."
 
+## Jump-ahead rule (2026-07-03)
+
+Impatient readers WILL leap from the library straight to their pain point (e.g. #32) unprepared. Never gate or scold ("read these first" = syllabus = Calendly mistake in another costume; jumpers are the highest-intent readers). Instead:
+1. **Every craft piece must survive being read first** - carries a compressed version of its prerequisite why (series-wide rule, promoted from #32's note). Jumper gets ~70% value, never confusion.
+2. **Graceful "builds on" pointer up front, as welcome not warning**: "If you've jumped straight here, good - you're at the search box and you want an answer. You'll get one. Just know this leans on an idea from 'Choose the room' - two minutes, and everything below lands twice as hard." Backfill = power-up, not homework.
+3. **Library shows the path**: numbered, "start here" marked, craft pieces nested under their paradigm parent.
+Signal bonus: jump-ahead click followed by backfill click = strongest engagement signature in the tracking.
+
 ## Style rules
 
 - Voice: Guy across a coffee table - contractions, direct, decades of scar tissue. Fold in his specifics ($3,500, "fresh meat", the room's accountant) - specificity is the antidote to generic-AI feel.
