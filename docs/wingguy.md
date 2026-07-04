@@ -146,7 +146,9 @@ Wingguy (how to act) + reads/writes the Portal (the records).
   tokens → booking/thread-capture tools on the ONE connector, renamed "Wingguy" → Chrome Web Store last, on
   demand). NO apostrophes in claude.ai connector names (silent chat-side failure — issue #537). Detail ↓
   "▶ You are here" 2026-07-04 close. Step-1 detailed design APPROVED 2026-07-04 ↓ journal "Rules store
-  (roadmap step 1) — detailed design" (schema/write-door/import + VA-roles + transition policy).**
+  (roadmap step 1) — detailed design" (schema/write-door/import + VA-roles + transition policy).
+  **Step-1 BUILD SHIPPED + smoke-green on prod 2026-07-04 session 3** (`10fcc19e`: store + write-door +
+  6 MCP tools live on both transports; store empty — Notion import = the next two sittings).**
 
 **AI / model.** Standardise on **Claude** behind a swappable seam: **Claude = drafting** (voice), **Gemini =
 scoring + summaries** (cheap, high-volume). The connector surface needs the client's own Claude account (a product
@@ -2859,7 +2861,29 @@ forms land in Notion (still master); after the flip the short form is the natura
 
 ## ▶ You are here / next pick-up
 
-**▶▶ SESSION CLOSE 2026-07-04 (session 2: "rules-store step-1 detailed design — APPROVED, build next") — START THE NEXT CHAT HERE.**
+**▶▶ SESSION CLOSE 2026-07-04 (session 3: "rules store BUILT — smoke green on prod") — START THE NEXT CHAT HERE.**
+The build sitting is DONE (`10fcc19e`, live on prod, one sitting):
+- **The store + write-door are LIVE:** `services/wingguyRulesStore.js` (5 tables, append-only versioning,
+  expected-version conflict check, `renderRulesBlock()` = the step-2 seam) · 22 unit tests green
+  (`tests/wingguy-rules-store.test.js`) · **prod smoke GREEN** (`scripts/wingguy-rules-smoke.js`, Render one-off
+  job on the live deploy — commit/propose/conflict-reject/variable-resolve/revert/retire/history all PASS
+  against the real Postgres, throwaway `smoke-test` tenant, left tidy).
+- **The 6 MCP tools are LIVE ON BOTH transports** (verified by real tools/list calls against prod `/mcp` AND
+  `/mcp2`): `wingguy_rules_list` / `rule_get` / `rule_propose` / `rule_commit` / `rule_revert` / `variables`.
+  Propose→commit split enforced (commit needs the proposal's expected_version); "update my rules" routes via
+  the tool descriptions. Tenant hard-wired Guy-Wilson behind the existing token (per design; per-client
+  tokens = step 3).
+- **⚠ Decision now LIVE for Guy: connector rename → "Wingguy".** The first non-transcript tools just shipped,
+  which is the roadmap's rename trigger (no apostrophe — safe). One-word answer in any chat does it.
+- **The store is EMPTY by design** — import comes next. **NEXT SITTING = the proof-pass sitting (Phase A):**
+  Claude reads *Outreach Rules* via the Notion MCP → extracted atomic rules with proposed key/context/type,
+  identity tokens → `{{variables}}`, template-vs-Guy-private split per rule → **Guy reviews BEFORE anything
+  touches Postgres.** Corpus + trigger phrase already banked (session-3 ADDENDUM in the step-1 journal entry).
+  Then the import sitting (Phases B–D). Notion stays the authoring master until the step-2 flip.
+Separate watch-item unchanged: **Wed 9 July triple-header = first live splitter test** — glance at the review
+queue after (own short chat).
+
+**(previous close) ▶▶ SESSION CLOSE 2026-07-04 (session 2: "rules-store step-1 detailed design — APPROVED, build next").**
 Design-only session (nothing built, nothing deployed). The full detailed design for **convergence-roadmap
 step 1** (Postgres rules store + minimal write-door + one-time Notion import, Guy = tenant 0) was drafted,
 Q&A'd and **APPROVED** — now banked as journal entry **"Rules store (roadmap step 1) — detailed design"**
