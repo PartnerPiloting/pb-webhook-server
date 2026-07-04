@@ -2828,9 +2828,9 @@ green on prod. (2) **Proof-pass sitting** — Phase A with Guy reviewing. (3) **
 The step-2 flip gets its own later session.
 
 **Open decisions for the top of the build sitting:** (1) **the Notion corpus list** — ✅ RESOLVED 2026-07-04
-(session 3, below) · (2) proof section (default: Outreach Rules — confirmed by the corpus mapping) · (3) connector
-rename timing ("Wingguy" when the tools ship vs wait for step 4) · (4) taxonomy sign-off (provisional until the
-proof pass).
+(session 3, below) · (2) proof section (default: Outreach Rules — ✅ used, session 4) · (3) connector
+rename timing ("Wingguy" when the tools ship vs wait for step 4) — **still open** · (4) taxonomy sign-off —
+✅ RESOLVED 2026-07-04 (session 4: six types FINAL; re-open trigger = 2+ more quality-bar rules in the full import).
 
 **★ ADDENDUM (2026-07-04, session 3) — the Notion corpus MAPPED + the authoring trigger phrase DECIDED.**
 Guy delegated the corpus call ("you created those pages — figure it out"); Claude walked the Notion workspace
@@ -2859,9 +2859,65 @@ store move); always arrives with a rule attached so it can't be misread; **"upda
 Write the write-door MCP tool descriptions so "update my rules" routes straight to them. Until flip day both
 forms land in Notion (still master); after the flip the short form is the natural cutover.
 
+**★ ADDENDUM (2026-07-04, session 4 — the PROOF-PASS sitting, Phase A DONE + all 6 review flags RULED).**
+Claude read *Outreach Rules* end-to-end via the Notion MCP (plus the inline "Post-Connection Message — Winning
+Formula" block on the section-03 page BODY — confirming the body-sweep warning was real) → 20 atomic rules with
+proposed key/context/type, a ~9-entry variable catalogue (signoff, owner_first_name, network_name, core_framing,
+network_explainer_line, canonical_inversion_line, call_platform, region, target_verticals + asset:signup_link),
+reviewed with Guy flag by flag. Rule bodies + the full mapping stay OUT of this repo (public; the moat) — the
+import sitting re-derives them from Notion with the rulings below. **Taxonomy verdict: held — 19/20 filed
+cleanly; six types now FINAL.** The rulings:
+1. **Campaign overlay (Guy's design, BUILT + LIVE `d83d15ac`, smoke green on prod):** rule identity now =
+   (layer, tenant, rule_key, **campaign**) — the same rule_key holds a generic version AND per-campaign
+   versions, each its own chain; at render the campaign version SHADOWS the generic, no match falls through
+   (one level only, never campaign→campaign). **Campaign detection = read the THREAD:** scan Guy's own prior
+   outbound for a campaign's marker phrases (a `campaign-markers` registry rule lists them; accumulate old
+   phrasings, never replace); explicit campaign named in chat always wins; no signal = generic = correct.
+   Resolves the §6-vs-Winning-Formula conflict: §6 (Apr) = the generic post-connection rule, Winning Formula
+   (Jun) = the campaign overlay of the SAME key. Creating a campaign = a sparse overlay (only the rules that
+   differ) — scales to many campaigns, zero admin, no parallel register to go stale.
+2. **Sign-up-link rule (§9) re-homed:** context **post-call**, type **asset-usage**, referencing
+   {{asset:signup_link}} — the first real asset row (Guy supplies the URL at import).
+3. **The four framing angles (§5) are Guy-only** (client layer; they're ASH's audiences ≈ campaigns). The
+   template ships ONE scaffold rule instead ("maintain a framing angle per audience segment") — filling their
+   own angles = part of client onboarding.
+4. **The inversion MOVES ACROSS — it's the METHOD, not private pitch** (Guy's call, reversing Claude's first
+   read): clients are buying the way of operating; the inversion is the teachable core, and the target market
+   (referral-based professionals) is native to it. Lands in the **template** (seed-then-diverge = "they all
+   start thinking my way, can edit if they really want"), de-personalised of ASH PRODUCT references (network
+   membership / "connecting senior professionals" phrasing stays Guy's). ★ Phase B must capture Guy's
+   penny-drop articulation (solo-networking misconception → team-of-network-builders goal → inversion as the
+   unlock → the shift takes time, so messages plant seeds and the calls do the shifting) as the template's
+   core-framing content — Guy dictated it this session better than any Notion page states it.
+5. **Taxonomy FINAL at six types.** Success Criteria (§10) files under stage-logic (nearest drawer; label
+   doesn't affect behaviour; re-filing later = one edit). Re-open trigger: 2+ more quality-bar rules in the
+   full import. Tiebreaker principle recorded: prefer the cheaply-reversible decision.
+6. **"Zoom" = an identity token** → {{call_platform}} everywhere, Guy's value "Zoom" — each tenant's own
+   comfort phrase ("Teams call", "online meeting"). Messages render letter-for-letter identical for Guy.
+**Open for the import sitting:** campaign slugs + which things ARE campaigns (frac? tks? the broker /
+financial-planner vertical playbooks?) · the marker-phrase registry content · the signup_link URL ·
+connector rename (still with Guy).
+
 ## ▶ You are here / next pick-up
 
-**▶▶ SESSION CLOSE 2026-07-04 (session 3: "rules store BUILT — smoke green on prod") — START THE NEXT CHAT HERE.**
+**▶▶ SESSION CLOSE 2026-07-04 (session 4: "proof pass DONE — all 6 flags ruled, campaign overlay live") —
+START THE NEXT CHAT HERE.**
+- **Phase A is COMPLETE and VALIDATED:** Outreach Rules → 20 atoms, taxonomy held (six types now FINAL),
+  variable catalogue drafted, template-vs-Guy split ruled per rule. All decisions banked as the session-4
+  ADDENDUM on the step-1 journal entry (directly above) — read it before touching the import.
+- **The campaign-overlay schema change is LIVE on prod** (`d83d15ac`: identity includes campaign, render
+  falls back campaign→generic, MCP tools campaign-aware; 28 unit tests green, prod smoke GREEN after deploy).
+- **NEXT SITTING = the IMPORT sitting (Phases B–D):** full pass over the ~20-page corpus using the proof-pass
+  recipe + the 6 rulings → ONE seed JSON (NEVER committed — public repo) → seed through the write-door
+  (`scripts/import-wingguy-rules.js`, actor='import', local run against the Render EXTERNAL Postgres URL) →
+  verify (read-back vs Notion + smoke). Needs from Guy at the top: campaign slugs, signup_link URL,
+  penny-drop wording sign-off (item 4 above). Notion stays the authoring master until the step-2 flip.
+- **⚠ Still open for Guy: connector rename → "Wingguy"** (trigger fired when the non-transcript tools
+  shipped; one-word answer in any chat does it).
+Separate watch-item unchanged: **Wed 9 July triple-header = first live splitter test** — glance at the review
+queue after (own short chat).
+
+**(previous close) ▶▶ SESSION CLOSE 2026-07-04 (session 3: "rules store BUILT — smoke green on prod").**
 The build sitting is DONE (`10fcc19e`, live on prod, one sitting):
 - **The store + write-door are LIVE:** `services/wingguyRulesStore.js` (5 tables, append-only versioning,
   expected-version conflict check, `renderRulesBlock()` = the step-2 seam) · 22 unit tests green

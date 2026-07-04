@@ -40,7 +40,8 @@ const { Pool } = require('pg');
 let pool;
 let schemaEnsured = false;
 
-// --- Taxonomy (provisional until the import proof pass — adjust here + the CHECKs) ---------
+// --- Taxonomy (SIGNED OFF at the 2026-07-04 proof pass — six types are final; re-open only
+// if the full import surfaces 2+ more quality-bar rules, per the session-4 close) -----------
 const LAYERS = ['foundation', 'template', 'client'];
 const CONTEXTS = ['global', 'outreach', 'reply', 'booking', 'post-call', 'follow-up'];
 const RULE_TYPES = ['voice', 'formatting', 'stage-logic', 'scheduling', 'asset-usage', 'qualifying'];
