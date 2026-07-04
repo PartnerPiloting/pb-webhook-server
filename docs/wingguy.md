@@ -2753,7 +2753,7 @@ step-3 identities; in step 1 every caller is Guy — the door just logs the laye
 auth surface. Propose→commit split enforces LLM-proposes/code-writes/human-confirms in chat (no tool writes
 without a proposal in hand). ⚠ These are the connector's first NON-transcript tools → triggers the
 roadmap's "rename connector → Wingguy" rule (no apostrophe — safe). Recommendation = rename when these ship;
-**Guy's call, still open.**
+**✅ DONE 2026-07-05 — Guy renamed the connector to "Wingguy".**
 
 **One-time Notion import (Guy = tenant 0; per the 2026-06-09 conversion design — one pass, two outputs).**
 - **Phase A — proof pass, ONE section first** (default candidate: Outreach Rules): Claude reads it via the
@@ -2833,7 +2833,7 @@ The step-2 flip gets its own later session.
 
 **Open decisions for the top of the build sitting:** (1) **the Notion corpus list** — ✅ RESOLVED 2026-07-04
 (session 3, below) · (2) proof section (default: Outreach Rules — ✅ used, session 4) · (3) connector
-rename timing ("Wingguy" when the tools ship vs wait for step 4) — **still open** · (4) taxonomy sign-off —
+rename timing — ✅ RESOLVED 2026-07-05 (Guy renamed it "Wingguy") · (4) taxonomy sign-off —
 ✅ RESOLVED 2026-07-04 (session 4: six types FINAL; re-open trigger = 2+ more quality-bar rules in the full import).
 
 **★ ADDENDUM (2026-07-04, session 3) — the Notion corpus MAPPED + the authoring trigger phrase DECIDED.**
@@ -2899,8 +2899,8 @@ cleanly; six types now FINAL.** The rulings:
 6. **"Zoom" = an identity token** → {{call_platform}} everywhere, Guy's value "Zoom" — each tenant's own
    comfort phrase ("Teams call", "online meeting"). Messages render letter-for-letter identical for Guy.
 **Open for the import sitting:** campaign slugs + which things ARE campaigns (frac? tks? the broker /
-financial-planner vertical playbooks?) · the marker-phrase registry content · the signup_link URL ·
-connector rename (still with Guy).
+financial-planner vertical playbooks?) · the marker-phrase registry content · the signup_link URL.
+(Connector rename ✅ DONE 2026-07-05 — now "Wingguy".)
 
 ### Wingguy pricing v2 + moat strategy (2026-07-05 — same chat as session 4, discussion after the proof pass)
 
@@ -2980,8 +2980,8 @@ directly above. Nothing further built; the next-sitting plan below stands.)*
   (`scripts/import-wingguy-rules.js`, actor='import', local run against the Render EXTERNAL Postgres URL) →
   verify (read-back vs Notion + smoke). Needs from Guy at the top: campaign slugs, signup_link URL,
   penny-drop wording sign-off (item 4 above). Notion stays the authoring master until the step-2 flip.
-- **⚠ Still open for Guy: connector rename → "Wingguy"** (trigger fired when the non-transcript tools
-  shipped; one-word answer in any chat does it).
+- **✅ Connector rename DONE (2026-07-05): Guy renamed it to "Wingguy"** (the last open trigger from the
+  tools shipping).
 Separate watch-item unchanged: **Wed 9 July triple-header = first live splitter test** — glance at the review
 queue after (own short chat).
 
