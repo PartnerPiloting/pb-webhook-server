@@ -2898,9 +2898,14 @@ cleanly; six types now FINAL.** The rulings:
    full import. Tiebreaker principle recorded: prefer the cheaply-reversible decision.
 6. **"Zoom" = an identity token** → {{call_platform}} everywhere, Guy's value "Zoom" — each tenant's own
    comfort phrase ("Teams call", "online meeting"). Messages render letter-for-letter identical for Guy.
-**Open for the import sitting:** campaign slugs + which things ARE campaigns (frac? tks? the broker /
-financial-planner vertical playbooks?) · the marker-phrase registry content · the signup_link URL.
+**Open for the import sitting:** the marker-phrase registry content · the signup_link URL.
 (Connector rename ✅ DONE 2026-07-05 — now "Wingguy".)
+**✅ Campaign ruling (Guy, 2026-07-05, import sitting):** THREE campaigns at import — `broker` (Broker
+Outreach Vertical Playbook wording) · `financial-planner` (FP Vertical Playbook) · `frac` (the fractional
+push; the Jun-2026 "Winning Formula" post-connection message is its overlay wording). **`tks` is NOT a
+campaign** — the daily thanks-for-connecting message is the GENERIC fallback rule (TextBlaze `\tks` = its
+current wording). Open-ended by design: "there may well be more in future" — new campaigns arrive through
+the door, no code change.
 
 ### Wingguy pricing v2 + moat strategy (2026-07-05 — same chat as session 4, discussion after the proof pass)
 
