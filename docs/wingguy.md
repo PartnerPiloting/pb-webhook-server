@@ -2825,11 +2825,37 @@ rejection, variable resolution, foundation∪client merge; injected fake pool; *
 green on prod. (2) **Proof-pass sitting** — Phase A with Guy reviewing. (3) **Import sitting** — Phases B–D.
 The step-2 flip gets its own later session.
 
-**Open decisions for the top of the build sitting:** (1) **the Notion corpus list** — which pages ARE the
-Wingguy rules (the only blocking one; Penguy/Master Brief material explicitly excluded; Claude can propose a
-list from Notion search for yes/no) · (2) proof section (default: Outreach Rules) · (3) connector rename
-timing ("Wingguy" when the tools ship vs wait for step 4) · (4) taxonomy sign-off (provisional until the
+**Open decisions for the top of the build sitting:** (1) **the Notion corpus list** — ✅ RESOLVED 2026-07-04
+(session 3, below) · (2) proof section (default: Outreach Rules — confirmed by the corpus mapping) · (3) connector
+rename timing ("Wingguy" when the tools ship vs wait for step 4) · (4) taxonomy sign-off (provisional until the
 proof pass).
+
+**★ ADDENDUM (2026-07-04, session 3) — the Notion corpus MAPPED + the authoring trigger phrase DECIDED.**
+Guy delegated the corpus call ("you created those pages — figure it out"); Claude walked the Notion workspace
+(root = "🚀 Guy's Operating System") and locked the import list. **It maps cleanly onto the taxonomy:**
+- **Targeting** (section 02 — My Ideal Member): Ideal Member Profile · Lead Evaluation · Corporate Captive
+  Value Proposition.
+- **LinkedIn outreach** (section 03): **Outreach Rules (the proof section)** · Two-Way Collaboration · The
+  Manifesto · **the "Post-Connection Message — Winning Formula" block — ⚠ lives INLINE on the section-03 page
+  body, not as its own page; the import must sweep page BODIES, not just child titles** (proof that past
+  "update my rules" moments dropped rules onto parent pages) · Broker + Financial Planner Vertical Playbooks.
+- **Booking:** Calendar & Scheduling Defaults (root-level page — Zoom room, 30-min default, 9:30am AEST floor,
+  invite title/description formats).
+- **Calls & post-call** (section 03): Call Prep Framework · Paradigm Shift Conversations · Objections &
+  Responses · Pre-Meeting Email · Follow-Up Email Rules & Template + its Generator instructions ·
+  Closing-Stage Follow-Up Pattern · Introduction Emails · ASH Onboarding Emails · CC Outbound Email + Gamma Brief.
+- **Voice foundation:** Writing Preferences & Rules (applies to both brains; Wingguy imports its OWN copy so
+  the de-personalised template ships with voice rules built in).
+- **EXCLUDED (Penguy — stays in Notion):** Newsletter Rules · Weekly GBR Email Rules · Newsletter Archive ·
+  00 — Master Brief · 01 — Who I Am. Also excluded: InMail Outreach Process (retired campaign) · Gmail & Tools
+  (chat tooling → becomes code/MCP behaviour, not store content).
+~20 pages total.
+**★ Authoring trigger phrase (decided with Guy, and it's the CLIENT phrase too): "update my rules"** — the
+current sentence minus "in Notion". Names the THING, not the storage layer (the phrase survives any future
+store move); always arrives with a rule attached so it can't be misread; **"update Wingguy" REJECTED**
+(ambiguous with dev work on the product). Disambiguator when context is muddy: "update my Wingguy rules".
+Write the write-door MCP tool descriptions so "update my rules" routes straight to them. Until flip day both
+forms land in Notion (still master); after the flip the short form is the natural cutover.
 
 ## ▶ You are here / next pick-up
 
@@ -2848,11 +2874,14 @@ NO two-way Notion↔Postgres sync ever; flip day = one-way door for authoring, g
 fire-extinguisher-only; delete `wingguyTemplates.js` copy after ~2 weeks stable) · **onboarding vision
 confirmed** (new client = copy the template brain + fill ~10 identity variables, then diverge via chat).
 **NEXT SITTING = the build sitting:** schema + `services/wingguyRulesStore.js` + write-door + tests → MCP
-tools + smoke script → deploy → smoke green on prod. **⚠ Needs from Guy at the top of it: the Notion corpus
-list** (which pages are the Wingguy rules); defaults if he shrugs: proof section = Outreach Rules, rename
-connector → "Wingguy" when the tools ship, taxonomy provisional. Separate watch-item unchanged: **Wed 9 July
-triple-header = first live splitter test** (Luke S 10:00 → Julian 10:30 → Andrew 11:00) — glance at the
-review queue after (own short chat, don't braid into the build sitting).
+tools + smoke script → deploy → smoke green on prod. **✅ The corpus blocker is CLEARED (session 3,
+2026-07-04): the Notion corpus is mapped (~20 pages; proof section = Outreach Rules confirmed) and the
+authoring trigger phrase is decided — "update my rules" (clients too; "update Wingguy" rejected as ambiguous
+with dev work). Details in the step-1 journal entry ADDENDUM.** Remaining defaults unchanged: rename
+connector → "Wingguy" when the tools ship, taxonomy provisional. **Nothing needed from Guy — the build can
+start cold.** Separate watch-item unchanged: **Wed 9 July triple-header = first live splitter test** (Luke S
+10:00 → Julian 10:30 → Andrew 11:00) — glance at the review queue after (own short chat, don't braid into
+the build sitting).
 
 **(previous close) ▶▶ SESSION CLOSE 2026-07-04 ("splitter fixes + connector saga + convergence roadmap").**
 Three workstreams landed across 3–4 July:
