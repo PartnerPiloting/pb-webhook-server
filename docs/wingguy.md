@@ -2907,9 +2907,18 @@ connector rename (still with Guy).
 > Refines the 2026-06-22 commercial model + the canonical pricing block (both updated with pointers here).
 > Direction settled with Guy; exact numbers to finalise before launch.
 
-**Two rungs, not one flat $50 — the tiers price a FRICTION GRADIENT that self-selects:**
+**Two rungs, not one flat $50 — the tiers price a FRICTION GRADIENT that self-selects.**
+**★ Tier geometry (Guy's correction, 2026-07-05): the rungs are NOT alternatives — the MCP IS the product**
+(transcripts, meeting prep, post-Zoom emails, rule edits — the whole conversational half); **the extension is
+an ACCELERATOR on top** (removes copy-paste on the LinkedIn surface only). MCP-only stands alone; extension-only
+is meaningless (no brain under it). Matches the architecture: extension = LinkedIn-only surface, chat = full
+lifecycle. Sell it that way: "the brain, and then a faster hand for one channel" — never "lite vs full".
 - **MCP-only ~$20-25/mo, paid from day one.** The taster/one-man-band rung: connector into THEIR Claude
   (their subscription pays the tokens → Guy's marginal cost ≈ $0, support ≈ $0 — it's a pasted URL).
+  **✔ Verified 2026-07-05: a FREE Claude account supports exactly ONE custom connector** → "no Claude
+  subscription required to start" is a true sales line (Wingguy occupies their one slot = Wingguy IS their
+  Claude; heavy free-tier users hit Anthropic's caps → they buy Claude Pro or Guy's extension rung — either
+  way the appetite never lands on Guy's bill. Feature is beta-labelled: re-verify before printing sales copy).
   Copy-paste workflow is fine at occasional volume; the moment volume grows, the friction itself makes the
   upsell pitch. NO free front door: $20 is below any deliberation threshold, paying filters for people who'll
   actually USE it (usage = what converts), and a $0 anchor makes the first invoice feel like a loss.
