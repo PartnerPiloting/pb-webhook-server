@@ -180,6 +180,10 @@ cheaper) shrinks it further. No metering needed.
 typical; ~$5-8 AI cost); daily action cap **~150/day as a runaway backstop — NOT metered billing** (metering makes
 clients ration → starves the moat). Price = **demand/stickiness lever, not cost-recovery**: start $50 (penetration),
 grandfather early adopters, ~$100 for later cohorts. Detail ↓ journal 2026-06-22 + "Extension AI cost" 2026-06-30.
+**⚠ REFINED 2026-07-05 — Wingguy splits into TWO rungs** (direction settled, numbers to finalise): **MCP-only
+~$20-25/mo, paid day one** (no free front door) · **extension $50-60/mo incl MCP + AI on Guy's key**. Free month
+moves from the front door to **upgrade bait** (active MCP users get a month of the extension). Detail ↓ journal
+"Wingguy pricing v2 + moat strategy (2026-07-05)".
 
 **Architecture (locked).** Additive only — Guy's single-tenant setup untouched until he flips flags ·
 calendar+email multi-tenant via **Nylas** middleman (hosted auth) behind a **thin adapter** (Google = Guy's
@@ -2898,10 +2902,65 @@ cleanly; six types now FINAL.** The rulings:
 financial-planner vertical playbooks?) · the marker-phrase registry content · the signup_link URL ·
 connector rename (still with Guy).
 
+### Wingguy pricing v2 + moat strategy (2026-07-05 — same chat as session 4, discussion after the proof pass)
+
+> Refines the 2026-06-22 commercial model + the canonical pricing block (both updated with pointers here).
+> Direction settled with Guy; exact numbers to finalise before launch.
+
+**Two rungs, not one flat $50 — the tiers price a FRICTION GRADIENT that self-selects:**
+- **MCP-only ~$20-25/mo, paid from day one.** The taster/one-man-band rung: connector into THEIR Claude
+  (their subscription pays the tokens → Guy's marginal cost ≈ $0, support ≈ $0 — it's a pasted URL).
+  Copy-paste workflow is fine at occasional volume; the moment volume grows, the friction itself makes the
+  upsell pitch. NO free front door: $20 is below any deliberation threshold, paying filters for people who'll
+  actually USE it (usage = what converts), and a $0 anchor makes the first invoice feel like a loss.
+- **Extension ~$50-60/mo, includes MCP + AI on Guy's key.** The daily-driver / VA rung. Pressure-test
+  $75-100 later for VA-run clients (for them it's not convenience — it's what makes delegation possible).
+- **The free month = UPGRADE BAIT, not the front door:** offer active MCP subscribers a month of the
+  extension — trial the DELTA once habits exist (copy-paste is a known daily pain by then; removing it for a
+  month converts far better than a cold free month). Optional **one-time setup fee** on either rung (the
+  onboarding conversation is real labour + filters tyre-kickers better than trial mechanics).
+- **"AI is on me" = a BENEFIT, never a price justification.** Say "all-inclusive — runs on my account, no
+  API keys, no usage bills, use it as hard as you like" (removes bill-anxiety + grants permission to be heavy
+  users). NEVER "it costs more because I pay the AI" — cost-justified prices invite margin audits and
+  undersell the software. Standing principle reaffirmed: **never let pricing tax activity** (flat, no meter
+  the client can see; activity → results → stickiness is the whole flywheel).
+
+**★ Transcripts = the moat's second layer (Guy's insight, from living it).** Rules are switching costs;
+**transcripts are MEMORY** — months of the client's own meetings, queryable in plain speech ("draft the
+follow-up from today's meeting", "prep me for the 2pm"). Leaving = amnesia. Upgrades the MCP-tier pitch from
+"help drafting messages" to **"an assistant who was in all your meetings"** — and the demo self-fires the
+first time a draft cites something the prospect actually said. Voice input (Guy uses Wispr Flow) makes the
+whole loop speakable; the loop self-feeds (more meetings → more transcripts → better prep/follow-ups → more
+meetings). **Notetaker policy: standardise on Fathom** ("install Fathom, free tier, plugs straight in");
+copy-paste = the escape hatch for other notetakers; do NOT build N integrations (permanent support tax).
+**⚠ Build item this hangs on: per-tenant Fathom webhook keying at onboarding** (the transcript store is
+already tenant-keyed; the pipe currently runs for tenant 0 only). Deserves its own roadmap line.
+
+**Template updates are SHIPPABLE later (noted future capability, step-3+):** append-only + preserved v1s
+means the system can tell exactly who diverged on which rule → **auto-push improvements where the client is
+still on the shipped version; route an approvals-queue proposal (approve / approve-with-edits / dismiss)
+where they've tuned it.** Sellable: "the method keeps improving after you join." No new plumbing — it's the
+normal door with `created_by` = platform.
+
+**Onboarding reality check (Guy: "not as horrendous as I first thought" — CONFIRMED for the MCP rung):**
+setup = mint a token → copy the template brain (one provisioning action) → fill the ~10 variables (the
+catalogue IS the form) → the angles conversation (an hour of consultative talk = what the setup fee charges
+for) → "install Fathom". The **extension is the remaining genuinely-big lift** (hard-codes tenant-0 rules,
+single-tenant today) — which conveniently matches rollout order: the cheap-to-sell rung is the
+nearly-buildable one; the premium rung ships second.
+
+**$300 VA economics (why "1 VA ≈ 2 pre-AI VAs" is architecturally true, not hopeful):** she's faster because
+the system carries the judgment (stage-reading kills the Matthew-bug class, campaign detection picks the
+playbook, voice rules ride every draft) — and she's TRUSTED with more because the **blast radius** changed,
+not the VA: free where mistakes are cheap (draft/book/send), parked in the approvals queue where they'd
+compound (rule mutations), everything history-logged. "The rules ARE the training."
+
 ## ▶ You are here / next pick-up
 
 **▶▶ SESSION CLOSE 2026-07-04 (session 4: "proof pass DONE — all 6 flags ruled, campaign overlay live") —
 START THE NEXT CHAT HERE.**
+*(Post-close addendum, 2026-07-05, same chat: pricing v2 + moat strategy discussed and banked — journal entry
+directly above. Nothing further built; the next-sitting plan below stands.)*
 - **Phase A is COMPLETE and VALIDATED:** Outreach Rules → 20 atoms, taxonomy held (six types now FINAL),
   variable catalogue drafted, template-vs-Guy split ruled per rule. All decisions banked as the session-4
   ADDENDUM on the step-1 journal entry (directly above) — read it before touching the import.
