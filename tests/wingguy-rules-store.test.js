@@ -41,7 +41,8 @@ class FakeDb {
 
     if (s.includes('FOR UPDATE')) {
       const rows = this.rules
-        .filter((r) => r.layer === params[0] && (r.tenant_id || '') === params[1] && r.rule_key === params[2] && r.status === 'active')
+        .filter((r) => r.layer === params[0] && (r.tenant_id || '') === params[1] && r.rule_key === params[2]
+          && (r.campaign || '') === params[3] && r.status === 'active')
         .map((r) => ({ id: r.id, version: r.version }));
       return { rows };
     }
@@ -68,7 +69,8 @@ class FakeDb {
     }
     if (s.includes('ORDER BY version DESC')) {
       const rows = this.rules
-        .filter((r) => r.layer === params[0] && (r.tenant_id || '') === params[1] && r.rule_key === params[2])
+        .filter((r) => r.layer === params[0] && (r.tenant_id || '') === params[1] && r.rule_key === params[2]
+          && (r.campaign || '') === params[3])
         .sort((a, b) => b.version - a.version);
       return { rows };
     }
@@ -270,6 +272,60 @@ class FakeDb {
     assert.ok(withCampaign.text.includes('Campaign-only'), 'shown for its campaign');
   });
 
+  console.log('campaign overlay — same rule_key, campaign version shadows the generic:');
+  await check('a generic and a campaign version of the SAME rule_key coexist (separate chains)', async () => {
+    await store.commitRule({
+      layer: 'client', tenantId: 'Test-Tenant', ruleKey: 'post-connect-message', context: 'outreach', ruleType: 'stage-logic',
+      body: 'GENERIC synthetic post-connect message rule.', createdBy: 'test', expectedVersion: 0,
+    });
+    await store.commitRule({
+      layer: 'client', tenantId: 'Test-Tenant', ruleKey: 'post-connect-message', context: 'outreach', ruleType: 'stage-logic',
+      campaign: 'frac', body: 'FRAC-OVERLAY synthetic post-connect message rule.', createdBy: 'test', expectedVersion: 0,
+    });
+    const generic = await store.getRule({ tenantId: 'Test-Tenant', layer: 'client', ruleKey: 'post-connect-message' });
+    const overlay = await store.getRule({ tenantId: 'Test-Tenant', layer: 'client', ruleKey: 'post-connect-message', campaign: 'frac' });
+    assert.ok(generic.active.body.includes('GENERIC'), 'generic chain intact');
+    assert.ok(overlay.active.body.includes('FRAC-OVERLAY'), 'campaign chain intact');
+    assert.strictEqual(generic.active.version, 1);
+    assert.strictEqual(overlay.active.version, 1);
+  });
+  await check('render with the campaign: overlay SHADOWS the generic (not both)', async () => {
+    const block = await store.renderRulesBlock({ tenantId: 'Test-Tenant', contexts: ['outreach'], campaign: 'frac' });
+    assert.ok(block.text.includes('FRAC-OVERLAY'), 'campaign version rendered');
+    assert.ok(!block.text.includes('GENERIC synthetic'), 'generic version shadowed');
+  });
+  await check('render without the campaign: falls through to the generic', async () => {
+    const block = await store.renderRulesBlock({ tenantId: 'Test-Tenant', contexts: ['outreach'] });
+    assert.ok(block.text.includes('GENERIC synthetic'), 'generic rendered');
+    assert.ok(!block.text.includes('FRAC-OVERLAY'), 'overlay not rendered');
+  });
+  await check('render with a DIFFERENT campaign: also falls through to the generic', async () => {
+    const block = await store.renderRulesBlock({ tenantId: 'Test-Tenant', contexts: ['outreach'], campaign: 'tks' });
+    assert.ok(block.text.includes('GENERIC synthetic'), 'generic rendered for the other campaign');
+    assert.ok(!block.text.includes('FRAC-OVERLAY'), 'frac overlay not rendered');
+  });
+  await check('the chains version independently (editing the overlay leaves the generic at v1)', async () => {
+    await store.commitRule({
+      layer: 'client', tenantId: 'Test-Tenant', ruleKey: 'post-connect-message', context: 'outreach', ruleType: 'stage-logic',
+      campaign: 'frac', body: 'FRAC-OVERLAY v2 synthetic.', createdBy: 'test', expectedVersion: 1,
+    });
+    const generic = await store.getRule({ tenantId: 'Test-Tenant', layer: 'client', ruleKey: 'post-connect-message' });
+    const overlay = await store.getRule({ tenantId: 'Test-Tenant', layer: 'client', ruleKey: 'post-connect-message', campaign: 'frac' });
+    assert.strictEqual(generic.active.version, 1, 'generic untouched');
+    assert.strictEqual(overlay.active.version, 2, 'overlay bumped');
+  });
+  await check('proposing a campaign overlay surfaces the generic version as a neighbour', async () => {
+    const prop = await store.proposeRule({
+      layer: 'client', tenantId: 'Test-Tenant', ruleKey: 'post-connect-message', context: 'outreach', ruleType: 'stage-logic',
+      campaign: 'frac', body: 'FRAC-OVERLAY v3 proposal.',
+    });
+    assert.strictEqual(prop.expectedVersion, 2, 'expected_version is the OVERLAY chain\'s');
+    assert.ok(
+      prop.neighbours.some((n) => n.rule_key === 'post-connect-message' && !n.campaign),
+      'the generic sibling shows up for the eyeball check',
+    );
+  });
+
   console.log('proposeRule() — pure read with neighbours:');
   await check('propose is a pure read (no rows added) and carries expected_version', async () => {
     const before = db.rules.length;
@@ -291,11 +347,13 @@ class FakeDb {
     assert.ok(active.body.includes('Synthetic test rule'), 'v3 body = v1 body');
   });
   await check('retire flips status without deleting; stale version rejected', async () => {
+    // tks-specific lives on the 'tks' campaign chain — retiring it must name the campaign
+    // (identity = layer + tenant + rule_key + campaign).
     await assert.rejects(
-      store.retireRule({ layer: 'client', tenantId: 'Test-Tenant', ruleKey: 'tks-specific', expectedVersion: 9, createdBy: 'test' }),
+      store.retireRule({ layer: 'client', tenantId: 'Test-Tenant', ruleKey: 'tks-specific', campaign: 'tks', expectedVersion: 9, createdBy: 'test' }),
       /version conflict/,
     );
-    const ok = await store.retireRule({ layer: 'client', tenantId: 'Test-Tenant', ruleKey: 'tks-specific', expectedVersion: 1, createdBy: 'test' });
+    const ok = await store.retireRule({ layer: 'client', tenantId: 'Test-Tenant', ruleKey: 'tks-specific', campaign: 'tks', expectedVersion: 1, createdBy: 'test' });
     assert.strictEqual(ok.ok, true);
     const rows = db.rules.filter((x) => x.rule_key === 'tks-specific');
     assert.strictEqual(rows.length, 1, 'row not deleted');

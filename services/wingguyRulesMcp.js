@@ -49,9 +49,14 @@ async function runRulesList({ context, layer, campaign } = {}) {
   return { text: `Active Wingguy rules for ${TENANT}:\n\n${parts.join('\n\n')}\n\nUse wingguy_rule_get for a rule's body + history.` };
 }
 
-async function runRuleGet({ rule_key, layer = 'client' }) {
-  const found = await store.getRule({ ...scopeFromLayer(layer), ruleKey: rule_key });
-  if (!found) return { text: `No rule "${rule_key}" in the ${layer} layer. wingguy_rules_list shows what exists.`, isError: true };
+async function runRuleGet({ rule_key, layer = 'client', campaign }) {
+  const found = await store.getRule({ ...scopeFromLayer(layer), ruleKey: rule_key, campaign: campaign || undefined });
+  if (!found) {
+    return {
+      text: `No rule "${rule_key}" in the ${layer} layer${campaign ? ` for campaign "${campaign}"` : ' (generic — pass campaign to fetch a campaign\'s version)'}. wingguy_rules_list shows what exists.`,
+      isError: true,
+    };
+  }
   const { active, versions } = found;
   const history = await store.getHistory({ ruleKey: rule_key, limit: 20 });
   const lines = [];
@@ -125,10 +130,11 @@ async function runRuleCommit({ rule_key, layer = 'client', context, rule_type, c
   };
 }
 
-async function runRuleRevert({ rule_key, layer = 'client', to_version }) {
+async function runRuleRevert({ rule_key, layer = 'client', campaign, to_version }) {
   const r = await store.revertRule({
     ...scopeFromLayer(layer),
     ruleKey: rule_key,
+    campaign: campaign || undefined,
     toVersion: to_version,
     createdBy: ACTOR,
   });
@@ -150,6 +156,7 @@ async function runVariables({ set_key, set_value, description } = {}) {
 // ---------------------------------------------------------------------------
 
 const LAYER_DESC = 'Rule layer: "client" (this tenant\'s own rule — the default) · "foundation" (platform-wide, ALL tenants read it — reserved for Guy/platform calls) · "template" (the de-personalised seed for new clients; not runtime-read). If it\'s unclear whether a change is personal or platform-wide, ASK the human — never guess foundation.';
+const CAMPAIGN_DESC = 'Campaign slug (e.g. "tks", "frac"). A campaign version of a rule_key OVERRIDES the generic version when that campaign is in play; with no campaign (or no campaign version) the generic applies. Omit for the generic/fallback version. Campaign is detected from the thread: scan the user\'s own prior outbound for a campaign\'s marker phrases (see the campaign-markers rule); an explicit campaign named by the human always wins.';
 const CONTEXT_DESC = `Where the rule applies: ${store.CONTEXTS.join(' | ')}`;
 const TYPE_DESC = `What kind of rule: ${store.RULE_TYPES.join(' | ')}`;
 
@@ -174,16 +181,18 @@ const TOOL_DEFS = [
   },
   {
     name: 'wingguy_rule_get',
-    description: 'Fetches one Wingguy rule: the active body plus its full version history and door audit trail. Use before proposing a change to an existing rule.',
+    description: 'Fetches one Wingguy rule: the active body plus its full version history and door audit trail. Use before proposing a change to an existing rule. A rule_key can have a generic version AND per-campaign versions — omit campaign for the generic, pass it for a campaign\'s.',
     zodSchema: {
       rule_key: z.string().describe('The rule\'s stable kebab-case key (from wingguy_rules_list)'),
       layer: z.enum(store.LAYERS).optional().describe(LAYER_DESC),
+      campaign: z.string().optional().describe(CAMPAIGN_DESC),
     },
     jsonSchema: {
       type: 'object',
       properties: {
         rule_key: { type: 'string', description: 'The rule\'s stable kebab-case key (from wingguy_rules_list)' },
         layer: { type: 'string', enum: store.LAYERS, description: LAYER_DESC },
+        campaign: { type: 'string', description: CAMPAIGN_DESC },
       },
       required: ['rule_key'],
     },
@@ -197,7 +206,7 @@ const TOOL_DEFS = [
       layer: z.enum(store.LAYERS).optional().describe(LAYER_DESC),
       context: z.enum(store.CONTEXTS).describe(CONTEXT_DESC),
       rule_type: z.enum(store.RULE_TYPES).describe(TYPE_DESC),
-      campaign: z.string().optional().describe('Tag the rule to a campaign (e.g. "tks"/"frac") — it then only applies when that campaign is in play'),
+      campaign: z.string().optional().describe(CAMPAIGN_DESC),
       body: z.string().describe('The proposed rule body (markdown). Use {{variables}} and {{asset:key}} placeholders, never tenant-specific literals in foundation/template rules'),
     },
     jsonSchema: {
@@ -207,7 +216,7 @@ const TOOL_DEFS = [
         layer: { type: 'string', enum: store.LAYERS, description: LAYER_DESC },
         context: { type: 'string', enum: store.CONTEXTS, description: CONTEXT_DESC },
         rule_type: { type: 'string', enum: store.RULE_TYPES, description: TYPE_DESC },
-        campaign: { type: 'string', description: 'Tag the rule to a campaign (e.g. "tks"/"frac") — it then only applies when that campaign is in play' },
+        campaign: { type: 'string', description: CAMPAIGN_DESC },
         body: { type: 'string', description: 'The proposed rule body (markdown). Use {{variables}} and {{asset:key}} placeholders, never tenant-specific literals in foundation/template rules' },
       },
       required: ['rule_key', 'context', 'rule_type', 'body'],
@@ -222,7 +231,7 @@ const TOOL_DEFS = [
       layer: z.enum(store.LAYERS).optional().describe(LAYER_DESC),
       context: z.enum(store.CONTEXTS).describe(CONTEXT_DESC),
       rule_type: z.enum(store.RULE_TYPES).describe(TYPE_DESC),
-      campaign: z.string().optional().describe('Same campaign tag as the proposal (if any)'),
+      campaign: z.string().optional().describe('Same campaign tag as the proposal (if any) — part of the rule\'s identity'),
       body: z.string().describe('The confirmed rule body'),
       change_note: z.string().optional().describe('One line on what changed and why (shows in history)'),
       expected_version: z.number().describe('The expected_version from wingguy_rule_propose (0 for a new rule)'),
@@ -234,7 +243,7 @@ const TOOL_DEFS = [
         layer: { type: 'string', enum: store.LAYERS, description: LAYER_DESC },
         context: { type: 'string', enum: store.CONTEXTS, description: CONTEXT_DESC },
         rule_type: { type: 'string', enum: store.RULE_TYPES, description: TYPE_DESC },
-        campaign: { type: 'string', description: 'Same campaign tag as the proposal (if any)' },
+        campaign: { type: 'string', description: 'Same campaign tag as the proposal (if any) — part of the rule\'s identity' },
         body: { type: 'string', description: 'The confirmed rule body' },
         change_note: { type: 'string', description: 'One line on what changed and why (shows in history)' },
         expected_version: { type: 'number', description: 'The expected_version from wingguy_rule_propose (0 for a new rule)' },
@@ -249,6 +258,7 @@ const TOOL_DEFS = [
     zodSchema: {
       rule_key: z.string().describe('The rule to revert'),
       layer: z.enum(store.LAYERS).optional().describe(LAYER_DESC),
+      campaign: z.string().optional().describe('Which version chain to revert: omit for the generic, pass the campaign slug for a campaign\'s'),
       to_version: z.number().describe('The version number whose body to restore'),
     },
     jsonSchema: {
@@ -256,6 +266,7 @@ const TOOL_DEFS = [
       properties: {
         rule_key: { type: 'string', description: 'The rule to revert' },
         layer: { type: 'string', enum: store.LAYERS, description: LAYER_DESC },
+        campaign: { type: 'string', description: 'Which version chain to revert: omit for the generic, pass the campaign slug for a campaign\'s' },
         to_version: { type: 'number', description: 'The version number whose body to restore' },
       },
       required: ['rule_key', 'to_version'],

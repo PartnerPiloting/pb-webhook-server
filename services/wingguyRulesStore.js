@@ -24,6 +24,13 @@
  *   client     — the tenant's own rules (tenant_id required)
  * Runtime read = foundation ∪ client(tenant). No cross-layer shadowing in v1.
  *
+ * Campaign overlay (proof-pass decision, 2026-07-04): a rule's identity is
+ * (layer, tenant, rule_key, campaign) — the same rule_key may hold a generic version
+ * (campaign NULL) AND campaign-tagged versions, each with its own version chain. At render
+ * time the campaign version SHADOWS the generic for that rule_key when its campaign is in
+ * play; no campaign (or no campaign match) falls through to the generic. One level only —
+ * campaign → generic, never campaign → campaign.
+ *
  * Step-1 auth posture: every caller is Guy; edit-authority by identity (owner/va/platform)
  * lands with step-3 per-person tokens. The door logs the layer prominently instead.
  */
@@ -79,11 +86,14 @@ async function ensureSchema(client) {
       status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','retired'))
     );
   `);
-  // One ACTIVE version per rule identity. tenant_id is NULL for foundation/template rows, so
-  // the index key uses COALESCE — (layer, tenant, rule_key) must be unique among active rows.
+  // One ACTIVE version per rule identity — and identity INCLUDES campaign, so a generic
+  // (campaign NULL) and a campaign-tagged version of the same rule_key coexist, each with its
+  // own version chain. NULLs use COALESCE (tenant_id is NULL for foundation/template rows).
+  // The pre-campaign index is dropped in place (store was empty when the identity widened).
+  await client.query(`DROP INDEX IF EXISTS idx_wg_rules_one_active;`);
   await client.query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_wg_rules_one_active
-    ON wingguy_rules (layer, COALESCE(tenant_id, ''), rule_key)
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_wg_rules_one_active_camp
+    ON wingguy_rules (layer, COALESCE(tenant_id, ''), rule_key, COALESCE(campaign, ''))
     WHERE status = 'active';
   `);
   await client.query(`
@@ -285,8 +295,11 @@ async function getActiveRules({ tenantId = DEFAULT_TENANT, contexts, layer, camp
   }
 }
 
-/** One rule: the active version + full version history (newest first). */
-async function getRule({ tenantId = DEFAULT_TENANT, layer = 'client', ruleKey }) {
+/**
+ * One rule: the active version + full version history (newest first). campaign selects WHICH
+ * version chain of the rule_key — omit it for the generic chain, pass it for a campaign's.
+ */
+async function getRule({ tenantId = DEFAULT_TENANT, layer = 'client', ruleKey, campaign }) {
   const p = getPool();
   if (!p) return null;
   const tenant = layer === 'client' ? (tenantId || DEFAULT_TENANT).trim() : '';
@@ -298,8 +311,9 @@ async function getRule({ tenantId = DEFAULT_TENANT, layer = 'client', ruleKey })
               change_note, created_by, status, created_at, retired_at
        FROM wingguy_rules
        WHERE layer = $1 AND COALESCE(tenant_id, '') = $2 AND rule_key = $3
+         AND COALESCE(campaign, '') = $4
        ORDER BY version DESC`,
-      [layer, tenant, String(ruleKey || '').trim()],
+      [layer, tenant, String(ruleKey || '').trim(), (campaign || '').trim()],
     );
     if (!r.rows.length) return null;
     const active = r.rows.find((row) => row.status === 'active') || null;
@@ -321,9 +335,18 @@ async function renderRulesBlock({ tenantId = DEFAULT_TENANT, contexts = [], camp
     getVariables({ tenantId }),
     getAssets({ tenantId }),
   ]);
-  // Campaign scoping at render time: campaign-tagged rules only apply when THAT campaign is
-  // active; untagged rules always apply.
-  const inPlay = rules.filter((r) => !r.campaign || r.campaign === campaign);
+  // Campaign scoping at render time: a campaign-tagged rule only applies when THAT campaign
+  // is in play, and it SHADOWS the generic version of the same rule_key (per-rule fallback:
+  // campaign version wins, else generic — one level, never campaign → campaign).
+  const camp = (campaign || '').trim() || null;
+  const byIdentity = new Map();
+  for (const r of rules) {
+    if (r.campaign && r.campaign !== camp) continue;
+    const k = `${r.layer}|${r.tenant_id || ''}|${r.rule_key}`;
+    const prev = byIdentity.get(k);
+    if (!prev || (r.campaign && !prev.campaign)) byIdentity.set(k, r);
+  }
+  const inPlay = [...byIdentity.values()];
   const varMap = {};
   for (const v of variables) if (v.value != null) varMap[v.var_key] = v.value;
   const assetMap = {};
@@ -344,26 +367,29 @@ async function renderRulesBlock({ tenantId = DEFAULT_TENANT, contexts = [], camp
  */
 async function proposeRule({ tenantId, layer, ruleKey, context, ruleType, campaign, body }) {
   const { key, tenant } = validateRuleInput({ layer, tenantId, ruleKey, context, ruleType });
-  const existing = await getRule({ tenantId: tenant || undefined, layer, ruleKey: key });
+  const camp = (campaign || '').trim() || null;
+  const existing = await getRule({ tenantId: tenant || undefined, layer, ruleKey: key, campaign: camp });
   const current = existing?.active || null;
+  // Neighbours = same context+type, excluding only THIS exact chain — so when proposing a
+  // campaign overlay, the generic version of the same rule_key surfaces for the eyeball check.
   const neighbours = (await getActiveRules({
     tenantId: tenant || DEFAULT_TENANT,
     contexts: [context],
     layer: layer === 'client' ? undefined : layer,
-  })).filter((r) => r.rule_type === ruleType && r.rule_key !== key);
+  })).filter((r) => r.rule_type === ruleType && !(r.rule_key === key && (r.campaign || null) === camp));
   return {
     ruleKey: key,
     layer,
     tenantId: tenant,
     context,
     ruleType,
-    campaign: campaign || null,
+    campaign: camp,
     proposedBody: String(body || ''),
     currentVersion: current ? current.version : 0,
     currentBody: current ? current.body : null,
     expectedVersion: current ? current.version : 0,
     isNew: !current,
-    neighbours: neighbours.map((n) => ({ rule_key: n.rule_key, layer: n.layer, version: n.version, body: n.body })),
+    neighbours: neighbours.map((n) => ({ rule_key: n.rule_key, layer: n.layer, campaign: n.campaign || null, version: n.version, body: n.body })),
   };
 }
 
@@ -390,9 +416,10 @@ async function commitRule({
     await client.query('BEGIN');
     const cur = await client.query(
       `SELECT id, version FROM wingguy_rules
-       WHERE layer = $1 AND COALESCE(tenant_id, '') = $2 AND rule_key = $3 AND status = 'active'
+       WHERE layer = $1 AND COALESCE(tenant_id, '') = $2 AND rule_key = $3
+         AND COALESCE(campaign, '') = $4 AND status = 'active'
        FOR UPDATE`,
-      [layer, tenant || '', key],
+      [layer, tenant || '', key, (campaign || '').trim()],
     );
     const live = cur.rows[0] || null;
     const liveVersion = live ? Number(live.version) : 0;
@@ -448,7 +475,7 @@ async function commitRule({
  * RETIRE — deactivate a rule without a replacement (append-only: the row stays, status flips).
  * History-logged. expectedVersion guards the same way commit does.
  */
-async function retireRule({ tenantId, layer, ruleKey, createdBy, expectedVersion, changeNote }) {
+async function retireRule({ tenantId, layer, ruleKey, campaign, createdBy, expectedVersion, changeNote }) {
   const key = String(ruleKey || '').trim();
   const tenant = layer === 'client' ? (tenantId || '').trim() : '';
   if (layer === 'client' && !tenant) throw new Error('layer "client" requires a tenant_id');
@@ -463,9 +490,10 @@ async function retireRule({ tenantId, layer, ruleKey, createdBy, expectedVersion
     await client.query('BEGIN');
     const cur = await client.query(
       `SELECT id, version FROM wingguy_rules
-       WHERE layer = $1 AND COALESCE(tenant_id, '') = $2 AND rule_key = $3 AND status = 'active'
+       WHERE layer = $1 AND COALESCE(tenant_id, '') = $2 AND rule_key = $3
+         AND COALESCE(campaign, '') = $4 AND status = 'active'
        FOR UPDATE`,
-      [layer, tenant, key],
+      [layer, tenant, key, (campaign || '').trim()],
     );
     const live = cur.rows[0];
     if (!live) { await client.query('ROLLBACK'); throw new Error(`no active rule "${key}" in ${layer}${tenant ? `/${tenant}` : ''}`); }
@@ -494,9 +522,10 @@ async function retireRule({ tenantId, layer, ruleKey, createdBy, expectedVersion
  * REVERT — insert a fresh version copying an older body (append-only revert; never resurrects
  * the old row itself). Implemented THROUGH commitRule so it inherits the conflict check.
  */
-async function revertRule({ tenantId, layer, ruleKey, toVersion, createdBy }) {
-  const existing = await getRule({ tenantId, layer, ruleKey });
-  if (!existing) throw new Error(`rule "${ruleKey}" not found in ${layer}`);
+async function revertRule({ tenantId, layer, ruleKey, campaign, toVersion, createdBy }) {
+  const camp = (campaign || '').trim() || null;
+  const existing = await getRule({ tenantId, layer, ruleKey, campaign: camp });
+  if (!existing) throw new Error(`rule "${ruleKey}" not found in ${layer}${camp ? ` (campaign ${camp})` : ''}`);
   const target = existing.versions.find((v) => Number(v.version) === Number(toVersion));
   if (!target) throw new Error(`version v${toVersion} of "${ruleKey}" not found`);
   const live = existing.active;
