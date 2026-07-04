@@ -24,6 +24,7 @@ const clientService = require('./clientService');
 const { findLeadByEmail } = require('./inboundEmailService');
 const { getMeetingsForLead, getParticipantsForMeeting } = require('./recallWebhookDb');
 const { normalizeFathomApiTranscript } = require('./fathomIngestService');
+const { registerWingguyRulesTools } = require('./wingguyRulesMcp');
 
 const BASE = '/mcp2';
 const DEFAULT_COACH_CLIENT_ID = (process.env.RECALL_COACH_CLIENT_ID || 'Guy-Wilson').trim();
@@ -241,6 +242,10 @@ function createRecallMcpServer() {
       catch (e) { return { content: [{ type: 'text', text: `Fathom API error: ${e.message}` }], isError: true }; }
     },
   );
+
+  // Wingguy rules-store tools (the write-door from chat — "update my rules").
+  // ⚠ First NON-transcript tools on this connector → the roadmap's rename-to-"Wingguy" trigger.
+  registerWingguyRulesTools(server);
 
   return server;
 }
