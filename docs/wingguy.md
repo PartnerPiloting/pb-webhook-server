@@ -2971,8 +2971,42 @@ compound (rule mutations), everything history-logged. "The rules ARE the trainin
 
 ## ▶ You are here / next pick-up
 
-**▶▶ SESSION CLOSE 2026-07-04 (session 4: "proof pass DONE — all 6 flags ruled, campaign overlay live") —
+**▶▶ SESSION CLOSE 2026-07-05 (the IMPORT sitting: "Phases B–D DONE — the store is SEEDED and VERIFIED") —
 START THE NEXT CHAT HERE.**
+- **The rules store is LIVE and FULL:** the whole ~20-page Notion corpus + the Content Asset Library swept
+  in one sitting → **79 seed entries → 130 rule rows on prod Postgres** (57 template + 73 Guy client rows,
+  incl. 7 campaign rows: broker×3 · financial-planner×3 · frac×1) + **15 variables** (all valued for
+  tenant 0; catalogue = the future onboarding form) + **20 assets** (full Content Asset Library, each with
+  its usage gate captured in asset-usage rules).
+- **Verified (Phase D):** re-run = `committed=0 unchanged=130` (idempotent by inspection) · render checks
+  green — frac campaign SHADOWS the generic post-connection rule, generic excludes it, every `{{token}}`
+  resolves (zero unresolved), signoff/call_platform/explainer all correct. Actor=`import`, all writes via
+  the door, history intact (175 rows).
+- **The seed JSON is NOT in the repo (by design — public repo, rules = the moat).** Durable local copy:
+  `C:\Users\guyra\Documents\wingguy-seed-2026-07-05.json`. Re-deriving = re-run the Phase B sweep; re-seeding
+  = `DATABASE_URL=<Render external URL> node scripts/import-wingguy-rules.js --seed <path>` (harmless to re-run).
+- **Shipped (`a96afdc5`):** `scripts/import-wingguy-rules.js` (no rule content; PENDING-placeholder guard,
+  dry-run mode, unchanged-skip) + `setVariable` extended to carry catalogue `required`/`example`.
+- **In-flight rulings this sitting (all Guy-confirmed or flagged):** campaigns = broker / financial-planner /
+  frac, tks = generic fallback (banked earlier, `21eeca82`) · penny-drop wording SIGNED OFF (now the
+  template's core-framing-inversion rule) · **signup_link = the benefits page URL** (same URL as
+  cost_benefit_page — the join happens there; two keys kept, usage differs) · **Content Asset Library DB
+  added to the corpus** (it IS wingguy_assets; swept 19 entries, skipped the phasing-out Synthesia + the
+  empty "There Is No Choice" placeholder; ⚠ caught the library holding the digital-twin **vimeo.com/manage
+  ADMIN link** — store holds the public URL) · **EXCLUDED as chat-tooling** (same rationale as Gmail & Tools):
+  Call Prep §11 Tool Lookup Discipline + §12 Daily Run-Sheet inclusions — they stay in Notion, unimported ·
+  campaign marker-phrase registry DRAFTED from playbook wording for all three campaigns (Guy has not
+  line-item reviewed the marker lists — cheap to edit through the door later).
+- **Notion stays the authoring master** until the step-2 flip — mirror discipline: edit Notion, re-run the
+  import to sync ("morning-of re-import" on flip day per the transition policy).
+- **NEXT SITTING = step 2:** extension + chat READ the store — `WINGGUY_RULES_SOURCE=config` default,
+  shadow-compare week, flip, then delete the `config/wingguyTemplates.js` hard-coded copy after ~2 weeks
+  stable (kills the Matthew-drift class permanently). `renderRulesBlock()` is built and proven — step 2 =
+  "swap the source, delete the config file".
+Separate watch-item unchanged: **Wed 9 July triple-header = first live splitter test** — glance at the review
+queue after (own short chat).
+
+**(previous close) ▶▶ SESSION CLOSE 2026-07-04 (session 4: "proof pass DONE — all 6 flags ruled, campaign overlay live").**
 *(Post-close addendum, 2026-07-05, same chat: pricing v2 + moat strategy discussed and banked — journal entry
 directly above. Nothing further built; the next-sitting plan below stands.)*
 - **Phase A is COMPLETE and VALIDATED:** Outreach Rules → 20 atoms, taxonomy held (six types now FINAL),
