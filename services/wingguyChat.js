@@ -204,7 +204,7 @@ function fmtSlot(iso, tz) {
 
 // Run one chat turn (which may involve several tool round-trips) to completion.
 // Returns { ok, reply, draft, booked, messages, model }.
-async function runWingguyChatTurn({ coach, profile = {}, conversation = [], messages = [], leadEmail, airtableBaseId = null, leadRecordId = null, profileBlock = '', convoBlock = '', campaignTemplate = null, deps = {} }) {
+async function runWingguyChatTurn({ coach, profile = {}, conversation = [], messages = [], leadEmail, airtableBaseId = null, leadRecordId = null, profileBlock = '', convoBlock = '', campaignTemplate = null, systemPrefixBlocks = null, deps = {} }) {
   const client = deps.client || getAnthropicClient();
   const getAvailability = deps.getAvailabilityForCoach || wingguyCalendar.getAvailabilityForCoach;
   const bookMeeting = deps.createBookingEvent || wingguyCalendar.createBookingEvent;
@@ -224,9 +224,14 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
   const campaignSignoff = campaignTemplate && campaignTemplate.signoff;
   const voice = { greetWithFirstName: vp.greetWithFirstName, signoff: chooseSignoff(conversation, coach.clientName, vp, campaignSignoff), name: vp.signoffName };
 
+  // System prefix normally comes from the rules-source seam (routes pass it): config mode =
+  // [voice, agent instructions] exactly as before; store mode = [rendered rulebook, agent
+  // instructions]. The inline default keeps direct callers (the cloud test) working unchanged.
   const system = [
-    { type: 'text', text: WINGGUY_VOICE },
-    { type: 'text', text: WINGGUY_AGENT_INSTRUCTIONS, cache_control: { type: 'ephemeral' } },
+    ...(systemPrefixBlocks || [
+      { type: 'text', text: WINGGUY_VOICE },
+      { type: 'text', text: WINGGUY_AGENT_INSTRUCTIONS, cache_control: { type: 'ephemeral' } },
+    ]),
     { type: 'text', text: buildContext({ profileBlock, convoBlock, leadEmail, coachName: coach.clientName, prefs, campaignTemplate, voice }) },
   ];
 

@@ -12,7 +12,10 @@
 // The stable voice/rules system block is prompt-CACHED (cache_control: ephemeral) so repeated drafts
 // only pay for the small per-profile delta.
 //
-// Templates are SEEDED DIRECTLY (config/wingguyTemplates.js) — no Postgres store yet.
+// Rules/templates come through the SOURCE SEAM (services/wingguyRulesSource.js, step 2):
+// WINGGUY_RULES_SOURCE=config (default) keeps the hard-coded config/wingguyTemplates.js copy
+// byte-identical to before; =store reads the Postgres rules store. While on config, every
+// draft also shadow-renders the store and logs a WINGGUY-SHADOW line (the pre-flip week).
 //
 // Endpoints (mounted at /api/wingguy):
 //   GET  /status      public-ish; { ok, enabled }
@@ -23,7 +26,7 @@ const express = require('express');
 const { createLogger } = require('../utils/contextLogger');
 const { authenticateUserWithTestMode } = require('../middleware/authMiddleware');
 const { getAnthropicClient, isAnthropicConfigured } = require('../config/anthropicClient');
-const { WINGGUY_VOICE, WINGGUY_REPLY_INSTRUCTIONS, listTemplates, getTemplate, detectTemplate } = require('../config/wingguyTemplates');
+const rulesSource = require('../services/wingguyRulesSource');
 const { getBookingPrefs } = require('../config/wingguyBookingPrefs');
 const { createBookingEvent } = require('../services/wingguyCalendar');
 const { runWingguyChatTurn } = require('../services/wingguyChat');
@@ -235,9 +238,16 @@ module.exports = function mountWingguy(app) {
   const router = express.Router();
   logger.info(`[Wingguy] Mounted. ENABLED=${ENABLED}, model=${WINGGUY_DRAFT_MODEL_ID}`);
 
-  // Lightweight status (no auth) so the extension can show a clear "off" state.
+  // Lightweight status (no auth) so the extension can show a clear "off" state. Also answers
+  // "which rules source is live" (the wingguy_status idea) — the flip/shadow state is askable.
   router.get('/status', (req, res) => {
-    res.json({ ok: true, enabled: ENABLED, aiConfigured: isAnthropicConfigured() });
+    res.json({
+      ok: true,
+      enabled: ENABLED,
+      aiConfigured: isAnthropicConfigured(),
+      rulesSource: rulesSource.getSource(),
+      rulesShadow: rulesSource.isShadowEnabled(),
+    });
   });
 
   // Everything below requires an authenticated client...
@@ -246,8 +256,13 @@ module.exports = function mountWingguy(app) {
   router.use(requireOwner);
 
   // The quick-pick button set for the panel.
-  router.get('/templates', (req, res) => {
-    res.json({ ok: true, templates: listTemplates() });
+  router.get('/templates', async (req, res) => {
+    try {
+      res.json({ ok: true, templates: await rulesSource.listTemplates({ tenantId: req.client.clientId }) });
+    } catch (e) {
+      logger.error(`[Wingguy] templates failed: ${e.message}`);
+      res.status(500).json({ ok: false, error: e.message });
+    }
   });
 
   // Per-tenant booking preferences (the SEAM — Guy's defaults for now, Postgres later). The extension
@@ -268,15 +283,19 @@ module.exports = function mountWingguy(app) {
     const { templateId: requestedTemplateId, profile, conversation } = req.body || {};
 
     // Auto-detect when the extension sends "auto" (or nothing): pick the campaign template by matching
-    // detection keywords against the connection-request note (first thread message) + profile. The
-    // human can override by sending a specific id. Detection logic lives in the templates config.
+    // the detection signals against the connection-request note (first thread message) + profile. The
+    // human can override by sending a specific id. Detection logic lives behind the rules-source seam.
+    const tenantId = req.client.clientId;
     const autoDetected = !requestedTemplateId || requestedTemplateId === 'auto';
-    const templateId = autoDetected ? detectTemplate(profile, conversation) : requestedTemplateId;
-    const template = getTemplate(templateId);
+    const templateId = autoDetected
+      ? await rulesSource.detectTemplate(profile, conversation, { tenantId })
+      : requestedTemplateId;
+    const template = await rulesSource.getTemplate(templateId, { tenantId });
     if (!template) {
+      const valid = (await rulesSource.listTemplates({ tenantId })).map((t) => t.id).join(', ');
       return res.status(400).json({
         ok: false,
-        error: `Unknown templateId "${requestedTemplateId}". Valid: ${listTemplates().map((t) => t.id).join(', ')}, or "auto".`,
+        error: `Unknown templateId "${requestedTemplateId}". Valid: ${valid}, or "auto".`,
       });
     }
 
@@ -288,18 +307,20 @@ module.exports = function mountWingguy(app) {
     // their warm reply; templates that don't reference it (e.g. \tks) simply ignore it.
     const convoBlock = buildConversationBlock(conversation, profile && profile.name);
 
+    // Pre-flip observation: render what the store WOULD say for this draft and log one
+    // WINGGUY-SHADOW line. Fire-and-forget — never blocks or breaks the live draft.
+    rulesSource.shadowCompare({ surface: 'draft-thanks', profile, conversation, configTemplateId: templateId, tenantId });
+
     try {
       const client = getAnthropicClient();
 
-      // System = [ stable voice block (CACHED) , per-template instructions ]. Caching the big stable
-      // prefix means repeat drafts (same session) mostly re-bill the small profile delta only.
+      // System comes from the rules-source seam. Config mode = [ stable voice block (CACHED),
+      // per-template instructions ] — byte-identical to pre-step-2; store mode = [ task harness,
+      // rendered rulebook (CACHED) ]. Either way the big stable prefix is prompt-cached.
       const response = await client.messages.create({
         model: WINGGUY_DRAFT_MODEL_ID,
         max_tokens: DRAFT_MAX_TOKENS,
-        system: [
-          { type: 'text', text: WINGGUY_VOICE, cache_control: { type: 'ephemeral' } },
-          { type: 'text', text: template.instructions },
-        ],
+        system: await rulesSource.draftSystem(template.id, { tenantId }),
         messages: [
           {
             role: 'user',
@@ -360,6 +381,9 @@ module.exports = function mountWingguy(app) {
       return res.status(400).json({ ok: false, error: 'No conversation supplied to reply to.' });
     }
 
+    // Shadow-render the store's reply rules too (no config-side campaign here — agree=n/a).
+    rulesSource.shadowCompare({ surface: 'draft-reply', profile, conversation, tenantId: req.client.clientId });
+
     try {
       const client = getAnthropicClient();
       const userContent =
@@ -370,10 +394,7 @@ module.exports = function mountWingguy(app) {
       const response = await client.messages.create({
         model: WINGGUY_DRAFT_MODEL_ID,
         max_tokens: DRAFT_MAX_TOKENS,
-        system: [
-          { type: 'text', text: WINGGUY_VOICE, cache_control: { type: 'ephemeral' } },
-          { type: 'text', text: WINGGUY_REPLY_INSTRUCTIONS },
-        ],
+        system: await rulesSource.replySystem({ tenantId: req.client.clientId }),
         messages: [{ role: 'user', content: userContent }],
       });
 
@@ -449,9 +470,13 @@ module.exports = function mountWingguy(app) {
       // lacks + CRM-only context: AI assessment, your notes, status, follow-up date, do-not-FUP flag).
       const enriched = await enrichProfileFromPortal(req, profile);
 
-      // Detect the campaign template (\tks / \frac …) from the profile + thread and pass its real
-      // voice-tuned structure to the agent, so opener / warm-reply drafts match Guy's templates.
-      const campaignTemplate = getTemplate(detectTemplate(enriched, conversation));
+      // Detect the campaign from the profile + thread, then get the agent's system prefix from the
+      // rules-source seam. Config mode: [voice, agent instructions] + the campaign template embedded
+      // in the context (today's shape). Store mode: the rendered rulebook replaces both — the
+      // campaign-shadowed rules ARE the template, so campaignTemplate comes back null.
+      const templateId = await rulesSource.detectTemplate(enriched, conversation, { tenantId: req.client.clientId });
+      const { blocks: systemPrefixBlocks, campaignTemplate } = await rulesSource.agentSystem(templateId, { tenantId: req.client.clientId });
+      rulesSource.shadowCompare({ surface: 'chat', profile: enriched, conversation, configTemplateId: templateId, tenantId: req.client.clientId });
 
       const result = await runWingguyChatTurn({
         coach,
@@ -466,6 +491,7 @@ module.exports = function mountWingguy(app) {
         airtableBaseId: req.client && req.client.airtableBaseId,
         leadRecordId: enriched && enriched._leadRecordId,
         campaignTemplate,
+        systemPrefixBlocks,
         // Reuse the route's grounding-block formatting so the agent sees the same shape as the other endpoints.
         profileBlock: buildProfileBlock(enriched),
         convoBlock: buildConversationBlock(conversation, enriched && enriched.name),
