@@ -549,7 +549,7 @@ async function revertRule({ tenantId, layer, ruleKey, campaign, toVersion, creat
 // Variables + assets
 // ---------------------------------------------------------------------------
 
-async function setVariable({ tenantId = DEFAULT_TENANT, varKey, value, description, actor }) {
+async function setVariable({ tenantId = DEFAULT_TENANT, varKey, value, description, required, example, actor }) {
   const key = String(varKey || '').trim();
   if (!/^[a-zA-Z0-9_.-]{1,80}$/.test(key)) throw new Error(`invalid var_key "${varKey}"`);
   const tenant = (tenantId || DEFAULT_TENANT).trim();
@@ -560,11 +560,13 @@ async function setVariable({ tenantId = DEFAULT_TENANT, varKey, value, descripti
     await ensureSchema(client);
     await client.query('BEGIN');
     await client.query(
-      `INSERT INTO wingguy_variable_catalog (var_key, description)
-       VALUES ($1, $2)
+      `INSERT INTO wingguy_variable_catalog (var_key, description, required, example)
+       VALUES ($1, $2, COALESCE($3, false), $4)
        ON CONFLICT (var_key) DO UPDATE SET
-         description = COALESCE(EXCLUDED.description, wingguy_variable_catalog.description)`,
-      [key, description || null],
+         description = COALESCE(EXCLUDED.description, wingguy_variable_catalog.description),
+         required = COALESCE($3, wingguy_variable_catalog.required),
+         example = COALESCE(EXCLUDED.example, wingguy_variable_catalog.example)`,
+      [key, description || null, typeof required === 'boolean' ? required : null, example || null],
     );
     const prev = await client.query(
       `SELECT value FROM wingguy_tenant_variables WHERE tenant_id = $1 AND var_key = $2`,
