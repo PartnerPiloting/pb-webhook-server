@@ -148,7 +148,12 @@ Wingguy (how to act) + reads/writes the Portal (the records).
   "▶ You are here" 2026-07-04 close. Step-1 detailed design APPROVED 2026-07-04 ↓ journal "Rules store
   (roadmap step 1) — detailed design" (schema/write-door/import + VA-roles + transition policy).
   **Step-1 BUILD SHIPPED + smoke-green on prod 2026-07-04 session 3** (`10fcc19e`: store + write-door +
-  6 MCP tools live on both transports; store empty — Notion import = the next two sittings).**
+  6 MCP tools live on both transports). **Store SEEDED + VERIFIED 2026-07-05** (import sitting: 130 rule
+  rows / 15 variables / 20 assets on prod Postgres; Notion = authoring master until the flip).
+  **Step-2 SEAM SHIPPED DARK 2026-07-05** (`5e6432a0`: both surfaces read via
+  `services/wingguyRulesSource.js`; `WINGGUY_RULES_SOURCE=config` default keeps prompts byte-identical,
+  shadow-compare logging the store's would-be renders — flip after a clean week ↓ journal "Rules source
+  seam (roadmap step 2 build)").**
 
 **AI / model.** Standardise on **Claude** behind a swappable seam: **Claude = drafting** (voice), **Gemini =
 scoring + summaries** (cheap, high-volume). The connector surface needs the client's own Claude account (a product
@@ -2969,10 +2974,79 @@ playbook, voice rules ride every draft) — and she's TRUSTED with more because 
 not the VA: free where mistakes are cheap (draft/book/send), parked in the approvals queue where they'd
 compound (rule mutations), everything history-logged. "The rules ARE the training."
 
+## Rules source seam (roadmap step 2 build) — SHIPPED DARK (2026-07-05)
+
+> The step-2 build: extension + chat CAN now read the store — behind `WINGGUY_RULES_SOURCE=config`
+> (default), so nothing that drafts today changed. Commit `5e6432a0`. The flip is one Render env var,
+> taken only after a clean shadow week. Design authority: the step-1 journal entry's transition policy.
+
+**The seam: `services/wingguyRulesSource.js`** — ONE module decides where drafting rules come from;
+`routes/wingguyRoutes.js` + `services/wingguyChat.js` now go through it exclusively. Config mode is
+**byte-identical** to pre-step-2 prompt assembly (unit-tested as deep-equality — the flip-safety
+guarantee). Store mode assembles per surface from `renderRulesBlock()`:
+draft-thanks = `['outreach']` · draft-reply = `['reply']` · chat = `['outreach','reply','booking']`
+('global' always included; campaign version shadows generic at render, per the step-1 schema).
+
+**★ HARNESS vs RULES — the ruling that makes "delete the config file" honest.** The config file mixes
+two kinds of content: **RULES** (voice, structure, campaign wording — `WINGGUY_VOICE` +
+`TEMPLATES[*].instructions`) which the store now owns, and **HARNESS** (task framing, the grounding/
+output contracts, the agent TOOL instructions — `WINGGUY_REPLY_INSTRUCTIONS`, `WINGGUY_AGENT_
+INSTRUCTIONS`) which stays CODE — the import deliberately excluded chat-tooling content. Store mode
+reuses the harness constants from the config file plus a new store-draft harness in the seam.
+**Boat-burning day = move the two harness constants into the seam, delete the rules content with the
+file** (also re-point `scripts/wingguy-chat-test.js`, which still uses the config detector directly).
+
+**Campaigns in store mode:** ids become `generic` (default; = the old `tks`, aliased for stale
+extensions) / `frac` / `broker` / `financial-planner`. Detection = the **campaign-markers registry
+rule** (parsed server-side: `**slug** markers:` + quoted bullets; most matches wins, tie or no signal
+= generic; the Shared section is deliberately excluded — ambiguous by definition). Marker lists are
+edited **through the door** ("update my rules"), never in code. The quick-pick buttons become
+General / Broker / Financial Planner / Frac at flip.
+
+**Shadow-compare (LIVE NOW, on by default while source=config):** every draft/chat turn also renders
+what the store WOULD say and logs ONE line to Render — fire-and-forget, can never touch a live draft:
+`WINGGUY-SHADOW surface=draft-thanks configCampaign=tks storeCampaign=generic agree=yes rules=41 unresolved=0 chars=17250 ms=133`
+**The clean-week bar:** no `FAILED` lines · `unresolved=0` · campaign `agree=yes` (or disagreements
+understood and fixed by editing markers through the door). Guy does nothing special — just work
+normally and ask Claude to read the logs at week's end. Kill switch: `WINGGUY_RULES_SHADOW=false`.
+`GET /api/wingguy/status` now reports `rulesSource` + `rulesShadow` (the "where am I" answer).
+
+**Known at-flip behaviour changes to WATCH (not bugs):** (1) the `tks` "Talk soon / I know a (Guy)"
+sign-off came from `template.signoff` — in store mode sign-offs live in the rule bodies / voice prefs
+("(I know a) Guy" full form), so generic-campaign chat drafts lose the "Talk soon" line unless a rule
+carries it; (2) detection quality differs — config keyed on the literal word "fractional", the store
+keys on opener marker phrases; expect some `agree=NO` lines and tune the registry, that's the system
+working; (3) store renders are BIGGER prompts (the whole context's rulebook vs one template) — watch
+draft quality + cost on the Sonnet drafts during the first days.
+
+**Flip runbook (one announced morning, per the transition policy):** morning-of re-import from Notion
+→ set `WINGGUY_RULES_SOURCE=store` on Render → verify `/api/wingguy/status` says `store` → draft one
+real message per surface → authoring re-points to chat ("update my rules") → ARCHIVED banners on the
+Notion rules pages. Gut-it-out posture stands: content problems fix FORWARD through the door; the env
+var reverts reads only as a fire extinguisher. Boat-burning after ~2 weeks stable (above).
+
 ## ▶ You are here / next pick-up
 
-**▶▶ SESSION CLOSE 2026-07-05 (the IMPORT sitting: "Phases B–D DONE — the store is SEEDED and VERIFIED") —
-START THE NEXT CHAT HERE.**
+**▶▶ SESSION CLOSE 2026-07-05 (the STEP-2 sitting: "rules-source seam SHIPPED DARK — shadow week starts
+now") — START THE NEXT CHAT HERE.**
+- **Step 2 is BUILT and LIVE (dark):** `services/wingguyRulesSource.js` + both consumers rewired
+  (`5e6432a0`, deployed to prod). `WINGGUY_RULES_SOURCE` unset = config mode = byte-identical prompts
+  (deep-equality unit tests prove it; 18 checks green in `tests/wingguy-rules-source.test.js`, store
+  suite still green). Store mode fully implemented + tested against synthetic rules: per-surface
+  rendered rulebook, campaign shadowing, marker detection (parser verified against the REAL prod
+  campaign-markers body: frac/broker/financial-planner all parse clean).
+- **Shadow-compare is ON:** as Guy drafts normally, Render logs one `WINGGUY-SHADOW` line per
+  draft/chat turn. Journal entry above ("Rules source seam") = the clean-week bar, the known at-flip
+  behaviour changes, and the flip runbook. `GET /api/wingguy/status` → `rulesSource`/`rulesShadow`.
+- **NEXT SITTING = read the shadow week + FLIP:** pull the WINGGUY-SHADOW lines from Render logs,
+  triage agree=NO / unresolved / FAILED, tune the marker registry through the door if needed,
+  then run the flip runbook (morning-of re-import → env var → verify → archive Notion). Boat-burning
+  (~2 weeks after flip): move harness constants into the seam, delete `config/wingguyTemplates.js`,
+  update `scripts/wingguy-chat-test.js`.
+Separate watch-item unchanged: **Wed 9 July triple-header = first live splitter test** — glance at the
+review queue after (own short chat).
+
+**(previous close) ▶▶ SESSION CLOSE 2026-07-05 (the IMPORT sitting: "Phases B–D DONE — the store is SEEDED and VERIFIED").**
 - **The rules store is LIVE and FULL:** the whole ~20-page Notion corpus + the Content Asset Library swept
   in one sitting → **79 seed entries → 130 rule rows on prod Postgres** (57 template + 73 Guy client rows,
   incl. 7 campaign rows: broker×3 · financial-planner×3 · frac×1) + **15 variables** (all valued for
