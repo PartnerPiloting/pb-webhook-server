@@ -19,7 +19,7 @@ You feel it, too - that low-grade guilt about the catch-ups you're not having. B
 
 Here's the part nobody says out loud: it never goes away on its own. I've watched this cycle run in year one and in year twenty. However mature the business, the question underneath is identical - *where is the next piece of revenue coming from?*
 
-And there are only two honest answers. You can **advertise** - rent a stranger's attention, at prices that climb every year, with an ROI you can never quite pin down. Or you can be **known, remembered, and referred** - by people who already trust you. One of these compounds. The other one you buy again every month.
+And there are only two honest answers. You can **advertise** - rent a stranger's attention, at prices that climb every year, with an ROI you can never quite pin down. Or you can be **known, remembered, and recommended** - by people who already trust you. One of these compounds. The other one you buy again every month.
 
 Most people know this. So why does the famine keep coming back?
 

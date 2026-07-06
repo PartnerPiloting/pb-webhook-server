@@ -15,7 +15,7 @@ Whoever paid to be there. That's the whole answer. Not the people best placed to
 
 We treat that as normal. It's worth saying out loud how strange it is.
 
-In every other part of your business, you select. You don't hire whoever walks past the office. You don't take on every client who rings - you've learned the hard way what a wrong-fit client costs. But when it comes to the network - the asset that decides where your next years of revenue come from - most professionals accept whatever assortment of people circumstance deals them, and then wonder why the referrals feel random.
+In every other part of your business, you select. You don't hire whoever walks past the office. You don't take on every client who rings - you've learned the hard way what a wrong-fit client costs. But when it comes to the network - the asset that decides where your next years of revenue come from - most professionals accept whatever assortment of people circumstance deals them, and then wonder why the recommendations feel random.
 
 Here's the shift: **you're allowed to choose the room.**
 

@@ -29,7 +29,7 @@ So what actually happened there? Not charm. Not history - there wasn't any. What
 
 That's the thing nobody tells you about a well-chosen network: the introductions aren't a distant reward for years of relationship maintenance. They're just what happens when the right people are connected and actually talking. The years-of-coffees version isn't wrong because the trust is fake - it's wrong about where the trust comes from. It comes from *who you selected* - especially on attitude - far more than from how long you've known them.
 
-And notice the direction it flowed. I didn't get a referral - I gave one, to someone in my network, from someone brand new to it. Which raises a question worth turning over: if introductions like that are moving through a network within days of someone joining it - **what happens when you're the one standing in the middle of it?**
+And notice the direction it flowed. I didn't get a recommendation - I gave one, to someone in my network, from someone brand new to it. Which raises a question worth turning over: if introductions like that are moving through a network within days of someone joining it - **what happens when you're the one standing in the middle of it?**
 
 That's where this series is heading. Next: why the way most of us were taught to network makes stories like this one basically impossible.
 
