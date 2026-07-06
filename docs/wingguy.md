@@ -3128,9 +3128,17 @@ var reverts reads only as a fire extinguisher. Boat-burning after ~2 weeks stabl
   lookup by lead_name via `lookupLeadContactByName`, explicit lead_email override). Under it, the
   panel's pipeline was EXTRACTED into `wingguyCalendar` as the single implementation —
   `filterAvailability` + `bookMeetingGuarded` — and the panel agent now calls those same functions,
-  so panel and chat literally cannot drift. 25 booking-guard checks green. The claude.ai guardrail
+  so panel and chat literally cannot drift. The claude.ai guardrail
   instruction should now ALSO say: book through the wingguy_* tools, raw calendar connector is
   read-only. WHY IT EXISTS: a claude.ai chat booked Guy at 9:00am via raw create_event (2026-07-06).
+  **Live verification against prod /mcp caught TWO more gaps, both fixed same hour:** (1) weekends
+  were offered (weekdays-only was model-side) → now code in filterAvailability + propose_times, with
+  includeWeekends overrides; pre-10:00 slots carry an "⚠ AT-A-PINCH" marker in the connector output.
+  (2) meetingCount counted the personal Lunch/Dinner blocks, so maxMeetingsPerDay:4 meant "2 client
+  calls" — only 3 offerable days in 3 weeks; now `countRealMeetings` (busy events overlapping the
+  9–17 window, coach's own lunch block excluded, both providers) → 11 offerable weekdays, Thu 9 (6
+  real calls) still correctly withheld. Final live checks: tools listed, availability sane,
+  check_time(Thu 9 10:30) correctly reports the Mary Anne clash. 28 booking-guard checks green.
 
 **▶▶ SESSION CLOSE 2026-07-05 (the STEP-2 sitting: "rules-source seam SHIPPED DARK — shadow week starts
 now") — START THE NEXT CHAT HERE.**
