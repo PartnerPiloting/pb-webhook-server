@@ -44,7 +44,7 @@ Somewhere in that first exchange - often right there in the thank-you - a quick 
 ## 6. Have the discovery call
 
 This is the part people dread most - and the one that turns easy the moment you know the secret: you're there to ask questions, not to perform. Questions are the answers. You ask, they talk, and you learn what they do, how they think, who you might one day connect them with and who they might connect you with. Nothing to pitch, nothing to prepare - and the full piece shows you exactly how to steer it.
-→ *What your first discovery call is actually for*
+→ *What can you discover?*
 
 ## 7. Give yourself a reason to follow up
 
