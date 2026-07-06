@@ -51,14 +51,14 @@ This is the part people dread most - and the one that turns easy the moment you 
 This is where most good conversations quietly die - "let's stay in touch," with nothing to actually stay in touch about. A real relationship needs a reason to come back: something to share, something to work on, a next thing worth talking about.
 → *A reason to follow up*
 
-## 8. Nodes - where it all compounds
+## 8. Building nodes - where it all compounds
 
 Do this with enough of the right people and something shifts. You're not networking alone any more - you've got a web of people who all think this way, recommending each other, growing each other's networks. That's the whole game: not you chasing work, but work arriving on a recommendation.
 → *Nodes*
 
 ## 9. Practice the "I know a guy" principle
 
-This is the one you can start today, wherever you are in the steps above. When someone mentions a problem, a gap, a person they're trying to reach, be the one who says "I know a guy" - and make the introduction freely, expecting nothing back. Do that often enough and you become the person everyone wants to know: the natural centre of a network, not a name on the edge of it. Every step above is machinery. This is the spirit that runs it.
+This is the one you can start today, wherever you are in the steps above. When someone mentions a problem, a gap, a person they're trying to reach, be the one who says "I know a guy" - and make the introduction freely, expecting nothing back. And the more you build your network, the more guys you know - so the longer you do this, the more often you're the one with the answer. Do that often enough and you become the person everyone wants to know: the natural centre of a network, not a name on the edge of it. Every step above is machinery. This is the spirit that runs it.
 → *Become the person who knows a guy*
 
 ---
