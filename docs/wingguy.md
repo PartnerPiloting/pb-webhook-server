@@ -3027,6 +3027,16 @@ var reverts reads only as a fire extinguisher. Boat-burning after ~2 weeks stabl
 
 ## ▶ You are here / next pick-up
 
+**▶▶ SESSION 2026-07-06 (later same day): NEARNESS RULE — "this week or next".**
+- Guy's ruling after a booking landed the week after next: the offer/booking window is THIS calendar
+  week + NEXT (weeks start Monday, coach tz). Root cause insight: the "least-busy days" bias was
+  actively pushing bookings OUTWARD (far weeks are always emptiest) — nearness now explicitly
+  OUTRANKS it. Code: `filterAvailability` returns ONLY near-window days when they can fill
+  slotsToOffer; when they can't, later days are included but flagged `fallbackWeek:true` (top-up
+  only). Override = includeFarWeeks / include_far_weeks on both surfaces ("book her for when I'm
+  back from holidays"). Ladder text leads with NEARNESS BEATS EVERYTHING; **booking-defaults → v6**
+  ("This week or next" bullet). 31 booking-guard checks green.
+
 **▶▶ SESSION 2026-07-06 (mid-shadow-week, from a live Rebecca thread): the PANEL got the rules door.**
 - **The panel chat can now change its own rulebook.** Guy hit the gap live: the panel said "I can't
   update my rules" (true — `wingguyChat.js` had only the 6 draft/book tools). Fix = the 6 rules-store

@@ -239,6 +239,38 @@ function firstToolResult(res) {
     check('includeWeekends brings Saturday back', () => assert.ok(withWeekends.days.some((d) => d.date === sat.toFormat('yyyy-MM-dd')), JSON.stringify(withWeekends.days.map((d) => d.date))));
   }
 
+  console.log('\nnearness rule: this week + next week first, later weeks only to top up:');
+  {
+    const { filterAvailability, firstFarWeekDate } = require('../services/wingguyCalendar');
+    const { getBookingPrefs } = require('../config/wingguyBookingPrefs');
+    const prefs = getBookingPrefs('Guy-Wilson');
+    // Near weekdays: shift from the far-week boundary BACKWARD to guarantee they're in the near
+    // window and past the notice date; far weekdays: boundary forward (Tue/Wed of the far week).
+    const farStart = DateTime.fromISO(firstFarWeekDate('Australia/Brisbane'), { zone: 'Australia/Brisbane' });
+    const nearDates = [farStart.minus({ days: 3 }), farStart.minus({ days: 4 }), farStart.minus({ days: 5 })] // Thu/Wed/Tue of next week
+      .map((d) => d.toFormat('yyyy-MM-dd'));
+    const farDates = [farStart.plus({ days: 1 }), farStart.plus({ days: 2 })].map((d) => d.toFormat('yyyy-MM-dd')); // Tue/Wed after next
+    const slotOn = (dateStr) => ({ time: DateTime.fromISO(`${dateStr}T11:00`, { zone: 'Australia/Brisbane' }).toUTC().toISO(), display: '11:00 am' });
+    const mkDay = (dateStr) => ({ date: dateStr, day: 'X', meetingCount: 0, freeSlots: [slotOn(dateStr)] });
+    const base = { yourTimezone: 'Australia/Brisbane', leadTimezone: 'Australia/Brisbane' };
+
+    // Enough near days (>= slotsToOffer): far weeks vanish entirely.
+    const plenty = filterAvailability({ ...base, days: [...nearDates.map(mkDay), ...farDates.map(mkDay)] }, prefs, {});
+    check('far weeks vanish when the near window can fill the options', () => assert.ok(plenty.days.length === 3 && plenty.days.every((d) => d.date < farStart.toFormat('yyyy-MM-dd')), JSON.stringify(plenty.days.map((d) => d.date))));
+
+    // Too few near days: far days appear but flagged fallbackWeek.
+    const scarce = filterAvailability({ ...base, days: [mkDay(nearDates[0]), ...farDates.map(mkDay)] }, prefs, {});
+    check('far days appear as flagged fallbacks when near can\'t fill', () => {
+      assert.strictEqual(scarce.days.length, 3, JSON.stringify(scarce.days.map((d) => d.date)));
+      assert.ok(scarce.days.filter((d) => d.fallbackWeek).length === 2, JSON.stringify(scarce.days));
+      assert.ok(!scarce.days.find((d) => d.date === nearDates[0]).fallbackWeek, 'near day wrongly flagged');
+    });
+
+    // Explicit override (holidays case): everything shown, nothing flagged.
+    const far = filterAvailability({ ...base, days: [...nearDates.map(mkDay), ...farDates.map(mkDay)] }, prefs, { includeFarWeeks: true });
+    check('includeFarWeeks shows far weeks unflagged', () => assert.ok(far.days.length === 5 && far.days.every((d) => !d.fallbackWeek), JSON.stringify(far.days.map((d) => d.date))));
+  }
+
   console.log(failures ? `\n❌ ${failures} test(s) failed` : '\n✅ all booking-guard tests passed');
   process.exit(failures ? 1 : 0);
 })().catch((e) => { console.error('FATAL', e); process.exit(1); });

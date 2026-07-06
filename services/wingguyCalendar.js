@@ -376,6 +376,13 @@ function isWeekendInTz(iso, tz) {
   const wd = DateTime.fromMillis(Date.parse(iso)).setZone(tz).weekday;
   return wd === 6 || wd === 7;
 }
+// First date (yyyy-MM-dd) BEYOND the "near window" = this calendar week + next calendar week
+// (weeks start Monday, coach tz). Guy's nearness rule (2026-07-06): book this week or next; later
+// weeks only when the near window can't fill the options, or he explicitly asks (e.g. "book her for
+// when I'm back from holidays").
+function firstFarWeekDate(tz) {
+  return DateTime.now().setZone(tz).startOf('week').plus({ weeks: 2 }).toFormat('yyyy-MM-dd');
+}
 // Format a slot for the LinkedIn message in the lead's timezone, Guy's style: "Wed 1 July, 1:30 pm".
 function fmtSlot(iso, tz) {
   const d = new Date(iso);
@@ -395,7 +402,7 @@ const AVAIL_MAX_SLOTS_PER_DAY = 8;
  * already past, slots outside booking hours, and lunch-hold slots (unless includeLunch); labels
  * every surviving slot with EXACTLY how it will read in the lead's timezone.
  */
-function filterAvailability(avail, prefs, { includeLunch = false, includeSoon = false, includeWeekends = false } = {}) {
+function filterAvailability(avail, prefs, { includeLunch = false, includeSoon = false, includeWeekends = false, includeFarWeeks = false } = {}) {
   const eMin = hhmmToMin(prefs.earliestStart) ?? 0;
   const lMin = hhmmToMin(prefs.lastStart) ?? 24 * 60;
   const aTz = avail.yourTimezone || 'Australia/Brisbane';
@@ -415,6 +422,26 @@ function filterAvailability(avail, prefs, { includeLunch = false, includeSoon = 
     .filter((d) => d.freeSlots.length)
     .slice(0, AVAIL_MAX_DAYS)
     .map((d) => ({ ...d, freeSlots: d.freeSlots.slice(0, AVAIL_MAX_SLOTS_PER_DAY).map((s) => ({ ...s, label: fmtSlot(s.time, leadTz) })) }));
+
+  // NEARNESS RULE (Guy 2026-07-06, after a booking landed the week after next while nearer time
+  // existed): the target window is THIS calendar week + NEXT. When the near window alone can fill
+  // the options, later weeks don't appear at all; when it can't, later days are included but flagged
+  // fallbackWeek so agents use them only to TOP UP. includeFarWeeks (the coach explicitly asks —
+  // e.g. booking for after his holidays) lifts the rule. Note this deliberately outranks the
+  // "least-busy days" bias, which otherwise pushes bookings toward the emptier far weeks.
+  if (!includeFarWeeks) {
+    const farStart = firstFarWeekDate(aTz);
+    const near = days.filter((d) => d.date < farStart);
+    const slotsWanted = prefs.slotsToOffer || 3;
+    if (near.length >= slotsWanted) {
+      return { yourTimezone: avail.yourTimezone, leadTimezone: avail.leadTimezone, days: near };
+    }
+    return {
+      yourTimezone: avail.yourTimezone,
+      leadTimezone: avail.leadTimezone,
+      days: days.map((d) => (d.date >= farStart ? { ...d, fallbackWeek: true } : d)),
+    };
+  }
   return { yourTimezone: avail.yourTimezone, leadTimezone: avail.leadTimezone, days };
 }
 
@@ -515,5 +542,5 @@ module.exports = {
   getAvailabilityForCoach, createBookingEvent, checkProposedTime, getClashesForISO, buildDaysFromBusy,
   deleteOfferHolds, isHoldForLead, isHoldSummary, holdTitle,
   // shared offer-time pipeline + booking guard (used by the panel agent AND the connector tools)
-  filterAvailability, bookMeetingGuarded, fmtSlot, inLunch, hhmmToMin, minutesInTz, earliestOfferDate, dateStrInTz, isWeekendInTz,
+  filterAvailability, bookMeetingGuarded, fmtSlot, inLunch, hhmmToMin, minutesInTz, earliestOfferDate, dateStrInTz, isWeekendInTz, firstFarWeekDate,
 };

@@ -27,13 +27,14 @@ const TENANT = (process.env.RECALL_COACH_CLIENT_ID || 'Guy-Wilson').trim();
 // Executors — return { text, isError? }
 // ---------------------------------------------------------------------------
 
-async function runCheckAvailability({ lead_location, include_lunch, include_soon, include_weekends } = {}) {
+async function runCheckAvailability({ lead_location, include_lunch, include_soon, include_weekends, include_far_weeks } = {}) {
   const prefs = getBookingPrefs(TENANT);
   const avail = await wingguyCalendar.getAvailabilityForCoach(TENANT, lead_location || '');
   const filtered = wingguyCalendar.filterAvailability(avail, prefs, {
     includeLunch: !!include_lunch,
     includeSoon: !!include_soon,
     includeWeekends: !!include_weekends,
+    includeFarWeeks: !!include_far_weeks,
   });
   if (!filtered.days.length) {
     return { text: 'No offerable slots in the scan window (after the coach\'s rules: notice period, daily cap, hours, lunch, weekdays-only). Widen with include_soon / include_weekends only if the coach explicitly asked.' };
@@ -44,7 +45,7 @@ async function runCheckAvailability({ lead_location, include_lunch, include_soon
   const prefMin = wingguyCalendar.hhmmToMin(prefs.preferredStart);
   const pinch = (s) => (prefMin != null && wingguyCalendar.minutesInTz(s.time, coachTz) < prefMin) ? ' ⚠ AT-A-PINCH (before preferred 10:00 start — offer only if later times can\'t fill the options)' : '';
   const lines = filtered.days.map((d) =>
-    `${d.date} (${d.day}, ${d.meetingCount || 0} meetings):\n` +
+    `${d.date} (${d.day}, ${d.meetingCount || 0} meetings)${d.fallbackWeek ? ' ⚠ FALLBACK WEEK — beyond next week; use ONLY to top up when the nearer days can\'t fill the options' : ''}:\n` +
     d.freeSlots.map((s) => `  - label="${s.label}" (coach: ${s.display}) time=${s.time}${pinch(s)}`).join('\n'));
   return {
     text:
@@ -130,6 +131,7 @@ async function runBookMeeting({ start_iso, duration_mins, lead_name, lead_email,
 const SOON_DESC = 'Set true ONLY when the coach explicitly asks for today/tomorrow — normally everything before the day after tomorrow is withheld (his one-clear-day rule). Past times never appear regardless.';
 const LUNCH_DESC = 'Set true ONLY when the coach explicitly wants a lunch-time meeting — otherwise his lunch hold is stripped.';
 const WEEKEND_DESC = 'Set true ONLY when the coach explicitly wants a weekend meeting — weekdays-only is enforced otherwise.';
+const FAR_WEEKS_DESC = 'Set true ONLY when the coach explicitly wants times beyond next week (e.g. "book them for when I\'m back from holidays") — normally the window is THIS week + NEXT week, with later days appearing only as flagged fallbacks when the near window can\'t fill the options.';
 
 const TOOL_DEFS = [
   {
@@ -140,6 +142,7 @@ const TOOL_DEFS = [
       include_lunch: z.boolean().optional().describe(LUNCH_DESC),
       include_soon: z.boolean().optional().describe(SOON_DESC),
       include_weekends: z.boolean().optional().describe(WEEKEND_DESC),
+      include_far_weeks: z.boolean().optional().describe(FAR_WEEKS_DESC),
     },
     jsonSchema: {
       type: 'object',
@@ -148,6 +151,7 @@ const TOOL_DEFS = [
         include_lunch: { type: 'boolean', description: LUNCH_DESC },
         include_soon: { type: 'boolean', description: SOON_DESC },
         include_weekends: { type: 'boolean', description: WEEKEND_DESC },
+        include_far_weeks: { type: 'boolean', description: FAR_WEEKS_DESC },
       },
     },
     run: runCheckAvailability,

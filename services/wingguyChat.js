@@ -45,6 +45,7 @@ const AGENT_TOOLS = [
         includeLunch: { type: 'boolean', description: 'Set true ONLY when Guy explicitly wants a lunch-time meeting — then the held-back 12:00–12:45 slots are included. Leave unset/false otherwise.' },
         includeSoon: { type: 'boolean', description: 'Set true ONLY when Guy explicitly asks for today or tomorrow (e.g. "tomorrow\'s fine") — then those days are included. Normally the system holds back everything before the day after tomorrow (his one-clear-day rule). Times already in the past never appear regardless.' },
         includeWeekends: { type: 'boolean', description: 'Set true ONLY when Guy explicitly wants a weekend meeting — weekdays-only is enforced otherwise.' },
+        includeFarWeeks: { type: 'boolean', description: 'Set true ONLY when Guy explicitly wants times beyond next week (e.g. "book her for when I\'m back from holidays") — normally the offer window is THIS week + NEXT week, with later days appearing only as flagged fallbacks when the near window can\'t fill the options.' },
       },
     },
   },
@@ -223,7 +224,7 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
       // The shared pipeline (wingguyCalendar.filterAvailability) enforces ALL the offer rules in one
       // place — hours bounds, lunch hold, no past/too-soon days (includeSoon lifts notice only), the
       // daily meeting cap — and labels each slot exactly as it will read in the lead's timezone.
-      return wingguyCalendar.filterAvailability(avail, prefs, { includeLunch: input.includeLunch, includeSoon: input.includeSoon, includeWeekends: input.includeWeekends });
+      return wingguyCalendar.filterAvailability(avail, prefs, { includeLunch: input.includeLunch, includeSoon: input.includeSoon, includeWeekends: input.includeWeekends, includeFarWeeks: input.includeFarWeeks });
     }
     if (name === 'propose_times') {
       // CODE-OWNED time list: enforce order + Guy's hours + soft lunch-skip + lead-timezone formatting,
