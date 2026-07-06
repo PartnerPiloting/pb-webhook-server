@@ -221,6 +221,8 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
   const checkProposedTime = deps.checkProposedTime || wingguyCalendar.checkProposedTime;
   const getClashesForISO = deps.getClashesForISO || wingguyCalendar.getClashesForISO;
   const updateLeadEmails = deps.updateLeadEmails || wingguyLeads.updateLeadEmails;
+  const createOfferHolds = deps.createOfferHolds || wingguyCalendar.createOfferHolds;
+  const deleteOfferHolds = deps.deleteOfferHolds || wingguyCalendar.deleteOfferHolds;
   // Mutable so update_lead_email can re-point the invite at a new primary within this turn.
   let currentLeadEmail = leadEmail;
   const prefs = getBookingPrefs(coach.clientId);
@@ -314,6 +316,13 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
       // what was actually rendered — not re-derived from memory (which is how the summary said "Wed 8 July"
       // while the draft said "Thu 9 July", 2026-07-02). The agent must quote these, not restate dates itself.
       const offeredTimes = ordered.map((iso) => fmtSlot(iso, leadTz));
+      // Offer HOLDS: reserve each offered slot as a real (attendee-less) calendar event so no other
+      // booking — this panel, a claude.ai chat, Calendly — can take it before the lead replies (the
+      // Rebecca/Mary Anne double-book, 2026-07-06). Fire-and-forget: a hold failure never blocks the draft.
+      if (profile.name) {
+        Promise.resolve(createOfferHolds(coach, { leadName: profile.name, slotISOs: ordered, durationMins: prefs.meetingLengthMins }))
+          .catch((e) => console.warn(`[wingguyChat] offer holds failed: ${e.message}`));
+      }
       return { ok: true, offered: ordered.length, offeredTimes, dropped };
     }
     if (name === 'check_time') {
@@ -360,8 +369,11 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
       if (!currentLeadEmail) return { ok: false, error: 'No lead email on file — ask Guy to add the lead\'s email before booking.' };
       // No-ACCIDENTAL-double-book guard (the one thing code still enforces): refuse a clashing time
       // unless Guy has explicitly OK'd it (confirmDoubleBook). Conscious double-booking is allowed.
+      // THIS lead's own offer HOLDs are not clashes — the slot is reserved FOR them; a HOLD carrying
+      // another lead's name stays a real clash (that slot is promised elsewhere).
       if (!input.confirmDoubleBook) {
-        const clashes = await getClashesForISO(coach.clientId, input.startISO, input.durationMins);
+        const clashes = (await getClashesForISO(coach.clientId, input.startISO, input.durationMins))
+          .filter((c) => !wingguyCalendar.isHoldForLead(c.summary, profile.name));
         if (clashes.length) {
           return {
             ok: false,
@@ -378,7 +390,15 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
         leadName: profile.name || '',
         leadLinkedIn: profile.profileUrl || '',
       });
-      if (result.ok) bookedEvent = result;
+      if (result.ok) {
+        bookedEvent = result;
+        // The offer is resolved — clear ALL of this lead's holds (picked slot + the unpicked ones).
+        // Fire-and-forget: hold cleanup must never fail a booking that already succeeded.
+        if (profile.name) {
+          Promise.resolve(deleteOfferHolds(coach, { leadName: profile.name }))
+            .catch((e) => console.warn(`[wingguyChat] hold cleanup failed: ${e.message}`));
+        }
+      }
       return result;
     }
     if (name === 'propose_message') {

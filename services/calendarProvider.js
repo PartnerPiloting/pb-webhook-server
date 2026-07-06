@@ -64,26 +64,35 @@ async function getViaNylas(coach, timeMin, timeMax) {
 
   const startSec = Math.floor(new Date(timeMin).getTime() / 1000);
   const endSec = Math.floor(new Date(timeMax).getTime() / 1000);
-  const u = new URL(`${apiUri}/v3/grants/${grantId}/events`);
-  u.searchParams.set('calendar_id', calendarId);
-  u.searchParams.set('start', String(startSec));
-  u.searchParams.set('end', String(endSec));
-  u.searchParams.set('limit', '50');
-  u.searchParams.set('expand_recurring', 'true');
-
-  let res;
-  try {
-    res = await fetch(u.toString(), { headers: { Authorization: `Bearer ${apiKey}`, Accept: 'application/json' } });
-  } catch (e) {
-    return { events: [], error: `nylas request failed: ${e.message}`, provider: 'nylas' };
-  }
-  if (!res.ok) {
-    const body = await res.text().catch(() => '');
-    return { events: [], error: `nylas HTTP ${res.status}: ${body.slice(0, 200)}`, provider: 'nylas' };
-  }
-  const json = await res.json();
   const selfEmail = String(coach.googleCalendarEmail || coach.calendarEmail || '').toLowerCase();
-  const events = (json.data || []).map((ev) => mapNylasEvent(ev, selfEmail)).filter(Boolean);
+  const events = [];
+  // Paginate: with expand_recurring a multi-week window easily exceeds one page (daily recurring
+  // personal events count as one instance each).
+  let cursor = null;
+  for (let page = 0; page < 5; page++) {
+    const u = new URL(`${apiUri}/v3/grants/${grantId}/events`);
+    u.searchParams.set('calendar_id', calendarId);
+    u.searchParams.set('start', String(startSec));
+    u.searchParams.set('end', String(endSec));
+    u.searchParams.set('limit', '200');
+    u.searchParams.set('expand_recurring', 'true');
+    if (cursor) u.searchParams.set('page_token', cursor);
+
+    let res;
+    try {
+      res = await fetch(u.toString(), { headers: { Authorization: `Bearer ${apiKey}`, Accept: 'application/json' } });
+    } catch (e) {
+      return { events: [], error: `nylas request failed: ${e.message}`, provider: 'nylas' };
+    }
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      return { events: [], error: `nylas HTTP ${res.status}: ${body.slice(0, 200)}`, provider: 'nylas' };
+    }
+    const json = await res.json();
+    events.push(...(json.data || []).map((ev) => mapNylasEvent(ev, selfEmail)).filter(Boolean));
+    cursor = json.next_cursor || null;
+    if (!cursor) break;
+  }
   return { events, error: null, provider: 'nylas' };
 }
 
@@ -114,6 +123,7 @@ function mapNylasEvent(ev, selfEmail) {
 
   const confUrl = ev.conferencing?.details?.url || '';
   return {
+    id: ev.id || null, // Nylas event id — needed to delete (e.g. clearing Wingguy offer HOLDs)
     summary: ev.title || '(No title)',
     start: new Date(startSec * 1000).toISOString(),
     end: new Date(endSec * 1000).toISOString(),
@@ -159,7 +169,9 @@ async function createViaNylas(coach, details) {
 
   const u = new URL(`${apiUri}/v3/grants/${grantId}/events`);
   u.searchParams.set('calendar_id', calendarId);
-  u.searchParams.set('notify_participants', 'true'); // emails the guest the invite
+  // Emails the guest the invite — except attendee-less utility events (offer HOLDs) where there is
+  // no one to notify and notifying would be wrong anyway.
+  u.searchParams.set('notify_participants', details.notifyParticipants === false ? 'false' : 'true');
   const body = {
     title: details.title || 'Meeting',
     description: details.description || '',
@@ -191,4 +203,33 @@ async function createViaNylas(coach, details) {
   return { ok: true, eventId: ev.id, htmlLink: ev.html_link || '', provider: 'nylas' };
 }
 
-module.exports = { getMeetingsInWindow, createCalendarEvent, activeProvider, mapNylasEvent, mapNylasStatus };
+/* ---- DELETE: remove an event by id (Nylas only — used to clear Wingguy offer HOLDs) ------------- */
+async function deleteCalendarEvent(coach, eventId) {
+  const provider = activeProvider(coach);
+  if (provider !== 'nylas') {
+    return { ok: false, error: `delete-event not supported on provider '${provider}' (use Nylas)`, provider };
+  }
+  const apiKey = process.env.NYLAS_API_KEY;
+  const grantId = (coach && coach.nylasGrantId) || process.env.NYLAS_GRANT_ID;
+  const apiUri = (process.env.NYLAS_API_URI || 'https://api.us.nylas.com').replace(/\/$/, '');
+  const calendarId = (coach && coach.nylasCalendarId) || process.env.NYLAS_CALENDAR_ID || 'primary';
+  if (!apiKey || !grantId) return { ok: false, error: 'NYLAS_API_KEY / grant not configured', provider: 'nylas' };
+  if (!eventId) return { ok: false, error: 'eventId required', provider: 'nylas' };
+
+  const u = new URL(`${apiUri}/v3/grants/${grantId}/events/${encodeURIComponent(eventId)}`);
+  u.searchParams.set('calendar_id', calendarId);
+  u.searchParams.set('notify_participants', 'false');
+  let res;
+  try {
+    res = await fetch(u.toString(), { method: 'DELETE', headers: { Authorization: `Bearer ${apiKey}`, Accept: 'application/json' } });
+  } catch (e) {
+    return { ok: false, error: `nylas request failed: ${e.message}`, provider: 'nylas' };
+  }
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    return { ok: false, error: `nylas HTTP ${res.status}: ${body.slice(0, 200)}`, provider: 'nylas' };
+  }
+  return { ok: true, provider: 'nylas' };
+}
+
+module.exports = { getMeetingsInWindow, createCalendarEvent, deleteCalendarEvent, activeProvider, mapNylasEvent, mapNylasStatus };

@@ -14,7 +14,7 @@
 const { DateTime } = require('luxon');
 const { getTimezoneFromLocation } = require('../linkedin-messaging-followup-next/lib/timezoneFromLocation.js');
 const { getBookingPrefs } = require('../config/wingguyBookingPrefs');
-const { createCalendarEvent, getMeetingsInWindow } = require('./calendarProvider');
+const { createCalendarEvent, deleteCalendarEvent, getMeetingsInWindow } = require('./calendarProvider');
 
 const DEFAULT_TZ = 'Australia/Brisbane';
 const DAYS_TO_SCAN = 21;     // ~3 weeks ahead — enough for the working-week spread + fallback (smaller = faster fetch)
@@ -292,4 +292,98 @@ async function createBookingEvent(coach, { startISO, durationMins, leadEmail, le
   return { ok: true, eventId: result.eventId, title: finalTitle, start: start.toISOString(), durationMins: len };
 }
 
-module.exports = { getAvailabilityForCoach, createBookingEvent, checkProposedTime, getClashesForISO, buildDaysFromBusy };
+// ── Offer HOLDS (2026-07-06) ────────────────────────────────────────────────────────────────────
+// An offered slot is a PROMISE, not just a message — but until now nothing recorded it, so another
+// booking (any door: panel, claude.ai chat, Calendly) could take the slot before the lead replied
+// (the Rebecca/Mary Anne double-book). Fix: propose_times places a real attendee-less "HOLD:" event
+// per offered slot, so every door's free/busy sees the slot as BUSY. book_meeting ignores the lead's
+// OWN holds (their pick must not clash with its own reservation) and clears all their holds once the
+// meeting books. Holds for OTHER leads are real clashes. Stale holds (lead never replies) simply
+// expire as their times pass — and they're visible on the calendar, so the coach can delete them.
+
+const HOLD_PREFIX = 'HOLD:';
+
+function holdTitle(leadName) {
+  return `${HOLD_PREFIX} ${leadName || 'Lead'} (Wingguy offer - do not book over)`;
+}
+
+function isHoldSummary(summary) {
+  return String(summary || '').trim().toUpperCase().startsWith(HOLD_PREFIX);
+}
+
+// A hold belonging to THIS lead (title carries the lead's name).
+function isHoldForLead(summary, leadName) {
+  const name = String(leadName || '').trim().toLowerCase();
+  return !!name && isHoldSummary(summary) && String(summary).toLowerCase().includes(name);
+}
+
+// Holds are always read/written via the coach's Nylas grant (the write path; gives event ids for
+// delete). The Google service-account read is read-only and id-less, so it can't manage holds.
+function coachForHolds(coach) {
+  return { ...coach, calendarProvider: 'nylas' };
+}
+
+/** Find this lead's HOLD events over the offer horizon. Throws on a read failure. */
+async function findOfferHolds(coach, { leadName, windowDays = DAYS_TO_SCAN + 14 }) {
+  const now = new Date();
+  const end = new Date(now.getTime() + windowDays * 86400000);
+  const { events, error } = await getMeetingsInWindow(coachForHolds(coach), now, end);
+  if (error) throw new Error(`hold read failed: ${error}`);
+  return (events || []).filter((e) => e.id && isHoldForLead(e.summary, leadName));
+}
+
+/** Delete all of this lead's HOLD events (offer resolved, superseded, or lapsed). Never throws. */
+async function deleteOfferHolds(coach, { leadName }) {
+  if (!leadName) return { removed: 0 };
+  let holds = [];
+  try {
+    holds = await findOfferHolds(coach, { leadName });
+  } catch (e) {
+    console.warn(`[wingguyCalendar] deleteOfferHolds read failed for "${leadName}": ${e.message}`);
+    return { removed: 0, error: e.message };
+  }
+  let removed = 0;
+  for (const h of holds) {
+    const r = await deleteCalendarEvent(coachForHolds(coach), h.id);
+    if (r.ok) removed++;
+    else console.warn(`[wingguyCalendar] hold delete failed (${h.id}): ${r.error}`);
+  }
+  return { removed };
+}
+
+/**
+ * Place one HOLD event per offered slot (replacing any earlier holds for the same lead, so a
+ * re-offer refreshes rather than stacks). Attendee-less — no email goes to anyone. Never throws:
+ * holds are protection, not a precondition, so a failure must never break the draft.
+ */
+async function createOfferHolds(coach, { leadName, slotISOs, durationMins }) {
+  try {
+    const prefs = getBookingPrefs(coach.clientId);
+    const len = Number(durationMins) > 0 ? Number(durationMins) : (prefs.meetingLengthMins || 30);
+    await deleteOfferHolds(coach, { leadName });
+    let created = 0;
+    for (const iso of (Array.isArray(slotISOs) ? slotISOs : [])) {
+      const start = new Date(iso);
+      if (isNaN(start.getTime())) continue;
+      const r = await createCalendarEvent(coachForHolds(coach), {
+        title: holdTitle(leadName),
+        description: `Slot offered to ${leadName || 'a lead'} on LinkedIn (Wingguy) - awaiting their reply. Cleared automatically when the meeting books; delete manually if the offer lapses.`,
+        startISO: start.toISOString(),
+        endISO: new Date(start.getTime() + len * 60000).toISOString(),
+        attendees: [],
+        notifyParticipants: false,
+      });
+      if (r.ok) created++;
+      else console.warn(`[wingguyCalendar] hold create failed (${iso}): ${r.error}`);
+    }
+    return { ok: true, created };
+  } catch (e) {
+    console.warn(`[wingguyCalendar] createOfferHolds failed for "${leadName}": ${e.message}`);
+    return { ok: false, created: 0, error: e.message };
+  }
+}
+
+module.exports = {
+  getAvailabilityForCoach, createBookingEvent, checkProposedTime, getClashesForISO, buildDaysFromBusy,
+  createOfferHolds, deleteOfferHolds, isHoldForLead, isHoldSummary, holdTitle,
+};

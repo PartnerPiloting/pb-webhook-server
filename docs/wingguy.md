@@ -3057,6 +3057,24 @@ var reverts reads only as a fire extinguisher. Boat-burning after ~2 weeks stabl
   guards surfaces that read it. Mitigated same day: a BOOKING GUARDRAIL block for Guy's claude.ai
   project instructions (read booking rules through the door BEFORE offering/booking — a pointer to
   the rulebook, never a copy).
+- **★ OFFER HOLDS SHIPPED (same day, forced by a live double-book):** Rebecca picked Thu 9 July
+  10:30 — but Mary Anne Lamssies had been booked into that exact slot on 3 July, AFTER the offer
+  went out. Diagnosis: an OFFERED slot was a promise nothing recorded — every door (panel, claude.ai
+  chat, Calendly) sees it as free until the lead replies. NOT an availability bug (the clash guard
+  caught it before booking — the system refused to double-book silently) and NOT related to the
+  06-07 upgrades (Mary Anne was booked 3 days before them). Fix: **propose_times now places an
+  attendee-less yellow "HOLD: <lead>" event per offered slot** (fire-and-forget; a hold failure never
+  breaks the draft) → every door's free/busy sees the slot BUSY. book_meeting ignores the lead's OWN
+  holds, treats another lead's hold as a real clash, and clears the lead's holds once the meeting
+  books. Stale holds self-expire as their times pass (and are visible/deletable on the calendar).
+  Plumbing: `calendarProvider` grew event ids in mapNylasEvent, Nylas pagination (limit 200 ×5 pages
+  — the old limit-50 single page would have missed events in a 3-week expand_recurring window),
+  `deleteCalendarEvent`, and a notifyParticipants:false option; `wingguyCalendar` owns the hold
+  lifecycle (createOfferHolds/deleteOfferHolds/isHoldForLead). 13 checks in
+  `tests/wingguy-offer-holds.test.js`. Rebecca's two live alternates (Fri 10 July 11am, Mon 13 July
+  2pm) were hand-held on the calendar the same hour, pre-deploy. ⚠ Small known edge: a lead's own
+  holds make those slots look busy to check_availability, so a re-offer to the SAME lead picks fresh
+  slots rather than repeating held ones — acceptable, revisit if it annoys.
 - **★ BANKED NEXT SLICE — "ONE BOOKING DOOR" (the proper fix; do as its own sitting, after the
   flip):** expose the panel's proven booking trio on /mcp2 so claude.ai chats book through Wingguy,
   not the raw calendar connector — check_availability + check_time + book_meeting as connector tools
