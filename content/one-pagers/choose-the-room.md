@@ -3,7 +3,7 @@ slug: choose-the-room
 title: Choose who you want in your network - don't let somebody else decide it for you
 series: network-building-rethought
 order: 30
-status: draft
+status: final
 audience: outsider-safe
 ---
 
@@ -37,4 +37,4 @@ So here's the question to sit with this week: if you could put twenty people in 
 
 Hold that picture. The next question - how you actually reach those people, one by one, starting from a blinking cursor in a search box - is where this gets practical.
 
-<!-- WIP notes: First draft 2026-07-03, not reviewed by Guy. Needs his voice pass + specifics (the arc doc keeps most breakfast-networking scar tissue - $3,500, "fresh meat" - for #20, so this draft only gestures at the default; check Guy is happy with that split). Ending teases #32 per map order. Short-dash style throughout. -->
+<!-- Approved final by Guy 2026-07-06 ("looks perfect to me, let's approve it just as we have it"). Retitled same day (was "Choose the room" - room stays as internal motif). Light-touch on breakfast-networking scar tissue confirmed OK (full treatment stays with #20). The builder-vs-big-network question raised during review became its own piece (#67). -->
