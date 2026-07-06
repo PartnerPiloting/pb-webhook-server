@@ -33,7 +33,7 @@ Here's the half that changes everything - and the part nobody else does. LinkedI
 
 ## 4. Say a proper thank-you
 
-Once someone connects, you've got a small window of goodwill. Most people waste it on a copy-paste "thanks for connecting." You spend twenty seconds on something real and specific to them instead - and that's what turns a connection into an actual conversation.
+Once someone connects, you've got a small window of goodwill. The system can send a simple thanks automatically, so no one is ever left hanging - but that's the floor, not the goal. Because you've chosen so carefully, most of these people are worth the real thing, and the system drafts you a genuine, personal note in about twenty seconds. That's what turns a connection into an actual conversation.
 → *The 20-second thank-you*
 
 ## 5. Suggest a call - the right way
