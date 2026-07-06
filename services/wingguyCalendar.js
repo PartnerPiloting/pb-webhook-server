@@ -86,7 +86,7 @@ function timeOnlyInTz(isoTime, timezone) {
 //   busyEvents: [{ start, end }] ISO instants (the coach's real meetings)
 //   dates:      [YYYY-MM-DD] in the coach's timezone
 // Returns [{ date, day, meetingCount, freeSlots: [{ time, display, leadDisplay }] }].
-function buildDaysFromBusy({ busyEvents, dates, yourTimezone, leadTimezone, startHour = DAY_START_HOUR, endHour = DAY_END_HOUR, slotMins = 30 }) {
+function buildDaysFromBusy({ busyEvents, dates, yourTimezone, leadTimezone, startHour = DAY_START_HOUR, endHour = DAY_END_HOUR, slotMins = 30, lunch = null }) {
   const busy = (busyEvents || [])
     .map((e) => ({ s: new Date(e.start).getTime(), e: new Date(e.end).getTime() }))
     .filter((b) => Number.isFinite(b.s) && Number.isFinite(b.e) && b.e > b.s);
@@ -104,10 +104,19 @@ function buildDaysFromBusy({ busyEvents, dates, yourTimezone, leadTimezone, star
       const iso = new Date(t).toISOString();
       freeSlots.push({ time: iso, display: timeOnlyInTz(iso, yourTimezone), leadDisplay: formatInTz(iso, leadTimezone) });
     }
+    // meetingCount = REAL meetings (window-scoped already; also exclude the coach's own lunch block
+    // so the daily cap means client calls — same rule as countRealMeetings on the Google path).
+    const lunchStartMin = lunch ? hhmmToMin(lunch.start) : null;
+    const lunchEndMin = lunchStartMin != null ? lunchStartMin + (lunch.durationMins || 0) : null;
     return {
       date,
       day: dayStart.toFormat('ccc'),
-      meetingCount: busy.filter((b) => b.s < dayEndMs && b.e > dayStartMs).length,
+      meetingCount: busy.filter((b) => {
+        if (!(b.s < dayEndMs && b.e > dayStartMs)) return false;
+        if (lunchStartMin == null) return true;
+        const sMin = minutesInTz(new Date(b.s).toISOString(), yourTimezone);
+        return sMin == null || sMin < lunchStartMin || sMin >= lunchEndMin;
+      }).length,
       freeSlots,
     };
   });
@@ -132,7 +141,8 @@ async function getAvailabilityForCoach(clientId, leadLocation = '') {
     const windowEnd = DateTime.fromISO(`${dates[dates.length - 1]}T23:59`, { zone: yourTimezone }).toJSDate();
     const { events, error } = await getMeetingsInWindow(coachForNylas(info), windowStart, windowEnd);
     if (error) throw new Error(`nylas availability read failed: ${error}`);
-    const days = buildDaysFromBusy({ busyEvents: events, dates, yourTimezone, leadTimezone });
+    const nylasPrefs = getBookingPrefs(clientId);
+    const days = buildDaysFromBusy({ busyEvents: events, dates, yourTimezone, leadTimezone, lunch: nylasPrefs.lunch });
     return { yourTimezone, leadTimezone, days };
   }
 
@@ -143,12 +153,13 @@ async function getAvailabilityForCoach(clientId, leadLocation = '') {
   );
   if (error) throw new Error(error);
 
+  const prefs = getBookingPrefs(clientId);
   const mapped = (days || []).map((d) => ({
     date: d.date,
     day: d.day,
-    // How many real meetings Guy already has that day (busy/opaque events only) — the agent prefers
-    // the least-busy days, so it can spread bookings instead of stacking them.
-    meetingCount: (d.events || []).filter((e) => !e.isFree).length,
+    // How many REAL meetings Guy already has that day — drives the "least busy" bias AND the hard
+    // daily cap, so it must mean client calls, not calendar blocks (see countRealMeetings).
+    meetingCount: countRealMeetings(d.events, yourTimezone, prefs),
     freeSlots: (d.freeSlots || []).map((s) => ({
       time: s.time,
       display: s.display || s.displayRange,
@@ -157,6 +168,27 @@ async function getAvailabilityForCoach(clientId, leadLocation = '') {
   }));
 
   return { yourTimezone, leadTimezone, days: mapped };
+}
+
+// A "meeting" for the daily count = a BUSY event overlapping the booking-hours window (9–17) that
+// isn't the coach's own lunch block (an event STARTING inside his lunch hold). Counting everything
+// made maxMeetingsPerDay:4 mean "2 client calls" — the personal Lunch (in-window) and Dinner
+// (out-of-window, but returned for the day) blocks ate the cap, and the live one-booking-door check
+// (2026-07-06) showed only 3 offerable days in a 3-week window.
+function countRealMeetings(events, tz, prefs) {
+  const winStart = DAY_START_HOUR * 60;
+  const winEnd = DAY_END_HOUR * 60;
+  const lunchStart = hhmmToMin(prefs && prefs.lunch && prefs.lunch.start);
+  const lunchEnd = lunchStart != null ? lunchStart + ((prefs.lunch && prefs.lunch.durationMins) || 0) : null;
+  return (events || []).filter((e) => {
+    if (e.isFree || !e.start || !e.end) return false;
+    const sMin = minutesInTz(e.start, tz);
+    const endMin = minutesInTz(e.end, tz);
+    if (sMin == null || endMin == null) return false;
+    if (!(sMin < winEnd && endMin > winStart)) return false;                      // outside booking hours (e.g. Dinner)
+    if (lunchStart != null && sMin >= lunchStart && sMin < lunchEnd) return false; // his own lunch block
+    return true;
+  }).length;
 }
 
 // ── "Warn, don't block" booking (2026-06-30) ────────────────────────────────────────────────────
