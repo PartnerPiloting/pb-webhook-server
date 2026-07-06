@@ -3070,6 +3070,24 @@ hole (the wrong-person guard was right; the capture's identity was wrong).**
   by the ready-log line number, 1580 = fixed build), typing `/wg` in her bubble re-ran the on-open capture →
   toast *"✓ Saved 2 messages to Kayla Medica"* → record verified from Airtable: both messages present, correct
   dates, newest-first. No hand-repair needed — the capture's full-thread replace healed the record itself.
+- **★ NEW-UI ADAPTER BUILT same evening (dual-build; classic untouched).** Answer to the storm below,
+  built while it's an option not an emergency. Design: the new build's class names are machine-generated
+  (churn per deploy — never selectable), but STRUCTURE is stable, so the adapter matches structure:
+  conversation container = the SMALLEST element holding exactly one `<h2>` (the participant) + a
+  composer (`[role="textbox"]`, aria "Write a message…"); day separators and message times are both
+  `<time>` (H:MM present = time, absent = day); sender = the row's name link ("View X's profile" strips
+  to X, carried forward across grouped rows); message text = `<p>` (siblings merged, composer excluded);
+  participant URL = name-matched /in/ links only (rows link BOTH sides — matching against the header
+  name excludes the coach's own links), ACoA form → existing resolveAcoaToVanity (regex verified working
+  against the new build). Wired into: closestConversationContainer, hasOpenMessageThread,
+  scrapeMessagingHeader, scrapeOpenThread, looksLikeSendButton, the capture's findConvo — all as
+  fallbacks AFTER the classic selectors, gated on the `[data-testid="interop-shadowdom"]` marker, so
+  classic surfaces behave byte-identically. `/wg` trigger + composer detection already worked (aria
+  carries "message"); profile-page name falls back to document.title (works on new build).
+  **Dry-run VERIFIED against the real new-UI DOM** (mirrored functions run in-page on Guy's live
+  account, 2 bubbles open): picked the last-opened bubble, header=Jason (not Guy), ACoA URL name-matched,
+  full thread read — correct senders/days/times, zero cross-bubble bleed. NOT yet live-tested through
+  the real extension (needs reload); send-button hook + trigger untested on new UI until then.
 - **⚠ SEPARATE STORM SIGHTED while debugging (not today's bug): LinkedIn's NEW UI build.** A fresh tab opened
   under Guy's own login rendered the new messaging/profile experience: obfuscated class names, ZERO `.msg-*` /
   `.pv-top-card` / `.scaffold-layout` markup, Message button navigates to a new-style `/messaging/thread/new`

@@ -69,7 +69,7 @@
   function hasOpenMessageThread() {
     return !!document.querySelector(
       '.msg-overlay-conversation-bubble .msg-form, .msg-convo-wrapper, .msg-thread, .scaffold-layout__detail .msg-s-message-list-container'
-    );
+    ) || !!newUiConvoFromDocument();  // new-UI build: structural match (guarded by the interop marker)
   }
   // Show the launcher / accept the /wg trigger on profiles AND on the messaging surface.
   function shouldShowLauncher() {
@@ -193,12 +193,37 @@
     } catch (e) { console.log('[Wingguy] header diag failed:', e.message); }
   }
 
+  // NEW-UI header: the container's single <h2> is the participant's name (it is NOT a link there).
+  // The /in/ URL comes from the message rows' profile links — but rows link BOTH sides of the
+  // conversation (the coach's own "View Guy's profile" links too), so the pick is name-matched against
+  // the header: only links whose text/aria carries the participant's first name qualify. Those links
+  // are the internal /in/ACoA… form — the existing resolveAcoaToVanity step downstream un-scrambles
+  // them (verified working against the new build, 2026-07-06).
+  function scrapeNewUiHeader(convo) {
+    const h2 = convo.querySelector('h2');
+    const name = cleanText(h2 && h2.textContent);
+    if (!looksLikeName(name)) return null;
+    const first = name.split(/\s+/)[0].toLowerCase();
+    const urls = [...convo.querySelectorAll('a[href*="/in/"]')].filter((a) => {
+      const t = cleanText(a.getAttribute('aria-label') || a.textContent).toLowerCase();
+      return first && t.includes(first);
+    }).map((a) => normalizeInUrl(a.getAttribute('href'))).filter(Boolean);
+    const profileUrl = urls.find((u) => !/\/in\/ACoA/i.test(u)) || urls[0] || '';
+    return { name, headline: '', profileUrl };
+  }
+
   function scrapeMessagingHeader(containerOpt) {
     // NOTE: .isConnected (not document.contains) — the messaging composer lives in an open shadow root,
     // and document.contains() can't see into shadow DOM, so it wrongly reported the box as "gone" and we
     // fell back to the profile behind the bubble. isConnected traverses shadow boundaries.
     const anchor = (lastFocusedEditable && lastFocusedEditable.isConnected) ? lastFocusedEditable : null;
-    const convo = containerOpt || (anchor && closestConversationContainer(anchor)) || document.querySelector(CONVO_SELECTORS);
+    const convo = containerOpt || (anchor && closestConversationContainer(anchor)) ||
+      document.querySelector(CONVO_SELECTORS) || newUiConvoFromDocument();
+    if (convo && isNewUiConvoContainer(convo)) {
+      const h = scrapeNewUiHeader(convo);
+      if (h) { console.log('[Wingguy] messaging-header (new-UI) →', h.name, '|', h.profileUrl || '(no /in/ url)'); return h; }
+      console.log('[Wingguy] messaging-header (new-UI) — could not read a name from the container; falling through.');
+    }
     const pane = (convo && (convo.closest('.scaffold-layout__detail, .msg-overlay-conversation-bubble') || convo)) || document;
     // Scope to the header region so we don't pull a name/link out of a message bubble body.
     const header = pane.querySelector('header, [class*="overlay-bubble-header"], [class*="title-bar"], [class*="thread__header"], [class*="thread-header"]') || pane;
@@ -376,11 +401,40 @@
     if (p) return (p.nodeType === 11 && p.host) ? p.host : p; // 11 = ShadowRoot/DocumentFragment
     return node.host || null;
   }
+  // ---- NEW-UI (2026-07 rollout) structural matchers --------------------------
+  // LinkedIn's rebuilt messaging renders inside a shadow root under [data-testid="interop-shadowdom"]
+  // with MACHINE-GENERATED class names (e.g. _3bc34f41) — every .msg-* selector is dead there, and the
+  // names churn per deploy so they can never be relied on. What IS stable is structure + semantics:
+  // the composer is [role="textbox"] (aria-label "Write a message…"), the thread header is an <h2>
+  // with the participant's name, message rows carry a name link + <time> + <p> content, and day
+  // separators are <time> elements too. So the new-UI adapter matches STRUCTURE, not classes:
+  // a conversation container = the SMALLEST element holding both the header <h2> and a composer.
+  // (Exactly ONE h2 — the multi-thread drawer and the page body hold several, so they never match.)
+  function isNewUiConvoContainer(node) {
+    if (!node || node.nodeType !== 1 || !node.querySelectorAll) return false;
+    try {
+      if (node.matches && node.matches(CONVO_SELECTORS)) return false;      // classic path owns these
+      if (node === document.body || node === document.documentElement) return false;
+      if (node.querySelectorAll('h2').length !== 1) return false;
+      return !!node.querySelector('[role="textbox"], [contenteditable="true"]');
+    } catch (_) { return false; }
+  }
+  // Any open new-UI conversation on the page, anchored on a visible composer (a send/typed trigger can
+  // only happen where a composer exists). Guarded by the cheap interop marker so classic pages skip the
+  // deep walk entirely.
+  function newUiConvoFromDocument() {
+    if (!document.querySelector('[data-testid="interop-shadowdom"]')) return null;
+    const boxes = deepQueryAll('[role="textbox"], [contenteditable="true"]')
+      .filter((el) => isVisible(el) && !insideWingguy(el) && isMessageEditableSafe(el));
+    const box = boxes[boxes.length - 1];                                    // most-recently-opened thread
+    return box ? closestConversationContainer(box) : null;
+  }
   function closestConversationContainer(el) {
     let node = el, steps = 0;
     while (node && steps++ < 300) {
       if (node.nodeType === 1 && node.matches) {
         try { if (node.matches(CONVO_SELECTORS)) return node; } catch (_) {}
+        if (isNewUiConvoContainer(node)) return node;                       // new-UI: smallest h2+composer wrapper
       }
       node = ascendNode(node);
     }
@@ -450,12 +504,57 @@
   // Read the OPEN LinkedIn thread for the conversation the user is acting in. Shadow-aware (the newer
   // messaging build renders inside open shadow roots) AND scoped to a single conversation container so
   // multiple open bubbles don't bleed into one another.
+  // NEW-UI thread reader: walk the container's <time> / profile-link / <p> nodes in document order.
+  // <time> with an H:MM is a message time; <time> without one is a DAY separator ("Saturday", "Today").
+  // A name-ish profile link sets the sender (rows link the sender; "View X's profile" strips to X;
+  // grouped continuations carry the last sender forward). <p> elements are the message text — multiple
+  // <p>s sharing a parent are ONE multi-paragraph message. Composer content is excluded.
+  function scrapeNewUiThread(convo) {
+    const out = [];
+    let lastSender = '', curDay = '', lastTime = '';
+    let buf = null; // { sender, day, time, parent, parts[] } — merges sibling <p>s into one message
+    const flush = () => {
+      if (buf && buf.parts.length) out.push({ sender: buf.sender || 'Unknown', text: buf.parts.join('\n'), day: buf.day, time: buf.time });
+      buf = null;
+    };
+    for (const node of convo.querySelectorAll('time, a[href*="/in/"], p')) {
+      if (insideWingguy(node) || node.closest('[role="textbox"], [contenteditable="true"]')) continue;
+      if (node.tagName === 'TIME') {
+        const t = cleanText(node.textContent);
+        const m = t.match(/\d{1,2}:\d{2}\s*(?:AM|PM)?/i);
+        if (m) lastTime = m[0].replace(/\s+/g, ' ');
+        else if (t && t.length < 30) curDay = t;
+        flush();
+        continue;
+      }
+      if (node.tagName === 'A') {
+        let t = cleanText(node.getAttribute('aria-label') || node.textContent);
+        const vm = t.match(/^view\s+(.+?)[’']s\s+profile$/i);
+        if (vm) t = vm[1];
+        if (looksLikeName(t) && !/profile/i.test(t)) { if (buf && buf.sender !== t) flush(); lastSender = t; }
+        continue;
+      }
+      const text = cleanText(node.textContent);
+      if (!text) continue;
+      if (buf && buf.parent === node.parentElement) buf.parts.push(text);
+      else { flush(); buf = { sender: lastSender, day: curDay, time: lastTime, parent: node.parentElement, parts: [text] }; }
+    }
+    flush();
+    return out;
+  }
+
   function scrapeOpenThread(anchorEl) {
     // A remembered box LinkedIn has since detached (composers are re-rendered after a send) must not
     // anchor the scrape — closestConversationContainer would walk the DETACHED old tree and read a
     // stale copy of the thread. Only a still-connected box counts.
     const anchor = anchorEl || ((lastFocusedEditable && lastFocusedEditable.isConnected) ? lastFocusedEditable : null) || deepActiveElement();
     const container = anchor ? closestConversationContainer(anchor) : null;
+    if (container && isNewUiConvoContainer(container)) {
+      lastScrapeScoped = true;
+      const out = scrapeNewUiThread(container);
+      console.log('[Wingguy] thread scrape (new-UI):', { items: out.length, firstSender: out[0] && out[0].sender, firstTime: out[0] && out[0].time });
+      return out;
+    }
     lastScrapeScoped = !!container;
     const root = container || document;
     // Walk message items AND the day-heading separators in order, so each message can carry the day it
@@ -804,7 +903,8 @@
       const findConvo = () =>
         (lastSendAnchor && lastSendAnchor.isConnected && closestConversationContainer(lastSendAnchor)) ||
         activeThreadContainer() ||
-        document.querySelector(CONVO_SELECTORS);
+        document.querySelector(CONVO_SELECTORS) ||
+        newUiConvoFromDocument();
       let convo = findConvo();
       let hdr = convo ? scrapeMessagingHeader(convo) : { profileUrl: location_origin_path(), name: '' };
       let profileUrl = hdr.profileUrl;
@@ -905,7 +1005,10 @@
     const al = (btn.getAttribute('aria-label') || '').toLowerCase();
     const txt = (btn.textContent || '').trim().toLowerCase();
     const inMsgForm = !!btn.closest('.msg-form, .msg-form__send-toggle, .msg-overlay, .msg-overlay-conversation-bubble, .msgs-thread');
-    return /msg-form__send/.test(cls) || (inMsgForm && (al === 'send' || txt === 'send'));
+    if (/msg-form__send/.test(cls) || (inMsgForm && (al === 'send' || txt === 'send'))) return true;
+    // NEW-UI build: the Send button has no usable class/aria — it's a plain "Send" button inside a
+    // structurally-matched conversation container (obfuscated classes rule out anything narrower).
+    return (al === 'send' || txt === 'send') && !!closestConversationContainer(btn);
   }
   function onSendClick(e) {
     const path = (e.composedPath && e.composedPath()) || [e.target];
