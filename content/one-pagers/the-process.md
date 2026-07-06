@@ -33,7 +33,7 @@ Here's the half that changes everything - and the part nobody else does. LinkedI
 
 ## 4. Say a proper thank-you
 
-Once someone connects, you've got a small window of goodwill. The system can send a simple thanks automatically, so no one is ever left hanging - but that's the floor, not the goal. Because you've chosen so carefully, most of these people are worth the real thing, and the system drafts you a genuine, personal note in about twenty seconds. That's what turns a connection into an actual conversation.
+Once someone connects, you've got a small window of goodwill. The system can auto-send a simple thanks so no one is ever left hanging - but that's the floor, not the goal. For the people worth it, it does what no mail-merge can: it reads their actual profile and comes back with a genuinely insightful line about their work - the kind that makes someone feel truly seen, not just greeted by name. That's twenty seconds to send, and it's what turns a connection into a real conversation.
 → *The 20-second thank-you*
 
 ## 5. Suggest a call - the right way
