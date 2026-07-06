@@ -153,6 +153,15 @@ The discovery call is where new people go OFF THE RAILS (anxiety → they pitch 
 
 MAP (#12) step 6 carries only the one hint ("questions are the answers, ask don't perform") to keep people on the rails; the full playbook lives in #45/#47 (shallow-map rule). Confirms the discovery call warrants BOTH pieces: **#45 = what it's FOR** (dissolve the dread), **#47 = what to SAY** (connection → questions → the no-business-yet script → the two-call structure).
 
+## The follow-up is the multiplication engine (Guy, 2026-07-06; for #40, coordinate with #67/#70)
+
+Map step 7's summary ("a reason to come back") stays as-is - Guy confirmed. But the full piece (#40) goes deeper: the follow-up is where the multiplication STARTS.
+- **The easiest thing is to keep them talking** (the reason-to-follow-up penny-drop = the vehicle).
+- **In following up, you DETERMINE: are they likely to be a good network builder?**
+- **If yes → you teach them (or are part of teaching them)** → they end up networking more or less on your behalf.
+- **They network for THEMSELVES, but as a by-product they find people who'll be great for YOU.** That's the multiplication in motion (ties to step 1's seed + #67 builders-not-blobs + #70 nodes).
+⚠ **COORDINATION:** this overlaps #67 (paradigm: choose builders) and #70 (vision: the node web). Scope to avoid repetition - proposed split: **#40** = the follow-up mechanism + first builder-identification + teaching; **#67** = the selection paradigm (builders not blobs); **#70** = the full nodes crescendo. Step 7 stays the generic "reason to come back" summary and lets #40 escalate into the builder content.
+
 ## Launch threshold (2026-07-03)
 
 The drip does NOT start until every step on the map links to a real piece - email #1's footer promises "the whole process on one page," and coming-soon links turn the wow into a shrug (no second first-click). Minimum launch inventory (~9): the map (#12), feast-or-famine (#10), Daniel story (#15), and the seven journey-step pieces (#30, #32, #35, #37, #45, #40, #70). Post-launch arrivals: #47 craft companion, #20, #50, #60 - nothing on the map promises them. Engine gets built in parallel; both finish together.
