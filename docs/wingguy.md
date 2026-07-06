@@ -3027,6 +3027,16 @@ var reverts reads only as a fire extinguisher. Boat-burning after ~2 weeks stabl
 
 ## ▶ You are here / next pick-up
 
+**★ BANKED PRE-ONBOARDING TASK — TEMPLATE-LAYER SWEEP:** all of today's rule improvements
+(booking-defaults v2→v6: warm time-offer intro, preferred day start, spread + daily cap, manual
+holds, corrected timezone bullets, this-week-or-next; plus the NEW timezone-playbook rule) live only
+in Guy's CLIENT layer — the template layer still carries the thinner import-era wording. Before
+client #1 onboards, de-personalise these into the TEMPLATE layer (the wording already uses
+{{variables}}, so it's mostly a copy-through; values stay per-tenant: preferred_start_time,
+max_meetings_per_day, earliest_meeting_time, timezone). Guy's framing 2026-07-06: "many of these
+rules would work for all of my clients — they'll have a choice over their preferred time windows
+once we read from the rulebook."
+
 **▶▶ SESSION 2026-07-06 (later same day): NEARNESS RULE — "this week or next".**
 - Guy's ruling after a booking landed the week after next: the offer/booking window is THIS calendar
   week + NEXT (weeks start Monday, coach tz). Root cause insight: the "least-busy days" bias was
