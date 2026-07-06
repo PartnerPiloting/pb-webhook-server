@@ -15,7 +15,6 @@
 // `deps` lets the test inject stubs (e.g. a no-op book) so it can prove the brain without creating
 // real events.
 
-const { DateTime } = require('luxon');
 const { getAnthropicClient } = require('../config/anthropicClient');
 const { WINGGUY_VOICE, WINGGUY_AGENT_INSTRUCTIONS } = require('./../config/wingguyTemplates');
 const { getBookingPrefs } = require('../config/wingguyBookingPrefs');
@@ -34,8 +33,6 @@ const CHAT_THINKING = { type: 'disabled' };
 // ordinary draft/book turns are unaffected.
 const CHAT_MAX_TOKENS = 3000;
 const MAX_TOOL_ITERATIONS = 8;     // safety cap on the agent loop
-const AVAIL_MAX_DAYS = 14;         // bound the availability tool result (tokens) — ~2 working weeks
-const AVAIL_MAX_SLOTS_PER_DAY = 8;
 
 const AGENT_TOOLS = [
   {
@@ -174,58 +171,9 @@ function buildContext({ profileBlock, convoBlock, leadEmail, coachName, prefs, c
   );
 }
 
-// Minutes-since-midnight from "9:30" / "09:30" (prefs) or a display string like "9:00 am" / "9:00 AM-9:30 AM".
-function hhmmToMin(s) { const m = String(s || '').match(/(\d{1,2}):(\d{2})/); return m ? (+m[1]) * 60 + (+m[2]) : null; }
-function minFromDisplay(s) {
-  const m = String(s || '').match(/(\d{1,2}):(\d{2})\s*(am|pm)/i);
-  if (!m) return null;
-  let h = (+m[1]) % 12; if (/pm/i.test(m[3])) h += 12;
-  return h * 60 + (+m[2]);
-}
-// HARD bounds: never surface slots before earliestStart or after lastStart (the agent doesn't reliably
-// hold the soft floor on its own — enforce it on the data so a sub-9:30 / post-16:30 slot can't be offered).
-function withinBounds(slot, eMin, lMin) {
-  const m = minFromDisplay(slot.display);
-  return m == null ? true : (m >= eMin && m <= lMin);
-}
-// Minutes-since-midnight of an ISO instant IN a given timezone (for coach-hours/lunch checks).
-function minutesInTz(iso, tz) {
-  const s = new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: tz });
-  return hhmmToMin(s);
-}
-// True if a slot START overlaps the coach's SOFT lunch hold, checked in the COACH's timezone.
-// Centralised so check_availability (don't even offer the slot) and propose_times (backstop) agree —
-// the bug was that only the backstop applied it, so a coach-noon slot could be surfaced and offered.
-function inLunch(iso, tz, prefs, len) {
-  if (!(prefs && prefs.lunch && prefs.lunch.soft)) return false;
-  const lunchStart = hhmmToMin(prefs.lunch.start);
-  if (lunchStart == null) return false;
-  const lunchEnd = lunchStart + ((prefs.lunch && prefs.lunch.durationMins) || 0);
-  const cMin = minutesInTz(iso, tz);
-  if (cMin == null) return false;
-  return cMin < lunchEnd && (cMin + (len || 0)) > lunchStart;
-}
-// Earliest date (yyyy-MM-dd, coach tz) a slot may fall on. Guy's "one CLEAR day's notice" rule was a
-// soft instruction the model could (and did, 2026-07-06: Sarah was offered a time that had ALREADY
-// PASSED that morning) ignore — now code enforces it. includeSoon (Guy explicitly asks for
-// today/tomorrow) lifts the notice rule; nothing ever lifts the not-in-the-past rule.
-function earliestOfferDate(tz, prefs, includeSoon) {
-  const offsetDays = includeSoon ? 0 : ((Number.isFinite(prefs.minLeadDays) ? prefs.minLeadDays : 1) + 1);
-  return DateTime.now().setZone(tz).plus({ days: offsetDays }).toFormat('yyyy-MM-dd');
-}
-function dateStrInTz(iso, tz) {
-  return DateTime.fromMillis(Date.parse(iso)).setZone(tz).toFormat('yyyy-MM-dd');
-}
-
-// Format a slot for the LinkedIn message in the lead's timezone, Guy's style: "Wed 1 July, 1:30 pm".
-function fmtSlot(iso, tz) {
-  const d = new Date(iso);
-  const wd = d.toLocaleString('en-AU', { weekday: 'short', timeZone: tz });
-  const day = d.toLocaleString('en-AU', { day: 'numeric', timeZone: tz });
-  const mo = d.toLocaleString('en-AU', { month: 'long', timeZone: tz });
-  const tm = d.toLocaleString('en-AU', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: tz }).toLowerCase();
-  return `${wd} ${day} ${mo}, ${tm}`;
-}
+// The offer-time helpers (bounds, lunch, past/too-soon, slot formatting) live in wingguyCalendar —
+// ONE implementation shared with the claude.ai connector tools (the "one booking door", 2026-07-06).
+const { hhmmToMin, minutesInTz, inLunch, earliestOfferDate, dateStrInTz, fmtSlot } = wingguyCalendar;
 
 // Run one chat turn (which may involve several tool round-trips) to completion.
 // Returns { ok, reply, draft, booked, messages, model }.
@@ -270,33 +218,10 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
     if (name === 'check_availability') {
       const avail = await getAvailability(coach.clientId, profile.location || '');
       availTz = { yourTimezone: avail.yourTimezone, leadTimezone: avail.leadTimezone };
-      const eMin = hhmmToMin(prefs.earliestStart) ?? 0;
-      const lMin = hhmmToMin(prefs.lastStart) ?? 24 * 60;
-      const aTz = avail.yourTimezone || 'Australia/Brisbane';
-      const leadTz = avail.leadTimezone || aTz;
-      const aLen = prefs.meetingLengthMins || 30;
-      const nowMs = Date.now();
-      const earliestDate = earliestOfferDate(aTz, prefs, input.includeSoon);
-      const maxPerDay = Number.isFinite(prefs.maxMeetingsPerDay) ? prefs.maxMeetingsPerDay : Infinity;
-      const days = (avail.days || [])
-        // HARD notice rule: no days before the-day-after-tomorrow (Guy's one-clear-day rule) unless Guy
-        // explicitly asked for sooner (includeSoon) — and never a slot that has already passed.
-        .filter((d) => String(d.date || '') >= earliestDate)
-        // HARD spread rule (2026-07-06, the 6-meeting Thursday): a day already at Guy's daily meeting
-        // cap is withheld entirely — the "prefer least-busy days" ladder was advisory and days still
-        // stacked. Guy naming a specific time on a full day (check_time → book) remains his call.
-        .filter((d) => (d.meetingCount || 0) < maxPerDay)
-        // soft lunch hold is stripped HERE too (not just in propose_times) so the model never even sees a coach-lunch
-        // slot as free — UNLESS Guy explicitly asked for a lunch-time meeting (input.includeLunch), then surface them.
-        .map((d) => ({ ...d, freeSlots: (d.freeSlots || []).filter((s) => Date.parse(s.time) > nowMs && withinBounds(s, eMin, lMin) && (input.includeLunch || !inLunch(s.time, aTz, prefs, aLen))) }))
-        .filter((d) => d.freeSlots.length)
-        .slice(0, AVAIL_MAX_DAYS)
-        // `label` = EXACTLY how this slot will read in the message (lead tz, same fmtSlot as propose_times).
-        // The "time" ISO is opaque, so pairing each ISO with its legible date+time gives the model a reliable
-        // anchor to pick by — the fix for it grabbing the right time on the WRONG day (two Thu slots for a
-        // Wed/Thu/Fri spread, 2026-07-02). Selecting by label, not the bare ISO, keeps intent and draft aligned.
-        .map((d) => ({ ...d, freeSlots: d.freeSlots.slice(0, AVAIL_MAX_SLOTS_PER_DAY).map((s) => ({ ...s, label: fmtSlot(s.time, leadTz) })) }));
-      return { yourTimezone: avail.yourTimezone, leadTimezone: avail.leadTimezone, days };
+      // The shared pipeline (wingguyCalendar.filterAvailability) enforces ALL the offer rules in one
+      // place — hours bounds, lunch hold, no past/too-soon days (includeSoon lifts notice only), the
+      // daily meeting cap — and labels each slot exactly as it will read in the lead's timezone.
+      return wingguyCalendar.filterAvailability(avail, prefs, { includeLunch: input.includeLunch, includeSoon: input.includeSoon });
     }
     if (name === 'propose_times') {
       // CODE-OWNED time list: enforce order + Guy's hours + soft lunch-skip + lead-timezone formatting,
@@ -392,38 +317,18 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
     }
     if (name === 'book_meeting') {
       if (!currentLeadEmail) return { ok: false, error: 'No lead email on file — ask Guy to add the lead\'s email before booking.' };
-      // No-ACCIDENTAL-double-book guard (the one thing code still enforces): refuse a clashing time
-      // unless Guy has explicitly OK'd it (confirmDoubleBook). Conscious double-booking is allowed.
-      // THIS lead's own offer HOLDs are not clashes — the slot is reserved FOR them; a HOLD carrying
-      // another lead's name stays a real clash (that slot is promised elsewhere).
-      if (!input.confirmDoubleBook) {
-        const clashes = (await getClashesForISO(coach.clientId, input.startISO, input.durationMins))
-          .filter((c) => !wingguyCalendar.isHoldForLead(c.summary, profile.name));
-        if (clashes.length) {
-          return {
-            ok: false,
-            clash: true,
-            clashes,
-            error: `That time clashes with: ${clashes.map((c) => `${c.summary} (${c.display})`).join('; ')}. Tell Guy and, if he still wants it, re-call book_meeting with confirmDoubleBook:true.`,
-          };
-        }
-      }
-      const result = await bookMeeting(coach, {
+      // The shared guard (wingguyCalendar.bookMeetingGuarded) owns the no-accidental-double-book rule,
+      // the manual-HOLD semantics (own hold = reservation, another lead's = clash), and clearing the
+      // lead's holds after a successful booking.
+      const result = await wingguyCalendar.bookMeetingGuarded(coach, {
         startISO: input.startISO,
         durationMins: input.durationMins,
         leadEmail: currentLeadEmail,
         leadName: profile.name || '',
         leadLinkedIn: profile.profileUrl || '',
-      });
-      if (result.ok) {
-        bookedEvent = result;
-        // The offer is resolved — clear ALL of this lead's holds (picked slot + the unpicked ones).
-        // Fire-and-forget: hold cleanup must never fail a booking that already succeeded.
-        if (profile.name) {
-          Promise.resolve(deleteOfferHolds(coach, { leadName: profile.name }))
-            .catch((e) => console.warn(`[wingguyChat] hold cleanup failed: ${e.message}`));
-        }
-      }
+        confirmDoubleBook: input.confirmDoubleBook,
+      }, { getClashesForISO, createBookingEvent: bookMeeting, deleteOfferHolds });
+      if (result.ok) bookedEvent = result;
       return result;
     }
     if (name === 'propose_message') {

@@ -292,6 +292,122 @@ async function createBookingEvent(coach, { startISO, durationMins, leadEmail, le
   return { ok: true, eventId: result.eventId, title: finalTitle, start: start.toISOString(), durationMins: len };
 }
 
+// ── Shared offer-time pipeline + booking guard (2026-07-06, the "one booking door") ─────────────
+// ONE implementation of Guy's rules-in-code, used by BOTH the extension panel agent
+// (services/wingguyChat.js) and the claude.ai connector tools (services/wingguyBookingMcp.js) —
+// so every surface that offers or books times goes through the same guarantees: booking-hours
+// bounds, lunch hold, no past/too-soon slots, the daily meeting cap, and the clash/hold guard.
+
+// Minutes-since-midnight from "9:30" / "09:30" (prefs) or a display string like "9:00 am".
+function hhmmToMin(s) { const m = String(s || '').match(/(\d{1,2}):(\d{2})/); return m ? (+m[1]) * 60 + (+m[2]) : null; }
+function minFromDisplay(s) {
+  const m = String(s || '').match(/(\d{1,2}):(\d{2})\s*(am|pm)/i);
+  if (!m) return null;
+  let h = (+m[1]) % 12; if (/pm/i.test(m[3])) h += 12;
+  return h * 60 + (+m[2]);
+}
+// HARD bounds: never surface slots before earliestStart or after lastStart (the agent doesn't reliably
+// hold the soft floor on its own — enforce it on the data so a sub-9:30 / post-16:30 slot can't be offered).
+function withinBounds(slot, eMin, lMin) {
+  const m = minFromDisplay(slot.display);
+  return m == null ? true : (m >= eMin && m <= lMin);
+}
+// Minutes-since-midnight of an ISO instant IN a given timezone (for coach-hours/lunch checks).
+function minutesInTz(iso, tz) {
+  const s = new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: tz });
+  return hhmmToMin(s);
+}
+// True if a slot START overlaps the coach's SOFT lunch hold, checked in the COACH's timezone.
+// Centralised so check_availability (don't even offer the slot) and propose_times (backstop) agree —
+// the bug was that only the backstop applied it, so a coach-noon slot could be surfaced and offered.
+function inLunch(iso, tz, prefs, len) {
+  if (!(prefs && prefs.lunch && prefs.lunch.soft)) return false;
+  const lunchStart = hhmmToMin(prefs.lunch.start);
+  if (lunchStart == null) return false;
+  const lunchEnd = lunchStart + ((prefs.lunch && prefs.lunch.durationMins) || 0);
+  const cMin = minutesInTz(iso, tz);
+  if (cMin == null) return false;
+  return cMin < lunchEnd && (cMin + (len || 0)) > lunchStart;
+}
+// Earliest date (yyyy-MM-dd, coach tz) a slot may fall on. Guy's "one CLEAR day's notice" rule was a
+// soft instruction the model could (and did, 2026-07-06: Sarah was offered a time that had ALREADY
+// PASSED that morning) ignore — now code enforces it. includeSoon (Guy explicitly asks for
+// today/tomorrow) lifts the notice rule; nothing ever lifts the not-in-the-past rule.
+function earliestOfferDate(tz, prefs, includeSoon) {
+  const offsetDays = includeSoon ? 0 : ((Number.isFinite(prefs.minLeadDays) ? prefs.minLeadDays : 1) + 1);
+  return DateTime.now().setZone(tz).plus({ days: offsetDays }).toFormat('yyyy-MM-dd');
+}
+function dateStrInTz(iso, tz) {
+  return DateTime.fromMillis(Date.parse(iso)).setZone(tz).toFormat('yyyy-MM-dd');
+}
+// Format a slot for the LinkedIn message in the lead's timezone, Guy's style: "Wed 1 July, 1:30 pm".
+function fmtSlot(iso, tz) {
+  const d = new Date(iso);
+  const wd = d.toLocaleString('en-AU', { weekday: 'short', timeZone: tz });
+  const day = d.toLocaleString('en-AU', { day: 'numeric', timeZone: tz });
+  const mo = d.toLocaleString('en-AU', { month: 'long', timeZone: tz });
+  const tm = d.toLocaleString('en-AU', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: tz }).toLowerCase();
+  return `${wd} ${day} ${mo}, ${tm}`;
+}
+
+const AVAIL_MAX_DAYS = 14;         // bound the availability result (tokens) — ~2 working weeks
+const AVAIL_MAX_SLOTS_PER_DAY = 8;
+
+/**
+ * The one offer-time pipeline: raw availability → what an agent is ALLOWED to offer. Drops days
+ * before the one-clear-day notice date (unless includeSoon), days at the daily meeting cap, slots
+ * already past, slots outside booking hours, and lunch-hold slots (unless includeLunch); labels
+ * every surviving slot with EXACTLY how it will read in the lead's timezone.
+ */
+function filterAvailability(avail, prefs, { includeLunch = false, includeSoon = false } = {}) {
+  const eMin = hhmmToMin(prefs.earliestStart) ?? 0;
+  const lMin = hhmmToMin(prefs.lastStart) ?? 24 * 60;
+  const aTz = avail.yourTimezone || 'Australia/Brisbane';
+  const leadTz = avail.leadTimezone || aTz;
+  const aLen = prefs.meetingLengthMins || 30;
+  const nowMs = Date.now();
+  const earliestDate = earliestOfferDate(aTz, prefs, includeSoon);
+  const maxPerDay = Number.isFinite(prefs.maxMeetingsPerDay) ? prefs.maxMeetingsPerDay : Infinity;
+  const days = (avail.days || [])
+    .filter((d) => String(d.date || '') >= earliestDate)
+    .filter((d) => (d.meetingCount || 0) < maxPerDay)
+    .map((d) => ({ ...d, freeSlots: (d.freeSlots || []).filter((s) => Date.parse(s.time) > nowMs && withinBounds(s, eMin, lMin) && (includeLunch || !inLunch(s.time, aTz, prefs, aLen))) }))
+    .filter((d) => d.freeSlots.length)
+    .slice(0, AVAIL_MAX_DAYS)
+    .map((d) => ({ ...d, freeSlots: d.freeSlots.slice(0, AVAIL_MAX_SLOTS_PER_DAY).map((s) => ({ ...s, label: fmtSlot(s.time, leadTz) })) }));
+  return { yourTimezone: avail.yourTimezone, leadTimezone: avail.leadTimezone, days };
+}
+
+/**
+ * The one booking guard: refuse a clashing time unless explicitly confirmed (conscious double-
+ * booking allowed), treat the lead's OWN "HOLD:" events as their reservation (not a clash), and
+ * clear all the lead's holds once the booking lands. `deps` = test/caller injection.
+ */
+async function bookMeetingGuarded(coach, { startISO, durationMins, leadEmail, leadName, leadLinkedIn, confirmDoubleBook }, deps = {}) {
+  const clashesFor = deps.getClashesForISO || getClashesForISO;
+  const book = deps.createBookingEvent || createBookingEvent;
+  const clearHolds = deps.deleteOfferHolds || deleteOfferHolds;
+  if (!leadEmail) return { ok: false, error: 'No lead email on file — add the lead\'s email before booking.' };
+  if (!confirmDoubleBook) {
+    const clashes = (await clashesFor(coach.clientId, startISO, durationMins))
+      .filter((c) => !isHoldForLead(c.summary, leadName));
+    if (clashes.length) {
+      return {
+        ok: false,
+        clash: true,
+        clashes,
+        error: `That time clashes with: ${clashes.map((c) => `${c.summary} (${c.display})`).join('; ')}. Tell the human and, if they still want it, call again with confirmDoubleBook:true.`,
+      };
+    }
+  }
+  const result = await book(coach, { startISO, durationMins, leadEmail, leadName, leadLinkedIn });
+  if (result.ok && leadName) {
+    // Offer resolved — clear the lead's manual holds. Fire-and-forget: cleanup must never fail a booking.
+    Promise.resolve(clearHolds(coach, { leadName })).catch((e) => console.warn(`[wingguyCalendar] hold cleanup failed: ${e.message}`));
+  }
+  return result;
+}
+
 // ── Offer HOLDS (2026-07-06) ────────────────────────────────────────────────────────────────────
 // An offered slot is a PROMISE nothing else records, so another booking (any door: panel, claude.ai
 // chat, Calendly) can take it before the lead replies (the Rebecca/Mary Anne double-book). The
@@ -358,4 +474,6 @@ async function deleteOfferHolds(coach, { leadName }) {
 module.exports = {
   getAvailabilityForCoach, createBookingEvent, checkProposedTime, getClashesForISO, buildDaysFromBusy,
   deleteOfferHolds, isHoldForLead, isHoldSummary, holdTitle,
+  // shared offer-time pipeline + booking guard (used by the panel agent AND the connector tools)
+  filterAvailability, bookMeetingGuarded, fmtSlot, inLunch, hhmmToMin, minutesInTz, earliestOfferDate, dateStrInTz,
 };

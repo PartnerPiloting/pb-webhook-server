@@ -3119,15 +3119,18 @@ var reverts reads only as a fire extinguisher. Boat-burning after ~2 weeks stabl
   + **booking-defaults → v5** (both timezone bullets corrected, point at the playbook) + the config
   TIMEZONES harness line now names the "your time" marker. The claude.ai BOOKING GUARDRAIL paste
   block (reads booking rules through the door) pulls the playbook into every chat automatically.
-- **★ BANKED NEXT SLICE — "ONE BOOKING DOOR" (the proper fix; do as its own sitting, after the
-  flip):** expose the panel's proven booking trio on /mcp2 so claude.ai chats book through Wingguy,
-  not the raw calendar connector — check_availability + check_time + book_meeting as connector tools
-  (reuse `wingguyCalendar` executors + the prefs enforcement, exactly like the rules tools reused
-  `wingguyRulesMcp.TOOL_DEFS`), with the code-level floor (refuse <9:30 without an explicit-confirm
-  flag, flag <10:00). NOT bolted onto today because a book-tool WITHOUT the check tools would
-  recreate the model-built-timestamp bug class — it ships as the trio + live calendar verification
-  or not at all. Until then the claude.ai guardrail instruction covers the gap. WHY IT EXISTS: a
-  claude.ai chat booked Guy at 9:00am via raw create_event (2026-07-06).
+- **★ ✅ "ONE BOOKING DOOR" SHIPPED (same day it was banked — Guy: "any reason we can't do it
+  now?"):** the booking trio is live on BOTH connectors (`services/wingguyBookingMcp.js`, same
+  one-definition-two-transports pattern as the rules tools): **wingguy_check_availability** (rules
+  already enforced in code: hours, lunch, notice, daily cap, nothing past; lead-tz labels),
+  **wingguy_check_time** (wall-clock→ISO owned by code, clash/off-hours/lunch flags),
+  **wingguy_book_meeting** (the proven invite machinery + the shared clash/HOLD guard; CRM email
+  lookup by lead_name via `lookupLeadContactByName`, explicit lead_email override). Under it, the
+  panel's pipeline was EXTRACTED into `wingguyCalendar` as the single implementation —
+  `filterAvailability` + `bookMeetingGuarded` — and the panel agent now calls those same functions,
+  so panel and chat literally cannot drift. 25 booking-guard checks green. The claude.ai guardrail
+  instruction should now ALSO say: book through the wingguy_* tools, raw calendar connector is
+  read-only. WHY IT EXISTS: a claude.ai chat booked Guy at 9:00am via raw create_event (2026-07-06).
 
 **▶▶ SESSION CLOSE 2026-07-05 (the STEP-2 sitting: "rules-source seam SHIPPED DARK — shadow week starts
 now") — START THE NEXT CHAT HERE.**

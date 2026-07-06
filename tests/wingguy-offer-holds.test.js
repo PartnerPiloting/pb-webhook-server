@@ -169,6 +169,67 @@ function firstToolResult(res) {
     check('a real meeting clash still blocks the booking', () => assert.strictEqual(booked, false));
   }
 
+  console.log('\nshared bookMeetingGuarded (the one booking door — connector path):');
+  {
+    const { bookMeetingGuarded } = require('../services/wingguyCalendar');
+    const coach = { clientId: 'Guy-Wilson', clientName: 'Guy Wilson' };
+    // Own hold → books; holds cleared.
+    let cleanup = null;
+    const ok = await bookMeetingGuarded(coach, { startISO: ELEVEN, leadEmail: 'bec@example.com', leadName: 'Rebecca Marlor' }, {
+      getClashesForISO: async () => [{ summary: holdTitle('Rebecca Marlor'), display: 'Fri, 11:00 am' }],
+      createBookingEvent: async () => ({ ok: true, eventId: 'e1', title: 'Rebecca Marlor & Guy Wilson', start: ELEVEN, durationMins: 30 }),
+      deleteOfferHolds: async (c, args) => { cleanup = args; return { removed: 1 }; },
+    });
+    await new Promise((r) => setImmediate(r));
+    check('books through the lead\'s own hold and clears it', () => assert.ok(ok.ok && cleanup && cleanup.leadName === 'Rebecca Marlor', JSON.stringify(ok)));
+    // Another lead's hold → refused with the clash surfaced.
+    const blocked = await bookMeetingGuarded(coach, { startISO: TEN30, leadEmail: 'bec@example.com', leadName: 'Rebecca Marlor' }, {
+      getClashesForISO: async () => [{ summary: holdTitle('Angela Mager'), display: 'Thu, 10:30 am' }],
+      createBookingEvent: async () => ({ ok: true }),
+      deleteOfferHolds: async () => ({ removed: 0 }),
+    });
+    check('refuses another lead\'s held slot (clash surfaced)', () => assert.ok(!blocked.ok && blocked.clash && /Angela Mager/.test(blocked.error), JSON.stringify(blocked)));
+    // confirmDoubleBook overrides.
+    const forced = await bookMeetingGuarded(coach, { startISO: TEN30, leadEmail: 'bec@example.com', leadName: 'Rebecca Marlor', confirmDoubleBook: true }, {
+      getClashesForISO: async () => { throw new Error('should not be called when confirmed'); },
+      createBookingEvent: async () => ({ ok: true, eventId: 'e2', title: 't', start: TEN30, durationMins: 30 }),
+      deleteOfferHolds: async () => ({ removed: 0 }),
+    });
+    check('explicit confirmDoubleBook books over a clash', () => assert.ok(forced.ok, JSON.stringify(forced)));
+    // No email → refused before any calendar call.
+    const noEmail = await bookMeetingGuarded(coach, { startISO: ELEVEN, leadName: 'Rebecca Marlor' }, {
+      getClashesForISO: async () => [], createBookingEvent: async () => ({ ok: true }), deleteOfferHolds: async () => ({ removed: 0 }),
+    });
+    check('no lead email refuses cleanly', () => assert.ok(!noEmail.ok && /email/.test(noEmail.error)));
+  }
+
+  console.log('\nshared filterAvailability (the one offer pipeline — connector path):');
+  {
+    const { filterAvailability } = require('../services/wingguyCalendar');
+    const { getBookingPrefs } = require('../config/wingguyBookingPrefs');
+    const prefs = getBookingPrefs('Guy-Wilson');
+    const okDay = bris().plus({ days: 4 });
+    const avail = {
+      yourTimezone: 'Australia/Brisbane',
+      leadTimezone: 'Australia/Sydney',
+      days: [
+        { date: bris().toFormat('yyyy-MM-dd'), day: 'D0', meetingCount: 0, freeSlots: [{ time: at(0, 15, 0), display: '3:00 pm' }] },
+        { date: okDay.toFormat('yyyy-MM-dd'), day: 'D4', meetingCount: 2, freeSlots: [
+          { time: at(4, 9, 0), display: '9:00 am' },    // below the 9:30 floor → dropped
+          { time: at(4, 12, 0), display: '12:00 pm' },  // lunch hold → dropped
+          { time: at(4, 11, 0), display: '11:00 am' },  // survives
+        ] },
+        { date: bris().plus({ days: 5 }).toFormat('yyyy-MM-dd'), day: 'D5', meetingCount: 4, freeSlots: [{ time: at(5, 11, 0), display: '11:00 am' }] },
+      ],
+    };
+    const out = filterAvailability(avail, prefs, {});
+    check('one day survives (today gone, capped day gone)', () => assert.strictEqual(out.days.length, 1, JSON.stringify(out.days.map((d) => d.date))));
+    check('floor + lunch slots dropped, 11:00 kept with a lead-tz label', () => {
+      assert.strictEqual(out.days[0].freeSlots.length, 1, JSON.stringify(out.days[0].freeSlots));
+      assert.ok(out.days[0].freeSlots[0].label, 'label missing');
+    });
+  }
+
   console.log(failures ? `\n❌ ${failures} test(s) failed` : '\n✅ all booking-guard tests passed');
   process.exit(failures ? 1 : 0);
 })().catch((e) => { console.error('FATAL', e); process.exit(1); });
