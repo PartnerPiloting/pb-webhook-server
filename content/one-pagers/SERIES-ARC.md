@@ -92,6 +92,28 @@ Series-relevant material living in the Wingguy doc that the arc didn't yet captu
 - **"The real competitor is the client's TIME" + VA trust flip (for #60)**: Paul stalled not because the system's bad - he has no time; the VA IS time. And the delegation unlock: what the principal trusts shifts from "the VA's writing/judgment" (scary) to "my own system, run consistently" (easy to grant). Sharpens the parked VA story.
 - **"An assistant who was in all your meetings" (for #60)**: transcripts-as-memory framing - months of your own meetings queryable in plain speech ("prep me for the 2pm"); the demo self-fires the first time a draft cites something the prospect actually said.
 
+## The missing rung: "they connect" + the connection rate (OPEN, raised 2026-07-06)
+
+**Reader problem Guy flagged:** many prospects can't *visualise* how we use LinkedIn at all - profile, posts, a connection campaign that leads toward a discovery call. The craft pieces currently assume the shape of the process. So: do we state the process explicitly somewhere, or just reinforce it as we go? **Answer = both, and the division of labour already exists in the arc:**
+- **The MAP (#12) states the whole process ONCE, shallowly** - request → connect → thank-you → conversation → book → discovery → follow-up → nodes. That IS the visualisation fix; everyone lands there first (client series) or reaches it from the standing footer line.
+- **Each craft piece reinforces its own stage** with a light "you are here" line (already happening: #32's builds-on box, #35's "the two decisions that came before it").
+- **NOT button-mechanics** (which button to click = help system's job). "The shape of the stages" is paradigm scaffolding, not mechanics - it belongs in the map + light reinforcement.
+
+**The specific gap:** between #32 (reach out / the 300-char request note) and #35 (thank them once connected), the beat *"you send the request → they accept at rate X → now you have live connections to work"* is elided. #32 ends teasing #35 with "after they connect" doing all the work. ⚠ **Even the map's current 7-step journey skips it** ("reach out → 20-sec thank-you" with no "→ they connect" between) - fix the map's step list too, whatever we decide.
+
+**Connection-rate benchmarks (Guy, 2026-07-06 - bank for whichever piece carries this):**
+- Industry: **~35% acceptance is considered *exceptional*** for LinkedIn connection requests.
+- Our system's baseline expectation: **~40%**.
+- Aim/ideal with good selection + a good request note: **45-55%**.
+- Guy's recent actuals: **60-70%** on some campaigns.
+- Point: a high connection rate is *engineered* by good selection + a good note - it's the **first early scoreboard**, and quiet proof the system works (40% expected, 60-70% achieved).
+- ⚠ **Framing caution:** don't let "35% is exceptional" collide with "aim for 45-55%" on the page - state plainly that our method *beats* the industry, so a number a normal user would celebrate (35%) is roughly our floor.
+
+**OPEN QUESTION (Guy to decide) - two ways to fill the rung:**
+- **(A) Light bridge atop #35** - one short passage: you sent the request; if you chose well, a high share said yes (that number matters - more below); now here's the moment. Cheapest; keeps piece count down.
+- **(B) A small dedicated piece ~#33** - "the connection rate / your first scoreboard". Penny-drop candidate: *this is the first number in your business that goes UP when you get pickier, not down* - the earliest proof the room was well chosen. Natural home for the 40%/60-70% figures and the reassurance ("you can tell within a week if it's working"). Also the natural place to say "you've selected the people; now the system sends the request" - the step Guy named as the missing puzzle piece.
+- **Recommendation:** lean **B** if the connection rate earns its own penny-drop (I think the "pickier → higher, not lower" reframe does), slotted #33 between reach-out and thank-you; fall back to **A** if we want to hold the launch set lean. Either way, #35's opening currently assumes the connection already happened - it needs the hand-off line regardless.
+
 ## Launch threshold (2026-07-03)
 
 The drip does NOT start until every step on the map links to a real piece - email #1's footer promises "the whole process on one page," and coming-soon links turn the wow into a shrug (no second first-click). Minimum launch inventory (~9): the map (#12), feast-or-famine (#10), Daniel story (#15), and the seven journey-step pieces (#30, #32, #35, #37, #45, #40, #70). Post-launch arrivals: #47 craft companion, #20, #50, #60 - nothing on the map promises them. Engine gets built in parallel; both finish together.
