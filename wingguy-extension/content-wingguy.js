@@ -22,6 +22,12 @@
 (function () {
   'use strict';
 
+  // Guard against double-injection: the background worker re-injects this script into open LinkedIn
+  // tabs on install/update (so a dead tab heals without a manual refresh). If a live copy is already
+  // wired up here, bail so we don't double-wire the keyup/click listeners.
+  if (window.__wingguyLoaded) return;
+  window.__wingguyLoaded = true;
+
   const LAUNCHER_ID = 'wingguy-launcher-btn';
   const OVERLAY_ID = 'wingguy-overlay';
   const PANEL_ID = 'wingguy-panel'; // the modal inside the overlay; kept as the id the insert code excludes

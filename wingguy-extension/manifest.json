@@ -5,7 +5,8 @@
   "description": "Wingguy — type /wg in a LinkedIn message box for a full-screen assistant that drafts your next message in your voice (auto-detecting the campaign). You click send.",
   "permissions": [
     "storage",
-    "activeTab"
+    "activeTab",
+    "scripting"
   ],
   "host_permissions": [
     "https://www.linkedin.com/*",

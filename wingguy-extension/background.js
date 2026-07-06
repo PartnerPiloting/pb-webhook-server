@@ -20,6 +20,22 @@ const CALENDAR_ENDPOINTS = {
   staging: 'https://pb-webhook-server-staging.onrender.com/api/calendar'
 };
 
+// Self-heal open LinkedIn tabs after an install/update. When the extension reloads, Chrome tears down
+// the old content script's context in already-open tabs (its /wg listener goes dead) but does NOT
+// inject the new one - so the tab silently stops responding until a manual refresh. Re-injecting here
+// removes that refresh step. The content script guards against double-injection (window.__wingguyLoaded).
+function reinjectLinkedInTabs() {
+  chrome.tabs.query({ url: 'https://www.linkedin.com/*' }, (tabs) => {
+    for (const tab of tabs) {
+      if (!tab.id) continue;
+      chrome.scripting.insertCSS({ target: { tabId: tab.id }, files: ['styles.css'] }).catch(() => {});
+      chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['content-wingguy.js'] }).catch(() => {});
+    }
+  });
+}
+chrome.runtime.onInstalled.addListener(reinjectLinkedInTabs);
+chrome.runtime.onStartup.addListener(reinjectLinkedInTabs);
+
 // Listen for messages from content scripts and popup
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   
