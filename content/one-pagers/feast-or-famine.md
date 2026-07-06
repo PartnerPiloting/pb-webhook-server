@@ -29,6 +29,6 @@ The businesses that escape it make one mental shift: they stop treating their ne
 
 So here's the question worth sitting with this week: **if your network heard from you just as reliably in your busiest month as in your quietest one - what would that make possible?** What work would you say yes to? What would you never again have to accept out of desperation?
 
-That's the possibility this series is about. The tools to make it real - without cloning yourself - are better than they've ever been. More on that next time.
+Maybe you're already pushing back: you've been nagged about networking before, and it never seemed worth the hours it demanded. Fair - under the old way of doing it, it usually wasn't. That's the part we've quietly changed. Treating your network as infrastructure used to mean cloning yourself; now the right process and the right tools carry almost all of the load, and it fits inside a normal working week. That's the possibility this series is about - more on how next time.
 
-<!-- Approved final by Guy 2026-07-03 ("absolutely perfect, wouldn't change anything") after reviewing the formatted HTML render. Earlier too-polished flag withdrawn on review. -->
+<!-- Approved final by Guy 2026-07-03 ("absolutely perfect, wouldn't change anything") after reviewing the formatted HTML render. Ending revised + re-approved 2026-07-06: names the "not worth the hours" dismissal and claims ownership ("the part WE'VE quietly changed" - Guy's wording) while keeping tools off-stage per the staged-reveal principle. -->
