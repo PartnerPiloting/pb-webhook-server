@@ -151,6 +151,23 @@ async function runVariables({ set_key, set_value, description } = {}) {
   return { text: `Wingguy variables for ${TENANT}:\n${lines.join('\n')}` };
 }
 
+async function runAssets({ set_key, set_url, set_kind, retire } = {}) {
+  if (set_key !== undefined && set_key !== null && String(set_key).trim()) {
+    await store.setAsset({
+      tenantId: TENANT,
+      assetKey: set_key,
+      url: set_url ?? null,
+      kind: set_kind || undefined,
+      status: retire ? 'retired' : 'active',
+      actor: ACTOR,
+    });
+  }
+  const assets = await store.getAssets({ tenantId: TENANT });
+  if (!assets.length) return { text: 'No assets in the library yet.' };
+  const lines = assets.map((a) => `- ${a.asset_key}${a.kind ? ` [${a.kind}]` : ''} = ${a.url || '(no url)'}${a.status !== 'active' ? ` (${a.status})` : ''}`);
+  return { text: `Wingguy asset library for ${TENANT} (rules reference these as {{asset:key}} — URLs go out EXACTLY as stored, never composed):\n${lines.join('\n')}` };
+}
+
 // ---------------------------------------------------------------------------
 // Definitions — one source of truth for names/descriptions/schemas
 // ---------------------------------------------------------------------------
@@ -290,6 +307,26 @@ const TOOL_DEFS = [
       },
     },
     run: runVariables,
+  },
+  {
+    name: 'wingguy_assets',
+    description: 'Lists this tenant\'s ASSET LIBRARY (the {{asset:key}} links the rules send out — articles, videos, decks, the Zoom room), and optionally adds or updates one. Use when the human says "add this article to my assets", asks what links exist, or an asset\'s URL moved. Adding an asset does NOT make it go out — an asset-usage rule must reference it (propose/commit a rule change for that). Changes are history-logged.',
+    zodSchema: {
+      set_key: z.string().optional().describe('Asset key to add/update (kebab/snake case, e.g. "newsletter_article_advocacy"). Omit to just list.'),
+      set_url: z.string().optional().describe('The asset\'s URL — stored EXACTLY as given (rules never compose or alter URLs)'),
+      set_kind: z.string().optional().describe('Optional kind tag, e.g. article | video | deck | page | link'),
+      retire: z.boolean().optional().describe('Set true to retire set_key instead of updating it (it stops resolving in rules)'),
+    },
+    jsonSchema: {
+      type: 'object',
+      properties: {
+        set_key: { type: 'string', description: 'Asset key to add/update (kebab/snake case, e.g. "newsletter_article_advocacy"). Omit to just list.' },
+        set_url: { type: 'string', description: 'The asset\'s URL — stored EXACTLY as given (rules never compose or alter URLs)' },
+        set_kind: { type: 'string', description: 'Optional kind tag, e.g. article | video | deck | page | link' },
+        retire: { type: 'boolean', description: 'Set true to retire set_key instead of updating it (it stops resolving in rules)' },
+      },
+    },
+    run: runAssets,
   },
 ];
 
