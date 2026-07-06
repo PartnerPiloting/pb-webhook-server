@@ -23,12 +23,15 @@ check('an ordinary meeting title is not a hold', () => assert.strictEqual(isHold
 check('matching is case-insensitive', () => assert.ok(isHoldForLead('HOLD: rebecca marlor (Wingguy offer - do not book over)', 'Rebecca Marlor')));
 check('no lead name never matches', () => assert.strictEqual(isHoldForLead(holdTitle('Rebecca Marlor'), ''), false));
 
-// Dynamic dates — code hard-drops past/too-soon slots, so hardcoded dates would rot.
+// Dynamic dates — code hard-drops past/too-soon/weekend slots, so hardcoded dates would rot and
+// a bare "+N days" can land on a Saturday depending on the run date. weekdayPlus shifts forward.
 const { DateTime } = require('luxon');
 const bris = () => DateTime.now().setZone('Australia/Brisbane');
+const weekdayPlus = (minPlusDays) => { let d = bris().plus({ days: minPlusDays }); while (d.weekday > 5) d = d.plus({ days: 1 }); return d; };
 const at = (plusDays, h, m) => bris().plus({ days: plusDays }).set({ hour: h, minute: m, second: 0, millisecond: 0 }).toUTC().toISO();
-const TEN30 = at(3, 10, 30);
-const ELEVEN = at(4, 11, 0);
+const atW = (minPlusDays, h, m) => weekdayPlus(minPlusDays).set({ hour: h, minute: m, second: 0, millisecond: 0 }).toUTC().toISO();
+const TEN30 = atW(3, 10, 30);
+const ELEVEN = atW(4, 11, 0);
 const PAST = at(0, Math.max(bris().hour - 1, 0), 0);  // earlier today
 const TOMORROW = at(1, 11, 0);                        // inside hours, but breaks the one-clear-day rule
 
@@ -87,8 +90,8 @@ function firstToolResult(res) {
   {
     const today = bris().toFormat('yyyy-MM-dd');
     const tomorrow = bris().plus({ days: 1 }).toFormat('yyyy-MM-dd');
-    const okDay = bris().plus({ days: 4 }).toFormat('yyyy-MM-dd');
-    const fullDay = bris().plus({ days: 5 }).toFormat('yyyy-MM-dd');
+    const okDay = weekdayPlus(4).toFormat('yyyy-MM-dd');
+    const fullDay = weekdayPlus(6).toFormat('yyyy-MM-dd');
     const res = await runWingguyChatTurn({
       coach: { clientId: 'Guy-Wilson', clientName: 'Guy' },
       profile: { name: 'Sarah Cann', location: 'Brisbane' },
@@ -103,7 +106,7 @@ function firstToolResult(res) {
             { date: tomorrow, day: 'D1', meetingCount: 0, freeSlots: [{ time: TOMORROW, display: '11:00 am', leadDisplay: '11:00 am' }] },
             { date: okDay, day: 'D4', meetingCount: 2, freeSlots: [{ time: ELEVEN, display: '11:00 am', leadDisplay: '11:00 am' }] },
             // The 6-meeting-Thursday case: at Guy's maxMeetingsPerDay (4) the day must vanish entirely.
-            { date: fullDay, day: 'D5', meetingCount: 4, freeSlots: [{ time: at(5, 15, 0), display: '3:00 pm', leadDisplay: '3:00 pm' }] },
+            { date: fullDay, day: 'D5', meetingCount: 4, freeSlots: [{ time: atW(6, 15, 0), display: '3:00 pm', leadDisplay: '3:00 pm' }] },
           ],
         }),
       },
@@ -208,26 +211,32 @@ function firstToolResult(res) {
     const { filterAvailability } = require('../services/wingguyCalendar');
     const { getBookingPrefs } = require('../config/wingguyBookingPrefs');
     const prefs = getBookingPrefs('Guy-Wilson');
-    const okDay = bris().plus({ days: 4 });
+    const okDay = weekdayPlus(4);
+    let sat = bris().plus({ days: 2 });
+    while (sat.weekday !== 6) sat = sat.plus({ days: 1 });
     const avail = {
       yourTimezone: 'Australia/Brisbane',
       leadTimezone: 'Australia/Sydney',
       days: [
         { date: bris().toFormat('yyyy-MM-dd'), day: 'D0', meetingCount: 0, freeSlots: [{ time: at(0, 15, 0), display: '3:00 pm' }] },
         { date: okDay.toFormat('yyyy-MM-dd'), day: 'D4', meetingCount: 2, freeSlots: [
-          { time: at(4, 9, 0), display: '9:00 am' },    // below the 9:30 floor → dropped
-          { time: at(4, 12, 0), display: '12:00 pm' },  // lunch hold → dropped
-          { time: at(4, 11, 0), display: '11:00 am' },  // survives
+          { time: atW(4, 9, 0), display: '9:00 am' },    // below the 9:30 floor → dropped
+          { time: atW(4, 12, 0), display: '12:00 pm' },  // lunch hold → dropped
+          { time: atW(4, 11, 0), display: '11:00 am' },  // survives
         ] },
-        { date: bris().plus({ days: 5 }).toFormat('yyyy-MM-dd'), day: 'D5', meetingCount: 4, freeSlots: [{ time: at(5, 11, 0), display: '11:00 am' }] },
+        { date: weekdayPlus(6).toFormat('yyyy-MM-dd'), day: 'D6', meetingCount: 4, freeSlots: [{ time: atW(6, 11, 0), display: '11:00 am' }] },
+        // A free Saturday: weekdays-only is now CODE (live one-booking-door check offered Sat/Sun, 2026-07-06).
+        { date: sat.toFormat('yyyy-MM-dd'), day: 'Sat', meetingCount: 0, freeSlots: [{ time: sat.set({ hour: 11, minute: 0 }).toUTC().toISO(), display: '11:00 am' }] },
       ],
     };
     const out = filterAvailability(avail, prefs, {});
-    check('one day survives (today gone, capped day gone)', () => assert.strictEqual(out.days.length, 1, JSON.stringify(out.days.map((d) => d.date))));
+    check('one day survives (today, capped day, and Saturday all gone)', () => assert.strictEqual(out.days.length, 1, JSON.stringify(out.days.map((d) => d.date))));
     check('floor + lunch slots dropped, 11:00 kept with a lead-tz label', () => {
       assert.strictEqual(out.days[0].freeSlots.length, 1, JSON.stringify(out.days[0].freeSlots));
       assert.ok(out.days[0].freeSlots[0].label, 'label missing');
     });
+    const withWeekends = filterAvailability(avail, prefs, { includeWeekends: true });
+    check('includeWeekends brings Saturday back', () => assert.ok(withWeekends.days.some((d) => d.date === sat.toFormat('yyyy-MM-dd')), JSON.stringify(withWeekends.days.map((d) => d.date))));
   }
 
   console.log(failures ? `\n❌ ${failures} test(s) failed` : '\n✅ all booking-guard tests passed');

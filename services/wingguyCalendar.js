@@ -340,6 +340,10 @@ function earliestOfferDate(tz, prefs, includeSoon) {
 function dateStrInTz(iso, tz) {
   return DateTime.fromMillis(Date.parse(iso)).setZone(tz).toFormat('yyyy-MM-dd');
 }
+function isWeekendInTz(iso, tz) {
+  const wd = DateTime.fromMillis(Date.parse(iso)).setZone(tz).weekday;
+  return wd === 6 || wd === 7;
+}
 // Format a slot for the LinkedIn message in the lead's timezone, Guy's style: "Wed 1 July, 1:30 pm".
 function fmtSlot(iso, tz) {
   const d = new Date(iso);
@@ -359,7 +363,7 @@ const AVAIL_MAX_SLOTS_PER_DAY = 8;
  * already past, slots outside booking hours, and lunch-hold slots (unless includeLunch); labels
  * every surviving slot with EXACTLY how it will read in the lead's timezone.
  */
-function filterAvailability(avail, prefs, { includeLunch = false, includeSoon = false } = {}) {
+function filterAvailability(avail, prefs, { includeLunch = false, includeSoon = false, includeWeekends = false } = {}) {
   const eMin = hhmmToMin(prefs.earliestStart) ?? 0;
   const lMin = hhmmToMin(prefs.lastStart) ?? 24 * 60;
   const aTz = avail.yourTimezone || 'Australia/Brisbane';
@@ -368,9 +372,13 @@ function filterAvailability(avail, prefs, { includeLunch = false, includeSoon = 
   const nowMs = Date.now();
   const earliestDate = earliestOfferDate(aTz, prefs, includeSoon);
   const maxPerDay = Number.isFinite(prefs.maxMeetingsPerDay) ? prefs.maxMeetingsPerDay : Infinity;
+  const isWeekend = (dateStr) => { const wd = DateTime.fromISO(dateStr, { zone: aTz }).weekday; return wd === 6 || wd === 7; };
   const days = (avail.days || [])
     .filter((d) => String(d.date || '') >= earliestDate)
     .filter((d) => (d.meetingCount || 0) < maxPerDay)
+    // Weekdays only was a model-side rule until the live one-booking-door check (2026-07-06) showed
+    // Sat/Sun slots offered to a chat that trusts "rules already applied" — now code, like the rest.
+    .filter((d) => includeWeekends || !prefs.excludeWeekends || !isWeekend(d.date))
     .map((d) => ({ ...d, freeSlots: (d.freeSlots || []).filter((s) => Date.parse(s.time) > nowMs && withinBounds(s, eMin, lMin) && (includeLunch || !inLunch(s.time, aTz, prefs, aLen))) }))
     .filter((d) => d.freeSlots.length)
     .slice(0, AVAIL_MAX_DAYS)
@@ -475,5 +483,5 @@ module.exports = {
   getAvailabilityForCoach, createBookingEvent, checkProposedTime, getClashesForISO, buildDaysFromBusy,
   deleteOfferHolds, isHoldForLead, isHoldSummary, holdTitle,
   // shared offer-time pipeline + booking guard (used by the panel agent AND the connector tools)
-  filterAvailability, bookMeetingGuarded, fmtSlot, inLunch, hhmmToMin, minutesInTz, earliestOfferDate, dateStrInTz,
+  filterAvailability, bookMeetingGuarded, fmtSlot, inLunch, hhmmToMin, minutesInTz, earliestOfferDate, dateStrInTz, isWeekendInTz,
 };

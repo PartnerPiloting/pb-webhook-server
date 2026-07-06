@@ -37,7 +37,8 @@ check('9:30 am is NOT lunch', () => assert.strictEqual(inLunch(NINE30, 'Australi
   // Dates must be DYNAMIC (≥3 days out) — code now hard-drops past and too-soon slots, so a
   // hardcoded date would make this test rot the day after it passes.
   const { DateTime } = require('luxon');
-  const day = DateTime.now().setZone('Australia/Brisbane').plus({ days: 3 }).startOf('day');
+  let day = DateTime.now().setZone('Australia/Brisbane').plus({ days: 3 }).startOf('day');
+  while (day.weekday > 5) day = day.plus({ days: 1 }); // weekdays-only is code-enforced now
   const slotAt = (h, m) => day.set({ hour: h, minute: m }).toUTC().toISO();
   const dNINE30 = slotAt(9, 30);
   const dNOON = slotAt(12, 0);

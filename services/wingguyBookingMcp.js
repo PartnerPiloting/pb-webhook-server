@@ -27,24 +27,31 @@ const TENANT = (process.env.RECALL_COACH_CLIENT_ID || 'Guy-Wilson').trim();
 // Executors — return { text, isError? }
 // ---------------------------------------------------------------------------
 
-async function runCheckAvailability({ lead_location, include_lunch, include_soon } = {}) {
+async function runCheckAvailability({ lead_location, include_lunch, include_soon, include_weekends } = {}) {
   const prefs = getBookingPrefs(TENANT);
   const avail = await wingguyCalendar.getAvailabilityForCoach(TENANT, lead_location || '');
   const filtered = wingguyCalendar.filterAvailability(avail, prefs, {
     includeLunch: !!include_lunch,
     includeSoon: !!include_soon,
+    includeWeekends: !!include_weekends,
   });
   if (!filtered.days.length) {
-    return { text: 'No offerable slots in the scan window (after the coach\'s rules: notice period, daily cap, hours, lunch). Widen with include_soon only if the coach explicitly asked for today/tomorrow.' };
+    return { text: 'No offerable slots in the scan window (after the coach\'s rules: notice period, daily cap, hours, lunch, weekdays-only). Widen with include_soon / include_weekends only if the coach explicitly asked.' };
   }
+  // Slots before the coach's preferred day start are legal but AT-A-PINCH only — mark them so a
+  // chat model applies the "10:00+ first" rule without holding it in its head.
+  const coachTz = filtered.yourTimezone || 'Australia/Brisbane';
+  const prefMin = wingguyCalendar.hhmmToMin(prefs.preferredStart);
+  const pinch = (s) => (prefMin != null && wingguyCalendar.minutesInTz(s.time, coachTz) < prefMin) ? ' ⚠ AT-A-PINCH (before preferred 10:00 start — offer only if later times can\'t fill the options)' : '';
   const lines = filtered.days.map((d) =>
     `${d.date} (${d.day}, ${d.meetingCount || 0} meetings):\n` +
-    d.freeSlots.map((s) => `  - label="${s.label}" (coach: ${s.display}) time=${s.time}`).join('\n'));
+    d.freeSlots.map((s) => `  - label="${s.label}" (coach: ${s.display}) time=${s.time}${pinch(s)}`).join('\n'));
   return {
     text:
-      `Offerable slots (coach rules already applied: hours, lunch, notice, daily cap). ` +
+      `Offerable slots (coach rules already applied: hours, lunch, notice, daily cap, weekdays). ` +
       `Coach timezone: ${filtered.yourTimezone}; lead timezone: ${filtered.leadTimezone}. ` +
-      `Each "label" is EXACTLY how that slot reads in the LEAD's timezone — pick slots by label, then use that slot's "time" ISO for booking. NEVER build an ISO yourself.\n\n` +
+      `Each "label" is EXACTLY how that slot reads in the LEAD's timezone — pick slots by label, then use that slot's "time" ISO for booking. NEVER build an ISO yourself. ` +
+      `Prefer the least-busy days and vary the time of day across the options.\n\n` +
       lines.join('\n'),
   };
 }
@@ -122,6 +129,7 @@ async function runBookMeeting({ start_iso, duration_mins, lead_name, lead_email,
 
 const SOON_DESC = 'Set true ONLY when the coach explicitly asks for today/tomorrow — normally everything before the day after tomorrow is withheld (his one-clear-day rule). Past times never appear regardless.';
 const LUNCH_DESC = 'Set true ONLY when the coach explicitly wants a lunch-time meeting — otherwise his lunch hold is stripped.';
+const WEEKEND_DESC = 'Set true ONLY when the coach explicitly wants a weekend meeting — weekdays-only is enforced otherwise.';
 
 const TOOL_DEFS = [
   {
@@ -131,6 +139,7 @@ const TOOL_DEFS = [
       lead_location: z.string().optional().describe('The lead\'s location as written on LinkedIn (e.g. "Newcastle, New South Wales") — drives the lead-timezone labels. Omit if unknown (coach timezone assumed).'),
       include_lunch: z.boolean().optional().describe(LUNCH_DESC),
       include_soon: z.boolean().optional().describe(SOON_DESC),
+      include_weekends: z.boolean().optional().describe(WEEKEND_DESC),
     },
     jsonSchema: {
       type: 'object',
@@ -138,6 +147,7 @@ const TOOL_DEFS = [
         lead_location: { type: 'string', description: 'The lead\'s location as written on LinkedIn (e.g. "Newcastle, New South Wales") — drives the lead-timezone labels. Omit if unknown (coach timezone assumed).' },
         include_lunch: { type: 'boolean', description: LUNCH_DESC },
         include_soon: { type: 'boolean', description: SOON_DESC },
+        include_weekends: { type: 'boolean', description: WEEKEND_DESC },
       },
     },
     run: runCheckAvailability,

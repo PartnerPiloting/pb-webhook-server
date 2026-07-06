@@ -44,6 +44,7 @@ const AGENT_TOOLS = [
         rangeHint: { type: 'string', description: 'Optional note about what Guy asked for, e.g. "next week" or "mornings only". Informational; you still filter the returned days yourself.' },
         includeLunch: { type: 'boolean', description: 'Set true ONLY when Guy explicitly wants a lunch-time meeting — then the held-back 12:00–12:45 slots are included. Leave unset/false otherwise.' },
         includeSoon: { type: 'boolean', description: 'Set true ONLY when Guy explicitly asks for today or tomorrow (e.g. "tomorrow\'s fine") — then those days are included. Normally the system holds back everything before the day after tomorrow (his one-clear-day rule). Times already in the past never appear regardless.' },
+        includeWeekends: { type: 'boolean', description: 'Set true ONLY when Guy explicitly wants a weekend meeting — weekdays-only is enforced otherwise.' },
       },
     },
   },
@@ -85,6 +86,7 @@ const AGENT_TOOLS = [
         outro: { type: 'string', description: 'Closing line(s) after the times, e.g. "Just let me know what suits and I\'ll send a Zoom link."' },
         includeLunch: { type: 'boolean', description: 'Set true ONLY when Guy explicitly wants to offer a lunch-time slot — otherwise lunch (12:00–12:45) is dropped from the list.' },
         includeSoon: { type: 'boolean', description: 'Set true ONLY when Guy explicitly asked for today/tomorrow — otherwise slots before the day after tomorrow are dropped (his one-clear-day rule). Past times are always dropped.' },
+        includeWeekends: { type: 'boolean', description: 'Set true ONLY when Guy explicitly wants a weekend slot — otherwise weekend slots are dropped.' },
       },
       required: ['slotTimes'],
     },
@@ -221,7 +223,7 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
       // The shared pipeline (wingguyCalendar.filterAvailability) enforces ALL the offer rules in one
       // place — hours bounds, lunch hold, no past/too-soon days (includeSoon lifts notice only), the
       // daily meeting cap — and labels each slot exactly as it will read in the lead's timezone.
-      return wingguyCalendar.filterAvailability(avail, prefs, { includeLunch: input.includeLunch, includeSoon: input.includeSoon });
+      return wingguyCalendar.filterAvailability(avail, prefs, { includeLunch: input.includeLunch, includeSoon: input.includeSoon, includeWeekends: input.includeWeekends });
     }
     if (name === 'propose_times') {
       // CODE-OWNED time list: enforce order + Guy's hours + soft lunch-skip + lead-timezone formatting,
@@ -239,6 +241,7 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
         if (isNaN(Date.parse(iso))) { dropped.push({ iso, why: 'invalid' }); continue; }
         if (Date.parse(iso) <= nowMs) { dropped.push({ iso, why: 'already in the past' }); continue; }
         if (dateStrInTz(iso, tz) < earliestDate) { dropped.push({ iso, why: 'too soon - Guy gives at least one clear day\'s notice (set includeSoon only if he explicitly asked for today/tomorrow)' }); continue; }
+        if (!input.includeWeekends && prefs.excludeWeekends && wingguyCalendar.isWeekendInTz(iso, tz)) { dropped.push({ iso, why: 'weekend - weekdays only unless Guy explicitly asks' }); continue; }
         const cMin = minutesInTz(iso, tz);
         if (cMin == null || cMin < eMin || cMin > lMin) { dropped.push({ iso, why: 'outside your booking hours' }); continue; }
         if (!input.includeLunch && inLunch(iso, tz, prefs, len)) { dropped.push({ iso, why: 'lunch hold' }); continue; }
