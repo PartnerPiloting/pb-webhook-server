@@ -352,19 +352,30 @@ async function deleteOfferHolds(coach, { leadName }) {
 }
 
 /**
- * Place one HOLD event per offered slot (replacing any earlier holds for the same lead, so a
- * re-offer refreshes rather than stacks). Attendee-less — no email goes to anyone. Never throws:
- * holds are protection, not a precondition, so a failure must never break the draft.
+ * Place one HOLD event per offered slot. Holds ACCUMULATE — a new offer never deletes a lead's
+ * earlier holds, because every un-lapsed offer the lead has received is still a live promise
+ * (2026-07-06: the original "refresh = delete + recreate" design deleted Rebecca's holds when a
+ * follow-up offer was drafted, and her still-promised Friday slot was offered to Sarah one minute
+ * later). Duplicate start-times are skipped; past slots are never held; booking clears ALL the
+ * lead's holds; unbooked holds expire as their times pass. Attendee-less — no email goes to anyone.
+ * Never throws: holds are protection, not a precondition, so a failure must never break the draft.
  */
 async function createOfferHolds(coach, { leadName, slotISOs, durationMins }) {
   try {
     const prefs = getBookingPrefs(coach.clientId);
     const len = Number(durationMins) > 0 ? Number(durationMins) : (prefs.meetingLengthMins || 30);
-    await deleteOfferHolds(coach, { leadName });
+    let existing = [];
+    try {
+      existing = (await findOfferHolds(coach, { leadName })).map((h) => new Date(h.start).getTime());
+    } catch (e) {
+      console.warn(`[wingguyCalendar] hold pre-read failed for "${leadName}" (creating anyway): ${e.message}`);
+    }
     let created = 0;
     for (const iso of (Array.isArray(slotISOs) ? slotISOs : [])) {
       const start = new Date(iso);
       if (isNaN(start.getTime())) continue;
+      if (start.getTime() <= Date.now()) continue;               // never hold a past slot
+      if (existing.includes(start.getTime())) continue;          // already held for this lead
       const r = await createCalendarEvent(coachForHolds(coach), {
         title: holdTitle(leadName),
         description: `Slot offered to ${leadName || 'a lead'} on LinkedIn (Wingguy) - awaiting their reply. Cleared automatically when the meeting books; delete manually if the offer lapses.`,

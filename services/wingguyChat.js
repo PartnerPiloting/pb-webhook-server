@@ -15,6 +15,7 @@
 // `deps` lets the test inject stubs (e.g. a no-op book) so it can prove the brain without creating
 // real events.
 
+const { DateTime } = require('luxon');
 const { getAnthropicClient } = require('../config/anthropicClient');
 const { WINGGUY_VOICE, WINGGUY_AGENT_INSTRUCTIONS } = require('./../config/wingguyTemplates');
 const { getBookingPrefs } = require('../config/wingguyBookingPrefs');
@@ -45,6 +46,7 @@ const AGENT_TOOLS = [
       properties: {
         rangeHint: { type: 'string', description: 'Optional note about what Guy asked for, e.g. "next week" or "mornings only". Informational; you still filter the returned days yourself.' },
         includeLunch: { type: 'boolean', description: 'Set true ONLY when Guy explicitly wants a lunch-time meeting — then the held-back 12:00–12:45 slots are included. Leave unset/false otherwise.' },
+        includeSoon: { type: 'boolean', description: 'Set true ONLY when Guy explicitly asks for today or tomorrow (e.g. "tomorrow\'s fine") — then those days are included. Normally the system holds back everything before the day after tomorrow (his one-clear-day rule). Times already in the past never appear regardless.' },
       },
     },
   },
@@ -85,6 +87,7 @@ const AGENT_TOOLS = [
         slotTimes: { type: 'array', items: { type: 'string' }, description: 'ISO start times chosen from check_availability (the slot "time" field).' },
         outro: { type: 'string', description: 'Closing line(s) after the times, e.g. "Just let me know what suits and I\'ll send a Zoom link."' },
         includeLunch: { type: 'boolean', description: 'Set true ONLY when Guy explicitly wants to offer a lunch-time slot — otherwise lunch (12:00–12:45) is dropped from the list.' },
+        includeSoon: { type: 'boolean', description: 'Set true ONLY when Guy explicitly asked for today/tomorrow — otherwise slots before the day after tomorrow are dropped (his one-clear-day rule). Past times are always dropped.' },
       },
       required: ['slotTimes'],
     },
@@ -202,6 +205,18 @@ function inLunch(iso, tz, prefs, len) {
   if (cMin == null) return false;
   return cMin < lunchEnd && (cMin + (len || 0)) > lunchStart;
 }
+// Earliest date (yyyy-MM-dd, coach tz) a slot may fall on. Guy's "one CLEAR day's notice" rule was a
+// soft instruction the model could (and did, 2026-07-06: Sarah was offered a time that had ALREADY
+// PASSED that morning) ignore — now code enforces it. includeSoon (Guy explicitly asks for
+// today/tomorrow) lifts the notice rule; nothing ever lifts the not-in-the-past rule.
+function earliestOfferDate(tz, prefs, includeSoon) {
+  const offsetDays = includeSoon ? 0 : ((Number.isFinite(prefs.minLeadDays) ? prefs.minLeadDays : 1) + 1);
+  return DateTime.now().setZone(tz).plus({ days: offsetDays }).toFormat('yyyy-MM-dd');
+}
+function dateStrInTz(iso, tz) {
+  return DateTime.fromMillis(Date.parse(iso)).setZone(tz).toFormat('yyyy-MM-dd');
+}
+
 // Format a slot for the LinkedIn message in the lead's timezone, Guy's style: "Wed 1 July, 1:30 pm".
 function fmtSlot(iso, tz) {
   const d = new Date(iso);
@@ -261,10 +276,15 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
       const aTz = avail.yourTimezone || 'Australia/Brisbane';
       const leadTz = avail.leadTimezone || aTz;
       const aLen = prefs.meetingLengthMins || 30;
+      const nowMs = Date.now();
+      const earliestDate = earliestOfferDate(aTz, prefs, input.includeSoon);
       const days = (avail.days || [])
+        // HARD notice rule: no days before the-day-after-tomorrow (Guy's one-clear-day rule) unless Guy
+        // explicitly asked for sooner (includeSoon) — and never a slot that has already passed.
+        .filter((d) => String(d.date || '') >= earliestDate)
         // soft lunch hold is stripped HERE too (not just in propose_times) so the model never even sees a coach-lunch
         // slot as free — UNLESS Guy explicitly asked for a lunch-time meeting (input.includeLunch), then surface them.
-        .map((d) => ({ ...d, freeSlots: (d.freeSlots || []).filter((s) => withinBounds(s, eMin, lMin) && (input.includeLunch || !inLunch(s.time, aTz, prefs, aLen))) }))
+        .map((d) => ({ ...d, freeSlots: (d.freeSlots || []).filter((s) => Date.parse(s.time) > nowMs && withinBounds(s, eMin, lMin) && (input.includeLunch || !inLunch(s.time, aTz, prefs, aLen))) }))
         .filter((d) => d.freeSlots.length)
         .slice(0, AVAIL_MAX_DAYS)
         // `label` = EXACTLY how this slot will read in the message (lead tz, same fmtSlot as propose_times).
@@ -284,8 +304,12 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
       const len = prefs.meetingLengthMins || 30;
       const dropped = [];
       const kept = [];
+      const nowMs = Date.now();
+      const earliestDate = earliestOfferDate(tz, prefs, input.includeSoon);
       for (const iso of (Array.isArray(input.slotTimes) ? input.slotTimes : [])) {
         if (isNaN(Date.parse(iso))) { dropped.push({ iso, why: 'invalid' }); continue; }
+        if (Date.parse(iso) <= nowMs) { dropped.push({ iso, why: 'already in the past' }); continue; }
+        if (dateStrInTz(iso, tz) < earliestDate) { dropped.push({ iso, why: 'too soon - Guy gives at least one clear day\'s notice (set includeSoon only if he explicitly asked for today/tomorrow)' }); continue; }
         const cMin = minutesInTz(iso, tz);
         if (cMin == null || cMin < eMin || cMin > lMin) { dropped.push({ iso, why: 'outside your booking hours' }); continue; }
         if (!input.includeLunch && inLunch(iso, tz, prefs, len)) { dropped.push({ iso, why: 'lunch hold' }); continue; }

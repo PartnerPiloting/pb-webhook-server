@@ -34,14 +34,23 @@ check('9:30 am is NOT lunch', () => assert.strictEqual(inLunch(NINE30, 'Australi
 (async () => {
   console.log('\nEnd-to-end — a same-timezone lead is NEVER offered the coach-noon slot:');
 
+  // Dates must be DYNAMIC (≥3 days out) — code now hard-drops past and too-soon slots, so a
+  // hardcoded date would make this test rot the day after it passes.
+  const { DateTime } = require('luxon');
+  const day = DateTime.now().setZone('Australia/Brisbane').plus({ days: 3 }).startOf('day');
+  const slotAt = (h, m) => day.set({ hour: h, minute: m }).toUTC().toISO();
+  const dNINE30 = slotAt(9, 30);
+  const dNOON = slotAt(12, 0);
+  const dHALF1 = slotAt(13, 30);
+
   // Availability returns a day that INCLUDES the noon slot; both sides on Brisbane (same clock).
   const fakeAvail = async () => ({
     yourTimezone: 'Australia/Brisbane',
     leadTimezone: 'Australia/Brisbane',
-    days: [{ date: '2026-07-09', day: 'Thu', freeSlots: [
-      { time: NINE30, display: '9:30 am', leadDisplay: '9:30 am' },
-      { time: NOON,   display: '12:00 pm', leadDisplay: '12:00 pm' },
-      { time: HALF1,  display: '1:30 pm', leadDisplay: '1:30 pm' },
+    days: [{ date: day.toFormat('yyyy-MM-dd'), day: day.toFormat('ccc'), freeSlots: [
+      { time: dNINE30, display: '9:30 am', leadDisplay: '9:30 am' },
+      { time: dNOON,   display: '12:00 pm', leadDisplay: '12:00 pm' },
+      { time: dHALF1,  display: '1:30 pm', leadDisplay: '1:30 pm' },
     ] }],
   });
 
@@ -52,7 +61,7 @@ check('9:30 am is NOT lunch', () => assert.strictEqual(inLunch(NINE30, 'Australi
     call++;
     if (call === 1) return { stop_reason: 'tool_use', content: [{ type: 'tool_use', id: 't1', name: 'check_availability', input: {} }] };
     if (call === 2) return { stop_reason: 'tool_use', content: [{ type: 'tool_use', id: 't2', name: 'propose_times',
-      input: { intro: 'A few times that suit:', slotTimes: [NINE30, NOON, HALF1], outro: 'Let me know.' } }] };
+      input: { intro: 'A few times that suit:', slotTimes: [dNINE30, dNOON, dHALF1], outro: 'Let me know.' } }] };
     return { stop_reason: 'end_turn', content: [{ type: 'text', text: 'done' }] };
   } } };
 

@@ -23,9 +23,15 @@ check('an ordinary meeting title is not a hold', () => assert.strictEqual(isHold
 check('matching is case-insensitive', () => assert.ok(isHoldForLead('HOLD: rebecca marlor (Wingguy offer - do not book over)', 'Rebecca Marlor')));
 check('no lead name never matches', () => assert.strictEqual(isHoldForLead(holdTitle('Rebecca Marlor'), ''), false));
 
-const TEN30 = '2026-07-09T10:30:00+10:00';
-const ELEVEN = '2026-07-10T11:00:00+10:00';
-const TWO = '2026-07-13T14:00:00+10:00';
+// Dynamic dates — code hard-drops past/too-soon slots, so hardcoded dates would rot.
+const { DateTime } = require('luxon');
+const bris = () => DateTime.now().setZone('Australia/Brisbane');
+const at = (plusDays, h, m) => bris().plus({ days: plusDays }).set({ hour: h, minute: m, second: 0, millisecond: 0 }).toUTC().toISO();
+const TEN30 = at(3, 10, 30);
+const ELEVEN = at(4, 11, 0);
+const TWO = at(7, 14, 0);
+const PAST = at(0, Math.max(bris().hour - 1, 0), 0);  // earlier today
+const TOMORROW = at(1, 11, 0);                        // inside hours, but breaks the one-clear-day rule
 
 // One fake-model turn that calls a single tool then ends.
 function fakeClientForTool(name, input) {
@@ -58,6 +64,76 @@ function fakeClientForTool(name, input) {
     check('a draft was produced', () => assert.ok(res && res.draft));
     check('holds were requested for the lead', () => assert.strictEqual(holdsCall && holdsCall.leadName, 'Rebecca Marlor'));
     check('holds cover exactly the offered slots', () => assert.deepStrictEqual(holdsCall && holdsCall.slotISOs, [ELEVEN, TWO]));
+  }
+
+  console.log('\npropose_times drops past and too-soon slots (the Sarah 2026-07-06 bug):');
+  {
+    let holdsCall = null;
+    const res = await runWingguyChatTurn({
+      coach: { clientId: 'Guy-Wilson', clientName: 'Guy' },
+      profile: { name: 'Sarah Cann', location: 'Brisbane' },
+      messages: [{ role: 'user', content: 'offer her some times' }],
+      leadEmail: 'sarah@example.com',
+      deps: {
+        client: fakeClientForTool('propose_times', { intro: 'Great, Sarah -', slotTimes: [PAST, TOMORROW, ELEVEN], outro: 'Let me know.' }),
+        getAvailabilityForCoach: async () => ({ yourTimezone: 'Australia/Brisbane', leadTimezone: 'Australia/Brisbane', days: [] }),
+        createOfferHolds: async (coach, args) => { holdsCall = args; return { ok: true, created: args.slotISOs.length }; },
+        deleteOfferHolds: async () => ({ removed: 0 }),
+      },
+    });
+    await new Promise((r) => setImmediate(r));
+    check('a draft was still produced (one valid slot)', () => assert.ok(res && res.draft));
+    check('the past slot is NOT in the holds', () => assert.ok(holdsCall && !holdsCall.slotISOs.includes(PAST), JSON.stringify(holdsCall)));
+    check('the tomorrow slot is NOT in the holds (one-clear-day rule)', () => assert.ok(holdsCall && !holdsCall.slotISOs.includes(TOMORROW), JSON.stringify(holdsCall)));
+    check('only the valid slot survives', () => assert.deepStrictEqual(holdsCall && holdsCall.slotISOs, [ELEVEN]));
+  }
+  {
+    // includeSoon (Guy explicitly asked for tomorrow) lifts the notice rule — but never the past rule.
+    let holdsCall = null;
+    await runWingguyChatTurn({
+      coach: { clientId: 'Guy-Wilson', clientName: 'Guy' },
+      profile: { name: 'Sarah Cann', location: 'Brisbane' },
+      messages: [{ role: 'user', content: 'she said tomorrow is fine' }],
+      leadEmail: 'sarah@example.com',
+      deps: {
+        client: fakeClientForTool('propose_times', { intro: 'Great -', slotTimes: [PAST, TOMORROW], outro: 'Let me know.', includeSoon: true }),
+        getAvailabilityForCoach: async () => ({ yourTimezone: 'Australia/Brisbane', leadTimezone: 'Australia/Brisbane', days: [] }),
+        createOfferHolds: async (coach, args) => { holdsCall = args; return { ok: true, created: args.slotISOs.length }; },
+        deleteOfferHolds: async () => ({ removed: 0 }),
+      },
+    });
+    await new Promise((r) => setImmediate(r));
+    check('includeSoon lets tomorrow through', () => assert.deepStrictEqual(holdsCall && holdsCall.slotISOs, [TOMORROW]));
+  }
+
+  console.log('\ncheck_availability strips past/too-soon days at the source:');
+  {
+    const today = bris().toFormat('yyyy-MM-dd');
+    const tomorrow = bris().plus({ days: 1 }).toFormat('yyyy-MM-dd');
+    const okDay = bris().plus({ days: 4 }).toFormat('yyyy-MM-dd');
+    const res = await runWingguyChatTurn({
+      coach: { clientId: 'Guy-Wilson', clientName: 'Guy' },
+      profile: { name: 'Sarah Cann', location: 'Brisbane' },
+      messages: [{ role: 'user', content: 'what have we got?' }],
+      leadEmail: 'sarah@example.com',
+      deps: {
+        client: fakeClientForTool('check_availability', {}),
+        getAvailabilityForCoach: async () => ({
+          yourTimezone: 'Australia/Brisbane', leadTimezone: 'Australia/Brisbane',
+          days: [
+            { date: today, day: 'Mon', freeSlots: [{ time: at(0, 15, 0), display: '3:00 pm', leadDisplay: '3:00 pm' }] },
+            { date: tomorrow, day: 'Tue', freeSlots: [{ time: TOMORROW, display: '11:00 am', leadDisplay: '11:00 am' }] },
+            { date: okDay, day: 'Fri', freeSlots: [{ time: ELEVEN, display: '11:00 am', leadDisplay: '11:00 am' }] },
+          ],
+        }),
+        createOfferHolds: async () => ({ ok: true, created: 0 }),
+        deleteOfferHolds: async () => ({ removed: 0 }),
+      },
+    });
+    const toolResultMsg = (res.messages || []).find((m) => m.role === 'user' && Array.isArray(m.content) && m.content[0] && m.content[0].type === 'tool_result');
+    const availResult = toolResultMsg ? JSON.parse(toolResultMsg.content[0].content) : null;
+    check('today and tomorrow are gone from availability', () => assert.ok(availResult && availResult.days.every((d) => d.date >= bris().plus({ days: 2 }).toFormat('yyyy-MM-dd')), JSON.stringify(availResult && availResult.days.map((d) => d.date))));
+    check('the valid future day survives', () => assert.ok(availResult && availResult.days.some((d) => d.date === okDay)));
   }
 
   console.log('\nbook_meeting vs holds:');

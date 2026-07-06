@@ -3075,6 +3075,21 @@ var reverts reads only as a fire extinguisher. Boat-burning after ~2 weeks stabl
   2pm) were hand-held on the calendar the same hour, pre-deploy. ⚠ Small known edge: a lead's own
   holds make those slots look busy to check_availability, so a re-offer to the SAME lead picks fresh
   slots rather than repeating held ones — acceptable, revisit if it annoys.
+- **★ SAME-DAY FOLLOW-UP (the Sarah draft, ~30 min after holds shipped): TWO more fixes.**
+  (1) Sarah was offered **Mon 6 July 10:30am — a time that had ALREADY PASSED that morning** — the
+  "never today/tomorrow" one-clear-day rule was prompt-only and the model blew it, and nothing in
+  code strips past slots (availability's dates[] starts at TODAY). Now CODE-ENFORCED at both ends
+  (check_availability drops days < day-after-tomorrow + slots < now; propose_times backstops the
+  same): `includeSoon:true` on both tools lifts the notice rule when Guy explicitly asks for
+  today/tomorrow; NOTHING lifts the past rule. (2) Sarah was offered **Rebecca's held Fri 11am** —
+  because createOfferHolds' original refresh design (delete lead's old holds, place new) DELETED
+  Rebecca's manual holds when her follow-up offer was drafted at 02:16Z, exposing the still-promised
+  Friday slot to Sarah's draft at 02:17Z. Holds now ACCUMULATE (dedupe by start time, never delete on
+  re-offer — every un-lapsed sent offer is a live promise); booking still clears all of the lead's
+  holds; past slots are never held. Calendar state hand-repaired same hour (Sarah's bad holds
+  removed, Rebecca's Fri 11am + Mon 2pm re-protected). Tests: offer-holds suite grown to 20 checks
+  (incl. past/too-soon drops + includeSoon), lunch-hold e2e re-dated DYNAMIC (its hardcoded 9 July
+  slots would have started failing the past-filter on 10 July).
 - **★ BANKED NEXT SLICE — "ONE BOOKING DOOR" (the proper fix; do as its own sitting, after the
   flip):** expose the panel's proven booking trio on /mcp2 so claude.ai chats book through Wingguy,
   not the raw calendar connector — check_availability + check_time + book_meeting as connector tools
