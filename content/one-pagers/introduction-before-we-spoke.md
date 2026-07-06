@@ -1,13 +1,13 @@
 ---
 slug: introduction-before-we-spoke
-title: The introduction I made before we'd even spoken
+title: Does it really work?
 series: network-building-rethought
 order: 15
 status: final
 audience: outsider-safe
 ---
 
-# The introduction I made before we'd even spoken
+# Does it really work?
 
 A fortnight ago I introduced two people to each other. Nothing unusual about that - except that one of them, I'd never actually spoken to myself.
 
