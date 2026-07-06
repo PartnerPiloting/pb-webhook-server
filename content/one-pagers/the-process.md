@@ -19,7 +19,7 @@ Don't try to master it today. A map doesn't teach you the terrain - it just show
 ## 1. Choose who you'll actively engage with
 
 The old way is to turn up wherever there's a room and work with whoever happens to be there. This flips it: you decide, on purpose, who belongs in your network before you meet a soul - people positioned to trust and recommend you, chosen for where they sit and how they think. Here's the real game-changer, though: the best of them won't just recommend you - they'll go on to build their own networks the same way you are, so a handful of the right relationships quietly multiplies into many. This was never a solo sport, and the later steps are where it pays off.
-→ *Choose who you want in your network*
+→ *Choose, Don't Collect*
 
 ## 2. Find them on LinkedIn
 

@@ -1,14 +1,14 @@
 ---
 slug: choose-the-room
-title: Choose who you want in your network - don't let somebody else decide it for you
-dek: "Step one of the process - and the decision most professionals never realise they're allowed to make."
+title: Choose, Don't Collect
+dek: "This isn't bulk networking. You're choosing people through real conversation - almost interviewing them - for how they think and whether they'll build their own network too."
 series: network-building-rethought
 order: 30
 status: final
 audience: outsider-safe
 ---
 
-# Choose who you want in your network - don't let somebody else decide it for you
+# Choose, Don't Collect
 
 Think about the last networking event you went to. Who was in the room?
 
@@ -38,4 +38,4 @@ So here's the question to sit with this week: if you could put twenty people in 
 
 Hold that picture. The next question - how you actually reach those people, one by one, starting from a blinking cursor in a search box - is where this gets practical.
 
-<!-- Approved final by Guy 2026-07-06 ("looks perfect to me, let's approve it just as we have it"). Retitled same day (was "Choose the room" - room stays as internal motif). Light-touch on breakfast-networking scar tissue confirmed OK (full treatment stays with #20). The builder-vs-big-network question raised during review became its own piece (#67). -->
+<!-- Approved final by Guy 2026-07-06 ("looks perfect to me, let's approve it just as we have it"). Retitled twice on 2026-07-06: "Choose the room" -> "Choose who you want in your network..." -> "Choose, Don't Collect" (choose-vs-collect = active selection, not bulk accumulation; room stays as internal motif; slug kept as choose-the-room). Light-touch on breakfast-networking scar tissue confirmed OK (full treatment stays with #20). The builder-vs-big-network question raised during review became its own piece (#67). -->

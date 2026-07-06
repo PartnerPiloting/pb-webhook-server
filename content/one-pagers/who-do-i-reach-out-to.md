@@ -14,7 +14,7 @@ You've decided to build your network on purpose. You've even got a rough picture
 
 What do I actually type?
 
-(If you've jumped straight to this piece, good - you're at the search box and you want an answer. You'll get one. Just know it leans on an idea from "Choose who you want in your network" - two minutes there, and everything below lands twice as hard.)
+(If you've jumped straight to this piece, good - you're at the search box and you want an answer. You'll get one. Just know it leans on an idea from "Choose, Don't Collect" - two minutes there, and everything below lands twice as hard.)
 
 Here's what almost everyone types: their buyer. The accountant searches for small business owners. The insurance broker searches for people who look like they need insurance. It feels obvious - search for the people who might pay you. And the results are, well, fine: a long list of strangers who might buy something, someday, who owe you nothing, and who get connection requests exactly like yours every week from everyone else running the same search. That's not a network. That's a prospect list wearing a network's clothes.
 
