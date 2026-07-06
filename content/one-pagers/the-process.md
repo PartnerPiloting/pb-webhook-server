@@ -43,7 +43,7 @@ Somewhere in that first exchange - often right there in the thank-you - a quick 
 
 ## 6. Have the discovery call
 
-This is the easiest call in the world once you know what it's for: learning about them, not selling yourself. You find out what they do, how they think, and who they might one day connect you with. Nothing to pitch means nothing to be nervous about.
+This is the easiest call in the world once you know what it's for: learning about them, not selling yourself. You find out what they do, how they think, and who you might one day connect them with - and, equally, who they might connect you with. Nothing to pitch means nothing to be nervous about.
 → *What your first discovery call is actually for*
 
 ## 7. Give yourself a reason to follow up
