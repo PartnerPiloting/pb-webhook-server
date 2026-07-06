@@ -23,7 +23,7 @@ The old way is to turn up wherever there's a room and work with whoever happens 
 
 ## 2. Find them, and reach out
 
-Now you go looking. LinkedIn lets you search the whole professional world and pull out exactly those people, and a short, genuine note goes out with the request - about their work, not yours. Choose well and a good share say yes; a healthy connection rate is your first sign the room was well chosen.
+Reaching out starts on LinkedIn, and it's really two filters working together. First, the hard criteria LinkedIn can see - role, industry, years of experience - narrow the whole professional world down to the right kind of people. Then a second pass weighs the thing that matters most, attitude, so you know who's genuinely worth your energy. A short, genuine note goes out with the request - about their work, not yours - and if you've chosen well, a good share say yes.
 → *Who do I even reach out to?*
 
 ## 3. Say a proper thank-you

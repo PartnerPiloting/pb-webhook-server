@@ -114,6 +114,13 @@ Series-relevant material living in the Wingguy doc that the arc didn't yet captu
 - **(B) A small dedicated piece ~#33** - "the connection rate / your first scoreboard". Penny-drop candidate: *this is the first number in your business that goes UP when you get pickier, not down* - the earliest proof the room was well chosen. Natural home for the 40%/60-70% figures and the reassurance ("you can tell within a week if it's working"). Also the natural place to say "you've selected the people; now the system sends the request" - the step Guy named as the missing puzzle piece.
 - **Recommendation:** lean **B** if the connection rate earns its own penny-drop (I think the "pickier → higher, not lower" reframe does), slotted #33 between reach-out and thank-you; fall back to **A** if we want to hold the launch set lean. Either way, #35's opening currently assumes the connection already happened - it needs the hand-off line regardless.
 
+## Selection mechanics - two filters, two paths (Guy, 2026-07-06; for #32, lightly on map #12)
+
+Reaching out on LinkedIn is the **FIRST filter** - the hard criteria LinkedIn can see (role, industry, years of experience). Then attitude-based **SCORING is the second filter** (Guy's scoring attributes = all about attitude). Two operational paths after the first filter:
+- **Path 1 - score then contact:** score the LinkedIn-filtered set, reach out only to the top scorers. Selection front-loaded - attitude decides who you even contact.
+- **Path 2 - contact then score to prioritise:** reach out off the LinkedIn filter; everyone gets scored; the score decides who gets the personalised thanks-for-connecting effort (low scorer → maybe skip the personal thank-you). Selection applied at the effort stage.
+Maps onto #30's "position then attitude" (LinkedIn = position, score = attitude). **MAP (#12) carries only the two-filter SHAPE** (shallow + prospect-safe - don't expose "skip low scorers" on the shared page); the two explicit roads belong in **#32**, and tie to the parked connection-rate/#33 decision + #35's "who's worth the 20 seconds".
+
 ## Launch threshold (2026-07-03)
 
 The drip does NOT start until every step on the map links to a real piece - email #1's footer promises "the whole process on one page," and coming-soon links turn the wow into a shrug (no second first-click). Minimum launch inventory (~9): the map (#12), feast-or-famine (#10), Daniel story (#15), and the seven journey-step pieces (#30, #32, #35, #37, #45, #40, #70). Post-launch arrivals: #47 craft companion, #20, #50, #60 - nothing on the map promises them. Engine gets built in parallel; both finish together.
