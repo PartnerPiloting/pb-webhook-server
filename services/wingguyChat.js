@@ -21,13 +21,17 @@ const { getBookingPrefs } = require('../config/wingguyBookingPrefs');
 const { getVoicePrefs } = require('../config/wingguyVoicePrefs');
 const wingguyCalendar = require('./wingguyCalendar');
 const wingguyLeads = require('./wingguyLeads');
+const wingguyRules = require('./wingguyRulesMcp');
 
 const MODEL_ID = process.env.WINGGUY_DRAFT_MODEL_ID || 'claude-sonnet-5';
 // Disable thinking for this agentic booking chat: it's latency-sensitive (interactive panel) and the tool
 // loop drafts/books rather than deep-reasons. Also the seam that makes thinking-by-default models (Sonnet 5)
 // usable here without the empty-turn failure. Harmless on Sonnet 4.6 (no default thinking).
 const CHAT_THINKING = { type: 'disabled' };
-const CHAT_MAX_TOKENS = 1500;
+// 3000 (was 1500, 2026-07-06): a rule_propose call has to carry a full edited rule BODY in its
+// tool input — the old cap could truncate mid-proposal on the longer rules. A cap, not a target:
+// ordinary draft/book turns are unaffected.
+const CHAT_MAX_TOKENS = 3000;
 const MAX_TOOL_ITERATIONS = 8;     // safety cap on the agent loop
 const AVAIL_MAX_DAYS = 14;         // bound the availability tool result (tokens) — ~2 working weeks
 const AVAIL_MAX_SLOTS_PER_DAY = 8;
@@ -107,6 +111,12 @@ const AGENT_TOOLS = [
       },
     },
   },
+  // Wingguy rules-store door (list/get/propose/commit/revert/variables) — the SAME shared
+  // executors the /mcp and /mcp2 connectors use (services/wingguyRulesMcp.js TOOL_DEFS), so the
+  // panel can change its own rulebook instead of telling Guy "I can't" (his ask, 2026-07-06).
+  // The propose→commit split keeps the human-confirm gate: commit needs a proposal's
+  // expected_version, and the instructions require Guy's explicit yes in chat first.
+  ...wingguyRules.TOOL_DEFS.map((d) => ({ name: d.name, description: d.description, input_schema: d.jsonSchema })),
 ];
 
 // Pick the exact sign-off line for THIS draft (CODE — deterministic; the model just uses it verbatim).
@@ -374,6 +384,11 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
     if (name === 'propose_message') {
       currentDraft = String((input && input.message) || '').trim();
       return { ok: true };
+    }
+    if (name.startsWith('wingguy_')) {
+      // Rules-store door — shared executors (legacyToolCall returns MCP-shaped {content,isError}).
+      const r = await wingguyRules.legacyToolCall(name, input);
+      if (r) return { ok: !r.isError, text: (r.content && r.content[0] && r.content[0].text) || '' };
     }
     return { ok: false, error: `unknown tool ${name}` };
   };

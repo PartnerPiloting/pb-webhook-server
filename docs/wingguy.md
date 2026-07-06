@@ -3027,6 +3027,22 @@ var reverts reads only as a fire extinguisher. Boat-burning after ~2 weeks stabl
 
 ## ▶ You are here / next pick-up
 
+**▶▶ SESSION 2026-07-06 (mid-shadow-week, from a live Rebecca thread): the PANEL got the rules door.**
+- **The panel chat can now change its own rulebook.** Guy hit the gap live: the panel said "I can't
+  update my rules" (true — `wingguyChat.js` had only the 6 draft/book tools). Fix = the 6 rules-store
+  tools (`wingguy_rules_list/get/propose/commit/revert/variables`) wired into `AGENT_TOOLS` from the
+  SAME shared `TOOL_DEFS` in `services/wingguyRulesMcp.js` (one definition, now THREE doors: /mcp,
+  /mcp2, panel), + an UPDATE MY RULES block in `WINGGUY_AGENT_INSTRUCTIONS` (propose → show Guy →
+  explicit yes → commit; never say "I can't"). `CHAT_MAX_TOKENS` 1500→3000 so a proposal can carry a
+  full rule body. Lunch-hold e2e + rules-source suites green with the expanded tool list.
+- **First real through-the-door edit is banked:** `booking-defaults` → **v2** (client layer) — the
+  time-offer INTRO must carry a genuine reaction to the lead's reply (acknowledge + hook BEFORE the
+  slots), never a bare "let's lock something in" line. Same requirement mirrored into the config-mode
+  SUGGEST TIMES harness line (`config/wingguyTemplates.js`) so it's live NOW, pre-flip — and the
+  harness line survives the flip (SUGGEST TIMES is HARNESS/code-owned; booking-defaults carries the
+  voice side in store mode). Template layer NOT touched — de-personalise this into the template when
+  it proves out.
+
 **▶▶ SESSION CLOSE 2026-07-05 (the STEP-2 sitting: "rules-source seam SHIPPED DARK — shadow week starts
 now") — START THE NEXT CHAT HERE.**
 - **Step 2 is BUILT and LIVE (dark):** `services/wingguyRulesSource.js` + both consumers rewired
