@@ -142,6 +142,17 @@ The soft call suggestion ("worth a quick Zoom in the next couple of weeks?") rid
 
 The discovery call isn't just "who can they connect ME with" - it's explicitly reciprocal: **who you might connect THEM with, and equally who they might connect you with.** Lead with the giving direction (give-first embodied). Map step 6 updated to carry both directions; #45 should make the two-way frame central.
 
+## Discovery-call playbook - the full craft (Guy, 2026-07-06; for #45 paradigm + #47 what-to-say)
+
+The discovery call is where new people go OFF THE RAILS (anxiety → they pitch / over-explain themselves). The antidotes, straight from Guy:
+- **★ Questions are the answers.** The core key: ask questions. You ask, they talk - so you don't have to explain yourself too soon. (This is the ONE tip promoted to the map, step 6.)
+- **Two parts to the first call:** (1) CONNECTION first - smile, "how long have you been there?", find something on their profile to talk about; an icebreaker, not too long / not too short. (2) THEN questions.
+- **If you're "not doing anything" yet (a valid position) - the script:** *"I'm connecting people because I'm a big believer in networking. I'm interested in what other people do. I want to find the gaps in the marketplace. Right now I've got a full-time job, but I don't plan for that to be forever; my experience is in X, so I think I'll head that direction."* Dissolves the "but I have no business/offer yet" anxiety - an honest position is enough.
+- **They often offer to help** (give-first invites reciprocity).
+- **★ Two-call structure (bridges to #40 / step 7):** book the FIRST call for only ~30 min, make it ALL ABOUT THEM. Precisely because it was all about them, there's a natural reason for a SECOND call - now more about you. Second-call opener: *"last time you said X - I've been thinking about it since,"* or *"I've been thinking about people I might be able to introduce you to."* The all-about-them first call MANUFACTURES the reason to follow up - so #45/#47 hands straight into #40. Steps 6 and 7 are joined at the hip.
+
+MAP (#12) step 6 carries only the one hint ("questions are the answers, ask don't perform") to keep people on the rails; the full playbook lives in #45/#47 (shallow-map rule). Confirms the discovery call warrants BOTH pieces: **#45 = what it's FOR** (dissolve the dread), **#47 = what to SAY** (connection → questions → the no-business-yet script → the two-call structure).
+
 ## Launch threshold (2026-07-03)
 
 The drip does NOT start until every step on the map links to a real piece - email #1's footer promises "the whole process on one page," and coming-soon links turn the wow into a shrug (no second first-click). Minimum launch inventory (~9): the map (#12), feast-or-famine (#10), Daniel story (#15), and the seven journey-step pieces (#30, #32, #35, #37, #45, #40, #70). Post-launch arrivals: #47 craft companion, #20, #50, #60 - nothing on the map promises them. Engine gets built in parallel; both finish together.
