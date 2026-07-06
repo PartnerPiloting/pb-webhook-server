@@ -4,7 +4,7 @@ title: Who do I even reach out to?
 dek: "The cursor is blinking in the LinkedIn search box. Here's what to type - and the frame that makes the answer obvious."
 series: network-building-rethought
 order: 32
-status: draft
+status: final
 audience: outsider-safe
 ---
 
@@ -34,4 +34,4 @@ So this week, before you type anything: write one sentence describing the person
 
 The search finds them. What makes them take the call - and what you say in the twenty seconds after they connect - is where we go next.
 
-<!-- WIP notes: First draft 2026-07-06, not reviewed by Guy. Built from arc notes: pointy-end/search-box framing, trust-and-refer thesis, fractional worked example (300-char note, "they instantly get it - it's gold", node-signal line), "let me find out about what you do", waste-of-time objection, give-first congruence (wingguy.md), Alasdair's stats anonymised as "a colleague of mine" (180/22%/back-to-back). Jump-ahead rule applied: builds-on welcome pointer up front, compressed why carried in-body. Grapevine/seed-2-3-fractionals expansion deliberately left for #70. Ending = application (write the sentence, type THAT) + tease into #35. Upstream-of-scoring point kept implicit (search thesis = human decision) - system/tooling never mentioned, outsider-safe. -->
+<!-- Approved final by Guy 2026-07-06 ("step 2 is great now"). First draft 2026-07-06. Built from arc notes: pointy-end/search-box framing, trust-and-refer thesis, fractional worked example (300-char note, "they instantly get it - it's gold", node-signal line), "let me find out about what you do", waste-of-time objection, give-first congruence (wingguy.md), Alasdair's stats anonymised as "a colleague of mine" (180/22%/back-to-back). Jump-ahead rule applied: builds-on welcome pointer up front, compressed why carried in-body. Grapevine/seed-2-3-fractionals expansion deliberately left for #70. Ending = application (write the sentence, type THAT) + tease into #35. Upstream-of-scoring point kept implicit (search thesis = human decision) - system/tooling never mentioned, outsider-safe. -->
