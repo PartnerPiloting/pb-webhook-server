@@ -3106,6 +3106,19 @@ var reverts reads only as a fire extinguisher. Boat-burning after ~2 weeks stabl
   (Spread-the-week bullet + {{max_meetings_per_day}}=4 variable + manual-holds convention) so the
   rulebook finally carries what was config-only. Guy naming a time on a full day still books (his
   call — agent must mention the day's load). Suite renamed in spirit: 19 booking-guard checks green.
+- **★ TIMEZONE PLAYBOOK RECOVERED INTO THE RULEBOOK.** Guy suspected the ground-out chat-flow
+  timezone handling ("their time marked 'your time' in the message, my clock on the calendar,
+  QLD-vs-NSW winter/summer") had been lost — he was right about WHERE: it was never durably recorded.
+  The extension's copy lives in CODE (timezoneFromLocation.js IANA zones + both-side display strings
+  — working); the conversational playbook lived only in his old claude.ai chats/instructions, and the
+  Notion import excluded chat-tooling content, so the store had NOTHING — worse, booking-defaults
+  said times go "in the tenant's timezone" (the OPPOSITE of his practice; harmless same-tz, wrong
+  cross-tz). Fixed: **NEW rule `timezone-playbook` v1** (booking/scheduling — lead's tz first from
+  location; IANA-not-offsets with the QLD/NSW DST worked example; lead's clock in messages marked
+  "your time"; coach's clock on the calendar, never "compensate"; restate both sides before booking)
+  + **booking-defaults → v5** (both timezone bullets corrected, point at the playbook) + the config
+  TIMEZONES harness line now names the "your time" marker. The claude.ai BOOKING GUARDRAIL paste
+  block (reads booking rules through the door) pulls the playbook into every chat automatically.
 - **★ BANKED NEXT SLICE — "ONE BOOKING DOOR" (the proper fix; do as its own sitting, after the
   flip):** expose the panel's proven booking trio on /mcp2 so claude.ai chats book through Wingguy,
   not the raw calendar connector — check_availability + check_time + book_meeting as connector tools
