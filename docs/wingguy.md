@@ -3035,7 +3035,12 @@ client #1 onboards, de-personalise these into the TEMPLATE layer (the wording al
 {{variables}}, so it's mostly a copy-through; values stay per-tenant: preferred_start_time,
 max_meetings_per_day, earliest_meeting_time, timezone). Guy's framing 2026-07-06: "many of these
 rules would work for all of my clients — they'll have a choice over their preferred time windows
-once we read from the rulebook."
+once we read from the rulebook." **Asset onboarding model (ruled same day):** structural slots
+(zoom_room, owner_linkedin_profile, calendly/newsletter/signup/cost_benefit) = client MUST fill
+their own; content pieces (articles/decks/videos) = THREE-way per asset: use Guy's URL / bring
+their own (slot stays empty until they do) / skip — and skipping an asset means trimming its
+usage-rule bullet too (the store's unresolved-token flagging polices this). The checklist is
+derivable: walk every {{asset:key}} the template rules reference.
 
 **▶▶ SESSION 2026-07-06 (later same day): NEARNESS RULE — "this week or next".**
 - Guy's ruling after a booking landed the week after next: the offer/booking window is THIS calendar
