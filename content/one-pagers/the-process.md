@@ -34,7 +34,7 @@ Here's the half that changes everything - and the part nobody else does. LinkedI
 ## 4. A thanks-for-connecting that delights
 
 Once someone connects, you've got a small window of goodwill. The system can auto-send a simple thanks so no one is ever left hanging - but that's the floor, not the goal. For the people worth it, it does what no mail-merge can: it reads their actual profile and designs a thanks-for-connecting that genuinely delights - an insightful, even flattering line about their work that makes them feel truly seen, not just greeted by name. Twenty seconds to send, and delight like that is what opens a real conversation.
-→ *The 20-second thank-you*
+→ *A thanks-for-connecting that delights*
 
 ## 5. Offer times - the right way
 
