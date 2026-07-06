@@ -14,7 +14,8 @@
 
 const DEFAULT_PREFS = {
   // Time-of-day bounds (soft).
-  earliestStart: '09:30',    // soft floor — only drop this early as a FALLBACK to fill the options
+  preferredStart: '10:00',   // Guy's DEFAULT day start — offer 10:00-or-later slots unless the week can't fill the options
+  earliestStart: '09:30',    // the at-a-pinch floor (Guy 2026-07-06): only offer 9:30 when 10:00+ can't fill the options or the lead can only do then; NEVER earlier
   lastStart: '16:30',        // last meeting may START by this time
   slotsToOffer: 3,           // how many options to put in the "here are some times" message
   meetingLengthMins: 30,     // default meeting length

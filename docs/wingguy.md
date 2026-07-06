@@ -3042,6 +3042,19 @@ var reverts reads only as a fire extinguisher. Boat-burning after ~2 weeks stabl
   harness line survives the flip (SUGGEST TIMES is HARNESS/code-owned; booking-defaults carries the
   voice side in store mode). Template layer NOT touched — de-personalise this into the template when
   it proves out.
+- **Second door edit same day: the 10:00 day-start preference (a 9:00am booking slipped through).**
+  Diagnosis: Guy's REAL preference ("prefer 10:00; 9:30 only at a pinch — lead constraint or blocked
+  week") was never captured ANYWHERE — every layer had only a flat 9:30 floor, so offering 9:30 freely
+  was "compliant", and the 9:00 came through a door with no floor at all (a Claude-chat booking via
+  the raw calendar connector, not the panel — panel propose_times hard-strips sub-9:30; check_time+
+  book_meeting soft-warns by design). Fix on every layer: `preferredStart: '10:00'` added to
+  `wingguyBookingPrefs.js` (visible to the agent in the context JSON), the PICKING TIMES ladder now
+  says 10:00+ with 9:30 as explicit at-a-pinch step 3 + "nothing before 9:30, ever", GUY PROPOSED A
+  SPECIFIC TIME now requires flagging an earlier-than-10:00/off-hours time out loud before booking,
+  store variable `preferred_start_time=10:00am AEST` added, and **booking-defaults → v3** ("Day
+  start" bullet carries the whole preference stack). Known remaining hole: bookings made straight
+  through the calendar connector in a claude.ai chat bypass ALL Wingguy prefs — the rulebook only
+  guards surfaces that read it.
 
 **▶▶ SESSION CLOSE 2026-07-05 (the STEP-2 sitting: "rules-source seam SHIPPED DARK — shadow week starts
 now") — START THE NEXT CHAT HERE.**
