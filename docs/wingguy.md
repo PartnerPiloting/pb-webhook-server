@@ -3090,6 +3090,22 @@ var reverts reads only as a fire extinguisher. Boat-burning after ~2 weeks stabl
   removed, Rebecca's Fri 11am + Mon 2pm re-protected). Tests: offer-holds suite grown to 20 checks
   (incl. past/too-soon drops + includeSoon), lunch-hold e2e re-dated DYNAMIC (its hardcoded 9 July
   slots would have started failing the past-filter on 10 July).
+- **★ GUY'S RULING, ~1hr after auto-holds shipped: AUTO-HOLDS PULLED, spread-the-week CODE-ENFORCED.**
+  (1) **No automatic holds.** 8 HOLD blocks (incl. a Simon Rodwell duplicate + one at 2:30pm that
+  same day) piled up within half an hour — diary unreadable. Guy holds slots MANUALLY when a promise
+  warrants it ("HOLD: <lead name>" title). Code keeps honouring the convention: another lead's HOLD =
+  real clash (say who it's for), this lead's own HOLD = ignored at booking + ALL their holds cleared
+  once their meeting books. `createOfferHolds` deleted (git history has the accumulate version if it
+  ever returns); all 8 calendar HOLDs swept the same hour. The one-booking-door slice (below) remains
+  the real anti-double-book play now.
+  (2) **Spread-the-week is now CODE, not advice.** Guy: "I'm back-to-back Thursday... spread it more
+  evenly." He HAD specified it (prefs preferSpreadOverWeek/preferLeastBusyDays + the ladder) — but it
+  was advisory, per-offer, and other doors (Calendly, chat) never saw it, so Thursday hit 6 meetings.
+  New: `maxMeetingsPerDay: 4` in prefs, enforced in check_availability (a day at the cap is WITHHELD
+  from the model entirely); ladder text leads with "SPREADING IS THE POINT"; **booking-defaults → v4**
+  (Spread-the-week bullet + {{max_meetings_per_day}}=4 variable + manual-holds convention) so the
+  rulebook finally carries what was config-only. Guy naming a time on a full day still books (his
+  call — agent must mention the day's load). Suite renamed in spirit: 19 booking-guard checks green.
 - **★ BANKED NEXT SLICE — "ONE BOOKING DOOR" (the proper fix; do as its own sitting, after the
   flip):** expose the panel's proven booking trio on /mcp2 so claude.ai chats book through Wingguy,
   not the raw calendar connector — check_availability + check_time + book_meeting as connector tools

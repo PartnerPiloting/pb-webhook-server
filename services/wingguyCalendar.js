@@ -293,13 +293,14 @@ async function createBookingEvent(coach, { startISO, durationMins, leadEmail, le
 }
 
 // ── Offer HOLDS (2026-07-06) ────────────────────────────────────────────────────────────────────
-// An offered slot is a PROMISE, not just a message — but until now nothing recorded it, so another
-// booking (any door: panel, claude.ai chat, Calendly) could take the slot before the lead replied
-// (the Rebecca/Mary Anne double-book). Fix: propose_times places a real attendee-less "HOLD:" event
-// per offered slot, so every door's free/busy sees the slot as BUSY. book_meeting ignores the lead's
-// OWN holds (their pick must not clash with its own reservation) and clears all their holds once the
-// meeting books. Holds for OTHER leads are real clashes. Stale holds (lead never replies) simply
-// expire as their times pass — and they're visible on the calendar, so the coach can delete them.
+// An offered slot is a PROMISE nothing else records, so another booking (any door: panel, claude.ai
+// chat, Calendly) can take it before the lead replies (the Rebecca/Mary Anne double-book). The
+// AUTOMATIC hold experiment (propose_times creating holds) shipped and was PULLED the same afternoon
+// (2026-07-06) — 8 HOLD blocks incl. duplicates piled up in half an hour; Guy's ruling: he creates
+// "HOLD: <lead name>" events HIMSELF when a promise is worth protecting. Code still honours the
+// convention: book_meeting ignores the lead's OWN holds (their pick must not clash with its own
+// reservation) and clears ALL the lead's holds once their meeting books; holds carrying another
+// lead's name are real clashes. Unused holds expire as their times pass.
 
 const HOLD_PREFIX = 'HOLD:';
 
@@ -351,50 +352,10 @@ async function deleteOfferHolds(coach, { leadName }) {
   return { removed };
 }
 
-/**
- * Place one HOLD event per offered slot. Holds ACCUMULATE — a new offer never deletes a lead's
- * earlier holds, because every un-lapsed offer the lead has received is still a live promise
- * (2026-07-06: the original "refresh = delete + recreate" design deleted Rebecca's holds when a
- * follow-up offer was drafted, and her still-promised Friday slot was offered to Sarah one minute
- * later). Duplicate start-times are skipped; past slots are never held; booking clears ALL the
- * lead's holds; unbooked holds expire as their times pass. Attendee-less — no email goes to anyone.
- * Never throws: holds are protection, not a precondition, so a failure must never break the draft.
- */
-async function createOfferHolds(coach, { leadName, slotISOs, durationMins }) {
-  try {
-    const prefs = getBookingPrefs(coach.clientId);
-    const len = Number(durationMins) > 0 ? Number(durationMins) : (prefs.meetingLengthMins || 30);
-    let existing = [];
-    try {
-      existing = (await findOfferHolds(coach, { leadName })).map((h) => new Date(h.start).getTime());
-    } catch (e) {
-      console.warn(`[wingguyCalendar] hold pre-read failed for "${leadName}" (creating anyway): ${e.message}`);
-    }
-    let created = 0;
-    for (const iso of (Array.isArray(slotISOs) ? slotISOs : [])) {
-      const start = new Date(iso);
-      if (isNaN(start.getTime())) continue;
-      if (start.getTime() <= Date.now()) continue;               // never hold a past slot
-      if (existing.includes(start.getTime())) continue;          // already held for this lead
-      const r = await createCalendarEvent(coachForHolds(coach), {
-        title: holdTitle(leadName),
-        description: `Slot offered to ${leadName || 'a lead'} on LinkedIn (Wingguy) - awaiting their reply. Cleared automatically when the meeting books; delete manually if the offer lapses.`,
-        startISO: start.toISOString(),
-        endISO: new Date(start.getTime() + len * 60000).toISOString(),
-        attendees: [],
-        notifyParticipants: false,
-      });
-      if (r.ok) created++;
-      else console.warn(`[wingguyCalendar] hold create failed (${iso}): ${r.error}`);
-    }
-    return { ok: true, created };
-  } catch (e) {
-    console.warn(`[wingguyCalendar] createOfferHolds failed for "${leadName}": ${e.message}`);
-    return { ok: false, created: 0, error: e.message };
-  }
-}
+// (createOfferHolds — the automatic hold writer — was REMOVED here 2026-07-06, same day it shipped.
+// If auto-holds ever return, the git history of this file has the accumulate-and-dedupe version.)
 
 module.exports = {
   getAvailabilityForCoach, createBookingEvent, checkProposedTime, getClashesForISO, buildDaysFromBusy,
-  createOfferHolds, deleteOfferHolds, isHoldForLead, isHoldSummary, holdTitle,
+  deleteOfferHolds, isHoldForLead, isHoldSummary, holdTitle,
 };

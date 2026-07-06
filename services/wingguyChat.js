@@ -236,7 +236,6 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
   const checkProposedTime = deps.checkProposedTime || wingguyCalendar.checkProposedTime;
   const getClashesForISO = deps.getClashesForISO || wingguyCalendar.getClashesForISO;
   const updateLeadEmails = deps.updateLeadEmails || wingguyLeads.updateLeadEmails;
-  const createOfferHolds = deps.createOfferHolds || wingguyCalendar.createOfferHolds;
   const deleteOfferHolds = deps.deleteOfferHolds || wingguyCalendar.deleteOfferHolds;
   // Mutable so update_lead_email can re-point the invite at a new primary within this turn.
   let currentLeadEmail = leadEmail;
@@ -278,10 +277,15 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
       const aLen = prefs.meetingLengthMins || 30;
       const nowMs = Date.now();
       const earliestDate = earliestOfferDate(aTz, prefs, input.includeSoon);
+      const maxPerDay = Number.isFinite(prefs.maxMeetingsPerDay) ? prefs.maxMeetingsPerDay : Infinity;
       const days = (avail.days || [])
         // HARD notice rule: no days before the-day-after-tomorrow (Guy's one-clear-day rule) unless Guy
         // explicitly asked for sooner (includeSoon) — and never a slot that has already passed.
         .filter((d) => String(d.date || '') >= earliestDate)
+        // HARD spread rule (2026-07-06, the 6-meeting Thursday): a day already at Guy's daily meeting
+        // cap is withheld entirely — the "prefer least-busy days" ladder was advisory and days still
+        // stacked. Guy naming a specific time on a full day (check_time → book) remains his call.
+        .filter((d) => (d.meetingCount || 0) < maxPerDay)
         // soft lunch hold is stripped HERE too (not just in propose_times) so the model never even sees a coach-lunch
         // slot as free — UNLESS Guy explicitly asked for a lunch-time meeting (input.includeLunch), then surface them.
         .map((d) => ({ ...d, freeSlots: (d.freeSlots || []).filter((s) => Date.parse(s.time) > nowMs && withinBounds(s, eMin, lMin) && (input.includeLunch || !inLunch(s.time, aTz, prefs, aLen))) }))
@@ -340,13 +344,10 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
       // what was actually rendered — not re-derived from memory (which is how the summary said "Wed 8 July"
       // while the draft said "Thu 9 July", 2026-07-02). The agent must quote these, not restate dates itself.
       const offeredTimes = ordered.map((iso) => fmtSlot(iso, leadTz));
-      // Offer HOLDS: reserve each offered slot as a real (attendee-less) calendar event so no other
-      // booking — this panel, a claude.ai chat, Calendly — can take it before the lead replies (the
-      // Rebecca/Mary Anne double-book, 2026-07-06). Fire-and-forget: a hold failure never blocks the draft.
-      if (profile.name) {
-        Promise.resolve(createOfferHolds(coach, { leadName: profile.name, slotISOs: ordered, durationMins: prefs.meetingLengthMins }))
-          .catch((e) => console.warn(`[wingguyChat] offer holds failed: ${e.message}`));
-      }
+      // NO automatic holds (Guy's call, 2026-07-06 — the auto-hold experiment shipped and was pulled
+      // the same afternoon: 8 HOLD blocks incl. duplicates piled up within half an hour and made the
+      // diary unreadable). Guy places "HOLD: <lead name>" events MANUALLY when a promise is worth
+      // protecting; book_meeting still respects and clears them (see below).
       return { ok: true, offered: ordered.length, offeredTimes, dropped };
     }
     if (name === 'check_time') {
