@@ -1,13 +1,13 @@
 ---
 slug: choose-the-room
-title: Choose the room
+title: Choose who you want in your network - don't let somebody else decide it for you
 series: network-building-rethought
 order: 30
 status: draft
 audience: outsider-safe
 ---
 
-# Choose the room
+# Choose who you want in your network - don't let somebody else decide it for you
 
 Think about the last networking event you went to. Who was in the room?
 
