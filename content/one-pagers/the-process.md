@@ -36,9 +36,9 @@ Here's the half that changes everything - and the part nobody else does. LinkedI
 Once someone connects, you've got a small window of goodwill. The system can auto-send a simple thanks so no one is ever left hanging - but that's the floor, not the goal. For the people worth it, it does what no mail-merge can: it reads their actual profile and designs a thanks-for-connecting that genuinely delights - an insightful, even flattering line about their work that makes them feel truly seen, not just greeted by name. Twenty seconds to send, and delight like that is what opens a real conversation.
 → *The 20-second thank-you*
 
-## 5. Suggest a call - the right way
+## 5. Offer times - the right way
 
-When the conversation's warm, you offer a couple of times that suit and do the arranging yourself. No "here's my link, grab a slot" - that quietly tells them they're a cog in your system. A little care here says the opposite: you matter, and I did the work.
+Somewhere in that first exchange - often right there in the thank-you - a quick Zoom gets floated: "worth a chat in the next couple of weeks?" The step that matters is what you do when they say yes. You offer a couple of times that suit and do the arranging yourself - no "here's my link, grab a slot," which quietly tells them they're a cog in your system. A little care here says the opposite: you matter, and I did the work.
 → *Why I'll never send you a Calendly link*
 
 ## 6. Have the discovery call
