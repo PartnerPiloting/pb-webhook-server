@@ -3064,6 +3064,21 @@ hole (the wrong-person guard was right; the capture's identity was wrong).**
 - **Jason's record hand-repaired same hour** (the 5 missing messages prepended to Notes, newest-first, standard
   format). Watch-item: first real send after the reload should toast *"✓ Saved N messages to Jason Hartley"* even
   with someone else's profile on the page.
+- **✅ LIVE-VERIFIED same evening (the Kayla Medica case — the exact failing scenario).** Guy's 4:23 PM Kayla send
+  (her bubble open over JASON's profile) was refused by the pre-reload code ("isn't with Jason Hartley" — page-URL
+  fallback matched Jason; Kayla, un-replied, wasn't a sender). After the extension reload (running code confirmed
+  by the ready-log line number, 1580 = fixed build), typing `/wg` in her bubble re-ran the on-open capture →
+  toast *"✓ Saved 2 messages to Kayla Medica"* → record verified from Airtable: both messages present, correct
+  dates, newest-first. No hand-repair needed — the capture's full-thread replace healed the record itself.
+- **⚠ SEPARATE STORM SIGHTED while debugging (not today's bug): LinkedIn's NEW UI build.** A fresh tab opened
+  under Guy's own login rendered the new messaging/profile experience: obfuscated class names, ZERO `.msg-*` /
+  `.pv-top-card` / `.scaffold-layout` markup, Message button navigates to a new-style `/messaging/thread/new`
+  page instead of opening an overlay bubble. EVERY selector the extension relies on is dead there. Guy's
+  long-lived/normal tabs still load the classic build (a same-evening classic reload confirmed classic still
+  serves for him), so nothing is broken TODAY — but when LinkedIn flips his session, `/wg`, the header scrape and
+  on-send capture all go dark at once. Plan a selector-migration pass (the remote `extension-config` idea from
+  the README becomes load-bearing here); symptom to watch: the capture toasts turning into "couldn't read the
+  conversation" / launcher not appearing.
 
 **▶▶ SESSION 2026-07-06 (later same day): NEARNESS RULE — "this week or next".**
 - Guy's ruling after a booking landed the week after next: the offer/booking window is THIS calendar
