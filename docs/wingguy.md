@@ -3054,7 +3054,18 @@ var reverts reads only as a fire extinguisher. Boat-burning after ~2 weeks stabl
   store variable `preferred_start_time=10:00am AEST` added, and **booking-defaults → v3** ("Day
   start" bullet carries the whole preference stack). Known remaining hole: bookings made straight
   through the calendar connector in a claude.ai chat bypass ALL Wingguy prefs — the rulebook only
-  guards surfaces that read it.
+  guards surfaces that read it. Mitigated same day: a BOOKING GUARDRAIL block for Guy's claude.ai
+  project instructions (read booking rules through the door BEFORE offering/booking — a pointer to
+  the rulebook, never a copy).
+- **★ BANKED NEXT SLICE — "ONE BOOKING DOOR" (the proper fix; do as its own sitting, after the
+  flip):** expose the panel's proven booking trio on /mcp2 so claude.ai chats book through Wingguy,
+  not the raw calendar connector — check_availability + check_time + book_meeting as connector tools
+  (reuse `wingguyCalendar` executors + the prefs enforcement, exactly like the rules tools reused
+  `wingguyRulesMcp.TOOL_DEFS`), with the code-level floor (refuse <9:30 without an explicit-confirm
+  flag, flag <10:00). NOT bolted onto today because a book-tool WITHOUT the check tools would
+  recreate the model-built-timestamp bug class — it ships as the trio + live calendar verification
+  or not at all. Until then the claude.ai guardrail instruction covers the gap. WHY IT EXISTS: a
+  claude.ai chat booked Guy at 9:00am via raw create_event (2026-07-06).
 
 **▶▶ SESSION CLOSE 2026-07-05 (the STEP-2 sitting: "rules-source seam SHIPPED DARK — shadow week starts
 now") — START THE NEXT CHAT HERE.**
