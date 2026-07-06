@@ -3042,6 +3042,29 @@ their own (slot stays empty until they do) / skip — and skipping an asset mean
 usage-rule bullet too (the store's unresolved-token flagging polices this). The checklist is
 derivable: walk every {{asset:key}} the template rules reference.
 
+**▶▶ SESSION 2026-07-06 (evening, from the live Jason Hartley thread): on-send capture — the DETACHED-COMPOSER
+hole (the wrong-person guard was right; the capture's identity was wrong).**
+- Guy's last 5 Jason messages (his 2:52 PM reply + the 👏👍😊 + "Yeah me too - see you then") never reached the
+  record — every send got the *"Didn't save — this conversation isn't with X (safety check)"* toast, with another
+  lead's profile showing on the page behind/beside the thread. **The guard behaved exactly as designed** (it refused
+  to write Jason's thread onto the other lead's record); the bug was upstream: the capture's "am I in a thread?"
+  gate asked whether the REMEMBERED composer (`lastFocusedEditable`) was still attached — but **LinkedIn re-renders
+  the composer after a send**, so by capture time (1.8s trailing debounce) it was detached → gate said "no thread"
+  → fell back to the PAGE URL → looked up the wrong lead → guard refused. Same detachment also let
+  `scrapeOpenThread` anchor on the DETACHED old tree (stale thread copy) — the gate and the scrape disagreed about
+  the same node.
+- **Fix (`content-wingguy.js`, client-side → extension reload + tab refresh needed):** (1) `scheduleCapture(anchorEl)`
+  now remembers the element the SEND came from (send button / composer / the /wg box; reset every schedule so a
+  stale anchor can't pin a later capture); (2) capture resolves the conversation as: live send-anchor → live
+  focused box → **ANY open conversation container** (a send can only come from a composer, so if one exists the
+  send happened in it) → page URL only when there's genuinely NO thread on the page; (3) the header AND the thread
+  are now read from the SAME container (`scrapeMessagingHeader(container)` + `scrapeOpenThread(convo)`), so
+  identity and content can't disagree; (4) `scrapeOpenThread` ignores a detached remembered box (no more stale-tree
+  scrapes). The wrong-person guard is untouched — still the last line of defence.
+- **Jason's record hand-repaired same hour** (the 5 missing messages prepended to Notes, newest-first, standard
+  format). Watch-item: first real send after the reload should toast *"✓ Saved N messages to Jason Hartley"* even
+  with someone else's profile on the page.
+
 **▶▶ SESSION 2026-07-06 (later same day): NEARNESS RULE — "this week or next".**
 - Guy's ruling after a booking landed the week after next: the offer/booking window is THIS calendar
   week + NEXT (weeks start Monday, coach tz). Root cause insight: the "least-busy days" bias was

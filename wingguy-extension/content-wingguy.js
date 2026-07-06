@@ -193,12 +193,12 @@
     } catch (e) { console.log('[Wingguy] header diag failed:', e.message); }
   }
 
-  function scrapeMessagingHeader() {
+  function scrapeMessagingHeader(containerOpt) {
     // NOTE: .isConnected (not document.contains) — the messaging composer lives in an open shadow root,
     // and document.contains() can't see into shadow DOM, so it wrongly reported the box as "gone" and we
     // fell back to the profile behind the bubble. isConnected traverses shadow boundaries.
     const anchor = (lastFocusedEditable && lastFocusedEditable.isConnected) ? lastFocusedEditable : null;
-    const convo = (anchor && closestConversationContainer(anchor)) || document.querySelector(CONVO_SELECTORS);
+    const convo = containerOpt || (anchor && closestConversationContainer(anchor)) || document.querySelector(CONVO_SELECTORS);
     const pane = (convo && (convo.closest('.scaffold-layout__detail, .msg-overlay-conversation-bubble') || convo)) || document;
     // Scope to the header region so we don't pull a name/link out of a message bubble body.
     const header = pane.querySelector('header, [class*="overlay-bubble-header"], [class*="title-bar"], [class*="thread__header"], [class*="thread-header"]') || pane;
@@ -451,7 +451,10 @@
   // messaging build renders inside open shadow roots) AND scoped to a single conversation container so
   // multiple open bubbles don't bleed into one another.
   function scrapeOpenThread(anchorEl) {
-    const anchor = anchorEl || lastFocusedEditable || deepActiveElement();
+    // A remembered box LinkedIn has since detached (composers are re-rendered after a send) must not
+    // anchor the scrape — closestConversationContainer would walk the DETACHED old tree and read a
+    // stale copy of the thread. Only a still-connected box counts.
+    const anchor = anchorEl || ((lastFocusedEditable && lastFocusedEditable.isConnected) ? lastFocusedEditable : null) || deepActiveElement();
     const container = anchor ? closestConversationContainer(anchor) : null;
     lastScrapeScoped = !!container;
     const root = container || document;
@@ -771,7 +774,14 @@
   }
 
   let captureTimer = null;
-  function scheduleCapture() {
+  // The element the latest send came from (send button / composer). The capture pins to ITS conversation
+  // — by capture time LinkedIn has often re-rendered the composer (detaching lastFocusedEditable), and
+  // the old attached-box gate then fell back to the PAGE URL, attributing a bubble's thread to the
+  // profile behind it → the wrong-person guard refused the save (Jason, 2026-07-06). Reset on every
+  // schedule (null when unknown) so a stale anchor can't pin a later capture to the wrong conversation.
+  let lastSendAnchor = null;
+  function scheduleCapture(anchorEl) {
+    lastSendAnchor = anchorEl || null;
     // TRAILING debounce: fire once ~1.8s after the LAST send in a burst. Sending a message often fires
     // several sends in a row (emoji reactions + a text message; button-click + Enter both fire) — a
     // leading debounce would snapshot after the FIRST and miss the final message. Resetting the timer on
@@ -782,17 +792,27 @@
 
   async function captureConversationToPortal() {
     try {
-      // We need the person's /in/ URL to look the lead up. If the send happened inside a message thread
-      // (a floating bubble — even one open over someone ELSE'S profile — or the /messaging/ pane), read
-      // it from THAT thread's header so we save to the right person. Only fall back to the page URL when
-      // acting directly on a profile with no thread in play.
-      const fromThread = () => (isMessagingPage() || activeThreadContainer());
-      let hdr = fromThread() ? scrapeMessagingHeader() : { profileUrl: location_origin_path(), name: '' };
+      // We need the person's /in/ URL to look the lead up. Pin the capture to the conversation the SEND
+      // came from — never trust the page URL while any thread is open. The old gate asked "is the
+      // remembered composer still attached?", but LinkedIn re-renders the composer after a send, so by
+      // capture time (1.8s debounce) it was often detached and the capture fell back to the page URL —
+      // on a bubble over someone else's profile that attributed the thread to the profile BEHIND it and
+      // the wrong-person guard below (correctly) refused the save (Jason, 2026-07-06). Resolution order:
+      // the send's own element (exact) → the live focused box → ANY open conversation container (a send
+      // can only come from a composer, so if one exists the send happened in a thread) → page URL only
+      // when there's genuinely no thread on the page.
+      const findConvo = () =>
+        (lastSendAnchor && lastSendAnchor.isConnected && closestConversationContainer(lastSendAnchor)) ||
+        activeThreadContainer() ||
+        document.querySelector(CONVO_SELECTORS);
+      let convo = findConvo();
+      let hdr = convo ? scrapeMessagingHeader(convo) : { profileUrl: location_origin_path(), name: '' };
       let profileUrl = hdr.profileUrl;
       // The header can be mid-render right after a send — one quick retry before giving up.
-      if ((!profileUrl || !/\/in\//.test(profileUrl)) && fromThread()) {
+      if ((!profileUrl || !/\/in\//.test(profileUrl)) && convo) {
         await sleep(800);
-        hdr = scrapeMessagingHeader();
+        convo = findConvo() || convo;
+        hdr = scrapeMessagingHeader(convo);
         profileUrl = hdr.profileUrl;
       }
       if (!profileUrl || !/\/in\//.test(profileUrl)) {
@@ -818,7 +838,9 @@
         showCaptureToast("Didn't save — couldn't un-scramble this person's LinkedIn link. The resolve step may have broken (not just a missing lead). Flag this: \"un-scramble broke\".", true);
         return;
       }
-      const thread = scrapeOpenThread();
+      // Read the thread from the SAME container the header came from, so identity and content can never
+      // disagree (a container element is its own closestConversationContainer match).
+      const thread = scrapeOpenThread(convo);
       if (!thread.length) {
         console.log('[Wingguy] capture skipped — no thread read');
         showCaptureToast("Didn't save — couldn't read the conversation from the page.", true);
@@ -888,7 +910,7 @@
   function onSendClick(e) {
     const path = (e.composedPath && e.composedPath()) || [e.target];
     for (const el of path) {
-      if (looksLikeSendButton(el)) { console.log('[Wingguy] send button clicked'); scheduleCapture(); return; }
+      if (looksLikeSendButton(el)) { console.log('[Wingguy] send button clicked'); scheduleCapture(el); return; }
     }
   }
   // LinkedIn also sends on Enter (without Shift) from the composer.
@@ -897,7 +919,7 @@
     const target = deepActiveElement();
     if (!isEditableEl(target) || insideWingguy(target)) return;
     if (!isMessageEditableSafe(target)) return;
-    scheduleCapture();
+    scheduleCapture(target);
   }
 
   // Brief, unobtrusive toast for capture feedback (separate from the panel; bottom-centre).
@@ -1060,7 +1082,7 @@
     // own send). Reuses the exact on-send path + its guards (needs a /in/ URL and the lead as a
     // participant; skips silently otherwise, never overwriting with an empty/foreign thread). The
     // 1.8s debounce coalesces with a send if you open then reply, so it still captures just once.
-    if (thread.length) scheduleCapture();
+    if (thread.length) scheduleCapture((lastFocusedEditable && lastFocusedEditable.isConnected) ? lastFocusedEditable : null);
     renderRoute(profile, thread);
   }
 
