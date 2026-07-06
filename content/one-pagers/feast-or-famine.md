@@ -1,6 +1,7 @@
 ---
 slug: feast-or-famine
 title: Overcoming feast or famine
+dek: "Why the busy-then-broke see-saw isn't a discipline problem - and what the businesses that escape it do differently."
 series: network-building-rethought
 order: 10
 status: final

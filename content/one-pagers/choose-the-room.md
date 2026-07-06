@@ -1,6 +1,7 @@
 ---
 slug: choose-the-room
 title: Choose who you want in your network - don't let somebody else decide it for you
+dek: "Step one of the process - and the decision most professionals never realise they're allowed to make."
 series: network-building-rethought
 order: 30
 status: final

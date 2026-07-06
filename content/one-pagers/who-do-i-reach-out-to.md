@@ -1,6 +1,7 @@
 ---
 slug: who-do-i-reach-out-to
 title: Who do I even reach out to?
+dek: "The cursor is blinking in the LinkedIn search box. Here's what to type - and the frame that makes the answer obvious."
 series: network-building-rethought
 order: 32
 status: draft

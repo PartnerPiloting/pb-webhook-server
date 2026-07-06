@@ -1,6 +1,7 @@
 ---
 slug: introduction-before-we-spoke
 title: Does it really work?
+dek: "The introduction I made before we'd even spoken - a true story from a fortnight ago, with a timeline unheard of under the old rules of networking."
 series: network-building-rethought
 order: 15
 status: final
