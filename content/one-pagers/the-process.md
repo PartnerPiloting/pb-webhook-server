@@ -12,7 +12,7 @@ audience: insider-flavoured - client email #1 + library start-here page (NOT in 
 
 Most networking advice hands you a pile of tactics and no map. Go to the event. Hand out the cards. Post something. Follow up. Somehow, out of all that motion, work is supposed to appear - and when it doesn't, you assume you just need to try harder. But there was never any shape to it. Just effort, and hope.
 
-This is the shape. The whole thing, start to finish, on one page - eight small, repeatable steps that carry you from "who do I even talk to?" all the way to work arriving on a recommendation, and a ninth that keeps the whole thing turning.
+This is the shape. The whole thing, start to finish, on one page - eight small, repeatable steps that carry you from "who do I even talk to?" all the way to work arriving on a recommendation, a ninth that keeps the whole thing turning, and a tenth that makes it effortless.
 
 Don't try to master it today. A map doesn't teach you the terrain - it just shows you where everything is, so you always know where you are and what comes next. Each step below has its own short piece that goes deep when you're ready for it.
 
@@ -58,13 +58,18 @@ Do this with enough of the right people and something shifts. You're not network
 
 ## 9. Practice the "I know a guy" principle
 
-This is the one you can start today, wherever you are in the steps above. When someone mentions a problem, a gap, a person they're trying to reach, be the one who says "I know a guy" - and make the introduction freely, expecting nothing back. And the more you build your network, the more guys you know - so the longer you do this, the more often you're the one with the answer. Do that often enough and you become the person everyone wants to know: the natural centre of a network, not a name on the edge of it. Every step above is machinery. This is the spirit that runs it.
+This is the one you can start today, wherever you are in the steps above. When someone mentions a problem, a gap, a person they're trying to reach, be the one who says "I know a guy" - and make the introduction freely, expecting nothing back. And the more you build your network, the more guys you know - so the longer you do this, the more often you're the one with the answer. Do that often enough and you become the person everyone wants to know: the natural centre of a network, not a name on the edge of it.
 → *Become the person who knows a guy*
+
+## 10. Increase your intelligence with Wingguy
+
+You've watched the intelligence at work all through these steps - the scoring, the thank-you it designs, the call it arranges around your calendar. That's Wingguy, and this is where you switch it on for yourself: the extension and the MCP. Wingguy knows your calendar, finds your free slots and books the call; it reads each LinkedIn message, works out what it's about and what should happen next, and drafts the response. It's less like using a tool than increasing your own intelligence - the reason a day that used to cost hours now costs minutes. Take it on, and every step above starts running itself.
+→ *Increase your intelligence with Wingguy*
 
 ---
 
-That's the journey: eight steps to walk, and one principle to live by - each small enough to do well without it taking over your week.
+That's the journey: eight steps to walk, a principle to live by, and the intelligence to make the whole thing effortless - none of it big enough to take over your week.
 
 If you're impatient, jump straight to whichever step you're on - each piece stands on its own. If you're not, they'll arrive one at a time, in order, and this map will be here whenever you want to see where you are.
 
-<!-- WIP notes: First draft 2026-07-06, not reviewed by Guy. THE MAP (#12). Descriptive title is deliberate (a signpost should say what it is - the one exception to the titles-provoke-the-penny-drop rule). Serves double duty: client email #1 (right after welcome) + library start-here page; every footer's standing line points here. NOW 9 STEPS (was 7): scoring pulled out into its OWN step (#3, secret sauce) 2026-07-06; step 9 "Practice the I know a guy principle" added (ethos-closer + brand soul, Guy greenlit 2026-07-06) → future full piece #80. Step 1's forward-ref = "the later steps" (points at the Nodes/step-8 multiplication payoff; robust to inserts). Step 2 = LinkedIn first filter only; step 3 = attitude scoring (second filter). Connection-rate rung still folded lightly (parked #33 decision). Scoring step links to #32 for now - CONSIDER a dedicated scoring craft piece (see arc "Selection mechanics"). Kept the cold "skip low scorers" tactic OFF this shared page (prospect-safe); "who to pour real care into" is the soft version. Step arrows are placeholder links until the library exists. -->
+<!-- WIP notes: First draft 2026-07-06, not reviewed by Guy. THE MAP (#12). Descriptive title is deliberate (a signpost should say what it is - the one exception to the titles-provoke-the-penny-drop rule). Serves double duty: client email #1 (right after welcome) + library start-here page; every footer's standing line points here. NOW 10 STEPS (was 7): scoring = own step #3 (secret sauce); step 9 = "Practice the I know a guy principle" (ethos, → piece #80); step 10 = "Increase your intelligence with Wingguy" (adopt-the-tools: extension+MCP, Guy's call 2026-07-06, → piece #90). Step 9's old "machinery/spirit" closer removed (no longer last); step 10 = aspirational capstone/CTA close, framed to empower not hard-sell. Step 1 forward-ref = "the later steps" (Nodes/step-8 payoff; robust). Step 2 = LinkedIn first filter only; step 3 = attitude scoring (second filter). Connection-rate rung still folded lightly (parked #33 decision). Scoring step links to #32 for now - CONSIDER a dedicated scoring craft piece (see arc "Selection mechanics"). Kept the cold "skip low scorers" tactic OFF this shared page (prospect-safe); "who to pour real care into" is the soft version. Step arrows are placeholder links until the library exists. -->
