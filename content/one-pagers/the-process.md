@@ -29,7 +29,7 @@ Reaching out starts on LinkedIn. Its search lets you narrow the whole profession
 ## 3. Score them on attitude
 
 Here's the half that changes everything - and the part nobody else does. LinkedIn can tell you what someone *is*; it can't tell you how they *think*. So the system does what LinkedIn can't: it scores each person with AI, not on their job title but on attitude - the mindset that makes someone genuinely worth building a relationship with. You shape what it looks for by adding your own attributes, and from the day you start it already carries mine, distilled from years of working out who's worth the effort and who isn't. That score is what tells you where to spend your energy - who to reach out to, and who to pour real care into. It's the difference between guessing and knowing, and it's the heart of how this works.
-→ *Who do I even reach out to?*
+→ *The filter everyone skips*
 
 ## 4. A thanks-for-connecting that delights
 
