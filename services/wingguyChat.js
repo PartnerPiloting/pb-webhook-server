@@ -104,6 +104,20 @@ const AGENT_TOOLS = [
     },
   },
   {
+    name: 'create_lead',
+    description: 'Create a NEW lead record in Guy\'s CRM (Airtable) for someone who ISN\'T there yet — use it when the context says this lead is NOT in the CRM (e.g. Guy just accepted a connection request from someone new) and Guy wants them saved. It files them the way inbound leads normally land: Connected, dated today, so they slot into Guy\'s pipeline. Pass whatever you know — at minimum a name or the LinkedIn URL. Don\'t block on email: LinkedIn rarely shows one, so create the record now and file the email later with update_lead_email once it surfaces. Safe to call even if you\'re unsure they\'re new — it dedupes on the LinkedIn profile first, so it won\'t make a duplicate (it\'ll just point at the existing record). After a successful create you can update_lead_email / book_meeting for them in the same conversation.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        firstName: { type: 'string', description: 'The lead\'s first name.' },
+        lastName: { type: 'string', description: 'The lead\'s last name.' },
+        linkedinUrl: { type: 'string', description: 'The lead\'s LinkedIn profile URL (linkedin.com/in/...) — the strongest dedup key; include it whenever the profile is in view.' },
+        email: { type: 'string', description: 'The lead\'s email, ONLY if they\'ve given one (e.g. in the thread). Omit if you don\'t have one — don\'t guess.' },
+        notes: { type: 'string', description: 'Optional short context for the record (e.g. how they came in).' },
+      },
+    },
+  },
+  {
     name: 'update_lead_email',
     description: 'Update THIS lead\'s email in Guy\'s CRM (Airtable). Use it when the lead gives a better email in the thread — e.g. a work address the invite should go to. Set "primaryEmail" to make it the lead\'s main address: the current primary is automatically kept as one of their other emails (never lost), and book_meeting will then send the invite to the new primary. Use "otherEmails" to file extra addresses without changing the primary. Only THIS lead is affected, and ONLY the email fields — you cannot change any other CRM field. If it reports it couldn\'t find the lead\'s record, tell Guy to make the change in the Portal.',
     input_schema: {
@@ -147,7 +161,7 @@ function chooseSignoff(conversation, coachName, vp, campaignSignoff) {
 
 // Compact, grounded context for the agent. `buildProfileBlock` / `buildConversationBlock` are passed
 // in so the formatting stays identical to the rest of Wingguy (the route owns those helpers).
-function buildContext({ profileBlock, convoBlock, leadEmail, coachName, prefs, campaignTemplate, voice }) {
+function buildContext({ profileBlock, convoBlock, leadEmail, coachName, prefs, campaignTemplate, voice, onFile = true }) {
   const tplBlock = campaignTemplate && campaignTemplate.instructions
     ? `CAMPAIGN TEMPLATE — "${campaignTemplate.label || campaignTemplate.id}" (use this for the opener / warm-reply message; it's Guy's real structure & voice — match its beats and sign-off):\n${campaignTemplate.instructions}\n\n`
     : '';
@@ -169,6 +183,7 @@ function buildContext({ profileBlock, convoBlock, leadEmail, coachName, prefs, c
     `${tplBlock}` +
     `${voiceBlock}` +
     `LEAD EMAIL FOR THE INVITE: ${leadEmail ? leadEmail : '(not on file — ask Guy to add it before booking)'}\n` +
+    `CRM RECORD: ${onFile ? 'this lead is already in Guy\'s CRM' : 'this lead is NOT in Guy\'s CRM yet — no record matched them (e.g. a new connection). If Guy wants them saved, use create_lead.'}\n` +
     `COACH NAME: ${coachName || 'Guy Wilson'}\n` +
     `GUY'S BOOKING PREFERENCES (JSON): ${JSON.stringify(prefs)}`
   );
@@ -187,9 +202,13 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
   const checkProposedTime = deps.checkProposedTime || wingguyCalendar.checkProposedTime;
   const getClashesForISO = deps.getClashesForISO || wingguyCalendar.getClashesForISO;
   const updateLeadEmails = deps.updateLeadEmails || wingguyLeads.updateLeadEmails;
+  const createLead = deps.createLead || wingguyLeads.createLead;
   const deleteOfferHolds = deps.deleteOfferHolds || wingguyCalendar.deleteOfferHolds;
   // Mutable so update_lead_email can re-point the invite at a new primary within this turn.
   let currentLeadEmail = leadEmail;
+  // Mutable so create_lead can make a record mid-turn and the SAME turn's update_lead_email / book_meeting
+  // then act on it (create → set email → book, all in one go).
+  let currentLeadRecordId = leadRecordId;
   const prefs = getBookingPrefs(coach.clientId);
   // Per-tenant greeting + sign-off house style (VARIABLE), with the exact sign-off decided in code
   // (CODE) from this thread's previous coach message. The behaviour (RULE) is generic; only the values
@@ -209,7 +228,7 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
       { type: 'text', text: WINGGUY_VOICE },
       { type: 'text', text: WINGGUY_AGENT_INSTRUCTIONS, cache_control: { type: 'ephemeral' } },
     ]),
-    { type: 'text', text: buildContext({ profileBlock, convoBlock, leadEmail, coachName: coach.clientName, prefs, campaignTemplate, voice }) },
+    { type: 'text', text: buildContext({ profileBlock, convoBlock, leadEmail, coachName: coach.clientName, prefs, campaignTemplate, voice, onFile: !!leadRecordId }) },
   ];
 
   const convo = messages.map((m) => ({ role: m.role, content: m.content }));
@@ -308,13 +327,30 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
         hitsLunch,
       };
     }
+    if (name === 'create_lead') {
+      const r = await createLead(airtableBaseId, {
+        firstName: (input && input.firstName) || profile.firstName || '',
+        lastName: (input && input.lastName) || profile.lastName || '',
+        linkedinUrl: (input && input.linkedinUrl) || profile.profileUrl || '',
+        email: (input && input.email) || '',
+        notes: (input && input.notes) || '',
+      });
+      // Whether we created the record or matched an existing one, this turn's later tools
+      // (update_lead_email / book_meeting) should now act on it.
+      if (r && r.ok && r.leadRecordId) {
+        currentLeadRecordId = r.leadRecordId;
+        const createdEmail = r.fields && r.fields['Email'];
+        if (createdEmail && !currentLeadEmail) currentLeadEmail = createdEmail;
+      }
+      return r;
+    }
     if (name === 'update_lead_email') {
       const primaryEmail = String((input && input.primaryEmail) || '').trim();
       const otherEmails = Array.isArray(input && input.otherEmails) ? input.otherEmails : [];
       if (!primaryEmail && !otherEmails.length) {
         return { ok: false, error: 'Nothing to update — pass primaryEmail and/or otherEmails.' };
       }
-      const r = await updateLeadEmails(airtableBaseId, leadRecordId, { setPrimary: primaryEmail, addOthers: otherEmails });
+      const r = await updateLeadEmails(airtableBaseId, currentLeadRecordId, { setPrimary: primaryEmail, addOthers: otherEmails });
       // If the primary changed, the calendar invite should now go to the new address (this turn onward).
       if (r && r.ok && r.changed && r.primaryEmail) currentLeadEmail = r.primaryEmail;
       return r;
