@@ -112,5 +112,6 @@ Signal bonus: jump-ahead click followed by backfill click = strongest engagement
 
 - Voice: Guy across a coffee table - contractions, direct, decades of scar tissue. Fold in his specifics ($3,500, "fresh meat", the room's accountant) - specificity is the antidote to generic-AI feel.
 - Short dash ( - ), never em dash. Baked in.
+- **"Recommend", not "refer" (2026-07-06, Guy's call):** recommendation is the series' word - it carries putting-your-name-behind-someone; "referral" is the old world's jargon (BNI/KPI-speak) and appears ONLY when deliberately naming the old model's version (e.g. #20, #15's old-rules sentence). The contrast is a teaching device.
 - Shape per piece: hook (felt pain) → the wrong paradigm → the shift → "what would this make possible". End on a question or forward tease, never a pitch.
 - Series is outsider-safe by default (also goes to nominated prospects); system-referencing pieces get flagged.
