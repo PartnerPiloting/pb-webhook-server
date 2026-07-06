@@ -16,7 +16,7 @@ This is the shape. The whole thing, start to finish, on one page - eight small, 
 
 Don't try to master it today. A map doesn't teach you the terrain - it just shows you where everything is, so you always know where you are and what comes next. Each step below has its own short piece that goes deep when you're ready for it.
 
-## 1. Choose who you want in your network
+## 1. Choose who you'll actively engage with
 
 The old way is to turn up wherever there's a room and work with whoever happens to be there. This flips it: you decide, on purpose, who belongs in your network before you meet a soul - people positioned to trust and recommend you, chosen for where they sit and how they think. Here's the real game-changer, though: the best of them won't just recommend you - they'll go on to build their own networks the same way you are, so a handful of the right relationships quietly multiplies into many. This was never a solo sport, and the final step is where it pays off.
 → *Choose who you want in your network*
@@ -31,9 +31,9 @@ Reaching out starts on LinkedIn. Its search lets you narrow the whole profession
 Here's the half that changes everything - and the part nobody else does. LinkedIn can tell you what someone *is*; it can't tell you how they *think*. So the system does what LinkedIn can't: it scores each person with AI, not on their job title but on attitude - the mindset that makes someone genuinely worth building a relationship with. You shape what it looks for by adding your own attributes, and from the day you start it already carries mine, distilled from years of working out who's worth the effort and who isn't. That score is what tells you where to spend your energy - who to reach out to, and who to pour real care into. It's the difference between guessing and knowing, and it's the heart of how this works.
 → *Who do I even reach out to?*
 
-## 4. Say a proper thank-you
+## 4. A thanks-for-connecting that delights
 
-Once someone connects, you've got a small window of goodwill. The system can auto-send a simple thanks so no one is ever left hanging - but that's the floor, not the goal. For the people worth it, it does what no mail-merge can: it reads their actual profile and comes back with a genuinely insightful line about their work - the kind that makes someone feel truly seen, not just greeted by name. That's twenty seconds to send, and it's what turns a connection into a real conversation.
+Once someone connects, you've got a small window of goodwill. The system can auto-send a simple thanks so no one is ever left hanging - but that's the floor, not the goal. For the people worth it, it does what no mail-merge can: it reads their actual profile and designs a thanks-for-connecting that genuinely delights - an insightful, even flattering line about their work that makes them feel truly seen, not just greeted by name. Twenty seconds to send, and delight like that is what opens a real conversation.
 → *The 20-second thank-you*
 
 ## 5. Suggest a call - the right way
