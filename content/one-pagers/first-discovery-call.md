@@ -4,7 +4,7 @@ title: What can you discover?
 dek: "The first call fills people with dread - because they think it's a pitch they can fail. It isn't. It's the easiest conversation you'll ever have, once you know what you're really there to find out."
 series: network-building-rethought
 order: 45
-status: draft
+status: final
 audience: outsider-safe
 ---
 
@@ -34,4 +34,4 @@ So before your next one, drop the spiel. Don't prepare a word about yourself. Pr
 
 "Fine," I hear you say, "but if I'm not pitching myself, what on earth do I actually *say* for half an hour?" Fair question - and it's a craft of its own. That's exactly where we go next.
 
-<!-- WIP notes: First draft 2026-07-07, not reviewed by Guy. #45, map step 6 - the discovery-call PARADIGM piece (title "What can you discover?" = Guy's walk-idea 2026-07-07). Built from arc: the call is the easiest in the world once you're there to LEARN, not pitch; dissolves dread (nothing to sell = nothing to be rejected about); the deep reframe = they matter for who they might RECOMMEND you to, not whether they'll buy; two-way reciprocity (who you could send their way too, per Guy's step-6 map edit); gentle teachable-moment for those who've already fumbled a call. Outsider-safe, both audiences, NO tech reference (pure human paradigm). Opens off #37 (builds-on box). Ends teasing #47 (the craft companion - "what do I actually say?"). The craft (connection-first, questions-are-the-answers, the no-business-yet script, the two-call structure) is deliberately HELD for #47. -->
+<!-- Approved final by Guy 2026-07-07. First draft 2026-07-07. #45, map step 6 - the discovery-call PARADIGM piece (title "What can you discover?" = Guy's walk-idea 2026-07-07). Built from arc: the call is the easiest in the world once you're there to LEARN, not pitch; dissolves dread (nothing to sell = nothing to be rejected about); the deep reframe = they matter for who they might RECOMMEND you to, not whether they'll buy; two-way reciprocity (who you could send their way too, per Guy's step-6 map edit); gentle teachable-moment for those who've already fumbled a call. Outsider-safe, both audiences, NO tech reference (pure human paradigm). Opens off #37 (builds-on box). Ends teasing #47 (the craft companion - "what do I actually say?"). The craft (connection-first, questions-are-the-answers, the no-business-yet script, the two-call structure) is deliberately HELD for #47. -->
