@@ -4,7 +4,7 @@ title: Building nodes
 dek: "The whole series has been one relationship at a time. This is where it stops being one at a time - and starts growing without you."
 series: network-building-rethought
 order: 70
-status: draft
+status: final
 audience: outsider-safe
 ---
 
@@ -30,4 +30,4 @@ Is it work? Of course it is. Becoming a builder, and then helping others become 
 
 Which leaves one last question - a small, human one. When you are the person at the centre of all this, what does it actually feel like, day to day? It comes down to a single sentence you will catch yourself saying more and more often. That's next.
 
-<!-- WIP notes: First draft 2026-07-07, not reviewed by Guy. #70, map step 8 - THE CRESCENDO. Title "Building nodes" (matches map step 8 label). Built from banked material: the progression networker -> leader -> builder (Guy's three stages); the node (small, deliberate, high-attitude, mutual); the WEB (your node -> their nodes -> introduced to other builders across the wider network -> referrals arriving from 2-3 steps away, strangers, down chains you can't see); WHAT YOU BRING = finding people who want to BUILD their own network (the rare instinct, the differentiator, closing concept). Full-circle callback to #10 (feast-or-famine see-saw resolved - not by discipline but by building something that feeds itself). Earned by the whole series (per "one speech = in one ear out the other" - needs the run-up). Ends teasing #80 (step 9, "I know a guy" - the single sentence / the personal practice). Outsider-safe; "system" referenced generically only (no Wingguy - step 10). Both audiences; this is the vision peak. -->
+<!-- Approved final by Guy 2026-07-07. First draft 2026-07-07. #70, map step 8 - THE CRESCENDO. Title "Building nodes" (matches map step 8 label). Built from banked material: the progression networker -> leader -> builder (Guy's three stages); the node (small, deliberate, high-attitude, mutual); the WEB (your node -> their nodes -> introduced to other builders across the wider network -> referrals arriving from 2-3 steps away, strangers, down chains you can't see); WHAT YOU BRING = finding people who want to BUILD their own network (the rare instinct, the differentiator, closing concept). Full-circle callback to #10 (feast-or-famine see-saw resolved - not by discipline but by building something that feeds itself). Earned by the whole series (per "one speech = in one ear out the other" - needs the run-up). Ends teasing #80 (step 9, "I know a guy" - the single sentence / the personal practice). Outsider-safe; "system" referenced generically only (no Wingguy - step 10). Both audiences; this is the vision peak. -->
