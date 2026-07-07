@@ -4,7 +4,7 @@ title: What to say in the discovery call
 dek: "You know the call is for discovering, not pitching. Here's what that actually sounds like - how to open, what to ask, what to say about yourself, and the one move that earns a second conversation."
 series: network-building-rethought
 order: 47
-status: draft
+status: final
 audience: insider-flavoured - craft companion to #45 (carries a compressed why for jumpers, but reads best after the paradigm)
 ---
 
@@ -28,4 +28,4 @@ And then the move that makes the whole thing compound: **keep the first call sho
 
 Which points at the real secret of this whole business - the one nobody tells you. It was never the call that built your network. It's what you do in the gap *after* it. That's next.
 
-<!-- WIP notes: First draft 2026-07-07, not reviewed by Guy. #47, the CRAFT companion to #45 (map step 6). Insider-flavoured - reads best after the paradigm, but opens with a compressed why for jumpers. Built from the banked discovery-call playbook: questions-are-the-answers (the one rule); two parts (CONNECT first - icebreaker, not too long/short - THEN ask); the no-business-yet script (Guy's, lightly polished); the reciprocity test (do they turn the curiosity back on you unprompted - the "there is no offer" test); the TWO-CALL structure (first call ~30min + all about them → manufactures the reason for a second). Ends teasing #40 (step 7 - the follow-up / "what you do in the gap after"), which is where the two-call structure hands off. Coordination: two-call structure introduced here as discovery craft; the full follow-up rhythm belongs to #40. NOT a separate map step - companion to #45, reached map → #45 → #47. Title kept problem-shaped ("What to say...") for library pick-and-choose; Guy may punch it up. -->
+<!-- Approved final by Guy 2026-07-07. First draft 2026-07-07. #47, the CRAFT companion to #45 (map step 6). Insider-flavoured - reads best after the paradigm, but opens with a compressed why for jumpers. Built from the banked discovery-call playbook: questions-are-the-answers (the one rule); two parts (CONNECT first - icebreaker, not too long/short - THEN ask); the no-business-yet script (Guy's, lightly polished); the reciprocity test (do they turn the curiosity back on you unprompted - the "there is no offer" test); the TWO-CALL structure (first call ~30min + all about them → manufactures the reason for a second). Ends teasing #40 (step 7 - the follow-up / "what you do in the gap after"), which is where the two-call structure hands off. Coordination: two-call structure introduced here as discovery craft; the full follow-up rhythm belongs to #40. NOT a separate map step - companion to #45, reached map → #45 → #47. Title kept problem-shaped ("What to say...") for library pick-and-choose; Guy may punch it up. -->
