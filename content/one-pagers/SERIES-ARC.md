@@ -3,6 +3,21 @@
 Working outline for the one-pager sequence. Order uses gaps of 10 so pieces can be inserted later.
 Source: Guy's brain dumps, 2026-07-02/03. Status: living document.
 
+## ▶▶ NEXT UP (2026-07-07): design the "networking list" (prospect/nurture) series ◀◀
+
+**Status of the CLIENT series: DONE + LOCKED.** All 14 pieces final (the map #12 + #10, #15, #30, #32, #33, #35, #37, #40, #45, #47, #70, #80, #90), committed + pushed, each rendered as a Claude artifact and cross-linked from the map. Remaining client-side work is the ENGINE (real library page rendered by pb-webhook-server, drip send via gmailApiService, people-state in Airtable) - a separate build session.
+
+**The new task:** a second drip for a DIFFERENT audience - people genuinely interested in networking who aren't (yet) on Guy's system: former leads, "weren't ready / got left behind", a re-engagement/nurture "networking list". This is the arc's already-planned **prospect series** (see "Structure" + "two series order the same pieces by DIFFERENT logic"). Decided approach 2026-07-07 (NOT "identical", NOT a whole separate series - a THIRD way):
+- **REUSE the paradigm gold** (universal networking wisdom, no client-machinery): #10 feast-or-famine, #30 Choose Don't Collect, #15 Does it really work?, the human idea inside #35 (delightful thank-you), #37 rarely-Calendly, #45 What can you discover?, #40 a reason to follow up, #70 Building nodes, #80 I know a guy.
+- **STRIP the client-only machinery** from this drip (library-only, not spine): the MAP #12 (client orientation), #90 Wingguy (user/upsell - at most a soft mention), the deep craft #47 + #33 scoring (insider - stays in library).
+- **RE-ORDER for persuasion**, not journey: pain → proof → failed default → better way → vision.
+- **RE-END shared pieces with POSSIBILITY closes** ("imagine if 100% of your work came from recommendations") instead of client "do X in your campaign this week". = the per-series outro rule ("same sermon, different altar call", ~1.2x effort not 2x).
+- **ADD nurture-specific pieces** (mostly the parked ones, they're FOR this audience): #20 pleasing-methods (breakfast/BNI, been-burned), #50 patience curve, the exclusivity/paid-network answer.
+- **First deliverable when the new chat starts:** a ONE-PAGE PLAN for the networking-list series - which pieces reused, the persuasion order, which get possibility-endings, and the 2-3 new pieces - BEFORE writing anything. Then execution = per-audience outros + the new pieces.
+- Effort is low-leverage-high: ~80% reuses the finished client set.
+
+
+
 ## The argument the series makes
 
 Pain → failed default → selection → mechanism → expectations → feasibility → vision.
