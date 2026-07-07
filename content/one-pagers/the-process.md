@@ -39,7 +39,7 @@ Once someone connects, you've got a small window of goodwill. The system can aut
 ## 5. Offer times - the right way
 
 Somewhere in that first exchange - often right there in the thank-you - a quick Zoom gets floated: "worth a chat in the next couple of weeks?" The step that matters is what you do when they say yes. You offer a couple of times that suit and do the arranging yourself - no "here's my link, grab a slot," which quietly tells them they're a cog in your system. A little care here says the opposite: you matter, and I did the work.
-→ *Why I'll never send you a Calendly link*
+→ *Why I'll rarely send you a Calendly link*
 
 ## 6. Have the discovery call
 

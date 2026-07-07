@@ -1,6 +1,6 @@
 ---
 slug: never-send-calendly
-title: Why I'll never send you a Calendly link
+title: Why I'll rarely send you a Calendly link
 dek: "A scheduling link feels like a courtesy. Look closer at what it quietly tells the person you're trying to win over."
 series: network-building-rethought
 order: 37
@@ -8,11 +8,11 @@ status: draft
 audience: outsider-safe
 ---
 
-# Why I'll never send you a Calendly link
+# Why I'll rarely send you a Calendly link
 
-I will never send you a Calendly link.
+I will rarely send you a Calendly link.
 
-Not because I'm a technophobe - I've built my whole working life on good tools, and you'll hear me sing their praises before this series is done. I won't send you one because of what it quietly says to you. And once you see it, you won't be able to unsee it either.
+Not because I'm a technophobe - I've built my whole working life on good tools, and you'll hear me sing their praises before this series is done. When I do hold off, it's because of what it quietly says to you. And once you see it, you won't be able to unsee it either.
 
 Picture the moment. You've reached out to someone worth knowing, sent them a genuine note, had a real exchange, and they've come back with the thing you were hoping for: "Yeah, I'd be happy to have a chat." You've won the hard part. And this is precisely where most people fumble it - they fire back a link. "Great! Grab a time that works for you: calendly.com/…"
 
@@ -30,7 +30,7 @@ But here's the shift: the back-and-forth isn't yours to suffer either, not anymo
 
 If that sounds familiar, it should - it's the same shift as the thank-you. Just as a genuine, personal note became cheap enough to send every single time, considered scheduling became cheap enough to offer every single time. Effort that reads as care is no longer expensive. Which removes the last excuse for outsourcing that effort to the very person you're trying to win over.
 
-So next time someone says yes, resist the reflex. Don't send the link. Offer two or three real times, do the small arranging yourself, and let them feel - at the first practical step of the whole relationship - that they're a person to you, and not a calendar event.
+Are there exceptions? Of course - a big group to herd, someone who genuinely prefers a link. Rarely isn't never. But with someone you've deliberately chosen and are trying to win over, resist the reflex. Don't send the link. Offer two or three real times, do the small arranging yourself, and let them feel - at the first practical step of the whole relationship - that they're a person to you, and not a calendar event.
 
 And then they turn up to the call. Which is where the biggest paradigm of the lot is waiting - because almost everyone walks into that first conversation and does the one thing guaranteed to sink it. Next time: what your first discovery call is actually for.
 
