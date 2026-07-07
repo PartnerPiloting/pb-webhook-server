@@ -4,7 +4,7 @@ title: Become the person who knows a guy
 dek: "For all the grandeur of nodes and webs, the whole thing comes down to three words - and a habit you can start this afternoon."
 series: network-building-rethought
 order: 80
-status: draft
+status: final
 audience: outsider-safe
 ---
 
@@ -34,4 +34,4 @@ So don't wait for the network. Start today. The next time someone describes a pr
 
 There's one thing left - the small matter of doing all of this, for everyone, without it quietly taking over your life. That's the last piece.
 
-<!-- WIP notes: First draft 2026-07-07, not reviewed by Guy. #80, map step 9 - the ETHOS-CLOSER + brand soul (title "Become the person who knows a guy"). Delivers the "single sentence" #70 promised ("I know a guy"). Penny-drop: the grand node-web rests on one tiny human habit - be the one who says "I know a guy" and MAKES the introduction, freely, expecting nothing (give-first as identity). The DAY-ONE inversion (the one step you can start before any other - "being that person is how the network begins"). Compounds (more network -> more often the answer -> the natural centre). Closes on WHO YOU BECOME (the person everyone's glad to know). References "all ten steps". Seeds the "I know a guy" brand. Ends teasing #90 (step 10, Wingguy - "doing all of this without it taking over your life"). Outsider-safe, no tech, both audiences. Opens off #70. -->
+<!-- Approved final by Guy 2026-07-07 (added the abundance beat). First draft 2026-07-07. #80, map step 9 - the ETHOS-CLOSER + brand soul (title "Become the person who knows a guy"). Delivers the "single sentence" #70 promised ("I know a guy"). Penny-drop: the grand node-web rests on one tiny human habit - be the one who says "I know a guy" and MAKES the introduction, freely, expecting nothing (give-first as identity). The DAY-ONE inversion (the one step you can start before any other - "being that person is how the network begins"). Compounds (more network -> more often the answer -> the natural centre). Closes on WHO YOU BECOME (the person everyone's glad to know). References "all ten steps". Seeds the "I know a guy" brand. Ends teasing #90 (step 10, Wingguy - "doing all of this without it taking over your life"). Outsider-safe, no tech, both audiences. Opens off #70. -->
