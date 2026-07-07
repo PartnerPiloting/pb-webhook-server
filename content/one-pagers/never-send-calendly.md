@@ -4,7 +4,7 @@ title: Why I'll rarely send you a Calendly link
 dek: "A scheduling link feels like a courtesy. Look closer at what it quietly tells the person you're trying to win over."
 series: network-building-rethought
 order: 37
-status: draft
+status: final
 audience: outsider-safe
 ---
 
@@ -34,4 +34,4 @@ Are there exceptions? Of course - a big group to herd, someone who genuinely pre
 
 And then they turn up to the call. Which is where the biggest paradigm of the lot is waiting - because almost everyone walks into that first conversation and does the one thing guaranteed to sink it. Next time: what your first discovery call is actually for.
 
-<!-- WIP notes: First draft 2026-07-07, not reviewed by Guy. #37, map step 5 ("Offer times - the right way"). Benchmark title (kept verbatim - the titles rule names this the benchmark). Built from arc: Calendly outsources cognitive load to THEM + signals "you're a slot in my system"; offering 2-3 considered times = "I did the work, you matter"; the back-and-forth objection DIED because the system now does it (reads thread → suggests times → books → confirms). Same paradigm as #35 (effort-that-reads-as-care is now cheap) = the bridge line. Sequencing per Guy: this is the RESPONSE stage (they already said yes to the soft ask that rode in the thank-you), NOT the first suggestion. Credits "the system" generically for the scheduling back-and-forth, NOT Wingguy (step-10 reveal), consistent with #35. Opens off #35 (builds-on box for jumpers); teases #45 (discovery call). Contrarian/forwardable, both audiences, outsider-safe. Guy voice: "Would Tuesday afternoon or Thursday morning suit?" + "I'll send the link". -->
+<!-- Approved final by Guy 2026-07-07 (+ never->rarely, exception owned). First draft 2026-07-07. #37, map step 5 ("Offer times - the right way"). Benchmark title (kept verbatim - the titles rule names this the benchmark). Built from arc: Calendly outsources cognitive load to THEM + signals "you're a slot in my system"; offering 2-3 considered times = "I did the work, you matter"; the back-and-forth objection DIED because the system now does it (reads thread → suggests times → books → confirms). Same paradigm as #35 (effort-that-reads-as-care is now cheap) = the bridge line. Sequencing per Guy: this is the RESPONSE stage (they already said yes to the soft ask that rode in the thank-you), NOT the first suggestion. Credits "the system" generically for the scheduling back-and-forth, NOT Wingguy (step-10 reveal), consistent with #35. Opens off #35 (builds-on box for jumpers); teases #45 (discovery call). Contrarian/forwardable, both audiences, outsider-safe. Guy voice: "Would Tuesday afternoon or Thursday morning suit?" + "I'll send the link". -->
