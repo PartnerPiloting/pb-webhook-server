@@ -54,7 +54,7 @@ This is where most good conversations quietly die - "let's stay in touch," with 
 ## 8. Building nodes - where it all compounds
 
 Do this with enough of the right people and something shifts. You're not networking alone any more - you've got a web of people who all think this way, recommending each other, growing each other's networks. That's the whole game: not you chasing work, but work arriving on a recommendation.
-→ *Nodes*
+→ *Building nodes*
 
 ## 9. Practice the "I know a guy" principle
 

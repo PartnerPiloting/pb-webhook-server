@@ -4,7 +4,7 @@ title: A reason to follow up
 dek: "Great conversations don't die from a lack of goodwill. They die from a lack of a next thing. Here's how to make sure there's always a reason to come back."
 series: network-building-rethought
 order: 40
-status: draft
+status: final
 audience: outsider-safe
 ---
 
@@ -36,4 +36,4 @@ So don't hand your best conversations over to goodwill and hope. Before you leav
 
 Keep that up, with the right people, and a curious thing happens. Somewhere along the way you cross a quiet line - from someone who *networks* to someone who *builds* - and what began as tending a handful of relationships one at a time turns into something that grows on its own. That's the whole point of everything so far, and it's where we finish.
 
-<!-- WIP notes: First draft 2026-07-07, not reviewed by Guy. #40, map step 7. Penny-drop: relationships persist on MOTION, not goodwill - "let's stay in touch/refer each other" dies because there's nothing to come back FOR; you need a reason (give-first: something to share, someone to introduce, a thread to pick up - NOT "got any referrals?"). Ties to #47's two-call structure (first-call-about-them hands you the reason). Then the MULTIPLICATION seed, kept light per coordination: the follow-up is where you spot BUILDERS + start teaching them → they build their own → their finds flow back to you. Teases #70 (step 8, nodes - "grows on its own... where we finish"). Coordination held: #40 = follow-up mechanism + FIRST builder-identification + teaching; the full nodes crescendo stays #70; the builders-not-blobs paradigm stays #67. Outsider-safe, both audiences, no tech. -->
+<!-- Approved final by Guy 2026-07-07 (enriched with mutual-building strategy + networker->builder threshold tease). First draft 2026-07-07. #40, map step 7. Penny-drop: relationships persist on MOTION, not goodwill - "let's stay in touch/refer each other" dies because there's nothing to come back FOR; you need a reason (give-first: something to share, someone to introduce, a thread to pick up - NOT "got any referrals?"). Ties to #47's two-call structure (first-call-about-them hands you the reason). Then the MULTIPLICATION seed, kept light per coordination: the follow-up is where you spot BUILDERS + start teaching them → they build their own → their finds flow back to you. Teases #70 (step 8, nodes - "grows on its own... where we finish"). Coordination held: #40 = follow-up mechanism + FIRST builder-identification + teaching; the full nodes crescendo stays #70; the builders-not-blobs paradigm stays #67. Outsider-safe, both audiences, no tech. -->
