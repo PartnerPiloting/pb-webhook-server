@@ -4,7 +4,7 @@ title: The filter everyone skips
 dek: "Credentials tell you what someone has done. They can't tell you how they think - the one thing that actually predicts a great connection. Here's how you finally filter for it."
 series: network-building-rethought
 order: 33
-status: draft
+status: final
 audience: insider-flavoured - references the scoring system (base system, NOT Wingguy); fine for warm prospects via the library
 ---
 
@@ -40,4 +40,4 @@ So this week, before you fire off a single message, stop treating your search re
 
 Which is exactly where we go next: for the people who make the cut, how do you make that first message land?
 
-<!-- WIP notes: First draft 2026-07-06, not reviewed by Guy. #33, map step 3 (scoring / "the secret sauce"). Built from banked material: three facets (concept of scoring; AI + configurable/add-your-own-attributes; ships with Guy's proven attributes) + the two paths (score-then-contact / contact-then-score-to-prioritise) + guardrails (NEVER sounds like a LinkedIn feature - it's what LinkedIn can't do; base system NOT Wingguy, so no upsell / prospect-safe; low-scorer handling framed gently as "where your energy goes", not "ignore them" - the blunt version stays in #35). Penny-drop: attitude is the filter that matters most AND the one everyone skips (unrunnable at scale) - now scoreable. Opens off #32's search (builds-on box for jumpers); ends teasing #35 (thank-you). Title is a provocative working title - Guy may retitle (alts: "Score them on attitude" / "The best predictor is the one you can't see" / "What a CV can't tell you"). -->
+<!-- Approved final by Guy 2026-07-07. First draft 2026-07-06. #33, map step 3 (scoring / "the secret sauce"). Built from banked material: three facets (concept of scoring; AI + configurable/add-your-own-attributes; ships with Guy's proven attributes) + the two paths (score-then-contact / contact-then-score-to-prioritise) + guardrails (NEVER sounds like a LinkedIn feature - it's what LinkedIn can't do; base system NOT Wingguy, so no upsell / prospect-safe; low-scorer handling framed gently as "where your energy goes", not "ignore them" - the blunt version stays in #35). Penny-drop: attitude is the filter that matters most AND the one everyone skips (unrunnable at scale) - now scoreable. Opens off #32's search (builds-on box for jumpers); ends teasing #35 (thank-you). Title is a provocative working title - Guy may retitle (alts: "Score them on attitude" / "The best predictor is the one you can't see" / "What a CV can't tell you"). -->
