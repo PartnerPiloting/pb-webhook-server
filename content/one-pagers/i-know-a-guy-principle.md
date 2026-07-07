@@ -20,6 +20,8 @@ That's it. That's the entire engine, dressed up as a throwaway line.
 
 And the most important part is *how* you do it: freely. No ledger, no "you'll owe me one," no quiet expectation of a favour returned. You make the introduction because you can, because it'll help two people you rate, and then you let go of it completely. Which - and this is the quiet magic of the whole thing - is precisely why it comes back to you.
 
+And here's what almost nobody believes until they've lived it: it comes back out of all proportion to what you put in. Give introductions away freely, to enough of the right people, for long enough, and the return isn't a trickle - it's more than you would ever have dared engineer. Every person you've quietly helped becomes someone who says your name in a room you'll never sit in. Recommendations start arriving from directions you can't trace, in numbers you never set out to get - and the strange truth lands: the one who gave without keeping score ends up recommended by far more people than the one who spent the whole time asking.
+
 Now here's the part I love most. Everything else in this series takes time. Choosing the right people, reaching out, earning the calls, building a node - that's months of patient work. This is not. **This you can start today.** This afternoon, before you've done a single other thing on the map. Because you almost certainly already know two people who ought to know each other. You just haven't made the introduction yet.
 
 So make it. You don't need a network to start being the person who connects people - being that person is how the network begins.
