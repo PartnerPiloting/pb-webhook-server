@@ -26,7 +26,11 @@ And the answer is almost never "so - got any referrals for me?" That's the trans
 
 If you followed the last piece, you've already got the cleanest version of this handed to you. Keep that first call short and all about them, and you walk away holding the reason on a plate: *"you mentioned you were wrestling with X - I've been thinking about it, and I know exactly who you should talk to."* No manufacturing required.
 
-And here's where it stops being maintenance and starts being something bigger. As you keep coming back, you learn who these people really are - and every so often, one of them turns out to be a builder: someone who thinks the way you do, who lights up at the idea of a network rather than just a contact list. When you find one, you do more than stay in touch. You show them how you work. Because a builder doesn't just sit in your network - they go and grow their own, and the good people *they* find start finding their way to you.
+That give-and-introduce rhythm alone will keep most relationships alive for years - over time you can nearly always think of someone worth introducing them to, and those introductions are reason enough to stay close. That works. But there's a version that works far better, and it turns an occasional reason to follow up into a permanent one.
+
+Every so often, as you get to know someone, you'll realise they're a builder - the kind of person who lights up at the idea of a network, not just a contact list, and who'd happily grow one of their own if they knew how. When you meet one, don't just keep in touch. Invite them into exactly what you're doing: show them how you go about it, and quietly agree to build each other's networks.
+
+Look at what that changes. The moment the two of you are both out there, deliberately, looking out for one another, the reason to follow up never runs dry again. Every good person they meet is a possible introduction for you; every one you meet is one for them. Getting to know new people, chasing down leads, making introductions - it stops being effort you have to motivate and becomes the natural business of two people building something together. Help them build their network, and their network quietly becomes part of yours.
 
 So don't hand your best conversations over to goodwill and hope. Before you leave one, plant the reason to return - something to share, someone to introduce, a thread to pick up next time. Relationships live on motion.
 
