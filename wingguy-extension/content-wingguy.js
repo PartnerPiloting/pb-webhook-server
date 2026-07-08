@@ -72,70 +72,22 @@
   // Read the lead's LinkedIn Contact Info (email + phone) for the ENRICH step. Called ONLY after a create
   // or Guy's manual "grab their details" — never on an ordinary turn (Guy's cost rule 2026-07-08).
   //
-  // LinkedIn does NOT embed contact info in the profile/overlay HTML (verified live 2026-07-08: the overlay
-  // page came back 1.6 MB with no emailAddress/phoneNumber keys at all). It's loaded on demand from the
-  // internal Voyager API — the SAME call LinkedIn's own "Contact info" modal makes. So we hit that endpoint
-  // in-page (credentials:'include' carries the session; csrf-token = the JSESSIONID cookie value, exactly as
-  // LinkedIn's web app does it) and parse the JSON. Object-walk first, then a text-regex safety net for
-  // shape drift. Returns { email, phone } (either may be '').
+  // DURABLE approach (2026-07-08): LinkedIn no longer serves contact info in a way we can fetch — the page
+  // HTML doesn't contain it, and the classic Voyager API endpoint is 410 Gone; the data only exists once the
+  // SPA renders the "Contact info" card. So the actual read happens in the BACKGROUND worker, which opens
+  // that card in a background tab and reads the rendered modal DOM (what a human would see — immune to the
+  // API/queryId churn that killed the fetch approach). This thin wrapper just delegates and returns
+  // { email, phone } (either may be '').
   async function scrapeContactInfo(profileUrl) {
-    const out = { email: '', phone: '' };
     try {
-      const slug = (String(profileUrl || '').match(/\/in\/([^/?#]+)/) || [])[1];
-      if (!slug) return out;
-      // LinkedIn uses the JSESSIONID cookie value (minus its surrounding quotes) as the CSRF token.
-      const csrf = (document.cookie.match(/JSESSIONID="?([^";]+)"?/) || [])[1] || '';
-      const apiUrl = `https://www.linkedin.com/voyager/api/identity/profiles/${encodeURIComponent(slug)}/profileContactInfo`;
-      const res = await fetch(apiUrl, {
-        method: 'GET',
-        credentials: 'include',
-        headers: { accept: 'application/json', 'csrf-token': csrf, 'x-restli-protocol-version': '2.0.0' },
-      });
-      const text = await res.text();
-      if (!res.ok) {
-        console.log('[Wingguy] contact-info: voyager not ok (status=' + res.status + ', hadCsrf=' + !!csrf +
-          '). If this is 403/401 the CSRF/session read is off; if 404 the endpoint shape changed. Paste this line to Guy.');
-        return out;
-      }
-      let data = null;
-      try { data = JSON.parse(text); } catch (_) { /* fall through to regex net */ }
-      const d = (data && (data.data || data)) || {};
-
-      // Email: usually a string; occasionally nested { emailAddress: "..." }.
-      let email = d.emailAddress;
-      if (email && typeof email === 'object') email = email.emailAddress || email.email || '';
-      if (typeof email === 'string' && /\S+@\S+\.\S+/.test(email)) out.email = email.trim().toLowerCase();
-
-      // Phone: phoneNumbers[] — each is { type, number } or { type, phoneNumber: { number } }. Prefer MOBILE.
-      const phones = Array.isArray(d.phoneNumbers) ? d.phoneNumbers : [];
-      if (phones.length) {
-        const pick = phones.find((p) => /mobile/i.test((p && p.type) || '')) || phones[0];
-        const num = pick && (pick.number || (pick.phoneNumber && pick.phoneNumber.number));
-        if (num) out.phone = String(num).replace(/\s+/g, ' ').trim();
-      }
-
-      // Safety net: if the object-walk missed (shape drift), regex the raw JSON text — anchored on the
-      // real keys so a stray value can't win.
-      if (!out.email) {
-        const m = text.match(/"emailAddress"\s*:\s*"([^"\\]+@[^"\\]+\.[a-z]{2,})/i);
-        if (m) out.email = m[1].toLowerCase();
-      }
-      if (!out.phone) {
-        const m = text.match(/"number"\s*:\s*"([+(]?\d[()\d\-.\s]{5,}\d)"/);
-        if (m) out.phone = m[1].replace(/\s+/g, ' ').trim();
-      }
-
-      if (!out.email && !out.phone) {
-        console.log('[Wingguy] contact-info: voyager parse empty (status=' + res.status + ', len=' + text.length +
-          ', hasEmailKey=' + /emailAddress/.test(text) + ', hasPhoneKey=' + /phoneNumber/.test(text) +
-          '). If the lead HAS contact details visible on LinkedIn, paste this line to Guy so the parser can be tuned.');
-      } else {
-        console.log('[Wingguy] contact-info parsed → email:', out.email || '(none)', '| phone:', out.phone || '(none)');
-      }
+      const r = await bg({ type: 'WG_SCRAPE_CONTACT', profileUrl });
+      const out = { email: (r && r.email) || '', phone: (r && r.phone) || '' };
+      console.log('[Wingguy] contact-info (background tab read) → email:', out.email || '(none)', '| phone:', out.phone || '(none)');
+      return out;
     } catch (e) {
-      console.log('[Wingguy] contact-info scrape error:', e.message);
+      console.log('[Wingguy] contact-info scrape failed:', e.message);
+      return { email: '', phone: '' };
     }
-    return out;
   }
 
   // Is a LinkedIn message thread actually open right now? True on the full /messaging/ detail pane AND

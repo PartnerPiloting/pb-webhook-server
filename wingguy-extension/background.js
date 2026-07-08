@@ -220,7 +220,106 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       .catch(error => sendResponse({ success: false, error: error.message }));
     return true;
   }
+  // Wingguy: read a lead's LinkedIn Contact Info (email + phone) by rendering their contact-info card in a
+  // background tab and reading the DOM. The durable path — see scrapeContactViaTab.
+  if (message.type === 'WG_SCRAPE_CONTACT') {
+    scrapeContactViaTab(message.profileUrl)
+      .then(data => sendResponse({ success: true, data }))
+      .catch(error => sendResponse({ success: false, error: error.message }));
+    return true;
+  }
 });
+
+const sleepBg = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// Read a lead's Contact Info by loading LinkedIn's contact-info overlay in a BACKGROUND tab and reading the
+// rendered modal DOM. The durable path (2026-07-08): LinkedIn no longer serves contact info via a fetchable
+// API or in the page HTML — the classic Voyager endpoint is 410 Gone, and the data only appears once the SPA
+// renders the card — so we let the card render (inactive tab, so it doesn't steal focus) and read what a
+// human would see. Opens the tab, waits for the modal, extracts email/phone, ALWAYS closes the tab.
+// Returns { email, phone } (either may be '').
+async function scrapeContactViaTab(profileUrl) {
+  const out = { email: '', phone: '' };
+  const slug = (String(profileUrl || '').match(/\/in\/([^/?#]+)/) || [])[1];
+  if (!slug) { console.log('[Wingguy][bg] scrapeContactViaTab: no /in/ slug in', profileUrl); return out; }
+  const url = `https://www.linkedin.com/in/${encodeURIComponent(slug)}/overlay/contact-info/`;
+  let tabId = null;
+  try {
+    const tab = await chrome.tabs.create({ url, active: false });
+    tabId = tab.id;
+    await waitForTabComplete(tabId, 15000);
+    // The SPA needs a moment after 'complete' to render the modal — poll executeScript until the card is up.
+    let res = null;
+    const deadline = Date.now() + 12000;
+    while (Date.now() < deadline) {
+      try {
+        const inj = await chrome.scripting.executeScript({ target: { tabId }, func: readContactModalDom });
+        res = inj && inj[0] && inj[0].result;
+      } catch (_) { res = null; }   // page still mid-load; retry
+      if (res && (res.email || res.phone)) break;
+      if (res && res.rendered) break;   // card rendered but genuinely no email/phone → stop waiting
+      await sleepBg(500);
+    }
+    if (res) { out.email = res.email || ''; out.phone = res.phone || ''; }
+    console.log('[Wingguy][bg] contact-info (tab read) →', out.email || '(no email)', '|', out.phone || '(no phone)',
+      res ? (res.rendered ? '' : '(card not detected)') : '(modal never rendered — paste this line to Guy)');
+  } catch (e) {
+    console.log('[Wingguy][bg] scrapeContactViaTab error:', e.message);
+  } finally {
+    if (tabId != null) { try { await chrome.tabs.remove(tabId); } catch (_) { /* already gone */ } }
+  }
+  return out;
+}
+
+// Resolve once the background tab has finished loading (or after a timeout, so a stuck load never hangs us).
+function waitForTabComplete(tabId, timeoutMs) {
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = () => { if (settled) return; settled = true; chrome.tabs.onUpdated.removeListener(listener); clearTimeout(timer); resolve(); };
+    const listener = (id, info) => { if (id === tabId && info.status === 'complete') finish(); };
+    const timer = setTimeout(finish, timeoutMs);
+    chrome.tabs.onUpdated.addListener(listener);
+    chrome.tabs.get(tabId, (t) => { if (chrome.runtime.lastError) return; if (t && t.status === 'complete') finish(); });
+  });
+}
+
+// Injected into the contact-info overlay tab (must be self-contained — no outer references). Reads the
+// rendered "Contact info" card: email via a mailto: link (most stable), phone via a tel: link or the number
+// under a "Phone" header. `rendered` tells the poller the card is actually up, so it can stop waiting even
+// when there's genuinely no email/phone. Returns { rendered, email, phone }.
+function readContactModalDom() {
+  const out = { rendered: false, email: '', phone: '' };
+  const headerMatch = (re) => Array.from(document.querySelectorAll('h3, .pv-contact-info__header, span, dt'))
+    .find((el) => re.test((el.textContent || '').trim()));
+
+  // Email — a mailto: link is the sturdiest hook; fall back to an "Email"-headed section.
+  const mailto = document.querySelector('a[href^="mailto:"]');
+  if (mailto) {
+    out.email = (mailto.getAttribute('href') || '').replace(/^mailto:/i, '').split('?')[0].trim().toLowerCase();
+  } else {
+    const h = headerMatch(/^email$/i);
+    const c = h && (h.closest('section, li, div') || h.parentElement);
+    const m = c && (c.innerText || '').match(/[^\s@]+@[^\s@]+\.[^\s@]+/);
+    if (m) out.email = m[0].trim().toLowerCase();
+  }
+
+  // Phone — a tel: link if present, else the number inside the "Phone"-headed section.
+  const tel = document.querySelector('a[href^="tel:"]');
+  if (tel) {
+    out.phone = (tel.getAttribute('href') || '').replace(/^tel:/i, '').trim();
+  } else {
+    const h = headerMatch(/^phone$/i);
+    const c = h && (h.closest('section, li, div') || h.parentElement);
+    const m = c && (c.innerText || '').match(/\+?\d[\d()\-.\s]{5,}\d/);
+    if (m) out.phone = m[0].replace(/\s+/g, ' ').trim();
+  }
+
+  // The card is "up" if we see its heading or any contact link — used only to stop the poll early.
+  const heading = Array.from(document.querySelectorAll('h1, h2, h3'))
+    .some((el) => /contact info/i.test(el.textContent || ''));
+  out.rendered = !!(mailto || tel || heading);
+  return out;
+}
 
 // Wingguy: POST /api/wingguy/lead-contact
 async function wingguyLeadContact(payload) {
