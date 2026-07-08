@@ -13,6 +13,12 @@
 // page directly — the tab is genuinely visible then, so the override changes nothing they'd notice.
 (function () {
   try {
+    // Only spoof in Wingguy's OWN behind-the-scenes read tab, marked by the ?wgcontact=1 flag the
+    // background worker adds when it opens the profile. On any profile the USER browses normally there's no
+    // flag, so this is a no-op — LinkedIn behaves exactly as usual (nothing kept falsely "visible"). The
+    // overrides persist for the page's life, so the flag only needs to be present on this document_start
+    // load; the soft-nav to the contact-info overlay drops it harmlessly.
+    if (!/[?&]wgcontact=1(?:&|$)/.test(location.search)) return;
     if (window.__wgVisSpoof) return;
     window.__wgVisSpoof = true;
 

@@ -251,7 +251,9 @@ async function scrapeContactViaTab(profileUrl) {
   // silently stripped back to the plain profile (verified live 2026-07-08 — the flashed tab showed the
   // profile, no card). A human gets the card by CLICKING "Contact info" on the loaded profile, so the
   // injected reader does exactly that, then we read the card it opens.
-  const url = `https://www.linkedin.com/in/${encodeURIComponent(slug)}/`;
+  // ?wgcontact=1 marks this as Wingguy's own read tab so the visibility spoof activates ONLY here, never on
+  // the user's normal profile browsing (see contact-visibility-spoof.js). LinkedIn ignores the unknown param.
+  const url = `https://www.linkedin.com/in/${encodeURIComponent(slug)}/?wgcontact=1`;
   let tabId = null;
   let prevTabId = null;
   try {
