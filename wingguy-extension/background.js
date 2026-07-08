@@ -308,43 +308,67 @@ function waitForTabComplete(tabId, timeoutMs) {
 function readContactModalDom() {
   const out = { rendered: false, clickedLink: false, email: '', phone: '' };
 
-  // Card not up yet? Click the profile's "Contact info" link (top card, under the name) and let the
+  // DEEP query: LinkedIn's new UI renders overlays inside shadow DOM, which plain
+  // document.querySelectorAll looks straight through (the live symptom 2026-07-08: the card visibly
+  // open — URL on /overlay/contact-info/ — yet no mailto/tel/heading found). Walk every element AND
+  // descend into every shadowRoot.
+  const allDeep = [];
+  (function walk(root) {
+    const els = root.querySelectorAll('*');
+    for (let i = 0; i < els.length; i++) {
+      allDeep.push(els[i]);
+      if (els[i].shadowRoot) walk(els[i].shadowRoot);
+    }
+  })(document);
+  const deepFind = (fn) => allDeep.filter(fn);
+
+  // The open card = a dialog-ish container, found deep. (Modal heading text is a fallback signal.)
+  const dialogs = deepFind((el) => {
+    const role = el.getAttribute && el.getAttribute('role');
+    const cls = String(el.className || '');
+    return role === 'dialog' || role === 'alertdialog' || /artdeco-modal|pv-contact-info/.test(cls);
+  });
+  // Body-fallback only counts once the overlay route ACTUALLY shows card text — otherwise the poll
+  // would stop early on a still-drawing page and read profile text instead of the card.
+  const onOverlayRoute = /overlay\/contact-info/.test(location.pathname);
+  const bodyLooksLikeCard = onOverlayRoute && /contact info/i.test((document.body.innerText || '').slice(0, 20000));
+  const modal = dialogs[0] || (bodyLooksLikeCard ? document.body : null);
+
+  // Card not up yet? Click the profile's "Contact info" link (the SPA route a human uses) and let the
   // poller's next pass read the opened card. Anchor on the overlay href — language-proof.
-  if (!document.querySelector('a[href^="mailto:"], a[href^="tel:"]') &&
-      !Array.from(document.querySelectorAll('h1, h2, h3')).some((el) => /contact info/i.test(el.textContent || ''))) {
-    const link = document.querySelector('a[href*="overlay/contact-info"]');
+  if (!modal) {
+    const link = deepFind((el) => el.tagName === 'A' && /overlay\/contact-info/.test(el.getAttribute('href') || ''))[0];
     if (link) { link.click(); out.clickedLink = true; }
     return out;
   }
-  const headerMatch = (re) => Array.from(document.querySelectorAll('h3, .pv-contact-info__header, span, dt'))
-    .find((el) => re.test((el.textContent || '').trim()));
+  out.rendered = true;
 
-  // Email — a mailto: link is the sturdiest hook; fall back to an "Email"-headed section.
-  const mailto = document.querySelector('a[href^="mailto:"]');
-  if (mailto) {
-    out.email = (mailto.getAttribute('href') || '').replace(/^mailto:/i, '').split('?')[0].trim().toLowerCase();
-  } else {
-    const h = headerMatch(/^email$/i);
-    const c = h && (h.closest('section, li, div') || h.parentElement);
-    const m = c && (c.innerText || '').match(/[^\s@]+@[^\s@]+\.[^\s@]+/);
-    if (m) out.email = m[0].trim().toLowerCase();
+  const inModal = (el) => modal === document.body || modal.contains(el) ||
+    // shadow-DOM children aren't .contains()-visible from outside; getRootNode().host chain check
+    (function hosted(n) { const r = n.getRootNode && n.getRootNode(); const h = r && r.host; return h ? (modal.contains(h) || hosted(h)) : false; })(el);
+
+  // Email — a mailto: link inside the card is the sturdiest hook.
+  const mailto = deepFind((el) => el.tagName === 'A' && /^mailto:/i.test(el.getAttribute('href') || '') && inModal(el))[0];
+  if (mailto) out.email = (mailto.getAttribute('href') || '').replace(/^mailto:/i, '').split('?')[0].trim().toLowerCase();
+
+  // Phone — a tel: link inside the card if present.
+  const tel = deepFind((el) => el.tagName === 'A' && /^tel:/i.test(el.getAttribute('href') || '') && inModal(el))[0];
+  if (tel) out.phone = (tel.getAttribute('href') || '').replace(/^tel:/i, '').trim();
+
+  // Belt-and-braces: pull email/phone straight out of the card's visible TEXT (what a human reads).
+  // Scoped to the modal so a stray email elsewhere on the profile can't win.
+  const modalText = (modal.innerText || '').slice(0, 8000);
+  if (!out.email) {
+    const m = modalText.match(/[^\s@]+@[^\s@]+\.[a-z]{2,}/i);
+    if (m) out.email = m[0].trim().toLowerCase().replace(/[.,;:]+$/, '');
   }
-
-  // Phone — a tel: link if present, else the number inside the "Phone"-headed section.
-  const tel = document.querySelector('a[href^="tel:"]');
-  if (tel) {
-    out.phone = (tel.getAttribute('href') || '').replace(/^tel:/i, '').trim();
-  } else {
-    const h = headerMatch(/^phone$/i);
-    const c = h && (h.closest('section, li, div') || h.parentElement);
-    const m = c && (c.innerText || '').match(/\+?\d[\d()\-.\s]{5,}\d/);
+  if (!out.phone) {
+    // Require a phone-looking run near a "Phone" label if possible, else any +.. / digit run of 8+.
+    const sect = modalText.match(/phone[\s\S]{0,80}/i);
+    const hay = sect ? sect[0] : modalText;
+    const m = hay.match(/\+?\d[\d()\-.\s]{6,}\d/);
     if (m) out.phone = m[0].replace(/\s+/g, ' ').trim();
   }
-
-  // The card is "up" if we see its heading or any contact link — used only to stop the poll early.
-  const heading = Array.from(document.querySelectorAll('h1, h2, h3'))
-    .some((el) => /contact info/i.test(el.textContent || ''));
-  out.rendered = !!(mailto || tel || heading);
   return out;
 }
 
