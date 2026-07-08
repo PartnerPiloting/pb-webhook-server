@@ -330,12 +330,20 @@ function readContactModalDom() {
   out.cardOpen = !!(mailto || tel || contactDialog);
 
   if (!out.cardOpen) {
-    // Open the card the way a human does — click the profile's "Contact info" control. Match by href OR
-    // by its visible label (an <a>/<button>/[role=button] reading exactly "Contact info").
-    const link = allDeep.find((el) => el.tagName === 'A' && /overlay\/contact-info/.test(el.getAttribute('href') || ''))
-      || allDeep.find((el) => (el.tagName === 'A' || el.tagName === 'BUTTON' || (el.getAttribute && el.getAttribute('role') === 'button')) && /^contact info$/i.test((el.textContent || '').trim()));
+    // Open the card the way a human does — click the profile's "Contact info" control. An earlier build
+    // opened the WRONG dialog (notification bell), so we choose narrowly and RECORD both every candidate
+    // and the one actually clicked (out.candidates / out.clicked) for the diag.
+    const clickable = (el) => el.tagName === 'A' || el.tagName === 'BUTTON' || (el.getAttribute && el.getAttribute('role') === 'button');
+    const href = (el) => (el.getAttribute && el.getAttribute('href')) || '';
+    const cands = allDeep.filter((el) => clickable(el) && (/overlay\/contact-info/.test(href(el)) || /contact-info/i.test(el.id || '') || /^contact info$/i.test((el.textContent || '').trim())));
+    out.candidates = cands.slice(0, 8).map((el) => ({ tag: el.tagName, href: href(el).slice(0, 60), id: (el.id || '').slice(0, 40), text: (el.textContent || '').trim().slice(0, 30) }));
+    // Prefer the true contact link: an <a> whose HREF is the contact overlay; then a contact-info id; then exact label.
+    const link = cands.find((el) => el.tagName === 'A' && /overlay\/contact-info/.test(href(el)))
+      || cands.find((el) => /contact-info/i.test(el.id || ''))
+      || cands.find((el) => /^contact info$/i.test((el.textContent || '').trim()));
     if (link) {
       out.linkFound = true;
+      out.clicked = { tag: link.tagName, href: href(link).slice(0, 60), id: (link.id || '').slice(0, 40), text: (link.textContent || '').trim().slice(0, 30) };
       // Dispatch a real click React will honour (its onClick preventDefaults + soft-opens the modal),
       // rather than a plain navigation that hard-loads /overlay/contact-info/ and strips the card.
       try { link.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window })); out.clickedLink = true; } catch (_) { try { link.click(); out.clickedLink = true; } catch (__) {} }
