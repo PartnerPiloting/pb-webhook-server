@@ -4,7 +4,7 @@ Drafted 2026-07-07 per SERIES-ARC.md "NEXT UP". Audience: people genuinely inter
 
 **✅ STATUS 2026-07-08 - all writing DONE.** Every piece drafted, approved, split where needed, committed. "All in launch" (Guy 2026-07-08): no post-launch holdback - #20, #50, #60, #65, #67 all promoted into the launch run. A *later* series may follow; separate. Remaining work = the ENGINE (separate session).
 
-## The prospect run (send order) - 17 emails
+## The prospect run (send order) - 18 emails
 
 | # | Slug | Role |
 |---|---|---|
@@ -17,18 +17,19 @@ Drafted 2026-07-07 per SERIES-ARC.md "NEXT UP". Audience: people genuinely inter
 | 7 | never-send-calendly (#37) | **BETTER WAY** - effort that reads as care is now cheap |
 | 8 | reason-to-follow-up (#40) | **BETTER WAY** - relationships persist on motion, not goodwill |
 | 9 | first-discovery-call (#45) | **BETTER WAY** - the call is to LEARN; dissolves pitch-dread |
-| 10 | patience-curve (#50) | **FEASIBILITY (time)** - it builds, it doesn't spike |
-| 11 | why-not-buy-a-network (#55) | **OBJECTION (buy it)** - selective cross-node docking beats renting |
-| 12 | four-hours-not-forty (#60) | **FEASIBILITY (effort)** - networking lapses from cognitive load, now removable |
-| 13 | you-could-build-this (#65) | **OBJECTION (build it)** - scar tissue with an interface; a system duplicates |
-| 14 | builders-not-blobs (#67) | **VISION SETUP** - value the builder over the big-but-static blob |
-| 15 | nodes (#70) | **VISION** - the crescendo; second-order referrals |
-| 16 | i-know-a-guy-principle (#80) | **ETHOS** - who you become; start day one |
-| 17 | imagine-if (#100) | **FINALE** - one vision + the only soft invitation ("worth a chat?") |
+| 10 | connection-isnt-charm (#46) | **BETTER WAY (craft)** - connection is noticing, not charm; disarms "I'm not a people person" |
+| 11 | patience-curve (#50) | **FEASIBILITY (time)** - it builds, it doesn't spike |
+| 12 | why-not-buy-a-network (#55) | **OBJECTION (buy it)** - selective cross-node docking beats renting |
+| 13 | four-hours-not-forty (#60) | **FEASIBILITY (effort)** - networking lapses from cognitive load, now removable |
+| 14 | you-could-build-this (#65) | **OBJECTION (build it)** - scar tissue with an interface; a system duplicates |
+| 15 | builders-not-blobs (#67) | **VISION SETUP** - value the builder over the big-but-static blob |
+| 16 | nodes (#70) | **VISION** - the crescendo; second-order referrals |
+| 17 | i-know-a-guy-principle (#80) | **ETHOS** - who you become; start day one |
+| 18 | imagine-if (#100) | **FINALE** - one vision + the only soft invitation ("worth a chat?") |
 
 Tease chain: #50→#55→#60→#65→#67→#70→#80→#100 (all confirmed; #55's ending was re-pointed at #60 on 2026-07-08).
 
-## The client run (send order) - 20 emails (banked 2026-07-08)
+## The client run (send order) - 21 emails (banked 2026-07-08)
 
 Journey order, map first (they've bought - orientation before persuasion), paradigm/proof interleaved as breathers so it isn't five philosophy emails before anything actionable. Guy's law: everything vies for a higher slot, but there are only so many - this is good enough to ship, not to keep reshuffling.
 
@@ -45,15 +46,16 @@ Journey order, map first (they've bought - orientation before persuasion), parad
 | 9 | patience-curve (#50) | expectations - reassurance |
 | 10 | never-send-calendly (#37) | step 5 |
 | 11 | first-discovery-call (#45) | step 6 |
-| 12 | discovery-call-craft (#47) | step 6 (craft) |
-| 13 | reason-to-follow-up (#40) | step 7 |
-| 14 | pleasing-methods (#20) | reinforcement (shakiest slot - it's really a prospect piece; droppable) |
-| 15 | four-hours-not-forty (#60) | feasibility |
-| 16 | you-could-build-this (#65) | objection |
-| 17 | builders-not-blobs (#67) | vision setup |
-| 18 | nodes (#70) | **step 8** |
-| 19 | i-know-a-guy-principle (#80) | **step 9** |
-| 20 | increase-your-intelligence (#90) | **step 10** |
+| 12 | connection-isnt-charm (#46) | how to open the call (craft) |
+| 13 | discovery-call-craft (#47) | step 6 (craft) |
+| 14 | reason-to-follow-up (#40) | step 7 |
+| 15 | pleasing-methods (#20) | reinforcement (shakiest slot - it's really a prospect piece; droppable) |
+| 16 | four-hours-not-forty (#60) | feasibility |
+| 17 | you-could-build-this (#65) | objection |
+| 18 | builders-not-blobs (#67) | vision setup |
+| 19 | nodes (#70) | **step 8** |
+| 20 | i-know-a-guy-principle (#80) | **step 9** |
+| 21 | increase-your-intelligence (#90) | **step 10** |
 
 Known soft spots (accepted, not blockers): #50's drip-week vs the client's real campaign-week can't fully align (would move earlier before later); #20 is the most droppable; three orientation emails up front (#12/#5/#10) is the ceiling before an eager client needs something to *do*. Client-run endings use each file's `ENDING:CLIENT` block (or the shared body where there's no split).
 
