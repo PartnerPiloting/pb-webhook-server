@@ -26,6 +26,7 @@ const { getMeetingsForLead, getParticipantsForMeeting } = require('./recallWebho
 const { normalizeFathomApiTranscript } = require('./fathomIngestService');
 const { registerWingguyRulesTools } = require('./wingguyRulesMcp');
 const { registerWingguyBookingTools } = require('./wingguyBookingMcp');
+const { registerWingguyMailTools } = require('./wingguyMailMcp');
 
 const BASE = '/mcp2';
 const DEFAULT_COACH_CLIENT_ID = (process.env.RECALL_COACH_CLIENT_ID || 'Guy-Wilson').trim();
@@ -248,6 +249,7 @@ function createRecallMcpServer() {
   // ⚠ First NON-transcript tools on this connector → the roadmap's rename-to-"Wingguy" trigger.
   registerWingguyRulesTools(server);
   registerWingguyBookingTools(server);
+  registerWingguyMailTools(server);
 
   return server;
 }
