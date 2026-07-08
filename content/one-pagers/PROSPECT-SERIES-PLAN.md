@@ -1,53 +1,56 @@
 # Networking-list (prospect / nurture) series - one-page plan
 
-Drafted 2026-07-07 per SERIES-ARC.md "NEXT UP". Audience: people genuinely interested in networking who aren't (yet) on Guy's system - former leads, "weren't ready / got left behind", a re-engagement list. Job of the series: **change minds** (persuasion arc), not guide action. ~80% reuses the locked client set; ~20% is nurture-native new writing.
+Drafted 2026-07-07 per SERIES-ARC.md "NEXT UP". Audience: people genuinely interested in networking who aren't (yet) on Guy's system - former leads, "weren't ready / got left behind", a re-engagement list (they've usually had a presentation, so they're warm, not cold). Job of the series: **change minds** (persuasion arc), not guide action. ~70% reuses the client set; the rest is nurture-native new writing.
 
-**✅ STATUS 2026-07-08 - all writing DONE + committed (8569f216).** 6 shared pieces got per-audience `ENDING:CLIENT` / `ENDING:PROSPECT` blocks; 3 needed no split; 4 new pieces drafted (incl. the imagine-if finale). Remaining = the ENGINE build (separate session). Key change since first draft: #90 Wingguy DROPPED from the drip → replaced by a new **imagine-if** possibility finale.
+**✅ STATUS 2026-07-08 - all writing DONE.** Every piece drafted, approved, split where needed, committed. "All in launch" (Guy 2026-07-08): no post-launch holdback - #20, #50, #60, #65, #67 all promoted into the launch run. A *later* series may follow; separate. Remaining work = the ENGINE (separate session).
 
-## The persuasion arc: pain -> proof -> failed default -> better way -> feasibility -> vision
+## The prospect run (send order) - 17 emails
 
-| Run | Slug | Role in the arc | Source | Prospect ending |
-|---|---|---|---|---|
-| 1 | feast-or-famine (#10) | **PAIN** - the structural see-saw; opens on the ache everyone recognises | reuse | split (dropped "this week") |
-| 2 | introduction-before-we-spoke (#15) | **PROOF** - Daniel/Keith, the early wake-up: "this actually happens" | reuse | shared (no split needed) |
-| 3 | pleasing-methods (#20) | **FAILED DEFAULT** - you tried BNI / breakfast; it felt like networking and burned you by year two | **NEW** | native-possibility (both audiences) |
-| 4 | choose-the-room (#30) | **BETTER WAY opens** - you're allowed to SELECT your network; quality is an upstream decision | reuse | split (dropped #32 search-box tease) |
-| 5 | twenty-second-thank-you (#35) | **BETTER WAY** - the human idea only: personalisation economics flipped (strip client machinery) | reuse | split (possibility for the "do X" task) |
-| 6 | never-send-calendly (#37) | **BETTER WAY** - effort that reads as care is now cheap; forwardable | reuse | split (receiving-end possibility) |
-| 7 | reason-to-follow-up (#40) | **BETTER WAY** - relationships persist on shared motion, not goodwill | reuse | shared (no split needed) |
-| 8 | first-discovery-call (#45) | **BETTER WAY** - the call is to LEARN about them; dissolves pitch-dread | reuse (paradigm only) | split (dropped #47 craft tease) |
-| 9 | patience-curve (#50) | **FEASIBILITY / EXPECTATIONS** - compounding looks flat early; consistency is the game | **NEW** | split - BOTH endings (client = consistency-now-doable) |
-| 10 | why-not-buy-a-network (#55) | **OBJECTION before vision** - the paid-referral-network answer (selective cross-node docking; exclusivity built in) | **NEW** | native-possibility (prospect-only) |
-| 11 | nodes (#70) | **VISION** - the crescendo: second-order referrals, "what if 100% came from recommendations?" | reuse | shared (no split needed) |
-| 12 | i-know-a-guy-principle (#80) | **ETHOS CLOSE** - who YOU become; the one step you can start day one | reuse | split (prospect tease → imagine-if) |
-| 13 | imagine-if (#100) | **FINALE** - gathers the whole promise into one vision; the only soft invitation ("worth a chat?") | **NEW** (prospect-only) | native-possibility |
-| — | ~~increase-your-intelligence (#90)~~ | **DROPPED from the prospect drip** (reads as a pitch) - stays library/client-only | — | — |
+| # | Slug | Role |
+|---|---|---|
+| 1 | revisit-your-big-picture (#5) | **OPENER** - reconnect to the why; network = the one constant / shock absorber; "how you want to LIVE, not what you DO" |
+| 2 | feast-or-famine (#10) | **PAIN** - the structural see-saw |
+| 3 | introduction-before-we-spoke (#15) | **PROOF** - Daniel/Keith, "this actually happens" |
+| 4 | pleasing-methods (#20) | **FAILED DEFAULT** - BNI/breakfast felt like networking, burned you |
+| 5 | choose-the-room (#30) | **BETTER WAY** - select your network; quality is upstream |
+| 6 | twenty-second-thank-you (#35) | **BETTER WAY** - a thanks that delights; personalisation economics flipped |
+| 7 | never-send-calendly (#37) | **BETTER WAY** - effort that reads as care is now cheap |
+| 8 | reason-to-follow-up (#40) | **BETTER WAY** - relationships persist on motion, not goodwill |
+| 9 | first-discovery-call (#45) | **BETTER WAY** - the call is to LEARN; dissolves pitch-dread |
+| 10 | patience-curve (#50) | **FEASIBILITY (time)** - it builds, it doesn't spike |
+| 11 | why-not-buy-a-network (#55) | **OBJECTION (buy it)** - selective cross-node docking beats renting |
+| 12 | four-hours-not-forty (#60) | **FEASIBILITY (effort)** - networking lapses from cognitive load, now removable |
+| 13 | you-could-build-this (#65) | **OBJECTION (build it)** - scar tissue with an interface; a system duplicates |
+| 14 | builders-not-blobs (#67) | **VISION SETUP** - value the builder over the big-but-static blob |
+| 15 | nodes (#70) | **VISION** - the crescendo; second-order referrals |
+| 16 | i-know-a-guy-principle (#80) | **ETHOS** - who you become; start day one |
+| 17 | imagine-if (#100) | **FINALE** - one vision + the only soft invitation ("worth a chat?") |
 
-## What's REUSED (paradigm gold, client machinery stripped)
-#10, #15, #30, #35 (human idea only), #37, #40, #45 (paradigm half only), #70, #80. Nine shared-core pieces, each re-ended with a **possibility close** ("imagine if 100% of your work came from recommendations") instead of the client "do X in your campaign this week". One piece, one per-series outro - the "same sermon, different altar call" rule, ~1.2x effort not 2x.
+Tease chain: #50→#55→#60→#65→#67→#70→#80→#100 (all confirmed; #55's ending was re-pointed at #60 on 2026-07-08).
 
-## What's STRIPPED to library-only (never in this drip)
-- **#12 the map** - client orientation, insider-flavoured; library only.
-- **#32 who-do-i-reach-out-to** and **#47 discovery-call-craft** - CRAFT; without the paradigm they read as random tactics. Library only.
-- **#33 score-on-attitude** - insider scoring; must never sound like a machinery upsell. Library only.
-- **#90 Wingguy** - DROPPED from the prospect drip entirely (even a soft coda reads as a pitch → MLM-smell risk). Stays library/client-only; its drip slot is taken by the new **imagine-if** finale.
+## Who gets what (audience routing)
+- **Prospect drip** = the 17 above (paradigm only).
+- **Prospect MAP** = new **how-it-actually-works (#8)** - a NEW prospect-flavoured, machinery-free, 7-step map ending on the vision (NOT the client operating-manual map). Lives at the **top of the prospect library / reachable from the footer** - NOT a drip email (prospects need the emotional hook first).
+- **Never sent to prospects** (client-only): the client map #12, craft #32/#33/#47, Wingguy #90.
 
-## The 4 NEW pieces (all drafted 2026-07-08)
-1. **pleasing-methods (#20)** - the failed default for THIS audience. Breakfast/BNI feels like networking but produces no network: $3,500/yr, honeymoon of fresh faces, then KPI-forced referrals to a room you didn't design; jaded by year two. Draws on the parked "exhausted networker" vignette (8 one-on-ones, no follow-up) and Guy's own anti-MEETING scar tissue. The pivot from pain into the better way. **Single form, both audiences** (prospect drip now; client library + post-launch). Teases #30.
-2. **patience-curve (#50)** - the feasibility/expectations beat. People quit at month three because compounding looks flat early. Inoculates against the impatience that kills the payoff. "It builds, it doesn't spike." **Two endings** (prospect = "buy a network?" tease → #55; client = consistency-is-now-doable). Both audiences.
-3. **why-not-buy-a-network (#55)** - the objection right before the vision, from the Alasdair call (~35:13, accountant example). Paid referral networks sell "you made the cut, instant network" for ~$1k/mo. The answer: **selective cross-node referral** - your curated node docks with other builders' nodes ("who else do you have?"), giving the instant-network benefit structurally, exclusivity built in ("the seat is taken"), no subscription. The bought version is #20's failure mode in premium packaging. Prospect-only.
-4. **imagine-if (#100)** - the PROSPECT-ONLY finale (replaces #90). Gathers the whole series into one vision and carries the single soft invitation ("that's exactly what we build - might be worth a conversation. No pitch. Just: imagine if."). Second-order referrals + #10 see-saw callback + #80 identity. The penultimate paragraph opens the feasibility loop (tooling un-named) as the bridge to a sales chat without pitching a product. Sign-off "(I know a) Guy".
+## Endings (per-audience `ENDING` blocks in each file)
+`<!-- ENDING:CLIENT -->` / `<!-- ENDING:PROSPECT -->`; content outside the blocks is shared. Split: #10, #30, #35, #37, #45, #80. Shared (no split): #15, #40, #70. Two endings: #50 (client = consistency-now-doable). New pieces are prospect-native (possibility by construction). #60/#65/#67 are shared single-form, both audiences.
 
-## Endings, footer, send rules
-- **Per-audience endings live in each file** as `<!-- ENDING:CLIENT -->` / `<!-- ENDING:PROSPECT -->` blocks; content outside the blocks is shared and sent to both. Of the reused pieces, #10/#30/#35/#37/#45/#80 got split blocks; #15/#40/#70 stayed shared (already possibility-shaped). New pieces are prospect-native (possibility by construction); #50 also carries a client ending.
-- **Prospect footer** = the three-element block: (1) rotating contextual pointer; (2) the standing line "New here, lost the thread, or keen to read ahead? Everything lives on one page - start at the map."; (3) reply-to-stop. Footer click on a prospect = **buying signal** -> surface on the Airtable record.
-- **Send log stays per-piece**: a prospect who converts to client does NOT get shared pieces re-sent with the other ending.
+## Greeting, footer, send rules (settled 2026-07-08)
+- **Greeting: "Hi [First Name]"**, fallback **"Hi there"** when the name is missing/junky. NEVER "Hi All" - it announces "you're on a list" and contradicts the series' own personalisation thesis. (First-name merge reads as courtesy, not fake-handwriting; the body is openly a series, so no dishonesty.)
+- **Prospect footer** = (1) rotating contextual pointer (the single best next click for someone who just finished THIS piece); (2) standing line pointing to the map/library ("see where this is all heading? the whole picture's on one page"); (3) **standing open-door line** - warm availability, NOT a sales nudge: *"Any time one of these raises a question - or you'd like to talk it through for your own situation - just hit reply. I read every one."*; (4) reply-to-stop.
+- **The explicit "this is what we build - worth a conversation?" ask stays concentrated in the FINALE (imagine-if)**, not every email - so no single email reads as selling. A reply (to the open-door line) = **buying signal** logged on the Airtable record.
+- Sign-off: consider **"(I know a) Guy"** (brand in four characters).
 - Dashes are " - ", never em dashes.
 
-## What's left (the ENGINE - separate build session)
-All prospect-series *writing* is done. Remaining is machinery, not content:
-- Library page rendered by pb-webhook-server (map + numbered catalogue, one page).
-- Drip send via existing gmailApiService; per-audience selection of the right `ENDING` block.
-- Per-person state in Airtable; per-piece send log (a convert doesn't get a shared piece re-sent with the other ending).
-- Per-audience footer (prospect = "want to read ahead?" + standing line + reply-to-stop); footer click = buying signal surfaced on the record.
-- Open reconciliation (from arc): the pb-webhook-server library page vs the WordPress "one source of truth" essays - decide before building the page.
+## Prospect → client conversion (rule REVERSED 2026-07-08)
+When a prospect converts, they **restart the client journey from the top** - familiar bodies included. **Repetition is welcome, not a bug** (Guy): (a) the client ending is now *actionable* ("this week, do X") where the prospect ending was only "imagine if"; (b) the client run is reordered (journey) and adds pieces they never saw (map, craft, Wingguy); (c) reinforcement is how a paradigm shift lands - "I'd want to read it three or four times." **Guardrail:** pace it like a normal weekly drip - no familiar pieces back-to-back (that reads as a mailing-list glitch). Optional warm line in the first client email: *"Some of this will look familiar - good, it bears repeating, only now it comes with the how-to."* (Supersedes the earlier per-piece "don't re-send" rule.)
+
+## What's left - the ENGINE (separate build session)
+All prospect-series *writing* is done. Remaining is machinery:
+- Library page rendered by pb-webhook-server: prospect landing = how-it-actually-works (#8) map + browsable catalogue.
+- Drip send via existing gmailApiService; per-audience selection of the right `ENDING` block; **"Hi [First Name]" merge** with "Hi there" fallback.
+- Per-person state in Airtable; send log keyed so **converts restart the client journey** (not per-piece suppression).
+- Per-audience footer incl. the open-door line; reply = buying signal surfaced on the record.
+- **Open reconciliation** (from arc): the pb-webhook-server library page vs the WordPress "one source of truth" essays - decide before building the page.
+- **Still pending:** finalise the CLIENT run send-order (the 14 locked pieces + where #5, #20, #50, #60, #65, #67 slot; #50 wants an early slot per the week-3 wobble; #5's slot vs the map).

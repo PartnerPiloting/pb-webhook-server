@@ -30,10 +30,10 @@ You build one small, deliberate node. A handful of the right people, chosen by y
 
 Look at what just happened. Two small nodes *docked*. In one conversation you each opened your curated circle to the other - the instant-network benefit the paid platform charges a thousand a month for - except nobody paid, nothing was forced, and the exclusivity held, because the seat in your node is taken. You're *his* accountant now, not one of five. And the vetting the platform sells? Already done - by the attitude filter you both used to build your nodes in the first place.
 
-That's the whole difference between renting and owning. A bought network is someone else's room you pay to stand in. A built one is an asset you keep - and, it turns out, one that grows every time it meets another like it.
+That's the whole difference between renting and owning. A bought network is someone else's room you pay to stand in. A built one is an asset you keep - and one that quietly compounds every time it meets another like it.
 
-Which raises a rather thrilling question: what happens when it isn't just two nodes, but many?
+But I can hear the catch you're already reaching for. Building all this - the choosing, the reaching out, the genuine messages, one real person at a time - sounds like a second full-time job. Who on earth has the hours?
 
-That's where we've been heading all along.
+It's a fair objection. It's also the one thing that has completely changed. That's next.
 
 <!-- Draft 2026-07-08. NEW prospect-series piece (order 55, between #50 and #70). NOT yet in the arc Pieces table - add during housekeeping. The OBJECTION-handler before the vision, per NEXT-UP. Built entirely from the Alasdair-call material (~35:13, accountant example): paid referral networks ("you made the cut, instant network", ~$1k/mo, vetted); Guy's answer = selective cross-node referral - your node is small/curated (one of each), nodes DOCK when two builders meet ("I've got an accountant - but who else do you have?"), giving instant-network benefit structurally WITHOUT subscription; exclusivity built in ("the seat is taken / you're my accountant, not one of five"); the vetting you'd pay for = the shared attitude filter; bought version = #20's failure mode in premium packaging (someone else's room, rented monthly, value accrues to them); built version = owned asset that pays immediately AND compounds. Bridges #50 (its "buy a network?" tease) -> #70 (nodes: the docking answer introduces the node, "what happens when it's many?" teases the crescendo). Prospect-primary (objection is a prospect concern; clients already chose build-your-own) = single-form. Outsider-safe, no tech (the node/docking is pure paradigm). -->
