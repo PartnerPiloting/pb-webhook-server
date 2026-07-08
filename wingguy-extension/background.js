@@ -276,7 +276,7 @@ async function scrapeContactViaTab(profileUrl) {
     }
     if (res) { out.email = res.email || ''; out.phone = res.phone || ''; }
     console.log('[Wingguy][bg] contact-info (tab read) →', out.email || '(no email)', '|', out.phone || '(no phone)',
-      res ? (res.rendered ? '' : `(card not detected; link ${res.clickedLink ? 'clicked' : 'NOT found'} — paste this line to Guy)`) : '(page never became readable — paste this line to Guy)');
+      '· diag:', JSON.stringify(res || { note: 'page never became readable' }), '— paste this whole line to Guy');
   } catch (e) {
     console.log('[Wingguy][bg] scrapeContactViaTab error:', e.message);
   } finally {
@@ -299,74 +299,60 @@ function waitForTabComplete(tabId, timeoutMs) {
   });
 }
 
-// Injected into the profile tab (must be self-contained — no outer references). If the "Contact info"
-// card isn't open yet, CLICKS the profile's Contact info link (the SPA route a human uses — a cold load
-// of the overlay URL gets stripped back to the plain profile, so navigation can't open it). Once the card
-// is up, reads it: email via a mailto: link (most stable), phone via a tel: link or the number under a
-// "Phone" header. `rendered` tells the poller the card is actually up, so it can stop waiting even when
-// there's genuinely no email/phone; `clickedLink` is diagnostic. Returns { rendered, clickedLink, email, phone }.
+// Injected into the profile tab (must be self-contained — no outer references). Each poll pass:
+//  • if the Contact info CARD (a real dialog) isn't open, CLICK the profile's Contact info link — via a
+//    dispatched MouseEvent, NOT a plain navigation, so LinkedIn's SPA opens it in place instead of a hard
+//    load (a hard load of /overlay/contact-info/ gets stripped back to the bare profile — verified live);
+//  • once the dialog is up, read email (mailto: link, then card text) + phone (tel: link, then card text).
+// Rich diagnostic fields (dialogCount / linkFound / clickedLink / shadowRoots / sawMailto) are logged when
+// the read comes back empty so the exact failing step is visible. Returns that object.
 function readContactModalDom() {
-  const out = { rendered: false, clickedLink: false, email: '', phone: '' };
+  const out = { rendered: false, clickedLink: false, linkFound: false, dialogCount: 0, shadowRoots: 0, sawMailto: false, email: '', phone: '' };
 
-  // DEEP query: LinkedIn's new UI renders overlays inside shadow DOM, which plain
-  // document.querySelectorAll looks straight through (the live symptom 2026-07-08: the card visibly
-  // open — URL on /overlay/contact-info/ — yet no mailto/tel/heading found). Walk every element AND
-  // descend into every shadowRoot.
-  const allDeep = [];
-  (function walk(root) {
-    const els = root.querySelectorAll('*');
-    for (let i = 0; i < els.length; i++) {
-      allDeep.push(els[i]);
-      if (els[i].shadowRoot) walk(els[i].shadowRoot);
-    }
-  })(document);
-  const deepFind = (fn) => allDeep.filter(fn);
+  // DEEP walk: LinkedIn's new UI renders overlays inside shadow DOM, invisible to plain querySelectorAll.
+  const collect = (root, acc) => {
+    let els; try { els = root.querySelectorAll('*'); } catch (_) { return acc; }
+    for (let i = 0; i < els.length; i++) { acc.push(els[i]); if (els[i].shadowRoot) { out.shadowRoots++; collect(els[i].shadowRoot, acc); } }
+    return acc;
+  };
+  const allDeep = collect(document, []);
+  const clsOf = (el) => String((el.className && el.className.baseVal != null) ? el.className.baseVal : (el.className || ''));
 
-  // The open card = a dialog-ish container, found deep. (Modal heading text is a fallback signal.)
-  const dialogs = deepFind((el) => {
+  // A REAL open card = a dialog container (role=dialog/alertdialog or artdeco-modal / pv-contact-info).
+  // NOT the profile's own "Contact info" LINK text — that false positive made the poll bail early before
+  // the card ever opened (the 2026-07-08 "opens profile, not the card" symptom).
+  const dialogs = allDeep.filter((el) => {
     const role = el.getAttribute && el.getAttribute('role');
-    const cls = String(el.className || '');
-    return role === 'dialog' || role === 'alertdialog' || /artdeco-modal|pv-contact-info/.test(cls);
+    return role === 'dialog' || role === 'alertdialog' || /artdeco-modal|pv-contact-info/.test(clsOf(el));
   });
-  // Body-fallback only counts once the overlay route ACTUALLY shows card text — otherwise the poll
-  // would stop early on a still-drawing page and read profile text instead of the card.
-  const onOverlayRoute = /overlay\/contact-info/.test(location.pathname);
-  const bodyLooksLikeCard = onOverlayRoute && /contact info/i.test((document.body.innerText || '').slice(0, 20000));
-  const modal = dialogs[0] || (bodyLooksLikeCard ? document.body : null);
+  out.dialogCount = dialogs.length;
+  const modal = dialogs[0] || null;
 
-  // Card not up yet? Click the profile's "Contact info" link (the SPA route a human uses) and let the
-  // poller's next pass read the opened card. Anchor on the overlay href — language-proof.
   if (!modal) {
-    const link = deepFind((el) => el.tagName === 'A' && /overlay\/contact-info/.test(el.getAttribute('href') || ''))[0];
-    if (link) { link.click(); out.clickedLink = true; }
-    return out;
+    const link = allDeep.find((el) => el.tagName === 'A' && /\/overlay\/contact-info\/?($|[?#])/.test(el.getAttribute('href') || ''));
+    if (link) {
+      out.linkFound = true;
+      // Dispatch a real click React will honour (its onClick preventDefaults + soft-opens the modal).
+      try { link.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window })); out.clickedLink = true; } catch (_) { try { link.click(); out.clickedLink = true; } catch (__) {} }
+    }
+    return out;   // poll again to read the card it opens
   }
   out.rendered = true;
 
-  const inModal = (el) => modal === document.body || modal.contains(el) ||
-    // shadow-DOM children aren't .contains()-visible from outside; getRootNode().host chain check
-    (function hosted(n) { const r = n.getRootNode && n.getRootNode(); const h = r && r.host; return h ? (modal.contains(h) || hosted(h)) : false; })(el);
-
-  // Email — a mailto: link inside the card is the sturdiest hook.
-  const mailto = deepFind((el) => el.tagName === 'A' && /^mailto:/i.test(el.getAttribute('href') || '') && inModal(el))[0];
-  if (mailto) out.email = (mailto.getAttribute('href') || '').replace(/^mailto:/i, '').split('?')[0].trim().toLowerCase();
-
-  // Phone — a tel: link inside the card if present.
-  const tel = deepFind((el) => el.tagName === 'A' && /^tel:/i.test(el.getAttribute('href') || '') && inModal(el))[0];
+  // Elements inside the card, descending its shadow trees too.
+  const inside = collect(modal, []);
+  const mailto = inside.find((el) => el.tagName === 'A' && /^mailto:/i.test(el.getAttribute('href') || ''));
+  if (mailto) { out.sawMailto = true; out.email = (mailto.getAttribute('href') || '').replace(/^mailto:/i, '').split('?')[0].trim().toLowerCase(); }
+  const tel = inside.find((el) => el.tagName === 'A' && /^tel:/i.test(el.getAttribute('href') || ''));
   if (tel) out.phone = (tel.getAttribute('href') || '').replace(/^tel:/i, '').trim();
 
-  // Belt-and-braces: pull email/phone straight out of the card's visible TEXT (what a human reads).
-  // Scoped to the modal so a stray email elsewhere on the profile can't win.
-  const modalText = (modal.innerText || '').slice(0, 8000);
-  if (!out.email) {
-    const m = modalText.match(/[^\s@]+@[^\s@]+\.[a-z]{2,}/i);
-    if (m) out.email = m[0].trim().toLowerCase().replace(/[.,;:]+$/, '');
-  }
+  // Belt-and-braces: pull straight from the card's visible TEXT (scoped to the card so a stray profile
+  // email can't win).
+  const text = (modal.innerText || '').slice(0, 8000);
+  if (!out.email) { const m = text.match(/[^\s@]+@[^\s@]+\.[a-z]{2,}/i); if (m) out.email = m[0].trim().toLowerCase().replace(/[.,;:]+$/, ''); }
   if (!out.phone) {
-    // Require a phone-looking run near a "Phone" label if possible, else any +.. / digit run of 8+.
-    const sect = modalText.match(/phone[\s\S]{0,80}/i);
-    const hay = sect ? sect[0] : modalText;
-    const m = hay.match(/\+?\d[\d()\-.\s]{6,}\d/);
+    const seg = text.match(/phone[\s\S]{0,80}/i);
+    const m = (seg ? seg[0] : text).match(/\+?\d[\d()\-.\s]{6,}\d/);
     if (m) out.phone = m[0].replace(/\s+/g, ' ').trim();
   }
   return out;
