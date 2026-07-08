@@ -118,6 +118,11 @@ const AGENT_TOOLS = [
     },
   },
   {
+    name: 'refresh_contact_info',
+    description: 'Read THIS lead\'s email + phone from their LinkedIn Contact Info and file any that are MISSING on their CRM record. Use it when Guy asks to grab / update / refresh / pull a lead\'s contact details from LinkedIn (e.g. an older lead with no phone on file). NON-DESTRUCTIVE: it only fills blanks — it never overwrites an email or phone already on the record, so an address the lead gave in the thread is always safe (to CHANGE an email the lead named, use update_lead_email instead). Works on a lead already in the CRM; if they\'re not on file yet, use create_lead instead (a fresh create pulls their contact info automatically). Takes no input — it acts on the lead currently in context.',
+    input_schema: { type: 'object', properties: {} },
+  },
+  {
     name: 'update_lead_email',
     description: 'Update THIS lead\'s email in Guy\'s CRM (Airtable). Use it when the lead gives a better email in the thread — e.g. a work address the invite should go to. Set "primaryEmail" to make it the lead\'s main address: the current primary is automatically kept as one of their other emails (never lost), and book_meeting will then send the invite to the new primary. Use "otherEmails" to file extra addresses without changing the primary. Only THIS lead is affected, and ONLY the email fields — you cannot change any other CRM field. If it reports it couldn\'t find the lead\'s record, tell Guy to make the change in the Portal.',
     input_schema: {
@@ -234,11 +239,13 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
   const convo = messages.map((m) => ({ role: m.role, content: m.content }));
   let currentDraft = null;
   let bookedEvent = null;
-  // Set when create_lead makes a FRESH record this turn (not when it matched an existing one). The route
-  // passes it back to the extension, which then reads the lead's LinkedIn Contact Info (email + phone —
-  // only the logged-in browser tab can see them) and patches them on. This is the "create → enrich"
-  // handshake: contact-info is fetched ONLY after a real create, never on an ordinary turn (Guy, 2026-07-08).
-  let createdLead = null;
+  // The "enrich contact" signal → passed back to the extension, which reads this lead's LinkedIn Contact
+  // Info (email + phone — only the logged-in browser tab can see them) and patches any MISSING ones on
+  // (updateLeadContact is fill-blanks-only, never clobbers). Set in exactly two places, never on an
+  // ordinary turn: (a) create_lead makes a FRESH record — the create → enrich handshake; (b) Guy asks to
+  // refresh an existing lead's details via refresh_contact_info. `manual` distinguishes the two so the
+  // panel can speak up on "nothing to add" only when Guy explicitly asked. (Guy, 2026-07-08.)
+  let enrichContact = null;
   let availTz = {}; // { yourTimezone, leadTimezone } captured from check_availability, used by propose_times
 
   const runTool = async (name, input) => {
@@ -351,9 +358,23 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
       // ONLY on a fresh create (not an existing match) with a profile to read: flag the extension to
       // pull the lead's LinkedIn Contact Info and patch email/phone onto the new record.
       if (r && r.ok && r.created && r.leadRecordId && /\/in\//i.test(leadUrl)) {
-        createdLead = { leadRecordId: r.leadRecordId, profileUrl: leadUrl };
+        enrichContact = { leadRecordId: r.leadRecordId, profileUrl: leadUrl, manual: false };
       }
       return r;
+    }
+    if (name === 'refresh_contact_info') {
+      // Guy asked to grab an EXISTING lead's contact details from LinkedIn. Same enrich signal as a
+      // create, pointed at the lead already in context. Fill-blanks-only on the extension side, so it
+      // never overwrites an email/phone already on the record.
+      if (!currentLeadRecordId) {
+        return { ok: false, error: "This lead isn't in the CRM yet — use create_lead first (a fresh create pulls their contact info automatically)." };
+      }
+      const url = profile.profileUrl || '';
+      if (!/\/in\//i.test(url)) {
+        return { ok: false, error: "No LinkedIn profile URL is in view for this lead, so their contact info can't be read." };
+      }
+      enrichContact = { leadRecordId: currentLeadRecordId, profileUrl: url, manual: true };
+      return { ok: true, note: "Reading their LinkedIn Contact Info now and filling any missing email/phone (existing values are left as-is)." };
     }
     if (name === 'update_lead_email') {
       const primaryEmail = String((input && input.primaryEmail) || '').trim();
@@ -432,7 +453,7 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
     convo.push({ role: 'user', content: toolResults });
   }
 
-  return { ok: true, reply: assistantText, draft: currentDraft, booked: bookedEvent, createdLead, messages: convo, model: MODEL_ID };
+  return { ok: true, reply: assistantText, draft: currentDraft, booked: bookedEvent, enrichContact, messages: convo, model: MODEL_ID };
 }
 
 module.exports = { runWingguyChatTurn, AGENT_TOOLS, inLunch };

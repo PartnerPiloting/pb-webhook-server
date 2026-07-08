@@ -169,8 +169,9 @@ function stubBase({ existing = [] } = {}) {
       leadRecordId: null,
       deps: { client, createLead: async () => ({ ok: true, created: true, leadRecordId: 'recNewA', fields: { 'First Name': 'Alonso' } }) },
     });
-    await acheck('createdLead signal present', () => assert.ok(res.createdLead && res.createdLead.leadRecordId === 'recNewA', JSON.stringify(res.createdLead)));
-    await acheck('carries the profileUrl to scrape', () => assert.ok(/alonso-reyes/.test(res.createdLead.profileUrl)));
+    await acheck('enrichContact signal present', () => assert.ok(res.enrichContact && res.enrichContact.leadRecordId === 'recNewA', JSON.stringify(res.enrichContact)));
+    await acheck('carries the profileUrl to scrape', () => assert.ok(/alonso-reyes/.test(res.enrichContact.profileUrl)));
+    await acheck('flagged as an automatic (non-manual) enrich', () => assert.strictEqual(res.enrichContact.manual, false));
   }
 
   // ── 9. Agent wiring: matching an EXISTING lead does NOT trigger enrich (no wasted contact-info fetch) ──
@@ -190,7 +191,48 @@ function stubBase({ existing = [] } = {}) {
       leadRecordId: null,
       deps: { client, createLead: async () => ({ ok: true, exists: true, leadRecordId: 'recOld1', name: 'Alonso Reyes' }) },
     });
-    await acheck('no createdLead signal on an existing match', () => assert.ok(!res.createdLead, JSON.stringify(res.createdLead)));
+    await acheck('no enrichContact signal on an existing match', () => assert.ok(!res.enrichContact, JSON.stringify(res.enrichContact)));
+  }
+
+  // ── 10. refresh_contact_info: an on-file lead → manual enrich signal at their record ──
+  console.log('\nagent — refresh_contact_info signals a manual enrich for an on-file lead:');
+  {
+    let call = 0;
+    const client = { messages: { create: async () => {
+      call++;
+      if (call === 1) return { stop_reason: 'tool_use', content: [{ type: 'tool_use', id: 'r1', name: 'refresh_contact_info', input: {} }] };
+      return { stop_reason: 'end_turn', content: [{ type: 'text', text: 'grabbing his details from LinkedIn' }] };
+    } } };
+    const res = await runWingguyChatTurn({
+      coach: { clientId: 'Guy-Wilson', clientName: 'Guy' },
+      profile: { name: 'Alonso Reyes', profileUrl: 'https://www.linkedin.com/in/alonso-reyes' },
+      messages: [{ role: 'user', content: 'grab his contact details from LinkedIn' }],
+      airtableBaseId: 'baseX',
+      leadRecordId: 'recExisting1',   // already on file
+      deps: { client },
+    });
+    await acheck('enrichContact points at the existing record', () => assert.ok(res.enrichContact && res.enrichContact.leadRecordId === 'recExisting1', JSON.stringify(res.enrichContact)));
+    await acheck('flagged manual (Guy asked)', () => assert.strictEqual(res.enrichContact.manual, true));
+  }
+
+  // ── 11. refresh_contact_info: lead NOT on file → clean error, no enrich signal ──
+  console.log('\nagent — refresh_contact_info on a not-yet-saved lead errors instead of enriching:');
+  {
+    let call = 0;
+    const client = { messages: { create: async () => {
+      call++;
+      if (call === 1) return { stop_reason: 'tool_use', content: [{ type: 'tool_use', id: 'r1', name: 'refresh_contact_info', input: {} }] };
+      return { stop_reason: 'end_turn', content: [{ type: 'text', text: 'he is not in your CRM yet' }] };
+    } } };
+    const res = await runWingguyChatTurn({
+      coach: { clientId: 'Guy-Wilson', clientName: 'Guy' },
+      profile: { name: 'Alonso Reyes', profileUrl: 'https://www.linkedin.com/in/alonso-reyes' },
+      messages: [{ role: 'user', content: 'grab his contact details' }],
+      airtableBaseId: 'baseX',
+      leadRecordId: null,   // NOT on file
+      deps: { client },
+    });
+    await acheck('no enrich signal when the lead has no record', () => assert.ok(!res.enrichContact, JSON.stringify(res.enrichContact)));
   }
 
   console.log(failures ? `\n❌ ${failures} test(s) failed` : '\n✅ all create-lead tests passed');

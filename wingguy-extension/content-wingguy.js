@@ -1429,10 +1429,11 @@
       if (data && data.draft) setChatDraft(data.draft);
       if (data && data.booked) appendBubble('sys', `✓ Calendar invite created${data.booked.title ? ` — ${data.booked.title}` : ''}.`);
       if (!reply && !(data && data.draft)) appendBubble('wg', '(No response — try rephrasing.)');
-      // Create → enrich: if this turn created a fresh lead, read their LinkedIn Contact Info and patch
-      // email/phone onto the new record. Fire-and-forget (own status bubble) so it never holds the panel,
-      // and it runs ONLY here — post-create — never on an ordinary turn (Guy's cost rule, 2026-07-08).
-      if (data && data.createdLead && data.createdLead.leadRecordId) enrichNewLeadContact(data.createdLead);
+      // Enrich contact: the server flags this when a lead was just created OR Guy asked to refresh an
+      // existing lead's details (data.enrichContact.manual). Read their LinkedIn Contact Info and patch
+      // any MISSING email/phone. Fire-and-forget (own status bubble) so it never holds the panel; it runs
+      // ONLY when flagged — never on an ordinary turn (Guy's cost rule, 2026-07-08).
+      if (data && data.enrichContact && data.enrichContact.leadRecordId) enrichLeadContact(data.enrichContact);
     } catch (e) {
       thinking.stop();
       appendBubble('sys', `Couldn't reach Wingguy: ${e.message}`);
@@ -1443,22 +1444,28 @@
     }
   }
 
-  // Second half of the create → enrich handshake: read the new lead's LinkedIn Contact Info and patch
-  // email/phone onto their fresh record. Non-blocking + best-effort — the lead already exists, so any
-  // failure just means "no contact details yet" (add later), never an alarming error.
-  async function enrichNewLeadContact(createdLead) {
+  // Read the lead's LinkedIn Contact Info and patch any MISSING email/phone onto their record — the second
+  // half of both the create → enrich handshake AND Guy's manual "grab their details from LinkedIn". Non-
+  // blocking + best-effort. `sig.manual` = Guy explicitly asked, so speak up even on "nothing to add"; on
+  // an automatic create we stay silent when there's nothing (the record already exists either way).
+  async function enrichLeadContact(sig) {
     try {
-      const profileUrl = createdLead.profileUrl || (chatState && chatState.profile && chatState.profile.profileUrl) || '';
+      const profileUrl = sig.profileUrl || (chatState && chatState.profile && chatState.profile.profileUrl) || '';
       const ci = await scrapeContactInfo(profileUrl);
-      if (!ci.email && !ci.phone) return;   // nothing shown on LinkedIn — leave the record as-is, silently
-      const r = await bg({ type: 'WG_LEAD_CONTACT', payload: { leadRecordId: createdLead.leadRecordId, email: ci.email, phone: ci.phone } });
+      if (!ci.email && !ci.phone) {
+        if (sig.manual) appendBubble('sys', 'No contact details were visible on their LinkedIn to add.');
+        return;
+      }
+      const r = await bg({ type: 'WG_LEAD_CONTACT', payload: { leadRecordId: sig.leadRecordId, email: ci.email, phone: ci.phone } });
       const added = (r && r.added) || {};
       const bits = [];
       if (added.phone) bits.push(`phone ${added.phone}`);
       if (added.email) bits.push(`email ${added.email}`);
       if (bits.length) appendBubble('sys', `✓ Added from LinkedIn: ${bits.join(' · ')}.`);
+      else if (sig.manual) appendBubble('sys', 'Their LinkedIn contact details are already on the record — nothing to add.');
     } catch (e) {
-      console.log('[Wingguy] enrich-new-lead contact failed:', e.message);
+      console.log('[Wingguy] enrich lead contact failed:', e.message);
+      if (sig.manual) appendBubble('sys', "Couldn't read their LinkedIn contact info just now — try again in a moment.");
     }
   }
 
