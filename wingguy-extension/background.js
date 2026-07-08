@@ -237,11 +237,12 @@ const sleepBg = (ms) => new Promise((r) => setTimeout(r, ms));
 // in the page HTML — the classic Voyager endpoint is 410 Gone, and the data only appears once the SPA
 // renders the card — so we render the card for real and read what a human would see.
 //
-// The tab is opened ACTIVE (flash-to-front) — tried inactive first (with the visibility spoof), still empty:
-// Chrome doesn't run the paint/rAF cycle for background tabs AT ALL, whatever the page believes about its
-// visibility, and LinkedIn's SPA renders off that cycle. So the tab must be frontmost for the card to build.
-// We remember the user's tab, flash the overlay for the couple of seconds the read takes, then restore focus
-// and ALWAYS close the tab. Returns { email, phone } (either may be '').
+// The tab is opened INACTIVE (no flash-to-front) with the visibility spoof widened to profile pages
+// (manifest) so LinkedIn's SPA builds the profile + contact card as if focused. NOTE: the earlier inactive
+// attempt failed only because the READER was buggy (clicked decoys / bailed early) — not because a hidden
+// tab can't render — so we're retrying invisibly now that the reader is correct. If a hidden tab turns out
+// not to build the DOM after all, flip active:false→true to restore the proven flash version.
+// We remember the user's tab and restore focus + ALWAYS close the read tab. Returns { email, phone }.
 async function scrapeContactViaTab(profileUrl) {
   const out = { email: '', phone: '' };
   const slug = (String(profileUrl || '').match(/\/in\/([^/?#]+)/) || [])[1];
@@ -257,7 +258,7 @@ async function scrapeContactViaTab(profileUrl) {
     // Remember where the user is so we can put them straight back.
     const [prev] = await chrome.tabs.query({ active: true, currentWindow: true });
     prevTabId = prev && prev.id;
-    const tab = await chrome.tabs.create({ url, active: true });
+    const tab = await chrome.tabs.create({ url, active: false });
     tabId = tab.id;
     await waitForTabComplete(tabId, 15000);
     // Poll: each pass reads the card if it's up, otherwise clicks the profile's "Contact info" link to
