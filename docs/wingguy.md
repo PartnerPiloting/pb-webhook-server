@@ -235,6 +235,20 @@ skeptics** vs "let them train it". (3) Multi-tenant refactor **paused** for the 
   lines surfaced; **ground truth can't be automated — that division IS the feature**) → store **only the confirmed
   version** + regenerate the summary from it. Full spec ↓ journal *"Speaker reconstruction on transcript ingest
   (paste path)"*.
+- **Remote extension-config for the fragile LinkedIn-DOM bits** *(WANTED, productization-phase — 2026-07-08)* —
+  the LinkedIn Contact-Info reader (background/`?wgcontact` tab → click "Contact info" by label → read `mailto:`/`tel:`
+  off the rendered card; built + working 2026-07-08, `wingguy-extension/background.js` + `contact-visibility-spoof.js`)
+  reads LinkedIn's live DOM, which they change. Today a break = I fix + Guy reloads (cheap, single-tenant). At
+  multi-tenant scale a break means a **Chrome Web Store release (days of review) + waiting for every client to
+  update** = everyone broken in the gap. Fix: move the volatile selectors/labels/timeouts/click-priority + an
+  **on/off kill-switch** into the backend config the extension already fetches (same shape as templates / booking-prefs
+  / the rules store), fetched on startup with **baked-in fallback so a bad remote config can't brick it**. Covers the
+  COMMON case (cosmetic drift — relabels, moved selectors, timing) as instant no-release fixes for everyone; a
+  **deliberate LinkedIn lock-down** (rare, ~1–2yr — e.g. the Oct-2025 Voyager-API `410 Gone` that forced the
+  DOM-read approach in the first place) still needs real code/an extension update, but remote config still gives the
+  instant kill-switch there. Already the intended direction — see the "in the productised version these move to
+  remote extension-config" note in `content-wingguy.js`. **Timing:** slot with the multi-tenant productization work
+  ([[project_paused_refactor_state]]), not now — the payoff is specifically multi-client.
 
 ## The one-line vision
 
