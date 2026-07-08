@@ -34,8 +34,16 @@ Position, then attitude. Filter twice, and the room stops being an accident.
 
 And notice what that means: the quality of your network was never really about how good you are at networking. The charm, the follow-up, the staying in touch - all of it multiplies whatever the room contains. Selection decides what there is to multiply.
 
+<!-- ENDING:CLIENT -->
 So here's the question to sit with this week: if you could put twenty people in a room - any twenty, chosen deliberately for where they sit and how they think - **who would they be?** Not who do you know. Who would you *choose*?
 
 Hold that picture. The next question - how you actually reach those people, one by one, starting from a blinking cursor in a search box - is where this gets practical.
+<!-- /ENDING:CLIENT -->
+
+<!-- ENDING:PROSPECT -->
+So here's the question to sit with: if you could put twenty people in a room - any twenty, chosen deliberately for where they sit and how they think - **who would they be?** Not who do you know. Who would you *choose*?
+
+Hold that picture - because that room isn't a fantasy. Imagine every one of those twenty coming to know your work well enough to put their name behind it, sending the right people your way without being asked. That's not a better networking event. It's a network you designed on purpose - and it can be built.
+<!-- /ENDING:PROSPECT -->
 
 <!-- Approved final by Guy 2026-07-06 ("looks perfect to me, let's approve it just as we have it"). Retitled twice on 2026-07-06: "Choose the room" -> "Choose who you want in your network..." -> "Choose, Don't Collect" (choose-vs-collect = active selection, not bulk accumulation; room stays as internal motif; slug kept as choose-the-room). Light-touch on breakfast-networking scar tissue confirmed OK (full treatment stays with #20). The builder-vs-big-network question raised during review became its own piece (#67). -->

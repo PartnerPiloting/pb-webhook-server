@@ -30,8 +30,14 @@ Notice what that does to the pressure. When there is nothing to sell, there is n
 
 If you've fumbled a few of these already - walked in and started pitching, felt it curdle - don't wince. That's the old paradigm doing exactly what it does. Most people only work this out the hard way, mid-call, wishing they'd started differently. You get to know it before you sit down.
 
+<!-- ENDING:CLIENT -->
 So before your next one, drop the spiel. Don't prepare a word about yourself. Prepare your curiosity instead - a handful of genuine questions about them and their world - and walk in to discover, not to sell.
 
 "Fine," I hear you say, "but if I'm not pitching myself, what on earth do I actually *say* for half an hour?" Fair question - and it's a craft of its own. That's exactly where we go next.
+<!-- /ENDING:CLIENT -->
+
+<!-- ENDING:PROSPECT -->
+You might be wondering what you actually say for half an hour when you're not pitching - and yes, there's a craft to that. But set it aside for now. Just sit with the shift itself: the call that had you rehearsing in the car becomes the easiest conversation in the world. Picture a whole run of them ahead - not pitches to survive, but people worth knowing, each one leaving with *you* in mind for the next introduction they make. That's what a first call becomes the moment you stop trying to sell and start trying to discover.
+<!-- /ENDING:PROSPECT -->
 
 <!-- Approved final by Guy 2026-07-07. First draft 2026-07-07. #45, map step 6 - the discovery-call PARADIGM piece (title "What can you discover?" = Guy's walk-idea 2026-07-07). Built from arc: the call is the easiest in the world once you're there to LEARN, not pitch; dissolves dread (nothing to sell = nothing to be rejected about); the deep reframe = they matter for who they might RECOMMEND you to, not whether they'll buy; two-way reciprocity (who you could send their way too, per Guy's step-6 map edit); gentle teachable-moment for those who've already fumbled a call. Outsider-safe, both audiences, NO tech reference (pure human paradigm). Opens off #37 (builds-on box). Ends teasing #47 (the craft companion - "what do I actually say?"). The craft (connection-first, questions-are-the-answers, the no-business-yet script, the two-call structure) is deliberately HELD for #47. -->

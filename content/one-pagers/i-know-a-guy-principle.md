@@ -32,6 +32,12 @@ Which, when you strip away all ten steps, is what this was always about. Not a b
 
 So don't wait for the network. Start today. The next time someone describes a problem, don't just nod along - reach for the name, and make the introduction. Be the one who knows a guy.
 
+<!-- ENDING:CLIENT -->
 There's one thing left - the small matter of doing all of this, for everyone, without it quietly taking over your life. That's the last piece.
+<!-- /ENDING:CLIENT -->
+
+<!-- ENDING:PROSPECT -->
+There's one last thing - and it isn't another step. Just a picture of where all of this leads, if you let it. Let me leave you with that.
+<!-- /ENDING:PROSPECT -->
 
 <!-- Approved final by Guy 2026-07-07 (added the abundance beat). First draft 2026-07-07. #80, map step 9 - the ETHOS-CLOSER + brand soul (title "Become the person who knows a guy"). Delivers the "single sentence" #70 promised ("I know a guy"). Penny-drop: the grand node-web rests on one tiny human habit - be the one who says "I know a guy" and MAKES the introduction, freely, expecting nothing (give-first as identity). The DAY-ONE inversion (the one step you can start before any other - "being that person is how the network begins"). Compounds (more network -> more often the answer -> the natural centre). Closes on WHO YOU BECOME (the person everyone's glad to know). References "all ten steps". Seeds the "I know a guy" brand. Ends teasing #90 (step 10, Wingguy - "doing all of this without it taking over your life"). Outsider-safe, no tech, both audiences. Opens off #70. -->

@@ -30,7 +30,13 @@ But here's the shift: the back-and-forth isn't yours to suffer either, not anymo
 
 If that sounds familiar, it should - it's the same shift as the thank-you. Just as a genuine, personal note became cheap enough to send every single time, considered scheduling became cheap enough to offer every single time. Effort that reads as care is no longer expensive. Which removes the last excuse for outsourcing that effort to the very person you're trying to win over.
 
+<!-- ENDING:CLIENT -->
 Are there exceptions? Of course - a big group to herd, someone who genuinely prefers a link. Rarely isn't never. But with someone you've deliberately chosen and are trying to win over, resist the reflex. Don't send the link. Offer two or three real times, do the small arranging yourself, and let them feel - at the first practical step of the whole relationship - that they're a person to you, and not a calendar event.
+<!-- /ENDING:CLIENT -->
+
+<!-- ENDING:PROSPECT -->
+Rarely isn't never - a big group to herd, someone who genuinely prefers a link. But think about the last time you were made to feel like a slot in someone's system. Now imagine a network built the other way: every first step telling people they're a person to you, not a calendar event - and costing you almost nothing to do. That's the small hinge a whole relationship swings on.
+<!-- /ENDING:PROSPECT -->
 
 And then they turn up to the call. Which is where the biggest paradigm of the lot is waiting - because almost everyone walks into that first conversation and does the one thing guaranteed to sink it. Next time: what your first discovery call is actually for.
 

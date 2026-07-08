@@ -28,8 +28,16 @@ Because of a quiet assumption almost everyone carries: that network building is 
 
 The businesses that escape it make one mental shift: they stop treating their network as an activity and start treating it as *infrastructure*. Nobody does their bookkeeping "when things slow down." It runs every month, busy or not, because the consequences of letting it lapse are unacceptable. Your network is the same kind of asset - it just rarely gets treated like one.
 
+<!-- ENDING:CLIENT -->
 So here's the question worth sitting with this week: **if your network heard from you just as reliably in your busiest month as in your quietest one - what would that make possible?** What work would you say yes to? What would you never again have to accept out of desperation?
 
 Maybe you're already pushing back: you've been nagged about networking before, and it never seemed worth the hours it demanded. Fair - under the old way of doing it, it usually wasn't. That's the part we've quietly changed. Treating your network as infrastructure used to mean cloning yourself; now the right process and the right tools carry almost all of the load, and it fits inside a normal working week. That's the possibility this series is about - more on how next time.
+<!-- /ENDING:CLIENT -->
+
+<!-- ENDING:PROSPECT -->
+So here's the question worth sitting with: **if your network heard from you just as reliably in your busiest month as in your quietest one - what would that make possible?** What work would you say yes to? What would you never again have to accept out of desperation?
+
+Maybe you're already pushing back: you've been nagged about networking before, and it never seemed worth the hours it demanded. Fair - under the old way of doing it, it usually wasn't. That's the part we've quietly changed. Treating your network as infrastructure used to mean cloning yourself; now the right process and the right tools carry almost all of the load, and it fits inside a normal working week. That's the possibility this series is about - more on how next time.
+<!-- /ENDING:PROSPECT -->
 
 <!-- Approved final by Guy 2026-07-03 ("absolutely perfect, wouldn't change anything") after reviewing the formatted HTML render. Ending revised + re-approved 2026-07-06: names the "not worth the hours" dismissal and claims ownership ("the part WE'VE quietly changed" - Guy's wording) while keeping tools off-stage per the staged-reveal principle. -->

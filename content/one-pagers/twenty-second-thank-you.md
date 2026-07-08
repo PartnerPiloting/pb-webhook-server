@@ -30,7 +30,13 @@ Twenty seconds only pays, mind you, because of the two decisions that came befor
 
 What does a good one look like? Short. Specific - one real detail from their world, interpreted, never parroted back. Curious - it asks about them, because the whole approach is "let me find out about what you do." And patient - no pitch, no link, no "grab a time here." You're opening a conversation, not processing a lead.
 
+<!-- ENDING:CLIENT -->
 So this week: when the next good connection lands, don't reach for the photocopy, and don't settle for the automatic floor. Open their profile, find the one thing worth being genuinely curious about, and spend the twenty seconds. Every relationship in this whole process starts inside that little window of mutual attention - it's the cheapest bit of leverage you'll get all week.
+<!-- /ENDING:CLIENT -->
+
+<!-- ENDING:PROSPECT -->
+Picture that at scale: every connection worth the effort getting a message that makes them feel genuinely *seen* - not ten minutes each, but twenty seconds - and the replies that come back when someone realises you actually looked. That's not a tidier inbox. It's the difference between a pile of contacts and the start of real conversations.
+<!-- /ENDING:PROSPECT -->
 
 And when the conversation warms up and it's time to suggest a call? There's a right way and a wrong way to do that too - and the wrong way is the one everybody uses. Next time: why I'll rarely send you a Calendly link.
 
