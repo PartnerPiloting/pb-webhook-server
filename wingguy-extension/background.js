@@ -232,20 +232,28 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 const sleepBg = (ms) => new Promise((r) => setTimeout(r, ms));
 
-// Read a lead's Contact Info by loading LinkedIn's contact-info overlay in a BACKGROUND tab and reading the
-// rendered modal DOM. The durable path (2026-07-08): LinkedIn no longer serves contact info via a fetchable
-// API or in the page HTML — the classic Voyager endpoint is 410 Gone, and the data only appears once the SPA
-// renders the card — so we let the card render (inactive tab, so it doesn't steal focus) and read what a
-// human would see. Opens the tab, waits for the modal, extracts email/phone, ALWAYS closes the tab.
-// Returns { email, phone } (either may be '').
+// Read a lead's Contact Info by loading LinkedIn's contact-info overlay in a tab and reading the rendered
+// modal DOM. The durable path (2026-07-08): LinkedIn no longer serves contact info via a fetchable API or
+// in the page HTML — the classic Voyager endpoint is 410 Gone, and the data only appears once the SPA
+// renders the card — so we render the card for real and read what a human would see.
+//
+// The tab is opened ACTIVE (flash-to-front) — tried inactive first (with the visibility spoof), still empty:
+// Chrome doesn't run the paint/rAF cycle for background tabs AT ALL, whatever the page believes about its
+// visibility, and LinkedIn's SPA renders off that cycle. So the tab must be frontmost for the card to build.
+// We remember the user's tab, flash the overlay for the couple of seconds the read takes, then restore focus
+// and ALWAYS close the tab. Returns { email, phone } (either may be '').
 async function scrapeContactViaTab(profileUrl) {
   const out = { email: '', phone: '' };
   const slug = (String(profileUrl || '').match(/\/in\/([^/?#]+)/) || [])[1];
   if (!slug) { console.log('[Wingguy][bg] scrapeContactViaTab: no /in/ slug in', profileUrl); return out; }
   const url = `https://www.linkedin.com/in/${encodeURIComponent(slug)}/overlay/contact-info/`;
   let tabId = null;
+  let prevTabId = null;
   try {
-    const tab = await chrome.tabs.create({ url, active: false });
+    // Remember where the user is so we can put them straight back.
+    const [prev] = await chrome.tabs.query({ active: true, currentWindow: true });
+    prevTabId = prev && prev.id;
+    const tab = await chrome.tabs.create({ url, active: true });
     tabId = tab.id;
     await waitForTabComplete(tabId, 15000);
     // The SPA needs a moment after 'complete' to render the modal — poll executeScript until the card is up.
@@ -266,6 +274,8 @@ async function scrapeContactViaTab(profileUrl) {
   } catch (e) {
     console.log('[Wingguy][bg] scrapeContactViaTab error:', e.message);
   } finally {
+    // Put the user back FIRST (so closing the overlay tab can't focus some unrelated tab), then close.
+    if (prevTabId != null) { try { await chrome.tabs.update(prevTabId, { active: true }); } catch (_) { /* tab gone */ } }
     if (tabId != null) { try { await chrome.tabs.remove(tabId); } catch (_) { /* already gone */ } }
   }
   return out;
