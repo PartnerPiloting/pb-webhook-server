@@ -28,6 +28,35 @@ Drafted 2026-07-07 per SERIES-ARC.md "NEXT UP". Audience: people genuinely inter
 
 Tease chain: #50→#55→#60→#65→#67→#70→#80→#100 (all confirmed; #55's ending was re-pointed at #60 on 2026-07-08).
 
+## The client run (send order) - 20 emails (banked 2026-07-08)
+
+Journey order, map first (they've bought - orientation before persuasion), paradigm/proof interleaved as breathers so it isn't five philosophy emails before anything actionable. Guy's law: everything vies for a higher slot, but there are only so many - this is good enough to ship, not to keep reshuffling.
+
+| # | Piece | Role |
+|---|---|---|
+| 1 | the-process (#12) | **the map** - orientation |
+| 2 | revisit-your-big-picture (#5) | why you're here (onboarding) |
+| 3 | feast-or-famine (#10) | the core paradigm - the see-saw |
+| 4 | choose-the-room (#30) | **step 1** |
+| 5 | who-do-i-reach-out-to (#32) | step 2 (craft) |
+| 6 | introduction-before-we-spoke (#15) | proof - breather |
+| 7 | score-on-attitude (#33) | step 3 (craft) |
+| 8 | twenty-second-thank-you (#35) | step 4 |
+| 9 | patience-curve (#50) | expectations - reassurance |
+| 10 | never-send-calendly (#37) | step 5 |
+| 11 | first-discovery-call (#45) | step 6 |
+| 12 | discovery-call-craft (#47) | step 6 (craft) |
+| 13 | reason-to-follow-up (#40) | step 7 |
+| 14 | pleasing-methods (#20) | reinforcement (shakiest slot - it's really a prospect piece; droppable) |
+| 15 | four-hours-not-forty (#60) | feasibility |
+| 16 | you-could-build-this (#65) | objection |
+| 17 | builders-not-blobs (#67) | vision setup |
+| 18 | nodes (#70) | **step 8** |
+| 19 | i-know-a-guy-principle (#80) | **step 9** |
+| 20 | increase-your-intelligence (#90) | **step 10** |
+
+Known soft spots (accepted, not blockers): #50's drip-week vs the client's real campaign-week can't fully align (would move earlier before later); #20 is the most droppable; three orientation emails up front (#12/#5/#10) is the ceiling before an eager client needs something to *do*. Client-run endings use each file's `ENDING:CLIENT` block (or the shared body where there's no split).
+
 ## Who gets what (audience routing)
 - **Prospect drip** = the 17 above (paradigm only).
 - **Prospect MAP** = new **how-it-actually-works (#8)** - a NEW prospect-flavoured, machinery-free, 7-step map ending on the vision (NOT the client operating-manual map). Lives at the **top of the prospect library / reachable from the footer** - NOT a drip email (prospects need the emotional hook first).
@@ -53,4 +82,4 @@ All prospect-series *writing* is done. Remaining is machinery:
 - Per-person state in Airtable; send log keyed so **converts restart the client journey** (not per-piece suppression).
 - Per-audience footer incl. the open-door line; reply = buying signal surfaced on the record.
 - **Open reconciliation** (from arc): the pb-webhook-server library page vs the WordPress "one source of truth" essays - decide before building the page.
-- **Still pending:** finalise the CLIENT run send-order (the 14 locked pieces + where #5, #20, #50, #60, #65, #67 slot; #50 wants an early slot per the week-3 wobble; #5's slot vs the map).
+- Both run orders are now banked (prospect 17 + client 20). Writing + sequencing complete; only the engine remains.

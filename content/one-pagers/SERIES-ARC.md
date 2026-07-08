@@ -29,7 +29,7 @@ Source: Guy's brain dumps, 2026-07-02/03. Status: living document.
   - **DECISION - greeting:** "Hi [First Name]" (fallback "Hi there"), never "Hi All".
   - **DECISION - footer open-door:** a standing warm-availability line ("any time one of these raises a question... just hit reply, I read every one") - NOT a per-email sales nudge; the explicit "worth a conversation?" ask stays concentrated in the finale (#100). A reply = buying signal.
   - **DECISION - prospect→client conversion (REVERSES the old per-piece "don't re-send" rule):** converts RESTART the client journey from the top; repetition is welcome/valuable (client endings become actionable; client run is reordered + adds new pieces; reinforcement helps it land). Guardrail: pace it, no familiar pieces back-to-back.
-- **REMAINING:** the ENGINE (library render, drip send + `ENDING` selection, "Hi [First Name]" merge, Airtable state, send log = converts-restart, footer incl. open-door, WordPress-vs-pb-webhook reconciliation) - a separate build session. Also PENDING: finalise the CLIENT run send-order (where #5/#20/#50/#60/#65/#67 slot; #50 wants an early slot).
+- **REMAINING:** the ENGINE (library render, drip send + `ENDING` selection, "Hi [First Name]" merge, Airtable state, send log = converts-restart, footer incl. open-door, WordPress-vs-pb-webhook reconciliation) - a separate build session. CLIENT run send-order now BANKED (20 emails) in [PROSPECT-SERIES-PLAN.md](PROSPECT-SERIES-PLAN.md) - map first, journey order, paradigm interleaved.
 
 
 
