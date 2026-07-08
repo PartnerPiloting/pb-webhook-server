@@ -110,7 +110,7 @@ async function updateLeadEmails(airtableBaseId, leadRecordId, { setPrimary = '',
 //           { ok:true, exists:true, leadRecordId, ... }        when the person is ALREADY in the base
 //           { ok:false, error }                                on a bad call / Airtable failure.
 async function createLead(airtableBaseId, {
-  firstName = '', lastName = '', linkedinUrl = '', email = '', notes = '',
+  firstName = '', lastName = '', linkedinUrl = '', email = '', phone = '', notes = '',
   source = 'They Reached Out To Me', connectionStatus = 'Connected', status = 'In Process',
   dateConnectedISO = '',
 } = {}) {
@@ -134,11 +134,13 @@ async function createLead(airtableBaseId, {
   }
 
   const mail = String(email || '').trim().toLowerCase();
+  const tel = String(phone || '').trim();
   const fields = {};
   if (first) fields['First Name'] = first;
   if (last) fields['Last Name'] = last;
   if (url) fields['LinkedIn Profile URL'] = url;
   if (mail && EMAIL_SHAPE.test(mail)) fields['Email'] = mail;
+  if (tel) fields['Phone'] = tel;
   if (source) fields['Source'] = source;
   if (connectionStatus) fields['LinkedIn Connection Status'] = connectionStatus;
   if (status) fields['Status'] = status;
@@ -152,4 +154,45 @@ async function createLead(airtableBaseId, {
   return { ok: true, created: true, leadRecordId: rec ? rec.id : '', fields };
 }
 
-module.exports = { updateLeadEmails, buildAltEmails, findLeadRecord, createLead };
+// Patch a lead's LinkedIn-sourced contact details onto an existing record — the SECOND half of the
+// "create → enrich" handshake (Guy, 2026-07-08). The chat agent creates the bare record server-side;
+// the browser extension then reads the lead's LinkedIn Contact Info (email + phone — only the logged-in
+// tab can see them, the server can't reach linkedin.com) and calls this to fill them in. Deliberately
+// DEFERENTIAL to anything already on the record so it never clobbers a human/thread value:
+//   PHONE — written only when we have one AND the field is empty (LinkedIn is the only phone source).
+//   EMAIL — written ONLY when the record has no primary email yet, so an address the lead gave in the
+//           thread (set as primary at create time) always wins over the LinkedIn contact-info email
+//           (Guy's precedence rule). Idempotent: re-running the enrich changes nothing once filled.
+// Returns { ok, changed, email, phone } (or { ok:false, error }).
+async function updateLeadContact(airtableBaseId, leadRecordId, { email = '', phone = '' } = {}) {
+  if (!airtableBaseId) return { ok: false, error: 'no CRM base for this client' };
+  if (!leadRecordId) return { ok: false, error: 'no lead record to update' };
+
+  const base = clientService.getClientBase(airtableBaseId);
+  if (!base) return { ok: false, error: 'CRM base unavailable' };
+
+  const rec = await base('Leads').find(leadRecordId);
+  const currentEmail = String(rec.fields['Email'] || '').trim();
+  const currentPhone = String(rec.fields['Phone'] || '').trim();
+
+  const mail = String(email || '').trim().toLowerCase();
+  const tel = String(phone || '').trim();
+
+  const fields = {};
+  if (mail && EMAIL_SHAPE.test(mail) && !currentEmail) fields['Email'] = mail;
+  if (tel && !currentPhone) fields['Phone'] = tel;
+
+  // `added` = ONLY what this call actually wrote (so the caller's UI can say "added from LinkedIn: …"
+  // without claiming a pre-existing thread email). `email`/`phone` = the record's resulting values.
+  const added = {};
+  if (fields['Email']) added.email = fields['Email'];
+  if (fields['Phone']) added.phone = fields['Phone'];
+
+  if (!Object.keys(fields).length) {
+    return { ok: true, changed: false, added, email: currentEmail, phone: currentPhone };
+  }
+  await base('Leads').update([{ id: leadRecordId, fields }]);
+  return { ok: true, changed: true, added, email: fields['Email'] || currentEmail, phone: fields['Phone'] || currentPhone };
+}
+
+module.exports = { updateLeadEmails, buildAltEmails, findLeadRecord, createLead, updateLeadContact };

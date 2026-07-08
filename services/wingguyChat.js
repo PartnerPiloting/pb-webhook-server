@@ -105,7 +105,7 @@ const AGENT_TOOLS = [
   },
   {
     name: 'create_lead',
-    description: 'Create a NEW lead record in Guy\'s CRM (Airtable) for someone who ISN\'T there yet — use it when the context says this lead is NOT in the CRM (e.g. Guy just accepted a connection request from someone new) and Guy wants them saved. It files them the way inbound leads normally land: Connected, dated today, so they slot into Guy\'s pipeline. Pass whatever you know — at minimum a name or the LinkedIn URL. Don\'t block on email: LinkedIn rarely shows one, so create the record now and file the email later with update_lead_email once it surfaces. Safe to call even if you\'re unsure they\'re new — it dedupes on the LinkedIn profile first, so it won\'t make a duplicate (it\'ll just point at the existing record). After a successful create you can update_lead_email / book_meeting for them in the same conversation.',
+    description: 'Create a NEW lead record in Guy\'s CRM (Airtable) for someone who ISN\'T there yet — use it when the context says this lead is NOT in the CRM (e.g. Guy just accepted a connection request from someone new) and Guy wants them saved. It files them the way inbound leads normally land: Connected, dated today, so they slot into Guy\'s pipeline. Pass whatever you know — at minimum a name or the LinkedIn URL. Don\'t block on email: LinkedIn rarely shows one, so create the record now and file the email later with update_lead_email once it surfaces. Safe to call even if you\'re unsure they\'re new — it dedupes on the LinkedIn profile first, so it won\'t make a duplicate (it\'ll just point at the existing record). After a successful create you can update_lead_email / book_meeting for them in the same conversation. On a fresh create, Wingguy automatically reads the lead\'s LinkedIn Contact Info and fills in their phone (and email, if you didn\'t already have one from the thread) — so you can tell Guy their contact details are being grabbed from LinkedIn; you do NOT need to ask him for the phone.',
     input_schema: {
       type: 'object',
       properties: {
@@ -234,6 +234,11 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
   const convo = messages.map((m) => ({ role: m.role, content: m.content }));
   let currentDraft = null;
   let bookedEvent = null;
+  // Set when create_lead makes a FRESH record this turn (not when it matched an existing one). The route
+  // passes it back to the extension, which then reads the lead's LinkedIn Contact Info (email + phone —
+  // only the logged-in browser tab can see them) and patches them on. This is the "create → enrich"
+  // handshake: contact-info is fetched ONLY after a real create, never on an ordinary turn (Guy, 2026-07-08).
+  let createdLead = null;
   let availTz = {}; // { yourTimezone, leadTimezone } captured from check_availability, used by propose_times
 
   const runTool = async (name, input) => {
@@ -328,10 +333,11 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
       };
     }
     if (name === 'create_lead') {
+      const leadUrl = (input && input.linkedinUrl) || profile.profileUrl || '';
       const r = await createLead(airtableBaseId, {
         firstName: (input && input.firstName) || profile.firstName || '',
         lastName: (input && input.lastName) || profile.lastName || '',
-        linkedinUrl: (input && input.linkedinUrl) || profile.profileUrl || '',
+        linkedinUrl: leadUrl,
         email: (input && input.email) || '',
         notes: (input && input.notes) || '',
       });
@@ -341,6 +347,11 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
         currentLeadRecordId = r.leadRecordId;
         const createdEmail = r.fields && r.fields['Email'];
         if (createdEmail && !currentLeadEmail) currentLeadEmail = createdEmail;
+      }
+      // ONLY on a fresh create (not an existing match) with a profile to read: flag the extension to
+      // pull the lead's LinkedIn Contact Info and patch email/phone onto the new record.
+      if (r && r.ok && r.created && r.leadRecordId && /\/in\//i.test(leadUrl)) {
+        createdLead = { leadRecordId: r.leadRecordId, profileUrl: leadUrl };
       }
       return r;
     }
@@ -421,7 +432,7 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
     convo.push({ role: 'user', content: toolResults });
   }
 
-  return { ok: true, reply: assistantText, draft: currentDraft, booked: bookedEvent, messages: convo, model: MODEL_ID };
+  return { ok: true, reply: assistantText, draft: currentDraft, booked: bookedEvent, createdLead, messages: convo, model: MODEL_ID };
 }
 
 module.exports = { runWingguyChatTurn, AGENT_TOOLS, inLunch };

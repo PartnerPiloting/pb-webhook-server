@@ -69,6 +69,43 @@
       return '';
     }
   }
+  // Read the lead's LinkedIn Contact Info (email + phone) for the CREATE → ENRICH handshake. Called ONLY
+  // after the chat agent creates a fresh record (never on an ordinary turn), so the overlay fetch cost is
+  // paid solely when saving a new lead (Guy's rule 2026-07-08). Mirrors resolveAcoaToVanity: an in-page GET
+  // (credentials:'include' → carries the logged-in session a background-worker fetch can't) then regex the
+  // embedded JSON, robust to LinkedIn's class churn. Returns { email, phone } (either may be '').
+  async function scrapeContactInfo(profileUrl) {
+    const out = { email: '', phone: '' };
+    try {
+      const slug = (String(profileUrl || '').match(/\/in\/([^/?#]+)/) || [])[1];
+      if (!slug) return out;
+      const overlayUrl = `https://www.linkedin.com/in/${slug}/overlay/contact-info/`;
+      const res = await fetch(overlayUrl, { method: 'GET', credentials: 'include' });
+      if (!res.ok) { console.log('[Wingguy] contact-info fetch not ok:', res.status); return out; }
+      const html = await res.text();
+      // Email: the profileContactInfo model embeds "emailAddress":"x@y.com" (the \\? tolerates the
+      // escaped-quote form when the JSON sits inside a JS string, as with vanityName). mailto: is the fallback.
+      const em = html.match(/"emailAddress\\?":\\?"([^"\\\s]+@[^"\\\s]+\.[a-z]{2,})/i)
+              || html.match(/mailto:([^"'\\?&<>\s]+@[^"'\\?&<>\s]+\.[a-z]{2,})/i);
+      if (em) out.email = em[1].toLowerCase();
+      // Phone: "phoneNumbers":[{...,"number":"0412 345 678"}] — anchor on phoneNumber(s) so a stray
+      // "number" elsewhere in the payload can't win.
+      const ph = html.match(/"phoneNumber\\?":\s*\{[^}]*?"number\\?":\\?"([+(]?\d[()\d\-.\s]{5,}\d)/i)
+              || html.match(/"phoneNumbers\\?":\s*\[[^\]]*?"number\\?":\\?"([+(]?\d[()\d\-.\s]{5,}\d)/i);
+      if (ph) out.phone = ph[1].replace(/\s+/g, ' ').trim();
+      if (!out.email && !out.phone) {
+        console.log('[Wingguy] contact-info: nothing parsed (len=' + html.length +
+          ', hasEmailKey=' + /emailAddress/.test(html) + ', hasPhoneKey=' + /phoneNumber/.test(html) +
+          '). If the lead HAS contact details visible on LinkedIn, paste this line to Guy so the parser can be tuned.');
+      } else {
+        console.log('[Wingguy] contact-info parsed → email:', out.email || '(none)', '| phone:', out.phone || '(none)');
+      }
+    } catch (e) {
+      console.log('[Wingguy] contact-info scrape error:', e.message);
+    }
+    return out;
+  }
+
   // Is a LinkedIn message thread actually open right now? True on the full /messaging/ detail pane AND
   // when a floating conversation bubble is expanded on ANY page (feed, profile, search, etc.). This is
   // what lets Wingguy offer itself from the messages, where there's no /in/ profile page in play.
@@ -1392,6 +1429,10 @@
       if (data && data.draft) setChatDraft(data.draft);
       if (data && data.booked) appendBubble('sys', `✓ Calendar invite created${data.booked.title ? ` — ${data.booked.title}` : ''}.`);
       if (!reply && !(data && data.draft)) appendBubble('wg', '(No response — try rephrasing.)');
+      // Create → enrich: if this turn created a fresh lead, read their LinkedIn Contact Info and patch
+      // email/phone onto the new record. Fire-and-forget (own status bubble) so it never holds the panel,
+      // and it runs ONLY here — post-create — never on an ordinary turn (Guy's cost rule, 2026-07-08).
+      if (data && data.createdLead && data.createdLead.leadRecordId) enrichNewLeadContact(data.createdLead);
     } catch (e) {
       thinking.stop();
       appendBubble('sys', `Couldn't reach Wingguy: ${e.message}`);
@@ -1399,6 +1440,25 @@
       if (chatState) chatState.busy = false;
       const btn = document.getElementById('wg-chat-send');
       if (btn) { btn.disabled = false; btn.textContent = 'Send'; }
+    }
+  }
+
+  // Second half of the create → enrich handshake: read the new lead's LinkedIn Contact Info and patch
+  // email/phone onto their fresh record. Non-blocking + best-effort — the lead already exists, so any
+  // failure just means "no contact details yet" (add later), never an alarming error.
+  async function enrichNewLeadContact(createdLead) {
+    try {
+      const profileUrl = createdLead.profileUrl || (chatState && chatState.profile && chatState.profile.profileUrl) || '';
+      const ci = await scrapeContactInfo(profileUrl);
+      if (!ci.email && !ci.phone) return;   // nothing shown on LinkedIn — leave the record as-is, silently
+      const r = await bg({ type: 'WG_LEAD_CONTACT', payload: { leadRecordId: createdLead.leadRecordId, email: ci.email, phone: ci.phone } });
+      const added = (r && r.added) || {};
+      const bits = [];
+      if (added.phone) bits.push(`phone ${added.phone}`);
+      if (added.email) bits.push(`email ${added.email}`);
+      if (bits.length) appendBubble('sys', `✓ Added from LinkedIn: ${bits.join(' · ')}.`);
+    } catch (e) {
+      console.log('[Wingguy] enrich-new-lead contact failed:', e.message);
     }
   }
 

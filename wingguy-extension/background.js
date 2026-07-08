@@ -211,7 +211,28 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       .catch(error => sendResponse({ success: false, error: error.message }));
     return true;
   }
+  // Wingguy: patch a just-created lead's LinkedIn Contact Info (email/phone) — second half of the
+  // create→enrich handshake. The content script scrapes the contact info (only the logged-in tab can),
+  // then sends it here to write onto the record the chat agent created.
+  if (message.type === 'WG_LEAD_CONTACT') {
+    wingguyLeadContact(message.payload)
+      .then(data => sendResponse({ success: true, data }))
+      .catch(error => sendResponse({ success: false, error: error.message }));
+    return true;
+  }
 });
+
+// Wingguy: POST /api/wingguy/lead-contact
+async function wingguyLeadContact(payload) {
+  const apiBase = await getWingguyApiBase();
+  const headers = await getAuthHeaders();
+  const response = await fetch(`${apiBase}/lead-contact`, { method: 'POST', headers, body: JSON.stringify(payload || {}) });
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || `Lead-contact failed: ${response.status}`);
+  }
+  return response.json();
+}
 
 // Wingguy: POST /api/wingguy/book
 async function wingguyBook(payload) {

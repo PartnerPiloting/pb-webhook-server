@@ -30,6 +30,7 @@ const rulesSource = require('../services/wingguyRulesSource');
 const { getBookingPrefs } = require('../config/wingguyBookingPrefs');
 const { createBookingEvent } = require('../services/wingguyCalendar');
 const { runWingguyChatTurn } = require('../services/wingguyChat');
+const wingguyLeads = require('../services/wingguyLeads');
 const clientService = require('../services/clientService');
 
 const logger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'wingguy' });
@@ -502,6 +503,25 @@ module.exports = function mountWingguy(app) {
       return res.json(result);
     } catch (e) {
       logger.error(`[Wingguy] chat failed: ${e.message}`);
+      return res.status(500).json({ ok: false, error: e.message });
+    }
+  });
+
+  // Second half of the "create → enrich" handshake: the extension reads the lead's LinkedIn Contact
+  // Info (email + phone — only the logged-in browser tab can see them) and posts them here to patch
+  // the record the chat agent just created. Narrow + non-destructive: fills phone always (when empty)
+  // and email only when the record has none (so a thread-supplied address wins). Guy's rule 2026-07-08.
+  router.post('/lead-contact', async (req, res) => {
+    if (!ENABLED) return res.status(503).json({ ok: false, error: 'Wingguy is disabled.' });
+    const { leadRecordId, email = '', phone = '' } = req.body || {};
+    if (!leadRecordId) return res.status(400).json({ ok: false, error: 'leadRecordId required.' });
+    try {
+      const r = await wingguyLeads.updateLeadContact(req.client && req.client.airtableBaseId, leadRecordId, { email, phone });
+      if (!r.ok) return res.status(502).json(r);
+      logger.info(`[Wingguy] lead-contact ${leadRecordId}: changed=${r.changed} (email=${r.email ? 'set' : '—'}, phone=${r.phone ? 'set' : '—'})`);
+      return res.json(r);
+    } catch (e) {
+      logger.error(`[Wingguy] lead-contact failed: ${e.message}`);
       return res.status(500).json({ ok: false, error: e.message });
     }
   });
