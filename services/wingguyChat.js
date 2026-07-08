@@ -105,7 +105,7 @@ const AGENT_TOOLS = [
   },
   {
     name: 'create_lead',
-    description: 'Create a NEW lead record in Guy\'s CRM (Airtable) for someone who ISN\'T there yet — use it when the context says this lead is NOT in the CRM (e.g. Guy just accepted a connection request from someone new) and Guy wants them saved. It files them the way inbound leads normally land: Connected, dated today, so they slot into Guy\'s pipeline. Pass whatever you know — at minimum a name or the LinkedIn URL. Don\'t block on email: LinkedIn rarely shows one, so create the record now and file the email later with update_lead_email once it surfaces. Safe to call even if you\'re unsure they\'re new — it dedupes on the LinkedIn profile first, so it won\'t make a duplicate (it\'ll just point at the existing record). After a successful create you can update_lead_email / book_meeting for them in the same conversation. On a fresh create, Wingguy automatically reads the lead\'s LinkedIn Contact Info and fills in their phone (and email, if you didn\'t already have one from the thread) — so you can tell Guy their contact details are being grabbed from LinkedIn; you do NOT need to ask him for the phone.',
+    description: 'Create a NEW lead record in Guy\'s CRM (Airtable) for someone who ISN\'T there yet — use it when the context says this lead is NOT in the CRM (e.g. Guy just accepted a connection request from someone new) and Guy wants them saved. It files them the way inbound leads normally land: Connected, dated today, so they slot into Guy\'s pipeline. Pass whatever you know — at minimum a name or the LinkedIn URL. Don\'t block on email: LinkedIn rarely shows one, so create the record now and file the email later with update_lead_email once it surfaces. Safe to call even if you\'re unsure they\'re new — it dedupes on the LinkedIn profile first, so it won\'t make a duplicate (it\'ll just point at the existing record). After a successful create you can update_lead_email / book_meeting for them in the same conversation. On a fresh create, Wingguy automatically starts reading the lead\'s LinkedIn Contact Info in Guy\'s browser to fill in their phone (and email, if you didn\'t already have one from the thread). That read finishes AFTER your reply and the panel posts the real result, so tell Guy their contact details are being pulled from LinkedIn now — do NOT claim a phone/email has already been filed, and do NOT ask him for the phone.',
     input_schema: {
       type: 'object',
       properties: {
@@ -374,7 +374,10 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
         return { ok: false, error: "No LinkedIn profile URL is in view for this lead, so their contact info can't be read." };
       }
       enrichContact = { leadRecordId: currentLeadRecordId, profileUrl: url, manual: true };
-      return { ok: true, note: "Reading their LinkedIn Contact Info now and filling any missing email/phone (existing values are left as-is)." };
+      // The actual read happens in Guy's BROWSER after this reply is shown, so you do NOT yet know the
+      // outcome. Tell Guy you're pulling their details from LinkedIn NOW and that the panel will confirm
+      // what actually landed (or that nothing was found). Do NOT say you've filed/added anything yet.
+      return { ok: true, status: 'in_progress', note: "Enrichment started in Guy's browser. You do NOT yet know if anything was found — the panel posts the real result in a moment. Reply that you're pulling their contact details from LinkedIn now and the panel will confirm what got added; do NOT claim any email/phone has been filed." };
     }
     if (name === 'update_lead_email') {
       const primaryEmail = String((input && input.primaryEmail) || '').trim();

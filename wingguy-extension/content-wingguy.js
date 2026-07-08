@@ -69,33 +69,65 @@
       return '';
     }
   }
-  // Read the lead's LinkedIn Contact Info (email + phone) for the CREATE → ENRICH handshake. Called ONLY
-  // after the chat agent creates a fresh record (never on an ordinary turn), so the overlay fetch cost is
-  // paid solely when saving a new lead (Guy's rule 2026-07-08). Mirrors resolveAcoaToVanity: an in-page GET
-  // (credentials:'include' → carries the logged-in session a background-worker fetch can't) then regex the
-  // embedded JSON, robust to LinkedIn's class churn. Returns { email, phone } (either may be '').
+  // Read the lead's LinkedIn Contact Info (email + phone) for the ENRICH step. Called ONLY after a create
+  // or Guy's manual "grab their details" — never on an ordinary turn (Guy's cost rule 2026-07-08).
+  //
+  // LinkedIn does NOT embed contact info in the profile/overlay HTML (verified live 2026-07-08: the overlay
+  // page came back 1.6 MB with no emailAddress/phoneNumber keys at all). It's loaded on demand from the
+  // internal Voyager API — the SAME call LinkedIn's own "Contact info" modal makes. So we hit that endpoint
+  // in-page (credentials:'include' carries the session; csrf-token = the JSESSIONID cookie value, exactly as
+  // LinkedIn's web app does it) and parse the JSON. Object-walk first, then a text-regex safety net for
+  // shape drift. Returns { email, phone } (either may be '').
   async function scrapeContactInfo(profileUrl) {
     const out = { email: '', phone: '' };
     try {
       const slug = (String(profileUrl || '').match(/\/in\/([^/?#]+)/) || [])[1];
       if (!slug) return out;
-      const overlayUrl = `https://www.linkedin.com/in/${slug}/overlay/contact-info/`;
-      const res = await fetch(overlayUrl, { method: 'GET', credentials: 'include' });
-      if (!res.ok) { console.log('[Wingguy] contact-info fetch not ok:', res.status); return out; }
-      const html = await res.text();
-      // Email: the profileContactInfo model embeds "emailAddress":"x@y.com" (the \\? tolerates the
-      // escaped-quote form when the JSON sits inside a JS string, as with vanityName). mailto: is the fallback.
-      const em = html.match(/"emailAddress\\?":\\?"([^"\\\s]+@[^"\\\s]+\.[a-z]{2,})/i)
-              || html.match(/mailto:([^"'\\?&<>\s]+@[^"'\\?&<>\s]+\.[a-z]{2,})/i);
-      if (em) out.email = em[1].toLowerCase();
-      // Phone: "phoneNumbers":[{...,"number":"0412 345 678"}] — anchor on phoneNumber(s) so a stray
-      // "number" elsewhere in the payload can't win.
-      const ph = html.match(/"phoneNumber\\?":\s*\{[^}]*?"number\\?":\\?"([+(]?\d[()\d\-.\s]{5,}\d)/i)
-              || html.match(/"phoneNumbers\\?":\s*\[[^\]]*?"number\\?":\\?"([+(]?\d[()\d\-.\s]{5,}\d)/i);
-      if (ph) out.phone = ph[1].replace(/\s+/g, ' ').trim();
+      // LinkedIn uses the JSESSIONID cookie value (minus its surrounding quotes) as the CSRF token.
+      const csrf = (document.cookie.match(/JSESSIONID="?([^";]+)"?/) || [])[1] || '';
+      const apiUrl = `https://www.linkedin.com/voyager/api/identity/profiles/${encodeURIComponent(slug)}/profileContactInfo`;
+      const res = await fetch(apiUrl, {
+        method: 'GET',
+        credentials: 'include',
+        headers: { accept: 'application/json', 'csrf-token': csrf, 'x-restli-protocol-version': '2.0.0' },
+      });
+      const text = await res.text();
+      if (!res.ok) {
+        console.log('[Wingguy] contact-info: voyager not ok (status=' + res.status + ', hadCsrf=' + !!csrf +
+          '). If this is 403/401 the CSRF/session read is off; if 404 the endpoint shape changed. Paste this line to Guy.');
+        return out;
+      }
+      let data = null;
+      try { data = JSON.parse(text); } catch (_) { /* fall through to regex net */ }
+      const d = (data && (data.data || data)) || {};
+
+      // Email: usually a string; occasionally nested { emailAddress: "..." }.
+      let email = d.emailAddress;
+      if (email && typeof email === 'object') email = email.emailAddress || email.email || '';
+      if (typeof email === 'string' && /\S+@\S+\.\S+/.test(email)) out.email = email.trim().toLowerCase();
+
+      // Phone: phoneNumbers[] — each is { type, number } or { type, phoneNumber: { number } }. Prefer MOBILE.
+      const phones = Array.isArray(d.phoneNumbers) ? d.phoneNumbers : [];
+      if (phones.length) {
+        const pick = phones.find((p) => /mobile/i.test((p && p.type) || '')) || phones[0];
+        const num = pick && (pick.number || (pick.phoneNumber && pick.phoneNumber.number));
+        if (num) out.phone = String(num).replace(/\s+/g, ' ').trim();
+      }
+
+      // Safety net: if the object-walk missed (shape drift), regex the raw JSON text — anchored on the
+      // real keys so a stray value can't win.
+      if (!out.email) {
+        const m = text.match(/"emailAddress"\s*:\s*"([^"\\]+@[^"\\]+\.[a-z]{2,})/i);
+        if (m) out.email = m[1].toLowerCase();
+      }
+      if (!out.phone) {
+        const m = text.match(/"number"\s*:\s*"([+(]?\d[()\d\-.\s]{5,}\d)"/);
+        if (m) out.phone = m[1].replace(/\s+/g, ' ').trim();
+      }
+
       if (!out.email && !out.phone) {
-        console.log('[Wingguy] contact-info: nothing parsed (len=' + html.length +
-          ', hasEmailKey=' + /emailAddress/.test(html) + ', hasPhoneKey=' + /phoneNumber/.test(html) +
+        console.log('[Wingguy] contact-info: voyager parse empty (status=' + res.status + ', len=' + text.length +
+          ', hasEmailKey=' + /emailAddress/.test(text) + ', hasPhoneKey=' + /phoneNumber/.test(text) +
           '). If the lead HAS contact details visible on LinkedIn, paste this line to Guy so the parser can be tuned.');
       } else {
         console.log('[Wingguy] contact-info parsed → email:', out.email || '(none)', '| phone:', out.phone || '(none)');
