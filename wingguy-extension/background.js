@@ -337,10 +337,12 @@ function readContactModalDom() {
     const href = (el) => (el.getAttribute && el.getAttribute('href')) || '';
     const cands = allDeep.filter((el) => clickable(el) && (/overlay\/contact-info/.test(href(el)) || /contact-info/i.test(el.id || '') || /^contact info$/i.test((el.textContent || '').trim())));
     out.candidates = cands.slice(0, 8).map((el) => ({ tag: el.tagName, href: href(el).slice(0, 60), id: (el.id || '').slice(0, 40), text: (el.textContent || '').trim().slice(0, 30) }));
-    // Prefer the true contact link: an <a> whose HREF is the contact overlay; then a contact-info id; then exact label.
-    const link = cands.find((el) => el.tagName === 'A' && /overlay\/contact-info/.test(href(el)))
+    // Prefer the element LABELLED "Contact info" (its href is just "#" — JS-driven). Live diag 2026-07-08
+    // showed the contact-overlay URL is shared by many DECOY anchors ("18 reactions", "Viewed your profile"
+    // …), so matching on the URL clicked a decoy. The label is the reliable signal; id/href are fallbacks.
+    const link = cands.find((el) => /^contact info$/i.test((el.textContent || '').trim()))
       || cands.find((el) => /contact-info/i.test(el.id || ''))
-      || cands.find((el) => /^contact info$/i.test((el.textContent || '').trim()));
+      || cands.find((el) => el.tagName === 'A' && /overlay\/contact-info/.test(href(el)));
     if (link) {
       out.linkFound = true;
       out.clicked = { tag: link.tagName, href: href(link).slice(0, 60), id: (link.id || '').slice(0, 40), text: (link.textContent || '').trim().slice(0, 30) };
