@@ -307,7 +307,7 @@ function waitForTabComplete(tabId, timeoutMs) {
 // Rich diagnostic fields (dialogCount / linkFound / clickedLink / shadowRoots / sawMailto) are logged when
 // the read comes back empty so the exact failing step is visible. Returns that object.
 function readContactModalDom() {
-  const out = { rendered: false, clickedLink: false, linkFound: false, dialogCount: 0, shadowRoots: 0, sawMailto: false, email: '', phone: '' };
+  const out = { rendered: false, cardOpen: false, clickedLink: false, linkFound: false, dialogCount: 0, shadowRoots: 0, sawMailto: false, sawTel: false, email: '', phone: '' };
 
   // DEEP walk: LinkedIn's new UI renders overlays inside shadow DOM, invisible to plain querySelectorAll.
   const collect = (root, acc) => {
@@ -316,39 +316,41 @@ function readContactModalDom() {
     return acc;
   };
   const allDeep = collect(document, []);
-  const clsOf = (el) => String((el.className && el.className.baseVal != null) ? el.className.baseVal : (el.className || ''));
 
-  // A REAL open card = a dialog container (role=dialog/alertdialog or artdeco-modal / pv-contact-info).
-  // NOT the profile's own "Contact info" LINK text — that false positive made the poll bail early before
-  // the card ever opened (the 2026-07-08 "opens profile, not the card" symptom).
-  const dialogs = allDeep.filter((el) => {
-    const role = el.getAttribute && el.getAttribute('role');
-    return role === 'dialog' || role === 'alertdialog' || /artdeco-modal|pv-contact-info/.test(clsOf(el));
-  });
+  // Detect the card by its CONTENTS, not by "a dialog exists": LinkedIn keeps unrelated dialogs
+  // (messaging, etc.) in the DOM at all times, so counting dialogs made us think the card was open and
+  // skip clicking (the 0.1.6 miss: dialogCount:3, never clicked). The contact card is the ONLY place an
+  // email(mailto)/phone(tel) link appears — so those ARE the "card is open" signal. A dialog whose text
+  // is the "Contact info" card is the fallback signal (covers a lead who shares neither email nor phone).
+  const mailto = allDeep.find((el) => el.tagName === 'A' && /^mailto:/i.test(el.getAttribute('href') || ''));
+  const tel = allDeep.find((el) => el.tagName === 'A' && /^tel:/i.test(el.getAttribute('href') || ''));
+  const dialogs = allDeep.filter((el) => { const r = el.getAttribute && el.getAttribute('role'); return r === 'dialog' || r === 'alertdialog'; });
   out.dialogCount = dialogs.length;
-  const modal = dialogs[0] || null;
+  const contactDialog = dialogs.find((d) => /\bcontact info\b/i.test((d.innerText || '')));
+  out.cardOpen = !!(mailto || tel || contactDialog);
 
-  if (!modal) {
-    const link = allDeep.find((el) => el.tagName === 'A' && /\/overlay\/contact-info\/?($|[?#])/.test(el.getAttribute('href') || ''));
+  if (!out.cardOpen) {
+    // Open the card the way a human does — click the profile's "Contact info" control. Match by href OR
+    // by its visible label (an <a>/<button>/[role=button] reading exactly "Contact info").
+    const link = allDeep.find((el) => el.tagName === 'A' && /overlay\/contact-info/.test(el.getAttribute('href') || ''))
+      || allDeep.find((el) => (el.tagName === 'A' || el.tagName === 'BUTTON' || (el.getAttribute && el.getAttribute('role') === 'button')) && /^contact info$/i.test((el.textContent || '').trim()));
     if (link) {
       out.linkFound = true;
-      // Dispatch a real click React will honour (its onClick preventDefaults + soft-opens the modal).
+      // Dispatch a real click React will honour (its onClick preventDefaults + soft-opens the modal),
+      // rather than a plain navigation that hard-loads /overlay/contact-info/ and strips the card.
       try { link.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window })); out.clickedLink = true; } catch (_) { try { link.click(); out.clickedLink = true; } catch (__) {} }
     }
     return out;   // poll again to read the card it opens
   }
   out.rendered = true;
 
-  // Elements inside the card, descending its shadow trees too.
-  const inside = collect(modal, []);
-  const mailto = inside.find((el) => el.tagName === 'A' && /^mailto:/i.test(el.getAttribute('href') || ''));
   if (mailto) { out.sawMailto = true; out.email = (mailto.getAttribute('href') || '').replace(/^mailto:/i, '').split('?')[0].trim().toLowerCase(); }
-  const tel = inside.find((el) => el.tagName === 'A' && /^tel:/i.test(el.getAttribute('href') || ''));
-  if (tel) out.phone = (tel.getAttribute('href') || '').replace(/^tel:/i, '').trim();
+  if (tel) { out.sawTel = true; out.phone = (tel.getAttribute('href') || '').replace(/^tel:/i, '').trim(); }
 
-  // Belt-and-braces: pull straight from the card's visible TEXT (scoped to the card so a stray profile
-  // email can't win).
-  const text = (modal.innerText || '').slice(0, 8000);
+  // Belt-and-braces: pull straight from the card's visible TEXT. Scope to the contact dialog (or the
+  // mailto's own dialog ancestor) so a stray email elsewhere on the profile can't win.
+  const scope = contactDialog || (mailto && mailto.closest && mailto.closest('[role="dialog"]')) || (tel && tel.closest && tel.closest('[role="dialog"]')) || document.body;
+  const text = (scope.innerText || '').slice(0, 8000);
   if (!out.email) { const m = text.match(/[^\s@]+@[^\s@]+\.[a-z]{2,}/i); if (m) out.email = m[0].trim().toLowerCase().replace(/[.,;:]+$/, ''); }
   if (!out.phone) {
     const seg = text.match(/phone[\s\S]{0,80}/i);
