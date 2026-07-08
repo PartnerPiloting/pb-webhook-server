@@ -246,7 +246,11 @@ async function scrapeContactViaTab(profileUrl) {
   const out = { email: '', phone: '' };
   const slug = (String(profileUrl || '').match(/\/in\/([^/?#]+)/) || [])[1];
   if (!slug) { console.log('[Wingguy][bg] scrapeContactViaTab: no /in/ slug in', profileUrl); return out; }
-  const url = `https://www.linkedin.com/in/${encodeURIComponent(slug)}/overlay/contact-info/`;
+  // Load the PROFILE page, not the overlay URL: a cold navigation to /overlay/contact-info/ gets
+  // silently stripped back to the plain profile (verified live 2026-07-08 — the flashed tab showed the
+  // profile, no card). A human gets the card by CLICKING "Contact info" on the loaded profile, so the
+  // injected reader does exactly that, then we read the card it opens.
+  const url = `https://www.linkedin.com/in/${encodeURIComponent(slug)}/`;
   let tabId = null;
   let prevTabId = null;
   try {
@@ -256,9 +260,11 @@ async function scrapeContactViaTab(profileUrl) {
     const tab = await chrome.tabs.create({ url, active: true });
     tabId = tab.id;
     await waitForTabComplete(tabId, 15000);
-    // The SPA needs a moment after 'complete' to render the modal — poll executeScript until the card is up.
+    // Poll: each pass reads the card if it's up, otherwise clicks the profile's "Contact info" link to
+    // open it (SPA route — same as a human). The SPA needs a few beats after 'complete' for the top
+    // card to exist, hence the retry loop.
     let res = null;
-    const deadline = Date.now() + 12000;
+    const deadline = Date.now() + 15000;
     while (Date.now() < deadline) {
       try {
         const inj = await chrome.scripting.executeScript({ target: { tabId }, func: readContactModalDom });
@@ -266,11 +272,11 @@ async function scrapeContactViaTab(profileUrl) {
       } catch (_) { res = null; }   // page still mid-load; retry
       if (res && (res.email || res.phone)) break;
       if (res && res.rendered) break;   // card rendered but genuinely no email/phone → stop waiting
-      await sleepBg(500);
+      await sleepBg(600);
     }
     if (res) { out.email = res.email || ''; out.phone = res.phone || ''; }
     console.log('[Wingguy][bg] contact-info (tab read) →', out.email || '(no email)', '|', out.phone || '(no phone)',
-      res ? (res.rendered ? '' : '(card not detected)') : '(modal never rendered — paste this line to Guy)');
+      res ? (res.rendered ? '' : `(card not detected; link ${res.clickedLink ? 'clicked' : 'NOT found'} — paste this line to Guy)`) : '(page never became readable — paste this line to Guy)');
   } catch (e) {
     console.log('[Wingguy][bg] scrapeContactViaTab error:', e.message);
   } finally {
@@ -293,12 +299,23 @@ function waitForTabComplete(tabId, timeoutMs) {
   });
 }
 
-// Injected into the contact-info overlay tab (must be self-contained — no outer references). Reads the
-// rendered "Contact info" card: email via a mailto: link (most stable), phone via a tel: link or the number
-// under a "Phone" header. `rendered` tells the poller the card is actually up, so it can stop waiting even
-// when there's genuinely no email/phone. Returns { rendered, email, phone }.
+// Injected into the profile tab (must be self-contained — no outer references). If the "Contact info"
+// card isn't open yet, CLICKS the profile's Contact info link (the SPA route a human uses — a cold load
+// of the overlay URL gets stripped back to the plain profile, so navigation can't open it). Once the card
+// is up, reads it: email via a mailto: link (most stable), phone via a tel: link or the number under a
+// "Phone" header. `rendered` tells the poller the card is actually up, so it can stop waiting even when
+// there's genuinely no email/phone; `clickedLink` is diagnostic. Returns { rendered, clickedLink, email, phone }.
 function readContactModalDom() {
-  const out = { rendered: false, email: '', phone: '' };
+  const out = { rendered: false, clickedLink: false, email: '', phone: '' };
+
+  // Card not up yet? Click the profile's "Contact info" link (top card, under the name) and let the
+  // poller's next pass read the opened card. Anchor on the overlay href — language-proof.
+  if (!document.querySelector('a[href^="mailto:"], a[href^="tel:"]') &&
+      !Array.from(document.querySelectorAll('h1, h2, h3')).some((el) => /contact info/i.test(el.textContent || ''))) {
+    const link = document.querySelector('a[href*="overlay/contact-info"]');
+    if (link) { link.click(); out.clickedLink = true; }
+    return out;
+  }
   const headerMatch = (re) => Array.from(document.querySelectorAll('h3, .pv-contact-info__header, span, dt'))
     .find((el) => re.test((el.textContent || '').trim()));
 
