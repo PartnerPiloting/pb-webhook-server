@@ -3056,6 +3056,33 @@ their own (slot stays empty until they do) / skip — and skipping an asset mean
 usage-rule bullet too (the store's unresolved-token flagging polices this). The checklist is
 derivable: walk every {{asset:key}} the template rules reference.
 
+**★ BANKED PLAN — JULIAN DAVIS = GUINEA PIG #1 (decided 2026-07-09, brainstorm with Guy).** Chat-only
+Wingguy (no extension): the connector in HIS paid claude.ai + transcripts — Guy's call: **no guinea pig
+without the transcript magic** (the "call ends → transcript filed → draft my follow-up" loop is the wow).
+Julian: technical, forgiving, owner-model (no VA queue needed). **Build order (~3–4 sittings, all parallel
+to the step-2 shadow week — none of this touches the flip):**
+1. **Per-person connector tokens + tenant scoping** (roadmap step 3, the substrate) — token row = identity,
+   every MCP tool resolves tenant from the token (kill the hard-wired Guy-Wilson), coarse owner/va/platform
+   roles. **The isolation test IS the deliverable:** Julian's token must list only his rules, book only his
+   calendar, see zero of Guy's data.
+2. **Fathom multi-tenancy + his Nylas grant.** Code-checked 2026-07-09: the pipeline is ALREADY
+   coach-parameterized (ingest/splitter/store all take coachClientId); the real gaps are only (a) webhook→
+   tenant routing (per-tenant webhook URL carrying his token — reuses step-3 identity, don't invent a second
+   scheme), (b) per-tenant Fathom API key on the client record (one env key today), (c) the splitter's
+   calendar feed from HIS Nylas grant (same grant booking needs), (d) two 'Guy Wilson' fallback strings.
+   ⚠ Julian needs his own Fathom account on an API/webhook tier — a real cost + install on his side;
+   position it as part of the package in the pitch.
+3. **Provisioning** — copy the template brain → his client layer through the door + fill his ~10 variables
+   (the catalogue is the form; the angles conversation = the setup fee) + clone the Client Template Airtable
+   base (lead matching files transcripts by invitee email against HIS leads base — no base, no filing; NO
+   "CRM-less mode" gets built). **Depends on the TEMPLATE-LAYER SWEEP banked directly above** — do the sweep
+   first or he inherits the thin import-era wording.
+4. **Dry-run on a scratch tenant** — mint a token, spare calendar, one real recorded call end-to-end,
+   prove the follow-up-email loop specifically — THEN the Julian conversation.
+Also needed at onboarding (small): his claude.ai account-instructions block + `/wingguy` typed skill
+(slash-collision fix, docs/provisioning/claude-chat-skills/) + Nylas hosted-auth "connect your calendar"
+step + per-tenant booking/voice pref rows. **NOT in v1:** portal access, the extension, Recall.ai anything.
+
 **▶▶ SESSION 2026-07-06 (evening, from the live Jason Hartley thread): on-send capture — the DETACHED-COMPOSER
 hole (the wrong-person guard was right; the capture's identity was wrong).**
 - Guy's last 5 Jason messages (his 2:52 PM reply + the 👏👍😊 + "Yeah me too - see you then") never reached the
