@@ -3088,6 +3088,33 @@ Also needed at onboarding (small): his claude.ai account-instructions block + `/
 (slash-collision fix, docs/provisioning/claude-chat-skills/) + Nylas hosted-auth "connect your calendar"
 step + per-tenant booking/voice pref rows. **NOT in v1:** portal access, the extension, Recall.ai anything.
 
+**★ THREE-DRAWER MODEL + "ASK EVERY TIME" — the ruling that makes ongoing improvement a real system
+(Guy, 2026-07-09).** Guy's challenge: "if I keep improving rules and the improvement only goes to me,
+that's not good enough." Correct — and the fix is choosing the right LAYER, not a better sweep. The store
+has THREE drawers, and the distinction between the last two is the whole answer:
+- **client ("just mine")** — personal values/taste (sign-off, Zoom room). Stays with the tenant.
+- **template ("starter kit")** — COPIED into a new client's layer once at provisioning, then diverges.
+  A photocopy taken on day one: **improve template later and already-provisioned clients NEVER see it**
+  (they walked away with their copy). Template only helps FUTURE clients at seed time.
+- **foundation ("shared law")** — read LIVE by every tenant on every draft (runtime read = foundation ∪
+  client(tenant), confirmed in `getActiveRules`). **Improve a foundation rule once and every client —
+  including ones already set up — has it instantly.** No re-copy, no drift. {{variables}} still resolve
+  per-tenant, so a foundation rule stays personalised (renders Zoom for Guy, Julian's platform for Julian).
+**So "my improvement only reaches me" = it went in the wrong drawer.** Universal LOGIC/VOICE belongs in
+foundation (propagates to everyone forever); only genuinely personal things belong in client; template is
+just the divergent starting point. The skill of building the product = push as much as possible into
+foundation so improvements propagate, keep template/client thin.
+**The must-build that makes this automatic: the door ASKS "just you, or everyone?" on every Guy edit**
+(the "two-hat" choice already in the step-1 design's VA/roles section — NOT yet built; lands with the
+step-3 multi-client/token work). Until built, Guy must consciously pick the layer, and by default "update
+my rules" targets his CLIENT layer — which is exactly why today's improvements pooled in his own drawer.
+**This re-frames the TEMPLATE-LAYER SWEEP above:** the sweep is only half the story (it helps future
+clients). The real answer for already-live clients is FOUNDATION. When doing the sweep, triage each
+improvement: universal → foundation (reaches everyone live), personal-starting-point → template, pure
+taste → stays client. ⚠ v1 limitation to keep in mind: "no cross-layer shadowing" — a rule_key is
+foundation OR client, not overridable per-tenant yet; if a client needs to tune a foundation rule that's
+a later feature (client-override shadowing), not v1.
+
 **▶▶ SESSION 2026-07-06 (evening, from the live Jason Hartley thread): on-send capture — the DETACHED-COMPOSER
 hole (the wrong-person guard was right; the capture's identity was wrong).**
 - Guy's last 5 Jason messages (his 2:52 PM reply + the 👏👍😊 + "Yeah me too - see you then") never reached the
