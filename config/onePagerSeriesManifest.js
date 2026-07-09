@@ -1,0 +1,54 @@
+// config/onePagerSeriesManifest.js
+//
+// The SEND ORDER for each audience. This is NOT the frontmatter `order` (that's
+// the arc position). Source of truth = content/one-pagers/PROSPECT-SERIES-PLAN.md
+// (prospect run = 18, client run = 21). The drip walks these arrays: a person
+// with "Series Sent Count" = N is due list[N] next (0-indexed); when N reaches
+// the array length, their run is complete.
+
+const prospect = [
+  'revisit-your-big-picture',    // 1  opener - reconnect to why
+  'feast-or-famine',             // 2  pain - the see-saw
+  'introduction-before-we-spoke',// 3  proof - Daniel/Keith
+  'pleasing-methods',            // 4  failed default - BNI/breakfast
+  'choose-the-room',             // 5  better way - select your network
+  'twenty-second-thank-you',     // 6  better way - the thank-you
+  'never-send-calendly',         // 7  better way - considered times
+  'reason-to-follow-up',         // 8  better way - motion not goodwill
+  'first-discovery-call',        // 9  better way - the call is to learn
+  'connection-isnt-charm',       // 10 craft - noticing not charm
+  'patience-curve',              // 11 feasibility (time)
+  'why-not-buy-a-network',       // 12 objection - buy it
+  'four-hours-not-forty',        // 13 feasibility (effort)
+  'you-could-build-this',        // 14 objection - build it
+  'builders-not-blobs',          // 15 vision setup
+  'nodes',                       // 16 vision - the crescendo
+  'i-know-a-guy-principle',      // 17 ethos
+  'imagine-if',                  // 18 finale (prospect-only)
+];
+
+const client = [
+  'the-process',                 // 1  the map - orientation
+  'revisit-your-big-picture',    // 2  why you're here
+  'feast-or-famine',             // 3  core paradigm
+  'choose-the-room',             // 4  step 1
+  'who-do-i-reach-out-to',       // 5  step 2 (craft)
+  'introduction-before-we-spoke',// 6  proof - breather
+  'score-on-attitude',           // 7  step 3 (craft)
+  'twenty-second-thank-you',     // 8  step 4
+  'patience-curve',              // 9  expectations
+  'never-send-calendly',         // 10 step 5
+  'first-discovery-call',        // 11 step 6
+  'connection-isnt-charm',       // 12 how to open the call (craft)
+  'discovery-call-craft',        // 13 step 6 (craft)
+  'reason-to-follow-up',         // 14 step 7
+  'pleasing-methods',            // 15 reinforcement
+  'four-hours-not-forty',        // 16 feasibility
+  'you-could-build-this',        // 17 objection
+  'builders-not-blobs',          // 18 vision setup
+  'nodes',                       // 19 step 8
+  'i-know-a-guy-principle',      // 20 step 9
+  'increase-your-intelligence',  // 21 step 10 (Wingguy)
+];
+
+module.exports = { prospect, client };
