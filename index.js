@@ -1879,6 +1879,17 @@ try {
     moduleLogger.error('index.js: Error mounting Wingguy routes', e.message, e.stack);
 }
 
+// One-pager series (link-only reading pages at /series; drip send is a later phase)
+try {
+    const mountOnePagers = require('./routes/onePagerRoutes.js');
+    if (typeof mountOnePagers === 'function') {
+        mountOnePagers(app, base);
+        moduleLogger.info('index.js: One-pager series routes mounted at /series');
+    }
+} catch(e) {
+    moduleLogger.error('index.js: Error mounting one-pager series routes', e.message, e.stack);
+}
+
 // EMERGENCY DEBUG ROUTE - Direct in index.js
 app.get('/api/linkedin/debug', (req, res) => {
     res.json({ 
