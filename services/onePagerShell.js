@@ -36,6 +36,7 @@ function css() {
   .op-wm a { color:#f3ede1; text-decoration:none; }
   .op-c { padding:34px 40px 8px; }
   .op-greet { font-size:17px; margin:0 0 1.15rem; }
+  .op-kicker { font-size:14px; font-style:italic; color:#8a8172; margin:-4px 0 1.3rem; }
   .op-intro { margin:0 0 1.7rem; }
   .op-t { font-size:28px; line-height:1.25; margin:0 0 12px; color:#221f1a; font-weight:400; }
   .op-dek { font-style:italic; color:#6f6558; font-size:18px; line-height:1.5; margin:0 0 20px; }
@@ -85,11 +86,12 @@ function masthead(eyebrow) {
 // for web pages, reply+unsubscribe for emails). `greeting` and `introHtml` are
 // email-only (introHtml = an optional lead-in above the title, e.g. the client
 // edition-1 welcome).
-function articleCard({ eyebrow, title, dek, greeting, introHtml, bodyHtml, footerHtml } = {}) {
+function articleCard({ eyebrow, title, dek, greeting, kicker, introHtml, bodyHtml, footerHtml } = {}) {
   return `<div class="op">
     ${masthead(eyebrow)}
     <div class="op-c">
       ${greeting ? `<p class="op-greet">${esc(greeting)}</p>` : ''}
+      ${kicker ? `<p class="op-kicker">${esc(kicker)}</p>` : ''}
       ${introHtml ? `<div class="op-body op-intro">${introHtml}</div>` : ''}
       ${title ? `<h1 class="op-t">${esc(title)}</h1>` : ''}
       ${title && dek ? `<p class="op-dek">${esc(dek)}</p>` : ''}

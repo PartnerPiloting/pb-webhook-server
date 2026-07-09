@@ -30,6 +30,14 @@ And maybe let the big picture itself be simpler than a five-year plan. Most peop
 
 That's the picture worth coming back to, again and again - especially when the detail gets thick.
 
+<!-- ENDING:CLIENT -->
 There's just one force that works against all of it. Quietly, structurally, every time you get busy. It's the reason most people's networks lapse at the exact moment they matter most. That's next.
+<!-- /ENDING:CLIENT -->
+
+<!-- ENDING:PROSPECT -->
+Hold onto that, and hold onto the one habit that serves it - a steady bit of network building, whatever else changes. Which leaves one honest question: if you keep at it, how long until it actually pays off? That's next.
+<!-- /ENDING:PROSPECT -->
+
+<!-- Ending split 2026-07-09: prospect run reordered so #10 feast-or-famine LEADS (revisit was too instructional a cold open); revisit moved to sit just before #50 patience-curve, so the prospect ending now hands into "how long until it pays off" instead of teasing feast. Client run unchanged (revisit still precedes feast) - client keeps the original feast tease. -->
 
 <!-- Draft 2026-07-08. NEW prospect-series OPENER (order 5, run position 1; feast-or-famine #10 slides to position 2). Guy's idea 2026-07-08 - replaces the pain-opener with an aspiration/reconnect-to-why opener; the two are stronger back-to-back (dream, then the pain that threatens it). Four bundled ideas from Guy's dump: (1) resurface from the weeds - detail work + onboarding pull you down, you must deliberately climb back to the big picture ("why am I doing this again?"); (2) plans go to custard mid-way but the destination survives - the network is the SHOCK ABSORBER (fractional pipeline example: things don't come off, an early-built network has replacements ready); (3) the network is the ONE CONSTANT that serves EVERY version of the plan (more income/less time, retainers, an app) - so the one commitment that survives every plan change = a consistent amount of network building (also the source of ideas/encouragement/inspiration); (4) reframe big picture as HOW you want to LIVE not WHAT you want to DO - underneath, two wants: make a difference + leverage time for income. Ties to #50 (consistency), #10 (see-saw), #40 (reason to come back). Ends teasing #10 feast-or-famine (the structural force that sabotages consistency when you get busy). LIKELY BOTH AUDIENCES (Guy tied it to onboarding too) - drafted single/prospect form; may grow a client ending + serve as a client onboarding opener. Outsider-safe, no tech. -->

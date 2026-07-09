@@ -6,25 +6,29 @@
 // with "Series Sent Count" = N is due list[N] next (0-indexed); when N reaches
 // the array length, their run is complete.
 
+// Note: email #1 for prospects is a standalone intro (see onePagerEmail.js), so
+// this list is emails #2..#19. Feast-or-famine LEADS (recognisable pain is the
+// safer cold open than the introspective "revisit your big picture", which is
+// moved down to sit just before the patience curve - see 2026-07-09 reorder).
 const prospect = [
-  'revisit-your-big-picture',    // 1  opener - reconnect to why
-  'feast-or-famine',             // 2  pain - the see-saw
-  'introduction-before-we-spoke',// 3  proof - Daniel/Keith
-  'pleasing-methods',            // 4  failed default - BNI/breakfast
-  'choose-the-room',             // 5  better way - select your network
-  'twenty-second-thank-you',     // 6  better way - the thank-you
-  'never-send-calendly',         // 7  better way - considered times
-  'reason-to-follow-up',         // 8  better way - motion not goodwill
-  'first-discovery-call',        // 9  better way - the call is to learn
-  'connection-isnt-charm',       // 10 craft - noticing not charm
-  'patience-curve',              // 11 feasibility (time)
-  'why-not-buy-a-network',       // 12 objection - buy it
-  'four-hours-not-forty',        // 13 feasibility (effort)
-  'you-could-build-this',        // 14 objection - build it
-  'builders-not-blobs',          // 15 vision setup
-  'nodes',                       // 16 vision - the crescendo
-  'i-know-a-guy-principle',      // 17 ethos
-  'imagine-if',                  // 18 finale (prospect-only)
+  'feast-or-famine',             // pain - the see-saw (the lead)
+  'introduction-before-we-spoke',// proof - Daniel/Keith
+  'pleasing-methods',            // failed default - BNI/breakfast
+  'choose-the-room',             // better way - select your network
+  'twenty-second-thank-you',     // better way - the thank-you
+  'never-send-calendly',         // better way - considered times
+  'reason-to-follow-up',         // better way - motion not goodwill
+  'first-discovery-call',        // better way - the call is to learn
+  'connection-isnt-charm',       // craft - noticing not charm
+  'revisit-your-big-picture',    // re-lift - the big picture (prospect ending hands into patience)
+  'patience-curve',              // feasibility (time)
+  'why-not-buy-a-network',       // objection - buy it
+  'four-hours-not-forty',        // feasibility (effort)
+  'you-could-build-this',        // objection - build it
+  'builders-not-blobs',          // vision setup
+  'nodes',                       // vision - the crescendo
+  'i-know-a-guy-principle',      // ethos
+  'imagine-if',                  // finale (prospect-only)
 ];
 
 const client = [

@@ -140,10 +140,21 @@ async function buildEmail({ audience = 'prospect', recipientName = '', sentCount
   if (!piece) throw new Error(`onePagerEmail: piece "${slug}" (${audience} #${item.position}) not found`);
 
   const introHtml = (audience === 'client' && item.position === 1) ? clientWelcomeIntro() : '';
+
+  // Prospect content emails carry a small italic "series" line under the greeting:
+  // email #2 (their first article, right after the intro) bridges back to the
+  // intro; email #3 onward gets a quiet ongoing reminder.
+  let kicker = '';
+  if (audience === 'prospect') {
+    if (item.position === 2) kicker = "This is the series I mentioned last week - here's the first one. Hope it's useful.";
+    else if (item.position >= 3) kicker = 'Continuing the network-building series.';
+  }
+
   const inner = shell.articleCard({
     title: piece.title,
     dek: piece.dek,
     greeting: greetingFor(recipientName),
+    kicker,
     introHtml,
     bodyHtml: piece.bodyHtml,
     footerHtml: emailFooter({ audience, unsubscribeUrl }),
