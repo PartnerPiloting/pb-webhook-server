@@ -85,6 +85,22 @@ bottom.
 **The reassuring framing for a new client:** their rules are seeded from Guy's proven template, so "show
 me my rules" isn't a blank page - it's *Guy's brain, handed to them, with slots to make it their own.*
 
+### Draft-time safety net — the active warning (decided 2026-07-09)
+
+The onboarding checklist is the first line of defence, but it can't guarantee every blank is filled before
+a client starts drafting. So the **draft-time behaviour** is the net: when a client asks for a message and
+the rendered rulebook still has unfilled placeholders, Wingguy **still produces the draft** but **opens its
+chat reply with an active warning** naming the blanks and how to set them - it does NOT hard-block.
+
+> ⚠ Heads up - your **sign-off** isn't set yet, so I've left a placeholder in this draft. Set it with
+> "my sign-off is Cheers, Julian" and I'll redo it clean. (Here's the draft meanwhile...)
+
+Required-flagged variables are the headline; any other unfilled placeholder still gets a mention. Why a
+warning and not a block: a hard stop is more friction than a forgiving client needs, and a "required" field
+may not matter for a given message - the client stays in control, just never blind. (Grounding: the
+renderer already returns the `unresolved` list and the catalog already carries the `required` flag, so this
+is surfacing existing data into the chat reply, not new detection.)
+
 ---
 
 ## 3. Changing what's shipped to them — two flavours

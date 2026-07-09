@@ -3150,6 +3150,19 @@ values-instant / rules-confirm distinction, in Guy's voice, tool-grounded. Feeds
 account-instructions now; becomes a `wingguy_help` response / foundation help-content later. ⚠ It is HELP,
 NOT a drafting rule — must NOT go in the store's `global` context (that's injected into every draft) and
 is not committed to the live store during the shadow week (no reader yet).
+**★ REQUIRED-VARIABLE GUARD = ACTIVE WARNING (Guy's call, 2026-07-09).** Q: does anything stop a client
+sending a message with a mandatory blank (e.g. sign-off) unfilled? A (code-checked): NO today —
+`required` is catalog metadata never enforced; `unresolved` placeholders are only console.warn'd; and for
+a chat-only client the SERVER never sends (client copies the draft to LinkedIn himself), so the only
+chokepoint the server owns is DRAFT time. **Decision: NOT a hard block** (too much friction for a
+forgiving guinea pig, and a "required" field may not matter for a given message) — instead, **at draft
+time, when the rendered rulebook has unresolved placeholders, Wingguy still drafts BUT leads its chat
+reply with an active warning** naming the unfilled blanks + how to set them (e.g. "⚠ your sign-off isn't
+set — I've left a placeholder; set it with 'my sign-off is…'"). Required-flagged blanks are the headline.
+Cheap to build: `renderRulesBlock` already returns `unresolved`, the catalog already carries `required` —
+the guard = surface that into the chat-facing reply instead of only the logs. Two-layer safety: onboarding
+checklist (fill before you start) = first line · draft-time warning = the net. Detail in
+`docs/provisioning/wingguy-client-help.md` §2.
 
 **▶▶ SESSION 2026-07-06 (evening, from the live Jason Hartley thread): on-send capture — the DETACHED-COMPOSER
 hole (the wrong-person guard was right; the capture's identity was wrong).**
