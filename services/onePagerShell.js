@@ -91,9 +91,9 @@ function articleCard({ eyebrow, title, dek, greeting, introHtml, bodyHtml, foote
     <div class="op-c">
       ${greeting ? `<p class="op-greet">${esc(greeting)}</p>` : ''}
       ${introHtml ? `<div class="op-body op-intro">${introHtml}</div>` : ''}
-      <h1 class="op-t">${esc(title)}</h1>
-      ${dek ? `<p class="op-dek">${esc(dek)}</p>` : ''}
-      <hr class="op-r">
+      ${title ? `<h1 class="op-t">${esc(title)}</h1>` : ''}
+      ${title && dek ? `<p class="op-dek">${esc(dek)}</p>` : ''}
+      ${title ? '<hr class="op-r">' : ''}
       <div class="op-body">${bodyHtml || ''}</div>
       ${footerHtml || ''}
     </div>
