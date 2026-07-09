@@ -3144,6 +3144,12 @@ build (Julian item 3) aims at. **Split marked [W]=Wingguy tool call · [H]=human
 **Build = two new tools (mint-token, provision-tenant) + the handoff-pack text + per-step detail pages.**
 Draftable NOW without code (no build needed): the Phase-0 variable question list + the Phase-2 handoff-pack
 copy. Nothing here runs today — this is the spec the provisioning sitting builds toward.
+**★ Client-facing help DRAFTED 2026-07-09: `docs/provisioning/wingguy-client-help.md`** — the
+"what can I do?" capability tour + the "show me my rules → lead with the blanks" behaviour + the
+values-instant / rules-confirm distinction, in Guy's voice, tool-grounded. Feeds the client's claude.ai
+account-instructions now; becomes a `wingguy_help` response / foundation help-content later. ⚠ It is HELP,
+NOT a drafting rule — must NOT go in the store's `global` context (that's injected into every draft) and
+is not committed to the live store during the shadow week (no reader yet).
 
 **▶▶ SESSION 2026-07-06 (evening, from the live Jason Hartley thread): on-send capture — the DETACHED-COMPOSER
 hole (the wrong-person guard was right; the capture's identity was wrong).**
