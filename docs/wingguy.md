@@ -3074,9 +3074,14 @@ to the step-2 shadow week — none of this touches the flip):**
    position it as part of the package in the pitch.
 3. **Provisioning** — copy the template brain → his client layer through the door + fill his ~10 variables
    (the catalogue is the form; the angles conversation = the setup fee) + clone the Client Template Airtable
-   base (lead matching files transcripts by invitee email against HIS leads base — no base, no filing; NO
-   "CRM-less mode" gets built). **Depends on the TEMPLATE-LAYER SWEEP banked directly above** — do the sweep
-   first or he inherits the thin import-era wording.
+   base as normal onboarding. **Lead matching is NOT a concern (verified in code 2026-07-09):** the transcript
+   is stored FIRST (`insertImportedMeeting`), lead-linking is a separate best-effort step after — a no-match
+   just returns leadId:null and skips the link; the transcript still exists, keyed to the coach. So Julian ==
+   Guy exactly: person in his base → files against them + `recall_latest_transcript` finds it by email;
+   not in base → still captured, pull via `fathom_transcript` by title. His base fills however he fills it
+   (his own outreach / manual / not at all); the magic doesn't depend on it. NO "CRM-less mode" to build.
+   **Depends on the TEMPLATE-LAYER SWEEP banked directly above** — do the sweep first or he inherits the thin
+   import-era wording.
 4. **Dry-run on a scratch tenant** — mint a token, spare calendar, one real recorded call end-to-end,
    prove the follow-up-email loop specifically — THEN the Julian conversation.
 Also needed at onboarding (small): his claude.ai account-instructions block + `/wingguy` typed skill
