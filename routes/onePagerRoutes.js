@@ -17,6 +17,21 @@ const shell = require('../services/onePagerShell');
 
 const MAP_SLUG = 'how-it-actually-works'; // the prospect library landing (#8)
 
+// Pieces kept OUT of the prospect-facing catalogue list. The map (#8) is the
+// landing (shown on top, not re-listed). The rest are client-only material a
+// browsing prospect shouldn't be steered into: the client operating-manual map
+// (#12), the insider discovery-call craft (#47), and the Wingguy reveal/upsell
+// (#90). Their pages still resolve by direct link. #33 "The filter everyone
+// skips" is deliberately KEPT (Guy judged it library-safe for warm prospects).
+// The pages themselves stay reachable at /series/:slug — this only hides them
+// from the browse list.
+const HIDDEN_FROM_CATALOGUE = new Set([
+  MAP_SLUG,
+  'the-process',                 // #12 client map
+  'discovery-call-craft',        // #47 insider craft
+  'increase-your-intelligence',  // #90 Wingguy reveal / upsell
+]);
+
 function sendHtml(res, status, html) {
   res.status(status);
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
@@ -40,7 +55,7 @@ module.exports = function mountOnePagers(app /*, base */) {
     try {
       const audience = req.query.audience === 'client' ? 'client' : 'prospect';
       const map = await content.renderPiece(MAP_SLUG, { audience });
-      const pieces = content.listPieces().filter(p => p.slug !== MAP_SLUG);
+      const pieces = content.listPieces().filter(p => !HIDDEN_FROM_CATALOGUE.has(p.slug));
 
       const cards = [];
       if (map) {
