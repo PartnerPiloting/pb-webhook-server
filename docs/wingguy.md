@@ -3074,7 +3074,7 @@ to the step-2 shadow week — none of this touches the flip):**
    position it as part of the package in the pitch.
 3. **Provisioning** — copy the template brain → his client layer through the door + fill his ~10 variables
    (the catalogue is the form; the angles conversation = the setup fee) + clone the Client Template Airtable
-   base as normal onboarding. **Lead matching is NOT a concern (verified in code 2026-07-09):** the transcript
+   base as normal onboarding. **Full runsheet = the PROVISIONING SPEC banked below.** **Lead matching is NOT a concern (verified in code 2026-07-09):** the transcript
    is stored FIRST (`insertImportedMeeting`), lead-linking is a separate best-effort step after — a no-match
    just returns leadId:null and skips the link; the transcript still exists, keyed to the coach. So Julian ==
    Guy exactly: person in his base → files against them + `recall_latest_transcript` finds it by email;
@@ -3114,6 +3114,36 @@ improvement: universal → foundation (reaches everyone live), personal-starting
 taste → stays client. ⚠ v1 limitation to keep in mind: "no cross-layer shadowing" — a rule_key is
 foundation OR client, not overridable per-tenant yet; if a client needs to tune a foundation rule that's
 a later feature (client-override shadowing), not v1.
+
+**★ PROVISIONING SPEC — "I'm about to onboard Julian" as a chat-driven flow (Guy, 2026-07-09).** The
+onboarding vision made concrete: it works as a CHAT flow (not a screen) BECAUSE most steps are tool calls
+Wingguy can make; the rest are human steps it hands over with a link. Guy types the trigger, Wingguy does
+its half + generates a handoff pack for the new client to do theirs. This is the target the provisioning
+build (Julian item 3) aims at. **Split marked [W]=Wingguy tool call · [H]=human step.**
+- **Phase 0 — the angles conversation** (Guy + client, ~1 hr, NOT automatable by design = the setup fee).
+  Fill the ~10 variables by talking: signoff, owner_first_name, network_name, core_framing,
+  network_explainer_line, call_platform, region, timezone, target_verticals, owner_email… The variable
+  CATALOGUE is literally the question list. Also capture structural assets + the three-way asset decisions
+  (use Guy's URL / bring own / skip — see the asset-onboarding model banked above).
+- **Phase 1 — Guy types "I'm onboarding Julian" into Wingguy:**
+  [W] mint the client's connector token → return his personal connector URL ·
+  [W] copy the template brain → his client layer through the door (actor='provision', versioned+logged) ·
+  [W] ask Guy for the Phase-0 values → setVariable each ·
+  [W] flag every unresolved {{asset:key}} = the checklist of what the client must still provide ·
+  [W] clone a leads base from the Client Template.
+- **Phase 2 — Wingguy generates a HANDOFF PACK for the client** (Guy forwards it; each item = a step + link):
+  his connector URL + "paste into claude.ai → Connectors" · the account-instructions block to paste into
+  HIS Claude ("when I ask about drafting / my rules, use Wingguy…") · his Nylas "connect your calendar"
+  hosted-auth link (one click, one consent) · Fathom setup (create account on an API tier, grab his key,
+  send it to Guy) · the /wingguy typed-skill install (docs/provisioning/claude-chat-skills/ — EXISTS).
+- **Phase 3 — wire up his side:** [H] drop his Fathom API key onto his client record · [W/H] register his
+  Fathom webhook → his per-tenant URL · [W] run the ISOLATION TEST (his token lists only his rules, books
+  only his calendar, sees zero of Guy's data — the step-1/tokens deliverable).
+- **Phase 4 — the dry-run WITH the client:** real call → records → transcript files → he types "draft my
+  follow-up" in his Claude. The wow moment; must work before "done".
+**Build = two new tools (mint-token, provision-tenant) + the handoff-pack text + per-step detail pages.**
+Draftable NOW without code (no build needed): the Phase-0 variable question list + the Phase-2 handoff-pack
+copy. Nothing here runs today — this is the spec the provisioning sitting builds toward.
 
 **▶▶ SESSION 2026-07-06 (evening, from the live Jason Hartley thread): on-send capture — the DETACHED-COMPOSER
 hole (the wrong-person guard was right; the capture's identity was wrong).**
