@@ -60,6 +60,17 @@ function absolutizeLinks(html, baseUrl) {
   return html.replace(/(href|src)="\/(?!\/)/g, `$1="${base}/`);
 }
 
+// The client edition-1 welcome. Frames the map as an orientation (not a to-do
+// list), sets the "these arrive one at a time" expectation, and opens on the
+// mutual "building our networks together" note - congruent with the system's
+// own philosophy. Client edition 1 only; never prospects, never the web page.
+function clientWelcomeIntro() {
+  return `
+    <p>I'm genuinely thrilled we'll be building our networks together through the I Know a Guy network-building system.</p>
+    <p>I care about a lot more than getting you set up. What I really want is for you to get a <em>result</em> - and that takes more than mastering the mechanics. It's the subtleties: the judgment calls, the small moves, the things you only pick up from years of networking and building businesses. Passing those on to you, a bit at a time, is what this series is for.</p>
+    <p>And it starts here, with your map - the whole journey on one page. No need to read it all now, and definitely no need to do it all now. It's just so you can see the shape of where we're headed. From here, each step lands in its own email over the coming weeks - so come back to this overview whenever you like.</p>`;
+}
+
 // Build the next email for a recipient.
 // opts: { audience, recipientName, sentCount, unsubscribeUrl, baseUrl }
 // Returns { audience, slug, position, total, subject, html } or null when the
@@ -75,10 +86,12 @@ async function buildEmail({ audience = 'prospect', recipientName = '', sentCount
   const piece = await content.renderPiece(slug, { audience });
   if (!piece) throw new Error(`onePagerEmail: piece "${slug}" (${audience} #${idx + 1}) not found`);
 
+  const introHtml = (audience === 'client' && idx === 0) ? clientWelcomeIntro() : '';
   const inner = shell.articleCard({
     title: piece.title,
     dek: piece.dek,
     greeting: greetingFor(recipientName),
+    introHtml,
     bodyHtml: piece.bodyHtml,
     footerHtml: emailFooter({ audience, unsubscribeUrl }),
   });
