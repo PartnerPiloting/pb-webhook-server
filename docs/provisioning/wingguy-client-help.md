@@ -137,3 +137,77 @@ and role machinery, step-3 work.)
 | "what are my rules?" | wingguy_rules_list · wingguy_rule_get |
 | "set my sign-off / my Zoom link" | wingguy_variables (set) · wingguy_assets |
 | "change / undo a rule" | wingguy_rule_propose → wingguy_rule_commit · wingguy_rule_revert |
+
+---
+
+## 4. "Where do I start?" / "What's the process?" — the onboarding walkthrough
+
+The client's self-guided orientation. Trigger phrases: "I'm new to Wingguy", "where do I start", "what's the
+process", "onboard me". Two halves woven together: **the story** (fixed, same for everyone — foundation help)
+and **the setup** (stateful — leads them to the next undone thing, using the same filled-vs-blank state as the
+unfilled-scaffold nag). Structure is Socratic: give the overview, then let them pull the thread they care about.
+
+**★ Show the FULL capability to everyone — even chat-only clients (Guy, 2026-07-11).** Do NOT dumb down the
+extension magic (step 4) for someone who hasn't got it yet. Seeing the full power is what makes them want it.
+Frame it aspirational + easy on-ramp ("here's everything, and here's how simple it is to switch on the full
+version"), NEVER "you don't have this". The on-ramp = the two run-modes: **BYO AI key** (they pay just the AI
+cost) or **done-for-you on Guy's key** (flat monthly). Once they see it work it's a no-brainer.
+⚠ Pricing figure ($30/mo) is Guy's lever — keep the exact number OUT of the shared script (or make it a
+`{{variable}}`) so it can change; the script names the *choice*, Guy names the price.
+
+**The script (Guy's voice):**
+
+> Welcome aboard - good to have you here. Let me give you the big picture first, then we'll get you set up.
+>
+> **What Wingguy does, in a sentence:** it helps you build your network on LinkedIn the way the best
+> networkers do it - genuinely, one good conversation at a time - without the hours of manual work that
+> normally makes that impossible.
+>
+> Here's the journey, start to finish:
+>
+> **1. Find the right people.** You pick out people on LinkedIn worth connecting with - ideally people you
+> could genuinely recommend, and who might recommend you. We put them into a process that sends the
+> connection request for you.
+>
+> **2. A personalised "thanks for connecting."** This is where it starts to shine. Instead of a generic note,
+> Wingguy reads their profile and writes a warm, specific message - picking up on something they actually
+> care about. By hand, for every person, that's far too much work. Wingguy does it in seconds, and it gets
+> sharper every time you tweak it.
+>
+> **3. Slanted to your angle.** The message leans into whatever your outreach is about - so if you're reaching
+> out to, say, fractional professionals, it speaks to that. Your campaigns, your angle.
+>
+> **4. It works out the next move.** As a conversation unfolds, Wingguy reads the thread and figures out
+> what's needed - offer some meeting times, book one in, or answer a question they've asked. This is the
+> LinkedIn extension at its best: it watches your live threads and tees up the next move, so you're never
+> staring at a message wondering what to send.
+>
+> **5. A cracking follow-up after the meeting.** Once you've had a call, you chat with me and I read the
+> transcript, your emails, the LinkedIn thread, and draft a genuinely good follow-up - with the right links
+> from your asset library. And you can keep improving how I do all of this just by telling me, right here.
+>
+> That's the whole loop - and the best part is it keeps getting better the more you use it.
+>
+> **Two ways to run it - and most people end up wanting the full thing.** Wingguy has two parts: a Claude chat
+> that does the heavy lifting (drafting, follow-ups, booking) and works from anywhere, and a LinkedIn
+> extension that plugs into your LinkedIn and handles the outreach and next-move magic live. You can start
+> with the chat and add the extension when you're ready. Running it is simple: either bring your own AI key
+> and pay just the AI cost, or I set it up on mine and you don't touch a thing. Once you see it work, it's
+> usually a no-brainer.
+>
+> **First, though - a bit of setup, so all that actually works.** Nothing hard, and you can refine it as you
+> go, but let's get the essentials in place:
+> - your calendar connected (so I can offer and book real times)
+> - your email connected through Wingguy (so follow-ups send cleanly)
+> - your preferred meeting times
+> - your signature, the way you want it
+> - your basic outreach rules - your voice, your angle
+>
+> Want me to walk you through the setup one step at a time? Or if you'd rather understand a part more deeply
+> first - like how you choose who to reach out to - just say so and I'll go into it. Where would you like to
+> start?
+
+**Stateful setup (the grow-with-provisioning half):** once it can see what's connected/filled, the setup
+list checks itself off and it leads to the NEXT gap ("calendar and signature done - next, your meeting
+times"). End the setup at the **differentiation check** ("does this read as distinctly yours?") so self-serve
+never becomes lazy-clone. Adapt the run-mode line to what they've actually got (chat-only vs extension).
