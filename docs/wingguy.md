@@ -421,7 +421,8 @@ through LinkedIn's paste handler). *(Surfaced 2026-06-08.)*
   cases (recurring expansion / timezones / all-day / attendee-RSVP mapping / verify the guest actually gets an invite).
   **Strategic upside:** this same "light-OAuth, no-CASA" pattern generalises to other Zoho-like providers, so the
   adapter opens a segment (accountants / planners often run Zoho) we currently **can't** serve at all — reframing it
-  from "expensive thing for one client" to "one build unlocks the Zoho market." *(Full reasoning + the
+  from "expensive thing for one client" to "one build unlocks the Zoho market." **Build checklist (steps +
+  test matrix + effort read): `docs/zoho-calendar-adapter-plan.md`.** *(Full reasoning + the
   Google-CASA-vs-Zoho contrast lives in the 2026-07-10 session note under ▶ You are here.)*
 
 ---
