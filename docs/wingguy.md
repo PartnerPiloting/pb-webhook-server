@@ -3125,6 +3125,27 @@ their own (slot stays empty until they do) / skip — and skipping an asset mean
 usage-rule bullet too (the store's unresolved-token flagging polices this). The checklist is
 derivable: walk every {{asset:key}} the template rules reference.
 
+**★ ANTI-CLONE TEMPLATE PRINCIPLE (Guy, 2026-07-10).** Guy's worry: ship every client the same example
+templates → human nature leaves them unchanged → a wave of similar-sounding outreach. Ruling: the risk to
+prevent is same **CONTENT/positioning**, NOT same **CRAFT** (shared quality + voice-discipline is *wanted* —
+never differentiate by being worse). Guiding rule for the template + provisioning build: **ship PROMPTS and
+CRAFT, never Guy's content or Guy's examples.**
+- (a) Business rules already ship as **SCAFFOLDS = questions, not answers** (targeting-scaffold, manifesto-
+  scaffold, framing-angles-scaffold, objections-scaffold, asset-library-scaffold). Keep that discipline — no
+  filled-in business defaults a lazy client can coast on.
+- (b) Worked **EXAMPLES** are the single biggest quality lever AND the biggest clone leak. So **do NOT ship
+  Guy's examples** for business-specific rules — instead **GENERATE each client's worked examples from THEIR
+  OWN business during onboarding** (draft 2-3 samples from the client's real target profiles, they react/
+  refine, those become their baked-in examples). Unique by construction, quality preserved.
+- (c) **Craft/shape rules DO transfer** (message-structure, warmth, one-idea, booking + follow-up mechanics) —
+  that's the product; that family resemblance is the quality bar, not a bug.
+**Safeguards:** the human onboarding conversation is the real anti-clone mechanism (Guy extracts what's
+distinct — the template only prompts). Add a **differentiation check before go-live**: does the client's
+framing/targeting/manifesto genuinely differ from the defaults and from other clients? Reads generic = not
+ready. **Scale flag (watch, don't solve now):** even different content can feel familiar if many clients run
+the same signature method (the two-way/advocacy move) in overlapping LinkedIn ponds — may eventually need to
+let the METHOD flex per client too (trades against proven quality).
+
 **★ JULIAN DAVIS = GUINEA PIG #1 — CONFIRMED YES 2026-07-10 (he said yes, eager).** (Plan decided 2026-07-09;
 Julian agreed in conversation 2026-07-10.) Chat-only
 Wingguy (no extension): the connector in HIS paid claude.ai + transcripts — Guy's call: **no guinea pig
