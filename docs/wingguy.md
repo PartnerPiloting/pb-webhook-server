@@ -399,6 +399,30 @@ through LinkedIn's paste handler). *(Surfaced 2026-06-08.)*
 - **Nylas** chosen. **Aurinko** = clean Plan B (gateway model, good pricing). **Unipile**
   adds LinkedIn/WhatsApp under one API — fine for email/calendar, but do **not** use it to
   *send on LinkedIn* (violates the iron rule; ban risk).
+- **★ ZOHO CALENDAR — Nylas can't; a direct adapter CAN, and it's NOT the audit nightmare (verified 2026-07-10, forced by Julian).**
+  Nylas treats Zoho as an **IMAP** provider = **email only, no calendar** (IMAP is a mail protocol), and Nylas's
+  CalDAV calendar support is a **curated allow-list** (iCloud / Fastmail / Yahoo / Google) that **excludes Zoho** —
+  there is no "point Nylas at any CalDAV URL" connector. So Nylas still serves a Zoho client's **email** (IMAP), but
+  **NOT their calendar**. **The discovery that unblocks it:** the thing that made us flee to Nylas in the first place
+  was **not** OAuth code — it was Google's/Microsoft's **restricted-scope verification gauntlet (CASA: an annual paid
+  third-party security audit)** to touch calendar at scale. **Zoho imposes none of that** — plain OAuth (register app →
+  client id/secret → user consents). So a **direct Zoho calendar adapter is genuinely feasible** and re-introduces only
+  the *easy* half of OAuth (token/refresh plumbing), never the audit treadmill. **It drops into the existing seam:**
+  add a `zoho` branch to the three functions in `services/calendarProvider.js` (`getMeetingsInWindow` /
+  `createCalendarEvent` / `deleteCalendarEvent`) + a `mapZohoEvent` returning the same Google-shaped event; the
+  per-coach `Calendar Provider` switch already routes on it, so a Zoho tenant is just `Calendar Provider = 'zoho'` +
+  a stored Zoho token (mirrors how `Nylas Grant ID` works). Everything above the seam (availability, clash checks,
+  offer pipeline, HOLDs, booking guard, both chat surfaces) is provider-blind and needs **zero** change — EXCEPT a
+  few helpers in `wingguyCalendar.js` that hard-code the word `'nylas'` as *the* write/hold backend (`coachForNylas`,
+  `coachForHolds`, the binary `readsViaNylas`) which must generalise from "not-Google ⇒ nylas" to "this tenant's grant
+  provider" (small, contained). **One build serves EVERY Zoho client** (do the regional **data-centre routing**
+  properly — Zoho lives on .com/.com.au/.eu/.in, endpoint differs per client, detect it at connect time — or it only
+  works for the one client you hard-coded). Real costs = token refresh, that DC routing, and the event-mapping edge
+  cases (recurring expansion / timezones / all-day / attendee-RSVP mapping / verify the guest actually gets an invite).
+  **Strategic upside:** this same "light-OAuth, no-CASA" pattern generalises to other Zoho-like providers, so the
+  adapter opens a segment (accountants / planners often run Zoho) we currently **can't** serve at all — reframing it
+  from "expensive thing for one client" to "one build unlocks the Zoho market." *(Full reasoning + the
+  Google-CASA-vs-Zoho contrast lives in the 2026-07-10 session note under ▶ You are here.)*
 
 ---
 
@@ -452,6 +476,16 @@ likely); (2) possible **model/priority-capacity** gating on basic accounts; (3)
 *same provider/model* or quality genuinely drops. → Keep BYO-key outlier-only; Guy bearing
 the cost (metered + capped) gives all clients **uniform, controlled** horsepower, which is
 the better product. *(Surfaced 2026-06-08 — Guy's cost concern.)*
+
+**★ REFINEMENT (2026-07-10, from the Julian pitch): "$30/mo OR bring your own AI key" = a clean menu for TECHY clients.**
+For a surface that runs on Guy's AI (the extension), Guy offers the client a straight either/or: **$30/month, OR you
+provide your own AI key** — one or the other. Julian (a developer + heavy Claude user) immediately took the BYO-key
+option; for techy people it's zero friction and a nice "of course you can" gesture. **This nuances the "BYO-key
+outlier-only" stance above:** BYO-key is now a *legitimate self-serve tier for technical early adopters*, not merely an
+outlier pressure-valve. The non-technical target niche (brokers / planners) still gets **Guy's-key-billed-via-pricing**
+(uniform horsepower, no account-tier throttling) — that reasoning is unchanged; the menu is for the techy minority who
+*want* to run their own key. Keep the horsepower caveat in mind (their key must be the *same provider/model* or quality
+drifts).
 
 **Pricing model — charge for usage (better than BYO-key):** meter each client and bill for
 consumption while keeping Guy's key/model → client bears cost **and** keeps uniform
@@ -3056,10 +3090,20 @@ their own (slot stays empty until they do) / skip — and skipping an asset mean
 usage-rule bullet too (the store's unresolved-token flagging polices this). The checklist is
 derivable: walk every {{asset:key}} the template rules reference.
 
-**★ BANKED PLAN — JULIAN DAVIS = GUINEA PIG #1 (decided 2026-07-09, brainstorm with Guy).** Chat-only
+**★ JULIAN DAVIS = GUINEA PIG #1 — CONFIRMED YES 2026-07-10 (he said yes, eager).** (Plan decided 2026-07-09;
+Julian agreed in conversation 2026-07-10.) Chat-only
 Wingguy (no extension): the connector in HIS paid claude.ai + transcripts — Guy's call: **no guinea pig
 without the transcript magic** (the "call ends → transcript filed → draft my follow-up" loop is the wow).
-Julian: technical, forgiving, owner-model (no VA queue needed). **Build order (~3–4 sittings, all parallel
+Julian: technical (a developer), a big Claude fan, forgiving, owner-model (no VA queue needed) — the ideal first
+pilot: he'll **BYO his own AI key**, tolerate rough edges, and actively help debug. **Migration approach: move things
+over bit by bit** (not a big-bang cutover), leaning on his patience. **Motivation = the WOW factor** — get a real user
+delighted and *talking about it*, "there's nothing else like this" positioning, an evangelist/reference for the next
+clients. **⚠ ZOHO CALENDAR wrinkle (surfaced 2026-07-10): Julian runs Zoho Calendar, which Nylas CANNOT serve
+(email-only via IMAP; calendar not on Nylas's CalDAV allow-list).** So the Nylas-grant assumptions in this plan below
+(item 2c splitter calendar feed + the Phase-2 "connect your calendar" hosted-auth step + booking) do **NOT** work for
+Julian's *calendar* as written — his booking + splitter-calendar-feed now depend on the **Zoho calendar adapter**
+(feasible + not CASA-gated; see Provider notes + the 2026-07-10 session note below). His *email* still rides Nylas
+(Zoho IMAP works). Decision pending: build the Zoho adapter before/at Julian onboarding, or a calendar stopgap first. **Build order (~3–4 sittings, all parallel
 to the step-2 shadow week — none of this touches the flip):**
 1. **Per-person connector tokens + tenant scoping** (roadmap step 3, the substrate) — token row = identity,
    every MCP tool resolves tenant from the token (kill the hard-wired Guy-Wilson), coarse owner/va/platform
@@ -3069,7 +3113,9 @@ to the step-2 shadow week — none of this touches the flip):**
    coach-parameterized (ingest/splitter/store all take coachClientId); the real gaps are only (a) webhook→
    tenant routing (per-tenant webhook URL carrying his token — reuses step-3 identity, don't invent a second
    scheme), (b) per-tenant Fathom API key on the client record (one env key today), (c) the splitter's
-   calendar feed from HIS Nylas grant (same grant booking needs), (d) two 'Guy Wilson' fallback strings.
+   calendar feed from HIS Nylas grant (same grant booking needs) — **STATUS: SUPERSEDED for Julian (2026-07-10):
+   Julian is on Zoho Calendar, which Nylas can't read; his calendar feed + booking route through the Zoho adapter,
+   not a Nylas grant. See the Julian header wrinkle + Provider notes**, (d) two 'Guy Wilson' fallback strings.
    ⚠ Julian needs his own Fathom account on an API/webhook tier — a real cost + install on his side;
    position it as part of the package in the pitch.
 3. **Provisioning** — copy the template brain → his client layer through the door + fill his ~10 variables
@@ -3163,6 +3209,39 @@ Cheap to build: `renderRulesBlock` already returns `unresolved`, the catalog alr
 the guard = surface that into the chat-facing reply instead of only the logs. Two-layer safety: onboarding
 checklist (fill before you start) = first line · draft-time warning = the net. Detail in
 `docs/provisioning/wingguy-client-help.md` §2.
+
+**▶▶ SESSION 2026-07-10 (evening — Julian said YES + the Zoho-calendar breakthrough + a pricing menu).**
+- **Julian Davis is IN — confirmed pilot #1.** Guy had the conversation; Julian is eager and said yes. He's a
+  developer, a big Claude fan, forgiving, and happy to move over **bit by bit** and help debug — the textbook first
+  guinea pig. Guy's driving motivation is the **WOW factor**: get a real user delighted, talking about it, "nothing
+  else like this," so Julian becomes the reference/evangelist for clients #2+. (Julian's standing plan block above is
+  updated from BANKED → CONFIRMED.)
+- **The Zoho question that mattered: Julian runs Zoho Calendar — is that a wall? No.** Chain of findings:
+  (1) **Nylas can't do Zoho calendar** — it connects Zoho only as **IMAP = email-only** (IMAP has no calendar), and
+  Nylas's CalDAV calendar support is a **fixed allow-list** (iCloud/Fastmail/Yahoo/Google) that **excludes Zoho**;
+  there's no generic "any CalDAV URL" connector. (2) **But a direct Zoho adapter is feasible** — and the reason that's
+  a *breakthrough* and not a groan: **OAuth code was never why we chose Nylas.** The real reason was that **Google and
+  Microsoft gate calendar behind "restricted scope" verification = CASA, an annual paid third-party security audit,
+  re-done yearly** — that gauntlet, not the OAuth handler, is what Nylas spared us (Nylas is already certified, clients
+  consent to Nylas). **Zoho imposes no such audit** — plain register-app → client-id/secret → user-consent OAuth. So a
+  Zoho adapter re-introduces only the *easy* half of OAuth (token/refresh), never the audit treadmill. (3) **It slots
+  into the existing seam** (`services/calendarProvider.js`: a `zoho` branch on the 3 provider functions + `mapZohoEvent`
+  → Google shape; `Calendar Provider = 'zoho'` + a stored Zoho token, exactly parallel to `Nylas Grant ID`). Above the
+  seam nothing changes except generalising ~3 helpers in `wingguyCalendar.js` that hard-code `'nylas'`
+  (`coachForNylas` / `coachForHolds` / `readsViaNylas`) to "this tenant's provider." (4) **One build serves every Zoho
+  client** — provided the regional **data-centre routing** is done properly (Zoho endpoints differ by .com/.com.au/.eu/
+  .in; detect per client at connect, don't hard-code). Real work = token refresh + DC routing + event-mapping edge
+  cases (recurring/timezone/all-day/RSVP/guest-invite). **Julian's email still rides Nylas (Zoho IMAP); only his
+  calendar needs the adapter.** (5) **Generalises** to other light-OAuth providers → opens the Zoho-shaped segment
+  (accountants/planners) we couldn't serve before. **This is why the Julian plan's item 2c ("calendar feed from his
+  Nylas grant") is now superseded — his booking + splitter calendar come through the Zoho adapter.** Open decision:
+  build the adapter before/at his onboarding, or a stopgap first. (Canonical version lives in **Provider notes**.)
+- **Pricing menu for techy clients: "$30/mo OR bring your own AI key."** In the pitch Guy flagged he'd likely charge
+  for the extension (it runs on his AI); Julian offered to just supply his own key. So the offer crystallised as a
+  clean either/or — **$30/month or BYO AI key, one or the other** — perfect for developer-types (Julian took BYO). This
+  refines the older "BYO-key = outlier-only" line into "BYO-key = a real self-serve tier for the technical minority";
+  the non-technical niche still gets Guy's-key-billed for uniform horsepower. (Detail folded into **AI cost economics →
+  BYO-key**.)
 
 **▶▶ SESSION 2026-07-10 (from the live Vikas Uberoy thread): DATE ANCHOR + daily load is a PREFERENCE,
 not a cap.** Two symptoms, one root cause each:
