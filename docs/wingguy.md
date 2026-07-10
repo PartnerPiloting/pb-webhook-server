@@ -3165,6 +3165,27 @@ verified plumbing, so a qualitative pass (compare a few real draft outputs pre/p
 `WINGGUY_VOICE`/campaign-template wording for technique the store rules don't carry) is worth doing before
 boat-burning deletes `config/wingguyTemplates.js`.
 
+**★ HOW PERSONALISATION WORKS — craft vs voice, and why correcting-as-you-go IS the anti-clone mechanism
+(Guy, 2026-07-10).** The clean statement that steers onboarding + UX decisions:
+- **CRAFT = pre-loaded and shared (foundation).** The universal technique ("find a genuine profile hook,
+  interpret don't parrot", message shape, booking/follow-up mechanics) ships in foundation, locked. Clients
+  NEVER teach it — it works from message one, same for everyone. (This is why Guy's "could a client teach it
+  the pattern?" → no need; it's already `profile-hook-craft` in foundation.)
+- **VOICE = taught by example into the client's OWN layer.** What a client personalises is their *flavour* —
+  how THEY word it (e.g. the foundation rule leans *genuine curiosity* over compliment; a warm-complimenter
+  client teaches "I love what you've built" by example). That lands in their client layer, ON TOP of the
+  shared craft. Same craft, their spin.
+- **Mechanically:** "do it like this from now on" isn't loose memory — Wingguy turns the example + intent into
+  an explicit rule (or a worked example) committed to the client's layer via the "update my rules" door. That
+  is what makes it stop being manual.
+- **★ Correcting-as-you-go is the clone-protection working BY ITSELF.** Clients don't author rules cold; they
+  work and correct by example ("warmer", "shorter", "I'd say it this way"), and each correction pulls their
+  voice further from the generic default. Over weeks no two clients sound alike — not because it was forced,
+  but because each one's real corrections accumulated differently. Exactly how Guy tuned his own voice against
+  his real AI Blaze outputs. Design implication: make correction-by-example FRICTIONLESS in the chat (it's the
+  primary personalisation path), and pair it with the unfilled-scaffold nag (forces the *first* fill) + the
+  go-live differentiation check (catches the client who never corrects at all).
+
 **★ JULIAN DAVIS = GUINEA PIG #1 — CONFIRMED YES 2026-07-10 (he said yes, eager).** (Plan decided 2026-07-09;
 Julian agreed in conversation 2026-07-10.) Chat-only
 Wingguy (no extension): the connector in HIS paid claude.ai + transcripts — Guy's call: **no guinea pig
