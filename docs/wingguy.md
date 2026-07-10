@@ -3186,6 +3186,28 @@ boat-burning deletes `config/wingguyTemplates.js`.
   primary personalisation path), and pair it with the unfilled-scaffold nag (forces the *first* fill) + the
   go-live differentiation check (catches the client who never corrects at all).
 
+**★ THE LAYER LITMUS TEST — how to sort any rule into a drawer (Guy, 2026-07-10).** One question does the
+work: **"Does this depend on who you are and what you sell — or not?"** Concretely, imagine a plumber AND a
+lawyer both using Wingguy:
+- Both want it **identical** → it's a **writing SKILL → FOUNDATION** (shared, locked). e.g. find + interpret
+  a profile hook; keep it short; short dash not em dash.
+- Same **shape, different words** → it's a **starter → TEMPLATE** (they get a copy and rewrite it). e.g. the
+  campaign skeleton "thanks → interesting point → soft value → Zoom ask".
+- Each wants their **own** → it's **PERSONAL → CLIENT/variables**. e.g. sign-off, their actual offer, their
+  worked examples, their locale VALUE ("Australian" — while the *rule* "write in their locale" is foundation).
+Use this every time a new rule is added. (Worked example: decomposing Guy's old AI Blaze `/tks` prompt this
+way — 2026-07-10 — cleanly sorted craft vs campaign-skeleton vs personal, and surfaced craft gems missing
+from the store.)
+
+**★ SECOND FOUNDATION RULE — `message-polish` (2026-07-10).** Folded the universal craft habits from Guy's
+AI Blaze `/tks` prompt that never reached the store (they lived only in that prompt, so the flip couldn't
+carry them): compliment restraint ("I love X" stands alone, no "…that really resonates" tail), clean
+prepositions ("philosophy of/to", not "around"), tighten-by-naming-their-business, don't-echo-the-profile,
+and the **dash decision → FOUNDATION/locked** (spaced short dash " - ", never em/en; an em dash is the #1
+"a machine wrote this" tell, and the product sells human-sounding outreach — so it's craft, not taste; a
+per-client override is a later option if anyone ever insists). Foundation now holds TWO rules
+(`profile-hook-craft` + `message-polish`) — the layer is proving itself.
+
 **★ JULIAN DAVIS = GUINEA PIG #1 — CONFIRMED YES 2026-07-10 (he said yes, eager).** (Plan decided 2026-07-09;
 Julian agreed in conversation 2026-07-10.) Chat-only
 Wingguy (no extension): the connector in HIS paid claude.ai + transcripts — Guy's call: **no guinea pig
