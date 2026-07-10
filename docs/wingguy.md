@@ -3190,6 +3190,57 @@ not a cap.** Two symptoms, one root cause each:
   assertions + new busy-near-day-beats-far-week check; also fixed a Friday-only flake (includeSoon test's
   "tomorrow" = Saturday). All booking-guard checks green.
 
+**▶▶ SESSION 2026-07-10 (continued, talking it through with Guy): template sweep DONE + the multi-tenant
+readiness map + the rule-vs-setting router.**
+- **Template sweep done (partial, from the booking fix).** Inventory of the rules store: **74 client rules,
+  57 template, foundation EMPTY** - the import dumped everything into client + template, nothing shared-live.
+  Reassuring finding: only TWO client rules had EVER drifted past their imported v1 baseline - `booking-defaults`
+  (v9) and `closing-stage-links` (v2). `closing-stage-links` v2 was a mechanical prose→`{{asset:}}` token swap on
+  Guy's PERSONAL asset sequence (his decks/articles) - correctly stays client-only (template's counterpart is the
+  blank `asset-library-scaffold`). So the "my wisdom pools in my own drawer" risk was REAL but tiny in practice.
+  Done this session: seeded `booking-defaults` (→ template v2) + `timezone-playbook` (→ template v1; was client-only
+  AND referenced by booking-defaults, so a new client would've had a dangling reference) into the template,
+  DE-PERSONALISED (used `{{owner_last_name}}` not the literal "Wilson"; region-neutral DST wording, not the
+  QLD/NSW/WA/NZ specifics). STILL TODO = the real lever: populate the empty **foundation** layer (universal logic →
+  foundation so ALREADY-LIVE clients get it live, not just future ones at seed time). That's a deliberate per-rule
+  migration - best done as one pass at Julian onboarding, NOT auto-run.
+- **Buffer/gap between meetings = a DEAD setting (real code gap found).** `bufferMins` exists in DEFAULT_PREFS at
+  `0`, commented "no enforced gap" - but NOTHING reads it. Both slot builders (`buildDaysFromBusy` = Nylas path,
+  `getBatchAvailability` = Google path) mark a 30-min slot free whenever it doesn't OVERLAP a meeting, so a slot
+  butted right against a meeting (back-to-back) is offered like any other. Consequence: a client who wants "30-min
+  gaps between my meetings" can WRITE it as a rule but it WON'T take effect - (a) `bufferMins` is never read, and
+  (b) the model can't self-enforce it because `check_availability` gives it the free slots + a `meetingCount`
+  NUMBER, not WHERE the neighbouring meetings sit, so it can't tell which offered slots abut a meeting. Fix (small,
+  clean): expand each busy event by `bufferMins` on each side BEFORE the overlap test in BOTH builders + make
+  `getBookingPrefs` read the value per-tenant. **Lesson (same shape as today's date-anchor):** a preference that
+  needs slots removed BEFORE the model sees them is a CODE-enforced rule (like the lunch hold, daily-load, notice
+  period), NOT a model-read rule - it cannot live in rule text alone.
+- **Multi-tenant readiness map (what's stuck vs not - the honest state).** Four buckets:
+  1. **Already per-tenant (works per client today):** calendar identity + timezone (reads EACH client's own
+     calendar / Nylas grant / tz - why the date-anchor fix was genuinely multi-tenant), the leads bases, the rules
+     store's per-tenant `client` layer, and **variables** (each tenant's own sign-off / name / Zoom).
+  2. **Seam exists, single VALUE:** `getBookingPrefs(clientId)` takes the client id but returns Guy's defaults for
+     everyone (earliest/preferred start, max-per-day, meeting length, lunch, reminders, buffer). Voice prefs almost
+     certainly the same. Work = plug a per-tenant store behind the existing seam (the pending Postgres prefs move).
+     Mostly PLUMBING, not a rebuild.
+  3. **Hard-wired to Guy:** the claude.ai connector (fixed `RECALL_COACH_CLIENT_ID` token). Needs the per-client
+     token work (step 3) - the bigger piece.
+  4. **Different axis:** the empty **foundation** layer (shared-logic propagation, not per-tenant values).
+- **The rule-vs-setting ROUTER (the design Guy asked about, and it half-exists already).** Two kinds of "change my
+  behaviour": **RULES** = text the model reads (voice, judgment) · **VALUES/SETTINGS** = structured things code or
+  the template consumes (sign-off, buffer, earliest start). The routing brain ALREADY EXISTS in embryo: the
+  `wingguy_variables` door vs the rule propose/commit door, and the agent already picks correctly - "my sign-off is
+  X" routes to VARIABLES (instant, logged), NOT a rule edit (the tool description says exactly this). Target:
+  booking SETTINGS (buffer etc.) join that structured-value world so "update my rules with 15-min gaps" is
+  recognised as a SETTING and routed to a settings door - same as sign-off today. To build: (1) per-tenant store
+  for booking prefs [= bucket 2 above]; (2) a settings door for the agent (extend the variables catalog OR a
+  parallel booking-settings tool), each setting described + the phrasings that map to it; (3) the slot-code buffer
+  hook. Subtleties, honest: there MUST be a CATALOG of what's settable (that's the boundary of how clever the
+  routing can be - anything outside it becomes a rule or comes back to Guy); CONFIRM don't silently guess on
+  ambiguous asks ("I prefer mornings" = hard cutoff or soft lean? - use the same propose-confirm gate); and the
+  failure to design out is a setting-type ask silently landing as rule TEXT no code reads (the dead-buffer trap) -
+  routing is what prevents "I told it and nothing happened."
+
 **▶▶ SESSION 2026-07-06 (evening, from the live Jason Hartley thread): on-send capture — the DETACHED-COMPOSER
 hole (the wrong-person guard was right; the capture's identity was wrong).**
 - Guy's last 5 Jason messages (his 2:52 PM reply + the 👏👍😊 + "Yeah me too - see you then") never reached the
