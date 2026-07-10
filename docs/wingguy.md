@@ -3146,6 +3146,25 @@ ready. **Scale flag (watch, don't solve now):** even different content can feel 
 the same signature method (the two-way/advocacy move) in overlapping LinkedIn ponds — may eventually need to
 let the METHOD flex per client too (trades against proven quality).
 
+**★ FIRST FOUNDATION RULE + a flip-craft finding (2026-07-10).** Prompted by Guy: "I want clients to do what
+I do — mine the profile for something genuinely interesting and INTERPRET it, not parrot it." Checked the
+store: that craft was only THINLY present (`linkedin-message-style` = "genuine curiosity, reference something
+specific"; `opening-lines` = stems + avoid-list). The RICH interpretive-hook technique (About/passions FIRST
+→ pick ONE best → INTERPRET, show you got their thinking → thin-profile fallback) lived in the retired CODE
+voice block (`WINGGUY_VOICE`) + the config campaign templates that the draft surfaces used PRE-FLIP. **So the
+config→store flip likely THINNED this signature craft — and the shadow week wouldn't have caught it (it
+checked render/detection health, NOT writing quality).** Fix: committed **`profile-hook-craft`** as the
+store's **FIRST foundation rule** (global/voice v1) — de-personalised, **LOCKED** (foundation = platform-
+wide, Guy-only edit; clients can't change it; no per-client override in v1), renders live on every surface
+for every tenant. Restores the craft to Guy's own drafting immediately AND hands it to every future client.
+**Proves the dogfooding flywheel** (Guy confirmed the model): Guy = client #1; craft he finds necessary from
+real use → promote to foundation → all clients, live + future, inherit instantly. Discipline until the
+auto-prompt is built: say "put this in foundation" for universal, else it defaults to his client layer.
+**⚠ WATCH-ITEM (real): audit whether OTHER craft thinned in the flip the same way** — the shadow week only
+verified plumbing, so a qualitative pass (compare a few real draft outputs pre/post-flip, and scan the old
+`WINGGUY_VOICE`/campaign-template wording for technique the store rules don't carry) is worth doing before
+boat-burning deletes `config/wingguyTemplates.js`.
+
 **★ JULIAN DAVIS = GUINEA PIG #1 — CONFIRMED YES 2026-07-10 (he said yes, eager).** (Plan decided 2026-07-09;
 Julian agreed in conversation 2026-07-10.) Chat-only
 Wingguy (no extension): the connector in HIS paid claude.ai + transcripts — Guy's call: **no guinea pig
