@@ -3208,6 +3208,34 @@ and the **dash decision → FOUNDATION/locked** (spaced short dash " - ", never 
 per-client override is a later option if anyone ever insists). Foundation now holds TWO rules
 (`profile-hook-craft` + `message-polish`) — the layer is proving itself.
 
+**★ PER-TENANT READINESS SWEEP — the complete "takes a clientId but returns Guy's values" list (deliberate
+sweep 2026-07-10, prompted by Guy: "if I hadn't asked, would it have been missed?").** The sweep found the
+ad-hoc notes HAD captured "booking prefs are single-value" — but MISSED two things, which is exactly why a
+deliberate pass beats luck:
+**Client-facing gaps — MUST fix before Julian books/drafts for real:**
+1. **Booking prefs (`config/wingguyBookingPrefs.js`): `getBookingPrefs(clientId)` ignores the clientId
+   entirely — returns Guy's `DEFAULT_PREFS` for everyone.** All numbers (start/earliest/last, slotsToOffer,
+   meetingLength, maxPerDay, lunch, notice, spread) + **⚠ the INVITE IDENTITY: `yourZoom`
+   (Guy's Zoom room), `coachLinkedIn`, `coachPhone`** — these are hard-coded Guy and would land on a CLIENT'S
+   calendar invites as Guy's details. **This is the sharpest miss: not just a "setting", it's Guy's contact
+   details leaking onto Julian's invites.** Fix = per-tenant store behind the existing seam.
+2. **Voice prefs (`config/wingguyVoicePrefs.js`):** better — `getVoicePrefs` DOES merge a `PER_CLIENT` map,
+   but that's a CODE edit, not self-serve; defaults are Guy's ('Guy' / '(I know a)'). Needs the store wiring.
+3. **⚠ NEW CATCH: the chat-agent harness (`WINGGUY_AGENT_INSTRUCTIONS`) hard-codes "Guy Wilson's LinkedIn" /
+   "Guy's assistant" in its TEXT.** The context block passes `COACH NAME`, but the instructions themselves say
+   Guy — so for a non-Guy tenant the agent is told it's *Guy's* assistant. Parameterise the coach name in the
+   harness. (This was NOT on any prior list — the sweep caught it.)
+4. Per-client **connector token** (step 3) + per-client **Fathom API key + webhook routing** — already known.
+**OUT of v1 scope (Guy's own back-office, NOT client-facing):** the scoring / harvesting / weekly-digest
+admin+cron endpoints in `apiAndJobRoutes.js` default `clientId` to 'Guy-Wilson' — those are Guy's batch ops,
+fine as-is. System alert/notification emails to `guyralphwilson@gmail.com` are CORRECT (he's the operator).
+**Onboarding-load implication (answers Guy's "lots of questions?"):** of all the above, the only genuinely
+NEW things a client must actively PROVIDE are their invite identity (their Zoom room, LinkedIn, phone) + their
+sign-off — already part of the ~10 identity variables / asset fills. Everything else is a default-to-accept
+(the numbers) or a setup step (token/Fathom). **So the sweep confirms onboarding stays light** — provided
+every per-tenant setting ships WITH a sensible default (the design rule), so it's confirm-and-tweak, never
+answer-from-blank.
+
 **★ JULIAN DAVIS = GUINEA PIG #1 — CONFIRMED YES 2026-07-10 (he said yes, eager).** (Plan decided 2026-07-09;
 Julian agreed in conversation 2026-07-10.) Chat-only
 Wingguy (no extension): the connector in HIS paid claude.ai + transcripts — Guy's call: **no guinea pig
