@@ -150,10 +150,10 @@ Wingguy (how to act) + reads/writes the Portal (the records).
   **Step-1 BUILD SHIPPED + smoke-green on prod 2026-07-04 session 3** (`10fcc19e`: store + write-door +
   6 MCP tools live on both transports). **Store SEEDED + VERIFIED 2026-07-05** (import sitting: 130 rule
   rows / 15 variables / 20 assets on prod Postgres; Notion = authoring master until the flip).
-  **Step-2 SEAM SHIPPED DARK 2026-07-05** (`5e6432a0`: both surfaces read via
-  `services/wingguyRulesSource.js`; `WINGGUY_RULES_SOURCE=config` default keeps prompts byte-identical,
-  shadow-compare logging the store's would-be renders — flip after a clean week ↓ journal "Rules source
-  seam (roadmap step 2 build)").**
+  **Step-2 SEAM SHIPPED DARK 2026-07-05** (`5e6432a0`) then **FLIPPED LIVE 2026-07-10**
+  (`WINGGUY_RULES_SOURCE=store` on prod; shadow week clean, Notion reconciled — the store is now the runtime
+  master for Guy's drafting; ↓ "You are here" 2026-07-10 close). Boat-burning (delete
+  `config/wingguyTemplates.js`) after ~2 weeks stable.**
 
 **AI / model.** Standardise on **Claude** behind a swappable seam: **Claude = drafting** (voice), **Gemini =
 scoring + summaries** (cheap, high-volume). The connector surface needs the client's own Claude account (a product
@@ -3075,6 +3075,35 @@ Notion rules pages. Gut-it-out posture stands: content problems fix FORWARD thro
 var reverts reads only as a fire extinguisher. Boat-burning after ~2 weeks stable (above).
 
 ## ▶ You are here / next pick-up
+
+**▶▶ SESSION CLOSE 2026-07-10 (THE FLIP — Wingguy now reads the STORE on prod). START THE NEXT CHAT HERE.**
+- **DONE + verified:** `WINGGUY_RULES_SOURCE=store` set on prod (srv-cvqgq53e5dus73fa45ag), service redeployed,
+  `/api/wingguy/status` → `rulesSource=store` (stable across polls; the one transient `config` read was the
+  old instance during zero-downtime cutover). Post-flip smoke (one-off job inheriting the LIVE env, not a
+  forced flag): all three surfaces render — draft-thanks/draft-reply/chat — `unresolvedPlaceholders=false`,
+  chat `campaignTemplate=null` (rendered rulebook, not the config copy). **The store is now the runtime
+  master for Guy's own drafting.**
+- **How we got the green light:** shadow week came back CLEAN (100 renders, `unresolved=0`, no FAILED, fast);
+  the ONE disagreement was `frac` (config detects off the literal word "fractional", the store off the frac
+  opener markers) — **Guy accepted the store's stricter behaviour as correct** (no marker change). Then
+  **Notion↔store reconciled:** only 3 email pages changed in Notion since the Jul-5 import, all the same
+  theme (the clean-link drafting breakthrough, Jul 8-9); of those only `email-html-format` still carried the
+  obsolete plain-text-Ctrl+K workaround in the store → committed **v2** (embed hyperlinks directly = default,
+  manual = fallback). The `wingguy_create_draft` TOOL instruction was deliberately LEFT OUT (tooling, like the
+  excluded Gmail & Tools page). Store was already AHEAD of Notion on booking (v9) — that's the intended
+  direction, no action.
+- **Shadow auto-OFF** now (isShadowEnabled() is false whenever source=store) — no more WINGGUY-SHADOW lines.
+- **⚠ REMAINING FLIP-DAY DISCIPLINE (not yet done):** (1) **authoring now goes to the STORE** — "update my
+  rules" routes to the door (propose→commit), NOT Notion; the one-master rule is now live. (2) **Notion rules
+  pages still need the loud "ARCHIVED [2026-07-10] — live rules now in the Wingguy store; edits here do
+  nothing" banner** (the ~20 imported rule pages) so a stray Notion edit can't rebuild the two-master drift —
+  OFFER pending. (3) **Boat-burning after ~2 weeks stable:** delete `config/wingguyTemplates.js` (kills the
+  Matthew-drift class permanently) + move the harness constants into the seam + re-point
+  `scripts/wingguy-chat-test.js`. The env-var kill-switch (`WINGGUY_RULES_SOURCE=config`) survives as a
+  fire-extinguisher only until then. **Posture = gut it out:** post-flip content problems fix FORWARD through
+  the door, never by flipping back.
+- **NEXT = Julian onboarding** (unchanged): per-person tokens/tenancy → Zoho calendar adapter → provisioning
+  (populate the empty foundation layer in that same pass) → dry-run → the real onboarding.
 
 **★ BANKED PRE-ONBOARDING TASK — TEMPLATE-LAYER SWEEP:** all of today's rule improvements
 (booking-defaults v2→v6: warm time-offer intro, preferred day start, spread + daily cap, manual
