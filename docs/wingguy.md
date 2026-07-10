@@ -3095,9 +3095,14 @@ var reverts reads only as a fire extinguisher. Boat-burning after ~2 weeks stabl
 - **Shadow auto-OFF** now (isShadowEnabled() is false whenever source=store) — no more WINGGUY-SHADOW lines.
 - **⚠ REMAINING FLIP-DAY DISCIPLINE (not yet done):** (1) **authoring now goes to the STORE** — "update my
   rules" routes to the door (propose→commit), NOT Notion; the one-master rule is now live. (2) **Notion rules
-  pages still need the loud "ARCHIVED [2026-07-10] — live rules now in the Wingguy store; edits here do
-  nothing" banner** (the ~20 imported rule pages) so a stray Notion edit can't rebuild the two-master drift —
-  OFFER pending. (3) **Boat-burning after ~2 weeks stable:** delete `config/wingguyTemplates.js` (kills the
+  pages ARCHIVED-banner DONE 2026-07-10** — all 21 imported rule pages (3 Targeting · 17 messaging/call/email
+  in §03 · root Calendar & Scheduling Defaults) got a top-of-page "🔒 ARCHIVED — edits here no longer reach
+  Wingguy" banner. Deliberately NOT bannered (stay live): Newsletter Rules, Weekly GBR, Newsletter Archive,
+  Master Brief, Who I Am, retired InMail page, Gmail & Tools, Email Examples Library. ⚠ One residue: the
+  inline "Post-Connection Message — Winning Formula" block lives on the §03 INDEX page body (imported as the
+  `post-connection-message` rule) — the index page itself wasn't bannered (it lists excluded children too), so
+  that one inline block is an un-bannered drift risk; edit post-connection wording via the door, not there.
+  (3) **Boat-burning after ~2 weeks stable:** delete `config/wingguyTemplates.js` (kills the
   Matthew-drift class permanently) + move the harness constants into the seam + re-point
   `scripts/wingguy-chat-test.js`. The env-var kill-switch (`WINGGUY_RULES_SOURCE=config`) survives as a
   fire-extinguisher only until then. **Posture = gut it out:** post-flip content problems fix FORWARD through
