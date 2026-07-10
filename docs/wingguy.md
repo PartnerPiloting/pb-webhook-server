@@ -3164,6 +3164,32 @@ the guard = surface that into the chat-facing reply instead of only the logs. Tw
 checklist (fill before you start) = first line · draft-time warning = the net. Detail in
 `docs/provisioning/wingguy-client-help.md` §2.
 
+**▶▶ SESSION 2026-07-10 (from the live Vikas Uberoy thread): DATE ANCHOR + daily load is a PREFERENCE,
+not a cap.** Two symptoms, one root cause each:
+- **The panel offered 21–23 July as "next week" (today was Fri 10 July).** Root cause: the model was NEVER
+  TOLD today's date — nothing in the voice block, agent instructions, context, or rulebook stated it, so it
+  resolved "next week" by guessing. A rule edit (booking-defaults v8, made live from the panel) couldn't fix
+  it: "work out the actual dates first" is unfollowable without the date. **Fix = code supplies the anchor
+  everywhere:** new `offerWindowInfo(tz)` in `wingguyCalendar.js` (today + this-week/next-week boundaries +
+  farWeeksStart); injected as a TODAY line in the chat context (`buildContext`), returned as `window` on
+  every `filterAvailability` result, and printed as the opening line of the MCP
+  `wingguy_check_availability` text. Plus a `propose_times` BACKSTOP: any offered slot beyond next week
+  comes back listed in `beyondNextWeek` + a warning, so neither the draft nor the summary can honestly call
+  a fallback day "next week".
+- **"No slots next week" while Guy could see free time.** The 2026-07-06 `maxMeetingsPerDay:4` rule was
+  built as a HARD cap — days at it were withheld entirely. Next week Mon/Tue/Wed/Fri sat at 7/5/6/4
+  in-window meetings, so only Thu 16 survived and the pipeline pulled fallback weeks in. **Guy's ruling
+  (2026-07-10): 4/day is what he'd LIKE, not a wall — nearness beats daily load.** Ladder: light near days
+  10:00+ → STACK busy near days / back-to-back (never double-booking; tell Guy how loaded the day is) →
+  9:30 at-a-pinch → only then fallback weeks. No hard ceiling at any count. Code: `filterAvailability`
+  keeps at/over-preference days flagged `busyDay:true`; the near-window "can it fill?" test now counts
+  slots (including busy days') not day-count, so a stacked near week keeps offers out of the fallback
+  weeks. Surfaces updated: chat tool description + PICKING TIMES ladder (now 4 rungs) in
+  `wingguyTemplates.js`, MCP text (⚠ BUSY DAY marker), prefs comment, **booking-defaults → v9** ("Spread
+  the week - but nearness wins" + window-anchor sentence). Tests: cap assertions flipped to flag
+  assertions + new busy-near-day-beats-far-week check; also fixed a Friday-only flake (includeSoon test's
+  "tomorrow" = Saturday). All booking-guard checks green.
+
 **▶▶ SESSION 2026-07-06 (evening, from the live Jason Hartley thread): on-send capture — the DETACHED-COMPOSER
 hole (the wrong-person guard was right; the capture's identity was wrong).**
 - Guy's last 5 Jason messages (his 2:52 PM reply + the 👏👍😊 + "Yeah me too - see you then") never reached the

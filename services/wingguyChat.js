@@ -37,7 +37,7 @@ const MAX_TOOL_ITERATIONS = 8;     // safety cap on the agent loop
 const AGENT_TOOLS = [
   {
     name: 'check_availability',
-    description: 'Look at Guy\'s real calendar and return open meeting slots (timezone-correct for both Guy and the lead). Call this before suggesting or booking times. Returns days, each with "meetingCount" (how many meetings Guy already has that day — prefer the lowest) and "freeSlots"; each slot has "time" (ISO start — pass to book_meeting/propose_times), "display" (Guy\'s time), "leadDisplay" (the lead\'s time), and "label" (EXACTLY how that slot will read in the message, e.g. "Wed 8 July, 9:30 am"). The "time" ISO is opaque and every day has a look-alike slot, so ALWAYS pick a slot by matching its "label" to the day+time you intend, then pass THAT slot\'s "time" — this stops you grabbing the right time on the wrong day. Guy\'s lunch (12:00–12:45) is held back by default and won\'t appear.',
+    description: 'Look at Guy\'s real calendar and return open meeting slots (timezone-correct for both Guy and the lead). Call this before suggesting or booking times. Returns "window" (today\'s date + this-week/next-week boundaries in Guy\'s timezone — resolve "next week" and every relative date phrase against it, never a guess) and days, each with "meetingCount" (how many meetings Guy already has that day — prefer the lowest), possibly "busyDay": true (at/over Guy\'s preferred daily load — still offerable, but prefer lighter days, use these to keep options in this week/next before any fallbackWeek day, and tell Guy how loaded the day is), and "freeSlots"; each slot has "time" (ISO start — pass to book_meeting/propose_times), "display" (Guy\'s time), "leadDisplay" (the lead\'s time), and "label" (EXACTLY how that slot will read in the message, e.g. "Wed 8 July, 9:30 am"). The "time" ISO is opaque and every day has a look-alike slot, so ALWAYS pick a slot by matching its "label" to the day+time you intend, then pass THAT slot\'s "time" — this stops you grabbing the right time on the wrong day. Guy\'s lunch (12:00–12:45) is held back by default and won\'t appear.',
     input_schema: {
       type: 'object',
       properties: {
@@ -166,7 +166,7 @@ function chooseSignoff(conversation, coachName, vp, campaignSignoff) {
 
 // Compact, grounded context for the agent. `buildProfileBlock` / `buildConversationBlock` are passed
 // in so the formatting stays identical to the rest of Wingguy (the route owns those helpers).
-function buildContext({ profileBlock, convoBlock, leadEmail, coachName, prefs, campaignTemplate, voice, onFile = true }) {
+function buildContext({ profileBlock, convoBlock, leadEmail, coachName, prefs, campaignTemplate, voice, onFile = true, window = null }) {
   const tplBlock = campaignTemplate && campaignTemplate.instructions
     ? `CAMPAIGN TEMPLATE — "${campaignTemplate.label || campaignTemplate.id}" (use this for the opener / warm-reply message; it's Guy's real structure & voice — match its beats and sign-off):\n${campaignTemplate.instructions}\n\n`
     : '';
@@ -181,8 +181,14 @@ function buildContext({ profileBlock, convoBlock, leadEmail, coachName, prefs, c
     `- SIGN OFF with EXACTLY this closing line: "${voice.signoff}". Use it verbatim as the last line; do not add or drop the tagline yourself — that choice is already made for you.\n` +
     `- When you OFFER TIMES (propose_times), put the greeting in the intro; the sign-off is appended automatically, so DON'T put a sign-off in the outro.\n\n`
   ) : '';
+  // The model's DATE ANCHOR (2026-07-10, the Vikas mis-offer): without this the model has no idea
+  // what today is and resolves "next week" by guessing — no rule text can fix that, only data.
+  const dateBlock = window
+    ? `TODAY IS ${window.today} (${window.timezone}). THIS week = ${window.thisWeek}; NEXT week = ${window.nextWeek}; anything later is a fallback week. Resolve EVERY relative date phrase — Guy's or the lead's ("next week", "Tuesday", "in a fortnight") — against this anchor; never guess today's date.\n\n`
+    : '';
   return (
     `CONTEXT FOR THIS CHAT (you are helping Guy with this lead):\n\n` +
+    dateBlock +
     `${profileBlock ? `LEAD PROFILE:\n${profileBlock}\n\n` : ''}` +
     `${convoBlock ? `LINKEDIN CONVERSATION SO FAR (oldest first):\n${convoBlock}\n\n` : ''}` +
     `${tplBlock}` +
@@ -233,7 +239,7 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
       { type: 'text', text: WINGGUY_VOICE },
       { type: 'text', text: WINGGUY_AGENT_INSTRUCTIONS, cache_control: { type: 'ephemeral' } },
     ]),
-    { type: 'text', text: buildContext({ profileBlock, convoBlock, leadEmail, coachName: coach.clientName, prefs, campaignTemplate, voice, onFile: !!leadRecordId }) },
+    { type: 'text', text: buildContext({ profileBlock, convoBlock, leadEmail, coachName: coach.clientName, prefs, campaignTemplate, voice, onFile: !!leadRecordId, window: wingguyCalendar.offerWindowInfo(coach.timezone || coach.timeZone || 'Australia/Brisbane') }) },
   ];
 
   const convo = messages.map((m) => ({ role: m.role, content: m.content }));
@@ -304,11 +310,19 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
       // what was actually rendered — not re-derived from memory (which is how the summary said "Wed 8 July"
       // while the draft said "Thu 9 July", 2026-07-02). The agent must quote these, not restate dates itself.
       const offeredTimes = ordered.map((iso) => fmtSlot(iso, leadTz));
+      // Beyond-next-week BACKSTOP (2026-07-10, the Vikas mis-offer: fallback days written up as
+      // "next week"): code tells the model exactly which offered times fall past the near window,
+      // so neither the draft nor the chat summary can honestly call them "this week"/"next week".
+      const farStart = wingguyCalendar.firstFarWeekDate(tz);
+      const beyondNextWeek = ordered.filter((iso) => dateStrInTz(iso, tz) >= farStart).map((iso) => fmtSlot(iso, leadTz));
       // NO automatic holds (Guy's call, 2026-07-06 — the auto-hold experiment shipped and was pulled
       // the same afternoon: 8 HOLD blocks incl. duplicates piled up within half an hour and made the
       // diary unreadable). Guy places "HOLD: <lead name>" events MANUALLY when a promise is worth
       // protecting; book_meeting still respects and clears them (see below).
-      return { ok: true, offered: ordered.length, offeredTimes, dropped };
+      return {
+        ok: true, offered: ordered.length, offeredTimes, dropped,
+        ...(beyondNextWeek.length ? { beyondNextWeek, warning: `These offered times fall BEYOND next week (fallback weeks): ${beyondNextWeek.join('; ')}. Never describe them as "this week" or "next week" in the draft or to Guy, and only offer them because nearer days couldn't fill the options — say that plainly.` } : {}),
+      };
     }
     if (name === 'check_time') {
       const r = await checkProposedTime(coach.clientId, {

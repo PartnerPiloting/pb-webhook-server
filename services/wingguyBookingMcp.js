@@ -36,20 +36,26 @@ async function runCheckAvailability({ lead_location, include_lunch, include_soon
     includeWeekends: !!include_weekends,
     includeFarWeeks: !!include_far_weeks,
   });
+  const win = filtered.window || wingguyCalendar.offerWindowInfo(filtered.yourTimezone || 'Australia/Brisbane');
+  const windowLine = `TODAY IS ${win.today} (${win.timezone}). This week = ${win.thisWeek}; next week = ${win.nextWeek}; later days are FALLBACK WEEKS. Resolve every relative date phrase ("next week", "Tuesday") against this anchor — never guess today's date.`;
   if (!filtered.days.length) {
-    return { text: 'No offerable slots in the scan window (after the coach\'s rules: notice period, daily cap, hours, lunch, weekdays-only). Widen with include_soon / include_weekends only if the coach explicitly asked.' };
+    return { text: `${windowLine}\n\nNo offerable slots in the scan window (after the coach's rules: notice period, hours, lunch, weekdays-only). Widen with include_soon / include_weekends only if the coach explicitly asked.` };
   }
   // Slots before the coach's preferred day start are legal but AT-A-PINCH only — mark them so a
   // chat model applies the "10:00+ first" rule without holding it in its head.
   const coachTz = filtered.yourTimezone || 'Australia/Brisbane';
   const prefMin = wingguyCalendar.hhmmToMin(prefs.preferredStart);
   const pinch = (s) => (prefMin != null && wingguyCalendar.minutesInTz(s.time, coachTz) < prefMin) ? ' ⚠ AT-A-PINCH (before preferred 10:00 start — offer only if later times can\'t fill the options)' : '';
+  // Daily load is a PREFERENCE, not a cap (Guy 2026-07-10, after the hard version emptied next
+  // week): busy days stay offerable, flagged — stacking them beats spilling into a fallback week.
+  const busy = (d) => d.busyDay ? ` ⚠ BUSY DAY — already ${d.meetingCount} meetings (at/over his preferred ${prefs.maxMeetingsPerDay}/day): still offerable and BETTER than a fallback week, but prefer lighter days first and tell the coach how loaded it is` : '';
   const lines = filtered.days.map((d) =>
-    `${d.date} (${d.day}, ${d.meetingCount || 0} meetings)${d.fallbackWeek ? ' ⚠ FALLBACK WEEK — beyond next week; use ONLY to top up when the nearer days can\'t fill the options' : ''}:\n` +
+    `${d.date} (${d.day}, ${d.meetingCount || 0} meetings)${busy(d)}${d.fallbackWeek ? ' ⚠ FALLBACK WEEK — beyond next week; use ONLY to top up when the nearer days (including busy ones) can\'t fill the options, and never call these "next week"' : ''}:\n` +
     d.freeSlots.map((s) => `  - label="${s.label}" (coach: ${s.display}) time=${s.time}${pinch(s)}`).join('\n'));
   return {
     text:
-      `Offerable slots (coach rules already applied: hours, lunch, notice, daily cap, weekdays). ` +
+      `${windowLine}\n\n` +
+      `Offerable slots (coach rules already applied: hours, lunch, notice, weekdays). ` +
       `Coach timezone: ${filtered.yourTimezone}; lead timezone: ${filtered.leadTimezone}. ` +
       `Each "label" is EXACTLY how that slot reads in the LEAD's timezone — pick slots by label, then use that slot's "time" ISO for booking. NEVER build an ISO yourself. ` +
       `Prefer the least-busy days and vary the time of day across the options.\n\n` +
@@ -136,7 +142,7 @@ const FAR_WEEKS_DESC = 'Set true ONLY when the coach explicitly wants times beyo
 const TOOL_DEFS = [
   {
     name: 'wingguy_check_availability',
-    description: 'The coach\'s REAL offerable slots with all his booking rules already enforced in code (hours, lunch hold, notice period, daily meeting cap, nothing in the past). ALWAYS use this — never the raw calendar — when finding times to offer a lead. Returns each slot with a "label" (exactly how it reads in the lead\'s timezone) and a "time" ISO to pass to wingguy_book_meeting. Pick by label; never do timezone math yourself.',
+    description: 'The coach\'s REAL offerable slots with all his booking rules already enforced in code (hours, lunch hold, notice period, nothing in the past). ALWAYS use this — never the raw calendar — when finding times to offer a lead. The result opens with TODAY + this-week/next-week boundaries — resolve "next week" and every relative date phrase against that anchor, never a guess. Days at/over the coach\'s preferred daily load are flagged BUSY DAY (still offerable — prefer lighter days, and stack a busy near day BEFORE any FALLBACK WEEK day). Returns each slot with a "label" (exactly how it reads in the lead\'s timezone) and a "time" ISO to pass to wingguy_book_meeting. Pick by label; never do timezone math yourself.',
     zodSchema: {
       lead_location: z.string().optional().describe('The lead\'s location as written on LinkedIn (e.g. "Newcastle, New South Wales") — drives the lead-timezone labels. Omit if unknown (coach timezone assumed).'),
       include_lunch: z.boolean().optional().describe(LUNCH_DESC),

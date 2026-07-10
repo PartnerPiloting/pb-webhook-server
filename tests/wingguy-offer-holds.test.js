@@ -78,7 +78,10 @@ function firstToolResult(res) {
       messages: [{ role: 'user', content: 'she said tomorrow is fine' }],
       leadEmail: 'sarah@example.com',
       deps: {
-        client: fakeClientForTool('propose_times', { intro: 'Great -', slotTimes: [PAST, TOMORROW], outro: 'Let me know.', includeSoon: true }),
+        // includeWeekends too: this test is about the NOTICE rule, and "tomorrow" lands on a
+        // Saturday when the suite runs on a Friday — without it the weekend rule (correctly)
+        // eats the slot and the test goes red on Fridays.
+        client: fakeClientForTool('propose_times', { intro: 'Great -', slotTimes: [PAST, TOMORROW], outro: 'Let me know.', includeSoon: true, includeWeekends: true }),
         getAvailabilityForCoach: async () => ({ yourTimezone: 'Australia/Brisbane', leadTimezone: 'Australia/Brisbane', days: [] }),
       },
     });
@@ -86,7 +89,7 @@ function firstToolResult(res) {
     check('includeSoon lets tomorrow through (past still dropped)', () => assert.strictEqual(result && result.offered, 1, JSON.stringify(result)));
   }
 
-  console.log('\ncheck_availability strips past/too-soon days and CAPPED days at the source:');
+  console.log('\ncheck_availability strips past/too-soon days and flags BUSY days at the source:');
   {
     const today = bris().toFormat('yyyy-MM-dd');
     const tomorrow = bris().plus({ days: 1 }).toFormat('yyyy-MM-dd');
@@ -105,7 +108,8 @@ function firstToolResult(res) {
             { date: today, day: 'D0', meetingCount: 0, freeSlots: [{ time: at(0, 15, 0), display: '3:00 pm', leadDisplay: '3:00 pm' }] },
             { date: tomorrow, day: 'D1', meetingCount: 0, freeSlots: [{ time: TOMORROW, display: '11:00 am', leadDisplay: '11:00 am' }] },
             { date: okDay, day: 'D4', meetingCount: 2, freeSlots: [{ time: ELEVEN, display: '11:00 am', leadDisplay: '11:00 am' }] },
-            // The 6-meeting-Thursday case: at Guy's maxMeetingsPerDay (4) the day must vanish entirely.
+            // The daily-load PREFERENCE (Guy 2026-07-10, superseding the 2026-07-06 hard cap): a day
+            // at maxMeetingsPerDay (4) stays offerable but must carry the busyDay flag.
             { date: fullDay, day: 'D5', meetingCount: 4, freeSlots: [{ time: atW(6, 15, 0), display: '3:00 pm', leadDisplay: '3:00 pm' }] },
           ],
         }),
@@ -113,8 +117,16 @@ function firstToolResult(res) {
     });
     const availResult = firstToolResult(res);
     check('today and tomorrow are gone from availability', () => assert.ok(availResult && availResult.days.every((d) => d.date >= bris().plus({ days: 2 }).toFormat('yyyy-MM-dd')), JSON.stringify(availResult && availResult.days.map((d) => d.date))));
-    check('a day at the daily meeting cap is withheld', () => assert.ok(availResult && !availResult.days.some((d) => d.date === fullDay), JSON.stringify(availResult && availResult.days.map((d) => `${d.date}:${d.meetingCount}`))));
-    check('a light valid future day survives', () => assert.ok(availResult && availResult.days.some((d) => d.date === okDay)));
+    check('a day at the daily-load preference stays, flagged busyDay', () => {
+      const full = availResult && availResult.days.find((d) => d.date === fullDay);
+      assert.ok(full, JSON.stringify(availResult && availResult.days.map((d) => `${d.date}:${d.meetingCount}`)));
+      assert.strictEqual(full.busyDay, true, JSON.stringify(full));
+    });
+    check('a light valid future day survives unflagged', () => {
+      const ok = availResult && availResult.days.find((d) => d.date === okDay);
+      assert.ok(ok && !ok.busyDay, JSON.stringify(ok));
+    });
+    check('the result carries the date-anchor window', () => assert.ok(availResult && availResult.window && availResult.window.today && availResult.window.nextWeek, JSON.stringify(availResult && availResult.window)));
   }
 
   console.log('\nbook_meeting vs MANUAL holds:');
@@ -230,7 +242,13 @@ function firstToolResult(res) {
       ],
     };
     const out = filterAvailability(avail, prefs, {});
-    check('one day survives (today, capped day, and Saturday all gone)', () => assert.strictEqual(out.days.length, 1, JSON.stringify(out.days.map((d) => d.date))));
+    check('two days survive (today and Saturday gone; the busy day stays, flagged)', () => {
+      assert.strictEqual(out.days.length, 2, JSON.stringify(out.days.map((d) => d.date)));
+      const busyOut = out.days.find((d) => d.meetingCount === 4);
+      assert.ok(busyOut && busyOut.busyDay === true, JSON.stringify(out.days));
+      const lightOut = out.days.find((d) => d.meetingCount === 2);
+      assert.ok(lightOut && !lightOut.busyDay, JSON.stringify(out.days));
+    });
     check('floor + lunch slots dropped, 11:00 kept with a lead-tz label', () => {
       assert.strictEqual(out.days[0].freeSlots.length, 1, JSON.stringify(out.days[0].freeSlots));
       assert.ok(out.days[0].freeSlots[0].label, 'label missing');
@@ -269,6 +287,16 @@ function firstToolResult(res) {
     // Explicit override (holidays case): everything shown, nothing flagged.
     const far = filterAvailability({ ...base, days: [...nearDates.map(mkDay), ...farDates.map(mkDay)] }, prefs, { includeFarWeeks: true });
     check('includeFarWeeks shows far weeks unflagged', () => assert.ok(far.days.length === 5 && far.days.every((d) => !d.fallbackWeek), JSON.stringify(far.days.map((d) => d.date))));
+
+    // Busy near days count toward filling the options (Guy 2026-07-10): a stacked near week must
+    // keep the offer out of the fallback weeks — nearness beats the daily-load preference.
+    const busyNear = { date: nearDates[1], day: 'X', meetingCount: 5, freeSlots: [slotOn(nearDates[1]), { ...slotOn(nearDates[1]), time: DateTime.fromISO(`${nearDates[1]}T14:00`, { zone: 'Australia/Brisbane' }).toUTC().toISO(), display: '2:00 pm' }] };
+    const stacked = filterAvailability({ ...base, days: [mkDay(nearDates[0]), busyNear, ...farDates.map(mkDay)] }, prefs, {});
+    check('a busy near day keeps the offer out of the fallback weeks', () => {
+      assert.ok(stacked.days.every((d) => d.date < farStart.toFormat('yyyy-MM-dd')), JSON.stringify(stacked.days.map((d) => d.date)));
+      const b = stacked.days.find((d) => d.date === nearDates[1]);
+      assert.ok(b && b.busyDay === true, JSON.stringify(stacked.days));
+    });
   }
 
   console.log(failures ? `\n❌ ${failures} test(s) failed` : '\n✅ all booking-guard tests passed');

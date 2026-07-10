@@ -383,6 +383,22 @@ function isWeekendInTz(iso, tz) {
 function firstFarWeekDate(tz) {
   return DateTime.now().setZone(tz).startOf('week').plus({ weeks: 2 }).toFormat('yyyy-MM-dd');
 }
+// TODAY + week boundaries in the coach's timezone — the model's date anchor. Relative phrases
+// ("next week") were being resolved by a model that was never told what today IS (the Vikas
+// 2026-07-10 mis-offer: fallback-week days presented to the lead as "next week"), so code states
+// it on every surface: the chat context, the check_availability result, and the MCP text.
+function offerWindowInfo(tz) {
+  const now = DateTime.now().setZone(tz);
+  const thisMon = now.startOf('week');
+  const span = (mon) => `Mon ${mon.toFormat('d LLL')} to Sun ${mon.plus({ days: 6 }).toFormat('d LLL')}`;
+  return {
+    today: now.toFormat('cccc d LLLL yyyy'),
+    timezone: tz,
+    thisWeek: span(thisMon),
+    nextWeek: span(thisMon.plus({ weeks: 1 })),
+    farWeeksStart: firstFarWeekDate(tz),
+  };
+}
 // Format a slot for the LinkedIn message in the lead's timezone, Guy's style: "Wed 1 July, 1:30 pm".
 function fmtSlot(iso, tz) {
   const d = new Date(iso);
@@ -398,9 +414,11 @@ const AVAIL_MAX_SLOTS_PER_DAY = 8;
 
 /**
  * The one offer-time pipeline: raw availability → what an agent is ALLOWED to offer. Drops days
- * before the one-clear-day notice date (unless includeSoon), days at the daily meeting cap, slots
- * already past, slots outside booking hours, and lunch-hold slots (unless includeLunch); labels
- * every surviving slot with EXACTLY how it will read in the lead's timezone.
+ * before the one-clear-day notice date (unless includeSoon), slots already past, slots outside
+ * booking hours, and lunch-hold slots (unless includeLunch); flags days at/over the coach's
+ * preferred daily load (busyDay) and days beyond next week (fallbackWeek); labels every surviving
+ * slot with EXACTLY how it will read in the lead's timezone. Also returns `window` (today +
+ * this-week/next-week boundaries in the coach's tz) so agents resolve "next week" from data.
  */
 function filterAvailability(avail, prefs, { includeLunch = false, includeSoon = false, includeWeekends = false, includeFarWeeks = false } = {}) {
   const eMin = hhmmToMin(prefs.earliestStart) ?? 0;
@@ -412,37 +430,45 @@ function filterAvailability(avail, prefs, { includeLunch = false, includeSoon = 
   const earliestDate = earliestOfferDate(aTz, prefs, includeSoon);
   const maxPerDay = Number.isFinite(prefs.maxMeetingsPerDay) ? prefs.maxMeetingsPerDay : Infinity;
   const isWeekend = (dateStr) => { const wd = DateTime.fromISO(dateStr, { zone: aTz }).weekday; return wd === 6 || wd === 7; };
+  const window = offerWindowInfo(aTz);
   const days = (avail.days || [])
     .filter((d) => String(d.date || '') >= earliestDate)
-    .filter((d) => (d.meetingCount || 0) < maxPerDay)
     // Weekdays only was a model-side rule until the live one-booking-door check (2026-07-06) showed
     // Sat/Sun slots offered to a chat that trusts "rules already applied" — now code, like the rest.
     .filter((d) => includeWeekends || !prefs.excludeWeekends || !isWeekend(d.date))
     .map((d) => ({ ...d, freeSlots: (d.freeSlots || []).filter((s) => Date.parse(s.time) > nowMs && withinBounds(s, eMin, lMin) && (includeLunch || !inLunch(s.time, aTz, prefs, aLen))) }))
     .filter((d) => d.freeSlots.length)
     .slice(0, AVAIL_MAX_DAYS)
-    .map((d) => ({ ...d, freeSlots: d.freeSlots.slice(0, AVAIL_MAX_SLOTS_PER_DAY).map((s) => ({ ...s, label: fmtSlot(s.time, leadTz) })) }));
+    // DAILY LOAD IS A PREFERENCE, NOT A CAP (Guy 2026-07-10, after the hard version emptied next
+    // week and pulled an offer a fortnight out — the Vikas mis-offer). Days at/over
+    // maxMeetingsPerDay stay offerable, flagged busyDay so agents prefer lighter days, stack these
+    // BEFORE reaching into fallback weeks, and tell the coach how loaded the day already is.
+    // (The 2026-07-06 "6-meeting Thursday" hard-hide is superseded by this ladder.)
+    .map((d) => ({ ...d, ...((d.meetingCount || 0) >= maxPerDay ? { busyDay: true } : {}), freeSlots: d.freeSlots.slice(0, AVAIL_MAX_SLOTS_PER_DAY).map((s) => ({ ...s, label: fmtSlot(s.time, leadTz) })) }));
 
   // NEARNESS RULE (Guy 2026-07-06, after a booking landed the week after next while nearer time
   // existed): the target window is THIS calendar week + NEXT. When the near window alone can fill
-  // the options, later weeks don't appear at all; when it can't, later days are included but flagged
+  // the options — counting slots on busy days too, since stacking a near day beats a far week —
+  // later weeks don't appear at all; when it can't, later days are included but flagged
   // fallbackWeek so agents use them only to TOP UP. includeFarWeeks (the coach explicitly asks —
   // e.g. booking for after his holidays) lifts the rule. Note this deliberately outranks the
   // "least-busy days" bias, which otherwise pushes bookings toward the emptier far weeks.
   if (!includeFarWeeks) {
-    const farStart = firstFarWeekDate(aTz);
+    const farStart = window.farWeeksStart;
     const near = days.filter((d) => d.date < farStart);
     const slotsWanted = prefs.slotsToOffer || 3;
-    if (near.length >= slotsWanted) {
-      return { yourTimezone: avail.yourTimezone, leadTimezone: avail.leadTimezone, days: near };
+    const nearSlotCount = near.reduce((n, d) => n + d.freeSlots.length, 0);
+    if (nearSlotCount >= slotsWanted) {
+      return { yourTimezone: avail.yourTimezone, leadTimezone: avail.leadTimezone, window, days: near };
     }
     return {
       yourTimezone: avail.yourTimezone,
       leadTimezone: avail.leadTimezone,
+      window,
       days: days.map((d) => (d.date >= farStart ? { ...d, fallbackWeek: true } : d)),
     };
   }
-  return { yourTimezone: avail.yourTimezone, leadTimezone: avail.leadTimezone, days };
+  return { yourTimezone: avail.yourTimezone, leadTimezone: avail.leadTimezone, window, days };
 }
 
 /**
@@ -542,5 +568,5 @@ module.exports = {
   getAvailabilityForCoach, createBookingEvent, checkProposedTime, getClashesForISO, buildDaysFromBusy,
   deleteOfferHolds, isHoldForLead, isHoldSummary, holdTitle,
   // shared offer-time pipeline + booking guard (used by the panel agent AND the connector tools)
-  filterAvailability, bookMeetingGuarded, fmtSlot, inLunch, hhmmToMin, minutesInTz, earliestOfferDate, dateStrInTz, isWeekendInTz, firstFarWeekDate,
+  filterAvailability, bookMeetingGuarded, fmtSlot, inLunch, hhmmToMin, minutesInTz, earliestOfferDate, dateStrInTz, isWeekendInTz, firstFarWeekDate, offerWindowInfo,
 };

@@ -25,9 +25,11 @@ const DEFAULT_PREFS = {
   // times of day, ≥1 clear day's notice → (then) allow back-to-back / same-day → (then) drop toward
   // the 9:30 earliest. Always fill slotsToOffer if availability allows.
   minLeadDays: 1,            // at least one CLEAR day's notice — earliest option = the day AFTER tomorrow (never today/tomorrow)
-  maxMeetingsPerDay: 4,      // CODE-ENFORCED at offer time (Guy 2026-07-06, after a 6-meeting Thursday): days already at
-                             // this many meetings are withheld from check_availability entirely — spread beats stacking.
-                             // Guy naming a specific time (check_time → book) still works; that's his conscious call.
+  maxMeetingsPerDay: 4,      // his PREFERRED daily load, NOT a hard cap (Guy 2026-07-10, after the hard version — the
+                             // 2026-07-06 "withhold capped days entirely" rule — emptied next week and pulled an offer a
+                             // fortnight out, the Vikas mis-offer). Days at/over it stay in check_availability flagged
+                             // busyDay: agents prefer lighter days, but STACK a busy near day (never double-booking)
+                             // before spilling into a fallback week, and tell Guy how loaded the day is.
   preferSpreadOverWeek: true,// spread the options across the next working week, not clustered on adjacent days
   preferLeastBusyDays: true, // bias toward days with the FEWEST existing meetings (availability gives each day's meetingCount)
   spreadAcrossDay: true,     // vary the time of day across the options (a morning, a midday, an afternoon) — not all mornings
