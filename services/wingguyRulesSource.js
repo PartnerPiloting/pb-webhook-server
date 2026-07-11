@@ -216,20 +216,25 @@ async function renderedRulebookBlock({ tenantId, surface, templateId }) {
  * System blocks for POST /draft-thanks. Config mode is byte-identical to pre-step-2:
  * [ VOICE (cached), template.instructions ]. Store: [ harness, rendered rulebook (cached) ] —
  * the cache marker sits on the LAST stable block either way (prefix caching covers both).
+ *
+ * Cache TTL = 1h (not the 5-min default). The store-flip made the cached prefix ~25.5k tokens
+ * and Guy works in a spread-out in-and-out rhythm, so a 5-min TTL went cold between messages →
+ * near-full price every turn. 1h keeps it warm all session (write costs 2× vs 1.25×, reuse 0.1×;
+ * break-even ~3 uses/hr, met in work sessions). GA on the first-party API — no beta header.
  */
 async function draftSystem(templateId, { tenantId = DEFAULT_TENANT } = {}) {
   if (getSource() === 'config') {
     const template = configTemplates.getTemplate(templateId);
     if (!template) throw new Error(`unknown template "${templateId}"`);
     return [
-      { type: 'text', text: configTemplates.WINGGUY_VOICE, cache_control: { type: 'ephemeral' } },
+      { type: 'text', text: configTemplates.WINGGUY_VOICE, cache_control: { type: 'ephemeral', ttl: '1h' } },
       { type: 'text', text: template.instructions },
     ];
   }
   const block = await renderedRulebookBlock({ tenantId, surface: 'draft-thanks', templateId });
   return [
     { type: 'text', text: STORE_DRAFT_HARNESS },
-    { type: 'text', text: block.text, cache_control: { type: 'ephemeral' } },
+    { type: 'text', text: block.text, cache_control: { type: 'ephemeral', ttl: '1h' } },
   ];
 }
 
@@ -237,14 +242,14 @@ async function draftSystem(templateId, { tenantId = DEFAULT_TENANT } = {}) {
 async function replySystem({ tenantId = DEFAULT_TENANT } = {}) {
   if (getSource() === 'config') {
     return [
-      { type: 'text', text: configTemplates.WINGGUY_VOICE, cache_control: { type: 'ephemeral' } },
+      { type: 'text', text: configTemplates.WINGGUY_VOICE, cache_control: { type: 'ephemeral', ttl: '1h' } },
       { type: 'text', text: configTemplates.WINGGUY_REPLY_INSTRUCTIONS },
     ];
   }
   const block = await renderedRulebookBlock({ tenantId, surface: 'draft-reply' });
   return [
     { type: 'text', text: configTemplates.WINGGUY_REPLY_INSTRUCTIONS },
-    { type: 'text', text: block.text, cache_control: { type: 'ephemeral' } },
+    { type: 'text', text: block.text, cache_control: { type: 'ephemeral', ttl: '1h' } },
   ];
 }
 
@@ -260,7 +265,7 @@ async function agentSystem(templateId, { tenantId = DEFAULT_TENANT } = {}) {
     return {
       blocks: [
         { type: 'text', text: configTemplates.WINGGUY_VOICE },
-        { type: 'text', text: configTemplates.WINGGUY_AGENT_INSTRUCTIONS, cache_control: { type: 'ephemeral' } },
+        { type: 'text', text: configTemplates.WINGGUY_AGENT_INSTRUCTIONS, cache_control: { type: 'ephemeral', ttl: '1h' } },
       ],
       campaignTemplate: configTemplates.getTemplate(templateId) || configTemplates.getTemplate(configTemplates.DEFAULT_TEMPLATE_ID),
     };
@@ -269,7 +274,7 @@ async function agentSystem(templateId, { tenantId = DEFAULT_TENANT } = {}) {
   return {
     blocks: [
       { type: 'text', text: block.text },
-      { type: 'text', text: configTemplates.WINGGUY_AGENT_INSTRUCTIONS, cache_control: { type: 'ephemeral' } },
+      { type: 'text', text: configTemplates.WINGGUY_AGENT_INSTRUCTIONS, cache_control: { type: 'ephemeral', ttl: '1h' } },
     ],
     campaignTemplate: null,
   };
