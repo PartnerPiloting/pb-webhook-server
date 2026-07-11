@@ -3076,7 +3076,18 @@ var reverts reads only as a fire extinguisher. Boat-burning after ~2 weeks stabl
 
 ## ▶ You are here / next pick-up
 
-**▶▶ SESSION CLOSE 2026-07-10 (THE FLIP — Wingguy now reads the STORE on prod). START THE NEXT CHAT HERE.**
+**▶▶ 2026-07-11 (COST + CACHING analysis — one pending action, then back to Julian). START HERE.**
+- **The API bill = the LinkedIn DRAFTING side ONLY** (draft-thanks / draft-reply / booking chat agent — backend via `ANTHROPIC_API_KEY`, Sonnet 5). **The follow-up EMAILS run in claude.ai chat via the Wingguy MCP = Guy's claude.ai SUBSCRIPTION, OFF the metered API** (not in the dashboard $). Guy's correction — important.
+- **Scale:** dashboard ~$20/last-30-days, but the first ~2 weeks were near-zero (ramp); real recent run-rate ~$2-3/day ≈ $60-90/mo — and that's GUY, the heaviest user (all-day dogfooding). A real client = a fraction, and it's priced in (BYO key = client's cost · $30/mo = need per-client < $30, easily met). The bill is largely not Guy's to carry.
+- **No big magic saving.** Sonnet 5 is on INTRO pricing ($2/$10 through 2026-08-31 → then $3/$15, ~50% jump). Sonnet 4.6 = $3/$15 = MORE than Sonnet 5 now, so dropping back never saves. Haiku ($1/$5) on the simple thanks/reply drafts = safe but small (they're the cheap slice, not the driver).
+- **★ THE ONE REAL LEVER = PROMPT-CACHE TTL.** The booking chat re-sends the whole rendered rulebook (~16k tokens: ~13k rulebook + ~3k agent instructions) EVERY turn — ~4× bigger since the flip. A warm cache read ≈ **10× cheaper** than full price. BUT default cache TTL = **5 min**, too short for Guy's spread-out in-and-out rhythm → mostly COLD → near-full-price every message. **FIX (PENDING, not done): switch `cache_control` to `{ type:'ephemeral', ttl:'1h' }` on the draft/reply/chat system blocks in `services/wingguyRulesSource.js`.** 1h fits his rhythm (any work session touches Wingguy >1×/hour → warm all session; only a >1h break resets). Est. ~70-85% off the booking-chat prompt cost during sessions.
+  - *Caching economics:* the FIRST send (write) costs MORE (1h write = 2× a normal send; 5-min = 1.25×); every reuse = 0.1×; break-even ≈ 3 uses/hour (met in work sessions). Only a genuine write-once-never-reuse is a small net loss. Rendered rulebook varies by (surface × campaign) ⇒ several cache entries; batching same-campaign/same-surface keeps one warm.
+- **DO FIRST — CACHING-BUG CHECK: glance at today's (2026-07-11) cost — the first FULL day on the store** (the flip went live partway through 07-10, so the 10th is a mixed day). ~$2 ≈ caching landing, all fine, no trimming needed. A $4-5 spike = a silent cache invalidator (prefix changing per call) = a real bug worth fixing. Verify via `usage.cache_read_input_tokens` on a live `/chat` call (should be > 0).
+- **July-6 volume datapoint** (extracted from Airtable **Notes**, which store the thread as dated `DD-MM-YY H:MM AM - Speaker - text` lines; method = pull all ~717 Notes blobs, grep `^06-07-26`): **37 LinkedIn messages SENT to 20 people + 13 replies**; ~5 openers, rest warm-reply/booking (Jason 7× · Clare 5×). Grounds the ~$2/day.
+- **Deprioritized:** per-call token/cost logging — only worth it once we act; the 1h-cache change IS the action. Real cost optimisation matters at CLIENT scale, not on Guy's dogfooding bill.
+- **NEXT: (1) check today's number → (2) if ~normal, flip the cache to 1h TTL (small change) + confirm `cache_read` > 0 → (3) back to the Julian build (per-person tokens → Zoho calendar adapter → provisioning).**
+
+**▶▶ SESSION CLOSE 2026-07-10 (THE FLIP — Wingguy now reads the STORE on prod).**
 - **DONE + verified:** `WINGGUY_RULES_SOURCE=store` set on prod (srv-cvqgq53e5dus73fa45ag), service redeployed,
   `/api/wingguy/status` → `rulesSource=store` (stable across polls; the one transient `config` read was the
   old instance during zero-downtime cutover). Post-flip smoke (one-off job inheriting the LIVE env, not a
