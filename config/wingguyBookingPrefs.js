@@ -49,10 +49,22 @@ const DEFAULT_PREFS = {
   lunch: { start: '12:00', durationMins: 45, soft: true },
 };
 
-// Guy = tenant 0. Until the Postgres store lands, every client resolves to Guy's defaults. Keyed by
-// clientId so going per-tenant later is just this function reading Postgres instead of the constant.
-function getBookingPrefs(clientId) { // eslint-disable-line no-unused-vars
-  return { ...DEFAULT_PREFS, lunch: { ...DEFAULT_PREFS.lunch } };
+// Guy = tenant 0. Time-of-day + load preferences stay shared code defaults for now (safe, non-
+// identifying; real per-tenant values arrive with the Postgres store). But the invite-IDENTITY
+// fields (Zoom room, LinkedIn, phone) are Guy's PERSONAL contact details — they must NEVER fall
+// through to another tenant's invite. So for any non-Guy tenant we blank them here: the invite
+// builder (wingguyCalendar) reads `coach.bookingZoom || prefs.yourZoom`, so a blank fallback means
+// a 2nd tenant's invite carries THEIR own record fields or nothing — never Guy's. Guy (or an
+// unidentified caller, which is Guy) keeps his exact values, so nothing of his changes.
+const GUY_TENANT = (process.env.RECALL_COACH_CLIENT_ID || 'Guy-Wilson').trim();
+function getBookingPrefs(clientId) {
+  const prefs = { ...DEFAULT_PREFS, lunch: { ...DEFAULT_PREFS.lunch } };
+  if (clientId && clientId !== GUY_TENANT) {
+    prefs.yourZoom = '';
+    prefs.coachLinkedIn = '';
+    prefs.coachPhone = '';
+  }
+  return prefs;
 }
 
 module.exports = { getBookingPrefs, DEFAULT_PREFS };

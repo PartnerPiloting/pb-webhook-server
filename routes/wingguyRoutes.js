@@ -39,7 +39,15 @@ const logger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'w
 const WINGGUY_DRAFT_MODEL_ID = process.env.WINGGUY_DRAFT_MODEL_ID || 'claude-sonnet-4-6';
 const DRAFT_MAX_TOKENS = 700;             // a thanks-for-connecting note is short
 const PROFILE_CHAR_CAP = 6000;            // bound the input (About can be long); keeps cost + latency sane
-const OWNER_CLIENT_ID = 'Guy-Wilson';     // Slice 1 = single-tenant Guy
+// Multi-tenant gate: an ALLOW-LIST of clients Wingguy is switched on for. Still CLOSED by default —
+// only listed tenants pass (403 otherwise), so this stays owner-only until a client is explicitly
+// added. The owner is always allowed; add other client IDs via WINGGUY_ENABLED_CLIENTS (comma-sep).
+const OWNER_CLIENT_ID = (process.env.RECALL_COACH_CLIENT_ID || 'Guy-Wilson').trim();
+const ENABLED_CLIENTS = new Set(
+  [OWNER_CLIENT_ID, ...String(process.env.WINGGUY_ENABLED_CLIENTS || '').split(',')]
+    .map((s) => s.trim())
+    .filter(Boolean),
+);
 
 function parseBoolFlag(val, defaultValue = false) {
   if (val === undefined || val === null || val === '') return defaultValue;
@@ -53,10 +61,10 @@ const ENABLED = parseBoolFlag(process.env.WINGGUY_DRAFT_ENABLED, true);
 
 function requireOwner(req, res, next) {
   const cid = req.client && String(req.client.clientId);
-  if (cid !== OWNER_CLIENT_ID) {
+  if (!cid || !ENABLED_CLIENTS.has(cid)) {
     return res.status(403).json({
       ok: false,
-      error: 'Wingguy is currently owner-only (single-tenant Slice 1).',
+      error: 'Wingguy is not enabled for this account yet.',
     });
   }
   next();

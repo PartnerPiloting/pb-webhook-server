@@ -426,7 +426,9 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
     }
     if (name.startsWith('wingguy_')) {
       // Rules-store door — shared executors (legacyToolCall returns MCP-shaped {content,isError}).
-      const r = await wingguyRules.legacyToolCall(name, input);
+      // Scope to the CALLER's tenant (coach.clientId), NOT the module default — otherwise an
+      // extension-chat "update my rules" from any client would write to Guy's rulebook.
+      const r = await wingguyRules.legacyToolCall(name, input, coach.clientId);
       if (r) return { ok: !r.isError, text: (r.content && r.content[0] && r.content[0].text) || '' };
     }
     return { ok: false, error: `unknown tool ${name}` };
