@@ -1286,6 +1286,8 @@ router.post('/mcp/:token', express.json(), async (req, res) => {
               },
             },
           },
+          // Wingguy onboarding / status tool ("get me started") — shared defs with /mcp2.
+          ...require('../services/wingguyGetStartedMcp').legacyToolList(),
           // Wingguy rules-store tools ("update my rules") — shared defs with /mcp2.
           ...require('../services/wingguyRulesMcp').legacyToolList(),
           // Wingguy booking tools (the ONE BOOKING DOOR) — shared defs with /mcp2.
@@ -1303,7 +1305,8 @@ router.post('/mcp/:token', express.json(), async (req, res) => {
 
     // --- Wingguy rules-store + booking tools (shared executors with /mcp2) ---
     if (String(toolName || '').startsWith('wingguy_')) {
-      const result = await require('../services/wingguyRulesMcp').legacyToolCall(toolName, args)
+      const result = await require('../services/wingguyGetStartedMcp').legacyToolCall(toolName, args)
+        || await require('../services/wingguyRulesMcp').legacyToolCall(toolName, args)
         || await require('../services/wingguyBookingMcp').legacyToolCall(toolName, args)
         || await require('../services/wingguyMailMcp').legacyToolCall(toolName, args);
       if (result) return res.json({ jsonrpc: '2.0', id, result });

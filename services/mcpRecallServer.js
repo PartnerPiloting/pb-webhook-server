@@ -27,6 +27,7 @@ const { normalizeFathomApiTranscript } = require('./fathomIngestService');
 const { registerWingguyRulesTools } = require('./wingguyRulesMcp');
 const { registerWingguyBookingTools } = require('./wingguyBookingMcp');
 const { registerWingguyMailTools } = require('./wingguyMailMcp');
+const { registerWingguyGetStartedTools } = require('./wingguyGetStartedMcp');
 
 const BASE = '/mcp2';
 const DEFAULT_COACH_CLIENT_ID = (process.env.RECALL_COACH_CLIENT_ID || 'Guy-Wilson').trim();
@@ -273,6 +274,7 @@ function createRecallMcpServer(coachClientId = DEFAULT_COACH_CLIENT_ID) {
 
   // Wingguy rules-store tools (the write-door from chat — "update my rules").
   // ⚠ First NON-transcript tools on this connector → the roadmap's rename-to-"Wingguy" trigger.
+  registerWingguyGetStartedTools(server, coachClientId);
   registerWingguyRulesTools(server, coachClientId);
   registerWingguyBookingTools(server, coachClientId);
   registerWingguyMailTools(server, coachClientId);
