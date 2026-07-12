@@ -38,6 +38,32 @@ function validTokens() {
     .filter(Boolean);
 }
 
+// Multi-tenant connector auth (roadmap step 3). OFF by default: until this flag is on, ONLY the
+// shared connector secrets authenticate and everything maps to Guy — byte-identical to before.
+// Flip WINGGUY_CONNECTOR_MULTITENANT=1 (staging first) to also accept per-client Portal Tokens.
+const CONNECTOR_MULTITENANT = String(process.env.WINGGUY_CONNECTOR_MULTITENANT || '').trim() === '1';
+
+/**
+ * Resolve the URL :token to the coach/tenant clientId whose data this call operates on.
+ *   - a shared connector secret (PB_WEBHOOK_SECRET / MCP_CONNECTOR_TOKEN) => Guy (DEFAULT), unchanged.
+ *   - else, when multi-tenant is ON, an ACTIVE client's Portal Token => that client's clientId.
+ *   - otherwise null => 401 (fail closed; a lookup error is also treated as unauthorized).
+ * The same Portal Token the Chrome extension already sends (x-portal-token) identifies the client here.
+ */
+async function resolveCoachClientId(token) {
+  const t = String(token || '');
+  if (!t) return null;
+  if (validTokens().includes(t)) return DEFAULT_COACH_CLIENT_ID;
+  if (!CONNECTOR_MULTITENANT) return null;
+  try {
+    const client = await clientService.getClientByPortalToken(t);
+    if (client && client.status === 'Active' && client.clientId) return client.clientId;
+  } catch (_e) {
+    // fail closed — an Airtable hiccup must not widen access
+  }
+  return null;
+}
+
 // ---------------------------------------------------------------------------
 // Tool executors (ported from the legacy /mcp/:token endpoint — same behaviour)
 // ---------------------------------------------------------------------------
@@ -60,11 +86,11 @@ async function replaceParticipantLabels(text, meetingId) {
   return result;
 }
 
-async function runRecallLatestTranscript({ email, after }) {
+async function runRecallLatestTranscript({ email, after }, coachClientId = DEFAULT_COACH_CLIENT_ID) {
   const clean = (email || '').trim().toLowerCase();
   if (!clean || !clean.includes('@')) return { text: 'Error: a valid email address is required.', isError: true };
 
-  const coachClient = await clientService.getClientById(DEFAULT_COACH_CLIENT_ID);
+  const coachClient = await clientService.getClientById(coachClientId);
   if (!coachClient?.airtableBaseId) return { text: 'Server config error: coach base not set.', isError: true };
   const lead = await findLeadByEmail(coachClient, clean);
   if (!lead?.id) return { text: `No lead found for email: ${clean}`, isError: true };
@@ -134,14 +160,14 @@ function fathomMeetingMatches(m, query) {
   return s.title.toLowerCase().includes(q) || s.invitees.some((i) => i.toLowerCase().includes(q));
 }
 
-async function coachFathomKey() {
-  const coachClient = await clientService.getClientById(DEFAULT_COACH_CLIENT_ID);
+async function coachFathomKey(coachClientId = DEFAULT_COACH_CLIENT_ID) {
+  const coachClient = await clientService.getClientById(coachClientId);
   if (!coachClient?.fathomApiKey) throw new Error('Server config error: no Fathom API key for the coach client.');
   return coachClient.fathomApiKey;
 }
 
-async function runFathomListMeetings({ query, after }) {
-  const key = await coachFathomKey();
+async function runFathomListMeetings({ query, after }, coachClientId = DEFAULT_COACH_CLIENT_ID) {
+  const key = await coachFathomKey(coachClientId);
   let items = await fathomFetchMeetings(key, { createdAfter: after });
   items = items.filter((m) => fathomMeetingMatches(m, query));
   if (!items.length) return { text: 'No Fathom recordings matched.' };
@@ -152,11 +178,11 @@ async function runFathomListMeetings({ query, after }) {
   return { text: `Fathom recordings (newest window, ${items.length} shown):\n${lines.join('\n')}` };
 }
 
-async function runFathomTranscript({ recording_id, query, after }) {
+async function runFathomTranscript({ recording_id, query, after }, coachClientId = DEFAULT_COACH_CLIENT_ID) {
   if (!recording_id && !(query || '').trim()) {
     return { text: 'Provide recording_id (from fathom_list_meetings) or a query (title / invitee name / email).', isError: true };
   }
-  const key = await coachFathomKey();
+  const key = await coachFathomKey(coachClientId);
   const items = await fathomFetchMeetings(key, { includeTranscript: true, createdAfter: after });
   let meeting = null;
   if (recording_id) {
@@ -190,7 +216,7 @@ function asMcpResult(out) {
 // SDK server + Streamable HTTP mount
 // ---------------------------------------------------------------------------
 
-function createRecallMcpServer() {
+function createRecallMcpServer(coachClientId = DEFAULT_COACH_CLIENT_ID) {
   const server = new McpServer({ name: 'recall-transcript', version: '2.0.0' });
 
   server.registerTool(
@@ -205,7 +231,7 @@ function createRecallMcpServer() {
       },
     },
     async (args) => {
-      try { return asMcpResult(await runRecallLatestTranscript(args)); }
+      try { return asMcpResult(await runRecallLatestTranscript(args, coachClientId)); }
       catch (e) { return { content: [{ type: 'text', text: `Error: ${e.message}` }], isError: true }; }
     },
   );
@@ -222,7 +248,7 @@ function createRecallMcpServer() {
       },
     },
     async (args) => {
-      try { return asMcpResult(await runFathomListMeetings(args)); }
+      try { return asMcpResult(await runFathomListMeetings(args, coachClientId)); }
       catch (e) { return { content: [{ type: 'text', text: `Fathom API error: ${e.message}` }], isError: true }; }
     },
   );
@@ -240,16 +266,16 @@ function createRecallMcpServer() {
       },
     },
     async (args) => {
-      try { return asMcpResult(await runFathomTranscript(args)); }
+      try { return asMcpResult(await runFathomTranscript(args, coachClientId)); }
       catch (e) { return { content: [{ type: 'text', text: `Fathom API error: ${e.message}` }], isError: true }; }
     },
   );
 
   // Wingguy rules-store tools (the write-door from chat — "update my rules").
   // ⚠ First NON-transcript tools on this connector → the roadmap's rename-to-"Wingguy" trigger.
-  registerWingguyRulesTools(server);
-  registerWingguyBookingTools(server);
-  registerWingguyMailTools(server);
+  registerWingguyRulesTools(server, coachClientId);
+  registerWingguyBookingTools(server, coachClientId);
+  registerWingguyMailTools(server, coachClientId);
 
   return server;
 }
@@ -261,18 +287,18 @@ function mountRecallMcp(app, log = console) {
     return;
   }
 
-  const authOk = (req) => tokens.includes(String(req.params.token || ''));
   const hit = (req, note) => {
     const ua = String(req.headers['user-agent'] || '').slice(0, 60);
     console.log(`MCP2-CONNECTOR ${req.method} rpc=${req.body?.method || 'n/a'} ${note || ''} ua="${ua}"`);
   };
 
   app.post(`${BASE}/:token`, express.json({ limit: '2mb' }), async (req, res) => {
-    hit(req, authOk(req) ? 'auth=ok' : 'auth=BAD');
-    if (!authOk(req)) {
+    const coachClientId = await resolveCoachClientId(req.params.token);
+    hit(req, coachClientId ? `auth=ok tenant=${coachClientId}` : 'auth=BAD');
+    if (!coachClientId) {
       return res.status(401).json({ jsonrpc: '2.0', id: req.body?.id ?? null, error: { code: -32001, message: 'unauthorized' } });
     }
-    const server = createRecallMcpServer();
+    const server = createRecallMcpServer(coachClientId);
     try {
       const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
       await server.connect(transport);
@@ -291,15 +317,16 @@ function mountRecallMcp(app, log = console) {
   // mcpPersonalServer): GET opens the SSE stream, POST :token/messages carries the session.
   const sseTransports = {};
   app.get(`${BASE}/:token`, async (req, res) => {
-    hit(req, authOk(req) ? 'GET-sse auth=ok' : 'GET auth=BAD');
-    if (!authOk(req)) {
+    const coachClientId = await resolveCoachClientId(req.params.token);
+    hit(req, coachClientId ? `GET-sse auth=ok tenant=${coachClientId}` : 'GET auth=BAD');
+    if (!coachClientId) {
       return res.status(401).json({ jsonrpc: '2.0', id: null, error: { code: -32001, message: 'unauthorized' } });
     }
     try {
       const transport = new SSEServerTransport(`${BASE}/${encodeURIComponent(req.params.token)}/messages`, res);
       sseTransports[transport.sessionId] = transport;
       res.on('close', () => { delete sseTransports[transport.sessionId]; });
-      const server = createRecallMcpServer();
+      const server = createRecallMcpServer(coachClientId);
       await server.connect(transport);
     } catch (err) {
       log.error && log.error('mcpRecallServer SSE error:', err.message);
@@ -307,8 +334,9 @@ function mountRecallMcp(app, log = console) {
     }
   });
   app.post(`${BASE}/:token/messages`, express.json({ limit: '2mb' }), async (req, res) => {
-    hit(req, 'sse-message');
-    if (!authOk(req)) {
+    const coachClientId = await resolveCoachClientId(req.params.token);
+    hit(req, coachClientId ? 'sse-message' : 'sse-message auth=BAD');
+    if (!coachClientId) {
       return res.status(401).json({ jsonrpc: '2.0', id: null, error: { code: -32001, message: 'unauthorized' } });
     }
     try {

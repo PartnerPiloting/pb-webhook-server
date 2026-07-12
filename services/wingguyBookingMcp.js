@@ -27,9 +27,9 @@ const TENANT = (process.env.RECALL_COACH_CLIENT_ID || 'Guy-Wilson').trim();
 // Executors — return { text, isError? }
 // ---------------------------------------------------------------------------
 
-async function runCheckAvailability({ lead_location, include_lunch, include_soon, include_weekends, include_far_weeks } = {}) {
-  const prefs = getBookingPrefs(TENANT);
-  const avail = await wingguyCalendar.getAvailabilityForCoach(TENANT, lead_location || '');
+async function runCheckAvailability({ lead_location, include_lunch, include_soon, include_weekends, include_far_weeks } = {}, tenant = TENANT) {
+  const prefs = getBookingPrefs(tenant);
+  const avail = await wingguyCalendar.getAvailabilityForCoach(tenant, lead_location || '');
   const filtered = wingguyCalendar.filterAvailability(avail, prefs, {
     includeLunch: !!include_lunch,
     includeSoon: !!include_soon,
@@ -63,9 +63,9 @@ async function runCheckAvailability({ lead_location, include_lunch, include_soon
   };
 }
 
-async function runCheckTime({ date, time, side, lead_location, duration_mins } = {}) {
-  const prefs = getBookingPrefs(TENANT);
-  const r = await wingguyCalendar.checkProposedTime(TENANT, {
+async function runCheckTime({ date, time, side, lead_location, duration_mins } = {}, tenant = TENANT) {
+  const prefs = getBookingPrefs(tenant);
+  const r = await wingguyCalendar.checkProposedTime(tenant, {
     date, time, side: side || 'coach', leadLocation: lead_location || '', durationMins: duration_mins,
   });
   if (!r.ok) return { text: `Error: ${r.error}`, isError: true };
@@ -87,21 +87,21 @@ async function runCheckTime({ date, time, side, lead_location, duration_mins } =
   };
 }
 
-async function runBookMeeting({ start_iso, duration_mins, lead_name, lead_email, lead_linkedin, confirm_double_book } = {}) {
+async function runBookMeeting({ start_iso, duration_mins, lead_name, lead_email, lead_linkedin, confirm_double_book } = {}, tenant = TENANT) {
   const name = String(lead_name || '').trim();
   if (!name) return { text: 'Error: lead_name is required (it titles the invite and matches any HOLD events).', isError: true };
 
   const clientService = require('./clientService');
   const { lookupLeadContactByName } = require('./coachingClientLookupService');
-  const coach = await clientService.getClientById(TENANT);
-  if (!coach) return { text: `Server config error: coach client "${TENANT}" not found.`, isError: true };
+  const coach = await clientService.getClientById(tenant);
+  if (!coach) return { text: `Server config error: coach client "${tenant}" not found.`, isError: true };
 
   // Resolve the invite email: an explicit lead_email wins; otherwise the CRM by name.
   let email = String(lead_email || '').trim();
   let emailSource = 'given';
   let linkedin = String(lead_linkedin || '').trim();
   if (!email) {
-    const found = await lookupLeadContactByName(name, { clientId: TENANT });
+    const found = await lookupLeadContactByName(name, { clientId: tenant });
     if (!found.lead || !found.lead.email) {
       const alts = (found.matches || []).map((m) => m.leadName).filter(Boolean).slice(0, 5);
       return {
@@ -216,15 +216,16 @@ const TOOL_DEFS = [
 // Transport adapters (same shape as wingguyRulesMcp)
 // ---------------------------------------------------------------------------
 
-/** SDK server (the /mcp2 path): register all booking tools on an McpServer instance. */
-function registerWingguyBookingTools(server) {
+/** SDK server (the /mcp2 path): register all booking tools on an McpServer instance.
+ *  `tenant` scopes every executor to the caller's client (per-request; defaults to Guy). */
+function registerWingguyBookingTools(server, tenant = TENANT) {
   for (const def of TOOL_DEFS) {
     server.registerTool(
       def.name,
       { title: def.name.replace(/_/g, ' '), description: def.description, inputSchema: def.zodSchema },
       async (args) => {
         try {
-          const out = await def.run(args || {});
+          const out = await def.run(args || {}, tenant);
           return { content: [{ type: 'text', text: out.text }], ...(out.isError ? { isError: true } : {}) };
         } catch (e) {
           return { content: [{ type: 'text', text: `Error: ${e.message}` }], isError: true };
@@ -240,11 +241,11 @@ function legacyToolList() {
 }
 
 /** Legacy endpoint: dispatch a tools/call. Returns the result payload, or null if not ours. */
-async function legacyToolCall(toolName, args) {
+async function legacyToolCall(toolName, args, tenant = TENANT) {
   const def = TOOL_DEFS.find((d) => d.name === toolName);
   if (!def) return null;
   try {
-    const out = await def.run(args || {});
+    const out = await def.run(args || {}, tenant);
     return { content: [{ type: 'text', text: out.text }], ...(out.isError ? { isError: true } : {}) };
   } catch (e) {
     return { content: [{ type: 'text', text: `Error: ${e.message}` }], isError: true };

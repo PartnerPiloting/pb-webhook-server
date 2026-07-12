@@ -16,7 +16,8 @@ const { z } = require('zod');
 const store = require('./wingguyRulesStore');
 
 const TENANT = (process.env.RECALL_COACH_CLIENT_ID || store.DEFAULT_TENANT).trim();
-const ACTOR = `mcp:${TENANT}`;
+// Per-request tenant is threaded into every executor (2nd arg, defaults to TENANT); the door's
+// audit actor is derived per-tenant as `mcp:${tenant}` at each write site.
 
 // ---------------------------------------------------------------------------
 // Executors — shared by both transports; return { text, isError? }
@@ -27,14 +28,14 @@ function ruleLine(r) {
   return `- ${r.rule_key} (v${r.version}, ${r.layer}, ${r.context}/${r.rule_type}${camp})`;
 }
 
-function scopeFromLayer(layer) {
-  // client rules belong to the wired tenant; foundation/template are tenant-less
-  return layer === 'client' ? { layer, tenantId: TENANT } : { layer, tenantId: undefined };
+function scopeFromLayer(layer, tenant = TENANT) {
+  // client rules belong to the caller's tenant; foundation/template are tenant-less
+  return layer === 'client' ? { layer, tenantId: tenant } : { layer, tenantId: undefined };
 }
 
-async function runRulesList({ context, layer, campaign } = {}) {
+async function runRulesList({ context, layer, campaign } = {}, tenant = TENANT) {
   const rules = await store.getActiveRules({
-    tenantId: TENANT,
+    tenantId: tenant,
     contexts: context ? [context] : undefined,
     layer: layer || undefined,
     campaign: campaign || undefined,
@@ -46,11 +47,11 @@ async function runRulesList({ context, layer, campaign } = {}) {
   for (const [lyr, rows] of Object.entries(byLayer)) {
     parts.push(`${lyr} (${rows.length}):\n${rows.map(ruleLine).join('\n')}`);
   }
-  return { text: `Active Wingguy rules for ${TENANT}:\n\n${parts.join('\n\n')}\n\nUse wingguy_rule_get for a rule's body + history.` };
+  return { text: `Active Wingguy rules for ${tenant}:\n\n${parts.join('\n\n')}\n\nUse wingguy_rule_get for a rule's body + history.` };
 }
 
-async function runRuleGet({ rule_key, layer = 'client', campaign }) {
-  const found = await store.getRule({ ...scopeFromLayer(layer), ruleKey: rule_key, campaign: campaign || undefined });
+async function runRuleGet({ rule_key, layer = 'client', campaign }, tenant = TENANT) {
+  const found = await store.getRule({ ...scopeFromLayer(layer, tenant), ruleKey: rule_key, campaign: campaign || undefined });
   if (!found) {
     return {
       text: `No rule "${rule_key}" in the ${layer} layer${campaign ? ` for campaign "${campaign}"` : ' (generic — pass campaign to fetch a campaign\'s version)'}. wingguy_rules_list shows what exists.`,
@@ -79,9 +80,9 @@ async function runRuleGet({ rule_key, layer = 'client', campaign }) {
   return { text: lines.join('\n') };
 }
 
-async function runRulePropose({ rule_key, layer = 'client', context, rule_type, campaign, body }) {
+async function runRulePropose({ rule_key, layer = 'client', context, rule_type, campaign, body }, tenant = TENANT) {
   const prop = await store.proposeRule({
-    ...scopeFromLayer(layer),
+    ...scopeFromLayer(layer, tenant),
     ruleKey: rule_key,
     context,
     ruleType: rule_type,
@@ -112,16 +113,16 @@ async function runRulePropose({ rule_key, layer = 'client', context, rule_type, 
   return { text: lines.join('\n') };
 }
 
-async function runRuleCommit({ rule_key, layer = 'client', context, rule_type, campaign, body, change_note, expected_version }) {
+async function runRuleCommit({ rule_key, layer = 'client', context, rule_type, campaign, body, change_note, expected_version }, tenant = TENANT) {
   const r = await store.commitRule({
-    ...scopeFromLayer(layer),
+    ...scopeFromLayer(layer, tenant),
     ruleKey: rule_key,
     context,
     ruleType: rule_type,
     campaign: campaign || undefined,
     body,
     changeNote: change_note || null,
-    createdBy: ACTOR,
+    createdBy: `mcp:${tenant}`,
     expectedVersion: expected_version,
   });
   return {
@@ -130,42 +131,42 @@ async function runRuleCommit({ rule_key, layer = 'client', context, rule_type, c
   };
 }
 
-async function runRuleRevert({ rule_key, layer = 'client', campaign, to_version }) {
+async function runRuleRevert({ rule_key, layer = 'client', campaign, to_version }, tenant = TENANT) {
   const r = await store.revertRule({
-    ...scopeFromLayer(layer),
+    ...scopeFromLayer(layer, tenant),
     ruleKey: rule_key,
     campaign: campaign || undefined,
     toVersion: to_version,
-    createdBy: ACTOR,
+    createdBy: `mcp:${tenant}`,
   });
   return { text: `Reverted: "${r.ruleKey}" v${r.version} now carries the v${to_version} body (append-only — nothing was deleted).` };
 }
 
-async function runVariables({ set_key, set_value, description } = {}) {
+async function runVariables({ set_key, set_value, description } = {}, tenant = TENANT) {
   if (set_key !== undefined && set_key !== null && String(set_key).trim()) {
-    await store.setVariable({ tenantId: TENANT, varKey: set_key, value: set_value ?? null, description, actor: ACTOR });
+    await store.setVariable({ tenantId: tenant, varKey: set_key, value: set_value ?? null, description, actor: `mcp:${tenant}` });
   }
-  const vars = await store.getVariables({ tenantId: TENANT });
+  const vars = await store.getVariables({ tenantId: tenant });
   if (!vars.length) return { text: 'No variables in the catalog yet (they arrive with the Notion import / de-personalisation pass).' };
   const lines = vars.map((v) => `- ${v.var_key} = ${v.value == null ? '(unset)' : JSON.stringify(v.value)}${v.required ? ' [required]' : ''}${v.description ? ` — ${v.description}` : ''}`);
-  return { text: `Wingguy variables for ${TENANT}:\n${lines.join('\n')}` };
+  return { text: `Wingguy variables for ${tenant}:\n${lines.join('\n')}` };
 }
 
-async function runAssets({ set_key, set_url, set_kind, retire } = {}) {
+async function runAssets({ set_key, set_url, set_kind, retire } = {}, tenant = TENANT) {
   if (set_key !== undefined && set_key !== null && String(set_key).trim()) {
     await store.setAsset({
-      tenantId: TENANT,
+      tenantId: tenant,
       assetKey: set_key,
       url: set_url ?? null,
       kind: set_kind || undefined,
       status: retire ? 'retired' : 'active',
-      actor: ACTOR,
+      actor: `mcp:${tenant}`,
     });
   }
-  const assets = await store.getAssets({ tenantId: TENANT });
+  const assets = await store.getAssets({ tenantId: tenant });
   if (!assets.length) return { text: 'No assets in the library yet.' };
   const lines = assets.map((a) => `- ${a.asset_key}${a.kind ? ` [${a.kind}]` : ''} = ${a.url || '(no url)'}${a.status !== 'active' ? ` (${a.status})` : ''}`);
-  return { text: `Wingguy asset library for ${TENANT} (rules reference these as {{asset:key}} — URLs go out EXACTLY as stored, never composed):\n${lines.join('\n')}` };
+  return { text: `Wingguy asset library for ${tenant} (rules reference these as {{asset:key}} — URLs go out EXACTLY as stored, never composed):\n${lines.join('\n')}` };
 }
 
 // ---------------------------------------------------------------------------
@@ -334,15 +335,16 @@ const TOOL_DEFS = [
 // Transport adapters
 // ---------------------------------------------------------------------------
 
-/** SDK server (the /mcp2 path): register all rules tools on an McpServer instance. */
-function registerWingguyRulesTools(server) {
+/** SDK server (the /mcp2 path): register all rules tools on an McpServer instance.
+ *  `tenant` scopes every executor to the caller's client (per-request; defaults to Guy). */
+function registerWingguyRulesTools(server, tenant = TENANT) {
   for (const def of TOOL_DEFS) {
     server.registerTool(
       def.name,
       { title: def.name.replace(/_/g, ' '), description: def.description, inputSchema: def.zodSchema },
       async (args) => {
         try {
-          const out = await def.run(args || {});
+          const out = await def.run(args || {}, tenant);
           return { content: [{ type: 'text', text: out.text }], ...(out.isError ? { isError: true } : {}) };
         } catch (e) {
           return { content: [{ type: 'text', text: `Error: ${e.message}` }], isError: true };
@@ -361,11 +363,11 @@ function legacyToolList() {
  * Legacy endpoint: dispatch a tools/call. Returns the JSON-RPC `result` payload, or null if
  * the tool name isn't ours (caller falls through to its own tools).
  */
-async function legacyToolCall(toolName, args) {
+async function legacyToolCall(toolName, args, tenant = TENANT) {
   const def = TOOL_DEFS.find((d) => d.name === toolName);
   if (!def) return null;
   try {
-    const out = await def.run(args || {});
+    const out = await def.run(args || {}, tenant);
     return { content: [{ type: 'text', text: out.text }], ...(out.isError ? { isError: true } : {}) };
   } catch (e) {
     return { content: [{ type: 'text', text: `Error: ${e.message}` }], isError: true };

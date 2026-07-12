@@ -28,17 +28,17 @@ const TENANT = (process.env.RECALL_COACH_CLIENT_ID || 'Guy-Wilson').trim();
 // Executor — returns { text, isError? }
 // ---------------------------------------------------------------------------
 
-async function runCreateDraft({ to, subject, html_body, cc, bcc, reply_to } = {}) {
+async function runCreateDraft({ to, subject, html_body, cc, bcc, reply_to } = {}, tenant = TENANT) {
   const recipients = mailProvider.toParticipants(to);
   if (!recipients.length) return { text: 'Error: at least one "to" recipient ({email, name}) is required.', isError: true };
   if (!String(subject || '').trim()) return { text: 'Error: subject is required.', isError: true };
   if (!String(html_body || '').trim()) return { text: 'Error: html_body is required (the draft body, as HTML).', isError: true };
 
   const clientService = require('./clientService');
-  const coach = await clientService.getClientById(TENANT);
-  if (!coach) return { text: `Server config error: coach client "${TENANT}" not found.`, isError: true };
+  const coach = await clientService.getClientById(tenant);
+  if (!coach) return { text: `Server config error: coach client "${tenant}" not found.`, isError: true };
   if (!coach.nylasGrantId) {
-    return { text: `No Nylas grant on file for "${TENANT}" — connect the mailbox via Nylas (with mail scope) before drafting.`, isError: true };
+    return { text: `No Nylas grant on file for "${tenant}" — connect the mailbox via Nylas (with mail scope) before drafting.`, isError: true };
   }
 
   const result = await mailProvider.createDraft(coach, {
@@ -55,7 +55,7 @@ async function runCreateDraft({ to, subject, html_body, cc, bcc, reply_to } = {}
   const bccStr = mailProvider.toParticipants(bcc).map((r) => r.email).join(', ');
   return {
     text:
-      `Draft created in ${coach.clientName || TENANT}'s mailbox (Nylas). draftId=${result.draftId}\n` +
+      `Draft created in ${coach.clientName || tenant}'s mailbox (Nylas). draftId=${result.draftId}\n` +
       `To: ${toStr}${bccStr ? ` · Bcc: ${bccStr}` : ''} · Subject: ${String(subject).trim()}\n` +
       `Hyperlinks are stored verbatim (no google.com/url wrapping) — open the draft, give it a final read, and send. No manual link-fixing needed.`,
   };
@@ -100,15 +100,16 @@ const TOOL_DEFS = [
 // Transport adapters (same shape as wingguyBookingMcp)
 // ---------------------------------------------------------------------------
 
-/** SDK server (the /mcp2 path): register all mail tools on an McpServer instance. */
-function registerWingguyMailTools(server) {
+/** SDK server (the /mcp2 path): register all mail tools on an McpServer instance.
+ *  `tenant` scopes the draft to the caller's client (per-request; defaults to Guy). */
+function registerWingguyMailTools(server, tenant = TENANT) {
   for (const def of TOOL_DEFS) {
     server.registerTool(
       def.name,
       { title: def.name.replace(/_/g, ' '), description: def.description, inputSchema: def.zodSchema },
       async (args) => {
         try {
-          const out = await def.run(args || {});
+          const out = await def.run(args || {}, tenant);
           return { content: [{ type: 'text', text: out.text }], ...(out.isError ? { isError: true } : {}) };
         } catch (e) {
           return { content: [{ type: 'text', text: `Error: ${e.message}` }], isError: true };
@@ -124,11 +125,11 @@ function legacyToolList() {
 }
 
 /** Legacy endpoint: dispatch a tools/call. Returns the result payload, or null if not ours. */
-async function legacyToolCall(toolName, args) {
+async function legacyToolCall(toolName, args, tenant = TENANT) {
   const def = TOOL_DEFS.find((d) => d.name === toolName);
   if (!def) return null;
   try {
-    const out = await def.run(args || {});
+    const out = await def.run(args || {}, tenant);
     return { content: [{ type: 'text', text: out.text }], ...(out.isError ? { isError: true } : {}) };
   } catch (e) {
     return { content: [{ type: 'text', text: `Error: ${e.message}` }], isError: true };
