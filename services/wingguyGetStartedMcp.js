@@ -1,11 +1,12 @@
 /**
- * Wingguy "get started" MCP tool — the state-aware onboarding / status guide.
+ * Wingguy onboarding MCP tools — the state-aware in-connector experience.
  *
  * WHY (2026-07-12): onboarding + the "here's what Wingguy unlocks for you" pitch can only live
- * INSIDE the connector, because before it's connected the client's Claude is blank. This tool
- * reads the CALLER's own provisioning state (their client record + how many rules they've set) and
- * returns a tailored guide: what's already live, what's still to connect (the BLANKS), and how to
- * drive it. Same door adapts to where each client is. Extends the "lead with the blanks" help idea.
+ * INSIDE the connector, because before it's connected the client's Claude is blank. Two tools:
+ *   - wingguy_get_started : STATUS view — what's live for YOU now, your blanks, how to drive it.
+ *   - wingguy_vision      : VISION view — the full day-in-the-life once it's all connected, then
+ *                           the concrete "here's what we need to do to get you there" (state-aware).
+ * Same door adapts to where each client is. Extends the "lead with the blanks" help idea.
  *
  * One definition, BOTH transports (same pattern as services/wingguyRulesMcp.js):
  *   - the SDK server (services/mcpRecallServer.js → /mcp2/:token, claude.ai)
@@ -22,18 +23,10 @@ const store = require('./wingguyRulesStore');
 
 const TENANT = (process.env.RECALL_COACH_CLIENT_ID || 'Guy-Wilson').trim();
 
-async function runGetStarted(_args = {}, tenant = TENANT) {
+// Read the caller's provisioning state once — shared by both tools so they never drift.
+async function resolveState(tenant) {
   const coach = await clientService.getClientById(tenant);
-  if (!coach) {
-    return { text: "I couldn't find your Wingguy set-up yet. Check with the person who's onboarding you - your account may not be fully connected." };
-  }
-  const name = coach.clientFirstName || coach.clientName || '';
-
-  // Provisioning state (each field is per-client on the master record).
-  const hasMailbox = !!coach.nylasGrantId;
-  const hasCalendar = !!coach.calendarProvider;
-  const hasFathom = !!coach.fathomApiKey;
-  const hasZoom = !!coach.bookingZoom;
+  if (!coach) return null;
   let clientRuleCount = 0;
   try {
     const rules = await store.getActiveRules({ tenantId: tenant, layer: 'client' });
@@ -41,7 +34,34 @@ async function runGetStarted(_args = {}, tenant = TENANT) {
   } catch (_e) {
     // store unavailable → treat the rulebook as unseeded rather than fail the whole guide
   }
-  const rulesSeeded = clientRuleCount > 0;
+  return {
+    coach,
+    name: coach.clientFirstName || coach.clientName || '',
+    hasMailbox: !!coach.nylasGrantId,
+    hasCalendar: !!coach.calendarProvider,
+    hasFathom: !!coach.fathomApiKey,
+    hasZoom: !!coach.bookingZoom,
+    clientRuleCount,
+    rulesSeeded: clientRuleCount > 0,
+  };
+}
+
+// The remaining setup steps for a tenant, in plain "here's what we do" language (state-aware).
+function remainingSteps(s) {
+  const steps = [];
+  if (!s.rulesSeeded) steps.push('**Set up your rulebook** - we\'ll build it from your real business so I draft in *your* voice, not a generic template. Say **"let\'s set up my rules"** and we\'ll start.');
+  if (!s.hasMailbox) steps.push('**Connect your mailbox** - so I can write your follow-up emails as real drafts, links intact, ready for you to send.');
+  if (!s.hasCalendar) steps.push('**Connect your calendar** - so I can offer your real free times and book meetings with your rules applied.');
+  else if (!s.hasZoom) steps.push('**Add your meeting link** (Zoom/Meet) - so it lands on every invite you send.');
+  if (!s.hasFathom) steps.push('**Connect your meeting-notes source** - so I can pull your call transcripts on request.');
+  return steps;
+}
+
+async function runGetStarted(_args = {}, tenant = TENANT) {
+  const s = await resolveState(tenant);
+  if (!s) {
+    return { text: "I couldn't find your Wingguy set-up yet. Check with the person who's onboarding you - your account may not be fully connected." };
+  }
 
   const live = [];
   const blanks = [];
@@ -50,35 +70,30 @@ async function runGetStarted(_args = {}, tenant = TENANT) {
   live.push('- Ask me to **draft a message** for any lead - try: *"draft a thanks-for-connecting note for [lead name]"*.');
   live.push('- Ask **"show me my rules"** to see (and change) how I write for you.');
 
-  if (rulesSeeded) {
-    live.push(`- Your rulebook is set up (${clientRuleCount} of your own rules) - I draft in your voice.`);
+  if (s.rulesSeeded) {
+    live.push(`- Your rulebook is set up (${s.clientRuleCount} of your own rules) - I draft in your voice.`);
   } else {
     blanks.push('- **Your rulebook is nearly empty** - right now I draft from generic craft, not *your* voice. Say **"let\'s set up my rules"** and we\'ll build them from your real business.');
   }
-
-  if (hasMailbox) {
+  if (s.hasMailbox) {
     live.push('- I can create **email drafts** in your own mailbox (links intact, ready for you to read and send).');
   } else {
     blanks.push('- **No mailbox connected yet** - once we link it, I\'ll write your follow-up emails as real drafts you just check and send.');
   }
-
-  if (hasCalendar) {
+  if (s.hasCalendar) {
     live.push('- I can check your calendar and **book meetings** with your booking rules applied.');
-    if (!hasZoom) {
-      blanks.push('- **No meeting link on file** - add your Zoom/Meet room so it goes on every invite you send.');
-    }
+    if (!s.hasZoom) blanks.push('- **No meeting link on file** - add your Zoom/Meet room so it goes on every invite you send.');
   } else {
     blanks.push('- **No calendar connected yet** - once it\'s wired in, I\'ll book replies straight into your diary, with your hours, buffers and no-double-book rules enforced.');
   }
-
-  if (hasFathom) {
+  if (s.hasFathom) {
     live.push('- I can pull your **meeting transcripts** when you ask.');
   } else {
     blanks.push('- **No meeting-notes source connected yet** - connect it and I\'ll fetch your call transcripts on request.');
   }
 
   const parts = [];
-  parts.push(`**Welcome${name ? ', ' + name : ''} - here's where Wingguy stands for you.**`);
+  parts.push(`**Welcome${s.name ? ', ' + s.name : ''} - here's where Wingguy stands for you.**`);
   parts.push('');
   parts.push('**Live now**');
   parts.push(live.join('\n'));
@@ -90,13 +105,45 @@ async function runGetStarted(_args = {}, tenant = TENANT) {
   parts.push('');
   parts.push('**Why this matters:** this isn\'t a chatbot bolted on the side - it\'s your calendar, inbox, CRM and LinkedIn pulled together under one assistant that works *your* way. That connective layer underneath is the whole point. Guy runs his entire LinkedIn follow-up through this - recently 37 personalised messages to 20 people in the time it used to take him to do five.');
   parts.push('');
-  parts.push('Just tell me what you\'d like to do, or say **"let\'s set up my rules"** to make my drafting sound like you.');
+  parts.push('Just tell me what you\'d like to do, say **"show me the full picture"** to see what this looks like fully connected, or **"let\'s set up my rules"** to make my drafting sound like you.');
+
+  return { text: parts.join('\n') };
+}
+
+async function runVision(_args = {}, tenant = TENANT) {
+  const s = await resolveState(tenant);
+  const name = s ? s.name : '';
+
+  const parts = [];
+  parts.push(`**${name ? name + ' - ' : ''}here's what a fully-connected Wingguy does for you, every day.**`);
+  parts.push('');
+  parts.push('**A lead accepts your connection** → I draft the thanks-for-connecting note in your voice, grounded in their actual profile. You glance, tweak, send.');
+  parts.push('**They reply interested** → I read the thread, draft your response, and if they want to talk I offer real times from your calendar - your hours, your buffers, never a double-book.');
+  parts.push('**They pick a time** → I book it, invite sent, your meeting link on it, reminders set.');
+  parts.push('**After the call** → I pull the transcript and draft the follow-up email in your mailbox, links clean, ready to send.');
+  parts.push('**All of it** runs on *your* rules - your targeting, your angles, your voice - not a generic template.');
+  parts.push('');
+  parts.push('**The result:** the whole follow-up engine that used to eat your mornings, handled. Guy runs his entire LinkedIn pipeline this way - 37 personalised messages to 20 people in the time it took him to do five. This is the part nobody else has: not a chatbot, but your calendar, inbox, CRM and LinkedIn wired into one assistant that works your way.');
+  parts.push('');
+
+  const steps = s ? remainingSteps(s) : null;
+  if (steps && steps.length === 0) {
+    parts.push('**And the good news:** you\'re already fully connected - everything above is live for you right now. Just start using it.');
+  } else if (steps && steps.length) {
+    parts.push('**And here\'s what we need to do to get you there:**');
+    parts.push(steps.map((step, i) => `${i + 1}. ${step}`).join('\n'));
+    parts.push('');
+    parts.push('None of it\'s heavy - most take a few minutes, and I\'ll walk you through each. Say the word and we\'ll knock them off one at a time.');
+  } else {
+    // No record yet — still show the vision, generic setup close.
+    parts.push('**To get there** we just connect a few things - your rulebook, your mailbox, your calendar - and I\'ll walk you through each. Ask **"what do I still need to connect?"** once you\'re set up.');
+  }
 
   return { text: parts.join('\n') };
 }
 
 // ---------------------------------------------------------------------------
-// Definition — one source of truth for name/description/schema
+// Definitions — one source of truth for names/descriptions/schemas
 // ---------------------------------------------------------------------------
 
 const TOOL_DEFS = [
@@ -108,14 +155,22 @@ const TOOL_DEFS = [
     jsonSchema: { type: 'object', properties: {} },
     run: runGetStarted,
   },
+  {
+    name: 'wingguy_vision',
+    description:
+      'The full picture of what a fully-connected Wingguy does for the user, every day - the day-in-the-life vision - followed by the concrete steps they still need to get there (state-aware). Call this when the user asks "what will I be able to do?", "show me the full picture", "what\'s this like when it\'s all set up?", "what could this do for me?", or when selling them on completing setup. Present the returned text to them directly.',
+    zodSchema: {},
+    jsonSchema: { type: 'object', properties: {} },
+    run: runVision,
+  },
 ];
 
 // ---------------------------------------------------------------------------
 // Transport adapters (same shape as wingguyRulesMcp / wingguyBookingMcp)
 // ---------------------------------------------------------------------------
 
-/** SDK server (the /mcp2 path): register the get-started tool on an McpServer instance.
- *  `tenant` scopes the guide to the caller's client (per-request; defaults to Guy). */
+/** SDK server (the /mcp2 path): register the onboarding tools on an McpServer instance.
+ *  `tenant` scopes the guides to the caller's client (per-request; defaults to Guy). */
 function registerWingguyGetStartedTools(server, tenant = TENANT) {
   for (const def of TOOL_DEFS) {
     server.registerTool(
