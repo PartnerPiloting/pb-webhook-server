@@ -46,17 +46,6 @@ async function resolveState(tenant) {
   };
 }
 
-// The remaining setup steps for a tenant, in plain "here's what we do" language (state-aware).
-function remainingSteps(s) {
-  const steps = [];
-  if (!s.rulesSeeded) steps.push('**Set up your rulebook** - we\'ll build it from your real business so I draft in *your* voice, not a generic template. Say **"let\'s set up my rules"** and we\'ll start.');
-  if (!s.hasMailbox) steps.push('**Connect your mailbox** - so I can write your follow-up emails as real drafts, links intact, ready for you to send.');
-  if (!s.hasCalendar) steps.push('**Connect your calendar** - so I can offer your real free times and book meetings with your rules applied.');
-  else if (!s.hasZoom) steps.push('**Add your meeting link** (Zoom/Meet) - so it lands on every invite you send.');
-  if (!s.hasFathom) steps.push('**Connect your meeting-notes source** - so I can pull your call transcripts on request.');
-  return steps;
-}
-
 async function runGetStarted(_args = {}, tenant = TENANT) {
   const s = await resolveState(tenant);
   if (!s) {
@@ -126,17 +115,31 @@ async function runVision(_args = {}, tenant = TENANT) {
   parts.push('**The result:** the whole follow-up engine that used to eat your mornings, handled. Guy runs his entire LinkedIn pipeline this way - 37 personalised messages to 20 people in the time it took him to do five. This is the part nobody else has: not a chatbot, but your calendar, inbox, CRM and LinkedIn wired into one assistant that works your way.');
   parts.push('');
 
-  const steps = s ? remainingSteps(s) : null;
-  if (steps && steps.length === 0) {
-    parts.push('**And the good news:** you\'re already fully connected - everything above is live for you right now. Just start using it.');
-  } else if (steps && steps.length) {
-    parts.push('**And here\'s what we need to do to get you there:**');
-    parts.push(steps.map((step, i) => `${i + 1}. ${step}`).join('\n'));
+  // "What we need to get you there" — warm, benefit-led, state-aware (Guy's framing 2026-07-13).
+  // The setup asks are folded INTO the vision; rules are framed as the best part, not a chore.
+  parts.push('**To get you there, there\'s just a little bit of setup - and honestly, the setup is where it gets good.**');
+
+  const asks = [];
+  if (!s || !s.hasCalendar) asks.push('**which calendar** you use - so I can offer your real free times and book straight into it');
+  if (!s || !s.hasMailbox) asks.push('**which email client** you\'re on - so I can draft your follow-ups right in your own mailbox');
+  if (!s || !s.hasFathom) asks.push('whether you use a meeting **note-taker** - you might already have one, but the one we plug into is **Fathom**, and the good news is Fathom transcripts are currently free');
+  if (asks.length) {
     parts.push('');
-    parts.push('None of it\'s heavy - most take a few minutes, and I\'ll walk you through each. Say the word and we\'ll knock them off one at a time.');
+    parts.push('A couple of quick things we\'ll need to know:');
+    parts.push(asks.map((a) => `- ${a}`).join('\n'));
+  }
+
+  if (!s || !s.rulesSeeded) {
+    parts.push('');
+    parts.push('And I\'ll help you set up your **rules** - and this is the great part of the whole thing. You shape all your messages with rules, in plain English, just by telling me - no settings screens, no templates to wrestle. You\'ll find over time it just keeps getting better and better, and that\'s where you end up saving hours a day.');
   } else {
-    // No record yet — still show the vision, generic setup close.
-    parts.push('**To get there** we just connect a few things - your rulebook, your mailbox, your calendar - and I\'ll walk you through each. Ask **"what do I still need to connect?"** once you\'re set up.');
+    parts.push('');
+    parts.push('Your **rules** are already set up - and that\'s the engine of the whole thing. Keep shaping them as you go, in plain English, and I only get better at sounding like you.');
+  }
+
+  if (s && asks.length === 0 && s.rulesSeeded) {
+    parts.push('');
+    parts.push('**And the good news:** you\'re already fully connected - everything above is live for you right now. Just start using it.');
   }
 
   return { text: parts.join('\n') };
