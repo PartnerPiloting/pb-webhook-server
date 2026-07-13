@@ -22,6 +22,7 @@ const present = (v) => (v ? 'SET' : '(blank)');
   }
   console.log('clientName            =', j.clientName);
   console.log('status                =', j.status, j.status === 'Active' ? '✓' : '✗ NOT ACTIVE');
+  console.log('wingguyEnabled (gate) =', j.wingguyEnabled, j.wingguyEnabled ? '✓ extension on' : '✗ extension OFF');
   console.log('portalToken           =', mask(j.portalToken));
   console.log('airtableBaseId (leads)=', present(j.airtableBaseId), j.airtableBaseId || '');
   console.log('timezone              =', j.timezone || '(blank)');

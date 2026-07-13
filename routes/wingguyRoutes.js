@@ -39,15 +39,13 @@ const logger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'w
 const WINGGUY_DRAFT_MODEL_ID = process.env.WINGGUY_DRAFT_MODEL_ID || 'claude-sonnet-4-6';
 const DRAFT_MAX_TOKENS = 700;             // a thanks-for-connecting note is short
 const PROFILE_CHAR_CAP = 6000;            // bound the input (About can be long); keeps cost + latency sane
-// Multi-tenant gate: an ALLOW-LIST of clients Wingguy is switched on for. Still CLOSED by default —
-// only listed tenants pass (403 otherwise), so this stays owner-only until a client is explicitly
-// added. The owner is always allowed; add other client IDs via WINGGUY_ENABLED_CLIENTS (comma-sep).
+// Multi-tenant gate: Wingguy is switched on PER-CLIENT via the "Wingguy Enabled" field on their
+// Master Clients row (Yes/No; blank = off), read into req.client.wingguyEnabled. Still CLOSED by
+// default — a client passes only when their record says Yes (403 otherwise). The OWNER is always
+// allowed in code, so a field edit can never lock Guy out. (Replaced the WINGGUY_ENABLED_CLIENTS
+// env allow-list 2026-07-14 — enablement now lives on the record beside Status / Managed Claude
+// Key, so flipping a client on/off is an Airtable edit, no redeploy.)
 const OWNER_CLIENT_ID = (process.env.RECALL_COACH_CLIENT_ID || 'Guy-Wilson').trim();
-const ENABLED_CLIENTS = new Set(
-  [OWNER_CLIENT_ID, ...String(process.env.WINGGUY_ENABLED_CLIENTS || '').split(',')]
-    .map((s) => s.trim())
-    .filter(Boolean),
-);
 
 // --- BYO Anthropic key (billing) ---------------------------------------------------------------
 // A client's own Claude key rides in this header (Option A, 2026-07-13): kept in their browser,
@@ -86,7 +84,8 @@ const ENABLED = parseBoolFlag(process.env.WINGGUY_DRAFT_ENABLED, true);
 
 function requireOwner(req, res, next) {
   const cid = req.client && String(req.client.clientId);
-  if (!cid || !ENABLED_CLIENTS.has(cid)) {
+  const enabled = cid && (cid === OWNER_CLIENT_ID || !!req.client.wingguyEnabled);
+  if (!enabled) {
     return res.status(403).json({
       ok: false,
       error: 'Wingguy is not enabled for this account yet.',
