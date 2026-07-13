@@ -31,7 +31,8 @@ async function getCoachCalendarInfo(clientId) {
   const url =
     `https://api.airtable.com/v0/${process.env.MASTER_CLIENTS_BASE_ID}/Clients` +
     `?filterByFormula=LOWER({Client ID})=LOWER('${clientId}')` +
-    `&fields[]=Google Calendar Email&fields[]=Timezone&fields[]=Nylas Grant ID&fields[]=Calendar Provider`;
+    `&fields[]=Google Calendar Email&fields[]=Timezone&fields[]=Nylas Grant ID&fields[]=Calendar Provider` +
+    `&fields[]=Calendar Provider Token&fields[]=Calendar Provider Domain`;
   const resp = await fetch(url, { headers: { Authorization: `Bearer ${process.env.AIRTABLE_API_KEY}` } });
   if (!resp.ok) throw new Error(`client calendar lookup failed (${resp.status})`);
   const data = await resp.json();
@@ -41,23 +42,45 @@ async function getCoachCalendarInfo(clientId) {
   const timezone = rec.fields['Timezone'] || DEFAULT_TZ;
   const nylasGrantId = rec.fields['Nylas Grant ID'] || null;
   const calendarProvider = rec.fields['Calendar Provider'] || null;
-  if (!calendarEmail && !nylasGrantId) {
-    throw new Error('No calendar for this client — share a calendar with the service account (Google) or connect via Nylas first.');
+  // Direct-provider (e.g. Zoho) credentials — the calendar equivalent of a Nylas grant.
+  const calendarProviderToken = rec.fields['Calendar Provider Token'] || null;
+  const calendarProviderDomain = rec.fields['Calendar Provider Domain'] || null;
+  if (!calendarEmail && !nylasGrantId && !calendarProviderToken) {
+    throw new Error('No calendar for this client — share a calendar with the service account (Google), connect via Nylas, or connect a direct provider (e.g. Zoho) first.');
   }
-  return { calendarEmail, timezone, nylasGrantId, calendarProvider };
+  return { calendarEmail, timezone, nylasGrantId, calendarProvider, calendarProviderToken, calendarProviderDomain };
 }
 
-// Which read path a coach uses. ADDITIVE + Guy-safe: if the client shared a Google calendar with our
-// service account, keep reading via Google (Guy's proven path) — even if the global provider flag is
-// nylas. Only a Nylas-grant-ONLY client (no service-account share) reads via Nylas. So onboarding a new
-// tenant via hosted auth gives them a working read+write without ever touching Guy's setup.
-function readsViaNylas(info) {
-  return !info.calendarEmail && !!info.nylasGrantId;
+// The calendar provider a coach actually uses. ADDITIVE + Guy-safe: if the client shared a Google
+// calendar with our service account, keep reading via Google (Guy's grandfathered proven path) — even
+// if their provider field says otherwise. Otherwise it's their own provider (nylas | zoho | …), or
+// nylas when a grant exists but no explicit provider is set. So a new tenant (Nylas or a direct
+// provider like Zoho) gets a working read+write without ever touching Guy's setup.
+function providerForInfo(info) {
+  if (info.calendarEmail) return 'google';
+  if (info.calendarProvider) return String(info.calendarProvider).trim().toLowerCase();
+  if (info.nylasGrantId) return 'nylas';
+  return 'google';
 }
 
-// Minimal coach-shaped object for calendarProvider.getMeetingsInWindow (per-tenant Nylas read).
-function coachForNylas(info) {
-  return { calendarProvider: 'nylas', nylasGrantId: info.nylasGrantId, googleCalendarEmail: info.calendarEmail || '' };
+// True when this coach reads/writes through the pluggable calendarProvider seam (nylas | zoho | …),
+// i.e. anything other than the legacy Google service-account share.
+function usesProviderSeam(info) {
+  return providerForInfo(info) !== 'google';
+}
+
+// Coach-shaped object for calendarProvider.* — carries whichever provider's credentials apply
+// (Nylas grant AND/OR a direct-provider token like Zoho); the seam reads what its branch needs.
+function coachForCalendar(info) {
+  return {
+    calendarProvider: providerForInfo(info),
+    nylasGrantId: info.nylasGrantId,
+    googleCalendarEmail: info.calendarEmail || '',
+    calendarProviderToken: info.calendarProviderToken || null,
+    calendarProviderDomain: info.calendarProviderDomain || null,
+    calendarUid: info.calendarUid || null,
+    timezone: info.timezone,
+  };
 }
 
 function formatInTz(isoTime, timezone) {
@@ -140,12 +163,13 @@ async function getAvailabilityForCoach(clientId, leadLocation = '') {
     dates.push(DateTime.fromISO(`${dateStr}T12:00`, { zone: yourTimezone }).plus({ days: i }).toFormat('yyyy-MM-dd'));
   }
 
-  // Nylas-only client (no service-account share) → read busy events via their grant and build slots.
-  if (readsViaNylas(info)) {
+  // Provider-seam client (no service-account share) → read busy events via their provider (Nylas or
+  // a direct provider like Zoho) and build slots.
+  if (usesProviderSeam(info)) {
     const windowStart = DateTime.fromISO(`${dates[0]}T00:00`, { zone: yourTimezone }).toJSDate();
     const windowEnd = DateTime.fromISO(`${dates[dates.length - 1]}T23:59`, { zone: yourTimezone }).toJSDate();
-    const { events, error } = await getMeetingsInWindow(coachForNylas(info), windowStart, windowEnd);
-    if (error) throw new Error(`nylas availability read failed: ${error}`);
+    const { events, error } = await getMeetingsInWindow(coachForCalendar(info), windowStart, windowEnd);
+    if (error) throw new Error(`${providerForInfo(info)} availability read failed: ${error}`);
     const nylasPrefs = getBookingPrefs(clientId);
     const days = buildDaysFromBusy({ busyEvents: events, dates, yourTimezone, leadTimezone, lunch: nylasPrefs.lunch });
     return { yourTimezone, leadTimezone, leadLocation, leadTzDetected, days };
@@ -223,12 +247,12 @@ async function clashesForWindow(info, startISO, len) {
   const dateInCoachTz = DateTime.fromJSDate(start).setZone(yourTimezone).toFormat('yyyy-MM-dd');
 
   let events;
-  if (readsViaNylas(info)) {
+  if (usesProviderSeam(info)) {
     const dayStart = DateTime.fromISO(`${dateInCoachTz}T00:00`, { zone: yourTimezone }).toJSDate();
     const dayEnd = DateTime.fromISO(`${dateInCoachTz}T23:59`, { zone: yourTimezone }).toJSDate();
-    const r = await getMeetingsInWindow(coachForNylas(info), dayStart, dayEnd);
-    if (r.error) throw new Error(`nylas clash read failed: ${r.error}`);
-    // Nylas events returned are real (busy) meetings — no transparency flag, treat all as busy.
+    const r = await getMeetingsInWindow(coachForCalendar(info), dayStart, dayEnd);
+    if (r.error) throw new Error(`${providerForInfo(info)} clash read failed: ${r.error}`);
+    // Provider events returned are real (busy) meetings — no transparency flag, treat all as busy.
     events = (r.events || []).map((e) => ({ ...e, isFree: false }));
   } else {
     const calendarService = require('../config/calendarServiceAccount.js');
@@ -538,10 +562,18 @@ function isHoldForLead(summary, leadName) {
   return !!name && isHoldSummary(summary) && String(summary).toLowerCase().includes(name);
 }
 
-// Holds are always read/written via the coach's Nylas grant (the write path; gives event ids for
-// delete). The Google service-account read is read-only and id-less, so it can't manage holds.
+// Holds are read/written via the coach's WRITE provider (Nylas grant or a direct provider like Zoho),
+// which returns event ids for delete. The Google service-account read is read-only and id-less, so a
+// Google client falls back to their Nylas grant for holds. (De-nylas-ified: was hard-coded 'nylas',
+// which would have forced a Zoho client's holds onto Nylas.)
+function writeProviderForCoach(coach) {
+  const p = coach && coach.calendarProvider ? String(coach.calendarProvider).trim().toLowerCase() : '';
+  if (p && p !== 'google') return p; // nylas | zoho | …
+  if (coach && coach.nylasGrantId) return 'nylas'; // provider unset/google but a grant exists → write via Nylas
+  return p || 'nylas';
+}
 function coachForHolds(coach) {
-  return { ...coach, calendarProvider: 'nylas' };
+  return { ...coach, calendarProvider: writeProviderForCoach(coach) };
 }
 
 /** Find this lead's HOLD events over the offer horizon. Throws on a read failure. */

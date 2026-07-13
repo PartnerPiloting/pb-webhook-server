@@ -43,6 +43,7 @@ function activeProvider(coach) {
 async function getMeetingsInWindow(coach, timeMin, timeMax) {
   const provider = activeProvider(coach);
   if (provider === 'nylas') return getViaNylas(coach, timeMin, timeMax);
+  if (provider === 'zoho') return getViaZoho(coach, timeMin, timeMax);
   return getViaGoogle(coach, timeMin, timeMax);
 }
 
@@ -152,8 +153,9 @@ function mapNylasStatus(s) {
 async function createCalendarEvent(coach, details) {
   const provider = activeProvider(coach);
   if (provider === 'nylas') return createViaNylas(coach, details);
+  if (provider === 'zoho') return createViaZoho(coach, details);
   // The Google service account is READ-ONLY (calendar.readonly) — no write path there by design.
-  return { ok: false, error: `create-event not supported on provider '${provider}' (Google service account is read-only — use Nylas)`, provider };
+  return { ok: false, error: `create-event not supported on provider '${provider}' (Google service account is read-only — use Nylas or Zoho)`, provider };
 }
 
 async function createViaNylas(coach, details) {
@@ -206,8 +208,9 @@ async function createViaNylas(coach, details) {
 /* ---- DELETE: remove an event by id (Nylas only — used to clear Wingguy offer HOLDs) ------------- */
 async function deleteCalendarEvent(coach, eventId) {
   const provider = activeProvider(coach);
+  if (provider === 'zoho') return deleteViaZoho(coach, eventId);
   if (provider !== 'nylas') {
-    return { ok: false, error: `delete-event not supported on provider '${provider}' (use Nylas)`, provider };
+    return { ok: false, error: `delete-event not supported on provider '${provider}' (use Nylas or Zoho)`, provider };
   }
   const apiKey = process.env.NYLAS_API_KEY;
   const grantId = (coach && coach.nylasGrantId) || process.env.NYLAS_GRANT_ID;
@@ -232,4 +235,221 @@ async function deleteCalendarEvent(coach, eventId) {
   return { ok: true, provider: 'nylas' };
 }
 
-module.exports = { getMeetingsInWindow, createCalendarEvent, deleteCalendarEvent, activeProvider, mapNylasEvent, mapNylasStatus };
+/* ---- Zoho (direct adapter; Nylas can't serve Zoho calendar) ------------------------------------
+ * Per-tenant creds live on the client record: calendarProviderToken = a long-lived Zoho REFRESH
+ * token, calendarProviderDomain = the account's data-centre. The platform Zoho app (one for all
+ * tenants) supplies ZOHO_CLIENT_ID / ZOHO_CLIENT_SECRET (env). Access tokens (~1h) are refreshed on
+ * demand and cached in-memory.
+ * Zoho Calendar API v1: GET/POST /api/v1/calendars/<uid>/events ; auth header
+ * "Authorization: Zoho-oauthtoken <access>". Datetimes are "yyyyMMdd'T'HHmmss'Z'" (GMT).
+ * VERIFY-AGAINST-LIVE (per docs/zoho-calendar-adapter-plan.md): exact scope names, the events
+ * response field shapes (dateandtime / attendees / location), the create invite-email behaviour,
+ * and whether DELETE needs an etag — confirm the first time Julian connects a real account. Dormant
+ * until a tenant has calendarProvider='zoho', so this can ship unverified without affecting anyone. */
+
+const zohoTokenCache = new Map(); // refreshToken -> { accessToken, expiresAt }
+
+// Accept either a bare DC suffix ("com", "com.au", "eu", …) or a full host ("calendar.zoho.com.au").
+function zohoHosts(domain) {
+  let d = String(domain || '').trim().replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+  if (!d) d = 'com';
+  if (/^(com|com\.au|com\.cn|eu|in|jp|ca|sa|com\.sa|uk)$/i.test(d)) {
+    return { calendarBase: `https://calendar.zoho.${d}`, accountsBase: `https://accounts.zoho.${d}` };
+  }
+  return { calendarBase: `https://${d}`, accountsBase: `https://${d.replace(/^calendar\./, 'accounts.')}` };
+}
+
+function zohoAuthHeaders(accessToken) {
+  return { Authorization: `Zoho-oauthtoken ${accessToken}`, Accept: 'application/json' };
+}
+
+async function getZohoAccessToken(coach) {
+  const refreshToken = coach && coach.calendarProviderToken;
+  if (!refreshToken) throw new Error('no Zoho refresh token on file (calendarProviderToken)');
+  const cached = zohoTokenCache.get(refreshToken);
+  if (cached && cached.expiresAt > Date.now() + 60000) return cached.accessToken;
+  const clientId = process.env.ZOHO_CLIENT_ID;
+  const clientSecret = process.env.ZOHO_CLIENT_SECRET;
+  if (!clientId || !clientSecret) throw new Error('ZOHO_CLIENT_ID / ZOHO_CLIENT_SECRET not configured');
+  const { accountsBase } = zohoHosts(coach.calendarProviderDomain);
+  const u = new URL(`${accountsBase}/oauth/v2/token`);
+  u.searchParams.set('refresh_token', refreshToken);
+  u.searchParams.set('client_id', clientId);
+  u.searchParams.set('client_secret', clientSecret);
+  u.searchParams.set('grant_type', 'refresh_token');
+  const res = await fetch(u.toString(), { method: 'POST', headers: { Accept: 'application/json' } });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok || !json.access_token) throw new Error(`Zoho token refresh HTTP ${res.status}: ${JSON.stringify(json).slice(0, 160)}`);
+  const accessToken = json.access_token;
+  const ttlMs = (Number(json.expires_in) || 3600) * 1000;
+  zohoTokenCache.set(refreshToken, { accessToken, expiresAt: Date.now() + ttlMs });
+  return accessToken;
+}
+
+async function getZohoCalendarUid(coach, accessToken) {
+  if (coach && coach.calendarUid) return coach.calendarUid;
+  const { calendarBase } = zohoHosts(coach.calendarProviderDomain);
+  const res = await fetch(`${calendarBase}/api/v1/calendars`, { headers: zohoAuthHeaders(accessToken) });
+  if (!res.ok) throw new Error(`Zoho calendars list HTTP ${res.status}: ${(await res.text()).slice(0, 150)}`);
+  const json = await res.json();
+  const cals = json.calendars || json.data || [];
+  const def = cals.find((c) => c.isdefault) || cals[0];
+  if (!def || !def.uid) throw new Error('no Zoho calendar found for this account');
+  return def.uid;
+}
+
+// ISO -> Zoho GMT "yyyyMMddTHHmmssZ"
+function isoToZoho(iso) {
+  const d = new Date(iso);
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getUTCFullYear()}${p(d.getUTCMonth() + 1)}${p(d.getUTCDate())}T${p(d.getUTCHours())}${p(d.getUTCMinutes())}${p(d.getUTCSeconds())}Z`;
+}
+
+// Zoho datetime -> ISO. Handles GMT "…Z" and offset "…+hhmm"; returns null for all-day (yyyyMMdd)
+// or unparseable, so all-day entries drop out (parity with the Nylas mapper — only timed events
+// matter for availability).
+function zohoToISO(s) {
+  const str = String(s || '').trim();
+  let m = str.match(/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z$/);
+  if (m) return new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6])).toISOString();
+  m = str.match(/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})([+-]\d{4})$/);
+  if (m) {
+    const d = new Date(`${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6]}${m[7].slice(0, 3)}:${m[7].slice(3)}`);
+    return isNaN(d.getTime()) ? null : d.toISOString();
+  }
+  return null;
+}
+
+function mapZohoStatus(s) {
+  const v = String(s || '').toUpperCase();
+  if (v === 'ACCEPTED') return 'accepted';
+  if (v === 'DECLINED') return 'declined';
+  if (v === 'TENTATIVE') return 'tentative';
+  return 'needsAction'; // NEEDS-ACTION / unknown
+}
+
+/** Map one Zoho event into the Google-shaped event the filters expect. */
+function mapZohoEvent(ev, selfEmail) {
+  const dt = ev.dateandtime || {};
+  const start = zohoToISO(dt.start);
+  const end = zohoToISO(dt.end);
+  if (!start || !end) return null; // all-day / unparseable → skip
+
+  const orgEmail = String((ev.organizer && (ev.organizer.email || ev.organizer)) || '').toLowerCase();
+  const raw = Array.isArray(ev.attendees) ? ev.attendees : [];
+  const attendees = raw.map((a) => {
+    const email = String(a.email || '').toLowerCase();
+    return {
+      email: a.email || '',
+      displayName: a.dname || a.name || '',
+      self: !!selfEmail && email === selfEmail,
+      organizer: !!orgEmail && email === orgEmail,
+      responseStatus: mapZohoStatus(a.status),
+    };
+  });
+  // Coach is usually the organizer and often absent from attendees — synthesise a 'self' row so
+  // isCoachAttending() recognises the coach is in the meeting (parity with mapNylasEvent).
+  if (selfEmail && !attendees.some((a) => a.self)) {
+    attendees.push({ email: selfEmail, displayName: '', self: true, organizer: orgEmail === selfEmail, responseStatus: 'accepted' });
+  }
+
+  return {
+    id: ev.uid || ev.id || null,
+    summary: ev.title || '(No title)',
+    start,
+    end,
+    location: ev.location || '',
+    description: ev.description || '',
+    htmlLink: ev.vieweventurl || '',
+    conferenceData: null,
+    attendees,
+  };
+}
+
+async function getViaZoho(coach, timeMin, timeMax) {
+  try {
+    const accessToken = await getZohoAccessToken(coach);
+    const uid = await getZohoCalendarUid(coach, accessToken);
+    const { calendarBase } = zohoHosts(coach.calendarProviderDomain);
+    const selfEmail = String(coach.googleCalendarEmail || coach.calendarEmail || '').toLowerCase();
+    const events = [];
+    // Zoho caps the range at 31 days; Wingguy windows are ~2-3 weeks, but chunk defensively.
+    const CHUNK_MS = 30 * 86400000;
+    let cur = new Date(timeMin).getTime();
+    const end = new Date(timeMax).getTime();
+    while (cur < end) {
+      const chunkEnd = Math.min(cur + CHUNK_MS, end);
+      const range = JSON.stringify({ start: isoToZoho(new Date(cur).toISOString()), end: isoToZoho(new Date(chunkEnd).toISOString()) });
+      const u = new URL(`${calendarBase}/api/v1/calendars/${encodeURIComponent(uid)}/events`);
+      u.searchParams.set('range', range);
+      u.searchParams.set('byinstance', 'true'); // expand recurring instances
+      const res = await fetch(u.toString(), { headers: zohoAuthHeaders(accessToken) });
+      if (!res.ok) return { events: [], error: `zoho HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`, provider: 'zoho' };
+      const json = await res.json();
+      const list = json.events || json.data || [];
+      for (const ev of list) { const m = mapZohoEvent(ev, selfEmail); if (m) events.push(m); }
+      cur = chunkEnd;
+    }
+    return { events, error: null, provider: 'zoho' };
+  } catch (e) {
+    return { events: [], error: `zoho read failed: ${e.message}`, provider: 'zoho' };
+  }
+}
+
+async function createViaZoho(coach, details) {
+  try {
+    const accessToken = await getZohoAccessToken(coach);
+    const uid = await getZohoCalendarUid(coach, accessToken);
+    const { calendarBase } = zohoHosts(coach.calendarProviderDomain);
+    const eventData = {
+      title: details.title || 'Meeting',
+      dateandtime: { start: isoToZoho(details.startISO), end: isoToZoho(details.endISO) },
+      attendees: (details.attendees || [])
+        .filter((a) => a && a.email)
+        .map((a) => ({ email: String(a.email).trim(), permission: 2, attendance: 1 })),
+      // 1 = email the invite to attendees; 0 = silent (attendee-less utility events / offer HOLDs).
+      notify_attendee: details.notifyParticipants === false ? 0 : 1,
+    };
+    if (details.description) eventData.description = String(details.description).slice(0, 10000);
+    if (details.location) eventData.location = String(details.location).slice(0, 255);
+    if (details.reminders && Array.isArray(details.reminders.overrides)) {
+      eventData.reminders = details.reminders.overrides.map((r) => ({ action: 'email', minutes: r.reminder_minutes }));
+    }
+    // Zoho takes the event as a URL query param "eventdata" (JSON), not a request body.
+    const u = new URL(`${calendarBase}/api/v1/calendars/${encodeURIComponent(uid)}/events`);
+    u.searchParams.set('eventdata', JSON.stringify(eventData));
+    const res = await fetch(u.toString(), { method: 'POST', headers: zohoAuthHeaders(accessToken) });
+    const text = await res.text();
+    if (!res.ok) {
+      log.warn(`[calendarProvider] zoho create HTTP ${res.status}: ${text.slice(0, 200)}`);
+      return { ok: false, error: `zoho HTTP ${res.status}: ${text.slice(0, 200)}`, provider: 'zoho' };
+    }
+    let json = {}; try { json = JSON.parse(text); } catch (_) { /* leave empty */ }
+    const ev = (json.events && json.events[0]) || json.event || json.data || json;
+    return { ok: true, eventId: ev.uid || ev.id || null, htmlLink: ev.vieweventurl || '', provider: 'zoho' };
+  } catch (e) {
+    return { ok: false, error: `zoho create failed: ${e.message}`, provider: 'zoho' };
+  }
+}
+
+async function deleteViaZoho(coach, eventId) {
+  try {
+    if (!eventId) return { ok: false, error: 'eventId required', provider: 'zoho' };
+    const accessToken = await getZohoAccessToken(coach);
+    const uid = await getZohoCalendarUid(coach, accessToken);
+    const { calendarBase } = zohoHosts(coach.calendarProviderDomain);
+    // VERIFY-LIVE: Zoho DELETE may require the event's etag as a query param; if a live 400/412 shows
+    // that, fetch the event for its etag first. Kept simple until tested against a real account.
+    const u = new URL(`${calendarBase}/api/v1/calendars/${encodeURIComponent(uid)}/events/${encodeURIComponent(eventId)}`);
+    const res = await fetch(u.toString(), { method: 'DELETE', headers: zohoAuthHeaders(accessToken) });
+    if (!res.ok) return { ok: false, error: `zoho HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`, provider: 'zoho' };
+    return { ok: true, provider: 'zoho' };
+  } catch (e) {
+    return { ok: false, error: `zoho delete failed: ${e.message}`, provider: 'zoho' };
+  }
+}
+
+module.exports = {
+  getMeetingsInWindow, createCalendarEvent, deleteCalendarEvent, activeProvider,
+  mapNylasEvent, mapNylasStatus, mapZohoEvent, mapZohoStatus, zohoToISO, isoToZoho, zohoHosts,
+};

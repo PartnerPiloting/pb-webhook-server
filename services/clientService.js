@@ -141,6 +141,11 @@ async function getAllClients() {
                 // reads coach.nylasGrantId first, then env). calendarProvider blank => code default 'google'.
                 const nylasGrantId = record.get('Nylas Grant ID') || null;
                 const calendarProvider = record.get('Calendar Provider') || null;
+                // Generic direct-provider calendar credentials (e.g. Zoho), populated only when the
+                // calendar is on a provider Nylas can't serve; blank for Nylas/Google clients. The
+                // calendarProvider.js seam reads these for the 'zoho' (and future direct) branches.
+                const calendarProviderToken = record.get('Calendar Provider Token') || null;
+                const calendarProviderDomain = record.get('Calendar Provider Domain') || null;
                 // Wingguy booking identity that goes ON the invite — per-client so a tenant's invites
                 // carry THEIR Zoom/contacts, not Guy's. These read the client's OWN existing fields
                 // (the tenant is the "coach" on their own invites). When a field is empty the booking
@@ -203,6 +208,8 @@ async function getAllClients() {
                     // Nylas multi-tenant calendar (per-client grant + backend choice)
                     nylasGrantId: nylasGrantId,
                     calendarProvider: calendarProvider,
+                    calendarProviderToken: calendarProviderToken,
+                    calendarProviderDomain: calendarProviderDomain,
                     // Wingguy per-client booking identity (Zoom + contacts on the invite; optional)
                     bookingZoom: bookingZoom,
                     coachLinkedInUrl: coachLinkedInUrl,
