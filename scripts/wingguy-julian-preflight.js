@@ -10,8 +10,8 @@ const present = (v) => (v ? 'SET' : '(blank)');
 (async () => {
   console.log('=== FLAGS (live prod env) ===');
   console.log('WINGGUY_CONNECTOR_MULTITENANT =', process.env.WINGGUY_CONNECTOR_MULTITENANT || '(unset)');
-  console.log('WINGGUY_ENABLED_CLIENTS       =', process.env.WINGGUY_ENABLED_CLIENTS || '(unset)');
   console.log('WINGGUY_PLATFORM_KEY_CLIENTS  =', process.env.WINGGUY_PLATFORM_KEY_CLIENTS || '(unset)');
+  console.log('(extension gate is now the per-record "Wingguy Enabled" field, not an env var)');
   console.log('WINGGUY_RULES_SOURCE          =', process.env.WINGGUY_RULES_SOURCE || '(unset)');
 
   console.log('\n=== JULIAN RECORD (getClientById) ===');
@@ -39,8 +39,6 @@ const present = (v) => (v ? 'SET' : '(blank)');
     const back = await cs.getClientByPortalToken(j.portalToken);
     console.log('resolves to           =', back ? back.clientId : '(null)',
       back && back.clientId === 'Julian-Davis' ? '✓ correct' : '✗ WRONG');
-    console.log('in ENABLED_CLIENTS    =',
-      (process.env.WINGGUY_ENABLED_CLIENTS || '').split(',').map(s => s.trim()).includes('Julian-Davis') ? '✓' : '✗');
     console.log('connector URL         = https://pb-webhook-server.onrender.com/mcp2/' + j.portalToken);
   } else {
     console.log('!! No Portal Token on the record — cannot go live until minted (generate-portal-tokens.js)');

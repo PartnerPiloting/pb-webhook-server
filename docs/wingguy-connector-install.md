@@ -13,8 +13,9 @@ in the Master Clients Base → "Portal Token" field).
 1. **Multi-tenant flag ON in prod** - `WINGGUY_CONNECTOR_MULTITENANT=1` on the prod service
    (`srv-cvqgq53e5dus73fa45ag`). One-time, not per client. **Until this is on, every client's URL
    returns "unauthorized".** (Guy's own shared-token URL is unaffected either way.)
-2. **The client is set up** - Active status + a Portal Token on their Master Clients row. (No
-   `WINGGUY_ENABLED_CLIENTS` entry needed - that allow-list gates the *extension*, not the connector.)
+2. **The client is set up** - Active status + a Portal Token on their Master Clients row. (The
+   connector needs nothing else - the separate **"Wingguy Enabled"** field gates the *Chrome
+   extension*, not the connector, so leave it as-is for a chat-only client.)
 3. **Build their URL** - `https://pb-webhook-server.onrender.com/mcp2/<their-Portal-Token>`
 4. **Send it privately** - the URL contains their secret token; treat it like a password (DM / direct
    email, not a shared doc or channel). To revoke later: regenerate their Portal Token - the old URL
