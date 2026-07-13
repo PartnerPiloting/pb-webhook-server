@@ -57,6 +57,11 @@ async function runCheckAvailability({ lead_location, include_lunch, include_soon
       `${windowLine}\n\n` +
       `Offerable slots (coach rules already applied: hours, lunch, notice, weekdays). ` +
       `Coach timezone: ${filtered.yourTimezone}; lead timezone: ${filtered.leadTimezone}. ` +
+      // Where the lead is based, or a loud flag that we're guessing — the coach must ALWAYS hear
+      // which one it is (Guy 2026-07-13; the silent assume-coach's-tz fallback is the trap).
+      (filtered.leadTzDetected
+        ? `Lead is based in "${filtered.leadLocation}" — ALWAYS tell the coach where the lead is based when you present times. `
+        : `⚠ Lead location ${filtered.leadLocation ? `"${filtered.leadLocation}" NOT recognised` : 'NOT provided'} — lead timezone is ASSUMED to be the coach's. Tell the coach this plainly and confirm where the lead is based before offering times. `) +
       `Each "label" is EXACTLY how that slot reads in the LEAD's timezone — pick slots by label, then use that slot's "time" ISO for booking. NEVER build an ISO yourself. ` +
       (filtered.leadTimezone && filtered.leadTimezone !== filtered.yourTimezone
         ? `The lead's timezone DIFFERS from the coach's: when you write these times into a message, add ONE line under the list — "(all times are ${wingguyCalendar.tzCity(filtered.leadTimezone)} time)" — never a marker on every line, and never leave converted times unlabelled. `

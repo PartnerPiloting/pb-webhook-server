@@ -26,10 +26,12 @@ const dTWO = slotAt(14, 0);      // 2:00 pm Brisbane = 12:00 pm Perth
 
 // One fake conversation: check availability, propose both slots, finish. lastToolResults captures
 // what the model saw so we can assert on propose_times' offeredTimes echo.
-function makeRun({ leadTimezone, location }) {
+function makeRun({ leadTimezone, location, detected = true }) {
   const fakeAvail = async () => ({
     yourTimezone: 'Australia/Brisbane',
     leadTimezone,
+    leadLocation: location || '',
+    leadTzDetected: detected,
     days: [{ date: day.toFormat('yyyy-MM-dd'), day: day.toFormat('ccc'), freeSlots: [
       { time: dTENHALF, display: '10:30 am', leadDisplay: '8:30 am' },
       { time: dTWO, display: '2:00 pm', leadDisplay: '12:00 pm' },
@@ -73,6 +75,9 @@ function makeRun({ leadTimezone, location }) {
   check('offeredTimes echo shows BOTH sides', () => assert.ok(
     perth.proposeResult && perth.proposeResult.offeredTimes.every((t) => t.includes('Perth') && t.includes('Brisbane')),
     `offeredTimes: ${JSON.stringify(perth.proposeResult && perth.proposeResult.offeredTimes)}`));
+  check('leadBase says where the lead is based', () => assert.ok(
+    perth.proposeResult && /based in Perth, Western Australia/.test(perth.proposeResult.leadBase),
+    `leadBase: ${perth.proposeResult && perth.proposeResult.leadBase}`));
 
   console.log('\nSame-timezone lead — plain times, no marker:');
   const bris = await makeRun({ leadTimezone: 'Australia/Brisbane', location: 'Brisbane, Queensland' });
@@ -81,6 +86,17 @@ function makeRun({ leadTimezone, location }) {
   check('offeredTimes stays single-sided', () => assert.ok(
     bris.proposeResult && bris.proposeResult.offeredTimes.every((t) => !t.includes('(')),
     `offeredTimes: ${JSON.stringify(bris.proposeResult && bris.proposeResult.offeredTimes)}`));
+  check('leadBase still says where the lead is based', () => assert.ok(
+    bris.proposeResult && /based in Brisbane, Queensland/.test(bris.proposeResult.leadBase),
+    `leadBase: ${bris.proposeResult && bris.proposeResult.leadBase}`));
+
+  console.log('\nMissing/unrecognised location — leadBase is a warning, not a guess dressed as a fact:');
+  const noloc = await makeRun({ leadTimezone: 'Australia/Brisbane', location: '', detected: false });
+  check('a draft was produced', () => assert.ok(noloc.res && noloc.res.draft, `no draft: ${JSON.stringify(noloc.res)}`));
+  check('draft has NO marker line (assumed same tz)', () => assert.ok(!noloc.res.draft.includes('all times are'), noloc.res.draft));
+  check('leadBase warns the location is missing and tz is ASSUMED', () => assert.ok(
+    noloc.proposeResult && /⚠/.test(noloc.proposeResult.leadBase) && /missing/.test(noloc.proposeResult.leadBase) && /ASSUMES/.test(noloc.proposeResult.leadBase),
+    `leadBase: ${noloc.proposeResult && noloc.proposeResult.leadBase}`));
 
   console.log(failures ? `\n❌ ${failures} test(s) failed` : '\n✅ all tz-marker tests passed');
   process.exit(failures ? 1 : 0);

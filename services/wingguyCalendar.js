@@ -127,7 +127,12 @@ function buildDaysFromBusy({ busyEvents, dates, yourTimezone, leadTimezone, star
 async function getAvailabilityForCoach(clientId, leadLocation = '') {
   const info = await getCoachCalendarInfo(clientId);
   const yourTimezone = info.timezone;
-  const leadTimezone = (leadLocation && getTimezoneFromLocation(leadLocation)) || yourTimezone;
+  // leadTzDetected distinguishes a REAL detection from the silent assume-coach's-tz fallback, so
+  // every surface can tell the coach where the lead is based — or that it doesn't know (Guy's
+  // "can Wingguy always say where the recipient is based?", 2026-07-13).
+  const detectedTz = leadLocation ? getTimezoneFromLocation(leadLocation) : null;
+  const leadTimezone = detectedTz || yourTimezone;
+  const leadTzDetected = !!detectedTz;
 
   const dateStr = todayInTz(yourTimezone);
   const dates = [];
@@ -143,7 +148,7 @@ async function getAvailabilityForCoach(clientId, leadLocation = '') {
     if (error) throw new Error(`nylas availability read failed: ${error}`);
     const nylasPrefs = getBookingPrefs(clientId);
     const days = buildDaysFromBusy({ busyEvents: events, dates, yourTimezone, leadTimezone, lunch: nylasPrefs.lunch });
-    return { yourTimezone, leadTimezone, days };
+    return { yourTimezone, leadTimezone, leadLocation, leadTzDetected, days };
   }
 
   // Google service-account read (Guy's proven path — unchanged).
@@ -167,7 +172,7 @@ async function getAvailabilityForCoach(clientId, leadLocation = '') {
     })),
   }));
 
-  return { yourTimezone, leadTimezone, days: mapped };
+  return { yourTimezone, leadTimezone, leadLocation, leadTzDetected, days: mapped };
 }
 
 // A "meeting" for the daily count = a BUSY event overlapping the booking-hours window (9–17) that
@@ -463,16 +468,18 @@ function filterAvailability(avail, prefs, { includeLunch = false, includeSoon = 
     const slotsWanted = prefs.slotsToOffer || 3;
     const nearSlotCount = near.reduce((n, d) => n + d.freeSlots.length, 0);
     if (nearSlotCount >= slotsWanted) {
-      return { yourTimezone: avail.yourTimezone, leadTimezone: avail.leadTimezone, window, days: near };
+      return { yourTimezone: avail.yourTimezone, leadTimezone: avail.leadTimezone, leadLocation: avail.leadLocation, leadTzDetected: avail.leadTzDetected, window, days: near };
     }
     return {
       yourTimezone: avail.yourTimezone,
       leadTimezone: avail.leadTimezone,
+      leadLocation: avail.leadLocation,
+      leadTzDetected: avail.leadTzDetected,
       window,
       days: days.map((d) => (d.date >= farStart ? { ...d, fallbackWeek: true } : d)),
     };
   }
-  return { yourTimezone: avail.yourTimezone, leadTimezone: avail.leadTimezone, window, days };
+  return { yourTimezone: avail.yourTimezone, leadTimezone: avail.leadTimezone, leadLocation: avail.leadLocation, leadTzDetected: avail.leadTzDetected, window, days };
 }
 
 /**

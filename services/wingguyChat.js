@@ -20,6 +20,7 @@ const { WINGGUY_VOICE, WINGGUY_AGENT_INSTRUCTIONS } = require('./../config/wingg
 const { getBookingPrefs } = require('../config/wingguyBookingPrefs');
 const { getVoicePrefs } = require('../config/wingguyVoicePrefs');
 const wingguyCalendar = require('./wingguyCalendar');
+const { getTimezoneFromLocation } = require('../linkedin-messaging-followup-next/lib/timezoneFromLocation.js');
 const wingguyLeads = require('./wingguyLeads');
 const wingguyRules = require('./wingguyRulesMcp');
 
@@ -257,7 +258,7 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
   const runTool = async (name, input) => {
     if (name === 'check_availability') {
       const avail = await getAvailability(coach.clientId, profile.location || '');
-      availTz = { yourTimezone: avail.yourTimezone, leadTimezone: avail.leadTimezone };
+      availTz = { yourTimezone: avail.yourTimezone, leadTimezone: avail.leadTimezone, leadTzDetected: avail.leadTzDetected };
       // The shared pipeline (wingguyCalendar.filterAvailability) enforces ALL the offer rules in one
       // place — hours bounds, lunch hold, no past/too-soon days (includeSoon lifts notice only), the
       // daily meeting cap — and labels each slot exactly as it will read in the lead's timezone.
@@ -324,12 +325,21 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
       // so neither the draft nor the chat summary can honestly call them "this week"/"next week".
       const farStart = wingguyCalendar.firstFarWeekDate(tz);
       const beyondNextWeek = ordered.filter((iso) => dateStrInTz(iso, tz) >= farStart).map((iso) => fmtSlot(iso, leadTz));
+      // leadBase: where the lead is based + which timezone the draft used, ALWAYS present (Guy's
+      // "can Wingguy always say where the recipient is based?", 2026-07-13). The dangerous case is
+      // the SILENT fallback — location missing/unrecognised means the times quietly assume Guy's
+      // own timezone, so that variant is a warning the agent must relay, not bury.
+      const leadLoc = String(profile.location || '').trim();
+      const tzKnown = availTz.leadTzDetected !== undefined ? availTz.leadTzDetected : !!(leadLoc && getTimezoneFromLocation(leadLoc));
+      const leadBase = tzKnown
+        ? `Lead is based in ${leadLoc} — ${tzDiffer ? `draft times are ${tzCity(leadTz)} time (both clocks shown in offeredTimes)` : 'same timezone as Guy, so plain times'}. Tell Guy where the lead is based when you present the draft.`
+        : `⚠ Lead's location is ${leadLoc ? `"${leadLoc}", which I can't map to a timezone` : 'missing from the profile'} — the draft ASSUMES Guy's own timezone (${tzCity(tz)}). Say this to Guy plainly and ask him to confirm where the lead is based before sending.`;
       // NO automatic holds (Guy's call, 2026-07-06 — the auto-hold experiment shipped and was pulled
       // the same afternoon: 8 HOLD blocks incl. duplicates piled up within half an hour and made the
       // diary unreadable). Guy places "HOLD: <lead name>" events MANUALLY when a promise is worth
       // protecting; book_meeting still respects and clears them (see below).
       return {
-        ok: true, offered: ordered.length, offeredTimes, dropped,
+        ok: true, offered: ordered.length, offeredTimes, leadBase, dropped,
         ...(beyondNextWeek.length ? { beyondNextWeek, warning: `These offered times fall BEYOND next week (fallback weeks): ${beyondNextWeek.join('; ')}. Never describe them as "this week" or "next week" in the draft or to Guy, and only offer them because nearer days couldn't fill the options — say that plainly.` } : {}),
       };
     }
