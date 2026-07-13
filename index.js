@@ -1795,7 +1795,16 @@ try {
     app.use('/api/extension-config', extensionConfigRoutes); 
     moduleLogger.info("index.js: Extension config routes mounted at /api/extension-config"); 
 } catch(e) { 
-    moduleLogger.error("index.js: Error mounting extension config routes", e.message, e.stack); 
+    moduleLogger.error("index.js: Error mounting extension config routes", e.message, e.stack);
+}
+
+// Zoho Calendar OAuth connect flow (per-client "connect my Zoho calendar" — see routes/zohoAuthRoutes.js)
+try {
+    const zohoAuthRoutes = require('./routes/zohoAuthRoutes.js');
+    app.use('/auth/zoho', zohoAuthRoutes);
+    moduleLogger.info("index.js: Zoho auth routes mounted at /auth/zoho");
+} catch(e) {
+    moduleLogger.error("index.js: Error mounting Zoho auth routes", e.message, e.stack);
 }
 
 // Billing routes (Stripe invoices and PDF generation)
