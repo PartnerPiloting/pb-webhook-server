@@ -399,6 +399,10 @@ function offerWindowInfo(tz) {
     farWeeksStart: firstFarWeekDate(tz),
   };
 }
+// Human place name for a timezone marker line, e.g. "Australia/Perth" → "Perth".
+function tzCity(tz) {
+  return (String(tz || '').split('/').pop() || '').replace(/_/g, ' ');
+}
 // Format a slot for the LinkedIn message in the lead's timezone, Guy's style: "Wed 1 July, 1:30 pm".
 function fmtSlot(iso, tz) {
   const d = new Date(iso);
@@ -568,5 +572,5 @@ module.exports = {
   getAvailabilityForCoach, createBookingEvent, checkProposedTime, getClashesForISO, buildDaysFromBusy,
   deleteOfferHolds, isHoldForLead, isHoldSummary, holdTitle,
   // shared offer-time pipeline + booking guard (used by the panel agent AND the connector tools)
-  filterAvailability, bookMeetingGuarded, fmtSlot, inLunch, hhmmToMin, minutesInTz, earliestOfferDate, dateStrInTz, isWeekendInTz, firstFarWeekDate, offerWindowInfo,
+  filterAvailability, bookMeetingGuarded, fmtSlot, tzCity, inLunch, hhmmToMin, minutesInTz, earliestOfferDate, dateStrInTz, isWeekendInTz, firstFarWeekDate, offerWindowInfo,
 };

@@ -202,7 +202,7 @@ function buildContext({ profileBlock, convoBlock, leadEmail, coachName, prefs, c
 
 // The offer-time helpers (bounds, lunch, past/too-soon, slot formatting) live in wingguyCalendar —
 // ONE implementation shared with the claude.ai connector tools (the "one booking door", 2026-07-06).
-const { hhmmToMin, minutesInTz, inLunch, earliestOfferDate, dateStrInTz, fmtSlot } = wingguyCalendar;
+const { hhmmToMin, minutesInTz, inLunch, earliestOfferDate, dateStrInTz, fmtSlot, tzCity } = wingguyCalendar;
 
 // Run one chat turn (which may involve several tool round-trips) to completion.
 // Returns { ok, reply, draft, booked, messages, model }.
@@ -289,7 +289,12 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
       if (!ordered.length) {
         return { ok: false, error: 'None of those slots are valid (all outside your hours / in lunch). Pick different slots from check_availability.', dropped };
       }
-      const bullets = ordered.map((iso) => `- ${fmtSlot(iso, leadTz)}`).join('\n');
+      // Different-timezone lead: ONE line under the list saying whose time it is (Guy's call,
+      // 2026-07-13 — the Marianne mis-read: correctly-converted Perth times carried no marker, so
+      // she read them as Brisbane time). One line, not a tag on every slot.
+      const tzDiffer = leadTz !== tz;
+      const bullets = ordered.map((iso) => `- ${fmtSlot(iso, leadTz)}`).join('\n')
+        + (tzDiffer ? `\n\n(all times are ${tzCity(leadTz)} time)` : '');
       const intro = String(input.intro || '').trim();
       let outro = String(input.outro || '').trim();
       // Code owns the sign-off on a times message (the model composes intro/outro but often omits it, or
@@ -309,7 +314,11 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
       // Echo back the EXACT lines written into the draft so the model's chat summary to Guy is grounded in
       // what was actually rendered — not re-derived from memory (which is how the summary said "Wed 8 July"
       // while the draft said "Thu 9 July", 2026-07-02). The agent must quote these, not restate dates itself.
-      const offeredTimes = ordered.map((iso) => fmtSlot(iso, leadTz));
+      // Both sides when the timezones differ, so Guy's chat summary shows HIS clock too — lead-tz-only
+      // echoes had Guy himself reading "12:00 pm" (Perth) as his own Brisbane time.
+      const offeredTimes = ordered.map((iso) => tzDiffer
+        ? `${fmtSlot(iso, leadTz)} ${tzCity(leadTz)} (${fmtSlot(iso, tz)} ${tzCity(tz)})`
+        : fmtSlot(iso, leadTz));
       // Beyond-next-week BACKSTOP (2026-07-10, the Vikas mis-offer: fallback days written up as
       // "next week"): code tells the model exactly which offered times fall past the near window,
       // so neither the draft nor the chat summary can honestly call them "this week"/"next week".

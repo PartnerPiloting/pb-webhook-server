@@ -58,6 +58,9 @@ async function runCheckAvailability({ lead_location, include_lunch, include_soon
       `Offerable slots (coach rules already applied: hours, lunch, notice, weekdays). ` +
       `Coach timezone: ${filtered.yourTimezone}; lead timezone: ${filtered.leadTimezone}. ` +
       `Each "label" is EXACTLY how that slot reads in the LEAD's timezone — pick slots by label, then use that slot's "time" ISO for booking. NEVER build an ISO yourself. ` +
+      (filtered.leadTimezone && filtered.leadTimezone !== filtered.yourTimezone
+        ? `The lead's timezone DIFFERS from the coach's: when you write these times into a message, add ONE line under the list — "(all times are ${wingguyCalendar.tzCity(filtered.leadTimezone)} time)" — never a marker on every line, and never leave converted times unlabelled. `
+        : '') +
       `Prefer the least-busy days and vary the time of day across the options.\n\n` +
       lines.join('\n'),
   };
