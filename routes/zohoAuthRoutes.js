@@ -24,10 +24,16 @@ const clientService = require('../services/clientService');
 
 const router = express.Router();
 
-const AUTH_INIT_BASE = 'https://accounts.zoho.com'; // start here; Zoho routes to the user's home DC and returns accounts-server
 const SCOPES = 'ZohoCalendar.calendar.READ,ZohoCalendar.event.ALL';
 const STATE_TTL_MS = 15 * 60 * 1000;
 
+// Where the OAuth login starts. A Zoho app is tied to the DATA CENTRE it's registered in, so this
+// must match the app's DC: set ZOHO_ACCOUNTS_BASE=https://accounts.zoho.com.au for an AU app (the
+// pilot — Julian + the test account are AU). Defaults to the US DC. Zoho then routes the user to
+// their home DC and returns `accounts-server` on the callback, which the token exchange uses.
+function authInitBase() {
+  return (process.env.ZOHO_ACCOUNTS_BASE || 'https://accounts.zoho.com').replace(/\/$/, '');
+}
 function stateSecret() {
   return process.env.ZOHO_STATE_SECRET || process.env.ZOHO_CLIENT_SECRET || '';
 }
@@ -71,7 +77,7 @@ router.get('/start', async (req, res) => {
   if (!client || client.clientId !== clientId) {
     return res.status(403).send(page('Not authorized', '<h1 class="err">Not authorized</h1><p>That connect link isn\'t valid for this client.</p>'));
   }
-  const u = new URL(`${AUTH_INIT_BASE}/oauth/v2/auth`);
+  const u = new URL(`${authInitBase()}/oauth/v2/auth`);
   u.searchParams.set('response_type', 'code');
   u.searchParams.set('client_id', process.env.ZOHO_CLIENT_ID);
   u.searchParams.set('scope', SCOPES);
@@ -85,7 +91,7 @@ router.get('/start', async (req, res) => {
 // Step 2 — Zoho redirects back here with the code + the account's home data-centre.
 router.get('/callback', async (req, res) => {
   const { code, state, error } = req.query;
-  const accountsServer = String(req.query['accounts-server'] || req.query.accounts_server || AUTH_INIT_BASE).replace(/\/$/, '');
+  const accountsServer = String(req.query['accounts-server'] || req.query.accounts_server || authInitBase()).replace(/\/$/, '');
   if (error) return res.status(400).send(page('Connect failed', `<h1 class="err">Zoho connect failed</h1><p>${String(error).slice(0, 120)}</p>`));
   const clientId = verifyState(state);
   if (!clientId) return res.status(400).send(page('Link expired', '<h1 class="err">This connect link has expired or is invalid</h1><p>Please start again from the link you were sent.</p>'));
