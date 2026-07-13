@@ -144,7 +144,7 @@ async function ensureSchema(client) {
       id BIGSERIAL PRIMARY KEY,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       actor TEXT,
-      action TEXT NOT NULL CHECK (action IN ('commit','retire','revert','import','variable-set','asset-set')),
+      action TEXT NOT NULL CHECK (action IN ('commit','retire','revert','import','seed','variable-set','asset-set')),
       layer TEXT,
       tenant_id TEXT,
       rule_key TEXT,
@@ -156,6 +156,13 @@ async function ensureSchema(client) {
   await client.query(`
     CREATE INDEX IF NOT EXISTS idx_wg_history_rule
     ON wingguy_rule_history (rule_key, COALESCE(tenant_id, ''));
+  `);
+  // Migration: the action CHECK on an already-created history table can't be widened by the
+  // CREATE ... IF NOT EXISTS above. Re-assert it so existing DBs accept newer actions ('seed').
+  await client.query(`ALTER TABLE wingguy_rule_history DROP CONSTRAINT IF EXISTS wingguy_rule_history_action_check;`);
+  await client.query(`
+    ALTER TABLE wingguy_rule_history ADD CONSTRAINT wingguy_rule_history_action_check
+    CHECK (action IN ('commit','retire','revert','import','seed','variable-set','asset-set'));
   `);
 
   schemaEnsured = true;
