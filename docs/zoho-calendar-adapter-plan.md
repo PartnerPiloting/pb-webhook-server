@@ -13,6 +13,14 @@
 
 ---
 
+## ▶▶ PROGRESS (2026-07-13) — items 1-3 (the code that doesn't need the Zoho app) BUILT + VERIFIED on prod
+- **Credential fields (step 3): DONE.** Generic `Calendar Provider Token` + `Calendar Provider Domain` added to the Clients roster (Master Clients base `appJ9XAZeJeK5x55r`) via idempotent `scripts/add-calendar-provider-fields.js`. Chosen **generic, not Zoho-specific**, so a future direct provider reuses them (design note in the script + the 2026-07-13 session). Roster is one global table → no template copy (the template is a leads base; script skips it). `clientService.getClientById` + `wingguyCalendar.getCoachCalendarInfo` now read them; the "has a calendar" guard accepts a direct-provider token.
+- **Zoho adapter (step 5): BUILT** in `services/calendarProvider.js` — `getViaZoho`/`createViaZoho`/`deleteViaZoho` + `mapZohoEvent`, OAuth refresh-token helper (in-memory access-token cache), region routing (`zohoHosts`), dispatch branches on `provider==='zoho'`. Pure helpers unit-tested (datetime round-trip, offset/all-day, host derivation, event mapping).
+- **De-nylas-ify (step 6): DONE** — `readsViaNylas`/`coachForNylas`/`coachForHolds` → `providerForInfo`/`usesProviderSeam`/`coachForCalendar`/`writeProviderForCoach`. Reads AND writes now route on the real provider. **Verified behaviour-preserving for Guy on prod: availability = 21 days / 256 slots via Google, unchanged.** A synthetic Zoho coach dispatches to the Zoho branch (fails only on missing app creds — routing proven).
+- **STILL TODO (needs the Zoho app):** step 1 (register the one Zoho OAuth app → `ZOHO_CLIENT_ID`/`ZOHO_CLIENT_SECRET` env), step 4 (the `/auth/zoho/start` + `/callback` connect flow that writes the token/domain onto a client's record), step 7 (live-account test matrix — the mapZohoEvent edge cases + invite-email + delete-etag get confirmed here). The dormant `zoho` branch ships safely meanwhile (no tenant has `calendarProvider='zoho'`).
+
+---
+
 ## The seam it plugs into (read this first)
 
 All calendar access already funnels through **one** file — `services/calendarProvider.js`, "the ONE
