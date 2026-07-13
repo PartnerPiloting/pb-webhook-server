@@ -142,12 +142,15 @@ async function getAllClients() {
                 const nylasGrantId = record.get('Nylas Grant ID') || null;
                 const calendarProvider = record.get('Calendar Provider') || null;
                 // Wingguy booking identity that goes ON the invite — per-client so a tenant's invites
-                // carry THEIR Zoom/contacts, not Guy's. Optional: when a field is absent the booking
+                // carry THEIR Zoom/contacts, not Guy's. These read the client's OWN existing fields
+                // (the tenant is the "coach" on their own invites). When a field is empty the booking
                 // code falls back to the shared default (config/wingguyBookingPrefs.js), so Guy is
-                // unaffected until these are filled in. (Fields can be added later — additive.)
-                const bookingZoom = record.get('Booking Zoom Link') || null;
-                const coachLinkedInUrl = record.get('Coach LinkedIn URL') || null;
-                const coachPhone = record.get('Coach Phone Number') || null;
+                // unaffected. (Field names corrected 2026-07-13 to match the base: Meeting Link /
+                // LinkedIn URL / Phone — the old 'Booking Zoom Link' etc. never existed, so these
+                // always came back null.)
+                const bookingZoom = record.get('Meeting Link') || null;
+                const coachLinkedInUrl = record.get('LinkedIn URL') || null;
+                const coachPhone = record.get('Phone') || null;
                 // "Thanks for Connecting" worklist (per-client rollout). Gate = master "Thanks for
                 // Connecting" Yes/No switch; lookback bounds the Outstanding queue (default applied
                 // in the route when blank). Added 2026-06-20.
