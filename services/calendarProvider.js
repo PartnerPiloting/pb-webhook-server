@@ -401,15 +401,18 @@ async function createViaZoho(coach, details) {
     const accessToken = await getZohoAccessToken(coach);
     const uid = await getZohoCalendarUid(coach, accessToken);
     const { calendarBase } = zohoHosts(coach.calendarProviderDomain);
+    const guests = (details.attendees || [])
+      .filter((a) => a && a.email)
+      .map((a) => ({ email: String(a.email).trim(), permission: 2, attendance: 1 }));
     const eventData = {
       title: details.title || 'Meeting',
       dateandtime: { start: isoToZoho(details.startISO), end: isoToZoho(details.endISO) },
-      attendees: (details.attendees || [])
-        .filter((a) => a && a.email)
-        .map((a) => ({ email: String(a.email).trim(), permission: 2, attendance: 1 })),
       // 1 = email the invite to attendees; 0 = silent (attendee-less utility events / offer HOLDs).
       notify_attendee: details.notifyParticipants === false ? 0 : 1,
     };
+    // Zoho rejects an EMPTY attendees array ([1-50] only) — omit the field entirely for guest-less
+    // events (offer HOLDs). Only include it when there's at least one guest.
+    if (guests.length) eventData.attendees = guests;
     if (details.description) eventData.description = String(details.description).slice(0, 10000);
     if (details.location) eventData.location = String(details.location).slice(0, 255);
     if (details.reminders && Array.isArray(details.reminders.overrides)) {
