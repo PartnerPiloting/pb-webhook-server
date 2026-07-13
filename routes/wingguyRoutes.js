@@ -25,7 +25,13 @@
 const express = require('express');
 const { createLogger } = require('../utils/contextLogger');
 const { authenticateUserWithTestMode } = require('../middleware/authMiddleware');
-const { getAnthropicClient, isAnthropicConfigured } = require('../config/anthropicClient');
+const { getAnthropicClient, getAnthropicClientForKey, isAnthropicConfigured } = require('../config/anthropicClient');
+
+// BYO Anthropic key: the Chrome extension sends the CLIENT's own key in this header (Option A,
+// decided 2026-07-13) — used for that request's drafting, never stored. Absent (chat connector, or
+// extension without a key set) → the platform key. So drafting bills the client when they've BYO'd.
+const BYO_ANTHROPIC_HEADER = 'x-anthropic-key';
+const byoAnthropicClient = (req) => getAnthropicClientForKey(req.get(BYO_ANTHROPIC_HEADER));
 const rulesSource = require('../services/wingguyRulesSource');
 const { getBookingPrefs } = require('../config/wingguyBookingPrefs');
 const { createBookingEvent } = require('../services/wingguyCalendar');
@@ -321,7 +327,7 @@ module.exports = function mountWingguy(app) {
     rulesSource.shadowCompare({ surface: 'draft-thanks', profile, conversation, configTemplateId: templateId, tenantId });
 
     try {
-      const client = getAnthropicClient();
+      const client = byoAnthropicClient(req);
 
       // System comes from the rules-source seam. Config mode = [ stable voice block (CACHED),
       // per-template instructions ] — byte-identical to pre-step-2; store mode = [ task harness,
@@ -394,7 +400,7 @@ module.exports = function mountWingguy(app) {
     rulesSource.shadowCompare({ surface: 'draft-reply', profile, conversation, tenantId: req.client.clientId });
 
     try {
-      const client = getAnthropicClient();
+      const client = byoAnthropicClient(req);
       const userContent =
         `${profileBlock ? `PROFILE:\n${profileBlock}\n\n` : ''}` +
         `CONVERSATION SO FAR (oldest first):\n${convoBlock}\n\n` +
@@ -501,6 +507,9 @@ module.exports = function mountWingguy(app) {
         leadRecordId: enriched && enriched._leadRecordId,
         campaignTemplate,
         systemPrefixBlocks,
+        // BYO key: the booking agent's backend Claude call runs on the client's own key when the
+        // extension sent one, else the platform key (chat-connector path never sends the header).
+        deps: { client: byoAnthropicClient(req) },
         // Reuse the route's grounding-block formatting so the agent sees the same shape as the other endpoints.
         profileBlock: buildProfileBlock(enriched),
         convoBlock: buildConversationBlock(conversation, enriched && enriched.name),

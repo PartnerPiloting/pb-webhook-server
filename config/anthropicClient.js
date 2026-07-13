@@ -54,6 +54,25 @@ function getAnthropicClient() {
     return anthropicClient;
 }
 
+// Per-request BYO client cache: a client's OWN Anthropic key → its SDK client. Lets the extension's
+// drafting run on the CLIENT's key (sent per request in a header, never stored — Option A, decided
+// 2026-07-13) while the chat connector and everything else fall back to the platform key. Cached by
+// key string so we don't rebuild the SDK client every request.
+const byoClients = new Map();
+
+/**
+ * Anthropic client for a specific API key (bring-your-own). An empty/absent key returns the platform
+ * client (getAnthropicClient — the ANTHROPIC_API_KEY env, i.e. Guy's), so callers can pass a
+ * per-request key unconditionally and get a safe fallback.
+ */
+function getAnthropicClientForKey(apiKey) {
+    const key = String(apiKey || '').trim();
+    if (!key) return getAnthropicClient();
+    let c = byoClients.get(key);
+    if (!c) { c = new Anthropic({ apiKey: key }); byoClients.set(key, c); }
+    return c;
+}
+
 /**
  * Whether Claude is configured (key present). Lets feature code degrade gracefully
  * — e.g. skip reconstruction with a clear warning instead of throwing — without a
@@ -66,6 +85,7 @@ function isAnthropicConfigured() {
 module.exports = {
     initializeAnthropic,
     getAnthropicClient,
+    getAnthropicClientForKey,
     isAnthropicConfigured,
     claudeModelId: CLAUDE_MODEL_ID,
 };
