@@ -45,7 +45,7 @@ let schemaEnsured = false;
 const LAYERS = ['foundation', 'template', 'client'];
 const CONTEXTS = ['global', 'outreach', 'reply', 'booking', 'post-call', 'follow-up'];
 const RULE_TYPES = ['voice', 'formatting', 'stage-logic', 'scheduling', 'asset-usage', 'qualifying'];
-const HISTORY_ACTIONS = ['commit', 'retire', 'revert', 'import', 'variable-set', 'asset-set'];
+const HISTORY_ACTIONS = ['commit', 'retire', 'revert', 'import', 'seed', 'variable-set', 'asset-set'];
 
 const DEFAULT_TENANT = 'Guy-Wilson';
 
@@ -546,6 +546,78 @@ async function revertRule({ tenantId, layer, ruleKey, campaign, toVersion, creat
 }
 
 // ---------------------------------------------------------------------------
+// Provisioning — seed-then-diverge
+// ---------------------------------------------------------------------------
+
+/**
+ * SEED — copy the de-personalised TEMPLATE layer into a NEW client's own layer, so a freshly
+ * connected tenant starts with the full craft rulebook (+ the unfilled *-scaffold rules the
+ * "let's set up my rules" walkthrough then replaces) instead of a blank slate. Runtime read is
+ * foundation ∪ client, so before this runs a new tenant sees only the 3 foundation rules.
+ *
+ * IDEMPOTENT + non-destructive: any (rule_key, campaign) the client ALREADY has an active
+ * version of is skipped, never overwritten — so re-running after a client has diverged is safe,
+ * and a half-finished seed can be re-run to completion. Each seeded rule lands as client v1 with
+ * a 'seed' history entry. Variables (catalog is global) and assets (client fills their own) are
+ * deliberately NOT seeded — only rules.
+ */
+async function seedClientFromTemplate({ tenantId, createdBy = 'system:seed', dryRun = false } = {}) {
+  const tenant = (tenantId || '').trim();
+  if (!tenant) throw new Error('seedClientFromTemplate requires a tenantId');
+  if (tenant === DEFAULT_TENANT) {
+    throw new Error(`refusing to seed the default tenant "${DEFAULT_TENANT}" — that is the live owner layer, not a fresh client`);
+  }
+  const p = getPool();
+  if (!p) throw new Error('DATABASE_URL not set');
+  const client = await p.connect();
+  try {
+    await ensureSchema(client);
+    const tpl = await client.query(
+      `SELECT rule_key, context, rule_type, campaign, body
+       FROM wingguy_rules WHERE layer = 'template' AND status = 'active'
+       ORDER BY context, rule_key, COALESCE(campaign, '')`,
+    );
+    const ex = await client.query(
+      `SELECT rule_key, COALESCE(campaign, '') AS campaign
+       FROM wingguy_rules WHERE layer = 'client' AND tenant_id = $1 AND status = 'active'`,
+      [tenant],
+    );
+    const have = new Set(ex.rows.map((r) => `${r.rule_key}|${r.campaign}`));
+    const identity = (r) => `${r.rule_key}|${r.campaign || ''}`;
+    const toSeed = tpl.rows.filter((r) => !have.has(identity(r)));
+    const seeded = toSeed.map(identity);
+    const skipped = tpl.rows.filter((r) => have.has(identity(r))).map(identity);
+
+    if (dryRun) {
+      return { tenantId: tenant, dryRun: true, templateCount: tpl.rows.length, seeded, skipped };
+    }
+
+    await client.query('BEGIN');
+    for (const r of toSeed) {
+      await client.query(
+        `INSERT INTO wingguy_rules
+           (rule_key, tenant_id, layer, context, rule_type, campaign, version, body, change_note, created_by, status)
+         VALUES ($1, $2, 'client', $3, $4, $5, 1, $6, 'seed from template', $7, 'active')`,
+        [r.rule_key, tenant, r.context, r.rule_type, r.campaign || null, r.body, createdBy],
+      );
+      await client.query(
+        `INSERT INTO wingguy_rule_history (actor, action, layer, tenant_id, rule_key, from_version, to_version, detail)
+         VALUES ($1, 'seed', 'client', $2, $3, NULL, 1, $4::jsonb)`,
+        [createdBy, tenant, r.rule_key, JSON.stringify({ context: r.context, rule_type: r.rule_type, campaign: r.campaign || null, source: 'template' })],
+      );
+    }
+    await client.query('COMMIT');
+    console.log(`WINGGUY-RULES seed tenant=${tenant} seeded=${seeded.length} skipped=${skipped.length} of ${tpl.rows.length} template rules by=${createdBy}`);
+    return { tenantId: tenant, dryRun: false, templateCount: tpl.rows.length, seeded, skipped };
+  } catch (e) {
+    try { await client.query('ROLLBACK'); } catch (_) { /* already rolled back or read-only */ }
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Variables + assets
 // ---------------------------------------------------------------------------
 
@@ -724,6 +796,8 @@ module.exports = {
   commitRule,
   retireRule,
   revertRule,
+  // provisioning
+  seedClientFromTemplate,
   setVariable,
   setAsset,
   // pure core (tests)
