@@ -3076,7 +3076,12 @@ var reverts reads only as a fire extinguisher. Boat-burning after ~2 weeks stabl
 
 ## ▶ You are here / next pick-up
 
-**▶▶ 2026-07-13 SESSION 3 CLOSE — ZOHO CALENDAR LIVE + JULIAN FLIPPED ON + BYO-KEY BUILT. START HERE.**
+**▶▶ 2026-07-14 — JULIAN CONNECTOR PRE-FLIGHT PASSED. NEXT = Guy sends him the URL. START HERE.**
+- Ran a read-only pre-flight against LIVE prod (`scripts/wingguy-julian-preflight.js` via a Render one-off job, so it read the real Master Clients Base + env). **All GREEN on his first-wow (chat-only) path:** prod flags live (`WINGGUY_CONNECTOR_MULTITENANT=1`, `WINGGUY_ENABLED_CLIENTS=Julian-Davis`); his record = **Active**, Portal Token set (24 chars), own leads base `appPV6knG91Mmrbj8`, timezone `Australia/Brisbane`; **his token round-trips to `Julian-Davis` (NOT Guy)** — isolation holds; Guy still resolves to Guy, unchanged.
+- **Expected blanks (the LATER steps, not blockers):** `managedClaudeKey=false` (Julian is BYO — but the connector chat runs on his OWN claude.ai sub, so **no key needed for steps 1-2**); `nylasGrantId` blank (email, step 3); `calendarProvider`/Zoho token blank (calendar, step 4); `fathomApiKey` blank (step 5); `bookingZoom` blank (booking identity, before booking goes live).
+- **★ THE NEXT ACTION IS GUY'S (a human send):** DM/email Julian his connector link privately — `https://pb-webhook-server.onrender.com/mcp2/<his-Portal-Token>` + the copy-paste message from `docs/wingguy-connector-install.md` §2. Then he adds it in claude.ai → Settings → Connectors, starts a chat, types "what can I do with Wingguy?" → then "let's set up my rules" (fires `wingguy_setup_rules`). **Steps 1+2 = first wow, chat-only.** Email/calendar/Fathom after.
+
+**▶▶ 2026-07-13 SESSION 3 CLOSE — ZOHO CALENDAR LIVE + JULIAN FLIPPED ON + BYO-KEY BUILT.**
 - **★ ZOHO CALENDAR ADAPTER: BUILT + PROVEN AGAINST A REAL ZOHO ACCOUNT.** Full build shipped this session (see `docs/zoho-calendar-adapter-plan.md` for the checklist, all items done):
   - Generic per-client cal-cred fields `Calendar Provider Token` + `Calendar Provider Domain` on the Clients roster (generic, NOT zoho-specific, so future direct providers reuse them; `scripts/add-calendar-provider-fields.js`).
   - Adapter in `services/calendarProvider.js` (`getViaZoho`/`createViaZoho`/`deleteViaZoho` + `mapZohoEvent`, OAuth refresh + region routing) behind `provider==='zoho'`. De-nylas-ified the shared helpers (`providerForInfo`/`usesProviderSeam`/`coachForCalendar`/`writeProviderForCoach`) — reads AND writes route on the real provider; **Guy's Google-read/Nylas-write path verified unchanged (21 days/256 slots)**.
