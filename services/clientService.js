@@ -146,6 +146,9 @@ async function getAllClients() {
                 // calendarProvider.js seam reads these for the 'zoho' (and future direct) branches.
                 const calendarProviderToken = record.get('Calendar Provider Token') || null;
                 const calendarProviderDomain = record.get('Calendar Provider Domain') || null;
+                // Managed plan: Yes = Wingguy may draft on the PLATFORM Anthropic key for this client
+                // (they pay Guy). Blank/No = they must bring their own key (default). See byoAnthropicClient.
+                const managedClaudeKey = record.get('Managed Claude Key') === 'Yes';
                 // Wingguy booking identity that goes ON the invite — per-client so a tenant's invites
                 // carry THEIR Zoom/contacts, not Guy's. These read the client's OWN existing fields
                 // (the tenant is the "coach" on their own invites). When a field is empty the booking
@@ -210,6 +213,7 @@ async function getAllClients() {
                     calendarProvider: calendarProvider,
                     calendarProviderToken: calendarProviderToken,
                     calendarProviderDomain: calendarProviderDomain,
+                    managedClaudeKey: managedClaudeKey,
                     // Wingguy per-client booking identity (Zoom + contacts on the invite; optional)
                     bookingZoom: bookingZoom,
                     coachLinkedInUrl: coachLinkedInUrl,

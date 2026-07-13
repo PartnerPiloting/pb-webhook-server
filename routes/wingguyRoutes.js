@@ -67,7 +67,10 @@ function byoAnthropicClient(req) {
   const headerKey = String(req.get(BYO_ANTHROPIC_HEADER) || '').trim();
   if (headerKey) return getAnthropicClientForKey(headerKey);            // their own key (BYO)
   const cid = req.client && String(req.client.clientId || '').trim();
-  if (cid && PLATFORM_KEY_CLIENTS.has(cid)) return getAnthropicClient(); // owner / managed-plan only
+  // Platform (Guy's) key allowed only for: the owner, a client on a managed plan (the record's
+  // "Managed Claude Key" = Yes → req.client.managedClaudeKey), or the env override list.
+  const managed = !!(req.client && req.client.managedClaudeKey);
+  if (managed || (cid && PLATFORM_KEY_CLIENTS.has(cid))) return getAnthropicClient();
   return null;                                                          // no key → block, never bill the platform
 }
 
