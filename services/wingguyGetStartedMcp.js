@@ -2,10 +2,13 @@
  * Wingguy onboarding MCP tools — the state-aware in-connector experience.
  *
  * WHY (2026-07-12): onboarding + the "here's what Wingguy unlocks for you" pitch can only live
- * INSIDE the connector, because before it's connected the client's Claude is blank. Two tools:
+ * INSIDE the connector, because before it's connected the client's Claude is blank. Three tools:
  *   - wingguy_get_started : STATUS view — what's live for YOU now, your blanks, how to drive it.
  *   - wingguy_vision      : VISION view — the full day-in-the-life once it's all connected, then
  *                           the concrete "here's what we need to do to get you there" (state-aware).
+ *   - wingguy_setup_rules : the guided "let's set up my rules" walkthrough — seeds the starter
+ *                           rulebook, then walks the client through making it their own, one beat
+ *                           at a time (angle, manifesto, targeting, objections, assets, call two).
  * Same door adapts to where each client is. Extends the "lead with the blanks" help idea.
  *
  * One definition, BOTH transports (same pattern as services/wingguyRulesMcp.js):
@@ -146,6 +149,193 @@ async function runVision(_args = {}, tenant = TENANT) {
 }
 
 // ---------------------------------------------------------------------------
+// wingguy_setup_rules — the guided "let's set up my rules" walkthrough.
+//
+// State machine driven ENTIRELY by the store: each call reads the caller's client layer, works
+// out which *-scaffold rules are still unfilled, and hands the ambient Claude the NEXT beat to
+// run with the user. No session state — it's naturally resumable across turns and sessions.
+//
+// Division of labour:
+//   - THIS tool does the structural writes only: lazily seeds the client's rulebook from the
+//     template on first run (if empty), and auto-retires a scaffold once its filled rule exists.
+//   - The AMBIENT Claude does the creative work (generate an angle from their business /
+//     interview out their manifesto) and the content write, through the existing propose→commit
+//     rules door — human confirms in chat, same as any rule change.
+//
+// Anti-clone by construction: the beats ship the PEDAGOGY (how to run each one), never Guy's own
+// angles/manifesto/targeting. Two clients working their real businesses never come out the same.
+// ---------------------------------------------------------------------------
+
+// Each scaffold beat maps a seeded `*-scaffold` placeholder to the filled rule the walkthrough
+// produces, plus the door coordinates for that commit. `mode` = generate (draft from their
+// business) or interview (draw it out of them — can't be drafted from a profile).
+function scaffoldBeat({ id, title, scaffold, fillKey, context, ruleType, mode, what, how }) {
+  return {
+    id, title, scaffold, fillKey,
+    isDone: (ctx) => !ctx.activeKeys.has(scaffold) || ctx.activeKeys.has(fillKey),
+    script: (ctx) => {
+      const who = ctx.name || 'them';
+      const lines = [];
+      lines.push(what);
+      if (mode === 'interview') {
+        lines.push(`Run this as an INTERVIEW, not a draft-from-their-profile — it's their conviction and it only rings true in their own words. ${how}`);
+      } else {
+        lines.push(`GENERATE this from THEIR real business — never hand them a canned version. ${how}`);
+      }
+      lines.push(`Anti-clone rule: you may illustrate the SHAPE, but the content must be theirs, pulled from their actual world. If it reads like it could be anyone's, it's not done.`);
+      lines.push(`When ${who} are happy: put it through the rules door — propose then commit, layer=client, rule_key="${fillKey}", context=${context}, rule_type=${ruleType} — show them the proposal and get an explicit yes first. I'll retire the "${scaffold}" placeholder automatically once "${fillKey}" is in.`);
+      return lines.join('\n');
+    },
+  };
+}
+
+const SETUP_BEATS = [
+  {
+    id: 'basics',
+    title: 'your basics',
+    isDone: (ctx) => ctx.unsetRequiredVars.length === 0,
+    script: (ctx) => {
+      const list = ctx.unsetRequiredVars
+        .map((v) => `{{${v.var_key}}}${v.description ? ` (${v.description})` : ''}`)
+        .join(', ');
+      return [
+        `Quick housekeeping first — the fill-in values my rules already reference are still blank: ${list || '(none)'}.`,
+        `Ask ${ctx.name || 'them'} for each in plain language (their name/sign-off, timezone, preferred call hours, their meeting/Zoom link, their public LinkedIn URL) and set each with wingguy_variables (set_key / set_value). These are values, not wording — set them directly, no proposal step.`,
+      ].join('\n');
+    },
+  },
+  scaffoldBeat({
+    id: 'framing-angles', title: 'your angle', scaffold: 'framing-angles-scaffold',
+    fillKey: 'framing-angles', context: 'outreach', ruleType: 'voice', mode: 'generate',
+    what: '**Your angle** is the one idea you plant on the way in — what you want a new connection to think, before any pitch. The craft that makes one land: take what everyone in their world already does or assumes, and offer the flip side of it.',
+    how: 'Ask what the people they target usually do or assume, then flip it into a short one-line angle in their voice. One angle per audience they actually message.',
+  }),
+  scaffoldBeat({
+    id: 'manifesto', title: 'your manifesto', scaffold: 'manifesto-scaffold',
+    fillKey: 'manifesto', context: 'follow-up', ruleType: 'voice', mode: 'interview',
+    what: '**Your manifesto** is the deeper "why" behind what you\'re building — used only in warm follow-up emails after a real conversation, never in cold outreach, never with a sales close. Posture: "we\'re building this", vision-first, no urgency.',
+    how: 'Ask them plainly, marketing voice off: when someone they\'ve worked with succeeds, what did they actually give them that others wouldn\'t? What do they think is broken about how this usually goes? Shape their own words into a short quotable version and a longer line-by-line unpacking.',
+  }),
+  scaffoldBeat({
+    id: 'targeting', title: 'your targeting', scaffold: 'targeting-scaffold',
+    fillKey: 'targeting-profile', context: 'outreach', ruleType: 'qualifying', mode: 'generate',
+    what: '**Your targeting** is who you\'re actually trying to reach — the signals that make someone a fit and the red flags that rule them out. It steers who I flag and how I qualify.',
+    how: 'Draw it from their real best clients: who they are, what makes them ready, what makes them a waste of time. Turn it into a crisp who\'s-in / who\'s-out.',
+  }),
+  scaffoldBeat({
+    id: 'objections', title: 'your objections', scaffold: 'objections-scaffold',
+    fillKey: 'objection-handling', context: 'reply', ruleType: 'voice', mode: 'generate',
+    what: '**Your objections** — how you want me to handle the pushback you actually get ("not now", "what is this really", "too busy"), answered in your voice, never defensive or salesy.',
+    how: 'Ask which objections they hear most and how they like to answer each — capture their real responses, not generic rebuttals.',
+  }),
+  {
+    id: 'assets',
+    title: 'your asset library',
+    isDone: (ctx) => !ctx.activeKeys.has('asset-library-scaffold') || ctx.activeAssets.length > 0,
+    script: (ctx) => [
+      '**Your asset library** — the actual links I send out: your booking/Zoom room and public LinkedIn profile (structural, needed), plus any articles, videos or decks you want going into follow-ups (optional — bring your own or skip).',
+      `Add each with wingguy_assets (set_key / set_url; URLs go out exactly as stored). A link only goes out once a rule references it, so for any content piece, also tell me where it should appear and we'll add that to the relevant rule. Ask ${ctx.name || 'them'} what they'd like on file.`,
+    ].join('\n'),
+  },
+  scaffoldBeat({
+    id: 'call2', title: 'your second call', scaffold: 'call2-scaffold',
+    fillKey: 'call2-shift-conversation', context: 'post-call', ruleType: 'stage-logic', mode: 'generate',
+    what: '**Your second call** — how the middle conversation runs, the shift from discovery toward a decision. The three-call shape is already pre-loaded; this is call two in your words.',
+    how: 'Ask how they like the second conversation to go — what shifts, what they\'re listening for — and shape it into their call-2 playbook.',
+  }),
+];
+
+// Scaffolds whose filled rule now exists get their placeholder retired (structural cleanup the
+// tool owns). Returns the keys it retired.
+async function reapFilledScaffolds(tenant, rowByKey, activeKeys) {
+  const reaped = [];
+  for (const beat of SETUP_BEATS) {
+    if (!beat.scaffold || !beat.fillKey) continue;
+    if (activeKeys.has(beat.fillKey) && activeKeys.has(beat.scaffold)) {
+      const row = rowByKey.get(beat.scaffold);
+      try {
+        await store.retireRule({
+          tenantId: tenant, layer: 'client', ruleKey: beat.scaffold,
+          expectedVersion: Number(row.version), createdBy: `mcp:setup:${tenant}`,
+          changeNote: `filled → ${beat.fillKey}`,
+        });
+        activeKeys.delete(beat.scaffold);
+        reaped.push(beat.scaffold);
+      } catch (_e) { /* version moved or already gone — next call retries */ }
+    }
+  }
+  return reaped;
+}
+
+async function runSetupRules(_args = {}, tenant = TENANT) {
+  const coach = await clientService.getClientById(tenant);
+  if (!coach) {
+    return { text: "I couldn't find your Wingguy set-up yet. Check with whoever's onboarding you — your account may not be fully connected." };
+  }
+  const name = coach.clientFirstName || coach.clientName || '';
+
+  // Read the client's rule layer; lazily seed from template if it's empty (works even before
+  // provisioning wires the seed in).
+  let clientRules = [];
+  try { clientRules = (await store.getActiveRules({ tenantId: tenant, layer: 'client' })) || []; } catch (_e) { /* store down */ }
+  let justSeeded = false;
+  if (!clientRules.length) {
+    try {
+      await store.seedClientFromTemplate({ tenantId: tenant, createdBy: `mcp:setup:${tenant}` });
+      justSeeded = true;
+      clientRules = (await store.getActiveRules({ tenantId: tenant, layer: 'client' })) || [];
+    } catch (_e) { /* seed failed — carry on with whatever's there */ }
+  }
+
+  const rowByKey = new Map(clientRules.map((r) => [r.rule_key, r]));
+  const activeKeys = new Set(clientRules.map((r) => r.rule_key));
+  await reapFilledScaffolds(tenant, rowByKey, activeKeys);
+
+  let assets = [];
+  try { assets = ((await store.getAssets({ tenantId: tenant })) || []).filter((a) => a.status === 'active'); } catch (_e) { /* ignore */ }
+  if (assets.length && activeKeys.has('asset-library-scaffold')) {
+    const row = rowByKey.get('asset-library-scaffold');
+    try {
+      await store.retireRule({
+        tenantId: tenant, layer: 'client', ruleKey: 'asset-library-scaffold',
+        expectedVersion: Number(row.version), createdBy: `mcp:setup:${tenant}`, changeNote: 'assets added',
+      });
+      activeKeys.delete('asset-library-scaffold');
+    } catch (_e) { /* retry next call */ }
+  }
+
+  let vars = [];
+  try { vars = (await store.getVariables({ tenantId: tenant })) || []; } catch (_e) { /* ignore */ }
+  const unsetRequiredVars = vars.filter((v) => v.required && (v.value == null || String(v.value).trim() === ''));
+
+  const ctx = { activeKeys, activeAssets: assets, unsetRequiredVars, name };
+  const done = SETUP_BEATS.filter((b) => b.isDone(ctx));
+  const remaining = SETUP_BEATS.filter((b) => !b.isDone(ctx));
+  const freshStart = done.length === 0;
+
+  const parts = [];
+  parts.push(`**Let's set up your rules${name ? ', ' + name : ''}.**`);
+  if (justSeeded) {
+    parts.push('', "I've loaded your starting rulebook — the shared craft (how to write well, book, follow up) is already in place. Now we make it *yours*.");
+  }
+  if (freshStart) {
+    parts.push('', 'How this works: you never touch a file or a setting. You tell me in plain English how you want things done, I write it up and show you, and it only sticks once you say yes. Change anything the same way, any time.');
+  }
+  if (done.length) parts.push('', `**Done so far:** ${done.map((b) => b.title).join(', ')}.`);
+
+  if (!remaining.length) {
+    parts.push('', "**That's everything — your rules are set up.** From here the best tuning happens as you work: whenever a draft isn't quite right, just tell me (\"warmer\", \"shorter\", \"I'd say it like this\") and I'll fold it into your rules. Before you go live in earnest, sanity-check that your angle and targeting genuinely sound like *you*, not a generic default.");
+    return { text: parts.join('\n') };
+  }
+
+  const next = remaining[0];
+  parts.push('', `**Still to do:** ${remaining.map((b) => b.title).join(', ')}. Let's do **${next.title}** now.`, '');
+  parts.push(next.script(ctx));
+  parts.push('', 'Once this one is committed, call wingguy_setup_rules again and I\'ll bring up the next — we go one at a time.');
+  return { text: parts.join('\n') };
+}
+
+// ---------------------------------------------------------------------------
 // Definitions — one source of truth for names/descriptions/schemas
 // ---------------------------------------------------------------------------
 
@@ -165,6 +355,14 @@ const TOOL_DEFS = [
     zodSchema: {},
     jsonSchema: { type: 'object', properties: {} },
     run: runVision,
+  },
+  {
+    name: 'wingguy_setup_rules',
+    description:
+      'The guided "let\'s set up my rules" walkthrough — how a client turns the generic starter rulebook into their own voice. Call this whenever the user says "let\'s set up my rules", "set up my rules", "help me set up", "let\'s do my rules", or asks to personalise/build their rules. It returns the NEXT step of the walkthrough (it tracks progress itself, so just call it again after each step is committed). Do NOT paste the returned text verbatim — ENACT it: run the beat with the user (generate an angle from their business, interview out their manifesto, etc.), then write each agreed rule through the propose→commit rules door. Resumable: safe to call any time to pick up where they left off.',
+    zodSchema: {},
+    jsonSchema: { type: 'object', properties: {} },
+    run: runSetupRules,
   },
 ];
 
