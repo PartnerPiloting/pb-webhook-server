@@ -28,8 +28,9 @@ in the Master Clients Base → "Portal Token" field).
 >
 > Wingguy lives inside your own Claude as a "connector". Here's how to add it:
 >
-> **First, a quick check:** you'll need a Claude plan that supports custom connectors (Pro, Max,
-> Team or Enterprise - the free tier doesn't). If you're on one of those, you're good.
+> **First, a quick check:** any current Claude plan works - the free tier allows **one** active
+> custom connector (which is all you need for Wingguy), and paid plans (Pro, Max, Team, Enterprise)
+> allow several. If you already have another custom connector on free, you'd remove it to add this.
 >
 > **Add the connector:**
 > 1. Open **claude.ai** → **Settings** → **Connectors**.
@@ -49,7 +50,7 @@ in the Master Clients Base → "Portal Token" field).
 
 - **"Unauthorized" / connector shows as failed** → either the prod flag isn't on (Guy's pre-flight
   step 1), or the token in the URL doesn't match an **Active** client with that Portal Token.
-- **No "Add custom connector" option** → the client's Claude plan doesn't support connectors
-  (needs Pro/Max/Team/Enterprise).
+- **No "Add custom connector" option** → their Claude may not surface connectors in their
+  version/region yet, or (on free) they're at the one-connector limit — remove another to add Wingguy.
 - **Connected but no tools appear** → have them start a fresh chat; some clients only surface a new
   connector's tools in a new conversation.
