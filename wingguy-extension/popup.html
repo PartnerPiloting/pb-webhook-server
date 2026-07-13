@@ -198,6 +198,40 @@
     .hidden {
       display: none !important;
     }
+
+    .byo-key {
+      margin-top: 16px;
+      border-top: 1px solid #e5e7eb;
+      padding-top: 14px;
+    }
+    .byo-key label {
+      display: block;
+      font-size: 12px;
+      font-weight: 600;
+      color: #374151;
+      margin-bottom: 4px;
+    }
+    .byo-key .hint {
+      font-size: 11px;
+      color: #9ca3af;
+      margin-bottom: 8px;
+      line-height: 1.4;
+    }
+    .byo-key input {
+      width: 100%;
+      padding: 8px 10px;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      font-size: 12px;
+      margin-bottom: 8px;
+    }
+    .key-status {
+      font-size: 11px;
+      margin-top: 6px;
+      min-height: 14px;
+      color: #6b7280;
+    }
+    .key-status.ok { color: #16a34a; }
   </style>
 </head>
 <body>
@@ -225,8 +259,16 @@
       <div class="actions">
         <button id="btn-disconnect" class="btn btn-secondary">Disconnect</button>
       </div>
+
+      <div class="byo-key">
+        <label for="anthropic-key">Your Claude (Anthropic) API key</label>
+        <p class="hint">Your drafting runs on your own key. Kept in this browser only and sent with each draft to run Claude - we never store it.</p>
+        <input id="anthropic-key" type="password" placeholder="sk-ant-..." autocomplete="off" spellcheck="false" />
+        <button id="btn-save-key" class="btn btn-primary" style="width:100%">Save key</button>
+        <p id="key-status" class="key-status"></p>
+      </div>
     </div>
-    
+
     <!-- Disconnected State -->
     <div id="disconnected-state" class="status-card">
       <div class="status-row">

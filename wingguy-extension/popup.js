@@ -9,6 +9,31 @@ document.addEventListener('DOMContentLoaded', () => {
       updateUI();
     });
   });
+
+  // BYO Claude key — kept in this browser only (chrome.storage.local), sent per draft as a header.
+  const keyInput = document.getElementById('anthropic-key');
+  const keyStatus = document.getElementById('key-status');
+  const setKeyStatus = (msg, ok) => {
+    if (!keyStatus) return;
+    keyStatus.textContent = msg;
+    keyStatus.className = `key-status${ok ? ' ok' : ''}`;
+  };
+  chrome.storage.local.get(['anthropicKey'], (d) => {
+    if (keyInput && d.anthropicKey) {
+      keyInput.value = d.anthropicKey;
+      setKeyStatus('Key saved ✓', true);
+    }
+  });
+  document.getElementById('btn-save-key')?.addEventListener('click', () => {
+    const v = (keyInput?.value || '').trim();
+    if (v && !v.startsWith('sk-ant-')) {
+      setKeyStatus('That doesn\'t look like an Anthropic key (starts with sk-ant-).', false);
+      return;
+    }
+    chrome.storage.local.set({ anthropicKey: v }, () => {
+      setKeyStatus(v ? 'Key saved ✓' : 'Key cleared', true);
+    });
+  });
 });
 
 // Update UI based on auth state

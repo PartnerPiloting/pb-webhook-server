@@ -515,22 +515,28 @@ async function getApiBase() {
 // Helper: Get auth headers
 async function getAuthHeaders() {
   return new Promise((resolve, reject) => {
-    chrome.storage.local.get(['clientId', 'portalToken', 'devKey'], (data) => {
+    chrome.storage.local.get(['clientId', 'portalToken', 'devKey', 'anthropicKey'], (data) => {
       if (!data.clientId || !data.portalToken) {
         reject(new Error('Not authenticated. Please open your Network Accelerator portal.'));
         return;
       }
-      
+
       const headers = {
         'Content-Type': 'application/json',
         'x-client-id': data.clientId,
         'x-portal-token': data.portalToken
       };
-      
+
       if (data.devKey) {
         headers['x-dev-key'] = data.devKey;
       }
-      
+
+      // BYO Claude key (Option A): the client's own Anthropic key, kept only in this browser and
+      // sent per request so their drafting runs on their key. Absent → backend uses the platform key.
+      if (data.anthropicKey) {
+        headers['x-anthropic-key'] = data.anthropicKey;
+      }
+
       resolve(headers);
     });
   });
