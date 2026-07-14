@@ -513,7 +513,7 @@ router.get('/leads/search', async (req, res) => {
         email,
         phone,
         location,
-        company: f['Company'] || '',
+        company: f['Company Name'] || f['Company'] || '',
         jobTitle: f['Job Title'] || '',
         // Include all original fields for compatibility
         ...f
