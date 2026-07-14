@@ -1420,7 +1420,13 @@
       if (data && data.enrichContact && data.enrichContact.leadRecordId) enrichLeadContact(data.enrichContact);
     } catch (e) {
       thinking.stop();
-      appendBubble('sys', `Couldn't reach Wingguy: ${e.message}`);
+      // The backend returns friendly, complete sentences for transient Claude errors (busy /
+      // rate-limited / hiccup) — show those as-is. Only frame raw or technical failures (network
+      // "Failed to fetch", a bare "529 {…}", "Chat failed: 500") with our own calm fallback, so the
+      // user never sees a status code or JSON blob.
+      const msg = (e && e.message) || '';
+      const looksFriendly = /\s/.test(msg) && msg.length > 25 && !/^\d{3}\b/.test(msg) && !/^[A-Za-z ]+failed:/i.test(msg);
+      appendBubble('sys', looksFriendly ? msg : "Couldn't reach Wingguy right now - give it a moment and try again.");
     } finally {
       if (chatState) chatState.busy = false;
       const btn = document.getElementById('wg-chat-send');

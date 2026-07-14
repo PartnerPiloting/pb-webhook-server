@@ -72,6 +72,27 @@ function byoAnthropicClient(req) {
   return null;                                                          // no key → block, never bill the platform
 }
 
+// Map a transient UPSTREAM Anthropic failure (their servers busy / rate-limited / hiccup) to a
+// calm, user-facing sentence, so a client sees "briefly busy, try again" instead of a raw
+// `529 {"type":"overloaded_error",...}` payload. Returns null for anything that isn't a transient
+// upstream error (real bugs still surface their message). The SDK already auto-retries these
+// (maxRetries=4) — this only handles the case where the overload outlasts every retry.
+function transientClaudeError(e) {
+  if (!e) return null;
+  const status = Number(e.status || e.statusCode || (e.response && e.response.status)) || 0;
+  const type = e.type || (e.error && e.error.type) || '';
+  if (status === 529 || type === 'overloaded_error') {
+    return "Claude's servers are briefly busy right now - give it a moment and send that again.";
+  }
+  if (status === 429 || type === 'rate_limit_error') {
+    return 'Claude is handling a lot of requests right now - wait a few seconds and try again.';
+  }
+  if (status >= 500) {
+    return 'Claude had a brief server hiccup - please try that again in a moment.';
+  }
+  return null;
+}
+
 function parseBoolFlag(val, defaultValue = false) {
   if (val === undefined || val === null || val === '') return defaultValue;
   const s = String(val).toLowerCase().trim();
@@ -542,7 +563,9 @@ module.exports = function mountWingguy(app) {
       return res.json(result);
     } catch (e) {
       logger.error(`[Wingguy] chat failed: ${e.message}`);
-      return res.status(500).json({ ok: false, error: e.message });
+      const friendly = transientClaudeError(e);
+      // 503 for a transient upstream overload (semantically "try again"); 500 for a real failure.
+      return res.status(friendly ? 503 : 500).json({ ok: false, error: friendly || e.message });
     }
   });
 

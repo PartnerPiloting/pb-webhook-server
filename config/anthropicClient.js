@@ -38,7 +38,10 @@ function initializeAnthropic() {
 
     // new Anthropic() picks up ANTHROPIC_API_KEY from the env automatically; we pass it
     // explicitly for clarity and to keep the failure mode above as the single gate.
-    anthropicClient = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    // maxRetries=4 (SDK default 2): the API auto-retries 429 / 5xx / 529 overloaded with
+    // exponential backoff — a few extra attempts lets a transient Anthropic overload spike
+    // self-heal before a client (e.g. the Wingguy chat panel) ever sees an error.
+    anthropicClient = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY, maxRetries: 4 });
 
     logger.info(`Anthropic client initialized successfully. Default Model ID: ${CLAUDE_MODEL_ID}`);
     return anthropicClient;
@@ -69,7 +72,7 @@ function getAnthropicClientForKey(apiKey) {
     const key = String(apiKey || '').trim();
     if (!key) return getAnthropicClient();
     let c = byoClients.get(key);
-    if (!c) { c = new Anthropic({ apiKey: key }); byoClients.set(key, c); }
+    if (!c) { c = new Anthropic({ apiKey: key, maxRetries: 4 }); byoClients.set(key, c); }
     return c;
 }
 
