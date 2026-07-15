@@ -15,6 +15,10 @@
  *   wingguy_variable_catalog  — the known {{variables}} (becomes the onboarding form)
  *   wingguy_tenant_variables  — each tenant's values
  *   wingguy_assets            — per-tenant asset library ({{asset:key}} targets)
+ *   wingguy_asset_ledger      — append-only record of which asset went to which lead (written by
+ *                               wingguy_create_draft at DRAFT time — Wingguy records what it sent
+ *                               itself instead of reading mailboxes; the asset-usage-gates rules
+ *                               become enforceable via this, for every tenant, provider-free)
  *   wingguy_rule_history      — separate append-only audit of every door action
  *
  * Layer semantics:
@@ -137,6 +141,26 @@ async function ensureSchema(client) {
       status TEXT NOT NULL DEFAULT 'active',
       UNIQUE (tenant_id, asset_key)
     );
+  `);
+
+  // Asset ledger — one row per (lead × asset) each time a draft carrying that asset is created.
+  // sent_at = DRAFT time (Wingguy never sends; the coach sends from their mailbox — this is the
+  // honest proxy, and the only one that needs no mailbox read).
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS wingguy_asset_ledger (
+      id BIGSERIAL PRIMARY KEY,
+      sent_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      tenant_id TEXT NOT NULL,
+      lead_email TEXT NOT NULL,
+      asset_key TEXT NOT NULL,
+      draft_id TEXT,
+      thread_id TEXT,
+      subject TEXT
+    );
+  `);
+  await client.query(`
+    CREATE INDEX IF NOT EXISTS idx_wg_ledger_lead
+    ON wingguy_asset_ledger (tenant_id, lead_email, asset_key);
   `);
 
   await client.query(`
@@ -745,6 +769,91 @@ async function getAssets({ tenantId = DEFAULT_TENANT } = {}) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Asset ledger (what actually went to whom — written at draft time by the mail door)
+// ---------------------------------------------------------------------------
+
+/**
+ * Record that a draft carrying these assets was created for these leads — one row per
+ * (lead × asset). Append-only; called by wingguy_create_draft AFTER the Nylas draft exists.
+ */
+async function recordAssetSends({ tenantId = DEFAULT_TENANT, leadEmails = [], assetKeys = [], draftId, threadId, subject }) {
+  const tenant = (tenantId || DEFAULT_TENANT).trim();
+  const leads = [...new Set(leadEmails.map((e) => String(e || '').trim().toLowerCase()).filter(Boolean))];
+  const keys = [...new Set(assetKeys.map((k) => String(k || '').trim()).filter(Boolean))];
+  if (!leads.length || !keys.length) return { ok: true, rows: 0 };
+  const p = getPool();
+  if (!p) throw new Error('DATABASE_URL not set');
+  const client = await p.connect();
+  try {
+    await ensureSchema(client);
+    let rows = 0;
+    for (const lead of leads) {
+      for (const key of keys) {
+        await client.query(
+          `INSERT INTO wingguy_asset_ledger (tenant_id, lead_email, asset_key, draft_id, thread_id, subject)
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+          [tenant, lead, key, draftId || null, threadId || null, subject || null],
+        );
+        rows++;
+      }
+    }
+    return { ok: true, rows };
+  } finally {
+    client.release();
+  }
+}
+
+/** Full asset history for one lead — newest first. The wingguy_lead_history read. */
+async function getLeadAssetHistory({ tenantId = DEFAULT_TENANT, leadEmail, limit = 50 } = {}) {
+  const p = getPool();
+  if (!p) throw new Error('DATABASE_URL not set');
+  const tenant = (tenantId || DEFAULT_TENANT).trim();
+  const lead = String(leadEmail || '').trim().toLowerCase();
+  if (!lead) throw new Error('leadEmail required');
+  const cap = Math.min(Math.max(Number(limit) || 50, 1), 200);
+  const client = await p.connect();
+  try {
+    await ensureSchema(client);
+    const r = await client.query(
+      `SELECT sent_at, asset_key, draft_id, thread_id, subject
+       FROM wingguy_asset_ledger WHERE tenant_id = $1 AND lead_email = $2
+       ORDER BY sent_at DESC, id DESC LIMIT $3`,
+      [tenant, lead, cap],
+    );
+    return r.rows;
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * The repeat gate's question: of these (lead × asset) pairs, which already have ledger rows?
+ * Returns [{lead_email, asset_key, last_sent_at, times}] — empty means all clear.
+ */
+async function getAssetSendSummary({ tenantId = DEFAULT_TENANT, leadEmails = [], assetKeys = [] } = {}) {
+  const leads = [...new Set(leadEmails.map((e) => String(e || '').trim().toLowerCase()).filter(Boolean))];
+  const keys = [...new Set(assetKeys.map((k) => String(k || '').trim()).filter(Boolean))];
+  if (!leads.length || !keys.length) return [];
+  const p = getPool();
+  if (!p) throw new Error('DATABASE_URL not set');
+  const tenant = (tenantId || DEFAULT_TENANT).trim();
+  const client = await p.connect();
+  try {
+    await ensureSchema(client);
+    const r = await client.query(
+      `SELECT lead_email, asset_key, MAX(sent_at) AS last_sent_at, COUNT(*)::int AS times
+       FROM wingguy_asset_ledger
+       WHERE tenant_id = $1 AND lead_email = ANY($2) AND asset_key = ANY($3)
+       GROUP BY lead_email, asset_key`,
+      [tenant, leads, keys],
+    );
+    return r.rows;
+  } finally {
+    client.release();
+  }
+}
+
 /** History for one rule (or the whole door when ruleKey omitted) — newest first. */
 async function getHistory({ tenantId, ruleKey, limit = 50 } = {}) {
   const p = getPool();
@@ -798,6 +907,10 @@ module.exports = {
   getAssets,
   getHistory,
   getStoreStatus,
+  // asset ledger (the usage-gate evidence)
+  recordAssetSends,
+  getLeadAssetHistory,
+  getAssetSendSummary,
   // the write-door
   proposeRule,
   commitRule,

@@ -94,10 +94,15 @@ async function createDraft(coach, details = {}) {
  * Find recent messages in the coach's mailbox — the lookup that feeds replyToMessageId. Works for
  * ANY Nylas grant (Gmail, Outlook, IMAP), so threading never depends on the Gmail connector's ids.
  * @param {object} coach   client record (needs nylasGrantId)
- * @param {object} query   { from, subject, threadId, limit } — all optional, newest first.
+ * @param {object} query   { from, subject, threadId, receivedAfter, queryImap, limit } — all
+ *   optional, newest first. receivedAfter = epoch SECONDS (Nylas `received_after`). queryImap
+ *   makes Nylas query the IMAP server live instead of its 90-day rolling cache — IMAP grants
+ *   (e.g. Zoho mail) only; pass it when the window reaches beyond ~90 days. Deliberately NO
+ *   search_query_native: Google/Microsoft restrict which params combine with it and IMAP has
+ *   no equivalent, so it does not abstract across providers — these typed filters do.
  * @returns {Promise<{ok:boolean, messages?:Array<{id,threadId,subject,from,date,snippet}>, error?:string}>}
  */
-async function findMessages(coach, { from, subject, threadId, limit } = {}) {
+async function findMessages(coach, { from, subject, threadId, receivedAfter, queryImap, limit } = {}) {
   const { apiKey, grantId, apiUri } = nylasConfig(coach);
   if (!apiKey || !grantId) return { ok: false, error: 'NYLAS_API_KEY / grant not configured for this coach' };
 
@@ -106,6 +111,8 @@ async function findMessages(coach, { from, subject, threadId, limit } = {}) {
   if (from) params.set('from', String(from).trim());
   if (subject) params.set('subject', String(subject).trim());
   if (threadId) params.set('thread_id', String(threadId).trim());
+  if (receivedAfter) params.set('received_after', String(Math.floor(Number(receivedAfter))));
+  if (queryImap) params.set('query_imap', 'true');
 
   const u = `${apiUri}/v3/grants/${grantId}/messages?${params.toString()}`;
   let res;

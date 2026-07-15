@@ -12,6 +12,15 @@
  * a fallback to the Gmail connector — which dragged the link-mangling back in; wingguy_find_message
  * is the in-house lookup that supplies the message id, so the whole reply flow stays inside Nylas.
  *
+ * ALSO THE ASSET-USAGE GATE (added 2026-07-16): the asset-usage-gates rules say "never send the same
+ * asset twice without checking" — unenforceable while Wingguy was write-only for email. Rather than
+ * read mailboxes, the door records what IT sent: create_draft detects the tenant's asset-library
+ * links in the body ({{asset:key}} tokens resolve to the stored URL; literal library URLs are
+ * recognised too), REFUSES a repeat to the same lead unless resend_ok, and writes wingguy_asset_ledger
+ * rows on success. wingguy_lead_history reads the ledger back. wingguy_lead_replied_since answers the
+ * one narrow inbound question ("did they reply?") via a typed Nylas messages filter — provider-
+ * independent, no generic mailbox search, no search_query_native.
+ *
  * Multi-tenant by construction: the draft is created in the coach's OWN mailbox via their Nylas grant
  * (services/mailProvider.js), the same per-tenant model calendarProvider/wingguyCalendar use. Step-1
  * auth posture: tenant hard-wired to the coach client behind the existing connector token (matches
@@ -30,10 +39,46 @@ const mailProvider = require('./mailProvider');
 const TENANT = (process.env.RECALL_COACH_CLIENT_ID || 'Guy-Wilson').trim();
 
 // ---------------------------------------------------------------------------
+// Pure core (unit-tested directly)
+// ---------------------------------------------------------------------------
+
+/**
+ * Detect which asset-library entries a draft body carries, and resolve {{asset:key}} tokens
+ * to their stored URLs (URLs go out EXACTLY as stored — same contract as the rules renderer).
+ * @param {string} html       the draft body
+ * @param {Array}  assetRows  [{asset_key, url, status}] — the tenant's library (getAssets rows)
+ * @returns {{html:string, assetKeys:string[], unresolved:string[]}}
+ */
+function detectAssets(html, assetRows = []) {
+  const byKey = new Map();
+  for (const a of assetRows) byKey.set(a.asset_key, a);
+  const found = new Set();
+  const unresolved = [];
+  const resolved = String(html || '').replace(/\{\{\s*asset:([a-zA-Z0-9_.-]+)\s*\}\}/g, (whole, key) => {
+    const a = byKey.get(key);
+    if (a && a.url && a.status !== 'retired') { found.add(key); return a.url; }
+    unresolved.push(key);
+    return whole;
+  });
+  // Literal URLs: an active library link pasted straight into the body still counts as that asset.
+  for (const a of assetRows) {
+    if (!a.url || a.status === 'retired' || found.has(a.asset_key)) continue;
+    if (resolved.includes(String(a.url).trim())) found.add(a.asset_key);
+  }
+  return { html: resolved, assetKeys: [...found], unresolved: [...new Set(unresolved)] };
+}
+
+/** Lazy store access — null when no database is configured (local runs degrade gracefully). */
+function ledgerStore() {
+  if (!(process.env.DATABASE_URL || '').trim()) return null;
+  return require('./wingguyRulesStore');
+}
+
+// ---------------------------------------------------------------------------
 // Executor — returns { text, isError? }
 // ---------------------------------------------------------------------------
 
-async function runCreateDraft({ to, subject, html_body, cc, bcc, reply_to, reply_to_message_id } = {}, tenant = TENANT) {
+async function runCreateDraft({ to, subject, html_body, cc, bcc, reply_to, reply_to_message_id, resend_ok } = {}, tenant = TENANT) {
   const recipients = mailProvider.toParticipants(to);
   if (!recipients.length) return { text: 'Error: at least one "to" recipient ({email, name}) is required.', isError: true };
   if (!String(subject || '').trim()) return { text: 'Error: subject is required.', isError: true };
@@ -46,9 +91,44 @@ async function runCreateDraft({ to, subject, html_body, cc, bcc, reply_to, reply
     return { text: `No Nylas grant on file for "${tenant}" — connect the mailbox via Nylas (with mail scope) before drafting.`, isError: true };
   }
 
+  // --- Asset pass: resolve {{asset:key}} tokens, spot library links, enforce the usage gate ---
+  const store = ledgerStore();
+  let assetRows = [];
+  if (store) {
+    try { assetRows = await store.getAssets({ tenantId: tenant }); }
+    catch (e) { console.warn(`[wingguyMailMcp] asset library read failed (drafting continues): ${e.message}`); }
+  }
+  const detected = detectAssets(html_body, assetRows);
+  if (detected.unresolved.length) {
+    const known = assetRows.filter((a) => a.status !== 'retired' && a.url).map((a) => a.asset_key);
+    return {
+      text:
+        `Draft NOT created — unknown {{asset:...}} placeholder(s): ${detected.unresolved.join(', ')}.\n` +
+        (known.length ? `This tenant's asset library has: ${known.join(', ')}.` : 'This tenant\'s asset library is empty (or the store is unreachable) — add the asset with wingguy_assets, or paste the URL directly.'),
+      isError: true,
+    };
+  }
+  const leadEmails = recipients.map((r) => r.email.toLowerCase());
+  if (store && detected.assetKeys.length && !resend_ok) {
+    try {
+      const prior = await store.getAssetSendSummary({ tenantId: tenant, leadEmails, assetKeys: detected.assetKeys });
+      if (prior.length) {
+        const lines = prior.map((p) => `- ${p.asset_key} → ${p.lead_email} (${p.times}×, last ${new Date(p.last_sent_at).toISOString().slice(0, 10)})`);
+        return {
+          text:
+            `Draft NOT created — the asset-usage gate: these asset(s) have ALREADY gone to this lead:\n${lines.join('\n')}\n` +
+            `Either drop the repeated link from the draft, or (if re-sending is deliberate — e.g. they asked for it again) call wingguy_create_draft again with resend_ok: true.`,
+          isError: true,
+        };
+      }
+    } catch (e) {
+      console.warn(`[wingguyMailMcp] asset gate check failed (drafting continues ungated): ${e.message}`);
+    }
+  }
+
   const result = await mailProvider.createDraft(coach, {
     subject: String(subject).trim(),
-    html: html_body,
+    html: detected.html,
     to: recipients,
     cc,
     bcc,
@@ -56,6 +136,24 @@ async function runCreateDraft({ to, subject, html_body, cc, bcc, reply_to, reply
     replyToMessageId: reply_to_message_id,
   });
   if (!result.ok) return { text: `Draft NOT created. ${result.error}`, isError: true };
+
+  // --- Ledger write (best-effort: the draft exists; a logging failure must not fail the tool) ---
+  let ledgerLine = '';
+  if (detected.assetKeys.length) {
+    if (store) {
+      try {
+        await store.recordAssetSends({
+          tenantId: tenant, leadEmails, assetKeys: detected.assetKeys,
+          draftId: result.draftId, threadId: result.threadId, subject: String(subject).trim(),
+        });
+        ledgerLine = `Asset ledger: logged ${detected.assetKeys.join(', ')} → ${leadEmails.join(', ')} (wingguy_lead_history shows a lead's full record).\n`;
+      } catch (e) {
+        ledgerLine = `⚠ Asset ledger write FAILED (${e.message}) — the draft exists but ${detected.assetKeys.join(', ')} was not recorded.\n`;
+      }
+    } else {
+      ledgerLine = `⚠ Asset(s) ${detected.assetKeys.join(', ')} detected but no database configured — nothing recorded in the ledger.\n`;
+    }
+  }
 
   const toStr = recipients.map((r) => r.email).join(', ');
   const bccStr = mailProvider.toParticipants(bcc).map((r) => r.email).join(', ');
@@ -66,6 +164,7 @@ async function runCreateDraft({ to, subject, html_body, cc, bcc, reply_to, reply
     text:
       `Draft created in ${coach.clientName || tenant}'s mailbox (Nylas). draftId=${result.draftId}\n` +
       threadLine +
+      ledgerLine +
       `To: ${toStr}${bccStr ? ` · Bcc: ${bccStr}` : ''} · Subject: ${String(subject).trim()}\n` +
       `Hyperlinks are stored verbatim (no google.com/url wrapping) — open the draft, give it a final read, and send. No manual link-fixing needed.`,
   };
@@ -101,6 +200,67 @@ async function runFindMessage({ from, subject, thread_id, limit } = {}, tenant =
   };
 }
 
+async function runLeadHistory({ lead_email, limit } = {}, tenant = TENANT) {
+  const lead = String(lead_email || '').trim().toLowerCase();
+  if (!lead) return { text: 'Error: lead_email is required.', isError: true };
+  const store = ledgerStore();
+  if (!store) return { text: 'Server config error: no database configured — the asset ledger is unavailable.', isError: true };
+
+  let rows;
+  try { rows = await store.getLeadAssetHistory({ tenantId: tenant, leadEmail: lead, limit }); }
+  catch (e) { return { text: `Ledger read failed: ${e.message}`, isError: true }; }
+  if (!rows.length) {
+    return { text: `No assets on record for ${lead} — nothing has been drafted to them through Wingguy. (The ledger starts 2026-07-16; earlier sends are not in it.)` };
+  }
+  const lines = rows.map((r) =>
+    `- ${r.asset_key} · ${new Date(r.sent_at).toISOString().slice(0, 10)} · "${r.subject || '(no subject)'}"${r.thread_id ? ` · thread ${r.thread_id}` : ''}`);
+  return {
+    text:
+      `Assets already sent to ${lead} (${rows.length} entr${rows.length === 1 ? 'y' : 'ies'}, newest first — drafted through Wingguy since 2026-07-16):\n` +
+      `${lines.join('\n')}\n` +
+      `Per the asset-usage gates, don't send any of these again unless the lead asks (resend_ok: true overrides deliberately).`,
+  };
+}
+
+// IMAP grants (e.g. Zoho mail) serve a ~90-day rolling cache; older windows need a live
+// query_imap pass. OAuth grants (Gmail/Microsoft) never need it — so try cached first and only
+// fall back for old windows, keeping the common case a single round-trip on every provider.
+const IMAP_CACHE_DAYS = 90;
+
+async function runLeadRepliedSince({ lead_email, since_iso } = {}, tenant = TENANT) {
+  const lead = String(lead_email || '').trim();
+  if (!lead) return { text: 'Error: lead_email is required.', isError: true };
+  const sinceMs = Date.parse(String(since_iso || '').trim());
+  if (Number.isNaN(sinceMs)) return { text: 'Error: since_iso must be an ISO 8601 date/time, e.g. "2026-06-01" or "2026-06-01T00:00:00+10:00".', isError: true };
+
+  const clientService = require('./clientService');
+  const coach = await clientService.getClientById(tenant);
+  if (!coach) return { text: `Server config error: coach client "${tenant}" not found.`, isError: true };
+  if (!coach.nylasGrantId) {
+    return { text: `No Nylas grant on file for "${tenant}" — connect the mailbox via Nylas (with mail scope) first.`, isError: true };
+  }
+
+  const receivedAfter = Math.floor(sinceMs / 1000);
+  let result = await mailProvider.findMessages(coach, { from: lead, receivedAfter, limit: 3 });
+  if (result.ok && !result.messages.length && (Date.now() - sinceMs) > IMAP_CACHE_DAYS * 86400000) {
+    const live = await mailProvider.findMessages(coach, { from: lead, receivedAfter, limit: 3, queryImap: true });
+    if (live.ok) result = live; // a non-IMAP grant may reject the flag — keep the cached answer then
+  }
+  if (!result.ok) return { text: `Inbound check failed. ${result.error}`, isError: true };
+
+  const sinceDay = new Date(sinceMs).toISOString().slice(0, 10);
+  if (!result.messages.length) {
+    return { text: `NO — no inbound email from ${lead} since ${sinceDay}.` };
+  }
+  const m = result.messages[0];
+  return {
+    text:
+      `YES — ${lead} has replied. Last inbound: ${m.date || 'date unknown'} · "${m.subject || '(no subject)'}"\n` +
+      `${String(m.snippet || '').slice(0, 160)}\n` +
+      `(messageId=${m.id} · threadId=${m.threadId} — pass the messageId as reply_to_message_id to reply in that thread.)`,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Definition — one source of truth for name/description/schema
 // ---------------------------------------------------------------------------
@@ -110,11 +270,14 @@ const RECIP_DESC = 'Recipients as objects {email, name}. name is optional but pr
 const REPLY_ID_DESC =
   'Optional: to make this draft a threaded REPLY in an existing conversation, pass the Nylas message id of the message being replied to (find it with wingguy_find_message). Nylas sets the reply headers and files the draft on that thread. Omit for a fresh standalone email.';
 
+const RESEND_OK_DESC =
+  'Optional: set true ONLY when deliberately re-sending an asset this lead already received (e.g. they asked for the link again). Without it the asset-usage gate refuses a draft that repeats an asset to the same lead.';
+
 const TOOL_DEFS = [
   {
     name: 'wingguy_create_draft',
     description:
-      'Create an email DRAFT (never sends) in the coach\'s own mailbox with hyperlinks intact. ALWAYS use this instead of the Gmail connector — for links because the Gmail connector rewrites every link into a google.com/url redirect (this does not), and for replies because this threads too: pass reply_to_message_id (from wingguy_find_message) and the draft lands IN the existing conversation. html_body is the full HTML body; put real <a href="...">text</a> links in and they are stored exactly as written. Returns a draftId; the coach opens the draft, reads it, and sends it themselves.',
+      'Create an email DRAFT (never sends) in the coach\'s own mailbox with hyperlinks intact. ALWAYS use this instead of the Gmail connector — for links because the Gmail connector rewrites every link into a google.com/url redirect (this does not), and for replies because this threads too: pass reply_to_message_id (from wingguy_find_message) and the draft lands IN the existing conversation. html_body is the full HTML body; put real <a href="...">text</a> links in and they are stored exactly as written; {{asset:key}} placeholders resolve to the asset library\'s stored URL. ASSET GATE: library links in the body are logged per-lead at draft time, and a draft repeating an asset to the same lead is refused unless resend_ok — check wingguy_lead_history when unsure. Returns a draftId; the coach opens the draft, reads it, and sends it themselves.',
     zodSchema: {
       to: z.array(z.object({ email: z.string(), name: z.string().optional() })).describe(RECIP_DESC),
       subject: z.string().describe('The email subject line.'),
@@ -123,6 +286,7 @@ const TOOL_DEFS = [
       bcc: z.array(z.object({ email: z.string(), name: z.string().optional() })).optional().describe('Optional Bcc recipients {email, name} — e.g. the tracking address.'),
       reply_to: z.array(z.object({ email: z.string(), name: z.string().optional() })).optional().describe('Optional Reply-To {email, name}.'),
       reply_to_message_id: z.string().optional().describe(REPLY_ID_DESC),
+      resend_ok: z.boolean().optional().describe(RESEND_OK_DESC),
     },
     jsonSchema: {
       type: 'object',
@@ -134,6 +298,7 @@ const TOOL_DEFS = [
         bcc: { type: 'array', description: 'Optional Bcc recipients {email, name} — e.g. the tracking address.', items: { type: 'object', properties: { email: { type: 'string' }, name: { type: 'string' } }, required: ['email'] } },
         reply_to: { type: 'array', description: 'Optional Reply-To {email, name}.', items: { type: 'object', properties: { email: { type: 'string' }, name: { type: 'string' } }, required: ['email'] } },
         reply_to_message_id: { type: 'string', description: REPLY_ID_DESC },
+        resend_ok: { type: 'boolean', description: RESEND_OK_DESC },
       },
       required: ['to', 'subject', 'html_body'],
     },
@@ -160,6 +325,42 @@ const TOOL_DEFS = [
       required: [],
     },
     run: runFindMessage,
+  },
+  {
+    name: 'wingguy_lead_history',
+    description:
+      'What has this lead already been SENT? Reads the asset ledger (written by wingguy_create_draft at draft time — no mailbox access) and lists every asset-library link already drafted to a lead, with dates and subjects. THE CHECK BEHIND THE ASSET-USAGE GATES: call it before composing an email that includes an asset link, or when the human asks "have I sent them X yet?". Ledger starts 2026-07-16 — sends before that are not in it.',
+    zodSchema: {
+      lead_email: z.string().describe('The lead\'s email address.'),
+      limit: z.number().optional().describe('Max entries (default 50, max 200).'),
+    },
+    jsonSchema: {
+      type: 'object',
+      properties: {
+        lead_email: { type: 'string', description: 'The lead\'s email address.' },
+        limit: { type: 'number', description: 'Max entries (default 50, max 200).' },
+      },
+      required: ['lead_email'],
+    },
+    run: runLeadHistory,
+  },
+  {
+    name: 'wingguy_lead_replied_since',
+    description:
+      'Has this lead REPLIED by email since a given date? Checks the coach\'s own mailbox (via their Nylas grant — works on Gmail, Outlook, IMAP/Zoho alike) for inbound messages FROM the lead after since_iso, and answers YES with the last inbound message (date, subject, messageId for a threaded reply) or NO. Use before follow-ups: "did they ever come back to me?", "any reply since the call?". Narrow by design — one lead, one question; it is not a mailbox search.',
+    zodSchema: {
+      lead_email: z.string().describe('The lead\'s email address (the sender to look for).'),
+      since_iso: z.string().describe('ISO 8601 date/time — count only messages received AFTER this, e.g. "2026-06-01".'),
+    },
+    jsonSchema: {
+      type: 'object',
+      properties: {
+        lead_email: { type: 'string', description: 'The lead\'s email address (the sender to look for).' },
+        since_iso: { type: 'string', description: 'ISO 8601 date/time — count only messages received AFTER this, e.g. "2026-06-01".' },
+      },
+      required: ['lead_email', 'since_iso'],
+    },
+    run: runLeadRepliedSince,
   },
 ];
 
@@ -203,4 +404,4 @@ async function legacyToolCall(toolName, args, tenant = TENANT) {
   }
 }
 
-module.exports = { registerWingguyMailTools, legacyToolList, legacyToolCall, TOOL_DEFS };
+module.exports = { registerWingguyMailTools, legacyToolList, legacyToolCall, TOOL_DEFS, detectAssets };
