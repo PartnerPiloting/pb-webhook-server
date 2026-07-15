@@ -33,7 +33,7 @@ const dTWO = slotAt(14, 0);      // 2:00 pm Brisbane = 12:00 pm Perth
 
 // One fake conversation: check availability, propose both slots, finish. lastToolResults captures
 // what the model saw so we can assert on propose_times' offeredTimes echo.
-function makeRun({ leadTimezone, location, detected = true, intro = 'A few times that suit:' }) {
+function makeRun({ leadTimezone, location, detected = true, intro = 'A few times that suit:', leadTimezoneOverride }) {
   const fakeAvail = async () => ({
     yourTimezone: 'Australia/Brisbane',
     leadTimezone,
@@ -57,7 +57,7 @@ function makeRun({ leadTimezone, location, detected = true, intro = 'A few times
     }
     if (call === 1) return { stop_reason: 'tool_use', content: [{ type: 'tool_use', id: 't1', name: 'check_availability', input: {} }] };
     if (call === 2) return { stop_reason: 'tool_use', content: [{ type: 'tool_use', id: 't2', name: 'propose_times',
-      input: { intro, slotTimes: [dTENHALF, dTWO], outro: 'Let me know.' } }] };
+      input: { intro, slotTimes: [dTENHALF, dTWO], outro: 'Let me know.', ...(leadTimezoneOverride ? { leadTimezoneOverride } : {}) } }] };
     return { stop_reason: 'end_turn', content: [{ type: 'text', text: 'done' }] };
   } } };
   return (async () => {
@@ -114,6 +114,19 @@ function makeRun({ leadTimezone, location, detected = true, intro = 'A few times
   check('a draft was produced', () => assert.ok(dup.res && dup.res.draft, `no draft: ${JSON.stringify(dup.res)}`));
   check('the question appears exactly once', () => assert.strictEqual((dup.res.draft.match(/work for you\?/g) || []).length, 1, dup.res.draft));
   check('the intro\'s real content survives the strip', () => assert.ok(dup.res.draft.includes('Great to hear back from you.'), dup.res.draft));
+
+  console.log('\nThread-level timezone override — lead travelling: where they\'ll BE beats where they live:');
+  const nz = await makeRun({ leadTimezone: 'Australia/Sydney', location: 'Sydney, New South Wales',
+    leadTimezoneOverride: 'Pacific/Auckland' });
+  check('a draft was produced', () => assert.ok(nz.res && nz.res.draft, `no draft: ${JSON.stringify(nz.res)}`));
+  check('marker names the TRAVEL zone, not the profile city', () => assert.ok(nz.res.draft.includes('(all times are Auckland time)'), nz.res.draft));
+  check('slot times are rendered on the travel clock (10:30 Bris = 12:30 NZ, July)', () => assert.ok(/12:30\s*pm/i.test(nz.res.draft), nz.res.draft));
+
+  console.log('\nInvalid override string — silently ignored, profile-derived zone stands:');
+  const bad = await makeRun({ leadTimezone: 'Australia/Brisbane', location: 'Brisbane, Queensland',
+    leadTimezoneOverride: 'Not/AZone' });
+  check('a draft was produced', () => assert.ok(bad.res && bad.res.draft, `no draft: ${JSON.stringify(bad.res)}`));
+  check('marker stays on the profile-derived zone', () => assert.ok(bad.res.draft.includes('(all times are Brisbane time)'), bad.res.draft));
 
   console.log(failures ? `\n❌ ${failures} test(s) failed` : '\n✅ all tz-marker tests passed');
   process.exit(failures ? 1 : 0);

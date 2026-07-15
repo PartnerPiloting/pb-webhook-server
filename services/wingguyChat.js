@@ -89,6 +89,7 @@ const AGENT_TOOLS = [
         includeLunch: { type: 'boolean', description: 'Set true ONLY when Guy explicitly wants to offer a lunch-time slot — otherwise lunch (12:00–12:45) is dropped from the list.' },
         includeSoon: { type: 'boolean', description: 'Set true ONLY when Guy explicitly asked for today/tomorrow — otherwise slots before the day after tomorrow are dropped (his one-clear-day rule). Past times are always dropped.' },
         includeWeekends: { type: 'boolean', description: 'Set true ONLY when Guy explicitly wants a weekend slot — otherwise weekend slots are dropped.' },
+        leadTimezoneOverride: { type: 'string', description: 'IANA timezone (e.g. "Pacific/Auckland") — set ONLY when the THREAD says the lead will be somewhere other than their profile location at the meeting time (e.g. "I\'m in NZ from Tuesday for a week" and the offered days fall in that window). The time list and its "(all times are … time)" line then render in THAT zone — where the lead will BE beats where they live. Tell Guy you did this. Leave unset normally.' },
       },
       required: ['slotTimes'],
     },
@@ -268,7 +269,17 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
       // CODE-OWNED time list: enforce order + Guy's hours + soft lunch-skip + lead-timezone formatting,
       // so none of those depend on the model getting it right.
       const tz = availTz.yourTimezone || 'Australia/Brisbane';
-      const leadTz = availTz.leadTimezone || tz;
+      let leadTz = availTz.leadTimezone || tz;
+      // Thread-level override: where the lead will BE beats where they live (Sam-in-NZ, 2026-07-15 —
+      // a Sydney lead travelling in NZ on the meeting day must see NZ times, not "(Sydney time)").
+      // Only the model can know this (it read the thread), so it passes the zone; we validate it and
+      // silently keep the profile-derived zone if the string isn't a real IANA timezone.
+      if (input.leadTimezoneOverride) {
+        try {
+          new Intl.DateTimeFormat('en-AU', { timeZone: String(input.leadTimezoneOverride) });
+          leadTz = String(input.leadTimezoneOverride);
+        } catch (_) { /* invalid zone — profile-derived stands */ }
+      }
       const eMin = hhmmToMin(prefs.earliestStart) ?? 0;
       const lMin = hhmmToMin(prefs.lastStart) ?? 24 * 60;
       const len = prefs.meetingLengthMins || 30;
