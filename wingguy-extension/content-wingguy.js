@@ -845,20 +845,49 @@
       }
     } catch (_) { /* non-fatal — worst case the trigger text stays; user can clear it */ }
   }
+  // Rolling buffer of the last printable keys typed anywhere on the page. The primary trigger path
+  // reads the composer's own text — but some LinkedIn builds hide the composer where no extension can
+  // read it (closed shadow root: activeElement stops at the host). Document-level keydown still
+  // reports e.key regardless, so the buffer lets /wg work even when the box itself is unreadable.
+  // This was one of the "typing /wg silently does nothing until I refresh" causes (2026-07-15).
+  let keyBuf = '';
+  function onKeydownBuffer(e) {
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key === 'Backspace') { keyBuf = keyBuf.slice(0, -1); return; }
+    if (e.key === 'Enter' || e.key === 'Escape') { keyBuf = ''; return; }
+    if (e.key.length === 1) keyBuf = (keyBuf + e.key).slice(-12);
+  }
   function onComposerKeyup() {
     if (document.getElementById(OVERLAY_ID)) return;          // already open
     const target = deepActiveElement();
-    if (!isEditableEl(target) || insideWingguy(target)) return;
-    // Only fire inside a message box. LinkedIn's messaging-page composer markup varies (and can sit in
-    // a shadow root), so on the messaging surface also accept any editable — the user typed /wg on purpose.
-    if (!isMessageEditableSafe(target) && !isMessagingPage() && !hasOpenMessageThread()) return;
-    const text = (target.tagName === 'TEXTAREA' || target.tagName === 'INPUT')
-      ? (target.value || '') : (target.textContent || '');
-    const tr = matchedTrigger(text);
+    if (insideWingguy(target)) return;
+    if (isEditableEl(target)) {
+      const text = (target.tagName === 'TEXTAREA' || target.tagName === 'INPUT')
+        ? (target.value || '') : (target.textContent || '');
+      const tr = matchedTrigger(text);
+      if (!tr) return;
+      // The user typed the trigger DELIBERATELY — honor it in ANY editable on LinkedIn. The old
+      // message-surface gate (must look like a .msg-* composer / be on /messaging/ / have a
+      // detectable open thread) silently ate /wg whenever LinkedIn's A/B-served markup wasn't
+      // recognised — the "sometimes it just doesn't work until I refresh" reports (2026-07-15).
+      // Surface detection still governs WHERE Insert lands, just not whether the panel opens.
+      console.log('[Wingguy] trigger typed:', tr);
+      stripTrigger(target, tr.length);
+      lastFocusedEditable = target;                            // remember the box for the insert
+      keyBuf = '';
+      openPanel();
+      return;
+    }
+    // FALLBACK: something focused that we can't read (closed shadow root — the composer's keystrokes
+    // still bubble out with the host as target). If the recent keystrokes end in a trigger, honor it.
+    if (!target || target === document.body || target === document.documentElement) return;
+    const tr = matchedTrigger(keyBuf);
     if (!tr) return;
-    console.log('[Wingguy] trigger typed:', tr);
-    stripTrigger(target, tr.length);
-    lastFocusedEditable = target;                              // remember the box for the insert
+    console.log('[Wingguy] trigger via keystroke-buffer fallback (composer unreadable — likely closed shadow root):', tr);
+    keyBuf = '';
+    // Best-effort strip: execCommand routes to the browser's internally-focused editable, which can
+    // reach inside a closed root when our DOM access can't. Worst case the trigger text stays.
+    try { for (let i = 0; i < tr.length; i++) document.execCommand('delete', false); } catch (_) {}
     openPanel();
   }
 
@@ -1739,6 +1768,8 @@
     document.addEventListener('focusin', trackFocus, true);
     // Typed trigger (/wg etc.) inside the composer — composed keyup crosses open shadow boundaries.
     document.addEventListener('keyup', onComposerKeyup, true);
+    // Keystroke buffer feeding the unreadable-composer fallback (closed shadow roots).
+    document.addEventListener('keydown', onKeydownBuffer, true);
     document.addEventListener('keydown', onKeydown, true);
     // On-Send capture: detect the send button click (and Enter-to-send) → snapshot thread to the Portal.
     document.addEventListener('click', onSendClick, true);
