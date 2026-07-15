@@ -41,8 +41,10 @@ function toParticipants(list) {
 /**
  * Create a draft (no send) in the coach's mailbox via their Nylas grant.
  * @param {object} coach   client record (needs nylasGrantId)
- * @param {object} details { subject, html, to, cc, bcc, replyTo }
+ * @param {object} details { subject, html, to, cc, bcc, replyTo, replyToMessageId }
  *   to/cc/bcc: array of "email" strings or {email,name} objects.
+ *   replyToMessageId: Nylas message id being replied to — Nylas sets In-Reply-To/References and
+ *   files the draft on that message's thread (a real threaded reply, not a standalone message).
  * @returns {Promise<{ok:boolean, draftId?:string, error?:string, provider:string}>}
  */
 async function createDraft(coach, details = {}) {
@@ -65,6 +67,7 @@ async function createDraft(coach, details = {}) {
   if (cc.length) body.cc = cc;
   if (bcc.length) body.bcc = bcc;
   if (replyTo.length) body.reply_to = replyTo;
+  if (details.replyToMessageId) body.reply_to_message_id = String(details.replyToMessageId).trim();
 
   const u = `${apiUri}/v3/grants/${grantId}/drafts`;
   let res;
@@ -84,7 +87,48 @@ async function createDraft(coach, details = {}) {
   }
   let json = {}; try { json = JSON.parse(text); } catch (_) { /* leave empty */ }
   const d = json.data || json;
-  return { ok: true, draftId: d.id, provider: 'nylas' };
+  return { ok: true, draftId: d.id, threadId: d.thread_id, provider: 'nylas' };
+}
+
+/**
+ * Find recent messages in the coach's mailbox — the lookup that feeds replyToMessageId. Works for
+ * ANY Nylas grant (Gmail, Outlook, IMAP), so threading never depends on the Gmail connector's ids.
+ * @param {object} coach   client record (needs nylasGrantId)
+ * @param {object} query   { from, subject, threadId, limit } — all optional, newest first.
+ * @returns {Promise<{ok:boolean, messages?:Array<{id,threadId,subject,from,date,snippet}>, error?:string}>}
+ */
+async function findMessages(coach, { from, subject, threadId, limit } = {}) {
+  const { apiKey, grantId, apiUri } = nylasConfig(coach);
+  if (!apiKey || !grantId) return { ok: false, error: 'NYLAS_API_KEY / grant not configured for this coach' };
+
+  const params = new URLSearchParams();
+  params.set('limit', String(Math.min(Math.max(parseInt(limit, 10) || 5, 1), 20)));
+  if (from) params.set('from', String(from).trim());
+  if (subject) params.set('subject', String(subject).trim());
+  if (threadId) params.set('thread_id', String(threadId).trim());
+
+  const u = `${apiUri}/v3/grants/${grantId}/messages?${params.toString()}`;
+  let res;
+  try {
+    res = await fetch(u, { headers: { Authorization: `Bearer ${apiKey}`, Accept: 'application/json' } });
+  } catch (e) {
+    return { ok: false, error: `nylas request failed: ${e.message}` };
+  }
+  const text = await res.text();
+  if (!res.ok) {
+    log.warn(`[mailProvider] nylas message search failed HTTP ${res.status}: ${text.slice(0, 200)}`);
+    return { ok: false, error: `nylas HTTP ${res.status}: ${text.slice(0, 200)}` };
+  }
+  let json = {}; try { json = JSON.parse(text); } catch (_) { /* leave empty */ }
+  const messages = (json.data || []).map((m) => ({
+    id: m.id,
+    threadId: m.thread_id,
+    subject: m.subject,
+    from: toParticipants(m.from).map((p) => (p.name ? `${p.name} <${p.email}>` : p.email)).join(', '),
+    date: m.date ? new Date(m.date * 1000).toISOString() : null,
+    snippet: m.snippet,
+  }));
+  return { ok: true, messages };
 }
 
 /**
@@ -109,4 +153,4 @@ async function getDraft(coach, draftId) {
   return { ok: true, draft: json.data || json };
 }
 
-module.exports = { createDraft, getDraft, toParticipants };
+module.exports = { createDraft, getDraft, findMessages, toParticipants };
