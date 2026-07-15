@@ -76,7 +76,7 @@ const SYNTH_VARS = [{ var_key: 'spelling', value: 'Australian' }];
   await check('draftSystem = [VOICE (cached), template.instructions] exactly', async () => {
     const blocks = await source.draftSystem('tks');
     assert.deepStrictEqual(blocks, [
-      { type: 'text', text: config.WINGGUY_VOICE, cache_control: { type: 'ephemeral' } },
+      { type: 'text', text: config.WINGGUY_VOICE, cache_control: { type: 'ephemeral', ttl: '1h' } },
       { type: 'text', text: config.getTemplate('tks').instructions },
     ]);
   });
@@ -84,7 +84,7 @@ const SYNTH_VARS = [{ var_key: 'spelling', value: 'Australian' }];
   await check('replySystem = [VOICE (cached), REPLY_INSTRUCTIONS] exactly', async () => {
     const blocks = await source.replySystem();
     assert.deepStrictEqual(blocks, [
-      { type: 'text', text: config.WINGGUY_VOICE, cache_control: { type: 'ephemeral' } },
+      { type: 'text', text: config.WINGGUY_VOICE, cache_control: { type: 'ephemeral', ttl: '1h' } },
       { type: 'text', text: config.WINGGUY_REPLY_INSTRUCTIONS },
     ]);
   });
@@ -93,7 +93,7 @@ const SYNTH_VARS = [{ var_key: 'spelling', value: 'Australian' }];
     const { blocks, campaignTemplate } = await source.agentSystem('frac');
     assert.deepStrictEqual(blocks, [
       { type: 'text', text: config.WINGGUY_VOICE },
-      { type: 'text', text: config.WINGGUY_AGENT_INSTRUCTIONS, cache_control: { type: 'ephemeral' } },
+      { type: 'text', text: config.WINGGUY_AGENT_INSTRUCTIONS, cache_control: { type: 'ephemeral', ttl: '1h' } },
     ]);
     assert.strictEqual(campaignTemplate, config.getTemplate('frac'));
   });
@@ -154,7 +154,7 @@ const SYNTH_VARS = [{ var_key: 'spelling', value: 'Australian' }];
     const blocks = await source.draftSystem('blue');
     assert.strictEqual(blocks.length, 2);
     assert.strictEqual(blocks[0].text, source.STORE_DRAFT_HARNESS);
-    assert.deepStrictEqual(blocks[1].cache_control, { type: 'ephemeral' });
+    assert.deepStrictEqual(blocks[1].cache_control, { type: 'ephemeral', ttl: '1h' });
     assert.ok(blocks[1].text.includes('Blue campaign message shape.'), 'campaign body missing');
     assert.ok(!blocks[1].text.includes('Generic first message shape.'), 'generic body should be shadowed');
     assert.ok(blocks[1].text.includes('Use Australian spelling everywhere.'), 'variable not resolved');
@@ -181,7 +181,7 @@ const SYNTH_VARS = [{ var_key: 'spelling', value: 'Australian' }];
     assert.ok(blocks[0].text.includes('How to shape a reply.'));
     assert.ok(blocks[0].text.includes('How to book a meeting.'));
     assert.strictEqual(blocks[1].text, config.WINGGUY_AGENT_INSTRUCTIONS);
-    assert.deepStrictEqual(blocks[1].cache_control, { type: 'ephemeral' });
+    assert.deepStrictEqual(blocks[1].cache_control, { type: 'ephemeral', ttl: '1h' });
   });
 
   await check('an EMPTY store render throws (never silently drafts ruleless)', async () => {

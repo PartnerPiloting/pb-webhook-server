@@ -206,6 +206,35 @@ function buildContext({ profileBlock, convoBlock, leadEmail, coachName, prefs, c
 // ONE implementation shared with the claude.ai connector tools (the "one booking door", 2026-07-06).
 const { hhmmToMin, minutesInTz, inLunch, earliestOfferDate, dateStrInTz, fmtSlot, tzCity } = wingguyCalendar;
 
+// Message-level prompt caching (2026-07-15): each tool round-trip used to re-send the per-lead
+// context block + the ENTIRE conversation at full input price — the dominant line on the API bill
+// (Console showed ~2M uncached input/week, almost all from this loop). A moving cache_control
+// marker on the last user message caches the whole request prefix (tools + system + convo so far),
+// so the next round-trip re-reads it at 1/10 price and only the new tokens bill in full.
+// Default 5m TTL is deliberate: re-reads land seconds later within the same turn (writes 1.25×
+// vs 2× for 1h), and the stable rulebook prefix keeps its own 1h marker upstream — longer-TTL
+// breakpoints must precede shorter ones, which this ordering satisfies. Only ever ONE marker in
+// the messages (cleared then re-set each iteration), so we stay well under the 4-breakpoint cap.
+// The marked message is always a USER message (initial turn or tool_results) — never an assistant
+// message, whose thinking blocks can't carry cache_control.
+function setConvoCacheMarker(convo) {
+  for (const m of convo) {
+    if (Array.isArray(m.content)) {
+      for (const b of m.content) { if (b && b.cache_control) delete b.cache_control; }
+    }
+  }
+  const last = convo[convo.length - 1];
+  if (!last || last.role !== 'user') return;
+  if (typeof last.content === 'string') {
+    if (!last.content.trim()) return;
+    last.content = [{ type: 'text', text: last.content, cache_control: { type: 'ephemeral' } }];
+    return;
+  }
+  if (Array.isArray(last.content) && last.content.length) {
+    last.content[last.content.length - 1].cache_control = { type: 'ephemeral' };
+  }
+}
+
 // Run one chat turn (which may involve several tool round-trips) to completion.
 // Returns { ok, reply, draft, booked, messages, model }.
 async function runWingguyChatTurn({ coach, profile = {}, conversation = [], messages = [], leadEmail, airtableBaseId = null, leadRecordId = null, profileBlock = '', convoBlock = '', campaignTemplate = null, systemPrefixBlocks = null, deps = {} }) {
@@ -239,7 +268,7 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
   const system = [
     ...(systemPrefixBlocks || [
       { type: 'text', text: WINGGUY_VOICE },
-      { type: 'text', text: WINGGUY_AGENT_INSTRUCTIONS, cache_control: { type: 'ephemeral' } },
+      { type: 'text', text: WINGGUY_AGENT_INSTRUCTIONS, cache_control: { type: 'ephemeral', ttl: '1h' } },
     ]),
     { type: 'text', text: buildContext({ profileBlock, convoBlock, leadEmail, coachName: coach.clientName, prefs, campaignTemplate, voice, onFile: !!leadRecordId, window: wingguyCalendar.offerWindowInfo(coach.timezone || coach.timeZone || 'Australia/Brisbane') }) },
   ];
@@ -482,6 +511,7 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
 
   let assistantText = '';
   for (let i = 0; i < MAX_TOOL_ITERATIONS; i++) {
+    setConvoCacheMarker(convo);
     const response = await client.messages.create({
       model: MODEL_ID,
       max_tokens: CHAT_MAX_TOKENS,
