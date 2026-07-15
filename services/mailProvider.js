@@ -94,21 +94,24 @@ async function createDraft(coach, details = {}) {
  * Find recent messages in the coach's mailbox — the lookup that feeds replyToMessageId. Works for
  * ANY Nylas grant (Gmail, Outlook, IMAP), so threading never depends on the Gmail connector's ids.
  * @param {object} coach   client record (needs nylasGrantId)
- * @param {object} query   { from, subject, threadId, receivedAfter, queryImap, limit } — all
- *   optional, newest first. receivedAfter = epoch SECONDS (Nylas `received_after`). queryImap
+ * @param {object} query   { from, anyEmail, subject, threadId, receivedAfter, queryImap, limit }
+ *   — all optional, newest first. anyEmail matches the address in ANY field (from/to/cc/bcc) —
+ *   the "correspondence with this person, both directions" filter.
+ *   receivedAfter = epoch SECONDS (Nylas `received_after`). queryImap
  *   makes Nylas query the IMAP server live instead of its 90-day rolling cache — IMAP grants
  *   (e.g. Zoho mail) only; pass it when the window reaches beyond ~90 days. Deliberately NO
  *   search_query_native: Google/Microsoft restrict which params combine with it and IMAP has
  *   no equivalent, so it does not abstract across providers — these typed filters do.
  * @returns {Promise<{ok:boolean, messages?:Array<{id,threadId,subject,from,date,snippet}>, error?:string}>}
  */
-async function findMessages(coach, { from, subject, threadId, receivedAfter, queryImap, limit } = {}) {
+async function findMessages(coach, { from, anyEmail, subject, threadId, receivedAfter, queryImap, limit } = {}) {
   const { apiKey, grantId, apiUri } = nylasConfig(coach);
   if (!apiKey || !grantId) return { ok: false, error: 'NYLAS_API_KEY / grant not configured for this coach' };
 
   const params = new URLSearchParams();
   params.set('limit', String(Math.min(Math.max(parseInt(limit, 10) || 5, 1), 20)));
   if (from) params.set('from', String(from).trim());
+  if (anyEmail) params.set('any_email', String(anyEmail).trim());
   if (subject) params.set('subject', String(subject).trim());
   if (threadId) params.set('thread_id', String(threadId).trim());
   if (receivedAfter) params.set('received_after', String(Math.floor(Number(receivedAfter))));
@@ -132,10 +135,51 @@ async function findMessages(coach, { from, subject, threadId, receivedAfter, que
     threadId: m.thread_id,
     subject: m.subject,
     from: toParticipants(m.from).map((p) => (p.name ? `${p.name} <${p.email}>` : p.email)).join(', '),
+    fromEmail: (toParticipants(m.from)[0] || {}).email || null,
+    to: toParticipants(m.to).map((p) => p.email).join(', '),
     date: m.date ? new Date(m.date * 1000).toISOString() : null,
     snippet: m.snippet,
   }));
   return { ok: true, messages };
+}
+
+/**
+ * Read ONE full message from the coach's mailbox by Nylas message id (the "now read it" step
+ * after findMessages). Returns the whole message including the HTML body.
+ * @returns {Promise<{ok:boolean, message?:object, error?:string}>}
+ */
+async function getMessage(coach, messageId) {
+  const { apiKey, grantId, apiUri } = nylasConfig(coach);
+  if (!apiKey || !grantId) return { ok: false, error: 'NYLAS_API_KEY / grant not configured for this coach' };
+  if (!messageId) return { ok: false, error: 'messageId required' };
+  const u = `${apiUri}/v3/grants/${grantId}/messages/${encodeURIComponent(messageId)}`;
+  let res;
+  try {
+    res = await fetch(u, { headers: { Authorization: `Bearer ${apiKey}`, Accept: 'application/json' } });
+  } catch (e) {
+    return { ok: false, error: `nylas request failed: ${e.message}` };
+  }
+  const text = await res.text();
+  if (!res.ok) {
+    log.warn(`[mailProvider] nylas message read failed HTTP ${res.status}: ${text.slice(0, 200)}`);
+    return { ok: false, error: `nylas HTTP ${res.status}: ${text.slice(0, 200)}` };
+  }
+  let json = {}; try { json = JSON.parse(text); } catch (_) { /* leave empty */ }
+  const m = json.data || json;
+  return {
+    ok: true,
+    message: {
+      id: m.id,
+      threadId: m.thread_id,
+      subject: m.subject,
+      from: toParticipants(m.from).map((p) => (p.name ? `${p.name} <${p.email}>` : p.email)).join(', '),
+      to: toParticipants(m.to).map((p) => p.email).join(', '),
+      cc: toParticipants(m.cc).map((p) => p.email).join(', '),
+      date: m.date ? new Date(m.date * 1000).toISOString() : null,
+      body: m.body || '',
+      snippet: m.snippet,
+    },
+  };
 }
 
 /**
@@ -160,4 +204,4 @@ async function getDraft(coach, draftId) {
   return { ok: true, draft: json.data || json };
 }
 
-module.exports = { createDraft, getDraft, findMessages, toParticipants };
+module.exports = { createDraft, getDraft, findMessages, getMessage, toParticipants };

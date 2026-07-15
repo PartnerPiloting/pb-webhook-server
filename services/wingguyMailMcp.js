@@ -21,6 +21,11 @@
  * one narrow inbound question ("did they reply?") via a typed Nylas messages filter — provider-
  * independent, no generic mailbox search, no search_query_native.
  *
+ * ALSO THE PERSON-SCOPED READ (added 2026-07-16, same session): wingguy_lead_correspondence (both
+ * directions with one person, via Nylas any_email) + wingguy_read_message (one full body, rendered
+ * to text). The line held deliberately: person-scoped typed filters only — whole-mailbox keyword
+ * search stays OUT (per-provider semantics diverge and the blast radius isn't worth it).
+ *
  * Multi-tenant by construction: the draft is created in the coach's OWN mailbox via their Nylas grant
  * (services/mailProvider.js), the same per-tenant model calendarProvider/wingguyCalendar use. Step-1
  * auth posture: tenant hard-wired to the coach client behind the existing connector token (matches
@@ -73,6 +78,25 @@ function ledgerStore() {
   if (!(process.env.DATABASE_URL || '').trim()) return null;
   return require('./wingguyRulesStore');
 }
+
+/**
+ * Render an email's HTML body as readable plain text for chat (strip markup, keep line
+ * structure, decode the common entities). Not a general HTML parser — good enough for mail.
+ */
+function htmlToText(html) {
+  let t = String(html || '');
+  t = t.replace(/<(style|script|head)[\s\S]*?<\/\1>/gi, '');
+  t = t.replace(/<!--[\s\S]*?-->/g, '');
+  t = t.replace(/<br\s*\/?>/gi, '\n');
+  t = t.replace(/<\/(p|div|tr|li|h[1-6]|blockquote|table)>/gi, '\n');
+  t = t.replace(/<[^>]+>/g, '');
+  t = t.replace(/&nbsp;/gi, ' ').replace(/&amp;/gi, '&').replace(/&lt;/gi, '<').replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"').replace(/&#39;|&apos;/gi, "'").replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)));
+  t = t.replace(/[ \t]+/g, ' ').replace(/ ?\n ?/g, '\n').replace(/\n{3,}/g, '\n\n');
+  return t.trim();
+}
+
+const BODY_CAP = 6000; // chars of rendered text per message read — keeps chat context sane
 
 // ---------------------------------------------------------------------------
 // Executor — returns { text, isError? }
@@ -222,6 +246,74 @@ async function runLeadHistory({ lead_email, limit } = {}, tenant = TENANT) {
   };
 }
 
+async function runReadMessage({ message_id } = {}, tenant = TENANT) {
+  const id = String(message_id || '').trim();
+  if (!id) return { text: 'Error: message_id is required (find it with wingguy_find_message or wingguy_lead_correspondence).', isError: true };
+
+  const clientService = require('./clientService');
+  const coach = await clientService.getClientById(tenant);
+  if (!coach) return { text: `Server config error: coach client "${tenant}" not found.`, isError: true };
+  if (!coach.nylasGrantId) {
+    return { text: `No Nylas grant on file for "${tenant}" — connect the mailbox via Nylas (with mail scope) first.`, isError: true };
+  }
+
+  const result = await mailProvider.getMessage(coach, id);
+  if (!result.ok) return { text: `Message read failed. ${result.error}`, isError: true };
+  const m = result.message;
+  const body = htmlToText(m.body) || String(m.snippet || '');
+  const capped = body.length > BODY_CAP ? `${body.slice(0, BODY_CAP)}\n[... truncated — ${body.length - BODY_CAP} more characters]` : body;
+  return {
+    text:
+      `From: ${m.from || '(unknown)'}\nTo: ${m.to || '(unknown)'}${m.cc ? `\nCc: ${m.cc}` : ''}\n` +
+      `Date: ${m.date || '(unknown)'}\nSubject: ${m.subject || '(none)'}\n` +
+      `(messageId=${m.id} · threadId=${m.threadId} — pass the messageId as reply_to_message_id to reply in this thread.)\n\n` +
+      capped,
+  };
+}
+
+async function runLeadCorrespondence({ lead_email, since_iso, limit } = {}, tenant = TENANT) {
+  const lead = String(lead_email || '').trim();
+  if (!lead) return { text: 'Error: lead_email is required.', isError: true };
+  let receivedAfter;
+  let sinceMs;
+  if (String(since_iso || '').trim()) {
+    sinceMs = Date.parse(String(since_iso).trim());
+    if (Number.isNaN(sinceMs)) return { text: 'Error: since_iso must be an ISO 8601 date/time, e.g. "2026-06-01".', isError: true };
+    receivedAfter = Math.floor(sinceMs / 1000);
+  }
+
+  const clientService = require('./clientService');
+  const coach = await clientService.getClientById(tenant);
+  if (!coach) return { text: `Server config error: coach client "${tenant}" not found.`, isError: true };
+  if (!coach.nylasGrantId) {
+    return { text: `No Nylas grant on file for "${tenant}" — connect the mailbox via Nylas (with mail scope) first.`, isError: true };
+  }
+
+  const cap = Math.min(Math.max(parseInt(limit, 10) || 10, 1), 20);
+  let result = await mailProvider.findMessages(coach, { anyEmail: lead, receivedAfter, limit: cap });
+  if (result.ok && !result.messages.length && sinceMs && (Date.now() - sinceMs) > IMAP_CACHE_DAYS * 86400000) {
+    const live = await mailProvider.findMessages(coach, { anyEmail: lead, receivedAfter, limit: cap, queryImap: true });
+    if (live.ok) result = live; // a non-IMAP grant may reject the flag — keep the cached answer then
+  }
+  if (!result.ok) return { text: `Correspondence lookup failed. ${result.error}`, isError: true };
+  if (!result.messages.length) {
+    return { text: `No emails either way with ${lead}${since_iso ? ` since ${new Date(sinceMs).toISOString().slice(0, 10)}` : ''}.` };
+  }
+
+  const leadLc = lead.toLowerCase();
+  const lines = result.messages.map((m, i) => {
+    const dir = (m.fromEmail || '').toLowerCase() === leadLc ? '⬅ FROM them' : '➡ TO them';
+    return `${i + 1}. ${dir} · ${m.date ? m.date.slice(0, 10) : 'no date'} · "${m.subject || '(none)'}"\n` +
+      `   ${String(m.snippet || '').slice(0, 140)}\n` +
+      `   messageId=${m.id} · threadId=${m.threadId}`;
+  });
+  return {
+    text:
+      `${result.messages.length} email(s) with ${lead}, newest first. Read one in full with wingguy_read_message (its message_id); reply in-thread via wingguy_create_draft reply_to_message_id.\n\n` +
+      lines.join('\n'),
+  };
+}
+
 // IMAP grants (e.g. Zoho mail) serve a ~90-day rolling cache; older windows need a live
 // query_imap pass. OAuth grants (Gmail/Microsoft) never need it — so try cached first and only
 // fall back for old windows, keeping the common case a single round-trip on every provider.
@@ -362,6 +454,42 @@ const TOOL_DEFS = [
     },
     run: runLeadRepliedSince,
   },
+  {
+    name: 'wingguy_read_message',
+    description:
+      'Read ONE email in full from the coach\'s own mailbox (via their Nylas grant — Gmail, Outlook, IMAP/Zoho alike): from/to/date/subject + the body as readable text. Use when the human says "read me their reply" / "what did that email say" — get the message_id from wingguy_find_message, wingguy_lead_correspondence, or wingguy_lead_replied_since first. Read-only; long bodies are truncated.',
+    zodSchema: {
+      message_id: z.string().describe('The Nylas message id to read (from wingguy_find_message / wingguy_lead_correspondence).'),
+    },
+    jsonSchema: {
+      type: 'object',
+      properties: {
+        message_id: { type: 'string', description: 'The Nylas message id to read (from wingguy_find_message / wingguy_lead_correspondence).' },
+      },
+      required: ['message_id'],
+    },
+    run: runReadMessage,
+  },
+  {
+    name: 'wingguy_lead_correspondence',
+    description:
+      'List the recent email correspondence with ONE person, BOTH directions (their messages and the coach\'s), newest first — date, subject, snippet, direction, messageId. Use for "show me my emails with X" / "where did we leave things with X". Works on any provider via the coach\'s own Nylas grant. Person-scoped by design — it is not a mailbox keyword search. Follow up with wingguy_read_message (full body) or wingguy_create_draft reply_to_message_id (threaded reply).',
+    zodSchema: {
+      lead_email: z.string().describe('The person\'s email address (matches from/to/cc/bcc).'),
+      since_iso: z.string().optional().describe('Optional ISO 8601 date — only messages received after this.'),
+      limit: z.number().optional().describe('Max messages (default 10, max 20).'),
+    },
+    jsonSchema: {
+      type: 'object',
+      properties: {
+        lead_email: { type: 'string', description: 'The person\'s email address (matches from/to/cc/bcc).' },
+        since_iso: { type: 'string', description: 'Optional ISO 8601 date — only messages received after this.' },
+        limit: { type: 'number', description: 'Max messages (default 10, max 20).' },
+      },
+      required: ['lead_email'],
+    },
+    run: runLeadCorrespondence,
+  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -404,4 +532,4 @@ async function legacyToolCall(toolName, args, tenant = TENANT) {
   }
 }
 
-module.exports = { registerWingguyMailTools, legacyToolList, legacyToolCall, TOOL_DEFS, detectAssets };
+module.exports = { registerWingguyMailTools, legacyToolList, legacyToolCall, TOOL_DEFS, detectAssets, htmlToText };
