@@ -290,13 +290,29 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
       if (!ordered.length) {
         return { ok: false, error: 'None of those slots are valid (all outside your hours / in lunch). Pick different slots from check_availability.', dropped };
       }
-      // Different-timezone lead: ONE line under the list saying whose time it is (Guy's call,
-      // 2026-07-13 — the Marianne mis-read: correctly-converted Perth times carried no marker, so
-      // she read them as Brisbane time). One line, not a tag on every slot.
+      // ONE timezone line under the list saying whose time it is — ALWAYS, even when the clocks
+      // match (Guy's call, 2026-07-15: the lead doesn't know Guy's timezone, so the reassurance
+      // always earns its place; upgraded from differ-only after the 2026-07-13 Marianne mis-read).
+      // One line, not a tag on every slot. leadTz falls back to Guy's tz when unknown, which
+      // matches the rulebook's "can't work out the lead's clock → coach's clock" fallback.
       const tzDiffer = leadTz !== tz;
       const bullets = ordered.map((iso) => `- ${fmtSlot(iso, leadTz)}`).join('\n')
-        + (tzDiffer ? `\n\n(all times are ${tzCity(leadTz)} time)` : '');
-      const intro = String(input.intro || '').trim();
+        + `\n\n(all times are ${tzCity(leadTz)} time)`;
+      // CODE-OWNED connecting line above the list (Guy, 2026-07-15 — drafts kept jumping from the
+      // intro straight into bare dates; rulebook prose couldn't fix it because the model never
+      // writes the list). If the model already ended its intro with its own "do these work"-style
+      // question, strip that line so the draft doesn't ask twice.
+      const CONNECTING_LINE = 'Would any of the following times work for you?';
+      let intro = String(input.intro || '').trim();
+      {
+        const lines = intro.split('\n');
+        const last = (lines[lines.length - 1] || '').trim();
+        if (/(work for you|suit you|works for you|any of (these|the following))/i.test(last) && /[?:]\s*$/.test(last)) {
+          lines.pop();
+          intro = lines.join('\n').trim();
+        }
+      }
+      intro = intro ? `${intro}\n\n${CONNECTING_LINE}` : CONNECTING_LINE;
       let outro = String(input.outro || '').trim();
       // Code owns the sign-off on a times message (the model composes intro/outro but often omits it, or
       // adds the wrong variant). Strip any trailing sign-off line the model tacked on, then append the
@@ -332,7 +348,7 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
       const leadLoc = String(profile.location || '').trim();
       const tzKnown = availTz.leadTzDetected !== undefined ? availTz.leadTzDetected : !!(leadLoc && getTimezoneFromLocation(leadLoc));
       const leadBase = tzKnown
-        ? `Lead is based in ${leadLoc} — ${tzDiffer ? `draft times are ${tzCity(leadTz)} time (both clocks shown in offeredTimes)` : 'same timezone as Guy, so plain times'}. Tell Guy where the lead is based when you present the draft.`
+        ? `Lead is based in ${leadLoc} — ${tzDiffer ? `draft times are ${tzCity(leadTz)} time (both clocks shown in offeredTimes)` : `same clock as Guy right now (draft's "(all times are ${tzCity(leadTz)} time)" line covers it)`}. Tell Guy where the lead is based when you present the draft.`
         : `⚠ Lead's location is ${leadLoc ? `"${leadLoc}", which I can't map to a timezone` : 'missing from the profile'} — the draft ASSUMES Guy's own timezone (${tzCity(tz)}). Say this to Guy plainly and ask him to confirm where the lead is based before sending.`;
       // NO automatic holds (Guy's call, 2026-07-06 — the auto-hold experiment shipped and was pulled
       // the same afternoon: 8 HOLD blocks incl. duplicates piled up within half an hour and made the
