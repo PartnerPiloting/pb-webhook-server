@@ -1567,6 +1567,7 @@ module.exports = {
   confirmReconstruction,
   insertImportedMeeting,
   fathomRecordingIngested,
+  findEmptyTranscriptMeetings,
   splitMeeting,
   appendRecallUtterance,
   recordRecallPresence,
