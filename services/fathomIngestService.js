@@ -295,6 +295,12 @@ async function ingestFathomMeeting(opts = {}) {
 
     const filed = [];
     for (const sp of segPlans) {
+      // A segment with no words isn't a meeting — filing it creates a header that reads as
+      // coverage (see the empty-body note on the single path below).
+      if (!String(sp._transcriptText || '').trim()) {
+        log.warn(`segment "${sp.title}" has NO transcript text — not filing it (an empty record looks like coverage)`);
+        continue;
+      }
       const ins = await insertImportedMeeting({ title: sp.title, source: SOURCE, transcriptText: sp._transcriptText, meetingStart: sp.meetingStart, durationSeconds: sp.durationSeconds, fathomRecordingId: String(meeting.recording_id), coachClientId });
       if (!ins.ok) { log.warn(`segment insert failed (${sp.title}): ${ins.error}`); continue; }
       for (const m of sp.matchedLeads) {
@@ -393,6 +399,18 @@ async function ingestFathomMeeting(opts = {}) {
   if (dryRun) return { ok: true, dryRun: true, plan, transcriptText };
   if (!ingestEnabled()) return { ok: false, error: 'FATHOM_INGEST_ENABLED is not true — write path is disabled', plan };
 
+  // DON'T FILE A BODYLESS MEETING. Fathom's transcript is often not ready when
+  // meeting_content_ready fires, and the API can return the meeting without it. Filing the header
+  // anyway was the root of the silent-loss problem: the row LOOKS like coverage (the queue can't
+  // see the empty body, the status is the same 'incomplete' a healthy meeting carries) while the
+  // recording is never fetched again. Filing nothing is strictly better: nothing masquerades as a
+  // capture, and — since the dedup key now means SUCCEEDED — the 15-min poller retries this
+  // recording until the transcript lands, then ages it out of its list window.
+  if (!String(transcriptText || '').trim()) {
+    log.warn(`fathom rec=${plan.recordingId} ("${meta.title || ''}") has NO transcript yet — NOT filing a bodyless record; the poller will retry.`);
+    return { ok: false, error: 'no transcript on the recording yet — not filed (will retry)', plan, emptyTranscript: true };
+  }
+
   const ins = await insertImportedMeeting({ title: meta.title, source: SOURCE, transcriptText, meetingStart: meta.meetingStart, durationSeconds: meta.durationSeconds, fathomRecordingId: String(meeting.recording_id), coachClientId, needsSplit: lumpSuspect });
   if (!ins.ok) return { ok: false, error: ins.error || 'insert failed', plan };
 
@@ -406,16 +424,8 @@ async function ingestFathomMeeting(opts = {}) {
       try { await learnEmailForLead(coach, m.leadId, m.email); } catch (e) { log.warn(`self-heal email failed for ${m.leadId}: ${e.message}`); }
     }
   }
-  // An EMPTY transcript is not a successful ingest — it files a header that looks like coverage
-  // and reads back as a confident, empty meeting. Say so loudly: this used to log at info as
-  // "(0 lines, 1 leads)", indistinguishable from a real capture. The dedup key now means
-  // "succeeded", so the poller WILL retry this recording on its next pass.
-  if (!plan.transcriptLines) {
-    log.warn(`EMPTY TRANSCRIPT: fathom rec=${plan.recordingId} -> meeting_id=${meetingId} filed with NO body (title="${meta.title || ''}", ${linkedLeads.length} leads). Not a capture — the poller will retry; if it stays empty past Fathom's retention this meeting is LOST.`);
-  } else {
-    log.info(`ingested fathom single rec=${plan.recordingId} -> meeting_id=${meetingId} (${plan.transcriptLines} lines, ${linkedLeads.length} leads)`);
-  }
-  return { ok: true, mode: 'single', meetingId, botId: ins.bot_id, plan, linkedLeads, emptyTranscript: !plan.transcriptLines };
+  log.info(`ingested fathom single rec=${plan.recordingId} -> meeting_id=${meetingId} (${plan.transcriptLines} lines, ${linkedLeads.length} leads)`);
+  return { ok: true, mode: 'single', meetingId, botId: ins.bot_id, plan, linkedLeads };
 }
 
 /**

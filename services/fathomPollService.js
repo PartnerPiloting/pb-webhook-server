@@ -119,6 +119,10 @@ async function pollFathomMeetings(opts = {}) {
         details.push({ recId, action: 'ingested', mode: r.mode, meetingId: r.meetingId, filed: r.filed?.length });
       } else if (r.dryRun) {
         details.push({ recId, action: 'would-ingest', mode: r.plan?.mode });
+      } else if (r.emptyTranscript) {
+        // Not a failure — Fathom hasn't finished transcribing. Nothing was filed (a bodyless
+        // record would look like coverage), so this recording is simply retried next pass.
+        skipped++; details.push({ recId, action: 'skip', why: 'no transcript yet — will retry' });
       } else {
         // The caller discards `details`, so a reason that only lands there is a reason nobody
         // ever sees: a recording failing every 15 minutes forever showed up as "failed=1" at
