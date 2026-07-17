@@ -21,6 +21,8 @@
  */
 
 const { z } = require('zod');
+const fs = require('fs');
+const path = require('path');
 const clientService = require('./clientService');
 const store = require('./wingguyRulesStore');
 
@@ -336,6 +338,69 @@ async function runSetupRules(_args = {}, tenant = TENANT) {
 }
 
 // ---------------------------------------------------------------------------
+// wingguy_onboarding_guide — Guy's live-call onboarding script, served from the repo doc.
+//
+// WHY (2026-07-17): Guy runs onboarding as a three-way session — him on a call with the client,
+// a claude.ai chat open beside him. He asks for the overview, reads it out, then "expand step 3"
+// as the call reaches it. The doc (docs/wingguy-onboarding-checklist.md) is the single source of
+// truth; this tool reads it FROM THE DEPLOYED REPO on every call, so a doc improvement ships with
+// the next deploy and there is never a stale copy anywhere.
+//
+// OWNER-ONLY: the guide contains Guy-side material (talk tracks, "the sell", trap notes), so a
+// client tenant calling it gets a polite redirect, not the script.
+// ---------------------------------------------------------------------------
+
+const GUIDE_PATH = path.join(__dirname, '..', 'docs', 'wingguy-onboarding-checklist.md');
+
+// Parse the doc into { intro, overview, steps: Map<number, text> } fresh on each call (it's one
+// small local file; freshness beats caching here).
+function loadOnboardingGuide() {
+  const raw = fs.readFileSync(GUIDE_PATH, 'utf8');
+  const sections = raw.split(/^## /m); // sections[0] = the intro above the first ## heading
+  const guide = { intro: sections[0].trim(), overview: null, steps: new Map() };
+  for (const sec of sections.slice(1)) {
+    const body = '## ' + sec.trim();
+    if (/^## THE OVERVIEW/i.test(body)) guide.overview = body;
+    const m = body.match(/^## STEP (\d+) EXPANDED/i);
+    if (m) guide.steps.set(Number(m[1]), body);
+  }
+  return guide;
+}
+
+async function runOnboardingGuide(args = {}, tenant = TENANT) {
+  if (String(tenant).toLowerCase() !== TENANT.toLowerCase()) {
+    return { text: 'This guide is the playbook for the person running your onboarding - it\'s not needed on your side. If you\'re mid-setup, ask "what can I do with Wingguy?" or "am I set up?" instead.' };
+  }
+  let guide;
+  try {
+    guide = loadOnboardingGuide();
+  } catch (e) {
+    return { text: `Couldn't read the onboarding guide (${e.message}).`, isError: true };
+  }
+  const stepNums = [...guide.steps.keys()].sort((a, b) => a - b);
+  const raw = String(args.step == null ? '' : args.step).trim().toLowerCase();
+  const m = raw.match(/\d+/);
+
+  if (!raw || raw === 'overview' || !m) {
+    return {
+      text:
+        `${guide.overview || '(overview section not found in the doc)'}\n\n` +
+        `---\nThat's the map. Present the relevant part to Guy as-is; when the call reaches a step, ask for it by number ("expand step 3") and read the detail from there. Steps available: ${stepNums.join(', ')}.`,
+    };
+  }
+  const n = Number(m[0]);
+  const step = guide.steps.get(n);
+  if (!step) {
+    return { text: `No step ${n} in the guide - it has steps ${stepNums.join(', ')} (or ask for the overview).`, isError: true };
+  }
+  return {
+    text:
+      `${step}\n\n` +
+      `---\nRead the "Say to the client" lines out loud as written; "You do" items are Guy's, "The client does" items are theirs. When this step's checks pass, ask for the next one (step ${n + 1 <= stepNums[stepNums.length - 1] ? n + 1 : 'done - that was the last'}).`,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Definitions — one source of truth for names/descriptions/schemas
 // ---------------------------------------------------------------------------
 
@@ -355,6 +420,14 @@ const TOOL_DEFS = [
     zodSchema: {},
     jsonSchema: { type: 'object', properties: {} },
     run: runVision,
+  },
+  {
+    name: 'wingguy_onboarding_guide',
+    description:
+      'GUY-ONLY (the owner): his live-call script for onboarding a NEW CLIENT onto Wingguy, served fresh from the repo doc. Call it with no arguments (or step="overview") for the whole journey as read-aloud paragraphs; call it with step=<number> when Guy says "expand step 3" / "we\'re at step 5" to get that step\'s full script (say-to-the-client lines, Guy\'s actions, the client\'s actions, checks, traps). Use whenever Guy says he\'s onboarding someone, asks for the onboarding overview/checklist, or asks to expand a step. Present the returned text as-is. A non-owner client calling this gets redirected to wingguy_get_started.',
+    zodSchema: { step: z.string().optional().describe('Which part: omit or "overview" for the full map, or a step number 0-7 (e.g. "3") for that step\'s expanded script.') },
+    jsonSchema: { type: 'object', properties: { step: { type: 'string', description: 'Omit or "overview" for the full map, or a step number 0-7 for that step\'s expanded script.' } } },
+    run: runOnboardingGuide,
   },
   {
     name: 'wingguy_setup_rules',
