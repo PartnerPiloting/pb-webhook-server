@@ -607,9 +607,57 @@ async function deleteOfferHolds(coach, { leadName }) {
 // (createOfferHolds — the automatic hold writer — was REMOVED here 2026-07-06, same day it shipped.
 // If auto-holds ever return, the git history of this file has the accumulate-and-dedupe version.)
 
+/* ---- "What's on my calendar?" (read-only listing) ------------------------
+ * Distinct from the availability pipeline: that answers "when is he FREE" (and applies his booking
+ * rules); this answers "what is actually ON his calendar". It reads through the SAME provider seam
+ * booking uses (google | nylas | zoho), so it works for every tenant — a Zoho client gets their day
+ * without needing a separate calendar connector in their Claude (which, for Zoho, can't exist).
+ */
+
+// Resolve a natural window ("today" / "tomorrow" / "this_week" / "next_week", or explicit dates) to
+// an inclusive [startDate, endDate] in the COACH's own timezone. This lives here, in code, so a chat
+// model never guesses today's date or does DST arithmetic — same rule the booking tools follow.
+function resolveListWindow(tz, { range, date, endDate } = {}) {
+  if (date) {
+    const s = String(date).trim();
+    return { startDate: s, endDate: String(endDate || s).trim() };
+  }
+  const today = todayInTz(tz);
+  const t = DateTime.fromISO(`${today}T00:00`, { zone: tz });
+  switch (String(range || 'today').trim().toLowerCase()) {
+    case 'tomorrow': { const d = t.plus({ days: 1 }).toISODate(); return { startDate: d, endDate: d }; }
+    case 'this_week': return { startDate: t.startOf('week').toISODate(), endDate: t.endOf('week').toISODate() };
+    case 'next_week': { const n = t.plus({ weeks: 1 }); return { startDate: n.startOf('week').toISODate(), endDate: n.endOf('week').toISODate() }; }
+    default: return { startDate: today, endDate: today };
+  }
+}
+
+// List the coach's real events in a window. Returns { ok, events (time-ordered), provider, timezone,
+// startDate, endDate } — display formatting is the caller's job.
+async function listEventsForCoach(clientId, { range, date, endDate } = {}) {
+  let info;
+  try { info = await getCoachCalendarInfo(clientId); } catch (e) { return { ok: false, error: e.message }; }
+  const tz = info.timezone || DEFAULT_TZ;
+  const win = resolveListWindow(tz, { range, date, endDate });
+  const s = DateTime.fromISO(`${win.startDate}T00:00`, { zone: tz });
+  const e = DateTime.fromISO(`${win.endDate}T00:00`, { zone: tz });
+  if (!s.isValid || !e.isValid) return { ok: false, error: 'dates must be YYYY-MM-DD', timezone: tz };
+  if (e < s) return { ok: false, error: 'the end date is before the start date', timezone: tz };
+  const r = await getMeetingsInWindow(
+    coachForCalendar(info),
+    s.toISO(),
+    e.plus({ days: 1 }).toISO(), // exclusive end = midnight starting the day AFTER endDate
+  );
+  if (r.error) return { ok: false, error: r.error, provider: r.provider, timezone: tz, ...win };
+  const events = (r.events || []).slice().sort((a, b) => new Date(a.start) - new Date(b.start));
+  return { ok: true, events, provider: r.provider, timezone: tz, ...win };
+}
+
 module.exports = {
   getAvailabilityForCoach, createBookingEvent, checkProposedTime, getClashesForISO, buildDaysFromBusy,
   deleteOfferHolds, isHoldForLead, isHoldSummary, holdTitle,
   // shared offer-time pipeline + booking guard (used by the panel agent AND the connector tools)
   filterAvailability, bookMeetingGuarded, fmtSlot, tzCity, inLunch, hhmmToMin, minutesInTz, earliestOfferDate, dateStrInTz, isWeekendInTz, firstFarWeekDate, offerWindowInfo,
+  // read-only calendar listing (provider-agnostic) + its display helper
+  listEventsForCoach, resolveListWindow, timeOnlyInTz,
 };

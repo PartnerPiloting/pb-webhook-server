@@ -16,6 +16,7 @@
  */
 
 const { z } = require('zod');
+const { DateTime } = require('luxon');
 const wingguyCalendar = require('./wingguyCalendar');
 const { getBookingPrefs } = require('../config/wingguyBookingPrefs');
 // NOTE: coachingClientLookupService + clientService are required LAZILY inside runBookMeeting —
@@ -68,6 +69,50 @@ async function runCheckAvailability({ lead_location, include_lunch, include_soon
         : '') +
       `Prefer the least-busy days and vary the time of day across the options.\n\n` +
       lines.join('\n'),
+  };
+}
+
+// "What's on my calendar?" — the read-only counterpart to check_availability. Routes through the
+// SAME provider seam as booking (google | nylas | zoho), so every tenant can ask this inside Wingguy
+// rather than needing a separate calendar connector in their Claude (impossible for Zoho anyway).
+async function runListEvents({ range, date, end_date } = {}, tenant = TENANT) {
+  const r = await wingguyCalendar.listEventsForCoach(tenant, { range, date, endDate: end_date });
+  const tz = r.timezone || 'Australia/Brisbane';
+  if (!r.ok) return { text: `Couldn't read the calendar${r.provider ? ` (${r.provider})` : ''}: ${r.error}`, isError: true };
+
+  const win = wingguyCalendar.offerWindowInfo(tz);
+  const anchor = `TODAY IS ${win.today} (${win.timezone}). This week = ${win.thisWeek}; next week = ${win.nextWeek}. Resolve every relative date phrase against this anchor — never guess today's date.`;
+  const span = r.startDate === r.endDate ? r.startDate : `${r.startDate} → ${r.endDate}`;
+  if (!r.events.length) return { text: `${anchor}\n\nNothing scheduled for ${span}.` };
+
+  // Group into the coach's local days, in time order.
+  const byDate = new Map();
+  for (const ev of r.events) {
+    const d = wingguyCalendar.dateStrInTz(ev.start, tz);
+    if (!byDate.has(d)) byDate.set(d, []);
+    byDate.get(d).push(ev);
+  }
+  const blocks = [...byDate.entries()].map(([d, list]) => {
+    const heading = DateTime.fromISO(`${d}T00:00`, { zone: tz }).toFormat('cccc d LLL');
+    const lines = list.map((ev) => {
+      const guests = (ev.attendees || [])
+        .filter((a) => !a.self && (a.email || a.displayName))
+        .map((a) => a.displayName || a.email);
+      const who = guests.length
+        ? ` — with ${guests.slice(0, 4).join(', ')}${guests.length > 4 ? ` +${guests.length - 4} more` : ''}`
+        : '';
+      const from = wingguyCalendar.timeOnlyInTz(ev.start, tz);
+      const to = wingguyCalendar.timeOnlyInTz(ev.end, tz);
+      return `  - ${from}–${to}  ${ev.summary || '(No title)'}${who}`;
+    });
+    return `${heading} (${list.length} ${list.length === 1 ? 'event' : 'events'}):\n${lines.join('\n')}`;
+  });
+  return {
+    text:
+      `${anchor}\n\n` +
+      `The coach's calendar for ${span}, read live from their own calendar (${r.provider}). All times are ${tz}.\n\n` +
+      `${blocks.join('\n\n')}\n\n` +
+      `These are what's BOOKED — for when they're FREE to offer a lead, use wingguy_check_availability (it applies their booking rules).`,
   };
 }
 
@@ -147,7 +192,27 @@ const LUNCH_DESC = 'Set true ONLY when the coach explicitly wants a lunch-time m
 const WEEKEND_DESC = 'Set true ONLY when the coach explicitly wants a weekend meeting — weekdays-only is enforced otherwise.';
 const FAR_WEEKS_DESC = 'Set true ONLY when the coach explicitly wants times beyond next week (e.g. "book them for when I\'m back from holidays") — normally the window is THIS week + NEXT week, with later days appearing only as flagged fallbacks when the near window can\'t fill the options.';
 
+const RANGE_DESC = 'Which window to list: "today" (default), "tomorrow", "this_week" (Mon-Sun of the current week), or "next_week". Use this for relative phrases — it resolves them in the coach\'s OWN timezone, so never work out the dates yourself. For anything else, pass explicit date / end_date instead.';
+
 const TOOL_DEFS = [
+  {
+    name: 'wingguy_list_events',
+    description: 'What is actually ON the coach\'s calendar for a day or a range ("what\'s on today?", "what does my week look like?", "am I free Thursday afternoon?", "what\'s my next meeting?"). Reads their real calendar live, whichever provider they use (Google, Nylas or Zoho) — so this is the RIGHT tool for the coach\'s own diary, and works for every client. This shows what is BOOKED; to find times to OFFER A LEAD use wingguy_check_availability instead (that one applies their booking rules). Read-only — it never changes anything. Defaults to today.',
+    zodSchema: {
+      range: z.enum(['today', 'tomorrow', 'this_week', 'next_week']).optional().describe(RANGE_DESC),
+      date: z.string().optional().describe('Explicit calendar date to list, YYYY-MM-DD. Overrides `range`. Use only when the coach named a specific date.'),
+      end_date: z.string().optional().describe('Optional inclusive END of an explicit range, YYYY-MM-DD — use WITH `date` to list several days (e.g. date=2026-07-20, end_date=2026-07-24).'),
+    },
+    jsonSchema: {
+      type: 'object',
+      properties: {
+        range: { type: 'string', enum: ['today', 'tomorrow', 'this_week', 'next_week'], description: RANGE_DESC },
+        date: { type: 'string', description: 'Explicit calendar date to list, YYYY-MM-DD. Overrides `range`. Use only when the coach named a specific date.' },
+        end_date: { type: 'string', description: 'Optional inclusive END of an explicit range, YYYY-MM-DD — use WITH `date` to list several days.' },
+      },
+    },
+    run: runListEvents,
+  },
   {
     name: 'wingguy_check_availability',
     description: 'The coach\'s REAL offerable slots with all his booking rules already enforced in code (hours, lunch hold, notice period, nothing in the past). ALWAYS use this — never the raw calendar — when finding times to offer a lead. The result opens with TODAY + this-week/next-week boundaries — resolve "next week" and every relative date phrase against that anchor, never a guess. Days at/over the coach\'s preferred daily load are flagged BUSY DAY (still offerable — prefer lighter days, and stack a busy near day BEFORE any FALLBACK WEEK day). Returns each slot with a "label" (exactly how it reads in the lead\'s timezone) and a "time" ISO to pass to wingguy_book_meeting. Pick by label; never do timezone math yourself.',
