@@ -85,27 +85,42 @@ async function runListEvents({ range, date, end_date } = {}, tenant = TENANT) {
   const span = r.startDate === r.endDate ? r.startDate : `${r.startDate} → ${r.endDate}`;
   if (!r.events.length) return { text: `${anchor}\n\nNothing scheduled for ${span}.` };
 
-  // Group into the coach's local days, in time order.
-  const byDate = new Map();
-  for (const ev of r.events) {
-    const d = wingguyCalendar.dateStrInTz(ev.start, tz);
-    if (!byDate.has(d)) byDate.set(d, []);
-    byDate.get(d).push(ev);
-  }
-  const blocks = [...byDate.entries()].map(([d, list]) => {
-    const heading = DateTime.fromISO(`${d}T00:00`, { zone: tz }).toFormat('cccc d LLL');
-    const lines = list.map((ev) => {
-      const guests = (ev.attendees || [])
-        .filter((a) => !a.self && (a.email || a.displayName))
-        .map((a) => a.displayName || a.email);
-      const who = guests.length
-        ? ` — with ${guests.slice(0, 4).join(', ')}${guests.length > 4 ? ` +${guests.length - 4} more` : ''}`
-        : '';
-      const from = wingguyCalendar.timeOnlyInTz(ev.start, tz);
-      const to = wingguyCalendar.timeOnlyInTz(ev.end, tz);
-      return `  - ${from}–${to}  ${ev.summary || '(No title)'}${who}`;
+  // Group by the days the coach ASKED for, listing every event that OVERLAPS each day — not by the
+  // event's start date. A multi-day event (a trip, house-sitting, leave) is genuinely "on" every day
+  // it covers, and grouping by start date would file it under a day outside the window entirely.
+  const days = [];
+  for (let d = DateTime.fromISO(`${r.startDate}T00:00`, { zone: tz }), last = DateTime.fromISO(`${r.endDate}T00:00`, { zone: tz });
+    d <= last; d = d.plus({ days: 1 })) days.push(d);
+
+  const line = (ev) => {
+    const guests = (ev.attendees || [])
+      .filter((a) => !a.self && (a.email || a.displayName))
+      .map((a) => a.displayName || a.email);
+    const who = guests.length
+      ? ` — with ${guests.slice(0, 4).join(', ')}${guests.length > 4 ? ` +${guests.length - 4} more` : ''}`
+      : '';
+    // Same local day → a normal timed meeting. Spanning days → say so explicitly, because a
+    // time-only display ("10:00 am–10:00 am") hides that the end is days away and reads as nonsense.
+    const sDay = wingguyCalendar.dateStrInTz(ev.start, tz);
+    const eDay = wingguyCalendar.dateStrInTz(ev.end, tz);
+    const when = sDay === eDay
+      ? `${wingguyCalendar.timeOnlyInTz(ev.start, tz)}–${wingguyCalendar.timeOnlyInTz(ev.end, tz)}`
+      : `ALL-DAY/MULTI-DAY (runs ${DateTime.fromISO(sDay, { zone: tz }).toFormat('d LLL')} ${wingguyCalendar.timeOnlyInTz(ev.start, tz)} → ${DateTime.fromISO(eDay, { zone: tz }).toFormat('d LLL')} ${wingguyCalendar.timeOnlyInTz(ev.end, tz)})`;
+    return `  - ${when}  ${ev.summary || '(No title)'}${who}`;
+  };
+
+  const blocks = days.map((day) => {
+    const dayStart = day.toMillis();
+    const dayEnd = day.plus({ days: 1 }).toMillis();
+    const list = r.events.filter((ev) => {
+      const s = new Date(ev.start).getTime();
+      const e = new Date(ev.end).getTime();
+      if (!Number.isFinite(s) || !Number.isFinite(e)) return false;
+      return s < dayEnd && (e > dayStart || e === s); // overlaps this day (zero-length: starts in it)
     });
-    return `${heading} (${list.length} ${list.length === 1 ? 'event' : 'events'}):\n${lines.join('\n')}`;
+    const heading = day.toFormat('cccc d LLL');
+    if (!list.length) return `${heading}: nothing scheduled.`;
+    return `${heading} (${list.length} ${list.length === 1 ? 'event' : 'events'}):\n${list.map(line).join('\n')}`;
   });
   return {
     text:
