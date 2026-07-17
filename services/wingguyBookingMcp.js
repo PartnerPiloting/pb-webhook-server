@@ -103,7 +103,11 @@ async function runListEvents({ range, date, end_date } = {}, tenant = TENANT) {
     // time-only display ("10:00 am–10:00 am") hides that the end is days away and reads as nonsense.
     const sDay = wingguyCalendar.dateStrInTz(ev.start, tz);
     const eDay = wingguyCalendar.dateStrInTz(ev.end, tz);
-    const when = sDay === eDay
+    // An event ending at EXACTLY midnight belongs to the day before it — an evening block
+    // ("Dinner, 5:30pm–12:00am") is a same-day event, not a multi-day one.
+    const endsAtMidnight = new Date(ev.end).getTime() === DateTime.fromISO(`${eDay}T00:00`, { zone: tz }).toMillis();
+    const eDayEff = endsAtMidnight ? DateTime.fromISO(`${eDay}T00:00`, { zone: tz }).minus({ days: 1 }).toISODate() : eDay;
+    const when = sDay === eDayEff
       ? `${wingguyCalendar.timeOnlyInTz(ev.start, tz)}–${wingguyCalendar.timeOnlyInTz(ev.end, tz)}`
       : `ALL-DAY/MULTI-DAY (runs ${DateTime.fromISO(sDay, { zone: tz }).toFormat('d LLL')} ${wingguyCalendar.timeOnlyInTz(ev.start, tz)} → ${DateTime.fromISO(eDay, { zone: tz }).toFormat('d LLL')} ${wingguyCalendar.timeOnlyInTz(ev.end, tz)})`;
     return `  - ${when}  ${ev.summary || '(No title)'}${who}`;
