@@ -146,6 +146,12 @@ async function getAllClients() {
                 // calendarProvider.js seam reads these for the 'zoho' (and future direct) branches.
                 const calendarProviderToken = record.get('Calendar Provider Token') || null;
                 const calendarProviderDomain = record.get('Calendar Provider Domain') || null;
+                // Multi-calendar scope (2026-07-17): read MANY (blank = the provider default —
+                // exactly the old behaviour; "all"; or comma-separated provider-native ids) so
+                // busy checks see every calendar the coach keeps; write to the ONE nominated
+                // calendar (blank = provider default). calendarProvider.js reads these.
+                const calendarReadIds = record.get('Calendar Read IDs') || null;
+                const calendarWriteId = record.get('Calendar Write ID') || null;
                 // Managed plan: Yes = Wingguy may draft on the PLATFORM Anthropic key for this client
                 // (they pay Guy). Blank/No = they must bring their own key (default). See byoAnthropicClient.
                 const managedClaudeKey = record.get('Managed Claude Key') === 'Yes';
@@ -217,6 +223,12 @@ async function getAllClients() {
                     calendarProvider: calendarProvider,
                     calendarProviderToken: calendarProviderToken,
                     calendarProviderDomain: calendarProviderDomain,
+                    // Multi-calendar read scope + nominated write target. The write id feeds BOTH
+                    // provider-specific names the seam reads (only the active branch uses its one).
+                    calendarReadIds: calendarReadIds,
+                    calendarWriteId: calendarWriteId,
+                    nylasCalendarId: calendarWriteId,
+                    calendarUid: calendarWriteId,
                     managedClaudeKey: managedClaudeKey,
                     wingguyEnabled: wingguyEnabled,
                     // Wingguy per-client booking identity (Zoom + contacts on the invite; optional)

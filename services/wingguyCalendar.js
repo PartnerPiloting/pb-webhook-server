@@ -28,11 +28,13 @@ const DAY_END_HOUR = 17;
 // Does NOT throw on a missing Google email anymore — a Nylas-only client is valid. Throws only if
 // NEITHER path is possible (no email and no grant).
 async function getCoachCalendarInfo(clientId) {
+  // No fields[] selection on purpose: Airtable 422s the WHOLE request if a named field doesn't
+  // exist yet, which couples deploys to schema rollouts (the Calendar Read IDs / Calendar Write ID
+  // fields ship via scripts/add-multi-calendar-fields.js). One record's full field set is tiny;
+  // a missing field simply reads as undefined -> null -> default behaviour.
   const url =
     `https://api.airtable.com/v0/${process.env.MASTER_CLIENTS_BASE_ID}/Clients` +
-    `?filterByFormula=LOWER({Client ID})=LOWER('${clientId}')` +
-    `&fields[]=Google Calendar Email&fields[]=Timezone&fields[]=Nylas Grant ID&fields[]=Calendar Provider` +
-    `&fields[]=Calendar Provider Token&fields[]=Calendar Provider Domain`;
+    `?filterByFormula=LOWER({Client ID})=LOWER('${clientId}')`;
   const resp = await fetch(url, { headers: { Authorization: `Bearer ${process.env.AIRTABLE_API_KEY}` } });
   if (!resp.ok) throw new Error(`client calendar lookup failed (${resp.status})`);
   const data = await resp.json();
@@ -45,10 +47,15 @@ async function getCoachCalendarInfo(clientId) {
   // Direct-provider (e.g. Zoho) credentials — the calendar equivalent of a Nylas grant.
   const calendarProviderToken = rec.fields['Calendar Provider Token'] || null;
   const calendarProviderDomain = rec.fields['Calendar Provider Domain'] || null;
+  // Multi-calendar scope: READ many (blank = default calendar; "all"; or explicit ids) so the
+  // no-double-book guarantee sees every calendar the coach keeps; WRITE to the ONE nominated
+  // calendar (blank = the provider default) so "where did that meeting go?" has a boring answer.
+  const calendarReadIds = rec.fields['Calendar Read IDs'] || null;
+  const calendarWriteId = rec.fields['Calendar Write ID'] || null;
   if (!calendarEmail && !nylasGrantId && !calendarProviderToken) {
     throw new Error('No calendar for this client — share a calendar with the service account (Google), connect via Nylas, or connect a direct provider (e.g. Zoho) first.');
   }
-  return { calendarEmail, timezone, nylasGrantId, calendarProvider, calendarProviderToken, calendarProviderDomain };
+  return { calendarEmail, timezone, nylasGrantId, calendarProvider, calendarProviderToken, calendarProviderDomain, calendarReadIds, calendarWriteId };
 }
 
 // The calendar provider a coach actually uses. ADDITIVE + Guy-safe: if the client shared a Google
@@ -78,9 +85,23 @@ function coachForCalendar(info) {
     googleCalendarEmail: info.calendarEmail || '',
     calendarProviderToken: info.calendarProviderToken || null,
     calendarProviderDomain: info.calendarProviderDomain || null,
-    calendarUid: info.calendarUid || null,
+    // The ONE nominated write target: the seam reads whichever name its branch uses (Zoho uid /
+    // Nylas calendar id). Blank = the provider default, today's behaviour.
+    calendarUid: info.calendarWriteId || null,
+    nylasCalendarId: info.calendarWriteId || null,
+    // Read scope for the multi-calendar busy-merge (blank | "all" | explicit ids).
+    calendarReadIds: info.calendarReadIds || null,
     timezone: info.timezone,
   };
+}
+
+// The Google service-account read set: the primary share plus any extra calendar emails listed in
+// Calendar Read IDs ("all" is meaningless for a service account — it only sees explicit shares).
+function googleReadSet(info) {
+  const raw = String(info.calendarReadIds || '').trim();
+  if (!raw || /^all$/i.test(raw)) return info.calendarEmail;
+  const extras = raw.split(/[,\n]/).map((s) => s.trim()).filter(Boolean);
+  return extras.length ? [...new Set([info.calendarEmail, ...extras])] : info.calendarEmail;
 }
 
 function formatInTz(isoTime, timezone) {
@@ -111,6 +132,9 @@ function timeOnlyInTz(isoTime, timezone) {
 // Returns [{ date, day, meetingCount, freeSlots: [{ time, display, leadDisplay }] }].
 function buildDaysFromBusy({ busyEvents, dates, yourTimezone, leadTimezone, startHour = DAY_START_HOUR, endHour = DAY_END_HOUR, slotMins = 30, lunch = null }) {
   const busy = (busyEvents || [])
+    // All-day markers ("Leave", birthdays) must never blanket-block a day's slots — the provider
+    // seam already drops them by default; this guards direct callers too.
+    .filter((e) => !e.allDay)
     .map((e) => ({ s: new Date(e.start).getTime(), e: new Date(e.end).getTime() }))
     .filter((b) => Number.isFinite(b.s) && Number.isFinite(b.e) && b.e > b.s);
   const overlaps = (s, e) => busy.some((b) => b.s < e && b.e > s);
@@ -175,10 +199,11 @@ async function getAvailabilityForCoach(clientId, leadLocation = '') {
     return { yourTimezone, leadTimezone, leadLocation, leadTzDetected, days };
   }
 
-  // Google service-account read (Guy's proven path — unchanged).
+  // Google service-account read (Guy's proven path — unchanged unless Calendar Read IDs lists
+  // extra shared calendars, which merge into the busy set via one multi-item freebusy call).
   const calendarService = require('../config/calendarServiceAccount.js');
   const { days, error } = await calendarService.getBatchAvailability(
-    info.calendarEmail, dates, DAY_START_HOUR, DAY_END_HOUR, yourTimezone
+    googleReadSet(info), dates, DAY_START_HOUR, DAY_END_HOUR, yourTimezone
   );
   if (error) throw new Error(error);
 
@@ -255,12 +280,27 @@ async function clashesForWindow(info, startISO, len) {
     // Provider events returned are real (busy) meetings — no transparency flag, treat all as busy.
     events = (r.events || []).map((e) => ({ ...e, isFree: false }));
   } else {
+    // Primary calendar via getBatchAvailability (transparency-aware — a "Free"-marked event is not
+    // a clash), exactly as before.
     const calendarService = require('../config/calendarServiceAccount.js');
     const { days, error } = await calendarService.getBatchAvailability(
       info.calendarEmail, [dateInCoachTz], DAY_START_HOUR, DAY_END_HOUR, yourTimezone
     );
     if (error) throw new Error(error);
     events = (days && days[0] && days[0].events) || [];
+    // Extra read calendars (Calendar Read IDs) clash too — that's the whole point of multi-read.
+    // Read via the seam (all-day events already dropped there; anything timed counts as busy).
+    const readSet = googleReadSet(info);
+    if (Array.isArray(readSet) && readSet.length > 1) {
+      const extras = readSet.filter((id) => id !== info.calendarEmail);
+      const r = await getMeetingsInWindow(
+        { calendarProvider: 'google', googleCalendarEmail: extras[0], calendarReadIds: extras.join(', '), timezone: yourTimezone },
+        DateTime.fromISO(`${dateInCoachTz}T00:00`, { zone: yourTimezone }).toJSDate(),
+        DateTime.fromISO(`${dateInCoachTz}T23:59`, { zone: yourTimezone }).toJSDate()
+      );
+      if (r.error) throw new Error(`extra-calendar clash read failed: ${r.error}`);
+      events = events.concat((r.events || []).map((e) => ({ ...e, isFree: false })));
+    }
   }
 
   return events
@@ -647,6 +687,9 @@ async function listEventsForCoach(clientId, { range, date, endDate } = {}) {
     coachForCalendar(info),
     s.toISO(),
     e.plus({ days: 1 }).toISO(), // exclusive end = midnight starting the day AFTER endDate
+    // Listing is the ONE surface that wants all-day events (a "Leave" day IS on the calendar);
+    // availability/clash paths keep dropping them so they never blanket-block slots.
+    { includeAllDay: true },
   );
   if (r.error) return { ok: false, error: r.error, provider: r.provider, timezone: tz, ...win };
   const events = (r.events || []).slice().sort((a, b) => new Date(a.start) - new Date(b.start));

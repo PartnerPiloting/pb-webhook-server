@@ -312,7 +312,11 @@ async function getEventsForDate(calendarEmail, date, timezone = 'Australia/Brisb
  * BATCH: Get availability for multiple days in a single freebusy query + events query
  * This is MUCH faster than calling getEventsForDate/getFreeSlotsForDate in a loop
  * 
- * @param {string} calendarEmail - The email of the calendar to check
+ * @param {string|string[]} calendarEmail - Calendar id(s) to check. An ARRAY means multi-calendar:
+ *   busy periods merge across ALL of them (so a personal-calendar event blocks the slot — the
+ *   no-double-book guarantee), while the EVENTS list (meeting counts / soft conflicts) still comes
+ *   from the FIRST id only, because "how loaded is this day" means client calls on the main
+ *   calendar, not gym sessions on a personal one.
  * @param {string[]} dates - Array of dates in YYYY-MM-DD format
  * @param {number} startHour - Start hour for availability (0-23)
  * @param {number} endHour - End hour for availability (0-23)
@@ -323,10 +327,17 @@ async function getBatchAvailability(calendarEmail, dates, startHour = 9, endHour
     if (!calendarClient) {
         return { days: [], error: 'Calendar service not initialized' };
     }
-    
+
     if (!dates || dates.length === 0) {
         return { days: [], error: 'No dates provided' };
     }
+
+    const calendarIds = [...new Set((Array.isArray(calendarEmail) ? calendarEmail : [calendarEmail])
+        .map((id) => String(id || '').trim()).filter(Boolean))];
+    if (!calendarIds.length) {
+        return { days: [], error: 'No calendar id provided' };
+    }
+    const primaryCalendarId = calendarIds[0];
     
     console.log(`[CalendarServiceAccount] getBatchAvailability: ${dates.length} days, ${startHour}:00-${endHour}:00 ${timezone}`);
     
@@ -365,16 +376,17 @@ async function getBatchAvailability(calendarEmail, dates, startHour = 9, endHour
         console.log(`[CalendarServiceAccount] Batch query range: ${rangeStart.toISOString()} to ${rangeEnd.toISOString()}`);
         
         // Run freebusy and events queries in parallel (2 API calls instead of 42!)
+        // freebusy natively takes MULTIPLE calendars in one call — the multi-calendar busy-merge is free.
         const [freebusyResponse, eventsResponse] = await Promise.all([
             calendarClient.freebusy.query({
                 requestBody: {
                     timeMin: rangeStart.toISOString(),
                     timeMax: rangeEnd.toISOString(),
-                    items: [{ id: calendarEmail }],
+                    items: calendarIds.map((id) => ({ id })),
                 },
             }),
             calendarClient.events.list({
-                calendarId: calendarEmail,
+                calendarId: primaryCalendarId,
                 timeMin: rangeStart.toISOString(),
                 timeMax: rangeEnd.toISOString(),
                 singleEvents: true,
@@ -382,20 +394,21 @@ async function getBatchAvailability(calendarEmail, dates, startHour = 9, endHour
                 maxResults: 250, // Reasonable limit for multi-week range
             }),
         ]);
-        
-        // Extract busy periods
+
+        // Extract busy periods — merged across every calendar in the read set.
         const calendars = freebusyResponse.data.calendars || {};
-        const calendarData = calendars[calendarEmail];
-        
-        if (calendarData?.errors?.length > 0) {
-            const error = calendarData.errors[0];
-            if (error.reason === 'notFound') {
-                return { days: [], error: `Calendar not shared. Share with: ${serviceAccountEmail}` };
+        const allBusyPeriods = [];
+        for (const id of calendarIds) {
+            const calendarData = calendars[id];
+            if (calendarData?.errors?.length > 0) {
+                const error = calendarData.errors[0];
+                if (error.reason === 'notFound') {
+                    return { days: [], error: `Calendar "${id}" not shared. Share with: ${serviceAccountEmail}` };
+                }
+                return { days: [], error: `Calendar "${id}" error: ${error.reason}` };
             }
-            return { days: [], error: `Calendar error: ${error.reason}` };
+            allBusyPeriods.push(...(calendarData?.busy || []));
         }
-        
-        const allBusyPeriods = calendarData?.busy || [];
         const allEvents = (eventsResponse.data.items || []).map(event => ({
             summary: event.summary || '(No title)',
             start: event.start?.dateTime || event.start?.date,

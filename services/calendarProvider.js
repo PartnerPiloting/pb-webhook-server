@@ -25,6 +25,7 @@
  */
 
 const { listCalendarEventsWithAttendeesInRange } = require('../config/calendarServiceAccount');
+const { DateTime } = require('luxon');
 const { createSafeLogger } = require('../utils/loggerHelper');
 
 const log = createSafeLogger('SYSTEM', null, 'calendar_provider');
@@ -34,75 +35,230 @@ function activeProvider(coach) {
   return String(p).trim().toLowerCase();
 }
 
+/* ---- Multi-calendar read scope (2026-07-17) ------------------------------------------------------
+ * The no-double-book guarantee is only TRUE if availability reads see EVERY calendar the coach keeps
+ * (miss the personal calendar and Wingguy books a lead over the dentist). Read scope comes from the
+ * per-client `Calendar Read IDs` roster field (coach.calendarReadIds):
+ *   blank          -> the single default calendar (exactly the pre-2026-07-17 behaviour)
+ *   "all"          -> every calendar in the connected account (nylas/zoho; read-only subscribed
+ *                     feeds are skipped on nylas — they're FYI, list them explicitly to include one)
+ *   "id1, id2"     -> exactly those provider-native ids (nylas calendar ids / zoho uids / google
+ *                     calendar emails shared with the service account)
+ * Writes stay on ONE nominated calendar (coach.nylasCalendarId / coach.calendarUid, fed by the
+ * `Calendar Write ID` roster field; blank = the provider default, unchanged). */
+function parseReadIds(coach) {
+  const raw = String((coach && coach.calendarReadIds) || '').trim();
+  if (!raw) return null; // default: single-calendar, today's behaviour
+  if (/^all$/i.test(raw)) return 'all';
+  const ids = raw.split(/[,\n]/).map((s) => s.trim()).filter(Boolean);
+  return ids.length ? ids : null;
+}
+
+// Same meeting can appear on several calendars (an invite accepted onto two) — for busy-merge it's
+// harmless, for listing it's noise. Key on what makes it "the same block of time".
+function dedupEvents(events) {
+  const seen = new Set();
+  return events.filter((e) => {
+    const k = `${e.summary}|${e.start}|${e.end}`;
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+}
+
+// [startISO, endExclusiveISO] for an all-day span, computed at the COACH's local midnights so day
+// grouping and "overlaps this day" checks land on the right local days (UTC midnights would smear a
+// one-day event across two Brisbane days).
+function allDaySpan(startDate, endDateExclusive, tz) {
+  const zone = tz || 'UTC';
+  const s = DateTime.fromISO(startDate, { zone });
+  const e = endDateExclusive ? DateTime.fromISO(endDateExclusive, { zone }) : s.plus({ days: 1 });
+  if (!s.isValid || !e.isValid) return null;
+  return { start: s.toUTC().toISO(), end: (e > s ? e : s.plus({ days: 1 })).toUTC().toISO() };
+}
+
 /**
  * @param {object} coach  client record (from clientService.getClientById)
  * @param {Date|string} timeMin
  * @param {Date|string} timeMax
+ * @param {object} [opts] { includeAllDay } — all-day events are DROPPED by default (an all-day
+ *   "Leave" marker isn't a 30-min clash, and must never blanket-block a day's slots); only the
+ *   read-only listing path opts in to see them.
  * @returns {Promise<{events:object[], error:string|null, provider:string}>}
  */
-async function getMeetingsInWindow(coach, timeMin, timeMax) {
+async function getMeetingsInWindow(coach, timeMin, timeMax, opts = {}) {
   const provider = activeProvider(coach);
-  if (provider === 'nylas') return getViaNylas(coach, timeMin, timeMax);
-  if (provider === 'zoho') return getViaZoho(coach, timeMin, timeMax);
-  return getViaGoogle(coach, timeMin, timeMax);
+  let r;
+  if (provider === 'nylas') r = await getViaNylas(coach, timeMin, timeMax);
+  else if (provider === 'zoho') r = await getViaZoho(coach, timeMin, timeMax);
+  else r = await getViaGoogle(coach, timeMin, timeMax);
+  if (!opts.includeAllDay && Array.isArray(r.events)) {
+    r = { ...r, events: r.events.filter((e) => !e.allDay) };
+  }
+  return r;
 }
 
-/* ---- Google (existing service-account; unchanged behaviour) -------------- */
+/**
+ * Every calendar in the coach's connected account — for the "which calendars do you keep?" setup
+ * step that fills `Calendar Read IDs` / `Calendar Write ID`. Google service-account clients can't
+ * enumerate (the service account only sees calendars explicitly shared with it) — list ids by hand.
+ * @returns {Promise<{calendars:Array<{id,name,isDefault,readOnly}>, error:string|null, provider:string}>}
+ */
+async function listCalendars(coach) {
+  const provider = activeProvider(coach);
+  try {
+    if (provider === 'nylas') {
+      const cals = await listNylasCalendars(coach);
+      return { calendars: cals.map((c) => ({ id: c.id, name: c.name || '', isDefault: !!c.is_primary, readOnly: !!c.read_only })), error: null, provider };
+    }
+    if (provider === 'zoho') {
+      const accessToken = await getZohoAccessToken(coach);
+      const cals = await listZohoCalendars(coach, accessToken);
+      return { calendars: cals.map((c) => ({ id: c.uid, name: c.name || '', isDefault: !!c.isdefault, readOnly: false })), error: null, provider };
+    }
+    return { calendars: [], error: 'google service-account clients can\'t enumerate calendars — put explicit calendar emails (shared with the service account) in Calendar Read IDs', provider };
+  } catch (e) {
+    return { calendars: [], error: e.message, provider };
+  }
+}
+
+/* ---- Google (existing service-account; single-calendar behaviour unchanged) -------------- */
 async function getViaGoogle(coach, timeMin, timeMax) {
   const calEmail = coach.googleCalendarEmail || coach.calendarEmail;
   if (!calEmail) return { events: [], error: 'no google calendar email for coach', provider: 'google' };
-  const r = await listCalendarEventsWithAttendeesInRange(calEmail, timeMin, timeMax);
-  return { events: r.events || [], error: r.error || null, provider: 'google' };
+  const readIds = parseReadIds(coach);
+  // 'all' can't work here: the service account only sees calendars explicitly shared with it, so
+  // the read set must be listed. The primary share is always included.
+  if (readIds === 'all') log.warn('[calendarProvider] Calendar Read IDs="all" not supported on google service-account — reading the primary share only; list calendar emails explicitly');
+  const ids = [...new Set([calEmail, ...(Array.isArray(readIds) ? readIds : [])])];
+  const tz = coach.timezone || null;
+  const events = [];
+  for (const id of ids) {
+    const r = await listCalendarEventsWithAttendeesInRange(id, timeMin, timeMax);
+    if (r.error) return { events: [], error: ids.length > 1 ? `calendar "${id}": ${r.error}` : r.error, provider: 'google' };
+    for (const ev of r.events || []) events.push(googleAllDayNormalise(ev, tz, id));
+  }
+  return { events: ids.length > 1 ? dedupEvents(events) : events, error: null, provider: 'google' };
+}
+
+// Google all-day events carry date-only start/end (no 'T'). Flag them and pin the span to the
+// coach's local midnights; timed events pass through untouched.
+function googleAllDayNormalise(ev, tz, calendarId) {
+  const out = calendarId ? { ...ev, calendarId } : ev;
+  const s = String(ev.start || '');
+  if (!s || s.includes('T')) return out;
+  const span = allDaySpan(s, String(ev.end || '') || null, tz); // Google end date is exclusive
+  if (!span) return out;
+  return { ...out, allDay: true, start: span.start, end: span.end };
 }
 
 /* ---- Nylas (per-tenant grant; verify against sandbox) -------------------- */
+function nylasEnv(coach) {
+  return {
+    apiKey: process.env.NYLAS_API_KEY,
+    grantId: (coach && coach.nylasGrantId) || process.env.NYLAS_GRANT_ID,
+    apiUri: (process.env.NYLAS_API_URI || 'https://api.us.nylas.com').replace(/\/$/, ''),
+    writeCalendarId: (coach && coach.nylasCalendarId) || process.env.NYLAS_CALENDAR_ID || 'primary',
+  };
+}
+
+/** All calendars on the grant (paginated). Throws on failure. */
+async function listNylasCalendars(coach) {
+  const { apiKey, grantId, apiUri } = nylasEnv(coach);
+  if (!apiKey || !grantId) throw new Error('NYLAS_API_KEY / grant not configured');
+  const cals = [];
+  let cursor = null;
+  for (let page = 0; page < 5; page++) {
+    const u = new URL(`${apiUri}/v3/grants/${grantId}/calendars`);
+    u.searchParams.set('limit', '50');
+    if (cursor) u.searchParams.set('page_token', cursor);
+    const res = await fetch(u.toString(), { headers: { Authorization: `Bearer ${apiKey}`, Accept: 'application/json' } });
+    if (!res.ok) throw new Error(`nylas calendars HTTP ${res.status}: ${(await res.text().catch(() => '')).slice(0, 200)}`);
+    const json = await res.json();
+    cals.push(...(json.data || []));
+    cursor = json.next_cursor || null;
+    if (!cursor) break;
+  }
+  return cals;
+}
+
 async function getViaNylas(coach, timeMin, timeMax) {
-  const apiKey = process.env.NYLAS_API_KEY;
-  const grantId = (coach && coach.nylasGrantId) || process.env.NYLAS_GRANT_ID;
-  const apiUri = (process.env.NYLAS_API_URI || 'https://api.us.nylas.com').replace(/\/$/, '');
-  const calendarId = (coach && coach.nylasCalendarId) || process.env.NYLAS_CALENDAR_ID || 'primary';
+  const { apiKey, grantId, apiUri, writeCalendarId } = nylasEnv(coach);
   if (!apiKey || !grantId) return { events: [], error: 'NYLAS_API_KEY / grant not configured', provider: 'nylas' };
+
+  // Read scope: default = the one write calendar (today's behaviour); 'all' = every calendar on the
+  // grant except read-only subscribed feeds (FYI noise — list one explicitly to include it).
+  const readIds = parseReadIds(coach);
+  let calendarIds = [writeCalendarId];
+  if (readIds === 'all') {
+    try {
+      calendarIds = (await listNylasCalendars(coach)).filter((c) => !c.read_only).map((c) => c.id);
+      if (!calendarIds.length) calendarIds = [writeCalendarId];
+    } catch (e) {
+      return { events: [], error: `nylas calendar list failed: ${e.message}`, provider: 'nylas' };
+    }
+  } else if (Array.isArray(readIds)) {
+    calendarIds = readIds;
+  }
 
   const startSec = Math.floor(new Date(timeMin).getTime() / 1000);
   const endSec = Math.floor(new Date(timeMax).getTime() / 1000);
   const selfEmail = String(coach.googleCalendarEmail || coach.calendarEmail || '').toLowerCase();
+  const tz = coach.timezone || null;
   const events = [];
-  // Paginate: with expand_recurring a multi-week window easily exceeds one page (daily recurring
-  // personal events count as one instance each).
-  let cursor = null;
-  for (let page = 0; page < 5; page++) {
-    const u = new URL(`${apiUri}/v3/grants/${grantId}/events`);
-    u.searchParams.set('calendar_id', calendarId);
-    u.searchParams.set('start', String(startSec));
-    u.searchParams.set('end', String(endSec));
-    u.searchParams.set('limit', '200');
-    u.searchParams.set('expand_recurring', 'true');
-    if (cursor) u.searchParams.set('page_token', cursor);
+  for (const calendarId of calendarIds) {
+    // Paginate: with expand_recurring a multi-week window easily exceeds one page (daily recurring
+    // personal events count as one instance each).
+    let cursor = null;
+    for (let page = 0; page < 5; page++) {
+      const u = new URL(`${apiUri}/v3/grants/${grantId}/events`);
+      u.searchParams.set('calendar_id', calendarId);
+      u.searchParams.set('start', String(startSec));
+      u.searchParams.set('end', String(endSec));
+      u.searchParams.set('limit', '200');
+      u.searchParams.set('expand_recurring', 'true');
+      if (cursor) u.searchParams.set('page_token', cursor);
 
-    let res;
-    try {
-      res = await fetch(u.toString(), { headers: { Authorization: `Bearer ${apiKey}`, Accept: 'application/json' } });
-    } catch (e) {
-      return { events: [], error: `nylas request failed: ${e.message}`, provider: 'nylas' };
+      let res;
+      try {
+        res = await fetch(u.toString(), { headers: { Authorization: `Bearer ${apiKey}`, Accept: 'application/json' } });
+      } catch (e) {
+        return { events: [], error: `nylas request failed: ${e.message}`, provider: 'nylas' };
+      }
+      if (!res.ok) {
+        const body = await res.text().catch(() => '');
+        return { events: [], error: `nylas HTTP ${res.status} (calendar ${calendarId}): ${body.slice(0, 200)}`, provider: 'nylas' };
+      }
+      const json = await res.json();
+      events.push(...(json.data || [])
+        .map((ev) => mapNylasEvent(ev, selfEmail, tz))
+        .filter(Boolean)
+        .map((ev) => ({ ...ev, calendarId })));
+      cursor = json.next_cursor || null;
+      if (!cursor) break;
     }
-    if (!res.ok) {
-      const body = await res.text().catch(() => '');
-      return { events: [], error: `nylas HTTP ${res.status}: ${body.slice(0, 200)}`, provider: 'nylas' };
-    }
-    const json = await res.json();
-    events.push(...(json.data || []).map((ev) => mapNylasEvent(ev, selfEmail)).filter(Boolean));
-    cursor = json.next_cursor || null;
-    if (!cursor) break;
   }
-  return { events, error: null, provider: 'nylas' };
+  return { events: calendarIds.length > 1 ? dedupEvents(events) : events, error: null, provider: 'nylas' };
 }
 
 /** Map one Nylas v3 event into the Google-shaped event the filters expect. */
-function mapNylasEvent(ev, selfEmail) {
+function mapNylasEvent(ev, selfEmail, tz) {
   const when = ev.when || {};
-  const startSec = when.start_time;
-  const endSec = when.end_time;
-  if (!startSec || !endSec) return null; // only timed events matter for splitting
+  let allDay = false;
+  let startSec = when.start_time;
+  let endSec = when.end_time;
+  if (!startSec || !endSec) {
+    // All-day: when.object 'date' ({date}) or 'datespan' ({start_date, end_date}). VERIFY-LIVE:
+    // datespan end_date assumed EXCLUSIVE (Google passthrough semantics) — check against a real
+    // multi-day all-day event the first time one shows up in a live listing.
+    const startDate = when.date || when.start_date;
+    if (!startDate) return null; // no usable time shape at all
+    const span = allDaySpan(String(startDate), when.end_date ? String(when.end_date) : null, tz);
+    if (!span) return null;
+    allDay = true;
+    startSec = Math.floor(new Date(span.start).getTime() / 1000);
+    endSec = Math.floor(new Date(span.end).getTime() / 1000);
+  }
 
   const orgEmail = String(ev.organizer?.email || '').toLowerCase();
   const participants = Array.isArray(ev.participants) ? ev.participants : [];
@@ -128,6 +284,7 @@ function mapNylasEvent(ev, selfEmail) {
     summary: ev.title || '(No title)',
     start: new Date(startSec * 1000).toISOString(),
     end: new Date(endSec * 1000).toISOString(),
+    ...(allDay ? { allDay: true } : {}),
     location: confUrl || ev.location || '',
     description: ev.description || '',
     htmlLink: confUrl || '',
@@ -286,13 +443,18 @@ async function getZohoAccessToken(coach) {
   return accessToken;
 }
 
-async function getZohoCalendarUid(coach, accessToken) {
-  if (coach && coach.calendarUid) return coach.calendarUid;
+/** All calendars on the Zoho account. Throws on failure. */
+async function listZohoCalendars(coach, accessToken) {
   const { calendarBase } = zohoHosts(coach.calendarProviderDomain);
   const res = await fetch(`${calendarBase}/api/v1/calendars`, { headers: zohoAuthHeaders(accessToken) });
   if (!res.ok) throw new Error(`Zoho calendars list HTTP ${res.status}: ${(await res.text()).slice(0, 150)}`);
   const json = await res.json();
-  const cals = json.calendars || json.data || [];
+  return json.calendars || json.data || [];
+}
+
+async function getZohoCalendarUid(coach, accessToken) {
+  if (coach && coach.calendarUid) return coach.calendarUid;
+  const cals = await listZohoCalendars(coach, accessToken);
   const def = cals.find((c) => c.isdefault) || cals[0];
   if (!def || !def.uid) throw new Error('no Zoho calendar found for this account');
   return def.uid;
@@ -328,12 +490,33 @@ function mapZohoStatus(s) {
   return 'needsAction'; // NEEDS-ACTION / unknown
 }
 
+// Bare Zoho all-day date "yyyyMMdd" -> "yyyy-MM-dd" (or null).
+function zohoDateOnly(s) {
+  const m = String(s || '').trim().match(/^(\d{4})(\d{2})(\d{2})$/);
+  return m ? `${m[1]}-${m[2]}-${m[3]}` : null;
+}
+
 /** Map one Zoho event into the Google-shaped event the filters expect. */
-function mapZohoEvent(ev, selfEmail) {
+function mapZohoEvent(ev, selfEmail, tz) {
+  // An empty window returns events: [{"message": "No events found."}] — a sentinel INSIDE the
+  // array, not an empty array. Drop it explicitly so it can never be miscounted as a real event.
+  if (!ev || (!ev.dateandtime && ev.message)) return null;
   const dt = ev.dateandtime || {};
-  const start = zohoToISO(dt.start);
-  const end = zohoToISO(dt.end);
-  if (!start || !end) return null; // all-day / unparseable → skip
+  let start = zohoToISO(dt.start);
+  let end = zohoToISO(dt.end);
+  let allDay = false;
+  if (!start || !end) {
+    // All-day: bare yyyyMMdd dates. VERIFY-LIVE: end date assumed EXCLUSIVE (parity with
+    // Google/Nylas) — confirm against a real multi-day Zoho all-day event once Julian's account
+    // is connected; if Zoho turns out inclusive, the span helper just needs endDate+1 here.
+    const sDate = zohoDateOnly(dt.start);
+    if (!sDate) return null; // unparseable → skip
+    const span = allDaySpan(sDate, zohoDateOnly(dt.end), tz);
+    if (!span) return null;
+    allDay = true;
+    start = span.start;
+    end = span.end;
+  }
 
   const orgEmail = String((ev.organizer && (ev.organizer.email || ev.organizer)) || '').toLowerCase();
   const raw = Array.isArray(ev.attendees) ? ev.attendees : [];
@@ -358,6 +541,7 @@ function mapZohoEvent(ev, selfEmail) {
     summary: ev.title || '(No title)',
     start,
     end,
+    ...(allDay ? { allDay: true } : {}),
     location: ev.location || '',
     description: ev.description || '',
     htmlLink: ev.vieweventurl || '',
@@ -369,28 +553,44 @@ function mapZohoEvent(ev, selfEmail) {
 async function getViaZoho(coach, timeMin, timeMax) {
   try {
     const accessToken = await getZohoAccessToken(coach);
-    const uid = await getZohoCalendarUid(coach, accessToken);
     const { calendarBase } = zohoHosts(coach.calendarProviderDomain);
     const selfEmail = String(coach.googleCalendarEmail || coach.calendarEmail || '').toLowerCase();
-    const events = [];
-    // Zoho caps the range at 31 days; Wingguy windows are ~2-3 weeks, but chunk defensively.
-    const CHUNK_MS = 30 * 86400000;
-    let cur = new Date(timeMin).getTime();
-    const end = new Date(timeMax).getTime();
-    while (cur < end) {
-      const chunkEnd = Math.min(cur + CHUNK_MS, end);
-      const range = JSON.stringify({ start: isoToZoho(new Date(cur).toISOString()), end: isoToZoho(new Date(chunkEnd).toISOString()) });
-      const u = new URL(`${calendarBase}/api/v1/calendars/${encodeURIComponent(uid)}/events`);
-      u.searchParams.set('range', range);
-      u.searchParams.set('byinstance', 'true'); // expand recurring instances
-      const res = await fetch(u.toString(), { headers: zohoAuthHeaders(accessToken) });
-      if (!res.ok) return { events: [], error: `zoho HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`, provider: 'zoho' };
-      const json = await res.json();
-      const list = json.events || json.data || [];
-      for (const ev of list) { const m = mapZohoEvent(ev, selfEmail); if (m) events.push(m); }
-      cur = chunkEnd;
+    const tz = coach.timezone || null;
+
+    // Read scope: default = the one write calendar (today's behaviour); 'all' = every calendar on
+    // the account; explicit uids = those.
+    const readIds = parseReadIds(coach);
+    let uids;
+    if (readIds === 'all') {
+      uids = (await listZohoCalendars(coach, accessToken)).map((c) => c.uid).filter(Boolean);
+      if (!uids.length) throw new Error('no Zoho calendar found for this account');
+    } else if (Array.isArray(readIds)) {
+      uids = readIds;
+    } else {
+      uids = [await getZohoCalendarUid(coach, accessToken)];
     }
-    return { events, error: null, provider: 'zoho' };
+
+    const events = [];
+    for (const uid of uids) {
+      // Zoho caps the range at 31 days; Wingguy windows are ~2-3 weeks, but chunk defensively.
+      const CHUNK_MS = 30 * 86400000;
+      let cur = new Date(timeMin).getTime();
+      const end = new Date(timeMax).getTime();
+      while (cur < end) {
+        const chunkEnd = Math.min(cur + CHUNK_MS, end);
+        const range = JSON.stringify({ start: isoToZoho(new Date(cur).toISOString()), end: isoToZoho(new Date(chunkEnd).toISOString()) });
+        const u = new URL(`${calendarBase}/api/v1/calendars/${encodeURIComponent(uid)}/events`);
+        u.searchParams.set('range', range);
+        u.searchParams.set('byinstance', 'true'); // expand recurring instances
+        const res = await fetch(u.toString(), { headers: zohoAuthHeaders(accessToken) });
+        if (!res.ok) return { events: [], error: `zoho HTTP ${res.status} (calendar ${uid}): ${(await res.text()).slice(0, 200)}`, provider: 'zoho' };
+        const json = await res.json();
+        const list = json.events || json.data || [];
+        for (const ev of list) { const m = mapZohoEvent(ev, selfEmail, tz); if (m) events.push({ ...m, calendarId: uid }); }
+        cur = chunkEnd;
+      }
+    }
+    return { events: uids.length > 1 ? dedupEvents(events) : events, error: null, provider: 'zoho' };
   } catch (e) {
     return { events: [], error: `zoho read failed: ${e.message}`, provider: 'zoho' };
   }
@@ -453,6 +653,7 @@ async function deleteViaZoho(coach, eventId) {
 }
 
 module.exports = {
-  getMeetingsInWindow, createCalendarEvent, deleteCalendarEvent, activeProvider,
+  getMeetingsInWindow, createCalendarEvent, deleteCalendarEvent, activeProvider, listCalendars,
   mapNylasEvent, mapNylasStatus, mapZohoEvent, mapZohoStatus, zohoToISO, isoToZoho, zohoHosts,
+  parseReadIds, dedupEvents, allDaySpan, zohoDateOnly, googleAllDayNormalise,
 };
