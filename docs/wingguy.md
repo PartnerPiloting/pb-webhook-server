@@ -3076,6 +3076,8 @@ var reverts reads only as a fire extinguisher. Boat-burning after ~2 weeks stabl
 
 ## ▶ You are here / next pick-up
 
+**▶▶ 2026-07-17 (later still) — ONBOARDING CHECKLIST + MEETING-LINK POLICY.** `docs/wingguy-onboarding-checklist.md` = the end-to-end new-client runbook (record → connector → rules → calendar incl. the Zoho account trap + Read IDs=all → meeting link → email → Fathom → close-out). **Meeting-link policy DECIDED: one reusable personal link on every invite (PMI / reusable Meet/Teams link), waiting-room on — per-meeting link generation deliberately NOT built** (Nylas conferencing autocreate = the known small build if a client ever insists; Zoom-per-meeting = a whole OAuth integration, only if a paying client demands it). Julian's `Calendar Read IDs=all` set (verified live — his wrong-account grant still shows 1 calendar/1 event, as expected until he re-auths); "more good news" multi-calendar email drafted for Guy to send.
+
 **▶▶ 2026-07-17 (later) — MULTI-CALENDAR READ-MANY / WRITE-ONE BUILT (all providers) + ALL-DAY EVENTS HANDLED. SHIPS DARK.**
 - **Why now (Guy's call, overriding the earlier WAIT):** the no-double-book guarantee is only TRUE if busy checks see EVERY calendar a client keeps — that's a hole for all clients, not a Julian quirk, so it was built provider-generic without waiting for his re-auth. Bonus: the parked Zoho all-day gap folded into the same change (one fix, not two).
 - **★ THE MODEL:** read MANY / write ONE, driven by two new roster fields (Master Clients, `scripts/add-multi-calendar-fields.js`, **idempotent, not yet run — run it as a Render job or locally with a key**):
