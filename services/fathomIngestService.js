@@ -406,8 +406,16 @@ async function ingestFathomMeeting(opts = {}) {
       try { await learnEmailForLead(coach, m.leadId, m.email); } catch (e) { log.warn(`self-heal email failed for ${m.leadId}: ${e.message}`); }
     }
   }
-  log.info(`ingested fathom single rec=${plan.recordingId} -> meeting_id=${meetingId} (${plan.transcriptLines} lines, ${linkedLeads.length} leads)`);
-  return { ok: true, mode: 'single', meetingId, botId: ins.bot_id, plan, linkedLeads };
+  // An EMPTY transcript is not a successful ingest — it files a header that looks like coverage
+  // and reads back as a confident, empty meeting. Say so loudly: this used to log at info as
+  // "(0 lines, 1 leads)", indistinguishable from a real capture. The dedup key now means
+  // "succeeded", so the poller WILL retry this recording on its next pass.
+  if (!plan.transcriptLines) {
+    log.warn(`EMPTY TRANSCRIPT: fathom rec=${plan.recordingId} -> meeting_id=${meetingId} filed with NO body (title="${meta.title || ''}", ${linkedLeads.length} leads). Not a capture — the poller will retry; if it stays empty past Fathom's retention this meeting is LOST.`);
+  } else {
+    log.info(`ingested fathom single rec=${plan.recordingId} -> meeting_id=${meetingId} (${plan.transcriptLines} lines, ${linkedLeads.length} leads)`);
+  }
+  return { ok: true, mode: 'single', meetingId, botId: ins.bot_id, plan, linkedLeads, emptyTranscript: !plan.transcriptLines };
 }
 
 /**

@@ -467,8 +467,17 @@ async function insertImportedMeeting({ title, source, transcriptText, meetingSta
 }
 
 /**
- * Dedup check for the Fathom poller: has ANY row already been filed for this Fathom recording_id?
- * (A back-to-back split files several rows sharing the id — any one means "already ingested".)
+ * Dedup check for the Fathom poller: has this Fathom recording already been ingested SUCCESSFULLY?
+ * (A back-to-back split files several rows sharing the id — any one with a transcript means done.)
+ *
+ * "Successfully" is the load-bearing word. This used to answer "has any row been filed?", i.e. it
+ * marked ATTEMPTED, not SUCCEEDED — so an ingest that landed an empty-bodied shell (Fathom hadn't
+ * finished transcribing when meeting_content_ready fired, or the API returned the meeting without
+ * its transcript) sealed itself in permanently: both the webhook and the 15-min poller skipped it
+ * forever after. That is how a meeting is lost silently past Fathom's retention window (observed:
+ * Kate Phillips, 1 Jul 2026). A row with NO transcript is an unfinished attempt — say so, and let
+ * the poller try again. Re-ingest is safe: insertImportedMeeting writes a fresh row and the empty
+ * shell is swept by scripts/prune-empty-meetings.js (or simply loses the lead lookup's ORDER BY).
  */
 async function fathomRecordingIngested(fathomRecordingId) {
   if (!fathomRecordingId) return false;
@@ -478,10 +487,43 @@ async function fathomRecordingIngested(fathomRecordingId) {
   try {
     await ensureSchema(client);
     const r = await client.query(
-      `SELECT 1 FROM recall_meetings WHERE fathom_recording_id = $1 LIMIT 1`,
+      `SELECT 1 FROM recall_meetings
+       WHERE fathom_recording_id = $1
+         AND transcript_text IS NOT NULL AND btrim(transcript_text) <> ''
+       LIMIT 1`,
       [String(fathomRecordingId)],
     );
     return r.rows.length > 0;
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Meetings whose transcript body is empty past a grace window — the silent-failure sweep.
+ * A header-with-no-body row looks exactly like coverage in the queue (which doesn't even select
+ * transcript_text) and is served by the MCP with a confident header and nothing in it, so nothing
+ * in the system was capable of noticing. Read-only.
+ */
+async function findEmptyTranscriptMeetings({ olderThanMins = 90, limit = 50 } = {}) {
+  const p = getPool();
+  if (!p) return [];
+  const mins = Math.min(Math.max(Number(olderThanMins) || 90, 1), 60 * 24 * 30);
+  const cap = Math.min(Math.max(Number(limit) || 50, 1), 200);
+  const client = await p.connect();
+  try {
+    await ensureSchema(client);
+    const r = await client.query(
+      `SELECT id, title, meeting_start, created_at, source, fathom_recording_id, coach_client_id,
+              duration_seconds, status
+       FROM recall_meetings
+       WHERE (transcript_text IS NULL OR btrim(transcript_text) = '')
+         AND COALESCE(meeting_start, created_at) < NOW() - ($1 || ' minutes')::interval
+       ORDER BY COALESCE(meeting_start, created_at) DESC
+       LIMIT $2`,
+      [String(mins), cap],
+    );
+    return r.rows;
   } finally {
     client.release();
   }

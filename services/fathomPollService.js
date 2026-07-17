@@ -120,17 +120,23 @@ async function pollFathomMeetings(opts = {}) {
       } else if (r.dryRun) {
         details.push({ recId, action: 'would-ingest', mode: r.plan?.mode });
       } else {
+        // The caller discards `details`, so a reason that only lands there is a reason nobody
+        // ever sees: a recording failing every 15 minutes forever showed up as "failed=1" at
+        // info level, with no id and no why. Log each failure where it happens.
         failed++; details.push({ recId, action: 'fail', why: r.error });
+        log.warn(`poll: rec=${recId} FAILED to ingest for ${coachClientId}: ${r.error}`);
       }
     } catch (e) {
       failed++; details.push({ recId, action: 'fail', why: e.message });
+      log.warn(`poll: rec=${recId} THREW for ${coachClientId}: ${e.message}`);
     }
   }
 
   const summary = { ok: true, ingested, skipped, failed, details, dryRun: !!dryRun };
   lastRun = new Date().toISOString();
   lastResult = { ingested, skipped, failed, dryRun: !!dryRun };
-  log.info(`poll pass: ingested=${ingested} skipped=${skipped} failed=${failed}${dryRun ? ' (dry-run)' : ''}`);
+  const failLine = failed ? ` — FAILED: ${details.filter((d) => d.action === 'fail').map((d) => `${d.recId} (${d.why})`).join('; ')}` : '';
+  log.info(`poll pass: ingested=${ingested} skipped=${skipped} failed=${failed}${dryRun ? ' (dry-run)' : ''}${failLine}`);
   return summary;
 }
 
@@ -176,7 +182,36 @@ async function pollAllFathomTenants(opts = {}) {
     }
   }
   log.info(`multi-tenant poll: ${tenants.length} tenant(s), ingested=${totIngested} failed=${totFailed}${dryRun ? ' (dry-run)' : ''}`);
-  return { ok: true, tenants: tenants.length, ingested: totIngested, failed: totFailed, results };
+  const coverage = await sweepEmptyTranscripts().catch((e) => {
+    log.warn(`coverage sweep failed: ${e.message}`);
+    return null;
+  });
+  return { ok: true, tenants: tenants.length, ingested: totIngested, failed: totFailed, results, coverage };
+}
+
+// ── Coverage sweep: make silent transcript failures loud ────────────────────────────────────────
+// A meeting row with a populated header and an EMPTY body is worse than no row: the review queue
+// doesn't select transcript_text, its status ('incomplete') is the same one a healthy meeting
+// awaiting speaker checks carries, and the MCP serves it back with a confident header and nothing
+// in it. So nothing in the system could notice. Two went missing in ~2.5 weeks (Kate Phillips
+// 1 Jul — unrecoverable past Fathom's retention; Julian Davis 17 Jul).
+// Rides the poll's existing 15-min heartbeat rather than adding a cron nobody remembers.
+const EMPTY_GRACE_MINS = Number(process.env.FATHOM_EMPTY_GRACE_MINS) || 90;
+let lastCoverage = null;
+
+async function sweepEmptyTranscripts({ olderThanMins = EMPTY_GRACE_MINS } = {}) {
+  const { findEmptyTranscriptMeetings } = require('./recallWebhookDb');
+  const rows = await findEmptyTranscriptMeetings({ olderThanMins });
+  lastCoverage = { checkedAt: new Date().toISOString(), graceMins: olderThanMins, emptyCount: rows.length };
+  if (!rows.length) return lastCoverage;
+  log.warn(`COVERAGE: ${rows.length} meeting(s) have a header but NO transcript body (>${olderThanMins} min after start) — each looks like coverage and is not:`);
+  for (const r of rows.slice(0, 20)) {
+    const when = r.meeting_start || r.created_at;
+    log.warn(`  - meeting_id=${r.id} "${r.title || '(untitled)'}" ${when ? new Date(when).toISOString() : '?'} owner=${r.coach_client_id} source=${r.source}${r.fathom_recording_id ? ` fathom_rec=${r.fathom_recording_id}` : ''}`);
+  }
+  if (rows.length > 20) log.warn(`  … and ${rows.length - 20} more`);
+  lastCoverage.sample = rows.slice(0, 20).map((r) => ({ id: String(r.id), title: r.title, meetingStart: r.meeting_start, owner: r.coach_client_id }));
+  return lastCoverage;
 }
 
 function startFathomPoll() {
@@ -202,12 +237,15 @@ function getFathomPollStatus() {
     pollIntervalMs: POLL_INTERVAL_MS,
     lastRun,
     lastResult,
+    // "Is anything looking like coverage but empty?" — the answer nothing used to be able to give.
+    lastCoverage,
   };
 }
 
 module.exports = {
   pollFathomMeetings,
   pollAllFathomTenants,
+  sweepEmptyTranscripts,
   startFathomPoll,
   stopFathomPoll,
   getFathomPollStatus,

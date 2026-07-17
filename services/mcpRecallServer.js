@@ -109,7 +109,24 @@ async function runRecallLatestTranscript({ email, after }, coachClientId = DEFAU
   }
   if (!rows || rows.length === 0) return { text: `No meetings found for ${leadName} (${clean}).` };
 
-  const latest = rows[0];
+  // Prefer the newest meeting that actually HAS a transcript. A header-only row (capture failed,
+  // or an auto-split child built from a calendar event with no utterances) otherwise wins on
+  // recency and gets served as "the meeting" — a confident header with nothing in it, which reads
+  // as coverage. If every row is empty, say so plainly rather than returning a hollow header.
+  const hasBody = (r) => r && r.transcript_text && String(r.transcript_text).trim();
+  const latest = rows.find(hasBody);
+  if (!latest) {
+    const newest = rows[0];
+    const when = newest.meeting_start || newest.created_at;
+    return {
+      text:
+        `A meeting record exists for ${leadName} (${clean}) — "${newest.title || 'Meeting'}" (#${newest.meeting_id})` +
+        `${when ? ` on ${when}` : ''} — but it has NO transcript body${rows.length > 1 ? ` (nor do the other ${rows.length - 1} record(s) for them)` : ''}.\n\n` +
+        `The meeting was booked and filed, but the recording never landed. Do NOT treat this as "nothing was discussed" — the transcript is missing, not empty. Check Fathom for the recording; if it's within retention it can be re-ingested.`,
+      isError: true,
+    };
+  }
+  const skipped = rows.indexOf(latest);
   const transcript = await replaceParticipantLabels(latest.transcript_text || '', latest.meeting_id);
   const durMin = latest.duration_seconds ? Math.round(latest.duration_seconds / 60) : null;
   const header = [
@@ -117,6 +134,7 @@ async function runRecallLatestTranscript({ email, after }, coachClientId = DEFAU
     `Lead: ${leadName} (${clean})`,
     latest.meeting_start || latest.created_at ? `Date: ${latest.meeting_start || latest.created_at}` : '',
     durMin ? `Duration: ${durMin} min` : '',
+    skipped ? `⚠ NB: ${skipped} more recent record(s) for this lead have no transcript body — this is the newest one that does.` : '',
     '---',
     '',
   ].filter(Boolean).join('\n');
