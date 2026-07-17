@@ -6,13 +6,16 @@
 //   4. the raw events response per calendar for a window (+ the first raw event's shape)
 //   5. how many of those events our mapper would keep vs silently drop, and why
 //
-//   node scripts/wingguy-zoho-diagnose.js [clientId] [days]
+//   node scripts/wingguy-zoho-diagnose.js [clientId] [daysForward] [daysBack]
+// e.g. ... Julian-Davis 14 30  → 30 days BACK through 14 days FORWARD.
+// Zoho caps a range query at 31 days, so the span is chunked (same as the live adapter).
 // Never prints tokens. Never writes anything.
 require('dotenv').config();
 const clientService = require('./../services/clientService');
 
 const tenant = process.argv[2] || 'Julian-Davis';
 const DAYS = Number(process.argv[3] || 7);
+const DAYS_BACK = Number(process.argv[4] || 0);
 
 // --- copies of the adapter's helpers, so we can see each step in isolation -------------------
 function zohoHosts(domain) {
@@ -79,31 +82,52 @@ function zohoToISO(s) {
   const picked = cals.find((k) => k.isdefault) || cals[0];
   console.log('ADAPTER WOULD PICK →', picked ? `uid=${picked.uid} ("${picked.name}")` : '(none)');
 
-  console.log(`\n=== 4. EVENTS per calendar (next ${DAYS} days) ===`);
   const now = Date.now();
-  const range = JSON.stringify({ start: isoToZoho(new Date(now).toISOString()), end: isoToZoho(new Date(now + DAYS * 86400000).toISOString()) });
-  console.log('range param =', range);
+  const from = now - DAYS_BACK * 86400000;
+  const to = now + DAYS * 86400000;
+  console.log(`\n=== 4. EVENTS per calendar (${DAYS_BACK} days back → ${DAYS} days forward) ===`);
+  console.log(`window: ${new Date(from).toISOString()} → ${new Date(to).toISOString()}`);
+  // Zoho rejects/limits ranges over 31 days — chunk exactly like the live adapter does.
+  const CHUNK_MS = 30 * 86400000;
+  const chunks = [];
+  for (let cur = from; cur < to; cur += CHUNK_MS) chunks.push([cur, Math.min(cur + CHUNK_MS, to)]);
+  console.log(`chunked into ${chunks.length} query window(s) (Zoho caps a range at 31 days)`);
+
   for (const k of cals) {
-    const u = new URL(`${calendarBase}/api/v1/calendars/${encodeURIComponent(k.uid)}/events`);
-    u.searchParams.set('range', range);
-    u.searchParams.set('byinstance', 'true');
-    const r = await fetch(u.toString(), { headers });
-    const text = await r.text();
-    if (!r.ok) { console.log(`\n  "${k.name}" → HTTP ${r.status}: ${text.slice(0, 250)}`); continue; }
-    let j = {};
-    try { j = JSON.parse(text); } catch (_) { console.log(`\n  "${k.name}" → non-JSON: ${text.slice(0, 200)}`); continue; }
-    const list = j.events || j.data || [];
-    console.log(`\n  "${k.name}" (uid=${k.uid}) → ${list.length} raw event(s); top-level keys = ${Object.keys(j).join(',')}`);
-    if (!list.length) continue;
-    console.log('  FIRST RAW EVENT:\n', JSON.stringify(list[0], null, 2).split('\n').map((l) => '    ' + l).join('\n').slice(0, 1800));
+    const all = [];
+    let failed = false;
+    for (const [cs, ce] of chunks) {
+      const range = JSON.stringify({ start: isoToZoho(new Date(cs).toISOString()), end: isoToZoho(new Date(ce).toISOString()) });
+      const u = new URL(`${calendarBase}/api/v1/calendars/${encodeURIComponent(k.uid)}/events`);
+      u.searchParams.set('range', range);
+      u.searchParams.set('byinstance', 'true');
+      const r = await fetch(u.toString(), { headers });
+      const text = await r.text();
+      if (!r.ok) { console.log(`\n  "${k.name}" ${range} → HTTP ${r.status}: ${text.slice(0, 250)}`); failed = true; continue; }
+      let j = {};
+      try { j = JSON.parse(text); } catch (_) { console.log(`\n  "${k.name}" → non-JSON: ${text.slice(0, 200)}`); failed = true; continue; }
+      const list = j.events || j.data || [];
+      console.log(`  chunk ${range} → ${list.length} event(s)`);
+      all.push(...list);
+    }
+    console.log(`\n  "${k.name}" (uid=${k.uid}) → ${all.length} raw event(s) TOTAL${failed ? ' (some chunks errored — see above)' : ''}`);
+    if (!all.length) continue;
+
+    // Every event: what it is, whether Zoho calls it all-day/multi-day, and whether we'd keep it.
+    console.log('  ALL EVENTS (raw):');
     let kept = 0; const dropped = [];
-    for (const ev of list) {
+    for (const ev of all) {
       const dt = ev.dateandtime || {};
       const s = zohoToISO(dt.start); const e = zohoToISO(dt.end);
-      if (s && e) kept++; else dropped.push(`${ev.title || '(untitled)'} → start=${JSON.stringify(dt.start)} end=${JSON.stringify(dt.end)}`);
+      const ok = !!(s && e);
+      if (ok) kept++; else dropped.push(ev);
+      console.log(`    [${ok ? 'KEEP' : 'DROP'}] "${ev.title || '(untitled)'}" · isallday=${ev.isallday} · multiday=${ev.multiday} · start=${JSON.stringify(dt.start)} end=${JSON.stringify(dt.end)} · tz=${dt.timezone || '?'}`);
     }
-    console.log(`  MAPPER: would keep ${kept} / ${list.length}`);
-    if (dropped.length) { console.log('  DROPPED (zohoToISO returned null):'); dropped.slice(0, 8).forEach((d) => console.log('    -', d)); }
+    console.log(`\n  MAPPER: would keep ${kept} / ${all.length}${dropped.length ? ` — DROPPING ${dropped.length}` : ''}`);
+    if (dropped.length) {
+      console.log('  FIRST DROPPED EVENT (full raw shape — this is what we must learn to parse):');
+      console.log(JSON.stringify(dropped[0], null, 2).split('\n').map((l) => '    ' + l).join('\n').slice(0, 1800));
+    }
   }
   console.log('\n=== DONE ===');
   process.exit(0);
