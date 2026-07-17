@@ -339,6 +339,56 @@ class FakeDb {
     assert.ok(prop.neighbours.some((n) => n.rule_key === 'signoff-line'), 'same context+type neighbour surfaced');
   });
 
+  // --- The conflict check's blind spots (all three found live, 2026-07-17) ----------------
+  console.log('proposeRule() — the conflict check must not hide the conflicts it exists to catch:');
+  await check('a foundation rule with the SAME key is NOT filtered out as "this chain"', async () => {
+    // The bug: the exclusion matched rule_key+campaign but not layer, so the cross-layer twin -
+    // the exact collision worth catching - was hidden. Identity = layer|tenant|key|campaign.
+    // (Uses its own key: a same-key twin makes any layer-blind lookup ambiguous, including the
+    // fixtures' own - which is the whole point of the finding.)
+    await store.commitRule({
+      layer: 'client', tenantId: 'Test-Tenant', ruleKey: 'twin-key', context: 'outreach', ruleType: 'voice',
+      body: 'CLIENT twin rule.', createdBy: 'test', expectedVersion: 0,
+    });
+    await store.commitRule({
+      layer: 'foundation', ruleKey: 'twin-key', context: 'outreach', ruleType: 'voice',
+      body: 'FOUNDATION twin rule (platform-wide).', createdBy: 'test', expectedVersion: 0,
+    });
+    const prop = await store.proposeRule({
+      layer: 'client', tenantId: 'Test-Tenant', ruleKey: 'twin-key', context: 'outreach', ruleType: 'voice',
+      body: 'Client twin v2.',
+    });
+    assert.strictEqual(prop.expectedVersion, 1, 'still versions its OWN (client) chain');
+    const twin = [...prop.neighbours, ...prop.sameKeyElsewhere]
+      .find((n) => n.rule_key === 'twin-key' && n.layer === 'foundation');
+    assert.ok(twin, 'the foundation twin of the same key must surface');
+  });
+  await check('a foundation proposal SEES the caller tenant\'s client rules (they render together)', async () => {
+    // Two bugs here: foundation proposals only queried the foundation layer, AND the caller's
+    // tenant is blanked for a foundation rule - so the read must carry the CALLER's tenant.
+    const prop = await store.proposeRule({
+      layer: 'foundation', readerTenantId: 'Test-Tenant', ruleKey: 'brand-new-foundation-rule', context: 'outreach', ruleType: 'voice',
+      body: 'A new platform-wide voice rule.',
+    });
+    assert.ok(
+      prop.neighbours.some((n) => n.layer === 'client'),
+      'foundation proposals were blind to the client rules they render beside',
+    );
+  });
+  await check('a rule filed in ANOTHER context surfaces via sameTypeElsewhere', async () => {
+    // The live miss: a global/stage-logic rule overrode follow-up/stage-logic rules, and the
+    // same-cell-only check reported "no neighbours" - true, and useless.
+    const prop = await store.proposeRule({
+      layer: 'client', tenantId: 'Test-Tenant', ruleKey: 'no-repeat-set-pieces', context: 'global', ruleType: 'stage-logic',
+      body: 'Never repeat a set piece already in the written record.',
+    });
+    assert.strictEqual(prop.neighbours.length, 0, 'nothing else in global/stage-logic (as before)');
+    assert.ok(
+      prop.sameTypeElsewhere.some((n) => n.rule_type === 'stage-logic' && n.context !== 'global'),
+      'stage-logic rules filed in other contexts must still surface',
+    );
+  });
+
   console.log('revertRule() + retireRule():');
   await check('revert inserts a NEW version copying the old body', async () => {
     const r = await store.revertRule({ layer: 'client', tenantId: 'Test-Tenant', ruleKey: 'greeting-style', toVersion: 1, createdBy: 'test' });

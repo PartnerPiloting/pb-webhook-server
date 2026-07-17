@@ -47,9 +47,27 @@ const TENANT = (process.env.RECALL_COACH_CLIENT_ID || 'Guy-Wilson').trim();
 // Pure core (unit-tested directly)
 // ---------------------------------------------------------------------------
 
+// A library URL counts as "in the body" only where it appears as a whole link, not as a prefix of
+// a longer one. Without the boundary check, an asset at .../benefits-page-v1/ matches inside
+// .../benefits-page-v1/pricing and both keys get logged off one send.
+function bodyCarriesUrl(body, url) {
+  const u = String(url || '').trim();
+  if (!u) return false;
+  const esc = u.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  // Followed by a URL terminator (quote, whitespace, <, >) or end-of-string — never by more path.
+  return new RegExp(`${esc}(?=["'\\s<>]|$)`).test(body);
+}
+
 /**
  * Detect which asset-library entries a draft body carries, and resolve {{asset:key}} tokens
  * to their stored URLs (URLs go out EXACTLY as stored — same contract as the rules renderer).
+ *
+ * TWO KEYS CAN SHARE ONE URL (e.g. signup_link and cost_benefit_page both pointing at the
+ * benefits page for different purposes). The ledger's unit is the ASSET KEY, not the URL, so the
+ * literal-URL scan runs over the ORIGINAL body — scanning the resolved body would let a token's
+ * own expansion match its URL twin, silently burning that twin's usage gate off one send
+ * (observed live 2026-07-17: drafting cost_benefit_page logged signup_link too).
+ *
  * @param {string} html       the draft body
  * @param {Array}  assetRows  [{asset_key, url, status}] — the tenant's library (getAssets rows)
  * @returns {{html:string, assetKeys:string[], unresolved:string[]}}
@@ -59,16 +77,18 @@ function detectAssets(html, assetRows = []) {
   for (const a of assetRows) byKey.set(a.asset_key, a);
   const found = new Set();
   const unresolved = [];
-  const resolved = String(html || '').replace(/\{\{\s*asset:([a-zA-Z0-9_.-]+)\s*\}\}/g, (whole, key) => {
+  const original = String(html || '');
+  const resolved = original.replace(/\{\{\s*asset:([a-zA-Z0-9_.-]+)\s*\}\}/g, (whole, key) => {
     const a = byKey.get(key);
     if (a && a.url && a.status !== 'retired') { found.add(key); return a.url; }
     unresolved.push(key);
     return whole;
   });
   // Literal URLs: an active library link pasted straight into the body still counts as that asset.
+  // Scanned against the ORIGINAL body — see the URL-twin note above.
   for (const a of assetRows) {
     if (!a.url || a.status === 'retired' || found.has(a.asset_key)) continue;
-    if (resolved.includes(String(a.url).trim())) found.add(a.asset_key);
+    if (bodyCarriesUrl(original, a.url)) found.add(a.asset_key);
   }
   return { html: resolved, assetKeys: [...found], unresolved: [...new Set(unresolved)] };
 }

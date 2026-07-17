@@ -397,18 +397,37 @@ async function renderRulesBlock({ tenantId = DEFAULT_TENANT, contexts = [], camp
  * active rules in the same context+type for the same scope — the v1 conflict check is human
  * eyes on the neighbours). expected_version feeds commitRule's structural conflict check.
  */
-async function proposeRule({ tenantId, layer, ruleKey, context, ruleType, campaign, body }) {
+// readerTenantId = whose rulebook to show as neighbours. Distinct from tenantId (which OWNS the
+// rule being proposed and is correctly blank for foundation/template): a foundation proposal is
+// tenant-less but is still made BY someone, and the rules it must be checked against are the ones
+// that render for that someone. Read-scope only — never written anywhere.
+async function proposeRule({ tenantId, readerTenantId, layer, ruleKey, context, ruleType, campaign, body }) {
   const { key, tenant } = validateRuleInput({ layer, tenantId, ruleKey, context, ruleType });
   const camp = (campaign || '').trim() || null;
   const existing = await getRule({ tenantId: tenant || undefined, layer, ruleKey: key, campaign: camp });
   const current = existing?.active || null;
-  // Neighbours = same context+type, excluding only THIS exact chain — so when proposing a
-  // campaign overlay, the generic version of the same rule_key surfaces for the eyeball check.
-  const neighbours = (await getActiveRules({
-    tenantId: tenant || DEFAULT_TENANT,
-    contexts: [context],
-    layer: layer === 'client' ? undefined : layer,
-  })).filter((r) => r.rule_type === ruleType && !(r.rule_key === key && (r.campaign || null) === camp));
+  // Neighbours = the OTHER active rules that will render alongside this one, for the human
+  // eyeball check. Two things this must get right, both live finds (2026-07-17):
+  //   1. Exclude only THIS EXACT CHAIN — identity is (layer, tenant, rule_key, campaign), the
+  //      same identity the unique index uses. Matching on rule_key+campaign alone hid a
+  //      SAME-KEY rule in the OTHER layer as if it were self: the precise collision the check
+  //      exists to catch (foundation ∪ client both render — no cross-layer shadowing in v1).
+  //   2. Always read the foundation ∪ client union. A foundation proposal reading only the
+  //      foundation layer is blind to the tenant's client rules it will render beside.
+  const chainId = (r) => `${r.layer}|${r.layer === 'client' ? (r.tenant_id || '') : ''}|${r.rule_key}|${r.campaign || ''}`;
+  const selfId = `${layer}|${layer === 'client' ? (tenant || '') : ''}|${key}|${camp || ''}`;
+  // The whole rulebook that renders for this tenant, minus this exact chain. Rules are FILED by
+  // context/type but they LAND on the same generated message — a taxonomy cell is not a blast
+  // radius (live find 2026-07-17: a global/stage-logic proposal that overrode a post-call/voice
+  // rule and a follow-up/stage-logic rule reported "no neighbouring rules", which was true and
+  // useless). So the check is tiered by likelihood of collision, widest last.
+  const readerTenant = (readerTenantId || tenantId || '').trim() || DEFAULT_TENANT;
+  const all = (await getActiveRules({ tenantId: readerTenant })).filter((r) => chainId(r) !== selfId);
+  const sameCell = all.filter((r) => r.context === context && r.rule_type === ruleType);
+  const sameType = all.filter((r) => r.rule_type === ruleType && r.context !== context);
+  // Same key filed elsewhere = the cross-layer duplicate case (both copies render, no shadowing).
+  const sameKey = all.filter((r) => r.rule_key === key && !(r.context === context && r.rule_type === ruleType));
+  const neighbours = sameCell;
   return {
     ruleKey: key,
     layer,
@@ -421,7 +440,22 @@ async function proposeRule({ tenantId, layer, ruleKey, context, ruleType, campai
     currentBody: current ? current.body : null,
     expectedVersion: current ? current.version : 0,
     isNew: !current,
-    neighbours: neighbours.map((n) => ({ rule_key: n.rule_key, layer: n.layer, campaign: n.campaign || null, version: n.version, body: n.body })),
+    neighbours: neighbours.map(neighbourView),
+    // Wider rings of the conflict check (see the tiering note above).
+    sameTypeElsewhere: sameType.map(neighbourView),
+    sameKeyElsewhere: sameKey.map(neighbourView),
+  };
+}
+
+function neighbourView(n) {
+  return {
+    rule_key: n.rule_key,
+    layer: n.layer,
+    context: n.context,
+    rule_type: n.rule_type,
+    campaign: n.campaign || null,
+    version: n.version,
+    body: n.body,
   };
 }
 

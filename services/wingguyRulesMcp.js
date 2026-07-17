@@ -72,9 +72,19 @@ async function runRuleGet({ rule_key, layer = 'client', campaign }, tenant = TEN
     lines.push(`- v${v.version} ${v.status}${v.change_note ? ` — "${v.change_note}"` : ''}${v.created_by ? ` (by ${v.created_by})` : ''} ${v.created_at || ''}`);
   }
   if (history.length) {
-    lines.push('', `Door history (${history.length} recent):`);
+    // History is fetched by rule_key across ALL layers, while the rule above is ONE layer — so
+    // print each row's layer. Without it, template and client rows for the same key render
+    // byte-identical and read as double-writes (they are not: one key, one seed pass, two layers).
+    // Campaign lives in detail JSONB (no column), and collapses the same way if unprinted.
+    lines.push('', `Door history (${history.length} recent, ALL layers of "${rule_key}"):`);
     for (const h of history) {
-      lines.push(`- ${h.created_at || ''} ${h.action} ${h.from_version != null ? `v${h.from_version}→` : ''}${h.to_version != null ? `v${h.to_version}` : ''} by ${h.actor || '?'}`);
+      const camp = h.detail && h.detail.campaign ? `, campaign:${h.detail.campaign}` : '';
+      const scope = `[${h.layer}${h.tenant_id ? `/${h.tenant_id}` : ''}${camp}]`;
+      lines.push(`- ${h.created_at || ''} ${scope} ${h.action} ${h.from_version != null ? `v${h.from_version}→` : ''}${h.to_version != null ? `v${h.to_version}` : ''} by ${h.actor || '?'}`);
+    }
+    const layers = [...new Set(history.map((h) => h.layer))];
+    if (layers.length > 1) {
+      lines.push('', `NB "${rule_key}" exists in more than one layer (${layers.join(', ')}). Rows that look duplicated are usually one action per layer, not a double-write. Both foundation and client copies RENDER — if that is not intended, retire one.`);
     }
   }
   return { text: lines.join('\n') };
@@ -83,6 +93,8 @@ async function runRuleGet({ rule_key, layer = 'client', campaign }, tenant = TEN
 async function runRulePropose({ rule_key, layer = 'client', context, rule_type, campaign, body }, tenant = TENANT) {
   const prop = await store.proposeRule({
     ...scopeFromLayer(layer, tenant),
+    // Whose rulebook to check against — always the caller's, even for a tenant-less foundation rule.
+    readerTenantId: tenant,
     ruleKey: rule_key,
     context,
     ruleType: rule_type,
@@ -99,14 +111,32 @@ async function runRulePropose({ rule_key, layer = 'client', context, rule_type, 
   } else {
     lines.push('--- PROPOSED body (new rule) ---', prop.proposedBody, '');
   }
+  // The conflict check, widest ring last. Rules are FILED by context/type but they LAND on the
+  // same message, so a same-cell-only check reports a reassuring "none" while a rule one cell
+  // away contradicts the proposal (the live 2026-07-17 miss). Same-key-elsewhere is listed
+  // loudest: both copies render, nothing shadows.
+  const excerpt = (n) => `${String(n.body).slice(0, 160)}${String(n.body).length > 160 ? '…' : ''}`;
+  const label = (n) => `${n.rule_key} (v${n.version}, ${n.layer}, ${n.context}/${n.rule_type}${n.campaign ? `, campaign:${n.campaign}` : ''})`;
+  if (prop.sameKeyElsewhere && prop.sameKeyElsewhere.length) {
+    lines.push(`⚠ SAME rule_key "${prop.ruleKey}" is ALSO filed elsewhere — every copy renders (no shadowing between layers), so two bodies will reach the model:`);
+    for (const n of prop.sameKeyElsewhere) lines.push(`- ${label(n)}: ${excerpt(n)}`);
+    lines.push('');
+  }
   if (prop.neighbours.length) {
-    lines.push(`Neighbours in ${prop.context}/${prop.ruleType} (check for overlap/contradiction — this IS the v1 conflict check):`);
-    for (const n of prop.neighbours) lines.push(`- ${n.rule_key} (v${n.version}, ${n.layer}): ${String(n.body).slice(0, 160)}${String(n.body).length > 160 ? '…' : ''}`);
+    lines.push(`Neighbours in ${prop.context}/${prop.ruleType} (closest overlap — read for contradiction):`);
+    for (const n of prop.neighbours) lines.push(`- ${label(n)}: ${excerpt(n)}`);
     lines.push('');
   } else {
-    lines.push('No neighbouring rules in this context/type.', '');
+    lines.push(`No other rules filed in ${prop.context}/${prop.ruleType}.`, '');
+  }
+  if (prop.sameTypeElsewhere && prop.sameTypeElsewhere.length) {
+    lines.push(`Same rule_type (${prop.ruleType}) in OTHER contexts — a rule filed elsewhere can still land on the same message, so scan these too:`);
+    for (const n of prop.sameTypeElsewhere) lines.push(`- ${label(n)}: ${excerpt(n)}`);
+    lines.push('');
   }
   lines.push(
+    'CONFLICT CHECK IS HUMAN EYES: the lists above are retrieval, not a verdict. If this rule OVERRIDES or contradicts any of them, say so out loud to the human before committing — and prefer amending the rule that is wrong over stacking a new rule that claims to win.',
+    '',
     `To commit after the human confirms: wingguy_rule_commit with expected_version=${prop.expectedVersion} (and the same scope + body).`,
     'Do NOT commit without showing this proposal to the human and getting an explicit yes.',
   );

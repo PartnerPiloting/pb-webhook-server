@@ -95,6 +95,40 @@ class FakeDb {
     assert.deepStrictEqual(r.assetKeys, ['signup']);
   });
 
+  // URL TWINS + PREFIXES (the 2026-07-17 live find: drafting cost_benefit_page also logged
+  // signup_link, because both keys share one URL and the literal scan ran over the RESOLVED body,
+  // where the token's own expansion matched its twin). The ledger's unit is the KEY.
+  const twins = [
+    { asset_key: 'cost_benefit_page', url: 'https://ash.com.au/benefits-page-v1/', status: 'active' },
+    { asset_key: 'signup_link', url: 'https://ash.com.au/benefits-page-v1/', status: 'active' },
+    { asset_key: 'pricing', url: 'https://ash.com.au/benefits-page-v1/pricing', status: 'active' },
+    { asset_key: 'home', url: 'https://ash.com.au/', status: 'active' },
+  ];
+  await check('a token resolving to a shared URL logs ONLY the key referenced, not its twin', () => {
+    const r = detectAssets('<a href="{{asset:cost_benefit_page}}">benefits</a>', twins);
+    assert.deepStrictEqual(r.assetKeys, ['cost_benefit_page']);
+  });
+  await check('the twin token logs only itself too (symmetry)', () => {
+    const r = detectAssets('<a href="{{asset:signup_link}}">join</a>', twins);
+    assert.deepStrictEqual(r.assetKeys, ['signup_link']);
+  });
+  await check('a LITERAL shared URL is ambiguous — both twins log (no token said which)', () => {
+    const r = detectAssets('<a href="https://ash.com.au/benefits-page-v1/">benefits</a>', twins);
+    assert.deepStrictEqual(r.assetKeys.sort(), ['cost_benefit_page', 'signup_link']);
+  });
+  await check('a longer URL does not match the shorter asset it starts with', () => {
+    const r = detectAssets('<a href="{{asset:pricing}}">pricing</a>', twins);
+    assert.deepStrictEqual(r.assetKeys, ['pricing']);
+  });
+  await check('a bare-domain asset does not match every deeper URL', () => {
+    const r = detectAssets('<a href="https://ash.com.au/benefits-page-v1/pricing">p</a>', twins);
+    assert.ok(!r.assetKeys.includes('home'), `home should not match: ${r.assetKeys}`);
+  });
+  await check('a bare-domain asset still matches its own exact URL', () => {
+    const r = detectAssets('<a href="https://ash.com.au/">home</a>', twins);
+    assert.ok(r.assetKeys.includes('home'));
+  });
+
   // --- Ledger against the fake pool -----------------------------------------
   console.log('asset ledger — record / history / summary:');
   const db = new FakeDb();
