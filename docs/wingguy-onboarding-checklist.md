@@ -100,9 +100,10 @@ that, you're done here.
 
 **Watch out - the stale snapshot.** Claude memorises what Wingguy can do at the moment the
 connector is added, and keeps using that memory. Whenever we add new abilities later, the client
-won't see them until they disconnect and reconnect the connector and start a fresh chat. Any time
-a client says "Wingguy says it can't do that" about something you know exists - it's this, fix it
-with a reconnect.
+won't see them until they refresh: Settings → Connectors → Wingguy → **Refresh Tool List**, then
+start a fresh chat. Any time a client says "Wingguy says it can't do that" about something you
+know exists - it's this. (If a refresh ever doesn't do it, disconnecting and re-adding the
+connector is the sledgehammer version.)
 
 **If it won't connect:** the troubleshooting list is in
 [wingguy-connector-install.md](wingguy-connector-install.md) section 3 (wrong/revoked token,
@@ -262,8 +263,8 @@ cancel it together."
 
 **Do together:**
 
-- [ ] Client disconnects and reconnects the Wingguy connector, then starts a fresh chat. (Picks up
-      anything shipped since step 1 - the stale-snapshot trap.)
+- [ ] Client clicks **Refresh Tool List** on the Wingguy connector (Settings → Connectors), then
+      starts a fresh chat. (Picks up anything shipped since step 1 - the stale-snapshot trap.)
 - [ ] Client asks Wingguy to **offer times for a real lead** → picks one → **books a test
       meeting**.
 - [ ] The invite arrives → **open it and confirm the meeting link is on it** → cancel the test
