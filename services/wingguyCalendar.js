@@ -703,4 +703,6 @@ module.exports = {
   filterAvailability, bookMeetingGuarded, fmtSlot, tzCity, inLunch, hhmmToMin, minutesInTz, earliestOfferDate, dateStrInTz, isWeekendInTz, firstFarWeekDate, offerWindowInfo,
   // read-only calendar listing (provider-agnostic) + its display helper
   listEventsForCoach, resolveListWindow, timeOnlyInTz,
+  // coach calendar identity (roster fields incl. multi-calendar read/write scope) — for setup/check scripts
+  getCoachCalendarInfo,
 };
