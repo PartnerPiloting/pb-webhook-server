@@ -21,6 +21,7 @@ const check = async (name, fn) => {
 class FakeDb {
   constructor() {
     this.pairs = [];
+    this.drafts = [];
     this.nextId = 1;
   }
   connect() {
@@ -59,6 +60,27 @@ class FakeDb {
       let rows = this.pairs.filter((p) => p.tenant_id === tenant);
       if (status !== undefined) rows = rows.filter((p) => p.status === status);
       return { rows: rows.slice().reverse().slice(0, cap) };
+    }
+    if (s.includes('INSERT INTO wingguy_draft_ledger')) {
+      const [tenant_id, draft_id, thread_id, to_email, subject, generated] = params;
+      const row = {
+        id: this.nextId++, created_at: new Date().toISOString(), tenant_id, draft_id, thread_id,
+        to_email, subject, generated, status: 'awaiting-send', settled_at: null,
+      };
+      this.drafts.push(row);
+      return { rows: [{ id: row.id }] };
+    }
+    if (s.includes('UPDATE wingguy_draft_ledger')) {
+      const [status, tenant, id] = params;
+      let n = 0;
+      const row = this.drafts.find((d) => d.tenant_id === tenant && d.id === id && d.status === 'awaiting-send');
+      if (row) { row.status = status; row.settled_at = 'now'; n = 1; }
+      return { rowCount: n, rows: [] };
+    }
+    if (s.includes('FROM wingguy_draft_ledger')) {
+      const tenant = params[0];
+      const cap = params[1];
+      return { rows: this.drafts.filter((d) => d.tenant_id === tenant && d.status === 'awaiting-send').slice(0, cap) };
     }
     throw new Error(`FakeDb: unhandled SQL: ${s.slice(0, 120)}`);
   }
@@ -144,6 +166,52 @@ class FakeDb {
   await check('no ids is a harmless no-op', async () => {
     const r = await store.resolveEditPairs({ tenantId: 'Test-Tenant', ids: [] });
     assert.strictEqual(r.resolved, 0);
+  });
+
+  console.log('draft ledger (email half) — record / awaiting / settle:');
+  await check('recordDraftBody stores an awaiting row', async () => {
+    const r = await store.recordDraftBody({
+      tenantId: 'Test-Tenant', draftId: 'd1', threadId: 't1', toEmail: 'Lead@Example.com',
+      subject: 'Quick follow-up', generated: 'Hi there, following up on our chat.',
+    });
+    assert.ok(r.id);
+    assert.strictEqual(db.drafts[0].to_email, 'lead@example.com', 'email lowercased');
+    assert.strictEqual(db.drafts[0].status, 'awaiting-send');
+  });
+  await check('getAwaitingDrafts returns only awaiting rows for the tenant', async () => {
+    const rows = await store.getAwaitingDrafts({ tenantId: 'Test-Tenant' });
+    assert.strictEqual(rows.length, 1);
+    assert.strictEqual((await store.getAwaitingDrafts({ tenantId: 'Other-Tenant' })).length, 0);
+  });
+  await check('settleDraftRecord closes the row; invalid status throws', async () => {
+    const r = await store.settleDraftRecord({ tenantId: 'Test-Tenant', id: db.drafts[0].id, status: 'no-diff' });
+    assert.strictEqual(r.settled, 1);
+    assert.strictEqual(db.drafts[0].status, 'no-diff');
+    assert.strictEqual((await store.getAwaitingDrafts({ tenantId: 'Test-Tenant' })).length, 0);
+    await assert.rejects(store.settleDraftRecord({ tenantId: 'T', id: 1, status: 'sent' }), /invalid status/);
+  });
+  await check('recordDraftBody without body or recipient is rejected', async () => {
+    await assert.rejects(store.recordDraftBody({ tenantId: 'T', toEmail: 'a@b.co', generated: '' }), /required/);
+    await assert.rejects(store.recordDraftBody({ tenantId: 'T', toEmail: '', generated: 'x' }), /required/);
+  });
+
+  console.log('stripQuotedTail() — reply compares as the human\'s words only:');
+  const { stripQuotedTail } = require('../services/wingguyMailMcp');
+  await check('cuts at the Gmail "On ... wrote:" marker', () => {
+    const t = stripQuotedTail('Thanks Sam - Tuesday works.\n\nOn Fri, 17 Jul 2026 at 09:12, Sam Test <sam@example.com> wrote:\n> earlier message');
+    assert.strictEqual(t, 'Thanks Sam - Tuesday works.');
+  });
+  await check('cuts at an Outlook Original Message divider', () => {
+    const t = stripQuotedTail('Sounds good.\n-----Original Message-----\nFrom: Sam');
+    assert.strictEqual(t, 'Sounds good.');
+  });
+  await check('cuts at a ">"-quoted line', () => {
+    const t = stripQuotedTail('See you then.\n> when suits?\n> cheers');
+    assert.strictEqual(t, 'See you then.');
+  });
+  await check('leaves unquoted text alone', () => {
+    const body = 'Hi Sam,\n\nGreat to connect - talk soon.';
+    assert.strictEqual(stripQuotedTail(body), body);
   });
 
   store.__setTestPool(null);

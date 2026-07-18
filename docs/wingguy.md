@@ -908,11 +908,25 @@ surface where the loop closed silently. This feature closes it.
   ("will I remember why?") is answered by recognition — seeing the actual pair jogs it, and the edits that matter are
   the ones he keeps making.
 
-**Where things live:** `wingguy_edit_pairs` table + `recordEditPair`/`getEditPairs`/`resolveEditPairs` +
-`normalizeForEditCompare` in `services/wingguyRulesStore.js` · endpoint in `routes/wingguyRoutes.js` (auth +
-owner-gated like every wingguy route) · `wingguy_edit_review` in `services/wingguyRulesMcp.js` (rides the existing
-registration into /mcp2 + legacy /mcp) · extension stash + pairing in `wingguy-extension/content-wingguy.js`,
-`WG_EDIT_PAIR` bridge in `background.js` · tests `tests/wingguy-edit-pairs.test.js`.
+**★ EMAIL HALF (added same day — Guy's call: "yes or we'll forget it").** The same silent gap exists where chat
+hands off: `wingguy_create_draft` puts a draft in Gmail, Guy edits it THERE, sends — invisible again. And the
+pairing is EASIER than LinkedIn's (no scraping): draft time now also logs the generated body (plain-text render)
+to **`wingguy_draft_ledger`** (beside the asset-ledger write, same best-effort posture), and `wingguy_edit_review`
+lazily **settles** awaiting rows on every list: find the sent counterpart via Nylas (thread id when known, else
+subject+recipient, received-after draft time; the message TO the lead and not FROM them), read it back, **strip the
+quoted-history tail** (Gmail "On … wrote:", Outlook dividers, ">"-lines — a reply compares as Guy's words only),
+diff, file a `surface='email'` pair when edited, mark the ledger row paired/no-diff (never-sent rows expire after
+14 days). Pull-only, no cron; every failure per-row and non-fatal. The THIRD chat flow — chat drafts a LinkedIn
+message Guy copy-pastes himself — is deliberately NOT captured (no stash, no reliable pairing; the extension is the
+LinkedIn surface). Edits made BY TALKING in chat need nothing: the final chat version IS the generated version.
+
+**Where things live:** `wingguy_edit_pairs` + `wingguy_draft_ledger` tables, `recordEditPair`/`getEditPairs`/
+`resolveEditPairs`/`normalizeForEditCompare` + `recordDraftBody`/`getAwaitingDrafts`/`settleDraftRecord` in
+`services/wingguyRulesStore.js` · endpoint in `routes/wingguyRoutes.js` (auth + owner-gated like every wingguy
+route) · `wingguy_edit_review` in `services/wingguyRulesMcp.js` (rides the existing registration into /mcp2 +
+legacy /mcp) · draft-time logging + `stripQuotedTail` + `settleEmailEditPairs` in `services/wingguyMailMcp.js` ·
+extension stash + pairing in `wingguy-extension/content-wingguy.js`, `WG_EDIT_PAIR` bridge in `background.js` ·
+tests `tests/wingguy-edit-pairs.test.js` (20).
 **To go live:** reload the extension (capture side) + **reconnect the claude.ai connector** (to see the new tool —
 the usual tool-list cache). Pairs accumulate silently either way; review is pull-only, never a nag.
 
@@ -3116,13 +3130,15 @@ var reverts reads only as a fire extinguisher. Boat-burning after ~2 weeks stabl
 
 ## ▶ You are here / next pick-up
 
-**▶▶ 2026-07-18 — LEARN-FROM-MY-EDIT BUILT (ships dark). The extension now silently pairs Wingguy's draft with
-what Guy ACTUALLY sent (on-Send capture side-channel → `wingguy_edit_pairs`; unchanged sends never stored), and a new
-`wingguy_edit_review` chat tool ("review my edits") walks the pending pairs — one-off vs preference, fold recurring
-edits into ONE rule via the normal propose→commit door, prefer amending over adding, then resolve. Full design +
-code map: the "Learn-from-my-edit" section (rules cluster). **To activate: reload the extension + reconnect the
-claude.ai connector.** Not yet verified live — first real send-with-edit should show `[Wingguy] edit-pair: stored #n`
-in the LinkedIn console, then the pair appears in chat.**
+**▶▶ 2026-07-18 — LEARN-FROM-MY-EDIT BUILT, BOTH HALVES (ships dark). The extension now silently pairs Wingguy's
+draft with what Guy ACTUALLY sent (on-Send capture side-channel → `wingguy_edit_pairs`; unchanged sends never
+stored), AND email drafts made via `wingguy_create_draft` then edited in Gmail settle the same way (draft ledger →
+Nylas sent-message readback, quoted tails stripped, `surface='email'` pairs). One `wingguy_edit_review` chat tool
+("review my edits") walks all pending pairs — one-off vs preference, fold recurring edits into ONE rule via the
+normal propose→commit door, prefer amending over adding, then resolve. Full design + code map: the
+"Learn-from-my-edit" section (rules cluster). **To activate: reload the extension + reconnect the claude.ai
+connector.** Not yet verified live — LinkedIn check: `[Wingguy] edit-pair: stored #n` in the console after a
+send-with-edit; email check: draft → edit in Gmail → send → "review my edits" shows the settle line + the pair.**
 
 **▶▶ 2026-07-17 (evening) — A DRAFTING-SESSION HANDOVER, VERIFIED AGAINST SOURCE; 4 OF 8 FIXED. START HERE FOR THE REST.**
 - **Where it came from:** a claude.ai chat working Guy's day through the connector wrote a handover brief listing 8 findings from OUTSIDE the codebase. Verified each against source before acting - **5 confirmed (3 worse than reported), 1 false positive, 1 stale.** The lesson worth keeping: the brief's own §5 was its best part - *every* real find that day was caught by **Guy reading**, not by tooling. Rules ask; only gates refuse.

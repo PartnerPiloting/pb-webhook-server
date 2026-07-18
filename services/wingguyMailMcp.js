@@ -181,6 +181,24 @@ async function runCreateDraft({ to, subject, html_body, cc, bcc, reply_to, reply
   });
   if (!result.ok) return { text: `Draft NOT created. ${result.error}`, isError: true };
 
+  // Learn-from-my-edit (email half): log the generated body so the review tool can later diff it
+  // against what ACTUALLY went out after the human edited it in their mail client. Best-effort —
+  // the draft exists; a ledger miss must never fail the tool.
+  if (store) {
+    try {
+      await store.recordDraftBody({
+        tenantId: tenant,
+        draftId: result.draftId,
+        threadId: result.threadId,
+        toEmail: leadEmails[0],
+        subject: String(subject).trim(),
+        generated: htmlToText(detected.html),
+      });
+    } catch (e) {
+      console.warn(`[wingguyMailMcp] draft-ledger write failed (non-fatal): ${e.message}`);
+    }
+  }
+
   // --- Ledger write (best-effort: the draft exists; a logging failure must not fail the tool) ---
   let ledgerLine = '';
   if (detected.assetKeys.length) {
@@ -513,6 +531,104 @@ const TOOL_DEFS = [
 ];
 
 // ---------------------------------------------------------------------------
+// Learn-from-my-edit (email half) — settle awaiting drafts against sent mail
+// ---------------------------------------------------------------------------
+
+/**
+ * Cut a sent email's text at the quoted-history boundary, so a reply compares as JUST the human's
+ * words, not the thread Gmail/Outlook appended underneath. Conservative: only cuts at the classic
+ * markers; an unrecognised quote style just means a noisier diff for the human to dismiss.
+ */
+function stripQuotedTail(text) {
+  const t = String(text || '');
+  const markers = [
+    /^On .{0,200}wrote:\s*$/m,          // Gmail: "On Fri, 18 Jul 2026 ... wrote:"
+    /^-{3,}\s*Original Message\s*-{3,}/mi,
+    /^_{5,}\s*$/m,                       // Outlook divider
+    /^From:\s.+\r?\nSent:\s/m,           // Outlook header block
+    /^>{1}\s?\S/m,                       // a ">"-quoted line
+  ];
+  let cut = t.length;
+  for (const re of markers) {
+    const m = t.match(re);
+    if (m && m.index < cut) cut = m.index;
+  }
+  return t.slice(0, cut).trim();
+}
+
+const DRAFT_SETTLE_EXPIRY_DAYS = 14; // a draft with no send after this long was abandoned, not edited
+
+/**
+ * Settle the tenant's awaiting draft-ledger rows: for each, look for the sent counterpart in the
+ * mailbox (thread when known, else subject+recipient), diff generated vs sent (quoted tail
+ * stripped), and file an edit pair (surface='email') when the human changed it. Called lazily by
+ * wingguy_edit_review — pull-only, no cron. Every failure is per-row and non-fatal.
+ * Returns { checked, paired, noDiff, expired, awaiting }.
+ */
+async function settleEmailEditPairs(tenant = TENANT) {
+  const out = { checked: 0, paired: 0, noDiff: 0, expired: 0, awaiting: 0 };
+  const store = ledgerStore();
+  if (!store) return out;
+  let rows;
+  try { rows = await store.getAwaitingDrafts({ tenantId: tenant }); }
+  catch (e) { console.warn(`[wingguyMailMcp] settle: ledger read failed: ${e.message}`); return out; }
+  if (!rows.length) return out;
+
+  const clientService = require('./clientService');
+  let coach = null;
+  try { coach = await clientService.getClientById(tenant); } catch (_) { /* fall through */ }
+  if (!coach || !coach.nylasGrantId) { out.awaiting = rows.length; return out; }
+
+  for (const row of rows) {
+    out.checked++;
+    try {
+      const createdMs = new Date(row.created_at).getTime();
+      // Sent counterpart: messages in the draft's thread (or matching subject+recipient when the
+      // draft had no thread yet), landed after draft time. The one addressed TO the lead and not
+      // FROM them is the coach's send.
+      const query = row.thread_id
+        ? { threadId: row.thread_id, receivedAfter: Math.floor(createdMs / 1000) - 60, limit: 10 }
+        : { anyEmail: row.to_email, subject: row.subject || undefined, receivedAfter: Math.floor(createdMs / 1000) - 60, limit: 10 };
+      const found = await mailProvider.findMessages(coach, query);
+      if (!found.ok) { out.awaiting++; continue; }
+      const candidates = (found.messages || [])
+        .filter((m) => String(m.to || '').toLowerCase().includes(row.to_email))
+        .filter((m) => String(m.fromEmail || '').toLowerCase() !== row.to_email)
+        .filter((m) => !m.date || new Date(m.date).getTime() >= createdMs - 60000)
+        .sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0));
+      if (!candidates.length) {
+        // Not sent yet — or abandoned. After the expiry window, stop looking.
+        if (Date.now() - createdMs > DRAFT_SETTLE_EXPIRY_DAYS * 24 * 3600 * 1000) {
+          await store.settleDraftRecord({ tenantId: tenant, id: row.id, status: 'expired' });
+          out.expired++;
+        } else {
+          out.awaiting++;
+        }
+        continue;
+      }
+      const full = await mailProvider.getMessage(coach, candidates[0].id);
+      if (!full.ok) { out.awaiting++; continue; }
+      const sentText = stripQuotedTail(htmlToText(full.message.body) || String(full.message.snippet || ''));
+      if (!sentText) { out.awaiting++; continue; }
+      const pair = await store.recordEditPair({
+        tenantId: tenant,
+        leadName: row.to_email,
+        leadUrl: null,
+        surface: 'email',
+        generated: row.generated,
+        sent: sentText,
+      });
+      await store.settleDraftRecord({ tenantId: tenant, id: row.id, status: pair.stored ? 'paired' : 'no-diff' });
+      if (pair.stored) out.paired++; else out.noDiff++;
+    } catch (e) {
+      console.warn(`[wingguyMailMcp] settle: row #${row.id} failed (non-fatal): ${e.message}`);
+      out.awaiting++;
+    }
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------------
 // Transport adapters (same shape as wingguyBookingMcp)
 // ---------------------------------------------------------------------------
 
@@ -552,4 +668,4 @@ async function legacyToolCall(toolName, args, tenant = TENANT) {
   }
 }
 
-module.exports = { registerWingguyMailTools, legacyToolList, legacyToolCall, TOOL_DEFS, detectAssets, htmlToText };
+module.exports = { registerWingguyMailTools, legacyToolList, legacyToolCall, TOOL_DEFS, detectAssets, htmlToText, stripQuotedTail, settleEmailEditPairs };

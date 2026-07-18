@@ -208,18 +208,30 @@ async function runEditReview({ action = 'list', ids, resolution = 'reviewed', no
     const r = await store.resolveEditPairs({ tenantId: tenant, ids: ids || [], status: resolution, note });
     return { text: `Closed out ${r.resolved} edit pair${r.resolved === 1 ? '' : 's'} as ${resolution}.${r.resolved ? '' : ' (Only pending pairs can be resolved — check the ids.)'}` };
   }
+  // Email half: settle any awaiting drafts first (read sent mail back, diff, file pairs) so the
+  // list below is current. Lazy + best-effort — a mail hiccup must never break the review.
+  let settleLine = '';
+  try {
+    const settle = await require('./wingguyMailMcp').settleEmailEditPairs(tenant);
+    if (settle.checked) {
+      settleLine = `(Email drafts settled: ${settle.paired} edited, ${settle.noDiff} sent as drafted${settle.awaiting ? `, ${settle.awaiting} not sent yet` : ''}${settle.expired ? `, ${settle.expired} expired unsent` : ''}.)\n\n`;
+    }
+  } catch (e) {
+    settleLine = `(Email-draft settle skipped: ${e.message})\n\n`;
+  }
   const pairs = await store.getEditPairs({ tenantId: tenant, status, limit });
   if (!pairs.length) {
-    return { text: status === 'pending'
-      ? 'No pending edits to review — every recent LinkedIn send matched its draft (or nothing has been captured yet).'
-      : `No ${status} edit pairs found.` };
+    return { text: settleLine + (status === 'pending'
+      ? 'No pending edits to review — every recent send (LinkedIn and email) matched its draft (or nothing has been captured yet).'
+      : `No ${status} edit pairs found.`) };
   }
   const lines = [
+    settleLine +
     `${pairs.length} ${status} edit pair${pairs.length === 1 ? '' : 's'} for ${tenant} (newest first). Each is: what Wingguy drafted vs what the human actually sent.`,
     '',
   ];
   for (const p of pairs) {
-    lines.push(`━━ #${p.id} · ${p.lead_name || 'unknown lead'} · ${p.created_at}${p.lead_url ? ` · ${p.lead_url}` : ''}`);
+    lines.push(`━━ #${p.id} · ${p.surface || 'linkedin'} · ${p.lead_name || 'unknown lead'} · ${p.created_at}${p.lead_url ? ` · ${p.lead_url}` : ''}`);
     lines.push('--- WINGGUY DRAFTED ---', p.generated, '', '--- HUMAN SENT ---', p.sent, '');
     if (p.review_note) lines.push(`(note: ${p.review_note})`);
   }
@@ -230,6 +242,7 @@ async function runEditReview({ action = 'list', ids, resolution = 'reviewed', no
     '3. Before proposing anything, check the existing rulebook (wingguy_rules_list / wingguy_rule_get) — PREFER AMENDING an existing rule over adding a new one. The rulebook should get sharper from this review, not fatter.',
     '4. Route any agreed change through wingguy_rule_propose → human confirms → wingguy_rule_commit, exactly as "update my rules".',
     '5. When a pair has been discussed (rule or no rule), close it out: wingguy_edit_review with action=resolve, its id, and resolution=reviewed (or dismissed for noise/mispairs), with a one-line note.',
+    '6. Email pairs compare the human\'s words only (quoted thread history is stripped before diffing) — if one still looks like quote-chain noise or a mispaired message, dismiss it rather than reading a preference into it.',
   );
   return { text: lines.join('\n') };
 }
@@ -396,7 +409,7 @@ const TOOL_DEFS = [
   },
   {
     name: 'wingguy_edit_review',
-    description: 'Learn-from-my-edit ("review my edits" / "review my rules from my edits"). Lists the pending generated-vs-sent pairs the LinkedIn extension captured — each is a draft Wingguy wrote next to what the human ACTUALLY sent after editing it. Discuss each diff with the human (one-off vs preference), fold recurring changes into ONE rule via the normal wingguy_rule_propose→commit door (prefer amending an existing rule over adding one), then close pairs out with action=resolve. This tool never writes rules itself.',
+    description: 'Learn-from-my-edit ("review my edits" / "review my rules from my edits"). Lists the pending generated-vs-sent pairs — LinkedIn sends captured by the extension AND emails drafted via wingguy_create_draft then edited in the mail client before sending (settled automatically on each list). Each pair is a draft Wingguy wrote next to what the human ACTUALLY sent. Discuss each diff with the human (one-off vs preference), fold recurring changes into ONE rule via the normal wingguy_rule_propose→commit door (prefer amending an existing rule over adding one), then close pairs out with action=resolve. This tool never writes rules itself.',
     zodSchema: {
       action: z.enum(['list', 'resolve']).optional().describe('list (default) shows pairs; resolve closes them out after discussion'),
       ids: z.array(z.number()).optional().describe('For resolve: the pair ids to close out'),

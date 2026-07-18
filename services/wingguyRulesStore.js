@@ -188,6 +188,29 @@ async function ensureSchema(client) {
     ON wingguy_edit_pairs (tenant_id, created_at DESC) WHERE status = 'pending';
   `);
 
+  // Draft ledger — the EMAIL half of learn-from-my-edit. wingguy_create_draft logs the generated
+  // body (plain-text render) here at draft time; the review tool later settles each row by reading
+  // the sent message back through Nylas and, if the human edited it in Gmail, files a
+  // wingguy_edit_pairs row (surface='email'). Statuses: awaiting-send → paired | no-diff | expired.
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS wingguy_draft_ledger (
+      id BIGSERIAL PRIMARY KEY,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      tenant_id TEXT NOT NULL,
+      draft_id TEXT,
+      thread_id TEXT,
+      to_email TEXT NOT NULL,
+      subject TEXT,
+      generated TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'awaiting-send' CHECK (status IN ('awaiting-send','paired','no-diff','expired')),
+      settled_at TIMESTAMPTZ
+    );
+  `);
+  await client.query(`
+    CREATE INDEX IF NOT EXISTS idx_wg_draft_ledger_awaiting
+    ON wingguy_draft_ledger (tenant_id, created_at) WHERE status = 'awaiting-send';
+  `);
+
   await client.query(`
     CREATE TABLE IF NOT EXISTS wingguy_rule_history (
       id BIGSERIAL PRIMARY KEY,
@@ -999,6 +1022,70 @@ async function resolveEditPairs({ tenantId = DEFAULT_TENANT, ids = [], status = 
   }
 }
 
+// ---------------------------------------------------------------------------
+// Draft ledger — the email half of learn-from-my-edit
+// ---------------------------------------------------------------------------
+
+/** Log the generated body of an email draft at wingguy_create_draft time (best-effort caller). */
+async function recordDraftBody({ tenantId = DEFAULT_TENANT, draftId, threadId, toEmail, subject, generated }) {
+  const gen = String(generated || '').trim();
+  const lead = String(toEmail || '').trim().toLowerCase();
+  if (!gen || !lead) throw new Error('recordDraftBody: generated body and toEmail are required');
+  const p = getPool();
+  if (!p) throw new Error('DATABASE_URL not set');
+  const client = await p.connect();
+  try {
+    await ensureSchema(client);
+    const r = await client.query(
+      `INSERT INTO wingguy_draft_ledger (tenant_id, draft_id, thread_id, to_email, subject, generated)
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+      [(tenantId || DEFAULT_TENANT).trim(), draftId || null, threadId || null, lead, subject || null, gen],
+    );
+    return { ok: true, id: r.rows[0].id };
+  } finally {
+    client.release();
+  }
+}
+
+/** Draft-ledger rows still awaiting their sent counterpart — oldest first (settle in send order). */
+async function getAwaitingDrafts({ tenantId = DEFAULT_TENANT, limit = 10 } = {}) {
+  const p = getPool();
+  if (!p) throw new Error('DATABASE_URL not set');
+  const cap = Math.min(Math.max(Number(limit) || 10, 1), 25);
+  const client = await p.connect();
+  try {
+    await ensureSchema(client);
+    const r = await client.query(
+      `SELECT id, created_at, draft_id, thread_id, to_email, subject, generated
+       FROM wingguy_draft_ledger WHERE tenant_id = $1 AND status = 'awaiting-send'
+       ORDER BY created_at ASC, id ASC LIMIT $2`,
+      [(tenantId || DEFAULT_TENANT).trim(), cap],
+    );
+    return r.rows;
+  } finally {
+    client.release();
+  }
+}
+
+/** Close out one draft-ledger row: paired (edit filed) | no-diff (sent as drafted) | expired. */
+async function settleDraftRecord({ tenantId = DEFAULT_TENANT, id, status }) {
+  if (!['paired', 'no-diff', 'expired'].includes(status)) throw new Error(`settleDraftRecord: invalid status "${status}"`);
+  const p = getPool();
+  if (!p) throw new Error('DATABASE_URL not set');
+  const client = await p.connect();
+  try {
+    await ensureSchema(client);
+    const r = await client.query(
+      `UPDATE wingguy_draft_ledger SET status = $1, settled_at = now()
+       WHERE tenant_id = $2 AND id = $3 AND status = 'awaiting-send'`,
+      [status, (tenantId || DEFAULT_TENANT).trim(), Number(id)],
+    );
+    return { ok: true, settled: r.rowCount };
+  } finally {
+    client.release();
+  }
+}
+
 /** History for one rule (or the whole door when ruleKey omitted) — newest first. */
 async function getHistory({ tenantId, ruleKey, limit = 50 } = {}) {
   const p = getPool();
@@ -1061,6 +1148,10 @@ module.exports = {
   getEditPairs,
   resolveEditPairs,
   normalizeForEditCompare,
+  // draft ledger (the email half of learn-from-my-edit)
+  recordDraftBody,
+  getAwaitingDrafts,
+  settleDraftRecord,
   // the write-door
   proposeRule,
   commitRule,
