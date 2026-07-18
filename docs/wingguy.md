@@ -57,7 +57,8 @@
 - **⚠ Pricing & delivery** (canonical = "Pricing + delivery model"; refinements scattered): Pricing + delivery
   model · Pricing snapshot · roadmap Phase 6 · +$50 Wingguy upsell · Economics — path to ~100 · 100-client P&L.
 - **Rules / second-brain engine (= "Wingguy", the Postgres brain):** Data architecture — two stores ·
-  Rules de-personalisation · Rules editing UX · Rules integrity (code gates, LLM proposes only) · Where each
+  Rules de-personalisation · Rules editing UX · Rules edit-authority · Learn-from-my-edit (extension-only trigger,
+  design 2026-07-18) · Rules integrity (code gates, LLM proposes only) · Where each
   thing lives — code vs rule vs variable; graceful boundary + flag-to-queue (2026-06-21) · Gated
   extension — two kinds of mess · Stickiness vision · Where this sits vs frontier · Keeping Wingguy directives
   in Wingguy (not the client's general Claude memory).
@@ -875,6 +876,40 @@ vs capture-and-review (queue)** — an email implies a promised reply; a queue i
   clients, an in-chat tweak Guy *thinks* is just his own voice could silently **move the floor under all tenants.**
   The "edit from the chat" convenience that's perfect solo becomes a liability at scale → exactly why the controlled
   write-door exists.
+
+### Learn-from-my-edit — "propose a rule from what I just changed" (extension-only, design 2026-07-18)
+> A new rules-authoring path that closes a gap unique to the extension. Routes into the SAME write-door as every
+> other rule change (**Rules editing UX**, **Rules edit-authority**, **Rules integrity**) — this is a new *trigger*,
+> not a new door. Design settled; NOT YET BUILT.
+
+**The gap it fills.** Guy's real pattern: `/wg` generates a message → he inserts it, tweaks it slightly, sends. Those
+little tweaks often encode a durable style preference ("I always shorten this," "I always soften that CTA") — but today
+they evaporate. The brain never sees what he did with its draft, so it never learns.
+
+**Why extension-only — the asymmetry is the whole point.** In Claude chat the feedback loop is *free*: the generated
+text and Guy's reaction live in the same thread, so "I didn't like that, tighten it — and make that a standing rule" is
+just a sentence, and the door's already open. The extension is the one surface where the loop **closes silently** —
+`/wg` inserts, the edit happens over in the LinkedIn box, he sends, and his reaction never reaches Wingguy. So this
+feature has exactly one job: **re-create, in the extension, the feedback moment chat gets for free.** Chat deliberately
+gets no equivalent — it already has everything.
+
+**The flow.** `/wg` generates → insert, edit, send → Guy invokes "propose a rule from what I just changed" → the
+extension lays the two versions side by side (it *inserted* the draft and can *read the compose box*, so the delta is
+sitting in the DOM at invocation — **no draft ledger, no reading the sent message back**) → it asks *"one-off for this
+lead, or a general pattern to bake in?"* → if a pattern, through the write-door with the **mine-vs-everyone** question
+(see edit-authority; for Guy the two-hat case this is exactly the "is this *mine* or *everyone's*?" prompt).
+
+**Why this beats the automatic version I first proposed.** An always-on "diff every send and mine for rules" miner has
+two hard problems: *pairing* (matching a sent message back to the draft that spawned it) and *intent* (a diff shows
+*what* changed, not *why* — needs repetition to tell a real preference from a one-off). The manual trigger dissolves
+both: invoked in-context, both texts are right there (pairing gone); invoked only when Guy already knows the tweak
+mattered, and then we just *ask* him (intent gone — **he's the classifier**). Zero false positives, zero cost when not
+invoked.
+
+**The one honest tradeoff + the later complement.** This catches tweaks Guy *consciously notices*; it won't surface a
+pattern he's repeating without realising. Fine for v1 (opt-in, cheap, never nags). The batched pattern-miner — log
+generated-vs-sent pairs, weekly-mine for *recurring* edits only, surface "here's a pattern you didn't notice" — remains
+a **later complement** feeding the same door, not a replacement. Ship the manual trigger first.
 
 ### Stickiness vision + the reconciliations that protect it (2026-06-09)
 **Signal:** Guy himself is astonished/reliant (an hour for previously-impossible work last night) =
