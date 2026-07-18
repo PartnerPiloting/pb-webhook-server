@@ -21,6 +21,27 @@ const { LEAD_FIELDS } = require('../constants/airtableUnifiedConstants.js');
 // Import client service for multi-tenant support
 const { getClientBase, getClientById } = require('../services/clientService.js');
 
+// --- LH sender guard (cross-tenant protection) ---
+// Every LH payload announces the LinkedIn account that produced it (my_email / my_full_name).
+// A campaign copied from one client to another keeps the original "Send person to webhook" URL,
+// so the copier's connections get silently filed under the ORIGINAL client id (happened
+// 2026-07-12: a campaign cloned from Guy's kept ?client=Guy and posted someone else's
+// connections into his base, which then surfaced in his Thanks for Connecting queue).
+// Modes via LH_SENDER_GUARD: warn (default: process the leads but alert admin) | block
+// (skip foreign-sender leads + alert) | off. Expected sender = the client's
+// "LH Account Email" field, falling back to "Client Email Address"; no expected email = no check.
+// Alerts are deduped per client+sender so a multi-lead batch doesn't send a flood of emails.
+const SENDER_GUARD_ALERT_SUPPRESS_MS = 6 * 60 * 60 * 1000; // one alert per client+sender per 6h
+const senderGuardLastAlert = new Map();
+
+function shouldSendSenderAlert(clientId, senderEmail) {
+    const key = `${clientId}|${senderEmail}`;
+    const last = senderGuardLastAlert.get(key);
+    if (last && Date.now() - last < SENDER_GUARD_ALERT_SUPPRESS_MS) return false;
+    senderGuardLastAlert.set(key, Date.now());
+    return true;
+}
+
 // --- Structured Logging ---
 // FIXED: Using unified logger factory to prevent "Object passed as sessionId" errors
 const { createSafeLogger } = require('../utils/loggerHelper');
@@ -163,14 +184,54 @@ router.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
         if (rawLeadsFromWebhook.length === 0) {
             return res.json({ message: `No leads provided in /lh-webhook/upsertLeadOnly payload for client ${clientId}.` });
         }
-        let processedCount = 0; 
+
+        // --- LH sender guard: does this payload actually come from this client's account? ---
+        const guardMode = String(process.env.LH_SENDER_GUARD || 'warn').toLowerCase();
+        const expectedSenderEmail = String(client.lhAccountEmail || client.clientEmailAddress || '').trim().toLowerCase();
+        const foreignSenders = new Set();
+        if (guardMode !== 'off' && expectedSenderEmail) {
+            for (const lh of rawLeadsFromWebhook) {
+                const senderEmail = String(lh?.my_email || '').trim().toLowerCase();
+                if (senderEmail && senderEmail !== expectedSenderEmail) foreignSenders.add(senderEmail);
+            }
+        }
+        if (foreignSenders.size > 0) {
+            for (const senderEmail of foreignSenders) {
+                const sample = rawLeadsFromWebhook.filter(lh => String(lh?.my_email || '').trim().toLowerCase() === senderEmail);
+                const senderName = sample[0]?.my_full_name || 'unknown';
+                const campaigns = [...new Set(sample.map(lh => lh?.campaign_name).filter(Boolean))].join(', ') || 'unknown';
+                const sampleUrls = sample.slice(0, 5).map(lh => lh?.profile_url || lh?.profileUrl || 'no-url').join('\n');
+                log.warn(`SENDER GUARD (${guardMode}): payload for client ${clientId} sent by ${senderEmail} (${senderName}), expected ${expectedSenderEmail}. Campaign(s): ${campaigns}. ${sample.length} lead(s).`);
+                if (shouldSendSenderAlert(clientId, senderEmail)) {
+                    await alertAdmin(
+                        `LH webhook sender mismatch for client ${clientId}`,
+                        `Client: ${client.clientName} (${clientId})\n` +
+                        `Expected sender: ${expectedSenderEmail}\n` +
+                        `Actual sender: ${senderEmail} (${senderName})\n` +
+                        `Campaign(s): ${campaigns}\n` +
+                        `Guard mode: ${guardMode} — ${guardMode === 'block' ? 'these leads were NOT saved' : 'these leads WERE saved (warn-only)'}\n` +
+                        `Leads in this batch from that sender: ${sample.length}\n` +
+                        `Sample profiles:\n${sampleUrls}\n\n` +
+                        `If this sender IS legitimate for this client, set "LH Account Email" on the client record to ${senderEmail}.\n` +
+                        `If not, that sender's Linked Helper campaign has a stale "Send person to webhook" URL — its ?client= parameter needs fixing.`
+                    ).catch(() => {});
+                }
+            }
+        }
+
+        let processedCount = 0;
         let errorCount = 0;
+        let skippedForeignCount = 0;
 
         const salesNavBaseUrl = "https://www.linkedin.com/sales/lead/"; // Define this once
 
         for (const lh of rawLeadsFromWebhook) {
             try {
-                const rawUrl = lh.profileUrl || 
+                if (guardMode === 'block' && foreignSenders.has(String(lh?.my_email || '').trim().toLowerCase())) {
+                    skippedForeignCount++;
+                    continue;
+                }
+                const rawUrl = lh.profileUrl ||
                                lh.linkedinProfileUrl || 
                                lh.profile_url || 
                                (lh.publicId ? `https://www.linkedin.com/in/${lh.publicId}/` : null) ||
@@ -252,9 +313,9 @@ router.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
                 await alertAdmin("Lead Upsert Error in /lh-webhook/upsertLeadOnly", `Client: ${clientId}\\nAttempted URL: ${lh.profileUrl || lh.linkedinProfileUrl || lh.profile_url || 'N/A'}\\nError: ${upsertError.message}`);
             }
         }
-        log.info(`Processing finished. Upserted/Updated: ${processedCount}, Failed: ${errorCount}`);
+        log.info(`Processing finished. Upserted/Updated: ${processedCount}, Failed: ${errorCount}, Skipped (foreign sender): ${skippedForeignCount}`);
         if (!res.headersSent) {
-            res.json({ message: `Client ${clientId}: Upserted/Updated ${processedCount} LH profiles, Failed: ${errorCount}` });
+            res.json({ message: `Client ${clientId}: Upserted/Updated ${processedCount} LH profiles, Failed: ${errorCount}${skippedForeignCount ? `, Skipped (foreign sender): ${skippedForeignCount}` : ''}` });
         }
     } catch (err) {
         const finalClientId = req.query.client || 'unknown';

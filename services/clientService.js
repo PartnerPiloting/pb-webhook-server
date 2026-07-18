@@ -174,6 +174,12 @@ async function getAllClients() {
                 // in the route when blank). Added 2026-06-20.
                 const thanksForConnectingEnabled = record.get('Thanks for Connecting') === 'Yes';
                 const connectionLookbackDays = Number(record.get('Connection Lookback Days')) || null;
+                // The email of the LinkedIn/Linked Helper account allowed to post into this client's
+                // webhook (LH announces it as my_email on every payload). Optional field; when blank
+                // the sender guard falls back to Client Email Address. Added 2026-07-18 after a
+                // campaign copied to another person kept Guy's webhook URL and filed THEIR
+                // connections into Guy's base.
+                const lhAccountEmail = record.get('LH Account Email') || null;
 
                 clients.push({
                     id: record.id,
@@ -238,6 +244,8 @@ async function getAllClients() {
                     // "Thanks for Connecting" worklist gate + lookback (per-client rollout)
                     thanksForConnectingEnabled: thanksForConnectingEnabled,
                     connectionLookbackDays: connectionLookbackDays,
+                    // LH sender guard: which LinkedIn account may post into this client's webhook
+                    lhAccountEmail: lhAccountEmail,
                     // Store raw record for fire-and-forget field access
                     rawRecord: record
                 });
