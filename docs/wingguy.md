@@ -3158,9 +3158,13 @@ normal propose→commit door, prefer amending over adding, then resolve. Full de
 "Learn-from-my-edit" section (rules cluster). Third pass same day: review-the-rules DISAMBIGUATION, a
 pending-edits discovery hint on the rulebook listing, and a code-detected HYGIENE SWEEP (cross-layer twins +
 unresolved placeholders) offered in one line at the end of every rules listing / edits review. **To activate:
-reload the extension + reconnect the claude.ai connector.** Not yet verified live — LinkedIn check:
-`[Wingguy] edit-pair: stored #n` in the console after a send-with-edit; email check: draft → edit in Gmail →
-send → "review my edits" shows the settle line + the pair.**
+reload the extension + reconnect the claude.ai connector.** **★ CAPTURE HALF VERIFIED LIVE 2026-07-18:** 3 pending
+pairs on prod (Kate Miller + Vikram Tandon ×2, incl. a near-full replacement) - the extension reload happened and
+silent capture works. **Review half NOT yet exercised: Guy's claude.ai still hasn't reconnected the connector** -
+proven when "show my rule edits" in his chat fell through to Claude's OWN memory ("Viewed memory edits", 30 personal
+memories dumped) because the cached tool list predates `wingguy_edit_review`. Remaining check: reconnect → fresh chat
+→ say "review my edits" (the designed trigger; that phrase, not "show my rule edits") → expect exactly the 3 pending
+pairs. Email-half settle also still unexercised (draft → edit in Gmail → send → review shows the settle line).**
 
 **▶▶ 2026-07-17 (evening) — A DRAFTING-SESSION HANDOVER, VERIFIED AGAINST SOURCE; 4 OF 8 FIXED. START HERE FOR THE REST.**
 - **Where it came from:** a claude.ai chat working Guy's day through the connector wrote a handover brief listing 8 findings from OUTSIDE the codebase. Verified each against source before acting - **5 confirmed (3 worse than reported), 1 false positive, 1 stale.** The lesson worth keeping: the brief's own §5 was its best part - *every* real find that day was caught by **Guy reading**, not by tooling. Rules ask; only gates refuse.
