@@ -57,8 +57,8 @@
 - **⚠ Pricing & delivery** (canonical = "Pricing + delivery model"; refinements scattered): Pricing + delivery
   model · Pricing snapshot · roadmap Phase 6 · +$50 Wingguy upsell · Economics — path to ~100 · 100-client P&L.
 - **Rules / second-brain engine (= "Wingguy", the Postgres brain):** Data architecture — two stores ·
-  Rules de-personalisation · Rules editing UX · Rules edit-authority · Learn-from-my-edit (extension-only trigger,
-  design 2026-07-18) · Rules integrity (code gates, LLM proposes only) · Where each
+  Rules de-personalisation · Rules editing UX · Rules edit-authority · Learn-from-my-edit (silent Send capture →
+  "review my edits" in chat, BUILT 2026-07-18) · Rules integrity (code gates, LLM proposes only) · Where each
   thing lives — code vs rule vs variable; graceful boundary + flag-to-queue (2026-06-21) · Gated
   extension — two kinds of mess · Stickiness vision · Where this sits vs frontier · Keeping Wingguy directives
   in Wingguy (not the client's general Claude memory).
@@ -877,39 +877,44 @@ vs capture-and-review (queue)** — an email implies a promised reply; a queue i
   The "edit from the chat" convenience that's perfect solo becomes a liability at scale → exactly why the controlled
   write-door exists.
 
-### Learn-from-my-edit — "propose a rule from what I just changed" (extension-only, design 2026-07-18)
-> A new rules-authoring path that closes a gap unique to the extension. Routes into the SAME write-door as every
-> other rule change (**Rules editing UX**, **Rules edit-authority**, **Rules integrity**) — this is a new *trigger*,
-> not a new door. Design settled; NOT YET BUILT.
+### Learn-from-my-edit — silent capture on Send, "review my edits" in chat (BUILT 2026-07-18, ships dark)
+> A new rules-authoring TRIGGER (not a new door — everything routes into the same propose→commit write-door;
+> see **Rules editing UX**, **Rules edit-authority**, **Rules integrity**). Designed and built same day.
 
 **The gap it fills.** Guy's real pattern: `/wg` generates a message → he inserts it, tweaks it slightly, sends. Those
-little tweaks often encode a durable style preference ("I always shorten this," "I always soften that CTA") — but today
-they evaporate. The brain never sees what he did with its draft, so it never learns.
+little tweaks often encode a durable style preference ("I always shorten this," "I always soften that CTA") — but they
+evaporated: the brain never saw what he did with its draft, so it never learned. Chat never had this gap (the draft and
+the reaction live in the same thread — "make that a standing rule" is just a sentence); the extension was the ONE
+surface where the loop closed silently. This feature closes it.
 
-**Why extension-only — the asymmetry is the whole point.** In Claude chat the feedback loop is *free*: the generated
-text and Guy's reaction live in the same thread, so "I didn't like that, tighten it — and make that a standing rule" is
-just a sentence, and the door's already open. The extension is the one surface where the loop **closes silently** —
-`/wg` inserts, the edit happens over in the LinkedIn box, he sends, and his reaction never reaches Wingguy. So this
-feature has exactly one job: **re-create, in the extension, the feedback moment chat gets for free.** Chat deliberately
-gets no equivalent — it already has everything.
+**★ THE SHAPE (Guy's call, 2026-07-18 — evolved through three designs in one conversation):**
+- **Extension: capture only, zero new UI.** On Send, the existing Portal capture also pairs the AI's ORIGINAL draft
+  (stashed at Insert/Copy — panel edits count as Guy's edits) with the message that actually went out (the thread's
+  newest message), and posts the pair to `POST /api/wingguy/edit-pair`. Fire-and-forget: a pairing failure can never
+  touch the capture. **Unchanged sends never land a row** (whitespace-insensitive compare, server-side — case and
+  punctuation changes DO count: they're often exactly the style signal). Guards: 15-min freshness, conversation-slug
+  match, newest-message-is-ours check.
+- **Chat: the discussion.** "Review my edits" → **`wingguy_edit_review`** (new MCP tool, both transports) lists the
+  pending pairs — each is WINGGUY DRAFTED vs HUMAN SENT — and instructs the model to: walk them WITH the human
+  (one-off vs preference?), spot the SAME change recurring across pairs (**a repeated edit is ONE rule, not many**),
+  prefer AMENDING an existing rule over adding one (the anti-bloat mechanic — the rulebook gets sharper, not fatter),
+  route agreed changes through the normal propose→commit door, then close pairs out (action=resolve,
+  reviewed/dismissed + note). The passionate-single-change case falls out free: capture is immediate, so "review my
+  edits" right after a send surfaces it while it's fresh.
+- **Why this beat the alternatives:** an in-extension "propose a rule now" pop-up would have needed a new HTTP rule
+  door + UI and invited one-micro-rule-per-tweak; an always-on automatic miner can't read intent (a diff shows *what*,
+  not *why*). Batch-review-in-chat gets pairing for free (the extension logs the pair at source), keeps the human as
+  the intent classifier, and is the one shape where cross-pair consolidation happens naturally. Guy's memory concern
+  ("will I remember why?") is answered by recognition — seeing the actual pair jogs it, and the edits that matter are
+  the ones he keeps making.
 
-**The flow.** `/wg` generates → insert, edit, send → Guy invokes "propose a rule from what I just changed" → the
-extension lays the two versions side by side (it *inserted* the draft and can *read the compose box*, so the delta is
-sitting in the DOM at invocation — **no draft ledger, no reading the sent message back**) → it asks *"one-off for this
-lead, or a general pattern to bake in?"* → if a pattern, through the write-door with the **mine-vs-everyone** question
-(see edit-authority; for Guy the two-hat case this is exactly the "is this *mine* or *everyone's*?" prompt).
-
-**Why this beats the automatic version I first proposed.** An always-on "diff every send and mine for rules" miner has
-two hard problems: *pairing* (matching a sent message back to the draft that spawned it) and *intent* (a diff shows
-*what* changed, not *why* — needs repetition to tell a real preference from a one-off). The manual trigger dissolves
-both: invoked in-context, both texts are right there (pairing gone); invoked only when Guy already knows the tweak
-mattered, and then we just *ask* him (intent gone — **he's the classifier**). Zero false positives, zero cost when not
-invoked.
-
-**The one honest tradeoff + the later complement.** This catches tweaks Guy *consciously notices*; it won't surface a
-pattern he's repeating without realising. Fine for v1 (opt-in, cheap, never nags). The batched pattern-miner — log
-generated-vs-sent pairs, weekly-mine for *recurring* edits only, surface "here's a pattern you didn't notice" — remains
-a **later complement** feeding the same door, not a replacement. Ship the manual trigger first.
+**Where things live:** `wingguy_edit_pairs` table + `recordEditPair`/`getEditPairs`/`resolveEditPairs` +
+`normalizeForEditCompare` in `services/wingguyRulesStore.js` · endpoint in `routes/wingguyRoutes.js` (auth +
+owner-gated like every wingguy route) · `wingguy_edit_review` in `services/wingguyRulesMcp.js` (rides the existing
+registration into /mcp2 + legacy /mcp) · extension stash + pairing in `wingguy-extension/content-wingguy.js`,
+`WG_EDIT_PAIR` bridge in `background.js` · tests `tests/wingguy-edit-pairs.test.js`.
+**To go live:** reload the extension (capture side) + **reconnect the claude.ai connector** (to see the new tool —
+the usual tool-list cache). Pairs accumulate silently either way; review is pull-only, never a nag.
 
 ### Stickiness vision + the reconciliations that protect it (2026-06-09)
 **Signal:** Guy himself is astonished/reliant (an hour for previously-impossible work last night) =
@@ -3110,6 +3115,14 @@ Notion rules pages. Gut-it-out posture stands: content problems fix FORWARD thro
 var reverts reads only as a fire extinguisher. Boat-burning after ~2 weeks stable (above).
 
 ## ▶ You are here / next pick-up
+
+**▶▶ 2026-07-18 — LEARN-FROM-MY-EDIT BUILT (ships dark). The extension now silently pairs Wingguy's draft with
+what Guy ACTUALLY sent (on-Send capture side-channel → `wingguy_edit_pairs`; unchanged sends never stored), and a new
+`wingguy_edit_review` chat tool ("review my edits") walks the pending pairs — one-off vs preference, fold recurring
+edits into ONE rule via the normal propose→commit door, prefer amending over adding, then resolve. Full design +
+code map: the "Learn-from-my-edit" section (rules cluster). **To activate: reload the extension + reconnect the
+claude.ai connector.** Not yet verified live — first real send-with-edit should show `[Wingguy] edit-pair: stored #n`
+in the LinkedIn console, then the pair appears in chat.**
 
 **▶▶ 2026-07-17 (evening) — A DRAFTING-SESSION HANDOVER, VERIFIED AGAINST SOURCE; 4 OF 8 FIXED. START HERE FOR THE REST.**
 - **Where it came from:** a claude.ai chat working Guy's day through the connector wrote a handover brief listing 8 findings from OUTSIDE the codebase. Verified each against source before acting - **5 confirmed (3 worse than reported), 1 false positive, 1 stale.** The lesson worth keeping: the brief's own §5 was its best part - *every* real find that day was caught by **Guy reading**, not by tooling. Rules ask; only gates refuse.

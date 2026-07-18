@@ -32,6 +32,7 @@ const { createBookingEvent } = require('../services/wingguyCalendar');
 const { runWingguyChatTurn } = require('../services/wingguyChat');
 const wingguyLeads = require('../services/wingguyLeads');
 const clientService = require('../services/clientService');
+const wingguyStore = require('../services/wingguyRulesStore');
 
 const logger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'wingguy' });
 
@@ -474,6 +475,33 @@ module.exports = function mountWingguy(app) {
       return res.json({ ok: true, draft, model: WINGGUY_DRAFT_MODEL_ID, mode: 'reply' });
     } catch (e) {
       logger.error(`[Wingguy] draft-reply failed: ${e.message}`);
+      return res.status(500).json({ ok: false, error: e.message });
+    }
+  });
+
+  // Learn-from-my-edit: the extension logs a {generated, sent} pair here when the human changed
+  // Wingguy's draft before sending (fired silently by the on-Send capture — never blocks it).
+  // Unchanged sends are dropped in the store (no diff, no row). Review happens in chat
+  // ("review my edits" → wingguy_edit_review), NOT here — this endpoint only records.
+  router.post('/edit-pair', async (req, res) => {
+    const { generated, sent, leadName, leadUrl, surface } = req.body || {};
+    const CAP = 8000; // a LinkedIn message; anything bigger is a scrape gone wrong, not a draft
+    if (!generated || !sent) {
+      return res.status(400).json({ ok: false, error: 'generated and sent are both required.' });
+    }
+    if (String(generated).length > CAP || String(sent).length > CAP) {
+      return res.status(400).json({ ok: false, error: `Message too long (cap ${CAP} chars) — not stored.` });
+    }
+    try {
+      const r = await wingguyStore.recordEditPair({
+        tenantId: req.client.clientId,
+        leadName, leadUrl, surface: surface || 'linkedin',
+        generated, sent,
+      });
+      if (r.stored) logger.info(`[Wingguy] edit pair #${r.id} stored for ${req.client.clientId} (${leadName || 'unknown lead'})`);
+      return res.json(r);
+    } catch (e) {
+      logger.error(`[Wingguy] edit-pair failed: ${e.message}`);
       return res.status(500).json({ ok: false, error: e.message });
     }
   });

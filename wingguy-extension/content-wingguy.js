@@ -903,6 +903,26 @@
     });
   }
 
+  // ---- learn-from-my-edit: remember the AI's draft so a send can be paired with it ----------
+  // Set by the panel's Insert/Copy buttons with the AI's ORIGINAL draft (panel edits are the
+  // human's edits too, so we stash what the model produced, not the possibly-edited textarea).
+  // Read + cleared by the on-Send capture, which posts {generated, sent} to /api/wingguy/edit-pair.
+  // The backend drops unchanged pairs, so stashing on every insert is harmless; review happens
+  // later in Claude chat ("review my edits"), never here.
+  let pendingGeneratedDraft = null; // { text, profileUrl, name, at }
+  const EDIT_PAIR_MAX_AGE_MS = 15 * 60 * 1000; // an insert older than this can't claim a send
+  function stashGeneratedDraft(text, profile) {
+    const t = String(text || '').trim();
+    if (!t) return;
+    pendingGeneratedDraft = {
+      text: t,
+      profileUrl: (profile && profile.profileUrl) || '',
+      name: (profile && profile.name) || '',
+      at: Date.now(),
+    };
+  }
+  function slugOfInUrl(u) { return ((String(u || '').match(/\/in\/([^/?#]+)/) || [])[1] || '').toLowerCase(); }
+
   // ---- on-Send → Portal capture (the background half) -----------------------
   // When the human clicks LinkedIn's Send (iron rule: never headless), snapshot the WHOLE thread and
   // full-replace it onto the lead's Portal record. Reuses the legacy "Save to Portal" path exactly:
@@ -1046,6 +1066,34 @@
       await bg({ type: 'QUICK_UPDATE', leadId: lead.id, content, section: 'linkedin' });
       console.log(`[Wingguy] captured ${thread.length} messages to ${who}`);
       showCaptureToast(`✓ Saved ${thread.length} messages to ${who}`);
+
+      // Learn-from-my-edit: if this send follows a Wingguy insert, pair the AI's draft with the
+      // message that actually went out (the newest message in the thread, if it's ours). Fire-and-
+      // forget — a pairing failure never touches the capture above. The backend drops unchanged
+      // pairs; the discussion happens later in Claude chat ("review my edits").
+      try {
+        const stash = pendingGeneratedDraft;
+        if (stash && Date.now() - stash.at > EDIT_PAIR_MAX_AGE_MS) {
+          pendingGeneratedDraft = null; // stale — never pair an old draft with a new send
+        } else if (stash) {
+          const stashSlug = slugOfInUrl(stash.profileUrl);
+          const hereSlug = slugOfInUrl(profileUrl);
+          const last = thread[thread.length - 1];
+          const lastSender = String((last && last.sender) || '').toLowerCase();
+          if (stashSlug && hereSlug && stashSlug !== hereSlug) {
+            // Draft was inserted in a DIFFERENT conversation — keep the stash; its own send may
+            // still be coming.
+            console.log('[Wingguy] edit-pair skipped — draft belongs to another conversation');
+          } else if (!last || !String(last.text || '').trim() || nameMatches(lastSender)) {
+            console.log('[Wingguy] edit-pair skipped — newest thread message is not ours');
+          } else {
+            pendingGeneratedDraft = null; // one pair per insert
+            bg({ type: 'WG_EDIT_PAIR', payload: { generated: stash.text, sent: last.text, leadName: who, leadUrl: profileUrl, surface: 'linkedin' } })
+              .then((r) => console.log('[Wingguy] edit-pair:', r && r.stored ? `stored #${r.id}` : `not stored (${(r && r.reason) || 'no diff'})`))
+              .catch((e) => console.log('[Wingguy] edit-pair failed (non-fatal):', e.message));
+          }
+        }
+      } catch (e) { console.log('[Wingguy] edit-pair error (non-fatal):', e.message); }
     } catch (e) {
       console.log('[Wingguy] capture failed:', e.message);
       showCaptureToast(`Couldn't save to the Portal: ${e.message}`, true);
@@ -1342,6 +1390,9 @@
     const insertBtn = document.getElementById('wingguy-insert');
     insertBtn.addEventListener('mousedown', (e) => e.preventDefault()); // keep the composer's caret
     insertBtn.addEventListener('click', async () => {
+      // Stash the AI's ORIGINAL draft (learn-from-my-edit) — chatState.draft, not the textarea,
+      // so panel edits count as the human's edits when the send is paired against it.
+      stashGeneratedDraft((chatState && chatState.draft) || getText(), chatState && chatState.profile);
       const res = await insertIntoComposer(getText());
       if (res.ok) { closePanel(); return; }
       const s = statusEl();
@@ -1349,6 +1400,7 @@
       s.textContent = 'Click inside LinkedIn\'s message box first (cursor blinking in it), then Insert — or use Copy.';
     });
     document.getElementById('wingguy-copy').addEventListener('click', async () => {
+      stashGeneratedDraft((chatState && chatState.draft) || getText(), chatState && chatState.profile);
       const ok = await copyDraft(getText());
       const s = statusEl();
       s.className = ok ? 'wingguy-status wingguy-ok' : 'wingguy-status wingguy-warn-inline';
@@ -1690,6 +1742,9 @@
     // Don't let the button steal focus from the message box (so the cursor stays where it belongs).
     insertBtn.addEventListener('mousedown', (e) => e.preventDefault());
     insertBtn.addEventListener('click', async () => {
+      // Learn-from-my-edit: stash the AI's original draft (no profile in scope here — the send
+      // capture pairs by freshness alone).
+      stashGeneratedDraft(draft, null);
       const res = await insertIntoComposer(getText());
       if (res.ok) {
         // AI-Blaze behaviour: drop it in the box and get out of the way so they can edit + send.
@@ -1714,6 +1769,7 @@
     });
 
     document.getElementById('wingguy-copy').addEventListener('click', async () => {
+      stashGeneratedDraft(draft, null);
       const ok = await copyDraft(getText());
       if (ok) {
         statusEl.textContent = '✓ Copied — click in the message box and paste (Ctrl+V). Line breaks preserved.';

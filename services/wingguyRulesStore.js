@@ -163,6 +163,31 @@ async function ensureSchema(client) {
     ON wingguy_asset_ledger (tenant_id, lead_email, asset_key);
   `);
 
+  // Edit pairs — learn-from-my-edit (design: docs/wingguy.md "Learn-from-my-edit", 2026-07-18).
+  // One row per LinkedIn send where the human materially changed Wingguy's draft: the extension
+  // logs {generated, sent} silently on Send; "review my edits" in chat reads the pending rows,
+  // discusses the pattern, and routes any rule change through the normal propose→commit door.
+  // Byte-identical (after whitespace normalisation) sends are never stored — no diff, no row.
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS wingguy_edit_pairs (
+      id BIGSERIAL PRIMARY KEY,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      tenant_id TEXT NOT NULL,
+      lead_name TEXT,
+      lead_url TEXT,
+      surface TEXT NOT NULL DEFAULT 'linkedin',
+      generated TEXT NOT NULL,
+      sent TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','reviewed','dismissed')),
+      reviewed_at TIMESTAMPTZ,
+      review_note TEXT
+    );
+  `);
+  await client.query(`
+    CREATE INDEX IF NOT EXISTS idx_wg_edit_pairs_pending
+    ON wingguy_edit_pairs (tenant_id, created_at DESC) WHERE status = 'pending';
+  `);
+
   await client.query(`
     CREATE TABLE IF NOT EXISTS wingguy_rule_history (
       id BIGSERIAL PRIMARY KEY,
@@ -888,6 +913,92 @@ async function getAssetSendSummary({ tenantId = DEFAULT_TENANT, leadEmails = [],
   }
 }
 
+// ---------------------------------------------------------------------------
+// Edit pairs — learn-from-my-edit (generated-vs-sent, reviewed in chat)
+// ---------------------------------------------------------------------------
+
+/**
+ * Whitespace-insensitive equality view of a message, used ONLY to decide "did the human actually
+ * change anything?" — never shown or stored. Deliberately conservative: case and punctuation
+ * changes DO count as edits (they are often exactly the style signal being hunted).
+ */
+function normalizeForEditCompare(text) {
+  return String(text || '').replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Record one generated-vs-sent pair from a LinkedIn send. Returns { ok, stored, id? }:
+ * stored=false when the send matched the draft (whitespace aside) — an unchanged send carries
+ * no learning signal and never lands a row.
+ */
+async function recordEditPair({ tenantId = DEFAULT_TENANT, leadName, leadUrl, surface = 'linkedin', generated, sent }) {
+  const gen = String(generated || '').trim();
+  const fin = String(sent || '').trim();
+  if (!gen || !fin) throw new Error('recordEditPair: both generated and sent are required');
+  if (normalizeForEditCompare(gen) === normalizeForEditCompare(fin)) {
+    return { ok: true, stored: false, reason: 'unchanged' };
+  }
+  const p = getPool();
+  if (!p) throw new Error('DATABASE_URL not set');
+  const client = await p.connect();
+  try {
+    await ensureSchema(client);
+    const r = await client.query(
+      `INSERT INTO wingguy_edit_pairs (tenant_id, lead_name, lead_url, surface, generated, sent)
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+      [(tenantId || DEFAULT_TENANT).trim(), leadName || null, leadUrl || null, surface, gen, fin],
+    );
+    return { ok: true, stored: true, id: r.rows[0].id };
+  } finally {
+    client.release();
+  }
+}
+
+/** Edit pairs for review — newest first. status: 'pending' (default) | 'reviewed' | 'dismissed' | 'all'. */
+async function getEditPairs({ tenantId = DEFAULT_TENANT, status = 'pending', limit = 20 } = {}) {
+  const p = getPool();
+  if (!p) throw new Error('DATABASE_URL not set');
+  const cap = Math.min(Math.max(Number(limit) || 20, 1), 100);
+  const client = await p.connect();
+  try {
+    await ensureSchema(client);
+    const where = status === 'all' ? '' : `AND status = $3`;
+    const params = status === 'all'
+      ? [(tenantId || DEFAULT_TENANT).trim(), cap]
+      : [(tenantId || DEFAULT_TENANT).trim(), cap, status];
+    const r = await client.query(
+      `SELECT id, created_at, lead_name, lead_url, surface, generated, sent, status, reviewed_at, review_note
+       FROM wingguy_edit_pairs WHERE tenant_id = $1 ${where}
+       ORDER BY created_at DESC, id DESC LIMIT $2`,
+      params,
+    );
+    return r.rows;
+  } finally {
+    client.release();
+  }
+}
+
+/** Close out reviewed/dismissed pairs. Only ever moves pending → reviewed|dismissed; never deletes. */
+async function resolveEditPairs({ tenantId = DEFAULT_TENANT, ids = [], status = 'reviewed', note } = {}) {
+  if (!['reviewed', 'dismissed'].includes(status)) throw new Error(`resolveEditPairs: invalid status "${status}"`);
+  const idList = [...new Set(ids.map((n) => Number(n)).filter((n) => Number.isInteger(n) && n > 0))];
+  if (!idList.length) return { ok: true, resolved: 0 };
+  const p = getPool();
+  if (!p) throw new Error('DATABASE_URL not set');
+  const client = await p.connect();
+  try {
+    await ensureSchema(client);
+    const r = await client.query(
+      `UPDATE wingguy_edit_pairs SET status = $1, reviewed_at = now(), review_note = $2
+       WHERE tenant_id = $3 AND id = ANY($4) AND status = 'pending'`,
+      [status, note || null, (tenantId || DEFAULT_TENANT).trim(), idList],
+    );
+    return { ok: true, resolved: r.rowCount };
+  } finally {
+    client.release();
+  }
+}
+
 /** History for one rule (or the whole door when ruleKey omitted) — newest first. */
 async function getHistory({ tenantId, ruleKey, limit = 50 } = {}) {
   const p = getPool();
@@ -945,6 +1056,11 @@ module.exports = {
   recordAssetSends,
   getLeadAssetHistory,
   getAssetSendSummary,
+  // edit pairs (learn-from-my-edit)
+  recordEditPair,
+  getEditPairs,
+  resolveEditPairs,
+  normalizeForEditCompare,
   // the write-door
   proposeRule,
   commitRule,

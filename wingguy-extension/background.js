@@ -220,6 +220,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       .catch(error => sendResponse({ success: false, error: error.message }));
     return true;
   }
+  // Wingguy learn-from-my-edit: log a {generated, sent} pair after a send where the human changed
+  // the draft. Fire-and-forget from the capture path — the backend drops unchanged pairs itself.
+  if (message.type === 'WG_EDIT_PAIR') {
+    wingguyEditPair(message.payload)
+      .then(data => sendResponse({ success: true, data }))
+      .catch(error => sendResponse({ success: false, error: error.message }));
+    return true;
+  }
   // Wingguy: read a lead's LinkedIn Contact Info (email + phone) by rendering their contact-info card in a
   // background tab and reading the DOM. The durable path — see scrapeContactViaTab.
   if (message.type === 'WG_SCRAPE_CONTACT') {
@@ -393,6 +401,18 @@ async function wingguyBook(payload) {
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
     throw new Error(errorData.error || `Book failed: ${response.status}`);
+  }
+  return response.json();
+}
+
+// Wingguy: POST /api/wingguy/edit-pair (learn-from-my-edit — generated vs sent)
+async function wingguyEditPair(payload) {
+  const apiBase = await getWingguyApiBase();
+  const headers = await getAuthHeaders();
+  const response = await fetch(`${apiBase}/edit-pair`, { method: 'POST', headers, body: JSON.stringify(payload || {}) });
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || `Edit-pair failed: ${response.status}`);
   }
   return response.json();
 }
