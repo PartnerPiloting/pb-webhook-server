@@ -1,0 +1,396 @@
+<title>I Know A Guy - Network building, rethought</title>
+<style>
+  :root {
+    --paper:   #F2EEE6;
+    --surface: #FBF9F4;
+    --ink:     #22201C;
+    --ink-soft:#4C473F;
+    --ink-faint:#726B60;
+    --line:    #DBD3C5;
+    --teal:    #1E5E58;
+    --teal-bright: #2C7C72;
+    --marker:  rgba(198,150,74,0.30);
+    --shadow:  rgba(34,32,28,0.10);
+
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+    --sans:  system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --mono:  "SF Mono", ui-monospace, "Cascadia Code", Menlo, Consolas, monospace;
+
+    --measure: 34rem;
+    --pad: clamp(1.25rem, 5vw, 2.5rem);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper:   #1A1917;
+      --surface: #232120;
+      --ink:     #ECE6DA;
+      --ink-soft:#B6AD9E;
+      --ink-faint:#8A8073;
+      --line:    #35312B;
+      --teal:    #63B6AB;
+      --teal-bright: #7FCabf;
+      --marker:  rgba(212,168,98,0.28);
+      --shadow:  rgba(0,0,0,0.35);
+    }
+  }
+  :root[data-theme="light"] {
+    --paper:#F2EEE6; --surface:#FBF9F4; --ink:#22201C; --ink-soft:#4C473F;
+    --ink-faint:#726B60; --line:#DBD3C5; --teal:#1E5E58; --teal-bright:#2C7C72;
+    --marker:rgba(198,150,74,0.30); --shadow:rgba(34,32,28,0.10);
+  }
+  :root[data-theme="dark"] {
+    --paper:#1A1917; --surface:#232120; --ink:#ECE6DA; --ink-soft:#B6AD9E;
+    --ink-faint:#8A8073; --line:#35312B; --teal:#63B6AB; --teal-bright:#7FCabf;
+    --marker:rgba(212,168,98,0.28); --shadow:rgba(0,0,0,0.35);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 1.0625rem;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  .wrap { width: 100%; max-width: 46rem; margin: 0 auto; padding: 0 var(--pad); }
+  .reading { max-width: var(--measure); }
+
+  /* ---- nav ---- */
+  nav {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 1rem; padding: 1.25rem var(--pad);
+    max-width: 46rem; margin: 0 auto;
+  }
+  .wordmark {
+    font-family: var(--serif); font-size: 1.15rem; font-weight: 600;
+    letter-spacing: 0.01em; color: var(--ink); text-decoration: none;
+  }
+  .wordmark .amp { color: var(--teal); }
+  .btn {
+    font-family: var(--sans); font-size: 0.9rem; font-weight: 600;
+    color: #FBF9F4; background: var(--teal);
+    border: none; border-radius: 999px; padding: 0.6rem 1.15rem;
+    text-decoration: none; display: inline-block; cursor: pointer;
+    transition: background .18s ease, transform .18s ease;
+    white-space: nowrap;
+  }
+  .btn:hover { background: var(--teal-bright); transform: translateY(-1px); }
+  .btn:focus-visible { outline: 2px solid var(--teal); outline-offset: 3px; }
+  .btn-ghost {
+    background: transparent; color: var(--teal);
+    border: 1px solid var(--line); padding: 0.6rem 1.15rem;
+  }
+  .btn-ghost:hover { background: transparent; border-color: var(--teal); }
+
+  /* ---- eyebrows ---- */
+  .eyebrow {
+    font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.16em;
+    text-transform: uppercase; color: var(--teal); margin: 0 0 0.9rem;
+    font-weight: 600;
+  }
+
+  /* ---- hero ---- */
+  header.hero { padding: clamp(2rem, 7vw, 4.5rem) 0 clamp(2.5rem, 8vw, 5rem); position: relative; overflow: hidden; }
+  .hero-net { position: absolute; top: -1rem; right: -2rem; width: 240px; max-width: 45%; opacity: 0.5; pointer-events: none; color: var(--teal); }
+  @media (prefers-color-scheme: dark) { .hero-net { opacity: 0.35; } }
+  h1 {
+    font-family: var(--serif); font-weight: 600;
+    font-size: clamp(2.3rem, 7vw, 3.6rem); line-height: 1.06;
+    letter-spacing: -0.015em; margin: 0 0 1.4rem;
+    text-wrap: balance; max-width: 15ch;
+  }
+  .lede { max-width: var(--measure); margin: 0 0 2.25rem; display: flex; flex-direction: column; gap: 1rem; }
+  .lede p { font-size: 1.2rem; line-height: 1.5; color: var(--ink-soft); margin: 0; }
+  .lede em { font-style: italic; color: var(--ink); }
+  .cta-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.85rem 1.1rem; }
+  .cta-note { font-size: 0.9rem; color: var(--ink-faint); }
+
+  .mark {
+    background-image: linear-gradient(var(--marker), var(--marker));
+    background-repeat: no-repeat;
+    background-position: 0 88%;
+    background-size: 100% 0.42em;
+    padding: 0 0.05em;
+  }
+
+  /* ---- sections ---- */
+  section { padding: clamp(2.25rem, 6vw, 3.75rem) 0; border-top: 1px solid var(--line); }
+  h2 {
+    font-family: var(--serif); font-weight: 600;
+    font-size: clamp(1.6rem, 4.2vw, 2.25rem); line-height: 1.12;
+    letter-spacing: -0.01em; margin: 0 0 1.1rem; text-wrap: balance; max-width: 18ch;
+  }
+  p { margin: 0 0 1.15rem; }
+  p:last-child { margin-bottom: 0; }
+  .lead-para { font-family: var(--serif); font-size: 1.3rem; line-height: 1.5; color: var(--ink); max-width: var(--measure); }
+  .honesty { background: var(--surface); border-top: none; }
+  .honesty p { font-family: var(--serif); font-style: italic; font-size: 1.15rem; line-height: 1.5; color: var(--ink-soft); max-width: var(--measure); margin: 0; }
+  .offramp { text-align: center; padding: clamp(1.6rem, 4vw, 2.4rem) 0; }
+  .offramp p { font-family: var(--serif); font-style: italic; font-size: 1.18rem; line-height: 1.5; color: var(--ink-soft); max-width: 32rem; margin: 0 auto; }
+  .offramp a { color: var(--teal); text-decoration: none; border-bottom: 1px solid color-mix(in srgb, var(--teal) 45%, transparent); }
+  .offramp a:hover { border-bottom-color: var(--teal); }
+  .offramp a:focus-visible { outline: 2px solid var(--teal); outline-offset: 3px; }
+
+  /* ---- scene card ---- */
+  .scene { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: clamp(1.1rem, 3vw, 1.6rem); margin-top: 1.75rem; box-shadow: 0 12px 30px -18px var(--shadow); max-width: 30rem; }
+  .msg-label { font-family: var(--mono); font-size: 0.68rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-faint); margin: 0 0 0.5rem; }
+  .bubble-in { background: var(--paper); border: 1px solid var(--line); border-radius: 12px 12px 12px 3px; padding: 0.7rem 0.9rem; font-size: 0.98rem; color: var(--ink-soft); }
+  .scene-divider { display: flex; align-items: center; gap: 0.6rem; margin: 1.1rem 0; color: var(--teal); font-family: var(--mono); font-size: 0.68rem; letter-spacing: 0.12em; text-transform: uppercase; }
+  .scene-divider::before, .scene-divider::after { content: ""; height: 1px; background: var(--line); flex: 1; }
+  .bubble-out { background: color-mix(in srgb, var(--teal) 10%, var(--surface)); border: 1px solid color-mix(in srgb, var(--teal) 30%, var(--line)); border-radius: 12px 12px 3px 12px; padding: 0.75rem 0.9rem; font-size: 0.98rem; color: var(--ink); }
+  .chips { display: flex; flex-wrap: wrap; gap: 0.45rem; margin-top: 0.75rem; }
+  .chip { font-family: var(--sans); font-size: 0.82rem; font-weight: 600; color: var(--teal); background: transparent; border: 1px solid color-mix(in srgb, var(--teal) 45%, var(--line)); border-radius: 999px; padding: 0.32rem 0.7rem; }
+  .scene-foot { font-size: 0.9rem; color: var(--ink-faint); margin-top: 1.4rem; }
+  .scene-foot strong { color: var(--ink-soft); font-weight: 600; }
+  .scene-cap { font-size: 0.85rem; color: var(--ink-faint); font-style: italic; margin: 0.75rem 0 0; }
+  .handled { list-style: none; margin: 1.1rem 0 0.4rem; padding: 0; display: flex; flex-direction: column; gap: 0.55rem; max-width: 31rem; }
+  .handled li { position: relative; padding-left: 1.7rem; color: var(--ink-soft); font-size: 1rem; }
+  .handled li::before { content: "\2713"; position: absolute; left: 0; top: 0; color: var(--teal); font-weight: 700; }
+  .handled-note { font-family: var(--mono); font-size: 0.68rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--teal); margin: 0.4rem 0 0; }
+  .brief { display: flex; flex-direction: column; gap: 0.7rem; }
+  .brief p { margin: 0; font-size: 0.95rem; color: var(--ink-soft); line-height: 1.5; }
+  .brief strong { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+
+  /* ---- guy ---- */
+  .guy { display: flex; gap: 1.4rem; align-items: flex-start; flex-wrap: wrap; }
+  .portrait {
+    flex: 0 0 auto; width: 96px; height: 96px; border-radius: 50%;
+    background: color-mix(in srgb, var(--teal) 14%, var(--surface));
+    border: 1px solid var(--line);
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--serif); font-size: 2.2rem; color: var(--teal); font-weight: 600;
+    position: relative;
+  }
+  .portrait span.tag { position: absolute; bottom: -1.5rem; left: 50%; transform: translateX(-50%); font-family: var(--mono); font-size: 0.6rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-faint); white-space: nowrap; }
+  .guy-body { flex: 1 1 16rem; min-width: 15rem; }
+
+  /* ---- close ---- */
+  .close { text-align: left; }
+  .signoff { font-family: var(--serif); font-style: italic; font-size: 1.25rem; color: var(--teal); margin: 1.6rem 0 2rem; }
+
+  footer { border-top: 1px solid var(--line); padding: 2rem var(--pad) 3rem; }
+  .foot-inner { max-width: 46rem; margin: 0 auto; display: flex; flex-wrap: wrap; gap: 0.4rem 1rem; justify-content: space-between; align-items: baseline; color: var(--ink-faint); font-size: 0.85rem; }
+  .foot-inner .fw { font-family: var(--serif); color: var(--ink-soft); }
+
+  a.inline { color: var(--teal); text-decoration: none; border-bottom: 1px solid color-mix(in srgb, var(--teal) 40%, transparent); }
+  a.inline:hover { border-bottom-color: var(--teal); }
+
+  /* motion */
+  .rise { opacity: 0; transform: translateY(14px); animation: rise .7s cubic-bezier(.2,.7,.2,1) forwards; }
+  .rise.d1 { animation-delay: .08s; }
+  .rise.d2 { animation-delay: .16s; }
+  .rise.d3 { animation-delay: .24s; }
+  @keyframes rise { to { opacity: 1; transform: none; } }
+  @media (prefers-reduced-motion: reduce) {
+    .rise { animation: none; opacity: 1; transform: none; }
+    .btn { transition: none; }
+  }
+</style>
+
+<nav>
+  <a class="wordmark" href="#top">I Know&nbsp;a&nbsp;<span class="amp">Guy</span></a>
+  <a class="btn btn-ghost" href="#chat">Let's talk</a>
+</nav>
+
+<header class="hero" id="top">
+  <div class="wrap">
+    <svg class="hero-net" viewBox="0 0 200 160" fill="none" aria-hidden="true">
+      <line x1="30" y1="40" x2="95" y2="20" stroke="currentColor" stroke-width="1"/>
+      <line x1="95" y1="20" x2="150" y2="55" stroke="currentColor" stroke-width="1"/>
+      <line x1="30" y1="40" x2="70" y2="100" stroke="currentColor" stroke-width="1"/>
+      <line x1="70" y1="100" x2="150" y2="55" stroke="currentColor" stroke-width="1"/>
+      <line x1="70" y1="100" x2="120" y2="130" stroke="currentColor" stroke-width="1"/>
+      <line x1="150" y1="55" x2="120" y2="130" stroke="currentColor" stroke-width="1"/>
+      <circle cx="30" cy="40" r="4.5" fill="currentColor"/>
+      <circle cx="95" cy="20" r="4.5" fill="currentColor"/>
+      <circle cx="150" cy="55" r="6" fill="currentColor"/>
+      <circle cx="70" cy="100" r="4.5" fill="currentColor"/>
+      <circle cx="120" cy="130" r="4.5" fill="currentColor"/>
+    </svg>
+    <p class="eyebrow rise">Network building, rethought</p>
+    <h1 class="rise d1">You already know it works. That was never the problem.</h1>
+    <div class="lede reading rise d2">
+      <p>Nearly everything good comes to you the same way - someone who rates you putting their name behind you, saying <em>I know a guy</em>. We all know that, don't we?</p>
+      <p>And yet network building is the one thing we quietly avoid - because it feels awkward, or onerous, or a lot of effort for not much back. So we don't do the very thing we know works.</p>
+      <p>This is about doing it differently - so none of that becomes the problem. And about becoming the person who, when someone has a need, says <em>I know a guy</em> - and makes the introduction.</p>
+    </div>
+    <div class="cta-row rise d3">
+      <a class="btn" href="#chat">Worth a conversation? →</a>
+      <span class="cta-note">No pitch. Just a chat.</span>
+    </div>
+  </div>
+</header>
+
+<section class="honesty">
+  <div class="wrap reading">
+    <p>You may already be doing some networking - and it might be working, to a degree. If so, wonderful; keep at it. But it's always worth staying open-minded, because deep down most of us suspect there's a better way - and that it's worth a look. There's no magic wand here: it still takes consistent effort, and nothing happens overnight.</p>
+  </div>
+</section>
+
+<section>
+  <div class="wrap reading">
+    <p class="eyebrow">Start here</p>
+    <p class="lead-para">Think about the last networking event you went to. Who was in the room?</p>
+    <p style="margin-top:1.15rem">Members and their guests - whoever happened to be on the invitation list. Not the people best placed to send you work; just whoever was invited. And every one of them was there for the same reason you were: to find prospects of their own.</p>
+    <p>To be fair, it can be genuinely pleasant - a room of new faces, a good coffee, a proper chat. Less so once it's the same faces every week, but still. Which is worth one quiet question: is it the pleasant <em>method</em> you're turning up for, or the <em>result</em>? They're not the same thing - and plenty of networking is enjoyable, faithfully attended, and quietly producing very little.</p>
+    <p>Even if your ideal person <em>was</em> in that room - what are the chances you'd actually find them? And the room isn't where trust gets built anyway. You'd still need to sit down with them, one-on-one, before they'd ever put their name behind you.</p>
+    <p>In every other part of your business, you choose. But when it comes to the network - the thing that quietly decides where your next few years of revenue come from - most of us take whatever room we're handed, then wonder why the recommendations feel random.</p>
+  </div>
+</section>
+
+<section>
+  <div class="wrap reading">
+    <p class="eyebrow">Not a natural networker?</p>
+    <h2>Good - you don't have to be.</h2>
+    <p>Here's the thought that stops a lot of good people before they start: maybe the whole idea just isn't <em>you</em>. You picture networking and you see a room full of salespeople working the crowd - all handshakes and hustle - and you think, not me. I'd be hopeless at that.</p>
+    <p>So let's put that to rest. This isn't that. There's nothing to perform, no charm to switch on, no personality you have to borrow. It comes down to being genuinely curious about someone, and looking for a way to help them - and if anything, the quieter, more thoughtful people are better at it than the room-workers ever were. You were never bad at this. You'd just never been shown a version of it that fit you.</p>
+  </div>
+</section>
+
+<section>
+  <div class="wrap reading">
+    <p class="eyebrow">The shift</p>
+    <h2>Choose the room. Don't collect it.</h2>
+    <p>Decide who belongs in your network before you meet a soul - then go and find those people, one real conversation at a time, instead of hoping they turn up to the same breakfast you did.</p>
+    <p>And build it the way that lasts: give first. Make the introduction because you can, expect nothing back, and let it go. That's not a nice idea - it's the mechanism. Give enough introductions to the right people for long enough, and they come back out of all proportion to what you put in.</p>
+    <p>Now - finding those people, one real conversation at a time? Sounds like a lot of work. And it is - if you go about it any way other than the way we're suggesting.</p>
+  </div>
+</section>
+
+<section>
+  <div class="wrap reading">
+    <p class="eyebrow">The part almost nobody does</p>
+    <h2>Not just capable people - your people.</h2>
+    <p>Finding them starts where you'd expect. LinkedIn lets you filter the whole professional world by the hard facts - role, industry, where someone sits relative to your clients. You may already do this much. It's the easy part.</p>
+    <p>But the hard facts only tell you who's <em>capable</em>. They say nothing about who you'll actually get on with. So you go one step further - the step almost nobody takes - and score people on <em>attitude</em>, against a set of qualities you can shape yourself. At a scale you could never manage by hand.</p>
+    <p>That one move does an enormous amount of work. You're not just finding capable people anymore - you're finding the ones you're likely to have a genuinely good conversation with. The ones who think in introductions, who'll build alongside you. It's what turns outreach from cold-calling into meeting people you were always going to get on with.</p>
+    <p>And there's an early, measurable sign it's working. Out in the wider world, getting 35% of your connection requests accepted is considered exceptional. Select and score this well, and 45-55% is a fair expectation - so the figure most people would be thrilled with sits closer to your floor. Which means two good things at once: you're reaching the right people, and you need to reach out to far fewer of them to get there.</p>
+  </div>
+</section>
+
+<section>
+  <div class="wrap reading">
+    <p class="eyebrow">Where it's all heading</p>
+    <h2>It comes down to a conversation.</h2>
+    <p>Everything up to here - the choosing, the scoring, the reaching out - leads to one thing: a real, one-on-one conversation. A discovery call. That's where a name on a screen becomes someone who'll put their name behind you.</p>
+    <p>And here's what's quietly changed: you can have that call with someone anywhere in the country. A good online conversation builds real trust now - people no longer need to be in the same room to take each other seriously. So you're not stuck with whoever's local: you choose from the whole of Australia, and meet them properly, wherever you both happen to be. No commute, no fixed weekly slot - just a time that suits you both.</p>
+    <p>The call itself is the easy part - if you come at it right. Not "what can I sell?" but "what do they do, and who could I introduce them to?" You're there to learn, and to look for ways to put their name forward. And because you chose these people so carefully, they nearly always arrive with the very same instinct about you. That's where recommendations are born.</p>
+  </div>
+</section>
+
+<section>
+  <div class="wrap reading">
+    <p class="eyebrow">The real game-changer</p>
+    <h2>Better than being in the room.</h2>
+    <p>Two things almost everyone now takes for granted have quietly changed everything: online meetings, and the transcripts of them.</p>
+    <p>On the call, you give the person your whole attention - no scribbling, no glancing away, just listening - because the whole thing is being captured for you. Afterwards, that transcript does the heavy lifting on your follow-up, and you'd be amazed what it remembers. The note you send back is full of the specific things you actually talked about - the detail that tells someone you were genuinely listening.</p>
+    <p>People will swear face-to-face is the only real way to build a relationship. I'd gently disagree. Full presence in the moment, and then a follow-up so specific it proves you heard every word - that builds more trust than a coffee where you were half-listening and half-forgetting. And when the call hands you a reason for the next one, you book meeting two from meeting one - and a single conversation becomes a relationship with its own momentum, kept warm in between with the odd note or a link worth sharing.</p>
+  </div>
+</section>
+
+<section>
+  <div class="wrap reading">
+    <p class="eyebrow">And then it multiplies</p>
+    <h2>The part that compounds.</h2>
+    <p>There's one more turn, and it's the one that changes the scale of everything. Find a few of these people - the ones who really get it - and show them how to build their network the same way you're building yours. Now they're bringing in their own good people. You introduce yours to theirs. And it stops being you networking alone - it becomes a web of high-quality people, all quietly recommending each other. Even the introductions get easier: a warm, specific one can be drawn straight from what was actually said in your calls and messages with each of them.</p>
+  </div>
+</section>
+
+<section>
+  <div class="wrap reading">
+    <p class="eyebrow">But isn't all this a lot of work?</p>
+    <h2>Almost none of it is yours to do.</h2>
+    <p>By now you might be a little suspicious. It all sounds good - but it also sounds like an enormous amount of work. Quite the opposite. Let's step back and look at what you actually do, against what simply gets handled for you.</p>
+    <p>Finding the right people, sorting them, reaching out - it all runs on its own. You set it up once, your way, and then it just ticks along in the background:</p>
+    <ul class="handled">
+      <li>Finding the right people on LinkedIn</li>
+      <li>Adding them to your list</li>
+      <li>Scoring them on attitude</li>
+      <li>Sending the connection request that earns that high acceptance rate</li>
+    </ul>
+    <p class="handled-note">All automated &middot; runs on your own rules</p>
+    <p>Automated doesn't mean hands-off. You always have the final say on who - you're still the one looking, it's just fast.</p>
+    <p>And the drafting keeps getting more like you. It runs on your own set of rules, which you can change right as it's writing - or not bother in the moment, and just review at week's end: here's what it drafted, here's what I'd have changed, let's make that the rule from now on. A few rounds of that and it writes the way you would have - less a tool you operate than a version of you that never gets tired.</p>
+    <p>So what's actually left for you? Here's the surprising part - it's the one step that used to be automated. The "thanks for connecting." It used to be a generic line fired off to everyone. Now it's the one worth making personal - because the system writes you a genuinely personal one, pulling something specific and relevant from their profile, the kind of note that makes someone feel truly seen. Honestly, it does it better than you would by hand.</p>
+
+    <div class="scene" role="img" aria-label="A personalised thanks-for-connecting message drafted from someone's profile, suggesting a quick Zoom.">
+      <p class="msg-label">They accept your request &rarr;</p>
+      <div class="bubble-out">
+        Thanks for connecting, Sarah - I really enjoyed your piece on holding onto culture while the team scales. It's exactly the sort of thing I end up talking about with people in my network. Any chance you'd be up for a quick Zoom over the next couple of weeks? I'd genuinely like to hear what you're building.
+      </div>
+      <p class="scene-cap">Written from her actual profile, in your voice, in seconds - not a template, and not something you could ever do by hand at scale.</p>
+    </div>
+
+    <p style="margin-top:1.4rem">That one touch sends the number of people who genuinely want to talk to you sky-high. And when they say yes, the times get offered and the call gets booked, too. Which leaves you exactly one thing to actually do - the one thing that was ever the point: turn up to the conversation.</p>
+  </div>
+</section>
+
+<section>
+  <div class="wrap reading">
+    <p class="eyebrow">And you can do far more of it</p>
+    <h2>You never have to carry it in your head.</h2>
+    <p>That one thing - turning up genuinely present - is the only real work left. And here's what lets you do a great deal more of it. Once a few of these relationships are running at once, the old limit shows up: remembering it all. Who's this again - first meeting or second? What did we say last time? What did I offer them? That mental juggling is what caps how many people you can really keep up with.</p>
+    <p>So you stop juggling, and just ask. <em>"Prep me for today's meetings"</em> - and up it comes: first call or second, what you covered last time, the thing you offered that they never got back to you on, who's due a follow-up. You walk in fully briefed and completely present, carrying none of it.</p>
+
+    <div class="scene" role="img" aria-label="An AI meeting briefing generated from past calls, emails and messages.">
+      <p class="msg-label">"Prep me for today's meetings" &rarr;</p>
+      <div class="brief">
+        <p><strong>2:00 &middot; Sarah Chen</strong> - second call. Last time: scaling without losing the culture. You offered her an intro to a CFO she hasn't taken up yet. Worth revisiting her hiring question.</p>
+        <p><strong>4:30 &middot; Raj Patel</strong> - first call. Fractional COO, ex-logistics. Two people in your network he'd be glad to meet.</p>
+      </div>
+      <p class="scene-cap">Pulled from your past calls, emails and messages - so you always know exactly where you left off.</p>
+    </div>
+
+    <p style="margin-top:1.4rem">Which means the real limit just lifted. You can hold far more relationships than memory ever allowed - so you do <em>more</em> networking, not less. For anyone who wants this to be a real part of what they do, that's the whole game.</p>
+  </div>
+</section>
+
+<section class="offramp">
+  <div class="wrap">
+    <p>Seen enough? You don't have to read to the end - <a href="#chat">let's just have a chat</a>. Or keep going, there's more below if you want it.</p>
+  </div>
+</section>
+
+<section>
+  <div class="wrap reading">
+    <p class="eyebrow">But why not just buy one?</p>
+    <p>You could pay for an instant network instead - a thousand a month for a vetted room you didn't choose, or around <strong>$3,500 a year</strong> for the breakfast club. But it's still someone else's room, assembled to someone else's criteria - and the day you stop paying, it's gone. You did the relationship-building; they kept the platform.</p>
+    <p>The version here costs a fraction of that - and at the end of it, you own the network. Not a receipt.</p>
+  </div>
+</section>
+
+<section>
+  <div class="wrap reading">
+    <p class="eyebrow">Who's the guy?</p>
+    <div class="guy">
+      <div class="portrait" aria-hidden="true">G<span class="tag">your photo here</span></div>
+      <div class="guy-body">
+        <p>I'm Guy. I've been building networks my whole life.</p>
+        <p>I started this business chasing the marketing route - courses, SEO, the usual - and backed away from it, because it's expensive, it's slow, and it turns you into just another commodity. So I went back to what I've always done: connecting good people to each other.</p>
+        <p>What changed is that AI now does the heavy lifting - the reading, the drafting, the arranging - so network building is finally feasible for a busy professional, instead of a second job. I've spent the years; the system carries them. That's the whole idea.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap reading close" id="chat">
+    <h2>Imagine if.</h2>
+    <p>Imagine a real slice of your work arriving as recommendations - not you chasing it, but people who know you putting your name forward in rooms you'll never sit in.</p>
+    <p>That's what this builds. I can't make it instant - anyone who promises that is selling something. But I can tell you it works, because I've spent years doing it, and now there's a way to do it without it taking over your life.</p>
+    <p>If any of that landed, it might be worth a conversation. No pitch. Just - imagine if.</p>
+    <p class="signoff">- (I know a) Guy</p>
+    <a class="btn" href="#top">Let's have a chat →</a>
+  </div>
+</section>
+
+<footer>
+  <div class="foot-inner">
+    <span class="fw">I Know a Guy</span>
+    <span>Network building, rethought</span>
+    <span>knowaguy.com.au</span>
+  </div>
+</footer>

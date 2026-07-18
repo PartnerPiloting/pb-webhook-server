@@ -1,0 +1,190 @@
+<title>I Know A Guy - Website Brief</title>
+<style>
+  :root {
+    --paper:#F2EEE6; --surface:#FBF9F4; --ink:#22201C; --ink-soft:#4C473F;
+    --ink-faint:#726B60; --line:#DBD3C5; --teal:#1E5E58; --teal-bright:#2C7C72;
+    --marker:rgba(198,150,74,0.30); --shadow:rgba(34,32,28,0.10);
+    --serif:"Iowan Old Style","Palatino Linotype",Palatino,"Book Antiqua",Georgia,serif;
+    --sans:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --mono:"SF Mono",ui-monospace,"Cascadia Code",Menlo,Consolas,monospace;
+    --pad:clamp(1.25rem,5vw,2.25rem);
+  }
+  @media (prefers-color-scheme: dark){
+    :root{--paper:#1A1917;--surface:#232120;--ink:#ECE6DA;--ink-soft:#B6AD9E;
+    --ink-faint:#8A8073;--line:#35312B;--teal:#63B6AB;--teal-bright:#7FCabf;
+    --marker:rgba(212,168,98,0.28);--shadow:rgba(0,0,0,0.35);}
+  }
+  :root[data-theme="light"]{--paper:#F2EEE6;--surface:#FBF9F4;--ink:#22201C;--ink-soft:#4C473F;--ink-faint:#726B60;--line:#DBD3C5;--teal:#1E5E58;--teal-bright:#2C7C72;--marker:rgba(198,150,74,0.30);--shadow:rgba(34,32,28,0.10);}
+  :root[data-theme="dark"]{--paper:#1A1917;--surface:#232120;--ink:#ECE6DA;--ink-soft:#B6AD9E;--ink-faint:#8A8073;--line:#35312B;--teal:#63B6AB;--teal-bright:#7FCabf;--marker:rgba(212,168,98,0.28);--shadow:rgba(0,0,0,0.35);}
+
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--sans);
+    font-size:1rem;line-height:1.6;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;}
+  .wrap{width:100%;max-width:45rem;margin:0 auto;padding:0 var(--pad);}
+
+  header.top{padding:clamp(2rem,6vw,3.25rem) 0 1.5rem;}
+  .kicker{font-family:var(--mono);font-size:0.72rem;letter-spacing:0.16em;text-transform:uppercase;color:var(--teal);margin:0 0 0.8rem;font-weight:600;}
+  h1{font-family:var(--serif);font-weight:600;font-size:clamp(1.9rem,5vw,2.6rem);line-height:1.08;letter-spacing:-0.015em;margin:0 0 0.7rem;}
+  .sub{font-size:1.1rem;color:var(--ink-soft);margin:0 0 1rem;max-width:34rem;}
+  .meta{font-family:var(--mono);font-size:0.72rem;color:var(--ink-faint);letter-spacing:0.04em;}
+
+  section{padding:1.9rem 0;border-top:1px solid var(--line);}
+  h2{font-family:var(--serif);font-weight:600;font-size:1.4rem;margin:0 0 0.4rem;letter-spacing:-0.01em;}
+  .eyebrow{font-family:var(--mono);font-size:0.68rem;letter-spacing:0.15em;text-transform:uppercase;color:var(--teal);margin:0 0 0.7rem;font-weight:600;}
+  p{margin:0 0 0.9rem;max-width:36rem;}
+  p:last-child{margin-bottom:0;}
+  ul{margin:0.4rem 0 0;padding:0;list-style:none;max-width:37rem;}
+  li{position:relative;padding:0.35rem 0 0.35rem 1.4rem;border-bottom:1px solid var(--line);}
+  li:last-child{border-bottom:none;}
+  li::before{content:"";position:absolute;left:0.15rem;top:0.95rem;width:6px;height:6px;border-radius:50%;background:var(--teal);}
+  li strong{color:var(--ink);font-weight:600;}
+  .lbl{font-family:var(--mono);font-size:0.66rem;letter-spacing:0.06em;text-transform:uppercase;color:var(--ink-faint);}
+
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;}
+  @media (max-width:34rem){.grid2{grid-template-columns:1fr;}}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:1.1rem 1.25rem;}
+  .card h3{font-family:var(--serif);font-size:1.1rem;margin:0 0 0.5rem;}
+  .card ul li{padding-left:1.2rem;font-size:0.95rem;}
+  .card ul li::before{top:0.85rem;}
+
+  .rule{background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--teal);border-radius:10px;padding:1rem 1.2rem;margin-top:1rem;}
+  .rule strong{color:var(--ink);}
+
+  .seq{counter-reset:step;list-style:none;padding:0;margin:0.5rem 0 0;}
+  .seq li{padding:0.6rem 0 0.6rem 2.4rem;}
+  .seq li::before{counter-increment:step;content:counter(step);top:0.55rem;left:0;width:1.5rem;height:1.5rem;border-radius:50%;background:transparent;border:1px solid var(--teal);color:var(--teal);font-family:var(--mono);font-size:0.8rem;display:flex;align-items:center;justify-content:center;line-height:1;}
+  .phase-tag{display:inline-block;font-family:var(--mono);font-size:0.6rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--teal);border:1px solid var(--line);border-radius:999px;padding:0.1rem 0.5rem;margin-left:0.5rem;vertical-align:middle;}
+
+  .mark{background-image:linear-gradient(var(--marker),var(--marker));background-repeat:no-repeat;background-position:0 88%;background-size:100% 0.42em;padding:0 0.05em;}
+  a.inline{color:var(--teal);text-decoration:none;border-bottom:1px solid color-mix(in srgb,var(--teal) 40%,transparent);}
+  a.inline:hover{border-bottom-color:var(--teal);}
+  footer{border-top:1px solid var(--line);padding:1.75rem var(--pad) 2.75rem;}
+  .foot-inner{max-width:45rem;margin:0 auto;color:var(--ink-faint);font-size:0.82rem;font-family:var(--mono);letter-spacing:0.04em;}
+</style>
+
+<header class="top">
+  <div class="wrap">
+    <p class="kicker">Website Brief</p>
+    <h1>I Know a Guy</h1>
+    <p class="sub">The plan for the site, in one place - decisions, structure, voice, and the build sequence - before we start building for real.</p>
+    <p class="meta">Network building, rethought · knowaguy.com.au · 18 Jul 2026</p>
+  </div>
+</header>
+
+<section>
+  <div class="wrap">
+    <p class="eyebrow">The decision</p>
+    <h2>Website-first</h2>
+    <p>The website is the priority artifact - the thing you hand to referrals, paste into LinkedIn chats, and point cold prospects at. The prospect email series becomes a <em>delivery channel</em> of the same content, decided afterwards. They are not two projects; they are one body of writing with two ways of delivering it.</p>
+    <div class="rule"><strong>The one rule to protect:</strong> a single source of truth. The content pieces stay canonical; the website renders them and the emails render them. Improving a piece improves both at once. Never fork it into two divergent copies.</div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <p class="eyebrow">What the site is for</p>
+    <h2>One asset, many jobs</h2>
+    <p>Because the paradigm is universal, the same writing does acquisition <em>and</em> retention:</p>
+    <ul>
+      <li><span class="lbl">Referral hand-out</span> &nbsp;The thing a client sends to someone they rate. Powered by the $0-at-three-referrals incentive - motivated referrers who finally have something good to give.</li>
+      <li><span class="lbl">"How does it work?" link</span> &nbsp;Dropped into LinkedIn connection / thanks-for-connecting chats when someone wants more.</li>
+      <li><span class="lbl">Credibility check</span> &nbsp;For the cold prospect mid-outreach deciding whether to take the Zoom. (Replaces the harm ASH currently does here.)</li>
+      <li><span class="lbl">Client reinforcement</span> &nbsp;Existing clients re-read the paradigm - conviction is what carries them through the flat part of the curve. This is a <strong>retention</strong> asset, not just acquisition.</li>
+      <li><span class="lbl">Series home</span> &nbsp;The seed and permanent home for the prospect email series.</li>
+    </ul>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <p class="eyebrow">The scorecard</p>
+    <h2>Earn the conversation - don't try to wow</h2>
+    <p>The site can't reproduce your live demo, and shouldn't try - chasing "wow" tips into hype and fails the skeptic. The demo creates <strong>wow</strong> (capability, live). The site creates <strong>want</strong> (a vivid scene, the paradigm) - and want is what earns the conversation where you close.</p>
+    <div class="rule">North-star test for every decision: <strong>would a client be proud to send this - and would the smart friend they sent it to come away nodding?</strong></div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <p class="eyebrow">Structure</p>
+    <h2>Lean page, depth behind a link</h2>
+    <div class="grid2">
+      <div class="card">
+        <h3>The front page</h3>
+        <ul>
+          <li>Owns the <em>why</em> (the paradigm)</li>
+          <li>One vivid scene (the drafted-reply moment) - not a feature list</li>
+          <li>You, personally, front-and-centre - warm, modest, the founder behind a system</li>
+          <li>Opens on the hook (we avoid the thing we know works) + the honesty beat</li>
+          <li>Ends on a soft "let's talk" - never "sign up"</li>
+          <li><strong>Build less</strong> - readable in under a minute</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>The library</h3>
+        <ul>
+          <li>The prospect series (outsider-safe paradigm pieces)</li>
+          <li>Led by the "how it actually works" map</li>
+          <li>Grouped by the argument, not a flat blog</li>
+          <li>Handles deeper objections (incl. "I could build that", AI-isn't-the-answer)</li>
+          <li>Craft / client pieces stay in the members' portal - not public</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <p class="eyebrow">Voice &amp; guardrails</p>
+    <h2>Sound like you, disarm the skeptic</h2>
+    <ul>
+      <li>Guy across a coffee table - contractions, specific ($3,500), warm, peer-to-peer</li>
+      <li>Short dash ( - ), never em dash · "recommend", not "refer"</li>
+      <li>The honesty beats stay: <span class="mark">"stick with what's working"</span> and "no magic wand"</li>
+      <li>Affirm, then reframe - never "you're wasting your time" (especially to proud DIY-ers)</li>
+      <li>Every public surface passes the anti-MLM test</li>
+      <li>Sign-off: <em>- (I know a) Guy</em></li>
+    </ul>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <p class="eyebrow">Look</p>
+    <h2>The Connector's Study</h2>
+    <p>Warm oat paper, espresso ink, a single deep petrol-teal accent (deliberately not hustle-gold or SaaS-blue), one restrained warm-ochre highlight under "I know a guy". Bookish serif for display, humanist sans for body. Light and dark. See the <a class="inline" href="#">homepage</a> and <a class="inline" href="#">library</a> mockups.</p>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <p class="eyebrow">Sequence</p>
+    <h2>What we do, in what order</h2>
+    <ol class="seq">
+      <li><strong>Reconcile the library home</strong> <span class="phase-tag">now</span> One home for the writing, not two (WordPress vs the server). Resolved by building the one home - the website.</li>
+      <li><strong>Build the real front page + library</strong> <span class="phase-tag">now</span> Off the existing content pieces as the source. Clean build, not WordPress.</li>
+      <li><strong>Fold new beats into the source</strong> <span class="phase-tag">now</span> e.g. the "funnel is just the top" beat for #65 - flows to both website and emails.</li>
+      <li><strong>Wire the CTA</strong> <span class="phase-tag">soon</span> A real way to talk to you (booking / contact).</li>
+      <li><strong>Email drip mechanics</strong> <span class="phase-tag">later</span> Send order, per-audience endings, state - a delivery concern, deferred cleanly.</li>
+      <li><strong>Billing cutover + ASH redirect</strong> <span class="phase-tag">later</span> PMPro → Stripe (mostly already built), then redirect the old domain.</li>
+    </ol>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <p class="eyebrow">Still open</p>
+    <h2>Decisions parked for later</h2>
+    <ul>
+      <li>How "let's talk" actually works - booking link vs simple contact</li>
+      <li>The library one-line hooks need tuning to your intent</li>
+      <li>Whether "funnel is just the top" is a beat in #65 or its own piece</li>
+      <li>Confirm existing members are already live Stripe subscriptions (makes migration a mapping job)</li>
+    </ul>
+  </div>
+</section>
+
+<footer>
+  <div class="foot-inner">I KNOW A GUY · WEBSITE BRIEF · v1 · 18 JUL 2026</div>
+</footer>

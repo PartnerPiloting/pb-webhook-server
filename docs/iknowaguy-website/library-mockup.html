@@ -1,0 +1,236 @@
+<title>The Library - I Know A Guy</title>
+<style>
+  :root {
+    --paper:   #F2EEE6;
+    --surface: #FBF9F4;
+    --ink:     #22201C;
+    --ink-soft:#4C473F;
+    --ink-faint:#726B60;
+    --line:    #DBD3C5;
+    --teal:    #1E5E58;
+    --teal-bright: #2C7C72;
+    --marker:  rgba(198,150,74,0.30);
+    --shadow:  rgba(34,32,28,0.10);
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+    --sans:  system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --mono:  "SF Mono", ui-monospace, "Cascadia Code", Menlo, Consolas, monospace;
+    --measure: 34rem;
+    --pad: clamp(1.25rem, 5vw, 2.5rem);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper:#1A1917; --surface:#232120; --ink:#ECE6DA; --ink-soft:#B6AD9E;
+      --ink-faint:#8A8073; --line:#35312B; --teal:#63B6AB; --teal-bright:#7FCabf;
+      --marker:rgba(212,168,98,0.28); --shadow:rgba(0,0,0,0.35);
+    }
+  }
+  :root[data-theme="light"] {
+    --paper:#F2EEE6; --surface:#FBF9F4; --ink:#22201C; --ink-soft:#4C473F;
+    --ink-faint:#726B60; --line:#DBD3C5; --teal:#1E5E58; --teal-bright:#2C7C72;
+    --marker:rgba(198,150,74,0.30); --shadow:rgba(34,32,28,0.10);
+  }
+  :root[data-theme="dark"] {
+    --paper:#1A1917; --surface:#232120; --ink:#ECE6DA; --ink-soft:#B6AD9E;
+    --ink-faint:#8A8073; --line:#35312B; --teal:#63B6AB; --teal-bright:#7FCabf;
+    --marker:rgba(212,168,98,0.28); --shadow:rgba(0,0,0,0.35);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--paper); color: var(--ink);
+    font-family: var(--sans); font-size: 1.0625rem; line-height: 1.65;
+    -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
+  }
+  .wrap { width: 100%; max-width: 46rem; margin: 0 auto; padding: 0 var(--pad); }
+  .reading { max-width: var(--measure); }
+
+  nav {
+    display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+    padding: 1.25rem var(--pad); max-width: 46rem; margin: 0 auto;
+  }
+  .wordmark { font-family: var(--serif); font-size: 1.15rem; font-weight: 600; letter-spacing: 0.01em; color: var(--ink); text-decoration: none; }
+  .wordmark .amp { color: var(--teal); }
+  .back { font-family: var(--sans); font-size: 0.9rem; color: var(--teal); text-decoration: none; border-bottom: 1px solid transparent; }
+  .back:hover { border-bottom-color: var(--teal); }
+  .back:focus-visible { outline: 2px solid var(--teal); outline-offset: 3px; }
+
+  .eyebrow { font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.16em; text-transform: uppercase; color: var(--teal); margin: 0 0 0.9rem; font-weight: 600; }
+
+  header.top { padding: clamp(1.5rem, 5vw, 3rem) 0 clamp(1.5rem, 5vw, 2.5rem); }
+  h1 { font-family: var(--serif); font-weight: 600; font-size: clamp(2rem, 6vw, 3rem); line-height: 1.08; letter-spacing: -0.015em; margin: 0 0 1.2rem; text-wrap: balance; max-width: 16ch; }
+  .lede { font-size: 1.15rem; line-height: 1.55; color: var(--ink-soft); max-width: var(--measure); margin: 0; }
+  .lede em { font-style: italic; color: var(--ink); }
+
+  section { padding: clamp(2rem, 6vw, 3.25rem) 0; border-top: 1px solid var(--line); }
+  h2 { font-family: var(--serif); font-weight: 600; font-size: clamp(1.5rem, 4vw, 2.1rem); line-height: 1.12; letter-spacing: -0.01em; margin: 0 0 0.6rem; text-wrap: balance; }
+  .sub { color: var(--ink-faint); font-style: italic; font-family: var(--serif); font-size: 1.1rem; margin: 0 0 2rem; max-width: var(--measure); }
+
+  /* map steps */
+  .steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 1.6rem; }
+  .step { display: grid; grid-template-columns: 2.6rem 1fr; gap: 0.4rem 1rem; align-items: baseline; }
+  .step-n { font-family: var(--serif); font-size: 1.6rem; font-weight: 600; color: var(--teal); font-variant-numeric: tabular-nums; line-height: 1; }
+  .step-b h3 { font-family: var(--serif); font-size: 1.2rem; font-weight: 600; margin: 0 0 0.35rem; color: var(--ink); }
+  .step-b p { margin: 0 0 0.4rem; color: var(--ink-soft); font-size: 1rem; max-width: 32rem; }
+  .step-link { font-family: var(--sans); font-size: 0.85rem; color: var(--teal); text-decoration: none; }
+  .step-link:hover { text-decoration: underline; }
+  .step-link .arrow { opacity: 0.7; }
+
+  /* pieces list */
+  .phase { font-family: var(--mono); font-size: 0.68rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-faint); margin: 2rem 0 0.4rem; padding-top: 1.2rem; border-top: 1px solid var(--line); }
+  .phase:first-of-type { margin-top: 0; padding-top: 0; border-top: none; }
+  .pieces { list-style: none; margin: 0; padding: 0; }
+  .piece { display: grid; grid-template-columns: 2.2rem 1fr; gap: 0.15rem 0.9rem; align-items: baseline; padding: 0.85rem 0.4rem; border-radius: 8px; text-decoration: none; color: inherit; transition: background .15s ease; }
+  .piece:hover { background: var(--surface); }
+  .piece:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
+  .piece-n { font-family: var(--mono); font-size: 0.8rem; color: var(--ink-faint); font-variant-numeric: tabular-nums; }
+  .piece-t { font-family: var(--serif); font-size: 1.12rem; font-weight: 600; color: var(--ink); line-height: 1.25; }
+  .piece:hover .piece-t { color: var(--teal); }
+  .piece-d { grid-column: 2; color: var(--ink-soft); font-size: 0.95rem; margin-top: 0.15rem; max-width: 36rem; }
+
+  .callout { background: var(--surface); border: 1px solid var(--line); border-left: 3px solid var(--teal); border-radius: 10px; padding: 1.1rem 1.25rem; margin-top: 2rem; font-size: 0.98rem; color: var(--ink-soft); }
+  .callout strong { color: var(--ink); font-weight: 600; }
+
+  footer { border-top: 1px solid var(--line); padding: 2rem var(--pad) 3rem; }
+  .foot-inner { max-width: 46rem; margin: 0 auto; display: flex; flex-wrap: wrap; gap: 0.4rem 1rem; justify-content: space-between; align-items: baseline; color: var(--ink-faint); font-size: 0.85rem; }
+  .foot-inner .fw { font-family: var(--serif); color: var(--ink-soft); }
+</style>
+
+<nav>
+  <a class="wordmark" href="#top">I Know&nbsp;a&nbsp;<span class="amp">Guy</span></a>
+  <a class="back" href="#top">← Home</a>
+</nav>
+
+<header class="top" id="top">
+  <div class="wrap">
+    <p class="eyebrow">The Library</p>
+    <h1>The whole argument, one page at a time.</h1>
+    <p class="lede reading">This isn't a list of tactics - it's the shape of the whole thing, so you can see where it goes before you decide whether to walk it. Read the map, then take the pieces one at a time, in whatever order you like.</p>
+  </div>
+</header>
+
+<section>
+  <div class="wrap">
+    <p class="eyebrow">Start here - the map</p>
+    <h2>How it actually works</h2>
+    <p class="sub">A map doesn't teach you the ground. It just shows you where everything is.</p>
+    <ol class="steps">
+      <li class="step">
+        <div class="step-n">1</div>
+        <div class="step-b">
+          <h3>Choose who's worth knowing</h3>
+          <p>Decide, on purpose, who belongs in your network before you meet anyone - not the people who might buy from you, but the ones positioned to know your work and recommend you. Chosen for how they think, not their job title.</p>
+          <a class="step-link" href="#"><span class="arrow">→</span> <em>Choose, Don't Collect</em></a>
+        </div>
+      </li>
+      <li class="step">
+        <div class="step-n">2</div>
+        <div class="step-b">
+          <h3>Reach out like a human</h3>
+          <p>A genuine note about <em>their</em> work, not a pitch about yours. The whole posture is "let me find out what you do" - the opposite of the thing everyone braces for.</p>
+          <a class="step-link" href="#"><span class="arrow">→</span> <em>A thanks-for-connecting that delights</em></a>
+        </div>
+      </li>
+      <li class="step">
+        <div class="step-n">3</div>
+        <div class="step-b">
+          <h3>Say thank you like you mean it</h3>
+          <p>When they connect back, there's a small window of goodwill. A genuine, specific line about their work - the kind that makes someone feel actually seen - turns a new contact into a real conversation.</p>
+          <a class="step-link" href="#"><span class="arrow">→</span> <em>A thanks-for-connecting that delights</em></a>
+        </div>
+      </li>
+      <li class="step">
+        <div class="step-n">4</div>
+        <div class="step-b">
+          <h3>Have a conversation to learn</h3>
+          <p>The first call fills people with dread because they think it's a pitch they can fail. It isn't. You're there to learn about them - nothing to sell, so nothing to be rejected about. The easiest conversation in the world.</p>
+          <a class="step-link" href="#"><span class="arrow">→</span> <em>What can you discover?</em></a>
+        </div>
+      </li>
+      <li class="step">
+        <div class="step-n">5</div>
+        <div class="step-b">
+          <h3>Give it a reason to continue</h3>
+          <p>Relationships live on motion, not goodwill. So you leave every one with a reason to come back - something to share, someone to introduce, a thread to pick up.</p>
+          <a class="step-link" href="#"><span class="arrow">→</span> <em>A reason to follow up</em></a>
+        </div>
+      </li>
+      <li class="step">
+        <div class="step-n">6</div>
+        <div class="step-b">
+          <h3>Watch it grow into a web</h3>
+          <p>Do this with enough of the right people - the ones who build their own networks too - and you're not networking alone anymore. Work starts arriving on a recommendation, from people you've never even met.</p>
+          <a class="step-link" href="#"><span class="arrow">→</span> <em>Building nodes</em></a>
+        </div>
+      </li>
+      <li class="step">
+        <div class="step-n">7</div>
+        <div class="step-b">
+          <h3>Become the one who knows a guy</h3>
+          <p>Underneath all of it, one small human habit: when someone mentions a need, you're the one who says "I know a guy" - and makes the introduction, freely, expecting nothing. Do that often enough, and you become the person everyone's glad to know.</p>
+          <a class="step-link" href="#"><span class="arrow">→</span> <em>Become the person who knows a guy</em></a>
+        </div>
+      </li>
+    </ol>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <p class="eyebrow">The pieces</p>
+    <h2>Read the thinking</h2>
+    <p class="sub">Each one is a single idea that stands on its own - together they read like a short book. Start anywhere.</p>
+
+    <p class="phase">Why this matters</p>
+    <div class="pieces">
+      <a class="piece" href="#"><span class="piece-n">01</span><span class="piece-t">Revisit your big picture</span><span class="piece-d">Your network is the one constant that serves every version of your plan - and the shock absorber when the plan goes sideways.</span></a>
+      <a class="piece" href="#"><span class="piece-n">02</span><span class="piece-t">Overcoming feast or famine</span><span class="piece-d">Networking always loses to billable work - because you treat it as an activity, not as infrastructure.</span></a>
+      <a class="piece" href="#"><span class="piece-n">03</span><span class="piece-t">Does it really work?</span><span class="piece-d">A true story - an introduction made before we'd even spoken, and the recommendation that came back the next day.</span></a>
+    </div>
+
+    <p class="phase">The old way, and the shift</p>
+    <div class="pieces">
+      <a class="piece" href="#"><span class="piece-n">04</span><span class="piece-t">Pleasing methods, pleasing results</span><span class="piece-d">Breakfast networking feels like networking but doesn't build a network - $3,500 a year for a room you didn't choose.</span></a>
+      <a class="piece" href="#"><span class="piece-n">05</span><span class="piece-t">Choose, don't collect</span><span class="piece-d">You're allowed to choose who's in your network - instead of working with whoever bought a ticket.</span></a>
+    </div>
+
+    <p class="phase">How it works in practice</p>
+    <div class="pieces">
+      <a class="piece" href="#"><span class="piece-n">06</span><span class="piece-t">A thanks-for-connecting that delights</span><span class="piece-d">Handwritten-at-scale used to be impossible. Now a note that makes someone feel seen takes twenty seconds.</span></a>
+      <a class="piece" href="#"><span class="piece-n">07</span><span class="piece-t">Why I'll rarely send you a Calendly link</span><span class="piece-d">A scheduling link says "you're a slot in my system." Three considered times say "you matter."</span></a>
+      <a class="piece" href="#"><span class="piece-n">08</span><span class="piece-t">A reason to follow up</span><span class="piece-d">Great coffees die because there's nothing to talk about next. Relationships live on motion, not goodwill.</span></a>
+      <a class="piece" href="#"><span class="piece-n">09</span><span class="piece-t">What can you discover?</span><span class="piece-d">The easiest call in the world - because you're there to learn about them, not to pitch to them.</span></a>
+    </div>
+
+    <p class="phase">The honest questions</p>
+    <div class="pieces">
+      <a class="piece" href="#"><span class="piece-n">10</span><span class="piece-t">The patience curve</span><span class="piece-d">Compounding always looks flat early. Consistency and patience - not intensity - are the whole game.</span></a>
+      <a class="piece" href="#"><span class="piece-n">11</span><span class="piece-t">Why not just buy a network?</span><span class="piece-d">You can pay a thousand a month for an instant one. Here's what you're actually renting.</span></a>
+    </div>
+
+    <p class="phase">What makes it feasible now</p>
+    <div class="pieces">
+      <a class="piece" href="#"><span class="piece-n">12</span><span class="piece-t">Four hours, not forty</span><span class="piece-d">Networking lapses under mental load - and mental load is the thing that's finally removable.</span></a>
+      <a class="piece" href="#"><span class="piece-n">13</span><span class="piece-t">I could build that</span><span class="piece-d">Maybe you could. But what looks like software is really years of judgment with an interface.</span></a>
+      <a class="piece" href="#"><span class="piece-n">14</span><span class="piece-t">Someone with a big network - or someone building one?</span><span class="piece-d">The most valuable person in your network isn't the best-connected - it's the one still building.</span></a>
+    </div>
+
+    <p class="phase">Where it all leads</p>
+    <div class="pieces">
+      <a class="piece" href="#"><span class="piece-n">15</span><span class="piece-t">Building nodes</span><span class="piece-d">Not you networking alone - a web of people who all think this way, recommending each other.</span></a>
+      <a class="piece" href="#"><span class="piece-n">16</span><span class="piece-t">Become the person who knows a guy</span><span class="piece-d">Strip everything else away and it's one small habit: hear a need, make the introduction, expect nothing.</span></a>
+      <a class="piece" href="#"><span class="piece-n">17</span><span class="piece-t">Imagine if</span><span class="piece-d">What if a real slice of your work arrived as recommendations - from people you've never even met?</span></a>
+    </div>
+
+    <div class="callout">
+      <strong>These arrive in your inbox too.</strong> One a week, gently - no rush, no homework. This page is just where they all live, so you can read ahead or find your place any time.
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="foot-inner">
+    <span class="fw">I Know a Guy</span>
+    <span>Network building, rethought</span>
+    <span>knowaguy.com.au</span>
+  </div>
+</footer>
