@@ -264,7 +264,7 @@ async function runEditReview({ action = 'list', ids, resolution = 'reviewed', no
   }
   lines.push(
     'HOW TO RUN THIS REVIEW:',
-    '1. Walk the pairs WITH the human, one at a time. For each, describe the change you see and ask: one-off for that lead, or a general preference?',
+    '1. Walk the pairs WITH the human, one at a time. For each, FIRST show the full drafted-vs-sent pair verbatim - exactly what Wingguy drafted and exactly what the human sent - then describe the change you see and ask: one-off for that lead, or a general preference? Never summarise a diff without showing the two versions it came from.',
     '2. Look for the SAME change recurring across pairs — a repeated edit is one rule, not many. Never propose one micro-rule per pair.',
     '3. Before proposing anything, check the existing rulebook (wingguy_rules_list / wingguy_rule_get) — PREFER AMENDING an existing rule over adding a new one. The rulebook should get sharper from this review, not fatter.',
     '4. Route any agreed change through wingguy_rule_propose → human confirms → wingguy_rule_commit, exactly as "update my rules".',
