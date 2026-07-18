@@ -6,28 +6,47 @@ Drafted 2026-07-07 per SERIES-ARC.md "NEXT UP". Audience: people genuinely inter
 
 ## The prospect run (send order) - 18 emails
 
-| # | Slug | Role |
-|---|---|---|
-| 1 | revisit-your-big-picture (#5) | **OPENER** - reconnect to the why; network = the one constant / shock absorber; "how you want to LIVE, not what you DO" |
-| 2 | feast-or-famine (#10) | **PAIN** - the structural see-saw |
-| 3 | introduction-before-we-spoke (#15) | **PROOF** - Daniel/Keith, "this actually happens" |
-| 4 | pleasing-methods (#20) | **FAILED DEFAULT** - BNI/breakfast felt like networking, burned you |
-| 5 | choose-the-room (#30) | **BETTER WAY** - select your network; quality is upstream |
-| 6 | twenty-second-thank-you (#35) | **BETTER WAY** - a thanks that delights; personalisation economics flipped |
-| 7 | never-send-calendly (#37) | **BETTER WAY** - effort that reads as care is now cheap |
-| 8 | reason-to-follow-up (#40) | **BETTER WAY** - relationships persist on motion, not goodwill |
-| 9 | first-discovery-call (#45) | **BETTER WAY** - the call is to LEARN; dissolves pitch-dread |
-| 10 | connection-isnt-charm (#46) | **BETTER WAY (craft)** - connection is noticing, not charm; disarms "I'm not a people person" |
-| 11 | patience-curve (#50) | **FEASIBILITY (time)** - it builds, it doesn't spike |
-| 12 | why-not-buy-a-network (#55) | **OBJECTION (buy it)** - selective cross-node docking beats renting |
-| 13 | four-hours-not-forty (#60) | **FEASIBILITY (effort)** - networking lapses from cognitive load, now removable |
-| 14 | you-could-build-this (#65) | **OBJECTION (build it)** - scar tissue with an interface; a system duplicates |
-| 15 | builders-not-blobs (#67) | **VISION SETUP** - value the builder over the big-but-static blob |
-| 16 | nodes (#70) | **VISION** - the crescendo; second-order referrals |
-| 17 | i-know-a-guy-principle (#80) | **ETHOS** - who you become; start day one |
-| 18 | imagine-if (#100) | **FINALE** - one vision + the only soft invitation ("worth a chat?") |
+**Order corrected 2026-07-19** to the canonical post-2026-07-09 reorder (feast-or-famine LEADS -
+revisit was too instructional a cold open; revisit sits just before patience-curve). **Subject
+column added 2026-07-19** (see "Inbox identity" below - subjects are wrapper, not page titles).
+
+| # | Slug | Subject | Role |
+|---|---|---|---|
+| 1 | feast-or-famine (#10) | #1 · Overcoming feast or famine | **OPENER/PAIN** - the structural see-saw |
+| 2 | introduction-before-we-spoke (#15) | #2 · Does it really work? | **PROOF** - Daniel/Keith, "this actually happens" |
+| 3 | pleasing-methods (#20) | #3 · Pleasing methods, pleasing results | **FAILED DEFAULT** - BNI/breakfast felt like networking, burned you |
+| 4 | choose-the-room (#30) | #4 · Choose, don't collect | **BETTER WAY** - select your network; quality is upstream |
+| 5 | twenty-second-thank-you (#35) | #5 · A thanks-for-connecting that delights | **BETTER WAY** - personalisation economics flipped |
+| 6 | never-send-calendly (#37) | #6 · Why I'll rarely send you a Calendly link | **BETTER WAY** - effort that reads as care is now cheap |
+| 7 | reason-to-follow-up (#40) | #7 · A reason to follow up | **BETTER WAY** - relationships persist on motion, not goodwill |
+| 8 | first-discovery-call (#45) | #8 · What can you discover? | **BETTER WAY** - the call is to LEARN; dissolves pitch-dread |
+| 9 | connection-isnt-charm (#46) | #9 · Connection isn't charm | **BETTER WAY (craft)** - noticing, not charm; owns the site's "not a natural" gateway |
+| 10 | revisit-your-big-picture (#5) | #10 · Revisit your big picture | **RECONNECT** - the why; network = the one constant / shock absorber |
+| 11 | patience-curve (#50) | #11 · The patience curve | **FEASIBILITY (time)** - it builds, it doesn't spike |
+| 12 | why-not-buy-a-network (#55) | #12 · Why not just buy a network? | **OBJECTION (buy it)** - cross-node docking beats renting |
+| 13 | four-hours-not-forty (#60) | #13 · Four hours, not forty | **FEASIBILITY (effort)** - cognitive load, now removable |
+| 14 | you-could-build-this (#65) | #14 · "I could build that" | **OBJECTION (build it)** - scar tissue with an interface |
+| 15 | builders-not-blobs (#67) | #15 · Big network - or building one? | **VISION SETUP** - subject tuned for inbox length; page keeps the full either/or title |
+| 16 | nodes (#70) | #16 · Building nodes | **VISION** - the crescendo; second-order referrals |
+| 17 | i-know-a-guy-principle (#80) | #17 · Become the person who knows a guy | **ETHOS** - From name + subject rhyme = the brand in one inbox row |
+| 18 | imagine-if (#100) | #18 · Imagine if | **FINALE** - one vision + the only soft invitation ("worth a chat?") |
 
 Tease chain: #50→#55→#60→#65→#67→#70→#80→#100 (all confirmed; #55's ending was re-pointed at #60 on 2026-07-08).
+
+## Inbox identity (settled 2026-07-19)
+
+Subjects/From/preheader are **wrapper** (same drawer as greeting + footer) - page titles never change
+(the titles rule + the library-scan manifesto stand). Three levers per email:
+- **From display name: `Guy · I Know a Guy`** - set PER MESSAGE via the Gmail API (engine detail:
+  display-name override on the send, same authenticated address; Guy's normal mail stays "Guy
+  Wilson"). This is where series membership lives - branded before the subject is read.
+- **Subject: `#N · <title>`** - no brand prefix (From carries it; mobile shows ~35-40 chars, spend
+  them on the penny-drop). The number does the "this is a series, I'm partway through" work.
+  Two inbox-only tunings: run-15 shortened; everything else = the page title verbatim.
+- **Preheader** (hidden preview line before "Hi [First Name]"): *"Network building, rethought ·
+  part N of 18 from I Know a Guy."* Brand + tagline + bounded commitment, costs the subject nothing.
+Rejected: `I know a guy #N:` subject prefix (doubles the From, eats ~16 chars); title-only no
+numbering (most personal, least series-sense).
 
 ## The client run (send order) - 21 emails (banked 2026-07-08)
 
