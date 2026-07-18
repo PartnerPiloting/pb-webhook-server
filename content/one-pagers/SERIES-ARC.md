@@ -3,7 +3,17 @@
 Working outline for the one-pager sequence. Order uses gaps of 10 so pieces can be inserted later.
 Source: Guy's brain dumps, 2026-07-02/03. Status: living document.
 
-## ▶▶ NEXT UP (2026-07-07): design the "networking list" (prospect/nurture) series ◀◀
+## ▶▶ NEXT UP (2026-07-18): the WEBSITE PASS ◀◀
+
+The knowaguy.com.au homepage (docs/iknowaguy-website/) turned out to be the prospect series
+compressed - so the series' job shifts from "change minds" to "deepen what the site planted."
+Full plan (piece-by-piece verdicts + 6 structural decisions + execution order) banked at
+[SERIES-WEBSITE-PASS.md](SERIES-WEBSITE-PASS.md). Headlines: 3 small surgeries (#30 verbatim-opening
+collision, #60 most-pre-told, #100 imagine-if bookend), #46 promoted to own the "not a natural
+networker" gateway, homepage/library need a series OPT-IN (none exists), PROSPECT-SERIES-PLAN.md's
+run table is stale (pre-07-09 order), library mockup omits #46.
+
+## Prior next-up (2026-07-07, COMPLETE): design the "networking list" (prospect/nurture) series
 
 **Status of the CLIENT series: DONE + LOCKED.** All 14 pieces final (the map #12 + #10, #15, #30, #32, #33, #35, #37, #40, #45, #47, #70, #80, #90), committed + pushed, each rendered as a Claude artifact and cross-linked from the map. Remaining client-side work is the ENGINE (real library page rendered by pb-webhook-server, drip send via gmailApiService, people-state in Airtable) - a separate build session.
 
