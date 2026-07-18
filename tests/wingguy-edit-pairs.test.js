@@ -214,6 +214,39 @@ class FakeDb {
     assert.strictEqual(stripQuotedTail(body), body);
   });
 
+  console.log('computeRulebookHygiene() — code-detected structural findings:');
+  await check('flags a cross-layer twin (same key+campaign active in two layers)', () => {
+    const findings = store.computeRulebookHygiene([
+      { rule_key: 'greeting-style', campaign: null, layer: 'foundation', body: 'A' },
+      { rule_key: 'greeting-style', campaign: null, layer: 'client', body: 'B' },
+    ], [], []);
+    assert.strictEqual(findings.length, 1);
+    assert.strictEqual(findings[0].kind, 'cross-layer-twin');
+    assert.ok(findings[0].detail.includes('foundation AND client'));
+  });
+  await check('campaign-vs-generic same key is BY DESIGN — not flagged', () => {
+    const findings = store.computeRulebookHygiene([
+      { rule_key: 'opener', campaign: null, layer: 'client', body: 'generic' },
+      { rule_key: 'opener', campaign: 'frac', layer: 'client', body: 'frac version' },
+    ], [], []);
+    assert.strictEqual(findings.length, 0);
+  });
+  await check('flags unresolved variable and retired-asset placeholders', () => {
+    const findings = store.computeRulebookHygiene([
+      { rule_key: 'signoff-rule', campaign: null, layer: 'client', body: 'Sign as {{signoff}} and link {{asset:old-deck}}' },
+    ], [{ var_key: 'signoff', value: null }], [{ asset_key: 'old-deck', url: 'x', status: 'retired' }]);
+    assert.strictEqual(findings.length, 1);
+    assert.strictEqual(findings[0].kind, 'unresolved-placeholders');
+    assert.ok(findings[0].detail.includes('{{signoff}}'));
+    assert.ok(findings[0].detail.includes('{{asset:old-deck}}'));
+  });
+  await check('a clean rulebook returns no findings', () => {
+    const findings = store.computeRulebookHygiene([
+      { rule_key: 'greeting-style', campaign: null, layer: 'client', body: 'Open with {{coach_first_name}}.' },
+    ], [{ var_key: 'coach_first_name', value: 'Alex' }], []);
+    assert.strictEqual(findings.length, 0);
+  });
+
   store.__setTestPool(null);
   console.log(failures ? `\n${failures} FAILED` : '\nAll edit-pair tests passed.');
   process.exit(failures ? 1 : 0);

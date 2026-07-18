@@ -930,6 +930,19 @@ tests `tests/wingguy-edit-pairs.test.js` (20).
 **To go live:** reload the extension (capture side) + **reconnect the claude.ai connector** (to see the new tool —
 the usual tool-list cache). Pairs accumulate silently either way; review is pull-only, never a nag.
 
+**★ REVIEW UX POLISH (same day, third pass):** three refinements around the review moment —
+1. **Disambiguation:** "review the rules" could mean the rulebook OR the edits; both tool descriptions now tell the
+   model to ask ONE short question offering both (with counts), and to skip the question when no edits are pending.
+2. **Discovery hint:** the rulebook listing (`wingguy_rules_list`) now ends with a one-liner when unreviewed edits
+   exist ("say 'review my edits'") — the feature surfaces itself in rules-land; Guy never has to remember it.
+3. **Hygiene sweep:** every rules listing AND edits review appends a **code-detected structural sweep**
+   (`rulebookHygiene` — cross-layer same-key twins [both render, nothing shadows — intersects the parked
+   layer-precedence decision], unresolved `{{variable}}`/`{{asset:key}}` placeholders incl. retired assets;
+   campaign-vs-generic twins are BY DESIGN and not flagged). Deliberately NO LLM judgement in the sweep — semantic
+   contradiction-hunting stays on-demand + at propose-time, per "rules integrity = code". The baked-in guidance
+   keeps it to ONE offer at the END of what the human asked for ("sort these now, or later?"), capped at 3 items
+   shown, never silent-fixing (everything through the door), and dropped without nagging on "later".
+
 ### Stickiness vision + the reconciliations that protect it (2026-06-09)
 **Signal:** Guy himself is astonished/reliant (an hour for previously-impossible work last night) =
 real product-market fit + the best sales proof (show, don't pitch).
@@ -3136,9 +3149,12 @@ stored), AND email drafts made via `wingguy_create_draft` then edited in Gmail s
 Nylas sent-message readback, quoted tails stripped, `surface='email'` pairs). One `wingguy_edit_review` chat tool
 ("review my edits") walks all pending pairs — one-off vs preference, fold recurring edits into ONE rule via the
 normal propose→commit door, prefer amending over adding, then resolve. Full design + code map: the
-"Learn-from-my-edit" section (rules cluster). **To activate: reload the extension + reconnect the claude.ai
-connector.** Not yet verified live — LinkedIn check: `[Wingguy] edit-pair: stored #n` in the console after a
-send-with-edit; email check: draft → edit in Gmail → send → "review my edits" shows the settle line + the pair.**
+"Learn-from-my-edit" section (rules cluster). Third pass same day: review-the-rules DISAMBIGUATION, a
+pending-edits discovery hint on the rulebook listing, and a code-detected HYGIENE SWEEP (cross-layer twins +
+unresolved placeholders) offered in one line at the end of every rules listing / edits review. **To activate:
+reload the extension + reconnect the claude.ai connector.** Not yet verified live — LinkedIn check:
+`[Wingguy] edit-pair: stored #n` in the console after a send-with-edit; email check: draft → edit in Gmail →
+send → "review my edits" shows the settle line + the pair.**
 
 **▶▶ 2026-07-17 (evening) — A DRAFTING-SESSION HANDOVER, VERIFIED AGAINST SOURCE; 4 OF 8 FIXED. START HERE FOR THE REST.**
 - **Where it came from:** a claude.ai chat working Guy's day through the connector wrote a handover brief listing 8 findings from OUTSIDE the codebase. Verified each against source before acting - **5 confirmed (3 worse than reported), 1 false positive, 1 stale.** The lesson worth keeping: the brief's own §5 was its best part - *every* real find that day was caught by **Guy reading**, not by tooling. Rules ask; only gates refuse.

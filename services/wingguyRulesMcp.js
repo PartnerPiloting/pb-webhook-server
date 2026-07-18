@@ -33,6 +33,32 @@ function scopeFromLayer(layer, tenant = TENANT) {
   return layer === 'client' ? { layer, tenantId: tenant } : { layer, tenantId: undefined };
 }
 
+// The rulebook's tail extras — a discovery hint (pending draft edits exist) and the structural
+// hygiene sweep. Both best-effort: a hiccup in either must never break the listing. The guidance
+// baked into the text keeps the offer to ONE line at the END of whatever the human asked for.
+async function rulebookExtras(tenant) {
+  let extras = '';
+  try {
+    const pending = await store.getEditPairs({ tenantId: tenant, status: 'pending', limit: 100 });
+    if (pending.length) {
+      extras += `\n\nBy the way: ${pending.length} recent send${pending.length === 1 ? ' has' : 's have'} unreviewed edits (what Wingguy drafted vs what was actually sent). Mention it in ONE line — the human can say "review my edits" to go through them.`;
+    }
+  } catch (_) { /* non-fatal */ }
+  extras += await hygieneExtra(tenant);
+  return extras;
+}
+
+/** The structural-sweep tail on its own (edit-review appends this without the pending-edits hint). */
+async function hygieneExtra(tenant) {
+  try {
+    const findings = await store.rulebookHygiene({ tenantId: tenant });
+    if (!findings.length) return '';
+    const top = findings.slice(0, 3).map((f) => `- ${f.detail}`);
+    const more = findings.length > 3 ? `\n(…and ${findings.length - 3} more — the human can ask for the full housekeeping list any time.)` : '';
+    return `\n\nHOUSEKEEPING (structural sweep — code-detected facts, not opinions): ${findings.length} item${findings.length === 1 ? '' : 's'}:\n${top.join('\n')}${more}\nOffer ONCE, at the END of what the human actually asked for: sort these now, or later? If later, drop the subject. Fixes go through the normal propose→commit door — never fix silently.`;
+  } catch (_) { return ''; /* non-fatal */ }
+}
+
 async function runRulesList({ context, layer, campaign } = {}, tenant = TENANT) {
   const rules = await store.getActiveRules({
     tenantId: tenant,
@@ -40,14 +66,15 @@ async function runRulesList({ context, layer, campaign } = {}, tenant = TENANT) 
     layer: layer || undefined,
     campaign: campaign || undefined,
   });
-  if (!rules.length) return { text: 'No active rules matched. (An empty store is expected until the Notion import runs.)' };
+  const extras = await rulebookExtras(tenant);
+  if (!rules.length) return { text: `No active rules matched. (An empty store is expected until the Notion import runs.)${extras}` };
   const byLayer = {};
   for (const r of rules) (byLayer[r.layer] = byLayer[r.layer] || []).push(r);
   const parts = [];
   for (const [lyr, rows] of Object.entries(byLayer)) {
     parts.push(`${lyr} (${rows.length}):\n${rows.map(ruleLine).join('\n')}`);
   }
-  return { text: `Active Wingguy rules for ${tenant}:\n\n${parts.join('\n\n')}\n\nUse wingguy_rule_get for a rule's body + history.` };
+  return { text: `Active Wingguy rules for ${tenant}:\n\n${parts.join('\n\n')}\n\nUse wingguy_rule_get for a rule's body + history.${extras}` };
 }
 
 async function runRuleGet({ rule_key, layer = 'client', campaign }, tenant = TENANT) {
@@ -223,7 +250,7 @@ async function runEditReview({ action = 'list', ids, resolution = 'reviewed', no
   if (!pairs.length) {
     return { text: settleLine + (status === 'pending'
       ? 'No pending edits to review — every recent send (LinkedIn and email) matched its draft (or nothing has been captured yet).'
-      : `No ${status} edit pairs found.`) };
+      : `No ${status} edit pairs found.`) + await hygieneExtra(tenant) };
   }
   const lines = [
     settleLine +
@@ -244,7 +271,7 @@ async function runEditReview({ action = 'list', ids, resolution = 'reviewed', no
     '5. When a pair has been discussed (rule or no rule), close it out: wingguy_edit_review with action=resolve, its id, and resolution=reviewed (or dismissed for noise/mispairs), with a one-line note.',
     '6. Email pairs compare the human\'s words only (quoted thread history is stripped before diffing) — if one still looks like quote-chain noise or a mispaired message, dismiss it rather than reading a preference into it.',
   );
-  return { text: lines.join('\n') };
+  return { text: lines.join('\n') + await hygieneExtra(tenant) };
 }
 
 // ---------------------------------------------------------------------------
@@ -259,7 +286,7 @@ const TYPE_DESC = `What kind of rule: ${store.RULE_TYPES.join(' | ')}`;
 const TOOL_DEFS = [
   {
     name: 'wingguy_rules_list',
-    description: 'Lists the active Wingguy rules (the shared rulebook both surfaces read). Start here when the user says "update my rules", asks what the rules say, or you need to find a rule\'s key. Filterable by context, layer, or campaign.',
+    description: 'Lists the active Wingguy rules (the shared rulebook both surfaces read). Start here when the user says "update my rules", asks what the rules say, or you need to find a rule\'s key. Filterable by context, layer, or campaign. AMBIGUITY: if the human says "review the rules"/"review my rules" it could mean this OR reviewing their recent draft edits (wingguy_edit_review) — ask ONE short question offering both, with counts if you have them; but if there are no pending edits, skip the question and just list.',
     zodSchema: {
       context: z.enum(store.CONTEXTS).optional().describe(CONTEXT_DESC),
       layer: z.enum(store.LAYERS).optional().describe('Filter to one layer (default: the runtime view — foundation + this tenant\'s client rules)'),
@@ -409,7 +436,7 @@ const TOOL_DEFS = [
   },
   {
     name: 'wingguy_edit_review',
-    description: 'Learn-from-my-edit ("review my edits" / "review my rules from my edits"). Lists the pending generated-vs-sent pairs — LinkedIn sends captured by the extension AND emails drafted via wingguy_create_draft then edited in the mail client before sending (settled automatically on each list). Each pair is a draft Wingguy wrote next to what the human ACTUALLY sent. Discuss each diff with the human (one-off vs preference), fold recurring changes into ONE rule via the normal wingguy_rule_propose→commit door (prefer amending an existing rule over adding one), then close pairs out with action=resolve. This tool never writes rules itself.',
+    description: 'Learn-from-my-edit ("review my edits" / "review my rules from my edits"). Lists the pending generated-vs-sent pairs — LinkedIn sends captured by the extension AND emails drafted via wingguy_create_draft then edited in the mail client before sending (settled automatically on each list). Each pair is a draft Wingguy wrote next to what the human ACTUALLY sent. Discuss each diff with the human (one-off vs preference), fold recurring changes into ONE rule via the normal wingguy_rule_propose→commit door (prefer amending an existing rule over adding one), then close pairs out with action=resolve. This tool never writes rules itself. AMBIGUITY: a bare "review the rules" might mean the rulebook (wingguy_rules_list) instead — when unclear, ask ONE short question offering both.',
     zodSchema: {
       action: z.enum(['list', 'resolve']).optional().describe('list (default) shows pairs; resolve closes them out after discussion'),
       ids: z.array(z.number()).optional().describe('For resolve: the pair ids to close out'),

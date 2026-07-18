@@ -1023,6 +1023,64 @@ async function resolveEditPairs({ tenantId = DEFAULT_TENANT, ids = [], status = 
 }
 
 // ---------------------------------------------------------------------------
+// Rulebook hygiene — code-detected structural findings (no LLM judgement)
+// ---------------------------------------------------------------------------
+
+/**
+ * Pure structural sweep of a tenant's runtime rulebook. Deliberately ONLY what code can decide
+ * deterministically (rules integrity = code; semantic contradiction-hunting stays a human/LLM
+ * on-demand job): cross-layer twins (same rule_key+campaign active in >1 layer — BOTH render,
+ * nothing shadows) and unresolved {{variable}}/{{asset:key}} placeholders (unset variable, or a
+ * missing/retired asset). Campaign-vs-generic same-key pairs are BY DESIGN (campaign shadows
+ * generic) and are not flagged.
+ * @returns Array<{kind, ruleKey, detail}>
+ */
+function computeRulebookHygiene(rules = [], variableRows = [], assetRows = []) {
+  const findings = [];
+  const varMap = {};
+  for (const v of variableRows) if (v.value !== null && v.value !== undefined && v.value !== '') varMap[v.var_key] = v.value;
+  const assetMap = {};
+  for (const a of assetRows) assetMap[a.asset_key] = a;
+
+  const byIdentity = {};
+  for (const r of rules) {
+    const k = `${r.rule_key}|${r.campaign || ''}`;
+    (byIdentity[k] = byIdentity[k] || []).push(r);
+  }
+  for (const rows of Object.values(byIdentity)) {
+    const layers = [...new Set(rows.map((r) => r.layer))];
+    if (layers.length > 1) {
+      findings.push({
+        kind: 'cross-layer-twin',
+        ruleKey: rows[0].rule_key,
+        detail: `"${rows[0].rule_key}"${rows[0].campaign ? ` (campaign:${rows[0].campaign})` : ''} is active in ${layers.join(' AND ')} — both bodies render (nothing shadows), so the model reads two versions. Usually one should be retired (see the layer-precedence decision before bulk-fixing).`,
+      });
+    }
+  }
+  for (const r of rules) {
+    const { unresolved } = resolveRuleBody(r.body, varMap, assetMap);
+    if (unresolved.length) {
+      findings.push({
+        kind: 'unresolved-placeholders',
+        ruleKey: r.rule_key,
+        detail: `"${r.rule_key}" (${r.layer}) references ${unresolved.map((u) => `{{${u}}}`).join(', ')} with no live value — unset variable, or missing/retired asset. The placeholder goes out as literal text.`,
+      });
+    }
+  }
+  return findings;
+}
+
+/** DB wrapper: run the structural sweep over the tenant's runtime view (foundation ∪ client). */
+async function rulebookHygiene({ tenantId = DEFAULT_TENANT } = {}) {
+  const [rules, vars, assets] = await Promise.all([
+    getActiveRules({ tenantId }),
+    getVariables({ tenantId }),
+    getAssets({ tenantId }),
+  ]);
+  return computeRulebookHygiene(rules, vars, assets);
+}
+
+// ---------------------------------------------------------------------------
 // Draft ledger — the email half of learn-from-my-edit
 // ---------------------------------------------------------------------------
 
@@ -1152,6 +1210,9 @@ module.exports = {
   recordDraftBody,
   getAwaitingDrafts,
   settleDraftRecord,
+  // rulebook hygiene (structural sweep)
+  rulebookHygiene,
+  computeRulebookHygiene,
   // the write-door
   proposeRule,
   commitRule,
