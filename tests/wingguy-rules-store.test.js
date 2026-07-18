@@ -172,6 +172,18 @@ class FakeDb {
     const { unresolved } = store.resolveRuleBody('{{asset:old-deck}}', {}, { 'old-deck': { url: 'x', status: 'retired' } });
     assert.deepStrictEqual(unresolved, ['asset:old-deck']);
   });
+  await check('a syntax-documentation mention is literal, not an unresolved placeholder', () => {
+    const { text, unresolved } = store.resolveRuleBody(
+      'The ledger gates library LINKS ({{asset:key}} rows); {{variable}} is the generic form.', vars, assets);
+    assert.ok(text.includes('{{asset:key}}'));
+    assert.ok(text.includes('{{variable}}'));
+    assert.deepStrictEqual(unresolved, []);
+  });
+  await check('a real asset next to a syntax mention still resolves', () => {
+    const { text, unresolved } = store.resolveRuleBody('{{asset:key}} rows like {{asset:intro-deck}}', vars, assets);
+    assert.strictEqual(text, '{{asset:key}} rows like https://example.com/deck');
+    assert.deepStrictEqual(unresolved, []);
+  });
 
   // --- Write-door on the fake pool ------------------------------------------
   const db = new FakeDb();

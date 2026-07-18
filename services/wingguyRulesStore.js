@@ -277,9 +277,16 @@ function validateRuleInput({ layer, tenantId, ruleKey, context, ruleType }) {
  * Returns { text, unresolved } — unresolved placeholders are left in place and reported,
  * never silently dropped (a rendered prompt with a hole should be visible, not invisible).
  */
+// Self-referential syntax mentions: rule prose that DOCUMENTS the placeholder syntax by its
+// canonical name ("{{asset:key}}", "{{variable}}") rather than using it. Stays literal and is
+// NOT reported unresolved — it's documentation, not a hole. Consequence: no real asset may be
+// keyed "key" and no real variable may be named "variable"; both would be unreachable here.
+const META_SYNTAX_MENTIONS = new Set(['asset:key', 'variable']);
+
 function resolveRuleBody(body, variables = {}, assets = {}) {
   const unresolved = [];
   const text = String(body || '').replace(/\{\{\s*(asset:)?([a-zA-Z0-9_.-]+)\s*\}\}/g, (whole, assetPrefix, key) => {
+    if (META_SYNTAX_MENTIONS.has(`${assetPrefix || ''}${key}`)) return whole;
     if (assetPrefix) {
       const a = assets[key];
       if (a && a.url && a.status !== 'retired') return a.url;
