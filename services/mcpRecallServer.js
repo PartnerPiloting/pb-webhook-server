@@ -27,6 +27,7 @@ const { normalizeFathomApiTranscript } = require('./fathomIngestService');
 const { registerWingguyRulesTools } = require('./wingguyRulesMcp');
 const { registerWingguyBookingTools } = require('./wingguyBookingMcp');
 const { registerWingguyMailTools } = require('./wingguyMailMcp');
+const { registerWingguyLeadsTools } = require('./wingguyLeadsMcp');
 const { registerWingguyGetStartedTools } = require('./wingguyGetStartedMcp');
 
 const BASE = '/mcp2';
@@ -296,6 +297,7 @@ function createRecallMcpServer(coachClientId = DEFAULT_COACH_CLIENT_ID) {
   registerWingguyRulesTools(server, coachClientId);
   registerWingguyBookingTools(server, coachClientId);
   registerWingguyMailTools(server, coachClientId);
+  registerWingguyLeadsTools(server, coachClientId);
 
   return server;
 }
