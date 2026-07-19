@@ -17,7 +17,11 @@ const { getBookingPrefs } = require('../config/wingguyBookingPrefs');
 const { createCalendarEvent, deleteCalendarEvent, getMeetingsInWindow } = require('./calendarProvider');
 
 const DEFAULT_TZ = 'Australia/Brisbane';
-const DAYS_TO_SCAN = 21;     // ~3 weeks ahead — enough for the working-week spread + fallback (smaller = faster fetch)
+const DAYS_TO_SCAN = 49;     // ~7 weeks ahead — the visibility CEILING (free/busy fetch window). Widened from 21
+                             // (2026-07-20) so the offer horizon reaches roughly a month further out; leads were
+                             // hitting "just outside the booking horizon" for the week-after-next-after-next. The
+                             // near-first nearness rule (this week + next, includeFarWeeks to go further) is separate
+                             // and unchanged — this only sets how far we CAN see, not what we offer by default.
 const DAY_START_HOUR = 9;    // business-hours window the free/busy scan considers
 const DAY_END_HOUR = 17;
 
@@ -482,7 +486,11 @@ function fmtSlot(iso, tz) {
   return `${wd} ${day} ${mo}, ${tm}`;
 }
 
-const AVAIL_MAX_DAYS = 14;         // bound the availability result (tokens) — ~2 working weeks
+const AVAIL_MAX_DAYS = 35;         // bound the availability result (tokens) — ~7 working weeks. Raised from 14
+                                   // (2026-07-20) alongside DAYS_TO_SCAN so the far end of the scan isn't clipped
+                                   // before the offer horizon reaches it. Near-only results stay small (the near
+                                   // window is <2 weeks); the larger payload only materialises on an explicit
+                                   // far-week request, which is exactly when the coach wants to look that far.
 const AVAIL_MAX_SLOTS_PER_DAY = 8;
 
 /**

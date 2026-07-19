@@ -572,7 +572,7 @@ async function getViaZoho(coach, timeMin, timeMax) {
 
     const events = [];
     for (const uid of uids) {
-      // Zoho caps the range at 31 days; Wingguy windows are ~2-3 weeks, but chunk defensively.
+      // Zoho caps the range at 31 days; Wingguy windows are ~7 weeks (DAYS_TO_SCAN), so chunk defensively.
       const CHUNK_MS = 30 * 86400000;
       let cur = new Date(timeMin).getTime();
       const end = new Date(timeMax).getTime();
