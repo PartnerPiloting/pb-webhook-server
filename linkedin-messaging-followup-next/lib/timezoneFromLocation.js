@@ -59,8 +59,40 @@ function getTimezoneFromLocation(location) {
   if (loc.includes('darwin') || loc.includes('northern territory') || loc.includes('alice springs')) return 'Australia/Darwin';
   if (loc.includes('hobart') || loc.includes('tasmania') || loc.includes('launceston') || loc.includes('devonport')) return 'Australia/Hobart';
 
-  // New Zealand
-  if (loc.includes('auckland') || loc.includes('new zealand') || loc.includes('wellington')) return 'Pacific/Auckland';
+  // New Zealand (all of mainland NZ is one timezone; IANA Pacific/Auckland handles NZ DST).
+  // AU/NZ-PREFERENCE POLICY (Guy 2026-07-20): Guy's book is Australian/NZ, so a city that also
+  // exists elsewhere but is prominently AU/NZ resolves to the AU/NZ zone. That's why the AU blocks
+  // above and this NZ block run BEFORE the UK/US ones — e.g. Perth→Australia (not Scotland),
+  // Newcastle→Australia (not England), Christchurch→NZ (not Dorset UK). Coverage is by city/region
+  // NAME, not just the country word, because LinkedIn often shows just "Christchurch" with no country.
+  if (
+    loc.includes('auckland') ||
+    loc.includes('new zealand') ||
+    loc.includes('aotearoa') ||
+    loc.includes('wellington') ||
+    loc.includes('christchurch') ||
+    loc.includes('dunedin') ||
+    loc.includes('tauranga') ||
+    loc.includes('palmerston north') ||
+    loc.includes('napier') ||
+    loc.includes('rotorua') ||
+    loc.includes('new plymouth') ||
+    loc.includes('whangarei') ||
+    loc.includes('invercargill') ||
+    loc.includes('queenstown') ||
+    loc.includes('canterbury') ||
+    loc.includes('otago') ||
+    loc.includes('waikato') ||
+    loc.includes('northland') ||
+    loc.includes('taranaki') ||
+    loc.includes('manawatu') ||
+    loc.includes('southland') ||
+    loc.includes('bay of plenty') ||
+    loc.includes("hawke's bay") ||
+    loc.includes('hawkes bay')
+  ) {
+    return 'Pacific/Auckland';
+  }
 
   // Asia
   if (loc.includes('singapore')) return 'Asia/Singapore';
