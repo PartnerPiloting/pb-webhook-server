@@ -26,6 +26,11 @@ let clientsCache = null;
 let clientsCacheTimestamp = null;
 const CACHE_DURATION_MS = 0; // 0 = disabled, always fetch fresh
 
+// Rescore feature: monthly credit accrual (1 credit = 1 lead rescored). No accrual cap —
+// unused credits pile up indefinitely (decided 2026-07-20). Starting grant is per-client
+// ('Rescore Credits Granted', typically 1500).
+const RESCORE_MONTHLY_ACCRUAL = 200;
+
 // In-memory job lock tracking to prevent duplicate jobs
 const runningJobs = new Map();
 const JOB_LOCK_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
@@ -185,6 +190,13 @@ async function getAllClients() {
                 // new since launch). Blank => the vintage filter behaves as "All" (no date split),
                 // so clients without a launch date see no change. Added 2026-07-20.
                 const launchDate = record.get('Launch Date') || null;
+                // Rescore credits (admin-set on master; drives the on-demand rescore feature).
+                // Enabled gate + granted/consumed/start feed the computed balance
+                // (granted + monthsElapsed*200 - consumed; no accrual cap). Added 2026-07-21.
+                const rescoreEnabled = record.get('Rescore Enabled') === 'Yes';
+                const rescoreCreditsGranted = Number(record.get('Rescore Credits Granted')) || 0;
+                const rescoreCreditsConsumed = Number(record.get('Rescore Credits Consumed')) || 0;
+                const rescoreCreditsStart = record.get('Rescore Credits Start') || null;
 
                 clients.push({
                     id: record.id,
@@ -253,6 +265,11 @@ async function getAllClients() {
                     lhAccountEmail: lhAccountEmail,
                     // Launch Date drives Top Scoring Leads connection-vintage filtering
                     launchDate: launchDate,
+                    // Rescore credits (on-demand rescore feature)
+                    rescoreEnabled,
+                    rescoreCreditsGranted,
+                    rescoreCreditsConsumed,
+                    rescoreCreditsStart,
                     // Store raw record for fire-and-forget field access
                     rawRecord: record
                 });
@@ -787,6 +804,76 @@ function getFloorValidationSummary(leadScore, floorConfig) {
         recommendedContactLevel: highestQualifyingLevel !== 'none' ? highestQualifyingLevel : null,
         floorStrategy: floorConfig.floorStrategy
     };
+}
+
+// ============================================================================
+// RESCORE CREDITS (on-demand rescore feature)
+// ============================================================================
+
+/**
+ * Compute available rescore credits from the stored fields.
+ * available = granted + (whole calendar months since start) * 200 - consumed. No cap.
+ */
+function computeRescoreAvailable({ granted, consumed, start }) {
+    let monthsElapsed = 0;
+    if (start) {
+        const s = new Date(start);
+        if (!Number.isNaN(s.getTime())) {
+            const now = new Date();
+            monthsElapsed = Math.max(0,
+                (now.getFullYear() * 12 + now.getMonth()) - (s.getFullYear() * 12 + s.getMonth()));
+        }
+    }
+    const accrued = monthsElapsed * RESCORE_MONTHLY_ACCRUAL;
+    const available = Math.max(0, (Number(granted) || 0) + accrued - (Number(consumed) || 0));
+    return { monthsElapsed, accrued, available };
+}
+
+/**
+ * Get a client's rescore credit status (enabled + computed balance).
+ * @param {string} clientId
+ * @returns {Promise<Object|null>}
+ */
+async function getRescoreCreditsStatus(clientId) {
+    const client = await getClientById(clientId);
+    if (!client) return null;
+    const { monthsElapsed, accrued, available } = computeRescoreAvailable({
+        granted: client.rescoreCreditsGranted,
+        consumed: client.rescoreCreditsConsumed,
+        start: client.rescoreCreditsStart
+    });
+    return {
+        clientId: client.clientId,
+        enabled: client.rescoreEnabled,
+        granted: client.rescoreCreditsGranted,
+        consumed: client.rescoreCreditsConsumed,
+        start: client.rescoreCreditsStart,
+        monthlyAccrual: RESCORE_MONTHLY_ACCRUAL,
+        monthsElapsed,
+        accrued,
+        available
+    };
+}
+
+/**
+ * Debit N rescore credits (increment Consumed). Read-modify-write; single-client low
+ * concurrency makes this safe enough (a client won't run two rescores at once). Returns
+ * the fresh status after the debit.
+ * @param {string} clientId
+ * @param {number} n - credits (leads) to consume
+ * @returns {Promise<Object>}
+ */
+async function debitRescoreCredits(clientId, n) {
+    const amount = Math.max(0, Math.round(Number(n) || 0));
+    if (!amount) return await getRescoreCreditsStatus(clientId);
+    const base = initializeClientsBase();
+    const client = await getClientById(clientId);
+    if (!client) throw new Error(`Client ${clientId} not found for rescore credit debit`);
+    const newConsumed = (Number(client.rescoreCreditsConsumed) || 0) + amount;
+    await base(MASTER_TABLES.CLIENTS).update(client.id, { 'Rescore Credits Consumed': newConsumed });
+    clearCache();
+    logger.info(`Rescore credits debited for ${clientId}: +${amount} consumed (now ${newConsumed})`);
+    return await getRescoreCreditsStatus(clientId);
 }
 
 /**
@@ -1561,6 +1648,10 @@ module.exports = {
     getClientTokenLimits,  // Add the new token limits function
     getClientBase,     // Add the new base connection function
     initializeClientsBase,  // Export the base initialization function
+    // Rescore credits (on-demand rescore feature)
+    computeRescoreAvailable,
+    getRescoreCreditsStatus,
+    debitRescoreCredits,
     // Floor system functions
     getClientFloorConfig,
     updateClientFloorConfig,
