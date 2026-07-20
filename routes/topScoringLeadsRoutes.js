@@ -90,6 +90,18 @@ module.exports = function mountTopScoringLeads(app, base) {
   //     ('new' also keeps rows with a blank Date Connected — they're not "existing network")
   async function getVintageClauseForRequest(req) {
     const vintage = String(req.query.vintage || 'all').toLowerCase().trim();
+
+    // Explicit "connected before <date>" — a user-chosen cutoff, independent of launch date.
+    // Lets a client target genuinely OLD connections ("been ages since we connected") rather
+    // than just "before I onboarded". Missing/invalid date fails open to "All".
+    if (vintage === 'before') {
+      const cb = String(req.query.connectedBefore || '').trim();
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(cb)) return null;
+      const d = new Date(cb);
+      if (Number.isNaN(d.getTime())) return null;
+      return `IS_BEFORE({Date Connected}, '${cb}')`;
+    }
+
     if (vintage !== 'existing' && vintage !== 'new') return null;
 
     const clientId = req.headers['x-client-id'] || req.query.clientId || req.query.testClient;
@@ -678,7 +690,21 @@ module.exports = function mountTopScoringLeads(app, base) {
       const row = creds && creds[0];
       const raw = row ? row.get('AI Score Threshold Input') : undefined;
       const value = raw === undefined || raw === null || raw === '' ? null : Number(raw);
-      res.json({ ok: true, value, recordId: row ? row.id : null });
+
+      // Also surface the client's launch date so the UI can default the "connected before" picker.
+      let launchDate = null;
+      try {
+        const clientId = req.headers['x-client-id'] || req.query.clientId || req.query.testClient;
+        if (clientId) {
+          const c = await clientService.getClientById(clientId);
+          if (c && c.launchDate) {
+            const d = new Date(c.launchDate);
+            if (!Number.isNaN(d.getTime())) launchDate = d.toISOString().slice(0, 10);
+          }
+        }
+      } catch (_) { /* non-fatal: UI just won't pre-fill the date */ }
+
+      res.json({ ok: true, value, recordId: row ? row.id : null, launchDate });
     } catch (e) {
       await logRouteError(e, req, { operation: 'get_threshold' });
       res.status(500).json({ ok: false, error: e?.message || String(e) });

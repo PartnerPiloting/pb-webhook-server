@@ -80,7 +80,9 @@ export default function TopScoringLeads() {
   // --- State ---
   const [threshold, setThreshold] = useState(null);
   const [savedThreshold, setSavedThreshold] = useState(null); // last persisted threshold
-  const [vintage, setVintage] = useState('new'); // connection vintage: new | existing | all (default: new since launch)
+  const [vintage, setVintage] = useState('new'); // connection vintage: new | existing | before | all (default: new since launch)
+  const [connectedBefore, setConnectedBefore] = useState(''); // date cutoff (YYYY-MM-DD) used when vintage === 'before'
+  const [launchDate, setLaunchDate] = useState(null); // client's launch date; default for the 'before' picker
   const [eligible, setEligible] = useState([]); // current page (preview) OR full locked batch
   const [hasSelected, setHasSelected] = useState(false); // has preview selection
   const [selectedCount, setSelectedCount] = useState(0); // count that WOULD be locked (capped 1000)
@@ -105,6 +107,14 @@ export default function TopScoringLeads() {
     if (Number.isFinite(t)) return t;
     const s = Number(savedThreshold);
     return Number.isFinite(s) ? s : null;
+  };
+
+  // Query-string fragment (leading &) for the connection-vintage filter. Includes the explicit
+  // cutoff date only in 'before' mode so the server can apply "connected before <date>".
+  const vintageQuery = () => {
+    let q = `&vintage=${encodeURIComponent(vintage)}`;
+    if (vintage === 'before' && connectedBefore) q += `&connectedBefore=${encodeURIComponent(connectedBefore)}`;
+    return q;
   };
 
   const setInProgressFlag = (val) => {
@@ -165,7 +175,7 @@ export default function TopScoringLeads() {
   async function lockCurrentBatch(effThreshold) {
     if (inProgress) return; // already locked
     const thr = Number.isFinite(effThreshold) ? `&threshold=${encodeURIComponent(effThreshold)}` : '';
-    const vin = `&vintage=${encodeURIComponent(vintage)}`;
+    const vin = vintageQuery();
     // Real select (mutation) with cap 1000 — must match the previewed vintage
     await apiPost(`/batch/select?all=1&pageSize=1000&replace=1${thr}${vin}`, null, clientId);
     setInProgressFlag(true);
@@ -183,6 +193,10 @@ export default function TopScoringLeads() {
         if (!mounted) return;
         setThreshold(res.value ?? null);
         setSavedThreshold(res.value ?? null);
+        if (res.launchDate) {
+          setLaunchDate(res.launchDate);
+          setConnectedBefore(prev => prev || res.launchDate); // default the 'before' picker to launch date
+        }
       } catch (_) {}
       try {
         const currentPeek = await apiGet('/batch/current?limit=1', clientId);
@@ -224,6 +238,10 @@ export default function TopScoringLeads() {
     // Allow re-preview while not locked (READY or IDLE). Block during async/exporting/finalizing/resetting.
     if (inProgress) return; // locked state can't preview
     if (!['IDLE', 'READY', 'DONE'].includes(phase)) return;
+    if (vintage === 'before' && !connectedBefore) {
+      setError('Pick a "connected before" date first.');
+      return;
+    }
     setPhase('SELECTING');
     setError(null);
   setEmptyMessage(null);
@@ -247,7 +265,7 @@ export default function TopScoringLeads() {
       }
       const eff = getEffectiveThreshold();
       const thrQ = Number.isFinite(eff) ? `&threshold=${encodeURIComponent(eff)}` : '';
-      const vinQ = `&vintage=${encodeURIComponent(vintage)}`;
+      const vinQ = vintageQuery();
       // Count total eligible
       let total = 0;
       try { const cnt = await apiGet(`/eligible/count?${(thrQ + vinQ).slice(1)}`, clientId); total = Number(cnt?.total ?? 0); } catch (_) {}
@@ -295,7 +313,7 @@ export default function TopScoringLeads() {
       
       // Directly fetch ALL eligible leads from the new endpoint
       console.log(`DEBUG: Fetching all eligible leads with threshold ${eff}`);
-      const allLeads = await apiGet(`/eligible/all?threshold=${eff}&vintage=${encodeURIComponent(vintage)}`, clientId);
+      const allLeads = await apiGet(`/eligible/all?threshold=${eff}${vintageQuery()}`, clientId);
       
       // Extract URLs from the leads
       const urlList = allLeads.map(r => r?.linkedinUrl).filter(u => !!u);
@@ -439,7 +457,7 @@ export default function TopScoringLeads() {
       
       // Directly fetch ALL eligible leads from the new endpoint
       console.log(`DEBUG: Fetching all eligible leads with threshold ${eff} for download`);
-      const allLeads = await apiGet(`/eligible/all?threshold=${eff}&vintage=${encodeURIComponent(vintage)}`, clientId);
+      const allLeads = await apiGet(`/eligible/all?threshold=${eff}${vintageQuery()}`, clientId);
       
       // Extract URLs from the leads
       const urlList = allLeads.map(r => r?.linkedinUrl).filter(u => !!u);
@@ -547,7 +565,7 @@ export default function TopScoringLeads() {
       try {
         const eff = getEffectiveThreshold();
         const thrQ = Number.isFinite(eff) ? `&threshold=${encodeURIComponent(eff)}` : '';
-        const vinQ = `&vintage=${encodeURIComponent(vintage)}`;
+        const vinQ = vintageQuery();
         const list = await apiGet(`/eligible?page=${np}&pageSize=50${thrQ}${vinQ}`, clientId);
         const items = Array.isArray(list?.items) ? list.items : [];
         setEligible(items);
@@ -582,20 +600,37 @@ export default function TopScoringLeads() {
           {!saving && justSaved && <span className="text-sm text-emerald-700" aria-live="polite">Saved ✓</span>}
           {error && <span className="text-sm text-red-600 ml-2">{error}</span>}
         </div>
-        <div className="flex items-center gap-2 mb-3">
+        <div className="flex items-center gap-2 mb-3 flex-wrap">
           <label className="text-sm text-gray-700">Connections</label>
           <select
             className="border rounded px-2 py-1"
             value={vintage}
             onChange={(e) => setVintage(e.target.value)}
             disabled={inProgress || phase === 'SELECTING'}
-            title={inProgress ? 'Locked batch present – reset to change.' : 'Filter by connection vintage (uses the client Launch Date set in the master base).'}
+            title={inProgress ? 'Locked batch present – reset to change.' : 'Filter by connection vintage.'}
           >
             <option value="new">New since launch</option>
             <option value="existing">Existing network (before launch)</option>
+            <option value="before">Connected before a date…</option>
             <option value="all">All</option>
           </select>
-          <span className="text-xs text-gray-500">Existing network = reconnect with pre-launch connections.</span>
+          {vintage === 'before' ? (
+            <>
+              <input
+                type="date"
+                className="border rounded px-2 py-1"
+                value={connectedBefore}
+                onChange={(e) => setConnectedBefore(e.target.value)}
+                disabled={inProgress || phase === 'SELECTING'}
+                title="Only leads connected before this date"
+              />
+              <span className="text-xs text-gray-500">
+                Only leads connected before this date{launchDate ? ` (defaults to launch: ${launchDate})` : ''}.
+              </span>
+            </>
+          ) : (
+            <span className="text-xs text-gray-500">Existing network = reconnect with pre-launch connections.</span>
+          )}
         </div>
         <div className="flex items-center gap-3 flex-wrap">
           <button
