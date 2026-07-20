@@ -1866,6 +1866,17 @@ try {
     moduleLogger.error('index.js: Error mounting Top Scoring Leads routes', e.message, e.stack);
 }
 
+// Rescore feature (per-client gated inside the router module on master "Rescore Enabled")
+try {
+    const mountRescore = require('./routes/rescoreRoutes.js');
+    if (typeof mountRescore === 'function') {
+        mountRescore(app);
+        moduleLogger.info('index.js: Rescore routes mounted at /api/rescore');
+    }
+} catch(e) {
+    moduleLogger.error('index.js: Error mounting Rescore routes', e.message, e.stack);
+}
+
 // "Thanks for Connecting" worklist (per-client gated inside the router module)
 try {
     const mountThanksForConnecting = require('./routes/thanksForConnectingRoutes.js');
