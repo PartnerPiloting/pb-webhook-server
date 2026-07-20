@@ -1578,6 +1578,7 @@ router.get('/leads/:id', async (req, res) => {
       status: f['Status'],
       priority: f['Priority'],
       linkedinConnectionStatus: f['LinkedIn Connection Status'],
+      dateConnected: f['Date Connected'],
       followUpDate: f['Follow-Up Date'],
       ceaseFup: f['Cease FUP'],
       followUpNotes: f['Follow Up Notes'],

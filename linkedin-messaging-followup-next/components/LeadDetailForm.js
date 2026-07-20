@@ -897,18 +897,42 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating, onDelete }) => {
             </select>
           </div>
           
+          {/* Connection state: read-only, derived from Date Connected (the reliable signal).
+              The "Connection stage" dropdown below is only an internal workflow marker — for
+              LinkedIn-imported leads it sits at "Candidate" regardless of whether they're
+              actually connected, so it must not be read as connection state. */}
           <div className="flex">
-            <label className="w-28 text-sm font-medium text-gray-700 flex-shrink-0 py-2">LinkedIn Connection</label>
-            <select
-              value={formData.linkedinConnectionStatus || ''}
-              onChange={(e) => handleChange('linkedinConnectionStatus', e.target.value)}
-              className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-            >
-              <option value="">Select status...</option>
-              {fieldConfig.selectOptions.linkedinConnectionStatus.map(option => (
-                <option key={option} value={option}>{option}</option>
-              ))}
-            </select>
+            <label className="w-28 text-sm font-medium text-gray-700 flex-shrink-0 py-2">Connection</label>
+            <div className="flex-1 py-2 text-sm">
+              {(() => {
+                const dc = lead?.dateConnected || lead?.['Date Connected'] || null;
+                if (dc) {
+                  const d = new Date(dc);
+                  const label = isNaN(d.getTime())
+                    ? String(dc)
+                    : d.toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' });
+                  return <span className="text-green-700 font-medium">Connected - {label}</span>;
+                }
+                return <span className="text-gray-500">Not connected yet</span>;
+              })()}
+            </div>
+          </div>
+
+          <div className="flex">
+            <label className="w-28 text-sm font-medium text-gray-700 flex-shrink-0 py-2">Connection stage</label>
+            <div className="flex-1">
+              <select
+                value={formData.linkedinConnectionStatus || ''}
+                onChange={(e) => handleChange('linkedinConnectionStatus', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+              >
+                <option value="">Select status...</option>
+                {fieldConfig.selectOptions.linkedinConnectionStatus.map(option => (
+                  <option key={option} value={option}>{option}</option>
+                ))}
+              </select>
+              <p className="mt-1 text-xs text-gray-500">Internal workflow stage. The actual connection is shown above (from Date Connected).</p>
+            </div>
           </div>
 
           {/* Search Terms (chips) */}
