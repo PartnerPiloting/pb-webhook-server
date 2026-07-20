@@ -309,7 +309,10 @@ async function fetchLeads(limit, clientBase, clientId, runId = 'UNKNOWN') {
 /* =================================================================
     scoreChunk - Processes a chunk of leads with Gemini (Client-Aware)
 =================================================================== */
-async function scoreChunk(records, clientId, clientBase, runId = 'UNKNOWN') {
+async function scoreChunk(records, clientId, clientBase, runId = 'UNKNOWN', persist = true) {
+    // persist=false => PREVIEW mode: compute scores and return them, but write NOTHING to
+    // Airtable (all update sites below are gated on `persist`). Reads/selects are unaffected.
+    // Default persist=true preserves the exact existing behaviour used by the nightly cron.
     // Extract timestamp-only portion for cleaner logs
     const timestampOnlyRunId = (runId && runId !== 'UNKNOWN') 
         ? runId.split('-').slice(0, 2).join('-') 
@@ -326,7 +329,7 @@ async function scoreChunk(records, clientId, clientBase, runId = 'UNKNOWN') {
         log.error(errorMsg);
         await alertAdmin("Aborted Chunk (batchScorer): Gemini Client/ModelID Not Provided", errorMsg);
         const failedUpdates = records.map(rec => ({ id: rec.id, fields: { [LEAD_FIELDS.SCORING_STATUS]: "Failed – Client Init Error", [LEAD_FIELDS.DATE_SCORED]: new Date().toISOString() }}));
-        if (failedUpdates.length > 0 && clientBase) {
+        if (persist && failedUpdates.length > 0 && clientBase) {
             for (let i = 0; i < failedUpdates.length; i += 10) await clientBase("Leads").update(failedUpdates.slice(i, i+10)).catch(e => log.error(`Airtable update error for client init failed leads: ${e.message}`));
         }
         return { processed: 0, successful: 0, failed: records.length, tokensUsed: 0 };
@@ -398,7 +401,7 @@ async function scoreChunk(records, clientId, clientBase, runId = 'UNKNOWN') {
         scorable.push({ id: rec.id, rec, profile });
     }
 
-    if (airtableUpdatesForSkipped.length > 0 && clientBase) {
+    if (persist && airtableUpdatesForSkipped.length > 0 && clientBase) {
         try {
             log.info(`Updating ${airtableUpdatesForSkipped.length} Airtable records for skipped leads`);
             for (let i = 0; i < airtableUpdatesForSkipped.length; i += 10) {
@@ -527,7 +530,7 @@ async function scoreChunk(records, clientId, clientBase, runId = 'UNKNOWN') {
         
         await alertAdmin("Gemini API Call Failed (batchScorer Chunk)", `Client: ${clientId || 'unknown'}\nError: ${lastError.message}\\nChunk Lead IDs (first 5): ${scorable.slice(0,5).map(s=>s.id).join(', ')}`);
         const failedUpdates = scorable.map(item => ({ id: item.rec.id, fields: { "Scoring Status": "Failed – API Error", "Date Scored": new Date().toISOString() } }));
-        if (failedUpdates.length > 0 && clientBase) for (let i = 0; i < failedUpdates.length; i += 10) await clientBase("Leads").update(failedUpdates.slice(i, i+10)).catch(e => log.error(`Airtable update error for API failed leads: ${e.message}`));
+        if (persist && failedUpdates.length > 0 && clientBase) for (let i = 0; i < failedUpdates.length; i += 10) await clientBase("Leads").update(failedUpdates.slice(i, i+10)).catch(e => log.error(`Airtable update error for API failed leads: ${e.message}`));
         return { processed: records.length, successful: 0, failed: records.length, tokensUsed: usageMetadataForBatch.totalTokenCount || 0 }; 
     }
 
@@ -583,7 +586,7 @@ async function scoreChunk(records, clientId, clientBase, runId = 'UNKNOWN') {
         log.error(errorMessage);
         await alertAdmin("Gemini Empty Response (batchScorer)", errorMessage + `\\nChunk Lead IDs (first 5): ${scorable.slice(0,5).map(s=>s.id).join(', ')}`);
         const failedUpdates = scorable.map(item => ({ id: item.rec.id, fields: { "Scoring Status": "Failed – Empty AI Response", "Date Scored": new Date().toISOString() } })); 
-        if (failedUpdates.length > 0 && clientBase) for (let i = 0; i < failedUpdates.length; i += 10) await clientBase("Leads").update(failedUpdates.slice(i, i+10)).catch(e => log.error(`Airtable update error for empty AI response leads: ${e.message}`));
+        if (persist && failedUpdates.length > 0 && clientBase) for (let i = 0; i < failedUpdates.length; i += 10) await clientBase("Leads").update(failedUpdates.slice(i, i+10)).catch(e => log.error(`Airtable update error for empty AI response leads: ${e.message}`));
         return { processed: records.length, successful: 0, failed: records.length, tokensUsed: usageMetadataForBatch.totalTokenCount || 0 };
     }
 
@@ -618,7 +621,7 @@ async function scoreChunk(records, clientId, clientBase, runId = 'UNKNOWN') {
         log.error(`🚨 JSON_PARSE_FAILED: ${JSON.stringify(jsonParseFailInfo)}`);
         await alertAdmin("Gemini JSON Parse Failed (batchScorer)", `Client: ${clientId || 'unknown'}\nError: ${parseErr.message}\nRaw: ${rawResponseText.substring(0, 500)}...\nChunk Lead IDs (first 5): ${scorable.slice(0,5).map(s=>s.id).join(', ')}`);
         const failedUpdates = scorable.map(item => ({ id: item.rec.id, fields: { "Scoring Status": "Failed – Parse Error", "Date Scored": new Date().toISOString() } }));
-        if (failedUpdates.length > 0 && clientBase) for (let i = 0; i < failedUpdates.length; i += 10) await clientBase("Leads").update(failedUpdates.slice(i, i+10)).catch(e => log.error(`Airtable update error for parse-failed leads: ${e.message}`));
+        if (persist && failedUpdates.length > 0 && clientBase) for (let i = 0; i < failedUpdates.length; i += 10) await clientBase("Leads").update(failedUpdates.slice(i, i+10)).catch(e => log.error(`Airtable update error for parse-failed leads: ${e.message}`));
         return { processed: records.length, successful: 0, failed: records.length, tokensUsed: usageMetadataForBatch.totalTokenCount || 0 }; 
     }
     
@@ -645,7 +648,7 @@ async function scoreChunk(records, clientId, clientBase, runId = 'UNKNOWN') {
         await alertAdmin("Attribute Loading Failed (batchScorer)", `Client: ${clientId || 'unknown'}\nError: ${attrErr.message}`);
         // Mark all leads as failed due to attribute loading error
         const failedUpdates = scorable.map(item => ({ id: item.rec.id, fields: { "Scoring Status": "Failed – Attribute Load Error", "Date Scored": new Date().toISOString(), "AI Profile Assessment": `Attribute Load Error: ${attrErr.message}` } }));
-        if (failedUpdates.length > 0 && clientBase) {
+        if (persist && failedUpdates.length > 0 && clientBase) {
             for (let i = 0; i < failedUpdates.length; i += 10) {
                 await clientBase("Leads").update(failedUpdates.slice(i, i+10)).catch(e => log.error(`Airtable update error for attribute load failed leads: ${e.message}`));
             }
@@ -654,6 +657,7 @@ async function scoreChunk(records, clientId, clientBase, runId = 'UNKNOWN') {
     }
 
     const airtableResultUpdates = [];
+    const perLead = []; // per-lead results returned to callers (esp. preview mode): {recordId,newScore,status}
     let successfulUpdates = 0;
     let failedUpdates = 0;
 
@@ -714,9 +718,14 @@ async function scoreChunk(records, clientId, clientBase, runId = 'UNKNOWN') {
             failedUpdates++;
         }
         airtableResultUpdates.push({ id: leadItem.rec.id, fields: updateFields });
+        perLead.push({
+            recordId: leadItem.rec.id,
+            newScore: (typeof updateFields[LEAD_FIELDS.AI_SCORE] === 'number') ? updateFields[LEAD_FIELDS.AI_SCORE] : null,
+            status: updateFields["Scoring Status"] || null
+        });
     }
 
-    if (airtableResultUpdates.length > 0 && clientBase) { 
+    if (persist && airtableResultUpdates.length > 0 && clientBase) {
         log.info(`Attempting final Airtable update for ${airtableResultUpdates.length} leads.`);
         for (let i = 0; i < airtableResultUpdates.length; i += 10) {
             const batchUpdates = airtableResultUpdates.slice(i, i + 10);
@@ -735,11 +744,12 @@ async function scoreChunk(records, clientId, clientBase, runId = 'UNKNOWN') {
     }
     log.info(`Finished chunk. Scorable: ${scorable.length}, Updates: ${airtableResultUpdates.length}, Successful: ${successfulUpdates}, Failed: ${failedUpdates}`);
     
-    return { 
-        processed: records.length, 
-        successful: successfulUpdates, 
-        failed: failedUpdates, 
-        tokensUsed: usageMetadataForBatch.totalTokenCount || 0 
+    return {
+        processed: records.length,
+        successful: successfulUpdates,
+        failed: failedUpdates,
+        tokensUsed: usageMetadataForBatch.totalTokenCount || 0,
+        perLead
     };
 }
 
@@ -1285,4 +1295,33 @@ if (require.main === module) {
     logger.warn("batchScorer.js: This direct run will likely fail unless this script is modified to load configurations itself OR if called by a wrapper that provides them.");
 }
 
-module.exports = { run };
+/* ---------- ON-DEMAND RESCORE ENTRYPOINT (reuses scoreChunk) ------------- */
+// Score a specific set of already-fetched Airtable lead records on demand (Rescore feature).
+//   persist:false => non-destructive PREVIEW — returns new scores, writes NOTHING.
+//   persist:true  => commit — writes new scores back (same as the cron path).
+// Uses the same Gemini scorer + the client's current attributes (scoreChunk reloads them).
+// Caller supplies dependencies from config/geminiClient.js ({ vertexAIClient, geminiModelId }).
+async function scoreRecordsNow({ records, clientId, clientBase, dependencies, persist = false, runId = 'RESCORE' }) {
+    if (!dependencies || !dependencies.vertexAIClient || !dependencies.geminiModelId) {
+        throw new Error('scoreRecordsNow: dependencies.vertexAIClient and .geminiModelId are required');
+    }
+    if (!clientBase) throw new Error('scoreRecordsNow: clientBase is required');
+    // Set the module-level Gemini client/model exactly as run() does.
+    BATCH_SCORER_VERTEX_AI_CLIENT = dependencies.vertexAIClient;
+    BATCH_SCORER_GEMINI_MODEL_ID = dependencies.geminiModelId;
+
+    const recs = Array.isArray(records) ? records : [];
+    const perLead = [];
+    let tokensUsed = 0, successful = 0, failed = 0;
+    for (let i = 0; i < recs.length; i += CHUNK_SIZE) {
+        const chunk = recs.slice(i, i + CHUNK_SIZE);
+        const res = await scoreChunk(chunk, clientId, clientBase, runId, persist);
+        tokensUsed += res.tokensUsed || 0;
+        successful += res.successful || 0;
+        failed += res.failed || 0;
+        if (Array.isArray(res.perLead)) perLead.push(...res.perLead);
+    }
+    return { processed: recs.length, successful, failed, tokensUsed, perLead, persisted: persist };
+}
+
+module.exports = { run, scoreRecordsNow };
