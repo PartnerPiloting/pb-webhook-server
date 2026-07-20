@@ -437,6 +437,7 @@ const LeadDetailModal = ({
                 status: safeRender(lead.status || lead['Status']),
                 priority: safeRender(lead.priority || lead['Priority']),
                 linkedinConnectionStatus: safeRender(lead.linkedinConnectionStatus || lead['LinkedIn Connection Status']),
+                dateConnected: lead.dateConnected || lead['Date Connected'] || null,
                 followUpDate: safeRender(lead.followUpDate || lead['Follow-Up Date']),
                 ceaseFup: lead.ceaseFup || lead['Cease FUP'] || '',
                 notes: safeRender(lead.notes || lead['Notes']),
