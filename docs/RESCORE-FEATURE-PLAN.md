@@ -23,6 +23,13 @@ Lets a client re-run scoring over people they've *already* scored, on demand, af
 - **Gated rollout** — per-client enable flag, Ashley (Ashley-Knowles) as first guinea pig, then widen.
 - **Low blast radius** — rescore only overwrites the client's own score column using data already in their base; no messages, no LinkedIn, nothing external. Safe to test live behind a flag.
 
+### Two distinct actions (added 2026-07-20)
+The feature is **two modes**, differing by whether they persist:
+1. **Test (preview) — non-destructive.** Runs the new attributes over a **stratified sample** and shows before/after, but does **NOT write** the scores back. The safe experimentation loop: tweak attributes → preview → repeat, without scattering intermediate scores across the base. Still debits credits (real AI work), just doesn't commit.
+2. **Rescore & apply (commit) — destructive.** Rescores the real scoped set (**last 1/2/3 months**) and **writes** the new scores. This is what updates the scores that flow into Top Scoring Leads → the client selects high scorers → pushes to Linked Helper. The "apply for real" action.
+
+Both spend credits; only #2 changes stored data. Engine impact: `scoreRecordsNow(...)` needs a **`persist: false` (dry-run) mode** for the preview that skips the Airtable write and returns the computed scores for display.
+
 ## Measured facts that shaped this (real prod data, 2026-07-20)
 
 - Scoring runs on **Gemini 2.5 Pro** (`gemini-2.5-pro-preview-05-06`; no `GEMINI_MODEL_ID` env set → code default).
@@ -74,19 +81,19 @@ No new field required for the instant path (we score records directly, not via a
 ## Phase 1 — the usable core (target: a weekend or two)
 
 **Backend**
-1. `batchScorer`: export `scoreRecordsNow(...)` wrapper (init globals + chunked `scoreChunk`).
+1. `batchScorer`: export `scoreRecordsNow({ ..., persist })` wrapper (init globals + chunked `scoreChunk`). `persist: false` = preview mode: compute + return scores but skip the Airtable write (needs a no-write path — either a `scoreChunk` dry-run flag, or score-then-don't-update). `persist: true` = commit.
 2. `clientService`: read the new credit fields → expose `rescoreEnabled`, `rescoreCreditsAvailable()` (computed), plus a `debitRescoreCredits(clientId, n)` helper (increment Consumed).
 3. New route module `routes/rescoreRoutes.js` (gated on `Rescore Enabled`, per-client base like `topScoringLeadsRoutes`):
    - `GET /api/rescore/status` — enabled? credits available? (for the panel)
    - `GET /api/rescore/estimate?months=3` (or `sample=N`) — count leads in scope (`{Scoring Status}='Scored'` AND `Date Scored` within window), return count + est. cost + whether it fits credits.
-   - `POST /api/rescore/run` — snapshot old, run `scoreRecordsNow`, read new, **debit credits by leads actually scored**, return before/after rows + summary. (Foreground job + progress if large.)
+   - `POST /api/rescore/run` — takes `mode=preview|commit`. **preview** = stratified sample, `scoreRecordsNow({persist:false})`, return before/after for display, debit credits, **no write**. **commit** = scoped set (last N months), `scoreRecordsNow({persist:true})`, write new scores, debit credits, return before/after + summary. (Foreground job + progress if large.)
    - Enforcement: reject if scope count > available credits (or offer to trim to what fits).
 4. Add `Rescore Enabled` + credit fields to master `Clients` (script + Render job). Seed Ashley: `Rescore Enabled = Yes`, `Granted = 1500`, `Start = today`.
 
 **Frontend — Settings screen rescore panel**
 5. Scope selector: **Last 1 / 2 / 3 months** + **Test sample** (default **50**, user-choosable **up to 100**; drawn as a **stratified sample** — roughly equal slices from low / mid / high score bands, NOT top-N — so every band is represented by construction regardless of base shape, and each band has enough leads (~16 at the default) to read the pattern. Tuning movement shows most in the mid tier).
 6. **Credits meter** ("1,500 credits left") + live count/cost line ("Rescore 291 people · ~$2.30 · 291 credits").
-7. Run button → progress → **results table**: per lead `old → new → Δ`, sorted by biggest movers, threshold crossings flagged, with a summary line ("47 rescored · 9 up · 3 into top tier · 2 dropped out").
+7. **Two clearly separate actions**: **Test on a sample** (preview — "changes nothing") and **Rescore & apply** (commit — "writes new scores → Top Scorers → Linked Helper"). Each → progress → **results table**: per lead `old → new → Δ`, sorted by biggest movers, threshold crossings flagged, with a summary line ("47 rescored · 9 up · 3 into top tier · 2 dropped out"). Preview clearly labelled non-destructive.
 8. Guard: block run when scope exceeds credits (offer to trim); disable while running.
 
 ## Phase 2 — depth
