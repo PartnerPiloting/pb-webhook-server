@@ -64,7 +64,7 @@ Small rescores (sample, ≤~1 chunk) finish in seconds and can be a synchronous 
 
 **Available credits (computed, no cron):**
 `available = Granted + floor(monthsSince(Start)) × 200 − Consumed`
-(Optionally cap accrual so inactive clients don't build an unbounded pile — decision below.) Read via `clientService` (add `rescoreCredits*` fields, like `launchDate`). Field rollout via the idempotent `scripts/add-*-field.js` pattern → run on prod (Render job).
+**No accrual cap** — unused monthly credits pile up indefinitely (decided 2026-07-20). Read via `clientService` (add `rescoreCredits*` fields, like `launchDate`). Field rollout via the idempotent `scripts/add-*-field.js` pattern → run on prod (Render job).
 
 ### Leads table
 No new field required for the instant path (we score records directly, not via a flag). Snapshot of old score is held for the report, not persisted.
@@ -84,7 +84,7 @@ No new field required for the instant path (we score records directly, not via a
 4. Add `Rescore Enabled` + credit fields to master `Clients` (script + Render job). Seed Ashley: `Rescore Enabled = Yes`, `Granted = 1500`, `Start = today`.
 
 **Frontend — Settings screen rescore panel**
-5. Scope selector: **Last 1 / 2 / 3 months** + **Test sample (N)**.
+5. Scope selector: **Last 1 / 2 / 3 months** + **Test sample** (default **15**, user-choosable **up to 100**; drawn as a **representative spread across the score range** — random/stratified, NOT top-N, since tuning movement shows most in the middle).
 6. **Credits meter** ("1,500 credits left") + live count/cost line ("Rescore 291 people · ~$2.30 · 291 credits").
 7. Run button → progress → **results table**: per lead `old → new → Δ`, sorted by biggest movers, threshold crossings flagged, with a summary line ("47 rescored · 9 up · 3 into top tier · 2 dropped out").
 8. Guard: block run when scope exceeds credits (offer to trim); disable while running.
@@ -104,12 +104,12 @@ No new field required for the instant path (we score records directly, not via a
 - **Gated, guinea-pig first** — Ashley behind `Rescore Enabled`, watch cost/behaviour, then widen.
 - Cloud-only testing (per [[feedback_testing_workflow]]): validate via prod one-off jobs / staging.
 
-## Open decisions for Guy
-1. **Sync-capped vs job+progress in Phase 1** (recommend job+progress so the 3-month commit works day one).
-2. **Accrual cap?** Should unused monthly credits accumulate forever, or cap (e.g., 3000)?
-3. **Per-attribute drill-down in P1 or P2?** (Data's already there; P1 is cheap-ish.)
-4. **Test sample size** default (e.g., 15).
-5. **Who can trigger** — client self-serve (recommended, that's the point) vs admin-only during earliest testing.
+## Decided (2026-07-20)
+1. **Run mode:** **job + progress** for every rescore (small ones finish in one poll; big "last 3 months" commit shows a progress bar). Chosen so the headline 3-month commit works day one.
+2. **Accrual cap:** **none** — unused monthly credits pile up indefinitely.
+3. **Per-attribute drill-down:** **Phase 2** — ship old→new→delta first; add the click-in attribute breakdown right after (data's already there).
+4. **Test sample:** default **15**, choosable **up to 100**, drawn as a **representative spread across the score range** (not top-N).
+5. **Who triggers:** **clients themselves (self-serve)** — but only those with the `Rescore Enabled` gate on. **Ashley-Knowles is the first/guinea-pig client.** (Optionally keep it to Ashley only for the very first shakedown while credit enforcement is proven, then widen.)
 
 ## Rough sizing
 Biggest feature discussed this session — not a tweak. Three real pieces: the on-demand engine (small wrapper, low risk now that `scoreChunk` is confirmed reusable), the credits subsystem (simple but must be correct on top-up + no-overspend), and the reporting UI. Phase 1 ≈ a weekend or two at Guy's pace; Phase 2 a further chunk. Nothing exotic — assembling existing parts (scorer, Airtable field patterns, portal UI + progress patterns).
