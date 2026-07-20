@@ -84,7 +84,7 @@ No new field required for the instant path (we score records directly, not via a
 4. Add `Rescore Enabled` + credit fields to master `Clients` (script + Render job). Seed Ashley: `Rescore Enabled = Yes`, `Granted = 1500`, `Start = today`.
 
 **Frontend — Settings screen rescore panel**
-5. Scope selector: **Last 1 / 2 / 3 months** + **Test sample** (default **15**, user-choosable **up to 100**; drawn as a **representative spread across the score range** — random/stratified, NOT top-N, since tuning movement shows most in the middle).
+5. Scope selector: **Last 1 / 2 / 3 months** + **Test sample** (default **50**, user-choosable **up to 100**; drawn as a **stratified sample** — roughly equal slices from low / mid / high score bands, NOT top-N — so every band is represented by construction regardless of base shape, and each band has enough leads (~16 at the default) to read the pattern. Tuning movement shows most in the mid tier).
 6. **Credits meter** ("1,500 credits left") + live count/cost line ("Rescore 291 people · ~$2.30 · 291 credits").
 7. Run button → progress → **results table**: per lead `old → new → Δ`, sorted by biggest movers, threshold crossings flagged, with a summary line ("47 rescored · 9 up · 3 into top tier · 2 dropped out").
 8. Guard: block run when scope exceeds credits (offer to trim); disable while running.
@@ -108,7 +108,7 @@ No new field required for the instant path (we score records directly, not via a
 1. **Run mode:** **job + progress** for every rescore (small ones finish in one poll; big "last 3 months" commit shows a progress bar). Chosen so the headline 3-month commit works day one.
 2. **Accrual cap:** **none** — unused monthly credits pile up indefinitely.
 3. **Per-attribute drill-down:** **Phase 2** — ship old→new→delta first; add the click-in attribute breakdown right after (data's already there).
-4. **Test sample:** default **15**, choosable **up to 100**, drawn as a **representative spread across the score range** (not top-N).
+4. **Test sample:** default **50**, choosable **up to 100**, drawn as a **stratified sample** (equal-ish from low / mid / high bands, not top-N) so every band is represented by construction; ~16/band at the default is enough to read the pattern.
 5. **Who triggers:** **clients themselves (self-serve)** — but only those with the `Rescore Enabled` gate on. **Ashley-Knowles is the first/guinea-pig client.** (Optionally keep it to Ashley only for the very first shakedown while credit enforcement is proven, then widen.)
 
 ## Rough sizing
