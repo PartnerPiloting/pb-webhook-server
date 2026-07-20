@@ -1,105 +1,150 @@
 # "Prep Me For Today" - Feature Note
 
-**Status:** Concept captured, not built. Documents an idea Guy has been carrying (surfaced 2026-07-20) that wasn't written down anywhere.
-**Owner:** Guy Wilson (tenant 0)
-**Related:** `docs/MEETING-PREP-FEATURE-HANDOVER.md` (per-lead call prep, planned) · `docs/SMART-FOLLOWUP-DECISIONS.md` · `services/smartFollowUpService.js` · `docs/wingguy.md`
+**Status:** Concept, decisions settled 2026-07-20. Not built. Draft for a build spec, not yet one.
+**Owner:** Guy Wilson (tenant 0), but designed multi-tenant from day one (see §8).
+**Relationship to Smart Follow-Up:** deliberately INDEPENDENT. Guy is dropping Smart Follow-Up for his own use (too heavy, he's not using it). This feature does NOT depend on it and must not be coupled to it - some clients may keep Smart Follow-Up, and both can coexist. `services/smartFollowUpService.js` is useful only as a *reference* for the due-date query shape, not as a dependency.
 
 ---
 
 ## 1. The idea in one line
 
-A single trigger - **"prep me for today's meetings"** - that returns two streams woven together:
+A single trigger in **Claude chat** - "prep me for today's meetings" - returns today's calendar meetings, then a short, ranked list of leads worth a nudge: *"By the way, don't forget these."* The value is the **timing** - surfacing a promise (like Kay, "I'll reach out when you're back in August") on the right day, so it doesn't slip when you're busy.
 
-1. **Today's calendar meetings**, with prep context for each.
-2. **Time-triggered nudges** - leads whose follow-up moment has *arrived*: "Kay's back from overseas around now - she asked to reconnect in August."
-
-The value isn't the list. It's the **timing**: saying the right thing *at the right time*, so a lead who deferred to a future month resurfaces on the right day instead of falling through a crack.
+The real problem it solves is human: when there's a lot on, you overlook the one lead you told you'd get back to. This is the net under that.
 
 ---
 
-## 2. Why it matters (real, recurring examples)
+## 2. How it works in Claude chat (the whole thing, concretely)
 
-This isn't hypothetical - it's Guy's weekly reality. In a single session (2026-07-20):
+**Getting onto the list** - the moment a lead defers, a follow-up date gets set. Two ways:
+- *You tell me:* "Kay's back in August, remind me then" -> I stamp her Follow-Up Date to early August.
+- *I notice:* Kay writes "overseas until August, chat then" -> I ask "Want me to set Kay to resurface ~1 Aug?" -> you confirm.
 
-| Lead | What they said | The right time to act |
-|------|----------------|-----------------------|
-| **Chris White** | "Tuesday 28th 4pm" | Same week - easy, book now |
-| **Emily** | "defer to mid-August" | Surface ~mid-Aug, then offer times |
-| **Kay Ridge** | "overseas until August, chat then" | Surface ~early Aug, when she's back |
+**Asking, on any day** - you type "prep me for today's meetings" and get:
 
-The same-week case (Chris) handles itself. The **deferrers (Kay, Emily) are the ones that get lost** - there's no reliable mechanism today that says "it's August now, Kay's back, reach out." This feature is that net.
+> **Today - Tue 5 August**
+>
+> **Meetings (2)**
+> - 10:00 · Sarah Cann - second call, here's where you left off...
+> - 14:00 · April - LinkedIn catch-up
+>
+> **Before you go - 3 worth a nudge:**
+> 1. **Kay Ridge** - you told her you'd reach out once she's back (that's now). *Book?*
+> 2. **Emily** - your mid-August "let's talk then" is coming due.
+> 3. **Tom Blake** - waiting on your answer 9 days.
+>
+> *(2 more - say "show all".)*
 
----
+**Acting, in plain words:**
+- "Book Kay" -> pull her times, draft the message.
+- "Done with Tom, already replied" -> clears him.
+- "Drop Kay, gone off it" -> gone for good, never nags again.
+- "Not yet on Emily" -> stays, returns another day.
 
-## 3. What already exists to build on
-
-Most of the hard parts are already primitives in the codebase - this is largely **assembly**, not a from-scratch build.
-
-- **The "right time" query** - `getLeadsNeedingFollowUp` finds leads whose **Follow-Up Date is due** (`<= today`) or were touched in the last 7 days. See [smartFollowUpService.js:231](../services/smartFollowUpService.js). This IS the timing engine.
-- **AI-suggested follow-up date** - Smart Follow-Up already reads a conversation and *suggests when to follow up* when no date is set (`AI_SUGGESTED_DATE`, [smartFollowUpService.js:308](../services/smartFollowUpService.js) / returned at ~line 470). This is the seed of the capture half.
-- **The anchor field** - `Follow-Up Date` on the Leads table (`fldtGi5EFfG4RZA9o`). One date per lead = the whole timing model.
-- **Calendar listing** - `listEventsForCoach` ([wingguyCalendar.js:685](../services/wingguyCalendar.js)) and the connector's `wingguy_list_events` already return a day's meetings, timezone-correct.
-- **Meeting prep context** - the Fathom transcript read (`fetchFathomTranscripts`) and lead Notes are already wired for Smart Follow-Up and specced for Meeting Prep.
-
----
-
-## 4. The two real gaps
-
-### Gap 1 - CAPTURE (the linchpin)
-"At the right time" is only as good as the date getting **stamped** when a lead defers. Today, when Kay says "August," nothing records "reconnect ~1 Aug" unless Guy does it by hand.
-
-The fix: when Wingguy sees a defer in a thread ("overseas until August", "let's chat mid-August", "circle back next quarter"), it **proposes and sets the Follow-Up Date**. The AI-suggested-date primitive already exists; this closes the loop so the suggestion actually lands on the record.
-
-> This is the highest-leverage piece. Get it reliable and the whole feature comes alive. Skip it and the daily brief surfaces nothing, because no dates were ever set.
-
-### Gap 2 - THE SURFACE
-A trigger that **merges the two streams** into one brief:
-- today's calendar meetings (+ prep), and
-- leads whose Follow-Up Date is due (or within a small lookahead window).
-
-Delivered as a Wingguy connector capability the way Guy phrases it: "prep me for today's meetings."
+**The nagging** - if you ignore Kay today, she's back tomorrow, a day more overdue so a notch higher, and keeps gently reappearing until you act or drop her. That persistence is the point.
 
 ---
 
-## 5. Proposed shape
+## 3. The state model - two fields, no stored list
 
-- **New connector tool** (e.g. `wingguy_prep_today`) that assembles and returns:
-  1. **Meetings** - today's calendar events via the existing listing, each with lead + prep context.
-  2. **Due follow-ups** - leads with `Follow-Up Date <= today` (reuse the Smart Follow-Up query), each with a one-line "why now" ("back from overseas", "mid-Aug defer") and a suggested next action (offer times / send a note).
-- **Timing model** - the anchor is `Follow-Up Date`. Surface a lead on that date, with an optional **lead-time window** (e.g. also show anything due in the next 2-3 days) so nothing is missed if Guy skips a morning.
-- **Capture model** - defer detected in-thread -> propose a Follow-Up Date -> confirm -> stamp. Runs wherever Wingguy already reads the thread (connector + extension).
+There is **no maintained list anywhere.** The nudge list is **dynamically assembled every time** you ask, from data already on each lead record. Source of truth = two fields per lead:
 
-Both halves are **client-scoped** (`x-client-id`), same auth pattern as Smart Follow-Up and booking.
+| Field | Role |
+|-------|------|
+| **`Follow-Up Date`** (`fldtGi5EFfG4RZA9o`) | The "nag" anchor. Due (`<= today`) and not ceased = it shows. **Done** = advance or clear the date. |
+| **`Cease FUP`** (`fldnFDjEXmnq0Ye4x`) | The "drop it forever" flag. Set = never nags again. |
 
----
+Why dynamic, not a stored list:
+- **Nothing drifts.** A saved list goes stale the moment you book a lead or edit a date in the portal. A fresh query always reflects reality.
+- **Dismiss/done are just field edits, not list edits.** "Drop Kay" sets Cease FUP; "done" moves the date. She simply isn't in the next query result - nothing to remove.
+- **Persistence is free.** An overdue date keeps matching the query every day until changed. No "have I shown this before" state needed.
 
-## 6. Open questions / decisions to make
-
-1. **Lookahead window** - surface exactly on the Follow-Up Date, or also N days early? (Leaning: a small 2-3 day window so a missed morning doesn't drop a lead.)
-2. **Pull vs push** - only when Guy says "prep me for today," or also a scheduled morning push? (Guy's framing is a pull trigger; a push is a natural add later.)
-3. **Capture: auto vs confirm** - should a detected defer set the date automatically, or always propose-then-confirm? (Leaning: propose-then-confirm at first, to build trust in the detection.)
-4. **Surface home** - Claude connector (conversational, matches "prep me for...") vs a portal daily view. Connector first; portal optional later.
-5. **Prep depth** - how much per-meeting prep to pull (Notes only, or Notes + Fathom transcript). Ties directly into the Meeting Prep plan (`MEETING-PREP-FEATURE-HANDOVER.md`) - this feature is the daily *surface*; Meeting Prep is the per-lead *deep dive*. They should share the Fathom read path.
-6. **Nudge tone** - warm and specific ("Kay's back around now - she wanted to reconnect in August"), never a bare task list.
+Each "prep me for today" call runs, live: (a) a due-date query over the tenant's leads, (b) a calendar read for today, then ranks and caps the nudges.
 
 ---
 
-## 7. How it relates to what exists
+## 4. Prioritisation - AI-determined, "promise-at-risk" first
 
-- **Smart Follow-Up** = the follow-up *engine* (finds due leads, drafts messages). Built.
-- **Meeting Prep** (`MEETING-PREP-FEATURE-HANDOVER.md`) = per-lead *call prep* deep dive. Planned.
-- **Prep Me For Today** (this note) = the daily *surface* that unifies both + the calendar, driven by the Follow-Up Date as the "right time" anchor. Concept.
+The nudges are ranked, and the spine of the ranking is **did you make a concrete promise to a specific person, and is it now due?** Those float to the top (Kay: "I'll touch base once you're back"). That's the expensive kind to forget - it's a credibility and relationship cost, not just a missed opportunity - and it's explainable, so you can see *why* something is #1 and trust the order.
 
-The three are complementary layers, not competitors: this feature is the front door that decides *what to show and when*; the other two supply the substance once a lead is in focus.
+Tiebreakers below that: how overdue it is, and how warm the lead is. Uniform for all tenants in v1 (see §8).
 
 ---
 
-## 8. Suggested build order
+## 5. The overwhelm guard (the rule that makes it usable for Guy)
 
-1. **Capture first** - make defers reliably stamp a Follow-Up Date (propose-then-confirm). Without dates, nothing else has anything to surface.
-2. **Surface second** - `wingguy_prep_today` merging today's meetings + due follow-ups.
-3. **Deepen** - fold in per-meeting Fathom/Notes prep (shared with Meeting Prep) and, optionally, a scheduled morning push.
+Smart Follow-Up lost Guy because it was a wall. So this is a hard design rule, not a nicety:
+
+- **Never dump everything.** Show the **top 3-5 only**, ranked, one line each. The rest hide behind "show all".
+- **Dismissal is one word.** The list stays trustworthy only if clearing junk is frictionless.
+- Persistence + brevity + easy dismissal are a **package** - persistence without brevity just trains you to ignore the list, and you skim past Kay again.
 
 ---
 
-*Captured 2026-07-20 from a working session (Chris/Emily/Kay). Draft for discussion - not yet a build spec.*
+## 6. Capture - the linchpin
+
+"At the right time" is only as good as the date getting **stamped** when a lead defers. Today nothing records "reconnect ~1 Aug" unless Guy does it by hand. So the highest-leverage piece:
+
+- When Wingguy sees a defer in a thread ("overseas until August", "circle back next quarter"), it **proposes a Follow-Up Date and, on confirm, stamps it.**
+- **Propose-then-confirm** at first (not silent auto-set), to build trust in the detection.
+
+Get this reliable and the whole feature comes alive. Skip it and the brief surfaces nothing, because no dates were ever set.
+
+---
+
+## 7. Out of scope for v1 (deliberately)
+
+- **Non-lead reminders** ("send Paul that doc"). Every nudge in v1 hangs off a *lead's* Follow-Up Date. Freestanding tasks have no record to live on and would need a small task store - add later only if the need is real.
+- **Escalation** ("this is the 4th morning I've flagged Kay"). Pure-dynamic can't do this; it needs one small "times nagged" counter. Deferred.
+- **Per-client prioritisation tuning.** One ranking logic for everyone in v1.
+- **Any dependency on Smart Follow-Up.** Independent by design.
+
+---
+
+## 8. Multi-tenant - in shape now, operation later
+
+Build it **tenant-agnostic from day one** (never hardcode Guy). It's nearly free here, because every layer is already per-tenant:
+
+- **Data:** `Follow-Up Date` + `Cease FUP` already exist in every client's Leads base *and* the Client Template - a new client gets them automatically.
+- **Surface:** the Wingguy connector tools already take a client ID and resolve *that client's* base (same pattern as the create-lead tool). A `prep_today` tool drops straight in.
+- **Calendar:** already read per-tenant (each client's own grant).
+
+Hold the distinction that has bitten the other Wingguy tools:
+- **In shape** (takes a client ID, no Guy-specific assumptions) - do this now, free.
+- **In operation** (live-serving other clients) - gated by the connector's real multi-tenant auth, today still "hard-wired to Guy = step 1" across all wingguy tools. Separate, known work.
+
+Upshot: **build it clean and tenant-agnostic now; it lights up for everyone the moment that connector auth does, with zero rework.** Guardrails to keep multi-tenant cheap: keep v1 uniform across tenants (per-tenant tuning later rides the existing booking-prefs seam), and don't couple to Smart Follow-Up.
+
+---
+
+## 9. What already exists to build on
+
+- **State fields** - `Follow-Up Date`, `Cease FUP`, multi-tenant, in the template. The whole state model, already there.
+- **Calendar listing** - `listEventsForCoach` ([wingguyCalendar.js:685](../services/wingguyCalendar.js)) / connector `wingguy_list_events`, per-tenant, timezone-correct.
+- **Connector tenant-resolution** - `clientService.getClientById(tenant) -> airtableBaseId`, the pattern every wingguy tool (and the new create-lead tool) uses.
+- **Reference only (not a dependency):** the due-date filter shape in [smartFollowUpService.js:231](../services/smartFollowUpService.js) and its AI-date-suggestion idea ([~line 308](../services/smartFollowUpService.js)) - lift the query shape, don't import the service.
+
+---
+
+## 10. Build order
+
+1. **Capture first** - detect a defer in-thread, propose-then-confirm a Follow-Up Date. Without dates, nothing else has anything to surface.
+2. **Surface second** - a `wingguy_prep_today` connector tool: today's meetings + the ranked, capped due-follow-up list, tenant-agnostic.
+3. **Deepen later** - per-meeting prep context (Notes / Fathom), the escalation counter, a scheduled morning push, non-lead tasks - each only if wanted.
+
+---
+
+## 11. Settled decisions (2026-07-20)
+
+- Independent of Smart Follow-Up (Guy dropping it for himself; keep both able to coexist).
+- Lead-only for v1.
+- Dynamically assembled every time - no stored list.
+- Two-field state model: `Follow-Up Date` (nag/done) + `Cease FUP` (drop forever).
+- AI-determined "promise-at-risk" ranking.
+- Hard cap on visible nudges (top 3-5, one line, "show all" for the rest).
+- Multi-tenant in shape from day one; operation gated by connector auth.
+- Trigger lives in Claude chat: "prep me for today's meetings".
+
+---
+
+*Captured 2026-07-20 from a working session (Chris/Emily/Kay). Draft for discussion.*
