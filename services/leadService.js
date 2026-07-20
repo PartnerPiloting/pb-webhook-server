@@ -132,7 +132,20 @@ async function upsertLead(
         [LEAD_FIELDS.LINKEDIN_CONNECTION_STATUS]: currentConnectionStatus,
         [LEAD_FIELDS.STATUS]: LEAD_STATUS_VALUES.IN_PROCESS, 
         [LEAD_FIELDS.LOCATION]: locationName || originalLeadData.location_name || originalLeadData.location || "",
-        [LEAD_FIELDS.DATE_CONNECTED]: safeDate(connectionSince) || safeDate(originalLeadData.connectedAt) || safeDate(originalLeadData.connectionDate) || (currentConnectionStatus === CONNECTION_STATUS_VALUES.CONNECTED && !lead.id ? new Date().toISOString() : null), // Set Date Connected if newly Connected and no previous date
+        [LEAD_FIELDS.DATE_CONNECTED]: safeDate(connectionSince)
+            || safeDate(originalLeadData.connectedAt)
+            || safeDate(originalLeadData.connectionDate)
+            // LEGACY-IMPORT FALLBACK (2026-07-20): Linked Helper often sends no connected_at for
+            // bulk-imported EXISTING 1st connections (the real old date arrives in invited_date
+            // instead). Without this, such leads were stamped with today's date and looked
+            // system-era - breaking any "connected before X" cutoff. Fall back to the invite date
+            // so the lead keeps its REAL old date. Guarded on Connected so a pending/2nd-degree
+            // invite (which also carries an invited_date) is never mistaken for a connection.
+            || (currentConnectionStatus === CONNECTION_STATUS_VALUES.CONNECTED
+                ? (safeDate(originalLeadData.invited_date_iso)
+                    || safeDate(originalLeadData.invited_date)
+                    || (!lead.id ? new Date().toISOString() : null))
+                : null), // Set Date Connected if newly Connected and no previous date
         [LEAD_FIELDS.EMAIL]: emailAddress || originalLeadData.email || originalLeadData.workEmail || originalLeadData.email_1 || originalLeadData.email_2 || "",
         [LEAD_FIELDS.PHONE]: phoneNumber || originalLeadData.phone || (originalLeadData.phoneNumbers || [])[0]?.value || originalLeadData.phone_1 || originalLeadData.phone_2 || "",
         [LEAD_FIELDS.REFRESHED_AT]: refreshedAt ? new Date(refreshedAt) : (originalLeadData.lastRefreshed ? new Date(originalLeadData.lastRefreshed) : null),
