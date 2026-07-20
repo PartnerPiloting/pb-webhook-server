@@ -180,6 +180,11 @@ async function getAllClients() {
                 // campaign copied to another person kept Guy's webhook URL and filed THEIR
                 // connections into Guy's base.
                 const lhAccountEmail = record.get('LH Account Email') || null;
+                // Launch Date (admin-set, master-only): when THIS client's system went live.
+                // Drives the Top Scoring Leads "connection vintage" filter (existing network vs
+                // new since launch). Blank => the vintage filter behaves as "All" (no date split),
+                // so clients without a launch date see no change. Added 2026-07-20.
+                const launchDate = record.get('Launch Date') || null;
 
                 clients.push({
                     id: record.id,
@@ -246,6 +251,8 @@ async function getAllClients() {
                     connectionLookbackDays: connectionLookbackDays,
                     // LH sender guard: which LinkedIn account may post into this client's webhook
                     lhAccountEmail: lhAccountEmail,
+                    // Launch Date drives Top Scoring Leads connection-vintage filtering
+                    launchDate: launchDate,
                     // Store raw record for fire-and-forget field access
                     rawRecord: record
                 });

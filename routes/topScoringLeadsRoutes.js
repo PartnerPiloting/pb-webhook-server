@@ -9,6 +9,7 @@ const logger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 't
 // Removed old error logger - now using production issue tracking
 const logCriticalError = async () => {};
 const airtableClient = require('../config/airtableClient.js');
+const clientService = require('../services/clientService');
 
 // Helper for route error logging
 async function logRouteError(error, req, context = {}) {
@@ -60,7 +61,9 @@ module.exports = function mountTopScoringLeads(app, base) {
   });
 
   // --- Shared helpers for eligibility logic ---
-  function buildEligibleFormula(threshold) {
+  // extraClauses: optional array of additional Airtable formula fragments (falsy entries ignored),
+  // e.g. the connection-vintage clause from getVintageClauseForRequest.
+  function buildEligibleFormula(threshold, extraClauses = []) {
     const esc = (s) => String(s).replace(/'/g, "\\'");
     const STATUS_SCORED = 'Scored';
     const STATUS_CANDIDATE = 'Candidate';
@@ -72,7 +75,42 @@ module.exports = function mountTopScoringLeads(app, base) {
       `{AI Score} >= ${threshold}`,
       `OR({Temp LH Batch Status} = BLANK(), NOT({Temp LH Batch Status} = '${esc(BATCH_SELECTED)}'))`
     ];
+    for (const c of (extraClauses || [])) {
+      if (c) parts.push(c);
+    }
     return `AND(${parts.join(', ')})`;
+  }
+
+  // Connection-vintage filter (2026-07-20): split eligible leads into "existing network"
+  // (connected before this client's launch date) vs "new since launch". The launch date is
+  // admin-set on the master Clients record (clientService.launchDate). Behaviour:
+  //   vintage absent / 'all' / no launch date set  -> null (no clause; unchanged behaviour)
+  //   vintage 'existing'                            -> Date Connected strictly before launch date
+  //   vintage 'new'                                 -> Date Connected on/after launch date
+  //     ('new' also keeps rows with a blank Date Connected — they're not "existing network")
+  async function getVintageClauseForRequest(req) {
+    const vintage = String(req.query.vintage || 'all').toLowerCase().trim();
+    if (vintage !== 'existing' && vintage !== 'new') return null;
+
+    const clientId = req.headers['x-client-id'] || req.query.clientId || req.query.testClient;
+    if (!clientId) return null;
+
+    let launchISO = null;
+    try {
+      const client = await clientService.getClientById(clientId);
+      const raw = client && client.launchDate;
+      if (raw) {
+        const d = new Date(raw);
+        if (!Number.isNaN(d.getTime())) launchISO = d.toISOString().slice(0, 10);
+      }
+    } catch (e) {
+      logger.warn(`topScoringLeads: launch date lookup failed for ${clientId}: ${e?.message || e}`);
+      return null; // fail open -> behave as "All"
+    }
+    if (!launchISO) return null; // blank launch date -> behave as "All"
+
+    if (vintage === 'existing') return `IS_BEFORE({Date Connected}, '${launchISO}')`;
+    return `NOT(IS_BEFORE({Date Connected}, '${launchISO}'))`; // 'new'
   }
 
   async function getThresholdForRequest(req, b) {
@@ -682,8 +720,9 @@ module.exports = function mountTopScoringLeads(app, base) {
       const pageSize = Math.max(1, Math.min(200, parseInt(req.query.limit || req.query.pageSize || '50', 10)));
       const page = Math.max(1, parseInt(req.query.page || '1', 10));
 
-      // Build Airtable formula
-      const formula = buildEligibleFormula(threshold);
+      // Build Airtable formula (+ optional connection-vintage clause)
+      const vintageClause = await getVintageClauseForRequest(req);
+      const formula = buildEligibleFormula(threshold, [vintageClause]);
 
       // Collect enough to determine hasMore beyond requested page
       const maxToCollect = (page * pageSize) + 1;
@@ -707,7 +746,8 @@ module.exports = function mountTopScoringLeads(app, base) {
       if (!b) return res.status(500).json({ ok: false, error: 'Airtable base not configured' });
 
       const threshold = await getThresholdForRequest(req, b);
-      const formula = buildEligibleFormula(threshold);
+      const vintageClause = await getVintageClauseForRequest(req);
+      const formula = buildEligibleFormula(threshold, [vintageClause]);
       const MAX_SELECT_ALL = parseInt(process.env.TOP_LEADS_MAX_SELECT_ALL || '5000', 10);
       // Optional limit to count fewer for performance; never exceed MAX_SELECT_ALL
       const limit = Math.max(1, Math.min(MAX_SELECT_ALL, parseInt(req.query.limit || `${MAX_SELECT_ALL}`, 10)));
@@ -791,8 +831,9 @@ module.exports = function mountTopScoringLeads(app, base) {
       // Get threshold using the existing helper
       const threshold = await getThresholdForRequest(req, b);
       
-      // Use the existing buildEligibleFormula function
-      const filterFormula = buildEligibleFormula(threshold);
+      // Use the existing buildEligibleFormula function (+ optional connection-vintage clause)
+      const vintageClause = await getVintageClauseForRequest(req);
+      const filterFormula = buildEligibleFormula(threshold, [vintageClause]);
       
       // Use eachPage to get ALL matching records without pagination limits
       let allLeads = [];
@@ -860,8 +901,9 @@ module.exports = function mountTopScoringLeads(app, base) {
       // Get threshold using the existing helper
       const threshold = await getThresholdForRequest(req, b);
       
-      // Use the existing buildEligibleFormula function
-      const filterFormula = buildEligibleFormula(threshold);
+      // Use the existing buildEligibleFormula function (+ optional connection-vintage clause)
+      const vintageClause = await getVintageClauseForRequest(req);
+      const filterFormula = buildEligibleFormula(threshold, [vintageClause]);
       
       // Use eachPage to get ALL matching records without pagination limits
       let allLeads = [];
@@ -998,7 +1040,8 @@ module.exports = function mountTopScoringLeads(app, base) {
       if (allMode) {
         // Auto-select eligible records. Default behavior is replace; append only when append=1.
         const threshold = await getThresholdForRequest(req, b);
-        const formula = buildEligibleFormula(threshold);
+        const vintageClause = await getVintageClauseForRequest(req);
+        const formula = buildEligibleFormula(threshold, [vintageClause]);
 
         // Safety cap for select-all operations
         const MAX_SELECT_ALL = parseInt(process.env.TOP_LEADS_MAX_SELECT_ALL || '5000', 10);

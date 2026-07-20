@@ -80,6 +80,7 @@ export default function TopScoringLeads() {
   // --- State ---
   const [threshold, setThreshold] = useState(null);
   const [savedThreshold, setSavedThreshold] = useState(null); // last persisted threshold
+  const [vintage, setVintage] = useState('new'); // connection vintage: new | existing | all (default: new since launch)
   const [eligible, setEligible] = useState([]); // current page (preview) OR full locked batch
   const [hasSelected, setHasSelected] = useState(false); // has preview selection
   const [selectedCount, setSelectedCount] = useState(0); // count that WOULD be locked (capped 1000)
@@ -164,8 +165,9 @@ export default function TopScoringLeads() {
   async function lockCurrentBatch(effThreshold) {
     if (inProgress) return; // already locked
     const thr = Number.isFinite(effThreshold) ? `&threshold=${encodeURIComponent(effThreshold)}` : '';
-    // Real select (mutation) with cap 1000
-    await apiPost(`/batch/select?all=1&pageSize=1000&replace=1${thr}`, null, clientId);
+    const vin = `&vintage=${encodeURIComponent(vintage)}`;
+    // Real select (mutation) with cap 1000 — must match the previewed vintage
+    await apiPost(`/batch/select?all=1&pageSize=1000&replace=1${thr}${vin}`, null, clientId);
     setInProgressFlag(true);
     // Load full locked batch
   setPhase('EXPORTING');
@@ -245,12 +247,13 @@ export default function TopScoringLeads() {
       }
       const eff = getEffectiveThreshold();
       const thrQ = Number.isFinite(eff) ? `&threshold=${encodeURIComponent(eff)}` : '';
+      const vinQ = `&vintage=${encodeURIComponent(vintage)}`;
       // Count total eligible
       let total = 0;
-      try { const cnt = await apiGet(`/eligible/count?${thrQ.slice(1)}`, clientId); total = Number(cnt?.total ?? 0); } catch (_) {}
+      try { const cnt = await apiGet(`/eligible/count?${(thrQ + vinQ).slice(1)}`, clientId); total = Number(cnt?.total ?? 0); } catch (_) {}
       // Dry run batch selection to know how many WOULD be set (capped at 1000)
       let willSet = 0;
-      try { const dry = await apiPost(`/batch/select?all=1&pageSize=1000&dryRun=1${thrQ}`, null, clientId); willSet = Number(dry?.willSet ?? 0); } catch (_) {}
+      try { const dry = await apiPost(`/batch/select?all=1&pageSize=1000&dryRun=1${thrQ}${vinQ}`, null, clientId); willSet = Number(dry?.willSet ?? 0); } catch (_) {}
       const capped = Math.min(1000, willSet || total);
       setTotalEligible(total);
       setSelectedCount(capped);
@@ -260,7 +263,7 @@ export default function TopScoringLeads() {
         return;
       }
       // Fetch first preview page (pageSize 50)
-      const list = await apiGet(`/eligible?page=1&pageSize=50${thrQ}`, clientId);
+      const list = await apiGet(`/eligible?page=1&pageSize=50${thrQ}${vinQ}`, clientId);
       const items = Array.isArray(list?.items) ? list.items : [];
       setEligible(items);
       setHasSelected(true);
@@ -292,7 +295,7 @@ export default function TopScoringLeads() {
       
       // Directly fetch ALL eligible leads from the new endpoint
       console.log(`DEBUG: Fetching all eligible leads with threshold ${eff}`);
-      const allLeads = await apiGet(`/eligible/all?threshold=${eff}`, clientId);
+      const allLeads = await apiGet(`/eligible/all?threshold=${eff}&vintage=${encodeURIComponent(vintage)}`, clientId);
       
       // Extract URLs from the leads
       const urlList = allLeads.map(r => r?.linkedinUrl).filter(u => !!u);
@@ -436,7 +439,7 @@ export default function TopScoringLeads() {
       
       // Directly fetch ALL eligible leads from the new endpoint
       console.log(`DEBUG: Fetching all eligible leads with threshold ${eff} for download`);
-      const allLeads = await apiGet(`/eligible/all?threshold=${eff}`, clientId);
+      const allLeads = await apiGet(`/eligible/all?threshold=${eff}&vintage=${encodeURIComponent(vintage)}`, clientId);
       
       // Extract URLs from the leads
       const urlList = allLeads.map(r => r?.linkedinUrl).filter(u => !!u);
@@ -544,7 +547,8 @@ export default function TopScoringLeads() {
       try {
         const eff = getEffectiveThreshold();
         const thrQ = Number.isFinite(eff) ? `&threshold=${encodeURIComponent(eff)}` : '';
-        const list = await apiGet(`/eligible?page=${np}&pageSize=50${thrQ}`, clientId);
+        const vinQ = `&vintage=${encodeURIComponent(vintage)}`;
+        const list = await apiGet(`/eligible?page=${np}&pageSize=50${thrQ}${vinQ}`, clientId);
         const items = Array.isArray(list?.items) ? list.items : [];
         setEligible(items);
         setHasMore(!!list?.hasMore);
@@ -577,6 +581,21 @@ export default function TopScoringLeads() {
           {saving && <span className="text-sm text-gray-600" aria-live="polite">Saving…</span>}
           {!saving && justSaved && <span className="text-sm text-emerald-700" aria-live="polite">Saved ✓</span>}
           {error && <span className="text-sm text-red-600 ml-2">{error}</span>}
+        </div>
+        <div className="flex items-center gap-2 mb-3">
+          <label className="text-sm text-gray-700">Connections</label>
+          <select
+            className="border rounded px-2 py-1"
+            value={vintage}
+            onChange={(e) => setVintage(e.target.value)}
+            disabled={inProgress || phase === 'SELECTING'}
+            title={inProgress ? 'Locked batch present – reset to change.' : 'Filter by connection vintage (uses the client Launch Date set in the master base).'}
+          >
+            <option value="new">New since launch</option>
+            <option value="existing">Existing network (before launch)</option>
+            <option value="all">All</option>
+          </select>
+          <span className="text-xs text-gray-500">Existing network = reconnect with pre-launch connections.</span>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
           <button
