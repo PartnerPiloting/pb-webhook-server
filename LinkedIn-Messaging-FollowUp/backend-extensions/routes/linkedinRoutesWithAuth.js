@@ -637,8 +637,35 @@ router.get('/leads/export', async (req, res) => {
     };
     const csvEscape = (v) => '"' + String(v || '').replace(/"/g, '""') + '"';
 
+    // ---- Complete-file CSV export (type=csv) -------------------------------
+    // Curated standard columns (clean, deduped-by-us), followed by every field
+    // flattened out of Raw Profile Data as lh_* columns (the "fishing" data).
+    const CSV_STD_COLUMNS = [
+      'first_name','last_name','full_name','linkedin_url','email','alt_emails','phone',
+      'company','job_title','headline','location','about','job_history',
+      'ai_score','priority','scoring_status','outbound_email_score','au',
+      'status','connection_status','lead_has_replied','date_connected','date_created',
+      'follow_up_date','cease_fup','source','search_terms'
+    ];
+    // Raw LH keys we never export: operator identity, opaque IDs, campaign
+    // internals, expiring signed asset URLs. Junk that is noise or leaky.
+    const RAW_BLOCKLIST = new Set([
+      'my_id','my_email','my_full_name',
+      'hash_id','sn_hash_id','t_hash_id','r_member_id','member_id','sn_member_id',
+      'avatar_id','public_id_2','lh_id','avatar',
+      'action_id','action_name','action_type','campaign_id','campaign_name','campaign_type'
+    ]);
+    const isJunkRawKey = (k) => {
+      if (RAW_BLOCKLIST.has(k)) return true;
+      if (/^[0-9a-f]{32}$/i.test(k)) return true; // hashed tracking key/value pairs
+      if (/_actual_at$/.test(k)) return true;     // scrape timestamps
+      return false;
+    };
+
     const seen = new Set();
     const rows = [];
+    const csvRows = [];        // complete-file export: one flat object per lead
+    const lhKeys = new Set();  // union of lh_* keys seen across all leads
     let totalScanned = 0;
     // Optional early limit (e.g. 1000 for fast copy); safeguard upper bound
     let hardLimit = 0;
@@ -673,10 +700,53 @@ router.get('/leads/export', async (req, res) => {
               if (exportType === 'emails') raw = email;
               if (exportType === 'phones') raw = phone;
               
-              // For CSV type, we export all fields without deduplication
+              // For CSV type, we export the complete file (no dedup): curated
+              // standard columns + every field flattened out of Raw Profile Data.
               if (exportType === 'csv') {
-                rows.push([firstName, lastName, email, normLinkedIn(linkedinUrl), notes]);
-                if (hardLimit && rows.length >= hardLimit) {
+                const f = record.fields;
+                const row = {
+                  first_name: firstName,
+                  last_name: lastName,
+                  full_name: normalize(f['Full Name']),
+                  linkedin_url: normLinkedIn(linkedinUrl),
+                  email: email,
+                  alt_emails: normalize(f['Alt Emails']),
+                  phone: phone,
+                  company: normalize(f['Company Name']),
+                  job_title: normalize(f['Job Title']),
+                  headline: normalize(f['Headline']),
+                  location: normalize(f['Location']),
+                  about: normalize(f['About']),
+                  job_history: normalize(f['Job History']),
+                  ai_score: normalize(f['AI Score']),
+                  priority: normalize(f['Priority']),
+                  scoring_status: normalize(f['Scoring Status']),
+                  outbound_email_score: normalize(f['Outbound Email Score']),
+                  au: f['AU'] ? 'Yes' : '',
+                  status: normalize(f['Status']),
+                  connection_status: normalize(f['LinkedIn Connection Status']),
+                  lead_has_replied: f['Lead Has Replied'] ? 'Yes' : '',
+                  date_connected: normalize(f['Date Connected']),
+                  date_created: normalize(f['Date Created']),
+                  follow_up_date: normalize(f['Follow-Up Date']),
+                  cease_fup: normalize(f['Cease FUP']),
+                  source: normalize(f['Source']),
+                  search_terms: normalize(f['Search Terms'])
+                };
+                // Flatten Raw Profile Data into lh_* columns (junk stripped).
+                try {
+                  const parsed = JSON.parse(f['Raw Profile Data'] || '{}');
+                  if (parsed && typeof parsed === 'object') {
+                    for (const [k, v] of Object.entries(parsed)) {
+                      if (isJunkRawKey(k)) continue;
+                      const col = 'lh_' + k;
+                      row[col] = (v == null) ? '' : (typeof v === 'object' ? JSON.stringify(v) : String(v));
+                      lhKeys.add(col);
+                    }
+                  }
+                } catch (_) { /* skip unparseable raw profile blobs */ }
+                csvRows.push(row);
+                if (hardLimit && csvRows.length >= hardLimit) {
                   reachedLimit = true;
                   break;
                 }
@@ -727,18 +797,26 @@ router.get('/leads/export', async (req, res) => {
 
   // Build full content to compute accurate Content-Length for progress
     if (exportFormat === 'csv' || exportType === 'csv') {
-      let header = '';
-      if (exportType === 'linkedin') header = ['linkedin_url','first_name','last_name','company','job_title','profile_key'].map(csvEscape).join(',');
-      if (exportType === 'emails') header = ['email','first_name','last_name','linkedin_url','company','job_title'].map(csvEscape).join(',');
-      if (exportType === 'phones') header = ['phone','first_name','last_name','linkedin_url','company','job_title'].map(csvEscape).join(',');
-      if (exportType === 'csv') header = ['first_name','last_name','email','linkedin_url','notes'].map(csvEscape).join(',');
-      const body = rows.map(r => r.map(csvEscape).join(',')).join('\r\n');
-      const content = '\uFEFF' + header + '\r\n' + body + (body ? '\r\n' : '');
+      let content;
+      if (exportType === 'csv') {
+        // Complete file: standard columns first, then the union of lh_* columns.
+        const allCols = [...CSV_STD_COLUMNS, ...Array.from(lhKeys).sort()];
+        const header = allCols.map(csvEscape).join(',');
+        const body = csvRows.map(r => allCols.map(c => csvEscape(r[c])).join(',')).join('\r\n');
+        content = '\uFEFF' + header + '\r\n' + body + (body ? '\r\n' : '');
+      } else {
+        let header = '';
+        if (exportType === 'linkedin') header = ['linkedin_url','first_name','last_name','company','job_title','profile_key'].map(csvEscape).join(',');
+        if (exportType === 'emails') header = ['email','first_name','last_name','linkedin_url','company','job_title'].map(csvEscape).join(',');
+        if (exportType === 'phones') header = ['phone','first_name','last_name','linkedin_url','company','job_title'].map(csvEscape).join(',');
+        const body = rows.map(r => r.map(csvEscape).join(',')).join('\r\n');
+        content = '\uFEFF' + header + '\r\n' + body + (body ? '\r\n' : '');
+      }
       const buf = Buffer.from(content, 'utf8');
       const csvBaseName = exportType === 'csv' ? 'leads-export' : baseName;
       res.setHeader('Content-Type', 'text/csv; charset=utf-8');
       res.setHeader('Content-Disposition', `attachment; filename="${csvBaseName}-${today}.csv"`);
-      res.setHeader('X-Total-Rows', String(rows.length));
+      res.setHeader('X-Total-Rows', String(exportType === 'csv' ? csvRows.length : rows.length));
       res.setHeader('Content-Length', String(buf.length));
       if (reachedLimit && hardLimit) res.setHeader('X-Truncated', '1');
       res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition, Content-Length, X-Total-Rows, X-Truncated');
@@ -754,7 +832,7 @@ router.get('/leads/export', async (req, res) => {
       res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition, Content-Length, X-Total-Rows, X-Truncated');
       res.end(buf);
     }
-    logger.info(`LinkedIn Routes: Exported ${rows.length} ${exportType} (scanned ${totalScanned})${reachedLimit && hardLimit ? ' [TRUNCATED]' : ''}`);
+    logger.info(`LinkedIn Routes: Exported ${exportType === 'csv' ? csvRows.length : rows.length} ${exportType} (scanned ${totalScanned})${reachedLimit && hardLimit ? ' [TRUNCATED]' : ''}`);
   } catch (error) {
     logger.error('LinkedIn Routes: Error in /leads/export:', error);
     res.status(500).json({ error: 'Failed to export leads', details: error.message });
