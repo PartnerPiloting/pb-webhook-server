@@ -1301,7 +1301,7 @@ if (require.main === module) {
 //   persist:true  => commit — writes new scores back (same as the cron path).
 // Uses the same Gemini scorer + the client's current attributes (scoreChunk reloads them).
 // Caller supplies dependencies from config/geminiClient.js ({ vertexAIClient, geminiModelId }).
-async function scoreRecordsNow({ records, clientId, clientBase, dependencies, persist = false, runId = 'RESCORE' }) {
+async function scoreRecordsNow({ records, clientId, clientBase, dependencies, persist = false, runId = 'RESCORE', onProgress = null }) {
     if (!dependencies || !dependencies.vertexAIClient || !dependencies.geminiModelId) {
         throw new Error('scoreRecordsNow: dependencies.vertexAIClient and .geminiModelId are required');
     }
@@ -1320,6 +1320,10 @@ async function scoreRecordsNow({ records, clientId, clientBase, dependencies, pe
         successful += res.successful || 0;
         failed += res.failed || 0;
         if (Array.isArray(res.perLead)) perLead.push(...res.perLead);
+        // Report progress after each chunk (for the rescore job's progress bar).
+        if (typeof onProgress === 'function') {
+            try { onProgress(Math.min(i + chunk.length, recs.length), recs.length); } catch (_) { /* non-fatal */ }
+        }
     }
     return { processed: recs.length, successful, failed, tokensUsed, perLead, persisted: persist };
 }

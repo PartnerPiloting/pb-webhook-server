@@ -22,12 +22,40 @@ const batchScorer = require('../batchScorer');
 
 const TOKENS_PER_LEAD = 3400;   // measured average
 const USD_PER_LEAD = 0.008;     // ~1c/lead on Gemini 2.5 Pro
-const MAX_SYNC = 120;           // TEMP: synchronous cap until the async/progress path (next stage)
 const SAMPLE_MAX = 100;
 const SAMPLE_DEFAULT = 50;
+const JOB_TTL_MS = 60 * 60 * 1000; // keep finished jobs pollable for 1h
+
+// Build the before/after report from the engine result + captured old scores.
+function buildReport(result, oldById, nameById, tier) {
+  let up = 0, down = 0, crossedUp = 0, crossedDown = 0;
+  const rows = (result.perLead || []).map(p => {
+    const oldScore = oldById[p.recordId];
+    const delta = (typeof p.newScore === 'number' && typeof oldScore === 'number') ? Math.round((p.newScore - oldScore) * 100) / 100 : null;
+    if (typeof delta === 'number') { if (delta > 0) up++; else if (delta < 0) down++; }
+    if (typeof oldScore === 'number' && typeof p.newScore === 'number') {
+      if (oldScore < tier && p.newScore >= tier) crossedUp++;
+      if (oldScore >= tier && p.newScore < tier) crossedDown++;
+    }
+    return { name: nameById[p.recordId] || p.recordId, old: (typeof oldScore === 'number' ? oldScore : null), new: p.newScore, delta, status: p.status };
+  }).sort((a, b) => Math.abs(b.delta || 0) - Math.abs(a.delta || 0));
+  const scored = result.successful || 0;
+  return {
+    scored, tokensUsed: result.tokensUsed, persisted: result.persisted,
+    summary: { rescored: scored, movedUp: up, movedDown: down, crossedIntoTopTier: crossedUp, droppedBelowTier: crossedDown, tierLine: tier },
+    rows
+  };
+}
 
 module.exports = function mountRescore(app) {
   const router = express.Router();
+
+  // In-memory job store for async rescore runs. A server restart loses in-flight jobs
+  // (rare; acceptable for the gated test rollout). Finished jobs are pollable for JOB_TTL_MS.
+  const jobs = new Map();
+  let jobSeq = 0;
+  const newJobId = () => `rj_${Date.now().toString(36)}_${(jobSeq++).toString(36)}`;
+  const pruneJobs = () => { const now = Date.now(); for (const [id, j] of jobs) { if (now - j.startedAt > JOB_TTL_MS) jobs.delete(id); } };
 
   async function resolve(req) {
     const clientId = req.headers['x-client-id'] || req.query.clientId || req.query.testClient;
@@ -152,6 +180,7 @@ module.exports = function mountRescore(app) {
   });
 
   // POST /run   body/query: mode=preview|commit, scope=sample|months, size, months
+  // Starts an async job and returns { jobId, total }. Poll GET /run/status?jobId=... .
   router.post('/run', async (req, res) => {
     try {
       const r = await resolve(req);
@@ -162,51 +191,58 @@ module.exports = function mountRescore(app) {
       const scope = q.scope === 'months' ? 'months' : 'sample';
       const persist = mode === 'commit';
 
+      // Scope-building + credit enforcement happen synchronously (fast) before the job starts.
       const { records, oldById, count } = await buildScope(r.base, { scope, size: q.size, months: q.months });
-      if (count === 0) return res.json({ ok: true, mode, scope, count: 0, rows: [], summary: { message: 'No leads in scope.' } });
-      if (count > MAX_SYNC) {
-        return res.status(413).json({ ok: false, error: `Scope has ${count} leads; the synchronous run is capped at ${MAX_SYNC} for now (async run coming next).`, count });
-      }
+      if (count === 0) return res.json({ ok: true, jobId: null, total: 0, done: true, result: { mode, scope, count: 0, rows: [], summary: { message: 'No leads in scope.' } } });
       if (count > r.status.available) {
         return res.status(402).json({ ok: false, error: 'Not enough credits', needed: count, available: r.status.available });
       }
 
-      const result = await batchScorer.scoreRecordsNow({
-        records, clientId: r.clientId, clientBase: r.base,
-        dependencies: { vertexAIClient: gemini.vertexAIClient, geminiModelId: gemini.geminiModelId },
-        persist, runId: `RESCORE-${mode}`
-      });
-
-      // Debit by leads actually scored (failures don't cost the client credits)
-      const scored = result.successful || 0;
-      const creditsAfter = await clientService.debitRescoreCredits(r.clientId, scored);
-
-      // Build before/after
+      pruneJobs();
+      const jobId = newJobId();
       const nameById = {}; for (const rec of records) nameById[rec.id] = `${rec.get('First Name') || ''} ${rec.get('Last Name') || ''}`.trim();
       const tier = Number(r.client.primaryFloor) || 70;
-      let up = 0, down = 0, crossedUp = 0, crossedDown = 0;
-      const rows = (result.perLead || []).map(p => {
-        const oldScore = oldById[p.recordId];
-        const delta = (typeof p.newScore === 'number' && typeof oldScore === 'number') ? Math.round((p.newScore - oldScore) * 100) / 100 : null;
-        if (typeof delta === 'number') { if (delta > 0) up++; else if (delta < 0) down++; }
-        if (typeof oldScore === 'number' && typeof p.newScore === 'number') {
-          if (oldScore < tier && p.newScore >= tier) crossedUp++;
-          if (oldScore >= tier && p.newScore < tier) crossedDown++;
-        }
-        return { name: nameById[p.recordId] || p.recordId, old: (typeof oldScore === 'number' ? oldScore : null), new: p.newScore, delta, status: p.status };
-      }).sort((a, b) => Math.abs(b.delta || 0) - Math.abs(a.delta || 0));
+      const job = { id: jobId, clientId: r.clientId, mode, scope, status: 'running', total: count, done: 0, result: null, error: null, startedAt: Date.now() };
+      jobs.set(jobId, job);
 
-      res.json({
-        ok: true, mode, scope, count, scored, persisted: result.persisted,
-        tokensUsed: result.tokensUsed,
-        credits: creditsView(creditsAfter),
-        summary: { rescored: scored, movedUp: up, movedDown: down, crossedIntoTopTier: crossedUp, droppedBelowTier: crossedDown, tierLine: tier },
-        rows
-      });
+      // Kick off scoring in the background (do NOT await — the request returns immediately).
+      (async () => {
+        try {
+          const result = await batchScorer.scoreRecordsNow({
+            records, clientId: r.clientId, clientBase: r.base,
+            dependencies: { vertexAIClient: gemini.vertexAIClient, geminiModelId: gemini.geminiModelId },
+            persist, runId: `RESCORE-${mode}`,
+            onProgress: (done, total) => { job.done = done; job.total = total; }
+          });
+          // Debit by leads actually scored (failures don't cost the client credits).
+          const creditsAfter = await clientService.debitRescoreCredits(r.clientId, result.successful || 0);
+          const report = buildReport(result, oldById, nameById, tier);
+          job.result = { mode, scope, count, credits: creditsView(creditsAfter), ...report };
+          job.done = count;
+          job.status = 'done';
+        } catch (e) {
+          logger.error('rescore job failed', e.message, e.stack);
+          job.status = 'error';
+          job.error = e.message;
+        }
+      })();
+
+      res.json({ ok: true, jobId, mode, scope, total: count });
     } catch (e) {
       logger.error('rescore/run error', e.message, e.stack);
       res.status(500).json({ ok: false, error: e.message });
     }
+  });
+
+  // GET /run/status?jobId=...  -> progress + final result when done
+  router.get('/run/status', (req, res) => {
+    const job = jobs.get(req.query.jobId);
+    if (!job) return res.status(404).json({ ok: false, error: 'job not found (may have expired)' });
+    res.json({
+      ok: true, status: job.status, done: job.done, total: job.total,
+      mode: job.mode, scope: job.scope, error: job.error,
+      result: job.status === 'done' ? job.result : null
+    });
   });
 
   app.use('/api/rescore', router);
