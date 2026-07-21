@@ -147,4 +147,64 @@ Upshot: **build it clean and tenant-agnostic now; it lights up for everyone the 
 
 ---
 
-*Captured 2026-07-20 from a working session (Chris/Emily/Kay). Draft for discussion.*
+---
+
+## 12. Decisions settled 2026-07-21 (these SUPERSEDE the 2026-07-20 body where they conflict)
+
+Live dry-run (real Gmail + Airtable + LinkedIn + one Fathom transcript) reshaped the design. The old "stored Follow-Up Date = source of truth" model is REPLACED by live-derived, store-almost-nothing.
+
+**Decision A - the deferral-date store + the switch-over (SETTLED):**
+- The engine is live-derived from mailbox + LinkedIn + transcripts; it stores NOTHING about follow-up **except** one thing: a far-future deferral date (e.g. "come back in December") that would otherwise age out of the ~90-day live-read window.
+- That store = the existing `Follow-Up Date` field (`fldtGi5EFfG4RZA9o`), but under a strict new contract: **one writer = the engine** (via propose-then-confirm in chat). The human NEVER hand-types it. Removed from client input screens.
+- The old rotted dates (131 overdue of 177 on 2026-07-21) get **wiped** on switch-over - they'd poison the new engine.
+- Rollout is **per-client via a `Follow-up Mode` flag on Client Master (Legacy | Dynamic)**, defaulting to Legacy so every current client is untouched (no big-bang). Flipping a client to Dynamic:
+  - Backend: the old Smart Follow-Up sweep stops touching them; the Wingguy brief becomes their follow-up.
+  - Screens: **automatic** - the portal (custom Next.js app `linkedin-messaging-followup-next`) reads the flag and stops drawing Follow-Up Manager, Smart Follow-ups, and the Follow-Up Date field. This reuses the EXISTING per-client feature-gate pattern (`clientProfile.features.thanksForConnecting`, Layout.js:52/58/308) - no manual per-base screen surgery.
+- Strategic framing (Guy, 2026-07-21): this couples follow-up to being on Wingguy, and that's accepted/desired - the follow-up brief becomes a *reason* to migrate each client onto Wingguy. Few clients now, migrated individually, clean cut-over not dual-run. NB most clients are still portal-only today (only Julian live on Wingguy chat, Ashley onboarding).
+- Hold-the-line rule: never retire a given client's old follow-up screens until their Wingguy brief is live and they've felt it work once.
+
+**Decision B - On Series (SETTLED):**
+- "On Series" is **derived from the existing series fields** (`Series Sent Count > 0` and not `Series Unsubscribed`, added 2026-07-09) - NO new field.
+- It suppresses **cadence only**, exactly like Cease FUP - because the drip is the ambient touch, so a timer-nudge would be noise. **Named deferrals and personal replies from series leads STILL surface** (Guy's scenario: "keen but flat-chat 6 weeks, get back to me then" + put on series → the promise surfaces on its date regardless of series membership). My earlier "On Series = never in the nudge list" was too strong and is corrected.
+- Muting a specific real follow-up is ALWAYS an explicit per-person act ("stop reminding me about this one" → engine retires that follow-up), NEVER a silent side-effect of series membership. Principle: timer-off flags suppress cadence; only an explicit drop silences a promise.
+- Degrades gracefully where a tenant runs no series (everyone = not-on-series).
+- Consequence: On Series and Cease FUP behave identically in the engine (both = "don't chase on a timer"); they differ only in why.
+
+**Decision C - reminder-discipline (SETTLED via the draft model):** its detection half ("email yourself an ACTION reminder") is redundant - the sweep does that. Its craft half (day-before-slot nudge timing, the ready-to-paste wording, the "slots lapsed → re-offer fresh times" move) is KEPT by being **absorbed into the follow-up engine's drafting logic** - it becomes how the engine writes the time-aware nudge, not a note Guy writes to himself. So reminder-discipline is not rewritten-in-place so much as *promoted*: its wisdom powers the auto-draft. (Whether to formally retire/revise the stored rule vs leave it as a craft reference = a build-time detail.)
+
+**Decision D - always-append guarantee (SETTLED: code, + independently callable):** the "follow-ups always ride with the briefing" promise lives in CODE, not a rule - the briefing tool fetches meetings AND calls the sweep and returns both welded together, so it can't forget. The sweep is ALSO its own standalone tool: "show me what I need to follow up" / "who's waiting" / "overdue ranked" call it directly. Same engine, two exposures. Rules still own all judgment (ranking, drafting, gates); code owns only the always-append promise.
+
+---
+
+## 13. Consolidated build plan (2026-07-21) - v1 core loop vs later layers
+
+**The interaction model (what the user actually experiences):** the brief surfaces a TINY, ranked, capped list - the few that matter *today*, one line each. Full text never shown inline. Per item, taps: **[remind me]** (short memory-jog, later layer) · **[open draft →]** (the ready, time-aware message, in Gmail) · **drop** (mute forever) · do-nothing (returns another day). Drafts are time-aware (pre-slot nudge vs "missed it, fresh times" re-offer vs longer-silence re-open). Never auto-send - approve each. The point: turn a to-do list into a sub-minute approval queue.
+
+### V1 - the core loop (ship first)
+1. **Sweep engine** `wingguy_followup_sweep` (new tool in `services/wingguyMailMcp.js`, both transports auto-register). Stage A cheap pass: read ~90d mail (per-tenant Nylas) + LinkedIn Notes blocks + gates (Cease FUP, On-Series-derived, deferral date), merge PER PERSON, compute who-spoke-last + days-silent + arrived-deferrals + ball-in-court; **cross-check calendar bookings** so it doesn't nag someone who already booked a slot; return a RANKED, CAPPED shortlist. Multi-tenant via existing `getClientById`/`getClientBase`/`mailProvider` plumbing (real per-client on the SDK path behind `WINGGUY_CONNECTOR_MULTITENANT`).
+   - *New plumbing needed:* a `listRecent(coach,{after})` on `mailProvider.js` (pull the 90d window once - the cheap inversion; don't loop 300 per-lead calls).
+2. **Briefing tool** `wingguy_prep_today`: calendar (`listEventsForCoach`) + calls the sweep, welded (Decision D). Sweep also callable standalone.
+3. **Ranking = closeness-to-broken-promise**, one urgency-ordered list: dated-commitment-imminent → arrived-deferral/reply-waiting (longest first) → cadence-overdue (most overdue first).
+4. **Gates:** Cease FUP + On-Series = cadence-off only; named deferrals + personal replies always surface; explicit "drop" is the only promise-mute.
+5. **Time-aware drafts** via existing `wingguy_create_draft` (Gmail, clean links, threaded) + paste-ready for LinkedIn-only leads; voice from existing rules (manifesto, quote-them-back, reconnection-formula) + absorbed reminder-discipline craft.
+6. **Rules:** propose→commit the surfacing rule (client + template, two passes) + **wire `follow-up` into the chat surface's context list** (`wingguyRulesSource.js` SURFACE_CONTEXTS - today follow-up reaches NO surface, so the rule would render nowhere).
+7. **Migration mechanism:** `Follow-up Mode` flag on Client Master (Legacy default / Dynamic) + Client Template. Portal reads it (reuse `clientProfile.features.thanksForConnecting` gate pattern, Layout.js) to hide Follow-Up Manager + Smart Follow-ups + the date field for Dynamic clients. Wipe the 131 rotted dates on switch. Retire old screens per-client only AFTER their brief is proven.
+8. **Far-future deferral (minimal):** human says "set Nita to December" → engine stamps `Follow-Up Date`. (Auto-detection = later.)
+
+### Later layers (fast-follow, not v1)
+- **"Remind me of the details"** recall cards - short memory-jog per person, transcript-powered ("ah yes, now I remember"); doubles as pre-meeting prep. Richest for Guy (Fathom); degrades to email+LinkedIn+notes elsewhere.
+- **Fathom multi-tenant** wiring (per-client Fathom key → webhook resolves coach) so transcripts work for other tenants - the Advanced-tier ($300) differentiator.
+- **Auto-detect far-future deferrals** ("circle back in March") → propose-then-confirm stamp.
+- **Escalation counter** ("3rd morning I've flagged this"), **scheduled morning push**, **per-client priority tuning**, **non-lead tasks**.
+
+### What I can/can't do from Claude Code
+- **Code (sweep, briefing, mailProvider, surface wiring, Client Master flag, portal gate, date-wipe):** write here, deploy via git→Render/Vercel.
+- **Rules (surfacing rule; reminder-discipline handling):** propose here (read-only, returns diff + expected_version), commit ONLY on Guy's explicit yes to the wording, one commit per layer (client, then template). Foundation untouched.
+
+*Nothing built or rule-committed as of 2026-07-21 - this is the agreed plan, awaiting Guy's go on the v1/later split and the first build step.*
+
+*Full build plan (sweep tool `wingguy_followup_sweep` / new mailProvider window read / wiring `follow-up` context to the chat surface / the surfacing rule) drafted in the 2026-07-21 session; no code or rule committed yet - awaiting B/C/D.*
+
+---
+
+*Captured 2026-07-20 from a working session (Chris/Emily/Kay). Draft for discussion. Section 12 added 2026-07-21.*
