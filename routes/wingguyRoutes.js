@@ -570,10 +570,15 @@ module.exports = function mountWingguy(app) {
         profile: enriched,
         conversation,
         messages,
-        // Prefer the email the panel looked up; fall back to the enriched Portal record's email so booking
-        // works whenever the lead has an email in Airtable, even if the panel's async lookup came through
-        // empty (Mary Anne, 2026-07-03 — the agent then wrongly reported "no email" until pushback).
-        leadEmail: leadEmail || (enriched && enriched._leadEmail) || '',
+        // Invite address: prefer the FRESH CRM primary (read this turn by enrichProfileFromPortal) over
+        // the panel's leadEmail, which is looked up ONCE at chat-open and cached in the browser for the
+        // whole session. Both read the same {Email} field, so the server read is never staler and is
+        // often fresher - when the address is changed mid-session (e.g. the panel's own Email edit →
+        // quick-update), the cached panel value goes stale and would send the invite to the OLD address
+        // (Szymon Zurek, 2026-07-21: booked to his old gmail minutes after the email was changed to his
+        // work address). Fall back to the panel value, then empty, so a lead with no CRM match still
+        // works and the "no email on file" path (Mary Anne, 2026-07-03) is preserved.
+        leadEmail: (enriched && enriched._leadEmail) || leadEmail || '',
         // CRM write seam for update_lead_email: the lead's base + the record id the enrich step matched.
         airtableBaseId: req.client && req.client.airtableBaseId,
         leadRecordId: enriched && enriched._leadRecordId,

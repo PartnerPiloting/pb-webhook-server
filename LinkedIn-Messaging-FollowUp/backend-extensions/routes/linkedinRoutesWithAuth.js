@@ -2289,7 +2289,21 @@ router.patch('/leads/:id/quick-update', async (req, res) => {
       updates['Follow-Up Date'] = followUpDate || null;
     }
     if (email !== undefined) {
-      updates['Email'] = email || '';
+      const newPrimary = String(email || '').trim();
+      const oldPrimary = String(currentLead.fields['Email'] || '').trim();
+      updates['Email'] = newPrimary;
+      // Preserve the displaced primary into {Alt Emails} so a real address is never silently lost
+      // (Szymon Zurek, 2026-07-21: editing the email here overwrote his old gmail with no trace, and
+      // an in-flight booking still emailed the invite to that gmail). Mirrors the chat tool's
+      // updateLeadEmails semantics - the invite matcher + inbound-email self-healer both rely on
+      // {Alt Emails}, so the old address stays findable. Only fold in a genuine change to a valid
+      // new address; a no-op re-save or an explicit clear leaves {Alt Emails} untouched.
+      const emailShape = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (newPrimary && emailShape.test(newPrimary.toLowerCase()) &&
+          oldPrimary && oldPrimary.toLowerCase() !== newPrimary.toLowerCase()) {
+        const mergedAlts = `${currentLead.fields['Alt Emails'] || ''}\n${oldPrimary}`;
+        updates['Alt Emails'] = sanitizeAltEmailsString(mergedAlts, newPrimary);
+      }
     }
     if (phone !== undefined) {
       updates['Phone'] = phone || '';
