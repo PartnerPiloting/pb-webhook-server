@@ -127,12 +127,15 @@ const BODY_CAP = 6000; // chars of rendered text per message read — keeps chat
 // CADENCE only — a reply or a due deferral always surfaces), and ranks by closeness-to-broken-
 // promise. See docs/PREP-ME-FOR-TODAY-FEATURE.md §13.
 
-const SWEEP_WINDOW_DAYS = 90;    // how far back the mail window reaches (settled: 90, not 60)
+const SWEEP_WINDOW_DAYS = 90;    // how far back the mail + LinkedIn window reaches (settled: 90)
 const CADENCE_OVERDUE_DAYS = 14; // "you spoke last and went silent this long" = a cadence nudge
-// A stored Follow-Up Date that arrived long ago is almost certainly the ROT being retired (131 of
-// 177 dates were months-overdue on 2026-07-21), not a live "contact me on this day". Count an
-// arrived deferral as live only if it landed within this window; older = ignore. Post-wipe the
-// field is clean and this is just belt-and-braces.
+// "Ball's in your court" only counts as LIVE if the reply is recent — a reply you haven't answered
+// in a couple of days is the one to jump on; past this it's gone cold or been handled elsewhere, so
+// it drops off rather than nagging (Guy's call 2026-07-22, after a real-data test surfaced 6-month-
+// old dead threads at the top). Reply-owed is ranked MOST-RECENT-FIRST.
+const REPLY_LIVE_DAYS = 30;
+// Deferral store guard — a Reconnect-On date this far past is treated as stale, not a live "contact
+// me on this day". (Reconnect On is engine-written and clean, so this is just belt-and-braces.)
 const DEFERRAL_LIVE_DAYS = 45;
 
 // "DD-MM-YY H:MM AM - <Sender Name> - <text>" — the line format inside the Notes LinkedIn block.
@@ -174,9 +177,12 @@ const MS_DAY = 86400000;
  * sandboxes and keeps this deterministic for tests).
  */
 function classifyLead(lead, { lastInboundMs, lastOutboundMs, nowMs, todayMidMs }) {
+  // Deferral tier reads the engine-written `Reconnect On` date. Until that field exists on the bases
+  // and the content-read populates it, lead.reconnectOn is null everywhere → no deferral surfaces
+  // (deliberate: the rotted legacy Follow-Up Date must NOT drive the engine).
   let deferralLive = false; let deferDays = 0;
-  if (lead.followUpDate) {
-    const dt = Date.parse(lead.followUpDate);
+  if (lead.reconnectOn) {
+    const dt = Date.parse(lead.reconnectOn);
     if (!Number.isNaN(dt)) {
       const d = Math.floor((todayMidMs - dt) / MS_DAY); // >0 = past
       if (d >= 0 && d <= DEFERRAL_LIVE_DAYS) { deferralLive = true; deferDays = d; }
@@ -188,9 +194,11 @@ function classifyLead(lead, { lastInboundMs, lastOutboundMs, nowMs, todayMidMs }
   const cadenceOverdue = !replyWaiting && !!lastOutboundMs && outboundDays >= CADENCE_OVERDUE_DAYS;
   const gated = lead.cease || lead.onSeries; // suppress CADENCE only
 
-  // reply owed and a due deferral surface even when gated; cadence is the only thing a gate silences.
-  if (replyWaiting) return { tier: 'reply', why: `they replied ${inboundDays}d ago — ball's in your court`, sortKey: inboundDays, gated };
-  if (deferralLive) return { tier: 'deferral', why: `deferral date reached (${deferDays === 0 ? 'today' : deferDays + 'd ago'})`, sortKey: deferDays, gated };
+  // Reply owed and a due deferral surface even when gated; cadence is the only thing a gate silences.
+  // Reply-owed is LIVE only if recent (≤ REPLY_LIVE_DAYS) and ranks most-recent-first (sortKey = -days,
+  // so the whole list sorts uniformly descending by sortKey). A stale reply falls through and drops.
+  if (replyWaiting && inboundDays <= REPLY_LIVE_DAYS) return { tier: 'reply', why: `they replied ${inboundDays}d ago — ball's in your court`, sortKey: -inboundDays, gated };
+  if (deferralLive) return { tier: 'deferral', why: `reconnect date reached (${deferDays === 0 ? 'today' : deferDays + 'd ago'})`, sortKey: deferDays, gated };
   if (cadenceOverdue && !gated) return { tier: 'cadence', why: `you messaged last, ${outboundDays}d silent`, sortKey: outboundDays, gated };
   if (cadenceOverdue && gated) return { tier: null, gatedCadence: true };
   return null;
@@ -489,14 +497,17 @@ async function runFollowupSweep({ window_days, limit } = {}, tenant = TENANT) {
   const nowMs = Date.now();
   const td = new Date(nowMs);
   const todayMidMs = Date.UTC(td.getUTCFullYear(), td.getUTCMonth(), td.getUTCDate());
-  const afterSec = Math.floor((nowMs - windowDays * MS_DAY) / 1000);
+  const afterMs = nowMs - windowDays * MS_DAY;
+  const afterSec = Math.floor(afterMs / 1000);
 
   // --- 1. Leads from the tenant's own base ---
+  // NB: `Reconnect On` is NOT read yet — the field doesn't exist on the bases (adding it is a TODO)
+  // and requesting an unknown field 422s. The legacy `Follow-Up Date` is deliberately NOT read (rot).
   let records;
   try {
     const base = clientService.getClientBase(coach.airtableBaseId);
     records = await base('Leads').select({
-      fields: ['First Name', 'Last Name', 'Email', 'Follow-Up Date', 'Cease FUP', 'Notes', 'Series Sent Count', 'Series Unsubscribed'],
+      fields: ['First Name', 'Last Name', 'Email', 'Cease FUP', 'Notes', 'Series Sent Count', 'Series Unsubscribed'],
     }).all();
   } catch (e) {
     return { text: `Lead read failed: ${e.message}`, isError: true };
@@ -511,7 +522,7 @@ async function runFollowupSweep({ window_days, limit } = {}, tenant = TENANT) {
       first: f['First Name'] || '',
       last: f['Last Name'] || '',
       email,
-      followUpDate: f['Follow-Up Date'] || null,
+      reconnectOn: null, // TODO: f['Reconnect On'] once that field exists on every base (content-read populates it)
       cease: selectName(f['Cease FUP']) === 'Yes',
       onSeries: Number(f['Series Sent Count'] || 0) > 0 && f['Series Unsubscribed'] !== true,
       notes: f['Notes'] || '',
@@ -544,7 +555,7 @@ async function runFollowupSweep({ window_days, limit } = {}, tenant = TENANT) {
     let lastInboundMs = lead.lastInboundMs;
     let lastOutboundMs = lead.lastOutboundMs;
     const li = parseLinkedInLast(lead.notes, lead.first);
-    if (li) {
+    if (li && li.ms >= afterMs) { // window LinkedIn the SAME as email — an ancient LI thread is not a live signal
       if (li.inbound) lastInboundMs = Math.max(lastInboundMs || 0, li.ms);
       else lastOutboundMs = Math.max(lastOutboundMs || 0, li.ms);
     }
@@ -569,7 +580,7 @@ async function runFollowupSweep({ window_days, limit } = {}, tenant = TENANT) {
       `Follow-ups from the last ${windowDays} days — rebuilt live, nothing stored. ` +
       `${surfaced.length} surfaced${surfaced.length > cap ? `, showing top ${cap}` : ''}; ` +
       `${leads.length} leads scanned; ${gatedCadence} cadence nudge(s) suppressed (Cease FUP / On-Series).\n` +
-      `NOTE (v1): calendar cross-check not yet wired — a lead who booked via your calendar link but never emailed can still show as "went quiet"; verify before nudging. Ranking is coarse (reply → deferral → cadence); the drafting/recall layers come next.\n\n` +
+      `NOTE (v1): REPLY OWED = replied within ${REPLY_LIVE_DAYS}d, most-recent first (older replies drop as cold). DEFERRAL tier is dormant until the Reconnect On field + content-read land. Calendar cross-check not yet wired — an already-booked lead can still show as "went quiet". Verify before nudging.\n\n` +
       lines.join('\n'),
   };
 }
