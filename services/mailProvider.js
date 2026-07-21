@@ -183,6 +183,62 @@ async function getMessage(coach, messageId) {
 }
 
 /**
+ * List ALL messages in a recent window, walking Nylas's page cursor — the "pull the window once"
+ * read behind the follow-up sweep. findMessages is single-page (≤20) and keyed on a participant;
+ * this gathers the whole window so a sweep costs a handful of calls total instead of one-per-lead.
+ * Newest first, read-only. Each message carries `toEmails` (lowercased recipients) so the caller can
+ * tell inbound (a lead is the sender) from outbound (a lead is among the recipients) WITHOUT needing
+ * the coach's own address.
+ * @param {object} coach client record (needs nylasGrantId)
+ * @param {object} opts  { after: epoch SECONDS, max: hard cap on messages (default 800), pageSize }
+ * @returns {Promise<{ok:boolean, messages?:Array, truncated?:boolean, error?:string}>}
+ */
+async function listRecent(coach, { after, max = 800, pageSize = 50 } = {}) {
+  const { apiKey, grantId, apiUri } = nylasConfig(coach);
+  if (!apiKey || !grantId) return { ok: false, error: 'NYLAS_API_KEY / grant not configured for this coach' };
+
+  const per = Math.min(Math.max(parseInt(pageSize, 10) || 50, 1), 50);
+  const out = [];
+  let pageToken = null;
+  let truncated = false;
+  for (let guard = 0; guard < 100; guard++) { // hard loop cap — never spin on a bad cursor
+    const params = new URLSearchParams();
+    params.set('limit', String(per));
+    if (after) params.set('received_after', String(Math.floor(Number(after))));
+    if (pageToken) params.set('page_token', pageToken);
+
+    const u = `${apiUri}/v3/grants/${grantId}/messages?${params.toString()}`;
+    let res;
+    try {
+      res = await fetch(u, { headers: { Authorization: `Bearer ${apiKey}`, Accept: 'application/json' } });
+    } catch (e) {
+      return { ok: false, error: `nylas request failed: ${e.message}` };
+    }
+    const text = await res.text();
+    if (!res.ok) {
+      log.warn(`[mailProvider] nylas listRecent failed HTTP ${res.status}: ${text.slice(0, 200)}`);
+      return { ok: false, error: `nylas HTTP ${res.status}: ${text.slice(0, 200)}` };
+    }
+    let json = {}; try { json = JSON.parse(text); } catch (_) { /* leave empty */ }
+    for (const m of (json.data || [])) {
+      out.push({
+        id: m.id,
+        threadId: m.thread_id,
+        subject: m.subject,
+        fromEmail: (toParticipants(m.from)[0] || {}).email || null,
+        toEmails: toParticipants(m.to).map((p) => p.email.toLowerCase()),
+        date: m.date ? new Date(m.date * 1000).toISOString() : null,
+        snippet: m.snippet,
+      });
+    }
+    pageToken = json.next_cursor || null;
+    if (out.length >= max) { truncated = !!pageToken; break; }
+    if (!pageToken || !(json.data || []).length) break;
+  }
+  return { ok: true, messages: out.slice(0, max), truncated };
+}
+
+/**
  * Read a draft back (used to VERIFY the stored HTML — the "are the links clean?" proof, and any
  * future read need). Returns the raw Nylas draft object.
  * @returns {Promise<{ok:boolean, draft?:object, error?:string}>}
@@ -204,4 +260,4 @@ async function getDraft(coach, draftId) {
   return { ok: true, draft: json.data || json };
 }
 
-module.exports = { createDraft, getDraft, findMessages, getMessage, toParticipants };
+module.exports = { createDraft, getDraft, findMessages, listRecent, getMessage, toParticipants };

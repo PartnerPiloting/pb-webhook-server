@@ -119,6 +119,84 @@ function htmlToText(html) {
 const BODY_CAP = 6000; // chars of rendered text per message read — keeps chat context sane
 
 // ---------------------------------------------------------------------------
+// Follow-up sweep — pure core (Stage A: who-spoke-last + gates + rank)
+// ---------------------------------------------------------------------------
+// Read-only, stores NOTHING: the list is rebuilt from live data every call (the whole point — a
+// stored follow-up list rots, a re-read of the real conversation can't). Merges the email window
+// with the LinkedIn history in each lead's Notes, applies the gates (Cease FUP / On-Series suppress
+// CADENCE only — a reply or a due deferral always surfaces), and ranks by closeness-to-broken-
+// promise. See docs/PREP-ME-FOR-TODAY-FEATURE.md §13.
+
+const SWEEP_WINDOW_DAYS = 90;    // how far back the mail window reaches (settled: 90, not 60)
+const CADENCE_OVERDUE_DAYS = 14; // "you spoke last and went silent this long" = a cadence nudge
+// A stored Follow-Up Date that arrived long ago is almost certainly the ROT being retired (131 of
+// 177 dates were months-overdue on 2026-07-21), not a live "contact me on this day". Count an
+// arrived deferral as live only if it landed within this window; older = ignore. Post-wipe the
+// field is clean and this is just belt-and-braces.
+const DEFERRAL_LIVE_DAYS = 45;
+
+// "DD-MM-YY H:MM AM - <Sender Name> - <text>" — the line format inside the Notes LinkedIn block.
+const LI_MSG_RE = /^(\d{2})-(\d{2})-(\d{2})\s+\d{1,2}:\d{2}\s*[AP]M\s*-\s*(.+?)\s*-\s*/i;
+
+/**
+ * Newest LinkedIn message in a lead's Notes: { ms, inbound } or null. The block is newest-first, so
+ * the first parseable line wins. Inbound = the sender line names the LEAD (their first name); any
+ * other name is the coach — which avoids hard-coding the coach's name, so it works per-tenant.
+ * (Heuristic: a lead whose first name collides with the coach's could misread — acceptable for v1.)
+ */
+function parseLinkedInLast(notes, leadFirstName) {
+  const block = String(notes || '');
+  const start = block.indexOf('=== LINKEDIN MESSAGES ===');
+  if (start === -1) return null;
+  let seg = block.slice(start);
+  const nextHdr = seg.indexOf('\n=== ', 1);
+  if (nextHdr !== -1) seg = seg.slice(0, nextHdr);
+  const first = String(leadFirstName || '').trim().toLowerCase();
+  for (const raw of seg.split('\n')) {
+    const m = raw.trim().match(LI_MSG_RE);
+    if (!m) continue;
+    const [, dd, mm, yy, sender] = m;
+    const ms = Date.UTC(2000 + Number(yy), Number(mm) - 1, Number(dd));
+    if (Number.isNaN(ms)) continue;
+    return { ms, inbound: first ? sender.toLowerCase().includes(first) : false };
+  }
+  return null;
+}
+
+/** Read Airtable's singleSelect cell as a plain string (airtable.js gives a string; be defensive). */
+function selectName(v) { return (v && typeof v === 'object' ? v.name : v) || ''; }
+
+const MS_DAY = 86400000;
+
+/**
+ * Classify one lead from its merged signals into a surfaced item or null. Pure — no I/O — so the
+ * ranking logic is unit-testable. `nowMs`/`todayMidMs` passed in (Date.now is unavailable in some
+ * sandboxes and keeps this deterministic for tests).
+ */
+function classifyLead(lead, { lastInboundMs, lastOutboundMs, nowMs, todayMidMs }) {
+  let deferralLive = false; let deferDays = 0;
+  if (lead.followUpDate) {
+    const dt = Date.parse(lead.followUpDate);
+    if (!Number.isNaN(dt)) {
+      const d = Math.floor((todayMidMs - dt) / MS_DAY); // >0 = past
+      if (d >= 0 && d <= DEFERRAL_LIVE_DAYS) { deferralLive = true; deferDays = d; }
+    }
+  }
+  const replyWaiting = !!lastInboundMs && (!lastOutboundMs || lastInboundMs > lastOutboundMs);
+  const inboundDays = lastInboundMs ? Math.floor((nowMs - lastInboundMs) / MS_DAY) : null;
+  const outboundDays = lastOutboundMs ? Math.floor((nowMs - lastOutboundMs) / MS_DAY) : null;
+  const cadenceOverdue = !replyWaiting && !!lastOutboundMs && outboundDays >= CADENCE_OVERDUE_DAYS;
+  const gated = lead.cease || lead.onSeries; // suppress CADENCE only
+
+  // reply owed and a due deferral surface even when gated; cadence is the only thing a gate silences.
+  if (replyWaiting) return { tier: 'reply', why: `they replied ${inboundDays}d ago — ball's in your court`, sortKey: inboundDays, gated };
+  if (deferralLive) return { tier: 'deferral', why: `deferral date reached (${deferDays === 0 ? 'today' : deferDays + 'd ago'})`, sortKey: deferDays, gated };
+  if (cadenceOverdue && !gated) return { tier: 'cadence', why: `you messaged last, ${outboundDays}d silent`, sortKey: outboundDays, gated };
+  if (cadenceOverdue && gated) return { tier: null, gatedCadence: true };
+  return null;
+}
+
+// ---------------------------------------------------------------------------
 // Executor — returns { text, isError? }
 // ---------------------------------------------------------------------------
 
@@ -391,6 +469,111 @@ async function runLeadRepliedSince({ lead_email, since_iso } = {}, tenant = TENA
   };
 }
 
+const TIER_ORDER = { reply: 0, deferral: 1, cadence: 2 };
+const TIER_LABEL = { reply: '↩ REPLY OWED', deferral: '📅 DEFERRAL DUE', cadence: '⏳ WENT QUIET' };
+
+/**
+ * The follow-up sweep (Stage A). Rebuilds "who do I owe a follow-up, and in what order" live from
+ * the tenant's mailbox (Nylas) + LinkedIn history (lead Notes) + the gates on each lead record.
+ * Stores nothing. Returns a ranked, capped plain-text list for the brief / standalone triggers.
+ */
+async function runFollowupSweep({ window_days, limit } = {}, tenant = TENANT) {
+  const clientService = require('./clientService');
+  const coach = await clientService.getClientById(tenant);
+  if (!coach) return { text: `Server config error: coach client "${tenant}" not found.`, isError: true };
+  if (!coach.airtableBaseId) return { text: `No Airtable base on file for "${tenant}" — can't read the leads.`, isError: true };
+  if (!coach.nylasGrantId) return { text: `No Nylas grant on file for "${tenant}" — connect the mailbox (Nylas, mail scope) first.`, isError: true };
+
+  const windowDays = Math.min(Math.max(parseInt(window_days, 10) || SWEEP_WINDOW_DAYS, 7), 180);
+  const cap = Math.min(Math.max(parseInt(limit, 10) || 25, 1), 100);
+  const nowMs = Date.now();
+  const td = new Date(nowMs);
+  const todayMidMs = Date.UTC(td.getUTCFullYear(), td.getUTCMonth(), td.getUTCDate());
+  const afterSec = Math.floor((nowMs - windowDays * MS_DAY) / 1000);
+
+  // --- 1. Leads from the tenant's own base ---
+  let records;
+  try {
+    const base = clientService.getClientBase(coach.airtableBaseId);
+    records = await base('Leads').select({
+      fields: ['First Name', 'Last Name', 'Email', 'Follow-Up Date', 'Cease FUP', 'Notes', 'Series Sent Count', 'Series Unsubscribed'],
+    }).all();
+  } catch (e) {
+    return { text: `Lead read failed: ${e.message}`, isError: true };
+  }
+
+  const leads = [];
+  const byEmail = new Map();
+  for (const r of records) {
+    const f = r.fields || {};
+    const email = String(f['Email'] || '').trim().toLowerCase();
+    const lead = {
+      first: f['First Name'] || '',
+      last: f['Last Name'] || '',
+      email,
+      followUpDate: f['Follow-Up Date'] || null,
+      cease: selectName(f['Cease FUP']) === 'Yes',
+      onSeries: Number(f['Series Sent Count'] || 0) > 0 && f['Series Unsubscribed'] !== true,
+      notes: f['Notes'] || '',
+      lastInboundMs: null,
+      lastOutboundMs: null,
+    };
+    leads.push(lead);
+    if (email) byEmail.set(email, lead);
+  }
+
+  // --- 2. Mail window: ONE paginated read, not one call per lead ---
+  const mail = await mailProvider.listRecent(coach, { after: afterSec, max: 800 });
+  if (!mail.ok) return { text: `Mailbox window read failed: ${mail.error}`, isError: true };
+  for (const m of mail.messages) {
+    if (!m.date) continue;
+    const t = new Date(m.date).getTime();
+    if (Number.isNaN(t)) continue;
+    const sender = byEmail.get((m.fromEmail || '').toLowerCase());
+    if (sender && (!sender.lastInboundMs || t > sender.lastInboundMs)) sender.lastInboundMs = t;
+    for (const to of (m.toEmails || [])) {
+      const rcpt = byEmail.get(to);
+      if (rcpt && rcpt !== sender && (!rcpt.lastOutboundMs || t > rcpt.lastOutboundMs)) rcpt.lastOutboundMs = t;
+    }
+  }
+
+  // --- 3. Merge LinkedIn history, classify, rank ---
+  const surfaced = [];
+  let gatedCadence = 0;
+  for (const lead of leads) {
+    let lastInboundMs = lead.lastInboundMs;
+    let lastOutboundMs = lead.lastOutboundMs;
+    const li = parseLinkedInLast(lead.notes, lead.first);
+    if (li) {
+      if (li.inbound) lastInboundMs = Math.max(lastInboundMs || 0, li.ms);
+      else lastOutboundMs = Math.max(lastOutboundMs || 0, li.ms);
+    }
+    const c = classifyLead(lead, { lastInboundMs: lastInboundMs || null, lastOutboundMs: lastOutboundMs || null, nowMs, todayMidMs });
+    if (!c) continue;
+    if (c.gatedCadence) { gatedCadence++; continue; }
+    surfaced.push({ lead, ...c });
+  }
+  surfaced.sort((a, b) => (TIER_ORDER[a.tier] - TIER_ORDER[b.tier]) || (b.sortKey - a.sortKey));
+
+  if (!surfaced.length) {
+    return { text: `No follow-ups surfaced from the last ${windowDays} days. (${leads.length} leads scanned; ${gatedCadence} cadence nudge(s) suppressed by Cease FUP / On-Series.)` };
+  }
+  const shown = surfaced.slice(0, cap);
+  const lines = shown.map((s, i) => {
+    const name = `${s.lead.first} ${s.lead.last}`.trim() || s.lead.email || '(no name)';
+    const gate = s.gated ? ' [Cease/Series — surfaced anyway: a real obligation, not cadence]' : '';
+    return `${i + 1}. ${TIER_LABEL[s.tier]} · ${name}${s.lead.email ? ` <${s.lead.email}>` : ''} — ${s.why}${gate}`;
+  });
+  return {
+    text:
+      `Follow-ups from the last ${windowDays} days — rebuilt live, nothing stored. ` +
+      `${surfaced.length} surfaced${surfaced.length > cap ? `, showing top ${cap}` : ''}; ` +
+      `${leads.length} leads scanned; ${gatedCadence} cadence nudge(s) suppressed (Cease FUP / On-Series).\n` +
+      `NOTE (v1): calendar cross-check not yet wired — a lead who booked via your calendar link but never emailed can still show as "went quiet"; verify before nudging. Ranking is coarse (reply → deferral → cadence); the drafting/recall layers come next.\n\n` +
+      lines.join('\n'),
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Definition — one source of truth for name/description/schema
 // ---------------------------------------------------------------------------
@@ -527,6 +710,24 @@ const TOOL_DEFS = [
       required: ['lead_email'],
     },
     run: runLeadCorrespondence,
+  },
+  {
+    name: 'wingguy_followup_sweep',
+    description:
+      'Who do I owe a follow-up, and in what order? Rebuilds the list LIVE every call (nothing stored — a stored follow-up list rots) from the coach\'s own mailbox (Nylas, ~90-day window in ONE read) merged with each lead\'s LinkedIn history (Notes) and the gates on the lead record. Returns a ranked, capped plain-text list: REPLY OWED (they replied, ball\'s in your court) → DEFERRAL DUE (a date they named has arrived) → WENT QUIET (you messaged last, past the interval). Cease FUP / On-Series suppress the WENT QUIET (cadence) nudge only — a reply or a due deferral still surfaces. Use for "prep me for today" (bundled with meetings), "show me what I need to follow up", or "who\'s waiting". Read-only. NOTE: calendar cross-check not yet wired (may show an already-booked lead as quiet).',
+    zodSchema: {
+      window_days: z.number().optional().describe('How far back to read mail (default 90, min 7, max 180).'),
+      limit: z.number().optional().describe('Max items to show (default 25, max 100).'),
+    },
+    jsonSchema: {
+      type: 'object',
+      properties: {
+        window_days: { type: 'number', description: 'How far back to read mail (default 90, min 7, max 180).' },
+        limit: { type: 'number', description: 'Max items to show (default 25, max 100).' },
+      },
+      required: [],
+    },
+    run: runFollowupSweep,
   },
 ];
 
@@ -668,4 +869,4 @@ async function legacyToolCall(toolName, args, tenant = TENANT) {
   }
 }
 
-module.exports = { registerWingguyMailTools, legacyToolList, legacyToolCall, TOOL_DEFS, detectAssets, htmlToText, stripQuotedTail, settleEmailEditPairs };
+module.exports = { registerWingguyMailTools, legacyToolList, legacyToolCall, TOOL_DEFS, detectAssets, htmlToText, stripQuotedTail, settleEmailEditPairs, parseLinkedInLast, classifyLead, runFollowupSweep };
