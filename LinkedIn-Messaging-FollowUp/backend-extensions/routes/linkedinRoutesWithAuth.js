@@ -1898,14 +1898,37 @@ router.put('/leads/:id', async (req, res) => {
 
     logger.info('LinkedIn Routes: Updating lead:', leadId, 'with data:', updates);
 
-    // Sanitize Alt Emails (multi-email per lead): clean/validate/dedupe and strip the primary.
-    if (updates['Alt Emails'] !== undefined) {
-      let primaryEmail = updates['Email'];
-      if (primaryEmail === undefined) {
-        try { const cur = await airtableBase('Leads').find(leadId); primaryEmail = cur.get('Email'); }
-        catch (e) { logger.warn('LinkedIn Routes: could not read primary Email for Alt Emails sanitize:', e.message); }
+    // Alt Emails: sanitize a portal-sent value AND preserve a displaced primary. Two triggers:
+    //   - the portal sent an {Alt Emails} value to store (clean/validate/dedupe, strip the primary), and/or
+    //   - {Email} is being changed, in which case the OLD primary must be folded into {Alt Emails} so a
+    //     real address is never silently lost. PUT used to overwrite {Email} outright - the same gap the
+    //     quick-update path had (Szymon Zurek, 2026-07-21); this closes it here too, matching the chat
+    //     tool's updateLeadEmails semantics, so the invite matcher + inbound-email self-healer keep finding
+    //     the old address. Only a genuine change to a valid new address folds in; a no-op re-save or an
+    //     explicit clear leaves existing alternates as-is.
+    const emailChanging = updates['Email'] !== undefined;
+    if (updates['Alt Emails'] !== undefined || emailChanging) {
+      const emailShape = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      let currentPrimary = '';
+      let currentAlts = '';
+      try {
+        const cur = await airtableBase('Leads').find(leadId);
+        currentPrimary = String(cur.get('Email') || '').trim();
+        currentAlts = String(cur.get('Alt Emails') || '');
+      } catch (e) {
+        logger.warn('LinkedIn Routes: could not read current record for Alt Emails preservation:', e.message);
       }
-      updates['Alt Emails'] = sanitizeAltEmailsString(updates['Alt Emails'], primaryEmail);
+      const newPrimary = emailChanging ? String(updates['Email'] || '').trim() : currentPrimary;
+      // Base list: the portal's value if it sent one, else the stored alts (so a plain Email change
+      // doesn't wipe existing alternates).
+      const baseAlts = updates['Alt Emails'] !== undefined ? String(updates['Alt Emails']) : currentAlts;
+      const displaced = (emailChanging && newPrimary && emailShape.test(newPrimary.toLowerCase()) &&
+                         currentPrimary && currentPrimary.toLowerCase() !== newPrimary.toLowerCase())
+        ? currentPrimary : '';
+      if (updates['Alt Emails'] !== undefined || displaced) {
+        const merged = displaced ? `${baseAlts}\n${displaced}` : baseAlts;
+        updates['Alt Emails'] = sanitizeAltEmailsString(merged, newPrimary);
+      }
     }
 
     // Defensive log: track any attempt to toggle Posts Actioned via API
