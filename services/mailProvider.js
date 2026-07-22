@@ -21,6 +21,13 @@ const { createSafeLogger } = require('../utils/loggerHelper');
 
 const log = createSafeLogger('SYSTEM', null, 'mail_provider');
 
+// Per-tenant mail backend, independent of the calendar provider. Blank => 'nylas' (back-compat:
+// this file was Nylas-only until the Unipile branch landed 2026-07-22). Fed by the `Email Provider`
+// master field (coach.emailProvider).
+function activeMailProvider(coach) {
+  return String((coach && coach.emailProvider) || process.env.MAIL_PROVIDER || 'nylas').trim().toLowerCase();
+}
+
 function nylasConfig(coach) {
   const apiKey = process.env.NYLAS_API_KEY;
   const grantId = (coach && coach.nylasGrantId) || process.env.NYLAS_GRANT_ID;
@@ -48,6 +55,7 @@ function toParticipants(list) {
  * @returns {Promise<{ok:boolean, draftId?:string, error?:string, provider:string}>}
  */
 async function createDraft(coach, details = {}) {
+  if (activeMailProvider(coach) === 'unipile') return createDraftViaUnipile(coach, details);
   const { apiKey, grantId, apiUri } = nylasConfig(coach);
   if (!apiKey || !grantId) return { ok: false, error: 'NYLAS_API_KEY / grant not configured for this coach', provider: 'nylas' };
 
@@ -105,6 +113,7 @@ async function createDraft(coach, details = {}) {
  * @returns {Promise<{ok:boolean, messages?:Array<{id,threadId,subject,from,date,snippet}>, error?:string}>}
  */
 async function findMessages(coach, { from, anyEmail, subject, threadId, receivedAfter, queryImap, limit } = {}) {
+  if (activeMailProvider(coach) === 'unipile') return findMessagesViaUnipile(coach, { from, anyEmail, subject, threadId, receivedAfter, limit });
   const { apiKey, grantId, apiUri } = nylasConfig(coach);
   if (!apiKey || !grantId) return { ok: false, error: 'NYLAS_API_KEY / grant not configured for this coach' };
 
@@ -131,7 +140,7 @@ async function findMessages(coach, { from, anyEmail, subject, threadId, received
   }
   let json = {}; try { json = JSON.parse(text); } catch (_) { /* leave empty */ }
   const messages = (json.data || []).map((m) => ({
-    id: m.id,
+    id: m.provider_id || m.id,
     threadId: m.thread_id,
     subject: m.subject,
     from: toParticipants(m.from).map((p) => (p.name ? `${p.name} <${p.email}>` : p.email)).join(', '),
@@ -149,6 +158,7 @@ async function findMessages(coach, { from, anyEmail, subject, threadId, received
  * @returns {Promise<{ok:boolean, message?:object, error?:string}>}
  */
 async function getMessage(coach, messageId) {
+  if (activeMailProvider(coach) === 'unipile') return getMessageViaUnipile(coach, messageId);
   const { apiKey, grantId, apiUri } = nylasConfig(coach);
   if (!apiKey || !grantId) return { ok: false, error: 'NYLAS_API_KEY / grant not configured for this coach' };
   if (!messageId) return { ok: false, error: 'messageId required' };
@@ -169,7 +179,7 @@ async function getMessage(coach, messageId) {
   return {
     ok: true,
     message: {
-      id: m.id,
+      id: m.provider_id || m.id,
       threadId: m.thread_id,
       subject: m.subject,
       from: toParticipants(m.from).map((p) => (p.name ? `${p.name} <${p.email}>` : p.email)).join(', '),
@@ -196,6 +206,7 @@ async function getMessage(coach, messageId) {
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function listRecent(coach, { after, max = 3000, pageSize = 50 } = {}) {
+  if (activeMailProvider(coach) === 'unipile') return listRecentViaUnipile(coach, { after, max, pageSize });
   const { apiKey, grantId, apiUri } = nylasConfig(coach);
   if (!apiKey || !grantId) return { ok: false, error: 'NYLAS_API_KEY / grant not configured for this coach' };
 
@@ -236,7 +247,7 @@ async function listRecent(coach, { after, max = 3000, pageSize = 50 } = {}) {
 
     for (const m of (json.data || [])) {
       out.push({
-        id: m.id,
+        id: m.provider_id || m.id,
         threadId: m.thread_id,
         subject: m.subject,
         fromEmail: (toParticipants(m.from)[0] || {}).email || null,
@@ -258,6 +269,7 @@ async function listRecent(coach, { after, max = 3000, pageSize = 50 } = {}) {
  * @returns {Promise<{ok:boolean, draft?:object, error?:string}>}
  */
 async function getDraft(coach, draftId) {
+  if (activeMailProvider(coach) === 'unipile') return getDraftViaUnipile(coach, draftId);
   const { apiKey, grantId, apiUri } = nylasConfig(coach);
   if (!apiKey || !grantId) return { ok: false, error: 'NYLAS_API_KEY / grant not configured for this coach' };
   if (!draftId) return { ok: false, error: 'draftId required' };
@@ -274,4 +286,206 @@ async function getDraft(coach, draftId) {
   return { ok: true, draft: json.data || json };
 }
 
-module.exports = { createDraft, getDraft, findMessages, listRecent, getMessage, toParticipants };
+/* ---- Unipile mail (the Nylas replacement — draft-create VALIDATED live 2026-07-22) --------------
+ * Same clean-write rationale as Nylas: POST /api/v1/drafts writes the HTML straight to the provider.
+ * ONE Unipile account_id covers a tenant's mail AND calendar (coach.unipileAccountId). Selected per
+ * tenant by coach.emailProvider='unipile' (blank => nylas). Creds: UNIPILE_API_KEY + UNIPILE_DSN.
+ * Shape differences from Nylas, all confirmed against the live API 2026-07-22:
+ *   - participants are { identifier: <email>, display_name? } — NOT { email, name }.
+ *   - create draft: POST /drafts { account_id, to:[{identifier}], subject, body(HTML), reply_to } ->
+ *     { draft_id }. reply_to = the email id to thread on (Unipile or provider id).
+ *   - a message's date is an ISO STRING (not epoch seconds); the list `after`/`before` filters want
+ *     ISO 8601 WITH milliseconds (the OPPOSITE of the calendar endpoint, which wants NO ms).
+ *   - list free-text is `search` (spans subject AND body — Nylas had a subject-only filter).
+ *   - a message's usable id is `provider_id`, NOT the Unipile `id`: GET /emails/{unipile id} 404s,
+ *     GET /emails/{provider_id} 200s (confirmed live). provider_id also works as the reply_to thread
+ *     anchor, so the mappers return `provider_id || id`.
+ *   - there is NO get-draft endpoint; a draft is a message in Drafts, so getDraft reads it back via
+ *     GET /emails/{id} (best-effort). VERIFY-LIVE: that draft_id resolves as an email id, and the
+ *     reply/thread behaviour on a real threaded reply. Dormant until emailProvider='unipile'. */
+
+function unipileMailEnv(coach) {
+  const dsn = String(process.env.UNIPILE_DSN || '').replace(/^https?:\/\//, '').replace(/\/$/, '');
+  return {
+    apiKey: process.env.UNIPILE_API_KEY,
+    base: dsn ? `https://${dsn}/api/v1` : '',
+    accountId: (coach && coach.unipileAccountId) || process.env.UNIPILE_ACCOUNT_ID,
+  };
+}
+
+function unipileMailHeaders(apiKey) {
+  return { 'X-API-KEY': apiKey, Accept: 'application/json' };
+}
+
+// Unipile participant { identifier, display_name } -> { email, name } (the shape toParticipants emits).
+function fromUnipileParty(p) {
+  if (!p) return null;
+  const email = p.identifier || p.email || '';
+  if (!email) return null;
+  return { email: String(email).trim(), ...(p.display_name ? { name: String(p.display_name).trim() } : {}) };
+}
+// our internal [{email,name}] -> Unipile's [{identifier, display_name}].
+function toUnipileParties(list) {
+  return toParticipants(list).map((r) => ({ identifier: r.email, ...(r.name ? { display_name: r.name } : {}) }));
+}
+function partiesToString(arr, withName) {
+  return (arr || []).map(fromUnipileParty).filter(Boolean)
+    .map((p) => (withName && p.name ? `${p.name} <${p.email}>` : p.email)).join(', ');
+}
+
+function unipileMailListURL(base, accountId, params) {
+  const u = new URL(`${base}/emails`);
+  u.searchParams.set('account_id', accountId);
+  for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== null && v !== '') u.searchParams.set(k, String(v));
+  return u.toString();
+}
+
+async function createDraftViaUnipile(coach, details = {}) {
+  const { apiKey, base, accountId } = unipileMailEnv(coach);
+  if (!apiKey || !base || !accountId) return { ok: false, error: 'UNIPILE_API_KEY / UNIPILE_DSN / account not configured', provider: 'unipile' };
+  const to = toUnipileParties(details.to);
+  if (!to.length) return { ok: false, error: 'at least one "to" recipient is required', provider: 'unipile' };
+  const subject = String(details.subject || '').trim();
+  if (!subject) return { ok: false, error: 'subject is required', provider: 'unipile' };
+  const body = { account_id: accountId, to, subject, body: details.html || '' };
+  const cc = toUnipileParties(details.cc); if (cc.length) body.cc = cc;
+  const bcc = toUnipileParties(details.bcc); if (bcc.length) body.bcc = bcc;
+  if (details.replyToMessageId) body.reply_to = String(details.replyToMessageId).trim();
+  let res;
+  try {
+    res = await fetch(`${base}/drafts`, {
+      method: 'POST', headers: { ...unipileMailHeaders(apiKey), 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    });
+  } catch (e) { return { ok: false, error: `unipile request failed: ${e.message}`, provider: 'unipile' }; }
+  const text = await res.text();
+  if (!res.ok) {
+    log.warn(`[mailProvider] unipile draft create HTTP ${res.status}: ${text.slice(0, 200)}`);
+    return { ok: false, error: `unipile HTTP ${res.status}: ${text.slice(0, 200)}`, provider: 'unipile' };
+  }
+  let json = {}; try { json = JSON.parse(text); } catch (_) { /* leave empty */ }
+  return { ok: true, draftId: json.draft_id || (json.data && json.data.draft_id) || null, provider: 'unipile' };
+}
+
+async function findMessagesViaUnipile(coach, { from, anyEmail, subject, threadId, receivedAfter, limit } = {}) {
+  const { apiKey, base, accountId } = unipileMailEnv(coach);
+  if (!apiKey || !base || !accountId) return { ok: false, error: 'UNIPILE_API_KEY / UNIPILE_DSN / account not configured' };
+  const params = {
+    limit: Math.min(Math.max(parseInt(limit, 10) || 5, 1), 20),
+    from: from ? String(from).trim() : undefined,
+    any_email: anyEmail ? String(anyEmail).trim() : undefined,
+    search: subject ? String(subject).trim() : undefined, // Unipile 'search' spans subject+body
+    thread_id: threadId ? String(threadId).trim() : undefined,
+    after: receivedAfter ? new Date(Number(receivedAfter) * 1000).toISOString() : undefined, // ISO WITH ms
+  };
+  let res;
+  try { res = await fetch(unipileMailListURL(base, accountId, params), { headers: unipileMailHeaders(apiKey) }); }
+  catch (e) { return { ok: false, error: `unipile request failed: ${e.message}` }; }
+  const text = await res.text();
+  if (!res.ok) {
+    log.warn(`[mailProvider] unipile message search HTTP ${res.status}: ${text.slice(0, 200)}`);
+    return { ok: false, error: `unipile HTTP ${res.status}: ${text.slice(0, 200)}` };
+  }
+  let json = {}; try { json = JSON.parse(text); } catch (_) { /* leave empty */ }
+  const messages = (json.items || json.data || []).map((m) => {
+    const fp = fromUnipileParty(m.from_attendee);
+    return {
+      id: m.provider_id || m.id,
+      threadId: m.thread_id,
+      subject: m.subject,
+      from: fp ? (fp.name ? `${fp.name} <${fp.email}>` : fp.email) : '',
+      fromEmail: (fp || {}).email || null,
+      to: partiesToString(m.to_attendees, false),
+      date: m.date || null, // already ISO
+      snippet: String(m.body_plain || '').slice(0, 200),
+    };
+  });
+  return { ok: true, messages };
+}
+
+async function getMessageViaUnipile(coach, messageId) {
+  const { apiKey, base, accountId } = unipileMailEnv(coach);
+  if (!apiKey || !base || !accountId) return { ok: false, error: 'UNIPILE_API_KEY / UNIPILE_DSN / account not configured' };
+  if (!messageId) return { ok: false, error: 'messageId required' };
+  const u = new URL(`${base}/emails/${encodeURIComponent(messageId)}`);
+  u.searchParams.set('account_id', accountId);
+  let res;
+  try { res = await fetch(u.toString(), { headers: unipileMailHeaders(apiKey) }); }
+  catch (e) { return { ok: false, error: `unipile request failed: ${e.message}` }; }
+  const text = await res.text();
+  if (!res.ok) {
+    log.warn(`[mailProvider] unipile message read HTTP ${res.status}: ${text.slice(0, 200)}`);
+    return { ok: false, error: `unipile HTTP ${res.status}: ${text.slice(0, 200)}` };
+  }
+  let json = {}; try { json = JSON.parse(text); } catch (_) { /* leave empty */ }
+  const m = json.data || json;
+  const fp = fromUnipileParty(m.from_attendee);
+  return {
+    ok: true,
+    message: {
+      id: m.provider_id || m.id,
+      threadId: m.thread_id,
+      subject: m.subject,
+      from: fp ? (fp.name ? `${fp.name} <${fp.email}>` : fp.email) : '',
+      to: partiesToString(m.to_attendees, false),
+      cc: partiesToString(m.cc_attendees, false),
+      date: m.date || null,
+      body: m.body || '',
+      snippet: String(m.body_plain || '').slice(0, 200),
+    },
+  };
+}
+
+async function listRecentViaUnipile(coach, { after, max = 3000, pageSize = 50 } = {}) {
+  const { apiKey, base, accountId } = unipileMailEnv(coach);
+  if (!apiKey || !base || !accountId) return { ok: false, error: 'UNIPILE_API_KEY / UNIPILE_DSN / account not configured' };
+  const per = Math.min(Math.max(parseInt(pageSize, 10) || 50, 1), 250);
+  const afterISO = after ? new Date(Number(after) * 1000).toISOString() : undefined;
+  const out = [];
+  let cursor = null; let truncated = false; let partialError = null;
+  for (let guard = 0; guard < 120; guard++) {
+    const params = { limit: per, after: afterISO, cursor: cursor || undefined };
+    let json = null; let lastErr = null;
+    for (let attempt = 0; attempt < 3 && json === null; attempt++) {
+      if (attempt) await sleep(500 * attempt);
+      let res;
+      try { res = await fetch(unipileMailListURL(base, accountId, params), { headers: unipileMailHeaders(apiKey) }); }
+      catch (e) { lastErr = `request failed: ${e.message}`; continue; }
+      const text = await res.text();
+      if (res.ok) { try { json = JSON.parse(text); } catch (_) { json = {}; } break; }
+      lastErr = `HTTP ${res.status}: ${text.slice(0, 150)}`;
+      if (!(res.status >= 500 || res.status === 429)) break;
+    }
+    if (json === null) {
+      if (!out.length) return { ok: false, error: `unipile ${lastErr}` };
+      log.warn(`[mailProvider] listRecentViaUnipile partial after ${out.length}: ${lastErr}`);
+      partialError = lastErr; truncated = true; break;
+    }
+    const items = json.items || json.data || [];
+    for (const m of items) {
+      out.push({
+        id: m.provider_id || m.id,
+        threadId: m.thread_id,
+        subject: m.subject,
+        fromEmail: (fromUnipileParty(m.from_attendee) || {}).email || null,
+        toEmails: (m.to_attendees || []).map(fromUnipileParty).filter(Boolean).map((p) => p.email.toLowerCase()),
+        date: m.date || null,
+        snippet: String(m.body_plain || '').slice(0, 200),
+      });
+    }
+    cursor = json.cursor || json.next_cursor || null;
+    if (out.length >= max) { truncated = !!cursor; break; }
+    if (!cursor || !items.length) break;
+  }
+  return { ok: true, messages: out.slice(0, max), truncated, partialError };
+}
+
+// Unipile has no get-draft endpoint — a draft is a message in Drafts, so read it back via the email
+// endpoint (best-effort; VERIFY-LIVE that the draft_id resolves as an email id).
+async function getDraftViaUnipile(coach, draftId) {
+  if (!draftId) return { ok: false, error: 'draftId required' };
+  const r = await getMessageViaUnipile(coach, draftId);
+  if (!r.ok) return { ok: false, error: `unipile has no get-draft endpoint; email-read fallback failed: ${r.error}` };
+  return { ok: true, draft: r.message };
+}
+
+module.exports = { createDraft, getDraft, findMessages, listRecent, getMessage, toParticipants, activeMailProvider };
