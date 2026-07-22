@@ -127,7 +127,10 @@ const BODY_CAP = 6000; // chars of rendered text per message read — keeps chat
 // CADENCE only — a reply or a due deferral always surfaces), and ranks by closeness-to-broken-
 // promise. See docs/PREP-ME-FOR-TODAY-FEATURE.md §13.
 
-const SWEEP_WINDOW_DAYS = 90;    // how far back the mail + LinkedIn window reaches (settled: 90)
+const SWEEP_WINDOW_DAYS = 90;    // the FEATURE window — how far back a follow-up can surface (settled: 90)
+const EMAIL_READ_DAYS = 45;      // how far back we READ email live — shorter than the window because the
+                                 // deep history comes from LinkedIn (free, already in Notes); deep-reading
+                                 // months of mail is slow and 504s. The overnight pre-read can go full-depth.
 const CADENCE_OVERDUE_DAYS = 14; // "you spoke last and went silent this long" = a cadence nudge
 // "Ball's in your court" only counts as LIVE if the reply is recent — a reply you haven't answered
 // in a couple of days is the one to jump on; past this it's gone cold or been handled elsewhere, so
@@ -199,8 +202,13 @@ function classifyLead(lead, { lastInboundMs, lastOutboundMs, nowMs, todayMidMs }
   // so the whole list sorts uniformly descending by sortKey). A stale reply falls through and drops.
   if (replyWaiting && inboundDays <= REPLY_LIVE_DAYS) return { tier: 'reply', why: `they replied ${inboundDays}d ago — ball's in your court`, sortKey: -inboundDays, gated };
   if (deferralLive) return { tier: 'deferral', why: `reconnect date reached (${deferDays === 0 ? 'today' : deferDays + 'd ago'})`, sortKey: deferDays, gated };
-  if (cadenceOverdue && !gated) return { tier: 'cadence', why: `you messaged last, ${outboundDays}d silent`, sortKey: outboundDays, gated };
-  if (cadenceOverdue && gated) return { tier: null, gatedCadence: true };
+  if (cadenceOverdue) {
+    if (gated) return { tier: null, gatedCadence: true };                              // Cease/Series → cadence off
+    // Decision B: only chase "went quiet" for a REAL relationship (connected, or they've replied at least
+    // once). Pure cold outreach that was simply ignored is not an owed follow-up — drop it.
+    if (!(lead.connected || !!lastInboundMs)) return { tier: null, coldCadence: true };
+    return { tier: 'cadence', why: `you messaged last, ${outboundDays}d silent`, sortKey: outboundDays, gated: false };
+  }
   return null;
 }
 
@@ -497,8 +505,9 @@ async function runFollowupSweep({ window_days, limit } = {}, tenant = TENANT) {
   const nowMs = Date.now();
   const td = new Date(nowMs);
   const todayMidMs = Date.UTC(td.getUTCFullYear(), td.getUTCMonth(), td.getUTCDate());
-  const afterMs = nowMs - windowDays * MS_DAY;
-  const afterSec = Math.floor(afterMs / 1000);
+  const afterMs = nowMs - windowDays * MS_DAY;                     // LinkedIn / feature window (full depth)
+  const emailDays = Math.min(windowDays, EMAIL_READ_DAYS);         // email read is shallower (deep history = LinkedIn)
+  const emailAfterSec = Math.floor((nowMs - emailDays * MS_DAY) / 1000);
 
   // --- 1. Leads from the tenant's own base ---
   // NB: `Reconnect On` is NOT read yet — the field doesn't exist on the bases (adding it is a TODO)
@@ -507,7 +516,7 @@ async function runFollowupSweep({ window_days, limit } = {}, tenant = TENANT) {
   try {
     const base = clientService.getClientBase(coach.airtableBaseId);
     records = await base('Leads').select({
-      fields: ['First Name', 'Last Name', 'Email', 'Cease FUP', 'Notes', 'Series Sent Count', 'Series Unsubscribed'],
+      fields: ['First Name', 'Last Name', 'Email', 'Cease FUP', 'Notes', 'Series Sent Count', 'Series Unsubscribed', 'Date Connected'],
     }).all();
   } catch (e) {
     return { text: `Lead read failed: ${e.message}`, isError: true };
@@ -525,6 +534,7 @@ async function runFollowupSweep({ window_days, limit } = {}, tenant = TENANT) {
       reconnectOn: null, // TODO: f['Reconnect On'] once that field exists on every base (content-read populates it)
       cease: selectName(f['Cease FUP']) === 'Yes',
       onSeries: Number(f['Series Sent Count'] || 0) > 0 && f['Series Unsubscribed'] !== true,
+      connected: !!f['Date Connected'], // real-relationship signal for the cadence gate (Decision B)
       notes: f['Notes'] || '',
       lastInboundMs: null,
       lastOutboundMs: null,
@@ -534,7 +544,7 @@ async function runFollowupSweep({ window_days, limit } = {}, tenant = TENANT) {
   }
 
   // --- 2. Mail window: ONE paginated read, not one call per lead ---
-  const mail = await mailProvider.listRecent(coach, { after: afterSec, max: 3000 });
+  const mail = await mailProvider.listRecent(coach, { after: emailAfterSec, max: 3000 });
   if (!mail.ok) return { text: `Mailbox window read failed: ${mail.error}`, isError: true };
   for (const m of mail.messages) {
     if (!m.date) continue;
@@ -551,6 +561,7 @@ async function runFollowupSweep({ window_days, limit } = {}, tenant = TENANT) {
   // --- 3. Merge LinkedIn history, classify, rank ---
   const surfaced = [];
   let gatedCadence = 0;
+  let coldCadence = 0;
   for (const lead of leads) {
     let lastInboundMs = lead.lastInboundMs;
     let lastOutboundMs = lead.lastOutboundMs;
@@ -562,12 +573,13 @@ async function runFollowupSweep({ window_days, limit } = {}, tenant = TENANT) {
     const c = classifyLead(lead, { lastInboundMs: lastInboundMs || null, lastOutboundMs: lastOutboundMs || null, nowMs, todayMidMs });
     if (!c) continue;
     if (c.gatedCadence) { gatedCadence++; continue; }
+    if (c.coldCadence) { coldCadence++; continue; }
     surfaced.push({ lead, ...c });
   }
   surfaced.sort((a, b) => (TIER_ORDER[a.tier] - TIER_ORDER[b.tier]) || (b.sortKey - a.sortKey));
 
   if (!surfaced.length) {
-    return { text: `No follow-ups surfaced from the last ${windowDays} days. (${leads.length} leads scanned; ${gatedCadence} cadence nudge(s) suppressed by Cease FUP / On-Series.)` };
+    return { text: `No follow-ups surfaced from the last ${windowDays} days. (${leads.length} leads scanned; suppressed ${gatedCadence} Cease/Series + ${coldCadence} cold-outreach cadence.)` };
   }
   const shown = surfaced.slice(0, cap);
   const lines = shown.map((s, i) => {
@@ -579,8 +591,9 @@ async function runFollowupSweep({ window_days, limit } = {}, tenant = TENANT) {
     text:
       `Follow-ups from the last ${windowDays} days — rebuilt live, nothing stored. ` +
       `${surfaced.length} surfaced${surfaced.length > cap ? `, showing top ${cap}` : ''}; ` +
-      `${leads.length} leads scanned; ${mail.messages.length} emails read${mail.partialError ? ' ⚠PARTIAL (mail read cut short by a Nylas hiccup — window incomplete)' : (mail.truncated ? ' ⚠capped' : ' (full window)')}; ${gatedCadence} cadence nudge(s) suppressed (Cease FUP / On-Series).\n` +
-      `NOTE (v1): REPLY OWED = replied within ${REPLY_LIVE_DAYS}d, most-recent first (older replies drop as cold). DEFERRAL tier is dormant until the Reconnect On field + content-read land. Calendar cross-check not yet wired — an already-booked lead can still show as "went quiet". Verify before nudging.\n\n` +
+      `${leads.length} leads scanned; ${mail.messages.length} emails read (last ${emailDays}d${mail.partialError ? ', ⚠PARTIAL' : (mail.truncated ? ', ⚠capped' : '')}), LinkedIn to ${windowDays}d; ` +
+      `suppressed ${gatedCadence} Cease/Series + ${coldCadence} cold-outreach.\n` +
+      `NOTE (v1): REPLY OWED = replied within ${REPLY_LIVE_DAYS}d, most-recent first. WENT QUIET = you spoke last past ${CADENCE_OVERDUE_DAYS}d, ONLY for real relationships (connected / they've replied). DEFERRAL tier dormant until Reconnect On + content-read land. Calendar cross-check not wired — verify an "already booked?" before nudging.\n\n` +
       lines.join('\n'),
   };
 }
