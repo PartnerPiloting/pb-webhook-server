@@ -275,6 +275,60 @@ async function runEditReview({ action = 'list', ids, resolution = 'reviewed', no
 }
 
 // ---------------------------------------------------------------------------
+// Coach directory — look up one of the caller's OWN coached clients' setup
+// details (portal token / URL, login email, leads base id). Coach-gated: the
+// caller only ever sees clients whose `Coach` field equals the caller's tenant,
+// so a plain client's connector can never read another client's record. The
+// portal token is a portal access key — hence coach-only.
+// ---------------------------------------------------------------------------
+async function runGetClient({ client } = {}, tenant = TENANT) {
+  const clientService = require('./clientService');
+  const query = String(client || '').trim();
+  if (!query) return { text: 'Which client? Pass a name or client id (e.g. "McPhee" or "Guy-McPhee").', isError: true };
+
+  let all;
+  try {
+    all = await clientService.getAllClients();
+  } catch (e) {
+    return { text: `Couldn't read the client directory: ${e.message}`, isError: true };
+  }
+
+  // Coach gate: only the clients this caller coaches are ever visible.
+  const mine = (all || []).filter((c) => c.coach && c.coach === tenant);
+  if (!mine.length) {
+    return { text: `No coached clients are visible to "${tenant}". This lookup is coach-only.`, isError: true };
+  }
+
+  const q = query.toLowerCase();
+  const exact = mine.filter((c) =>
+    (c.clientId && c.clientId.toLowerCase() === q) || (c.clientName && c.clientName.toLowerCase() === q));
+  const matches = exact.length ? exact : mine.filter((c) =>
+    (c.clientId && c.clientId.toLowerCase().includes(q)) || (c.clientName && c.clientName.toLowerCase().includes(q)));
+
+  if (!matches.length) {
+    const names = mine.map((c) => `${c.clientName} (${c.clientId})`).join(', ');
+    return { text: `No coached client matched "${query}". Your clients: ${names}.`, isError: true };
+  }
+  if (matches.length > 1) {
+    const names = matches.map((c) => `${c.clientName} (${c.clientId})`).join(', ');
+    return { text: `"${query}" matched several: ${names}. Re-run with the exact client id.`, isError: true };
+  }
+
+  const c = matches[0];
+  const portalUrl = c.portalToken ? `https://pb-webhook-server.vercel.app/?token=${c.portalToken}` : '(no token set)';
+  const lines = [
+    `Client: ${c.clientName} (${c.clientId})`,
+    `Status: ${c.status || 'unknown'}${c.serviceLevel ? ` · ${c.serviceLevel}` : ''}`,
+    `Login email: ${c.clientEmailAddress || '(none on record)'}`,
+    `Leads base id: ${c.airtableBaseId || '(none)'}`,
+    c.timezone ? `Timezone: ${c.timezone}` : null,
+    `Portal token: ${c.portalToken || '(none set)'}`,
+    `Portal URL: ${portalUrl}`,
+  ].filter(Boolean);
+  return { text: lines.join('\n') };
+}
+
+// ---------------------------------------------------------------------------
 // Definitions — one source of truth for names/descriptions/schemas
 // ---------------------------------------------------------------------------
 
@@ -433,6 +487,21 @@ const TOOL_DEFS = [
       },
     },
     run: runAssets,
+  },
+  {
+    name: 'wingguy_get_client',
+    description: 'Coach-only directory lookup: fetch one of YOUR coached clients\' setup details — portal token + ready-to-paste portal URL, login email, and leads base id — by name or client id. Use when you need a client\'s portal link (e.g. for a welcome email), their login email, or their Airtable base id. Scoped to the calling coach: it only ever returns clients whose Coach is you, so it cannot read another coach\'s or an unrelated client\'s record. Returns the portal TOKEN, which is a portal access key — treat it as sensitive.',
+    zodSchema: {
+      client: z.string().describe('Client name or client id to look up (e.g. "McPhee" or "Guy-McPhee"). Matched within your coached clients only.'),
+    },
+    jsonSchema: {
+      type: 'object',
+      properties: {
+        client: { type: 'string', description: 'Client name or client id to look up (e.g. "McPhee" or "Guy-McPhee"). Matched within your coached clients only.' },
+      },
+      required: ['client'],
+    },
+    run: runGetClient,
   },
   {
     name: 'wingguy_edit_review',
