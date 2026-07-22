@@ -132,6 +132,8 @@ const EMAIL_READ_DAYS = 45;      // how far back we READ email live — shorter 
                                  // deep history comes from LinkedIn (free, already in Notes); deep-reading
                                  // months of mail is slow and 504s. The overnight pre-read can go full-depth.
 const CADENCE_OVERDUE_DAYS = 14; // "you spoke last and went silent this long" = a cadence nudge
+const CADENCE_MAX_DAYS = 45;     // beyond this a silence is too cold for a "just following up" nudge — it
+                                 // needs a proper re-engagement, so it drops off (a later re-engage tier can own it)
 // "Ball's in your court" only counts as LIVE if the reply is recent — a reply you haven't answered
 // in a couple of days is the one to jump on; past this it's gone cold or been handled elsewhere, so
 // it drops off rather than nagging (Guy's call 2026-07-22, after a real-data test surfaced 6-month-
@@ -203,11 +205,13 @@ function classifyLead(lead, { lastInboundMs, lastOutboundMs, nowMs, todayMidMs }
   if (replyWaiting && inboundDays <= REPLY_LIVE_DAYS) return { tier: 'reply', why: `they replied ${inboundDays}d ago — ball's in your court`, sortKey: -inboundDays, gated };
   if (deferralLive) return { tier: 'deferral', why: `reconnect date reached (${deferDays === 0 ? 'today' : deferDays + 'd ago'})`, sortKey: deferDays, gated };
   if (cadenceOverdue) {
+    if (outboundDays > CADENCE_MAX_DAYS) return null;                                   // too cold — needs re-engagement, drop
     if (gated) return { tier: null, gatedCadence: true };                              // Cease/Series → cadence off
     // Decision B: only chase "went quiet" for a REAL relationship (connected, or they've replied at least
     // once). Pure cold outreach that was simply ignored is not an owed follow-up — drop it.
     if (!(lead.connected || !!lastInboundMs)) return { tier: null, coldCadence: true };
-    return { tier: 'cadence', why: `you messaged last, ${outboundDays}d silent`, sortKey: outboundDays, gated: false };
+    // Recent-first, like reply-owed: a fresh silence is the most naturally nudgeable (sortKey = -days).
+    return { tier: 'cadence', why: `you messaged last, ${outboundDays}d silent`, sortKey: -outboundDays, gated: false };
   }
   return null;
 }
@@ -593,7 +597,7 @@ async function runFollowupSweep({ window_days, limit } = {}, tenant = TENANT) {
       `${surfaced.length} surfaced${surfaced.length > cap ? `, showing top ${cap}` : ''}; ` +
       `${leads.length} leads scanned; ${mail.messages.length} emails read (last ${emailDays}d${mail.partialError ? ', ⚠PARTIAL' : (mail.truncated ? ', ⚠capped' : '')}), LinkedIn to ${windowDays}d; ` +
       `suppressed ${gatedCadence} Cease/Series + ${coldCadence} cold-outreach.\n` +
-      `NOTE (v1): REPLY OWED = replied within ${REPLY_LIVE_DAYS}d, most-recent first. WENT QUIET = you spoke last past ${CADENCE_OVERDUE_DAYS}d, ONLY for real relationships (connected / they've replied). DEFERRAL tier dormant until Reconnect On + content-read land. Calendar cross-check not wired — verify an "already booked?" before nudging.\n\n` +
+      `NOTE (v1): REPLY OWED = replied within ${REPLY_LIVE_DAYS}d, most-recent first. WENT QUIET = you spoke last ${CADENCE_OVERDUE_DAYS}-${CADENCE_MAX_DAYS}d ago, most-recent first, ONLY for real relationships (connected / they've replied); older = too cold, drops. DEFERRAL tier dormant until Reconnect On + content-read land. Calendar cross-check not wired — verify an "already booked?" before nudging.\n\n` +
       lines.join('\n'),
   };
 }
