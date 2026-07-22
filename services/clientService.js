@@ -146,6 +146,13 @@ async function getAllClients() {
                 // reads coach.nylasGrantId first, then env). calendarProvider blank => code default 'google'.
                 const nylasGrantId = record.get('Nylas Grant ID') || null;
                 const calendarProvider = record.get('Calendar Provider') || null;
+                // Unipile (the Nylas replacement): ONE account_id covers a tenant's calendar AND
+                // email. `Email Provider` selects the mail backend independently of the calendar
+                // (blank => nylas, for backward-compat while mailProvider is Nylas-only). The
+                // calendarProvider.js seam reads unipileAccountId for the 'unipile' branch. Added
+                // 2026-07-22 for the Nylas->Unipile migration.
+                const unipileAccountId = record.get('Unipile Account ID') || null;
+                const emailProvider = record.get('Email Provider') || null;
                 // Generic direct-provider calendar credentials (e.g. Zoho), populated only when the
                 // calendar is on a provider Nylas can't serve; blank for Nylas/Google clients. The
                 // calendarProvider.js seam reads these for the 'zoho' (and future direct) branches.
@@ -244,6 +251,10 @@ async function getAllClients() {
                     // Nylas multi-tenant calendar (per-client grant + backend choice)
                     nylasGrantId: nylasGrantId,
                     calendarProvider: calendarProvider,
+                    // Unipile (Nylas replacement): account id (covers calendar + email) + the
+                    // per-tenant email backend selector
+                    unipileAccountId: unipileAccountId,
+                    emailProvider: emailProvider,
                     calendarProviderToken: calendarProviderToken,
                     calendarProviderDomain: calendarProviderDomain,
                     // Multi-calendar read scope + nominated write target. The write id feeds BOTH
