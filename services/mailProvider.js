@@ -190,10 +190,10 @@ async function getMessage(coach, messageId) {
  * tell inbound (a lead is the sender) from outbound (a lead is among the recipients) WITHOUT needing
  * the coach's own address.
  * @param {object} coach client record (needs nylasGrantId)
- * @param {object} opts  { after: epoch SECONDS, max: hard cap on messages (default 800), pageSize }
+ * @param {object} opts  { after: epoch SECONDS, max: hard cap on messages (default 5000), pageSize }
  * @returns {Promise<{ok:boolean, messages?:Array, truncated?:boolean, error?:string}>}
  */
-async function listRecent(coach, { after, max = 800, pageSize = 50 } = {}) {
+async function listRecent(coach, { after, max = 5000, pageSize = 50 } = {}) {
   const { apiKey, grantId, apiUri } = nylasConfig(coach);
   if (!apiKey || !grantId) return { ok: false, error: 'NYLAS_API_KEY / grant not configured for this coach' };
 
