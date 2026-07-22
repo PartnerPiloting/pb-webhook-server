@@ -534,7 +534,7 @@ async function runFollowupSweep({ window_days, limit } = {}, tenant = TENANT) {
   }
 
   // --- 2. Mail window: ONE paginated read, not one call per lead ---
-  const mail = await mailProvider.listRecent(coach, { after: afterSec, max: 800 });
+  const mail = await mailProvider.listRecent(coach, { after: afterSec, max: 5000 });
   if (!mail.ok) return { text: `Mailbox window read failed: ${mail.error}`, isError: true };
   for (const m of mail.messages) {
     if (!m.date) continue;
@@ -579,7 +579,7 @@ async function runFollowupSweep({ window_days, limit } = {}, tenant = TENANT) {
     text:
       `Follow-ups from the last ${windowDays} days — rebuilt live, nothing stored. ` +
       `${surfaced.length} surfaced${surfaced.length > cap ? `, showing top ${cap}` : ''}; ` +
-      `${leads.length} leads scanned; ${gatedCadence} cadence nudge(s) suppressed (Cease FUP / On-Series).\n` +
+      `${leads.length} leads scanned; ${mail.messages.length} emails read${mail.truncated ? ' ⚠TRUNCATED (raise cap)' : ' (full window)'}; ${gatedCadence} cadence nudge(s) suppressed (Cease FUP / On-Series).\n` +
       `NOTE (v1): REPLY OWED = replied within ${REPLY_LIVE_DAYS}d, most-recent first (older replies drop as cold). DEFERRAL tier is dormant until the Reconnect On field + content-read land. Calendar cross-check not yet wired — an already-booked lead can still show as "went quiet". Verify before nudging.\n\n` +
       lines.join('\n'),
   };
