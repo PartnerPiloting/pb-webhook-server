@@ -412,11 +412,12 @@ async function deleteCalendarEvent(coach, eventId) {
  *   - create REQUIRES >=1 attendee; `notify` DEFAULTS FALSE (must set true or invites silently
  *     don't send); the event's description field is `body`, not `description`.
  *   - date_time is wall-clock + IANA `time_zone` (14:00 + Australia/Brisbane stored as +10:00).
- * VERIFY-LIVE (built off one smoke test — confirm on a wider run before trusting): the event-list
- * TIME-RANGE query params (guessed `after`/`before` ISO below — the smoke test listed unbounded)
- * and cursor field name; all-day end-date exclusivity; the response_status vocabulary; the
- * create-response event-id path. Dormant until a tenant has calendarProvider='unipile', so it
- * ships safely alongside Nylas. */
+ * Event-list filtering CONFIRMED live 2026-07-22: params are `start`/`end` (RFC3339, NO ms — a
+ * ".000Z" or epoch is silently ignored and you get UNFILTERED results) + `expand_recurring=true`
+ * (else a recurring series returns its original master date, useless as a busy block) + `limit` +
+ * `cursor`/`next_cursor`. STILL VERIFY-LIVE: all-day end-date exclusivity; the response_status
+ * vocabulary; the create-response event-id path. Dormant until a tenant has calendarProvider=
+ * 'unipile', so it ships safely alongside Nylas. */
 
 function unipileEnv(coach) {
   const dsn = String(process.env.UNIPILE_DSN || '').replace(/^https?:\/\//, '').replace(/\/$/, '');
@@ -436,6 +437,12 @@ function unipileHeaders(apiKey) {
 // the events path (unencoded "@" returned HTTP 500 in the smoke test).
 function unipileEventsPath(base, calendarId) {
   return `${base}/calendars/${encodeURIComponent(calendarId)}/events`;
+}
+
+// Unipile's start/end filters want RFC3339 WITHOUT milliseconds ("2026-07-22T00:00:00Z"). Date's
+// toISOString() emits ".000Z", which the API SILENTLY IGNORES (returns unfiltered) — as does epoch.
+function rfc3339(t) {
+  return new Date(t).toISOString().replace(/\.\d{3}Z$/, 'Z');
 }
 
 /** All calendars on the Unipile account. Throws on failure. */
@@ -544,21 +551,23 @@ async function getViaUnipile(coach, timeMin, timeMax) {
     const tz = coach.timezone || null;
     const events = [];
     for (const calendarId of calendarIds) {
-      // VERIFY-LIVE: the smoke test listed events UNBOUNDED; `after`/`before` (ISO) + `cursor` are a
-      // best guess for time-filtered pagination — confirm the real param names and swap if wrong.
+      // Params CONFIRMED live 2026-07-22: start/end (RFC3339 no-ms) + expand_recurring (else a
+      // recurring series returns its ORIGINAL master date, useless as a busy block) + limit + cursor.
       let cursor = null;
       for (let page = 0; page < 10; page++) {
         const u = new URL(unipileEventsPath(base, calendarId));
         u.searchParams.set('account_id', accountId);
-        u.searchParams.set('after', new Date(timeMin).toISOString());
-        u.searchParams.set('before', new Date(timeMax).toISOString());
+        u.searchParams.set('start', rfc3339(timeMin));
+        u.searchParams.set('end', rfc3339(timeMax));
+        u.searchParams.set('expand_recurring', 'true');
+        u.searchParams.set('limit', '300');
         if (cursor) u.searchParams.set('cursor', cursor);
         const res = await fetch(u.toString(), { headers: unipileHeaders(apiKey) });
         if (!res.ok) return { events: [], error: `unipile HTTP ${res.status} (calendar ${calendarId}): ${(await res.text().catch(() => '')).slice(0, 200)}`, provider: 'unipile' };
         const json = await res.json();
         const list = json.data || json.items || [];
         for (const ev of list) { const m = mapUnipileEvent(ev, selfEmail, tz); if (m) events.push({ ...m, calendarId }); }
-        cursor = json.cursor || null;
+        cursor = json.next_cursor || json.cursor || null;
         if (!cursor) break;
       }
     }
