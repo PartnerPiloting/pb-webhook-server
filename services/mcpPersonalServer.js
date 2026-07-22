@@ -137,19 +137,31 @@ function mountMcpOAuthForChatGPT(app, log = console) {
     code_challenge_methods_supported: ['S256', 'plain']
   });
 
-  app.get('/.well-known/oauth-authorization-server', (_req, res) => {
-    res.setHeader('Cache-Control', 'public, max-age=300');
-    res.json(oauthMetadata());
-  });
-
-  // Some connectors look for OpenID discovery instead of RFC 8414 only.
-  app.get('/.well-known/openid-configuration', (_req, res) => {
-    res.setHeader('Cache-Control', 'public, max-age=300');
-    res.json({
-      ...oauthMetadata(),
-      scopes_supported: ['openid']
+  // These two discovery docs live at the DOMAIN ROOT and announce "this whole domain uses OAuth".
+  // Claude's custom-connector flow (changed ~2026-07-22) now probes them before connecting ANY
+  // connector on this host, and mis-routes the TOKEN-based Wingguy connector (/mcp2) through OAuth →
+  // "Automatic client registration isn't supported". Gated OFF by default so Wingguy connects cleanly.
+  // The ChatGPT/Penguy OAuth token+authorize endpoints below stay live (they're path-scoped to
+  // /mcp-personal and don't affect Wingguy). To bring Penguy's OAuth discovery back for ChatGPT, set
+  // MCP_PERSONAL_OAUTH_DISCOVERY=1 — but first make discovery RESOURCE-SCOPED (per-endpoint
+  // WWW-Authenticate / .well-known/oauth-protected-resource) so it no longer bleeds onto Wingguy.
+  if (String(process.env.MCP_PERSONAL_OAUTH_DISCOVERY || '').trim() === '1') {
+    app.get('/.well-known/oauth-authorization-server', (_req, res) => {
+      res.setHeader('Cache-Control', 'public, max-age=300');
+      res.json(oauthMetadata());
     });
-  });
+
+    // Some connectors look for OpenID discovery instead of RFC 8414 only.
+    app.get('/.well-known/openid-configuration', (_req, res) => {
+      res.setHeader('Cache-Control', 'public, max-age=300');
+      res.json({
+        ...oauthMetadata(),
+        scopes_supported: ['openid']
+      });
+    });
+  } else if (log && typeof log.info === 'function') {
+    log.info('[mcpPersonalServer] root OAuth discovery docs OFF (MCP_PERSONAL_OAUTH_DISCOVERY!=1) so the token-based Wingguy connector is not mis-routed to OAuth. Penguy/ChatGPT OAuth discovery is dormant until re-enabled + made resource-scoped.');
+  }
 
   // ChatGPT opens this URL in a popup; we auto-approve and redirect back with a code.
   // Real auth happens at token exchange time (client_secret must match PB_WEBHOOK_SECRET).
