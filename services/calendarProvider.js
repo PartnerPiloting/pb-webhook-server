@@ -90,6 +90,7 @@ async function getMeetingsInWindow(coach, timeMin, timeMax, opts = {}) {
   const provider = activeProvider(coach);
   let r;
   if (provider === 'nylas') r = await getViaNylas(coach, timeMin, timeMax);
+  else if (provider === 'unipile') r = await getViaUnipile(coach, timeMin, timeMax);
   else if (provider === 'zoho') r = await getViaZoho(coach, timeMin, timeMax);
   else r = await getViaGoogle(coach, timeMin, timeMax);
   if (!opts.includeAllDay && Array.isArray(r.events)) {
@@ -110,6 +111,10 @@ async function listCalendars(coach) {
     if (provider === 'nylas') {
       const cals = await listNylasCalendars(coach);
       return { calendars: cals.map((c) => ({ id: c.id, name: c.name || '', isDefault: !!c.is_primary, readOnly: !!c.read_only })), error: null, provider };
+    }
+    if (provider === 'unipile') {
+      const cals = await listUnipileCalendars(coach);
+      return { calendars: cals.map((c) => ({ id: c.id, name: c.name || '', isDefault: !!c.is_primary, readOnly: !!c.is_read_only })), error: null, provider };
     }
     if (provider === 'zoho') {
       const accessToken = await getZohoAccessToken(coach);
@@ -310,6 +315,7 @@ function mapNylasStatus(s) {
 async function createCalendarEvent(coach, details) {
   const provider = activeProvider(coach);
   if (provider === 'nylas') return createViaNylas(coach, details);
+  if (provider === 'unipile') return createViaUnipile(coach, details);
   if (provider === 'zoho') return createViaZoho(coach, details);
   // The Google service account is READ-ONLY (calendar.readonly) — no write path there by design.
   return { ok: false, error: `create-event not supported on provider '${provider}' (Google service account is read-only — use Nylas or Zoho)`, provider };
@@ -366,8 +372,9 @@ async function createViaNylas(coach, details) {
 async function deleteCalendarEvent(coach, eventId) {
   const provider = activeProvider(coach);
   if (provider === 'zoho') return deleteViaZoho(coach, eventId);
+  if (provider === 'unipile') return deleteViaUnipile(coach, eventId);
   if (provider !== 'nylas') {
-    return { ok: false, error: `delete-event not supported on provider '${provider}' (use Nylas or Zoho)`, provider };
+    return { ok: false, error: `delete-event not supported on provider '${provider}' (use Nylas, Unipile or Zoho)`, provider };
   }
   const apiKey = process.env.NYLAS_API_KEY;
   const grantId = (coach && coach.nylasGrantId) || process.env.NYLAS_GRANT_ID;
@@ -390,6 +397,246 @@ async function deleteCalendarEvent(coach, eventId) {
     return { ok: false, error: `nylas HTTP ${res.status}: ${body.slice(0, 200)}`, provider: 'nylas' };
   }
   return { ok: true, provider: 'nylas' };
+}
+
+/* ---- Unipile (per-tenant account; the Nylas REPLACEMENT — validated live 2026-07-22) ------------
+ * Why: Nylas' shared pre-verified Google app (CASA-skip) is enterprise-only; Unipile gives it on
+ * standard plans, so tenants connect Google/Outlook (and Zoho/IMAP for mail) through Unipile's
+ * audit-cleared doorway. ONE Unipile `account_id` covers BOTH calendar and email for a tenant
+ * (stored per-client as coach.unipileAccountId). Platform creds in env: UNIPILE_API_KEY +
+ * UNIPILE_DSN (the app's DSN host:port, e.g. "api21.unipile.com:15118").
+ * REST base: https://<DSN>/api/v1 ; auth header "X-API-KEY: <key>".
+ * PROVEN LIVE 2026-07-22 on Guy's Google account: list calendars, list/read events, create event
+ * with an external attendee (invite DELIVERED), delete — all pass. Baked-in gotchas:
+ *   - URL-ENCODE the calendar_id (an "@" in a Google primary id 500s the events path otherwise).
+ *   - create REQUIRES >=1 attendee; `notify` DEFAULTS FALSE (must set true or invites silently
+ *     don't send); the event's description field is `body`, not `description`.
+ *   - date_time is wall-clock + IANA `time_zone` (14:00 + Australia/Brisbane stored as +10:00).
+ * VERIFY-LIVE (built off one smoke test — confirm on a wider run before trusting): the event-list
+ * TIME-RANGE query params (guessed `after`/`before` ISO below — the smoke test listed unbounded)
+ * and cursor field name; all-day end-date exclusivity; the response_status vocabulary; the
+ * create-response event-id path. Dormant until a tenant has calendarProvider='unipile', so it
+ * ships safely alongside Nylas. */
+
+function unipileEnv(coach) {
+  const dsn = String(process.env.UNIPILE_DSN || '').replace(/^https?:\/\//, '').replace(/\/$/, '');
+  return {
+    apiKey: process.env.UNIPILE_API_KEY,
+    base: dsn ? `https://${dsn}/api/v1` : '',
+    accountId: (coach && coach.unipileAccountId) || process.env.UNIPILE_ACCOUNT_ID,
+    writeCalendarId: (coach && coach.calendarWriteId) || process.env.UNIPILE_CALENDAR_ID || '',
+  };
+}
+
+function unipileHeaders(apiKey) {
+  return { 'X-API-KEY': apiKey, Accept: 'application/json' };
+}
+
+// Unipile calendar ids are often email addresses (a Google primary) — encode so an "@" can't break
+// the events path (unencoded "@" returned HTTP 500 in the smoke test).
+function unipileEventsPath(base, calendarId) {
+  return `${base}/calendars/${encodeURIComponent(calendarId)}/events`;
+}
+
+/** All calendars on the Unipile account. Throws on failure. */
+async function listUnipileCalendars(coach) {
+  const { apiKey, base, accountId } = unipileEnv(coach);
+  if (!apiKey || !base || !accountId) throw new Error('UNIPILE_API_KEY / UNIPILE_DSN / account not configured');
+  const u = new URL(`${base}/calendars`);
+  u.searchParams.set('account_id', accountId);
+  const res = await fetch(u.toString(), { headers: unipileHeaders(apiKey) });
+  if (!res.ok) throw new Error(`unipile calendars HTTP ${res.status}: ${(await res.text().catch(() => '')).slice(0, 200)}`);
+  const json = await res.json();
+  return json.data || json.items || []; // [{ id, name, is_primary, is_read_only, ... }]
+}
+
+// The calendar Unipile writes to (and the default read scope): the nominated write id, else the
+// account's primary, else the account id (a Google primary calendar id == the account email).
+async function unipileWriteCalendarId(coach) {
+  const { writeCalendarId, accountId } = unipileEnv(coach);
+  if (writeCalendarId) return writeCalendarId;
+  try {
+    const cals = await listUnipileCalendars(coach);
+    const primary = cals.find((c) => c.is_primary) || cals[0];
+    if (primary && primary.id) return primary.id;
+  } catch (_) { /* fall through to account id */ }
+  return accountId;
+}
+
+function mapUnipileStatus(s) {
+  const v = String(s || '').toLowerCase();
+  if (v === 'yes' || v === 'accepted') return 'accepted';
+  if (v === 'no' || v === 'declined') return 'declined';
+  if (v === 'maybe' || v === 'tentative') return 'tentative';
+  return 'needsAction'; // 'noreply' / unknown
+}
+
+/** Map one Unipile CalendarEvent into the Google-shaped event the filters expect. */
+function mapUnipileEvent(ev, selfEmail, tz) {
+  if (!ev) return null;
+  const st = ev.start || {};
+  const en = ev.end || {};
+  let start; let end; let allDay = false;
+  if (st.date_time) {
+    // date_time carries an offset (e.g. "2026-07-24T14:00:00+10:00") — Date() parses it correctly.
+    start = new Date(st.date_time).toISOString();
+    end = new Date(en.date_time || st.date_time).toISOString();
+  } else if (st.date) {
+    // All-day: { date: "YYYY-MM-DD" }. VERIFY-LIVE: end.date assumed EXCLUSIVE (Google passthrough).
+    const span = allDaySpan(String(st.date), en.date ? String(en.date) : null, tz);
+    if (!span) return null;
+    allDay = true; start = span.start; end = span.end;
+  } else {
+    return null; // no usable time shape
+  }
+
+  const orgEmail = String((ev.organizer && ev.organizer.email) || '').toLowerCase();
+  const raw = Array.isArray(ev.attendees) ? ev.attendees : [];
+  const attendees = raw.map((a) => {
+    const email = String(a.email || '').toLowerCase();
+    return {
+      email: a.email || '',
+      displayName: a.display_name || '',
+      self: !!selfEmail && email === selfEmail,
+      organizer: !!a.is_organizer || (!!orgEmail && email === orgEmail),
+      responseStatus: mapUnipileStatus(a.response_status),
+    };
+  });
+  // Coach is usually the organizer and often absent from attendees — synthesise a 'self' row so
+  // isCoachAttending() recognises the coach is in the meeting (parity with mapNylasEvent/mapZohoEvent).
+  if (selfEmail && !attendees.some((a) => a.self)) {
+    attendees.push({ email: selfEmail, displayName: '', self: true, organizer: orgEmail === selfEmail, responseStatus: 'accepted' });
+  }
+
+  const confUrl = (ev.conference && ev.conference.url) || '';
+  return {
+    id: ev.id || null,
+    summary: ev.title || '(No title)',
+    start,
+    end,
+    ...(allDay ? { allDay: true } : {}),
+    location: confUrl || ev.location || '',
+    description: ev.body || '',
+    htmlLink: confUrl || '',
+    conferenceData: confUrl ? { entryPoints: [{ entryPointType: 'video', uri: confUrl }] } : null,
+    attendees,
+  };
+}
+
+async function getViaUnipile(coach, timeMin, timeMax) {
+  const { apiKey, base, accountId } = unipileEnv(coach);
+  if (!apiKey || !base || !accountId) return { events: [], error: 'UNIPILE_API_KEY / UNIPILE_DSN / account not configured', provider: 'unipile' };
+  try {
+    // Read scope: default = the one write calendar (today's behaviour); 'all' = every calendar on the
+    // account except read-only subscribed feeds (FYI noise); explicit ids = those.
+    const readIds = parseReadIds(coach);
+    let calendarIds;
+    if (readIds === 'all') {
+      calendarIds = (await listUnipileCalendars(coach)).filter((c) => !c.is_read_only).map((c) => c.id);
+      if (!calendarIds.length) calendarIds = [await unipileWriteCalendarId(coach)];
+    } else if (Array.isArray(readIds)) {
+      calendarIds = readIds;
+    } else {
+      calendarIds = [await unipileWriteCalendarId(coach)];
+    }
+
+    const selfEmail = String(coach.googleCalendarEmail || coach.calendarEmail || '').toLowerCase();
+    const tz = coach.timezone || null;
+    const events = [];
+    for (const calendarId of calendarIds) {
+      // VERIFY-LIVE: the smoke test listed events UNBOUNDED; `after`/`before` (ISO) + `cursor` are a
+      // best guess for time-filtered pagination — confirm the real param names and swap if wrong.
+      let cursor = null;
+      for (let page = 0; page < 10; page++) {
+        const u = new URL(unipileEventsPath(base, calendarId));
+        u.searchParams.set('account_id', accountId);
+        u.searchParams.set('after', new Date(timeMin).toISOString());
+        u.searchParams.set('before', new Date(timeMax).toISOString());
+        if (cursor) u.searchParams.set('cursor', cursor);
+        const res = await fetch(u.toString(), { headers: unipileHeaders(apiKey) });
+        if (!res.ok) return { events: [], error: `unipile HTTP ${res.status} (calendar ${calendarId}): ${(await res.text().catch(() => '')).slice(0, 200)}`, provider: 'unipile' };
+        const json = await res.json();
+        const list = json.data || json.items || [];
+        for (const ev of list) { const m = mapUnipileEvent(ev, selfEmail, tz); if (m) events.push({ ...m, calendarId }); }
+        cursor = json.cursor || null;
+        if (!cursor) break;
+      }
+    }
+    return { events: calendarIds.length > 1 ? dedupEvents(events) : events, error: null, provider: 'unipile' };
+  } catch (e) {
+    return { events: [], error: `unipile read failed: ${e.message}`, provider: 'unipile' };
+  }
+}
+
+async function createViaUnipile(coach, details) {
+  const { apiKey, base, accountId } = unipileEnv(coach);
+  if (!apiKey || !base || !accountId) return { ok: false, error: 'UNIPILE_API_KEY / UNIPILE_DSN / account not configured', provider: 'unipile' };
+  try {
+    const calendarId = await unipileWriteCalendarId(coach);
+    const tz = coach.timezone || 'UTC';
+    // Unipile wants wall-clock date_time + IANA time_zone (proven: 14:00 + Brisbane -> +10:00).
+    const toWall = (iso) => DateTime.fromISO(iso, { zone: 'utc' }).setZone(tz).toFormat("yyyy-MM-dd'T'HH:mm:ss");
+    let attendees = (details.attendees || []).filter((a) => a && a.email).map((a) => ({ email: String(a.email).trim() }));
+    let notify = details.notifyParticipants === false ? false : true;
+    // Unipile REQUIRES >=1 attendee (unlike Nylas/Zoho, which allow guest-less HOLDs). For an
+    // attendee-less utility event (offer HOLD) add the coach's own address and force notify off so
+    // nobody is emailed. VERIFY-LIVE: confirm a self-only HOLD doesn't notify the coach.
+    const selfEmail = String(coach.googleCalendarEmail || coach.calendarEmail || '').trim();
+    if (!attendees.length) {
+      if (selfEmail) attendees = [{ email: selfEmail }];
+      notify = false;
+    }
+    if (!attendees.length) return { ok: false, error: 'unipile create needs at least one attendee (no guest and no coach email to self-invite)', provider: 'unipile' };
+
+    const body = {
+      title: details.title || 'Meeting',
+      body: details.description || '',
+      start: { date_time: toWall(details.startISO), time_zone: tz },
+      end: { date_time: toWall(details.endISO), time_zone: tz },
+      attendees,
+      notify,
+    };
+    if (details.location) body.location = String(details.location);
+
+    const u = new URL(unipileEventsPath(base, calendarId));
+    u.searchParams.set('account_id', accountId);
+    let res;
+    try {
+      res = await fetch(u.toString(), {
+        method: 'POST',
+        headers: { ...unipileHeaders(apiKey), 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+    } catch (e) {
+      return { ok: false, error: `unipile request failed: ${e.message}`, provider: 'unipile' };
+    }
+    const text = await res.text();
+    if (!res.ok) {
+      log.warn(`[calendarProvider] unipile create HTTP ${res.status}: ${text.slice(0, 200)}`);
+      return { ok: false, error: `unipile HTTP ${res.status}: ${text.slice(0, 200)}`, provider: 'unipile' };
+    }
+    let json = {}; try { json = JSON.parse(text); } catch (_) { /* leave empty */ }
+    // Create returns { object: 'CalendarEventCreated', event_id: '...' }.
+    return { ok: true, eventId: json.event_id || (json.data && json.data.event_id) || null, htmlLink: '', provider: 'unipile' };
+  } catch (e) {
+    return { ok: false, error: `unipile create failed: ${e.message}`, provider: 'unipile' };
+  }
+}
+
+async function deleteViaUnipile(coach, eventId) {
+  const { apiKey, base, accountId } = unipileEnv(coach);
+  if (!apiKey || !base || !accountId) return { ok: false, error: 'UNIPILE_API_KEY / UNIPILE_DSN / account not configured', provider: 'unipile' };
+  if (!eventId) return { ok: false, error: 'eventId required', provider: 'unipile' };
+  try {
+    const calendarId = await unipileWriteCalendarId(coach);
+    const u = new URL(`${unipileEventsPath(base, calendarId)}/${encodeURIComponent(eventId)}`);
+    u.searchParams.set('account_id', accountId);
+    const res = await fetch(u.toString(), { method: 'DELETE', headers: unipileHeaders(apiKey) });
+    if (!res.ok) return { ok: false, error: `unipile HTTP ${res.status}: ${(await res.text().catch(() => '')).slice(0, 200)}`, provider: 'unipile' };
+    return { ok: true, provider: 'unipile' };
+  } catch (e) {
+    return { ok: false, error: `unipile delete failed: ${e.message}`, provider: 'unipile' };
+  }
 }
 
 /* ---- Zoho (direct adapter; Nylas can't serve Zoho calendar) ------------------------------------
@@ -654,6 +901,7 @@ async function deleteViaZoho(coach, eventId) {
 
 module.exports = {
   getMeetingsInWindow, createCalendarEvent, deleteCalendarEvent, activeProvider, listCalendars,
-  mapNylasEvent, mapNylasStatus, mapZohoEvent, mapZohoStatus, zohoToISO, isoToZoho, zohoHosts,
+  mapNylasEvent, mapNylasStatus, mapUnipileEvent, mapUnipileStatus, listUnipileCalendars,
+  mapZohoEvent, mapZohoStatus, zohoToISO, isoToZoho, zohoHosts,
   parseReadIds, dedupEvents, allDaySpan, zohoDateOnly, googleAllDayNormalise,
 };
