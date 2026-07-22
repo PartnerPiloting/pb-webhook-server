@@ -193,7 +193,9 @@ async function getMessage(coach, messageId) {
  * @param {object} opts  { after: epoch SECONDS, max: hard cap on messages (default 5000), pageSize }
  * @returns {Promise<{ok:boolean, messages?:Array, truncated?:boolean, error?:string}>}
  */
-async function listRecent(coach, { after, max = 5000, pageSize = 50 } = {}) {
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+async function listRecent(coach, { after, max = 3000, pageSize = 50 } = {}) {
   const { apiKey, grantId, apiUri } = nylasConfig(coach);
   if (!apiKey || !grantId) return { ok: false, error: 'NYLAS_API_KEY / grant not configured for this coach' };
 
@@ -201,25 +203,37 @@ async function listRecent(coach, { after, max = 5000, pageSize = 50 } = {}) {
   const out = [];
   let pageToken = null;
   let truncated = false;
-  for (let guard = 0; guard < 100; guard++) { // hard loop cap — never spin on a bad cursor
+  let partialError = null;
+
+  for (let guard = 0; guard < 120; guard++) { // hard loop cap — never spin on a bad cursor
     const params = new URLSearchParams();
     params.set('limit', String(per));
     if (after) params.set('received_after', String(Math.floor(Number(after))));
     if (pageToken) params.set('page_token', pageToken);
-
     const u = `${apiUri}/v3/grants/${grantId}/messages?${params.toString()}`;
-    let res;
-    try {
-      res = await fetch(u, { headers: { Authorization: `Bearer ${apiKey}`, Accept: 'application/json' } });
-    } catch (e) {
-      return { ok: false, error: `nylas request failed: ${e.message}` };
+
+    // Fetch ONE page, retrying transient errors — deep Gmail pagination 504s intermittently.
+    let json = null; let lastErr = null;
+    for (let attempt = 0; attempt < 3 && json === null; attempt++) {
+      if (attempt) await sleep(500 * attempt);
+      let res;
+      try {
+        res = await fetch(u, { headers: { Authorization: `Bearer ${apiKey}`, Accept: 'application/json' } });
+      } catch (e) { lastErr = `request failed: ${e.message}`; continue; }
+      const text = await res.text();
+      if (res.ok) { try { json = JSON.parse(text); } catch (_) { json = {}; } break; }
+      lastErr = `HTTP ${res.status}: ${text.slice(0, 150)}`;
+      if (!(res.status >= 500 || res.status === 429)) break; // 4xx (non-429) won't improve on retry
     }
-    const text = await res.text();
-    if (!res.ok) {
-      log.warn(`[mailProvider] nylas listRecent failed HTTP ${res.status}: ${text.slice(0, 200)}`);
-      return { ok: false, error: `nylas HTTP ${res.status}: ${text.slice(0, 200)}` };
+
+    if (json === null) {
+      // Page failed after retries. Return what we HAVE (partial) rather than losing the whole sweep —
+      // a partial window still beats none. Only a first-page failure is a hard error.
+      if (!out.length) return { ok: false, error: `nylas ${lastErr}` };
+      log.warn(`[mailProvider] listRecent partial after ${out.length} msgs: ${lastErr}`);
+      partialError = lastErr; truncated = true; break;
     }
-    let json = {}; try { json = JSON.parse(text); } catch (_) { /* leave empty */ }
+
     for (const m of (json.data || [])) {
       out.push({
         id: m.id,
@@ -235,7 +249,7 @@ async function listRecent(coach, { after, max = 5000, pageSize = 50 } = {}) {
     if (out.length >= max) { truncated = !!pageToken; break; }
     if (!pageToken || !(json.data || []).length) break;
   }
-  return { ok: true, messages: out.slice(0, max), truncated };
+  return { ok: true, messages: out.slice(0, max), truncated, partialError };
 }
 
 /**
