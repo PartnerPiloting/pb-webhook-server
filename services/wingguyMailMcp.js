@@ -567,7 +567,7 @@ async function computeFollowupSweep({ window_days } = {}, tenant = TENANT) {
   // NB: `Reconnect On` is NOT read yet — the field doesn't exist on the bases (adding it is a TODO)
   // and requesting an unknown field 422s. The legacy `Follow-Up Date` is deliberately NOT read (rot).
   let records;
-  const BASE_LEAD_FIELDS = ['First Name', 'Last Name', 'Email', 'Cease FUP', 'Notes', 'Series Sent Count', 'Series Unsubscribed', 'Date Connected'];
+  const BASE_LEAD_FIELDS = ['First Name', 'Last Name', 'Email', 'Cease FUP', 'Notes', 'Series Sent Count', 'Series Unsubscribed', 'Date Connected', 'LinkedIn Profile URL'];
   try {
     const base = clientService.getClientBase(coach.airtableBaseId);
     try {
@@ -596,6 +596,7 @@ async function computeFollowupSweep({ window_days } = {}, tenant = TENANT) {
       last: f['Last Name'] || '',
       email,
       reconnectOn: f['Reconnect On'] || null, // engine's deferral-date store; null where the field is absent/unset
+      linkedinUrl: String(f['LinkedIn Profile URL'] || '').trim() || null, // for hyperlinked names in the brief
       cease: selectName(f['Cease FUP']) === 'Yes',
       onSeries: Number(f['Series Sent Count'] || 0) > 0 && f['Series Unsubscribed'] !== true,
       connected: !!f['Date Connected'], // real-relationship signal for the cadence gate (Decision B)

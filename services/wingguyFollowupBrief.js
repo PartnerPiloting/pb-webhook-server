@@ -251,6 +251,7 @@ async function prepareFollowupBrief(tenant) {
       const entry = {
         name,
         email: item.lead.email || null,
+        linkedin: item.lead.linkedinUrl || null,
         tier: item.tier,
         engineWhy: item.why,
         gated: !!item.gated,
@@ -317,27 +318,31 @@ function formatBrief(row) {
   const piles = { park: [], draft: [], clear: [], attention: [] };
   for (const it of (p.items || [])) (piles[it.verdict] || piles.attention).push(it);
 
+  // Names render as markdown links to the lead's LinkedIn profile (Guy: "glance at their profile").
+  const nm = (it) => (it.linkedin ? `[${it.name}](${it.linkedin})` : it.name);
+
   const lines = [];
-  lines.push(`Prepared ${p.preparedAt ? p.preparedAt.slice(0, 16).replace('T', ' ') : '?'} UTC${ageH > STALE_HOURS ? ' ⚠ STALE — offer a refresh (wingguy_prepare_brief)' : ''}. ${p.totalSurfaced} surfaced; top ${ (p.items || []).length } fully prepared.`);
+  lines.push(`Prepared ${p.preparedAt ? p.preparedAt.slice(0, 16).replace('T', ' ') : '?'} UTC${ageH > STALE_HOURS ? ' ⚠ STALE — offer a refresh (wingguy_prepare_brief)' : ''}. ${p.totalSurfaced} surfaced; top ${ (p.items || []).length } fully prepared. Keep the markdown name-links when relaying.`);
   if (piles.draft.length) {
     lines.push(`\nREPLIES READY (${piles.draft.length}) — drafts are ALREADY WRITTEN:`);
     for (const it of piles.draft) {
-      lines.push(`- ${it.name} — ${it.whyLine}${it.draftId ? ` [Gmail draft ready: ${it.draftId}]` : (it.channel === 'linkedin' ? ' [LinkedIn — paste-ready text below]' : '')}${it.draftError ? ` [draft FAILED: ${it.draftError}]` : ''}`);
+      lines.push(`- ${nm(it)} — ${it.whyLine}${it.draftId ? ` [Gmail draft ready: ${it.draftId}]` : (it.channel === 'linkedin' ? ' [LinkedIn — paste-ready text below]' : '')}${it.draftError ? ` [draft FAILED: ${it.draftError}]` : ''}`);
       if (it.draftPreview) lines.push(`    draft: "${it.draftPreview}"`);
       if (it.jog) lines.push(`    jog: ${it.jog}`);
     }
   }
   if (piles.park.length) {
     lines.push(`\nJUST NEED A DATE (${piles.park.length}) — they named a time; confirm to park via wingguy_set_reconnect:`);
-    for (const it of piles.park) lines.push(`- ${it.name} — ${it.whyLine} → park until ${it.parkDate || '(date unclear — ask)'}${it.jog ? `\n    jog: ${it.jog}` : ''}`);
-  }
-  if (piles.clear.length) {
-    lines.push(`\nNOTHING OWED (${piles.clear.length}) — closing pleasantries / finished threads, safe to ignore:`);
-    for (const it of piles.clear) lines.push(`- ${it.name} — ${it.whyLine}`);
+    for (const it of piles.park) lines.push(`- ${nm(it)} — ${it.whyLine} → park until ${it.parkDate || '(date unclear — ask)'}${it.jog ? `\n    jog: ${it.jog}` : ''}`);
   }
   if (piles.attention.length) {
     lines.push(`\nNEEDS YOUR EYES (${piles.attention.length}):`);
-    for (const it of piles.attention) lines.push(`- ${it.name} — ${it.whyLine}${it.jog ? `\n    jog: ${it.jog}` : ''}`);
+    for (const it of piles.attention) lines.push(`- ${nm(it)} — ${it.whyLine}${it.jog ? `\n    jog: ${it.jog}` : ''}`);
+  }
+  if (piles.clear.length) {
+    // ONE line, no bullets (Guy 2026-07-23: a pile of no-action people is noise; the line's only job
+    // is trust — showing they were checked, not lost). No action vocabulary on purpose.
+    lines.push(`\nChecked & clear (${piles.clear.length}) — nothing owed: ${piles.clear.map(nm).join(' · ')}`);
   }
   const more = (p.totalSurfaced || 0) - (p.items || []).length;
   if (more > 0) lines.push(`\n(${more} more surfaced but not in the prepared top group — the live sweep has them.)`);
