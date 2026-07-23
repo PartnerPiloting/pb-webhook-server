@@ -196,10 +196,11 @@ async function gatherMeetings(tenantId, recId, fullName) {
 
 // --- deep read (one LLM pass) ---
 
-const DEEP_SYSTEM = `You prepare a coach's memory-dossier for one contact. From the dated timeline (emails, LinkedIn messages, calendar responses) and any meeting summaries, write JSON:
+const DEEP_SYSTEM = `You prepare a coach's memory-dossier for one contact. From the dated timeline (emails, LinkedIn messages, calendar responses), meeting summaries and any full transcript, write JSON:
 {"standing": "one tight paragraph: where this relationship ACTUALLY stands right now — read the words, note who spoke last and what is really owed; flag calendar mishaps (accept-then-decline artifacts, invites that lapsed while someone was away) rather than reading them as disinterest",
  "commitments_you": ["each thing the COACH promised, with when"],
  "commitments_them": ["each thing THEY promised or delivered"],
+ "remember": ["4-8 short bullets of concrete specifics worth holding onto — their business and situation (what they do, how long, target market, point of difference), personal details mentioned (travel, family, location, timezone), what resonated or aligned in conversation, objections or hesitations, stated preferences (days, times, channels). The coach juggles many people; these bullets ARE the memory."],
  "next_move": "one sentence: the smartest next action"}
 Ground everything ONLY in the material given. Return ONLY the JSON object.`;
 
@@ -213,7 +214,7 @@ async function deepRead(llm, name, timeline, meetings) {
     ...(withTranscript ? [`FULL TRANSCRIPT of the latest meeting (${withTranscript.date} "${withTranscript.title}") — mine it for specifics the summary missed (named dates, travel, commitments, preferences):`, withTranscript.transcript] : []),
   ].join('\n');
   const resp = await llm.messages.create({
-    model: MODEL_ID, max_tokens: 1500, thinking: NO_THINKING,
+    model: MODEL_ID, max_tokens: 2200, thinking: NO_THINKING,
     system: DEEP_SYSTEM,
     messages: [{ role: 'user', content: scrub(`Today is ${new Date().toISOString().slice(0, 10)}.\n\n${material.slice(0, 32000)}`) }],
   });
@@ -301,7 +302,7 @@ async function prepareDossiers(tenant) {
           timeline,
           meetings: meetings.map(({ transcript, ...rest }) => rest), // transcript consumed by deepRead, not duplicated in the payload
           lastHuman: lastHuman ? `${lastHuman.date} (${lastHuman.dir}, ${lastHuman.kind})${lastHuman.subject ? ` "${lastHuman.subject}"` : ''}` : null,
-          standing: read.standing || '', commitmentsYou: read.commitments_you || [], commitmentsThem: read.commitments_them || [], nextMove: read.next_move || '',
+          standing: read.standing || '', commitmentsYou: read.commitments_you || [], commitmentsThem: read.commitments_them || [], remember: read.remember || [], nextMove: read.next_move || '',
         });
         out.built++;
       } catch (e) { out.failed++; console.warn(`[dossier] ${person.name}: ${e.message}`); }
@@ -322,6 +323,10 @@ function formatDossier(row) {
   ];
   if ((p.commitmentsYou || []).length) lines.push(`\nYOU promised: ${p.commitmentsYou.join(' · ')}`);
   if ((p.commitmentsThem || []).length) lines.push(`THEY promised/delivered: ${p.commitmentsThem.join(' · ')}`);
+  if ((p.remember || []).length) {
+    lines.push(`\nREMEMBER:`);
+    for (const r of p.remember) lines.push(`- ${r}`);
+  }
   if (p.nextMove) lines.push(`\nSUGGESTED NEXT: ${p.nextMove}`);
   if (p.lastHuman) lines.push(`Last human message: ${p.lastHuman}`);
   if ((p.meetings || []).length) {
