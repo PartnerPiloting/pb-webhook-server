@@ -39,7 +39,12 @@ const Airtable = require('airtable');
 
 // Template base ID comes from the env var (Guy owns the source of truth). Falls back to the
 // previously-hardcoded id only if the env var is unset (which would likely 403 — that's the signal to set it).
-const TEMPLATE_BASE_ID = process.env.CLIENT_TEMPLATE_BASE_ID || 'app6W6k9GiDUlktvt';
+// Fallback corrected 2026-07-23: the old fallback ('app6W6k9GiDUlktvt') was a TYPO'd id — Airtable
+// reports a nonexistent base as 403 "not authorized", so template runs failed looking like a
+// permissions problem. Prod sets CLIENT_TEMPLATE_BASE_ID (correct value) so prod runs were fine;
+// the fallback only bit env-less runs. Two STALE bases share the template's name — never use
+// appl1yvqhaWHKEtlN or appIvp0Ieuuc6bLJq.
+const TEMPLATE_BASE_ID = process.env.CLIENT_TEMPLATE_BASE_ID || 'app6W6k9GiDlJktvt';
 const MASTER_TABLE = 'Clients';               // matches constants/airtableUnifiedConstants MASTER_TABLES.CLIENTS
 const LEADS_TABLE = 'Leads';                  // CLIENT_TABLES.LEADS
 const BASE_ID_FIELD = 'Airtable Base ID';
@@ -62,6 +67,12 @@ const LEADS_FIELDS = [
     name: 'Alt Emails',
     type: 'multilineText',
     description: "Secondary / 'also known as' emails for this person (e.g. business email used to book vs the personal email on LinkedIn). Newline-separated, lowercase. Read as a fallback by findLeadByEmail; auto-populated by the email self-healing write-back (services/inboundEmailService.js learnEmailForLead). Added 2026-06-17 for email-identity hardening; template backfilled 2026-06-20."
+  },
+  {
+    name: 'Reconnect On',
+    type: 'date',
+    description: "Engine-written follow-up reconnect date (the 'ping them ~this date' promise). The follow-up sweep (wingguy_followup_sweep) surfaces the lead at DEFERRAL DUE tier once this arrives, and parks them from cadence nudges until then. Written by wingguy_set_reconnect on propose-then-confirm — not hand-typed. NOT the legacy Follow-Up Date. Added 2026-07-23; all client bases + template backfilled same day.",
+    options: { dateFormat: { name: 'iso', format: 'YYYY-MM-DD' } }
   }
 ];
 
