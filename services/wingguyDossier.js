@@ -89,6 +89,16 @@ async function findDossierByName(tenantId, name) {
 
 // --- raw material gathering ---
 
+/**
+ * Strip lone UTF-16 surrogates. Snippet trimming (.slice at N chars) can cut an emoji in half,
+ * leaving a lone surrogate that makes the whole JSON request body invalid ("no low surrogate in
+ * string" — killed Sam Noble's dossier, observed live 2026-07-23). Apply to any text headed to
+ * the LLM API.
+ */
+function scrub(s) {
+  return String(s || '').replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/g, '').replace(/(^|[^\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '$1');
+}
+
 const LI_RE = /^(\d{2})-(\d{2})-(\d{2})\s+(\d{1,2}:\d{2}\s*[AP]M)\s*-\s*(.+?)\s*-\s*(.*)$/;
 
 function gatherLinkedIn(notes, first, max = LI_LIMIT) {
@@ -169,7 +179,7 @@ async function deepRead(llm, name, timeline, meetings) {
   const resp = await llm.messages.create({
     model: MODEL_ID, max_tokens: 1500, thinking: NO_THINKING,
     system: DEEP_SYSTEM,
-    messages: [{ role: 'user', content: `Today is ${new Date().toISOString().slice(0, 10)}.\n\n${material.slice(0, 16000)}` }],
+    messages: [{ role: 'user', content: scrub(`Today is ${new Date().toISOString().slice(0, 10)}.\n\n${material.slice(0, 16000)}`) }],
   });
   const text = (resp.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('');
   const s = text.indexOf('{'); const e = text.lastIndexOf('}');
@@ -286,4 +296,4 @@ function formatDossier(row) {
   return lines.join('\n');
 }
 
-module.exports = { prepareDossiers, findDossierByName, getDossierRow, formatDossier };
+module.exports = { prepareDossiers, findDossierByName, getDossierRow, formatDossier, scrub };
