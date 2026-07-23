@@ -164,7 +164,7 @@ async function gatherMeetings(tenantId, recId, fullName) {
     let rows = [];
     if (recId) {
       const r = await c.query(
-        `SELECT m.title, m.meeting_start, m.summary_json FROM recall_meetings m
+        `SELECT m.title, m.meeting_start, m.summary_json, m.transcript_text FROM recall_meetings m
          JOIN recall_meeting_leads l ON l.meeting_id = m.id
          WHERE l.airtable_lead_id = $1 AND (m.coach_client_id = $2 OR m.coach_client_id IS NULL)
          ORDER BY m.meeting_start DESC NULLS LAST LIMIT 3`, [recId, tenantId]);
@@ -172,15 +172,24 @@ async function gatherMeetings(tenantId, recId, fullName) {
     }
     if (!rows.length && fullName) {
       const r = await c.query(
-        `SELECT title, meeting_start, summary_json FROM recall_meetings
+        `SELECT title, meeting_start, summary_json, transcript_text FROM recall_meetings
          WHERE title ILIKE $1 AND (coach_client_id = $2 OR coach_client_id IS NULL)
          ORDER BY meeting_start DESC NULLS LAST LIMIT 3`, [`%${fullName}%`, tenantId]);
       rows = r.rows;
     }
-    return rows.map((m) => {
+    return rows.map((m, i) => {
       let summary = null;
       try { const j = JSON.parse(m.summary_json || 'null'); summary = j && (j.summary || j.recap || JSON.stringify(j).slice(0, 1200)); } catch (_) { summary = m.summary_json ? String(m.summary_json).slice(0, 1200) : null; }
-      return { date: m.meeting_start ? new Date(m.meeting_start).toISOString().slice(0, 10) : null, title: m.title || '(meeting)', summary };
+      return {
+        date: m.meeting_start ? new Date(m.meeting_start).toISOString().slice(0, 10) : null,
+        title: m.title || '(meeting)',
+        summary,
+        // FULL transcript of the LATEST meeting only — feeds the overnight deep-read, where the
+        // specifics live ("back from Brazil the 17th, week of the 22nd, avoid Mon/Tue" — the
+        // Celeste details the summary alone missed). Not stored in the payload (it already lives
+        // in recall_meetings); consumed at read time.
+        transcript: i === 0 && m.transcript_text ? scrub(String(m.transcript_text).replace(/\s+/g, ' ').slice(0, 14000)) : null,
+      };
     });
   } catch (e) { return []; } finally { c.release(); }
 }
@@ -195,16 +204,18 @@ const DEEP_SYSTEM = `You prepare a coach's memory-dossier for one contact. From 
 Ground everything ONLY in the material given. Return ONLY the JSON object.`;
 
 async function deepRead(llm, name, timeline, meetings) {
+  const withTranscript = meetings.find((m) => m.transcript);
   const material = [
     `CONTACT: ${name}`,
     `TIMELINE (oldest first):`,
     ...timeline.map((t) => `${t.date} [${t.kind}/${t.dir}] ${t.subject ? `(${t.subject}) ` : ''}${t.fullText ? `FULL TEXT: ${t.fullText}` : (t.text || '')}`),
     ...(meetings.length ? ['MEETING SUMMARIES:', ...meetings.map((m) => `${m.date || '?'} "${m.title}": ${m.summary || '(no summary stored)'}`)] : []),
+    ...(withTranscript ? [`FULL TRANSCRIPT of the latest meeting (${withTranscript.date} "${withTranscript.title}") — mine it for specifics the summary missed (named dates, travel, commitments, preferences):`, withTranscript.transcript] : []),
   ].join('\n');
   const resp = await llm.messages.create({
     model: MODEL_ID, max_tokens: 1500, thinking: NO_THINKING,
     system: DEEP_SYSTEM,
-    messages: [{ role: 'user', content: scrub(`Today is ${new Date().toISOString().slice(0, 10)}.\n\n${material.slice(0, 16000)}`) }],
+    messages: [{ role: 'user', content: scrub(`Today is ${new Date().toISOString().slice(0, 10)}.\n\n${material.slice(0, 32000)}`) }],
   });
   const text = (resp.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('');
   const s = text.indexOf('{'); const e = text.lastIndexOf('}');
@@ -276,9 +287,9 @@ async function prepareDossiers(tenant) {
         const timeline = [...emails, ...li].sort((a, b) => String(a.date).localeCompare(String(b.date)));
         if (!timeline.length && !meetings.length) { out.failed++; continue; }
 
-        // 'v2' = full-body upgrade 2026-07-24: bumping the version invalidates every cached dossier
-        // ONCE so they all rebuild with full email text; thereafter cache behaves as before.
-        const basis = `v2|e${emails.length}:${emails.length ? emails[emails.length - 1].date : ''}|l${li.length}:${li.length ? li[li.length - 1].date : ''}|m${meetings.length}:${meetings.length ? meetings[0].date : ''}`;
+        // Version prefix invalidates every cached dossier ONCE on upgrade (v2 = full email bodies;
+        // v3 = deep-read consumes the full latest-meeting transcript); thereafter cache as before.
+        const basis = `v3|e${emails.length}:${emails.length ? emails[emails.length - 1].date : ''}|l${li.length}:${li.length ? li[li.length - 1].date : ''}|m${meetings.length}:${meetings.length ? meetings[0].date : ''}`;
         const existing = await getDossierRow(tenant, person.key);
         if (existing && existing.basis === basis) { out.cached++; continue; }
 
@@ -287,7 +298,8 @@ async function prepareDossiers(tenant) {
         await saveDossier(tenant, person.key, basis, {
           name: person.name, email: person.email, recId,
           builtAt: new Date().toISOString(),
-          timeline, meetings,
+          timeline,
+          meetings: meetings.map(({ transcript, ...rest }) => rest), // transcript consumed by deepRead, not duplicated in the payload
           lastHuman: lastHuman ? `${lastHuman.date} (${lastHuman.dir}, ${lastHuman.kind})${lastHuman.subject ? ` "${lastHuman.subject}"` : ''}` : null,
           standing: read.standing || '', commitmentsYou: read.commitments_you || [], commitmentsThem: read.commitments_them || [], nextMove: read.next_move || '',
         });
