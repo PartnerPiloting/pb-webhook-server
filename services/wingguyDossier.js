@@ -130,13 +130,29 @@ async function gatherEmails(mailProvider, coach, email, max = EMAIL_LIMIT) {
   try {
     const found = await mailProvider.findMessages(coach, { anyEmail: email, limit: max });
     if (!found.ok) return [];
-    return (found.messages || [])
+    const rows = (found.messages || [])
       .slice().sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0))
       .map((m) => {
         const theirs = (m.fromEmail || '').toLowerCase() === email;
         const calendarish = /^(accepted|declined|tentative|invitation|updated invitation|canceled)/i.test(m.subject || '');
         return { date: (m.date || '').slice(0, 10), kind: calendarish ? 'calendar' : 'email', dir: theirs ? 'them' : 'you', subject: scrub(m.subject || ''), text: scrub(String(m.snippet || '').slice(0, 280)), messageId: m.id };
       });
+    // FULL BODY of the latest inbound human emails (up to 2). Snippets truncate mid-sentence and
+    // mislead — "as promised, here's a l…" spawned a phantom referral theory on 2026-07-24. The
+    // full text is what the human always ends up asking for ("what did they actually say?"), so it
+    // belongs IN the dossier, not behind a live read.
+    const { htmlToText } = require('./wingguyMailMcp');
+    const latestTheirs = rows.filter((r) => r.dir === 'them' && r.kind === 'email').slice(-2);
+    for (const r of latestTheirs) {
+      try {
+        const full = await mailProvider.getMessage(coach, r.messageId);
+        if (full.ok && full.message) {
+          const body = htmlToText(full.message.body) || String(full.message.snippet || '');
+          if (body) r.fullText = scrub(String(body).replace(/\s+/g, ' ').trim().slice(0, 1800));
+        }
+      } catch (_) { /* snippet remains */ }
+    }
+    return rows;
   } catch (_) { return []; }
 }
 
@@ -182,7 +198,7 @@ async function deepRead(llm, name, timeline, meetings) {
   const material = [
     `CONTACT: ${name}`,
     `TIMELINE (oldest first):`,
-    ...timeline.map((t) => `${t.date} [${t.kind}/${t.dir}] ${t.subject ? `(${t.subject}) ` : ''}${t.text || ''}`),
+    ...timeline.map((t) => `${t.date} [${t.kind}/${t.dir}] ${t.subject ? `(${t.subject}) ` : ''}${t.fullText ? `FULL TEXT: ${t.fullText}` : (t.text || '')}`),
     ...(meetings.length ? ['MEETING SUMMARIES:', ...meetings.map((m) => `${m.date || '?'} "${m.title}": ${m.summary || '(no summary stored)'}`)] : []),
   ].join('\n');
   const resp = await llm.messages.create({
@@ -260,7 +276,9 @@ async function prepareDossiers(tenant) {
         const timeline = [...emails, ...li].sort((a, b) => String(a.date).localeCompare(String(b.date)));
         if (!timeline.length && !meetings.length) { out.failed++; continue; }
 
-        const basis = `e${emails.length}:${emails.length ? emails[emails.length - 1].date : ''}|l${li.length}:${li.length ? li[li.length - 1].date : ''}|m${meetings.length}:${meetings.length ? meetings[0].date : ''}`;
+        // 'v2' = full-body upgrade 2026-07-24: bumping the version invalidates every cached dossier
+        // ONCE so they all rebuild with full email text; thereafter cache behaves as before.
+        const basis = `v2|e${emails.length}:${emails.length ? emails[emails.length - 1].date : ''}|l${li.length}:${li.length ? li[li.length - 1].date : ''}|m${meetings.length}:${meetings.length ? meetings[0].date : ''}`;
         const existing = await getDossierRow(tenant, person.key);
         if (existing && existing.basis === basis) { out.cached++; continue; }
 
@@ -301,6 +319,11 @@ function formatDossier(row) {
   if ((p.timeline || []).length) {
     lines.push(`\nTIMELINE:`);
     for (const t of p.timeline) lines.push(`- ${t.date} [${t.kind}/${t.dir}]${t.subject ? ` (${t.subject})` : ''} ${t.text || ''}`);
+  }
+  const fulls = (p.timeline || []).filter((t) => t.fullText);
+  if (fulls.length) {
+    lines.push(`\nLATEST FROM THEM, FULL TEXT (no need to read the mailbox live):`);
+    for (const t of fulls) lines.push(`--- ${t.date}${t.subject ? ` "${t.subject}"` : ''} ---\n${t.fullText}`);
   }
   return lines.join('\n');
 }
