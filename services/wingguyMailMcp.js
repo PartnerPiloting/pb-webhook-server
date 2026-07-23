@@ -825,6 +825,51 @@ async function runSetReconnect({ lead_email, lead_name, reconnect_on } = {}, ten
 }
 
 // ---------------------------------------------------------------------------
+// Cease follow-ups — the permanent "drop this lead" flag, settable from chat
+// ---------------------------------------------------------------------------
+
+/**
+ * Set (or unset) a lead's Cease FUP flag — the permanent "never chase this person on a timer
+ * again". Also clears any Reconnect On stamp when ceasing (a dropped lead shouldn't resurface on
+ * a date). Nothing is sent; this is pure record-keeping. Same lead lookup as runSetReconnect.
+ */
+async function runCeaseFollowups({ lead_email, lead_name, cease } = {}, tenant = TENANT) {
+  const clientService = require('./clientService');
+  const coach = await clientService.getClientById(tenant);
+  if (!coach || !coach.airtableBaseId) return { text: `No Airtable base on file for "${tenant}".`, isError: true };
+  const email = String(lead_email || '').trim().toLowerCase();
+  const name = String(lead_name || '').trim();
+  if (!email && !name) return { text: 'Give me a lead_email (preferred) or lead_name.', isError: true };
+  const turningOn = cease !== false; // default = cease
+  const base = clientService.getClientBase(coach.airtableBaseId);
+  const esc = (s) => String(s).replace(/"/g, '\\"');
+  const formula = email
+    ? `LOWER({Email}) = "${esc(email)}"`
+    : `FIND(LOWER("${esc(name)}"), LOWER({First Name} & " " & {Last Name})) > 0`;
+  let matches;
+  try {
+    matches = await base('Leads').select({ filterByFormula: formula, fields: ['First Name', 'Last Name', 'Email', 'Cease FUP'], maxRecords: 10 }).all();
+  } catch (e) { return { text: `Lead lookup failed: ${e.message}`, isError: true }; }
+  if (!matches.length) return { text: `No lead found matching ${email ? `email ${email}` : `name "${name}"`}.`, isError: true };
+  if (matches.length > 1) {
+    const list = matches.slice(0, 8).map((r) => `- ${`${r.fields['First Name'] || ''} ${r.fields['Last Name'] || ''}`.trim()}${r.fields['Email'] ? ` <${r.fields['Email']}>` : ''}`).join('\n');
+    return { text: `More than one lead matches — tell me which, or pass lead_email:\n${list}` };
+  }
+  const rec = matches[0];
+  try {
+    const fields = { 'Cease FUP': turningOn ? 'Yes' : 'No' };
+    if (turningOn) fields['Reconnect On'] = null; // a dropped lead shouldn't resurface on a stamp
+    await base('Leads').update(rec.id, fields);
+  } catch (e) { return { text: `Couldn't update Cease FUP: ${e.message}`, isError: true }; }
+  const who = `${rec.fields['First Name'] || ''} ${rec.fields['Last Name'] || ''}`.trim() || rec.fields['Email'] || rec.id;
+  return {
+    text: turningOn
+      ? `${who} dropped — Cease FUP set (and any reconnect stamp cleared). No timer will ever chase them again. NOTE: if they personally REPLY in future, that still surfaces (a reply is a reply); only cadence is silenced. Nothing was sent.`
+      : `${who} re-opened — Cease FUP cleared; normal follow-up cadence applies again.`,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Prepared brief — instant read + background rebuild (see wingguyFollowupBrief.js)
 // ---------------------------------------------------------------------------
 
@@ -1050,6 +1095,26 @@ const TOOL_DEFS = [
       required: [],
     },
     run: runSetReconnect,
+  },
+  {
+    name: 'wingguy_cease_followups',
+    description:
+      'Permanently DROP a lead from timed follow-ups ("drop X", "take X off the list for good", "stop chasing X") — sets the lead\'s Cease FUP flag and clears any reconnect stamp. NOTHING IS SENT. Confirm intent first when ambiguous: "off the list forever" = this; "not now, later" = park via wingguy_set_reconnect instead; "handled it" (backlog) = wingguy_backlog action done/skip. Honest behavior note: ceasing silences the TIMERS only — if the person personally replies in future, that still surfaces (a reply is a reply). Pass cease=false to re-open a previously dropped lead.',
+    zodSchema: {
+      lead_email: z.string().optional().describe('The lead\'s email (preferred — unambiguous).'),
+      lead_name: z.string().optional().describe('The lead\'s name if no email; substring match, asks on multiple hits.'),
+      cease: z.boolean().optional().describe('Default true (drop). false = re-open (clear the flag).'),
+    },
+    jsonSchema: {
+      type: 'object',
+      properties: {
+        lead_email: { type: 'string', description: 'The lead\'s email (preferred — unambiguous).' },
+        lead_name: { type: 'string', description: 'The lead\'s name if no email; substring match, asks on multiple hits.' },
+        cease: { type: 'boolean', description: 'Default true (drop). false = re-open (clear the flag).' },
+      },
+      required: [],
+    },
+    run: runCeaseFollowups,
   },
   {
     name: 'wingguy_followup_brief',
