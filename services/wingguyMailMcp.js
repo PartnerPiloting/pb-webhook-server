@@ -1023,7 +1023,45 @@ const TOOL_DEFS = [
     jsonSchema: { type: 'object', properties: {}, required: [] },
     run: runPrepareBrief,
   },
+  {
+    name: 'wingguy_backlog',
+    description:
+      'The BACKLOG WORKLIST — the one-time reckoning of neglected follow-ups (threads quiet 6 weeks to 12 months), pre-triaged into reopen (re-opening DRAFTS pre-written — email push-ready or LinkedIn paste-ready) / park (a date to stamp) / writeoff. Separate from the daily brief. Use when the human says "show my backlog", "give me the draft for [name]", "what\'s left on the old list". No args = summary + the next few reopens. name = that person\'s full entry (jog + draft + push params). action done|skip (with name) = mark them dealt with so the list shrinks. Instant — everything was pre-computed by the audit. Serve drafts for tweaking in chat; push email drafts via wingguy_create_draft ONLY on explicit approval; parks are stamped via wingguy_set_reconnect.',
+    zodSchema: {
+      name: z.string().optional().describe('A person\'s name (or part of it) — returns their full entry with the draft.'),
+      action: z.enum(['done', 'skip']).optional().describe('With name: mark that person dealt with (done) or deliberately passed over (skip).'),
+    },
+    jsonSchema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: 'A person\'s name (or part of it) — returns their full entry with the draft.' },
+        action: { type: 'string', enum: ['done', 'skip'], description: 'With name: mark that person dealt with (done) or deliberately passed over (skip).' },
+      },
+      required: [],
+    },
+    run: runBacklogTool,
+  },
 ];
+
+/** The backlog worklist tool: summary / per-person entry / mark done-skip. All instant (stored). */
+async function runBacklogTool({ name, action } = {}, tenant = TENANT) {
+  const backlog = require('./wingguyBacklogAudit');
+  try {
+    if (action && name) {
+      const it = await backlog.markItem(tenant, name, action);
+      if (!it) return { text: `No backlog entry matching "${name}".`, isError: true };
+      const row = await backlog.getWorklist(tenant);
+      const p = typeof row.payload === 'string' ? JSON.parse(row.payload) : row.payload;
+      const left = (p.items || []).filter((i) => i.status === 'pending').length;
+      return { text: `${it.name} marked ${action}. ${left} pending remain.` };
+    }
+    const row = await backlog.getWorklist(tenant);
+    if (!row) return { text: 'No backlog worklist exists yet — the audit has not been run for this coach.' };
+    return { text: backlog.formatWorklist(row, { name }) };
+  } catch (e) {
+    return { text: `Backlog store unavailable: ${e.message}`, isError: true };
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Learn-from-my-edit (email half) — settle awaiting drafts against sent mail

@@ -363,4 +363,4 @@ function formatBrief(row) {
   return lines.join('\n');
 }
 
-module.exports = { prepareFollowupBrief, getBrief, setStatus, formatBrief, linkedInTail, _setPool, STALE_HOURS };
+module.exports = { prepareFollowupBrief, getBrief, setStatus, formatBrief, linkedInTail, writeDraft, _setPool, STALE_HOURS };
