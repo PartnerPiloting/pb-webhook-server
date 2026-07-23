@@ -260,29 +260,31 @@ async function prepareFollowupBrief(tenant) {
         whyLine: v.why_line || item.why,
         jog: v.jog || '',
         parkDate: v.park_date || null,
-        draftId: null,
-        draftPreview: null,
+        draftHtml: null,
+        draftText: null,
         draftError: null,
+        replyToMessageId: null,
+        pushSubject: null,
         threadSubject: (ctx.lastInbound && ctx.lastInbound.subject) || null,
       };
+      // Drafts live IN THE BRIEF, not the mailbox (Guy 2026-07-23: "create the draft in the chat,
+      // let me play with it, THEN push it to Gmail — that's my normal process"). The chat shows
+      // draftText, the human tweaks, and on approval pushes via wingguy_create_draft using
+      // replyToMessageId/subject stored here (threaded, asset-gated, same as any draft).
       if (entry.verdict === 'draft') {
         if (item.lead.email && ctx.lastInbound) {
           try {
             const html = await writeDraft(llm, rulesText, item, ctx, v.draft_instruction || 'Reply appropriately to their last message.');
-            const d = await mailProvider.createDraft(sweep.coach, {
-              to: [{ email: item.lead.email, name }],
-              subject: /^re:/i.test(entry.threadSubject || '') ? entry.threadSubject : `Re: ${entry.threadSubject || 'our conversation'}`,
-              html,
-              replyToMessageId: ctx.lastInbound.id,
-            });
-            if (d.ok) { entry.draftId = d.draftId; entry.draftPreview = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 220); }
-            else entry.draftError = d.error;
+            entry.draftHtml = html;
+            entry.draftText = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+            entry.replyToMessageId = ctx.lastInbound.id;
+            entry.pushSubject = /^re:/i.test(entry.threadSubject || '') ? entry.threadSubject : `Re: ${entry.threadSubject || 'our conversation'}`;
           } catch (e) { entry.draftError = e.message; }
         } else {
-          // LinkedIn-only person: no mailbox draft possible — prepare paste-ready text instead.
+          // LinkedIn-only person: paste-ready plain text.
           try {
             const html = await writeDraft(llm, rulesText, item, ctx, (v.draft_instruction || 'Reply appropriately.') + ' This will be pasted into LinkedIn chat — plain short text, no HTML links, no subject.');
-            entry.draftPreview = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 400);
+            entry.draftText = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
             entry.channel = 'linkedin';
           } catch (e) { entry.draftError = e.message; }
         }
@@ -335,10 +337,11 @@ function formatBrief(row) {
   const lines = [];
   lines.push(`Prepared ${p.preparedAt ? p.preparedAt.slice(0, 16).replace('T', ' ') : '?'} UTC${ageH > STALE_HOURS ? ' ⚠ STALE — offer a refresh (wingguy_prepare_brief)' : ''}. ${p.totalSurfaced} surfaced; top ${ (p.items || []).length } fully prepared. Keep the markdown name-links when relaying.`);
   if (piles.draft.length) {
-    lines.push(`\nREPLIES READY (${piles.draft.length}) — drafts are ALREADY WRITTEN:`);
+    lines.push(`\nREPLIES READY (${piles.draft.length}) — drafts written, IN THE BRIEF (show → tweak in chat → on approval push to Gmail with wingguy_create_draft, threaded via the reply id below; LinkedIn ones are paste-ready). Never push unasked:`);
     for (const it of piles.draft) {
-      lines.push(`- ${nm(it)} — ${it.whyLine}${it.draftId ? ` [Gmail draft ready: ${it.draftId}]` : (it.channel === 'linkedin' ? ' [LinkedIn — paste-ready text below]' : '')}${it.draftError ? ` [draft FAILED: ${it.draftError}]` : ''}`);
-      if (it.draftPreview) lines.push(`    draft: "${it.draftPreview}"`);
+      lines.push(`- ${nm(it)} — ${it.whyLine}${it.channel === 'linkedin' ? ' [LinkedIn — paste-ready]' : ''}${it.draftError ? ` [draft generation FAILED: ${it.draftError}]` : ''}`);
+      if (it.draftText) lines.push(`    draft: "${it.draftText}"`);
+      if (it.email && it.replyToMessageId) lines.push(`    push with: to=${it.email}, subject="${it.pushSubject}", reply_to_message_id=${it.replyToMessageId}`);
       if (it.jog) lines.push(`    jog: ${it.jog}`);
     }
   }

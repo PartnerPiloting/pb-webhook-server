@@ -1237,13 +1237,38 @@ router.post("/api/followup-brief/prepare", async (req, res) => {
   if (!secret || !authHeader || !authHeader.includes(secret)) {
     return res.status(401).json({ ok: false, error: 'Unauthorized' });
   }
-  const tenant = (typeof req.query.tenant === 'string' && req.query.tenant.trim()) || 'Guy-Wilson';
-  setImmediate(() => {
-    require('../services/wingguyFollowupBrief').prepareFollowupBrief(tenant)
-      .then((r) => console.log(`[followup-brief] cron/endpoint prepare for ${tenant}: ${JSON.stringify(r)}`))
-      .catch((e) => console.error(`[followup-brief] cron/endpoint prepare crashed for ${tenant}: ${e.message}`));
+  const explicit = (typeof req.query.tenant === 'string' && req.query.tenant.trim()) || null;
+  let tenants;
+  if (explicit) {
+    tenants = [explicit];
+  } else {
+    // No tenant named = the CRON path: every ACTIVE client whose Client Master `Followup Brief`
+    // flag is Yes (per-client opt-in — preparation reads their mailbox and writes into their
+    // brief, so nobody gets it without being switched on knowingly).
+    try {
+      const clientService = require('../services/clientService');
+      const active = await clientService.getAllActiveClients();
+      tenants = active.filter((c) => String(c.followupBrief || '').trim() === 'Yes').map((c) => c.clientId);
+    } catch (e) {
+      return res.status(500).json({ ok: false, error: `client list read failed: ${e.message}` });
+    }
+    if (!tenants.length) {
+      return res.status(200).json({ ok: true, tenants: [], message: 'No clients have Followup Brief = Yes — nothing to prepare.' });
+    }
+  }
+  setImmediate(async () => {
+    // Sequential on purpose: each preparation is minutes of mailbox + LLM work; parallel runs
+    // would stampede Nylas/Anthropic rate limits for zero benefit at this scale.
+    for (const tenant of tenants) {
+      try {
+        const r = await require('../services/wingguyFollowupBrief').prepareFollowupBrief(tenant);
+        console.log(`[followup-brief] cron/endpoint prepare for ${tenant}: ${JSON.stringify(r)}`);
+      } catch (e) {
+        console.error(`[followup-brief] cron/endpoint prepare crashed for ${tenant}: ${e.message}`);
+      }
+    }
   });
-  return res.status(202).json({ ok: true, tenant, message: 'Preparation started in the background (~2-3 min).' });
+  return res.status(202).json({ ok: true, tenants, message: `Preparation started in the background for ${tenants.length} client(s).` });
 });
 
 /**

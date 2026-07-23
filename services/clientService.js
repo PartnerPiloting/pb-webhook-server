@@ -141,6 +141,9 @@ async function getAllClients() {
                 const clientType = record.get('Client Type') || 'A - Partner Selection';
                 const fupInstructions = record.get('FUP AI Instructions') || '';
                 const fathomApiKey = record.get('Fathom API Key') || null;
+                // Followup Brief opt-in: Yes = the overnight prepared-brief cron includes this
+                // client (writes triage + drafts into THEIR brief; per-client opt-in by design).
+                const followupBrief = record.get('Followup Brief') || null;
                 // Nylas (multi-tenant calendar/email): per-client grant + which calendar backend to
                 // use. Read from Airtable so each client carries their OWN grant (calendarProvider.js
                 // reads coach.nylasGrantId first, then env). calendarProvider blank => code default 'google'.
@@ -248,6 +251,7 @@ async function getAllClients() {
                     clientType: clientType,
                     fupInstructions: fupInstructions,
                     fathomApiKey: fathomApiKey,
+                    followupBrief: followupBrief,
                     // Nylas multi-tenant calendar (per-client grant + backend choice)
                     nylasGrantId: nylasGrantId,
                     calendarProvider: calendarProvider,
