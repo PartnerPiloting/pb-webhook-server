@@ -505,7 +505,7 @@ async function runFollowupSweep({ window_days, limit } = {}, tenant = TENANT) {
   if (!coach.nylasGrantId) return { text: `No Nylas grant on file for "${tenant}" — connect the mailbox (Nylas, mail scope) first.`, isError: true };
 
   const windowDays = Math.min(Math.max(parseInt(window_days, 10) || SWEEP_WINDOW_DAYS, 7), 180);
-  const cap = Math.min(Math.max(parseInt(limit, 10) || 25, 1), 100);
+  const cap = Math.min(Math.max(parseInt(limit, 10) || 5, 1), 100);
   const nowMs = Date.now();
   const td = new Date(nowMs);
   const todayMidMs = Date.UTC(td.getUTCFullYear(), td.getUTCMonth(), td.getUTCDate());
@@ -586,6 +586,7 @@ async function runFollowupSweep({ window_days, limit } = {}, tenant = TENANT) {
     return { text: `No follow-ups surfaced from the last ${windowDays} days. (${leads.length} leads scanned; suppressed ${gatedCadence} Cease/Series + ${coldCadence} cold-outreach cadence.)` };
   }
   const shown = surfaced.slice(0, cap);
+  const more = surfaced.length - shown.length;
   const lines = shown.map((s, i) => {
     const name = `${s.lead.first} ${s.lead.last}`.trim() || s.lead.email || '(no name)';
     const gate = s.gated ? ' [Cease/Series — surfaced anyway: a real obligation, not cadence]' : '';
@@ -593,12 +594,11 @@ async function runFollowupSweep({ window_days, limit } = {}, tenant = TENANT) {
   });
   return {
     text:
-      `Follow-ups from the last ${windowDays} days — rebuilt live, nothing stored. ` +
-      `${surfaced.length} surfaced${surfaced.length > cap ? `, showing top ${cap}` : ''}; ` +
-      `${leads.length} leads scanned; ${mail.messages.length} emails read (last ${emailDays}d${mail.partialError ? ', ⚠PARTIAL' : (mail.truncated ? ', ⚠capped' : '')}), LinkedIn to ${windowDays}d; ` +
-      `suppressed ${gatedCadence} Cease/Series + ${coldCadence} cold-outreach.\n` +
-      `NOTE (v1): REPLY OWED = replied within ${REPLY_LIVE_DAYS}d, most-recent first. WENT QUIET = you spoke last ${CADENCE_OVERDUE_DAYS}-${CADENCE_MAX_DAYS}d ago, most-recent first, ONLY for real relationships (connected / they've replied); older = too cold, drops. DEFERRAL tier dormant until Reconnect On + content-read land. Calendar cross-check not wired — verify an "already booked?" before nudging.\n\n` +
-      lines.join('\n'),
+      `Top ${shown.length} of ${surfaced.length} follow-up${surfaced.length === 1 ? '' : 's'} (live, nothing stored):\n` +
+      lines.join('\n') +
+      (more > 0 ? `\n(${more} more behind these — call again with limit to show all.)` : '') +
+      `\n[diagnostics — do not relay unless asked: ${leads.length} leads scanned; ${mail.messages.length} emails/${emailDays}d${mail.partialError ? ' ⚠PARTIAL' : (mail.truncated ? ' ⚠capped' : '')}, LinkedIn ${windowDays}d; suppressed ${gatedCadence} Cease/Series + ${coldCadence} cold-outreach. ` +
+      `REPLY OWED = they replied ≤${REPLY_LIVE_DAYS}d ago, ball in your court; WENT QUIET = you spoke last ${CADENCE_OVERDUE_DAYS}-${CADENCE_MAX_DAYS}d ago, connected/replied leads only; DEFERRAL tier dormant until Reconnect On + content-read land. Calendar cross-check not wired — verify already-booked before nudging.]`,
   };
 }
 
@@ -745,13 +745,13 @@ const TOOL_DEFS = [
       'Who do I owe a follow-up, and in what order? Rebuilds the list LIVE every call (nothing stored — a stored follow-up list rots) from the coach\'s own mailbox (Nylas, ~90-day window in ONE read) merged with each lead\'s LinkedIn history (Notes) and the gates on the lead record. Returns a ranked, capped plain-text list: REPLY OWED (they replied, ball\'s in your court) → DEFERRAL DUE (a date they named has arrived) → WENT QUIET (you messaged last, past the interval). Cease FUP / On-Series suppress the WENT QUIET (cadence) nudge only — a reply or a due deferral still surfaces. Use for "prep me for today" (bundled with meetings), "show me what I need to follow up", or "who\'s waiting". Read-only. NOTE: calendar cross-check not yet wired (may show an already-booked lead as quiet).',
     zodSchema: {
       window_days: z.number().optional().describe('How far back to read mail (default 90, min 7, max 180).'),
-      limit: z.number().optional().describe('Max items to show (default 25, max 100).'),
+      limit: z.number().optional().describe('Max items to show (default 5 — the tight brief; pass a big number like 100 for "show all").'),
     },
     jsonSchema: {
       type: 'object',
       properties: {
         window_days: { type: 'number', description: 'How far back to read mail (default 90, min 7, max 180).' },
-        limit: { type: 'number', description: 'Max items to show (default 25, max 100).' },
+        limit: { type: 'number', description: 'Max items to show (default 5 — the tight brief; pass a big number like 100 for "show all").' },
       },
       required: [],
     },
