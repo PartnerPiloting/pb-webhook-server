@@ -231,10 +231,20 @@ async function ensureSchema(client) {
   `);
   // Migration: the action CHECK on an already-created history table can't be widened by the
   // CREATE ... IF NOT EXISTS above. Re-assert it so existing DBs accept newer actions ('seed').
-  await client.query(`ALTER TABLE wingguy_rule_history DROP CONSTRAINT IF EXISTS wingguy_rule_history_action_check;`);
+  // ONE atomic DO block that swallows the duplicate: the old drop-then-add pair raced when two
+  // fresh processes/connections ensured concurrently (B drops, A adds, B adds → "already exists"),
+  // which made renderRulesBlock fail in job processes and the brief drafts fall back to PLAIN
+  // VOICE (observed live 2026-07-23).
   await client.query(`
-    ALTER TABLE wingguy_rule_history ADD CONSTRAINT wingguy_rule_history_action_check
-    CHECK (action IN ('commit','retire','revert','import','seed','variable-set','asset-set'));
+    DO $$
+    BEGIN
+      ALTER TABLE wingguy_rule_history DROP CONSTRAINT IF EXISTS wingguy_rule_history_action_check;
+      ALTER TABLE wingguy_rule_history ADD CONSTRAINT wingguy_rule_history_action_check
+        CHECK (action IN ('commit','retire','revert','import','seed','variable-set','asset-set'));
+    EXCEPTION WHEN duplicate_object OR duplicate_table THEN
+      NULL; -- another connection won the race — the constraint exists, which is all we want
+    END
+    $$;
   `);
 
   schemaEnsured = true;

@@ -9,7 +9,7 @@
  * is safe to run repeatedly.
  *
  * ⚠ THE TEMPLATE IS A DEFAULT TARGET. New clients are duplicated from
- * "My Leads - Client Template" (app6W6k9GiDUlktvt), which lives OUTSIDE the
+ * "My Leads - Client Template" (app6W6k9GiDlJktvt), which lives OUTSIDE the
  * master Clients base, so a field missed there is silently absent for every
  * future client (validated writes drop unknown fields). This script always
  * includes the template unless you pass --skip-template. Do not remove that

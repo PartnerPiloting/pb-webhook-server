@@ -32,7 +32,7 @@ require('dotenv').config();
 
 const AIRTABLE_KEY = process.env.AIRTABLE_API_KEY;
 const MASTER = process.env.MASTER_CLIENTS_BASE_ID;
-const TEMPLATE_BASE_ID = 'app6W6k9GiDUlktvt'; // "My Leads - Client Template"
+const TEMPLATE_BASE_ID = 'app6W6k9GiDlJktvt'; // "My Leads - Client Template"
 const ROSTER_MARKER_FIELD = 'Calendar Provider';
 const NEW_FIELDS = [
   // multilineText = a long-text field; holds the JSON array.

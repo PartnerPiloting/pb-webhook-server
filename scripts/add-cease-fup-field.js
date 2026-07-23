@@ -26,7 +26,7 @@ const FIELD_NAME = 'Cease FUP';
 const LEADS_TABLE_NAME = 'Leads';
 
 // Template base ID - "My Leads - Client Template"
-const TEMPLATE_BASE_ID = 'app6W6k9GiDUlktvt';
+const TEMPLATE_BASE_ID = 'app6W6k9GiDlJktvt';
 
 // Field definition for Airtable Metadata API - Single select Yes/No
 const FIELD_DEFINITION = {
@@ -50,7 +50,7 @@ async function getClients(filterClientId = null, smartFupOnly = true) {
   
   const clients = [];
   
-  await base('Client Master').select({
+  await base('Clients').select({
     fields: ['Client ID', 'Airtable Base ID', 'Smart FUP']
   }).eachPage((records, fetchNextPage) => {
     for (const record of records) {

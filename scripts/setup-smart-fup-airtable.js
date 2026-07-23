@@ -159,7 +159,7 @@ async function verifyConnection() {
   
   // Try to read from Client Master to verify connection
   try {
-    const records = await base('Client Master').select({ maxRecords: 1 }).firstPage();
+    const records = await base('Clients').select({ maxRecords: 1 }).firstPage();
     console.log('✅ Connected to Airtable successfully');
     console.log(`   Base ID: ${process.env.MASTER_CLIENTS_BASE_ID}`);
     return base;
