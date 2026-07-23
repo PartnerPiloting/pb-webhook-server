@@ -1225,6 +1225,28 @@ router.get("/debug-render-logs", async (req, res) => {
 });
 
 /**
+ * POST /api/followup-brief/prepare?tenant=Guy-Wilson
+ * Kicks the follow-up brief preparation (services/wingguyFollowupBrief.js) in the BACKGROUND and
+ * returns 202 immediately — the overnight cron's target (same curl-the-web-service pattern as the
+ * other crons, so the cron needs no env of its own). Also callable ad hoc.
+ * Auth: Bearer PB_WEBHOOK_SECRET (same as debug-render-logs).
+ */
+router.post("/api/followup-brief/prepare", async (req, res) => {
+  const authHeader = req.headers.authorization;
+  const secret = process.env.PB_WEBHOOK_SECRET || process.env.DEBUG_API_KEY;
+  if (!secret || !authHeader || !authHeader.includes(secret)) {
+    return res.status(401).json({ ok: false, error: 'Unauthorized' });
+  }
+  const tenant = (typeof req.query.tenant === 'string' && req.query.tenant.trim()) || 'Guy-Wilson';
+  setImmediate(() => {
+    require('../services/wingguyFollowupBrief').prepareFollowupBrief(tenant)
+      .then((r) => console.log(`[followup-brief] cron/endpoint prepare for ${tenant}: ${JSON.stringify(r)}`))
+      .catch((e) => console.error(`[followup-brief] cron/endpoint prepare crashed for ${tenant}: ${e.message}`));
+  });
+  return res.status(202).json({ ok: true, tenant, message: 'Preparation started in the background (~2-3 min).' });
+});
+
+/**
  * GET /debug-render-services
  * Lists every Render service/cron on this owner (id, name, type) so we can look up log resource IDs.
  * Auth: Bearer PB_WEBHOOK_SECRET (same as debug-render-logs).
