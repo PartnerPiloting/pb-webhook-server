@@ -543,19 +543,19 @@ const TIER_ORDER = { reply: 0, deferral: 1, cadence: 2 };
 const TIER_LABEL = { reply: '↩ REPLY OWED', deferral: '📅 DEFERRAL DUE', cadence: '⏳ WENT QUIET' };
 
 /**
- * The follow-up sweep (Stage A). Rebuilds "who do I owe a follow-up, and in what order" live from
- * the tenant's mailbox (Nylas) + LinkedIn history (lead Notes) + the gates on each lead record.
- * Stores nothing. Returns a ranked, capped plain-text list for the brief / standalone triggers.
+ * The follow-up sweep core (Stage A), STRUCTURED. Rebuilds "who do I owe a follow-up, and in what
+ * order" live from the tenant's mailbox + LinkedIn history (lead Notes) + the gates on each lead
+ * record. Stores nothing. Returns { ok, coach, surfaced (ranked, uncapped), counts, ... } for the
+ * brief PREPARER and the text tool alike — runFollowupSweep wraps this with cap + formatting.
  */
-async function runFollowupSweep({ window_days, limit } = {}, tenant = TENANT) {
+async function computeFollowupSweep({ window_days } = {}, tenant = TENANT) {
   const clientService = require('./clientService');
   const coach = await clientService.getClientById(tenant);
-  if (!coach) return { text: `Server config error: coach client "${tenant}" not found.`, isError: true };
-  if (!coach.airtableBaseId) return { text: `No Airtable base on file for "${tenant}" — can't read the leads.`, isError: true };
-  if (!coach.nylasGrantId) return { text: `No Nylas grant on file for "${tenant}" — connect the mailbox (Nylas, mail scope) first.`, isError: true };
+  if (!coach) return { ok: false, error: `Server config error: coach client "${tenant}" not found.` };
+  if (!coach.airtableBaseId) return { ok: false, error: `No Airtable base on file for "${tenant}" — can't read the leads.` };
+  if (!coach.nylasGrantId) return { ok: false, error: `No Nylas grant on file for "${tenant}" — connect the mailbox (Nylas, mail scope) first.` };
 
   const windowDays = Math.min(Math.max(parseInt(window_days, 10) || SWEEP_WINDOW_DAYS, 7), 180);
-  const cap = Math.min(Math.max(parseInt(limit, 10) || 5, 1), 100);
   const nowMs = Date.now();
   const td = new Date(nowMs);
   const todayMidMs = Date.UTC(td.getUTCFullYear(), td.getUTCMonth(), td.getUTCDate());
@@ -583,7 +583,7 @@ async function runFollowupSweep({ window_days, limit } = {}, tenant = TENANT) {
       }
     }
   } catch (e) {
-    return { text: `Lead read failed: ${e.message}`, isError: true };
+    return { ok: false, error: `Lead read failed: ${e.message}` };
   }
 
   const leads = [];
@@ -614,7 +614,7 @@ async function runFollowupSweep({ window_days, limit } = {}, tenant = TENANT) {
   // computeMailSignals fixes that: a message only counts on a thread whose participants are exactly
   // {you, that lead} (a real 1:1); intro/group threads (3+ parties) are ignored for reply/cadence.
   const mail = await mailProvider.listRecent(coach, { after: emailAfterSec, max: 3000 });
-  if (!mail.ok) return { text: `Mailbox window read failed: ${mail.error}`, isError: true };
+  if (!mail.ok) return { ok: false, error: `Mailbox window read failed: ${mail.error}` };
   const signals = computeMailSignals(mail.messages, new Set(byEmail.keys()));
   for (const [email, sig] of signals) {
     const lead = byEmail.get(email);
@@ -677,9 +677,30 @@ async function runFollowupSweep({ window_days, limit } = {}, tenant = TENANT) {
     }
   }
 
+  return {
+    ok: true,
+    coach,
+    surfaced,
+    counts: { gatedCadence, coldCadence, bookedSuppressed, calChecked, leadsScanned: leads.length },
+    mailInfo: { count: mail.messages.length, partialError: mail.partialError || null, truncated: !!mail.truncated },
+    windowDays,
+    emailDays,
+  };
+}
+
+/**
+ * The follow-up sweep TOOL: computeFollowupSweep + cap + plain-text formatting.
+ */
+async function runFollowupSweep({ window_days, limit } = {}, tenant = TENANT) {
+  const r = await computeFollowupSweep({ window_days }, tenant);
+  if (!r.ok) return { text: r.error, isError: true };
+  const cap = Math.min(Math.max(parseInt(limit, 10) || 5, 1), 100);
+  const { surfaced, counts, mailInfo, windowDays, emailDays } = r;
+  const { gatedCadence, coldCadence, bookedSuppressed, calChecked } = counts;
+
   if (!surfaced.length) {
     const booked = bookedSuppressed ? `, ${bookedSuppressed} already booked` : '';
-    return { text: `No follow-ups surfaced from the last ${windowDays} days. (${leads.length} leads scanned; suppressed ${gatedCadence} Cease/Series + ${coldCadence} cold-outreach cadence${booked}.)` };
+    return { text: `No follow-ups surfaced from the last ${windowDays} days. (${counts.leadsScanned} leads scanned; suppressed ${gatedCadence} Cease/Series + ${coldCadence} cold-outreach cadence${booked}.)` };
   }
   const shown = surfaced.slice(0, cap);
   const more = surfaced.length - shown.length;
@@ -693,7 +714,7 @@ async function runFollowupSweep({ window_days, limit } = {}, tenant = TENANT) {
       `Top ${shown.length} of ${surfaced.length} follow-up${surfaced.length === 1 ? '' : 's'} (live, nothing stored):\n` +
       lines.join('\n') +
       (more > 0 ? `\n(${more} more behind these — call again with limit to show all.)` : '') +
-      `\n[diagnostics — do not relay unless asked: ${leads.length} leads scanned; ${mail.messages.length} emails/${emailDays}d${mail.partialError ? ' ⚠PARTIAL' : (mail.truncated ? ' ⚠capped' : '')}, LinkedIn ${windowDays}d; suppressed ${gatedCadence} Cease/Series + ${coldCadence} cold-outreach${calChecked ? ` + ${bookedSuppressed} already-booked` : ''}. ` +
+      `\n[diagnostics — do not relay unless asked: ${counts.leadsScanned} leads scanned; ${mailInfo.count} emails/${emailDays}d${mailInfo.partialError ? ' ⚠PARTIAL' : (mailInfo.truncated ? ' ⚠capped' : '')}, LinkedIn ${windowDays}d; suppressed ${gatedCadence} Cease/Series + ${coldCadence} cold-outreach${calChecked ? ` + ${bookedSuppressed} already-booked` : ''}. ` +
       `REPLY OWED = a lead replied last on a 1:1 thread (≤${REPLY_LIVE_DAYS}d), ball in your court — intro/group threads (3+ parties) are NOT counted; DEFERRAL DUE = a stamped Reconnect On date has arrived (≤${DEFERRAL_LIVE_DAYS}d past), ranks above cadence; WENT QUIET = you spoke last ${CADENCE_OVERDUE_DAYS}-${CADENCE_MAX_DAYS}d ago on a 1:1 thread, connected/replied leads only. A FUTURE Reconnect On parks a lead from cadence until then. Calendar cross-check ${calChecked ? 'ON (already-booked leads dropped)' : '⚠ SKIPPED this run (calendar read failed) — verify already-booked before nudging'}.]`,
   };
 }
@@ -763,6 +784,45 @@ async function runSetReconnect({ lead_email, lead_name, reconnect_on } = {}, ten
       ? `Set ${who}'s Reconnect On to ${dateVal}. They'll surface at the top of your follow-ups (DEFERRAL DUE) from that day, and won't be nudged before then.`
       : `Cleared ${who}'s Reconnect On — no longer parked to a date.`,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Prepared brief — instant read + background rebuild (see wingguyFollowupBrief.js)
+// ---------------------------------------------------------------------------
+
+/** Serve the STORED brief instantly — no computation at ask time. */
+async function runFollowupBriefRead(_args = {}, tenant = TENANT) {
+  const brief = require('./wingguyFollowupBrief');
+  let row;
+  try { row = await brief.getBrief(tenant); }
+  catch (e) { return { text: `Brief store unavailable: ${e.message}`, isError: true }; }
+  if (!row) {
+    return { text: 'No prepared brief exists yet for this coach. Start one with wingguy_prepare_brief (~2-3 minutes, runs in the background), or fall back to the live wingguy_followup_sweep.' };
+  }
+  if (row.status === 'preparing' && !row.payload) {
+    return { text: `The first brief is being prepared right now (started ${row.started_at}). Ask again in a minute or two.` };
+  }
+  const text = brief.formatBrief(row);
+  if (!text) return { text: `No brief content stored${row.error ? ` (last preparation failed: ${row.error})` : ''}. Run wingguy_prepare_brief.`, isError: true };
+  const note = row.status === 'error' ? `⚠ The LATEST preparation failed (${row.error}) — this is the previous brief.\n` : (row.status === 'preparing' ? '(A fresh brief is being prepared right now — this is the previous one.)\n' : '');
+  return { text: note + text };
+}
+
+/** Kick a background rebuild and return immediately — the human never waits on it. */
+async function runPrepareBrief(_args = {}, tenant = TENANT) {
+  const brief = require('./wingguyFollowupBrief');
+  try {
+    const row = await brief.getBrief(tenant);
+    if (row && row.status === 'preparing' && row.started_at && (Date.now() - new Date(row.started_at).getTime()) < 10 * 60 * 1000) {
+      return { text: `A preparation is already running (started ${row.started_at}). Ask for the brief in a minute or two.` };
+    }
+  } catch (e) { return { text: `Brief store unavailable: ${e.message}`, isError: true }; }
+  setImmediate(() => {
+    require('./wingguyFollowupBrief').prepareFollowupBrief(tenant)
+      .then((r) => console.log(`[wingguyMailMcp] brief prepared for ${tenant}: ${JSON.stringify(r)}`))
+      .catch((e) => console.error(`[wingguyMailMcp] brief prepare crashed for ${tenant}: ${e.message}`));
+  });
+  return { text: 'Preparation started in the background (~2-3 minutes: sweep → read each top thread → triage → pre-write the reply drafts into the mailbox). Serve wingguy_followup_brief shortly — do NOT make the human wait on this call.' };
 }
 
 // ---------------------------------------------------------------------------
@@ -905,7 +965,7 @@ const TOOL_DEFS = [
   {
     name: 'wingguy_followup_sweep',
     description:
-      'Who do I owe a follow-up, and in what order? Rebuilds the list LIVE every call (nothing stored — a stored follow-up list rots) from the coach\'s own mailbox (Nylas, ~90-day window in ONE read) merged with each lead\'s LinkedIn history (Notes) and the gates on the lead record. Returns a ranked, capped plain-text list: REPLY OWED (they replied, ball\'s in your court) → DEFERRAL DUE (a date they named has arrived) → WENT QUIET (you messaged last, past the interval). Cease FUP / On-Series suppress the WENT QUIET (cadence) nudge only — a reply or a due deferral still surfaces. Use for "prep me for today" (bundled with meetings), "show me what I need to follow up", or "who\'s waiting". Read-only. Reply-owed is thread-aware: only messages on a genuine 1:1 thread (you + the lead) count, so introductions you broker never manufacture phantom follow-ups; and already-booked leads are cross-checked against the calendar and dropped.',
+      'LIVE follow-up sweep — the SLOW fallback (~2 min). For "show me my follow-ups" prefer wingguy_followup_brief (instant, pre-triaged, drafts pre-written); use this only when no prepared brief exists or the human explicitly wants a raw live rebuild. Rebuilds the list LIVE every call (nothing stored — a stored follow-up list rots) from the coach\'s own mailbox (Nylas, ~90-day window in ONE read) merged with each lead\'s LinkedIn history (Notes) and the gates on the lead record. Returns a ranked, capped plain-text list: REPLY OWED (they replied, ball\'s in your court) → DEFERRAL DUE (a date they named has arrived) → WENT QUIET (you messaged last, past the interval). Cease FUP / On-Series suppress the WENT QUIET (cadence) nudge only — a reply or a due deferral still surfaces. Use for "prep me for today" (bundled with meetings), "show me what I need to follow up", or "who\'s waiting". Read-only. Reply-owed is thread-aware: only messages on a genuine 1:1 thread (you + the lead) count, so introductions you broker never manufacture phantom follow-ups; and already-booked leads are cross-checked against the calendar and dropped.',
     zodSchema: {
       window_days: z.number().optional().describe('How far back to read mail (default 90, min 7, max 180).'),
       limit: z.number().optional().describe('Max items to show (default 5 — the tight brief; pass a big number like 100 for "show all").'),
@@ -939,6 +999,22 @@ const TOOL_DEFS = [
       required: [],
     },
     run: runSetReconnect,
+  },
+  {
+    name: 'wingguy_followup_brief',
+    description:
+      'THE FIRST CALL for "show me my follow-ups" / "what\'s due" / "prep me for today" — returns the PREPARED follow-up brief INSTANTLY (no waiting: it was pre-computed overnight or on demand). The brief is already triaged by reading what each person actually said: REPLIES READY (reply drafts ALREADY WRITTEN — in the coach\'s mailbox for email people, paste-ready text for LinkedIn people) · JUST NEED A DATE (they named a future time — confirm and stamp via wingguy_set_reconnect) · NOTHING OWED (closing pleasantries, safe to clear) · NEEDS YOUR EYES (too nuanced for a canned reply). Every line carries the why and a memory-jog, so "why is X here?" is answerable instantly without any tool calls. If it reports STALE or missing, offer wingguy_prepare_brief (background rebuild). Use wingguy_followup_sweep only as the live fallback when no brief exists.',
+    zodSchema: {},
+    jsonSchema: { type: 'object', properties: {}, required: [] },
+    run: runFollowupBriefRead,
+  },
+  {
+    name: 'wingguy_prepare_brief',
+    description:
+      'Rebuild the prepared follow-up brief IN THE BACKGROUND (~2-3 min) and return immediately — the human never waits on it. Use when the human says "refresh my follow-ups" / "rebuild the brief", when wingguy_followup_brief reports stale/missing, or after a batch of actions has made the brief outdated. It re-runs the sweep, reads each top person\'s recent messages, triages them, and pre-writes the reply drafts. Tell the human it\'s preparing and they can ask for the brief in a couple of minutes — do not poll.',
+    zodSchema: {},
+    jsonSchema: { type: 'object', properties: {}, required: [] },
+    run: runPrepareBrief,
   },
 ];
 
@@ -1080,4 +1156,4 @@ async function legacyToolCall(toolName, args, tenant = TENANT) {
   }
 }
 
-module.exports = { registerWingguyMailTools, legacyToolList, legacyToolCall, TOOL_DEFS, detectAssets, htmlToText, stripQuotedTail, settleEmailEditPairs, parseLinkedInLast, classifyLead, computeMailSignals, runFollowupSweep };
+module.exports = { registerWingguyMailTools, legacyToolList, legacyToolCall, TOOL_DEFS, detectAssets, htmlToText, stripQuotedTail, settleEmailEditPairs, parseLinkedInLast, classifyLead, computeMailSignals, computeFollowupSweep, runFollowupSweep };
