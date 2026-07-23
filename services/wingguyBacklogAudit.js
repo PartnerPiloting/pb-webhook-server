@@ -302,7 +302,7 @@ function formatWorklist(row, { name, batch = 5 } = {}) {
     lines.push(`\nParks awaiting a stamp (confirm each via wingguy_set_reconnect):`);
     for (const it of park.slice(0, batch)) lines.push(`- ${nm(it)} → ${it.parkDate || '(date unclear)'} — ${it.whyLine}`);
   }
-  lines.push(`\n(Writeoffs need nothing. Work at any pace — "give me the draft for X", act, mark done.)`);
+  lines.push(`\n(Writeoffs need nothing by default — but warm-then-faded ones may carry an OPTIONAL graceful goodbye draft in their dossier (wingguy_dossier name=...); cold ones just rest. Work at any pace — "give me the draft for X", act, mark done.)`);
   return lines.join('\n');
 }
 
