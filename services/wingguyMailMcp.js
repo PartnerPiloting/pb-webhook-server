@@ -1047,6 +1047,20 @@ const TOOL_DEFS = [
     run: runPrepareBrief,
   },
   {
+    name: 'wingguy_queue',
+    description:
+      'THE QUEUE — everything actionable RIGHT NOW as ONE ranked, pageable list (ten per page): today\'s brief actions first (drafts ready / park proposals / needs-eyes), then the backlog reopens (drafts ready), then backlog parks. For grind sessions: "show me the queue" / "show me everyone" / "next ten" (pass page=2, 3…). Instant — merges the two prepared stores at serve time. Per person, get the jog + draft via wingguy_followup_brief (today\'s people) or wingguy_backlog name=... (backlog people) — or just relay from this list and fetch on demand. Parked-until-date people are deliberately absent (they surface on their day); nothing-owed people are absent (nothing to do). The morning brief = the pulse; this = the full workload on request.',
+    zodSchema: {
+      page: z.number().optional().describe('Page number, 10 per page (default 1). "next ten" = the next page.'),
+    },
+    jsonSchema: {
+      type: 'object',
+      properties: { page: { type: 'number', description: 'Page number, 10 per page (default 1). "next ten" = the next page.' } },
+      required: [],
+    },
+    run: runQueue,
+  },
+  {
     name: 'wingguy_backlog',
     description:
       'The BACKLOG WORKLIST — the one-time reckoning of neglected follow-ups (threads quiet 6 weeks to 12 months), pre-triaged into reopen (re-opening DRAFTS pre-written — email push-ready or LinkedIn paste-ready) / park (a date to stamp) / writeoff. Separate from the daily brief. Use when the human says "show my backlog", "give me the draft for [name]", "what\'s left on the old list". No args = summary + the next few reopens. name = that person\'s full entry (jog + draft + push params). action done|skip (with name) = mark them dealt with so the list shrinks. Instant — everything was pre-computed by the audit. Serve drafts for tweaking in chat; push email drafts via wingguy_create_draft ONLY on explicit approval; parks are stamped via wingguy_set_reconnect.',
@@ -1065,6 +1079,52 @@ const TOOL_DEFS = [
     run: runBacklogTool,
   },
 ];
+
+/**
+ * The unified QUEUE: everything actionable RIGHT NOW, one ranked pageable list (Guy 2026-07-23:
+ * "a list of people in priority order, one line each, top ten, next ten — that I can start
+ * actioning straight away"). Merges, at serve time (both stores are instant PG reads):
+ *   1. today's brief items needing action (replies-ready, park-proposals, needs-eyes)
+ *   2. the backlog reopens (pre-written drafts), then backlog parks
+ * Parked-until-date people are deliberately NOT here (they surface on their day); writeoffs and
+ * checked-clears are not here (nothing owed). The morning brief = the pulse; this = the grind.
+ */
+async function runQueue({ page } = {}, tenant = TENANT) {
+  const briefStore = require('./wingguyFollowupBrief');
+  const backlog = require('./wingguyBacklogAudit');
+  const items = [];
+  try {
+    const row = await briefStore.getBrief(tenant);
+    const p = row && row.payload ? (typeof row.payload === 'string' ? JSON.parse(row.payload) : row.payload) : null;
+    for (const it of ((p && p.items) || [])) {
+      if (it.verdict === 'draft') items.push({ ...it, src: 'today', line: `${it.whyLine} [draft ready]` });
+      else if (it.verdict === 'park') items.push({ ...it, src: 'today', line: `${it.whyLine} → propose park ${it.parkDate || '?'}` });
+      else if (it.verdict === 'attention') items.push({ ...it, src: 'today', line: `${it.whyLine} [needs your judgment]` });
+    }
+  } catch (_) { /* brief store down — queue still serves backlog */ }
+  try {
+    const row = await backlog.getWorklist(tenant);
+    const p = row && row.payload ? (typeof row.payload === 'string' ? JSON.parse(row.payload) : row.payload) : null;
+    const pend = ((p && p.items) || []).filter((i) => i.status === 'pending');
+    for (const it of pend.filter((i) => i.verdict === 'reopen')) items.push({ ...it, src: 'backlog', line: `${it.whyLine} (${it.quietDays}d quiet)${it.draftText ? ' [draft ready]' : ''}` });
+    for (const it of pend.filter((i) => i.verdict === 'park')) items.push({ ...it, src: 'backlog', line: `${it.whyLine} → propose park ${it.parkDate || '?'}` });
+  } catch (_) { /* ignore */ }
+  if (!items.length) return { text: 'The queue is empty — nothing actionable right now (parked people surface on their dates).' };
+  // Dedupe by name (a person can appear in both stores — today's view wins).
+  const seen = new Set();
+  const deduped = items.filter((it) => { const k = it.name.toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; });
+  const PAGE = 10;
+  const pg = Math.max(1, parseInt(page, 10) || 1);
+  const totalPages = Math.ceil(deduped.length / PAGE);
+  const slice = deduped.slice((pg - 1) * PAGE, pg * PAGE);
+  const nm = (it) => (it.linkedin ? `[${it.name}](${it.linkedin})` : it.name);
+  const lines = [
+    `THE QUEUE — ${deduped.length} actionable, priority order (page ${pg}/${totalPages}; today's brief first, then backlog reopens, then parks). Ask for anyone by name for jog + draft; "next ten" = next page.`,
+    ...slice.map((it, i) => `${(pg - 1) * PAGE + i + 1}. ${nm(it)} — ${it.line}`),
+  ];
+  if (pg < totalPages) lines.push(`(${deduped.length - pg * PAGE} more — say "next ten".)`);
+  return { text: lines.join('\n') };
+}
 
 /** The backlog worklist tool: summary / per-person entry / mark done-skip. All instant (stored). */
 async function runBacklogTool({ name, action } = {}, tenant = TENANT) {
