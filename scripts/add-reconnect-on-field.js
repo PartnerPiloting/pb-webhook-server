@@ -50,7 +50,10 @@ async function getClients(filterClientId = null, allClients = false) {
 
   const clients = [];
 
-  await base('Client Master').select({
+  // NB the master base's table is named 'Clients' (constants/airtableUnifiedConstants.js
+  // MASTER_TABLES.CLIENTS) — 'Client Master' is the RECORD concept, not the table name, and
+  // Airtable reports an unknown table as "not authorized" (deliberately vague).
+  await base('Clients').select({
     fields: ['Client ID', 'Airtable Base ID']
   }).eachPage((records, fetchNextPage) => {
     for (const record of records) {
