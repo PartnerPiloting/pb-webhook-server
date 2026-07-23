@@ -213,14 +213,23 @@ async function deepRead(llm, name, timeline, meetings) {
     ...(meetings.length ? ['MEETING SUMMARIES:', ...meetings.map((m) => `${m.date || '?'} "${m.title}": ${m.summary || '(no summary stored)'}`)] : []),
     ...(withTranscript ? [`FULL TRANSCRIPT of the latest meeting (${withTranscript.date} "${withTranscript.title}") — mine it for specifics the summary missed (named dates, travel, commitments, preferences):`, withTranscript.transcript] : []),
   ].join('\n');
-  const resp = await llm.messages.create({
-    model: MODEL_ID, max_tokens: 2200, thinking: NO_THINKING,
-    system: DEEP_SYSTEM,
-    messages: [{ role: 'user', content: scrub(`Today is ${new Date().toISOString().slice(0, 10)}.\n\n${material.slice(0, 32000)}`) }],
-  });
-  const text = (resp.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('');
-  const s = text.indexOf('{'); const e = text.lastIndexOf('}');
-  return JSON.parse(text.slice(s, e + 1));
+  // Up to 2 attempts: the model occasionally breaks its own JSON (unescaped quotes when quoting
+  // someone — killed Celeste's and Piyush's dossiers on 2026-07-24). Control-char sanitation first,
+  // then one full retry with a sterner instruction.
+  let lastErr;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const resp = await llm.messages.create({
+      model: MODEL_ID, max_tokens: 2200, thinking: NO_THINKING,
+      system: DEEP_SYSTEM + (attempt ? '\nSTRICT: your previous output was invalid JSON. Escape every double-quote inside string values as \\" and never put raw newlines inside strings.' : ''),
+      messages: [{ role: 'user', content: scrub(`Today is ${new Date().toISOString().slice(0, 10)}.\n\n${material.slice(0, 32000)}`) }],
+    });
+    const text = (resp.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('');
+    const s = text.indexOf('{'); const e = text.lastIndexOf('}');
+    try {
+      return JSON.parse(text.slice(s, e + 1).replace(/[\u0000-\u001f]/g, ' '));
+    } catch (err) { lastErr = err; }
+  }
+  throw lastErr;
 }
 
 // --- the batch builder (called after brief preparation; cache-aware) ---
