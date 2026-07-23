@@ -250,6 +250,7 @@ async function prepareFollowupBrief(tenant) {
       const name = `${item.lead.first} ${item.lead.last}`.trim() || item.lead.email || '(no name)';
       const entry = {
         name,
+        recId: item.lead.recId || null,
         email: item.lead.email || null,
         linkedin: item.lead.linkedinUrl || null,
         tier: item.tier,
@@ -301,6 +302,12 @@ async function prepareFollowupBrief(tenant) {
       windowDays: sweep.windowDays,
     };
     await setStatus(tenant, { status: 'ready', preparedAt: payload.preparedAt, payload, error: null });
+    // Dossier pass rides every preparation (cache-aware — unchanged people are skipped, so after
+    // the first run this is cheap). Non-fatal: the brief is already stored and served either way.
+    try {
+      const d = await require('./wingguyDossier').prepareDossiers(tenant);
+      console.log(`[followupBrief] dossiers: ${JSON.stringify(d)}`);
+    } catch (e) { console.warn(`[followupBrief] dossier pass failed (brief unaffected): ${e.message}`); }
     return { ok: true, items: items.length, totalSurfaced: sweep.surfaced.length };
   } catch (e) {
     console.error(`[followupBrief] prepare failed for ${tenant}: ${e.message}`);
