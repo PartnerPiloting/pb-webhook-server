@@ -98,10 +98,7 @@ function linkedInHistory(notes, sinceMs, maxLines = 10) {
 }
 
 function parseJsonArr(text) {
-  const s = String(text || '');
-  const a = s.indexOf('['); const b = s.lastIndexOf(']');
-  if (a === -1 || b === -1) throw new Error(`no JSON array in triage output ("${s.slice(0, 200)}")`);
-  return JSON.parse(s.slice(a, b + 1));
+  return require('./wingguyDossier').parseJsonArrayLoose(text);
 }
 
 const TRIAGE_SYSTEM = `You triage a coach's NEGLECTED follow-up backlog — threads that went quiet 6 weeks to 12 months ago. For each person you get their recent exchange (oldest first; THEM = the person, YOU = the coach) and how long it's been silent. Classify:

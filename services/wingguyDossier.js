@@ -107,6 +107,20 @@ function scrub(s) {
   return String(s || '').replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/g, '').replace(/(^|[^\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '$1');
 }
 
+/**
+ * Parse an LLM's "JSON array" answer LOOSELY: space out raw control chars, take [..] if present,
+ * else accept a bare object-stream ("{..} {..}") by joining and wrapping it. The brief triage died
+ * live on exactly that shape (2026-07-24: 7591 chars of objects, no array brackets).
+ */
+function parseJsonArrayLoose(text) {
+  const clean = Array.from(String(text || '')).map((ch) => (ch.charCodeAt(0) < 32 ? ' ' : ch)).join('');
+  const a = clean.indexOf('['); const b = clean.lastIndexOf(']');
+  if (a !== -1 && b > a) return JSON.parse(clean.slice(a, b + 1));
+  const s = clean.indexOf('{'); const e = clean.lastIndexOf('}');
+  if (s === -1 || e <= s) throw new Error(`no JSON found ("${clean.slice(0, 200)}")`);
+  return JSON.parse('[' + clean.slice(s, e + 1).replace(/}\s*,?\s*{/g, '},{') + ']');
+}
+
 const LI_RE = /^(\d{2})-(\d{2})-(\d{2})\s+(\d{1,2}:\d{2}\s*[AP]M)\s*-\s*(.+?)\s*-\s*(.*)$/;
 
 function gatherLinkedIn(notes, first, max = LI_LIMIT) {
@@ -402,4 +416,4 @@ function formatDossier(row) {
   return lines.join('\n');
 }
 
-module.exports = { prepareDossiers, findDossierByName, getDossierRow, formatDossier, scrub };
+module.exports = { prepareDossiers, findDossierByName, getDossierRow, formatDossier, scrub, parseJsonArrayLoose };
