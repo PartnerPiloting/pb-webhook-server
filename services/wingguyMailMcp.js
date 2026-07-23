@@ -563,8 +563,22 @@ async function computeFollowupSweep({ window_days } = {}, tenant = TENANT) {
 
   const windowDays = Math.min(Math.max(parseInt(window_days, 10) || SWEEP_WINDOW_DAYS, 7), 180);
   const nowMs = Date.now();
-  const td = new Date(nowMs);
-  const todayMidMs = Date.UTC(td.getUTCFullYear(), td.getUTCMonth(), td.getUTCDate());
+  // "Today" is the COACH's day, not UTC's (Guy 2026-07-24: a stamp dated "24 July" must fire on
+  // his 24 July morning, not at UTC midnight = 10am AEST). Day boundary = midnight in the coach's
+  // timezone; falls back to UTC when no timezone is on the client record.
+  // Implementation note: Reconnect On values parse as UTC midnight of their civil date, so
+  // "today" must be the coach's CIVIL DATE also expressed as UTC midnight — then day arithmetic
+  // against stamps stays exact.
+  let todayMidMs;
+  try {
+    const { DateTime } = require('luxon');
+    const local = DateTime.fromMillis(nowMs, { zone: coach.timezone || 'UTC' });
+    if (!local.isValid) throw new Error('invalid zone');
+    todayMidMs = Date.UTC(local.year, local.month - 1, local.day);
+  } catch (_) {
+    const td = new Date(nowMs);
+    todayMidMs = Date.UTC(td.getUTCFullYear(), td.getUTCMonth(), td.getUTCDate());
+  }
   const afterMs = nowMs - windowDays * MS_DAY;                     // LinkedIn / feature window (full depth)
   const emailDays = Math.min(windowDays, EMAIL_READ_DAYS);         // email read is shallower (deep history = LinkedIn)
   const emailAfterSec = Math.floor((nowMs - emailDays * MS_DAY) / 1000);
