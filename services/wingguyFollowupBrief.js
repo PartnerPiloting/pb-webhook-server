@@ -171,7 +171,7 @@ async function triage(client, items, contexts, todayIso) {
     max_tokens: 4000,
     thinking: NO_THINKING,
     system: TRIAGE_SYSTEM,
-    messages: [{ role: 'user', content: `Today is ${todayIso}.\n\n${people}` }],
+    messages: [{ role: 'user', content: require('./wingguyDossier').scrub(`Today is ${todayIso}.\n\n${people}`) }],
   });
   const text = (response.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('');
   return parseJson(text);
@@ -192,7 +192,7 @@ async function writeDraft(client, rulesText, item, context, instruction) {
     system: `${DRAFT_SYSTEM_PREFIX}\n\nTHE COACH'S RULEBOOK:\n\n${rulesText}`,
     messages: [{
       role: 'user',
-      content: `Reply to ${name}.\nWhat the reply should do: ${instruction}\n\nThe recent exchange (oldest first):\n${context.transcript.join('\n')}`,
+      content: require('./wingguyDossier').scrub(`Reply to ${name}.\nWhat the reply should do: ${instruction}\n\nThe recent exchange (oldest first):\n${context.transcript.join('\n')}`),
     }],
   });
   return (response.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('').trim();

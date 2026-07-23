@@ -209,7 +209,7 @@ async function runBacklogAudit(tenant) {
       const resp = await llm.messages.create({
         model: MODEL_ID, max_tokens: 4000, thinking: NO_THINKING,
         system: TRIAGE_SYSTEM,
-        messages: [{ role: 'user', content: `Today is ${today}.\n\n${listText}` }],
+        messages: [{ role: 'user', content: require('./wingguyDossier').scrub(`Today is ${today}.\n\n${listText}`) }],
       });
       const text = (resp.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('');
       for (const v of parseJsonArr(text)) verdicts.set(String(v.key || '').toLowerCase(), v);
