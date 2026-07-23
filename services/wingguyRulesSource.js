@@ -37,7 +37,7 @@ const DEFAULT_TENANT = store.DEFAULT_TENANT;
 const SURFACE_CONTEXTS = {
   'draft-thanks': ['outreach'],
   'draft-reply': ['reply'],
-  chat: ['outreach', 'reply', 'booking'],
+  chat: ['outreach', 'reply', 'booking', 'follow-up'],
 };
 
 // Store-mode task harness for the single-shot draft surfaces (replaces WINGGUY_VOICE's task
