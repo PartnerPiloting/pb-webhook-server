@@ -248,10 +248,16 @@ function classifyLead(lead, { lastInboundMs, lastOutboundMs, nowMs, todayMidMs }
   const cadenceOverdue = !replyWaiting && !!lastOutboundMs && outboundDays >= CADENCE_OVERDUE_DAYS;
   const gated = lead.cease || lead.onSeries; // suppress CADENCE only
 
-  // Reply owed and a due deferral surface even when gated; cadence is the only thing a gate silences.
-  // Reply-owed is LIVE only if recent (≤ REPLY_LIVE_DAYS) and ranks most-recent-first (sortKey = -days,
-  // so the whole list sorts uniformly descending by sortKey). A stale reply falls through and drops.
-  if (replyWaiting && inboundDays <= REPLY_LIVE_DAYS) return { tier: 'reply', why: `they replied ${inboundDays}d ago — ball's in your court`, sortKey: -inboundDays, gated };
+  // Reply owed and a due deferral surface even when gated (Cease/Series); cadence is the only thing
+  // those gates silence. A FUTURE Reconnect On is different: it's an explicit, dated human decision
+  // ("park her till September") usually made BECAUSE of what their last reply said — so it silences
+  // the reply signal too, or the parked person re-nags daily until the reply ages out (the Marianne
+  // re-nag, observed live 2026-07-23 an hour after stamping her). Known trade-off: a NEW message
+  // from a parked lead won't resurface them here until their date — the human's own inbox covers it.
+  if (replyWaiting && inboundDays <= REPLY_LIVE_DAYS) {
+    if (reconnectFuture) return { tier: null, gatedCadence: true };
+    return { tier: 'reply', why: `they replied ${inboundDays}d ago — ball's in your court`, sortKey: -inboundDays, gated };
+  }
   if (deferralLive) return { tier: 'deferral', why: `reconnect date reached (${deferDays === 0 ? 'today' : deferDays + 'd ago'})`, sortKey: deferDays, gated };
   if (cadenceOverdue) {
     if (outboundDays > CADENCE_MAX_DAYS) return null;                                   // too cold — needs re-engagement, drop
