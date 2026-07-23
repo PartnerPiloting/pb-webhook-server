@@ -20,6 +20,11 @@ const TOP_N = 10;                 // how many surfaced people get the full read+
 const THREAD_MSGS = 6;            // recent messages pulled per person for triage context
 const STALE_HOURS = 26;           // a brief older than this is flagged stale when served
 const MODEL_ID = process.env.WINGGUY_DRAFT_MODEL_ID || 'claude-sonnet-5';
+// Sonnet 5 THINKS BY DEFAULT — with a modest max_tokens the whole budget goes to thinking and the
+// text comes back empty ("triage returned no JSON array", proven live 2026-07-23). Same seam as
+// wingguyChat's CHAT_THINKING: disable it — these are structured extract/draft calls, not deep
+// reasoning. Harmless on models without default thinking.
+const NO_THINKING = { type: 'disabled' };
 
 // ---------------------------------------------------------------------------
 // Store
@@ -131,7 +136,7 @@ async function gatherPersonContext(mailProvider, coach, item) {
 function parseJson(text) {
   const s = String(text || '');
   const start = s.indexOf('['); const end = s.lastIndexOf(']');
-  if (start === -1 || end === -1) throw new Error('triage returned no JSON array');
+  if (start === -1 || end === -1) throw new Error(`triage returned no JSON array (got ${s.length} chars: "${s.slice(0, 300)}")`);
   return JSON.parse(s.slice(start, end + 1));
 }
 
@@ -163,7 +168,8 @@ async function triage(client, items, contexts, todayIso) {
   }).join('\n\n---\n\n');
   const response = await client.messages.create({
     model: MODEL_ID,
-    max_tokens: 3000,
+    max_tokens: 4000,
+    thinking: NO_THINKING,
     system: TRIAGE_SYSTEM,
     messages: [{ role: 'user', content: `Today is ${todayIso}.\n\n${people}` }],
   });
@@ -182,6 +188,7 @@ async function writeDraft(client, rulesText, item, context, instruction) {
   const response = await client.messages.create({
     model: MODEL_ID,
     max_tokens: 1200,
+    thinking: NO_THINKING,
     system: `${DRAFT_SYSTEM_PREFIX}\n\nTHE COACH'S RULEBOOK:\n\n${rulesText}`,
     messages: [{
       role: 'user',
