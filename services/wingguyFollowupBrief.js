@@ -354,9 +354,10 @@ function formatBrief(row) {
     for (const it of piles.attention) lines.push(`- ${nm(it)} — ${it.whyLine}${it.jog ? `\n    jog: ${it.jog}` : ''}`);
   }
   if (piles.clear.length) {
-    // ONE line, no bullets (Guy 2026-07-23: a pile of no-action people is noise; the line's only job
-    // is trust — showing they were checked, not lost). No action vocabulary on purpose.
-    lines.push(`\nChecked & clear (${piles.clear.length}) — nothing owed: ${piles.clear.map(nm).join(' · ')}`);
+    // Guy (2026-07-24, after two live looks): the checked-and-clear line is noise he'll never read.
+    // Moved into the do-not-relay tail — the trust function survives (Wingguy can answer "was Simon
+    // checked?" instantly) but it costs zero screen space by default.
+    lines.push(`\n[checked & clear — do NOT relay unless asked: ${piles.clear.map((it) => `${it.name} (${it.whyLine})`).join(' · ')}]`);
   }
   const more = (p.totalSurfaced || 0) - (p.items || []).length;
   if (more > 0) lines.push(`\n(${more} more surfaced but not in the prepared top group — the live sweep has them.)`);
