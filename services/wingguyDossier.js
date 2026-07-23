@@ -238,19 +238,25 @@ async function prepareDossiers(tenant) {
     const { getAnthropicClient } = require('../config/anthropicClient');
     const briefStore = require('./wingguyFollowupBrief');
     const backlog = require('./wingguyBacklogAudit');
+    const rulesStore = require('./wingguyRulesStore');
 
     const coach = await clientService.getClientById(tenant);
     if (!coach) return out;
     const base = clientService.getClientBase(coach.airtableBaseId);
 
-    // Collect actionable people from both stores.
-    const people = new Map(); // key -> {name, recId, email}
+    // Collect actionable people from both stores. hasDraft tracks whether a store already carries a
+    // written draft for them — those without one (attention/park verdicts) get a GUIDANCE DRAFT
+    // baked into the dossier (Guy 2026-07-24: even judgment cases deserve a prepared starting
+    // point — reacting to a draft beats composing from advice).
+    const people = new Map(); // key -> {name, recId, email, hasDraft}
     const addFrom = (items, verdicts) => {
       for (const it of (items || [])) {
         if (!verdicts.includes(it.verdict)) continue;
         if (it.status && it.status !== 'pending') continue;
         const key = (it.email || it.name).toLowerCase();
-        if (!people.has(key)) people.set(key, { key, name: it.name, recId: it.recId || null, email: it.email || null });
+        const hasDraft = !!(it.draftText || it.draftHtml);
+        if (!people.has(key)) people.set(key, { key, name: it.name, recId: it.recId || null, email: it.email || null, hasDraft });
+        else if (hasDraft) people.get(key).hasDraft = true;
       }
     };
     try {
@@ -264,6 +270,18 @@ async function prepareDossiers(tenant) {
       addFrom(p && p.items, ['reopen', 'park']);
     } catch (_) {}
     if (!people.size) return out;
+
+    // Voice rules + asset library, rendered ONCE for guidance drafts. Assets go in as {{asset:key}}
+    // placeholders — the push path (wingguy_create_draft) resolves them AND enforces the
+    // never-repeat-an-asset gate, so an overnight suggestion can't double-send anything.
+    let rulesText = '';
+    try { rulesText = (await rulesStore.renderRulesBlock({ tenantId: tenant, contexts: ['reply', 'follow-up'] })).text || ''; } catch (_) {}
+    let assetLines = '';
+    try {
+      const assets = await rulesStore.getAssets({ tenantId: tenant });
+      const active = assets.filter((a) => a.status === 'active' && a.url);
+      if (active.length) assetLines = `\n\nASSET LIBRARY (optional — include AT MOST ONE link and ONLY when genuinely helpful to this person, as {{asset:KEY}} exactly; usually include none): ${active.map((a) => `${a.asset_key}${a.kind ? ` (${a.kind})` : ''}`).join(', ')}`;
+    } catch (_) {}
 
     // One Airtable read for Notes + missing rec ids (dossiers need LinkedIn history).
     const records = await base('Leads').select({ fields: ['First Name', 'Last Name', 'Email', 'Notes'] }).all();
@@ -296,6 +314,30 @@ async function prepareDossiers(tenant) {
 
         const read = await deepRead(llm, person.name, timeline, meetings);
         const lastHuman = [...timeline].reverse().find((t) => t.kind !== 'calendar');
+
+        // Guidance draft for anyone WITHOUT a store draft: embodies the deep-read's next move —
+        // recalls the relationship warmly, addresses what actually happened, proposes the step.
+        let suggested = null;
+        if (!person.hasDraft && read.next_move) {
+          try {
+            const { writeDraft } = require('./wingguyFollowupBrief');
+            const lastInbound = [...timeline].reverse().find((t) => t.dir === 'them' && t.kind === 'email');
+            const channel = person.email && lastInbound ? 'email' : 'linkedin';
+            const instruction =
+              `${read.next_move} Context: ${read.standing} ` +
+              (channel === 'linkedin' ? 'This will be pasted into LinkedIn chat — plain short text, no HTML links, no subject.' : '') +
+              assetLines;
+            const html = await writeDraft(llm, rulesText, { lead: { first: person.name.split(' ')[0], last: '', email: person.email } }, { transcript: timeline.map((t) => `${t.date} [${t.kind}/${t.dir}] ${t.fullText || t.text || ''}`) }, instruction);
+            suggested = {
+              channel,
+              text: scrub(html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()),
+              html: channel === 'email' ? scrub(html) : null,
+              replyToMessageId: (lastInbound && lastInbound.messageId) || null,
+              subject: lastInbound && lastInbound.subject ? (/^re:/i.test(lastInbound.subject) ? lastInbound.subject : `Re: ${lastInbound.subject}`) : null,
+            };
+          } catch (e) { console.warn(`[dossier] guidance draft for ${person.name}: ${e.message}`); }
+        }
+
         await saveDossier(tenant, person.key, basis, {
           name: person.name, email: person.email, recId,
           builtAt: new Date().toISOString(),
@@ -303,6 +345,7 @@ async function prepareDossiers(tenant) {
           meetings: meetings.map(({ transcript, ...rest }) => rest), // transcript consumed by deepRead, not duplicated in the payload
           lastHuman: lastHuman ? `${lastHuman.date} (${lastHuman.dir}, ${lastHuman.kind})${lastHuman.subject ? ` "${lastHuman.subject}"` : ''}` : null,
           standing: read.standing || '', commitmentsYou: read.commitments_you || [], commitmentsThem: read.commitments_them || [], remember: read.remember || [], nextMove: read.next_move || '',
+          suggestedDraft: suggested,
         });
         out.built++;
       } catch (e) { out.failed++; console.warn(`[dossier] ${person.name}: ${e.message}`); }
@@ -328,6 +371,11 @@ function formatDossier(row) {
     for (const r of p.remember) lines.push(`- ${r}`);
   }
   if (p.nextMove) lines.push(`\nSUGGESTED NEXT: ${p.nextMove}`);
+  if (p.suggestedDraft && p.suggestedDraft.text) {
+    lines.push(`\nSUGGESTED DRAFT (embodies the next move — show it, tweak in chat, push/copy ONLY on approval${p.suggestedDraft.channel === 'linkedin' ? '; LinkedIn paste-ready' : ''}):`);
+    lines.push(`"${p.suggestedDraft.text}"`);
+    if (p.suggestedDraft.channel === 'email' && p.suggestedDraft.replyToMessageId) lines.push(`push with: to=${p.email}, subject="${p.suggestedDraft.subject}", reply_to_message_id=${p.suggestedDraft.replyToMessageId} (any {{asset:KEY}} resolves + usage-gates at push)`);
+  }
   if (p.lastHuman) lines.push(`Last human message: ${p.lastHuman}`);
   if ((p.meetings || []).length) {
     lines.push(`\nMEETINGS:`);
