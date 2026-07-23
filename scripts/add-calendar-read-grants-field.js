@@ -1,23 +1,29 @@
 /**
- * Add the generic direct-provider calendar credential fields to the client roster.
+ * Add the `Calendar Read Grants` field to the client roster (2026-07-23, multi-grant calendars).
  *
- *   Calendar Provider Token   - the provider's refresh token / grant (e.g. Zoho refresh token)
- *   Calendar Provider Domain  - the region / API base (e.g. zoho.com.au)
+ *   Calendar Read Grants  - a JSON ARRAY of EXTRA read-only calendar sources that live in OTHER
+ *                           accounts/providers than the client's primary calendar. Availability
+ *                           unions free/busy across the primary + all of these; bookings still go to
+ *                           the ONE primary/nominated calendar. Blank -> no extra grants -> the
+ *                           client behaves exactly as a single-provider client (fully additive).
  *
- * These sit beside `Calendar Provider` / `Nylas Grant ID` and are populated ONLY for direct-adapter
- * calendar providers (Zoho now); blank for Nylas/Google clients. Generic on purpose - a future
- * direct provider reuses the same two fields, no schema churn (see the calendar-provider design
- * discussion, 2026-07-13).
+ * Element shape (each object supplies just the creds its provider needs):
+ *   iCloud : { "provider":"icloud", "label":"Personal", "appleId":"you@icloud.com",
+ *              "appPassword":"abcd-efgh-ijkl-mnop", "calendarUrls":["https://p52-caldav.icloud.com/123/calendars/home/"] }
+ *   Zoho   : { "provider":"zoho", "label":"...", "token":"<refresh>", "domain":"com.au", "readIds":"all" }
+ *   Unipile: { "provider":"unipile", "label":"...", "accountId":"<id>", "readIds":"all" }
+ *   Google : { "provider":"google", "label":"...", "selfEmail":"shared@x.com", "readIds":"shared@x.com" }
+ *   Nylas  : { "provider":"nylas", "label":"...", "grantId":"<grant>", "readIds":"all" }
+ *
+ * For iCloud, resolve calendarUrls once with scripts/wingguy-icloud-discover.js (Apple has no OAuth,
+ * so the client generates an app-specific password at appleid.apple.com).
  *
  * Usage:
- *   node scripts/add-calendar-provider-fields.js            # DRY RUN (default)
- *   node scripts/add-calendar-provider-fields.js --commit   # create the fields
+ *   node scripts/add-calendar-read-grants-field.js            # DRY RUN (default)
+ *   node scripts/add-calendar-read-grants-field.js --commit   # create the field
  *
- * Idempotent: a field that already exists is skipped. Finds the roster table by the presence of a
- * `Calendar Provider` field (robust to the table's actual name). The roster is a SINGLE global
- * table in the Master Clients base (every client is a row, existing + future), so - unlike a
- * per-client leads field (e.g. Cease FUP) - there is NO template copy to update: the Client
- * Template is a leads base with no roster, so it's correctly a no-op / skipped there.
+ * Idempotent: an existing field is skipped. Finds the roster table by the presence of a `Calendar
+ * Provider` field (robust to the table's actual name). Mirrors scripts/add-multi-calendar-fields.js.
  *
  * Prereqs: AIRTABLE_API_KEY (schema write), MASTER_CLIENTS_BASE_ID.
  */
@@ -29,8 +35,8 @@ const MASTER = process.env.MASTER_CLIENTS_BASE_ID;
 const TEMPLATE_BASE_ID = 'app6W6k9GiDlJktvt'; // "My Leads - Client Template"
 const ROSTER_MARKER_FIELD = 'Calendar Provider';
 const NEW_FIELDS = [
-  { name: 'Calendar Provider Token', type: 'singleLineText' },
-  { name: 'Calendar Provider Domain', type: 'singleLineText' },
+  // multilineText = a long-text field; holds the JSON array.
+  { name: 'Calendar Read Grants', type: 'multilineText' },
 ];
 const commit = process.argv.includes('--commit');
 

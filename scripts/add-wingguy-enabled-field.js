@@ -27,7 +27,7 @@ require('dotenv').config();
 
 const AIRTABLE_KEY = process.env.AIRTABLE_API_KEY;
 const MASTER = process.env.MASTER_CLIENTS_BASE_ID;
-const TEMPLATE_BASE_ID = 'app6W6k9GiDUlktvt'; // "My Leads - Client Template" (leads base, no roster)
+const TEMPLATE_BASE_ID = 'app6W6k9GiDlJktvt'; // "My Leads - Client Template" (leads base, no roster)
 const ROSTER_MARKER_FIELD = 'Calendar Provider'; // identifies the roster table regardless of its name
 const NEW_FIELD = {
   name: 'Wingguy Enabled',
