@@ -14,7 +14,7 @@
 const { DateTime } = require('luxon');
 const { getTimezoneFromLocation } = require('../linkedin-messaging-followup-next/lib/timezoneFromLocation.js');
 const { getBookingPrefs } = require('../config/wingguyBookingPrefs');
-const { createCalendarEvent, deleteCalendarEvent, getMeetingsInWindow } = require('./calendarProvider');
+const { createCalendarEvent, deleteCalendarEvent, getMeetingsInWindow, parseReadGrants } = require('./calendarProvider');
 
 const DEFAULT_TZ = 'Australia/Brisbane';
 const DAYS_TO_SCAN = 49;     // ~7 weeks ahead — the visibility CEILING (free/busy fetch window). Widened from 21
@@ -56,10 +56,13 @@ async function getCoachCalendarInfo(clientId) {
   // calendar (blank = the provider default) so "where did that meeting go?" has a boring answer.
   const calendarReadIds = rec.fields['Calendar Read IDs'] || null;
   const calendarWriteId = rec.fields['Calendar Write ID'] || null;
+  // Multi-grant (2026-07-23): extra READ-only calendar sources in OTHER accounts/providers, unioned
+  // into availability (a JSON array). Blank -> no extra grants -> unchanged single-grant behaviour.
+  const calendarReadGrants = rec.fields['Calendar Read Grants'] || null;
   if (!calendarEmail && !nylasGrantId && !calendarProviderToken) {
     throw new Error('No calendar for this client — share a calendar with the service account (Google), connect via Nylas, or connect a direct provider (e.g. Zoho) first.');
   }
-  return { calendarEmail, timezone, nylasGrantId, calendarProvider, calendarProviderToken, calendarProviderDomain, calendarReadIds, calendarWriteId };
+  return { calendarEmail, timezone, nylasGrantId, calendarProvider, calendarProviderToken, calendarProviderDomain, calendarReadIds, calendarWriteId, calendarReadGrants };
 }
 
 // The calendar provider a coach actually uses. ADDITIVE + Guy-safe: if the client shared a Google
@@ -95,6 +98,9 @@ function coachForCalendar(info) {
     nylasCalendarId: info.calendarWriteId || null,
     // Read scope for the multi-calendar busy-merge (blank | "all" | explicit ids).
     calendarReadIds: info.calendarReadIds || null,
+    // Extra READ-only grants in OTHER accounts/providers, unioned into availability (blank -> []).
+    // Only the read path uses these; writes stay on the primary provider above.
+    readGrants: parseReadGrants(info.calendarReadGrants),
     timezone: info.timezone,
   };
 }
@@ -621,7 +627,9 @@ function writeProviderForCoach(coach) {
   return p || 'nylas';
 }
 function coachForHolds(coach) {
-  return { ...coach, calendarProvider: writeProviderForCoach(coach) };
+  // HOLDs only ever live on the PRIMARY write calendar, so drop readGrants: fanning the hold search
+  // across extra read-grants adds no holds, only latency and an extra hard-fail surface.
+  return { ...coach, calendarProvider: writeProviderForCoach(coach), readGrants: [] };
 }
 
 /** Find this lead's HOLD events over the offer horizon. Throws on a read failure. */

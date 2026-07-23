@@ -77,8 +77,67 @@ function allDaySpan(startDate, endDateExclusive, tz) {
   return { start: s.toUTC().toISO(), end: (e > s ? e : s.plus({ days: 1 })).toUTC().toISO() };
 }
 
+/* ---- Multi-grant read (2026-07-23) ---------------------------------------------------------------
+ * "One client, many grants": a client whose calendars live in DIFFERENT accounts/providers (Julian:
+ * Zoho work calendar + iCloud personal calendar) unions FREE/BUSY across all of them for availability,
+ * but WRITES bookings to ONE nominated calendar (the PRIMARY — the flat coach fields, unchanged).
+ * Extra READ-only sources live in coach.readGrants (from the `Calendar Read Grants` JSON field); each
+ * is just another coach-shaped object dispatched through the SAME provider switch. Absent/empty
+ * readGrants => the read fans out to nobody => single-provider clients behave EXACTLY as before. Only
+ * the read path fans out; createCalendarEvent/deleteCalendarEvent never look at readGrants. */
+
+// The provider switch, factored out so the primary grant AND each extra read-grant share one path.
+async function dispatchRead(coach, timeMin, timeMax) {
+  const provider = activeProvider(coach);
+  if (provider === 'nylas') return getViaNylas(coach, timeMin, timeMax);
+  if (provider === 'unipile') return getViaUnipile(coach, timeMin, timeMax);
+  if (provider === 'zoho') return getViaZoho(coach, timeMin, timeMax);
+  if (provider === 'icloud') return getViaICloud(coach, timeMin, timeMax);
+  return getViaGoogle(coach, timeMin, timeMax);
+}
+
+// Turn one extra read-grant (a plain object from the `Calendar Read Grants` JSON) into a coach-shaped
+// object the provider switch understands. Inherits timezone + self email from the primary coach; each
+// getViaX reads only the credential fields its branch needs. NB: no readGrants here — grants don't
+// nest (and dispatchRead, not getMeetingsInWindow, runs them, so there's no re-fan-out anyway).
+function grantToCoach(grant, base) {
+  const g = grant || {};
+  return {
+    calendarProvider: String(g.provider || '').trim().toLowerCase(),
+    timezone: base.timezone,
+    googleCalendarEmail: g.selfEmail || base.googleCalendarEmail || base.calendarEmail || '',
+    nylasGrantId: g.nylasGrantId || g.grantId || null,
+    unipileAccountId: g.unipileAccountId || g.accountId || null,
+    calendarProviderToken: g.calendarProviderToken || g.token || null,
+    calendarProviderDomain: g.calendarProviderDomain || g.domain || null,
+    appleId: g.appleId || null,
+    appPassword: g.appPassword || null,
+    calendarUrls: g.calendarUrls || null,
+    // read scope WITHIN this grant's account ('all' | ids); iCloud uses calendarUrls instead.
+    calendarReadIds: g.readIds || g.calendarReadIds || null,
+    calendarWriteId: g.calendarWriteId || null,
+  };
+}
+
+// Parse the `Calendar Read Grants` field (a JSON array of extra read-sources) into an array. Blank /
+// invalid / non-array -> [] (today's single-grant behaviour). Never throws — a malformed field must
+// degrade to "no extra grants", never break a booking read.
+function parseReadGrants(raw) {
+  if (!raw) return [];
+  if (Array.isArray(raw)) return raw.filter((g) => g && typeof g === 'object');
+  try {
+    const v = JSON.parse(String(raw));
+    if (Array.isArray(v)) return v.filter((g) => g && typeof g === 'object');
+    if (v && typeof v === 'object') return [v];
+    return [];
+  } catch (_) {
+    return [];
+  }
+}
+
 /**
- * @param {object} coach  client record (from clientService.getClientById)
+ * @param {object} coach  client record (from clientService.getClientById). coach.readGrants (optional)
+ *   is an array of extra READ-only sources unioned into the busy set (see multi-grant note above).
  * @param {Date|string} timeMin
  * @param {Date|string} timeMax
  * @param {object} [opts] { includeAllDay } — all-day events are DROPPED by default (an all-day
@@ -88,11 +147,23 @@ function allDaySpan(startDate, endDateExclusive, tz) {
  */
 async function getMeetingsInWindow(coach, timeMin, timeMax, opts = {}) {
   const provider = activeProvider(coach);
-  let r;
-  if (provider === 'nylas') r = await getViaNylas(coach, timeMin, timeMax);
-  else if (provider === 'unipile') r = await getViaUnipile(coach, timeMin, timeMax);
-  else if (provider === 'zoho') r = await getViaZoho(coach, timeMin, timeMax);
-  else r = await getViaGoogle(coach, timeMin, timeMax);
+  let r = await dispatchRead(coach, timeMin, timeMax);
+
+  // Fan out across any extra read-grants (calendars in OTHER accounts/providers), union + dedup.
+  const grants = Array.isArray(coach && coach.readGrants) ? coach.readGrants : [];
+  if (grants.length && !r.error) {
+    const merged = [...(r.events || [])];
+    for (const grant of grants) {
+      const gr = await dispatchRead(grantToCoach(grant, coach), timeMin, timeMax);
+      // HARD-FAIL on an extra grant's error: silently dropping a busy source risks the exact
+      // double-book this feature exists to prevent. Better to refuse to offer times than to offer
+      // one over a private appointment we couldn't see.
+      if (gr.error) return { events: [], error: `read-grant "${grant.label || grant.provider || 'unknown'}" failed: ${gr.error}`, provider };
+      merged.push(...(gr.events || []));
+    }
+    r = { events: dedupEvents(merged), error: null, provider };
+  }
+
   if (!opts.includeAllDay && Array.isArray(r.events)) {
     r = { ...r, events: r.events.filter((e) => !e.allDay) };
   }
@@ -120,6 +191,11 @@ async function listCalendars(coach) {
       const accessToken = await getZohoAccessToken(coach);
       const cals = await listZohoCalendars(coach, accessToken);
       return { calendars: cals.map((c) => ({ id: c.uid, name: c.name || '', isDefault: !!c.isdefault, readOnly: false })), error: null, provider };
+    }
+    if (provider === 'icloud') {
+      const cals = await discoverICloudCalendars(coach);
+      // The collection URL IS the id that goes into a read-grant's calendarUrls / calendarWriteUrl.
+      return { calendars: cals.map((c) => ({ id: c.url, name: c.name || '', isDefault: !!c.isDefault, readOnly: false })), error: null, provider };
     }
     return { calendars: [], error: 'google service-account clients can\'t enumerate calendars — put explicit calendar emails (shared with the service account) in Calendar Read IDs', provider };
   } catch (e) {
@@ -317,8 +393,9 @@ async function createCalendarEvent(coach, details) {
   if (provider === 'nylas') return createViaNylas(coach, details);
   if (provider === 'unipile') return createViaUnipile(coach, details);
   if (provider === 'zoho') return createViaZoho(coach, details);
+  if (provider === 'icloud') return createViaICloud(coach, details);
   // The Google service account is READ-ONLY (calendar.readonly) — no write path there by design.
-  return { ok: false, error: `create-event not supported on provider '${provider}' (Google service account is read-only — use Nylas or Zoho)`, provider };
+  return { ok: false, error: `create-event not supported on provider '${provider}' (Google service account is read-only — use Nylas, Unipile, Zoho or iCloud)`, provider };
 }
 
 async function createViaNylas(coach, details) {
@@ -373,8 +450,9 @@ async function deleteCalendarEvent(coach, eventId) {
   const provider = activeProvider(coach);
   if (provider === 'zoho') return deleteViaZoho(coach, eventId);
   if (provider === 'unipile') return deleteViaUnipile(coach, eventId);
+  if (provider === 'icloud') return deleteViaICloud(coach, eventId);
   if (provider !== 'nylas') {
-    return { ok: false, error: `delete-event not supported on provider '${provider}' (use Nylas, Unipile or Zoho)`, provider };
+    return { ok: false, error: `delete-event not supported on provider '${provider}' (use Nylas, Unipile, Zoho or iCloud)`, provider };
   }
   const apiKey = process.env.NYLAS_API_KEY;
   const grantId = (coach && coach.nylasGrantId) || process.env.NYLAS_GRANT_ID;
@@ -908,9 +986,352 @@ async function deleteViaZoho(coach, eventId) {
   }
 }
 
+/* ---- iCloud / Apple Calendar (CalDAV; no OAuth — app-specific password) -------------------------
+ * Apple offers NO OAuth for calendar, so a tenant connects by generating an APP-SPECIFIC PASSWORD at
+ * appleid.apple.com (requires 2FA) — same friction class as Zoho's app password. We talk raw CalDAV
+ * at caldav.icloud.com with HTTP Basic (Apple ID + app-specific password). Neither Unipile nor Nylas
+ * can serve iCloud CALENDAR, so this is a custom adapter like Zoho.
+ *
+ * Creds live on the coach object (so it works both as a client's PRIMARY provider AND — the near-term
+ * use — as an extra READ-GRANT in coach.readGrants for a Zoho-primary client like Julian):
+ *   coach.appleId          Apple ID (email)
+ *   coach.appPassword      app-specific password
+ *   coach.calendarUrls     array of calendar-collection URLs to READ (resolve once with
+ *                          scripts/wingguy-icloud-discover.js), or the string 'all' to discover live
+ *   coach.calendarWriteUrl the ONE collection URL to PUT bookings into (write); defaults to the first
+ *                          calendarUrls entry
+ *
+ * READ = a CalDAV REPORT calendar-query with a VEVENT time-range and SERVER-SIDE <C:expand> so iCloud
+ * pre-expands recurring instances (we don't hand-roll RRULE). VEVENT text is parsed with ical.js,
+ * required LAZILY (loadICAL) so a missing dep can only break the iCloud path, never the seam's boot.
+ * WRITE = PUT a VCALENDAR/VEVENT resource; iCloud does the iTIP scheduling (attendee invites) itself.
+ *
+ * VERIFY-LIVE (NOTHING here is proven against a real Apple account yet — dormant until a coach carries
+ * iCloud creds): (a) the discovery host/redirect flow (iCloud 301s to a per-user partition host — we
+ * follow redirects manually to preserve the PROPFIND/REPORT method + body); (b) that <C:expand> is
+ * accepted and instances return in UTC; (c) all-day end-date exclusivity; (d) the DECISIVE write
+ * question — does a PUT with ATTENDEE lines actually EMAIL the invite (server-side scheduling), the
+ * same trap as Unipile's notify-defaults-false; (e) that DELETE needs no If-Match/etag. Probe write
+ * with scripts/wingguy-icloud-write-probe.js on a real account (create + immediately delete). */
+
+const ICLOUD_CALDAV_ROOT = 'https://caldav.icloud.com';
+
+// ical.js is required lazily: a missing module then degrades ONLY the iCloud path (returns a clean
+// error) instead of throwing at require-time and taking down the whole calendar seam for everyone.
+function loadICAL() {
+  try { return require('ical.js'); } catch (_) {
+    throw new Error('ical.js not installed (iCloud calendar parsing needs it) — run `npm install`');
+  }
+}
+
+function icloudCreds(coach) {
+  const appleId = (coach && coach.appleId) || process.env.ICLOUD_APPLE_ID || '';
+  const appPassword = (coach && coach.appPassword) || process.env.ICLOUD_APP_PASSWORD || '';
+  const authHeader = appleId && appPassword
+    ? `Basic ${Buffer.from(`${appleId}:${appPassword}`).toString('base64')}`
+    : '';
+  const raw = coach && coach.calendarUrls;
+  let readUrls = null; // array of collection URLs, or the string 'all', or null
+  if (Array.isArray(raw)) readUrls = raw.filter(Boolean);
+  else if (typeof raw === 'string' && /^all$/i.test(raw.trim())) readUrls = 'all';
+  else if (typeof raw === 'string' && raw.trim()) readUrls = raw.split(/[,\n]/).map((s) => s.trim()).filter(Boolean);
+  const writeUrl = (coach && coach.calendarWriteUrl) || (Array.isArray(readUrls) && readUrls[0]) || '';
+  return { appleId, appPassword, authHeader, readUrls, writeUrl };
+}
+
+// One CalDAV call. Redirects are followed MANUALLY (redirect:'manual') so the method + body + auth
+// survive iCloud's 301/308 to a per-user partition host — auto-follow can drop the body or downgrade
+// PROPFIND/REPORT to GET.
+async function caldavRequest(method, url, authHeader, { depth, body, headers } = {}) {
+  let current = url;
+  for (let hop = 0; hop < 6; hop++) {
+    const h = { Authorization: authHeader, ...(headers || {}) };
+    if (depth != null) h.Depth = String(depth);
+    if (body != null && !h['Content-Type']) h['Content-Type'] = 'application/xml; charset=utf-8';
+    const res = await fetch(current, { method, headers: h, body, redirect: 'manual' });
+    if ([301, 302, 307, 308].includes(res.status)) {
+      const loc = res.headers.get('location');
+      if (!loc) return res;
+      current = new URL(loc, current).toString();
+      continue;
+    }
+    return res;
+  }
+  throw new Error(`too many CalDAV redirects for ${url}`);
+}
+
+// Minimal XML entity unescape for the iCalendar text carried inside <calendar-data> (&amp; last).
+function xmlUnescape(s) {
+  return String(s || '')
+    .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'").replace(/&#(\d+);/g, (_, d) => String.fromCharCode(+d))
+    .replace(/&amp;/g, '&');
+}
+
+// Pull every <calendar-data> payload (any namespace prefix) out of a CalDAV multistatus body.
+function extractCalendarData(xml) {
+  const out = [];
+  const re = /<[\w-]*:?calendar-data[^>]*>([\s\S]*?)<\/[\w-]*:?calendar-data>/gi;
+  let m;
+  while ((m = re.exec(xml)) !== null) { const t = xmlUnescape(m[1]).trim(); if (t) out.push(t); }
+  return out;
+}
+
+// Pull <href> values out of a multistatus body (discovery).
+function extractHrefs(xml) {
+  const out = [];
+  const re = /<[\w-]*:?href[^>]*>([\s\S]*?)<\/[\w-]*:?href>/gi;
+  let m;
+  while ((m = re.exec(xml)) !== null) { const t = xmlUnescape(m[1]).trim(); if (t) out.push(t); }
+  return out;
+}
+
+function mapICloudStatus(s) {
+  const v = String(s || '').toUpperCase();
+  if (v === 'ACCEPTED') return 'accepted';
+  if (v === 'DECLINED') return 'declined';
+  if (v === 'TENTATIVE') return 'tentative';
+  return 'needsAction'; // NEEDS-ACTION / unknown
+}
+
+const icloudMailto = (v) => String(v || '').replace(/^mailto:/i, '').trim();
+
+/** Map one iCloud VEVENT (an ICAL.Component) into the Google-shaped event the filters expect. */
+function mapICloudEvent(ve, selfEmail, tz) {
+  if (!ve) return null;
+  const ICAL = loadICAL();
+  let ev;
+  try { ev = new ICAL.Event(ve); } catch (_) { return null; }
+  let start; let end; let allDay = false;
+  try {
+    if (ev.startDate && ev.startDate.isDate) {
+      // All-day: DTSTART;VALUE=DATE. Use the date COMPONENTS with the coach's tz — toJSDate() would
+      // read a floating date in the server's local zone and smear the day. end assumed EXCLUSIVE.
+      const sd = ev.startDate; const ed = ev.endDate;
+      const p = (n) => String(n).padStart(2, '0');
+      const sStr = `${sd.year}-${p(sd.month)}-${p(sd.day)}`;
+      const eStr = ed ? `${ed.year}-${p(ed.month)}-${p(ed.day)}` : null;
+      const span = allDaySpan(sStr, eStr, tz);
+      if (!span) return null;
+      allDay = true; start = span.start; end = span.end;
+    } else if (ev.startDate) {
+      start = ev.startDate.toJSDate().toISOString();
+      end = (ev.endDate || ev.startDate).toJSDate().toISOString();
+    } else {
+      return null;
+    }
+  } catch (_) { return null; }
+
+  const orgProp = ve.getFirstProperty('organizer');
+  const orgEmail = orgProp ? icloudMailto(orgProp.getFirstValue()).toLowerCase() : '';
+  const attendees = ve.getAllProperties('attendee').map((p) => {
+    const email = icloudMailto(p.getFirstValue());
+    const el = email.toLowerCase();
+    return {
+      email,
+      displayName: p.getParameter('cn') || '',
+      self: !!selfEmail && el === selfEmail,
+      organizer: !!orgEmail && el === orgEmail,
+      responseStatus: mapICloudStatus(p.getParameter('partstat')),
+    };
+  });
+  // Coach is usually the organizer and often absent from attendees — synthesise a 'self' row so
+  // isCoachAttending() recognises the coach is in the meeting (parity with the other mappers).
+  if (selfEmail && !attendees.some((a) => a.self)) {
+    attendees.push({ email: selfEmail, displayName: '', self: true, organizer: orgEmail === selfEmail, responseStatus: 'accepted' });
+  }
+
+  return {
+    id: ev.uid || null,
+    summary: ev.summary || '(No title)',
+    start,
+    end,
+    ...(allDay ? { allDay: true } : {}),
+    location: ev.location || '',
+    description: ev.description || '',
+    htmlLink: '',
+    conferenceData: null,
+    attendees,
+  };
+}
+
+// Parse every VEVENT out of one iCalendar text into canonical events. Never throws (bad payload -> []).
+function parseICloudVEvents(icsText, selfEmail, tz) {
+  const ICAL = loadICAL();
+  let comp;
+  try { comp = new ICAL.Component(ICAL.parse(icsText)); } catch (_) { return []; }
+  return comp.getAllSubcomponents('vevent').map((ve) => mapICloudEvent(ve, selfEmail, tz)).filter(Boolean);
+}
+
+// CalDAV time-range wants UTC basic format yyyymmddTHHMMSSZ — identical to Zoho's, so reuse isoToZoho.
+function icloudReportBody(start, end) {
+  return `<?xml version="1.0" encoding="utf-8"?>
+<c:calendar-query xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">
+  <d:prop><d:getetag/><c:calendar-data><c:expand start="${start}" end="${end}"/></c:calendar-data></d:prop>
+  <c:filter><c:comp-filter name="VCALENDAR"><c:comp-filter name="VEVENT">
+    <c:time-range start="${start}" end="${end}"/>
+  </c:comp-filter></c:comp-filter></c:filter>
+</c:calendar-query>`;
+}
+
+/**
+ * Resolve the calendar collections on an iCloud account (principal -> calendar-home-set -> collections).
+ * Returns [{ url, name, isDefault }]. Throws on failure. Used by the setup step (listCalendars) and by
+ * getViaICloud only when calendarUrls === 'all'.
+ */
+async function discoverICloudCalendars(coach) {
+  const { authHeader } = icloudCreds(coach);
+  if (!authHeader) throw new Error('iCloud appleId / appPassword not configured');
+
+  // 1) current-user-principal
+  const principalBody = '<?xml version="1.0" encoding="utf-8"?><d:propfind xmlns:d="DAV:"><d:prop><d:current-user-principal/></d:prop></d:propfind>';
+  let res = await caldavRequest('PROPFIND', `${ICLOUD_CALDAV_ROOT}/`, authHeader, { depth: 0, body: principalBody });
+  if (!res.ok) throw new Error(`iCloud principal PROPFIND HTTP ${res.status}: ${(await res.text().catch(() => '')).slice(0, 150)}`);
+  const principalHref = extractHrefs(await res.text())[0];
+  if (!principalHref) throw new Error('iCloud: no current-user-principal href returned');
+  const principalUrl = new URL(principalHref, ICLOUD_CALDAV_ROOT).toString();
+
+  // 2) calendar-home-set
+  const homeBody = '<?xml version="1.0" encoding="utf-8"?><d:propfind xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav"><d:prop><c:calendar-home-set/></d:prop></d:propfind>';
+  res = await caldavRequest('PROPFIND', principalUrl, authHeader, { depth: 0, body: homeBody });
+  if (!res.ok) throw new Error(`iCloud calendar-home PROPFIND HTTP ${res.status}`);
+  const homeHref = extractHrefs(await res.text())[0];
+  if (!homeHref) throw new Error('iCloud: no calendar-home-set href returned');
+  const homeUrl = new URL(homeHref, principalUrl).toString();
+
+  // 3) list the collections under the home (Depth 1); keep only VEVENT-capable calendar collections.
+  const listBody = '<?xml version="1.0" encoding="utf-8"?><d:propfind xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav"><d:prop><d:resourcetype/><d:displayname/><c:supported-calendar-component-set/></d:prop></d:propfind>';
+  res = await caldavRequest('PROPFIND', homeUrl, authHeader, { depth: 1, body: listBody });
+  if (!res.ok) throw new Error(`iCloud calendar list PROPFIND HTTP ${res.status}`);
+  return parseICloudCalendarList(await res.text(), homeUrl);
+}
+
+function parseICloudCalendarList(xml, baseUrl) {
+  const blocks = xml.split(/<[\w-]*:?response[\s>]/i).slice(1);
+  const cals = [];
+  for (const b of blocks) {
+    const href = extractHrefs(b)[0];
+    if (!href) continue;
+    const rt = /<[\w-]*:?resourcetype[^>]*>([\s\S]*?)<\/[\w-]*:?resourcetype>/i.exec(b);
+    if (!rt || !/<[\w-]*:?calendar[\s/>]/i.test(rt[1])) continue; // must be a calendar collection
+    const comp = /supported-calendar-component-set[\s\S]*?<\/[\w-]*:?supported-calendar-component-set>/i.exec(b);
+    if (comp && !/name="VEVENT"/i.test(comp[0])) continue; // skip VTODO-only (Reminders) collections
+    const nameM = /<[\w-]*:?displayname[^>]*>([\s\S]*?)<\/[\w-]*:?displayname>/i.exec(b);
+    cals.push({ url: new URL(href, baseUrl).toString(), name: nameM ? xmlUnescape(nameM[1]).trim() : '', isDefault: false });
+  }
+  return cals;
+}
+
+async function getViaICloud(coach, timeMin, timeMax) {
+  const { authHeader, readUrls } = icloudCreds(coach);
+  if (!authHeader) return { events: [], error: 'iCloud appleId / appPassword not configured', provider: 'icloud' };
+  try {
+    let urls = readUrls;
+    if (urls === 'all') urls = (await discoverICloudCalendars(coach)).map((c) => c.url);
+    if (!urls || !urls.length) {
+      return { events: [], error: 'iCloud: no calendar URLs configured (set calendarUrls, or "all"; resolve with scripts/wingguy-icloud-discover.js)', provider: 'icloud' };
+    }
+    const selfEmail = String(coach.googleCalendarEmail || coach.calendarEmail || coach.appleId || '').toLowerCase();
+    const tz = coach.timezone || null;
+    const start = isoToZoho(new Date(timeMin).toISOString());
+    const end = isoToZoho(new Date(timeMax).toISOString());
+    const body = icloudReportBody(start, end);
+    const events = [];
+    for (const url of urls) {
+      const res = await caldavRequest('REPORT', url, authHeader, { depth: 1, body });
+      if (!res.ok) return { events: [], error: `iCloud REPORT HTTP ${res.status} (${url}): ${(await res.text().catch(() => '')).slice(0, 200)}`, provider: 'icloud' };
+      const xml = await res.text();
+      for (const ics of extractCalendarData(xml)) {
+        for (const m of parseICloudVEvents(ics, selfEmail, tz)) events.push({ ...m, calendarId: url });
+      }
+    }
+    return { events: urls.length > 1 ? dedupEvents(events) : events, error: null, provider: 'icloud' };
+  } catch (e) {
+    return { events: [], error: `iCloud read failed: ${e.message}`, provider: 'icloud' };
+  }
+}
+
+// The resource href for an event we created: {collection}/{uid}.ics (we choose the href on PUT, so
+// delete can reconstruct it deterministically from the uid).
+function icloudEventHref(writeUrl, uid) {
+  return `${String(writeUrl).replace(/\/$/, '')}/${encodeURIComponent(uid)}.ics`;
+}
+
+async function createViaICloud(coach, details) {
+  const { authHeader, writeUrl, appleId } = icloudCreds(coach);
+  if (!authHeader) return { ok: false, error: 'iCloud appleId / appPassword not configured', provider: 'icloud' };
+  if (!writeUrl) return { ok: false, error: 'iCloud: no calendarWriteUrl configured (which collection to book into)', provider: 'icloud' };
+  try {
+    const ICAL = loadICAL();
+    const startD = new Date(details.startISO);
+    const endD = new Date(details.endISO);
+    if (isNaN(startD.getTime()) || isNaN(endD.getTime()) || endD <= startD) return { ok: false, error: 'invalid start/end time', provider: 'icloud' };
+    const uid = details.uid || `wingguy-${startD.getTime()}-${require('crypto').randomUUID()}`;
+
+    const vcal = new ICAL.Component(['vcalendar', [], []]);
+    vcal.updatePropertyWithValue('prodid', '-//Wingguy//Calendar//EN');
+    vcal.updatePropertyWithValue('version', '2.0');
+    const vevent = new ICAL.Component('vevent');
+    vcal.addSubcomponent(vevent);
+    const ev = new ICAL.Event(vevent);
+    ev.uid = uid;
+    ev.summary = details.title || 'Meeting';
+    if (details.description) ev.description = details.description;
+    if (details.location) ev.location = details.location;
+    ev.startDate = ICAL.Time.fromJSDate(startD, true); // true = UTC
+    ev.endDate = ICAL.Time.fromJSDate(endD, true);
+    vevent.updatePropertyWithValue('dtstamp', ICAL.Time.fromJSDate(new Date(), true));
+
+    // Organizer = the iCloud account owner; attendee lines drive iCloud's server-side iTIP invites.
+    // Attendee-less utility events (offer HOLDs) get no ORGANIZER/ATTENDEE, so nobody is emailed.
+    const organizerEmail = String(coach.googleCalendarEmail || coach.calendarEmail || appleId || '').trim();
+    const guests = (details.attendees || []).filter((a) => a && a.email);
+    const notify = details.notifyParticipants !== false;
+    if (notify && guests.length && organizerEmail) {
+      vevent.addPropertyWithValue('organizer', `mailto:${organizerEmail}`).setParameter('cn', 'Wingguy');
+      for (const g of guests) {
+        const at = vevent.addPropertyWithValue('attendee', `mailto:${String(g.email).trim()}`);
+        at.setParameter('role', 'REQ-PARTICIPANT');
+        at.setParameter('partstat', 'NEEDS-ACTION');
+        at.setParameter('rsvp', 'TRUE');
+        if (g.name) at.setParameter('cn', g.name);
+      }
+    }
+
+    const res = await caldavRequest('PUT', icloudEventHref(writeUrl, uid), authHeader, {
+      headers: { 'Content-Type': 'text/calendar; charset=utf-8', 'If-None-Match': '*' },
+      body: vcal.toString(),
+    });
+    if (!res.ok) {
+      log.warn(`[calendarProvider] iCloud PUT HTTP ${res.status}`);
+      return { ok: false, error: `iCloud PUT HTTP ${res.status}: ${(await res.text().catch(() => '')).slice(0, 200)}`, provider: 'icloud' };
+    }
+    return { ok: true, eventId: uid, htmlLink: '', provider: 'icloud' };
+  } catch (e) {
+    return { ok: false, error: `iCloud create failed: ${e.message}`, provider: 'icloud' };
+  }
+}
+
+async function deleteViaICloud(coach, eventId) {
+  const { authHeader, writeUrl } = icloudCreds(coach);
+  if (!authHeader) return { ok: false, error: 'iCloud appleId / appPassword not configured', provider: 'icloud' };
+  if (!writeUrl) return { ok: false, error: 'iCloud: no calendarWriteUrl configured', provider: 'icloud' };
+  if (!eventId) return { ok: false, error: 'eventId required', provider: 'icloud' };
+  try {
+    // eventId is the uid we set on create; accept a full href too (defensive).
+    const href = String(eventId).startsWith('http') ? String(eventId) : icloudEventHref(writeUrl, eventId);
+    const res = await caldavRequest('DELETE', href, authHeader, {});
+    if (!res.ok && res.status !== 404) return { ok: false, error: `iCloud DELETE HTTP ${res.status}: ${(await res.text().catch(() => '')).slice(0, 200)}`, provider: 'icloud' };
+    return { ok: true, provider: 'icloud' };
+  } catch (e) {
+    return { ok: false, error: `iCloud delete failed: ${e.message}`, provider: 'icloud' };
+  }
+}
+
 module.exports = {
   getMeetingsInWindow, createCalendarEvent, deleteCalendarEvent, activeProvider, listCalendars,
   mapNylasEvent, mapNylasStatus, mapUnipileEvent, mapUnipileStatus, listUnipileCalendars,
   mapZohoEvent, mapZohoStatus, zohoToISO, isoToZoho, zohoHosts,
-  parseReadIds, dedupEvents, allDaySpan, zohoDateOnly, googleAllDayNormalise,
+  mapICloudEvent, mapICloudStatus, parseICloudVEvents, discoverICloudCalendars,
+  parseReadIds, parseReadGrants, grantToCoach, dedupEvents, allDaySpan, zohoDateOnly, googleAllDayNormalise,
 };

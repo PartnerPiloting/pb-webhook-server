@@ -5,6 +5,10 @@
 require('dotenv').config();
 const Airtable = require('airtable');
 const { createLogger } = require('../utils/contextLogger');
+// Multi-grant calendars (2026-07-23): parse the `Calendar Read Grants` JSON field into an array so a
+// coach built from getClientById is fan-out-ready. Safe one-way dep (calendarProvider never requires
+// clientService).
+const { parseReadGrants } = require('./calendarProvider');
 
 // Create module-level logger for client service
 const logger = createLogger({ 
@@ -164,6 +168,9 @@ async function getAllClients() {
                 // calendar (blank = provider default). calendarProvider.js reads these.
                 const calendarReadIds = record.get('Calendar Read IDs') || null;
                 const calendarWriteId = record.get('Calendar Write ID') || null;
+                // Multi-grant (2026-07-23): extra READ-only calendar sources in OTHER accounts/
+                // providers (JSON array), unioned into availability. Blank -> [] -> unchanged.
+                const calendarReadGrants = parseReadGrants(record.get('Calendar Read Grants'));
                 // Managed plan: Yes = Wingguy may draft on the PLATFORM Anthropic key for this client
                 // (they pay Guy). Blank/No = they must bring their own key (default). See byoAnthropicClient.
                 const managedClaudeKey = record.get('Managed Claude Key') === 'Yes';
@@ -263,6 +270,8 @@ async function getAllClients() {
                     calendarWriteId: calendarWriteId,
                     nylasCalendarId: calendarWriteId,
                     calendarUid: calendarWriteId,
+                    // Multi-grant read fan-out (getMeetingsInWindow unions these into the busy set)
+                    readGrants: calendarReadGrants,
                     managedClaudeKey: managedClaudeKey,
                     wingguyEnabled: wingguyEnabled,
                     // Wingguy per-client booking identity (Zoom + contacts on the invite; optional)
