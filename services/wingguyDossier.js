@@ -215,7 +215,7 @@ const DEEP_SYSTEM = `You prepare a coach's memory-dossier for one contact. From 
  "commitments_you": ["each thing the COACH promised, with when"],
  "commitments_them": ["each thing THEY promised or delivered"],
  "remember": ["4-8 short bullets of concrete specifics worth holding onto — their business and situation (what they do, how long, target market, point of difference), personal details mentioned (travel, family, location, timezone), what resonated or aligned in conversation, objections or hesitations, stated preferences (days, times, channels). The coach juggles many people; these bullets ARE the memory."],
- "next_move": "one sentence: the smartest next action"}
+ "next_move": "one sentence: the smartest next action. For a WARM relationship that has clearly ended, that may be a one-line graceful close (door-open goodbye) — say so explicitly. For a cold or never-real thread, say exactly: nothing — let it rest."}
 Ground everything ONLY in the material given. Return ONLY the JSON object.`;
 
 async function deepRead(llm, name, timeline, meetings) {
@@ -290,7 +290,10 @@ async function prepareDossiers(tenant) {
     try {
       const row = await backlog.getWorklist(tenant);
       const p = row && row.payload ? (typeof row.payload === 'string' ? JSON.parse(row.payload) : row.payload) : null;
-      addFrom(p && p.items, ['reopen', 'park']);
+      // writeoffs included (Guy 2026-07-24): a warm-then-faded relationship deserves the OPTION of
+      // a graceful door-open goodbye rather than ghosting — the deep-read decides ("nothing — let
+      // it rest" for cold threads suppresses the draft below).
+      addFrom(p && p.items, ['reopen', 'park', 'writeoff']);
     } catch (_) {}
     if (!people.size) return out;
 
@@ -341,7 +344,8 @@ async function prepareDossiers(tenant) {
         // Guidance draft for anyone WITHOUT a store draft: embodies the deep-read's next move —
         // recalls the relationship warmly, addresses what actually happened, proposes the step.
         let suggested = null;
-        if (!person.hasDraft && read.next_move) {
+        const restIt = /nothing\s*[—-]?\s*let it rest|^nothing\b|no action/i.test(read.next_move || '');
+        if (!person.hasDraft && read.next_move && !restIt) {
           try {
             const { writeDraft } = require('./wingguyFollowupBrief');
             const lastInbound = [...timeline].reverse().find((t) => t.dir === 'them' && t.kind === 'email');
