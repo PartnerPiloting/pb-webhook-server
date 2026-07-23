@@ -144,7 +144,7 @@ const TRIAGE_SYSTEM = `You triage a coach's follow-up queue. For each person you
 
 Classify each person:
 - "park": they named a future time ("September sounds good", "after the holidays", "next quarter") — nothing is owed until then. Give park_date (ISO YYYY-MM-DD, resolved against today's date, leaning a few days LATER than the literal phrase so the nudge never lands early).
-- "draft": a real reply is owed — they asked something, offered something, or left a live thread with the coach clearly to answer. Give draft_instruction: 1-2 sentences on what the reply should do (ground it ONLY in what was said — never invent facts).
+- "draft": a real reply is owed — they asked something, offered something, or left a live thread with the coach clearly to answer. ALSO: if their last message DELIVERS something they promised (a list, an intro, a document, information the coach asked for), that deserves a short warm acknowledgment — verdict "draft", never "clear" (the coach's standing preference: a delivered promise is always acknowledged). Give draft_instruction: 1-2 sentences on what the reply should do (ground it ONLY in what was said — never invent facts).
 - "clear": nothing is owed — their last message was a pleasantry/close ("thanks, see you Thursday", "no worries"), or the exchange is plainly finished.
 - "attention": something is owed but a canned reply would be wrong (complex/sensitive/ambiguous) — the coach should look personally. Say why in the why_line.
 
