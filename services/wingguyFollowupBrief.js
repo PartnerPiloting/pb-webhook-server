@@ -134,11 +134,10 @@ async function gatherPersonContext(mailProvider, coach, item) {
 // Triage — one LLM call over the whole top group
 // ---------------------------------------------------------------------------
 
+// Loose parse lives in wingguyDossier (parseJsonArrayLoose): handles bare object streams and raw
+// control chars — both observed live killing triage runs on 2026-07-24.
 function parseJson(text) {
-  const s = String(text || '');
-  const start = s.indexOf('['); const end = s.lastIndexOf(']');
-  if (start === -1 || end === -1) throw new Error(`triage returned no JSON array (got ${s.length} chars: "${s.slice(0, 300)}")`);
-  return JSON.parse(s.slice(start, end + 1));
+  return require('./wingguyDossier').parseJsonArrayLoose(text);
 }
 
 const TRIAGE_SYSTEM = `You triage a coach's follow-up queue. For each person you get the engine's mechanical signal (tier/why) plus what was ACTUALLY said recently (email snippets and/or LinkedIn lines, oldest first; THEM = the person, YOU = the coach). Read the words — the mechanical signal is often wrong about what is owed.
@@ -167,15 +166,21 @@ async function triage(client, items, contexts, todayIso) {
       ...(contexts[i].transcript.length ? contexts[i].transcript : ['(no readable messages found)']),
     ].join('\n');
   }).join('\n\n---\n\n');
-  const response = await client.messages.create({
-    model: MODEL_ID,
-    max_tokens: 4000,
-    thinking: NO_THINKING,
-    system: TRIAGE_SYSTEM,
-    messages: [{ role: 'user', content: require('./wingguyDossier').scrub(`Today is ${todayIso}.\n\n${people}`) }],
-  });
-  const text = (response.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('');
-  return parseJson(text);
+  // Two attempts: the model occasionally malforms its own JSON (bare object stream, unescaped
+  // quotes) — retry once with a strict instruction rather than failing the whole preparation.
+  let lastErr;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const response = await client.messages.create({
+      model: MODEL_ID,
+      max_tokens: 4000,
+      thinking: NO_THINKING,
+      system: TRIAGE_SYSTEM + (attempt ? '\nSTRICT: your previous output was not a valid JSON array. Return ONE array [ ... ] containing all objects, comma-separated, with every inner double-quote escaped and no raw newlines inside strings.' : ''),
+      messages: [{ role: 'user', content: require('./wingguyDossier').scrub(`Today is ${todayIso}.\n\n${people}`) }],
+    });
+    const text = (response.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('');
+    try { return parseJson(text); } catch (err) { lastErr = err; }
+  }
+  throw lastErr;
 }
 
 // ---------------------------------------------------------------------------
