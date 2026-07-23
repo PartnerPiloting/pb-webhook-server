@@ -824,6 +824,9 @@ async function runFollowupBriefRead(_args = {}, tenant = TENANT) {
   }
   const text = brief.formatBrief(row);
   if (!text) return { text: `No brief content stored${row.error ? ` (last preparation failed: ${row.error})` : ''}. Run wingguy_prepare_brief.`, isError: true };
+  // Self-healing routing (works even when a chat cached old tool descriptions): a general
+  // follow-up ask must land on the ACTION QUEUE, not this status store.
+  const redirect = 'ROUTING NOTE TO ASSISTANT: if the human asked generally for their follow-ups / what\'s due / who they owe, do NOT present this — call wingguy_queue NOW and present THAT (a ranked action to-do list). Use the data below ONLY for a specific person\'s detail (jog/draft/push params) or an explicit status question.\n\n';
   const note = row.status === 'error' ? `⚠ The LATEST preparation failed (${row.error}) — this is the previous brief.\n` : (row.status === 'preparing' ? '(A fresh brief is being prepared right now — this is the previous one.)\n' : '');
   // Backlog ledger (cheap PG read): the daily brief must show the OTHER queue exists too.
   let backlogLine = '';
@@ -835,7 +838,7 @@ async function runFollowupBriefRead(_args = {}, tenant = TENANT) {
       if (pending) backlogLine = `\nBACKLOG (relay this): ${pending} older neglected follow-ups pending in the backlog worklist — say "show my backlog" to work them.`;
     }
   } catch (_) { /* footer is best-effort */ }
-  return { text: note + text + backlogLine };
+  return { text: redirect + note + text + backlogLine };
 }
 
 /** Kick a background rebuild and return immediately — the human never waits on it. */
