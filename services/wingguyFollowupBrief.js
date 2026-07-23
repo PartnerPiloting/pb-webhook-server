@@ -361,6 +361,9 @@ function formatBrief(row) {
   }
   const more = (p.totalSurfaced || 0) - (p.items || []).length;
   if (more > 0) lines.push(`\n(${more} more surfaced but not in the prepared top group — the live sweep has them.)`);
+  // Pipeline footer (Guy 2026-07-23: a quiet brief must SHOW its queue, or calm reads as amnesia).
+  const parked = p.counts && p.counts.parkedCount;
+  if (parked) lines.push(`\nPIPELINE (relay this): ${parked} people are parked on reconnect dates and will surface on their day${p.counts.nextReconnect ? ` (next: ${p.counts.nextReconnect})` : ''}.`);
   return lines.join('\n');
 }
 
