@@ -196,9 +196,10 @@ async function getMessage(coach, messageId) {
  * List ALL messages in a recent window, walking Nylas's page cursor — the "pull the window once"
  * read behind the follow-up sweep. findMessages is single-page (≤20) and keyed on a participant;
  * this gathers the whole window so a sweep costs a handful of calls total instead of one-per-lead.
- * Newest first, read-only. Each message carries `toEmails` (lowercased recipients) so the caller can
- * tell inbound (a lead is the sender) from outbound (a lead is among the recipients) WITHOUT needing
- * the coach's own address.
+ * Newest first, read-only. Each message carries `toEmails` + `ccEmails` (lowercased) so the caller
+ * can group by thread and count participants — a 2-party thread is a 1:1 (you + the lead), a 3+
+ * party thread is an introduction/group. That participant count is how the sweep avoids counting an
+ * intro-thread message as a "reply owed". Direction is inferred without the coach's own address.
  * @param {object} coach client record (needs nylasGrantId)
  * @param {object} opts  { after: epoch SECONDS, max: hard cap on messages (default 5000), pageSize }
  * @returns {Promise<{ok:boolean, messages?:Array, truncated?:boolean, error?:string}>}
@@ -252,6 +253,7 @@ async function listRecent(coach, { after, max = 3000, pageSize = 50 } = {}) {
         subject: m.subject,
         fromEmail: (toParticipants(m.from)[0] || {}).email || null,
         toEmails: toParticipants(m.to).map((p) => p.email.toLowerCase()),
+        ccEmails: toParticipants(m.cc).map((p) => p.email.toLowerCase()),
         date: m.date ? new Date(m.date * 1000).toISOString() : null,
         snippet: m.snippet,
       });
@@ -468,6 +470,7 @@ async function listRecentViaUnipile(coach, { after, max = 3000, pageSize = 50 } 
         subject: m.subject,
         fromEmail: (fromUnipileParty(m.from_attendee) || {}).email || null,
         toEmails: (m.to_attendees || []).map(fromUnipileParty).filter(Boolean).map((p) => p.email.toLowerCase()),
+        ccEmails: (m.cc_attendees || []).map(fromUnipileParty).filter(Boolean).map((p) => p.email.toLowerCase()),
         date: m.date || null,
         snippet: String(m.body_plain || '').slice(0, 200),
       });
