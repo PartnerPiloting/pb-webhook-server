@@ -632,6 +632,19 @@ async function computeFollowupSweep({ window_days } = {}, tenant = TENANT) {
   const surfaced = [];
   let gatedCadence = 0;
   let coldCadence = 0;
+  // Parked pipeline (Guy 2026-07-23: a calm brief must never look like an empty pipeline) —
+  // count future Reconnect On stamps + the soonest one, so the brief can show what's QUEUED.
+  let parkedCount = 0;
+  let nextReconnect = null;
+  for (const lead of leads) {
+    if (lead.reconnectOn) {
+      const dt = Date.parse(lead.reconnectOn);
+      if (!Number.isNaN(dt) && dt > todayMidMs) {
+        parkedCount++;
+        if (!nextReconnect || lead.reconnectOn < nextReconnect) nextReconnect = lead.reconnectOn;
+      }
+    }
+  }
   for (const lead of leads) {
     let lastInboundMs = lead.lastInboundMs;
     let lastOutboundMs = lead.lastOutboundMs;
@@ -688,7 +701,7 @@ async function computeFollowupSweep({ window_days } = {}, tenant = TENANT) {
     ok: true,
     coach,
     surfaced,
-    counts: { gatedCadence, coldCadence, bookedSuppressed, calChecked, leadsScanned: leads.length },
+    counts: { gatedCadence, coldCadence, bookedSuppressed, calChecked, leadsScanned: leads.length, parkedCount, nextReconnect },
     mailInfo: { count: mail.messages.length, partialError: mail.partialError || null, truncated: !!mail.truncated },
     windowDays,
     emailDays,
@@ -812,7 +825,17 @@ async function runFollowupBriefRead(_args = {}, tenant = TENANT) {
   const text = brief.formatBrief(row);
   if (!text) return { text: `No brief content stored${row.error ? ` (last preparation failed: ${row.error})` : ''}. Run wingguy_prepare_brief.`, isError: true };
   const note = row.status === 'error' ? `⚠ The LATEST preparation failed (${row.error}) — this is the previous brief.\n` : (row.status === 'preparing' ? '(A fresh brief is being prepared right now — this is the previous one.)\n' : '');
-  return { text: note + text };
+  // Backlog ledger (cheap PG read): the daily brief must show the OTHER queue exists too.
+  let backlogLine = '';
+  try {
+    const bl = await require('./wingguyBacklogAudit').getWorklist(tenant);
+    if (bl && bl.payload) {
+      const bp = typeof bl.payload === 'string' ? JSON.parse(bl.payload) : bl.payload;
+      const pending = (bp.items || []).filter((i) => i.status === 'pending').length;
+      if (pending) backlogLine = `\nBACKLOG (relay this): ${pending} older neglected follow-ups pending in the backlog worklist — say "show my backlog" to work them.`;
+    }
+  } catch (_) { /* footer is best-effort */ }
+  return { text: note + text + backlogLine };
 }
 
 /** Kick a background rebuild and return immediately — the human never waits on it. */
