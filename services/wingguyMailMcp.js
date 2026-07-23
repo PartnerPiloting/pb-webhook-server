@@ -545,7 +545,10 @@ async function runLeadRepliedSince({ lead_email, since_iso } = {}, tenant = TENA
   };
 }
 
-const TIER_ORDER = { reply: 0, deferral: 1, cadence: 2 };
+// Ranking = closeness-to-broken-promise (the settled 2026-07-21 design): a DUE DATED PROMISE
+// outranks a recent reply — forgetting "I said I'd ping you today" costs more than a slow answer.
+// (Was reply-first until 2026-07-24, which buried ten due promises below the prepared fold.)
+const TIER_ORDER = { deferral: 0, reply: 1, cadence: 2 };
 const TIER_LABEL = { reply: '↩ REPLY OWED', deferral: '📅 DEFERRAL DUE', cadence: '⏳ WENT QUIET' };
 
 /**
