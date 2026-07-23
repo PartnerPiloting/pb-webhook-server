@@ -58,6 +58,14 @@ async function getDossierRow(tenantId, personKey) {
   } finally { c.release(); }
 }
 
+/** Recursively scrub every string in a payload — Postgres jsonb rejects lone surrogates outright. */
+function deepScrub(v) {
+  if (typeof v === 'string') return scrub(v);
+  if (Array.isArray(v)) return v.map(deepScrub);
+  if (v && typeof v === 'object') { const o = {}; for (const k of Object.keys(v)) o[k] = deepScrub(v[k]); return o; }
+  return v;
+}
+
 async function saveDossier(tenantId, personKey, basis, payload) {
   const p = getPool();
   if (!p) throw new Error('DATABASE_URL not set');
@@ -67,7 +75,7 @@ async function saveDossier(tenantId, personKey, basis, payload) {
     await c.query(
       `INSERT INTO wingguy_dossiers (tenant_id, person_key, built_at, basis, payload) VALUES ($1, $2, now(), $3, $4)
        ON CONFLICT (tenant_id, person_key) DO UPDATE SET built_at = now(), basis = EXCLUDED.basis, payload = EXCLUDED.payload`,
-      [tenantId, personKey, basis, JSON.stringify(payload)],
+      [tenantId, personKey, basis, JSON.stringify(deepScrub(payload))],
     );
   } finally { c.release(); }
 }
@@ -110,7 +118,8 @@ function gatherLinkedIn(notes, first, max = LI_LIMIT) {
     if (!m) continue;
     const iso = `20${m[3]}-${m[2]}-${m[1]}`;
     const theirs = first && m[5].trim().toLowerCase().startsWith(first.toLowerCase());
-    out.push({ date: iso, kind: 'linkedin', dir: theirs ? 'them' : 'you', text: String(m[6]).slice(0, 300) });
+    // scrub at the SOURCE: a lone surrogate here poisons BOTH the LLM request and the jsonb save
+    out.push({ date: iso, kind: 'linkedin', dir: theirs ? 'them' : 'you', text: scrub(String(m[6]).slice(0, 300)) });
   }
   out.sort((a, b) => a.date.localeCompare(b.date));
   return out.slice(-max);
@@ -126,7 +135,7 @@ async function gatherEmails(mailProvider, coach, email, max = EMAIL_LIMIT) {
       .map((m) => {
         const theirs = (m.fromEmail || '').toLowerCase() === email;
         const calendarish = /^(accepted|declined|tentative|invitation|updated invitation|canceled)/i.test(m.subject || '');
-        return { date: (m.date || '').slice(0, 10), kind: calendarish ? 'calendar' : 'email', dir: theirs ? 'them' : 'you', subject: m.subject || '', text: String(m.snippet || '').slice(0, 280), messageId: m.id };
+        return { date: (m.date || '').slice(0, 10), kind: calendarish ? 'calendar' : 'email', dir: theirs ? 'them' : 'you', subject: scrub(m.subject || ''), text: scrub(String(m.snippet || '').slice(0, 280)), messageId: m.id };
       });
   } catch (_) { return []; }
 }
