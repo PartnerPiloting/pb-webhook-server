@@ -28,8 +28,10 @@ const Airtable = require('airtable');
 const FIELD_NAME = 'Reconnect On';
 const LEADS_TABLE_NAME = 'Leads';
 
-// Template base ID - "My Leads - Client Template"
-const TEMPLATE_BASE_ID = 'app6W6k9GiDUlktvt';
+// Template base ID - "My Leads - Client Template" (the MAINTAINED one - 2 stale bases share the
+// name; verified by field census 2026-07-23). NB older scripts carry a typo'd id (…GiDUlktvt);
+// Airtable reports a nonexistent base as 403 "not authorized", which masked the typo for months.
+const TEMPLATE_BASE_ID = 'app6W6k9GiDlJktvt';
 
 // Field definition for Airtable Metadata API - a plain date field (no time component)
 const FIELD_DEFINITION = {
