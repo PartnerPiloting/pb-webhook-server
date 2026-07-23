@@ -161,6 +161,7 @@ async function runBacklogAudit(tenant) {
 
     candidates.push({
       key: (email || `${first} ${f['Last Name'] || ''}`.trim()).toLowerCase(),
+      recId: r.id,
       name: `${first} ${f['Last Name'] || ''}`.trim(),
       email: email || null,
       linkedin: String(f['LinkedIn Profile URL'] || '').trim() || null,
@@ -228,7 +229,7 @@ async function runBacklogAudit(tenant) {
     const v = verdicts.get(c.key);
     if (!v) continue;
     const item = {
-      name: c.name, email: c.email, linkedin: c.linkedin,
+      name: c.name, recId: c.recId || null, email: c.email, linkedin: c.linkedin,
       quietDays: c.quietDays, verdict: v.verdict,
       whyLine: v.why_line || '', jog: v.jog || '', parkDate: v.park_date || null,
       channel: c.email && c.lastInbound ? 'email' : 'linkedin',

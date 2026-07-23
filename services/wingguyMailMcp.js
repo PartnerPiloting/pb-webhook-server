@@ -598,6 +598,7 @@ async function computeFollowupSweep({ window_days } = {}, tenant = TENANT) {
     const f = r.fields || {};
     const email = String(f['Email'] || '').trim().toLowerCase();
     const lead = {
+      recId: r.id, // Airtable record id — links to recall_meeting_leads for the dossier's transcripts
       first: f['First Name'] || '',
       last: f['Last Name'] || '',
       email,
@@ -1052,7 +1053,7 @@ const TOOL_DEFS = [
   {
     name: 'wingguy_queue',
     description:
-      'THE ACTION QUEUE — THE FIRST CALL for "show me my follow-ups" / "what\'s due" / "who do I owe" / "prep me for today". ONE ranked, pageable to-do list (ten per page), every line an ACTION waiting for a yes: today\'s due items first (drafts ready / park proposals / needs-eyes), then backlog reopens (drafts ready), then backlog parks. Instant — merges the prepared stores at serve time. Work it top-down: name a person → serve their jog + draft (from wingguy_followup_brief for today\'s people, wingguy_backlog name=... for backlog people) → tweak → push/copy on approval → they drop off. "Next ten" = page 2, 3… DELIBERATELY ABSENT (pure action, no status): parked-until-date people (they surface on their day), nothing-owed people, anything already done — relay status info ONLY if the human explicitly asks ("what\'s parked?", "was X checked?").',
+      'THE ACTION QUEUE — THE FIRST CALL for "show me my follow-ups" / "what\'s due" / "who do I owe" / "prep me for today". ONE ranked, pageable to-do list (ten per page), every line an ACTION waiting for a yes: today\'s due items first (drafts ready / park proposals / needs-eyes), then backlog reopens (drafts ready), then backlog parks. Instant — merges the prepared stores at serve time. Work it top-down: name a person → serve their jog + draft (from wingguy_followup_brief for today\'s people, wingguy_backlog name=... for backlog people; DEEP memory — "any emails? how did the call go? what did we agree?" — comes INSTANTLY from wingguy_dossier) → tweak → push/copy on approval → they drop off. "Next ten" = page 2, 3… DELIBERATELY ABSENT (pure action, no status): parked-until-date people (they surface on their day), nothing-owed people, anything already done — relay status info ONLY if the human explicitly asks ("what\'s parked?", "was X checked?").',
     zodSchema: {
       page: z.number().optional().describe('Page number, 10 per page (default 1). "next ten" = the next page.'),
     },
@@ -1062,6 +1063,20 @@ const TOOL_DEFS = [
       required: [],
     },
     run: runQueue,
+  },
+  {
+    name: 'wingguy_dossier',
+    description:
+      'THE INSTANT MEMORY behind every queue person — call this for "remind me about X", "jog X", "any emails from X?", "how did the call with X go?", "what did we agree?". Returns the PRE-BUILT dossier (no waiting): where the relationship actually stands, commitments each side made, suggested next move, meeting summaries from the transcript store, and the full dated timeline (emails incl. calendar accepts/declines, LinkedIn messages). Rebuilt automatically whenever the person\'s thread changes. If no dossier exists for the name (person outside the prepared queue), say so and offer the live dig (wingguy_lead_correspondence / recall transcripts) with a "this will take a moment" warning.',
+    zodSchema: {
+      name: z.string().describe('The person\'s name (or part of it).'),
+    },
+    jsonSchema: {
+      type: 'object',
+      properties: { name: { type: 'string', description: 'The person\'s name (or part of it).' } },
+      required: ['name'],
+    },
+    run: runDossier,
   },
   {
     name: 'wingguy_backlog',
@@ -1127,6 +1142,16 @@ async function runQueue({ page } = {}, tenant = TENANT) {
   ];
   if (pg < totalPages) lines.push(`(${deduped.length - pg * PAGE} more — say "next ten".)`);
   return { text: lines.join('\n') };
+}
+
+/** Serve a person's pre-built dossier — instant, from the store. */
+async function runDossier({ name } = {}, tenant = TENANT) {
+  const dossier = require('./wingguyDossier');
+  try {
+    const row = await dossier.findDossierByName(tenant, name);
+    if (!row) return { text: `No prepared dossier for "${name}" — they're outside the prepared queue. Offer the live dig (wingguy_lead_correspondence, transcripts) with a "this will take a moment" warning.` };
+    return { text: dossier.formatDossier(row) };
+  } catch (e) { return { text: `Dossier store unavailable: ${e.message}`, isError: true }; }
 }
 
 /** The backlog worklist tool: summary / per-person entry / mark done-skip. All instant (stored). */
