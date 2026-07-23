@@ -191,11 +191,17 @@ const DRAFT_SYSTEM_PREFIX = `You write a short reply email in the coach's own vo
 
 async function writeDraft(client, rulesText, item, context, instruction) {
   const name = `${item.lead.first} ${item.lead.last}`.trim();
+  // The rulebook block (~25k tokens) is identical across every draft call in a run — cache it.
+  // 5-min TTL covers a sequential preparation pass: the first draft writes the cache (1.25x),
+  // the rest read at ~0.1x. This was the dominant cost term of the nightly run (Guy, 2026-07-24).
   const response = await client.messages.create({
     model: MODEL_ID,
     max_tokens: 1200,
     thinking: NO_THINKING,
-    system: `${DRAFT_SYSTEM_PREFIX}\n\nTHE COACH'S RULEBOOK:\n\n${rulesText}`,
+    system: [
+      { type: 'text', text: DRAFT_SYSTEM_PREFIX },
+      { type: 'text', text: `THE COACH'S RULEBOOK:\n\n${rulesText}`, cache_control: { type: 'ephemeral' } },
+    ],
     messages: [{
       role: 'user',
       content: require('./wingguyDossier').scrub(`Reply to ${name}.\nWhat the reply should do: ${instruction}\n\nThe recent exchange (oldest first):\n${context.transcript.join('\n')}`),
