@@ -303,6 +303,17 @@ async function prepareFollowupBrief(tenant) {
   } catch (e) {
     console.error(`[followupBrief] prepare failed for ${tenant}: ${e.message}`);
     await setStatus(tenant, { status: 'error', error: e.message }).catch(() => {});
+    // Loud failure (Guy's ask 2026-07-23): a silent overnight failure = a quietly stale morning
+    // brief. Best-effort — the alert failing must never mask the original error.
+    try {
+      const { sendAlertEmail } = require('./emailNotificationService');
+      await sendAlertEmail(
+        `Wingguy follow-up brief FAILED (${tenant})`,
+        `<p>The follow-up brief preparation for <b>${tenant}</b> failed at ${new Date().toISOString()}:</p>` +
+        `<pre>${String(e.message).slice(0, 500)}</pre>` +
+        `<p>The chat will serve the previous brief (flagged stale). Rebuild any time: ask Wingguy to "refresh my follow-ups", or re-run the cron endpoint.</p>`,
+      );
+    } catch (mailErr) { console.error(`[followupBrief] failure alert email also failed: ${mailErr.message}`); }
     return { ok: false, error: e.message };
   }
 }
