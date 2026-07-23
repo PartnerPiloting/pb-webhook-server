@@ -142,6 +142,9 @@ const REPLY_LIVE_DAYS = 30;
 // Deferral store guard — a Reconnect-On date this far past is treated as stale, not a live "contact
 // me on this day". (Reconnect On is engine-written and clean, so this is just belt-and-braces.)
 const DEFERRAL_LIVE_DAYS = 45;
+// Calendar cross-check: look this far forward for an already-booked meeting with a surfaced lead
+// (don't nag someone who's already in your diary). Covers the cadence/deferral horizon comfortably.
+const CAL_LOOKAHEAD_DAYS = 60;
 
 // "DD-MM-YY H:MM AM - <Sender Name> - <text>" — the line format inside the Notes LinkedIn block.
 const LI_MSG_RE = /^(\d{2})-(\d{2})-(\d{2})\s+\d{1,2}:\d{2}\s*[AP]M\s*-\s*(.+?)\s*-\s*/i;
@@ -177,6 +180,51 @@ function selectName(v) { return (v && typeof v === 'object' ? v.name : v) || '';
 const MS_DAY = 86400000;
 
 /**
+ * Derive per-lead email signals from the mailbox window, THREAD-AWARE and 1:1-ONLY. A message counts
+ * for a lead only on a thread whose participant set (union of from/to/cc across all its messages) is
+ * exactly {you, that lead} — i.e. exactly 2 distinct parties, one of them a lead. On such a thread a
+ * message FROM the lead is inbound (they wrote to you); anything else is your outbound (by
+ * elimination — in your own mailbox the only other party is you). Threads with 3+ parties
+ * (introductions, group threads) are ignored, so brokering an intro never manufactures a phantom
+ * "reply owed". Pure — no I/O — unit-tested.
+ * @param {Array} messages   from mailProvider.listRecent: { fromEmail, toEmails, ccEmails, threadId, date }
+ * @param {Set<string>} leadEmails  lowercased lead emails present in the base
+ * @returns {Map<string,{lastInboundMs:number|null,lastOutboundMs:number|null}>} keyed by lead email
+ */
+function computeMailSignals(messages, leadEmails) {
+  // Group by thread, collecting each thread's full participant set + its messages.
+  const threads = new Map();
+  for (const m of (messages || [])) {
+    if (!m.date) continue;
+    const ms = new Date(m.date).getTime();
+    if (Number.isNaN(ms)) continue;
+    const tid = m.threadId || `__solo__${m.id}`; // a thread-less message is its own 1-message thread
+    let th = threads.get(tid);
+    if (!th) { th = { parties: new Set(), msgs: [] }; threads.set(tid, th); }
+    const from = (m.fromEmail || '').toLowerCase();
+    if (from) th.parties.add(from);
+    for (const e of (m.toEmails || [])) if (e) th.parties.add(String(e).toLowerCase());
+    for (const e of (m.ccEmails || [])) if (e) th.parties.add(String(e).toLowerCase());
+    th.msgs.push({ from, ms });
+  }
+
+  const out = new Map();
+  for (const th of threads.values()) {
+    if (th.parties.size !== 2) continue;          // 3+ parties = intro/group → not a 1:1 reply signal
+    let leadEmail = null;
+    for (const p of th.parties) if (leadEmails.has(p)) { leadEmail = p; break; }
+    if (!leadEmail) continue;                       // neither party is a lead → nothing to attribute
+    let sig = out.get(leadEmail);
+    if (!sig) { sig = { lastInboundMs: null, lastOutboundMs: null }; out.set(leadEmail, sig); }
+    for (const msg of th.msgs) {
+      if (msg.from === leadEmail) { if (!sig.lastInboundMs || msg.ms > sig.lastInboundMs) sig.lastInboundMs = msg.ms; }
+      else if (!sig.lastOutboundMs || msg.ms > sig.lastOutboundMs) sig.lastOutboundMs = msg.ms; // other party = you
+    }
+  }
+  return out;
+}
+
+/**
  * Classify one lead from its merged signals into a surfaced item or null. Pure — no I/O — so the
  * ranking logic is unit-testable. `nowMs`/`todayMidMs` passed in (Date.now is unavailable in some
  * sandboxes and keeps this deterministic for tests).
@@ -185,12 +233,13 @@ function classifyLead(lead, { lastInboundMs, lastOutboundMs, nowMs, todayMidMs }
   // Deferral tier reads the engine-written `Reconnect On` date. Until that field exists on the bases
   // and the content-read populates it, lead.reconnectOn is null everywhere → no deferral surfaces
   // (deliberate: the rotted legacy Follow-Up Date must NOT drive the engine).
-  let deferralLive = false; let deferDays = 0;
+  let deferralLive = false; let deferDays = 0; let reconnectFuture = false;
   if (lead.reconnectOn) {
     const dt = Date.parse(lead.reconnectOn);
     if (!Number.isNaN(dt)) {
       const d = Math.floor((todayMidMs - dt) / MS_DAY); // >0 = past
       if (d >= 0 && d <= DEFERRAL_LIVE_DAYS) { deferralLive = true; deferDays = d; }
+      else if (d < 0) { reconnectFuture = true; }       // promised date still ahead → parked (no early cadence nudge)
     }
   }
   const replyWaiting = !!lastInboundMs && (!lastOutboundMs || lastInboundMs > lastOutboundMs);
@@ -207,6 +256,7 @@ function classifyLead(lead, { lastInboundMs, lastOutboundMs, nowMs, todayMidMs }
   if (cadenceOverdue) {
     if (outboundDays > CADENCE_MAX_DAYS) return null;                                   // too cold — needs re-engagement, drop
     if (gated) return { tier: null, gatedCadence: true };                              // Cease/Series → cadence off
+    if (reconnectFuture) return { tier: null, gatedCadence: true };                    // parked until their reconnect date → no early nudge
     // Decision B: only chase "went quiet" for a REAL relationship (connected, or they've replied at least
     // once). Pure cold outreach that was simply ignored is not an owed follow-up — drop it.
     if (!(lead.connected || !!lastInboundMs)) return { tier: null, coldCadence: true };
@@ -517,11 +567,21 @@ async function runFollowupSweep({ window_days, limit } = {}, tenant = TENANT) {
   // NB: `Reconnect On` is NOT read yet — the field doesn't exist on the bases (adding it is a TODO)
   // and requesting an unknown field 422s. The legacy `Follow-Up Date` is deliberately NOT read (rot).
   let records;
+  const BASE_LEAD_FIELDS = ['First Name', 'Last Name', 'Email', 'Cease FUP', 'Notes', 'Series Sent Count', 'Series Unsubscribed', 'Date Connected'];
   try {
     const base = clientService.getClientBase(coach.airtableBaseId);
-    records = await base('Leads').select({
-      fields: ['First Name', 'Last Name', 'Email', 'Cease FUP', 'Notes', 'Series Sent Count', 'Series Unsubscribed', 'Date Connected'],
-    }).all();
+    try {
+      // Reconnect On is the engine's deferral-date store (added 2026-07-23). Ask for it first.
+      records = await base('Leads').select({ fields: [...BASE_LEAD_FIELDS, 'Reconnect On'] }).all();
+    } catch (e) {
+      // A tenant base that predates the Reconnect On rollout 422s on the unknown field — fall back
+      // to reading without it (their deferral tier simply stays dormant, no break).
+      if (/Reconnect On|UNKNOWN_FIELD_NAME|422|INVALID|Unknown field/i.test(e.message)) {
+        records = await base('Leads').select({ fields: BASE_LEAD_FIELDS }).all();
+      } else {
+        throw e;
+      }
+    }
   } catch (e) {
     return { text: `Lead read failed: ${e.message}`, isError: true };
   }
@@ -535,7 +595,7 @@ async function runFollowupSweep({ window_days, limit } = {}, tenant = TENANT) {
       first: f['First Name'] || '',
       last: f['Last Name'] || '',
       email,
-      reconnectOn: null, // TODO: f['Reconnect On'] once that field exists on every base (content-read populates it)
+      reconnectOn: f['Reconnect On'] || null, // engine's deferral-date store; null where the field is absent/unset
       cease: selectName(f['Cease FUP']) === 'Yes',
       onSeries: Number(f['Series Sent Count'] || 0) > 0 && f['Series Unsubscribed'] !== true,
       connected: !!f['Date Connected'], // real-relationship signal for the cadence gate (Decision B)
@@ -547,19 +607,18 @@ async function runFollowupSweep({ window_days, limit } = {}, tenant = TENANT) {
     if (email) byEmail.set(email, lead);
   }
 
-  // --- 2. Mail window: ONE paginated read, not one call per lead ---
+  // --- 2. Mail window: ONE paginated read, then THREAD-AWARE 1:1 signals ---
+  // The old code marked a lead "inbound" for ANY message they sent into the mailbox and "outbound"
+  // for ANY message they were a recipient of — thread-blind and recipient-blind, so every intro Guy
+  // brokered (he's cc on a thread between two other people) manufactured a phantom "reply owed".
+  // computeMailSignals fixes that: a message only counts on a thread whose participants are exactly
+  // {you, that lead} (a real 1:1); intro/group threads (3+ parties) are ignored for reply/cadence.
   const mail = await mailProvider.listRecent(coach, { after: emailAfterSec, max: 3000 });
   if (!mail.ok) return { text: `Mailbox window read failed: ${mail.error}`, isError: true };
-  for (const m of mail.messages) {
-    if (!m.date) continue;
-    const t = new Date(m.date).getTime();
-    if (Number.isNaN(t)) continue;
-    const sender = byEmail.get((m.fromEmail || '').toLowerCase());
-    if (sender && (!sender.lastInboundMs || t > sender.lastInboundMs)) sender.lastInboundMs = t;
-    for (const to of (m.toEmails || [])) {
-      const rcpt = byEmail.get(to);
-      if (rcpt && rcpt !== sender && (!rcpt.lastOutboundMs || t > rcpt.lastOutboundMs)) rcpt.lastOutboundMs = t;
-    }
+  const signals = computeMailSignals(mail.messages, new Set(byEmail.keys()));
+  for (const [email, sig] of signals) {
+    const lead = byEmail.get(email);
+    if (lead) { lead.lastInboundMs = sig.lastInboundMs; lead.lastOutboundMs = sig.lastOutboundMs; }
   }
 
   // --- 3. Merge LinkedIn history, classify, rank ---
@@ -582,8 +641,45 @@ async function runFollowupSweep({ window_days, limit } = {}, tenant = TENANT) {
   }
   surfaced.sort((a, b) => (TIER_ORDER[a.tier] - TIER_ORDER[b.tier]) || (b.sortKey - a.sortKey));
 
+  // Calendar cross-check: never nag someone already booked with you. Read the forward window ONCE and
+  // drop any surfaced lead matched to an upcoming event — by attendee email, or (for email-less
+  // leads) by their full name in the event title/attendees. Best-effort: a calendar failure just
+  // skips the check (noted in diagnostics), it never breaks the sweep.
+  let bookedSuppressed = 0;
+  let calChecked = false;
+  if (surfaced.length) {
+    try {
+      const wingguyCalendar = require('./wingguyCalendar');
+      const fmt = (ms) => new Date(ms).toISOString().slice(0, 10);
+      const cal = await wingguyCalendar.listEventsForCoach(tenant, { date: fmt(todayMidMs), endDate: fmt(todayMidMs + CAL_LOOKAHEAD_DAYS * MS_DAY) });
+      if (cal && cal.ok && Array.isArray(cal.events)) {
+        calChecked = true;
+        const bookedEmails = new Set();
+        const titleBlobs = [];
+        for (const ev of cal.events) {
+          if (ev.isFree) continue; // free/transparent time isn't a booked meeting
+          for (const a of (ev.attendees || [])) if (a && a.email) bookedEmails.add(String(a.email).toLowerCase());
+          titleBlobs.push(`${ev.summary || ''} ${(ev.attendees || []).map((a) => a.displayName || '').join(' ')}`.toLowerCase());
+        }
+        const kept = [];
+        for (const s of surfaced) {
+          const email = (s.lead.email || '').toLowerCase();
+          const full = `${s.lead.first} ${s.lead.last}`.trim().toLowerCase();
+          const emailHit = !!email && bookedEmails.has(email);
+          const nameHit = !!s.lead.first && !!s.lead.last && titleBlobs.some((b) => b.includes(full));
+          if (emailHit || nameHit) { bookedSuppressed++; continue; }
+          kept.push(s);
+        }
+        surfaced.length = 0; surfaced.push(...kept);
+      }
+    } catch (e) {
+      console.warn(`[wingguyMailMcp] followup calendar cross-check skipped: ${e.message}`);
+    }
+  }
+
   if (!surfaced.length) {
-    return { text: `No follow-ups surfaced from the last ${windowDays} days. (${leads.length} leads scanned; suppressed ${gatedCadence} Cease/Series + ${coldCadence} cold-outreach cadence.)` };
+    const booked = bookedSuppressed ? `, ${bookedSuppressed} already booked` : '';
+    return { text: `No follow-ups surfaced from the last ${windowDays} days. (${leads.length} leads scanned; suppressed ${gatedCadence} Cease/Series + ${coldCadence} cold-outreach cadence${booked}.)` };
   }
   const shown = surfaced.slice(0, cap);
   const more = surfaced.length - shown.length;
@@ -597,8 +693,75 @@ async function runFollowupSweep({ window_days, limit } = {}, tenant = TENANT) {
       `Top ${shown.length} of ${surfaced.length} follow-up${surfaced.length === 1 ? '' : 's'} (live, nothing stored):\n` +
       lines.join('\n') +
       (more > 0 ? `\n(${more} more behind these — call again with limit to show all.)` : '') +
-      `\n[diagnostics — do not relay unless asked: ${leads.length} leads scanned; ${mail.messages.length} emails/${emailDays}d${mail.partialError ? ' ⚠PARTIAL' : (mail.truncated ? ' ⚠capped' : '')}, LinkedIn ${windowDays}d; suppressed ${gatedCadence} Cease/Series + ${coldCadence} cold-outreach. ` +
-      `REPLY OWED = they replied ≤${REPLY_LIVE_DAYS}d ago, ball in your court; WENT QUIET = you spoke last ${CADENCE_OVERDUE_DAYS}-${CADENCE_MAX_DAYS}d ago, connected/replied leads only; DEFERRAL tier dormant until Reconnect On + content-read land. Calendar cross-check not wired — verify already-booked before nudging.]`,
+      `\n[diagnostics — do not relay unless asked: ${leads.length} leads scanned; ${mail.messages.length} emails/${emailDays}d${mail.partialError ? ' ⚠PARTIAL' : (mail.truncated ? ' ⚠capped' : '')}, LinkedIn ${windowDays}d; suppressed ${gatedCadence} Cease/Series + ${coldCadence} cold-outreach${calChecked ? ` + ${bookedSuppressed} already-booked` : ''}. ` +
+      `REPLY OWED = a lead replied last on a 1:1 thread (≤${REPLY_LIVE_DAYS}d), ball in your court — intro/group threads (3+ parties) are NOT counted; DEFERRAL DUE = a stamped Reconnect On date has arrived (≤${DEFERRAL_LIVE_DAYS}d past), ranks above cadence; WENT QUIET = you spoke last ${CADENCE_OVERDUE_DAYS}-${CADENCE_MAX_DAYS}d ago on a 1:1 thread, connected/replied leads only. A FUTURE Reconnect On parks a lead from cadence until then. Calendar cross-check ${calChecked ? 'ON (already-booked leads dropped)' : '⚠ SKIPPED this run (calendar read failed) — verify already-booked before nudging'}.]`,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Set / clear a lead's Reconnect On — the engine's deferral-date WRITE path
+// ---------------------------------------------------------------------------
+
+/**
+ * Stamp (or clear) a lead's `Reconnect On` date — the "ping them ~this date" promise that the
+ * follow-up sweep surfaces at the DEFERRAL DUE tier and parks cadence against until then.
+ * Find the lead by email (preferred) or a name substring in the tenant's own base, then write the
+ * field. Empty/omitted `reconnect_on` CLEARS it (un-park). The chat is expected to have CONFIRMED
+ * the date with the human first (propose-then-confirm) — this is the write, not the proposal.
+ */
+async function runSetReconnect({ lead_email, lead_name, reconnect_on } = {}, tenant = TENANT) {
+  const clientService = require('./clientService');
+  const coach = await clientService.getClientById(tenant);
+  if (!coach) return { text: `Server config error: coach client "${tenant}" not found.`, isError: true };
+  if (!coach.airtableBaseId) return { text: `No Airtable base on file for "${tenant}" — can't set a reconnect date.`, isError: true };
+
+  const email = String(lead_email || '').trim().toLowerCase();
+  const name = String(lead_name || '').trim();
+  if (!email && !name) return { text: 'Give me a lead_email (preferred) or lead_name to find the lead.', isError: true };
+
+  // Empty reconnect_on = CLEAR. Otherwise parse and normalise to YYYY-MM-DD (the date field's shape).
+  let dateVal = null;
+  const raw = String(reconnect_on == null ? '' : reconnect_on).trim();
+  if (raw) {
+    const t = Date.parse(raw);
+    if (Number.isNaN(t)) return { text: `Couldn't read "${reconnect_on}" as a date — give an ISO date like 2026-08-15.`, isError: true };
+    dateVal = new Date(t).toISOString().slice(0, 10);
+  }
+
+  const FIELD_ABSENT = /Reconnect On|Unknown field|UNKNOWN_FIELD_NAME|INVALID_/i;
+  const base = clientService.getClientBase(coach.airtableBaseId);
+  const esc = (s) => String(s).replace(/"/g, '\\"');
+  const formula = email
+    ? `LOWER({Email}) = "${esc(email)}"`
+    : `FIND(LOWER("${esc(name)}"), LOWER({First Name} & " " & {Last Name})) > 0`;
+
+  let matches;
+  try {
+    matches = await base('Leads').select({ filterByFormula: formula, fields: ['First Name', 'Last Name', 'Email', 'Reconnect On'], maxRecords: 10 }).all();
+  } catch (e) {
+    if (FIELD_ABSENT.test(e.message)) return { text: `The "Reconnect On" field isn't on this client's base yet — add it (scripts/add-reconnect-on-field.js) before stamping reconnect dates.`, isError: true };
+    return { text: `Lead lookup failed: ${e.message}`, isError: true };
+  }
+
+  if (!matches.length) return { text: `No lead found matching ${email ? `email ${email}` : `name "${name}"`}. (Try the other identifier, or create the lead first.)`, isError: true };
+  if (matches.length > 1) {
+    const list = matches.slice(0, 8).map((r) => `- ${`${r.fields['First Name'] || ''} ${r.fields['Last Name'] || ''}`.trim()}${r.fields['Email'] ? ` <${r.fields['Email']}>` : ''}`).join('\n');
+    return { text: `More than one lead matches "${name || email}" — tell me which, or pass lead_email:\n${list}` };
+  }
+
+  const rec = matches[0];
+  try {
+    await base('Leads').update(rec.id, { 'Reconnect On': dateVal });
+  } catch (e) {
+    if (FIELD_ABSENT.test(e.message)) return { text: `The "Reconnect On" field isn't on this client's base yet — add it first.`, isError: true };
+    return { text: `Couldn't write Reconnect On: ${e.message}`, isError: true };
+  }
+
+  const who = `${rec.fields['First Name'] || ''} ${rec.fields['Last Name'] || ''}`.trim() || rec.fields['Email'] || rec.id;
+  return {
+    text: dateVal
+      ? `Set ${who}'s Reconnect On to ${dateVal}. They'll surface at the top of your follow-ups (DEFERRAL DUE) from that day, and won't be nudged before then.`
+      : `Cleared ${who}'s Reconnect On — no longer parked to a date.`,
   };
 }
 
@@ -742,7 +905,7 @@ const TOOL_DEFS = [
   {
     name: 'wingguy_followup_sweep',
     description:
-      'Who do I owe a follow-up, and in what order? Rebuilds the list LIVE every call (nothing stored — a stored follow-up list rots) from the coach\'s own mailbox (Nylas, ~90-day window in ONE read) merged with each lead\'s LinkedIn history (Notes) and the gates on the lead record. Returns a ranked, capped plain-text list: REPLY OWED (they replied, ball\'s in your court) → DEFERRAL DUE (a date they named has arrived) → WENT QUIET (you messaged last, past the interval). Cease FUP / On-Series suppress the WENT QUIET (cadence) nudge only — a reply or a due deferral still surfaces. Use for "prep me for today" (bundled with meetings), "show me what I need to follow up", or "who\'s waiting". Read-only. NOTE: calendar cross-check not yet wired (may show an already-booked lead as quiet).',
+      'Who do I owe a follow-up, and in what order? Rebuilds the list LIVE every call (nothing stored — a stored follow-up list rots) from the coach\'s own mailbox (Nylas, ~90-day window in ONE read) merged with each lead\'s LinkedIn history (Notes) and the gates on the lead record. Returns a ranked, capped plain-text list: REPLY OWED (they replied, ball\'s in your court) → DEFERRAL DUE (a date they named has arrived) → WENT QUIET (you messaged last, past the interval). Cease FUP / On-Series suppress the WENT QUIET (cadence) nudge only — a reply or a due deferral still surfaces. Use for "prep me for today" (bundled with meetings), "show me what I need to follow up", or "who\'s waiting". Read-only. Reply-owed is thread-aware: only messages on a genuine 1:1 thread (you + the lead) count, so introductions you broker never manufacture phantom follow-ups; and already-booked leads are cross-checked against the calendar and dropped.',
     zodSchema: {
       window_days: z.number().optional().describe('How far back to read mail (default 90, min 7, max 180).'),
       limit: z.number().optional().describe('Max items to show (default 5 — the tight brief; pass a big number like 100 for "show all").'),
@@ -756,6 +919,26 @@ const TOOL_DEFS = [
       required: [],
     },
     run: runFollowupSweep,
+  },
+  {
+    name: 'wingguy_set_reconnect',
+    description:
+      'Stamp (or clear) a lead\'s reconnect date — the "ping them ~this date" promise. Use it when a lead defers to a specific time ("I\'m away, back mid-August, chat then" / "circle back next quarter"): once you and the human agree the date, call this to write it. The follow-up sweep then surfaces that lead at the TOP of the brief (DEFERRAL DUE tier) the day the date arrives, and PARKS them from "went quiet" nudges until then — so a named promise lands on its day instead of getting lost. Find the lead by lead_email (preferred) or lead_name. Pass reconnect_on as an ISO date (YYYY-MM-DD); OMIT it (or pass empty) to CLEAR a reconnect date. PROPOSE-THEN-CONFIRM: agree the date with the human first, then call this — it writes immediately. Writes ONLY the engine\'s dedicated Reconnect On field (never the legacy Follow-Up Date).',
+    zodSchema: {
+      lead_email: z.string().optional().describe('The lead\'s email address (preferred — unambiguous).'),
+      lead_name: z.string().optional().describe('The lead\'s name (first, or "First Last") — used if no email. Matched as a case-insensitive substring; if several leads match you\'ll be asked which.'),
+      reconnect_on: z.string().optional().describe('The reconnect date as ISO YYYY-MM-DD (e.g. "2026-08-15"). Resolve vague phrases like "mid-August" to a concrete date before calling. Omit or pass empty to CLEAR the date (un-park the lead).'),
+    },
+    jsonSchema: {
+      type: 'object',
+      properties: {
+        lead_email: { type: 'string', description: 'The lead\'s email address (preferred — unambiguous).' },
+        lead_name: { type: 'string', description: 'The lead\'s name (first, or "First Last") — used if no email. Matched as a case-insensitive substring; if several leads match you\'ll be asked which.' },
+        reconnect_on: { type: 'string', description: 'The reconnect date as ISO YYYY-MM-DD (e.g. "2026-08-15"). Resolve vague phrases like "mid-August" to a concrete date before calling. Omit or pass empty to CLEAR the date (un-park the lead).' },
+      },
+      required: [],
+    },
+    run: runSetReconnect,
   },
 ];
 
@@ -897,4 +1080,4 @@ async function legacyToolCall(toolName, args, tenant = TENANT) {
   }
 }
 
-module.exports = { registerWingguyMailTools, legacyToolList, legacyToolCall, TOOL_DEFS, detectAssets, htmlToText, stripQuotedTail, settleEmailEditPairs, parseLinkedInLast, classifyLead, runFollowupSweep };
+module.exports = { registerWingguyMailTools, legacyToolList, legacyToolCall, TOOL_DEFS, detectAssets, htmlToText, stripQuotedTail, settleEmailEditPairs, parseLinkedInLast, classifyLead, computeMailSignals, runFollowupSweep };
