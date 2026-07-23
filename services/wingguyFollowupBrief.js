@@ -16,7 +16,8 @@
 require('dotenv').config();
 const { Pool } = require('pg');
 
-const TOP_N = 10;                 // how many surfaced people get the full read+triage+draft treatment
+const TOP_N = 15;                 // how many surfaced people get the full read+triage+draft treatment
+                                  // (10 proved too tight on catch-up days: ten due deferrals + live replies overflowed it, 2026-07-24)
 const THREAD_MSGS = 6;            // recent messages pulled per person for triage context
 const STALE_HOURS = 26;           // a brief older than this is flagged stale when served
 const MODEL_ID = process.env.WINGGUY_DRAFT_MODEL_ID || 'claude-sonnet-5';
