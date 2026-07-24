@@ -696,11 +696,23 @@ async function computeFollowupSweep({ window_days } = {}, tenant = TENANT) {
         const titleBlobs = [];
         for (const ev of cal.events) {
           if (ev.isFree) continue; // free/transparent time isn't a booked meeting
-          for (const a of (ev.attendees || [])) if (a && a.email) bookedEmails.add(String(a.email).toLowerCase());
+          for (const a of (ev.attendees || [])) {
+            if (!a || !a.email) continue;
+            // Response-aware (Celeste, 2026-07-24): a DECLINED invite is NOT a booked meeting —
+            // her 12 Jul decline was silencing her whole pipeline. 'needsAction' still counts as
+            // booked on purpose: agreed-in-chat leads often never click Accept, and un-suppressing
+            // them re-creates the reply-owed false positives. The safety net for an unanswered
+            // pencil-in invite is a Reconnect On checkpoint stamp — immune below.
+            if (String(a.responseStatus || '').toLowerCase() === 'declined') continue;
+            bookedEmails.add(String(a.email).toLowerCase());
+          }
           titleBlobs.push(`${ev.summary || ''} ${(ev.attendees || []).map((a) => a.displayName || '').join(' ')}`.toLowerCase());
         }
         const kept = [];
         for (const s of surfaced) {
+          // A human-set reconnect date OUTRANKS calendar inference: a due stamp always surfaces,
+          // meeting or no meeting — worst case the chat reports "already booked, clear the stamp".
+          if (s.tier === 'deferral') { kept.push(s); continue; }
           const email = (s.lead.email || '').toLowerCase();
           const full = `${s.lead.first} ${s.lead.last}`.trim().toLowerCase();
           const emailHit = !!email && bookedEmails.has(email);
