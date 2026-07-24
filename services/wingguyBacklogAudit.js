@@ -280,6 +280,9 @@ function formatWorklist(row, { name, batch = 5 } = {}) {
       `${nm(it)} — ${it.verdict.toUpperCase()} (${it.quietDays}d silent, ${it.status})`,
       `why: ${it.whyLine}`, `jog: ${it.jog}`,
     ];
+    // Explicit URL line (not just the linked name): survives the assistant's re-phrasing, and for a
+    // LinkedIn paste-ready draft it's the "click straight in and paste" door (Guy 2026-07-24).
+    if (it.linkedin) lines.push(`LinkedIn profile: ${it.linkedin}  ← ALWAYS show this link whenever presenting this person or their draft.`);
     if (it.parkDate) lines.push(`suggested park date: ${it.parkDate} (stamp via wingguy_set_reconnect)`);
     if (it.draftText) lines.push(it.channel === 'email'
       ? `draft (email — tweak in chat, then push via wingguy_create_draft with to=${it.email}, subject="${it.pushSubject}"${it.replyToMessageId ? `, reply_to_message_id=${it.replyToMessageId}` : ''}):\n"${it.draftText}"`
