@@ -1263,7 +1263,7 @@ async function runDossier({ name } = {}, tenant = TENANT) {
     const opts = {};
     try {
       const p = typeof row.payload === 'string' ? JSON.parse(row.payload) : row.payload;
-      if (p && !p.linkedin) {
+      if (p && (!p.linkedin || !p.location)) {
         const clientService = require('./clientService');
         const coach = await clientService.getClientById(tenant);
         if (coach && coach.airtableBaseId) {
@@ -1272,8 +1272,11 @@ async function runDossier({ name } = {}, tenant = TENANT) {
           const formula = p.email
             ? `LOWER({Email}) = "${esc(String(p.email).toLowerCase())}"`
             : `FIND(LOWER("${esc(p.name)}"), LOWER({First Name} & " " & {Last Name})) > 0`;
-          const m = await base('Leads').select({ filterByFormula: formula, fields: ['LinkedIn Profile URL'], maxRecords: 1 }).all();
-          if (m.length) opts.linkedin = String(m[0].fields['LinkedIn Profile URL'] || '').trim() || null;
+          const m = await base('Leads').select({ filterByFormula: formula, fields: ['LinkedIn Profile URL', 'Location'], maxRecords: 1 }).all();
+          if (m.length) {
+            opts.linkedin = String(m[0].fields['LinkedIn Profile URL'] || '').trim() || null;
+            opts.location = String(m[0].fields['Location'] || '').trim() || null;
+          }
         }
       }
     } catch (_) { /* link is a nicety, never block the serve */ }
