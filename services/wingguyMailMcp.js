@@ -889,7 +889,7 @@ async function runFollowupBriefRead(_args = {}, tenant = TENANT) {
   if (!text) return { text: `No brief content stored${row.error ? ` (last preparation failed: ${row.error})` : ''}. Run wingguy_prepare_brief.`, isError: true };
   // Self-healing routing (works even when a chat cached old tool descriptions): a general
   // follow-up ask must land on the ACTION QUEUE, not this status store.
-  const redirect = 'ROUTING NOTE TO ASSISTANT: if the human asked generally for their follow-ups / what\'s due / who they owe, do NOT present this — call wingguy_queue NOW and present THAT (a ranked action to-do list). Use the data below ONLY for a specific person\'s detail (jog/draft/push params) or an explicit status question.\n\n';
+  const redirect = 'ROUTING NOTE TO ASSISTANT: if the human asked generally for their follow-ups / what\'s due / who they owe, do NOT present this — call wingguy_queue NOW and present THAT (a ranked action to-do list). Use the data below ONLY for a specific person\'s detail (jog/draft/push params) or an explicit status question.\n' + LEVERS_NOTE + '\n\n';
   const note = row.status === 'error' ? `⚠ The LATEST preparation failed (${row.error}) — this is the previous brief.\n` : (row.status === 'preparing' ? '(A fresh brief is being prepared right now — this is the previous one.)\n' : '');
   // Backlog ledger (cheap PG read): the daily brief must show the OTHER queue exists too.
   let backlogLine = '';
@@ -1180,6 +1180,19 @@ const TOOL_DEFS = [
   },
 ];
 
+// Authoritative crib appended to the queue (and the brief's routing note) so ANY conversation —
+// including one whose pinned tool list predates a tool — knows what the controls are. Born
+// 2026-07-24: a chat confidently told Guy "there's no way to express 'don't chase unless they
+// reply'" while wingguy_cease_followups sat deployed, then invented a LinkedIn blindness the
+// sweep doesn't have. The fix is the ROUTING-NOTE trick: put the truth in the output itself.
+const LEVERS_NOTE =
+  '[THE LEVERS — authoritative; never tell the human a control is missing without checking this list: ' +
+  'wingguy_cease_followups = drop a person WITHOUT sending anything (all timers silenced permanently; a future reply from them still surfaces — this IS "don\'t chase unless they reply") · ' +
+  'wingguy_set_reconnect = park until a date (fires as due that day; clearable) · ' +
+  'wingguy_backlog name+done/skip = tick off a backlog item · ' +
+  'wingguy_dossier name = instant memory jog + ready draft. ' +
+  'LinkedIn: the sweep DOES see LinkedIn — LinkedHelper syncs each thread into the lead\'s Notes, so a message the human sends there counts as their last outbound once synced (minutes-to-hours lag), and a LinkedIn reply surfaces them even when ceased.]';
+
 /**
  * The unified QUEUE: everything actionable RIGHT NOW, one ranked pageable list (Guy 2026-07-23:
  * "a list of people in priority order, one line each, top ten, next ten — that I can start
@@ -1223,6 +1236,7 @@ async function runQueue({ page } = {}, tenant = TENANT) {
     ...slice.map((it, i) => `${(pg - 1) * PAGE + i + 1}. ${nm(it)} — ${it.line}`),
   ];
   if (pg < totalPages) lines.push(`(${deduped.length - pg * PAGE} more — say "next ten".)`);
+  lines.push('', LEVERS_NOTE);
   return { text: lines.join('\n') };
 }
 
