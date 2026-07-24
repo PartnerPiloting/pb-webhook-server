@@ -283,11 +283,16 @@ function formatWorklist(row, { name, batch = 5 } = {}) {
     // Explicit URL line (not just the linked name): survives the assistant's re-phrasing, and for a
     // LinkedIn paste-ready draft it's the "click straight in and paste" door (Guy 2026-07-24).
     if (it.linkedin) lines.push(`LinkedIn profile: ${it.linkedin}  ← ALWAYS show this link whenever presenting this person or their draft.`);
-    if (it.parkDate) lines.push(`suggested park date: ${it.parkDate} (stamp via wingguy_set_reconnect)`);
+    if (it.parkDate) {
+      const past = it.parkDate <= new Date().toISOString().slice(0, 10);
+      lines.push(past
+        ? `suggested park date: ${it.parkDate} — ALREADY PASSED. Their own window has closed, so reaching out now is natural and expected (their timeframe, not a chase). If parking anyway, stamp a FRESH future date via wingguy_set_reconnect — never a past one.`
+        : `suggested park date: ${it.parkDate} (stamp via wingguy_set_reconnect)`);
+    }
     if (it.draftText) lines.push(it.channel === 'email'
       ? `draft (email — tweak in chat, then push via wingguy_create_draft with to=${it.email}, subject="${it.pushSubject}"${it.replyToMessageId ? `, reply_to_message_id=${it.replyToMessageId}` : ''}):\n"${it.draftText}"`
       : `draft (LinkedIn — paste-ready):\n"${it.draftText}"`);
-    else if (it.verdict === 'reopen') lines.push('draft: not pre-written (over the cap) — compose from the jog + exchange.');
+    else lines.push(`draft: none stored in THIS entry — check wingguy_dossier name="${it.name}" BEFORE saying no draft exists: the overnight pass writes a ready guidance draft there (or an explicit let-it-rest note).`);
     lines.push(`when dealt with: mark done via wingguy_backlog {name, action:"done"} (or "skip").`);
     return lines.join('\n');
   }
