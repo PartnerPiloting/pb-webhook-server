@@ -238,7 +238,7 @@ async function runBacklogAudit(tenant) {
       try {
         const instruction = (v.draft_instruction || 'Re-open the thread warmly, referencing where it left off.') +
           (item.channel === 'linkedin' ? ' This will be pasted into LinkedIn chat — plain short text, no HTML, no subject.' : '');
-        const html = await writeDraft(llm, rulesText, { lead: { first: c.first, last: '', email: c.email } }, { transcript: c.transcript }, instruction);
+        const html = await writeDraft(llm, rulesText, { lead: { first: c.first, last: '', email: c.email } }, { transcript: c.transcript }, instruction, coach.timezone);
         item.draftHtml = item.channel === 'email' ? html : null;
         item.draftText = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
         if (item.channel === 'email') item.pushSubject = c.lastInbound && c.lastInbound.subject ? (/^re:/i.test(c.lastInbound.subject) ? c.lastInbound.subject : `Re: ${c.lastInbound.subject}`) : 'Picking our conversation back up';
