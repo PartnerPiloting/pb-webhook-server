@@ -114,7 +114,7 @@ Return ONLY a JSON array, same order: [{"key":"<key as given>","verdict":"reopen
 async function runBacklogAudit(tenant) {
   const clientService = require('./clientService');
   const mailProvider = require('./mailProvider');
-  const { getAnthropicClient } = require('../config/anthropicClient');
+  const { getAnthropicClientForKey } = require('../config/anthropicClient');
   const rulesStore = require('./wingguyRulesStore');
   const { computeMailSignals } = require('./wingguyMailMcp');
 
@@ -174,7 +174,10 @@ async function runBacklogAudit(tenant) {
   console.log(`[backlogAudit] candidates=${candidates.length} skipped=${JSON.stringify(skipped)}`);
 
   // Build transcripts (email context per-person only where a signal existed — bounded calls).
-  const llm = getAnthropicClient();
+  // Client's stored key when present (header-less path); blank -> platform, as before.
+  const anthropicKey = coach.anthropicApiKey || null;
+  console.log(`[backlogAudit] anthropic lane=${anthropicKey ? 'client-stored-key' : 'platform-fallback'} tenant=${tenant}`);
+  const llm = getAnthropicClientForKey(anthropicKey);
   const today = new Date().toISOString().slice(0, 10);
   const withContext = [];
   for (const c of candidates) {

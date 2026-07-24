@@ -258,7 +258,7 @@ async function prepareDossiers(tenant) {
   try {
     const clientService = require('./clientService');
     const mailProvider = require('./mailProvider');
-    const { getAnthropicClient } = require('../config/anthropicClient');
+    const { getAnthropicClientForKey } = require('../config/anthropicClient');
     const briefStore = require('./wingguyFollowupBrief');
     const backlog = require('./wingguyBacklogAudit');
     const rulesStore = require('./wingguyRulesStore');
@@ -319,7 +319,10 @@ async function prepareDossiers(tenant) {
       if (nm && !byName.has(nm)) byName.set(nm, r);
     }
 
-    const llm = getAnthropicClient();
+    // Client's stored key when present (header-less path); blank -> platform, as before.
+    const anthropicKey = coach.anthropicApiKey || null;
+    console.log(`[dossier] anthropic lane=${anthropicKey ? 'client-stored-key' : 'platform-fallback'} tenant=${tenant}`);
+    const llm = getAnthropicClientForKey(anthropicKey);
     for (const person of people.values()) {
       try {
         const rec = (person.email && byEmail.get(person.email)) || byName.get(person.name.toLowerCase()) || null;

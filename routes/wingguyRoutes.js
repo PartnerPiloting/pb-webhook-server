@@ -64,7 +64,12 @@ const PLATFORM_KEY_CLIENTS = new Set(
 );
 function byoAnthropicClient(req) {
   const headerKey = String(req.get(BYO_ANTHROPIC_HEADER) || '').trim();
-  if (headerKey) return getAnthropicClientForKey(headerKey);            // their own key (BYO)
+  if (headerKey) return getAnthropicClientForKey(headerKey);            // their own key (BYO, header)
+  // Stored BYO key on the record (the stored-key build, 2026-07-24) — the middle tier. Still THEIR
+  // key, so it satisfies the billing rule (not the platform). Lets a client run the extension without
+  // pasting a key into Chrome once it's on file; also the same lane the overnight paths use.
+  const storedKey = req.client && String(req.client.anthropicApiKey || '').trim();
+  if (storedKey) return getAnthropicClientForKey(storedKey);            // their own key (stored on record)
   const cid = req.client && String(req.client.clientId || '').trim();
   // Platform (Guy's) key allowed only for: the owner, a client on a managed plan (the record's
   // "Managed Claude Key" = Yes → req.client.managedClaudeKey), or the env override list.

@@ -228,7 +228,7 @@ async function prepareFollowupBrief(tenant) {
   try {
     const { computeFollowupSweep } = require('./wingguyMailMcp');
     const mailProvider = require('./mailProvider');
-    const { getAnthropicClient } = require('../config/anthropicClient');
+    const { getAnthropicClientForKey } = require('../config/anthropicClient');
     const rulesStore = require('./wingguyRulesStore');
 
     const sweep = await computeFollowupSweep({}, tenant);
@@ -243,8 +243,12 @@ async function prepareFollowupBrief(tenant) {
     const contexts = [];
     for (const item of top) contexts.push(await gatherPersonContext(mailProvider, sweep.coach, item));
 
-    // One triage call over the whole group.
-    const llm = getAnthropicClient();
+    // One triage call over the whole group. Run on the CLIENT's stored key when they have one
+    // (this overnight path is header-less, so the stored key is the only BYO lane); blank -> the
+    // platform key, exactly as before. Failing-key surfacing is a later brick.
+    const anthropicKey = (sweep.coach && sweep.coach.anthropicApiKey) || null;
+    console.log(`[followupBrief] anthropic lane=${anthropicKey ? 'client-stored-key' : 'platform-fallback'} tenant=${tenant}`);
+    const llm = getAnthropicClientForKey(anthropicKey);
     const todayIso = new Date().toISOString().slice(0, 10);
     let verdicts = [];
     if (top.length) verdicts = await triage(llm, top, contexts, todayIso);
