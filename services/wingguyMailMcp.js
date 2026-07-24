@@ -1246,7 +1246,27 @@ async function runDossier({ name } = {}, tenant = TENANT) {
   try {
     const row = await dossier.findDossierByName(tenant, name);
     if (!row) return { text: `No prepared dossier for "${name}" — they're outside the prepared queue. Offer the live dig (wingguy_lead_correspondence, transcripts) with a "this will take a moment" warning.` };
-    return { text: dossier.formatDossier(row) };
+    // Profile-link fallback for dossiers built before `linkedin` was stored in the payload
+    // (Guy 2026-07-24: "click through to their LinkedIn profile" while actioning). Best-effort —
+    // one light Airtable lookup; any failure just serves the dossier without the link.
+    const opts = {};
+    try {
+      const p = typeof row.payload === 'string' ? JSON.parse(row.payload) : row.payload;
+      if (p && !p.linkedin) {
+        const clientService = require('./clientService');
+        const coach = await clientService.getClientById(tenant);
+        if (coach && coach.airtableBaseId) {
+          const base = clientService.getClientBase(coach.airtableBaseId);
+          const esc = (s) => String(s).replace(/"/g, '\\"');
+          const formula = p.email
+            ? `LOWER({Email}) = "${esc(String(p.email).toLowerCase())}"`
+            : `FIND(LOWER("${esc(p.name)}"), LOWER({First Name} & " " & {Last Name})) > 0`;
+          const m = await base('Leads').select({ filterByFormula: formula, fields: ['LinkedIn Profile URL'], maxRecords: 1 }).all();
+          if (m.length) opts.linkedin = String(m[0].fields['LinkedIn Profile URL'] || '').trim() || null;
+        }
+      }
+    } catch (_) { /* link is a nicety, never block the serve */ }
+    return { text: dossier.formatDossier(row, opts) };
   } catch (e) { return { text: `Dossier store unavailable: ${e.message}`, isError: true }; }
 }
 
