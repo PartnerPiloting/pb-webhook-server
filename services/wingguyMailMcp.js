@@ -1192,7 +1192,8 @@ const LEVERS_NOTE =
   'wingguy_backlog name+done/skip = tick off a backlog item · ' +
   'wingguy_dossier name = instant memory jog + ready draft. ' +
   'LinkedIn: the sweep DOES see LinkedIn — LinkedHelper syncs each thread into the lead\'s Notes, so a message the human sends there counts as their last outbound once synced (minutes-to-hours lag), and a LinkedIn reply surfaces them even when ceased. ' +
-  'PRESENTATION RULE: whenever you show a draft (first time OR re-shown from earlier in the chat), ALWAYS put the person\'s LinkedIn profile link right beside it — the human clicks straight into LinkedIn and pastes. The URL is in the queue\'s linked name, the dossier, and the backlog entry; if you don\'t have it in context, pull wingguy_dossier for the person.]';
+  'PRESENTATION RULE: whenever you show a draft (first time OR re-shown from earlier in the chat), ALWAYS put the person\'s LinkedIn profile link right beside it — the human clicks straight into LinkedIn and pastes. The URL is in the queue\'s linked name, the dossier, and the backlog entry; if you don\'t have it in context, pull wingguy_dossier for the person. ' +
+  'DRAFTS: every actionable person\'s overnight dossier (wingguy_dossier) carries a ready guidance draft or an explicit let-it-rest note — NEVER tell the human no draft was pre-written without pulling the dossier first.]';
 
 /**
  * The unified QUEUE: everything actionable RIGHT NOW, one ranked pageable list (Guy 2026-07-23:
@@ -1210,9 +1211,15 @@ async function runQueue({ page } = {}, tenant = TENANT) {
   try {
     const row = await briefStore.getBrief(tenant);
     const p = row && row.payload ? (typeof row.payload === 'string' ? JSON.parse(row.payload) : row.payload) : null;
+    // A park proposal whose date has already passed is not a park decision any more — their own
+    // named window closed, so it serves as "reach out now" (Joe Cozzupoli, observed 2026-07-24:
+    // the queue proposed parking him to 10 July on the 24th).
+    const parkLine = (it) => (it.parkDate && it.parkDate <= new Date().toISOString().slice(0, 10))
+      ? `their own window (${it.parkDate}) has PASSED — reach out now, natural opening [draft in dossier]`
+      : `${it.whyLine} → propose park ${it.parkDate || '?'}`;
     for (const it of ((p && p.items) || [])) {
       if (it.verdict === 'draft') items.push({ ...it, src: 'today', line: `${it.whyLine} [draft ready]` });
-      else if (it.verdict === 'park') items.push({ ...it, src: 'today', line: `${it.whyLine} → propose park ${it.parkDate || '?'}` });
+      else if (it.verdict === 'park') items.push({ ...it, src: 'today', line: parkLine(it) });
       else if (it.verdict === 'attention') items.push({ ...it, src: 'today', line: `${it.whyLine} [needs your judgment]` });
     }
   } catch (_) { /* brief store down — queue still serves backlog */ }
@@ -1220,8 +1227,11 @@ async function runQueue({ page } = {}, tenant = TENANT) {
     const row = await backlog.getWorklist(tenant);
     const p = row && row.payload ? (typeof row.payload === 'string' ? JSON.parse(row.payload) : row.payload) : null;
     const pend = ((p && p.items) || []).filter((i) => i.status === 'pending');
+    const parkLine = (it) => (it.parkDate && it.parkDate <= new Date().toISOString().slice(0, 10))
+      ? `their own window (${it.parkDate}) has PASSED — reach out now, natural opening [draft in dossier]`
+      : `${it.whyLine} → propose park ${it.parkDate || '?'}`;
     for (const it of pend.filter((i) => i.verdict === 'reopen')) items.push({ ...it, src: 'backlog', line: `${it.whyLine} (${it.quietDays}d quiet)${it.draftText ? ' [draft ready]' : ''}` });
-    for (const it of pend.filter((i) => i.verdict === 'park')) items.push({ ...it, src: 'backlog', line: `${it.whyLine} → propose park ${it.parkDate || '?'}` });
+    for (const it of pend.filter((i) => i.verdict === 'park')) items.push({ ...it, src: 'backlog', line: parkLine(it) });
   } catch (_) { /* ignore */ }
   if (!items.length) return { text: 'The queue is empty — nothing actionable right now (parked people surface on their dates).' };
   // Dedupe by name (a person can appear in both stores — today's view wins).

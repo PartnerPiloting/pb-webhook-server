@@ -407,6 +407,9 @@ function formatDossier(row, opts = {}) {
     lines.push(`\nSUGGESTED DRAFT (embodies the next move — show it, tweak in chat, push/copy ONLY on approval${p.suggestedDraft.channel === 'linkedin' ? '; LinkedIn paste-ready' : ''}):`);
     lines.push(`"${p.suggestedDraft.text}"`);
     if (p.suggestedDraft.channel === 'email' && p.suggestedDraft.replyToMessageId) lines.push(`push with: to=${p.email}, subject="${p.suggestedDraft.subject}", reply_to_message_id=${p.suggestedDraft.replyToMessageId} (any {{asset:KEY}} resolves + usage-gates at push)`);
+  } else if (/nothing\s*[—-]?\s*let it rest|^nothing\b|no action/i.test(p.nextMove || '')) {
+    // Deliberate absence must never read as "we didn't get to it" (Guy 2026-07-24).
+    lines.push(`\nNO DRAFT ON PURPOSE — the overnight read judged this one should rest. Compose only if the human insists.`);
   }
   if (p.lastHuman) lines.push(`Last human message: ${p.lastHuman}`);
   if ((p.meetings || []).length) {
