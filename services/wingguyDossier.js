@@ -310,7 +310,7 @@ async function prepareDossiers(tenant) {
     } catch (_) {}
 
     // One Airtable read for Notes + missing rec ids (dossiers need LinkedIn history).
-    const records = await base('Leads').select({ fields: ['First Name', 'Last Name', 'Email', 'Notes', 'LinkedIn Profile URL'] }).all();
+    const records = await base('Leads').select({ fields: ['First Name', 'Last Name', 'Email', 'Notes', 'LinkedIn Profile URL', 'Location'] }).all();
     const byEmail = new Map(); const byName = new Map();
     for (const r of records) {
       const em = String(r.fields['Email'] || '').trim().toLowerCase();
@@ -368,6 +368,7 @@ async function prepareDossiers(tenant) {
         await saveDossier(tenant, person.key, basis, {
           name: person.name, email: person.email, recId,
           linkedin: (rec && String(rec.fields['LinkedIn Profile URL'] || '').trim()) || null,
+          location: (rec && String(rec.fields['Location'] || '').trim()) || null,
           builtAt: new Date().toISOString(),
           timeline,
           meetings: meetings.map(({ transcript, ...rest }) => rest), // transcript consumed by deepRead, not duplicated in the payload
@@ -391,10 +392,14 @@ function formatDossier(row, opts = {}) {
   // Profile link: stored on new builds; opts.linkedin is the serve-time fallback for dossiers
   // built before the field existed (avoids a rebuild of the whole store).
   const li = p.linkedin || opts.linkedin || null;
+  const loc = p.location || opts.location || null;
   const lines = [
     `DOSSIER: ${li ? `[${p.name}](${li})` : p.name} (built ${String(p.builtAt).slice(0, 16).replace('T', ' ')} UTC)`,
   ];
   if (li) lines.push(`LinkedIn profile: ${li}  ← ALWAYS show this link (or the linked name) when presenting — the human clicks through to paste/see the profile.`);
+  lines.push(loc
+    ? `Based: ${loc} (state where they're based per the booking rules; times offered later must be on THEIR clock)`
+    : `Based: NOT RECORDED — before offering any meeting times, ask the human where this person is (booking rules: never guess a timezone).`);
   lines.push(`\nWHERE IT STANDS: ${p.standing}`);
   if ((p.commitmentsYou || []).length) lines.push(`\nYOU promised: ${p.commitmentsYou.join(' · ')}`);
   if ((p.commitmentsThem || []).length) lines.push(`THEY promised/delivered: ${p.commitmentsThem.join(' · ')}`);

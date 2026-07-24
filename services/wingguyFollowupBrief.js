@@ -187,7 +187,8 @@ async function triage(client, items, contexts, todayIso) {
 // Drafting — real Gmail drafts for the "draft" pile
 // ---------------------------------------------------------------------------
 
-const DRAFT_SYSTEM_PREFIX = `You write a short reply email in the coach's own voice, following the coach's RULEBOOK below. Ground every fact in the supplied exchange — never invent. Keep it brief and human. Return ONLY the email body as simple HTML (<p> paragraphs, <a href> for any links) — no subject, no commentary.`;
+const DRAFT_SYSTEM_PREFIX = `You write a short reply email in the coach's own voice, following the coach's RULEBOOK below. Ground every fact in the supplied exchange — never invent. Keep it brief and human. Return ONLY the email body as simple HTML (<p> paragraphs, <a href> for any links) — no subject, no commentary.
+HARD RULE — NO SPECIFIC MEETING TIMES: you are drafting offline with no access to the coach's calendar, so NEVER offer concrete days/dates/times ("Tuesday 10am", "Thursday next week"). Propose the meeting and either ask what suits them or say the coach will follow with times. Concrete slots come later from a live calendar check with the lead's timezone handled.`;
 
 async function writeDraft(client, rulesText, item, context, instruction) {
   const name = `${item.lead.first} ${item.lead.last}`.trim();
