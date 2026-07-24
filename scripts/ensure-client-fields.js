@@ -105,6 +105,11 @@ const MASTER_FIELDS = [
         { name: 'No', color: 'grayBright' }
       ]
     }
+  },
+  {
+    name: 'Anthropic API Key',
+    type: 'singleLineText',
+    description: 'Client\'s own (BYO) Anthropic API key. When present, Wingguy runs THIS client\'s server-side work (nightly follow-up brief, and the Chrome extension\'s drafting) on their key + their spend cap, not the platform key. Resolution order: request header -> this stored key -> platform key. Falls back to platform ONLY when absent; a FAILING key here (revoked/capped) must surface, not silently fall through. Client sets a spend cap + can revoke instantly (Anthropic Console), so worst-case cost is a number they chose. Plaintext-at-rest like the portal tokens in this base. Added 2026-07-24.'
   }
 ];
 
