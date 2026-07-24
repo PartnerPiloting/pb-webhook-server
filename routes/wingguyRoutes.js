@@ -25,7 +25,7 @@
 const express = require('express');
 const { createLogger } = require('../utils/contextLogger');
 const { authenticateUserWithTestMode } = require('../middleware/authMiddleware');
-const { getAnthropicClient, getAnthropicClientForKey, isAnthropicConfigured } = require('../config/anthropicClient');
+const { getAnthropicClient, getAnthropicClientForKey, isAnthropicConfigured, anthropicKeyError } = require('../config/anthropicClient');
 const rulesSource = require('../services/wingguyRulesSource');
 const { getBookingPrefs } = require('../config/wingguyBookingPrefs');
 const { createBookingEvent } = require('../services/wingguyCalendar');
@@ -97,6 +97,25 @@ function transientClaudeError(e) {
     return 'Claude had a brief server hiccup - please try that again in a moment.';
   }
   return null;
+}
+
+// A client-facing sentence for a rejected KEY (their own key revoked, or their spend cap / credit
+// exhausted). This is the surfaced-not-swallowed half of the stored-key safety promise: a dead key
+// stops their Wingguy and tells them how to fix it — it is NEVER retried on the platform key.
+const ANTHROPIC_KEY_ERROR_MSG = {
+  revoked: 'Your Anthropic (Claude) API key was rejected - it looks revoked or invalid. Update it (extension settings, or ask your coach) and try again.',
+  billing: "Your Anthropic (Claude) account declined the request - most likely the spend limit or credit ran out. Raise the limit or top up in your Anthropic Console, then try again.",
+};
+
+// Single place that turns a Claude call failure into the right HTTP response, so every model-calling
+// route handles a rejected key / overload / real bug identically. Key/billing failure -> 400 + a
+// clear "fix your key" message (surfaced, never retried on the platform key); transient upstream
+// overload -> 503 "try again"; anything else -> 500 raw.
+function respondClaudeError(res, e) {
+  const keyReason = anthropicKeyError(e);
+  if (keyReason) return res.status(400).json({ ok: false, error: ANTHROPIC_KEY_ERROR_MSG[keyReason], keyError: keyReason });
+  const friendly = transientClaudeError(e);
+  return res.status(friendly ? 503 : 500).json({ ok: false, error: friendly || e.message });
 }
 
 function parseBoolFlag(val, defaultValue = false) {
@@ -421,7 +440,7 @@ module.exports = function mountWingguy(app) {
       });
     } catch (e) {
       logger.error(`[Wingguy] draft-thanks failed: ${e.message}`);
-      return res.status(500).json({ ok: false, error: e.message });
+      return respondClaudeError(res, e);
     }
   });
 
@@ -480,7 +499,7 @@ module.exports = function mountWingguy(app) {
       return res.json({ ok: true, draft, model: WINGGUY_DRAFT_MODEL_ID, mode: 'reply' });
     } catch (e) {
       logger.error(`[Wingguy] draft-reply failed: ${e.message}`);
-      return res.status(500).json({ ok: false, error: e.message });
+      return respondClaudeError(res, e);
     }
   });
 
@@ -601,9 +620,8 @@ module.exports = function mountWingguy(app) {
       return res.json(result);
     } catch (e) {
       logger.error(`[Wingguy] chat failed: ${e.message}`);
-      const friendly = transientClaudeError(e);
-      // 503 for a transient upstream overload (semantically "try again"); 500 for a real failure.
-      return res.status(friendly ? 503 : 500).json({ ok: false, error: friendly || e.message });
+      // Key/billing failure -> clear "fix your key" (400); transient overload -> 503; else 500.
+      return respondClaudeError(res, e);
     }
   });
 

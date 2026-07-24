@@ -330,20 +330,32 @@ async function prepareFollowupBrief(tenant) {
     } catch (e) { console.warn(`[followupBrief] dossier pass failed (brief unaffected): ${e.message}`); }
     return { ok: true, items: items.length, totalSurfaced: sweep.surfaced.length };
   } catch (e) {
-    console.error(`[followupBrief] prepare failed for ${tenant}: ${e.message}`);
-    await setStatus(tenant, { status: 'error', error: e.message }).catch(() => {});
+    // A rejected stored key (revoked, or over its spend cap) is a distinct, actionable cause — name
+    // it so the stored error the chat serves AND the alert email say "fix your key", not a generic
+    // failure. This overnight path is header-less, so the client's stored key is the only BYO lane;
+    // a bad key means their brief simply won't run until they re-issue it (it is never silently run
+    // on the platform key).
+    const keyReason = require('../config/anthropicClient').anthropicKeyError(e);
+    const storedError = keyReason
+      ? `Anthropic key rejected (${keyReason}): this client's stored Anthropic key is ${keyReason === 'revoked' ? 'revoked or invalid' : 'over its spend limit / out of credit'}. Their brief will not run until the key is fixed in the Anthropic Console.`
+      : e.message;
+    console.error(`[followupBrief] prepare failed for ${tenant}: ${storedError}`);
+    await setStatus(tenant, { status: 'error', error: storedError }).catch(() => {});
     // Loud failure (Guy's ask 2026-07-23): a silent overnight failure = a quietly stale morning
     // brief. Best-effort — the alert failing must never mask the original error.
     try {
       const { sendAlertEmail } = require('./emailNotificationService');
+      const keyHint = keyReason
+        ? `<p><b>Cause: rejected Anthropic key (${keyReason}).</b> ${tenant}'s stored Claude key is ${keyReason === 'revoked' ? 'revoked/invalid' : 'over its spend cap / out of credit'} — their brief stays stale until they update it in their Anthropic Console.</p>`
+        : '';
       await sendAlertEmail(
-        `Wingguy follow-up brief FAILED (${tenant})`,
+        `Wingguy follow-up brief FAILED (${tenant})${keyReason ? ' — key rejected' : ''}`,
         `<p>The follow-up brief preparation for <b>${tenant}</b> failed at ${new Date().toISOString()}:</p>` +
-        `<pre>${String(e.message).slice(0, 500)}</pre>` +
+        `<pre>${String(e.message).slice(0, 500)}</pre>` + keyHint +
         `<p>The chat will serve the previous brief (flagged stale). Rebuild any time: ask Wingguy to "refresh my follow-ups", or re-run the cron endpoint.</p>`,
       );
     } catch (mailErr) { console.error(`[followupBrief] failure alert email also failed: ${mailErr.message}`); }
-    return { ok: false, error: e.message };
+    return { ok: false, error: storedError };
   }
 }
 

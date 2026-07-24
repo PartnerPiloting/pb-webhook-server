@@ -85,10 +85,32 @@ function isAnthropicConfigured() {
     return !!process.env.ANTHROPIC_API_KEY;
 }
 
+/**
+ * Classify a Claude call failure caused by the KEY or ACCOUNT itself — the failure a client's OWN
+ * (BYO / stored) key throws when they revoke it or hit the spend cap they set — as distinct from a
+ * transient overload (retryable) or a genuine bug. This is what makes the stored-key safety promise
+ * real: `getAnthropicClientForKey` never falls a live-but-rejected key through to the platform key
+ * (only an ABSENT key falls back), so a rejected key must be SURFACED, not swallowed. Callers use
+ * this to tell the client "fix your key" instead of showing a raw 401 or quietly failing.
+ * Returns 'revoked' (invalid/revoked key — the kill switch), 'billing' (spend limit / no credit), or null.
+ */
+function anthropicKeyError(e) {
+    if (!e) return null;
+    const status = Number(e.status || e.statusCode || (e.response && e.response.status)) || 0;
+    const type = String(e.type || (e.error && e.error.type) || '');
+    const msg = String(e.message || (e.error && e.error.message) || '');
+    if (status === 401 || status === 403 || type === 'authentication_error' || type === 'permission_error') return 'revoked';
+    // Billing/credit/spend-cap: Anthropic surfaces these as a 400 with a telltale message (not a
+    // plain rate-limit, which transientClaudeError already treats as retryable).
+    if (/credit balance|billing|spend limit|quota exceeded|insufficient|payment/i.test(msg)) return 'billing';
+    return null;
+}
+
 module.exports = {
     initializeAnthropic,
     getAnthropicClient,
     getAnthropicClientForKey,
     isAnthropicConfigured,
+    anthropicKeyError,
     claudeModelId: CLAUDE_MODEL_ID,
 };
