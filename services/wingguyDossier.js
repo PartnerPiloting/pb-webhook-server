@@ -354,7 +354,7 @@ async function prepareDossiers(tenant) {
               `${read.next_move} Context: ${read.standing} ` +
               (channel === 'linkedin' ? 'This will be pasted into LinkedIn chat — plain short text, no HTML links, no subject.' : '') +
               assetLines;
-            const html = await writeDraft(llm, rulesText, { lead: { first: person.name.split(' ')[0], last: '', email: person.email } }, { transcript: timeline.map((t) => `${t.date} [${t.kind}/${t.dir}] ${t.fullText || t.text || ''}`) }, instruction);
+            const html = await writeDraft(llm, rulesText, { lead: { first: person.name.split(' ')[0], last: '', email: person.email } }, { transcript: timeline.map((t) => `${t.date} [${t.kind}/${t.dir}] ${t.fullText || t.text || ''}`) }, instruction, coach.timezone);
             suggested = {
               channel,
               text: scrub(html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()),

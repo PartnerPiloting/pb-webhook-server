@@ -190,8 +190,11 @@ async function triage(client, items, contexts, todayIso) {
 const DRAFT_SYSTEM_PREFIX = `You write a short reply email in the coach's own voice, following the coach's RULEBOOK below. Ground every fact in the supplied exchange — never invent. Keep it brief and human. Return ONLY the email body as simple HTML (<p> paragraphs, <a href> for any links) — no subject, no commentary.
 HARD RULE — NO SPECIFIC MEETING TIMES: you are drafting offline with no access to the coach's calendar, so NEVER offer concrete days/dates/times ("Tuesday 10am", "Thursday next week"). Propose the meeting and either ask what suits them or say the coach will follow with times. Concrete slots come later from a live calendar check with the lead's timezone handled.`;
 
-async function writeDraft(client, rulesText, item, context, instruction) {
+async function writeDraft(client, rulesText, item, context, instruction, tz) {
   const name = `${item.lead.first} ${item.lead.last}`.trim();
+  // Day-of-week anchor (coach's clock): overnight drafts are written blind at ~5:30am, so any
+  // day-keyed voice rule (e.g. the foundation weekend sign-off) needs the day stated in-prompt.
+  const today = new Date().toLocaleDateString('en-AU', { timeZone: tz || 'Australia/Brisbane', weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
   // The rulebook block (~25k tokens) is identical across every draft call in a run — cache it.
   // 5-min TTL covers a sequential preparation pass: the first draft writes the cache (1.25x),
   // the rest read at ~0.1x. This was the dominant cost term of the nightly run (Guy, 2026-07-24).
@@ -205,7 +208,7 @@ async function writeDraft(client, rulesText, item, context, instruction) {
     ],
     messages: [{
       role: 'user',
-      content: require('./wingguyDossier').scrub(`Reply to ${name}.\nWhat the reply should do: ${instruction}\n\nThe recent exchange (oldest first):\n${context.transcript.join('\n')}`),
+      content: require('./wingguyDossier').scrub(`Reply to ${name}.\nToday is ${today} (the coach's local day — apply any day-of-week rules from the rulebook against THIS, e.g. weekend sign-offs).\nWhat the reply should do: ${instruction}\n\nThe recent exchange (oldest first):\n${context.transcript.join('\n')}`),
     }],
   });
   return (response.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('').trim();
@@ -288,7 +291,7 @@ async function prepareFollowupBrief(tenant) {
       if (entry.verdict === 'draft') {
         if (item.lead.email && ctx.lastInbound) {
           try {
-            const html = await writeDraft(llm, rulesText, item, ctx, v.draft_instruction || 'Reply appropriately to their last message.');
+            const html = await writeDraft(llm, rulesText, item, ctx, v.draft_instruction || 'Reply appropriately to their last message.', sweep.coach.timezone);
             entry.draftHtml = html;
             entry.draftText = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
             entry.replyToMessageId = ctx.lastInbound.id;
@@ -297,7 +300,7 @@ async function prepareFollowupBrief(tenant) {
         } else {
           // LinkedIn-only person: paste-ready plain text.
           try {
-            const html = await writeDraft(llm, rulesText, item, ctx, (v.draft_instruction || 'Reply appropriately.') + ' This will be pasted into LinkedIn chat — plain short text, no HTML links, no subject.');
+            const html = await writeDraft(llm, rulesText, item, ctx, (v.draft_instruction || 'Reply appropriately.') + ' This will be pasted into LinkedIn chat — plain short text, no HTML links, no subject.', sweep.coach.timezone);
             entry.draftText = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
             entry.channel = 'linkedin';
           } catch (e) { entry.draftError = e.message; }
