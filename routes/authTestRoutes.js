@@ -29,7 +29,16 @@ const { getClientById } = require('../services/clientService');
 router.get('/test', authenticateUserWithTestMode, async (req, res) => {
   try {
     logger.info('Auth Test: Building response for client:', req.client.clientName);
-    logger.info('Auth Test: Client object:', JSON.stringify(req.client, null, 2));
+    // Redact bearer secrets before logging the client object (portalToken / fathomApiKey /
+    // anthropicApiKey are secrets, and rawRecord is a bulky Airtable handle). Present-or-not
+    // is all that's useful for auth debugging. Added with the stored-key build (2026-07-24).
+    const { portalToken, fathomApiKey, anthropicApiKey, rawRecord, ...safeClient } = req.client;
+    safeClient._secrets = {
+      portalToken: portalToken ? 'set' : null,
+      fathomApiKey: fathomApiKey ? 'set' : null,
+      anthropicApiKey: anthropicApiKey ? 'set' : null
+    };
+    logger.info('Auth Test: Client object:', JSON.stringify(safeClient, null, 2));
     
     // Look up coach email if coach is assigned
     let coachEmail = null;

@@ -170,6 +170,13 @@ async function getAllClients() {
                 // Managed plan: Yes = Wingguy may draft on the PLATFORM Anthropic key for this client
                 // (they pay Guy). Blank/No = they must bring their own key (default). See byoAnthropicClient.
                 const managedClaudeKey = record.get('Managed Claude Key') === 'Yes';
+                // Stored BYO Anthropic key (the "shelf" from the stored-key build, 2026-07-24). When set,
+                // it's the MIDDLE tier of the resolver: request header key -> THIS stored key -> platform.
+                // Its first job is the header-less server paths (the overnight follow-up brief), which
+                // otherwise fall back to the platform key. Blank => absent => platform fallback (unchanged
+                // for Guy, whose record stays blank). A FAILING stored key must surface, not silently fall
+                // through — that handling lives at the call sites, not here. Never logged (bearer secret).
+                const anthropicApiKey = (record.get('Anthropic API Key') || '').trim() || null;
                 // Wingguy extension gate: Yes = the Chrome-extension drafting routes are switched on
                 // for this client. Blank/No = off (closed by default). Replaced the
                 // WINGGUY_ENABLED_CLIENTS env allow-list (2026-07-14); the owner is enabled in code.
@@ -268,6 +275,8 @@ async function getAllClients() {
                     nylasCalendarId: calendarWriteId,
                     calendarUid: calendarWriteId,
                     managedClaudeKey: managedClaudeKey,
+                    // Stored BYO Anthropic key (middle tier of header -> stored -> platform). null when blank.
+                    anthropicApiKey: anthropicApiKey,
                     wingguyEnabled: wingguyEnabled,
                     // Wingguy per-client booking identity (Zoom + contacts on the invite; optional)
                     bookingZoom: bookingZoom,
