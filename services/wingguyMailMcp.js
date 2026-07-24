@@ -1191,7 +1191,8 @@ const LEVERS_NOTE =
   'wingguy_set_reconnect = park until a date (fires as due that day; clearable) · ' +
   'wingguy_backlog name+done/skip = tick off a backlog item · ' +
   'wingguy_dossier name = instant memory jog + ready draft. ' +
-  'LinkedIn: the sweep DOES see LinkedIn — LinkedHelper syncs each thread into the lead\'s Notes, so a message the human sends there counts as their last outbound once synced (minutes-to-hours lag), and a LinkedIn reply surfaces them even when ceased.]';
+  'LinkedIn: the sweep DOES see LinkedIn — LinkedHelper syncs each thread into the lead\'s Notes, so a message the human sends there counts as their last outbound once synced (minutes-to-hours lag), and a LinkedIn reply surfaces them even when ceased. ' +
+  'PRESENTATION RULE: whenever you show a draft (first time OR re-shown from earlier in the chat), ALWAYS put the person\'s LinkedIn profile link right beside it — the human clicks straight into LinkedIn and pastes. The URL is in the queue\'s linked name, the dossier, and the backlog entry; if you don\'t have it in context, pull wingguy_dossier for the person.]';
 
 /**
  * The unified QUEUE: everything actionable RIGHT NOW, one ranked pageable list (Guy 2026-07-23:
