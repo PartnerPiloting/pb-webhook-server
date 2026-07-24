@@ -211,3 +211,12 @@ cost) or **done-for-you on Guy's key** (flat monthly). Once they see it work it'
 list checks itself off and it leads to the NEXT gap ("calendar and signature done - next, your meeting
 times"). End the setup at the **differentiation check** ("does this read as distinctly yours?") so self-serve
 never becomes lazy-clone. Adapt the run-mode line to what they've actually got (chat-only vs extension).
+
+**BYO Claude key (extension / overnight-brief clients on their own key).** Deliberately NOT in the core
+essentials above - a chat-only client never needs it (the chat runs on their own claude.ai). It only
+becomes a setup step once they're switching on the LinkedIn extension or the overnight follow-up brief, both
+of which draft on our servers and so need their own Claude *API* key (separate from a claude.ai subscription).
+That key is created + spend-capped + revoked by the client, handed over once, and lives on their record. The
+full walk-through is coach-led in [wingguy-onboarding-checklist.md](../wingguy-onboarding-checklist.md)
+Step 8; the chat's job is only to name it as the on-ramp to the full version, never to nag a chat-only
+client about it.

@@ -52,6 +52,13 @@ others - see the expanded step before promising it.)
 times for a real lead, books a test meeting, the invite arrives with your link on it, and we
 cancel it together. Then you're live.
 
+**Step 8 - Your own Claude key (BYO clients only, ~15 minutes).** Some things Wingguy does happen
+on our servers while you're asleep - overnight it reads your follow-ups and pre-writes your drafts
+- and your Chrome extension drafts on LinkedIn too. That work runs on a Claude API key that's
+yours: you create it, you put a monthly spend cap on it, and you can switch it off any time. You
+hand it to me once and it lives safely on your record. (On a managed plan? Skip this - your
+drafting runs on my account and there's nothing for you to do.)
+
 ---
 
 ## STEP 0 EXPANDED - get the record ready (you, solo, before the call)
@@ -66,8 +73,17 @@ cancel it together. Then you're live.
       this. Wrong timezone = every offered time is wrong.
 - [ ] **Wingguy Enabled = Yes** only if they're getting the Chrome extension (the LinkedIn
       drafting tool). Chat-only client? Leave it alone - it has nothing to do with the connector.
-- [ ] Decide the plan: **Managed Claude Key = Yes** if they pay you and their drafting runs on
-      your account; blank if they bring their own Claude subscription (like Julian).
+- [ ] Decide the plan (this is about the AI that powers **server-side drafting** - the overnight
+      brief and the Chrome-extension drafting; it is NOT the chat, which always runs on the client's
+      own claude.ai subscription):
+      - **Bring-your-own (default, like Julian):** leave **Managed Claude Key** blank. They create
+        their own Anthropic API key in Step 8 and you paste it into their **Anthropic API Key**
+        field. Their drafting then runs on their key + their spend cap - not your account.
+      - **Managed plan:** **Managed Claude Key = Yes**. Their drafting runs on your account (they
+        pay you); leave **Anthropic API Key** blank and skip Step 8.
+- [ ] **Followup Brief = Yes** only once the AI lane above is settled. For a BYO client, do NOT
+      switch it on until their **Anthropic API Key** is in the record - otherwise their overnight
+      brief quietly runs on YOUR key instead of theirs (see Step 8's "Watch out").
 
 **Check it worked:** ask Claude - *"run the onboarding preflight for [client ID]"*
 (`scripts/wingguy-julian-preflight.js`). It checks the whole row against the live system and
@@ -275,3 +291,75 @@ cancel it together."
 
 **Say to the client:** "That's it - you're live. From here, anything you want changed, just tell
 Wingguy 'update my rules'."
+
+---
+
+## STEP 8 EXPANDED - your own Claude key (BYO clients only)
+
+**Skip this entirely for managed-plan clients** (Managed Claude Key = Yes). This step is only for
+clients who run their drafting on their own key - the default.
+
+**The idea first, so you can explain it plainly:** the chat runs on the client's own claude.ai
+subscription, but two things happen on OUR servers - the overnight follow-up brief, and the Chrome
+extension's LinkedIn drafting - and those need a Claude *API* key (a different thing from a claude.ai
+subscription). We put that key on the client's own account so those runs are billed to them, capped
+by them, and switch-off-able by them. It's the one part of setup where the client does a little
+homework in a website that isn't ours.
+
+**Say to the client:** "There's one bit of the AI that works for you while you're asleep - overnight
+it goes through your follow-ups and pre-writes your replies - and your LinkedIn drafting runs on our
+servers too. That runs on a Claude key that's yours, not mine. You'll set it up in Anthropic's
+console: it takes about fifteen minutes, most of which is them, not you. The important part - and the
+reason you can relax about it - is that YOU put a monthly spend limit on it, a number you choose, and
+you can revoke it with one click any time. Worst case in the whole world is a bill the size of the cap
+you set. I'll walk you through it, then you send me the key once and we're done."
+
+**The client does** (read these out one at a time - the console shifts its layout occasionally, so
+these are the *concepts*; the labels may sit a click away):
+
+1. Goes to **console.anthropic.com** and signs in (or creates an account - this is separate from
+   their claude.ai login, even if it's the same email).
+2. **Adds a little credit / a payment method** under Billing. This is the part people trip on: the
+   API is pay-as-you-go and needs its own funding - a claude.ai Pro subscription does NOT cover it.
+   A small starting credit is plenty.
+3. Creates a **Workspace** (call it "Wingguy"). A workspace is just a walled-off compartment - it's
+   what lets the spend cap apply to us alone and not touch the rest of their account.
+4. **Sets a monthly spend limit on that workspace** - the safety number, their choice. This is the
+   step that makes the whole thing safe; don't let them skip it.
+5. Creates an **API key** inside that workspace, and copies it. **It's shown once** - if they click
+   away before copying, they just make a new one.
+6. Sends the key to you (it starts with `sk-ant-`). Ask them not to paste it into anything public;
+   if they're ever uneasy about it later, they can revoke it and make a fresh one in ten seconds.
+
+**You do:**
+
+- [ ] Paste the key into the **Anthropic API Key** field on their Master Clients row. That's the
+      whole install - resolution is header -> this stored key -> platform, so from now on their
+      overnight brief and extension drafting run on their key automatically.
+- [ ] Only now flip **Followup Brief = Yes** (if they're getting the overnight brief). Order matters
+      - see the Watch out.
+
+**Check it worked:**
+
+- [ ] Ask Claude: *"prepare the follow-up brief for [client ID]"*, then check the run log shows
+      **`anthropic lane=client-stored-key`** (not `platform-fallback`). That line is the proof it
+      picked up their key. `platform-fallback` here means the field is blank or didn't save - re-paste.
+- [ ] Or the client's own proof: they draft something (a reply in chat, or a thanks note via the
+      extension) and it comes back normally - no "your Anthropic key was rejected" message.
+
+**Watch out - switching the brief on before the key is in.** If Followup Brief = Yes but the
+Anthropic API Key field is still blank, the overnight brief doesn't fail - it quietly falls back to
+YOUR platform key, so you silently pay for their nightly run. No alarm fires because nothing broke.
+The fix is just sequence: key in the field first, brief switched on second. (A managed-plan client is
+the deliberate exception - they're *meant* to run on your key.)
+
+**Watch out - the two-keys confusion.** Clients (and you, at 5pm) mix up the claude.ai *subscription*
+that powers the chat with the Claude *API key* this step is about. They are separate accounts with
+separate billing. If someone says "but I already pay for Claude" - yes, and that covers the chat;
+this key covers the server-side drafting, and it's usually only a few dollars a month at their cap.
+
+**Watch out - a revoked or capped key later on.** This is the safety net working, not a bug. If a
+client revokes their key or hits their spend cap, their drafting stops with a clear "your Anthropic
+key was rejected - update it" message, and the overnight brief emails you a "key rejected" alert and
+serves yesterday's brief (flagged stale). It never silently moves onto your key. The fix is always
+the same: they make a fresh key (or raise the cap) and you paste it into the field.
