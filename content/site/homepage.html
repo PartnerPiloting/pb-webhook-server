@@ -161,9 +161,14 @@
   .portrait {
     flex: 0 0 auto; width: 104px; height: 104px; border-radius: 50%;
     border: 1px solid var(--line);
-    object-fit: cover; object-position: 50% 8%;
+    object-fit: cover; object-position: 50% 38%;
     background: var(--surface);
     display: block;
+    /* Indoor restaurant light is a touch flat and warm. A gentle lift makes it
+       read as crisply as a studio shot at this size, without scrubbing out the
+       warm tones that happen to match the page palette. Deliberately subtle -
+       over-correcting is what makes a photo look processed. */
+    filter: contrast(1.07) saturate(1.06) brightness(1.03);
   }
   .guy-body { flex: 1 1 16rem; min-width: 15rem; }
 
@@ -428,7 +433,7 @@
   <div class="wrap reading">
     <p class="eyebrow">Who's the guy?</p>
     <div class="guy">
-      <img class="portrait" src="/assets/guy-portrait.png" width="880" height="1184"
+      <img class="portrait" src="/assets/guy.jpg" width="730" height="976"
            alt="Guy Wilson, smiling" loading="lazy" decoding="async">
       <div class="guy-body">
         <p>I'm Guy. I've been building networks my whole life.</p>
