@@ -159,11 +159,21 @@
      has room around the face, and object-position picks the window. Nudge the
      second value if the framing ever wants adjusting. */
   .portrait {
-    flex: 0 0 auto; width: 104px; height: 104px; border-radius: 50%;
+    /* An oval, not a circle: width != height with a 50% radius gives an
+       ellipse. Suits a portrait better - a circle crops hardest at the sides,
+       exactly where a head is widest. The frame clips; the img inside is
+       scaled so the face fills it and the edges of the source (including a
+       stray shoulder at the right) fall outside the oval entirely. */
+    flex: 0 0 auto; width: 106px; height: 134px;
+    border-radius: 50%; overflow: hidden;
     border: 1px solid var(--line);
-    object-fit: cover; object-position: 50% 38%;
     background: var(--surface);
     display: block;
+  }
+  .portrait img {
+    width: 100%; height: 100%; display: block;
+    object-fit: cover; object-position: 50% 30%;
+    transform: scale(1.18);
     /* Indoor restaurant light is a touch flat and warm. A gentle lift makes it
        read as crisply as a studio shot at this size, without scrubbing out the
        warm tones that happen to match the page palette. Deliberately subtle -
@@ -433,8 +443,10 @@
   <div class="wrap reading">
     <p class="eyebrow">Who's the guy?</p>
     <div class="guy">
-      <img class="portrait" src="/assets/guy.jpg" width="730" height="976"
-           alt="Guy Wilson, smiling" loading="lazy" decoding="async">
+      <span class="portrait">
+        <img src="/assets/guy.jpg" width="730" height="976"
+             alt="Guy Wilson, smiling" loading="lazy" decoding="async">
+      </span>
       <div class="guy-body">
         <p>I'm Guy. I've been building networks my whole life.</p>
         <p>I started this business chasing the marketing route - courses, SEO, the usual - and backed away from it, because it's expensive, it's slow, and it turns you into just another commodity. So I went back to what I've always done: connecting good people to each other.</p>
