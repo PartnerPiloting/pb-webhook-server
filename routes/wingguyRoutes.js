@@ -63,18 +63,30 @@ const PLATFORM_KEY_CLIENTS = new Set(
     .filter(Boolean),
 );
 function byoAnthropicClient(req) {
+  const cid = req.client && String(req.client.clientId || '').trim();
+  // Each draft logs which key lane it took (mirrors the overnight services' `anthropic lane=` line),
+  // so "is the extension using my stored key or the one in Chrome?" is answerable from the logs.
   const headerKey = String(req.get(BYO_ANTHROPIC_HEADER) || '').trim();
-  if (headerKey) return getAnthropicClientForKey(headerKey);            // their own key (BYO, header)
+  if (headerKey) {                                                      // their own key (BYO, header) — wins by design
+    logger.info(`[Wingguy] anthropic lane=client-header-key client=${cid}`);
+    return getAnthropicClientForKey(headerKey);
+  }
   // Stored BYO key on the record (the stored-key build, 2026-07-24) — the middle tier. Still THEIR
   // key, so it satisfies the billing rule (not the platform). Lets a client run the extension without
   // pasting a key into Chrome once it's on file; also the same lane the overnight paths use.
   const storedKey = req.client && String(req.client.anthropicApiKey || '').trim();
-  if (storedKey) return getAnthropicClientForKey(storedKey);            // their own key (stored on record)
-  const cid = req.client && String(req.client.clientId || '').trim();
+  if (storedKey) {                                                      // their own key (stored on record)
+    logger.info(`[Wingguy] anthropic lane=client-stored-key client=${cid}`);
+    return getAnthropicClientForKey(storedKey);
+  }
   // Platform (Guy's) key allowed only for: the owner, a client on a managed plan (the record's
   // "Managed Claude Key" = Yes → req.client.managedClaudeKey), or the env override list.
   const managed = !!(req.client && req.client.managedClaudeKey);
-  if (managed || (cid && PLATFORM_KEY_CLIENTS.has(cid))) return getAnthropicClient();
+  if (managed || (cid && PLATFORM_KEY_CLIENTS.has(cid))) {
+    logger.info(`[Wingguy] anthropic lane=platform-fallback client=${cid}`);
+    return getAnthropicClient();
+  }
+  logger.info(`[Wingguy] anthropic lane=none-blocked client=${cid}`);
   return null;                                                          // no key → block, never bill the platform
 }
 
