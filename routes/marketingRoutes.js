@@ -136,7 +136,10 @@ module.exports = function mountMarketingSite(app) {
   // shared keeps working.
   const serveHomepage = (req, res) => {
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    res.setHeader('Cache-Control', 'public, max-age=300');
+    // The page is cheap to render and its CSS is inline, so a cached copy hides
+    // every change until it expires — which reads as "the deploy didn't work".
+    // Revalidate each time: the browser still gets a 304 when nothing changed.
+    res.setHeader('Cache-Control', 'no-cache');
     return res.end(fullPage(loadBody(), req.get('host')));
   };
 
