@@ -155,15 +155,16 @@
 
   /* ---- guy ---- */
   .guy { display: flex; gap: 1.4rem; align-items: flex-start; flex-wrap: wrap; }
+  /* A real photo, framed by CSS rather than by re-cropping the file: the source
+     has room around the face, and object-position picks the window. Nudge the
+     second value if the framing ever wants adjusting. */
   .portrait {
-    flex: 0 0 auto; width: 96px; height: 96px; border-radius: 50%;
-    background: color-mix(in srgb, var(--teal) 14%, var(--surface));
+    flex: 0 0 auto; width: 104px; height: 104px; border-radius: 50%;
     border: 1px solid var(--line);
-    display: flex; align-items: center; justify-content: center;
-    font-family: var(--serif); font-size: 2.2rem; color: var(--teal); font-weight: 600;
-    position: relative;
+    object-fit: cover; object-position: 50% 38%;
+    background: var(--surface);
+    display: block;
   }
-  .portrait span.tag { position: absolute; bottom: -1.5rem; left: 50%; transform: translateX(-50%); font-family: var(--mono); font-size: 0.6rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-faint); white-space: nowrap; }
   .guy-body { flex: 1 1 16rem; min-width: 15rem; }
 
   /* ---- quiet "more on this" pointers ----
@@ -427,7 +428,8 @@
   <div class="wrap reading">
     <p class="eyebrow">Who's the guy?</p>
     <div class="guy">
-      <div class="portrait" aria-hidden="true">G<span class="tag">your photo here</span></div>
+      <img class="portrait" src="/assets/guy.jpg" width="730" height="976"
+           alt="Guy Wilson, smiling, in a restaurant" loading="lazy" decoding="async">
       <div class="guy-body">
         <p>I'm Guy. I've been building networks my whole life.</p>
         <p>I started this business chasing the marketing route - courses, SEO, the usual - and backed away from it, because it's expensive, it's slow, and it turns you into just another commodity. So I went back to what I've always done: connecting good people to each other.</p>

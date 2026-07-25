@@ -143,6 +143,14 @@ module.exports = function mountMarketingSite(app) {
   router.get('/', serveHomepage);
   router.get('/home', serveHomepage);
 
+  // Public images for the site. Scoped to content/site/assets rather than
+  // content/site, so homepage.html can never be served as a raw file.
+  router.use('/assets', express.static(path.join(__dirname, '..', 'content', 'site', 'assets'), {
+    maxAge: '7d',
+    index: false,
+    dotfiles: 'ignore',
+  }));
+
   // Both public forms post here. Accepts JSON (the page's fetch) or a plain
   // form POST, so the form still works if JavaScript never runs.
   const parseJson = express.json({ limit: '32kb' });
