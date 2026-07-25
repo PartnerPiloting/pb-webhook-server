@@ -21,8 +21,53 @@ const fs = require('fs');
 const path = require('path');
 const express = require('express');
 const { createLogger } = require('../utils/contextLogger');
+const enquiries = require('../services/siteEnquiryStore');
 
 const logger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'marketing_site' });
+
+// Where "someone got in touch" lands. Falls back to the Gmail sending identity
+// so a missing env var can never silently swallow a warm enquiry.
+function notifyAddress() {
+  return (process.env.SITE_ENQUIRY_TO || process.env.GMAIL_FROM_EMAIL || 'guyralphwilson@gmail.com').trim();
+}
+
+// Fire-and-forget: the visitor's response never waits on Gmail, and a mail
+// failure never fails the request — the row is already safely stored.
+function notifyGuy({ id, kind, name, email, referrer, note }) {
+  const isEnquiry = kind === 'enquiry';
+  const who = name ? `${name} <${email}>` : email;
+  const subject = isEnquiry
+    ? `I Know A Guy - enquiry from ${name || email}`
+    : `I Know A Guy - new series subscriber: ${email}`;
+  const lines = isEnquiry
+    ? [
+      `${who} would like a chat.`,
+      '',
+      `Referred by: ${referrer || '(not said)'}`,
+      '',
+      note ? `They said:\n${note}` : 'They left no note.',
+      '',
+      'Reply with a few times that might suit.',
+    ]
+    : [`${who} asked for the series by email.`];
+
+  let gmail;
+  try {
+    gmail = require('../services/gmailApiService');
+  } catch (err) {
+    logger.error(`[site] gmail service unavailable: ${err && err.message}`);
+    return;
+  }
+
+  gmail.sendTextEmail({
+    to: notifyAddress(),
+    subject,
+    text: lines.join('\n'),
+    fromName: 'I Know A Guy',
+  })
+    .then(() => enquiries.markNotified(id))
+    .catch((err) => logger.error(`[site] notification email failed (row ${id} is safe): ${err && err.message}`));
+}
 
 const PAGE_PATH = path.join(__dirname, '..', 'content', 'site', 'homepage.html');
 const TITLE = 'I Know A Guy - Network building, rethought';
@@ -77,6 +122,37 @@ module.exports = function mountMarketingSite(app) {
     return res.end(fullPage(loadBody()));
   });
 
+  // Both public forms post here. Accepts JSON (the page's fetch) or a plain
+  // form POST, so the form still works if JavaScript never runs.
+  const parseJson = express.json({ limit: '32kb' });
+  const parseForm = express.urlencoded({ extended: false, limit: '32kb' });
+
+  router.post('/site/enquiry', parseJson, parseForm, async (req, res) => {
+    const body = req.body || {};
+    const kind = body.kind === 'subscribe' ? 'subscribe' : 'enquiry';
+
+    const result = await enquiries.record({
+      kind,
+      name: body.name,
+      email: body.email,
+      referrer: body.referrer,
+      note: body.note,
+      sourcePage: body.sourcePage || req.get('referer') || null,
+      userAgent: req.get('user-agent') || null,
+    });
+
+    if (!result.ok) {
+      logger.warn(`[site] ${kind} rejected: ${result.error}`);
+      return res.status(400).json({ ok: false, error: result.error });
+    }
+
+    logger.info(`[site] ${kind} received${result.duplicate ? ' (already subscribed)' : ` (row ${result.id})`}`);
+    if (!result.duplicate) {
+      notifyGuy({ id: result.id, kind, name: body.name, email: body.email, referrer: body.referrer, note: body.note });
+    }
+    return res.json({ ok: true });
+  });
+
   app.use(router);
-  logger.info('[site] marketing routes mounted at /home');
+  logger.info('[site] marketing routes mounted at /home (+ POST /site/enquiry)');
 };
