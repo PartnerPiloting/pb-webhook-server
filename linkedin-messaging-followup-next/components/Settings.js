@@ -7,6 +7,8 @@ import { getBackendBase, getAuthenticatedHeaders } from '../services/api';
 import Link from 'next/link';
 import AIEditModal from './AIEditModal';
 import HelpButton from './HelpButton';
+import RescorePanel from './RescorePanel';
+import { ArrowPathIcon } from '@heroicons/react/24/outline';
 
 // Component that uses useSearchParams wrapped in Suspense
 const SettingsWithParams = () => {
@@ -34,6 +36,19 @@ const SettingsWithParams = () => {
   const [tokenCopied, setTokenCopied] = useState(false);
   const [tokenError, setTokenError] = useState(null);
   const [emailSentTo, setEmailSentTo] = useState(null); // Track if backup email was sent
+
+  // Rescore feature gate: card only shows when the master "Rescore Enabled" flag is on
+  // for this client (checked via /api/rescore/status; quietly hidden otherwise).
+  const [rescoreEnabled, setRescoreEnabled] = useState(false);
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch(`${getBackendBase()}/api/rescore/status`, { headers: getAuthenticatedHeaders() });
+        const data = await res.json().catch(() => ({}));
+        setRescoreEnabled(!!(res.ok && data.enabled));
+      } catch (_) { /* stays hidden */ }
+    })();
+  }, []);
 
   // Set initial view based on service level
   useEffect(() => {
@@ -681,9 +696,58 @@ const SettingsWithParams = () => {
                   Manage Security →
                 </div>
               </div>
+
+              {/* Re-score Leads (gated by master "Rescore Enabled") */}
+              {rescoreEnabled && (
+              <div
+                className="bg-white rounded-lg border border-gray-200 p-6 hover:border-blue-300 cursor-pointer transition-colors"
+                onClick={() => setCurrentView('rescore')}
+              >
+                <div className="flex items-center space-x-3 mb-4">
+                  <div className="flex-shrink-0">
+                    <ArrowPathIcon className="h-8 w-8 text-emerald-600" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-900">
+                      Re-score Leads
+                    </h3>
+                  </div>
+                </div>
+                <p className="text-sm text-gray-500 mb-4">
+                  Changed your scoring attributes? Test the effect on a sample, then re-score your recent leads.
+                </p>
+                <div className="flex items-center text-sm text-emerald-600 font-medium">
+                  Re-score Leads →
+                </div>
+              </div>
+              )}
             </div>
           </div>
         </div>
+      </div>
+    );
+  }
+
+  // Re-score view
+  if (currentView === 'rescore') {
+    return (
+      <div className="space-y-6">
+        <div>
+          <div className="flex items-center space-x-3">
+            <button
+              onClick={handleBackToMenu}
+              className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-sm font-medium rounded text-gray-700 bg-white hover:bg-gray-50"
+            >
+              <ArrowLeftIcon className="h-4 w-4 mr-1" />
+              Back to Settings
+            </button>
+            <h2 className="text-2xl font-bold text-gray-900">Re-score Leads</h2>
+          </div>
+          <p className="mt-1 text-sm text-gray-500">
+            Test your attribute changes on a sample, then re-score and apply when you&apos;re happy.
+          </p>
+        </div>
+        <RescorePanel />
       </div>
     );
   }
