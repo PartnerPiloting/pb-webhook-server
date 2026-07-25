@@ -432,7 +432,7 @@ const TOOL_DEFS = [
   {
     name: 'wingguy_setup_rules',
     description:
-      'The guided "let\'s set up my rules" walkthrough — how a client turns the generic starter rulebook into their own voice. Call this whenever the user says "let\'s set up my rules", "set up my rules", "help me set up", "let\'s do my rules", or asks to personalise/build their rules. It returns the NEXT step of the walkthrough (it tracks progress itself, so just call it again after each step is committed). Do NOT paste the returned text verbatim — ENACT it: run the beat with the user (generate an angle from their business, interview out their manifesto, etc.), then write each agreed rule through the propose→commit rules door. Resumable: safe to call any time to pick up where they left off.',
+      'The guided "let\'s set up my instructions" walkthrough — how a client turns the generic starter rulebook into their own voice. Call this whenever the user says "let\'s set up my instructions", "set up my rules", "help me set up", "let\'s do my instructions", or asks to personalise/build their instructions. It returns the NEXT step of the walkthrough (it tracks progress itself, so just call it again after each step is committed). Do NOT paste the returned text verbatim — ENACT it: run the beat with the user (generate an angle from their business, interview out their manifesto, etc.), then write each agreed rule through the propose→commit rules door. Resumable: safe to call any time to pick up where they left off. WORDING: when speaking to the human, call these their "instructions", never their "rules" — but treat both words as the same thing on the way in.',
     zodSchema: {},
     jsonSchema: { type: 'object', properties: {} },
     run: runSetupRules,

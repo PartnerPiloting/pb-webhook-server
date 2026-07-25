@@ -337,10 +337,17 @@ const CAMPAIGN_DESC = 'Campaign slug (e.g. "tks", "frac"). A campaign version of
 const CONTEXT_DESC = `Where the rule applies: ${store.CONTEXTS.join(' | ')}`;
 const TYPE_DESC = `What kind of rule: ${store.RULE_TYPES.join(' | ')}`;
 
+// Customer-facing vocabulary (Guy, 2026-07-25). We SAY "instructions"; we ACCEPT
+// "rules" as well. "Rules" reads as compliance — something handed to you that you
+// must obey; "instructions" puts the human in charge, and is more literally true:
+// they instruct the system. Internal naming (rule_key, tool names, the store) is
+// deliberately unchanged — nobody sees it.
+const VOCAB = ' WORDING: when speaking to the human, call these their "instructions", never their "rules". Treat "rules" and "instructions" as the SAME thing on the way in, though — "update my rules", "update my instructions", "change my instructions" all mean this.';
+
 const TOOL_DEFS = [
   {
     name: 'wingguy_rules_list',
-    description: 'Lists the active Wingguy rules (the shared rulebook both surfaces read). Start here when the user says "update my rules", asks what the rules say, or you need to find a rule\'s key. Filterable by context, layer, or campaign. AMBIGUITY: if the human says "review the rules"/"review my rules" it could mean this OR reviewing their recent draft edits (wingguy_edit_review) — ask ONE short question offering both, with counts if you have them; but if there are no pending edits, skip the question and just list.',
+    description: 'Lists the active Wingguy rules (the shared rulebook both surfaces read). Start here when the user says "update my instructions" / "update my rules", asks what their instructions say, or you need to find a rule\'s key. Filterable by context, layer, or campaign. AMBIGUITY: if the human says "review my instructions"/"review the rules" it could mean this OR reviewing their recent draft edits (wingguy_edit_review) — ask ONE short question offering both, with counts if you have them; but if there are no pending edits, skip the question and just list.' + VOCAB,
     zodSchema: {
       context: z.enum(store.CONTEXTS).optional().describe(CONTEXT_DESC),
       layer: z.enum(store.LAYERS).optional().describe('Filter to one layer (default: the runtime view — foundation + this tenant\'s client rules)'),
@@ -358,7 +365,7 @@ const TOOL_DEFS = [
   },
   {
     name: 'wingguy_rule_get',
-    description: 'Fetches one Wingguy rule: the active body plus its full version history and door audit trail. Use before proposing a change to an existing rule. A rule_key can have a generic version AND per-campaign versions — omit campaign for the generic, pass it for a campaign\'s.',
+    description: 'Fetches one Wingguy rule: the active body plus its full version history and door audit trail. Use before proposing a change to an existing rule. A rule_key can have a generic version AND per-campaign versions — omit campaign for the generic, pass it for a campaign\'s.' + VOCAB,
     zodSchema: {
       rule_key: z.string().describe('The rule\'s stable kebab-case key (from wingguy_rules_list)'),
       layer: z.enum(store.LAYERS).optional().describe(LAYER_DESC),
@@ -377,7 +384,7 @@ const TOOL_DEFS = [
   },
   {
     name: 'wingguy_rule_propose',
-    description: 'STEP 1 of changing a Wingguy rule ("update my rules"). Pure read — writes NOTHING. Returns the current-vs-proposed diff, the neighbouring rules in the same context/type (eyeball them for contradictions), and the expected_version that wingguy_rule_commit requires. Show the proposal to the human and get an explicit yes before committing.',
+    description: 'STEP 1 of changing a Wingguy rule ("update my instructions" / "update my rules"). Pure read — writes NOTHING. Returns the current-vs-proposed diff, the neighbouring rules in the same context/type (eyeball them for contradictions), and the expected_version that wingguy_rule_commit requires. Show the proposal to the human and get an explicit yes before committing.' + VOCAB,
     zodSchema: {
       rule_key: z.string().describe('Stable kebab-case key. For a NEW rule, coin a descriptive one (e.g. "booking-earliest-start")'),
       layer: z.enum(store.LAYERS).optional().describe(LAYER_DESC),
@@ -402,7 +409,7 @@ const TOOL_DEFS = [
   },
   {
     name: 'wingguy_rule_commit',
-    description: 'STEP 2 of changing a Wingguy rule — the write. Only call AFTER wingguy_rule_propose AND the human explicitly confirming the proposal. Requires the expected_version the proposal returned; if the rule moved since, the commit is rejected (re-propose). Inserts a new version and retires the old one — nothing is ever overwritten or deleted.',
+    description: 'STEP 2 of changing a Wingguy rule — the write. Only call AFTER wingguy_rule_propose AND the human explicitly confirming the proposal. Requires the expected_version the proposal returned; if the rule moved since, the commit is rejected (re-propose). Inserts a new version and retires the old one — nothing is ever overwritten or deleted.' + VOCAB,
     zodSchema: {
       rule_key: z.string().describe('Same key as the proposal'),
       layer: z.enum(store.LAYERS).optional().describe(LAYER_DESC),
@@ -431,7 +438,7 @@ const TOOL_DEFS = [
   },
   {
     name: 'wingguy_rule_revert',
-    description: 'Reverts a Wingguy rule to an earlier version by inserting a NEW version carrying the old body (append-only — history is never rewritten). Use wingguy_rule_get first to see the versions.',
+    description: 'Reverts a Wingguy rule to an earlier version by inserting a NEW version carrying the old body (append-only — history is never rewritten). Use wingguy_rule_get first to see the versions.' + VOCAB,
     zodSchema: {
       rule_key: z.string().describe('The rule to revert'),
       layer: z.enum(store.LAYERS).optional().describe(LAYER_DESC),
