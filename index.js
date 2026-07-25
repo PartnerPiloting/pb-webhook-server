@@ -1910,6 +1910,18 @@ try {
     moduleLogger.error('index.js: Error mounting one-pager series routes', e.message, e.stack);
 }
 
+// The public marketing site (I Know A Guy). Homepage at /home for now; the
+// root route stays the old dev index until Guy signs off on flipping it.
+try {
+    const mountMarketingSite = require('./routes/marketingRoutes.js');
+    if (typeof mountMarketingSite === 'function') {
+        mountMarketingSite(app);
+        moduleLogger.info('index.js: Marketing site routes mounted at /home');
+    }
+} catch(e) {
+    moduleLogger.error('index.js: Error mounting marketing site routes', e.message, e.stack);
+}
+
 // EMERGENCY DEBUG ROUTE - Direct in index.js
 app.get('/api/linkedin/debug', (req, res) => {
     res.json({ 
