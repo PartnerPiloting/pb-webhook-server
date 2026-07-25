@@ -167,6 +167,28 @@
   .portrait span.tag { position: absolute; bottom: -1.5rem; left: 50%; transform: translateX(-50%); font-family: var(--mono); font-size: 0.6rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-faint); white-space: nowrap; }
   .guy-body { flex: 1 1 16rem; min-width: 15rem; }
 
+  /* ---- contact ---- */
+  .contact { background: var(--surface); }
+  .form { display: flex; flex-direction: column; gap: 0.95rem; max-width: 29rem; margin-top: 1.6rem; }
+  .field { display: flex; flex-direction: column; gap: 0.35rem; }
+  .field label { font-size: 0.88rem; font-weight: 600; color: var(--ink-soft); }
+  .field label .hint { font-weight: 400; color: var(--ink-faint); }
+  .field input, .field textarea {
+    font-family: var(--sans); font-size: 1rem; color: var(--ink);
+    background: var(--paper); border: 1px solid var(--line); border-radius: 8px;
+    padding: 0.6rem 0.75rem; width: 100%;
+  }
+  .field input:focus-visible, .field textarea:focus-visible { outline: 2px solid var(--teal); outline-offset: 1px; border-color: var(--teal); }
+  .field textarea { resize: vertical; min-height: 4.5rem; }
+  .form button { align-self: flex-start; margin-top: 0.25rem; }
+  .sent { display: none; margin-top: 1.6rem; padding: 1.1rem 1.25rem; background: var(--paper); border: 1px solid var(--line); border-left: 3px solid var(--teal); border-radius: 10px; max-width: 29rem; }
+  .sent p { font-family: var(--serif); font-size: 1.08rem; line-height: 1.5; color: var(--ink-soft); margin: 0; }
+  .sent .sig { font-style: italic; color: var(--teal); margin-top: 0.7rem; }
+  .doors { margin-top: 2.2rem; padding-top: 1.5rem; border-top: 1px solid var(--line); font-size: 1rem; color: var(--ink-soft); max-width: 33rem; }
+  .doors a { color: var(--teal); text-decoration: none; border-bottom: 1px solid color-mix(in srgb, var(--teal) 40%, transparent); }
+  .doors a:hover { border-bottom-color: var(--teal); }
+  .doors a:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
+
   /* ---- close ---- */
   .close { text-align: left; }
   .signoff { font-family: var(--serif); font-style: italic; font-size: 1.25rem; color: var(--teal); margin: 1.6rem 0 2rem; }
@@ -384,15 +406,57 @@
 </section>
 
 <section>
-  <div class="wrap reading close" id="chat">
+  <div class="wrap reading close">
     <h2>Imagine if.</h2>
     <p>Imagine a real slice of your work arriving as recommendations - not you chasing it, but people who know you putting your name forward in rooms you'll never sit in.</p>
     <p>That's what this builds. I can't make it instant - anyone who promises that is selling something. But I can tell you it works, because I've spent years doing it, and now there's a way to do it without it taking over your life.</p>
     <p>If any of that landed, it might be worth a conversation. No pitch. Just - imagine if.</p>
     <p class="signoff">- (I know a) Guy</p>
-    <a class="btn" href="#top">Let's have a chat →</a>
   </div>
 </section>
+
+<section class="contact" id="chat">
+  <div class="wrap reading">
+    <p class="eyebrow">Ready when you are</p>
+    <h2>Let's have a chat.</h2>
+    <p>No pitch and no obligation - just a conversation to work out whether this is for you. Tell me a little about yourself and I'll come back with a few times that might suit.</p>
+
+    <form class="form" id="contact-form" novalidate>
+      <div class="field">
+        <label for="f-name">Your name</label>
+        <input id="f-name" name="name" type="text" autocomplete="name">
+      </div>
+      <div class="field">
+        <label for="f-email">Email</label>
+        <input id="f-email" name="email" type="email" autocomplete="email">
+      </div>
+      <div class="field">
+        <label for="f-ref">Who suggested you get in touch? <span class="hint">- if someone did</span></label>
+        <input id="f-ref" name="referrer" type="text">
+      </div>
+      <div class="field">
+        <label for="f-note">Anything you'd like me to know? <span class="hint">- optional</span></label>
+        <textarea id="f-note" name="note"></textarea>
+      </div>
+      <button class="btn" type="submit">Send</button>
+    </form>
+
+    <div class="sent" id="contact-sent">
+      <p>Thanks - that's come straight through to me. I'll come back to you within a day or so with a few times that might suit.</p>
+      <p class="sig">- (I know a) Guy</p>
+    </div>
+
+    <p class="doors">Not quite ready for that? Perfectly fine. You can <a href="#top">read the thinking behind all this</a> at your own pace - or <a href="#top">have it come to you by email</a>, one short piece a week, no rush and no hard sell.</p>
+  </div>
+</section>
+
+<script>
+  document.getElementById('contact-form').addEventListener('submit', function (e) {
+    e.preventDefault();
+    this.style.display = 'none';
+    document.getElementById('contact-sent').style.display = 'block';
+  });
+</script>
 
 <footer>
   <div class="foot-inner">
