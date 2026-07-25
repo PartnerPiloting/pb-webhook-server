@@ -33,6 +33,7 @@ async function sendTextEmail(opts) {
     text,
     fromName = "Guy Wilson",
     fromEmail = process.env.GMAIL_FROM_EMAIL || "guyralphwilson@gmail.com",
+    replyTo,
   } = opts;
 
   if (!to || !subject || text === undefined || text === null) {
@@ -42,9 +43,14 @@ async function sendTextEmail(opts) {
   const auth = getGmailOAuthClient();
   const gmail = google.gmail({ version: "v1", auth });
 
+  // replyTo is optional and omitted entirely when not supplied, so existing
+  // callers are byte-for-byte unchanged. Notifications about an inbound
+  // enquiry set it to the enquirer, which turns "Reply" into one keystroke
+  // instead of copying their address out of the body.
   const rfc822 = [
     `From: ${fromName} <${fromEmail}>`,
     `To: ${to}`,
+    ...(replyTo ? [`Reply-To: ${replyTo}`] : []),
     `Subject: ${subject}`,
     "MIME-Version: 1.0",
     "Content-Type: text/plain; charset=utf-8",

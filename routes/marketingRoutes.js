@@ -31,9 +31,15 @@ function notifyAddress() {
   return (process.env.SITE_ENQUIRY_TO || process.env.GMAIL_FROM_EMAIL || 'guyralphwilson@gmail.com').trim();
 }
 
+// A checkbox arrives as true from JSON but as the string "on" from a plain
+// form post, so both have to count.
+function isTruthy(v) {
+  return v === true || v === 'true' || v === 'on' || v === '1';
+}
+
 // Fire-and-forget: the visitor's response never waits on Gmail, and a mail
 // failure never fails the request — the row is already safely stored.
-function notifyGuy({ id, kind, name, email, referrer, note }) {
+function notifyGuy({ id, kind, name, email, referrer, note, alsoSubscribe }) {
   const isEnquiry = kind === 'enquiry';
   const who = name ? `${name} <${email}>` : email;
   const subject = isEnquiry
@@ -47,7 +53,9 @@ function notifyGuy({ id, kind, name, email, referrer, note }) {
       '',
       note ? `They said:\n${note}` : 'They left no note.',
       '',
-      'Reply with a few times that might suit.',
+      alsoSubscribe ? 'They also asked for the series.' : 'They did not ask for the series.',
+      '',
+      'Hit Reply to answer them directly - a few times that might suit.',
     ]
     : [`${who} asked for the series by email.`];
 
@@ -64,6 +72,8 @@ function notifyGuy({ id, kind, name, email, referrer, note }) {
     subject,
     text: lines.join('\n'),
     fromName: 'I Know A Guy',
+    // Hitting Reply goes straight to the person who got in touch.
+    replyTo: email || undefined,
   })
     .then(() => enquiries.markNotified(id))
     .catch((err) => logger.error(`[site] notification email failed (row ${id} is safe): ${err && err.message}`));
@@ -88,15 +98,21 @@ function loadBody() {
   return cached;
 }
 
-function fullPage(body) {
-  // Deliberately noindex for now: the site is not launched and shouldn't be
-  // crawled at the onrender.com hostname. Drop this when the domain goes live.
+function fullPage(body, host) {
+  // Index the real domain; never the onrender.com hostname. Doing it by host
+  // rather than a flag means pointing the domain is the ONLY step — there's no
+  // "remember to turn indexing on" left lying around, and no risk of the
+  // preview hostname competing with the real site in search results.
+  const isPreview = !host || /onrender\.com$/i.test(String(host).split(':')[0]);
+  const robots = isPreview
+    ? '<meta name="robots" content="noindex, nofollow">'
+    : '';
   return `<!doctype html>
 <html lang="en-AU">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="robots" content="noindex, nofollow">
+${robots}
 <title>${TITLE}</title>
 <meta name="description" content="${DESCRIPTION}">
 <meta property="og:title" content="${TITLE}">
@@ -116,11 +132,16 @@ ${body}
 module.exports = function mountMarketingSite(app) {
   const router = express.Router();
 
-  router.get('/home', (req, res) => {
+  // "/" is the public homepage. /home stays as an alias so any link already
+  // shared keeps working.
+  const serveHomepage = (req, res) => {
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.setHeader('Cache-Control', 'public, max-age=300');
-    return res.end(fullPage(loadBody()));
-  });
+    return res.end(fullPage(loadBody(), req.get('host')));
+  };
+
+  router.get('/', serveHomepage);
+  router.get('/home', serveHomepage);
 
   // Both public forms post here. Accepts JSON (the page's fetch) or a plain
   // form POST, so the form still works if JavaScript never runs.
@@ -148,8 +169,30 @@ module.exports = function mountMarketingSite(app) {
 
     logger.info(`[site] ${kind} received${result.duplicate ? ' (already subscribed)' : ` (row ${result.id})`}`);
     if (!result.duplicate) {
-      notifyGuy({ id: result.id, kind, name: body.name, email: body.email, referrer: body.referrer, note: body.note });
+      notifyGuy({
+        id: result.id, kind, name: body.name, email: body.email,
+        referrer: body.referrer, note: body.note,
+        alsoSubscribe: kind === 'enquiry' && isTruthy(body.alsoSubscribe),
+      });
     }
+
+    // They ticked "send me the series too". Recorded as its own subscription
+    // row so the drip has one consistent place to read from, and so an
+    // unsubscribe later doesn't have to reason about which door they came in.
+    // Deliberately after the response is prepared: a failure here must never
+    // cost us the enquiry itself.
+    if (kind === 'enquiry' && isTruthy(body.alsoSubscribe)) {
+      const sub = await enquiries.record({
+        kind: 'subscribe',
+        name: body.name,
+        email: body.email,
+        referrer: body.referrer,
+        sourcePage: 'enquiry-form opt-in',
+        userAgent: req.get('user-agent') || null,
+      });
+      if (!sub.ok) logger.warn(`[site] opt-in subscribe failed for enquiry ${result.id}: ${sub.error}`);
+    }
+
     return res.json({ ok: true });
   });
 

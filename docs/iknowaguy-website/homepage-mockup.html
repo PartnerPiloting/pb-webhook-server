@@ -190,6 +190,12 @@
   .field input:focus-visible, .field textarea:focus-visible { outline: 2px solid var(--teal); outline-offset: 1px; border-color: var(--teal); }
   .field textarea { resize: vertical; min-height: 4.5rem; }
   .form button { align-self: flex-start; margin-top: 0.25rem; }
+  /* Unticked by default, deliberately: adding someone to a weekly email
+     because they asked for a conversation is the kind of quiet liberty this
+     whole page argues against. */
+  .opt-in { display: flex; gap: 0.6rem; align-items: flex-start; font-size: 0.95rem; color: var(--ink-soft); cursor: pointer; margin-top: 0.2rem; }
+  .opt-in input { margin: 0.2rem 0 0; width: 1.05rem; height: 1.05rem; accent-color: var(--teal); flex: 0 0 auto; }
+  .opt-in input:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
   .sent { display: none; margin-top: 1.6rem; padding: 1.1rem 1.25rem; background: var(--paper); border: 1px solid var(--line); border-left: 3px solid var(--teal); border-radius: 10px; max-width: 29rem; }
   .sent p { font-family: var(--serif); font-size: 1.08rem; line-height: 1.5; color: var(--ink-soft); margin: 0; }
   .sent .sig { font-style: italic; color: var(--teal); margin-top: 0.7rem; }
@@ -465,6 +471,10 @@
         <label for="f-note">Anything you'd like me to know? <span class="hint">- optional</span></label>
         <textarea id="f-note" name="note"></textarea>
       </div>
+      <label class="opt-in" for="f-series">
+        <input id="f-series" name="series" type="checkbox">
+        <span>Send me the series in the meantime - one short piece a week.</span>
+      </label>
       <button class="btn" type="submit">Send</button>
     </form>
 
@@ -525,6 +535,7 @@
         email: email,
         referrer: document.getElementById('f-ref').value.trim(),
         note: document.getElementById('f-note').value.trim(),
+        alsoSubscribe: document.getElementById('f-series').checked,
         sourcePage: location.pathname,
       }).then(function (res) {
         if (!res || !res.ok) {

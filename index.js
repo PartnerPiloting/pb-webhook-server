@@ -219,8 +219,11 @@ app.get('/deploy-info', (req, res) => {
     });
 });
 
-// Friendly root route to reduce confusion when visiting http://localhost:3001
-app.get('/', (req, res) => {
+// The old dev index. It used to sit at "/" as a friendly landing when visiting
+// http://localhost:3001, but "/" is now the public I Know A Guy homepage
+// (routes/marketingRoutes.js) — a prospect must never land on a list of API
+// endpoints. Kept at /_dev because it is still a handy local orientation page.
+app.get('/_dev', (req, res) => {
         res.setHeader('Content-Type', 'text/html; charset=utf-8');
         const apiBase = `http://localhost:${process.env.PORT || 3001}`;
         const uiUrl = 'http://localhost:3000/top-scoring-leads?testClient=Guy-Wilson';
