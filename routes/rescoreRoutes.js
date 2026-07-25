@@ -37,7 +37,7 @@ function buildReport(result, oldById, nameById, tier) {
       if (oldScore < tier && p.newScore >= tier) crossedUp++;
       if (oldScore >= tier && p.newScore < tier) crossedDown++;
     }
-    return { name: nameById[p.recordId] || p.recordId, old: (typeof oldScore === 'number' ? oldScore : null), new: p.newScore, delta, status: p.status };
+    return { recordId: p.recordId, name: nameById[p.recordId] || p.recordId, old: (typeof oldScore === 'number' ? oldScore : null), new: p.newScore, delta, status: p.status };
   }).sort((a, b) => Math.abs(b.delta || 0) - Math.abs(a.delta || 0));
   const scored = result.successful || 0;
   return {
@@ -56,6 +56,13 @@ module.exports = function mountRescore(app) {
   let jobSeq = 0;
   const newJobId = () => `rj_${Date.now().toString(36)}_${(jobSeq++).toString(36)}`;
   const pruneJobs = () => { const now = Date.now(); for (const [id, j] of jobs) { if (now - j.startedAt > JOB_TTL_MS) jobs.delete(id); } };
+
+  // Per-client BASELINE: the last preview's scores, keyed by clientId. When the next preview
+  // covers the SAME lead set (idsKey matches), each row gains deltaVsPrevTest — and because
+  // batching is deterministic, that delta is PURE attribute-change signal (zero batch noise).
+  // A commit clears the baseline (stored scores are re-baselined). In-memory, same tradeoff
+  // as the job store.
+  const baselines = new Map();
 
   async function resolve(req) {
     const clientId = req.headers['x-client-id'] || req.query.clientId || req.query.testClient;
@@ -83,7 +90,9 @@ module.exports = function mountRescore(app) {
       for (const r of recs) { if (scored.length >= 1000) break; scored.push({ id: r.id, score: Number(r.get('AI Score')) }); }
       if (scored.length >= 1000) return; next();
     });
-    scored.sort((a, b) => a.score - b.score);
+    // Stable order: score, then record id as tie-break — so the same pool always yields the
+    // same band split and the same stratified sample, run after run.
+    scored.sort((a, b) => (a.score - b.score) || (a.id < b.id ? -1 : 1));
     return scored;
   }
 
@@ -123,9 +132,14 @@ module.exports = function mountRescore(app) {
   }
 
   // Build the scope: returns { records (full), oldById, count }.
+  // DETERMINISTIC BATCHING: records are sorted by record id before scoring, so the same scope
+  // always forms the same Gemini batches. Proven 2026-07-25: identical batch => identical
+  // scores at temperature 0 (0.00 delta on 8/8); the historical ±20-40 "variance" was batch
+  // composition, not randomness. Stable order makes test-vs-test deltas pure attribute signal.
   async function buildScope(base, { scope, size, months }) {
     if (scope === 'months') {
       const records = await base('Leads').select({ filterByFormula: monthsFormula(months) }).all();
+      records.sort((a, b) => (a.id < b.id ? -1 : 1));
       const oldById = {}; for (const r of records) oldById[r.id] = Number(r.get('AI Score'));
       return { records, oldById, count: records.length };
     }
@@ -135,6 +149,7 @@ module.exports = function mountRescore(app) {
     const oldById = {}; for (const s of scored) oldById[s.id] = s.score;
     const ids = stratifiedIds(scored, sz);
     const records = await fetchFullByIds(base, ids);
+    records.sort((a, b) => (a.id < b.id ? -1 : 1));
     return { records, oldById, count: records.length };
   }
 
@@ -217,7 +232,38 @@ module.exports = function mountRescore(app) {
           // Debit by leads actually scored (failures don't cost the client credits).
           const creditsAfter = await clientService.debitRescoreCredits(r.clientId, result.successful || 0);
           const report = buildReport(result, oldById, nameById, tier);
-          job.result = { mode, scope, count, credits: creditsView(creditsAfter), ...report };
+
+          // Baseline compare (preview): if the previous preview covered the same lead set,
+          // annotate deltaVsPrevTest — the noise-free "what did my attribute change do" signal.
+          const idsKey = records.map(rec => rec.id).sort().join(',');
+          let comparedToPreviousTest = false, previousTestAt = null;
+          if (mode === 'preview') {
+            const bl = baselines.get(r.clientId);
+            if (bl && bl.idsKey === idsKey) {
+              comparedToPreviousTest = true;
+              previousTestAt = bl.at;
+              let vsUp = 0, vsDown = 0, vsSame = 0;
+              for (const row of report.rows) {
+                const prev = bl.scoresById[row.recordId];
+                row.prevTest = (typeof prev === 'number') ? prev : null;
+                row.deltaVsPrevTest = (typeof prev === 'number' && typeof row.new === 'number')
+                  ? Math.round((row.new - prev) * 100) / 100 : null;
+                if (typeof row.deltaVsPrevTest === 'number') {
+                  if (row.deltaVsPrevTest > 0) vsUp++; else if (row.deltaVsPrevTest < 0) vsDown++; else vsSame++;
+                }
+              }
+              report.summary.vsPreviousTest = { movedUp: vsUp, movedDown: vsDown, unchanged: vsSame };
+            }
+            // This preview becomes the new baseline for the next test.
+            const scoresById = {};
+            for (const p of (result.perLead || [])) { if (typeof p.newScore === 'number') scoresById[p.recordId] = p.newScore; }
+            baselines.set(r.clientId, { idsKey, at: Date.now(), scoresById });
+          } else {
+            // Commit re-baselines the stored scores; the old test baseline is stale.
+            baselines.delete(r.clientId);
+          }
+
+          job.result = { mode, scope, count, credits: creditsView(creditsAfter), comparedToPreviousTest, previousTestAt, ...report };
           job.done = count;
           job.status = 'done';
         } catch (e) {
