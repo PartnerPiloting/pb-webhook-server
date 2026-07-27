@@ -207,6 +207,74 @@ module.exports = function mountMarketingSite(app) {
     return res.json({ ok: true });
   });
 
+  // ---- Unsubscribe -------------------------------------------------------
+  // GET is the link in the footer; POST is what Gmail's own Unsubscribe button
+  // calls (List-Unsubscribe-Post: One-Click). Both must work, and neither may
+  // ask the person to log in or confirm — a one-click header that then demands
+  // a form is worse than not offering one.
+  const unsubPage = (title, body) => `<!doctype html>
+<html lang="en-AU"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow"><title>${title}</title>
+<style>
+  body{margin:0;background:#F2EEE6;color:#22201C;font-family:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;line-height:1.65;display:flex;min-height:100vh;align-items:center;justify-content:center;padding:2rem}
+  .card{max-width:30rem}
+  h1{font-family:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;font-weight:600;font-size:1.8rem;margin:0 0 .8rem}
+  p{color:#4C473F;margin:0 0 1rem}
+  a{color:#1E5E58}
+  @media (prefers-color-scheme:dark){body{background:#1A1917;color:#ECE6DA}p{color:#B6AD9E}a{color:#63B6AB}}
+</style></head><body><div class="card">${body}</div></body></html>`;
+
+  async function handleUnsubscribe(req, res) {
+    const token = req.query.t || req.query.token || (req.body && req.body.t) || '';
+    const result = await enquiries.unsubscribeByToken(token);
+
+    if (req.method === 'POST') {
+      // One-click clients want a bare 200, not a page.
+      logger.info(`[site] one-click unsubscribe ${result.ok ? 'ok' : 'failed'}`);
+      return res.status(result.ok ? 200 : 400).end();
+    }
+
+    if (!result.ok) {
+      return res.status(404).send(unsubPage('Link not recognised', `
+        <h1>That link didn't work</h1>
+        <p>It may have already been used, or been cut short by an email client.</p>
+        <p>Reply to any of my emails with the word STOP and I'll take you off the list myself.</p>`));
+    }
+
+    logger.info('[site] unsubscribed via link');
+    return res.send(unsubPage('Unsubscribed', `
+      <h1>Done - you're off the list.</h1>
+      <p>You won't get any more of the series. No hard feelings, and thanks for giving it a go.</p>
+      <p>Everything's still there to read whenever you like, at <a href="/series">the library</a>.</p>
+      <p>- (I know a) Guy</p>`));
+  }
+
+  router.get('/series/unsubscribe', handleUnsubscribe);
+  router.post('/series/unsubscribe', express.urlencoded({ extended: false }), handleUnsubscribe);
+
+  // ---- Run the drip ------------------------------------------------------
+  // Protected by the same shared secret the other jobs use. ?dryRun=1 builds
+  // everything and reports what WOULD go out, touching nobody's inbox.
+  router.post('/api/series/run-drip', parseJson, parseForm, async (req, res) => {
+    const supplied = req.get('x-drip-secret') || (req.body && req.body.secret) || req.query.secret || '';
+    const expected = (process.env.PB_WEBHOOK_SECRET || '').trim();
+    if (!expected || supplied !== expected) {
+      logger.warn('[drip] run rejected: bad or missing secret');
+      return res.status(401).json({ ok: false, error: 'unauthorised' });
+    }
+    const dryRun = String(req.query.dryRun || (req.body && req.body.dryRun) || '') === '1';
+    const limit = Math.min(200, Math.max(1, parseInt(req.query.limit || (req.body && req.body.limit) || '25', 10) || 25));
+    try {
+      const drip = require('../services/seriesDrip');
+      const out = await drip.runDrip({ dryRun, limit });
+      return res.json(out);
+    } catch (err) {
+      logger.error(`[drip] run threw: ${err && err.message}`);
+      return res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
   app.use(router);
-  logger.info('[site] marketing routes mounted at /home (+ POST /site/enquiry)');
+  logger.info('[site] marketing routes mounted at /home (+ POST /site/enquiry, /series/unsubscribe, /api/series/run-drip)');
 };

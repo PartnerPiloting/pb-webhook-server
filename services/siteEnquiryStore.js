@@ -16,6 +16,7 @@
 // House style follows recallWebhookDb.js / wingguyRulesStore.js: lazy Pool,
 // ensureSchema with CREATE-IF-NOT-EXISTS, no migration framework.
 
+const crypto = require('crypto');
 const { Pool } = require('pg');
 const { createLogger } = require('../utils/contextLogger');
 
@@ -68,7 +69,27 @@ async function ensureSchema(client) {
     CREATE UNIQUE INDEX IF NOT EXISTS idx_site_enquiries_one_sub
     ON site_enquiries (lower(email)) WHERE kind = 'subscribe' AND unsubscribed_at IS NULL;
   `);
+
+  // Drip state. Added after the fact, hence ADD COLUMN IF NOT EXISTS rather
+  // than a migration - house style is no migration framework.
+  //   sent_count   how many emails of their run they have had (0 = none yet).
+  //                onePagerEmail.resolveItem() turns this into "what's next".
+  //   last_sent_at drives the weekly cadence.
+  //   unsub_token  unguessable, per-subscriber, so an unsubscribe link needs no
+  //                login and cannot be used to unsubscribe anyone else by
+  //                guessing an email address.
+  await client.query(`ALTER TABLE site_enquiries ADD COLUMN IF NOT EXISTS sent_count INT NOT NULL DEFAULT 0;`);
+  await client.query(`ALTER TABLE site_enquiries ADD COLUMN IF NOT EXISTS last_sent_at TIMESTAMPTZ;`);
+  await client.query(`ALTER TABLE site_enquiries ADD COLUMN IF NOT EXISTS unsub_token TEXT;`);
+  await client.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_site_enquiries_token
+    ON site_enquiries (unsub_token) WHERE unsub_token IS NOT NULL;
+  `);
   schemaEnsured = true;
+}
+
+function newToken() {
+  return crypto.randomBytes(24).toString('base64url');
 }
 
 function cleanText(v, max) {
@@ -108,8 +129,8 @@ async function record({ kind, name, email, referrer, note, sourcePage, userAgent
     client = await p.connect();
     await ensureSchema(client);
     const res = await client.query(
-      `INSERT INTO site_enquiries (kind, name, email, referrer, note, source_page, user_agent)
-       VALUES ($1,$2,$3,$4,$5,$6,$7)
+      `INSERT INTO site_enquiries (kind, name, email, referrer, note, source_page, user_agent, unsub_token)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
        ON CONFLICT DO NOTHING
        RETURNING id`,
       [
@@ -120,6 +141,7 @@ async function record({ kind, name, email, referrer, note, sourcePage, userAgent
         cleanText(note, 4000),
         cleanText(sourcePage, 300),
         cleanText(userAgent, 400),
+        newToken(),
       ],
     );
     // No row back = the unique index caught an already-live subscription.
@@ -166,6 +188,93 @@ async function listSubscribers() {
   }
 }
 
+/**
+ * Who is due their next email right now.
+ *
+ * Due = subscribed, not unsubscribed, hasn't finished the run, and either has
+ * never been sent to or was last sent to more than `cadenceDays` ago.
+ *
+ * `limit` is the warm-up lever: a brand-new sending domain that suddenly posts
+ * hundreds of messages looks exactly like a compromised one, so early runs stay
+ * small deliberately.
+ */
+async function dueSubscribers({ cadenceDays = 7, maxEmails = 19, limit = 50 } = {}) {
+  const p = getPool();
+  if (!p) return [];
+  let client;
+  try {
+    client = await p.connect();
+    await ensureSchema(client);
+    const res = await client.query(
+      `SELECT id, email, name, sent_count, unsub_token, last_sent_at
+         FROM site_enquiries
+        WHERE kind = 'subscribe'
+          AND unsubscribed_at IS NULL
+          AND sent_count < $1
+          AND (last_sent_at IS NULL OR last_sent_at < now() - ($2 || ' days')::interval)
+        ORDER BY last_sent_at NULLS FIRST, created_at ASC
+        LIMIT $3`,
+      [maxEmails, String(cadenceDays), limit],
+    );
+    return res.rows;
+  } catch (err) {
+    logger.error(`[site] could not read due subscribers: ${err && err.message}`);
+    return [];
+  } finally {
+    if (client) client.release();
+  }
+}
+
+/**
+ * Record that one email went out. Conditional on sent_count still being what we
+ * read, so two overlapping runs can never send the same person the same piece
+ * twice — the second update simply matches no rows.
+ */
+async function markSent(id, expectedSentCount) {
+  const p = getPool();
+  if (!p) return false;
+  try {
+    const res = await p.query(
+      `UPDATE site_enquiries
+          SET sent_count = sent_count + 1, last_sent_at = now()
+        WHERE id = $1 AND sent_count = $2
+        RETURNING sent_count`,
+      [id, expectedSentCount],
+    );
+    return res.rows.length > 0;
+  } catch (err) {
+    logger.error(`[site] could not mark sent for ${id}: ${err && err.message}`);
+    return false;
+  }
+}
+
+/** One-click unsubscribe. Returns the email so we can confirm it on the page. */
+async function unsubscribeByToken(token) {
+  const t = String(token || '').trim();
+  const p = getPool();
+  if (!p || !t) return { ok: false };
+  let client;
+  try {
+    client = await p.connect();
+    await ensureSchema(client);
+    const res = await client.query(
+      `UPDATE site_enquiries SET unsubscribed_at = now()
+        WHERE unsub_token = $1 AND kind = 'subscribe'
+        RETURNING email, unsubscribed_at`,
+      [t],
+    );
+    // Already-unsubscribed is still a success from the person's point of view -
+    // they clicked to be off the list and they are off the list.
+    if (!res.rows.length) return { ok: false };
+    return { ok: true, email: res.rows[0].email };
+  } catch (err) {
+    logger.error(`[site] unsubscribe by token failed: ${err && err.message}`);
+    return { ok: false };
+  } finally {
+    if (client) client.release();
+  }
+}
+
 async function unsubscribe(email) {
   const cleaned = cleanEmail(email);
   const p = getPool();
@@ -183,4 +292,8 @@ async function unsubscribe(email) {
   }
 }
 
-module.exports = { record, markNotified, listSubscribers, unsubscribe, cleanEmail, __setTestPool, KINDS };
+module.exports = {
+  record, markNotified, listSubscribers, unsubscribe,
+  dueSubscribers, markSent, unsubscribeByToken,
+  cleanEmail, __setTestPool, KINDS,
+};
