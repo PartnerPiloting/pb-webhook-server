@@ -113,9 +113,13 @@
   // its launcher would sit on top of the frame's and open a panel that can't see the thread.
   function bprFrameOwnsSurface() {
     if (window !== window.top) return false;          // we ARE the frame copy
-    if (hasOpenMessageThread()) return false;         // surface really is in this document
     const f = document.querySelector('iframe[src*="/preload/"]');
-    return !!(f && f.offsetWidth > 200 && f.offsetHeight > 200);
+    if (!(f && f.offsetWidth > 200 && f.offsetHeight > 200)) return false;
+    // A floating bubble with an OPEN composer is the one surface the top document still owns on a
+    // BPR page. (Not hasOpenMessageThread(): its structural new-UI matcher false-positives on the
+    // collapsed bubble-chips drawer, which put a second launcher next to the frame copy's. The typed
+    // /wg trigger is surface-independent, so a bubble the stricter check misses still works.)
+    return !document.querySelector('.msg-overlay-conversation-bubble .msg-form');
   }
   // Show the launcher / accept the /wg trigger on profiles AND on the messaging surface.
   function shouldShowLauncher() {
