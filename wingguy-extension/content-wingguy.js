@@ -1168,6 +1168,10 @@
   }
 
   async function captureConversationToPortal() {
+    // Hoisted so the catch block can still hand whatever WAS captured to the rescue card —
+    // a refusal must never throw the conversation away (Deon, 2026-07-28).
+    let thread = [];
+    let hdr = { profileUrl: '', name: '' };
     try {
       // We need the person's /in/ URL to look the lead up. Pin the capture to the conversation the SEND
       // came from — never trust the page URL while any thread is open. The old gate asked "is the
@@ -1184,7 +1188,7 @@
         document.querySelector(CONVO_SELECTORS()) ||
         newUiConvoFromDocument();
       let convo = findConvo();
-      let hdr = convo ? scrapeMessagingHeader(convo) : { profileUrl: location_origin_path(), name: '' };
+      hdr = convo ? scrapeMessagingHeader(convo) : { profileUrl: location_origin_path(), name: '' };
       let profileUrl = hdr.profileUrl;
       // The header can be mid-render right after a send — one quick retry before giving up.
       if ((!profileUrl || !/\/in\//.test(profileUrl)) && convo) {
@@ -1193,9 +1197,36 @@
         hdr = scrapeMessagingHeader(convo);
         profileUrl = hdr.profileUrl;
       }
+      // Read the thread from the SAME container the header came from, so identity and content can never
+      // disagree (a container element is its own closestConversationContainer match). Scraped BEFORE the
+      // identity gates below so a refusal can still offer the captured text through the rescue card.
+      thread = convo ? scrapeOpenThread(convo) : [];
+      if (!thread.length) {
+        console.log('[Wingguy] capture skipped — no thread read');
+        showCaptureRescue({
+          reason: "Couldn't read the conversation from the page, so there's nothing to save. Reopen the conversation and resend.",
+        });
+        return;
+      }
+      // Never auto-save a thread we couldn't isolate to one conversation — that's how Vera+Doug got
+      // mixed. The rescue card may still offer it, because the human reads the preview before saving.
+      if (!lastScrapeScoped) {
+        console.log('[Wingguy] capture skipped — could not isolate a single conversation');
+        showCaptureRescue({
+          reason: "Couldn't isolate this to one conversation, so nothing was saved automatically.",
+          caution: 'The preview may mix messages from more than one thread — read it before saving.',
+          thread,
+          prefillName: hdr.name,
+        });
+        return;
+      }
       if (!profileUrl || !/\/in\//.test(profileUrl)) {
-        console.log('[Wingguy] capture skipped — no /in/ profile URL for this thread');
-        showCaptureToast("Didn't save to the Portal — couldn't read whose thread this is. Reopen the conversation and resend, or send me the console line.", true);
+        console.log('[Wingguy] capture needs help — no /in/ profile URL for this thread');
+        showCaptureRescue({
+          reason: "Couldn't read whose thread this is, so it wasn't saved automatically.",
+          thread,
+          prefillName: hdr.name,
+        });
         return;
       }
       // LinkedIn's internal member-id URL (/in/ACoA...) won't match the vanity URL stored in Airtable —
@@ -1213,21 +1244,11 @@
       if (/\/in\/ACoA/i.test(profileUrl)) {
         console.error('[Wingguy] ⚠ UN-SCRAMBLE FAILED — link is still the internal /in/ACoA form:', profileUrl,
           '— resolveAcoaToVanity() may be broken (LinkedIn page shape changed?).');
-        showCaptureToast("Didn't save — couldn't un-scramble this person's LinkedIn link. The resolve step may have broken (not just a missing lead). Flag this: \"un-scramble broke\".", true);
-        return;
-      }
-      // Read the thread from the SAME container the header came from, so identity and content can never
-      // disagree (a container element is its own closestConversationContainer match).
-      const thread = scrapeOpenThread(convo);
-      if (!thread.length) {
-        console.log('[Wingguy] capture skipped — no thread read');
-        showCaptureToast("Didn't save — couldn't read the conversation from the page.", true);
-        return;
-      }
-      // Never save a thread we couldn't isolate to one conversation — that's how Vera+Doug got mixed.
-      if (!lastScrapeScoped) {
-        console.log('[Wingguy] capture skipped — could not isolate a single conversation');
-        showCaptureToast("Couldn't isolate the conversation — not saved. Send me the console line.", true);
+        showCaptureRescue({
+          reason: 'Couldn\'t un-scramble this person\'s LinkedIn link, so it wasn\'t saved automatically. Flag this: "un-scramble broke" (the resolve step may have broken, not just a missing lead).',
+          thread,
+          prefillName: hdr.name,
+        });
         return;
       }
 
@@ -1237,7 +1258,11 @@
       const leads = (lookup && lookup.leads) || [];
       if (!leads.length) {
         console.log('[Wingguy] capture: no matching lead in portal for', profileUrl);
-        showCaptureToast(`Didn't save — no matching lead in your Portal for ${profileUrl.replace('https://www.linkedin.com', '')}.`, true);
+        showCaptureRescue({
+          reason: `No lead in your Portal matched ${profileUrl.replace('https://www.linkedin.com', '')}, so it wasn't saved automatically. If they ARE in your Portal, their record probably stores a different LinkedIn URL — find them below and the save fixes itself.`,
+          thread,
+          prefillName: hdr.name,
+        });
         return;
       }
       const lead = leads[0];
@@ -1261,12 +1286,18 @@
       const leadInThread = knownSenders.some(nameMatches) || nameMatches(headerName);
       if (knownSenders.length && !leadInThread) {
         console.log(`[Wingguy] capture BLOCKED — "${who}" (matched by URL) is not a participant in this thread. Senders: [${knownSenders.join(', ')}]`);
-        showCaptureToast(`Didn't save — this conversation isn't with ${who} (safety check). Nothing was written.`, true);
+        showCaptureRescue({
+          reason: `This conversation doesn't look like it's with ${who} (the lead the URL matched), so nothing was written — that mismatch is how one person's chat once ended up on another's record.`,
+          caution: 'Check the preview, then pick the person this conversation is actually with.',
+          thread,
+          prefillName: hdr.name,
+        });
         return;
       }
 
       await bg({ type: 'QUICK_UPDATE', leadId: lead.id, content, section: 'linkedin' });
       console.log(`[Wingguy] captured ${thread.length} messages to ${who}`);
+      dismissCaptureRescue(); // a stale card from an earlier miss must not outlive a clean save
       showCaptureToast(`✓ Saved ${thread.length} messages to ${who}`);
 
       // Learn-from-my-edit: if this send follows a Wingguy insert, pair the AI's draft with the
@@ -1298,7 +1329,11 @@
       } catch (e) { console.log('[Wingguy] edit-pair error (non-fatal):', e.message); }
     } catch (e) {
       console.log('[Wingguy] capture failed:', e.message);
-      showCaptureToast(`Couldn't save to the Portal: ${e.message}`, true);
+      showCaptureRescue({
+        reason: `Couldn't save to the Portal: ${e.message}`,
+        thread,
+        prefillName: hdr && hdr.name,
+      });
     }
   }
 
@@ -1341,6 +1376,137 @@
       setTimeout(() => { t.classList.add('wingguy-toast-out'); }, 2800);
       setTimeout(() => { t.remove(); }, 3300);
     } catch (_) { /* non-fatal */ }
+  }
+
+  // ---- capture rescue card --------------------------------------------------
+  // When a capture gate refuses to auto-save, the old error toasts vanished in ~3s and threw the
+  // captured conversation away — the human couldn't even read WHY (Deon, 2026-07-28). This card
+  // stays until dismissed, says why, previews what was captured, and (when there IS a captured
+  // thread) lets the human pick the right lead and save to it. The identity gates exist because
+  // GUESSING the person corrupted records (Vera+Doug); a human-confirmed pick removes that risk,
+  // so "save it anyway" here does not weaken them.
+  let rescueCard = null;
+  function dismissCaptureRescue() {
+    if (rescueCard) { rescueCard.remove(); rescueCard = null; }
+  }
+  function showCaptureRescue({ reason, caution, thread = [], prefillName = '' }) {
+    try {
+      dismissCaptureRescue();
+      const canSave = thread.length > 0;
+      // All scraped/served text goes in via textContent — never innerHTML — so page content
+      // can't smuggle markup into the card.
+      const el = (tag, cls, text) => {
+        const n = document.createElement(tag);
+        if (cls) n.className = cls;
+        if (text !== undefined) n.textContent = text;
+        return n;
+      };
+
+      const card = el('div', 'wingguy-rescue');
+      const head = el('div', 'wingguy-rescue-head');
+      head.appendChild(el('span', 'wingguy-rescue-title', "✦ Didn't save to the Portal"));
+      const closeBtn = el('button', 'wingguy-rescue-close', '×');
+      closeBtn.title = 'Dismiss (nothing will be saved)';
+      closeBtn.addEventListener('click', dismissCaptureRescue);
+      head.appendChild(closeBtn);
+      card.appendChild(head);
+
+      card.appendChild(el('p', 'wingguy-rescue-reason', reason));
+      if (caution) card.appendChild(el('p', 'wingguy-rescue-caution', `⚠ ${caution}`));
+
+      if (canSave) {
+        const preview = el('div', 'wingguy-rescue-preview');
+        for (const m of thread) {
+          const line = el('div', 'wingguy-rescue-line');
+          line.appendChild(el('span', 'wingguy-rescue-sender', `${(m.sender || 'Unknown').trim()}: `));
+          line.appendChild(el('span', '', m.text || ''));
+          preview.appendChild(line);
+        }
+        card.appendChild(preview);
+
+        card.appendChild(el('div', 'wingguy-rescue-label', 'Save it anyway — whose record is this?'));
+        const search = el('input', 'wingguy-rescue-search');
+        search.type = 'text';
+        search.placeholder = 'Type their name…';
+        search.value = String(prefillName || '').trim();
+        card.appendChild(search);
+        const results = el('div', 'wingguy-rescue-results');
+        card.appendChild(results);
+        const foot = el('div', 'wingguy-rescue-foot');
+        const saveBtn = el('button', 'wingguy-rescue-save', 'Save');
+        saveBtn.disabled = true;
+        foot.appendChild(saveBtn);
+        card.appendChild(foot);
+
+        let selected = null; // { id, name }
+        const setSelected = (lead, row) => {
+          selected = lead;
+          for (const r of results.children) r.classList.remove('wingguy-rescue-row-sel');
+          row.classList.add('wingguy-rescue-row-sel');
+          saveBtn.disabled = false;
+          saveBtn.textContent = `Save ${thread.length} message${thread.length === 1 ? '' : 's'} to ${lead.name}`;
+        };
+        const renderResults = (leads) => {
+          results.replaceChildren();
+          selected = null;
+          saveBtn.disabled = true;
+          saveBtn.textContent = 'Save';
+          if (!leads.length) {
+            results.appendChild(el('div', 'wingguy-rescue-empty', 'No matching lead — try just a first or last name.'));
+            return;
+          }
+          for (const l of leads.slice(0, 6)) {
+            const name = `${l.firstName || ''} ${l.lastName || ''}`.trim() || '(unnamed lead)';
+            const row = el('div', 'wingguy-rescue-row');
+            row.appendChild(el('div', 'wingguy-rescue-row-name', name));
+            const slug = String(l.linkedinProfileUrl || '').replace(/^https?:\/\/(www\.)?linkedin\.com/, '');
+            const sub = [l.company, slug].filter(Boolean).join(' · ');
+            if (sub) row.appendChild(el('div', 'wingguy-rescue-row-sub', sub));
+            row.addEventListener('click', () => setSelected({ id: l.id, name }, row));
+            results.appendChild(row);
+          }
+        };
+        let searchTimer = null;
+        const runSearch = async () => {
+          const q = search.value.trim();
+          if (q.length < 2) { renderResults([]); return; }
+          results.replaceChildren(el('div', 'wingguy-rescue-empty', 'Searching…'));
+          try {
+            // LOOKUP_LEAD's linkedinUrl field is a generic query server-side — names work too.
+            const lookup = await bg({ type: 'LOOKUP_LEAD', linkedinUrl: q });
+            renderResults((lookup && lookup.leads) || []);
+          } catch (err) {
+            results.replaceChildren(el('div', 'wingguy-rescue-empty', `Search failed: ${err.message}`));
+          }
+        };
+        search.addEventListener('input', () => {
+          if (searchTimer) clearTimeout(searchTimer);
+          searchTimer = setTimeout(runSearch, 350);
+        });
+        if (search.value.length >= 2) runSearch();
+
+        saveBtn.addEventListener('click', async () => {
+          if (!selected) return;
+          saveBtn.disabled = true;
+          saveBtn.textContent = 'Saving…';
+          try {
+            await bg({ type: 'QUICK_UPDATE', leadId: selected.id, content: formatThreadForApi(thread), section: 'linkedin' });
+            console.log(`[Wingguy] rescue-saved ${thread.length} messages to ${selected.name}`);
+            card.replaceChildren(el('div', 'wingguy-rescue-done', `✓ Saved ${thread.length} message${thread.length === 1 ? '' : 's'} to ${selected.name}`));
+            setTimeout(dismissCaptureRescue, 2500);
+          } catch (err) {
+            saveBtn.disabled = false;
+            saveBtn.textContent = `Save ${thread.length} message${thread.length === 1 ? '' : 's'} to ${selected.name}`;
+            card.appendChild(el('p', 'wingguy-rescue-caution', `⚠ Save failed: ${err.message}`));
+          }
+        });
+      } else {
+        card.appendChild(el('p', 'wingguy-rescue-hint', 'If this keeps happening, open the browser console and send the [Wingguy] lines.'));
+      }
+
+      document.body.appendChild(card);
+      rescueCard = card;
+    } catch (_) { /* never let the rescue card itself break a capture */ }
   }
 
   // ---- UI: launcher + full-screen overlay -----------------------------------
