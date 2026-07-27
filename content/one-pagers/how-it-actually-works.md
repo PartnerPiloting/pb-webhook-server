@@ -21,32 +21,29 @@ Don't try to master it. A map doesn't teach you the ground - it just shows you w
 The old way is to work with whoever happens to be in the room. This flips it: you decide, on purpose, who belongs in your network before you meet anyone - not the people who might buy from you, but the ones positioned to know your work and recommend you. And you choose them less for their job title than for how they *think*.
 → *Choose, Don't Collect*
 
-## 2. Reach out like a human
+## 2. Reach out, and thank them properly
 
 Then you actually reach out - with a genuine note about *their* work, not a pitch about yours. The whole posture is "let me find out about what you do," and it's the opposite of the thing everyone braces for.
+
+And when they connect back, you've got a small window of goodwill. Most people waste it on a photocopied "thanks for connecting!" You don't. A genuine, specific line about their work - the kind that makes someone feel actually *seen* - is what turns a new contact into a real conversation.
 → *A thanks-for-connecting that delights*
 
-## 3. Say thank you like you mean it
-
-When they connect back, you've got a small window of goodwill. Most people waste it on a photocopied "thanks for connecting!" You don't. A genuine, specific line about their work - the kind that makes someone feel actually *seen* - is what turns a new contact into a real conversation.
-→ *A thanks-for-connecting that delights*
-
-## 4. Have a conversation to learn
+## 3. Have a conversation to learn
 
 The first call fills people with dread because they think it's a pitch they can fail. It isn't. You're there to *learn* about them - what they do, how they think, who they know. Nothing to sell, so nothing to be rejected about. It becomes the easiest conversation in the world.
 → *What can you discover?*
 
-## 5. Give it a reason to continue
+## 4. Give it a reason to continue
 
 Good conversations die from "let's stay in touch" with nothing to actually stay in touch about. Relationships live on motion, not goodwill - so you leave every one with a reason to come back: something to share, someone to introduce, a thread to pick up.
 → *A reason to follow up*
 
-## 6. Watch it grow into a web
+## 5. Watch it grow into a web
 
 Do this with enough of the right people - the ones who build their own networks too - and something shifts. You're not networking alone anymore. You're one node in a web of people who all think this way, recommending each other, and work starts arriving on a recommendation, from people you've never even met.
 → *Building nodes*
 
-## 7. Become the one who knows a guy
+## 6. Become the one who knows a guy
 
 And underneath all of it sits one small human habit: when someone mentions a need, you're the one who says "I know a guy" - and makes the introduction, freely, expecting nothing. Do that often enough and you become the person everyone's glad to know. That's the whole thing, really.
 → *Become the person who knows a guy*

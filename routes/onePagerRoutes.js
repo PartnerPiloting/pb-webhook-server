@@ -14,6 +14,7 @@ const logger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'o
 
 const content = require('../services/onePagerContent');
 const shell = require('../services/onePagerShell');
+const MANIFEST = require('../config/onePagerSeriesManifest');
 
 const MAP_SLUG = 'how-it-actually-works'; // the prospect library landing (#8)
 
@@ -55,18 +56,32 @@ module.exports = function mountOnePagers(app /*, base */) {
     try {
       const audience = req.query.audience === 'client' ? 'client' : 'prospect';
       const map = await content.renderPiece(MAP_SLUG, { audience });
-      const pieces = content.listPieces().filter(p => !HIDDEN_FROM_CATALOGUE.has(p.slug));
+      const visible = content.listPieces().filter(p => !HIDDEN_FROM_CATALOGUE.has(p.slug));
+
+      // Order the catalogue by the SEND order, so the list a reader sees is the
+      // sequence a subscriber actually receives. Anything not in the run (craft
+      // pieces kept library-only) falls through to its own section rather than
+      // being numbered into a sequence it isn't part of.
+      const run = MANIFEST[audience] || [];
+      const bySlug = new Map(visible.map(p => [p.slug, p]));
+      const inRun = run.map(slug => bySlug.get(slug)).filter(Boolean);
+      const inRunSlugs = new Set(inRun.map(p => p.slug));
+      const extras = visible.filter(p => !inRunSlugs.has(p.slug));
 
       const cards = [];
       if (map) {
         cards.push(shell.articleCard({
+          // Kicker labels the map as orientation. Without it the map and the
+          // list below read as one continuous page, and the map looks like the
+          // first item of the series - which it is not, and never gets emailed.
+          kicker: 'Start here - the shape of the whole thing. Not one of the weekly emails.',
           title: map.title,
           dek: map.dek,
           bodyHtml: map.bodyHtml,
           footerHtml: shell.libraryFooter(),
         }));
       }
-      cards.push(shell.catalogueCard(pieces));
+      cards.push(shell.catalogueCard(inRun, extras));
 
       return sendHtml(res, 200, shell.fullPage({ title: 'The library', inner: cards.join('\n') }));
     } catch (err) {

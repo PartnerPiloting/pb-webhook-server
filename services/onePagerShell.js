@@ -67,6 +67,15 @@ function css() {
   .op-cat a.title { font-size:19px; color:#221f1a; text-decoration:none; }
   .op-cat a.title:hover { color:#9a6a2f; }
   .op-cat .dek { font-style:italic; color:#6f6558; font-size:15px; line-height:1.5; margin:4px 0 0; }
+  /* Numbered to match the send order, so the list reads as a sequence. */
+  .op-cat ol { counter-reset:op-n; }
+  .op-cat ol > li { position:relative; padding-left:34px; counter-increment:op-n; }
+  .op-cat ol > li::before { content:counter(op-n); position:absolute; left:0; top:2px;
+    font-size:13px; color:#96703f; font-variant-numeric:tabular-nums; }
+  .op-cat .op-note { color:#6f6558; font-size:14px; line-height:1.55; margin:0 0 20px; font-style:italic; }
+  .op-cat .op-h2-more { margin-top:28px; padding-top:22px; border-top:1px solid #e4dccb; }
+  .op-cat ul.op-plain { list-style:none; margin:0; padding:0; }
+  .op-cat ul.op-plain li { padding-left:0; }
   @media (max-width:520px) {
     .op-mast,.op-c,.op-foot,.op-cat .op-c { padding-left:22px; padding-right:22px; }
     .op-t { font-size:24px; }
@@ -114,16 +123,33 @@ function libraryFooter() {
 }
 
 // The catalogue card that lists every piece, ordered by arc position.
-function catalogueCard(pieces) {
-  const items = pieces.map(p => `<li>
+// The catalogue. Listed in SEND ORDER, not arc order, and numbered to match -
+// so what you read here is what a subscriber actually receives, in the same
+// sequence. Sorting by the frontmatter `order` instead (the arc position) is
+// what made the first library item differ from the first email, which reads as
+// a bug to anyone who hasn't seen the manifest.
+//
+// `extras` are pieces that are library-only and never emailed; they get their
+// own section rather than being silently mixed into a numbered run.
+function catalogueCard(pieces, extras = []) {
+  const item = (p, n) => `<li${n ? ` value="${n}"` : ''}>
       <a class="title" href="/series/${esc(p.slug)}">${esc(p.title)}</a>
       ${p.dek ? `<p class="dek">${esc(p.dek)}</p>` : ''}
-    </li>`).join('\n');
+    </li>`;
+
+  const main = pieces.map((p, i) => item(p, i + 1)).join('\n');
+  const extraBlock = extras.length ? `
+      <h2 class="op-h2-more">Also in the library</h2>
+      <p class="op-note">Not part of the weekly run - a little more craft, for anyone who wants to go deeper.</p>
+      <ul class="op-plain">${extras.map(p => item(p)).join('\n')}</ul>` : '';
+
   return `<div class="op op-cat">
     ${masthead(SERIES_NAME)}
     <div class="op-c">
-      <h2>The full library</h2>
-      <ol>${items}</ol>
+      <h2>The series, in order</h2>
+      <p class="op-note">These arrive by email one a week, in this order. Read them here in any order you like - nothing depends on having read the one before.</p>
+      <ol>${main}</ol>
+      ${extraBlock}
     </div>
     <div class="op-bar"></div>
   </div>`;
