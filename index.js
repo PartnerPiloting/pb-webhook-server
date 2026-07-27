@@ -179,6 +179,12 @@ const allowedOrigins = [
     /^https:\/\/[a-z0-9-]+\.vercel\.app$/i,
     'https://australiansidehustles.com.au',
     'https://www.australiansidehustles.com.au',
+    // The public I Know A Guy site is served from this same app, so its own
+    // pages must be allowed to call it. Without these, the enquiry form fails
+    // with a CORS 500 for every real visitor while curl succeeds - curl sends
+    // no Origin header, so command-line testing cannot catch it.
+    'https://knowaguy.com.au',
+    'https://www.knowaguy.com.au',
     /^chrome-extension:\/\/[a-z0-9]+$/i,
     null
 ];
