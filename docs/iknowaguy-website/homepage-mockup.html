@@ -525,6 +525,14 @@
       });
     }
 
+    // Deliberately permissive - it only catches shapes that cannot be an
+    // address (no @, nothing after the dot, spaces). Clever validation
+    // rejects real addresses, and a rejected real address costs a lead
+    // while a junk one costs a row in a table.
+    function looksLikeEmail(v) {
+      return /^[^@\s]+@[^@\s.]+(\.[^@\s.]+)+$/.test(v);
+    }
+
     function showError(form, message) {
       var el = form.querySelector('.form-error');
       if (!el) {
@@ -543,6 +551,11 @@
       var name = document.getElementById('f-name').value.trim();
       if (!name) { showError(contact, 'Could I get your name?'); return; }
       if (!email) { showError(contact, 'I need an email address to reply to.'); return; }
+      if (!looksLikeEmail(email)) {
+        showError(contact, "That email doesn't look quite right - could you check it? It's the only way I can get back to you.");
+        document.getElementById('f-email').focus();
+        return;
+      }
 
       var button = contact.querySelector('button');
       button.disabled = true;
@@ -560,7 +573,11 @@
         if (!res || !res.ok) {
           button.disabled = false;
           button.textContent = 'Send';
-          showError(contact, "That didn't go through. Try again, or just email me directly.");
+          // Prefer the server's own reason when it gave one - "that email
+          // isn't valid" is actionable, "it didn't go through" is not.
+          showError(contact, (res && res.error)
+            ? 'Sorry - ' + res.error + '. Could you check and try again?'
+            : "That didn't go through. Try again, or just email me directly.");
           return;
         }
         contact.style.display = 'none';
@@ -579,6 +596,11 @@
       e.preventDefault();
       var email = document.getElementById('s-email').value.trim();
       if (!email) { showError(sub, 'Pop your email in and I will do the rest.'); return; }
+      if (!looksLikeEmail(email)) {
+        showError(sub, "That email doesn't look quite right - could you check it?");
+        document.getElementById('s-email').focus();
+        return;
+      }
 
       var button = sub.querySelector('button');
       button.disabled = true;
