@@ -234,6 +234,89 @@
 .wingguy-toast-err { background: var(--wingguy-warn); }
 .wingguy-toast-out { opacity: 0; }
 
+/* Capture rescue card — a failed auto-save's persistent recovery surface (stays until dismissed,
+   unlike the toast): why it refused, what was captured, and a pick-the-lead "save it anyway" path. */
+.wingguy-rescue {
+  position: fixed;
+  right: 24px;
+  bottom: 28px;
+  z-index: 2147483601; /* one above the toast so a stale toast can't sit on the buttons */
+  width: 380px;
+  max-width: calc(100vw - 48px);
+  max-height: 72vh;
+  overflow-y: auto;
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: #fff;
+  border: 1px solid var(--wingguy-border);
+  border-top: 4px solid var(--wingguy-warn);
+  color: var(--wingguy-ink);
+  font: 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  box-shadow: 0 16px 48px rgba(15, 23, 42, 0.35);
+}
+.wingguy-rescue-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.wingguy-rescue-title { font-weight: 700; font-size: 14px; color: var(--wingguy-warn); }
+.wingguy-rescue-close {
+  border: none; background: none; cursor: pointer; padding: 0 2px;
+  font-size: 20px; line-height: 1; color: var(--wingguy-muted);
+}
+.wingguy-rescue-close:hover { color: var(--wingguy-ink); }
+.wingguy-rescue-reason { margin: 8px 0 0; }
+.wingguy-rescue-caution { margin: 8px 0 0; color: var(--wingguy-warn); font-weight: 600; }
+.wingguy-rescue-hint { margin: 8px 0 0; color: var(--wingguy-muted); font-size: 12px; }
+.wingguy-rescue-preview {
+  margin-top: 10px;
+  max-height: 120px;
+  overflow-y: auto;
+  padding: 8px 10px;
+  border: 1px solid var(--wingguy-border);
+  border-radius: 8px;
+  background: #f8fafc;
+  font-size: 12.5px;
+}
+.wingguy-rescue-line { margin-bottom: 4px; }
+.wingguy-rescue-sender { font-weight: 600; }
+.wingguy-rescue-label { margin-top: 12px; font-weight: 600; }
+.wingguy-rescue-search {
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--wingguy-border);
+  border-radius: 8px;
+  font: inherit;
+}
+.wingguy-rescue-search:focus { outline: 2px solid var(--wingguy-teal); border-color: transparent; }
+.wingguy-rescue-results { margin-top: 6px; }
+.wingguy-rescue-row {
+  padding: 7px 10px;
+  border: 1px solid var(--wingguy-border);
+  border-radius: 8px;
+  margin-bottom: 4px;
+  cursor: pointer;
+}
+.wingguy-rescue-row:hover { border-color: var(--wingguy-teal); }
+.wingguy-rescue-row-sel { border-color: var(--wingguy-teal); background: #f0fdfa; }
+.wingguy-rescue-row-name { font-weight: 600; }
+.wingguy-rescue-row-sub { color: var(--wingguy-muted); font-size: 12px; word-break: break-all; }
+.wingguy-rescue-empty { color: var(--wingguy-muted); padding: 4px 2px; }
+.wingguy-rescue-foot { margin-top: 8px; display: flex; justify-content: flex-end; }
+.wingguy-rescue-save {
+  border: none;
+  border-radius: 8px;
+  padding: 9px 16px;
+  background: var(--wingguy-teal);
+  color: #fff;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+}
+.wingguy-rescue-save:hover:not(:disabled) { background: var(--wingguy-teal-dark); }
+.wingguy-rescue-save:disabled { opacity: 0.45; cursor: default; }
+.wingguy-rescue-done { font-weight: 700; color: var(--wingguy-ok); font-size: 14px; padding: 4px 0; }
+
 /* Chat agent (Slice 2 BIG half) — pinned editable draft above a chat box */
 .wingguy-chat { display: flex; flex-direction: column; gap: 10px; }
 .wingguy-draftwrap {
