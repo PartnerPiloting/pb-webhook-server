@@ -36,16 +36,26 @@
   // "/wingguy" wins over "/wg" when both would match the tail.
   const TRIGGERS = ['/wingguy', '\\wingguy', '/wingman', '\\wingman', '/wg', '\\wg'];
 
-  let currentUrl = location.href;
+  // LinkedIn BPR ("blended page rendering", 2026-07): after an SPA navigation the whole messaging
+  // surface can render inside a full-viewport SAME-ORIGIN iframe (src /preload/?_bprMode=…) — the top
+  // document holds nothing but that frame, so a top-frame-only script is blind to the composer and
+  // /wg "silently does nothing until refresh". This script now runs in every linkedin.com frame
+  // (manifest all_frames). Inside the frame, location is the meaningless /preload/ URL — the REAL
+  // route lives on the top window, which same-origin lets us read. Cross-origin frames (ad iframes
+  // never match the manifest anyway) fall back to their own location.
+  function topLocation() {
+    try { return window.top.location.href ? window.top.location : location; } catch (_) { return location; }
+  }
+  let currentUrl = topLocation().href;
   let templates = null; // cached [{ id, label, useWhen, detectionKeywords, isDefault }]
   let lastScrapeScoped = false; // did the last thread scrape isolate a single conversation container?
 
   // ---- page detection -------------------------------------------------------
   function isProfilePage() {
-    return /^\/in\//.test(location.pathname);
+    return /^\/in\//.test(topLocation().pathname);
   }
   function isMessagingPage() {
-    return /^\/messaging\//.test(location.pathname);
+    return /^\/messaging\//.test(topLocation().pathname);
   }
   // Normalise any LinkedIn profile href to a clean https://www.linkedin.com/in/<slug> (strip query/hash).
   function normalizeInUrl(href) {
@@ -98,8 +108,18 @@
       '.msg-overlay-conversation-bubble .msg-form, .msg-convo-wrapper, .msg-thread, .scaffold-layout__detail .msg-s-message-list-container'
     ) || !!newUiConvoFromDocument();  // new-UI build: structural match (guarded by the interop marker)
   }
+  // When a visible BPR /preload/ iframe is carrying the surface, the copy of this script INSIDE that
+  // frame owns it (composer, thread, send capture all live there). The top-frame copy must stand down:
+  // its launcher would sit on top of the frame's and open a panel that can't see the thread.
+  function bprFrameOwnsSurface() {
+    if (window !== window.top) return false;          // we ARE the frame copy
+    if (hasOpenMessageThread()) return false;         // surface really is in this document
+    const f = document.querySelector('iframe[src*="/preload/"]');
+    return !!(f && f.offsetWidth > 200 && f.offsetHeight > 200);
+  }
   // Show the launcher / accept the /wg trigger on profiles AND on the messaging surface.
   function shouldShowLauncher() {
+    if (bprFrameOwnsSurface()) return false;
     return isProfilePage() || isMessagingPage() || hasOpenMessageThread();
   }
 
@@ -189,7 +209,7 @@
     return t && !/^linkedin$/i.test(t) ? t : '';
   }
   function nameFromSlug() {
-    const m = location.pathname.match(/^\/in\/([^/]+)/);
+    const m = topLocation().pathname.match(/^\/in\/([^/]+)/);
     if (!m) return '';
     let parts = decodeURIComponent(m[1]).split('-').filter(Boolean);
     // Drop trailing id-ish tokens (LinkedIn appends a hash/number to disambiguate slugs).
@@ -403,7 +423,8 @@
   }
 
   function location_origin_path() {
-    return location.origin + location.pathname.replace(/\/$/, '');
+    const l = topLocation(); // in a BPR frame, own location is the meaningless /preload/ URL
+    return l.origin + l.pathname.replace(/\/$/, '');
   }
 
   // Read the OPEN LinkedIn message thread (the overlay you pop, or the /messaging pane), labelling
@@ -746,7 +767,7 @@
     };
   }
   function buildDiagnosticText() {
-    return 'WINGGUY DIAGNOSTIC\n' + JSON.stringify({ path: location.pathname, ...collectEditables() }, null, 2);
+    return 'WINGGUY DIAGNOSTIC\n' + JSON.stringify({ path: topLocation().pathname, framed: window !== window.top, ...collectEditables() }, null, 2);
   }
   function logEditableDiagnostics() {
     try { console.log('[Wingguy] composer diagnostic:', collectEditables()); } catch (_) {}
@@ -1800,8 +1821,8 @@
 
   function watchSpaNavigation() {
     setInterval(() => {
-      if (location.href !== currentUrl) {
-        currentUrl = location.href;
+      if (topLocation().href !== currentUrl) {   // top URL: a BPR frame's own /preload/ URL never changes
+        currentUrl = topLocation().href;
         closePanel();
         // small delay so the new profile DOM settles
         setTimeout(refresh, 600);

@@ -28,8 +28,9 @@ function reinjectLinkedInTabs() {
   chrome.tabs.query({ url: 'https://www.linkedin.com/*' }, (tabs) => {
     for (const tab of tabs) {
       if (!tab.id) continue;
-      chrome.scripting.insertCSS({ target: { tabId: tab.id }, files: ['styles.css'] }).catch(() => {});
-      chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['content-wingguy.js'] }).catch(() => {});
+      // allFrames: LinkedIn BPR renders messaging inside a same-origin /preload/ iframe — heal that too.
+      chrome.scripting.insertCSS({ target: { tabId: tab.id, allFrames: true }, files: ['styles.css'] }).catch(() => {});
+      chrome.scripting.executeScript({ target: { tabId: tab.id, allFrames: true }, files: ['content-wingguy.js'] }).catch(() => {});
     }
   });
 }

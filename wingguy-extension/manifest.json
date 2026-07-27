@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Wingguy (LinkedIn)",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Wingguy — type /wg in a LinkedIn message box for a full-screen assistant that drafts your next message in your voice (auto-detecting the campaign). You click send.",
   "permissions": [
     "storage",
@@ -23,7 +23,8 @@
       "matches": ["https://www.linkedin.com/*"],
       "js": ["content-wingguy.js"],
       "css": ["styles.css"],
-      "run_at": "document_end"
+      "run_at": "document_end",
+      "all_frames": true
     },
     {
       "matches": ["https://www.linkedin.com/in/*"],
