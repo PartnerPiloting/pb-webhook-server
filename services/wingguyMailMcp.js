@@ -256,6 +256,11 @@ function classifyLead(lead, { lastInboundMs, lastOutboundMs, nowMs, todayMidMs }
   // from a parked lead won't resurface them here until their date — the human's own inbox covers it.
   if (replyWaiting && inboundDays <= REPLY_LIVE_DAYS) {
     if (reconnectFuture) return { tier: null, gatedCadence: true };
+    // Cease waiver (Guy 2026-07-28, the Matthew Murray "permanently remove"): dropping a person
+    // waives whatever they were owed AT THAT MOMENT — the human saw the open thread and chose to
+    // let it go. Only an inbound NEWER than the cease surfaces (a reply is a reply). Leads ceased
+    // before the Cease FUP At rollout have no timestamp and keep the old always-surface behavior.
+    if (lead.cease && lead.ceaseAtMs && lastInboundMs <= lead.ceaseAtMs) return { tier: null, gatedCadence: true };
     return { tier: 'reply', why: `they replied ${inboundDays}d ago — ball's in your court`, sortKey: -inboundDays, gated };
   }
   if (deferralLive) return { tier: 'deferral', why: `reconnect date reached (${deferDays === 0 ? 'today' : deferDays + 'd ago'})`, sortKey: deferDays, gated };
@@ -593,16 +598,20 @@ async function computeFollowupSweep({ window_days } = {}, tenant = TENANT) {
   const BASE_LEAD_FIELDS = ['First Name', 'Last Name', 'Email', 'Cease FUP', 'Notes', 'Series Sent Count', 'Series Unsubscribed', 'Date Connected', 'LinkedIn Profile URL'];
   try {
     const base = clientService.getClientBase(coach.airtableBaseId);
-    try {
-      // Reconnect On is the engine's deferral-date store (added 2026-07-23). Ask for it first.
-      records = await base('Leads').select({ fields: [...BASE_LEAD_FIELDS, 'Reconnect On'] }).all();
-    } catch (e) {
-      // A tenant base that predates the Reconnect On rollout 422s on the unknown field — fall back
-      // to reading without it (their deferral tier simply stays dormant, no break).
-      if (/Reconnect On|UNKNOWN_FIELD_NAME|422|INVALID|Unknown field/i.test(e.message)) {
-        records = await base('Leads').select({ fields: BASE_LEAD_FIELDS }).all();
-      } else {
-        throw e;
+    // Engine-written fields roll out over time — a tenant base that predates one 422s on the
+    // unknown field, so try richest-first and degrade (that feature simply stays dormant there).
+    const FIELD_ATTEMPTS = [
+      [...BASE_LEAD_FIELDS, 'Reconnect On', 'Cease FUP At'],
+      [...BASE_LEAD_FIELDS, 'Reconnect On'],
+      BASE_LEAD_FIELDS,
+    ];
+    for (let i = 0; i < FIELD_ATTEMPTS.length; i++) {
+      try {
+        records = await base('Leads').select({ fields: FIELD_ATTEMPTS[i] }).all();
+        break;
+      } catch (e) {
+        const unknownField = /Reconnect On|Cease FUP At|UNKNOWN_FIELD_NAME|422|INVALID|Unknown field/i.test(e.message);
+        if (!unknownField || i === FIELD_ATTEMPTS.length - 1) throw e;
       }
     }
   } catch (e) {
@@ -622,6 +631,7 @@ async function computeFollowupSweep({ window_days } = {}, tenant = TENANT) {
       reconnectOn: f['Reconnect On'] || null, // engine's deferral-date store; null where the field is absent/unset
       linkedinUrl: String(f['LinkedIn Profile URL'] || '').trim() || null, // for hyperlinked names in the brief
       cease: selectName(f['Cease FUP']) === 'Yes',
+      ceaseAtMs: f['Cease FUP At'] ? Date.parse(f['Cease FUP At']) || null : null, // the waiver line (see classifyLead)
       onSeries: Number(f['Series Sent Count'] || 0) > 0 && f['Series Unsubscribed'] !== true,
       connected: !!f['Date Connected'], // real-relationship signal for the cadence gate (Decision B)
       notes: f['Notes'] || '',
@@ -871,12 +881,23 @@ async function runCeaseFollowups({ lead_email, lead_name, cease } = {}, tenant =
   try {
     const fields = { 'Cease FUP': turningOn ? 'Yes' : 'No' };
     if (turningOn) fields['Reconnect On'] = null; // a dropped lead shouldn't resurface on a stamp
-    await base('Leads').update(rec.id, fields);
+    // The cease MOMENT is the waiver line (Guy 2026-07-28, the Matthew Murray "permanently
+    // remove"): anything they were owed BEFORE it is deliberately let go along with them; an
+    // inbound NEWER than it still surfaces (a reply is a reply). Cleared on re-open.
+    fields['Cease FUP At'] = turningOn ? new Date().toISOString() : null;
+    try {
+      await base('Leads').update(rec.id, fields);
+    } catch (e) {
+      // Base predates the Cease FUP At rollout — the cease itself must never fail on that.
+      if (!/Cease FUP At|Unknown field|UNKNOWN_FIELD_NAME|INVALID_/i.test(e.message)) throw e;
+      delete fields['Cease FUP At'];
+      await base('Leads').update(rec.id, fields);
+    }
   } catch (e) { return { text: `Couldn't update Cease FUP: ${e.message}`, isError: true }; }
   const who = `${rec.fields['First Name'] || ''} ${rec.fields['Last Name'] || ''}`.trim() || rec.fields['Email'] || rec.id;
   return {
     text: turningOn
-      ? `${who} dropped — Cease FUP set (and any reconnect stamp cleared). No timer will ever chase them again. NOTE: if they personally REPLY in future, that still surfaces (a reply is a reply); only cadence is silenced. Nothing was sent.`
+      ? `${who} dropped — Cease FUP set (and any reconnect stamp cleared). No timer will ever chase them again, and anything they were owed up to this moment is waived with them. NOTE: if they personally send a NEW message in future, that still surfaces (a reply is a reply). Nothing was sent.`
       : `${who} re-opened — Cease FUP cleared; normal follow-up cadence applies again.`,
   };
 }
@@ -1111,7 +1132,7 @@ const TOOL_DEFS = [
   {
     name: 'wingguy_cease_followups',
     description:
-      'Permanently DROP a lead from timed follow-ups ("drop X", "take X off the list for good", "stop chasing X") — sets the lead\'s Cease FUP flag and clears any reconnect stamp. NOTHING IS SENT. Confirm intent first when ambiguous: "off the list forever" = this; "not now, later" = park via wingguy_set_reconnect instead; "handled it" (backlog) = wingguy_backlog action done/skip. Honest behavior note: ceasing silences the TIMERS only — if the person personally replies in future, that still surfaces (a reply is a reply). Pass cease=false to re-open a previously dropped lead.',
+      'Permanently DROP a lead from timed follow-ups ("drop X", "take X off the list for good", "stop chasing X") — sets the lead\'s Cease FUP flag and clears any reconnect stamp. NOTHING IS SENT. Confirm intent first when ambiguous: "off the list forever" = this; "not now, later" = park via wingguy_set_reconnect instead; "handled it" (backlog) = wingguy_backlog action done/skip. Honest behavior note: ceasing silences the timers AND waives anything they were owed at that moment (the open thread you chose not to answer) — but if the person personally sends a NEW message after the cease, that still surfaces (a reply is a reply). Pass cease=false to re-open a previously dropped lead.',
     zodSchema: {
       lead_email: z.string().optional().describe('The lead\'s email (preferred — unambiguous).'),
       lead_name: z.string().optional().describe('The lead\'s name if no email; substring match, asks on multiple hits.'),
@@ -1199,7 +1220,7 @@ const TOOL_DEFS = [
 // sweep doesn't have. The fix is the ROUTING-NOTE trick: put the truth in the output itself.
 const LEVERS_NOTE =
   '[THE LEVERS — authoritative; never tell the human a control is missing without checking this list: ' +
-  'wingguy_cease_followups = drop a person WITHOUT sending anything (all timers silenced permanently; a future reply from them still surfaces — this IS "don\'t chase unless they reply") · ' +
+  'wingguy_cease_followups = drop a person WITHOUT sending anything (all timers silenced permanently and anything they were owed at that moment is waived; a NEW message from them after the drop still surfaces — this IS "don\'t chase unless they reply") · ' +
   'wingguy_set_reconnect = park until a date (fires as due that day; clearable) · ' +
   'wingguy_backlog name+done/skip = tick off a backlog item · ' +
   'wingguy_dossier name = instant memory jog + ready draft. ' +
@@ -1262,13 +1283,21 @@ async function applyLiveQueueGates(items, tenant) {
       }
       if (!clauses.length) return null;
       const formula = `OR(${clauses.join(', ')})`;
+      // Rolled-out-over-time fields degrade richest-first (same pattern as the sweep's lead read).
+      const GATE_ATTEMPTS = [
+        ['Email', 'Cease FUP', 'Reconnect On', 'Cease FUP At'],
+        ['Email', 'Cease FUP', 'Reconnect On'],
+        ['Email', 'Cease FUP'],
+      ];
       let recs;
-      try {
-        recs = await base('Leads').select({ filterByFormula: formula, fields: ['Email', 'Cease FUP', 'Reconnect On'] }).all();
-      } catch (e) {
-        // Tenant base predating the Reconnect On rollout — re-read without it (sweep's fallback).
-        if (!/Reconnect On|UNKNOWN_FIELD_NAME|422|INVALID|Unknown field/i.test(e.message)) throw e;
-        recs = await base('Leads').select({ filterByFormula: formula, fields: ['Email', 'Cease FUP'] }).all();
+      for (let i = 0; i < GATE_ATTEMPTS.length; i++) {
+        try {
+          recs = await base('Leads').select({ filterByFormula: formula, fields: GATE_ATTEMPTS[i] }).all();
+          break;
+        } catch (e) {
+          const unknownField = /Reconnect On|Cease FUP At|UNKNOWN_FIELD_NAME|422|INVALID|Unknown field/i.test(e.message);
+          if (!unknownField || i === GATE_ATTEMPTS.length - 1) throw e;
+        }
       }
       const gates = new Map(); // keyed by recId AND email — queue items may carry either
       for (const r of recs) {
@@ -1276,6 +1305,7 @@ async function applyLiveQueueGates(items, tenant) {
         const dt = f['Reconnect On'] ? Date.parse(f['Reconnect On']) : NaN;
         const g = {
           cease: selectName(f['Cease FUP']) === 'Yes',
+          ceaseAtMs: f['Cease FUP At'] ? Date.parse(f['Cease FUP At']) || null : null,
           reconnectAny: !!f['Reconnect On'],
           reconnectFuture: !Number.isNaN(dt) && dt > todayMidMs,
         };
@@ -1316,7 +1346,14 @@ async function applyLiveQueueGates(items, tenant) {
       const cadenceShaped = it.src === 'backlog' || it.tier === 'cadence';
       const g = (gates && (gates.get(it.recId) || (it.email && gates.get(String(it.email).toLowerCase())))) || null;
       if (g) {
-        if (g.cease && cadenceShaped) { out.suppressed.ceased++; return false; }
+        if (g.cease) {
+          // Cadence-shaped items are always silenced by a cease. With a recorded cease MOMENT,
+          // anything the store computed BEFORE that moment is waived too — the human saw what was
+          // owed and chose to drop the person anyway (the Matthew Murray case, 2026-07-28). Only
+          // an item built AFTER the cease (i.e. from a newer inbound) survives.
+          const waived = g.ceaseAtMs && it.builtAt && Date.parse(it.builtAt) <= g.ceaseAtMs;
+          if (cadenceShaped || waived) { out.suppressed.ceased++; return false; }
+        }
         // A FUTURE stamp drops the item regardless of its STORED tier — the tier is build-time
         // truth and the stamp may have been (re)written since (Ashley, observed live 2026-07-28:
         // stored tier 'deferral' from an old due stamp kept her surfacing after she was re-parked
@@ -1358,10 +1395,11 @@ async function runQueue({ page } = {}, tenant = TENANT) {
     const parkLine = (it) => (it.parkDate && it.parkDate <= new Date().toISOString().slice(0, 10))
       ? `their own window (${it.parkDate}) has PASSED — reach out now, natural opening [draft in dossier]`
       : `${it.whyLine} → propose park ${it.parkDate || '?'}`;
+    const builtAt = (p && p.preparedAt) || null; // for the live re-check's cease-waiver comparison
     for (const it of ((p && p.items) || [])) {
-      if (it.verdict === 'draft') items.push({ ...it, src: 'today', line: `${it.whyLine} [draft ready]` });
-      else if (it.verdict === 'park') items.push({ ...it, src: 'today', line: parkLine(it) });
-      else if (it.verdict === 'attention') items.push({ ...it, src: 'today', line: `${it.whyLine} [needs your judgment]` });
+      if (it.verdict === 'draft') items.push({ ...it, src: 'today', builtAt, line: `${it.whyLine} [draft ready]` });
+      else if (it.verdict === 'park') items.push({ ...it, src: 'today', builtAt, line: parkLine(it) });
+      else if (it.verdict === 'attention') items.push({ ...it, src: 'today', builtAt, line: `${it.whyLine} [needs your judgment]` });
     }
   } catch (_) { /* brief store down — queue still serves backlog */ }
   try {
@@ -1371,8 +1409,9 @@ async function runQueue({ page } = {}, tenant = TENANT) {
     const parkLine = (it) => (it.parkDate && it.parkDate <= new Date().toISOString().slice(0, 10))
       ? `their own window (${it.parkDate}) has PASSED — reach out now, natural opening [draft in dossier]`
       : `${it.whyLine} → propose park ${it.parkDate || '?'}`;
-    for (const it of pend.filter((i) => i.verdict === 'reopen')) items.push({ ...it, src: 'backlog', line: `${it.whyLine} (${it.quietDays}d quiet)${it.draftText ? ' [draft ready]' : ''}` });
-    for (const it of pend.filter((i) => i.verdict === 'park')) items.push({ ...it, src: 'backlog', line: parkLine(it) });
+    const builtAt = (p && p.createdAt) || null; // for the live re-check's cease-waiver comparison
+    for (const it of pend.filter((i) => i.verdict === 'reopen')) items.push({ ...it, src: 'backlog', builtAt, line: `${it.whyLine} (${it.quietDays}d quiet)${it.draftText ? ' [draft ready]' : ''}` });
+    for (const it of pend.filter((i) => i.verdict === 'park')) items.push({ ...it, src: 'backlog', builtAt, line: parkLine(it) });
   } catch (_) { /* ignore */ }
   if (!items.length) return { text: 'The queue is empty — nothing actionable right now (parked people surface on their dates).' };
   // Dedupe by name (a person can appear in both stores — today's view wins).

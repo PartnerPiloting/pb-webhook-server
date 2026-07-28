@@ -73,6 +73,12 @@ const LEADS_FIELDS = [
     type: 'date',
     description: "Engine-written follow-up reconnect date (the 'ping them ~this date' promise). The follow-up sweep (wingguy_followup_sweep) surfaces the lead at DEFERRAL DUE tier once this arrives, and parks them from cadence nudges until then. Written by wingguy_set_reconnect on propose-then-confirm — not hand-typed. NOT the legacy Follow-Up Date. Added 2026-07-23; all client bases + template backfilled same day.",
     options: { dateFormat: { name: 'iso', format: 'YYYY-MM-DD' } }
+  },
+  {
+    name: 'Cease FUP At',
+    type: 'dateTime',
+    description: "Engine-written timestamp of the moment Cease FUP was set (wingguy_cease_followups). The waiver line: a reply the lead was owed BEFORE this moment is considered deliberately let go and stops surfacing in follow-ups; an inbound NEWER than this still surfaces (a reply is a reply). Cleared when the lead is re-opened. Blank on leads ceased before the rollout = legacy always-surface behavior. Added 2026-07-28.",
+    options: { dateFormat: { name: 'iso', format: 'YYYY-MM-DD' }, timeFormat: { name: '24hour', format: 'HH:mm' }, timeZone: 'utc' }
   }
 ];
 
