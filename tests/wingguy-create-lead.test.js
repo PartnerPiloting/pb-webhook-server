@@ -235,6 +235,45 @@ function stubBase({ existing = [] } = {}) {
     await acheck('no enrich signal when the lead has no record', () => assert.ok(!res.enrichContact, JSON.stringify(res.enrichContact)));
   }
 
+  // ── Bognar/Byrne regression (2026-07-28): a slug that's a PREFIX of an existing slug is a DIFFERENT person ──
+  // The old dedup was Airtable SEARCH() (containment), so /in/andrewdb matched /in/andrewdbyrne, the
+  // create was refused, and the caller was handed Byrne's record. This stub is formula-aware: the
+  // SEARCH prefilter legitimately RETURNS Byrne (his URL contains "andrewdb") — the fix must reject
+  // him on exact canonical-slug verify, then fail the exact-name check too, and CREATE Bognar.
+  console.log('\ncreateLead — prefix slug must NOT dedupe (Bognar vs Byrne):');
+  {
+    const byrne = { id: 'recByrne', fields: { 'First Name': 'Andrew', 'Last Name': 'Byrne', 'LinkedIn Profile URL': 'https://www.linkedin.com/in/andrewdbyrne' } };
+    const created = [];
+    const table = () => ({
+      select: ({ filterByFormula = '' } = {}) => ({ firstPage: async () => {
+        if (filterByFormula.includes('SEARCH(')) {
+          return (filterByFormula.includes('"andrewdb"') || filterByFormula.includes('"andrewdbyrne"')) ? [byrne] : [];
+        }
+        if (filterByFormula.includes('{First Name}')) {
+          return (filterByFormula.includes('"andrew"') && filterByFormula.includes('"byrne"')) ? [byrne] : [];
+        }
+        return [];
+      } }),
+      create: async (rows) => { const recs = rows.map((r, i) => ({ id: `recNew${created.length + i + 1}`, fields: { ...r.fields } })); created.push(...recs); return recs; },
+    });
+    const orig = clientService.getClientBase;
+    clientService.getClientBase = () => table;
+    try {
+      // Call A from the bug brief: must now CREATE, not return Byrne.
+      const r = await wingguyLeads.createLead('baseX', { firstName: 'Andrew', lastName: 'Bognar', email: 'andrew.bognar@gmail.com', linkedinUrl: 'https://www.linkedin.com/in/andrewdb/' });
+      await acheck('creates a NEW record (no false dedup)', () => assert.ok(r.ok && r.created && !r.exists, JSON.stringify(r)));
+      await acheck('does not hand back Byrne', () => assert.notStrictEqual(r.leadRecordId, 'recByrne'));
+
+      // The SAME slug in any spelling IS Byrne — format variants must still dedupe to his record.
+      const dup = await wingguyLeads.createLead('baseX', { firstName: 'Andrew', lastName: 'Byrne', linkedinUrl: ' HTTP://au.linkedin.com/in/AndrewDByrne?trk=x ' });
+      await acheck('format variants still dedupe to the existing record', () => assert.ok(dup.ok && dup.exists && dup.leadRecordId === 'recByrne', JSON.stringify(dup)));
+
+      // No URL at all → exact-name dedup still works as designed.
+      const byName = await wingguyLeads.createLead('baseX', { firstName: 'Andrew', lastName: 'Byrne' });
+      await acheck('URL omitted still dedupes on exact name', () => assert.ok(byName.ok && byName.exists && byName.leadRecordId === 'recByrne', JSON.stringify(byName)));
+    } finally { clientService.getClientBase = orig; }
+  }
+
   console.log(failures ? `\n❌ ${failures} test(s) failed` : '\n✅ all create-lead tests passed');
   process.exit(failures ? 1 : 0);
 })().catch((e) => { console.error('FATAL', e); process.exit(1); });

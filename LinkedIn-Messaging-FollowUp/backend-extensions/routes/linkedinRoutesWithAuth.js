@@ -3,6 +3,7 @@ const multer = require('multer');
 const { createLogger } = require('../../../utils/contextLogger');
 const { logNotesChange } = require('../../../utils/notesAuditLogger');
 const { stripCredentialSuffixes } = require('../../../utils/nameNormalizer');
+const { canonicalLinkedinSlug, slugPrefilterFormula, findExactSlugMatch } = require('../../../utils/linkedinCanonical');
 const geminiConfig = require('../../../config/geminiClient');
 const logger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'api' });
 
@@ -1071,36 +1072,25 @@ router.get('/leads/by-linkedin-url', async (req, res) => {
     
     logger.info('LinkedIn Routes: Searching for lead with LinkedIn URL:', url);
 
-    // Normalize the URL (remove trailing slash, protocol, www)
-    // This matches the same normalization used in NewLeadForm.js duplicate checking
-    let normalizedUrl = url;
-    if (typeof normalizedUrl === 'string') {
-      // Remove trailing slash
-      normalizedUrl = normalizedUrl.replace(/\/$/, '');
-      // Remove protocol and www for comparison (match NewLeadForm normalization)
-      const urlPattern = normalizedUrl.replace(/^https?:\/\/(www\.)?/, '');
-      
-      logger.info('LinkedIn Routes: URL after normalization:', normalizedUrl);
-      logger.info('LinkedIn Routes: URL pattern (no protocol/www):', urlPattern);
-      
-      // Use SEARCH() function like /leads/search endpoint does
-      // This does substring/partial matching which is more flexible than exact equality
-      // Match the same approach used in duplicate checking
-      const filterFormula = `SEARCH(LOWER("${urlPattern.replace(/"/g, '\\"')}"), LOWER({LinkedIn Profile URL})) > 0`;
-      
-      logger.info('LinkedIn Routes: Filter formula:', filterFormula);
-      
-      // Search for the lead by LinkedIn Profile URL using SEARCH (substring match)
-      const records = await airtableBase('Leads').select({
-        maxRecords: 1,
-        filterByFormula: filterFormula
+    // Exact canonical-slug match (Bognar/Byrne, 2026-07-28): this endpoint RESOLVES a person, so a
+    // substring match ("andrewdb" hitting ".../in/andrewdbyrne") hands back the wrong human. The
+    // SEARCH formula is only a candidate prefilter; the decision is strict slug equality.
+    const slug = canonicalLinkedinSlug(url);
+    if (!slug) {
+      return res.status(400).json({ error: 'Not a recognisable LinkedIn profile URL' });
+    }
+    {
+      const candidates = await airtableBase('Leads').select({
+        maxRecords: 50,
+        filterByFormula: slugPrefilterFormula(slug)
       }).firstPage();
-      
+      const records = findExactSlugMatch(candidates, slug);
+
       logger.info('LinkedIn Routes: Airtable query completed');
       logger.info('LinkedIn Routes: Records found:', records ? records.length : 0);
 
       if (!records || records.length === 0) {
-        logger.info('LinkedIn Routes: No lead found with LinkedIn URL:', normalizedUrl);
+        logger.info('LinkedIn Routes: No lead found with LinkedIn URL:', url);
         logger.info('LinkedIn Routes: Client base ID:', req.client?.airtableBaseId);
         return res.status(404).json({ error: 'Lead not found with that LinkedIn URL' });
       }
@@ -1175,16 +1165,18 @@ router.get('/leads/lookup', async (req, res) => {
     const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedQuery);
     
     if (isLinkedInUrl) {
-      // Extract profile slug for matching
-      const slugMatch = trimmedQuery.match(/linkedin\.com\/in\/([^\/\?]+)/i);
-      const slug = slugMatch ? slugMatch[1].toLowerCase() : null;
-      
+      // Exact canonical-slug match (Bognar/Byrne, 2026-07-28): a URL query names ONE person, so the
+      // old substring match could resolve to someone whose slug merely contains this one. SEARCH is
+      // only a prefilter; the decision is strict slug equality. Name search below stays loose.
+      const slug = canonicalLinkedinSlug(trimmedQuery);
+
       if (slug) {
         lookupMethod = 'linkedin_url';
-        const records = await airtableBase('Leads').select({
-          filterByFormula: `SEARCH("${slug}", LOWER({LinkedIn Profile URL}))`,
-          maxRecords: 5
+        const candidates = await airtableBase('Leads').select({
+          filterByFormula: slugPrefilterFormula(slug),
+          maxRecords: 50
         }).firstPage();
+        const records = findExactSlugMatch(candidates, slug).slice(0, 5);
         
         leads = records.map(r => ({
           id: r.id,

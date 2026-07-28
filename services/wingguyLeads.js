@@ -7,34 +7,33 @@
 // (newline-separated) conventions used by the Portal and the inbound-email self-healer.
 
 const clientService = require('./clientService');
+const { canonicalLinkedinSlug, slugPrefilterFormula, findExactSlugMatch, escapeFormulaText } = require('../utils/linkedinCanonical');
 
 const EMAIL_SHAPE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-// Pull the linkedin.com/in/<slug> handle out of a profile URL (lowercased). Same shape the Portal
-// enrich (routes/wingguyRoutes.js → enrichProfileFromPortal) matches on — the slug is the strongest
-// dedup key we have for a person.
-function linkedinSlug(url) {
-  const m = String(url || '').match(/linkedin\.com\/in\/([^/?#]+)/i);
-  return m ? m[1].toLowerCase() : '';
-}
 
 // Find an EXISTING lead record for this person, mirroring enrichProfileFromPortal's match order:
 // LinkedIn slug first (strongest), then first+last name. Returns the Airtable record or null. This is
 // the dedup guard for createLead — never make a second record for someone already in the base.
+//
+// DEDUP IS STRICT EQUALITY on the canonical slug (Bognar/Byrne, 2026-07-28): SEARCH() is containment,
+// so "andrewdb" used to match "andrewdbyrne" and refuse a legitimate new lead. The SEARCH formula
+// survives only as a prefilter; the real decision is canonicalLinkedinSlug equality. Same rule for the
+// name fallback — exact first+last, never substring ("Ali" must not dedupe against "Alison").
 async function findLeadRecord(base, { linkedinUrl = '', firstName = '', lastName = '' } = {}) {
-  const slug = linkedinSlug(linkedinUrl);
+  const slug = canonicalLinkedinSlug(linkedinUrl);
   if (slug) {
-    const bySlug = await base('Leads').select({
-      filterByFormula: `SEARCH("${slug}", LOWER({LinkedIn Profile URL}))`,
-      maxRecords: 1,
+    const candidates = await base('Leads').select({
+      filterByFormula: slugPrefilterFormula(slug),
+      maxRecords: 50,
     }).firstPage();
-    if (bySlug.length) return bySlug[0];
+    const exact = findExactSlugMatch(candidates, slug);
+    if (exact.length) return exact[0];
   }
   const first = String(firstName || '').trim().toLowerCase();
   const last = String(lastName || '').trim().toLowerCase();
   if (first && last) {
     const byName = await base('Leads').select({
-      filterByFormula: `AND(SEARCH("${first}", LOWER({First Name})), SEARCH("${last}", LOWER({Last Name})))`,
+      filterByFormula: `AND(LOWER(TRIM({First Name})) = "${escapeFormulaText(first)}", LOWER(TRIM({Last Name})) = "${escapeFormulaText(last)}")`,
       maxRecords: 1,
     }).firstPage();
     if (byName.length) return byName[0];

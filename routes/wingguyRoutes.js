@@ -32,6 +32,7 @@ const { createBookingEvent } = require('../services/wingguyCalendar');
 const { runWingguyChatTurn } = require('../services/wingguyChat');
 const wingguyLeads = require('../services/wingguyLeads');
 const clientService = require('../services/clientService');
+const { canonicalLinkedinSlug, slugPrefilterFormula, findExactSlugMatch } = require('../utils/linkedinCanonical');
 const wingguyStore = require('../services/wingguyRulesStore');
 
 const logger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'wingguy' });
@@ -272,20 +273,22 @@ async function enrichProfileFromPortal(req, profile = {}) {
   try {
     if (!req.client || !req.client.airtableBaseId) return profile;
     const url = String(profile.profileUrl || '');
-    const slugMatch = url.match(/linkedin\.com\/in\/([^/?#]+)/i);
+    // Exact canonical-slug match only (Bognar/Byrne, 2026-07-28): a substring match here would enrich
+    // the draft with the WRONG person's CRM record. The SEARCH formula is just a prefilter.
+    const slug = canonicalLinkedinSlug(url);
     const name = String(profile.name || '').trim();
-    if (!slugMatch && !name) return profile;
+    if (!slug && !name) return profile;
 
     const base = clientService.getClientBase(req.client.airtableBaseId);
     if (!base) return profile;
 
     let records = [];
-    if (slugMatch) {
-      const slug = slugMatch[1].toLowerCase();
-      records = await base('Leads').select({
-        filterByFormula: `SEARCH("${slug}", LOWER({LinkedIn Profile URL}))`,
-        maxRecords: 3,
+    if (slug) {
+      const candidates = await base('Leads').select({
+        filterByFormula: slugPrefilterFormula(slug),
+        maxRecords: 50,
       }).firstPage();
+      records = findExactSlugMatch(candidates, slug).slice(0, 3);
     }
     if (!records.length && name) {
       const parts = name.split(/\s+/);
@@ -297,7 +300,7 @@ async function enrichProfileFromPortal(req, profile = {}) {
       records = await base('Leads').select({ filterByFormula: formula, maxRecords: 3 }).firstPage();
     }
     if (!records.length) {
-      logger.info(`[Wingguy] enrich: no Portal match for ${slugMatch ? slugMatch[1] : name}`);
+      logger.info(`[Wingguy] enrich: no Portal match for ${slug || name}`);
       return profile;
     }
 
