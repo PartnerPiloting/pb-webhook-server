@@ -1228,9 +1228,10 @@ const LEVERS_NOTE =
  *     a reply owed still surfaces (a reply is a reply).
  *   - A Reconnect On stamp: ANY stamp removes a backlog item (a stamped person is the deferral
  *     engine's, not the backlog's — same as the audit's own build-time gate); a FUTURE stamp also
- *     removes today items except tier 'deferral' (park means park, the Marianne rule).
- *   - An upcoming non-declined booking removes everything except today tier 'deferral' (a human
- *     stamp outranks calendar inference — same exemption as the sweep).
+ *     removes today items whatever their stored tier (park means park, the Marianne rule — the
+ *     stamp may have been rewritten since the store was built, so the LIVE field decides).
+ *   - An upcoming non-declined booking removes everything except a lead whose stamp is DUE right
+ *     now (a human stamp outranks calendar inference — same exemption as the sweep).
  */
 async function applyLiveQueueGates(items, tenant) {
   const out = { items, suppressed: { booked: 0, ceased: 0, parked: 0 } };
@@ -1316,12 +1317,20 @@ async function applyLiveQueueGates(items, tenant) {
       const g = (gates && (gates.get(it.recId) || (it.email && gates.get(String(it.email).toLowerCase())))) || null;
       if (g) {
         if (g.cease && cadenceShaped) { out.suppressed.ceased++; return false; }
+        // A FUTURE stamp drops the item regardless of its STORED tier — the tier is build-time
+        // truth and the stamp may have been (re)written since (Ashley, observed live 2026-07-28:
+        // stored tier 'deferral' from an old due stamp kept her surfacing after she was re-parked
+        // to Friday). Park means park, judged on what the field says NOW.
         if ((it.src === 'backlog' && g.reconnectAny) ||
-            (it.src === 'today' && it.tier !== 'deferral' && g.reconnectFuture)) {
+            (it.src === 'today' && g.reconnectFuture)) {
           out.suppressed.parked++; return false;
         }
       }
-      if (booked && !(it.src === 'today' && it.tier === 'deferral')) {
+      // Due-stamp exemption from booking suppression, likewise judged LIVE (stored tier only as
+      // the fallback when the gate read failed): a stamp that is due today/past outranks the
+      // calendar — worst case the chat reports "already booked, clear the stamp".
+      const dueStamp = g ? (g.reconnectAny && !g.reconnectFuture) : (it.src === 'today' && it.tier === 'deferral');
+      if (booked && !dueStamp) {
         const email = String(it.email || '').toLowerCase();
         const full = String(it.name || '').trim().toLowerCase();
         const emailHit = !!email && booked.bookedEmails.has(email);
