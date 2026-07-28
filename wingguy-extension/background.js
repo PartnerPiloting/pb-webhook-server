@@ -90,9 +90,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
   
-  // Quick update lead with conversation
+  // Quick update lead with conversation (email/phone: contact details the lead proffered in the
+  // thread — the server treats them as the new primary, folding a displaced email into Alt Emails)
   if (message.type === 'QUICK_UPDATE') {
-    handleQuickUpdate(message.leadId, message.content, message.section)
+    handleQuickUpdate(message.leadId, message.content, message.section, { email: message.email, phone: message.phone })
       .then(result => sendResponse({ success: true, data: result }))
       .catch(error => sendResponse({ success: false, error: error.message }));
     return true;
@@ -585,19 +586,23 @@ async function handleLookupLead(linkedinUrl) {
 }
 
 // Quick update lead with conversation
-async function handleQuickUpdate(leadId, content, section = 'linkedin') {
+async function handleQuickUpdate(leadId, content, section = 'linkedin', extras = {}) {
   const apiBase = await getApiBase();
   const headers = await getAuthHeaders();
-  
+
   const url = `${apiBase}/leads/${leadId}/quick-update`;
-  
+
+  // undefined email/phone drop out of JSON.stringify — the server only touches a field
+  // whose key actually arrives, so absent extras leave the record's contact info alone.
   const response = await fetch(url, {
     method: 'PATCH',
     headers,
     body: JSON.stringify({
       section,
       content,
-      parseRaw: true
+      parseRaw: true,
+      email: extras.email,
+      phone: extras.phone
     })
   });
   

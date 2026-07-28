@@ -978,6 +978,47 @@
     return out.join('\n');
   }
 
+  // Contact details the lead PROFFERS in the thread ("hit me up dw@... 0447 693 465") belong on the
+  // record, not just buried in Notes — Deon's mobile never made it to the Portal (2026-07-28). Guy's
+  // rule: a self-given detail WINS over what's stored (the server folds a displaced primary email
+  // into {Alt Emails}, so nothing is lost; a mistyped mobile is the lead's to correct). Only the
+  // LEAD's messages are scanned — the coach's own signature must never become the lead's contact
+  // info. Thread runs oldest→newest, so a later self-correction overrides an earlier mention.
+  function extractProfferedContact(thread, leadFirst, leadLast) {
+    let email = '';
+    let phone = '';
+    for (const m of thread) {
+      const sender = String(m.sender || '').toLowerCase().trim();
+      const isLead = sender &&
+        ((leadFirst && sender.includes(leadFirst)) || (leadLast && leadLast.length > 2 && sender.includes(leadLast)));
+      if (!isLead) continue;
+      // Strip URLs first — profile links carry 9-digit slugs that would read as phone numbers.
+      const text = String(m.text || '').replace(/(?:https?:\/\/|www\.)\S+/gi, ' ');
+      const emails = text.match(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/gi);
+      if (emails && emails.length) email = emails[emails.length - 1];
+      for (const c of (text.match(/[+(]?\d[\d ()-]{6,}\d/g) || [])) {
+        const cand = c.trim();
+        const digits = cand.replace(/\D/g, '');
+        // 9–15 digits kills dates/years; the +/0/(-or-separators shape kills bare IDs and slugs.
+        if (digits.length >= 9 && digits.length <= 15 && (/^[+0(]/.test(cand) || /[ ()-]/.test(cand))) phone = cand;
+      }
+    }
+    return { email, phone };
+  }
+  // Which proffered details actually differ from what's stored (skip no-op churn on every capture).
+  function profferedExtras(thread, leadFirst, leadLast, storedEmail, storedPhone) {
+    const digitsOf = (s) => String(s || '').replace(/\D/g, '');
+    const p = extractProfferedContact(thread, leadFirst, leadLast);
+    const extras = {};
+    if (p.email && p.email.toLowerCase() !== String(storedEmail || '').trim().toLowerCase()) extras.email = p.email;
+    if (p.phone && digitsOf(p.phone) !== digitsOf(storedPhone)) extras.phone = p.phone;
+    return extras;
+  }
+  const extrasNote = (extras) => {
+    const got = [extras.email && 'email', extras.phone && 'mobile'].filter(Boolean).join(' + ');
+    return got ? ` (grabbed their ${got})` : '';
+  };
+
   let captureTimer = null;
   // The element the latest send came from (send button / composer). The capture pins to ITS conversation
   // — by capture time LinkedIn has often re-rendered the composer (detaching lastFocusedEditable), and
@@ -1123,10 +1164,12 @@
         return;
       }
 
-      await bg({ type: 'QUICK_UPDATE', leadId: lead.id, content, section: 'linkedin' });
+      const extras = profferedExtras(thread, leadFirst, leadLast, lead.email, lead.phone);
+      if (extras.email || extras.phone) console.log('[Wingguy] lead proffered contact details →', extras);
+      await bg({ type: 'QUICK_UPDATE', leadId: lead.id, content, section: 'linkedin', ...extras });
       console.log(`[Wingguy] captured ${thread.length} messages to ${who}`);
       dismissCaptureRescue(); // a stale card from an earlier miss must not outlive a clean save
-      showCaptureToast(`✓ Saved ${thread.length} messages to ${who}`);
+      showCaptureToast(`✓ Saved ${thread.length} messages to ${who}${extrasNote(extras)}`);
 
       // Learn-from-my-edit: if this send follows a Wingguy insert, pair the AI's draft with the
       // message that actually went out (the newest message in the thread, if it's ours). Fire-and-
@@ -1290,7 +1333,11 @@
             const slug = String(l.linkedinProfileUrl || '').replace(/^https?:\/\/(www\.)?linkedin\.com/, '');
             const sub = [l.company, slug].filter(Boolean).join(' · ');
             if (sub) row.appendChild(el('div', 'wingguy-rescue-row-sub', sub));
-            row.addEventListener('click', () => setSelected({ id: l.id, name }, row));
+            row.addEventListener('click', () => setSelected({
+              id: l.id, name,
+              firstName: l.firstName || '', lastName: l.lastName || '',
+              email: l.email || '', phone: l.phone || '',
+            }, row));
             results.appendChild(row);
           }
         };
@@ -1318,9 +1365,16 @@
           saveBtn.disabled = true;
           saveBtn.textContent = 'Saving…';
           try {
-            await bg({ type: 'QUICK_UPDATE', leadId: selected.id, content: formatThreadForApi(thread), section: 'linkedin' });
-            console.log(`[Wingguy] rescue-saved ${thread.length} messages to ${selected.name}`);
-            card.replaceChildren(el('div', 'wingguy-rescue-done', `✓ Saved ${thread.length} message${thread.length === 1 ? '' : 's'} to ${selected.name}`));
+            const extras = profferedExtras(
+              thread,
+              selected.firstName.toLowerCase().trim(),
+              selected.lastName.toLowerCase().trim(),
+              selected.email,
+              selected.phone
+            );
+            await bg({ type: 'QUICK_UPDATE', leadId: selected.id, content: formatThreadForApi(thread), section: 'linkedin', ...extras });
+            console.log(`[Wingguy] rescue-saved ${thread.length} messages to ${selected.name}`, extras);
+            card.replaceChildren(el('div', 'wingguy-rescue-done', `✓ Saved ${thread.length} message${thread.length === 1 ? '' : 's'} to ${selected.name}${extrasNote(extras)}`));
             setTimeout(dismissCaptureRescue, 2500);
           } catch (err) {
             saveBtn.disabled = false;
