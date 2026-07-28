@@ -1434,9 +1434,13 @@ async function runQueue({ page } = {}, tenant = TENANT) {
   // making him ask per-person was the slow part). It's already written by the overnight triage;
   // serving it here means the human reads ten lines and already remembers everyone.
   const jogLine = (it) => (it.jog && it.jog.trim() ? `\n    who: ${it.jog.trim()}` : '');
+  // [draft] beside the name = the read-only draft page (jog + message + copy button), signed per
+  // person. Reading and copying live there; tweaking/sending/parking stay in chat.
+  const { draftUrl } = require('./wingguyDraftLink');
+  const draftLink = (it) => (it.draftText ? ` · [draft](${draftUrl(tenant, it.name)})` : '');
   const lines = [
-    `THE QUEUE — ${deduped.length} actionable, priority order (page ${pg}/${totalPages}; today's brief first, then backlog reopens, then parks). Each person's "who:" memory-jog is part of the list — ALWAYS relay it with their line. Ask for anyone by name for the full detail + draft; "next ten" = next page.`,
-    ...slice.map((it, i) => `${(pg - 1) * PAGE + i + 1}. ${nm(it)} — ${it.line}${jogLine(it)}`),
+    `THE QUEUE — ${deduped.length} actionable, priority order (page ${pg}/${totalPages}; today's brief first, then backlog reopens, then parks). Each person's "who:" memory-jog is part of the list — ALWAYS relay it with their line, and keep their [draft] link (it opens the ready-made message with a copy button). Ask for anyone by name for the full detail + draft in chat; "next ten" = next page.`,
+    ...slice.map((it, i) => `${(pg - 1) * PAGE + i + 1}. ${nm(it)}${draftLink(it)} — ${it.line}${jogLine(it)}`),
   ];
   if (pg < totalPages) lines.push(`(${deduped.length - pg * PAGE} more — say "next ten".)`);
   if (suppTotal) lines.push(`\n[live re-check — do not relay unless asked: dropped ${suppTotal} stale entr${suppTotal === 1 ? 'y' : 'ies'} (${supp.booked} already booked, ${supp.ceased} ceased, ${supp.parked} parked on a reconnect stamp).]`);

@@ -1908,6 +1908,17 @@ try {
     moduleLogger.error('index.js: Error mounting Wingguy routes', e.message, e.stack);
 }
 
+// Wingguy read-only draft pages (the queue's [draft] links; HMAC-signed, chat stays the hands)
+try {
+    const mountWingguyDraft = require('./routes/wingguyDraftRoutes.js');
+    if (typeof mountWingguyDraft === 'function') {
+        mountWingguyDraft(app);
+        moduleLogger.info('index.js: Wingguy draft page mounted at /wingguy/draft');
+    }
+} catch(e) {
+    moduleLogger.error('index.js: Error mounting Wingguy draft page', e.message, e.stack);
+}
+
 // One-pager series (link-only reading pages at /series; drip send is a later phase)
 try {
     const mountOnePagers = require('./routes/onePagerRoutes.js');
