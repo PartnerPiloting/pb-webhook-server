@@ -711,8 +711,9 @@ async function computeFollowupSweep({ window_days } = {}, tenant = TENANT) {
             // Response-aware (Celeste, 2026-07-24): a DECLINED invite is NOT a booked meeting —
             // her 12 Jul decline was silencing her whole pipeline. 'needsAction' still counts as
             // booked on purpose: agreed-in-chat leads often never click Accept, and un-suppressing
-            // them re-creates the reply-owed false positives. The safety net for an unanswered
-            // pencil-in invite is a Reconnect On checkpoint stamp — immune below.
+            // them re-creates the reply-owed false positives. A checkpoint stamp on an unanswered
+            // pencil-in invite is silenced only while the event sits ahead — once the event date
+            // passes unanswered, the due stamp surfaces (see the every-tier suppression below).
             if (String(a.responseStatus || '').toLowerCase() === 'declined') continue;
             bookedEmails.add(String(a.email).toLowerCase());
           }
@@ -720,9 +721,10 @@ async function computeFollowupSweep({ window_days } = {}, tenant = TENANT) {
         }
         const kept = [];
         for (const s of surfaced) {
-          // A human-set reconnect date OUTRANKS calendar inference: a due stamp always surfaces,
-          // meeting or no meeting — worst case the chat reports "already booked, clear the stamp".
-          if (s.tier === 'deferral') { kept.push(s); continue; }
+          // A real upcoming booking silences EVERY tier, due stamps included (Guy 2026-07-29,
+          // Rosh Java: a due "check back" note on an already-rebooked lead is noise). The stamp
+          // is NOT cleared — if the booking is cancelled or passes, it stops matching the forward
+          // window and the due note surfaces again, so the safety net survives, just quieter.
           const email = (s.lead.email || '').toLowerCase();
           const full = `${s.lead.first} ${s.lead.last}`.trim().toLowerCase();
           const emailHit = !!email && bookedEmails.has(email);
@@ -1112,7 +1114,7 @@ const TOOL_DEFS = [
   {
     name: 'wingguy_set_reconnect',
     description:
-      'Stamp (or clear) a lead\'s reconnect date — the "ping them ~this date" promise. Use it when a lead defers to a specific time ("I\'m away, back mid-August, chat then" / "circle back next quarter"): once you and the human agree the date, call this to write it. The follow-up sweep then surfaces that lead at the TOP of the brief (DEFERRAL DUE tier) the day the date arrives, and PARKS them from "went quiet" nudges until then — so a named promise lands on its day instead of getting lost. Find the lead by lead_email (preferred) or lead_name. Pass reconnect_on as an ISO date (YYYY-MM-DD); OMIT it (or pass empty) to CLEAR a reconnect date. PROPOSE-THEN-CONFIRM: agree the date with the human first, then call this — it writes immediately. Writes ONLY the engine\'s dedicated Reconnect On field (never the legacy Follow-Up Date).',
+      'Stamp (or clear) a lead\'s reconnect date — the "ping them ~this date" promise. Use it when a lead defers to a specific time ("I\'m away, back mid-August, chat then" / "circle back next quarter"): once you and the human agree the date, call this to write it. The follow-up sweep then surfaces that lead at the TOP of the brief (DEFERRAL DUE tier) the day the date arrives, and PARKS them from "went quiet" nudges until then — so a named promise lands on its day instead of getting lost. EXCEPTION: a real upcoming calendar booking with the lead silences even a due stamp (nothing is owed while a meeting is locked in); the stamp is kept, and surfaces once the booking is cancelled or has passed. Find the lead by lead_email (preferred) or lead_name. Pass reconnect_on as an ISO date (YYYY-MM-DD); OMIT it (or pass empty) to CLEAR a reconnect date. PROPOSE-THEN-CONFIRM: agree the date with the human first, then call this — it writes immediately. Writes ONLY the engine\'s dedicated Reconnect On field (never the legacy Follow-Up Date).',
     zodSchema: {
       lead_email: z.string().optional().describe('The lead\'s email address (preferred — unambiguous).'),
       lead_name: z.string().optional().describe('The lead\'s name (first, or "First Last") — used if no email. Matched as a case-insensitive substring; if several leads match you\'ll be asked which.'),
@@ -1363,11 +1365,10 @@ async function applyLiveQueueGates(items, tenant) {
           out.suppressed.parked++; return false;
         }
       }
-      // Due-stamp exemption from booking suppression, likewise judged LIVE (stored tier only as
-      // the fallback when the gate read failed): a stamp that is due today/past outranks the
-      // calendar — worst case the chat reports "already booked, clear the stamp".
-      const dueStamp = g ? (g.reconnectAny && !g.reconnectFuture) : (it.src === 'today' && it.tier === 'deferral');
-      if (booked && !dueStamp) {
+      // A real upcoming booking silences everything, due stamps included (Guy 2026-07-29, the
+      // Rosh Java rule change — was "a due stamp outranks the calendar"). The stamp survives on
+      // the record, so a cancelled or passed booking lets the due note surface again.
+      if (booked) {
         const email = String(it.email || '').toLowerCase();
         const full = String(it.name || '').trim().toLowerCase();
         const emailHit = !!email && booked.bookedEmails.has(email);
