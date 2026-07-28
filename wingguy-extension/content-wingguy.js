@@ -123,6 +123,11 @@
   }
   // Show the launcher / accept the /wg trigger on profiles AND on the messaging surface.
   function shouldShowLauncher() {
+    // all_frames injects this script into EVERY same-origin iframe — including little widget/ad
+    // iframes in the right rail — and topLocation() makes each of them think it's on the messaging
+    // page, so each grew its own launcher (second Wingguy button inside a Promoted ad, 2026-07-28).
+    // A sub-frame copy only ever owns the surface when it IS the BPR /preload/ carrier frame.
+    if (window !== window.top && !/^\/preload\//.test(location.pathname)) return false;
     if (bprFrameOwnsSurface()) return false;
     return isProfilePage() || isMessagingPage() || hasOpenMessageThread();
   }
