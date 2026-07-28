@@ -1147,7 +1147,7 @@ const TOOL_DEFS = [
   {
     name: 'wingguy_queue',
     description:
-      'THE ACTION QUEUE — THE FIRST CALL for "show me my follow-ups" / "what\'s due" / "who do I owe" / "prep me for today". ONE ranked, pageable to-do list (ten per page), every line an ACTION waiting for a yes: today\'s due items first (drafts ready / park proposals / needs-eyes), then backlog reopens (drafts ready), then backlog parks. Instant — merges the prepared stores at serve time. Work it top-down: name a person → serve their jog + draft (from wingguy_followup_brief for today\'s people, wingguy_backlog name=... for backlog people; DEEP memory — "any emails? how did the call go? what did we agree?" — comes INSTANTLY from wingguy_dossier) → tweak → push/copy on approval → they drop off. "Next ten" = page 2, 3… DELIBERATELY ABSENT (pure action, no status): parked-until-date people (they surface on their day), nothing-owed people, anything already done — relay status info ONLY if the human explicitly asks ("what\'s parked?", "was X checked?").',
+      'THE ACTION QUEUE — THE FIRST CALL for "show me my follow-ups" / "what\'s due" / "who do I owe" / "prep me for today". ONE ranked, pageable to-do list (ten per page), every line an ACTION waiting for a yes: today\'s due items first (drafts ready / park proposals / needs-eyes), then backlog reopens (drafts ready), then backlog parks. Fast (~1-2s) — merges the prepared stores at serve time, then re-checks live gates (Cease FUP, Reconnect On stamps, upcoming bookings) so a stale store entry never surfaces. Work it top-down: name a person → serve their jog + draft (from wingguy_followup_brief for today\'s people, wingguy_backlog name=... for backlog people; DEEP memory — "any emails? how did the call go? what did we agree?" — comes INSTANTLY from wingguy_dossier) → tweak → push/copy on approval → they drop off. "Next ten" = page 2, 3… DELIBERATELY ABSENT (pure action, no status): parked-until-date people (they surface on their day), nothing-owed people, anything already done — relay status info ONLY if the human explicitly asks ("what\'s parked?", "was X checked?").',
     zodSchema: {
       page: z.number().optional().describe('Page number, 10 per page (default 1). "next ten" = the next page.'),
     },
@@ -1216,6 +1216,126 @@ const LEVERS_NOTE =
  * Parked-until-date people are deliberately NOT here (they surface on their day); writeoffs and
  * checked-clears are not here (nothing owed). The morning brief = the pulse; this = the grind.
  */
+/**
+ * Live gate re-check at queue serve time (Sam Noble / Nita / Mirko leak, 2026-07-28): the backlog
+ * worklist is a build-time snapshot and the brief can be ~26h old, so a cease, a reconnect stamp,
+ * or a booking made AFTER either store was built still surfaced — and every false positive teaches
+ * the human the list can't be trusted. One Airtable read (only the queue's own leads) + one
+ * calendar forward read, in parallel; each independently best-effort — a failed check serves that
+ * dimension unfiltered rather than breaking the queue. Semantics mirror classifyLead + the sweep's
+ * calendar cross-check, not new policy:
+ *   - Cease FUP silences cadence-shaped items only (all backlog items + today tier 'cadence');
+ *     a reply owed still surfaces (a reply is a reply).
+ *   - A Reconnect On stamp: ANY stamp removes a backlog item (a stamped person is the deferral
+ *     engine's, not the backlog's — same as the audit's own build-time gate); a FUTURE stamp also
+ *     removes today items except tier 'deferral' (park means park, the Marianne rule).
+ *   - An upcoming non-declined booking removes everything except today tier 'deferral' (a human
+ *     stamp outranks calendar inference — same exemption as the sweep).
+ */
+async function applyLiveQueueGates(items, tenant) {
+  const out = { items, suppressed: { booked: 0, ceased: 0, parked: 0 } };
+  try {
+    const clientService = require('./clientService');
+    const coach = await clientService.getClientById(tenant);
+    if (!coach || !coach.airtableBaseId) return out;
+
+    // Coach's civil "today" as UTC midnight — same day-boundary convention as the sweep.
+    let todayMidMs;
+    try {
+      const { DateTime } = require('luxon');
+      const local = DateTime.fromMillis(Date.now(), { zone: coach.timezone || 'UTC' });
+      if (!local.isValid) throw new Error('invalid zone');
+      todayMidMs = Date.UTC(local.year, local.month - 1, local.day);
+    } catch (_) {
+      const td = new Date();
+      todayMidMs = Date.UTC(td.getUTCFullYear(), td.getUTCMonth(), td.getUTCDate());
+    }
+
+    const gatePromise = (async () => {
+      const base = clientService.getClientBase(coach.airtableBaseId);
+      const esc = (s) => String(s).replace(/"/g, '\\"');
+      const clauses = [];
+      for (const it of items) {
+        if (it.recId) clauses.push(`RECORD_ID() = "${esc(it.recId)}"`);
+        else if (it.email) clauses.push(`LOWER({Email}) = "${esc(String(it.email).toLowerCase())}"`);
+      }
+      if (!clauses.length) return null;
+      const formula = `OR(${clauses.join(', ')})`;
+      let recs;
+      try {
+        recs = await base('Leads').select({ filterByFormula: formula, fields: ['Email', 'Cease FUP', 'Reconnect On'] }).all();
+      } catch (e) {
+        // Tenant base predating the Reconnect On rollout — re-read without it (sweep's fallback).
+        if (!/Reconnect On|UNKNOWN_FIELD_NAME|422|INVALID|Unknown field/i.test(e.message)) throw e;
+        recs = await base('Leads').select({ filterByFormula: formula, fields: ['Email', 'Cease FUP'] }).all();
+      }
+      const gates = new Map(); // keyed by recId AND email — queue items may carry either
+      for (const r of recs) {
+        const f = r.fields || {};
+        const dt = f['Reconnect On'] ? Date.parse(f['Reconnect On']) : NaN;
+        const g = {
+          cease: selectName(f['Cease FUP']) === 'Yes',
+          reconnectAny: !!f['Reconnect On'],
+          reconnectFuture: !Number.isNaN(dt) && dt > todayMidMs,
+        };
+        gates.set(r.id, g);
+        const em = String(f['Email'] || '').trim().toLowerCase();
+        if (em) gates.set(em, g);
+      }
+      return gates;
+    })();
+
+    const calPromise = (async () => {
+      const wingguyCalendar = require('./wingguyCalendar');
+      const fmt = (ms) => new Date(ms).toISOString().slice(0, 10);
+      const cal = await wingguyCalendar.listEventsForCoach(tenant, { date: fmt(todayMidMs), endDate: fmt(todayMidMs + CAL_LOOKAHEAD_DAYS * MS_DAY) });
+      if (!cal || !cal.ok || !Array.isArray(cal.events)) return null;
+      const bookedEmails = new Set();
+      const titleBlobs = [];
+      for (const ev of cal.events) {
+        if (ev.isFree) continue;
+        for (const a of (ev.attendees || [])) {
+          if (!a || !a.email) continue;
+          if (String(a.responseStatus || '').toLowerCase() === 'declined') continue; // declined ≠ booked
+          bookedEmails.add(String(a.email).toLowerCase());
+        }
+        titleBlobs.push(`${ev.summary || ''} ${(ev.attendees || []).map((a) => a.displayName || '').join(' ')}`.toLowerCase());
+      }
+      return { bookedEmails, titleBlobs };
+    })();
+
+    const [gateRes, calRes] = await Promise.allSettled([gatePromise, calPromise]);
+    if (gateRes.status === 'rejected') console.warn(`[wingguyMailMcp] queue gate re-check skipped: ${gateRes.reason && gateRes.reason.message}`);
+    if (calRes.status === 'rejected') console.warn(`[wingguyMailMcp] queue booking re-check skipped: ${calRes.reason && calRes.reason.message}`);
+    const gates = gateRes.status === 'fulfilled' ? gateRes.value : null;
+    const booked = calRes.status === 'fulfilled' ? calRes.value : null;
+    if (!gates && !booked) return out;
+
+    out.items = items.filter((it) => {
+      const cadenceShaped = it.src === 'backlog' || it.tier === 'cadence';
+      const g = (gates && (gates.get(it.recId) || (it.email && gates.get(String(it.email).toLowerCase())))) || null;
+      if (g) {
+        if (g.cease && cadenceShaped) { out.suppressed.ceased++; return false; }
+        if ((it.src === 'backlog' && g.reconnectAny) ||
+            (it.src === 'today' && it.tier !== 'deferral' && g.reconnectFuture)) {
+          out.suppressed.parked++; return false;
+        }
+      }
+      if (booked && !(it.src === 'today' && it.tier === 'deferral')) {
+        const email = String(it.email || '').toLowerCase();
+        const full = String(it.name || '').trim().toLowerCase();
+        const emailHit = !!email && booked.bookedEmails.has(email);
+        const nameHit = full.includes(' ') && booked.titleBlobs.some((b) => b.includes(full));
+        if (emailHit || nameHit) { out.suppressed.booked++; return false; }
+      }
+      return true;
+    });
+  } catch (e) {
+    console.warn(`[wingguyMailMcp] queue live re-check skipped: ${e.message}`);
+  }
+  return out;
+}
+
 async function runQueue({ page } = {}, tenant = TENANT) {
   const briefStore = require('./wingguyFollowupBrief');
   const backlog = require('./wingguyBacklogAudit');
@@ -1248,7 +1368,15 @@ async function runQueue({ page } = {}, tenant = TENANT) {
   if (!items.length) return { text: 'The queue is empty — nothing actionable right now (parked people surface on their dates).' };
   // Dedupe by name (a person can appear in both stores — today's view wins).
   const seen = new Set();
-  const deduped = items.filter((it) => { const k = it.name.toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; });
+  let deduped = items.filter((it) => { const k = it.name.toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; });
+  // Never serve what the live world has already answered (see applyLiveQueueGates).
+  const live = await applyLiveQueueGates(deduped, tenant);
+  deduped = live.items;
+  const supp = live.suppressed;
+  const suppTotal = supp.booked + supp.ceased + supp.parked;
+  if (!deduped.length) {
+    return { text: `The queue is empty — nothing actionable right now (parked people surface on their dates${suppTotal ? `; the live re-check dropped ${suppTotal}: ${supp.booked} already booked, ${supp.ceased} ceased, ${supp.parked} parked on a reconnect stamp` : ''}).` };
+  }
   const PAGE = 10;
   const pg = Math.max(1, parseInt(page, 10) || 1);
   const totalPages = Math.ceil(deduped.length / PAGE);
@@ -1259,6 +1387,7 @@ async function runQueue({ page } = {}, tenant = TENANT) {
     ...slice.map((it, i) => `${(pg - 1) * PAGE + i + 1}. ${nm(it)} — ${it.line}`),
   ];
   if (pg < totalPages) lines.push(`(${deduped.length - pg * PAGE} more — say "next ten".)`);
+  if (suppTotal) lines.push(`\n[live re-check — do not relay unless asked: dropped ${suppTotal} stale entr${suppTotal === 1 ? 'y' : 'ies'} (${supp.booked} already booked, ${supp.ceased} ceased, ${supp.parked} parked on a reconnect stamp).]`);
   lines.push('', LEVERS_NOTE);
   return { text: lines.join('\n') };
 }
