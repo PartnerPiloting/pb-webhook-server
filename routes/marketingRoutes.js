@@ -79,26 +79,45 @@ function notifyGuy({ id, kind, name, email, referrer, note, alsoSubscribe }) {
     .catch((err) => logger.error(`[site] notification email failed (row ${id} is safe): ${err && err.message}`));
 }
 
-const PAGE_PATH = path.join(__dirname, '..', 'content', 'site', 'homepage.html');
-const TITLE = 'I Know A Guy - Network building, rethought';
-const DESCRIPTION =
-  'Network building, rethought. Choose who belongs in your network, reach out like a human, '
-  + 'and let the grind be handled - so the part that actually matters fits inside a normal week.';
+// The site's pages. Each body lives in content/site/ (plain HTML, authored as
+// the design mockup) so copy edits never touch this file; each page carries its
+// own title/description for the head. Same read-once-in-production caching.
+const PAGES = {
+  homepage: {
+    file: 'homepage.html',
+    title: 'I Know A Guy - Network building, rethought',
+    description:
+      'Network building, rethought. Choose who belongs in your network, reach out like a human, '
+      + 'and let the grind be handled - so the part that actually matters fits inside a normal week.',
+  },
+  // The post-demo page: the demonstration retold in plain words, one version
+  // for the person who watched AND the person they forward it to. A SENT
+  // asset - linked from nowhere on the site, it travels by demo follow-up,
+  // LinkedIn chat and forwarding.
+  saw: {
+    file: 'what-you-just-saw.html',
+    title: 'What you just saw - I Know A Guy',
+    description:
+      'The live demonstration, retold in plain words - for the person who watched, '
+      + 'and the person they\'ll want to tell about it.',
+  },
+};
 
-let cached = null;
+const cachedBodies = {};
 
-function loadBody() {
-  if (cached && process.env.NODE_ENV === 'production') return cached;
+function loadBody(page) {
+  const key = page.file;
+  if (cachedBodies[key] && process.env.NODE_ENV === 'production') return cachedBodies[key];
   try {
-    cached = fs.readFileSync(PAGE_PATH, 'utf8');
+    cachedBodies[key] = fs.readFileSync(path.join(__dirname, '..', 'content', 'site', page.file), 'utf8');
   } catch (err) {
-    logger.error(`[site] could not read homepage.html: ${err && err.message}`);
-    cached = '<p>The page is temporarily unavailable.</p>';
+    logger.error(`[site] could not read ${page.file}: ${err && err.message}`);
+    cachedBodies[key] = '<p>The page is temporarily unavailable.</p>';
   }
-  return cached;
+  return cachedBodies[key];
 }
 
-function fullPage(body, host) {
+function fullPage(body, host, { title, description }) {
   // Index the real domain; never the onrender.com hostname. Doing it by host
   // rather than a flag means pointing the domain is the ONLY step — there's no
   // "remember to turn indexing on" left lying around, and no risk of the
@@ -113,10 +132,10 @@ function fullPage(body, host) {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 ${robots}
-<title>${TITLE}</title>
-<meta name="description" content="${DESCRIPTION}">
-<meta property="og:title" content="${TITLE}">
-<meta property="og:description" content="${DESCRIPTION}">
+<title>${title}</title>
+<meta name="description" content="${description}">
+<meta property="og:title" content="${title}">
+<meta property="og:description" content="${description}">
 <meta property="og:type" content="website">
 <style>
   html { -webkit-text-size-adjust: 100%; }
@@ -134,17 +153,18 @@ module.exports = function mountMarketingSite(app) {
 
   // "/" is the public homepage. /home stays as an alias so any link already
   // shared keeps working.
-  const serveHomepage = (req, res) => {
+  const servePage = (page) => (req, res) => {
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     // The page is cheap to render and its CSS is inline, so a cached copy hides
     // every change until it expires — which reads as "the deploy didn't work".
     // Revalidate each time: the browser still gets a 304 when nothing changed.
     res.setHeader('Cache-Control', 'no-cache');
-    return res.end(fullPage(loadBody(), req.get('host')));
+    return res.end(fullPage(loadBody(page), req.get('host'), page));
   };
 
-  router.get('/', serveHomepage);
-  router.get('/home', serveHomepage);
+  router.get('/', servePage(PAGES.homepage));
+  router.get('/home', servePage(PAGES.homepage));
+  router.get('/what-you-just-saw', servePage(PAGES.saw));
 
   // Public images for the site. Scoped to content/site/assets rather than
   // content/site, so homepage.html can never be served as a raw file.
