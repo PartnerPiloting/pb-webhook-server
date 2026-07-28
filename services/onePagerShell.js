@@ -114,11 +114,12 @@ function articleCard({ eyebrow, title, dek, greeting, kicker, introHtml, bodyHtm
 
 // The standing footer for the public library pages (no unsubscribe here — that
 // is an email concern). Points back to the map, per the "never two clicks from
-// orientation" rule.
-function libraryFooter() {
+// orientation" rule. `qs` carries the audience ('' or '?audience=client') so a
+// client who follows the link stays in the client view.
+function libraryFooter(qs = '') {
   return `<div class="op-foot">
     New here, or want to see where it's all heading? It's all on one page -
-    <a href="/series">start at the map</a>.
+    <a href="/series${qs}">start at the map</a>.
   </div>`;
 }
 
@@ -130,14 +131,18 @@ function libraryFooter() {
 // a bug to anyone who hasn't seen the manifest.
 //
 // `extras` are pieces that are library-only and never emailed; they get their
-// own section rather than being silently mixed into a numbered run.
-function catalogueCard(pieces, extras = []) {
+// own section rather than being silently mixed into a numbered run. A piece
+// may carry `num` (its true run position) when the sequence has a gap - the
+// client run renders its step 1 as the landing map, so the list starts at 2.
+// `qs` carries the audience through every link ('' or '?audience=client');
+// without it one click drops a client back into the prospect view.
+function catalogueCard(pieces, extras = [], { qs = '', note } = {}) {
   const item = (p, n) => `<li${n ? ` value="${n}"` : ''}>
-      <a class="title" href="/series/${esc(p.slug)}">${esc(p.title)}</a>
+      <a class="title" href="/series/${esc(p.slug)}${qs}">${esc(p.title)}</a>
       ${p.dek ? `<p class="dek">${esc(p.dek)}</p>` : ''}
     </li>`;
 
-  const main = pieces.map((p, i) => item(p, i + 1)).join('\n');
+  const main = pieces.map((p, i) => item(p, p.num || i + 1)).join('\n');
   const extraBlock = extras.length ? `
       <h2 class="op-h2-more">Also in the library</h2>
       <p class="op-note">Not part of the weekly run - a little more craft, for anyone who wants to go deeper.</p>
@@ -147,7 +152,7 @@ function catalogueCard(pieces, extras = []) {
     ${masthead(SERIES_NAME)}
     <div class="op-c">
       <h2>The series, in order</h2>
-      <p class="op-note">These arrive by email one a week, in this order. Read them here in any order you like - nothing depends on having read the one before.</p>
+      <p class="op-note">${note || 'These arrive by email one a week, in this order. Read them here in any order you like - nothing depends on having read the one before.'}</p>
       <ol>${main}</ol>
       ${extraBlock}
     </div>

@@ -16,16 +16,19 @@ const content = require('../services/onePagerContent');
 const shell = require('../services/onePagerShell');
 const MANIFEST = require('../config/onePagerSeriesManifest');
 
-const MAP_SLUG = 'how-it-actually-works'; // the prospect library landing (#8)
+const MAP_SLUG = 'how-it-actually-works';  // the prospect library landing (#8)
+const CLIENT_MAP_SLUG = 'the-process';     // the client library landing (#12, step 1 of the client run)
 
-// Pieces kept OUT of the prospect-facing catalogue list. The map (#8) is the
+// Pieces kept OUT of the PROSPECT-facing catalogue list. The map (#8) is the
 // landing (shown on top, not re-listed). The rest are client-only material a
 // browsing prospect shouldn't be steered into: the client operating-manual map
 // (#12), the insider discovery-call craft (#47), and the Wingguy reveal/upsell
 // (#90). Their pages still resolve by direct link. #33 "The filter everyone
 // skips" is deliberately KEPT (Guy judged it library-safe for warm prospects).
 // The pages themselves stay reachable at /series/:slug — this only hides them
-// from the browse list.
+// from the browse list. The client view (?audience=client) ignores this list:
+// these pieces are steps 1, 13 and 21 of the client run, and hiding them from
+// the audience they were written for was a bug, not a boundary.
 const HIDDEN_FROM_CATALOGUE = new Set([
   MAP_SLUG,
   'the-process',                 // #12 client map
@@ -55,33 +58,56 @@ module.exports = function mountOnePagers(app /*, base */) {
   router.get('/series', async (req, res) => {
     try {
       const audience = req.query.audience === 'client' ? 'client' : 'prospect';
-      const map = await content.renderPiece(MAP_SLUG, { audience });
-      const visible = content.listPieces().filter(p => !HIDDEN_FROM_CATALOGUE.has(p.slug));
+      const isClient = audience === 'client';
+      const qs = isClient ? '?audience=client' : '';
+      const mapSlug = isClient ? CLIENT_MAP_SLUG : MAP_SLUG;
+      const map = await content.renderPiece(mapSlug, { audience });
+      const visible = isClient
+        ? content.listPieces()
+        : content.listPieces().filter(p => !HIDDEN_FROM_CATALOGUE.has(p.slug));
 
       // Order the catalogue by the SEND order, so the list a reader sees is the
       // sequence a subscriber actually receives. Anything not in the run (craft
       // pieces kept library-only) falls through to its own section rather than
-      // being numbered into a sequence it isn't part of.
+      // being numbered into a sequence it isn't part of. The map is rendered in
+      // full above the list, so it isn't re-listed - but for clients it IS step
+      // 1 of the run, so the rest keep their true run numbers (2..21) instead
+      // of closing the gap.
       const run = MANIFEST[audience] || [];
       const bySlug = new Map(visible.map(p => [p.slug, p]));
-      const inRun = run.map(slug => bySlug.get(slug)).filter(Boolean);
-      const inRunSlugs = new Set(inRun.map(p => p.slug));
-      const extras = visible.filter(p => !inRunSlugs.has(p.slug));
+      const inRun = run
+        .map((slug, i) => {
+          const p = bySlug.get(slug);
+          return p && slug !== mapSlug ? Object.assign({}, p, { num: i + 1 }) : null;
+        })
+        .filter(Boolean);
+      const inRunSlugs = new Set(run);
+      const extras = visible.filter(p => !inRunSlugs.has(p.slug) && p.slug !== mapSlug);
 
       const cards = [];
       if (map) {
         cards.push(shell.articleCard({
           // Kicker labels the map as orientation. Without it the map and the
           // list below read as one continuous page, and the map looks like the
-          // first item of the series - which it is not, and never gets emailed.
-          kicker: 'Start here - the shape of the whole thing. Not one of the weekly emails.',
+          // first item of the series - which for prospects it is not, and never
+          // gets emailed. For clients the map IS step 1, so say so.
+          kicker: isClient
+            ? 'Start here - the map of the whole method, and step 1 of your run.'
+            : 'Start here - the shape of the whole thing. Not one of the weekly emails.',
           title: map.title,
           dek: map.dek,
           bodyHtml: map.bodyHtml,
-          footerHtml: shell.libraryFooter(),
+          footerHtml: shell.libraryFooter(qs),
         }));
       }
-      cards.push(shell.catalogueCard(inRun, extras));
+      cards.push(shell.catalogueCard(inRun, extras, {
+        qs,
+        // The prospect note promises the weekly emails; no client drip is
+        // scheduled yet, so the client note promises only the order.
+        note: isClient
+          ? 'In the order they build. Read them in any order you like - nothing breaks if you skip ahead.'
+          : undefined,
+      }));
 
       return sendHtml(res, 200, shell.fullPage({ title: 'The library', inner: cards.join('\n') }));
     } catch (err) {
@@ -95,6 +121,7 @@ module.exports = function mountOnePagers(app /*, base */) {
     const slug = String(req.params.slug || '').toLowerCase().replace(/[^a-z0-9-]/g, '');
     try {
       const audience = req.query.audience === 'client' ? 'client' : 'prospect';
+      const qs = audience === 'client' ? '?audience=client' : '';
       const piece = slug ? await content.renderPiece(slug, { audience }) : null;
       if (!piece) {
         return sendHtml(res, 404, notFoundPage('That piece does not exist (yet).'));
@@ -103,7 +130,7 @@ module.exports = function mountOnePagers(app /*, base */) {
         title: piece.title,
         dek: piece.dek,
         bodyHtml: piece.bodyHtml,
-        footerHtml: shell.libraryFooter(),
+        footerHtml: shell.libraryFooter(qs),
       });
       return sendHtml(res, 200, shell.fullPage({ title: piece.title, inner }));
     } catch (err) {
