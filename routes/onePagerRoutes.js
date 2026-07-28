@@ -98,6 +98,7 @@ module.exports = function mountOnePagers(app /*, base */) {
           dek: map.dek,
           bodyHtml: map.bodyHtml,
           footerHtml: shell.libraryFooter(qs),
+          qs,
         }));
       }
       cards.push(shell.catalogueCard(inRun, extras, {
@@ -131,6 +132,7 @@ module.exports = function mountOnePagers(app /*, base */) {
         dek: piece.dek,
         bodyHtml: piece.bodyHtml,
         footerHtml: shell.libraryFooter(qs),
+        qs,
       });
       return sendHtml(res, 200, shell.fullPage({ title: piece.title, inner }));
     } catch (err) {

@@ -83,11 +83,12 @@ function css() {
   }`;
 }
 
-// The masthead is shared by every card.
-function masthead(eyebrow) {
+// The masthead is shared by every card. `qs` keeps the wordmark link inside
+// the reader's audience ('' or '?audience=client').
+function masthead(eyebrow, qs = '') {
   return `<div class="op-mast">
     <p class="op-eb">${esc(eyebrow || SERIES_NAME)}</p>
-    <p class="op-wm"><a href="/series">${esc(WORDMARK)}</a></p>
+    <p class="op-wm"><a href="/series${qs}">${esc(WORDMARK)}</a></p>
   </div>`;
 }
 
@@ -95,9 +96,9 @@ function masthead(eyebrow) {
 // for web pages, reply+unsubscribe for emails). `greeting` and `introHtml` are
 // email-only (introHtml = an optional lead-in above the title, e.g. the client
 // edition-1 welcome).
-function articleCard({ eyebrow, title, dek, greeting, kicker, introHtml, bodyHtml, footerHtml } = {}) {
+function articleCard({ eyebrow, title, dek, greeting, kicker, introHtml, bodyHtml, footerHtml, qs = '' } = {}) {
   return `<div class="op">
-    ${masthead(eyebrow)}
+    ${masthead(eyebrow, qs)}
     <div class="op-c">
       ${greeting ? `<p class="op-greet">${esc(greeting)}</p>` : ''}
       ${kicker ? `<p class="op-kicker">${esc(kicker)}</p>` : ''}
@@ -149,7 +150,7 @@ function catalogueCard(pieces, extras = [], { qs = '', note } = {}) {
       <ul class="op-plain">${extras.map(p => item(p)).join('\n')}</ul>` : '';
 
   return `<div class="op op-cat">
-    ${masthead(SERIES_NAME)}
+    ${masthead(SERIES_NAME, qs)}
     <div class="op-c">
       <h2>The series, in order</h2>
       <p class="op-note">${note || 'These arrive by email one a week, in this order. Read them here in any order you like - nothing depends on having read the one before.'}</p>
