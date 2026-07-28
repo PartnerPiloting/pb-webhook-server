@@ -500,6 +500,35 @@ async function fathomRecordingIngested(fathomRecordingId) {
 }
 
 /**
+ * The filed meetings carved out of ONE Fathom recording — what the splitter actually did with it.
+ * Exists so the raw-feed MCP tools can SELF-DISCLOSE the store's filing state: a back-to-back
+ * recording looks like one mis-filed lump in the raw Fathom API, and on 2026-07-28 that lump was
+ * read as "Rick is filed under April" when the store had already split it correctly. Read-only.
+ * Returns [] when nothing is filed; null when the store is unreachable (callers must show the
+ * difference — "not ingested" and "couldn't check" are opposite conclusions).
+ */
+async function findMeetingsByFathomRecordingId(fathomRecordingId) {
+  if (!fathomRecordingId) return [];
+  const p = getPool();
+  if (!p) return null;
+  const client = await p.connect();
+  try {
+    await ensureSchema(client);
+    const r = await client.query(
+      `SELECT id, title, meeting_start, duration_seconds,
+              (transcript_text IS NOT NULL AND btrim(transcript_text) <> '') AS has_transcript
+       FROM recall_meetings
+       WHERE fathom_recording_id = $1
+       ORDER BY meeting_start NULLS LAST, id`,
+      [String(fathomRecordingId)],
+    );
+    return r.rows;
+  } finally {
+    client.release();
+  }
+}
+
+/**
  * Meetings whose transcript body is empty past a grace window — the silent-failure sweep.
  * A header-with-no-body row looks exactly like coverage in the queue (which doesn't even select
  * transcript_text) and is served by the MCP with a confident header and nothing in it, so nothing
@@ -1567,6 +1596,7 @@ module.exports = {
   confirmReconstruction,
   insertImportedMeeting,
   fathomRecordingIngested,
+  findMeetingsByFathomRecordingId,
   findEmptyTranscriptMeetings,
   splitMeeting,
   appendRecallUtterance,
