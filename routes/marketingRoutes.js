@@ -90,16 +90,17 @@ const PAGES = {
       'Network building, rethought. Choose who belongs in your network, reach out like a human, '
       + 'and let the grind be handled - so the part that actually matters fits inside a normal week.',
   },
-  // The post-demo page: the demonstration retold in plain words, one version
-  // for the person who watched AND the person they forward it to. A SENT
-  // asset - linked from nowhere on the site, it travels by demo follow-up,
-  // LinkedIn chat and forwarding.
-  saw: {
-    file: 'what-you-just-saw.html',
-    title: 'What you just saw - I Know A Guy',
+  // The working-day page: Guy's day told flat, chronologically. ONE page,
+  // every entrance - the homepage's begin-with-the-end dare, the post-demo
+  // follow-up send, and forwarding. (Was born as /what-you-just-saw, the
+  // post-demo framing; the dare made it the shared destination, so the title
+  // went neutral and the old URL 301s here.)
+  day: {
+    file: 'a-day-in-the-life.html',
+    title: 'A day in the life - I Know A Guy',
     description:
-      'The live demonstration, retold in plain words - for the person who watched, '
-      + 'and the person they\'ll want to tell about it.',
+      'A working day with the machinery running - introductions drafted from one sentence, '
+      + 'mornings that brief you, bookings that book themselves. Told flat, exactly as it happens.',
   },
 };
 
@@ -164,7 +165,9 @@ module.exports = function mountMarketingSite(app) {
 
   router.get('/', servePage(PAGES.homepage));
   router.get('/home', servePage(PAGES.homepage));
-  router.get('/what-you-just-saw', servePage(PAGES.saw));
+  router.get('/a-day-in-the-life', servePage(PAGES.day));
+  // The page's original URL - keep any link already sent working forever.
+  router.get('/what-you-just-saw', (req, res) => res.redirect(301, '/a-day-in-the-life'));
 
   // Public images for the site. Scoped to content/site/assets rather than
   // content/site, so homepage.html can never be served as a raw file.

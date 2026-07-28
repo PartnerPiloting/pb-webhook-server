@@ -91,6 +91,19 @@
     font-weight: 600;
   }
 
+  /* ---- the dare (begin with the end in mind) ---- */
+  .dare-wrap { max-width: 46rem; margin: 0.35rem auto 0; padding: 0 var(--pad); }
+  .dare {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 12px;
+    padding: 0.95rem 1.15rem; max-width: 38rem;
+    font-size: 0.98rem; line-height: 1.55; color: var(--ink-soft);
+    box-shadow: 0 10px 26px -20px var(--shadow);
+  }
+  .dare .eyebrow { margin-bottom: 0.35rem; }
+  .dare a { color: var(--teal); font-weight: 600; text-decoration: none; border-bottom: 1px solid color-mix(in srgb, var(--teal) 45%, transparent); }
+  .dare a:hover { border-bottom-color: var(--teal); }
+  .dare a:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
+
   /* ---- hero ---- */
   header.hero { padding: clamp(2rem, 7vw, 4.5rem) 0 clamp(2.5rem, 8vw, 5rem); position: relative; overflow: hidden; }
   .hero-net { position: absolute; top: -1rem; right: -2rem; width: 240px; max-width: 45%; opacity: 0.5; pointer-events: none; color: var(--teal); }
@@ -259,6 +272,13 @@
   <a class="wordmark" href="#top">I Know&nbsp;a&nbsp;<span class="amp">Guy</span></a>
   <a class="btn btn-ghost" href="#chat">Let's talk</a>
 </nav>
+
+<div class="dare-wrap">
+  <div class="dare">
+    <p class="eyebrow">Begin with the end in mind</p>
+    Before a word of theory: <a href="/a-day-in-the-life">a day in the life</a> - my actual working day with all of this running, told flat, exactly as it happens. Most people's first reaction is <em>"that can't be real."</em> See if yours is different - then come back, and this page will explain how it's possible.
+  </div>
+</div>
 
 <header class="hero" id="top">
   <div class="wrap">
@@ -507,7 +527,7 @@
       <p class="sig">- (I know a) Guy</p>
     </div>
 
-    <p class="doors">Not quite ready for that? Perfectly fine. Want to see what a working day of this actually looks like? <a href="/what-you-just-saw">This is the page I send people after a live demonstration.</a> You can also <a href="/series">read the thinking behind all this</a> at your own pace - or have it come to you by email, one short piece a week, no rush and no hard sell.</p>
+    <p class="doors">Not quite ready for that? Perfectly fine. Never took the dare at the top? <a href="/a-day-in-the-life">A day in the life</a> is what a working day of this actually looks like - it's the same page I send people after a live demonstration. You can also <a href="/series">read the thinking behind all this</a> at your own pace - or have it come to you by email, one short piece a week, no rush and no hard sell.</p>
 
     <form class="subscribe" id="subscribe-form">
       <label class="sr-only" for="s-email">Your email</label>
