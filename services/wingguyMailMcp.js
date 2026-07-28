@@ -1168,7 +1168,7 @@ const TOOL_DEFS = [
   {
     name: 'wingguy_queue',
     description:
-      'THE ACTION QUEUE — THE FIRST CALL for "show me my follow-ups" / "what\'s due" / "who do I owe" / "prep me for today". ONE ranked, pageable to-do list (ten per page), every line an ACTION waiting for a yes: today\'s due items first (drafts ready / park proposals / needs-eyes), then backlog reopens (drafts ready), then backlog parks. Fast (~1-2s) — merges the prepared stores at serve time, then re-checks live gates (Cease FUP, Reconnect On stamps, upcoming bookings) so a stale store entry never surfaces. Work it top-down: name a person → serve their jog + draft (from wingguy_followup_brief for today\'s people, wingguy_backlog name=... for backlog people; DEEP memory — "any emails? how did the call go? what did we agree?" — comes INSTANTLY from wingguy_dossier) → tweak → push/copy on approval → they drop off. "Next ten" = page 2, 3… DELIBERATELY ABSENT (pure action, no status): parked-until-date people (they surface on their day), nothing-owed people, anything already done — relay status info ONLY if the human explicitly asks ("what\'s parked?", "was X checked?").',
+      'THE ACTION QUEUE — THE FIRST CALL for "show me my follow-ups" / "what\'s due" / "who do I owe" / "prep me for today". ONE ranked, pageable to-do list (ten per page), every line an ACTION waiting for a yes WITH the person\'s "who:" memory-jog attached (relay it — the human should never have to ask who someone is): today\'s due items first (drafts ready / park proposals / needs-eyes), then backlog reopens (drafts ready), then backlog parks. Fast (~1-2s) — merges the prepared stores at serve time, then re-checks live gates (Cease FUP, Reconnect On stamps, upcoming bookings) so a stale store entry never surfaces. Work it top-down: name a person → serve their jog + draft (from wingguy_followup_brief for today\'s people, wingguy_backlog name=... for backlog people; DEEP memory — "any emails? how did the call go? what did we agree?" — comes INSTANTLY from wingguy_dossier) → tweak → push/copy on approval → they drop off. "Next ten" = page 2, 3… DELIBERATELY ABSENT (pure action, no status): parked-until-date people (they surface on their day), nothing-owed people, anything already done — relay status info ONLY if the human explicitly asks ("what\'s parked?", "was X checked?").',
     zodSchema: {
       page: z.number().optional().describe('Page number, 10 per page (default 1). "next ten" = the next page.'),
     },
@@ -1430,9 +1430,13 @@ async function runQueue({ page } = {}, tenant = TENANT) {
   const totalPages = Math.ceil(deduped.length / PAGE);
   const slice = deduped.slice((pg - 1) * PAGE, pg * PAGE);
   const nm = (it) => (it.linkedin ? `[${it.name}](${it.linkedin})` : it.name);
+  // The jog rides IN the list (Guy 2026-07-28: "I can't remember what Andrew Bain was about" —
+  // making him ask per-person was the slow part). It's already written by the overnight triage;
+  // serving it here means the human reads ten lines and already remembers everyone.
+  const jogLine = (it) => (it.jog && it.jog.trim() ? `\n    who: ${it.jog.trim()}` : '');
   const lines = [
-    `THE QUEUE — ${deduped.length} actionable, priority order (page ${pg}/${totalPages}; today's brief first, then backlog reopens, then parks). Ask for anyone by name for jog + draft; "next ten" = next page.`,
-    ...slice.map((it, i) => `${(pg - 1) * PAGE + i + 1}. ${nm(it)} — ${it.line}`),
+    `THE QUEUE — ${deduped.length} actionable, priority order (page ${pg}/${totalPages}; today's brief first, then backlog reopens, then parks). Each person's "who:" memory-jog is part of the list — ALWAYS relay it with their line. Ask for anyone by name for the full detail + draft; "next ten" = next page.`,
+    ...slice.map((it, i) => `${(pg - 1) * PAGE + i + 1}. ${nm(it)} — ${it.line}${jogLine(it)}`),
   ];
   if (pg < totalPages) lines.push(`(${deduped.length - pg * PAGE} more — say "next ten".)`);
   if (suppTotal) lines.push(`\n[live re-check — do not relay unless asked: dropped ${suppTotal} stale entr${suppTotal === 1 ? 'y' : 'ies'} (${supp.booked} already booked, ${supp.ceased} ceased, ${supp.parked} parked on a reconnect stamp).]`);
