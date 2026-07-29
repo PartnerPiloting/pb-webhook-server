@@ -1170,7 +1170,7 @@ const TOOL_DEFS = [
   {
     name: 'wingguy_queue',
     description:
-      'THE ACTION QUEUE — THE FIRST CALL for "show me my follow-ups" / "what\'s due" / "who do I owe" / "prep me for today". ONE ranked, pageable to-do list (ten per page), every line an ACTION waiting for a yes WITH the person\'s "who:" memory-jog attached (relay it — the human should never have to ask who someone is): today\'s due items first (drafts ready / park proposals / needs-eyes), then backlog reopens (drafts ready), then backlog parks. Fast (~1-2s) — merges the prepared stores at serve time, then re-checks live gates (Cease FUP, Reconnect On stamps, upcoming bookings) so a stale store entry never surfaces. Work it top-down: name a person → serve their jog + draft (from wingguy_followup_brief for today\'s people, wingguy_backlog name=... for backlog people; DEEP memory — "any emails? how did the call go? what did we agree?" — comes INSTANTLY from wingguy_dossier) → tweak → push/copy on approval → they drop off. "Next ten" = page 2, 3… DELIBERATELY ABSENT (pure action, no status): parked-until-date people (they surface on their day), nothing-owed people, anything already done — relay status info ONLY if the human explicitly asks ("what\'s parked?", "was X checked?").',
+      'THE ACTION QUEUE — THE FIRST CALL for "show me my follow-ups" / "what\'s due" / "who do I owe" / "prep me for today". ONE ranked, pageable to-do list (ten per page), every line an ACTION waiting for a yes WITH the person\'s "who:" memory-jog attached (relay it — the human should never have to ask who someone is): today\'s due items first (drafts ready / park proposals / needs-eyes), then backlog reopens (drafts ready), then backlog parks. Fast (~2-4s) — merges the prepared stores at serve time, then re-checks the LIVE world (Cease FUP, Reconnect On stamps, upcoming bookings, and messages the coach has SENT since the stores were built — LinkedIn via the lead\'s Notes, email via the mailbox) so a stale store entry never surfaces: someone the coach already replied to drops off without waiting for the overnight rebuild. Work it top-down: name a person → serve their jog + draft (from wingguy_followup_brief for today\'s people, wingguy_backlog name=... for backlog people; DEEP memory — "any emails? how did the call go? what did we agree?" — comes INSTANTLY from wingguy_dossier) → tweak → push/copy on approval → they drop off. "Next ten" = page 2, 3… DELIBERATELY ABSENT (pure action, no status): parked-until-date people (they surface on their day), nothing-owed people, anything already done — relay status info ONLY if the human explicitly asks ("what\'s parked?", "was X checked?").',
     zodSchema: {
       page: z.number().optional().describe('Page number, 10 per page (default 1). "next ten" = the next page.'),
     },
@@ -1253,11 +1253,15 @@ const LEVERS_NOTE =
  *     engine's, not the backlog's — same as the audit's own build-time gate); a FUTURE stamp also
  *     removes today items whatever their stored tier (park means park, the Marianne rule — the
  *     stamp may have been rewritten since the store was built, so the LIVE field decides).
- *   - An upcoming non-declined booking removes everything except a lead whose stamp is DUE right
- *     now (a human stamp outranks calendar inference — same exemption as the sweep).
+ *   - An upcoming non-declined booking removes everything, due stamps included (the Rosh Java
+ *     rule, Guy 2026-07-29) — the stamp survives and surfaces once the booking passes.
+ *   - ALREADY MESSAGED (Guy 2026-07-29: JB + Anthony still listed after he'd replied to both):
+ *     if the coach's own message is the thread's last word AND it landed on/after the day the
+ *     store was built — LinkedIn read from the lead's Notes (LinkedHelper sync), email from a
+ *     live mailbox read since the oldest store build — the store's view is outdated; drop it.
  */
 async function applyLiveQueueGates(items, tenant) {
-  const out = { items, suppressed: { booked: 0, ceased: 0, parked: 0 } };
+  const out = { items, suppressed: { booked: 0, ceased: 0, parked: 0, messaged: 0 } };
   try {
     const clientService = require('./clientService');
     const coach = await clientService.getClientById(tenant);
@@ -1286,10 +1290,12 @@ async function applyLiveQueueGates(items, tenant) {
       if (!clauses.length) return null;
       const formula = `OR(${clauses.join(', ')})`;
       // Rolled-out-over-time fields degrade richest-first (same pattern as the sweep's lead read).
+      // Notes + First Name ride along for the already-messaged check (the LinkedIn thread lives
+      // in Notes; First Name tells inbound from outbound on its lines).
       const GATE_ATTEMPTS = [
-        ['Email', 'Cease FUP', 'Reconnect On', 'Cease FUP At'],
-        ['Email', 'Cease FUP', 'Reconnect On'],
-        ['Email', 'Cease FUP'],
+        ['Email', 'Cease FUP', 'Reconnect On', 'Cease FUP At', 'Notes', 'First Name'],
+        ['Email', 'Cease FUP', 'Reconnect On', 'Notes', 'First Name'],
+        ['Email', 'Cease FUP', 'Notes', 'First Name'],
       ];
       let recs;
       for (let i = 0; i < GATE_ATTEMPTS.length; i++) {
@@ -1310,6 +1316,7 @@ async function applyLiveQueueGates(items, tenant) {
           ceaseAtMs: f['Cease FUP At'] ? Date.parse(f['Cease FUP At']) || null : null,
           reconnectAny: !!f['Reconnect On'],
           reconnectFuture: !Number.isNaN(dt) && dt > todayMidMs,
+          liLast: parseLinkedInLast(f['Notes'], f['First Name']), // {ms, inbound} of the thread's last word, or null
         };
         gates.set(r.id, g);
         const em = String(f['Email'] || '').trim().toLowerCase();
@@ -1337,12 +1344,44 @@ async function applyLiveQueueGates(items, tenant) {
       return { bookedEmails, titleBlobs };
     })();
 
-    const [gateRes, calRes] = await Promise.allSettled([gatePromise, calPromise]);
+    // Email half of the already-messaged check: ONE mailbox read since the OLDEST store build
+    // (small window — the brief is at most ~26h old; the backlog build a few days), then the
+    // same thread-aware 1:1 signals the sweep uses.
+    const mailPromise = (async () => {
+      if (!coach.nylasGrantId) return null;
+      const emails = new Set(items.map((i) => String(i.email || '').trim().toLowerCase()).filter(Boolean));
+      if (!emails.size) return null;
+      const builts = items.map((i) => (i.builtAt ? Date.parse(i.builtAt) : NaN)).filter((t) => !Number.isNaN(t));
+      if (!builts.length) return null;
+      const mail = await mailProvider.listRecent(coach, { after: Math.floor(Math.min(...builts) / 1000), max: 1000 });
+      if (!mail.ok) return null;
+      return computeMailSignals(mail.messages, emails);
+    })();
+
+    const [gateRes, calRes, mailRes] = await Promise.allSettled([gatePromise, calPromise, mailPromise]);
     if (gateRes.status === 'rejected') console.warn(`[wingguyMailMcp] queue gate re-check skipped: ${gateRes.reason && gateRes.reason.message}`);
     if (calRes.status === 'rejected') console.warn(`[wingguyMailMcp] queue booking re-check skipped: ${calRes.reason && calRes.reason.message}`);
+    if (mailRes.status === 'rejected') console.warn(`[wingguyMailMcp] queue sent-mail re-check skipped: ${mailRes.reason && mailRes.reason.message}`);
     const gates = gateRes.status === 'fulfilled' ? gateRes.value : null;
     const booked = calRes.status === 'fulfilled' ? calRes.value : null;
-    if (!gates && !booked) return out;
+    const mailSig = mailRes.status === 'fulfilled' ? mailRes.value : null;
+    if (!gates && !booked && !mailSig) return out;
+
+    // A store-build ISO → the coach's civil date of that moment, as UTC midnight — comparable
+    // with the date-only stamps parseLinkedInLast reads off Notes lines.
+    const civilDayMs = (iso) => {
+      const t = Date.parse(iso);
+      if (Number.isNaN(t)) return null;
+      try {
+        const { DateTime } = require('luxon');
+        const local = DateTime.fromMillis(t, { zone: coach.timezone || 'UTC' });
+        if (!local.isValid) throw new Error('invalid zone');
+        return Date.UTC(local.year, local.month - 1, local.day);
+      } catch (_) {
+        const d = new Date(t);
+        return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+      }
+    };
 
     out.items = items.filter((it) => {
       const cadenceShaped = it.src === 'backlog' || it.tier === 'cadence';
@@ -1363,6 +1402,24 @@ async function applyLiveQueueGates(items, tenant) {
         if ((it.src === 'backlog' && g.reconnectAny) ||
             (it.src === 'today' && g.reconnectFuture)) {
           out.suppressed.parked++; return false;
+        }
+      }
+      // ALREADY MESSAGED since the store was built (Guy 2026-07-29: he'd replied to JB + Anthony
+      // on LinkedIn, both still listed). If the coach's own message is the thread's last word and
+      // it landed ON/AFTER the day the item's store was built, the store's view is outdated —
+      // nothing here was owed any more the moment the human hit send. LinkedIn is date-granular
+      // (Notes lines carry civil dates, so a same-day outbound can't be older than the build);
+      // email compares real timestamps. LinkedHelper's minutes-to-hours sync lag is the only wait.
+      const builtMs = it.builtAt ? Date.parse(it.builtAt) : null;
+      if (builtMs != null) {
+        const buildDay = civilDayMs(it.builtAt);
+        if (g && g.liLast && !g.liLast.inbound && buildDay != null && g.liLast.ms >= buildDay) {
+          out.suppressed.messaged++; return false;
+        }
+        const sig = mailSig && it.email ? mailSig.get(String(it.email).toLowerCase()) : null;
+        if (sig && sig.lastOutboundMs && sig.lastOutboundMs > builtMs &&
+            (!sig.lastInboundMs || sig.lastOutboundMs > sig.lastInboundMs)) {
+          out.suppressed.messaged++; return false;
         }
       }
       // A real upcoming booking silences everything, due stamps included (Guy 2026-07-29, the
@@ -1422,9 +1479,9 @@ async function runQueue({ page } = {}, tenant = TENANT) {
   const live = await applyLiveQueueGates(deduped, tenant);
   deduped = live.items;
   const supp = live.suppressed;
-  const suppTotal = supp.booked + supp.ceased + supp.parked;
+  const suppTotal = supp.booked + supp.ceased + supp.parked + supp.messaged;
   if (!deduped.length) {
-    return { text: `The queue is empty — nothing actionable right now (parked people surface on their dates${suppTotal ? `; the live re-check dropped ${suppTotal}: ${supp.booked} already booked, ${supp.ceased} ceased, ${supp.parked} parked on a reconnect stamp` : ''}).` };
+    return { text: `The queue is empty — nothing actionable right now (parked people surface on their dates${suppTotal ? `; the live re-check dropped ${suppTotal}: ${supp.messaged} already messaged since the list was built, ${supp.booked} already booked, ${supp.ceased} ceased, ${supp.parked} parked on a reconnect stamp` : ''}).` };
   }
   const PAGE = 10;
   const pg = Math.max(1, parseInt(page, 10) || 1);
@@ -1444,7 +1501,7 @@ async function runQueue({ page } = {}, tenant = TENANT) {
     ...slice.map((it, i) => `${(pg - 1) * PAGE + i + 1}. ${nm(it)}${draftLink(it)} — ${it.line}${jogLine(it)}`),
   ];
   if (pg < totalPages) lines.push(`(${deduped.length - pg * PAGE} more — say "next ten".)`);
-  if (suppTotal) lines.push(`\n[live re-check — do not relay unless asked: dropped ${suppTotal} stale entr${suppTotal === 1 ? 'y' : 'ies'} (${supp.booked} already booked, ${supp.ceased} ceased, ${supp.parked} parked on a reconnect stamp).]`);
+  if (suppTotal) lines.push(`\n[live re-check — do not relay unless asked: dropped ${suppTotal} stale entr${suppTotal === 1 ? 'y' : 'ies'} (${supp.messaged} already messaged since the list was built, ${supp.booked} already booked, ${supp.ceased} ceased, ${supp.parked} parked on a reconnect stamp).]`);
   lines.push('', LEVERS_NOTE);
   return { text: lines.join('\n') };
 }
