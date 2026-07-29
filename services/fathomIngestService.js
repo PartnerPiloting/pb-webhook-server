@@ -153,6 +153,29 @@ async function matchLeads(coach, emails) {
 }
 
 /**
+ * Candidate LEAD emails taken from the COACH's OWN calendar events overlapping the recording:
+ * the booking's attendees AND the ORGANIZER (who is the lead when THEY set the meeting up), minus
+ * the coach's own addresses. This is the reliable identity for an "impromptu" recording that
+ * Fathom filed with no invitees — e.g. a Zoho client, whose calendar Fathom can't read, so it
+ * never associates the booking. We read the calendar ourselves, so these emails are ours to use,
+ * and email matching is immune to odd Zoom display names. (The organizer was previously dropped by
+ * the calendar adapters — see calendarProvider `organizerEmail`.)
+ */
+function calendarParticipantEmails(events, coachEmails = []) {
+  const coachSet = new Set((coachEmails || []).map((e) => String(e).toLowerCase().trim()).filter(Boolean));
+  const out = new Set();
+  for (const ev of (events || [])) {
+    for (const a of (ev.attendees || [])) {
+      const e = String(a.email || '').toLowerCase().trim();
+      if (e && !a.self && !coachSet.has(e)) out.add(e);
+    }
+    const org = String(ev.organizerEmail || '').toLowerCase().trim();
+    if (org && !coachSet.has(org)) out.add(org);
+  }
+  return [...out];
+}
+
+/**
  * Resolve the lead for one split segment: try the calendar attendee emails first, then fall
  * back to matching the spoken lead NAME against Airtable (the back-to-back leads often have no
  * email in Fathom — only a spoken name — so name-fallback is load-bearing here).
@@ -328,6 +351,19 @@ async function ingestFathomMeeting(opts = {}) {
   const meta = extractMeta(meeting);
   const emails = extractLeadEmails(meeting);
   const { matched, unmatched } = await matchLeads(coach, emails.external);
+
+  // CALENDAR-EMAIL fallback: Fathom often files an ad-hoc call as "impromptu" with NO invitees
+  // (Zoho clients especially — Fathom can't read Zoho, so it never associates the booking). We DO
+  // read the coach's own calendar (uniqueEvents), and that booking carries the real participant
+  // emails — INCLUDING the organizer, who is the lead when they set the meeting up. Match those by
+  // email (immune to odd Zoom display names) when Fathom's own invitee list matched nobody. This
+  // is what the transcript-speaker-name fallbacks below cannot do reliably.
+  if (matched.length === 0) {
+    const calEmails = calendarParticipantEmails(uniqueEvents, coachEmails);
+    const cal = calEmails.length ? await matchLeads(coach, calEmails) : { matched: [] };
+    for (const m of cal.matched) matched.push({ ...m, via: 'calendar-email' });
+    if (cal.matched.length) log.info(`single-path calendar-email fallback matched ${cal.matched.length} lead(s) from ${calEmails.length} calendar participant email(s)`);
+  }
 
   // Q2(A) — single-meeting NAME fallback: a booking email that matched NO lead still gets a shot
   // via the invitee's NAME. A UNIQUE name match links the lead and flags the email to self-heal,
