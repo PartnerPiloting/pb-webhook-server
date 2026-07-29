@@ -14,7 +14,7 @@
  * Output shape matches the Google reader so the existing filters (extractMeetingUrl /
  * isCoachAttending in recallAutoJoinService) work unchanged:
  *   { summary, start, end, location, description, htmlLink, conferenceData,
- *     attendees:[{ email, displayName, self, organizer, responseStatus }] }
+ *     organizerEmail, attendees:[{ email, displayName, self, organizer, responseStatus }] }
  *
  * SAFE: default 'google' = today's behaviour exactly. Flip CALENDAR_PROVIDER=nylas to dogfood
  * Nylas; flip back instantly. Only the Fathom splitter routes through here for now — the daily
@@ -294,6 +294,7 @@ function mapNylasEvent(ev, selfEmail, tz) {
     description: ev.description || '',
     htmlLink: confUrl || '',
     conferenceData: confUrl ? { entryPoints: [{ entryPointType: 'video', uri: confUrl }] } : null,
+    organizerEmail: orgEmail || '',
     attendees,
   };
 }
@@ -526,6 +527,7 @@ function mapUnipileEvent(ev, selfEmail, tz) {
     description: ev.body || '',
     htmlLink: confUrl || '',
     conferenceData: confUrl ? { entryPoints: [{ entryPointType: 'video', uri: confUrl }] } : null,
+    organizerEmail: orgEmail || '',
     attendees,
   };
 }
@@ -802,6 +804,7 @@ function mapZohoEvent(ev, selfEmail, tz) {
     description: ev.description || '',
     htmlLink: ev.vieweventurl || '',
     conferenceData: null,
+    organizerEmail: orgEmail || '',
     attendees,
   };
 }
