@@ -163,6 +163,19 @@ try {
     moduleLogger.error('index.js: Error mounting fathomWebhookRoutes', e.message, e.stack);
 }
 
+// Granola "note generated" webhook — the first PARALLEL transcript provider beside Fathom.
+// Per-client URL (/webhooks/granola/:clientId), verified with THAT client's stored signing
+// secret (Standard Webhooks = same Svix HMAC as Recall/Fathom), so it also mounts BEFORE
+// express.json(). No-op unless GRANOLA_WEBHOOK_ENABLED=true; writes still gated by
+// GRANOLA_INGEST_ENABLED. See routes/granolaWebhookRoutes.js.
+try {
+    const granolaWebhookRoutes = require('./routes/granolaWebhookRoutes.js');
+    app.use(granolaWebhookRoutes);
+    moduleLogger.info('index.js: Granola webhook mounted (before express.json) at GET/HEAD/POST /webhooks/granola/:clientId');
+} catch (e) {
+    moduleLogger.error('index.js: Error mounting granolaWebhookRoutes', e.message, e.stack);
+}
+
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" })); // For Mailgun webhooks (form-urlencoded)
 

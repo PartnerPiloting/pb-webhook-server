@@ -141,6 +141,13 @@ async function getAllClients() {
                 const clientType = record.get('Client Type') || 'A - Partner Selection';
                 const fupInstructions = record.get('FUP AI Instructions') || '';
                 const fathomApiKey = record.get('Fathom API Key') || null;
+                // Transcript provider selection (per-client, like Calendar Provider). Blank =
+                // 'fathom' via the transcriptProvider.js seam, so every existing client is
+                // untouched. 'granola' clients carry their own API key + the webhook signing
+                // secret returned once at registration (scripts/register-granola-webhook.js).
+                const transcriptProvider = record.get('Transcript Provider') || null;
+                const granolaApiKey = record.get('Granola API Key') || null;
+                const granolaWebhookSecret = record.get('Granola Webhook Secret') || null;
                 // Followup Brief opt-in: Yes = the overnight prepared-brief cron includes this
                 // client (writes triage + drafts into THEIR brief; per-client opt-in by design).
                 const followupBrief = record.get('Followup Brief') || null;
@@ -258,6 +265,10 @@ async function getAllClients() {
                     clientType: clientType,
                     fupInstructions: fupInstructions,
                     fathomApiKey: fathomApiKey,
+                    // Transcript provider seam (blank => 'fathom' in transcriptProvider.js)
+                    transcriptProvider: transcriptProvider,
+                    granolaApiKey: granolaApiKey,
+                    granolaWebhookSecret: granolaWebhookSecret,
                     followupBrief: followupBrief,
                     // Nylas multi-tenant calendar (per-client grant + backend choice)
                     nylasGrantId: nylasGrantId,

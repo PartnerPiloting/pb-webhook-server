@@ -175,6 +175,14 @@ async function ensureSchema(client) {
   await client.query(`ALTER TABLE recall_meetings ADD COLUMN IF NOT EXISTS fathom_recording_id TEXT;`);
   await client.query(`CREATE INDEX IF NOT EXISTS idx_recall_m_fathom_rec ON recall_meetings (fathom_recording_id) WHERE fathom_recording_id IS NOT NULL;`);
 
+  // Generic provider-native id (2026-07-29, Granola onward). fathom_recording_id above was the
+  // one hard-coded provider column; every NEW transcript provider stores its native id here
+  // instead, scoped by `source` (dedup key = source + provider_recording_id, same "any row with a
+  // transcript = ingested" semantics as Fathom's — see providerRecordingIngested). Fathom keeps
+  // its own column untouched.
+  await client.query(`ALTER TABLE recall_meetings ADD COLUMN IF NOT EXISTS provider_recording_id TEXT;`);
+  await client.query(`CREATE INDEX IF NOT EXISTS idx_recall_m_provider_rec ON recall_meetings (source, provider_recording_id) WHERE provider_recording_id IS NOT NULL;`);
+
   // Speaker reconstruction trust layer (single-speaker / no-diarisation paste path).
   // reconstruction_status: NULL = clean / not needed (passes straight through), 'pending'
   // = AI reconstructed, awaiting human confirm, 'confirmed' = human-confirmed canonical.
@@ -436,7 +444,7 @@ async function updateMeetingTimes(meetingId, { meetingStart, meetingEnd }) {
  * Create a recall_meetings row from a manually-imported transcript (Tactiq, Fathom, etc.).
  * Generates synthetic bot_id/recording_id so the row is distinguishable from real Recall captures.
  */
-async function insertImportedMeeting({ title, source, transcriptText, meetingStart, durationSeconds, fathomRecordingId, coachClientId, needsSplit, pendingLeads }) {
+async function insertImportedMeeting({ title, source, transcriptText, meetingStart, durationSeconds, fathomRecordingId, providerRecordingId, coachClientId, needsSplit, pendingLeads }) {
   const p = getPool();
   if (!p) return { ok: false, error: 'database not available' };
   const safeSource = (source || 'other').toString().toLowerCase().slice(0, 32) || 'other';
@@ -460,8 +468,8 @@ async function insertImportedMeeting({ title, source, transcriptText, meetingSta
   try {
     await ensureSchema(client);
     const r = await client.query(
-      `INSERT INTO recall_meetings (bot_id, recording_id, title, transcript_text, duration_seconds, meeting_start, meeting_end, status, source, fathom_recording_id, coach_client_id, needs_split, pending_leads)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, 'incomplete', $8, $9, $10, $11, $12)
+      `INSERT INTO recall_meetings (bot_id, recording_id, title, transcript_text, duration_seconds, meeting_start, meeting_end, status, source, fathom_recording_id, provider_recording_id, coach_client_id, needs_split, pending_leads)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 'incomplete', $8, $9, $10, $11, $12, $13)
        RETURNING id`,
       [
         botId,
@@ -475,6 +483,7 @@ async function insertImportedMeeting({ title, source, transcriptText, meetingSta
           : null,
         safeSource,
         fathomRecordingId ? String(fathomRecordingId) : null,
+        providerRecordingId ? String(providerRecordingId) : null,
         owner,
         needsSplit === true, // ⚠️ in the review queue — e.g. a multi-booking recording filed as one lump
         pending.length ? JSON.stringify(pending) : null,
@@ -616,6 +625,33 @@ async function fathomRecordingIngested(fathomRecordingId) {
          AND transcript_text IS NOT NULL AND btrim(transcript_text) <> ''
        LIMIT 1`,
       [String(fathomRecordingId)],
+    );
+    return r.rows.length > 0;
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Generic sibling of fathomRecordingIngested for the NEW providers (source + provider-native id).
+ * Same load-bearing semantics: only a row with a NON-EMPTY transcript counts as ingested, so an
+ * attempt that landed a bodyless shell (transcript not ready when the webhook fired) is retried
+ * rather than sealed in. See the Kate Phillips note above.
+ */
+async function providerRecordingIngested(source, providerRecordingId) {
+  if (!source || !providerRecordingId) return false;
+  const p = getPool();
+  if (!p) return false;
+  const client = await p.connect();
+  try {
+    await ensureSchema(client);
+    const r = await client.query(
+      `SELECT 1 FROM recall_meetings
+       WHERE source = $1
+         AND provider_recording_id = $2
+         AND transcript_text IS NOT NULL AND btrim(transcript_text) <> ''
+       LIMIT 1`,
+      [String(source).toLowerCase(), String(providerRecordingId)],
     );
     return r.rows.length > 0;
   } finally {
@@ -1725,6 +1761,7 @@ module.exports = {
   markPendingLeadDeclined,
   resolvePendingLeadByEmail,
   fathomRecordingIngested,
+  providerRecordingIngested,
   findMeetingsByFathomRecordingId,
   findEmptyTranscriptMeetings,
   splitMeeting,

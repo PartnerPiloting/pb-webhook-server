@@ -280,9 +280,15 @@ Two different things share the word "Recall" — keep them distinct or you (and 
   `recall_latest_transcript` + `GET /recall-review/api/latest-transcript-by-email` (the "tap" — finds the
   latest meeting for a lead, regardless of source); the `recall-review` frontend page.
 
-**Model:** ONE Postgres store (tank). Recall.ai and Fathom are two pipes filling it. The chat's "I had a
-meeting with X" lookup is a tap drawing from the tank — it does NOT care which pipe filled it. "Switch
-Recall off, Fathom on" = close the Recall.ai pipe, open the Fathom pipe; tank + tap unchanged. **Decision
+**Model:** ONE Postgres store (tank). Recall.ai, Fathom and (2026-07-29) **Granola** are pipes filling it.
+The chat's "I had a meeting with X" lookup is a tap drawing from the tank — it does NOT care which pipe
+filled it. "Switch Recall off, Fathom on" = close the Recall.ai pipe, open the Fathom pipe; tank + tap
+unchanged. **Per-client pipe selection** = the `Transcript Provider` roster field via the
+`services/transcriptProvider.js` seam (blank = Fathom); Granola clients push via
+`/webhooks/granola/<clientId>` (their own API key + signing secret on the roster —
+`services/granolaIngestService.js`, gates `GRANOLA_WEBHOOK_ENABLED` / `GRANOLA_INGEST_ENABLED`, both
+default OFF). Zoom My Notes is the intended fourth pipe once its public API ships (see memory
+`transcript-provider-strategy`). **Decision
 (2026-06-13): do NOT rename `recall_*` now** (pervasive: DB tables + ~dozen files + the live MCP connector
 Guy's chat binds to; risky mid-migration). Revisit only after Recall.ai is retired, as its own staged job.
 
@@ -4986,3 +4992,43 @@ The Fathom **read path** ships in production (Smart Follow-Up / Meeting Prep); t
 loud fallback, and the splitter speak-guard all shipped and kill-switched, running in a **trial period alongside
 Recall** (Recall = safety net, not yet off). Remaining = store Nylas creds on Render, the "content ready" webhook
 (to kill the poll lag), and **switchover** (Recall off) after a clean trial.
+
+## Granola = the first PARALLEL transcript provider + the per-client provider seam (2026-07-29)
+
+**Why now:** a client wants Granola instead of Fathom, and Guy's Fathom frustration (bot refused in
+other-host meetings) made the per-client pipe model urgent. Same tank, new pipe.
+
+**What was built** (branch `feature/granola-provider`, all gates default OFF):
+- `services/transcriptProvider.js` — the provider seam, copying `calendarProvider.activeProvider`:
+  per-client `Transcript Provider` roster field → env `TRANSCRIPT_PROVIDER` → `'fathom'`. Advisory for
+  ingest (an inbound signed Granola webhook is never refused over roster lag); load-bearing for anything
+  that actively polls/onboards per provider.
+- `routes/granolaWebhookRoutes.js` — `POST /webhooks/granola/:clientId` (mounted before
+  `express.json()`). Per-client by construction: Granola registrations are per-workspace with the
+  client's OWN key, and the signing secret is per-registration — so the route verifies with THAT
+  client's stored `Granola Webhook Secret` (Standard Webhooks = the same Svix HMAC as Recall/Fathom;
+  `verifyRequestFromRecall` reused verbatim). Handles `note.generated` + `note.regenerated`; dedups on
+  note id; always 200-acks after verification. Gates: `GRANOLA_WEBHOOK_ENABLED` (process),
+  `GRANOLA_INGEST_ENABLED` (write).
+- `services/granolaIngestService.js` — fetches the note (`GET /v1/notes/{id}?include=transcript`,
+  client's `grn_` key), synthesises speaker labels (Granola only marks microphone-vs-speaker, no names:
+  microphone → coach's name; other side → the ONE matched lead's name, else "Participant"), reuses the
+  Fathom lead ladder helpers (note-people emails → coach's-own-calendar window incl. organizer → unique
+  NAME match with email self-heal → PENDING leads), files `source='granola'` +
+  `provider_recording_id=<note id>`, then generates the summary inline (two-way labels by construction,
+  so no reconstruction pass). No per-line timestamps exist → no splitter; fine, Granola is one-note-per-
+  meeting by design.
+- Store: generic `provider_recording_id` column + `providerRecordingIngested(source, id)` (same
+  "only a non-empty transcript counts as ingested" semantics as Fathom's dedup — the Kate Phillips rule).
+  `fathom_recording_id` stays untouched; new providers use the generic column.
+- Roster: `Transcript Provider` (Fathom/Granola/Zoom select) + `Granola API Key` +
+  `Granola Webhook Secret` added to `ensure-client-fields.js` MASTER_FIELDS (rollout NOT yet run).
+- `scripts/register-granola-webhook.js` — once-per-client registration with the client's key; prints the
+  once-only signing secret with paste-into-roster instructions.
+
+**Go-live per client** = client on Granola **Business** plan → they create an API key → paste into
+roster → run register script (Render one-off) → paste secret into roster → probe the endpoint → flip
+`GRANOLA_WEBHOOK_ENABLED`, observe, then `GRANOLA_INGEST_ENABLED`. **Caveats:** Granola note shape coded
+defensively from docs, unverified against a live note (first dryRun will tell); no per-person attribution
+in multi-party calls (structural to local capture). Zoom My Notes is the intended NEXT provider once its
+public API ships — monthly watch routine + memory `transcript-provider-strategy` track that.

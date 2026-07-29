@@ -113,6 +113,28 @@ const MASTER_FIELDS = [
     }
   },
   {
+    name: 'Transcript Provider',
+    type: 'singleSelect',
+    description: 'Which capture tool feeds this client\'s meeting transcripts into the store (services/transcriptProvider.js seam). Blank = Fathom (every existing client, unchanged). Granola = the client\'s Granola note-taker pushes via webhook (needs Granola API Key + Granola Webhook Secret below, Granola Business plan). Zoom = reserved for Zoom My Notes once its public API ships (until then it means transcripts arrive via the manual import door). Added 2026-07-29.',
+    options: {
+      choices: [
+        { name: 'Fathom', color: 'blueBright' },
+        { name: 'Granola', color: 'greenBright' },
+        { name: 'Zoom', color: 'cyanBright' }
+      ]
+    }
+  },
+  {
+    name: 'Granola API Key',
+    type: 'singleLineText',
+    description: 'The client\'s own Granola API key (grn_...), created by them in Granola (Business plan). Used to fetch their notes + transcripts when their Granola webhook fires, and to register that webhook (scripts/register-granola-webhook.js). Plaintext-at-rest like the other credential fields in this base. Added 2026-07-29.'
+  },
+  {
+    name: 'Granola Webhook Secret',
+    type: 'singleLineText',
+    description: 'Signing secret for this client\'s Granola webhook registration — returned ONCE by scripts/register-granola-webhook.js; paste it here immediately. The webhook route (/webhooks/granola/<Client ID>) verifies every delivery against THIS value and rejects all traffic while it\'s blank, so the Granola pipe is not live until this is set. Added 2026-07-29.'
+  },
+  {
     name: 'Anthropic API Key',
     type: 'singleLineText',
     description: 'Client\'s own (BYO) Anthropic API key. When present, Wingguy runs THIS client\'s server-side work (nightly follow-up brief, and the Chrome extension\'s drafting) on their key + their spend cap, not the platform key. Resolution order: request header -> this stored key -> platform key. Falls back to platform ONLY when absent; a FAILING key here (revoked/capped) must surface, not silently fall through. Client sets a spend cap + can revoke instantly (Anthropic Console), so worst-case cost is a number they chose. Plaintext-at-rest like the portal tokens in this base. Added 2026-07-24.'
