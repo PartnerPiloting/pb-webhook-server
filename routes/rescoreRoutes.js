@@ -81,14 +81,24 @@ module.exports = function mountRescore(app) {
   });
 
   // Read up to 1,000 of the client's scored AI Scores and derive low/mid/high bands by RANK.
+  // NOTE: the early-stop must resolve the promise explicitly — with Airtable's eachPage,
+  // returning without calling next() (or the done callback) leaves the await hanging forever.
+  // That exact bug made /estimate and /run hang for any client with >1,000 scored leads
+  // (Ashley at 291 never hit the cap; Guy's base did).
   async function readScoredScores(base) {
     const scored = [];
-    await base('Leads').select({
-      filterByFormula: `AND(({Scoring Status} = 'Scored'), NOT({AI Score} = BLANK()))`,
-      fields: ['AI Score'], pageSize: 100
-    }).eachPage((recs, next) => {
-      for (const r of recs) { if (scored.length >= 1000) break; scored.push({ id: r.id, score: Number(r.get('AI Score')) }); }
-      if (scored.length >= 1000) return; next();
+    await new Promise((resolve, reject) => {
+      base('Leads').select({
+        filterByFormula: `AND(({Scoring Status} = 'Scored'), NOT({AI Score} = BLANK()))`,
+        fields: ['AI Score'], pageSize: 100
+      }).eachPage(
+        (recs, next) => {
+          for (const r of recs) { if (scored.length >= 1000) break; scored.push({ id: r.id, score: Number(r.get('AI Score')) }); }
+          if (scored.length >= 1000) return resolve();
+          next();
+        },
+        (err) => { if (err) reject(err); else resolve(); }
+      );
     });
     // Stable order: score, then record id as tie-break — so the same pool always yields the
     // same band split and the same stratified sample, run after run.

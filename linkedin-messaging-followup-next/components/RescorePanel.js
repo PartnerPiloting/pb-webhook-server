@@ -21,6 +21,7 @@ export default function RescorePanel() {
   const [months, setMonths] = useState(3);
   const [estimate, setEstimate] = useState(null);
   const [job, setJob] = useState(null); // { jobId, total, done, mode }
+  const [starting, setStarting] = useState(false); // between click and jobId (scope-build)
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
   const pollRef = useRef(null);
@@ -73,9 +74,13 @@ export default function RescorePanel() {
       );
       if (!okGo) return;
     }
+    // Immediate feedback: /run does a scope-build (several seconds on a big base) before it
+    // returns a jobId — without this the button looks dead after the click.
+    setStarting(true);
     try {
       const q = scope === 'months' ? `scope=months&months=${months}` : `scope=sample&size=${size}`;
       const r = await api(`/run?mode=${mode}&${q}`, { method: 'POST' });
+      setStarting(false);
       if (r.done && r.result) { setResult(r.result); return; } // empty scope short-circuit
       setJob({ jobId: r.jobId, total: r.total, done: 0, mode });
       pollRef.current = setInterval(async () => {
@@ -99,6 +104,7 @@ export default function RescorePanel() {
         }
       }, POLL_MS);
     } catch (e) {
+      setStarting(false);
       setError(e.message);
     }
   };
@@ -114,7 +120,7 @@ export default function RescorePanel() {
   if (enabled === null) return <div className="text-gray-500">Loading…</div>;
   if (!enabled) return <div className="text-gray-500">Re-scoring isn&apos;t enabled for your account yet.</div>;
 
-  const busy = !!job;
+  const busy = !!job || starting;
   const showVsPrev = !!result?.comparedToPreviousTest;
 
   return (
@@ -158,6 +164,7 @@ export default function RescorePanel() {
           )}
         </div>
 
+        {!estimate && <div className="text-sm text-gray-400">Sizing up your leads…</div>}
         {estimate && (
           <div className="text-sm text-gray-600">
             {estimate.count} lead{estimate.count === 1 ? '' : 's'} in scope · uses {estimate.count} credits
@@ -172,14 +179,14 @@ export default function RescorePanel() {
               disabled={busy || (estimate && !estimate.fits)}
               onClick={() => startRun('preview')}
               title="Recomputes scores with your current attributes and shows what changed. Saves nothing."
-            >Run test</button>
+            >{starting ? "Starting…" : "Run test"}</button>
           ) : (
             <button
               className={`px-3 py-2 rounded text-white ${busy || (estimate && !estimate.fits) ? 'bg-gray-300 cursor-not-allowed' : 'bg-emerald-700 hover:bg-emerald-600'}`}
               disabled={busy || (estimate && !estimate.fits)}
               onClick={() => startRun('commit')}
               title="Re-scores and SAVES. New scores flow into Top Scoring Leads."
-            >Re-score &amp; apply</button>
+            >{starting ? "Starting…" : "Re-score & apply"}</button>
           )}
           {error && <span className="text-sm text-red-600">{error}</span>}
         </div>
