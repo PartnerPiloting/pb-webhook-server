@@ -14,7 +14,9 @@ export async function GET(request: Request) {
     // Query Airtable Master Clients base (case-insensitive)
     // Check for Google Calendar Email (service account approach) and Timezone
     const airtableResponse = await fetch(
-      `https://api.airtable.com/v0/${process.env.MASTER_CLIENTS_BASE_ID}/Clients?filterByFormula=LOWER({Client ID})=LOWER('${clientId}')&fields[]=Client ID&fields[]=Client Name&fields[]=Status&fields[]=Google Calendar Email&fields[]=Timezone&fields[]=LinkedIn URL&fields[]=Phone&fields[]=Meeting Link`,
+      // No fields[] selection: Airtable 422s the whole request on an unknown field name, and the
+      // calendar-email column is mid-rename ('Google Calendar Email' -> 'Calendar Email').
+      `https://api.airtable.com/v0/${process.env.MASTER_CLIENTS_BASE_ID}/Clients?filterByFormula=LOWER({Client ID})=LOWER('${clientId}')`,
       {
         headers: {
           'Authorization': `Bearer ${process.env.AIRTABLE_API_KEY}`,
@@ -57,7 +59,7 @@ export async function GET(request: Request) {
     }
 
     // Calendar is connected if they have set their calendar email
-    const calendarEmail = client['Google Calendar Email'];
+    const calendarEmail = client['Calendar Email'] || client['Google Calendar Email']; // renamed column; legacy fallback
     const timezone = client['Timezone'];
     
     // Client profile fields for form auto-fill

@@ -8486,7 +8486,7 @@ router.get("/api/calendar/upcoming-meeting-with-lead", async (req, res) => {
     }
 
     const lookupResponse = await fetch(
-      `https://api.airtable.com/v0/${process.env.MASTER_CLIENTS_BASE_ID}/Clients?filterByFormula=LOWER({Client ID})=LOWER('${clientId}')&fields[]=Google Calendar Email&fields[]=Timezone`,
+      `https://api.airtable.com/v0/${process.env.MASTER_CLIENTS_BASE_ID}/Clients?filterByFormula=LOWER({Client ID})=LOWER('${clientId}')`, // no fields[] selection: Airtable 422s the whole request on an unknown field name, and the calendar-email column is mid-rename ('Google Calendar Email' -> 'Calendar Email')
       { headers: { 'Authorization': `Bearer ${process.env.AIRTABLE_API_KEY}` } }
     );
     if (!lookupResponse.ok) {
@@ -8497,7 +8497,7 @@ router.get("/api/calendar/upcoming-meeting-with-lead", async (req, res) => {
       return res.json({ meeting: null });
     }
     const record = data.records[0];
-    const calendarEmail = record.fields['Google Calendar Email'];
+    const calendarEmail = record.fields['Calendar Email'] || record.fields['Google Calendar Email']; // renamed column; legacy fallback
     const timezone = record.fields['Timezone'] || 'Australia/Brisbane';
 
     if (!calendarEmail) {
@@ -8534,7 +8534,7 @@ router.get("/api/calendar/availability", async (req, res) => {
     }
 
     const lookupResponse = await fetch(
-      `https://api.airtable.com/v0/${process.env.MASTER_CLIENTS_BASE_ID}/Clients?filterByFormula=LOWER({Client ID})=LOWER('${clientId}')&fields[]=Google Calendar Email&fields[]=Timezone`,
+      `https://api.airtable.com/v0/${process.env.MASTER_CLIENTS_BASE_ID}/Clients?filterByFormula=LOWER({Client ID})=LOWER('${clientId}')`, // no fields[] selection: Airtable 422s the whole request on an unknown field name, and the calendar-email column is mid-rename ('Google Calendar Email' -> 'Calendar Email')
       { headers: { 'Authorization': `Bearer ${process.env.AIRTABLE_API_KEY}` } }
     );
     if (!lookupResponse.ok) {
@@ -8545,7 +8545,7 @@ router.get("/api/calendar/availability", async (req, res) => {
       return res.status(404).json({ error: 'Client not found' });
     }
     const record = data.records[0];
-    const calendarEmail = record.fields['Google Calendar Email'];
+    const calendarEmail = record.fields['Calendar Email'] || record.fields['Google Calendar Email']; // renamed column; legacy fallback
     const yourTimezone = record.fields['Timezone'] || 'Australia/Brisbane';
 
     if (!calendarEmail) {
@@ -8713,7 +8713,7 @@ router.post("/api/calendar/chat", async (req, res) => {
     // Get client timezone and calendar email from Airtable FIRST (needed for lead timezone fallback)
     const getClientCalendarInfo = async () => {
       const lookupResponse = await fetch(
-        `https://api.airtable.com/v0/${process.env.MASTER_CLIENTS_BASE_ID}/Clients?filterByFormula=LOWER({Client ID})=LOWER('${clientId}')&fields[]=Google Calendar Email&fields[]=Timezone`,
+        `https://api.airtable.com/v0/${process.env.MASTER_CLIENTS_BASE_ID}/Clients?filterByFormula=LOWER({Client ID})=LOWER('${clientId}')`, // no fields[] selection: Airtable 422s the whole request on an unknown field name, and the calendar-email column is mid-rename ('Google Calendar Email' -> 'Calendar Email')
         {
           headers: { 'Authorization': `Bearer ${process.env.AIRTABLE_API_KEY}` },
         }
@@ -8729,7 +8729,7 @@ router.post("/api/calendar/chat", async (req, res) => {
       }
 
       const record = data.records[0];
-      const calendarEmail = record.fields['Google Calendar Email'];
+      const calendarEmail = record.fields['Calendar Email'] || record.fields['Google Calendar Email']; // renamed column; legacy fallback
       const timezone = record.fields['Timezone'] || 'Australia/Brisbane';
 
       if (!calendarEmail) {
@@ -10584,12 +10584,26 @@ router.post("/api/onboard-client", async (req, res) => {
     if (coachId) newClientRecord['Coach'] = coachId.trim();
     if (linkedinUrl) newClientRecord['LinkedIn URL'] = linkedinUrl.trim();
     if (phone) newClientRecord['Phone'] = phone.trim();
-    if (googleCalendarEmail) newClientRecord[CLIENT_FIELDS.GOOGLE_CALENDAR_EMAIL] = googleCalendarEmail.trim();
+    if (googleCalendarEmail) newClientRecord[CLIENT_FIELDS.CALENDAR_EMAIL] = googleCalendarEmail.trim();
     if (postAccessEnabled !== undefined) {
       newClientRecord[CLIENT_FIELDS.POST_ACCESS_ENABLED] = postAccessEnabled ? 'Yes' : null;
     }
-    
-    const createdRecord = await masterBase('Clients').create(newClientRecord);
+
+    // Column mid-rename ('Google Calendar Email' -> 'Calendar Email'): Airtable 422s an unknown
+    // field name (create is atomic — nothing lands), so retry once with the legacy key.
+    let createdRecord;
+    try {
+      createdRecord = await masterBase('Clients').create(newClientRecord);
+    } catch (e) {
+      const unknownField = /UNKNOWN_FIELD_NAME|Unknown field name/i.test(String((e && (e.error + ' ' + e.message)) || ''));
+      if (unknownField && newClientRecord[CLIENT_FIELDS.CALENDAR_EMAIL] !== undefined) {
+        newClientRecord[CLIENT_FIELDS.GOOGLE_CALENDAR_EMAIL] = newClientRecord[CLIENT_FIELDS.CALENDAR_EMAIL];
+        delete newClientRecord[CLIENT_FIELDS.CALENDAR_EMAIL];
+        createdRecord = await masterBase('Clients').create(newClientRecord);
+      } else {
+        throw e;
+      }
+    }
     
     logger.info(`Client ${clientId} created successfully with record ID: ${createdRecord.id}`);
     
@@ -10791,7 +10805,7 @@ router.put("/api/update-client/:clientId", async (req, res) => {
       statusManagement: CLIENT_FIELDS.STATUS_MANAGEMENT,
       linkedinUrl: 'LinkedIn URL',
       phone: 'Phone',
-      googleCalendarEmail: CLIENT_FIELDS.GOOGLE_CALENDAR_EMAIL,
+      googleCalendarEmail: CLIENT_FIELDS.CALENDAR_EMAIL, // column mid-rename; update retries with the legacy name below
       profileScoringTokenLimit: CLIENT_FIELDS.PROFILE_SCORING_TOKEN_LIMIT,
       postScoringTokenLimit: CLIENT_FIELDS.POST_SCORING_TOKEN_LIMIT,
       postsDailyTarget: CLIENT_FIELDS.POSTS_DAILY_TARGET,
@@ -10826,8 +10840,21 @@ router.put("/api/update-client/:clientId", async (req, res) => {
       return res.status(400).json({ success: false, error: 'No valid fields to update' });
     }
     
-    // Update the record
-    const updatedRecord = await masterBase('Clients').update(recordId, updateFields);
+    // Update the record. Column mid-rename ('Google Calendar Email' -> 'Calendar Email'):
+    // Airtable 422s an unknown field name (update is atomic), so retry once with the legacy key.
+    let updatedRecord;
+    try {
+      updatedRecord = await masterBase('Clients').update(recordId, updateFields);
+    } catch (e) {
+      const unknownField = /UNKNOWN_FIELD_NAME|Unknown field name/i.test(String((e && (e.error + ' ' + e.message)) || ''));
+      if (unknownField && updateFields[CLIENT_FIELDS.CALENDAR_EMAIL] !== undefined) {
+        updateFields[CLIENT_FIELDS.GOOGLE_CALENDAR_EMAIL] = updateFields[CLIENT_FIELDS.CALENDAR_EMAIL];
+        delete updateFields[CLIENT_FIELDS.CALENDAR_EMAIL];
+        updatedRecord = await masterBase('Clients').update(recordId, updateFields);
+      } else {
+        throw e;
+      }
+    }
     
     logger.info(`Client ${clientId} updated successfully`);
     

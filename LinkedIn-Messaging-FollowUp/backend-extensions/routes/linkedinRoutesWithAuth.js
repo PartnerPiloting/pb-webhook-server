@@ -2517,10 +2517,21 @@ router.patch('/client/calendar', async (req, res) => {
     
     const clientRecord = records[0];
     
-    // Update the Google Calendar Email field
-    await masterBase('Clients').update(clientRecord.id, {
-      'Google Calendar Email': calendarEmail
-    });
+    // Update the calendar-email field. Column mid-rename ('Google Calendar Email' ->
+    // 'Calendar Email'): Airtable 422s an unknown field name (atomic), so retry with the legacy key.
+    try {
+      await masterBase('Clients').update(clientRecord.id, {
+        'Calendar Email': calendarEmail
+      });
+    } catch (e) {
+      if (/UNKNOWN_FIELD_NAME|Unknown field name/i.test(String((e && (e.error + ' ' + e.message)) || ''))) {
+        await masterBase('Clients').update(clientRecord.id, {
+          'Google Calendar Email': calendarEmail
+        });
+      } else {
+        throw e;
+      }
+    }
     
     logger.info(`LinkedIn Routes: Successfully updated calendar email for ${clientId} to ${calendarEmail}`);
     

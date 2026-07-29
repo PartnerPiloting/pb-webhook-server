@@ -130,7 +130,7 @@ async function getAllClients() {
                 
                 // Calendar/timezone configuration
                 const timezone = record.get(CLIENT_FIELDS.TIMEZONE) || null;
-                const googleCalendarEmail = record.get(CLIENT_FIELDS.GOOGLE_CALENDAR_EMAIL) || null;
+                const googleCalendarEmail = record.get(CLIENT_FIELDS.CALENDAR_EMAIL) || record.get(CLIENT_FIELDS.GOOGLE_CALENDAR_EMAIL) || null;
                 
                 // Coaching configuration
                 const coach = record.get('Coach') || null;
