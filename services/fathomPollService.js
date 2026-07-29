@@ -194,7 +194,13 @@ async function pollAllFathomTenants(opts = {}) {
     log.warn(`pending-lead reconcile failed: ${e.message}`);
     return null;
   });
-  return { ok: true, tenants: tenants.length, ingested: totIngested, failed: totFailed, results, coverage, reconciled };
+  // AFTER the reconcile on purpose: someone who became a lead in the last few minutes gets LINKED
+  // above, not emailed about. Dormant unless PENDING_NOTIFY_ENABLED=true.
+  const notified = await require('./pendingLeadNotifier').notifyPendingLeads().catch((e) => {
+    log.warn(`pending-lead notify failed: ${e.message}`);
+    return null;
+  });
+  return { ok: true, tenants: tenants.length, ingested: totIngested, failed: totFailed, results, coverage, reconciled, notified };
 }
 
 // ── Coverage sweep: make silent transcript failures loud ────────────────────────────────────────

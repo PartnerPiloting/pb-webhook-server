@@ -524,6 +524,26 @@ async function findPendingLeadMeetings({ coachClientId, email, limit = 50 } = {}
 }
 
 /**
+ * Stamp notifiedAt on every pending entry for (coachClientId, email) — the never-nag-twice guard
+ * for the tell-the-coach email. Idempotent. Returns { stamped: <meetingCount> }.
+ */
+async function markPendingLeadNotified({ coachClientId, email, atISO }) {
+  const needle = String(email || '').toLowerCase().trim();
+  if (!needle) return { stamped: 0, error: 'email required' };
+  const when = atISO || new Date().toISOString();
+  const waiting = await findPendingLeadMeetings({ coachClientId, email: needle, limit: 200 });
+  const p = getPool();
+  if (!p) return { stamped: 0, error: 'database not available' };
+  let stamped = 0;
+  for (const m of waiting) {
+    const next = m.pending.map((x) => (x.email === needle ? { ...x, notifiedAt: when } : x));
+    await p.query(`UPDATE recall_meetings SET pending_leads = $1, updated_at = now() WHERE id = $2`, [JSON.stringify(next), m.id]);
+    stamped++;
+  }
+  return { stamped };
+}
+
+/**
  * A lead now EXISTS for `email` — link every meeting that was waiting on it and clear that entry
  * from pending_leads (column goes NULL when nothing left). Idempotent: re-running is a no-op.
  * Returns { linked: [meetingIds] }.
@@ -1682,6 +1702,7 @@ module.exports = {
   confirmReconstruction,
   insertImportedMeeting,
   findPendingLeadMeetings,
+  markPendingLeadNotified,
   resolvePendingLeadByEmail,
   fathomRecordingIngested,
   findMeetingsByFathomRecordingId,
