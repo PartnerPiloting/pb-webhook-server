@@ -190,7 +190,11 @@ async function pollAllFathomTenants(opts = {}) {
     log.warn(`coverage sweep failed: ${e.message}`);
     return null;
   });
-  return { ok: true, tenants: tenants.length, ingested: totIngested, failed: totFailed, results, coverage };
+  const reconciled = await reconcilePendingLeads().catch((e) => {
+    log.warn(`pending-lead reconcile failed: ${e.message}`);
+    return null;
+  });
+  return { ok: true, tenants: tenants.length, ingested: totIngested, failed: totFailed, results, coverage, reconciled };
 }
 
 // ── Coverage sweep: make silent transcript failures loud ────────────────────────────────────────
@@ -218,6 +222,55 @@ async function sweepEmptyTranscripts({ olderThanMins = EMPTY_GRACE_MINS } = {}) 
   return lastCoverage;
 }
 
+// ── Pending-lead reconcile: leads created OUTSIDE Wingguy still resolve waiting meetings ────────
+// The create doors (connector wingguy_create_lead / chat create_lead) resolve pending meetings
+// instantly, but a lead can arrive any other way — LinkedIn Helper import, the Portal, a manual
+// Airtable add, or an email learned onto an existing lead later (extension enrich). This sweep is
+// the catch-all: every poll pass, re-check each (tenant, pending email) against the tenant's leads
+// by EMAIL and link whatever now matches. Rides the poll heartbeat like sweepEmptyTranscripts —
+// no cron for anyone to remember. Bounded per pass; the next pass picks up the rest.
+const RECONCILE_MAX_LOOKUPS = Number(process.env.PENDING_RECONCILE_MAX_LOOKUPS) || 30;
+let lastReconcile = null;
+
+async function reconcilePendingLeads() {
+  const { findPendingLeadMeetings, resolvePendingLeadByEmail } = require('./recallWebhookDb');
+  const { findLeadByEmail } = require('./inboundEmailService');
+
+  const rows = await findPendingLeadMeetings({ limit: 200 });
+  const pairs = new Map(); // "tenant|email" -> {coachClientId, email}
+  for (const m of rows) {
+    for (const p of m.pending) {
+      const key = `${m.coach_client_id}|${p.email}`;
+      if (!pairs.has(key)) pairs.set(key, { coachClientId: m.coach_client_id, email: p.email });
+    }
+  }
+  lastReconcile = { checkedAt: new Date().toISOString(), waitingMeetings: rows.length, uniquePairs: pairs.size, linked: 0 };
+  if (!pairs.size) return lastReconcile;
+
+  const coachCache = new Map();
+  let lookups = 0;
+  for (const { coachClientId, email } of pairs.values()) {
+    if (lookups >= RECONCILE_MAX_LOOKUPS) { log.info(`pending reconcile: lookup cap ${RECONCILE_MAX_LOOKUPS} hit — rest next pass`); break; }
+    lookups++;
+    try {
+      let coach = coachCache.get(coachClientId);
+      if (coach === undefined) { coach = await clientService.getClientById(coachClientId); coachCache.set(coachClientId, coach || null); }
+      if (!coach || !coach.airtableBaseId) continue;
+      const lead = await findLeadByEmail(coach, email);
+      if (lead && lead.id) {
+        const r = await resolvePendingLeadByEmail({ email, airtableLeadId: lead.id, coachClientId, source: 'pending-reconcile' });
+        if (r.linked && r.linked.length) {
+          lastReconcile.linked += r.linked.length;
+          log.info(`pending reconcile: ${email} (${coachClientId}) now a lead -> attached ${r.linked.length} waiting meeting(s)`);
+        }
+      }
+    } catch (e) {
+      log.warn(`pending reconcile: ${email} (${coachClientId}) failed: ${e.message}`);
+    }
+  }
+  return lastReconcile;
+}
+
 function startFathomPoll() {
   if (intervalHandle) return;
   if (!pollEnabled()) { log.info('fathom-poll: disabled (FATHOM_POLL_ENABLED not true)'); return; }
@@ -243,6 +296,8 @@ function getFathomPollStatus() {
     lastResult,
     // "Is anything looking like coverage but empty?" — the answer nothing used to be able to give.
     lastCoverage,
+    // "Is anything waiting on a lead that now exists?" — the pending-lead catch-all.
+    lastReconcile,
   };
 }
 
@@ -250,6 +305,7 @@ module.exports = {
   pollFathomMeetings,
   pollAllFathomTenants,
   sweepEmptyTranscripts,
+  reconcilePendingLeads,
   startFathomPoll,
   stopFathomPoll,
   getFathomPollStatus,
