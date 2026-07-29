@@ -60,9 +60,27 @@ async function runCreateLead(args = {}, tenant = TENANT) {
   const who = `${r.fields ? `${r.fields['First Name'] || ''} ${r.fields['Last Name'] || ''}`.trim() : ''}`
     || r.name || [first, last].filter(Boolean).join(' ') || url || 'the lead';
 
+  // PENDING-MEETING RESOLUTION: a meeting recorded BEFORE this person was a lead is parked with
+  // their email on it (recall_meetings.pending_leads). Now that their record exists, attach every
+  // meeting that was waiting — the moment of creation is exactly when the wait ends. Non-fatal:
+  // a store hiccup must never fail the create itself.
+  let attachedNote = '';
+  const createdEmail = String((r.fields && r.fields['Email']) || args.email || '').trim().toLowerCase();
+  if (createdEmail && r.leadRecordId) {
+    try {
+      const { resolvePendingLeadByEmail } = require('./recallWebhookDb');
+      const pr = await resolvePendingLeadByEmail({ email: createdEmail, airtableLeadId: r.leadRecordId, coachClientId: tenant, source: 'lead-created' });
+      if (pr.linked && pr.linked.length) {
+        attachedNote = ` Also attached ${pr.linked.length} earlier meeting transcript(s) that were waiting on ${createdEmail} — ask about your meetings with them to see it.`;
+      }
+    } catch (e) {
+      // swallow — pending linkage is a bonus, not part of the create contract
+    }
+  }
+
   // Already in the base: dedup hit — report it as a match, not a create (no duplicate was made).
   if (r.exists) {
-    return { text: `Already in the CRM${r.name ? ` — ${r.name}` : ''} (record ${r.leadRecordId}). No duplicate created; use their existing record to book or update them.` };
+    return { text: `Already in the CRM${r.name ? ` — ${r.name}` : ''} (record ${r.leadRecordId}). No duplicate created; use their existing record to book or update them.${attachedNote}` };
   }
 
   const bits = [];
@@ -71,7 +89,7 @@ async function runCreateLead(args = {}, tenant = TENANT) {
   if (r.fields && r.fields['Phone']) bits.push(`phone ${r.fields['Phone']}`);
   const detail = bits.length ? ` (${bits.join(', ')})` : '';
   return {
-    text: `Created ${who} in the CRM${detail} — filed Connected and dated today, so they enter the pipeline. Record ${r.leadRecordId}. `
+    text: `Created ${who} in the CRM${detail} — filed Connected and dated today, so they enter the pipeline. Record ${r.leadRecordId}.${attachedNote} `
       + `Phone/email from LinkedIn aren't pulled from here (that's the browser extension's job) — file an email later if one surfaces.`,
   };
 }

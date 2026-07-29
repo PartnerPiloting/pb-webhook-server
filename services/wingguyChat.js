@@ -444,6 +444,22 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
         const createdEmail = r.fields && r.fields['Email'];
         if (createdEmail && !currentLeadEmail) currentLeadEmail = createdEmail;
       }
+      // PENDING-MEETING RESOLUTION: a recording made BEFORE this person was a lead is parked with
+      // their email (recall_meetings.pending_leads). Attach any that were waiting, and tell the
+      // agent so it can mention it. Non-fatal — never fails the create.
+      if (r && r.ok && r.leadRecordId) {
+        const em = String(((r.fields && r.fields['Email']) || (input && input.email)) || '').trim().toLowerCase();
+        if (em) {
+          try {
+            const { resolvePendingLeadByEmail } = require('./recallWebhookDb');
+            const pr = await resolvePendingLeadByEmail({ email: em, airtableLeadId: r.leadRecordId, coachClientId: coach.clientId, source: 'lead-created' });
+            if (pr.linked && pr.linked.length) {
+              r.waitingMeetingsAttached = pr.linked.length;
+              r.note = `${pr.linked.length} earlier meeting transcript(s) were waiting on ${em} and are now attached to this lead — worth mentioning to Guy.`;
+            }
+          } catch (_) { /* linkage is a bonus, not part of the create contract */ }
+        }
+      }
       // ONLY on a fresh create (not an existing match) with a profile to read: flag the extension to
       // pull the lead's LinkedIn Contact Info and patch email/phone onto the new record.
       if (r && r.ok && r.created && r.leadRecordId && /\/in\//i.test(leadUrl)) {
