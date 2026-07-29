@@ -77,6 +77,27 @@ router.post('/api/webhooks/inbound-email', upload.any(), async (req, res) => {
             logger.info('✓ Mailgun signature validated');
         }
 
+        // REPLY-TO-ADD: pending-lead notifications (pendingLeadNotifier) set Reply-To to
+        // add-<token>@ this domain. Those replies are commands to Wingguy ("here's their
+        // LinkedIn"), NOT BCC correspondence to log — hand them to the pending-reply handler
+        // and stop. Signature validation above still applies; the handler adds its own gates
+        // (live token + sender-resolves-to-the-same-tenant) before any write.
+        try {
+            const pendingReply = await require('../services/pendingReplyHandler').handlePendingReply(mailgunData);
+            if (pendingReply.handled) {
+                logger.info(`↩️ Pending-lead reply handled: ${pendingReply.outcome}`);
+                return res.status(200).json({ success: true, pendingReply: pendingReply.outcome });
+            }
+        } catch (prErr) {
+            // A pending-reply failure must not break the BCC pipe — but an add-* recipient makes
+            // no sense to the BCC flow either, so answer 200 and surface the error in logs.
+            if (/^add-[a-z0-9_-]+@/i.test(String(mailgunData.recipient || ''))) {
+                logger.error(`Pending-lead reply failed: ${prErr.message}`);
+                return res.status(200).json({ success: false, error: 'pending-reply-error', message: prErr.message });
+            }
+            logger.warn(`Pending-reply check errored (non add-* recipient, continuing to BCC flow): ${prErr.message}`);
+        }
+
         // Process the inbound email
         const result = await inboundEmailService.processInboundEmail(mailgunData);
         
