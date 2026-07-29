@@ -163,16 +163,21 @@ async function matchLeads(coach, emails) {
  */
 function calendarParticipantEmails(events, coachEmails = []) {
   const coachSet = new Set((coachEmails || []).map((e) => String(e).toLowerCase().trim()).filter(Boolean));
-  const out = new Set();
+  const out = new Map(); // email -> {email, name} (first name wins; organizer has no name of its own)
+  const add = (email, name) => {
+    const e = String(email || '').toLowerCase().trim();
+    if (!e || coachSet.has(e)) return;
+    const prev = out.get(e);
+    if (!prev) out.set(e, { email: e, ...(name ? { name: String(name).trim() } : {}) });
+    else if (!prev.name && name) out.set(e, { email: e, name: String(name).trim() });
+  };
   for (const ev of (events || [])) {
     for (const a of (ev.attendees || [])) {
-      const e = String(a.email || '').toLowerCase().trim();
-      if (e && !a.self && !coachSet.has(e)) out.add(e);
+      if (!a.self) add(a.email, a.displayName);
     }
-    const org = String(ev.organizerEmail || '').toLowerCase().trim();
-    if (org && !coachSet.has(org)) out.add(org);
+    add(ev.organizerEmail, '');
   }
-  return [...out];
+  return [...out.values()];
 }
 
 /**
@@ -358,11 +363,18 @@ async function ingestFathomMeeting(opts = {}) {
   // emails — INCLUDING the organizer, who is the lead when they set the meeting up. Match those by
   // email (immune to odd Zoom display names) when Fathom's own invitee list matched nobody. This
   // is what the transcript-speaker-name fallbacks below cannot do reliably.
+  let calendarUnmatched = []; // [{email, name?}] — identified on the coach's calendar but no lead exists
   if (matched.length === 0) {
-    const calEmails = calendarParticipantEmails(uniqueEvents, coachEmails);
-    const cal = calEmails.length ? await matchLeads(coach, calEmails) : { matched: [] };
+    const calParticipants = calendarParticipantEmails(uniqueEvents, coachEmails);
+    const cal = calParticipants.length ? await matchLeads(coach, calParticipants.map((x) => x.email)) : { matched: [], unmatched: [] };
     for (const m of cal.matched) matched.push({ ...m, via: 'calendar-email' });
-    if (cal.matched.length) log.info(`single-path calendar-email fallback matched ${cal.matched.length} lead(s) from ${calEmails.length} calendar participant email(s)`);
+    if (cal.matched.length) log.info(`single-path calendar-email fallback matched ${cal.matched.length} lead(s) from ${calParticipants.length} calendar participant email(s)`);
+    const nameByEmail = new Map(calParticipants.map((x) => [x.email, x.name || '']));
+    calendarUnmatched = (cal.unmatched || []).map((e) => {
+      const clean = String(e).toLowerCase().trim();
+      const name = nameByEmail.get(clean);
+      return { email: clean, ...(name ? { name } : {}) };
+    });
   }
 
   // Q2(A) — single-meeting NAME fallback: a booking email that matched NO lead still gets a shot
@@ -417,6 +429,26 @@ async function ingestFathomMeeting(opts = {}) {
     }
   }
 
+  // PENDING LEADS: participants we could IDENTIFY (an email off the booking or Fathom's invitee
+  // list, name where known) but who match NO lead. Stored ON the meeting row — so "met someone who
+  // isn't a lead yet" is a queryable, resolvable state instead of a silent loss. When the lead is
+  // later created, resolvePendingLeadByEmail links every waiting meeting and clears the entry.
+  const matchedEmails = new Set(matched.map((m) => String(m.email || '').toLowerCase()).filter(Boolean));
+  const pendingLeads = [];
+  const seenPending = new Set();
+  for (const rawEmail of remainingUnmatched) {
+    const e = String(rawEmail).toLowerCase().trim();
+    if (!e || matchedEmails.has(e) || seenPending.has(e)) continue;
+    seenPending.add(e);
+    const name = emails.externalNames[e];
+    pendingLeads.push({ email: e, ...(name ? { name } : {}) });
+  }
+  for (const c of calendarUnmatched) {
+    if (!c.email || matchedEmails.has(c.email) || seenPending.has(c.email)) continue;
+    seenPending.add(c.email);
+    pendingLeads.push(c);
+  }
+
   const plan = {
     recordingId: String(meeting.recording_id),
     mode: 'single',
@@ -428,6 +460,7 @@ async function ingestFathomMeeting(opts = {}) {
     externalEmails: emails.external,
     matchedLeads: matched,
     unmatchedEmails: remainingUnmatched,
+    pendingLeads,
     lumpSuspect,
     source: SOURCE,
   };
@@ -447,8 +480,9 @@ async function ingestFathomMeeting(opts = {}) {
     return { ok: false, error: 'no transcript on the recording yet — not filed (will retry)', plan, emptyTranscript: true };
   }
 
-  const ins = await insertImportedMeeting({ title: meta.title, source: SOURCE, transcriptText, meetingStart: meta.meetingStart, durationSeconds: meta.durationSeconds, fathomRecordingId: String(meeting.recording_id), coachClientId, needsSplit: lumpSuspect });
+  const ins = await insertImportedMeeting({ title: meta.title, source: SOURCE, transcriptText, meetingStart: meta.meetingStart, durationSeconds: meta.durationSeconds, fathomRecordingId: String(meeting.recording_id), coachClientId, needsSplit: lumpSuspect, pendingLeads });
   if (!ins.ok) return { ok: false, error: ins.error || 'insert failed', plan };
+  if (pendingLeads.length) log.info(`single-path filed with ${pendingLeads.length} PENDING lead(s) (${pendingLeads.map((x) => x.email).join(', ')}) — waiting on lead creation`);
 
   const meetingId = ins.meeting_id;
   const linkedLeads = [];

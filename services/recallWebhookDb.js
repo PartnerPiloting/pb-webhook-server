@@ -194,6 +194,16 @@ async function ensureSchema(client) {
   await client.query(`ALTER TABLE recall_meetings ADD COLUMN IF NOT EXISTS coach_client_id TEXT DEFAULT 'Guy-Wilson';`);
   await client.query(`CREATE INDEX IF NOT EXISTS idx_recall_m_coach ON recall_meetings (coach_client_id);`);
 
+  // PENDING LEADS — meeting participants who matched NO lead at ingest time (JSON array of
+  // {email, name}). Before this, those identities were computed and thrown away, so a meeting with
+  // an unknown person filed silently linkless and nothing could ever surface it ("who was this
+  // with?" had no answer on record). Non-null = this meeting is waiting on a lead to exist; the
+  // add-lead flow / reconcile sweep resolves entries by EMAIL and links the meeting, clearing the
+  // column when empty (see resolvePendingLeadByEmail). TEXT-holding-JSON matches summary_json /
+  // reconstruction_json convention.
+  await client.query(`ALTER TABLE recall_meetings ADD COLUMN IF NOT EXISTS pending_leads TEXT;`);
+  await client.query(`CREATE INDEX IF NOT EXISTS idx_recall_m_pending ON recall_meetings (coach_client_id) WHERE pending_leads IS NOT NULL;`);
+
   schemaEnsured = true;
 }
 
@@ -426,7 +436,7 @@ async function updateMeetingTimes(meetingId, { meetingStart, meetingEnd }) {
  * Create a recall_meetings row from a manually-imported transcript (Tactiq, Fathom, etc.).
  * Generates synthetic bot_id/recording_id so the row is distinguishable from real Recall captures.
  */
-async function insertImportedMeeting({ title, source, transcriptText, meetingStart, durationSeconds, fathomRecordingId, coachClientId, needsSplit }) {
+async function insertImportedMeeting({ title, source, transcriptText, meetingStart, durationSeconds, fathomRecordingId, coachClientId, needsSplit, pendingLeads }) {
   const p = getPool();
   if (!p) return { ok: false, error: 'database not available' };
   const safeSource = (source || 'other').toString().toLowerCase().slice(0, 32) || 'other';
@@ -435,12 +445,23 @@ async function insertImportedMeeting({ title, source, transcriptText, meetingSta
   const rand = Math.floor(Math.random() * 1e9).toString(36);
   const botId = `manual:${safeSource}:${stamp}-${rand}`;
   const recordingId = `manual:${safeSource}:rec:${stamp}-${rand}`;
+  // Unknown participants ({email, name}) — stored ON the meeting so "met someone who isn't a lead
+  // yet" is a queryable state instead of a silent loss. Normalised + capped defensively.
+  const pending = Array.isArray(pendingLeads)
+    ? pendingLeads
+        .map((x) => ({
+          email: String((x && x.email) || '').toLowerCase().trim(),
+          ...(x && x.name ? { name: String(x.name).trim().slice(0, 120) } : {}),
+        }))
+        .filter((x) => x.email && x.email.includes('@'))
+        .slice(0, 20)
+    : [];
   const client = await p.connect();
   try {
     await ensureSchema(client);
     const r = await client.query(
-      `INSERT INTO recall_meetings (bot_id, recording_id, title, transcript_text, duration_seconds, meeting_start, meeting_end, status, source, fathom_recording_id, coach_client_id, needs_split)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, 'incomplete', $8, $9, $10, $11)
+      `INSERT INTO recall_meetings (bot_id, recording_id, title, transcript_text, duration_seconds, meeting_start, meeting_end, status, source, fathom_recording_id, coach_client_id, needs_split, pending_leads)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 'incomplete', $8, $9, $10, $11, $12)
        RETURNING id`,
       [
         botId,
@@ -456,14 +477,79 @@ async function insertImportedMeeting({ title, source, transcriptText, meetingSta
         fathomRecordingId ? String(fathomRecordingId) : null,
         owner,
         needsSplit === true, // ⚠️ in the review queue — e.g. a multi-booking recording filed as one lump
+        pending.length ? JSON.stringify(pending) : null,
       ],
     );
-    return { ok: true, meeting_id: String(r.rows[0].id), bot_id: botId };
+    return { ok: true, meeting_id: String(r.rows[0].id), bot_id: botId, pendingCount: pending.length };
   } catch (e) {
     return { ok: false, error: e.message };
   } finally {
     client.release();
   }
+}
+
+/**
+ * Meetings waiting on a lead to exist — pending_leads non-null, newest first, per tenant.
+ * Pass `email` to narrow to meetings waiting on that specific address (drives both the
+ * "email the coach about this person" pass and link-on-lead-create).
+ */
+async function findPendingLeadMeetings({ coachClientId, email, limit = 50 } = {}) {
+  const p = getPool();
+  if (!p) return [];
+  const client = await p.connect();
+  try {
+    await ensureSchema(client);
+    const params = [];
+    let where = `pending_leads IS NOT NULL`;
+    if (coachClientId) { params.push(coachClientId); where += ` AND coach_client_id = $${params.length}`; }
+    params.push(Math.min(Math.max(parseInt(limit, 10) || 50, 1), 200));
+    const r = await client.query(
+      `SELECT id, title, meeting_start, created_at, coach_client_id, source, pending_leads
+       FROM recall_meetings WHERE ${where}
+       ORDER BY COALESCE(meeting_start, created_at) DESC LIMIT $${params.length}`,
+      params,
+    );
+    const clean = (row) => {
+      let pending = [];
+      try { pending = JSON.parse(row.pending_leads) || []; } catch (_) { /* tolerate bad cell */ }
+      return { ...row, pending };
+    };
+    const rows = r.rows.map(clean);
+    if (!email) return rows;
+    const needle = String(email).toLowerCase().trim();
+    return rows.filter((row) => row.pending.some((x) => x.email === needle));
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * A lead now EXISTS for `email` — link every meeting that was waiting on it and clear that entry
+ * from pending_leads (column goes NULL when nothing left). Idempotent: re-running is a no-op.
+ * Returns { linked: [meetingIds] }.
+ */
+async function resolvePendingLeadByEmail({ email, airtableLeadId, coachClientId, source = 'pending-resolved' }) {
+  const needle = String(email || '').toLowerCase().trim();
+  if (!needle || !airtableLeadId) return { linked: [], error: 'email and airtableLeadId required' };
+  const waiting = await findPendingLeadMeetings({ coachClientId, email: needle, limit: 200 });
+  const p = getPool();
+  if (!p) return { linked: [], error: 'database not available' };
+  const linked = [];
+  for (const m of waiting) {
+    try {
+      await addMeetingLead(m.id, airtableLeadId, coachClientId || m.coach_client_id, source);
+      const remaining = m.pending.filter((x) => x.email !== needle);
+      await p.query(
+        `UPDATE recall_meetings SET pending_leads = $1, updated_at = now() WHERE id = $2`,
+        [remaining.length ? JSON.stringify(remaining) : null, m.id],
+      );
+      linked.push(String(m.id));
+    } catch (e) {
+      // Leave this meeting pending rather than half-resolve it silently.
+      console.warn(`[recallWebhookDb] resolvePendingLeadByEmail: meeting ${m.id} failed: ${e.message}`);
+    }
+  }
+  return { linked };
 }
 
 /**
@@ -1595,6 +1681,8 @@ module.exports = {
   saveReconstruction,
   confirmReconstruction,
   insertImportedMeeting,
+  findPendingLeadMeetings,
+  resolvePendingLeadByEmail,
   fathomRecordingIngested,
   findMeetingsByFathomRecordingId,
   findEmptyTranscriptMeetings,
