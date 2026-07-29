@@ -1296,6 +1296,8 @@ router.post('/mcp/:token', express.json(), async (req, res) => {
           ...require('../services/wingguyMailMcp').legacyToolList(),
           // Wingguy leads tool (CRM create door) — shared defs with /mcp2.
           ...require('../services/wingguyLeadsMcp').legacyToolList(),
+          // Transcript-store import (write-door for missed captures) — shared defs with /mcp2.
+          ...require('../services/recallImportMcp').legacyToolList(),
         ],
       },
     });
@@ -1312,6 +1314,12 @@ router.post('/mcp/:token', express.json(), async (req, res) => {
         || await require('../services/wingguyBookingMcp').legacyToolCall(toolName, args)
         || await require('../services/wingguyMailMcp').legacyToolCall(toolName, args)
         || await require('../services/wingguyLeadsMcp').legacyToolCall(toolName, args);
+      if (result) return res.json({ jsonrpc: '2.0', id, result });
+    }
+
+    // --- Transcript-store import (recall_ prefix, so outside the wingguy_ gate above) ---
+    if (toolName === 'recall_import_transcript') {
+      const result = await require('../services/recallImportMcp').legacyToolCall(toolName, args);
       if (result) return res.json({ jsonrpc: '2.0', id, result });
     }
 

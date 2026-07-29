@@ -29,6 +29,7 @@ const { registerWingguyBookingTools } = require('./wingguyBookingMcp');
 const { registerWingguyMailTools } = require('./wingguyMailMcp');
 const { registerWingguyLeadsTools } = require('./wingguyLeadsMcp');
 const { registerWingguyGetStartedTools } = require('./wingguyGetStartedMcp');
+const { registerRecallImportTools } = require('./recallImportMcp');
 
 const BASE = '/mcp2';
 const DEFAULT_COACH_CLIENT_ID = (process.env.RECALL_COACH_CLIENT_ID || 'Guy-Wilson').trim();
@@ -338,6 +339,8 @@ function createRecallMcpServer(coachClientId = DEFAULT_COACH_CLIENT_ID) {
   registerWingguyBookingTools(server, coachClientId);
   registerWingguyMailTools(server, coachClientId);
   registerWingguyLeadsTools(server, coachClientId);
+  // Transcript-store import (the write-door for missed captures — Zoom AI Companion etc.).
+  registerRecallImportTools(server, coachClientId);
 
   return server;
 }
