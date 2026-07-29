@@ -3,7 +3,7 @@
 // check_availability tool). Thin wrapper over the PROVEN building blocks the Smart Booking
 // Assistant + the /api/calendar/availability route already use:
 //   - calendarServiceAccount.getBatchAvailability (Google service-account free/busy)
-//   - the coach's Google Calendar Email + Timezone from the Master Clients base
+//   - the coach's Calendar Email (any provider; column formerly 'Google Calendar Email') + Timezone from the Master Clients base
 //   - getTimezoneFromLocation for the lead's timezone (rule-based; falls back to the coach's tz)
 //
 // Returns timezone-correct DISPLAY STRINGS for both sides so the agent never does timezone math
@@ -44,7 +44,7 @@ async function getCoachCalendarInfo(clientId) {
   const data = await resp.json();
   const rec = data.records && data.records[0];
   if (!rec) throw new Error(`client "${clientId}" not found in Master Clients base`);
-  const calendarEmail = rec.fields['Google Calendar Email'] || null;
+  const calendarEmail = rec.fields['Calendar Email'] || rec.fields['Google Calendar Email'] || null; // renamed column; legacy fallback
   const timezone = rec.fields['Timezone'] || DEFAULT_TZ;
   const nylasGrantId = rec.fields['Nylas Grant ID'] || null;
   const calendarProvider = rec.fields['Calendar Provider'] || null;

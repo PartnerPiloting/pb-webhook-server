@@ -56,7 +56,12 @@ const CLIENT_FIELDS = {
   AUTO_ADJUST_FLOORS: 'Auto Adjust Floors',
   ACTIVE: 'Active',
   TIMEZONE: 'Timezone',
-  GOOGLE_CALENDAR_EMAIL: 'Google Calendar Email',
+  // The coach's OWN calendar address — read by EVERY calendar provider (Zoho/Nylas/Unipile/iCloud),
+  // not just Google; the old name misled onboarding into leaving it blank for non-Google clients.
+  // Column renaming 'Google Calendar Email' -> 'Calendar Email': readers accept both names,
+  // writers try new-then-legacy, so the Airtable rename can land whenever without a breakage window.
+  CALENDAR_EMAIL: 'Calendar Email',
+  GOOGLE_CALENDAR_EMAIL: 'Google Calendar Email', // LEGACY pre-rename name — drop after the column is renamed
   ALTERNATIVE_EMAIL_ADDRESSES: 'Alternative Email Addresses' // Semicolon-separated list for inbound email matching
 };
 
