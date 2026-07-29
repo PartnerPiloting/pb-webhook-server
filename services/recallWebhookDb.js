@@ -524,23 +524,41 @@ async function findPendingLeadMeetings({ coachClientId, email, limit = 50 } = {}
 }
 
 /**
- * Stamp notifiedAt on every pending entry for (coachClientId, email) — the never-nag-twice guard
- * for the tell-the-coach email. Idempotent. Returns { stamped: <meetingCount> }.
+ * Merge `fields` into every pending entry for (coachClientId, email) — shared stamping machinery.
+ * Idempotent. Returns { stamped: <meetingCount> }.
  */
-async function markPendingLeadNotified({ coachClientId, email, atISO }) {
+async function stampPendingLead({ coachClientId, email, fields = {} }) {
   const needle = String(email || '').toLowerCase().trim();
   if (!needle) return { stamped: 0, error: 'email required' };
-  const when = atISO || new Date().toISOString();
   const waiting = await findPendingLeadMeetings({ coachClientId, email: needle, limit: 200 });
   const p = getPool();
   if (!p) return { stamped: 0, error: 'database not available' };
   let stamped = 0;
   for (const m of waiting) {
-    const next = m.pending.map((x) => (x.email === needle ? { ...x, notifiedAt: when } : x));
+    const next = m.pending.map((x) => (x.email === needle ? { ...x, ...fields } : x));
     await p.query(`UPDATE recall_meetings SET pending_leads = $1, updated_at = now() WHERE id = $2`, [JSON.stringify(next), m.id]);
     stamped++;
   }
   return { stamped };
+}
+
+/**
+ * Stamp notifiedAt (+ the reply token the notification's Reply-To carries) on every pending entry
+ * for (coachClientId, email) — the never-nag-twice guard for the tell-the-coach email.
+ */
+async function markPendingLeadNotified({ coachClientId, email, atISO, replyToken }) {
+  const fields = { notifiedAt: atISO || new Date().toISOString() };
+  if (replyToken) fields.replyToken = String(replyToken);
+  return stampPendingLead({ coachClientId, email, fields });
+}
+
+/**
+ * The coach said NO to adding this person — stamp declinedAt so nothing asks about them again.
+ * (The reconcile sweep still links them if a lead ever appears by another route — declining the
+ * ASK doesn't mean losing the meeting.)
+ */
+async function markPendingLeadDeclined({ coachClientId, email, atISO }) {
+  return stampPendingLead({ coachClientId, email, fields: { declinedAt: atISO || new Date().toISOString() } });
 }
 
 /**
@@ -1702,7 +1720,9 @@ module.exports = {
   confirmReconstruction,
   insertImportedMeeting,
   findPendingLeadMeetings,
+  stampPendingLead,
   markPendingLeadNotified,
+  markPendingLeadDeclined,
   resolvePendingLeadByEmail,
   fathomRecordingIngested,
   findMeetingsByFathomRecordingId,

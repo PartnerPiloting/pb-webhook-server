@@ -27,6 +27,7 @@
  */
 
 const https = require('https');
+const crypto = require('crypto');
 const querystring = require('querystring');
 const clientService = require('./clientService');
 const { findPendingLeadMeetings, markPendingLeadNotified } = require('./recallWebhookDb');
@@ -36,6 +37,10 @@ const log = createSafeLogger('SYSTEM', null, 'pending_notify');
 
 const MAX_PER_PASS = Number(process.env.PENDING_NOTIFY_MAX_PER_PASS) || 10;
 const BCC = (process.env.PENDING_NOTIFY_BCC || 'guyralphwilson@gmail.com').trim();
+// Where replies land: the Mailgun-receiving subdomain whose catch-all route already POSTs to
+// /api/webhooks/inbound-email (the track@ pipe). Each email gets Reply-To add-<token>@ here, and
+// pendingReplyHandler resolves the token back to (tenant, person).
+const REPLY_DOMAIN = (process.env.PENDING_REPLY_DOMAIN || 'mail.australiansidehustles.com.au').trim();
 
 function notifyEnabled() {
   return String(process.env.PENDING_NOTIFY_ENABLED || '').trim().toLowerCase() === 'true';
@@ -96,7 +101,7 @@ function buildEmail({ coachFirstName, person, meetings, tz }) {
 
 You met ${who} - I've saved the transcript from ${meetingWord}, but they're not in your Wingguy database yet. That means I can't pull the meeting up by their name, or draft follow-ups to them in your voice.
 
-Want me to add them? Just tell me in a Wingguy chat - something like "add ${shortWho}, here's their LinkedIn: ..." - and paste their LinkedIn profile link (plus their phone or a better email if you have one). I'll create the record and attach the transcript automatically.
+Want me to add them? Just reply to this email with their LinkedIn profile link (linkedin.com/in/...) - plus their phone or a better email if you have one - and I'll create the record and attach the transcript automatically. (You can also tell me in a Wingguy chat instead.)
 
 Not someone you want to track? Just ignore this - I won't ask about them again.
 
@@ -139,15 +144,19 @@ async function notifyPendingLeads(opts = {}) {
 
       const coachFirstName = String(coach.clientName || '').trim().split(/\s+/)[0] || 'there';
       const { subject, text } = buildEmail({ coachFirstName, person, meetings, tz: coach.timezone });
+      // Unguessable per-person reply token: the Reply-To routes the coach's reply through the
+      // existing inbound pipe to pendingReplyHandler, which maps it back to (tenant, person).
+      const replyToken = crypto.randomBytes(9).toString('base64url').toLowerCase().replace(/[^a-z0-9]/g, 'x');
       const payload = {
         from: `Wingguy <wingguy@${process.env.MAILGUN_DOMAIN}>`,
         to,
         subject,
         text,
+        'h:Reply-To': `add-${replyToken}@${REPLY_DOMAIN}`,
       };
       if (BCC && BCC.toLowerCase() !== to.toLowerCase()) payload.bcc = BCC;
       await sendMailgun(payload);
-      await markPendingLeadNotified({ coachClientId, email: person.email });
+      await markPendingLeadNotified({ coachClientId, email: person.email, replyToken });
       summary.sent++;
       summary.details.push({ coachClientId, email: person.email, to, meetings: meetings.length });
       log.info(`pending notify: emailed ${coachClientId} (${to}) about ${person.email} (${meetings.length} meeting(s))`);
