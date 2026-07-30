@@ -434,21 +434,24 @@ Write something genuinely tailored - you've picked out something specific on the
 the actual reason you wanted to reach them, or you're congratulating them on something - and then
 ask, *how about a quick Zoom?* Your chances of getting that Zoom become very high.
 
-**Your first outreach message - a starter you can send today.** The connection request itself can
-carry a note of up to 300 characters, and if you don't yet know exactly what to say, use this:
+**Your first outreach message.** The connection request itself can carry a note of up to 300
+characters. Here's a message you could start with that would work - though it's always better to
+tweak it into your own words:
 
 > *Hi [first name] - I'd love to find out more about what you're doing and what you're planning. I'm
 > deliberately meeting a lot of capable people at the moment, and I may well be able to recommend you
 > to some of them. Happy to connect?*
 
-Say that, and they understand what your game is - you're there to get to know them, help them, and
-build trust. Which is exactly right.
+As you make it yours, bear in mind what the note is for. Your reason for connecting is to learn more
+about them, with the potential to recommend them - and every word has to pass that test, because the
+one thing the person you're reaching out to must never be left thinking is *"what's this person
+trying to sell me?"* Say it the way the starter does and they understand your game - you're there to
+get to know them, help them, and build trust.
 
 Two things about this note. First, its only job is the *accept* - so no meeting ask in it, nothing
 to say yes to except connecting. The Zoom ask lives here, in the thanks-for-connecting, where it's
 earned. Second, this is the one deliberately generic message in the whole system - it goes out at
-volume through Linked Helper, so it can't be tailored, and that's fine. Swap a word or two into your
-own way of speaking ("keen to connect?", "good operators" - whatever's yours) and it's your message.
+volume through Linked Helper, so it can't be tailored, and that's fine.
 
 The catch is obvious: doing it properly, one person at a time, is extremely time intensive. That's
 precisely where Wingguy comes in - and the Chrome extension in particular. It reads the profile and
