@@ -29,15 +29,15 @@ const { FakeDb } = require('./helpers/wingguy-fake-db');
   await check('rejects an unknown layer', () =>
     assert.throws(() => store.validateRuleInput({ layer: 'shared', tenantId: '', ruleKey: 'x-rule', context: 'outreach', ruleType: 'voice' }), /invalid layer/));
   await check('rejects an unknown context', () =>
-    assert.throws(() => store.validateRuleInput({ layer: 'foundation', ruleKey: 'x-rule', context: 'linkedin', ruleType: 'voice' }), /invalid context/));
+    assert.throws(() => store.validateRuleInput({ layer: 'foundation', via: 'internal', ruleKey: 'x-rule', context: 'linkedin', ruleType: 'voice' }), /invalid context/));
   await check('rejects an unknown rule_type', () =>
-    assert.throws(() => store.validateRuleInput({ layer: 'foundation', ruleKey: 'x-rule', context: 'outreach', ruleType: 'tone' }), /invalid rule_type/));
+    assert.throws(() => store.validateRuleInput({ layer: 'foundation', via: 'internal', ruleKey: 'x-rule', context: 'outreach', ruleType: 'tone' }), /invalid rule_type/));
   await check('rejects a client rule without tenant_id', () =>
     assert.throws(() => store.validateRuleInput({ layer: 'client', ruleKey: 'x-rule', context: 'outreach', ruleType: 'voice' }), /requires a tenant_id/));
   await check('rejects a foundation rule WITH tenant_id', () =>
-    assert.throws(() => store.validateRuleInput({ layer: 'foundation', tenantId: 'T', ruleKey: 'x-rule', context: 'outreach', ruleType: 'voice' }), /tenant-less/));
+    assert.throws(() => store.validateRuleInput({ layer: 'foundation', via: 'internal', tenantId: 'T', ruleKey: 'x-rule', context: 'outreach', ruleType: 'voice' }), /tenant-less/));
   await check('rejects a non-slug rule_key', () =>
-    assert.throws(() => store.validateRuleInput({ layer: 'foundation', ruleKey: 'Not A Slug!', context: 'outreach', ruleType: 'voice' }), /rule_key/));
+    assert.throws(() => store.validateRuleInput({ layer: 'foundation', via: 'internal', ruleKey: 'Not A Slug!', context: 'outreach', ruleType: 'voice' }), /rule_key/));
 
   // --- Pure core: variable/asset resolution --------------------------------
   console.log('resolveRuleBody() — {{variable}} and {{asset:key}}:');
@@ -121,7 +121,7 @@ const { FakeDb } = require('./helpers/wingguy-fake-db');
 
   console.log('foundation ∪ client merge:');
   await store.commitRule({
-    layer: 'foundation', ruleKey: 'no-em-dash', context: 'global', ruleType: 'formatting',
+    layer: 'foundation', via: 'internal', ruleKey: 'no-em-dash', context: 'global', ruleType: 'formatting',
     body: 'Use " - ", never an em dash. Synthetic.', createdBy: 'test', expectedVersion: 0,
   });
   await store.commitRule({
@@ -129,7 +129,7 @@ const { FakeDb } = require('./helpers/wingguy-fake-db');
     body: 'Other tenant private rule.', createdBy: 'test', expectedVersion: 0,
   });
   await store.commitRule({
-    layer: 'template', ruleKey: 'template-only-rule', context: 'outreach', ruleType: 'voice',
+    layer: 'template', via: 'internal', ruleKey: 'template-only-rule', context: 'outreach', ruleType: 'voice',
     body: 'Template seed rule — must NOT be runtime-read.', createdBy: 'test', expectedVersion: 0,
   });
   await check('getActiveRules = foundation + own client rules only', async () => {
@@ -251,7 +251,7 @@ const { FakeDb } = require('./helpers/wingguy-fake-db');
       body: 'CLIENT twin rule.', createdBy: 'test', expectedVersion: 0,
     });
     await store.commitRule({
-      layer: 'foundation', ruleKey: 'twin-key', context: 'outreach', ruleType: 'voice',
+      layer: 'foundation', via: 'internal', ruleKey: 'twin-key', context: 'outreach', ruleType: 'voice',
       body: 'FOUNDATION twin rule (platform-wide).', createdBy: 'test', expectedVersion: 0,
     });
     const prop = await store.proposeRule({
@@ -267,7 +267,7 @@ const { FakeDb } = require('./helpers/wingguy-fake-db');
     // Two bugs here: foundation proposals only queried the foundation layer, AND the caller's
     // tenant is blanked for a foundation rule - so the read must carry the CALLER's tenant.
     const prop = await store.proposeRule({
-      layer: 'foundation', readerTenantId: 'Test-Tenant', ruleKey: 'brand-new-foundation-rule', context: 'outreach', ruleType: 'voice',
+      layer: 'foundation', via: 'internal', readerTenantId: 'Test-Tenant', ruleKey: 'brand-new-foundation-rule', context: 'outreach', ruleType: 'voice',
       body: 'A new platform-wide voice rule.',
     });
     assert.ok(
@@ -314,7 +314,7 @@ const { FakeDb } = require('./helpers/wingguy-fake-db');
   // Three tiers + per-client overrides ("standard vs yours", 2026-07-31)
   // -------------------------------------------------------------------------
   console.log('resolveRuleShadowing() — pure cross-layer + campaign resolution:');
-  const F = (key, extra = {}) => ({ rule_key: key, layer: 'foundation', tenant_id: null, context: 'global', rule_type: 'voice', campaign: null, version: 1, body: `FOUNDATION ${key}`, ...extra });
+  const F = (key, extra = {}) => ({ rule_key: key, layer: 'foundation', via: 'internal', tenant_id: null, context: 'global', rule_type: 'voice', campaign: null, version: 1, body: `FOUNDATION ${key}`, ...extra });
   const C = (key, extra = {}) => ({ rule_key: key, layer: 'client', tenant_id: 'T', context: 'global', rule_type: 'voice', campaign: null, version: 1, body: `CLIENT ${key}`, ...extra });
 
   await check('a client rule REPLACES a standard foundation rule (does not stack)', () => {
@@ -359,7 +359,7 @@ const { FakeDb } = require('./helpers/wingguy-fake-db');
   console.log('the write-door refuses to override a FIXED instruction:');
   const TT = 'Tier-Tenant';
   await store.commitRule({
-    layer: 'foundation', ruleKey: 'locked-guardrail', context: 'global', ruleType: 'formatting',
+    layer: 'foundation', via: 'internal', ruleKey: 'locked-guardrail', context: 'global', ruleType: 'formatting',
     body: 'Synthetic guardrail body.', tier: 'locked', createdBy: 'test', expectedVersion: 0,
   });
   await check('commitRule rejects a client version of a locked rule', async () => {
@@ -383,7 +383,7 @@ const { FakeDb } = require('./helpers/wingguy-fake-db');
   });
   await check('tier is STICKY — editing a locked rule\'s wording does not unlock it', async () => {
     const r = await store.commitRule({
-      layer: 'foundation', ruleKey: 'locked-guardrail', context: 'global', ruleType: 'formatting',
+      layer: 'foundation', via: 'internal', ruleKey: 'locked-guardrail', context: 'global', ruleType: 'formatting',
       body: 'Synthetic guardrail body, reworded.', createdBy: 'test', expectedVersion: 1,
     });
     assert.strictEqual(r.tier, 'locked');
@@ -393,7 +393,7 @@ const { FakeDb } = require('./helpers/wingguy-fake-db');
 
   console.log('overriding a STANDARD instruction:');
   await store.commitRule({
-    layer: 'foundation', ruleKey: 'closing-question', context: 'reply', ruleType: 'voice',
+    layer: 'foundation', via: 'internal', ruleKey: 'closing-question', context: 'reply', ruleType: 'voice',
     body: 'STANDARD closing question, synthetic v1.', createdBy: 'test', expectedVersion: 0,
   });
   await check('a client override records which standard version it branched from', async () => {
@@ -444,7 +444,7 @@ const { FakeDb } = require('./helpers/wingguy-fake-db');
   });
   await check('when the standard moves, the tenant sees it moved AND what it now says', async () => {
     await store.commitRule({
-      layer: 'foundation', ruleKey: 'closing-question', context: 'reply', ruleType: 'voice',
+      layer: 'foundation', via: 'internal', ruleKey: 'closing-question', context: 'reply', ruleType: 'voice',
       body: 'STANDARD closing question, synthetic v2 — sharper.', changeNote: 'sharper ask',
       createdBy: 'test', expectedVersion: 1,
     });
@@ -503,27 +503,27 @@ const { FakeDb } = require('./helpers/wingguy-fake-db');
 
   console.log('setRuleTier() — append-only tier changes:');
   await check('locking commits a NEW version carrying the same body', async () => {
-    const before = await store.getRule({ layer: 'foundation', ruleKey: 'closing-question' });
-    const r = await store.setRuleTier({ ruleKey: 'closing-question', tier: 'locked', createdBy: 'test' });
+    const before = await store.getRule({ layer: 'foundation', via: 'internal', ruleKey: 'closing-question' });
+    const r = await store.setRuleTier({ via: 'internal', ruleKey: 'closing-question', tier: 'locked', createdBy: 'test' });
     assert.strictEqual(r.version, before.active.version + 1);
-    const after = await store.getRule({ layer: 'foundation', ruleKey: 'closing-question' });
+    const after = await store.getRule({ layer: 'foundation', via: 'internal', ruleKey: 'closing-question' });
     assert.strictEqual(after.active.body, before.active.body, 'wording untouched');
     assert.strictEqual(store.ruleTier(after.active), 'locked');
   });
   await check('locking reports whose overrides it just suppressed', async () => {
     await store.commitRule({
-      layer: 'foundation', ruleKey: 'soon-locked', context: 'global', ruleType: 'voice',
+      layer: 'foundation', via: 'internal', ruleKey: 'soon-locked', context: 'global', ruleType: 'voice',
       body: 'Synthetic soon-to-be-locked.', createdBy: 'test', expectedVersion: 0,
     });
     await store.commitRule({
       layer: 'client', tenantId: TT, ruleKey: 'soon-locked', context: 'global', ruleType: 'voice',
       body: 'My own soon-locked.', createdBy: 'test', expectedVersion: 0,
     });
-    const r = await store.setRuleTier({ ruleKey: 'soon-locked', tier: 'locked', createdBy: 'test' });
+    const r = await store.setRuleTier({ via: 'internal', ruleKey: 'soon-locked', tier: 'locked', createdBy: 'test' });
     assert.deepStrictEqual(r.suppressedOverrides, [TT]);
   });
   await check('setRuleTier rejects an unknown tier', () =>
-    assert.rejects(store.setRuleTier({ ruleKey: 'closing-question', tier: 'sacred', createdBy: 'test' }), /invalid tier/));
+    assert.rejects(store.setRuleTier({ via: 'internal', ruleKey: 'closing-question', tier: 'sacred', createdBy: 'test' }), /invalid tier/));
 
   console.log('hygiene sweep — twins are re-read under shadowing:');
   await check('a client override of a STANDARD rule is NOT a finding (it is the feature)', () => {

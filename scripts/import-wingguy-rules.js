@@ -117,6 +117,9 @@ async function importRules(rows, dryRun) {
         continue;
       }
       const res = await store.commitRule({
+        // via:'internal' — the importer writes foundation/template by design and runs server-side.
+        // The platform-owner check gates chat/MCP callers, not deploy-level ops.
+        via: 'internal',
         tenantId: row.tenantId,
         layer: row.layer,
         ruleKey: row.ruleKey,

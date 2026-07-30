@@ -237,6 +237,8 @@ async function runRuleGet({ rule_key, layer = 'client', campaign }, tenant = TEN
 
 async function runRulePropose({ rule_key, layer = 'client', context, rule_type, campaign, body, tier }, tenant = TENANT) {
   const prop = await store.proposeRule({
+    actorTenantId: tenant,
+    via: 'door',
     ...scopeFromLayer(layer, tenant),
     // Whose rulebook to check against — always the caller's, even for a tenant-less foundation rule.
     readerTenantId: tenant,
@@ -247,13 +249,25 @@ async function runRulePropose({ rule_key, layer = 'client', context, rule_type, 
     body,
     tier: tier || undefined,
   });
-  // A locked guardrail cannot be overridden — say so and stop, rather than walking the human
-  // through a proposal the write-door is going to refuse.
+  // Refused before we start — say so and stop, rather than walking the human through a proposal
+  // the write-door is going to reject. Two reasons, and they need different words:
+  //   locked            — the instruction is a guardrail; show it so they can see what it says.
+  //   not-platform-owner / no-actor — they are trying to change the SHARED drawer, which is not
+  //                       theirs to change; there is no `standard` body to show (this is a
+  //                       foundation/template proposal, not an override of one).
   if (prop.blocked) {
+    if (prop.blocked.reason === 'locked') {
+      return {
+        text: `CANNOT CHANGE THIS ONE.\n\n${prop.blocked.message}\n\n`
+          + `--- THE FIXED INSTRUCTION (v${prop.standard.version}) ---\n${prop.standard.body}\n\n`
+          + `Tell the human plainly that this is one of the fixed guardrails and their own version cannot be saved against it. Do NOT try wingguy_rule_commit — it will refuse too.`,
+        isError: true,
+      };
+    }
     return {
-      text: `CANNOT CHANGE THIS ONE.\n\n${prop.blocked.message}\n\n`
-        + `--- THE FIXED INSTRUCTION (v${prop.standard.version}) ---\n${prop.standard.body}\n\n`
-        + `Tell the human plainly that this is one of the fixed guardrails and their own version cannot be saved against it. Do NOT try wingguy_rule_commit — it will refuse too.`,
+      text: `CANNOT CHANGE THE SHARED INSTRUCTIONS.\n\n${prop.blocked.message}\n\n`
+        + `WHAT TO DO INSTEAD: if they want this for themselves, propose the SAME change with layer="client" — that saves their own version, which replaces the shared one for them and leaves everyone else untouched. `
+        + `If they genuinely believe every client should get it, that is a request to pass on to the platform owner, NOT something to retry from here. Do NOT try wingguy_rule_commit — it will refuse too.`,
       isError: true,
     };
   }
@@ -326,6 +340,8 @@ async function runRulePropose({ rule_key, layer = 'client', context, rule_type, 
 
 async function runRuleCommit({ rule_key, layer = 'client', context, rule_type, campaign, body, change_note, expected_version, tier }, tenant = TENANT) {
   const r = await store.commitRule({
+    actorTenantId: tenant,
+    via: 'door',
     ...scopeFromLayer(layer, tenant),
     ruleKey: rule_key,
     context,
@@ -349,6 +365,8 @@ async function runRuleCommit({ rule_key, layer = 'client', context, rule_type, c
 
 async function runRuleRevert({ rule_key, layer = 'client', campaign, to_version }, tenant = TENANT) {
   const r = await store.revertRule({
+    actorTenantId: tenant,
+    via: 'door',
     ...scopeFromLayer(layer, tenant),
     ruleKey: rule_key,
     campaign: campaign || undefined,

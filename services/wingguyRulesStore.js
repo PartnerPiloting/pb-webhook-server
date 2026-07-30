@@ -77,6 +77,16 @@ const DEFAULT_TIER = 'standard';
 
 const DEFAULT_TENANT = 'Guy-Wilson';
 
+// --- Who may write the SHARED drawers (2026-07-31) --------------------------------------------
+// foundation and template belong to the PLATFORM, not to any one client: a foundation edit lands
+// on every tenant at once, and a template edit lands on every client provisioned after it. Until
+// now the only thing standing between a client's chat session and a platform-wide rewrite was
+// prose in the tool description telling the model that drawer was "reserved for Guy/platform
+// calls" — persuasion, not a gate. A client saying "make that a rule for everyone" is exactly the
+// phrasing that talks a model into complying. This is the gate.
+const SHARED_LAYERS = ['foundation', 'template'];
+const PLATFORM_OWNER = (process.env.WINGGUY_PLATFORM_OWNER || DEFAULT_TENANT).trim();
+
 function getPool() {
   if (pool) return pool;
   const url = (process.env.DATABASE_URL || '').trim();
@@ -320,6 +330,45 @@ function validateRuleInput({ layer, tenantId, ruleKey, context, ruleType, tier }
     }
   }
   return { key, tenant: tenant || null, tier: t || null };
+}
+
+/**
+ * GUARD — may this caller write this drawer? Throws if not. Called first thing by every write
+ * path in this file, so no code route can skip it (the same posture as the locked-tier refusal).
+ *
+ * `via` says what kind of caller this is, and it FAILS CLOSED:
+ *   'door'     — a chat/MCP call. `actorTenantId` is required and must be the platform owner for
+ *                a shared drawer. This is the default, so a new call path that forgets to declare
+ *                itself gets refused loudly rather than silently waved through.
+ *   'internal' — server-side ops running the deployed code (the import, the tier script, the
+ *                smoke test). Deploy access is already a higher trust level than a chat session;
+ *                declaring it is a deliberate act, visible in the script.
+ *
+ * The CLIENT drawer is unguarded on purpose: it is the tenant's own, and every client-layer write
+ * is already scoped to the caller's own tenant by the door.
+ */
+function assertMayWriteLayer({ layer, actorTenantId, via = 'door' } = {}) {
+  if (!SHARED_LAYERS.includes(layer)) return;
+  if (via === 'internal') return;
+  if (via !== 'door') throw new Error(`invalid via "${via}" — must be "door" or "internal"`);
+  const actor = String(actorTenantId || '').trim();
+  if (!actor) {
+    const e = new Error(
+      `changing the SHARED "${layer}" instructions needs an identified caller, and this call did not carry one. ` +
+      `This is refused by default — shared instructions reach every client at once.`,
+    );
+    e.code = 'WG_NO_ACTOR';
+    throw e;
+  }
+  if (actor.toLowerCase() !== PLATFORM_OWNER.toLowerCase()) {
+    const e = new Error(
+      `"${actor}" cannot change the SHARED instructions. The "${layer}" drawer is platform-wide: a change there ` +
+      `lands on EVERY client at once, so only the platform owner may edit it. Your own instructions (the "client" ` +
+      `layer) are yours to change freely — save this as your own version instead.`,
+    );
+    e.code = 'WG_NOT_PLATFORM_OWNER';
+    throw e;
+  }
 }
 
 /** A foundation rule's effective tier (unset = standard). NULL for template/client rows. */
@@ -566,7 +615,7 @@ async function renderRulesBlock({ tenantId = DEFAULT_TENANT, contexts = [], camp
 // rule being proposed and is correctly blank for foundation/template): a foundation proposal is
 // tenant-less but is still made BY someone, and the rules it must be checked against are the ones
 // that render for that someone. Read-scope only — never written anywhere.
-async function proposeRule({ tenantId, readerTenantId, layer, ruleKey, context, ruleType, campaign, body, tier }) {
+async function proposeRule({ tenantId, readerTenantId, layer, ruleKey, context, ruleType, campaign, body, tier, actorTenantId, via }) {
   const validated = validateRuleInput({ layer, tenantId, ruleKey, context, ruleType, tier });
   const { key, tenant } = validated;
   const camp = (campaign || '').trim() || null;
@@ -598,6 +647,15 @@ async function proposeRule({ tenantId, readerTenantId, layer, ruleKey, context, 
   const sameKey = all.filter((r) => r.rule_key === key && !(r.context === context && r.rule_type === ruleType));
   const neighbours = sameCell;
 
+  // Would the WRITE be refused for who is asking? Checked here, on the pure-read step, so the
+  // model never walks a human through a proposal the door is going to reject at commit.
+  let sharedWriteRefusal = null;
+  try {
+    assertMayWriteLayer({ layer, actorTenantId, via });
+  } catch (e) {
+    sharedWriteRefusal = { reason: e.code === 'WG_NOT_PLATFORM_OWNER' ? 'not-platform-owner' : 'no-actor', message: e.message };
+  }
+
   // The standard this proposal sits against, and whether it may be overridden at all.
   const standardRow = layer === 'client'
     ? all.find((r) => r.layer === 'foundation' && r.rule_key === key && (r.campaign || null) === camp) || null
@@ -627,14 +685,14 @@ async function proposeRule({ tenantId, readerTenantId, layer, ruleKey, context, 
     tier: layer === 'foundation' ? (validated.tier || (current ? ruleTier(current) : DEFAULT_TIER)) : null,
     standard: standardRow ? { ...neighbourView(standardRow), tier: standardTier } : null,
     isOverride: !!standardRow && standardTier !== 'locked',
-    blocked: standardTier === 'locked'
+    blocked: sharedWriteRefusal || (standardTier === 'locked'
       ? {
         reason: 'locked',
         message: `"${key}" is a LOCKED instruction — one of the shared guardrails, and not overridable. `
           + `A version of your own cannot be saved against this key; the shared one would keep applying anyway. `
           + `If the guardrail itself needs to change, that is a platform-wide (foundation) change affecting every client.`,
       }
-      : null,
+      : null),
     overrideTenants: overrideTenants.map((t) => ({
       tenantId: t.tenant_id, version: t.version, basedOnStandardVersion: t.standard_version == null ? null : Number(t.standard_version),
     })),
@@ -660,8 +718,9 @@ function neighbourView(n) {
  */
 async function commitRule({
   tenantId, layer, ruleKey, context, ruleType, campaign, body, changeNote, createdBy, expectedVersion,
-  tier, action = 'commit',
+  tier, action = 'commit', actorTenantId, via,
 }) {
+  assertMayWriteLayer({ layer, actorTenantId, via });
   const { key, tenant, tier: askedTier } = validateRuleInput({ layer, tenantId, ruleKey, context, ruleType, tier });
   if (!String(body || '').trim()) throw new Error('rule body is required');
   if (!HISTORY_ACTIONS.includes(action)) throw new Error(`invalid history action "${action}"`);
@@ -773,7 +832,8 @@ async function commitRule({
  * RETIRE — deactivate a rule without a replacement (append-only: the row stays, status flips).
  * History-logged. expectedVersion guards the same way commit does.
  */
-async function retireRule({ tenantId, layer, ruleKey, campaign, createdBy, expectedVersion, changeNote }) {
+async function retireRule({ tenantId, layer, ruleKey, campaign, createdBy, expectedVersion, changeNote, actorTenantId, via }) {
+  assertMayWriteLayer({ layer, actorTenantId, via });
   const key = String(ruleKey || '').trim();
   const tenant = layer === 'client' ? (tenantId || '').trim() : '';
   if (layer === 'client' && !tenant) throw new Error('layer "client" requires a tenant_id');
@@ -820,7 +880,8 @@ async function retireRule({ tenantId, layer, ruleKey, campaign, createdBy, expec
  * REVERT — insert a fresh version copying an older body (append-only revert; never resurrects
  * the old row itself). Implemented THROUGH commitRule so it inherits the conflict check.
  */
-async function revertRule({ tenantId, layer, ruleKey, campaign, toVersion, createdBy }) {
+async function revertRule({ tenantId, layer, ruleKey, campaign, toVersion, createdBy, actorTenantId, via }) {
+  assertMayWriteLayer({ layer, actorTenantId, via });
   const camp = (campaign || '').trim() || null;
   const existing = await getRule({ tenantId, layer, ruleKey, campaign: camp });
   if (!existing) throw new Error(`rule "${ruleKey}" not found in ${layer}${camp ? ` (campaign ${camp})` : ''}`);
@@ -841,6 +902,8 @@ async function revertRule({ tenantId, layer, ruleKey, campaign, toVersion, creat
     // tier is deliberately NOT passed: revert restores WORDING, and commitRule keeps the live
     // tier. Rolling a guardrail's body back must never roll its lock off as a side effect.
     action: 'revert',
+    actorTenantId,
+    via,
   });
 }
 
@@ -853,7 +916,8 @@ async function revertRule({ tenantId, layer, ruleKey, campaign, toVersion, creat
  * like everything else: it commits a new version carrying the SAME body with the new tier, so the
  * change shows up in history with a reason instead of mutating a row.
  */
-async function setRuleTier({ ruleKey, campaign, tier, createdBy, changeNote }) {
+async function setRuleTier({ ruleKey, campaign, tier, createdBy, changeNote, actorTenantId, via }) {
+  assertMayWriteLayer({ layer: 'foundation', actorTenantId, via });
   if (!TIERS.includes(tier)) throw new Error(`invalid tier "${tier}" — must be one of: ${TIERS.join(', ')}`);
   const camp = (campaign || '').trim() || null;
   const found = await getRule({ layer: 'foundation', ruleKey, campaign: camp });
@@ -873,6 +937,8 @@ async function setRuleTier({ ruleKey, campaign, tier, createdBy, changeNote }) {
     changeNote: changeNote || `tier ${was} → ${tier}`,
     createdBy,
     expectedVersion: live.version,
+    actorTenantId,
+    via,
   });
   // Locking a rule that tenants already override: their copies stop applying at once (foundation
   // wins). Surfaced, never silently swallowed — the caller decides whether that is acceptable.

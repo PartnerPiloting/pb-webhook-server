@@ -126,7 +126,9 @@ async function listAll() {
       }
       if (args.dryRun) { console.log(`DRY   ${key} — would go ${was} → ${args.mode} (v${found.active.version} → v${found.active.version + 1})`); continue; }
 
-      const r = await store.setRuleTier({ ruleKey: key, tier: args.mode, createdBy: ACTOR });
+      // via:'internal' — server-side ops. The platform-owner check gates chat/MCP callers, not
+      // a script that already required deploy access to run.
+      const r = await store.setRuleTier({ ruleKey: key, tier: args.mode, createdBy: ACTOR, via: 'internal' });
       console.log(`OK    ${key} — ${was} → ${args.mode} (now v${r.version})`);
     } catch (e) {
       failures++;

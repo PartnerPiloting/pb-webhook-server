@@ -137,7 +137,9 @@ const step = async (name, fn) => {
   // -------------------------------------------------------------------------
   const STD_KEY = 'smoke-standard-rule';
   const LOCK_KEY = 'smoke-locked-rule';
-  const fnd = (ruleKey) => ({ layer: 'foundation', ruleKey });
+  // via:'internal' — this script runs the DEPLOYED code on the server, which is a higher trust
+  // level than a chat session; the platform-owner check only gates door (chat/MCP) callers.
+  const fnd = (ruleKey) => ({ layer: 'foundation', ruleKey, via: 'internal' });
   const own = (ruleKey) => ({ layer: 'client', tenantId: TENANT, ruleKey });
 
   // Sweep anything a previous crashed run left behind, in both layers.
