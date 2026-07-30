@@ -215,14 +215,24 @@ class FakeDb {
   });
 
   console.log('computeRulebookHygiene() — code-detected structural findings:');
-  await check('flags a cross-layer twin (same key+campaign active in two layers)', () => {
+  // Was 'flags a cross-layer twin'. Cross-layer shadowing (2026-07-31) made a client rule over a
+  // STANDARD foundation rule the intended override rather than a double-render bug, so the finding
+  // moved: only a copy that can never apply (over a FIXED rule) is still worth flagging.
+  await check('a client version of a STANDARD shared rule is not flagged (it is the override feature)', () => {
     const findings = store.computeRulebookHygiene([
-      { rule_key: 'greeting-style', campaign: null, layer: 'foundation', body: 'A' },
+      { rule_key: 'greeting-style', campaign: null, layer: 'foundation', tier: 'standard', body: 'A' },
       { rule_key: 'greeting-style', campaign: null, layer: 'client', body: 'B' },
     ], [], []);
+    assert.strictEqual(findings.length, 0);
+  });
+  await check('flags a client copy of a FIXED shared rule (it never applies)', () => {
+    const findings = store.computeRulebookHygiene([
+      { rule_key: 'bcc-discipline', campaign: null, layer: 'foundation', tier: 'locked', body: 'A' },
+      { rule_key: 'bcc-discipline', campaign: null, layer: 'client', body: 'B' },
+    ], [], []);
     assert.strictEqual(findings.length, 1);
-    assert.strictEqual(findings[0].kind, 'cross-layer-twin');
-    assert.ok(findings[0].detail.includes('foundation AND client'));
+    assert.strictEqual(findings[0].kind, 'inert-override');
+    assert.ok(findings[0].detail.includes('never applies'));
   });
   await check('campaign-vs-generic same key is BY DESIGN — not flagged', () => {
     const findings = store.computeRulebookHygiene([

@@ -155,6 +155,31 @@ Wingguy (how to act) + reads/writes the Portal (the records).
   (`WINGGUY_RULES_SOURCE=store` on prod; shadow week clean, Notion reconciled — the store is now the runtime
   master for Guy's drafting; ↓ "You are here" 2026-07-10 close). Boat-burning (delete
   `config/wingguyTemplates.js`) after ~2 weeks stable.**
+  **★ THREE TIERS + PER-CLIENT OVERRIDE — BUILT 2026-07-31 (design agreed with Guy during the instructions
+  promotion pass; supersedes "no cross-layer shadowing in v1" everywhere it still appears).** The store used to
+  be binary: an instruction was either LOCKED in foundation (nobody could adapt it) or handed over via TEMPLATE
+  (the client owns a photocopy and Guy's later improvements never reach them). Now there are **three kinds**,
+  and this is the client-facing vocabulary: **FIXED** (foundation, `tier='locked'` — the guardrails; not
+  overridable by anyone) · **STANDARD** (foundation, `tier='standard'`, the default for an unset tier — shared,
+  improved centrally, **but a client may keep their own version**) · **YOURS** (client layer). **Runtime read is
+  still foundation ∪ client(tenant) but now SHADOWS** (`resolveRuleShadowing()`): an active client rule REPLACES
+  the standard of the same `(rule_key, campaign)` for that tenant — it no longer stacks, so the model stops
+  reading two contradictory bodies. A LOCKED foundation rule always wins, and the write-door REFUSES to create a
+  client version of one (`WG_TIER_LOCKED`). **Drift marker:** a client row stores `standard_version` = the
+  foundation version it was overriding when written, so "the standard has moved since you took your own version,
+  and here is what it now says" is answerable without a push channel; re-committing the override re-baselines it.
+  NULL = predates the column (reported honestly as unknown). **Door:** `wingguy_rules_list` groups by the three
+  kinds and takes **`view='divergence'`** = "what have I changed?" (yours vs the current standard, side by side,
+  drift flagged); **`wingguy_rule_reset_to_standard`** drops an override; propose/commit take `tier`. **Ops:**
+  `scripts/wingguy-rule-tiers.js` (list · **`--audit`** = who overrides what · `--lock`/`--standard`, append-only
+  via a new version). ⚠ **Tier is unset on every pre-existing foundation rule, so they all read as STANDARD —
+  the guardrails must be locked deliberately with `--lock`.** ⚠ **At the shadowing deploy, any key a tenant holds
+  in BOTH layers flips from rendering twice to rendering the client's only — run `--audit` right after and reset
+  anything stale.** Hygiene's `cross-layer-twin` finding is retired accordingly and replaced by `inert-override`
+  (a client copy of a FIXED rule, which never applies). Tests: `tests/wingguy-rules-store.test.js` +
+  `tests/wingguy-rules-door.test.js` (shared fake pool in `tests/helpers/wingguy-fake-db.js`); live coverage in
+  `scripts/wingguy-rules-smoke.js`. **Follow-on NOT done: `docs/client-playbook.md` still explains instructions
+  as TWO kinds (fixed / yours) and must be rewritten to the three-kind version — Guy has approved that wording.**
 
 **AI / model.** Standardise on **Claude** behind a swappable seam: **Claude = drafting** (voice), **Gemini =
 scoring + summaries** (cheap, high-volume). The connector surface needs the client's own Claude account (a product
@@ -2848,7 +2873,9 @@ tenant 0; no migration framework).**
   wide, runtime-read by all tenants, Guy-only edits · **template** = the de-personalised seed, NOT runtime-
   read — provisioning copies template rows into a new client's layer (seed-then-diverge; onboarding = copy
   the brain + fill ~10 identity variables, NOT a literal clone signing "(I know a) Guy") · **client** = the
-  tenant's own. **No cross-layer shadowing in v1** — runtime read = foundation ∪ client(tenant).
+  tenant's own. ~~**No cross-layer shadowing in v1** — runtime read = foundation ∪ client(tenant).~~
+  **SUPERSEDED 2026-07-31 — see "★ THREE TIERS + PER-CLIENT OVERRIDE" below: runtime read is still
+  foundation ∪ client(tenant), but it now SHADOWS, and foundation rows carry a `tier`.**
 - **`wingguy_variable_catalog`** (`var_key`, description, required, example — discovered by the de-pass;
   literally becomes the onboarding form) + **`wingguy_tenant_variables`** (tenant's values, unique per
   tenant+key, history-logged).
@@ -3568,6 +3595,9 @@ improvement: universal → foundation (reaches everyone live), personal-starting
 taste → stays client. ⚠ v1 limitation to keep in mind: "no cross-layer shadowing" — a rule_key is
 foundation OR client, not overridable per-tenant yet; if a client needs to tune a foundation rule that's
 a later feature (client-override shadowing), not v1.
+**→ SUPERSEDED 2026-07-31 — client-override shadowing is BUILT. See "★ THREE TIERS + PER-CLIENT
+OVERRIDE" below. The three-drawer triage above still holds; what changed is that foundation is no
+longer all-or-nothing, so "universal → foundation" no longer costs a client the ability to adapt it.**
 
 **★ PROVISIONING SPEC — "I'm about to onboard Julian" as a chat-driven flow (Guy, 2026-07-09).** The
 onboarding vision made concrete: it works as a CHAT flow (not a screen) BECAUSE most steps are tool calls

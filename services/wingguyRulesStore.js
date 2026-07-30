@@ -26,7 +26,27 @@
  *   template   — the de-personalised seed; NOT runtime-read; provisioning copies template rows
  *                into a new client's own layer (seed-then-diverge) (tenant_id NULL)
  *   client     — the tenant's own rules (tenant_id required)
- * Runtime read = foundation ∪ client(tenant). No cross-layer shadowing in v1.
+ *
+ * Runtime read = foundation ∪ client(tenant), WITH cross-layer shadowing (built 2026-07-31 —
+ * the "client-override shadowing" this file's v1 note and docs/wingguy.md both flagged as a
+ * later feature). Foundation rules carry a TIER:
+ *   locked   — the guardrails. Never overridable; a client rule of the same key is REFUSED at
+ *              the door, and any pre-existing one is suppressed at render (foundation wins).
+ *   standard — shared by default, improved centrally, but a tenant MAY keep their own version.
+ *              An active client rule of the same (rule_key, campaign) REPLACES it for that
+ *              tenant — it does not stack. `tier` is NULL for template/client rows and defaults
+ *              to 'standard' when unset on a foundation row.
+ * This is what makes the third middle option real: before it, an instruction was either locked
+ * in foundation (nobody could adapt it) or handed over via template (the client owns a photocopy
+ * and later central improvements never reach them).
+ *
+ * standard_version on a client row = the foundation version that rule was overriding when the
+ * override was written. That is the drift marker: when the standard later moves past it, the
+ * divergence view can say "the standard has changed since you took your own version, and here is
+ * what it says now" without touching the tenant's copy. Recorded at OVERRIDE time rather than
+ * fanned out to every tenant at foundation-commit time — same answer, one column, no push table,
+ * and it self-clears the moment the tenant re-commits their override. NULL = override predates
+ * this column (baseline unknown, reported honestly as such).
  *
  * Campaign overlay (proof-pass decision, 2026-07-04): a rule's identity is
  * (layer, tenant, rule_key, campaign) — the same rule_key may hold a generic version
@@ -50,6 +70,10 @@ const LAYERS = ['foundation', 'template', 'client'];
 const CONTEXTS = ['global', 'outreach', 'reply', 'booking', 'post-call', 'follow-up'];
 const RULE_TYPES = ['voice', 'formatting', 'stage-logic', 'scheduling', 'asset-usage', 'qualifying'];
 const HISTORY_ACTIONS = ['commit', 'retire', 'revert', 'import', 'seed', 'variable-set', 'asset-set'];
+// Foundation-only. 'standard' is the default because that is the safe read of an unset tier:
+// overridable-but-shared. Locking is always a deliberate act (see setRuleTier / the tier script).
+const TIERS = ['locked', 'standard'];
+const DEFAULT_TIER = 'standard';
 
 const DEFAULT_TENANT = 'Guy-Wilson';
 
@@ -91,6 +115,13 @@ async function ensureSchema(client) {
       status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','retired'))
     );
   `);
+  // Three-tier + override tracking (2026-07-31). ADD COLUMN IF NOT EXISTS is the house-style
+  // migration (this codebase has no migration files). Deliberately NO CHECK constraint on tier:
+  // a CHECK on an existing table can only be widened by the DROP/ADD dance above, which already
+  // cost us a live outage when two fresh connections raced it. Values are validated in code.
+  await client.query(`ALTER TABLE wingguy_rules ADD COLUMN IF NOT EXISTS tier TEXT;`);
+  await client.query(`ALTER TABLE wingguy_rules ADD COLUMN IF NOT EXISTS standard_version INT;`);
+
   // One ACTIVE version per rule identity — and identity INCLUDES campaign, so a generic
   // (campaign NULL) and a campaign-tagged version of the same rule_key coexist, each with its
   // own version chain. NULLs use COALESCE (tenant_id is NULL for foundation/template rows).
@@ -258,7 +289,7 @@ async function ensureSchema(client) {
  * Validate a rule's taxonomy + layer/tenant pairing. Throws with a message that names the
  * allowed values (these errors surface verbatim in chat via the MCP tools, so they teach).
  */
-function validateRuleInput({ layer, tenantId, ruleKey, context, ruleType }) {
+function validateRuleInput({ layer, tenantId, ruleKey, context, ruleType, tier }) {
   if (!LAYERS.includes(layer)) {
     throw new Error(`invalid layer "${layer}" — must be one of: ${LAYERS.join(', ')}`);
   }
@@ -279,7 +310,22 @@ function validateRuleInput({ layer, tenantId, ruleKey, context, ruleType }) {
   if (layer !== 'client' && tenant) {
     throw new Error(`layer "${layer}" is tenant-less — do not pass tenant_id (got "${tenant}")`);
   }
-  return { key, tenant: tenant || null };
+  const t = (tier || '').trim();
+  if (t) {
+    if (layer !== 'foundation') {
+      throw new Error(`tier is a FOUNDATION property — layer "${layer}" must not carry one (got "${t}")`);
+    }
+    if (!TIERS.includes(t)) {
+      throw new Error(`invalid tier "${t}" — must be one of: ${TIERS.join(', ')}`);
+    }
+  }
+  return { key, tenant: tenant || null, tier: t || null };
+}
+
+/** A foundation rule's effective tier (unset = standard). NULL for template/client rows. */
+function ruleTier(rule) {
+  if (!rule || rule.layer !== 'foundation') return null;
+  return TIERS.includes(rule.tier) ? rule.tier : DEFAULT_TIER;
 }
 
 /**
@@ -309,6 +355,61 @@ function resolveRuleBody(body, variables = {}, assets = {}) {
     return whole;
   });
   return { text, unresolved };
+}
+
+/**
+ * Resolve a raw foundation ∪ client set down to the ONE rule that actually applies per rule_key.
+ * Pure, and the single place both shadowing rules live. Two passes, in this order:
+ *
+ *   1. CAMPAIGN overlay, WITHIN a layer (unchanged semantics): a rule tagged with a campaign only
+ *      applies when THAT campaign is in play, and then it shadows the same layer's generic version
+ *      of the same rule_key. One level only — campaign → generic, never campaign → campaign.
+ *   2. CROSS-LAYER shadowing (new 2026-07-31): when the tenant has a client rule and foundation has
+ *      one with the same rule_key, exactly ONE renders. A STANDARD foundation rule loses to the
+ *      client's version (that IS the override). A LOCKED one wins — a guardrail cannot be shadowed,
+ *      so a pre-existing client twin is suppressed (the door refuses to create new ones).
+ *
+ * Before this, both bodies rendered and the model read two contradictory versions of the same
+ * instruction — the reason the promotion pass had to retire every client copy by hand.
+ *
+ * @returns {{rules: Array, dropped: Array<{rule, reason, by}>}} reason:
+ *   'other-campaign' | 'campaign' | 'override' | 'locked'
+ */
+function resolveRuleShadowing(rules = [], { campaign } = {}) {
+  const camp = (campaign || '').trim() || null;
+  const dropped = [];
+
+  // Pass 1 — campaign overlay within (layer, tenant, rule_key).
+  const perLayer = new Map();
+  for (const r of rules) {
+    if (r.campaign && r.campaign !== camp) { dropped.push({ rule: r, reason: 'other-campaign', by: null }); continue; }
+    const k = `${r.layer}|${r.tenant_id || ''}|${r.rule_key}`;
+    const prev = perLayer.get(k);
+    if (!prev) { perLayer.set(k, r); continue; }
+    const winner = (r.campaign && !prev.campaign) ? r : prev;
+    perLayer.set(k, winner);
+    dropped.push({ rule: winner === r ? prev : r, reason: 'campaign', by: winner });
+  }
+
+  // Pass 2 — cross-layer, keyed on rule_key alone (campaign is already resolved per layer).
+  const byKey = new Map();
+  for (const r of perLayer.values()) {
+    const prev = byKey.get(r.rule_key);
+    if (!prev) { byKey.set(r.rule_key, r); continue; }
+    if (prev.layer === r.layer) {
+      // Unreachable via the union read (the unique index forbids two active rows of one identity),
+      // but stay deterministic rather than letting map order decide if a caller mixes layers.
+      dropped.push({ rule: r, reason: 'duplicate', by: prev });
+      continue;
+    }
+    const found = prev.layer === 'foundation' ? prev : r;
+    const mine = found === prev ? r : prev;
+    const locked = ruleTier(found) === 'locked';
+    const winner = locked ? found : mine;
+    byKey.set(r.rule_key, winner);
+    dropped.push({ rule: locked ? mine : found, reason: locked ? 'locked' : 'override', by: winner });
+  }
+  return { rules: [...byKey.values()], dropped };
 }
 
 /**
@@ -350,8 +451,14 @@ function assembleRulesBlock(rules, variables, assets) {
  * Active rules for a tenant: foundation ∪ client(tenant). Optional filters:
  * contexts (array), layer ('foundation'|'template'|'client' — overrides the union, e.g. to
  * inspect the template layer), campaign.
+ *
+ * `shadowed: true` returns the RESOLVED runtime view instead of the raw union — one rule per
+ * rule_key, client overrides replacing standard foundation rules (see resolveRuleShadowing).
+ * Default false so the raw union stays available to the callers that need to SEE both copies:
+ * the hygiene sweep, the propose-time conflict check, and the divergence view. `activeCampaign`
+ * is the campaign in play for that resolution (defaults to the `campaign` filter).
  */
-async function getActiveRules({ tenantId = DEFAULT_TENANT, contexts, layer, campaign } = {}) {
+async function getActiveRules({ tenantId = DEFAULT_TENANT, contexts, layer, campaign, shadowed = false, activeCampaign } = {}) {
   const p = getPool();
   if (!p) return [];
   const tenant = (tenantId || DEFAULT_TENANT).trim();
@@ -381,12 +488,13 @@ async function getActiveRules({ tenantId = DEFAULT_TENANT, contexts, layer, camp
     }
     const r = await client.query(
       `SELECT id, rule_key, tenant_id, layer, context, rule_type, campaign, version, body,
-              change_note, created_by, created_at
+              change_note, created_by, created_at, tier, standard_version
        FROM wingguy_rules WHERE ${conds.join(' AND ')}
        ORDER BY context, layer, rule_key`,
       params,
     );
-    return r.rows;
+    if (!shadowed) return r.rows;
+    return resolveRuleShadowing(r.rows, { campaign: activeCampaign !== undefined ? activeCampaign : campaign }).rules;
   } finally {
     client.release();
   }
@@ -405,7 +513,7 @@ async function getRule({ tenantId = DEFAULT_TENANT, layer = 'client', ruleKey, c
     await ensureSchema(client);
     const r = await client.query(
       `SELECT id, rule_key, tenant_id, layer, context, rule_type, campaign, version, body,
-              change_note, created_by, status, created_at, retired_at
+              change_note, created_by, status, created_at, retired_at, tier, standard_version
        FROM wingguy_rules
        WHERE layer = $1 AND COALESCE(tenant_id, '') = $2 AND rule_key = $3
          AND COALESCE(campaign, '') = $4
@@ -432,18 +540,10 @@ async function renderRulesBlock({ tenantId = DEFAULT_TENANT, contexts = [], camp
     getVariables({ tenantId }),
     getAssets({ tenantId }),
   ]);
-  // Campaign scoping at render time: a campaign-tagged rule only applies when THAT campaign
-  // is in play, and it SHADOWS the generic version of the same rule_key (per-rule fallback:
-  // campaign version wins, else generic — one level, never campaign → campaign).
-  const camp = (campaign || '').trim() || null;
-  const byIdentity = new Map();
-  for (const r of rules) {
-    if (r.campaign && r.campaign !== camp) continue;
-    const k = `${r.layer}|${r.tenant_id || ''}|${r.rule_key}`;
-    const prev = byIdentity.get(k);
-    if (!prev || (r.campaign && !prev.campaign)) byIdentity.set(k, r);
-  }
-  const inPlay = [...byIdentity.values()];
+  // Campaign overlay + cross-layer shadowing, both in resolveRuleShadowing. ONE rule per rule_key
+  // reaches the model: the tenant's own version when they have overridden a standard, the
+  // foundation body otherwise, and always the foundation body for a locked guardrail.
+  const inPlay = resolveRuleShadowing(rules, { campaign }).rules;
   const varMap = {};
   for (const v of variables) if (v.value != null) varMap[v.var_key] = v.value;
   const assetMap = {};
@@ -466,8 +566,9 @@ async function renderRulesBlock({ tenantId = DEFAULT_TENANT, contexts = [], camp
 // rule being proposed and is correctly blank for foundation/template): a foundation proposal is
 // tenant-less but is still made BY someone, and the rules it must be checked against are the ones
 // that render for that someone. Read-scope only — never written anywhere.
-async function proposeRule({ tenantId, readerTenantId, layer, ruleKey, context, ruleType, campaign, body }) {
-  const { key, tenant } = validateRuleInput({ layer, tenantId, ruleKey, context, ruleType });
+async function proposeRule({ tenantId, readerTenantId, layer, ruleKey, context, ruleType, campaign, body, tier }) {
+  const validated = validateRuleInput({ layer, tenantId, ruleKey, context, ruleType, tier });
+  const { key, tenant } = validated;
   const camp = (campaign || '').trim() || null;
   const existing = await getRule({ tenantId: tenant || undefined, layer, ruleKey: key, campaign: camp });
   const current = existing?.active || null;
@@ -490,9 +591,22 @@ async function proposeRule({ tenantId, readerTenantId, layer, ruleKey, context, 
   const all = (await getActiveRules({ tenantId: readerTenant })).filter((r) => chainId(r) !== selfId);
   const sameCell = all.filter((r) => r.context === context && r.rule_type === ruleType);
   const sameType = all.filter((r) => r.rule_type === ruleType && r.context !== context);
-  // Same key filed elsewhere = the cross-layer duplicate case (both copies render, no shadowing).
+  // Same key filed elsewhere. Since 2026-07-31 this is no longer automatically a bug: a client
+  // rule over a STANDARD foundation rule is the override feature working. It is still a collision
+  // worth showing (the human is replacing a shared instruction, and should read what they are
+  // replacing) — the door words it as an override rather than a duplicate. See `standard` below.
   const sameKey = all.filter((r) => r.rule_key === key && !(r.context === context && r.rule_type === ruleType));
   const neighbours = sameCell;
+
+  // The standard this proposal sits against, and whether it may be overridden at all.
+  const standardRow = layer === 'client'
+    ? all.find((r) => r.layer === 'foundation' && r.rule_key === key && (r.campaign || null) === camp) || null
+    : null;
+  const standardTier = ruleTier(standardRow);
+  // Proposing a FOUNDATION change: who is already running their own version of this key, and so
+  // will NOT receive it. Guy asked for this the moment overrides became possible.
+  const overrideTenants = layer === 'foundation' ? await getOverrideTenants({ ruleKey: key, campaign: camp }) : [];
+
   return {
     ruleKey: key,
     layer,
@@ -509,6 +623,21 @@ async function proposeRule({ tenantId, readerTenantId, layer, ruleKey, context, 
     // Wider rings of the conflict check (see the tiering note above).
     sameTypeElsewhere: sameType.map(neighbourView),
     sameKeyElsewhere: sameKey.map(neighbourView),
+    // Three-tier view of this proposal.
+    tier: layer === 'foundation' ? (validated.tier || (current ? ruleTier(current) : DEFAULT_TIER)) : null,
+    standard: standardRow ? { ...neighbourView(standardRow), tier: standardTier } : null,
+    isOverride: !!standardRow && standardTier !== 'locked',
+    blocked: standardTier === 'locked'
+      ? {
+        reason: 'locked',
+        message: `"${key}" is a LOCKED instruction — one of the shared guardrails, and not overridable. `
+          + `A version of your own cannot be saved against this key; the shared one would keep applying anyway. `
+          + `If the guardrail itself needs to change, that is a platform-wide (foundation) change affecting every client.`,
+      }
+      : null,
+    overrideTenants: overrideTenants.map((t) => ({
+      tenantId: t.tenant_id, version: t.version, basedOnStandardVersion: t.standard_version == null ? null : Number(t.standard_version),
+    })),
   };
 }
 
@@ -531,9 +660,9 @@ function neighbourView(n) {
  */
 async function commitRule({
   tenantId, layer, ruleKey, context, ruleType, campaign, body, changeNote, createdBy, expectedVersion,
-  action = 'commit',
+  tier, action = 'commit',
 }) {
-  const { key, tenant } = validateRuleInput({ layer, tenantId, ruleKey, context, ruleType });
+  const { key, tenant, tier: askedTier } = validateRuleInput({ layer, tenantId, ruleKey, context, ruleType, tier });
   if (!String(body || '').trim()) throw new Error('rule body is required');
   if (!HISTORY_ACTIONS.includes(action)) throw new Error(`invalid history action "${action}"`);
   const expect = Number.isFinite(Number(expectedVersion)) ? Number(expectedVersion) : NaN;
@@ -545,8 +674,33 @@ async function commitRule({
   try {
     await ensureSchema(client);
     await client.query('BEGIN');
+
+    // The standard this write sits against (client layer only). Two jobs: refuse an override of a
+    // LOCKED guardrail here at the write-door (so no code path can create one, not just the tools),
+    // and stamp the drift baseline — which foundation version this override was taken against.
+    let standardVersion = null;
+    if (layer === 'client') {
+      const f = await client.query(
+        `SELECT version, tier FROM wingguy_rules
+         WHERE layer = 'foundation' AND rule_key = $1 AND COALESCE(campaign, '') = $2 AND status = 'active'`,
+        [key, (campaign || '').trim()],
+      );
+      const std = f.rows[0] || null;
+      if (std && ruleTier({ ...std, layer: 'foundation' }) === 'locked') {
+        await client.query('ROLLBACK');
+        const err = new Error(
+          `"${key}" is a LOCKED instruction — it is one of the guardrails, shared by every client and ` +
+          `not overridable. Your own version cannot be saved against this key. If the guardrail itself ` +
+          `is wrong, that is a foundation change (platform-wide, affects everyone) — raise it as one.`,
+        );
+        err.code = 'WG_TIER_LOCKED';
+        throw err;
+      }
+      standardVersion = std ? Number(std.version) : null;
+    }
+
     const cur = await client.query(
-      `SELECT id, version FROM wingguy_rules
+      `SELECT id, version, tier FROM wingguy_rules
        WHERE layer = $1 AND COALESCE(tenant_id, '') = $2 AND rule_key = $3
          AND COALESCE(campaign, '') = $4 AND status = 'active'
        FOR UPDATE`,
@@ -554,6 +708,11 @@ async function commitRule({
     );
     const live = cur.rows[0] || null;
     const liveVersion = live ? Number(live.version) : 0;
+    // Tier is sticky across versions: editing a locked rule's WORDING must never quietly unlock it.
+    // Changing the tier is its own deliberate act (pass tier explicitly — see setRuleTier).
+    const tierValue = layer === 'foundation'
+      ? (askedTier || (live ? ruleTier({ ...live, layer: 'foundation' }) : DEFAULT_TIER))
+      : null;
     if (liveVersion !== expect) {
       await client.query('ROLLBACK');
       const err = new Error(
@@ -570,12 +729,14 @@ async function commitRule({
         [live.id],
       );
     }
+    // Every column bound as a parameter (no interspersed literals) so the column list and the
+    // parameter list line up 1:1 — the test fake binds by that alignment.
     const ins = await client.query(
       `INSERT INTO wingguy_rules
-         (rule_key, tenant_id, layer, context, rule_type, campaign, version, body, change_note, created_by, status)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'active')
+         (rule_key, tenant_id, layer, context, rule_type, campaign, version, body, change_note, created_by, status, tier, standard_version)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
        RETURNING id, version`,
-      [key, tenant, layer, context, ruleType, campaign || null, nextVersion, String(body), changeNote || null, createdBy || null],
+      [key, tenant, layer, context, ruleType, campaign || null, nextVersion, String(body), changeNote || null, createdBy || null, 'active', tierValue, standardVersion],
     );
     await client.query(
       `INSERT INTO wingguy_rule_history (actor, action, layer, tenant_id, rule_key, from_version, to_version, detail)
@@ -588,12 +749,18 @@ async function commitRule({
         key,
         live ? liveVersion : null,
         nextVersion,
-        JSON.stringify({ change_note: changeNote || null, context, rule_type: ruleType, campaign: campaign || null }),
+        JSON.stringify({
+          change_note: changeNote || null, context, rule_type: ruleType, campaign: campaign || null,
+          tier: tierValue, standard_version: standardVersion,
+        }),
       ],
     );
     await client.query('COMMIT');
-    console.log(`WINGGUY-RULES ${action} layer=${layer} tenant=${tenant || '-'} key=${key} v${liveVersion}→v${nextVersion} by=${createdBy || '?'}`);
-    return { ok: true, ruleKey: key, layer, tenantId: tenant, version: nextVersion, previousVersion: liveVersion || null };
+    console.log(`WINGGUY-RULES ${action} layer=${layer}${tierValue ? `/${tierValue}` : ''} tenant=${tenant || '-'} key=${key} v${liveVersion}→v${nextVersion}${standardVersion ? ` (overrides standard v${standardVersion})` : ''} by=${createdBy || '?'}`);
+    return {
+      ok: true, ruleKey: key, layer, tenantId: tenant, version: nextVersion,
+      previousVersion: liveVersion || null, tier: tierValue, standardVersion,
+    };
   } catch (e) {
     try { await client.query('ROLLBACK'); } catch (_) { /* already rolled back */ }
     throw e;
@@ -671,8 +838,163 @@ async function revertRule({ tenantId, layer, ruleKey, campaign, toVersion, creat
     changeNote: `revert to v${toVersion}`,
     createdBy,
     expectedVersion: live ? live.version : 0,
+    // tier is deliberately NOT passed: revert restores WORDING, and commitRule keeps the live
+    // tier. Rolling a guardrail's body back must never roll its lock off as a side effect.
     action: 'revert',
   });
+}
+
+// ---------------------------------------------------------------------------
+// Tiers, overrides, divergence — "standard vs yours"
+// ---------------------------------------------------------------------------
+
+/**
+ * SET TIER — mark a foundation rule locked (a guardrail) or standard (overridable). Append-only
+ * like everything else: it commits a new version carrying the SAME body with the new tier, so the
+ * change shows up in history with a reason instead of mutating a row.
+ */
+async function setRuleTier({ ruleKey, campaign, tier, createdBy, changeNote }) {
+  if (!TIERS.includes(tier)) throw new Error(`invalid tier "${tier}" — must be one of: ${TIERS.join(', ')}`);
+  const camp = (campaign || '').trim() || null;
+  const found = await getRule({ layer: 'foundation', ruleKey, campaign: camp });
+  if (!found?.active) throw new Error(`no active foundation rule "${ruleKey}"${camp ? ` (campaign ${camp})` : ''}`);
+  const live = found.active;
+  const was = ruleTier(live);
+  if (was === tier) return { ok: true, ruleKey: live.rule_key, tier, version: live.version, unchanged: true };
+  const overrides = tier === 'locked' ? await getOverrideTenants({ ruleKey, campaign: camp }) : [];
+  const r = await commitRule({
+    layer: 'foundation',
+    ruleKey,
+    context: live.context,
+    ruleType: live.rule_type,
+    campaign: camp,
+    body: live.body,
+    tier,
+    changeNote: changeNote || `tier ${was} → ${tier}`,
+    createdBy,
+    expectedVersion: live.version,
+  });
+  // Locking a rule that tenants already override: their copies stop applying at once (foundation
+  // wins). Surfaced, never silently swallowed — the caller decides whether that is acceptable.
+  return { ...r, previousTier: was, suppressedOverrides: overrides.map((o) => o.tenant_id) };
+}
+
+/** Which tenants hold an active client-layer override of this rule_key (+campaign chain). */
+async function getOverrideTenants({ ruleKey, campaign } = {}) {
+  const p = getPool();
+  if (!p) return [];
+  const client = await p.connect();
+  try {
+    await ensureSchema(client);
+    const r = await client.query(
+      `SELECT tenant_id, version, standard_version, created_at
+       FROM wingguy_rules
+       WHERE layer = 'client' AND rule_key = $1 AND COALESCE(campaign, '') = $2 AND status = 'active'
+       ORDER BY tenant_id`,
+      [String(ruleKey || '').trim(), (campaign || '').trim()],
+    );
+    return r.rows;
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * DIVERGENCE — "what have I changed?". Every rule_key where this tenant runs their OWN version in
+ * place of a shared standard, with both bodies side by side, plus the drift check: has the standard
+ * moved since they took their copy, and what does it say now.
+ *
+ * Only overrides are listed — a client rule with no foundation twin is theirs alone, not a
+ * divergence from anything; those are returned as bare keys in `yoursOnly` for context.
+ */
+async function getDivergence({ tenantId = DEFAULT_TENANT } = {}) {
+  const tenant = (tenantId || DEFAULT_TENANT).trim();
+  const rules = await getActiveRules({ tenantId: tenant });
+  const foundation = new Map();
+  const mine = new Map();
+  for (const r of rules) {
+    const k = `${r.rule_key}|${r.campaign || ''}`;
+    if (r.layer === 'foundation') foundation.set(k, r);
+    else if (r.layer === 'client') mine.set(k, r);
+  }
+
+  const overrides = [];
+  const yoursOnly = [];
+  for (const [k, own] of mine) {
+    const std = foundation.get(k);
+    if (!std) { yoursOnly.push({ ruleKey: own.rule_key, campaign: own.campaign || null, version: own.version }); continue; }
+    const tier = ruleTier(std);
+    const basedOn = own.standard_version == null ? null : Number(own.standard_version);
+    const standardMoved = basedOn != null && Number(std.version) > basedOn;
+    const entry = {
+      ruleKey: own.rule_key,
+      campaign: own.campaign || null,
+      context: own.context,
+      ruleType: own.rule_type,
+      tier,
+      // A locked standard means the override is INERT — foundation wins at render. Shown loudly
+      // rather than hidden: the tenant still has a stale copy sitting there doing nothing.
+      applies: tier !== 'locked',
+      yourVersion: own.version,
+      yourBody: own.body,
+      yourChangeNote: own.change_note || null,
+      standardVersion: Number(std.version),
+      standardBody: std.body,
+      basedOnStandardVersion: basedOn,
+      standardMoved,
+      standardChanges: [],
+    };
+    if (standardMoved) {
+      const chain = await getRule({ layer: 'foundation', ruleKey: own.rule_key, campaign: own.campaign || undefined });
+      entry.standardChanges = (chain?.versions || [])
+        .filter((v) => Number(v.version) > basedOn)
+        .sort((a, b) => Number(a.version) - Number(b.version))
+        .map((v) => ({ version: Number(v.version), changeNote: v.change_note || null, at: v.created_at || null }));
+    }
+    overrides.push(entry);
+  }
+  overrides.sort((a, b) => String(a.ruleKey).localeCompare(String(b.ruleKey)));
+  yoursOnly.sort((a, b) => String(a.ruleKey).localeCompare(String(b.ruleKey)));
+  return { tenantId: tenant, overrides, yoursOnly, standardCount: foundation.size };
+}
+
+/**
+ * RESET TO STANDARD — retire the tenant's override so the live shared version applies again.
+ * Refuses when there is no standard to fall back to: that would not be a reset, it would be
+ * deleting the instruction outright, which is a different (deliberate) act.
+ */
+async function resetRuleToStandard({ tenantId, ruleKey, campaign, createdBy, changeNote } = {}) {
+  const tenant = (tenantId || '').trim();
+  if (!tenant) throw new Error('resetRuleToStandard requires a tenantId');
+  const key = String(ruleKey || '').trim();
+  const camp = (campaign || '').trim() || null;
+
+  const own = await getRule({ tenantId: tenant, layer: 'client', ruleKey: key, campaign: camp });
+  if (!own?.active) {
+    throw new Error(`"${key}" has no version of your own${camp ? ` on campaign "${camp}"` : ''} — there is nothing to reset (you are already on the standard).`);
+  }
+  const std = await getRule({ layer: 'foundation', ruleKey: key, campaign: camp });
+  if (!std?.active) {
+    throw new Error(`"${key}" is yours alone — there is no shared standard behind it to fall back to. Resetting would leave you with no instruction at all; archive it deliberately if that is what you want.`);
+  }
+  const r = await retireRule({
+    tenantId: tenant,
+    layer: 'client',
+    ruleKey: key,
+    campaign: camp,
+    createdBy,
+    expectedVersion: own.active.version,
+    changeNote: changeNote || `reset to standard v${std.active.version}`,
+  });
+  return {
+    ok: true,
+    ruleKey: key,
+    campaign: camp,
+    retiredVersion: r.retiredVersion,
+    standardVersion: Number(std.active.version),
+    standardBody: std.active.body,
+    tier: ruleTier(std.active),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -714,21 +1036,36 @@ async function seedClientFromTemplate({ tenantId, createdBy = 'system:seed', dry
     );
     const have = new Set(ex.rows.map((r) => `${r.rule_key}|${r.campaign}`));
     const identity = (r) => `${r.rule_key}|${r.campaign || ''}`;
-    const toSeed = tpl.rows.filter((r) => !have.has(identity(r)));
+
+    // Foundation twins of the template keys. Two consequences now that layers shadow each other:
+    // a seeded rule over a STANDARD key lands as an override (stamp its baseline so drift reads
+    // right), and one over a LOCKED key would be inert dead weight — refuse to seed those.
+    const fnd = await client.query(
+      `SELECT rule_key, COALESCE(campaign, '') AS campaign, version, tier
+       FROM wingguy_rules WHERE layer = 'foundation' AND status = 'active'`,
+    );
+    const standards = new Map(fnd.rows.map((r) => [`${r.rule_key}|${r.campaign}`, r]));
+    const isLocked = (r) => ruleTier({ ...(standards.get(identity(r)) || {}), layer: 'foundation' }) === 'locked'
+      && standards.has(identity(r));
+
+    const candidates = tpl.rows.filter((r) => !have.has(identity(r)));
+    const toSeed = candidates.filter((r) => !isLocked(r));
     const seeded = toSeed.map(identity);
     const skipped = tpl.rows.filter((r) => have.has(identity(r))).map(identity);
+    const skippedLocked = candidates.filter(isLocked).map(identity);
 
     if (dryRun) {
-      return { tenantId: tenant, dryRun: true, templateCount: tpl.rows.length, seeded, skipped };
+      return { tenantId: tenant, dryRun: true, templateCount: tpl.rows.length, seeded, skipped, skippedLocked };
     }
 
     await client.query('BEGIN');
     for (const r of toSeed) {
+      const std = standards.get(identity(r)) || null;
       await client.query(
         `INSERT INTO wingguy_rules
-           (rule_key, tenant_id, layer, context, rule_type, campaign, version, body, change_note, created_by, status)
-         VALUES ($1, $2, 'client', $3, $4, $5, 1, $6, 'seed from template', $7, 'active')`,
-        [r.rule_key, tenant, r.context, r.rule_type, r.campaign || null, r.body, createdBy],
+           (rule_key, tenant_id, layer, context, rule_type, campaign, version, body, change_note, created_by, status, standard_version)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+        [r.rule_key, tenant, 'client', r.context, r.rule_type, r.campaign || null, 1, r.body, 'seed from template', createdBy, 'active', std ? Number(std.version) : null],
       );
       await client.query(
         `INSERT INTO wingguy_rule_history (actor, action, layer, tenant_id, rule_key, from_version, to_version, detail)
@@ -737,8 +1074,8 @@ async function seedClientFromTemplate({ tenantId, createdBy = 'system:seed', dry
       );
     }
     await client.query('COMMIT');
-    console.log(`WINGGUY-RULES seed tenant=${tenant} seeded=${seeded.length} skipped=${skipped.length} of ${tpl.rows.length} template rules by=${createdBy}`);
-    return { tenantId: tenant, dryRun: false, templateCount: tpl.rows.length, seeded, skipped };
+    console.log(`WINGGUY-RULES seed tenant=${tenant} seeded=${seeded.length} skipped=${skipped.length}${skippedLocked.length ? ` skippedLocked=${skippedLocked.length}` : ''} of ${tpl.rows.length} template rules by=${createdBy}`);
+    return { tenantId: tenant, dryRun: false, templateCount: tpl.rows.length, seeded, skipped, skippedLocked };
   } catch (e) {
     try { await client.query('ROLLBACK'); } catch (_) { /* already rolled back or read-only */ }
     throw e;
@@ -1046,10 +1383,16 @@ async function resolveEditPairs({ tenantId = DEFAULT_TENANT, ids = [], status = 
 /**
  * Pure structural sweep of a tenant's runtime rulebook. Deliberately ONLY what code can decide
  * deterministically (rules integrity = code; semantic contradiction-hunting stays a human/LLM
- * on-demand job): cross-layer twins (same rule_key+campaign active in >1 layer — BOTH render,
- * nothing shadows) and unresolved {{variable}}/{{asset:key}} placeholders (unset variable, or a
- * missing/retired asset). Campaign-vs-generic same-key pairs are BY DESIGN (campaign shadows
- * generic) and are not flagged.
+ * on-demand job). Campaign-vs-generic same-key pairs are BY DESIGN (campaign shadows generic) and
+ * are not flagged.
+ *
+ * REVISED 2026-07-31 with cross-layer shadowing. A client rule sitting over a STANDARD foundation
+ * rule used to be the headline finding ("both render, the model reads two versions") — it is now
+ * the override feature working correctly, and is NOT a finding. What replaces it:
+ *   - inert-override: a client rule over a LOCKED foundation rule. It never applies (the guardrail
+ *     wins) but it is still sitting there looking like it does — a real trap, worth flagging.
+ * Placeholder checking runs over the RESOLVED view, so a hole in a foundation body that the
+ * tenant's own override replaces is not reported against them.
  * @returns Array<{kind, ruleKey, detail}>
  */
 function computeRulebookHygiene(rules = [], variableRows = [], assetRows = []) {
@@ -1059,22 +1402,16 @@ function computeRulebookHygiene(rules = [], variableRows = [], assetRows = []) {
   const assetMap = {};
   for (const a of assetRows) assetMap[a.asset_key] = a;
 
-  const byIdentity = {};
-  for (const r of rules) {
-    const k = `${r.rule_key}|${r.campaign || ''}`;
-    (byIdentity[k] = byIdentity[k] || []).push(r);
+  const { rules: inPlay, dropped } = resolveRuleShadowing(rules);
+  for (const d of dropped) {
+    if (d.reason !== 'locked') continue;
+    findings.push({
+      kind: 'inert-override',
+      ruleKey: d.rule.rule_key,
+      detail: `"${d.rule.rule_key}"${d.rule.campaign ? ` (campaign:${d.rule.campaign})` : ''} has a version of your own, but the shared version is a LOCKED guardrail — so yours never applies and the shared one is what runs. Your copy is dead weight: archive it, or raise the guardrail itself as a platform change.`,
+    });
   }
-  for (const rows of Object.values(byIdentity)) {
-    const layers = [...new Set(rows.map((r) => r.layer))];
-    if (layers.length > 1) {
-      findings.push({
-        kind: 'cross-layer-twin',
-        ruleKey: rows[0].rule_key,
-        detail: `"${rows[0].rule_key}"${rows[0].campaign ? ` (campaign:${rows[0].campaign})` : ''} is active in ${layers.join(' AND ')} — both bodies render (nothing shadows), so the model reads two versions. Usually one should be retired (see the layer-precedence decision before bulk-fixing).`,
-      });
-    }
-  }
-  for (const r of rules) {
+  for (const r of inPlay) {
     const { unresolved } = resolveRuleBody(r.body, varMap, assetMap);
     if (unresolved.length) {
       findings.push({
@@ -1235,6 +1572,11 @@ module.exports = {
   commitRule,
   retireRule,
   revertRule,
+  // three-tier + per-client overrides ("standard vs yours")
+  setRuleTier,
+  getOverrideTenants,
+  getDivergence,
+  resetRuleToStandard,
   // provisioning
   seedClientFromTemplate,
   setVariable,
@@ -1243,9 +1585,13 @@ module.exports = {
   validateRuleInput,
   resolveRuleBody,
   assembleRulesBlock,
+  resolveRuleShadowing,
+  ruleTier,
   LAYERS,
   CONTEXTS,
   RULE_TYPES,
+  TIERS,
+  DEFAULT_TIER,
   DEFAULT_TENANT,
   // test seam
   __setTestPool,

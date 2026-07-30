@@ -23,9 +23,23 @@ const TENANT = (process.env.RECALL_COACH_CLIENT_ID || store.DEFAULT_TENANT).trim
 // Executors — shared by both transports; return { text, isError? }
 // ---------------------------------------------------------------------------
 
+// Plain-English name for what KIND of instruction a row is — the three kinds the human actually
+// cares about. layer= is kept in the line because the model needs it for the follow-up tool calls.
+const KIND = { fixed: 'FIXED', standard: 'STANDARD', yours: 'YOURS', 'yours-override': 'YOURS (replaces the standard)', 'yours-inert': 'YOURS (never applies - the shared one is FIXED)', template: 'TEMPLATE (seed only)' };
+
+function ruleKind(r, { overridden = new Set(), inert = new Set() } = {}) {
+  if (r.layer === 'template') return 'template';
+  if (r.layer === 'foundation') return store.ruleTier(r) === 'locked' ? 'fixed' : 'standard';
+  const id = `${r.rule_key}|${r.campaign || ''}`;
+  if (inert.has(id)) return 'yours-inert';
+  return overridden.has(id) ? 'yours-override' : 'yours';
+}
+
+// The KIND is the group heading, so it is not repeated per line; layer= stays because the model
+// needs it for the follow-up wingguy_rule_get / propose calls.
 function ruleLine(r) {
   const camp = r.campaign ? ` [campaign:${r.campaign}]` : '';
-  return `- ${r.rule_key} (v${r.version}, ${r.layer}, ${r.context}/${r.rule_type}${camp})`;
+  return `- ${r.rule_key} (v${r.version}, layer=${r.layer}, ${r.context}/${r.rule_type}${camp})`;
 }
 
 function scopeFromLayer(layer, tenant = TENANT) {
@@ -59,22 +73,112 @@ async function hygieneExtra(tenant) {
   } catch (_) { return ''; /* non-fatal */ }
 }
 
-async function runRulesList({ context, layer, campaign } = {}, tenant = TENANT) {
-  const rules = await store.getActiveRules({
+async function runRulesList({ context, layer, campaign, view } = {}, tenant = TENANT) {
+  if (view === 'divergence') return runDivergence({ }, tenant);
+
+  const raw = await store.getActiveRules({
     tenantId: tenant,
     contexts: context ? [context] : undefined,
     layer: layer || undefined,
     campaign: campaign || undefined,
   });
   const extras = await rulebookExtras(tenant);
-  if (!rules.length) return { text: `No active rules matched. (An empty store is expected until the Notion import runs.)${extras}` };
-  const byLayer = {};
-  for (const r of rules) (byLayer[r.layer] = byLayer[r.layer] || []).push(r);
-  const parts = [];
-  for (const [lyr, rows] of Object.entries(byLayer)) {
-    parts.push(`${lyr} (${rows.length}):\n${rows.map(ruleLine).join('\n')}`);
+  if (!raw.length) return { text: `No active instructions matched. (An empty store is expected until the Notion import runs.)${extras}` };
+
+  // With an explicit layer filter the human is inspecting ONE drawer — show it raw. Otherwise show
+  // the RUNTIME view: shadowing applied, so what is listed is exactly what reaches the model.
+  const { rules, dropped } = layer
+    ? { rules: raw, dropped: [] }
+    : store.resolveRuleShadowing(raw, { campaign: campaign || undefined });
+  const ident = (r) => `${r.rule_key}|${r.campaign || ''}`;
+  const marks = {
+    overridden: new Set(dropped.filter((d) => d.reason === 'override').map((d) => ident(d.by))),
+    inert: new Set(dropped.filter((d) => d.reason === 'locked').map((d) => ident(d.rule))),
+  };
+  // A suppressed client copy is not in `rules` (it does not render) but the human must still see it
+  // exists, or "where did my version go?" has no answer.
+  const suppressed = dropped.filter((d) => d.reason === 'locked').map((d) => d.rule);
+
+  const groups = new Map();
+  for (const r of [...rules, ...suppressed]) {
+    const k = ruleKind(r, marks);
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(r);
   }
-  return { text: `Active Wingguy rules for ${tenant}:\n\n${parts.join('\n\n')}\n\nUse wingguy_rule_get for a rule's body + history.${extras}` };
+  const order = ['fixed', 'standard', 'yours-override', 'yours', 'yours-inert', 'template'];
+  const parts = [];
+  for (const k of order) {
+    const rows = groups.get(k);
+    if (!rows || !rows.length) continue;
+    parts.push(`${KIND[k]} (${rows.length}):\n${rows.map(ruleLine).join('\n')}`);
+  }
+
+  const overrideCount = marks.overridden.size;
+  const tail = overrideCount
+    ? `\n\n${overrideCount} standard instruction${overrideCount === 1 ? ' has' : 's have'} a version of your own in place of the shared one. "What have I changed?" (wingguy_rules_list with view=divergence) shows yours and the current standard side by side.`
+    : '';
+  return {
+    text: `${layer ? `The ${layer} layer` : 'Active Wingguy instructions'} for ${tenant}${layer ? ' (raw - no shadowing applied)' : ' - this is exactly what reaches the model'}:\n\n${parts.join('\n\n')}${tail}\n\nUse wingguy_rule_get for an instruction's body + history.${extras}`,
+  };
+}
+
+// "What have I changed?" — every instruction where this tenant runs their own version instead of
+// the shared standard, both bodies side by side, plus whether the standard has moved since.
+async function runDivergence(_args, tenant = TENANT) {
+  const d = await store.getDivergence({ tenantId: tenant });
+  const extras = await rulebookExtras(tenant);
+  if (!d.overrides.length) {
+    return {
+      text: `${tenant} has not changed any of the standard instructions - all ${d.standardCount} shared ones are running as-is`
+        + `${d.yoursOnly.length ? `, plus ${d.yoursOnly.length} that are yours alone (${d.yoursOnly.map((y) => y.ruleKey).join(', ')})` : ''}.${extras}`,
+    };
+  }
+  const moved = d.overrides.filter((o) => o.standardMoved);
+  const lines = [
+    `${d.overrides.length} instruction${d.overrides.length === 1 ? '' : 's'} where ${tenant} runs their OWN version instead of the standard:`,
+    '',
+  ];
+  for (const o of d.overrides) {
+    lines.push(`━━ ${o.ruleKey}${o.campaign ? ` [campaign:${o.campaign}]` : ''} · ${o.context}/${o.ruleType}`);
+    if (!o.applies) {
+      lines.push(`⚠ The shared version of this one is FIXED (a guardrail), so YOUR version never applies - the shared one below is what actually runs. Your copy is dead weight and should be archived.`);
+    }
+    lines.push('', `--- YOURS (v${o.yourVersion}${o.yourChangeNote ? ` - "${o.yourChangeNote}"` : ''}) ---`, o.yourBody, '');
+    lines.push(`--- THE STANDARD RIGHT NOW (v${o.standardVersion}) ---`, o.standardBody, '');
+    if (o.standardMoved) {
+      const notes = o.standardChanges.map((c) => `v${c.version}${c.changeNote ? ` - "${c.changeNote}"` : ''}`).join(' · ');
+      lines.push(`⚠ THE STANDARD HAS MOVED since you took your own version (you branched from v${o.basedOnStandardVersion}, it is now v${o.standardVersion}): ${notes}`);
+      lines.push(`Your version is untouched and still applies. If the new standard is better, wingguy_rule_reset_to_standard drops yours and puts you back on the shared one.`, '');
+    } else if (o.basedOnStandardVersion == null) {
+      lines.push(`(This override predates drift tracking, so there is no record of which standard version it branched from - compare the two bodies above by eye.)`, '');
+    } else {
+      lines.push(`(The standard has not changed since you took your own version.)`, '');
+    }
+  }
+  if (d.yoursOnly.length) {
+    lines.push(`Also yours alone - no shared version behind them, so nothing to compare: ${d.yoursOnly.map((y) => y.ruleKey).join(', ')}.`);
+  }
+  lines.push(
+    '',
+    'HOW TO PRESENT THIS: lead with the ones where the standard has MOVED'
+      + `${moved.length ? ` (${moved.length} of them: ${moved.map((m) => m.ruleKey).join(', ')})` : ' (none right now)'}`
+      + ' - those are the only ones needing a decision. For each, show both versions and ask whether to keep theirs or go back to the standard. Never reset anything without an explicit yes.',
+  );
+  return { text: lines.join('\n') + extras };
+}
+
+async function runResetToStandard({ rule_key, campaign } = {}, tenant = TENANT) {
+  const r = await store.resetRuleToStandard({
+    tenantId: tenant,
+    ruleKey: rule_key,
+    campaign: campaign || undefined,
+    createdBy: `mcp:${tenant}`,
+  });
+  return {
+    text: `Done - your own version of "${r.ruleKey}" (v${r.retiredVersion}) is archived, and the shared standard applies again.\n\n`
+      + `--- WHAT NOW APPLIES (standard v${r.standardVersion}) ---\n${r.standardBody}\n\n`
+      + `Nothing was deleted: your version is still in history and wingguy_rule_revert brings it back any time.`,
+  };
 }
 
 async function runRuleGet({ rule_key, layer = 'client', campaign }, tenant = TENANT) {
@@ -89,7 +193,21 @@ async function runRuleGet({ rule_key, layer = 'client', campaign }, tenant = TEN
   const history = await store.getHistory({ ruleKey: rule_key, limit: 20 });
   const lines = [];
   if (active) {
-    lines.push(`# ${rule_key} (ACTIVE v${active.version}, ${active.layer}, ${active.context}/${active.rule_type}${active.campaign ? `, campaign:${active.campaign}` : ''})`);
+    const tier = store.ruleTier(active);
+    lines.push(`# ${rule_key} (ACTIVE v${active.version}, ${active.layer}${tier ? `/${tier}` : ''}, ${active.context}/${active.rule_type}${active.campaign ? `, campaign:${active.campaign}` : ''})`);
+    if (tier === 'locked') lines.push('This is a FIXED instruction — shared by every client and not overridable. No client version can replace it.');
+    if (tier === 'standard') lines.push('This is a STANDARD instruction — shared and improved centrally, but any client may save their own version, which then replaces it for them alone.');
+    if (active.layer === 'client') {
+      // Is this the client's own version of something shared? That is the fact they need, and it
+      // is not visible from the row itself.
+      const std = await store.getRule({ layer: 'foundation', ruleKey: rule_key, campaign: campaign || undefined });
+      if (std?.active) {
+        const stdTier = store.ruleTier(std.active);
+        lines.push(stdTier === 'locked'
+          ? `⚠ There is a FIXED shared version of "${rule_key}" (v${std.active.version}). It wins — THIS version never applies and should be archived.`
+          : `This is YOUR version of a STANDARD instruction (shared version is currently v${std.active.version}${active.standard_version ? `, you branched from v${active.standard_version}` : ''}). Yours applies; the shared one does not. wingguy_rules_list view=divergence shows them side by side.`);
+      }
+    }
     lines.push('', active.body, '');
   } else {
     lines.push(`# ${rule_key} — RETIRED (no active version)`, '');
@@ -111,13 +229,13 @@ async function runRuleGet({ rule_key, layer = 'client', campaign }, tenant = TEN
     }
     const layers = [...new Set(history.map((h) => h.layer))];
     if (layers.length > 1) {
-      lines.push('', `NB "${rule_key}" exists in more than one layer (${layers.join(', ')}). Rows that look duplicated are usually one action per layer, not a double-write. Both foundation and client copies RENDER — if that is not intended, retire one.`);
+      lines.push('', `NB "${rule_key}" exists in more than one layer (${layers.join(', ')}). Rows that look duplicated are usually one action per layer, not a double-write. Only ONE copy renders: a client version replaces a STANDARD shared one, and a FIXED shared one beats any client version.`);
     }
   }
   return { text: lines.join('\n') };
 }
 
-async function runRulePropose({ rule_key, layer = 'client', context, rule_type, campaign, body }, tenant = TENANT) {
+async function runRulePropose({ rule_key, layer = 'client', context, rule_type, campaign, body, tier }, tenant = TENANT) {
   const prop = await store.proposeRule({
     ...scopeFromLayer(layer, tenant),
     // Whose rulebook to check against — always the caller's, even for a tenant-less foundation rule.
@@ -127,12 +245,42 @@ async function runRulePropose({ rule_key, layer = 'client', context, rule_type, 
     ruleType: rule_type,
     campaign: campaign || undefined,
     body,
+    tier: tier || undefined,
   });
+  // A locked guardrail cannot be overridden — say so and stop, rather than walking the human
+  // through a proposal the write-door is going to refuse.
+  if (prop.blocked) {
+    return {
+      text: `CANNOT CHANGE THIS ONE.\n\n${prop.blocked.message}\n\n`
+        + `--- THE FIXED INSTRUCTION (v${prop.standard.version}) ---\n${prop.standard.body}\n\n`
+        + `Tell the human plainly that this is one of the fixed guardrails and their own version cannot be saved against it. Do NOT try wingguy_rule_commit — it will refuse too.`,
+      isError: true,
+    };
+  }
   const lines = [
     `PROPOSAL for ${prop.isNew ? 'NEW rule' : `rule (currently v${prop.currentVersion})`} "${prop.ruleKey}"`,
-    `Scope: ${prop.layer}${prop.tenantId ? ` / ${prop.tenantId}` : ' (platform-wide — every tenant reads this)'} · ${prop.context}/${prop.ruleType}${prop.campaign ? ` · campaign:${prop.campaign}` : ''}`,
+    `Scope: ${prop.layer}${prop.tenantId ? ` / ${prop.tenantId}` : ' (platform-wide — every tenant reads this)'}${prop.tier ? ` · tier=${prop.tier}${prop.tier === 'locked' ? ' (FIXED — no client can override this)' : ' (STANDARD — clients may keep their own version)'}` : ''} · ${prop.context}/${prop.ruleType}${prop.campaign ? ` · campaign:${prop.campaign}` : ''}`,
     '',
   ];
+  // The override case, stated as what it IS. Before cross-layer shadowing this was the "two bodies
+  // will reach the model" warning; now exactly one does, and the human needs to read the one they
+  // are replacing before replacing it.
+  if (prop.isOverride) {
+    lines.push(
+      `THIS IS AN OVERRIDE. "${prop.ruleKey}" is a STANDARD instruction (shared, kept up to date centrally). Saving your own version REPLACES it for ${prop.tenantId} only — the standard keeps improving for everyone else, and you stop receiving those improvements on this one instruction.`,
+      `--- THE STANDARD YOU WOULD BE REPLACING (v${prop.standard.version}) ---`,
+      prop.standard.body,
+      '',
+      'Show the human BOTH bodies and check the standard does not already say what they want. If it is close, ask whether the STANDARD should be improved instead (that helps every client, including them) — prefer that over a private copy whenever the change is not purely personal taste.',
+      '',
+    );
+  }
+  if (prop.layer === 'foundation' && prop.overrideTenants.length) {
+    lines.push(
+      `⚠ ${prop.overrideTenants.length} tenant${prop.overrideTenants.length === 1 ? '' : 's'} already run their OWN version of "${prop.ruleKey}" and will NOT receive this change: ${prop.overrideTenants.map((t) => `${t.tenantId} (their v${t.version})`).join(', ')}. They will be told the standard moved next time they ask what they have changed.`,
+      '',
+    );
+  }
   if (!prop.isNew) {
     lines.push('--- CURRENT body ---', prop.currentBody || '(empty)', '', '--- PROPOSED body ---', prop.proposedBody, '');
   } else {
@@ -144,14 +292,20 @@ async function runRulePropose({ rule_key, layer = 'client', context, rule_type, 
   // loudest: both copies render, nothing shadows.
   const excerpt = (n) => `${String(n.body).slice(0, 160)}${String(n.body).length > 160 ? '…' : ''}`;
   const label = (n) => `${n.rule_key} (v${n.version}, ${n.layer}, ${n.context}/${n.rule_type}${n.campaign ? `, campaign:${n.campaign}` : ''})`;
-  if (prop.sameKeyElsewhere && prop.sameKeyElsewhere.length) {
-    lines.push(`⚠ SAME rule_key "${prop.ruleKey}" is ALSO filed elsewhere — every copy renders (no shadowing between layers), so two bodies will reach the model:`);
-    for (const n of prop.sameKeyElsewhere) lines.push(`- ${label(n)}: ${excerpt(n)}`);
+  // The standard being overridden is already printed in full above — don't list it again as a
+  // "conflict" in the rings below; it is a replacement, not a collision.
+  const isTheStandard = (n) => prop.standard && n.layer === 'foundation'
+    && n.rule_key === prop.ruleKey && (n.campaign || null) === prop.campaign;
+  const sameKeyOther = (prop.sameKeyElsewhere || []).filter((n) => !isTheStandard(n));
+  const neighbours = prop.neighbours.filter((n) => !isTheStandard(n));
+  if (sameKeyOther.length) {
+    lines.push(`⚠ SAME rule_key "${prop.ruleKey}" is ALSO filed elsewhere, in a layer that does NOT shadow this one — read these, the model may end up with two bodies:`);
+    for (const n of sameKeyOther) lines.push(`- ${label(n)}: ${excerpt(n)}`);
     lines.push('');
   }
-  if (prop.neighbours.length) {
+  if (neighbours.length) {
     lines.push(`Neighbours in ${prop.context}/${prop.ruleType} (closest overlap — read for contradiction):`);
-    for (const n of prop.neighbours) lines.push(`- ${label(n)}: ${excerpt(n)}`);
+    for (const n of neighbours) lines.push(`- ${label(n)}: ${excerpt(n)}`);
     lines.push('');
   } else {
     lines.push(`No other rules filed in ${prop.context}/${prop.ruleType}.`, '');
@@ -170,7 +324,7 @@ async function runRulePropose({ rule_key, layer = 'client', context, rule_type, 
   return { text: lines.join('\n') };
 }
 
-async function runRuleCommit({ rule_key, layer = 'client', context, rule_type, campaign, body, change_note, expected_version }, tenant = TENANT) {
+async function runRuleCommit({ rule_key, layer = 'client', context, rule_type, campaign, body, change_note, expected_version, tier }, tenant = TENANT) {
   const r = await store.commitRule({
     ...scopeFromLayer(layer, tenant),
     ruleKey: rule_key,
@@ -181,10 +335,15 @@ async function runRuleCommit({ rule_key, layer = 'client', context, rule_type, c
     changeNote: change_note || null,
     createdBy: `mcp:${tenant}`,
     expectedVersion: expected_version,
+    tier: tier || undefined,
   });
+  const override = layer === 'client' && r.standardVersion
+    ? ` This REPLACES the standard version (v${r.standardVersion}) for you only — wingguy_rule_reset_to_standard puts you back on the shared one whenever you want.`
+    : '';
+  const tierNote = r.tier ? ` Tier: ${r.tier}${r.tier === 'locked' ? ' (fixed — no client can override it)' : ' (standard — clients may keep their own version)'}.` : '';
   return {
     text: `Committed: "${r.ruleKey}" is now v${r.version} (${layer}${r.tenantId ? `/${r.tenantId}` : ''}).` +
-      `${r.previousVersion ? ` v${r.previousVersion} retired (still in history — revert any time).` : ' First version.'}`,
+      `${r.previousVersion ? ` v${r.previousVersion} retired (still in history — revert any time).` : ' First version.'}${tierNote}${override}`,
   };
 }
 
@@ -275,36 +434,105 @@ async function runEditReview({ action = 'list', ids, resolution = 'reviewed', no
 }
 
 // ---------------------------------------------------------------------------
+// Coach directory — look up one of the caller's OWN coached clients' setup
+// details (portal token / URL, login email, leads base id). Coach-gated: the
+// caller only ever sees clients whose `Coach` field equals the caller's tenant,
+// so a plain client's connector can never read another client's record. The
+// portal token is a portal access key — hence coach-only.
+// ---------------------------------------------------------------------------
+async function runGetClient({ client } = {}, tenant = TENANT) {
+  const clientService = require('./clientService');
+  const query = String(client || '').trim();
+  if (!query) return { text: 'Which client? Pass a name or client id (e.g. "McPhee" or "Guy-McPhee").', isError: true };
+
+  let all;
+  try {
+    all = await clientService.getAllClients();
+  } catch (e) {
+    return { text: `Couldn't read the client directory: ${e.message}`, isError: true };
+  }
+
+  // Coach gate: only the clients this caller coaches are ever visible.
+  const mine = (all || []).filter((c) => c.coach && c.coach === tenant);
+  if (!mine.length) {
+    return { text: `No coached clients are visible to "${tenant}". This lookup is coach-only.`, isError: true };
+  }
+
+  const q = query.toLowerCase();
+  const exact = mine.filter((c) =>
+    (c.clientId && c.clientId.toLowerCase() === q) || (c.clientName && c.clientName.toLowerCase() === q));
+  const matches = exact.length ? exact : mine.filter((c) =>
+    (c.clientId && c.clientId.toLowerCase().includes(q)) || (c.clientName && c.clientName.toLowerCase().includes(q)));
+
+  if (!matches.length) {
+    const names = mine.map((c) => `${c.clientName} (${c.clientId})`).join(', ');
+    return { text: `No coached client matched "${query}". Your clients: ${names}.`, isError: true };
+  }
+  if (matches.length > 1) {
+    const names = matches.map((c) => `${c.clientName} (${c.clientId})`).join(', ');
+    return { text: `"${query}" matched several: ${names}. Re-run with the exact client id.`, isError: true };
+  }
+
+  const c = matches[0];
+  const portalUrl = c.portalToken ? `https://pb-webhook-server.vercel.app/?token=${c.portalToken}` : '(no token set)';
+  const lines = [
+    `Client: ${c.clientName} (${c.clientId})`,
+    `Status: ${c.status || 'unknown'}${c.serviceLevel ? ` · ${c.serviceLevel}` : ''}`,
+    `Login email: ${c.clientEmailAddress || '(none on record)'}`,
+    `Leads base id: ${c.airtableBaseId || '(none)'}`,
+    c.timezone ? `Timezone: ${c.timezone}` : null,
+    `Portal token: ${c.portalToken || '(none set)'}`,
+    `Portal URL: ${portalUrl}`,
+  ].filter(Boolean);
+  return { text: lines.join('\n') };
+}
+
+// ---------------------------------------------------------------------------
 // Definitions — one source of truth for names/descriptions/schemas
 // ---------------------------------------------------------------------------
 
 const LAYER_DESC = 'Rule layer: "client" (this tenant\'s own rule — the default) · "foundation" (platform-wide, ALL tenants read it — reserved for Guy/platform calls) · "template" (the de-personalised seed for new clients; not runtime-read). If it\'s unclear whether a change is personal or platform-wide, ASK the human — never guess foundation.';
+const TIER_DESC = 'FOUNDATION ONLY. "standard" (default) = shared and improved centrally, but a client MAY save their own version, which then replaces it for them. "locked" = a guardrail: no client can override it, ever. Locking is deliberate and rare — never set it without the human explicitly asking. Omitted on an edit = the existing tier is kept (editing a locked rule\'s wording never unlocks it).';
 const CAMPAIGN_DESC = 'Campaign slug (e.g. "tks", "frac"). A campaign version of a rule_key OVERRIDES the generic version when that campaign is in play; with no campaign (or no campaign version) the generic applies. Omit for the generic/fallback version. Campaign is detected from the thread: scan the user\'s own prior outbound for a campaign\'s marker phrases (see the campaign-markers rule); an explicit campaign named by the human always wins.';
 const CONTEXT_DESC = `Where the rule applies: ${store.CONTEXTS.join(' | ')}`;
 const TYPE_DESC = `What kind of rule: ${store.RULE_TYPES.join(' | ')}`;
 
+// Customer-facing vocabulary (Guy, 2026-07-25). We SAY "instructions"; we ACCEPT
+// "rules" as well. "Rules" reads as compliance — something handed to you that you
+// must obey; "instructions" puts the human in charge, and is more literally true:
+// they instruct the system. Internal naming (rule_key, tool names, the store) is
+// deliberately unchanged — nobody sees it.
+const VOCAB = ' WORDING: when speaking to the human, call these their "instructions", never their "rules". Treat "rules" and "instructions" as the SAME thing on the way in, though — "update my rules", "update my instructions", "change my instructions" all mean this.';
+
+// The three kinds, in the words the human hears. This is the model the whole tier/override build
+// exists to make real: before it, an instruction was either locked away in foundation or handed
+// over as a photocopy, with nothing in between.
+const THREE_KINDS = ' THREE KINDS OF INSTRUCTION: (1) FIXED — shared guardrails that cannot be changed by anyone (layer=foundation, tier=locked). (2) STANDARD — shared, and improved centrally so everyone gets better over time, BUT the client can save their own version, which then replaces it for them alone (layer=foundation, tier=standard). (3) YOURS — the client\'s own, nobody else has it (layer=client). When a client has their own version of a STANDARD instruction, only THEIR version applies — the two never stack.';
+
 const TOOL_DEFS = [
   {
     name: 'wingguy_rules_list',
-    description: 'Lists the active Wingguy rules (the shared rulebook both surfaces read). Start here when the user says "update my rules", asks what the rules say, or you need to find a rule\'s key. Filterable by context, layer, or campaign. AMBIGUITY: if the human says "review the rules"/"review my rules" it could mean this OR reviewing their recent draft edits (wingguy_edit_review) — ask ONE short question offering both, with counts if you have them; but if there are no pending edits, skip the question and just list.',
+    description: 'Lists the active Wingguy rules (the shared rulebook both surfaces read), grouped by KIND and showing exactly what reaches the model. Start here when the user says "update my instructions" / "update my rules", asks what their instructions say, or you need to find a rule\'s key. Filterable by context, layer, or campaign. USE view="divergence" for "what have I changed?" / "what\'s different about mine?" / "show me standard vs mine" — it lists only the instructions where this client runs their own version instead of the shared standard, each with both bodies side by side, and flags any where the standard has since moved on. AMBIGUITY: if the human says "review my instructions"/"review the rules" it could mean this OR reviewing their recent draft edits (wingguy_edit_review) — ask ONE short question offering both, with counts if you have them; but if there are no pending edits, skip the question and just list.' + VOCAB + THREE_KINDS,
     zodSchema: {
       context: z.enum(store.CONTEXTS).optional().describe(CONTEXT_DESC),
-      layer: z.enum(store.LAYERS).optional().describe('Filter to one layer (default: the runtime view — foundation + this tenant\'s client rules)'),
+      layer: z.enum(store.LAYERS).optional().describe('Filter to one layer, shown RAW with no shadowing applied (default: the runtime view — the shared instructions plus this client\'s own, with their own replacing the standard wherever they have one)'),
       campaign: z.string().optional().describe('Filter to rules tagged with this campaign (e.g. "tks", "frac")'),
+      view: z.enum(['active', 'divergence']).optional().describe('"active" (default) = everything currently applying. "divergence" = ONLY the instructions where this client has their own version in place of the shared standard, with both bodies side by side and a flag on any where the standard has moved since. Other filters are ignored for divergence.'),
     },
     jsonSchema: {
       type: 'object',
       properties: {
         context: { type: 'string', enum: store.CONTEXTS, description: CONTEXT_DESC },
-        layer: { type: 'string', enum: store.LAYERS, description: 'Filter to one layer (default: the runtime view — foundation + this tenant\'s client rules)' },
+        layer: { type: 'string', enum: store.LAYERS, description: 'Filter to one layer, shown RAW with no shadowing applied (default: the runtime view — the shared instructions plus this client\'s own, with their own replacing the standard wherever they have one)' },
         campaign: { type: 'string', description: 'Filter to rules tagged with this campaign (e.g. "tks", "frac")' },
+        view: { type: 'string', enum: ['active', 'divergence'], description: '"active" (default) = everything currently applying. "divergence" = ONLY the instructions where this client has their own version in place of the shared standard, with both bodies side by side and a flag on any where the standard has moved since. Other filters are ignored for divergence.' },
       },
     },
     run: runRulesList,
   },
   {
     name: 'wingguy_rule_get',
-    description: 'Fetches one Wingguy rule: the active body plus its full version history and door audit trail. Use before proposing a change to an existing rule. A rule_key can have a generic version AND per-campaign versions — omit campaign for the generic, pass it for a campaign\'s.',
+    description: 'Fetches one Wingguy rule: the active body plus its full version history and door audit trail. Use before proposing a change to an existing rule. A rule_key can have a generic version AND per-campaign versions — omit campaign for the generic, pass it for a campaign\'s.' + VOCAB,
     zodSchema: {
       rule_key: z.string().describe('The rule\'s stable kebab-case key (from wingguy_rules_list)'),
       layer: z.enum(store.LAYERS).optional().describe(LAYER_DESC),
@@ -323,13 +551,14 @@ const TOOL_DEFS = [
   },
   {
     name: 'wingguy_rule_propose',
-    description: 'STEP 1 of changing a Wingguy rule ("update my rules"). Pure read — writes NOTHING. Returns the current-vs-proposed diff, the neighbouring rules in the same context/type (eyeball them for contradictions), and the expected_version that wingguy_rule_commit requires. Show the proposal to the human and get an explicit yes before committing.',
+    description: 'STEP 1 of changing a Wingguy rule ("update my instructions" / "update my rules"). Pure read — writes NOTHING. Returns the current-vs-proposed diff, the neighbouring rules in the same context/type (eyeball them for contradictions), and the expected_version that wingguy_rule_commit requires. If the client is about to save their own version of a STANDARD shared instruction, it says so and prints the standard body they would be replacing — show the human both and check the standard does not already cover it. If the instruction is FIXED, it refuses here and explains why. Show the proposal to the human and get an explicit yes before committing.' + VOCAB + THREE_KINDS,
     zodSchema: {
       rule_key: z.string().describe('Stable kebab-case key. For a NEW rule, coin a descriptive one (e.g. "booking-earliest-start")'),
       layer: z.enum(store.LAYERS).optional().describe(LAYER_DESC),
       context: z.enum(store.CONTEXTS).describe(CONTEXT_DESC),
       rule_type: z.enum(store.RULE_TYPES).describe(TYPE_DESC),
       campaign: z.string().optional().describe(CAMPAIGN_DESC),
+      tier: z.enum(store.TIERS).optional().describe(TIER_DESC),
       body: z.string().describe('The proposed rule body (markdown). Use {{variables}} and {{asset:key}} placeholders, never tenant-specific literals in foundation/template rules'),
     },
     jsonSchema: {
@@ -340,6 +569,7 @@ const TOOL_DEFS = [
         context: { type: 'string', enum: store.CONTEXTS, description: CONTEXT_DESC },
         rule_type: { type: 'string', enum: store.RULE_TYPES, description: TYPE_DESC },
         campaign: { type: 'string', description: CAMPAIGN_DESC },
+        tier: { type: 'string', enum: store.TIERS, description: TIER_DESC },
         body: { type: 'string', description: 'The proposed rule body (markdown). Use {{variables}} and {{asset:key}} placeholders, never tenant-specific literals in foundation/template rules' },
       },
       required: ['rule_key', 'context', 'rule_type', 'body'],
@@ -348,13 +578,14 @@ const TOOL_DEFS = [
   },
   {
     name: 'wingguy_rule_commit',
-    description: 'STEP 2 of changing a Wingguy rule — the write. Only call AFTER wingguy_rule_propose AND the human explicitly confirming the proposal. Requires the expected_version the proposal returned; if the rule moved since, the commit is rejected (re-propose). Inserts a new version and retires the old one — nothing is ever overwritten or deleted.',
+    description: 'STEP 2 of changing a Wingguy rule — the write. Only call AFTER wingguy_rule_propose AND the human explicitly confirming the proposal. Requires the expected_version the proposal returned; if the rule moved since, the commit is rejected (re-propose). Inserts a new version and retires the old one — nothing is ever overwritten or deleted.' + VOCAB,
     zodSchema: {
       rule_key: z.string().describe('Same key as the proposal'),
       layer: z.enum(store.LAYERS).optional().describe(LAYER_DESC),
       context: z.enum(store.CONTEXTS).describe(CONTEXT_DESC),
       rule_type: z.enum(store.RULE_TYPES).describe(TYPE_DESC),
       campaign: z.string().optional().describe('Same campaign tag as the proposal (if any) — part of the rule\'s identity'),
+      tier: z.enum(store.TIERS).optional().describe(TIER_DESC),
       body: z.string().describe('The confirmed rule body'),
       change_note: z.string().optional().describe('One line on what changed and why (shows in history)'),
       expected_version: z.number().describe('The expected_version from wingguy_rule_propose (0 for a new rule)'),
@@ -367,6 +598,7 @@ const TOOL_DEFS = [
         context: { type: 'string', enum: store.CONTEXTS, description: CONTEXT_DESC },
         rule_type: { type: 'string', enum: store.RULE_TYPES, description: TYPE_DESC },
         campaign: { type: 'string', description: 'Same campaign tag as the proposal (if any) — part of the rule\'s identity' },
+        tier: { type: 'string', enum: store.TIERS, description: TIER_DESC },
         body: { type: 'string', description: 'The confirmed rule body' },
         change_note: { type: 'string', description: 'One line on what changed and why (shows in history)' },
         expected_version: { type: 'number', description: 'The expected_version from wingguy_rule_propose (0 for a new rule)' },
@@ -376,8 +608,25 @@ const TOOL_DEFS = [
     run: runRuleCommit,
   },
   {
+    name: 'wingguy_rule_reset_to_standard',
+    description: 'Drops the client\'s OWN version of an instruction so the shared standard applies to them again. Use when the human says "go back to the standard" / "use the normal one" / "undo my version of X", or after wingguy_rules_list view=divergence shows the standard has moved on and they prefer the new one. FLOW: show them their version AND the current standard (the divergence view prints both), get an explicit yes, THEN call this — never reset without confirmation. Append-only: their version is archived, not deleted, and wingguy_rule_revert brings it back. Refuses if there is no shared standard behind the instruction (it is theirs alone — that would be deleting it, not resetting it).' + VOCAB + THREE_KINDS,
+    zodSchema: {
+      rule_key: z.string().describe('The instruction whose personal version should be dropped (from wingguy_rules_list view=divergence)'),
+      campaign: z.string().optional().describe('Which version chain to reset: omit for the generic, pass the campaign slug for a campaign\'s'),
+    },
+    jsonSchema: {
+      type: 'object',
+      properties: {
+        rule_key: { type: 'string', description: 'The instruction whose personal version should be dropped (from wingguy_rules_list view=divergence)' },
+        campaign: { type: 'string', description: 'Which version chain to reset: omit for the generic, pass the campaign slug for a campaign\'s' },
+      },
+      required: ['rule_key'],
+    },
+    run: runResetToStandard,
+  },
+  {
     name: 'wingguy_rule_revert',
-    description: 'Reverts a Wingguy rule to an earlier version by inserting a NEW version carrying the old body (append-only — history is never rewritten). Use wingguy_rule_get first to see the versions.',
+    description: 'Reverts a Wingguy rule to an earlier version by inserting a NEW version carrying the old body (append-only — history is never rewritten). Use wingguy_rule_get first to see the versions.' + VOCAB,
     zodSchema: {
       rule_key: z.string().describe('The rule to revert'),
       layer: z.enum(store.LAYERS).optional().describe(LAYER_DESC),
@@ -433,6 +682,21 @@ const TOOL_DEFS = [
       },
     },
     run: runAssets,
+  },
+  {
+    name: 'wingguy_get_client',
+    description: 'Coach-only directory lookup: fetch one of YOUR coached clients\' setup details — portal token + ready-to-paste portal URL, login email, and leads base id — by name or client id. Use when you need a client\'s portal link (e.g. for a welcome email), their login email, or their Airtable base id. Scoped to the calling coach: it only ever returns clients whose Coach is you, so it cannot read another coach\'s or an unrelated client\'s record. Returns the portal TOKEN, which is a portal access key — treat it as sensitive.',
+    zodSchema: {
+      client: z.string().describe('Client name or client id to look up (e.g. "McPhee" or "Guy-McPhee"). Matched within your coached clients only.'),
+    },
+    jsonSchema: {
+      type: 'object',
+      properties: {
+        client: { type: 'string', description: 'Client name or client id to look up (e.g. "McPhee" or "Guy-McPhee"). Matched within your coached clients only.' },
+      },
+      required: ['client'],
+    },
+    run: runGetClient,
   },
   {
     name: 'wingguy_edit_review',

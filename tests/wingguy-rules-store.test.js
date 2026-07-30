@@ -17,121 +17,9 @@ const check = async (name, fn) => {
   catch (e) { failures++; console.error(`  ✗ ${name}\n    ${e.message}`); }
 };
 
-// ---------------------------------------------------------------------------
-// In-memory fake pool — emulates just the SQL shapes the store issues.
-// ---------------------------------------------------------------------------
-class FakeDb {
-  constructor() {
-    this.rules = [];
-    this.history = [];
-    this.catalog = [];
-    this.tenantVars = [];
-    this.assets = [];
-    this.nextId = 1;
-  }
-  connect() {
-    return Promise.resolve({
-      query: (sql, params) => this.query(sql, params || []),
-      release() {},
-    });
-  }
-  async query(sql, params) {
-    const s = sql.replace(/\s+/g, ' ').trim();
-    if (/^(BEGIN|COMMIT|ROLLBACK)/i.test(s) || /^CREATE /i.test(s)) return { rows: [] };
-
-    if (s.includes('FOR UPDATE')) {
-      const rows = this.rules
-        .filter((r) => r.layer === params[0] && (r.tenant_id || '') === params[1] && r.rule_key === params[2]
-          && (r.campaign || '') === params[3] && r.status === 'active')
-        .map((r) => ({ id: r.id, version: r.version }));
-      return { rows };
-    }
-    if (s.includes("SET status = 'retired'")) {
-      const row = this.rules.find((r) => r.id === params[0]);
-      if (row) { row.status = 'retired'; row.retired_at = 'now'; }
-      return { rows: [] };
-    }
-    if (s.includes('INSERT INTO wingguy_rules')) {
-      const [rule_key, tenant_id, layer, context, rule_type, campaign, version, body, change_note, created_by] = params;
-      const row = {
-        id: this.nextId++, rule_key, tenant_id, layer, context, rule_type, campaign,
-        version, body, change_note, created_by, status: 'active', created_at: 'now', retired_at: null,
-      };
-      this.rules.push(row);
-      return { rows: [{ id: row.id, version: row.version }] };
-    }
-    if (s.includes('INSERT INTO wingguy_rule_history')) {
-      this.history.push({ id: this.nextId++, params });
-      return { rows: [] };
-    }
-    if (s.includes('FROM wingguy_rule_history')) {
-      return { rows: this.history.slice().reverse().map((h) => ({ id: h.id, actor: h.params[0], action: h.params[1] })) };
-    }
-    if (s.includes('ORDER BY version DESC')) {
-      const rows = this.rules
-        .filter((r) => r.layer === params[0] && (r.tenant_id || '') === params[1] && r.rule_key === params[2]
-          && (r.campaign || '') === params[3])
-        .sort((a, b) => b.version - a.version);
-      return { rows };
-    }
-    if (s.includes('FROM wingguy_rules') && s.includes("status = 'active'") && s.includes('GROUP BY')) {
-      return { rows: [] };
-    }
-    if (s.includes('FROM wingguy_rules') && s.includes("status = 'active'")) {
-      let idx = 0;
-      let rows = this.rules.filter((r) => r.status === 'active');
-      if (s.includes('layer = $1')) {
-        const layer = params[idx++];
-        rows = rows.filter((r) => r.layer === layer);
-        if (layer === 'client') { const t = params[idx++]; rows = rows.filter((r) => r.tenant_id === t); }
-      } else {
-        const tenant = params[idx++];
-        rows = rows.filter((r) => r.layer === 'foundation' || (r.layer === 'client' && r.tenant_id === tenant));
-      }
-      if (s.includes('context = ANY')) { const ctxs = params[idx++]; rows = rows.filter((r) => ctxs.includes(r.context)); }
-      if (s.includes('campaign = $')) { const c = params[idx++]; rows = rows.filter((r) => r.campaign === c); }
-      return { rows: rows.slice() };
-    }
-    if (s.includes('INSERT INTO wingguy_variable_catalog')) {
-      const [var_key, description] = params;
-      const existing = this.catalog.find((c) => c.var_key === var_key);
-      if (existing) { if (description) existing.description = description; }
-      else this.catalog.push({ var_key, description, required: false, example: null });
-      return { rows: [] };
-    }
-    if (s.includes('SELECT value FROM wingguy_tenant_variables')) {
-      const v = this.tenantVars.find((x) => x.tenant_id === params[0] && x.var_key === params[1]);
-      return { rows: v ? [{ value: v.value }] : [] };
-    }
-    if (s.includes('INSERT INTO wingguy_tenant_variables')) {
-      const [tenant_id, var_key, value] = params;
-      const existing = this.tenantVars.find((x) => x.tenant_id === tenant_id && x.var_key === var_key);
-      if (existing) existing.value = value;
-      else this.tenantVars.push({ tenant_id, var_key, value });
-      return { rows: [] };
-    }
-    if (s.includes('FROM wingguy_variable_catalog c')) {
-      const tenant = params[0];
-      return {
-        rows: this.catalog.map((c) => ({
-          ...c,
-          value: this.tenantVars.find((x) => x.tenant_id === tenant && x.var_key === c.var_key)?.value ?? null,
-        })),
-      };
-    }
-    if (s.includes('INSERT INTO wingguy_assets')) {
-      const [tenant_id, asset_key, kind, url, status] = params;
-      const existing = this.assets.find((a) => a.tenant_id === tenant_id && a.asset_key === asset_key);
-      if (existing) Object.assign(existing, { kind: kind || existing.kind, url: url || existing.url, status });
-      else this.assets.push({ tenant_id, asset_key, kind, url, status });
-      return { rows: [] };
-    }
-    if (s.includes('FROM wingguy_assets')) {
-      return { rows: this.assets.filter((a) => a.tenant_id === params[0]) };
-    }
-    throw new Error(`FakeDb: unhandled SQL: ${s.slice(0, 120)}`);
-  }
-}
+// In-memory fake pool (shared with tests/wingguy-rules-door.test.js) — emulates just the
+// SQL shapes the store issues.
+const { FakeDb } = require('./helpers/wingguy-fake-db');
 
 (async () => {
   // --- Pure core: taxonomy validation --------------------------------------
@@ -420,6 +308,240 @@ class FakeDb {
     const rows = db.rules.filter((x) => x.rule_key === 'tks-specific');
     assert.strictEqual(rows.length, 1, 'row not deleted');
     assert.strictEqual(rows[0].status, 'retired');
+  });
+
+  // -------------------------------------------------------------------------
+  // Three tiers + per-client overrides ("standard vs yours", 2026-07-31)
+  // -------------------------------------------------------------------------
+  console.log('resolveRuleShadowing() — pure cross-layer + campaign resolution:');
+  const F = (key, extra = {}) => ({ rule_key: key, layer: 'foundation', tenant_id: null, context: 'global', rule_type: 'voice', campaign: null, version: 1, body: `FOUNDATION ${key}`, ...extra });
+  const C = (key, extra = {}) => ({ rule_key: key, layer: 'client', tenant_id: 'T', context: 'global', rule_type: 'voice', campaign: null, version: 1, body: `CLIENT ${key}`, ...extra });
+
+  await check('a client rule REPLACES a standard foundation rule (does not stack)', () => {
+    const { rules, dropped } = store.resolveRuleShadowing([F('greeting', { tier: 'standard' }), C('greeting')]);
+    assert.strictEqual(rules.length, 1, 'exactly one body survives');
+    assert.strictEqual(rules[0].layer, 'client');
+    assert.strictEqual(dropped[0].reason, 'override');
+    assert.strictEqual(dropped[0].rule.layer, 'foundation');
+  });
+  await check('an UNSET tier behaves as standard (overridable)', () => {
+    const { rules } = store.resolveRuleShadowing([F('greeting', { tier: null }), C('greeting')]);
+    assert.strictEqual(rules[0].layer, 'client');
+  });
+  await check('a LOCKED foundation rule WINS — the client copy is suppressed', () => {
+    const { rules, dropped } = store.resolveRuleShadowing([F('bcc-discipline', { tier: 'locked' }), C('bcc-discipline')]);
+    assert.strictEqual(rules.length, 1);
+    assert.strictEqual(rules[0].layer, 'foundation', 'the guardrail is what renders');
+    assert.strictEqual(dropped[0].reason, 'locked');
+    assert.strictEqual(dropped[0].rule.layer, 'client', 'the client copy is the one dropped');
+  });
+  await check('non-colliding rules from both layers all survive', () => {
+    const { rules } = store.resolveRuleShadowing([F('a'), C('b'), F('c', { tier: 'locked' })]);
+    assert.deepStrictEqual(rules.map((r) => r.rule_key).sort(), ['a', 'b', 'c']);
+  });
+  await check('campaign overlay resolves BEFORE cross-layer (client campaign beats standard)', () => {
+    const { rules } = store.resolveRuleShadowing(
+      [F('x', { tier: 'standard' }), C('x'), C('x', { campaign: 'frac', body: 'CLIENT x frac' })],
+      { campaign: 'frac' },
+    );
+    assert.strictEqual(rules.length, 1);
+    assert.strictEqual(rules[0].body, 'CLIENT x frac');
+  });
+  await check('a client rule tagged for ANOTHER campaign does not shadow the standard', () => {
+    const { rules } = store.resolveRuleShadowing(
+      [F('x', { tier: 'standard' }), C('x', { campaign: 'frac', body: 'CLIENT x frac' })],
+      { campaign: 'tks' },
+    );
+    assert.strictEqual(rules.length, 1);
+    assert.strictEqual(rules[0].layer, 'foundation', 'the standard shows through');
+  });
+
+  console.log('the write-door refuses to override a FIXED instruction:');
+  const TT = 'Tier-Tenant';
+  await store.commitRule({
+    layer: 'foundation', ruleKey: 'locked-guardrail', context: 'global', ruleType: 'formatting',
+    body: 'Synthetic guardrail body.', tier: 'locked', createdBy: 'test', expectedVersion: 0,
+  });
+  await check('commitRule rejects a client version of a locked rule', async () => {
+    await assert.rejects(
+      store.commitRule({
+        layer: 'client', tenantId: TT, ruleKey: 'locked-guardrail', context: 'global', ruleType: 'formatting',
+        body: 'My own take on the guardrail.', createdBy: 'test', expectedVersion: 0,
+      }),
+      /LOCKED/,
+    );
+    assert.ok(!db.rules.some((r) => r.rule_key === 'locked-guardrail' && r.layer === 'client'), 'nothing was inserted');
+  });
+  await check('proposeRule reports it as blocked rather than walking the human into a refusal', async () => {
+    const prop = await store.proposeRule({
+      layer: 'client', tenantId: TT, ruleKey: 'locked-guardrail', context: 'global', ruleType: 'formatting',
+      body: 'My own take on the guardrail.',
+    });
+    assert.strictEqual(prop.blocked?.reason, 'locked');
+    assert.strictEqual(prop.isOverride, false);
+    assert.ok(prop.standard.body.includes('Synthetic guardrail'), 'the fixed body comes back for display');
+  });
+  await check('tier is STICKY — editing a locked rule\'s wording does not unlock it', async () => {
+    const r = await store.commitRule({
+      layer: 'foundation', ruleKey: 'locked-guardrail', context: 'global', ruleType: 'formatting',
+      body: 'Synthetic guardrail body, reworded.', createdBy: 'test', expectedVersion: 1,
+    });
+    assert.strictEqual(r.tier, 'locked');
+  });
+  await check('tier is rejected on a non-foundation layer', () =>
+    assert.throws(() => store.validateRuleInput({ layer: 'client', tenantId: 'T', ruleKey: 'x-rule', context: 'global', ruleType: 'voice', tier: 'locked' }), /FOUNDATION property/));
+
+  console.log('overriding a STANDARD instruction:');
+  await store.commitRule({
+    layer: 'foundation', ruleKey: 'closing-question', context: 'reply', ruleType: 'voice',
+    body: 'STANDARD closing question, synthetic v1.', createdBy: 'test', expectedVersion: 0,
+  });
+  await check('a client override records which standard version it branched from', async () => {
+    const r = await store.commitRule({
+      layer: 'client', tenantId: TT, ruleKey: 'closing-question', context: 'reply', ruleType: 'voice',
+      body: 'MY closing question, synthetic.', createdBy: 'test', expectedVersion: 0,
+    });
+    assert.strictEqual(r.standardVersion, 1, 'baseline stamped at override time');
+  });
+  await check('renderRulesBlock sends ONE body — the client\'s, not both', async () => {
+    const block = await store.renderRulesBlock({ tenantId: TT, contexts: ['reply'] });
+    assert.ok(block.text.includes('MY closing question'), 'the override renders');
+    assert.ok(!block.text.includes('STANDARD closing question'), 'the standard is shadowed, not stacked');
+  });
+  await check('renderRulesBlock still sends the FIXED body when a client copy exists', async () => {
+    // Force the suppressed state the door now refuses to create (pre-existing rows can be in it).
+    db.rules.push({
+      id: db.nextId++, rule_key: 'locked-guardrail', tenant_id: TT, layer: 'client', context: 'global',
+      rule_type: 'formatting', campaign: null, version: 1, body: 'SNEAKY client guardrail.',
+      status: 'active', tier: null, standard_version: null, created_at: 'now', retired_at: null,
+    });
+    const block = await store.renderRulesBlock({ tenantId: TT });
+    assert.ok(block.text.includes('reworded'), 'the guardrail renders');
+    assert.ok(!block.text.includes('SNEAKY'), 'the client copy never reaches the model');
+  });
+  await check('another tenant is untouched by this tenant\'s override', async () => {
+    const block = await store.renderRulesBlock({ tenantId: 'Other-Tenant', contexts: ['reply'] });
+    assert.ok(block.text.includes('STANDARD closing question'), 'unoverridden tenants stay on the standard');
+    assert.ok(!block.text.includes('MY closing question'));
+  });
+
+  console.log('divergence view — "what have I changed?" + standard drift:');
+  await check('lists only the overrides, with both bodies side by side', async () => {
+    const d = await store.getDivergence({ tenantId: TT });
+    const entry = d.overrides.find((o) => o.ruleKey === 'closing-question');
+    assert.ok(entry, 'the override is listed');
+    assert.ok(entry.yourBody.includes('MY closing question'));
+    assert.ok(entry.standardBody.includes('STANDARD closing question'));
+    assert.strictEqual(entry.standardMoved, false, 'the standard has not moved yet');
+    assert.strictEqual(entry.tier, 'standard');
+    assert.strictEqual(entry.applies, true);
+  });
+  await check('a suppressed override is listed as NOT applying', async () => {
+    const d = await store.getDivergence({ tenantId: TT });
+    const inert = d.overrides.find((o) => o.ruleKey === 'locked-guardrail');
+    assert.strictEqual(inert.applies, false, 'a copy of a fixed rule never applies');
+    assert.strictEqual(inert.tier, 'locked');
+  });
+  await check('when the standard moves, the tenant sees it moved AND what it now says', async () => {
+    await store.commitRule({
+      layer: 'foundation', ruleKey: 'closing-question', context: 'reply', ruleType: 'voice',
+      body: 'STANDARD closing question, synthetic v2 — sharper.', changeNote: 'sharper ask',
+      createdBy: 'test', expectedVersion: 1,
+    });
+    const d = await store.getDivergence({ tenantId: TT });
+    const entry = d.overrides.find((o) => o.ruleKey === 'closing-question');
+    assert.strictEqual(entry.standardMoved, true);
+    assert.strictEqual(entry.basedOnStandardVersion, 1);
+    assert.strictEqual(entry.standardVersion, 2);
+    assert.ok(entry.standardBody.includes('sharper'), 'the CURRENT standard body comes back');
+    assert.ok(entry.standardChanges.some((c) => c.version === 2 && c.changeNote === 'sharper ask'), 'what changed, and why');
+  });
+  await check('the tenant KEEPS their version while the standard moves under it', async () => {
+    const block = await store.renderRulesBlock({ tenantId: TT, contexts: ['reply'] });
+    assert.ok(block.text.includes('MY closing question'), 'their version still applies');
+    assert.ok(!block.text.includes('sharper'), 'the new standard did not silently take over');
+  });
+  await check('re-committing the override clears the drift flag (new baseline)', async () => {
+    await store.commitRule({
+      layer: 'client', tenantId: TT, ruleKey: 'closing-question', context: 'reply', ruleType: 'voice',
+      body: 'MY closing question, synthetic v2.', createdBy: 'test', expectedVersion: 1,
+    });
+    const d = await store.getDivergence({ tenantId: TT });
+    const entry = d.overrides.find((o) => o.ruleKey === 'closing-question');
+    assert.strictEqual(entry.basedOnStandardVersion, 2);
+    assert.strictEqual(entry.standardMoved, false);
+  });
+  await check('rules that are the tenant\'s alone are not counted as divergence', async () => {
+    const d = await store.getDivergence({ tenantId: 'Test-Tenant' });
+    assert.ok(d.yoursOnly.some((y) => y.ruleKey === 'signoff-line'), 'own-only rules listed separately');
+    assert.ok(!d.overrides.some((o) => o.ruleKey === 'signoff-line'), 'and not as an override');
+  });
+
+  console.log('reset to standard:');
+  await check('reset retires the override and the standard shows through again', async () => {
+    const r = await store.resetRuleToStandard({ tenantId: TT, ruleKey: 'closing-question', createdBy: 'test' });
+    assert.strictEqual(r.standardVersion, 2);
+    assert.ok(r.standardBody.includes('sharper'));
+    const block = await store.renderRulesBlock({ tenantId: TT, contexts: ['reply'] });
+    assert.ok(block.text.includes('sharper'), 'back on the shared version');
+    assert.ok(!block.text.includes('MY closing question'), 'their version no longer applies');
+    const rows = db.rules.filter((x) => x.rule_key === 'closing-question' && x.layer === 'client');
+    assert.ok(rows.length >= 2 && rows.every((x) => x.status === 'retired'), 'append-only — archived, not deleted');
+  });
+  await check('reset REFUSES when there is no standard to fall back to', async () => {
+    await assert.rejects(
+      store.resetRuleToStandard({ tenantId: 'Test-Tenant', ruleKey: 'signoff-line', createdBy: 'test' }),
+      /yours alone/,
+    );
+  });
+  await check('reset REFUSES when the tenant has no version of their own', async () => {
+    await assert.rejects(
+      store.resetRuleToStandard({ tenantId: TT, ruleKey: 'closing-question', createdBy: 'test' }),
+      /nothing to reset/,
+    );
+  });
+
+  console.log('setRuleTier() — append-only tier changes:');
+  await check('locking commits a NEW version carrying the same body', async () => {
+    const before = await store.getRule({ layer: 'foundation', ruleKey: 'closing-question' });
+    const r = await store.setRuleTier({ ruleKey: 'closing-question', tier: 'locked', createdBy: 'test' });
+    assert.strictEqual(r.version, before.active.version + 1);
+    const after = await store.getRule({ layer: 'foundation', ruleKey: 'closing-question' });
+    assert.strictEqual(after.active.body, before.active.body, 'wording untouched');
+    assert.strictEqual(store.ruleTier(after.active), 'locked');
+  });
+  await check('locking reports whose overrides it just suppressed', async () => {
+    await store.commitRule({
+      layer: 'foundation', ruleKey: 'soon-locked', context: 'global', ruleType: 'voice',
+      body: 'Synthetic soon-to-be-locked.', createdBy: 'test', expectedVersion: 0,
+    });
+    await store.commitRule({
+      layer: 'client', tenantId: TT, ruleKey: 'soon-locked', context: 'global', ruleType: 'voice',
+      body: 'My own soon-locked.', createdBy: 'test', expectedVersion: 0,
+    });
+    const r = await store.setRuleTier({ ruleKey: 'soon-locked', tier: 'locked', createdBy: 'test' });
+    assert.deepStrictEqual(r.suppressedOverrides, [TT]);
+  });
+  await check('setRuleTier rejects an unknown tier', () =>
+    assert.rejects(store.setRuleTier({ ruleKey: 'closing-question', tier: 'sacred', createdBy: 'test' }), /invalid tier/));
+
+  console.log('hygiene sweep — twins are re-read under shadowing:');
+  await check('a client override of a STANDARD rule is NOT a finding (it is the feature)', () => {
+    const findings = store.computeRulebookHygiene([F('greeting', { tier: 'standard' }), C('greeting')], [], []);
+    assert.deepStrictEqual(findings, []);
+  });
+  await check('a client copy of a FIXED rule IS a finding (it never applies)', () => {
+    const findings = store.computeRulebookHygiene([F('guard', { tier: 'locked' }), C('guard')], [], []);
+    assert.strictEqual(findings.length, 1);
+    assert.strictEqual(findings[0].kind, 'inert-override');
+    assert.strictEqual(findings[0].ruleKey, 'guard');
+  });
+  await check('placeholders are checked on the body that ACTUALLY renders', () => {
+    // The standard has a hole; the tenant's own version does not. Reporting the standard's hole
+    // against this tenant would be a phantom finding — their override is what renders.
+    const findings = store.computeRulebookHygiene(
+      [F('greeting', { tier: 'standard', body: 'Hello {{never_set}}' }), C('greeting', { body: 'Hello there' })], [], []);
+    assert.deepStrictEqual(findings, []);
   });
 
   store.__setTestPool(null);
