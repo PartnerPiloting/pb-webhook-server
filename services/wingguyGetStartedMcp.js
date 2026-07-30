@@ -9,6 +9,8 @@
  *   - wingguy_setup_rules : the guided "let's set up my rules" walkthrough — seeds the starter
  *                           rulebook, then walks the client through making it their own, one beat
  *                           at a time (angle, manifesto, targeting, objections, assets, call two).
+ *   - wingguy_learn       : the CLIENT PLAYBOOK — Guy's explanation of the whole I Know A Guy
+ *                           method, served one topic at a time from docs/client-playbook.md.
  * Same door adapts to where each client is. Extends the "lead with the blanks" help idea.
  *
  * One definition, BOTH transports (same pattern as services/wingguyRulesMcp.js):
@@ -401,6 +403,98 @@ async function runOnboardingGuide(args = {}, tenant = TENANT) {
 }
 
 // ---------------------------------------------------------------------------
+// wingguy_learn — the client playbook, one topic at a time.
+//
+// WHY (2026-07-30): Wingguy doubles as a TRAINING tool — clients get taught the whole
+// I Know A Guy method (the big picture, LH plumbing, searches, scoring, calls) inside
+// their own Claude, before most operational features are connected for them. Same
+// serve-from-the-deployed-repo pattern as wingguy_onboarding_guide: the doc is the
+// single source of truth, read fresh per call, so a content edit ships with the next
+// deploy and there is never a stale copy anywhere. CLIENT-FACING (no owner gate).
+//
+// The doc is Guy speaking in the first person; its intro block above the first ##
+// heading carries the serving contract. The tool re-asserts the key contract lines in
+// its returned footer, so the ambient Claude follows them even when its pinned tool
+// description predates a change.
+// ---------------------------------------------------------------------------
+
+const PLAYBOOK_PATH = path.join(__dirname, '..', 'docs', 'client-playbook.md');
+
+// Fresh parse per call (same trade as the onboarding guide: freshness beats caching).
+function loadPlaybook() {
+  const raw = fs.readFileSync(PLAYBOOK_PATH, 'utf8');
+  const sections = raw.split(/^## /m); // sections[0] = the intro / serving contract
+  const topics = sections.slice(1).map((sec) => {
+    const body = ('## ' + sec).trim();
+    const title = body.split('\n')[0].replace(/^##\s*/, '').trim();
+    return { title, body };
+  });
+  return { topics };
+}
+
+// Loose title match: whole-query substring wins outright, else most query words hit.
+function findPlaybookTopic(topics, query) {
+  const q = String(query || '').toLowerCase().trim();
+  if (!q) return null;
+  const words = q.split(/[^a-z0-9]+/).filter((w) => w.length > 2);
+  let best = null;
+  let bestScore = 0;
+  for (const t of topics) {
+    const title = t.title.toLowerCase();
+    let score = title.includes(q) ? 100 : 0;
+    for (const w of words) if (title.includes(w)) score += 1;
+    if (score > bestScore) { bestScore = score; best = t; }
+  }
+  return bestScore > 0 ? best : null;
+}
+
+// Short names for the "other topics" line — the part of each title before its " - ".
+function playbookShortNames(topics, exclude) {
+  return topics
+    .filter((t) => t !== exclude)
+    .map((t) => t.title.split(' - ')[0].toLowerCase())
+    .join('; ');
+}
+
+async function runLearn(args = {}, _tenant = TENANT) {
+  let pb;
+  try {
+    pb = loadPlaybook();
+  } catch (e) {
+    return { text: `Couldn't read the client playbook (${e.message}).`, isError: true };
+  }
+  const topicArg = String(args.topic == null ? '' : args.topic).trim();
+
+  if (!topicArg) {
+    return {
+      text:
+        "**The client playbook** - Guy's own explanation of the whole I Know A Guy system, one topic at a time. Topics:\n" +
+        pb.topics.map((t) => `- ${t.title}`).join('\n') +
+        '\n\n---\nPick whichever fits the user\'s question and call again with topic="...". New or just curious? Start with the big picture. ' +
+        "These are Guy's words - serve them as his. If a question isn't covered by any topic, say so and point them to Guy rather than improvising.",
+    };
+  }
+
+  const topic = findPlaybookTopic(pb.topics, topicArg);
+  if (!topic) {
+    return {
+      text:
+        `No topic matching "${topicArg}" in the playbook. It has:\n` +
+        pb.topics.map((t) => `- ${t.title}`).join('\n') +
+        "\n\n---\nIf none of these cover what the user asked, tell them the playbook doesn't cover it yet and to ask Guy - don't answer it from general knowledge.",
+    };
+  }
+
+  const footer = [
+    '---',
+    "That's Guy speaking - present it as his words, essentially as written, not paraphrased into generic advice.",
+    `Other topics on hand: ${playbookShortNames(pb.topics, topic)}.`,
+    "If their actual question isn't answered by this, say the playbook doesn't cover it yet and suggest they ask Guy - never fill the gap from general knowledge.",
+  ].join('\n');
+  return { text: `${topic.body}\n\n${footer}` };
+}
+
+// ---------------------------------------------------------------------------
 // Definitions — one source of truth for names/descriptions/schemas
 // ---------------------------------------------------------------------------
 
@@ -420,6 +514,14 @@ const TOOL_DEFS = [
     zodSchema: {},
     jsonSchema: { type: 'object', properties: {} },
     run: runVision,
+  },
+  {
+    name: 'wingguy_learn',
+    description:
+      'THE CLIENT PLAYBOOK - Guy\'s own explanation of the whole I Know A Guy method, served one topic at a time. This is the ONLY authoritative source on how this system works and why - NEVER answer questions about the method from general knowledge. Call it when the user asks about: the big picture / what this is really about; the process start to finish; what to say they do; setting up their LinkedIn profile; who to reach out to; LinkedIn Premium vs Sales Navigator and building the search; Linked Helper (installing it, where it runs, the free trial, standard vs pro); scoring and attributes; setting up Wingguy (calendar, email, transcripts, instructions); working their list in the portal; thanks-for-connecting messages; getting meetings booked; how the first meeting runs; the second meeting; or their weekly pace. No args = the topic map. topic="..." = that topic, in Guy\'s words - present it as his, essentially as written. If the returned text doesn\'t answer the user\'s question, say the playbook doesn\'t cover it and to ask Guy.',
+    zodSchema: { topic: z.string().optional().describe('Which topic: a few words from its title (e.g. "big picture", "process", "linked helper", "scoring"). Omit for the full topic list.') },
+    jsonSchema: { type: 'object', properties: { topic: { type: 'string', description: 'A few words from the topic title (e.g. "big picture", "process", "linked helper", "scoring"). Omit for the full topic list.' } } },
+    run: runLearn,
   },
   {
     name: 'wingguy_onboarding_guide',
