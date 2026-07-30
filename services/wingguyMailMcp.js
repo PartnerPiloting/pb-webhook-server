@@ -293,6 +293,109 @@ function normaliseDashes(s) {
 }
 
 // ---------------------------------------------------------------------------
+// Follow-up stamp at DRAFT time (added 2026-07-30)
+//
+// WHY: the follow-up queue's `Follow-Up Date` was only ever written by the inbound BCC pipe
+// (services/inboundEmailService.js — the track@ copy comes back in, the email lands in the lead's
+// Notes AND the lead gets stamped +14 days). So an email sent without the BCC emailed the lead but
+// never put them in the queue — a SILENT miss that depends on the coach remembering a Bcc line.
+// The BCC stays (it writes the profile note and is visible to humans); the QUEUE just stops
+// depending on it. Same field, same +14 derivation, same date shape as the inbound path.
+//
+// Deliberate: this fires when the DRAFT is created, not when it's sent — the draft door is the last
+// point Wingguy sees the email at all (the human sends from their own mail client). A draft the
+// coach abandons therefore leaves a stamp: that lead surfaces in the queue in 14 days with nothing
+// sent, which is a cheap, visible false positive next to the silent miss it replaces.
+// ---------------------------------------------------------------------------
+
+const FOLLOWUP_STAMP_DAYS = 14; // matches the inbound BCC stamp — keep the two in step
+
+/**
+ * Decide what to write into `Follow-Up Date`, or null for "leave it alone". Pure.
+ *
+ * IDEMPOTENT BY CONSTRUCTION: the field holds an ABSOLUTE date, so re-stamping the same email is a
+ * no-op rather than an accumulation — when the BCC copy arrives minutes later the inbound path
+ * derives the same +14 day and rewrites the identical string. An existing stamp that is already
+ * the same day or LATER (a hand-set date, a longer-dated promise, or a stamp from a later email in
+ * the same thread) is never pulled back in.
+ *
+ * @param {string|null} existing  the lead's current Follow-Up Date ('YYYY-MM-DD', or ISO datetime)
+ * @param {Date} referenceDate    when the email was written (normally now)
+ * @returns {string|null} 'YYYY-MM-DD' to write, or null to skip
+ */
+function chooseFollowUpStamp(existing, referenceDate, days = FOLLOWUP_STAMP_DAYS) {
+  const d = new Date(referenceDate);
+  if (Number.isNaN(d.getTime())) return null;
+  // Same derivation as inboundEmailService (setDate +days → ISO date part), so both doors agree.
+  d.setDate(d.getDate() + days);
+  const candidate = d.toISOString().split('T')[0];
+  const current = String(existing || '').trim().slice(0, 10);
+  if (current && current >= candidate) return null; // already due then or later — don't pull it back
+  return candidate;
+}
+
+/** The coach's OWN addresses — a draft to any of these is a self-reminder, not a lead email. */
+function coachOwnEmails(coach) {
+  const set = new Set();
+  const add = (v) => { const e = String(v || '').trim().toLowerCase(); if (e) set.add(e); };
+  add(coach.clientEmailAddress);
+  add(coach.googleCalendarEmail);   // the {Calendar Email} column — the mailbox Wingguy reads
+  add(coach.calendarEmail);
+  // Same source the inbound path filters on, so both doors treat the same addresses as "self".
+  try {
+    String(coach.rawRecord?.get('Alternative Email Addresses') || '').split(';').forEach(add);
+  } catch (_) { /* rawRecord absent (cached/stubbed client) — the primary addresses still apply */ }
+  return set;
+}
+
+/**
+ * Stamp `Follow-Up Date` (+14) on every To recipient that resolves to a lead in the tenant's base.
+ *
+ * Per-tenant: the base comes from the same `coach` record the draft path already resolved.
+ * Lead resolution is inboundEmailService.findLeadByEmail — the SAME matcher (primary {Email}, then
+ * the {Alt Emails} fallback) the BCC path uses, so draft-time and BCC-time land on one record.
+ * Best-effort throughout: the draft already exists, so a stamp failure must never fail the tool.
+ *
+ * @returns {{stamped:string[], skipped:string[], failed:string[]}}
+ */
+async function stampFollowUpForDraft({ coach, recipients, now = new Date() }) {
+  const out = { stamped: [], skipped: [], failed: [] };
+  if (!coach || !coach.airtableBaseId) {
+    out.skipped.push('no Airtable base on this client — nothing stamped');
+    return out;
+  }
+  const clientService = require('./clientService');
+  const inbound = require('./inboundEmailService');
+  const self = coachOwnEmails(coach);
+  let base;
+  try { base = clientService.getClientBase(coach.airtableBaseId); }
+  catch (e) { out.failed.push(`base unavailable (${e.message})`); return out; }
+
+  const seen = new Set();
+  for (const r of recipients) {
+    const email = String(r.email || '').trim().toLowerCase();
+    if (!email || seen.has(email)) continue;
+    seen.add(email);
+    if (self.has(email)) { out.skipped.push(`${email} (your own address)`); continue; }
+
+    let lead = null;
+    try { lead = await inbound.findLeadByEmail(coach, email); }
+    catch (e) { out.failed.push(`${email} (lookup failed: ${e.message})`); continue; }
+    if (!lead) { out.skipped.push(`${email} (not a lead in the base)`); continue; }
+
+    const stamp = chooseFollowUpStamp(lead.followUpDate, now);
+    if (!stamp) { out.skipped.push(`${email} (already due ${String(lead.followUpDate).slice(0, 10)})`); continue; }
+    try {
+      await base('Leads').update(lead.id, { 'Follow-Up Date': stamp });
+      out.stamped.push(`${email} → ${stamp}`);
+    } catch (e) {
+      out.failed.push(`${email} (write failed: ${e.message})`);
+    }
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------------
 // Executor — returns { text, isError? }
 // ---------------------------------------------------------------------------
 
@@ -395,6 +498,17 @@ async function runCreateDraft({ to, subject, html_body, cc, bcc, reply_to, reply
     }
   }
 
+  // --- Follow-up stamp (best-effort): the queue no longer waits on the track@ BCC round-trip ---
+  // To recipients only — a Cc'd third party isn't who the email is FOR, and the Bcc is the tracker.
+  let followUpLine = '';
+  try {
+    const stampRes = await stampFollowUpForDraft({ coach, recipients });
+    if (stampRes.stamped.length) followUpLine = `Follow-up queued: ${stampRes.stamped.join(', ')} (14 days).\n`;
+    if (stampRes.failed.length) followUpLine += `⚠ Follow-up date NOT stamped for ${stampRes.failed.join(', ')} — they won't surface in the queue on their own.\n`;
+  } catch (e) {
+    followUpLine = `⚠ Follow-up stamp skipped (${e.message}) — the draft is fine, but the queue won't pick this lead up unless the BCC lands.\n`;
+  }
+
   const toStr = recipients.map((r) => r.email).join(', ');
   const bccStr = mailProvider.toParticipants(bcc).map((r) => r.email).join(', ');
   const threadLine = reply_to_message_id
@@ -405,6 +519,7 @@ async function runCreateDraft({ to, subject, html_body, cc, bcc, reply_to, reply
       `Draft created in ${coach.clientName || tenant}'s mailbox (Nylas). draftId=${result.draftId}\n` +
       threadLine +
       ledgerLine +
+      followUpLine +
       `To: ${toStr}${bccStr ? ` · Bcc: ${bccStr}` : ''} · Subject: ${String(subject).trim()}\n` +
       `Hyperlinks are stored verbatim (no google.com/url wrapping) — open the draft, give it a final read, and send. No manual link-fixing needed.`,
   };
@@ -973,7 +1088,7 @@ const TOOL_DEFS = [
   {
     name: 'wingguy_create_draft',
     description:
-      'Create an email DRAFT (never sends) in the coach\'s own mailbox with hyperlinks intact. ALWAYS use this instead of the Gmail connector — for links because the Gmail connector rewrites every link into a google.com/url redirect (this does not), and for replies because this threads too: pass reply_to_message_id (from wingguy_find_message) and the draft lands IN the existing conversation. html_body is the full HTML body; put real <a href="...">text</a> links in and they are stored exactly as written; {{asset:key}} placeholders resolve to the asset library\'s stored URL. ASSET GATE: library links in the body are logged per-lead at draft time, and a draft repeating an asset to the same lead is refused unless resend_ok — check wingguy_lead_history when unsure. Returns a draftId; the coach opens the draft, reads it, and sends it themselves.',
+      'Create an email DRAFT (never sends) in the coach\'s own mailbox with hyperlinks intact. ALWAYS use this instead of the Gmail connector — for links because the Gmail connector rewrites every link into a google.com/url redirect (this does not), and for replies because this threads too: pass reply_to_message_id (from wingguy_find_message) and the draft lands IN the existing conversation. html_body is the full HTML body; put real <a href="...">text</a> links in and they are stored exactly as written; {{asset:key}} placeholders resolve to the asset library\'s stored URL. ASSET GATE: library links in the body are logged per-lead at draft time, and a draft repeating an asset to the same lead is refused unless resend_ok — check wingguy_lead_history when unsure. FOLLOW-UP: creating the draft also stamps the lead\'s Follow-Up Date to 14 days out (To recipients that match a lead; never the coach\'s own address, and never pulled back from a later date already set), so the person enters the follow-up queue whether or not the tracking BCC is used. Returns a draftId; the coach opens the draft, reads it, and sends it themselves.',
     zodSchema: {
       to: z.array(z.object({ email: z.string(), name: z.string().optional() })).describe(RECIP_DESC),
       subject: z.string().describe('The email subject line.'),
@@ -1478,4 +1593,4 @@ async function legacyToolCall(toolName, args, tenant = TENANT) {
   }
 }
 
-module.exports = { registerWingguyMailTools, legacyToolList, legacyToolCall, TOOL_DEFS, detectAssets, htmlToText, stripQuotedTail, settleEmailEditPairs, parseLinkedInLast, classifyLead, computeMailSignals, computeFollowupSweep, runFollowupSweep };
+module.exports = { registerWingguyMailTools, legacyToolList, legacyToolCall, TOOL_DEFS, detectAssets, htmlToText, stripQuotedTail, settleEmailEditPairs, parseLinkedInLast, classifyLead, computeMailSignals, computeFollowupSweep, runFollowupSweep, chooseFollowUpStamp, coachOwnEmails, stampFollowUpForDraft };
