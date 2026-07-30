@@ -17,12 +17,21 @@ store is built around. Hard delete is the odd-one-out that breaks that invariant
 
 ## Why it matters (not just cosmetic)
 
-`renderRulesBlock` (wingguyRulesStore.js) keys rule identity by `layer|tenant_id|rule_key`, and the
+**STATUS: SUPERSEDED 2026-07-31 → docs/wingguy.md "★ THREE TIERS + PER-CLIENT OVERRIDE".** The
+premise below (both copies render) is no longer true: cross-layer shadowing shipped, so a client
+rule REPLACES a STANDARD foundation rule of the same key, and a FIXED (locked) foundation rule
+beats any client copy. The double-render this spec was written to fix cannot happen any more.
+The rest of the spec still stands - `wingguy_rule_retire` is STILL NOT BUILT, and archiving a
+client rule is still the way to hand an instruction back to the shared version. Note there is now
+a narrower tool for exactly that case: `wingguy_rule_reset_to_standard` (client layer, refuses when
+there is no standard behind the key). A general retire verb remains unbuilt.
+
+~~`renderRulesBlock` (wingguyRulesStore.js) keys rule identity by `layer|tenant_id|rule_key`, and the
 runtime read is `foundation ∪ client` with **no cross-layer shadowing in v1**. So when the same
 `rule_key` is active in foundation AND in a client layer, BOTH copies render into the prompt - the
 rule appears twice. Costs: wasted prompt tokens, and divergence risk (improve the foundation copy
 later and the client's stale duplicate keeps firing alongside it). Retiring the client copy makes
-the foundation version show through cleanly.
+the foundation version show through cleanly.~~
 
 ## What already exists (do NOT rebuild)
 

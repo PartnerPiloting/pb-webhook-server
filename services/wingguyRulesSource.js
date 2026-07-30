@@ -123,7 +123,9 @@ function detectionContext(profile = {}, conversation = []) {
 }
 
 async function getCampaignMarkers(tenantId) {
-  const rules = await store.getActiveRules({ tenantId, contexts: ['global'] });
+  // shadowed: a tenant who keeps their own campaign-markers instruction over the shared one must
+  // get THEIRS here, not whichever row the raw union happened to return first.
+  const rules = await store.getActiveRules({ tenantId, contexts: ['global'], shadowed: true });
   const markersRule = rules.find((r) => r.rule_key === 'campaign-markers');
   return markersRule ? parseCampaignMarkers(markersRule.body) : {};
 }
