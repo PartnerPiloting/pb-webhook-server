@@ -73,8 +73,8 @@ async function hygieneExtra(tenant) {
   } catch (_) { return ''; /* non-fatal */ }
 }
 
-async function runRulesList({ context, layer, campaign, view } = {}, tenant = TENANT) {
-  if (view === 'divergence') return runDivergence({ }, tenant);
+async function runRulesList({ context, layer, campaign, view, limit } = {}, tenant = TENANT) {
+  if (view === 'divergence') return runDivergence({ limit }, tenant);
 
   const raw = await store.getActiveRules({
     tenantId: tenant,
@@ -122,22 +122,30 @@ async function runRulesList({ context, layer, campaign, view } = {}, tenant = TE
   };
 }
 
-// "What have I changed?" — every instruction where this tenant runs their own version instead of
-// the shared standard, both bodies side by side, plus whether the standard has moved since.
-async function runDivergence(_args, tenant = TENANT) {
+// "What have I changed?" — TWO sections, because there are two different answers:
+//   CHANGED — they took a shared instruction and made it their own. Both bodies, side by side.
+//   ADDED   — they wrote something with no shared version behind it. Shown in FULL: an addition
+//             means they found a gap in the shared set, which is the stronger signal and the
+//             promotion candidate. (Until 2026-07-31 additions were one line of comma-separated
+//             keys, because the view was built comparison-shaped — useless for a tenant like Guy
+//             whose 71 own instructions are ALL additions and none are overrides.)
+// Additions are capped and newest-first: dumping 71 bodies into one reply helps nobody.
+async function runDivergence({ limit } = {}, tenant = TENANT) {
   const d = await store.getDivergence({ tenantId: tenant });
   const extras = await rulebookExtras(tenant);
-  if (!d.overrides.length) {
-    return {
-      text: `${tenant} has not changed any of the standard instructions - all ${d.standardCount} shared ones are running as-is`
-        + `${d.yoursOnly.length ? `, plus ${d.yoursOnly.length} that are yours alone (${d.yoursOnly.map((y) => y.ruleKey).join(', ')})` : ''}.${extras}`,
-    };
-  }
+  const cap = Math.min(Math.max(Number(limit) || 10, 1), 50);
   const moved = d.overrides.filter((o) => o.standardMoved);
+
   const lines = [
-    `${d.overrides.length} instruction${d.overrides.length === 1 ? '' : 's'} where ${tenant} runs their OWN version instead of the standard:`,
+    `${tenant}: ${d.overrides.length} CHANGED, ${d.yoursOnly.length} ADDED, out of ${d.standardCount} shared instructions.`,
     '',
   ];
+
+  if (!d.overrides.length) {
+    lines.push(`CHANGED (0): none - every shared instruction is running exactly as it comes.`, '');
+  } else {
+    lines.push(`CHANGED (${d.overrides.length}) - a shared instruction replaced by their own version:`, '');
+  }
   for (const o of d.overrides) {
     lines.push(`━━ ${o.ruleKey}${o.campaign ? ` [campaign:${o.campaign}]` : ''} · ${o.context}/${o.ruleType}`);
     if (!o.applies) {
@@ -155,15 +163,32 @@ async function runDivergence(_args, tenant = TENANT) {
       lines.push(`(The standard has not changed since you took your own version.)`, '');
     }
   }
-  if (d.yoursOnly.length) {
-    lines.push(`Also yours alone - no shared version behind them, so nothing to compare: ${d.yoursOnly.map((y) => y.ruleKey).join(', ')}.`);
+  const shown = d.yoursOnly.slice(0, cap);
+  const rest = d.yoursOnly.slice(cap);
+  if (!d.yoursOnly.length) {
+    lines.push(`ADDED (0): none - they have written nothing of their own beyond the shared set.`, '');
+  } else {
+    lines.push(
+      `ADDED (${d.yoursOnly.length}) - their own instructions, with no shared version behind them. ` +
+      `Each one is something the shared set did not cover${rest.length ? `. Showing the ${shown.length} most recently updated` : ''}:`,
+      '',
+    );
+    for (const y of shown) {
+      lines.push(`━━ ${y.ruleKey}${y.campaign ? ` [campaign:${y.campaign}]` : ''} · ${y.context}/${y.ruleType} · v${y.version}${y.updatedAt ? ` · last updated ${y.updatedAt}` : ''}`);
+      lines.push('', y.body, '');
+    }
+    if (rest.length) {
+      lines.push(`…and ${rest.length} more, not shown in full: ${rest.map((y) => y.ruleKey).join(', ')}.`, '');
+    }
   }
+
   lines.push(
-    '',
-    'HOW TO PRESENT THIS: lead with the ones where the standard has MOVED'
-      + `${moved.length ? ` (${moved.length} of them: ${moved.map((m) => m.ruleKey).join(', ')})` : ' (none right now)'}`
-      + ' - those are the only ones needing a decision. For each, show both versions and ask whether to keep theirs or go back to the standard. Never reset anything without an explicit yes.',
+    'HOW TO PRESENT THIS - the two halves need different conversations:',
+    `- CHANGED: lead with any where the standard has MOVED${moved.length ? ` (${moved.length}: ${moved.map((m) => m.ruleKey).join(', ')})` : ' (none right now)'}`
+      + ' - those are the only ones needing a decision. Show both versions and ask whether to keep theirs or go back to the standard. Never reset anything without an explicit yes.',
+    '- ADDED: these are not problems, they are the human\'s own thinking. Two things worth raising, gently and only if it fits: any that look like they would help EVERY client are candidates to promote into the shared set, and any that have gone stale can be archived. Walk a FEW at a time and ask - never dump the whole list back at them or turn it into a chore.',
   );
+  if (rest.length) lines.push(`(Ask for more with a higher limit if they want to work through the rest.)`);
   return { text: lines.join('\n') + extras };
 }
 
@@ -510,6 +535,7 @@ async function runGetClient({ client } = {}, tenant = TENANT) {
 // ---------------------------------------------------------------------------
 
 const LAYER_DESC = 'Rule layer: "client" (this tenant\'s own rule — the default) · "foundation" (platform-wide, ALL tenants read it — reserved for Guy/platform calls) · "template" (the de-personalised seed for new clients; not runtime-read). If it\'s unclear whether a change is personal or platform-wide, ASK the human — never guess foundation.';
+const DIVERGENCE_DESC = '"active" (default) = everything currently applying. "divergence" = how this client differs from the shared set, in TWO sections: CHANGED (a shared instruction they replaced with their own version - both bodies side by side, flagged if the standard has moved since) and ADDED (their own instructions with no shared version behind them - shown in full, newest first). Other filters are ignored for divergence.';
 const TIER_DESC = 'FOUNDATION ONLY. "standard" (default) = shared and improved centrally, but a client MAY save their own version, which then replaces it for them. "locked" = a guardrail: no client can override it, ever. Locking is deliberate and rare — never set it without the human explicitly asking. Omitted on an edit = the existing tier is kept (editing a locked rule\'s wording never unlocks it).';
 const CAMPAIGN_DESC = 'Campaign slug (e.g. "tks", "frac"). A campaign version of a rule_key OVERRIDES the generic version when that campaign is in play; with no campaign (or no campaign version) the generic applies. Omit for the generic/fallback version. Campaign is detected from the thread: scan the user\'s own prior outbound for a campaign\'s marker phrases (see the campaign-markers rule); an explicit campaign named by the human always wins.';
 const CONTEXT_DESC = `Where the rule applies: ${store.CONTEXTS.join(' | ')}`;
@@ -530,12 +556,13 @@ const THREE_KINDS = ' THREE KINDS OF INSTRUCTION: (1) FIXED — shared guardrail
 const TOOL_DEFS = [
   {
     name: 'wingguy_rules_list',
-    description: 'Lists the active Wingguy rules (the shared rulebook both surfaces read), grouped by KIND and showing exactly what reaches the model. Start here when the user says "update my instructions" / "update my rules", asks what their instructions say, or you need to find a rule\'s key. Filterable by context, layer, or campaign. USE view="divergence" for "what have I changed?" / "what\'s different about mine?" / "show me standard vs mine" — it lists only the instructions where this client runs their own version instead of the shared standard, each with both bodies side by side, and flags any where the standard has since moved on. AMBIGUITY: if the human says "review my instructions"/"review the rules" it could mean this OR reviewing their recent draft edits (wingguy_edit_review) — ask ONE short question offering both, with counts if you have them; but if there are no pending edits, skip the question and just list.' + VOCAB + THREE_KINDS,
+    description: 'Lists the active Wingguy rules (the shared rulebook both surfaces read), grouped by KIND and showing exactly what reaches the model. Start here when the user says "update my instructions" / "update my rules", asks what their instructions say, or you need to find a rule\'s key. Filterable by context, layer, or campaign. USE view="divergence" for "what have I changed?" / "what\'s different about mine?" / "show me standard vs mine" / "what have I added?" — it answers in two parts: what they CHANGED (their version next to the current shared one, flagged if the standard has moved on since) and what they ADDED (their own instructions with no shared version behind them, in full, newest first). Additions matter: each one is something the shared set did not cover. AMBIGUITY: if the human says "review my instructions"/"review the rules" it could mean this OR reviewing their recent draft edits (wingguy_edit_review) — ask ONE short question offering both, with counts if you have them; but if there are no pending edits, skip the question and just list.' + VOCAB + THREE_KINDS,
     zodSchema: {
       context: z.enum(store.CONTEXTS).optional().describe(CONTEXT_DESC),
       layer: z.enum(store.LAYERS).optional().describe('Filter to one layer, shown RAW with no shadowing applied (default: the runtime view — the shared instructions plus this client\'s own, with their own replacing the standard wherever they have one)'),
       campaign: z.string().optional().describe('Filter to rules tagged with this campaign (e.g. "tks", "frac")'),
-      view: z.enum(['active', 'divergence']).optional().describe('"active" (default) = everything currently applying. "divergence" = ONLY the instructions where this client has their own version in place of the shared standard, with both bodies side by side and a flag on any where the standard has moved since. Other filters are ignored for divergence.'),
+      view: z.enum(['active', 'divergence']).optional().describe(DIVERGENCE_DESC),
+      limit: z.number().optional().describe('For view=divergence: how many ADDED instructions to show in full, newest first (default 10, max 50). Everything CHANGED is always shown in full.'),
     },
     jsonSchema: {
       type: 'object',
@@ -543,7 +570,8 @@ const TOOL_DEFS = [
         context: { type: 'string', enum: store.CONTEXTS, description: CONTEXT_DESC },
         layer: { type: 'string', enum: store.LAYERS, description: 'Filter to one layer, shown RAW with no shadowing applied (default: the runtime view — the shared instructions plus this client\'s own, with their own replacing the standard wherever they have one)' },
         campaign: { type: 'string', description: 'Filter to rules tagged with this campaign (e.g. "tks", "frac")' },
-        view: { type: 'string', enum: ['active', 'divergence'], description: '"active" (default) = everything currently applying. "divergence" = ONLY the instructions where this client has their own version in place of the shared standard, with both bodies side by side and a flag on any where the standard has moved since. Other filters are ignored for divergence.' },
+        view: { type: 'string', enum: ['active', 'divergence'], description: DIVERGENCE_DESC },
+        limit: { type: 'number', description: 'For view=divergence: how many ADDED instructions to show in full, newest first (default 10, max 50). Everything CHANGED is always shown in full.' },
       },
     },
     run: runRulesList,

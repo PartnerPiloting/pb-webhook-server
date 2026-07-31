@@ -970,8 +970,12 @@ async function getOverrideTenants({ ruleKey, campaign } = {}) {
  * place of a shared standard, with both bodies side by side, plus the drift check: has the standard
  * moved since they took their copy, and what does it say now.
  *
- * Only overrides are listed — a client rule with no foundation twin is theirs alone, not a
- * divergence from anything; those are returned as bare keys in `yoursOnly` for context.
+ * TWO kinds of divergence, and they are not the same question:
+ *   overrides — they took a shared instruction and made it their own. Often taste.
+ *   yoursOnly — they wrote something that has no shared version at all. That means they found a
+ *               GAP in the shared set, which is the stronger signal and the promotion candidate.
+ * Both come back in full. (Until 2026-07-31 this returned additions as bare keys, because the
+ * view was built comparison-shaped and an addition has nothing to sit beside.)
  */
 async function getDivergence({ tenantId = DEFAULT_TENANT } = {}) {
   const tenant = (tenantId || DEFAULT_TENANT).trim();
@@ -988,7 +992,26 @@ async function getDivergence({ tenantId = DEFAULT_TENANT } = {}) {
   const yoursOnly = [];
   for (const [k, own] of mine) {
     const std = foundation.get(k);
-    if (!std) { yoursOnly.push({ ruleKey: own.rule_key, campaign: own.campaign || null, version: own.version }); continue; }
+    // No shared version behind it = an ADDITION, not a change. Returned in full, not as a bare
+    // key: an addition is the stronger signal of the two (the tenant found something the shared
+    // set didn't cover, which is exactly what should be considered for promotion to standard),
+    // and a comparison-shaped view reduced it to a name because there was nothing to compare to.
+    if (!std) {
+      yoursOnly.push({
+        ruleKey: own.rule_key,
+        campaign: own.campaign || null,
+        context: own.context,
+        ruleType: own.rule_type,
+        version: own.version,
+        body: own.body,
+        changeNote: own.change_note || null,
+        // The ACTIVE version's timestamp = when this was last touched, not when it was first
+        // written. Reading the first version of every chain would be a query per instruction;
+        // "last updated" is the honest label for what this is.
+        updatedAt: own.created_at || null,
+      });
+      continue;
+    }
     const tier = ruleTier(std);
     const basedOn = own.standard_version == null ? null : Number(own.standard_version);
     const standardMoved = basedOn != null && Number(std.version) > basedOn;
@@ -1020,7 +1043,9 @@ async function getDivergence({ tenantId = DEFAULT_TENANT } = {}) {
     overrides.push(entry);
   }
   overrides.sort((a, b) => String(a.ruleKey).localeCompare(String(b.ruleKey)));
-  yoursOnly.sort((a, b) => String(a.ruleKey).localeCompare(String(b.ruleKey)));
+  // Newest first: the recently-written ones are the ones the tenant hasn't reconsidered yet.
+  yoursOnly.sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || ''))
+    || String(a.ruleKey).localeCompare(String(b.ruleKey)));
   return { tenantId: tenant, overrides, yoursOnly, standardCount: foundation.size };
 }
 

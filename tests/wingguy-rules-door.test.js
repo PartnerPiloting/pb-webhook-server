@@ -104,15 +104,49 @@ const textOf = async (tool, args) => {
   });
 
   console.log('wingguy_rules_list view=divergence — "what have I changed?":');
-  await check('lists the override with BOTH bodies, and nothing else', async () => {
+  await check('CHANGED lists the override with both bodies', async () => {
     const t = await textOf('wingguy_rules_list', { view: 'divergence' });
+    assert.ok(t.includes('CHANGED (1)'), 'counted');
     assert.ok(t.includes('MY closing question'), 'their version');
     assert.ok(t.includes('SHARED closing question'), 'the current standard');
-    // Theirs-alone rules get a one-line footer mention, never a side-by-side entry (there is no
-    // standard to put beside them).
-    assert.ok(!t.includes('━━ my-signoff'), 'a rule that is theirs alone is not a divergence entry');
-    assert.ok(t.includes('Also yours alone'), 'but it is still accounted for');
     assert.ok(!t.includes('no-em-dash'), 'an un-overridden standard is not a divergence');
+  });
+  // Additions used to be reduced to a comma-separated line of keys, because the view was built
+  // comparison-shaped and an addition has nothing to compare against. That made the view useless
+  // for a tenant whose own instructions are ALL additions - which is the normal case.
+  await check('ADDED lists their own instructions IN FULL, not as bare names', async () => {
+    const t = await textOf('wingguy_rules_list', { view: 'divergence' });
+    assert.ok(t.includes('ADDED (1)'), 'counted separately from CHANGED');
+    assert.ok(t.includes('━━ my-signoff'), 'gets its own entry');
+    assert.ok(t.includes('sign off warmly'), 'and its actual wording, not just the key');
+  });
+  await check('the headline counts both kinds', async () => {
+    const t = await textOf('wingguy_rules_list', { view: 'divergence' });
+    assert.ok(/1 CHANGED, 1 ADDED, out of \d+ shared instructions/.test(t), t.split('\n')[0]);
+  });
+  await check('additions are newest first and capped, with the rest named', async () => {
+    // The fake pool stamps every row 'now', so give all four real timestamps or the ordering
+    // being asserted is meaningless.
+    db.rules.find((r) => r.rule_key === 'my-signoff').created_at = '2026-07-01';
+    // Three more additions, each stamped later than the last.
+    for (const [i, key] of ['add-one', 'add-two', 'add-three'].entries()) {
+      await store.commitRule({
+        layer: 'client', tenantId: TENANT, ruleKey: key, context: 'global', ruleType: 'voice',
+        body: `Synthetic addition ${key}.`, createdBy: 'test', expectedVersion: 0,
+      });
+      db.rules.find((r) => r.rule_key === key).created_at = `2026-07-2${i + 1}`;
+    }
+    const t = await textOf('wingguy_rules_list', { view: 'divergence', limit: 2 });
+    assert.ok(t.includes('ADDED (4)'), 'all four counted');
+    assert.ok(t.includes('Showing the 2 most recently updated'), 'the cap is stated, not silent');
+    assert.ok(t.indexOf('━━ add-three') < t.indexOf('━━ add-two'), 'newest first');
+    assert.ok(!t.includes('━━ add-one'), 'beyond the cap, not shown in full');
+    assert.ok(/…and 2 more, not shown in full:.*add-one/.test(t), 'but named so nothing is hidden');
+  });
+  await check('the guidance treats additions as the human\'s own thinking, not a problem list', async () => {
+    const t = await textOf('wingguy_rules_list', { view: 'divergence' });
+    assert.ok(t.includes('candidates to promote into the shared set'), 'the promotion angle');
+    assert.ok(t.includes('never dump the whole list'), 'and a guard against making it a chore');
   });
   await check('says the standard has NOT moved when it has not', async () => {
     const t = await textOf('wingguy_rules_list', { view: 'divergence' });
@@ -261,13 +295,15 @@ const textOf = async (tool, args) => {
     const t = await textOf('wingguy_rules_list', { view: 'divergence' });
     assert.ok(!t.includes('━━ closing-question'), 'the reset one is no longer a divergence');
     assert.ok(t.includes('━━ no-em-dash'), 'the still-overridden one remains');
-    assert.ok(t.includes('Also yours alone'), 'and what is theirs alone is still accounted for');
+    assert.ok(t.includes('ADDED ('), 'and their own additions are still accounted for');
   });
-  await check('divergence reports plainly when NOTHING is overridden', async () => {
+  await check('divergence still answers usefully when NOTHING is overridden', async () => {
+    // The common case, and the one the old view handled worst: nothing changed, plenty added.
     await store.resetRuleToStandard({ tenantId: TENANT, ruleKey: 'no-em-dash', createdBy: 'test' });
     const t = await textOf('wingguy_rules_list', { view: 'divergence' });
-    assert.ok(t.includes('has not changed any of the standard instructions'));
-    assert.ok(t.includes('my-signoff'), 'but still mentions what is theirs alone');
+    assert.ok(t.includes('CHANGED (0): none'), 'says so plainly');
+    assert.ok(t.includes('━━ my-signoff'), 'and still shows what they added, in full');
+    assert.ok(t.includes('sign off warmly'));
   });
   await check('resetting something that is theirs alone is refused', async () => {
     const r = await call('wingguy_rule_reset_to_standard', { rule_key: 'my-signoff' });
