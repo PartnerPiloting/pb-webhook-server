@@ -265,10 +265,14 @@ strategy, because that's what changes the answer. Something like:
 > purpose?*
 
 What comes back is usually better than what you'd have thought of alone, because it reasons from a
-useful angle: **who is already standing next to your customer at the moment they need you?** For a
-car-buying service, that's finance brokers, car loan brokers, accountants with tradie clients,
-financial planners - people whose own clients are actively about to spend on a vehicle, so a referral
-to you solves their client's problem too. That's the reciprocal shape you're looking for.
+useful angle: **who is already standing next to your customer at the moment they need you?**
+
+Say, for the sake of an example, you do bookkeeping for small businesses. The people standing next to
+your customer at that moment aren't other bookkeepers - they're accountants who don't want the
+day-to-day work, business coaches whose clients keep running into cashflow trouble, and brokers who
+need the books clean before a loan will go through. Notice what those three have in common: passing
+someone to you **solves a problem for their own client too**. That's the reciprocal shape you're
+looking for, and it's why those referrals actually get made rather than just being promised.
 
 **Step two - now ask for the search, and keep it small.** You're testing the plumbing first, not
 launching:
@@ -277,8 +281,9 @@ launching:
 > you construct a LinkedIn boolean search for some of the best people you've described, with no more
 > than five boolean operators - AND, OR, NOT?*
 
-You'll get something like *Finance Broker OR Loan Broker OR Car Finance AND New South Wales OR NSW*.
-Count the operators yourself before you use it - Claude occasionally goes one over.
+Carrying the same example on, you'd get something like *Accountant OR "Business Coach" OR "Finance
+Broker" AND Sydney OR NSW* - four operators, comfortably under the limit. Count them yourself before
+you use it; Claude occasionally goes one over.
 
 **And if you don't yet know what your business is,** do exactly what I do: reach out on the basis of
 the networking itself. "I'm building my network. I've got a couple of things in mind, but what I
