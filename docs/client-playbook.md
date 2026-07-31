@@ -210,15 +210,22 @@ are actually active - not someone on a sabbatical who'll never look at your requ
 because LinkedIn only lets you send roughly **100 connection requests a week**. You want every one
 of them falling on receptive ears.
 
-**Building the search itself.** In Premium you can use the three booleans - AND, OR and NOT - to
-construct your search. One practical tip: **don't use more than about five of them in total.** Go
-past that and Premium will tell you the search is too complex and make you start again. Five is
-about the limit.
+Two more Sales Navigator advantages worth knowing. It lets you use **15 boolean operators instead of
+five** (more on those in a moment), and it does **saved searches** - so when new people appear who
+match your criteria, it hands you just the new ones rather than making you re-run everything.
 
-Don't hand-craft these on your own. Have Claude generate the search criteria with you - just chat
-away: here's what I'm looking for, here's what I'm trying to achieve, who should I be reaching out
-to, what do you think? Bounce it backwards and forwards. You'll get good ideas out of that
-conversation, and a search string that works.
+**A tactic if the Sales Navigator price makes you wince.** It is a lot more per month. So take it
+for the free trial period, run your searches hard, fill up Linked Helper's queue with everyone you
+can get - then close it back down to Premium. The people are already extracted into your own
+database by then, and you may not need another search for months.
+
+**What's a boolean?** Just the words **AND**, **OR** and **NOT**, used to combine your search terms -
+*"Finance Broker OR Loan Broker AND New South Wales"*. That's all it is. Two rules matter: they must
+be **in capitals**, and on Premium you can use **no more than five of them**. Six and LinkedIn throws
+an arcane error that blames itself rather than telling you what's wrong. Sales Navigator allows 15.
+
+Don't hand-craft these. Have Claude write the search for you - it gets the capitals right and it
+keeps you under the limit if you tell it to. There's a topic on exactly how to run that conversation.
 
 **Then look at the results with your own eyes.** Run the search in LinkedIn and scroll the people
 who come up. Are these the people you'd genuinely like to connect with? If yes, you're ready. If
@@ -228,6 +235,55 @@ of connection requests on it.
 **And then take the URL.** The address at the top of that LinkedIn search page is the thing you feed
 into Linked Helper. That URL is the handover point between choosing your people and the plumbing
 doing the work.
+
+Two practical notes on getting that URL. Do this in **LinkedIn's website, not the phone or desktop
+app** - the app has no address bar, so there's no URL to copy. And once you've pasted your search in,
+click **People** at the top and filter to **2nd** connections before you take the URL, so you're only
+collecting people you can actually send a request to.
+
+One limit to be aware of: **Premium will only let you extract about 1,000 people out of any one
+search**, even if the search finds 5,000. Sales Navigator raises that to about 2,500. If your search
+is bigger than that, narrow it - by city, by industry - and run it as several searches instead. You
+can feed Linked Helper as many searches as you like.
+
+---
+
+## FINDING YOUR AUDIENCE WITH CLAUDE - the conversation to have
+
+This is the bit people expect to be hard and it isn't. You work it out by talking to Claude, and the
+order matters: **decide who first, build the search second.** Don't ask for the search up front, or
+you'll get a search for the wrong people.
+
+**Step one - tell it what you're actually doing.** Not just your business, but your networking
+strategy, because that's what changes the answer. Something like:
+
+> *I have an idea to create [your business]. One part of my strategy is to build a collaborative
+> network of people who wish to work together and recommend each other. I'd reach out to people
+> letting them know I know people I might be able to recommend to them. I'd have a conversation with
+> them, and in the process they'd ask what I do - and then they'd know people they can introduce me
+> to. So who do you think would be a good group of people to reach out to on LinkedIn for this
+> purpose?*
+
+What comes back is usually better than what you'd have thought of alone, because it reasons from a
+useful angle: **who is already standing next to your customer at the moment they need you?** For a
+car-buying service, that's finance brokers, car loan brokers, accountants with tradie clients,
+financial planners - people whose own clients are actively about to spend on a vehicle, so a referral
+to you solves their client's problem too. That's the reciprocal shape you're looking for.
+
+**Step two - now ask for the search, and keep it small.** You're testing the plumbing first, not
+launching:
+
+> *There's a lot here. I just want a small sample to begin with, to test out the tool I'm using. Can
+> you construct a LinkedIn boolean search for some of the best people you've described, with no more
+> than five boolean operators - AND, OR, NOT?*
+
+You'll get something like *Finance Broker OR Loan Broker OR Car Finance AND New South Wales OR NSW*.
+Count the operators yourself before you use it - Claude occasionally goes one over.
+
+**And if you don't yet know what your business is,** do exactly what I do: reach out on the basis of
+the networking itself. "I'm building my network. I've got a couple of things in mind, but what I
+really want is to link with people who value two-way collaboration." That's a real proposition, it's
+honest, and it works - see the topic on what you do.
 
 ---
 
@@ -258,6 +314,13 @@ the stage where we tidy up your own LinkedIn profile, which there's a separate t
 the cloud or in your browser; it runs as an application on a machine of yours. That's Linked
 Helper's own design, and the reason is safety - it's part of why we chose it.
 
+That safety is worth understanding, because it's the thing people are rightly nervous about. LinkedIn
+doesn't want this happening and actively changes things to stop it. Linked Helper's answer is to
+build a full browser inside the app and work through it the way a person would - deliberately slowly,
+one thing at a time. You'll watch it running and think it's being sluggish; it isn't, it's being
+careful. These people are specialists in doing this without your account getting flagged, which is
+precisely why I'm not interested in building my own version of it.
+
 **Where it runs matters.** Because it's an app, it needs its computer switched on and awake to do
 its work. So ideally it lives on a machine that can run 24/7 - an old laptop lying around is perfect
 for this, left plugged in and turned on. It doesn't need much horsepower.
@@ -281,6 +344,57 @@ being able to remote into it makes that check painless - it's what Guy does with
 
 If you're brand new, this is where you and Guy start. If you've already got it running, skip
 straight past it, and pull it back up any time you want a refresher.
+
+---
+
+## YOUR FIRST CAMPAIGN - HOW IT'S SET UP AND WHY
+
+This is the campaign we build together first. It does only two things - visit and extract profiles,
+then push them to your database - and it's the one that gets your funnel filling. Here's the shape,
+and more importantly why each setting is what it is.
+
+**First, two things to get straight about the app.** Linked Helper has a **launcher** (dark blue
+icon) and an **instance** (aqua icon). The launcher is where your licence lives; the instance is your
+actual LinkedIn account working away. You always go through the launcher to start your instance -
+worth pinning both to your taskbar, because if the machine restarts you'll need the launcher again to
+bring everything back up. And you'll enter **two sets of credentials**: one to register with Linked
+Helper itself, and once, your LinkedIn login. Expect LinkedIn to ask you to confirm on your phone the
+first time. In practice you never have to enter it again.
+
+**Then the campaign.** Create a new one, choose an empty campaign rather than a template, and call it
+*visit and extract profiles* - that's literally what it does. Then add two actions:
+
+**Action one: Visit and Extract Profiles.** This goes to each person's LinkedIn profile, visits it
+properly - so it shows up as you having viewed them, which is a small good thing in itself - and
+pulls off everything it can. On second-level connections you won't get an email address, but you do
+get their headline, their About section and their posts. That's plenty to score on.
+
+Set this action's **working hours to 00:00-03:00, every day of the week** (and check the timezone at
+the top is right for you). The reason: it's better not to have two sets of fingers on your LinkedIn
+account at once. If Linked Helper is browsing while you're also on LinkedIn during the day, that's
+the pattern you don't want. Overnight, it works alone.
+
+Then the pacing. Set **bunch size 50** and **timeout between bunches 360 minutes**. Work through what
+that does: between midnight and 3am it extracts 50 profiles, then waits six hours - by which time
+it's outside working hours again, so it stops. The effect is that you extract 50 a day rather than
+tearing through the whole list at once, which is roughly 350 people a week landing in your database,
+at a pace that looks entirely human.
+
+**Action two: Send Person to Webhook.** This is the pipe into your own database - I'll give you the
+exact address, which has your name in it. Leave its working hours alone: this action never touches
+LinkedIn, so it can run 24/7, and it's already governed by the first action anyway - nothing reaches
+it until the first one has done its work.
+
+**One distinction that trips everyone up: collecting is not running.** When you paste your search URL
+in, Linked Helper starts *collecting* - building the queue of who's in that search. That's shallow
+and fast, just a list. The campaign then works through that queue doing the deep visit-and-extract.
+They're separate, they can run at the same time, and you can stop collecting whenever you like or
+empty the queue and start again if you don't like who turned up.
+
+**Finally, prove it works.** Before leaving it to run overnight, we do a small test: temporarily add
+a working-hours window for right now, let it process a few people, and watch them appear in your
+portal. That confirms the webhook address was typed correctly - which is exactly the sort of thing
+that's silently wrong otherwise.
 
 ---
 
@@ -332,9 +446,18 @@ and all you really want to do is test the plumbing and see that it works end to 
 that the scoring won't be far out with the attributes you've been given, so a test run will tell you
 what you need to know without you having to get this perfect first.
 
-**Then you tweak.** Once things are flowing, go on and adjust the scoring properly. Have a look at
-the template you've been given and it'll be obvious how - you'll see the shape of it, and changing it
-from there is straightforward.
+**Then you tweak.** Once things are flowing, go on and adjust the scoring properly, in Settings in
+your portal. Have a look at the template you've been given and it'll be obvious how - you'll see the
+shape of it, and changing it from there is straightforward.
+
+Two things to know before you go in there. **There's a fixed number of attribute slots**, so you
+don't add new ones - you repurpose the ones you have. Look down the list, find one that doesn't
+matter to you, and change it into what you do want. You can also mark an attribute inactive if you'd
+rather park it than replace it. The limit is deliberate: every attribute is more thinking the AI does
+on every single profile, and there's a point past which you're paying for precision you'll never use.
+
+And a practical note on timing: **scoring runs once a day**, so people who arrive overnight get their
+scores the following day. Nothing's broken if a new lead shows up unscored.
 
 ---
 
@@ -388,6 +511,39 @@ you through it a piece at a time - you can stop and pick it up again whenever yo
 And nothing is set in stone. You can change your instructions at any time, just by telling Wingguy in
 plain English. That's how it gets sharp in practice - you tune it as you go, whenever a draft isn't
 quite how you'd have put it.
+
+---
+
+## YOUR INSTRUCTIONS - HOW WINGGUY LEARNS YOUR WAY
+
+Wingguy writes like you, not like an AI. That's not magic - it's instructions. Behind the scenes
+there's a set of them covering everything from how a message opens to when you should follow someone
+up, and Wingguy reads them every single time it drafts anything for you.
+
+There are two kinds.
+
+**The ones that come as standard.** These are the hard-won ones - the difference between a message
+that gets a reply and one that gets ignored. Always end with a real question. Never send a wall of
+text. Read someone's profile properly and say something true about them, rather than parroting their
+headline back at them. You don't set these up and you don't maintain them. Better still, when we
+learn something new that makes messages land better, it turns up in your Wingguy automatically. You
+don't lift a finger. A few of them are fixed - those are the guardrails, and they're the reason it
+never goes off and does something daft on your behalf.
+
+**The ones that are yours.** Your spelling. How you sign off. Which link you send people. The words
+you'd never be caught using. These start with sensible defaults, and you change them whenever you
+like.
+
+**The part most people underuse: you teach it.** Any time Wingguy writes something that isn't quite
+you, tell it. "Never say 'reach out'." "Always mention I'm Perth based." Say **"update my
+instructions"** and describe the change in your own words. It'll show you exactly what it plans to
+change before it changes anything - and then it sticks. Not just for the next message. For good.
+Every correction is permanent. The Wingguy you're working with in three months should sound
+noticeably more like you than today's, and that's almost entirely down to how often you bother to
+tell it when it's off.
+
+You never need to read the whole list. If you're curious, just ask - "what do my instructions say
+about follow-ups?"
 
 ---
 
