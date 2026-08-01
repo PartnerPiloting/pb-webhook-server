@@ -309,6 +309,7 @@ async function prepareFollowupBrief(tenant) {
         draftHtml: null,
         draftText: null,
         draftError: null,
+        wgAngle: null,
         replyToMessageId: null,
         pushSubject: null,
         threadSubject: (ctx.lastInbound && ctx.lastInbound.subject) || null,
@@ -330,12 +331,12 @@ async function prepareFollowupBrief(tenant) {
             entry.pushSubject = /^re:/i.test(entry.threadSubject || '') ? entry.threadSubject : `Re: ${entry.threadSubject || 'our conversation'}`;
           } catch (e) { entry.draftError = e.message; }
         } else {
-          // LinkedIn-only person: paste-ready plain text.
-          try {
-            const html = await writeDraft(llm, rulesText, item, ctx, (v.draft_instruction || 'Reply appropriately.') + ' This will be pasted into LinkedIn chat — plain short text, no HTML links, no subject.', sweep.coach.timezone);
-            entry.draftText = draftPlainText(html); // paste-ready — keep the paragraph breaks (see above)
-            entry.channel = 'linkedin';
-          } catch (e) { entry.draftError = e.message; }
+          // LinkedIn person: NO pre-written message, by design (Guy's call 2026-08-01, after the
+          // Farhad invented-times draft). Pasting means opening the thread anyway, and /wg there
+          // drafts from the LIVE thread + LIVE calendar — the one place times can't go stale. The
+          // overnight homework survives as the ANGLE the /wg pass should take.
+          entry.channel = 'linkedin';
+          entry.wgAngle = String(v.draft_instruction || v.why_line || 'revive the thread naturally').trim();
         }
       }
       items.push(entry);
@@ -404,10 +405,16 @@ function formatBrief(row) {
   const lines = [];
   lines.push(`Prepared ${p.preparedAt ? p.preparedAt.slice(0, 16).replace('T', ' ') : '?'} UTC${ageH > STALE_HOURS ? ' ⚠ STALE — offer a refresh (wingguy_prepare_brief)' : ''}. ${p.totalSurfaced} surfaced; top ${ (p.items || []).length } fully prepared. Keep the markdown name-links when relaying.`);
   if (piles.draft.length) {
-    lines.push(`\nREPLIES READY (${piles.draft.length}) — drafts written, IN THE BRIEF (show → tweak in chat → on approval push to Gmail with wingguy_create_draft, threaded via the reply id below; LinkedIn ones are paste-ready). Never push unasked:`);
+    // Email people carry a pre-written draft; LinkedIn people carry a /wg ANGLE instead of a
+    // message (Guy's call 2026-08-01) — the reply is drafted live in the thread, where the
+    // conversation and the calendar are both current. Old stored payloads may still hold a
+    // LinkedIn draftText; render it the legacy way until the next preparation replaces it.
+    lines.push(`\nREPLIES OWED (${piles.draft.length}) — email people have drafts IN THE BRIEF (show → tweak in chat → on approval push to Gmail with wingguy_create_draft, threaded via the reply id below; never push unasked). LinkedIn people get NO pre-written message by design — relay their /wg pointer + angle (they open the thread and type /wg; it drafts from the live conversation and calendar):`);
     for (const it of piles.draft) {
-      lines.push(`- ${nm(it)} — ${it.whyLine}${it.channel === 'linkedin' ? ' [LinkedIn — paste-ready]' : ''}${it.draftError ? ` [draft generation FAILED: ${it.draftError}]` : ''}`);
+      const liTag = it.channel === 'linkedin' ? (it.draftText ? ' [LinkedIn — paste-ready]' : ' [LinkedIn — open the thread and type /wg]') : '';
+      lines.push(`- ${nm(it)} — ${it.whyLine}${liTag}${it.draftError ? ` [draft generation FAILED: ${it.draftError}]` : ''}`);
       if (it.draftText) lines.push(`    draft: "${it.draftText}"`);
+      else if (it.wgAngle) lines.push(`    /wg angle: ${it.wgAngle}`);
       if (it.email && it.replyToMessageId) lines.push(`    push with: to=${it.email}, subject="${it.pushSubject}", reply_to_message_id=${it.replyToMessageId}`);
       if (it.jog) lines.push(`    jog: ${it.jog}`);
     }

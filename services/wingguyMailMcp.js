@@ -1625,7 +1625,10 @@ async function runQueue({ page } = {}, tenant = TENANT) {
       : `${it.whyLine} → propose park ${it.parkDate || '?'}`;
     const builtAt = (p && p.preparedAt) || null; // for the live re-check's cease-waiver comparison
     for (const it of ((p && p.items) || [])) {
-      if (it.verdict === 'draft') items.push({ ...it, src: 'today', builtAt, line: `${it.whyLine} [draft ready]` });
+      // LinkedIn reply-owed people carry a /wg ANGLE, not a pre-written message (Guy 2026-08-01):
+      // the reply is drafted live in the thread. draftText still renders as [draft ready] so
+      // pre-change stored payloads (and every email draft) serve exactly as before.
+      if (it.verdict === 'draft') items.push({ ...it, src: 'today', builtAt, line: `${it.whyLine}${it.draftText ? ' [draft ready]' : (it.wgAngle ? ' [LinkedIn — open the thread, type /wg]' : (it.draftError ? ' [no draft — ask in chat]' : ' [draft ready]'))}` });
       else if (it.verdict === 'park') items.push({ ...it, src: 'today', builtAt, line: parkLine(it) });
       else if (it.verdict === 'attention') items.push({ ...it, src: 'today', builtAt, line: `${it.whyLine} [needs your judgment]` });
     }
@@ -1662,13 +1665,15 @@ async function runQueue({ page } = {}, tenant = TENANT) {
   // making him ask per-person was the slow part). It's already written by the overnight triage;
   // serving it here means the human reads ten lines and already remembers everyone.
   const jogLine = (it) => (it.jog && it.jog.trim() ? `\n    who: ${it.jog.trim()}` : '');
+  // The overnight homework for a /wg person is the ANGLE — ride it in the list like the jog.
+  const angleLine = (it) => (!it.draftText && it.wgAngle && it.wgAngle.trim() ? `\n    /wg angle: ${it.wgAngle.trim()}` : '');
   // [draft] beside the name = the read-only draft page (jog + message + copy button), signed per
   // person. Reading and copying live there; tweaking/sending/parking stay in chat.
   const { draftUrl } = require('./wingguyDraftLink');
-  const draftLink = (it) => (it.draftText ? ` · [draft](${draftUrl(tenant, it.name)})` : '');
+  const draftLink = (it) => ((it.draftText || it.wgAngle) ? ` · [${it.draftText ? 'draft' : 'card'}](${draftUrl(tenant, it.name)})` : '');
   const lines = [
-    `THE QUEUE — ${deduped.length} actionable, priority order (page ${pg}/${totalPages}; today's brief first, then backlog reopens, then parks). Each person's "who:" memory-jog is part of the list — ALWAYS relay it with their line, and keep their [draft] link (it opens the ready-made message with a copy button). Ask for anyone by name for the full detail + draft in chat; "next ten" = next page.`,
-    ...slice.map((it, i) => `${(pg - 1) * PAGE + i + 1}. ${nm(it)}${draftLink(it)} — ${it.line}${jogLine(it)}`),
+    `THE QUEUE — ${deduped.length} actionable, priority order (page ${pg}/${totalPages}; today's brief first, then backlog reopens, then parks). Each person's "who:" memory-jog is part of the list — ALWAYS relay it with their line, and keep their [draft]/[card] link ([draft] opens the ready-made message with a copy button; [card] is a LinkedIn person's context card — their reply gets written live in the thread with /wg, using the "/wg angle" line). Ask for anyone by name for the full detail in chat; "next ten" = next page.`,
+    ...slice.map((it, i) => `${(pg - 1) * PAGE + i + 1}. ${nm(it)}${draftLink(it)} — ${it.line}${angleLine(it)}${jogLine(it)}`),
   ];
   if (pg < totalPages) lines.push(`(${deduped.length - pg * PAGE} more — say "next ten".)`);
   if (suppTotal) lines.push(`\n[live re-check — do not relay unless asked: dropped ${suppTotal} stale entr${suppTotal === 1 ? 'y' : 'ies'} (${supp.messaged} already messaged since the list was built, ${supp.booked} already booked, ${supp.ceased} ceased, ${supp.parked} parked on a reconnect stamp).]`);

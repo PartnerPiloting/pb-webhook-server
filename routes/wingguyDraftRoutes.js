@@ -94,6 +94,12 @@ module.exports = function mountWingguyDraft(app) {
       parts.push(`<pre class="draft" id="draft">${esc(it.draftText)}</pre>`);
       parts.push(`<button id="copybtn" onclick="copyDraft()">Copy message</button>`);
       parts.push(`<script>function copyDraft(){navigator.clipboard.writeText(document.getElementById('draft').innerText).then(function(){var b=document.getElementById('copybtn');b.textContent='Copied \\u2713';setTimeout(function(){b.textContent='Copy message';},1500);});}</script>`);
+    } else if (it.wgAngle) {
+      // LinkedIn person: no pre-written message BY DESIGN (Guy 2026-08-01) — the reply is drafted
+      // live in the thread with /wg, where the conversation and the calendar are both current.
+      // The overnight homework is the angle.
+      parts.push(`<p class="label">How to reply</p><p class="why">Open the LinkedIn thread and type <strong>/wg</strong> — it writes the message live from the real conversation and your real calendar.</p>`);
+      parts.push(`<p class="label">Suggested angle</p><p class="why">${esc(it.wgAngle)}</p>`);
     } else {
       parts.push(`<p class="label">Draft</p><p class="why">No pre-written message is stored on this entry${it.draftError ? ` (generation failed: ${esc(it.draftError)})` : ''} — ask your Wingguy chat for ${esc(it.name)} by name; the overnight dossier usually carries one.</p>`);
     }
