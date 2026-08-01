@@ -447,6 +447,45 @@
     return { name, headline: '', profileUrl };
   }
 
+  // "New message" COMPOSE pane: the recipient exists ONLY as a typeahead chip — there is no /in/ link
+  // to them anywhere in the pane (their thread rows, if any, are the coach's own sends). The chip is
+  // the identity there; selectors are a wide net because the pill markup varies across builds.
+  function composeRecipientNames(scope) {
+    const names = [];
+    const sels = [
+      '.msg-connections-typeahead__added-recipients li',
+      '[class*="typeahead"] [class*="pill"]',
+      '[class*="added-recipient"]',
+      // Bare .artdeco-pill is used all over LinkedIn (skills, banners) — a false hit in a normal
+      // thread would wrongly flip us into compose-pane mode, so only take pills in a recipient row.
+      '[class*="compose"] .artdeco-pill',
+      '[class*="recipient"] .artdeco-pill',
+    ];
+    for (const sel of sels) {
+      let nodes = [];
+      try { nodes = scope.querySelectorAll(sel); } catch (_) { continue; }
+      for (const n of nodes) {
+        if (insideWingguy(n)) continue;
+        // The pill's remove glyph can ride along in textContent ("Adrian Rampoldi ×") — strip it.
+        const t = cleanText(n.textContent).replace(/[×✕]+$/, '').trim();
+        if (looksLikeName(t) && !names.some((x) => x.toLowerCase() === t.toLowerCase())) names.push(t);
+      }
+      if (names.length) break; // most-specific selector that produced chips wins
+    }
+    return names;
+  }
+
+  // The signed-in user's own name, from the global-nav "Me" avatar alt. Used ONLY to refuse
+  // obviously-self /in/ links in the URL pick below — never to choose one.
+  function selfNavName() {
+    for (const sel of ['img.global-nav__me-photo', '.global-nav__me img[alt]', '[class*="global-nav__me"] img[alt]']) {
+      const img = document.querySelector(sel);
+      const t = cleanText(img && img.getAttribute('alt'));
+      if (looksLikeName(t)) return t;
+    }
+    return '';
+  }
+
   function scrapeMessagingHeader(containerOpt) {
     // NOTE: .isConnected (not document.contains) — the messaging composer lives in an open shadow root,
     // and document.contains() can't see into shadow DOM, so it wrongly reported the box as "gone" and we
@@ -465,8 +504,17 @@
 
     // NAME and URL are read SEPARATELY — in an overlay bubble the name is a heading (text, not a link) and
     // the /in/ link is usually the avatar (no text). Requiring both on one element (the old bug) missed it.
-    // Name: header title/heading text (validated to look like a name), then a named /in/ link as fallback.
+    // Name: a compose pane's recipient chip first (the ONLY place the recipient exists there), then
+    // header title/heading text (validated to look like a name), then a named /in/ link as fallback.
     let name = '';
+    const recipients = composeRecipientNames(pane);
+    const isComposePane = recipients.length > 0;
+    if (recipients.length === 1) {
+      name = recipients[0];
+      console.log('[Wingguy] compose-pane recipient chip →', name);
+    } else if (recipients.length > 1) {
+      console.log('[Wingguy] compose pane has MULTIPLE recipient chips (group message) — no single identity:', recipients.join(', '));
+    }
     const nameSelectors = [
       '.msg-thread__link-to-profile',
       '.msg-overlay-bubble-header__title',
@@ -477,31 +525,47 @@
       '[class*="entity-title"]',
       'h2', 'h3',
     ];
-    for (const sel of nameSelectors) {
-      for (const el of header.querySelectorAll(sel)) {
-        const t = cleanText(el.getAttribute('aria-label') || el.textContent);
-        if (looksLikeName(t)) { name = t; break; }
+    if (!name && !isComposePane) {
+      for (const sel of nameSelectors) {
+        for (const el of header.querySelectorAll(sel)) {
+          const t = cleanText(el.getAttribute('aria-label') || el.textContent);
+          if (looksLikeName(t)) { name = t; break; }
+        }
+        if (name) break;
       }
-      if (name) break;
     }
-    if (!name) {
+    const self = selfNavName();
+    if (!name && !isComposePane) {
       for (const a of pane.querySelectorAll('a[href*="/in/"]')) {
         const t = cleanText(a.getAttribute('aria-label') || a.textContent);
-        if (looksLikeName(t)) { name = t; break; }
+        // Never adopt the coach's own name off their message rows' links.
+        if (looksLikeName(t) && (!self || t.toLowerCase() !== self.toLowerCase())) { name = t; break; }
       }
     }
     // URL: prefer a VANITY slug. LinkedIn message headers often link to the internal member-id form
-    // (/in/ACoAAB...), which won't match the vanity URL stored in the Portal → the lookup misses. Take the
-    // first NON-ACoA /in/ link; only fall back to an internal one if that's all there is (the capture path
-    // resolves it to the vanity URL before looking the lead up).
+    // (/in/ACoAAB...), which won't match the vanity URL stored in the Portal → the lookup misses. Only fall
+    // back to an internal one if that's all there is (the capture path resolves it to the vanity URL before
+    // looking the lead up). The pick is guarded (Adrian Rampoldi, 2026-08-01 — "first /in/ link in the pane"
+    // grabbed the coach's own "View Guy's profile" row link, attributing the thread to the coach):
+    //   1. a link that name-matches the person this thread is with wins;
+    //   2. failing that, any link EXCEPT one carrying the signed-in user's own name;
+    //   3. in a compose pane, NO fallback at all — the recipient has no /in/ link there (chip only), so
+    //      every link in the pane is someone else. No URL → the rescue card, prefilled with the chip name.
     let profileUrl = '';
     const inLinks = [...header.querySelectorAll('a[href*="/in/"]'), ...pane.querySelectorAll('a[href*="/in/"]')];
-    for (const a of inLinks) {
-      const u = normalizeInUrl(a.getAttribute('href'));
-      if (u && !/\/in\/ACoA/i.test(u)) { profileUrl = u; break; }
-    }
-    if (!profileUrl) {
-      for (const a of inLinks) { const u = normalizeInUrl(a.getAttribute('href')); if (u) { profileUrl = u; break; } }
+    const accText = (a) => {
+      const img = a.querySelector ? a.querySelector('img[alt]') : null;
+      return (cleanText(a.getAttribute('aria-label') || a.textContent) || cleanText(img && img.getAttribute('alt'))).toLowerCase();
+    };
+    const firstNameOf = (n) => String(n || '').trim().split(/\s+/)[0].toLowerCase();
+    const wantFirst = firstNameOf(name);
+    const selfFirst = firstNameOf(self);
+    const candidates = inLinks.map((a) => ({ u: normalizeInUrl(a.getAttribute('href')), t: accText(a) })).filter((c) => c.u);
+    const pickVanityFirst = (list) => { const hit = list.find((c) => !/\/in\/ACoA/i.test(c.u)) || list[0]; return hit ? hit.u : ''; };
+    if (wantFirst) profileUrl = pickVanityFirst(candidates.filter((c) => c.t.includes(wantFirst)));
+    if (!profileUrl && !isComposePane) {
+      const excludeSelf = selfFirst && selfFirst !== wantFirst;
+      profileUrl = pickVanityFirst(excludeSelf ? candidates.filter((c) => !c.t.includes(selfFirst)) : candidates);
     }
 
     // Headline (best-effort) from the header subtitle / lockup near the name.
@@ -679,8 +743,10 @@
   // alt-text / name node / profile link) that wraps a run of items. Class names vary across LinkedIn
   // builds and the overlay bubble, so cast a wide net and validate the text actually looks like a name.
   function looksLikeName(t) {
+    // "profile" blocks LinkedIn's row-link text ("View Guy's profile") — that once leaked through as a
+    // person's "name" and prefilled the rescue card with junk (Adrian Rampoldi capture, 2026-08-01).
     return !!t && t.length >= 2 && t.length < 60 && /[A-Za-z]/.test(t) &&
-      !/(message|reaction|status|sent the following|edited|open the options|see more|today|yesterday|active now|· )/i.test(t);
+      !/(message|reaction|status|sent the following|edited|open the options|see more|today|yesterday|active now|profile|· )/i.test(t);
   }
   function senderForItem(item) {
     const group = item.closest(selStr('message_group_item')) || item;
