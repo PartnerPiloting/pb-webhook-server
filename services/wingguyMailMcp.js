@@ -174,6 +174,29 @@ function parseLinkedInLast(notes, leadFirstName) {
   return null;
 }
 
+/**
+ * TRUE if the lead has EVER sent a LinkedIn message in this Notes history — any line whose sender
+ * names them, full depth, NOT windowed. Feeds the cadence gate (Decision B in classifyLead): the
+ * question there is "has this person ever actually spoken?", and the newest-line/windowed
+ * parseLinkedInLast can't answer it for someone whose only activity is the coach's own opener.
+ * Same sender heuristic (and the same name-collision caveat) as parseLinkedInLast.
+ */
+function linkedInEverInbound(notes, leadFirstName) {
+  const first = String(leadFirstName || '').trim().toLowerCase();
+  if (!first) return false;
+  const block = String(notes || '');
+  const start = block.indexOf('=== LINKEDIN MESSAGES ===');
+  if (start === -1) return false;
+  let seg = block.slice(start);
+  const nextHdr = seg.indexOf('\n=== ', 1);
+  if (nextHdr !== -1) seg = seg.slice(0, nextHdr);
+  for (const raw of seg.split('\n')) {
+    const m = raw.trim().match(LI_MSG_RE);
+    if (m && m[4].toLowerCase().includes(first)) return true;
+  }
+  return false;
+}
+
 /** Read Airtable's singleSelect cell as a plain string (airtable.js gives a string; be defensive). */
 function selectName(v) { return (v && typeof v === 'object' ? v.name : v) || ''; }
 
@@ -229,7 +252,7 @@ function computeMailSignals(messages, leadEmails) {
  * ranking logic is unit-testable. `nowMs`/`todayMidMs` passed in (Date.now is unavailable in some
  * sandboxes and keeps this deterministic for tests).
  */
-function classifyLead(lead, { lastInboundMs, lastOutboundMs, nowMs, todayMidMs }) {
+function classifyLead(lead, { lastInboundMs, lastOutboundMs, everInbound, nowMs, todayMidMs }) {
   // Deferral tier reads the engine-written `Reconnect On` date. Until that field exists on the bases
   // and the content-read populates it, lead.reconnectOn is null everywhere → no deferral surfaces
   // (deliberate: the rotted legacy Follow-Up Date must NOT drive the engine).
@@ -263,9 +286,12 @@ function classifyLead(lead, { lastInboundMs, lastOutboundMs, nowMs, todayMidMs }
     if (outboundDays > CADENCE_MAX_DAYS) return null;                                   // too cold — needs re-engagement, drop
     if (gated) return { tier: null, gatedCadence: true };                              // Cease/Series → cadence off
     if (reconnectFuture) return { tier: null, gatedCadence: true };                    // parked until their reconnect date → no early nudge
-    // Decision B: only chase "went quiet" for a REAL relationship (connected, or they've replied at least
-    // once). Pure cold outreach that was simply ignored is not an owed follow-up — drop it.
-    if (!(lead.connected || !!lastInboundMs)) return { tier: null, coldCadence: true };
+    // Decision B, tightened 2026-08-01: only chase "went quiet" when the person has EVER actually
+    // spoken — an inbound in the window, or any LinkedIn message from them in the full history
+    // (everInbound). Being connected no longer qualifies on its own: the accept-then-silence
+    // pattern (connection taken, "up for a quick Zoom?" ignored) was filling the queue with
+    // people who never said a word — silence after zero words is disinterest, not an owed nudge.
+    if (!(everInbound || !!lastInboundMs)) return { tier: null, coldCadence: true };
     // Recent-first, like reply-owed: a fresh silence is the most naturally nudgeable (sortKey = -days).
     return { tier: 'cadence', why: `you messaged last, ${outboundDays}d silent`, sortKey: -outboundDays, gated: false };
   }
@@ -762,7 +788,7 @@ async function computeFollowupSweep({ window_days } = {}, tenant = TENANT) {
       linkedinUrl: String(f['LinkedIn Profile URL'] || '').trim() || null, // for hyperlinked names in the brief
       cease: selectName(f['Cease FUP']) === 'Yes',
       onSeries: Number(f['Series Sent Count'] || 0) > 0 && f['Series Unsubscribed'] !== true,
-      connected: !!f['Date Connected'], // real-relationship signal for the cadence gate (Decision B)
+      connected: !!f['Date Connected'], // informational since 2026-08-01 — the cadence gate now needs them to have SPOKEN, not just clicked accept
       notes: f['Notes'] || '',
       lastInboundMs: null,
       lastOutboundMs: null,
@@ -810,7 +836,12 @@ async function computeFollowupSweep({ window_days } = {}, tenant = TENANT) {
       if (li.inbound) lastInboundMs = Math.max(lastInboundMs || 0, li.ms);
       else lastOutboundMs = Math.max(lastOutboundMs || 0, li.ms);
     }
-    const c = classifyLead(lead, { lastInboundMs: lastInboundMs || null, lastOutboundMs: lastOutboundMs || null, nowMs, todayMidMs });
+    const c = classifyLead(lead, {
+      lastInboundMs: lastInboundMs || null,
+      lastOutboundMs: lastOutboundMs || null,
+      everInbound: linkedInEverInbound(lead.notes, lead.first),
+      nowMs, todayMidMs,
+    });
     if (!c) continue;
     if (c.gatedCadence) { gatedCadence++; continue; }
     if (c.coldCadence) { coldCadence++; continue; }
@@ -1593,4 +1624,4 @@ async function legacyToolCall(toolName, args, tenant = TENANT) {
   }
 }
 
-module.exports = { registerWingguyMailTools, legacyToolList, legacyToolCall, TOOL_DEFS, detectAssets, htmlToText, stripQuotedTail, settleEmailEditPairs, parseLinkedInLast, classifyLead, computeMailSignals, computeFollowupSweep, runFollowupSweep, chooseFollowUpStamp, coachOwnEmails, stampFollowUpForDraft };
+module.exports = { registerWingguyMailTools, legacyToolList, legacyToolCall, TOOL_DEFS, detectAssets, htmlToText, stripQuotedTail, settleEmailEditPairs, parseLinkedInLast, linkedInEverInbound, classifyLead, computeMailSignals, computeFollowupSweep, runFollowupSweep, chooseFollowUpStamp, coachOwnEmails, stampFollowUpForDraft };
