@@ -146,11 +146,17 @@ function gatherLinkedIn(notes, first, max = LI_LIMIT) {
     if (!m) continue;
     const iso = `20${m[3]}-${m[2]}-${m[1]}`;
     const theirs = first && m[5].trim().toLowerCase().startsWith(first.toLowerCase());
+    // Sort must include the TIME: Notes are newest-first, and a date-only key left same-day
+    // messages reversed (a reply rendered above the message it answers — the Steve Martin serve,
+    // 2026-08-03). The time is dropped before return: only this sort needs it.
+    const tm = m[4].match(/(\d{1,2}):(\d{2})\s*([AP]M)/i);
+    const hh = tm ? (parseInt(tm[1], 10) % 12) + (/^P/i.test(tm[3]) ? 12 : 0) : 0;
+    const sortKey = `${iso} ${String(hh).padStart(2, '0')}:${tm ? tm[2] : '00'}`;
     // scrub at the SOURCE: a lone surrogate here poisons BOTH the LLM request and the jsonb save
-    out.push({ date: iso, kind: 'linkedin', dir: theirs ? 'them' : 'you', text: scrub(String(m[6]).slice(0, 300)) });
+    out.push({ sortKey, date: iso, kind: 'linkedin', dir: theirs ? 'them' : 'you', text: scrub(String(m[6]).slice(0, 300)) });
   }
-  out.sort((a, b) => a.date.localeCompare(b.date));
-  return out.slice(-max);
+  out.sort((a, b) => a.sortKey.localeCompare(b.sortKey));
+  return out.slice(-max).map(({ sortKey, ...rest }) => rest);
 }
 
 async function gatherEmails(mailProvider, coach, email, max = EMAIL_LIMIT) {
@@ -229,10 +235,32 @@ function splitAltEmails(v) {
   return String(v || '').toLowerCase().split(/[;,\s]+/).map((s) => s.trim()).filter(Boolean);
 }
 
-/** Every email address mentioned anywhere in a text blob (lowercased, deduped). */
-function extractEmailsFromText(text) {
-  const m = String(text || '').match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g) || [];
-  return [...new Set(m.map((e) => e.toLowerCase()))];
+/**
+ * Every email address mentioned anywhere in a text blob (lowercased, deduped).
+ *
+ * LinkedIn capture flattens newlines, so a sign-off can run straight into the address:
+ * "...4th of Aug.RegardsStevesteve@salesdirectorcentral.com" (the real Steve Martin Notes text) —
+ * a naive match swallows the sentence tail into the local part. Repair heuristic, deliberately
+ * conservative: only when the RAW local part shows smash evidence (an internal capital after a
+ * lowercase letter or a dot — sentence case, which typed addresses lack), trim to the LAST
+ * occurrence of the person's first name (sign-offs end with the name; addresses usually start
+ * with it). A clean lowercase address is never touched.
+ */
+function extractEmailsFromText(text, firstName) {
+  const raws = String(text || '').match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g) || [];
+  const fn = String(firstName || '').trim().toLowerCase();
+  const out = [];
+  for (const raw of raws) {
+    const at = raw.lastIndexOf('@');
+    let local = raw.slice(0, at);
+    const domain = raw.slice(at + 1).toLowerCase();
+    if (/[a-z.][A-Z]/.test(local) && fn.length >= 3) {
+      const i = local.toLowerCase().lastIndexOf(fn);
+      if (i > 0) local = local.slice(i);
+    }
+    out.push(`${local.toLowerCase()}@${domain}`);
+  }
+  return [...new Set(out)];
 }
 
 // Fields the mini-dossier wants; the reduced list is the retry when a base lacks the newer columns
@@ -307,7 +335,7 @@ async function buildLiveMiniDossier(tenant, { name, email } = {}) {
   const onRecord = new Set([String(f['Email'] || '').trim().toLowerCase(), ...splitAltEmails(f['Alt Emails'])].filter(Boolean));
   // An address handed over IN the conversation that never reached the record (learn-back only
   // listens to inbound email, not LinkedIn) — surface as a suggested update, never write silently.
-  const unrecordedEmails = extractEmailsFromText(f['Notes']).filter((e) => !onRecord.has(e));
+  const unrecordedEmails = extractEmailsFromText(f['Notes'], f['First Name']).filter((e) => !onRecord.has(e));
   return {
     payload: {
       ...brief(rec),
@@ -539,7 +567,7 @@ async function prepareDossiers(tenant) {
         let unrecordedEmails = [];
         if (rec) {
           const onRecord = new Set([String(rec.fields['Email'] || '').trim().toLowerCase(), ...splitAltEmails(rec.fields['Alt Emails'])].filter(Boolean));
-          unrecordedEmails = extractEmailsFromText(rec.fields['Notes']).filter((e) => !onRecord.has(e));
+          unrecordedEmails = extractEmailsFromText(rec.fields['Notes'], rec.fields['First Name']).filter((e) => !onRecord.has(e));
         }
 
         // Guidance draft for anyone WITHOUT a store draft: embodies the deep-read's next move —
