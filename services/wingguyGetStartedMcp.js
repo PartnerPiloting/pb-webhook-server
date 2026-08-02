@@ -117,7 +117,7 @@ async function runVision(_args = {}, tenant = TENANT) {
   parts.push('');
   parts.push('**Just say any of these:**');
   parts.push('- **"Show me my follow-ups"** - your ranked list of everyone you owe something, drafts already written. Park anyone until a date, or drop them for good.');
-  parts.push('- **"What\'s on today?"** or **"Prepare me for my 2pm"** - your diary, plus everything I know about who you\'re meeting: past calls, emails, what you agreed last time.');
+  parts.push('- **"Prep me for today\'s meetings"** - your diary for the day, plus everything I know about who you\'re meeting: past calls, emails, what you agreed last time. Guy starts every morning this way.');
   parts.push('- **"Remind me about Sarah"** - instant memory on anyone. Your whole history with them, in one go.');
   parts.push('- **"Draft the follow-up from this morning\'s call"** - I read the transcript and write it in your own mailbox. I never send. That is always you.');
   parts.push('- **"When am I free Thursday?"** / **"Offer him three times"** / **"Book 10am Tuesday"** - real slots with your booking rules already applied, then the invite, your meeting link and the reminders.');
