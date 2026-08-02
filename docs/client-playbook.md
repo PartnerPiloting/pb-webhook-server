@@ -98,7 +98,9 @@ Here's the whole thing in order, so you can see where any one piece fits.
 10. **Book the next one before you leave.** This is the step almost everybody skips, and it's the one
     that turns a nice conversation into a working relationship.
 11. **Follow up.** Wingguy drafts the email from the transcript of what you actually discussed. And
-    if they'd like to build their own network the way you are, that's your reason to reconvene.
+    from there it keeps the list for you - say "prep me for today" and everyone you owe something to
+    comes up in order, drafts already written. And if they'd like to build their own network the way
+    you are, that's your reason to reconvene.
 
 Then it loops, at a pace you choose - you pick how many calls a week you want, and we tune the
 searches and the volume until that's what happens.
@@ -697,6 +699,44 @@ going. That's a real reason to reconvene, and it deepens the relationship furthe
 And it's where the whole thing starts to compound. Everyone who takes it up isn't just one more
 person looking out for you - it's their people too, because in time you get to know them as well.
 You're building a node, alongside other people building nodes. That's where the momentum comes from.
+
+---
+
+## YOUR DAILY FOLLOW-UP LIST - THE BIT EVERYBODY ELSE DROPS
+
+Be honest with yourself for a second. Right now, do you know who you promised to get back to? Who you
+had a cracking call with three weeks ago and haven't spoken to since? Who never replied to your last
+message?
+
+Nobody knows. And it isn't a character flaw, it's arithmetic - a few calls a week plus a steady flow
+of new connections, and inside a couple of months you're carrying more open threads than any human
+can hold in their head. So the good ones go quiet. Every one of those is a relationship you already
+did the hard work for, and then let lapse.
+
+This is the part of networking everybody privately knows they're bad at. It's also the part the
+system quietly takes off you.
+
+**Say "prep me for today" and you get a list.** One list, in order, and every line on it is something
+sitting there waiting for your yes. Someone replied and you owe them an answer. Someone's gone quiet
+since a good call and it's time to nudge them. Someone you parked until this week - here they are,
+on the day you said. It works all that out by looking at your email, your LinkedIn messages and your
+call transcripts, so you're never the one keeping the score.
+
+**And the message is already written.** You don't get handed a list of chores. You get "here's
+Sarah, here's what the two of you talked about on the 14th, here's the email - want it?" You read
+it, tweak anything that isn't quite how you'd say it, and say yes. Then she drops off the list. Ten
+minutes of your morning and the week's follow-up is done.
+
+**Not today? Park them.** "Not until March" - and they come back to you in March, not before.
+That's what makes the list liveable: nothing sits there nagging at you, and nothing gets quietly
+lost either.
+
+And as everywhere else, nothing goes anywhere without you. Every message on that list waits for you
+to press send.
+
+Guy reckons this is the single most valuable thing the system does for you, once you're up and
+running. The meetings are the fun part - but the follow-up is where a pile of nice conversations
+either turns into a network, or turns into a list of people you once met.
 
 ---
 
