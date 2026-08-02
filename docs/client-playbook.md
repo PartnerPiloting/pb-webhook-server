@@ -98,9 +98,9 @@ Here's the whole thing in order, so you can see where any one piece fits.
 10. **Book the next one before you leave.** This is the step almost everybody skips, and it's the one
     that turns a nice conversation into a working relationship.
 11. **Follow up.** Wingguy drafts the email from the transcript of what you actually discussed. And
-    from there it keeps the list for you - say "prep me for today" and everyone you owe something to
-    comes up in order, drafts already written. And if they'd like to build their own network the way
-    you are, that's your reason to reconvene.
+    from there it keeps the list for you - say "show me my follow-ups" and everyone you owe something
+    to comes up in order, drafts already written. And if they'd like to build their own network the
+    way you are, that's your reason to reconvene.
 
 Then it loops, at a pace you choose - you pick how many calls a week you want, and we tune the
 searches and the volume until that's what happens.
@@ -716,11 +716,11 @@ did the hard work for, and then let lapse.
 This is the part of networking everybody privately knows they're bad at. It's also the part the
 system quietly takes off you.
 
-**Say "prep me for today" and you get a list.** One list, in order, and every line on it is something
-sitting there waiting for your yes. Someone replied and you owe them an answer. Someone's gone quiet
-since a good call and it's time to nudge them. Someone you parked until this week - here they are,
-on the day you said. It works all that out by looking at your email, your LinkedIn messages and your
-call transcripts, so you're never the one keeping the score.
+**Say "show me my follow-ups" and you get a list.** One list, in order, and every line on it is
+something sitting there waiting for your yes. Someone replied and you owe them an answer. Someone's
+gone quiet since a good call and it's time to nudge them. Someone you parked until this week - here
+they are, on the day you said. It works all that out by looking at your email, your LinkedIn
+messages and your call transcripts, so you're never the one keeping the score.
 
 **And the message is already written.** You don't get handed a list of chores. You get "here's
 Sarah, here's what the two of you talked about on the 14th, here's the email - want it?" You read
