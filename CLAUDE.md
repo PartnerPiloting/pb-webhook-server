@@ -34,6 +34,9 @@ git fetch origin && git show origin/main:docs/client-playbook.md | grep "^## "
 - **House style:** plain spaced short dash ` - `, never an em or en dash. Australian English.
   Client-facing wording is always "instructions", never "rules".
 - **Show Guy the finished topic before committing** - this ships straight to clients on deploy.
+- To review the playbook whole: `node scripts/build-playbook-page.js` renders every topic onto one
+  page in journey order, with a word count per topic so thin coverage is visible. Output is
+  git-ignored. Re-run it after any playbook edit.
 - Voice is Guy in the first person, except claims about how good Wingguy is, which stay third
   person ("Guy reckons..."). The tool must never praise its own drafting.
 

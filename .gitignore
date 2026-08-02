@@ -19,3 +19,6 @@ node_modules/
 # Ignore Windows reserved device name that can appear accidentally
 NUL.env.test*
 env-var-analysis.json
+
+# Generated review page for the client playbook (scripts/build-playbook-page.js)
+playbook-review.html
