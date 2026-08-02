@@ -101,7 +101,7 @@ async function runGetStarted(_args = {}, tenant = TENANT) {
   parts.push('');
   parts.push('**Why this matters:** this isn\'t a chatbot bolted on the side - it\'s your calendar, inbox, CRM and LinkedIn pulled together under one assistant that works *your* way. That connective layer underneath is the whole point. Guy runs his entire LinkedIn follow-up through this - recently 37 personalised messages to 20 people in the time it used to take him to do five.');
   parts.push('');
-  parts.push('Just tell me what you\'d like to do, say **"show me the full picture"** to see what this looks like fully connected, or **"let\'s set up my rules"** to make my drafting sound like you.');
+  parts.push('Just tell me what you\'d like to do, say **"show me the full picture"** for everything you can ask me, or **"let\'s set up my instructions"** to make my drafting sound like you. Stuck on the how rather than the what? Ask me things like **"who should I be reaching out to?"** - I have Guy\'s whole method written down.');
 
   return { text: parts.join('\n') };
 }
@@ -111,21 +111,28 @@ async function runVision(_args = {}, tenant = TENANT) {
   const name = s ? s.name : '';
 
   const parts = [];
-  parts.push(`**Welcome${name ? ', ' + name : ''} - here's what Wingguy does for you.**`);
+  parts.push(`**Welcome${name ? ', ' + name : ''} - here's what I can do for you.**`);
   parts.push('');
-  parts.push('I\'m your LinkedIn follow-up, living right here in your Claude. Day to day:');
-  parts.push('- **A lead accepts your connection** → I draft the thanks-for-connecting note in your voice, off their real profile.');
-  parts.push('- **They reply interested** → I draft your response, and offer real times from your calendar - your hours, never a double-book.');
-  parts.push('- **They pick a time** → I book it, invite out, your meeting link on it, reminders set.');
-  parts.push('- **After the call** → I pull the transcript and draft the follow-up email in your mailbox, links clean.');
+  parts.push('I\'m your LinkedIn follow-up, and I work in two places: right here in your Claude, and inside LinkedIn itself if you\'re using the Chrome extension.');
   parts.push('');
-  parts.push('All of it on *your* rules - your voice, not a template. Guy runs his whole pipeline this way - 37 personalised messages to 20 people in the time it took him to do five.');
+  parts.push('**Just say any of these:**');
+  parts.push('- **"Show me my follow-ups"** - your ranked list of everyone you owe something, drafts already written. Park anyone until a date, or drop them for good.');
+  parts.push('- **"What\'s on today?"** or **"Prepare me for my 2pm"** - your diary, plus everything I know about who you\'re meeting: past calls, emails, what you agreed last time.');
+  parts.push('- **"Remind me about Sarah"** - instant memory on anyone. Your whole history with them, in one go.');
+  parts.push('- **"Draft the follow-up from this morning\'s call"** - I read the transcript and write it in your own mailbox. I never send. That is always you.');
+  parts.push('- **"When am I free Thursday?"** / **"Offer him three times"** / **"Book 10am Tuesday"** - real slots with your booking rules already applied, then the invite, your meeting link and the reminders.');
+  parts.push('- **"Write his thanks-for-connecting"** - off their real profile, in your voice, never a template.');
+  parts.push('- **"Update my instructions"** - change how I write, in plain English. I show you the change before I make it, and it sticks for good.');
+  parts.push('');
+  parts.push('**And I know the method, not just the mechanics.** Guy\'s whole approach is written down in here - who to go after, what to say when someone accepts, why the second meeting is the one that matters, how to hold a steady pace. Ask me things like **"who should I be reaching out to?"** or **"what do I say when they accept?"** and you get his answer in his words, not generic advice off the internet.');
+  parts.push('');
+  parts.push('All of it on *your* instructions - your voice, not a template. Guy runs his whole pipeline this way - 37 personalised messages to 20 people in the time it took him to do five.');
   parts.push('');
 
   // How it works now (copy/paste) vs the optional next rung (the extension) — Guy's framing 2026-07-13.
   parts.push('**How it works right now:** you copy a lead\'s details across from LinkedIn, paste them to me here in Claude, and I do the rest. Simple - and honestly, just this saves serious time. Guy ran it exactly this way for months.');
   parts.push('');
-  parts.push('**When you want to go faster:** there\'s the **Wingguy Chrome extension** - it does all of this *inside* LinkedIn itself, so there\'s no copy-pasting at all. Totally optional - you can happily stay on just Claude and Wingguy, and it\'s great. When you\'re ready, the extension runs either on your own Anthropic key or a simple flat fee - whatever suits you.');
+  parts.push('**When you want to go faster:** there\'s the **Wingguy Chrome extension** - it does the drafting on the profile itself, so there\'s no copy-pasting at all, and it notices what you actually send so your follow-up list stays right. Totally optional - you can happily stay on just Claude and Wingguy, and it\'s great. When you\'re ready, the extension runs either on your own Anthropic key or a simple flat fee - whatever suits you.');
   parts.push('');
 
   // "Where you and I are" — state-aware setup, folded in as the good part.
@@ -141,13 +148,13 @@ async function runVision(_args = {}, tenant = TENANT) {
     parts.push('**Where you and I are right now:** you\'re connected and I can see your leads, so we can start today. To open up the full thing there\'s a little setup, and it\'s the good part:');
     const bullets = [];
     asks.forEach((a) => bullets.push('- ' + a));
-    if (rulesToDo) bullets.push('- and your **rules** - the great part: you shape every message in plain English, just by telling me, and it keeps getting sharper the more we go.');
+    if (rulesToDo) bullets.push('- and your **instructions** - the great part: you shape every message in plain English, just by telling me, and it keeps getting sharper the more we go.');
     parts.push(bullets.join('\n'));
   }
   parts.push('');
   parts.push('**The honest headline:** the more outreach you\'re doing, the more this hands back - at real volume, we\'re talking hours a day.');
   parts.push('');
-  parts.push('**Want to see it?** Copy a lead across from LinkedIn and I\'ll draft their note now - then we\'ll tune it to sound exactly like you. Or say **"let\'s set up my rules"** and we\'ll start there.');
+  parts.push('**Want to see it?** Copy a lead across from LinkedIn and I\'ll draft their note now - then we\'ll tune it to sound exactly like you. Or say **"let\'s set up my instructions"** and we\'ll start there.');
 
   return { text: parts.join('\n') };
 }
@@ -318,9 +325,9 @@ async function runSetupRules(_args = {}, tenant = TENANT) {
   const freshStart = done.length === 0;
 
   const parts = [];
-  parts.push(`**Let's set up your rules${name ? ', ' + name : ''}.**`);
+  parts.push(`**Let's set up your instructions${name ? ', ' + name : ''}.**`);
   if (justSeeded) {
-    parts.push('', "I've loaded your starting rulebook — the shared craft (how to write well, book, follow up) is already in place. Now we make it *yours*.");
+    parts.push('', "I've loaded your starting instructions - the shared craft (how to write well, book, follow up) is already in place. Now we make it *yours*.");
   }
   if (freshStart) {
     parts.push('', 'How this works: you never touch a file or a setting. You tell me in plain English how you want things done, I write it up and show you, and it only sticks once you say yes. Change anything the same way, any time.');
@@ -328,14 +335,14 @@ async function runSetupRules(_args = {}, tenant = TENANT) {
   if (done.length) parts.push('', `**Done so far:** ${done.map((b) => b.title).join(', ')}.`);
 
   if (!remaining.length) {
-    parts.push('', "**That's everything — your rules are set up.** From here the best tuning happens as you work: whenever a draft isn't quite right, just tell me (\"warmer\", \"shorter\", \"I'd say it like this\") and I'll fold it into your rules. Before you go live in earnest, sanity-check that your angle and targeting genuinely sound like *you*, not a generic default.");
+    parts.push('', "**That's everything - your instructions are set up.** From here the best tuning happens as you work: whenever a draft isn't quite right, just tell me (\"warmer\", \"shorter\", \"I'd say it like this\") and I'll fold it into your instructions. Before you go live in earnest, sanity-check that your angle and targeting genuinely sound like *you*, not a generic default.");
     return { text: parts.join('\n') };
   }
 
   const next = remaining[0];
   parts.push('', `**Still to do:** ${remaining.map((b) => b.title).join(', ')}. Let's do **${next.title}** now.`, '');
   parts.push(next.script(ctx));
-  parts.push('', 'Once this one is committed, call wingguy_setup_rules again and I\'ll bring up the next — we go one at a time.');
+  parts.push('', 'Once this one is committed, call wingguy_setup_rules again and I\'ll bring up the next - we go one at a time.');
   return { text: parts.join('\n') };
 }
 
@@ -541,7 +548,7 @@ const TOOL_DEFS = [
   {
     name: 'wingguy_learn',
     description:
-      'THE CLIENT PLAYBOOK - Guy\'s own explanation of the whole I Know A Guy method, served one topic at a time. This is the ONLY authoritative source on how this system works and why - NEVER answer questions about the method from general knowledge. Call it when the user asks about: the big picture / what this is really about; the process start to finish; what to say they do; setting up their LinkedIn profile; who to reach out to; LinkedIn Premium vs Sales Navigator and building the search; Linked Helper (installing it, where it runs, the free trial, standard vs pro); scoring and attributes; setting up Wingguy (calendar, email, transcripts, instructions); working their list in the portal; thanks-for-connecting messages; getting meetings booked; how the first meeting runs; the second meeting; their weekly pace; or keeping on top of follow-ups (the daily follow-up list). No args = the topic map. topic="..." = that topic, in Guy\'s words - present it as his, essentially as written. topic="everything" = the WHOLE playbook in one call, for "read me the lot" / "what does the playbook cover" / a client who wants the method end to end - lead with the map, then go deep on what they pick. If the returned text doesn\'t answer the user\'s question, say the playbook doesn\'t cover it and to ask Guy.',
+      'THE CLIENT PLAYBOOK - Guy\'s own explanation of the whole I Know A Guy method, served one topic at a time. This is the ONLY authoritative source on how this system works and why - NEVER answer questions about the method from general knowledge. CALL IT FIRST for ANY "how should I...", "what should I say...", "who should I...", "why do we...", "am I doing this right?", "what do I do next?" question about networking, outreach, LinkedIn, connecting, meetings or follow-up - the client will not use the word "playbook", so route on the SUBJECT of their question, not their vocabulary. A plausible answer that isn\'t Guy\'s method is worse than no answer, because the client cannot tell the difference. Call it when the user asks about: the big picture / what this is really about; the process start to finish; what to say they do; setting up their LinkedIn profile; who to reach out to; LinkedIn Premium vs Sales Navigator and building the search; Linked Helper (installing it, where it runs, the free trial, standard vs pro); scoring and attributes; setting up Wingguy (calendar, email, transcripts, instructions); working their list in the portal; thanks-for-connecting messages; getting meetings booked; how the first meeting runs; the second meeting; their weekly pace; or keeping on top of follow-ups (the daily follow-up list). No args = the topic map. topic="..." = that topic, in Guy\'s words - present it as his, essentially as written. topic="everything" = the WHOLE playbook in one call, for "read me the lot" / "what does the playbook cover" / a client who wants the method end to end - lead with the map, then go deep on what they pick. If the returned text doesn\'t answer the user\'s question, say the playbook doesn\'t cover it and to ask Guy.',
     zodSchema: { topic: z.string().optional().describe('Which topic: a few words from its title (e.g. "big picture", "process", "linked helper", "scoring"). "everything" for the whole playbook in one call. Omit for the topic list.') },
     jsonSchema: { type: 'object', properties: { topic: { type: 'string', description: 'A few words from the topic title (e.g. "big picture", "process", "linked helper", "scoring"). "everything" for the whole playbook in one call. Omit for the topic list.' } } },
     run: runLearn,
