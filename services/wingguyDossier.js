@@ -14,6 +14,17 @@
  * only rebuilds when that person's thread actually changed, so the nightly cost after the first run
  * is near zero. Served instantly by wingguy_dossier; the live dig remains the fallback for questions
  * a dossier didn't anticipate.
+ *
+ * COVERAGE (2026-08-03, the Steve Martin blind spot): the store used to be fed ONLY from the
+ * follow-up pipeline, whose gates (Reconnect On park, upcoming-booking drop) exclude exactly the
+ * people who show up in daily MEETING PREP — parked until their meeting day, booking on the
+ * calendar. Two closures:
+ *   - prepareDossiers also builds for every CRM-matched attendee on the next few days of the
+ *     coach's calendar (park/booking gates deliberately NOT applied — they are follow-up policy,
+ *     not prep policy).
+ *   - buildLiveMiniDossier: when the store still misses, wingguy_dossier assembles a labelled
+ *     live mini-dossier straight from the Leads record (Notes thread, status, transcript-store
+ *     meetings) instead of claiming the person is unknown.
  */
 
 require('dotenv').config();
@@ -24,6 +35,9 @@ const MODEL_ID = process.env.WINGGUY_DRAFT_MODEL_ID || 'claude-sonnet-5';
 const NO_THINKING = { type: 'disabled' };
 const EMAIL_LIMIT = 12;
 const LI_LIMIT = 12;
+// Calendar look-ahead for the meeting-prep dossier pass: enough that a Monday-morning build has
+// covered the weekend's bookings, small enough to stay cheap (cache makes repeats near-free).
+const PREP_CAL_DAYS = 3;
 
 let pool;
 function getPool() {
@@ -208,6 +222,147 @@ async function gatherMeetings(tenantId, recId, fullName) {
   } catch (e) { return []; } finally { c.release(); }
 }
 
+// --- live CRM fallback (the Steve Martin blind spot, 2026-08-03) ---
+
+// Tolerant Alt-Emails split — same delimiters inboundEmailService reads (written newline-separated).
+function splitAltEmails(v) {
+  return String(v || '').toLowerCase().split(/[;,\s]+/).map((s) => s.trim()).filter(Boolean);
+}
+
+/** Every email address mentioned anywhere in a text blob (lowercased, deduped). */
+function extractEmailsFromText(text) {
+  const m = String(text || '').match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g) || [];
+  return [...new Set(m.map((e) => e.toLowerCase()))];
+}
+
+// Fields the mini-dossier wants; the reduced list is the retry when a base lacks the newer columns
+// (Alt Emails / Reconnect On etc. roll out per-client) — same tiered-select trick as the sweep.
+const LIVE_FIELDS_FULL = ['First Name', 'Last Name', 'Email', 'Alt Emails', 'Notes', 'Status', 'Location', 'Headline', 'Company Name', 'LinkedIn Profile URL', 'AI Score', 'Reconnect On', 'Cease FUP'];
+const LIVE_FIELDS_CORE = ['First Name', 'Last Name', 'Email', 'Notes', 'Status', 'Location', 'LinkedIn Profile URL'];
+
+async function selectLeads(base, formula, maxRecords) {
+  for (const fields of [LIVE_FIELDS_FULL, LIVE_FIELDS_CORE]) {
+    try {
+      return await base('Leads').select({ filterByFormula: formula, fields, maxRecords }).all();
+    } catch (e) { /* unknown field in this base — retry with the core list */ }
+  }
+  return [];
+}
+
+/**
+ * Leads-table lookup for the fallback: email first (exact {Email}, then {Alt Emails} membership —
+ * FIND narrows, JS confirms exact, so "jon@x" never matches "tjon@x"), then name substring against
+ * First+Last (as forgiving as the store's own lookup). Returns ALL name matches — the caller shows
+ * a candidate list rather than guessing (the Steve → Steve Peacocke collision is the cautionary tale).
+ */
+async function findLeadRecords(base, { name, email } = {}) {
+  const esc = (s) => String(s).replace(/"/g, '\\"');
+  const em = String(email || '').trim().toLowerCase();
+  if (em) {
+    let recs = await selectLeads(base, `LOWER({Email}) = "${esc(em)}"`, 2);
+    if (!recs.length) {
+      const cands = await selectLeads(base, `AND({Alt Emails} != "", FIND("${esc(em)}", LOWER({Alt Emails})) > 0)`, 5);
+      recs = cands.filter((r) => splitAltEmails(r.fields['Alt Emails']).includes(em));
+    }
+    if (recs.length) return recs;
+  }
+  const nm = String(name || '').trim();
+  if (!nm) return [];
+  return selectLeads(base, `FIND(LOWER("${esc(nm)}"), LOWER({First Name} & " " & {Last Name})) > 0`, 6);
+}
+
+/**
+ * Build a mini-dossier LIVE from the CRM record — the answer when the prepared store has nothing.
+ * No LLM pass: raw material only (LinkedIn thread from Notes, transcript-store meetings, record
+ * facts), clearly labelled so nobody mistakes it for the overnight deep-read. Returns:
+ *   null                      — no CRM record either (caller serves the true miss)
+ *   { multiple: [...] }       — ambiguous name; candidates for the human to pick from
+ *   { payload }               — the mini-dossier, ready for formatLiveDossier
+ */
+async function buildLiveMiniDossier(tenant, { name, email } = {}) {
+  const clientService = require('./clientService');
+  const coach = await clientService.getClientById(tenant);
+  if (!coach || !coach.airtableBaseId) return null;
+  const base = clientService.getClientBase(coach.airtableBaseId);
+  const recs = await findLeadRecords(base, { name, email });
+  if (!recs.length) return null;
+  const brief = (r) => {
+    const f = r.fields;
+    return {
+      name: `${f['First Name'] || ''} ${f['Last Name'] || ''}`.trim(),
+      headline: String(f['Headline'] || '').trim() || null,
+      company: String(f['Company Name'] || '').trim() || null,
+      location: String(f['Location'] || '').trim() || null,
+      linkedin: String(f['LinkedIn Profile URL'] || '').trim() || null,
+      email: String(f['Email'] || '').trim() || null,
+    };
+  };
+  if (recs.length > 1) return { multiple: recs.map(brief) };
+
+  const rec = recs[0];
+  const f = rec.fields;
+  const fullName = `${f['First Name'] || ''} ${f['Last Name'] || ''}`.trim() || String(name || '').trim();
+  const li = gatherLinkedIn(f['Notes'], f['First Name'] || fullName.split(' ')[0], 20);
+  const meetings = await gatherMeetings(tenant, rec.id, fullName);
+  const onRecord = new Set([String(f['Email'] || '').trim().toLowerCase(), ...splitAltEmails(f['Alt Emails'])].filter(Boolean));
+  // An address handed over IN the conversation that never reached the record (learn-back only
+  // listens to inbound email, not LinkedIn) — surface as a suggested update, never write silently.
+  const unrecordedEmails = extractEmailsFromText(f['Notes']).filter((e) => !onRecord.has(e));
+  return {
+    payload: {
+      ...brief(rec),
+      name: fullName,
+      recId: rec.id,
+      status: (f['Status'] && f['Status'].name) || f['Status'] || null,
+      aiScore: typeof f['AI Score'] === 'number' ? f['AI Score'] : null,
+      reconnectOn: f['Reconnect On'] || null,
+      ceased: String((f['Cease FUP'] && f['Cease FUP'].name) || f['Cease FUP'] || '') === 'Yes',
+      linkedinThread: li,
+      meetings: meetings.map(({ transcript, ...rest }) => rest),
+      unrecordedEmails,
+      builtAt: new Date().toISOString(),
+    },
+  };
+}
+
+/** Render the live mini-dossier — same conventions as formatDossier, honestly labelled. */
+function formatLiveDossier(live) {
+  if (!live || !live.payload) return null;
+  const p = live.payload;
+  const lines = [
+    `LIVE MINI-DOSSIER: ${p.linkedin ? `[${p.name}](${p.linkedin})` : p.name} — no overnight dossier existed, so this was assembled JUST NOW from the CRM record. Raw material, not the overnight deep-read: relay the facts, don't invent a synthesis the material can't support.`,
+  ];
+  if (p.linkedin) lines.push(`LinkedIn profile: ${p.linkedin}  ← ALWAYS show this link (or the linked name) when presenting.`);
+  lines.push(p.location
+    ? `Based: ${p.location} (state where they're based per the booking rules; times offered later must be on THEIR clock)`
+    : `Based: NOT RECORDED — before offering any meeting times, ask the human where this person is (booking rules: never guess a timezone).`);
+  const facts = [];
+  if (p.headline) facts.push(p.headline);
+  if (p.company) facts.push(p.company);
+  if (facts.length) lines.push(`Who: ${facts.join(' — ')}`);
+  const state = [];
+  if (p.status) state.push(`status ${p.status}`);
+  if (typeof p.aiScore === 'number') state.push(`AI score ${p.aiScore}`);
+  if (p.reconnectOn) state.push(`parked (Reconnect On ${String(p.reconnectOn).slice(0, 10)})`);
+  if (p.ceased) state.push('follow-ups CEASED (they must speak first)');
+  if (state.length) lines.push(`Record state: ${state.join(' · ')}`);
+  if ((p.unrecordedEmails || []).length) {
+    lines.push(`\n⚠ EMAIL SEEN IN THE THREAD, NOT ON THE RECORD: ${p.unrecordedEmails.join(', ')} — they handed this over in conversation but the record's Email/Alt Emails never learned it. Suggest the human confirm and update the record; NEVER change it silently.`);
+  }
+  if ((p.meetings || []).length) {
+    lines.push(`\nMEETINGS (transcript store):`);
+    for (const m of p.meetings) lines.push(`- ${m.date || '?'} "${m.title}"${m.summary ? `: ${String(m.summary).slice(0, 500)}` : ' (no summary stored)'}`);
+  }
+  if ((p.linkedinThread || []).length) {
+    lines.push(`\nLINKEDIN THREAD (from the record's Notes, oldest first):`);
+    for (const t of p.linkedinThread) lines.push(`- ${t.date} [${t.dir}] ${t.text || ''}`);
+  } else {
+    lines.push(`\nNo LinkedIn thread on the record's Notes.`);
+  }
+  lines.push(`\n(Email history is NOT included in a live build — for that, wingguy_lead_correspondence email=${p.email || '<their email>'}. This person will get a full overnight dossier if they appear on the calendar or in the queue.)`);
+  return lines.join('\n');
+}
+
 // --- deep read (one LLM pass) ---
 
 const DEEP_SYSTEM = `You prepare a coach's memory-dossier for one contact. From the dated timeline (emails, LinkedIn messages, calendar responses), meeting summaries and any full transcript, write JSON:
@@ -295,6 +450,50 @@ async function prepareDossiers(tenant) {
       // it rest" for cold threads suppresses the draft below).
       addFrom(p && p.items, ['reopen', 'park', 'writeoff']);
     } catch (_) {}
+
+    // One Airtable read for Notes + missing rec ids (dossiers need LinkedIn history). Pulled up
+    // ahead of the calendar pass, which needs it to match invite emails to records; Alt Emails
+    // included tiered-select style (the column rolls out per-client).
+    let records = [];
+    const NOTE_FIELDS = ['First Name', 'Last Name', 'Email', 'Notes', 'LinkedIn Profile URL', 'Location'];
+    for (const fields of [[...NOTE_FIELDS, 'Alt Emails'], NOTE_FIELDS]) {
+      try { records = await base('Leads').select({ fields }).all(); break; } catch (_) { /* Alt Emails absent here */ }
+    }
+    const byEmail = new Map(); const byName = new Map();
+    for (const r of records) {
+      const em = String(r.fields['Email'] || '').trim().toLowerCase();
+      const nm = `${r.fields['First Name'] || ''} ${r.fields['Last Name'] || ''}`.trim().toLowerCase();
+      if (em && !byEmail.has(em)) byEmail.set(em, r);
+      for (const alt of splitAltEmails(r.fields['Alt Emails'])) if (!byEmail.has(alt)) byEmail.set(alt, r);
+      if (nm && !byName.has(nm)) byName.set(nm, r);
+    }
+
+    // MEETING-PREP COVERAGE (the Steve Martin blind spot, 2026-08-03): the two stores above are
+    // follow-up products, and their gates — Reconnect On park, upcoming-booking drop — exclude
+    // exactly the people the coach asks to be prepped on each morning ("parked until their meeting
+    // day, with the meeting on the calendar" IS the normal state of someone about to be met). So
+    // every CRM-matched attendee on the next few days of the calendar gets a dossier too; the
+    // follow-up gates deliberately do NOT apply here. hasDraft=true: prep wants the memory (deep
+    // read), not an outreach guidance draft for someone we're about to see anyway.
+    try {
+      const { getMeetingsInWindow } = require('./calendarProvider');
+      const own = require('./wingguyMailMcp').coachOwnEmails(coach);
+      const cal = await getMeetingsInWindow(coach, new Date(), new Date(Date.now() + PREP_CAL_DAYS * MS_DAY));
+      for (const ev of (cal && cal.events) || []) {
+        const cands = [...(ev.attendees || []), ...(ev.organizerEmail ? [{ email: ev.organizerEmail }] : [])];
+        for (const a of cands) {
+          const em = String(a.email || '').trim().toLowerCase();
+          if (!em || a.self || own.has(em)) continue;
+          const rec = byEmail.get(em);
+          if (!rec) continue; // not a CRM person — no material to build from
+          const primary = String(rec.fields['Email'] || '').trim().toLowerCase();
+          const nm = `${rec.fields['First Name'] || ''} ${rec.fields['Last Name'] || ''}`.trim();
+          const key = primary || em;
+          if (!people.has(key)) people.set(key, { key, name: nm || a.displayName || em, recId: rec.id, email: primary || em, hasDraft: true });
+        }
+      }
+    } catch (e) { console.warn(`[dossier] calendar prep pass skipped: ${e.message}`); }
+
     if (!people.size) return out;
 
     // Voice rules + asset library, rendered ONCE for guidance drafts. Assets go in as {{asset:key}}
@@ -308,16 +507,6 @@ async function prepareDossiers(tenant) {
       const active = assets.filter((a) => a.status === 'active' && a.url);
       if (active.length) assetLines = `\n\nASSET LIBRARY (optional — include AT MOST ONE link and ONLY when genuinely helpful to this person, as {{asset:KEY}} exactly; usually include none): ${active.map((a) => `${a.asset_key}${a.kind ? ` (${a.kind})` : ''}`).join(', ')}`;
     } catch (_) {}
-
-    // One Airtable read for Notes + missing rec ids (dossiers need LinkedIn history).
-    const records = await base('Leads').select({ fields: ['First Name', 'Last Name', 'Email', 'Notes', 'LinkedIn Profile URL', 'Location'] }).all();
-    const byEmail = new Map(); const byName = new Map();
-    for (const r of records) {
-      const em = String(r.fields['Email'] || '').trim().toLowerCase();
-      const nm = `${r.fields['First Name'] || ''} ${r.fields['Last Name'] || ''}`.trim().toLowerCase();
-      if (em && !byEmail.has(em)) byEmail.set(em, r);
-      if (nm && !byName.has(nm)) byName.set(nm, r);
-    }
 
     // Client's stored key when present (header-less path); blank -> platform, as before.
     const anthropicKey = coach.anthropicApiKey || null;
@@ -343,6 +532,15 @@ async function prepareDossiers(tenant) {
 
         const read = await deepRead(llm, person.name, timeline, meetings);
         const lastHuman = [...timeline].reverse().find((t) => t.kind !== 'calendar');
+
+        // An email handed over INSIDE the LinkedIn thread that never reached the record — the
+        // learn-back path only listens to inbound email, so surface it here for the human to
+        // confirm (never written to the record silently).
+        let unrecordedEmails = [];
+        if (rec) {
+          const onRecord = new Set([String(rec.fields['Email'] || '').trim().toLowerCase(), ...splitAltEmails(rec.fields['Alt Emails'])].filter(Boolean));
+          unrecordedEmails = extractEmailsFromText(rec.fields['Notes']).filter((e) => !onRecord.has(e));
+        }
 
         // Guidance draft for anyone WITHOUT a store draft: embodies the deep-read's next move —
         // recalls the relationship warmly, addresses what actually happened, proposes the step.
@@ -378,6 +576,7 @@ async function prepareDossiers(tenant) {
           lastHuman: lastHuman ? `${lastHuman.date} (${lastHuman.dir}, ${lastHuman.kind})${lastHuman.subject ? ` "${lastHuman.subject}"` : ''}` : null,
           standing: read.standing || '', commitmentsYou: read.commitments_you || [], commitmentsThem: read.commitments_them || [], remember: read.remember || [], nextMove: read.next_move || '',
           suggestedDraft: suggested,
+          unrecordedEmails,
         });
         out.built++;
       } catch (e) { out.failed++; console.warn(`[dossier] ${person.name}: ${e.message}`); }
@@ -420,6 +619,9 @@ function formatDossier(row, opts = {}) {
     lines.push(`\nNO DRAFT ON PURPOSE — the overnight read judged this one should rest. Compose only if the human insists.`);
   }
   if (p.lastHuman) lines.push(`Last human message: ${p.lastHuman}`);
+  if ((p.unrecordedEmails || []).length) {
+    lines.push(`\n⚠ EMAIL SEEN IN THE THREAD, NOT ON THE RECORD: ${p.unrecordedEmails.join(', ')} — handed over in conversation but never learned onto the record's Email/Alt Emails. Suggest the human confirm and update the record; NEVER change it silently.`);
+  }
   if ((p.meetings || []).length) {
     lines.push(`\nMEETINGS:`);
     for (const m of p.meetings) lines.push(`- ${m.date || '?'} "${m.title}"${m.summary ? `: ${String(m.summary).slice(0, 500)}` : ' (no summary stored)'}`);
@@ -436,4 +638,4 @@ function formatDossier(row, opts = {}) {
   return lines.join('\n');
 }
 
-module.exports = { prepareDossiers, findDossierByName, getDossierRow, formatDossier, scrub, parseJsonArrayLoose };
+module.exports = { prepareDossiers, findDossierByName, getDossierRow, formatDossier, buildLiveMiniDossier, formatLiveDossier, scrub, parseJsonArrayLoose };

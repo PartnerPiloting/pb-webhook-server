@@ -1354,13 +1354,17 @@ const TOOL_DEFS = [
   {
     name: 'wingguy_dossier',
     description:
-      'THE INSTANT MEMORY behind every queue person — call this for "remind me about X", "jog X", "any emails from X?", "how did the call with X go?", "what did we agree?". Returns the PRE-BUILT dossier (no waiting): where the relationship actually stands, commitments each side made, suggested next move, meeting summaries from the transcript store, and the full dated timeline (emails incl. calendar accepts/declines, LinkedIn messages). Rebuilt automatically whenever the person\'s thread changes. If no dossier exists for the name (person outside the prepared queue), say so and offer the live dig (wingguy_lead_correspondence / recall transcripts) with a "this will take a moment" warning.',
+      'THE INSTANT MEMORY behind every queue person AND every meeting attendee — call this for "remind me about X", "jog X", "any emails from X?", "how did the call with X go?", "what did we agree?", and for EACH attendee during "prep me for today\'s meetings". Returns the PRE-BUILT dossier (no waiting): where the relationship actually stands, commitments each side made, suggested next move, meeting summaries from the transcript store, and the full dated timeline (emails incl. calendar accepts/declines, LinkedIn messages). Rebuilt automatically whenever the person\'s thread changes. When the prepared store has nothing, it falls back AUTOMATICALLY to a live mini-dossier built from the CRM record (LinkedIn thread, status, meetings) — so a miss means the person truly is not in the CRM, not merely outside the queue. Pass email too when you have one (e.g. from a calendar invite) — matching is surer and reaches Alt Emails.',
     zodSchema: {
       name: z.string().describe('The person\'s name (or part of it).'),
+      email: z.string().optional().describe('An email known for this person (e.g. from the calendar invite) — sharpens the lookup; matches the record\'s Email AND Alt Emails.'),
     },
     jsonSchema: {
       type: 'object',
-      properties: { name: { type: 'string', description: 'The person\'s name (or part of it).' } },
+      properties: {
+        name: { type: 'string', description: 'The person\'s name (or part of it).' },
+        email: { type: 'string', description: 'An email known for this person (e.g. from the calendar invite) — sharpens the lookup; matches the record\'s Email AND Alt Emails.' },
+      },
       required: ['name'],
     },
     run: runDossier,
@@ -1681,12 +1685,26 @@ async function runQueue({ page } = {}, tenant = TENANT) {
   return { text: lines.join('\n') };
 }
 
-/** Serve a person's pre-built dossier — instant, from the store. */
-async function runDossier({ name } = {}, tenant = TENANT) {
+/** Serve a person's pre-built dossier — instant, from the store; live CRM fallback on a miss. */
+async function runDossier({ name, email } = {}, tenant = TENANT) {
   const dossier = require('./wingguyDossier');
   try {
     const row = await dossier.findDossierByName(tenant, name);
-    if (!row) return { text: `No prepared dossier for "${name}" — they're outside the prepared queue. Offer the live dig (wingguy_lead_correspondence, transcripts) with a "this will take a moment" warning.` };
+    if (!row) {
+      // LIVE FALLBACK (the Steve Martin blind spot, 2026-08-03): the prepared store is fed from
+      // the follow-up pipeline + the calendar pass, but a person can still fall between builds —
+      // and "no dossier" must NEVER be said about someone the CRM knows intimately. Build a
+      // labelled mini-dossier from the Leads record right now; only a CRM miss too is a real miss.
+      try {
+        const live = await dossier.buildLiveMiniDossier(tenant, { name, email });
+        if (live && live.multiple) {
+          const cand = live.multiple.map((c) => `- ${c.linkedin ? `[${c.name}](${c.linkedin})` : c.name}${c.headline ? ` — ${c.headline}` : ''}${c.company ? `, ${c.company}` : ''}${c.location ? ` (${c.location})` : ''}`).join('\n');
+          return { text: `No prepared dossier for "${name}", and ${live.multiple.length} CRM records match that name — ask the human which one they mean rather than guessing:\n${cand}\nThen call wingguy_dossier again with the full name (or their email).` };
+        }
+        if (live) return { text: dossier.formatLiveDossier(live) };
+      } catch (e) { console.warn(`[dossier] live fallback failed for "${name}": ${e.message}`); }
+      return { text: `No prepared dossier for "${name}" AND no CRM record matches that name${email ? ` or ${email}` : ''} — this person appears genuinely unknown to the system. Double-check the spelling with the human; the live dig (wingguy_lead_correspondence by email, recall transcripts by name) only helps if some history exists under a different spelling.` };
+    }
     // Profile-link fallback for dossiers built before `linkedin` was stored in the payload
     // (Guy 2026-07-24: "click through to their LinkedIn profile" while actioning). Best-effort —
     // one light Airtable lookup; any failure just serves the dossier without the link.
