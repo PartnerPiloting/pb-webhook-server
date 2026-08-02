@@ -432,6 +432,16 @@ function loadPlaybook() {
   return { topics };
 }
 
+// "Give me the lot." One topic per call stays the DEFAULT (a client asking one question should
+// never get a wall of text), but an explicit ask for the whole playbook is a real request - Guy
+// wants clients able to read the method end to end and talk about it consistently. Deliberately
+// NOT owner-gated.
+// Matched narrowly on purpose: a bare "everything" means the lot, but "the message that decides
+// everything" is the thanks-for-connecting topic, so a loose \beverything\b test would hijack it.
+const ALL_EXACT = /^(all|everything|all topics|all of it|the lot|the whole lot|the whole thing|whole thing|the whole playbook|whole playbook|full playbook|entire playbook|the whole document|read me everything|show me everything|everything you have)$/i;
+const ALL_PHRASE = /\b(all the topics|all topics|whole playbook|entire playbook|full playbook|whole document|entire document)\b/i;
+const wantsEverything = (q) => ALL_EXACT.test(q) || ALL_PHRASE.test(q);
+
 // Loose title match: whole-query substring wins outright, else most query words hit.
 function findPlaybookTopic(topics, query) {
   const q = String(query || '').toLowerCase().trim();
@@ -470,8 +480,21 @@ async function runLearn(args = {}, _tenant = TENANT) {
       text:
         "**The client playbook** - Guy's own explanation of the whole I Know A Guy system, one topic at a time. Topics:\n" +
         pb.topics.map((t) => `- ${t.title}`).join('\n') +
-        '\n\n---\nPick whichever fits the user\'s question and call again with topic="...". New or just curious? Start with the big picture. ' +
+        '\n\n---\nPick whichever fits the user\'s question and call again with topic="...", or topic="everything" for the whole playbook in one go. New or just curious? Start with the big picture. ' +
         "These are Guy's words - serve them as his. If a question isn't covered by any topic, say so and point them to Guy rather than improvising.",
+    };
+  }
+
+  if (wantsEverything(topicArg)) {
+    return {
+      text:
+        `**The client playbook in full** - all ${pb.topics.length} topics, Guy's own words.\n\n` +
+        pb.topics.map((t) => t.body).join('\n\n') +
+        '\n\n---\n' +
+        "That's the whole playbook - Guy speaking throughout, so present it as his words, not paraphrased into generic advice.\n" +
+        'It is long. Unless they asked to read the lot end to end, lead with the map of topics and what each covers, then go deep on whatever they pick.\n' +
+        "One exception to the first person: any claim about how good Wingguy itself is stays attributed to Guy (\"Guy reckons...\") - you praising your own drafting costs the client's trust and his vouching for it doesn't.\n" +
+        "If they ask something the playbook doesn't cover, say so and point them to Guy - never fill the gap from general knowledge.",
     };
   }
 
@@ -518,9 +541,9 @@ const TOOL_DEFS = [
   {
     name: 'wingguy_learn',
     description:
-      'THE CLIENT PLAYBOOK - Guy\'s own explanation of the whole I Know A Guy method, served one topic at a time. This is the ONLY authoritative source on how this system works and why - NEVER answer questions about the method from general knowledge. Call it when the user asks about: the big picture / what this is really about; the process start to finish; what to say they do; setting up their LinkedIn profile; who to reach out to; LinkedIn Premium vs Sales Navigator and building the search; Linked Helper (installing it, where it runs, the free trial, standard vs pro); scoring and attributes; setting up Wingguy (calendar, email, transcripts, instructions); working their list in the portal; thanks-for-connecting messages; getting meetings booked; how the first meeting runs; the second meeting; or their weekly pace. No args = the topic map. topic="..." = that topic, in Guy\'s words - present it as his, essentially as written. If the returned text doesn\'t answer the user\'s question, say the playbook doesn\'t cover it and to ask Guy.',
-    zodSchema: { topic: z.string().optional().describe('Which topic: a few words from its title (e.g. "big picture", "process", "linked helper", "scoring"). Omit for the full topic list.') },
-    jsonSchema: { type: 'object', properties: { topic: { type: 'string', description: 'A few words from the topic title (e.g. "big picture", "process", "linked helper", "scoring"). Omit for the full topic list.' } } },
+      'THE CLIENT PLAYBOOK - Guy\'s own explanation of the whole I Know A Guy method, served one topic at a time. This is the ONLY authoritative source on how this system works and why - NEVER answer questions about the method from general knowledge. Call it when the user asks about: the big picture / what this is really about; the process start to finish; what to say they do; setting up their LinkedIn profile; who to reach out to; LinkedIn Premium vs Sales Navigator and building the search; Linked Helper (installing it, where it runs, the free trial, standard vs pro); scoring and attributes; setting up Wingguy (calendar, email, transcripts, instructions); working their list in the portal; thanks-for-connecting messages; getting meetings booked; how the first meeting runs; the second meeting; their weekly pace; or keeping on top of follow-ups (the daily follow-up list). No args = the topic map. topic="..." = that topic, in Guy\'s words - present it as his, essentially as written. topic="everything" = the WHOLE playbook in one call, for "read me the lot" / "what does the playbook cover" / a client who wants the method end to end - lead with the map, then go deep on what they pick. If the returned text doesn\'t answer the user\'s question, say the playbook doesn\'t cover it and to ask Guy.',
+    zodSchema: { topic: z.string().optional().describe('Which topic: a few words from its title (e.g. "big picture", "process", "linked helper", "scoring"). "everything" for the whole playbook in one call. Omit for the topic list.') },
+    jsonSchema: { type: 'object', properties: { topic: { type: 'string', description: 'A few words from the topic title (e.g. "big picture", "process", "linked helper", "scoring"). "everything" for the whole playbook in one call. Omit for the topic list.' } } },
     run: runLearn,
   },
   {

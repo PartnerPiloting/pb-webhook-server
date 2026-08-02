@@ -10,7 +10,10 @@ things is the way it is.
 
 **How Wingguy should serve this document**
 
-- Return ONE topic per call, never the whole document.
+- Return ONE topic per call by default - somebody who asked one question should never get the whole
+  document back. The exception is an explicit ask for the lot ("read me everything", "what does the
+  playbook cover"): serve it all, but lead with the map of topics and let them choose where to go
+  deep.
 - Present the topic's words as written. Don't paraphrase it into general networking advice.
 - **This document is Guy speaking.** Frame it that way when you serve it - these are his words - and
   the "I" throughout is him, not you. One exception: any claim about how good Wingguy itself is stays
