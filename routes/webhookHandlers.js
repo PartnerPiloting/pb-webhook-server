@@ -21,6 +21,10 @@ const { LEAD_FIELDS } = require('../constants/airtableUnifiedConstants.js');
 // Import client service for multi-tenant support
 const { getClientBase, getClientById } = require('../services/clientService.js');
 
+// Files any message LH carried in the payload into the lead's Notes. No-ops unless the campaign
+// has a "Send person to webhook" step after its messaging action (PRO licence) - see the module.
+const { recordLhMessages } = require('../services/lhMessageNotes.js');
+
 // --- LH sender guard (cross-tenant protection) ---
 // Every LH payload announces the LinkedIn account that produced it (my_email / my_full_name).
 // A campaign copied from one client to another keeps the original "Send person to webhook" URL,
@@ -222,6 +226,7 @@ router.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
         let processedCount = 0;
         let errorCount = 0;
         let skippedForeignCount = 0;
+        let messagesFiledCount = 0;
 
         const salesNavBaseUrl = "https://www.linkedin.com/sales/lead/"; // Define this once
 
@@ -294,10 +299,10 @@ router.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
                 
                 // Use the original working upsertLead function from leadService.js
                 // Pass the entire leadForUpsert object and the client-specific Airtable base
-                await upsertLead(
+                const upsertedRecordId = await upsertLead(
                     leadForUpsert,      // The complete lead object
                     null,               // finalScore
-                    null,               // aiProfileAssessment  
+                    null,               // aiProfileAssessment
                     null,               // attribute_reasoning_obj
                     null,               // attributeBreakdown
                     null,               // auFlag
@@ -306,6 +311,19 @@ router.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
                     clientAirtableBase  // Use the client-specific Airtable base
                 );
                 processedCount++;
+
+                // A message LH sent is invisible to everything downstream until it is in Notes -
+                // the follow-up sweep reads Notes to date the last contact. Deliberately after the
+                // upsert and swallowed on failure: filing history must never cost us the lead.
+                const filed = await recordLhMessages({
+                    base: clientAirtableBase,
+                    recordId: upsertedRecordId,
+                    lh,
+                    clientName: client.clientName,
+                    timezone: client.timezone,
+                    log
+                });
+                messagesFiledCount += filed.added;
             } catch (upsertError) {
                 errorCount++;
                 log.error(`Error upserting lead (Attempted URL: ${lh.profileUrl || lh.linkedinProfileUrl || lh.profile_url || 'N/A'}): ${upsertError.message}`, upsertError.stack);
@@ -313,9 +331,9 @@ router.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
                 await alertAdmin("Lead Upsert Error in /lh-webhook/upsertLeadOnly", `Client: ${clientId}\\nAttempted URL: ${lh.profileUrl || lh.linkedinProfileUrl || lh.profile_url || 'N/A'}\\nError: ${upsertError.message}`);
             }
         }
-        log.info(`Processing finished. Upserted/Updated: ${processedCount}, Failed: ${errorCount}, Skipped (foreign sender): ${skippedForeignCount}`);
+        log.info(`Processing finished. Upserted/Updated: ${processedCount}, Failed: ${errorCount}, Skipped (foreign sender): ${skippedForeignCount}, Messages filed to Notes: ${messagesFiledCount}`);
         if (!res.headersSent) {
-            res.json({ message: `Client ${clientId}: Upserted/Updated ${processedCount} LH profiles, Failed: ${errorCount}${skippedForeignCount ? `, Skipped (foreign sender): ${skippedForeignCount}` : ''}` });
+            res.json({ message: `Client ${clientId}: Upserted/Updated ${processedCount} LH profiles, Failed: ${errorCount}${skippedForeignCount ? `, Skipped (foreign sender): ${skippedForeignCount}` : ''}${messagesFiledCount ? `, Messages filed: ${messagesFiledCount}` : ''}` });
         }
     } catch (err) {
         const finalClientId = req.query.client || 'unknown';

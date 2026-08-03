@@ -129,9 +129,37 @@ single action on this whole list.
   the email series system).
 - Client pulse setup - depends on whether clients are already lead records (see gate above).
 - Graduation definition - to be agreed, then the pulse can detect relapse against it.
+- Asset-drop campaigns for clients (ledger-based "who hasn't had X yet", a chat door for
+  choosing a list, batch-screen exclusions) - DEFERRED 2026-08-03, deliberately. Guy runs the
+  first one by hand; the client version gets designed once we know what it should be.
+
+## Re-approaching connected-never-replied leads
+
+The knowaguy.com.au site is the first asset worth re-approaching a cold list with - it asks
+nothing, so it sidesteps the awkwardness of "you never replied". Rung one of the
+staying-in-touch ladder, practised on Guy's own network.
+
+The message: thanks again for connecting → thought you might be interested → one line on the
+idea (stopped chasing strangers, everything comes through people who know a guy) → the link,
+priced as a five-minute read → "keen to hear your thoughts - it's honestly how all my
+business comes to me these days". No sales CTA: the site holds the door, the cadence carries
+the ask. Guy replies to everyone who writes back, manually; non-repliers are let go rather
+than put on a cadence.
+
+**Selection is derived from the conversation, never the "Lead Has Replied" checkbox.** In a
+sample of 120 leads that field said had never replied, 30 had full conversations in their
+Notes - including two current clients. Test instead: any sender other than the client in the
+Notes conversation → exclude; the asset already sent → exclude; Cease FUP = Yes → exclude.
 
 ## Running log
 
 - **2026-08-02** - Document started. Strategy landed: calls taper behind habit + pulse +
   drip; re-onboard the spreadsheet clients; connector-live-before-session-one-ends rule;
   Alistair article queued as first library entry.
+- **2026-08-03** - Site re-approach campaign designed (section above). Found the
+  "Lead Has Replied" field is stale in ~25% of cases. Found that nothing recorded Linked
+  Helper's sent messages anywhere: only the Chrome extension writes conversations into Notes,
+  and only when the human clicks Send - so every LH-messaged lead looked uncontacted to the
+  follow-up sweep. Fixed that (services/lhMessageNotes.js), multi-tenant, because it is a
+  defect for every client. Everything else client-facing deferred - prove the campaign on
+  Guy's own list first.
