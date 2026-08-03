@@ -99,6 +99,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
   
+  // Create a brand-new lead (rescue card: the person genuinely isn't in the Portal yet)
+  if (message.type === 'CREATE_LEAD') {
+    handleCreateLead(message.fields)
+      .then(result => sendResponse({ success: true, data: result }))
+      .catch(error => sendResponse({ success: false, error: error.message }));
+    return true;
+  }
+
   // Check for open portal tab
   if (message.type === 'CHECK_PORTAL_TAB') {
     chrome.tabs.query({
@@ -693,6 +701,35 @@ async function handleQuickUpdate(leadId, content, section = 'linkedin', extras =
     throw new Error(errorMsg);
   }
   
+  return response.json();
+}
+
+// Create a lead. `fields` uses raw Airtable field names ('First Name', 'Last Name',
+// 'LinkedIn Profile URL') because POST /leads spreads them straight onto the record; it also
+// stamps Status = 'On The Radar' server-side. Deliberately NOT sending Source — it's a dropdown,
+// and an unknown choice makes Airtable reject the whole create.
+async function handleCreateLead(fields) {
+  const apiBase = await getApiBase();
+  const headers = await getAuthHeaders();
+
+  const response = await fetch(`${apiBase}/leads`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(fields || {})
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    let errorMsg = `Create failed: ${response.status}`;
+    try {
+      const errorData = JSON.parse(errorText);
+      errorMsg = errorData.details || errorData.error || errorData.message || errorMsg;
+    } catch (e) {
+      if (errorText) errorMsg = errorText.substring(0, 200);
+    }
+    throw new Error(errorMsg);
+  }
+
   return response.json();
 }
 
