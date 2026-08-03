@@ -297,6 +297,7 @@
 }
 .wingguy-rescue-row:hover { border-color: var(--wingguy-teal); }
 .wingguy-rescue-row-sel { border-color: var(--wingguy-teal); background: #f0fdfa; }
+.wingguy-rescue-row-new { border-style: dashed; margin-top: 6px; }
 .wingguy-rescue-row-name { font-weight: 600; }
 .wingguy-rescue-row-sub { color: var(--wingguy-muted); font-size: 12px; word-break: break-all; }
 .wingguy-rescue-empty { color: var(--wingguy-muted); padding: 4px 2px; }

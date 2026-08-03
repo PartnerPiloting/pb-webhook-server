@@ -1194,9 +1194,12 @@
       if (!leads.length) {
         console.log('[Wingguy] capture: no matching lead in portal for', profileUrl);
         showCaptureRescue({
-          reason: `No lead in your Portal matched ${profileUrl.replace('https://www.linkedin.com', '')}, so it wasn't saved automatically. If they ARE in your Portal, their record probably stores a different LinkedIn URL — find them below and the save fixes itself.`,
+          reason: `No lead in your Portal matched ${profileUrl.replace('https://www.linkedin.com', '')}, so it wasn't saved automatically. If they ARE in your Portal, their record probably stores a different LinkedIn URL — find them below and the save fixes itself. If they're new, add them below.`,
           thread,
           prefillName: hdr.name,
+          // Nothing in the Portal claims this URL — safe to stamp it on a brand-new record, which
+          // is what makes the NEXT capture from this conversation save itself.
+          newUrl: profileUrl,
         });
         return;
       }
@@ -1326,7 +1329,12 @@
   function dismissCaptureRescue() {
     if (rescueCard) { rescueCard.remove(); rescueCard = null; }
   }
-  function showCaptureRescue({ reason, caution, thread = [], prefillName = '' }) {
+  // newUrl: the /in/ URL to put on a NEWLY created record. Only passed when we know the URL is
+  // genuinely unclaimed (the "no lead matched this URL" miss). Never passed when another record
+  // already holds it (the wrong-person refusal) — stamping it onto a second record is exactly how
+  // duplicate-URL collisions are made — nor when the URL itself is suspect (unresolved /in/ACoA,
+  // or a thread we couldn't isolate to one conversation).
+  function showCaptureRescue({ reason, caution, thread = [], prefillName = '', newUrl = '' }) {
     try {
       dismissCaptureRescue();
       const canSave = thread.length > 0;
@@ -1375,22 +1383,35 @@
         foot.appendChild(saveBtn);
         card.appendChild(foot);
 
-        let selected = null; // { id, name }
-        const setSelected = (lead, row) => {
-          selected = lead;
+        // Typed "Justine Szalay" → first token is the first name, the rest is the surname. Crude,
+        // but it's the human's own typing and they see the result on the button before saving.
+        const splitTypedName = (raw) => {
+          const parts = String(raw || '').trim().split(/\s+/).filter(Boolean);
+          return { firstName: parts[0] || '', lastName: parts.slice(1).join(' ') };
+        };
+
+        let selected = null; // { mode: 'existing' | 'new', ... }
+        const msgs = `${thread.length} message${thread.length === 1 ? '' : 's'}`;
+        const setSelected = (pick, row) => {
+          selected = pick;
           for (const r of results.children) r.classList.remove('wingguy-rescue-row-sel');
           row.classList.add('wingguy-rescue-row-sel');
           saveBtn.disabled = false;
-          saveBtn.textContent = `Save ${thread.length} message${thread.length === 1 ? '' : 's'} to ${lead.name}`;
+          saveBtn.textContent = pick.mode === 'new'
+            ? `Create ${pick.name} and save ${msgs}`
+            : `Save ${msgs} to ${pick.name}`;
         };
-        const renderResults = (leads) => {
+        const renderResults = (leads, q) => {
           results.replaceChildren();
           selected = null;
           saveBtn.disabled = true;
           saveBtn.textContent = 'Save';
-          if (!leads.length) {
-            results.appendChild(el('div', 'wingguy-rescue-empty', 'No matching lead — try just a first or last name.'));
+          if (String(q || '').trim().length < 2) {
+            results.appendChild(el('div', 'wingguy-rescue-empty', 'Type at least two letters of their name.'));
             return;
+          }
+          if (!leads.length) {
+            results.appendChild(el('div', 'wingguy-rescue-empty', 'No matching lead — try just a first or last name, or add them below.'));
           }
           for (const l of leads.slice(0, 6)) {
             const name = `${l.firstName || ''} ${l.lastName || ''}`.trim() || '(unnamed lead)';
@@ -1400,22 +1421,39 @@
             const sub = [l.company, slug].filter(Boolean).join(' · ');
             if (sub) row.appendChild(el('div', 'wingguy-rescue-row-sub', sub));
             row.addEventListener('click', () => setSelected({
+              mode: 'existing',
               id: l.id, name,
               firstName: l.firstName || '', lastName: l.lastName || '',
               email: l.email || '', phone: l.phone || '',
             }, row));
             results.appendChild(row);
           }
+          // ...and the escape hatch when they're simply not in the Portal yet. Sits LAST, under the
+          // matches, so the eye lands on an existing record first — a new record for someone already
+          // in there is a duplicate, which is worse than a moment's reading.
+          const { firstName, lastName } = splitTypedName(q);
+          if (!firstName) return;
+          const newName = `${firstName} ${lastName}`.trim();
+          const row = el('div', 'wingguy-rescue-row wingguy-rescue-row-new');
+          row.appendChild(el('div', 'wingguy-rescue-row-name', `＋ Add ${newName} to your Portal`));
+          row.appendChild(el('div', 'wingguy-rescue-row-sub', newUrl
+            ? `New record, then save this conversation onto it · ${newUrl.replace(/^https?:\/\/(www\.)?linkedin\.com/, '')}`
+            : 'New record, then save this conversation onto it · no LinkedIn URL - add it in the Portal'));
+          row.addEventListener('click', () => setSelected({
+            mode: 'new', name: newName, firstName, lastName,
+            email: '', phone: '', linkedinProfileUrl: newUrl || '',
+          }, row));
+          results.appendChild(row);
         };
         let searchTimer = null;
         const runSearch = async () => {
           const q = search.value.trim();
-          if (q.length < 2) { renderResults([]); return; }
+          if (q.length < 2) { renderResults([], q); return; }
           results.replaceChildren(el('div', 'wingguy-rescue-empty', 'Searching…'));
           try {
             // LOOKUP_LEAD's linkedinUrl field is a generic query server-side — names work too.
             const lookup = await bg({ type: 'LOOKUP_LEAD', linkedinUrl: q });
-            renderResults((lookup && lookup.leads) || []);
+            renderResults((lookup && lookup.leads) || [], q);
           } catch (err) {
             results.replaceChildren(el('div', 'wingguy-rescue-empty', `Search failed: ${err.message}`));
           }
@@ -1428,24 +1466,40 @@
 
         saveBtn.addEventListener('click', async () => {
           if (!selected) return;
+          const pick = selected;
+          const isNew = pick.mode === 'new';
           saveBtn.disabled = true;
-          saveBtn.textContent = 'Saving…';
+          saveBtn.textContent = isNew ? 'Creating…' : 'Saving…';
           try {
+            let leadId = pick.id;
+            if (isNew) {
+              // Raw Airtable field names — POST /leads spreads them onto the record as-is.
+              const fields = { 'First Name': pick.firstName };
+              if (pick.lastName) fields['Last Name'] = pick.lastName;
+              if (pick.linkedinProfileUrl) fields['LinkedIn Profile URL'] = pick.linkedinProfileUrl;
+              const created = await bg({ type: 'CREATE_LEAD', fields });
+              leadId = created && (created.id || created.recordId);
+              if (!leadId) throw new Error('the new record came back without an id');
+              console.log(`[Wingguy] rescue-created lead ${pick.name} (${leadId})`, fields);
+              saveBtn.textContent = 'Saving…';
+            }
             const extras = profferedExtras(
               thread,
-              selected.firstName.toLowerCase().trim(),
-              selected.lastName.toLowerCase().trim(),
-              selected.email,
-              selected.phone
+              pick.firstName.toLowerCase().trim(),
+              pick.lastName.toLowerCase().trim(),
+              pick.email,
+              pick.phone
             );
-            await bg({ type: 'QUICK_UPDATE', leadId: selected.id, content: formatThreadForApi(thread), section: 'linkedin', ...extras });
-            console.log(`[Wingguy] rescue-saved ${thread.length} messages to ${selected.name}`, extras);
-            card.replaceChildren(el('div', 'wingguy-rescue-done', `✓ Saved ${thread.length} message${thread.length === 1 ? '' : 's'} to ${selected.name}${extrasNote(extras)}`));
+            await bg({ type: 'QUICK_UPDATE', leadId, content: formatThreadForApi(thread), section: 'linkedin', ...extras });
+            console.log(`[Wingguy] rescue-saved ${thread.length} messages to ${pick.name}`, extras);
+            const verb = isNew ? `✓ Added ${pick.name} and saved` : '✓ Saved';
+            const to = isNew ? '' : ` to ${pick.name}`;
+            card.replaceChildren(el('div', 'wingguy-rescue-done', `${verb} ${msgs}${to}${extrasNote(extras)}`));
             setTimeout(dismissCaptureRescue, 2500);
           } catch (err) {
             saveBtn.disabled = false;
-            saveBtn.textContent = `Save ${thread.length} message${thread.length === 1 ? '' : 's'} to ${selected.name}`;
-            card.appendChild(el('p', 'wingguy-rescue-caution', `⚠ Save failed: ${err.message}`));
+            saveBtn.textContent = isNew ? `Create ${pick.name} and save ${msgs}` : `Save ${msgs} to ${pick.name}`;
+            card.appendChild(el('p', 'wingguy-rescue-caution', `⚠ ${isNew ? 'Create' : 'Save'} failed: ${err.message}`));
           }
         });
       } else {
