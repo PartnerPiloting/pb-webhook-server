@@ -306,6 +306,8 @@ async function prepareFollowupBrief(tenant) {
         whyLine: v.why_line || item.why,
         jog: v.jog || '',
         parkDate: v.park_date || null,
+        parked: false,     // set true below when the park date is auto-stamped to Reconnect On
+        parkError: null,   // why an auto-stamp attempt failed (falls back to propose-then-confirm)
         draftHtml: null,
         draftText: null,
         draftError: null,
@@ -340,6 +342,33 @@ async function prepareFollowupBrief(tenant) {
         }
       }
       items.push(entry);
+    }
+
+    // AUTO-PARK — stamp-and-tell (Guy, 2026-08-03: "the few times you might get that wrong would
+    // more than justify the reduction in noise"). A park verdict with a clear FUTURE date is
+    // stamped to Reconnect On right here, and the brief reports it as a DONE DEED with an un-park
+    // escape — instead of re-proposing the same date in every brief until someone types "yes".
+    // Deliberately BRIEF-ONLY: the backlog worklist parks dozens off one AI pass, so it stays
+    // propose-then-confirm. Unclear dates still ask; a date on/before today means their own window
+    // has closed ("reach out now", the Joe Cozzupoli rule) — never stamped. A failed write falls
+    // back to the old propose line via parkError: a park must never silently not-happen.
+    if (sweep.coach && sweep.coach.airtableBaseId) {
+      const leadsBase = require('./clientService').getClientBase(sweep.coach.airtableBaseId);
+      for (const entry of items) {
+        if (entry.verdict !== 'park' || !entry.recId) continue;
+        const d = /^\d{4}-\d{2}-\d{2}$/.test(String(entry.parkDate || '')) ? entry.parkDate : null;
+        if (!d || d <= todayIso) continue;
+        try {
+          await leadsBase('Leads').update(entry.recId, { 'Reconnect On': d });
+          entry.parked = true;
+          console.log(`[followupBrief] auto-parked ${entry.name} until ${d} (${tenant})`);
+        } catch (e) {
+          entry.parkError = /Reconnect On|UNKNOWN_FIELD_NAME|422|INVALID|Unknown field/i.test(e.message)
+            ? 'the Reconnect On field is missing on this base (scripts/add-reconnect-on-field.js)'
+            : e.message;
+          console.warn(`[followupBrief] auto-park FAILED for ${entry.name} (${tenant}): ${e.message}`);
+        }
+      }
     }
 
     const payload = {
@@ -420,8 +449,26 @@ function formatBrief(row) {
     }
   }
   if (piles.park.length) {
-    lines.push(`\nJUST NEED A DATE (${piles.park.length}) — they named a time; confirm to park via wingguy_set_reconnect:`);
-    for (const it of piles.park) lines.push(`- ${nm(it)} — ${it.whyLine} → park until ${it.parkDate || '(date unclear — ask)'}${it.jog ? `\n    jog: ${it.jog}` : ''}`);
+    // Stamp-and-tell (Guy 2026-08-03): clear future dates were ALREADY stamped at preparation time
+    // — report them once as a done deed with an un-park escape. Only unclear/passed/failed cases
+    // still ask (pre-change stored payloads have no `parked` flag, so they render as asks — right,
+    // since nothing was stamped for them).
+    const stamped = piles.park.filter((it) => it.parked);
+    const ask = piles.park.filter((it) => !it.parked);
+    if (stamped.length) {
+      lines.push(`\nPARKED FOR YOU (${stamped.length}) — they named a time, so the reconnect date is already stamped; each surfaces at the top of the queue on their day. Relay these once; say "un-park NAME" (wingguy_set_reconnect with no date) if a read is wrong:`);
+      for (const it of stamped) lines.push(`- ${nm(it)} — ${it.whyLine} → parked till ${it.parkDate}${it.jog ? `\n    jog: ${it.jog}` : ''}`);
+    }
+    if (ask.length) {
+      lines.push(`\nJUST NEED A DATE (${ask.length}) — they named a time; confirm to park via wingguy_set_reconnect:`);
+      for (const it of ask) {
+        const passed = it.parkDate && it.parkDate <= new Date().toISOString().slice(0, 10);
+        const tail = passed
+          ? `their own window (${it.parkDate}) has PASSED — reach out now, natural opening`
+          : `park until ${it.parkDate || '(date unclear — ask)'}`;
+        lines.push(`- ${nm(it)} — ${it.whyLine} → ${tail}${it.parkError ? ` [auto-park failed: ${it.parkError}]` : ''}${it.jog ? `\n    jog: ${it.jog}` : ''}`);
+      }
+    }
   }
   if (piles.attention.length) {
     lines.push(`\nNEEDS YOUR EYES (${piles.attention.length}):`);

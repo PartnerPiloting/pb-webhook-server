@@ -1633,7 +1633,9 @@ async function runQueue({ page } = {}, tenant = TENANT) {
       // the reply is drafted live in the thread. draftText still renders as [draft ready] so
       // pre-change stored payloads (and every email draft) serve exactly as before.
       if (it.verdict === 'draft') items.push({ ...it, src: 'today', builtAt, line: `${it.whyLine}${it.draftText ? ' [draft ready]' : (it.wgAngle ? ' [LinkedIn — open the thread, type /wg]' : (it.draftError ? ' [no draft — ask in chat]' : ' [draft ready]'))}` });
-      else if (it.verdict === 'park') items.push({ ...it, src: 'today', builtAt, line: parkLine(it) });
+      // it.parked = the brief already stamped their Reconnect On (stamp-and-tell, 2026-08-03) —
+      // nothing left to action, so not queued (the live gate below would drop them anyway).
+      else if (it.verdict === 'park' && !it.parked) items.push({ ...it, src: 'today', builtAt, line: parkLine(it) });
       else if (it.verdict === 'attention') items.push({ ...it, src: 'today', builtAt, line: `${it.whyLine} [needs your judgment]` });
     }
   } catch (_) { /* brief store down — queue still serves backlog */ }
