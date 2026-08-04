@@ -95,6 +95,17 @@ const VARIABLE_FIELDS = [
     type: 'choice',
     options: ['Zoom', 'call', 'Teams call', 'Google Meet', 'chat'],
   },
+  {
+    // Read by the `never-say-words` instruction via an OPTIONAL placeholder ({{?never_say_words}}),
+    // so a client who leaves this blank gets no instruction at all rather than a dangling
+    // "Never use these words:" with nothing after it. See stripOptionalPlaceholders.
+    key: 'never_say_words',
+    group: 'How you talk',
+    label: 'Any words or phrases you would never be caught using?',
+    hint: 'The ones that make you wince. Separate them with commas. Leave it blank if nothing springs to mind - you will think of some the first time it writes one.',
+    example: 'reach out, touch base, circle back, folks, synergy',
+    type: 'long',
+  },
 
   // --- Meetings --------------------------------------------------------------------------------
   {

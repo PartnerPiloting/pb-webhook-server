@@ -64,6 +64,20 @@ const TONES = {
 function WingguySetupInner() {
   const searchParams = useSearchParams();
   const token = searchParams.get('token') || '';
+  // Admin/testing lane, already supported by the backend's auth middleware: ?client=X&devKey=Y
+  // opens any tenant's page without minting a portal link. Lets the coach look at exactly what a
+  // given client sees. A client's own link never carries these.
+  const client = searchParams.get('client') || '';
+  const devKey = searchParams.get('devKey') || '';
+  const hasAuth = !!token || !!(client && devKey);
+
+  const authHeaders = useCallback((extra = {}) => {
+    const h = { ...extra };
+    if (token) h['x-portal-token'] = token;
+    if (client) h['x-client-id'] = client;
+    if (devKey) h['x-dev-key'] = devKey;
+    return h;
+  }, [token, client, devKey]);
 
   const [state, setState] = useState({ status: 'loading', error: '', data: null });
   const [values, setValues] = useState({});
@@ -72,7 +86,7 @@ function WingguySetupInner() {
   const fieldId = (f) => `${f.scope}:${f.key}`;
 
   useEffect(() => {
-    if (!token) {
+    if (!hasAuth) {
       setState({ status: 'no-token', error: '', data: null });
       return;
     }
@@ -80,7 +94,7 @@ function WingguySetupInner() {
     (async () => {
       try {
         const res = await fetch(`${getBackendBase()}/api/wingguy/setup`, {
-          headers: { 'x-portal-token': token },
+          headers: authHeaders(),
         });
         const data = await res.json().catch(() => ({}));
         if (cancelled) return;
@@ -97,7 +111,7 @@ function WingguySetupInner() {
       }
     })();
     return () => { cancelled = true; };
-  }, [token]);
+  }, [hasAuth, authHeaders]);
 
   const save = useCallback(async (field, nextValue) => {
     const id = `${field.scope}:${field.key}`;
@@ -105,7 +119,7 @@ function WingguySetupInner() {
     try {
       const res = await fetch(`${getBackendBase()}/api/wingguy/setup`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json', 'x-portal-token': token },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ scope: field.scope, key: field.key, value: nextValue }),
       });
       const data = await res.json().catch(() => ({}));
@@ -120,7 +134,7 @@ function WingguySetupInner() {
     } catch (e) {
       setSaveState((s) => ({ ...s, [id]: 'Not saved - check your connection.' }));
     }
-  }, [token]);
+  }, [authHeaders]);
 
   // --- states before the form ---------------------------------------------------------------
 
