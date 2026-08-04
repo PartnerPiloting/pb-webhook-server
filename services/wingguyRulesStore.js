@@ -388,9 +388,45 @@ function ruleTier(rule) {
 // keyed "key" and no real variable may be named "variable"; both would be unreachable here.
 const META_SYNTAX_MENTIONS = new Set(['asset:key', 'variable']);
 
+/**
+ * OPTIONAL placeholders: `{{?key}}`.
+ *
+ * A normal `{{key}}` that has no value is left in the text verbatim and reported as unresolved —
+ * correct for a required variable (a rule about the coach's sign-off is broken without one, and
+ * the braces are the loud signal). It is exactly wrong for a variable that is legitimately blank
+ * most of the time, because the literal `{{...}}` then goes to the model in every message.
+ *
+ * `{{?key}}` says "this line only exists when there is a value". Unset or empty → the whole LINE
+ * is dropped, and it is NOT reported as unresolved (nothing is missing; there is simply nothing to
+ * say). A rule whose every line drops resolves to empty and falls out of the assembled block, so
+ * an unanswered optional setting costs nothing rather than emitting a dangling sentence.
+ *
+ * Line-level rather than token-level on purpose: "Never use these words: " with nothing after it
+ * is worse than no instruction at all.
+ */
+function stripOptionalPlaceholders(body, variables) {
+  if (!/\{\{\s*\?/.test(String(body || ''))) return String(body || '');
+  const OPTIONAL = /\{\{\s*\?\s*([a-zA-Z0-9_.-]+)\s*\}\}/g;
+  return String(body)
+    .split('\n')
+    .filter((line) => {
+      const keys = [...line.matchAll(OPTIONAL)].map((m) => m[1]);
+      if (!keys.length) return true;
+      // One empty optional on the line is enough to drop it — the line was written to carry it.
+      return keys.every((k) => {
+        const v = variables[k];
+        return v !== undefined && v !== null && String(v).trim().length > 0;
+      });
+    })
+    .join('\n')
+    // Surviving lines keep their values; rewrite `{{?key}}` to `{{key}}` for the main pass below.
+    .replace(OPTIONAL, (_w, key) => `{{${key}}}`);
+}
+
 function resolveRuleBody(body, variables = {}, assets = {}) {
   const unresolved = [];
-  const text = String(body || '').replace(/\{\{\s*(asset:)?([a-zA-Z0-9_.-]+)\s*\}\}/g, (whole, assetPrefix, key) => {
+  const prepared = stripOptionalPlaceholders(body, variables);
+  const text = String(prepared).replace(/\{\{\s*(asset:)?([a-zA-Z0-9_.-]+)\s*\}\}/g, (whole, assetPrefix, key) => {
     if (META_SYNTAX_MENTIONS.has(`${assetPrefix || ''}${key}`)) return whole;
     if (assetPrefix) {
       const a = assets[key];
