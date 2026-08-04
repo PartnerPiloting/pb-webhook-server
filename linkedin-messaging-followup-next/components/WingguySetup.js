@@ -99,7 +99,14 @@ function WingguySetupInner() {
         const data = await res.json().catch(() => ({}));
         if (cancelled) return;
         if (!res.ok || !data.ok) {
-          setState({ status: 'error', error: data.message || data.error || 'We could not open your setup.', data: null });
+          setState({
+            status: 'error',
+            error: data.message || data.error || 'We could not open your setup.',
+            // 403 = the link is fine, the account just is not switched on yet. Telling that person
+            // to ask for a fresh link sends them down the wrong path entirely.
+            notYet: res.status === 403,
+            data: null,
+          });
           return;
         }
         const initial = {};
@@ -158,10 +165,24 @@ function WingguySetupInner() {
     return (
       <Shell>
         <h1 className="font-serif text-3xl text-slate-900">Your Wingguy</h1>
-        <p className="text-slate-600 mt-4">{state.error}</p>
-        <p className="text-slate-500 text-sm mt-3">
-          If that link has stopped working, ask your coach for a fresh one.
-        </p>
+        {state.notYet ? (
+          <>
+            <p className="text-slate-600 mt-4">
+              Your Wingguy is not switched on yet, so there is nothing to set up in here just now.
+            </p>
+            <p className="text-slate-500 text-sm mt-3">
+              Nothing has gone wrong and your link is fine - come back to it once your coach has you
+              up and running.
+            </p>
+          </>
+        ) : (
+          <>
+            <p className="text-slate-600 mt-4">{state.error}</p>
+            <p className="text-slate-500 text-sm mt-3">
+              If that link has stopped working, ask your coach for a fresh one.
+            </p>
+          </>
+        )}
       </Shell>
     );
   }

@@ -635,10 +635,14 @@ module.exports = function mountWingguy(app) {
   router.get('/setup', async (req, res) => {
     const tenantId = req.client.clientId;
     try {
-      const [variableRows, assetRows] = await Promise.all([
-        wingguyStore.getVariables({ tenantId }),
-        wingguyStore.getAssets({ tenantId }),
-      ]);
+      // SEQUENTIAL, NOT Promise.all. Each store call runs ensureSchema on its own connection, and
+      // against a database where the tables do not exist yet (a fresh environment, or the first
+      // request after a deploy to a new one) two of them race their CREATE TABLE / CREATE INDEX
+      // and Postgres rejects the loser with a duplicate-key error on pg_class. The first call
+      // flips the store's schemaEnsured latch, so the second is then free. Two round trips on a
+      // page load nobody is timing is the right trade for never serving that 500.
+      const variableRows = await wingguyStore.getVariables({ tenantId });
+      const assetRows = await wingguyStore.getAssets({ tenantId });
 
       const varValues = new Map(variableRows.map((r) => [r.var_key, r.value]));
       const assetValues = new Map(
