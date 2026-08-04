@@ -33,6 +33,7 @@ const { runWingguyChatTurn } = require('../services/wingguyChat');
 const wingguyLeads = require('../services/wingguyLeads');
 const clientService = require('../services/clientService');
 const wingguyStore = require('../services/wingguyRulesStore');
+const setupFields = require('../config/wingguySetupFields');
 
 const logger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'wingguy' });
 
@@ -617,6 +618,95 @@ module.exports = function mountWingguy(app) {
       return res.json(r);
     } catch (e) {
       logger.error(`[Wingguy] lead-contact failed: ${e.message}`);
+      return res.status(500).json({ ok: false, error: e.message });
+    }
+  });
+
+  // --- "Set up your own Wingguy" page ------------------------------------------------------------
+  // The client-facing read/write door for the fill-in-the-blanks half of their instructions: the
+  // {{variables}} their rules reference, plus the handful of {{asset:...}} links safe to expose.
+  // WORDING of an instruction is deliberately NOT here — changing that needs the conflict check
+  // and the neighbour view the propose→commit door gives you, and a text box on a page cannot do
+  // it. This endpoint only ever fills in blanks the rules already leave.
+  //
+  // Both handlers filter against config/wingguySetupFields.js, so the page can never read or write
+  // a key that file does not name (the catalog also holds plumbing like tracking_bcc).
+
+  router.get('/setup', async (req, res) => {
+    const tenantId = req.client.clientId;
+    try {
+      const [variableRows, assetRows] = await Promise.all([
+        wingguyStore.getVariables({ tenantId }),
+        wingguyStore.getAssets({ tenantId }),
+      ]);
+
+      const varValues = new Map(variableRows.map((r) => [r.var_key, r.value]));
+      const assetValues = new Map(
+        assetRows.filter((r) => r.status !== 'retired').map((r) => [r.asset_key, r.url]),
+      );
+
+      const fields = [
+        ...setupFields.VARIABLE_FIELDS.map((f) => ({
+          ...f, scope: 'variable', value: varValues.get(f.key) || '',
+        })),
+        ...setupFields.ASSET_FIELDS.map((f) => ({
+          ...f, scope: 'asset', value: assetValues.get(f.key) || '',
+        })),
+      ];
+
+      const answered = fields.filter((f) => String(f.value).trim()).length;
+      return res.json({
+        ok: true,
+        clientName: req.client.clientName || '',
+        groups: setupFields.groupOrder(),
+        fields,
+        answered,
+        total: fields.length,
+      });
+    } catch (e) {
+      logger.error(`[Wingguy] setup read failed for ${tenantId}: ${e.message}`);
+      return res.status(500).json({ ok: false, error: e.message });
+    }
+  });
+
+  // Saves one field at a time — the page autosaves as they leave each box, so a dropped connection
+  // costs one answer rather than the lot. Both store writes are history-logged, so "what did they
+  // change and when" stays answerable.
+  router.put('/setup', async (req, res) => {
+    const tenantId = req.client.clientId;
+    const { scope, key, value } = req.body || {};
+    const clean = value == null ? '' : String(value).trim();
+    const CAP = 600; // a sign-off or a one-liner; anything longer is a paste gone wrong
+
+    if (scope !== 'variable' && scope !== 'asset') {
+      return res.status(400).json({ ok: false, error: 'scope must be "variable" or "asset".' });
+    }
+    const known = scope === 'variable' ? setupFields.VARIABLE_KEYS : setupFields.ASSET_KEYS;
+    if (!key || !known.has(key)) {
+      return res.status(400).json({ ok: false, error: `"${key}" is not a setting you can change here.` });
+    }
+    if (clean.length > CAP) {
+      return res.status(400).json({ ok: false, error: `That is too long (limit ${CAP} characters).` });
+    }
+    // A link box that is not a link is the one mistake worth catching before it reaches an invite.
+    if (scope === 'asset' && clean && !/^https?:\/\/\S+$/i.test(clean)) {
+      return res.status(400).json({ ok: false, error: 'That does not look like a web link - it should start with https://' });
+    }
+
+    try {
+      if (scope === 'variable') {
+        await wingguyStore.setVariable({ tenantId, varKey: key, value: clean, actor: `portal:${tenantId}` });
+      } else {
+        const field = setupFields.ASSET_FIELDS.find((f) => f.key === key);
+        await wingguyStore.setAsset({
+          tenantId, assetKey: key, url: clean, kind: field.kind || 'url',
+          status: clean ? 'active' : 'retired', actor: `portal:${tenantId}`,
+        });
+      }
+      logger.info(`[Wingguy] setup ${scope} "${key}" updated by ${tenantId} (${clean ? 'set' : 'cleared'})`);
+      return res.json({ ok: true, scope, key, value: clean });
+    } catch (e) {
+      logger.error(`[Wingguy] setup write failed for ${tenantId} (${scope}/${key}): ${e.message}`);
       return res.status(500).json({ ok: false, error: e.message });
     }
   });
