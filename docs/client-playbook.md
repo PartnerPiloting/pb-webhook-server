@@ -524,11 +524,9 @@ It doesn't matter whose calendar and email you use - Gmail, Microsoft, even Zoho
 system translates "book a meeting" or "draft an email" into whatever your particular setup is, so
 use what you already use.
 
-A money-saving tip on the transcripts: **Fathom's free plan is enough.** You can subscribe for free
-forever and it gives you the raw transcripts - everything that was literally said. What you'd be
-paying Fathom for is its AI interpretation of the call, and you don't need it: your transcripts flow
-into this system, where Claude does the interpreting anyway. Don't rush into a paid recorder
-subscription.
+On the recorder itself: **Guy's pick is Granola.** It's botless - no robot joins your call - and
+it captures every meeting you're in, whoever set it up and whatever platform it's on. There's a
+whole topic on transcripts with the full story - ask for it.
 
 **And then the important one: your instructions.**
 
@@ -674,6 +672,62 @@ Two things worth knowing about how to offer times, because they change your hit 
 Once they pick a time, Wingguy checks it's genuinely still free on your calendar, books them in, and
 writes the looking-forward-to-meeting note. You've got an appointment without having touched your
 diary.
+
+---
+
+## THE TWO SIDES - GETTING THE MEETING, THEN EVERYTHING AFTER IT
+
+This whole system splits into two halves, and it pays to see the seam.
+
+**Side one is getting the meeting.** Your profile, the search, the scoring, the
+thanks-for-connecting message, the booking. It lives on LinkedIn, it's systematic, and that's its
+strength - it runs to a rhythm, and it can even be shared: plenty of it doesn't need *you*
+specifically, which is why an assistant can carry a lot of side one if you have one.
+
+**Side two is everything after the meeting** - and it changes medium. Once you've actually met
+someone, LinkedIn messaging is the wrong tool: it's built for short and chatty. The real
+conversation moves to email, where there's room to say something substantial, send the links to
+what you do, make an introduction properly. That switch to email isn't a failure of LinkedIn - it's
+the standard move, and it's a sign the relationship is becoming real. Side two is where the
+relationship actually forms.
+
+Here's the catch. Side one scales beautifully - better searches, steadier volume, help with the
+mechanics - so the meetings multiply. And every one of those meetings lands on side two, on you:
+the follow-up, the notes, the prep for next time, remembering what you promised to send. This is
+precisely where busy networkers drown. A diary full of great conversations, and a growing pile of
+follow-ups that never quite get written.
+
+Side two runs on one input, and it isn't LinkedIn data - it's the conversation itself. That's the
+next topic: transcripts. Get that one thing right, and more meetings stops meaning more admin.
+
+---
+
+## TRANSCRIPTS - THE FUEL FOR EVERYTHING AFTER THE MEETING
+
+Recording your meetings sounds like housekeeping. It's the opposite - it's the single most valuable
+input in this whole system once the meetings start.
+
+When the system has the transcript of a call, it has heard what you said and what they said. So the
+follow-up email drafts itself from what was *actually discussed* - the specifics, the links to the
+things you offered to send - and Guy reckons those drafts will genuinely startle you. Next time
+you're meeting that person, your preparation comes ready-made: what you agreed, what they care
+about, where you left it. And your tone improves everywhere, because the system learns how you
+actually speak from hearing you speak.
+
+A meeting without a transcript still happened, but it evaporates. At two meetings a week you'll
+hold it in your head. At eight or ten - which is where this system takes you - you won't, and
+nobody would.
+
+**The trap is platform borders.** Plenty of recorders only work reliably where you're the host. But
+you don't control where other people host - and every meeting on someone else's Zoom or Teams
+becomes a hole in your memory. Those are often the meetings that matter most.
+
+**My recommendation is Granola.** It's botless - no robot joins the call, nothing for the other
+side to notice or wonder about - and it captures whatever meeting you're in: any platform, whoever
+set it up, nothing to remember on the day. I ran a free bot-based recorder for months, and the free
+part stopped being worth it the first few times a transcript I'd come to rely on simply wasn't
+there. Granola costs a little, and it removes the whole category of worry. One piece of good
+manners: since there's no bot announcing itself, be upfront that you take notes of your meetings.
 
 ---
 
