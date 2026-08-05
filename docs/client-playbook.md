@@ -556,30 +556,44 @@ Wingguy writes like you, not like an AI. That's not magic - it's instructions. B
 there's a set of them covering everything from how a message opens to when you should follow someone
 up, and Wingguy reads them every single time it drafts anything for you.
 
-There are two kinds.
+There are three kinds.
 
 **The ones that come as standard.** These are the hard-won ones - the difference between a message
 that gets a reply and one that gets ignored. Always end with a real question. Never send a wall of
 text. Read someone's profile properly and say something true about them, rather than parroting their
 headline back at them. You don't set these up and you don't maintain them. Better still, when we
-learn something new that makes messages land better, it turns up in your Wingguy automatically. You
-don't lift a finger. A few of them are fixed - those are the guardrails, and they're the reason it
-never goes off and does something daft on your behalf.
+learn something new that makes messages land better, it turns up in your Wingguy automatically - you
+don't lift a finger. And if one of them isn't how you'd do it, you can keep your own version
+instead. Yours then applies, just for you.
+
+**Two that are fixed.** Nothing is ever sent without you seeing it first, and every email is copied
+to your own records so the conversation lands on that person's file. Nobody can change those two -
+not you, not me. They're the reason it never goes off and does something daft on your behalf.
 
 **The ones that are yours.** Your spelling. How you sign off. Which link you send people. The words
 you'd never be caught using. These start with sensible defaults, and you change them whenever you
 like.
 
-**The part most people underuse: you teach it.** Any time Wingguy writes something that isn't quite
-you, tell it. "Never say 'reach out'." "Always mention I'm Perth based." Say **"update my
-instructions"** and describe the change in your own words. It'll show you exactly what it plans to
-change before it changes anything - and then it sticks. Not just for the next message. For good.
-Every correction is permanent. The Wingguy you're working with in three months should sound
-noticeably more like you than today's, and that's almost entirely down to how often you bother to
-tell it when it's off.
+**Your setup page.** I'll have sent you the link. It's the one place you can see every instruction
+in plain English, fill in the handful that are yours, and change anything that isn't how you'd do
+it. There's a short list of essentials worth doing properly, and a longer section you can honestly
+skip - the defaults there are good. Come back to it whenever you like; it always shows what's set
+right now.
 
-You never need to read the whole list. If you're curious, just ask - "what do my instructions say
-about follow-ups?"
+**The part most people underuse: you teach it.** Any time Wingguy writes something that isn't quite
+you, tell it. "Never say 'reach out'." "Always mention I'm Perth based." Say it in a chat, in the
+Wingguy window on LinkedIn, or in the box under any instruction on your setup page - in whatever
+words come out. It'll show you exactly what it plans to change before it changes anything, and then
+it sticks. Not just for the next message. For good. Every correction is permanent. The Wingguy
+you're working with in three months should sound noticeably more like you than today's, and that's
+almost entirely down to how often you bother to tell it when it's off.
+
+You can also add instructions of your own - anything you find yourself telling it twice. It checks
+first whether something already covers that ground, and if it does, it'll suggest changing that one
+rather than adding a twin that would fight it.
+
+And you never have to read the whole list. If you're curious, just ask - "what do my instructions
+say about follow-ups?"
 
 ---
 
