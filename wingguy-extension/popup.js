@@ -10,34 +10,11 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
-  // BYO Claude key — kept in this browser only (chrome.storage.local), sent per draft as a header.
-  const keyInput = document.getElementById('anthropic-key');
-  const keyStatus = document.getElementById('key-status');
-  const setKeyStatus = (msg, ok) => {
-    if (!keyStatus) return;
-    keyStatus.textContent = msg;
-    keyStatus.className = `key-status${ok ? ' ok' : ''}`;
-  };
-  chrome.storage.local.get(['anthropicKey'], (d) => {
-    if (keyInput && d.anthropicKey) {
-      keyInput.value = d.anthropicKey;
-      setKeyStatus('Overriding with this browser key ✓', true);
-    } else {
-      // Blank is the NORMAL, healthy state: drafting uses the key set up on the account (server-side),
-      // so don't leave the field looking empty-and-broken. (Stored-key build, 2026-07-24.)
-      setKeyStatus('Using the key on your account - nothing kept in this browser.', true);
-    }
-  });
-  document.getElementById('btn-save-key')?.addEventListener('click', () => {
-    const v = (keyInput?.value || '').trim();
-    if (v && !v.startsWith('sk-ant-')) {
-      setKeyStatus('That doesn\'t look like an Anthropic key (starts with sk-ant-).', false);
-      return;
-    }
-    chrome.storage.local.set({ anthropicKey: v }, () => {
-      setKeyStatus(v ? 'Saved - overriding with this browser key ✓' : 'Cleared - using the key on your account.', true);
-    });
-  });
+  // The popup carries NO key field (removed 2026-08-05, Julian's feedback: an empty key box reads
+  // as a form to fill in). Drafting runs on the Claude key on the client's account; if that isn't
+  // set up, the draft itself says so - the popup never raises the subject.
+  const vline = document.getElementById('version-line');
+  if (vline) vline.textContent = `v${chrome.runtime.getManifest().version} • Wingguy`;
 });
 
 // Update UI based on auth state
