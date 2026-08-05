@@ -21,7 +21,11 @@ document.addEventListener('DOMContentLoaded', () => {
   chrome.storage.local.get(['anthropicKey'], (d) => {
     if (keyInput && d.anthropicKey) {
       keyInput.value = d.anthropicKey;
-      setKeyStatus('Key saved ✓', true);
+      setKeyStatus('Overriding with this browser key ✓', true);
+    } else {
+      // Blank is the NORMAL, healthy state: drafting uses the key set up on the account (server-side),
+      // so don't leave the field looking empty-and-broken. (Stored-key build, 2026-07-24.)
+      setKeyStatus('Using the key on your account - nothing kept in this browser.', true);
     }
   });
   document.getElementById('btn-save-key')?.addEventListener('click', () => {
@@ -31,7 +35,7 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
     chrome.storage.local.set({ anthropicKey: v }, () => {
-      setKeyStatus(v ? 'Key saved ✓' : 'Key cleared', true);
+      setKeyStatus(v ? 'Saved - overriding with this browser key ✓' : 'Cleared - using the key on your account.', true);
     });
   });
 });

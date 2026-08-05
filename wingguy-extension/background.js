@@ -186,6 +186,24 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  // The LinkedIn landmark overrides. NEVER rejects: the content script has a complete set of
+  // built-in defaults, so "couldn't reach the server" and "nothing to override" must look the same.
+  if (message.type === 'WG_GET_SELECTORS') {
+    wingguyGetSelectors(!!message.force)
+      .then(data => sendResponse({ success: true, data }))
+      .catch(() => sendResponse({ success: true, data: { selectors: {}, store: 'error' } }));
+    return true;
+  }
+
+  // What the landmarks actually found in the field. Fire-and-forget — a failure here must never
+  // reach the person using Wingguy.
+  if (message.type === 'WG_SELECTOR_HEALTH') {
+    wingguyPostSelectorHealth(message.checks, message.extensionVersion)
+      .then(data => sendResponse({ success: true, data }))
+      .catch(() => sendResponse({ success: false }));
+    return true;
+  }
+
   // Wingguy Slice 2 (booking spike): real calendar availability + the times message.
   if (message.type === 'WG_CAL_AVAILABILITY') {
     wgCal('GET', `/availability?leadLocation=${encodeURIComponent(message.leadLocation || '')}`)
@@ -481,6 +499,63 @@ async function wingguyGetTemplates() {
     const errorData = await response.json().catch(() => ({}));
     throw new Error(errorData.error || `Templates fetch failed: ${response.status}`);
   }
+  return response.json();
+}
+
+// --- LinkedIn landmark overrides ------------------------------------------------------------
+// The extension ships with a complete set of built-in landmarks and only ever ASKS the server
+// whether any of them have been corrected since. That ordering is the whole safety story: an empty
+// answer, a 500, an expired token or no network at all all land in the same place — Wingguy runs on
+// what it shipped with, exactly as it did before this existed.
+//
+// The cached copy exists for the cold start: a service worker that wakes without a network (laptop
+// lid just opened, wifi not up yet) still gets the last known-good corrections instead of silently
+// dropping back to defaults and re-breaking whatever we'd fixed.
+const SELECTOR_CACHE_KEY = 'wgSelectorCache';
+const SELECTOR_CACHE_TTL_MS = 15 * 60 * 1000;
+
+function readSelectorCache() {
+  return new Promise((resolve) => {
+    chrome.storage.local.get([SELECTOR_CACHE_KEY], (data) => resolve(data[SELECTOR_CACHE_KEY] || null));
+  });
+}
+
+async function wingguyGetSelectors(force) {
+  const cached = await readSelectorCache();
+  const fresh = cached && (Date.now() - (cached.fetchedAt || 0) < SELECTOR_CACHE_TTL_MS);
+  if (fresh && !force) {
+    return { selectors: cached.selectors || {}, store: cached.store || 'cache', cached: true };
+  }
+
+  try {
+    const apiBase = await getWingguyApiBase();
+    const headers = await getAuthHeaders();
+    const response = await fetch(`${apiBase}/selectors`, { method: 'GET', headers });
+    if (!response.ok) throw new Error(`selectors fetch failed: ${response.status}`);
+    const data = await response.json();
+    const selectors = (data && data.selectors) || {};
+    chrome.storage.local.set({
+      [SELECTOR_CACHE_KEY]: { selectors, store: data.store || 'live', fetchedAt: Date.now() },
+    });
+    return { selectors, store: data.store || 'live', cached: false };
+  } catch (e) {
+    // Stale cache beats no cache: a correction we fetched an hour ago is still the right answer.
+    if (cached) {
+      return { selectors: cached.selectors || {}, store: 'stale-cache', cached: true };
+    }
+    return { selectors: {}, store: 'unreachable', cached: false };
+  }
+}
+
+async function wingguyPostSelectorHealth(checks, extensionVersion) {
+  const apiBase = await getWingguyApiBase();
+  const headers = await getAuthHeaders();
+  const response = await fetch(`${apiBase}/selectors/health`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ checks, extensionVersion }),
+  });
+  if (!response.ok) throw new Error(`selector health post failed: ${response.status}`);
   return response.json();
 }
 

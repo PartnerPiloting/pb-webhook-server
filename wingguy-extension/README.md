@@ -59,8 +59,40 @@ Templates are **seeded directly** in `config/wingguyTemplates.js` (no Postgres y
 Model is Sonnet by default (`WINGGUY_DRAFT_MODEL_ID`, default `claude-sonnet-4-6`); the stable
 voice/rules block is prompt-cached. Kill-switch: `WINGGUY_DRAFT_ENABLED` (default on).
 
-## LinkedIn DOM selectors
+## LinkedIn DOM selectors ("landmarks")
 
-LinkedIn's markup shifts; the scraping selectors in `content-wingguy.js` are redundant with
-fallbacks and Copy is always available as a safety net. Moving these to remote `extension-config`
-(as the legacy extension already does for its own selectors) is a later refinement.
+LinkedIn's markup shifts. Every selector Wingguy uses to find something on a page lives in ONE place
+- `SELECTOR_DEFAULTS` at the top of `content-wingguy.js` - and each value is a comma-separated list
+of alternatives tried in order.
+
+Those built-ins are the permanent **fallback**, not a bootstrap. On startup the extension asks
+`GET /api/wingguy/selectors` whether any landmark has been corrected since it shipped, and merges
+what comes back over the defaults. No database, no network, an expired token, a 500: all land on the
+shipped defaults, so the store can make Wingguy better but can never be why it stopped working.
+
+**When LinkedIn renames something**, the fix is a row in Postgres (`wingguy_selectors`, via
+`services/wingguySelectorStore.js`) - no release, no client reinstall. Add the new markup in FRONT of
+the old in the list rather than replacing it: LinkedIn rolls changes out gradually, so two clients
+can be on different markup on the same day. Rollback is `retireSelector`, which drops the override
+and falls back to whatever sits behind it.
+
+Per-client overrides (`tenant_id`) are built but unused - one shared set serves everyone today.
+
+### Self-check
+
+The extension grades its own homework on every read: which landmarks resolved, and whether each
+value came from the store or from the shipped defaults. That second half matters - if the store
+silently stops being reached, Wingguy still works perfectly on defaults, so "it looks fine" is
+exactly what a broken pipe looks like. Results go to `POST /api/wingguy/selectors/health`; the
+diagnostic read is `GET /api/wingguy/selectors/health` (owner only).
+
+Nothing from the self-check ever reaches the screen. What the person DOES see, when a gap actually
+changes their draft, is one plain line: *"I couldn't read their About section, so this draft is
+thinner than usual - I'm on it."*
+
+Alerting thresholds are deliberately NOT built. They need real traffic to be worth anything, and
+guessed thresholds are how these systems become noise you learn to ignore.
+
+**What this does not cover:** renames only. If LinkedIn restructures how something *works* - a
+different flow for contact info, a new step in the composer - that needs code, and no row in
+Postgres will save you.
