@@ -672,7 +672,7 @@ async function handleQuickUpdate(leadId, content, section = 'linkedin', extras =
 
   // undefined email/phone drop out of JSON.stringify — the server only touches a field
   // whose key actually arrives, so absent extras leave the record's contact info alone.
-  const response = await fetch(url, {
+  const doSend = () => fetch(url, {
     method: 'PATCH',
     headers,
     body: JSON.stringify({
@@ -683,6 +683,21 @@ async function handleQuickUpdate(leadId, content, section = 'linkedin', extras =
       phone: extras.phone
     })
   });
+
+  // One retry, network failures only (fetch REJECTING — "Failed to fetch"), never HTTP errors:
+  // a 4xx/5xx got through and retrying won't change the answer. Safe to resend even if the first
+  // request landed and only the response was lost, because the server merges by content and skips
+  // what it already has (proven live 2026-08-05: a capture carrying nothing new = clean no-op).
+  // Why this exists: a single dropped connection (Evan Rosin, 2026-08-05, 5:48pm) put the rescue
+  // card in front of the coach for a save that would have sailed through two seconds later. A real
+  // outage still fails twice and still surfaces the card — fail loud stays the rule.
+  let response;
+  try {
+    response = await doSend();
+  } catch (_) {
+    await new Promise((r) => setTimeout(r, 2500));
+    response = await doSend();
+  }
   
   if (!response.ok) {
     const errorText = await response.text();
