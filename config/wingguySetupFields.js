@@ -7,15 +7,23 @@
  * is that missing layer: for each variable we expose, the question to ask a human, in their words.
  *
  * DELIBERATELY A CURATED LIST, NOT THE WHOLE CATALOG. The catalog also holds plumbing
- * (`tracking_bcc`, `smoke_floor`) that a client must never be handed. Anything not named here is
- * simply not editable from the page — the GET/PUT handlers both filter against this list, so
- * adding a field here is the only way to expose one, and an unknown key from a tampered request
- * is rejected rather than written.
+ * (`tracking_bcc`, `smoke_floor`) that a client must never be handed — those are filled from the
+ * client's own record instead (see ensureCoachManagedVariables). Anything not named here is simply
+ * not editable from the page: the GET/PUT handlers both filter against this list, so adding a field
+ * here is the only way to expose one, and an unknown key from a tampered request is rejected.
  *
- * ORDER MATTERS: the page renders groups and fields in exactly this order.
+ * TIERS (Guy's call 2026-08-06) — the page is split in two, and the split is EARNED, not cosmetic:
+ *   'essential' — leaving it blank leaves something visibly wrong, and only they can supply it.
+ *   'glance'    — a real fallback exists (config/wingguyVariableDefaults.js) or the reference is
+ *                 optional, so blank is genuinely safe. The page says so, and points them at
+ *                 changing these later in chat once they have seen a draft worth improving.
+ * Before moving a field to 'glance', make sure blank really is safe — tests/wingguy-setup-fields
+ * pins that every glance field either has a default or is referenced optionally.
  *
- * Every variable named here must actually be referenced by a live rule, or the field is a lie —
- * the client fills it in and nothing changes. Check with `wingguy_rules_list` before adding one.
+ * ORDER MATTERS: the page renders tiers, then groups, then fields in exactly this order.
+ *
+ * Every variable named here must actually be read by a live instruction, or the field is a lie —
+ * the client fills it in and nothing changes.
  */
 
 /**
@@ -25,10 +33,11 @@
  *   choice — pick one of `options` (rendered as buttons, and a client may still type their own)
  */
 const VARIABLE_FIELDS = [
-  // --- Who you are -----------------------------------------------------------------------------
+  // === ESSENTIAL =================================================================================
   {
     key: 'owner_first_name',
-    group: 'Who you are',
+    tier: 'essential',
+    group: 'The essentials',
     label: 'Your first name, as it should appear in messages',
     hint: 'Just the name people call you.',
     example: 'Guy',
@@ -36,118 +45,119 @@ const VARIABLE_FIELDS = [
   },
   {
     key: 'signoff',
-    group: 'Who you are',
+    tier: 'essential',
+    group: 'The essentials',
     label: 'How do you sign off a message?',
-    hint: 'Exactly as you would write it - this goes out letter for letter.',
+    hint: 'Exactly as you would write it - this goes out letter for letter. Leave it and it just uses your first name.',
     example: 'Cheers, Guy',
     type: 'text',
   },
   {
-    key: 'region',
-    group: 'Who you are',
-    label: 'Where are you based?',
-    hint: 'So it can mention where you are when that helps, and never offers someone a time in the middle of their night.',
-    example: 'Brisbane, Australia',
+    key: 'timezone',
+    tier: 'essential',
+    group: 'The essentials',
+    label: 'Where are you, time-wise?',
+    hint: 'Calendar invites go on your clock, and times written to other people go on theirs. This is the one setting nobody can guess for you.',
+    example: 'Brisbane (AEST, no daylight saving)',
     type: 'text',
   },
-  {
-    key: 'owner_phone',
-    group: 'Who you are',
-    label: 'Your phone number',
-    hint: 'Optional. It goes on calendar invites so people can reach you if something goes wrong.',
-    example: '0414 975 509',
-    type: 'text',
-  },
-
-  // --- What you say you do ---------------------------------------------------------------------
   {
     key: 'core_framing',
-    group: 'What you say you do',
+    tier: 'essential',
+    group: 'The essentials',
     label: 'When someone asks what you do, what is your answer?',
     hint: 'One sentence, the way you would actually say it out loud. "I am still working that out" is a fine answer for now - you can sharpen it later.',
     example: 'I run an advocacy network where independent advisers recommend each other to their clients',
     type: 'long',
   },
-  {
-    key: 'target_verticals',
-    group: 'What you say you do',
-    label: 'Who are you hoping to meet?',
-    hint: 'The kind of people, not a list of names.',
-    example: 'financial planners, brokers and accountants',
-    type: 'text',
-  },
-  {
-    key: 'network_explainer_line',
-    group: 'What you say you do',
-    label: 'If you had one line to explain how it works, what would it be?',
-    hint: 'Optional. If you already have a line you use and like, put it here and Wingguy will use yours instead of writing its own.',
-    example: 'A simple idea - professionals who refer each other, rather than everyone waving their own flag',
-    type: 'long',
-  },
 
-  // --- How you talk ----------------------------------------------------------------------------
+  // === GLANCE: how you talk ======================================================================
   {
     key: 'call_platform',
+    tier: 'glance',
     group: 'How you talk',
     label: 'What do you call a video call?',
-    hint: 'This matters more than it looks - the word goes into messages exactly as you pick it.',
+    hint: 'The word goes into messages exactly as you pick it. Left alone, it just says "call".',
     example: 'Zoom',
     type: 'choice',
     options: ['Zoom', 'call', 'Teams call', 'Google Meet', 'chat'],
   },
   {
-    // Read by the `never-say-words` instruction via an OPTIONAL placeholder ({{?never_say_words}}),
-    // so a client who leaves this blank gets no instruction at all rather than a dangling
-    // "Never use these words:" with nothing after it. See stripOptionalPlaceholders.
     key: 'never_say_words',
+    tier: 'glance',
     group: 'How you talk',
     label: 'Any words or phrases you would never be caught using?',
-    hint: 'The ones that make you wince. Separate them with commas. Leave it blank if nothing springs to mind - you will think of some the first time it writes one.',
+    hint: 'The ones that make you wince. Separate them with commas. Most people leave this blank at first and fill it in the day Wingguy writes one.',
     example: 'reach out, touch base, circle back, folks, synergy',
     type: 'long',
   },
 
-  // --- Meetings --------------------------------------------------------------------------------
+  // === GLANCE: who you are for ===================================================================
+  {
+    key: 'target_verticals',
+    tier: 'glance',
+    group: 'Who you are for',
+    label: 'Who are you hoping to meet?',
+    hint: 'The kind of people, not a list of names. It helps Wingguy read a profile and spot whether someone fits.',
+    example: 'financial planners, brokers and accountants',
+    type: 'text',
+  },
+  {
+    key: 'region',
+    tier: 'glance',
+    group: 'Who you are for',
+    label: 'Where are you based?',
+    hint: 'Optional. Mentioned when it genuinely helps - a shared city is a real reason to talk.',
+    example: 'Brisbane, Australia',
+    type: 'text',
+  },
+
+  // === GLANCE: meetings ==========================================================================
   {
     key: 'default_meeting_length',
+    tier: 'glance',
     group: 'Meetings',
     label: 'How long is a first meeting?',
-    hint: 'What it puts in the calendar invite unless you say otherwise.',
+    hint: 'Left alone: 30 minutes.',
     example: '30 minutes',
     type: 'choice',
     options: ['15 minutes', '30 minutes', '45 minutes', '1 hour'],
   },
   {
     key: 'earliest_meeting_time',
+    tier: 'glance',
     group: 'Meetings',
     label: 'What is the earliest you would ever take one?',
-    hint: 'A hard floor - it will never offer anyone a time before this, and will check with you first if you try to book earlier yourself.',
+    hint: 'A hard floor - it will never offer anyone a time before this. Left alone: 9:00am.',
     example: '9:30am',
     type: 'text',
   },
   {
     key: 'preferred_start_time',
+    tier: 'glance',
     group: 'Meetings',
     label: 'And what would you rather it offered?',
-    hint: 'Optional. The one above is the at-a-pinch floor - this is your normal start. It only drops below this when the week cannot be filled otherwise.',
+    hint: 'The one above is the at-a-pinch floor - this is your normal start. Left alone: 9:00am.',
     example: '10:00am',
     type: 'text',
   },
   {
     key: 'max_meetings_per_day',
+    tier: 'glance',
     group: 'Meetings',
     label: 'How many meetings in a day is too many?',
-    hint: 'A preference, not a cap. It spreads calls across the week rather than stacking one day, and tells you when a day is getting full.',
+    hint: 'A preference, not a cap. It spreads calls across the week rather than stacking one day. Left alone: 4.',
     example: '4',
     type: 'choice',
     options: ['2', '3', '4', '5', '6'],
   },
   {
-    key: 'timezone',
+    key: 'owner_phone',
+    tier: 'glance',
     group: 'Meetings',
-    label: 'Your timezone',
-    hint: 'Calendar invites go on your clock. Times written to other people go on theirs.',
-    example: 'Australia/Brisbane (AEST, UTC+10, no daylight saving)',
+    label: 'Your phone number',
+    hint: 'Optional. It goes on calendar invites so people can reach you if something goes wrong. Blank just leaves it off.',
+    example: '0414 975 509',
     type: 'text',
   },
 ];
@@ -157,13 +167,15 @@ const VARIABLE_FIELDS = [
  *
  * Same rule as above and it bites harder here: only expose a key some live rule actually
  * references, or the client pastes a link into a box that nothing reads. `zoom_room` is safe —
- * the booking defaults put it on every invite. Everything else stays in chat for now, where
- * adding a link and wiring a rule to use it happen together.
+ * the booking defaults put it on every invite, and there is no sensible default for it, so it is
+ * essential. Everything else stays in chat, where adding a link and wiring a rule to use it
+ * happen together.
  */
 const ASSET_FIELDS = [
   {
     key: 'zoom_room',
-    group: 'Meetings',
+    tier: 'essential',
+    group: 'The essentials',
     label: 'Your meeting room link',
     hint: 'Your standing Zoom or Teams room. It goes on every invite, so it never has to create a new one.',
     example: 'https://us04web.zoom.us/j/9892817976',
@@ -173,9 +185,9 @@ const ASSET_FIELDS = [
 ];
 
 /**
- * VOICE fields — the "In your own words" section (stage 3). Still plain variables underneath
- * (setVariable, history-logged, referenced by shared method rules via {{?...}} so blank = the
- * generalised wording quietly applies). What makes them a separate list:
+ * VOICE fields — the "In your own words" section. Still plain variables underneath (setVariable,
+ * history-logged, referenced by shared method rules via {{?...}} so blank = the generalised
+ * wording quietly applies). What makes them a separate list:
  *   - `bullets`: the shape of the thing, shown above the box in the client's language
  *   - `exampleKind`: which live-example prompt the [Show me what Wingguy would write] button runs
  *     (examples are GENERATED from their answers, never printed samples — a printed sample
@@ -187,6 +199,7 @@ const ASSET_FIELDS = [
 const VOICE_FIELDS = [
   {
     key: 'canonical_inversion_line',
+    tier: 'voice',
     group: 'In your own words',
     label: 'The question at the heart of all of it',
     hint: "There's one question this whole approach turns on: asking someone who THEY know who'd love to have trusted people recommending them - rather than having to recommend themselves. You'll ask it on calls, and Wingguy weaves the same idea into what it writes. How would you phrase it?",
@@ -197,6 +210,7 @@ const VOICE_FIELDS = [
   },
   {
     key: 'post_connection_own_message',
+    tier: 'voice',
     group: 'In your own words',
     label: 'The thanks-for-connecting message',
     hint: 'The first message someone gets after accepting your connection - the one that decides whether a conversation starts. Wingguy writes it fresh for each person. Happy with how that sounds? Leave this empty - that is a fine answer. Or if you already have a version you love, put it here and Wingguy will treat yours as the reference.',
@@ -211,6 +225,7 @@ const VOICE_FIELDS = [
   },
   {
     key: 'advocacy_own_argument',
+    tier: 'voice',
     group: 'In your own words',
     label: 'The case for advocacy - in your words',
     hint: 'At some point in a good conversation, you make the case for building advocates rather than collecting contacts. Leave this empty and Wingguy argues it fresh each time - or make the case the way you would actually say it across a table, and yours becomes the version it works from.',
@@ -228,6 +243,7 @@ const VOICE_FIELDS = [
   },
   {
     key: 'advocacy_one_liner',
+    tier: 'voice',
     group: 'In your own words',
     label: 'And if you had to make the whole case in one sentence, what would it be?',
     hint: 'Optional. Used sparingly, with space left after it.',
@@ -248,12 +264,12 @@ function capFor(scope, key) {
   return 600;
 }
 
-/** Group order for the page, derived from the field order so there is one source of truth. */
-function groupOrder() {
+/** Group order per tier, derived from field order so there is one source of truth. */
+function groupOrder(tier) {
   const seen = [];
-  [...VARIABLE_FIELDS, ...ASSET_FIELDS, ...VOICE_FIELDS].forEach((f) => {
-    if (!seen.includes(f.group)) seen.push(f.group);
-  });
+  [...VARIABLE_FIELDS, ...ASSET_FIELDS, ...VOICE_FIELDS]
+    .filter((f) => !tier || f.tier === tier)
+    .forEach((f) => { if (!seen.includes(f.group)) seen.push(f.group); });
   return seen;
 }
 

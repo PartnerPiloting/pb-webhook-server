@@ -60,6 +60,7 @@
  */
 
 const { Pool } = require('pg');
+const { defaultFor } = require('../config/wingguyVariableDefaults');
 
 let pool;
 let schemaEnsured = false;
@@ -436,6 +437,12 @@ function resolveRuleBody(body, variables = {}, assets = {}) {
     }
     const v = variables[key];
     if (v !== undefined && v !== null && String(v).length) return String(v);
+    // Unset, but some settings have an obvious sensible answer (30 minutes, a 9am floor, "call").
+    // Using it beats emitting a literal {{placeholder}} into the prompt, and it is what lets the
+    // setup page honestly say these are already set sensibly. Keys with no safe default are
+    // absent from the map and still render loudly - see config/wingguyVariableDefaults.js.
+    const fallback = defaultFor(key, variables);
+    if (fallback !== undefined) return String(fallback);
     unresolved.push(key);
     return whole;
   });

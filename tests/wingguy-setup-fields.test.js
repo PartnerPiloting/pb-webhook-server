@@ -59,6 +59,41 @@ check('voice fields carry a save cap and the default stays 600', () => {
   assert.strictEqual(fields.capFor('asset', 'zoom_room'), 600);
 });
 
+check('every field declares a tier', () => {
+  ALL.forEach((f) => {
+    assert.ok(['essential', 'glance', 'voice'].includes(f.tier), `${f.key}: bad tier "${f.tier}"`);
+  });
+});
+
+check('the GLANCE promise is earned - blank must be genuinely safe', () => {
+  // The page tells clients they can skip this whole section without anything breaking. That is
+  // only true if each field either has a real fallback or is referenced optionally. A field moved
+  // here without one would ship literal {{braces}} into a client's prompts - the exact bug this
+  // tier was created to fix.
+  const { DEFAULTED_KEYS } = require('../config/wingguyVariableDefaults');
+  const OPTIONAL_OR_UNREAD = new Set([
+    'never_say_words',    // read via {{?never_say_words}}
+    'target_verticals',   // read via {{?target_verticals}}
+    'region',             // read via {{?region}}
+    'owner_phone',        // read via {{?owner_phone}}
+  ]);
+  fields.VARIABLE_FIELDS.filter((f) => f.tier === 'glance').forEach((f) => {
+    assert.ok(
+      DEFAULTED_KEYS.has(f.key) || OPTIONAL_OR_UNREAD.has(f.key),
+      `${f.key} is in the glance tier but has no default and is not optional - blank would leak braces`,
+    );
+  });
+});
+
+check('essentials are genuinely un-guessable', () => {
+  // A field with a safe default does not belong in the essentials - it would be asking someone to
+  // do work the system could do for them.
+  const { DEFAULTED_KEYS } = require('../config/wingguyVariableDefaults');
+  fields.VARIABLE_FIELDS.filter((f) => f.tier === 'essential' && f.key !== 'signoff').forEach((f) => {
+    assert.ok(!DEFAULTED_KEYS.has(f.key), `${f.key} has a default - it belongs in the glance tier`);
+  });
+});
+
 check('the harvested-over-time slot is NOT a day-one box', () => {
   // own_anchor_lines fills via the edit loop and chat - a box would collect guesses (Guy's call).
   assert.ok(!fields.VARIABLE_KEYS.has('own_anchor_lines'), 'own_anchor_lines must not be page-editable yet');

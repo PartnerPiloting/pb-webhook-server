@@ -632,6 +632,42 @@ module.exports = function mountWingguy(app) {
   // Both handlers filter against config/wingguySetupFields.js, so the page can never read or write
   // a key that file does not name (the catalog also holds plumbing like tracking_bcc).
 
+  // Three settings the instructions need that a CLIENT must never be asked for: the CRM tracking
+  // address (same for everyone; handing it over is how someone breaks their own follow-up queue),
+  // their own email (already on their record), and their network name (only used in one line).
+  // Filled here rather than remembered by the coach - onboarding steps that live only in someone's
+  // head get skipped, and Julian's rulebook has been rendering literal braces because of it.
+  // Idempotent: only ever fills a blank, never overwrites an answer.
+  const TRACKING_BCC = (process.env.WINGGUY_TRACKING_BCC || 'track@mail.australiansidehustles.com.au').trim();
+
+  async function ensureCoachManagedVariables(tenantId, client, existingRows) {
+    const have = new Map((existingRows || []).map((r) => [r.var_key, r.value]));
+    const blank = (k) => !String(have.get(k) || '').trim();
+    const wanted = [
+      // Never client-editable - the same address for everyone, and handing it over is how someone
+      // quietly drops themselves out of their own follow-up queue.
+      ['tracking_bcc', TRACKING_BCC],
+      // Already on their record, so asking them to retype it is busywork. These land as PRE-FILLS,
+      // not locks: they appear in the page's boxes and the client can change any of them.
+      ['owner_email', String((client && (client.clientEmailAddress || client.email)) || '').trim()],
+      ['network_name', String((client && client.clientName) || '').trim()],
+      ['owner_first_name', String((client && client.clientFirstName) || '').trim()],
+      ['timezone', String((client && client.timezone) || '').trim()],
+    ];
+    let filled = 0;
+    for (const [key, value] of wanted) {
+      if (!value || !blank(key)) continue;
+      try {
+        await wingguyStore.setVariable({ tenantId, varKey: key, value, actor: 'system:coach-managed' });
+        filled++;
+      } catch (e) {
+        logger.error(`[Wingguy] could not fill coach-managed "${key}" for ${tenantId}: ${e.message}`);
+      }
+    }
+    if (filled) logger.info(`[Wingguy] filled ${filled} coach-managed variable(s) for ${tenantId}`);
+    return filled;
+  }
+
   router.get('/setup', async (req, res) => {
     const tenantId = req.client.clientId;
     try {
@@ -641,7 +677,11 @@ module.exports = function mountWingguy(app) {
       // and Postgres rejects the loser with a duplicate-key error on pg_class. The first call
       // flips the store's schemaEnsured latch, so the second is then free. Two round trips on a
       // page load nobody is timing is the right trade for never serving that 500.
-      const variableRows = await wingguyStore.getVariables({ tenantId });
+      let variableRows = await wingguyStore.getVariables({ tenantId });
+      // Self-healing: opening the page tops up anything the coach's side owes (see above).
+      if (await ensureCoachManagedVariables(tenantId, req.client, variableRows)) {
+        variableRows = await wingguyStore.getVariables({ tenantId });
+      }
       const assetRows = await wingguyStore.getAssets({ tenantId });
 
       const varValues = new Map(variableRows.map((r) => [r.var_key, r.value]));
@@ -661,14 +701,22 @@ module.exports = function mountWingguy(app) {
         })),
       ];
 
-      const answered = fields.filter((f) => String(f.value).trim()).length;
+      // Progress counts the ESSENTIALS only. Counting the glance fields would nag a client toward
+      // filling in settings the page has just told them are fine left alone.
+      const essentials = fields.filter((f) => f.tier === 'essential');
+      const answered = essentials.filter((f) => String(f.value).trim()).length;
       return res.json({
         ok: true,
         clientName: req.client.clientName || '',
         groups: setupFields.groupOrder(),
+        tierGroups: {
+          essential: setupFields.groupOrder('essential'),
+          glance: setupFields.groupOrder('glance'),
+          voice: setupFields.groupOrder('voice'),
+        },
         fields,
         answered,
-        total: fields.length,
+        total: essentials.length,
       });
     } catch (e) {
       logger.error(`[Wingguy] setup read failed for ${tenantId}: ${e.message}`);

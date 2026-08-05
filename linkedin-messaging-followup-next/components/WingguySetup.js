@@ -225,11 +225,35 @@ function WingguySetupInner() {
   }
 
   const { data } = state;
-  const blanks = data.fields.filter((f) => f.section !== 'voice');
-  const voiceFields = data.fields.filter((f) => f.section === 'voice');
-  const answered = data.fields.filter((f) => String(values[fieldId(f)] || '').trim()).length;
-  const pct = Math.round((answered / data.total) * 100);
-  const blankGroups = data.groups.filter((g) => g !== 'In your own words');
+  const tiers = data.tierGroups || { essential: [], glance: [], voice: ['In your own words'] };
+  const byTier = (t) => data.fields.filter((f) => f.tier === t);
+  const essentialFields = byTier('essential');
+  const glanceFields = byTier('glance');
+  const voiceFields = byTier('voice');
+  // Progress tracks the essentials only - nagging someone toward settings we just told them are
+  // fine left alone is exactly the pressure this page is trying not to apply.
+  const answered = essentialFields.filter((f) => String(values[fieldId(f)] || '').trim()).length;
+  const pct = data.total ? Math.round((answered / data.total) * 100) : 0;
+
+  const renderGroups = (groupNames, fieldsInTier) => groupNames.map((group) => {
+    const inGroup = fieldsInTier.filter((f) => f.group === group);
+    if (!inGroup.length) return null;
+    return (
+      <div key={group} className="flex flex-col gap-6">
+        {groupNames.length > 1 ? <GroupHead label={group} /> : null}
+        {inGroup.map((f) => (
+          <Field
+            key={fieldId(f)}
+            field={f}
+            value={values[fieldId(f)] || ''}
+            status={saveState[fieldId(f)]}
+            onChange={(v) => setValues((s) => ({ ...s, [fieldId(f)]: v }))}
+            onCommit={(v) => save(f, v)}
+          />
+        ))}
+      </div>
+    );
+  });
 
   return (
     <Shell wide>
@@ -291,37 +315,30 @@ function WingguySetupInner() {
       {/* the blanks */}
       <section className="flex flex-col gap-6">
         <SectionHead
-          title="Now let's set yours up"
-          sub="Answer what you can. Everything saves by itself as you go, so you can stop whenever you like and come back to this same link. Anything you skip keeps its sensible default."
+          title="The essentials"
+          sub="Four or five things only you can tell it. These are the ones worth doing properly - everything after this already works out of the box."
         />
 
         <div className="flex items-center gap-4 text-sm text-slate-500 py-2">
-          <span className="tabular-nums whitespace-nowrap">{answered} of {data.total} filled in</span>
+          <span className="tabular-nums whitespace-nowrap">{answered} of {data.total} done</span>
           <span className="flex-1 h-[3px] bg-slate-200 overflow-hidden">
             <span className="block h-full bg-emerald-600 transition-all duration-300" style={{ width: `${pct}%` }} />
           </span>
         </div>
 
-        {blankGroups.map((group) => {
-          const inGroup = blanks.filter((f) => f.group === group);
-          if (!inGroup.length) return null;
-          return (
-            <div key={group} className="flex flex-col gap-6">
-              <GroupHead label={group} />
-              {inGroup.map((f) => (
-                <Field
-                  key={fieldId(f)}
-                  field={f}
-                  value={values[fieldId(f)] || ''}
-                  status={saveState[fieldId(f)]}
-                  onChange={(v) => setValues((s) => ({ ...s, [fieldId(f)]: v }))}
-                  onCommit={(v) => save(f, v)}
-                />
-              ))}
-            </div>
-          );
-        })}
+        {renderGroups(tiers.essential, essentialFields)}
       </section>
+
+      {/* glance - real defaults, safe to skip */}
+      {glanceFields.length ? (
+        <section className="flex flex-col gap-6">
+          <SectionHead
+            title="Worth a glance - but the defaults are good"
+            sub="These are already set sensibly, and you can skip the lot without anything breaking. Honestly, the best time to change one of these is later - when Wingguy writes something you would have put differently. Tell it then, in chat, and it will remember."
+          />
+          {renderGroups(tiers.glance, glanceFields)}
+        </section>
+      ) : null}
 
       {/* in your own words */}
       {voiceFields.length ? (
