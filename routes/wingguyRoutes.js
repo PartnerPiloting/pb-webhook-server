@@ -824,13 +824,19 @@ module.exports = function mountWingguy(app) {
     return lines.length ? lines.join('\n') : '(they have not filled anything in yet)';
   }
 
-  // One assist door, three moves. Runs on the client's own Claude lane (BYO/stored/managed) -
-  // never silently on the platform key; byoAnthropicClient enforces the billing rule.
+  // One assist door, three moves. BILLING PRINCIPLE (Guy, 2026-08-06): a client's own key powers
+  // the EXTENSION and its behind-the-scenes work; pages GUY PROVIDES run on the platform key, for
+  // everyone - the setup page is the welcome mat, not client usage. This is the one deliberate
+  // exception to the never-on-the-platform-key rule, so it does NOT go through byoAnthropicClient:
+  // a BYO client's stored key must not be charged for onboarding themselves.
   router.post('/setup/assist', async (req, res) => {
     const tenantId = req.client.clientId;
     const { mode } = req.body || {};
-    const anthropic = byoAnthropicClient(req);
-    if (!anthropic) return res.status(402).json({ ok: false, error: NO_ANTHROPIC_KEY_MSG });
+    if (!isAnthropicConfigured()) {
+      return res.status(500).json({ ok: false, error: 'The writing helper is not available right now.' });
+    }
+    const anthropic = getAnthropicClient();
+    logger.info(`[Wingguy] setup assist lane=platform (page principle) client=${tenantId} mode=${mode}`);
 
     try {
       const variableRows = await wingguyStore.getVariables({ tenantId });
