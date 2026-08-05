@@ -103,6 +103,17 @@ const VARIABLE_FIELDS = [
     type: 'text',
   },
   {
+    // The answerable half of the targeting scaffold. The full stack (markets, hooks, what not to
+    // say per audience) stays a conversation - it needs experience a new client has not had yet.
+    key: 'ideal_fit_traits',
+    tier: 'glance',
+    group: 'Who you are for',
+    label: 'What makes someone a genuinely good fit?',
+    hint: 'Two or three things that matter more than their job title - the traits you notice when someone is right for this. Wingguy weighs a profile against these before it drafts anything.',
+    example: 'they already get most of their work through referrals · they think in introductions rather than transactions · senior enough to make their own decisions',
+    type: 'long',
+  },
+  {
     key: 'region',
     tier: 'glance',
     group: 'Who you are for',
@@ -160,6 +171,22 @@ const VARIABLE_FIELDS = [
     example: '0414 975 509',
     type: 'text',
   },
+
+  // === GLANCE: your material =====================================================================
+  {
+    // A plain list beats the asset library on day one: the library needs a usage rule per link
+    // (when it earns its place, who it is for, who must never get it), and that pairing is a
+    // conversation. This is just "the links you already send", stored verbatim so a draft can
+    // copy one rather than inventing a URL.
+    key: 'your_links',
+    tier: 'glance',
+    group: 'Your material',
+    label: 'Anything else you send people',
+    hint: 'One per line, as "what it is - the link". Articles you wrote, a deck, a video. Wingguy only ever uses them where a link genuinely belongs, and never makes a URL up.',
+    example: 'Why networking delivers so little - https://linkedin.com/pulse/...',
+    type: 'long',
+    cap: 1200,
+  },
 ];
 
 /**
@@ -180,6 +207,19 @@ const ASSET_FIELDS = [
     hint: 'Your standing Zoom or Teams room. It goes on every invite, so it never has to create a new one.',
     example: 'https://us04web.zoom.us/j/9892817976',
     kind: 'url',
+    type: 'text',
+  },
+  {
+    // THE most reused link a coach has - the "here's what I do" piece Wingguy falls back to
+    // whenever a draft warrants a link and no specific rule names one. Fixed key so the page can
+    // ask for it in plain words instead of making a client invent an asset name.
+    key: 'default_explainer',
+    tier: 'glance',
+    group: 'Your material',
+    label: 'The one link you would send someone who asked what you do',
+    hint: 'A landing page, a one-pager, a short video - whatever you would actually send. Wingguy reaches for this whenever a message wants a link and nothing more specific applies. No link yet? Leave it - it just writes the explanation from scratch each time instead.',
+    example: 'https://knowaguy.com.au',
+    kind: 'page',
     type: 'text',
   },
   {
@@ -270,8 +310,8 @@ const ASSET_KEYS = new Set(ASSET_FIELDS.map((f) => f.key));
 /** Per-field save cap: voice pieces run long; everything else stays at the original 600. */
 function capFor(scope, key) {
   if (scope === 'variable') {
-    const v = VOICE_FIELDS.find((f) => f.key === key);
-    if (v && v.cap) return v.cap;
+    const v = [...VOICE_FIELDS, ...VARIABLE_FIELDS].find((f) => f.key === key && f.cap);
+    if (v) return v.cap;
   }
   return 600;
 }

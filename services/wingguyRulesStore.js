@@ -408,19 +408,27 @@ const META_SYNTAX_MENTIONS = new Set(['asset:key', 'asset:your_key', 'variable']
  * Line-level rather than token-level on purpose: "Never use these words: " with nothing after it
  * is worse than no instruction at all.
  */
-function stripOptionalPlaceholders(body, variables) {
+function stripOptionalPlaceholders(body, variables, assets = {}) {
   if (!/\{\{\s*\?/.test(String(body || ''))) return String(body || '');
-  const OPTIONAL = /\{\{\s*\?\s*([a-zA-Z0-9_.-]+)\s*\}\}/g;
+  // `asset:` is part of the key here — an optional LINK ({{?asset:default_explainer}}) is just as
+  // legitimate as an optional variable, and leaving it out silently left the placeholder in the
+  // text as literal braces, which is the exact bug optional syntax exists to prevent.
+  const OPTIONAL = /\{\{\s*\?\s*((?:asset:)?[a-zA-Z0-9_.-]+)\s*\}\}/g;
+  const hasValue = (key) => {
+    if (key.startsWith('asset:')) {
+      const a = assets[key.slice('asset:'.length)];
+      return !!(a && a.url && String(a.url).trim() && a.status !== 'retired');
+    }
+    const v = variables[key];
+    return v !== undefined && v !== null && String(v).trim().length > 0;
+  };
   return String(body)
     .split('\n')
     .filter((line) => {
       const keys = [...line.matchAll(OPTIONAL)].map((m) => m[1]);
       if (!keys.length) return true;
       // One empty optional on the line is enough to drop it — the line was written to carry it.
-      return keys.every((k) => {
-        const v = variables[k];
-        return v !== undefined && v !== null && String(v).trim().length > 0;
-      });
+      return keys.every(hasValue);
     })
     .join('\n')
     // Surviving lines keep their values; rewrite `{{?key}}` to `{{key}}` for the main pass below.
@@ -429,7 +437,7 @@ function stripOptionalPlaceholders(body, variables) {
 
 function resolveRuleBody(body, variables = {}, assets = {}) {
   const unresolved = [];
-  const prepared = stripOptionalPlaceholders(body, variables);
+  const prepared = stripOptionalPlaceholders(body, variables, assets);
   const text = String(prepared).replace(/\{\{\s*(asset:)?([a-zA-Z0-9_.-]+)\s*\}\}/g, (whole, assetPrefix, key) => {
     if (META_SYNTAX_MENTIONS.has(`${assetPrefix || ''}${key}`)) return whole;
     if (assetPrefix) {
