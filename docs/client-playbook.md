@@ -10,6 +10,9 @@ things is the way it is.
 
 **How Wingguy should serve this document**
 
+- **Clients know this as "Wingguy Learning".** Use that name with them - never "the playbook"
+  (internal) or "documentation". It is their training, built into Wingguy, and it grows: new
+  topics come from real client work, and every client gets them automatically.
 - Return ONE topic per call by default - somebody who asked one question should never get the whole
   document back. The exception is an explicit ask for the lot ("read me everything", "what does the
   playbook cover"): serve it all, but lead with the map of topics and let them choose where to go

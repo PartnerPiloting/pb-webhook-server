@@ -101,7 +101,7 @@ async function runGetStarted(_args = {}, tenant = TENANT) {
   parts.push('');
   parts.push('**Why this matters:** this isn\'t a chatbot bolted on the side - it\'s your calendar, inbox, CRM and LinkedIn pulled together under one assistant that works *your* way. That connective layer underneath is the whole point. Guy runs his entire LinkedIn follow-up through this - recently 37 personalised messages to 20 people in the time it used to take him to do five.');
   parts.push('');
-  parts.push('Just tell me what you\'d like to do, say **"show me the full picture"** for everything you can ask me, or **"let\'s set up my instructions"** to make my drafting sound like you. Stuck on the how rather than the what? Ask me things like **"who should I be reaching out to?"** - I have Guy\'s whole method written down.');
+  parts.push('Just tell me what you\'d like to do, say **"show me the full picture"** for everything you can ask me, or **"let\'s set up my instructions"** to make my drafting sound like you. Stuck on the how rather than the what? Ask me things like **"who should I be reaching out to?"** - that\'s **Wingguy Learning**, Guy\'s whole method built in.');
 
   return { text: parts.join('\n') };
 }
@@ -124,7 +124,7 @@ async function runVision(_args = {}, tenant = TENANT) {
   parts.push('- **"Write his thanks-for-connecting"** - off their real profile, in your voice, never a template.');
   parts.push('- **"Update my instructions"** - change how I write, in plain English. I show you the change before I make it, and it sticks for good.');
   parts.push('');
-  parts.push('**And I know the method, not just the mechanics.** Guy\'s whole approach is written down in here - who to go after, what to say when someone accepts, why the second meeting is the one that matters, how to hold a steady pace. Ask me things like **"who should I be reaching out to?"** or **"what do I say when they accept?"** and you get his answer in his words, not generic advice off the internet.');
+  parts.push('**And there\'s Wingguy Learning, built in.** I don\'t just do the work - I teach you Guy\'s whole method as you go: who to go after, what to say when someone accepts, why the second meeting is the one that matters, how to hold a steady pace. Ask **"who should I be reaching out to?"** or **"what do I say when they accept?"** and you get his answer in his words, not generic advice off the internet. And it grows - what Guy learns with every client lands in your Wingguy automatically.');
   parts.push('');
   parts.push('All of it on *your* instructions - your voice, not a template. Guy runs his whole pipeline this way - 37 personalised messages to 20 people in the time it took him to do five.');
   parts.push('');
@@ -491,23 +491,23 @@ async function runLearn(args = {}, _tenant = TENANT) {
   if (!topicArg) {
     return {
       text:
-        "**The client playbook** - Guy's own explanation of the whole I Know A Guy system, one topic at a time. Topics:\n" +
+        "**Wingguy Learning** - Guy's whole method, taught right here one topic at a time. Built from real client work, and it keeps growing - new topics land in every client's Wingguy automatically. Topics:\n" +
         pb.topics.map((t) => `- ${t.title}`).join('\n') +
         '\n\n---\nPick whichever fits the user\'s question and call again with topic="...", or topic="everything" for the whole playbook in one go. New or just curious? Start with the big picture. ' +
-        "These are Guy's words - serve them as his. If a question isn't covered by any topic, say so and point them to Guy rather than improvising.",
+        "Call it **Wingguy Learning** when you present it - their training, built into Wingguy - never 'the playbook' or 'documentation'. These are Guy's words - serve them as his. If a question isn't covered by any topic, say so and point them to Guy rather than improvising.",
     };
   }
 
   if (wantsEverything(topicArg)) {
     return {
       text:
-        `**The client playbook in full** - all ${pb.topics.length} topics, Guy's own words.\n\n` +
+        `**Wingguy Learning - the whole course** - all ${pb.topics.length} topics, Guy's own words.\n\n` +
         pb.topics.map((t) => t.body).join('\n\n') +
         '\n\n---\n' +
-        "That's the whole playbook - Guy speaking throughout, so present it as his words, not paraphrased into generic advice.\n" +
+        "That's all of Wingguy Learning - Guy speaking throughout, so present it as his words, not paraphrased into generic advice.\n" +
         'It is long. Unless they asked to read the lot end to end, lead with the map of topics and what each covers, then go deep on whatever they pick.\n' +
         "One exception to the first person: any claim about how good Wingguy itself is stays attributed to Guy (\"Guy reckons...\") - you praising your own drafting costs the client's trust and his vouching for it doesn't.\n" +
-        "If they ask something the playbook doesn't cover, say so and point them to Guy - never fill the gap from general knowledge.",
+        "If they ask something Wingguy Learning doesn't cover, say so and point them to Guy - never fill the gap from general knowledge.",
     };
   }
 
@@ -515,9 +515,9 @@ async function runLearn(args = {}, _tenant = TENANT) {
   if (!topic) {
     return {
       text:
-        `No topic matching "${topicArg}" in the playbook. It has:\n` +
+        `No topic matching "${topicArg}" in Wingguy Learning. It has:\n` +
         pb.topics.map((t) => `- ${t.title}`).join('\n') +
-        "\n\n---\nIf none of these cover what the user asked, tell them the playbook doesn't cover it yet and to ask Guy - don't answer it from general knowledge.",
+        "\n\n---\nIf none of these cover what the user asked, tell them Wingguy Learning doesn't cover it yet and to ask Guy - don't answer it from general knowledge.",
     };
   }
 
@@ -525,7 +525,7 @@ async function runLearn(args = {}, _tenant = TENANT) {
     '---',
     "That's Guy speaking - present it as his words, essentially as written, not paraphrased into generic advice.",
     `Other topics on hand: ${playbookShortNames(pb.topics, topic)}.`,
-    "If their actual question isn't answered by this, say the playbook doesn't cover it yet and suggest they ask Guy - never fill the gap from general knowledge.",
+    "If their actual question isn't answered by this, say Wingguy Learning doesn't cover it yet and suggest they ask Guy - never fill the gap from general knowledge.",
   ].join('\n');
   return { text: `${topic.body}\n\n${footer}` };
 }
@@ -554,7 +554,7 @@ const TOOL_DEFS = [
   {
     name: 'wingguy_learn',
     description:
-      'THE CLIENT PLAYBOOK - Guy\'s own explanation of the whole I Know A Guy method, served one topic at a time. This is the ONLY authoritative source on how this system works and why - NEVER answer questions about the method from general knowledge. CALL IT FIRST for ANY "how should I...", "what should I say...", "who should I...", "why do we...", "am I doing this right?", "what do I do next?" question about networking, outreach, LinkedIn, connecting, meetings or follow-up - the client will not use the word "playbook", so route on the SUBJECT of their question, not their vocabulary. A plausible answer that isn\'t Guy\'s method is worse than no answer, because the client cannot tell the difference. Call it when the user asks about: the big picture / what this is really about; the process start to finish; what to say they do; setting up their LinkedIn profile; who to reach out to; LinkedIn Premium vs Sales Navigator and building the search; Linked Helper (installing it, where it runs, the free trial, standard vs pro); scoring and attributes; setting up Wingguy (calendar, email, transcripts, instructions); working their list in the portal; thanks-for-connecting messages; getting meetings booked; how the first meeting runs; the second meeting; their weekly pace; or keeping on top of follow-ups (the daily follow-up list). No args = the topic map. topic="..." = that topic, in Guy\'s words - present it as his, essentially as written. topic="everything" = the WHOLE playbook in one call, for "read me the lot" / "what does the playbook cover" / a client who wants the method end to end - lead with the map, then go deep on what they pick. If the returned text doesn\'t answer the user\'s question, say the playbook doesn\'t cover it and to ask Guy.',
+      'WINGGUY LEARNING - the client-facing name for the playbook; when speaking to the user ALWAYS call it "Wingguy Learning" (their training, built into Wingguy), never "the playbook" or "documentation". Guy\'s own explanation of the whole I Know A Guy method, served one topic at a time. This is the ONLY authoritative source on how this system works and why - NEVER answer questions about the method from general knowledge. CALL IT FIRST for ANY "how should I...", "what should I say...", "who should I...", "why do we...", "am I doing this right?", "what do I do next?" question about networking, outreach, LinkedIn, connecting, meetings or follow-up - the client will not use the word "playbook", so route on the SUBJECT of their question, not their vocabulary. A plausible answer that isn\'t Guy\'s method is worse than no answer, because the client cannot tell the difference. Call it when the user asks about: the big picture / what this is really about; the process start to finish; what to say they do; setting up their LinkedIn profile; who to reach out to; LinkedIn Premium vs Sales Navigator and building the search; Linked Helper (installing it, where it runs, the free trial, standard vs pro); scoring and attributes; setting up Wingguy (calendar, email, transcripts, instructions); working their list in the portal; thanks-for-connecting messages; getting meetings booked; how the first meeting runs; the second meeting; their weekly pace; or keeping on top of follow-ups (the daily follow-up list). No args = the topic map. topic="..." = that topic, in Guy\'s words - present it as his, essentially as written. topic="everything" = the WHOLE playbook in one call, for "read me the lot" / "what does the playbook cover" / a client who wants the method end to end - lead with the map, then go deep on what they pick. If the returned text doesn\'t answer the user\'s question, say the playbook doesn\'t cover it and to ask Guy.',
     zodSchema: { topic: z.string().optional().describe('Which topic: a few words from its title (e.g. "big picture", "process", "linked helper", "scoring"). "everything" for the whole playbook in one call. Omit for the topic list.') },
     jsonSchema: { type: 'object', properties: { topic: { type: 'string', description: 'A few words from the topic title (e.g. "big picture", "process", "linked helper", "scoring"). "everything" for the whole playbook in one call. Omit for the topic list.' } } },
     run: runLearn,
