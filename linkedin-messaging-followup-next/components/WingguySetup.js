@@ -352,8 +352,8 @@ function WingguySetupInner() {
           <p className="text-[15px] text-slate-700 leading-relaxed">
             <strong>You can also add instructions of your own.</strong> Anything you find yourself
             telling Wingguy twice - a word you hate, a way you like things done, a rule of thumb
-            from your world - can become a standing instruction. Tell it in the box under any
-            instruction here, or just say it in chat, in whatever words come out.
+            from your world - can become a standing instruction. Add it in the box just below, tell
+            it under any instruction here, or just say it in chat, in whatever words come out.
           </p>
           <p className="text-[15px] text-slate-700 leading-relaxed">
             <strong>One thing it guards carefully: overlap.</strong> Two instructions covering the
@@ -364,6 +364,9 @@ function WingguySetupInner() {
             <em> that one</em> instead of adding a twin. And you always see exactly what is about to
             be saved before it is - nothing sneaks in.
           </p>
+        </div>
+
+        <div className="bg-emerald-50 border-2 border-emerald-600 p-6">
           <AddInstruction assist={assist} commitChange={commitChange} />
         </div>
 
@@ -688,12 +691,16 @@ function AddInstruction({ assist, commitChange }) {
   };
 
   return (
-    <div className="flex flex-col gap-2.5 pt-2 border-t border-slate-100">
-      <div className="font-semibold text-slate-900">Add an instruction of your own</div>
+    <div className="flex flex-col gap-2.5">
+      <div className="font-serif text-xl text-slate-900">Add an instruction of your own</div>
+      <p className="text-sm text-slate-600 leading-relaxed">
+        Say it the way you&apos;d say it out loud - Wingguy turns it into a proper instruction and
+        shows you before anything is saved.
+      </p>
       <textarea
         rows={2}
         maxLength={1500}
-        placeholder={'In your own words - e.g. "never message anyone on a Friday"'}
+        placeholder={'e.g. "never message anyone on a Friday"'}
         className={inputClasses}
         value={text}
         onChange={(e) => setText(e.target.value)}
