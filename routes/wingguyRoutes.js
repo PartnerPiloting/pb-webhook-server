@@ -56,8 +56,7 @@ const OWNER_CLIENT_ID = (process.env.RECALL_COACH_CLIENT_ID || 'Guy-Wilson').tri
 // ONLY for the owner or an explicit managed-plan client (WINGGUY_PLATFORM_KEY_CLIENTS, comma-sep);
 // else BLOCK (they add their key, or go on a plan). Returns the client to draft with, or null =
 // the caller must reject the request.
-const BYO_ANTHROPIC_HEADER = 'x-anthropic-key';
-const NO_ANTHROPIC_KEY_MSG = 'Add your Anthropic (Claude) API key in the Wingguy extension settings to draft - it runs on your own key. (Or ask to be put on a managed plan.)';
+const NO_ANTHROPIC_KEY_MSG = "Your Claude key isn't set up yet - message Guy.";
 const PLATFORM_KEY_CLIENTS = new Set(
   [OWNER_CLIENT_ID, ...String(process.env.WINGGUY_PLATFORM_KEY_CLIENTS || '').split(',')]
     .map((s) => s.trim())
@@ -65,16 +64,10 @@ const PLATFORM_KEY_CLIENTS = new Set(
 );
 function byoAnthropicClient(req) {
   const cid = req.client && String(req.client.clientId || '').trim();
-  // Each draft logs which key lane it took (mirrors the overnight services' `anthropic lane=` line),
-  // so "is the extension using my stored key or the one in Chrome?" is answerable from the logs.
-  const headerKey = String(req.get(BYO_ANTHROPIC_HEADER) || '').trim();
-  if (headerKey) {                                                      // their own key (BYO, header) — wins by design
-    logger.info(`[Wingguy] anthropic lane=client-header-key client=${cid}`);
-    return getAnthropicClientForKey(headerKey);
-  }
-  // Stored BYO key on the record (the stored-key build, 2026-07-24) — the middle tier. Still THEIR
-  // key, so it satisfies the billing rule (not the platform). Lets a client run the extension without
-  // pasting a key into Chrome once it's on file; also the same lane the overnight paths use.
+  // Each draft logs which key lane it took (mirrors the overnight services' `anthropic lane=` line).
+  // The browser-key header lane (Option A, 2026-07-13) was REMOVED 2026-08-05 on Julian's feedback:
+  // an empty key field in the popup read as a form to fill in, and every client's key now lives on
+  // their Client Master row anyway. One door, not two.
   const storedKey = req.client && String(req.client.anthropicApiKey || '').trim();
   if (storedKey) {                                                      // their own key (stored on record)
     logger.info(`[Wingguy] anthropic lane=client-stored-key client=${cid}`);
@@ -116,7 +109,7 @@ function transientClaudeError(e) {
 // exhausted). This is the surfaced-not-swallowed half of the stored-key safety promise: a dead key
 // stops their Wingguy and tells them how to fix it — it is NEVER retried on the platform key.
 const ANTHROPIC_KEY_ERROR_MSG = {
-  revoked: 'Your Anthropic (Claude) API key was rejected - it looks revoked or invalid. Update it (extension settings, or ask your coach) and try again.',
+  revoked: 'Your Anthropic (Claude) API key was rejected - it looks revoked or invalid. Message Guy and it will get sorted.',
   billing: "Your Anthropic (Claude) account declined the request - most likely the spend limit or credit ran out. Raise the limit or top up in your Anthropic Console, then try again.",
 };
 

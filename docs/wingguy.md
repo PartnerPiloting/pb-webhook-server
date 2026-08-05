@@ -5062,3 +5062,25 @@ roster → run register script (Render one-off) → paste secret into roster →
 defensively from docs, unverified against a live note (first dryRun will tell); no per-person attribution
 in multi-party calls (structural to local capture). Zoom My Notes is the intended NEXT provider once its
 public API ships — monthly watch routine + memory `transcript-provider-strategy` track that.
+
+## BYO key: the browser field is gone - one door, the Client Master row (2026-08-05)
+
+Julian's feedback on the day he went live (meeting #10341, 14:39): the popup's optional API-key
+field should be hidden - "it's tempting for someone to go in and go, oh - but I don't have a key."
+He'd proven his own point two minutes earlier, reading the empty field as a step he had to do while
+his key was already on file and working.
+
+Decision (Guy, same day): remove the field entirely, don't hide it. Every client's key lives in the
+**Anthropic API Key** field on their Master Clients row - the door Step 8 of the onboarding
+checklist already uses. The header lane (`x-anthropic-key`, Option A of 2026-07-13) is deleted:
+extension popup field, background header, server lane all gone. Resolution is now simply **stored
+key -> platform (owner / Managed Claude Key=Yes / env override) -> blocked** with the client-facing
+message "Your Claude key isn't set up yet - message Guy."
+
+Free trials without the platform key: Guy mints a key in a capped workspace on HIS OWN Anthropic
+account and puts it in the client's row like any other key. Per-client spend stays visible, the cap
+bounds the risk, revoking the key ends the trial. No code knows the difference between a trial and
+a paying client - it's just whose key is in the field.
+
+The popup footer now reads the real manifest version (was hardcoded v0.1.0 - which is how Julian's
+screenshot mislabelled a 0.3.x build). Extension 0.3.2.

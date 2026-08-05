@@ -334,8 +334,9 @@ these are the *concepts*; the labels may sit a click away):
 **You do:**
 
 - [ ] Paste the key into the **Anthropic API Key** field on their Master Clients row. That's the
-      whole install - resolution is header -> this stored key -> platform, so from now on their
-      overnight brief and extension drafting run on their key automatically.
+      whole install - this stored key is the ONLY client lane (the extension's browser-key field
+      was removed 2026-08-05; platform key serves just the owner and Managed-plan clients), so from
+      now on their overnight brief and extension drafting run on their key automatically.
 - [ ] Only now flip **Followup Brief = Yes** (if they're getting the overnight brief). Order matters
       - see the Watch out.
 
