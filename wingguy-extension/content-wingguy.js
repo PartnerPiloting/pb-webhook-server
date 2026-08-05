@@ -157,15 +157,25 @@
       const scope = root || document.querySelector('main') || document.body;
       if (!scope) return '';
       const bits = [];
-      const nodes = scope.querySelectorAll('*');
-      for (let i = 0; i < nodes.length && bits.length < 40; i += 1) {
-        const el = nodes[i];
-        const cls = String(el.className || '');
-        if (typeof el.className !== 'string' || !cls) continue;
-        // Class names only, capped — enough to recognise LinkedIn's new naming, not enough to
-        // reconstruct anything about the person on screen.
-        bits.push(`${el.tagName.toLowerCase()}.${cls.split(/\s+/).slice(0, 3).join('.')}`.slice(0, 90));
-      }
+      // Crosses open shadow roots (marked "⇩shadow") — on the new-UI build the interesting
+      // structure is ALL inside shadow trees, and a light-DOM-only sample came back empty exactly
+      // when it was needed most. Depth-capped: a sample, not a census.
+      const visit = (node, depth) => {
+        if (!node || depth > 6 || bits.length >= 40) return;
+        let nodes = [];
+        try { nodes = node.querySelectorAll ? Array.from(node.querySelectorAll('*')) : []; } catch (_) {}
+        for (const el of nodes) {
+          if (bits.length >= 40) break;
+          const cls = String(el.className || '');
+          if (typeof el.className === 'string' && cls) {
+            // Class names only, capped — enough to recognise LinkedIn's new naming, not enough to
+            // reconstruct anything about the person on screen.
+            bits.push(`${el.tagName.toLowerCase()}.${cls.split(/\s+/).slice(0, 3).join('.')}`.slice(0, 90));
+          }
+          if (el.shadowRoot) { bits.push('⇩shadow'); visit(el.shadowRoot, depth + 1); }
+        }
+      };
+      visit(scope, 0);
       return Array.from(new Set(bits)).slice(0, 30).join(' | ').slice(0, 2000);
     } catch (_) {
       return '';
@@ -180,11 +190,18 @@
     const checks = [];
     let anyHardMiss = false;
     for (const item of plan) {
+      // A landmark that lives INSIDE a container is only checkable when that container exists. The
+      // first live health reports (2026-08-05) showed what falling back to the whole document does:
+      // loose selectors match something irrelevant (convo_header "found" LinkedIn's page header) and
+      // tight ones "miss" — both directions wrong, and wrong data is worse than none. No container,
+      // no row: the containing landmark's own check already tells the story.
       let root = document;
-      if (item.within === 'convo') root = (scopes && scopes.convo) || document;
-      if (item.within === 'about') root = (scopes && scopes.about) || document;
+      if (item.within === 'convo') { root = scopes && scopes.convo; if (!root) continue; }
+      if (item.within === 'about') { root = scopes && scopes.about; if (!root) continue; }
+      // Probe at the SAME depth as the scrape (light pass, then shadow walk) — a shallower check
+      // would report misses for content the scrape happily reads on the new-UI build.
       let found = false;
-      try { found = !!(root && root.querySelector(selStr(item.key))); } catch (_) { found = false; }
+      try { found = !!findByKey(item.key, root); } catch (_) { found = false; }
       if (!found && !item.soft) anyHardMiss = true;
       checks.push({
         key: item.key,
@@ -325,6 +342,56 @@
     }
     return null;
   }
+
+  // Shadow-crossing variants of the readers above. The new-UI build (2026-08: now carrying even
+  // PROFILE pages, inside the BPR frame) renders nearly everything inside open shadow roots, where
+  // plain querySelector/getElementById see nothing — that's how the profile scrape went blind while
+  // the messaging side (already on deepQueryAll) kept working. Selector ORDER still wins over depth:
+  // the first selector in the list that matches anywhere beats a later one matching shallower.
+  function deepQsFirst(selectors, root = document) {
+    for (const sel of selectors) {
+      const el = deepQueryAll(sel, root)[0];
+      if (el) return el;
+    }
+    return null;
+  }
+  function deepGetById(id, root = document) {
+    try { return root.getElementById ? root.getElementById(id) || deepQueryAll('#' + CSS.escape(id), root)[0] || null : deepQueryAll('#' + CSS.escape(id), root)[0] || null; } catch (_) { return null; }
+  }
+  // One landmark, looked up the way the scrape actually looks: cheap light-DOM pass first, shadow
+  // walk only when that misses. The self-check MUST use this same function — if it probed shallower
+  // than the scrape it would report misses for content the scrape happily reads, and vice versa.
+  function findByKey(key, root = document) {
+    return qsFirst(selList(key), root) || deepQsFirst(selList(key), root);
+  }
+  // The grounding-net fallback text, shadow roots included. body.innerText on the new-UI build is a
+  // few hundred chars of chrome — the real page lives in shadow trees, which innerText never enters.
+  // Slotted light-DOM content can be counted twice by this walk; harmless for a capped grounding
+  // blob the model skims, so not worth the bookkeeping to dedupe.
+  function deepInnerText(rootEl, cap = 6000) {
+    const parts = [];
+    let budget = cap * 2; // collect a little over, tidy below
+    const visit = (node) => {
+      if (budget <= 0 || !node) return;
+      let hosts = [];
+      try {
+        const own = node.innerText || '';   // elements only — a shadow root has no innerText
+        if (own) { parts.push(own); budget -= own.length; }
+        // A shadow ROOT (or document) has no innerText — take its top-level children's instead.
+        if (!own && node.children) {
+          for (const c of node.children) {
+            const t = c.innerText || '';
+            if (t) { parts.push(t); budget -= t.length; }
+            if (budget <= 0) break;
+          }
+        }
+        hosts = node.querySelectorAll ? Array.from(node.querySelectorAll('*')).filter((e) => e.shadowRoot) : [];
+      } catch (_) { /* keep walking */ }
+      for (const h of hosts) { if (budget <= 0) break; visit(h.shadowRoot); }
+    };
+    visit(rootEl);
+    return parts.join('\n').replace(/\n{3,}/g, '\n\n').replace(/[ \t]+/g, ' ').trim().slice(0, cap);
+  }
   function cleanText(t) {
     return (t || '').replace(/\s+/g, ' ').trim();
   }
@@ -357,7 +424,7 @@
   async function expandAboutSeeMore() {
     // Click the About section's "see more" so the full text is in the DOM before we read it.
     try {
-      const aboutAnchor = document.getElementById('about');
+      const aboutAnchor = deepGetById('about');
       const section = aboutAnchor ? aboutAnchor.closest('section') : null;
       if (!section) return;
       const btn = Array.from(section.querySelectorAll('button')).find((b) =>
@@ -371,7 +438,7 @@
   }
 
   function readAbout() {
-    const aboutAnchor = document.getElementById('about');
+    const aboutAnchor = deepGetById('about');
     const section = aboutAnchor ? aboutAnchor.closest('section') : null;
     if (!section) return '';
     // The About copy is usually in spans marked aria-hidden="true" (LinkedIn duplicates text for a11y).
@@ -385,7 +452,7 @@
 
   function readRecentActivity() {
     // Light, optional: grab a couple of snippets from the Activity section if present on the profile.
-    const anchor = document.getElementById('content_collections') || document.getElementById('recent_activity');
+    const anchor = deepGetById('content_collections') || deepGetById('recent_activity');
     const section = anchor ? anchor.closest('section') : null;
     if (!section) return [];
     const items = Array.from(section.querySelectorAll(selStr('profile_about_spans')))
@@ -602,7 +669,10 @@
       await autoScrollToLoad();   // force lazy sections (About/Experience) into the DOM (profile pages only)
       await expandAboutSeeMore();
     }
-    const nameEl = qsFirst(selList('profile_name'));
+    // findByKey = light-DOM pass then shadow walk. The new-UI build renders the whole profile
+    // inside open shadow roots, where the old plain reads went blind (name from the URL slug,
+    // empty About, "draft thinner than usual" on every new-UI profile — first seen live 2026-08-05).
+    const nameEl = findByKey('profile_name');
     let name = cleanText(nameEl && nameEl.textContent);
     let nameSource = name ? 'page' : '';
     if (!name) { name = nameFromTitle(); if (name) nameSource = 'title'; }
@@ -610,18 +680,25 @@
 
     // Headline + location: search the top card (anchored on the name element when found, else the
     // top-card container). Junk risk is bounded because pageText below is the real grounding net.
+    // A deep-found nameEl's .closest('section') stays within its own shadow tree — still anchored.
     const topCard = (nameEl && nameEl.closest('section')) ||
-      document.querySelector(selStr('profile_top_card')) || document;
-    const headlineEl = qsFirst(selList('profile_headline'), topCard);
+      findByKey('profile_top_card') || document;
+    const headlineEl = findByKey('profile_headline', topCard);
     let headline = cleanText(headlineEl && headlineEl.textContent);
-    const locationEl = qsFirst(selList('profile_location'), topCard);
+    const locationEl = findByKey('profile_location', topCard);
     let location = cleanText(locationEl && locationEl.textContent);
 
     // RAW FALLBACK: the whole profile's visible text. Robust to LinkedIn's class churn — when the
     // structured selectors miss, the model still gets real content to hook on (like AI Blaze does).
+    // On the new-UI build body.innerText is a few hundred chars of chrome; the real text sits in
+    // shadow trees, so fall through to the shadow-crossing walk when the plain read comes up thin.
     const mainEl = document.querySelector('main') || document.body;
-    const pageText = (mainEl.innerText || '')
+    let pageText = (mainEl.innerText || '')
       .replace(/\n{3,}/g, '\n\n').replace(/[ \t]+/g, ' ').trim().slice(0, 6000);
+    if (pageText.length < 500) {
+      const deepText = deepInnerText(document.body);
+      if (deepText.length > pageText.length) pageText = deepText;
+    }
 
     const base = {
       name,
@@ -642,9 +719,12 @@
     // Grade our own homework on the page we just read. Not awaited and never surfaced — this is the
     // silent half. The half the person sees is draftGapNotice(), rendered with the context header.
     try {
-      const aboutAnchor = document.getElementById('about');
+      const aboutAnchor = deepGetById('about');
       runSelfCheck(inThread ? 'messaging' : 'profile', {
-        convo: document.querySelector(CONVO_SELECTORS()) || null,
+        // Same container resolution as the thread reader: classic selectors, then the new-UI
+        // structural matcher. If neither finds one, the convo-scoped checks are skipped, not
+        // checked against the whole document (see runSelfCheck).
+        convo: document.querySelector(CONVO_SELECTORS()) || newUiConvoFromDocument() || null,
         about: (aboutAnchor && aboutAnchor.closest('section')) || null,
       }).catch(() => {});
     } catch (_) { /* a self-check must never break a scrape */ }
