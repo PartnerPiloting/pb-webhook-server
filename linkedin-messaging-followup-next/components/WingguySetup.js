@@ -145,10 +145,13 @@ function WingguySetupInner() {
       window.setTimeout(() => {
         setSaveState((s) => (s[id] === 'saved' ? { ...s, [id]: '' } : s));
       }, 2200);
+      // A saved blank flows straight into the instruction bodies below (they render with the
+      // client's values woven in), so re-fetch rather than leaving stale text until a reload.
+      loadInstructions();
     } catch (e) {
       setSaveState((s) => ({ ...s, [id]: 'Not saved - check your connection.' }));
     }
-  }, [authHeaders]);
+  }, [authHeaders, loadInstructions]);
 
   const assist = useCallback(async (payload) => {
     const res = await fetch(`${getBackendBase()}/api/wingguy/setup/assist`, {

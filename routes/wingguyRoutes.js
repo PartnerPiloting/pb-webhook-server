@@ -763,7 +763,13 @@ module.exports = function mountWingguy(app) {
           const kind = isFoundation
             ? (wingguyStore.ruleTier(r) === 'locked' ? 'fixed' : 'standard')
             : 'yours';
-          const { text } = wingguyStore.resolveRuleBody(r.body, varMap, assetMap);
+          const { text: resolved } = wingguyStore.resolveRuleBody(r.body, varMap, assetMap);
+          // A blank the client has not filled in resolves to its literal {{key}} - honest, but it
+          // reads as broken code to a client. Render it as a human nudge back up the page instead.
+          const text = resolved.replace(
+            /\{\{\s*(asset:)?([a-zA-Z0-9_.-]+)\s*\}\}/g,
+            (_w, _asset, key) => `[${key.replace(/[_-]+/g, ' ')} - not filled in yet]`,
+          );
           return {
             ruleKey: r.rule_key,
             context: r.context,
