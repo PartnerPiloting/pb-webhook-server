@@ -1921,6 +1921,18 @@ try {
     moduleLogger.error('index.js: Error mounting Wingguy routes', e.message, e.stack);
 }
 
+// Wingguy selector overrides — the LinkedIn landmark list, served from Postgres so a markup change
+// is a database row instead of a release plus every client reinstalling. Separate from
+// /api/extension-config (Airtable), which the legacy extension still calls.
+try {
+    const mountWingguySelectors = require('./routes/wingguySelectorRoutes.js');
+    if (typeof mountWingguySelectors === 'function') {
+        mountWingguySelectors(app);
+    }
+} catch(e) {
+    moduleLogger.error('index.js: Error mounting Wingguy selector routes', e.message, e.stack);
+}
+
 // Wingguy read-only draft pages (the queue's [draft] links; HMAC-signed, chat stays the hands)
 try {
     const mountWingguyDraft = require('./routes/wingguyDraftRoutes.js');

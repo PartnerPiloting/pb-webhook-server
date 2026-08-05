@@ -36,6 +36,186 @@
   // "/wingguy" wins over "/wg" when both would match the tail.
   const TRIGGERS = ['/wingguy', '\\wingguy', '/wingman', '\\wingman', '/wg', '\\wg'];
 
+  // ---- LinkedIn landmarks ---------------------------------------------------
+  // Every CSS selector Wingguy uses to find something on a LinkedIn page lives here, and ONLY here.
+  // LinkedIn renames these periodically; when that happens Wingguy goes looking for something that no
+  // longer exists and comes back empty. Before this block that cost a release and every client
+  // reinstalling — now the corrected value is a row in Postgres (wingguy_selectors) that reaches
+  // everyone on their next page load.
+  //
+  // These built-in values are NOT a bootstrap — they are the permanent fallback. The server is only
+  // ever asked "have any of these been corrected since you shipped?". No database, no network, an
+  // expired token, a 500: all land on this object, and Wingguy behaves exactly as it did before any
+  // of this existed. The store can make Wingguy better; it can never be why Wingguy stopped working.
+  //
+  // Values are comma-separated alternatives tried in order, so a correction can ADD the new markup
+  // in front while leaving the old behind it — which matters because LinkedIn rolls changes out
+  // gradually and two clients can be on different markup on the same day.
+  const SELECTOR_DEFAULTS = {
+    profile_name: 'main h1, h1.text-heading-xlarge, .pv-top-card h1, section.artdeco-card h1, main section h1, h1',
+    profile_headline: 'div.text-body-medium.break-words, .pv-text-details__left-panel .text-body-medium, div.text-body-medium',
+    profile_location: 'span.text-body-small.inline.t-black--light.break-words, .pv-text-details__left-panel .text-body-small',
+    profile_top_card: '.pv-top-card, .ph5.pb5, main section',
+    profile_about_spans: 'span[aria-hidden="true"]',
+    convo_container: '.msg-overlay-conversation-bubble,.msg-convo-wrapper,.msg-thread,.msg-s-message-list-container,.scaffold-layout__detail',
+    convo_header: 'header, [class*="overlay-bubble-header"], [class*="title-bar"], [class*="thread__header"], [class*="thread-header"]',
+    message_group_name: '.msg-s-message-group__name, [class*="message-group__name"], [class*="event-listitem__name"]',
+    message_timestamp: 'time, .msg-s-message-group__timestamp, [class*="timestamp"]',
+    message_body: '.msg-s-event-listitem__body',
+    message_group: '.msg-s-message-group, [class*="message-group"]',
+    // Same landmark, looser: used where we're walking UP from a node and a generic list row is an
+    // acceptable answer. Kept separate from message_group on purpose — widening that one to include
+    // li/[role=listitem] would change which container the strict callers resolve to.
+    message_group_item: '.msg-s-message-group, [class*="message-group"], li, [role="listitem"]',
+    message_item: '.msg-s-event-listitem, .msg-s-message-list__time-heading, [class*="time-heading"]',
+    message_item_row: '.msg-s-event-listitem',
+    // NOTE: the editable-element scans elsewhere in this file ([contenteditable], textarea, input,
+    // [role="textbox"]) are deliberately NOT here. They're web-platform attributes, not LinkedIn
+    // class names — LinkedIn cannot rename them, so there is nothing for a correction to fix.
+    composer_box: '[role="textbox"], [contenteditable="true"]',
+    thread_open_marker: '.msg-overlay-conversation-bubble .msg-form, .msg-convo-wrapper, .msg-thread, .scaffold-layout__detail .msg-s-message-list-container',
+  };
+
+  // The live set, and where each value came from. SEL_SOURCE is not bookkeeping for its own sake:
+  // when the store silently fails, Wingguy still works perfectly on defaults, so "it looks fine" is
+  // exactly what a broken pipe looks like. This is the only way to tell the two apart.
+  const SEL_VALUE = { ...SELECTOR_DEFAULTS };
+  const SEL_SOURCE = {};
+  Object.keys(SELECTOR_DEFAULTS).forEach((k) => { SEL_SOURCE[k] = 'default'; });
+  let selectorStoreState = 'not-loaded';
+
+  /** One landmark as a selector string (for querySelector / matches). */
+  function selStr(key) {
+    return SEL_VALUE[key] || SELECTOR_DEFAULTS[key] || '';
+  }
+  /** One landmark as an ordered list of alternatives (for qsFirst). */
+  function selList(key) {
+    return selStr(key).split(',').map((s) => s.trim()).filter(Boolean);
+  }
+
+  /** Ask the background worker for any corrections and merge them over the defaults. Never throws:
+   *  every failure path leaves SEL_VALUE exactly as it shipped. */
+  async function loadRemoteSelectors(force) {
+    try {
+      const data = await bg({ type: 'WG_GET_SELECTORS', force: !!force });
+      selectorStoreState = (data && data.store) || 'unknown';
+      const remote = (data && data.selectors) || {};
+      let applied = 0;
+      for (const [key, entry] of Object.entries(remote)) {
+        // Ignore keys this build doesn't know about — an older extension must never be broken by a
+        // landmark added for a newer one.
+        if (!(key in SELECTOR_DEFAULTS)) continue;
+        const value = entry && typeof entry === 'object' ? entry.value : entry;
+        if (!value || typeof value !== 'string') continue;
+        SEL_VALUE[key] = value.trim();
+        SEL_SOURCE[key] = 'server';
+        applied += 1;
+      }
+      if (applied) console.log(`[Wingguy] landmark corrections applied: ${applied} (store=${selectorStoreState})`);
+      return applied;
+    } catch (e) {
+      selectorStoreState = 'unreachable';
+      return 0;
+    }
+  }
+
+  // ---- self-check ------------------------------------------------------------
+  // Which landmarks are supposed to resolve on which surface. A landmark missing where it was never
+  // expected (no message body on a profile page) is not a fault, and reporting it as one is how these
+  // things become noise you learn to ignore. `soft: true` = genuinely optional even on its own
+  // surface (not everyone writes an About section), so a miss is recorded but is not a symptom.
+  const SELF_CHECK_PLAN = {
+    profile: [
+      { key: 'profile_name' },
+      { key: 'profile_top_card' },
+      { key: 'profile_headline', soft: true },
+      { key: 'profile_location', soft: true },
+      { key: 'profile_about_spans', soft: true, within: 'about' },
+    ],
+    messaging: [
+      { key: 'thread_open_marker' },
+      { key: 'convo_container' },
+      { key: 'convo_header', within: 'convo' },
+      { key: 'message_group_name', within: 'convo', soft: true },
+      { key: 'message_body', within: 'convo', soft: true },
+      { key: 'composer_box', within: 'convo' },
+    ],
+  };
+
+  /** The STRUCTURE sitting where a landmark used to be — tag names, class names, nothing else.
+   *  Deliberately carries no page text: it travels off the client's machine, and the shape is all
+   *  that's needed to work out the new selector. Same idea as dumpHeaderDiag below, but small enough
+   *  to store and safe enough to send. */
+  function shapeOf(root) {
+    try {
+      const scope = root || document.querySelector('main') || document.body;
+      if (!scope) return '';
+      const bits = [];
+      const nodes = scope.querySelectorAll('*');
+      for (let i = 0; i < nodes.length && bits.length < 40; i += 1) {
+        const el = nodes[i];
+        const cls = String(el.className || '');
+        if (typeof el.className !== 'string' || !cls) continue;
+        // Class names only, capped — enough to recognise LinkedIn's new naming, not enough to
+        // reconstruct anything about the person on screen.
+        bits.push(`${el.tagName.toLowerCase()}.${cls.split(/\s+/).slice(0, 3).join('.')}`.slice(0, 90));
+      }
+      return Array.from(new Set(bits)).slice(0, 30).join(' | ').slice(0, 2000);
+    } catch (_) {
+      return '';
+    }
+  }
+
+  /** Grade our own homework against the page we're actually on, and send the result home. Silent by
+   *  design: nothing here ever reaches the screen. */
+  async function runSelfCheck(surface, scopes) {
+    const plan = SELF_CHECK_PLAN[surface];
+    if (!plan) return [];
+    const checks = [];
+    let anyHardMiss = false;
+    for (const item of plan) {
+      let root = document;
+      if (item.within === 'convo') root = (scopes && scopes.convo) || document;
+      if (item.within === 'about') root = (scopes && scopes.about) || document;
+      let found = false;
+      try { found = !!(root && root.querySelector(selStr(item.key))); } catch (_) { found = false; }
+      if (!found && !item.soft) anyHardMiss = true;
+      checks.push({
+        key: item.key,
+        surface,
+        found,
+        source: SEL_SOURCE[item.key] || 'default',
+        // Only pay for a shape sample when something actually failed.
+        shape: found ? '' : shapeOf(item.within === 'convo' ? (scopes && scopes.convo) : null),
+      });
+    }
+    try {
+      await bg({
+        type: 'WG_SELECTOR_HEALTH',
+        checks,
+        extensionVersion: (chrome.runtime.getManifest && chrome.runtime.getManifest().version) || '',
+      });
+    } catch (_) { /* health is never worth surfacing */ }
+    if (anyHardMiss) console.log('[Wingguy] self-check: one or more expected landmarks did not resolve', checks);
+    return checks;
+  }
+
+  /** What to TELL the person when a gap actually changes what they're about to get. Plain words, no
+   *  diagnostics, and it says someone is already on it — a known issue is a very different feeling
+   *  from a product quietly going vague on you. Only gaps that visibly affect the draft belong here;
+   *  everything else stays in the silent health report. */
+  function draftGapNotice(profile) {
+    // Only on a profile read. In a thread the profile-only fields are blanked on purpose, so
+    // checking them there would cry wolf on every single messaging turn.
+    if (!profile || profile._wgSurface !== 'profile') return '';
+    const gaps = [];
+    if (!profile.about) gaps.push('their About section');
+    if (!profile.headline) gaps.push('their headline');
+    if (!gaps.length) return '';
+    const what = gaps.length === 1 ? gaps[0] : `${gaps.slice(0, -1).join(', ')} and ${gaps[gaps.length - 1]}`;
+    return `I couldn't read ${what}, so this draft is thinner than usual - I'm on it.`;
+  }
+
   let currentUrl = location.href;
   let templates = null; // cached [{ id, label, useWhen, detectionKeywords, isDefault }]
   let lastScrapeScoped = false; // did the last thread scrape isolate a single conversation container?
@@ -94,9 +274,8 @@
   // when a floating conversation bubble is expanded on ANY page (feed, profile, search, etc.). This is
   // what lets Wingguy offer itself from the messages, where there's no /in/ profile page in play.
   function hasOpenMessageThread() {
-    return !!document.querySelector(
-      '.msg-overlay-conversation-bubble .msg-form, .msg-convo-wrapper, .msg-thread, .scaffold-layout__detail .msg-s-message-list-container'
-    ) || !!newUiConvoFromDocument();  // new-UI build: structural match (guarded by the interop marker)
+    return !!document.querySelector(selStr('thread_open_marker'))
+      || !!newUiConvoFromDocument();  // new-UI build: structural match (guarded by the interop marker)
   }
   // Show the launcher / accept the /wg trigger on profiles AND on the messaging surface.
   function shouldShowLauncher() {
@@ -161,7 +340,7 @@
     const section = aboutAnchor ? aboutAnchor.closest('section') : null;
     if (!section) return '';
     // The About copy is usually in spans marked aria-hidden="true" (LinkedIn duplicates text for a11y).
-    const spans = Array.from(section.querySelectorAll('span[aria-hidden="true"]'))
+    const spans = Array.from(section.querySelectorAll(selStr('profile_about_spans')))
       .map((s) => cleanText(s.textContent))
       .filter(Boolean);
     // Drop the heading ("About") and dedupe.
@@ -174,7 +353,7 @@
     const anchor = document.getElementById('content_collections') || document.getElementById('recent_activity');
     const section = anchor ? anchor.closest('section') : null;
     if (!section) return [];
-    const items = Array.from(section.querySelectorAll('span[aria-hidden="true"]'))
+    const items = Array.from(section.querySelectorAll(selStr('profile_about_spans')))
       .map((s) => cleanText(s.textContent))
       .filter((t) => t && t.length > 25);
     return Array.from(new Set(items)).slice(0, 3);
@@ -245,7 +424,7 @@
     // fell back to the profile behind the bubble. isConnected traverses shadow boundaries.
     const anchor = (lastFocusedEditable && lastFocusedEditable.isConnected) ? lastFocusedEditable : null;
     const convo = containerOpt || (anchor && closestConversationContainer(anchor)) ||
-      document.querySelector(CONVO_SELECTORS) || newUiConvoFromDocument();
+      document.querySelector(CONVO_SELECTORS()) || newUiConvoFromDocument();
     if (convo && isNewUiConvoContainer(convo)) {
       const h = scrapeNewUiHeader(convo);
       if (h) { console.log('[Wingguy] messaging-header (new-UI) →', h.name, '|', h.profileUrl || '(no /in/ url)'); return h; }
@@ -253,7 +432,7 @@
     }
     const pane = (convo && (convo.closest('.scaffold-layout__detail, .msg-overlay-conversation-bubble') || convo)) || document;
     // Scope to the header region so we don't pull a name/link out of a message bubble body.
-    const header = pane.querySelector('header, [class*="overlay-bubble-header"], [class*="title-bar"], [class*="thread__header"], [class*="thread-header"]') || pane;
+    const header = pane.querySelector(selStr('convo_header')) || pane;
 
     // NAME and URL are read SEPARATELY — in an overlay bubble the name is a heading (text, not a link) and
     // the /in/ link is usually the avatar (no text). Requiring both on one element (the old bug) missed it.
@@ -333,14 +512,7 @@
       await autoScrollToLoad();   // force lazy sections (About/Experience) into the DOM (profile pages only)
       await expandAboutSeeMore();
     }
-    const nameEl = qsFirst([
-      'main h1',
-      'h1.text-heading-xlarge',
-      '.pv-top-card h1',
-      'section.artdeco-card h1',
-      'main section h1',
-      'h1',
-    ]);
+    const nameEl = qsFirst(selList('profile_name'));
     let name = cleanText(nameEl && nameEl.textContent);
     let nameSource = name ? 'page' : '';
     if (!name) { name = nameFromTitle(); if (name) nameSource = 'title'; }
@@ -349,16 +521,10 @@
     // Headline + location: search the top card (anchored on the name element when found, else the
     // top-card container). Junk risk is bounded because pageText below is the real grounding net.
     const topCard = (nameEl && nameEl.closest('section')) ||
-      document.querySelector('.pv-top-card, .ph5.pb5, main section') || document;
-    const headlineEl = qsFirst(
-      ['div.text-body-medium.break-words', '.pv-text-details__left-panel .text-body-medium', 'div.text-body-medium'],
-      topCard
-    );
+      document.querySelector(selStr('profile_top_card')) || document;
+    const headlineEl = qsFirst(selList('profile_headline'), topCard);
     let headline = cleanText(headlineEl && headlineEl.textContent);
-    const locationEl = qsFirst(
-      ['span.text-body-small.inline.t-black--light.break-words', '.pv-text-details__left-panel .text-body-small'],
-      topCard
-    );
+    const locationEl = qsFirst(selList('profile_location'), topCard);
     let location = cleanText(locationEl && locationEl.textContent);
 
     // RAW FALLBACK: the whole profile's visible text. Robust to LinkedIn's class churn — when the
@@ -376,7 +542,22 @@
       recentPosts: readRecentActivity(),
       pageText,
       nameSource,
+      // Which surface this was read from. The gap notice needs it: in a thread the profile-only
+      // fields are deliberately blanked below (they belong to the person behind the bubble, not the
+      // one you're writing to), so without this every messaging turn would claim it couldn't read an
+      // About section that was never meant to be there.
+      _wgSurface: inThread ? 'messaging' : 'profile',
     };
+
+    // Grade our own homework on the page we just read. Not awaited and never surfaced — this is the
+    // silent half. The half the person sees is draftGapNotice(), rendered with the context header.
+    try {
+      const aboutAnchor = document.getElementById('about');
+      runSelfCheck(inThread ? 'messaging' : 'profile', {
+        convo: document.querySelector(CONVO_SELECTORS()) || null,
+        about: (aboutAnchor && aboutAnchor.closest('section')) || null,
+      }).catch(() => {});
+    } catch (_) { /* a self-check must never break a scrape */ }
 
     // When acting in a thread, the page values are the WRONG person: on /messaging/ the h1 is the
     // messaging UI ("Messaging"); on a bubble-over-profile the h1 is the profile BEHIND the bubble
@@ -412,13 +593,9 @@
   // Which conversation container to read. LinkedIn can have SEVERAL message bubbles open at once, so a
   // page-wide query mixes threads together (Vera + Doug bug, 2026-06-26). Scope to the ONE conversation
   // anchored on the box the user is acting in (the composer they typed /wg in or sent from).
-  const CONVO_SELECTORS = [
-    '.msg-overlay-conversation-bubble',
-    '.msg-convo-wrapper',
-    '.msg-thread',
-    '.msg-s-message-list-container',
-    '.scaffold-layout__detail',
-  ].join(',');
+  // A function, not a const: the landmark corrections land AFTER this file is evaluated, so a
+  // captured string here would freeze the shipped default and quietly ignore every fix.
+  function CONVO_SELECTORS() { return selStr('convo_container'); }
 
   // Walk one step up the tree, crossing OPEN shadow boundaries (a shadow root's parent is the root;
   // hop to its .host to continue in the outer tree). Plain .closest() can't cross shadow boundaries.
@@ -440,10 +617,10 @@
   function isNewUiConvoContainer(node) {
     if (!node || node.nodeType !== 1 || !node.querySelectorAll) return false;
     try {
-      if (node.matches && node.matches(CONVO_SELECTORS)) return false;      // classic path owns these
+      if (node.matches && node.matches(CONVO_SELECTORS())) return false;      // classic path owns these
       if (node === document.body || node === document.documentElement) return false;
       if (node.querySelectorAll('h2').length !== 1) return false;
-      return !!node.querySelector('[role="textbox"], [contenteditable="true"]');
+      return !!node.querySelector(selStr('composer_box'));
     } catch (_) { return false; }
   }
   // Any open new-UI conversation on the page, anchored on a visible composer (a send/typed trigger can
@@ -451,7 +628,7 @@
   // deep walk entirely.
   function newUiConvoFromDocument() {
     if (!document.querySelector('[data-testid="interop-shadowdom"]')) return null;
-    const boxes = deepQueryAll('[role="textbox"], [contenteditable="true"]')
+    const boxes = deepQueryAll(selStr('composer_box'))
       .filter((el) => isVisible(el) && !insideWingguy(el) && isMessageEditableSafe(el));
     const box = boxes[boxes.length - 1];                                    // most-recently-opened thread
     return box ? closestConversationContainer(box) : null;
@@ -460,7 +637,7 @@
     let node = el, steps = 0;
     while (node && steps++ < 300) {
       if (node.nodeType === 1 && node.matches) {
-        try { if (node.matches(CONVO_SELECTORS)) return node; } catch (_) {}
+        try { if (node.matches(CONVO_SELECTORS())) return node; } catch (_) {}
         if (isNewUiConvoContainer(node)) return node;                       // new-UI: smallest h2+composer wrapper
       }
       node = ascendNode(node);
@@ -476,10 +653,10 @@
       !/(message|reaction|status|sent the following|edited|open the options|see more|today|yesterday|active now|· )/i.test(t);
   }
   function senderForItem(item) {
-    const group = item.closest('.msg-s-message-group, [class*="message-group"], li, [role="listitem"]') || item;
+    const group = item.closest(selStr('message_group_item')) || item;
     const cands = [];
     group.querySelectorAll('img[alt]').forEach((im) => cands.push(im.getAttribute('alt')));            // avatar alt = name
-    group.querySelectorAll('.msg-s-message-group__name, [class*="message-group__name"], [class*="event-listitem__name"]')
+    group.querySelectorAll(selStr('message_group_name'))
       .forEach((e) => cands.push(e.textContent));
     group.querySelectorAll('a[href*="/in/"]').forEach((a) => cands.push(a.getAttribute('aria-label') || a.textContent));
     for (const c of cands) {
@@ -493,8 +670,8 @@
   // grouped consecutive messages share the header time, so the caller carries the last seen time
   // forward. Falls back to scanning the item text for an H:MM AM/PM token.
   function timeForItem(item) {
-    const group = item.closest('.msg-s-message-group, [class*="message-group"]') || item;
-    const tnode = group.querySelector('time, .msg-s-message-group__timestamp, [class*="timestamp"]') ||
+    const group = item.closest(selStr('message_group')) || item;
+    const tnode = group.querySelector(selStr('message_timestamp')) ||
       item.querySelector('time, [class*="timestamp"]');
     let raw = cleanText(tnode && ((tnode.getAttribute && tnode.getAttribute('aria-label')) || tnode.textContent));
     let m = raw.match(/\d{1,2}:\d{2}\s*(?:AM|PM)/i);
@@ -545,7 +722,7 @@
       buf = null;
     };
     for (const node of convo.querySelectorAll('time, a[href*="/in/"], p')) {
-      if (insideWingguy(node) || node.closest('[role="textbox"], [contenteditable="true"]')) continue;
+      if (insideWingguy(node) || node.closest(selStr('composer_box'))) continue;
       if (node.tagName === 'TIME') {
         const t = cleanText(node.textContent);
         const m = t.match(/\d{1,2}:\d{2}\s*(?:AM|PM)?/i);
@@ -587,13 +764,13 @@
     // Walk message items AND the day-heading separators in order, so each message can carry the day it
     // fell under (real dates on the record) plus its time. Sender/time carry forward across a group's
     // continuation bubbles (only the first bubble shows the name/time).
-    const nodes = deepQueryAll('.msg-s-event-listitem, .msg-s-message-list__time-heading, [class*="time-heading"]', root);
+    const nodes = deepQueryAll(selStr('message_item'), root);
     const out = [];
     const msgItems = [];
     let lastSender = '', curDay = '', lastTime = '';
     nodes.forEach((node) => {
       if (!node.matches) return;
-      const isItem = node.matches('.msg-s-event-listitem');
+      const isItem = node.matches(selStr('message_item_row'));
       if (!isItem) {
         if (node.matches('.msg-s-message-list__time-heading, [class*="time-heading"]')) {
           const d = cleanText(node.textContent);
@@ -604,7 +781,7 @@
       msgItems.push(node);
       const name = senderForItem(node); if (name) lastSender = name;
       const time = timeForItem(node); if (time) lastTime = time;
-      const bodyEl = node.querySelector('.msg-s-event-listitem__body');
+      const bodyEl = node.querySelector(selStr('message_body'));
       const text = cleanText(bodyEl && bodyEl.textContent);
       if (text) out.push({ sender: lastSender || 'Unknown', text, day: curDay, time: lastTime });
     });
@@ -979,7 +1156,7 @@
       const findConvo = () =>
         (lastSendAnchor && lastSendAnchor.isConnected && closestConversationContainer(lastSendAnchor)) ||
         activeThreadContainer() ||
-        document.querySelector(CONVO_SELECTORS) ||
+        document.querySelector(CONVO_SELECTORS()) ||
         newUiConvoFromDocument();
       let convo = findConvo();
       let hdr = convo ? scrapeMessagingHeader(convo) : { profileUrl: location_origin_path(), name: '' };
@@ -1302,7 +1479,12 @@
   // 2026-06-28 — the unified chat agent works out the move itself; Guy steers it in chat.)
   function renderContext(profile) {
     const who = `${escapeHtml(profile.name || '(name not found)')}${profile.headline ? ` <span class="wingguy-muted">· ${escapeHtml(profile.headline)}</span>` : ''}`;
-    setContextSub(`<span class="wingguy-context-who">${who}</span>`);
+    // Say it plainly when a gap actually changes what they're about to get. No error codes, no
+    // landmark names — and it says someone is already on it, because a known issue lands very
+    // differently from a product that has quietly gone vague on you.
+    const notice = draftGapNotice(profile);
+    const noticeHtml = notice ? `<div class="wingguy-muted">${escapeHtml(notice)}</div>` : '';
+    setContextSub(`<span class="wingguy-context-who">${who}</span>${noticeHtml}`);
   }
 
   // Top-level: set the header, then open the unified chat. The agent reads the profile + thread and
@@ -1817,6 +1999,10 @@
   }
 
   function init() {
+    // Ask for landmark corrections BEFORE anything reads the page. Not awaited: a slow or dead
+    // server must never delay the launcher appearing, and every read falls back to the shipped
+    // defaults until (and unless) the corrections land.
+    loadRemoteSelectors().catch(() => {});
     refresh();
     watchSpaNavigation();
     // Remember the last editable the user focused (so Insert can target the message box even though
