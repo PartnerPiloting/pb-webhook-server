@@ -17,7 +17,7 @@ const check = (name, fn) => {
   catch (e) { failures++; console.error(`  ✗ ${name}\n    ${e.message}`); }
 };
 
-const ALL = [...fields.VARIABLE_FIELDS, ...fields.ASSET_FIELDS];
+const ALL = [...fields.VARIABLE_FIELDS, ...fields.ASSET_FIELDS, ...fields.VOICE_FIELDS];
 
 console.log('\nwingguySetupFields');
 
@@ -37,17 +37,31 @@ check('choice fields carry non-empty options', () => {
 });
 
 check('keys are unique within each scope', () => {
-  const vars = fields.VARIABLE_FIELDS.map((f) => f.key);
+  // Voice fields ARE variables underneath, so uniqueness runs across both lists.
+  const vars = [...fields.VARIABLE_FIELDS, ...fields.VOICE_FIELDS].map((f) => f.key);
   const assets = fields.ASSET_FIELDS.map((f) => f.key);
   assert.strictEqual(new Set(vars).size, vars.length, 'duplicate variable key');
   assert.strictEqual(new Set(assets).size, assets.length, 'duplicate asset key');
 });
 
 check('the key sets match the field lists (the write-door allow-list)', () => {
-  assert.strictEqual(fields.VARIABLE_KEYS.size, fields.VARIABLE_FIELDS.length);
+  assert.strictEqual(fields.VARIABLE_KEYS.size, fields.VARIABLE_FIELDS.length + fields.VOICE_FIELDS.length);
   assert.strictEqual(fields.ASSET_KEYS.size, fields.ASSET_FIELDS.length);
-  fields.VARIABLE_FIELDS.forEach((f) => assert.ok(fields.VARIABLE_KEYS.has(f.key), `${f.key} missing from VARIABLE_KEYS`));
+  [...fields.VARIABLE_FIELDS, ...fields.VOICE_FIELDS].forEach((f) => assert.ok(fields.VARIABLE_KEYS.has(f.key), `${f.key} missing from VARIABLE_KEYS`));
   fields.ASSET_FIELDS.forEach((f) => assert.ok(fields.ASSET_KEYS.has(f.key), `${f.key} missing from ASSET_KEYS`));
+});
+
+check('voice fields carry a save cap and the default stays 600', () => {
+  fields.VOICE_FIELDS.filter((f) => f.cap).forEach((f) => {
+    assert.strictEqual(fields.capFor('variable', f.key), f.cap, `${f.key}: capFor should honour its cap`);
+  });
+  assert.strictEqual(fields.capFor('variable', 'signoff'), 600);
+  assert.strictEqual(fields.capFor('asset', 'zoom_room'), 600);
+});
+
+check('the harvested-over-time slot is NOT a day-one box', () => {
+  // own_anchor_lines fills via the edit loop and chat - a box would collect guesses (Guy's call).
+  assert.ok(!fields.VARIABLE_KEYS.has('own_anchor_lines'), 'own_anchor_lines must not be page-editable yet');
 });
 
 check('plumbing variables are NOT exposed to clients', () => {

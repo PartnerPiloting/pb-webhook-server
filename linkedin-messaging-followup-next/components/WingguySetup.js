@@ -1,16 +1,20 @@
 "use client";
 
 /**
- * "Your Wingguy" — the page a client opens from their own private link to see how their
- * instructions work and fill in the half that is theirs.
+ * "Your Wingguy" — the page a client opens from their own private link. Explains how their
+ * instructions work, collects the fill-in-the-blanks half, and (stage 3) shows every instruction
+ * in plain English with a change-door under each one plus an add-your-own box.
  *
  * STANDALONE ON PURPOSE. No <Layout>, no client-profile bootstrap, no WordPress auth: this has to
  * work for someone who has been sent a link and nothing else. The portal token in ?token= is the
- * whole authentication story (the backend's authenticateUserWithTestMode takes it on its own), and
- * it is the same link the coach already sends.
+ * whole authentication story. (?client=X&devKey=Y is the admin lane for looking at any tenant's
+ * page.)
  *
- * Saving is per field, on blur — so a dropped connection loses one answer, not the lot, and there
- * is no Save button to forget to press. Every write is history-logged at the store.
+ * Two writing rules the page never breaks:
+ *   - Blanks and voice boxes save per field, on blur (a dropped connection costs one answer).
+ *   - Instruction changes NEVER save free text directly: the assist endpoint drafts the new
+ *     version, the client reads it, and only the explicit Save click commits — through the same
+ *     checked door chat uses (version check, guardrail refusal, history).
  */
 
 import React, { useState, useEffect, useCallback, Suspense } from 'react';
@@ -36,16 +40,16 @@ const KINDS = [
     tag: 'Yours',
     tone: 'slate',
     headline: 'Your words, your defaults, your links. Change them whenever you like.',
-    body: 'How you sign off. What you say when someone asks what you do. The earliest you would ever take a meeting. These start with sensible defaults - and further down this page is where you make them yours.',
+    body: 'How you sign off. What you say when someone asks what you do. The earliest you would ever take a meeting. These start with sensible defaults - and this page is where you make them yours.',
     eg: '',
   },
 ];
 
 const LOOP = [
-  ['It writes the draft', 'A connection request, a reply, a follow-up email after a call. It pulls in what it knows about the person first.'],
+  ['It writes the draft', 'A connection request, a reply, a follow-up email after a call. It pulls in what it knows about the person first - your past messages, the call, their profile.'],
   ['You read it before it goes anywhere', 'Always. Nothing is ever sent on your behalf without you seeing it. Change what is not right and send it.'],
-  ['You tell it what was off', '"Don\'t say reach out." "That\'s too long." Plain English, in your own words - you never have to phrase it like an instruction.'],
-  ['It remembers - for good', 'Not just for the next message. It shows you what it is about to change, then that correction applies to everything it writes from then on.'],
+  ['You tell it what was off', '"Don\'t say reach out." "That\'s too long." "Always mention I\'m Brisbane based." Plain English, in your own words - you never have to phrase it like an instruction.'],
+  ['It remembers - for good', 'Not just for the next message. It shows you exactly what it is about to change before it changes anything, then that correction applies to everything it writes from then on.'],
 ];
 
 const SAY = [
@@ -55,18 +59,11 @@ const SAY = [
   ['Go back to the standard one', 'Undoes a change of yours and puts ours back. Nothing is ever lost.'],
 ];
 
-const TONES = {
-  emerald: 'text-emerald-700 bg-emerald-50 border-emerald-200',
-  amber: 'text-amber-800 bg-amber-50 border-amber-300',
-  slate: 'text-slate-700 bg-white border-slate-200',
-};
-
 function WingguySetupInner() {
   const searchParams = useSearchParams();
   const token = searchParams.get('token') || '';
   // Admin/testing lane, already supported by the backend's auth middleware: ?client=X&devKey=Y
-  // opens any tenant's page without minting a portal link. Lets the coach look at exactly what a
-  // given client sees. A client's own link never carries these.
+  // opens any tenant's page without minting a portal link. A client's own link never carries these.
   const client = searchParams.get('client') || '';
   const devKey = searchParams.get('devKey') || '';
   const hasAuth = !!token || !!(client && devKey);
@@ -81,9 +78,20 @@ function WingguySetupInner() {
 
   const [state, setState] = useState({ status: 'loading', error: '', data: null });
   const [values, setValues] = useState({});
-  const [saveState, setSaveState] = useState({}); // key -> 'saving' | 'saved' | error string
+  const [saveState, setSaveState] = useState({});
+  const [instructions, setInstructions] = useState(null); // null while loading | {groups,total} | {error}
 
   const fieldId = (f) => `${f.scope}:${f.key}`;
+
+  const loadInstructions = useCallback(async () => {
+    try {
+      const res = await fetch(`${getBackendBase()}/api/wingguy/setup/instructions`, { headers: authHeaders() });
+      const data = await res.json().catch(() => ({}));
+      setInstructions(res.ok && data.ok ? data : { error: data.error || 'Could not load your instructions.' });
+    } catch (e) {
+      setInstructions({ error: 'Could not load your instructions - check your connection.' });
+    }
+  }, [authHeaders]);
 
   useEffect(() => {
     if (!hasAuth) {
@@ -93,9 +101,7 @@ function WingguySetupInner() {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch(`${getBackendBase()}/api/wingguy/setup`, {
-          headers: authHeaders(),
-        });
+        const res = await fetch(`${getBackendBase()}/api/wingguy/setup`, { headers: authHeaders() });
         const data = await res.json().catch(() => ({}));
         if (cancelled) return;
         if (!res.ok || !data.ok) {
@@ -113,12 +119,13 @@ function WingguySetupInner() {
         data.fields.forEach((f) => { initial[`${f.scope}:${f.key}`] = f.value || ''; });
         setValues(initial);
         setState({ status: 'ready', error: '', data });
+        loadInstructions();
       } catch (e) {
         if (!cancelled) setState({ status: 'error', error: 'We could not reach Wingguy. Check your connection and refresh.', data: null });
       }
     })();
     return () => { cancelled = true; };
-  }, [hasAuth, authHeaders]);
+  }, [hasAuth, authHeaders, loadInstructions]);
 
   const save = useCallback(async (field, nextValue) => {
     const id = `${field.scope}:${field.key}`;
@@ -143,7 +150,34 @@ function WingguySetupInner() {
     }
   }, [authHeaders]);
 
-  // --- states before the form ---------------------------------------------------------------
+  const assist = useCallback(async (payload) => {
+    const res = await fetch(`${getBackendBase()}/api/wingguy/setup/assist`, {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.ok) throw new Error(data.error || 'That did not work - try again in a moment.');
+    return data;
+  }, [authHeaders]);
+
+  const commitChange = useCallback(async (proposal) => {
+    const res = await fetch(`${getBackendBase()}/api/wingguy/setup/change-commit`, {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({
+        ruleKey: proposal.ruleKey,
+        context: proposal.context,
+        ruleType: proposal.ruleType,
+        body: proposal.proposedBody,
+        expectedVersion: proposal.expectedVersion,
+        explanation: proposal.explanation,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.ok) throw new Error(data.error || 'Not saved - try again.');
+    await loadInstructions();
+  }, [authHeaders, loadInstructions]);
 
   if (state.status === 'loading') {
     return <Shell><p className="text-slate-500">Opening your setup…</p></Shell>;
@@ -188,12 +222,14 @@ function WingguySetupInner() {
   }
 
   const { data } = state;
+  const blanks = data.fields.filter((f) => f.section !== 'voice');
+  const voiceFields = data.fields.filter((f) => f.section === 'voice');
   const answered = data.fields.filter((f) => String(values[fieldId(f)] || '').trim()).length;
   const pct = Math.round((answered / data.total) * 100);
+  const blankGroups = data.groups.filter((g) => g !== 'In your own words');
 
   return (
     <Shell wide>
-      {/* masthead */}
       <header className="flex flex-col gap-4">
         <div className="text-[11px] font-bold uppercase tracking-[0.15em] text-emerald-700">
           Getting started with Wingguy
@@ -247,18 +283,13 @@ function WingguySetupInner() {
             </div>
           ))}
         </div>
-        <p className="text-slate-600 max-w-2xl">
-          That fourth step is the one most people underuse. The Wingguy you are working with in three
-          months should sound noticeably more like you than today&apos;s - and that is almost entirely
-          down to how often you bother to tell it when it is off.
-        </p>
       </section>
 
-      {/* the form */}
+      {/* the blanks */}
       <section className="flex flex-col gap-6">
         <SectionHead
           title="Now let's set yours up"
-          sub="Everything saves by itself as you go, so you can stop whenever you like and come back to this same link. Anything you skip keeps its sensible default."
+          sub="Answer what you can. Everything saves by itself as you go, so you can stop whenever you like and come back to this same link. Anything you skip keeps its sensible default."
         />
 
         <div className="flex items-center gap-4 text-sm text-slate-500 py-2">
@@ -268,15 +299,12 @@ function WingguySetupInner() {
           </span>
         </div>
 
-        {data.groups.map((group) => {
-          const inGroup = data.fields.filter((f) => f.group === group);
+        {blankGroups.map((group) => {
+          const inGroup = blanks.filter((f) => f.group === group);
           if (!inGroup.length) return null;
           return (
             <div key={group} className="flex flex-col gap-6">
-              <div className="flex items-baseline gap-3">
-                <h3 className="text-[11px] font-bold uppercase tracking-[0.12em] text-emerald-700">{group}</h3>
-                <span className="flex-1 h-px bg-slate-200" />
-              </div>
+              <GroupHead label={group} />
               {inGroup.map((f) => (
                 <Field
                   key={fieldId(f)}
@@ -292,10 +320,80 @@ function WingguySetupInner() {
         })}
       </section>
 
-      {/* changing it later */}
+      {/* in your own words */}
+      {voiceFields.length ? (
+        <section className="flex flex-col gap-8">
+          <SectionHead
+            title="In your own words"
+            sub="The pieces that carry your voice. Every box here is optional - blank means Wingguy writes that part fresh each time, in plain wording that gets sharper as your answers above fill in. Nothing here is a test."
+          />
+          {voiceFields.map((f) => (
+            <VoiceField
+              key={fieldId(f)}
+              field={f}
+              value={values[fieldId(f)] || ''}
+              status={saveState[fieldId(f)]}
+              onChange={(v) => setValues((s) => ({ ...s, [fieldId(f)]: v }))}
+              onCommit={(v) => save(f, v)}
+              assist={assist}
+            />
+          ))}
+        </section>
+      ) : null}
+
+      {/* how your wingguy works */}
+      <section className="flex flex-col gap-8">
+        <SectionHead
+          title="How your Wingguy works"
+          sub="Every instruction it follows, in plain English. Open any of them - and if one is not how you would do it, tell it right there."
+        />
+
+        <div className="bg-white border border-slate-200 p-6 flex flex-col gap-4">
+          <p className="text-[15px] text-slate-700 leading-relaxed">
+            <strong>You can also add instructions of your own.</strong> Anything you find yourself
+            telling Wingguy twice - a word you hate, a way you like things done, a rule of thumb
+            from your world - can become a standing instruction. Tell it in the box under any
+            instruction here, or just say it in chat, in whatever words come out.
+          </p>
+          <p className="text-[15px] text-slate-700 leading-relaxed">
+            <strong>One thing it guards carefully: overlap.</strong> Two instructions covering the
+            same ground - one saying &ldquo;keep emails short&rdquo;, another &ldquo;always include
+            three examples&rdquo; - quietly fight each other, and you end up with drafts that obey
+            neither. So before saving anything new, Wingguy checks what is already there covering
+            that ground. If something close exists, it will show you and suggest changing
+            <em> that one</em> instead of adding a twin. And you always see exactly what is about to
+            be saved before it is - nothing sneaks in.
+          </p>
+          <AddInstruction assist={assist} commitChange={commitChange} />
+        </div>
+
+        {!instructions ? (
+          <p className="text-slate-500">Loading your instructions…</p>
+        ) : instructions.error ? (
+          <p className="text-slate-600">{instructions.error}</p>
+        ) : (
+          instructions.groups.map((g) => (
+            <div key={g.key} className="flex flex-col gap-3">
+              <GroupHead label={g.label} count={g.items.length} />
+              <div className="flex flex-col">
+                {g.items.map((item) => (
+                  <InstructionItem
+                    key={item.ruleKey}
+                    item={item}
+                    assist={assist}
+                    commitChange={commitChange}
+                  />
+                ))}
+              </div>
+            </div>
+          ))
+        )}
+      </section>
+
+      {/* changing later, in chat */}
       <section className="flex flex-col gap-6">
         <SectionHead
-          title="Changing anything else"
+          title="Changing anything, any time"
           sub="You never have to come back to this page. Just say it in a chat, in whatever words come out."
         />
         <div className="flex flex-col gap-px bg-slate-200 border border-slate-200">
@@ -308,11 +406,6 @@ function WingguySetupInner() {
             </div>
           ))}
         </div>
-        <p className="text-slate-600 max-w-2xl text-[15px]">
-          Rewording an instruction is a conversation rather than a form, because Wingguy needs to
-          check it against everything already set up and tell you if two of them would fight. It
-          always shows you what it is about to change before it changes anything.
-        </p>
       </section>
 
       <div className="border-t-2 border-slate-900 pt-8 flex flex-col gap-4">
@@ -335,18 +428,27 @@ function SectionHead({ title, sub }) {
   );
 }
 
+function GroupHead({ label, count }) {
+  return (
+    <div className="flex items-baseline gap-3">
+      <h3 className="text-[11px] font-bold uppercase tracking-[0.12em] text-emerald-700">{label}</h3>
+      {count != null ? <span className="text-xs text-slate-400 tabular-nums">{count}</span> : null}
+      <span className="flex-1 h-px bg-slate-200" />
+    </div>
+  );
+}
+
+const inputClasses =
+  'w-full border border-slate-300 bg-white px-3 py-2.5 text-slate-900 text-base leading-relaxed ' +
+  'focus:outline-none focus:ring-2 focus:ring-emerald-600 focus:border-transparent';
+
 function Field({ field, value, status, onChange, onCommit }) {
   const [committed, setCommitted] = useState(value);
-
   const commit = (v) => {
     if (v === committed) return;
     setCommitted(v);
     onCommit(v);
   };
-
-  const inputClasses =
-    'w-full border border-slate-300 bg-white px-3 py-2.5 text-slate-900 text-base leading-relaxed ' +
-    'focus:outline-none focus:ring-2 focus:ring-emerald-600 focus:border-transparent';
 
   return (
     <div className="flex flex-col gap-1.5">
@@ -405,6 +507,329 @@ function Field({ field, value, status, onChange, onCommit }) {
         ) : <span />}
         <SaveNote status={status} />
       </div>
+    </div>
+  );
+}
+
+/** A voice box: the shape, the live example, the read-back button, and the optional box itself. */
+function VoiceField({ field, value, status, onChange, onCommit, assist }) {
+  const [committed, setCommitted] = useState(value);
+  const [example, setExample] = useState(null);   // null | 'loading' | {leadIntro?, text} | {error}
+  const [readback, setReadback] = useState(null); // null | 'loading' | {note, suggestion} | {error}
+
+  const commit = (v) => {
+    if (v === committed) return;
+    setCommitted(v);
+    onCommit(v);
+  };
+
+  const runExample = async () => {
+    setExample('loading');
+    try { setExample(await assist({ mode: 'example', kind: field.exampleKind })); }
+    catch (e) { setExample({ error: e.message }); }
+  };
+
+  const runReadback = async () => {
+    setReadback('loading');
+    try { setReadback(await assist({ mode: 'readback', text: value, label: field.label })); }
+    catch (e) { setReadback({ error: e.message }); }
+  };
+
+  return (
+    <div className="flex flex-col gap-2.5 border-l-2 border-emerald-600 pl-5">
+      <div className="font-serif text-xl text-slate-900">{field.label}</div>
+      {field.hint ? <p className="text-[15px] text-slate-600 leading-relaxed max-w-2xl">{field.hint}</p> : null}
+      {field.bullets ? (
+        <ul className="list-disc pl-5 text-[15px] text-slate-600 leading-relaxed flex flex-col gap-1">
+          {field.bullets.map((b) => <li key={b}>{b}</li>)}
+        </ul>
+      ) : null}
+
+      {field.exampleKind ? (
+        <div className="flex flex-col gap-2 pt-1">
+          <button
+            type="button"
+            onClick={runExample}
+            disabled={example === 'loading'}
+            className="self-start px-4 py-2 text-sm font-semibold text-emerald-900 bg-emerald-50 border border-emerald-600 hover:bg-emerald-100 disabled:opacity-60"
+          >
+            {example === 'loading' ? 'Writing…' : 'Show me what Wingguy would write'}
+          </button>
+          {example && example !== 'loading' ? (
+            example.error ? (
+              <p className="text-sm text-red-700">{example.error}</p>
+            ) : (
+              <div className="bg-white border border-slate-200 flex flex-col">
+                {example.leadIntro ? (
+                  <div className="px-4 py-2.5 border-b border-slate-200 text-[13px] text-slate-500">
+                    Written for {example.leadIntro} - so you can hear how it reads:
+                  </div>
+                ) : null}
+                <div className="px-4 py-3 font-serif text-slate-900 leading-relaxed whitespace-pre-wrap">{example.text}</div>
+                <div className="px-4 py-2.5 border-t border-slate-200 text-[13px] text-slate-600">
+                  Every real one is written fresh for the actual person - this is one throw of the
+                  dice, not a template. <span className="text-emerald-800 font-semibold">Want to play
+                  with it? Ask Wingguy in chat, and say &ldquo;use that&rdquo; when you&apos;re happy.</span>
+                </div>
+              </div>
+            )
+          ) : null}
+        </div>
+      ) : null}
+
+      <textarea
+        rows={field.exampleKind === 'advocacy' ? 5 : 3}
+        maxLength={field.cap || 600}
+        placeholder="Your version, if you have one - otherwise leave this empty"
+        className={inputClasses}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onBlur={(e) => commit(e.target.value.trim())}
+      />
+
+      <div className="flex items-center justify-between gap-4 min-h-[1.5rem]">
+        <div className="flex items-center gap-3">
+          {String(value).trim() ? (
+            <button
+              type="button"
+              onClick={runReadback}
+              disabled={readback === 'loading'}
+              className="text-sm text-slate-600 underline underline-offset-2 hover:text-slate-900 disabled:opacity-60"
+            >
+              {readback === 'loading' ? 'Reading…' : 'Read it back to me'}
+            </button>
+          ) : (
+            <span className="font-serif italic text-[13px] text-slate-400">
+              {field.example ? <>e.g. {field.example}</> : 'Leaving it empty is a fine answer'}
+            </span>
+          )}
+        </div>
+        <SaveNote status={status} />
+      </div>
+
+      {readback && readback !== 'loading' ? (
+        readback.error ? (
+          <p className="text-sm text-red-700">{readback.error}</p>
+        ) : (
+          <div className="bg-emerald-50 border border-emerald-200 px-4 py-3 flex flex-col gap-2">
+            <p className="text-[15px] text-slate-800 leading-relaxed">{readback.note}</p>
+            {readback.suggestion ? (
+              <div className="flex flex-col gap-2">
+                <p className="font-serif text-slate-900 leading-relaxed whitespace-pre-wrap">{readback.suggestion}</p>
+                <button
+                  type="button"
+                  onClick={() => { onChange(readback.suggestion); commit(readback.suggestion); setReadback(null); }}
+                  className="self-start px-3 py-1.5 text-sm font-semibold text-emerald-900 bg-white border border-emerald-600 hover:bg-emerald-100"
+                >
+                  Use this
+                </button>
+              </div>
+            ) : null}
+          </div>
+        )
+      ) : null}
+    </div>
+  );
+}
+
+/** The proposal card: what Wingguy wants to save, and the two buttons. Shared by change and add. */
+function ProposalCard({ proposal, onSave, onDismiss }) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const doSave = async () => {
+    setBusy(true); setErr('');
+    try { await onSave(); }
+    catch (e) { setErr(e.message); setBusy(false); }
+  };
+  return (
+    <div className="bg-white border border-emerald-600 flex flex-col">
+      <div className="px-4 py-2.5 border-b border-slate-200 text-[13px] font-semibold uppercase tracking-wide text-emerald-800">
+        {proposal.action === 'add' ? `New instruction: ${proposal.title}` : `Your version of: ${proposal.title}`}
+      </div>
+      {proposal.explanation ? (
+        <p className="px-4 pt-3 text-[15px] text-slate-700 leading-relaxed">{proposal.explanation}</p>
+      ) : null}
+      <div className="px-4 py-3 text-sm text-slate-700 leading-relaxed whitespace-pre-wrap bg-slate-50 border-y border-slate-100 mt-2">{proposal.proposedBody}</div>
+      {proposal.replacesShared ? (
+        <p className="px-4 pt-2.5 text-[13px] text-amber-800 leading-relaxed">
+          This becomes your own version, replacing the shared one for you alone. One trade to know:
+          later improvements to the shared version stop flowing to you for this instruction - and
+          you can say &ldquo;go back to the standard one&rdquo; in chat any time.
+        </p>
+      ) : null}
+      {err ? <p className="px-4 pt-2 text-sm text-red-700">{err}</p> : null}
+      <div className="px-4 py-3 flex gap-3">
+        <button
+          type="button"
+          onClick={doSave}
+          disabled={busy}
+          className="px-4 py-2 text-sm font-semibold text-white bg-emerald-700 border border-emerald-700 hover:bg-emerald-800 disabled:opacity-60"
+        >
+          {busy ? 'Saving…' : (proposal.action === 'add' ? 'Add it' : 'Save my version')}
+        </button>
+        <button type="button" onClick={onDismiss} className="px-4 py-2 text-sm text-slate-600 border border-slate-300 hover:text-slate-900">
+          Leave it
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function AddInstruction({ assist, commitChange }) {
+  const [text, setText] = useState('');
+  const [state, setState] = useState(null); // null | 'loading' | 'done' | {proposal} | {overlap} | {error}
+
+  const run = async () => {
+    setState('loading');
+    try {
+      const r = await assist({ mode: 'change', request: text });
+      setState(r.action === 'overlap' ? { overlap: r } : { proposal: r });
+    } catch (e) { setState({ error: e.message }); }
+  };
+
+  return (
+    <div className="flex flex-col gap-2.5 pt-2 border-t border-slate-100">
+      <div className="font-semibold text-slate-900">Add an instruction of your own</div>
+      <textarea
+        rows={2}
+        maxLength={1500}
+        placeholder={'In your own words - e.g. "never message anyone on a Friday"'}
+        className={inputClasses}
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+      />
+      <button
+        type="button"
+        onClick={run}
+        disabled={!text.trim() || state === 'loading'}
+        className="self-start px-4 py-2 text-sm font-semibold text-emerald-900 bg-emerald-50 border border-emerald-600 hover:bg-emerald-100 disabled:opacity-50"
+      >
+        {state === 'loading' ? 'Checking…' : 'Suggest it'}
+      </button>
+
+      {state && state !== 'loading' ? (
+        state === 'done' ? (
+          <p className="text-sm font-semibold text-emerald-800">Added - it is now in your list below, under its group.</p>
+        ) : state.error ? (
+          <p className="text-sm text-red-700">{state.error}</p>
+        ) : state.overlap ? (
+          <div className="bg-amber-50 border border-amber-300 px-4 py-3 flex flex-col gap-1.5">
+            <p className="text-[15px] text-slate-800 leading-relaxed">
+              There is already an instruction covering this ground: <strong>{state.overlap.title}</strong>.
+            </p>
+            {state.overlap.why ? <p className="text-sm text-slate-700 leading-relaxed">{state.overlap.why}</p> : null}
+            <p className="text-sm text-slate-700 leading-relaxed">
+              Rather than adding a twin that would fight it, find it in the list below, open it, and
+              tell it your change there.
+            </p>
+          </div>
+        ) : (
+          <ProposalCard
+            proposal={state.proposal}
+            onSave={async () => { await commitChange(state.proposal); setText(''); setState('done'); }}
+            onDismiss={() => setState(null)}
+          />
+        )
+      ) : null}
+    </div>
+  );
+}
+
+const KIND_PILL = {
+  fixed: ['Guardrail', 'text-amber-800 bg-amber-50 border-amber-300'],
+  standard: ['Standard - shared', 'text-emerald-800 bg-emerald-50 border-emerald-300'],
+  yours: ['Yours', 'text-slate-700 bg-slate-100 border-slate-300'],
+};
+
+function InstructionItem({ item, assist, commitChange }) {
+  const [open, setOpen] = useState(false);
+  const [changeOpen, setChangeOpen] = useState(false);
+  const [request, setRequest] = useState('');
+  const [state, setState] = useState(null); // null | 'loading' | 'done' | {proposal} | {error}
+  const [pillLabel, pillClasses] = KIND_PILL[item.kind] || KIND_PILL.standard;
+
+  const run = async () => {
+    setState('loading');
+    try { setState({ proposal: await assist({ mode: 'change', ruleKey: item.ruleKey, request }) }); }
+    catch (e) { setState({ error: e.message }); }
+  };
+
+  return (
+    <div className="border-b border-slate-200">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        aria-expanded={open}
+        className="w-full text-left py-3 flex items-baseline gap-3 group"
+      >
+        <span className="font-semibold text-slate-900 group-hover:text-emerald-800">{item.title}</span>
+        <span className={`text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 border whitespace-nowrap ${pillClasses}`}>{pillLabel}</span>
+        <span className="flex-1" />
+        <span className="text-xs text-slate-400 whitespace-nowrap">{open ? 'close' : 'open'}</span>
+      </button>
+      {!open && item.gist ? <p className="pb-3 -mt-1 text-sm text-slate-500 leading-relaxed">{item.gist}</p> : null}
+
+      {open ? (
+        <div className="pb-4 flex flex-col gap-3">
+          <div className="bg-white border-l-2 border-emerald-600 px-4 py-3 text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">{item.body}</div>
+
+          {item.kind === 'fixed' ? (
+            <p className="text-[13px] text-amber-800">
+              This one is a guardrail - it applies to everyone and cannot be changed, by you or by us.
+              It is part of why Wingguy never does anything daft on your behalf.
+            </p>
+          ) : state === 'done' ? (
+            <p className="text-sm font-semibold text-emerald-800">Saved - this is now your version.</p>
+          ) : !changeOpen ? (
+            <button
+              type="button"
+              onClick={() => setChangeOpen(true)}
+              className="self-start text-sm text-emerald-800 underline underline-offset-2 hover:text-emerald-900"
+            >
+              Not how you&apos;d do it? Tell it here
+            </button>
+          ) : (
+            <div className="flex flex-col gap-2.5">
+              <textarea
+                rows={2}
+                maxLength={1500}
+                placeholder={'In your own words - e.g. "I only ever want one link in those emails"'}
+                className={inputClasses}
+                value={request}
+                onChange={(e) => setRequest(e.target.value)}
+              />
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={run}
+                  disabled={!request.trim() || state === 'loading'}
+                  className="px-4 py-2 text-sm font-semibold text-emerald-900 bg-emerald-50 border border-emerald-600 hover:bg-emerald-100 disabled:opacity-50"
+                >
+                  {state === 'loading' ? 'Working…' : 'Show me the change'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setChangeOpen(false); setState(null); setRequest(''); }}
+                  className="px-4 py-2 text-sm text-slate-600 border border-slate-300 hover:text-slate-900"
+                >
+                  Never mind
+                </button>
+              </div>
+              {state && state !== 'loading' ? (
+                state.error ? (
+                  <p className="text-sm text-red-700">{state.error}</p>
+                ) : state.proposal ? (
+                  <ProposalCard
+                    proposal={state.proposal}
+                    onSave={async () => { await commitChange(state.proposal); setState('done'); setChangeOpen(false); }}
+                    onDismiss={() => setState(null)}
+                  />
+                ) : null
+              ) : null}
+            </div>
+          )}
+        </div>
+      ) : null}
     </div>
   );
 }

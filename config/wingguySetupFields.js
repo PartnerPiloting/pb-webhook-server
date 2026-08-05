@@ -172,13 +172,86 @@ const ASSET_FIELDS = [
   },
 ];
 
-const VARIABLE_KEYS = new Set(VARIABLE_FIELDS.map((f) => f.key));
+/**
+ * VOICE fields — the "In your own words" section (stage 3). Still plain variables underneath
+ * (setVariable, history-logged, referenced by shared method rules via {{?...}} so blank = the
+ * generalised wording quietly applies). What makes them a separate list:
+ *   - `bullets`: the shape of the thing, shown above the box in the client's language
+ *   - `exampleKind`: which live-example prompt the [Show me what Wingguy would write] button runs
+ *     (examples are GENERATED from their answers, never printed samples — a printed sample
+ *     becomes everyone's message)
+ *   - `cap`: these legitimately run longer than a sign-off
+ * Slots that exist but are deliberately NOT here: own_anchor_lines (a new client has no lines
+ * that land yet — it fills via the edit loop and chat, per Guy's call 2026-08-05).
+ */
+const VOICE_FIELDS = [
+  {
+    key: 'canonical_inversion_line',
+    group: 'In your own words',
+    label: 'The question at the heart of all of it',
+    hint: "There's one question this whole approach turns on: asking someone who THEY know who'd love to have trusted people recommending them - rather than having to recommend themselves. You'll ask it on calls, and Wingguy weaves the same idea into what it writes. How would you phrase it?",
+    example: 'people recommending us rather than being the only ones having to recommend ourselves',
+    type: 'long',
+    cap: 400,
+    exampleKind: 'inversion',
+  },
+  {
+    key: 'post_connection_own_message',
+    group: 'In your own words',
+    label: 'The thanks-for-connecting message',
+    hint: 'The first message someone gets after accepting your connection - the one that decides whether a conversation starts. Wingguy writes it fresh for each person. Happy with how that sounds? Leave this empty - that is a fine answer. Or if you already have a version you love, put it here and Wingguy will treat yours as the reference.',
+    bullets: [
+      'something true it noticed on their profile',
+      "one line hinting at what you're building - a seed, not a pitch",
+      'a question to close',
+    ],
+    type: 'long',
+    cap: 1200,
+    exampleKind: 'post_connection',
+  },
+  {
+    key: 'advocacy_own_argument',
+    group: 'In your own words',
+    label: 'The case for advocacy - in your words',
+    hint: 'At some point in a good conversation, you make the case for building advocates rather than collecting contacts. Leave this empty and Wingguy argues it fresh each time - or make the case the way you would actually say it across a table, and yours becomes the version it works from.',
+    bullets: [
+      'start from what they already know - their best opportunities came through people who vouched for them',
+      'name the gap - most networking builds contacts, not advocates',
+      'draw the line between the two - a contact knows you, an advocate recommends you unprompted',
+      "take the blame off them - it's not effort, it's that normal networking isn't designed for this",
+      "why now - the more AI makes everyone's output look polished, the more a trusted recommendation is worth",
+      'why it takes a system - advocates are built deliberately, not by accident',
+    ],
+    type: 'long',
+    cap: 2500,
+    exampleKind: 'advocacy',
+  },
+  {
+    key: 'advocacy_one_liner',
+    group: 'In your own words',
+    label: 'And if you had to make the whole case in one sentence, what would it be?',
+    hint: 'Optional. Used sparingly, with space left after it.',
+    type: 'long',
+    cap: 300,
+  },
+];
+
+const VARIABLE_KEYS = new Set([...VARIABLE_FIELDS, ...VOICE_FIELDS].map((f) => f.key));
 const ASSET_KEYS = new Set(ASSET_FIELDS.map((f) => f.key));
+
+/** Per-field save cap: voice pieces run long; everything else stays at the original 600. */
+function capFor(scope, key) {
+  if (scope === 'variable') {
+    const v = VOICE_FIELDS.find((f) => f.key === key);
+    if (v && v.cap) return v.cap;
+  }
+  return 600;
+}
 
 /** Group order for the page, derived from the field order so there is one source of truth. */
 function groupOrder() {
   const seen = [];
-  [...VARIABLE_FIELDS, ...ASSET_FIELDS].forEach((f) => {
+  [...VARIABLE_FIELDS, ...ASSET_FIELDS, ...VOICE_FIELDS].forEach((f) => {
     if (!seen.includes(f.group)) seen.push(f.group);
   });
   return seen;
@@ -187,7 +260,9 @@ function groupOrder() {
 module.exports = {
   VARIABLE_FIELDS,
   ASSET_FIELDS,
+  VOICE_FIELDS,
   VARIABLE_KEYS,
   ASSET_KEYS,
+  capFor,
   groupOrder,
 };
