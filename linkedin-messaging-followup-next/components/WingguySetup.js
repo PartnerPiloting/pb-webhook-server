@@ -335,20 +335,40 @@ function WingguySetupInner() {
           <cite className="text-sm text-slate-500 not-italic">Guy</cite>
         </blockquote>
 
-        <p className="text-slate-600 max-w-2xl">
-          None of that is generic. It sounds like Guy because Guy taught it - a few minutes setting
-          it up, then a correction here and there as he went. That is the whole trick, and the rest
-          of this page is your turn.{' '}
-          <a
-            href="https://knowaguy.com.au/a-day-in-the-life"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-emerald-800 underline underline-offset-2 hover:text-emerald-900"
-          >
-            The longer version, hour by hour
-          </a>
-          , if you want it.
-        </p>
+        <div className="border-2 border-emerald-600 bg-emerald-50 p-6 flex flex-col gap-3">
+          <div className="text-[11px] font-bold uppercase tracking-[0.12em] text-emerald-800">
+            The part worth understanding
+          </div>
+          <p className="font-serif text-lg text-slate-900 leading-relaxed">
+            Every one of those moments runs on instructions - and you are the one who shapes them.
+          </p>
+          <p className="text-[15px] text-slate-700 leading-relaxed">
+            That is the whole thing. None of it is generic: it sounds like Guy because Guy taught
+            it. The boxes further down this page are where yours start - your name, your sign-off,
+            the way you describe what you do.
+          </p>
+          <p className="text-[15px] text-slate-700 leading-relaxed">
+            <strong>But the part that matters most comes after today.</strong> Every time Wingguy
+            writes something and you tell it &ldquo;not like that - like this&rdquo;, it changes for
+            good. In a Claude chat, or right there in the Wingguy window on LinkedIn, in whatever
+            words come out. Do that a handful of times over your first few weeks and the drafts stop
+            being good-generic and start being unmistakably yours - across every single thing in
+            that day, not just the message in front of you.
+          </p>
+          <p className="text-[15px] text-slate-700 leading-relaxed">
+            Not seen the full day yet, or want it hour by hour?{' '}
+            <a
+              href="https://knowaguy.com.au/a-day-in-the-life"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-emerald-800 font-semibold underline underline-offset-2 hover:text-emerald-900"
+            >
+              Have a read of this
+            </a>{' '}
+            - it is worth ten minutes, and everything in it is shaped by the instructions you are
+            about to write.
+          </p>
+        </div>
       </section>
 
       {/* three kinds */}
