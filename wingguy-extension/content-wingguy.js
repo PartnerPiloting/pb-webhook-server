@@ -72,6 +72,12 @@
     // NOTE: the editable-element scans elsewhere in this file ([contenteditable], textarea, input,
     // [role="textbox"]) are deliberately NOT here. They're web-platform attributes, not LinkedIn
     // class names — LinkedIn cannot rename them, so there is nothing for a correction to fix.
+    bubble_open_composer: '.msg-overlay-conversation-bubble .msg-form',
+    convo_pane: '.scaffold-layout__detail, .msg-overlay-conversation-bubble',
+    convo_header_name: '.msg-thread__link-to-profile, .msg-overlay-bubble-header__title, .msg-entity-lockup__entity-title, [class*="overlay-bubble-header"] [class*="title"], [class*="title-bar"] [class*="title"], [class*="entity-lockup__entity-title"], [class*="entity-title"], h2, h3',
+    message_time_heading: '.msg-s-message-list__time-heading, [class*="time-heading"]',
+    message_surface: '.msg-form, .msg-overlay-conversation-bubble, .msg-overlay-bubble, .msg-convo-wrapper, .msgs-thread, .msg-overlay, .scaffold-layout__detail',
+    message_send_surface: '.msg-form, .msg-form__send-toggle, .msg-overlay, .msg-overlay-conversation-bubble, .msgs-thread',
     composer_box: '[role="textbox"], [contenteditable="true"]',
     thread_open_marker: '.msg-overlay-conversation-bubble .msg-form, .msg-convo-wrapper, .msg-thread, .scaffold-layout__detail .msg-s-message-list-container',
   };
@@ -298,7 +304,7 @@
     // BPR page. (Not hasOpenMessageThread(): its structural new-UI matcher false-positives on the
     // collapsed bubble-chips drawer, which put a second launcher next to the frame copy's. The typed
     // /wg trigger is surface-independent, so a bubble the stricter check misses still works.)
-    return !document.querySelector('.msg-overlay-conversation-bubble .msg-form');
+    return !document.querySelector(selStr('bubble_open_composer'));
   }
   // Show the launcher / accept the /wg trigger on profiles AND on the messaging surface.
   function shouldShowLauncher() {
@@ -498,7 +504,7 @@
       if (h) { console.log('[Wingguy] messaging-header (new-UI) →', h.name, '|', h.profileUrl || '(no /in/ url)'); return h; }
       console.log('[Wingguy] messaging-header (new-UI) — could not read a name from the container; falling through.');
     }
-    const pane = (convo && (convo.closest('.scaffold-layout__detail, .msg-overlay-conversation-bubble') || convo)) || document;
+    const pane = (convo && (convo.closest(selStr('convo_pane')) || convo)) || document;
     // Scope to the header region so we don't pull a name/link out of a message bubble body.
     const header = pane.querySelector(selStr('convo_header')) || pane;
 
@@ -515,16 +521,7 @@
     } else if (recipients.length > 1) {
       console.log('[Wingguy] compose pane has MULTIPLE recipient chips (group message) — no single identity:', recipients.join(', '));
     }
-    const nameSelectors = [
-      '.msg-thread__link-to-profile',
-      '.msg-overlay-bubble-header__title',
-      '.msg-entity-lockup__entity-title',
-      '[class*="overlay-bubble-header"] [class*="title"]',
-      '[class*="title-bar"] [class*="title"]',
-      '[class*="entity-lockup__entity-title"]',
-      '[class*="entity-title"]',
-      'h2', 'h3',
-    ];
+    const nameSelectors = selList('convo_header_name');
     if (!name && !isComposePane) {
       for (const sel of nameSelectors) {
         for (const el of header.querySelectorAll(sel)) {
@@ -868,7 +865,7 @@
       if (!node.matches) return;
       const isItem = node.matches(selStr('message_item_row'));
       if (!isItem) {
-        if (node.matches('.msg-s-message-list__time-heading, [class*="time-heading"]')) {
+        if (node.matches(selStr('message_time_heading'))) {
           const d = cleanText(node.textContent);
           if (d && d.length < 30) curDay = d;   // e.g. "JUN 17" / "Today"
         }
@@ -973,7 +970,7 @@
   function isMessageEditable(el) {
     const al = (el.getAttribute('aria-label') || '').toLowerCase();
     const ph = (el.getAttribute('placeholder') || '').toLowerCase();
-    return !!el.closest('.msg-form, .msg-overlay-conversation-bubble, .msg-overlay-bubble, .msg-convo-wrapper, .msgs-thread, .msg-overlay, .scaffold-layout__detail')
+    return !!el.closest(selStr('message_surface'))
       || /message/.test(al) || /message/.test(ph);
   }
   function isMessageEditableSafe(el) {
@@ -1462,7 +1459,13 @@
     const cls = String(btn.className || '');
     const al = (btn.getAttribute('aria-label') || '').toLowerCase();
     const txt = (btn.textContent || '').trim().toLowerCase();
-    const inMsgForm = !!btn.closest('.msg-form, .msg-form__send-toggle, .msg-overlay, .msg-overlay-conversation-bubble, .msgs-thread');
+    const inMsgForm = !!btn.closest(selStr('message_send_surface'));
+    // KNOWN GAP: this class-name regex is the one LinkedIn-specific matcher NOT in SELECTOR_DEFAULTS.
+    // It tests a className string rather than matching a selector, so it doesn't fit the landmark
+    // store as-is, and send-detection is too sensitive a path to convert as a drive-by. If LinkedIn
+    // renames msg-form__send this needs a code change — the two fallbacks either side (aria/text
+    // "send" inside a message surface, and the structural new-UI path below) should carry it
+    // meanwhile. Flagged rather than left silent so nobody reads the landmark block as total cover.
     if (/msg-form__send/.test(cls) || (inMsgForm && (al === 'send' || txt === 'send'))) return true;
     // NEW-UI build: the Send button has no usable class/aria — it's a plain "Send" button inside a
     // structurally-matched conversation container (obfuscated classes rule out anything narrower).

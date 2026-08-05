@@ -53,6 +53,12 @@ const KNOWN_KEYS = [
   'message_group_item',      // same, looser — a plain list row is an acceptable answer
   'message_item',            // one message row or a date heading in the thread list
   'message_item_row',        // one message row specifically (not a date heading)
+  'message_time_heading',    // a date/time separator row in the thread list
+  'message_surface',         // "is this editable inside the message area" — guards a wrong insert
+  'message_send_surface',    // the surface a Send button must sit in to count as a send
+  'bubble_open_composer',    // a floating bubble with its composer actually open
+  'convo_pane',              // the pane a conversation sits in (full detail view or bubble)
+  'convo_header_name',       // where the participant's name sits in a thread header
   'composer_box',            // LinkedIn's "Write a message…" box
   'thread_open_marker',      // how we tell a thread is open at all (drives the launcher)
 ];
