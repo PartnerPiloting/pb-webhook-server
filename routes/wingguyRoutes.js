@@ -716,9 +716,39 @@ module.exports = function mountWingguy(app) {
     return filled;
   }
 
+  // Hand a brand-new client their starter kit the first time they open their setup page.
+  //
+  // Before this, the ONLY automatic trigger was a client happening to ask "set up my instructions"
+  // in a chat - so someone could work through this entire page, read every shared instruction, and
+  // still own none of their own. The page is the front door to onboarding, so the page is what
+  // should do it.
+  //
+  // Safe to call on every load: the store skips any rule they already hold, refuses to touch the
+  // owner tenant, and will not seed a copy over a locked guardrail. It only ever fires for a client
+  // whose own layer is completely empty, so a client who has since retired a seeded rule does not
+  // get it silently resurrected. Still behind the latch - see WINGGUY_SEED_FROM_TEMPLATE.
+  async function ensureSeededFromTemplate(tenantId) {
+    if (String(process.env.WINGGUY_SEED_FROM_TEMPLATE || '').toLowerCase() !== 'true') return 0;
+    if (tenantId === wingguyStore.DEFAULT_TENANT) return 0;
+    try {
+      const existing = await wingguyStore.getActiveRules({ tenantId, layer: 'client' });
+      if (existing.length) return 0;
+      const r = await wingguyStore.seedClientFromTemplate({ tenantId, createdBy: `portal:setup-page:${tenantId}` });
+      const n = (r && r.seeded && r.seeded.length) || 0;
+      if (n) logger.info(`[Wingguy] seeded ${n} starter-kit instructions for ${tenantId} on first setup-page open`);
+      return n;
+    } catch (e) {
+      // Never break the page over this - they still get the shared instructions, and the next
+      // open (or the chat door) will try again.
+      logger.error(`[Wingguy] seeding failed for ${tenantId}: ${e.message}`);
+      return 0;
+    }
+  }
+
   router.get('/setup', async (req, res) => {
     const tenantId = req.client.clientId;
     try {
+      await ensureSeededFromTemplate(tenantId);
       // SEQUENTIAL, NOT Promise.all. Each store call runs ensureSchema on its own connection, and
       // against a database where the tables do not exist yet (a fresh environment, or the first
       // request after a deploy to a new one) two of them race their CREATE TABLE / CREATE INDEX
