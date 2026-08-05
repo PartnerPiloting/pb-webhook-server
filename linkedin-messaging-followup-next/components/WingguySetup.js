@@ -378,21 +378,11 @@ function WingguySetupInner() {
         ) : instructions.error ? (
           <p className="text-slate-600">{instructions.error}</p>
         ) : (
-          instructions.groups.map((g) => (
-            <div key={g.key} className="flex flex-col gap-3">
-              <GroupHead label={g.label} count={g.items.length} />
-              <div className="flex flex-col">
-                {g.items.map((item) => (
-                  <InstructionItem
-                    key={item.ruleKey}
-                    item={item}
-                    assist={assist}
-                    commitChange={commitChange}
-                  />
-                ))}
-              </div>
-            </div>
-          ))
+          <InstructionBrowser
+            groups={instructions.groups}
+            assist={assist}
+            commitChange={commitChange}
+          />
         )}
       </section>
 
@@ -745,6 +735,121 @@ function AddInstruction({ assist, commitChange }) {
   );
 }
 
+/**
+ * The browse layer over the instruction list: an ask-anything box, a filter-as-you-type search,
+ * and groups FOLDED by default - the page opens showing six lines, not seventy. Searching
+ * auto-unfolds whatever matches; clearing it folds everything back up.
+ */
+function InstructionBrowser({ groups, assist, commitChange }) {
+  const [query, setQuery] = useState('');
+  const [openGroups, setOpenGroups] = useState({});
+  const [asking, setAsking] = useState(null); // null | 'loading' | {answer, ruleKey, title} | {error}
+  const [question, setQuestion] = useState('');
+
+  const q = query.trim().toLowerCase();
+  const matches = (item) =>
+    !q ||
+    item.title.toLowerCase().includes(q) ||
+    (item.gist || '').toLowerCase().includes(q) ||
+    (item.body || '').toLowerCase().includes(q);
+
+  const groupFor = (ruleKey) => {
+    const g = groups.find((gr) => gr.items.some((i) => i.ruleKey === ruleKey));
+    return g ? g.label : null;
+  };
+
+  const runAsk = async () => {
+    setAsking('loading');
+    try { setAsking(await assist({ mode: 'ask', question })); }
+    catch (e) { setAsking({ error: e.message }); }
+  };
+
+  return (
+    <div className="flex flex-col gap-6">
+      {/* ask anything */}
+      <div className="bg-white border border-slate-200 p-6 flex flex-col gap-2.5">
+        <div className="font-serif text-xl text-slate-900">Not sure what&apos;s covered? Just ask</div>
+        <p className="text-sm text-slate-600 leading-relaxed">
+          e.g. &ldquo;Is there something that spreads my bookings across quiet days?&rdquo; or
+          &ldquo;What happens when someone says maybe later?&rdquo;
+        </p>
+        <div className="flex gap-2">
+          <input
+            type="text"
+            maxLength={500}
+            className={inputClasses}
+            placeholder="Ask about your instructions…"
+            value={question}
+            onChange={(e) => setQuestion(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter' && question.trim()) runAsk(); }}
+          />
+          <button
+            type="button"
+            onClick={runAsk}
+            disabled={!question.trim() || asking === 'loading'}
+            className="px-4 py-2 text-sm font-semibold text-emerald-900 bg-emerald-50 border border-emerald-600 hover:bg-emerald-100 disabled:opacity-50 whitespace-nowrap"
+          >
+            {asking === 'loading' ? 'Looking…' : 'Ask'}
+          </button>
+        </div>
+        {asking && asking !== 'loading' ? (
+          asking.error ? (
+            <p className="text-sm text-red-700">{asking.error}</p>
+          ) : (
+            <div className="bg-emerald-50 border border-emerald-200 px-4 py-3 flex flex-col gap-1.5">
+              <p className="text-[15px] text-slate-800 leading-relaxed">{asking.answer}</p>
+              {asking.ruleKey ? (
+                <p className="text-sm text-slate-600">
+                  The instruction behind that: <strong>{asking.title}</strong>
+                  {groupFor(asking.ruleKey) ? <> - open the <strong>{groupFor(asking.ruleKey)}</strong> group below to read or change it.</> : null}
+                </p>
+              ) : null}
+            </div>
+          )
+        ) : null}
+      </div>
+
+      {/* search */}
+      <input
+        type="text"
+        className={inputClasses}
+        placeholder="Or filter the list - type a word like links, Friday, booking…"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+      />
+
+      {/* folded groups */}
+      {groups.map((g) => {
+        const visible = g.items.filter(matches);
+        if (q && !visible.length) return null;
+        const open = q ? true : !!openGroups[g.key];
+        return (
+          <div key={g.key} className="flex flex-col gap-2">
+            <button
+              type="button"
+              onClick={() => setOpenGroups((s) => ({ ...s, [g.key]: !s[g.key] }))}
+              aria-expanded={open}
+              className="w-full flex items-baseline gap-3 text-left group"
+            >
+              <h3 className="text-[13px] font-bold uppercase tracking-[0.12em] text-emerald-700 group-hover:text-emerald-900">{g.label}</h3>
+              <span className="text-xs text-slate-400 tabular-nums">{q ? `${visible.length} of ${g.items.length}` : g.items.length}</span>
+              <span className="flex-1 h-px bg-slate-200" />
+              <span className="text-xs text-slate-400">{open ? 'fold' : 'unfold'}</span>
+            </button>
+            {open ? (
+              <div className="flex flex-col">
+                {visible.map((item) => (
+                  <InstructionItem key={item.ruleKey} item={item} assist={assist} commitChange={commitChange} />
+                ))}
+              </div>
+            ) : null}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 const KIND_PILL = {
   fixed: ['Guardrail', 'text-amber-800 bg-amber-50 border-amber-300'],
   standard: ['Standard - shared', 'text-emerald-800 bg-emerald-50 border-emerald-300'],
@@ -755,13 +860,23 @@ function InstructionItem({ item, assist, commitChange }) {
   const [open, setOpen] = useState(false);
   const [changeOpen, setChangeOpen] = useState(false);
   const [request, setRequest] = useState('');
-  const [state, setState] = useState(null); // null | 'loading' | 'done' | {proposal} | {error}
+  const [state, setState] = useState(null); // null | 'loading' | 'done' | {proposal} | {answer} | {error}
+  const [explain, setExplain] = useState(null); // null | 'loading' | {text} | {error}
   const [pillLabel, pillClasses] = KIND_PILL[item.kind] || KIND_PILL.standard;
 
+  // The box takes anything - a question gets an answer, a change request gets a proposal.
   const run = async () => {
     setState('loading');
-    try { setState({ proposal: await assist({ mode: 'change', ruleKey: item.ruleKey, request }) }); }
-    catch (e) { setState({ error: e.message }); }
+    try {
+      const r = await assist({ mode: 'change', ruleKey: item.ruleKey, request });
+      setState(r.action === 'answer' ? { answer: r.text } : { proposal: r });
+    } catch (e) { setState({ error: e.message }); }
+  };
+
+  const runExplain = async (angle) => {
+    setExplain('loading');
+    try { setExplain(await assist({ mode: 'explain', ruleKey: item.ruleKey, angle })); }
+    catch (e) { setExplain({ error: e.message }); }
   };
 
   return (
@@ -783,6 +898,32 @@ function InstructionItem({ item, assist, commitChange }) {
         <div className="pb-4 flex flex-col gap-3">
           <div className="bg-white border-l-2 border-emerald-600 px-4 py-3 text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">{item.body}</div>
 
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => runExplain('plain')}
+              disabled={explain === 'loading'}
+              className="px-3 py-1.5 text-[13px] text-slate-700 bg-white border border-slate-300 hover:border-emerald-600 hover:text-emerald-900 disabled:opacity-60"
+            >
+              {explain === 'loading' ? 'Explaining…' : 'Explain this in plain English'}
+            </button>
+            <button
+              type="button"
+              onClick={() => runExplain('impact')}
+              disabled={explain === 'loading'}
+              className="px-3 py-1.5 text-[13px] text-slate-700 bg-white border border-slate-300 hover:border-emerald-600 hover:text-emerald-900 disabled:opacity-60"
+            >
+              What does this mean for my messages?
+            </button>
+          </div>
+          {explain && explain !== 'loading' ? (
+            explain.error ? (
+              <p className="text-sm text-red-700">{explain.error}</p>
+            ) : (
+              <div className="bg-emerald-50 border border-emerald-200 px-4 py-3 text-[15px] text-slate-800 leading-relaxed">{explain.text}</div>
+            )
+          ) : null}
+
           {item.kind === 'fixed' ? (
             <p className="text-[13px] text-amber-800">
               This one is a guardrail - it applies to everyone and cannot be changed, by you or by us.
@@ -796,14 +937,14 @@ function InstructionItem({ item, assist, commitChange }) {
               onClick={() => setChangeOpen(true)}
               className="self-start text-sm text-emerald-800 underline underline-offset-2 hover:text-emerald-900"
             >
-              Not how you&apos;d do it? Tell it here
+              Question, or not how you&apos;d do it? Tell it here
             </button>
           ) : (
             <div className="flex flex-col gap-2.5">
               <textarea
                 rows={2}
                 maxLength={1500}
-                placeholder={'In your own words - e.g. "I only ever want one link in those emails"'}
+                placeholder={'Ask or change, in your own words - e.g. "why does this matter?" or "I only want one link"'}
                 className={inputClasses}
                 value={request}
                 onChange={(e) => setRequest(e.target.value)}
@@ -815,7 +956,7 @@ function InstructionItem({ item, assist, commitChange }) {
                   disabled={!request.trim() || state === 'loading'}
                   className="px-4 py-2 text-sm font-semibold text-emerald-900 bg-emerald-50 border border-emerald-600 hover:bg-emerald-100 disabled:opacity-50"
                 >
-                  {state === 'loading' ? 'Working…' : 'Show me the change'}
+                  {state === 'loading' ? 'Working…' : 'Send'}
                 </button>
                 <button
                   type="button"
@@ -828,6 +969,11 @@ function InstructionItem({ item, assist, commitChange }) {
               {state && state !== 'loading' ? (
                 state.error ? (
                   <p className="text-sm text-red-700">{state.error}</p>
+                ) : state.answer ? (
+                  <div className="bg-emerald-50 border border-emerald-200 px-4 py-3 flex flex-col gap-1.5">
+                    <p className="text-[15px] text-slate-800 leading-relaxed">{state.answer}</p>
+                    <p className="text-[13px] text-slate-500">Want it different? Say so in the same box and it will draft the change.</p>
+                  </div>
                 ) : state.proposal ? (
                   <ProposalCard
                     proposal={state.proposal}

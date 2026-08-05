@@ -885,6 +885,53 @@ module.exports = function mountWingguy(app) {
         return res.json({ ok: true, note: String(j.note || ''), suggestion: j.suggestion ? String(j.suggestion) : null });
       }
 
+      // One-tap explainers on an open instruction: "explain plainly" / "what does this mean for
+      // my messages?". Personalised via their setup so a planner hears it in planner terms.
+      if (mode === 'explain') {
+        const { ruleKey, angle } = req.body || {};
+        const rules = await wingguyStore.getActiveRules({ tenantId, shadowed: true });
+        const current = rules.filter((r) => !r.campaign).find((r) => r.rule_key === ruleKey);
+        if (!current) return res.status(404).json({ ok: false, error: 'That instruction was not found.' });
+        const ask = angle === 'impact'
+          ? 'Explain what this instruction actually changes about the messages and emails Wingguy writes for them - the visible difference they would notice. One tiny concrete example in their world if their setup gives you one.'
+          : 'Explain this instruction in plain spoken English, as if across a table. What it does and why it exists. No jargon, no restating it line by line.';
+        const raw = await runAssistModel(anthropic,
+          'You are Wingguy explaining one of a client\'s own writing instructions to them. Warm, plain, brief - 3-5 short sentences. Reply with JSON only: {"text": string}. British/Australian spelling. No em dashes - use " - ".',
+          `Their setup so far:\n${voice}\n\nThe instruction ("${titles.titleFor(ruleKey)}"):\n---\n${current.body}\n---\n\n${ask}`,
+          700);
+        const j = extractJson(raw);
+        return res.json({ ok: true, text: String(j.text || '') });
+      }
+
+      // The whole-rulebook question box: "is there something that does X?" Answers plainly and
+      // names the instruction so the page can point at it.
+      if (mode === 'ask') {
+        const { question } = req.body || {};
+        if (!String(question || '').trim()) return res.status(400).json({ ok: false, error: 'Ask away - the box is empty.' });
+        const rules = await wingguyStore.getActiveRules({ tenantId, shadowed: true });
+        const generic = rules.filter((r) => !r.campaign);
+        const index = generic.map((r) => `- ${r.rule_key}: ${titles.titleFor(r.rule_key)}${titles.gistFor(r.rule_key) ? ' - ' + titles.gistFor(r.rule_key) : ''}`).join('\n');
+        const first = await runAssistModel(anthropic,
+          'You route a client\'s question about their writing instructions to the ONE most relevant instruction, or none. Reply with JSON only: {"ruleKey": string|null}.',
+          `Their instructions:\n${index}\n\nTheir question:\n${String(question).slice(0, 1000)}`,
+          200);
+        const route = extractJson(first);
+        const hit = route.ruleKey ? generic.find((r) => r.rule_key === route.ruleKey) : null;
+        const raw = await runAssistModel(anthropic,
+          'You are Wingguy answering a client\'s question about how their instructions work. Plain spoken English, 2-5 short sentences, honest when the answer is "nothing covers that". Reply with JSON only: {"answer": string}. British/Australian spelling. No em dashes - use " - ".',
+          hit
+            ? `Their setup so far:\n${voice}\n\nTheir question:\n${String(question).slice(0, 1000)}\n\nThe most relevant instruction ("${titles.titleFor(hit.rule_key)}"):\n---\n${hit.body}\n---\n\nAnswer their question from it. If it does not actually answer the question, say what does not exist yet and that they can add it in the box above.`
+            : `Their instructions (titles only):\n${index}\n\nTheir question:\n${String(question).slice(0, 1000)}\n\nNothing obviously covers this. Say so honestly, and note they can add an instruction for it in the box above.`,
+          700);
+        const j = extractJson(raw);
+        return res.json({
+          ok: true,
+          answer: String(j.answer || ''),
+          ruleKey: hit ? hit.rule_key : null,
+          title: hit ? titles.titleFor(hit.rule_key) : null,
+        });
+      }
+
       if (mode === 'change') {
         const { ruleKey, request } = req.body || {};
         if (!String(request || '').trim()) return res.status(400).json({ ok: false, error: 'Say what you would like changed first.' });
@@ -899,11 +946,16 @@ module.exports = function mountWingguy(app) {
           if (current.layer === 'foundation' && wingguyStore.ruleTier(current) === 'locked') {
             return res.status(403).json({ ok: false, error: 'That one is a guardrail - it applies to everyone and cannot be changed.' });
           }
+          // The box takes ANYTHING - a question or a change request. The client never has to
+          // classify their own thought; the model does, and answers or proposes accordingly.
           const raw = await runAssistModel(anthropic,
-            'You maintain a client\'s writing instructions. Fold their request into the instruction, changing as little as possible and keeping {{placeholders}} intact. Reply with JSON only: {"explanation": string, "body": string}. explanation is 1-2 plain sentences on what changed. body is the COMPLETE new instruction text. British/Australian spelling. No em dashes - use " - ".',
-            `The current instruction ("${titles.titleFor(ruleKey)}"):\n---\n${current.body}\n---\n\nTheir request, in their words:\n${String(request).slice(0, 1500)}`,
+            `You maintain a client's writing instructions. They typed something under an instruction they were reading. FIRST decide what it is:\n- A QUESTION or confusion ("what does this mean?", "why?", "does this apply to...?") → answer it plainly, grounded in the instruction. Reply JSON: {"answer": string} - 2-4 short sentences, plain spoken English, use their world where their setup shows it.\n- A CHANGE request → fold it into the instruction, changing as little as possible and keeping {{placeholders}} intact. Reply JSON: {"explanation": string, "body": string} - explanation is 1-2 plain sentences on what changed; body is the COMPLETE new instruction text.\nReply with ONE of those JSON shapes only. British/Australian spelling. No em dashes - use " - ".`,
+            `Their setup so far:\n${voice}\n\nThe instruction ("${titles.titleFor(ruleKey)}"):\n---\n${current.body}\n---\n\nWhat they typed:\n${String(request).slice(0, 1500)}`,
             1600);
           const j = extractJson(raw);
+          if (j.answer && !j.body) {
+            return res.json({ ok: true, action: 'answer', text: String(j.answer) });
+          }
           const clientVersion = current.layer === 'client' ? current.version : 0;
           return res.json({
             ok: true,
