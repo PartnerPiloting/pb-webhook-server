@@ -281,7 +281,12 @@ async function runSetupRules(_args = {}, tenant = TENANT) {
   let clientRules = [];
   try { clientRules = (await store.getActiveRules({ tenantId: tenant, layer: 'client' })) || []; } catch (_e) { /* store down */ }
   let justSeeded = false;
-  if (!clientRules.length) {
+  // SEEDING LATCH (2026-08-04, ported from main 2026-08-06): default OFF while the starter kit is
+  // mid-rewrite. CRITICAL HERE TOO: staging and prod share ONE rules store, so a seed triggered
+  // through the staging deploy lands on the real store exactly as prod's would. Lift by setting
+  // WINGGUY_SEED_FROM_TEMPLATE=true once the kit rewrite is signed off.
+  const seedEnabled = String(process.env.WINGGUY_SEED_FROM_TEMPLATE || '').toLowerCase() === 'true';
+  if (!clientRules.length && seedEnabled) {
     try {
       await store.seedClientFromTemplate({ tenantId: tenant, createdBy: `mcp:setup:${tenant}` });
       justSeeded = true;
