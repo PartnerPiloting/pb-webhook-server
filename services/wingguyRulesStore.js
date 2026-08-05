@@ -60,6 +60,7 @@
  */
 
 const { Pool } = require('pg');
+const { defaultFor } = require('../config/wingguyVariableDefaults');
 
 let pool;
 let schemaEnsured = false;
@@ -386,7 +387,10 @@ function ruleTier(rule) {
 // canonical name ("{{asset:key}}", "{{variable}}") rather than using it. Stays literal and is
 // NOT reported unresolved — it's documentation, not a hole. Consequence: no real asset may be
 // keyed "key" and no real variable may be named "variable"; both would be unreachable here.
-const META_SYNTAX_MENTIONS = new Set(['asset:key', 'variable']);
+// Placeholders that instructions PRINT as syntax documentation ("reference it here as
+// {{asset:your_key}}") rather than expecting resolved. Treating these as missing values turns an
+// explanation into a fake error on the client's setup page.
+const META_SYNTAX_MENTIONS = new Set(['asset:key', 'asset:your_key', 'variable']);
 
 /**
  * OPTIONAL placeholders: `{{?key}}`.
@@ -436,6 +440,12 @@ function resolveRuleBody(body, variables = {}, assets = {}) {
     }
     const v = variables[key];
     if (v !== undefined && v !== null && String(v).length) return String(v);
+    // Unset, but some settings have an obvious sensible answer (30 minutes, a 9am floor, "call").
+    // Using it beats emitting a literal {{placeholder}} into the prompt, and it is what lets the
+    // setup page honestly say these are already set sensibly. Keys with no safe default are
+    // absent from the map and still render loudly - see config/wingguyVariableDefaults.js.
+    const fallback = defaultFor(key, variables);
+    if (fallback !== undefined) return String(fallback);
     unresolved.push(key);
     return whole;
   });

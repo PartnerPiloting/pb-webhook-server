@@ -34,6 +34,7 @@ const wingguyLeads = require('../services/wingguyLeads');
 const clientService = require('../services/clientService');
 const { canonicalLinkedinSlug, slugPrefilterFormula, findExactSlugMatch } = require('../utils/linkedinCanonical');
 const wingguyStore = require('../services/wingguyRulesStore');
+const setupFields = require('../config/wingguySetupFields');
 
 const logger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'wingguy' });
 
@@ -649,6 +650,510 @@ module.exports = function mountWingguy(app) {
     } catch (e) {
       logger.error(`[Wingguy] lead-contact failed: ${e.message}`);
       return res.status(500).json({ ok: false, error: e.message });
+    }
+  });
+
+  // --- "Set up your own Wingguy" page ------------------------------------------------------------
+  // The client-facing read/write door for the fill-in-the-blanks half of their instructions: the
+  // {{variables}} their rules reference, plus the handful of {{asset:...}} links safe to expose.
+  // WORDING of an instruction is deliberately NOT here — changing that needs the conflict check
+  // and the neighbour view the propose→commit door gives you, and a text box on a page cannot do
+  // it. This endpoint only ever fills in blanks the rules already leave.
+  //
+  // Both handlers filter against config/wingguySetupFields.js, so the page can never read or write
+  // a key that file does not name (the catalog also holds plumbing like tracking_bcc).
+
+  // Three settings the instructions need that a CLIENT must never be asked for: the CRM tracking
+  // address (same for everyone; handing it over is how someone breaks their own follow-up queue),
+  // their own email (already on their record), and their network name (only used in one line).
+  // Filled here rather than remembered by the coach - onboarding steps that live only in someone's
+  // head get skipped, and Julian's rulebook has been rendering literal braces because of it.
+  // Idempotent: only ever fills a blank, never overwrites an answer.
+  const TRACKING_BCC = (process.env.WINGGUY_TRACKING_BCC || 'track@mail.australiansidehustles.com.au').trim();
+
+  /** Surname from the record: the explicit field if present, else whatever follows the first name. */
+  function lastNameFrom(client) {
+    if (!client) return '';
+    const explicit = String(client.clientLastName || '').trim();
+    if (explicit) return explicit;
+    const full = String(client.clientName || '').trim();
+    const first = String(client.clientFirstName || '').trim();
+    if (full && first && full.toLowerCase().startsWith(first.toLowerCase())) {
+      return full.slice(first.length).trim();
+    }
+    const parts = full.split(/\s+/);
+    return parts.length > 1 ? parts.slice(1).join(' ') : '';
+  }
+
+  async function ensureCoachManagedVariables(tenantId, client, existingRows) {
+    const have = new Map((existingRows || []).map((r) => [r.var_key, r.value]));
+    const blank = (k) => !String(have.get(k) || '').trim();
+    const wanted = [
+      // Never client-editable - the same address for everyone, and handing it over is how someone
+      // quietly drops themselves out of their own follow-up queue.
+      ['tracking_bcc', TRACKING_BCC],
+      // Already on their record, so asking them to retype it is busywork. These land as PRE-FILLS,
+      // not locks: they appear in the page's boxes and the client can change any of them.
+      ['owner_email', String((client && (client.clientEmailAddress || client.email)) || '').trim()],
+      ['network_name', String((client && client.clientName) || '').trim()],
+      ['owner_first_name', String((client && client.clientFirstName) || '').trim()],
+      ['timezone', String((client && client.timezone) || '').trim()],
+      // Calendar invite titles use the full name. Derived rather than asked: the record has it,
+      // and "what is your surname" is a silly question to put on a setup page.
+      ['owner_last_name', lastNameFrom(client)],
+    ];
+    let filled = 0;
+    for (const [key, value] of wanted) {
+      if (!value || !blank(key)) continue;
+      try {
+        await wingguyStore.setVariable({ tenantId, varKey: key, value, actor: 'system:coach-managed' });
+        filled++;
+      } catch (e) {
+        logger.error(`[Wingguy] could not fill coach-managed "${key}" for ${tenantId}: ${e.message}`);
+      }
+    }
+    if (filled) logger.info(`[Wingguy] filled ${filled} coach-managed variable(s) for ${tenantId}`);
+    return filled;
+  }
+
+  router.get('/setup', async (req, res) => {
+    const tenantId = req.client.clientId;
+    try {
+      // SEQUENTIAL, NOT Promise.all. Each store call runs ensureSchema on its own connection, and
+      // against a database where the tables do not exist yet (a fresh environment, or the first
+      // request after a deploy to a new one) two of them race their CREATE TABLE / CREATE INDEX
+      // and Postgres rejects the loser with a duplicate-key error on pg_class. The first call
+      // flips the store's schemaEnsured latch, so the second is then free. Two round trips on a
+      // page load nobody is timing is the right trade for never serving that 500.
+      let variableRows = await wingguyStore.getVariables({ tenantId });
+      // Self-healing: opening the page tops up anything the coach's side owes (see above).
+      if (await ensureCoachManagedVariables(tenantId, req.client, variableRows)) {
+        variableRows = await wingguyStore.getVariables({ tenantId });
+      }
+      const assetRows = await wingguyStore.getAssets({ tenantId });
+
+      const varValues = new Map(variableRows.map((r) => [r.var_key, r.value]));
+      const assetValues = new Map(
+        assetRows.filter((r) => r.status !== 'retired').map((r) => [r.asset_key, r.url]),
+      );
+
+      const fields = [
+        ...setupFields.VARIABLE_FIELDS.map((f) => ({
+          ...f, scope: 'variable', value: varValues.get(f.key) || '',
+        })),
+        ...setupFields.ASSET_FIELDS.map((f) => ({
+          ...f, scope: 'asset', value: assetValues.get(f.key) || '',
+        })),
+        ...setupFields.VOICE_FIELDS.map((f) => ({
+          ...f, scope: 'variable', section: 'voice', value: varValues.get(f.key) || '',
+        })),
+      ];
+
+      // Progress counts the ESSENTIALS only. Counting the glance fields would nag a client toward
+      // filling in settings the page has just told them are fine left alone.
+      const essentials = fields.filter((f) => f.tier === 'essential');
+      const answered = essentials.filter((f) => String(f.value).trim()).length;
+      return res.json({
+        ok: true,
+        clientName: req.client.clientName || '',
+        groups: setupFields.groupOrder(),
+        tierGroups: {
+          essential: setupFields.groupOrder('essential'),
+          glance: setupFields.groupOrder('glance'),
+          voice: setupFields.groupOrder('voice'),
+        },
+        fields,
+        answered,
+        total: essentials.length,
+      });
+    } catch (e) {
+      logger.error(`[Wingguy] setup read failed for ${tenantId}: ${e.message}`);
+      return res.status(500).json({ ok: false, error: e.message });
+    }
+  });
+
+  // Saves one field at a time — the page autosaves as they leave each box, so a dropped connection
+  // costs one answer rather than the lot. Both store writes are history-logged, so "what did they
+  // change and when" stays answerable.
+  router.put('/setup', async (req, res) => {
+    const tenantId = req.client.clientId;
+    const { scope, key, value } = req.body || {};
+    const clean = value == null ? '' : String(value).trim();
+
+    if (scope !== 'variable' && scope !== 'asset') {
+      return res.status(400).json({ ok: false, error: 'scope must be "variable" or "asset".' });
+    }
+    const known = scope === 'variable' ? setupFields.VARIABLE_KEYS : setupFields.ASSET_KEYS;
+    if (!key || !known.has(key)) {
+      return res.status(400).json({ ok: false, error: `"${key}" is not a setting you can change here.` });
+    }
+    // Per-field cap: voice pieces (the advocacy case in their words) legitimately run long;
+    // a sign-off does not. Anything past its cap is a paste gone wrong.
+    const cap = setupFields.capFor(scope, key);
+    if (clean.length > cap) {
+      return res.status(400).json({ ok: false, error: `That is too long (limit ${cap} characters).` });
+    }
+    // A link box that is not a link is the one mistake worth catching before it reaches an invite.
+    if (scope === 'asset' && clean && !/^https?:\/\/\S+$/i.test(clean)) {
+      return res.status(400).json({ ok: false, error: 'That does not look like a web link - it should start with https://' });
+    }
+
+    try {
+      if (scope === 'variable') {
+        await wingguyStore.setVariable({ tenantId, varKey: key, value: clean, actor: `portal:${tenantId}` });
+      } else {
+        const field = setupFields.ASSET_FIELDS.find((f) => f.key === key);
+        await wingguyStore.setAsset({
+          tenantId, assetKey: key, url: clean, kind: field.kind || 'url',
+          status: clean ? 'active' : 'retired', actor: `portal:${tenantId}`,
+        });
+      }
+      logger.info(`[Wingguy] setup ${scope} "${key}" updated by ${tenantId} (${clean ? 'set' : 'cleared'})`);
+      return res.json({ ok: true, scope, key, value: clean });
+    } catch (e) {
+      logger.error(`[Wingguy] setup write failed for ${tenantId} (${scope}/${key}): ${e.message}`);
+      return res.status(500).json({ ok: false, error: e.message });
+    }
+  });
+
+  // --- "How your Wingguy works" — the browse + change + add doors (stage 3) ---------------------
+  // The page shows every instruction in plain English and lets the client push back on any of
+  // them, right where they are reading it. All writes still go through the ONE checked door
+  // (commitRule), always with the client's explicit confirm click - the page never saves a
+  // free-text change directly. Titles live in config/wingguyInstructionTitles.js because the
+  // store has no title column and `warm-reply-gtm` is not a name a client should read.
+
+  const titles = require('../config/wingguyInstructionTitles');
+
+  const GROUP_LABELS = {
+    global: 'Everywhere',
+    outreach: 'Reaching out',
+    reply: 'When they reply',
+    booking: 'Getting it in the diary',
+    'post-call': 'After a call',
+    'follow-up': 'Following up',
+  };
+
+  router.get('/setup/instructions', async (req, res) => {
+    const tenantId = req.client.clientId;
+    try {
+      // Sequential for the same schema-race reason as GET /setup.
+      const variableRows = await wingguyStore.getVariables({ tenantId });
+      const assetRows = await wingguyStore.getAssets({ tenantId });
+      // The RESOLVED runtime view: one rule per key, client overrides already applied - exactly
+      // what reaches the model. Campaign-tagged variants are out of scope for the page (generic
+      // view only); they stay a chat conversation.
+      const rules = await wingguyStore.getActiveRules({ tenantId, shadowed: true });
+
+      const varMap = {};
+      variableRows.forEach((r) => { if (r.value != null && String(r.value).length) varMap[r.var_key] = r.value; });
+      const assetMap = {};
+      assetRows.forEach((r) => { assetMap[r.asset_key] = { url: r.url, status: r.status }; });
+
+      const foundationKeys = new Set(rules.filter((r) => r.layer === 'foundation').map((r) => r.rule_key));
+
+      const items = rules
+        .filter((r) => !r.campaign)
+        .map((r) => {
+          const isFoundation = r.layer === 'foundation';
+          const kind = isFoundation
+            ? (wingguyStore.ruleTier(r) === 'locked' ? 'fixed' : 'standard')
+            : 'yours';
+          const { text: resolved, unresolved } = wingguyStore.resolveRuleBody(r.body, varMap, assetMap);
+          // A blank the client has not filled in resolves to its literal {{key}} - honest, but it
+          // reads as broken code to a client. Render it as a human nudge back up the page instead.
+          // ONLY the keys the store actually reported unresolved: some instructions legitimately
+          // print {{asset:key}} as syntax documentation, and rewriting that into "not filled in
+          // yet" turns an explanation into a fake error.
+          const stillMissing = new Set(unresolved);
+          const text = resolved.replace(
+            /\{\{\s*(asset:)?([a-zA-Z0-9_.-]+)\s*\}\}/g,
+            (whole, assetPrefix, key) => {
+              const id = `${assetPrefix || ''}${key}`;
+              if (!stillMissing.has(id)) return whole;
+              return `[${key.replace(/[_-]+/g, ' ')} - not filled in yet]`;
+            },
+          );
+          return {
+            ruleKey: r.rule_key,
+            context: r.context,
+            ruleType: r.rule_type,
+            version: r.version,
+            kind,
+            title: titles.titleFor(r.rule_key),
+            gist: titles.gistFor(r.rule_key),
+            body: text,
+          };
+        });
+
+      const groups = Object.keys(GROUP_LABELS)
+        .map((ctx) => ({
+          key: ctx,
+          label: GROUP_LABELS[ctx],
+          items: items
+            .filter((i) => i.context === ctx)
+            .sort((a, b) => a.title.localeCompare(b.title)),
+        }))
+        .filter((g) => g.items.length);
+
+      return res.json({ ok: true, groups, total: items.length });
+    } catch (e) {
+      logger.error(`[Wingguy] setup instructions read failed for ${tenantId}: ${e.message}`);
+      return res.status(500).json({ ok: false, error: e.message });
+    }
+  });
+
+  // Pull a JSON object out of a model reply that may carry prose around it.
+  function extractJson(text) {
+    const s = String(text || '');
+    const start = s.indexOf('{');
+    const end = s.lastIndexOf('}');
+    if (start < 0 || end <= start) throw new Error('the assistant did not return usable JSON');
+    return JSON.parse(s.slice(start, end + 1));
+  }
+
+  async function runAssistModel(anthropic, system, userText, maxTokens = 900) {
+    const msg = await anthropic.messages.create({
+      model: WINGGUY_DRAFT_MODEL_ID,
+      max_tokens: maxTokens,
+      system,
+      messages: [{ role: 'user', content: userText }],
+    });
+    return (msg.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('\n');
+  }
+
+  function tenantVoiceContext(variableRows) {
+    const wanted = ['owner_first_name', 'signoff', 'region', 'core_framing', 'target_verticals',
+      'network_explainer_line', 'call_platform', 'canonical_inversion_line', 'never_say_words'];
+    const lines = [];
+    variableRows.forEach((r) => {
+      if (wanted.includes(r.var_key) && r.value != null && String(r.value).trim()) {
+        lines.push(`${r.var_key}: ${String(r.value).trim()}`);
+      }
+    });
+    return lines.length ? lines.join('\n') : '(they have not filled anything in yet)';
+  }
+
+  // One assist door, three moves. BILLING PRINCIPLE (Guy, 2026-08-06): a client's own key powers
+  // the EXTENSION and its behind-the-scenes work; pages GUY PROVIDES run on the platform key, for
+  // everyone - the setup page is the welcome mat, not client usage. This is the one deliberate
+  // exception to the never-on-the-platform-key rule, so it does NOT go through byoAnthropicClient:
+  // a BYO client's stored key must not be charged for onboarding themselves.
+  router.post('/setup/assist', async (req, res) => {
+    const tenantId = req.client.clientId;
+    const { mode } = req.body || {};
+    if (!isAnthropicConfigured()) {
+      return res.status(500).json({ ok: false, error: 'The writing helper is not available right now.' });
+    }
+    const anthropic = getAnthropicClient();
+    logger.info(`[Wingguy] setup assist lane=platform (page principle) client=${tenantId} mode=${mode}`);
+
+    try {
+      const variableRows = await wingguyStore.getVariables({ tenantId });
+      const voice = tenantVoiceContext(variableRows);
+
+      if (mode === 'example') {
+        const { kind } = req.body || {};
+        if (kind === 'post_connection') {
+          const raw = await runAssistModel(anthropic,
+            'You draft LinkedIn messages for a professional. Reply with JSON only: {"leadIntro": string, "message": string}. British/Australian spelling. No em dashes - use " - ".',
+            `Their setup so far:\n${voice}\n\nInvent ONE realistic lead from their target audience (a first name, a profession from their audience, one concrete career detail and an Australian location). Then write the thanks-for-connecting message they would send that person: three short lines - one true observation about the invented profile, one line hinting at what THEY are building (their framing, never explaining a system), and a closing question. leadIntro is one line describing the invented person (e.g. "an imaginary mortgage broker - Karen, 12 years running her own book in Parramatta"). If their setup is mostly empty, write a plainly generic-but-decent message and make leadIntro note it will get sharper as they fill things in.`);
+          const j = extractJson(raw);
+          return res.json({ ok: true, leadIntro: String(j.leadIntro || ''), text: String(j.message || '') });
+        }
+        if (kind === 'advocacy') {
+          const raw = await runAssistModel(anthropic,
+            'You help a professional see how an argument would sound in conversation. Reply with JSON only: {"text": string}. Spoken register, first person, warm, no bullet points. British/Australian spelling. No em dashes - use " - ".',
+            `Their setup so far:\n${voice}\n\nWrite how the case for building a network of ADVOCATES (people who recommend you unprompted) rather than collecting contacts might sound, said across a table in about 120-160 words, following these beats in order: start from what they already know (best opportunities came through people who vouched for them) - name the gap (most networking builds contacts, not advocates) - the distinction (a contact knows you, an advocate recommends you unprompted) - take the blame off them (normal networking is designed for reach, not trust) - why it takes deliberate systematic effort. Use their framing where it exists.`);
+          const j = extractJson(raw);
+          return res.json({ ok: true, text: String(j.text || '') });
+        }
+        if (kind === 'inversion') {
+          const raw = await runAssistModel(anthropic,
+            'You help a professional phrase one idea in their own voice. Reply with JSON only: {"text": string}. British/Australian spelling. No em dashes - use " - ".',
+            `Their setup so far:\n${voice}\n\nSuggest ONE natural phrasing (a single sentence) of this idea, in words that fit them: having trusted people recommending you, rather than having to recommend yourself. Plain, sayable out loud, no jargon.`);
+          const j = extractJson(raw);
+          return res.json({ ok: true, text: String(j.text || '') });
+        }
+        return res.status(400).json({ ok: false, error: `unknown example kind "${kind}"` });
+      }
+
+      if (mode === 'readback') {
+        const { text, label } = req.body || {};
+        if (!String(text || '').trim()) return res.status(400).json({ ok: false, error: 'Nothing to read back yet.' });
+        const raw = await runAssistModel(anthropic,
+          'You are Wingguy, helping a client sound like themselves. You mostly ask ONE good question; you only suggest a rewrite when the text plainly reads like a brochure. Never condescending, never gushing. Reply with JSON only: {"note": string, "suggestion": string|null}. note is 1-3 short sentences reacting to their answer. suggestion is a plainer-spoken rewrite ONLY if genuinely needed, else null. British/Australian spelling. No em dashes - use " - ".',
+          `The box they are filling in: "${label || 'their answer'}"\n\nWhat they wrote:\n${String(text).slice(0, 2500)}\n\nRead it back: does it sound like something a person would say across a table, or like a LinkedIn bio? React accordingly.`,
+          600);
+        const j = extractJson(raw);
+        return res.json({ ok: true, note: String(j.note || ''), suggestion: j.suggestion ? String(j.suggestion) : null });
+      }
+
+      // One-tap explainers on an open instruction: "explain plainly" / "what does this mean for
+      // my messages?". Personalised via their setup so a planner hears it in planner terms.
+      if (mode === 'explain') {
+        const { ruleKey, angle } = req.body || {};
+        const rules = await wingguyStore.getActiveRules({ tenantId, shadowed: true });
+        const current = rules.filter((r) => !r.campaign).find((r) => r.rule_key === ruleKey);
+        if (!current) return res.status(404).json({ ok: false, error: 'That instruction was not found.' });
+        const ask = angle === 'impact'
+          ? 'Explain what this instruction actually changes about the messages and emails Wingguy writes for them - the visible difference they would notice. One tiny concrete example in their world if their setup gives you one.'
+          : 'Explain this instruction in plain spoken English, as if across a table. What it does and why it exists. No jargon, no restating it line by line.';
+        const raw = await runAssistModel(anthropic,
+          'You are Wingguy explaining one of a client\'s own writing instructions to them. Warm, plain, brief - 3-5 short sentences. Reply with JSON only: {"text": string}. British/Australian spelling. No em dashes - use " - ".',
+          `Their setup so far:\n${voice}\n\nThe instruction ("${titles.titleFor(ruleKey)}"):\n---\n${current.body}\n---\n\n${ask}`,
+          700);
+        const j = extractJson(raw);
+        return res.json({ ok: true, text: String(j.text || '') });
+      }
+
+      // The whole-rulebook question box: "is there something that does X?" Answers plainly and
+      // names the instruction so the page can point at it.
+      if (mode === 'ask') {
+        const { question } = req.body || {};
+        if (!String(question || '').trim()) return res.status(400).json({ ok: false, error: 'Ask away - the box is empty.' });
+        const rules = await wingguyStore.getActiveRules({ tenantId, shadowed: true });
+        const generic = rules.filter((r) => !r.campaign);
+        const index = generic.map((r) => `- ${r.rule_key}: ${titles.titleFor(r.rule_key)}${titles.gistFor(r.rule_key) ? ' - ' + titles.gistFor(r.rule_key) : ''}`).join('\n');
+        const first = await runAssistModel(anthropic,
+          'You route a client\'s question about their writing instructions to the ONE most relevant instruction, or none. Reply with JSON only: {"ruleKey": string|null}.',
+          `Their instructions:\n${index}\n\nTheir question:\n${String(question).slice(0, 1000)}`,
+          200);
+        const route = extractJson(first);
+        const hit = route.ruleKey ? generic.find((r) => r.rule_key === route.ruleKey) : null;
+        const raw = await runAssistModel(anthropic,
+          'You are Wingguy answering a client\'s question about how their instructions work. Plain spoken English, 2-5 short sentences, honest when the answer is "nothing covers that". Reply with JSON only: {"answer": string}. British/Australian spelling. No em dashes - use " - ".',
+          hit
+            ? `Their setup so far:\n${voice}\n\nTheir question:\n${String(question).slice(0, 1000)}\n\nThe most relevant instruction ("${titles.titleFor(hit.rule_key)}"):\n---\n${hit.body}\n---\n\nAnswer their question from it. If it does not actually answer the question, say what does not exist yet and that they can add it in the box above.`
+            : `Their instructions (titles only):\n${index}\n\nTheir question:\n${String(question).slice(0, 1000)}\n\nNothing obviously covers this. Say so honestly, and note they can add an instruction for it in the box above.`,
+          700);
+        const j = extractJson(raw);
+        return res.json({
+          ok: true,
+          answer: String(j.answer || ''),
+          ruleKey: hit ? hit.rule_key : null,
+          title: hit ? titles.titleFor(hit.rule_key) : null,
+        });
+      }
+
+      if (mode === 'change') {
+        const { ruleKey, request } = req.body || {};
+        if (!String(request || '').trim()) return res.status(400).json({ ok: false, error: 'Say what you would like changed first.' });
+        const rules = await wingguyStore.getActiveRules({ tenantId, shadowed: true });
+        const generic = rules.filter((r) => !r.campaign);
+
+        if (ruleKey) {
+          // CHANGE an instruction they are looking at. Their new version lands in their own layer
+          // and replaces the shared one for them alone (the door refuses if it is locked).
+          const current = generic.find((r) => r.rule_key === ruleKey);
+          if (!current) return res.status(404).json({ ok: false, error: 'That instruction was not found.' });
+          if (current.layer === 'foundation' && wingguyStore.ruleTier(current) === 'locked') {
+            return res.status(403).json({ ok: false, error: 'That one is a guardrail - it applies to everyone and cannot be changed.' });
+          }
+          // The box takes ANYTHING - a question or a change request. The client never has to
+          // classify their own thought; the model does, and answers or proposes accordingly.
+          const raw = await runAssistModel(anthropic,
+            `You maintain a client's writing instructions. They typed something under an instruction they were reading. FIRST decide what it is:\n- A QUESTION or confusion ("what does this mean?", "why?", "does this apply to...?") → answer it plainly, grounded in the instruction. Reply JSON: {"answer": string} - 2-4 short sentences, plain spoken English, use their world where their setup shows it.\n- A CHANGE request → fold it into the instruction, changing as little as possible and keeping {{placeholders}} intact. Reply JSON: {"explanation": string, "body": string} - explanation is 1-2 plain sentences on what changed; body is the COMPLETE new instruction text.\nReply with ONE of those JSON shapes only. British/Australian spelling. No em dashes - use " - ".`,
+            `Their setup so far:\n${voice}\n\nThe instruction ("${titles.titleFor(ruleKey)}"):\n---\n${current.body}\n---\n\nWhat they typed:\n${String(request).slice(0, 1500)}`,
+            1600);
+          const j = extractJson(raw);
+          if (j.answer && !j.body) {
+            return res.json({ ok: true, action: 'answer', text: String(j.answer) });
+          }
+          const clientVersion = current.layer === 'client' ? current.version : 0;
+          return res.json({
+            ok: true,
+            action: 'change',
+            ruleKey,
+            title: titles.titleFor(ruleKey),
+            explanation: String(j.explanation || ''),
+            proposedBody: String(j.body || ''),
+            context: current.context,
+            ruleType: current.rule_type,
+            expectedVersion: clientVersion,
+            replacesShared: current.layer === 'foundation',
+          });
+        }
+
+        // ADD a new instruction - with the overlap guard Guy promised on the page: if something
+        // already covers the ground, lead with "amend that one instead" rather than minting a twin.
+        const index = generic.map((r) => `- ${r.rule_key} (${r.context}): ${titles.titleFor(r.rule_key)}${titles.gistFor(r.rule_key) ? ' - ' + titles.gistFor(r.rule_key) : ''}`).join('\n');
+        const raw = await runAssistModel(anthropic,
+          `You maintain a client's writing instructions. They want to add a new one. FIRST check the existing list for one that already covers the same ground - overlapping instructions quietly fight each other. Reply with JSON only, ONE of:\n{"overlapKey": string, "why": string}  - an existing instruction covers this ground; why is 1-2 plain sentences\n{"ruleKey": string, "context": string, "ruleType": string, "explanation": string, "body": string}  - genuinely new; ruleKey is a new kebab-case key, context is one of global|outreach|reply|booking|post-call|follow-up, ruleType is one of voice|formatting|stage-logic|scheduling|asset-usage|qualifying, body is the complete instruction in second person ("you"), explanation is 1-2 plain sentences. British/Australian spelling. No em dashes - use " - ".`,
+          `Their existing instructions:\n${index}\n\nWhat they want, in their words:\n${String(request).slice(0, 1500)}`,
+          1600);
+        const j = extractJson(raw);
+        if (j.overlapKey) {
+          const hit = generic.find((r) => r.rule_key === j.overlapKey);
+          return res.json({
+            ok: true,
+            action: 'overlap',
+            ruleKey: j.overlapKey,
+            title: titles.titleFor(j.overlapKey),
+            why: String(j.why || ''),
+            found: !!hit,
+          });
+        }
+        const newKey = String(j.ruleKey || '').trim();
+        if (!/^[a-z0-9][a-z0-9-]{2,60}$/.test(newKey)) return res.status(500).json({ ok: false, error: 'Could not coin a sensible name for that - try wording it differently.' });
+        if (generic.some((r) => r.rule_key === newKey)) return res.status(409).json({ ok: false, error: 'That clashes with an existing instruction - try again.' });
+        if (!wingguyStore.CONTEXTS.includes(j.context) || !wingguyStore.RULE_TYPES.includes(j.ruleType)) {
+          return res.status(500).json({ ok: false, error: 'Could not place that instruction - try wording it differently.' });
+        }
+        return res.json({
+          ok: true,
+          action: 'add',
+          ruleKey: newKey,
+          title: titles.titleFor(newKey),
+          explanation: String(j.explanation || ''),
+          proposedBody: String(j.body || ''),
+          context: j.context,
+          ruleType: j.ruleType,
+          expectedVersion: 0,
+          replacesShared: false,
+        });
+      }
+
+      return res.status(400).json({ ok: false, error: `unknown assist mode "${mode}"` });
+    } catch (e) {
+      if (transientClaudeError(e)) return respondClaudeError(res, e);
+      logger.error(`[Wingguy] setup assist (${mode}) failed for ${tenantId}: ${e.message}`);
+      return res.status(500).json({ ok: false, error: 'That did not work - try again in a moment.' });
+    }
+  });
+
+  // The confirm click. The ONLY way the page writes an instruction, and it goes through the same
+  // door as chat: version-checked, guardrail-refusing, history-logged, append-only.
+  router.post('/setup/change-commit', async (req, res) => {
+    const tenantId = req.client.clientId;
+    const { ruleKey, context, ruleType, body, expectedVersion, explanation } = req.body || {};
+    if (!ruleKey || !String(body || '').trim()) {
+      return res.status(400).json({ ok: false, error: 'Nothing to save.' });
+    }
+    try {
+      const r = await wingguyStore.commitRule({
+        layer: 'client',
+        tenantId,
+        ruleKey: String(ruleKey),
+        context,
+        ruleType,
+        body: String(body),
+        changeNote: `From their setup page: ${String(explanation || 'client change').slice(0, 300)}`,
+        createdBy: `portal:${tenantId}`,
+        expectedVersion: Number(expectedVersion) || 0,
+        actorTenantId: tenantId,
+        via: 'door',
+      });
+      logger.info(`[Wingguy] setup page instruction commit: ${ruleKey} v${r.version || '?'} for ${tenantId}`);
+      return res.json({ ok: true, ruleKey });
+    } catch (e) {
+      const friendly = e.code === 'WG_TIER_LOCKED'
+        ? 'That one is a guardrail - it applies to everyone and cannot be changed.'
+        : (/version conflict/.test(e.message)
+          ? 'That instruction changed since you looked at it - reopen it and try again.'
+          : e.message);
+      logger.error(`[Wingguy] setup page commit failed for ${tenantId} (${ruleKey}): ${e.message}`);
+      return res.status(409).json({ ok: false, error: friendly });
     }
   });
 
