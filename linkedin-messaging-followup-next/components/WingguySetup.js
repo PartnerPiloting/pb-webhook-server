@@ -307,6 +307,27 @@ function WingguySetupInner() {
           writes - and <em>some of those instructions are yours.</em> This page is where you write
           them.
         </p>
+
+        <a
+          href="https://knowaguy.com.au/a-day-in-the-life"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="group mt-2 block border-2 border-emerald-600 bg-emerald-50 p-6 hover:bg-emerald-100 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700 focus-visible:ring-offset-2"
+        >
+          <div className="text-[11px] font-bold uppercase tracking-[0.12em] text-emerald-800">
+            Take ten minutes first
+          </div>
+          <div className="font-serif text-2xl text-slate-900 mt-2 group-hover:text-emerald-900">
+            A day in the life <span aria-hidden="true">&rarr;</span>
+          </div>
+          <p className="text-[15px] text-slate-700 leading-relaxed mt-2 max-w-2xl">
+            It is short, and it is the honest picture of what you are setting up here - an ordinary
+            working day with all the remembering, chasing and drafting taken off your plate. Guy&apos;s
+            advice is to read it now rather than later: people who do come back to this page knowing
+            what they want their Wingguy to sound like, which makes everything below quicker and
+            better.
+          </p>
+        </a>
       </header>
 
       {/* what you just watched - the reassurance, in concrete moments */}
@@ -356,17 +377,16 @@ function WingguySetupInner() {
             that day, not just the message in front of you.
           </p>
           <p className="text-[15px] text-slate-700 leading-relaxed">
-            Not seen the full day yet, or want it hour by hour?{' '}
+            If you skipped the read at the top, it is worth going back for -{' '}
             <a
               href="https://knowaguy.com.au/a-day-in-the-life"
               target="_blank"
               rel="noopener noreferrer"
               className="text-emerald-800 font-semibold underline underline-offset-2 hover:text-emerald-900"
             >
-              Have a read of this
-            </a>{' '}
-            - it is worth ten minutes, and everything in it is shaped by the instructions you are
-            about to write.
+              a day in the life
+            </a>
+            . Every hour of it is shaped by instructions like the ones you are about to write.
           </p>
         </div>
       </section>
