@@ -45,6 +45,43 @@ const KINDS = [
   },
 ];
 
+/**
+ * The reassurance strip: the moments Guy demonstrates live, in the order he demonstrates them.
+ * Deliberately CONCRETE - what you say, what it does - because this page is read minutes after
+ * someone watched it happen, so its job is to confirm rather than to persuade from cold. Sourced
+ * from Guy's own demo script and knowaguy.com.au/a-day-in-the-life.
+ */
+const DEMO_MOMENTS = [
+  {
+    moment: 'You open a lead on LinkedIn and type /wg',
+    does: 'It reads the whole conversation and writes the reply - grounded in what they actually said, in your words, not a template.',
+  },
+  {
+    moment: 'They sound open to a meeting',
+    does: 'It offers three times you are genuinely free, on their clock, spread across the week rather than stacked on one day.',
+  },
+  {
+    moment: 'They pick one',
+    does: 'It books it, sends the invite with your meeting room on it, and writes the warm confirmation that goes with it.',
+  },
+  {
+    say: 'I had a great meeting with John this morning - find the transcript and draft the follow-up',
+    does: 'It finds the recording, pulls out what mattered, and writes the email in your voice with the right links in it.',
+  },
+  {
+    say: 'Prep me for today',
+    does: 'Who you are meeting, what you last talked about, what you promised them, and anything still outstanding.',
+  },
+  {
+    say: 'Show me my follow-ups',
+    does: 'The people due today, in order, with the reason each one is on the list.',
+  },
+  {
+    moment: 'End of the day, a tab open per conversation',
+    does: 'Every follow-up drafts at once. You read each one and say "push", and it lands in your inbox ready to send.',
+  },
+];
+
 const LOOP = [
   ['It writes the draft', 'A connection request, a reply, a follow-up email after a call. It pulls in what it knows about the person first - your past messages, the call, their profile.'],
   ['You read it before it goes anywhere', 'Always. Nothing is ever sent on your behalf without you seeing it. Change what is not right and send it.'],
@@ -262,14 +299,57 @@ function WingguySetupInner() {
           Getting started with Wingguy
         </div>
         <h1 className="font-serif text-4xl sm:text-5xl leading-[1.1] text-slate-900">
-          Teaching it to write like you
+          Now let&apos;s make it sound like you
         </h1>
         <p className="font-serif text-lg leading-relaxed text-slate-600 max-w-2xl">
-          Wingguy drafts your messages and emails. It sounds like you because it reads a set of
-          instructions before every single thing it writes - and <em>some of those instructions are
-          yours to write.</em> This page explains how that works, and gets your half of it set up.
+          You have seen what it does. The reason it does it in someone&apos;s own voice, and not in
+          generic AI mush, is that it reads a set of instructions before every single thing it
+          writes - and <em>some of those instructions are yours.</em> This page is where you write
+          them.
         </p>
       </header>
+
+      {/* what you just watched - the reassurance, in concrete moments */}
+      <section className="flex flex-col gap-6">
+        <SectionHead
+          title="What you just watched"
+          sub="A reminder of the day this gives you back - because in about ten minutes on this page, it starts becoming yours."
+        />
+        <div className="flex flex-col gap-px bg-slate-200 border border-slate-200">
+          {DEMO_MOMENTS.map((m) => (
+            <div key={m.does} className="bg-white grid sm:grid-cols-[16rem_1fr] gap-1 sm:gap-6 px-5 py-4">
+              <div className="font-serif text-[15px] text-emerald-800 leading-snug">
+                {m.say ? <>&ldquo;{m.say}&rdquo;</> : <span className="text-slate-500 not-italic">{m.moment}</span>}
+              </div>
+              <div className="text-[15px] text-slate-700 leading-relaxed">{m.does}</div>
+            </div>
+          ))}
+        </div>
+
+        <blockquote className="border-l-2 border-emerald-600 pl-5 flex flex-col gap-2">
+          <p className="font-serif text-lg text-slate-800 leading-relaxed max-w-2xl">
+            &ldquo;I used to finish the day with a pile of emails I still owed people. The
+            remembering, the tracking, the drafting, the chasing, the diary work - it is not my job
+            any more. I am less drained, and I get through far more.&rdquo;
+          </p>
+          <cite className="text-sm text-slate-500 not-italic">Guy</cite>
+        </blockquote>
+
+        <p className="text-slate-600 max-w-2xl">
+          None of that is generic. It sounds like Guy because Guy taught it - a few minutes setting
+          it up, then a correction here and there as he went. That is the whole trick, and the rest
+          of this page is your turn.{' '}
+          <a
+            href="https://knowaguy.com.au/a-day-in-the-life"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-emerald-800 underline underline-offset-2 hover:text-emerald-900"
+          >
+            The longer version, hour by hour
+          </a>
+          , if you want it.
+        </p>
+      </section>
 
       {/* three kinds */}
       <section className="flex flex-col gap-6">
