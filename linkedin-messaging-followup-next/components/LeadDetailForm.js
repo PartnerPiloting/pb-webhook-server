@@ -179,20 +179,33 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating, onDelete }) => {
 
   const isValidEmailShape = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
 
-  const addAltEmail = () => {
-    const candidate = (newAltEmail || '').trim().toLowerCase();
-    if (!candidate) return;
+  // Pure merge of whatever is typed in the "add" box into the stored list.
+  // Returns { next } on success, { error, kind } on a rejected address, or {} when
+  // there's nothing pending. Shared by the Add button and by submit, so an address
+  // that was typed but never added still gets saved instead of being silently
+  // discarded. kind lets submit tell the two rejections apart: 'invalid' has to block
+  // the save, 'duplicate' means the address is already on the lead so nothing is lost.
+  const mergePendingAltEmail = (altEmailsStr, primaryEmail, pending) => {
+    const candidate = (pending || '').trim().toLowerCase();
+    if (!candidate) return {};
     if (!isValidEmailShape(candidate)) {
-      setAltEmailError("That doesn't look like a valid email address.");
-      return;
+      return { error: "That doesn't look like a valid email address.", kind: 'invalid' };
     }
-    const existing = parseAltEmails(formData.altEmails).map(e => e.toLowerCase());
-    const primary = (formData.email || '').trim().toLowerCase();
+    const existing = parseAltEmails(altEmailsStr).map(e => e.toLowerCase());
+    const primary = (primaryEmail || '').trim().toLowerCase();
     if (candidate === primary || existing.includes(candidate)) {
-      setAltEmailError('That email is already on this lead.');
+      return { error: 'That email is already on this lead.', kind: 'duplicate' };
+    }
+    return { next: [...parseAltEmails(altEmailsStr), candidate].join('\n') };
+  };
+
+  const addAltEmail = () => {
+    const { next, error } = mergePendingAltEmail(formData.altEmails, formData.email, newAltEmail);
+    if (error) {
+      setAltEmailError(error);
       return;
     }
-    const next = [...parseAltEmails(formData.altEmails), candidate].join('\n');
+    if (!next) return;
     handleChange('altEmails', next);
     setNewAltEmail('');
     setAltEmailError('');
@@ -239,10 +252,31 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating, onDelete }) => {
     }
     
     setValidationError(''); // Clear any previous error
-    
-    if (hasChanges) {
-  if (isDev) { try { console.debug('[LeadDetailForm] submitting update', formData); } catch {} }
-      onUpdate(formData);
+
+    // An address typed into "Add another email" but never turned into a chip used to be
+    // dropped on save with no warning - the form only ever sent formData.altEmails.
+    // Fold a valid pending address in; block the save on an invalid one so it can't
+    // disappear behind a "Lead updated successfully!" message.
+    let dataToSend = formData;
+    if ((newAltEmail || '').trim()) {
+      const { next, error, kind } = mergePendingAltEmail(formData.altEmails, formData.email, newAltEmail);
+      if (error && kind === 'invalid') {
+        setAltEmailError(error);
+        return;
+      }
+      // 'duplicate' needs no fuss - the address is already on the lead, so just drop
+      // the pending text and let the rest of the save go through.
+      if (next) {
+        dataToSend = { ...formData, altEmails: next };
+        setFormData(dataToSend);
+      }
+      setNewAltEmail('');
+      setAltEmailError('');
+    }
+
+    if (hasChanges || dataToSend !== formData) {
+  if (isDev) { try { console.debug('[LeadDetailForm] submitting update', dataToSend); } catch {} }
+      onUpdate(dataToSend);
       setHasChanges(false);
     }
   };
