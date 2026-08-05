@@ -182,6 +182,18 @@ const ASSET_FIELDS = [
     kind: 'url',
     type: 'text',
   },
+  {
+    // Calendar invites put this next to your name so the guest can see who they are meeting.
+    // Only they know their own URL, but a blank one just leaves the line off the invite.
+    key: 'owner_linkedin_profile',
+    tier: 'glance',
+    group: 'Meetings',
+    label: 'Your LinkedIn profile link',
+    hint: 'Optional. It goes on calendar invites beside your name, so whoever you are meeting can see who you are. Blank just leaves it off.',
+    example: 'https://www.linkedin.com/in/your-name',
+    kind: 'url',
+    type: 'text',
+  },
 ];
 
 /**

@@ -640,6 +640,20 @@ module.exports = function mountWingguy(app) {
   // Idempotent: only ever fills a blank, never overwrites an answer.
   const TRACKING_BCC = (process.env.WINGGUY_TRACKING_BCC || 'track@mail.australiansidehustles.com.au').trim();
 
+  /** Surname from the record: the explicit field if present, else whatever follows the first name. */
+  function lastNameFrom(client) {
+    if (!client) return '';
+    const explicit = String(client.clientLastName || '').trim();
+    if (explicit) return explicit;
+    const full = String(client.clientName || '').trim();
+    const first = String(client.clientFirstName || '').trim();
+    if (full && first && full.toLowerCase().startsWith(first.toLowerCase())) {
+      return full.slice(first.length).trim();
+    }
+    const parts = full.split(/\s+/);
+    return parts.length > 1 ? parts.slice(1).join(' ') : '';
+  }
+
   async function ensureCoachManagedVariables(tenantId, client, existingRows) {
     const have = new Map((existingRows || []).map((r) => [r.var_key, r.value]));
     const blank = (k) => !String(have.get(k) || '').trim();
@@ -653,6 +667,9 @@ module.exports = function mountWingguy(app) {
       ['network_name', String((client && client.clientName) || '').trim()],
       ['owner_first_name', String((client && client.clientFirstName) || '').trim()],
       ['timezone', String((client && client.timezone) || '').trim()],
+      // Calendar invite titles use the full name. Derived rather than asked: the record has it,
+      // and "what is your surname" is a silly question to put on a setup page.
+      ['owner_last_name', lastNameFrom(client)],
     ];
     let filled = 0;
     for (const [key, value] of wanted) {
@@ -811,12 +828,20 @@ module.exports = function mountWingguy(app) {
           const kind = isFoundation
             ? (wingguyStore.ruleTier(r) === 'locked' ? 'fixed' : 'standard')
             : 'yours';
-          const { text: resolved } = wingguyStore.resolveRuleBody(r.body, varMap, assetMap);
+          const { text: resolved, unresolved } = wingguyStore.resolveRuleBody(r.body, varMap, assetMap);
           // A blank the client has not filled in resolves to its literal {{key}} - honest, but it
           // reads as broken code to a client. Render it as a human nudge back up the page instead.
+          // ONLY the keys the store actually reported unresolved: some instructions legitimately
+          // print {{asset:key}} as syntax documentation, and rewriting that into "not filled in
+          // yet" turns an explanation into a fake error.
+          const stillMissing = new Set(unresolved);
           const text = resolved.replace(
             /\{\{\s*(asset:)?([a-zA-Z0-9_.-]+)\s*\}\}/g,
-            (_w, _asset, key) => `[${key.replace(/[_-]+/g, ' ')} - not filled in yet]`,
+            (whole, assetPrefix, key) => {
+              const id = `${assetPrefix || ''}${key}`;
+              if (!stillMissing.has(id)) return whole;
+              return `[${key.replace(/[_-]+/g, ' ')} - not filled in yet]`;
+            },
           );
           return {
             ruleKey: r.rule_key,

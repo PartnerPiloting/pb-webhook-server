@@ -31,6 +31,7 @@ const TITLES = {
   'mirror-their-energy': { title: 'Match their energy', gist: 'Never three paragraphs to someone who sent one line.' },
   'no-repeat-set-pieces': { title: 'Never send the same set piece twice', gist: 'If they\'ve already had the deck, they don\'t get it again.' },
   'pitch-language-recommend': { title: 'Recommend, never sell', gist: 'The language stays about people recommending each other - the moment it sounds like selling, the idea is lost.' },
+  'never-say-words': { title: 'The words you never use', gist: 'Your banned list, applied absolutely - no exceptions, no "but it fits here".' },
   'proactive-close': { title: 'Every message ends with a reason to reply', gist: 'The close is a question that names the format and the purpose.' },
   'profile-hook-craft': { title: 'Say something true about them', gist: 'Read the profile properly and find the one genuine detail - never parrot their headline.' },
   'reason-to-meet-again': { title: 'Give every conversation a reason to continue', gist: 'Goodwill with nothing attached to it decays.' },

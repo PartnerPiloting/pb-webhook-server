@@ -387,7 +387,10 @@ function ruleTier(rule) {
 // canonical name ("{{asset:key}}", "{{variable}}") rather than using it. Stays literal and is
 // NOT reported unresolved — it's documentation, not a hole. Consequence: no real asset may be
 // keyed "key" and no real variable may be named "variable"; both would be unreachable here.
-const META_SYNTAX_MENTIONS = new Set(['asset:key', 'variable']);
+// Placeholders that instructions PRINT as syntax documentation ("reference it here as
+// {{asset:your_key}}") rather than expecting resolved. Treating these as missing values turns an
+// explanation into a fake error on the client's setup page.
+const META_SYNTAX_MENTIONS = new Set(['asset:key', 'asset:your_key', 'variable']);
 
 /**
  * OPTIONAL placeholders: `{{?key}}`.
