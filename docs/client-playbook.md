@@ -117,6 +117,31 @@ what you and I do together at the start, and there are topics on both.
 
 ---
 
+## WINGGUY LEARNING - YOUR TRAINING, BUILT IN
+
+Everything in this playbook - the process, the searches, the messages, the meetings - you don't
+have to remember any of it. That's what Wingguy Learning is. My whole method is written down, in my
+words, and it lives inside your Wingguy. You're never studying this system; you're just using it,
+and asking as you go.
+
+**Ask in your own words, whenever a question comes up.** "Who should I be reaching out to?" "What
+do I say when someone accepts?" "How do I keep on top of follow-ups?" You'll get my answer - the
+reasoning and the why, not just the button clicks, and not generic advice off the internet.
+
+**It keeps growing, and you don't lift a finger.** This isn't a manual that was written once and
+left to age. Every topic in it came out of real work with real clients, and when we learn something
+new that makes the method work better, it lands in your Wingguy automatically. The Wingguy Learning
+you have in six months will be bigger and sharper than today's, at no effort to you.
+
+**And it knows what it doesn't know.** If you ask something I haven't covered yet, Wingguy will say
+so and point you to me, rather than making up something plausible. That's deliberate. A confident
+answer that isn't the method is worse than no answer, because you can't tell the difference.
+
+If you ever want to take it all in at once, just say **"read me everything"** and you'll get the
+lot, end to end.
+
+---
+
 ## WHAT DO YOU DO - and why "I'm working it out" is a fine answer
 
 For someone to think "I know a guy" at the right moment, they have to remember what you do. So
