@@ -14,6 +14,7 @@
 
 import React, { Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
+import { pageAuthQuery } from './WingguyReview';
 
 const DEMO_MOMENTS = [
   {
@@ -86,7 +87,7 @@ const SAY = [
 
 function WingguyAboutInner() {
   const searchParams = useSearchParams();
-  const q = searchParams.toString();
+  const q = pageAuthQuery(searchParams);
   const href = (path) => (q ? `${path}?${q}` : path);
 
   return (

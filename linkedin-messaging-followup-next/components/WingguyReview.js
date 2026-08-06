@@ -20,6 +20,26 @@ import React, { useState, useEffect, useCallback, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { getBackendBase } from '../services/api';
 
+
+/**
+ * The auth on these pages is the link, not a session - but the portal shell strips ?token= from
+ * the address bar once it has logged you in, so by the time this component reads the query the
+ * token can already be gone. Fall back to where the portal parked it. (Caught live: wrapping
+ * these pages in the portal shell broke them for token visitors.)
+ */
+function readPageAuth(searchParams) {
+  const stored = (k) => {
+    if (typeof window === 'undefined') return '';
+    try { return window.localStorage.getItem(k) || window.sessionStorage.getItem(k) || ''; }
+    catch (e) { return ''; }
+  };
+  return {
+    token: searchParams.get('token') || stored('portalToken'),
+    client: searchParams.get('client') || searchParams.get('clientId') || stored('clientCode') || stored('clientId'),
+    devKey: searchParams.get('devKey') || stored('devKey'),
+  };
+}
+
 const VERB = { commit: 'changed', add: 'added', retire: 'retired', revert: 'put back' };
 
 function verbFor(c) {
@@ -42,10 +62,7 @@ function friendlyWhen(iso) {
 
 function WingguyReviewInner() {
   const searchParams = useSearchParams();
-  const token = searchParams.get('token') || '';
-  // clientId is the spelling the portal's stored-auth link builder uses; client is ours.
-  const client = searchParams.get('client') || searchParams.get('clientId') || '';
-  const devKey = searchParams.get('devKey') || '';
+  const { token, client, devKey } = readPageAuth(searchParams);
   const asParam = searchParams.get('as') || '';
   const hasAuth = !!token || !!(client && devKey);
 
@@ -121,7 +138,7 @@ function WingguyReviewInner() {
 
   return (
     <Shell>
-      <PageNav current="review" query={searchParams.toString()} />
+      <PageNav current="review" query={pageAuthQuery(searchParams)} />
       <div className="flex flex-col gap-3 pb-6 border-b border-slate-200">
         <h1 className="font-serif text-3xl text-slate-900">What&apos;s changed lately</h1>
         <p className="text-slate-600">
@@ -682,4 +699,16 @@ export default function WingguyReview() {
   );
 }
 
-export { PageNav };
+/** The query string to hang on links between these pages: whatever the visitor arrived with,
+ *  refilled from stored auth when the portal shell has already cleaned the address bar. */
+function pageAuthQuery(searchParams) {
+  const q = searchParams.toString();
+  if (q) return q;
+  const { token, client, devKey } = readPageAuth(searchParams);
+  const p = new URLSearchParams();
+  if (token) p.set('token', token);
+  else if (client && devKey) { p.set('client', client); p.set('devKey', devKey); }
+  return p.toString();
+}
+
+export { PageNav, readPageAuth, pageAuthQuery };
