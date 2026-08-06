@@ -219,14 +219,20 @@ const Layout = ({ children }) => {
                 {(() => {
                   const envLabel = getEnvLabel();
                   const clientName = clientProfile?.clientName || clientProfile?.client?.clientName;
+                  const assistantName = clientProfile?.assistant?.name;
                   const isProduction = process.env.NODE_ENV === 'production' && !envLabel;
+                  // An assistant's key opens the client's account, so the top line names HER and
+                  // says whose account she is in - otherwise the page claims she is the client.
+                  const title = assistantName && clientName
+                    ? `${assistantName} - assisting ${clientName}`
+                    : clientName
+                      ? `${clientName}'s Network Accelerator`
+                      : 'Network Accelerator';
                   
                   return (
                     <div>
                       <div className="text-2xl font-bold">
-                        {clientName
-                          ? `${clientName}'s Network Accelerator${!isProduction && envLabel ? ` (${envLabel})` : ''}`
-                          : `Network Accelerator${!isProduction && envLabel ? ` (${envLabel})` : ''}`}
+                        {`${title}${!isProduction && envLabel ? ` (${envLabel})` : ''}`}
                       </div>
                       <div className="text-base text-gray-600 mt-2">
                         Score leads — Start conversations — Close deals
