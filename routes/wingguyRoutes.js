@@ -1191,6 +1191,15 @@ module.exports = function mountWingguy(app) {
         via: 'door',
       });
       logger.info(`[Wingguy] setup page instruction commit: ${ruleKey} v${r.version || '?'} for ${tenantId}`);
+      // Write the review page's plain-English line now, while nobody is waiting on it. Doing it
+      // here rather than at read time is what keeps the review page instant and costs one small
+      // call per change ever. Never allowed to fail the save.
+      if (r.historyId) {
+        setImmediate(() => {
+          summariseChange(tenantId, r.historyId)
+            .catch((e) => logger.error(`[Wingguy] change summary failed for ${tenantId} #${r.historyId}: ${e.message}`));
+        });
+      }
       return res.json({ ok: true, ruleKey });
     } catch (e) {
       const friendly = e.code === 'WG_TIER_LOCKED'
@@ -1228,6 +1237,32 @@ module.exports = function mountWingguy(app) {
     return a || 'Wingguy';
   }
 
+  // A stored instruction body as a human should read it: the client's own values woven in, and
+  // any blank they have not filled rendered as a nudge instead of literal {{braces}}. Same
+  // treatment GET /setup/instructions gives the live rulebook — without it the review page shows
+  // raw model-facing text, which reads as broken code to the person whose business it governs.
+  async function bodyHumaniser(tenantId) {
+    const variableRows = await wingguyStore.getVariables({ tenantId });
+    const assetRows = await wingguyStore.getAssets({ tenantId });
+    const varMap = {};
+    variableRows.forEach((r) => { if (r.value != null && String(r.value).length) varMap[r.var_key] = r.value; });
+    const assetMap = {};
+    assetRows.forEach((r) => { assetMap[r.asset_key] = { url: r.url, status: r.status }; });
+    return (body) => {
+      if (!body) return null;
+      const { text: resolved, unresolved } = wingguyStore.resolveRuleBody(body, varMap, assetMap);
+      const stillMissing = new Set(unresolved);
+      return resolved.replace(
+        /\{\{\s*(asset:)?([a-zA-Z0-9_.-]+)\s*\}\}/g,
+        (whole, assetPrefix, key) => {
+          const id = `${assetPrefix || ''}${key}`;
+          if (!stillMissing.has(id)) return whole;
+          return `[${key.replace(/[_-]+/g, ' ')} - not filled in yet]`;
+        },
+      );
+    };
+  }
+
   // What changed lately — client-layer instruction changes with before/after and notes attached.
   router.get('/setup/changes', async (req, res) => {
     const tenantId = req.client.clientId;
@@ -1236,6 +1271,7 @@ module.exports = function mountWingguy(app) {
       const { changes, openNotes } = await wingguyStore.getClientChangeLog({
         tenantId, limit: Number(req.query.limit) || 30,
       });
+      const humanise = await bodyHumaniser(tenantId);
       return res.json({
         ok: true,
         openNotes,
@@ -1247,8 +1283,12 @@ module.exports = function mountWingguy(app) {
           ruleKey: c.ruleKey,
           title: titles.titleFor(c.ruleKey),
           changeNote: c.changeNote,
-          beforeBody: c.beforeBody,
-          afterBody: c.afterBody,
+          summary: c.summary,
+          // An entry with a previous version can be put back; one that added an instruction can
+          // only be undone by removing it. Either way the page says which, in those words.
+          undo: c.action === 'retire' ? null : (c.beforeBody ? 'restore' : 'remove'),
+          beforeBody: humanise(c.beforeBody),
+          afterBody: humanise(c.afterBody),
           notes: c.notes.map((note) => ({
             id: Number(note.id),
             when: note.created_at,
@@ -1293,6 +1333,140 @@ module.exports = function mountWingguy(app) {
     } catch (e) {
       logger.error(`[Wingguy] change note resolve failed for ${tenantId}: ${e.message}`);
       return res.status(400).json({ ok: false, error: e.message });
+    }
+  });
+
+  // Write and keep one change's plain-English line. Shared by the commit hook (fire-and-forget,
+  // so nobody waits) and the review page's first-open backfill. Safe to call twice - the store
+  // keeps the first summary and ignores later ones.
+  async function summariseChange(tenantId, historyId) {
+    if (!isAnthropicConfigured()) return null;
+    const existing = await wingguyStore.getChangeSummary({ tenantId, historyId });
+    if (existing) return existing;
+    const entry = await wingguyStore.getChangeEntry({ tenantId, historyId });
+    if (!entry) return null;
+    const titles = require('../config/wingguyInstructionTitles');
+    const humanise = await bodyHumaniser(tenantId);
+    const variableRows = await wingguyStore.getVariables({ tenantId });
+    const raw = await runAssistModel(getAnthropicClient(),
+      'You explain a change to a business owner\'s own writing instructions, in their terms. Warm, plain, brief. Never use the instruction\'s internal shorthand without explaining it. Reply with JSON only: {"text": string}. British/Australian spelling. No em dashes - use " - ".',
+      `Their setup so far:\n${tenantVoiceContext(variableRows)}\n\nThe instruction ("${titles.titleFor(entry.ruleKey)}") as it stands now:\n---\n${humanise(entry.afterBody) || '(the instruction was removed)'}\n---${entry.beforeBody ? `\n\nWhat it said BEFORE this change:\n---\n${humanise(entry.beforeBody)}\n---` : '\n\n(There was no previous version - this change ADDED the instruction.)'}\n\nIn ONE or TWO sentences, say what this instruction makes Wingguy do - and if there was a previous version, what is different now. Address the business owner as "you". Plain English, no jargon, never quote the instruction text back.`,
+      400);
+    const text = String(extractJson(raw).text || '').trim();
+    if (text) await wingguyStore.setChangeSummary({ tenantId, historyId, summary: text });
+    return text;
+  }
+
+  // Explaining a change, in four depths. Platform key, same page principle as /setup/assist.
+  //
+  //   summary  one or two sentences, CACHED forever - the line the page leads with, so a reader
+  //            never meets the raw instruction first. Written at commit time going forward;
+  //            filled in on first open for changes made before this existed.
+  //   detail   several paragraphs, on request
+  //   impact   what it changes about the messages, on request
+  //   example  what it looks like in practice - ALWAYS on request, never automatic: a worked
+  //            example earns its place on a change that alters the SHAPE of something, and is
+  //            pure noise on "never say delighted", where a whole invented message teaches
+  //            nothing. So the model picks the form: a full example, or the one line that would
+  //            now read differently.
+  router.post('/setup/change-explain', async (req, res) => {
+    const tenantId = req.client.clientId;
+    const { historyId, depth } = req.body || {};
+    const titles = require('../config/wingguyInstructionTitles');
+    if (!isAnthropicConfigured()) {
+      return res.status(500).json({ ok: false, error: 'The explainer is not available right now.' });
+    }
+    try {
+      if (depth === 'summary') {
+        const text = await summariseChange(tenantId, historyId);
+        if (text == null) return res.status(404).json({ ok: false, error: 'That change was not found.' });
+        return res.json({ ok: true, depth, text });
+      }
+      const entry = await wingguyStore.getChangeEntry({ tenantId, historyId });
+      if (!entry) return res.status(404).json({ ok: false, error: 'That change was not found.' });
+
+      const humanise = await bodyHumaniser(tenantId);
+      const variableRows = await wingguyStore.getVariables({ tenantId });
+      const voice = tenantVoiceContext(variableRows);
+      const anthropic = getAnthropicClient();
+      const title = titles.titleFor(entry.ruleKey);
+      const now = humanise(entry.afterBody) || '(the instruction was removed)';
+      const was = entry.beforeBody
+        ? `\n\nWhat it said BEFORE this change:\n---\n${humanise(entry.beforeBody)}\n---`
+        : '\n\n(There was no previous version - this change ADDED the instruction.)';
+      const context = `Their setup so far:\n${voice}\n\nThe instruction ("${title}") as it stands now:\n---\n${now}\n---${was}`;
+      logger.info(`[Wingguy] change-explain depth=${depth} change=${historyId} client=${tenantId}`);
+
+      if (depth === 'example') {
+        const raw = await runAssistModel(anthropic,
+          'You show a business owner what one of their writing instructions looks like in practice. FIRST judge which form actually helps:\n- "worked" when the instruction shapes a whole message (a new kind of email, a structure, a flow) - then show that message.\n- "fragment" when the instruction is a constraint applied inside otherwise-normal writing (a banned word, a length limit, a timing rule) - then show ONE short line as it would have read before and as it reads now. A whole invented message teaches nothing about a constraint.\nReply with JSON only: {"form": "worked"|"fragment", "intro": string, "text": string, "before": string|null, "after": string|null}. intro is one line setting the scene ("an imaginary mortgage broker in Parramatta" / "a line from a follow-up email"). For worked: text is the message, before/after null. For fragment: before and after are the two short lines, text empty. Use their real setup so it is their world, not a generic sample. British/Australian spelling. No em dashes - use " - ".',
+          `${context}\n\nShow what this instruction produces.`, 900);
+        const j = extractJson(raw);
+        return res.json({
+          ok: true, depth, form: j.form === 'fragment' ? 'fragment' : 'worked',
+          intro: String(j.intro || ''), text: String(j.text || ''),
+          before: j.before ? String(j.before) : null, after: j.after ? String(j.after) : null,
+        });
+      }
+
+      const ask = depth === 'detail'
+        ? 'Explain it properly in 3 short paragraphs: what it does, when it kicks in, and what they would visibly notice about the writing. Plain spoken English, no jargon, never restate it line by line.'
+        : depth === 'impact'
+          ? 'Explain what this actually changes about the messages and emails Wingguy writes for them - the visible difference. 3-5 short sentences.'
+          : 'In ONE or TWO sentences, say what this instruction makes Wingguy do - and if there was a previous version, what is different now. Address the business owner as "you". Plain English, no jargon, never quote the instruction text back.';
+      const raw = await runAssistModel(anthropic,
+        'You explain a change to a business owner\'s own writing instructions, in their terms. Warm, plain, brief. Never use the instruction\'s internal shorthand without explaining it. Reply with JSON only: {"text": string}. British/Australian spelling. No em dashes - use " - ".',
+        `${context}\n\n${ask}`, depth === 'detail' ? 900 : 400);
+      const text = String(extractJson(raw).text || '').trim();
+      if (depth === 'summary' && text) {
+        await wingguyStore.setChangeSummary({ tenantId, historyId, summary: text });
+      }
+      return res.json({ ok: true, depth, text });
+    } catch (e) {
+      logger.error(`[Wingguy] change-explain (${depth}) failed for ${tenantId}: ${e.message}`);
+      return res.status(500).json({ ok: false, error: 'That did not work - try again in a moment.' });
+    }
+  });
+
+  // Undo a change. Never a delete: putting the old wording back is itself a new version, and
+  // removing an added instruction retires it - both land in the history like any other change,
+  // so the review page tells the whole story including the reversals.
+  router.post('/setup/change-undo', async (req, res) => {
+    const tenantId = req.client.clientId;
+    const { historyId } = req.body || {};
+    try {
+      const entry = await wingguyStore.getChangeEntry({ tenantId, historyId });
+      if (!entry) return res.status(404).json({ ok: false, error: 'That change was not found.' });
+      const who = pageName(req);
+      const by = `portal:${tenantId}${who ? `:as:${who}` : ''}`;
+
+      if (entry.beforeBody) {
+        await wingguyStore.commitRule({
+          layer: 'client', tenantId, ruleKey: entry.ruleKey,
+          context: entry.context, ruleType: entry.ruleType,
+          body: entry.beforeBody,
+          changeNote: `Undone from the review page${who ? ` by ${who}` : ''}: put back the wording from before that change`,
+          createdBy: by, expectedVersion: entry.liveVersion,
+          actorTenantId: tenantId, via: 'door', action: 'revert',
+        });
+        logger.info(`[Wingguy] change ${historyId} undone (restored) for ${tenantId}`);
+        return res.json({ ok: true, undone: 'restore' });
+      }
+
+      await wingguyStore.retireRule({
+        layer: 'client', tenantId, ruleKey: entry.ruleKey,
+        expectedVersion: entry.liveVersion,
+        changeNote: `Undone from the review page${who ? ` by ${who}` : ''}: removed the instruction that change added`,
+        createdBy: by, actorTenantId: tenantId, via: 'door',
+      });
+      logger.info(`[Wingguy] change ${historyId} undone (removed) for ${tenantId}`);
+      return res.json({ ok: true, undone: 'remove' });
+    } catch (e) {
+      const friendly = /version conflict/.test(e.message)
+        ? 'That instruction has changed again since - reopen the page and take another look before undoing.'
+        : e.message;
+      logger.error(`[Wingguy] change undo failed for ${tenantId}: ${e.message}`);
+      return res.status(409).json({ ok: false, error: friendly });
     }
   });
 

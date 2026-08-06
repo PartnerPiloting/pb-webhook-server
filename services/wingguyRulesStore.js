@@ -286,6 +286,20 @@ async function ensureSchema(client) {
     ON wingguy_change_notes (tenant_id, history_id);
   `);
 
+  // Plain-English summary of one change, written once and kept. The review page leads with this
+  // rather than the instruction text, which is written for the model and reads as jargon to the
+  // person whose business it governs. Cached because a summary never changes after the fact:
+  // written at commit time going forward, filled in on first open for changes made before this
+  // existed. One row per history entry, so the cost is one small call per change ever.
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS wingguy_change_summaries (
+      history_id BIGINT PRIMARY KEY,
+      tenant_id TEXT NOT NULL,
+      summary TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+  `);
+
   await client.query(`
     CREATE TABLE IF NOT EXISTS wingguy_rule_history (
       id BIGSERIAL PRIMARY KEY,
@@ -884,9 +898,9 @@ async function commitRule({
        RETURNING id, version`,
       [key, tenant, layer, context, ruleType, campaign || null, nextVersion, String(body), changeNote || null, createdBy || null, 'active', tierValue, standardVersion],
     );
-    await client.query(
+    const hist = await client.query(
       `INSERT INTO wingguy_rule_history (actor, action, layer, tenant_id, rule_key, from_version, to_version, detail)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)`,
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb) RETURNING id`,
       [
         createdBy || null,
         action,
@@ -906,6 +920,8 @@ async function commitRule({
     return {
       ok: true, ruleKey: key, layer, tenantId: tenant, version: nextVersion,
       previousVersion: liveVersion || null, tier: tierValue, standardVersion,
+      // The review page hangs its plain-English summary off this row.
+      historyId: hist.rows.length ? Number(hist.rows[0].id) : null,
     };
   } catch (e) {
     try { await client.query('ROLLBACK'); } catch (_) { /* already rolled back */ }
@@ -1630,12 +1646,20 @@ async function getClientChangeLog({ tenantId = DEFAULT_TENANT, limit = 30 } = {}
     ) : { rows: [] };
     const bodyOf = new Map(bodies.rows.map((b) => [`${b.rule_key}@${b.version}`, b.body]));
 
+    const ids = rows.map((r) => Number(r.id));
+    const sums = await client.query(
+      `SELECT history_id, summary FROM wingguy_change_summaries
+       WHERE tenant_id = $1 AND history_id = ANY($2)`,
+      [tenant, ids],
+    );
+    const summaryOf = new Map(sums.rows.map((s) => [Number(s.history_id), s.summary]));
+
     const n = await client.query(
       `SELECT id, created_at, history_id, author, note, resolved_at, resolved_by
        FROM wingguy_change_notes
        WHERE tenant_id = $1 AND history_id = ANY($2)
        ORDER BY created_at ASC, id ASC`,
-      [tenant, rows.map((r) => Number(r.id))],
+      [tenant, ids],
     );
     const notesFor = new Map();
     let openNotes = 0;
@@ -1657,12 +1681,102 @@ async function getClientChangeLog({ tenantId = DEFAULT_TENANT, limit = 30 } = {}
         fromVersion: r.from_version,
         toVersion: r.to_version,
         changeNote: detail.change_note || null,
+        summary: summaryOf.get(Number(r.id)) || null,
         beforeBody: r.from_version != null ? (bodyOf.get(`${r.rule_key}@${r.from_version}`) || null) : null,
         afterBody: r.to_version != null ? (bodyOf.get(`${r.rule_key}@${r.to_version}`) || null) : null,
         notes: notesFor.get(Number(r.id)) || [],
       };
     });
     return { changes, openNotes };
+  } finally {
+    client.release();
+  }
+}
+
+/** One change-log entry with its bodies — what the explain/undo doors work from. */
+async function getChangeEntry({ tenantId = DEFAULT_TENANT, historyId } = {}) {
+  const id = Number(historyId);
+  if (!Number.isInteger(id) || id <= 0) throw new Error('getChangeEntry: historyId is required');
+  const p = getPool();
+  if (!p) throw new Error('DATABASE_URL not set');
+  const tenant = (tenantId || DEFAULT_TENANT).trim();
+  const client = await p.connect();
+  try {
+    await ensureSchema(client);
+    const h = await client.query(
+      `SELECT id, created_at, actor, action, rule_key, from_version, to_version, detail
+       FROM wingguy_rule_history
+       WHERE id = $1 AND tenant_id = $2 AND layer = 'client'`,
+      [id, tenant],
+    );
+    if (!h.rows.length) return null;
+    const r = h.rows[0];
+    const b = await client.query(
+      `SELECT version, body, context, rule_type FROM wingguy_rules
+       WHERE layer = 'client' AND tenant_id = $1 AND rule_key = $2`,
+      [tenant, r.rule_key],
+    );
+    const byVersion = new Map(b.rows.map((x) => [Number(x.version), x]));
+    const after = r.to_version != null ? byVersion.get(Number(r.to_version)) : null;
+    const before = r.from_version != null ? byVersion.get(Number(r.from_version)) : null;
+    // The live version now — an undo has to commit against whatever is current, which may be
+    // later than this entry if changes have happened since.
+    const live = await client.query(
+      `SELECT version, body, context, rule_type FROM wingguy_rules
+       WHERE layer = 'client' AND tenant_id = $1 AND rule_key = $2 AND status = 'active'`,
+      [tenant, r.rule_key],
+    );
+    return {
+      id: Number(r.id),
+      action: r.action,
+      ruleKey: r.rule_key,
+      fromVersion: r.from_version,
+      toVersion: r.to_version,
+      beforeBody: before ? before.body : null,
+      afterBody: after ? after.body : null,
+      context: (after || before || live.rows[0] || {}).context || null,
+      ruleType: (after || before || live.rows[0] || {}).rule_type || null,
+      liveVersion: live.rows.length ? Number(live.rows[0].version) : 0,
+      liveBody: live.rows.length ? live.rows[0].body : null,
+    };
+  } finally {
+    client.release();
+  }
+}
+
+/** Read one change's cached plain-English summary (null when it has not been written yet). */
+async function getChangeSummary({ tenantId = DEFAULT_TENANT, historyId } = {}) {
+  const p = getPool();
+  if (!p) throw new Error('DATABASE_URL not set');
+  const client = await p.connect();
+  try {
+    await ensureSchema(client);
+    const r = await client.query(
+      `SELECT summary FROM wingguy_change_summaries WHERE history_id = $1 AND tenant_id = $2`,
+      [Number(historyId), (tenantId || DEFAULT_TENANT).trim()],
+    );
+    return r.rows.length ? r.rows[0].summary : null;
+  } finally {
+    client.release();
+  }
+}
+
+/** Keep a change's plain-English summary. Write-once: a summary describes a past event. */
+async function setChangeSummary({ tenantId = DEFAULT_TENANT, historyId, summary } = {}) {
+  const id = Number(historyId);
+  const text = String(summary || '').trim();
+  if (!Number.isInteger(id) || id <= 0 || !text) return { ok: true, stored: false };
+  const p = getPool();
+  if (!p) throw new Error('DATABASE_URL not set');
+  const client = await p.connect();
+  try {
+    await ensureSchema(client);
+    await client.query(
+      `INSERT INTO wingguy_change_summaries (history_id, tenant_id, summary)
+       VALUES ($1, $2, $3) ON CONFLICT (history_id) DO NOTHING`,
+      [id, (tenantId || DEFAULT_TENANT).trim(), text.slice(0, 1200)],
+    );
+    return { ok: true, stored: true };
   } finally {
     client.release();
   }
@@ -1925,6 +2039,9 @@ module.exports = {
   getEditNudgeState,
   markEditNudge,
   getClientChangeLog,
+  getChangeEntry,
+  getChangeSummary,
+  setChangeSummary,
   addChangeNote,
   resolveChangeNote,
   normalizeForEditCompare,

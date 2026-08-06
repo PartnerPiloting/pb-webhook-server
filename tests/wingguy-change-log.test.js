@@ -49,6 +49,37 @@ class FakeDb {
       const [tenant, keys] = params;
       return { rows: this.rules.filter((r) => r.tenant_id === tenant && r.layer === 'client' && keys.includes(r.rule_key)) };
     }
+    if (s.includes('FROM wingguy_change_summaries')) {
+      const rows = this.summaries || [];
+      if (s.includes('history_id = ANY')) {
+        const [tenant, ids] = params;
+        return { rows: rows.filter((x) => x.tenant_id === tenant && ids.includes(x.history_id)) };
+      }
+      const [historyId, tenant] = params;
+      return { rows: rows.filter((x) => x.tenant_id === tenant && x.history_id === Number(historyId)) };
+    }
+    if (s.startsWith('SELECT id, created_at, actor, action, rule_key') && s.includes('WHERE id = $1')) {
+      const [id, tenant] = params;
+      return { rows: this.history.filter((h) => h.id === Number(id) && h.tenant_id === tenant && h.layer === 'client') };
+    }
+    if (s.includes('SELECT version, body, context, rule_type FROM wingguy_rules')) {
+      const [tenant, key] = params;
+      let rows = this.rules.filter((r) => r.tenant_id === tenant && r.layer === 'client' && r.rule_key === key);
+      // The live-version query adds status = 'active'; the fake marks only the newest active.
+      if (s.includes("status = 'active'")) {
+        const top = rows.reduce((m, r) => (!m || r.version > m.version ? r : m), null);
+        rows = top ? [top] : [];
+      }
+      return { rows: rows.map((r) => ({ version: r.version, body: r.body, context: r.context || 'global', rule_type: r.rule_type || 'voice' })) };
+    }
+    if (s.includes('INSERT INTO wingguy_change_summaries')) {
+      const [history_id, tenant_id, summary] = params;
+      this.summaries = this.summaries || [];
+      if (!this.summaries.some((x) => x.history_id === Number(history_id))) {
+        this.summaries.push({ history_id: Number(history_id), tenant_id, summary });
+      }
+      return { rows: [] };
+    }
     if (s.includes('FROM wingguy_change_notes')) {
       const [tenant, ids] = params;
       return { rows: this.notes.filter((n) => n.tenant_id === tenant && ids.includes(n.history_id)) };
@@ -125,6 +156,34 @@ class FakeDb {
   await check('empty note or missing id is refused', async () => {
     await assert.rejects(store.addChangeNote({ tenantId: 'T', historyId: 1, note: '  ' }), /note text/);
     await assert.rejects(store.addChangeNote({ tenantId: 'T', note: 'x' }), /historyId/);
+  });
+
+  console.log('change summaries — written once, kept forever:');
+  await check('a summary is stored and comes back on the change', async () => {
+    await store.setChangeSummary({ tenantId: 'Test-Tenant', historyId: 1, summary: 'Wingguy now opens with their first name and never says "Dear".' });
+    const { changes } = await store.getClientChangeLog({ tenantId: 'Test-Tenant' });
+    const edit = changes.find((c) => c.ruleKey === 'greeting-style');
+    assert.ok(edit.summary.includes('first name'));
+    assert.strictEqual(changes.find((c) => c.ruleKey === 'no-fridays').summary, null, 'unsummarised changes stay null');
+  });
+  await check('a second write never overwrites the first', async () => {
+    await store.setChangeSummary({ tenantId: 'Test-Tenant', historyId: 1, summary: 'DIFFERENT TEXT' });
+    assert.ok((await store.getChangeSummary({ tenantId: 'Test-Tenant', historyId: 1 })).includes('first name'));
+  });
+  await check('an empty summary or bogus id is a no-op', async () => {
+    assert.strictEqual((await store.setChangeSummary({ tenantId: 'T', historyId: 9, summary: '  ' })).stored, false);
+    assert.strictEqual((await store.setChangeSummary({ tenantId: 'T', historyId: 0, summary: 'x' })).stored, false);
+  });
+
+  console.log('getChangeEntry() — what the explain and undo doors read:');
+  await check('returns before/after plus the CURRENT live version', async () => {
+    const e = await store.getChangeEntry({ tenantId: 'Test-Tenant', historyId: 1 });
+    assert.strictEqual(e.ruleKey, 'greeting-style');
+    assert.strictEqual(e.beforeBody, 'Open with their first name.');
+    assert.strictEqual(e.liveVersion, 2, 'undo must commit against the live version, not the entry');
+  });
+  await check('another tenant cannot read the entry', async () => {
+    assert.strictEqual(await store.getChangeEntry({ tenantId: 'Other-Tenant', historyId: 1 }), null);
   });
 
   console.log('resolveChangeNote() — sorted:');
