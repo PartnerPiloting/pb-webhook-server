@@ -300,7 +300,7 @@ function WingguySetupInner() {
 
   return (
     <Shell wide>
-      <PageNav current="setup" reviewHref={`/my-wingguy/review?${searchParams.toString()}`} devLane={!!(client && devKey)} />
+      <PageNav current="setup" reviewHref={`/my-wingguy/review?${searchParams.toString()}`} devLane={!!(client && devKey)} query={searchParams.toString()} />
       <header className="flex flex-col gap-4">
         <div className="text-[11px] font-bold uppercase tracking-[0.15em] text-emerald-700">
           Getting started with Wingguy
