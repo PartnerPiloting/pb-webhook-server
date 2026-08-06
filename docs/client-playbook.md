@@ -749,7 +749,12 @@ next topic: transcripts. Get that one thing right, and more meetings stops meani
 ## TRANSCRIPTS - THE FUEL FOR EVERYTHING AFTER THE MEETING
 
 Recording your meetings sounds like housekeeping. It's the opposite - it's the single most valuable
-input in this whole system once the meetings start.
+input in this whole system once the meetings start. And a word before we go on, especially if you
+already record your calls and feel covered: judge any recorder on one question only - *will it
+capture every meeting I'm in?* Any platform, whoever set it up, whether or not a bot got let into
+the room. Not most meetings. Every meeting. Hold that question while you read, because a recorder
+that misses some calls doesn't give you a smaller memory - it gives you a memory with holes, and
+the rest of this topic is about why those holes cost more than you'd think.
 
 When the system has the transcript of a call, it has heard what you said and what they said. So the
 follow-up email drafts itself from what was *actually discussed* - the specifics, the links to the
@@ -762,16 +767,29 @@ A meeting without a transcript still happened, but it evaporates. At two meeting
 hold it in your head. At eight or ten - which is where this system takes you - you won't, and
 nobody would.
 
-**The trap is platform borders.** Plenty of recorders only work reliably where you're the host. But
-you don't control where other people host - and every meeting on someone else's Zoom or Teams
-becomes a hole in your memory. Those are often the meetings that matter most.
+And here's the part nobody tells you: once the transcripts are doing the remembering, you'll stop
+doing it yourself. That's not a flaw, it's the freedom - you get to be fully in the conversation
+instead of half in your notes. But it means a missing transcript costs you far more than it did
+before you started. I've been there - scrambling to reconstruct a call from some other tool's
+half-notes, or from whatever the other person happened to send me. Messy, slow, and never quite
+right. That's the real force of the question at the top: the holes don't land at random - they land
+exactly where you've stopped looking.
+
+**The trap is platform borders.** Plenty of recorders only work reliably where you're the host, or
+send a bot that has to be admitted to the room. But you don't control where other people host, and
+you won't win the argument of dragging everyone onto your favourite platform - least of all with
+the people you most want to meet. Every meeting on someone else's Zoom or Teams or Meet becomes a
+hole in your memory, and those are often the meetings that matter most. The recorder has to work
+wherever the world meets - not the other way round.
 
 **My recommendation is Granola.** It's botless - no robot joins the call, nothing for the other
 side to notice or wonder about - and it captures whatever meeting you're in: any platform, whoever
 set it up, nothing to remember on the day. I ran a free bot-based recorder for months, and the free
 part stopped being worth it the first few times a transcript I'd come to rely on simply wasn't
-there. Granola costs a little, and it removes the whole category of worry. One piece of good
-manners: since there's no bot announcing itself, be upfront that you take notes of your meetings.
+there. Granola costs a little, and it removes the whole category of worry. It works off your
+calendar to know who you were meeting, which is one more reason the calendar hookup comes early in
+your setup. One piece of good manners: since there's no bot announcing itself, be upfront that you
+take notes of your meetings.
 
 ---
 
