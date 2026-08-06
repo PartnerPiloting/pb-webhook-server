@@ -22,7 +22,8 @@ import { getBackendBase } from '../services/api';
 const VERB = { commit: 'changed', add: 'added', retire: 'retired', revert: 'put back' };
 
 function verbFor(c) {
-  if (c.action === 'commit' && (c.fromVersion == null || c.beforeBody == null)) return VERB.add;
+  // No before-body means nothing was there: a brand-new instruction, not a change to one.
+  if (c.action === 'commit' && c.beforeBody == null) return VERB.add;
   return VERB[c.action] || 'changed';
 }
 
