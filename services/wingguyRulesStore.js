@@ -230,6 +230,18 @@ async function ensureSchema(client) {
     ON wingguy_edit_pairs (tenant_id, created_at DESC) WHERE status = 'pending';
   `);
 
+  // Edit-nudge high-water mark — the self-surfacing side of learn-from-my-edit. The follow-up
+  // brief offers ONE "review my edits" line when enough pending pairs have accumulated, and this
+  // row remembers the newest pair id already nudged about, so the same batch is never mentioned
+  // twice: a new nudge needs a NEWER pair, not just an ignored old one.
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS wingguy_edit_nudges (
+      tenant_id TEXT PRIMARY KEY,
+      last_nudged_pair_id BIGINT NOT NULL DEFAULT 0,
+      nudged_at TIMESTAMPTZ
+    );
+  `);
+
   // Draft ledger — the EMAIL half of learn-from-my-edit. wingguy_create_draft logs the generated
   // body (plain-text render) here at draft time; the review tool later settles each row by reading
   // the sent message back through Nylas and, if the human edited it in Gmail, files a
@@ -1443,9 +1455,14 @@ async function getAssetSendSummary({ tenantId = DEFAULT_TENANT, leadEmails = [],
  * Whitespace-insensitive equality view of a message, used ONLY to decide "did the human actually
  * change anything?" — never shown or stored. Deliberately conservative: case and punctuation
  * changes DO count as edits (they are often exactly the style signal being hunted).
+ *
+ * ALL whitespace is dropped, not collapsed: LinkedIn's send strips newlines entirely (no space
+ * left behind), so "Hi Jade,\n\nYour profile" comes back as "Hi Jade,Your profile" — collapsing
+ * to single spaces still saw a diff and filed a no-signal pair on every unedited send. A real
+ * edit that consists purely of moved whitespace carries no wording signal anyway.
  */
 function normalizeForEditCompare(text) {
-  return String(text || '').replace(/\s+/g, ' ').trim();
+  return String(text || '').replace(/\s+/g, '');
 }
 
 /**
@@ -1516,6 +1533,63 @@ async function resolveEditPairs({ tenantId = DEFAULT_TENANT, ids = [], status = 
       [status, note || null, (tenantId || DEFAULT_TENANT).trim(), idList],
     );
     return { ok: true, resolved: r.rowCount };
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Should the follow-up brief offer a "review my edits" line? Nudge-worthy only when enough
+ * pending pairs have accumulated AND at least one is newer than the last batch nudged about —
+ * an ignored nudge never repeats until a fresh edit arrives.
+ * Returns { pendingCount, maxPendingId, lastNudgedId, nudge }.
+ */
+async function getEditNudgeState({ tenantId = DEFAULT_TENANT, threshold = 3 } = {}) {
+  const p = getPool();
+  if (!p) throw new Error('DATABASE_URL not set');
+  const tenant = (tenantId || DEFAULT_TENANT).trim();
+  const client = await p.connect();
+  try {
+    await ensureSchema(client);
+    const pending = await client.query(
+      `SELECT COUNT(*)::int AS n, COALESCE(MAX(id), 0)::bigint AS max_id
+       FROM wingguy_edit_pairs WHERE tenant_id = $1 AND status = 'pending'`,
+      [tenant],
+    );
+    const seen = await client.query(
+      `SELECT last_nudged_pair_id FROM wingguy_edit_nudges WHERE tenant_id = $1`,
+      [tenant],
+    );
+    const pendingCount = pending.rows[0].n;
+    const maxPendingId = Number(pending.rows[0].max_id);
+    const lastNudgedId = seen.rows.length ? Number(seen.rows[0].last_nudged_pair_id) : 0;
+    return {
+      pendingCount, maxPendingId, lastNudgedId,
+      nudge: pendingCount >= threshold && maxPendingId > lastNudgedId,
+    };
+  } finally {
+    client.release();
+  }
+}
+
+/** Remember the newest pair id a nudge covered, so that batch is never mentioned again. */
+async function markEditNudge({ tenantId = DEFAULT_TENANT, pairId } = {}) {
+  const id = Number(pairId);
+  if (!Number.isInteger(id) || id <= 0) return { ok: true, marked: false };
+  const p = getPool();
+  if (!p) throw new Error('DATABASE_URL not set');
+  const client = await p.connect();
+  try {
+    await ensureSchema(client);
+    await client.query(
+      `INSERT INTO wingguy_edit_nudges (tenant_id, last_nudged_pair_id, nudged_at)
+       VALUES ($1, $2, now())
+       ON CONFLICT (tenant_id) DO UPDATE
+       SET last_nudged_pair_id = GREATEST(wingguy_edit_nudges.last_nudged_pair_id, EXCLUDED.last_nudged_pair_id),
+           nudged_at = now()`,
+      [(tenantId || DEFAULT_TENANT).trim(), id],
+    );
+    return { ok: true, marked: true };
   } finally {
     client.release();
   }
@@ -1704,6 +1778,8 @@ module.exports = {
   recordEditPair,
   getEditPairs,
   resolveEditPairs,
+  getEditNudgeState,
+  markEditNudge,
   normalizeForEditCompare,
   // draft ledger (the email half of learn-from-my-edit)
   recordDraftBody,

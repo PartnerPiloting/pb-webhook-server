@@ -478,6 +478,15 @@ function WingguySetupInner() {
               assist={assist}
             />
           ))}
+          {/* Learn-from-my-edit surfacing (2026-08-06): the easiest way to teach Wingguy a voice
+              is not a form - it is editing a draft. Say so here, where voice is the topic. */}
+          <p className="text-slate-500 text-sm">
+            There is an easier way to do all of this, too: just change what Wingguy drafts before
+            you send it. It quietly keeps a note of every edit, and any time you ask it to{' '}
+            <span className="font-medium">&ldquo;review my edits&rdquo;</span> it will show you what
+            you changed and ask whether any of it should become an instruction - so future drafts
+            come out your way first time.
+          </p>
         </section>
       ) : null}
 

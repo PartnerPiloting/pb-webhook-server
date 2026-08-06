@@ -1106,7 +1106,20 @@ async function runFollowupBriefRead(_args = {}, tenant = TENANT) {
       if (pending) backlogLine = `\nBACKLOG (relay this): ${pending} older neglected follow-ups pending in the backlog worklist — say "show my backlog" to work them.`;
     }
   } catch (_) { /* footer is best-effort */ }
-  return { text: redirect + note + text + backlogLine };
+  // Learn-from-my-edit surfacing (Guy 2026-08-06): the review tool is invisible unless something
+  // points at it, and the brief is where the human already is every day. ONE line, gated hard:
+  // only when a few real edits have accumulated, and never twice about the same batch (the
+  // high-water mark in the store only re-arms when a NEWER pair lands).
+  let editNudgeLine = '';
+  try {
+    const rulesStore = require('./wingguyRulesStore');
+    const st = await rulesStore.getEditNudgeState({ tenantId: tenant });
+    if (st.nudge) {
+      editNudgeLine = `\nEDITS WORTH A LOOK (relay this once, ONE line): ${st.pendingCount} recent sends went out different from what Wingguy drafted. Say "review my edits" to see what changed - a repeated change can become an instruction so future drafts come out right first time.`;
+      await rulesStore.markEditNudge({ tenantId: tenant, pairId: st.maxPendingId });
+    }
+  } catch (_) { /* footer is best-effort */ }
+  return { text: redirect + note + text + backlogLine + editNudgeLine };
 }
 
 /** Kick a background rebuild and return immediately — the human never waits on it. */
