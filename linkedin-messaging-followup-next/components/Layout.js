@@ -67,7 +67,12 @@ const NavigationWithParams = ({ pathname, showThanksForConnecting = false, showW
         {items.map(item => {
           const Icon = item.icon;
           const isActive = pathname === item.href;
-          const href = `${item.href}?${searchParams.toString()}`;
+          // The Wingguy pages are standalone (no portal session) - their auth is the query
+          // string itself. The portal usually cleans ?token= off its own URL after login, so
+          // for this tab the link is rebuilt from the stored auth rather than the bare params.
+          const href = item.href === '/my-wingguy' && !searchParams.get('token') && !searchParams.get('devKey')
+            ? buildAuthUrl(item.href)
+            : `${item.href}?${searchParams.toString()}`;
           const handleClick = (e) => {
             try {
               // If we're already in /settings, clicking Settings should behave like "Back to Settings"

@@ -42,7 +42,8 @@ function friendlyWhen(iso) {
 function WingguyReviewInner() {
   const searchParams = useSearchParams();
   const token = searchParams.get('token') || '';
-  const client = searchParams.get('client') || '';
+  // clientId is the spelling the portal's stored-auth link builder uses; client is ours.
+  const client = searchParams.get('client') || searchParams.get('clientId') || '';
   const devKey = searchParams.get('devKey') || '';
   const asParam = searchParams.get('as') || '';
   const hasAuth = !!token || !!(client && devKey);

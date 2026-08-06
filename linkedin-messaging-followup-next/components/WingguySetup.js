@@ -101,8 +101,9 @@ function WingguySetupInner() {
   const searchParams = useSearchParams();
   const token = searchParams.get('token') || '';
   // Admin/testing lane, already supported by the backend's auth middleware: ?client=X&devKey=Y
-  // opens any tenant's page without minting a portal link. A client's own link never carries these.
-  const client = searchParams.get('client') || '';
+  // opens any tenant's page without minting a portal link. A client's own link never carries
+  // these. clientId is the spelling the portal's stored-auth link builder uses.
+  const client = searchParams.get('client') || searchParams.get('clientId') || '';
   const devKey = searchParams.get('devKey') || '';
   // Attribution, not authentication: a link can carry &as=<name> when more than one person works
   // this tenant (an owner and a VA, say) so the change history reads "April changed..." rather
