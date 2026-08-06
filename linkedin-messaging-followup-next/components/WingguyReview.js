@@ -9,10 +9,11 @@
  * attribution - the token is still the whole authentication story, the name just signs notes and
  * stamps changes so the history reads "April, Tuesday" instead of "someone, sometime".
  *
- * STANDALONE like the setup page: no Layout, no login. Deliberately short - this page is one list
- * and nothing else, so a glance stays a glance. The change door under each entry runs the same
- * assist propose → explicit Save → commit lane the setup page uses; notes never change anything
- * themselves.
+ * Sits inside the portal shell (so the menu is there and "My Wingguy" stays highlighted) but
+ * needs no portal login: the token in the link IS portal auth. Deliberately short - this page is
+ * one list and nothing else, so a glance stays a glance. The change door under each entry runs
+ * the same assist propose → explicit Save → commit lane the setup page uses; notes never change
+ * anything themselves.
  */
 
 import React, { useState, useEffect, useCallback, Suspense } from 'react';
@@ -97,8 +98,6 @@ function WingguyReviewInner() {
     return data;
   }, [authHeaders]);
 
-  const setupHref = `/my-wingguy?${searchParams.toString()}`;
-
   if (!hasAuth) {
     return (
       <Shell>
@@ -122,7 +121,7 @@ function WingguyReviewInner() {
 
   return (
     <Shell>
-      <PageNav current="review" setupHref={setupHref} devLane={!!(client && devKey)} query={searchParams.toString()} />
+      <PageNav current="review" query={searchParams.toString()} />
       <div className="flex flex-col gap-3 pb-6 border-b border-slate-200">
         <h1 className="font-serif text-3xl text-slate-900">What&apos;s changed lately</h1>
         <p className="text-slate-600">
@@ -158,21 +157,21 @@ function WingguyReviewInner() {
   );
 }
 
-/** The slim header both Wingguy pages share, so moving between them never means hunting for a
- *  link mid-page. "Open the portal" shows for anyone whose link can actually open it: the portal
- *  token IS portal auth, so a token holder's query string carries straight through - and the
- *  portal's "My Wingguy" tab leads back here, making the portal link the only one to remember. */
-function PageNav({ current, setupHref, reviewHref, devLane, query }) {
-  const tab = (label, href, active) => active
-    ? <span className="text-sm font-semibold text-slate-900 border-b-2 border-emerald-600 pb-1">{label}</span>
-    : <a className="text-sm text-slate-500 hover:text-slate-800 pb-1" href={href}>{label}</a>;
-  const portalHref = `/?${query || ''}`;
+/** The sub-nav across the three Wingguy pages, under the portal's own menu. Every link carries
+ *  whatever auth the visitor arrived with, so a client following a plain link moves around the
+ *  section exactly as someone signed in to the portal does. */
+function PageNav({ current, query }) {
+  const q = query || '';
+  const href = (path) => (q ? `${path}?${q}` : path);
+  const tab = (label, path, key) => (current === key
+    ? <span key={key} className="text-sm font-semibold text-slate-900 border-b-2 border-emerald-600 pb-1">{label}</span>
+    : <a key={key} className="text-sm text-slate-500 hover:text-slate-800 pb-1" href={href(path)}>{label}</a>);
   return (
-    <div className="flex items-baseline gap-6 pb-2">
-      {tab('Your Wingguy setup', setupHref, current === 'setup')}
-      {tab("What's changed lately", reviewHref, current === 'review')}
-      <span className="flex-1" />
-      {devLane || query ? <a className="text-sm text-slate-500 hover:text-slate-800" href={portalHref}>Open the portal</a> : null}
+    <div className="flex flex-wrap items-baseline gap-6 pb-2">
+      <a className="text-sm text-slate-500 hover:text-slate-800 pb-1" href={href('/my-wingguy')}>&larr; My Wingguy</a>
+      {tab('What it does', '/my-wingguy/about', 'about')}
+      {tab('Your instructions', '/my-wingguy/setup', 'setup')}
+      {tab("What's changed", '/my-wingguy/review', 'review')}
     </div>
   );
 }

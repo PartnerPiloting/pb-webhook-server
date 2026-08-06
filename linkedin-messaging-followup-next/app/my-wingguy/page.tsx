@@ -1,25 +1,25 @@
 import React from "react";
 import { Metadata } from 'next';
+import Layout from "../../components/Layout";
 import ErrorBoundary from "../../components/ErrorBoundary";
-import WingguySetup from "../../components/WingguySetup";
+import WingguyHub from "../../components/WingguyHub";
 
-// Deliberately NOT wrapped in <Layout> or <EnvironmentValidator>: this page is opened from a
-// private link by a client who has not signed in to anything. The ?token= in the URL is the whole
-// authentication story, so the page must not depend on the logged-in portal shell.
-//
-// Server component on purpose (no "use client"): the tab title has to come from metadata, and
-// with four portal tabs open, four identical rocket titles means opening the wrong one.
+// The front door behind the portal's "My Wingguy" tab. Inside the portal shell so the rest of the
+// menu stays visible and this tab highlights - a client following a plain link gets the same
+// thing, because the token in that link is portal auth.
 export const dynamic = 'force-dynamic'
 
 export const metadata: Metadata = {
-  title: "Your Wingguy setup",
-  description: "Fill in the blanks, teach it your voice, and see every instruction it follows.",
+  title: "My Wingguy",
+  description: "What Wingguy does, your instructions, and what has changed lately.",
 };
 
 export default function MyWingguyPage() {
   return (
     <ErrorBoundary>
-      <WingguySetup />
+      <Layout>
+        <WingguyHub />
+      </Layout>
     </ErrorBoundary>
   );
 }

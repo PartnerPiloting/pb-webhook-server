@@ -66,7 +66,11 @@ const NavigationWithParams = ({ pathname, showThanksForConnecting = false, showW
       <div className="flex flex-wrap gap-x-8 gap-y-3 items-stretch">
         {items.map(item => {
           const Icon = item.icon;
-          const isActive = pathname === item.href;
+          // Sub-pages count as the tab being active: /my-wingguy/setup must keep "My Wingguy"
+          // highlighted, the same way a client expects a section to stay lit while inside it.
+          const isActive = item.href === '/'
+            ? pathname === '/'
+            : (pathname === item.href || pathname.startsWith(`${item.href}/`));
           // The Wingguy pages are standalone (no portal session) - their auth is the query
           // string itself. The portal usually cleans ?token= off its own URL after login, so
           // for this tab the link is rebuilt from the stored auth rather than the bare params.

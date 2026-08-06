@@ -1,5 +1,6 @@
 import React from "react";
 import { Metadata } from 'next';
+import Layout from "../../../components/Layout";
 import ErrorBoundary from "../../../components/ErrorBoundary";
 import WingguyReview from "../../../components/WingguyReview";
 
@@ -18,7 +19,9 @@ export const metadata: Metadata = {
 export default function MyWingguyReviewPage() {
   return (
     <ErrorBoundary>
-      <WingguyReview />
+      <Layout>
+        <WingguyReview />
+      </Layout>
     </ErrorBoundary>
   );
 }

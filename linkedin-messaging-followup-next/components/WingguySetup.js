@@ -22,81 +22,6 @@ import { useSearchParams } from 'next/navigation';
 import { getBackendBase } from '../services/api';
 import { PageNav } from './WingguyReview';
 
-const KINDS = [
-  {
-    tag: 'Standard',
-    tone: 'emerald',
-    headline: "The hard-won ones. You don't set them up and you don't maintain them.",
-    body: "These are the difference between a message that gets a reply and one that gets ignored. When we learn something new that makes messages land better, it turns up in your Wingguy on its own - you don't lift a finger.",
-    eg: '"Read their profile properly and say something true about them, rather than parroting their headline back at them."',
-  },
-  {
-    tag: 'Fixed',
-    tone: 'amber',
-    headline: "Two guardrails that can't be switched off - by you or by us.",
-    body: 'Nothing is ever sent without you seeing it first, and every email is copied to your own records so the conversation lands on that person\'s file. These are the reason it never goes off and does something daft on your behalf.',
-    eg: '',
-  },
-  {
-    tag: 'Yours',
-    tone: 'slate',
-    headline: 'Your words, your defaults, your links. Change them whenever you like.',
-    body: 'How you sign off. What you say when someone asks what you do. The earliest you would ever take a meeting. These start with sensible defaults - and this page is where you make them yours.',
-    eg: '',
-  },
-];
-
-/**
- * The reassurance strip: the moments Guy demonstrates live, in the order he demonstrates them.
- * Deliberately CONCRETE - what you say, what it does - because this page is read minutes after
- * someone watched it happen, so its job is to confirm rather than to persuade from cold. Sourced
- * from Guy's own demo script and knowaguy.com.au/a-day-in-the-life.
- */
-const DEMO_MOMENTS = [
-  {
-    moment: 'You open a lead on LinkedIn and type /wg',
-    does: 'It reads the whole conversation and writes the reply - grounded in what they actually said, in your words, not a template.',
-  },
-  {
-    moment: 'They sound open to a meeting',
-    does: 'It offers three times you are genuinely free, on their clock, spread across the week rather than stacked on one day.',
-  },
-  {
-    moment: 'They pick one',
-    does: 'It books it, sends the invite with your meeting room on it, and writes the warm confirmation that goes with it.',
-  },
-  {
-    say: 'I had a great meeting with John this morning - find the transcript and draft the follow-up',
-    does: 'It finds the recording, pulls out what mattered, and writes the email in your voice with the right links in it.',
-  },
-  {
-    say: 'Prep me for today',
-    does: 'Who you are meeting, what you last talked about, what you promised them, and anything still outstanding.',
-  },
-  {
-    say: 'Show me my follow-ups',
-    does: 'The people due today, in order, with the reason each one is on the list.',
-  },
-  {
-    moment: 'End of the day, a tab open per conversation',
-    does: 'Every follow-up drafts at once. You read each one and say "push", and it lands in your inbox ready to send.',
-  },
-];
-
-const LOOP = [
-  ['It writes the draft', 'A connection request, a reply, a follow-up email after a call. It pulls in what it knows about the person first - your past messages, the call, their profile.'],
-  ['You read it before it goes anywhere', 'Always. Nothing is ever sent on your behalf without you seeing it. Change what is not right and send it.'],
-  ['You tell it what was off', '"Don\'t say reach out." "That\'s too long." "Always mention I\'m Brisbane based." Plain English, in your own words - you never have to phrase it like an instruction.'],
-  ['It remembers - for good', 'Not just for the next message. It shows you exactly what it is about to change before it changes anything, then that correction applies to everything it writes from then on.'],
-];
-
-const SAY = [
-  ['Never say "reach out"', 'Bans the phrase everywhere, in every message it ever writes for you.'],
-  ['That was too long - keep them to about four lines', 'Works just as well as a reaction to a draft you are looking at right now.'],
-  ['What have I changed?', 'Shows you everything that is yours, next to the standard version.'],
-  ['Go back to the standard one', 'Undoes a change of yours and puts ours back. Nothing is ever lost.'],
-];
-
 function WingguySetupInner() {
   const searchParams = useSearchParams();
   const token = searchParams.get('token') || '';
@@ -301,144 +226,28 @@ function WingguySetupInner() {
 
   return (
     <Shell wide>
-      <PageNav current="setup" reviewHref={`/my-wingguy/review?${searchParams.toString()}`} devLane={!!(client && devKey)} query={searchParams.toString()} />
+      <PageNav current="setup" query={searchParams.toString()} />
       <header className="flex flex-col gap-4">
         <div className="text-[11px] font-bold uppercase tracking-[0.15em] text-emerald-700">
-          Getting started with Wingguy
+          Give Wingguy your instructions
         </div>
         <h1 className="font-serif text-4xl sm:text-5xl leading-[1.1] text-slate-900">
           Now let&apos;s make it sound like you
         </h1>
         <p className="font-serif text-lg leading-relaxed text-slate-600 max-w-2xl">
-          You have seen what it does. The reason it does it in someone&apos;s own voice, and not in
-          generic AI mush, is that it reads a set of instructions before every single thing it
-          writes - and <em>some of those instructions are yours.</em> This page is where you write
-          them.
+          Wingguy reads a set of instructions before every single thing it writes - and some of
+          those instructions are yours. This page is where you write them. It takes about ten
+          minutes, and nothing here can be broken or lost.
         </p>
-
-        <a
-          href="https://knowaguy.com.au/a-day-in-the-life"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="group mt-2 block border-2 border-emerald-600 bg-emerald-50 p-6 hover:bg-emerald-100 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700 focus-visible:ring-offset-2"
-        >
-          <div className="text-[11px] font-bold uppercase tracking-[0.12em] text-emerald-800">
-            Take ten minutes first
-          </div>
-          <div className="font-serif text-2xl text-slate-900 mt-2 group-hover:text-emerald-900">
-            A day in the life <span aria-hidden="true">&rarr;</span>
-          </div>
-          <p className="text-[15px] text-slate-700 leading-relaxed mt-2 max-w-2xl">
-            It is short, and it is the honest picture of what you are setting up here - an ordinary
-            working day with all the remembering, chasing and drafting taken off your plate. Guy&apos;s
-            advice is to read it now rather than later: people who do come back to this page knowing
-            what they want their Wingguy to sound like, which makes everything below quicker and
-            better.
-          </p>
-        </a>
+        <p className="text-[15px] text-slate-600 max-w-2xl">
+          Not sure what any of this is for?{' '}
+          <a className="text-emerald-800 font-semibold underline underline-offset-2 hover:text-emerald-900"
+            href={`/my-wingguy/about?${searchParams.toString()}`}>
+            See what Wingguy does
+          </a>{' '}
+          first - it is a ten-minute read and it makes this page quicker.
+        </p>
       </header>
-
-      {/* what you just watched - the reassurance, in concrete moments */}
-      <section className="flex flex-col gap-6">
-        <SectionHead
-          title="What you just watched"
-          sub="A reminder of the day this gives you back - because in about ten minutes on this page, it starts becoming yours."
-        />
-        <div className="flex flex-col gap-px bg-slate-200 border border-slate-200">
-          {DEMO_MOMENTS.map((m) => (
-            <div key={m.does} className="bg-white grid sm:grid-cols-[16rem_1fr] gap-1 sm:gap-6 px-5 py-4">
-              <div className="font-serif text-[15px] text-emerald-800 leading-snug">
-                {m.say ? <>&ldquo;{m.say}&rdquo;</> : <span className="text-slate-500 not-italic">{m.moment}</span>}
-              </div>
-              <div className="text-[15px] text-slate-700 leading-relaxed">{m.does}</div>
-            </div>
-          ))}
-        </div>
-
-        <blockquote className="border-l-2 border-emerald-600 pl-5 flex flex-col gap-2">
-          <p className="font-serif text-lg text-slate-800 leading-relaxed max-w-2xl">
-            &ldquo;I used to finish the day with a pile of emails I still owed people. The
-            remembering, the tracking, the drafting, the chasing, the diary work - it is not my job
-            any more. I am less drained, and I get through far more.&rdquo;
-          </p>
-          <cite className="text-sm text-slate-500 not-italic">Guy</cite>
-        </blockquote>
-
-        <div className="border-2 border-emerald-600 bg-emerald-50 p-6 flex flex-col gap-3">
-          <div className="text-[11px] font-bold uppercase tracking-[0.12em] text-emerald-800">
-            The part worth understanding
-          </div>
-          <p className="font-serif text-lg text-slate-900 leading-relaxed">
-            Every one of those moments runs on instructions - and you are the one who shapes them.
-          </p>
-          <p className="text-[15px] text-slate-700 leading-relaxed">
-            That is the whole thing. None of it is generic: it sounds like Guy because Guy taught
-            it. The boxes further down this page are where yours start - your name, your sign-off,
-            the way you describe what you do.
-          </p>
-          <p className="text-[15px] text-slate-700 leading-relaxed">
-            <strong>But the part that matters most comes after today.</strong> Every time Wingguy
-            writes something and you tell it &ldquo;not like that - like this&rdquo;, it changes for
-            good. In a Claude chat, or right there in the Wingguy window on LinkedIn, in whatever
-            words come out. Do that a handful of times over your first few weeks and the drafts stop
-            being good-generic and start being unmistakably yours - across every single thing in
-            that day, not just the message in front of you.
-          </p>
-          <p className="text-[15px] text-slate-700 leading-relaxed">
-            If you skipped the read at the top, it is worth going back for -{' '}
-            <a
-              href="https://knowaguy.com.au/a-day-in-the-life"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-emerald-800 font-semibold underline underline-offset-2 hover:text-emerald-900"
-            >
-              a day in the life
-            </a>
-            . Every hour of it is shaped by instructions like the ones you are about to write.
-          </p>
-        </div>
-      </section>
-
-      {/* three kinds */}
-      <section className="flex flex-col gap-6">
-        <SectionHead
-          title="There are three kinds of instruction"
-          sub="Worth knowing which is which, because you only ever look after one of them."
-        />
-        <div className="flex flex-col gap-px bg-slate-200 border border-slate-200">
-          {KINDS.map((k) => (
-            <div key={k.tag} className={`grid sm:grid-cols-[8rem_1fr] gap-2 sm:gap-6 p-6 ${k.tone === 'amber' ? 'bg-amber-50' : 'bg-white'}`}>
-              <div className={`text-[11px] font-bold uppercase tracking-[0.1em] pt-1 ${k.tone === 'amber' ? 'text-amber-800' : k.tone === 'emerald' ? 'text-emerald-700' : 'text-slate-800'}`}>
-                {k.tag}
-              </div>
-              <div className="flex flex-col gap-2">
-                <p className="font-serif text-lg text-slate-900 leading-snug">{k.headline}</p>
-                <p className="text-[15px] text-slate-600 leading-relaxed">{k.body}</p>
-                {k.eg ? <p className="font-serif italic text-sm text-slate-400">{k.eg}</p> : null}
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* the loop */}
-      <section className="flex flex-col gap-6">
-        <SectionHead
-          title="How it actually works, week to week"
-          sub="This is the whole loop. It is less about setting things up and more about correcting it when it gets something wrong."
-        />
-        <div className="flex flex-col border-t border-slate-200">
-          {LOOP.map(([title, body], i) => (
-            <div key={title} className="grid grid-cols-[2.5rem_1fr] gap-x-4 py-4 border-b border-slate-200 items-baseline">
-              <span className="font-serif text-xl text-emerald-700">{i + 1}</span>
-              <div className="flex flex-col gap-1">
-                <strong className="text-slate-900 font-semibold">{title}</strong>
-                <span className="text-[15px] text-slate-600 leading-relaxed">{body}</span>
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
 
       {/* the blanks */}
       <section className="flex flex-col gap-6">
@@ -548,24 +357,6 @@ function WingguySetupInner() {
             commitChange={commitChange}
           />
         )}
-      </section>
-
-      {/* changing later, in chat */}
-      <section className="flex flex-col gap-6">
-        <SectionHead
-          title="Changing anything, any time"
-          sub="You never have to come back to this page. Just say it in a chat, in whatever words come out."
-        />
-        <div className="flex flex-col gap-px bg-slate-200 border border-slate-200">
-          {SAY.map(([quote, what]) => (
-            <div key={quote} className="bg-white px-5 py-4 flex flex-col gap-1">
-              <div className="font-serif text-lg text-slate-900">
-                <span className="text-emerald-700">&ldquo;</span>{quote}<span className="text-emerald-700">&rdquo;</span>
-              </div>
-              <div className="text-sm text-slate-600 leading-relaxed">{what}</div>
-            </div>
-          ))}
-        </div>
       </section>
 
       <div className="border-t-2 border-slate-900 pt-8 flex flex-col gap-4">
