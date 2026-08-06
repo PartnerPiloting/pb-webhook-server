@@ -20,19 +20,18 @@
 import React, { useState, useEffect, useCallback, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { getBackendBase } from '../services/api';
-import { PageNav, readPageAuth, pageAuthQuery } from './WingguyReview';
+import { PageNav, usePageAuth } from './WingguyReview';
 
 function WingguySetupInner() {
   const searchParams = useSearchParams();
   // Auth comes from the link, with a fallback to wherever the portal shell parked it (see
-  // readPageAuth). The admin lane - ?client=X&devKey=Y - opens any tenant's page without minting
+  // usePageAuth). The admin lane - ?client=X&devKey=Y - opens any tenant's page without minting
   // a portal link; a client's own link never carries those.
-  const { token, client, devKey } = readPageAuth(searchParams);
+  const { token, client, devKey, hasAuth, ready, query } = usePageAuth(searchParams);
   // Attribution, not authentication: a link can carry &as=<name> when more than one person works
   // this tenant (an owner and a VA, say) so the change history reads "April changed..." rather
   // than just "the setup page".
   const asName = searchParams.get('as') || '';
-  const hasAuth = !!token || !!(client && devKey);
 
   const authHeaders = useCallback((extra = {}) => {
     const h = { ...extra };
@@ -61,6 +60,7 @@ function WingguySetupInner() {
   }, [authHeaders]);
 
   useEffect(() => {
+    if (!ready) return;
     if (!hasAuth) {
       setState({ status: 'no-token', error: '', data: null });
       return;
@@ -92,7 +92,7 @@ function WingguySetupInner() {
       }
     })();
     return () => { cancelled = true; };
-  }, [hasAuth, authHeaders, loadInstructions]);
+  }, [ready, hasAuth, authHeaders, loadInstructions]);
 
   const save = useCallback(async (field, nextValue) => {
     const id = `${field.scope}:${field.key}`;
@@ -224,7 +224,7 @@ function WingguySetupInner() {
 
   return (
     <Shell wide>
-      <PageNav current="setup" query={pageAuthQuery(searchParams)} />
+      <PageNav current="setup" query={query} />
       <header className="flex flex-col gap-4">
         <div className="text-[11px] font-bold uppercase tracking-[0.15em] text-emerald-700">
           Give Wingguy your instructions
@@ -240,7 +240,7 @@ function WingguySetupInner() {
         <p className="text-[15px] text-slate-600 max-w-2xl">
           Not sure what any of this is for?{' '}
           <a className="text-emerald-800 font-semibold underline underline-offset-2 hover:text-emerald-900"
-            href={`/my-wingguy/about?${pageAuthQuery(searchParams)}`}>
+            href={`/my-wingguy/about?${query}`}>
             See what Wingguy does
           </a>{' '}
           first - it is a ten-minute read and it makes this page quicker.

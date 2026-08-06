@@ -22,21 +22,50 @@ import { getBackendBase } from '../services/api';
 
 
 /**
- * The auth on these pages is the link, not a session - but the portal shell strips ?token= from
- * the address bar once it has logged you in, so by the time this component reads the query the
- * token can already be gone. Fall back to where the portal parked it. (Caught live: wrapping
- * these pages in the portal shell broke them for token visitors.)
+ * The auth on these pages is the link, not a session - but the portal shell logs the visitor in
+ * and then cleans ?token= off the address bar, so by the time a page reads the query its only
+ * credential can already be gone. It is still there in the storage the portal parked it in.
+ *
+ * Read in an effect rather than during render on purpose: the server render has no storage, so
+ * resolving it inline produced markup that said "this link is missing its key" and hydration kept
+ * it - a client with a perfectly good link locked out of their own page. `ready` stays false until
+ * the check has actually happened, so nothing decides there is no key before looking.
  */
-function readPageAuth(searchParams) {
-  const stored = (k) => {
-    if (typeof window === 'undefined') return '';
-    try { return window.localStorage.getItem(k) || window.sessionStorage.getItem(k) || ''; }
-    catch (e) { return ''; }
-  };
+function usePageAuth(searchParams) {
+  const [stored, setStored] = useState(null); // null = not looked yet
+  useEffect(() => {
+    const get = (k) => {
+      try { return window.localStorage.getItem(k) || window.sessionStorage.getItem(k) || ''; }
+      catch (e) { return ''; }
+    };
+    setStored({
+      token: get('portalToken'),
+      client: get('clientCode') || get('clientId'),
+      devKey: get('devKey'),
+    });
+  }, []);
+
+  const qToken = searchParams.get('token') || '';
+  const qClient = searchParams.get('client') || searchParams.get('clientId') || '';
+  const qDevKey = searchParams.get('devKey') || '';
+  const token = qToken || (stored ? stored.token : '');
+  const client = qClient || (stored ? stored.client : '');
+  const devKey = qDevKey || (stored ? stored.devKey : '');
+  const hasQueryAuth = !!qToken || !!(qClient && qDevKey);
   return {
-    token: searchParams.get('token') || stored('portalToken'),
-    client: searchParams.get('client') || searchParams.get('clientId') || stored('clientCode') || stored('clientId'),
-    devKey: searchParams.get('devKey') || stored('devKey'),
+    token, client, devKey,
+    hasAuth: !!token || !!(client && devKey),
+    // Safe to say "no key" only once the query had none AND storage has been checked.
+    ready: hasQueryAuth || stored !== null,
+    // What to hang on links between these pages, so moving around never sheds the credential.
+    query: (() => {
+      const q = searchParams.toString();
+      if (q) return q;
+      const p = new URLSearchParams();
+      if (token) p.set('token', token);
+      else if (client && devKey) { p.set('client', client); p.set('devKey', devKey); }
+      return p.toString();
+    })(),
   };
 }
 
@@ -62,9 +91,8 @@ function friendlyWhen(iso) {
 
 function WingguyReviewInner() {
   const searchParams = useSearchParams();
-  const { token, client, devKey } = readPageAuth(searchParams);
+  const { token, client, devKey, hasAuth, ready, query } = usePageAuth(searchParams);
   const asParam = searchParams.get('as') || '';
-  const hasAuth = !!token || !!(client && devKey);
 
   // The signature on notes and changes. The link usually carries it (&as=April); if not, the
   // first note asks once and the browser remembers.
@@ -100,9 +128,10 @@ function WingguyReviewInner() {
   }, [authHeaders]);
 
   useEffect(() => {
+    if (!ready) return;
     if (!hasAuth) { setState((s) => ({ ...s, status: 'no-token' })); return; }
     load();
-  }, [hasAuth, load]);
+  }, [ready, hasAuth, load]);
 
   const api = useCallback(async (path, payload) => {
     const res = await fetch(`${getBackendBase()}/api/wingguy/${path}`, {
@@ -115,7 +144,7 @@ function WingguyReviewInner() {
     return data;
   }, [authHeaders]);
 
-  if (!hasAuth) {
+  if (ready && !hasAuth) {
     return (
       <Shell>
         <h1 className="font-serif text-3xl text-slate-900">This link is missing its key</h1>
@@ -138,7 +167,7 @@ function WingguyReviewInner() {
 
   return (
     <Shell>
-      <PageNav current="review" query={pageAuthQuery(searchParams)} />
+      <PageNav current="review" query={query} />
       <div className="flex flex-col gap-3 pb-6 border-b border-slate-200">
         <h1 className="font-serif text-3xl text-slate-900">What&apos;s changed lately</h1>
         <p className="text-slate-600">
@@ -699,16 +728,4 @@ export default function WingguyReview() {
   );
 }
 
-/** The query string to hang on links between these pages: whatever the visitor arrived with,
- *  refilled from stored auth when the portal shell has already cleaned the address bar. */
-function pageAuthQuery(searchParams) {
-  const q = searchParams.toString();
-  if (q) return q;
-  const { token, client, devKey } = readPageAuth(searchParams);
-  const p = new URLSearchParams();
-  if (token) p.set('token', token);
-  else if (client && devKey) { p.set('client', client); p.set('devKey', devKey); }
-  return p.toString();
-}
-
-export { PageNav, readPageAuth, pageAuthQuery };
+export { PageNav, usePageAuth };
