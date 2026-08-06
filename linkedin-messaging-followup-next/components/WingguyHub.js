@@ -13,6 +13,7 @@
 
 import React, { Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
+import { usePageAuth } from './WingguyReview';
 
 const DOORS = [
   {
@@ -43,7 +44,7 @@ const DOORS = [
 
 function WingguyHubInner() {
   const searchParams = useSearchParams();
-  const q = searchParams.toString();
+  const { query: q } = usePageAuth(searchParams);
   const href = (path) => (q ? `${path}?${q}` : path);
 
   return (

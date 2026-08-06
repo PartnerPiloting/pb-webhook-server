@@ -20,6 +20,55 @@ import React, { useState, useEffect, useCallback, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { getBackendBase } from '../services/api';
 
+
+/**
+ * The auth on these pages is the link, not a session - but the portal shell logs the visitor in
+ * and then cleans ?token= off the address bar, so by the time a page reads the query its only
+ * credential can already be gone. It is still there in the storage the portal parked it in.
+ *
+ * Read in an effect rather than during render on purpose: the server render has no storage, so
+ * resolving it inline produced markup that said "this link is missing its key" and hydration kept
+ * it - a client with a perfectly good link locked out of their own page. `ready` stays false until
+ * the check has actually happened, so nothing decides there is no key before looking.
+ */
+function usePageAuth(searchParams) {
+  const [stored, setStored] = useState(null); // null = not looked yet
+  useEffect(() => {
+    const get = (k) => {
+      try { return window.localStorage.getItem(k) || window.sessionStorage.getItem(k) || ''; }
+      catch (e) { return ''; }
+    };
+    setStored({
+      token: get('portalToken'),
+      client: get('clientCode') || get('clientId'),
+      devKey: get('devKey'),
+    });
+  }, []);
+
+  const qToken = searchParams.get('token') || '';
+  const qClient = searchParams.get('client') || searchParams.get('clientId') || '';
+  const qDevKey = searchParams.get('devKey') || '';
+  const token = qToken || (stored ? stored.token : '');
+  const client = qClient || (stored ? stored.client : '');
+  const devKey = qDevKey || (stored ? stored.devKey : '');
+  const hasQueryAuth = !!qToken || !!(qClient && qDevKey);
+  return {
+    token, client, devKey,
+    hasAuth: !!token || !!(client && devKey),
+    // Safe to say "no key" only once the query had none AND storage has been checked.
+    ready: hasQueryAuth || stored !== null,
+    // What to hang on links between these pages, so moving around never sheds the credential.
+    query: (() => {
+      const q = searchParams.toString();
+      if (q) return q;
+      const p = new URLSearchParams();
+      if (token) p.set('token', token);
+      else if (client && devKey) { p.set('client', client); p.set('devKey', devKey); }
+      return p.toString();
+    })(),
+  };
+}
+
 const VERB = { commit: 'changed', add: 'added', retire: 'retired', revert: 'put back' };
 
 function verbFor(c) {
@@ -42,31 +91,19 @@ function friendlyWhen(iso) {
 
 function WingguyReviewInner() {
   const searchParams = useSearchParams();
-  const token = searchParams.get('token') || '';
-  // clientId is the spelling the portal's stored-auth link builder uses; client is ours.
-  const client = searchParams.get('client') || searchParams.get('clientId') || '';
-  const devKey = searchParams.get('devKey') || '';
-  const asParam = searchParams.get('as') || '';
-  const hasAuth = !!token || !!(client && devKey);
-
-  // The signature on notes and changes. The link usually carries it (&as=April); if not, the
-  // first note asks once and the browser remembers.
-  const [name, setName] = useState(asParam);
-  useEffect(() => {
-    if (asParam) { try { window.localStorage.setItem('wg-page-name', asParam); } catch (e) { /* private mode */ } }
-    else { try { setName(window.localStorage.getItem('wg-page-name') || ''); } catch (e) { /* private mode */ } }
-  }, [asParam]);
+  const { token, client, devKey, hasAuth, ready, query } = usePageAuth(searchParams);
 
   const authHeaders = useCallback((extra = {}) => {
     const h = { ...extra };
     if (token) h['x-portal-token'] = token;
     if (client) h['x-client-id'] = client;
     if (devKey) h['x-dev-key'] = devKey;
-    if (name) h['x-page-name'] = name;
     return h;
-  }, [token, client, devKey, name]);
+  }, [token, client, devKey]);
 
-  const [state, setState] = useState({ status: 'loading', error: '', changes: [], openNotes: 0 });
+  // Who this visitor's actions sign as - decided by their KEY on the server (an assistant's key
+  // signs as the assistant, the client's key as the client), never by anything in the URL.
+  const [state, setState] = useState({ status: 'loading', error: '', changes: [], openNotes: 0, you: '' });
 
   const load = useCallback(async () => {
     try {
@@ -76,16 +113,17 @@ function WingguyReviewInner() {
         setState({ status: 'error', error: data.message || data.error || 'We could not open the change history.', notYet: res.status === 403, changes: [], openNotes: 0 });
         return;
       }
-      setState({ status: 'ready', error: '', changes: data.changes || [], openNotes: data.openNotes || 0 });
+      setState({ status: 'ready', error: '', changes: data.changes || [], openNotes: data.openNotes || 0, you: data.you || '' });
     } catch (e) {
       setState({ status: 'error', error: 'We could not reach Wingguy. Check your connection and refresh.', changes: [], openNotes: 0 });
     }
   }, [authHeaders]);
 
   useEffect(() => {
+    if (!ready) return;
     if (!hasAuth) { setState((s) => ({ ...s, status: 'no-token' })); return; }
     load();
-  }, [hasAuth, load]);
+  }, [ready, hasAuth, load]);
 
   const api = useCallback(async (path, payload) => {
     const res = await fetch(`${getBackendBase()}/api/wingguy/${path}`, {
@@ -98,7 +136,7 @@ function WingguyReviewInner() {
     return data;
   }, [authHeaders]);
 
-  if (!hasAuth) {
+  if (ready && !hasAuth) {
     return (
       <Shell>
         <h1 className="font-serif text-3xl text-slate-900">This link is missing its key</h1>
@@ -121,7 +159,7 @@ function WingguyReviewInner() {
 
   return (
     <Shell>
-      <PageNav current="review" query={searchParams.toString()} />
+      <PageNav current="review" query={query} />
       <div className="flex flex-col gap-3 pb-6 border-b border-slate-200">
         <h1 className="font-serif text-3xl text-slate-900">What&apos;s changed lately</h1>
         <p className="text-slate-600">
@@ -137,7 +175,7 @@ function WingguyReviewInner() {
         ) : null}
       </div>
 
-      <AddInstructionCard api={api} name={name} reload={load} />
+      <AddInstructionCard api={api} reload={load} />
 
       {mainChanges.length === 0 ? (
         <p className="text-slate-600">
@@ -147,12 +185,12 @@ function WingguyReviewInner() {
       ) : (
         <div className="flex flex-col gap-3">
           {mainChanges.map((c) => (
-            <ChangeCard key={c.id} change={c} name={name} setName={setName} api={api} reload={load} />
+            <ChangeCard key={c.id} change={c} name={state.you} api={api} reload={load} />
           ))}
         </div>
       )}
 
-      {housekeeping.length ? <HousekeepingFold changes={housekeeping} name={name} setName={setName} api={api} reload={load} /> : null}
+      {housekeeping.length ? <HousekeepingFold changes={housekeeping} name={state.you} api={api} reload={load} /> : null}
     </Shell>
   );
 }
@@ -181,7 +219,7 @@ function PageNav({ current, query }) {
  *  change that one instead of adding a twin), and nothing saves without an explicit click. Lives
  *  HERE because adding is a returning-visitor act - nobody knows on day one what they want to
  *  tell Wingguy; they find out in week three, on this page, reading what it has been doing. */
-function AddInstructionCard({ api, name, reload }) {
+function AddInstructionCard({ api, reload }) {
   const [text, setText] = useState('');
   const [state, setState] = useState(null); // null | 'loading' | 'done' | {proposal} | {overlap, followText, followState}
   const run = async () => {
@@ -205,7 +243,6 @@ function AddInstructionCard({ api, name, reload }) {
     await api('setup/change-commit', {
       ruleKey: p.ruleKey, context: p.context, ruleType: p.ruleType,
       body: p.proposedBody, expectedVersion: p.expectedVersion, explanation: p.explanation,
-      as: name || undefined,
     });
     setText('');
     setState('done');
@@ -294,7 +331,7 @@ function AddInstructionCard({ api, name, reload }) {
 
 /** Engineering reshuffles, folded shut. Kept on the page because the record must be whole; kept
  *  out of the main list because none of them are decisions anyone made about this business. */
-function HousekeepingFold({ changes, name, setName, api, reload }) {
+function HousekeepingFold({ changes, name, api, reload }) {
   const [open, setOpen] = useState(false);
   return (
     <div className="flex flex-col gap-3 pt-2">
@@ -302,13 +339,13 @@ function HousekeepingFold({ changes, name, setName, api, reload }) {
         {open ? 'Hide housekeeping' : `Housekeeping (${changes.length}) - behind-the-scenes reshuffles of the shared instruction set, kept for the record`}
       </button>
       {open ? changes.map((c) => (
-        <ChangeCard key={c.id} change={c} name={name} setName={setName} api={api} reload={reload} />
+        <ChangeCard key={c.id} change={c} name={name} api={api} reload={reload} />
       )) : null}
     </div>
   );
 }
 
-function ChangeCard({ change: c, name, setName, api, reload }) {
+function ChangeCard({ change: c, name, api, reload }) {
   const [open, setOpen] = useState(false);
   const [showRaw, setShowRaw] = useState(false);
   const [showBefore, setShowBefore] = useState(false);
@@ -345,7 +382,7 @@ function ChangeCard({ change: c, name, setName, api, reload }) {
   const undo = async () => {
     setBusy('undo');
     try {
-      await api('setup/change-undo', { historyId: c.id, as: name || undefined });
+      await api('setup/change-undo', { historyId: c.id });
       setBusy('');
       setConfirmUndo(false);
       await reload();
@@ -356,7 +393,7 @@ function ChangeCard({ change: c, name, setName, api, reload }) {
     if (!noteText.trim()) return;
     setBusy('note');
     try {
-      await api('setup/change-note', { historyId: c.id, note: noteText.trim(), as: name || undefined });
+      await api('setup/change-note', { historyId: c.id, note: noteText.trim() });
       setNoteText('');
       setBusy('');
       await reload();
@@ -366,7 +403,7 @@ function ChangeCard({ change: c, name, setName, api, reload }) {
   const sorted = async (noteId) => {
     setBusy(`sorted-${noteId}`);
     try {
-      await api('setup/change-note-resolve', { noteId, as: name || undefined });
+      await api('setup/change-note-resolve', { noteId });
       setBusy('');
       await reload();
     } catch (e) { setBusy(e.message); }
@@ -391,7 +428,6 @@ function ChangeCard({ change: c, name, setName, api, reload }) {
       await api('setup/change-commit', {
         ruleKey: p.ruleKey, context: p.context, ruleType: p.ruleType,
         body: p.proposedBody, expectedVersion: p.expectedVersion, explanation: p.explanation,
-        as: name || undefined,
       });
       setDoor({ text: '', state: 'done' });
       await reload();
@@ -569,16 +605,6 @@ function ChangeCard({ change: c, name, setName, api, reload }) {
           {/* Two boxes, opposite fates for your typing - so each one says which. A placeholder
               cannot carry that (it truncates, and vanishes at the first keystroke). */}
           <div className="flex flex-col gap-2">
-            {!name ? (
-              <input
-                type="text" placeholder="Your first name (signs your notes)"
-                className="border border-slate-300 px-3 py-2 text-[15px] max-w-xs"
-                onBlur={(e) => {
-                  const v = e.target.value.trim();
-                  if (v) { setName(v); try { window.localStorage.setItem('wg-page-name', v); } catch (err) { /* private mode */ } }
-                }}
-              />
-            ) : null}
             <div className="flex flex-col gap-1">
               <p className="text-sm font-semibold text-slate-700">Leave a note{name ? ` (as ${name})` : ''}</p>
               <p className="text-[13px] text-slate-500">Saved word for word, for whoever works on this page. Changes nothing by itself.</p>
@@ -682,4 +708,4 @@ export default function WingguyReview() {
   );
 }
 
-export { PageNav };
+export { PageNav, usePageAuth };
