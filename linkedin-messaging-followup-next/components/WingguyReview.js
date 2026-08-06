@@ -151,11 +151,47 @@ function WingguyReviewInner() {
 
 function ChangeCard({ change: c, name, setName, api, reload }) {
   const [open, setOpen] = useState(false);
+  const [showRaw, setShowRaw] = useState(false);
   const [showBefore, setShowBefore] = useState(false);
   const [noteText, setNoteText] = useState('');
-  const [busy, setBusy] = useState(''); // '' | 'note' | 'sorted-<id>' | error text
+  const [busy, setBusy] = useState(''); // '' | 'note' | 'sorted-<id>' | 'undo' | error text
   const [door, setDoor] = useState({ text: '', state: null }); // change door: null | 'loading' | {proposal} | {answer} | {error}
+  const [summary, setSummary] = useState(c.summary || null);
+  const [deeper, setDeeper] = useState(null); // null | 'loading' | {text} | {example} | {error}
+  const [confirmUndo, setConfirmUndo] = useState(false);
   const openNotes = (c.notes || []).filter((n) => !n.resolvedAt).length;
+
+  // Changes made before summaries existed have none stored. Written on first open - one call
+  // ever, then it is cached for good, so opening an old entry is the only time anyone waits.
+  useEffect(() => {
+    if (!open || summary) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const d = await api('setup/change-explain', { historyId: c.id, depth: 'summary' });
+        if (!cancelled) setSummary(d.text || '');
+      } catch (e) { if (!cancelled) setSummary(''); }
+    })();
+    return () => { cancelled = true; };
+  }, [open, summary, api, c.id]);
+
+  const explain = async (depth) => {
+    setDeeper('loading');
+    try {
+      const d = await api('setup/change-explain', { historyId: c.id, depth });
+      setDeeper(depth === 'example' ? { example: d } : { text: d.text });
+    } catch (e) { setDeeper({ error: e.message }); }
+  };
+
+  const undo = async () => {
+    setBusy('undo');
+    try {
+      await api('setup/change-undo', { historyId: c.id, as: name || undefined });
+      setBusy('');
+      setConfirmUndo(false);
+      await reload();
+    } catch (e) { setBusy(e.message); }
+  };
 
   const leaveNote = async () => {
     if (!noteText.trim()) return;
@@ -217,27 +253,107 @@ function ChangeCard({ change: c, name, setName, api, reload }) {
 
       {open ? (
         <div className="px-5 pb-5 flex flex-col gap-4 border-t border-slate-100 pt-4">
-          {c.changeNote ? <p className="text-sm text-slate-600 italic">{c.changeNote}</p> : null}
+          {/* The first thing anyone reads: this already happened and wants nothing from them.
+              Without it, a log entry reads like something awaiting approval. */}
+          <p className="text-sm text-emerald-800 bg-emerald-50 px-4 py-2.5 leading-relaxed">
+            {c.afterBody
+              ? 'This is live now - it is already how Wingguy writes. Nothing here is waiting on you.'
+              : 'This instruction was removed - Wingguy no longer follows it. Nothing here is waiting on you.'}
+          </p>
+
+          {/* Plain English leads. The instruction text itself is written for the model and reads
+              as jargon, so it goes behind a link for whoever actually wants it. */}
+          <div className="flex flex-col gap-1.5">
+            <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">What this does</p>
+            {summary === null ? (
+              <p className="text-[15px] text-slate-400">Putting this in plain English…</p>
+            ) : summary ? (
+              <p className="text-[15px] text-slate-800 leading-relaxed">{summary}</p>
+            ) : (
+              <p className="text-[15px] text-slate-500">Could not write a plain-English summary just now - the exact wording is below.</p>
+            )}
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={() => explain('detail')} disabled={deeper === 'loading'}
+              className="px-3 py-1.5 text-[13px] text-slate-700 bg-white border border-slate-300 hover:border-emerald-600 hover:text-emerald-900 disabled:opacity-60">
+              {deeper === 'loading' ? 'Working…' : 'Explain this properly'}
+            </button>
+            <button type="button" onClick={() => explain('impact')} disabled={deeper === 'loading'}
+              className="px-3 py-1.5 text-[13px] text-slate-700 bg-white border border-slate-300 hover:border-emerald-600 hover:text-emerald-900 disabled:opacity-60">
+              What does this mean for my messages?
+            </button>
+            <button type="button" onClick={() => explain('example')} disabled={deeper === 'loading'}
+              className="px-3 py-1.5 text-[13px] text-slate-700 bg-white border border-slate-300 hover:border-emerald-600 hover:text-emerald-900 disabled:opacity-60">
+              Show me an example
+            </button>
+          </div>
+          {deeper && deeper !== 'loading' ? (
+            deeper.error ? <p className="text-sm text-red-700">{deeper.error}</p> : (
+              <div className="bg-emerald-50 border border-emerald-200 px-4 py-3 flex flex-col gap-2">
+                {deeper.text ? <p className="text-[15px] text-slate-800 leading-relaxed whitespace-pre-wrap">{deeper.text}</p> : null}
+                {deeper.example ? <ExampleBlock ex={deeper.example} /> : null}
+              </div>
+            )
+          ) : null}
+
+          {c.changeNote ? (
+            <div className="flex flex-col gap-1">
+              <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">Why it was made</p>
+              <p className="text-sm text-slate-600 leading-relaxed">{c.changeNote}</p>
+            </div>
+          ) : null}
 
           {c.afterBody ? (
             <div className="flex flex-col gap-1.5">
-              <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">What it says now</p>
-              <p className="text-[15px] text-slate-800 leading-relaxed whitespace-pre-wrap bg-slate-50 border border-slate-200 px-4 py-3">{c.afterBody}</p>
-            </div>
-          ) : (
-            <p className="text-sm text-slate-600">This instruction was retired - it no longer applies.</p>
-          )}
-          {c.beforeBody ? (
-            showBefore ? (
-              <div className="flex flex-col gap-1.5">
-                <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">What it said before</p>
-                <p className="text-[15px] text-slate-600 leading-relaxed whitespace-pre-wrap bg-slate-50 border border-slate-200 px-4 py-3">{c.beforeBody}</p>
-              </div>
-            ) : (
-              <button type="button" onClick={() => setShowBefore(true)} className="self-start text-sm text-slate-500 underline hover:text-slate-700">
-                Show what it said before
+              <button type="button" onClick={() => setShowRaw(!showRaw)} className="self-start text-sm text-slate-500 underline hover:text-slate-700">
+                {showRaw ? 'Hide the exact wording' : 'Show the exact wording it follows'}
               </button>
-            )
+              {showRaw ? (
+                <p className="text-[13px] text-slate-600 leading-relaxed whitespace-pre-wrap bg-slate-50 border border-slate-200 px-4 py-3">{c.afterBody}</p>
+              ) : null}
+              {showRaw && c.beforeBody ? (
+                showBefore ? (
+                  <div className="flex flex-col gap-1.5">
+                    <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">What it said before</p>
+                    <p className="text-[13px] text-slate-600 leading-relaxed whitespace-pre-wrap bg-slate-50 border border-slate-200 px-4 py-3">{c.beforeBody}</p>
+                  </div>
+                ) : (
+                  <button type="button" onClick={() => setShowBefore(true)} className="self-start text-sm text-slate-500 underline hover:text-slate-700">
+                    Show what it said before
+                  </button>
+                )
+              ) : null}
+            </div>
+          ) : null}
+
+          {c.undo ? (
+            <div className="flex flex-col gap-2 border-t border-slate-100 pt-3">
+              {!confirmUndo ? (
+                <div className="flex items-center gap-3">
+                  <button type="button" onClick={() => setConfirmUndo(true)}
+                    className="px-3 py-1.5 text-[13px] text-slate-700 bg-white border border-slate-300 hover:border-slate-500">
+                    {c.undo === 'restore' ? 'Undo - put the previous version back' : 'Undo - remove this instruction'}
+                  </button>
+                  <span className="text-xs text-slate-400">You will see it before anything happens</span>
+                </div>
+              ) : (
+                <div className="bg-slate-50 border border-slate-200 px-4 py-3 flex flex-col gap-2">
+                  <p className="text-[15px] text-slate-800 leading-relaxed">
+                    {c.undo === 'restore'
+                      ? 'This puts the wording back to how it read before this change. It counts as a new change, so it appears at the top of this page and can itself be undone.'
+                      : 'This removes the instruction that was added. Wingguy stops following it. It counts as a change, so it appears at the top of this page.'}
+                  </p>
+                  <div className="flex gap-3">
+                    <button type="button" onClick={undo} disabled={busy === 'undo'}
+                      className="px-4 py-2 bg-slate-900 text-white text-sm font-medium disabled:opacity-40">
+                      {busy === 'undo' ? 'Undoing…' : (c.undo === 'restore' ? 'Yes, put it back' : 'Yes, remove it')}
+                    </button>
+                    <button type="button" onClick={() => setConfirmUndo(false)} className="text-sm text-slate-500 underline">Never mind</button>
+                  </div>
+                </div>
+              )}
+            </div>
           ) : null}
 
           {(c.notes || []).length ? (
@@ -317,6 +433,33 @@ function ChangeCard({ change: c, name, setName, api, reload }) {
           </div>
         </div>
       ) : null}
+    </div>
+  );
+}
+
+/** An example takes the form that suits the change: a whole message, or the one line that reads
+ *  differently now. A constraint ("never say delighted") is not taught by an invented email. */
+function ExampleBlock({ ex }) {
+  if (ex.form === 'fragment') {
+    return (
+      <div className="flex flex-col gap-2">
+        {ex.intro ? <p className="text-[13px] text-slate-500">{ex.intro}</p> : null}
+        <div className="flex flex-col gap-1">
+          <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">Before</p>
+          <p className="text-[15px] text-slate-600 leading-relaxed line-through decoration-slate-300">{ex.before}</p>
+        </div>
+        <div className="flex flex-col gap-1">
+          <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">Now</p>
+          <p className="text-[15px] text-slate-800 leading-relaxed">{ex.after}</p>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="flex flex-col gap-2">
+      {ex.intro ? <p className="text-[13px] text-slate-500">{ex.intro}</p> : null}
+      <p className="text-[15px] text-slate-800 leading-relaxed whitespace-pre-wrap bg-white border border-slate-200 px-4 py-3">{ex.text}</p>
+      <p className="text-[13px] text-slate-500">Written fresh just now from your own setup - not a saved sample.</p>
     </div>
   );
 }

@@ -103,6 +103,10 @@ const TITLES = {
   'warm-path-first': { title: 'Warm path first', gist: 'Before spending a cold credit, check who could make the introduction.' },
   'asset-library-scaffold': { title: 'Your asset library', gist: 'The links you send, each with rules for when it earns its place.' },
   'pre-call-brief-format': { title: 'Your pre-call cheat sheet', gist: 'The prep note Wingguy emails you before a call.' },
+  'arm-a-forwarder-day-page': {
+    title: 'Helping someone pass on the day-in-the-life page',
+    gist: 'When someone offers to forward your day-in-the-life page, Wingguy writes them a note they can paste straight into their own message.',
+  },
 };
 
 /**
