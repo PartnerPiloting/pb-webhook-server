@@ -1241,7 +1241,9 @@ module.exports = function mountWingguy(app) {
   // could edit the URL and become someone else, and it fell off bookmarked links.)
   function pageName(req) {
     if (req.assistant && req.assistant.name) {
-      return String(req.assistant.name).replace(/[^a-zA-Z' -]/g, '').trim().slice(0, 40);
+      // First name only, matching how a client's own key signs - the row can hold "April
+      // Balaba" for the header without every note reading like a legal document.
+      return String(req.assistant.name).split(/\s+/)[0].replace(/[^a-zA-Z' -]/g, '').trim().slice(0, 40);
     }
     const clientName = (req.client && req.client.clientName) || '';
     return String(clientName).split(/\s+/)[0].replace(/[^a-zA-Z' -]/g, '').trim().slice(0, 40);
