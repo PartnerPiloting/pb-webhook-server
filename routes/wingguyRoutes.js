@@ -1185,7 +1185,7 @@ module.exports = function mountWingguy(app) {
         ruleType,
         body: String(body),
         changeNote: `From their setup page: ${String(explanation || 'client change').slice(0, 300)}`,
-        createdBy: `portal:${tenantId}`,
+        createdBy: `portal:${tenantId}${pageName(req) ? `:as:${pageName(req)}` : ''}`,
         expectedVersion: Number(expectedVersion) || 0,
         actorTenantId: tenantId,
         via: 'door',
@@ -1200,6 +1200,99 @@ module.exports = function mountWingguy(app) {
           : e.message);
       logger.error(`[Wingguy] setup page commit failed for ${tenantId} (${ruleKey}): ${e.message}`);
       return res.status(409).json({ ok: false, error: friendly });
+    }
+  });
+
+  // -------------------------------------------------------------------------
+  // The review page — the owner's window. One tenant can be two people (a business owner and
+  // whoever operates the page day to day), so links may carry &as=<name>: pure attribution, not
+  // authentication — the token is still the whole auth story, the name just makes the change
+  // history readable ("April, Tuesday") and lets notes carry a signature.
+  // -------------------------------------------------------------------------
+
+  // The display name a page identifies itself with (?as= passed through as a header or body
+  // field). Kept to letters/spaces so an actor string stays parseable.
+  function pageName(req) {
+    const raw = (req.body && req.body.as) || req.headers['x-page-name'] || '';
+    return String(raw).replace(/[^a-zA-Z' -]/g, '').trim().slice(0, 40);
+  }
+
+  // actor column → the name a human should read on the review page.
+  function whoFromActor(actor) {
+    const a = String(actor || '');
+    const as = a.match(/:as:(.+)$/);
+    if (as) return as[1];
+    if (a.startsWith('portal:')) return 'the setup page';
+    if (a.startsWith('mcp:')) return 'a chat with Wingguy';
+    if (a.includes('seed')) return 'the starter kit';
+    return a || 'Wingguy';
+  }
+
+  // What changed lately — client-layer instruction changes with before/after and notes attached.
+  router.get('/setup/changes', async (req, res) => {
+    const tenantId = req.client.clientId;
+    try {
+      const titles = require('../config/wingguyInstructionTitles');
+      const { changes, openNotes } = await wingguyStore.getClientChangeLog({
+        tenantId, limit: Number(req.query.limit) || 30,
+      });
+      return res.json({
+        ok: true,
+        openNotes,
+        changes: changes.map((c) => ({
+          id: c.id,
+          when: c.createdAt,
+          who: whoFromActor(c.actor),
+          action: c.action,
+          ruleKey: c.ruleKey,
+          title: titles.titleFor(c.ruleKey),
+          changeNote: c.changeNote,
+          beforeBody: c.beforeBody,
+          afterBody: c.afterBody,
+          notes: c.notes.map((note) => ({
+            id: Number(note.id),
+            when: note.created_at,
+            author: note.author || 'unsigned',
+            note: note.note,
+            resolvedAt: note.resolved_at,
+            resolvedBy: note.resolved_by,
+          })),
+        })),
+      });
+    } catch (e) {
+      logger.error(`[Wingguy] change log read failed for ${tenantId}: ${e.message}`);
+      return res.status(500).json({ ok: false, error: 'Could not load the change history.' });
+    }
+  });
+
+  // Leave a note on a change. Notes never alter instructions — they sit in the margin.
+  router.post('/setup/change-note', async (req, res) => {
+    const tenantId = req.client.clientId;
+    const { historyId, note } = req.body || {};
+    try {
+      const r = await wingguyStore.addChangeNote({
+        tenantId, historyId, note, author: pageName(req) || null,
+      });
+      logger.info(`[Wingguy] change note #${r.id} left on change ${historyId} for ${tenantId}`);
+      return res.json({ ok: true, id: r.id });
+    } catch (e) {
+      logger.error(`[Wingguy] change note failed for ${tenantId}: ${e.message}`);
+      return res.status(400).json({ ok: false, error: e.message });
+    }
+  });
+
+  // "Sorted" — tick a note off once it has been read and acted on.
+  router.post('/setup/change-note-resolve', async (req, res) => {
+    const tenantId = req.client.clientId;
+    const { noteId } = req.body || {};
+    try {
+      const r = await wingguyStore.resolveChangeNote({
+        tenantId, noteId, resolvedBy: pageName(req) || null,
+      });
+      return res.json({ ok: true, resolved: r.resolved });
+    } catch (e) {
+      logger.error(`[Wingguy] change note resolve failed for ${tenantId}: ${e.message}`);
+      return res.status(400).json({ ok: false, error: e.message });
     }
   });
 

@@ -217,7 +217,9 @@ app.use(cors({
     credentials: true,
     // Include PATCH for incremental updates (e.g., search terms)
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-WP-Nonce', 'Cookie', 'x-client-id', 'x-portal-token', 'x-dev-key'],
+    // x-page-name: attribution (never authentication) from the setup/review pages — signs notes
+    // and stamps commits when a link carries &as=<name>.
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-WP-Nonce', 'Cookie', 'x-client-id', 'x-portal-token', 'x-dev-key', 'x-page-name'],
     optionsSuccessStatus: 204
 }));
 moduleLogger.info("CORS enabled for allowed origins including *.vercel.app and staging frontend");

@@ -265,6 +265,27 @@ async function ensureSchema(client) {
     ON wingguy_draft_ledger (tenant_id, created_at) WHERE status = 'awaiting-send';
   `);
 
+  // Change notes — the review page's margin. The business owner (or the coach) reads a change in
+  // the client-layer change log and leaves a short note ON that change; whoever operates the page
+  // (a VA, a sales assistant) reads it right where the change lives and ticks it off when acted
+  // on. Notes never change instructions themselves — the change door does that.
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS wingguy_change_notes (
+      id BIGSERIAL PRIMARY KEY,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      tenant_id TEXT NOT NULL,
+      history_id BIGINT NOT NULL,
+      author TEXT,
+      note TEXT NOT NULL,
+      resolved_at TIMESTAMPTZ,
+      resolved_by TEXT
+    );
+  `);
+  await client.query(`
+    CREATE INDEX IF NOT EXISTS idx_wg_change_notes_tenant
+    ON wingguy_change_notes (tenant_id, history_id);
+  `);
+
   await client.query(`
     CREATE TABLE IF NOT EXISTS wingguy_rule_history (
       id BIGSERIAL PRIMARY KEY,
@@ -1572,6 +1593,129 @@ async function getEditNudgeState({ tenantId = DEFAULT_TENANT, threshold = 3 } = 
   }
 }
 
+// ---------------------------------------------------------------------------
+// Client change log + notes — the review page (owner glances, operator acts)
+// ---------------------------------------------------------------------------
+
+/**
+ * The tenant's own instruction changes, newest first, with before/after bodies and any notes
+ * attached. Only client-layer commit/retire/revert rows — seeds are the starter kit arriving
+ * (26 rows of noise on day one), and variable/asset sets are the fill-in-the-blanks form, not
+ * instruction changes. Bodies come from wingguy_rules itself: retired versions are kept forever,
+ * so (rule_key, version) resolves both sides of every change.
+ */
+async function getClientChangeLog({ tenantId = DEFAULT_TENANT, limit = 30 } = {}) {
+  const p = getPool();
+  if (!p) throw new Error('DATABASE_URL not set');
+  const tenant = (tenantId || DEFAULT_TENANT).trim();
+  const cap = Math.min(Math.max(Number(limit) || 30, 1), 100);
+  const client = await p.connect();
+  try {
+    await ensureSchema(client);
+    const h = await client.query(
+      `SELECT id, created_at, actor, action, rule_key, from_version, to_version, detail
+       FROM wingguy_rule_history
+       WHERE tenant_id = $1 AND layer = 'client' AND action IN ('commit','retire','revert')
+       ORDER BY created_at DESC, id DESC LIMIT $2`,
+      [tenant, cap],
+    );
+    const rows = h.rows;
+    if (!rows.length) return { changes: [], openNotes: 0 };
+
+    const keys = [...new Set(rows.map((r) => r.rule_key).filter(Boolean))];
+    const bodies = keys.length ? await client.query(
+      `SELECT rule_key, version, body FROM wingguy_rules
+       WHERE layer = 'client' AND tenant_id = $1 AND rule_key = ANY($2)`,
+      [tenant, keys],
+    ) : { rows: [] };
+    const bodyOf = new Map(bodies.rows.map((b) => [`${b.rule_key}@${b.version}`, b.body]));
+
+    const n = await client.query(
+      `SELECT id, created_at, history_id, author, note, resolved_at, resolved_by
+       FROM wingguy_change_notes
+       WHERE tenant_id = $1 AND history_id = ANY($2)
+       ORDER BY created_at ASC, id ASC`,
+      [tenant, rows.map((r) => Number(r.id))],
+    );
+    const notesFor = new Map();
+    let openNotes = 0;
+    for (const note of n.rows) {
+      const list = notesFor.get(Number(note.history_id)) || [];
+      list.push(note);
+      notesFor.set(Number(note.history_id), list);
+      if (!note.resolved_at) openNotes++;
+    }
+
+    const changes = rows.map((r) => {
+      const detail = (typeof r.detail === 'string' ? JSON.parse(r.detail || '{}') : r.detail) || {};
+      return {
+        id: Number(r.id),
+        createdAt: r.created_at,
+        actor: r.actor,
+        action: r.action,
+        ruleKey: r.rule_key,
+        fromVersion: r.from_version,
+        toVersion: r.to_version,
+        changeNote: detail.change_note || null,
+        beforeBody: r.from_version != null ? (bodyOf.get(`${r.rule_key}@${r.from_version}`) || null) : null,
+        afterBody: r.to_version != null ? (bodyOf.get(`${r.rule_key}@${r.to_version}`) || null) : null,
+        notes: notesFor.get(Number(r.id)) || [],
+      };
+    });
+    return { changes, openNotes };
+  } finally {
+    client.release();
+  }
+}
+
+/** Leave a note on one change-log entry. The entry must belong to the tenant — no cross-tenant notes. */
+async function addChangeNote({ tenantId = DEFAULT_TENANT, historyId, author, note } = {}) {
+  const id = Number(historyId);
+  const text = String(note || '').trim();
+  if (!Number.isInteger(id) || id <= 0) throw new Error('addChangeNote: historyId is required');
+  if (!text) throw new Error('addChangeNote: note text is required');
+  const p = getPool();
+  if (!p) throw new Error('DATABASE_URL not set');
+  const tenant = (tenantId || DEFAULT_TENANT).trim();
+  const client = await p.connect();
+  try {
+    await ensureSchema(client);
+    const owns = await client.query(
+      `SELECT 1 FROM wingguy_rule_history WHERE id = $1 AND tenant_id = $2 AND layer = 'client'`,
+      [id, tenant],
+    );
+    if (!owns.rows.length) throw new Error('that change is not on this account');
+    const r = await client.query(
+      `INSERT INTO wingguy_change_notes (tenant_id, history_id, author, note)
+       VALUES ($1, $2, $3, $4) RETURNING id, created_at`,
+      [tenant, id, String(author || '').trim().slice(0, 80) || null, text.slice(0, 2000)],
+    );
+    return { ok: true, id: Number(r.rows[0].id), createdAt: r.rows[0].created_at };
+  } finally {
+    client.release();
+  }
+}
+
+/** Tick a note off ("sorted"). Idempotent: resolving a resolved note changes nothing. */
+async function resolveChangeNote({ tenantId = DEFAULT_TENANT, noteId, resolvedBy } = {}) {
+  const id = Number(noteId);
+  if (!Number.isInteger(id) || id <= 0) throw new Error('resolveChangeNote: noteId is required');
+  const p = getPool();
+  if (!p) throw new Error('DATABASE_URL not set');
+  const client = await p.connect();
+  try {
+    await ensureSchema(client);
+    const r = await client.query(
+      `UPDATE wingguy_change_notes SET resolved_at = now(), resolved_by = $1
+       WHERE id = $2 AND tenant_id = $3 AND resolved_at IS NULL`,
+      [String(resolvedBy || '').trim().slice(0, 80) || null, id, (tenantId || DEFAULT_TENANT).trim()],
+    );
+    return { ok: true, resolved: r.rowCount };
+  } finally {
+    client.release();
+  }
+}
+
 /** Remember the newest pair id a nudge covered, so that batch is never mentioned again. */
 async function markEditNudge({ tenantId = DEFAULT_TENANT, pairId } = {}) {
   const id = Number(pairId);
@@ -1780,6 +1924,9 @@ module.exports = {
   resolveEditPairs,
   getEditNudgeState,
   markEditNudge,
+  getClientChangeLog,
+  addChangeNote,
+  resolveChangeNote,
   normalizeForEditCompare,
   // draft ledger (the email half of learn-from-my-edit)
   recordDraftBody,

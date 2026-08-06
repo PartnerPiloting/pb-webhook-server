@@ -103,6 +103,10 @@ function WingguySetupInner() {
   // opens any tenant's page without minting a portal link. A client's own link never carries these.
   const client = searchParams.get('client') || '';
   const devKey = searchParams.get('devKey') || '';
+  // Attribution, not authentication: a link can carry &as=<name> when more than one person works
+  // this tenant (an owner and a VA, say) so the change history reads "April changed..." rather
+  // than just "the setup page".
+  const asName = searchParams.get('as') || '';
   const hasAuth = !!token || !!(client && devKey);
 
   const authHeaders = useCallback((extra = {}) => {
@@ -110,8 +114,9 @@ function WingguySetupInner() {
     if (token) h['x-portal-token'] = token;
     if (client) h['x-client-id'] = client;
     if (devKey) h['x-dev-key'] = devKey;
+    if (asName) h['x-page-name'] = asName;
     return h;
-  }, [token, client, devKey]);
+  }, [token, client, devKey, asName]);
 
   const [state, setState] = useState({ status: 'loading', error: '', data: null });
   const [values, setValues] = useState({});
@@ -496,6 +501,16 @@ function WingguySetupInner() {
           title="How your Wingguy works"
           sub="Every instruction it follows, in plain English. Open any of them - and if one is not how you would do it, tell it right there."
         />
+        {/* The review page (2026-08-06): the owner's small window - what changed, who did it,
+            notes in the margin. Linked rather than embedded so this page stays the working
+            surface and a glance stays a glance. */}
+        <p className="text-sm text-slate-500 -mt-4">
+          Curious what has been changed on this page over time?{' '}
+          <a className="underline hover:text-slate-700" href={`/my-wingguy/review?${searchParams.toString()}`}>
+            See what&apos;s changed lately
+          </a>
+          {' '}- every change, who made it, before and after.
+        </p>
 
         <div className="bg-white border border-slate-200 p-6 flex flex-col gap-4">
           <p className="text-[15px] text-slate-700 leading-relaxed">
