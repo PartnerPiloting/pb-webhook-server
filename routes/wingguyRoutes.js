@@ -840,13 +840,16 @@ module.exports = function mountWingguy(app) {
     }
 
     try {
+      // Same attribution as instruction commits: a named link signs its blank changes too, so
+      // the review page can read "April filled in the sign-off".
+      const by = `portal:${tenantId}${pageName(req) ? `:as:${pageName(req)}` : ''}`;
       if (scope === 'variable') {
-        await wingguyStore.setVariable({ tenantId, varKey: key, value: clean, actor: `portal:${tenantId}` });
+        await wingguyStore.setVariable({ tenantId, varKey: key, value: clean, actor: by });
       } else {
         const field = setupFields.ASSET_FIELDS.find((f) => f.key === key);
         await wingguyStore.setAsset({
           tenantId, assetKey: key, url: clean, kind: field.kind || 'url',
-          status: clean ? 'active' : 'retired', actor: `portal:${tenantId}`,
+          status: clean ? 'active' : 'retired', actor: by,
         });
       }
       logger.info(`[Wingguy] setup ${scope} "${key}" updated by ${tenantId} (${clean ? 'set' : 'cleared'})`);
@@ -1236,15 +1239,28 @@ module.exports = function mountWingguy(app) {
     if (a.startsWith('portal:')) return 'the setup page';
     if (a.startsWith('mcp:')) return 'a chat with Wingguy';
     if (a.includes('seed')) return 'the starter kit';
+    if (a.startsWith('system:coach-managed')) return 'automatic onboarding fill';
     if (isHousekeepingActor(a)) return 'housekeeping';
     return 'Wingguy';
   }
 
-  // Engineering reshuffles - a rule moving between the client's own layer and the shared set
-  // without its wording changing for them. Real events, kept in the record, but not decisions
-  // anyone made about THIS business, so the page folds them out of the main list.
+  // Engineering reshuffles and automatic plumbing - rules moving between layers without their
+  // wording changing, and the coach-managed blanks (email, timezone, name) filled from the
+  // client record on first open. Real events, kept in the record, but not decisions anyone made
+  // about THIS business, so the page folds them out of the main list.
   function isHousekeepingActor(actor) {
-    return /promotion.?pass/i.test(String(actor || ''));
+    const a = String(actor || '');
+    return /promotion.?pass/i.test(a) || a.startsWith('system:');
+  }
+
+  // A blank's human name comes from the setup page's own field labels; anything not on the page
+  // (coach-managed keys like owner_email) falls back to a prettified key.
+  function blankLabelFor(key) {
+    const all = [...setupFields.VARIABLE_FIELDS, ...setupFields.ASSET_FIELDS, ...(setupFields.VOICE_FIELDS || [])];
+    const hit = all.find((f) => f.key === key);
+    if (hit && hit.label) return hit.label.replace(/\?$/, '');
+    const words = String(key || '').replace(/[-_]+/g, ' ').trim();
+    return words.charAt(0).toUpperCase() + words.slice(1);
   }
 
   // A stored instruction body as a human should read it: the client's own values woven in, and
@@ -1287,17 +1303,23 @@ module.exports = function mountWingguy(app) {
         openNotes,
         changes: changes.map((c) => ({
           id: c.id,
+          kind: c.kind,
           when: c.createdAt,
           who: whoFromActor(c.actor),
           housekeeping: isHousekeepingActor(c.actor),
           action: c.action,
           ruleKey: c.ruleKey,
-          title: titles.titleFor(c.ruleKey),
+          title: c.kind === 'blank' ? blankLabelFor(c.ruleKey) : titles.titleFor(c.ruleKey),
+          // An empty string is "was empty" - render it as nothing there, not a blank quote.
+          fromValue: c.fromValue || null,
+          toValue: c.toValue || null,
+          blankStatus: c.blankStatus,
           changeNote: c.changeNote,
           summary: c.summary,
           // An entry with a previous version can be put back; one that added an instruction can
           // only be undone by removing it. Either way the page says which, in those words.
-          undo: c.action === 'retire' ? null : (c.beforeBody ? 'restore' : 'remove'),
+          // Blanks get no undo door: changing one back is a single field on the setup page.
+          undo: c.kind === 'blank' ? null : (c.action === 'retire' ? null : (c.beforeBody ? 'restore' : 'remove')),
           beforeBody: humanise(c.beforeBody),
           afterBody: humanise(c.afterBody),
           notes: c.notes.map((note) => ({

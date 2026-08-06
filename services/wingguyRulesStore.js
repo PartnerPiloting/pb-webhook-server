@@ -1614,11 +1614,13 @@ async function getEditNudgeState({ tenantId = DEFAULT_TENANT, threshold = 3 } = 
 // ---------------------------------------------------------------------------
 
 /**
- * The tenant's own instruction changes, newest first, with before/after bodies and any notes
- * attached. Only client-layer commit/retire/revert rows — seeds are the starter kit arriving
- * (26 rows of noise on day one), and variable/asset sets are the fill-in-the-blanks form, not
- * instruction changes. Bodies come from wingguy_rules itself: retired versions are kept forever,
- * so (rule_key, version) resolves both sides of every change.
+ * The tenant's own instruction changes AND fill-in-the-blanks changes, newest first, with
+ * before/after and any notes attached. Instruction rows are client-layer commit/retire/revert;
+ * blank rows are variable-set/asset-set (their history rows carry no layer — the tenant id is
+ * the whole scope). Seeds stay excluded: the starter kit arriving is 26 rows of day-one noise,
+ * not a decision. Bodies come from wingguy_rules itself: retired versions are kept forever, so
+ * (rule_key, version) resolves both sides of every instruction change; blanks carry their own
+ * {from, to} in detail.
  */
 async function getClientChangeLog({ tenantId = DEFAULT_TENANT, limit = 30 } = {}) {
   const p = getPool();
@@ -1631,7 +1633,10 @@ async function getClientChangeLog({ tenantId = DEFAULT_TENANT, limit = 30 } = {}
     const h = await client.query(
       `SELECT id, created_at, actor, action, rule_key, from_version, to_version, detail
        FROM wingguy_rule_history
-       WHERE tenant_id = $1 AND layer = 'client' AND action IN ('commit','retire','revert')
+       WHERE tenant_id = $1 AND (
+         (layer = 'client' AND action IN ('commit','retire','revert'))
+         OR action IN ('variable-set','asset-set')
+       )
        ORDER BY created_at DESC, id DESC LIMIT $2`,
       [tenant, cap],
     );
@@ -1672,8 +1677,10 @@ async function getClientChangeLog({ tenantId = DEFAULT_TENANT, limit = 30 } = {}
 
     const changes = rows.map((r) => {
       const detail = (typeof r.detail === 'string' ? JSON.parse(r.detail || '{}') : r.detail) || {};
+      const isBlank = r.action === 'variable-set' || r.action === 'asset-set';
       return {
         id: Number(r.id),
+        kind: isBlank ? 'blank' : 'instruction',
         createdAt: r.created_at,
         actor: r.actor,
         action: r.action,
@@ -1681,6 +1688,10 @@ async function getClientChangeLog({ tenantId = DEFAULT_TENANT, limit = 30 } = {}
         fromVersion: r.from_version,
         toVersion: r.to_version,
         changeNote: detail.change_note || null,
+        // Blanks carry their own before/after — the {from, to} the set wrote at the time.
+        fromValue: isBlank ? (detail.from ?? null) : null,
+        toValue: isBlank ? (detail.to ?? (detail.url ?? null)) : null,
+        blankStatus: isBlank ? (detail.status || null) : null,
         summary: summaryOf.get(Number(r.id)) || null,
         beforeBody: r.from_version != null ? (bodyOf.get(`${r.rule_key}@${r.from_version}`) || null) : null,
         afterBody: r.to_version != null ? (bodyOf.get(`${r.rule_key}@${r.to_version}`) || null) : null,
@@ -1794,8 +1805,10 @@ async function addChangeNote({ tenantId = DEFAULT_TENANT, historyId, author, not
   const client = await p.connect();
   try {
     await ensureSchema(client);
+    // Tenant match is the whole ownership test: instruction rows carry layer='client', but
+    // blank rows (variable-set/asset-set) carry no layer at all — both take notes.
     const owns = await client.query(
-      `SELECT 1 FROM wingguy_rule_history WHERE id = $1 AND tenant_id = $2 AND layer = 'client'`,
+      `SELECT 1 FROM wingguy_rule_history WHERE id = $1 AND tenant_id = $2`,
       [id, tenant],
     );
     if (!owns.rows.length) throw new Error('that change is not on this account');

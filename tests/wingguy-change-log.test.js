@@ -35,13 +35,17 @@ class FakeDb {
 
     if (s.startsWith('SELECT 1 FROM wingguy_rule_history')) {
       const [id, tenant] = params;
-      const hit = this.history.find((h) => h.id === Number(id) && h.tenant_id === tenant && h.layer === 'client');
+      // Tenant match only — blank rows carry no layer, and they take notes too.
+      const hit = this.history.find((h) => h.id === Number(id) && h.tenant_id === tenant);
       return { rows: hit ? [{ '?column?': 1 }] : [] };
     }
     if (s.includes('FROM wingguy_rule_history') && s.includes('ORDER BY')) {
       const [tenant, cap] = params;
       const rows = this.history
-        .filter((h) => h.tenant_id === tenant && h.layer === 'client' && ['commit', 'retire', 'revert'].includes(h.action))
+        .filter((h) => h.tenant_id === tenant && (
+          (h.layer === 'client' && ['commit', 'retire', 'revert'].includes(h.action))
+          || ['variable-set', 'asset-set'].includes(h.action)
+        ))
         .slice().reverse().slice(0, cap);
       return { rows };
     }
@@ -156,6 +160,34 @@ class FakeDb {
   await check('empty note or missing id is refused', async () => {
     await assert.rejects(store.addChangeNote({ tenantId: 'T', historyId: 1, note: '  ' }), /note text/);
     await assert.rejects(store.addChangeNote({ tenantId: 'T', note: 'x' }), /historyId/);
+  });
+
+  console.log('fill-in-the-blanks changes — variable/asset sets join the list:');
+  await check('a variable-set row appears as a blank with from/to', async () => {
+    db.history.push({ id: 5, created_at: 't5', tenant_id: 'Test-Tenant', layer: null, actor: 'portal:Test-Tenant:as:April', action: 'variable-set', rule_key: 'signoff', from_version: null, to_version: null, detail: { from: 'Cheers', to: 'Talk soon' } });
+    const { changes } = await store.getClientChangeLog({ tenantId: 'Test-Tenant' });
+    const blank = changes.find((c) => c.kind === 'blank');
+    assert.ok(blank, 'blank entry present');
+    assert.strictEqual(blank.ruleKey, 'signoff');
+    assert.strictEqual(blank.fromValue, 'Cheers');
+    assert.strictEqual(blank.toValue, 'Talk soon');
+    assert.ok(changes.every((c) => c.kind !== 'blank' || c.beforeBody === null), 'blanks carry no rule bodies');
+  });
+  await check('an asset-set row carries its url as the new value', async () => {
+    db.history.push({ id: 6, created_at: 't6', tenant_id: 'Test-Tenant', layer: null, actor: 'portal:Test-Tenant', action: 'asset-set', rule_key: 'default_explainer', from_version: null, to_version: null, detail: { kind: 'url', url: 'https://example.com/x', status: 'active' } });
+    const { changes } = await store.getClientChangeLog({ tenantId: 'Test-Tenant' });
+    const a = changes.find((c) => c.ruleKey === 'default_explainer');
+    assert.strictEqual(a.kind, 'blank');
+    assert.strictEqual(a.toValue, 'https://example.com/x');
+    assert.strictEqual(a.blankStatus, 'active');
+  });
+  await check('a note lands on a blank change too (no layer on its history row)', async () => {
+    const r = await store.addChangeNote({ tenantId: 'Test-Tenant', historyId: 5, author: 'Paul', note: 'Like it.' });
+    assert.ok(r.id);
+    const { changes } = await store.getClientChangeLog({ tenantId: 'Test-Tenant' });
+    assert.strictEqual(changes.find((c) => c.id === 5).notes.length, 1);
+    // Tidy up so later open-note counts start from zero again.
+    await store.resolveChangeNote({ tenantId: 'Test-Tenant', noteId: r.id, resolvedBy: 'April' });
   });
 
   console.log('change summaries — written once, kept forever:');

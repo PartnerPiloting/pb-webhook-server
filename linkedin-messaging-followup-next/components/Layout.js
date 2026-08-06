@@ -39,7 +39,7 @@ const useClientInitialization = () => {
 };
 
 // Primary navigation tabs (URL params preserved)
-const NavigationWithParams = ({ pathname, showThanksForConnecting = false }) => {
+const NavigationWithParams = ({ pathname, showThanksForConnecting = false, showWingguy = false }) => {
   const searchParams = useSearchParams();
   const serviceLevel = parseInt(searchParams.get('level') || '2', 10);
   const clientParam = searchParams.get('client') || searchParams.get('testClient') || '';
@@ -50,19 +50,29 @@ const NavigationWithParams = ({ pathname, showThanksForConnecting = false }) => 
     { name: 'Top Scoring Leads', href: '/top-scoring-leads', icon: TrophyIcon, description: 'Pick the best candidates for the next LH batch', minLevel: 1 },
     // Per-client rollout: only shown when the master "Thanks for Connecting" switch is on (gated below).
     { name: 'Thanks for Connecting', href: '/thanks-for-connecting', icon: HandRaisedIcon, description: 'Welcome your recent connections', minLevel: 1, gate: 'thanksForConnecting' },
+    // Per-client Wingguy rollout: the setup page (and the what's-changed page via its own nav).
+    // The portal link is the ONE link clients keep, so Wingguy has to be reachable from it -
+    // the ?token= in the URL flows through searchParams like every other tab.
+    { name: 'My Wingguy', href: '/my-wingguy', icon: SparklesIcon, description: 'Your setup, and what has changed', minLevel: 1, gate: 'wingguy' },
     // LEGACY-DISABLED 2026-05-16: Top Scoring Posts retired (Apify cost). Resurrect by un-commenting.
     // { name: 'Top Scoring Posts', href: '/top-scoring-posts', icon: TrophyIcon, description: 'Leads with high-relevance posts ready for action', minLevel: 2 },
     { name: 'Settings', href: '/settings', icon: CogIcon, description: 'Configure scoring attributes and settings', minLevel: 1 },
     { name: 'Start Here', href: '/start-here', icon: BookOpenIcon, description: 'Onboarding categories and topics', minLevel: 1 }
   ];
-  const items = nav.filter(n => n.minLevel <= serviceLevel && (n.gate !== 'thanksForConnecting' || showThanksForConnecting));
+  const gates = { thanksForConnecting: showThanksForConnecting, wingguy: showWingguy };
+  const items = nav.filter(n => n.minLevel <= serviceLevel && (!n.gate || gates[n.gate] === true));
   return (
     <nav className="mb-8" aria-label="Primary">
       <div className="flex flex-wrap gap-x-8 gap-y-3 items-stretch">
         {items.map(item => {
           const Icon = item.icon;
           const isActive = pathname === item.href;
-          const href = `${item.href}?${searchParams.toString()}`;
+          // The Wingguy pages are standalone (no portal session) - their auth is the query
+          // string itself. The portal usually cleans ?token= off its own URL after login, so
+          // for this tab the link is rebuilt from the stored auth rather than the bare params.
+          const href = item.href === '/my-wingguy' && !searchParams.get('token') && !searchParams.get('devKey')
+            ? buildAuthUrl(item.href)
+            : `${item.href}?${searchParams.toString()}`;
           const handleClick = (e) => {
             try {
               // If we're already in /settings, clicking Settings should behave like "Back to Settings"
@@ -305,7 +315,7 @@ const Layout = ({ children }) => {
       <div className="w-full px-4 sm:px-6 lg:px-8 py-8">
         {/* Navigation Tabs */}
         <Suspense fallback={<div>Loading navigation...</div>}>
-          <NavigationWithParams pathname={pathname} showThanksForConnecting={clientProfile?.features?.thanksForConnecting === true} />
+          <NavigationWithParams pathname={pathname} showThanksForConnecting={clientProfile?.features?.thanksForConnecting === true} showWingguy={clientProfile?.features?.wingguy === true} />
         </Suspense>
 
         {/* Main Content */}

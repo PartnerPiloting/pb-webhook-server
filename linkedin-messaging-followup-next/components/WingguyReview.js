@@ -22,6 +22,10 @@ import { getBackendBase } from '../services/api';
 const VERB = { commit: 'changed', add: 'added', retire: 'retired', revert: 'put back' };
 
 function verbFor(c) {
+  if (c.kind === 'blank') {
+    if (c.toValue == null || c.blankStatus === 'retired') return 'cleared';
+    return c.fromValue == null ? 'filled in' : 'changed';
+  }
   // No before-body means nothing was there: a brand-new instruction, not a change to one.
   if (c.action === 'commit' && c.beforeBody == null) return VERB.add;
   return VERB[c.action] || 'changed';
@@ -38,7 +42,8 @@ function friendlyWhen(iso) {
 function WingguyReviewInner() {
   const searchParams = useSearchParams();
   const token = searchParams.get('token') || '';
-  const client = searchParams.get('client') || '';
+  // clientId is the spelling the portal's stored-auth link builder uses; client is ours.
+  const client = searchParams.get('client') || searchParams.get('clientId') || '';
   const devKey = searchParams.get('devKey') || '';
   const asParam = searchParams.get('as') || '';
   const hasAuth = !!token || !!(client && devKey);
@@ -117,7 +122,7 @@ function WingguyReviewInner() {
 
   return (
     <Shell>
-      <PageNav current="review" setupHref={setupHref} devLane={!!(client && devKey)} />
+      <PageNav current="review" setupHref={setupHref} devLane={!!(client && devKey)} query={searchParams.toString()} />
       <div className="flex flex-col gap-3 pb-6 border-b border-slate-200">
         <h1 className="font-serif text-3xl text-slate-900">What&apos;s changed lately</h1>
         <p className="text-slate-600">
@@ -154,18 +159,20 @@ function WingguyReviewInner() {
 }
 
 /** The slim header both Wingguy pages share, so moving between them never means hunting for a
- *  link mid-page. The full portal only appears on the admin lane - a token visitor is not logged
- *  in to the portal, and a menu of doors that refuse them is worse than no menu. */
-function PageNav({ current, setupHref, reviewHref, devLane }) {
+ *  link mid-page. "Open the portal" shows for anyone whose link can actually open it: the portal
+ *  token IS portal auth, so a token holder's query string carries straight through - and the
+ *  portal's "My Wingguy" tab leads back here, making the portal link the only one to remember. */
+function PageNav({ current, setupHref, reviewHref, devLane, query }) {
   const tab = (label, href, active) => active
     ? <span className="text-sm font-semibold text-slate-900 border-b-2 border-emerald-600 pb-1">{label}</span>
     : <a className="text-sm text-slate-500 hover:text-slate-800 pb-1" href={href}>{label}</a>;
+  const portalHref = `/?${query || ''}`;
   return (
     <div className="flex items-baseline gap-6 pb-2">
       {tab('Your Wingguy setup', setupHref, current === 'setup')}
       {tab("What's changed lately", reviewHref, current === 'review')}
       <span className="flex-1" />
-      {devLane ? <a className="text-sm text-slate-500 hover:text-slate-800" href="/">Open the portal</a> : null}
+      {devLane || query ? <a className="text-sm text-slate-500 hover:text-slate-800" href={portalHref}>Open the portal</a> : null}
     </div>
   );
 }
@@ -317,7 +324,7 @@ function ChangeCard({ change: c, name, setName, api, reload }) {
   // Changes made before summaries existed have none stored. Written on first open - one call
   // ever, then it is cached for good, so opening an old entry is the only time anyone waits.
   useEffect(() => {
-    if (!open || summary) return;
+    if (!open || summary || c.kind === 'blank') return;
     let cancelled = false;
     (async () => {
       try {
@@ -409,45 +416,74 @@ function ChangeCard({ change: c, name, setName, api, reload }) {
           {/* The first thing anyone reads: this already happened and wants nothing from them.
               Without it, a log entry reads like something awaiting approval. */}
           <p className="text-sm text-emerald-800 bg-emerald-50 px-4 py-2.5 leading-relaxed">
-            {c.afterBody
-              ? 'This is live now - it is already how Wingguy writes. Nothing here is waiting on you.'
-              : 'This instruction was removed - Wingguy no longer follows it. Nothing here is waiting on you.'}
+            {c.kind === 'blank'
+              ? 'This is live now - drafts already use it. Nothing here is waiting on you.'
+              : c.afterBody
+                ? 'This is live now - it is already how Wingguy writes. Nothing here is waiting on you.'
+                : 'This instruction was removed - Wingguy no longer follows it. Nothing here is waiting on you.'}
           </p>
+
+          {/* A blank is a fill-in-the-blank answer from the setup page, not an instruction - it
+              shows as a plain before/after and takes notes, nothing more. Changing it back is a
+              single field on the setup page, so there is no undo door here. */}
+          {c.kind === 'blank' ? (
+            <div className="flex flex-col gap-2">
+              {c.fromValue != null ? (
+                <div className="flex flex-col gap-1">
+                  <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">Was</p>
+                  <p className="text-[15px] text-slate-600 leading-relaxed whitespace-pre-wrap line-through decoration-slate-300">{c.fromValue}</p>
+                </div>
+              ) : null}
+              <div className="flex flex-col gap-1">
+                <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">Now</p>
+                {c.toValue != null && c.blankStatus !== 'retired' ? (
+                  <p className="text-[15px] text-slate-800 leading-relaxed whitespace-pre-wrap">{c.toValue}</p>
+                ) : (
+                  <p className="text-[15px] text-slate-500">Left empty - Wingguy falls back to its sensible default for this one.</p>
+                )}
+              </div>
+              <p className="text-[13px] text-slate-500">Changed on the setup page. To change it again, that is where it lives.</p>
+            </div>
+          ) : null}
 
           {/* Plain English leads. The instruction text itself is written for the model and reads
               as jargon, so it goes behind a link for whoever actually wants it. */}
-          <div className="flex flex-col gap-1.5">
-            <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">What this does</p>
-            {summary === null ? (
-              <p className="text-[15px] text-slate-400">Putting this in plain English…</p>
-            ) : summary ? (
-              <p className="text-[15px] text-slate-800 leading-relaxed">{summary}</p>
-            ) : (
-              <p className="text-[15px] text-slate-500">Could not write a plain-English summary just now - the exact wording is below.</p>
-            )}
-          </div>
-
-          <div className="flex flex-wrap gap-2">
-            <button type="button" onClick={() => explain('detail')} disabled={deeper === 'loading'}
-              className="px-3 py-1.5 text-[13px] text-slate-700 bg-white border border-slate-300 hover:border-emerald-600 hover:text-emerald-900 disabled:opacity-60">
-              {deeper === 'loading' ? 'Working…' : 'Explain this properly'}
-            </button>
-            <button type="button" onClick={() => explain('impact')} disabled={deeper === 'loading'}
-              className="px-3 py-1.5 text-[13px] text-slate-700 bg-white border border-slate-300 hover:border-emerald-600 hover:text-emerald-900 disabled:opacity-60">
-              What does this mean for my messages?
-            </button>
-            <button type="button" onClick={() => explain('example')} disabled={deeper === 'loading'}
-              className="px-3 py-1.5 text-[13px] text-slate-700 bg-white border border-slate-300 hover:border-emerald-600 hover:text-emerald-900 disabled:opacity-60">
-              Show me an example
-            </button>
-          </div>
-          {deeper && deeper !== 'loading' ? (
-            deeper.error ? <p className="text-sm text-red-700">{deeper.error}</p> : (
-              <div className="bg-emerald-50 border border-emerald-200 px-4 py-3 flex flex-col gap-2">
-                {deeper.text ? <p className="text-[15px] text-slate-800 leading-relaxed whitespace-pre-wrap">{deeper.text}</p> : null}
-                {deeper.example ? <ExampleBlock ex={deeper.example} /> : null}
+          {c.kind !== 'blank' ? (
+            <>
+              <div className="flex flex-col gap-1.5">
+                <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">What this does</p>
+                {summary === null ? (
+                  <p className="text-[15px] text-slate-400">Putting this in plain English…</p>
+                ) : summary ? (
+                  <p className="text-[15px] text-slate-800 leading-relaxed">{summary}</p>
+                ) : (
+                  <p className="text-[15px] text-slate-500">Could not write a plain-English summary just now - the exact wording is below.</p>
+                )}
               </div>
-            )
+
+              <div className="flex flex-wrap gap-2">
+                <button type="button" onClick={() => explain('detail')} disabled={deeper === 'loading'}
+                  className="px-3 py-1.5 text-[13px] text-slate-700 bg-white border border-slate-300 hover:border-emerald-600 hover:text-emerald-900 disabled:opacity-60">
+                  {deeper === 'loading' ? 'Working…' : 'Explain this properly'}
+                </button>
+                <button type="button" onClick={() => explain('impact')} disabled={deeper === 'loading'}
+                  className="px-3 py-1.5 text-[13px] text-slate-700 bg-white border border-slate-300 hover:border-emerald-600 hover:text-emerald-900 disabled:opacity-60">
+                  What does this mean for my messages?
+                </button>
+                <button type="button" onClick={() => explain('example')} disabled={deeper === 'loading'}
+                  className="px-3 py-1.5 text-[13px] text-slate-700 bg-white border border-slate-300 hover:border-emerald-600 hover:text-emerald-900 disabled:opacity-60">
+                  Show me an example
+                </button>
+              </div>
+              {deeper && deeper !== 'loading' ? (
+                deeper.error ? <p className="text-sm text-red-700">{deeper.error}</p> : (
+                  <div className="bg-emerald-50 border border-emerald-200 px-4 py-3 flex flex-col gap-2">
+                    {deeper.text ? <p className="text-[15px] text-slate-800 leading-relaxed whitespace-pre-wrap">{deeper.text}</p> : null}
+                    {deeper.example ? <ExampleBlock ex={deeper.example} /> : null}
+                  </div>
+                )
+              ) : null}
+            </>
           ) : null}
 
           {c.changeNote ? (
@@ -563,6 +599,7 @@ function ChangeCard({ change: c, name, setName, api, reload }) {
             {busy && busy !== 'note' && !busy.startsWith('sorted-') ? <p className="text-sm text-red-700">{busy}</p> : null}
           </div>
 
+          {c.kind !== 'blank' ? (
           <div className="flex flex-col gap-2 border-t border-slate-100 pt-3">
             <div className="flex flex-col gap-1">
               <p className="text-sm font-semibold text-slate-700">Not how you&apos;d do it?</p>
@@ -594,6 +631,7 @@ function ChangeCard({ change: c, name, setName, api, reload }) {
             {door.state === 'done' ? <p className="text-sm text-emerald-700">Saved - it now applies to everything Wingguy writes here, and it is at the top of this page.</p> : null}
             {door.state && door.state.error ? <p className="text-sm text-red-700">{door.state.error}</p> : null}
           </div>
+          ) : null}
         </div>
       ) : null}
     </div>
