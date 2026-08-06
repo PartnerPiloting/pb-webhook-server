@@ -1310,8 +1310,9 @@ module.exports = function mountWingguy(app) {
           action: c.action,
           ruleKey: c.ruleKey,
           title: c.kind === 'blank' ? blankLabelFor(c.ruleKey) : titles.titleFor(c.ruleKey),
-          fromValue: c.fromValue,
-          toValue: c.toValue,
+          // An empty string is "was empty" - render it as nothing there, not a blank quote.
+          fromValue: c.fromValue || null,
+          toValue: c.toValue || null,
           blankStatus: c.blankStatus,
           changeNote: c.changeNote,
           summary: c.summary,
