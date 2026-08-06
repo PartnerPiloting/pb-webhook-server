@@ -76,6 +76,8 @@ check('the GLANCE promise is earned - blank must be genuinely safe', () => {
     'target_verticals',   // read via {{?target_verticals}}
     'region',             // read via {{?region}}
     'owner_phone',        // read via {{?owner_phone}}
+    'ideal_fit_traits',   // read via {{?ideal_fit_traits}} in profile-hook-craft
+    'your_links',         // read via {{?your_links}} in asset-library-scaffold
   ]);
   fields.VARIABLE_FIELDS.filter((f) => f.tier === 'glance').forEach((f) => {
     assert.ok(

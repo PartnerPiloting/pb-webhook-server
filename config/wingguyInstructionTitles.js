@@ -105,6 +105,36 @@ const TITLES = {
   'pre-call-brief-format': { title: 'Your pre-call cheat sheet', gist: 'The prep note Wingguy emails you before a call.' },
 };
 
+/**
+ * The starter-kit entries that are PROMPTS, not instructions - "write your own manifesto", "define
+ * your targeting". They arrive blank on purpose: every one of them needs conversations a brand-new
+ * client has not had yet (the objections library is built from real objections by definition), and
+ * inventing content on day one is worse than leaving it empty, because invented content is never
+ * questioned afterwards.
+ *
+ * The page badges these rather than letting them sit among the finished instructions looking
+ * broken. `blurb` is what a client reads instead of the raw prompt text.
+ */
+const UNWRITTEN = {
+  'manifesto-scaffold': 'Your definitive articulation of what you are building - the piece your follow-up emails are built around. Worth writing once you have said it out loud a few times.',
+  'call2-scaffold': 'Your own story in four beats, for the second conversation. Easiest to write after you have told it to a couple of people.',
+  'targeting-scaffold': 'The fuller version of who you are for - your filter, the markets where those people gather, and the hook per market.',
+  'framing-angles-scaffold': 'One angle per audience you message - the single idea to plant with each, in their language.',
+  'objections-scaffold': 'The questions you get asked, and what actually works as an answer. This one can only be built from real conversations - leave it until you have had them.',
+  'asset-library-scaffold': 'Your full library of links, each with a note on when it earns its place and who it must never go to.',
+  'default-explainer-choice': 'Which of your links is the default "here is what I do" piece, and the part of it that does the convincing.',
+  'campaign-markers': 'The giveaway phrases that tell Wingguy which campaign a conversation belongs to. Stays empty until you actually run more than one.',
+};
+
+/** Is this rule a blank prompt rather than a working instruction? */
+function isUnwritten(ruleKey) {
+  return Object.prototype.hasOwnProperty.call(UNWRITTEN, ruleKey);
+}
+
+function blurbFor(ruleKey) {
+  return UNWRITTEN[ruleKey] || '';
+}
+
 /** Title for any rule_key, mapped or not. Never returns a kebab-case key to a human. */
 function titleFor(ruleKey) {
   const hit = TITLES[ruleKey];
@@ -118,4 +148,4 @@ function gistFor(ruleKey) {
   return (hit && hit.gist) || '';
 }
 
-module.exports = { TITLES, titleFor, gistFor };
+module.exports = { TITLES, UNWRITTEN, titleFor, gistFor, isUnwritten, blurbFor };

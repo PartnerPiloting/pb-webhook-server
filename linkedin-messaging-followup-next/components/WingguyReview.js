@@ -1,0 +1,339 @@
+"use client";
+
+/**
+ * "What's changed lately" — the review page. The small, self-contained window onto a client's own
+ * instruction changes: who changed what, when, before and after, with notes in the margin.
+ *
+ * Two people share one tenant here: the business owner glances at this page, whoever operates
+ * Wingguy day to day (a VA, a sales assistant) acts on what they read. Links carry &as=<name> for
+ * attribution - the token is still the whole authentication story, the name just signs notes and
+ * stamps changes so the history reads "April, Tuesday" instead of "someone, sometime".
+ *
+ * STANDALONE like the setup page: no Layout, no login. Deliberately short - this page is one list
+ * and nothing else, so a glance stays a glance. The change door under each entry runs the same
+ * assist propose → explicit Save → commit lane the setup page uses; notes never change anything
+ * themselves.
+ */
+
+import React, { useState, useEffect, useCallback, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { getBackendBase } from '../services/api';
+
+const VERB = { commit: 'changed', add: 'added', retire: 'retired', revert: 'put back' };
+
+function verbFor(c) {
+  if (c.action === 'commit' && (c.fromVersion == null || c.beforeBody == null)) return VERB.add;
+  return VERB[c.action] || 'changed';
+}
+
+function friendlyWhen(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short' })
+    + ', ' + d.toLocaleTimeString('en-AU', { hour: 'numeric', minute: '2-digit' });
+}
+
+function WingguyReviewInner() {
+  const searchParams = useSearchParams();
+  const token = searchParams.get('token') || '';
+  const client = searchParams.get('client') || '';
+  const devKey = searchParams.get('devKey') || '';
+  const asParam = searchParams.get('as') || '';
+  const hasAuth = !!token || !!(client && devKey);
+
+  // The signature on notes and changes. The link usually carries it (&as=April); if not, the
+  // first note asks once and the browser remembers.
+  const [name, setName] = useState(asParam);
+  useEffect(() => {
+    if (asParam) { try { window.localStorage.setItem('wg-page-name', asParam); } catch (e) { /* private mode */ } }
+    else { try { setName(window.localStorage.getItem('wg-page-name') || ''); } catch (e) { /* private mode */ } }
+  }, [asParam]);
+
+  const authHeaders = useCallback((extra = {}) => {
+    const h = { ...extra };
+    if (token) h['x-portal-token'] = token;
+    if (client) h['x-client-id'] = client;
+    if (devKey) h['x-dev-key'] = devKey;
+    if (name) h['x-page-name'] = name;
+    return h;
+  }, [token, client, devKey, name]);
+
+  const [state, setState] = useState({ status: 'loading', error: '', changes: [], openNotes: 0 });
+
+  const load = useCallback(async () => {
+    try {
+      const res = await fetch(`${getBackendBase()}/api/wingguy/setup/changes`, { headers: authHeaders() });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok) {
+        setState({ status: 'error', error: data.message || data.error || 'We could not open the change history.', notYet: res.status === 403, changes: [], openNotes: 0 });
+        return;
+      }
+      setState({ status: 'ready', error: '', changes: data.changes || [], openNotes: data.openNotes || 0 });
+    } catch (e) {
+      setState({ status: 'error', error: 'We could not reach Wingguy. Check your connection and refresh.', changes: [], openNotes: 0 });
+    }
+  }, [authHeaders]);
+
+  useEffect(() => {
+    if (!hasAuth) { setState((s) => ({ ...s, status: 'no-token' })); return; }
+    load();
+  }, [hasAuth, load]);
+
+  const api = useCallback(async (path, payload) => {
+    const res = await fetch(`${getBackendBase()}/api/wingguy/${path}`, {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.ok) throw new Error(data.error || 'That did not work - try again in a moment.');
+    return data;
+  }, [authHeaders]);
+
+  const setupHref = `/my-wingguy?${searchParams.toString()}`;
+
+  if (!hasAuth) {
+    return (
+      <Shell>
+        <h1 className="font-serif text-3xl text-slate-900">This link is missing its key</h1>
+        <p className="text-slate-600">The address you followed does not carry an access token. Use the exact link you were sent - or ask for a fresh one.</p>
+      </Shell>
+    );
+  }
+  if (state.status === 'loading') return <Shell><p className="text-slate-500">Opening the change history…</p></Shell>;
+  if (state.status === 'error') {
+    return (
+      <Shell>
+        <h1 className="font-serif text-3xl text-slate-900">{state.notYet ? 'Not switched on yet' : 'Something went wrong'}</h1>
+        <p className="text-slate-600">{state.error}</p>
+      </Shell>
+    );
+  }
+
+  return (
+    <Shell>
+      <div className="flex flex-col gap-3 pb-6 border-b border-slate-200">
+        <h1 className="font-serif text-3xl text-slate-900">What&apos;s changed lately</h1>
+        <p className="text-slate-600">
+          Every change made to this Wingguy&apos;s own instructions, newest first - who made it, what
+          it said before, what it says now. Read one and want to react? Leave a note on it; whoever
+          runs the page day to day sees it right here and can act on it on the spot. Nothing on this
+          page changes anything by itself.
+        </p>
+        {state.openNotes ? (
+          <p className="text-[15px] text-amber-800 bg-amber-50 border border-amber-200 px-4 py-2.5">
+            {state.openNotes} note{state.openNotes === 1 ? '' : 's'} waiting below - look for the amber marks.
+          </p>
+        ) : null}
+        <p className="text-sm text-slate-500">
+          <a className="underline hover:text-slate-700" href={setupHref}>Go to the full setup page</a>
+          {' '}- blanks, voice, and every instruction in one place.
+        </p>
+      </div>
+
+      {state.changes.length === 0 ? (
+        <p className="text-slate-600">
+          No changes yet. Everything this Wingguy runs on is still the shared standard set - the
+          first change anyone makes (on the setup page or in a chat) will appear here.
+        </p>
+      ) : (
+        <div className="flex flex-col gap-3">
+          {state.changes.map((c) => (
+            <ChangeCard key={c.id} change={c} name={name} setName={setName} api={api} reload={load} />
+          ))}
+        </div>
+      )}
+    </Shell>
+  );
+}
+
+function ChangeCard({ change: c, name, setName, api, reload }) {
+  const [open, setOpen] = useState(false);
+  const [showBefore, setShowBefore] = useState(false);
+  const [noteText, setNoteText] = useState('');
+  const [busy, setBusy] = useState(''); // '' | 'note' | 'sorted-<id>' | error text
+  const [door, setDoor] = useState({ text: '', state: null }); // change door: null | 'loading' | {proposal} | {answer} | {error}
+  const openNotes = (c.notes || []).filter((n) => !n.resolvedAt).length;
+
+  const leaveNote = async () => {
+    if (!noteText.trim()) return;
+    setBusy('note');
+    try {
+      await api('setup/change-note', { historyId: c.id, note: noteText.trim(), as: name || undefined });
+      setNoteText('');
+      setBusy('');
+      await reload();
+    } catch (e) { setBusy(e.message); }
+  };
+
+  const sorted = async (noteId) => {
+    setBusy(`sorted-${noteId}`);
+    try {
+      await api('setup/change-note-resolve', { noteId, as: name || undefined });
+      setBusy('');
+      await reload();
+    } catch (e) { setBusy(e.message); }
+  };
+
+  const runDoor = async () => {
+    if (!door.text.trim()) return;
+    setDoor((d) => ({ ...d, state: 'loading' }));
+    try {
+      const data = await api('setup/assist', { mode: 'change', ruleKey: c.ruleKey, request: door.text.trim() });
+      // Same shape the setup page handles: a question comes back as {action:'answer', text},
+      // anything else IS the proposal object.
+      setDoor((d) => ({ ...d, state: data.action === 'answer' ? { answer: data.text } : { proposal: data } }));
+    } catch (e) { setDoor((d) => ({ ...d, state: { error: e.message } })); }
+  };
+
+  const saveDoor = async () => {
+    const p = door.state && door.state.proposal;
+    if (!p) return;
+    setDoor((d) => ({ ...d, state: 'loading' }));
+    try {
+      await api('setup/change-commit', {
+        ruleKey: p.ruleKey, context: p.context, ruleType: p.ruleType,
+        body: p.proposedBody, expectedVersion: p.expectedVersion, explanation: p.explanation,
+        as: name || undefined,
+      });
+      setDoor({ text: '', state: 'done' });
+      await reload();
+    } catch (e) { setDoor((d) => ({ ...d, state: { error: e.message } })); }
+  };
+
+  return (
+    <div className="bg-white border border-slate-200">
+      <button type="button" onClick={() => setOpen(!open)} className="w-full text-left px-5 py-4 flex items-baseline gap-3">
+        <span className="text-sm text-slate-500 whitespace-nowrap">{friendlyWhen(c.when)}</span>
+        <span className="text-[15px] text-slate-900">
+          <span className="font-medium">{c.who}</span> {verbFor(c)} <span className="font-medium">&ldquo;{c.title}&rdquo;</span>
+        </span>
+        <span className="flex-1" />
+        {openNotes ? <span className="text-xs text-amber-800 bg-amber-50 border border-amber-300 px-2 py-0.5 whitespace-nowrap">{openNotes} note{openNotes === 1 ? '' : 's'}</span> : null}
+        <span className="text-xs text-slate-400 whitespace-nowrap">{open ? 'close' : 'open'}</span>
+      </button>
+
+      {open ? (
+        <div className="px-5 pb-5 flex flex-col gap-4 border-t border-slate-100 pt-4">
+          {c.changeNote ? <p className="text-sm text-slate-600 italic">{c.changeNote}</p> : null}
+
+          {c.afterBody ? (
+            <div className="flex flex-col gap-1.5">
+              <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">What it says now</p>
+              <p className="text-[15px] text-slate-800 leading-relaxed whitespace-pre-wrap bg-slate-50 border border-slate-200 px-4 py-3">{c.afterBody}</p>
+            </div>
+          ) : (
+            <p className="text-sm text-slate-600">This instruction was retired - it no longer applies.</p>
+          )}
+          {c.beforeBody ? (
+            showBefore ? (
+              <div className="flex flex-col gap-1.5">
+                <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">What it said before</p>
+                <p className="text-[15px] text-slate-600 leading-relaxed whitespace-pre-wrap bg-slate-50 border border-slate-200 px-4 py-3">{c.beforeBody}</p>
+              </div>
+            ) : (
+              <button type="button" onClick={() => setShowBefore(true)} className="self-start text-sm text-slate-500 underline hover:text-slate-700">
+                Show what it said before
+              </button>
+            )
+          ) : null}
+
+          {(c.notes || []).length ? (
+            <div className="flex flex-col gap-2">
+              {c.notes.map((n) => (
+                <div key={n.id} className={`px-4 py-3 border flex flex-col gap-1 ${n.resolvedAt ? 'bg-slate-50 border-slate-200' : 'bg-amber-50 border-amber-200'}`}>
+                  <p className="text-[15px] text-slate-800 leading-relaxed">{n.note}</p>
+                  <div className="flex items-baseline gap-3">
+                    <p className="text-xs text-slate-500">{n.author}, {friendlyWhen(n.when)}</p>
+                    <span className="flex-1" />
+                    {n.resolvedAt ? (
+                      <p className="text-xs text-slate-500">sorted{n.resolvedBy ? ` by ${n.resolvedBy}` : ''}</p>
+                    ) : (
+                      <button type="button" onClick={() => sorted(n.id)} disabled={busy === `sorted-${n.id}`}
+                        className="text-xs font-medium text-amber-800 underline hover:text-amber-900">
+                        {busy === `sorted-${n.id}` ? 'ticking…' : 'Sorted'}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : null}
+
+          <div className="flex flex-col gap-2">
+            {!name ? (
+              <input
+                type="text" placeholder="Your first name (signs your notes)"
+                className="border border-slate-300 px-3 py-2 text-[15px] max-w-xs"
+                onBlur={(e) => {
+                  const v = e.target.value.trim();
+                  if (v) { setName(v); try { window.localStorage.setItem('wg-page-name', v); } catch (err) { /* private mode */ } }
+                }}
+              />
+            ) : null}
+            <div className="flex gap-2">
+              <input
+                type="text" value={noteText} onChange={(e) => setNoteText(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') leaveNote(); }}
+                placeholder={`Leave a note on this change${name ? ` (as ${name})` : ''} - e.g. "prefer we don't promise timeframes"`}
+                className="flex-1 border border-slate-300 px-3 py-2 text-[15px]"
+              />
+              <button type="button" onClick={leaveNote} disabled={busy === 'note' || !noteText.trim()}
+                className="px-4 py-2 bg-slate-900 text-white text-sm font-medium disabled:opacity-40">
+                {busy === 'note' ? 'Leaving…' : 'Leave note'}
+              </button>
+            </div>
+            {busy && busy !== 'note' && !busy.startsWith('sorted-') ? <p className="text-sm text-red-700">{busy}</p> : null}
+          </div>
+
+          <div className="flex flex-col gap-2 border-t border-slate-100 pt-3">
+            <div className="flex gap-2">
+              <input
+                type="text" value={door.text} onChange={(e) => setDoor((d) => ({ ...d, text: e.target.value }))}
+                onKeyDown={(e) => { if (e.key === 'Enter') runDoor(); }}
+                placeholder={'Want it changed? Say it in your own words - it will show you the new version before anything saves'}
+                className="flex-1 border border-slate-300 px-3 py-2 text-[15px]"
+              />
+              <button type="button" onClick={runDoor} disabled={door.state === 'loading' || !door.text.trim()}
+                className="px-4 py-2 border border-slate-400 text-slate-800 text-sm font-medium disabled:opacity-40">
+                {door.state === 'loading' ? 'Thinking…' : 'Show me'}
+              </button>
+            </div>
+            {door.state && door.state.proposal ? (
+              <div className="bg-slate-50 border border-slate-200 px-4 py-3 flex flex-col gap-2">
+                <p className="text-sm text-slate-600">{door.state.proposal.explanation}</p>
+                <p className="text-[15px] text-slate-800 leading-relaxed whitespace-pre-wrap">{door.state.proposal.proposedBody}</p>
+                <div className="flex gap-3">
+                  <button type="button" onClick={saveDoor} className="px-4 py-2 bg-slate-900 text-white text-sm font-medium">Save this version</button>
+                  <button type="button" onClick={() => setDoor({ text: '', state: null })} className="text-sm text-slate-500 underline">Never mind</button>
+                </div>
+              </div>
+            ) : null}
+            {door.state && door.state.answer ? <p className="text-[15px] text-slate-700 bg-slate-50 border border-slate-200 px-4 py-3">{door.state.answer}</p> : null}
+            {door.state === 'done' ? <p className="text-sm text-emerald-700">Saved - it now applies to everything Wingguy writes here, and it is at the top of this page.</p> : null}
+            {door.state && door.state.error ? <p className="text-sm text-red-700">{door.state.error}</p> : null}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function Shell({ children }) {
+  return (
+    <div className="min-h-screen bg-[#F4F6F4]">
+      <div className="mx-auto px-6 py-14 flex flex-col max-w-2xl gap-6">
+        {children}
+      </div>
+    </div>
+  );
+}
+
+export default function WingguyReview() {
+  return (
+    <Suspense fallback={<Shell><p className="text-slate-500">Opening the change history…</p></Shell>}>
+      <WingguyReviewInner />
+    </Suspense>
+  );
+}

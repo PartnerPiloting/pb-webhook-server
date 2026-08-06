@@ -174,6 +174,29 @@ function parseLinkedInLast(notes, leadFirstName) {
   return null;
 }
 
+/**
+ * TRUE if the lead has EVER sent a LinkedIn message in this Notes history — any line whose sender
+ * names them, full depth, NOT windowed. Feeds the cadence gate (Decision B in classifyLead): the
+ * question there is "has this person ever actually spoken?", and the newest-line/windowed
+ * parseLinkedInLast can't answer it for someone whose only activity is the coach's own opener.
+ * Same sender heuristic (and the same name-collision caveat) as parseLinkedInLast.
+ */
+function linkedInEverInbound(notes, leadFirstName) {
+  const first = String(leadFirstName || '').trim().toLowerCase();
+  if (!first) return false;
+  const block = String(notes || '');
+  const start = block.indexOf('=== LINKEDIN MESSAGES ===');
+  if (start === -1) return false;
+  let seg = block.slice(start);
+  const nextHdr = seg.indexOf('\n=== ', 1);
+  if (nextHdr !== -1) seg = seg.slice(0, nextHdr);
+  for (const raw of seg.split('\n')) {
+    const m = raw.trim().match(LI_MSG_RE);
+    if (m && m[4].toLowerCase().includes(first)) return true;
+  }
+  return false;
+}
+
 /** Read Airtable's singleSelect cell as a plain string (airtable.js gives a string; be defensive). */
 function selectName(v) { return (v && typeof v === 'object' ? v.name : v) || ''; }
 
@@ -229,7 +252,7 @@ function computeMailSignals(messages, leadEmails) {
  * ranking logic is unit-testable. `nowMs`/`todayMidMs` passed in (Date.now is unavailable in some
  * sandboxes and keeps this deterministic for tests).
  */
-function classifyLead(lead, { lastInboundMs, lastOutboundMs, nowMs, todayMidMs }) {
+function classifyLead(lead, { lastInboundMs, lastOutboundMs, everInbound, nowMs, todayMidMs }) {
   // Deferral tier reads the engine-written `Reconnect On` date. Until that field exists on the bases
   // and the content-read populates it, lead.reconnectOn is null everywhere → no deferral surfaces
   // (deliberate: the rotted legacy Follow-Up Date must NOT drive the engine).
@@ -256,6 +279,11 @@ function classifyLead(lead, { lastInboundMs, lastOutboundMs, nowMs, todayMidMs }
   // from a parked lead won't resurface them here until their date — the human's own inbox covers it.
   if (replyWaiting && inboundDays <= REPLY_LIVE_DAYS) {
     if (reconnectFuture) return { tier: null, gatedCadence: true };
+    // Cease waiver (Guy 2026-07-28, the Matthew Murray "permanently remove"): dropping a person
+    // waives whatever they were owed AT THAT MOMENT — the human saw the open thread and chose to
+    // let it go. Only an inbound NEWER than the cease surfaces (a reply is a reply). Leads ceased
+    // before the Cease FUP At rollout have no timestamp and keep the old always-surface behavior.
+    if (lead.cease && lead.ceaseAtMs && lastInboundMs <= lead.ceaseAtMs) return { tier: null, gatedCadence: true };
     return { tier: 'reply', why: `they replied ${inboundDays}d ago — ball's in your court`, sortKey: -inboundDays, gated };
   }
   if (deferralLive) return { tier: 'deferral', why: `reconnect date reached (${deferDays === 0 ? 'today' : deferDays + 'd ago'})`, sortKey: deferDays, gated };
@@ -263,9 +291,12 @@ function classifyLead(lead, { lastInboundMs, lastOutboundMs, nowMs, todayMidMs }
     if (outboundDays > CADENCE_MAX_DAYS) return null;                                   // too cold — needs re-engagement, drop
     if (gated) return { tier: null, gatedCadence: true };                              // Cease/Series → cadence off
     if (reconnectFuture) return { tier: null, gatedCadence: true };                    // parked until their reconnect date → no early nudge
-    // Decision B: only chase "went quiet" for a REAL relationship (connected, or they've replied at least
-    // once). Pure cold outreach that was simply ignored is not an owed follow-up — drop it.
-    if (!(lead.connected || !!lastInboundMs)) return { tier: null, coldCadence: true };
+    // Decision B, tightened 2026-08-01: only chase "went quiet" when the person has EVER actually
+    // spoken — an inbound in the window, or any LinkedIn message from them in the full history
+    // (everInbound). Being connected no longer qualifies on its own: the accept-then-silence
+    // pattern (connection taken, "up for a quick Zoom?" ignored) was filling the queue with
+    // people who never said a word — silence after zero words is disinterest, not an owed nudge.
+    if (!(everInbound || !!lastInboundMs)) return { tier: null, coldCadence: true };
     // Recent-first, like reply-owed: a fresh silence is the most naturally nudgeable (sortKey = -days).
     return { tier: 'cadence', why: `you messaged last, ${outboundDays}d silent`, sortKey: -outboundDays, gated: false };
   }
@@ -290,6 +321,109 @@ function normaliseDashes(s) {
     .replace(/&mdash;|&#8212;|&#x2014;/gi, '—')   // entity forms → literal em
     .replace(/&ndash;|&#8211;|&#x2013;/gi, '–')   // entity forms → literal en
     .replace(/\s*[–—]\s*/g, ' - ');          // dash (± surrounding ws) → " - "
+}
+
+// ---------------------------------------------------------------------------
+// Follow-up stamp at DRAFT time (added 2026-07-30)
+//
+// WHY: the follow-up queue's `Follow-Up Date` was only ever written by the inbound BCC pipe
+// (services/inboundEmailService.js — the track@ copy comes back in, the email lands in the lead's
+// Notes AND the lead gets stamped +14 days). So an email sent without the BCC emailed the lead but
+// never put them in the queue — a SILENT miss that depends on the coach remembering a Bcc line.
+// The BCC stays (it writes the profile note and is visible to humans); the QUEUE just stops
+// depending on it. Same field, same +14 derivation, same date shape as the inbound path.
+//
+// Deliberate: this fires when the DRAFT is created, not when it's sent — the draft door is the last
+// point Wingguy sees the email at all (the human sends from their own mail client). A draft the
+// coach abandons therefore leaves a stamp: that lead surfaces in the queue in 14 days with nothing
+// sent, which is a cheap, visible false positive next to the silent miss it replaces.
+// ---------------------------------------------------------------------------
+
+const FOLLOWUP_STAMP_DAYS = 14; // matches the inbound BCC stamp — keep the two in step
+
+/**
+ * Decide what to write into `Follow-Up Date`, or null for "leave it alone". Pure.
+ *
+ * IDEMPOTENT BY CONSTRUCTION: the field holds an ABSOLUTE date, so re-stamping the same email is a
+ * no-op rather than an accumulation — when the BCC copy arrives minutes later the inbound path
+ * derives the same +14 day and rewrites the identical string. An existing stamp that is already
+ * the same day or LATER (a hand-set date, a longer-dated promise, or a stamp from a later email in
+ * the same thread) is never pulled back in.
+ *
+ * @param {string|null} existing  the lead's current Follow-Up Date ('YYYY-MM-DD', or ISO datetime)
+ * @param {Date} referenceDate    when the email was written (normally now)
+ * @returns {string|null} 'YYYY-MM-DD' to write, or null to skip
+ */
+function chooseFollowUpStamp(existing, referenceDate, days = FOLLOWUP_STAMP_DAYS) {
+  const d = new Date(referenceDate);
+  if (Number.isNaN(d.getTime())) return null;
+  // Same derivation as inboundEmailService (setDate +days → ISO date part), so both doors agree.
+  d.setDate(d.getDate() + days);
+  const candidate = d.toISOString().split('T')[0];
+  const current = String(existing || '').trim().slice(0, 10);
+  if (current && current >= candidate) return null; // already due then or later — don't pull it back
+  return candidate;
+}
+
+/** The coach's OWN addresses — a draft to any of these is a self-reminder, not a lead email. */
+function coachOwnEmails(coach) {
+  const set = new Set();
+  const add = (v) => { const e = String(v || '').trim().toLowerCase(); if (e) set.add(e); };
+  add(coach.clientEmailAddress);
+  add(coach.googleCalendarEmail);   // the {Calendar Email} column — the mailbox Wingguy reads
+  add(coach.calendarEmail);
+  // Same source the inbound path filters on, so both doors treat the same addresses as "self".
+  try {
+    String(coach.rawRecord?.get('Alternative Email Addresses') || '').split(';').forEach(add);
+  } catch (_) { /* rawRecord absent (cached/stubbed client) — the primary addresses still apply */ }
+  return set;
+}
+
+/**
+ * Stamp `Follow-Up Date` (+14) on every To recipient that resolves to a lead in the tenant's base.
+ *
+ * Per-tenant: the base comes from the same `coach` record the draft path already resolved.
+ * Lead resolution is inboundEmailService.findLeadByEmail — the SAME matcher (primary {Email}, then
+ * the {Alt Emails} fallback) the BCC path uses, so draft-time and BCC-time land on one record.
+ * Best-effort throughout: the draft already exists, so a stamp failure must never fail the tool.
+ *
+ * @returns {{stamped:string[], skipped:string[], failed:string[]}}
+ */
+async function stampFollowUpForDraft({ coach, recipients, now = new Date() }) {
+  const out = { stamped: [], skipped: [], failed: [] };
+  if (!coach || !coach.airtableBaseId) {
+    out.skipped.push('no Airtable base on this client — nothing stamped');
+    return out;
+  }
+  const clientService = require('./clientService');
+  const inbound = require('./inboundEmailService');
+  const self = coachOwnEmails(coach);
+  let base;
+  try { base = clientService.getClientBase(coach.airtableBaseId); }
+  catch (e) { out.failed.push(`base unavailable (${e.message})`); return out; }
+
+  const seen = new Set();
+  for (const r of recipients) {
+    const email = String(r.email || '').trim().toLowerCase();
+    if (!email || seen.has(email)) continue;
+    seen.add(email);
+    if (self.has(email)) { out.skipped.push(`${email} (your own address)`); continue; }
+
+    let lead = null;
+    try { lead = await inbound.findLeadByEmail(coach, email); }
+    catch (e) { out.failed.push(`${email} (lookup failed: ${e.message})`); continue; }
+    if (!lead) { out.skipped.push(`${email} (not a lead in the base)`); continue; }
+
+    const stamp = chooseFollowUpStamp(lead.followUpDate, now);
+    if (!stamp) { out.skipped.push(`${email} (already due ${String(lead.followUpDate).slice(0, 10)})`); continue; }
+    try {
+      await base('Leads').update(lead.id, { 'Follow-Up Date': stamp });
+      out.stamped.push(`${email} → ${stamp}`);
+    } catch (e) {
+      out.failed.push(`${email} (write failed: ${e.message})`);
+    }
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------------------
@@ -395,6 +529,17 @@ async function runCreateDraft({ to, subject, html_body, cc, bcc, reply_to, reply
     }
   }
 
+  // --- Follow-up stamp (best-effort): the queue no longer waits on the track@ BCC round-trip ---
+  // To recipients only — a Cc'd third party isn't who the email is FOR, and the Bcc is the tracker.
+  let followUpLine = '';
+  try {
+    const stampRes = await stampFollowUpForDraft({ coach, recipients });
+    if (stampRes.stamped.length) followUpLine = `Follow-up queued: ${stampRes.stamped.join(', ')} (14 days).\n`;
+    if (stampRes.failed.length) followUpLine += `⚠ Follow-up date NOT stamped for ${stampRes.failed.join(', ')} — they won't surface in the queue on their own.\n`;
+  } catch (e) {
+    followUpLine = `⚠ Follow-up stamp skipped (${e.message}) — the draft is fine, but the queue won't pick this lead up unless the BCC lands.\n`;
+  }
+
   const toStr = recipients.map((r) => r.email).join(', ');
   const bccStr = mailProvider.toParticipants(bcc).map((r) => r.email).join(', ');
   const threadLine = reply_to_message_id
@@ -405,6 +550,7 @@ async function runCreateDraft({ to, subject, html_body, cc, bcc, reply_to, reply
       `Draft created in ${coach.clientName || tenant}'s mailbox (Nylas). draftId=${result.draftId}\n` +
       threadLine +
       ledgerLine +
+      followUpLine +
       `To: ${toStr}${bccStr ? ` · Bcc: ${bccStr}` : ''} · Subject: ${String(subject).trim()}\n` +
       `Hyperlinks are stored verbatim (no google.com/url wrapping) — open the draft, give it a final read, and send. No manual link-fixing needed.`,
   };
@@ -617,16 +763,20 @@ async function computeFollowupSweep({ window_days } = {}, tenant = TENANT) {
   const BASE_LEAD_FIELDS = ['First Name', 'Last Name', 'Email', 'Cease FUP', 'Notes', 'Series Sent Count', 'Series Unsubscribed', 'Date Connected', 'LinkedIn Profile URL'];
   try {
     const base = clientService.getClientBase(coach.airtableBaseId);
-    try {
-      // Reconnect On is the engine's deferral-date store (added 2026-07-23). Ask for it first.
-      records = await base('Leads').select({ fields: [...BASE_LEAD_FIELDS, 'Reconnect On'] }).all();
-    } catch (e) {
-      // A tenant base that predates the Reconnect On rollout 422s on the unknown field — fall back
-      // to reading without it (their deferral tier simply stays dormant, no break).
-      if (/Reconnect On|UNKNOWN_FIELD_NAME|422|INVALID|Unknown field/i.test(e.message)) {
-        records = await base('Leads').select({ fields: BASE_LEAD_FIELDS }).all();
-      } else {
-        throw e;
+    // Engine-written fields roll out over time — a tenant base that predates one 422s on the
+    // unknown field, so try richest-first and degrade (that feature simply stays dormant there).
+    const FIELD_ATTEMPTS = [
+      [...BASE_LEAD_FIELDS, 'Reconnect On', 'Cease FUP At'],
+      [...BASE_LEAD_FIELDS, 'Reconnect On'],
+      BASE_LEAD_FIELDS,
+    ];
+    for (let i = 0; i < FIELD_ATTEMPTS.length; i++) {
+      try {
+        records = await base('Leads').select({ fields: FIELD_ATTEMPTS[i] }).all();
+        break;
+      } catch (e) {
+        const unknownField = /Reconnect On|Cease FUP At|UNKNOWN_FIELD_NAME|422|INVALID|Unknown field/i.test(e.message);
+        if (!unknownField || i === FIELD_ATTEMPTS.length - 1) throw e;
       }
     }
   } catch (e) {
@@ -646,8 +796,9 @@ async function computeFollowupSweep({ window_days } = {}, tenant = TENANT) {
       reconnectOn: f['Reconnect On'] || null, // engine's deferral-date store; null where the field is absent/unset
       linkedinUrl: String(f['LinkedIn Profile URL'] || '').trim() || null, // for hyperlinked names in the brief
       cease: selectName(f['Cease FUP']) === 'Yes',
+      ceaseAtMs: f['Cease FUP At'] ? Date.parse(f['Cease FUP At']) || null : null, // the waiver line (see classifyLead)
       onSeries: Number(f['Series Sent Count'] || 0) > 0 && f['Series Unsubscribed'] !== true,
-      connected: !!f['Date Connected'], // real-relationship signal for the cadence gate (Decision B)
+      connected: !!f['Date Connected'], // informational since 2026-08-01 — the cadence gate now needs them to have SPOKEN, not just clicked accept
       notes: f['Notes'] || '',
       lastInboundMs: null,
       lastOutboundMs: null,
@@ -695,7 +846,12 @@ async function computeFollowupSweep({ window_days } = {}, tenant = TENANT) {
       if (li.inbound) lastInboundMs = Math.max(lastInboundMs || 0, li.ms);
       else lastOutboundMs = Math.max(lastOutboundMs || 0, li.ms);
     }
-    const c = classifyLead(lead, { lastInboundMs: lastInboundMs || null, lastOutboundMs: lastOutboundMs || null, nowMs, todayMidMs });
+    const c = classifyLead(lead, {
+      lastInboundMs: lastInboundMs || null,
+      lastOutboundMs: lastOutboundMs || null,
+      everInbound: linkedInEverInbound(lead.notes, lead.first),
+      nowMs, todayMidMs,
+    });
     if (!c) continue;
     if (c.gatedCadence) { gatedCadence++; continue; }
     if (c.coldCadence) { coldCadence++; continue; }
@@ -725,8 +881,9 @@ async function computeFollowupSweep({ window_days } = {}, tenant = TENANT) {
             // Response-aware (Celeste, 2026-07-24): a DECLINED invite is NOT a booked meeting —
             // her 12 Jul decline was silencing her whole pipeline. 'needsAction' still counts as
             // booked on purpose: agreed-in-chat leads often never click Accept, and un-suppressing
-            // them re-creates the reply-owed false positives. The safety net for an unanswered
-            // pencil-in invite is a Reconnect On checkpoint stamp — immune below.
+            // them re-creates the reply-owed false positives. A checkpoint stamp on an unanswered
+            // pencil-in invite is silenced only while the event sits ahead — once the event date
+            // passes unanswered, the due stamp surfaces (see the every-tier suppression below).
             if (String(a.responseStatus || '').toLowerCase() === 'declined') continue;
             bookedEmails.add(String(a.email).toLowerCase());
           }
@@ -734,9 +891,10 @@ async function computeFollowupSweep({ window_days } = {}, tenant = TENANT) {
         }
         const kept = [];
         for (const s of surfaced) {
-          // A human-set reconnect date OUTRANKS calendar inference: a due stamp always surfaces,
-          // meeting or no meeting — worst case the chat reports "already booked, clear the stamp".
-          if (s.tier === 'deferral') { kept.push(s); continue; }
+          // A real upcoming booking silences EVERY tier, due stamps included (Guy 2026-07-29,
+          // Rosh Java: a due "check back" note on an already-rebooked lead is noise). The stamp
+          // is NOT cleared — if the booking is cancelled or passes, it stops matching the forward
+          // window and the due note surfaces again, so the safety net survives, just quieter.
           const email = (s.lead.email || '').toLowerCase();
           const full = `${s.lead.first} ${s.lead.last}`.trim().toLowerCase();
           const emailHit = !!email && bookedEmails.has(email);
@@ -895,12 +1053,23 @@ async function runCeaseFollowups({ lead_email, lead_name, cease } = {}, tenant =
   try {
     const fields = { 'Cease FUP': turningOn ? 'Yes' : 'No' };
     if (turningOn) fields['Reconnect On'] = null; // a dropped lead shouldn't resurface on a stamp
-    await base('Leads').update(rec.id, fields);
+    // The cease MOMENT is the waiver line (Guy 2026-07-28, the Matthew Murray "permanently
+    // remove"): anything they were owed BEFORE it is deliberately let go along with them; an
+    // inbound NEWER than it still surfaces (a reply is a reply). Cleared on re-open.
+    fields['Cease FUP At'] = turningOn ? new Date().toISOString() : null;
+    try {
+      await base('Leads').update(rec.id, fields);
+    } catch (e) {
+      // Base predates the Cease FUP At rollout — the cease itself must never fail on that.
+      if (!/Cease FUP At|Unknown field|UNKNOWN_FIELD_NAME|INVALID_/i.test(e.message)) throw e;
+      delete fields['Cease FUP At'];
+      await base('Leads').update(rec.id, fields);
+    }
   } catch (e) { return { text: `Couldn't update Cease FUP: ${e.message}`, isError: true }; }
   const who = `${rec.fields['First Name'] || ''} ${rec.fields['Last Name'] || ''}`.trim() || rec.fields['Email'] || rec.id;
   return {
     text: turningOn
-      ? `${who} dropped — Cease FUP set (and any reconnect stamp cleared). No timer will ever chase them again. NOTE: if they personally REPLY in future, that still surfaces (a reply is a reply); only cadence is silenced. Nothing was sent.`
+      ? `${who} dropped — Cease FUP set (and any reconnect stamp cleared). No timer will ever chase them again, and anything they were owed up to this moment is waived with them. NOTE: if they personally send a NEW message in future, that still surfaces (a reply is a reply). Nothing was sent.`
       : `${who} re-opened — Cease FUP cleared; normal follow-up cadence applies again.`,
   };
 }
@@ -937,7 +1106,20 @@ async function runFollowupBriefRead(_args = {}, tenant = TENANT) {
       if (pending) backlogLine = `\nBACKLOG (relay this): ${pending} older neglected follow-ups pending in the backlog worklist — say "show my backlog" to work them.`;
     }
   } catch (_) { /* footer is best-effort */ }
-  return { text: redirect + note + text + backlogLine };
+  // Learn-from-my-edit surfacing (Guy 2026-08-06): the review tool is invisible unless something
+  // points at it, and the brief is where the human already is every day. ONE line, gated hard:
+  // only when a few real edits have accumulated, and never twice about the same batch (the
+  // high-water mark in the store only re-arms when a NEWER pair lands).
+  let editNudgeLine = '';
+  try {
+    const rulesStore = require('./wingguyRulesStore');
+    const st = await rulesStore.getEditNudgeState({ tenantId: tenant });
+    if (st.nudge) {
+      editNudgeLine = `\nEDITS WORTH A LOOK (relay this once, ONE line): ${st.pendingCount} recent sends went out different from what Wingguy drafted. Say "review my edits" to see what changed - a repeated change can become an instruction so future drafts come out right first time.`;
+      await rulesStore.markEditNudge({ tenantId: tenant, pairId: st.maxPendingId });
+    }
+  } catch (_) { /* footer is best-effort */ }
+  return { text: redirect + note + text + backlogLine + editNudgeLine };
 }
 
 /** Kick a background rebuild and return immediately — the human never waits on it. */
@@ -973,7 +1155,7 @@ const TOOL_DEFS = [
   {
     name: 'wingguy_create_draft',
     description:
-      'Create an email DRAFT (never sends) in the coach\'s own mailbox with hyperlinks intact. ALWAYS use this instead of the Gmail connector — for links because the Gmail connector rewrites every link into a google.com/url redirect (this does not), and for replies because this threads too: pass reply_to_message_id (from wingguy_find_message) and the draft lands IN the existing conversation. html_body is the full HTML body; put real <a href="...">text</a> links in and they are stored exactly as written; {{asset:key}} placeholders resolve to the asset library\'s stored URL. ASSET GATE: library links in the body are logged per-lead at draft time, and a draft repeating an asset to the same lead is refused unless resend_ok — check wingguy_lead_history when unsure. Returns a draftId; the coach opens the draft, reads it, and sends it themselves.',
+      'Create an email DRAFT (never sends) in the coach\'s own mailbox with hyperlinks intact. ALWAYS use this instead of the Gmail connector — for links because the Gmail connector rewrites every link into a google.com/url redirect (this does not), and for replies because this threads too: pass reply_to_message_id (from wingguy_find_message) and the draft lands IN the existing conversation. html_body is the full HTML body; put real <a href="...">text</a> links in and they are stored exactly as written; {{asset:key}} placeholders resolve to the asset library\'s stored URL. ASSET GATE: library links in the body are logged per-lead at draft time, and a draft repeating an asset to the same lead is refused unless resend_ok — check wingguy_lead_history when unsure. FOLLOW-UP: creating the draft also stamps the lead\'s Follow-Up Date to 14 days out (To recipients that match a lead; never the coach\'s own address, and never pulled back from a later date already set), so the person enters the follow-up queue whether or not the tracking BCC is used. Returns a draftId; the coach opens the draft, reads it, and sends it themselves.',
     zodSchema: {
       to: z.array(z.object({ email: z.string(), name: z.string().optional() })).describe(RECIP_DESC),
       subject: z.string().describe('The email subject line.'),
@@ -1097,7 +1279,7 @@ const TOOL_DEFS = [
   {
     name: 'wingguy_followup_sweep',
     description:
-      'LIVE follow-up sweep — the SLOW fallback (~2 min). For "show me my follow-ups" prefer wingguy_followup_brief (instant, pre-triaged, drafts pre-written); use this only when no prepared brief exists or the human explicitly wants a raw live rebuild. Rebuilds the list LIVE every call (nothing stored — a stored follow-up list rots) from the coach\'s own mailbox (Nylas, ~90-day window in ONE read) merged with each lead\'s LinkedIn history (Notes) and the gates on the lead record. Returns a ranked, capped plain-text list: REPLY OWED (they replied, ball\'s in your court) → DEFERRAL DUE (a date they named has arrived) → WENT QUIET (you messaged last, past the interval). Cease FUP / On-Series suppress the WENT QUIET (cadence) nudge only — a reply or a due deferral still surfaces. Use for "prep me for today" (bundled with meetings), "show me what I need to follow up", or "who\'s waiting". Read-only. Reply-owed is thread-aware: only messages on a genuine 1:1 thread (you + the lead) count, so introductions you broker never manufacture phantom follow-ups; and already-booked leads are cross-checked against the calendar and dropped.',
+      'LIVE follow-up sweep — the SLOW fallback (~2 min). For "show me my follow-ups" prefer wingguy_followup_brief (instant, pre-triaged, drafts pre-written); use this only when no prepared brief exists or the human explicitly wants a raw live rebuild. Rebuilds the list LIVE every call (nothing stored — a stored follow-up list rots) from the coach\'s own mailbox (Nylas, ~90-day window in ONE read) merged with each lead\'s LinkedIn history (Notes) and the gates on the lead record. Returns a ranked, capped plain-text list: REPLY OWED (they replied, ball\'s in your court) → DEFERRAL DUE (a date they named has arrived) → WENT QUIET (you messaged last, past the interval). Cease FUP / On-Series suppress the WENT QUIET (cadence) nudge only — a reply or a due deferral still surfaces. Use for "show me what I need to follow up", or "who\'s waiting". Read-only. Reply-owed is thread-aware: only messages on a genuine 1:1 thread (you + the lead) count, so introductions you broker never manufacture phantom follow-ups; and already-booked leads are cross-checked against the calendar and dropped.',
     zodSchema: {
       window_days: z.number().optional().describe('How far back to read mail (default 90, min 7, max 180).'),
       limit: z.number().optional().describe('Max items to show (default 5 — the tight brief; pass a big number like 100 for "show all").'),
@@ -1115,7 +1297,7 @@ const TOOL_DEFS = [
   {
     name: 'wingguy_set_reconnect',
     description:
-      'Stamp (or clear) a lead\'s reconnect date — the "ping them ~this date" promise. Use it when a lead defers to a specific time ("I\'m away, back mid-August, chat then" / "circle back next quarter"): once you and the human agree the date, call this to write it. The follow-up sweep then surfaces that lead at the TOP of the brief (DEFERRAL DUE tier) the day the date arrives, and PARKS them from "went quiet" nudges until then — so a named promise lands on its day instead of getting lost. Find the lead by lead_email (preferred) or lead_name. Pass reconnect_on as an ISO date (YYYY-MM-DD); OMIT it (or pass empty) to CLEAR a reconnect date. PROPOSE-THEN-CONFIRM: agree the date with the human first, then call this — it writes immediately. Writes ONLY the engine\'s dedicated Reconnect On field (never the legacy Follow-Up Date).',
+      'Stamp (or clear) a lead\'s reconnect date — the "ping them ~this date" promise. Use it when a lead defers to a specific time ("I\'m away, back mid-August, chat then" / "circle back next quarter"): once you and the human agree the date, call this to write it. The follow-up sweep then surfaces that lead at the TOP of the brief (DEFERRAL DUE tier) the day the date arrives, and PARKS them from "went quiet" nudges until then — so a named promise lands on its day instead of getting lost. EXCEPTION: a real upcoming calendar booking with the lead silences even a due stamp (nothing is owed while a meeting is locked in); the stamp is kept, and surfaces once the booking is cancelled or has passed. Find the lead by lead_email (preferred) or lead_name. Pass reconnect_on as an ISO date (YYYY-MM-DD); OMIT it (or pass empty) to CLEAR a reconnect date. PROPOSE-THEN-CONFIRM: agree the date with the human first, then call this — it writes immediately. Writes ONLY the engine\'s dedicated Reconnect On field (never the legacy Follow-Up Date).',
     zodSchema: {
       lead_email: z.string().optional().describe('The lead\'s email address (preferred — unambiguous).'),
       lead_name: z.string().optional().describe('The lead\'s name (first, or "First Last") — used if no email. Matched as a case-insensitive substring; if several leads match you\'ll be asked which.'),
@@ -1135,7 +1317,7 @@ const TOOL_DEFS = [
   {
     name: 'wingguy_cease_followups',
     description:
-      'Permanently DROP a lead from timed follow-ups ("drop X", "take X off the list for good", "stop chasing X") — sets the lead\'s Cease FUP flag and clears any reconnect stamp. NOTHING IS SENT. Confirm intent first when ambiguous: "off the list forever" = this; "not now, later" = park via wingguy_set_reconnect instead; "handled it" (backlog) = wingguy_backlog action done/skip. Honest behavior note: ceasing silences the TIMERS only — if the person personally replies in future, that still surfaces (a reply is a reply). Pass cease=false to re-open a previously dropped lead.',
+      'Permanently DROP a lead from timed follow-ups ("drop X", "take X off the list for good", "stop chasing X") — sets the lead\'s Cease FUP flag and clears any reconnect stamp. NOTHING IS SENT. Confirm intent first when ambiguous: "off the list forever" = this; "not now, later" = park via wingguy_set_reconnect instead; "handled it" (backlog) = wingguy_backlog action done/skip. Honest behavior note: ceasing silences the timers AND waives anything they were owed at that moment (the open thread you chose not to answer) — but if the person personally sends a NEW message after the cease, that still surfaces (a reply is a reply). Pass cease=false to re-open a previously dropped lead.',
     zodSchema: {
       lead_email: z.string().optional().describe('The lead\'s email (preferred — unambiguous).'),
       lead_name: z.string().optional().describe('The lead\'s name if no email; substring match, asks on multiple hits.'),
@@ -1171,7 +1353,7 @@ const TOOL_DEFS = [
   {
     name: 'wingguy_queue',
     description:
-      'THE ACTION QUEUE — THE FIRST CALL for "show me my follow-ups" / "what\'s due" / "who do I owe" / "prep me for today". ONE ranked, pageable to-do list (ten per page), every line an ACTION waiting for a yes: today\'s due items first (drafts ready / park proposals / needs-eyes), then backlog reopens (drafts ready), then backlog parks. Instant — merges the prepared stores at serve time. Work it top-down: name a person → serve their jog + draft (from wingguy_followup_brief for today\'s people, wingguy_backlog name=... for backlog people; DEEP memory — "any emails? how did the call go? what did we agree?" — comes INSTANTLY from wingguy_dossier) → tweak → push/copy on approval → they drop off. "Next ten" = page 2, 3… DELIBERATELY ABSENT (pure action, no status): parked-until-date people (they surface on their day), nothing-owed people, anything already done — relay status info ONLY if the human explicitly asks ("what\'s parked?", "was X checked?").',
+      'THE ACTION QUEUE — THE FIRST CALL for "show me my follow-ups" / "what\'s due" / "who do I owe" / "who has gone quiet?". NOT "prep me for today\'s meetings" — that is diary prep (wingguy_list_events + wingguy_dossier per attendee), a different job the coach asks for every morning; never hijack it with this queue. ONE ranked, pageable to-do list (ten per page), every line an ACTION waiting for a yes WITH the person\'s "who:" memory-jog attached (relay it — the human should never have to ask who someone is): today\'s due items first (drafts ready / park proposals / needs-eyes), then backlog reopens (drafts ready), then backlog parks. Fast (~2-4s) — merges the prepared stores at serve time, then re-checks the LIVE world (Cease FUP, Reconnect On stamps, upcoming bookings, and messages the coach has SENT since the stores were built — LinkedIn via the lead\'s Notes, email via the mailbox) so a stale store entry never surfaces: someone the coach already replied to drops off without waiting for the overnight rebuild. Work it top-down: name a person → serve their jog + draft (from wingguy_followup_brief for today\'s people, wingguy_backlog name=... for backlog people; DEEP memory — "any emails? how did the call go? what did we agree?" — comes INSTANTLY from wingguy_dossier) → tweak → push/copy on approval → they drop off. "Next ten" = page 2, 3… DELIBERATELY ABSENT (pure action, no status): parked-until-date people (they surface on their day), nothing-owed people, anything already done — relay status info ONLY if the human explicitly asks ("what\'s parked?", "was X checked?").',
     zodSchema: {
       page: z.number().optional().describe('Page number, 10 per page (default 1). "next ten" = the next page.'),
     },
@@ -1185,13 +1367,17 @@ const TOOL_DEFS = [
   {
     name: 'wingguy_dossier',
     description:
-      'THE INSTANT MEMORY behind every queue person — call this for "remind me about X", "jog X", "any emails from X?", "how did the call with X go?", "what did we agree?". Returns the PRE-BUILT dossier (no waiting): where the relationship actually stands, commitments each side made, suggested next move, meeting summaries from the transcript store, and the full dated timeline (emails incl. calendar accepts/declines, LinkedIn messages). Rebuilt automatically whenever the person\'s thread changes. If no dossier exists for the name (person outside the prepared queue), say so and offer the live dig (wingguy_lead_correspondence / recall transcripts) with a "this will take a moment" warning.',
+      'THE INSTANT MEMORY behind every queue person AND every meeting attendee — call this for "remind me about X", "jog X", "any emails from X?", "how did the call with X go?", "what did we agree?", and for EACH attendee during "prep me for today\'s meetings". Returns the PRE-BUILT dossier (no waiting): where the relationship actually stands, commitments each side made, suggested next move, meeting summaries from the transcript store, and the full dated timeline (emails incl. calendar accepts/declines, LinkedIn messages). Rebuilt automatically whenever the person\'s thread changes. When the prepared store has nothing, it falls back AUTOMATICALLY to a live mini-dossier built from the CRM record (LinkedIn thread, status, meetings) — so a miss means the person truly is not in the CRM, not merely outside the queue. Pass email too when you have one (e.g. from a calendar invite) — matching is surer and reaches Alt Emails.',
     zodSchema: {
       name: z.string().describe('The person\'s name (or part of it).'),
+      email: z.string().optional().describe('An email known for this person (e.g. from the calendar invite) — sharpens the lookup; matches the record\'s Email AND Alt Emails.'),
     },
     jsonSchema: {
       type: 'object',
-      properties: { name: { type: 'string', description: 'The person\'s name (or part of it).' } },
+      properties: {
+        name: { type: 'string', description: 'The person\'s name (or part of it).' },
+        email: { type: 'string', description: 'An email known for this person (e.g. from the calendar invite) — sharpens the lookup; matches the record\'s Email AND Alt Emails.' },
+      },
       required: ['name'],
     },
     run: runDossier,
@@ -1223,7 +1409,7 @@ const TOOL_DEFS = [
 // sweep doesn't have. The fix is the ROUTING-NOTE trick: put the truth in the output itself.
 const LEVERS_NOTE =
   '[THE LEVERS — authoritative; never tell the human a control is missing without checking this list: ' +
-  'wingguy_cease_followups = drop a person WITHOUT sending anything (all timers silenced permanently; a future reply from them still surfaces — this IS "don\'t chase unless they reply") · ' +
+  'wingguy_cease_followups = drop a person WITHOUT sending anything (all timers silenced permanently and anything they were owed at that moment is waived; a NEW message from them after the drop still surfaces — this IS "don\'t chase unless they reply") · ' +
   'wingguy_set_reconnect = park until a date (fires as due that day; clearable) · ' +
   'wingguy_backlog name+done/skip = tick off a backlog item · ' +
   'wingguy_dossier name = instant memory jog + ready draft. ' +
@@ -1240,6 +1426,207 @@ const LEVERS_NOTE =
  * Parked-until-date people are deliberately NOT here (they surface on their day); writeoffs and
  * checked-clears are not here (nothing owed). The morning brief = the pulse; this = the grind.
  */
+/**
+ * Live gate re-check at queue serve time (Sam Noble / Nita / Mirko leak, 2026-07-28): the backlog
+ * worklist is a build-time snapshot and the brief can be ~26h old, so a cease, a reconnect stamp,
+ * or a booking made AFTER either store was built still surfaced — and every false positive teaches
+ * the human the list can't be trusted. One Airtable read (only the queue's own leads) + one
+ * calendar forward read, in parallel; each independently best-effort — a failed check serves that
+ * dimension unfiltered rather than breaking the queue. Semantics mirror classifyLead + the sweep's
+ * calendar cross-check, not new policy:
+ *   - Cease FUP silences cadence-shaped items only (all backlog items + today tier 'cadence');
+ *     a reply owed still surfaces (a reply is a reply).
+ *   - A Reconnect On stamp: ANY stamp removes a backlog item (a stamped person is the deferral
+ *     engine's, not the backlog's — same as the audit's own build-time gate); a FUTURE stamp also
+ *     removes today items whatever their stored tier (park means park, the Marianne rule — the
+ *     stamp may have been rewritten since the store was built, so the LIVE field decides).
+ *   - An upcoming non-declined booking removes everything, due stamps included (the Rosh Java
+ *     rule, Guy 2026-07-29) — the stamp survives and surfaces once the booking passes.
+ *   - ALREADY MESSAGED (Guy 2026-07-29: JB + Anthony still listed after he'd replied to both):
+ *     if the coach's own message is the thread's last word AND it landed on/after the day the
+ *     store was built — LinkedIn read from the lead's Notes (LinkedHelper sync), email from a
+ *     live mailbox read since the oldest store build — the store's view is outdated; drop it.
+ */
+async function applyLiveQueueGates(items, tenant) {
+  const out = { items, suppressed: { booked: 0, ceased: 0, parked: 0, messaged: 0 } };
+  try {
+    const clientService = require('./clientService');
+    const coach = await clientService.getClientById(tenant);
+    if (!coach || !coach.airtableBaseId) return out;
+
+    // Coach's civil "today" as UTC midnight — same day-boundary convention as the sweep.
+    let todayMidMs;
+    try {
+      const { DateTime } = require('luxon');
+      const local = DateTime.fromMillis(Date.now(), { zone: coach.timezone || 'UTC' });
+      if (!local.isValid) throw new Error('invalid zone');
+      todayMidMs = Date.UTC(local.year, local.month - 1, local.day);
+    } catch (_) {
+      const td = new Date();
+      todayMidMs = Date.UTC(td.getUTCFullYear(), td.getUTCMonth(), td.getUTCDate());
+    }
+
+    const gatePromise = (async () => {
+      const base = clientService.getClientBase(coach.airtableBaseId);
+      const esc = (s) => String(s).replace(/"/g, '\\"');
+      const clauses = [];
+      for (const it of items) {
+        if (it.recId) clauses.push(`RECORD_ID() = "${esc(it.recId)}"`);
+        else if (it.email) clauses.push(`LOWER({Email}) = "${esc(String(it.email).toLowerCase())}"`);
+      }
+      if (!clauses.length) return null;
+      const formula = `OR(${clauses.join(', ')})`;
+      // Rolled-out-over-time fields degrade richest-first (same pattern as the sweep's lead read).
+      // Notes + First Name ride along for the already-messaged check (the LinkedIn thread lives
+      // in Notes; First Name tells inbound from outbound on its lines).
+      const GATE_ATTEMPTS = [
+        ['Email', 'Cease FUP', 'Reconnect On', 'Cease FUP At', 'Notes', 'First Name'],
+        ['Email', 'Cease FUP', 'Reconnect On', 'Notes', 'First Name'],
+        ['Email', 'Cease FUP', 'Notes', 'First Name'],
+      ];
+      let recs;
+      for (let i = 0; i < GATE_ATTEMPTS.length; i++) {
+        try {
+          recs = await base('Leads').select({ filterByFormula: formula, fields: GATE_ATTEMPTS[i] }).all();
+          break;
+        } catch (e) {
+          const unknownField = /Reconnect On|Cease FUP At|UNKNOWN_FIELD_NAME|422|INVALID|Unknown field/i.test(e.message);
+          if (!unknownField || i === GATE_ATTEMPTS.length - 1) throw e;
+        }
+      }
+      const gates = new Map(); // keyed by recId AND email — queue items may carry either
+      for (const r of recs) {
+        const f = r.fields || {};
+        const dt = f['Reconnect On'] ? Date.parse(f['Reconnect On']) : NaN;
+        const g = {
+          cease: selectName(f['Cease FUP']) === 'Yes',
+          ceaseAtMs: f['Cease FUP At'] ? Date.parse(f['Cease FUP At']) || null : null,
+          reconnectAny: !!f['Reconnect On'],
+          reconnectFuture: !Number.isNaN(dt) && dt > todayMidMs,
+          liLast: parseLinkedInLast(f['Notes'], f['First Name']), // {ms, inbound} of the thread's last word, or null
+        };
+        gates.set(r.id, g);
+        const em = String(f['Email'] || '').trim().toLowerCase();
+        if (em) gates.set(em, g);
+      }
+      return gates;
+    })();
+
+    const calPromise = (async () => {
+      const wingguyCalendar = require('./wingguyCalendar');
+      const fmt = (ms) => new Date(ms).toISOString().slice(0, 10);
+      const cal = await wingguyCalendar.listEventsForCoach(tenant, { date: fmt(todayMidMs), endDate: fmt(todayMidMs + CAL_LOOKAHEAD_DAYS * MS_DAY) });
+      if (!cal || !cal.ok || !Array.isArray(cal.events)) return null;
+      const bookedEmails = new Set();
+      const titleBlobs = [];
+      for (const ev of cal.events) {
+        if (ev.isFree) continue;
+        for (const a of (ev.attendees || [])) {
+          if (!a || !a.email) continue;
+          if (String(a.responseStatus || '').toLowerCase() === 'declined') continue; // declined ≠ booked
+          bookedEmails.add(String(a.email).toLowerCase());
+        }
+        titleBlobs.push(`${ev.summary || ''} ${(ev.attendees || []).map((a) => a.displayName || '').join(' ')}`.toLowerCase());
+      }
+      return { bookedEmails, titleBlobs };
+    })();
+
+    // Email half of the already-messaged check: ONE mailbox read since the OLDEST store build
+    // (small window — the brief is at most ~26h old; the backlog build a few days), then the
+    // same thread-aware 1:1 signals the sweep uses.
+    const mailPromise = (async () => {
+      if (!coach.nylasGrantId) return null;
+      const emails = new Set(items.map((i) => String(i.email || '').trim().toLowerCase()).filter(Boolean));
+      if (!emails.size) return null;
+      const builts = items.map((i) => (i.builtAt ? Date.parse(i.builtAt) : NaN)).filter((t) => !Number.isNaN(t));
+      if (!builts.length) return null;
+      const mail = await mailProvider.listRecent(coach, { after: Math.floor(Math.min(...builts) / 1000), max: 1000 });
+      if (!mail.ok) return null;
+      return computeMailSignals(mail.messages, emails);
+    })();
+
+    const [gateRes, calRes, mailRes] = await Promise.allSettled([gatePromise, calPromise, mailPromise]);
+    if (gateRes.status === 'rejected') console.warn(`[wingguyMailMcp] queue gate re-check skipped: ${gateRes.reason && gateRes.reason.message}`);
+    if (calRes.status === 'rejected') console.warn(`[wingguyMailMcp] queue booking re-check skipped: ${calRes.reason && calRes.reason.message}`);
+    if (mailRes.status === 'rejected') console.warn(`[wingguyMailMcp] queue sent-mail re-check skipped: ${mailRes.reason && mailRes.reason.message}`);
+    const gates = gateRes.status === 'fulfilled' ? gateRes.value : null;
+    const booked = calRes.status === 'fulfilled' ? calRes.value : null;
+    const mailSig = mailRes.status === 'fulfilled' ? mailRes.value : null;
+    if (!gates && !booked && !mailSig) return out;
+
+    // A store-build ISO → the coach's civil date of that moment, as UTC midnight — comparable
+    // with the date-only stamps parseLinkedInLast reads off Notes lines.
+    const civilDayMs = (iso) => {
+      const t = Date.parse(iso);
+      if (Number.isNaN(t)) return null;
+      try {
+        const { DateTime } = require('luxon');
+        const local = DateTime.fromMillis(t, { zone: coach.timezone || 'UTC' });
+        if (!local.isValid) throw new Error('invalid zone');
+        return Date.UTC(local.year, local.month - 1, local.day);
+      } catch (_) {
+        const d = new Date(t);
+        return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+      }
+    };
+
+    out.items = items.filter((it) => {
+      const cadenceShaped = it.src === 'backlog' || it.tier === 'cadence';
+      const g = (gates && (gates.get(it.recId) || (it.email && gates.get(String(it.email).toLowerCase())))) || null;
+      if (g) {
+        if (g.cease) {
+          // Cadence-shaped items are always silenced by a cease. With a recorded cease MOMENT,
+          // anything the store computed BEFORE that moment is waived too — the human saw what was
+          // owed and chose to drop the person anyway (the Matthew Murray case, 2026-07-28). Only
+          // an item built AFTER the cease (i.e. from a newer inbound) survives.
+          const waived = g.ceaseAtMs && it.builtAt && Date.parse(it.builtAt) <= g.ceaseAtMs;
+          if (cadenceShaped || waived) { out.suppressed.ceased++; return false; }
+        }
+        // A FUTURE stamp drops the item regardless of its STORED tier — the tier is build-time
+        // truth and the stamp may have been (re)written since (Ashley, observed live 2026-07-28:
+        // stored tier 'deferral' from an old due stamp kept her surfacing after she was re-parked
+        // to Friday). Park means park, judged on what the field says NOW.
+        if ((it.src === 'backlog' && g.reconnectAny) ||
+            (it.src === 'today' && g.reconnectFuture)) {
+          out.suppressed.parked++; return false;
+        }
+      }
+      // ALREADY MESSAGED since the store was built (Guy 2026-07-29: he'd replied to JB + Anthony
+      // on LinkedIn, both still listed). If the coach's own message is the thread's last word and
+      // it landed ON/AFTER the day the item's store was built, the store's view is outdated —
+      // nothing here was owed any more the moment the human hit send. LinkedIn is date-granular
+      // (Notes lines carry civil dates, so a same-day outbound can't be older than the build);
+      // email compares real timestamps. LinkedHelper's minutes-to-hours sync lag is the only wait.
+      const builtMs = it.builtAt ? Date.parse(it.builtAt) : null;
+      if (builtMs != null) {
+        const buildDay = civilDayMs(it.builtAt);
+        if (g && g.liLast && !g.liLast.inbound && buildDay != null && g.liLast.ms >= buildDay) {
+          out.suppressed.messaged++; return false;
+        }
+        const sig = mailSig && it.email ? mailSig.get(String(it.email).toLowerCase()) : null;
+        if (sig && sig.lastOutboundMs && sig.lastOutboundMs > builtMs &&
+            (!sig.lastInboundMs || sig.lastOutboundMs > sig.lastInboundMs)) {
+          out.suppressed.messaged++; return false;
+        }
+      }
+      // A real upcoming booking silences everything, due stamps included (Guy 2026-07-29, the
+      // Rosh Java rule change — was "a due stamp outranks the calendar"). The stamp survives on
+      // the record, so a cancelled or passed booking lets the due note surface again.
+      if (booked) {
+        const email = String(it.email || '').toLowerCase();
+        const full = String(it.name || '').trim().toLowerCase();
+        const emailHit = !!email && booked.bookedEmails.has(email);
+        const nameHit = full.includes(' ') && booked.titleBlobs.some((b) => b.includes(full));
+        if (emailHit || nameHit) { out.suppressed.booked++; return false; }
+      }
+      return true;
+    });
+  } catch (e) {
+    console.warn(`[wingguyMailMcp] queue live re-check skipped: ${e.message}`);
+  }
+  return out;
+}
+
 async function runQueue({ page } = {}, tenant = TENANT) {
   const briefStore = require('./wingguyFollowupBrief');
   const backlog = require('./wingguyBacklogAudit');
@@ -1253,10 +1640,16 @@ async function runQueue({ page } = {}, tenant = TENANT) {
     const parkLine = (it) => (it.parkDate && it.parkDate <= new Date().toISOString().slice(0, 10))
       ? `their own window (${it.parkDate}) has PASSED — reach out now, natural opening [draft in dossier]`
       : `${it.whyLine} → propose park ${it.parkDate || '?'}`;
+    const builtAt = (p && p.preparedAt) || null; // for the live re-check's cease-waiver comparison
     for (const it of ((p && p.items) || [])) {
-      if (it.verdict === 'draft') items.push({ ...it, src: 'today', line: `${it.whyLine} [draft ready]` });
-      else if (it.verdict === 'park') items.push({ ...it, src: 'today', line: parkLine(it) });
-      else if (it.verdict === 'attention') items.push({ ...it, src: 'today', line: `${it.whyLine} [needs your judgment]` });
+      // LinkedIn reply-owed people carry a /wg ANGLE, not a pre-written message (Guy 2026-08-01):
+      // the reply is drafted live in the thread. draftText still renders as [draft ready] so
+      // pre-change stored payloads (and every email draft) serve exactly as before.
+      if (it.verdict === 'draft') items.push({ ...it, src: 'today', builtAt, line: `${it.whyLine}${it.draftText ? ' [draft ready]' : (it.wgAngle ? ' [LinkedIn — open the thread, type /wg]' : (it.draftError ? ' [no draft — ask in chat]' : ' [draft ready]'))}` });
+      // it.parked = the brief already stamped their Reconnect On (stamp-and-tell, 2026-08-03) —
+      // nothing left to action, so not queued (the live gate below would drop them anyway).
+      else if (it.verdict === 'park' && !it.parked) items.push({ ...it, src: 'today', builtAt, line: parkLine(it) });
+      else if (it.verdict === 'attention') items.push({ ...it, src: 'today', builtAt, line: `${it.whyLine} [needs your judgment]` });
     }
   } catch (_) { /* brief store down — queue still serves backlog */ }
   try {
@@ -1266,33 +1659,67 @@ async function runQueue({ page } = {}, tenant = TENANT) {
     const parkLine = (it) => (it.parkDate && it.parkDate <= new Date().toISOString().slice(0, 10))
       ? `their own window (${it.parkDate}) has PASSED — reach out now, natural opening [draft in dossier]`
       : `${it.whyLine} → propose park ${it.parkDate || '?'}`;
-    for (const it of pend.filter((i) => i.verdict === 'reopen')) items.push({ ...it, src: 'backlog', line: `${it.whyLine} (${it.quietDays}d quiet)${it.draftText ? ' [draft ready]' : ''}` });
-    for (const it of pend.filter((i) => i.verdict === 'park')) items.push({ ...it, src: 'backlog', line: parkLine(it) });
+    const builtAt = (p && p.createdAt) || null; // for the live re-check's cease-waiver comparison
+    for (const it of pend.filter((i) => i.verdict === 'reopen')) items.push({ ...it, src: 'backlog', builtAt, line: `${it.whyLine} (${it.quietDays}d quiet)${it.draftText ? ' [draft ready]' : ''}` });
+    for (const it of pend.filter((i) => i.verdict === 'park')) items.push({ ...it, src: 'backlog', builtAt, line: parkLine(it) });
   } catch (_) { /* ignore */ }
   if (!items.length) return { text: 'The queue is empty — nothing actionable right now (parked people surface on their dates).' };
   // Dedupe by name (a person can appear in both stores — today's view wins).
   const seen = new Set();
-  const deduped = items.filter((it) => { const k = it.name.toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; });
+  let deduped = items.filter((it) => { const k = it.name.toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; });
+  // Never serve what the live world has already answered (see applyLiveQueueGates).
+  const live = await applyLiveQueueGates(deduped, tenant);
+  deduped = live.items;
+  const supp = live.suppressed;
+  const suppTotal = supp.booked + supp.ceased + supp.parked + supp.messaged;
+  if (!deduped.length) {
+    return { text: `The queue is empty — nothing actionable right now (parked people surface on their dates${suppTotal ? `; the live re-check dropped ${suppTotal}: ${supp.messaged} already messaged since the list was built, ${supp.booked} already booked, ${supp.ceased} ceased, ${supp.parked} parked on a reconnect stamp` : ''}).` };
+  }
   const PAGE = 10;
   const pg = Math.max(1, parseInt(page, 10) || 1);
   const totalPages = Math.ceil(deduped.length / PAGE);
   const slice = deduped.slice((pg - 1) * PAGE, pg * PAGE);
   const nm = (it) => (it.linkedin ? `[${it.name}](${it.linkedin})` : it.name);
+  // The jog rides IN the list (Guy 2026-07-28: "I can't remember what Andrew Bain was about" —
+  // making him ask per-person was the slow part). It's already written by the overnight triage;
+  // serving it here means the human reads ten lines and already remembers everyone.
+  const jogLine = (it) => (it.jog && it.jog.trim() ? `\n    who: ${it.jog.trim()}` : '');
+  // The overnight homework for a /wg person is the ANGLE — ride it in the list like the jog.
+  const angleLine = (it) => (!it.draftText && it.wgAngle && it.wgAngle.trim() ? `\n    /wg angle: ${it.wgAngle.trim()}` : '');
+  // [draft] beside the name = the read-only draft page (jog + message + copy button), signed per
+  // person. Reading and copying live there; tweaking/sending/parking stay in chat.
+  const { draftUrl } = require('./wingguyDraftLink');
+  const draftLink = (it) => ((it.draftText || it.wgAngle) ? ` · [${it.draftText ? 'draft' : 'card'}](${draftUrl(tenant, it.name)})` : '');
   const lines = [
-    `THE QUEUE — ${deduped.length} actionable, priority order (page ${pg}/${totalPages}; today's brief first, then backlog reopens, then parks). Ask for anyone by name for jog + draft; "next ten" = next page.`,
-    ...slice.map((it, i) => `${(pg - 1) * PAGE + i + 1}. ${nm(it)} — ${it.line}`),
+    `THE QUEUE — ${deduped.length} actionable, priority order (page ${pg}/${totalPages}; today's brief first, then backlog reopens, then parks). Each person's "who:" memory-jog is part of the list — ALWAYS relay it with their line, and keep their [draft]/[card] link ([draft] opens the ready-made message with a copy button; [card] is a LinkedIn person's context card — their reply gets written live in the thread with /wg, using the "/wg angle" line). Ask for anyone by name for the full detail in chat; "next ten" = next page.`,
+    ...slice.map((it, i) => `${(pg - 1) * PAGE + i + 1}. ${nm(it)}${draftLink(it)} — ${it.line}${angleLine(it)}${jogLine(it)}`),
   ];
   if (pg < totalPages) lines.push(`(${deduped.length - pg * PAGE} more — say "next ten".)`);
+  if (suppTotal) lines.push(`\n[live re-check — do not relay unless asked: dropped ${suppTotal} stale entr${suppTotal === 1 ? 'y' : 'ies'} (${supp.messaged} already messaged since the list was built, ${supp.booked} already booked, ${supp.ceased} ceased, ${supp.parked} parked on a reconnect stamp).]`);
   lines.push('', LEVERS_NOTE);
   return { text: lines.join('\n') };
 }
 
-/** Serve a person's pre-built dossier — instant, from the store. */
-async function runDossier({ name } = {}, tenant = TENANT) {
+/** Serve a person's pre-built dossier — instant, from the store; live CRM fallback on a miss. */
+async function runDossier({ name, email } = {}, tenant = TENANT) {
   const dossier = require('./wingguyDossier');
   try {
     const row = await dossier.findDossierByName(tenant, name);
-    if (!row) return { text: `No prepared dossier for "${name}" — they're outside the prepared queue. Offer the live dig (wingguy_lead_correspondence, transcripts) with a "this will take a moment" warning.` };
+    if (!row) {
+      // LIVE FALLBACK (the Steve Martin blind spot, 2026-08-03): the prepared store is fed from
+      // the follow-up pipeline + the calendar pass, but a person can still fall between builds —
+      // and "no dossier" must NEVER be said about someone the CRM knows intimately. Build a
+      // labelled mini-dossier from the Leads record right now; only a CRM miss too is a real miss.
+      try {
+        const live = await dossier.buildLiveMiniDossier(tenant, { name, email });
+        if (live && live.multiple) {
+          const cand = live.multiple.map((c) => `- ${c.linkedin ? `[${c.name}](${c.linkedin})` : c.name}${c.headline ? ` — ${c.headline}` : ''}${c.company ? `, ${c.company}` : ''}${c.location ? ` (${c.location})` : ''}`).join('\n');
+          return { text: `No prepared dossier for "${name}", and ${live.multiple.length} CRM records match that name — ask the human which one they mean rather than guessing:\n${cand}\nThen call wingguy_dossier again with the full name (or their email).` };
+        }
+        if (live) return { text: dossier.formatLiveDossier(live) };
+      } catch (e) { console.warn(`[dossier] live fallback failed for "${name}": ${e.message}`); }
+      return { text: `No prepared dossier for "${name}" AND no CRM record matches that name${email ? ` or ${email}` : ''} — this person appears genuinely unknown to the system. Double-check the spelling with the human; the live dig (wingguy_lead_correspondence by email, recall transcripts by name) only helps if some history exists under a different spelling.` };
+    }
     // Profile-link fallback for dossiers built before `linkedin` was stored in the payload
     // (Guy 2026-07-24: "click through to their LinkedIn profile" while actioning). Best-effort —
     // one light Airtable lookup; any failure just serves the dossier without the link.
@@ -1478,4 +1905,4 @@ async function legacyToolCall(toolName, args, tenant = TENANT) {
   }
 }
 
-module.exports = { registerWingguyMailTools, legacyToolList, legacyToolCall, TOOL_DEFS, detectAssets, htmlToText, stripQuotedTail, settleEmailEditPairs, parseLinkedInLast, classifyLead, computeMailSignals, computeFollowupSweep, runFollowupSweep };
+module.exports = { registerWingguyMailTools, legacyToolList, legacyToolCall, TOOL_DEFS, detectAssets, htmlToText, stripQuotedTail, settleEmailEditPairs, parseLinkedInLast, linkedInEverInbound, classifyLead, computeMailSignals, computeFollowupSweep, runFollowupSweep, chooseFollowUpStamp, coachOwnEmails, stampFollowUpForDraft };

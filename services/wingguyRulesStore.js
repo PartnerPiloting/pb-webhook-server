@@ -230,6 +230,18 @@ async function ensureSchema(client) {
     ON wingguy_edit_pairs (tenant_id, created_at DESC) WHERE status = 'pending';
   `);
 
+  // Edit-nudge high-water mark — the self-surfacing side of learn-from-my-edit. The follow-up
+  // brief offers ONE "review my edits" line when enough pending pairs have accumulated, and this
+  // row remembers the newest pair id already nudged about, so the same batch is never mentioned
+  // twice: a new nudge needs a NEWER pair, not just an ignored old one.
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS wingguy_edit_nudges (
+      tenant_id TEXT PRIMARY KEY,
+      last_nudged_pair_id BIGINT NOT NULL DEFAULT 0,
+      nudged_at TIMESTAMPTZ
+    );
+  `);
+
   // Draft ledger — the EMAIL half of learn-from-my-edit. wingguy_create_draft logs the generated
   // body (plain-text render) here at draft time; the review tool later settles each row by reading
   // the sent message back through Nylas and, if the human edited it in Gmail, files a
@@ -251,6 +263,27 @@ async function ensureSchema(client) {
   await client.query(`
     CREATE INDEX IF NOT EXISTS idx_wg_draft_ledger_awaiting
     ON wingguy_draft_ledger (tenant_id, created_at) WHERE status = 'awaiting-send';
+  `);
+
+  // Change notes — the review page's margin. The business owner (or the coach) reads a change in
+  // the client-layer change log and leaves a short note ON that change; whoever operates the page
+  // (a VA, a sales assistant) reads it right where the change lives and ticks it off when acted
+  // on. Notes never change instructions themselves — the change door does that.
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS wingguy_change_notes (
+      id BIGSERIAL PRIMARY KEY,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      tenant_id TEXT NOT NULL,
+      history_id BIGINT NOT NULL,
+      author TEXT,
+      note TEXT NOT NULL,
+      resolved_at TIMESTAMPTZ,
+      resolved_by TEXT
+    );
+  `);
+  await client.query(`
+    CREATE INDEX IF NOT EXISTS idx_wg_change_notes_tenant
+    ON wingguy_change_notes (tenant_id, history_id);
   `);
 
   await client.query(`
@@ -408,19 +441,27 @@ const META_SYNTAX_MENTIONS = new Set(['asset:key', 'asset:your_key', 'variable']
  * Line-level rather than token-level on purpose: "Never use these words: " with nothing after it
  * is worse than no instruction at all.
  */
-function stripOptionalPlaceholders(body, variables) {
+function stripOptionalPlaceholders(body, variables, assets = {}) {
   if (!/\{\{\s*\?/.test(String(body || ''))) return String(body || '');
-  const OPTIONAL = /\{\{\s*\?\s*([a-zA-Z0-9_.-]+)\s*\}\}/g;
+  // `asset:` is part of the key here — an optional LINK ({{?asset:default_explainer}}) is just as
+  // legitimate as an optional variable, and leaving it out silently left the placeholder in the
+  // text as literal braces, which is the exact bug optional syntax exists to prevent.
+  const OPTIONAL = /\{\{\s*\?\s*((?:asset:)?[a-zA-Z0-9_.-]+)\s*\}\}/g;
+  const hasValue = (key) => {
+    if (key.startsWith('asset:')) {
+      const a = assets[key.slice('asset:'.length)];
+      return !!(a && a.url && String(a.url).trim() && a.status !== 'retired');
+    }
+    const v = variables[key];
+    return v !== undefined && v !== null && String(v).trim().length > 0;
+  };
   return String(body)
     .split('\n')
     .filter((line) => {
       const keys = [...line.matchAll(OPTIONAL)].map((m) => m[1]);
       if (!keys.length) return true;
       // One empty optional on the line is enough to drop it — the line was written to carry it.
-      return keys.every((k) => {
-        const v = variables[k];
-        return v !== undefined && v !== null && String(v).trim().length > 0;
-      });
+      return keys.every(hasValue);
     })
     .join('\n')
     // Surviving lines keep their values; rewrite `{{?key}}` to `{{key}}` for the main pass below.
@@ -429,7 +470,7 @@ function stripOptionalPlaceholders(body, variables) {
 
 function resolveRuleBody(body, variables = {}, assets = {}) {
   const unresolved = [];
-  const prepared = stripOptionalPlaceholders(body, variables);
+  const prepared = stripOptionalPlaceholders(body, variables, assets);
   const text = String(prepared).replace(/\{\{\s*(asset:)?([a-zA-Z0-9_.-]+)\s*\}\}/g, (whole, assetPrefix, key) => {
     if (META_SYNTAX_MENTIONS.has(`${assetPrefix || ''}${key}`)) return whole;
     if (assetPrefix) {
@@ -1435,9 +1476,14 @@ async function getAssetSendSummary({ tenantId = DEFAULT_TENANT, leadEmails = [],
  * Whitespace-insensitive equality view of a message, used ONLY to decide "did the human actually
  * change anything?" — never shown or stored. Deliberately conservative: case and punctuation
  * changes DO count as edits (they are often exactly the style signal being hunted).
+ *
+ * ALL whitespace is dropped, not collapsed: LinkedIn's send strips newlines entirely (no space
+ * left behind), so "Hi Jade,\n\nYour profile" comes back as "Hi Jade,Your profile" — collapsing
+ * to single spaces still saw a diff and filed a no-signal pair on every unedited send. A real
+ * edit that consists purely of moved whitespace carries no wording signal anyway.
  */
 function normalizeForEditCompare(text) {
-  return String(text || '').replace(/\s+/g, ' ').trim();
+  return String(text || '').replace(/\s+/g, '');
 }
 
 /**
@@ -1508,6 +1554,186 @@ async function resolveEditPairs({ tenantId = DEFAULT_TENANT, ids = [], status = 
       [status, note || null, (tenantId || DEFAULT_TENANT).trim(), idList],
     );
     return { ok: true, resolved: r.rowCount };
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Should the follow-up brief offer a "review my edits" line? Nudge-worthy only when enough
+ * pending pairs have accumulated AND at least one is newer than the last batch nudged about —
+ * an ignored nudge never repeats until a fresh edit arrives.
+ * Returns { pendingCount, maxPendingId, lastNudgedId, nudge }.
+ */
+async function getEditNudgeState({ tenantId = DEFAULT_TENANT, threshold = 3 } = {}) {
+  const p = getPool();
+  if (!p) throw new Error('DATABASE_URL not set');
+  const tenant = (tenantId || DEFAULT_TENANT).trim();
+  const client = await p.connect();
+  try {
+    await ensureSchema(client);
+    const pending = await client.query(
+      `SELECT COUNT(*)::int AS n, COALESCE(MAX(id), 0)::bigint AS max_id
+       FROM wingguy_edit_pairs WHERE tenant_id = $1 AND status = 'pending'`,
+      [tenant],
+    );
+    const seen = await client.query(
+      `SELECT last_nudged_pair_id FROM wingguy_edit_nudges WHERE tenant_id = $1`,
+      [tenant],
+    );
+    const pendingCount = pending.rows[0].n;
+    const maxPendingId = Number(pending.rows[0].max_id);
+    const lastNudgedId = seen.rows.length ? Number(seen.rows[0].last_nudged_pair_id) : 0;
+    return {
+      pendingCount, maxPendingId, lastNudgedId,
+      nudge: pendingCount >= threshold && maxPendingId > lastNudgedId,
+    };
+  } finally {
+    client.release();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Client change log + notes — the review page (owner glances, operator acts)
+// ---------------------------------------------------------------------------
+
+/**
+ * The tenant's own instruction changes, newest first, with before/after bodies and any notes
+ * attached. Only client-layer commit/retire/revert rows — seeds are the starter kit arriving
+ * (26 rows of noise on day one), and variable/asset sets are the fill-in-the-blanks form, not
+ * instruction changes. Bodies come from wingguy_rules itself: retired versions are kept forever,
+ * so (rule_key, version) resolves both sides of every change.
+ */
+async function getClientChangeLog({ tenantId = DEFAULT_TENANT, limit = 30 } = {}) {
+  const p = getPool();
+  if (!p) throw new Error('DATABASE_URL not set');
+  const tenant = (tenantId || DEFAULT_TENANT).trim();
+  const cap = Math.min(Math.max(Number(limit) || 30, 1), 100);
+  const client = await p.connect();
+  try {
+    await ensureSchema(client);
+    const h = await client.query(
+      `SELECT id, created_at, actor, action, rule_key, from_version, to_version, detail
+       FROM wingguy_rule_history
+       WHERE tenant_id = $1 AND layer = 'client' AND action IN ('commit','retire','revert')
+       ORDER BY created_at DESC, id DESC LIMIT $2`,
+      [tenant, cap],
+    );
+    const rows = h.rows;
+    if (!rows.length) return { changes: [], openNotes: 0 };
+
+    const keys = [...new Set(rows.map((r) => r.rule_key).filter(Boolean))];
+    const bodies = keys.length ? await client.query(
+      `SELECT rule_key, version, body FROM wingguy_rules
+       WHERE layer = 'client' AND tenant_id = $1 AND rule_key = ANY($2)`,
+      [tenant, keys],
+    ) : { rows: [] };
+    const bodyOf = new Map(bodies.rows.map((b) => [`${b.rule_key}@${b.version}`, b.body]));
+
+    const n = await client.query(
+      `SELECT id, created_at, history_id, author, note, resolved_at, resolved_by
+       FROM wingguy_change_notes
+       WHERE tenant_id = $1 AND history_id = ANY($2)
+       ORDER BY created_at ASC, id ASC`,
+      [tenant, rows.map((r) => Number(r.id))],
+    );
+    const notesFor = new Map();
+    let openNotes = 0;
+    for (const note of n.rows) {
+      const list = notesFor.get(Number(note.history_id)) || [];
+      list.push(note);
+      notesFor.set(Number(note.history_id), list);
+      if (!note.resolved_at) openNotes++;
+    }
+
+    const changes = rows.map((r) => {
+      const detail = (typeof r.detail === 'string' ? JSON.parse(r.detail || '{}') : r.detail) || {};
+      return {
+        id: Number(r.id),
+        createdAt: r.created_at,
+        actor: r.actor,
+        action: r.action,
+        ruleKey: r.rule_key,
+        fromVersion: r.from_version,
+        toVersion: r.to_version,
+        changeNote: detail.change_note || null,
+        beforeBody: r.from_version != null ? (bodyOf.get(`${r.rule_key}@${r.from_version}`) || null) : null,
+        afterBody: r.to_version != null ? (bodyOf.get(`${r.rule_key}@${r.to_version}`) || null) : null,
+        notes: notesFor.get(Number(r.id)) || [],
+      };
+    });
+    return { changes, openNotes };
+  } finally {
+    client.release();
+  }
+}
+
+/** Leave a note on one change-log entry. The entry must belong to the tenant — no cross-tenant notes. */
+async function addChangeNote({ tenantId = DEFAULT_TENANT, historyId, author, note } = {}) {
+  const id = Number(historyId);
+  const text = String(note || '').trim();
+  if (!Number.isInteger(id) || id <= 0) throw new Error('addChangeNote: historyId is required');
+  if (!text) throw new Error('addChangeNote: note text is required');
+  const p = getPool();
+  if (!p) throw new Error('DATABASE_URL not set');
+  const tenant = (tenantId || DEFAULT_TENANT).trim();
+  const client = await p.connect();
+  try {
+    await ensureSchema(client);
+    const owns = await client.query(
+      `SELECT 1 FROM wingguy_rule_history WHERE id = $1 AND tenant_id = $2 AND layer = 'client'`,
+      [id, tenant],
+    );
+    if (!owns.rows.length) throw new Error('that change is not on this account');
+    const r = await client.query(
+      `INSERT INTO wingguy_change_notes (tenant_id, history_id, author, note)
+       VALUES ($1, $2, $3, $4) RETURNING id, created_at`,
+      [tenant, id, String(author || '').trim().slice(0, 80) || null, text.slice(0, 2000)],
+    );
+    return { ok: true, id: Number(r.rows[0].id), createdAt: r.rows[0].created_at };
+  } finally {
+    client.release();
+  }
+}
+
+/** Tick a note off ("sorted"). Idempotent: resolving a resolved note changes nothing. */
+async function resolveChangeNote({ tenantId = DEFAULT_TENANT, noteId, resolvedBy } = {}) {
+  const id = Number(noteId);
+  if (!Number.isInteger(id) || id <= 0) throw new Error('resolveChangeNote: noteId is required');
+  const p = getPool();
+  if (!p) throw new Error('DATABASE_URL not set');
+  const client = await p.connect();
+  try {
+    await ensureSchema(client);
+    const r = await client.query(
+      `UPDATE wingguy_change_notes SET resolved_at = now(), resolved_by = $1
+       WHERE id = $2 AND tenant_id = $3 AND resolved_at IS NULL`,
+      [String(resolvedBy || '').trim().slice(0, 80) || null, id, (tenantId || DEFAULT_TENANT).trim()],
+    );
+    return { ok: true, resolved: r.rowCount };
+  } finally {
+    client.release();
+  }
+}
+
+/** Remember the newest pair id a nudge covered, so that batch is never mentioned again. */
+async function markEditNudge({ tenantId = DEFAULT_TENANT, pairId } = {}) {
+  const id = Number(pairId);
+  if (!Number.isInteger(id) || id <= 0) return { ok: true, marked: false };
+  const p = getPool();
+  if (!p) throw new Error('DATABASE_URL not set');
+  const client = await p.connect();
+  try {
+    await ensureSchema(client);
+    await client.query(
+      `INSERT INTO wingguy_edit_nudges (tenant_id, last_nudged_pair_id, nudged_at)
+       VALUES ($1, $2, now())
+       ON CONFLICT (tenant_id) DO UPDATE
+       SET last_nudged_pair_id = GREATEST(wingguy_edit_nudges.last_nudged_pair_id, EXCLUDED.last_nudged_pair_id),
+           nudged_at = now()`,
+      [(tenantId || DEFAULT_TENANT).trim(), id],
+    );
+    return { ok: true, marked: true };
   } finally {
     client.release();
   }
@@ -1696,6 +1922,11 @@ module.exports = {
   recordEditPair,
   getEditPairs,
   resolveEditPairs,
+  getEditNudgeState,
+  markEditNudge,
+  getClientChangeLog,
+  addChangeNote,
+  resolveChangeNote,
   normalizeForEditCompare,
   // draft ledger (the email half of learn-from-my-edit)
   recordDraftBody,

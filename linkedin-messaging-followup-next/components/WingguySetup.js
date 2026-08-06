@@ -103,6 +103,10 @@ function WingguySetupInner() {
   // opens any tenant's page without minting a portal link. A client's own link never carries these.
   const client = searchParams.get('client') || '';
   const devKey = searchParams.get('devKey') || '';
+  // Attribution, not authentication: a link can carry &as=<name> when more than one person works
+  // this tenant (an owner and a VA, say) so the change history reads "April changed..." rather
+  // than just "the setup page".
+  const asName = searchParams.get('as') || '';
   const hasAuth = !!token || !!(client && devKey);
 
   const authHeaders = useCallback((extra = {}) => {
@@ -110,8 +114,9 @@ function WingguySetupInner() {
     if (token) h['x-portal-token'] = token;
     if (client) h['x-client-id'] = client;
     if (devKey) h['x-dev-key'] = devKey;
+    if (asName) h['x-page-name'] = asName;
     return h;
-  }, [token, client, devKey]);
+  }, [token, client, devKey, asName]);
 
   const [state, setState] = useState({ status: 'loading', error: '', data: null });
   const [values, setValues] = useState({});
@@ -478,6 +483,15 @@ function WingguySetupInner() {
               assist={assist}
             />
           ))}
+          {/* Learn-from-my-edit surfacing (2026-08-06): the easiest way to teach Wingguy a voice
+              is not a form - it is editing a draft. Say so here, where voice is the topic. */}
+          <p className="text-slate-500 text-sm">
+            There is an easier way to do all of this, too: just change what Wingguy drafts before
+            you send it. It quietly keeps a note of every edit, and any time you ask it to{' '}
+            <span className="font-medium">&ldquo;review my edits&rdquo;</span> it will show you what
+            you changed and ask whether any of it should become an instruction - so future drafts
+            come out your way first time.
+          </p>
         </section>
       ) : null}
 
@@ -487,6 +501,16 @@ function WingguySetupInner() {
           title="How your Wingguy works"
           sub="Every instruction it follows, in plain English. Open any of them - and if one is not how you would do it, tell it right there."
         />
+        {/* The review page (2026-08-06): the owner's small window - what changed, who did it,
+            notes in the margin. Linked rather than embedded so this page stays the working
+            surface and a glance stays a glance. */}
+        <p className="text-sm text-slate-500 -mt-4">
+          Curious what has been changed on this page over time?{' '}
+          <a className="underline hover:text-slate-700" href={`/my-wingguy/review?${searchParams.toString()}`}>
+            See what&apos;s changed lately
+          </a>
+          {' '}- every change, who made it, before and after.
+        </p>
 
         <div className="bg-white border border-slate-200 p-6 flex flex-col gap-4">
           <p className="text-[15px] text-slate-700 leading-relaxed">
@@ -991,6 +1015,8 @@ const KIND_PILL = {
   fixed: ['Guardrail', 'text-amber-800 bg-amber-50 border-amber-300'],
   standard: ['Standard - shared', 'text-emerald-800 bg-emerald-50 border-emerald-300'],
   yours: ['Yours', 'text-slate-700 bg-slate-100 border-slate-300'],
+  // A kit prompt nobody has filled in yet - a space, not a half-written instruction.
+  unwritten: ['Not written yet', 'text-sky-800 bg-sky-50 border-sky-300'],
 };
 
 function InstructionItem({ item, assist, commitChange }) {
@@ -999,7 +1025,9 @@ function InstructionItem({ item, assist, commitChange }) {
   const [request, setRequest] = useState('');
   const [state, setState] = useState(null); // null | 'loading' | 'done' | {proposal} | {answer} | {error}
   const [explain, setExplain] = useState(null); // null | 'loading' | {text} | {error}
-  const [pillLabel, pillClasses] = KIND_PILL[item.kind] || KIND_PILL.standard;
+  const [pillLabel, pillClasses] = item.unwritten
+    ? KIND_PILL.unwritten
+    : (KIND_PILL[item.kind] || KIND_PILL.standard);
 
   // The box takes anything - a question gets an answer, a change request gets a proposal.
   const run = async () => {
@@ -1029,10 +1057,23 @@ function InstructionItem({ item, assist, commitChange }) {
         <span className="flex-1" />
         <span className="text-xs text-slate-400 whitespace-nowrap">{open ? 'close' : 'open'}</span>
       </button>
-      {!open && item.gist ? <p className="pb-3 -mt-1 text-sm text-slate-500 leading-relaxed">{item.gist}</p> : null}
+      {!open && (item.blurb || item.gist) ? (
+        <p className="pb-3 -mt-1 text-sm text-slate-500 leading-relaxed">{item.blurb || item.gist}</p>
+      ) : null}
 
       {open ? (
         <div className="pb-4 flex flex-col gap-3">
+          {item.unwritten ? (
+            <div className="bg-sky-50 border border-sky-200 px-4 py-3 flex flex-col gap-2">
+              <p className="text-[15px] text-slate-800 leading-relaxed">{item.blurb}</p>
+              <p className="text-sm text-slate-600 leading-relaxed">
+                <strong>This one is a space, not a gap.</strong> Nothing is broken and nothing is
+                missing - it is simply yours to write when you are ready, and most people are better
+                off leaving it until they have had a few real conversations. Wingguy works fine
+                without it. When you want to fill it in, say so in the box below or in a chat.
+              </p>
+            </div>
+          ) : null}
           <div className="bg-white border-l-2 border-emerald-600 px-4 py-3 text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">{item.body}</div>
 
           <div className="flex flex-wrap gap-2">

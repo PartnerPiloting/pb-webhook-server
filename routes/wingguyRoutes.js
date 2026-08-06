@@ -25,13 +25,14 @@
 const express = require('express');
 const { createLogger } = require('../utils/contextLogger');
 const { authenticateUserWithTestMode } = require('../middleware/authMiddleware');
-const { getAnthropicClient, getAnthropicClientForKey, isAnthropicConfigured } = require('../config/anthropicClient');
+const { getAnthropicClient, getAnthropicClientForKey, isAnthropicConfigured, anthropicKeyError } = require('../config/anthropicClient');
 const rulesSource = require('../services/wingguyRulesSource');
 const { getBookingPrefs } = require('../config/wingguyBookingPrefs');
 const { createBookingEvent } = require('../services/wingguyCalendar');
 const { runWingguyChatTurn } = require('../services/wingguyChat');
 const wingguyLeads = require('../services/wingguyLeads');
 const clientService = require('../services/clientService');
+const { canonicalLinkedinSlug, slugPrefilterFormula, findExactSlugMatch } = require('../utils/linkedinCanonical');
 const wingguyStore = require('../services/wingguyRulesStore');
 const setupFields = require('../config/wingguySetupFields');
 
@@ -56,21 +57,31 @@ const OWNER_CLIENT_ID = (process.env.RECALL_COACH_CLIENT_ID || 'Guy-Wilson').tri
 // ONLY for the owner or an explicit managed-plan client (WINGGUY_PLATFORM_KEY_CLIENTS, comma-sep);
 // else BLOCK (they add their key, or go on a plan). Returns the client to draft with, or null =
 // the caller must reject the request.
-const BYO_ANTHROPIC_HEADER = 'x-anthropic-key';
-const NO_ANTHROPIC_KEY_MSG = 'Add your Anthropic (Claude) API key in the Wingguy extension settings to draft - it runs on your own key. (Or ask to be put on a managed plan.)';
+const NO_ANTHROPIC_KEY_MSG = "Your Claude key isn't set up yet - message Guy.";
 const PLATFORM_KEY_CLIENTS = new Set(
   [OWNER_CLIENT_ID, ...String(process.env.WINGGUY_PLATFORM_KEY_CLIENTS || '').split(',')]
     .map((s) => s.trim())
     .filter(Boolean),
 );
 function byoAnthropicClient(req) {
-  const headerKey = String(req.get(BYO_ANTHROPIC_HEADER) || '').trim();
-  if (headerKey) return getAnthropicClientForKey(headerKey);            // their own key (BYO)
   const cid = req.client && String(req.client.clientId || '').trim();
+  // Each draft logs which key lane it took (mirrors the overnight services' `anthropic lane=` line).
+  // The browser-key header lane (Option A, 2026-07-13) was REMOVED 2026-08-05 on Julian's feedback:
+  // an empty key field in the popup read as a form to fill in, and every client's key now lives on
+  // their Client Master row anyway. One door, not two.
+  const storedKey = req.client && String(req.client.anthropicApiKey || '').trim();
+  if (storedKey) {                                                      // their own key (stored on record)
+    logger.info(`[Wingguy] anthropic lane=client-stored-key client=${cid}`);
+    return getAnthropicClientForKey(storedKey);
+  }
   // Platform (Guy's) key allowed only for: the owner, a client on a managed plan (the record's
   // "Managed Claude Key" = Yes → req.client.managedClaudeKey), or the env override list.
   const managed = !!(req.client && req.client.managedClaudeKey);
-  if (managed || (cid && PLATFORM_KEY_CLIENTS.has(cid))) return getAnthropicClient();
+  if (managed || (cid && PLATFORM_KEY_CLIENTS.has(cid))) {
+    logger.info(`[Wingguy] anthropic lane=platform-fallback client=${cid}`);
+    return getAnthropicClient();
+  }
+  logger.info(`[Wingguy] anthropic lane=none-blocked client=${cid}`);
   return null;                                                          // no key → block, never bill the platform
 }
 
@@ -93,6 +104,25 @@ function transientClaudeError(e) {
     return 'Claude had a brief server hiccup - please try that again in a moment.';
   }
   return null;
+}
+
+// A client-facing sentence for a rejected KEY (their own key revoked, or their spend cap / credit
+// exhausted). This is the surfaced-not-swallowed half of the stored-key safety promise: a dead key
+// stops their Wingguy and tells them how to fix it — it is NEVER retried on the platform key.
+const ANTHROPIC_KEY_ERROR_MSG = {
+  revoked: 'Your Anthropic (Claude) API key was rejected - it looks revoked or invalid. Message Guy and it will get sorted.',
+  billing: "Your Anthropic (Claude) account declined the request - most likely the spend limit or credit ran out. Raise the limit or top up in your Anthropic Console, then try again.",
+};
+
+// Single place that turns a Claude call failure into the right HTTP response, so every model-calling
+// route handles a rejected key / overload / real bug identically. Key/billing failure -> 400 + a
+// clear "fix your key" message (surfaced, never retried on the platform key); transient upstream
+// overload -> 503 "try again"; anything else -> 500 raw.
+function respondClaudeError(res, e) {
+  const keyReason = anthropicKeyError(e);
+  if (keyReason) return res.status(400).json({ ok: false, error: ANTHROPIC_KEY_ERROR_MSG[keyReason], keyError: keyReason });
+  const friendly = transientClaudeError(e);
+  return res.status(friendly ? 503 : 500).json({ ok: false, error: friendly || e.message });
 }
 
 function parseBoolFlag(val, defaultValue = false) {
@@ -237,20 +267,22 @@ async function enrichProfileFromPortal(req, profile = {}) {
   try {
     if (!req.client || !req.client.airtableBaseId) return profile;
     const url = String(profile.profileUrl || '');
-    const slugMatch = url.match(/linkedin\.com\/in\/([^/?#]+)/i);
+    // Exact canonical-slug match only (Bognar/Byrne, 2026-07-28): a substring match here would enrich
+    // the draft with the WRONG person's CRM record. The SEARCH formula is just a prefilter.
+    const slug = canonicalLinkedinSlug(url);
     const name = String(profile.name || '').trim();
-    if (!slugMatch && !name) return profile;
+    if (!slug && !name) return profile;
 
     const base = clientService.getClientBase(req.client.airtableBaseId);
     if (!base) return profile;
 
     let records = [];
-    if (slugMatch) {
-      const slug = slugMatch[1].toLowerCase();
-      records = await base('Leads').select({
-        filterByFormula: `SEARCH("${slug}", LOWER({LinkedIn Profile URL}))`,
-        maxRecords: 3,
+    if (slug) {
+      const candidates = await base('Leads').select({
+        filterByFormula: slugPrefilterFormula(slug),
+        maxRecords: 50,
       }).firstPage();
+      records = findExactSlugMatch(candidates, slug).slice(0, 3);
     }
     if (!records.length && name) {
       const parts = name.split(/\s+/);
@@ -262,7 +294,7 @@ async function enrichProfileFromPortal(req, profile = {}) {
       records = await base('Leads').select({ filterByFormula: formula, maxRecords: 3 }).firstPage();
     }
     if (!records.length) {
-      logger.info(`[Wingguy] enrich: no Portal match for ${slugMatch ? slugMatch[1] : name}`);
+      logger.info(`[Wingguy] enrich: no Portal match for ${slug || name}`);
       return profile;
     }
 
@@ -417,7 +449,7 @@ module.exports = function mountWingguy(app) {
       });
     } catch (e) {
       logger.error(`[Wingguy] draft-thanks failed: ${e.message}`);
-      return res.status(500).json({ ok: false, error: e.message });
+      return respondClaudeError(res, e);
     }
   });
 
@@ -476,7 +508,7 @@ module.exports = function mountWingguy(app) {
       return res.json({ ok: true, draft, model: WINGGUY_DRAFT_MODEL_ID, mode: 'reply' });
     } catch (e) {
       logger.error(`[Wingguy] draft-reply failed: ${e.message}`);
-      return res.status(500).json({ ok: false, error: e.message });
+      return respondClaudeError(res, e);
     }
   });
 
@@ -597,9 +629,8 @@ module.exports = function mountWingguy(app) {
       return res.json(result);
     } catch (e) {
       logger.error(`[Wingguy] chat failed: ${e.message}`);
-      const friendly = transientClaudeError(e);
-      // 503 for a transient upstream overload (semantically "try again"); 500 for a real failure.
-      return res.status(friendly ? 503 : 500).json({ ok: false, error: friendly || e.message });
+      // Key/billing failure -> clear "fix your key" (400); transient overload -> 503; else 500.
+      return respondClaudeError(res, e);
     }
   });
 
@@ -685,9 +716,50 @@ module.exports = function mountWingguy(app) {
     return filled;
   }
 
+  // Hand a brand-new client their starter kit the first time they open their setup page.
+  //
+  // Before this, the ONLY automatic trigger was a client happening to ask "set up my instructions"
+  // in a chat - so someone could work through this entire page, read every shared instruction, and
+  // still own none of their own. The page is the front door to onboarding, so the page is what
+  // should do it.
+  //
+  // Safe to call on every load: the store skips any rule they already hold, refuses to touch the
+  // owner tenant, and will not seed a copy over a locked guardrail. It only ever fires for a client
+  // whose own layer is completely empty, so a client who has since retired a seeded rule does not
+  // get it silently resurrected.
+  //
+  // NO LATCH ANY MORE (2026-08-06). WINGGUY_SEED_FROM_TEMPLATE existed to protect clients from a
+  // starter kit we knew was broken - nine rules that assumed the client was Guy selling ASH
+  // memberships, seventeen carrying his exact scripted sentences. That kit was rewritten and the
+  // danger is gone, and a manual gate on an automatic process is the kind of thing that gets
+  // forgotten: someone onboards, silently receives nothing, and nobody notices for a fortnight.
+  // A client now gets whatever the kit is on the day they open their page.
+  //
+  // What protects the kit from here is review before a change ships, not a switch - a switch that
+  // is off does not stop a bad instruction being written, it only delays who receives it. And note
+  // the asymmetry: seeding again later ADDS but never undoes, so a wrong instruction that reached
+  // clients needs a deliberate fix, not a reseed.
+  async function ensureSeededFromTemplate(tenantId) {
+    if (tenantId === wingguyStore.DEFAULT_TENANT) return 0;
+    try {
+      const existing = await wingguyStore.getActiveRules({ tenantId, layer: 'client' });
+      if (existing.length) return 0;
+      const r = await wingguyStore.seedClientFromTemplate({ tenantId, createdBy: `portal:setup-page:${tenantId}` });
+      const n = (r && r.seeded && r.seeded.length) || 0;
+      if (n) logger.info(`[Wingguy] seeded ${n} starter-kit instructions for ${tenantId} on first setup-page open`);
+      return n;
+    } catch (e) {
+      // Never break the page over this - they still get the shared instructions, and the next
+      // open (or the chat door) will try again.
+      logger.error(`[Wingguy] seeding failed for ${tenantId}: ${e.message}`);
+      return 0;
+    }
+  }
+
   router.get('/setup', async (req, res) => {
     const tenantId = req.client.clientId;
     try {
+      await ensureSeededFromTemplate(tenantId);
       // SEQUENTIAL, NOT Promise.all. Each store call runs ensureSchema on its own connection, and
       // against a database where the tables do not exist yet (a fresh environment, or the first
       // request after a deploy to a new one) two of them race their CREATE TABLE / CREATE INDEX
@@ -843,12 +915,17 @@ module.exports = function mountWingguy(app) {
               return `[${key.replace(/[_-]+/g, ' ')} - not filled in yet]`;
             },
           );
+          // A kit prompt they have not written yet is flagged, so the page can present it as a
+          // space left for them rather than an instruction that looks half-finished.
+          const unwritten = titles.isUnwritten(r.rule_key);
           return {
             ruleKey: r.rule_key,
             context: r.context,
             ruleType: r.rule_type,
             version: r.version,
             kind,
+            unwritten,
+            blurb: unwritten ? titles.blurbFor(r.rule_key) : '',
             title: titles.titleFor(r.rule_key),
             gist: titles.gistFor(r.rule_key),
             body: text,
@@ -1108,7 +1185,7 @@ module.exports = function mountWingguy(app) {
         ruleType,
         body: String(body),
         changeNote: `From their setup page: ${String(explanation || 'client change').slice(0, 300)}`,
-        createdBy: `portal:${tenantId}`,
+        createdBy: `portal:${tenantId}${pageName(req) ? `:as:${pageName(req)}` : ''}`,
         expectedVersion: Number(expectedVersion) || 0,
         actorTenantId: tenantId,
         via: 'door',
@@ -1123,6 +1200,99 @@ module.exports = function mountWingguy(app) {
           : e.message);
       logger.error(`[Wingguy] setup page commit failed for ${tenantId} (${ruleKey}): ${e.message}`);
       return res.status(409).json({ ok: false, error: friendly });
+    }
+  });
+
+  // -------------------------------------------------------------------------
+  // The review page — the owner's window. One tenant can be two people (a business owner and
+  // whoever operates the page day to day), so links may carry &as=<name>: pure attribution, not
+  // authentication — the token is still the whole auth story, the name just makes the change
+  // history readable ("April, Tuesday") and lets notes carry a signature.
+  // -------------------------------------------------------------------------
+
+  // The display name a page identifies itself with (?as= passed through as a header or body
+  // field). Kept to letters/spaces so an actor string stays parseable.
+  function pageName(req) {
+    const raw = (req.body && req.body.as) || req.headers['x-page-name'] || '';
+    return String(raw).replace(/[^a-zA-Z' -]/g, '').trim().slice(0, 40);
+  }
+
+  // actor column → the name a human should read on the review page.
+  function whoFromActor(actor) {
+    const a = String(actor || '');
+    const as = a.match(/:as:(.+)$/);
+    if (as) return as[1];
+    if (a.startsWith('portal:')) return 'the setup page';
+    if (a.startsWith('mcp:')) return 'a chat with Wingguy';
+    if (a.includes('seed')) return 'the starter kit';
+    return a || 'Wingguy';
+  }
+
+  // What changed lately — client-layer instruction changes with before/after and notes attached.
+  router.get('/setup/changes', async (req, res) => {
+    const tenantId = req.client.clientId;
+    try {
+      const titles = require('../config/wingguyInstructionTitles');
+      const { changes, openNotes } = await wingguyStore.getClientChangeLog({
+        tenantId, limit: Number(req.query.limit) || 30,
+      });
+      return res.json({
+        ok: true,
+        openNotes,
+        changes: changes.map((c) => ({
+          id: c.id,
+          when: c.createdAt,
+          who: whoFromActor(c.actor),
+          action: c.action,
+          ruleKey: c.ruleKey,
+          title: titles.titleFor(c.ruleKey),
+          changeNote: c.changeNote,
+          beforeBody: c.beforeBody,
+          afterBody: c.afterBody,
+          notes: c.notes.map((note) => ({
+            id: Number(note.id),
+            when: note.created_at,
+            author: note.author || 'unsigned',
+            note: note.note,
+            resolvedAt: note.resolved_at,
+            resolvedBy: note.resolved_by,
+          })),
+        })),
+      });
+    } catch (e) {
+      logger.error(`[Wingguy] change log read failed for ${tenantId}: ${e.message}`);
+      return res.status(500).json({ ok: false, error: 'Could not load the change history.' });
+    }
+  });
+
+  // Leave a note on a change. Notes never alter instructions — they sit in the margin.
+  router.post('/setup/change-note', async (req, res) => {
+    const tenantId = req.client.clientId;
+    const { historyId, note } = req.body || {};
+    try {
+      const r = await wingguyStore.addChangeNote({
+        tenantId, historyId, note, author: pageName(req) || null,
+      });
+      logger.info(`[Wingguy] change note #${r.id} left on change ${historyId} for ${tenantId}`);
+      return res.json({ ok: true, id: r.id });
+    } catch (e) {
+      logger.error(`[Wingguy] change note failed for ${tenantId}: ${e.message}`);
+      return res.status(400).json({ ok: false, error: e.message });
+    }
+  });
+
+  // "Sorted" — tick a note off once it has been read and acted on.
+  router.post('/setup/change-note-resolve', async (req, res) => {
+    const tenantId = req.client.clientId;
+    const { noteId } = req.body || {};
+    try {
+      const r = await wingguyStore.resolveChangeNote({
+        tenantId, noteId, resolvedBy: pageName(req) || null,
+      });
+      return res.json({ ok: true, resolved: r.resolved });
+    } catch (e) {
+      logger.error(`[Wingguy] change note resolve failed for ${tenantId}: ${e.message}`);
+      return res.status(400).json({ ok: false, error: e.message });
     }
   });
 

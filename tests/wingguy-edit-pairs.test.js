@@ -53,6 +53,22 @@ class FakeDb {
       }
       return { rowCount: n, rows: [] };
     }
+    if (s.includes('COUNT(*)::int AS n') && s.includes('FROM wingguy_edit_pairs')) {
+      const tenant = params[0];
+      const pending = this.pairs.filter((p) => p.tenant_id === tenant && p.status === 'pending');
+      return { rows: [{ n: pending.length, max_id: pending.reduce((m, p) => Math.max(m, p.id), 0) }] };
+    }
+    if (s.includes('FROM wingguy_edit_nudges')) {
+      const tenant = params[0];
+      const row = (this.nudges || {})[tenant];
+      return { rows: row ? [{ last_nudged_pair_id: row }] : [] };
+    }
+    if (s.includes('INSERT INTO wingguy_edit_nudges')) {
+      const [tenant, id] = params;
+      this.nudges = this.nudges || {};
+      this.nudges[tenant] = Math.max(this.nudges[tenant] || 0, Number(id));
+      return { rows: [] };
+    }
     if (s.includes('FROM wingguy_edit_pairs')) {
       const tenant = params[0];
       const cap = params[1];
@@ -88,8 +104,16 @@ class FakeDb {
 
 (async () => {
   console.log('normalizeForEditCompare() — the "did anything change?" view:');
-  await check('whitespace runs and edges collapse', () => {
-    assert.strictEqual(store.normalizeForEditCompare('  Hi   Sam,\n\ngreat to  connect. '), 'Hi Sam, great to connect.');
+  await check('all whitespace is dropped, not collapsed', () => {
+    assert.strictEqual(store.normalizeForEditCompare('  Hi   Sam,\n\ngreat to  connect. '), 'HiSam,greattoconnect.');
+  });
+  await check('LinkedIn newline-stripping (no space left behind) reads as unchanged', () => {
+    // The real-world capture shape that flooded the queue: LinkedIn renders the sent message
+    // with the draft's newlines removed entirely, so a space-collapsing compare saw a diff.
+    assert.strictEqual(
+      store.normalizeForEditCompare('Hi Jade,\n\nYour profile is brilliant.\n\n(I know a) Guy'),
+      store.normalizeForEditCompare('Hi Jade,Your profile is brilliant.(I know a) Guy'),
+    );
   });
   await check('case and punctuation changes still COUNT as edits', () => {
     assert.notStrictEqual(store.normalizeForEditCompare('Great to connect!'), store.normalizeForEditCompare('great to connect'));
@@ -168,6 +192,38 @@ class FakeDb {
     assert.strictEqual(r.resolved, 0);
   });
 
+  console.log('edit-nudge high-water mark — the brief\'s "review my edits" gate:');
+  await check('below the threshold: no nudge', async () => {
+    // Both earlier pairs are resolved by now, so pending starts at zero here.
+    await store.recordEditPair({ tenantId: 'Test-Tenant', leadName: 'A Test', generated: 'Morning works.', sent: 'Morning suits me.' });
+    const st = await store.getEditNudgeState({ tenantId: 'Test-Tenant', threshold: 3 });
+    assert.strictEqual(st.pendingCount, 1);
+    assert.strictEqual(st.nudge, false);
+  });
+  await check('at the threshold with unseen pairs: nudge fires', async () => {
+    await store.recordEditPair({ tenantId: 'Test-Tenant', leadName: 'B Test', generated: 'See you Friday.', sent: 'See you then, Friday.' });
+    await store.recordEditPair({ tenantId: 'Test-Tenant', leadName: 'D Test', generated: 'Happy to intro you.', sent: 'Happy to make the intro.' });
+    const st = await store.getEditNudgeState({ tenantId: 'Test-Tenant', threshold: 3 });
+    assert.strictEqual(st.pendingCount, 3);
+    assert.strictEqual(st.nudge, true);
+  });
+  await check('after marking, the same batch never nudges again', async () => {
+    const st = await store.getEditNudgeState({ tenantId: 'Test-Tenant' });
+    await store.markEditNudge({ tenantId: 'Test-Tenant', pairId: st.maxPendingId });
+    const again = await store.getEditNudgeState({ tenantId: 'Test-Tenant' });
+    assert.strictEqual(again.nudge, false, 'ignored nudge must not repeat');
+    assert.strictEqual(again.lastNudgedId, st.maxPendingId);
+  });
+  await check('a NEW pair re-arms the nudge', async () => {
+    await store.recordEditPair({ tenantId: 'Test-Tenant', leadName: 'C Test', generated: 'Does 2pm work?', sent: 'Would 2pm or 3pm work?' });
+    const st = await store.getEditNudgeState({ tenantId: 'Test-Tenant' });
+    assert.strictEqual(st.nudge, true);
+  });
+  await check('marking with a bogus id is a harmless no-op', async () => {
+    const r = await store.markEditNudge({ tenantId: 'Test-Tenant', pairId: 'not-a-number' });
+    assert.strictEqual(r.marked, false);
+  });
+
   console.log('draft ledger (email half) — record / awaiting / settle:');
   await check('recordDraftBody stores an awaiting row', async () => {
     const r = await store.recordDraftBody({
@@ -215,14 +271,24 @@ class FakeDb {
   });
 
   console.log('computeRulebookHygiene() — code-detected structural findings:');
-  await check('flags a cross-layer twin (same key+campaign active in two layers)', () => {
+  // Was 'flags a cross-layer twin'. Cross-layer shadowing (2026-07-31) made a client rule over a
+  // STANDARD foundation rule the intended override rather than a double-render bug, so the finding
+  // moved: only a copy that can never apply (over a FIXED rule) is still worth flagging.
+  await check('a client version of a STANDARD shared rule is not flagged (it is the override feature)', () => {
     const findings = store.computeRulebookHygiene([
-      { rule_key: 'greeting-style', campaign: null, layer: 'foundation', body: 'A' },
+      { rule_key: 'greeting-style', campaign: null, layer: 'foundation', tier: 'standard', body: 'A' },
       { rule_key: 'greeting-style', campaign: null, layer: 'client', body: 'B' },
     ], [], []);
+    assert.strictEqual(findings.length, 0);
+  });
+  await check('flags a client copy of a FIXED shared rule (it never applies)', () => {
+    const findings = store.computeRulebookHygiene([
+      { rule_key: 'bcc-discipline', campaign: null, layer: 'foundation', tier: 'locked', body: 'A' },
+      { rule_key: 'bcc-discipline', campaign: null, layer: 'client', body: 'B' },
+    ], [], []);
     assert.strictEqual(findings.length, 1);
-    assert.strictEqual(findings[0].kind, 'cross-layer-twin');
-    assert.ok(findings[0].detail.includes('foundation AND client'));
+    assert.strictEqual(findings[0].kind, 'inert-override');
+    assert.ok(findings[0].detail.includes('never applies'));
   });
   await check('campaign-vs-generic same key is BY DESIGN — not flagged', () => {
     const findings = store.computeRulebookHygiene([

@@ -101,6 +101,29 @@ check('assets are unaffected by the optional pass', () => {
   assert.deepStrictEqual(r.unresolved, ['asset:zoom_room']);
 });
 
+check('an optional ASSET drops its line when the link is not set', () => {
+  // Links are as legitimately optional as variables - a client with no explainer link should get
+  // no instruction about one, not a literal {{?asset:...}} in their prompt.
+  const r = resolveRuleBody('Use it:\nFallback: {{?asset:default_explainer}}', {}, {});
+  assert.strictEqual(r.text, 'Use it:');
+  assert.deepStrictEqual(r.unresolved, []);
+});
+
+check('an optional ASSET resolves to the URL when set', () => {
+  const r = resolveRuleBody('Fallback: {{?asset:default_explainer}}', {}, {
+    default_explainer: { url: 'https://example.com/x', status: 'active' },
+  });
+  assert.strictEqual(r.text, 'Fallback: https://example.com/x');
+  assert.deepStrictEqual(r.unresolved, []);
+});
+
+check('a RETIRED optional asset counts as unset', () => {
+  const r = resolveRuleBody('Fallback: {{?asset:default_explainer}}', {}, {
+    default_explainer: { url: 'https://example.com/x', status: 'retired' },
+  });
+  assert.strictEqual(r.text, '');
+});
+
 check('whitespace inside the braces is tolerated', () => {
   const r = resolveRuleBody('Never use: {{? never_say_words }}', { never_say_words: 'folks' });
   assert.strictEqual(r.text, 'Never use: folks');
