@@ -86,7 +86,13 @@ router.get('/test', authenticateUserWithTestMode, async (req, res) => {
         thanksForConnecting: req.client.thanksForConnectingEnabled === true,
         // Per-client Wingguy switch: gates the "My Wingguy" tab (setup + what's-changed pages)
         wingguy: req.client.wingguyEnabled === true
-      }
+      },
+      // An assistant's own key resolved here: who they are and which portal functions their row
+      // has ticked. The portal shows them the OVERLAP of these and the client's features - an
+      // assistant can never see more than their client has.
+      assistant: req.assistant
+        ? { name: req.assistant.name, functions: req.assistant.functions }
+        : null
     };
 
     logger.info('Auth Test: Response object constructed:', JSON.stringify(response, null, 2));

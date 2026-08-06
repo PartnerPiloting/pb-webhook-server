@@ -431,6 +431,78 @@ async function getClientByPortalToken(portalToken) {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Assistants — people who work inside a client's account with their own key.
+// One row per working relationship in the master base's Assistants table:
+// their own Portal Token, a Status kill switch, and a checkbox per portal
+// function. Access is the ticked functions INTERSECTED with what the client
+// has - an assistant can never exceed their client. Unticked means no, and
+// new portal features default to no.
+// ---------------------------------------------------------------------------
+
+const ASSISTANT_FUNCTIONS = [
+    'Lead Search & Update', 'New Leads', 'Top Scoring Leads', 'Thanks for Connecting',
+    'Follow-Up Manager', 'Book Meeting', 'My Wingguy', 'Settings',
+];
+
+// Small cache so per-request auth doesn't hammer Airtable; assistants change rarely.
+let assistantsCache = null;
+let assistantsCacheTimestamp = 0;
+const ASSISTANTS_CACHE_MS = 60 * 1000;
+
+async function getAllAssistants() {
+    if (assistantsCache && (Date.now() - assistantsCacheTimestamp) < ASSISTANTS_CACHE_MS) {
+        return assistantsCache;
+    }
+    const base = initializeClientsBase();
+    let records;
+    try {
+        records = await base('Assistants').select({ maxRecords: 500 }).all();
+    } catch (e) {
+        // A base without the table yet (or a permissions hiccup) must never break client auth.
+        logger.warn(`clientService: Assistants table not readable (${e.message}) - treating as empty`);
+        return [];
+    }
+    assistantsCache = records.map((record) => ({
+        id: record.id,
+        name: record.get('Name') || 'Assistant',
+        portalToken: record.get('Portal Token') || null,
+        status: record.get('Status') || 'Off',
+        clientRecordId: (record.get('Assistant To') || [])[0] || null,
+        functions: ASSISTANT_FUNCTIONS.filter((f) => record.get(f) === true),
+    }));
+    assistantsCacheTimestamp = Date.now();
+    return assistantsCache;
+}
+
+/**
+ * Resolve an assistant's portal token to { assistant, client } - the client whose account they
+ * work in, plus who they are and which functions they may use. Returns null when the token
+ * matches no ACTIVE assistant row, or the linked client cannot be found.
+ */
+async function getAssistantByPortalToken(portalToken) {
+    if (!portalToken || typeof portalToken !== 'string') return null;
+    const assistants = await getAllAssistants();
+    const assistant = assistants.find((a) => a.portalToken === portalToken);
+    if (!assistant) return null;
+    if (assistant.status !== 'Active') {
+        logger.info(`Assistant token for "${assistant.name}" refused - Status is ${assistant.status}`);
+        return null;
+    }
+    if (!assistant.clientRecordId) {
+        logger.warn(`Assistant "${assistant.name}" has no linked client - refusing token`);
+        return null;
+    }
+    const allClients = await getAllClients();
+    const client = allClients.find((c) => c.id === assistant.clientRecordId);
+    if (!client) {
+        logger.warn(`Assistant "${assistant.name}" links to a client record not in the Clients read`);
+        return null;
+    }
+    logger.info(`Found assistant by Portal Token: ${assistant.name} (assistant to ${client.clientName})`);
+    return { assistant: { id: assistant.id, name: assistant.name, functions: assistant.functions }, client };
+}
+
 /**
  * Validate if a client exists and is active
  * @param {string} clientId - The Client ID to validate
@@ -1674,6 +1746,7 @@ module.exports = {
     getClientByIdFresh, // Add fresh fetch function for security checks
     getClientByWpUserId, // Add the new WP User ID lookup function
     getClientByPortalToken, // Get client by portal token for secure URL access
+    getAssistantByPortalToken, // Resolve an assistant's own key to (assistant, client)
     getClientsByCoach,  // Get clients coached by a specific coach
     validateClient,
     // CRR REDESIGN: updateExecutionLog removed (replaced by Progress Log in jobTracking.js)

@@ -39,28 +39,31 @@ const useClientInitialization = () => {
 };
 
 // Primary navigation tabs (URL params preserved)
-const NavigationWithParams = ({ pathname, showThanksForConnecting = false, showWingguy = false }) => {
+const NavigationWithParams = ({ pathname, showThanksForConnecting = false, showWingguy = false, assistantFunctions = null }) => {
   const searchParams = useSearchParams();
   const serviceLevel = parseInt(searchParams.get('level') || '2', 10);
   const clientParam = searchParams.get('client') || searchParams.get('testClient') || '';
   const nav = [
-    { name: 'Lead Search & Update', href: '/', icon: MagnifyingGlassIcon, description: 'Find and update existing leads', minLevel: 1 },
-    { name: 'Follow-Up Manager', href: '/follow-up', icon: CalendarDaysIcon, description: 'Manage scheduled follow-ups', minLevel: 1 },
-    { name: 'New Leads', href: '/new-leads', icon: UserPlusIcon, description: 'Review and process new leads', minLevel: 1 },
-    { name: 'Top Scoring Leads', href: '/top-scoring-leads', icon: TrophyIcon, description: 'Pick the best candidates for the next LH batch', minLevel: 1 },
+    { name: 'Lead Search & Update', href: '/', icon: MagnifyingGlassIcon, description: 'Find and update existing leads', minLevel: 1, fn: 'Lead Search & Update' },
+    { name: 'Follow-Up Manager', href: '/follow-up', icon: CalendarDaysIcon, description: 'Manage scheduled follow-ups', minLevel: 1, fn: 'Follow-Up Manager' },
+    { name: 'New Leads', href: '/new-leads', icon: UserPlusIcon, description: 'Review and process new leads', minLevel: 1, fn: 'New Leads' },
+    { name: 'Top Scoring Leads', href: '/top-scoring-leads', icon: TrophyIcon, description: 'Pick the best candidates for the next LH batch', minLevel: 1, fn: 'Top Scoring Leads' },
     // Per-client rollout: only shown when the master "Thanks for Connecting" switch is on (gated below).
-    { name: 'Thanks for Connecting', href: '/thanks-for-connecting', icon: HandRaisedIcon, description: 'Welcome your recent connections', minLevel: 1, gate: 'thanksForConnecting' },
+    { name: 'Thanks for Connecting', href: '/thanks-for-connecting', icon: HandRaisedIcon, description: 'Welcome your recent connections', minLevel: 1, gate: 'thanksForConnecting', fn: 'Thanks for Connecting' },
     // Per-client Wingguy rollout: the setup page (and the what's-changed page via its own nav).
     // The portal link is the ONE link clients keep, so Wingguy has to be reachable from it -
     // the ?token= in the URL flows through searchParams like every other tab.
-    { name: 'My Wingguy', href: '/my-wingguy', icon: SparklesIcon, description: 'Your setup, and what has changed', minLevel: 1, gate: 'wingguy' },
+    { name: 'My Wingguy', href: '/my-wingguy', icon: SparklesIcon, description: 'Your setup, and what has changed', minLevel: 1, gate: 'wingguy', fn: 'My Wingguy' },
     // LEGACY-DISABLED 2026-05-16: Top Scoring Posts retired (Apify cost). Resurrect by un-commenting.
     // { name: 'Top Scoring Posts', href: '/top-scoring-posts', icon: TrophyIcon, description: 'Leads with high-relevance posts ready for action', minLevel: 2 },
-    { name: 'Settings', href: '/settings', icon: CogIcon, description: 'Configure scoring attributes and settings', minLevel: 1 },
+    { name: 'Settings', href: '/settings', icon: CogIcon, description: 'Configure scoring attributes and settings', minLevel: 1, fn: 'Settings' },
     { name: 'Start Here', href: '/start-here', icon: BookOpenIcon, description: 'Onboarding categories and topics', minLevel: 1 }
   ];
   const gates = { thanksForConnecting: showThanksForConnecting, wingguy: showWingguy };
-  const items = nav.filter(n => n.minLevel <= serviceLevel && (!n.gate || gates[n.gate] === true));
+  // An assistant sees only the tabs their row has ticked (fn names match the Assistants table's
+  // checkbox columns). No fn on an item means it is open to everyone - e.g. Start Here.
+  const fnAllowed = (n) => !assistantFunctions || !n.fn || assistantFunctions.includes(n.fn);
+  const items = nav.filter(n => n.minLevel <= serviceLevel && (!n.gate || gates[n.gate] === true) && fnAllowed(n));
   return (
     <nav className="mb-8" aria-label="Primary">
       <div className="flex flex-wrap gap-x-8 gap-y-3 items-stretch">
@@ -319,7 +322,7 @@ const Layout = ({ children }) => {
       <div className="w-full px-4 sm:px-6 lg:px-8 py-8">
         {/* Navigation Tabs */}
         <Suspense fallback={<div>Loading navigation...</div>}>
-          <NavigationWithParams pathname={pathname} showThanksForConnecting={clientProfile?.features?.thanksForConnecting === true} showWingguy={clientProfile?.features?.wingguy === true} />
+          <NavigationWithParams pathname={pathname} showThanksForConnecting={clientProfile?.features?.thanksForConnecting === true} showWingguy={clientProfile?.features?.wingguy === true} assistantFunctions={clientProfile?.assistant?.functions || null} />
         </Suspense>
 
         {/* Main Content */}

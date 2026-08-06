@@ -28,19 +28,14 @@ function WingguySetupInner() {
   // usePageAuth). The admin lane - ?client=X&devKey=Y - opens any tenant's page without minting
   // a portal link; a client's own link never carries those.
   const { token, client, devKey, hasAuth, ready, query } = usePageAuth(searchParams);
-  // Attribution, not authentication: a link can carry &as=<name> when more than one person works
-  // this tenant (an owner and a VA, say) so the change history reads "April changed..." rather
-  // than just "the setup page".
-  const asName = searchParams.get('as') || '';
 
   const authHeaders = useCallback((extra = {}) => {
     const h = { ...extra };
     if (token) h['x-portal-token'] = token;
     if (client) h['x-client-id'] = client;
     if (devKey) h['x-dev-key'] = devKey;
-    if (asName) h['x-page-name'] = asName;
     return h;
-  }, [token, client, devKey, asName]);
+  }, [token, client, devKey]);
 
   const [state, setState] = useState({ status: 'loading', error: '', data: null });
   const [values, setValues] = useState({});

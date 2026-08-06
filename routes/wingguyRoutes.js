@@ -342,6 +342,17 @@ module.exports = function mountWingguy(app) {
   router.use(authenticateUserWithTestMode);
   // ...and, for Slice 1, that client must be the owner.
   router.use(requireOwner);
+  // An assistant's key only opens this section if their row has "My Wingguy" ticked - enforced
+  // here at the back door, not just by the hidden tab.
+  router.use((req, res, next) => {
+    if (req.assistant && !req.assistant.functions.includes('My Wingguy')) {
+      return res.status(403).json({
+        ok: false,
+        error: 'Your key does not include the Wingguy pages. Ask the account owner (or Guy) to tick "My Wingguy" for you.',
+      });
+    }
+    next();
+  });
 
   // The quick-pick button set for the panel.
   router.get('/templates', async (req, res) => {
@@ -1224,9 +1235,16 @@ module.exports = function mountWingguy(app) {
 
   // The display name a page identifies itself with (?as= passed through as a header or body
   // field). Kept to letters/spaces so an actor string stays parseable.
+  // Whose name signs a change or a note. The TOKEN decides, not the URL: an assistant's key
+  // signs as the assistant, the client's own key signs as the client's first name. (This
+  // replaced the old &as= link decoration, which was attribution on the honour system - anyone
+  // could edit the URL and become someone else, and it fell off bookmarked links.)
   function pageName(req) {
-    const raw = (req.body && req.body.as) || req.headers['x-page-name'] || '';
-    return String(raw).replace(/[^a-zA-Z' -]/g, '').trim().slice(0, 40);
+    if (req.assistant && req.assistant.name) {
+      return String(req.assistant.name).replace(/[^a-zA-Z' -]/g, '').trim().slice(0, 40);
+    }
+    const clientName = (req.client && req.client.clientName) || '';
+    return String(clientName).split(/\s+/)[0].replace(/[^a-zA-Z' -]/g, '').trim().slice(0, 40);
   }
 
   // actor column → the name a human should read on the review page. The fallback is a plain
@@ -1300,6 +1318,9 @@ module.exports = function mountWingguy(app) {
       const humanise = await bodyHumaniser(tenantId);
       return res.json({
         ok: true,
+        // Who this visitor's actions would be signed as - the token decides (assistant name, or
+        // the client's first name). The page shows it on the note box.
+        you: pageName(req),
         openNotes,
         changes: changes.map((c) => ({
           id: c.id,

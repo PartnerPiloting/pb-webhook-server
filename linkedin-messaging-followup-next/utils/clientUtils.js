@@ -195,7 +195,10 @@ export async function getCurrentClientProfile() {
     clientProfile = {
       client: data.client,
       authentication: data.authentication,
-      features: data.features
+      features: data.features,
+      // Present when the visitor's key belongs to an assistant rather than the client:
+      // { name, functions[] } - the portal shows only their ticked tabs.
+      assistant: data.assistant || null
     };
     
     // Expose clientId for Chrome extension (Network Accelerator LinkedIn Quick Update)

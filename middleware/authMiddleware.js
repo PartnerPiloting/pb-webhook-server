@@ -245,8 +245,21 @@ async function authenticateUserWithTestMode(req, res, next) {
         const portalToken = req.query.token || req.headers['x-portal-token'];
         if (portalToken) {
             logger.info(`AuthMiddleware: Portal token authentication attempt`);
-            const client = await clientService.getClientByPortalToken(portalToken);
-            
+            let client = await clientService.getClientByPortalToken(portalToken);
+
+            // Not a client's key? It may be an ASSISTANT's own key - someone who works inside a
+            // client's account (April in Paul's). They act AS that client's tenant, but with
+            // their own name on everything and only the functions ticked on their row. The
+            // lookup already refuses Status=Off rows, so flicking the switch cuts them off
+            // without touching the client.
+            if (!client) {
+                const hit = await clientService.getAssistantByPortalToken(portalToken);
+                if (hit) {
+                    client = hit.client;
+                    req.assistant = hit.assistant;
+                }
+            }
+
             if (!client) {
                 return res.status(401).json({
                     status: 'error',
@@ -265,8 +278,8 @@ async function authenticateUserWithTestMode(req, res, next) {
             
             req.client = client;
             req.testMode = false;
-            req.authMethod = 'portalToken';
-            logger.info(`AuthMiddleware: Portal token auth successful for ${client.clientName}`);
+            req.authMethod = req.assistant ? 'assistantToken' : 'portalToken';
+            logger.info(`AuthMiddleware: Portal token auth successful for ${client.clientName}${req.assistant ? ` (via assistant ${req.assistant.name})` : ''}`);
             return next();
         }
         
