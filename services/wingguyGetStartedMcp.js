@@ -290,13 +290,11 @@ async function runSetupRules(_args = {}, tenant = TENANT) {
   let clientRules = [];
   try { clientRules = (await store.getActiveRules({ tenantId: tenant, layer: 'client' })) || []; } catch (_e) { /* store down */ }
   let justSeeded = false;
-  // SEEDING LATCH (2026-08-04): default OFF while the starter kit is mid-rewrite. The template
-  // audit found rules that assume the seeded client is selling ASH memberships, plus 17 carrying
-  // Guy's exact scripted wording - seeding a client today would hand them those verbatim. No
-  // client has ever been seeded, so shutting the door costs nothing. Lift by setting
-  // WINGGUY_SEED_FROM_TEMPLATE=true once the method/wording splits have landed.
-  const seedEnabled = String(process.env.WINGGUY_SEED_FROM_TEMPLATE || '').toLowerCase() === 'true';
-  if (!clientRules.length && seedEnabled) {
+  // The seeding latch that lived here (2026-08-04 to 2026-08-06) is gone - it protected clients
+  // from a starter kit we knew was broken, and that kit has since been rewritten. Seeding is
+  // automatic again: whatever the kit is on the day they arrive is what they get. The setup page
+  // is now the usual trigger; this stays as the chat-side path for anyone who gets here first.
+  if (!clientRules.length) {
     try {
       await store.seedClientFromTemplate({ tenantId: tenant, createdBy: `mcp:setup:${tenant}` });
       justSeeded = true;

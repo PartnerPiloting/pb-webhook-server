@@ -726,9 +726,20 @@ module.exports = function mountWingguy(app) {
   // Safe to call on every load: the store skips any rule they already hold, refuses to touch the
   // owner tenant, and will not seed a copy over a locked guardrail. It only ever fires for a client
   // whose own layer is completely empty, so a client who has since retired a seeded rule does not
-  // get it silently resurrected. Still behind the latch - see WINGGUY_SEED_FROM_TEMPLATE.
+  // get it silently resurrected.
+  //
+  // NO LATCH ANY MORE (2026-08-06). WINGGUY_SEED_FROM_TEMPLATE existed to protect clients from a
+  // starter kit we knew was broken - nine rules that assumed the client was Guy selling ASH
+  // memberships, seventeen carrying his exact scripted sentences. That kit was rewritten and the
+  // danger is gone, and a manual gate on an automatic process is the kind of thing that gets
+  // forgotten: someone onboards, silently receives nothing, and nobody notices for a fortnight.
+  // A client now gets whatever the kit is on the day they open their page.
+  //
+  // What protects the kit from here is review before a change ships, not a switch - a switch that
+  // is off does not stop a bad instruction being written, it only delays who receives it. And note
+  // the asymmetry: seeding again later ADDS but never undoes, so a wrong instruction that reached
+  // clients needs a deliberate fix, not a reseed.
   async function ensureSeededFromTemplate(tenantId) {
-    if (String(process.env.WINGGUY_SEED_FROM_TEMPLATE || '').toLowerCase() !== 'true') return 0;
     if (tenantId === wingguyStore.DEFAULT_TENANT) return 0;
     try {
       const existing = await wingguyStore.getActiveRules({ tenantId, layer: 'client' });
@@ -904,12 +915,17 @@ module.exports = function mountWingguy(app) {
               return `[${key.replace(/[_-]+/g, ' ')} - not filled in yet]`;
             },
           );
+          // A kit prompt they have not written yet is flagged, so the page can present it as a
+          // space left for them rather than an instruction that looks half-finished.
+          const unwritten = titles.isUnwritten(r.rule_key);
           return {
             ruleKey: r.rule_key,
             context: r.context,
             ruleType: r.rule_type,
             version: r.version,
             kind,
+            unwritten,
+            blurb: unwritten ? titles.blurbFor(r.rule_key) : '',
             title: titles.titleFor(r.rule_key),
             gist: titles.gistFor(r.rule_key),
             body: text,
