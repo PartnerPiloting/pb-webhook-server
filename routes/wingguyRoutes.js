@@ -1226,7 +1226,9 @@ module.exports = function mountWingguy(app) {
     return String(raw).replace(/[^a-zA-Z' -]/g, '').trim().slice(0, 40);
   }
 
-  // actor column → the name a human should read on the review page.
+  // actor column → the name a human should read on the review page. The fallback is a plain
+  // phrase, never the raw actor string - "promotion-pass" leaking through is exactly the
+  // techo-speak this page exists to avoid.
   function whoFromActor(actor) {
     const a = String(actor || '');
     const as = a.match(/:as:(.+)$/);
@@ -1234,7 +1236,15 @@ module.exports = function mountWingguy(app) {
     if (a.startsWith('portal:')) return 'the setup page';
     if (a.startsWith('mcp:')) return 'a chat with Wingguy';
     if (a.includes('seed')) return 'the starter kit';
-    return a || 'Wingguy';
+    if (isHousekeepingActor(a)) return 'housekeeping';
+    return 'Wingguy';
+  }
+
+  // Engineering reshuffles - a rule moving between the client's own layer and the shared set
+  // without its wording changing for them. Real events, kept in the record, but not decisions
+  // anyone made about THIS business, so the page folds them out of the main list.
+  function isHousekeepingActor(actor) {
+    return /promotion.?pass/i.test(String(actor || ''));
   }
 
   // A stored instruction body as a human should read it: the client's own values woven in, and
@@ -1279,6 +1289,7 @@ module.exports = function mountWingguy(app) {
           id: c.id,
           when: c.createdAt,
           who: whoFromActor(c.actor),
+          housekeeping: isHousekeepingActor(c.actor),
           action: c.action,
           ruleKey: c.ruleKey,
           title: titles.titleFor(c.ruleKey),
