@@ -13,18 +13,20 @@
  *   node scripts/register-granola-webhook.js --client=Some-Client            # register
  *   node scripts/register-granola-webhook.js --client=Some-Client --list     # list existing registrations
  *   node scripts/register-granola-webhook.js --client=Some-Client --url=https://... # override endpoint URL
+ *   node scripts/register-granola-webhook.js --client=Some-Client --scopes=personal,workspace # default: personal
  *
  * Defaults: endpoint URL = ${PUBLIC_BASE_URL || https://pb-webhook-server.onrender.com}/webhooks/granola/<clientId>
  *
- * ⚠ The registration endpoint path is per docs.granola.ai (POST /v1/webhooks). Built before the
- * first live client — if Granola's API differs on first contact, GRANOLA_API_BASE and the paths
- * here are the only knobs.
+ * Endpoint verified against Granola's live OpenAPI spec on first contact (2026-08-07):
+ * base https://public-api.granola.ai/v1, POST /webhook-endpoints, body requires `scopes`
+ * (personal | public | workspace) and accepts optional `folder_ids` to restrict delivery to
+ * specific folders. Response carries `signing_secret` — shown ONCE.
  */
 
 require('dotenv').config();
 const clientService = require('../services/clientService');
 
-const GRANOLA_API_BASE = (process.env.GRANOLA_API_BASE || 'https://api.granola.ai/v1').replace(/\/$/, '');
+const GRANOLA_API_BASE = (process.env.GRANOLA_API_BASE || 'https://public-api.granola.ai/v1').replace(/\/$/, '');
 
 function arg(name) {
   const hit = process.argv.find((a) => a === `--${name}` || a.startsWith(`--${name}=`));
@@ -50,20 +52,22 @@ async function main() {
   const headers = { Authorization: `Bearer ${client.granolaApiKey}`, 'Content-Type': 'application/json' };
 
   if (arg('list')) {
-    const res = await fetch(`${GRANOLA_API_BASE}/webhooks`, { headers });
+    const res = await fetch(`${GRANOLA_API_BASE}/webhook-endpoints`, { headers });
     const text = await res.text();
-    console.log(`GET ${GRANOLA_API_BASE}/webhooks -> ${res.status}`);
+    console.log(`GET ${GRANOLA_API_BASE}/webhook-endpoints -> ${res.status}`);
     console.log(text);
     return;
   }
 
   const base = (process.env.PUBLIC_BASE_URL || 'https://pb-webhook-server.onrender.com').replace(/\/$/, '');
   const url = (typeof arg('url') === 'string' ? arg('url') : `${base}/webhooks/granola/${encodeURIComponent(client.clientId)}`);
+  const scopes = (typeof arg('scopes') === 'string' ? arg('scopes') : 'personal')
+    .split(',').map((s) => s.trim()).filter(Boolean);
 
-  const res = await fetch(`${GRANOLA_API_BASE}/webhooks`, {
+  const res = await fetch(`${GRANOLA_API_BASE}/webhook-endpoints`, {
     method: 'POST',
     headers,
-    body: JSON.stringify({ url, events: ['note.generated', 'note.regenerated'] }),
+    body: JSON.stringify({ url, scopes, events: ['note.generated', 'note.regenerated'] }),
   });
   const text = await res.text();
   console.log(`POST ${GRANOLA_API_BASE}/webhooks -> ${res.status}`);

@@ -40,7 +40,7 @@ const { createSafeLogger } = require('../utils/loggerHelper');
 
 const log = createSafeLogger('SYSTEM', null, 'granola_ingest');
 
-const GRANOLA_API_BASE = (process.env.GRANOLA_API_BASE || 'https://api.granola.ai/v1').replace(/\/$/, '');
+const GRANOLA_API_BASE = (process.env.GRANOLA_API_BASE || 'https://public-api.granola.ai/v1').replace(/\/$/, '');
 const SOURCE = 'granola';
 
 /** The write path only runs when this is explicitly enabled. */
