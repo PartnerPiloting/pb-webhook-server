@@ -597,6 +597,36 @@ say about follow-ups?"
 
 ---
 
+## YOUR EDITS - WINGGUY IS TAKING NOTES
+
+Here's a habit worth knowing about, because it takes zero effort and pays better than almost
+anything else on this page.
+
+When Wingguy drafts a message and you change it before sending - tighten a line, cut a paragraph,
+swap a word you'd never use - it keeps a note of both versions. What it wrote, and what you
+actually sent. You don't have to do anything. It just notices.
+
+Then, whenever you feel like it, say "review my edits" in a chat. It walks you through what you
+changed, one message at a time, and asks the only question that matters: was that a one-off for
+that person, or is that how you'd always do it? If it's a pattern, it becomes an instruction on
+the spot - and every draft after that comes out your way first time.
+
+Why I rate this: most people can't describe their own voice. Ask someone how they write and you
+get a shrug. But show them a message that isn't quite them and they'll fix it in ten seconds flat.
+Editing is the thing you already do naturally - so Wingguy learns from that, instead of making you
+fill in forms about yourself.
+
+Two things to know. It only keeps what actually changed - send a draft untouched and there's
+nothing to review, which is the goal. And when a few edits have piled up, your daily follow-up
+list will mention it once - that's a cue, not a nag. Reviewed edits are done; you never see the
+same ones twice.
+
+The clients who get the most out of Wingguy aren't the ones who set it up most carefully on day
+one. They're the ones who keep sending, keep tweaking, and every so often let it look over their
+shoulder at what they tweaked.
+
+---
+
 ## WORKING YOUR LIST IN THE PORTAL
 
 This is where the scoring earns its keep, and it's a quick job once you're in the rhythm of it.
