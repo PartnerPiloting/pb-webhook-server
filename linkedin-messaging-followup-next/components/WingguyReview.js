@@ -112,8 +112,12 @@ function WingguyReviewInner() {
     );
   }
 
+  const mainChanges = state.changes.filter((c) => !c.housekeeping);
+  const housekeeping = state.changes.filter((c) => c.housekeeping);
+
   return (
     <Shell>
+      <PageNav current="review" setupHref={setupHref} devLane={!!(client && devKey)} />
       <div className="flex flex-col gap-3 pb-6 border-b border-slate-200">
         <h1 className="font-serif text-3xl text-slate-900">What&apos;s changed lately</h1>
         <p className="text-slate-600">
@@ -127,25 +131,174 @@ function WingguyReviewInner() {
             {state.openNotes} note{state.openNotes === 1 ? '' : 's'} waiting below - look for the amber marks.
           </p>
         ) : null}
-        <p className="text-sm text-slate-500">
-          <a className="underline hover:text-slate-700" href={setupHref}>Go to the full setup page</a>
-          {' '}- blanks, voice, and every instruction in one place.
-        </p>
       </div>
 
-      {state.changes.length === 0 ? (
+      <AddInstructionCard api={api} name={name} reload={load} />
+
+      {mainChanges.length === 0 ? (
         <p className="text-slate-600">
           No changes yet. Everything this Wingguy runs on is still the shared standard set - the
-          first change anyone makes (on the setup page or in a chat) will appear here.
+          first change anyone makes (here, on the setup page, or in a chat) will appear in this list.
         </p>
       ) : (
         <div className="flex flex-col gap-3">
-          {state.changes.map((c) => (
+          {mainChanges.map((c) => (
             <ChangeCard key={c.id} change={c} name={name} setName={setName} api={api} reload={load} />
           ))}
         </div>
       )}
+
+      {housekeeping.length ? <HousekeepingFold changes={housekeeping} name={name} setName={setName} api={api} reload={load} /> : null}
     </Shell>
+  );
+}
+
+/** The slim header both Wingguy pages share, so moving between them never means hunting for a
+ *  link mid-page. The full portal only appears on the admin lane - a token visitor is not logged
+ *  in to the portal, and a menu of doors that refuse them is worse than no menu. */
+function PageNav({ current, setupHref, reviewHref, devLane }) {
+  const tab = (label, href, active) => active
+    ? <span className="text-sm font-semibold text-slate-900 border-b-2 border-emerald-600 pb-1">{label}</span>
+    : <a className="text-sm text-slate-500 hover:text-slate-800 pb-1" href={href}>{label}</a>;
+  return (
+    <div className="flex items-baseline gap-6 pb-2">
+      {tab('Your Wingguy setup', setupHref, current === 'setup')}
+      {tab("What's changed lately", reviewHref, current === 'review')}
+      <span className="flex-1" />
+      {devLane ? <a className="text-sm text-slate-500 hover:text-slate-800" href="/">Open the portal</a> : null}
+    </div>
+  );
+}
+
+/** Propose a new instruction, chat-style, through the same guarded door as everywhere else:
+ *  Wingguy drafts it, checks for an existing instruction covering the same ground (offering to
+ *  change that one instead of adding a twin), and nothing saves without an explicit click. Lives
+ *  HERE because adding is a returning-visitor act - nobody knows on day one what they want to
+ *  tell Wingguy; they find out in week three, on this page, reading what it has been doing. */
+function AddInstructionCard({ api, name, reload }) {
+  const [text, setText] = useState('');
+  const [state, setState] = useState(null); // null | 'loading' | 'done' | {proposal} | {overlap, followText, followState}
+  const run = async () => {
+    if (!text.trim()) return;
+    setState('loading');
+    try {
+      const r = await api('setup/assist', { mode: 'change', request: text.trim() });
+      setState(r.action === 'overlap' ? { overlap: r, followText: '', followState: null } : { proposal: r });
+    } catch (e) { setState({ error: e.message }); }
+  };
+  // The overlap path: rather than sending them elsewhere, take their change to THAT instruction
+  // right here - same per-rule lane the cards below use.
+  const runFollow = async () => {
+    setState((s) => ({ ...s, followState: 'loading' }));
+    try {
+      const r = await api('setup/assist', { mode: 'change', ruleKey: state.overlap.ruleKey, request: state.followText.trim() });
+      setState((s) => ({ ...s, followState: r.action === 'answer' ? { answer: r.text } : { proposal: r } }));
+    } catch (e) { setState((s) => ({ ...s, followState: { error: e.message } })); }
+  };
+  const save = async (p) => {
+    await api('setup/change-commit', {
+      ruleKey: p.ruleKey, context: p.context, ruleType: p.ruleType,
+      body: p.proposedBody, expectedVersion: p.expectedVersion, explanation: p.explanation,
+      as: name || undefined,
+    });
+    setText('');
+    setState('done');
+    await reload();
+  };
+  return (
+    <div className="bg-white border border-emerald-600 px-5 py-4 flex flex-col gap-2.5">
+      <p className="font-serif text-xl text-slate-900">Want Wingguy to start doing something differently?</p>
+      <p className="text-sm text-slate-600 leading-relaxed">
+        Say it the way you&apos;d say it out loud - &ldquo;never message anyone on a Friday&rdquo;,
+        &ldquo;always mention I&apos;m Brisbane based&rdquo;. Wingguy turns it into a proper
+        instruction, checks nothing existing already covers it, and shows you before anything saves.
+      </p>
+      <div className="flex gap-2">
+        <input
+          type="text" value={text} maxLength={1500}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') run(); }}
+          placeholder={'e.g. never message anyone on a Friday'}
+          className="flex-1 border border-slate-300 px-3 py-2 text-[15px]"
+        />
+        <button type="button" onClick={run} disabled={state === 'loading' || !text.trim()}
+          className="px-4 py-2 text-sm font-semibold text-emerald-900 bg-emerald-50 border border-emerald-600 hover:bg-emerald-100 disabled:opacity-50 whitespace-nowrap">
+          {state === 'loading' ? 'Checking…' : 'Suggest it'}
+        </button>
+      </div>
+      {state && state !== 'loading' ? (
+        state === 'done' ? (
+          <p className="text-sm font-semibold text-emerald-800">Saved - it applies from the next thing Wingguy writes, and it is at the top of the list below.</p>
+        ) : state.error ? (
+          <p className="text-sm text-red-700">{state.error}</p>
+        ) : state.proposal ? (
+          <div className="bg-slate-50 border border-slate-200 px-4 py-3 flex flex-col gap-2">
+            <p className="text-sm text-slate-600">{state.proposal.explanation}</p>
+            <p className="text-[15px] text-slate-800 leading-relaxed whitespace-pre-wrap">{state.proposal.proposedBody}</p>
+            <div className="flex gap-3">
+              <button type="button" onClick={() => save(state.proposal)} className="px-4 py-2 bg-slate-900 text-white text-sm font-medium">Save this instruction</button>
+              <button type="button" onClick={() => setState(null)} className="text-sm text-slate-500 underline">Never mind</button>
+            </div>
+          </div>
+        ) : state.overlap ? (
+          <div className="bg-amber-50 border border-amber-300 px-4 py-3 flex flex-col gap-2">
+            <p className="text-[15px] text-slate-800 leading-relaxed">
+              There is already an instruction covering this ground: <span className="font-semibold">&ldquo;{state.overlap.title}&rdquo;</span>.
+            </p>
+            {state.overlap.why ? <p className="text-sm text-slate-700 leading-relaxed">{state.overlap.why}</p> : null}
+            <p className="text-sm text-slate-700 leading-relaxed">
+              Two instructions on the same ground quietly fight each other - better to change that
+              one. Describe how it should be different:
+            </p>
+            <div className="flex gap-2">
+              <input
+                type="text" value={state.followText}
+                onChange={(e) => { const v = e.target.value; setState((s) => ({ ...s, followText: v })); }}
+                onKeyDown={(e) => { if (e.key === 'Enter') runFollow(); }}
+                placeholder={'e.g. it should also cover Fridays'}
+                className="flex-1 border border-slate-300 px-3 py-2 text-[15px] bg-white"
+              />
+              <button type="button" onClick={runFollow} disabled={state.followState === 'loading' || !state.followText.trim()}
+                className="px-4 py-2 border border-slate-400 text-slate-800 text-sm font-medium disabled:opacity-40 whitespace-nowrap">
+                {state.followState === 'loading' ? 'Working…' : 'Draft the change'}
+              </button>
+            </div>
+            {state.followState && state.followState !== 'loading' ? (
+              state.followState.error ? (
+                <p className="text-sm text-red-700">{state.followState.error}</p>
+              ) : state.followState.answer ? (
+                <p className="text-[15px] text-slate-700 bg-white border border-slate-200 px-4 py-3">{state.followState.answer}</p>
+              ) : state.followState.proposal ? (
+                <div className="bg-white border border-slate-200 px-4 py-3 flex flex-col gap-2">
+                  <p className="text-sm text-slate-600">{state.followState.proposal.explanation}</p>
+                  <p className="text-[15px] text-slate-800 leading-relaxed whitespace-pre-wrap">{state.followState.proposal.proposedBody}</p>
+                  <div className="flex gap-3">
+                    <button type="button" onClick={() => save(state.followState.proposal)} className="px-4 py-2 bg-slate-900 text-white text-sm font-medium">Save this version</button>
+                    <button type="button" onClick={() => setState(null)} className="text-sm text-slate-500 underline">Never mind</button>
+                  </div>
+                </div>
+              ) : null
+            ) : null}
+          </div>
+        ) : null
+      ) : null}
+    </div>
+  );
+}
+
+/** Engineering reshuffles, folded shut. Kept on the page because the record must be whole; kept
+ *  out of the main list because none of them are decisions anyone made about this business. */
+function HousekeepingFold({ changes, name, setName, api, reload }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="flex flex-col gap-3 pt-2">
+      <button type="button" onClick={() => setOpen(!open)} className="self-start text-sm text-slate-500 underline hover:text-slate-700">
+        {open ? 'Hide housekeeping' : `Housekeeping (${changes.length}) - behind-the-scenes reshuffles of the shared instruction set, kept for the record`}
+      </button>
+      {open ? changes.map((c) => (
+        <ChangeCard key={c.id} change={c} name={name} setName={setName} api={api} reload={reload} />
+      )) : null}
+    </div>
   );
 }
 
@@ -378,6 +531,8 @@ function ChangeCard({ change: c, name, setName, api, reload }) {
             </div>
           ) : null}
 
+          {/* Two boxes, opposite fates for your typing - so each one says which. A placeholder
+              cannot carry that (it truncates, and vanishes at the first keystroke). */}
           <div className="flex flex-col gap-2">
             {!name ? (
               <input
@@ -389,11 +544,15 @@ function ChangeCard({ change: c, name, setName, api, reload }) {
                 }}
               />
             ) : null}
+            <div className="flex flex-col gap-1">
+              <p className="text-sm font-semibold text-slate-700">Leave a note{name ? ` (as ${name})` : ''}</p>
+              <p className="text-[13px] text-slate-500">Saved word for word, for whoever works on this page. Changes nothing by itself.</p>
+            </div>
             <div className="flex gap-2">
               <input
                 type="text" value={noteText} onChange={(e) => setNoteText(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter') leaveNote(); }}
-                placeholder={`Leave a note on this change${name ? ` (as ${name})` : ''} - e.g. "prefer we don't promise timeframes"`}
+                placeholder={'e.g. prefer we don’t promise timeframes'}
                 className="flex-1 border border-slate-300 px-3 py-2 text-[15px]"
               />
               <button type="button" onClick={leaveNote} disabled={busy === 'note' || !noteText.trim()}
@@ -405,16 +564,20 @@ function ChangeCard({ change: c, name, setName, api, reload }) {
           </div>
 
           <div className="flex flex-col gap-2 border-t border-slate-100 pt-3">
+            <div className="flex flex-col gap-1">
+              <p className="text-sm font-semibold text-slate-700">Not how you&apos;d do it?</p>
+              <p className="text-[13px] text-slate-500">Describe the change and Wingguy rewrites the instruction - you see the new version before anything is saved.</p>
+            </div>
             <div className="flex gap-2">
               <input
                 type="text" value={door.text} onChange={(e) => setDoor((d) => ({ ...d, text: e.target.value }))}
                 onKeyDown={(e) => { if (e.key === 'Enter') runDoor(); }}
-                placeholder={'Want it changed? Say it in your own words - it will show you the new version before anything saves'}
+                placeholder={'e.g. only ever send one link'}
                 className="flex-1 border border-slate-300 px-3 py-2 text-[15px]"
               />
               <button type="button" onClick={runDoor} disabled={door.state === 'loading' || !door.text.trim()}
-                className="px-4 py-2 border border-slate-400 text-slate-800 text-sm font-medium disabled:opacity-40">
-                {door.state === 'loading' ? 'Thinking…' : 'Show me'}
+                className="px-4 py-2 border border-slate-400 text-slate-800 text-sm font-medium disabled:opacity-40 whitespace-nowrap">
+                {door.state === 'loading' ? 'Working…' : 'Draft the change'}
               </button>
             </div>
             {door.state && door.state.proposal ? (
@@ -481,3 +644,5 @@ export default function WingguyReview() {
     </Suspense>
   );
 }
+
+export { PageNav };

@@ -20,6 +20,7 @@
 import React, { useState, useEffect, useCallback, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { getBackendBase } from '../services/api';
+import { PageNav } from './WingguyReview';
 
 const KINDS = [
   {
@@ -299,6 +300,7 @@ function WingguySetupInner() {
 
   return (
     <Shell wide>
+      <PageNav current="setup" reviewHref={`/my-wingguy/review?${searchParams.toString()}`} devLane={!!(client && devKey)} />
       <header className="flex flex-col gap-4">
         <div className="text-[11px] font-bold uppercase tracking-[0.15em] text-emerald-700">
           Getting started with Wingguy

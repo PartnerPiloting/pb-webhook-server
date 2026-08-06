@@ -107,6 +107,48 @@ const TITLES = {
     title: 'Helping someone pass on the day-in-the-life page',
     gist: 'When someone offers to forward your day-in-the-life page, Wingguy writes them a note they can paste straight into their own message.',
   },
+
+  // --- Guy's own client-layer rules ------------------------------------------------------------
+  // These only render for a tenant that actually holds the rule, but they need names here all the
+  // same: an unmapped key falls back to a prettified kebab-case string, which is how "Arm a
+  // forwarder day page" leaked onto the review page. Name any new client-facing rule when it is
+  // created.
+  'writing-voice-local': {
+    title: 'Your spelling, sign-off and banned words',
+    gist: 'The personal language layer - Australian English, words never to use, and how messages are signed.',
+  },
+  'staying-in-touch-rung-three': {
+    title: 'The top rung: introducing people to each other',
+    gist: 'Your own wording of the strongest staying-in-touch move - making an introduction rather than just checking in.',
+  },
+  'default-asset-knowaguy': {
+    title: 'Your default link: the knowaguy page',
+    gist: 'When no specific link is called for, knowaguy.com.au goes out - with the nudge toward "a day in the life".',
+  },
+  'intro-signoff-talk-soon': {
+    title: 'Introduction emails sign off "Talk Soon"',
+    gist: 'Your personal sign-off for introduction emails, and how it sits with the weekend rule.',
+  },
+  'followup-email-links': {
+    title: 'Which links go on a follow-up email',
+    gist: 'The knowaguy page rides along on every call-one follow-up; deck and videos are an optional third link.',
+  },
+  'objection-competitor-comparison': {
+    title: 'When someone compares this to a competitor',
+    gist: 'Dissolve the comparison rather than argue it - the system sits a layer underneath what they are comparing it to.',
+  },
+  'system-description-canonical': {
+    title: 'How the system is described',
+    gist: 'The canonical plain-language description, so every explanation starts from the same frame.',
+  },
+  'proactive-pencil-on-soft-deferral': {
+    title: 'Pencil in a time on a soft "maybe later"',
+    gist: 'A vague deferral gets a tentative slot in the diary rather than an open-ended wait.',
+  },
+  'rules-door-layer-ask': {
+    title: 'Ask "just you, or everyone?" before a rule change',
+    gist: 'Every instruction edit checks whether it belongs to you alone or to the shared set.',
+  },
 };
 
 /**
