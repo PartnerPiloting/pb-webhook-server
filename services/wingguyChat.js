@@ -235,6 +235,15 @@ function setConvoCacheMarker(convo) {
   }
 }
 
+// The model occasionally double-escapes newlines inside tool-call arguments, so the draft text
+// arrives with literal backslash-n characters instead of line breaks (first seen live 2026-08-08,
+// the Elmar times draft — it also defeated the split('\n') sign-off strip below, doubling the
+// sign-off). Nobody ever wants a visible "\n" in a message, so normalise unconditionally at the
+// seams where model-written draft text enters.
+function unescapeModelNewlines(s) {
+  return String(s || '').replace(/\\n/g, '\n');
+}
+
 // Run one chat turn (which may involve several tool round-trips) to completion.
 // Returns { ok, reply, draft, booked, messages, model }.
 async function runWingguyChatTurn({ coach, profile = {}, conversation = [], messages = [], leadEmail, airtableBaseId = null, leadRecordId = null, profileBlock = '', convoBlock = '', campaignTemplate = null, systemPrefixBlocks = null, deps = {} }) {
@@ -343,7 +352,7 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
       // writes the list). If the model already ended its intro with its own "do these work"-style
       // question, strip that line so the draft doesn't ask twice.
       const CONNECTING_LINE = 'Would any of the following times work for you?';
-      let intro = String(input.intro || '').trim();
+      let intro = unescapeModelNewlines(input.intro).trim();
       {
         const lines = intro.split('\n');
         const last = (lines[lines.length - 1] || '').trim();
@@ -353,7 +362,7 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
         }
       }
       intro = intro ? `${intro}\n\n${CONNECTING_LINE}` : CONNECTING_LINE;
-      let outro = String(input.outro || '').trim();
+      let outro = unescapeModelNewlines(input.outro).trim();
       // Code owns the sign-off on a times message (the model composes intro/outro but often omits it, or
       // adds the wrong variant). Strip any trailing sign-off line the model tacked on, then append the
       // tenant's chosen sign-off (chooseSignoff already decided tagline vs plain).
@@ -512,7 +521,7 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
       return result;
     }
     if (name === 'propose_message') {
-      currentDraft = String((input && input.message) || '').trim();
+      currentDraft = unescapeModelNewlines(input && input.message).trim();
       return { ok: true };
     }
     if (name.startsWith('wingguy_')) {
