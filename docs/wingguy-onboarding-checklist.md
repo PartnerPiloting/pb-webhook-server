@@ -322,8 +322,15 @@ registration listed cleanly: `--list` on the same script.)
    doesn't clash with a bot tool at all - both can sit on the same call. They give up nothing;
    Wingguy stays fed.
 3. **The escape hatch, framed honestly:** the odd transcript from elsewhere can be pasted into
-   chat and Wingguy will file it. But it's manual, and every manual step is a missed transcript
-   waiting to happen - offer it as a patch, not a plan.
+   chat and Wingguy will file it ("here's the transcript from my call, file it" - it's the same
+   pipeline as the portal's Import button). But walk them through what "manual" actually means
+   before they build a workflow on it: export the transcript from their tool, paste it in, give
+   the lead's email so it links to the right person (no email, no link - the note is invisible
+   next time they ask about that person), and if the paste arrives without speaker labels
+   there's a confirm step on the review screen before the summary exists. Granola has done all
+   of that before they've stood up from the call. Offer the paste door as a patch, not a plan -
+   every manual step is a missed transcript waiting to happen. (Your side: imported rows have no
+   tidy delete, so real transcripts only - never demo it with a test paste.)
 4. **Never promise a custom pipe for their tool on the call.** That's a development decision,
    not an onboarding one - "I'll look into it" is the strongest commitment to make.
 
