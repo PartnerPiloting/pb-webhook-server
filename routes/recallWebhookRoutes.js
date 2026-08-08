@@ -1298,6 +1298,8 @@ router.post('/mcp/:token', express.json(), async (req, res) => {
           ...require('../services/wingguyLeadsMcp').legacyToolList(),
           // Transcript-store import (write-door for missed captures) — shared defs with /mcp2.
           ...require('../services/recallImportMcp').legacyToolList(),
+          // Capture control (held queue, veto, real delete) — shared defs with /mcp2.
+          ...require('../services/captureControlMcp').legacyToolList(),
         ],
       },
     });
@@ -1313,7 +1315,8 @@ router.post('/mcp/:token', express.json(), async (req, res) => {
         || await require('../services/wingguyRulesMcp').legacyToolCall(toolName, args)
         || await require('../services/wingguyBookingMcp').legacyToolCall(toolName, args)
         || await require('../services/wingguyMailMcp').legacyToolCall(toolName, args)
-        || await require('../services/wingguyLeadsMcp').legacyToolCall(toolName, args);
+        || await require('../services/wingguyLeadsMcp').legacyToolCall(toolName, args)
+        || await require('../services/captureControlMcp').legacyToolCall(toolName, args);
       if (result) return res.json({ jsonrpc: '2.0', id, result });
     }
 

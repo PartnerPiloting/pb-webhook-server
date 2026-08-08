@@ -5084,3 +5084,46 @@ a paying client - it's just whose key is in the field.
 
 The popup footer now reads the real manifest version (was hardcoded v0.1.0 - which is how Julian's
 screenshot mislabelled a 0.3.x build). Extension 0.3.2.
+
+## Capture policy layer: leads-only gate + holding window + real delete (2026-08-07)
+
+Born from Ashley Knowles's security requirements (2026-08-04 call + email thread "Your
+transcripts - what I'd build, and two corrections"; he signed off: "those three layers you
+mentioned below are all I need"). Provider-agnostic by design - the store already is; the policy
+now is too.
+
+**The three layers:**
+1. **Leads-only gate** (per-client): a transcript is fetched ONLY when someone on the call is
+   already a lead. The note is fetched metadata-first (attendees, no words); no lead match =
+   stateless decline - nothing stored, not even the title, and a regenerate just re-decides.
+   Deliberately kills pending-lead impromptu capture for that client: miss beats leak.
+2. **Holding window** (per-client, minutes): a matched capture queues in `capture_pending` with
+   metadata only; the WORDS are fetched at release time, not queue time. Release sweep runs on
+   its own 5-min heartbeat (`captureReleaseSweep.js`, independent of the Fathom poll). Veto and
+   release-now via chat.
+3. **Tombstones** (`capture_tombstones`, universal): every delete/veto/purge marks
+   (source, provider_recording_id) never-again. Consulted by the Granola ingest front door, the
+   Fathom poll gate and the Fathom webhook - without this, deleting a meeting re-opens the dedup
+   gate and the next pass re-files it. Tombstone checks FAIL CLOSED.
+
+**Config = two Clients-master fields**, blank-safe: `Capture Mode` (blank/Open = exactly the old
+behaviour, one fetch, no queue; Leads Only = the gate) and `Capture Hold Minutes` (blank/0 =
+immediate). Rolled out via ensure-client-fields.js. Ashley's intended settings: Leads Only + 240.
+
+**Chat tools** (`captureControlMcp.js`, both transports, tenant-scoped, no Assistants checkbox -
+those gate the portal only): `wingguy_recordings` (held queue + stored list),
+`wingguy_recording_veto`, `wingguy_recording_release` (runs a sweep pass so it files in seconds),
+`wingguy_recording_delete` (delete + tombstone), `wingguy_recordings_purge` (confirm-phrase gated,
+vetoes the queue then deletes everything + tombstones).
+
+**Store additions** (`recallWebhookDb.js`): `listMeetingsForCoach` / `deleteMeetingForCoach` /
+`purgeMeetingsForCoach` - STRICT tenant equality, no NULL fallback, cascade removes leads,
+participants, utterances, presence; summary is a column so it dies with the row.
+
+**Honest-marketing line for clients:** leads-only stops US fetching and storing; it does not
+stop Granola/Fathom's own cloud having the recording - that's their territory.
+
+**Not done yet:** Fathom through the gate/window (only tombstones today - adopt via the same
+policy seam when a Fathom client asks); playbook control-story paragraph (waits until Ashley is
+live on it); Ashley's fields not yet set (his capture stays off until Guy's own Granola note
+verifies the shape and this layer is proven on it).

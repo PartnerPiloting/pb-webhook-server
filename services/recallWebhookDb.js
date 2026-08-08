@@ -1741,9 +1741,87 @@ async function purgeManualTestRecall() {
   }
 }
 
+// ── Client-controlled deletion (capture policy layer — "a delete that actually deletes") ────
+// STRICT tenant equality on all three (no coach_client_id-IS-NULL fallback): destructive ops
+// must never reach across a scoping gap. Children (leads, participants, utterances, presence)
+// go via ON DELETE CASCADE; the summary is a column on the meeting row itself.
+// The CALLER is responsible for tombstoning the returned provider ids (capturePolicyStore) —
+// without that, the next provider retry or poll pass re-files what the client just removed.
+
+/** The client's stored meetings, newest first — the list a delete is chosen from. */
+async function listMeetingsForCoach(coachClientId, { limit = 25 } = {}) {
+  const p = getPool();
+  if (!p) return [];
+  const client = await p.connect();
+  try {
+    await ensureSchema(client);
+    const r = await client.query(
+      `SELECT m.id, m.title, m.source, m.meeting_start, m.created_at, m.duration_seconds,
+              m.provider_recording_id, m.fathom_recording_id,
+              (SELECT COUNT(*)::int FROM recall_meeting_leads l WHERE l.meeting_id = m.id) AS lead_count
+       FROM recall_meetings m
+       WHERE m.coach_client_id = $1
+       ORDER BY COALESCE(m.meeting_start, m.created_at) DESC
+       LIMIT $2`,
+      [String(coachClientId).trim(), limit],
+    );
+    return r.rows;
+  } finally {
+    client.release();
+  }
+}
+
+/** Delete ONE meeting the tenant owns. Returns the provider ids so the caller can tombstone. */
+async function deleteMeetingForCoach(meetingId, coachClientId) {
+  const mid = typeof meetingId === 'string' ? parseInt(meetingId, 10) : Number(meetingId);
+  if (!Number.isFinite(mid)) return { ok: false, error: 'invalid meeting id' };
+  const p = getPool();
+  if (!p) return { ok: false, error: 'database not available' };
+  const client = await p.connect();
+  try {
+    await ensureSchema(client);
+    const r = await client.query(
+      `DELETE FROM recall_meetings
+       WHERE id = $1 AND coach_client_id = $2
+       RETURNING id, title, source, provider_recording_id, fathom_recording_id`,
+      [mid, String(coachClientId).trim()],
+    );
+    if (!r.rows.length) return { ok: false, error: 'no meeting with that id belongs to this client' };
+    return { ok: true, deleted: r.rows[0] };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  } finally {
+    client.release();
+  }
+}
+
+/** Delete EVERY meeting the tenant owns (the purge-all promise). Returns provider ids for tombstoning. */
+async function purgeMeetingsForCoach(coachClientId) {
+  const p = getPool();
+  if (!p) return { ok: false, error: 'database not available' };
+  const client = await p.connect();
+  try {
+    await ensureSchema(client);
+    const r = await client.query(
+      `DELETE FROM recall_meetings
+       WHERE coach_client_id = $1
+       RETURNING id, source, provider_recording_id, fathom_recording_id`,
+      [String(coachClientId).trim()],
+    );
+    return { ok: true, deleted: r.rowCount, rows: r.rows };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  } finally {
+    client.release();
+  }
+}
+
 module.exports = {
   getPool,
   persistRecallWebhookEvent,
+  listMeetingsForCoach,
+  deleteMeetingForCoach,
+  purgeMeetingsForCoach,
   getRecallWebhookDbSummary,
   upsertRecallMeeting,
   getMeetingById,

@@ -30,6 +30,7 @@ const { registerWingguyMailTools } = require('./wingguyMailMcp');
 const { registerWingguyLeadsTools } = require('./wingguyLeadsMcp');
 const { registerWingguyGetStartedTools } = require('./wingguyGetStartedMcp');
 const { registerRecallImportTools } = require('./recallImportMcp');
+const { registerCaptureControlTools } = require('./captureControlMcp');
 
 const BASE = '/mcp2';
 const DEFAULT_COACH_CLIENT_ID = (process.env.RECALL_COACH_CLIENT_ID || 'Guy-Wilson').trim();
@@ -341,6 +342,8 @@ function createRecallMcpServer(coachClientId = DEFAULT_COACH_CLIENT_ID) {
   registerWingguyLeadsTools(server, coachClientId);
   // Transcript-store import (the write-door for missed captures — Zoom AI Companion etc.).
   registerRecallImportTools(server, coachClientId);
+  // Capture control (the client's hands on their own store — held queue, veto, real delete).
+  registerCaptureControlTools(server, coachClientId);
 
   return server;
 }
