@@ -128,6 +128,11 @@ router.post('/webhooks/fathom', rawJson, async (req, res) => {
       log.info(`FATHOM-WEBHOOK recording=${recordingId} already ingested — skipping (poll/webhook overlap is a no-op)`);
       return res.status(200).json({ ok: true, received: true, processed: false, reason: 'already ingested', recording_id: recordingId });
     }
+    // A deleted meeting stays deleted — same tombstone the poll consults.
+    if (await require('../services/capturePolicyStore').isCaptureBlocked('fathom-api', String(recordingId))) {
+      log.info(`FATHOM-WEBHOOK recording=${recordingId} is tombstoned (deleted by client) — skipping`);
+      return res.status(200).json({ ok: true, received: true, processed: false, reason: 'tombstoned', recording_id: recordingId });
+    }
   } catch (e) {
     log.warn(`FATHOM-WEBHOOK dedup check failed for ${recordingId}: ${e.message} — proceeding (ingest re-checks)`);
   }

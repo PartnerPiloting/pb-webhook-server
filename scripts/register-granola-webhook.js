@@ -70,7 +70,7 @@ async function main() {
     body: JSON.stringify({ url, scopes, events: ['note.generated', 'note.regenerated'] }),
   });
   const text = await res.text();
-  console.log(`POST ${GRANOLA_API_BASE}/webhooks -> ${res.status}`);
+  console.log(`POST ${GRANOLA_API_BASE}/webhook-endpoints -> ${res.status}`);
   console.log(text);
   if (res.ok) {
     console.log('');

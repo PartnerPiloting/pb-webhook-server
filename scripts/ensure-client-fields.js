@@ -135,6 +135,23 @@ const MASTER_FIELDS = [
     description: 'Signing secret for this client\'s Granola webhook registration — returned ONCE by scripts/register-granola-webhook.js; paste it here immediately. The webhook route (/webhooks/granola/<Client ID>) verifies every delivery against THIS value and rejects all traffic while it\'s blank, so the Granola pipe is not live until this is set. Added 2026-07-29.'
   },
   {
+    name: 'Capture Mode',
+    type: 'singleSelect',
+    description: 'Capture security gate (services/capturePolicyStore.js). Blank or Open = every recording the client\'s transcript provider produces is fetched and filed (behaviour before this field existed). Leads Only = a transcript is fetched ONLY when someone on the call is already one of the client\'s leads; anything else is declined statelessly - never fetched, never stored, not even the title. Kills new-prospect impromptu capture for that client by design (miss beats leak), so leave blank for normal networking clients. Added 2026-08-07.',
+    options: {
+      choices: [
+        { name: 'Open', color: 'grayBright' },
+        { name: 'Leads Only', color: 'redBright' }
+      ]
+    }
+  },
+  {
+    name: 'Capture Hold Minutes',
+    type: 'number',
+    description: 'Capture holding window in minutes (services/capturePolicyStore.js). Blank or 0 = transcripts are fetched and filed as soon as the provider announces them (behaviour before this field existed). N > 0 = the capture sits in a visible queue for N minutes with only its metadata held - the words are not fetched until release. The client can veto or release-now through chat. E.g. Ashley 240. Added 2026-08-07.',
+    options: { precision: 0 }
+  },
+  {
     name: 'Anthropic API Key',
     type: 'singleLineText',
     description: 'Client\'s own (BYO) Anthropic API key. When present, Wingguy runs THIS client\'s server-side work (nightly follow-up brief, and the Chrome extension\'s drafting) on their key + their spend cap, not the platform key. Resolution order: request header -> this stored key -> platform key. Falls back to platform ONLY when absent; a FAILING key here (revoked/capped) must surface, not silently fall through. Client sets a spend cap + can revoke instantly (Anthropic Console), so worst-case cost is a number they chose. Plaintext-at-rest like the portal tokens in this base. Added 2026-07-24.'

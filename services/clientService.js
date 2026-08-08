@@ -148,6 +148,11 @@ async function getAllClients() {
                 const transcriptProvider = record.get('Transcript Provider') || null;
                 const granolaApiKey = record.get('Granola API Key') || null;
                 const granolaWebhookSecret = record.get('Granola Webhook Secret') || null;
+                // Capture policy (services/capturePolicyStore.js): blank fields = fully open =
+                // pre-policy behaviour. 'Leads Only' = a transcript is fetched only when someone
+                // on the call is already a lead; hold minutes = the veto window before fetching.
+                const captureMode = record.get('Capture Mode') || null;
+                const captureHoldMinutes = Number(record.get('Capture Hold Minutes')) || 0;
                 // Followup Brief opt-in: Yes = the overnight prepared-brief cron includes this
                 // client (writes triage + drafts into THEIR brief; per-client opt-in by design).
                 const followupBrief = record.get('Followup Brief') || null;
@@ -269,6 +274,8 @@ async function getAllClients() {
                     transcriptProvider: transcriptProvider,
                     granolaApiKey: granolaApiKey,
                     granolaWebhookSecret: granolaWebhookSecret,
+                    captureMode: captureMode,
+                    captureHoldMinutes: captureHoldMinutes,
                     followupBrief: followupBrief,
                     // Nylas multi-tenant calendar (per-client grant + backend choice)
                     nylasGrantId: nylasGrantId,

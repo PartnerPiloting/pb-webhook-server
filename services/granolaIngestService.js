@@ -48,9 +48,14 @@ function ingestEnabled() {
   return String(process.env.GRANOLA_INGEST_ENABLED || '').trim().toLowerCase() === 'true';
 }
 
-/** Fetch one note (with transcript) from the Granola API. */
-async function fetchGranolaNote(noteId, apiKey) {
-  const res = await fetch(`${GRANOLA_API_BASE}/notes/${encodeURIComponent(noteId)}?include=transcript`, {
+/**
+ * Fetch one note from the Granola API. includeTranscript=false fetches METADATA ONLY (title,
+ * attendees, times) — the capture-policy layer uses that to decide whether the words may be
+ * fetched at all, so the transcript never leaves Granola for a declined capture.
+ */
+async function fetchGranolaNote(noteId, apiKey, { includeTranscript = true } = {}) {
+  const qs = includeTranscript ? '?include=transcript' : '';
+  const res = await fetch(`${GRANOLA_API_BASE}/notes/${encodeURIComponent(noteId)}${qs}`, {
     headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
   });
   if (!res.ok) {
@@ -146,11 +151,15 @@ function normalizeGranolaTranscript(note, { coachName, otherName } = {}) {
  * @param {string} opts.noteId             Granola note id (required)
  * @param {string} opts.coachClientId      tenant scope (required — the webhook route knows it from its URL)
  * @param {boolean} [opts.dryRun]          if true: do everything EXCEPT write
+ * @param {boolean} [opts.bypassHold]      the release sweep sets this: the holding window has
+ *                                         been served (or released early), so don't re-queue.
+ *                                         The leads-only gate still applies — release is not
+ *                                         consent to capture a no-lead call.
  * @param {object[]} [opts.calendarEvents] inject calendar events (tests); else read live
- * @returns {Promise<object>} { ok, dryRun?, plan, meetingId?, linkedLeads? }
+ * @returns {Promise<object>} { ok, dryRun?, plan, meetingId?, linkedLeads?, held?, skipped? }
  */
 async function ingestGranolaNote(opts = {}) {
-  const { noteId, coachClientId, dryRun = false, calendarEvents } = opts;
+  const { noteId, coachClientId, dryRun = false, bypassHold = false, calendarEvents } = opts;
   if (!noteId) return { ok: false, error: 'noteId is required' };
   if (!coachClientId) return { ok: false, error: 'coachClientId is required' };
 
@@ -158,9 +167,23 @@ async function ingestGranolaNote(opts = {}) {
   if (!coach) return { ok: false, error: `coach client ${coachClientId} not found` };
   if (!coach.granolaApiKey) return { ok: false, error: `no Granola API key for ${coachClientId}` };
 
-  const f = await fetchGranolaNote(noteId, coach.granolaApiKey);
+  // ---- Capture policy front door (services/capturePolicyStore.js) ------------
+  // Tombstone first: a deleted/vetoed note stays gone — a Granola retry or regenerate that
+  // hits this walks away without fetching ANYTHING.
+  const { getCapturePolicy, isCaptureBlocked, holdCapture } = require('./capturePolicyStore');
+  if (await isCaptureBlocked(SOURCE, String(noteId))) {
+    log.info(`granola note=${noteId} is tombstoned (deleted/vetoed) — declining, nothing fetched`);
+    return { ok: true, skipped: 'tombstoned' };
+  }
+  const policy = getCapturePolicy(coach);
+  // Metadata-first when the policy has anything to decide: the transcript must not leave
+  // Granola until the gate has passed and the window has been served. Open clients keep the
+  // original single fetch — identical behaviour, no extra API call.
+  const metadataFirst = policy.mode === 'leads-only' || (policy.holdMinutes > 0 && !bypassHold);
+
+  const f = await fetchGranolaNote(noteId, coach.granolaApiKey, { includeTranscript: !metadataFirst });
   if (!f.ok) return f;
-  const note = f.note;
+  let note = f.note;
   const realNoteId = String(note.id || note.note_id || noteId);
 
   const meta = extractMeta(note);
@@ -217,6 +240,41 @@ async function ingestGranolaNote(opts = {}) {
       } catch (e) { log.warn(`granola name fallback failed for "${name}": ${e.message}`); }
     }
     if (!healed) remainingUnmatched.push(rawEmail);
+  }
+
+  // ---- Capture policy decision (the ladder above is now final) ---------------
+  // LEADS-ONLY GATE: nobody on this call is a lead => decline STATELESSLY. Nothing stored,
+  // not even the title; the transcript was never fetched (metadata-only pass). A regenerate
+  // re-fires the webhook and we simply decide again. This deliberately disables the
+  // pending-lead impromptu-capture machinery for leads-only clients: miss beats leak.
+  if (policy.mode === 'leads-only' && matched.length === 0) {
+    log.info(`granola note=${realNoteId} declined by leads-only gate for ${coachClientId} (nobody on the call is a lead) — nothing stored`);
+    return {
+      ok: true, skipped: 'leads-only-no-match', dryRun: dryRun || undefined,
+      plan: { noteId: realNoteId, title: meta.title, meetingStart: meta.meetingStart, source: SOURCE, declined: true },
+    };
+  }
+  // HOLDING WINDOW: park the capture (metadata only) and walk away. The release sweep calls
+  // back with bypassHold once the window has been served or the client says "take it now".
+  if (policy.holdMinutes > 0 && !bypassHold) {
+    const matchedSummary = matched.map((m) => ({ ...(m.name ? { name: m.name } : {}), ...(m.email ? { email: m.email } : {}) }));
+    if (dryRun) {
+      return { ok: true, dryRun: true, wouldHold: true, holdMinutes: policy.holdMinutes, plan: { noteId: realNoteId, title: meta.title, matchedLeads: matchedSummary, source: SOURCE } };
+    }
+    const held = await holdCapture({
+      source: SOURCE, providerRecordingId: realNoteId, coachClientId,
+      title: meta.title, meetingStart: meta.meetingStart, matchedLeads: matchedSummary,
+      holdMinutes: policy.holdMinutes,
+    });
+    if (!held.ok) return { ok: false, error: `failed to queue capture: ${held.error}` };
+    log.info(`granola note=${realNoteId} HELD for ${coachClientId} (${policy.holdMinutes} min window${held.alreadyHeld ? ', already queued' : ''}) — transcript not fetched`);
+    return { ok: true, held: true, releaseAt: held.releaseAt || held.release_at || null, alreadyHeld: !!held.alreadyHeld };
+  }
+  // Policy passed on a metadata-only note: NOW the words may leave Granola.
+  if (metadataFirst) {
+    const full = await fetchGranolaNote(noteId, coach.granolaApiKey, { includeTranscript: true });
+    if (!full.ok) return full;
+    note = full.note;
   }
 
   // PENDING LEADS: identified people who match NO lead — stored on the meeting row so the

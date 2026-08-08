@@ -1878,6 +1878,16 @@ try {
     moduleLogger.error('index.js: Error starting Fathom poll', e.message, e.stack);
 }
 
+// Capture release sweep: files held captures once their per-client holding window has been
+// served (capture policy layer). No-op every pass unless some client has Capture Hold Minutes.
+try {
+    const { startCaptureReleaseSweep } = require('./services/captureReleaseSweep.js');
+    startCaptureReleaseSweep();
+    moduleLogger.info('index.js: Capture release sweep init');
+} catch (e) {
+    moduleLogger.error('index.js: Error starting capture release sweep', e.message, e.stack);
+}
+
 
 // Top Scoring Leads scaffold (feature gated inside the router module)
 try {

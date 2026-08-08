@@ -111,6 +111,12 @@ async function pollFathomMeetings(opts = {}) {
       skipped++; details.push({ recId, action: 'skip', why: 'already ingested' });
       continue;
     }
+    // A deleted meeting stays deleted: without this, the client's delete re-opens the dedup
+    // gate above (the row is gone) and the next pass re-files what they removed.
+    if (await require('./capturePolicyStore').isCaptureBlocked('fathom-api', String(recId))) {
+      skipped++; details.push({ recId, action: 'skip', why: 'tombstoned (deleted by client)' });
+      continue;
+    }
 
     try {
       const r = await ingestFathomMeeting({ recordingId: String(recId), coachClientId, dryRun });
