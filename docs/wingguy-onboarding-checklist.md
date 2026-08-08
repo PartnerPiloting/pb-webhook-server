@@ -44,9 +44,13 @@ wanders into the wrong meeting.
 draft emails as you, reply into existing conversations properly, tell you your history with any
 lead, and stop you accidentally sending someone the same document twice.
 
-**Step 6 - Your meeting recorder (Fathom).** If you use Fathom to record calls, we connect it so
-Wingguy can use what was actually said in your meetings for follow-ups. (This one may lag the
-others - see the expanded step before promising it.)
+**Step 6 - Your meeting recorder (Granola, or Fathom).** This one quietly makes everything else
+better: once Wingguy can read the transcript of a meeting, your follow-ups stop being "great to
+chat" and start mentioning the number they quoted and the thing you promised to send - written
+from what was actually said, not what you half-remembered at 9pm. We recommend Granola: it takes
+notes right on your computer, so no bot ever joins your calls, it works the same on Zoom, Meet
+and Teams, and it works even when you're not the host. Already on Fathom? We can plug that in
+instead. (See the expanded step before promising either.)
 
 **Step 7 - The dress rehearsal (10 minutes).** We prove the whole chain works: Wingguy offers
 times for a real lead, books a test meeting, the invite arrives with your link on it, and we
@@ -252,22 +256,63 @@ deep-history question can take noticeably longer. Normal, not broken.
 
 ---
 
-## STEP 6 EXPANDED - Fathom (the meeting recorder)
+## STEP 6 EXPANDED - the meeting recorder (Granola preferred, or Fathom)
 
-**Say to the client:** "If you record your calls with Fathom, we can plug that in too - then
-Wingguy can use what was actually said in a meeting when it drafts your follow-ups."
+**Why this step earns its place:** the follow-up after a meeting is the highest-value email
+Wingguy ever writes, and the transcript is the difference between a generic "great to chat" and
+a follow-up that quotes the figure they mentioned and the thing they promised to look at. The
+same transcript also feeds "prep me for today" and "what's my history with this lead" - so one
+connection quietly upgrades everything downstream.
 
-**The client does:** signs up for Fathom (if they haven't), and finds their **API key** in
-Fathom's settings - a code that lets Wingguy fetch their transcripts.
+**Why Granola first:** Granola captures the meeting on the client's own computer - no bot joins
+the call. That means it works identically on Zoom, Meet and Teams, works when the client is a
+guest rather than the host, never puts an extra "participant" in the meeting for a lead to
+wonder about, and produces one tidy note per meeting. Just as important on our side: the Granola
+pipe was built per-client from day one (each client's own key, own webhook, own signing secret),
+whereas the Fathom plumbing is still wired to your account only.
 
-**You do:** put the key in the **Fathom API Key** field on their row.
+**Say to the client:** "One more connection, and it's the sleeper hit: your meeting recorder. Once
+Wingguy can read what was actually said on a call, your follow-ups stop being 'great to chat' and
+start sounding like you were taking perfect notes the whole time - because effectively you were.
+We recommend Granola: it takes notes straight on your computer, so there's no bot joining your
+calls, and it works whatever platform the meeting's on - even when you're the guest."
 
-**Watch out - check these two things BEFORE promising Fathom works:**
+**The client does (Granola):**
 
-1. Does their Fathom plan actually include an API key? (Unconfirmed whether the free plan does -
-   look at their account before setting expectations.)
-2. Our Fathom plumbing was built for one user - you. Getting it running for a second client
-   probably needs a development session first. Until that's done, say "coming soon", not dates.
+1. Gets set up on Granola (granola.ai) if they aren't already. **The API key needs Granola's
+   Business plan** - check what they're on before promising anything.
+2. In Granola's settings, creates an **API key** and gives it to you.
+
+**You do (Granola):**
+
+- [ ] Paste the key into the **Granola API Key** field on their row.
+- [ ] Run the registration script (Render one-off job):
+      `node scripts/register-granola-webhook.js --client=<Client-ID>`. It prints a **signing
+      secret, shown once** - paste it into **Granola Webhook Secret** on their row. The
+      connection is not live until that paste happens.
+
+**Check it worked:** after their next recorded meeting, the client asks Wingguy *"what was my
+last meeting?"* and sees the note come back. (Until then, ask Claude to confirm the webhook
+registration listed cleanly: `--list` on the same script.)
+
+**Watch out:**
+
+1. **Calendar before Granola - the order is load-bearing.** Wingguy works out who a meeting was
+   with by looking at the client's calendar, so Granola connected before the calendar (step 3)
+   just files orphan notes. Never swap these steps.
+2. **The first client through is the proving run.** The pipe is live on prod but its switches
+   ship dark and the note shape hasn't been verified against a real client note yet. Until a
+   first real note has filed cleanly, say "we're switching it on now", not "it works".
+3. **Business plan.** No Business plan, no API key, no pipe - check before setting expectations.
+
+**Fathom instead - only for a client already living in it:**
+
+- **The client does:** finds their **API key** in Fathom's settings.
+- **You do:** put it in the **Fathom API Key** field on their row.
+- **Watch out:** (a) does their Fathom plan actually include an API key? (Unconfirmed whether
+  the free plan does - look before promising.) (b) Our Fathom plumbing was built for one user -
+  you. A second client on Fathom needs a development session first; until that's done, say
+  "coming soon", not dates. Granola avoids both problems.
 
 ---
 
