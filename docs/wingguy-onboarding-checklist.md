@@ -44,13 +44,14 @@ wanders into the wrong meeting.
 draft emails as you, reply into existing conversations properly, tell you your history with any
 lead, and stop you accidentally sending someone the same document twice.
 
-**Step 6 - Your meeting recorder (Granola, or Fathom).** This one quietly makes everything else
-better: once Wingguy can read the transcript of a meeting, your follow-ups stop being "great to
-chat" and start mentioning the number they quoted and the thing you promised to send - written
-from what was actually said, not what you half-remembered at 9pm. We recommend Granola: it takes
-notes right on your computer, so no bot ever joins your calls, it works the same on Zoom, Meet
-and Teams, and it works even when you're not the host. Already on Fathom? We can plug that in
-instead. (See the expanded step before promising either.)
+**Step 6 - Your meeting recorder (Granola, or Fathom).** The first time you say "draft an email
+based on the transcript of the call we just had" and see the job it does, you'll get it - that's
+not just work off your plate, it's the strain of holding the call in your head, gone. Then before
+your next call you'll say "prep me for my meetings" and Wingguy pulls the transcript from last
+time and clues you in. After those two moments you will not want a single transcript to ever be
+missed - and that's why we recommend Granola: it takes notes right on your computer, no bot in
+your calls, and it works on any platform, even when you're not the host. Already on Fathom? We
+can plug that in instead. (See the expanded step before promising either.)
 
 **Step 7 - The dress rehearsal (10 minutes).** We prove the whole chain works: Wingguy offers
 times for a real lead, books a test meeting, the invite arrives with your link on it, and we
@@ -258,11 +259,12 @@ deep-history question can take noticeably longer. Normal, not broken.
 
 ## STEP 6 EXPANDED - the meeting recorder (Granola preferred, or Fathom)
 
-**Why this step earns its place:** the follow-up after a meeting is the highest-value email
-Wingguy ever writes, and the transcript is the difference between a generic "great to chat" and
-a follow-up that quotes the figure they mentioned and the thing they promised to look at. The
-same transcript also feeds "prep me for today" and "what's my history with this lead" - so one
-connection quietly upgrades everything downstream.
+**Why this step earns its place - two moments sell it:** the first time the client says *"draft
+an email based on the transcript of the call we just had"* and sees the job it does - that's not
+just work off their plate, it's the mental strain of holding the call in their head, gone. And
+the first time they say *"prep me for my meetings"* and Wingguy pulls the transcript from last
+time and clues them in before they walk in. After those two, they will never want a transcript
+missed - which is the whole pitch for Granola: the recorder that doesn't miss.
 
 **Why Granola first:** Granola captures the meeting on the client's own computer - no bot joins
 the call. That means it works identically on Zoom, Meet and Teams, works when the client is a
@@ -271,11 +273,15 @@ wonder about, and produces one tidy note per meeting. Just as important on our s
 pipe was built per-client from day one (each client's own key, own webhook, own signing secret),
 whereas the Fathom plumbing is still wired to your account only.
 
-**Say to the client:** "One more connection, and it's the sleeper hit: your meeting recorder. Once
-Wingguy can read what was actually said on a call, your follow-ups stop being 'great to chat' and
-start sounding like you were taking perfect notes the whole time - because effectively you were.
-We recommend Granola: it takes notes straight on your computer, so there's no bot joining your
-calls, and it works whatever platform the meeting's on - even when you're the guest."
+**Say to the client:** "One more connection, and it's the sleeper hit: your meeting recorder.
+Here's what it feels like. You finish a call, and you say to Wingguy: 'draft an email based on
+the transcript of the call we just had' - and watch the job it does. That's not just work off
+your plate, it's the strain gone too: you don't have to hold the whole call in your head any
+more. Then before your next meeting you say 'prep me for my meetings' and it pulls the
+transcript from last time and clues you in. Once you've felt those two, you won't want a single
+transcript to ever be missed - and that's why we recommend Granola: it takes notes straight on
+your computer, no bot joining your calls, and it works whatever the platform - even when you're
+the guest."
 
 **The client does (Granola):**
 
