@@ -37,7 +37,7 @@ const DOORS = [
     eyebrow: 'Any time',
     title: "What's changed lately",
     body: 'Everything anyone has changed about your Wingguy - who, when, and what it means. Leave a note on anything, undo anything, or ask it to start doing something differently.',
-    cta: "See what's changed",
+    cta: 'Review recent changes',
     tone: 'slate',
   },
 ];
@@ -48,35 +48,42 @@ function WingguyHubInner() {
   const href = (path) => (q ? `${path}?${q}` : path);
 
   return (
-    <div className="flex flex-col gap-8 max-w-3xl">
-      <header className="flex flex-col gap-3">
-        <h1 className="font-serif text-4xl text-slate-900">My Wingguy</h1>
-        <p className="font-serif text-lg leading-relaxed text-slate-600">
-          It reads every conversation, writes what comes next in your words, books the meetings and
-          remembers the follow-ups - and it never sends anything without you seeing it first.
-        </p>
+    <div className="flex flex-col gap-8 max-w-[1240px]">
+      <header className="flex flex-wrap items-end justify-between gap-x-10 gap-y-4">
+        <div className="flex flex-col gap-3">
+          <h1 className="font-serif text-4xl md:text-[42px] leading-tight text-slate-900">My Wingguy</h1>
+          <p className="text-lg leading-relaxed text-slate-600 max-w-[620px]">
+            It reads every conversation, writes what comes next in your words, books the meetings
+            and remembers the follow-ups - and it never sends anything without you seeing it first.
+          </p>
+        </div>
+        <div className="whitespace-nowrap rounded-full border border-slate-200 bg-white px-4 py-2 text-xs text-slate-500">
+          <span aria-hidden="true" className="mr-2 inline-block h-[7px] w-[7px] rounded-full bg-emerald-600 align-middle" />
+          Set up and running
+        </div>
       </header>
 
-      <div className="flex flex-col gap-4">
+      <div className="grid gap-5 lg:grid-cols-3">
         {DOORS.map((d) => (
           <a
             key={d.href}
             href={href(d.href)}
-            className={`group block border-2 p-6 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${
+            className={`group flex flex-col rounded-[14px] border p-7 lg:min-h-[280px] transition duration-150 hover:-translate-y-0.5 hover:shadow-[0_8px_28px_rgba(31,41,51,.08)] focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${
               d.tone === 'emerald'
-                ? 'border-emerald-600 bg-emerald-50 hover:bg-emerald-100 focus-visible:ring-emerald-700'
-                : 'border-slate-300 bg-white hover:border-slate-500 focus-visible:ring-slate-700'
+                ? 'border-emerald-200 bg-emerald-50 focus-visible:ring-emerald-700'
+                : 'border-slate-200 bg-white hover:border-slate-300 focus-visible:ring-slate-700'
             }`}
           >
-            <div className={`text-[11px] font-bold uppercase tracking-[0.12em] ${d.tone === 'emerald' ? 'text-emerald-800' : 'text-slate-500'}`}>
+            <div className={`mb-3 text-[11.5px] font-bold uppercase tracking-[0.09em] ${d.tone === 'emerald' ? 'text-emerald-700' : 'text-slate-500'}`}>
               {d.eyebrow}
             </div>
-            <div className="font-serif text-2xl text-slate-900 mt-2 group-hover:text-emerald-900">
+            <div className="mb-3 font-serif text-[25px] leading-snug text-slate-900">
               {d.title}
             </div>
-            <p className="text-[15px] text-slate-700 leading-relaxed mt-2">{d.body}</p>
-            <div className={`mt-3 text-sm font-semibold ${d.tone === 'emerald' ? 'text-emerald-800' : 'text-slate-700'}`}>
-              {d.cta} <span aria-hidden="true">&rarr;</span>
+            <p className="mb-6 text-[15px] leading-relaxed text-slate-600">{d.body}</p>
+            <div className={`mt-auto inline-flex items-center gap-1.5 text-sm font-bold ${d.tone === 'emerald' ? 'text-emerald-700' : 'text-blue-600'}`}>
+              {d.cta}{' '}
+              <span aria-hidden="true" className="transition-transform duration-150 group-hover:translate-x-1">&rarr;</span>
             </div>
           </a>
         ))}
