@@ -44,14 +44,14 @@ wanders into the wrong meeting.
 draft emails as you, reply into existing conversations properly, tell you your history with any
 lead, and stop you accidentally sending someone the same document twice.
 
-**Step 6 - Your meeting recorder (Granola, or Fathom).** The first time you say "draft an email
-based on the transcript of the call we just had" and see the job it does, you'll get it - that's
-not just work off your plate, it's the strain of holding the call in your head, gone. Then before
-your next call you'll say "prep me for my meetings" and Wingguy pulls the transcript from last
-time and clues you in. After those two moments you will not want a single transcript to ever be
+**Step 6 - Your meeting recorder (Granola).** The first time you say "draft an email based on
+the transcript of the call we just had" and see the job it does, you'll get it - that's not just
+work off your plate, it's the strain of holding the call in your head, gone. Then before your
+next call you'll say "prep me for my meetings" and Wingguy pulls the transcript from last time
+and clues you in. After those two moments you will not want a single transcript to ever be
 missed - and that's why we recommend Granola: it takes notes right on your computer, no bot in
-your calls, and it works on any platform, even when you're not the host. Already on Fathom? We
-can plug that in instead. (See the expanded step before promising either.)
+your calls, and it works on any platform, even when you're not the host. (See the expanded step
+before promising it.)
 
 **Step 7 - The dress rehearsal (10 minutes).** We prove the whole chain works: Wingguy offers
 times for a real lead, books a test meeting, the invite arrives with your link on it, and we
@@ -257,7 +257,7 @@ deep-history question can take noticeably longer. Normal, not broken.
 
 ---
 
-## STEP 6 EXPANDED - the meeting recorder (Granola preferred, or Fathom)
+## STEP 6 EXPANDED - the meeting recorder (Granola)
 
 **Why this step earns its place - two moments sell it:** the first time the client says *"draft
 an email based on the transcript of the call we just had"* and sees the job it does - that's not
@@ -270,8 +270,8 @@ missed - which is the whole pitch for Granola: the recorder that doesn't miss.
 the call. That means it works identically on Zoom, Meet and Teams, works when the client is a
 guest rather than the host, never puts an extra "participant" in the meeting for a lead to
 wonder about, and produces one tidy note per meeting. Just as important on our side: the Granola
-pipe was built per-client from day one (each client's own key, own webhook, own signing secret),
-whereas the Fathom plumbing is still wired to your account only.
+pipe was built per-client from day one - each client's own key, own webhook, own signing secret -
+so it's the one lane that's genuinely ready for every client.
 
 **Say to the client:** "One more connection, and it's the sleeper hit: your meeting recorder.
 Here's what it feels like. You finish a call, and you say to Wingguy: 'draft an email based on
@@ -311,14 +311,21 @@ registration listed cleanly: `--list` on the same script.)
    first real note has filed cleanly, say "we're switching it on now", not "it works".
 3. **Business plan.** No Business plan, no API key, no pipe - check before setting expectations.
 
-**Fathom instead - only for a client already living in it:**
+**If they push for a different recorder (Otter, Fireflies, whatever they already use):**
 
-- **The client does:** finds their **API key** in Fathom's settings.
-- **You do:** put it in the **Fathom API Key** field on their row.
-- **Watch out:** (a) does their Fathom plan actually include an API key? (Unconfirmed whether
-  the free plan does - look before promising.) (b) Our Fathom plumbing was built for one user -
-  you. A second client on Fathom needs a development session first; until that's done, say
-  "coming soon", not dates. Granola avoids both problems.
+1. **Re-sell the why, once.** The point was never the brand - it's that no transcript is ever
+   missed. Those tools have no pipe into Wingguy, so their transcripts go nowhere: no
+   draft-from-the-call, no prep-me, no history. And most of them work by sending a bot into the
+   call - the thing Granola exists to avoid.
+2. **If they still insist, don't fight it - stack instead.** They keep their tool for whatever
+   they like about it, and run Granola alongside. Granola captures on their computer, so it
+   doesn't clash with a bot tool at all - both can sit on the same call. They give up nothing;
+   Wingguy stays fed.
+3. **The escape hatch, framed honestly:** the odd transcript from elsewhere can be pasted into
+   chat and Wingguy will file it. But it's manual, and every manual step is a missed transcript
+   waiting to happen - offer it as a patch, not a plan.
+4. **Never promise a custom pipe for their tool on the call.** That's a development decision,
+   not an onboarding one - "I'll look into it" is the strongest commitment to make.
 
 ---
 
