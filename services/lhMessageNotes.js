@@ -35,7 +35,7 @@
  * - Every failure here is swallowed by the caller: filing a message must never fail a lead upsert.
  */
 
-const { getSection, updateSection, mergeAndSortMessages } = require('../utils/notesSectionManager');
+const { getSection, updateSection, mergeAndSortMessages, normalizeMessageText } = require('../utils/notesSectionManager');
 
 const NOTES_FIELD = 'Notes';
 const LEADS_TABLE = 'Leads';
@@ -135,6 +135,7 @@ function buildMessageLines(lh, opts = {}) {
         lines.push({
             line: `${formatStamp(at || now, timezone)} - ${sender} - ${text}`,
             key,
+            norm: normalizeMessageText(text),
             usedFallbackTime: !at,
         });
     }
@@ -149,10 +150,14 @@ function buildMessageLines(lh, opts = {}) {
 function applyMessageLinesToNotes(currentNotes, messageLines) {
     const notes = String(currentNotes || '');
     const existing = getSection(notes, 'linkedin');
-    const existingKey = textKey(existing.replace(/^\d{2}-\d{2}-\d{2}.*?-.*?-\s*/gm, ''));
-    const existingFlat = flattenText(existing).toLowerCase();
+    const existingNorms = existing.split(/\r?\n/).map(l => normalizeMessageText(l)).filter(Boolean);
 
-    const fresh = messageLines.filter(m => m.key && !existingFlat.includes(m.key.slice(0, 60)) && !existingKey.includes(m.key));
+    // "Already there" means the section holds the SAME text or a LONGER version of it. A shorter
+    // stored copy is a clipped record (e.g. a scrape that read a collapsed "…see more" bubble) -
+    // the full text must go through as fresh so the merge below retires the clipped line. The old
+    // 60-char-prefix containment check judged the full copy "already present" against its own
+    // clip, which made every clip permanent (the 24 Jul 2026 mid-sentence message).
+    const fresh = messageLines.filter(m => m.norm && !existingNorms.some(nl => nl === m.norm || nl.startsWith(m.norm)));
     if (fresh.length === 0) {
         return { notes, added: 0, skipped: messageLines.length };
     }

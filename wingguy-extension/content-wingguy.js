@@ -437,6 +437,26 @@
     } catch (_) { /* non-fatal */ }
   }
 
+  // Long messages in a thread render collapsed behind "…see more"; a collapsed bubble's
+  // textContent IS the clipped text, and that clip is what got written to the record (a message
+  // complete on LinkedIn was stored cut mid-sentence, 24 Jul 2026). Expand within the conversation
+  // container before any scrape. Same restraint as expandAboutSeeMore: only ever the page the
+  // user is already on.
+  async function expandThreadSeeMore(rootEl) {
+    try {
+      const root = rootEl || document;
+      const btns = Array.from(root.querySelectorAll('button, span[role="button"]')).filter((el) => {
+        if (insideWingguy(el)) return false;
+        const t = cleanText(el.textContent) || '';
+        const al = el.getAttribute('aria-label') || '';
+        return /^(?:…\s*)?see more$/i.test(t) || /see more/i.test(al);
+      });
+      if (!btns.length) return;
+      btns.slice(0, 40).forEach((b) => { try { b.click(); } catch (_) { /* one dud must not stop the rest */ } });
+      await sleep(300);
+    } catch (_) { /* non-fatal */ }
+  }
+
   function readAbout() {
     const aboutAnchor = deepGetById('about');
     const section = aboutAnchor ? aboutAnchor.closest('section') : null;
@@ -920,12 +940,17 @@
     return out;
   }
 
-  function scrapeOpenThread(anchorEl) {
-    // A remembered box LinkedIn has since detached (composers are re-rendered after a send) must not
-    // anchor the scrape — closestConversationContainer would walk the DETACHED old tree and read a
-    // stale copy of the thread. Only a still-connected box counts.
+  // The conversation container the next scrape would read from — exposed so callers can expand
+  // "…see more" inside it BEFORE scraping. A remembered box LinkedIn has since detached (composers
+  // are re-rendered after a send) must not anchor it — closestConversationContainer would walk the
+  // DETACHED old tree and read a stale copy of the thread. Only a still-connected box counts.
+  function currentThreadContainer(anchorEl) {
     const anchor = anchorEl || ((lastFocusedEditable && lastFocusedEditable.isConnected) ? lastFocusedEditable : null) || deepActiveElement();
-    const container = anchor ? closestConversationContainer(anchor) : null;
+    return anchor ? closestConversationContainer(anchor) : null;
+  }
+
+  function scrapeOpenThread(anchorEl) {
+    const container = currentThreadContainer(anchorEl);
     if (container && isNewUiConvoContainer(container)) {
       lastScrapeScoped = true;
       const out = scrapeNewUiThread(container);
@@ -1389,6 +1414,7 @@
       // Read the thread from the SAME container the header came from, so identity and content can never
       // disagree (a container element is its own closestConversationContainer match). Scraped BEFORE the
       // identity gates below so a refusal can still offer the captured text through the rescue card.
+      if (convo) await expandThreadSeeMore(convo); // read full text, never a collapsed bubble
       thread = convo ? scrapeOpenThread(convo) : [];
       if (!thread.length) {
         console.log('[Wingguy] capture skipped — no thread read');
@@ -1911,6 +1937,7 @@
 
     // Read the open thread (if any) and auto-route. A freshly-opened message bubble renders its
     // history async, so if the first read is empty, give it a beat and try once more before deciding.
+    await expandThreadSeeMore(currentThreadContainer()); // read full text, never a collapsed bubble
     let thread = scrapeOpenThread();
     if (!thread.length) { await sleep(400); thread = scrapeOpenThread(); }
     console.log('[Wingguy] thread messages read:', thread.length, thread.map((m) => m.sender));

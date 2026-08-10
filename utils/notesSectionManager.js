@@ -695,6 +695,20 @@ function parseFormattedMessages(formattedContent) {
 }
 
 /**
+ * The text of a message line, normalised for comparison: the "DD-MM-YY H:MM AM - Sender - " stamp
+ * is stripped (the separator must be a spaced " - " so hyphenated names survive), then lowercased
+ * with everything but letters, digits and single spaces removed. Two copies of the same message
+ * land on identical strings even when their stamps disagree (LH stamps the send time, the
+ * extension stamps whatever it could read from the DOM).
+ * @param {string} line - A message line, with or without its stamp
+ * @returns {string} Normalised message text
+ */
+function normalizeMessageText(line) {
+    const body = String(line || '').replace(/^\d{2}-\d{2}-\d{2}[^\n]*?\s-\s[^\n]*?\s-\s/, '');
+    return body.toLowerCase().replace(/[^a-z0-9 ]/g, '').replace(/\s+/g, ' ').trim();
+}
+
+/**
  * Merge and sort formatted messages, removing duplicates
  * @param {string} existingContent - Existing section content
  * @param {string} newContent - New content to merge
@@ -704,10 +718,10 @@ function parseFormattedMessages(formattedContent) {
 function mergeAndSortMessages(existingContent, newContent, newestFirst = true) {
     const existingMessages = parseFormattedMessages(existingContent);
     const newMessages = parseFormattedMessages(newContent);
-    
+
     // Combine all messages
     const allMessages = [...existingMessages, ...newMessages];
-    
+
     // Remove duplicates based on exact line content
     const seen = new Set();
     const uniqueMessages = allMessages.filter(msg => {
@@ -717,18 +731,34 @@ function mergeAndSortMessages(existingContent, newContent, newestFirst = true) {
         seen.add(msg.line);
         return true;
     });
-    
+
+    // Retire clipped copies: a scrape that read a collapsed "…see more" bubble, or a capped
+    // export, stores the same message cut short. When one message's text is a long prefix of
+    // another's, they are the same message and only the longer copy survives - "the record ended
+    // there" must never read as "the message ended there". Below 60 normalised chars two genuinely
+    // different messages can share an opening ("Thanks!" vs "Thanks! One more thing…"), so short
+    // lines are never treated as clips. (24 Jul 2026: a complete LinkedIn message sat clipped
+    // mid-sentence in Notes and every later sync preserved the clip.)
+    const CLIP_MIN_PREFIX = 60;
+    const withNorm = uniqueMessages.map(msg => ({ msg, norm: normalizeMessageText(msg.line) }));
+    const clipped = new Set(withNorm
+        .filter(({ norm }, i) =>
+            norm.length >= CLIP_MIN_PREFIX &&
+            withNorm.some((other, j) => j !== i && other.norm.length > norm.length && other.norm.startsWith(norm)))
+        .map(({ msg }) => msg));
+    const survivors = uniqueMessages.filter(msg => !clipped.has(msg));
+
     // Sort by dateTime
-    uniqueMessages.sort((a, b) => {
+    survivors.sort((a, b) => {
         if (newestFirst) {
             return b.dateTime.getTime() - a.dateTime.getTime();
         } else {
             return a.dateTime.getTime() - b.dateTime.getTime();
         }
     });
-    
+
     // Rebuild formatted content
-    return uniqueMessages.map(msg => msg.line).join('\n');
+    return survivors.map(msg => msg.line).join('\n');
 }
 
 /**
@@ -1019,6 +1049,7 @@ module.exports = {
     addManualNote,
     parseFormattedMessages,
     mergeAndSortMessages,
+    normalizeMessageText,
     // Meeting block utilities
     extractNewestDate,
     splitMeetingBlocks,

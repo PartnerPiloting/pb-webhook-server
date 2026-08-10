@@ -1136,7 +1136,7 @@ router.get('/leads/by-linkedin-url', async (req, res) => {
 // =========================================================================
 
 const { parseConversation } = require('../../../utils/messageParser');
-const { updateSection, getSectionsSummary, addManualNote, setTags, getTags, parseNotesIntoSections, rebuildNotesFromSections } = require('../../../utils/notesSectionManager');
+const { updateSection, getSection, getSectionsSummary, addManualNote, setTags, getTags, parseNotesIntoSections, rebuildNotesFromSections, mergeAndSortMessages } = require('../../../utils/notesSectionManager');
 
 /**
  * GET /api/linkedin/leads/lookup
@@ -2293,8 +2293,17 @@ router.patch('/leads/:id/quick-update', async (req, res) => {
         noteUpdateResult = updateSection(currentNotes, section, processedContent, { append: true, replace: false });
         updates['Notes'] = noteUpdateResult.notes;
       } else {
-        // For LinkedIn/SalesNav, replace section
-        noteUpdateResult = updateSection(currentNotes, section, processedContent, { replace: true });
+        // For LinkedIn/SalesNav, MERGE the snapshot into what's already stored, then rewrite the
+        // section. The scrape is only what the DOM held at that moment - LinkedIn virtualises old
+        // messages out of the page and collapses long ones behind "…see more" - so a raw replace
+        // let a partial snapshot overwrite complete records (and permanently clip long messages,
+        // 24 Jul 2026). mergeAndSortMessages dedupes and keeps the longer copy when the same
+        // message appears both clipped and full.
+        const existingSection = getSection(currentNotes, section);
+        const mergedContent = existingSection
+          ? mergeAndSortMessages(existingSection, processedContent)
+          : processedContent;
+        noteUpdateResult = updateSection(currentNotes, section, mergedContent, { replace: true });
         updates['Notes'] = noteUpdateResult.notes;
       }
     }

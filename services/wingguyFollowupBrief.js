@@ -124,7 +124,8 @@ async function gatherPersonContext(mailProvider, coach, item) {
   }
   const li = linkedInTail(item.lead.notes);
   if (li.length) {
-    out.transcript.push(...li.map((l) => `LINKEDIN: ${l.slice(0, 300)}`));
+    // Mark the slice: an unmarked cut reads as the sender stopping mid-thought.
+    out.transcript.push(...li.map((l) => `LINKEDIN: ${l.length > 300 ? `${l.slice(0, 300)} …[record clipped]` : l}`));
     if (!out.channel) out.channel = 'linkedin';
   }
   return out;

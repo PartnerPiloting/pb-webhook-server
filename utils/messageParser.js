@@ -26,19 +26,29 @@ function cleanLinkedInNoise(text) {
     return text
         // Remove "View X's profileName LastName" patterns (name concatenated after profile)
         // Matches: "View Guy's profileGuy Wilson" or "View Jenny's profileJenny Yan"
-        // Uses \S to match any non-whitespace for apostrophe (covers all Unicode variants)
-        .replace(/View \w+\Ss profile[A-Za-z ]+/gi, '')
-        // Remove "Remove reaction" 
+        // Uses \S to match any non-whitespace for apostrophe (covers all Unicode variants).
+        // The trailing name is at most a few Capitalised tokens - the old open-ended [A-Za-z ]+
+        // ate every following word until the first digit or punctuation, which could swallow half
+        // a sentence when this artifact sat inside message text.
+        .replace(/View \w+\Ss profile(?:\s*[A-Z][\w'-]*(?:\s+[A-Z][\w'-]*){0,3})?/g, '')
+        // Remove "Remove reaction"
         .replace(/\s*Remove\s+reaction/gi, '')
         // Remove pronouns like (She/Her), (He/Him), (They/Them)
         .replace(/\s*\((?:She\/Her|He\/Him|They\/Them)\)/gi, '')
-        // Remove "1st degree connection" markers
-        .replace(/\s*·?\s*1st(?:\s+degree)?\s*(?:connection)?/gi, '')
+        // Remove connection-degree markers - only in their real shapes ("· 1st", "1st degree
+        // connection", or a bare "1st" line). The old bare /1st/ anywhere also mangled dates
+        // like "1st of March" inside message text.
+        .replace(/\s*·\s*1st(?:\s+degree)?(?:\s+connection)?/gi, '')
+        .replace(/\b1st\s+degree(?:\s+connection)?/gi, '')
+        .replace(/^\s*1st\s*$/gim, '')
         // Remove UI labels that might get copied
         .replace(/^Current Notes\s*$/gim, '')
         // Remove LinkedIn message compose UI elements that get copied
         .replace(/Maximize compose field/gi, '')
-        .replace(/Attach an? (?:image|file) to your conversation with .+?(?=\s*(?:Attach|Open|$))/gi, '')
+        // The recipient name is at most a few Capitalised tokens. The old lookahead version could
+        // run to end-of-string once a message was flattened onto one line, deleting everything
+        // after the phrase - a mid-sentence clip.
+        .replace(/Attach an? (?:image|file) to your conversation with(?:\s+[A-Z][\w'-]*){0,4}/g, '')
         .replace(/Open (?:GIF|Emoji) Keyboard/gi, '')
         .replace(/Open send options/gi, '')
         // Clean up multiple spaces (but not newlines)
@@ -244,11 +254,18 @@ function parseLinkedInRaw(text, clientFirstName = 'Me', referenceDate = new Date
         const senderMatch = line.match(senderTimePattern);
         if (senderMatch) {
             const potentialSender = senderMatch[1].trim();
-            
-            // Skip false positives: lines starting with bullet points, hyphens, or numbers
-            // These are likely list items in message content, not sender names
-            // e.g., "- Monday, Jan 12 at 10:30 AM" or "• Wednesday at 2:00 PM"
-            if (/^[-•*\d]/.test(potentialSender)) {
+
+            // Skip false positives: a sender header is a short name and nothing else. Message
+            // content can also end in a time ("happy to chat Tuesday at 2:30 PM") and the old
+            // check only caught bullet/number starts - everything else was treated as a header,
+            // which flushed the message in progress mid-sentence and discarded this line's text.
+            const looksLikeContent =
+                /^[-•*\d]/.test(potentialSender) ||
+                potentialSender.length > 40 ||
+                potentialSender.split(/\s+/).length > 5 ||
+                /[.,;:!?]$/.test(potentialSender) ||
+                /\b(?:at|by|until|till|around|after|before|from|on|is|next|this)$/i.test(potentialSender);
+            if (looksLikeContent) {
                 // This is message content, not a sender line
                 if (currentSender) {
                     currentMessage.push(line);
@@ -278,13 +295,15 @@ function parseLinkedInRaw(text, clientFirstName = 'Me', referenceDate = new Date
         
         // Otherwise, it's part of the message content
         if (currentSender) {
-            // Skip lines that are just profile headers or connection info
-            if (line.length > 5 && !line.includes('degree connection')) {
+            // Keep short lines too - "Yes.", "Sure", "10am" are real replies that the old
+            // length-6 floor silently dropped from the middle of messages. Only single characters
+            // and connection markers are junk (emoji-only messages are filtered later).
+            if (line.length >= 2 && !line.includes('degree connection')) {
                 currentMessage.push(line);
             }
         }
     }
-    
+
     // Don't forget the last message
     if (currentSender && currentMessage.length > 0) {
         const msgText = cleanLinkedInNoise(currentMessage.join(' ').trim());
@@ -297,7 +316,7 @@ function parseLinkedInRaw(text, clientFirstName = 'Me', referenceDate = new Date
             });
         }
     }
-    
+
     return messages;
 }
 

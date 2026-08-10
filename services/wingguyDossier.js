@@ -152,8 +152,12 @@ function gatherLinkedIn(notes, first, max = LI_LIMIT) {
     const tm = m[4].match(/(\d{1,2}):(\d{2})\s*([AP]M)/i);
     const hh = tm ? (parseInt(tm[1], 10) % 12) + (/^P/i.test(tm[3]) ? 12 : 0) : 0;
     const sortKey = `${iso} ${String(hh).padStart(2, '0')}:${tm ? tm[2] : '00'}`;
-    // scrub at the SOURCE: a lone surrogate here poisons BOTH the LLM request and the jsonb save
-    out.push({ sortKey, date: iso, kind: 'linkedin', dir: theirs ? 'them' : 'you', text: scrub(String(m[6]).slice(0, 300)) });
+    // scrub at the SOURCE: a lone surrogate here poisons BOTH the LLM request and the jsonb save.
+    // A silent slice reads as "the sender stopped mid-thought" (the 24 Jul 2026 dossier invented
+    // an apology for an 'unfinished' message) - mark it so downstream knows the RECORD ends here,
+    // not the message.
+    const liBody = String(m[6]);
+    out.push({ sortKey, date: iso, kind: 'linkedin', dir: theirs ? 'them' : 'you', text: scrub(liBody.length > 300 ? `${liBody.slice(0, 300)} …[record clipped]` : liBody) });
   }
   out.sort((a, b) => a.sortKey.localeCompare(b.sortKey));
   return out.slice(-max).map(({ sortKey, ...rest }) => rest);
