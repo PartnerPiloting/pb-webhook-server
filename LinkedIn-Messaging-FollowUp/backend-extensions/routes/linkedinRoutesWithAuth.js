@@ -1137,6 +1137,7 @@ router.get('/leads/by-linkedin-url', async (req, res) => {
 
 const { parseConversation } = require('../../../utils/messageParser');
 const { updateSection, getSection, getSectionsSummary, addManualNote, setTags, getTags, parseNotesIntoSections, rebuildNotesFromSections, mergeAndSortMessages } = require('../../../utils/notesSectionManager');
+const { evaluateReconnectAutoCease } = require('../../../services/reconnectAutoCease');
 
 /**
  * GET /api/linkedin/leads/lookup
@@ -2245,6 +2246,7 @@ router.patch('/leads/:id/quick-update', async (req, res) => {
     const updates = {};
     let parsedResult = null;
     let noteUpdateResult = null;
+    let autoCease = null;
     
     // Process notes content if provided
     // Full replacement mode - replaceNotes takes precedence
@@ -2305,6 +2307,34 @@ router.patch('/leads/:id/quick-update', async (req, res) => {
           : processedContent;
         noteUpdateResult = updateSection(currentNotes, section, mergedContent, { replace: true });
         updates['Notes'] = noteUpdateResult.notes;
+
+        // Cease-on-send for the warm-then-quiet cohort (owner's call, 2026-08-10): a send to
+        // someone who once replied, never had a meeting, and has been quiet 4+ weeks IS the
+        // reconnect touch - the last word. Cease now, stamped end-of-previous-day so a same-day
+        // reply still surfaces; the sweep's cease waiver keeps the door open for any reply after
+        // that. Judged on the PRE-capture record (currentNotes), and always stamped-and-told:
+        // an audit line goes into Manual Notes and the response tells the extension to say so.
+        if (parsedResult && Array.isArray(parsedResult.messages)) {
+          autoCease = evaluateReconnectAutoCease({
+            notes: currentNotes,
+            newMessages: parsedResult.messages,
+            clientFirstName: req.client?.clientName?.split(' ')[0] || '',
+            leadFirstName: currentLead.fields['First Name'] || '',
+            alreadyCeased: String(currentLead.fields['Cease FUP'] || '') === 'Yes',
+            timezone: req.client?.timezone,
+          });
+          if (autoCease.cease) {
+            updates['Cease FUP'] = 'Yes';
+            updates['Cease FUP At'] = autoCease.ceaseAtIso;
+            updates['Reconnect On'] = null; // a dropped lead shouldn't resurface on a stamp
+            const ceaseNote = addManualNote(updates['Notes'],
+              `AUTO-CEASED on reconnect send (warm reply, no meeting, quiet ${autoCease.quietDays} days). Door stays open - a reply from them still surfaces.`);
+            updates['Notes'] = ceaseNote.notes;
+            logger.info(`LinkedIn Routes: auto-ceased lead ${leadId} on reconnect send (quiet ${autoCease.quietDays}d, ceaseAt ${autoCease.ceaseAtIso})`);
+          } else {
+            logger.info(`LinkedIn Routes: reconnect auto-cease not applicable for ${leadId}: ${autoCease.reason}`);
+          }
+        }
       }
     }
     
@@ -2353,10 +2383,24 @@ router.patch('/leads/:id/quick-update', async (req, res) => {
       return res.status(400).json({ error: 'No updates provided' });
     }
     
-    // Apply updates
-    const updatedRecords = await airtableBase('Leads').update([
-      { id: leadId, fields: updates }
-    ]);
+    // Apply updates. Older bases may lack the cease bookkeeping fields - an auto-cease must
+    // degrade to the flag alone rather than failing the whole capture.
+    let updatedRecords;
+    try {
+      updatedRecords = await airtableBase('Leads').update([
+        { id: leadId, fields: updates }
+      ]);
+    } catch (e) {
+      if (autoCease?.cease && /Unknown field|UNKNOWN_FIELD_NAME|INVALID_/i.test(e.message)) {
+        delete updates['Cease FUP At'];
+        delete updates['Reconnect On'];
+        updatedRecords = await airtableBase('Leads').update([
+          { id: leadId, fields: updates }
+        ]);
+      } else {
+        throw e;
+      }
+    }
     
     if (!updatedRecords || updatedRecords.length === 0) {
       return res.status(500).json({ error: 'Failed to update lead' });
@@ -2369,6 +2413,8 @@ router.patch('/leads/:id/quick-update', async (req, res) => {
     res.json({
       success: true,
       leadId,
+      autoCeased: !!(autoCease && autoCease.cease),
+      autoCeaseQuietDays: autoCease && autoCease.cease ? autoCease.quietDays : undefined,
       updatedFields: Object.keys(updates),
       parsing: parsedResult ? {
         detectedFormat: parsedResult.format,

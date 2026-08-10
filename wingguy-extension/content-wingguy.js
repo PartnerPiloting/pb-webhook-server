@@ -1515,10 +1515,13 @@
 
       const extras = profferedExtras(thread, leadFirst, leadLast, lead.email, lead.phone);
       if (extras.email || extras.phone) console.log('[Wingguy] lead proffered contact details →', extras);
-      await bg({ type: 'QUICK_UPDATE', leadId: lead.id, content, section: 'linkedin', ...extras });
+      const qres = await bg({ type: 'QUICK_UPDATE', leadId: lead.id, content, section: 'linkedin', ...extras });
       console.log(`[Wingguy] captured ${thread.length} messages to ${who}`);
       dismissCaptureRescue(); // a stale card from an earlier miss must not outlive a clean save
-      showCaptureToast(`✓ Saved ${thread.length} messages to ${who}${extrasNote(extras)}`);
+      // An auto-cease is never silent: the server just decided this send was the warm-then-quiet
+      // reconnect goodbye, so the human is told in the same breath as the save.
+      const ceaseNote = qres && qres.autoCeased ? ' — follow-ups ceased (door open: their reply resurfaces them)' : '';
+      showCaptureToast(`✓ Saved ${thread.length} messages to ${who}${extrasNote(extras)}${ceaseNote}`);
 
       // Learn-from-my-edit: if this send follows a Wingguy insert, pair the AI's draft with the
       // message that actually went out (the newest message in the thread, if it's ours). Fire-and-
