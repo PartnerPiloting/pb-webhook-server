@@ -534,6 +534,7 @@ module.exports = {
   matchLeads,
   matchLeadsForSegment,
   relevantCalendarEvents,
+  calendarParticipantEmails,
   ingestEnabled,
   SOURCE,
 };
