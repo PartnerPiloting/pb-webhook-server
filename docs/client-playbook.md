@@ -784,7 +784,9 @@ wherever the world meets - not the other way round.
 
 **My recommendation is Granola.** It's botless - no robot joins the call, nothing for the other
 side to notice or wonder about - and it captures whatever meeting you're in: any platform, whoever
-set it up, nothing to remember on the day. I ran a free bot-based recorder for months, and the free
+set it up. Your only job is one click when the meeting starts - or none at all if you've already
+got the meeting open in Granola from your prep, because then it starts capturing by itself at the
+scheduled time. I ran a free bot-based recorder for months, and the free
 part stopped being worth it the first few times a transcript I'd come to rely on simply wasn't
 there. Granola costs a little, and it removes the whole category of worry. It works off your
 calendar to know who you were meeting, which is one more reason the calendar hookup comes early in
