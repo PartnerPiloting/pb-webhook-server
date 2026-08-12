@@ -264,6 +264,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       .catch(error => sendResponse({ success: false, error: error.message }));
     return true;
   }
+  // Wingguy 0.3.7: read a lead's PROFILE (headline/About/page text) by rendering their profile page in a
+  // hidden tab and asking the content script there to run the ordinary scrapeProfile(). The thin-draft
+  // path's data source — same proven tab mechanics as the contact read above.
+  if (message.type === 'WG_SCRAPE_PROFILE_TAB') {
+    scrapeProfileViaTab(message.profileUrl)
+      .then(data => sendResponse({ success: true, data }))
+      .catch(error => sendResponse({ success: false, error: error.message }));
+    return true;
+  }
 });
 
 const sleepBg = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -324,6 +333,53 @@ async function scrapeContactViaTab(profileUrl) {
     if (tabId != null) { try { await chrome.tabs.remove(tabId); } catch (_) { /* already gone */ } }
   }
   return out;
+}
+
+// Read a lead's PROFILE by loading their profile page in a hidden tab and asking the content script
+// injected there (content-wingguy.js runs on every linkedin.com tab) to run its ordinary
+// scrapeProfile() — the exact reader used when a human opens the panel on a profile page, landmarks,
+// selector-store corrections and all. Same tab lifecycle as scrapeContactViaTab: opened INACTIVE with
+// the ?wgcontact=1 visibility spoof so the SPA renders as if focused; user's focus restored; the read
+// tab ALWAYS closed. Polls because the SPA needs a few beats after 'complete' before the profile text
+// exists. Returns the scraped profile object (possibly sparse) or {} — never throws.
+async function scrapeProfileViaTab(profileUrl) {
+  const clean = String(profileUrl || '').split(/[?#]/)[0];
+  if (!/linkedin\.com\/in\//.test(clean)) { console.log('[Wingguy][bg] scrapeProfileViaTab: not a profile URL:', profileUrl); return {}; }
+  const url = `${clean}${clean.endsWith('/') ? '' : '/'}?wgcontact=1`;
+  let tabId = null;
+  let prevTabId = null;
+  let best = {};
+  const usable = (p) => p && ((p.about && p.about.length > 40) || (p.pageText && p.pageText.length > 800));
+  const score = (p) => (p && ((p.about || '').length + (p.pageText || '').length + (p.headline ? 50 : 0))) || 0;
+  try {
+    const [prev] = await chrome.tabs.query({ active: true, currentWindow: true });
+    prevTabId = prev && prev.id;
+    const tab = await chrome.tabs.create({ url, active: false });
+    tabId = tab.id;
+    await waitForTabComplete(tabId, 15000);
+    const deadline = Date.now() + 12000;
+    while (Date.now() < deadline) {
+      let res = null;
+      try {
+        // frameId 0 = the top frame only; the content script also runs in LinkedIn's iframes
+        // (all_frames), and an iframe's empty scrape must not win the race.
+        res = await chrome.tabs.sendMessage(tabId, { type: 'WG_SCRAPE_SELF' }, { frameId: 0 });
+      } catch (_) { res = null; }   // script not ready yet; retry
+      const p = res && res.ok && res.profile;
+      if (score(p) > score(best)) best = p;
+      if (usable(best)) break;
+      await sleepBg(700);
+    }
+    console.log('[Wingguy][bg] profile (tab read) →', best && best.name ? best.name : '(no name)',
+      '| headline:', best && best.headline ? 'yes' : 'no', '| about:', best && best.about ? best.about.length : 0,
+      '| pageText:', best && best.pageText ? best.pageText.length : 0);
+  } catch (e) {
+    console.log('[Wingguy][bg] scrapeProfileViaTab error:', e.message);
+  } finally {
+    if (prevTabId != null) { try { await chrome.tabs.update(prevTabId, { active: true }); } catch (_) { /* tab gone */ } }
+    if (tabId != null) { try { await chrome.tabs.remove(tabId); } catch (_) { /* already gone */ } }
+  }
+  return best || {};
 }
 
 // Resolve once the background tab has finished loading (or after a timeout, so a stuck load never hangs us).

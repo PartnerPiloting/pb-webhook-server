@@ -282,56 +282,43 @@
       return '';
     }
   }
-  // Fetch the lead's profile PAGE (in-page GET, session carried — the same request shape as
-  // resolveAcoaToVanity) and mine the embedded JSON for headline / About / location. Used ONLY on
-  // the thin-profile path: opened from Messages AND no Portal match — the one case where the drafter
-  // otherwise has nothing but a name (and historically bluffed, Julian/Vinit 2026-08-12). All
-  // extraction is anchored NEAR the lead's own "publicIdentifier" so the logged-in viewer's data
-  // (also embedded in the page) can't contaminate the fields. Best-effort by design: any miss
-  // returns null and the server's no-material guard keeps the draft honest-generic.
+  // Read the lead's profile the PROVEN way (0.3.7, replacing 0.3.6's raw-HTML parser, which was
+  // written against LinkedIn's old embedded-JSON format and read nothing from the new "sdui" pages):
+  // the background worker opens the profile in a hidden tab, lets LinkedIn RENDER it, and this same
+  // content script — auto-injected there — runs the ordinary scrapeProfile() on it. One reading path
+  // everywhere, immune to embedded-format churn, and correctable from the selector store (DB row, no
+  // reinstall) exactly like every other landmark. Used ONLY on the thin-profile path: opened from
+  // Messages AND no Portal match — the one case where the drafter otherwise has nothing but a name
+  // (and historically bluffed, Julian/Vinit 2026-08-12). Best-effort: any miss returns null and the
+  // server's no-material guard keeps the draft honest-generic.
   async function fetchProfileExtras(profileUrl) {
     try {
-      const res = await fetch(profileUrl, { method: 'GET', credentials: 'include' });
-      if (!res.ok) return null;
-      const html = await res.text();
-      // The anchor slug: from the URL, or (ACoA form) the vanityName embedded in this same HTML.
-      let slug = (profileUrl.match(/\/in\/([^/?#]+)/) || [])[1] || '';
-      if (/^ACoA/i.test(slug)) {
-        const m = html.match(/vanityName\\?":\\?"([a-zA-Z0-9\-]{2,100})/);
-        slug = (m && m[1]) || '';
+      const p = await bg({ type: 'WG_SCRAPE_PROFILE_TAB', profileUrl });
+      if (!p || (!p.about && !p.pageText && !p.headline)) {
+        console.log('[Wingguy] thin-profile tab read: nothing usable came back for', profileUrl);
+        return null;
       }
-      if (!slug) return null;
-      const unescape = (s) => { try { return JSON.parse(`"${s}"`); } catch (_) { return s.replace(/\\"/g, '"').replace(/\\n/g, '\n'); } };
-      const windows = [];
-      const anchor = `"publicIdentifier":"${slug}"`;
-      for (let i = html.indexOf(anchor); i !== -1; i = html.indexOf(anchor, i + 1)) {
-        windows.push(html.slice(Math.max(0, i - 5000), i + 5000));
-      }
-      if (!windows.length) return null;
-      const pick = (re, hay, minLen = 0) => {
-        let best = '';
-        for (const w of hay) {
-          for (const m of w.matchAll(re)) {
-            const v = unescape(m[1]).trim();
-            if (v.length > best.length && v.length >= minLen) best = v;
-          }
-        }
-        return best;
-      };
-      const out = {
-        headline: pick(/"headline":"((?:[^"\\]|\\.)+?)"/g, windows).slice(0, 300),
-        // About lives further from the identifier than headline does — search the whole page for
-        // "summary" but require real length so stray short fields don't pass as a person's About.
-        about: pick(/"summary":"((?:[^"\\]|\\.)+?)"/g, [html], 60).slice(0, 2000),
-        location: pick(/"(?:geoLocationName|locationName)":"((?:[^"\\]|\\.)+?)"/g, windows).slice(0, 120),
-      };
-      console.log('[Wingguy] thin-profile fetch:', slug, '→ headline:', out.headline ? 'yes' : 'no', '| about:', out.about ? `${out.about.length} chars` : 'no', '| location:', out.location || '(none)');
-      return (out.headline || out.about || out.location) ? out : null;
+      console.log('[Wingguy] thin-profile tab read:', profileUrl, '→ headline:', p.headline ? 'yes' : 'no',
+        '| about:', p.about ? `${p.about.length} chars` : 'no', '| pageText:', p.pageText ? `${p.pageText.length} chars` : 'no');
+      return { headline: p.headline || '', about: p.about || '', location: p.location || '', pageText: p.pageText || '' };
     } catch (e) {
-      console.log('[Wingguy] thin-profile fetch failed:', e.message);
+      console.log('[Wingguy] thin-profile tab read failed:', e.message);
       return null;
     }
   }
+
+  // The background worker's door into this content script (0.3.7): when this copy of the script is
+  // running in the hidden read tab, the worker asks it to scrape the profile it is sitting on. Uses
+  // the same scrapeProfile() as every user-facing draft — landmarks and all.
+  chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+    if (message && message.type === 'WG_SCRAPE_SELF') {
+      scrapeProfile()
+        .then((profile) => sendResponse({ ok: true, profile }))
+        .catch((e) => sendResponse({ ok: false, error: e.message }));
+      return true; // async response
+    }
+    return undefined;
+  });
 
   // Read the lead's LinkedIn Contact Info (email + phone) for the ENRICH step. Called ONLY after a create
   // or Guy's manual "grab their details" — never on an ordinary turn (Guy's cost rule 2026-07-08).
@@ -2083,7 +2070,7 @@
       const inPortal = await portalLookup;
       if (!inPortal || !inPortal.found) {
         const extras = await fetchProfileExtras(profile.profileUrl);
-        for (const k of ['headline', 'about', 'location']) {
+        for (const k of ['headline', 'about', 'location', 'pageText']) {
           if (extras && extras[k] && !chatState.profile[k]) chatState.profile[k] = extras[k];
         }
       }
