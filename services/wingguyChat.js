@@ -150,20 +150,54 @@ const AGENT_TOOLS = [
 // and tagline all come from the per-tenant voice prefs — nothing hardcoded here.
 function chooseSignoff(conversation, coachName, vp, campaignSignoff) {
   // The "full" sign-off: a campaign's OWN sign-off wins (e.g. `\tks` = "Talk soon / I know a (Guy)"),
-  // else the per-tenant voice-prefs full sign-off ("(I know a) Guy"). The trim-to-plain logic below still
-  // applies on top of whichever "full" it is, so a thread where Guy already went plain stays plain.
-  const full = campaignSignoff || (vp.signoffTagline ? `${vp.signoffTagline} ${vp.signoffName}` : vp.signoffName);
+  // else the tenant's STORE sign-off (vp.signoffFull — letter-for-letter from their setup page),
+  // else the config voice-prefs tagline+name form. The trim-to-plain logic below still applies on
+  // top of whichever "full" it is, so a thread where the coach already went plain stays plain.
+  const full = campaignSignoff || vp.signoffFull || (vp.signoffTagline ? `${vp.signoffTagline} ${vp.signoffName}` : vp.signoffName);
   const plain = String(vp.signoffName || '').trim();
   const first = String(coachName || vp.signoffName || '').trim().split(/\s+/)[0].toLowerCase();
   const coachMsgs = (Array.isArray(conversation) ? conversation : [])
     .filter((m) => m && m.text && String(m.sender || '').toLowerCase().includes(first));
   if (!coachMsgs.length || !plain) return full;           // opener (or no name) → full
   const tail = String(coachMsgs[coachMsgs.length - 1].text || '').toLowerCase().slice(-60);
-  // Trim-don't-re-add: stay plain ONLY if Guy's previous message signed off with just the name — no tagline,
-  // no "talk soon", no "i know a". Otherwise keep the full form. (Trimming is easy; re-adding is laborious.)
-  const usedExtras = /i know a|talk soon/.test(tail) || (vp.signoffTagline && tail.includes(vp.signoffTagline.toLowerCase()));
+  // Trim-don't-re-add: stay plain ONLY if the coach's previous message signed off with just the name —
+  // no tagline, no "talk soon", no "i know a", and none of THEIR full sign-off's extra words (covers
+  // any tenant style, e.g. "Best, Jane"). Otherwise keep the full form. (Trimming is easy; re-adding
+  // is laborious.)
+  const extraWords = String(full).toLowerCase().replace(plain.toLowerCase(), '').replace(/[^a-z]+/g, ' ').trim();
+  const usedExtras = /i know a|talk soon/.test(tail)
+    || (vp.signoffTagline && tail.includes(vp.signoffTagline.toLowerCase()))
+    || (extraWords.length >= 3 && tail.includes(extraWords));
   if (!usedExtras && tail.includes(plain.toLowerCase())) return plain;     // prev signed plain → stay plain
   return full;
+}
+
+// STORE-FIRST voice identity (2026-08-12 — the Julian "(I know a) Guy" leak): the /my-wingguy setup
+// page saves each tenant's sign-off LETTER-FOR-LETTER as the store variable `signoff` (blank = "just
+// use their first name"), plus `owner_first_name` — but this path only ever read
+// config/wingguyVoicePrefs.js, a code-side file whose per-client map was never wired to the store,
+// so every tenant's chat drafts signed off as Guy. The store now wins; the config file is the
+// fallback when the store is unreachable or the tenant has no variables yet (mid-onboarding).
+// Guy's own store values ("(I know a) Guy" / "Guy") render byte-identically to the old config path.
+async function getVoiceIdentity(clientId, getVariablesFn) {
+  const vp = { ...getVoicePrefs(clientId) };
+  try {
+    const getVars = getVariablesFn || require('./wingguyRulesStore').getVariables;
+    const rows = await getVars({ tenantId: clientId });
+    const val = (k) => {
+      const row = (rows || []).find((r) => r && r.var_key === k);
+      return row ? String(row.value || '').trim() : '';
+    };
+    const firstName = val('owner_first_name');
+    const signoffFull = val('signoff') || firstName; // setup-page promise: blank sign-off -> just their first name
+    if (signoffFull) {
+      vp.signoffFull = signoffFull;
+      if (firstName) vp.signoffName = firstName;
+    }
+  } catch (e) {
+    // Store unreachable — never block a draft on voice lookup; config prefs carry the turn.
+  }
+  return vp;
 }
 
 // Compact, grounded context for the agent. `buildProfileBlock` / `buildConversationBlock` are passed
@@ -262,9 +296,9 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
   let currentLeadRecordId = leadRecordId;
   const prefs = getBookingPrefs(coach.clientId);
   // Per-tenant greeting + sign-off house style (VARIABLE), with the exact sign-off decided in code
-  // (CODE) from this thread's previous coach message. The behaviour (RULE) is generic; only the values
-  // are per-tenant, so this is multi-tenant-ready — see config/wingguyVoicePrefs.js.
-  const vp = getVoicePrefs(coach.clientId);
+  // (CODE) from this thread's previous coach message. Identity comes STORE-FIRST from the tenant's
+  // own variables (their setup-page sign-off), config voice prefs as fallback — see getVoiceIdentity.
+  const vp = await getVoiceIdentity(coach.clientId, deps.getVariables);
   // Sign-off: a campaign's own sign-off (e.g. `\tks` = "Talk soon / I know a (Guy)") is the "full" form; the
   // trim-don't-re-add logic in chooseSignoff still applies on top (a thread where Guy already went plain stays
   // plain). `\frac` has no template signoff, so it uses the voice-prefs "(I know a) Guy" full form. Guy's call 2026-07-01.
@@ -576,4 +610,4 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
   return { ok: true, reply: assistantText, draft: currentDraft, booked: bookedEvent, enrichContact, messages: convo, model: MODEL_ID };
 }
 
-module.exports = { runWingguyChatTurn, AGENT_TOOLS, inLunch };
+module.exports = { runWingguyChatTurn, AGENT_TOOLS, inLunch, chooseSignoff, getVoiceIdentity };
