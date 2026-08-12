@@ -207,6 +207,20 @@ function buildProfileBlock(profile = {}) {
   return lines.join('\n');
 }
 
+// A profile is THIN when there is no real material to personalise from: no About, no page text, no
+// posts, no role/company — just a name (and maybe a headline) from a messaging-thread header, with
+// no Portal record to fill the gaps. This is the case where the model has historically BLUFFED a
+// likely-sounding industry onto the lead ("you're in the RTO space", Julian/Vinit 2026-08-12) —
+// buildContext uses the flag to pin the draft to warm-and-generic and to make the agent tell the
+// coach why. Judged on the MERGED profile (after enrichProfileFromPortal), so a Portal match with
+// real content never counts as thin.
+function profileIsThin(profile = {}) {
+  const has = (v) => v != null && String(v).trim() !== '';
+  return !has(profile.about) && !has(profile.pageText)
+    && !(Array.isArray(profile.recentPosts) && profile.recentPosts.length)
+    && !has(profile.currentRole) && !has(profile.jobTitle) && !has(profile.companyName);
+}
+
 // Defensive strip: occasionally the model appends a meta "Note: ..." or "*Note ...*" line explaining
 // the draft (more likely when the profile was thin). Such commentary must never reach a paste-ready
 // message. Remove a trailing block that is clearly meta — conservatively, only at the end.
@@ -633,10 +647,11 @@ module.exports = function mountWingguy(app) {
         // Reuse the route's grounding-block formatting so the agent sees the same shape as the other endpoints.
         profileBlock: buildProfileBlock(enriched),
         convoBlock: buildConversationBlock(conversation, enriched && enriched.name),
+        profileThin: profileIsThin(enriched),
       });
       if (!result.ok) return res.status(502).json({ ok: false, error: result.error });
 
-      logger.info(`[Wingguy] chat turn for ${coach.clientId}: ${result.messages.length} msgs, draft=${result.draft ? 'yes' : 'no'}, booked=${result.booked ? result.booked.eventId : 'no'}`);
+      logger.info(`[Wingguy] chat turn for ${coach.clientId}: ${result.messages.length} msgs, draft=${result.draft ? 'yes' : 'no'}, booked=${result.booked ? result.booked.eventId : 'no'}${profileIsThin(enriched) ? ', profile=THIN' : ''}`);
       return res.json(result);
     } catch (e) {
       logger.error(`[Wingguy] chat failed: ${e.message}`);

@@ -202,7 +202,7 @@ async function getVoiceIdentity(clientId, getVariablesFn) {
 
 // Compact, grounded context for the agent. `buildProfileBlock` / `buildConversationBlock` are passed
 // in so the formatting stays identical to the rest of Wingguy (the route owns those helpers).
-function buildContext({ profileBlock, convoBlock, leadEmail, coachName, prefs, campaignTemplate, voice, onFile = true, window = null }) {
+function buildContext({ profileBlock, convoBlock, leadEmail, coachName, prefs, campaignTemplate, voice, onFile = true, window = null, profileThin = false }) {
   const tplBlock = campaignTemplate && campaignTemplate.instructions
     ? `CAMPAIGN TEMPLATE — "${campaignTemplate.label || campaignTemplate.id}" (use this for the opener / warm-reply message; it's Guy's real structure & voice — match its beats and sign-off):\n${campaignTemplate.instructions}\n\n`
     : '';
@@ -222,10 +222,22 @@ function buildContext({ profileBlock, convoBlock, leadEmail, coachName, prefs, c
   const dateBlock = window
     ? `TODAY IS ${window.today} (${window.timezone}). THIS week = ${window.thisWeek}; NEXT week = ${window.nextWeek}; anything later is a fallback week. Resolve EVERY relative date phrase — Guy's or the lead's ("next week", "Tuesday", "in a fortnight") — against this anchor; never guess today's date.\n\n`
     : '';
+  // No-material guard (Julian/Vinit, 2026-08-12): with only a name + thread in view — no profile
+  // page, no Portal match — the model tends to BLUFF a plausible industry onto the lead ("you're in
+  // the RTO space") even though the rulebook forbids invention. Naming the gap loudly, right next to
+  // the profile block, is what actually stops it; and telling the coach WHY the draft is generic
+  // turns a silent quality drop into a two-second workaround (open their profile page, /wg there).
+  const thinBlock = profileThin
+    ? `⚠ NO PROFILE MATERIAL — the lines under LEAD PROFILE are ALL you know about this person. Their LinkedIn profile is not in view and no Portal record matched them.\n` +
+      `- Do NOT attribute an industry, role, employer, specialty or situation to them — not even a likely-sounding one. If it isn't written above or said by THEM in the thread, it does not exist.\n` +
+      `- Draft warm and generic instead; a short honest message beats a specific invented one.\n` +
+      `- In your CHAT REPLY to ${(coachName || 'Guy').split(/\s+/)[0]} (never in the draft itself), say plainly: this person isn't in the Portal yet so the draft is generic — opening their LinkedIn profile page and typing /wg there gets a personalised one.\n\n`
+    : '';
   return (
     `CONTEXT FOR THIS CHAT (you are helping Guy with this lead):\n\n` +
     dateBlock +
     `${profileBlock ? `LEAD PROFILE:\n${profileBlock}\n\n` : ''}` +
+    thinBlock +
     `${convoBlock ? `LINKEDIN CONVERSATION SO FAR (oldest first):\n${convoBlock}\n\n` : ''}` +
     `${tplBlock}` +
     `${voiceBlock}` +
@@ -280,7 +292,7 @@ function unescapeModelNewlines(s) {
 
 // Run one chat turn (which may involve several tool round-trips) to completion.
 // Returns { ok, reply, draft, booked, messages, model }.
-async function runWingguyChatTurn({ coach, profile = {}, conversation = [], messages = [], leadEmail, airtableBaseId = null, leadRecordId = null, profileBlock = '', convoBlock = '', campaignTemplate = null, systemPrefixBlocks = null, deps = {} }) {
+async function runWingguyChatTurn({ coach, profile = {}, conversation = [], messages = [], leadEmail, airtableBaseId = null, leadRecordId = null, profileBlock = '', convoBlock = '', campaignTemplate = null, systemPrefixBlocks = null, profileThin = false, deps = {} }) {
   const client = deps.client || getAnthropicClient();
   const getAvailability = deps.getAvailabilityForCoach || wingguyCalendar.getAvailabilityForCoach;
   const bookMeeting = deps.createBookingEvent || wingguyCalendar.createBookingEvent;
@@ -313,7 +325,7 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
       { type: 'text', text: WINGGUY_VOICE },
       { type: 'text', text: WINGGUY_AGENT_INSTRUCTIONS, cache_control: { type: 'ephemeral', ttl: '1h' } },
     ]),
-    { type: 'text', text: buildContext({ profileBlock, convoBlock, leadEmail, coachName: coach.clientName, prefs, campaignTemplate, voice, onFile: !!leadRecordId, window: wingguyCalendar.offerWindowInfo(coach.timezone || coach.timeZone || 'Australia/Brisbane') }) },
+    { type: 'text', text: buildContext({ profileBlock, convoBlock, leadEmail, coachName: coach.clientName, prefs, campaignTemplate, voice, onFile: !!leadRecordId, window: wingguyCalendar.offerWindowInfo(coach.timezone || coach.timeZone || 'Australia/Brisbane'), profileThin }) },
   ];
 
   const convo = messages.map((m) => ({ role: m.role, content: m.content }));
