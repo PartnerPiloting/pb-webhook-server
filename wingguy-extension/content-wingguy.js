@@ -282,6 +282,57 @@
       return '';
     }
   }
+  // Fetch the lead's profile PAGE (in-page GET, session carried — the same request shape as
+  // resolveAcoaToVanity) and mine the embedded JSON for headline / About / location. Used ONLY on
+  // the thin-profile path: opened from Messages AND no Portal match — the one case where the drafter
+  // otherwise has nothing but a name (and historically bluffed, Julian/Vinit 2026-08-12). All
+  // extraction is anchored NEAR the lead's own "publicIdentifier" so the logged-in viewer's data
+  // (also embedded in the page) can't contaminate the fields. Best-effort by design: any miss
+  // returns null and the server's no-material guard keeps the draft honest-generic.
+  async function fetchProfileExtras(profileUrl) {
+    try {
+      const res = await fetch(profileUrl, { method: 'GET', credentials: 'include' });
+      if (!res.ok) return null;
+      const html = await res.text();
+      // The anchor slug: from the URL, or (ACoA form) the vanityName embedded in this same HTML.
+      let slug = (profileUrl.match(/\/in\/([^/?#]+)/) || [])[1] || '';
+      if (/^ACoA/i.test(slug)) {
+        const m = html.match(/vanityName\\?":\\?"([a-zA-Z0-9\-]{2,100})/);
+        slug = (m && m[1]) || '';
+      }
+      if (!slug) return null;
+      const unescape = (s) => { try { return JSON.parse(`"${s}"`); } catch (_) { return s.replace(/\\"/g, '"').replace(/\\n/g, '\n'); } };
+      const windows = [];
+      const anchor = `"publicIdentifier":"${slug}"`;
+      for (let i = html.indexOf(anchor); i !== -1; i = html.indexOf(anchor, i + 1)) {
+        windows.push(html.slice(Math.max(0, i - 5000), i + 5000));
+      }
+      if (!windows.length) return null;
+      const pick = (re, hay, minLen = 0) => {
+        let best = '';
+        for (const w of hay) {
+          for (const m of w.matchAll(re)) {
+            const v = unescape(m[1]).trim();
+            if (v.length > best.length && v.length >= minLen) best = v;
+          }
+        }
+        return best;
+      };
+      const out = {
+        headline: pick(/"headline":"((?:[^"\\]|\\.)+?)"/g, windows).slice(0, 300),
+        // About lives further from the identifier than headline does — search the whole page for
+        // "summary" but require real length so stray short fields don't pass as a person's About.
+        about: pick(/"summary":"((?:[^"\\]|\\.)+?)"/g, [html], 60).slice(0, 2000),
+        location: pick(/"(?:geoLocationName|locationName)":"((?:[^"\\]|\\.)+?)"/g, windows).slice(0, 120),
+      };
+      console.log('[Wingguy] thin-profile fetch:', slug, '→ headline:', out.headline ? 'yes' : 'no', '| about:', out.about ? `${out.about.length} chars` : 'no', '| location:', out.location || '(none)');
+      return (out.headline || out.about || out.location) ? out : null;
+    } catch (e) {
+      console.log('[Wingguy] thin-profile fetch failed:', e.message);
+      return null;
+    }
+  }
+
   // Read the lead's LinkedIn Contact Info (email + phone) for the ENRICH step. Called ONLY after a create
   // or Guy's manual "grab their details" — never on an ordinary turn (Guy's cost rule 2026-07-08).
   //
@@ -434,6 +485,26 @@
         btn.click();
         await new Promise((r) => setTimeout(r, 250));
       }
+    } catch (_) { /* non-fatal */ }
+  }
+
+  // Long messages in a thread render collapsed behind "…see more"; a collapsed bubble's
+  // textContent IS the clipped text, and that clip is what got written to the record (a message
+  // complete on LinkedIn was stored cut mid-sentence, 24 Jul 2026). Expand within the conversation
+  // container before any scrape. Same restraint as expandAboutSeeMore: only ever the page the
+  // user is already on.
+  async function expandThreadSeeMore(rootEl) {
+    try {
+      const root = rootEl || document;
+      const btns = Array.from(root.querySelectorAll('button, span[role="button"]')).filter((el) => {
+        if (insideWingguy(el)) return false;
+        const t = cleanText(el.textContent) || '';
+        const al = el.getAttribute('aria-label') || '';
+        return /^(?:…\s*)?see more$/i.test(t) || /see more/i.test(al);
+      });
+      if (!btns.length) return;
+      btns.slice(0, 40).forEach((b) => { try { b.click(); } catch (_) { /* one dud must not stop the rest */ } });
+      await sleep(300);
     } catch (_) { /* non-fatal */ }
   }
 
@@ -920,12 +991,17 @@
     return out;
   }
 
-  function scrapeOpenThread(anchorEl) {
-    // A remembered box LinkedIn has since detached (composers are re-rendered after a send) must not
-    // anchor the scrape — closestConversationContainer would walk the DETACHED old tree and read a
-    // stale copy of the thread. Only a still-connected box counts.
+  // The conversation container the next scrape would read from — exposed so callers can expand
+  // "…see more" inside it BEFORE scraping. A remembered box LinkedIn has since detached (composers
+  // are re-rendered after a send) must not anchor it — closestConversationContainer would walk the
+  // DETACHED old tree and read a stale copy of the thread. Only a still-connected box counts.
+  function currentThreadContainer(anchorEl) {
     const anchor = anchorEl || ((lastFocusedEditable && lastFocusedEditable.isConnected) ? lastFocusedEditable : null) || deepActiveElement();
-    const container = anchor ? closestConversationContainer(anchor) : null;
+    return anchor ? closestConversationContainer(anchor) : null;
+  }
+
+  function scrapeOpenThread(anchorEl) {
+    const container = currentThreadContainer(anchorEl);
     if (container && isNewUiConvoContainer(container)) {
       lastScrapeScoped = true;
       const out = scrapeNewUiThread(container);
@@ -1389,6 +1465,7 @@
       // Read the thread from the SAME container the header came from, so identity and content can never
       // disagree (a container element is its own closestConversationContainer match). Scraped BEFORE the
       // identity gates below so a refusal can still offer the captured text through the rescue card.
+      if (convo) await expandThreadSeeMore(convo); // read full text, never a collapsed bubble
       thread = convo ? scrapeOpenThread(convo) : [];
       if (!thread.length) {
         console.log('[Wingguy] capture skipped — no thread read');
@@ -1489,10 +1566,13 @@
 
       const extras = profferedExtras(thread, leadFirst, leadLast, lead.email, lead.phone);
       if (extras.email || extras.phone) console.log('[Wingguy] lead proffered contact details →', extras);
-      await bg({ type: 'QUICK_UPDATE', leadId: lead.id, content, section: 'linkedin', ...extras });
+      const qres = await bg({ type: 'QUICK_UPDATE', leadId: lead.id, content, section: 'linkedin', ...extras });
       console.log(`[Wingguy] captured ${thread.length} messages to ${who}`);
       dismissCaptureRescue(); // a stale card from an earlier miss must not outlive a clean save
-      showCaptureToast(`✓ Saved ${thread.length} messages to ${who}${extrasNote(extras)}`);
+      // An auto-cease is never silent: the server just decided this send was the warm-then-quiet
+      // reconnect goodbye, so the human is told in the same breath as the save.
+      const ceaseNote = qres && qres.autoCeased ? ' — follow-ups ceased (door open: their reply resurfaces them)' : '';
+      showCaptureToast(`✓ Saved ${thread.length} messages to ${who}${extrasNote(extras)}${ceaseNote}`);
 
       // Learn-from-my-edit: if this send follows a Wingguy insert, pair the AI's draft with the
       // message that actually went out (the newest message in the thread, if it's ours). Fire-and-
@@ -1911,6 +1991,7 @@
 
     // Read the open thread (if any) and auto-route. A freshly-opened message bubble renders its
     // history async, so if the first read is empty, give it a beat and try once more before deciding.
+    await expandThreadSeeMore(currentThreadContainer()); // read full text, never a collapsed bubble
     let thread = scrapeOpenThread();
     if (!thread.length) { await sleep(400); thread = scrapeOpenThread(); }
     console.log('[Wingguy] thread messages read:', thread.length, thread.map((m) => m.sender));
@@ -1989,9 +2070,24 @@
     const u = profile.profileUrl || '';
     const lookupQuery = (/\/in\/ACoA/i.test(u) ? '' : u) || profile.name || '';
     // Look up the lead's email (for the calendar invite) in the background — non-blocking.
-    bg({ type: 'WG_CAL_LOOKUP', query: lookupQuery })
-      .then((r) => { if (r && r.found && r.email) chatState.leadEmail = r.email; })
-      .catch(() => { /* agent will ask Guy to add it if booking is attempted */ });
+    const portalLookup = bg({ type: 'WG_CAL_LOOKUP', query: lookupQuery })
+      .then((r) => { if (r && r.found && r.email) chatState.leadEmail = r.email; return r; })
+      .catch(() => null);
+    // THIN + NOT IN PORTAL (Julian/Vinit, 2026-08-12): opened from Messages, the page has only a
+    // name — and the Portal has nobody to fill the gaps, so the drafter would be flying blind.
+    // ONE in-page fetch of their profile page (same session-carried GET the ACoA resolver already
+    // does) pulls their real headline/About so the first draft is personalised, not generic. The
+    // Portal check reuses the lookup call already in flight — a Portal-matched lead costs nothing
+    // extra and keeps LinkedIn as the source of LAST resort, never the routine path.
+    if (!profile.about && !profile.pageText && profile.profileUrl) {
+      const inPortal = await portalLookup;
+      if (!inPortal || !inPortal.found) {
+        const extras = await fetchProfileExtras(profile.profileUrl);
+        for (const k of ['headline', 'about', 'location']) {
+          if (extras && extras[k] && !chatState.profile[k]) chatState.profile[k] = extras[k];
+        }
+      }
+    }
     // Auto-kick the first turn (hidden). The kickoff differs for a fresh connection vs an open thread.
     const kickoff = (thread && thread.length)
       ? '(Opened from the LinkedIn conversation above. Read where things stand and give me the best next message to send — and if it\'s time to offer a meeting, suggest some times.)'
