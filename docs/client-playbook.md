@@ -775,23 +775,45 @@ half-notes, or from whatever the other person happened to send me. Messy, slow, 
 right. That's the real force of the question at the top: the holes don't land at random - they land
 exactly where you've stopped looking.
 
-**The trap is platform borders.** Plenty of recorders only work reliably where you're the host, or
-send a bot that has to be admitted to the room. But you don't control where other people host, and
-you won't win the argument of dragging everyone onto your favourite platform - least of all with
-the people you most want to meet. Every meeting on someone else's Zoom or Teams or Meet becomes a
-hole in your memory, and those are often the meetings that matter most. The recorder has to work
-wherever the world meets - not the other way round.
+**Choosing one looks easy - it isn't.** Every note-taker demos beautifully on a clean one-on-one
+call. The differences that matter only show up later: whose calls it can capture, what happens when
+meetings run back-to-back, whether it knows who said what. And by the time they show up, the
+transcripts have become your right arm - your follow-up emails draft themselves from them, your
+meeting prep is built from them - so a gap isn't a nice-to-have you're missing, it's friction
+exactly where you can least afford it. I've done a lot of research on this, and learned some of it
+the expensive way, so you don't have to.
 
-**My recommendation is Granola.** It's botless - no robot joins the call, nothing for the other
-side to notice or wonder about - and it captures whatever meeting you're in: any platform, whoever
-set it up. Your only job is one click when the meeting starts - or none at all if you've already
-got the meeting open in Granola from your prep, because then it starts capturing by itself at the
-scheduled time. I ran a free bot-based recorder for months, and the free
-part stopped being worth it the first few times a transcript I'd come to rely on simply wasn't
-there. Granola costs a little, and it removes the whole category of worry. It works off your
-calendar to know who you were meeting, which is one more reason the calendar hookup comes early in
-your setup. One piece of good manners: since there's no bot announcing itself, be upfront that you
-take notes of your meetings.
+**If you're not already attached to a note-taker, start with Fathom.** It's free, and it fits the
+way this system runs your meetings. Most of your calls get booked into your own meeting room, and
+when you're the host Fathom captures everything without you lifting a finger - it watches your
+calendar and just turns up, meeting after meeting, with nothing to remember on the day. It knows
+every speaker by name, and it copes gracefully with the busy mornings this system produces - calls
+stacked back-to-back, the next person joining while you're wrapping up the last one - each meeting
+still comes out filed separately, under the right person. The one limitation: on calls where you're
+*not* the host, Fathom joins as a notetaker the host has to let in. Most hosts don't blink, but
+it's a small ask you have to remember to make - until Fathom's botless version reaches Windows,
+which they're working on.
+
+**If most of your week is spent on other people's calls, look at Granola instead.** It's botless -
+nothing joins the room, nothing to admit, it simply captures whatever meeting you're in, on any
+platform, whoever set it up. That's a genuine advantage if you're often the guest. The trade-offs:
+it's not as automatic as Fathom - it needs you in the loop at the start of each call to make sure
+the note is running (one click, or none if you already opened the meeting during your prep) - it
+costs a little each month, it can only tell *your* voice from everyone else's - so on group calls
+the transcript can't say which of the others said what - and when calls run back-to-back it needs
+one habit from you: when it offers to start a note for the next meeting, let it. Otherwise two
+meetings land in one note, and they can't be pulled apart afterwards.
+
+**Already using a note-taker you like? Tell Guy what it is.** Some connect to the system directly,
+and anything that produces a transcript can be brought in - so you don't have to abandon a tool
+that's working for you. The point is simply that Guy knows what you're using, so your meetings flow
+into the system rather than sitting in an app on their own.
+
+Whichever way you go, the system files the transcript the same way and everything downstream - the
+drafts, the prep, the follow-up - works identically. Two housekeeping notes that apply to all of
+them: the calendar hookup comes early in your setup because that's how your recorder knows who you
+were meeting, and if there's no bot announcing itself, good manners is being upfront that you take
+notes of your meetings.
 
 ---
 
