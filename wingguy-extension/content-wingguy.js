@@ -2106,6 +2106,10 @@
     const statusEl = () => document.getElementById('wingguy-status');
 
     const insertBtn = document.getElementById('wingguy-insert');
+    // Panel closed while the chat was still opening (Esc / × / a LinkedIn re-render pulling the
+    // launcher): setBody quietly wrote into nothing, so there is nothing to wire — stop here instead
+    // of crashing on a null button (the red chrome://extensions Errors entry Julian hit, 2026-08-12).
+    if (!insertBtn) return;
     insertBtn.addEventListener('mousedown', (e) => e.preventDefault()); // keep the composer's caret
     insertBtn.addEventListener('click', async () => {
       // Stash the AI's ORIGINAL draft (learn-from-my-edit) — chatState.draft, not the textarea,
@@ -2457,6 +2461,8 @@
     });
 
     const insertBtn = document.getElementById('wingguy-insert');
+    // Panel closed mid-flight → nothing rendered, nothing to wire (same guard as renderChatShell).
+    if (!insertBtn) return;
     // Don't let the button steal focus from the message box (so the cursor stays where it belongs).
     insertBtn.addEventListener('mousedown', (e) => e.preventDefault());
     insertBtn.addEventListener('click', async () => {
