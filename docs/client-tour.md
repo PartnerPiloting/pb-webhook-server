@@ -22,6 +22,34 @@ reordered, edited or inserted at any time without scrambling anyone's place.
 
 ---
 
+## HOW THIS WORKS - THE TWO PHRASES YOU NEED
+
+Before anything else, a quick word on how you and I work together - it'll save you wondering.
+
+Alongside everything I do for you - drafting your messages, booking your meetings, keeping your
+follow-ups straight - I've got Guy's entire method written down, in his words. So there's nothing
+for you to remember and no notes to hunt through. You just ask me.
+
+**Two phrases are all you need.** Say **"where are we up to?"** any time and I'll tell you what
+we've covered, what's next, and anything Guy has suggested you look at since you last spoke. Say
+**"continue"** and we'll take the next step. That's the whole interface.
+
+**Ask me anything, whenever it occurs to you.** If something comes up part-way through - *"what do
+I say if someone replies badly?"*, *"why are we doing it in this order?"* - just ask, in your own
+words. You'll get Guy's answer, not generic advice off the internet. Wandering off never loses your
+place: "where are we up to?" picks it straight back up. And if I don't know something, I'll say so
+plainly and point you to Guy rather than making something up.
+
+**We go at the pace of your sessions with Guy.** Some steps you'll do on your own, and I'll tell
+you exactly what to go and do. Others you and Guy do together on a call - for those I'll give you
+the understanding beforehand so you turn up ready, and leave the doing for him. After each session
+with Guy, come back and ask where we're up to: he'll often have left something here for you.
+
+**Your move:** nothing at all - just say **"continue"** and we'll start with the big picture, which
+is the bit that makes everything else make sense.
+
+---
+
 ## THE BIG PICTURE - WHY THIS IS WORTH IT
 
 Before we get into any steps, it's worth keeping the payoff in mind - because there are a fair few

@@ -547,7 +547,7 @@ async function runTourStatus(tenant) {
   parts.push(`**Where we're up to${s && s.name ? ', ' + s.name : ''}:**`);
   parts.push('');
   if (!done.length) {
-    parts.push("We haven't started the getting-started tour yet - it's Guy's whole method, one short beat at a time, each one landing on something to actually do.");
+    parts.push("We haven't started yet. Say **\"continue\"** and I'll take you through it a piece at a time, starting with how you and I work together - then Guy's whole method, each step landing on something to actually do.");
   } else {
     const recent = done.slice(-3).map((b) => b.title.split(' - ')[0].toLowerCase());
     parts.push(`You're ${done.length} of ${beats.length} beats into getting started. ${done.length === beats.length ? 'That\'s the whole tour done.' : `So far we've covered ${recent.join(', ')}${done.length > 3 ? ' (among others)' : ''}.`}`);
