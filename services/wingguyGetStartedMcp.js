@@ -27,6 +27,7 @@ const fs = require('fs');
 const path = require('path');
 const clientService = require('./clientService');
 const store = require('./wingguyRulesStore');
+const learning = require('./wingguyLearningStore');
 
 const TENANT = (process.env.RECALL_COACH_CLIENT_ID || 'Guy-Wilson').trim();
 
@@ -454,10 +455,15 @@ const ALL_PHRASE = /\b(all the topics|all topics|whole playbook|entire playbook|
 const wantsEverything = (q) => ALL_EXACT.test(q) || ALL_PHRASE.test(q);
 
 // Loose title match: whole-query substring wins outright, else most query words hit.
+// Function words are excluded from word-scoring (2026-08-05): "what about angry replies" was
+// matching WHAT DO YOU DO on the word "what" alone - a bad serve AND a lost gap signal, since
+// the no-match branch is what feeds Guy's list of questions the playbook doesn't cover yet.
+// A whole-phrase substring match still beats everything, so "what do you do" stays routable.
+const MATCH_STOPWORDS = new Set(['what', 'about', 'your', 'you', 'the', 'and', 'for', 'with', 'that', 'this', 'are', 'can', 'could', 'should', 'would', 'does', 'how', 'why', 'when', 'tell', 'need', 'want', 'know', 'get', 'have', 'has']);
 function findPlaybookTopic(topics, query) {
   const q = String(query || '').toLowerCase().trim();
   if (!q) return null;
-  const words = q.split(/[^a-z0-9]+/).filter((w) => w.length > 2);
+  const words = q.split(/[^a-z0-9]+/).filter((w) => w.length > 2 && !MATCH_STOPWORDS.has(w));
   let best = null;
   let bestScore = 0;
   for (const t of topics) {
@@ -477,7 +483,218 @@ function playbookShortNames(topics, exclude) {
     .join('; ');
 }
 
-async function runLearn(args = {}, _tenant = TENANT) {
+// ---------------------------------------------------------------------------
+// The TOUR (the conductor) — designed with Guy 2026-08-05.
+//
+// The playbook is a library with a good librarian; a brand-new client needs a tour guide who
+// knows the route, not just the rooms. The route + Guy's transitions live in docs/client-tour.md
+// (beats are `## ` headings, same splitter as the playbook, read fresh per call). The bookmark is
+// per-client BY BEAT NAME (wingguyLearningStore), so beats can be edited/reordered/inserted at
+// any time without scrambling anyone's place. Two modes, deliberately distinct:
+//   status  ("where are we up to?") — the client ritual phrase: summary + nudge + an OFFER of the
+//           next beat. Serves nothing, stamps nothing — asking twice must not advance the tour.
+//   advance ("continue")            — serves the next unserved beat and stamps it.
+// Questions never advance the tour; detours don't move the bookmark. A beat covered early in a
+// detour is still served in sequence later — hearing it twice is teaching, not a bug.
+// ---------------------------------------------------------------------------
+
+const TOUR_PATH = path.join(__dirname, '..', 'docs', 'client-tour.md');
+
+function loadTour() {
+  const raw = fs.readFileSync(TOUR_PATH, 'utf8');
+  const sections = raw.split(/^## /m); // sections[0] = the conductor contract (not served)
+  return sections.slice(1).map((sec) => {
+    const body = ('## ' + sec).trim();
+    const title = body.split('\n')[0].replace(/^##\s*/, '').trim();
+    return { title, body };
+  });
+}
+
+const TOUR_STATUS_EXACT = /^(tour|the tour|tour status|where (are we|am i) up to\??|where (are we|am i)\??|getting started)$/i;
+const TOUR_STATUS_PHRASE = /\bwhere (are we|am i) up to\b/i;
+const TOUR_ADVANCE = /^(continue|continue the tour|keep going|next beat|carry on|let's continue|lets continue|go on|start the tour|begin the tour|take me through getting started|start getting started)$/i;
+const wantsTourStatus = (q) => TOUR_STATUS_EXACT.test(q) || TOUR_STATUS_PHRASE.test(q);
+const wantsTourAdvance = (q) => TOUR_ADVANCE.test(q);
+
+// One compact line of what's actually connected — the "learned AND set up" half of the summary.
+function connectionsLine(s) {
+  if (!s) return '';
+  const bits = [
+    `calendar ${s.hasCalendar ? 'connected' : 'not yet connected'}`,
+    `email ${s.hasMailbox ? 'connected' : 'not yet connected'}`,
+    `transcripts ${s.hasFathom ? 'flowing' : 'not yet flowing'}`,
+  ];
+  return `On the practical side: ${bits.join(', ')}.`;
+}
+
+async function runTourStatus(tenant) {
+  let beats;
+  try {
+    beats = loadTour();
+  } catch (e) {
+    return { text: `Couldn't read the tour (${e.message}).`, isError: true };
+  }
+  const [servedNames, nudge, s] = await Promise.all([
+    learning.servedBeats(tenant),
+    learning.activeNudge(tenant),
+    resolveState(tenant).catch(() => null),
+  ]);
+  const servedSet = new Set(servedNames);
+  const done = beats.filter((b) => servedSet.has(b.title));
+  const next = beats.find((b) => !servedSet.has(b.title));
+
+  const parts = [];
+  parts.push(`**Where we're up to${s && s.name ? ', ' + s.name : ''}:**`);
+  parts.push('');
+  if (!done.length) {
+    parts.push("We haven't started the getting-started tour yet - it's Guy's whole method, one short beat at a time, each one landing on something to actually do.");
+  } else {
+    const recent = done.slice(-3).map((b) => b.title.split(' - ')[0].toLowerCase());
+    parts.push(`You're ${done.length} of ${beats.length} beats into getting started. ${done.length === beats.length ? 'That\'s the whole tour done.' : `So far we've covered ${recent.join(', ')}${done.length > 3 ? ' (among others)' : ''}.`}`);
+  }
+  const conn = connectionsLine(s);
+  if (conn) parts.push(conn);
+  parts.push('');
+  if (nudge) {
+    parts.push(`**Guy mentioned something for you:** ${nudge.note} - want to look at that first?`);
+    if (next) parts.push(`Otherwise${done.length ? ' the next beat is' : ' we can start with'} **${next.title.toLowerCase()}** - just say "continue".`);
+  } else if (next) {
+    parts.push(done.length
+      ? `Next up: **${next.title.toLowerCase()}** - say "continue" whenever you're ready.`
+      : `Say **"continue"** and we'll take the first beat: **${next.title.toLowerCase()}**.`);
+  } else {
+    parts.push('Nothing left on the tour - but everything stays on hand. Ask me anything, any time.');
+  }
+  parts.push('');
+  parts.push("And you never have to follow the order - ask me anything at all, whenever it comes up.");
+
+  const footer = [
+    '---',
+    'TOUR STATUS - present the above as Guy\'s assistant speaking. Nothing was served or advanced by this call.',
+    'If they want the nudge, serve its subject from the library (topic="..."). If they want to proceed, call again with topic="continue". Questions never advance the tour.',
+  ].join('\n');
+  return { text: `${parts.join('\n')}\n\n${footer}` };
+}
+
+async function runTourAdvance(tenant) {
+  let beats;
+  try {
+    beats = loadTour();
+  } catch (e) {
+    return { text: `Couldn't read the tour (${e.message}).`, isError: true };
+  }
+  const servedNames = await learning.servedBeats(tenant);
+  const servedSet = new Set(servedNames);
+  const next = beats.find((b) => !servedSet.has(b.title));
+  if (!next) {
+    return {
+      text:
+        "**That's the whole tour - you've been through every beat.** From here it's all on hand whenever you need it: ask me anything in your own words, or \"where are we up to?\" any time for a bearings check.\n\n---\nTour complete. The library (the topic map) remains available as normal.",
+    };
+  }
+  await learning.stamp(tenant, 'beat', next.title);
+  const nudge = await learning.activeNudge(tenant);
+  const idx = beats.indexOf(next) + 1;
+
+  const footer = [
+    '---',
+    `That's Guy speaking - present it as his words, essentially as written. Tour beat ${idx} of ${beats.length}.`,
+    'ONE beat per sitting: check they\'re with you, take questions for as long as they like (questions never advance the tour), and when the thread winds down, offer to continue - topic="continue" serves the next beat.',
+    'They\'re never trapped in the order: any question can be answered from the library at any time (call with topic="...").',
+    nudge ? `A nudge from Guy is still open for them: "${nudge.note}" - mention it naturally when the moment fits.` : '',
+  ].filter(Boolean).join('\n');
+  return { text: `${next.body}\n\n${footer}` };
+}
+
+// Coach-only doors: "where's Rick up to?", nudges, and the gap list. Client-facing text never
+// leads here — these answer GUY, in Guy's own chat.
+async function runLearnOwnerDoor(args, tenant) {
+  if (tenant !== TENANT) {
+    return { text: 'That part of Wingguy Learning is Guy\'s own door. Ask me for a topic, or "where are we up to?" for the tour.', isError: true };
+  }
+
+  // The gap list needs no client arg.
+  if (args.gaps && !args.client) {
+    const rows = await learning.gaps(null, 90);
+    if (!rows.length) return { text: 'No logged gaps in the last 90 days - nothing clients asked that Wingguy Learning couldn\'t answer.' };
+    const lines = rows.slice(0, 40).map((r) => `- [${String(r.at).slice(0, 10)}] ${r.tenant_id}: "${r.key}"`);
+    return { text: `**Questions Wingguy Learning couldn't answer (last 90 days, ${rows.length} total):**\n${lines.join('\n')}\n\n---\nThese are verbatim asks that hit the no-match branch or were flagged not-covered. Recurring ones are playbook topics waiting to be written.` };
+  }
+
+  // Resolve which client Guy means.
+  const q = String(args.client || '').trim().toLowerCase();
+  if (!q) return { text: 'Which client? Pass client="name or id" (plus set_nudge / clear_nudge / gaps as needed).', isError: true };
+  let matches = [];
+  try {
+    const all = await clientService.getAllActiveClients();
+    matches = (all || []).filter((c) => {
+      const hay = `${c.clientId || ''} ${c.clientName || ''} ${c.clientFirstName || ''} ${c.clientLastName || ''}`.toLowerCase();
+      return hay.includes(q);
+    });
+  } catch (e) {
+    return { text: `Couldn't read the client roster (${e.message}).`, isError: true };
+  }
+  if (!matches.length) return { text: `No active client matching "${args.client}".`, isError: true };
+  if (matches.length > 1) {
+    return { text: `More than one client matches "${args.client}": ${matches.map((c) => c.clientId).join(', ')}. Say which.`, isError: true };
+  }
+  const target = matches[0];
+  const targetId = target.clientId;
+
+  if (args.clear_nudge) {
+    const had = await learning.clearNudge(targetId);
+    return { text: had ? `Cleared ${target.clientName || targetId}'s nudge - the tour's next beat is back to being the default.` : `${target.clientName || targetId} had no active nudge.` };
+  }
+  if (args.set_nudge) {
+    const ok = await learning.setNudge(targetId, args.set_nudge, args.nudge_topic || null, TENANT);
+    if (!ok) return { text: 'Couldn\'t store the nudge (store unavailable?).', isError: true };
+    return {
+      text:
+        `Nudge set for ${target.clientName || targetId}. Next time they ask "where are we up to?" they'll hear:\n\n` +
+        `> **Guy mentioned something for you:** ${args.set_nudge} - want to look at that first?\n\n` +
+        (args.nudge_topic ? `It retires itself once the "${args.nudge_topic}" topic is actually served to them, or when you set/clear the next one.` : 'It stays until you set another or clear it (clear_nudge=true).'),
+    };
+  }
+
+  // Default: the progress report.
+  let beats = [];
+  try { beats = loadTour(); } catch (_e) { /* tour file missing - report still works */ }
+  const [servedNames, topics, nudge, gapsRows, s] = await Promise.all([
+    learning.servedBeats(targetId),
+    learning.topicServes(targetId),
+    learning.activeNudge(targetId),
+    learning.gaps(targetId, 90),
+    resolveState(targetId).catch(() => null),
+  ]);
+  const parts = [];
+  parts.push(`**${target.clientName || targetId} - Wingguy Learning progress**`);
+  parts.push('');
+  parts.push(beats.length
+    ? `Tour: ${servedNames.length} of ${beats.length} beats. ${servedNames.length ? `Covered: ${servedNames.map((n) => n.split(' - ')[0].toLowerCase()).join('; ')}.` : 'Not started.'}`
+    : `Tour: ${servedNames.length} beats stamped (tour file unavailable to compare against).`);
+  if (topics.length) {
+    parts.push(`Topics they pulled on their own: ${topics.slice(0, 8).map((t) => `${t.key.split(' - ')[0].toLowerCase()}${t.times > 1 ? ` (x${t.times})` : ''}`).join('; ')}.`);
+  } else {
+    parts.push('No library topics pulled outside the tour yet.');
+  }
+  parts.push(connectionsLine(s) || 'Connection state unavailable.');
+  parts.push(nudge ? `Active nudge: "${nudge.note}"${nudge.topic_hint ? ` (retires on topic: ${nudge.topic_hint})` : ''}.` : 'No active nudge.');
+  if (gapsRows.length) parts.push(`Asked and NOT covered (${gapsRows.length}): ${gapsRows.slice(0, 5).map((g) => `"${g.key}"`).join('; ')}.`);
+  return { text: parts.join('\n') };
+}
+
+async function runLearn(args = {}, tenant = TENANT) {
+  // Guy's doors first - progress reports, nudges, the gap list.
+  if (args.client || args.set_nudge || args.clear_nudge || args.gaps) {
+    return runLearnOwnerDoor(args, tenant);
+  }
+
+  // The ambient Claude reporting a gap it had to admit to the client. Log and get out of the way.
+  if (args.not_covered) {
+    await learning.stamp(tenant, 'gap', args.not_covered);
+    return { text: 'Logged for Guy as a gap in Wingguy Learning. Nothing to show the user - carry on with the conversation.' };
+  }
+
   let pb;
   try {
     pb = loadPlaybook();
@@ -485,6 +702,10 @@ async function runLearn(args = {}, _tenant = TENANT) {
     return { text: `Couldn't read the client playbook (${e.message}).`, isError: true };
   }
   const topicArg = String(args.topic == null ? '' : args.topic).trim();
+
+  // The tour: status is the ritual phrase and stamps nothing; advance serves the next beat.
+  if (topicArg && wantsTourStatus(topicArg)) return runTourStatus(tenant);
+  if (topicArg && wantsTourAdvance(topicArg)) return runTourAdvance(tenant);
 
   if (!topicArg) {
     return {
@@ -511,19 +732,24 @@ async function runLearn(args = {}, _tenant = TENANT) {
 
   const topic = findPlaybookTopic(pb.topics, topicArg);
   if (!topic) {
+    // A miss IS the signal: this exact question is a playbook topic waiting to be written.
+    await learning.stamp(tenant, 'gap', topicArg);
     return {
       text:
         `No topic matching "${topicArg}" in Wingguy Learning. It has:\n` +
         pb.topics.map((t) => `- ${t.title}`).join('\n') +
-        "\n\n---\nIf none of these cover what the user asked, tell them Wingguy Learning doesn't cover it yet and to ask Guy - don't answer it from general knowledge.",
+        "\n\n---\nIf none of these cover what the user asked, tell them Wingguy Learning doesn't cover it yet and to ask Guy - don't answer it from general knowledge. (This miss has been logged for Guy already.)",
     };
   }
+
+  await learning.stamp(tenant, 'topic', topic.title);
+  await learning.markNudgeDoneIfTopicMatches(tenant, topic.title);
 
   const footer = [
     '---',
     "That's Guy speaking - present it as his words, essentially as written, not paraphrased into generic advice.",
     `Other topics on hand: ${playbookShortNames(pb.topics, topic)}.`,
-    "If their actual question isn't answered by this, say Wingguy Learning doesn't cover it yet and suggest they ask Guy - never fill the gap from general knowledge.",
+    "If their actual question isn't answered by this, say Wingguy Learning doesn't cover it yet and suggest they ask Guy - never fill the gap from general knowledge - and log the question by calling this tool again with not_covered=\"their question\".",
   ].join('\n');
   return { text: `${topic.body}\n\n${footer}` };
 }
@@ -552,9 +778,28 @@ const TOOL_DEFS = [
   {
     name: 'wingguy_learn',
     description:
-      'WINGGUY LEARNING - the client-facing name for the playbook; when speaking to the user ALWAYS call it "Wingguy Learning" (their training, built into Wingguy), never "the playbook" or "documentation". Guy\'s own explanation of the whole I Know A Guy method, served one topic at a time. This is the ONLY authoritative source on how this system works and why - NEVER answer questions about the method from general knowledge. CALL IT FIRST for ANY "how should I...", "what should I say...", "who should I...", "why do we...", "am I doing this right?", "what do I do next?" question about networking, outreach, LinkedIn, connecting, meetings or follow-up - the client will not use the word "playbook", so route on the SUBJECT of their question, not their vocabulary. A plausible answer that isn\'t Guy\'s method is worse than no answer, because the client cannot tell the difference. The topic list is NOT maintained here - call with no args to get the live map, and route from that. No args = the topic map. topic="..." = that topic, in Guy\'s words - present it as his, essentially as written. topic="everything" = the WHOLE playbook in one call, for "read me the lot" / "what does the playbook cover" / a client who wants the method end to end - lead with the map, then go deep on what they pick. If the returned text doesn\'t answer the user\'s question, say the playbook doesn\'t cover it and to ask Guy.',
-    zodSchema: { topic: z.string().optional().describe('Which topic: a few words from its title (e.g. "big picture", "process", "linked helper", "scoring"). "everything" for the whole playbook in one call. Omit for the topic list.') },
-    jsonSchema: { type: 'object', properties: { topic: { type: 'string', description: 'A few words from the topic title (e.g. "big picture", "process", "linked helper", "scoring"). "everything" for the whole playbook in one call. Omit for the topic list.' } } },
+      'WINGGUY LEARNING - the client-facing name for the playbook; when speaking to the user ALWAYS call it "Wingguy Learning" (their training, built into Wingguy), never "the playbook" or "documentation". Guy\'s own explanation of the whole I Know A Guy method, served one topic at a time. This is the ONLY authoritative source on how this system works and why - NEVER answer questions about the method from general knowledge. CALL IT FIRST for ANY "how should I...", "what should I say...", "who should I...", "why do we...", "am I doing this right?", "what do I do next?" question about networking, outreach, LinkedIn, connecting, meetings or follow-up - the client will not use the word "playbook", so route on the SUBJECT of their question, not their vocabulary. A plausible answer that isn\'t Guy\'s method is worse than no answer, because the client cannot tell the difference. The topic list is NOT maintained here - call with no args to get the live map, and route from that. No args = the topic map. topic="..." = that topic, in Guy\'s words - present it as his, essentially as written. topic="everything" = the WHOLE playbook in one call, for "read me the lot" / "what does the playbook cover" / a client who wants the method end to end - lead with the map, then go deep on what they pick. If the returned text doesn\'t answer the user\'s question, say the playbook doesn\'t cover it and to ask Guy, AND log it via not_covered="their question". THE TOUR: topic="where are we up to" = the client\'s ritual bearings check (progress + any nudge from Guy + the offered next beat; serves nothing); topic="continue" = serve the next tour beat. Route "where are we up to?", "take me through getting started", "continue the tour" here. GUY-ONLY doors (other callers are refused): client="name" = that client\'s learning progress report; with set_nudge="..." (optionally nudge_topic="...") stores the one-line suggestion that client hears on their next "where are we up to"; clear_nudge=true removes it; gaps=true (no client) = every question clients asked that Wingguy Learning couldn\'t answer.',
+    zodSchema: {
+      topic: z.string().optional().describe('A few words from a topic title (e.g. "big picture", "transcripts"). Also: "everything" for the whole playbook; "where are we up to" for the tour bearings check; "continue" for the next tour beat. Omit for the topic list.'),
+      not_covered: z.string().optional().describe('Log a question Wingguy Learning could not answer (verbatim, after telling the user it is not covered). Returns an ack only.'),
+      client: z.string().optional().describe('GUY ONLY: which client - name or id - for a progress report, or to target set_nudge/clear_nudge/gaps.'),
+      set_nudge: z.string().optional().describe('GUY ONLY (with client): the one-line suggestion that client hears on their next "where are we up to?" - e.g. "have a look at the transcripts side - April is about to fill your diary".'),
+      nudge_topic: z.string().optional().describe('GUY ONLY (with set_nudge): topic title words - the nudge retires itself once that topic is served to them.'),
+      clear_nudge: z.boolean().optional().describe('GUY ONLY (with client): remove the active nudge.'),
+      gaps: z.boolean().optional().describe('GUY ONLY: list questions clients asked that Wingguy Learning could not answer (all clients, last 90 days).'),
+    },
+    jsonSchema: {
+      type: 'object',
+      properties: {
+        topic: { type: 'string', description: 'A few words from a topic title; "everything" for the lot; "where are we up to" for the tour bearings check; "continue" for the next tour beat. Omit for the topic list.' },
+        not_covered: { type: 'string', description: 'Log a question Wingguy Learning could not answer (verbatim). Returns an ack only.' },
+        client: { type: 'string', description: 'GUY ONLY: client name or id for a progress report / nudge target.' },
+        set_nudge: { type: 'string', description: 'GUY ONLY (with client): one-line suggestion served on their next "where are we up to?".' },
+        nudge_topic: { type: 'string', description: 'GUY ONLY (with set_nudge): topic title words - nudge auto-retires once that topic is served.' },
+        clear_nudge: { type: 'boolean', description: 'GUY ONLY (with client): remove the active nudge.' },
+        gaps: { type: 'boolean', description: 'GUY ONLY: list unanswered client questions (last 90 days).' },
+      },
+    },
     run: runLearn,
   },
   {

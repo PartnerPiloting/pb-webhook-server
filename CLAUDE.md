@@ -55,3 +55,12 @@ Use one whenever you need a clean copy of `main` while a checkout is dirty. Rule
 
 There is no local dev loop. Changes are verified on cloud deploys - `main` is production, the
 `staging` branch is staging. Do not tell Guy to run the server locally.
+
+## The tour - docs/client-tour.md
+
+The guided route through getting started, served by `wingguy_learn` tour mode ("where are we up
+to?" = status, "continue" = next beat). Beats are `## ` headings; bookmarks are per-client BY BEAT
+NAME (wingguyLearningStore, Postgres), so beats can be edited, reordered or inserted any time
+without scrambling anyone's place. Same rules as the playbook: Guy's voice, altitude-controlled
+(depth stays in the playbook topics - beats point down into them), show Guy before committing,
+edit against origin/main.
