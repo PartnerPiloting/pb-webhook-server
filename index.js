@@ -176,6 +176,19 @@ try {
     moduleLogger.error('index.js: Error mounting granolaWebhookRoutes', e.message, e.stack);
 }
 
+// Fireflies "transcript ready" webhook — transcript provider #3 (after Fathom, Granola).
+// Per-client URL (/webhooks/fireflies/:clientId), verified with THAT client's stored signing
+// secret (Fireflies' own x-hub-signature HMAC, NOT Svix), so it also mounts BEFORE
+// express.json(). No-op unless FIREFLIES_WEBHOOK_ENABLED=true; writes still gated by
+// FIREFLIES_INGEST_ENABLED. See routes/firefliesWebhookRoutes.js.
+try {
+    const firefliesWebhookRoutes = require('./routes/firefliesWebhookRoutes.js');
+    app.use(firefliesWebhookRoutes);
+    moduleLogger.info('index.js: Fireflies webhook mounted (before express.json) at GET/HEAD/POST /webhooks/fireflies/:clientId');
+} catch (e) {
+    moduleLogger.error('index.js: Error mounting firefliesWebhookRoutes', e.message, e.stack);
+}
+
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" })); // For Mailgun webhooks (form-urlencoded)
 

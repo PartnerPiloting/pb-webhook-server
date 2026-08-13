@@ -115,11 +115,12 @@ const MASTER_FIELDS = [
   {
     name: 'Transcript Provider',
     type: 'singleSelect',
-    description: 'Which capture tool feeds this client\'s meeting transcripts into the store (services/transcriptProvider.js seam). Blank = Fathom (every existing client, unchanged). Granola = the client\'s Granola note-taker pushes via webhook (needs Granola API Key + Granola Webhook Secret below, Granola Business plan). Zoom = reserved for Zoom My Notes once its public API ships (until then it means transcripts arrive via the manual import door). Added 2026-07-29.',
+    description: 'Which capture tool feeds this client\'s meeting transcripts into the store (services/transcriptProvider.js seam). Blank = Fathom (every existing client, unchanged). Granola = the client\'s Granola note-taker pushes via webhook (needs Granola API Key + Granola Webhook Secret below, Granola Business plan). Fireflies = the client\'s Fireflies account pushes via webhook (needs Fireflies API Key + Fireflies Webhook Secret below, paid Fireflies plan; added 2026-08-13 — on the LIVE master base add this choice by hand, the script skips existing fields). Zoom = reserved for Zoom My Notes once its public API ships (until then it means transcripts arrive via the manual import door). Added 2026-07-29.',
     options: {
       choices: [
         { name: 'Fathom', color: 'blueBright' },
         { name: 'Granola', color: 'greenBright' },
+        { name: 'Fireflies', color: 'orangeBright' },
         { name: 'Zoom', color: 'cyanBright' }
       ]
     }
@@ -133,6 +134,16 @@ const MASTER_FIELDS = [
     name: 'Granola Webhook Secret',
     type: 'singleLineText',
     description: 'Signing secret for this client\'s Granola webhook registration — returned ONCE by scripts/register-granola-webhook.js; paste it here immediately. The webhook route (/webhooks/granola/<Client ID>) verifies every delivery against THIS value and rejects all traffic while it\'s blank, so the Granola pipe is not live until this is set. Added 2026-07-29.'
+  },
+  {
+    name: 'Fireflies API Key',
+    type: 'singleLineText',
+    description: 'The client\'s own Fireflies API key, copied by them from Fireflies Settings -> Developer settings (paid plan recommended: free-tier API sentence access is not guaranteed). Used to fetch their transcripts over GraphQL when their Fireflies webhook fires. Plaintext-at-rest like the other credential fields in this base. Added 2026-08-13.'
+  },
+  {
+    name: 'Fireflies Webhook Secret',
+    type: 'singleLineText',
+    description: 'Signing secret for this client\'s Fireflies webhook — the client sets it themselves in Fireflies Settings -> Developer settings (16-32 chars) in the same screen where they paste our webhook URL (/webhooks/fireflies/<Client ID>); copy the same value here. The route verifies every delivery\'s x-hub-signature against THIS value and rejects all traffic while it\'s blank, so the Fireflies pipe is not live until both sides hold it. Added 2026-08-13.'
   },
   {
     name: 'Capture Mode',

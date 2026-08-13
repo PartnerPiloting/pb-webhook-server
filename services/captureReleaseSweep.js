@@ -46,6 +46,13 @@ async function releaseDueCaptures() {
           coachClientId: row.coach_client_id,
           bypassHold: true,
         });
+      } else if (row.source === 'fireflies') {
+        const { ingestFirefliesTranscript } = require('./firefliesIngestService');
+        result = await ingestFirefliesTranscript({
+          transcriptId: row.provider_recording_id,
+          coachClientId: row.coach_client_id,
+          bypassHold: true,
+        });
       } else {
         // Fathom (and future providers) don't feed the hold queue yet — if a row appears
         // anyway, leave it held and say so rather than guessing at an ingest path.
