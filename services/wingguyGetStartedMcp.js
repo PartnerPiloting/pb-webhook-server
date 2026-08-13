@@ -606,12 +606,124 @@ async function runTourAdvance(tenant) {
   return { text: `${next.body}\n\n${footer}` };
 }
 
+// How much of each transcript to hand over. Capped hard: several full transcripts would swamp the
+// context. The END of a call is where "have a look at X before next time" lives, so we take the
+// tail — and say so, rather than letting the reader assume they saw the whole thing.
+const NUDGE_TRANSCRIPT_TAIL = 6000;
+
+/** Recent calls with actual coaching CLIENTS, with transcript tails, for nudge proposals. */
+async function runProposeNudges(args) {
+  const days = Math.min(Math.max(Number(args.days) || 14, 1), 90);
+  const db = require('./recallWebhookDb');
+
+  let clients = [];
+  try {
+    clients = (await clientService.getAllActiveClients()) || [];
+  } catch (e) {
+    return { text: `Couldn't read the client roster (${e.message}).`, isError: true };
+  }
+  const others = clients.filter((c) => c.clientId !== TENANT);
+  if (!others.length) return { text: 'No other active clients on the roster to propose nudges for.' };
+
+  let meetings = [];
+  try {
+    meetings = (await db.listMeetingsForCoach(TENANT, { limit: 60 })) || [];
+  } catch (e) {
+    return { text: `Couldn't read your meetings (${e.message}).`, isError: true };
+  }
+  const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+  const recent = meetings.filter((m) => {
+    const when = m.meeting_start || m.created_at;
+    return when && new Date(when).getTime() >= cutoff;
+  });
+  if (!recent.length) return { text: `No meetings in your transcript store in the last ${days} days.` };
+
+  // Match each meeting to a client by participant email first (exact), then by name in the
+  // participants or the title. Email is the trustworthy one; name matches are flagged as such.
+  const matched = [];
+  for (const m of recent) {
+    let participants = [];
+    try { participants = (await db.getParticipantsForMeeting(m.id)) || []; } catch (_e) { /* title-only match */ }
+    const emails = participants.map((p) => String(p.verified_email || '').toLowerCase()).filter(Boolean);
+    const names = participants.map((p) => String(p.verified_name || '').toLowerCase()).filter(Boolean);
+    const title = String(m.title || '').toLowerCase();
+
+    for (const c of others) {
+      const cEmail = String(c.clientEmailAddress || '').toLowerCase().trim();
+      const first = String(c.clientFirstName || '').toLowerCase().trim();
+      const full = String(c.clientName || '').toLowerCase().trim();
+      let how = null;
+      if (cEmail && emails.includes(cEmail)) how = 'email';
+      else if (full && (names.some((n) => n === full) || title.includes(full))) how = 'name';
+      else if (first && first.length > 2 && names.some((n) => n.startsWith(first + ' '))) how = 'name';
+      if (how) { matched.push({ meeting: m, client: c, how }); break; }
+    }
+  }
+  if (!matched.length) {
+    return {
+      text:
+        `Found ${recent.length} meeting(s) in the last ${days} days but none matched a client on your roster ` +
+        '(matching is on participant email, then name). Nothing to propose - set a nudge by hand with client="..." set_nudge="...".',
+    };
+  }
+
+  // Newest call per client only: the last thing Guy said to them is the live promise.
+  const perClient = new Map();
+  for (const row of matched) {
+    const prev = perClient.get(row.client.clientId);
+    const when = new Date(row.meeting.meeting_start || row.meeting.created_at).getTime();
+    if (!prev || when > prev.when) perClient.set(row.client.clientId, { ...row, when });
+  }
+
+  const blocks = [];
+  for (const row of perClient.values()) {
+    let full = null;
+    try { full = await db.getMeetingById(row.meeting.id); } catch (_e) { /* fall through to no-transcript */ }
+    const text = full && full.transcript_text ? String(full.transcript_text) : '';
+    const nudge = await learning.activeNudge(row.client.clientId);
+    const head = [
+      `### ${row.client.clientName || row.client.clientId} (${row.client.clientId}) - "${row.meeting.title || 'untitled'}", ${String(row.meeting.meeting_start || row.meeting.created_at).slice(0, 10)} [matched on ${row.how}]`,
+      nudge ? `Existing nudge (would be replaced): "${nudge.note}"` : 'No nudge currently set.',
+    ];
+    if (!text.trim()) {
+      head.push('_No transcript body stored for this meeting - nothing to read._');
+    } else {
+      const tail = text.length > NUDGE_TRANSCRIPT_TAIL ? text.slice(-NUDGE_TRANSCRIPT_TAIL) : text;
+      head.push(text.length > NUDGE_TRANSCRIPT_TAIL
+        ? `_Last ${NUDGE_TRANSCRIPT_TAIL} characters of ${text.length} (the end of the call, where next-steps usually land):_`
+        : '_Full transcript:_');
+      head.push('```\n' + tail + '\n```');
+    }
+    blocks.push(head.join('\n'));
+  }
+
+  const footer = [
+    '---',
+    'READ each transcript for anything Guy told that client to look at, learn, read or think about before next time - a promise he already made out loud. Ignore operational to-dos (send me the URL, book the room); this is only about what they should LEARN next.',
+    'Then propose ONE nudge per client, in Guy\'s voice, one sentence, as he would say it to them - e.g. "have a look at the transcripts side, April is about to fill your diary". Show him the proposals and the line each came from.',
+    'Store ONLY what he approves: wingguy_learn with client="..." set_nudge="..." (add nudge_topic="..." with a topic\'s title words so it retires itself once served).',
+    'Where the call suggests nothing worth learning next, say so for that client rather than inventing one. A nudge nobody needs is worse than no nudge.',
+    'Transcript tails only - if a promise looks truncated, say so rather than guessing at it.',
+  ].join('\n');
+
+  return { text: `**Nudge proposals from your last ${days} days of client calls**\n\n${blocks.join('\n\n')}\n\n${footer}` };
+}
+
 // Coach-only doors: "where's Rick up to?", nudges, and the gap list. Client-facing text never
 // leads here — these answer GUY, in Guy's own chat.
 async function runLearnOwnerDoor(args, tenant) {
   if (tenant !== TENANT) {
     return { text: 'That part of Wingguy Learning is Guy\'s own door. Ask me for a topic, or "where are we up to?" for the tour.', isError: true };
   }
+
+  // "What should I be nudging people about?" — harvested from Guy's own calls.
+  //
+  // Guy runs back-to-back and will never dictate a nudge between meetings. But if he told Rick on
+  // the call to look at something, he has ALREADY said it — it's in the transcript. So this door
+  // does the mechanical half (find recent calls with actual coaching CLIENTS, pull the transcript)
+  // and hands the reading to the ambient Claude, which proposes a nudge per client for Guy to
+  // approve. Deliberately proposal-only: nothing is stored until Guy says yes and set_nudge runs.
+  if (args.propose_nudges) return runProposeNudges(args);
 
   // The gap list needs no client arg.
   if (args.gaps && !args.client) {
@@ -685,7 +797,7 @@ async function runLearnOwnerDoor(args, tenant) {
 
 async function runLearn(args = {}, tenant = TENANT) {
   // Guy's doors first - progress reports, nudges, the gap list.
-  if (args.client || args.set_nudge || args.clear_nudge || args.gaps) {
+  if (args.client || args.set_nudge || args.clear_nudge || args.gaps || args.propose_nudges) {
     return runLearnOwnerDoor(args, tenant);
   }
 
@@ -778,7 +890,7 @@ const TOOL_DEFS = [
   {
     name: 'wingguy_learn',
     description:
-      'WINGGUY LEARNING - the client-facing name for the playbook; when speaking to the user ALWAYS call it "Wingguy Learning" (their training, built into Wingguy), never "the playbook" or "documentation". Guy\'s own explanation of the whole I Know A Guy method, served one topic at a time. This is the ONLY authoritative source on how this system works and why - NEVER answer questions about the method from general knowledge. CALL IT FIRST for ANY "how should I...", "what should I say...", "who should I...", "why do we...", "am I doing this right?", "what do I do next?" question about networking, outreach, LinkedIn, connecting, meetings or follow-up - the client will not use the word "playbook", so route on the SUBJECT of their question, not their vocabulary. A plausible answer that isn\'t Guy\'s method is worse than no answer, because the client cannot tell the difference. The topic list is NOT maintained here - call with no args to get the live map, and route from that. No args = the topic map. topic="..." = that topic, in Guy\'s words - present it as his, essentially as written. topic="everything" = the WHOLE playbook in one call, for "read me the lot" / "what does the playbook cover" / a client who wants the method end to end - lead with the map, then go deep on what they pick. If the returned text doesn\'t answer the user\'s question, say the playbook doesn\'t cover it and to ask Guy, AND log it via not_covered="their question". THE TOUR: topic="where are we up to" = the client\'s ritual bearings check (progress + any nudge from Guy + the offered next beat; serves nothing); topic="continue" = serve the next tour beat. Route "where are we up to?", "take me through getting started", "continue the tour" here. GUY-ONLY doors (other callers are refused): client="name" = that client\'s learning progress report; with set_nudge="..." (optionally nudge_topic="...") stores the one-line suggestion that client hears on their next "where are we up to"; clear_nudge=true removes it; gaps=true (no client) = every question clients asked that Wingguy Learning couldn\'t answer.',
+      'WINGGUY LEARNING - the client-facing name for the playbook; when speaking to the user ALWAYS call it "Wingguy Learning" (their training, built into Wingguy), never "the playbook" or "documentation". Guy\'s own explanation of the whole I Know A Guy method, served one topic at a time. This is the ONLY authoritative source on how this system works and why - NEVER answer questions about the method from general knowledge. CALL IT FIRST for ANY "how should I...", "what should I say...", "who should I...", "why do we...", "am I doing this right?", "what do I do next?" question about networking, outreach, LinkedIn, connecting, meetings or follow-up - the client will not use the word "playbook", so route on the SUBJECT of their question, not their vocabulary. A plausible answer that isn\'t Guy\'s method is worse than no answer, because the client cannot tell the difference. The topic list is NOT maintained here - call with no args to get the live map, and route from that. No args = the topic map. topic="..." = that topic, in Guy\'s words - present it as his, essentially as written. topic="everything" = the WHOLE playbook in one call, for "read me the lot" / "what does the playbook cover" / a client who wants the method end to end - lead with the map, then go deep on what they pick. If the returned text doesn\'t answer the user\'s question, say the playbook doesn\'t cover it and to ask Guy, AND log it via not_covered="their question". THE TOUR: topic="where are we up to" = the client\'s ritual bearings check (progress + any nudge from Guy + the offered next beat; serves nothing); topic="continue" = serve the next tour beat. Route "where are we up to?", "take me through getting started", "continue the tour" here. GUY-ONLY doors (other callers are refused): client="name" = that client\'s learning progress report; with set_nudge="..." (optionally nudge_topic="...") stores the one-line suggestion that client hears on their next "where are we up to"; clear_nudge=true removes it; gaps=true (no client) = every question clients asked that Wingguy Learning couldn\'t answer. propose_nudges=true reads his recent client calls and proposes a nudge each, drawn from what he already promised on the call (proposal only - store with set_nudge once he approves).',
     zodSchema: {
       topic: z.string().optional().describe('A few words from a topic title (e.g. "big picture", "transcripts"). Also: "everything" for the whole playbook; "where are we up to" for the tour bearings check; "continue" for the next tour beat. Omit for the topic list.'),
       not_covered: z.string().optional().describe('Log a question Wingguy Learning could not answer (verbatim, after telling the user it is not covered). Returns an ack only.'),
@@ -787,6 +899,8 @@ const TOOL_DEFS = [
       nudge_topic: z.string().optional().describe('GUY ONLY (with set_nudge): topic title words - the nudge retires itself once that topic is served to them.'),
       clear_nudge: z.boolean().optional().describe('GUY ONLY (with client): remove the active nudge.'),
       gaps: z.boolean().optional().describe('GUY ONLY: list questions clients asked that Wingguy Learning could not answer (all clients, last 90 days).'),
+      propose_nudges: z.boolean().optional().describe('GUY ONLY: read recent calls with coaching clients and propose a learning nudge for each, from what he already told them on the call. Proposal only - nothing is stored until set_nudge runs.'),
+      days: z.number().optional().describe('GUY ONLY (with propose_nudges): how far back to look, default 14.'),
     },
     jsonSchema: {
       type: 'object',
@@ -798,6 +912,8 @@ const TOOL_DEFS = [
         nudge_topic: { type: 'string', description: 'GUY ONLY (with set_nudge): topic title words - nudge auto-retires once that topic is served.' },
         clear_nudge: { type: 'boolean', description: 'GUY ONLY (with client): remove the active nudge.' },
         gaps: { type: 'boolean', description: 'GUY ONLY: list unanswered client questions (last 90 days).' },
+        propose_nudges: { type: 'boolean', description: 'GUY ONLY: propose learning nudges from recent client calls (proposal only).' },
+        days: { type: 'number', description: 'GUY ONLY (with propose_nudges): days back to look, default 14.' },
       },
     },
     run: runLearn,
@@ -860,4 +976,4 @@ async function legacyToolCall(toolName, args, tenant = TENANT) {
   }
 }
 
-module.exports = { registerWingguyGetStartedTools, legacyToolList, legacyToolCall, TOOL_DEFS };
+module.exports = { registerWingguyGetStartedTools, legacyToolList, legacyToolCall, TOOL_DEFS, loadTour };

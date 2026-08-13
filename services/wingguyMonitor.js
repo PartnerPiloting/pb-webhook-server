@@ -192,6 +192,82 @@ function heartbeatEmailHtml(sum) {
 }
 
 // ---------------------------------------------------------------------------
+// Wingguy Learning weekly review (2026-08-14, Guy's spec)
+//
+// Two things Guy would otherwise have to remember to go and look at, so they come to him instead:
+//   1. GAPS - every question a client asked that Wingguy Learning could not answer. Guy's own
+//      worry was "I may have forgotten to impart certain knowledge"; this turns that from
+//      something he has to recall into a list written by clients, ranked by how often it is asked.
+//      Each recurring one is a playbook topic waiting to be written.
+//   2. WHERE EVERYONE IS UP TO - tour beats and self-serve topic pulls per client, so a glance
+//      before a call tells him who is stuck and who has run ahead.
+// Sent Mondays. Silent when there is nothing to report: the existing heartbeat already proves the
+// checker is alive, so an empty learning email would be pure noise.
+// ---------------------------------------------------------------------------
+
+async function learningReview() {
+  const learning = require('./wingguyLearningStore');
+  const clientService = require('./clientService');
+
+  const rows = await learning.gaps(null, 7);
+  const byQuestion = new Map();
+  for (const r of rows) {
+    const k = String(r.key || '').trim().toLowerCase();
+    if (!k) continue;
+    const cur = byQuestion.get(k) || { question: r.key, times: 0, who: new Set() };
+    cur.times++; cur.who.add(r.tenant_id);
+    byQuestion.set(k, cur);
+  }
+  const gapList = [...byQuestion.values()]
+    .sort((a, b) => b.times - a.times)
+    .map((g) => ({ question: g.question, times: g.times, who: [...g.who].join(', ') }));
+
+  let beatCount = 0;
+  try { beatCount = require('./wingguyGetStartedMcp').loadTour().length; } catch (_e) { /* report still works */ }
+
+  const progress = [];
+  try {
+    const clients = (await clientService.getAllActiveClients()) || [];
+    for (const c of clients) {
+      const [beats, topics, nudge] = await Promise.all([
+        learning.servedBeats(c.clientId),
+        learning.topicServes(c.clientId),
+        learning.activeNudge(c.clientId),
+      ]);
+      if (!beats.length && !topics.length && !nudge) continue;   // nothing to say about them yet
+      progress.push({
+        client: c.clientName || c.clientId,
+        beats: beats.length,
+        lastBeat: beats.length ? beats[beats.length - 1] : null,
+        topics: topics.slice(0, 5).map((t) => `${t.key.split(' - ')[0].toLowerCase()}${t.times > 1 ? ` (x${t.times})` : ''}`).join(', '),
+        nudge: nudge ? nudge.note : null,
+      });
+    }
+  } catch (e) {
+    log.warn(`learning review: client roster unavailable (${e.message})`);
+  }
+
+  return { gapList, progress, beatCount };
+}
+
+function learningEmailHtml(rev) {
+  const parts = [];
+  if (rev.gapList.length) {
+    parts.push(`<h3>Questions Wingguy Learning could not answer (last 7 days)</h3>
+      <p>Asked by clients, most-asked first. Each of these is a candidate topic - the recurring ones especially. Reply to yourself with one and a Claude session can draft it against the playbook.</p>
+      <ul>${rev.gapList.map((g) => `<li><b>"${esc(g.question)}"</b> - asked ${g.times}x by ${esc(g.who)}</li>`).join('')}</ul>`);
+  } else {
+    parts.push('<h3>No gaps this week</h3><p>Every question clients asked was covered by a topic. Worth knowing, not worth acting on.</p>');
+  }
+  if (rev.progress.length) {
+    parts.push(`<h3>Where everyone is up to</h3>
+      <ul>${rev.progress.map((p) => `<li><b>${esc(p.client)}</b> - tour ${esc(p.beats)}${rev.beatCount ? ' of ' + esc(rev.beatCount) : ''}${p.lastBeat ? ` (last: ${esc(String(p.lastBeat).split(' - ')[0].toLowerCase())})` : ''}${p.topics ? `; asked for ${esc(p.topics)}` : ''}${p.nudge ? `; nudge waiting: "${esc(p.nudge)}"` : ''}</li>`).join('')}</ul>`);
+  }
+  parts.push('<p style="color:#666">Wingguy Learning weekly review. Silent weeks mean no gaps logged and nobody learning - the Monday heartbeat separately proves the monitor is alive. A gap is logged when a client asks something no topic matches, or when Wingguy has to admit it is not covered.</p>');
+  return parts.join('');
+}
+
+// ---------------------------------------------------------------------------
 // Scheduling — Brisbane-clocked, restart-safe via wingguy_monitor_state
 // ---------------------------------------------------------------------------
 
@@ -257,6 +333,31 @@ async function runWeeklyHeartbeat({ force = false } = {}) {
   });
 }
 
+/** Monday: the Wingguy Learning review. Silent unless there is something to say. */
+async function runWeeklyLearningReview({ force = false } = {}) {
+  return withClient(async (client) => {
+    const now = brisbaneNow();
+    if (!force) {
+      if (now.weekday !== 'Mon' || now.hour < RUN_HOUR) return { ran: false, reason: 'not Monday morning' };
+      if ((await getState(client, 'last_learning_review')) === now.date) return { ran: false, reason: 'already sent today' };
+    }
+    const rev = await learningReview();
+    let emailed = false;
+    if (rev.gapList.length || rev.progress.length) {
+      const subject = rev.gapList.length
+        ? `Wingguy Learning: ${rev.gapList.length} gap${rev.gapList.length === 1 ? '' : 's'} to write (${now.date})`
+        : `Wingguy Learning: no gaps, here is where everyone is up to (${now.date})`;
+      const r = await sendAlertEmail(subject, learningEmailHtml(rev));
+      emailed = !!(r && r.success);
+      log.info(`wingguy-learning review: ${rev.gapList.length} gap(s), ${rev.progress.length} client(s), email ${emailed ? 'sent' : 'FAILED'}`);
+    } else {
+      log.info('wingguy-learning review: nothing to report, no email');
+    }
+    if (!force) await setState(client, 'last_learning_review', now.date);
+    return { ran: true, ...rev, emailed };
+  });
+}
+
 function startWingguyMonitor() {
   if (String(process.env.WINGGUY_MONITOR || 'on').toLowerCase() === 'off') {
     log.info('wingguy-monitor: disabled via WINGGUY_MONITOR=off');
@@ -270,6 +371,7 @@ function startWingguyMonitor() {
     try {
       await runDailyCheck();
       await runWeeklyHeartbeat();
+      await runWeeklyLearningReview();
     } catch (e) {
       log.error(`wingguy-monitor tick failed (non-fatal): ${e.message}`);
     } finally {
@@ -280,4 +382,4 @@ function startWingguyMonitor() {
   setTimeout(tick, 60 * 1000);   // first look one minute after boot, not mid-startup
 }
 
-module.exports = { startWingguyMonitor, runDailyCheck, runWeeklyHeartbeat, recordChatTurn };
+module.exports = { startWingguyMonitor, runDailyCheck, runWeeklyHeartbeat, runWeeklyLearningReview, recordChatTurn };
