@@ -22,11 +22,39 @@
 (function () {
   'use strict';
 
-  // Guard against double-injection: the background worker re-injects this script into open LinkedIn
-  // tabs on install/update (so a dead tab heals without a manual refresh). If a live copy is already
-  // wired up here, bail so we don't double-wire the keyup/click listeners.
-  if (window.__wingguyLoaded) return;
+  // Guard against double-injection — but only against a LIVE copy. The background worker re-injects
+  // this script into open LinkedIn tabs on install/update so a stale tab heals without a manual
+  // refresh; the copy already sitting in that tab is almost always a DEAD one (Chrome invalidates the
+  // old extension context the moment the new version loads), whose /wg listener can no longer reach
+  // the worker. The old flat "already loaded → bail" therefore cancelled the self-heal and left the
+  // tab answering every /wg with "Not signed in" (2026-08-13). So: ask the incumbent whether its
+  // extension context still works. Alive → bail (never double-wire the listeners). Dead → tell it to
+  // stand down and take the tab over.
+  if (window.__wingguyLoaded) {
+    let incumbentAlive = false;
+    try { incumbentAlive = !!(window.__wingguyAlive && window.__wingguyAlive()); } catch (_) { incumbentAlive = false; }
+    if (incumbentAlive) return;
+    try { if (window.__wingguyStandDown) window.__wingguyStandDown(); } catch (_) {}
+  }
   window.__wingguyLoaded = true;
+
+  // How the NEXT injected copy tests whether this one is still usable: chrome.runtime.id goes
+  // undefined the instant our context is invalidated, and every chrome.* call then throws.
+  const extensionAlive = () => { try { return !!(chrome.runtime && chrome.runtime.id); } catch (_) { return false; } };
+  window.__wingguyAlive = extensionAlive;
+
+  // Set when a newer copy takes this tab over. Our listeners stay bound (we can't unbind another
+  // copy's, and Chrome won't let a dead context clean up), so we check this at the one chokepoint
+  // that matter — openPanel() and injectLauncher() — and stay silent instead of racing the live copy
+  // for the panel (or leaving a dead launcher button on the page for it to find).
+  let standDown = false;
+  window.__wingguyStandDown = () => {
+    standDown = true;
+    try {
+      document.getElementById('wingguy-overlay')?.remove();
+      document.getElementById('wingguy-launcher-btn')?.remove(); // the live copy injects its own
+    } catch (_) {}
+  };
 
   const LAUNCHER_ID = 'wingguy-launcher-btn';
   const OVERLAY_ID = 'wingguy-overlay';
@@ -1840,6 +1868,7 @@
 
   // ---- UI: launcher + full-screen overlay -----------------------------------
   function injectLauncher() {
+    if (standDown) return;                   // never put a dead copy's button back on the page
     if (!shouldShowLauncher()) return;
     if (document.getElementById(LAUNCHER_ID)) return;
 
@@ -1948,16 +1977,19 @@
   }
 
   async function openPanel() {
+    if (standDown) return;                  // a newer copy owns this tab; it will answer this /wg
     overlayShell();
     setBody(`<div class="wingguy-muted">Reading this profile… (scanning the page)</div>`);
 
-    // Auth check first — gives a clear message instead of a cryptic 401.
-    let auth;
+    // Auth check first — a clear message beats a cryptic 401. Three outcomes, three different fixes:
+    // our own context is dead (refresh), the worker didn't answer (refresh), or the browser genuinely
+    // has no Portal credentials (one click). All three used to print "Not signed in", which for a
+    // client reads as "your account is broken" when the usual cause was just a stale tab.
+    if (!extensionAlive()) { renderRefreshCard(); return; }
+    let auth = null;
     try { auth = await bg({ type: 'CHECK_AUTH' }); } catch (_) { auth = null; }
-    if (!auth || !auth.authenticated) {
-      setBody(`<div class="wingguy-warn">Not signed in. Open your portal once in another tab to sync, then reopen this.</div>`);
-      return;
-    }
+    if (!auth) { renderRefreshCard(); return; }
+    if (!auth.authenticated) { renderConnectCard(); return; }
 
     const profile = await scrapeProfile();
     if (!profile.name && !profile.headline && !profile.about && !profile.pageText) {
@@ -1989,6 +2021,57 @@
     // 1.8s debounce coalesces with a send if you open then reply, so it still captures just once.
     if (thread.length) scheduleCapture((lastFocusedEditable && lastFocusedEditable.isConnected) ? lastFocusedEditable : null);
     renderRoute(profile, thread);
+  }
+
+  // ---- the two "can't start yet" cards --------------------------------------
+  // Client-facing wording rules: name the cause in plain English, put the fix on a button, and never
+  // ask them to go and do plumbing in another tab and then remember to come back and retype /wg.
+
+  // The tab is running a pre-update copy of the extension (or the worker didn't answer). A refresh is
+  // the whole fix, so say that and offer the button.
+  function renderRefreshCard() {
+    const body = setBody(`
+      <div class="wingguy-warn">Wingguy has been updated, so this tab is still running the old copy.</div>
+      <p class="wingguy-muted">Refresh the page, then type /wg again.</p>
+      <div class="wingguy-row"><button class="wingguy-primary" id="wingguy-refresh-page">Refresh this page</button></div>
+    `);
+    body?.querySelector('#wingguy-refresh-page')?.addEventListener('click', () => location.reload());
+  }
+
+  // This browser has never had the Portal open (fresh install, new browser profile, or Disconnect was
+  // used). One click opens it; the Portal's own script hands the credentials over, and we pick the
+  // panel back up ourselves rather than making them retype the trigger.
+  function renderConnectCard() {
+    const body = setBody(`
+      <div class="wingguy-warn">Wingguy isn't linked to your Portal in this browser yet.</div>
+      <p class="wingguy-muted">Open your Portal once and it links itself - leave this tab where it is and I'll carry on here.</p>
+      <div class="wingguy-row"><button class="wingguy-primary" id="wingguy-open-portal">Open my Portal</button></div>
+      <div class="wingguy-status" id="wingguy-connect-status"></div>
+    `);
+    body?.querySelector('#wingguy-open-portal')?.addEventListener('click', async () => {
+      const status = () => document.getElementById('wingguy-connect-status');
+      const btn = document.getElementById('wingguy-open-portal');
+      if (btn) btn.disabled = true;
+      if (status()) status().textContent = 'Opening your Portal in a new tab…';
+      try { await bg({ type: 'OPEN_PORTAL' }); } catch (_) { renderRefreshCard(); return; }
+      if (status()) status().textContent = 'Waiting for your Portal to link up… (if it asks you to log in, do that)';
+      waitForPortalLink();
+    });
+  }
+
+  // Poll for the credentials landing in extension storage, then reopen the panel for real. Stops if
+  // the panel is closed, if the card is replaced, or after a minute.
+  async function waitForPortalLink() {
+    for (let i = 0; i < 60; i++) {
+      await sleep(1000);
+      if (!document.getElementById(OVERLAY_ID)) return;                  // they closed it — let it go
+      if (!document.getElementById('wingguy-connect-status')) return;    // card replaced — not ours
+      let auth = null;
+      try { auth = await bg({ type: 'CHECK_AUTH' }); } catch (_) { renderRefreshCard(); return; }
+      if (auth && auth.authenticated) { closePanel(); openPanel(); return; }
+    }
+    const status = document.getElementById('wingguy-connect-status');
+    if (status) status.textContent = 'Still not linked. Log in on the Portal tab, then type /wg here again.';
   }
 
   function templateLabel(id) {

@@ -10,6 +10,12 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
+  // Connect button (disconnected state): open/reload the portal tab. The popup then updates itself
+  // via the storage.onChanged listener below the moment the portal broadcasts the credentials.
+  document.getElementById('btn-open-portal')?.addEventListener('click', () => {
+    chrome.runtime.sendMessage({ type: 'OPEN_PORTAL' }, () => window.close());
+  });
+
   // The popup carries NO key field (removed 2026-08-05, Julian's feedback: an empty key box reads
   // as a form to fill in). Drafting runs on the Claude key on the client's account; if that isn't
   // set up, the draft itself says so - the popup never raises the subject.
