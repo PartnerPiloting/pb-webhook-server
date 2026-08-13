@@ -1888,6 +1888,16 @@ try {
     moduleLogger.error('index.js: Error starting capture release sweep', e.message, e.stack);
 }
 
+// Wingguy monitor: daily 7am-Brisbane self-check (landmark misses + profile-blind draft rate) that
+// emails Guy ONLY when something breaches, plus a Monday all-green heartbeat. WINGGUY_MONITOR=off kills it.
+try {
+    const { startWingguyMonitor } = require('./services/wingguyMonitor.js');
+    startWingguyMonitor();
+    moduleLogger.info('index.js: Wingguy monitor init');
+} catch (e) {
+    moduleLogger.error('index.js: Error starting Wingguy monitor', e.message, e.stack);
+}
+
 
 // Top Scoring Leads scaffold (feature gated inside the router module)
 try {

@@ -651,6 +651,14 @@ module.exports = function mountWingguy(app) {
       });
       if (!result.ok) return res.status(502).json({ ok: false, error: result.error });
 
+      // One metrics row per turn for the daily monitor (thin-rate needs the denominator).
+      // Fire-and-forget by design — a metrics hiccup must never touch a live draft.
+      require('../services/wingguyMonitor').recordChatTurn({
+        tenantId: coach.clientId,
+        profileThin: profileIsThin(enriched),
+        leadName: enriched && enriched.name,
+      });
+
       logger.info(`[Wingguy] chat turn for ${coach.clientId}: ${result.messages.length} msgs, draft=${result.draft ? 'yes' : 'no'}, booked=${result.booked ? result.booked.eventId : 'no'}${profileIsThin(enriched) ? ', profile=THIN' : ''}`);
       return res.json(result);
     } catch (e) {
