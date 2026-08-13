@@ -102,9 +102,30 @@ async function landmarkFindings(client) {
     WHERE created_at > now() - interval '24 hours'
     GROUP BY 1, 2, 3, 4
   `);
-  return rows
+  const perTenant = rows
     .map((r) => ({ ...r, misses: Number(r.misses), founds: Number(r.founds) }))
     .filter((r) => r.misses >= MISS_MIN && r.misses / (r.misses + r.founds) >= MISS_RATE);
+
+  // Cross-tenant aggregate (added 2026-08-13, from the monitor's own first blind spot): a landmark
+  // missing for EVERY client is the strongest possible "LinkedIn moved it" signal, but split per
+  // tenant/version each slice can sit under MISS_MIN — the exact shape of the profile_name/headline/
+  // location staleness the per-tenant rule failed to flag on day one. A key with ZERO finds anywhere
+  // and MISS_MIN total misses alerts regardless of how the misses are spread.
+  const byKey = new Map();
+  for (const r of rows) {
+    const agg = byKey.get(r.selector_key) || { selector_key: r.selector_key, tenant: '(all tenants)', misses: 0, founds: 0, versions: new Set(), tenants: new Set(), last_miss: null };
+    agg.misses += Number(r.misses);
+    agg.founds += Number(r.founds);
+    if (Number(r.misses)) { agg.versions.add(r.version); agg.tenants.add(r.tenant); }
+    if (r.last_miss && (!agg.last_miss || r.last_miss > agg.last_miss)) agg.last_miss = r.last_miss;
+    byKey.set(r.selector_key, agg);
+  }
+  const flaggedKeys = new Set(perTenant.map((r) => r.selector_key));
+  const deadEverywhere = [...byKey.values()]
+    .filter((a) => a.founds === 0 && a.misses >= MISS_MIN && !flaggedKeys.has(a.selector_key))
+    .map((a) => ({ ...a, versions: [...a.versions].join(', '), tenants: [...a.tenants].join(', '), note: 'zero finds across ALL tenants in 24h — strongest moved-furniture signal' }));
+
+  return [...perTenant, ...deadEverywhere];
 }
 
 async function thinFindings(client) {
