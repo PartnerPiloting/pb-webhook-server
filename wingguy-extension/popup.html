@@ -152,6 +152,14 @@
       color: #4b5563;
     }
     
+    .help-note {
+      font-size: 12px;
+      color: #6b7280;
+      margin-top: 4px;
+      padding-top: 10px;
+      border-top: 1px solid #f3f4f6;
+    }
+
     .actions {
       margin-top: 16px;
       display: flex;
@@ -239,20 +247,26 @@
         </div>
         <div class="status-text">
           <h3>Not Connected</h3>
-          <p>Open your portal to connect</p>
+          <p>Open your portal once and it connects itself</p>
         </div>
       </div>
+      <!-- The fix, on a button. "Open your portal" as an instruction left clients hunting for the
+           link; this opens it (or reloads the tab they already have open). -->
+      <div class="actions">
+        <button id="btn-open-portal" class="btn btn-primary">Open my portal</button>
+      </div>
     </div>
-    
+
     <!-- Help Section (shown when disconnected) -->
     <div id="help-section" class="help-section">
       <h4>How to connect:</h4>
       <ol class="help-steps">
-        <li data-step="1">Open your portal in a new tab</li>
-        <li data-step="2">The extension will automatically detect your login</li>
-        <li data-step="3">Go to a LinkedIn profile (/in/...)</li>
-        <li data-step="4">Click the teal Wingguy button to draft</li>
+        <li data-step="1">Click <strong>Open my portal</strong> above (log in if it asks)</li>
+        <li data-step="2">The extension picks up your login on its own</li>
+        <li data-step="3">Go to a LinkedIn profile (/in/...) or open a message</li>
+        <li data-step="4">Type /wg (or click the teal Wingguy button) to draft</li>
       </ol>
+      <p class="help-note">Already connected before and seeing this? Refresh the LinkedIn tab - it may still be running the old copy.</p>
     </div>
   </div>
   

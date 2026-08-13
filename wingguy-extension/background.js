@@ -14,6 +14,14 @@ const WINGGUY_ENDPOINTS = {
   staging: 'https://pb-webhook-server-staging.onrender.com/api/wingguy'
 };
 
+// The Portal front-end — where the client logs in, and whose content script (content-portal.js) hands
+// the credentials to this worker. Used by OPEN_PORTAL so the panel can offer a button instead of
+// telling a client to go and find their Portal themselves.
+const PORTAL_ENDPOINTS = {
+  production: 'https://pb-webhook-server.vercel.app/',
+  staging: 'https://pb-webhook-server-staging.vercel.app/'
+};
+
 // Calendar/booking endpoints (Slice 2 — reused as-is; they auth on x-client-id which we already send).
 const CALENDAR_ENDPOINTS = {
   production: 'https://pb-webhook-server.onrender.com/api/calendar',
@@ -117,6 +125,26 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
   
+  // Open (or reload + focus) the Portal tab — the "Open my Portal" button in the panel and the popup.
+  // Reloading an existing tab rather than stacking another one also re-runs content-portal.js, which
+  // re-broadcasts the credentials if the earlier broadcast was missed.
+  if (message.type === 'OPEN_PORTAL') {
+    chrome.storage.local.get(['environment'], (data) => {
+      const url = PORTAL_ENDPOINTS[data.environment || 'production'] || PORTAL_ENDPOINTS.production;
+      chrome.tabs.query({
+        url: ['https://pb-webhook-server.vercel.app/*', 'https://pb-webhook-server-staging.vercel.app/*']
+      }, (tabs) => {
+        const existing = tabs && tabs[0];
+        if (existing && existing.id) {
+          chrome.tabs.update(existing.id, { active: true, url }, () => sendResponse({ success: true, reused: true }));
+        } else {
+          chrome.tabs.create({ url, active: true }, () => sendResponse({ success: true, reused: false }));
+        }
+      });
+    });
+    return true;
+  }
+
   // Clear stored auth
   if (message.type === 'CLEAR_AUTH') {
     chrome.storage.local.remove(['clientId', 'portalToken', 'devKey', 'environment', 'lastAuthTime'], () => {
@@ -678,7 +706,9 @@ async function getAuthHeaders() {
   return new Promise((resolve, reject) => {
     chrome.storage.local.get(['clientId', 'portalToken', 'devKey'], (data) => {
       if (!data.clientId || !data.portalToken) {
-        reject(new Error('Not authenticated. Please open your Network Accelerator portal.'));
+        // Surfaces inside the panel if a call somehow gets here without credentials — so it has to
+        // read like something a client can act on (and not name the retired product).
+        reject(new Error('Wingguy isn\'t linked to your Portal in this browser yet - open your Portal once and it links itself.'));
         return;
       }
 
