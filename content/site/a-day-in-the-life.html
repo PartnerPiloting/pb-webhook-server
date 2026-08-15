@@ -128,6 +128,24 @@
   .foot-inner { max-width: 46rem; margin: 0 auto; display: flex; flex-wrap: wrap; gap: 0.75rem 2rem; justify-content: space-between; align-items: baseline; }
   .signoff { font-family: var(--serif); font-style: italic; font-size: 1.05rem; color: var(--ink-soft); }
   .foot-note { font-size: 0.85rem; color: var(--ink-faint); }
+
+  /* ---- exhibit: real screenshots as evidence ---- */
+  .exhibit { margin: 1.9rem 0 0; }
+  .exhibit-label {
+    font-family: var(--mono); font-size: 0.68rem; letter-spacing: 0.14em;
+    text-transform: uppercase; color: var(--teal); margin: 0 0 0.75rem; font-weight: 600;
+  }
+  /* Stacked, not side by side: at two-up each shot lands near 320px and the
+     text inside stops being readable - which defeats the point of showing a
+     receipt. Each figure is capped at the screenshot's own pixel width so it
+     is never upscaled into blur. */
+  .exhibit-shots { display: flex; flex-direction: column; gap: 1.5rem; }
+  .exhibit-shots figure { margin: 0; max-width: min(100%, var(--shot-w)); }
+  .exhibit-shots img {
+    width: 100%; height: auto; display: block; border-radius: 10px;
+    border: 1px solid var(--line); box-shadow: 0 12px 28px -18px var(--shadow);
+  }
+  .exhibit-shots figcaption { font-size: 0.85rem; color: var(--ink-faint); margin-top: 0.55rem; line-height: 1.45; }
 </style>
 
 <nav>
@@ -181,6 +199,24 @@
     <h2>The booking</h2>
     <p>Last week a new connection in Perth suggested we talk. I didn&rsquo;t send a scheduling link - I never do; being offered a few considered times is part of how I work. Wingguy read my calendar, offered him times in <em>his</em> timezone, and when he picked one it checked for clashes, confirmed with me, booked it, and built the invite itself - Zoom link, both our LinkedIn profiles, his phone number and email, all gathered from the conversation we&rsquo;d just had.</p>
     <p>I never opened my calendar.</p>
+
+    <div class="exhibit">
+      <p class="exhibit-label">Another booking, same flow</p>
+      <div class="exhibit-shots">
+        <figure style="--shot-w: 608px">
+          <img src="/assets/calendar-schedule.png" width="608" height="613"
+               alt="Wingguy confirming a booked time and drafting the follow-up note, the other person's details blurred for privacy"
+               loading="lazy" decoding="async">
+          <figcaption>Wingguy locks in the time and drafts the note</figcaption>
+        </figure>
+        <figure style="--shot-w: 944px">
+          <img src="/assets/calendar-google.png" width="944" height="672"
+               alt="The calendar invite it built, with the Zoom link, the other person's details blurred for privacy"
+               loading="lazy" decoding="async">
+          <figcaption>The invite it builds, ready to go - no scheduling link, no back-and-forth</figcaption>
+        </figure>
+      </div>
+    </div>
   </section>
 
   <section>
