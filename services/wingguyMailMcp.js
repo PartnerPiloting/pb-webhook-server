@@ -1448,7 +1448,11 @@ const LEVERS_NOTE =
  *     live mailbox read since the oldest store build — the store's view is outdated; drop it.
  */
 async function applyLiveQueueGates(items, tenant) {
-  const out = { items, suppressed: { booked: 0, ceased: 0, parked: 0, messaged: 0 } };
+  // suppressed.items names WHO was dropped and why — the counts alone made a silently vanished
+  // top-of-queue person unexplainable (the Kay Ridge case, 2026-08-15). Chat keeps relaying only
+  // the aggregate; the Follow-Ups screen shows the names on request.
+  const out = { items, suppressed: { booked: 0, ceased: 0, parked: 0, messaged: 0, items: [] } };
+  const drop = (it, reason) => { out.suppressed[reason]++; out.suppressed.items.push({ name: it.name, reason }); };
   try {
     const clientService = require('./clientService');
     const coach = await clientService.getClientById(tenant);
@@ -1580,7 +1584,7 @@ async function applyLiveQueueGates(items, tenant) {
           // owed and chose to drop the person anyway (the Matthew Murray case, 2026-07-28). Only
           // an item built AFTER the cease (i.e. from a newer inbound) survives.
           const waived = g.ceaseAtMs && it.builtAt && Date.parse(it.builtAt) <= g.ceaseAtMs;
-          if (cadenceShaped || waived) { out.suppressed.ceased++; return false; }
+          if (cadenceShaped || waived) { drop(it, 'ceased'); return false; }
         }
         // A FUTURE stamp drops the item regardless of its STORED tier — the tier is build-time
         // truth and the stamp may have been (re)written since (Ashley, observed live 2026-07-28:
@@ -1588,7 +1592,7 @@ async function applyLiveQueueGates(items, tenant) {
         // to Friday). Park means park, judged on what the field says NOW.
         if ((it.src === 'backlog' && g.reconnectAny) ||
             (it.src === 'today' && g.reconnectFuture)) {
-          out.suppressed.parked++; return false;
+          drop(it, 'parked'); return false;
         }
       }
       // ALREADY MESSAGED since the store was built (Guy 2026-07-29: he'd replied to JB + Anthony
@@ -1601,12 +1605,12 @@ async function applyLiveQueueGates(items, tenant) {
       if (builtMs != null) {
         const buildDay = civilDayMs(it.builtAt);
         if (g && g.liLast && !g.liLast.inbound && buildDay != null && g.liLast.ms >= buildDay) {
-          out.suppressed.messaged++; return false;
+          drop(it, 'messaged'); return false;
         }
         const sig = mailSig && it.email ? mailSig.get(String(it.email).toLowerCase()) : null;
         if (sig && sig.lastOutboundMs && sig.lastOutboundMs > builtMs &&
             (!sig.lastInboundMs || sig.lastOutboundMs > sig.lastInboundMs)) {
-          out.suppressed.messaged++; return false;
+          drop(it, 'messaged'); return false;
         }
       }
       // A real upcoming booking silences everything, due stamps included (Guy 2026-07-29, the
@@ -1617,7 +1621,7 @@ async function applyLiveQueueGates(items, tenant) {
         const full = String(it.name || '').trim().toLowerCase();
         const emailHit = !!email && booked.bookedEmails.has(email);
         const nameHit = full.includes(' ') && booked.titleBlobs.some((b) => b.includes(full));
-        if (emailHit || nameHit) { out.suppressed.booked++; return false; }
+        if (emailHit || nameHit) { drop(it, 'booked'); return false; }
       }
       return true;
     });
@@ -1627,54 +1631,120 @@ async function applyLiveQueueGates(items, tenant) {
   return out;
 }
 
-async function runQueue({ page } = {}, tenant = TENANT) {
+// ---------------------------------------------------------------------------
+// The queue — ONE builder, every renderer (2026-08-15, the Follow-Ups screen plan).
+// buildQueue() computes the structured truth; runQueue renders it as chat text and the portal
+// screen serves it as JSON. The screen must never grow its own copy of this logic — two queue
+// builders is how the queue and the dossier came to contradict each other on draft availability
+// (the Vikas case: queue said "[draft ready]", dossier said "NO DRAFT ON PURPOSE").
+// ---------------------------------------------------------------------------
+
+/**
+ * The ONE honest answer to "does this queue item carry a draft?" — pure, testable.
+ *   ready:    a pre-written message exists (email draft, or a legacy stored LinkedIn paste)
+ *   wg-angle: LinkedIn person — no message BY DESIGN (Guy 2026-08-01); the overnight homework
+ *             is the ANGLE, the reply is written live in the thread with /wg
+ *   error:    draft generation failed (the stored draftError says why)
+ *   none:     nothing pre-written and no angle — the dossier holds the story (possibly a
+ *             deliberate let-it-rest verdict)
+ */
+function deriveDraftState(it) {
+  if (it && it.draftText) return 'ready';
+  if (it && it.wgAngle) return 'wg-angle';
+  if (it && it.draftError) return 'error';
+  return 'none';
+}
+
+/** Chat marker for a draft state. Backlog reopens only ever flagged a real draft — unchanged. */
+function draftMarker(state, src) {
+  if (state === 'ready') return ' [draft ready]';
+  if (src === 'backlog') return '';
+  if (state === 'wg-angle') return ' [LinkedIn — open the thread, type /wg]';
+  if (state === 'error') return ' [no draft — ask in chat]';
+  // 'none' used to fall through to ' [draft ready]' — a lie whenever the overnight pass
+  // deliberately wrote nothing (Fault B, 2026-08-15). Point at the dossier instead.
+  return ' [no draft — see dossier]';
+}
+
+/**
+ * Build the queue as data: merge the prepared stores, dedupe, drop screen-dismissed items, then
+ * re-check the LIVE world. Returns every actionable item (renderers paginate) plus what was
+ * suppressed and why.
+ */
+async function buildQueue(tenant = TENANT) {
   const briefStore = require('./wingguyFollowupBrief');
   const backlog = require('./wingguyBacklogAudit');
+  const dismissed = require('./wingguyFollowupsDismissed');
   const items = [];
+  const todayIso = new Date().toISOString().slice(0, 10);
+  let briefPreparedAt = null;
+  let backlogCreatedAt = null;
   try {
     const row = await briefStore.getBrief(tenant);
     const p = row && row.payload ? (typeof row.payload === 'string' ? JSON.parse(row.payload) : row.payload) : null;
-    // A park proposal whose date has already passed is not a park decision any more — their own
-    // named window closed, so it serves as "reach out now" (Joe Cozzupoli, observed 2026-07-24:
-    // the queue proposed parking him to 10 July on the 24th).
-    const parkLine = (it) => (it.parkDate && it.parkDate <= new Date().toISOString().slice(0, 10))
-      ? `their own window (${it.parkDate}) has PASSED — reach out now, natural opening [draft in dossier]`
-      : `${it.whyLine} → propose park ${it.parkDate || '?'}`;
-    const builtAt = (p && p.preparedAt) || null; // for the live re-check's cease-waiver comparison
+    briefPreparedAt = (p && p.preparedAt) || null;
+    const builtAt = briefPreparedAt; // for the live re-check's cease-waiver comparison
     for (const it of ((p && p.items) || [])) {
-      // LinkedIn reply-owed people carry a /wg ANGLE, not a pre-written message (Guy 2026-08-01):
-      // the reply is drafted live in the thread. draftText still renders as [draft ready] so
-      // pre-change stored payloads (and every email draft) serve exactly as before.
-      if (it.verdict === 'draft') items.push({ ...it, src: 'today', builtAt, line: `${it.whyLine}${it.draftText ? ' [draft ready]' : (it.wgAngle ? ' [LinkedIn — open the thread, type /wg]' : (it.draftError ? ' [no draft — ask in chat]' : ' [draft ready]'))}` });
+      const draftState = deriveDraftState(it);
+      if (it.verdict === 'draft') items.push({ ...it, src: 'today', kind: 'draft', builtAt, draftState });
       // it.parked = the brief already stamped their Reconnect On (stamp-and-tell, 2026-08-03) —
       // nothing left to action, so not queued (the live gate below would drop them anyway).
-      else if (it.verdict === 'park' && !it.parked) items.push({ ...it, src: 'today', builtAt, line: parkLine(it) });
-      else if (it.verdict === 'attention') items.push({ ...it, src: 'today', builtAt, line: `${it.whyLine} [needs your judgment]` });
+      // A park proposal whose date has already PASSED is not a park decision any more — their own
+      // named window closed, so it serves as "reach out now" (Joe Cozzupoli, 2026-07-24).
+      else if (it.verdict === 'park' && !it.parked) items.push({ ...it, src: 'today', kind: 'park', builtAt, draftState, parkPassed: !!(it.parkDate && it.parkDate <= todayIso) });
+      else if (it.verdict === 'attention') items.push({ ...it, src: 'today', kind: 'attention', builtAt, draftState });
     }
   } catch (_) { /* brief store down — queue still serves backlog */ }
   try {
     const row = await backlog.getWorklist(tenant);
     const p = row && row.payload ? (typeof row.payload === 'string' ? JSON.parse(row.payload) : row.payload) : null;
+    backlogCreatedAt = (p && p.createdAt) || null;
+    const builtAt = backlogCreatedAt;
     const pend = ((p && p.items) || []).filter((i) => i.status === 'pending');
-    const parkLine = (it) => (it.parkDate && it.parkDate <= new Date().toISOString().slice(0, 10))
-      ? `their own window (${it.parkDate}) has PASSED — reach out now, natural opening [draft in dossier]`
-      : `${it.whyLine} → propose park ${it.parkDate || '?'}`;
-    const builtAt = (p && p.createdAt) || null; // for the live re-check's cease-waiver comparison
-    for (const it of pend.filter((i) => i.verdict === 'reopen')) items.push({ ...it, src: 'backlog', builtAt, line: `${it.whyLine} (${it.quietDays}d quiet)${it.draftText ? ' [draft ready]' : ''}` });
-    for (const it of pend.filter((i) => i.verdict === 'park')) items.push({ ...it, src: 'backlog', builtAt, line: parkLine(it) });
+    for (const it of pend.filter((i) => i.verdict === 'reopen')) items.push({ ...it, src: 'backlog', kind: 'reopen', builtAt, draftState: deriveDraftState(it) });
+    for (const it of pend.filter((i) => i.verdict === 'park')) items.push({ ...it, src: 'backlog', kind: 'park', builtAt, draftState: deriveDraftState(it), parkPassed: !!(it.parkDate && it.parkDate <= todayIso) });
   } catch (_) { /* ignore */ }
-  if (!items.length) return { text: 'The queue is empty — nothing actionable right now (parked people surface on their dates).' };
+  const preGateCount = items.length;
   // Dedupe by name (a person can appear in both stores — today's view wins).
   const seen = new Set();
   let deduped = items.filter((it) => { const k = it.name.toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; });
-  // Never serve what the live world has already answered (see applyLiveQueueGates).
-  const live = await applyLiveQueueGates(deduped, tenant);
-  deduped = live.items;
-  const supp = live.suppressed;
-  const suppTotal = supp.booked + supp.ceased + supp.parked + supp.messaged;
-  if (!deduped.length) {
-    return { text: `The queue is empty — nothing actionable right now (parked people surface on their dates${suppTotal ? `; the live re-check dropped ${suppTotal}: ${supp.messaged} already messaged since the list was built, ${supp.booked} already booked, ${supp.ceased} ceased, ${supp.parked} parked on a reconnect stamp` : ''}).` };
+  // Screen "Done" (today items only get one this way; backlog Done is markItem). Shared store, so
+  // chat and screen agree about what's handled; entries age out after 14 days.
+  let dismissedCount = 0;
+  if (deduped.length) {
+    const done = await dismissed.listActive(tenant);
+    if (done.size) {
+      const before = deduped.length;
+      deduped = deduped.filter((it) => !done.has(it.name.toLowerCase()));
+      dismissedCount = before - deduped.length;
+    }
   }
+  // Never serve what the live world has already answered (see applyLiveQueueGates).
+  const live = deduped.length ? await applyLiveQueueGates(deduped, tenant) : { items: deduped, suppressed: { booked: 0, ceased: 0, parked: 0, messaged: 0, items: [] } };
+  return { items: live.items, preGateCount, dismissedCount, suppressed: live.suppressed, briefPreparedAt, backlogCreatedAt };
+}
+
+async function runQueue({ page } = {}, tenant = TENANT) {
+  const q = await buildQueue(tenant);
+  if (!q.preGateCount) return { text: 'The queue is empty — nothing actionable right now (parked people surface on their dates).' };
+  const deduped = q.items;
+  const supp = q.suppressed;
+  const suppTotal = supp.booked + supp.ceased + supp.parked + supp.messaged;
+  const doneNote = q.dismissedCount ? `, ${q.dismissedCount} marked done on the Follow-Ups screen` : '';
+  if (!deduped.length) {
+    return { text: `The queue is empty — nothing actionable right now (parked people surface on their dates${suppTotal ? `; the live re-check dropped ${suppTotal}: ${supp.messaged} already messaged since the list was built, ${supp.booked} already booked, ${supp.ceased} ceased, ${supp.parked} parked on a reconnect stamp` : ''}${doneNote}).` };
+  }
+  // Chat line per item kind — same strings as ever, now derived from the structured item.
+  const lineFor = (it) => {
+    if (it.kind === 'park') {
+      return it.parkPassed
+        ? `their own window (${it.parkDate}) has PASSED — reach out now, natural opening [draft in dossier]`
+        : `${it.whyLine} → propose park ${it.parkDate || '?'}`;
+    }
+    if (it.kind === 'attention') return `${it.whyLine} [needs your judgment]`;
+    if (it.kind === 'reopen') return `${it.whyLine} (${it.quietDays}d quiet)${draftMarker(it.draftState, 'backlog')}`;
+    return `${it.whyLine}${draftMarker(it.draftState, 'today')}`;
+  };
   const PAGE = 10;
   const pg = Math.max(1, parseInt(page, 10) || 1);
   const totalPages = Math.ceil(deduped.length / PAGE);
@@ -1685,17 +1755,17 @@ async function runQueue({ page } = {}, tenant = TENANT) {
   // serving it here means the human reads ten lines and already remembers everyone.
   const jogLine = (it) => (it.jog && it.jog.trim() ? `\n    who: ${it.jog.trim()}` : '');
   // The overnight homework for a /wg person is the ANGLE — ride it in the list like the jog.
-  const angleLine = (it) => (!it.draftText && it.wgAngle && it.wgAngle.trim() ? `\n    /wg angle: ${it.wgAngle.trim()}` : '');
+  const angleLine = (it) => (it.draftState === 'wg-angle' && it.wgAngle.trim() ? `\n    /wg angle: ${it.wgAngle.trim()}` : '');
   // [draft] beside the name = the read-only draft page (jog + message + copy button), signed per
   // person. Reading and copying live there; tweaking/sending/parking stay in chat.
   const { draftUrl } = require('./wingguyDraftLink');
-  const draftLink = (it) => ((it.draftText || it.wgAngle) ? ` · [${it.draftText ? 'draft' : 'card'}](${draftUrl(tenant, it.name)})` : '');
+  const draftLink = (it) => (it.draftState === 'ready' ? ` · [draft](${draftUrl(tenant, it.name)})` : (it.draftState === 'wg-angle' ? ` · [card](${draftUrl(tenant, it.name)})` : ''));
   const lines = [
     `THE QUEUE — ${deduped.length} actionable, priority order (page ${pg}/${totalPages}; today's brief first, then backlog reopens, then parks). Each person's "who:" memory-jog is part of the list — ALWAYS relay it with their line, and keep their [draft]/[card] link ([draft] opens the ready-made message with a copy button; [card] is a LinkedIn person's context card — their reply gets written live in the thread with /wg, using the "/wg angle" line). Ask for anyone by name for the full detail in chat; "next ten" = next page.`,
-    ...slice.map((it, i) => `${(pg - 1) * PAGE + i + 1}. ${nm(it)}${draftLink(it)} — ${it.line}${angleLine(it)}${jogLine(it)}`),
+    ...slice.map((it, i) => `${(pg - 1) * PAGE + i + 1}. ${nm(it)}${draftLink(it)} — ${lineFor(it)}${angleLine(it)}${jogLine(it)}`),
   ];
   if (pg < totalPages) lines.push(`(${deduped.length - pg * PAGE} more — say "next ten".)`);
-  if (suppTotal) lines.push(`\n[live re-check — do not relay unless asked: dropped ${suppTotal} stale entr${suppTotal === 1 ? 'y' : 'ies'} (${supp.messaged} already messaged since the list was built, ${supp.booked} already booked, ${supp.ceased} ceased, ${supp.parked} parked on a reconnect stamp).]`);
+  if (suppTotal || q.dismissedCount) lines.push(`\n[live re-check — do not relay unless asked: dropped ${suppTotal} stale entr${suppTotal === 1 ? 'y' : 'ies'} (${supp.messaged} already messaged since the list was built, ${supp.booked} already booked, ${supp.ceased} ceased, ${supp.parked} parked on a reconnect stamp)${doneNote}.]`);
   lines.push('', LEVERS_NOTE);
   return { text: lines.join('\n') };
 }
@@ -1905,4 +1975,4 @@ async function legacyToolCall(toolName, args, tenant = TENANT) {
   }
 }
 
-module.exports = { registerWingguyMailTools, legacyToolList, legacyToolCall, TOOL_DEFS, detectAssets, htmlToText, stripQuotedTail, settleEmailEditPairs, parseLinkedInLast, linkedInEverInbound, classifyLead, computeMailSignals, computeFollowupSweep, runFollowupSweep, chooseFollowUpStamp, coachOwnEmails, stampFollowUpForDraft };
+module.exports = { registerWingguyMailTools, legacyToolList, legacyToolCall, TOOL_DEFS, detectAssets, htmlToText, stripQuotedTail, settleEmailEditPairs, parseLinkedInLast, linkedInEverInbound, classifyLead, computeMailSignals, computeFollowupSweep, runFollowupSweep, chooseFollowUpStamp, coachOwnEmails, stampFollowUpForDraft, buildQueue, deriveDraftState, draftMarker };
