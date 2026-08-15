@@ -1945,6 +1945,17 @@ try {
     moduleLogger.error('index.js: Error mounting Thanks for Connecting routes', e.message, e.stack);
 }
 
+// Follow-Ups screen API (per-client gated on `Followup Brief` inside the router module)
+try {
+    const mountWingguyFollowups = require('./routes/wingguyFollowupsRoutes.js');
+    if (typeof mountWingguyFollowups === 'function') {
+        mountWingguyFollowups(app);
+        moduleLogger.info('index.js: Follow-Ups screen routes mounted at /api/followups');
+    }
+} catch(e) {
+    moduleLogger.error('index.js: Error mounting Follow-Ups screen routes', e.message, e.stack);
+}
+
 // Wingguy — Slice 1 (personalised thanks-for-connecting drafting; owner-gated to Guy-Wilson)
 try {
     const mountWingguy = require('./routes/wingguyRoutes.js');

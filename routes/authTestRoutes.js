@@ -85,7 +85,11 @@ router.get('/test', authenticateUserWithTestMode, async (req, res) => {
         // Per-client rollout switch for the "Thanks for Connecting" worklist tab
         thanksForConnecting: req.client.thanksForConnectingEnabled === true,
         // Per-client Wingguy switch: gates the "My Wingguy" tab (setup + what's-changed pages)
-        wingguy: req.client.wingguyEnabled === true
+        wingguy: req.client.wingguyEnabled === true,
+        // The Follow-Ups screen rides the SAME switch as the overnight stores it is a window
+        // onto (Guy's tab rule, 2026-08-15). When true, the portal shows the Follow-Ups tab
+        // and HIDES the simple Follow-Up Manager for this client.
+        followupsScreen: String(req.client.followupBrief || '').trim() === 'Yes'
       },
       // An assistant's own key resolved here: who they are and which portal functions their row
       // has ticked. The portal shows them the OVERLAP of these and the client's features - an
