@@ -39,13 +39,20 @@ const useClientInitialization = () => {
 };
 
 // Primary navigation tabs (URL params preserved)
-const NavigationWithParams = ({ pathname, showThanksForConnecting = false, showWingguy = false, assistantFunctions = null }) => {
+const NavigationWithParams = ({ pathname, showThanksForConnecting = false, showWingguy = false, showFollowupsScreen = false, assistantFunctions = null }) => {
   const searchParams = useSearchParams();
   const serviceLevel = parseInt(searchParams.get('level') || '2', 10);
   const clientParam = searchParams.get('client') || searchParams.get('testClient') || '';
   const nav = [
     { name: 'Lead Search & Update', href: '/', icon: MagnifyingGlassIcon, description: 'Find and update existing leads', minLevel: 1, fn: 'Lead Search & Update' },
-    { name: 'Follow-Up Manager', href: '/follow-up', icon: CalendarDaysIcon, description: 'Manage scheduled follow-ups', minLevel: 1, fn: 'Follow-Up Manager' },
+    // Guy's tab rule (2026-08-15): a client with the smart Follow-Ups screen does NOT also see the
+    // simple manager — `hideGate` hides this tab when that gate is on. The /follow-up page itself
+    // stays reachable by URL as a fallback; only the tab hides. Never delete the simple screen —
+    // it is the no-key tier, and tiers must be losslessly reversible.
+    { name: 'Follow-Up Manager', href: '/follow-up', icon: CalendarDaysIcon, description: 'Manage scheduled follow-ups', minLevel: 1, hideGate: 'followupsScreen', fn: 'Follow-Up Manager' },
+    // The Wingguy queue as a screen (docs/FOLLOWUPS-SCREEN-PLAN.md). Same assistant tick as the
+    // simple manager, so an assistant's access carries across the tiers unchanged.
+    { name: 'Follow-Ups', href: '/followups', icon: CalendarDaysIcon, description: 'Work the queue: replies owed & gone quiet', minLevel: 1, gate: 'followupsScreen', fn: 'Follow-Up Manager' },
     { name: 'New Leads', href: '/new-leads', icon: UserPlusIcon, description: 'Review and process new leads', minLevel: 1, fn: 'New Leads' },
     { name: 'Top Scoring Leads', href: '/top-scoring-leads', icon: TrophyIcon, description: 'Pick the best candidates for the next LH batch', minLevel: 1, fn: 'Top Scoring Leads' },
     // Per-client rollout: only shown when the master "Thanks for Connecting" switch is on (gated below).
@@ -59,11 +66,12 @@ const NavigationWithParams = ({ pathname, showThanksForConnecting = false, showW
     { name: 'Settings', href: '/settings', icon: CogIcon, description: 'Configure scoring attributes and settings', minLevel: 1, fn: 'Settings' },
     { name: 'Start Here', href: '/start-here', icon: BookOpenIcon, description: 'Onboarding categories and topics', minLevel: 1 }
   ];
-  const gates = { thanksForConnecting: showThanksForConnecting, wingguy: showWingguy };
+  const gates = { thanksForConnecting: showThanksForConnecting, wingguy: showWingguy, followupsScreen: showFollowupsScreen };
   // An assistant sees only the tabs their row has ticked (fn names match the Assistants table's
   // checkbox columns). No fn on an item means it is open to everyone - e.g. Start Here.
   const fnAllowed = (n) => !assistantFunctions || !n.fn || assistantFunctions.includes(n.fn);
-  const items = nav.filter(n => n.minLevel <= serviceLevel && (!n.gate || gates[n.gate] === true) && fnAllowed(n));
+  // gate = show only when on; hideGate = hide when on (the smart tier replacing the simple tab).
+  const items = nav.filter(n => n.minLevel <= serviceLevel && (!n.gate || gates[n.gate] === true) && !(n.hideGate && gates[n.hideGate] === true) && fnAllowed(n));
   return (
     <nav className="mb-8" aria-label="Primary">
       <div className="flex flex-wrap gap-x-8 gap-y-3 items-stretch">
@@ -328,7 +336,7 @@ const Layout = ({ children }) => {
       <div className="w-full px-4 sm:px-6 lg:px-8 py-8">
         {/* Navigation Tabs */}
         <Suspense fallback={<div>Loading navigation...</div>}>
-          <NavigationWithParams pathname={pathname} showThanksForConnecting={clientProfile?.features?.thanksForConnecting === true} showWingguy={clientProfile?.features?.wingguy === true} assistantFunctions={clientProfile?.assistant?.functions || null} />
+          <NavigationWithParams pathname={pathname} showThanksForConnecting={clientProfile?.features?.thanksForConnecting === true} showWingguy={clientProfile?.features?.wingguy === true} showFollowupsScreen={clientProfile?.features?.followupsScreen === true} assistantFunctions={clientProfile?.assistant?.functions || null} />
         </Suspense>
 
         {/* Main Content */}
