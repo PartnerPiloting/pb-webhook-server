@@ -159,6 +159,11 @@ function gatherLinkedIn(notes, first, max = LI_LIMIT) {
     const liBody = String(m[6]);
     out.push({ sortKey, date: iso, kind: 'linkedin', dir: theirs ? 'them' : 'you', text: scrub(liBody.length > 300 ? `${liBody.slice(0, 300)} …[record clipped]` : liBody) });
   }
+  // SAME-MINUTE ties: Notes are newest-first, and a stable sort keeps source order for equal keys
+  // — so two messages in the same minute rendered reply-above-question (John Addario's 8:11 PM
+  // opener + "Sounds good" reply, spotted by Guy on the Follow-Ups screen 2026-08-15). Reversing
+  // BEFORE the sort makes ties land oldest-first, matching the conversation's actual flow.
+  out.reverse();
   out.sort((a, b) => a.sortKey.localeCompare(b.sortKey));
   return out.slice(-max).map(({ sortKey, ...rest }) => rest);
 }
@@ -560,7 +565,12 @@ async function prepareDossiers(tenant) {
 
         // Version prefix invalidates every cached dossier ONCE on upgrade (v2 = full email bodies;
         // v3 = deep-read consumes the full latest-meeting transcript); thereafter cache as before.
-        const basis = `v3|e${emails.length}:${emails.length ? emails[emails.length - 1].date : ''}|l${li.length}:${li.length ? li[li.length - 1].date : ''}|m${meetings.length}:${meetings.length ? meetings[0].date : ''}`;
+        // v4 (2026-08-15): version bump forces a ONE-TIME rebuild of every stored dossier. Dossiers
+        // built before the 2026-08-03 time-aware sort were fossilised with scrambled within-day
+        // timelines (John Addario, built 23 Jul, served wrong on the Follow-Ups screen) — the
+        // fingerprint saw "thread unchanged" and never rebuilt them. Subsequent nights are cheap
+        // again: the fingerprint compares equal at v4 from then on.
+        const basis = `v4|e${emails.length}:${emails.length ? emails[emails.length - 1].date : ''}|l${li.length}:${li.length ? li[li.length - 1].date : ''}|m${meetings.length}:${meetings.length ? meetings[0].date : ''}`;
         const existing = await getDossierRow(tenant, person.key);
         if (existing && existing.basis === basis) { out.cached++; continue; }
 

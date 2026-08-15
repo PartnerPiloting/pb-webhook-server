@@ -211,6 +211,7 @@ export default function FollowUpsQueue() {
   const [hidden, setHidden] = useState({ counts: {}, items: [] });
   const [briefPreparedAt, setBriefPreparedAt] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [loadSecs, setLoadSecs] = useState(0);
   const [error, setError] = useState(null);
   const [notice, setNotice] = useState(null);        // transient action feedback
   const [cleared, setCleared] = useState(0);          // this session
@@ -226,6 +227,11 @@ export default function FollowUpsQueue() {
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
+    // Elapsed counter (Guy's ask, first morning 2026-08-15): the load is a LIVE check of
+    // Airtable + calendar + mailbox, so it takes real seconds — show them passing rather
+    // than an anonymous spinner.
+    setLoadSecs(0);
+    const tick = setInterval(() => setLoadSecs((s) => s + 1), 1000);
     try {
       const data = await apiGet('/queue', clientId);
       setItems(Array.isArray(data?.items) ? data.items : []);
@@ -235,6 +241,7 @@ export default function FollowUpsQueue() {
       setError(e?.message || 'Failed to load the queue');
       setItems([]);
     } finally {
+      clearInterval(tick);
       setLoading(false);
     }
   }, [clientId]);
@@ -409,7 +416,12 @@ export default function FollowUpsQueue() {
           {error && <div className="mb-3 text-sm text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2" role="alert">{error}</div>}
           {notice && <div className="mb-3 text-sm text-emerald-800 bg-emerald-50 border border-emerald-200 rounded px-3 py-2">{notice}</div>}
 
-          {loading && <div className="text-gray-500 py-8 text-center">Loading your follow-ups…</div>}
+          {loading && (
+            <div className="text-gray-500 py-8 text-center">
+              <div>Checking the live world — your CRM, calendar and mailbox — so nothing already handled is shown…</div>
+              <div className="text-xs text-gray-400 mt-1">{loadSecs}s{loadSecs >= 15 ? ' — nearly there' : ''}</div>
+            </div>
+          )}
 
           {!loading && visible.length === 0 && (
             <div className="py-12 text-center">

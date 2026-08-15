@@ -1447,6 +1447,10 @@ const LEVERS_NOTE =
  *     store was built — LinkedIn read from the lead's Notes (LinkedHelper sync), email from a
  *     live mailbox read since the oldest store build — the store's view is outdated; drop it.
  */
+// See the mail-window clamp inside applyLiveQueueGates for why these exist (2026-08-15).
+const QUEUE_MAIL_LOOKBACK_DAYS = 7;
+const queueMailCache = new Map(); // tenant -> { expiresAt, afterSec, mail }
+
 async function applyLiveQueueGates(items, tenant) {
   // suppressed.items names WHO was dropped and why — the counts alone made a silently vanished
   // top-of-queue person unexplainable (the Kay Ridge case, 2026-08-15). Chat keeps relaying only
@@ -1535,16 +1539,32 @@ async function applyLiveQueueGates(items, tenant) {
       return { bookedEmails, titleBlobs };
     })();
 
-    // Email half of the already-messaged check: ONE mailbox read since the OLDEST store build
-    // (small window — the brief is at most ~26h old; the backlog build a few days), then the
-    // same thread-aware 1:1 signals the sweep uses.
+    // Email half of the already-messaged check: ONE mailbox read since the OLDEST store build,
+    // then the same thread-aware 1:1 signals the sweep uses. The window is CLAMPED to 7 days:
+    // "oldest store build" was assumed to be a few days, but the backlog worklist ages (built
+    // 23 Jul, read 15 Aug = a 23-day mailbox crawl), and that read was the bulk of the queue's
+    // 37-55s serve time (Guy, on the Follow-Ups screen's first morning). The trade-off is
+    // explicit: an email sent to a BACKLOG person more than 7 days ago is no longer auto-dropped
+    // here — the LinkedIn half (the lead's Notes) still checks full-depth, and a stale entry
+    // costs one Done click rather than a minute of every load. Results are micro-cached for
+    // 5 minutes per tenant: the screen and chat re-serve the queue far more often than a
+    // mailbox changes materially.
     const mailPromise = (async () => {
       if (!coach.nylasGrantId) return null;
       const emails = new Set(items.map((i) => String(i.email || '').trim().toLowerCase()).filter(Boolean));
       if (!emails.size) return null;
       const builts = items.map((i) => (i.builtAt ? Date.parse(i.builtAt) : NaN)).filter((t) => !Number.isNaN(t));
       if (!builts.length) return null;
-      const mail = await mailProvider.listRecent(coach, { after: Math.floor(Math.min(...builts) / 1000), max: 1000 });
+      const afterMs = Math.max(Math.min(...builts), Date.now() - QUEUE_MAIL_LOOKBACK_DAYS * MS_DAY);
+      const afterSec = Math.floor(afterMs / 1000);
+      const cached = queueMailCache.get(tenant);
+      let mail;
+      if (cached && cached.expiresAt > Date.now() && Math.abs(cached.afterSec - afterSec) < 3600) {
+        mail = cached.mail;
+      } else {
+        mail = await mailProvider.listRecent(coach, { after: afterSec, max: 1000 });
+        if (mail.ok) queueMailCache.set(tenant, { expiresAt: Date.now() + 5 * 60 * 1000, afterSec, mail });
+      }
       if (!mail.ok) return null;
       return computeMailSignals(mail.messages, emails);
     })();
