@@ -762,7 +762,14 @@ async function computeFollowupSweep({ window_days } = {}, tenant = TENANT) {
   // NB: `Reconnect On` is NOT read yet — the field doesn't exist on the bases (adding it is a TODO)
   // and requesting an unknown field 422s. The legacy `Follow-Up Date` is deliberately NOT read (rot).
   let records;
-  const BASE_LEAD_FIELDS = ['First Name', 'Last Name', 'Email', 'Cease FUP', 'Notes', 'Series Sent Count', 'Series Unsubscribed', 'Date Connected', 'LinkedIn Profile URL'];
+  // The Series fields are GUY-ONLY extras (email-series feature; deliberately not in the client
+  // template — whether they go multi-tenant is an open question for Guy). Julian's first brief
+  // (2026-08-15) died on them: they sat in the ladder's FLOOR, so a base without them exhausted
+  // every attempt. They now degrade like any other rolled-out-over-time field — absent simply
+  // means nobody in that base is on a series.
+  const CORE_LEAD_FIELDS = ['First Name', 'Last Name', 'Email', 'Cease FUP', 'Notes', 'Date Connected', 'LinkedIn Profile URL'];
+  const SERIES_FIELDS = ['Series Sent Count', 'Series Unsubscribed'];
+  const BASE_LEAD_FIELDS = [...CORE_LEAD_FIELDS, ...SERIES_FIELDS];
   try {
     const base = clientService.getClientBase(coach.airtableBaseId);
     // Engine-written fields roll out over time — a tenant base that predates one 422s on the
@@ -771,6 +778,9 @@ async function computeFollowupSweep({ window_days } = {}, tenant = TENANT) {
       [...BASE_LEAD_FIELDS, 'Reconnect On', 'Cease FUP At'],
       [...BASE_LEAD_FIELDS, 'Reconnect On'],
       BASE_LEAD_FIELDS,
+      [...CORE_LEAD_FIELDS, 'Reconnect On', 'Cease FUP At'],
+      [...CORE_LEAD_FIELDS, 'Reconnect On'],
+      CORE_LEAD_FIELDS,
     ];
     for (let i = 0; i < FIELD_ATTEMPTS.length; i++) {
       try {

@@ -121,9 +121,24 @@ async function runBacklogAudit(tenant) {
   const coach = await clientService.getClientById(tenant);
   if (!coach) throw new Error(`coach ${tenant} not found`);
   const base = clientService.getClientBase(coach.airtableBaseId);
-  const records = await base('Leads').select({
-    fields: ['First Name', 'Last Name', 'Email', 'Cease FUP', 'Notes', 'Series Sent Count', 'Series Unsubscribed', 'Date Connected', 'Reconnect On', 'LinkedIn Profile URL'],
-  }).all();
+  // Same degrade ladder as the sweep's lead read (2026-08-15): the Series fields are Guy-only
+  // extras and Reconnect On rolled out over time — a base missing either must not fail the audit.
+  const CORE_FIELDS = ['First Name', 'Last Name', 'Email', 'Cease FUP', 'Notes', 'Date Connected', 'LinkedIn Profile URL'];
+  const AUDIT_ATTEMPTS = [
+    [...CORE_FIELDS, 'Series Sent Count', 'Series Unsubscribed', 'Reconnect On'],
+    [...CORE_FIELDS, 'Reconnect On'],
+    CORE_FIELDS,
+  ];
+  let records;
+  for (let i = 0; i < AUDIT_ATTEMPTS.length; i++) {
+    try {
+      records = await base('Leads').select({ fields: AUDIT_ATTEMPTS[i] }).all();
+      break;
+    } catch (e) {
+      const unknownField = /UNKNOWN_FIELD_NAME|422|INVALID|Unknown field/i.test(e.message);
+      if (!unknownField || i === AUDIT_ATTEMPTS.length - 1) throw e;
+    }
+  }
 
   const now = Date.now();
   const yearAgo = now - QUIET_MAX_DAYS * MS_DAY;
