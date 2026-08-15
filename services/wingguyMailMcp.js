@@ -1757,14 +1757,28 @@ async function buildQueue(tenant = TENANT) {
 }
 
 async function runQueue({ page } = {}, tenant = TENANT) {
+  // THE DOOR RULE (Guy 2026-08-15, the day the Follow-Ups screen shipped): the SCREEN is the
+  // volume door — chat is the thinking door. A client WITH the screen gets pointed at it first
+  // (list still served in full — the phone case matters); a client WITHOUT the feature gets told
+  // what it is and how to get it, instead of a confusing empty answer. Coach lookup failure falls
+  // through to serving the list as before — a transient Airtable blip must never hide the queue.
+  let doorCoach = null;
+  try { doorCoach = await require('./clientService').getClientById(tenant); } catch (_) { /* fall through */ }
+  const hasScreen = !!doorCoach && String(doorCoach.followupBrief || '').trim() === 'Yes';
+  if (doorCoach && !hasScreen) {
+    return { text: 'Follow-ups is not switched on for this client (it runs on their own Claude key plus a per-client switch). RELAY, warmly and in your own words: follow-ups isn\'t part of their setup yet — message Guy if they\'d like it — and their manually scheduled follow-up dates are on the Follow-Up Manager tab in their portal.' };
+  }
+  const screenDoor = hasScreen
+    ? 'DOOR RULE — BEFORE relaying the list: tell the human their portal\'s Follow-Ups tab has this same queue with each person\'s story and one-click Draft/Done/Park/Drop, and ask whether they want the list here anyway or a specific person worked on. If they already asked for the list here (or say "show me anyway"), relay it in full as below — chat is always allowed to serve it (they may be on their phone).\n'
+    : '';
   const q = await buildQueue(tenant);
-  if (!q.preGateCount) return { text: 'The queue is empty — nothing actionable right now (parked people surface on their dates).' };
+  if (!q.preGateCount) return { text: `${screenDoor}The queue is empty — nothing actionable right now (parked people surface on their dates).` };
   const deduped = q.items;
   const supp = q.suppressed;
   const suppTotal = supp.booked + supp.ceased + supp.parked + supp.messaged;
   const doneNote = q.dismissedCount ? `, ${q.dismissedCount} marked done on the Follow-Ups screen` : '';
   if (!deduped.length) {
-    return { text: `The queue is empty — nothing actionable right now (parked people surface on their dates${suppTotal ? `; the live re-check dropped ${suppTotal}: ${supp.messaged} already messaged since the list was built, ${supp.booked} already booked, ${supp.ceased} ceased, ${supp.parked} parked on a reconnect stamp` : ''}${doneNote}).` };
+    return { text: `${screenDoor}The queue is empty — nothing actionable right now (parked people surface on their dates${suppTotal ? `; the live re-check dropped ${suppTotal}: ${supp.messaged} already messaged since the list was built, ${supp.booked} already booked, ${supp.ceased} ceased, ${supp.parked} parked on a reconnect stamp` : ''}${doneNote}).` };
   }
   // Chat line per item kind — same strings as ever, now derived from the structured item.
   const lineFor = (it) => {
@@ -1793,7 +1807,7 @@ async function runQueue({ page } = {}, tenant = TENANT) {
   const { draftUrl } = require('./wingguyDraftLink');
   const draftLink = (it) => (it.draftState === 'ready' ? ` · [draft](${draftUrl(tenant, it.name)})` : (it.draftState === 'wg-angle' ? ` · [card](${draftUrl(tenant, it.name)})` : ''));
   const lines = [
-    `THE QUEUE — ${deduped.length} actionable, priority order (page ${pg}/${totalPages}; today's brief first, then backlog reopens, then parks). Each person's "who:" memory-jog is part of the list — ALWAYS relay it with their line, and keep their [draft]/[card] link ([draft] opens the ready-made message with a copy button; [card] is a LinkedIn person's context card — their reply gets written live in the thread with /wg, using the "/wg angle" line). Ask for anyone by name for the full detail in chat; "next ten" = next page.`,
+    `${screenDoor}THE QUEUE — ${deduped.length} actionable, priority order (page ${pg}/${totalPages}; today's brief first, then backlog reopens, then parks). Each person's "who:" memory-jog is part of the list — ALWAYS relay it with their line, and keep their [draft]/[card] link ([draft] opens the ready-made message with a copy button; [card] is a LinkedIn person's context card — their reply gets written live in the thread with /wg, using the "/wg angle" line). Ask for anyone by name for the full detail in chat; "next ten" = next page.`,
     ...slice.map((it, i) => `${(pg - 1) * PAGE + i + 1}. ${nm(it)}${draftLink(it)} — ${lineFor(it)}${angleLine(it)}${jogLine(it)}`),
   ];
   if (pg < totalPages) lines.push(`(${deduped.length - pg * PAGE} more — say "next ten".)`);
