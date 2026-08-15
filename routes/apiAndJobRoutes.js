@@ -1262,7 +1262,11 @@ router.post("/api/followup-brief/prepare", async (req, res) => {
     for (const tenant of tenants) {
       try {
         const r = await require('../services/wingguyFollowupBrief').prepareFollowupBrief(tenant);
-        console.log(`[followup-brief] cron/endpoint prepare for ${tenant}: ${JSON.stringify(r)}`);
+        // A client switched on (Followup Brief = Yes) before their own Anthropic key exists is
+        // SKIPPED, not run on the platform key — logged loudly because the flag being on says
+        // somebody meant them to have this, so it's a setup step outstanding, not a quiet no-op.
+        if (r && r.blocked) console.warn(`[followup-brief] SKIPPED ${tenant} — no Anthropic key of their own: ${r.reason}`);
+        else console.log(`[followup-brief] cron/endpoint prepare for ${tenant}: ${JSON.stringify(r)}`);
       } catch (e) {
         console.error(`[followup-brief] cron/endpoint prepare crashed for ${tenant}: ${e.message}`);
       }

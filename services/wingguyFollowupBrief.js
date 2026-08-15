@@ -254,8 +254,22 @@ async function prepareFollowupBrief(tenant) {
   try {
     const { computeFollowupSweep } = require('./wingguyMailMcp');
     const mailProvider = require('./mailProvider');
-    const { getAnthropicClientForKey } = require('../config/anthropicClient');
+    const { resolveClientAnthropic } = require('../config/anthropicClient');
+    const clientService = require('./clientService');
     const rulesStore = require('./wingguyRulesStore');
+
+    // BILLING GATE, before any work at all (Guy 2026-08-15). A client with no key of their own is
+    // never run on the platform key — and never has their mailbox read for a brief they won't get,
+    // so a client switched on before their key exists costs nothing rather than costing Guy quietly.
+    // The stored status is what the human sees: wingguy_followup_brief serves `row.error` when
+    // there's no payload, so asking for the brief answers "your key isn't set up yet".
+    const coachRecord = await clientService.getClientById(tenant);
+    const lane = resolveClientAnthropic(coachRecord);
+    console.log(`[followupBrief] anthropic lane=${lane.lane} tenant=${tenant}`);
+    if (!lane.llm) {
+      await setStatus(tenant, { status: 'error', startedAt, error: lane.message });
+      return { ok: false, blocked: true, reason: lane.message };
+    }
 
     const sweep = await computeFollowupSweep({}, tenant);
     if (!sweep.ok) throw new Error(sweep.error);
@@ -269,12 +283,8 @@ async function prepareFollowupBrief(tenant) {
     const contexts = [];
     for (const item of top) contexts.push(await gatherPersonContext(mailProvider, sweep.coach, item));
 
-    // One triage call over the whole group. Run on the CLIENT's stored key when they have one
-    // (this overnight path is header-less, so the stored key is the only BYO lane); blank -> the
-    // platform key, exactly as before. Failing-key surfacing is a later brick.
-    const anthropicKey = (sweep.coach && sweep.coach.anthropicApiKey) || null;
-    console.log(`[followupBrief] anthropic lane=${anthropicKey ? 'client-stored-key' : 'platform-fallback'} tenant=${tenant}`);
-    const llm = getAnthropicClientForKey(anthropicKey);
+    // One triage call over the whole group, on the lane resolved above.
+    const llm = lane.llm;
     const todayIso = new Date().toISOString().slice(0, 10);
     let verdicts = [];
     if (top.length) verdicts = await triage(llm, top, contexts, todayIso);

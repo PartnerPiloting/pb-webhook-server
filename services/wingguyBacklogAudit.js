@@ -114,7 +114,7 @@ Return ONLY a JSON array, same order: [{"key":"<key as given>","verdict":"reopen
 async function runBacklogAudit(tenant) {
   const clientService = require('./clientService');
   const mailProvider = require('./mailProvider');
-  const { getAnthropicClientForKey } = require('../config/anthropicClient');
+  const { resolveClientAnthropic } = require('../config/anthropicClient');
   const rulesStore = require('./wingguyRulesStore');
   const { computeMailSignals } = require('./wingguyMailMcp');
 
@@ -174,10 +174,14 @@ async function runBacklogAudit(tenant) {
   console.log(`[backlogAudit] candidates=${candidates.length} skipped=${JSON.stringify(skipped)}`);
 
   // Build transcripts (email context per-person only where a signal existed — bounded calls).
-  // Client's stored key when present (header-less path); blank -> platform, as before.
-  const anthropicKey = coach.anthropicApiKey || null;
-  console.log(`[backlogAudit] anthropic lane=${anthropicKey ? 'client-stored-key' : 'platform-fallback'} tenant=${tenant}`);
-  const llm = getAnthropicClientForKey(anthropicKey);
+  // Billing gate — see resolveClientAnthropic. The audit is the most expensive job here (batched
+  // triage plus up to MAX_DRAFTS pre-written drafts), so a client without their own key must never
+  // reach it on Guy's. Throws rather than returns: the audit is only ever run deliberately, so the
+  // operator asking for it should be told why nothing happened.
+  const lane = resolveClientAnthropic(coach);
+  console.log(`[backlogAudit] anthropic lane=${lane.lane} tenant=${tenant}`);
+  if (!lane.llm) throw new Error(`${lane.message} (backlog audit not run for ${tenant})`);
+  const llm = lane.llm;
   const today = new Date().toISOString().slice(0, 10);
   const withContext = [];
   for (const c of candidates) {

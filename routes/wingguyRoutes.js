@@ -25,7 +25,7 @@
 const express = require('express');
 const { createLogger } = require('../utils/contextLogger');
 const { authenticateUserWithTestMode } = require('../middleware/authMiddleware');
-const { getAnthropicClient, getAnthropicClientForKey, isAnthropicConfigured, anthropicKeyError } = require('../config/anthropicClient');
+const { getAnthropicClient, resolveClientAnthropic, NO_ANTHROPIC_KEY_MSG, isAnthropicConfigured, anthropicKeyError } = require('../config/anthropicClient');
 const rulesSource = require('../services/wingguyRulesSource');
 const { getBookingPrefs } = require('../config/wingguyBookingPrefs');
 const { createBookingEvent } = require('../services/wingguyCalendar');
@@ -51,38 +51,24 @@ const PROFILE_CHAR_CAP = 6000;            // bound the input (About can be long)
 const OWNER_CLIENT_ID = (process.env.RECALL_COACH_CLIENT_ID || 'Guy-Wilson').trim();
 
 // --- BYO Anthropic key (billing) ---------------------------------------------------------------
-// A client's own Claude key rides in this header (Option A, 2026-07-13): kept in their browser,
-// sent per draft, never stored. BILLING RULE (Guy, 2026-07-14): we must NEVER silently draft a
-// client on the PLATFORM key (Guy's charge). So: their own key → theirs; else the platform key
-// ONLY for the owner or an explicit managed-plan client (WINGGUY_PLATFORM_KEY_CLIENTS, comma-sep);
-// else BLOCK (they add their key, or go on a plan). Returns the client to draft with, or null =
-// the caller must reject the request.
-const NO_ANTHROPIC_KEY_MSG = "Your Claude key isn't set up yet - message Guy.";
-const PLATFORM_KEY_CLIENTS = new Set(
-  [OWNER_CLIENT_ID, ...String(process.env.WINGGUY_PLATFORM_KEY_CLIENTS || '').split(',')]
-    .map((s) => s.trim())
-    .filter(Boolean),
-);
+// BILLING RULE (Guy, 2026-07-14): we must NEVER silently draft a client on the PLATFORM key (Guy's
+// charge). Their own key → theirs; else the platform key ONLY for the owner or a managed-plan
+// client; else BLOCK (they add their key, or go on a plan). Returns the client to draft with, or
+// null = the caller must reject the request with NO_ANTHROPIC_KEY_MSG.
+//
+// The rule itself now lives in config/anthropicClient.resolveClientAnthropic, shared with the
+// overnight brief / dossier / backlog jobs (2026-08-15) — those had their own naive
+// `key || platform` fallback and were quietly billing Guy for any client switched on before their
+// key existed. Same lane names, same log line, one implementation.
+//
+// The browser-key header lane (Option A, 2026-07-13) was REMOVED 2026-08-05 on Julian's feedback:
+// an empty key field in the popup read as a form to fill in, and every client's key now lives on
+// their Client Master row anyway. One door, not two.
 function byoAnthropicClient(req) {
   const cid = req.client && String(req.client.clientId || '').trim();
-  // Each draft logs which key lane it took (mirrors the overnight services' `anthropic lane=` line).
-  // The browser-key header lane (Option A, 2026-07-13) was REMOVED 2026-08-05 on Julian's feedback:
-  // an empty key field in the popup read as a form to fill in, and every client's key now lives on
-  // their Client Master row anyway. One door, not two.
-  const storedKey = req.client && String(req.client.anthropicApiKey || '').trim();
-  if (storedKey) {                                                      // their own key (stored on record)
-    logger.info(`[Wingguy] anthropic lane=client-stored-key client=${cid}`);
-    return getAnthropicClientForKey(storedKey);
-  }
-  // Platform (Guy's) key allowed only for: the owner, a client on a managed plan (the record's
-  // "Managed Claude Key" = Yes → req.client.managedClaudeKey), or the env override list.
-  const managed = !!(req.client && req.client.managedClaudeKey);
-  if (managed || (cid && PLATFORM_KEY_CLIENTS.has(cid))) {
-    logger.info(`[Wingguy] anthropic lane=platform-fallback client=${cid}`);
-    return getAnthropicClient();
-  }
-  logger.info(`[Wingguy] anthropic lane=none-blocked client=${cid}`);
-  return null;                                                          // no key → block, never bill the platform
+  const lane = resolveClientAnthropic(req.client);
+  logger.info(`[Wingguy] anthropic lane=${lane.lane} client=${cid}`);
+  return lane.llm;
 }
 
 // Map a transient UPSTREAM Anthropic failure (their servers busy / rate-limited / hiccup) to a

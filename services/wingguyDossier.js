@@ -445,7 +445,7 @@ async function prepareDossiers(tenant) {
   try {
     const clientService = require('./clientService');
     const mailProvider = require('./mailProvider');
-    const { getAnthropicClientForKey } = require('../config/anthropicClient');
+    const { resolveClientAnthropic } = require('../config/anthropicClient');
     const briefStore = require('./wingguyFollowupBrief');
     const backlog = require('./wingguyBacklogAudit');
     const rulesStore = require('./wingguyRulesStore');
@@ -540,10 +540,12 @@ async function prepareDossiers(tenant) {
       if (active.length) assetLines = `\n\nASSET LIBRARY (optional — include AT MOST ONE link and ONLY when genuinely helpful to this person, as {{asset:KEY}} exactly; usually include none): ${active.map((a) => `${a.asset_key}${a.kind ? ` (${a.kind})` : ''}`).join(', ')}`;
     } catch (_) {}
 
-    // Client's stored key when present (header-less path); blank -> platform, as before.
-    const anthropicKey = coach.anthropicApiKey || null;
-    console.log(`[dossier] anthropic lane=${anthropicKey ? 'client-stored-key' : 'platform-fallback'} tenant=${tenant}`);
-    const llm = getAnthropicClientForKey(anthropicKey);
+    // Billing gate — see resolveClientAnthropic. No key of their own (and not owner/managed) means
+    // no dossier building on Guy's key; the brief's stored error is where the human is told why.
+    const lane = resolveClientAnthropic(coach);
+    console.log(`[dossier] anthropic lane=${lane.lane} tenant=${tenant}`);
+    if (!lane.llm) return { ...out, blocked: true, reason: lane.message };
+    const llm = lane.llm;
     for (const person of people.values()) {
       try {
         const rec = (person.email && byEmail.get(person.email)) || byName.get(person.name.toLowerCase()) || null;

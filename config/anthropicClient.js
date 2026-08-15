@@ -76,6 +76,52 @@ function getAnthropicClientForKey(apiKey) {
     return c;
 }
 
+// --- ONE DOOR: which key does a given client's work run on? -------------------------------------
+// BILLING RULE (Guy 2026-07-14 for the /wg drafting path; extended to the OVERNIGHT services
+// 2026-08-15): we must NEVER silently run a client's work on the PLATFORM key (Guy's charge).
+// Three lanes, in order:
+//   their own stored key (Client Master "Anthropic API Key")      -> theirs
+//   the owner, a managed-plan client, or the env override list    -> platform
+//   anyone else                                                   -> BLOCKED, caller surfaces the message
+//
+// This lived only in routes/wingguyRoutes.js, so the nightly brief / dossier / backlog jobs kept
+// their own naive `key || platform` fallback and quietly billed Guy for any client switched on
+// before their key was set up. One rule in one place is the whole point — a second copy is how the
+// two drifted apart in the first place. Env is read per call, so flipping a client onto a managed
+// plan stays an Airtable/env edit with no redeploy.
+const NO_ANTHROPIC_KEY_MSG = "Your Claude key isn't set up yet - message Guy.";
+
+function platformKeyClientIds() {
+    const owner = (process.env.RECALL_COACH_CLIENT_ID || 'Guy-Wilson').trim();
+    return new Set(
+        [owner, ...String(process.env.WINGGUY_PLATFORM_KEY_CLIENTS || '').split(',')]
+            .map((s) => s.trim())
+            .filter(Boolean),
+    );
+}
+
+/**
+ * Resolve the Anthropic client a coach's work should run on, applying the billing rule above.
+ *
+ * @param {Object} client  a clientService record (uses clientId, anthropicApiKey, managedClaudeKey)
+ * @returns {{llm: Object|null, lane: string, message: string|null}}
+ *   `llm === null` means BLOCKED: do not do the work, and surface `message` to the human.
+ *   `lane` is one of client-stored-key | platform-fallback | none-blocked (log it — the existing
+ *   `anthropic lane=` log lines and any greps over them keep working unchanged).
+ */
+function resolveClientAnthropic(client) {
+    const cid = String((client && client.clientId) || '').trim();
+    const storedKey = String((client && client.anthropicApiKey) || '').trim();
+    if (storedKey) {
+        return { llm: getAnthropicClientForKey(storedKey), lane: 'client-stored-key', message: null };
+    }
+    const managed = !!(client && client.managedClaudeKey);
+    if (managed || (cid && platformKeyClientIds().has(cid))) {
+        return { llm: getAnthropicClient(), lane: 'platform-fallback', message: null };
+    }
+    return { llm: null, lane: 'none-blocked', message: NO_ANTHROPIC_KEY_MSG };
+}
+
 /**
  * Whether Claude is configured (key present). Lets feature code degrade gracefully
  * — e.g. skip reconstruction with a clear warning instead of throwing — without a
@@ -110,6 +156,8 @@ module.exports = {
     initializeAnthropic,
     getAnthropicClient,
     getAnthropicClientForKey,
+    resolveClientAnthropic,
+    NO_ANTHROPIC_KEY_MSG,
     isAnthropicConfigured,
     anthropicKeyError,
     claudeModelId: CLAUDE_MODEL_ID,
