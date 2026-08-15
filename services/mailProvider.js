@@ -28,6 +28,20 @@ function activeMailProvider(coach) {
   return String((coach && coach.emailProvider) || process.env.MAIL_PROVIDER || 'nylas').trim().toLowerCase();
 }
 
+/**
+ * Does this coach have a readable mailbox behind whichever provider THEY are on? The one gate
+ * every mailbox-touching feature should ask, added 2026-08-15: the follow-up pipeline's guards
+ * all checked `coach.nylasGrantId` — a Nylas-only field — so a Unipile tenant with no legacy
+ * grant (Julian, migrated 2026-07-22) was refused a brief his mailbox could serve perfectly
+ * well. Deliberately does NOT honour the NYLAS_GRANT_ID env fallback: that fallback is the
+ * OWNER's grant, and a feature gate falling through to it would read Guy's mailbox for another
+ * tenant.
+ */
+function hasMailbox(coach) {
+  if (activeMailProvider(coach) === 'unipile') return !!(coach && coach.unipileAccountId);
+  return !!(coach && coach.nylasGrantId);
+}
+
 function nylasConfig(coach) {
   const apiKey = process.env.NYLAS_API_KEY;
   const grantId = (coach && coach.nylasGrantId) || process.env.NYLAS_GRANT_ID;
@@ -491,4 +505,4 @@ async function getDraftViaUnipile(coach, draftId) {
   return { ok: true, draft: r.message };
 }
 
-module.exports = { createDraft, getDraft, findMessages, listRecent, getMessage, toParticipants, activeMailProvider };
+module.exports = { createDraft, getDraft, findMessages, listRecent, getMessage, toParticipants, activeMailProvider, hasMailbox };

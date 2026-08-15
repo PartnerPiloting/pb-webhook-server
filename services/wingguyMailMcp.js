@@ -443,8 +443,8 @@ async function runCreateDraft({ to, subject, html_body, cc, bcc, reply_to, reply
   const clientService = require('./clientService');
   const coach = await clientService.getClientById(tenant);
   if (!coach) return { text: `Server config error: coach client "${tenant}" not found.`, isError: true };
-  if (!coach.nylasGrantId) {
-    return { text: `No Nylas grant on file for "${tenant}" — connect the mailbox via Nylas (with mail scope) before drafting.`, isError: true };
+  if (!require('./mailProvider').hasMailbox(coach)) {
+    return { text: `No mailbox connection on file for "${tenant}" — connect their mail (Unipile account, or a Nylas grant with mail scope) before drafting.`, isError: true };
   }
 
   // --- Asset pass: resolve {{asset:key}} tokens, spot library links, enforce the usage gate ---
@@ -564,8 +564,8 @@ async function runFindMessage({ from, subject, thread_id, limit } = {}, tenant =
   const clientService = require('./clientService');
   const coach = await clientService.getClientById(tenant);
   if (!coach) return { text: `Server config error: coach client "${tenant}" not found.`, isError: true };
-  if (!coach.nylasGrantId) {
-    return { text: `No Nylas grant on file for "${tenant}" — connect the mailbox via Nylas (with mail scope) first.`, isError: true };
+  if (!require('./mailProvider').hasMailbox(coach)) {
+    return { text: `No mailbox connection on file for "${tenant}" — connect their mail (Unipile account, or a Nylas grant with mail scope) first.`, isError: true };
   }
 
   const result = await mailProvider.findMessages(coach, { from, subject, threadId: thread_id, limit });
@@ -615,8 +615,8 @@ async function runReadMessage({ message_id } = {}, tenant = TENANT) {
   const clientService = require('./clientService');
   const coach = await clientService.getClientById(tenant);
   if (!coach) return { text: `Server config error: coach client "${tenant}" not found.`, isError: true };
-  if (!coach.nylasGrantId) {
-    return { text: `No Nylas grant on file for "${tenant}" — connect the mailbox via Nylas (with mail scope) first.`, isError: true };
+  if (!require('./mailProvider').hasMailbox(coach)) {
+    return { text: `No mailbox connection on file for "${tenant}" — connect their mail (Unipile account, or a Nylas grant with mail scope) first.`, isError: true };
   }
 
   const result = await mailProvider.getMessage(coach, id);
@@ -647,8 +647,8 @@ async function runLeadCorrespondence({ lead_email, since_iso, limit } = {}, tena
   const clientService = require('./clientService');
   const coach = await clientService.getClientById(tenant);
   if (!coach) return { text: `Server config error: coach client "${tenant}" not found.`, isError: true };
-  if (!coach.nylasGrantId) {
-    return { text: `No Nylas grant on file for "${tenant}" — connect the mailbox via Nylas (with mail scope) first.`, isError: true };
+  if (!require('./mailProvider').hasMailbox(coach)) {
+    return { text: `No mailbox connection on file for "${tenant}" — connect their mail (Unipile account, or a Nylas grant with mail scope) first.`, isError: true };
   }
 
   const cap = Math.min(Math.max(parseInt(limit, 10) || 10, 1), 20);
@@ -690,8 +690,8 @@ async function runLeadRepliedSince({ lead_email, since_iso } = {}, tenant = TENA
   const clientService = require('./clientService');
   const coach = await clientService.getClientById(tenant);
   if (!coach) return { text: `Server config error: coach client "${tenant}" not found.`, isError: true };
-  if (!coach.nylasGrantId) {
-    return { text: `No Nylas grant on file for "${tenant}" — connect the mailbox via Nylas (with mail scope) first.`, isError: true };
+  if (!require('./mailProvider').hasMailbox(coach)) {
+    return { text: `No mailbox connection on file for "${tenant}" — connect their mail (Unipile account, or a Nylas grant with mail scope) first.`, isError: true };
   }
 
   const receivedAfter = Math.floor(sinceMs / 1000);
@@ -732,7 +732,9 @@ async function computeFollowupSweep({ window_days } = {}, tenant = TENANT) {
   const coach = await clientService.getClientById(tenant);
   if (!coach) return { ok: false, error: `Server config error: coach client "${tenant}" not found.` };
   if (!coach.airtableBaseId) return { ok: false, error: `No Airtable base on file for "${tenant}" — can't read the leads.` };
-  if (!coach.nylasGrantId) return { ok: false, error: `No Nylas grant on file for "${tenant}" — connect the mailbox (Nylas, mail scope) first.` };
+  // The gate that blocked Julian's first brief (2026-08-15): his mail is Unipile, this asked for
+  // a Nylas grant. hasMailbox asks the provider the tenant is actually on.
+  if (!require('./mailProvider').hasMailbox(coach)) return { ok: false, error: `No mailbox connection on file for "${tenant}" — connect their mail (Unipile account, or a Nylas grant with mail scope) first.` };
 
   const windowDays = Math.min(Math.max(parseInt(window_days, 10) || SWEEP_WINDOW_DAYS, 7), 180);
   const nowMs = Date.now();
@@ -1550,7 +1552,7 @@ async function applyLiveQueueGates(items, tenant) {
     // 5 minutes per tenant: the screen and chat re-serve the queue far more often than a
     // mailbox changes materially.
     const mailPromise = (async () => {
-      if (!coach.nylasGrantId) return null;
+      if (!mailProvider.hasMailbox(coach)) return null;
       const emails = new Set(items.map((i) => String(i.email || '').trim().toLowerCase()).filter(Boolean));
       if (!emails.size) return null;
       const builts = items.map((i) => (i.builtAt ? Date.parse(i.builtAt) : NaN)).filter((t) => !Number.isNaN(t));
@@ -1904,7 +1906,7 @@ async function settleEmailEditPairs(tenant = TENANT) {
   const clientService = require('./clientService');
   let coach = null;
   try { coach = await clientService.getClientById(tenant); } catch (_) { /* fall through */ }
-  if (!coach || !coach.nylasGrantId) { out.awaiting = rows.length; return out; }
+  if (!coach || !require('./mailProvider').hasMailbox(coach)) { out.awaiting = rows.length; return out; }
 
   for (const row of rows) {
     out.checked++;
