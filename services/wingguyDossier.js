@@ -38,6 +38,13 @@ const LI_LIMIT = 12;
 // Calendar look-ahead for the meeting-prep dossier pass: enough that a Monday-morning build has
 // covered the weekend's bookings, small enough to stay cheap (cache makes repeats near-free).
 const PREP_CAL_DAYS = 3;
+// Transcript budget for the deep read (Guy 2026-08-17: "I'm having so many calls that I can't
+// remember what happened"). The LAST TWO calls are read, not just the latest — a third call needs
+// to know what the second one was about. Older meetings still contribute their stored summary.
+// Characters, not tokens: ~24k of transcript is ~6k tokens, cents per person and only on rebuild.
+const TRANSCRIPT_CHARS = [14000, 10000];
+// Material ceiling for the deep read. Was 32k when one transcript rode along; two need the room.
+const MATERIAL_CHARS = 60000;
 
 let pool;
 function getPool() {
@@ -227,11 +234,13 @@ async function gatherMeetings(tenantId, recId, fullName) {
         date: m.meeting_start ? new Date(m.meeting_start).toISOString().slice(0, 10) : null,
         title: m.title || '(meeting)',
         summary,
-        // FULL transcript of the LATEST meeting only — feeds the overnight deep-read, where the
+        // FULL transcript of the last TWO meetings — feeds the overnight deep-read, where the
         // specifics live ("back from Brazil the 17th, week of the 22nd, avoid Mon/Tue" — the
-        // Celeste details the summary alone missed). Not stored in the payload (it already lives
-        // in recall_meetings); consumed at read time.
-        transcript: i === 0 && m.transcript_text ? scrub(String(m.transcript_text).replace(/\s+/g, ' ').slice(0, 14000)) : null,
+        // Celeste details the summary alone missed) and where the per-call recap is written from.
+        // Not stored in the payload (it already lives in recall_meetings); consumed at read time.
+        transcript: m.transcript_text && i < TRANSCRIPT_CHARS.length
+          ? scrub(String(m.transcript_text).replace(/\s+/g, ' ').slice(0, TRANSCRIPT_CHARS[i]))
+          : null,
       };
     });
   } catch (e) { return []; } finally { c.release(); }
@@ -406,28 +415,38 @@ const DEEP_SYSTEM = `You prepare a coach's memory-dossier for one contact. From 
 {"standing": "one tight paragraph: where this relationship ACTUALLY stands right now — read the words, note who spoke last and what is really owed; flag calendar mishaps (accept-then-decline artifacts, invites that lapsed while someone was away) rather than reading them as disinterest",
  "commitments_you": ["each thing the COACH promised, with when"],
  "commitments_them": ["each thing THEY promised or delivered"],
- "remember": ["4-8 short bullets of concrete specifics worth holding onto — their business and situation (what they do, how long, target market, point of difference), personal details mentioned (travel, family, location, timezone), what resonated or aligned in conversation, objections or hesitations, stated preferences (days, times, channels). The coach juggles many people; these bullets ARE the memory."],
+ "remember": ["4-8 short bullets of concrete specifics worth holding onto — their business and situation (what they do, how long, target market, point of difference), what resonated or aligned in conversation, objections or hesitations, stated preferences (days, times, channels). The coach juggles many people; these bullets ARE the memory."],
+ "personal": ["0-5 short bullets of the HUMAN detail, kept apart from the business facts so it survives: family, travel and holidays, where they live and what they said about it, health, sport, hobbies, how they spend their time, what they were excited or frustrated about. Only what they actually said. Empty array if the material holds none — never invent warmth."],
+ "why_meeting": "one or two sentences: WHY this person and the coach are talking at all — how the meeting came about and what they said they wanted from it, quoting their own words where you can. Read the messages that arranged the meeting, not just the meeting itself. This is what the coach reads walking in to a FIRST call, so it must stand alone. Empty string only if the material genuinely never says.",
+ "meeting_recaps": [{"date": "YYYY-MM-DD", "title": "the meeting title", "about": "one sentence: what this call was for", "happened": "a full paragraph, and be generous with it — what was actually discussed, what THEY said in their own words, what they reacted to, where it warmed or cooled, what was decided. The coach cannot remember this call and is walking into the next one; detail here is the whole point, so do not compress it into a summary line.", "personal": "any human detail that came up in THIS call, or empty string", "ended": "one sentence: how the call was left — what each side said they would do next"}],
  "next_move": "one sentence: the smartest next action. For a WARM relationship that has clearly ended, that may be a one-line graceful close (door-open goodbye) — say so explicitly. For a cold or never-real thread, say exactly: nothing — let it rest."}
-Ground everything ONLY in the material given. Return ONLY the JSON object.`;
+Write one meeting_recaps entry per meeting you were given a FULL TRANSCRIPT for, newest first; if you were given no transcript, return an empty array rather than reconstructing a call from the emails around it. Ground everything ONLY in the material given. Return ONLY the JSON object.`;
 
 async function deepRead(llm, name, timeline, meetings) {
-  const withTranscript = meetings.find((m) => m.transcript);
+  const withTranscript = meetings.filter((m) => m.transcript);
   const material = [
     `CONTACT: ${name}`,
     `TIMELINE (oldest first):`,
     ...timeline.map((t) => `${t.date} [${t.kind}/${t.dir}] ${t.subject ? `(${t.subject}) ` : ''}${t.fullText ? `FULL TEXT: ${t.fullText}` : (t.text || '')}`),
     ...(meetings.length ? ['MEETING SUMMARIES:', ...meetings.map((m) => `${m.date || '?'} "${m.title}": ${m.summary || '(no summary stored)'}`)] : []),
-    ...(withTranscript ? [`FULL TRANSCRIPT of the latest meeting (${withTranscript.date} "${withTranscript.title}") — mine it for specifics the summary missed (named dates, travel, commitments, preferences):`, withTranscript.transcript] : []),
+    // Newest transcript first, each labelled so the recaps can be attributed to the right call.
+    ...withTranscript.flatMap((m, i) => [
+      `FULL TRANSCRIPT of the ${i === 0 ? 'most recent' : 'previous'} meeting (${m.date} "${m.title}") — mine it for specifics the summary missed (named dates, travel, commitments, preferences) AND write its meeting_recaps entry from it:`,
+      m.transcript,
+    ]),
   ].join('\n');
   // Up to 2 attempts: the model occasionally breaks its own JSON (unescaped quotes when quoting
   // someone — killed Celeste's and Piyush's dossiers on 2026-07-24). Control-char sanitation first,
   // then one full retry with a sterner instruction.
   let lastErr;
   for (let attempt = 0; attempt < 2; attempt++) {
+    // max_tokens 2200 -> 6000 (2026-08-17): the per-call recaps are deliberately long, and a
+    // truncated response is not a short dossier — it is INVALID JSON, so the person's dossier
+    // fails outright. Headroom is far cheaper than a silent miss on the morning of a call.
     const resp = await llm.messages.create({
-      model: MODEL_ID, max_tokens: 2200, thinking: NO_THINKING,
+      model: MODEL_ID, max_tokens: 6000, thinking: NO_THINKING,
       system: DEEP_SYSTEM + (attempt ? '\nSTRICT: your previous output was invalid JSON. Escape every double-quote inside string values as \\" and never put raw newlines inside strings.' : ''),
-      messages: [{ role: 'user', content: scrub(`Today is ${new Date().toISOString().slice(0, 10)}.\n\n${material.slice(0, 32000)}`) }],
+      messages: [{ role: 'user', content: scrub(`Today is ${new Date().toISOString().slice(0, 10)}.\n\n${material.slice(0, MATERIAL_CHARS)}`) }],
     });
     const text = (resp.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('');
     const s = text.indexOf('{'); const e = text.lastIndexOf('}');
@@ -570,7 +589,9 @@ async function prepareDossiers(tenant) {
         // timelines (John Addario, built 23 Jul, served wrong on the Follow-Ups screen) — the
         // fingerprint saw "thread unchanged" and never rebuilt them. Subsequent nights are cheap
         // again: the fingerprint compares equal at v4 from then on.
-        const basis = `v4|e${emails.length}:${emails.length ? emails[emails.length - 1].date : ''}|l${li.length}:${li.length ? li[li.length - 1].date : ''}|m${meetings.length}:${meetings.length ? meetings[0].date : ''}`;
+        // v5 (2026-08-17): meeting_recaps / why_meeting / personal are new payload fields, so every
+        // stored dossier must be rebuilt once to carry them. Same one-off cost shape as v4.
+        const basis = `v5|e${emails.length}:${emails.length ? emails[emails.length - 1].date : ''}|l${li.length}:${li.length ? li[li.length - 1].date : ''}|m${meetings.length}:${meetings.length ? meetings[0].date : ''}`;
         const existing = await getDossierRow(tenant, person.key);
         if (existing && existing.basis === basis) { out.cached++; continue; }
 
@@ -619,6 +640,12 @@ async function prepareDossiers(tenant) {
           meetings: meetings.map(({ transcript, ...rest }) => rest), // transcript consumed by deepRead, not duplicated in the payload
           lastHuman: lastHuman ? `${lastHuman.date} (${lastHuman.dir}, ${lastHuman.kind})${lastHuman.subject ? ` "${lastHuman.subject}"` : ''}` : null,
           standing: read.standing || '', commitmentsYou: read.commitments_you || [], commitmentsThem: read.commitments_them || [], remember: read.remember || [], nextMove: read.next_move || '',
+          // Meeting-prep fields (2026-08-17). whyMeeting answers the FIRST-call question ("what is
+          // this call even about?"); meetingRecaps answers the SECOND-call one ("what happened last
+          // time?"). personal is split out of remember so the human detail can't be crowded out by
+          // business facts competing for the same handful of bullets.
+          whyMeeting: read.why_meeting || '', personal: read.personal || [],
+          meetingRecaps: Array.isArray(read.meeting_recaps) ? read.meeting_recaps : [],
           suggestedDraft: suggested,
           unrecordedEmails,
         });
@@ -646,6 +673,27 @@ function formatDossier(row, opts = {}) {
   lines.push(loc
     ? `Based: ${loc} (state where they're based per the booking rules; times offered later must be on THEIR clock)`
     : `Based: NOT RECORDED — before offering any meeting times, ask the human where this person is (booking rules: never guess a timezone).`);
+  // MEETING PREP FIRST (Guy 2026-08-17). Walking into a call, two questions come before relationship
+  // state: what is this call about, and what happened last time. Both sit above WHERE IT STANDS so
+  // they survive any summarising on the way to the human.
+  if (p.whyMeeting) lines.push(`\nWHY YOU'RE MEETING: ${p.whyMeeting}`);
+  const recaps = (p.meetingRecaps || []).filter((r) => r && (r.happened || r.about));
+  if (recaps.length) {
+    lines.push(`\nPREVIOUS CALLS — relay the most recent one IN FULL when prepping the human for a meeting with this person. This is the part they cannot remember, and a one-line summary of it is a failed brief. Length is fine here; they would rather scroll.`);
+    for (const r of recaps) {
+      lines.push(`\n--- ${r.date || '?'} "${r.title || 'call'}" ---`);
+      if (r.about) lines.push(`What it was for: ${r.about}`);
+      if (r.happened) lines.push(`What happened: ${r.happened}`);
+      if (r.personal) lines.push(`Personal: ${r.personal}`);
+      if (r.ended) lines.push(`Left as: ${r.ended}`);
+    }
+  } else if ((p.meetings || []).length) {
+    lines.push(`\n(Meetings are on record for this person but no transcript was stored, so there is no recap of what was said — say that plainly rather than implying the calls were empty.)`);
+  }
+  if ((p.personal || []).length) {
+    lines.push(`\nPERSONAL — worth opening with, and worth asking after:`);
+    for (const r of p.personal) lines.push(`- ${r}`);
+  }
   lines.push(`\nWHERE IT STANDS: ${p.standing}`);
   if ((p.commitmentsYou || []).length) lines.push(`\nYOU promised: ${p.commitmentsYou.join(' · ')}`);
   if ((p.commitmentsThem || []).length) lines.push(`THEY promised/delivered: ${p.commitmentsThem.join(' · ')}`);
@@ -666,6 +714,11 @@ function formatDossier(row, opts = {}) {
   if ((p.unrecordedEmails || []).length) {
     lines.push(`\n⚠ EMAIL SEEN IN THE THREAD, NOT ON THE RECORD: ${p.unrecordedEmails.join(', ')} — handed over in conversation but never learned onto the record's Email/Alt Emails. Suggest the human confirm and update the record; NEVER change it silently.`);
   }
+  // Everything below is DEPTH, not headline. On a morning meeting-prep run, relay the sections
+  // above and close with the offer — "say 'more on <first name>' for the full thread" — rather than
+  // rendering the whole record for every attendee. Three attendees relayed in full is the wall the
+  // brief exists to avoid; the human asked for length on the RECAP, not on the archive.
+  lines.push(`\n[DEPTH — serve on request ("more on ${String(p.name || '').split(' ')[0]}"), not in the morning brief. When prepping meetings, end each person with that offer.]`);
   if ((p.meetings || []).length) {
     lines.push(`\nMEETINGS:`);
     for (const m of p.meetings) lines.push(`- ${m.date || '?'} "${m.title}"${m.summary ? `: ${String(m.summary).slice(0, 500)}` : ' (no summary stored)'}`);
