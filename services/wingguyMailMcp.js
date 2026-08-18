@@ -93,6 +93,19 @@ function detectAssets(html, assetRows = []) {
   return { html: resolved, assetKeys: [...found], unresolved: [...new Set(unresolved)] };
 }
 
+/**
+ * Any doubled-brace tokens still in a draft body after the asset pass. {{asset:key}} is this
+ * door's to resolve; every OTHER {{...}} belongs to the RULES layer — variables like {{signoff}}
+ * are substituted into rule text by the rules renderer before the drafting model ever writes a
+ * body, so one arriving here means an upstream surface pasted template text literally. The rules
+ * store deliberately leaves unresolved placeholders visible so they get NOTICED — and this door
+ * is where "noticed" must mean REFUSED, because past it the text lands in a real mailbox (a
+ * draft went out signed literally "{{signoff}}", 2026-08-18).
+ */
+function findLeftoverPlaceholders(html) {
+  return [...new Set(String(html || '').match(/\{\{[^{}]*\}\}/g) || [])];
+}
+
 /** Lazy store access — null when no database is configured (local runs degrade gracefully). */
 function ledgerStore() {
   if (!(process.env.DATABASE_URL || '').trim()) return null;
@@ -461,6 +474,18 @@ async function runCreateDraft({ to, subject, html_body, cc, bcc, reply_to, reply
       text:
         `Draft NOT created — unknown {{asset:...}} placeholder(s): ${detected.unresolved.join(', ')}.\n` +
         (known.length ? `This tenant's asset library has: ${known.join(', ')}.` : 'This tenant\'s asset library is empty (or the store is unreachable) — add the asset with wingguy_assets, or paste the URL directly.'),
+      isError: true,
+    };
+  }
+  const leftovers = findLeftoverPlaceholders(detected.html);
+  if (leftovers.length) {
+    return {
+      text:
+        `Draft NOT created — unresolved placeholder(s) in the body: ${leftovers.join(', ')}.\n` +
+        `This tool resolves {{asset:key}} tokens only. Other {{placeholders}} (like {{signoff}}) are ` +
+        `substituted into rule text before drafting — a body reaching this door must contain only real ` +
+        `words. Replace each placeholder with its actual value (wingguy_variables lists this tenant's ` +
+        `values) and call again.`,
       isError: true,
     };
   }
@@ -2021,4 +2046,4 @@ async function legacyToolCall(toolName, args, tenant = TENANT) {
   }
 }
 
-module.exports = { registerWingguyMailTools, legacyToolList, legacyToolCall, TOOL_DEFS, detectAssets, htmlToText, stripQuotedTail, settleEmailEditPairs, parseLinkedInLast, linkedInEverInbound, classifyLead, computeMailSignals, computeFollowupSweep, runFollowupSweep, chooseFollowUpStamp, coachOwnEmails, stampFollowUpForDraft, buildQueue, deriveDraftState, draftMarker };
+module.exports = { registerWingguyMailTools, legacyToolList, legacyToolCall, TOOL_DEFS, detectAssets, findLeftoverPlaceholders, htmlToText, stripQuotedTail, settleEmailEditPairs, parseLinkedInLast, linkedInEverInbound, classifyLead, computeMailSignals, computeFollowupSweep, runFollowupSweep, chooseFollowUpStamp, coachOwnEmails, stampFollowUpForDraft, buildQueue, deriveDraftState, draftMarker };

@@ -10,7 +10,7 @@
  */
 const assert = require('assert');
 const store = require('../services/wingguyRulesStore');
-const { detectAssets } = require('../services/wingguyMailMcp');
+const { detectAssets, findLeftoverPlaceholders } = require('../services/wingguyMailMcp');
 
 let failures = 0;
 const check = async (name, fn) => {
@@ -86,6 +86,22 @@ class FakeDb {
     assert.ok(r.html.includes('{{asset:nope}}'));
     assert.deepStrictEqual(r.unresolved, ['nope']);
   });
+  // --- Placeholder guard: nothing templated past the door (2026-08-18) ------
+  console.log('\nfindLeftoverPlaceholders() — template goo must not reach a mailbox:');
+  await check('a clean body has no leftovers', () =>
+    assert.deepStrictEqual(findLeftoverPlaceholders('<p>Talk soon,<br>Guy</p>'), []));
+  await check('a literal {{signoff}} is caught', () =>
+    assert.deepStrictEqual(findLeftoverPlaceholders('Talk soon,<br>{{signoff}}'), ['{{signoff}}']));
+  await check('a resolved asset body passes; an unrelated variable in the same body is still caught', () => {
+    const r = detectAssets('see {{asset:intro-deck}} — {{first_name}}', lib);
+    assert.deepStrictEqual(r.unresolved, []); // the asset itself resolved fine
+    assert.deepStrictEqual(findLeftoverPlaceholders(r.html), ['{{first_name}}']);
+  });
+  await check('duplicates report once', () =>
+    assert.deepStrictEqual(findLeftoverPlaceholders('{{x}} and {{x}}'), ['{{x}}']));
+  await check('optional-style {{?core_framing}} is caught too (rules syntax never belongs in a body)', () =>
+    assert.deepStrictEqual(findLeftoverPlaceholders('a {{?core_framing}} b'), ['{{?core_framing}}']));
+
   await check('a non-library URL is ignored', () => {
     const r = detectAssets('<a href="https://elsewhere.com/x">x</a>', lib);
     assert.deepStrictEqual(r.assetKeys, []);
