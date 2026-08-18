@@ -48,6 +48,10 @@ async function getCoachCalendarInfo(clientId) {
   const timezone = rec.fields['Timezone'] || DEFAULT_TZ;
   const nylasGrantId = rec.fields['Nylas Grant ID'] || null;
   const calendarProvider = rec.fields['Calendar Provider'] || null;
+  // Unipile (the Nylas replacement): ONE account_id covers calendar + email. Without this a
+  // Unipile-only tenant read as "no calendar" here and unipileEnv() fell back to the shared
+  // UNIPILE_ACCOUNT_ID env var (unset on prod, so it failed closed — keep that env var unset).
+  const unipileAccountId = rec.fields['Unipile Account ID'] || null;
   // Direct-provider (e.g. Zoho) credentials — the calendar equivalent of a Nylas grant.
   const calendarProviderToken = rec.fields['Calendar Provider Token'] || null;
   const calendarProviderDomain = rec.fields['Calendar Provider Domain'] || null;
@@ -56,10 +60,10 @@ async function getCoachCalendarInfo(clientId) {
   // calendar (blank = the provider default) so "where did that meeting go?" has a boring answer.
   const calendarReadIds = rec.fields['Calendar Read IDs'] || null;
   const calendarWriteId = rec.fields['Calendar Write ID'] || null;
-  if (!calendarEmail && !nylasGrantId && !calendarProviderToken) {
-    throw new Error('No calendar for this client — share a calendar with the service account (Google), connect via Nylas, or connect a direct provider (e.g. Zoho) first.');
+  if (!calendarEmail && !nylasGrantId && !unipileAccountId && !calendarProviderToken) {
+    throw new Error('No calendar for this client — share a calendar with the service account (Google), connect via Unipile/Nylas, or connect a direct provider (e.g. Zoho) first.');
   }
-  return { calendarEmail, timezone, nylasGrantId, calendarProvider, calendarProviderToken, calendarProviderDomain, calendarReadIds, calendarWriteId };
+  return { calendarEmail, timezone, nylasGrantId, calendarProvider, unipileAccountId, calendarProviderToken, calendarProviderDomain, calendarReadIds, calendarWriteId };
 }
 
 // The calendar provider a coach actually uses. ADDITIVE + Guy-safe: if the client shared a Google
@@ -71,6 +75,7 @@ function providerForInfo(info) {
   if (info.calendarEmail) return 'google';
   if (info.calendarProvider) return String(info.calendarProvider).trim().toLowerCase();
   if (info.nylasGrantId) return 'nylas';
+  if (info.unipileAccountId) return 'unipile'; // account id present but Calendar Provider unset
   return 'google';
 }
 
@@ -86,13 +91,15 @@ function coachForCalendar(info) {
   return {
     calendarProvider: providerForInfo(info),
     nylasGrantId: info.nylasGrantId,
+    unipileAccountId: info.unipileAccountId || null,
     googleCalendarEmail: info.calendarEmail || '',
     calendarProviderToken: info.calendarProviderToken || null,
     calendarProviderDomain: info.calendarProviderDomain || null,
     // The ONE nominated write target: the seam reads whichever name its branch uses (Zoho uid /
-    // Nylas calendar id). Blank = the provider default, today's behaviour.
+    // Nylas calendar id / Unipile calendarWriteId). Blank = the provider default, today's behaviour.
     calendarUid: info.calendarWriteId || null,
     nylasCalendarId: info.calendarWriteId || null,
+    calendarWriteId: info.calendarWriteId || null,
     // Read scope for the multi-calendar busy-merge (blank | "all" | explicit ids).
     calendarReadIds: info.calendarReadIds || null,
     timezone: info.timezone,
@@ -712,5 +719,5 @@ module.exports = {
   // read-only calendar listing (provider-agnostic) + its display helper
   listEventsForCoach, resolveListWindow, timeOnlyInTz,
   // coach calendar identity (roster fields incl. multi-calendar read/write scope) — for setup/check scripts
-  getCoachCalendarInfo,
+  getCoachCalendarInfo, providerForInfo, coachForCalendar,
 };

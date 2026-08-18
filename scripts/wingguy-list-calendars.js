@@ -13,7 +13,7 @@ const tenant = process.argv[2] || 'Guy-Wilson';
 (async () => {
   console.log(`tenant = ${tenant}\n`);
   const info = await getCoachCalendarInfo(tenant);
-  const provider = info.calendarEmail ? 'google' : (info.calendarProvider || (info.nylasGrantId ? 'nylas' : 'google'));
+  const provider = info.calendarEmail ? 'google' : (info.calendarProvider || (info.nylasGrantId ? 'nylas' : (info.unipileAccountId ? 'unipile' : 'google')));
   console.log(`provider = ${provider}`);
   console.log(`Calendar Read IDs (roster) = ${info.calendarReadIds || '(blank -> default calendar only)'}`);
   console.log(`Calendar Write ID (roster) = ${info.calendarWriteId || '(blank -> provider default)'}\n`);
@@ -21,6 +21,7 @@ const tenant = process.argv[2] || 'Guy-Wilson';
   const coach = {
     calendarProvider: provider,
     nylasGrantId: info.nylasGrantId,
+    unipileAccountId: info.unipileAccountId || null,
     googleCalendarEmail: info.calendarEmail || '',
     calendarProviderToken: info.calendarProviderToken,
     calendarProviderDomain: info.calendarProviderDomain,
