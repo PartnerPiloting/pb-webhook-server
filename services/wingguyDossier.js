@@ -41,10 +41,16 @@ const PREP_CAL_DAYS = 3;
 // Transcript budget for the deep read (Guy 2026-08-17: "I'm having so many calls that I can't
 // remember what happened"). The LAST TWO calls are read, not just the latest — a third call needs
 // to know what the second one was about. Older meetings still contribute their stored summary.
-// Characters, not tokens: ~24k of transcript is ~6k tokens, cents per person and only on rebuild.
-const TRANSCRIPT_CHARS = [14000, 10000];
-// Material ceiling for the deep read. Was 32k when one transcript rode along; two need the room.
-const MATERIAL_CHARS = 60000;
+// Characters, not tokens. Was [14000, 10000] — which covered ~15 minutes of a call, and the deep
+// read confidently reported the cut point as "the call ended there", deriving next steps from a
+// false premise (Matthew Bulat's 61-min call recapped as ending at minute 16; two promised
+// follow-up emails missed — 2026-08-18). An hour of talk is ~55k chars, so these budgets fit
+// whole real calls; anything that still overflows gets an explicit truncation marker instead of
+// a silent cliff (see gatherMeetings / deepRead).
+const TRANSCRIPT_CHARS = [100000, 60000];
+// Material ceiling for the deep read. Must comfortably hold both transcript budgets plus the
+// timeline; ~220k chars is ~55k tokens, well inside the model's window, cents and only on rebuild.
+const MATERIAL_CHARS = 220000;
 
 let pool;
 function getPool() {
@@ -206,6 +212,22 @@ async function gatherEmails(mailProvider, coach, email, max = EMAIL_LIMIT) {
   } catch (_) { return []; }
 }
 
+/**
+ * Trim a transcript to budget WITHOUT lying about it. The old bare .slice() handed the deep read
+ * a text that stopped mid-sentence, and the model read "my input ended" as "the call ended" —
+ * then wrote WHERE IT STANDS and next moves from that false premise (Matthew Bulat 2026-08-04:
+ * 61-min call recapped as cutting off at minute 16; Nikki Tadic 2026-07-22 likewise). Any clip
+ * must therefore say so IN the material, with the honest proportion, so the summariser can report
+ * partial coverage as a property of the summary, never of the meeting.
+ */
+function clipTranscript(text, cap) {
+  const whole = String(text).replace(/\s+/g, ' ');
+  if (whole.length <= cap) return scrub(whole);
+  const pct = Math.round((cap / whole.length) * 100);
+  return scrub(whole.slice(0, cap)) +
+    ` [TRANSCRIPT CLIPPED FOR LENGTH — this is only the first ~${pct}% of the call. The meeting continued past this point; how it ended is NOT in this material.]`;
+}
+
 async function gatherMeetings(tenantId, recId, fullName) {
   const p = getPool();
   if (!p) return [];
@@ -239,7 +261,7 @@ async function gatherMeetings(tenantId, recId, fullName) {
         // Celeste details the summary alone missed) and where the per-call recap is written from.
         // Not stored in the payload (it already lives in recall_meetings); consumed at read time.
         transcript: m.transcript_text && i < TRANSCRIPT_CHARS.length
-          ? scrub(String(m.transcript_text).replace(/\s+/g, ' ').slice(0, TRANSCRIPT_CHARS[i]))
+          ? clipTranscript(m.transcript_text, TRANSCRIPT_CHARS[i])
           : null,
       };
     });
@@ -420,7 +442,8 @@ const DEEP_SYSTEM = `You prepare a coach's memory-dossier for one contact. From 
  "why_meeting": "one or two sentences: WHY this person and the coach are talking at all — how the meeting came about and what they said they wanted from it, quoting their own words where you can. Read the messages that arranged the meeting, not just the meeting itself. This is what the coach reads walking in to a FIRST call, so it must stand alone. Empty string only if the material genuinely never says.",
  "meeting_recaps": [{"date": "YYYY-MM-DD", "title": "the meeting title", "about": "one sentence: what this call was for", "happened": "a full paragraph, and be generous with it — what was actually discussed, what THEY said in their own words, what they reacted to, where it warmed or cooled, what was decided. The coach cannot remember this call and is walking into the next one; detail here is the whole point, so do not compress it into a summary line.", "personal": "any human detail that came up in THIS call, or empty string", "ended": "one sentence: how the call was left — what each side said they would do next"}],
  "next_move": "one sentence: the smartest next action. For a WARM relationship that has clearly ended, that may be a one-line graceful close (door-open goodbye) — say so explicitly. For a cold or never-real thread, say exactly: nothing — let it rest."}
-Write one meeting_recaps entry per meeting you were given a FULL TRANSCRIPT for, newest first; if you were given no transcript, return an empty array rather than reconstructing a call from the emails around it. Ground everything ONLY in the material given. Return ONLY the JSON object.`;
+Write one meeting_recaps entry per meeting you were given a FULL TRANSCRIPT for, newest first; if you were given no transcript, return an empty array rather than reconstructing a call from the emails around it. Ground everything ONLY in the material given.
+PARTIAL INPUT IS NEVER A MEETING FACT. A transcript ending with a [TRANSCRIPT CLIPPED FOR LENGTH …] marker (or any material ending with [MATERIAL CLIPPED …]) means YOUR INPUT was cut, not that the call ended there. Never write that a call "ended", "cut off", "cut out" or "was interrupted" at the point your text stops. For a clipped call: open its "happened" with the coverage ("covers roughly the first N% of the call"), keep standing/commitments/next_move within what that portion supports, and set "ended" to exactly what is true — the ending is not in this material. Even without a marker, describe how a call ended only when the words themselves close the meeting (goodbyes, agreed next steps). Return ONLY the JSON object.`;
 
 async function deepRead(llm, name, timeline, meetings) {
   const withTranscript = meetings.filter((m) => m.transcript);
@@ -435,6 +458,11 @@ async function deepRead(llm, name, timeline, meetings) {
       m.transcript,
     ]),
   ].join('\n');
+  // Ceiling clip must be as honest as the transcript clip — a bare slice here would recreate the
+  // exact bug the marker upstream exists to prevent (input-end read as meeting-end).
+  const materialClipped = material.length > MATERIAL_CHARS
+    ? material.slice(0, MATERIAL_CHARS) + ' [MATERIAL CLIPPED FOR LENGTH — the records continue past this point; treat everything after the last complete item as unknown, not as absent.]'
+    : material;
   // Up to 2 attempts: the model occasionally breaks its own JSON (unescaped quotes when quoting
   // someone — killed Celeste's and Piyush's dossiers on 2026-07-24). Control-char sanitation first,
   // then one full retry with a sterner instruction.
@@ -446,7 +474,7 @@ async function deepRead(llm, name, timeline, meetings) {
     const resp = await llm.messages.create({
       model: MODEL_ID, max_tokens: 6000, thinking: NO_THINKING,
       system: DEEP_SYSTEM + (attempt ? '\nSTRICT: your previous output was invalid JSON. Escape every double-quote inside string values as \\" and never put raw newlines inside strings.' : ''),
-      messages: [{ role: 'user', content: scrub(`Today is ${new Date().toISOString().slice(0, 10)}.\n\n${material.slice(0, MATERIAL_CHARS)}`) }],
+      messages: [{ role: 'user', content: scrub(`Today is ${new Date().toISOString().slice(0, 10)}.\n\n${materialClipped}`) }],
     });
     const text = (resp.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('');
     const s = text.indexOf('{'); const e = text.lastIndexOf('}');
@@ -591,7 +619,12 @@ async function prepareDossiers(tenant) {
         // again: the fingerprint compares equal at v4 from then on.
         // v5 (2026-08-17): meeting_recaps / why_meeting / personal are new payload fields, so every
         // stored dossier must be rebuilt once to carry them. Same one-off cost shape as v4.
-        const basis = `v5|e${emails.length}:${emails.length ? emails[emails.length - 1].date : ''}|l${li.length}:${li.length ? li[li.length - 1].date : ''}|m${meetings.length}:${meetings.length ? meetings[0].date : ''}`;
+        // v6 (2026-08-18): the backfill for the truncation bug. v5 dossiers were deep-read from a
+        // 14k-char transcript slice with no clip marker, so any call past ~15 minutes was recapped
+        // as "cutting off" partway through — WHERE IT STANDS, promises and next moves derived from
+        // a false ending (Matthew Bulat, Nikki Tadic). Every stored dossier rebuilds once against
+        // the whole transcripts.
+        const basis = `v6|e${emails.length}:${emails.length ? emails[emails.length - 1].date : ''}|l${li.length}:${li.length ? li[li.length - 1].date : ''}|m${meetings.length}:${meetings.length ? meetings[0].date : ''}`;
         const existing = await getDossierRow(tenant, person.key);
         if (existing && existing.basis === basis) { out.cached++; continue; }
 
