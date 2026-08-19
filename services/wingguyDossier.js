@@ -307,11 +307,20 @@ async function gatherEmailRecord(mailProvider, coach, addresses, max = EMAIL_LIM
     inbound: human.filter((r) => r.strictDir === 'them').reverse().map((r) => ({ date: r.date, subject: r.subject, snippet: r.text })),
     facts: null,
   };
-  const thread = human.filter((r) => r.bodyText).map((r) => ({
-    date: r.date, dir: r.strictDir, subject: r.subject,
-    text: r.bodyText.length > FACT_BODY_CHARS ? r.bodyText.slice(0, FACT_BODY_CHARS) + ' [CLIPPED FOR LENGTH]' : r.bodyText,
-    attachments: r.attachments || [],
-  }));
+  // Calendar accept/decline machinery stays OUT of the indexes, but a decline's comment is often
+  // the deferral in the sender's own words (Celeste, 14 Aug: "really flat out with new staff and a
+  // few big projects") — feed those snippets to the facts pass so the reason survives verbatim
+  // instead of the record claiming no quote exists.
+  const calendarNotes = rows.filter((r) => r.kind === 'calendar' && r.text);
+  const thread = [...human.filter((r) => r.bodyText), ...calendarNotes]
+    .sort((a, b) => String(a.date).localeCompare(String(b.date)))
+    .map((r) => ({
+      date: r.date, dir: r.strictDir, subject: r.subject,
+      text: r.bodyText
+        ? (r.bodyText.length > FACT_BODY_CHARS ? r.bodyText.slice(0, FACT_BODY_CHARS) + ' [CLIPPED FOR LENGTH]' : r.bodyText)
+        : r.text,
+      attachments: r.attachments || [],
+    }));
   const timeline = rows.slice(-max).map(({ strictDir, bodyText, links, attachments, ...rest }) => rest);
   return { timeline, record, thread };
 }
