@@ -85,6 +85,11 @@
     profile_location: 'span.text-body-small.inline.t-black--light.break-words, .pv-text-details__left-panel .text-body-small',
     profile_top_card: '.pv-top-card, .ph5.pb5, main section',
     profile_about_spans: 'span[aria-hidden="true"]',
+    // The Activity section (their recent posts) — the anchor ids LinkedIn has used, correctable from
+    // the store when they rename again. readRecentActivity also has a heading-text fallback ("Activity")
+    // that survives an id rename outright, so a store correction is a repair, not a rescue.
+    profile_activity_anchor: '#content_collections, #recent_activity',
+    profile_activity_items: 'span[aria-hidden="true"]',
     convo_container: '.msg-overlay-conversation-bubble,.msg-convo-wrapper,.msg-thread,.msg-s-message-list-container,.scaffold-layout__detail',
     convo_header: 'header, [class*="overlay-bubble-header"], [class*="title-bar"], [class*="thread__header"], [class*="thread-header"]',
     message_group_name: '.msg-s-message-group__name, [class*="message-group__name"], [class*="event-listitem__name"]',
@@ -165,6 +170,11 @@
       { key: 'profile_headline', soft: true },
       { key: 'profile_location', soft: true },
       { key: 'profile_about_spans', soft: true, within: 'about' },
+      // Posts went silently blind for months (worked early on, died with a markup change, nobody knew
+      // — Guy noticed by absence, 2026-08-19). Soft because plenty of people genuinely never post,
+      // but recorded so the monitor's cross-tenant zero-finds rule can catch the next blinding.
+      { key: 'profile_activity_anchor', soft: true },
+      { key: 'profile_activity_items', soft: true, within: 'activity' },
     ],
     messaging: [
       { key: 'thread_open_marker' },
@@ -226,6 +236,7 @@
       let root = document;
       if (item.within === 'convo') { root = scopes && scopes.convo; if (!root) continue; }
       if (item.within === 'about') { root = scopes && scopes.about; if (!root) continue; }
+      if (item.within === 'activity') { root = scopes && scopes.activity; if (!root) continue; }
       // Probe at the SAME depth as the scrape (light pass, then shadow walk) — a shallower check
       // would report misses for content the scrape happily reads on the new-UI build.
       let found = false;
@@ -327,8 +338,12 @@
         return null;
       }
       console.log('[Wingguy] thin-profile tab read:', profileUrl, '→ headline:', p.headline ? 'yes' : 'no',
-        '| about:', p.about ? `${p.about.length} chars` : 'no', '| pageText:', p.pageText ? `${p.pageText.length} chars` : 'no');
-      return { headline: p.headline || '', about: p.about || '', location: p.location || '', pageText: p.pageText || '' };
+        '| about:', p.about ? `${p.about.length} chars` : 'no', '| pageText:', p.pageText ? `${p.pageText.length} chars` : 'no',
+        '| posts:', Array.isArray(p.recentPosts) ? p.recentPosts.length : 0);
+      // recentPosts used to be dropped right here — the hidden-tab scrape read them and this return
+      // threw them away, so thin-path drafts never saw a post even when the read worked.
+      return { headline: p.headline || '', about: p.about || '', location: p.location || '', pageText: p.pageText || '',
+        recentPosts: Array.isArray(p.recentPosts) ? p.recentPosts : [] };
     } catch (e) {
       console.log('[Wingguy] thin-profile tab read failed:', e.message);
       return null;
@@ -536,15 +551,42 @@
     return text.slice(0, 4000);
   }
 
-  function readRecentActivity() {
-    // Light, optional: grab a couple of snippets from the Activity section if present on the profile.
-    const anchor = deepGetById('content_collections') || deepGetById('recent_activity');
-    const section = anchor ? anchor.closest('section') : null;
+  // The Activity section (their recent post previews). Three-layer find: the store-correctable id
+  // anchors, then a heading-text fallback — an h2/h3 that starts with "Activity", deep-walked
+  // because the new-UI build renders profile sections inside shadow roots. The old version of this
+  // read (plain getElementById + light-DOM spans) went blind on the new markup and, being outside
+  // the self-check, STAYED blind for months — hence the section handle is also returned, so the
+  // self-check can grade the item read inside the real container.
+  function findActivitySection() {
+    const anchor = findByKey('profile_activity_anchor');
+    let section = anchor ? (anchor.closest('section') || anchor.parentElement) : null;
+    if (!section) {
+      // \b not $: the a11y build duplicates heading text ("Activity Activity"), and some builds
+      // append the follower count to the same heading element.
+      const h = deepQueryAll('h2, h3').find((el) => /^activity\b/i.test(cleanText(el.textContent)));
+      if (h) section = h.closest('section') || h.parentElement;
+    }
+    return section;
+  }
+
+  // Chrome and attribution lines are dropped ONLY when short: "Guy Wilson reposted this" and
+  // "1,234 followers" are noise, but a real post that happens to contain "commented on" or
+  // "10,000 followers" is exactly the material we're after — and post previews are long. A real
+  // preview also usually ENDS in "…see more", so that tail is stripped, never used to drop the item.
+  // (The deep activity-page read is the place for proper original-vs-repost handling; this is the
+  // free glance at what's already on the page.)
+  const ACTIVITY_ATTRIBUTION = /\b(reposted this|liked this|liked by|commented on|celebrates this|loves this|finds this|replied to)\b/i;
+  const ACTIVITY_CHROME = /(\d[\d,.]*\s*(followers?|comments?|reposts?|reactions?|impressions?)\b|^(show all|create a post|load more|activity)\b)/i;
+
+  function readRecentActivity(sectionOut) {
+    const section = findActivitySection();
+    if (sectionOut) sectionOut.section = section || null;
     if (!section) return [];
-    const items = Array.from(section.querySelectorAll(selStr('profile_about_spans')))
-      .map((s) => cleanText(s.textContent))
-      .filter((t) => t && t.length > 25);
-    return Array.from(new Set(items)).slice(0, 3);
+    const items = deepQueryAll(selStr('profile_activity_items'), section)
+      .map((s) => cleanText(s.textContent).replace(/(…|\.\.\.)?\s*see more$/i, '').trim())
+      .filter((t) => t && t.length > 25
+        && !(t.length < 120 && (ACTIVITY_ATTRIBUTION.test(t) || ACTIVITY_CHROME.test(t))));
+    return Array.from(new Set(items)).slice(0, 3).map((t) => t.slice(0, 400));
   }
 
   // Name fallbacks for when LinkedIn's DOM selectors miss (markup shifts, or the messaging
@@ -786,13 +828,23 @@
       if (deepText.length > pageText.length) pageText = deepText;
     }
 
+    // Activity read keeps its section handle so the self-check below grades the item read inside
+    // the real container — and so the console line can carry a shape sample when the read is blind
+    // on a page that clearly has the section (that's the paste-to-Guy diagnostic).
+    const activityScope = { section: null };
+    const recentPosts = inThread ? [] : readRecentActivity(activityScope);
+    if (!inThread) {
+      console.log('[Wingguy] activity read: section=', !!activityScope.section, '| posts:', recentPosts.length,
+        activityScope.section && !recentPosts.length ? '| shape: ' + shapeOf(activityScope.section) : '');
+    }
+
     const base = {
       name,
       headline,
       location,
       profileUrl: location_origin_path(),
       about: readAbout(),
-      recentPosts: readRecentActivity(),
+      recentPosts,
       pageText,
       nameSource,
       // Which surface this was read from. The gap notice needs it: in a thread the profile-only
@@ -812,6 +864,7 @@
         // checked against the whole document (see runSelfCheck).
         convo: document.querySelector(CONVO_SELECTORS()) || newUiConvoFromDocument() || null,
         about: (aboutAnchor && aboutAnchor.closest('section')) || null,
+        activity: activityScope.section,
       }).catch(() => {});
     } catch (_) { /* a self-check must never break a scrape */ }
 
@@ -2088,7 +2141,12 @@
     // differently from a product that has quietly gone vague on you.
     const notice = draftGapNotice(profile);
     const noticeHtml = notice ? `<div class="wingguy-muted">${escapeHtml(notice)}</div>` : '';
-    setContextSub(`<span class="wingguy-context-who">${who}</span>${noticeHtml}`);
+    // Posts read went silently blind once (2026-08); this one muted line is the at-a-glance proof of
+    // life. Profile surface only — in a thread the profile-only fields are blanked on purpose.
+    const nPosts = Array.isArray(profile.recentPosts) ? profile.recentPosts.length : 0;
+    const postsHtml = profile._wgSurface === 'profile'
+      ? `<div class="wingguy-muted">recent posts: ${nPosts ? `${nPosts} found` : 'none found'}</div>` : '';
+    setContextSub(`<span class="wingguy-context-who">${who}</span>${postsHtml}${noticeHtml}`);
   }
 
   // Top-level: set the header, then open the unified chat. The agent reads the profile + thread and
@@ -2155,6 +2213,13 @@
         const extras = await fetchProfileExtras(profile.profileUrl);
         for (const k of ['headline', 'about', 'location', 'pageText']) {
           if (extras && extras[k] && !chatState.profile[k]) chatState.profile[k] = extras[k];
+        }
+        // Arrays don't fit the truthiness merge above (an empty [] is truthy, so posts would never
+        // land) — merged explicitly, only when the thread scrape had none (it always has none:
+        // profile-only fields are blanked on the messaging surface).
+        if (extras && Array.isArray(extras.recentPosts) && extras.recentPosts.length
+            && !(chatState.profile.recentPosts || []).length) {
+          chatState.profile.recentPosts = extras.recentPosts;
         }
       }
     }
