@@ -788,6 +788,20 @@
     return anchor ? closestConversationContainer(anchor) : null;
   }
 
+  // The whole page's visible text, shadow-aware. On the new-UI build body.innerText is a few
+  // hundred chars of chrome; the real text sits in shadow trees, so fall through to the
+  // shadow-crossing walk when the plain read comes up thin.
+  function readPageTextNow() {
+    const mainEl = document.querySelector('main') || document.body;
+    let pageText = (mainEl.innerText || '')
+      .replace(/\n{3,}/g, '\n\n').replace(/[ \t]+/g, ' ').trim().slice(0, 6000);
+    if (pageText.length < 500) {
+      const deepText = deepInnerText(document.body);
+      if (deepText.length > pageText.length) pageText = deepText;
+    }
+    return pageText;
+  }
+
   async function scrapeProfile() {
     // If the user is acting inside a message thread — including a floating conversation bubble open OVER
     // someone else's /in/ profile — the person meant is the one in the THREAD, not the profile behind it.
@@ -818,15 +832,7 @@
 
     // RAW FALLBACK: the whole profile's visible text. Robust to LinkedIn's class churn — when the
     // structured selectors miss, the model still gets real content to hook on (like AI Blaze does).
-    // On the new-UI build body.innerText is a few hundred chars of chrome; the real text sits in
-    // shadow trees, so fall through to the shadow-crossing walk when the plain read comes up thin.
-    const mainEl = document.querySelector('main') || document.body;
-    let pageText = (mainEl.innerText || '')
-      .replace(/\n{3,}/g, '\n\n').replace(/[ \t]+/g, ' ').trim().slice(0, 6000);
-    if (pageText.length < 500) {
-      const deepText = deepInnerText(document.body);
-      if (deepText.length > pageText.length) pageText = deepText;
-    }
+    const pageText = readPageTextNow();
 
     // Activity read keeps its section handle so the self-check below grades the item read inside
     // the real container — and so the console line can carry a shape sample when the read is blind
@@ -868,18 +874,38 @@
       }).catch(() => {});
     } catch (_) { /* a self-check must never break a scrape */ }
 
-    // When acting in a thread, the page values are the WRONG person: on /messaging/ the h1 is the
-    // messaging UI ("Messaging"); on a bubble-over-profile the h1 is the profile BEHIND the bubble
-    // (Todd, not Deepti). Either way, override name/headline/URL from the open thread's header and
-    // suppress the profile-only fields (about/posts/pageText belong to the wrong person here).
+    // When acting in a thread, the page values are usually the WRONG person: on /messaging/ the h1
+    // is the messaging UI ("Messaging"); on a bubble-over-profile the h1 is the profile BEHIND the
+    // bubble (Todd, not Deepti). Override name/headline/URL from the open thread's header — and
+    // blank the profile-only fields UNLESS the bubble is over the SAME person's own profile (the
+    // routine "open their profile → Message → /wg" flow, Luke 2026-08-19): there the page reads are
+    // the right person and throwing them away cost exactly the post material this flow exists for.
     if (inThread) {
       const h = scrapeMessagingHeader();
+      const pageName = cleanText(nameEl && nameEl.textContent) || nameFromTitle();
+      const samePerson = !!(isProfilePage() && h.name && pageName
+        && h.name.trim().toLowerCase() === pageName.trim().toLowerCase());
       if (h.name) { base.name = h.name; base.nameSource = 'messaging-header'; }
       if (h.headline) base.headline = h.headline;
       if (h.profileUrl) base.profileUrl = h.profileUrl;
-      base.about = '';
-      base.recentPosts = [];
-      base.pageText = '';
+      if (samePerson) {
+        // The lazy-section pass was skipped above (no auto-scroll on the messaging surface), so
+        // force About/Activity into the DOM now and re-read. Header stays the name authority.
+        await autoScrollToLoad();
+        await expandAboutSeeMore();
+        base.about = readAbout();
+        base.recentPosts = readRecentActivity(activityScope);
+        base.pageText = readPageTextNow();
+        // Tells startChat the real page was already read — zero posts here means they genuinely
+        // have none, so don't spend a hidden-tab read confirming it.
+        base._wgPageKept = true;
+        console.log('[Wingguy] bubble over the same person\'s profile — page reads kept | about:',
+          base.about ? `${base.about.length} chars` : 'no', '| posts:', base.recentPosts.length);
+      } else {
+        base.about = '';
+        base.recentPosts = [];
+        base.pageText = '';
+      }
     }
     // Un-scramble the internal /in/ACoA… member-id URL to the vanity slug ONCE, here at the source, so
     // EVERY downstream consumer (context display, lead + email lookups, booking, the invite link) works on
@@ -2142,9 +2168,10 @@
     const notice = draftGapNotice(profile);
     const noticeHtml = notice ? `<div class="wingguy-muted">${escapeHtml(notice)}</div>` : '';
     // Posts read went silently blind once (2026-08); this one muted line is the at-a-glance proof of
-    // life. Profile surface only — in a thread the profile-only fields are blanked on purpose.
+    // life. On a profile read it always shows; on the messaging surface only when posts actually
+    // arrived (same-person salvage or the hidden-tab read) — "none found" would be ambiguous there.
     const nPosts = Array.isArray(profile.recentPosts) ? profile.recentPosts.length : 0;
-    const postsHtml = profile._wgSurface === 'profile'
+    const postsHtml = (profile._wgSurface === 'profile' || nPosts)
       ? `<div class="wingguy-muted">recent posts: ${nPosts ? `${nPosts} found` : 'none found'}</div>` : '';
     setContextSub(`<span class="wingguy-context-who">${who}</span>${postsHtml}${noticeHtml}`);
   }
@@ -2207,20 +2234,38 @@
     // does) pulls their real headline/About so the first draft is personalised, not generic. The
     // Portal check reuses the lookup call already in flight — a Portal-matched lead costs nothing
     // extra and keeps LinkedIn as the source of LAST resort, never the routine path.
-    if (!profile.about && !profile.pageText && profile.profileUrl) {
-      const inPortal = await portalLookup;
-      if (!inPortal || !inPortal.found) {
+    // Two reasons to open the hidden-tab profile read, with different gates:
+    // - THIN (no About, no page text): the drafter is blind. Portal-gated — a Portal match already
+    //   fills the gaps, and LinkedIn stays the source of LAST resort (Julian/Vinit 2026-08-12).
+    // - FRESH-CONNECTION draft from the messaging surface with no post material: posts are the
+    //   hook, and the Portal CANNOT have them (they're this week's content, Luke 2026-08-19) — so
+    //   this one deliberately bypasses the Portal gate. Bounded to early threads (≤2 messages);
+    //   in an established conversation the thread itself is the material, not worth ~5s per turn.
+    const wantThin = !profile.about && !profile.pageText;
+    const wantPosts = profile._wgSurface === 'messaging'
+      && !profile._wgPageKept
+      && (!thread || thread.length <= 2)
+      && !(profile.recentPosts || []).length;
+    if ((wantThin || wantPosts) && profile.profileUrl) {
+      let fetchIt = wantPosts;
+      if (!fetchIt) {
+        const inPortal = await portalLookup;
+        fetchIt = !inPortal || !inPortal.found;
+      }
+      if (fetchIt) {
         const extras = await fetchProfileExtras(profile.profileUrl);
         for (const k of ['headline', 'about', 'location', 'pageText']) {
           if (extras && extras[k] && !chatState.profile[k]) chatState.profile[k] = extras[k];
         }
         // Arrays don't fit the truthiness merge above (an empty [] is truthy, so posts would never
-        // land) — merged explicitly, only when the thread scrape had none (it always has none:
-        // profile-only fields are blanked on the messaging surface).
+        // land) — merged explicitly, only when the thread scrape had none.
         if (extras && Array.isArray(extras.recentPosts) && extras.recentPosts.length
             && !(chatState.profile.recentPosts || []).length) {
           chatState.profile.recentPosts = extras.recentPosts;
         }
+        // The header rendered before this read — repaint so the posts count reflects what the
+        // draft will actually be built from.
+        renderContext(chatState.profile);
       }
     }
     // Auto-kick the first turn (hidden). The kickoff differs for a fresh connection vs an open thread.
