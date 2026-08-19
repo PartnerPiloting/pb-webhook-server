@@ -89,7 +89,11 @@
     // the store when they rename again. readRecentActivity also has a heading-text fallback ("Activity")
     // that survives an id rename outright, so a store correction is a repair, not a rescue.
     profile_activity_anchor: '#content_collections, #recent_activity',
-    profile_activity_items: 'span[aria-hidden="true"]',
+    // Candidate elements only — readRecentActivity keeps just the ones whose OWN text (not their
+    // descendants') is a long run, which is what a post preview is on every build seen so far. The
+    // 2026-08 markup dropped the aria-hidden duplication (verified live on a real profile), so the
+    // attribute is kept first for old-build accounts but plain span/p carry the new build.
+    profile_activity_items: 'span[aria-hidden="true"], span, p',
     convo_container: '.msg-overlay-conversation-bubble,.msg-convo-wrapper,.msg-thread,.msg-s-message-list-container,.scaffold-layout__detail',
     convo_header: 'header, [class*="overlay-bubble-header"], [class*="title-bar"], [class*="thread__header"], [class*="thread-header"]',
     message_group_name: '.msg-s-message-group__name, [class*="message-group__name"], [class*="event-listitem__name"]',
@@ -578,13 +582,27 @@
   const ACTIVITY_ATTRIBUTION = /\b(reposted this|liked this|liked by|commented on|celebrates this|loves this|finds this|replied to)\b/i;
   const ACTIVITY_CHROME = /(\d[\d,.]*\s*(followers?|comments?|reposts?|reactions?|impressions?)\b|^(show all|create a post|load more|activity)\b)/i;
 
-  function readRecentActivity(sectionOut) {
+  // An element's OWN text — direct text nodes only, none of its descendants'. The post preview is
+  // a leaf text span on every build seen so far; wrapper elements (whose textContent is the whole
+  // card — post + headline + counts concatenated) yield nothing under this read, which is what
+  // makes it markup-proof: no attribute or class is trusted, just "where does the long text live".
+  function ownText(el) {
+    try {
+      return cleanText(Array.from(el.childNodes)
+        .filter((n) => n.nodeType === 3).map((n) => n.textContent).join(''));
+    } catch (_) { return ''; }
+  }
+
+  function readRecentActivity(sectionOut, exclude) {
     const section = findActivitySection();
     if (sectionOut) sectionOut.section = section || null;
     if (!section) return [];
+    // The person's own name/headline repeat on every activity card — exclude them by value.
+    const excl = (exclude || []).map((s) => cleanText(s).toLowerCase()).filter(Boolean);
     const items = deepQueryAll(selStr('profile_activity_items'), section)
-      .map((s) => cleanText(s.textContent).replace(/(…|\.\.\.)?\s*see more$/i, '').trim())
+      .map((el) => ownText(el).replace(/(…|\.\.\.)?\s*see more$/i, '').trim())
       .filter((t) => t && t.length > 25
+        && !excl.includes(t.toLowerCase())
         && !(t.length < 120 && (ACTIVITY_ATTRIBUTION.test(t) || ACTIVITY_CHROME.test(t))));
     return Array.from(new Set(items)).slice(0, 3).map((t) => t.slice(0, 400));
   }
@@ -838,7 +856,7 @@
     // the real container — and so the console line can carry a shape sample when the read is blind
     // on a page that clearly has the section (that's the paste-to-Guy diagnostic).
     const activityScope = { section: null };
-    const recentPosts = inThread ? [] : readRecentActivity(activityScope);
+    const recentPosts = inThread ? [] : readRecentActivity(activityScope, [name, headline]);
     if (!inThread) {
       console.log('[Wingguy] activity read: section=', !!activityScope.section, '| posts:', recentPosts.length,
         activityScope.section && !recentPosts.length ? '| shape: ' + shapeOf(activityScope.section) : '');
@@ -894,7 +912,7 @@
         await autoScrollToLoad();
         await expandAboutSeeMore();
         base.about = readAbout();
-        base.recentPosts = readRecentActivity(activityScope);
+        base.recentPosts = readRecentActivity(activityScope, [base.name, base.headline]);
         base.pageText = readPageTextNow();
         // Tells startChat the real page was already read — zero posts here means they genuinely
         // have none, so don't spend a hidden-tab read confirming it.
