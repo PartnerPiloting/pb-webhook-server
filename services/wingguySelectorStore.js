@@ -44,6 +44,8 @@ const KNOWN_KEYS = [
   'profile_location',        // the location line
   'profile_top_card',        // the top-card container the name/headline are read from
   'profile_about_spans',     // the About copy inside the About section
+  'profile_activity_anchor', // the Activity section (their recent posts) — anchor ids
+  'profile_activity_items',  // the post-preview text inside the Activity section
   'convo_container',         // the conversation containers (bubble / pane / thread)
   'convo_header',            // the open thread's header, where the participant's name lives
   'message_group_name',      // "who said this" on a run of message bubbles
