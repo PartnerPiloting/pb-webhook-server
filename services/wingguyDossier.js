@@ -10,6 +10,16 @@
  *   - meetings: transcript-store matches (by Airtable rec id, name fallback) with their Fathom-style
  *     summaries
  *   - deepRead: ONE LLM pass — where this actually stands, commitments each side, suggested next move
+ *   - emailRecord (2026-08-19): the sent/received mail record folded INTO the payload — outbound
+ *     index with every link written out in full, the latest outbound email whole, facts extracted
+ *     from what was actually written (commitments and whether honoured, deferrals verbatim,
+ *     promised intros), and an inbound index. Born of the 19 Aug brief telling the human to
+ *     "check whether the links actually went out" instead of checking: the instruction existed,
+ *     was read, and still lost to the moment. A step that does not exist cannot be skipped, so
+ *     the data now arrives in the payload. Read from the tenant's own mailbox across EVERY
+ *     address on the record (Email + Alt Emails + the invite address) — never the asset ledger,
+ *     which only knows library assets drafted through wingguy_create_draft since 2026-07-16 and
+ *     is blind to a hand-typed link.
  * Cached per person, keyed on a basis fingerprint (message/meeting counts + last dates) — a dossier
  * only rebuilds when that person's thread actually changed, so the nightly cost after the first run
  * is near zero. Served instantly by wingguy_dossier; the live dig remains the fallback for questions
@@ -181,35 +191,159 @@ function gatherLinkedIn(notes, first, max = LI_LIMIT) {
   return out.slice(-max).map(({ sortKey, ...rest }) => rest);
 }
 
-async function gatherEmails(mailProvider, coach, email, max = EMAIL_LIMIT) {
-  if (!email) return [];
-  try {
-    const found = await mailProvider.findMessages(coach, { anyEmail: email, limit: max });
-    if (!found.ok) return [];
-    const rows = (found.messages || [])
-      .slice().sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0))
-      .map((m) => {
-        const theirs = (m.fromEmail || '').toLowerCase() === email;
-        const calendarish = /^(accepted|declined|tentative|invitation|updated invitation|canceled)/i.test(m.subject || '');
-        return { date: (m.date || '').slice(0, 10), kind: calendarish ? 'calendar' : 'email', dir: theirs ? 'them' : 'you', subject: scrub(m.subject || ''), text: scrub(String(m.snippet || '').slice(0, 280)), messageId: m.id };
-      });
-    // FULL BODY of the latest inbound human emails (up to 2). Snippets truncate mid-sentence and
-    // mislead — "as promised, here's a l…" spawned a phantom referral theory on 2026-07-24. The
-    // full text is what the human always ends up asking for ("what did they actually say?"), so it
-    // belongs IN the dossier, not behind a live read.
-    const { htmlToText } = require('./wingguyMailMcp');
-    const latestTheirs = rows.filter((r) => r.dir === 'them' && r.kind === 'email').slice(-2);
-    for (const r of latestTheirs) {
-      try {
-        const full = await mailProvider.getMessage(coach, r.messageId);
-        if (full.ok && full.message) {
-          const body = htmlToText(full.message.body) || String(full.message.snippet || '');
-          if (body) r.fullText = scrub(String(body).replace(/\s+/g, ' ').trim().slice(0, 1800));
-        }
-      } catch (_) { /* snippet remains */ }
-    }
-    return rows;
-  } catch (_) { return []; }
+// --- the email record (2026-08-19) ---
+
+const EMAIL_FETCH_LIMIT = 20;    // findMessages hard-caps a page at 20 — per ADDRESS, so alts widen it
+const RECORD_BODY_FETCHES = 24;  // full-body reads per person per rebuild, newest human emails first
+const FACT_BODY_CHARS = 3500;    // per-message text handed to the facts pass
+const FACT_MATERIAL_CHARS = 120000; // ceiling for the whole facts-pass material
+const LAST_OUTBOUND_CHARS = 6000;
+
+/**
+ * Inline every anchor's href beside its label BEFORE tags are stripped — a link written as
+ * <a href="url">this article</a> otherwise vanishes with the markup and the record under-reports,
+ * which is the exact failure this block exists to end.
+ */
+function inlineAnchorHrefs(html) {
+  return String(html || '').replace(/<a\b[^>]*href=["']([^"'#][^"']*)["'][^>]*>([\s\S]*?)<\/a>/gi, '$2 ($1)');
+}
+
+/** Every http(s) link in a rendered body, in order of appearance, deduped, trailing punctuation shed. */
+function extractLinks(text) {
+  const raw = String(text || '').match(/https?:\/\/[^\s<>"')\]]+/g) || [];
+  return [...new Set(raw.map((u) => u.replace(/[.,;:!?]+$/, '')))];
+}
+
+const EMPTY_RECORD = () => ({ addresses: [], capped: false, outbound: [], lastOutbound: null, inbound: [], facts: null });
+
+/**
+ * ONE fetch pass over a person's email exchange, across EVERY address known for them (primary +
+ * Alt Emails + the invite address). A lookup that misses an alt address silently under-reports and
+ * the brief looks complete while being wrong (Owen Pyrah writes from two addresses; Guy McPhee from
+ * several). Returns:
+ *   - timeline: the snippet rows the dossier always carried (same shape — deepRead and the served
+ *     timeline are unchanged), newest `max`, plus fullText on the latest 2 inbound human emails
+ *     (snippets truncate mid-sentence and mislead — the 2026-07-24 phantom-referral theory).
+ *   - record: the EMAIL RECORD block — outbound index with every link extracted from the body
+ *     itself, latest outbound in full, inbound index. facts stays null here; the caller fills it.
+ *   - thread: the full-text exchange (quoted tails stripped) for the facts pass.
+ * Direction is strict for the record: a third party writing on an intro thread is NEITHER side and
+ * must never appear as coach outbound (the timeline keeps its historical them/not-them split).
+ */
+async function gatherEmailRecord(mailProvider, coach, addresses, max = EMAIL_LIMIT) {
+  const addrs = [...new Set((addresses || []).map((a) => String(a || '').trim().toLowerCase()).filter(Boolean))];
+  if (!addrs.length) return { timeline: [], record: EMPTY_RECORD(), thread: [] };
+  const addrSet = new Set(addrs);
+  const { htmlToText, stripQuotedTail, coachOwnEmails } = require('./wingguyMailMcp');
+  const own = coachOwnEmails(coach);
+
+  const byId = new Map();
+  let capped = false;
+  for (const a of addrs) {
+    try {
+      const found = await mailProvider.findMessages(coach, { anyEmail: a, limit: EMAIL_FETCH_LIMIT });
+      if (!found.ok) continue;
+      if ((found.messages || []).length >= EMAIL_FETCH_LIMIT) capped = true; // page cap hit — oldest mail may be missing; say so, never imply completeness
+      for (const m of found.messages || []) if (m.id && !byId.has(m.id)) byId.set(m.id, m);
+    } catch (_) { /* one address failing must not empty the whole record */ }
+  }
+  const rows = [...byId.values()]
+    .sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0))
+    .map((m) => {
+      const fromLc = (m.fromEmail || '').toLowerCase();
+      const theirs = addrSet.has(fromLc);
+      const calendarish = /^(accepted|declined|tentative|invitation|updated invitation|canceled)/i.test(m.subject || '');
+      return {
+        date: (m.date || '').slice(0, 10), kind: calendarish ? 'calendar' : 'email',
+        dir: theirs ? 'them' : 'you',
+        strictDir: theirs ? 'them' : (!own.size || own.has(fromLc) ? 'you' : 'other'),
+        subject: scrub(m.subject || ''), text: scrub(String(m.snippet || '').slice(0, 280)),
+        messageId: m.id, attachments: m.attachments || [],
+      };
+    });
+
+  // FULL BODIES (newest human emails first, capped). Links and facts both come from what was
+  // actually written, so the body is the source, never the snippet and never a summary phrase.
+  // Quoted tails stripped: a reply must not inherit the OTHER side's links or words.
+  const human = rows.filter((r) => r.kind === 'email');
+  for (const r of human.slice(-RECORD_BODY_FETCHES)) {
+    try {
+      const full = await mailProvider.getMessage(coach, r.messageId);
+      if (full.ok && full.message) {
+        const text = stripQuotedTail(htmlToText(inlineAnchorHrefs(full.message.body || '')) || String(full.message.snippet || ''));
+        r.bodyText = scrub(text);
+        r.links = extractLinks(text);
+        if (!r.attachments.length && (full.message.attachments || []).length) r.attachments = full.message.attachments;
+      }
+    } catch (_) { /* snippet remains; links stay null = honestly unknown */ }
+  }
+  const latestTheirs = human.filter((r) => r.strictDir === 'them' && r.bodyText).slice(-2);
+  for (const r of latestTheirs) r.fullText = r.bodyText.replace(/\s+/g, ' ').trim().slice(0, 1800);
+
+  const out = human.filter((r) => r.strictDir === 'you');
+  const lastOut = out.length ? out[out.length - 1] : null;
+  const record = {
+    addresses: addrs,
+    capped,
+    // Newest first. links: null means the body was never read (older than the fetch budget) —
+    // honestly distinct from [] = "read, and no links". Never collapse either into a phrase like
+    // "links were sent".
+    outbound: [...out].reverse().map((r) => ({
+      date: r.date, subject: r.subject,
+      links: r.links || null,
+      attachments: (r.attachments || []).length ? r.attachments : [],
+    })),
+    // The message that set up the conversation about to happen — regularly carries a ready-made
+    // opening line. THE one full body the record keeps; everything else is index + facts, because
+    // forty raw emails five minutes before the first call relocates the problem, not solves it.
+    lastOutbound: lastOut ? {
+      date: lastOut.date, subject: lastOut.subject,
+      text: lastOut.bodyText
+        ? (lastOut.bodyText.length > LAST_OUTBOUND_CHARS
+          ? lastOut.bodyText.slice(0, LAST_OUTBOUND_CHARS) + ' [CLIPPED FOR LENGTH — the email continues past this point]'
+          : lastOut.bodyText)
+        : null,
+    } : null,
+    inbound: human.filter((r) => r.strictDir === 'them').reverse().map((r) => ({ date: r.date, subject: r.subject, snippet: r.text })),
+    facts: null,
+  };
+  const thread = human.filter((r) => r.bodyText).map((r) => ({
+    date: r.date, dir: r.strictDir, subject: r.subject,
+    text: r.bodyText.length > FACT_BODY_CHARS ? r.bodyText.slice(0, FACT_BODY_CHARS) + ' [CLIPPED FOR LENGTH]' : r.bodyText,
+    attachments: r.attachments || [],
+  }));
+  const timeline = rows.slice(-max).map(({ strictDir, bodyText, links, attachments, ...rest }) => rest);
+  return { timeline, record, thread };
+}
+
+const FACTS_SYSTEM = `You extract the EMAIL RECORD facts for a coach's dossier on one contact, from the full text of their actual email exchange. Quoted reply-tails were already stripped; a [CLIPPED FOR LENGTH] marker means YOUR INPUT was cut, never that the sender stopped. dir=you is the coach, dir=them is the contact, dir=other is a third party on the thread. Ground EVERYTHING in the words given — never infer, never invent; empty arrays are the correct answer when the material holds nothing. Return ONLY JSON:
+{"commitments_you": ["each commitment the COACH made in writing, with its date, each ending with one of: — appears honoured / — appears outstanding / — unclear from the thread"],
+ "commitments_them": ["same for commitments THEY made (a promised introduction counts)"],
+ "dates_promised": ["every date, time or deadline promised in writing, either direction, with who said it"],
+ "deferrals": ["each deferral, with the stated reason QUOTED VERBATIM in the sender's own words, e.g.: them, 2026-08-14: \\"flat out with the audit until month end\\" — never paraphrase a deferral as declined"],
+ "third_parties": ["named third parties — especially introductions promised but not yet made"],
+ "personal": ["personal details volunteered in the emails — travel, illness, family, transitions"],
+ "attachments": ["anything attached, from the attachment names given per message; empty if none"]}`;
+
+/** The facts pass — one small LLM read of the full thread, separate from deepRead so a long
+ * dossier response can never truncate these facts into invalid JSON (nor vice versa). */
+async function emailFactsRead(llm, name, thread) {
+  const material = [
+    `CONTACT: ${name}`,
+    'EMAIL THREAD (oldest first):',
+    ...thread.map((t) => `--- ${t.date} [${t.dir}] "${t.subject}"${(t.attachments || []).length ? ` (attached: ${t.attachments.join(', ')})` : ''} ---\n${t.text}`),
+  ].join('\n');
+  const clipped = material.length > FACT_MATERIAL_CHARS
+    ? material.slice(0, FACT_MATERIAL_CHARS) + ' [MATERIAL CLIPPED FOR LENGTH — the thread continues past this point; treat everything after the last complete email as unknown]'
+    : material;
+  const resp = await llm.messages.create({
+    model: MODEL_ID, max_tokens: 2500, thinking: NO_THINKING,
+    system: FACTS_SYSTEM,
+    messages: [{ role: 'user', content: scrub(`Today is ${new Date().toISOString().slice(0, 10)}.\n\n${clipped}`) }],
+  });
+  const text = (resp.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('');
+  const s = text.indexOf('{'); const e = text.lastIndexOf('}');
+  return JSON.parse(text.slice(s, e + 1).replace(/[\u0000-\u001f]/g, ' '));
 }
 
 /**
@@ -604,7 +738,13 @@ async function prepareDossiers(tenant) {
         const first = rec ? (rec.fields['First Name'] || '') : person.name.split(' ')[0];
         const recId = person.recId || (rec && rec.id) || null;
 
-        const emails = await gatherEmails(mailProvider, coach, person.email);
+        // EVERY address known for this person — primary, Alt Emails, and whatever key the queue or
+        // calendar matched them on. One address short = a silently incomplete email record.
+        const mail = await gatherEmailRecord(mailProvider, coach, [
+          person.email, person.key,
+          ...(rec ? [String(rec.fields['Email'] || '').trim().toLowerCase(), ...splitAltEmails(rec.fields['Alt Emails'])] : []),
+        ].filter((a) => a && a.includes('@')));
+        const emails = mail.timeline;
         const li = gatherLinkedIn(rec ? rec.fields['Notes'] : '', first);
         const meetings = await gatherMeetings(tenant, recId, person.name);
         const timeline = [...emails, ...li].sort((a, b) => String(a.date).localeCompare(String(b.date)));
@@ -624,12 +764,23 @@ async function prepareDossiers(tenant) {
         // as "cutting off" partway through — WHERE IT STANDS, promises and next moves derived from
         // a false ending (Matthew Bulat, Nikki Tadic). Every stored dossier rebuilds once against
         // the whole transcripts.
-        const basis = `v6|e${emails.length}:${emails.length ? emails[emails.length - 1].date : ''}|l${li.length}:${li.length ? li[li.length - 1].date : ''}|m${meetings.length}:${meetings.length ? meetings[0].date : ''}`;
+        // v7 (2026-08-19): emailRecord is a new payload block (see the header), so every stored
+        // dossier rebuilds once to carry it. Same one-off cost shape as v4-v6.
+        const basis = `v7|e${emails.length}:${emails.length ? emails[emails.length - 1].date : ''}|l${li.length}:${li.length ? li[li.length - 1].date : ''}|m${meetings.length}:${meetings.length ? meetings[0].date : ''}`;
         const existing = await getDossierRow(tenant, person.key);
         if (existing && existing.basis === basis) { out.cached++; continue; }
 
         const read = await deepRead(llm, person.name, timeline, meetings);
         const lastHuman = [...timeline].reverse().find((t) => t.kind !== 'calendar');
+
+        // The email-record facts pass — best-effort, like the guidance draft: a facts failure
+        // costs the FACTS, never the dossier (the mechanical index and full last outbound above
+        // it carry the load-bearing answer, "did the links actually go out").
+        const emailRecord = mail.record;
+        if (mail.thread.length) {
+          try { emailRecord.facts = await emailFactsRead(llm, person.name, mail.thread); }
+          catch (e) { console.warn(`[dossier] email facts for ${person.name}: ${e.message}`); }
+        }
 
         // An email handed over INSIDE the LinkedIn thread that never reached the record — the
         // learn-back path only listens to inbound email, so surface it here for the human to
@@ -681,6 +832,7 @@ async function prepareDossiers(tenant) {
           meetingRecaps: Array.isArray(read.meeting_recaps) ? read.meeting_recaps : [],
           suggestedDraft: suggested,
           unrecordedEmails,
+          emailRecord,
         });
         out.built++;
       } catch (e) { out.failed++; console.warn(`[dossier] ${person.name}: ${e.message}`); }
@@ -734,6 +886,56 @@ function formatDossier(row, opts = {}) {
     lines.push(`\nREMEMBER:`);
     for (const r of p.remember) lines.push(`- ${r}`);
   }
+  // EMAIL RECORD (2026-08-19): read from the mailbox at build time so "did the links actually go
+  // out?" is answered BY THE PAYLOAD — never handed back to the human as a job, never dependent on
+  // remembering an extra tool call. Absences are stated, not implied: "no links" is a checked fact,
+  // a missing block is named as missing.
+  const er = p.emailRecord;
+  if (er) {
+    if (!(er.addresses || []).length) {
+      lines.push(`\nEMAIL RECORD: no email address on the record for this person — there is no mailbox history to read.`);
+    } else {
+      lines.push(`\nEMAIL RECORD (read from the mailbox itself at build time, across every known address: ${er.addresses.join(', ')})${er.capped ? ' — provider page cap reached, the OLDEST emails may be missing from this index; say so if asked for the full history' : ''}:`);
+      if ((er.outbound || []).length) {
+        lines.push(`SENT TO THEM (newest first — every link in the body written out; "no links" is a checked fact):`);
+        for (const o of er.outbound) {
+          const att = (o.attachments || []).length ? ` (attached: ${o.attachments.join(', ')})` : '';
+          if (o.links === null) lines.push(`- ${o.date} "${o.subject}"${att} — body not read (beyond the fetch budget); links UNKNOWN, not absent`);
+          else if (!o.links.length) lines.push(`- ${o.date} "${o.subject}"${att} — no links`);
+          else {
+            lines.push(`- ${o.date} "${o.subject}"${att} — links:`);
+            for (const l of o.links) lines.push(`    ${l}`);
+          }
+        }
+      } else {
+        lines.push(`SENT TO THEM: nothing on record at any known address.`);
+      }
+      const f = er.facts;
+      if (f) {
+        const sec = (label, arr) => { if ((arr || []).length) { lines.push(`${label}:`); for (const x of arr) lines.push(`- ${x}`); } };
+        lines.push(`\nFROM THE THREAD (extracted from what was actually written):`);
+        sec('Commitments — you', f.commitments_you);
+        sec('Commitments — them', f.commitments_them);
+        sec('Dates/deadlines promised in writing', f.dates_promised);
+        sec('Deferrals (their own words — never paraphrase these as "declined")', f.deferrals);
+        sec('Named third parties / promised intros', f.third_parties);
+        sec('Personal (from the emails)', f.personal);
+        sec('Attachments', f.attachments);
+      }
+      if (er.lastOutbound && er.lastOutbound.text) {
+        lines.push(`\nMOST RECENT OUTBOUND IN FULL (${er.lastOutbound.date} "${er.lastOutbound.subject}") — this set up the conversation about to happen; its closing idea is often the natural opening line:`);
+        lines.push(er.lastOutbound.text);
+      }
+      if ((er.inbound || []).length) {
+        lines.push(`\nTHEIR REPLIES (newest first — the shape of the exchange; full bodies via wingguy_read_message only if genuinely needed):`);
+        for (const i of er.inbound) lines.push(`- ${i.date} "${i.subject}": ${i.snippet}`);
+      } else {
+        lines.push(`\nTHEIR REPLIES: none on record at any known address.`);
+      }
+    }
+  } else {
+    lines.push(`\nEMAIL RECORD: not in this dossier build (it predates the email-record upgrade); it arrives with the next overnight rebuild. Until then the email side is UNCHECKED — read it live via wingguy_lead_correspondence before claiming anything about what was or wasn't sent.`);
+  }
   if (p.nextMove) lines.push(`\nSUGGESTED NEXT: ${p.nextMove}`);
   if (p.suggestedDraft && p.suggestedDraft.text) {
     lines.push(`\nSUGGESTED DRAFT (embodies the next move — show it, tweak in chat, push/copy ONLY on approval${p.suggestedDraft.channel === 'linkedin' ? '; LinkedIn paste-ready' : ''}):`);
@@ -768,4 +970,4 @@ function formatDossier(row, opts = {}) {
   return lines.join('\n');
 }
 
-module.exports = { prepareDossiers, findDossierByName, getDossierRow, formatDossier, buildLiveMiniDossier, formatLiveDossier, scrub, parseJsonArrayLoose };
+module.exports = { prepareDossiers, findDossierByName, getDossierRow, formatDossier, buildLiveMiniDossier, formatLiveDossier, gatherEmailRecord, scrub, parseJsonArrayLoose };

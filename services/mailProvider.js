@@ -60,6 +60,19 @@ function toParticipants(list) {
 }
 
 /**
+ * Real attachment filenames from a provider message object (Nylas `filename`, Unipile `name`).
+ * Inline parts (signature images, embedded logos) are excluded — "was anything attached" must mean
+ * a file the human deliberately sent, and the dossier's email record reports it mechanically from
+ * this list rather than trusting an LLM to guess.
+ */
+function attachmentNames(m) {
+  return ((m && m.attachments) || [])
+    .filter((a) => a && !a.is_inline && String(a.content_disposition || '').toLowerCase() !== 'inline')
+    .map((a) => a.filename || a.name)
+    .filter(Boolean);
+}
+
+/**
  * Create a draft (no send) in the coach's mailbox via their Nylas grant.
  * @param {object} coach   client record (needs nylasGrantId)
  * @param {object} details { subject, html, to, cc, bcc, replyTo, replyToMessageId }
@@ -162,6 +175,7 @@ async function findMessages(coach, { from, anyEmail, subject, threadId, received
     to: toParticipants(m.to).map((p) => p.email).join(', '),
     date: m.date ? new Date(m.date * 1000).toISOString() : null,
     snippet: m.snippet,
+    attachments: attachmentNames(m),
   }));
   return { ok: true, messages };
 }
@@ -202,6 +216,7 @@ async function getMessage(coach, messageId) {
       date: m.date ? new Date(m.date * 1000).toISOString() : null,
       body: m.body || '',
       snippet: m.snippet,
+      attachments: attachmentNames(m),
     },
   };
 }
@@ -413,6 +428,7 @@ async function findMessagesViaUnipile(coach, { from, anyEmail, subject, threadId
       to: partiesToString(m.to_attendees, false),
       date: m.date || null, // already ISO
       snippet: String(m.body_plain || '').slice(0, 200),
+      attachments: attachmentNames(m),
     };
   });
   return { ok: true, messages };
@@ -447,6 +463,7 @@ async function getMessageViaUnipile(coach, messageId) {
       date: m.date || null,
       body: m.body || '',
       snippet: String(m.body_plain || '').slice(0, 200),
+      attachments: attachmentNames(m),
     },
   };
 }
