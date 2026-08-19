@@ -696,7 +696,11 @@ async function prepareDossiers(tenant) {
     try {
       const { getMeetingsInWindow } = require('./calendarProvider');
       const own = require('./wingguyMailMcp').coachOwnEmails(coach);
-      const cal = await getMeetingsInWindow(coach, new Date(), new Date(Date.now() + PREP_CAL_DAYS * MS_DAY));
+      // Window starts a day BACK, not at "now": this pass also runs ad hoc mid-morning (the
+      // followups route, one-off jobs), and a window-from-now silently dropped the attendees of
+      // meetings already held that day — the very people being prepped/followed up. Cached
+      // dossiers make the extra day's checks near-free.
+      const cal = await getMeetingsInWindow(coach, new Date(Date.now() - MS_DAY), new Date(Date.now() + PREP_CAL_DAYS * MS_DAY));
       for (const ev of (cal && cal.events) || []) {
         const cands = [...(ev.attendees || []), ...(ev.organizerEmail ? [{ email: ev.organizerEmail }] : [])];
         for (const a of cands) {
@@ -970,4 +974,4 @@ function formatDossier(row, opts = {}) {
   return lines.join('\n');
 }
 
-module.exports = { prepareDossiers, findDossierByName, getDossierRow, formatDossier, buildLiveMiniDossier, formatLiveDossier, gatherEmailRecord, scrub, parseJsonArrayLoose };
+module.exports = { prepareDossiers, findDossierByName, getDossierRow, formatDossier, buildLiveMiniDossier, formatLiveDossier, scrub, parseJsonArrayLoose };
