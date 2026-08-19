@@ -336,14 +336,23 @@ async function emailFactsRead(llm, name, thread) {
   const clipped = material.length > FACT_MATERIAL_CHARS
     ? material.slice(0, FACT_MATERIAL_CHARS) + ' [MATERIAL CLIPPED FOR LENGTH — the thread continues past this point; treat everything after the last complete email as unknown]'
     : material;
-  const resp = await llm.messages.create({
-    model: MODEL_ID, max_tokens: 2500, thinking: NO_THINKING,
-    system: FACTS_SYSTEM,
-    messages: [{ role: 'user', content: scrub(`Today is ${new Date().toISOString().slice(0, 10)}.\n\n${clipped}`) }],
-  });
-  const text = (resp.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('');
-  const s = text.indexOf('{'); const e = text.lastIndexOf('}');
-  return JSON.parse(text.slice(s, e + 1).replace(/[\u0000-\u001f]/g, ' '));
+  // Up to 2 attempts, same shape as deepRead: a truncated or malformed reply is INVALID JSON and
+  // the facts vanish for the night (Rick Wong, first v7 backfill 2026-08-19: "Unexpected end of
+  // JSON input"). max_tokens 2500 -> 4000 for the same reason: headroom beats a silent hole.
+  let lastErr;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const resp = await llm.messages.create({
+      model: MODEL_ID, max_tokens: 4000, thinking: NO_THINKING,
+      system: FACTS_SYSTEM + (attempt ? '\nSTRICT: your previous output was invalid or truncated JSON. Be more concise per item, escape every double-quote inside string values as \\" and never put raw newlines inside strings.' : ''),
+      messages: [{ role: 'user', content: scrub(`Today is ${new Date().toISOString().slice(0, 10)}.\n\n${clipped}`) }],
+    });
+    const text = (resp.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('');
+    const s = text.indexOf('{'); const e = text.lastIndexOf('}');
+    try {
+      return JSON.parse(text.slice(s, e + 1).replace(/[\u0000-\u001f]/g, ' '));
+    } catch (err) { lastErr = err; }
+  }
+  throw lastErr;
 }
 
 /**
@@ -720,11 +729,13 @@ async function prepareDossiers(tenant, opts = {}) {
     // the set. This is the door the live mini-dossier promises ("will get a full overnight
     // dossier if they appear on the calendar or in the queue") for someone who appears in
     // NEITHER — e.g. a meeting already held whose calendar event has since gone. hasDraft=true:
-    // a named build wants the memory, not an outreach guidance draft.
+    // a named build wants the memory, not an outreach guidance draft. force=true: an explicit
+    // request means BUILD IT NOW — the cache shortcut would refuse to repair a same-basis dossier
+    // (e.g. one whose facts pass failed on the night).
     for (const x of opts.extraPeople || []) {
       const em = String(x.email || '').trim().toLowerCase();
       const key = em || String(x.name || '').trim().toLowerCase();
-      if (key && !people.has(key)) people.set(key, { key, name: x.name || em, recId: null, email: em || null, hasDraft: true });
+      if (key) people.set(key, { ...(people.get(key) || { key, name: x.name || em, recId: null, email: em || null, hasDraft: true }), force: true });
     }
 
     if (!people.size) return out;
@@ -783,7 +794,7 @@ async function prepareDossiers(tenant, opts = {}) {
         // dossier rebuilds once to carry it. Same one-off cost shape as v4-v6.
         const basis = `v7|e${emails.length}:${emails.length ? emails[emails.length - 1].date : ''}|l${li.length}:${li.length ? li[li.length - 1].date : ''}|m${meetings.length}:${meetings.length ? meetings[0].date : ''}`;
         const existing = await getDossierRow(tenant, person.key);
-        if (existing && existing.basis === basis) { out.cached++; continue; }
+        if (!person.force && existing && existing.basis === basis) { out.cached++; continue; }
 
         const read = await deepRead(llm, person.name, timeline, meetings);
         const lastHuman = [...timeline].reverse().find((t) => t.kind !== 'calendar');
