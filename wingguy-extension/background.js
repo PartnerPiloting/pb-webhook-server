@@ -378,7 +378,8 @@ async function scrapeProfileViaTab(profileUrl) {
   let prevTabId = null;
   let best = {};
   const usable = (p) => p && ((p.about && p.about.length > 40) || (p.pageText && p.pageText.length > 800));
-  const score = (p) => (p && ((p.about || '').length + (p.pageText || '').length + (p.headline ? 50 : 0))) || 0;
+  const score = (p) => (p && ((p.about || '').length + (p.pageText || '').length + (p.headline ? 50 : 0)
+    + (Array.isArray(p.recentPosts) ? p.recentPosts.length * 300 : 0))) || 0;
   try {
     const [prev] = await chrome.tabs.query({ active: true, currentWindow: true });
     prevTabId = prev && prev.id;
@@ -386,6 +387,7 @@ async function scrapeProfileViaTab(profileUrl) {
     tabId = tab.id;
     await waitForTabComplete(tabId, 15000);
     const deadline = Date.now() + 12000;
+    let usableSince = 0;
     while (Date.now() < deadline) {
       let res = null;
       try {
@@ -395,7 +397,15 @@ async function scrapeProfileViaTab(profileUrl) {
       } catch (_) { res = null; }   // script not ready yet; retry
       const p = res && res.ok && res.profile;
       if (score(p) > score(best)) best = p;
-      if (usable(best)) break;
+      // A usable-but-postless snapshot used to end the poll here — often BEFORE the lazy Activity
+      // section had rendered, which is how the thin-path read kept coming back with 0 posts on
+      // profiles that clearly post (Luke, 2026-08-19). Posts present = genuinely done; otherwise
+      // give the Activity section a bounded extra beat to render before settling for what we have.
+      if (usable(best) && Array.isArray(best.recentPosts) && best.recentPosts.length) break;
+      if (usable(best)) {
+        if (!usableSince) usableSince = Date.now();
+        if (Date.now() - usableSince > 3000) break;
+      }
       await sleepBg(700);
     }
     console.log('[Wingguy][bg] profile (tab read) →', best && best.name ? best.name : '(no name)',
