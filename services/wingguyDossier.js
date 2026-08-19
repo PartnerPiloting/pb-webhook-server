@@ -626,7 +626,7 @@ async function deepRead(llm, name, timeline, meetings) {
  * verdicts draft/park/attention + backlog pending reopen/park). Cache-aware: skips anyone whose
  * basis fingerprint (email/LI/meeting counts + last dates) is unchanged. Never throws.
  */
-async function prepareDossiers(tenant) {
+async function prepareDossiers(tenant, opts = {}) {
   const out = { built: 0, cached: 0, failed: 0 };
   try {
     const clientService = require('./clientService');
@@ -715,6 +715,17 @@ async function prepareDossiers(tenant) {
         }
       }
     } catch (e) { console.warn(`[dossier] calendar prep pass skipped: ${e.message}`); }
+
+    // NAMED BUILDS (2026-08-19): opts.extraPeople = [{name, email}] forces specific people into
+    // the set. This is the door the live mini-dossier promises ("will get a full overnight
+    // dossier if they appear on the calendar or in the queue") for someone who appears in
+    // NEITHER — e.g. a meeting already held whose calendar event has since gone. hasDraft=true:
+    // a named build wants the memory, not an outreach guidance draft.
+    for (const x of opts.extraPeople || []) {
+      const em = String(x.email || '').trim().toLowerCase();
+      const key = em || String(x.name || '').trim().toLowerCase();
+      if (key && !people.has(key)) people.set(key, { key, name: x.name || em, recId: null, email: em || null, hasDraft: true });
+    }
 
     if (!people.size) return out;
 
