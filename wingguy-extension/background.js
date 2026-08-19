@@ -400,7 +400,8 @@ async function scrapeProfileViaTab(profileUrl) {
     }
     console.log('[Wingguy][bg] profile (tab read) →', best && best.name ? best.name : '(no name)',
       '| headline:', best && best.headline ? 'yes' : 'no', '| about:', best && best.about ? best.about.length : 0,
-      '| pageText:', best && best.pageText ? best.pageText.length : 0);
+      '| pageText:', best && best.pageText ? best.pageText.length : 0,
+      '| posts:', best && Array.isArray(best.recentPosts) ? best.recentPosts.length : 0);
   } catch (e) {
     console.log('[Wingguy][bg] scrapeProfileViaTab error:', e.message);
   } finally {
