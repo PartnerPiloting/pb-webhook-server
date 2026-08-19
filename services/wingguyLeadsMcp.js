@@ -94,6 +94,75 @@ async function runCreateLead(args = {}, tenant = TENANT) {
   };
 }
 
+// Correct a lead's contact facts (Location / Email / Phone) on their EXISTING record — the update
+// companion to runCreateLead (Guy, 2026-08-20, after Dean Hobin's blank location left the booking
+// tools guessing his timezone). Finds the lead (LinkedIn slug strongest, then exact email, then
+// name substring with disambiguation — same lookup family as wingguy_set_reconnect), then runs the
+// shaped write in wingguyLeads.updateLeadFacts. Reports every change old → new so the assistant
+// relays it and a wrong write is caught immediately.
+async function runUpdateLead(args = {}, tenant = TENANT) {
+  const clientService = require('./clientService');
+  const wingguyLeads = require('./wingguyLeads');
+
+  const lookupEmail = String(args.lead_email || '').trim().toLowerCase();
+  const lookupName = String(args.lead_name || '').trim();
+  const lookupUrl = String(args.linkedin_url || '').trim();
+  if (!lookupEmail && !lookupName && !lookupUrl) {
+    return { text: 'Error: give a linkedin_url (surest), lead_email or lead_name to find the lead.', isError: true };
+  }
+  const loc = String(args.location || '').trim();
+  const mail = String(args.email || '').trim();
+  const tel = String(args.phone || '').trim();
+  if (!loc && !mail && !tel) {
+    return { text: 'Error: nothing to update — pass a location, email and/or phone.', isError: true };
+  }
+
+  const client = await clientService.getClientById(tenant);
+  const airtableBaseId = client && client.airtableBaseId;
+  if (!airtableBaseId) {
+    return { text: "Error: no CRM base is configured for this coach, so the lead can't be updated.", isError: true };
+  }
+  const base = clientService.getClientBase(airtableBaseId);
+  if (!base) return { text: 'Error: CRM base unavailable.', isError: true };
+
+  // Find the record. LinkedIn slug is the strongest key; email is exact; a name is a substring
+  // match over the full name and must be UNIQUE — on multiple hits, hand back the list instead of
+  // guessing (never correct the wrong person's record).
+  let rec = null;
+  if (lookupUrl) rec = await wingguyLeads.findLeadRecord(base, { linkedinUrl: lookupUrl });
+  if (!rec && (lookupEmail || lookupName)) {
+    const esc = (s) => String(s).replace(/"/g, '\\"');
+    const formula = lookupEmail
+      ? `LOWER({Email}) = "${esc(lookupEmail)}"`
+      : `FIND(LOWER("${esc(lookupName)}"), LOWER({First Name} & " " & {Last Name})) > 0`;
+    const matches = await base('Leads').select({
+      filterByFormula: formula,
+      fields: ['First Name', 'Last Name', 'Email'],
+      maxRecords: 10,
+    }).all();
+    if (matches.length > 1) {
+      const list = matches.slice(0, 8).map((r) => `- ${`${r.fields['First Name'] || ''} ${r.fields['Last Name'] || ''}`.trim()}${r.fields['Email'] ? ` <${r.fields['Email']}>` : ''}`).join('\n');
+      return { text: `More than one lead matches "${lookupName || lookupEmail}" — tell me which, or pass lead_email / linkedin_url:\n${list}` };
+    }
+    rec = matches[0] || null;
+  }
+  if (!rec) {
+    const tried = lookupUrl ? `LinkedIn ${lookupUrl}` : (lookupEmail ? `email ${lookupEmail}` : `name "${lookupName}"`);
+    return { text: `No lead found matching ${tried}. (Try another identifier — or if they're genuinely not in the CRM, create them with wingguy_create_lead.)`, isError: true };
+  }
+
+  const r = await wingguyLeads.updateLeadFacts(airtableBaseId, rec.id, { location: loc, email: mail, phone: tel });
+  if (!r || !r.ok) return { text: `Error: ${(r && r.error) || 'the lead could not be updated.'}`, isError: true };
+
+  const who = `${rec.fields['First Name'] || ''} ${rec.fields['Last Name'] || ''}`.trim() || rec.fields['Email'] || rec.id;
+  if (!r.changed) return { text: `${who}'s record already has those exact values — nothing changed.` };
+  const lines = r.changes.map((c) => `${c.field}: ${c.from ? `"${c.from}"` : '(was empty)'} → "${c.to}"`);
+  return {
+    text: `Updated ${who} — ${lines.join('; ')}.${r.notes.length ? ` (${r.notes.join('; ')})` : ''} `
+      + `Tell the coach exactly what changed, old value included, so a wrong write is caught on the spot.`,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Tool definition (one shape, both transports)
 // ---------------------------------------------------------------------------
@@ -124,6 +193,32 @@ const TOOL_DEFS = [
       required: [],
     },
     run: runCreateLead,
+  },
+  {
+    name: 'wingguy_update_lead',
+    description:
+      'Correct a lead\'s CONTACT FACTS on their existing CRM record — location, email and/or phone — the moment a truer value surfaces ("I\'m based in Sydney", a better email given in a thread, a phone number from a call). Pass ONLY the fields you\'re correcting; each OVERWRITES the record, and the reply reports every change old → new — ALWAYS relay that to the coach so a wrong write is caught on the spot. Never write a guess: only values the lead or coach actually stated. Location matters more than it looks — it drives the lead-timezone maths when offering meeting times. Changing the email is safe: the old primary is automatically preserved under Alt Emails, so replies and invites from it still match. Fields can\'t be blanked from here. Find the lead by linkedin_url (surest), lead_email, or lead_name. This tool is ONLY for these three facts — dates and flags have their own tools (wingguy_set_reconnect, wingguy_cease_followups), and someone not in the CRM yet needs wingguy_create_lead.',
+    zodSchema: {
+      lead_name: z.string().optional().describe('The lead\'s name (or part of it) — must match exactly one person, or you\'ll get a list to disambiguate.'),
+      lead_email: z.string().optional().describe('The lead\'s CURRENT email on record — exact match, the surest lookup after the LinkedIn URL.'),
+      linkedin_url: z.string().optional().describe('The lead\'s LinkedIn profile URL (linkedin.com/in/...) — the strongest lookup key.'),
+      location: z.string().optional().describe('Their corrected location, as specific as known (e.g. "Sydney, New South Wales" — city + state beats city alone for timezone maths).'),
+      email: z.string().optional().describe('Their corrected email — becomes the primary; the old primary is kept under Alt Emails automatically.'),
+      phone: z.string().optional().describe('Their corrected phone number.'),
+    },
+    jsonSchema: {
+      type: 'object',
+      properties: {
+        lead_name: { type: 'string', description: 'The lead\'s name (or part of it) — must match exactly one person, or you\'ll get a list to disambiguate.' },
+        lead_email: { type: 'string', description: 'The lead\'s CURRENT email on record — exact match, the surest lookup after the LinkedIn URL.' },
+        linkedin_url: { type: 'string', description: 'The lead\'s LinkedIn profile URL (linkedin.com/in/...) — the strongest lookup key.' },
+        location: { type: 'string', description: 'Their corrected location, as specific as known (e.g. "Sydney, New South Wales" — city + state beats city alone for timezone maths).' },
+        email: { type: 'string', description: 'Their corrected email — becomes the primary; the old primary is kept under Alt Emails automatically.' },
+        phone: { type: 'string', description: 'Their corrected phone number.' },
+      },
+      required: [],
+    },
+    run: runUpdateLead,
   },
 ];
 
@@ -167,4 +262,4 @@ async function legacyToolCall(toolName, args, tenant = TENANT) {
   }
 }
 
-module.exports = { registerWingguyLeadsTools, legacyToolList, legacyToolCall, TOOL_DEFS, runCreateLead };
+module.exports = { registerWingguyLeadsTools, legacyToolList, legacyToolCall, TOOL_DEFS, runCreateLead, runUpdateLead };

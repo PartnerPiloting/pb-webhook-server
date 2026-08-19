@@ -194,4 +194,60 @@ async function updateLeadContact(airtableBaseId, leadRecordId, { email = '', pho
   return { ok: true, changed: true, added, email: fields['Email'] || currentEmail, phone: fields['Phone'] || currentPhone };
 }
 
-module.exports = { updateLeadEmails, buildAltEmails, findLeadRecord, createLead, updateLeadContact };
+// Correct a lead's CONTACT FACTS on an existing record — the "the lead just told us something
+// truer" write (Guy, 2026-08-20, after Dean Hobin's missing location). Deliberately a short
+// WHITELIST — Location, Email, Phone — never a general edit pen:
+//   LOCATION — plain overwrite; it's what feeds the lead-timezone maths when offering times.
+//   EMAIL    — same preservation rule as updateLeadEmails: the OLD primary moves into {Alt Emails}
+//              (never lost), so the invite matcher and inbound self-healer keep finding them.
+//   PHONE    — plain overwrite (a human-stated correction beats the scraped value).
+// Unlike updateLeadContact (fill-if-empty enrichment), this OVERWRITES — it exists for the moment
+// a value the lead or coach actually stated beats what's on the record. Empty/omitted params leave
+// fields untouched; there is deliberately NO way to blank a field from here.
+// Returns { ok, changed, changes: [{field, from, to}], notes: [] } or { ok:false, error }.
+async function updateLeadFacts(airtableBaseId, leadRecordId, { location = '', email = '', phone = '' } = {}) {
+  if (!airtableBaseId) return { ok: false, error: 'no CRM base for this client' };
+  if (!leadRecordId) return { ok: false, error: 'no lead record to update' };
+
+  const loc = String(location || '').trim();
+  const mail = String(email || '').trim().toLowerCase();
+  const tel = String(phone || '').trim();
+  if (!loc && !mail && !tel) return { ok: false, error: 'nothing to update — pass a location, email and/or phone' };
+  if (mail && !EMAIL_SHAPE.test(mail)) return { ok: false, error: `"${email}" doesn't look like a valid email address` };
+
+  const base = clientService.getClientBase(airtableBaseId);
+  if (!base) return { ok: false, error: 'CRM base unavailable' };
+
+  const rec = await base('Leads').find(leadRecordId);
+  const f = rec.fields || {};
+  const fields = {};
+  const changes = [];
+  const notes = [];
+
+  const currentLoc = String(f['Location'] || '').trim();
+  if (loc && loc !== currentLoc) {
+    fields['Location'] = loc;
+    changes.push({ field: 'Location', from: currentLoc, to: loc });
+  }
+  const currentPhone = String(f['Phone'] || '').trim();
+  if (tel && tel !== currentPhone) {
+    fields['Phone'] = tel;
+    changes.push({ field: 'Phone', from: currentPhone, to: tel });
+  }
+  const currentPrimary = String(f['Email'] || '').trim();
+  if (mail && mail !== currentPrimary.toLowerCase()) {
+    fields['Email'] = mail;
+    // The old primary moves into the alternates so nothing is lost — updateLeadEmails' rule.
+    if (currentPrimary) {
+      fields['Alt Emails'] = buildAltEmails([String(f['Alt Emails'] || ''), currentPrimary], mail);
+      notes.push(`old email ${currentPrimary} kept under Alt Emails, so replies and invites from it still match`);
+    }
+    changes.push({ field: 'Email', from: currentPrimary, to: mail });
+  }
+
+  if (!changes.length) return { ok: true, changed: false, changes: [], notes: [] };
+  await base('Leads').update([{ id: leadRecordId, fields }]);
+  return { ok: true, changed: true, changes, notes };
+}
+
+module.exports = { updateLeadEmails, buildAltEmails, findLeadRecord, createLead, updateLeadContact, updateLeadFacts };

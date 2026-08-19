@@ -190,7 +190,15 @@ async function upsertLead(
             }
             // If fields[LEAD_FIELDS.DATE_CONNECTED] already exists from connectionSince, it will be used
         }
-        
+
+        // MANUAL-CORRECTION GUARD (2026-08-20): a refresh scrape that carries NO location/email/phone
+        // must never blank a value a human filed (wingguy_update_lead / the Portal). An empty string
+        // here means "LinkedIn showed nothing", not "clear the field" — drop empties on UPDATE only
+        // (creates are unaffected: empty-on-create is already empty).
+        for (const guarded of [LEAD_FIELDS.LOCATION, LEAD_FIELDS.EMAIL, LEAD_FIELDS.PHONE]) {
+            if (fields[guarded] === "") delete fields[guarded];
+        }
+
         // Validate field names before sending to Airtable
         const validatedFields = createValidatedObject(fields);
         await airtableBase(CLIENT_TABLES.LEADS).update(existing[0].id, validatedFields);
