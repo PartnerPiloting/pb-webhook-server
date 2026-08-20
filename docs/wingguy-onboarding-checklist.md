@@ -91,8 +91,10 @@ drafting runs on my account and there's nothing for you to do.)
       brief quietly runs on YOUR key instead of theirs (see Step 8's "Watch out").
 
 **Check it worked:** ask Claude - *"run the onboarding preflight for [client ID]"*
-(`scripts/wingguy-julian-preflight.js`). It checks the whole row against the live system and
-prints green/red per item. All green before the call.
+(`scripts/wingguy-onboarding-preflight.js <clientId>`). It prints the whole journey - every step
+DONE / OWED with live probes, not just record fields - so you see exactly where this client is
+before every session, not only the first one. All green on today's steps before the call.
+(The original record-only check, `scripts/wingguy-julian-preflight.js`, still exists.)
 
 ---
 
