@@ -187,6 +187,20 @@ function step(n, name, verdict, evidence) {
         : `BYO with no key - /wg drafting and the overnight brief are BLOCKED until sk-ant- is on the row · Followup Brief=${client.followupBrief || 'off'}${briefOn ? '' : ' (correct order)'}`);
   } catch (e) { step(8, 'own Claude key', OWED, `probe failed: ${e.message}`); }
 
+  // ---- Extension update folder (only bites once the extension is on the journey) ---------------
+  try {
+    const raw = (client.rawRecord && client.rawRecord._rawJson && client.rawRecord._rawJson.fields) || {};
+    const provider = raw['Extension Folder Provider'] || '';
+    const ref = raw['Extension Folder Ref'] || '';
+    if (client.wingguyEnabled) {
+      step('E', 'extension updates', provider && ref ? DONE : OWED,
+        provider && ref ? `${provider} folder on file - ship-extension.js reaches this client`
+          : 'no update folder - send the ask email (cloud + Windows/Mac), then the matching card; updates are hand-delivered until this is set');
+    } else if (provider || ref) {
+      step('E', 'extension updates', OWED, 'folder fields set but Wingguy Enabled is off - flip the gate or clear the fields');
+    }
+  } catch (e) { step('E', 'extension updates', OWED, `probe failed: ${e.message}`); }
+
   console.log(lines.join('\n'));
   if (warnings.length) console.log('\n' + warnings.join('\n'));
   console.log('\n=== DONE (read-only) ===');

@@ -431,3 +431,152 @@ client revokes their key or hits their spend cap, their drafting stops with a cl
 key was rejected - update it" message, and the overnight brief emails you a "key rejected" alert and
 serves yesterday's brief (flagged stale). It never silently moves onto your key. The fix is always
 the same: they make a fresh key (or raise the cap) and you paste it into the field.
+
+---
+
+## THE EXTENSION UPDATE FOLDER - delivery that survives updates
+
+The extension installs once, but it gets improved - and updates must reach the client's computer
+with ZERO ongoing effort from them. The mechanism: one **Wingguy folder** per client in the
+client's own cloud storage, shared to Guy with edit rights. Guy's ship command
+(`scripts/ship-extension.js`) pushes every new version into every folder; the client's own sync
+tool pulls it down; Chrome picks it up at the next browser restart (or the refresh button for
+immediately). The client record carries **Extension Folder Provider** + **Extension Folder Ref**.
+
+**Why the client owns the folder:** a personal OneDrive share can NEVER sync into a Microsoft 365
+work account (hard Microsoft limit - Ashley, 2026-08-20). Their own folder in their own account
+always syncs. Direction is everything: we can't push a folder into their world, but they can make
+one in their world and hand Guy a key.
+
+**The comms doctrine (bulletproof rules, learned 2026-08-20):**
+- Two steps: ASK first (which cloud + Windows or Mac), then send exactly ONE card that matches
+  their answer. Nobody ever reads steps that don't apply to them.
+- Cards are FROZEN canonical text - proven click-for-click on a real machine before first client
+  use, carrying a proven-on note. A client stalling on a step = fix the card the same day.
+- Every step says WHERE it happens (File Explorer, never the browser) and ends with
+  "you'll know it worked when...".
+- Every risky step has a zero-cost exit: "stop here and reply - we'll do it together on the
+  call, two minutes, nothing lost." Nobody troubleshoots alone.
+- The loop closes BEFORE the call: client replies "done", Guy confirms the share arrived at his
+  end. No session ever starts with a delivery surprise.
+
+### The ask email (send at the extension stage, before the install session)
+
+> Subject: Your Wingguy extension - one quick question first
+>
+> Hi [name],
+>
+> Next up is the Chrome extension - the piece that puts Wingguy right inside LinkedIn, the /wg
+> magic I showed you.
+>
+> Before I send it over, one thing to get right: I don't just install it once - I keep improving
+> it, and I want my updates to reach your computer automatically, without you ever having to
+> download anything. That works through a shared folder in whichever cloud storage you already
+> use.
+>
+> So, two quick questions:
+>
+> 1. Which of these do you use?
+>    - Microsoft 365 through your business (you sign in with your work email)
+>    - Personal OneDrive (you sign in with a hotmail, outlook or personal address)
+>    - Google Drive
+>    Not sure? Just tell me the email address you use to sign in on your computer, and I'll work
+>    it out from that.
+> 2. Is your computer Windows or a Mac?
+>
+> Reply with both and I'll send you three exact steps - takes about two minutes, once, and then
+> updates look after themselves forever.
+
+### Card 1 - Microsoft 365 (work OneDrive), Windows [proven: pending first client]
+
+> Great - Microsoft 365 it is. Three steps, all done on your computer in File Explorer (the
+> yellow folder icon in your taskbar) - nothing in the web browser.
+>
+> 1. **Make the folder.** Open File Explorer. In the left-hand column you'll see
+>    **OneDrive - [your company name]**. Click it, right-click in the empty space on the right,
+>    choose **New - Folder**, and name it **Wingguy**.
+>    *You'll know it worked when: the Wingguy folder sits in the list with a little cloud or
+>    tick icon next to it.*
+> 2. **Share it to me.** Right-click the Wingguy folder and choose **Share**. If you don't see
+>    Share, click **Show more options** at the bottom of the menu - Windows hides the full menu
+>    behind it. In the window that opens, type **[GUY'S MICROSOFT ADDRESS - fill before first
+>    send]**, click the pencil icon and make sure it says **Can edit** - that's what lets my
+>    updates in - then press **Send**.
+>    *You'll know it worked when: it says the invitation was sent.*
+>    *If your company blocks sharing to outside people, it will tell you here - just stop and
+>    reply with what it said, and we'll sort it on the call. Nothing lost.*
+> 3. **Pin it to your computer.** Right-click the Wingguy folder one more time and choose
+>    **Always keep on this device**.
+>    *You'll know it worked when: the icon next to the folder becomes a solid green circle with
+>    a white tick.*
+>
+> Then just reply "done". I'll check the folder has arrived at my end and confirm back - so
+> before our call we both already know it's working.
+
+### Card 2 - personal OneDrive, Windows [proven: pending first client]
+
+Identical to Card 1 with one label change: the left-hand column entry is plain **OneDrive**
+(possibly "OneDrive - Personal"), not "OneDrive - [company]". Same share step, same
+Show-more-options rescue, same pin step, same reply-done loop.
+
+### Card 3 - Google Drive, Windows [proven on Guy's own machine 2026-08-20: Share hides behind Show more options; exact label "Share with Google Drive"]
+
+> Great - Google Drive it is. First one check, then three steps - all done on your computer in
+> File Explorer (the yellow folder icon in your taskbar), nothing in the web browser.
+>
+> **The check:** open File Explorer and look at the left-hand column for **Google Drive**. If
+> it's there, carry on. If it's not, stop here and just reply "not there" - it means Google's
+> desktop program isn't installed yet, and we'll set it up together on our call. Two minutes,
+> nothing lost.
+>
+> 1. **Make the folder.** In File Explorer, click **Google Drive** in the left-hand column, open
+>    **My Drive**, right-click in the empty space, choose **New - Folder**, and name it
+>    **Wingguy**.
+>    *You'll know it worked when: the Wingguy folder appears in the list.*
+> 2. **Share it to me.** Right-click the Wingguy folder and choose **Share with Google Drive**
+>    (it has the Drive triangle icon). If you don't see it, click **Show more options** at the
+>    bottom of the menu - Windows hides the full menu behind it. A small Google window opens -
+>    it looks like a webpage box, that's normal, your computer opened it for you. Type
+>    **guyralphwilson@gmail.com**, click the dropdown next to the name (it usually says
+>    Viewer) and change it to **Editor** - that's what lets my updates in - and click **Send**.
+>    *You'll know it worked when: you can right-click - Share with Google Drive again and see me
+>    listed under "People with access" as Editor.*
+> 3. **Pin it to your computer.** Right-click the Wingguy folder again, go to **Offline
+>    access**, and choose **Available offline**.
+>    *You'll know it worked when: a green tick appears next to the folder.*
+>
+> Then just reply "done". I'll check the folder has arrived at my end and confirm back - so
+> before our call we both already know it's working.
+
+### Mac variants [UNPROVEN - walk them live with the first Mac client, then freeze]
+
+Same skeleton; Finder instead of File Explorer; OneDrive pin wording is **"Always Keep on This
+Device"**; Google pin is under **Offline access** in Finder's right-click menu once Drive for
+desktop is installed. Do NOT send a Mac card cold - the labels have not been proven on a real
+machine yet. First Mac client: do it together on the call, write down what the screen actually
+said, then the card exists.
+
+### On-call script - installing Google Drive for desktop (when the client replied "not there")
+
+Read this out, watching their shared screen:
+
+1. "Open a new browser tab and go to **google.com/drive/download**. Click the download button
+   for Drive for desktop, and run the file it gives you."
+2. "It'll ask you to sign in. **Before you click - which Google account is it showing?**" (The
+   wrong-account trap applies here exactly like calendars: the folder must live in the account
+   they shared - or will share - to Guy. If the wrong account shows, sign in with the right one.)
+3. "Accept the defaults and let it finish. You'll know it's done when **Google Drive** appears
+   in the left-hand column of File Explorer."
+4. Then run Card 3 from step 1, together.
+
+### Guy's side, once the client replies "done"
+
+- [ ] Open the share notification (email or Shared-with-me), confirm edit access, and reply
+      "got it - all set for [session day]".
+- [ ] On their master row set **Extension Folder Provider** (gdrive | onedrive) and
+      **Extension Folder Ref** (gdrive: the folder ID from its drive.google.com URL - open the
+      folder on the web once to copy it; onedrive: the share link).
+- [ ] Ship to just them as the first test: `node scripts/ship-extension.js --client=<Client-ID>`
+      (Render one-off job). The table must say OK with the current version.
+- [ ] The journey preflight now shows "extension updates DONE" for them - it checks these fields
+      before every session.

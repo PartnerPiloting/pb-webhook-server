@@ -166,6 +166,22 @@ const MASTER_FIELDS = [
     name: 'Anthropic API Key',
     type: 'singleLineText',
     description: 'Client\'s own (BYO) Anthropic API key. When present, Wingguy runs THIS client\'s server-side work (nightly follow-up brief, and the Chrome extension\'s drafting) on their key + their spend cap, not the platform key. Resolution order: request header -> this stored key -> platform key. Falls back to platform ONLY when absent; a FAILING key here (revoked/capped) must surface, not silently fall through. Client sets a spend cap + can revoke instantly (Anthropic Console), so worst-case cost is a number they chose. Plaintext-at-rest like the portal tokens in this base. Added 2026-07-24.'
+  },
+  {
+    name: 'Extension Folder Provider',
+    type: 'singleSelect',
+    description: 'Which cloud holds this client\'s Wingguy extension update folder (scripts/ship-extension.js pushes every ship into it). gdrive = a Google Drive folder shared to Guy as Editor. onedrive = a OneDrive folder - the client\'s own (work or personal, shared to Guy with edit rights) or a Guy-owned folder shared out where that works. Blank = no update folder yet; the client is on hand-delivered updates. A personal-OneDrive share can NEVER sync into a client\'s Microsoft 365 work account, which is why M365 clients own their folder and share it inward. Added 2026-08-20.',
+    options: {
+      choices: [
+        { name: 'gdrive', color: 'greenBright' },
+        { name: 'onedrive', color: 'blueBright' }
+      ]
+    }
+  },
+  {
+    name: 'Extension Folder Ref',
+    type: 'singleLineText',
+    description: 'The update folder itself, captured once at the extension onboarding step: for gdrive the folder ID out of the folder\'s drive.google.com URL; for onedrive the folder\'s share link. scripts/ship-extension.js resolves it, uploads the build, and verifies the folder\'s manifest version after every push. Added 2026-08-20.'
   }
 ];
 
