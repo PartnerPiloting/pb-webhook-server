@@ -144,6 +144,13 @@ async function main() {
   console.log('Produced a draft:', rv.draft ? 'yes' : 'NO — no draft!');
   console.log('Drafted the real opener (asks for a Zoom/call, not a bare nudge):',
     /\b(zoom|call|chat|catch up|catch-up)\b/i.test(rv.draft || '') ? 'yes' : 'NO — looks like a nudge, not the opener');
+  // The Alix regression (2026-08-21): it DID draft the opener with a Zoom ask — and opened it
+  // "Following up properly on my note", which implies she owed the handshake note a reply. The
+  // stage rule bans that; the code-side stage list hadn't been updated to match. Assert the line.
+  console.log('Opens with "Thanks for connecting":',
+    /^\s*(hi\s+\w+[,!]?\s*)?thanks for connecting/i.test((rv.draft || '').replace(/\n+/g, ' ')) ? 'yes' : 'NO — wrong opener');
+  console.log('No you-owed-me-a-reply opener:',
+    /following up|got buried|lot of these|circling back|my note/i.test(rv.draft || '') ? 'NO — banned opener present' : 'yes');
   console.log('Did NOT call calendar:', !toolCallsIn(rv.messages).includes('check_availability') ? 'yes' : 'NO — checked the calendar unprompted');
 
   // ── Scenario E: PITCHED BUT QUIET — Guy's REAL opener (which already asked for a Zoom) has gone out
