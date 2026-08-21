@@ -1,28 +1,33 @@
-// Ship the Wingguy extension to every client's update folder - one command, no hand-uploads.
+// Ship the Wingguy extension to every client's update folder - one command per environment.
 //
 //   node scripts/ship-extension.js --dry-run              list targets + versions, push nothing
 //   node scripts/ship-extension.js                        push to every configured folder
 //   node scripts/ship-extension.js --client=Guy-Wilson    one client only
 //
-// Born 2026-08-20 (the Ashley OneDrive call): delivery moves from hand-updated synced-folder
-// masters to an API fan-out. Each client row carries 'Extension Folder Provider' (gdrive |
-// onedrive) + 'Extension Folder Ref' (Drive folder ID | OneDrive share link). The client's own
-// sync tool pulls the files down; Chrome picks them up at the next browser restart (or ↻).
-// Failures are named per client, never swallowed. Verification = the folder's manifest.json is
-// read back after upload and must match the shipped version.
+// THREE-LANE DELIVERY (decided 2026-08-21 - doctrine in docs/wingguy-onboarding-checklist.md):
+// every update folder is GUY-OWNED and shared to the client VIEW-ONLY. Client rows carry
+// 'Extension Folder Provider' (gdrive | onedrive) + 'Extension Folder Ref'.
 //
-// Runs on prod as a Render one-off job, so the deployed wingguy-extension folder IS the build
-// (identical to origin/main). Local runs work too if .env carries the same secrets.
+//   gdrive   - folder in Guy's My Drive, pushed via the Drive API as Guy. Runs anywhere the
+//              GOOGLE_SHIP_* env is set (prod Render one-off job today; mint the refresh token
+//              with scripts/ship-extension-google-auth.js). Ref = the folder ID (or full
+//              drive.google.com URL) of the folder that holds manifest.json.
+//   onedrive - folder in Guy's PERSONAL OneDrive. No API, no Azure app, no consent screens:
+//              the ship copies files into the locally synced folder and the OneDrive client
+//              carries them up. Therefore it runs ON GUY'S MACHINE (where %OneDrive% exists;
+//              override with ONEDRIVE_ROOT). Ref = the folder path relative to the OneDrive
+//              root, ending at the folder that holds manifest.json
+//              (Julian: 'Wingguy/wingguy-extension').
+//   (zip)    - the third lane has no code here: git archive "origin/main:wingguy-extension"
+//              --prefix=Wingguy/ --format=zip, handed to a tech client to self-manage.
 //
-// Auth (one-time setups):
-//   gdrive   - OAuth as Guy (files land owned by Guy, which dodges the service-account quota
-//              trap on consumer Drive folders). Env: GOOGLE_SHIP_CLIENT_ID,
-//              GOOGLE_SHIP_CLIENT_SECRET, GOOGLE_SHIP_REFRESH_TOKEN
-//              (mint the refresh token locally with scripts/ship-extension-google-auth.js).
-//   onedrive - Microsoft Graph as Guy's Microsoft account, refresh-token flow. Env:
-//              MS_SHIP_CLIENT_ID, MS_SHIP_REFRESH_TOKEN (device-code setup documented in the
-//              auth helper's header). Until set, the lane reports "not configured" per client
-//              rather than failing the run.
+// A lane that can't run in the current environment reports SKIPPED per client - never silently
+// dropped; run the same command in the other environment to cover those clients. Failures are
+// named per client. Verification = the folder's manifest.json is read back after the push and
+// must match the shipped version.
+//
+// M365 WORK accounts are NOT a lane - rejected 2026-08-21. Do not add a Graph/Azure lane here
+// without Guy explicitly reopening that decision.
 require('dotenv').config();
 
 const fs = require('fs');
@@ -89,7 +94,7 @@ async function driveEnsureSubfolder(drive, parentId, name, cache) {
 
 async function drivePush(ref, files) {
   const drive = driveClient();
-  if (!drive) return { ok: false, error: 'gdrive lane not configured (GOOGLE_SHIP_* env missing)' };
+  if (!drive) return { skip: true, reason: 'gdrive lane not configured here (GOOGLE_SHIP_* env) - run as a Render one-off job' };
   const rootId = driveFolderId(ref);
   const subCache = new Map();
   for (const f of files) {
@@ -113,50 +118,29 @@ async function drivePush(ref, files) {
   return { ok: true, version };
 }
 
-// ---- Microsoft Graph (OneDrive) lane ---------------------------------------------------------
-async function graphToken() {
-  const { MS_SHIP_CLIENT_ID, MS_SHIP_REFRESH_TOKEN } = process.env;
-  if (!MS_SHIP_CLIENT_ID || !MS_SHIP_REFRESH_TOKEN) return null;
-  const res = await fetch('https://login.microsoftonline.com/common/oauth2/v2.0/token', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      client_id: MS_SHIP_CLIENT_ID,
-      grant_type: 'refresh_token',
-      refresh_token: MS_SHIP_REFRESH_TOKEN,
-      scope: 'Files.ReadWrite.All offline_access',
-    }),
-  });
-  if (!res.ok) throw new Error(`graph token: ${res.status} ${await res.text()}`);
-  return (await res.json()).access_token;
+// ---- personal OneDrive lane (local copy - the OneDrive sync client does the uploading) --------
+function onedriveRoot() {
+  const root = process.env.ONEDRIVE_ROOT || process.env.OneDrive || '';
+  return root && fs.existsSync(root) ? root : null;
 }
 
-// A OneDrive share link resolves to the underlying drive item via the /shares door.
-function shareId(url) {
-  return 'u!' + Buffer.from(String(url).trim()).toString('base64').replace(/=+$/, '').replace(/\//g, '_').replace(/\+/g, '-');
-}
-
-async function graphPush(ref, files) {
-  const token = await graphToken();
-  if (!token) return { ok: false, error: 'onedrive lane not configured (MS_SHIP_* env missing)' };
-  const headers = { Authorization: `Bearer ${token}` };
-  const root = await fetch(`https://graph.microsoft.com/v1.0/shares/${shareId(ref)}/driveItem`, { headers });
-  if (!root.ok) return { ok: false, error: `resolve share link: ${root.status} ${await root.text()}` };
-  const item = await root.json();
-  const base = `https://graph.microsoft.com/v1.0/drives/${item.parentReference.driveId}/items/${item.id}`;
-  for (const f of files) {
-    // Path-addressed upload creates folders and replaces files in one move. <4MB per file.
-    const up = await fetch(`${base}:/${f.relPath}:/content`, {
-      method: 'PUT',
-      headers: { ...headers, 'Content-Type': mimeFor(f.relPath) },
-      body: fs.readFileSync(f.abs),
-    });
-    if (!up.ok) return { ok: false, error: `upload ${f.relPath}: ${up.status} ${await up.text()}` };
+function onedrivePush(ref, files) {
+  const root = onedriveRoot();
+  if (!root) return { skip: true, reason: "onedrive lane is a local copy into Guy's synced OneDrive - run this on Guy's machine" };
+  const rel = String(ref).replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
+  if (!rel || rel.split('/').some((p) => p === '' || p === '.' || p === '..')) {
+    return { ok: false, error: `bad onedrive ref '${ref}' - expected a folder path relative to the OneDrive root` };
   }
-  const check = await fetch(`${base}:/manifest.json:/content`, { headers });
-  if (!check.ok) return { ok: false, error: 'verify failed: no manifest.json in folder after push' };
-  const version = (await check.json()).version;
-  return { ok: true, version };
+  const dest = path.join(root, ...rel.split('/'));
+  for (const f of files) {
+    const target = path.join(dest, ...f.relPath.split('/'));
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.copyFileSync(f.abs, target);
+  }
+  // Verify: read the folder's manifest back from disk. The OneDrive client carries it up from
+  // here - give it a moment before telling the client to refresh.
+  const version = JSON.parse(fs.readFileSync(path.join(dest, 'manifest.json'), 'utf8')).version;
+  return { ok: true, version, note: 'local copy done - OneDrive sync carries it up' };
 }
 
 // ---- main ------------------------------------------------------------------------------------
@@ -180,12 +164,18 @@ async function graphPush(ref, files) {
   }
 
   let failed = 0;
+  let skipped = 0;
   for (const t of targets) {
     if (DRY) { console.log(`  ${t.clientId.padEnd(16)} ${t.provider.padEnd(9)} would push ${manifest.version}`); continue; }
     try {
-      const r = t.provider === 'gdrive' ? await drivePush(t.ref, files) : await graphPush(t.ref, files);
-      if (r.ok && r.version === manifest.version) {
-        console.log(`  ${t.clientId.padEnd(16)} ${t.provider.padEnd(9)} ${r.version}  OK`);
+      const r = t.provider === 'gdrive' ? await drivePush(t.ref, files)
+        : t.provider === 'onedrive' ? onedrivePush(t.ref, files)
+          : { ok: false, error: `unknown provider '${t.provider}' (expected gdrive | onedrive)` };
+      if (r.skip) {
+        skipped++;
+        console.log(`  ${t.clientId.padEnd(16)} ${t.provider.padEnd(9)} SKIPPED - ${r.reason}`);
+      } else if (r.ok && r.version === manifest.version) {
+        console.log(`  ${t.clientId.padEnd(16)} ${t.provider.padEnd(9)} ${r.version}  OK${r.note ? ` (${r.note})` : ''}`);
       } else {
         failed++;
         console.log(`  ${t.clientId.padEnd(16)} ${t.provider.padEnd(9)} FAILED - ${r.error || `verify mismatch: folder has ${r.version}`}`);
@@ -195,6 +185,10 @@ async function graphPush(ref, files) {
       console.log(`  ${t.clientId.padEnd(16)} ${t.provider.padEnd(9)} FAILED - ${e.message}`);
     }
   }
-  console.log(`\n${DRY ? 'Dry run complete.' : failed ? `${failed} FAILURE(S) - fix and re-run (safe to repeat).` : 'All folders shipped and verified.'}`);
+  const tail = [];
+  if (failed) tail.push(`${failed} FAILURE(S) - fix and re-run (safe to repeat).`);
+  if (skipped) tail.push(`${skipped} skipped - run the same command in the other environment to cover them.`);
+  if (!failed && !skipped) tail.push('All folders shipped and verified.');
+  console.log(`\n${DRY ? 'Dry run complete.' : tail.join(' ')}`);
   process.exit(failed ? 1 : 0);
 })().catch((e) => { console.error('SHIP ERROR:', e); process.exit(1); });

@@ -602,26 +602,78 @@ as Chrome does.
 > Reply with both and I'll set the folder up at my end and send you the two steps to connect
 > it - about two minutes, once, and then updates look after themselves forever.
 
-### The client cards [ALL UNPROVEN in the new direction - prove click-for-click on a real machine, then freeze]
+### The folder standard (new clients from 2026-08-21)
 
-⚠ The previous cards (client creates a folder and shares it to Guy with edit rights) belonged
-to the rejected client-owned model and have been DELETED - do not resurrect them from git
-history. The client's job is now much smaller: connect to a folder Guy already shared, then pin
-it. Skeletons to prove and freeze, one real machine each:
+One folder per client, named **Wingguy**, with the extension files (manifest.json) DIRECTLY
+inside it - the client loads that one folder and never sees the plumbing. Guy's side of the
+layout:
 
-- **Google Drive, Windows:** the check first - **Google Drive** visible in File Explorer's
-  left-hand column (if not: the on-call install script below). Then: open drive.google.com,
-  find the **Wingguy** folder under **Shared with me**, right-click it - **Organise - Add
-  shortcut**, put the shortcut in **My Drive**. Back in File Explorer: Google Drive - My
-  Drive - right-click the Wingguy folder - **Offline access - Available offline** (green tick).
-- **Personal OneDrive, Windows:** open Guy's share link, sign in with the personal account,
-  click **Add shortcut to My files**. In File Explorer the folder appears under **OneDrive**:
-  right-click it - **Always keep on this device** (solid green circle with a white tick).
-- **Mac variants:** same skeletons, Finder wording; OneDrive pin = **"Always Keep on This
-  Device"** (that half is field-proven - it's how Julian has synced since 2026-08-13); Google
-  pin sits under **Offline access** in Finder's right-click menu once Drive for desktop is in.
-- Every card, once proven, keeps the doctrine: File Explorer/Finder only, a "you'll know it
-  worked when..." after every step, zero-cost exits, and a proven-on date in the heading.
+- gdrive: `My Drive / Wingguy-clients / <Client-ID> / Wingguy` - share the inner **Wingguy**;
+  **Extension Folder Ref** = that folder's ID (from its drive.google.com URL).
+- onedrive: `OneDrive / Wingguy-clients / <Client-ID> / Wingguy` - share the inner **Wingguy**
+  from onedrive.live.com; **Extension Folder Ref** = the path
+  `Wingguy-clients/<Client-ID>/Wingguy`.
+- Exceptions that pre-date the standard, leave them alone: Guy himself (ref = his inner
+  `My Drive/Wingguy/wingguy-extension`) and Julian (ref = `Wingguy/wingguy-extension`, loads
+  the inner folder).
+
+### How a ship runs (the two-environment split)
+
+`node scripts/ship-extension.js` covers every configured client and prints a per-client table.
+Each lane runs where its access lives, and the script SKIPS (never silently drops) what it
+can't reach from where it's running:
+
+- **gdrive clients** - run it as a **Render one-off job** (the `GOOGLE_SHIP_*` env lives on
+  prod). A local run lists them as SKIPPED.
+- **onedrive clients** - run it **locally on Guy's machine**: it copies the files into Guy's
+  synced OneDrive folder and the OneDrive app carries them up. No Azure, no tokens, ever. A
+  Render run lists them as SKIPPED. (Local runs need `.env` with AIRTABLE_API_KEY +
+  MASTER_CLIENTS_BASE_ID - already set up on Guy's machine, values copied from the prod env.)
+- **zip clients** - no script: build the zip (below) and hand it over.
+
+So a full ship = the Render job (gdrive) + the local run (onedrive) + zips for lane-3 clients.
+Proven 2026-08-21: local run shipped Julian-Davis 0.3.12, verified byte-identical to
+origin/main; Julian's by-hand era is over.
+
+---
+
+## LANE 1 - PERSONAL GOOGLE DRIVE
+
+**What Guy does:**
+
+- [ ] After the ask email reply: create `My Drive/Wingguy-clients/<Client-ID>/Wingguy`, share
+      the **Wingguy** folder to the client's gmail as **Viewer** (never Editor - edit rights =
+      code injection into their browser).
+- [ ] Set their row: **Extension Folder Provider** = `gdrive`, **Extension Folder Ref** = the
+      folder ID from its drive.google.com URL.
+- [ ] First ship to just them: `node scripts/ship-extension.js --client=<Client-ID>` as a
+      Render one-off job - table must say OK at the current version.
+- [ ] Send the card below. When they reply "done", they install (see the install card) on the
+      call or solo.
+
+**What the client does [DRAFT - UNPROVEN in this direction; walk it on a real machine, stamp
+the proven-on date, then freeze]:**
+
+> Great - Google Drive it is. I've already set the folder up and shared it to you, so your part
+> is two small steps, once, and then my updates reach you automatically forever.
+>
+> **First, a quick check:** open File Explorer (the yellow folder icon in your taskbar) and
+> look at the left-hand column for **Google Drive**. If it's there, carry on. If it's not,
+> stop here and just reply "not there" - it means Google's desktop program isn't installed
+> yet, and we'll set it up together on our call. Two minutes, nothing lost.
+>
+> 1. **Put my folder into your Drive.** In your web browser, go to **drive.google.com** (signed
+>    in with the same Google account you gave me). Click **Shared with me** in the left-hand
+>    column - you'll see a folder called **Wingguy** shared by me. Right-click it, choose
+>    **Organise**, then **Add shortcut**, pick **My Drive**, and click **Add**.
+>    *You'll know it worked when: Wingguy appears when you click My Drive.*
+> 2. **Pin it to your computer.** Back in File Explorer: click **Google Drive** in the
+>    left-hand column, open **My Drive**, right-click the **Wingguy** folder, go to **Offline
+>    access**, and choose **Available offline**.
+>    *You'll know it worked when: a green tick appears next to the folder.*
+>
+> Then just reply "done" and I'll confirm the files are flowing - so before our call we both
+> already know it's working.
 
 ### On-call script - installing Google Drive for desktop (when the client replied "not there")
 
@@ -634,23 +686,136 @@ Read this out, watching their shared screen:
    shared the folder to. If the wrong account shows, sign in with the right one.)
 3. "Accept the defaults and let it finish. You'll know it's done when **Google Drive** appears
    in the left-hand column of File Explorer."
-4. Then run the Google card from step 1, together.
+4. Then run the card above from step 1, together.
 
-### Guy's side
+---
 
-- [ ] BEFORE the ask email even: create the client's folder - one per client, in Guy's own My
-      Drive (gdrive clients) or Guy's personal OneDrive (onedrive clients).
-- [ ] Once the client replies with their personal address: share the folder to it **VIEW-ONLY**
-      (Drive: Viewer; OneDrive: "Can view", shared from onedrive.live.com - Windows'
-      right-click "Give access to" is LAN sharing, NOT OneDrive). Never edit rights.
-- [ ] On their master row set **Extension Folder Provider** (gdrive | onedrive) and
-      **Extension Folder Ref** (gdrive: Guy's folder ID from its drive.google.com URL - the ref
-      must be the folder the browser will load from, i.e. where manifest.json sits; onedrive:
-      Guy's folder path, until graphPush is rewritten and defines its own ref shape).
-- [ ] Ship to just them as the first test: `node scripts/ship-extension.js --client=<Client-ID>`
-      (Render one-off job). The table must say OK with the current version. (OneDrive clients:
-      update Guy's master folder by hand until the graphPush rewrite lands.)
-- [ ] Client confirms the files appeared on their machine; the extension loads unpacked from
-      the INNER folder holding manifest.json.
-- [ ] The journey preflight now shows "extension updates DONE" for them - it checks these fields
-      before every session.
+## LANE 2 - PERSONAL ONEDRIVE
+
+**What Guy does:**
+
+- [ ] After the ask email reply: create `OneDrive/Wingguy-clients/<Client-ID>/Wingguy` (in
+      File Explorer on Guy's machine is fine - it's Guy's own OneDrive).
+- [ ] Share the **Wingguy** folder to the client's personal Microsoft address from
+      **onedrive.live.com** with **"Can view"** (Windows' right-click "Give access to" is LAN
+      sharing, NOT OneDrive - always share from the website). Never edit rights.
+- [ ] Set their row: **Extension Folder Provider** = `onedrive`, **Extension Folder Ref** =
+      `Wingguy-clients/<Client-ID>/Wingguy`.
+- [ ] First ship to just them: `node scripts/ship-extension.js --client=<Client-ID>` **run
+      locally on Guy's machine** - table must say OK at the current version. Give OneDrive a
+      minute to sync up before the client looks.
+- [ ] Send the card below.
+- ⚠ For a client whose company mail mangles links (Proofpoint - Rick): send the share link by
+      Zoom chat or text, never email.
+
+**What the client does [DRAFT - UNPROVEN in this direction; walk it on a real machine
+(Rick, 27 Aug, is the proving run), stamp the proven-on date, then freeze]:**
+
+> Great - OneDrive it is. I've already set the folder up and shared it to your personal
+> account, so your part is two small steps, once, and then my updates reach you automatically
+> forever.
+>
+> 1. **Add my folder to your OneDrive.** Open the share message I sent you and click the link -
+>    it opens the OneDrive website. Sign in with your **personal** Microsoft account (the
+>    hotmail/outlook one you gave me, not your work sign-in). You'll see the **Wingguy**
+>    folder - click **Add shortcut to My files** in the menu bar at the top.
+>    *You'll know it worked when: back on your computer, the Wingguy folder appears in File
+>    Explorer (the yellow folder icon in your taskbar) under **OneDrive** in the left-hand
+>    column.*
+>    *If anything looks different from what I've described, stop here and reply with what you
+>    see - we'll do it together on the call, two minutes, nothing lost.*
+> 2. **Pin it to your computer.** In File Explorer, right-click that **Wingguy** folder and
+>    choose **Always keep on this device**.
+>    *You'll know it worked when: the icon next to the folder becomes a solid green circle
+>    with a white tick.*
+>
+> Then just reply "done" and I'll confirm the files are flowing - so before our call we both
+> already know it's working.
+
+---
+
+## LANE 3 - ZIP SELF-MANAGE (tech clients only - their choice, never the default)
+
+**What Guy does:**
+
+- [ ] Build the zip fresh from main every time - NEVER from a checkout:
+      `git archive "origin/main:wingguy-extension" --prefix=Wingguy/ --format=zip -o wingguy.zip`
+- [ ] Hand it over: attach to email, or by **Zoom chat/text for Proofpoint-afflicted clients**
+      (Ashley: email is fine).
+- [ ] On every later ship: send the new zip with a one-liner - "new version [X.Y.Z], same
+      routine".
+- [ ] Their row: **Extension Folder Provider / Ref stay BLANK** (nothing to push to) - which
+      means the preflight can't tick "extension updates" for them; that's correct, the send is
+      manual.
+
+**What the client does [DRAFT - confirm the wording with the first lane-3 client, then
+freeze]:**
+
+> You're on manual updates - you asked to run your own copy, so here's the routine. It's the
+> same every time, about a minute.
+>
+> **Once, at the start:** make a permanent home for it - a folder like **Documents\Wingguy**.
+> NOT your Downloads folder (things in Downloads get cleaned up, and the extension dies with
+> them).
+>
+> **Every time I send a new version:**
+>
+> 1. Save the zip I sent you, right-click it, choose **Extract All...**, and point it at your
+>    Wingguy home folder, replacing what's there.
+>    *You'll know it worked when: the folder's files show today's date.*
+> 2. Go to your browser's extensions page (**chrome://extensions** or **edge://extensions** in
+>    the address bar) and click the **↻ reload** arrow on the Wingguy card, then refresh any
+>    LinkedIn tabs you have open.
+>    *You'll know it worked when: the version number on the Wingguy card matches the one I
+>    sent you.*
+
+---
+
+## THE INSTALL CARD - loading the extension into Chrome or Edge (one-time, any lane)
+
+**What Guy does:** send this after the client's update folder is flowing (lanes 1-2) or with
+the first zip (lane 3). Do it together on the call for anyone non-technical - it's the fiddliest
+single step in the journey. ⚠ Rick (27 Aug) = Edge, first client walk-through of this card.
+
+**What the client does [DRAFT - Chrome side matches what Guy has done on his own machine many
+times; the Edge wording was proven on Guy's machine 2026-08-21; freeze after the first client
+walk-through]:**
+
+> One-time setup - after this, updates arrive on their own and at most I'll ask you to click
+> one refresh button.
+>
+> 1. **Open your browser's extensions page.** Click in the address bar and type
+>    **chrome://extensions** (Chrome) or **edge://extensions** (Edge), then press Enter.
+> 2. **Turn on Developer mode.** In Chrome it's a toggle in the TOP-RIGHT corner; in Edge it's
+>    in the LEFT sidebar. Click it so it's on.
+>    *You'll know it worked when: a "Load unpacked" button appears.*
+> 3. **Load the folder.** Click **Load unpacked** and pick your **Wingguy** folder (under
+>    Google Drive or OneDrive in the picker's left-hand column - or your Documents\Wingguy if
+>    you're on manual updates).
+>    *You'll know it worked when: a Wingguy card appears on the extensions page.*
+> 4. **Sign it in.** Open your portal (your bookmarked link) once in THIS browser. That's how
+>    the extension knows it's you - and it's per browser, so even if it already works in
+>    Chrome, a copy in Edge needs the portal opened once in Edge.
+>    *You'll know it worked when: you open any LinkedIn profile, type /wg, and the Wingguy
+>    panel appears.*
+>
+> If any screen doesn't match what I've written, stop and reply with what you see - we'll do
+> it together on the call, nothing lost.
+
+⚠ Traps that bite here (Guy-side knowledge, not for the card): the loaded folder must be the
+one with manifest.json DIRECTLY inside; never leave two copies of the extension enabled
+(double panels); the offline pin is load-bearing (an unpinned streamed folder = extension dies
+at browser start).
+
+### Mac variants [UNPROVEN - walk them live with the first Mac client, then freeze]
+
+Same skeletons; Finder instead of File Explorer; OneDrive pin wording is **"Always Keep on
+This Device"** (field-proven - it's how Julian has synced since 2026-08-13); Google pin sits
+under **Offline access** in Finder's right-click menu once Drive for desktop is installed. Do
+NOT send a Mac card cold.
+
+### Guy's wrap-up, any lane
+
+- [ ] Client confirms the "you'll know it worked when" of their last step.
+- [ ] Lanes 1-2: the journey preflight now shows "extension updates DONE" for them - it checks
+      the Provider/Ref fields before every session. Lane 3 stays manual by design.
