@@ -506,6 +506,36 @@ work account (hard Microsoft limit - Ashley, 2026-08-20). Their own folder in th
 always syncs. Direction is everything: we can't push a folder into their world, but they can make
 one in their world and hand Guy a key.
 
+### EDGE WORKS - proven on a real machine 2026-08-21 (Guy's own, Edge 151, extension v0.3.12)
+
+The extension is a Chrome extension in name only. It ran in Edge unchanged, first go, `/wg` live on
+a LinkedIn profile with no reload needed. A read of the source beforehand found nothing
+Chrome-only: every browser API it uses (storage, tabs, scripting, messaging, the toolbar action) is
+standard MV3 that Edge supports, the manifest carries no `minimum_chrome_version`, no `key` and no
+`update_url`, and the code does not sniff which browser it is running in. So **stop calling it
+"Chrome only" to clients** - if they live in Edge, put it in Edge.
+
+**What differs from the Chrome install:**
+
+- `edge://extensions/`, not `chrome://extensions/`.
+- **Developer mode is a toggle in the LEFT sidebar in Edge**, not the top-right corner.
+- One content script needs Edge 111+ (`world: "MAIN"`). Anything from the last couple of years is
+  fine; `edge://settings/help` shows the version if in doubt.
+
+**⚠ THE TRAP - the extension's storage is PER BROWSER.** A fresh install in Edge inherits nothing
+from the same person's Chrome copy. **They must open their portal once in Edge** before `/wg` will
+know who they are. Skip it and a perfectly good install looks broken. Same applies in reverse, and
+to anyone running both browsers side by side.
+
+**The only friction Guy hit was signing in to LinkedIn (and the portal) from scratch, 2FA
+included - nothing to do with the extension.** That is a cost of using a browser you don't
+normally use, so budget five minutes for a client being moved to a new browser, and none at all
+for a client who already lives there. Rick Wong is an Edge native, so he should hit less of this
+than Guy did.
+
+The update folder mechanism is unaffected - Edge picks up a new version on browser restart exactly
+as Chrome does.
+
 **The comms doctrine (bulletproof rules, learned 2026-08-20):**
 - Two steps: ASK first (which cloud + Windows or Mac), then send exactly ONE card that matches
   their answer. Nobody ever reads steps that don't apply to them.
