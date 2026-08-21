@@ -313,11 +313,69 @@ registration listed cleanly: `--list` on the same script.)
    first real note has filed cleanly, say "we're switching it on now", not "it works".
 3. **Business plan.** No Business plan, no API key, no pipe - check before setting expectations.
 
+### The Fireflies lane - PROVEN 2026-08-21 (Rick Wong, first client through)
+
+Fireflies is the one non-Granola recorder with a real pipe. It is a bot-joining tool, and
+**Fireflies only fires for meetings the account OWNS** (organiser) - a client who is a guest on
+someone else's Fireflies call gets nothing. For a client already living in Fireflies it is a
+straight swap, and their phone app covers face-to-face meetings too.
+
+⚠ **The screens below were observed on 21 Aug 2026 in a live account. Fireflies moves its UI and
+its own docs were wrong on two counts that day - trust what is on the client's screen over what
+is written here, and update this when it drifts.**
+
+**Before the call (you):** mint the signing secret yourself, 16-32 chars, and have it ready. Do
+not make the client invent one live.
+
+**The client does:**
+
+1. **Settings -> MCP and API** (NOT "Developer settings", whatever the docs say) -> copy the
+   **API key** and read it to you.
+2. **Settings -> Webhooks.** An existing config shows as a row ("Default Configuration"). The row
+   does NOT open on click - hover it, then **three dots -> Edit**. If there is none, **Add Config**.
+3. Paste the webhook URL: `https://pb-webhook-server.onrender.com/webhooks/fireflies/<Client-ID>`
+4. Press **Continue**. The **Signing Secret** field is on that NEXT step, it is OPTIONAL, and it
+   is the easiest thing in the whole flow to skip straight past. Paste your secret there.
+5. Tick **Meeting transcribed** AND **Meeting summarized**. Leave **Meeting bot joined** off.
+6. The button says **Update**, not Save, when editing - and stays greyed out until Continue.
+
+**You do:**
+
+- [ ] **Put the secret on their row BEFORE they save their side**, so the proving step works first
+      time. Ours rejects every unsigned delivery, so the wrong order looks like a failure.
+- [ ] **Fireflies API Key** + **Fireflies Webhook Secret** on their row, and **Transcript
+      Provider** = `Fireflies`. The secret must match theirs EXACTLY or every delivery is
+      rejected on signature.
+- [ ] Confirm: `GET https://pb-webhook-server.onrender.com/webhooks/fireflies/<Client-ID>` -
+      wants `processing_enabled`, `api_key_configured` and `secret_configured` all true.
+
+**Prove it ON THE CALL - never send them away hoping.** The three-dots menu beside **Add Config**
+has **Push past meetings**: pick a date range and Fireflies pushes real historic meetings through
+on demand. Watch them file, then tell the client it works. This is the best thing in the Fireflies
+flow and it turns "configured" into "proven" while they are still on the screen.
+
+**Watch out:**
+
+1. **Corporate link rewriting - check BEFORE the call.** Rick's Sales Xceleration mail runs
+   through Proofpoint, which rewrites every link that lands in his inbox. He pasted a
+   `urldefense.proofpoint.com` wrapper into the webhook URL field and it would never have reached
+   us. For ANY client on a company domain, send paste-targets by Zoom chat or text - never email -
+   and tell them the tell, because it will bite every link you ever send them.
+2. **Their clipboard holds one thing.** This flow needs a URL and a secret at the same moment and
+   the client loses one copying the other. Send values one at a time, in the order needed.
+3. **Event names differ from the docs.** The docs say `Transcription completed`; the app sends
+   `meeting.transcribed` / `meeting.summarized`. Our filter accepts all three (0c5019e3).
+4. **Env gates** `FIREFLIES_WEBHOOK_ENABLED` + `FIREFLIES_INGEST_ENABLED` must be `true` on prod
+   (set 2026-08-21) - and an env change needs a REDEPLOY before the running process sees it.
+5. **Paid plan.** Free-tier API access to sentence-level data is not guaranteed.
+
+---
+
 **If they push for a different recorder (Otter, Fireflies, whatever they already use):**
 
-1. **Re-sell the why, once.** The point was never the brand - it's that no transcript is ever
-   missed. Those tools have no pipe into Wingguy, so their transcripts go nowhere: no
-   draft-from-the-call, no prep-me, no history. And most of them work by sending a bot into the
+1. **Re-sell the why, once - EXCEPT for Fireflies, which now has its own lane above.** The point
+   was never the brand - it's that no transcript is ever missed. The other tools have no pipe into
+   Wingguy, so their transcripts go nowhere: no draft-from-the-call, no prep-me, no history. And most of them work by sending a bot into the
    call - the thing Granola exists to avoid.
 2. **If they still insist, don't fight it - stack instead.** They keep their tool for whatever
    they like about it, and run Granola alongside. Granola captures on their computer, so it
