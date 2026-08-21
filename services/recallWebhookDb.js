@@ -183,6 +183,28 @@ async function ensureSchema(client) {
   await client.query(`ALTER TABLE recall_meetings ADD COLUMN IF NOT EXISTS provider_recording_id TEXT;`);
   await client.query(`CREATE INDEX IF NOT EXISTS idx_recall_m_provider_rec ON recall_meetings (source, provider_recording_id) WHERE provider_recording_id IS NOT NULL;`);
 
+  // ONE filed copy per (source, provider recording) — enforced by the DATABASE, not by a
+  // read-then-write in application code. providerRecordingIngested() checks-then-inserts, which
+  // two deliveries arriving in the same instant can both pass: Fireflies' "push past meetings"
+  // fires `meeting.transcribed` and `meeting.summarized` together and filed Rick Wong's backfill
+  // twice on 2026-08-21. A live meeting doesn't race (the summary lands minutes later), so this
+  // only ever bit the backfill — but the guarantee belongs here, not in timing luck.
+  // DELIBERATELY PARTIAL on a non-empty transcript: an earlier BODYLESS shell must stay
+  // retryable (same semantics as providerRecordingIngested — see the Kate Phillips note), so only
+  // genuinely FILED copies collide.
+  // Wrapped: pre-existing duplicates would fail index creation, and ensureSchema runs on every DB
+  // call — a throw here would take down every read and write in the store. Warn and carry on.
+  try {
+    await client.query(
+      `CREATE UNIQUE INDEX IF NOT EXISTS uq_recall_m_provider_filed
+       ON recall_meetings (source, provider_recording_id)
+       WHERE provider_recording_id IS NOT NULL
+         AND transcript_text IS NOT NULL AND btrim(transcript_text) <> '';`,
+    );
+  } catch (e) {
+    console.warn(`recallWebhookDb: could not create uq_recall_m_provider_filed (${e.message}) — duplicate filed copies are possible until this is resolved`);
+  }
+
   // Speaker reconstruction trust layer (single-speaker / no-diarisation paste path).
   // reconstruction_status: NULL = clean / not needed (passes straight through), 'pending'
   // = AI reconstructed, awaiting human confirm, 'confirmed' = human-confirmed canonical.
@@ -491,6 +513,23 @@ async function insertImportedMeeting({ title, source, transcriptText, meetingSta
     );
     return { ok: true, meeting_id: String(r.rows[0].id), bot_id: botId, pendingCount: pending.length };
   } catch (e) {
+    // 23505 = unique_violation on uq_recall_m_provider_filed: a concurrent delivery filed this
+    // same provider recording first. That is a no-op, NOT a failure — hand back the row that won
+    // so the caller can report "already filed" instead of erroring or filing a second copy.
+    if (e && e.code === '23505' && providerRecordingId) {
+      try {
+        const dup = await client.query(
+          `SELECT id FROM recall_meetings
+           WHERE source = $1 AND provider_recording_id = $2
+             AND transcript_text IS NOT NULL AND btrim(transcript_text) <> ''
+           LIMIT 1`,
+          [safeSource, String(providerRecordingId)],
+        );
+        if (dup.rows.length) {
+          return { ok: true, duplicate: true, meeting_id: String(dup.rows[0].id), bot_id: botId, pendingCount: pending.length };
+        }
+      } catch (_e) { /* fall through to the plain error below */ }
+    }
     return { ok: false, error: e.message };
   } finally {
     client.release();

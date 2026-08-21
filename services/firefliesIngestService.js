@@ -409,6 +409,12 @@ async function ingestFirefliesTranscript(opts = {}) {
     pendingLeads,
   });
   if (!ins.ok) return { ok: false, error: ins.error || 'insert failed', plan };
+  // A concurrent delivery (transcribed + summarized in the same instant) already filed this one.
+  // Stop here: re-linking leads is a no-op but a second summary costs a real AI call.
+  if (ins.duplicate) {
+    log.info(`fireflies transcript=${realId} was filed concurrently as meeting ${ins.meeting_id} — no second copy`);
+    return { ok: true, plan, meetingId: ins.meeting_id, duplicate: true, linkedLeads: [] };
+  }
   if (pendingLeads.length) log.info(`fireflies filed with ${pendingLeads.length} PENDING lead(s) (${pendingLeads.map((x) => x.email).join(', ')})`);
 
   const meetingId = ins.meeting_id;
