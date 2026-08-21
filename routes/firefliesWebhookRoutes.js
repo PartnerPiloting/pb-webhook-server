@@ -1,7 +1,8 @@
 /**
  * Fireflies "transcript ready" webhook — the push door for the Fireflies transcript provider.
  *
- * Fireflies POSTs a tiny event ({meetingId, eventType:'Transcription completed', ...}) the
+ * Fireflies POSTs a tiny event ({meetingId, eventType:'Meeting transcribed', ...} — the real
+ * event names seen live are 'Meeting transcribed', 'Meeting summarized', 'Meeting bot joined') the
  * moment a client's meeting finishes processing; we fetch the transcript with the CLIENT's own
  * API key over GraphQL and file it via services/firefliesIngestService (same store, same lead
  * ladder as Fathom/Granola).
@@ -118,10 +119,15 @@ router.post('/webhooks/fireflies/:clientId', rawJson, async (req, res) => {
   if (!webhookProcessingEnabled()) {
     return res.status(200).json({ ok: true, received: true, processed: false, reason: 'FIREFLIES_WEBHOOK_ENABLED not true' });
   }
-  // The only documented event is transcript-ready ("Transcription completed"). Match loosely on
-  // the word rather than the exact casing, and let a missing eventType through when a meetingId
-  // is present — the dedup + fetch make a spurious attempt harmless.
-  if (eventType && !/transcription/i.test(eventType)) {
+  // The docs say "Transcription completed", but the events a real Fireflies account actually
+  // sends are "Meeting transcribed", "Meeting summarized" and "Meeting bot joined". Match loosely
+  // on the word stem so all the transcript-ready spellings pass and "Meeting bot joined" does not.
+  // "Meeting summarized" is accepted deliberately as a second-chance retry: dedup makes a repeat
+  // delivery a no-op and only a non-empty transcript counts as ingested, so a "Meeting transcribed"
+  // that arrived too early can still be picked up by the later "Meeting summarized". A missing
+  // eventType is let through when a meetingId is present — the dedup + fetch make a spurious
+  // attempt harmless.
+  if (eventType && !/transcri|summar/i.test(eventType)) {
     return res.status(200).json({ ok: true, received: true, processed: false, reason: `ignored type ${eventType}` });
   }
   if (!meetingId) {
