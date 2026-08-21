@@ -614,8 +614,13 @@ layout:
   from onedrive.live.com; **Extension Folder Ref** = the path
   `Wingguy-clients/<Client-ID>/Wingguy`.
 - Exceptions that pre-date the standard, leave them alone: Guy himself (ref = his inner
-  `My Drive/Wingguy/wingguy-extension`) and Julian (ref = `Wingguy/wingguy-extension`, loads
-  the inner folder).
+  `My Drive/Wingguy/wingguy-extension`), and Julian's INNER LAYOUT - his folder was MOVED to
+  the standard path 2026-08-21 (web move on onedrive.live.com; share to both his addresses
+  survived, verified in Manage Access; renaming was avoided on purpose - a rename would have
+  changed the folder's name on his Mac and killed his loaded extension). His ref =
+  `Wingguy-clients/Julian-Davis/Wingguy/wingguy-extension` - files sit one level deeper than
+  the standard because his Mac loads that inner folder. Ship re-proven at the new path
+  (0.3.12, byte-identical).
 
 ### How a ship runs (the two-environment split)
 
