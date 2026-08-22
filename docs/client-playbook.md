@@ -118,6 +118,35 @@ for and your profile says connector. There are topics on both.
 
 ---
 
+## SEEMS LIKE A LOT? - why it's mostly setup, and what it really pays
+
+If you've just read the process end to end and thought "that's a lot of work" - fair. Here's the
+honest shape of it.
+
+Almost all of the effort lives in the setup: the plumbing, the learning, getting your own head
+right about networking. That part is real, it's front-loaded, and we do it together - and then it's
+done. Once it's running smoothly it is genuinely a joy: the leads arrive, the drafts are written,
+the diary fills, and what's left for you is the part you'd actually want - talking to interesting
+people. You do get good at it. Sailing is the right word.
+
+And weigh the work against the pain it replaces. Ask anyone where results really come from and
+they'll tell you: the network. Everybody agrees - and most people have felt, at some point, exactly
+what it costs not to have a big enough one. The problem was never knowing it matters. The problem
+is that most people are simply not good at network building, because nothing ever taught them and
+everything about it is easy to put off. It isn't a talent you're born with or without - it's a
+decision to get good at it, with a system that makes good the default.
+
+One more thing, and I see it over and over: **the reason you start network building is often not
+the reason you end up glad you did.** You may well come for the referrals - fine, they come. But so
+do things you didn't order: encouragement when you're grinding, ideas you'd never have had on your
+own, and - especially now, with AI changing everything at speed - a live window into what other
+capable people are doing about it. Finding two or three people whose advice you genuinely value is
+worth the whole effort on its own.
+
+Definitely worth it. Let's get you set up.
+
+---
+
 ## WINGGUY LEARNING - YOUR TRAINING, BUILT IN
 
 Everything in this playbook - the process, the searches, the messages, the meetings - you don't
