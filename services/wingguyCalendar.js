@@ -359,10 +359,21 @@ async function getClashesForISO(clientId, startISO, durationMins) {
   return clashesForWindow(info, startISO, len);
 }
 
+// Label a meeting link by what it actually is, so a Teams/Meet invite never reads "Zoom".
+// Unrecognised links get the neutral "Meeting link".
+function meetingPlatformLabel(link) {
+  const s = String(link || '').toLowerCase();
+  if (/zoom\.(us|com)/.test(s)) return 'Zoom';
+  if (/teams\.(microsoft|live)\.com|teams\.cloud\.microsoft/.test(s)) return 'Teams';
+  if (/meet\.google\.com/.test(s)) return 'Meet';
+  if (/webex\.com/.test(s)) return 'Webex';
+  return 'Meeting link';
+}
+
 // Build the invite the way the coach lays it out and create it via the proven seam (Nylas write).
 // Shared by POST /book (the legacy form path) and the chat agent's book_meeting tool so there's ONE
 // booking implementation. Returns { ok, eventId, title, start, durationMins } or { ok:false, error }.
-async function createBookingEvent(coach, { startISO, durationMins, leadEmail, leadName, leadLinkedIn, title, note }) {
+async function createBookingEvent(coach, { startISO, durationMins, leadEmail, leadName, leadLinkedIn, title, note, meetingLink }) {
   if (!startISO) return { ok: false, error: 'startISO required' };
   if (!leadEmail) return { ok: false, error: 'leadEmail required (the invite needs a guest address)' };
   const start = new Date(startISO);
@@ -375,14 +386,16 @@ async function createBookingEvent(coach, { startISO, durationMins, leadEmail, le
   const finalTitle = (title && String(title).trim()) || `${leadName || 'Lead'} & ${coachName}`;
   // Per-client invite identity wins; the shared default (Guy's) is the fallback so Guy is unchanged
   // and a new tenant only needs these fields filled to make invites carry THEIR Zoom/contacts.
-  const zoom = coach.bookingZoom || prefs.yourZoom || '';
+  // A per-BOOKING meetingLink (the lead asked for Teams/Meet/etc; the human pasted a link in chat)
+  // beats both — this one invite only, the standing link untouched.
+  const zoom = (meetingLink && String(meetingLink).trim()) || coach.bookingZoom || prefs.yourZoom || '';
   const coachLinkedIn = coach.coachLinkedInUrl || prefs.coachLinkedIn;
   const coachPhoneNo = coach.coachPhone || prefs.coachPhone;
 
-  // Invite body in the coach's layout (Zoom / lead's LinkedIn / coach contacts).
+  // Invite body in the coach's layout (meeting link / lead's LinkedIn / coach contacts).
   const descLines = [];
   if (note) descLines.push(String(note));
-  if (zoom) descLines.push(`Zoom: ${zoom}`);
+  if (zoom) descLines.push(`${meetingPlatformLabel(zoom)}: ${zoom}`);
   if (leadLinkedIn) descLines.push(`${leadName || 'Guest'}: ${leadLinkedIn}`);
   const coachContacts = [coachLinkedIn, coachPhoneNo].filter(Boolean).join(' | ');
   if (coachContacts) descLines.push(`${coachName}: ${coachContacts}`);
@@ -566,7 +579,7 @@ function filterAvailability(avail, prefs, { includeLunch = false, includeSoon = 
  * booking allowed), treat the lead's OWN "HOLD:" events as their reservation (not a clash), and
  * clear all the lead's holds once the booking lands. `deps` = test/caller injection.
  */
-async function bookMeetingGuarded(coach, { startISO, durationMins, leadEmail, leadName, leadLinkedIn, confirmDoubleBook }, deps = {}) {
+async function bookMeetingGuarded(coach, { startISO, durationMins, leadEmail, leadName, leadLinkedIn, confirmDoubleBook, meetingLink }, deps = {}) {
   const clashesFor = deps.getClashesForISO || getClashesForISO;
   const book = deps.createBookingEvent || createBookingEvent;
   const clearHolds = deps.deleteOfferHolds || deleteOfferHolds;
@@ -583,7 +596,7 @@ async function bookMeetingGuarded(coach, { startISO, durationMins, leadEmail, le
       };
     }
   }
-  const result = await book(coach, { startISO, durationMins, leadEmail, leadName, leadLinkedIn });
+  const result = await book(coach, { startISO, durationMins, leadEmail, leadName, leadLinkedIn, meetingLink });
   if (result.ok && leadName) {
     // Offer resolved — clear the lead's manual holds. Fire-and-forget: cleanup must never fail a booking.
     Promise.resolve(clearHolds(coach, { leadName })).catch((e) => console.warn(`[wingguyCalendar] hold cleanup failed: ${e.message}`));
@@ -712,7 +725,7 @@ async function listEventsForCoach(clientId, { range, date, endDate } = {}) {
 }
 
 module.exports = {
-  getAvailabilityForCoach, createBookingEvent, checkProposedTime, getClashesForISO, buildDaysFromBusy,
+  getAvailabilityForCoach, createBookingEvent, checkProposedTime, getClashesForISO, buildDaysFromBusy, meetingPlatformLabel,
   deleteOfferHolds, isHoldForLead, isHoldSummary, holdTitle,
   // shared offer-time pipeline + booking guard (used by the panel agent AND the connector tools)
   filterAvailability, bookMeetingGuarded, fmtSlot, tzCity, inLunch, hhmmToMin, minutesInTz, earliestOfferDate, dateStrInTz, isWeekendInTz, firstFarWeekDate, offerWindowInfo,

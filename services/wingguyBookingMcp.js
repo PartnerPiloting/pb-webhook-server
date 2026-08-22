@@ -165,9 +165,13 @@ async function runCheckTime({ date, time, side, lead_location, duration_mins } =
   };
 }
 
-async function runBookMeeting({ start_iso, duration_mins, lead_name, lead_email, lead_linkedin, confirm_double_book } = {}, tenant = TENANT) {
+async function runBookMeeting({ start_iso, duration_mins, lead_name, lead_email, lead_linkedin, confirm_double_book, meeting_link } = {}, tenant = TENANT) {
   const name = String(lead_name || '').trim();
   if (!name) return { text: 'Error: lead_name is required (it titles the invite and matches any HOLD events).', isError: true };
+  const linkOverride = String(meeting_link || '').trim();
+  if (linkOverride && !/^https?:\/\/\S+$/i.test(linkOverride)) {
+    return { text: 'Error: meeting_link must be a full http(s) URL exactly as the human pasted it. If they named a platform but no link, ask them to paste the link.', isError: true };
+  }
 
   const clientService = require('./clientService');
   const { lookupLeadContactByName } = require('./coachingClientLookupService');
@@ -199,11 +203,13 @@ async function runBookMeeting({ start_iso, duration_mins, lead_name, lead_email,
     leadName: name,
     leadLinkedIn: linkedin,
     confirmDoubleBook: !!confirm_double_book,
+    meetingLink: linkOverride || undefined,
   });
   if (!result.ok) return { text: `NOT booked. ${result.error}`, isError: true };
   return {
     text:
       `Booked: "${result.title}" — start ${result.start} (${result.durationMins} mins), invite emailed to ${email} [email source: ${emailSource}].\n` +
+      (linkOverride ? `Invite carries the one-off ${wingguyCalendar.meetingPlatformLabel(linkOverride)} link (${linkOverride}) instead of the coach's standing link — confirm that's the link the human meant.\n` : '') +
       `Now restate the exact date+time to the human in the COACH's timezone AND the lead's, so a wrong-hour booking is caught immediately.`,
   };
 }
@@ -216,6 +222,8 @@ const SOON_DESC = 'Set true ONLY when the coach explicitly asks for today/tomorr
 const LUNCH_DESC = 'Set true ONLY when the coach explicitly wants a lunch-time meeting — otherwise his lunch hold is stripped.';
 const WEEKEND_DESC = 'Set true ONLY when the coach explicitly wants a weekend meeting — weekdays-only is enforced otherwise.';
 const FAR_WEEKS_DESC = 'Set true ONLY when the coach explicitly wants times beyond next week (e.g. "book them for when I\'m back from holidays") — normally the window is THIS week + NEXT week, with later days appearing only as flagged fallbacks when the near window can\'t fill the options.';
+
+const MEETING_LINK_DESC = 'ONE-OFF meeting link for THIS invite only ("book it on this link" / the lead asked for Teams instead of Zoom). Must be a link the HUMAN pasted in this conversation — NEVER invent one, never reuse a link from another lead or an earlier session. If the human names a platform without pasting a link, ask them for the link; there is no stored alternative. Omit for the coach\'s standing meeting room (the normal case). The coach\'s stored link is not changed.';
 
 const RANGE_DESC = 'Which window to list: "today" (default), "tomorrow", "this_week" (Mon-Sun of the current week), or "next_week". Use this for relative phrases — it resolves them in the coach\'s OWN timezone, so never work out the dates yourself. For anything else, pass explicit date / end_date instead.';
 
@@ -285,7 +293,7 @@ const TOOL_DEFS = [
   },
   {
     name: 'wingguy_book_meeting',
-    description: 'Create the real calendar invite through the coach\'s proven booking machinery (standing Zoom room, his invite layout, reminders, guest emailed automatically). ALWAYS use this — never raw calendar event creation — to book a lead. ONLY call after the human explicitly confirmed the exact date+time in chat. Pass a startISO from wingguy_check_availability (a slot\'s "time") or wingguy_check_time — never hand-built. Refuses clashing times (including slots HELD for another lead) unless confirm_double_book is true after the human\'s explicit OK. Looks up the invite email in the CRM by lead_name unless lead_email is given.',
+    description: 'Create the real calendar invite through the coach\'s proven booking machinery (standing Zoom room, his invite layout, reminders, guest emailed automatically). ALWAYS use this — never raw calendar event creation — to book a lead. ONLY call after the human explicitly confirmed the exact date+time in chat. Pass a startISO from wingguy_check_availability (a slot\'s "time") or wingguy_check_time — never hand-built. Refuses clashing times (including slots HELD for another lead) unless confirm_double_book is true after the human\'s explicit OK. Looks up the invite email in the CRM by lead_name unless lead_email is given. If the lead asked to meet on a different platform (Teams, Meet, etc), pass the link the human pasted as meeting_link — see that parameter\'s rules.',
     zodSchema: {
       start_iso: z.string().describe('Meeting start ISO — from wingguy_check_availability (slot "time") or wingguy_check_time (startISO). Never build this yourself.'),
       lead_name: z.string().describe('The lead\'s full name as in the CRM — titles the invite and drives the CRM email lookup'),
@@ -293,6 +301,7 @@ const TOOL_DEFS = [
       lead_linkedin: z.string().optional().describe('The lead\'s PUBLIC LinkedIn URL for the invite description (looked up from CRM if omitted)'),
       duration_mins: z.number().optional().describe('Meeting length in minutes; omit for the coach\'s default'),
       confirm_double_book: z.boolean().optional().describe('Set true ONLY after the human has explicitly OK\'d booking over a reported clash. Normally omit — the tool refuses clashes and tells you what they are.'),
+      meeting_link: z.string().optional().describe(MEETING_LINK_DESC),
     },
     jsonSchema: {
       type: 'object',
@@ -303,6 +312,7 @@ const TOOL_DEFS = [
         lead_linkedin: { type: 'string', description: 'The lead\'s PUBLIC LinkedIn URL for the invite description (looked up from CRM if omitted)' },
         duration_mins: { type: 'number', description: 'Meeting length in minutes; omit for the coach\'s default' },
         confirm_double_book: { type: 'boolean', description: 'Set true ONLY after the human has explicitly OK\'d booking over a reported clash. Normally omit — the tool refuses clashes and tells you what they are.' },
+        meeting_link: { type: 'string', description: MEETING_LINK_DESC },
       },
       required: ['start_iso', 'lead_name'],
     },

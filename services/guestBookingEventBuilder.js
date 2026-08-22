@@ -80,9 +80,10 @@ async function buildGuestBookingEventDetails(opts) {
   const titleCore = `${leadNamePart} and ${yourNamePart} 1st meeting`;
   const summary = summaryPrefix ? `${summaryPrefix} — ${titleCore}` : titleCore;
 
+  const { meetingPlatformLabel } = require("./wingguyCalendar");
   const descriptionLines = [];
   if (host.meetingLink) {
-    descriptionLines.push(`Zoom: ${host.meetingLink}`);
+    descriptionLines.push(`${meetingPlatformLabel(host.meetingLink)}: ${host.meetingLink}`);
   }
   if (leadLinkedIn && String(leadLinkedIn).trim()) {
     descriptionLines.push(`${leadNamePart}: ${String(leadLinkedIn).trim()}`);
