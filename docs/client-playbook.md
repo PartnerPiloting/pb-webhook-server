@@ -89,7 +89,7 @@ Here's the whole thing in order, so you can see where any one piece fits.
    copy the URL of that search.
 4. **Feed the URL to Linked Helper.** It extracts those profiles into a campaign queue - typically
    visit the profile, then send the connection request - and pushes everything it finds straight into
-   your database. Expect 30% to 60% to accept.
+   your database. Expect 45% to 50% to accept - well above what most outreach ever sees.
 5. **Anything unscored gets scored** - on headline, About section and posts, against the attributes
    you've set up. That's the attitude filter.
 6. **Work your list in the portal.** Everyone comes up with their score beside them. Skip the low
@@ -401,6 +401,57 @@ system you can't replace.
 
 ---
 
+## WHAT WE USE LINKED HELPER FOR - the basics, and the loop that makes them work
+
+Linked Helper can do a great deal - honestly, we use maybe ten percent of what's in it. As you get
+experienced with it you may well find uses for more. But the basics below are what the whole system
+runs on, and they're what we set up together. Get your head around these and the rest can come
+later.
+
+**It starts with a search.** You select a group of people on LinkedIn or Sales Navigator - there
+are topics on who you're looking for and on building that search with Claude - and you feed Linked
+Helper the URL. It pulls the profiles out of that search and queues them up.
+
+**Campaign one: visit and extract.** Overnight, it visits each profile the way a person would - so
+they see you've viewed them, which is a small good thing in itself - and extracts what's public:
+headline, About section, posts. A live pipe pushes each one straight into your database, and once a
+day everything unscored gets scored against your attributes. The ones you ship with are all about
+attitude - is this someone who builds relationships? - deliberately not skewed to any industry.
+That's your base level, and there are topics on both the plumbing and the attributes.
+
+**Campaign two: connect and follow up.** In your portal you pick your top scorers - say the top ten
+or twenty percent - and feed that group back into Linked Helper. This campaign sends them your
+connection request, and it can send follow-up messages after that too.
+
+**The loop between those two is the method.** Most people point a tool at a search and blast
+connection requests at everyone in it. We don't. We extract first, score overnight, and only invite
+the people who score like connectors. Every request that goes out has already passed a filter -
+which is better for your results, and better for your LinkedIn account.
+
+**And you can measure it.** Linked Helper shows you how many requests went out and how many of
+those people are now connections. Ask any AI what an extremely good acceptance rate looks like and
+you'll hear around 35%. We expect 45% to 50% - because by the time your request lands, it's aimed
+at scored people, and your profile says connector.
+
+**Stopped and started.** Every campaign is one or the other, and you can flip any of them at any
+time. Behind them sits the campaign runner, which runs whatever's started - stop the runner and
+everything stops. Starting a campaign starts the runner for you. We'll walk through all of this
+live - and once it's going you'll be glad you made the effort, because it all just runs, and the
+thing you'll be dealing with is leads coming in to answer.
+
+One small note on the two apps: the launcher side of Linked Helper is built for people - a VA,
+say - who run it for several clients, each in their own instance. You'll have exactly one client:
+you. The details are in the first-campaign topic.
+
+Where it runs, and keeping it running, is in the plumbing topic. The licence has its own topic
+too - the trial and which version to get - and we settle that together in an onboarding session,
+once the 14-day trial has done its job. The trial doesn't start ticking until your first campaign
+launches, so there's no clock on any of the setup. And the bottom line on cost: with the yearly
+discount and my promo code, Linked Helper ends up the least expensive of these tools as well as
+the safest.
+
+---
+
 ## THE PLUMBING - LINKED HELPER AND YOUR DATABASE
 
 This is the flow underneath everything, and you and Guy set it up together as the closing step of
@@ -410,8 +461,9 @@ your onboarding.
    its queue, ready for a campaign. You can keep adding searches to the queue whenever you like.
 2. **The campaign works through the queue** at a rate per day you set. Often it's as simple as: visit
    their profile, let them see you've visited, then send the connection request - mostly to
-   second-level connections, meaning new people. You're aiming for somewhere between **30% and 60%**
-   of the people you reach out to connecting with you.
+   second-level connections, meaning new people. You're aiming for **45% to 50%** of the people you
+   reach out to actually connecting - for context, most people running outreach would call 35%
+   exceptional.
 3. **Linked Helper pushes what it finds straight into your database.** As it visits each profile it
    extracts everything on it, and a live connection - a webhook - updates your own leads database in
    the I Know A Guy system. Nothing to export, nothing to import.
@@ -442,7 +494,8 @@ for this, left plugged in and turned on. It doesn't need much horsepower.
 
 What you don't want is it living on the laptop you carry about and use all day. That machine gets
 closed, goes to sleep and moves between networks, so Linked Helper keeps stopping in the middle of
-work it should be getting on with.
+work it should be getting on with. If it has to be your everyday laptop, there's a setting for what
+happens when the lid closes - set it to "nothing" and it keeps working with the lid shut.
 
 There's a second reason, and it's the better one. A lot of what Linked Helper does is best done
 overnight - that way it isn't working on your LinkedIn account at the same time as you are during the
