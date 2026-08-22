@@ -59,7 +59,7 @@ const AGENT_TOOLS = [
         startISO: { type: 'string', description: 'The meeting start as an ISO timestamp — a slot\'s "time" from check_availability or "startISO" from check_time.' },
         durationMins: { type: 'number', description: 'Optional meeting length in minutes; omit to use Guy\'s default.' },
         confirmDoubleBook: { type: 'boolean', description: 'Set true ONLY after Guy has explicitly OK\'d booking over an existing meeting. Leave false/omitted normally — the tool will refuse a clashing time and tell you what it clashes with so you can ask Guy first.' },
-        meetingLink: { type: 'string', description: 'ONE-OFF meeting link for THIS invite only ("book it on this link" / the lead asked for Teams instead of Zoom). Must be a full http(s) link GUY pasted in this conversation — NEVER invent one, never reuse a link from another lead. If Guy names a platform without pasting a link, ask him for the link; there is no stored alternative. Omit for Guy\'s standing meeting room (the normal case).' },
+        meetingLink: { type: 'string', description: 'ONE-OFF meeting link for THIS invite only ("book it on this link" / the lead asked for Teams instead of Zoom). Must be a full http(s) link GUY pasted in this conversation OR one of Guy\'s own standing links from his asset library (e.g. teams_room) that he has said yes to using — NEVER invent one, never use another lead\'s link. If Guy names a platform and no stored link for it exists, ask him for the link. Omit for Guy\'s standing meeting room (the normal case).' },
       },
       required: ['startISO'],
     },

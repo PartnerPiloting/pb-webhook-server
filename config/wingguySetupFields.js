@@ -204,7 +204,7 @@ const ASSET_FIELDS = [
     tier: 'essential',
     group: 'The essentials',
     label: 'Your meeting room link',
-    hint: 'Your standing Zoom or Teams room. It goes on every invite, so it never has to create a new one.',
+    hint: 'Your permanent meeting room - it goes on every invite, so nothing new has to be created per meeting. On Zoom you already have one: the Personal Meeting Room link in your Zoom settings. On Teams or Webex there is a two-minute way to make one - ask Wingguy in chat and it will walk you through it.',
     example: 'https://us04web.zoom.us/j/9892817976',
     kind: 'url',
     type: 'text',
