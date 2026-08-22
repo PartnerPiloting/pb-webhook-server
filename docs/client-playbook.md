@@ -263,7 +263,13 @@ Claude - see finding your audience.
 
 **You need a paid LinkedIn for this.** The free version simply doesn't work for what we're doing.
 Either LinkedIn Premium or Sales Navigator will do - and which one you have determines how finely
-you can filter.
+you can filter. (LinkedIn Recruiter qualifies too, but it's built for hiring and priced like it -
+if you already have it for other reasons it works fine; nobody buys it for this.)
+
+The question I get asked most is: "can I just stay on Premium, or do I need Sales Navigator?" The
+short answer: Premium is sufficient. Sales Navigator is better - the searching is a lot less
+restricted - but it costs more and has a few quirks of its own, which we'll go through together if
+you head that way. Here's what each gets you.
 
 **With Premium** you can sort in ways that already get you a long way:
 
@@ -280,6 +286,11 @@ of them falling on receptive ears.
 Two more Sales Navigator advantages worth knowing. It lets you use **15 boolean operators instead of
 five** (more on those in a moment), and it does **saved searches** - so when new people appear who
 match your criteria, it hands you just the new ones rather than making you re-run everything.
+
+One more Sales Navigator nicety: it can surface what a person has been posting, so you can open
+with something real - "saw your post on...". Nice to have, but not a reason to upgrade on its own,
+because Wingguy reads a person's recent posts anyway when it writes your thanks-for-connecting -
+Premium users aren't missing that.
 
 **A tactic if the Sales Navigator price makes you wince.** It is a lot more per month. So take it
 for the free trial period, run your searches hard, fill up Linked Helper's queue with everyone you
