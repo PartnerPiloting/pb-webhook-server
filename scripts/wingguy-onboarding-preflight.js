@@ -3,14 +3,14 @@
 //   node scripts/wingguy-onboarding-preflight.js <clientId>
 //
 // Prints the client's position on the onboarding journey (docs/wingguy-onboarding-checklist.md
-// steps 0-8) as DONE / OWED / MANUAL, deriving every verdict from the live system rather than a
+// steps 0-9) as DONE / OWED / MANUAL, deriving every verdict from the live system rather than a
 // stored checklist - a stored ledger drifts; the record + live probes cannot. Born 2026-08-20
 // from the Ashley Knowles session, where the record LOOKED complete while the transcript pipe had
 // been dead for nine days and the calendar was routed down the wrong provider path. Every claim a
 // pre-session email makes ("X is live, try it") should be green here first.
 //
-// MANUAL steps (1 connector-in-their-Claude, 7 dress rehearsal) cannot be probed from here - the
-// proof lives in the client's own Claude. They print as reminders, never as DONE.
+// MANUAL steps (1 connector-in-their-Claude, 7 dress rehearsal, 9 linked-helper-last) cannot be
+// probed from here - the proof lives outside this system. They print as reminders, never as DONE.
 require('dotenv').config();
 
 const cs = require('../services/clientService');
@@ -200,6 +200,13 @@ function step(n, name, verdict, evidence) {
       step('E', 'extension updates', OWED, 'folder fields set but Wingguy Enabled is off - flip the gate or clear the fields');
     }
   } catch (e) { step('E', 'extension updates', OWED, `probe failed: ${e.message}`); }
+
+  // ---- STEP 9: Linked Helper - deliberately LAST (decided 2026-08-22) ----------
+  // No live probe from here; the step exists so the printed journey matches the doctrine:
+  // for NEW clients the LH hookup + first campaign close the onboarding, after steps 0-8.
+  // Clients already mid-journey on the old LH-first order finish that way.
+  step(9, 'linked helper', MANUAL,
+    'the CLOSING step for new clients - hookup + Campaign 1 once targeting is decided and the profile says connector; trial clock starts at first campaign launch');
 
   console.log(lines.join('\n'));
   if (warnings.length) console.log('\n' + warnings.join('\n'));

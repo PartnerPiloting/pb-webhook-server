@@ -64,6 +64,13 @@ yours: you create it, you put a monthly spend cap on it, and you can switch it o
 hand it to me once and it lives safely on your record. (On a managed plan? Skip this - your
 drafting runs on my account and there's nothing for you to do.)
 
+**Step 9 - Linked Helper, last on purpose (decided 2026-08-22, new clients only).** The engine that
+fills your database goes in last, once everything above is proven, your targeting has had a few
+weeks to settle, and your profile says connector. Nothing is lost by waiting - the Linked Helper
+trial only starts when the first campaign launches. The targeting conversation starts at session 1
+and threads through every session, so this final step launches at full speed. (Clients already
+mid-journey on the old LH-first order finish that way.)
+
 ---
 
 ## STEP 0 EXPANDED - get the record ready (you, solo, before the call)
@@ -489,6 +496,42 @@ client revokes their key or hits their spend cap, their drafting stops with a cl
 key was rejected - update it" message, and the overnight brief emails you a "key rejected" alert and
 serves yesterday's brief (flagged stale). It never silently moves onto your key. The fix is always
 the same: they make a fresh key (or raise the cap) and you paste it into the field.
+
+---
+
+## STEP 9 EXPANDED - Linked Helper, last on purpose
+
+This is the closing move of onboarding for new clients (decided 2026-08-22), and it deliberately
+comes after everything else. The early sessions build trust through the Wingguy plumbing; by the
+time you get here the client understands why the collection engine matters and wants it right.
+
+**Say to the client:** "Now that you've seen what Wingguy does with the people in your database,
+let's fill it. This is the step that decides who you'll be meeting, so it's worth the thought
+you've already been giving it - and remember, it's changeable, so we aim roughly right and adjust."
+
+**You do:**
+
+- [ ] Confirm the targeting is decided BEFORE this session - it should have been threading through
+      every session since session 1. If it hasn't, send the prep question ahead of time: ask
+      Wingguy *"talk me through who I should be looking for and how to build my search"* (it
+      serves the Wingguy Learning topics: who you're looking for / finding your audience / your
+      LinkedIn profile).
+- [ ] Confirm their profile says connector (headline + About, connector first) - the first thing
+      every new connection does is look them up.
+- [ ] Then the hookup: Linked Helper install, the search URL into Campaign 1, webhook into their
+      leads base. The trial clock only starts at first campaign launch, so all the prep above is
+      free.
+
+**Check it worked:** first profiles land in their leads base and get scored overnight.
+
+**Watch out:**
+
+- The 14-day trial starts at first campaign LAUNCH - never launch a test campaign "just to see"
+  during an earlier session, or the clock burns while the rest of onboarding finishes (this is
+  what stalled a real client's collection in Aug 2026).
+- One LinkedIn account, one machine - never run Linked Helper from two computers at once.
+- When the trial ends: yearly + pro, and Guy has a 10% promo code - send it before the trial runs
+  out.
 
 ---
 
