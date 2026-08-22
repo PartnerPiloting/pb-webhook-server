@@ -359,9 +359,52 @@ honest, and it works - see the topic on what you do.
 
 ---
 
+## WHY LINKED HELPER - and not the slick cloud tools
+
+Fair question, because there are plenty of alternatives, and most of them look better. They run in
+the cloud, nothing to install, nice dashboards, working the moment you sign up. Next to that, an
+app you have to keep running on a computer of yours looks like the clunky option.
+
+The answer is one word: safety. And it's worth a minute, because the thing at risk isn't the tool -
+it's your LinkedIn account.
+
+Think about what that account actually is. Years of connections, every conversation, your whole
+visible reputation - and, once this system is running, the asset everything else is built on.
+LinkedIn doesn't allow automation, and when it decides you've crossed the line it doesn't send a
+warning letter. People with everything running beautifully have woken up to find the account simply
+gone, and getting one back is somewhere between hard and impossible. Whatever tool you use, that's
+the bet you're making.
+
+Here's what the convenient tools don't put on the brochure. A cloud tool works by logging into your
+LinkedIn from **their** servers and driving it from there. That's a machine that isn't yours, in a
+place you've never been, operating your account - exactly the pattern LinkedIn's systems are built
+to spot. Worse, everyone using that tool shares its fingerprint, so when LinkedIn works out what
+that platform looks like, the restrictions come in waves - whole crowds of users caught at once.
+You can do everything right and still go down with the ship.
+
+Linked Helper went the other way, and it cost them the beauty contest. It started life as the
+convenient kind of tool, and walked away from that model on purpose. Now it runs only on your own
+computer, on your own internet connection, working through a real browser the way a person would -
+one thing at a time, at human pace, inside LinkedIn's own limits. To LinkedIn, it looks like you,
+sitting at your machine, because in every way that can be measured, it is. These people are
+obsessed with not getting you flagged, and it shows in every design decision they've made -
+including the inconvenient ones.
+
+And the record backs it up: in all my time running this, I've not seen one person using Linked
+Helper lose their account. Nobody can honestly promise you zero risk - but there's a world of
+difference between a tool built around staying safe and a tool built around looking good.
+
+The price is the clunkiness: a computer that stays on, an app you glance at now and then, the odd
+Windows update to check after. There's a topic on the plumbing that covers how to set that up so it
+barely bothers you. It's a small tax - and it's buying insurance on the one asset in this whole
+system you can't replace.
+
+---
+
 ## THE PLUMBING - LINKED HELPER AND YOUR DATABASE
 
-This is the flow underneath everything, and it's the first thing you and Guy set up together.
+This is the flow underneath everything, and you and Guy set it up together as the closing step of
+your onboarding.
 
 1. **You feed the search URL into Linked Helper.** It extracts all the people from that search into
    its queue, ready for a campaign. You can keep adding searches to the queue whenever you like.
@@ -414,8 +457,8 @@ dedicated machine when that's ready. Don't let the hardware question hold up get
 Windows update quietly restarting the machine. And if the machine isn't the one in front of you,
 being able to remote into it makes that check painless - it's what Guy does with his own.
 
-If you're brand new, this is where you and Guy start. If you've already got it running, skip
-straight past it, and pull it back up any time you want a refresher.
+If you're brand new, this is where you and Guy finish the setup. If you've already got it running,
+skip straight past it, and pull it back up any time you want a refresher.
 
 ---
 
