@@ -719,6 +719,46 @@ diary.
 
 ---
 
+## YOUR MEETING ROOM - ONE PERMANENT LINK PER PLATFORM
+
+Up to now, your calendar has probably made a fresh meeting link every time you booked something -
+and that was fine, because you were the one doing the booking. This system works the other way
+round: you say "book it", and for that to stay one word, Wingguy needs a meeting link it already
+has in hand. So instead of a new link per meeting, you keep one permanent meeting room, stored
+once, used on every invite.
+
+**If you're on Zoom, you already have one.** It's called your Personal Meeting Room, and it's been
+sitting in your Zoom settings all along, whether you've ever used it or not. Open Zoom, go to your
+profile settings, look for Personal Meeting ID, and copy the link. That's it - that link is yours
+forever, and it's what goes on your invites.
+
+**Sooner or later a lead will ask for a different platform.** Usually it's a company security
+policy - "sorry, it has to be on Teams". This is fine, and you don't have to move; you just need a
+permanent link on their platform too. Here's the thing to know: if you've got a link stored for
+that platform, Wingguy simply offers it and books. If you haven't, Wingguy will walk you through
+getting one right there in the chat - it takes about two minutes, you paste the link back, and
+it's stored for good. Each platform is a once-ever exercise.
+
+For the curious, here's what that two-minute walkthrough covers:
+
+- **Teams** doesn't have a built-in permanent link, but there's a simple trick: create a meeting
+  that recurs once a year with no end date, save it, reopen it, and copy the join link. Because
+  the meeting never runs out of future dates, the link never expires - and it works any day, at
+  any hour.
+- **Google Meet** links are permanent out of the box - create one meeting link and it just keeps
+  working.
+- **Webex** has a Personal Room built in, same idea as Zoom's.
+
+Two bits of housekeeping that come with any permanent room. Keep the waiting room or lobby turned
+on, so your next meeting can't wander in while you're finishing the last one. And on Teams, don't
+put anything sensitive in the meeting chat - on a reused link, the chat thread carries over from
+one meeting to the next, so a later guest could scroll back.
+
+Set it up once, hand the links to Wingguy, and booking stays one word - whatever platform the
+other side insists on.
+
+---
+
 ## THE TWO SIDES - GETTING THE MEETING, THEN EVERYTHING AFTER IT
 
 This whole system splits into two halves, and it pays to see the seam.
