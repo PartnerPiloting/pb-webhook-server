@@ -1000,6 +1000,11 @@ notes of your meetings.
 
 ## THE FIRST MEETING - HOW IT ACTUALLY GOES
 
+First, why this meeting matters as much as it does. It doesn't matter how many posts you write or
+how many hands you shake at events - trust is never built with anyone until you actually sit down
+and have a conversation with them. One on one is where the whole thing happens, and everything
+else in this system exists to make these half hours happen more often.
+
 Half an hour is usually right. Back-to-back is fine - your time is precious, and if someone joins at
 the end of the previous one, you get to introduce two people to each other, which is rather the
 point.
@@ -1010,6 +1015,20 @@ seriously - it's what makes these calls easy rather than draining.
 
 **You're there to ask questions.** Questions are the answers. You want to come away understanding
 what they do, what they're planning, and who they're in front of.
+
+**How it opens - two phases, and you already have the words.** This is a complete stranger, so yes,
+you need an icebreaker - and if you're nervous about that, fine. You'll get better fast, and it's
+genuinely not hard. Phase one is a few minutes of chat off their profile: "I see you're in Perth -
+how are things over there?", "I loved that post of yours on...". That's all it is.
+
+Phase two is the pivot, and it's the same connector framing your profile already makes: *"Look, I
+have a good network and I'm deliberately building on it - the I-know-a-guy principle. So I love
+finding out what people do, because I may well be able to recommend others to you, and you to
+others. Tell me about yourself - and then I'll explain what I do."*
+
+Them first, you second - the same order as your profile, for the same reason. And notice what that
+opening buys you: it hands you the rest of the meeting, because from there all you do is ask
+questions.
 
 **Prepare properly, closer to the time.** Have a good look at their profile again, and at anything
 they've said in their messages, so you can talk with them about their actual work. If your meetings
@@ -1033,20 +1052,36 @@ Here is the single most valuable habit in the whole process.
 **If the conversation has gone well, book the next one before you leave it.** "How about we catch up
 next week?" Do it there and then.
 
-Two reasons. First, next time it's your turn. You've spent this call listening to them - the second
-call is where you get to bounce your own ideas around with someone who now knows you. That's a
-genuine sounding board, and it's how they come to understand what you do well enough to recommend
-you.
+Why it matters this much: it doesn't matter how great the meeting was or how well you thought it
+went. If there's no reason to continue, it fades - relationships atrophy by default. So the
+question to leave every good call holding is: *what's our reason for the next one?*
 
-Second, and more important: **this is exactly where networkers fall down.** Two people have a great
+The first reason is built in: you ran out of time. You booked half an hour and spent it listening -
+you heard all about them, and they didn't hear about you. The second call is where you get to
+bounce your own ideas around with someone who now knows you. That's a genuine sounding board, and
+it's how they come to understand what you do well enough to recommend you.
+
+And it usually takes more than that - one or two meetings don't typically make a relationship.
+Which is fine, because you're not building one with everybody: **two or three genuine network
+builders is all you need.** The best possible reason to connect with anyone is that they want to
+build a network the same way you're building yours - because someone building with the same intent
+will be referring people to you as naturally as you refer to them. So talk about it openly. What
+you're doing, how you're doing it, and that you're looking for other people who want to build the
+same way - that conversation is itself the filter for finding them. And if a call tells you the
+fit isn't there, you're not trapped - "it's been great chatting" is a perfectly gracious place to
+leave it. The book-the-next-one habit is for the good ones.
+
+**This is exactly where networkers fall down.** Two people have a great
 conversation, they agree they'll refer things to each other, everyone means it - and then the intent
 quietly slips, because nothing was ever put in the diary. A booked reason to catch up is the
 difference between a good conversation and a working relationship.
 
 There's one more move available to you here. If you pick up that they'd like to be building their
-own network more proactively and effectively - the way you are - you can tell them: I'm using the I
-Know A Guy system. Then either introduce them to Guy, or if you know enough yourself, get them
-going. That's a real reason to reconvene, and it deepens the relationship further.
+own network more proactively and effectively - the way you are - show them one or two of the wow
+moments from your own system, and then either introduce them to Guy or, if you know enough
+yourself, get them going. And know this about that introduction: Guy hands them back. As much as
+possible you two end up working together - so referring someone to him doesn't cost you the
+relationship, it upgrades it to a partnership, on top of whatever fit you already had.
 
 And it's where the whole thing starts to compound. Everyone who takes it up isn't just one more
 person looking out for you - it's their people too, because in time you get to know them as well.
