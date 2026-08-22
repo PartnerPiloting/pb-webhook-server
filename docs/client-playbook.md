@@ -111,9 +111,10 @@ Here's the whole thing in order, so you can see where any one piece fits.
 Then it loops, at a pace you choose - you pick how many calls a week you want, and we tune the
 searches and the volume until that's what happens.
 
-Underneath all of that there's a one-off setup: the Linked Helper plumbing, and getting Wingguy
-connected to your calendar, your email and your transcripts, with your instructions decided. That's
-what you and I do together at the start, and there are topics on both.
+Underneath all of that there's a one-off setup, and we do it together across your onboarding
+sessions. Wingguy comes first - calendar, email, transcripts, your instructions - so you see what it
+can do for you early. The Linked Helper plumbing comes last, once you've decided who you're looking
+for and your profile says connector. There are topics on both.
 
 ---
 
@@ -222,6 +223,39 @@ That's why you might focus on particular industries. You're looking for people w
 in front of an audience you'd also like to be in front of. When they're with that audience and
 something comes up that's in your ballpark, they can promote you. And you can do the same for
 them. That reciprocal shape is what makes a connection worth far more than one conversation.
+
+**Two signals worth adding to the search.**
+
+**Experience.** People with real years behind them tend to have real networks behind them - and many
+have reached a stage in life where they're lifting their head and looking around, which is exactly
+the mindset you want on the other end of a connection request.
+
+**Activity.** People who post regularly are worth favouring - not because of what they post, but
+because posting proves they're actually on LinkedIn. There's nothing wrong with quiet people; you
+just don't want requests going out to someone who hasn't opened the platform in six months, because
+they'll never even see it.
+
+**And now the part I most want you to hear: don't agonise over this.**
+
+Choosing your people feels like the big decision, and it stalls more people than any other step. It
+shouldn't, for three reasons.
+
+**It's changeable.** A search is not a commitment. You can only send around a hundred connection
+requests a week anyway, so even a month aimed slightly wrong costs a few hundred requests - and
+teaches you exactly how to aim the next one. Run it, look at who comes back, adjust.
+
+**Relationship-builders refer regardless.** If you connect with people who genuinely love
+connecting - which is what the scoring finds for you - they'll know somebody who's right for you
+even if they're not the person you pictured. Once they can see the value in what you're doing, the
+referrals come. That's the whole "I know a guy" engine.
+
+**The decision that matters isn't who - it's how you see network building.** If it's "I need clients
+right now", no targeting will save you, because relationships don't mature on that clock. If it's
+"I'm building an asset that pays for years" - referrals, mentorship, ideas, work you never saw
+coming - then a roughly-aimed search pointed at good people works fine, and gets better every month.
+
+When you're ready to work it out properly, there's a topic on the exact conversation to have with
+Claude - see finding your audience.
 
 ---
 
