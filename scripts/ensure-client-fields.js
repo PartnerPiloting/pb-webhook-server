@@ -85,6 +85,12 @@ const LEADS_FIELDS = [
 // Fields to ensure on the master Clients base's Clients table (per-client config).
 const MASTER_FIELDS = [
   {
+    name: 'Email Series Start Date',
+    type: 'date',
+    description: 'When the client email series (the 14-piece drip, content/one-pagers/SERIES-ARC.md) starts for this client. Per-client choice, set during onboarding; the convention is the END of onboarding (the Linked Helper launch session), so the drip takes over the drumbeat when the weekly sessions stop and fills the collection quiet zone. Blank = series not started. The drip engine (not yet built) sends nothing before this date. Added 2026-08-23.',
+    options: { dateFormat: { name: 'iso', format: 'YYYY-MM-DD' } }
+  },
+  {
     name: 'Connection Lookback Days',
     type: 'number',
     description: 'Thanks-for-Connecting worklist: only connections from the last N days appear in the Outstanding queue. Set to roughly match this client\'s Linked Helper follow-up window. Empty is treated as 14 by the app. Added 2026-06-20.',
