@@ -79,12 +79,14 @@ function prospectIntroBody() {
     <p class="op-sign" style="margin-top:1.25rem">Cheers,<br><strong>(I know a) Guy</strong></p>`;
 }
 
-// The client edition-1 welcome (folded above the map). Frames the map as
-// orientation not a to-do list, sets the "one at a time" expectation, and opens
-// on the mutual "building our networks together" note.
+// The client edition-1 welcome (folded above the map). Timed for the END of
+// onboarding (the series starts at the client's Email Series Start Date, set at
+// the Linked Helper launch session - decided 2026-08-23): the opener marks the
+// engine switching on, not a day-one welcome. Frames the map as orientation not
+// a to-do list, and keeps the mutual "building our networks together" note.
 function clientWelcomeIntro() {
   return `
-    <p>I'm genuinely thrilled we'll be building our networks together through the I Know a Guy network-building system.</p>
+    <p>Your engine is switched on. The setup we built together is behind you, the system is out there quietly filling your database, and from here your network starts building week by week. So now we get to the part I'm genuinely excited about - building our networks together.</p>
     <p>I care about a lot more than getting you set up. What I really want is for you to get a <em>result</em> - and that takes more than mastering the mechanics. It's the subtleties: the judgment calls, the small moves, the things you only pick up from years of networking and building businesses. Passing those on to you, a bit at a time, is what this series is for.</p>
     <p>And it starts here, with your map - the whole journey on one page. No need to read it all now, and definitely no need to do it all now. It's just so you can see the shape of where we're headed, and from here each step lands in its own email over the coming weeks - so come back to this overview whenever you like.</p>`;
 }
