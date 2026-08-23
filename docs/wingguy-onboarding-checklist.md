@@ -521,6 +521,11 @@ you've already been giving it - and remember, it's changeable, so we aim roughly
 - [ ] Then the hookup: Linked Helper install, the search URL into Campaign 1, webhook into their
       leads base. The trial clock only starts at first campaign launch, so all the prep above is
       free.
+- [ ] **Set "Email Series Start Date" on their Clients row** (Master Clients base) - convention is
+      this session's date. The client email drip starts from that date and takes over the weekly
+      drumbeat when the onboarding sessions stop, covering the collection quiet zone. Blank = the
+      series never starts for them. (Until the drip send loop is built, the date is recorded but
+      nothing sends - set it anyway so launch day is on the record.)
 
 **Check it worked:** first profiles land in their leads base and get scored overnight.
 

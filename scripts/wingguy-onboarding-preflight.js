@@ -202,11 +202,20 @@ function step(n, name, verdict, evidence) {
   } catch (e) { step('E', 'extension updates', OWED, `probe failed: ${e.message}`); }
 
   // ---- STEP 9: Linked Helper - deliberately LAST (decided 2026-08-22) ----------
-  // No live probe from here; the step exists so the printed journey matches the doctrine:
+  // Mostly un-probeable from here; the step exists so the printed journey matches the doctrine:
   // for NEW clients the LH hookup + first campaign close the onboarding, after steps 0-8.
-  // Clients already mid-journey on the old LH-first order finish that way.
-  step(9, 'linked helper', MANUAL,
-    'the CLOSING step for new clients - hookup + Campaign 1 once targeting is decided and the profile says connector; trial clock starts at first campaign launch');
+  // Clients already mid-journey on the old LH-first order finish that way. One thing IS derivable:
+  // the Email Series Start Date convention (set at THIS session - the drip takes over when the
+  // weekly sessions stop), so surface its state.
+  try {
+    const raw9 = (client.rawRecord && client.rawRecord._rawJson && client.rawRecord._rawJson.fields) || {};
+    const seriesStart = raw9['Email Series Start Date'] || '';
+    step(9, 'linked helper', MANUAL,
+      'the CLOSING step for new clients - hookup + Campaign 1 once targeting is decided and the profile says connector; trial clock starts at first campaign launch'
+      + (seriesStart ? ` · email series starts ${seriesStart}` : ' · Email Series Start Date NOT SET - set it at this session'));
+  } catch (e) {
+    step(9, 'linked helper', MANUAL, `the CLOSING step for new clients (series-date probe failed: ${e.message})`);
+  }
 
   console.log(lines.join('\n'));
   if (warnings.length) console.log('\n' + warnings.join('\n'));
