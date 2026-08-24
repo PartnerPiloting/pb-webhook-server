@@ -561,12 +561,13 @@ router.get('/api/billing/subscription', authenticateUserWithTestMode, requireStr
 
         logger.info(`Fetching subscription for customer: ${customer.id}`);
 
-        // Get active subscriptions
+        // Get active subscriptions. Stripe caps expand at 4 levels, so the price's
+        // product is fetched with its own retrieve below rather than expanded here.
         const subscriptions = await stripe.subscriptions.list({
             customer: customer.id,
             status: 'active',
             limit: 1,
-            expand: ['data.items.data.price.product']
+            expand: ['data.items.data.price']
         });
 
         if (subscriptions.data.length === 0) {
@@ -579,23 +580,39 @@ router.get('/api/billing/subscription', authenticateUserWithTestMode, requireStr
 
         const sub = subscriptions.data[0];
         const item = sub.items.data[0];
-        const product = item?.price?.product;
+
+        let planName = 'Subscription';
+        const productRef = item?.price?.product;
+        if (typeof productRef === 'string') {
+            try {
+                const product = await stripe.products.retrieve(productRef);
+                if (product?.name) planName = product.name;
+            } catch (e) {
+                logger.warn(`Could not retrieve product ${productRef}: ${e.message}`);
+            }
+        } else if (productRef?.name) {
+            planName = productRef.name;
+        }
+
+        // Newer Stripe API versions carry the billing period on the item, older on
+        // the subscription - accept either.
+        const periodEnd = sub.current_period_end || item?.current_period_end || null;
 
         res.json({
             success: true,
             subscription: {
                 id: sub.id,
                 status: sub.status,
-                planName: typeof product === 'object' ? product.name : 'Subscription',
+                planName,
                 amount: item?.price?.unit_amount / 100,
                 amountFormatted: `$${(item?.price?.unit_amount / 100).toFixed(2)}`,
                 interval: item?.price?.recurring?.interval,
-                currentPeriodEnd: sub.current_period_end,
-                nextBillingDate: new Date(sub.current_period_end * 1000).toLocaleDateString('en-AU', {
+                currentPeriodEnd: periodEnd,
+                nextBillingDate: periodEnd ? new Date(periodEnd * 1000).toLocaleDateString('en-AU', {
                     day: 'numeric',
                     month: 'long',
                     year: 'numeric'
-                }),
+                }) : null,
                 cancelAtPeriodEnd: sub.cancel_at_period_end
             }
         });
