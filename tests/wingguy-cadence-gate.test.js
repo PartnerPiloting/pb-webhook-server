@@ -75,6 +75,36 @@ const NOTES_LEAD_SPOKE = [
     assert.strictEqual(c.tier, 'reply');
   });
 
+  console.log('classifyLead() open-ended cadence (2026-08-24 — no 45d ceiling)');
+  await check('54d silent (the Louis Nonis case) → surfaces as cadence', () => {
+    const c = classifyLead({ ...base, connected: true }, { lastInboundMs: null, lastOutboundMs: nowMs - 54 * MS_DAY, everInbound: true, nowMs, todayMidMs });
+    assert.strictEqual(c.tier, 'cadence');
+  });
+  await check('400d silent → STILL surfaces (nobody times out of view)', () => {
+    const c = classifyLead({ ...base, connected: true }, { lastInboundMs: null, lastOutboundMs: nowMs - 400 * MS_DAY, everInbound: true, nowMs, todayMidMs });
+    assert.strictEqual(c.tier, 'cadence');
+  });
+  await check('old cadence ranks BELOW fresh cadence (recent-first within the tier)', () => {
+    const fresh = classifyLead({ ...base, connected: true }, { lastInboundMs: null, lastOutboundMs: nowMs - 20 * MS_DAY, everInbound: true, nowMs, todayMidMs });
+    const old = classifyLead({ ...base, connected: true }, { lastInboundMs: null, lastOutboundMs: nowMs - 200 * MS_DAY, everInbound: true, nowMs, todayMidMs });
+    assert.ok(fresh.sortKey > old.sortKey, `expected fresh sortKey ${fresh.sortKey} > old sortKey ${old.sortKey}`);
+  });
+  await check('90d silent + Cease FUP → still suppressed (the exits are untouched)', () => {
+    const c = classifyLead({ ...base, connected: true, cease: true }, { lastInboundMs: null, lastOutboundMs: nowMs - 90 * MS_DAY, everInbound: true, nowMs, todayMidMs });
+    assert.strictEqual(c.tier, null);
+    assert.strictEqual(c.gatedCadence, true);
+  });
+  await check('90d silent + future Reconnect On → still parked', () => {
+    const c = classifyLead({ ...base, connected: true, reconnectOn: '2026-09-15' }, { lastInboundMs: null, lastOutboundMs: nowMs - 90 * MS_DAY, everInbound: true, nowMs, todayMidMs });
+    assert.strictEqual(c.tier, null);
+    assert.strictEqual(c.gatedCadence, true);
+  });
+  await check('90d silent but NEVER spoke → still coldCadence (Decision B holds at depth)', () => {
+    const c = classifyLead({ ...base, connected: true }, { lastInboundMs: null, lastOutboundMs: nowMs - 90 * MS_DAY, everInbound: false, nowMs, todayMidMs });
+    assert.strictEqual(c.tier, null);
+    assert.strictEqual(c.coldCadence, true);
+  });
+
   console.log(failures ? `\n${failures} FAILED` : '\nAll passed.');
   process.exit(failures ? 1 : 0);
 })();

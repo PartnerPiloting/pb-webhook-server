@@ -140,13 +140,16 @@ const BODY_CAP = 6000; // chars of rendered text per message read — keeps chat
 // CADENCE only — a reply or a due deferral always surfaces), and ranks by closeness-to-broken-
 // promise. See docs/PREP-ME-FOR-TODAY-FEATURE.md §13.
 
-const SWEEP_WINDOW_DAYS = 90;    // the FEATURE window — how far back a follow-up can surface (settled: 90)
-const EMAIL_READ_DAYS = 45;      // how far back we READ email live — shorter than the window because the
-                                 // deep history comes from LinkedIn (free, already in Notes); deep-reading
-                                 // months of mail is slow and 504s. The overnight pre-read can go full-depth.
-const CADENCE_OVERDUE_DAYS = 14; // "you spoke last and went silent this long" = a cadence nudge
-const CADENCE_MAX_DAYS = 45;     // beyond this a silence is too cold for a "just following up" nudge — it
-                                 // needs a proper re-engagement, so it drops off (a later re-engage tier can own it)
+const SWEEP_WINDOW_DAYS = 90;    // bounds the EMAIL read only — LinkedIn history (Notes) is read full-depth,
+                                 // so cadence is open-ended (Guy 2026-08-24, the Louis Nonis gap: a lead must
+                                 // never time out of view; only a reply, a Reconnect On park, or Cease FUP
+                                 // removes them). Reply/deferral tiers carry their own freshness caps below.
+const EMAIL_READ_DAYS = 90;      // how far back we READ email live — the provider depth limit (volume finding
+                                 // 2026-07-22, same as the backlog audit). Deep history comes from LinkedIn
+                                 // (free, already in Notes); an email-ONLY lead with no LinkedIn history still
+                                 // has this horizon — the one honest residual limit of the open-ended cadence.
+const CADENCE_OVERDUE_DAYS = 14; // "you spoke last and went silent this long" = a cadence nudge — the floor
+                                 // only; there is deliberately NO ceiling (see SWEEP_WINDOW_DAYS note)
 // "Ball's in your court" only counts as LIVE if the reply is recent — a reply you haven't answered
 // in a couple of days is the one to jump on; past this it's gone cold or been handled elsewhere, so
 // it drops off rather than nagging (Guy's call 2026-07-22, after a real-data test surfaced 6-month-
@@ -301,7 +304,11 @@ function classifyLead(lead, { lastInboundMs, lastOutboundMs, everInbound, nowMs,
   }
   if (deferralLive) return { tier: 'deferral', why: `reconnect date reached (${deferDays === 0 ? 'today' : deferDays + 'd ago'})`, sortKey: deferDays, gated };
   if (cadenceOverdue) {
-    if (outboundDays > CADENCE_MAX_DAYS) return null;                                   // too cold — needs re-engagement, drop
+    // No upper bound (Guy 2026-08-24): the old 45d ceiling made leads silently time out of view
+    // in the crack between this sweep and the point-in-time backlog audit (Louis Nonis, 54d quiet,
+    // invisible to both). A lead the coach messaged last now surfaces indefinitely until a real
+    // exit: they reply, a Reconnect On park, or Cease FUP. Recent-first sorting keeps the very old
+    // ones at the back of the queue rather than in the way.
     if (gated) return { tier: null, gatedCadence: true };                              // Cease/Series → cadence off
     if (reconnectFuture) return { tier: null, gatedCadence: true };                    // parked until their reconnect date → no early nudge
     // Decision B, tightened 2026-08-01: only chase "went quiet" when the person has EVER actually
@@ -779,8 +786,7 @@ async function computeFollowupSweep({ window_days } = {}, tenant = TENANT) {
     const td = new Date(nowMs);
     todayMidMs = Date.UTC(td.getUTCFullYear(), td.getUTCMonth(), td.getUTCDate());
   }
-  const afterMs = nowMs - windowDays * MS_DAY;                     // LinkedIn / feature window (full depth)
-  const emailDays = Math.min(windowDays, EMAIL_READ_DAYS);         // email read is shallower (deep history = LinkedIn)
+  const emailDays = Math.min(windowDays, EMAIL_READ_DAYS);         // email read is bounded (deep history = LinkedIn, full depth)
   const emailAfterSec = Math.floor((nowMs - emailDays * MS_DAY) / 1000);
 
   // --- 1. Leads from the tenant's own base ---
@@ -879,7 +885,9 @@ async function computeFollowupSweep({ window_days } = {}, tenant = TENANT) {
     let lastInboundMs = lead.lastInboundMs;
     let lastOutboundMs = lead.lastOutboundMs;
     const li = parseLinkedInLast(lead.notes, lead.first);
-    if (li && li.ms >= afterMs) { // window LinkedIn the SAME as email — an ancient LI thread is not a live signal
+    if (li) { // FULL depth (2026-08-24): cadence is open-ended, so an old LI outbound is exactly the
+              // signal we need. Stale-signal noise is already handled downstream — reply-owed has its
+              // own REPLY_LIVE_DAYS freshness cap, and cadence sorts recent-first.
       if (li.inbound) lastInboundMs = Math.max(lastInboundMs || 0, li.ms);
       else lastOutboundMs = Math.max(lastOutboundMs || 0, li.ms);
     }
@@ -969,7 +977,7 @@ async function runFollowupSweep({ window_days, limit } = {}, tenant = TENANT) {
 
   if (!surfaced.length) {
     const booked = bookedSuppressed ? `, ${bookedSuppressed} already booked` : '';
-    return { text: `No follow-ups surfaced from the last ${windowDays} days. (${counts.leadsScanned} leads scanned; suppressed ${gatedCadence} Cease/Series + ${coldCadence} cold-outreach cadence${booked}.)` };
+    return { text: `No follow-ups surfaced. (${counts.leadsScanned} leads scanned — email ${emailDays}d, LinkedIn full history; suppressed ${gatedCadence} Cease/Series + ${coldCadence} cold-outreach cadence${booked}.)` };
   }
   const shown = surfaced.slice(0, cap);
   const more = surfaced.length - shown.length;
@@ -983,8 +991,8 @@ async function runFollowupSweep({ window_days, limit } = {}, tenant = TENANT) {
       `Top ${shown.length} of ${surfaced.length} follow-up${surfaced.length === 1 ? '' : 's'} (live, nothing stored):\n` +
       lines.join('\n') +
       (more > 0 ? `\n(${more} more behind these — call again with limit to show all.)` : '') +
-      `\n[diagnostics — do not relay unless asked: ${counts.leadsScanned} leads scanned; ${mailInfo.count} emails/${emailDays}d${mailInfo.partialError ? ' ⚠PARTIAL' : (mailInfo.truncated ? ' ⚠capped' : '')}, LinkedIn ${windowDays}d; suppressed ${gatedCadence} Cease/Series + ${coldCadence} cold-outreach${calChecked ? ` + ${bookedSuppressed} already-booked` : ''}. ` +
-      `REPLY OWED = a lead replied last on a 1:1 thread (≤${REPLY_LIVE_DAYS}d), ball in your court — intro/group threads (3+ parties) are NOT counted; DEFERRAL DUE = a stamped Reconnect On date has arrived (≤${DEFERRAL_LIVE_DAYS}d past), ranks above cadence; WENT QUIET = you spoke last ${CADENCE_OVERDUE_DAYS}-${CADENCE_MAX_DAYS}d ago on a 1:1 thread, connected/replied leads only. A FUTURE Reconnect On parks a lead from cadence until then. Calendar cross-check ${calChecked ? 'ON (already-booked leads dropped)' : '⚠ SKIPPED this run (calendar read failed) — verify already-booked before nudging'}.]`,
+      `\n[diagnostics — do not relay unless asked: ${counts.leadsScanned} leads scanned; ${mailInfo.count} emails/${emailDays}d${mailInfo.partialError ? ' ⚠PARTIAL' : (mailInfo.truncated ? ' ⚠capped' : '')}, LinkedIn full history; suppressed ${gatedCadence} Cease/Series + ${coldCadence} cold-outreach${calChecked ? ` + ${bookedSuppressed} already-booked` : ''}. ` +
+      `REPLY OWED = a lead replied last on a 1:1 thread (≤${REPLY_LIVE_DAYS}d), ball in your court — intro/group threads (3+ parties) are NOT counted; DEFERRAL DUE = a stamped Reconnect On date has arrived (≤${DEFERRAL_LIVE_DAYS}d past), ranks above cadence; WENT QUIET = you spoke last ${CADENCE_OVERDUE_DAYS}d+ ago on a 1:1 thread (no upper limit — only a reply, a park, or Cease FUP removes someone), connected/replied leads only, freshest silence first. A FUTURE Reconnect On parks a lead from cadence until then. Calendar cross-check ${calChecked ? 'ON (already-booked leads dropped)' : '⚠ SKIPPED this run (calendar read failed) — verify already-booked before nudging'}.]`,
   };
 }
 
@@ -1316,15 +1324,15 @@ const TOOL_DEFS = [
   {
     name: 'wingguy_followup_sweep',
     description:
-      'LIVE follow-up sweep — the SLOW fallback (~2 min). For "show me my follow-ups" prefer wingguy_followup_brief (instant, pre-triaged, drafts pre-written); use this only when no prepared brief exists or the human explicitly wants a raw live rebuild. Rebuilds the list LIVE every call (nothing stored — a stored follow-up list rots) from the coach\'s own mailbox (Nylas, ~90-day window in ONE read) merged with each lead\'s LinkedIn history (Notes) and the gates on the lead record. Returns a ranked, capped plain-text list: REPLY OWED (they replied, ball\'s in your court) → DEFERRAL DUE (a date they named has arrived) → WENT QUIET (you messaged last, past the interval). Cease FUP / On-Series suppress the WENT QUIET (cadence) nudge only — a reply or a due deferral still surfaces. Use for "show me what I need to follow up", or "who\'s waiting". Read-only. Reply-owed is thread-aware: only messages on a genuine 1:1 thread (you + the lead) count, so introductions you broker never manufacture phantom follow-ups; and already-booked leads are cross-checked against the calendar and dropped.',
+      'LIVE follow-up sweep — the SLOW fallback (~2 min). For "show me my follow-ups" prefer wingguy_followup_brief (instant, pre-triaged, drafts pre-written); use this only when no prepared brief exists or the human explicitly wants a raw live rebuild. Rebuilds the list LIVE every call (nothing stored — a stored follow-up list rots) from the coach\'s own mailbox (~90-day window in ONE read) merged with each lead\'s FULL LinkedIn history (Notes) and the gates on the lead record. Returns a ranked, capped plain-text list: REPLY OWED (they replied, ball\'s in your court) → DEFERRAL DUE (a date they named has arrived) → WENT QUIET (you messaged last, 14d+ silent — OPEN-ENDED, freshest first: a quiet lead never times out of view; only a reply, a Reconnect On park, or Cease FUP removes them). Cease FUP / On-Series suppress the WENT QUIET (cadence) nudge only — a reply or a due deferral still surfaces. Use for "show me what I need to follow up", or "who\'s waiting". Read-only. Reply-owed is thread-aware: only messages on a genuine 1:1 thread (you + the lead) count, so introductions you broker never manufacture phantom follow-ups; and already-booked leads are cross-checked against the calendar and dropped.',
     zodSchema: {
-      window_days: z.number().optional().describe('How far back to read mail (default 90, min 7, max 180).'),
+      window_days: z.number().optional().describe('How far back to read MAIL (default and effective max 90; min 7). LinkedIn history is always read full-depth regardless.'),
       limit: z.number().optional().describe('Max items to show (default 5 — the tight brief; pass a big number like 100 for "show all").'),
     },
     jsonSchema: {
       type: 'object',
       properties: {
-        window_days: { type: 'number', description: 'How far back to read mail (default 90, min 7, max 180).' },
+        window_days: { type: 'number', description: 'How far back to read MAIL (default and effective max 90; min 7). LinkedIn history is always read full-depth regardless.' },
         limit: { type: 'number', description: 'Max items to show (default 5 — the tight brief; pass a big number like 100 for "show all").' },
       },
       required: [],
