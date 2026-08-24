@@ -154,10 +154,22 @@ export default function Billing() {
     loadBillingData();
   }, [checkBillingStatus, getClientEmail, fetchSubscription, fetchInvoices]);
 
-  // Generate PDF download URL
+  // Generate PDF download URL. A plain <a> link carries no headers, so the
+  // portal token (or dev key) rides along as query params for the auth gate.
   const getPdfUrl = (invoiceId) => {
     const backendBase = getBackendBase();
-    return `${backendBase}/api/billing/invoice/${invoiceId}/pdf`;
+    const params = new URLSearchParams();
+    const portalToken = getCurrentPortalToken();
+    const devKey = getCurrentDevKey();
+    const clientId = getCurrentClientId();
+    if (portalToken) {
+      params.set('token', portalToken);
+    } else if (devKey && clientId) {
+      params.set('client', clientId);
+      params.set('devKey', devKey);
+    }
+    const qs = params.toString();
+    return `${backendBase}/api/billing/invoice/${invoiceId}/pdf${qs ? `?${qs}` : ''}`;
   };
 
   // Open Stripe Customer Portal for payment method management
@@ -345,19 +357,19 @@ export default function Billing() {
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Date
                   </th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Description
                   </th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Amount
                   </th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Status
                   </th>
-                  <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th scope="col" className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Invoice
                   </th>
                 </tr>
@@ -365,19 +377,19 @@ export default function Billing() {
               <tbody className="bg-white divide-y divide-gray-200">
                 {invoices.map((invoice) => (
                   <tr key={invoice.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900">
                       {invoice.dateFormatted}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                    <td className="px-4 py-4 text-sm text-gray-600">
                       {invoice.description}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                    <td className="px-4 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                       {invoice.amountFormatted}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td className="px-4 py-4 whitespace-nowrap">
                       <StatusBadge status={invoice.status} />
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-right">
+                    <td className="px-4 py-4 whitespace-nowrap text-right">
                       <a
                         href={getPdfUrl(invoice.id)}
                         target="_blank"
