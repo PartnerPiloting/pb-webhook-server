@@ -8,6 +8,12 @@
  * reopen (email draft with push params, or LinkedIn paste-ready text). Output = a WORKLIST stored in
  * Postgres that the human chews through a few a day in chat: "give me the draft for Kay" → tweak →
  * push/copy → marked done → the list shrinks. Guy's design session 2026-07-23.
+ *
+ * ROLE CHANGE 2026-08-24 (the Louis Nonis gap): the daily sweep's WENT QUIET tier is now
+ * OPEN-ENDED — no 45d ceiling, LinkedIn read full-depth — so leads no longer age INTO this
+ * module's territory. It stays as a one-time cleanup tool for the historical pile (and its
+ * worklist keeps serving until worked dry); it does NOT need rebuilding on a schedule, ever.
+ * Note the daily sweep + this audit now overlap on purpose — the queue dedupes by name.
  */
 
 require('dotenv').config();
