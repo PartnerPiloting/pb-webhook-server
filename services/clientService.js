@@ -173,6 +173,9 @@ async function getAllClients() {
                 // 2026-07-22 for the Nylas->Unipile migration.
                 const unipileAccountId = record.get('Unipile Account ID') || null;
                 const emailProvider = record.get('Email Provider') || null;
+                // Stripe cutover stage 2: the join key to Stripe. When set, billing looks the
+                // customer up by this id instead of guessing by email (billingRoutes.js).
+                const stripeCustomerId = record.get('Stripe Customer ID') || null;
                 // Generic direct-provider calendar credentials (e.g. Zoho), populated only when the
                 // calendar is on a provider Nylas can't serve; blank for Nylas/Google clients. The
                 // calendarProvider.js seam reads these for the 'zoho' (and future direct) branches.
@@ -290,6 +293,7 @@ async function getAllClients() {
                     // Unipile (Nylas replacement): account id (covers calendar + email) + the
                     // per-tenant email backend selector
                     unipileAccountId: unipileAccountId,
+                    stripeCustomerId: stripeCustomerId,
                     emailProvider: emailProvider,
                     calendarProviderToken: calendarProviderToken,
                     calendarProviderDomain: calendarProviderDomain,

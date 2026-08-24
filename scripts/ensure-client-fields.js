@@ -85,6 +85,11 @@ const LEADS_FIELDS = [
 // Fields to ensure on the master Clients base's Clients table (per-client config).
 const MASTER_FIELDS = [
   {
+    name: 'Stripe Customer ID',
+    type: 'singleLineText',
+    description: 'The client\'s Stripe customer id (cus_...). When set, billing lookups (portal Billing page, entitlement) address Stripe by this id instead of guessing by email - the join key between the Clients table and Stripe. Written by the Stripe checkout webhook for new signups; backfilled by hand for existing members during the PMPro cutover (stage 6). Added 2026-08-25 (Stripe cutover stage 2).'
+  },
+  {
     name: 'Email Series Start Date',
     type: 'date',
     description: 'When the client email series (the 14-piece drip, content/one-pagers/SERIES-ARC.md) starts for this client. Per-client choice, set during onboarding; the convention is the END of onboarding (the Linked Helper launch session), so the drip takes over the drumbeat when the weekly sessions stop and fills the collection quiet zone. Blank = series not started. The drip engine (not yet built) sends nothing before this date. Added 2026-08-23.',

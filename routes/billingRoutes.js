@@ -93,6 +93,39 @@ function getClientEmail(req) {
 }
 
 /**
+ * Helper: Find the authenticated client's Stripe customer.
+ * Prefers the stored Stripe Customer ID (the durable join key, stage 2 of the
+ * PMPro->Stripe cutover); falls back to email search for clients not yet mapped.
+ */
+async function findStripeCustomer(req, logger) {
+    const storedId = req.client?.stripeCustomerId;
+    if (storedId) {
+        try {
+            const customer = await stripe.customers.retrieve(storedId);
+            if (customer && !customer.deleted) return customer;
+            logger.warn(`Stored Stripe customer ${storedId} is deleted - falling back to email lookup`);
+        } catch (e) {
+            logger.warn(`Stored Stripe customer ${storedId} not retrievable (${e.message}) - falling back to email lookup`);
+        }
+    }
+    const email = getClientEmail(req);
+    if (!email) return null;
+    const customers = await stripe.customers.list({ email, limit: 1 });
+    return customers.data[0] || null;
+}
+
+/**
+ * Helper: Does this invoice/charge belong to the authenticated client?
+ * Match on the stored customer id first, else on email.
+ */
+function belongsToClient(req, { customerId, customerEmail }) {
+    const storedId = req.client?.stripeCustomerId;
+    if (storedId && customerId && customerId === storedId) return true;
+    const email = getClientEmail(req);
+    return !!(email && customerEmail && customerEmail.toLowerCase().trim() === email);
+}
+
+/**
  * GET /api/billing/status
  * Health check for billing service
  */
@@ -128,34 +161,17 @@ router.get('/api/billing/invoices', authenticateUserWithTestMode, requireStripe,
     try {
         const { limit = 100 } = req.query;
 
-        const email = getClientEmail(req);
+        const customer = await findStripeCustomer(req, logger);
 
-        if (!email) {
-            return res.status(400).json({
-                success: false,
-                error: 'Email required',
-                message: 'No email address on file for this account.'
-            });
-        }
-
-        logger.info(`Fetching invoices for: ${email}`);
-
-        // First, find the customer by email
-        const customers = await stripe.customers.list({
-            email: email.toLowerCase().trim(),
-            limit: 1
-        });
-
-        if (customers.data.length === 0) {
-            logger.info(`No Stripe customer found for: ${email}`);
+        if (!customer) {
+            logger.info(`No Stripe customer found for client ${req.client?.clientId}`);
             return res.json({
                 success: true,
                 invoices: [],
-                message: 'No billing history found for this email.'
+                message: 'No billing history found for this account.'
             });
         }
 
-        const customer = customers.data[0];
         logger.info(`Found customer: ${customer.id}`);
 
         // Fetch invoices for this customer
@@ -284,35 +300,18 @@ router.post('/api/billing/portal', authenticateUserWithTestMode, requireStripe, 
     });
 
     try {
-        const email = getClientEmail(req);
+        const customer = await findStripeCustomer(req, logger);
 
-        if (!email) {
-            return res.status(400).json({
-                success: false,
-                error: 'Email required',
-                message: 'No email address on file for this account.'
-            });
-        }
-
-        logger.info(`Creating portal session for: ${email}`);
-
-        // Find the customer by email
-        const customers = await stripe.customers.list({
-            email: email.toLowerCase().trim(),
-            limit: 1
-        });
-
-        if (customers.data.length === 0) {
-            logger.info(`No Stripe customer found for: ${email}`);
+        if (!customer) {
+            logger.info(`No Stripe customer found for client ${req.client?.clientId}`);
             return res.status(404).json({
                 success: false,
                 error: 'Customer not found',
-                message: 'No billing account found for this email.'
+                message: 'No billing account found for this account.'
             });
         }
 
-        const customer = customers.data[0];
-        logger.info(`Found customer: ${customer.id}`);
+        logger.info(`Creating portal session for customer: ${customer.id}`);
 
         // Determine return URL (where customer goes after portal)
         const returnUrl = req.body.returnUrl || 
@@ -355,7 +354,6 @@ router.get('/api/billing/invoice/:id', authenticateUserWithTestMode, requireStri
 
     try {
         const { id } = req.params;
-        const email = getClientEmail(req);
 
         logger.info(`Fetching invoice: ${id}`);
 
@@ -365,8 +363,11 @@ router.get('/api/billing/invoice/:id', authenticateUserWithTestMode, requireStri
 
         // The invoice ID alone doesn't prove ownership - confirm it actually
         // belongs to the calling client before returning it to them.
-        const invoiceEmail = (invoice.customer_email || invoice.customer?.email || '').toLowerCase().trim();
-        if (!email || invoiceEmail !== email) {
+        const ownerOk = belongsToClient(req, {
+            customerId: typeof invoice.customer === 'object' ? invoice.customer?.id : invoice.customer,
+            customerEmail: invoice.customer_email || invoice.customer?.email
+        });
+        if (!ownerOk) {
             logger.warn(`Invoice ${id} does not belong to authenticated client`);
             return res.status(404).json({
                 success: false,
@@ -431,7 +432,6 @@ router.get('/api/billing/invoice/:id/pdf', authenticateUserWithTestMode, require
 
     try {
         const { id } = req.params;
-        const email = getClientEmail(req);
 
         logger.info(`Generating PDF for: ${id}`);
 
@@ -444,8 +444,11 @@ router.get('/api/billing/invoice/:id/pdf', authenticateUserWithTestMode, require
                 expand: ['customer', 'lines.data']
             });
 
-            const invoiceEmail = (invoice.customer_email || invoice.customer?.email || '').toLowerCase().trim();
-            if (!email || invoiceEmail !== email) {
+            const ownerOk = belongsToClient(req, {
+                customerId: typeof invoice.customer === 'object' ? invoice.customer?.id : invoice.customer,
+                customerEmail: invoice.customer_email || invoice.customer?.email
+            });
+            if (!ownerOk) {
                 logger.warn(`Invoice ${id} does not belong to authenticated client`);
                 return res.status(404).json({ success: false, error: 'Invoice not found' });
             }
@@ -467,8 +470,11 @@ router.get('/api/billing/invoice/:id/pdf', authenticateUserWithTestMode, require
             const charge = await stripe.charges.retrieve(id);
             const customer = await stripe.customers.retrieve(charge.customer);
 
-            const chargeEmail = (customer.email || charge.billing_details?.email || '').toLowerCase().trim();
-            if (!email || chargeEmail !== email) {
+            const ownerOk = belongsToClient(req, {
+                customerId: charge.customer,
+                customerEmail: customer.email || charge.billing_details?.email
+            });
+            if (!ownerOk) {
                 logger.warn(`Charge ${id} does not belong to authenticated client`);
                 return res.status(404).json({ success: false, error: 'Invoice not found' });
             }
@@ -543,25 +549,9 @@ router.get('/api/billing/subscription', authenticateUserWithTestMode, requireStr
     });
 
     try {
-        const email = getClientEmail(req);
+        const customer = await findStripeCustomer(req, logger);
 
-        if (!email) {
-            return res.status(400).json({
-                success: false,
-                error: 'Email required',
-                message: 'No email address on file for this account.'
-            });
-        }
-
-        logger.info(`Fetching subscription for: ${email}`);
-
-        // Find customer
-        const customers = await stripe.customers.list({
-            email: email.toLowerCase().trim(),
-            limit: 1
-        });
-
-        if (customers.data.length === 0) {
+        if (!customer) {
             return res.json({
                 success: true,
                 subscription: null,
@@ -569,7 +559,7 @@ router.get('/api/billing/subscription', authenticateUserWithTestMode, requireStr
             });
         }
 
-        const customer = customers.data[0];
+        logger.info(`Fetching subscription for customer: ${customer.id}`);
 
         // Get active subscriptions
         const subscriptions = await stripe.subscriptions.list({
