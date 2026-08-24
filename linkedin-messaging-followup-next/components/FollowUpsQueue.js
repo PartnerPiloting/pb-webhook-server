@@ -86,6 +86,7 @@ function tierChip(it) {
 function draftBadge(it) {
   if (it.draftState === 'ready') return { label: 'draft ready', cls: 'bg-emerald-100 text-emerald-800 border-emerald-300' };
   if (it.draftState === 'wg-angle') return { label: 'open thread, use /wg', cls: 'bg-amber-100 text-amber-800 border-amber-300' };
+  if (it.draftState === 'pending') return { label: 'draft coming overnight', cls: 'bg-gray-100 text-gray-600 border-gray-300' };
   if (it.draftState === 'error') return { label: 'no draft — ask in chat', cls: 'bg-red-50 text-red-700 border-red-200' };
   return { label: 'no draft — story below', cls: 'bg-gray-100 text-gray-600 border-gray-300' };
 }

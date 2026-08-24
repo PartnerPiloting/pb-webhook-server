@@ -676,7 +676,14 @@ async function prepareDossiers(tenant, opts = {}) {
     try {
       const row = await briefStore.getBrief(tenant);
       const p = row && row.payload ? (typeof row.payload === 'string' ? JSON.parse(row.payload) : row.payload) : null;
-      addFrom(p && p.items, ['draft', 'park', 'attention']);
+      // Since the brief went full-list (2026-08-24, ~140 items), the dossier pass takes only its
+      // TOP slice — a deep dossier is minutes + several LLM calls per person, and 100+ of them
+      // nightly is hours and real money. Everyone past the slice still gets a live mini-dossier
+      // on demand (buildLiveMiniDossier), and rises into the slice as the queue is worked down.
+      const DOSSIER_BRIEF_TOP = 25;
+      const briefItems = (p && p.items) || [];
+      if (briefItems.length > DOSSIER_BRIEF_TOP) console.log(`[dossier] brief has ${briefItems.length} items — deep dossiers for the top ${DOSSIER_BRIEF_TOP} only (rest live on demand)`);
+      addFrom(briefItems.slice(0, DOSSIER_BRIEF_TOP), ['draft', 'park', 'attention']);
     } catch (_) {}
     try {
       const row = await backlog.getWorklist(tenant);

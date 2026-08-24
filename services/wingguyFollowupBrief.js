@@ -3,7 +3,7 @@
  *
  * Why this exists (Guy, 2026-07-23): the live sweep + read-threads-while-you-wait pattern made every
  * question a 2-minute spinner — unusable as a daily assistant. So ALL the work happens BEFORE the
- * human asks: this module runs the sweep, READS what each top person actually said, triages them
+ * human asks: this module runs the sweep, READS what each surfaced person actually said, triages them
  * (park / draft / clear / attention), writes the memory-jog lines, pre-writes real Gmail reply
  * drafts, and stores the finished brief in Postgres. The chat then serves it INSTANTLY via
  * wingguy_followup_brief, and rebuilds happen in the background via wingguy_prepare_brief or the
@@ -16,8 +16,20 @@
 require('dotenv').config();
 const { Pool } = require('pg');
 
-const TOP_N = 15;                 // how many surfaced people get the full read+triage+draft treatment
-                                  // (10 proved too tight on catch-up days: ten due deferrals + live replies overflowed it, 2026-07-24)
+// INCREMENTAL since 2026-08-24 (Guy: "why wouldn't we build the entire thing overnight?"): EVERY
+// surfaced person gets the full story+draft treatment, not just a top slice. The old TOP_N=15 cap
+// existed because each night rebuilt everything from scratch; now each person's finished entry is
+// KEPT and reused night after night, and only new/changed people are re-prepped — so the full list
+// costs one big first night, then pennies. The reuse test is deterministic (entrySig below): same
+// tier + same last-message dates + same reconnect stamp = nothing happened = the story still holds.
+// CRITICAL INVARIANT: who APPEARS is the sweep's decision alone — prep only decorates. A person
+// whose prep fails still ships as an entry (story-less, marked), never silently dropped.
+const TRIAGE_BATCH = 15;          // people per triage LLM call (the proven old TOP_N group size)
+const REFRESH_DAYS = 60;          // a kept story older than this re-preps anyway — "unchanged" for two
+                                  // months still means the draft's framing has aged (October launch in March)
+const MAX_DRAFTS_PER_RUN = 40;    // cap on pre-written email drafts per run (the slow+costly step).
+                                  // Overflow entries ship with story + draftPending and fill in on the
+                                  // next run — capped work is LOGGED, never silent.
 const THREAD_MSGS = 6;            // recent messages pulled per person for triage context
 const STALE_HOURS = 26;           // a brief older than this is flagged stale when served
 const MODEL_ID = process.env.WINGGUY_DRAFT_MODEL_ID || 'claude-sonnet-5';
@@ -241,6 +253,46 @@ async function writeDraft(client, rulesText, item, context, instruction, tz) {
 }
 
 // ---------------------------------------------------------------------------
+// Incremental reuse — deterministic "did anything happen for this person?"
+// ---------------------------------------------------------------------------
+
+/**
+ * Fingerprint of everything a person's stored story depends on. Same sig = no message either way,
+ * same tier, same reconnect stamp = the story and draft are still true. Dates, not judgement.
+ * The leading version bumps to force a one-time global re-prep after a format change.
+ */
+function entrySig(item) {
+  const s = item.signals || {};
+  return `s1|${item.tier}|${s.lastInboundMs || 0}|${s.lastOutboundMs || 0}|${item.lead.reconnectOn || ''}`;
+}
+
+/**
+ * TRUE if a previous entry can be served again untouched. Pure — unit-tested.
+ * Not reusable when: no previous entry / signature changed (something happened) / older than
+ * REFRESH_DAYS (framing ages even when nothing happened) / its draft failed or was deferred
+ * (both deserve another attempt while the draft budget allows).
+ */
+function canReuseEntry(prev, sig, nowMs) {
+  if (!prev || prev.sig !== sig) return false;
+  if (!prev.builtAt || (nowMs - Date.parse(prev.builtAt)) > REFRESH_DAYS * 86400000) return false;
+  if (prev.draftError || prev.draftPending) return false;
+  return true;
+}
+
+/** Carry a reused entry forward: expensive fields kept, mechanical fields refreshed (days tick daily). */
+function refreshEntry(prev, item) {
+  return {
+    ...prev,
+    name: `${item.lead.first} ${item.lead.last}`.trim() || item.lead.email || prev.name,
+    email: item.lead.email || prev.email,
+    linkedin: item.lead.linkedinUrl || prev.linkedin,
+    tier: item.tier,
+    engineWhy: item.why,
+    gated: !!item.gated,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // The preparer
 // ---------------------------------------------------------------------------
 
@@ -274,21 +326,50 @@ async function prepareFollowupBrief(tenant) {
     const sweep = await computeFollowupSweep({}, tenant);
     if (!sweep.ok) throw new Error(sweep.error);
 
-    const top = sweep.surfaced.slice(0, TOP_N).map((s, i) => ({
+    // EVERY surfaced person, in the sweep's rank order (see the incremental block at the top).
+    const all = sweep.surfaced.map((s, i) => ({
       ...s,
       key: (s.lead.email || `${s.lead.first} ${s.lead.last}`.trim() || `row${i}`).toLowerCase(),
     }));
 
-    // Read what each person actually said (sequential — ~10 quick provider calls).
-    const contexts = [];
-    for (const item of top) contexts.push(await gatherPersonContext(mailProvider, sweep.coach, item));
+    // Split into reuse (stored story still true) vs prep (new person, or something happened).
+    // The previous payload IS the cache — no second store to drift out of step.
+    const prevByKey = new Map();
+    try {
+      const prevRow = await getBrief(tenant);
+      const prev = prevRow && prevRow.payload ? (typeof prevRow.payload === 'string' ? JSON.parse(prevRow.payload) : prevRow.payload) : null;
+      for (const it of ((prev && prev.items) || [])) prevByKey.set(it.recId || (it.email || it.name || '').toLowerCase(), it);
+    } catch (e) { console.warn(`[followupBrief] previous payload unreadable (full re-prep): ${e.message}`); }
 
-    // One triage call over the whole group, on the lane resolved above.
+    const nowMs = Date.now();
+    const entryByKey = new Map();  // key -> finished entry (reused or freshly prepped)
+    const toPrep = [];
+    for (const item of all) {
+      const sig = entrySig(item);
+      const prev = prevByKey.get(item.lead.recId || item.key);
+      if (canReuseEntry(prev, sig, nowMs)) entryByKey.set(item.key, refreshEntry(prev, item));
+      else toPrep.push({ item, sig });
+    }
+    console.log(`[followupBrief] ${tenant}: ${all.length} surfaced — ${entryByKey.size} reused, ${toPrep.length} to prep`);
+
+    // Read what each to-prep person actually said (sequential quick provider calls).
+    const contexts = [];
+    for (const { item } of toPrep) contexts.push(await gatherPersonContext(mailProvider, sweep.coach, item));
+
+    // Triage in batches (a first full run can be ~100+ people — far past one call's output budget).
+    // A failed batch degrades those people to engine-signal entries, never fails the whole run.
     const llm = lane.llm;
     const todayIso = new Date().toISOString().slice(0, 10);
-    let verdicts = [];
-    if (top.length) verdicts = await triage(llm, top, contexts, todayIso);
-    const byKey = new Map(verdicts.map((v) => [String(v.key || '').toLowerCase(), v]));
+    const byKey = new Map();
+    for (let i = 0; i < toPrep.length; i += TRIAGE_BATCH) {
+      const batchItems = toPrep.slice(i, i + TRIAGE_BATCH).map((t) => t.item);
+      const batchCtx = contexts.slice(i, i + TRIAGE_BATCH);
+      try {
+        const verdicts = await triage(llm, batchItems, batchCtx, todayIso);
+        for (const v of verdicts) byKey.set(String(v.key || '').toLowerCase(), v);
+        console.log(`[followupBrief] triaged ${Math.min(i + TRIAGE_BATCH, toPrep.length)}/${toPrep.length}`);
+      } catch (e) { console.warn(`[followupBrief] triage batch at ${i} failed (engine-signal fallback for those people): ${e.message}`); }
+    }
 
     // Voice rules rendered ONCE for all drafts.
     let rulesText = '';
@@ -297,14 +378,19 @@ async function prepareFollowupBrief(tenant) {
       rulesText = r.text || '';
     } catch (e) { console.warn(`[followupBrief] rules render failed (drafting with plain voice): ${e.message}`); }
 
-    // Build items; pre-write Gmail drafts for the "draft" pile (email-reachable people only).
-    const items = [];
-    for (let i = 0; i < top.length; i++) {
-      const item = top[i];
+    // Build fresh entries; pre-write Gmail drafts for the "draft" pile (email-reachable people
+    // only), up to the per-run cap — overflow ships story-first with draftPending.
+    let draftsWritten = 0;
+    let draftsDeferred = 0;
+    for (let i = 0; i < toPrep.length; i++) {
+      const { item, sig } = toPrep[i];
       const ctx = contexts[i];
       const v = byKey.get(item.key) || {};
       const name = `${item.lead.first} ${item.lead.last}`.trim() || item.lead.email || '(no name)';
       const entry = {
+        sig,
+        builtAt: new Date().toISOString(),
+        draftPending: false,
         name,
         recId: item.lead.recId || null,
         email: item.lead.email || null,
@@ -333,16 +419,25 @@ async function prepareFollowupBrief(tenant) {
       // replyToMessageId/subject stored here (threaded, asset-gated, same as any draft).
       if (entry.verdict === 'draft') {
         if (item.lead.email && ctx.lastInbound) {
-          try {
-            const html = await writeDraft(llm, rulesText, item, ctx, v.draft_instruction || 'Reply appropriately to their last message.', sweep.coach.timezone);
-            entry.draftHtml = html;
-            // draftPlainText, NOT a whitespace-collapse: draftText is what the human reads (chat)
-            // and pastes (the draft page renders it pre-wrap) — the paragraph breaks must survive,
-            // exactly as the /wg panel keeps them (Guy, 2026-08-01, the Farhad one-blob draft).
-            entry.draftText = draftPlainText(html);
-            entry.replyToMessageId = ctx.lastInbound.id;
-            entry.pushSubject = /^re:/i.test(entry.threadSubject || '') ? entry.threadSubject : `Re: ${entry.threadSubject || 'our conversation'}`;
-          } catch (e) { entry.draftError = e.message; }
+          if (draftsWritten >= MAX_DRAFTS_PER_RUN) {
+            // Budget spent: story ships tonight, draft fills in on the next run (draftPending
+            // blocks reuse, so the person is re-prepped while budget exists). Logged — never silent.
+            entry.draftPending = true;
+            entry.draftInstruction = v.draft_instruction || null; // chat can draft live from this meanwhile
+            draftsDeferred++;
+          } else {
+            try {
+              const html = await writeDraft(llm, rulesText, item, ctx, v.draft_instruction || 'Reply appropriately to their last message.', sweep.coach.timezone);
+              entry.draftHtml = html;
+              // draftPlainText, NOT a whitespace-collapse: draftText is what the human reads (chat)
+              // and pastes (the draft page renders it pre-wrap) — the paragraph breaks must survive,
+              // exactly as the /wg panel keeps them (Guy, 2026-08-01, the Farhad one-blob draft).
+              entry.draftText = draftPlainText(html);
+              entry.replyToMessageId = ctx.lastInbound.id;
+              entry.pushSubject = /^re:/i.test(entry.threadSubject || '') ? entry.threadSubject : `Re: ${entry.threadSubject || 'our conversation'}`;
+              draftsWritten++;
+            } catch (e) { entry.draftError = e.message; }
+          }
         } else {
           // LinkedIn person: NO pre-written message, by design (Guy's call 2026-08-01, after the
           // Farhad invented-times draft). Pasting means opening the thread anyway, and /wg there
@@ -352,8 +447,14 @@ async function prepareFollowupBrief(tenant) {
           entry.wgAngle = String(v.draft_instruction || v.why_line || 'revive the thread naturally').trim();
         }
       }
-      items.push(entry);
+      entryByKey.set(item.key, entry);
     }
+    if (draftsDeferred) console.log(`[followupBrief] draft cap (${MAX_DRAFTS_PER_RUN}) reached — ${draftsDeferred} drafts deferred to the next run`);
+
+    // Assemble in the SWEEP's rank order — every surfaced person ships, reused or fresh. The
+    // invariant lives here: entryByKey covers all of `all` by construction (reuse or prep above),
+    // and a triage/draft failure only degrades that person's entry, never removes it.
+    const items = all.map((item) => entryByKey.get(item.key)).filter(Boolean);
 
     // AUTO-PARK — stamp-and-tell (Guy, 2026-08-03: "the few times you might get that wrong would
     // more than justify the reduction in noise"). A park verdict with a clear FUTURE date is
@@ -389,6 +490,9 @@ async function prepareFollowupBrief(tenant) {
       totalSurfaced: sweep.surfaced.length,
       counts: sweep.counts,
       windowDays: sweep.windowDays,
+      prepped: toPrep.length,
+      reused: Math.max(0, items.length - toPrep.length),
+      draftsDeferred,
     };
     await setStatus(tenant, { status: 'ready', preparedAt: payload.preparedAt, payload, error: null });
     // Dossier pass rides every preparation (cache-aware — unchanged people are skipped, so after
@@ -397,7 +501,7 @@ async function prepareFollowupBrief(tenant) {
       const d = await require('./wingguyDossier').prepareDossiers(tenant);
       console.log(`[followupBrief] dossiers: ${JSON.stringify(d)}`);
     } catch (e) { console.warn(`[followupBrief] dossier pass failed (brief unaffected): ${e.message}`); }
-    return { ok: true, items: items.length, totalSurfaced: sweep.surfaced.length };
+    return { ok: true, items: items.length, prepped: toPrep.length, reused: payload.reused, draftsDeferred, totalSurfaced: sweep.surfaced.length };
   } catch (e) {
     // A rejected stored key (revoked, or over its spend cap) is a distinct, actionable cause — name
     // it so the stored error the chat serves AND the alert email say "fix your key", not a generic
@@ -443,21 +547,26 @@ function formatBrief(row) {
   const nm = (it) => (it.linkedin ? `[${it.name}](${it.linkedin})` : it.name);
 
   const lines = [];
-  lines.push(`Prepared ${p.preparedAt ? p.preparedAt.slice(0, 16).replace('T', ' ') : '?'} UTC${ageH > STALE_HOURS ? ' ⚠ STALE — offer a refresh (wingguy_prepare_brief)' : ''}. ${p.totalSurfaced} surfaced; top ${ (p.items || []).length } fully prepared. Keep the markdown name-links when relaying.`);
+  // Full-list era (2026-08-24): EVERY surfaced person is in the payload with a story — but the
+  // CHAT render caps each pile, or a 140-person brief floods the conversation. The queue
+  // (wingguy_queue) is the door that pages through everything ten at a time.
+  const PILE_CAP = 10;
+  lines.push(`Prepared ${p.preparedAt ? p.preparedAt.slice(0, 16).replace('T', ' ') : '?'} UTC${ageH > STALE_HOURS ? ' ⚠ STALE — offer a refresh (wingguy_prepare_brief)' : ''}. ${p.totalSurfaced} surfaced, ${ (p.items || []).length } with prepared stories. Keep the markdown name-links when relaying.`);
   if (piles.draft.length) {
     // Email people carry a pre-written draft; LinkedIn people carry a /wg ANGLE instead of a
     // message (Guy's call 2026-08-01) — the reply is drafted live in the thread, where the
     // conversation and the calendar are both current. Old stored payloads may still hold a
     // LinkedIn draftText; render it the legacy way until the next preparation replaces it.
-    lines.push(`\nREPLIES OWED (${piles.draft.length}) — email people have drafts IN THE BRIEF (show → tweak in chat → on approval push to Gmail with wingguy_create_draft, threaded via the reply id below; never push unasked). LinkedIn people get NO pre-written message by design — relay their /wg pointer + angle (they open the thread and type /wg; it drafts from the live conversation and calendar):`);
-    for (const it of piles.draft) {
+    lines.push(`\nREPLIES OWED (${piles.draft.length}${piles.draft.length > PILE_CAP ? `, first ${PILE_CAP} here — the queue pages the rest` : ''}) — email people have drafts IN THE BRIEF (show → tweak in chat → on approval push to Gmail with wingguy_create_draft, threaded via the reply id below; never push unasked). LinkedIn people get NO pre-written message by design — relay their /wg pointer + angle (they open the thread and type /wg; it drafts from the live conversation and calendar):`);
+    for (const it of piles.draft.slice(0, PILE_CAP)) {
       const liTag = it.channel === 'linkedin' ? (it.draftText ? ' [LinkedIn — paste-ready]' : ' [LinkedIn — open the thread and type /wg]') : '';
-      lines.push(`- ${nm(it)} — ${it.whyLine}${liTag}${it.draftError ? ` [draft generation FAILED: ${it.draftError}]` : ''}`);
+      lines.push(`- ${nm(it)} — ${it.whyLine}${liTag}${it.draftError ? ` [draft generation FAILED: ${it.draftError}]` : ''}${it.draftPending ? ' [draft arrives next overnight run — ask me to draft it now if wanted]' : ''}`);
       if (it.draftText) lines.push(`    draft: "${it.draftText}"`);
       else if (it.wgAngle) lines.push(`    /wg angle: ${it.wgAngle}`);
       if (it.email && it.replyToMessageId) lines.push(`    push with: to=${it.email}, subject="${it.pushSubject}", reply_to_message_id=${it.replyToMessageId}`);
       if (it.jog) lines.push(`    jog: ${it.jog}`);
     }
+    if (piles.draft.length > PILE_CAP) lines.push(`  …and ${piles.draft.length - PILE_CAP} more with stories ready — work them via wingguy_queue (ten a page), or ask for anyone by name.`);
   }
   if (piles.park.length) {
     // Stamp-and-tell (Guy 2026-08-03): clear future dates were ALREADY stamped at preparation time
@@ -482,21 +591,25 @@ function formatBrief(row) {
     }
   }
   if (piles.attention.length) {
-    lines.push(`\nNEEDS YOUR EYES (${piles.attention.length}):`);
-    for (const it of piles.attention) lines.push(`- ${nm(it)} — ${it.whyLine}${it.jog ? `\n    jog: ${it.jog}` : ''}`);
+    lines.push(`\nNEEDS YOUR EYES (${piles.attention.length}${piles.attention.length > PILE_CAP ? `, first ${PILE_CAP} here — the queue pages the rest` : ''}):`);
+    for (const it of piles.attention.slice(0, PILE_CAP)) lines.push(`- ${nm(it)} — ${it.whyLine}${it.jog ? `\n    jog: ${it.jog}` : ''}`);
+    if (piles.attention.length > PILE_CAP) lines.push(`  …and ${piles.attention.length - PILE_CAP} more — via wingguy_queue, or ask by name.`);
   }
   if (piles.clear.length) {
     // Guy (2026-07-24, after two live looks): the checked-and-clear line is noise he'll never read.
     // Moved into the do-not-relay tail — the trust function survives (Wingguy can answer "was Simon
-    // checked?" instantly) but it costs zero screen space by default.
-    lines.push(`\n[checked & clear — do NOT relay unless asked: ${piles.clear.map((it) => `${it.name} (${it.whyLine})`).join(' · ')}]`);
+    // checked?" instantly) but it costs zero screen space by default. Capped: names beyond 40 fold
+    // into a count (the full list is in the payload for by-name questions).
+    const clr = piles.clear.slice(0, 40).map((it) => `${it.name} (${it.whyLine})`).join(' · ');
+    lines.push(`\n[checked & clear — do NOT relay unless asked: ${clr}${piles.clear.length > 40 ? ` · +${piles.clear.length - 40} more` : ''}]`);
   }
   const more = (p.totalSurfaced || 0) - (p.items || []).length;
   if (more > 0) lines.push(`\n(${more} more surfaced but not in the prepared top group — the live sweep has them.)`);
+  if (p.draftsDeferred) lines.push(`\n(${p.draftsDeferred} pre-written drafts deferred to the next overnight run — their stories are ready now; ask me to draft any of them live.)`);
   // Pipeline footer (Guy 2026-07-23: a quiet brief must SHOW its queue, or calm reads as amnesia).
   const parked = p.counts && p.counts.parkedCount;
   if (parked) lines.push(`\nPIPELINE (relay this): ${parked} people are parked on reconnect dates and will surface on their day${p.counts.nextReconnect ? ` (next: ${p.counts.nextReconnect})` : ''}.`);
   return lines.join('\n');
 }
 
-module.exports = { prepareFollowupBrief, getBrief, setStatus, formatBrief, linkedInTail, writeDraft, draftPlainText, _setPool, STALE_HOURS };
+module.exports = { prepareFollowupBrief, getBrief, setStatus, formatBrief, linkedInTail, writeDraft, draftPlainText, entrySig, canReuseEntry, refreshEntry, _setPool, STALE_HOURS, REFRESH_DAYS };
