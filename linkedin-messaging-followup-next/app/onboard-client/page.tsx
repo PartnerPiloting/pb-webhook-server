@@ -412,7 +412,8 @@ export default function OnboardClientPage() {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'x-client-id': 'SYSTEM'
+            'x-client-id': 'SYSTEM',
+            'x-debug-key': process.env.NEXT_PUBLIC_DEBUG_KEY || ''
           },
           body: JSON.stringify(formData)
         });
@@ -451,7 +452,8 @@ export default function OnboardClientPage() {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
-            'x-client-id': 'SYSTEM'
+            'x-client-id': 'SYSTEM',
+            'x-debug-key': process.env.NEXT_PUBLIC_DEBUG_KEY || ''
           },
           body: JSON.stringify(formData)
         });

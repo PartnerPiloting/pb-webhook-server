@@ -10431,7 +10431,18 @@ router.post("/api/onboard-client", async (req, res) => {
   const Airtable = require('airtable');
   const crypto = require('crypto');
   const logger = createLogger({ runId: 'ONBOARD', clientId: 'SYSTEM', operation: 'onboard_client' });
-  
+
+  // Admin-only: creates a live client record and mints portal access. Same
+  // debugKey convention already used by /admin/generate-portal-tokens.
+  const debugKey = req.headers['x-debug-key'] || req.query.debugKey || req.body?.debugKey;
+  if (!debugKey || debugKey !== (process.env.DEBUG_API_KEY || process.env.PB_WEBHOOK_SECRET)) {
+    logger.warn('Onboard-client attempt with missing/invalid debugKey');
+    return res.status(401).json({
+      success: false,
+      error: 'Admin authentication required. Provide debugKey.'
+    });
+  }
+
   try {
     const {
       clientName,
@@ -10765,10 +10776,21 @@ router.put("/api/update-client/:clientId", async (req, res) => {
   const Airtable = require('airtable');
   const { clientId } = req.params;
   const logger = createLogger({ runId: 'UPDATE', clientId, operation: 'update_client' });
-  
+
+  // Admin-only: same debugKey convention as /api/onboard-client and
+  // /admin/generate-portal-tokens.
+  const debugKey = req.headers['x-debug-key'] || req.query.debugKey || req.body?.debugKey;
+  if (!debugKey || debugKey !== (process.env.DEBUG_API_KEY || process.env.PB_WEBHOOK_SECRET)) {
+    logger.warn('Update-client attempt with missing/invalid debugKey');
+    return res.status(401).json({
+      success: false,
+      error: 'Admin authentication required. Provide debugKey.'
+    });
+  }
+
   try {
     const updateData = req.body;
-    
+
     if (!clientId) {
       return res.status(400).json({ success: false, error: 'clientId is required' });
     }

@@ -20,8 +20,8 @@ const router = express.Router();
 const { stripe, isStripeAvailable } = require('../config/stripeClient');
 const { generateInvoicePdf, getBusinessConfig } = require('../services/invoicePdfService');
 const { createLogger } = require('../utils/contextLogger');
-const { getClientById } = require('../services/clientService');
 const { sendMailgunEmail } = require('../services/emailNotificationService');
+const { authenticateUserWithTestMode } = require('../middleware/authMiddleware');
 
 /**
  * Send email notification to admin when someone onboards (makes first payment)
@@ -83,30 +83,13 @@ const requireStripe = (req, res, next) => {
 };
 
 /**
- * Helper: Get client email from x-client-id header or query param
- * Uses clientService to look up client from Master Clients table
+ * Helper: Get the billing email for the authenticated client.
+ * req.client is set by authenticateUserWithTestMode from a verified portal
+ * token (or dev key) - never trust a client-supplied email/x-client-id for
+ * something that can mint a Stripe Customer Portal session.
  */
-async function getClientEmail(req) {
-    // First try query param (for direct access)
-    if (req.query.email) {
-        return req.query.email.toLowerCase().trim();
-    }
-    
-    // Then try x-client-id header (multi-tenant pattern)
-    const clientId = req.headers['x-client-id'];
-    if (clientId) {
-        try {
-            const client = await getClientById(clientId);
-            if (client && client.clientEmailAddress) {
-                return client.clientEmailAddress.toLowerCase().trim();
-            }
-        } catch (e) {
-            // Log but don't fail - will check for email below
-            console.warn('Could not get client by ID:', clientId, e.message);
-        }
-    }
-    
-    return null;
+function getClientEmail(req) {
+    return req.client?.clientEmailAddress?.toLowerCase().trim() || null;
 }
 
 /**
@@ -135,24 +118,23 @@ router.get('/api/billing/status', (req, res) => {
  * - email: Customer email address (optional if x-client-id header is set)
  * - limit: Max invoices to return (default 100)
  */
-router.get('/api/billing/invoices', requireStripe, async (req, res) => {
-    const logger = createLogger({ 
-        runId: 'BILLING', 
-        clientId: req.headers['x-client-id'] || 'UNKNOWN', 
-        operation: 'list_invoices' 
+router.get('/api/billing/invoices', authenticateUserWithTestMode, requireStripe, async (req, res) => {
+    const logger = createLogger({
+        runId: 'BILLING',
+        clientId: req.client?.clientId || 'UNKNOWN',
+        operation: 'list_invoices'
     });
 
     try {
         const { limit = 100 } = req.query;
-        
-        // Get email from client service or query param
-        const email = await getClientEmail(req);
+
+        const email = getClientEmail(req);
 
         if (!email) {
             return res.status(400).json({
                 success: false,
                 error: 'Email required',
-                message: 'Could not determine client email. Ensure x-client-id header is set or provide email parameter.'
+                message: 'No email address on file for this account.'
             });
         }
 
@@ -294,22 +276,21 @@ router.get('/api/billing/invoices', requireStripe, async (req, res) => {
  * 
  * Returns a URL to redirect the customer to.
  */
-router.post('/api/billing/portal', requireStripe, async (req, res) => {
-    const logger = createLogger({ 
-        runId: 'BILLING', 
-        clientId: req.headers['x-client-id'] || 'UNKNOWN', 
-        operation: 'create_portal' 
+router.post('/api/billing/portal', authenticateUserWithTestMode, requireStripe, async (req, res) => {
+    const logger = createLogger({
+        runId: 'BILLING',
+        clientId: req.client?.clientId || 'UNKNOWN',
+        operation: 'create_portal'
     });
 
     try {
-        // Get email from client service
-        const email = await getClientEmail(req);
+        const email = getClientEmail(req);
 
         if (!email) {
             return res.status(400).json({
                 success: false,
                 error: 'Email required',
-                message: 'Could not determine client email. Ensure x-client-id header is set.'
+                message: 'No email address on file for this account.'
             });
         }
 
@@ -365,21 +346,33 @@ router.post('/api/billing/portal', requireStripe, async (req, res) => {
  * GET /api/billing/invoice/:id
  * Get single invoice details
  */
-router.get('/api/billing/invoice/:id', requireStripe, async (req, res) => {
-    const logger = createLogger({ 
-        runId: 'BILLING', 
-        clientId: req.headers['x-client-id'] || 'UNKNOWN', 
-        operation: 'get_invoice' 
+router.get('/api/billing/invoice/:id', authenticateUserWithTestMode, requireStripe, async (req, res) => {
+    const logger = createLogger({
+        runId: 'BILLING',
+        clientId: req.client?.clientId || 'UNKNOWN',
+        operation: 'get_invoice'
     });
 
     try {
         const { id } = req.params;
+        const email = getClientEmail(req);
 
         logger.info(`Fetching invoice: ${id}`);
 
         const invoice = await stripe.invoices.retrieve(id, {
             expand: ['customer', 'subscription', 'lines.data']
         });
+
+        // The invoice ID alone doesn't prove ownership - confirm it actually
+        // belongs to the calling client before returning it to them.
+        const invoiceEmail = (invoice.customer_email || invoice.customer?.email || '').toLowerCase().trim();
+        if (!email || invoiceEmail !== email) {
+            logger.warn(`Invoice ${id} does not belong to authenticated client`);
+            return res.status(404).json({
+                success: false,
+                error: 'Invoice not found'
+            });
+        }
 
         res.json({
             success: true,
@@ -429,15 +422,16 @@ router.get('/api/billing/invoice/:id', requireStripe, async (req, res) => {
  * Generate and download invoice as PDF
  * Supports both formal invoices (in_) and one-time charges (ch_)
  */
-router.get('/api/billing/invoice/:id/pdf', requireStripe, async (req, res) => {
-    const logger = createLogger({ 
-        runId: 'BILLING', 
-        clientId: req.headers['x-client-id'] || 'UNKNOWN', 
-        operation: 'download_invoice_pdf' 
+router.get('/api/billing/invoice/:id/pdf', authenticateUserWithTestMode, requireStripe, async (req, res) => {
+    const logger = createLogger({
+        runId: 'BILLING',
+        clientId: req.client?.clientId || 'UNKNOWN',
+        operation: 'download_invoice_pdf'
     });
 
     try {
         const { id } = req.params;
+        const email = getClientEmail(req);
 
         logger.info(`Generating PDF for: ${id}`);
 
@@ -449,6 +443,12 @@ router.get('/api/billing/invoice/:id/pdf', requireStripe, async (req, res) => {
             const invoice = await stripe.invoices.retrieve(id, {
                 expand: ['customer', 'lines.data']
             });
+
+            const invoiceEmail = (invoice.customer_email || invoice.customer?.email || '').toLowerCase().trim();
+            if (!email || invoiceEmail !== email) {
+                logger.warn(`Invoice ${id} does not belong to authenticated client`);
+                return res.status(404).json({ success: false, error: 'Invoice not found' });
+            }
 
             pdfData = {
                 id: invoice.id,
@@ -466,6 +466,12 @@ router.get('/api/billing/invoice/:id/pdf', requireStripe, async (req, res) => {
             // It's a one-time charge
             const charge = await stripe.charges.retrieve(id);
             const customer = await stripe.customers.retrieve(charge.customer);
+
+            const chargeEmail = (customer.email || charge.billing_details?.email || '').toLowerCase().trim();
+            if (!email || chargeEmail !== email) {
+                logger.warn(`Charge ${id} does not belong to authenticated client`);
+                return res.status(404).json({ success: false, error: 'Invoice not found' });
+            }
 
             // For one-time charges, create invoice-like structure
             pdfData = {
@@ -529,22 +535,21 @@ router.get('/api/billing/invoice/:id/pdf', requireStripe, async (req, res) => {
  * Uses x-client-id header to look up client email from Master Clients table,
  * or accepts email as query param for direct access.
  */
-router.get('/api/billing/subscription', requireStripe, async (req, res) => {
-    const logger = createLogger({ 
-        runId: 'BILLING', 
-        clientId: req.headers['x-client-id'] || 'UNKNOWN', 
-        operation: 'get_subscription' 
+router.get('/api/billing/subscription', authenticateUserWithTestMode, requireStripe, async (req, res) => {
+    const logger = createLogger({
+        runId: 'BILLING',
+        clientId: req.client?.clientId || 'UNKNOWN',
+        operation: 'get_subscription'
     });
 
     try {
-        // Get email from client service or query param
-        const email = await getClientEmail(req);
+        const email = getClientEmail(req);
 
         if (!email) {
             return res.status(400).json({
                 success: false,
                 error: 'Email required',
-                message: 'Could not determine client email. Ensure x-client-id header is set or provide email parameter.'
+                message: 'No email address on file for this account.'
             });
         }
 
@@ -635,20 +640,23 @@ router.post('/api/billing/webhook', express.raw({ type: 'application/json' }), a
         const sig = req.headers['stripe-signature'];
         const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
-        let event;
+        // Signature verification is mandatory - an unverified payload could be
+        // forged by anyone who finds this URL, and this webhook is about to
+        // start driving client entitlement, not just sending an FYI email.
+        if (!webhookSecret) {
+            logger.error('STRIPE_WEBHOOK_SECRET is not configured - refusing to process webhook');
+            return res.status(500).json({ error: 'Webhook not configured' });
+        }
+        if (!sig) {
+            return res.status(400).json({ error: 'Missing stripe-signature header' });
+        }
 
-        if (webhookSecret && sig) {
-            // Verify webhook signature
-            try {
-                event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
-            } catch (err) {
-                logger.error('Webhook signature verification failed:', err.message);
-                return res.status(400).send(`Webhook Error: ${err.message}`);
-            }
-        } else {
-            // No webhook secret configured, parse body directly
-            event = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
-            logger.warn('Webhook received without signature verification (STRIPE_WEBHOOK_SECRET not set)');
+        let event;
+        try {
+            event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
+        } catch (err) {
+            logger.error('Webhook signature verification failed:', err.message);
+            return res.status(400).send(`Webhook Error: ${err.message}`);
         }
 
         logger.info(`Webhook received: ${event.type}`);
