@@ -2,7 +2,7 @@ import "./globals.css";
 import { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: "🚀 Network Accelerator",
+  title: "🚀 Wingguy Network Accelerator",
   description: "Score leads — Start conversations — Close deals",
 };
 

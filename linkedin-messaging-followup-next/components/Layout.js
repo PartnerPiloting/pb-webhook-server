@@ -234,8 +234,8 @@ const Layout = ({ children }) => {
                   const title = assistantName && clientName
                     ? `${assistantName} - assisting ${clientName}`
                     : clientName
-                      ? `${clientName}'s Network Accelerator`
-                      : 'Network Accelerator';
+                      ? `${clientName}'s Wingguy Network Accelerator`
+                      : 'Wingguy Network Accelerator';
                   
                   return (
                     <div>
