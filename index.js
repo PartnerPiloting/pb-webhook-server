@@ -189,7 +189,14 @@ try {
     moduleLogger.error('index.js: Error mounting firefliesWebhookRoutes', e.message, e.stack);
 }
 
-app.use(express.json({ limit: "10mb" }));
+// The Stripe webhook verifies signatures against the raw body, same as the recorder
+// webhooks above - skip the global JSON parser for that one path so the route's own
+// express.raw() in routes/billingRoutes.js still sees the unparsed bytes.
+const globalJsonParser = express.json({ limit: "10mb" });
+app.use((req, res, next) => {
+    if (req.originalUrl === '/api/billing/webhook') return next();
+    return globalJsonParser(req, res, next);
+});
 app.use(express.urlencoded({ extended: true, limit: "10mb" })); // For Mailgun webhooks (form-urlencoded)
 
 // Add CORS configuration to allow frontend requests
