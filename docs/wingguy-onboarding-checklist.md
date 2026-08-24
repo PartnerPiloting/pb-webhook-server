@@ -7,11 +7,29 @@ each step you say "expand step 3" and read the detail - to yourself or straight 
 How each expanded step is laid out:
 
 - **Say to the client** - words you can read out loud, as-is
-- **You do** - your actions (usually in the Master Clients Base)
+- **You do** - your actions. ONE action per step wherever it can be one
 - **The client does** - their actions, in plain click-this-then-that language
+- **Claude does** - everything else: the minting, the lookups, the field writes, the proving
 - **Check it worked** - before moving on (some checks are "ask Claude to run...")
 - **Watch out** - the traps. Every one of these actually happened during the Julian pilot
   (July 2026); none are hypothetical.
+
+### THE TWO STANDING RULES (they govern how every step above is delivered)
+
+**1. One action for Guy, the rest is Claude's.** Guy is on a call, in front of a client, with the
+clock running. His half of any step should be a single thing he can do without leaving the
+conversation - usually "paste this into the meeting chat". Minting links, reading account ids out
+of dashboards, setting Airtable fields, running health checks: Claude's half, silently. If a step
+reads like it needs Guy to open a second window, it is written wrong - rewrite it.
+
+**2. Lead with the action, not the architecture. Every time, from scratch.** When Guy asks "what's
+our next step with <client>?", the answer is the one action and an offer to do it - *"I think the
+first step is for me to mint a Unipile link for him. Want me to do that?"* - not an explanation of
+how the plumbing works. The explanation is available the moment he asks for it, and never before.
+And restate the step in full every time, as though it has never been done: no "as we discussed",
+no assumed memory. Guy runs sessions across a dozen clients every week. The cost of repeating a
+step he remembers is three seconds; the cost of assuming he remembers is a stalled call in front
+of a client.
 
 ---
 
@@ -30,19 +48,22 @@ rules" and it interviews you - your voice, your offer, what you'd never say. Tha
 everything it writes sound like you and not like a robot. Nothing else needs to be connected for
 this - it's the first real taste of what you've bought.
 
-**Step 3 - Wingguy meets your calendar (5 minutes).** You approve access to your calendar so
-Wingguy can offer meeting times that are genuinely free - checking ALL your calendars, personal
-ones included, so it never double-books you. One thing to get right here: approve it from the
-correct account (we'll check together).
+**Step 3 - Wingguy meets your calendar and your mailbox (5 minutes, one approval).** You click
+one link and approve once. Your calendar, so Wingguy can offer meeting times that are genuinely
+free - checking ALL your calendars, personal ones included, so it never double-books you. And
+your mailbox at the same time (that's step 5 below - for Google and Microsoft clients the two
+happen in the same click). One thing to get right here: approve it from the correct account
+(we'll check together).
 
 **Step 4 - Your meeting link (5 minutes).** Every invite Wingguy books needs a "click here to
 join" link. We use one reusable personal link - yours - on every invite, automatically. If you
 don't have one yet we'll create it together on this call, and switch on the waiting room so nobody
 wanders into the wrong meeting.
 
-**Step 5 - Wingguy meets your email.** You approve access to your mailbox, and Wingguy can then
-draft emails as you, reply into existing conversations properly, tell you your history with any
-lead, and stop you accidentally sending someone the same document twice.
+**Step 5 - Wingguy meets your email.** Wingguy can draft emails as you, reply into existing
+conversations properly, tell you your history with any lead, and stop you accidentally sending
+someone the same document twice. For Google and Microsoft clients this needs no separate step -
+the one approval back at step 3 covered it. Zoho clients connect their mail separately.
 
 **Step 6 - Your meeting recorder (Granola).** The first time you say "draft an email based on
 the transcript of the call we just had" and see the job it does, you'll get it - that's not just
@@ -160,20 +181,56 @@ more plumbing.
 
 ---
 
-## STEP 3 EXPANDED - the calendar
+## STEP 3 EXPANDED - the calendar (and the mailbox, same click, for most clients)
 
-**Say to the client:** "Now we connect your calendar, so Wingguy can offer your leads times
-you're actually free - and I mean actually: it checks ALL your calendars, personal included, so a
-dentist appointment blocks that slot the same as a work meeting. You'll never be double-booked.
-One thing before you click: when the permission screen comes up, check it's showing your WORK
-email at the top. If it shows a personal account, stop, and we'll use a private window instead."
+**Know this before anything else: for a Google or Microsoft client, the calendar and the mailbox
+are ONE approval, not two.** One link covers both, so step 3 and step 5 happen in the same two
+minutes. Zoho is the exception - there, calendar and mail connect separately.
 
-**The client does:**
+**Which lane is this client on?** Their email domain settles it (an MX lookup takes seconds -
+Claude does this, don't go looking yourself).
 
-- **Google or Outlook calendar:** clicks the connect link you give them and approves on the
-  permission screen. Normal "allow access" page, ten seconds.
-- **Zoho calendar:** clicks their special link:
-  `/auth/zoho/start?clientId=` their client ID `&token=` their Portal Token.
+| Their provider | The lane | How it goes |
+|---|---|---|
+| Google or Microsoft | **Unipile hosted link** - calendar AND mail in one | Claude mints the link, you paste it, they approve |
+| Zoho | calendar = their own `/auth/zoho/start` link; mail = app-specific password | Claude builds the link, you paste it |
+
+**YOU DO - the whole of your part:** paste the link Claude hands you into the meeting chat.
+That is the entire step from your side. If you find yourself opening a dashboard, copying an
+account id or editing a field, stop: that is Claude's half, hand it back.
+
+**Say to the client:** "Now we connect your calendar and your mailbox - one approval covers both.
+The calendar so Wingguy can offer your leads times you're actually free, and I mean actually: it
+checks ALL your calendars, personal included, so a dentist appointment blocks that slot the same
+as a work meeting. You'll never be double-booked. And your mailbox so it can draft as you, reply
+into existing conversations properly, and answer 'what's my history with this person?' in
+seconds. One thing before you click: when the permission screen comes up, check it's showing your
+WORK email at the top. If it shows a personal account, stop, and we'll use a private window
+instead."
+
+**THE CLIENT DOES:** clicks the link, reads out the account shown on the permission screen,
+approves. Ten seconds.
+
+**CLAUDE DOES** - say *"connect <client>'s calendar and mail"* and it runs all of this:
+
+- mints the hosted link from Unipile and hands it over ready to paste
+- once they've approved, fetches the new account id from Unipile and puts it on their row
+  (nothing calls back to us - see the invisible-connection trap below)
+- sets **Unipile Account ID**, **Calendar Provider** = `unipile`, **Email Provider** = `unipile`
+- leaves **Calendar Email** BLANK - a value there forces the old Google service-account path and
+  Unipile gets silently ignored
+- sets **Calendar Read IDs** to `all` - the "check every calendar they have" switch. Without it
+  the no-double-booking promise only covers one calendar
+- leaves **Calendar Write ID** blank for almost everyone (blank = bookings land on their main
+  calendar, which is what people expect). Only fill it for the rare client who wants bookings
+  landing somewhere specific
+- proves both halves live as that client before either of you tells them it works
+
+**Watch out - "just share your Google calendar with us" CANNOT BOOK.** Sharing a Google calendar
+with the service account is read-only by design (`calendar.readonly`). Wingguy will see their
+diary and happily offer times, then fail at the moment of booking - and step 7, the dress
+rehearsal, is where you find out. It is not a quicker version of this step. Anyone who needs a
+meeting booked goes through the hosted link.
 
 **Watch out - the wrong-account trap (this exact thing bit Julian).** The permission screen
 belongs to whoever is logged in on that browser at that moment. Julian was logged into his
@@ -183,24 +240,23 @@ prevention is in the script above ("check it shows your WORK email"). If they ge
 re-clicking the link in a private/incognito window is always safe. **Check this on every client,
 every time.**
 
-**You do:**
-
-- [ ] On their row, set **Calendar Read IDs** to the word **`all`**. This is the "check every
-      calendar they have" switch - without it, the no-double-booking promise only covers one
-      calendar.
-- [ ] Leave **Calendar Write ID** blank for almost everyone. Blank = "bookings land on their main
-      calendar", which is what people expect. Only fill it for the rare client who wants bookings
-      landing somewhere specific.
+**Watch out - the connection is invisible to us until Claude goes and looks.** Unipile can ping a
+URL of ours the moment a client connects; we have never built the endpoint to catch it. So a
+client who has approved and a client who has not look identical from our side until someone
+fetches the account id by hand. That is why "proves it live" above is not optional, and why this
+step is never marked done on the strength of the client saying "yep, clicked it".
 
 **Check it worked:**
 
-- [ ] Ask Claude: *"list the calendars for [client ID]"* (`scripts/wingguy-list-calendars.js`).
-      Eyeball the result WITH the client: "does this look like your account?" One lonely,
+- [ ] Claude runs the multi-calendar health check for them
+      (`scripts/wingguy-multi-calendar-check.js`) and lists their calendars
+      (`scripts/wingguy-list-calendars.js`).
+- [ ] Eyeball that calendar list WITH the client: "does this look like your account?" One lonely,
       near-empty calendar usually means the wrong-account trap struck again.
-- [ ] Ask Claude: *"run the multi-calendar check for [client ID]"*
-      (`scripts/wingguy-multi-calendar-check.js`) - the full read-only health check.
 - [ ] Best check of all - the client asks Wingguy: **"what's on my calendar this week?"** and
-      confirms it matches reality, including things they know are on their personal calendar.
+      confirms it matches reality, including something they know is on their personal calendar.
+- [ ] Then the mail half: the client asks Wingguy to find a recent email from a sender they know,
+      and then for the full text of it.
 
 ---
 
@@ -240,27 +296,29 @@ time with nothing to click. Catch it here, together on the call, not after the f
 
 ## STEP 5 EXPANDED - the email
 
-**Say to the client:** "Next is your mailbox. Once it's connected, Wingguy can draft emails as
-you - proper ones, that thread into existing conversations - and it can answer things like 'show
-me my history with this lead' or 'has she replied since Tuesday?'. It'll even stop you from
-accidentally sending someone the same document twice."
+**For Google and Microsoft clients there is nothing to do here - step 3 already did it.** The one
+approval they clicked covered calendar and mailbox together. Run the mail check below to prove it
+and move on.
 
-**The client does:**
+**Say to the client** (if their mailbox is connecting separately, i.e. Zoho): "Next is your
+mailbox. Once it's connected, Wingguy can draft emails as you - proper ones, that thread into
+existing conversations - and it can answer things like 'show me my history with this lead' or
+'has she replied since Tuesday?'. It'll even stop you from accidentally sending someone the same
+document twice."
 
-- **Gmail or Outlook:** same easy pattern as the calendar - click the connect link, approve on
-  the permission screen, done.
-- **Zoho mail:** Zoho doesn't offer the easy click-and-approve route for mail, so it's a one-off
-  manual step: in their Zoho settings they create an **app-specific password** - a special
-  password that only works for this one connection; their real password is never shared - and
-  give it to you to set up the connection.
+**The Zoho lane only.** Zoho doesn't offer the easy click-and-approve route for mail, so it's a
+one-off manual step: in their Zoho settings they create an **app-specific password** - a special
+password that only works for this one connection; their real password is never shared - and read
+it out to you. Claude sets up the connection from there.
 
 **Check it worked:**
 
-- [ ] A value has appeared in **Nylas Grant ID** on their row.
 - [ ] The client asks Wingguy to find a recent email from a sender they know, then asks for the
       full text of it.
+- [ ] Their row shows a live mail connection: **Email Provider** = `unipile` with a **Unipile
+      Account ID** (Google/Microsoft), or the Zoho/Nylas equivalent for that lane.
 
-**Worth knowing (Zoho/app-password connections only):** the last ~90 days of mail is instantly
+**Worth knowing (app-password connections only):** the last ~90 days of mail is instantly
 searchable; older mail still works but Wingguy has to fetch it the slow way, so the first
 deep-history question can take noticeably longer. Normal, not broken.
 
