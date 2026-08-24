@@ -26,7 +26,7 @@ const tenant = arg ? arg.split('=')[1] : 'Guy-Wilson';
   const r = await prepareFollowupBrief(tenant);
   const secs = Math.round((Date.now() - started) / 1000);
   if (r.ok) {
-    console.log(`[prepare-followup-brief] DONE in ${secs}s — ${r.items} prepared of ${r.totalSurfaced} surfaced.`);
+    console.log(`[prepare-followup-brief] DONE in ${secs}s — ${r.items} items (${r.prepped} newly prepped, ${r.reused} reused${r.draftsDeferred ? `, ${r.draftsDeferred} drafts deferred to next run` : ''}) of ${r.totalSurfaced} surfaced.`);
     process.exit(0);
   }
   console.error(`[prepare-followup-brief] FAILED in ${secs}s — ${r.error}`);

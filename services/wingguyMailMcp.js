@@ -900,7 +900,10 @@ async function computeFollowupSweep({ window_days } = {}, tenant = TENANT) {
     if (!c) continue;
     if (c.gatedCadence) { gatedCadence++; continue; }
     if (c.coldCadence) { coldCadence++; continue; }
-    surfaced.push({ lead, ...c });
+    // signals = the exact facts this classification was computed from. The incremental brief
+    // (wingguyFollowupBrief) fingerprints each person on these: same signals = nothing happened =
+    // the stored story is still true; any change = re-prep. Deterministic — dates, not judgement.
+    surfaced.push({ lead, ...c, signals: { lastInboundMs: lastInboundMs || 0, lastOutboundMs: lastOutboundMs || 0 } });
   }
   surfaced.sort((a, b) => (TIER_ORDER[a.tier] - TIER_ORDER[b.tier]) || (b.sortKey - a.sortKey));
 
@@ -1716,6 +1719,7 @@ async function applyLiveQueueGates(items, tenant) {
 function deriveDraftState(it) {
   if (it && it.draftText) return 'ready';
   if (it && it.wgAngle) return 'wg-angle';
+  if (it && it.draftPending) return 'pending'; // full-list brief hit its per-run draft cap — story ready, draft next run
   if (it && it.draftError) return 'error';
   return 'none';
 }
@@ -1725,6 +1729,7 @@ function draftMarker(state, src) {
   if (state === 'ready') return ' [draft ready]';
   if (src === 'backlog') return '';
   if (state === 'wg-angle') return ' [LinkedIn — open the thread, type /wg]';
+  if (state === 'pending') return ' [draft arrives next overnight run — ask in chat to draft now]';
   if (state === 'error') return ' [no draft — ask in chat]';
   // 'none' used to fall through to ' [draft ready]' — a lie whenever the overnight pass
   // deliberately wrote nothing (Fault B, 2026-08-15). Point at the dossier instead.

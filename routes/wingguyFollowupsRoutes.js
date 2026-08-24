@@ -91,7 +91,7 @@ module.exports = function mountWingguyFollowups(app) {
         channel: it.channel || null,
         parkDate: it.parkDate || null,
         parkPassed: !!it.parkPassed,
-        draftState: it.draftState,   // 'ready' | 'wg-angle' | 'error' | 'none' — honest by construction
+        draftState: it.draftState,   // 'ready' | 'wg-angle' | 'pending' | 'error' | 'none' — honest by construction
         wgAngle: it.draftState === 'wg-angle' ? (it.wgAngle || null) : null,
         draftUrl: (it.draftState === 'ready' || it.draftState === 'wg-angle') ? draftUrl(clientId, it.name) : null,
         builtAt: it.builtAt || null,
