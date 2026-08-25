@@ -10458,11 +10458,13 @@ router.post("/api/onboard-client", async (req, res) => {
       postAccessEnabled
     } = req.body;
     
-    // Validation
+    // Validation. wordpressUserId is optional since the Stripe cutover -
+    // Stripe-born clients have no WordPress account. NB until the Billing
+    // Source fence ships, a client without a WordPress User ID must be set
+    // Status Management = Manual or the PMPro sync will force-pause them.
     const errors = [];
     if (!clientName) errors.push('clientName is required');
     if (!email) errors.push('email is required');
-    if (!wordpressUserId) errors.push('wordpressUserId is required');
     if (!airtableBaseId) errors.push('airtableBaseId is required');
     if (!serviceLevel) errors.push('serviceLevel is required');
     
@@ -10580,10 +10582,11 @@ router.post("/api/onboard-client", async (req, res) => {
       [CLIENT_FIELDS.CLIENT_NAME]: clientName.trim(),
       [CLIENT_FIELDS.CLIENT_FIRST_NAME]: clientFirstName,
       [CLIENT_FIELDS.CLIENT_EMAIL_ADDRESS]: email.trim(),
-      [CLIENT_FIELDS.WORDPRESS_USER_ID]: parseInt(wordpressUserId, 10),
       [CLIENT_FIELDS.AIRTABLE_BASE_ID]: airtableBaseId.trim(),
       [CLIENT_FIELDS.STATUS]: 'Active',
-      [CLIENT_FIELDS.STATUS_MANAGEMENT]: 'Automatic',
+      // No WordPress User ID = Stripe-born: Manual keeps the PMPro sync's
+      // no-WP-ID force-pause off them (interim until Billing Source ships).
+      [CLIENT_FIELDS.STATUS_MANAGEMENT]: wordpressUserId ? 'Automatic' : 'Manual',
       [CLIENT_FIELDS.SERVICE_LEVEL]: serviceLevel,
       [CLIENT_FIELDS.TIMEZONE]: timezone,
       [CLIENT_FIELDS.PROFILE_SCORING_TOKEN_LIMIT]: defaults.profileScoringTokenLimit,
@@ -10596,6 +10599,8 @@ router.post("/api/onboard-client", async (req, res) => {
     };
     
     // Add optional fields if provided
+    if (wordpressUserId) newClientRecord[CLIENT_FIELDS.WORDPRESS_USER_ID] = parseInt(wordpressUserId, 10);
+    if (req.body.stripeCustomerId) newClientRecord['Stripe Customer ID'] = String(req.body.stripeCustomerId).trim();
     if (coachId) newClientRecord['Coach'] = coachId.trim();
     if (linkedinUrl) newClientRecord['LinkedIn URL'] = linkedinUrl.trim();
     if (phone) newClientRecord['Phone'] = phone.trim();

@@ -1,0 +1,759 @@
+{
+  "//": "Client base schema - the version-controlled replacement for duplicating My Leads - Client Template. Generated 2026-08-25 from the live template (app6W6k9GiDlJktvt) filtered to the fields the deployed code actually reads/writes (see Stripe cutover brief, section 2). Posts CONFIG tables dropped (offering retired 25 Aug); posts fields on Leads kept (portal still reads them). computed:true fields need special handling - see scripts/create-client-base.js.",
+  "tables": [
+    {
+      "name": "Leads",
+      "fields": [
+        {
+          "name": "Profile Key",
+          "type": "formula",
+          "options": {
+            "formula": "LOWER(\r\n  SUBSTITUTE(\r\n    SUBSTITUTE(\r\n      IF(\r\n        RIGHT({LinkedIn Profile URL}, 1) = \"/\",\r\n        LEFT({LinkedIn Profile URL}, LEN({LinkedIn Profile URL}) - 1),\r\n        {LinkedIn Profile URL}\r\n      ),\r\n      \"https://\",\r\n      \"\"\r\n    ),\r\n    \"http://\",\r\n    \"\"\r\n  )\r\n)"
+          },
+          "computed": true
+        },
+        {
+          "name": "First Name",
+          "type": "singleLineText"
+        },
+        {
+          "name": "LinkedIn Profile URL",
+          "type": "url"
+        },
+        {
+          "name": "Last Name",
+          "type": "singleLineText"
+        },
+        {
+          "name": "Notes",
+          "type": "multilineText"
+        },
+        {
+          "name": "Follow-Up Date",
+          "type": "date",
+          "options": {
+            "dateFormat": {
+              "name": "local",
+              "format": "l"
+            }
+          }
+        },
+        {
+          "name": "Email",
+          "type": "email"
+        },
+        {
+          "name": "Phone",
+          "type": "phoneNumber"
+        },
+        {
+          "name": "Send At",
+          "type": "dateTime",
+          "options": {
+            "dateFormat": {
+              "name": "local",
+              "format": "l"
+            },
+            "timeFormat": {
+              "name": "12hour",
+              "format": "h:mma"
+            },
+            "timeZone": "client"
+          }
+        },
+        {
+          "name": "Cease FUP",
+          "type": "singleSelect",
+          "options": {
+            "choices": [
+              {
+                "name": "Yes",
+                "color": "blueLight2"
+              },
+              {
+                "name": "No",
+                "color": "cyanLight2"
+              }
+            ]
+          }
+        },
+        {
+          "name": "LinkedIn Connection Status",
+          "type": "singleSelect",
+          "options": {
+            "choices": [
+              {
+                "name": "Connected",
+                "color": "blueLight2"
+              },
+              {
+                "name": "Invitation Sent",
+                "color": "greenLight2"
+              },
+              {
+                "name": "Withdrawn",
+                "color": "yellowLight2"
+              },
+              {
+                "name": "To Be Sent",
+                "color": "orangeLight2"
+              },
+              {
+                "name": "Candidate",
+                "color": "cyanLight2"
+              },
+              {
+                "name": "Ignore",
+                "color": "tealLight2"
+              },
+              {
+                "name": "Queued Connection Request",
+                "color": "redLight2"
+              }
+            ]
+          }
+        },
+        {
+          "name": "Date Connected",
+          "type": "dateTime",
+          "options": {
+            "dateFormat": {
+              "name": "local",
+              "format": "l"
+            },
+            "timeFormat": {
+              "name": "12hour",
+              "format": "h:mma"
+            },
+            "timeZone": "client"
+          }
+        },
+        {
+          "name": "AI Profile Assessment",
+          "type": "multilineText"
+        },
+        {
+          "name": "Top Scoring Post",
+          "type": "multilineText"
+        },
+        {
+          "name": "Lead Has Replied",
+          "type": "checkbox",
+          "options": {
+            "icon": "check",
+            "color": "greenBright"
+          }
+        },
+        {
+          "name": "Status",
+          "type": "singleSelect",
+          "options": {
+            "choices": [
+              {
+                "name": "On The Radar",
+                "color": "blueLight2"
+              },
+              {
+                "name": "In Process",
+                "color": "cyanLight2"
+              },
+              {
+                "name": "Archive",
+                "color": "tealLight2"
+              },
+              {
+                "name": "Not Interested",
+                "color": "greenLight2"
+              }
+            ]
+          }
+        },
+        {
+          "name": "Source",
+          "type": "singleSelect",
+          "options": {
+            "choices": [
+              {
+                "name": "Manually selected from my ASH Followers",
+                "color": "blueLight2"
+              },
+              {
+                "name": "2nd level leads from PB",
+                "color": "cyanLight2"
+              },
+              {
+                "name": "Follow-Up Personally",
+                "color": "tealLight2"
+              },
+              {
+                "name": "Existing Connection Added by PB",
+                "color": "greenLight2"
+              },
+              {
+                "name": "SalesNav + LH Scrape",
+                "color": "yellowLight2"
+              },
+              {
+                "name": "They Reached Out To Me",
+                "color": "orangeLight2"
+              },
+              {
+                "name": "Introduced by Others",
+                "color": "redLight2"
+              }
+            ]
+          }
+        },
+        {
+          "name": "Raw Profile Data",
+          "type": "multilineText"
+        },
+        {
+          "name": "Headline",
+          "type": "multilineText"
+        },
+        {
+          "name": "Location",
+          "type": "singleLineText"
+        },
+        {
+          "name": "Refreshed At",
+          "type": "dateTime",
+          "options": {
+            "dateFormat": {
+              "name": "local",
+              "format": "l"
+            },
+            "timeFormat": {
+              "name": "12hour",
+              "format": "h:mma"
+            },
+            "timeZone": "client"
+          }
+        },
+        {
+          "name": "Job Title",
+          "type": "singleLineText"
+        },
+        {
+          "name": "Company Name",
+          "type": "singleLineText"
+        },
+        {
+          "name": "About",
+          "type": "richText"
+        },
+        {
+          "name": "Job History",
+          "type": "multilineText"
+        },
+        {
+          "name": "AI Score",
+          "type": "number",
+          "options": {
+            "precision": 0
+          }
+        },
+        {
+          "name": "AI Attribute Breakdown",
+          "type": "multilineText"
+        },
+        {
+          "name": "Priority",
+          "type": "singleSelect",
+          "options": {
+            "choices": [
+              {
+                "name": "One",
+                "color": "blueLight2"
+              },
+              {
+                "name": "Two",
+                "color": "cyanLight2"
+              },
+              {
+                "name": "Three",
+                "color": "tealLight2"
+              },
+              {
+                "name": "None",
+                "color": "greenLight2"
+              }
+            ]
+          }
+        },
+        {
+          "name": "AI_Excluded",
+          "type": "checkbox",
+          "options": {
+            "icon": "check",
+            "color": "greenBright"
+          }
+        },
+        {
+          "name": "Exclude Details",
+          "type": "multilineText"
+        },
+        {
+          "name": "AU",
+          "type": "checkbox",
+          "options": {
+            "icon": "check",
+            "color": "greenBright"
+          }
+        },
+        {
+          "name": "PB Run ID",
+          "type": "singleLineText"
+        },
+        {
+          "name": "Full Name",
+          "type": "formula",
+          "options": {
+            "formula": "{First Name} & \" \" & {Last Name}"
+          },
+          "computed": true
+        },
+        {
+          "name": "Profile Full JSON",
+          "type": "multilineText"
+        },
+        {
+          "name": "Date Created",
+          "type": "createdTime",
+          "computed": true
+        },
+        {
+          "name": "Scoring Status",
+          "type": "singleSelect",
+          "options": {
+            "choices": [
+              {
+                "name": "To Be Scored",
+                "color": "blueLight2"
+              },
+              {
+                "name": "Scored",
+                "color": "cyanLight2"
+              },
+              {
+                "name": "Manually Excluded",
+                "color": "greenLight2"
+              },
+              {
+                "name": "Failed – API Error",
+                "color": "yellowLight2"
+              },
+              {
+                "name": "Failed – Parse Error",
+                "color": "orangeLight2"
+              },
+              {
+                "name": "Skipped – Profile Too Thin",
+                "color": "redLight2"
+              }
+            ]
+          }
+        },
+        {
+          "name": "Date Scored",
+          "type": "dateTime",
+          "options": {
+            "dateFormat": {
+              "name": "local",
+              "format": "l"
+            },
+            "timeFormat": {
+              "name": "12hour",
+              "format": "h:mma"
+            },
+            "timeZone": "client"
+          }
+        },
+        {
+          "name": "Date Added to LH Campaign",
+          "type": "dateTime",
+          "options": {
+            "dateFormat": {
+              "name": "local",
+              "format": "l"
+            },
+            "timeFormat": {
+              "name": "12hour",
+              "format": "h:mma"
+            },
+            "timeZone": "client"
+          }
+        },
+        {
+          "name": "Temp LH Batch Status",
+          "type": "singleSelect",
+          "options": {
+            "choices": [
+              {
+                "name": "",
+                "color": "blueLight2"
+              },
+              {
+                "name": "Selected for Current LH Batch",
+                "color": "cyanLight2"
+              }
+            ]
+          }
+        },
+        {
+          "name": "View In Sales Navigator",
+          "type": "url"
+        },
+        {
+          "name": "ASH Workshop Email",
+          "type": "checkbox",
+          "options": {
+            "icon": "check",
+            "color": "greenBright"
+          }
+        },
+        {
+          "name": "Posts Content",
+          "type": "multilineText"
+        },
+        {
+          "name": "Date Posts Scored",
+          "type": "dateTime",
+          "options": {
+            "dateFormat": {
+              "name": "local",
+              "format": "l"
+            },
+            "timeFormat": {
+              "name": "12hour",
+              "format": "h:mma"
+            },
+            "timeZone": "client"
+          }
+        },
+        {
+          "name": "Posts Relevance Score",
+          "type": "number",
+          "options": {
+            "precision": 0
+          }
+        },
+        {
+          "name": "Posts AI Evaluation",
+          "type": "multilineText"
+        },
+        {
+          "name": "Posts Actioned",
+          "type": "checkbox",
+          "options": {
+            "icon": "check",
+            "color": "greenBright"
+          }
+        },
+        {
+          "name": "Posts Relevance Status",
+          "type": "formula",
+          "options": {
+            "formula": "IF(\r\n  {Posts Relevance Percentage} >= 50,\r\n  \"Relevant\",\r\n  \"Irrelevant\"\r\n)"
+          },
+          "computed": true
+        },
+        {
+          "name": "Time Posts Added",
+          "type": "dateTime",
+          "options": {
+            "dateFormat": {
+              "name": "local",
+              "format": "l"
+            },
+            "timeFormat": {
+              "name": "12hour",
+              "format": "h:mma"
+            },
+            "timeZone": "client"
+          }
+        },
+        {
+          "name": "Posts Relevance Percentage",
+          "type": "formula",
+          "options": {
+            "formula": "{Posts Relevance Score}/80*100"
+          },
+          "computed": true
+        },
+        {
+          "name": "Posts JSON Status",
+          "type": "singleSelect",
+          "options": {
+            "choices": [
+              {
+                "name": "Parsed",
+                "color": "blueLight2"
+              },
+              {
+                "name": "Failed",
+                "color": "cyanLight2"
+              }
+            ]
+          }
+        },
+        {
+          "name": "Search Terms",
+          "type": "multilineText"
+        },
+        {
+          "name": "Search Tokens (canonical)",
+          "type": "singleLineText"
+        },
+        {
+          "name": "Posts Skip Reason",
+          "type": "singleLineText"
+        },
+        {
+          "name": "Last Post Check At",
+          "type": "dateTime",
+          "options": {
+            "dateFormat": {
+              "name": "local",
+              "format": "l"
+            },
+            "timeFormat": {
+              "name": "12hour",
+              "format": "h:mma"
+            },
+            "timeZone": "client"
+          }
+        },
+        {
+          "name": "Last Post Processed At",
+          "type": "dateTime",
+          "options": {
+            "dateFormat": {
+              "name": "local",
+              "format": "l"
+            },
+            "timeFormat": {
+              "name": "12hour",
+              "format": "h:mma"
+            },
+            "timeZone": "client"
+          }
+        },
+        {
+          "name": "Thanks Status",
+          "type": "singleSelect",
+          "options": {
+            "choices": [
+              {
+                "name": "Messaged",
+                "color": "greenLight2"
+              },
+              {
+                "name": "Let go",
+                "color": "grayLight2"
+              }
+            ]
+          }
+        },
+        {
+          "name": "Alt Emails",
+          "type": "multilineText"
+        },
+        {
+          "name": "Reconnect On",
+          "type": "date",
+          "options": {
+            "dateFormat": {
+              "name": "iso",
+              "format": "YYYY-MM-DD"
+            }
+          }
+        },
+        {
+          "name": "Cease FUP At",
+          "type": "dateTime",
+          "options": {
+            "dateFormat": {
+              "name": "iso",
+              "format": "YYYY-MM-DD"
+            },
+            "timeFormat": {
+              "name": "24hour",
+              "format": "HH:mm"
+            },
+            "timeZone": "utc"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Credentials",
+      "fields": [
+        {
+          "name": "Name",
+          "type": "singleLineText"
+        },
+        {
+          "name": "Phantom API Key",
+          "type": "singleLineText"
+        },
+        {
+          "name": "PB Message Sender ID",
+          "type": "singleLineText"
+        },
+        {
+          "name": "LinkedIn Cookie",
+          "type": "multilineText"
+        },
+        {
+          "name": "User-Agent",
+          "type": "singleLineText"
+        },
+        {
+          "name": "Record ID for Chat",
+          "type": "singleLineText"
+        },
+        {
+          "name": "GPT Visible Fields",
+          "type": "multilineText"
+        },
+        {
+          "name": "AI Score Threshold Input",
+          "type": "number",
+          "options": {
+            "precision": 0
+          }
+        },
+        {
+          "name": "Last LH Leads Export",
+          "type": "dateTime",
+          "options": {
+            "dateFormat": {
+              "name": "local",
+              "format": "l"
+            },
+            "timeFormat": {
+              "name": "12hour",
+              "format": "h:mma"
+            },
+            "timeZone": "client"
+          }
+        },
+        {
+          "name": "Posts Threshold Percentage",
+          "type": "number",
+          "options": {
+            "precision": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "Scoring Attributes",
+      "fields": [
+        {
+          "name": "Attribute Id",
+          "type": "multilineText"
+        },
+        {
+          "name": "Active",
+          "type": "checkbox",
+          "options": {
+            "icon": "check",
+            "color": "greenBright"
+          }
+        },
+        {
+          "name": "Category",
+          "type": "singleSelect",
+          "options": {
+            "choices": [
+              {
+                "name": "Step",
+                "color": "blueLight2"
+              },
+              {
+                "name": "Meta",
+                "color": "cyanLight2"
+              },
+              {
+                "name": "Global Rule",
+                "color": "tealLight2"
+              },
+              {
+                "name": "Positive",
+                "color": "greenLight2"
+              },
+              {
+                "name": "Negative",
+                "color": "yellowLight2"
+              }
+            ]
+          }
+        },
+        {
+          "name": "Heading",
+          "type": "multilineText"
+        },
+        {
+          "name": "Max Points",
+          "type": "number",
+          "options": {
+            "precision": 0
+          }
+        },
+        {
+          "name": "Min To Qualify",
+          "type": "number",
+          "options": {
+            "precision": 0
+          }
+        },
+        {
+          "name": "Penalty",
+          "type": "number",
+          "options": {
+            "precision": 0
+          }
+        },
+        {
+          "name": "Disqualifying",
+          "type": "singleSelect",
+          "options": {
+            "choices": [
+              {
+                "name": "",
+                "color": "blueLight2"
+              },
+              {
+                "name": "checked",
+                "color": "cyanLight2"
+              }
+            ]
+          }
+        },
+        {
+          "name": "Instructions",
+          "type": "multilineText"
+        },
+        {
+          "name": "Examples",
+          "type": "multilineText"
+        },
+        {
+          "name": "Signals",
+          "type": "multilineText"
+        },
+        {
+          "name": "Bonus Points",
+          "type": "checkbox",
+          "options": {
+            "icon": "check",
+            "color": "greenBright"
+          }
+        }
+      ]
+    }
+  ]
+}

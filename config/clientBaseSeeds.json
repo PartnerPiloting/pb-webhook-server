@@ -1,0 +1,236 @@
+{
+  "//": "Rows seeded into every newly created client base. Scoring Attributes snapshot taken 2026-08-25 from the template. Credentials row is NEUTRAL defaults only - the template row itself carries the owner's PhantomBuster/LinkedIn credentials and must never be copied to a client.",
+  "Scoring Attributes": [
+    {
+      "Max Points": 15,
+      "Heading": "Learner’s Mindset",
+      "Signals": "side projects, open source, hackathon, mentoring, personal development, AI development, technical writing, learning in public, prototyping, study group, LangChain, GPT-powered",
+      "Min To Qualify": 6,
+      "Category": "Positive",
+      "Active": true,
+      "Attribute Id": "B",
+      "Instructions": "We value active, self-directed growth, not résumé badges.\nLook for evidence the person experiments, shares insights, or builds side projects in AI / entrepreneurship / personal development:\n- “Built a GPT-powered tool”, “learning LangChain”, “publishes regular AI breakdowns”\n- Hosts lunch-and-learns, mentors peers, writes reflections or tutorials\n- Attends meet-ups / hackathons and posts key take-aways\nDo not give points merely for listing formal degrees or brand-name certificates.\nScoring guide\n- 0–3 pts Little or no self-learning activity.\n- 4–7 pts Occasionally shares articles or project updates; learning is mostly passive.\n- 8–11 pts Regular hands-on learning: prototypes, open-source contributions, thoughtful posts; references books or self-development resources.\n- 12–15 pts Habitual growth driver: leads study groups, mentors others, publishes deep dives, ships personal AI projects, references thought-leaders in profile."
+    },
+    {
+      "Max Points": 0,
+      "Heading": "Inactive Profile",
+      "Signals": "Activity tab shows “No recent activity”, last post > 12 months ago, comment history empty, only automated work-anniversary posts, endorsements/comments from years ago, no recent posts, no articles published, limited recent engagement, profile activity dormant, no new recommendations, activity feed empty",
+      "Min To Qualify": 0,
+      "Category": "Negative",
+      "Active": true,
+      "Attribute Id": "L1",
+      "Instructions": "Applies when the candidate shows little or no recent LinkedIn activity. Indicates low engagement and reduced likelihood of responding.\n\nTypical triggers:\n- No posts or articles in the last 6–12 months.\n- Very few comments or reactions on others’ posts.\n- Activity tab is largely empty or hidden (unless profile is set to private).",
+      "Penalty": 5
+    },
+    {
+      "Max Points": 10,
+      "Heading": "Grit & Resilience",
+      "Signals": "words like “overcame”, “bounce back”, “turned around”, “from zero to…”, recovery from redundancy, athlete or endurance events, failed startup → new venture, personal adversity stories shared in posts, articles on perseverance",
+      "Min To Qualify": 0,
+      "Category": "Positive",
+      "Active": true,
+      "Attribute Id": "F",
+      "Bonus Points": true,
+      "Instructions": "Scoring Range\n0–3 pts = no clear examples of overcoming setbacks.\n4–7 pts = one-off story of pushing through difficulty (e.g. finished a tough project under pressure).\n8–11 pts = repeated evidence of perseverance (career pivots, returning after layoffs, night-school degrees, marathon training, etc.).\n12–15 pts = multiple, well-documented resilience stories; publicly shares lessons learned, helps others build resilience.\n\nAward points for the frequency, significance, and transparency of challenges tackled and lessons shared."
+    },
+    {
+      "Max Points": 0,
+      "Heading": "Anti‑Entrepreneurial Tone",
+      "Signals": "phrases like “I’d never start a business”, “9-to-5 for life”, “startups always fail”, ridicules side-gig content, shares memes mocking entrepreneurs, strong pro-status-quo comments",
+      "Min To Qualify": 0,
+      "Category": "Negative",
+      "Disqualifying": "checked",
+      "Active": true,
+      "Attribute Id": "N4",
+      "Instructions": "Triggered when the profile or posts express a negative attitude toward startups, side hustles, or business risk.\n\nTypical signs:\n- Publicly dismisses entrepreneurship as “too risky”, “hype”, or “only for lucky few”.\n- Posts mocking founders, venture funding, or “hustle culture”.\n- Bio stresses “job security”, “steady pay-cheque”, “lifelong corporate career”.\n\nIf this tone is clearly present, set Final Score = 0 % (disqualifier).",
+      "Penalty": 10
+    },
+    {
+      "Max Points": 20,
+      "Heading": "Long-Term Network Building Mindset",
+      "Signals": "Role and structural signals (people whose work is built on networks):\nbroker, insurance broker, financial planner, financial adviser, accountant, mortgage broker, BDM, business development manager, referral partner, account manager, relationship manager, client director, partner\nCommunity and group involvement:\nBNI, Rotary, Chamber of Commerce, industry association, alumni, board member, committee member, networking group, mastermind, peer group, community leader, advisory board\nLanguage signals of relationship orientation:\nlong-term, partnership, trust, referral, relationships, community, collaboration, long-standing, repeat clients, client relationships, trusted adviser, network, connections\nTenure and continuity signals:\nyears of experience, decades, since [year], founding member, longtime, established, ongoing relationships, repeat business",
+      "Examples": "2 pts: Mid-career professional, three jobs in six years, profile reads as a CV with no community involvement, industry group membership, or relationship-oriented language. No mention of clients, partners, or long-standing connections. Headline focuses entirely on personal achievements and certifications.\n7 pts: Senior professional, 12 years in industry, lists membership in one professional association but no role within it. Career history shows reasonable tenure (4-5 years per role). Profile mentions \"delivering for clients\" but no specific long-term relationships or community roles named.\n12 pts: Established consultant, 15 years in industry, current role held for 7 years. Active member of two industry associations, one in a committee role. Headline and About section use language like \"trusted adviser\" and \"long-term client partnerships.\" References ongoing relationships with clients spanning multiple years.\n17 pts: Insurance broker, 20+ years in industry, founding partner of current firm. Board member of state industry association. Active in Chamber of Commerce. Profile explicitly describes practice as referral-driven and built on long-term client relationships, some spanning two decades. Multiple longstanding business partnerships named.\n20 pts: Veteran financial planner, 30+ years experience, runs a multi-generational practice serving clients and their adult children. Past president of professional association. Long-term BNI member. Active community leader with named roles in charity boards and industry mentoring programs. Profile emphasises that nearly all new business comes through referral from existing clients and centres of influence.",
+      "Min To Qualify": 8,
+      "Category": "Positive",
+      "Active": true,
+      "Attribute Id": "A",
+      "Instructions": "Scoring Range\n0-4 pts = little to no evidence of relationship investment. Predominantly transactional positioning, no involvement in industry groups or communities, short tenures with no continuity of clients or collaborators referenced.\n5-9 pts = some signals of relationship orientation. Listed membership in industry groups but no visible role. Some long-standing roles or clients referenced. Mixed tenure pattern.\n10-14 pts = active relationship orientation. Long client, partner, or colleague tenures referenced. Active participation in industry groups, alumni networks, or professional communities. Language includes \"partnership,\" \"trust,\" \"long-term,\" \"community,\" \"referral.\" Role or career history shows continuity of relationships over time.\n15-20 pts = exemplifies long-term network building. Sustained, multi-year pattern of investing in relationships and communities. Long-standing client, partner, or collaborator relationships clearly evidenced in career history. Visible leadership in industry communities, networking groups, alumni associations, or referral networks. May hold a role where networking is structurally embedded (broker, financial planner, accountant, BDM, BNI/Chamber member, community organiser, professional association leader).\nAward points based on the depth, longevity, and consistency of demonstrated investment in relationships and networks. Prioritise structural and historical evidence - long tenures, sustained community involvement, roles built on referral and trust - over any single visible action. Quiet, consistent relationship builders should score as highly as visible ones."
+    },
+    {
+      "Max Points": 3,
+      "Heading": "Contact Readiness",
+      "Signals": "visible email address; “open to opportunities”; “DM me”; Calendly / booking link; phone number; personal site “Contact” page; “let’s connect” call-outs on banner or summary",
+      "Min To Qualify": 0,
+      "Category": "Positive",
+      "Active": true,
+      "Attribute Id": "I",
+      "Instructions": "Scoring Range:\n0 pts = Profile closed; no contact info; “Message” button disabled; no sign of openness.\n1 pt = Minimal: connection option exists but no visible contact cues.\n2 pts = Contact methods present (email or link) but passive wording.\n3 pts = Clear invitation: email + phrase like “DM me”, “Open to connect”, Calendly link, or public phone.\n\nAward points based on how easy and explicit it is to reach the person."
+    },
+    {
+      "Max Points": 20,
+      "Heading": "Financial Ability from Income/Career",
+      "Signals": "titles like Manager, Director, VP, Head of …; 8 + yrs tenure; LinkedIn shows bonuses, equity, RSUs; posts about investing, property portfolio, FIRE journey; consistent career progression; mentions of “financial freedom”",
+      "Min To Qualify": 5,
+      "Category": "Positive",
+      "Active": true,
+      "Attribute Id": "K",
+      "Instructions": "0–4 pts = Early-career, unstable job history, frequent short stints (< 1 yr), low-level titles. Minimal capacity for funding or dedicated focus on external ventures.\n5–9 pts = Mid-career stability (3–5 yrs per role) or first supervisory title; evidence of stable, modest disposable income, suggesting capacity for modest investment or time commitment.\n10–14 pts = Senior contributor or manager; 5 + yrs in field; clear salary head-room; some savings/investment mentions. Strong indicators of both financial capacity and potential for dedicated time/focus.\n15–20 pts = Executive / Director / Partner; long tenure, stock options, or passive income streams; explicit comments about “next chapter” or investing in ventures. Clear capacity for significant funding and a strong intent/ability to dedicate focus to new ventures.\n\nAward points based on a holistic assessment of the candidate’s financial head-room, seniority, and tenure stability. The aim is to gauge their overall capacity to fund and dedicate time/focus to a side venture. When conflicting signals exist (e.g., high seniority but unstable tenure), prioritize the highest indicators of potential for both funding and focus."
+    },
+    {
+      "Max Points": 0,
+      "Heading": "No Personal Spark",
+      "Signals": "“Experienced professional with a demonstrated history…” boilerplate; empty Activity tab; zero emojis / formatting; identical wording to thousands of other profiles; no profile photo or default grey background; no comments on others’ posts",
+      "Min To Qualify": 0,
+      "Category": "Negative",
+      "Active": true,
+      "Attribute Id": "N2",
+      "Instructions": "Triggered when the profile feels flat or lifeless, showing minimal genuine interest, personality, or energy.\n\nTypical signs:\n- Entire “About” section is buzzwords or empty clichés.\n- No original posts – only automatic work anniversaries or job changes.\n- Headline + summary copy-pasted from a job description.\n- Endorsements and recommendations are generic or absent.\n\nSubtract 10 points from the raw score when these signals dominate.",
+      "Penalty": 10
+    },
+    {
+      "Heading": "Final Score Computation",
+      "Category": "Global Rule",
+      "Active": true,
+      "Attribute Id": "GEN-001",
+      "Instructions": "\\n1. Compute **awarded** and **possible** points (exclude any unscored positives from the denominator).\\n2. Apply all **non-disqualifying penalties**.\\n3. If any **disqualifier** triggers ➜ set **Final Score = 0 %**.\\n4. Attribute **I (Contact Readiness)** has a maximum of **3 points**.\\n\\nFormula:\\nFinal Score (%) = (awarded / possible) × 100\\n"
+    },
+    {
+      "Max Points": 5,
+      "Heading": "Leadership & Mentorship",
+      "Signals": "“Team Lead”, “Manager”, “Head of …”, “Founder”, “Coach”, “Mentor”, “people development”, testimonials from mentees, LinkedIn recommendations praising leadership, volunteering as coach, speaking on leadership panels",
+      "Min To Qualify": 0,
+      "Category": "Positive",
+      "Active": true,
+      "Attribute Id": "E",
+      "Instructions": "Scoring Range\n0–1 pts = no sign of leading or guiding others.\n2–3 pts = occasional leadership (project lead, small team, informal mentoring).\n4 pts = clear leadership role (manages a team, coaches interns, speaks on leadership topics).\n5 pts = sustained leadership + active mentorship: builds teams, creates leaders, recognised for people-development.\n\nAward points based on the depth, duration, and impact of leadership and mentoring activities."
+    },
+    {
+      "Heading": "Disqualifying Check (Immediate Stop)",
+      "Category": "Step",
+      "Active": true,
+      "Attribute Id": "STEP-A",
+      "Instructions": "\\n1. If any **negative** attribute with **Disqualifying = Yes** is triggered:\\n - Assign **Final Score = 0 %**\\n - **Stop** all further scoring\\n - Record **which disqualifier fired**\\n"
+    },
+    {
+      "Max Points": 0,
+      "Heading": "Negative Energy / Cynicism",
+      "Signals": "repeated angry emojis (💢, 🤬), “rant alert”, posts attacking colleagues, comments dripping with sarcasm, profile headline with aggressive wording, public arguments in comment threads",
+      "Min To Qualify": 0,
+      "Category": "Negative",
+      "Disqualifying": "checked",
+      "Active": true,
+      "Attribute Id": "N5",
+      "Instructions": "Triggered when the candidate’s profile or posts convey hostile, bitter, or consistently cynical tone that conflicts with a forward-looking, collaborative culture.\n\nTypical signs:\n• Frequent complaint posts or rants about employers, clients, or “idiots” in the industry.\n• Mocking or shaming other professionals instead of offering constructive critique.\n• Bio language like “No BS, don’t waste my time”, aggressive emojis, or confrontational taglines.\n\nIf present, set Final Score = 0 % (disqualifier).",
+      "Penalty": 5
+    },
+    {
+      "Max Points": 15,
+      "Heading": "Results‑Oriented",
+      "Signals": "%, revenue $, cost-savings, ROI, KPIs, OKRs, exceeded targets, data-driven results, making a difference, driving change, problem-solver, proactive approach, impactful contributions, value creation, goal-oriented",
+      "Min To Qualify": 0,
+      "Category": "Positive",
+      "Active": true,
+      "Attribute Id": "C",
+      "Instructions": "Scoring Range\n-   0–3 pts = Comments are generic, impersonal, or read like a standard corporate resume, lacking any discernible unique voice or personal expression. Claims are vague and lack specific detail or impact regarding concrete results, achievements, or goals.\n-   4–7 pts = Comments show some glimmers of personality or a slightly unique voice, but it's inconsistent or overshadowed by generic phrasing. They might mention some impact or goals, but these are often vague, unquantified, or lack clear connection to personal contribution and specific outcomes.\n-   8–11 pts = Comments consistently express a clear, engaging personality and unique voice, feeling authentic and distinct. They also provide compelling qualitative evidence of impact and/or clearly articulate specific goals met or significant achievements reached. Occasional strong metrics are presented in a personal and insightful way.\n-   12–15 pts = Comments are highly expressive of a distinct, compelling, and memorable personality, truly standing out as authentic and engaging. Equally, they present significant and convincing evidence of tangible impact, specific achievements, and clearly defined goals successfully pursued. This includes powerful qualitative insights, detailed anecdotes, and/or consistently communicated, strong quantitative results, all presented with a personal flair that perfectly complements their unique voice.\n\nAward points based on how clearly and consistently a person's unique personality and authentic voice are expressed in their comments, and equally, the compelling and concrete nature of their demonstrated results, achievements, and goal attainment."
+    },
+    {
+      "Heading": "Determine Scorable Attributes",
+      "Category": "Step",
+      "Active": true,
+      "Attribute Id": "STEP-C",
+      "Instructions": "\\n1. List **all Positive Attributes** (A, B, C, D, E, F, G, H, I, K).\\n2. If an attribute is truly **unscorable** (no public info available), **remove its max points** from the denominator.\\n3. Assign points to each recognised attribute (0 up to its max).\\n"
+    },
+    {
+      "Heading": "Minimum Threshold Filter (Early Stop)",
+      "Category": "Step",
+      "Active": true,
+      "Attribute Id": "STEP-B",
+      "Instructions": "\\n1. For each **positive** attribute that specifies a **Min to Qualify**:\\n - If the candidate does **not** meet that minimum (or the attribute is totally absent),\\n - Assign **Final Score = 0 %**\\n - **Stop** scoring\\n - Record **which threshold** was missed\\n"
+    },
+    {
+      "Max Points": 10,
+      "Heading": "Collaborative Spirit",
+      "Signals": "shout-outs to teammates; “we achieved…”, “cross-functional”; endorses others’ skills; LinkedIn recommendations given/received; volunteer mentoring; community or open-source collaborations",
+      "Min To Qualify": 0,
+      "Category": "Positive",
+      "Active": true,
+      "Attribute Id": "D",
+      "Instructions": "0-2 pts = no evidence of teamwork or peer recognition.\n3-5 pts = occasional collaboration mentions (e.g. “worked with design team”).\n6-8 pts = frequent cross-functional projects; gives credit to colleagues.\n9-10 pts = highly collaborative leader: publicly praises team, facilitates communities, co-authors content. Award points based on how often the candidate acknowledges others, shares credit, and engages in team initiatives."
+    },
+    {
+      "Max Points": 5,
+      "Heading": "Are they currently on Contract",
+      "Signals": "on contract\ncontractor\nfixed-term\nfixed term\nftc\ntemporary contract\n12-month contract\n6-month contract\ncontract role\ncontract engagement\ntemp contract\ncasual contract",
+      "Examples": "★ POSITIVE (5 pts)\n────────────────────────────────────────\nCurrent Role: “Procurement and Contract Management – On Contract (Mar 2025 – Present)”\nReasoning: Job heading explicitly says “On Contract”.\n\n★ NEGATIVE (0 pts)\n────────────────────────────────────────\nCurrent Role: “Senior Data Analyst – Full-time (Jan 2024 – Present)”\nReasoning: Employment type is full-time; no contract wording.\n\n★ POSITIVE (5 pts)\n────────────────────────────────────────\nCurrent Role: “Project Manager (12-month Fixed-Term Contract) – Present”\nReasoning: “Fixed-Term Contract” indicates a temporary engagement.\n\n★ NEGATIVE (0 pts)\n────────────────────────────────────────\nCurrent Role: “Head of Marketing – Consultant (Self-employed) – Present”\nReasoning: Consultant/freelancer wording but no sign it’s a contract with an employer.",
+      "Min To Qualify": 0,
+      "Category": "Positive",
+      "Active": true,
+      "Attribute Id": "J",
+      "Instructions": "• Search the entire “Profile Full JSON” object (current + past roles, summary, etc.).\n• If ANY contract-related keyword appears anywhere in the text, award **5 points**; otherwise **0 points**.\n• Keywords include: “contract”, “contract role”, “on contract”, “fixed-term”, “FTC”, “temporary contract”, “6-month contract”, “12-month contract”, “contract position”, “contractor role”.\n• Accept matches in job titles, employment-type tags, role descriptions, summaries, or any other field.\n• Ignore false positives where the word refers to something other than the person’s own employment status (e.g. “managed contractors”, “contract management”).\n• Return:\n – `score`    (5 or 0)\n – `reasoning`  (short phrase quoting the matching text, or noting no match)"
+    },
+    {
+      "Max Points": 0,
+      "Heading": "Wedded to their job",
+      "Signals": "“20-year veteran at …” badge; long-service awards; posts about staying put until retirement; heavy focus on corporate hierarchy; no external certifications or side courses in last decade; reluctance language: “I’m not looking for change”",
+      "Min To Qualify": 0,
+      "Category": "Negative",
+      "Active": true,
+      "Attribute Id": "N3",
+      "Instructions": "Attribute: Candidate Entrenchment / Flexibility Score\n\nThis attribute measures the degree to which a candidate appears deeply entrenched in a single corporate track with little flexibility or appetite for new ventures. A higher score indicates greater entrenchment (and thus lower flexibility).\n\n0-3 pts: Minimal Entrenchment / High Flexibility\n- Candidate's profile shows clear signs of diverse experience (e.g., multiple companies, varied roles, lateral moves).\n- No emphasis on long-term loyalty or stability as a primary career driver.\n- Professional posts or communication indicate strong interest in new trends, industries, or challenges.\n\n4-7 pts: Moderate Entrenchment / Moderate Flexibility\n- Candidate has spent a significant amount of time (e.g., 5-9 years) in one company, but with some evidence of varied projects or roles.\n- Occasional mentions of stability or long-term commitment, but balanced with other career interests.\n- Some professional posts about security or stability, but also shows openness to new ideas.\n\n8-15 pts: Strong Entrenchment / Low Flexibility\n- Candidate has 10+ years in one company OR repeated promotions in the same organization with no apparent lateral moves.\n- Profile or communication heavily emphasizes pension, long-service accolades, or uses \"lifetimer\" language.\n- Professional posts predominantly focus on security, stability, or explicitly express reluctance to change or explore new ventures.\n- The candidate appears deeply entrenched in a single corporate track.",
+      "Penalty": 5
+    },
+    {
+      "Max Points": 15,
+      "Heading": "Side‑Hustle Curiosity",
+      "Signals": "phrases like “side project”, “passion project”, “startup weekend”, “after-hours build”, Gumroad/Shopify links, AngelList profile, Indie Hackers posts, co-founder adverts, blog series on building something on the side",
+      "Min To Qualify": 0,
+      "Category": "Positive",
+      "Active": true,
+      "Attribute Id": "G",
+      "Instructions": "Scoring Range\n0–3 pts = no mention of projects outside day-job.\n4–7 pts = sporadic interest (likes side-gig posts, follows startup pages).\n8–11 pts = actively exploring: attends meet-ups, researches monetisation, posts about ideas.\n12–15 pts = runs or has run a side venture; documents progress; seeks collaborators or funding.\n\nAward points based on the depth, recency, and frequency of side-project involvement or expressed intent."
+    },
+    {
+      "Heading": "Global Scoring Narrative",
+      "Category": "Meta",
+      "Active": true,
+      "Attribute Id": "PREAMBLE",
+      "Instructions": "**Purpose**\n\nEvaluate LinkedIn profiles to pinpoint candidates who are qualified, motivated, and well-positioned to explore a side-venture with Partner Piloting.\n\n---\n\n## Scoring workflow (overview)\n\n1. **Disqualifying check – immediate stop**\n  If any negative attribute with **Disqualifying = Yes** is triggered, assign **Final Score = 0 %** and record the reason.\n\n2. **Minimum threshold filter – early stop**\n  For any positive attribute that specifies a **Min to Qualify**, if the profile falls short assign **Final Score = 0 %** and stop.\n\n3. **Determine scorable attributes**\n  List all positive IDs (A → K).\n  • If an attribute is truly unscorable, remove its **max points** from the denominator.\n  • Otherwise award 0 … max points.\n\n4. **Assign points & penalties**\n  • Add points for positives.\n  • Subtract penalties for negatives (unless disqualifying).\n  • If a disqualifier fires at any time, final = 0 %.\n\n5. **Compute final score**\n\nFinal % = ( awarded points / possible points ) × 100\n\nContact-readiness **I** has a maximum of **3 pts**.\nThe pass-mark is defined in code.\n\n---\n\n### Standard interpretation bands\n*(used only when a row’s Notes don’t override them)*\n\n* 0 – 3 pts = minimal / vague evidence\n* 4 – 7 pts = some evidence\n* 8 – 11 pts = strong, consistent evidence\n* 12 – 15 (or 20) pts = outstanding / exemplar\n\n---\n\n## AI Updating Instructions\n\n1. **Exactly one table of positives, one of negatives.**\n  Headings: `## Positive Attributes`, `## Negative Attributes`.\n\n2. **Each table row = 5 columns**\n  Format: `| ID | Attribute | Max (or Penalty) | Min / Disqualifying? | Notes |`.\n\n3. **Plain IDs.**\n  Positives: single letter A-Z.\n  Negatives: letter+number (e.g. N1). **No bold, no parentheses.**\n\n4. **No extra columns** and no nested `##` headings inside the tables.\n\n5. **One row per attribute.**\n  Elaborate in the **Notes** cell with `<br>` line breaks if needed.\n\n6. **Keep the header row & separator line** (`|----|---|…`) intact.\n\n7. **Min to Qualify** (positives) should be numeric.\n  **Disqualifying?** (negatives) must be `Yes` or `No`.\n\n8. **If you change an ID, update every reference** in code and docs.\n\n9. **Proof-read for typos**—parser is case-sensitive.\n\n10. **Ask before adding new columns**; the Node parser will break."
+    },
+    {
+      "Max Points": 0,
+      "Heading": "Media/Creative Producer",
+      "Signals": "photographer / filmmaker banners; linktree with only social channels; language centred on “artistic vision”, “creative expression”; no mention of clients, revenue, startup, product, or scaling; posts about gear reviews or aesthetic projects only",
+      "Min To Qualify": 0,
+      "Category": "Negative",
+      "Disqualifying": "checked",
+      "Active": true,
+      "Attribute Id": "N1",
+      "Instructions": "Triggered when the profile is dominated by creative/media content with no entrepreneurial drive.\n\nIndicators include:\n- Large portfolio of photography/film/music work but zero business-building language.\n- Focus on “likes”, “views”, “subscribers” metrics only.\n- Bio emphasises artistic expression, not ventures or monetisation beyond sponsorships.\n\nIf present, set Final Score = 0 % (disqualifier).",
+      "Penalty": 10
+    },
+    {
+      "Max Points": 15,
+      "Heading": "Possibly Entrepreneurial",
+      "Signals": "Freelancer, Independent Consultant, Side project, Side Gig, Personal venture, Bootstrapped, MVP, Prototype, Mentor, Angel Investor, Incubator (participant/member), On the side",
+      "Min To Qualify": 0,
+      "Category": "Positive",
+      "Active": true,
+      "Attribute Id": "H",
+      "Instructions": "Scoring Range\n- 0–3 pts = career employee; no sign of entrepreneurial activity.\n- 4–7 pts = occasional freelance / contracting or single micro-venture.\n- 8–11 pts = has founded or co-founded at least one startup or side business while employed; owns equity; shows risk-taking.\n- 12–15 pts = serial entrepreneur: multiple ventures, board/director roles, angel investing, mentors founders while holding a day-job.\n\nAward points based on the number, scale, and success of ventures the candidate has run in parallel with employment."
+    },
+    {
+      "Heading": "Assign and Document Scores",
+      "Category": "Step",
+      "Active": true,
+      "Attribute Id": "STEP-D",
+      "Instructions": "\\n1. For each **positive attribute**, decide how many points to award (0 → max).\\n2. Apply any **penalties** that are **not** disqualifiers.\\n3. If a **disqualifying negative** attribute is found, set **Final Score = 0 %** and stop.\\n"
+    }
+  ],
+  "Credentials": [
+    {
+      "Name": "Defaults",
+      "AI Score Threshold Input": 50,
+      "Posts Threshold Percentage": 30
+    }
+  ]
+}
