@@ -561,24 +561,28 @@ router.get('/api/billing/subscription', authenticateUserWithTestMode, requireStr
 
         logger.info(`Fetching subscription for customer: ${customer.id}`);
 
-        // Get active subscriptions. Stripe caps expand at 4 levels, so the price's
-        // product is fetched with its own retrieve below rather than expanded here.
+        // Get the client's live subscription. Stripe caps expand at 4 levels, so
+        // the price's product is fetched with its own retrieve below rather than
+        // expanded here. 'trialing' counts as live: the legacy PMPro checkout
+        // charges the joining fee up front and starts the monthly cycle a month
+        // later as a trial (first seen with Paul Salvage, 25 Aug 2026). past_due
+        // shows too - the card is in Stripe's retry window, not cancelled.
+        const LIVE_STATUSES = ['active', 'trialing', 'past_due'];
         const subscriptions = await stripe.subscriptions.list({
             customer: customer.id,
-            status: 'active',
-            limit: 1,
+            status: 'all',
+            limit: 10,
             expand: ['data.items.data.price']
         });
+        const sub = subscriptions.data.find(s => LIVE_STATUSES.includes(s.status));
 
-        if (subscriptions.data.length === 0) {
+        if (!sub) {
             return res.json({
                 success: true,
                 subscription: null,
                 message: 'No active subscription'
             });
         }
-
-        const sub = subscriptions.data[0];
         const item = sub.items.data[0];
 
         let planName = 'Subscription';
@@ -595,8 +599,9 @@ router.get('/api/billing/subscription', authenticateUserWithTestMode, requireStr
         }
 
         // Newer Stripe API versions carry the billing period on the item, older on
-        // the subscription - accept either.
-        const periodEnd = sub.current_period_end || item?.current_period_end || null;
+        // the subscription - accept either. A trialing sub's first real charge is
+        // its trial end.
+        const periodEnd = sub.current_period_end || item?.current_period_end || sub.trial_end || null;
 
         res.json({
             success: true,
