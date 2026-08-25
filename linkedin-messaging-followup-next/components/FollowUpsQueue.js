@@ -211,6 +211,7 @@ export default function FollowUpsQueue() {
   const [items, setItems] = useState([]);
   const [hidden, setHidden] = useState({ counts: {}, items: [] });
   const [briefPreparedAt, setBriefPreparedAt] = useState(null);
+  const [keyNotice, setKeyNotice] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loadSecs, setLoadSecs] = useState(0);
   const [error, setError] = useState(null);
@@ -238,6 +239,7 @@ export default function FollowUpsQueue() {
       setItems(Array.isArray(data?.items) ? data.items : []);
       setHidden(data?.hidden || { counts: {}, items: [] });
       setBriefPreparedAt(data?.briefPreparedAt || null);
+      setKeyNotice(data?.keyNotice || null);
     } catch (e) {
       setError(e?.message || 'Failed to load the queue');
       setItems([]);
@@ -369,6 +371,13 @@ export default function FollowUpsQueue() {
           already-messaged people are removed automatically.
           {briefPreparedAt ? <span className="text-gray-400"> Overnight brief prepared {formatDate(briefPreparedAt)}.</span> : null}
         </p>
+
+        {keyNotice && (
+          <div className="mt-3 text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+            <span className="font-semibold">Drafts and the overnight brief are paused: </span>
+            {keyNotice} The queue below still works - only the AI-prepared parts are waiting on the key.
+          </div>
+        )}
 
         {showHidden && hidden?.items?.length > 0 && (
           <div className="mt-3 text-xs text-gray-600 bg-amber-50 border border-amber-200 rounded px-3 py-2">

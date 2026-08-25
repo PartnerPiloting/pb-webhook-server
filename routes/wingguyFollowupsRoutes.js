@@ -96,9 +96,21 @@ module.exports = function mountWingguyFollowups(app) {
         draftUrl: (it.draftState === 'ready' || it.draftState === 'wg-angle') ? draftUrl(clientId, it.name) : null,
         builtAt: it.builtAt || null,
       }));
+      // Tell the screen when Claude-prepared parts (overnight brief, stories,
+      // drafts) can't run for this client: no stored key + no managed plan =
+      // blocked by the one-door rule, never billed to the platform key. Without
+      // this the screen just looks mysteriously unprepared.
+      let keyNotice = null;
+      try {
+        const { resolveClientAnthropic } = require('../config/anthropicClient');
+        const lane = resolveClientAnthropic(gate.client);
+        if (lane.lane === 'none-blocked') keyNotice = lane.message;
+      } catch (_) { /* notice is best-effort */ }
+
       res.json({
         ok: true,
         count: items.length,
+        keyNotice,
         items,
         // WHO the live re-check hid and why — the aggregate-only version made a vanished
         // top-of-queue person unexplainable (Kay Ridge, 2026-08-15). The screen shows these

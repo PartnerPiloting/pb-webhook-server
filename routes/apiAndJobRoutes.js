@@ -10596,6 +10596,13 @@ router.post("/api/onboard-client", async (req, res) => {
       [CLIENT_FIELDS.MAX_POST_BATCHES_PER_DAY_GUARDRAIL]: defaults.maxPostBatchesPerDayGuardrail,
       [CLIENT_FIELDS.POST_SCRAPE_BATCH_SIZE]: defaults.postScrapeBatchSize,
       [CLIENT_FIELDS.PROCESSING_STREAM]: defaults.processingStream,
+      // Standard procedure (Guy, 2026-08-25): every new client starts with all
+      // three optional portal tabs on. Safe because the one-door key rule blocks
+      // (never platform-bills) Claude work until their own key is on the row,
+      // and the Follow-Ups screen says so on-screen.
+      'Wingguy Enabled': 'Yes',
+      'Thanks for Connecting': 'Yes',
+      'Followup Brief': 'Yes',
     };
     
     // Add optional fields if provided
