@@ -36,8 +36,12 @@ module.exports = function mountWingguyFollowups(app) {
   const ENABLED = parseBoolFlag(process.env.ENABLE_FOLLOWUPS_SCREEN, true);
   logger.info(`[FollowupsScreen] Mounted. ENABLED=${ENABLED}`);
 
+  // The tenant comes from the VERIFIED identity (portal token, assistant token
+  // or dev key - authenticateUserWithTestMode below), never from a raw header
+  // or query param: the queue is CRM material, and before 2026-08-25 anyone who
+  // knew a client id could read it unauthenticated.
   function getClientId(req) {
-    return req.headers['x-client-id'] || req.query.clientId || req.query.testClient || null;
+    return req.client?.clientId || null;
   }
 
   // The screen's gate IS the feature's gate: `Followup Brief` = Yes turns on the overnight stores
@@ -58,6 +62,11 @@ module.exports = function mountWingguyFollowups(app) {
     return { client };
   }
 
+  // Everything below /status requires an authenticated identity - the same
+  // portal-token middleware as the rest of the portal (assistant tokens
+  // resolve to their client, dev key works for admin).
+  const { authenticateUserWithTestMode } = require('../middleware/authMiddleware');
+
   // Public status (responds even if disabled / gate off)
   router.get('/status', (req, res) => {
     res.json({
@@ -70,7 +79,7 @@ module.exports = function mountWingguyFollowups(app) {
 
   // The queue, as data. Heavy draft bodies stay OUT of the list payload — the Draft button opens
   // the signed draft page, which serves the text itself (and is the page chat already links).
-  router.get('/queue', async (req, res) => {
+  router.get('/queue', authenticateUserWithTestMode, async (req, res) => {
     const clientId = getClientId(req);
     const gate = await resolveGate(clientId);
     if (!gate) return res.status(403).json({ error: 'feature_not_enabled' });
@@ -140,7 +149,7 @@ module.exports = function mountWingguyFollowups(app) {
   // per expand, and the overnight rebuild (fingerprint-checked) covers it within a day.
   // refresh=1 queues the standard dossier pass in the background (rebuilds ONLY people whose
   // thread changed, on the client's own key) — the screen re-polls builtAt to see it land.
-  router.get('/story', async (req, res) => {
+  router.get('/story', authenticateUserWithTestMode, async (req, res) => {
     const clientId = getClientId(req);
     const gate = await resolveGate(clientId);
     if (!gate) return res.status(403).json({ error: 'feature_not_enabled' });
@@ -194,7 +203,7 @@ module.exports = function mountWingguyFollowups(app) {
 
   // Actions — the same three levers chat has, through the same functions. Nothing here sends
   // a message; Draft is a link (the signed draft page), not an endpoint.
-  router.post('/action', async (req, res) => {
+  router.post('/action', authenticateUserWithTestMode, async (req, res) => {
     const clientId = getClientId(req);
     const gate = await resolveGate(clientId);
     if (!gate) return res.status(403).json({ error: 'feature_not_enabled' });
