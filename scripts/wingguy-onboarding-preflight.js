@@ -179,7 +179,11 @@ function step(n, name, verdict, evidence) {
     const hasKey = present(client.anthropicApiKey);
     const briefOn = present(client.followupBrief) && String(client.followupBrief).toLowerCase() !== 'no';
     if (briefOn && !hasKey && !managed) {
-      warnings.push(`${WARN} step 8 TRAP: Followup Brief is ON with no client key - the overnight brief silently runs on GUY'S key. Key first, brief second.`);
+      // Not a billing leak: the one-door rule (config/anthropicClient.js) BLOCKS a keyless,
+      // unmanaged client - nothing falls through to the platform key. Since 2026-08-25 all
+      // three tabs are on from birth, so this state is normal for a brand-new client; the
+      // Follow-Ups screen tells them their key isn't set up yet.
+      warnings.push(`${WARN} step 8: Followup Brief is ON with no client key - brief/drafts are BLOCKED (never platform-billed) until their sk-ant- key is on the row.`);
     }
     step(8, 'own Claude key', managed || hasKey ? DONE : OWED,
       managed ? 'managed plan - runs on the platform key by design'
