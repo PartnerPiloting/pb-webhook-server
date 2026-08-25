@@ -527,6 +527,18 @@ export const createLead = async (leadData) => {
   }
 };
 
+// "People you've met who aren't in Wingguy yet" — meeting participants awaiting add/skip.
+export const getPendingPeople = async () => {
+  const response = await api.get('/pending-people');
+  return response.data?.people || [];
+};
+
+// Skip is final by design: the person drops off the list and is never asked about again.
+export const skipPendingPerson = async (email) => {
+  const response = await api.post('/pending-people/skip', { email });
+  return response.data;
+};
+
 export const updateLead = async (leadId, updateData) => {
   try {
   try { console.debug('[api.updateLead] called', { leadId, updateData }); } catch {}

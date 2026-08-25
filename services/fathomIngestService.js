@@ -434,7 +434,7 @@ async function ingestFathomMeeting(opts = {}) {
   // isn't a lead yet" is a queryable, resolvable state instead of a silent loss. When the lead is
   // later created, resolvePendingLeadByEmail links every waiting meeting and clears the entry.
   const matchedEmails = new Set(matched.map((m) => String(m.email || '').toLowerCase()).filter(Boolean));
-  const pendingLeads = [];
+  let pendingLeads = [];
   const seenPending = new Set();
   for (const rawEmail of remainingUnmatched) {
     const e = String(rawEmail).toLowerCase().trim();
@@ -448,6 +448,10 @@ async function ingestFathomMeeting(opts = {}) {
     seenPending.add(c.email);
     pendingLeads.push(c);
   }
+
+  // Hygiene pass: drop role/self/own-domain addresses; fill missing names off transcript
+  // speaker labels where possible.
+  pendingLeads = require('./pendingLeadFilter').refinePendingLeads(pendingLeads, { transcriptText, coach, log });
 
   const plan = {
     recordingId: String(meeting.recording_id),

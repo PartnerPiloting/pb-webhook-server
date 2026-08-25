@@ -356,7 +356,7 @@ async function ingestFirefliesTranscript(opts = {}) {
   // PENDING LEADS: identified people who match NO lead — stored on the meeting row so the
   // existing auto-link machinery (create doors + reconcile sweep) resolves them later.
   const matchedEmails = new Set(matched.map((m) => String(m.email || '').toLowerCase()).filter(Boolean));
-  const pendingLeads = [];
+  let pendingLeads = [];
   const seenPending = new Set();
   for (const rawEmail of remainingUnmatched) {
     const e = String(rawEmail).toLowerCase().trim();
@@ -372,6 +372,10 @@ async function ingestFirefliesTranscript(opts = {}) {
   }
 
   const transcriptText = normalizeFirefliesTranscript(transcript);
+
+  // Hygiene pass: drop role/self/own-domain addresses, and pair nameless emails to the REAL
+  // speaker labels in the transcript (Fireflies' invite list often arrives with emails only).
+  pendingLeads = require('./pendingLeadFilter').refinePendingLeads(pendingLeads, { transcriptText, coach, log });
 
   const plan = {
     transcriptId: realId,

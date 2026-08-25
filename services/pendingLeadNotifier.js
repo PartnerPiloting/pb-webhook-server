@@ -1,46 +1,38 @@
 /**
- * Pending-lead notifier — the "you met someone who isn't in your database yet" email to the COACH.
+ * Pending-lead digest — the weekly "you've met people who aren't in Wingguy yet" email.
  *
- * WHY: when a recording's participant matches no lead, the meeting now files with that person
- * parked on it (recall_meetings.pending_leads — see recallWebhookDb). This makes that state VISIBLE:
- * one email to the coach per unknown person, benefit-first ("I saved the transcript but can't pull
- * it up by their name or draft follow-ups until they're in your database"), asking for their
- * LinkedIn via Wingguy chat. Ignoring the email is a valid "no" — the notifiedAt stamp on the
- * pending entry guarantees we never nag twice about the same person (markPendingLeadNotified).
+ * V2 (2026-08-26, agreed with Guy). V1 sent ONE EMAIL PER PERSON with a reply-to-add token;
+ * fifteen bare-address emails in a row taught the client to ignore all of them and none was
+ * ever answered. Now the portal's New Leads page is the door (list + Add + Skip), and email's
+ * only job is a nudge:
  *
- * DESIGN (agreed with Guy 2026-07-29):
- *   - ONE EMAIL PER PERSON, not a digest — so any future reply unambiguously belongs to one person.
- *   - NEVER auto-create a lead from an email alone (no LinkedIn URL = thin record + dedup collision).
- *   - Copy says "your Wingguy database", never "Airtable".
- *   - Copy directs to CHAT for now — the reply-reading loop isn't built yet, so the email must not
- *     promise "just reply" until it is. Update the copy when that phase lands.
+ *   - ONE email per client per week, and only when someone is actually waiting. Nothing
+ *     waiting = no email. The week guard is the comms log (channel 'pending-digest'), which
+ *     this send also writes to — first brick of the unified Wingguy comms record.
+ *   - The email lists who's waiting (name where known - see pendingLeadFilter's transcript
+ *     pairing - else the address) and links straight to the portal's New Leads page with the
+ *     client's portal token.
+ *   - No more per-person reply tokens. Old tokens from V1 emails still resolve through
+ *     pendingReplyHandler; replies to the digest itself just land in the inbound pipe.
  *
- * DELIVERY: Mailgun (the operational alerts domain — MAILGUN_API_KEY + MAILGUN_DOMAIN), From
- * "Wingguy", BCC to Guy so the operator sees every send during rollout. NOT the coach's own
- * Unipile/Nylas grant: the mail seam is draft-only by design, and this is a system notification
- * TO the coach, not mail sent as them.
- *
- * SAFETY: runs only when PENDING_NOTIFY_ENABLED=true (default OFF — ships dormant); notifyPendingLeads
- * accepts { force, onlyClientId } so a one-off job can test a single tenant while the flag is off.
- * Bounded sends per pass. Rides the fathom poll heartbeat AFTER the reconcile sweep, so someone who
- * became a lead within the last few minutes is linked, not emailed about.
+ * DELIVERY unchanged: Mailgun alerts domain, From "Wingguy", BCC to Guy (PENDING_NOTIFY_BCC,
+ * default on) while the feature is young. SAFETY unchanged: PENDING_NOTIFY_ENABLED gates the
+ * whole pass; { force, onlyClientId } lets a one-off job test a single tenant.
  */
 
 const https = require('https');
-const crypto = require('crypto');
 const querystring = require('querystring');
 const clientService = require('./clientService');
-const { findPendingLeadMeetings, markPendingLeadNotified } = require('./recallWebhookDb');
+const { findPendingLeadMeetings, getMeetingsTranscriptHeads } = require('./recallWebhookDb');
+const { nameFromTranscript, isSelfOrOperatorEmail } = require('./pendingLeadFilter');
+const { recordComm, lastCommAt } = require('./commsLog');
 const { createSafeLogger } = require('../utils/loggerHelper');
 
 const log = createSafeLogger('SYSTEM', null, 'pending_notify');
 
-const MAX_PER_PASS = Number(process.env.PENDING_NOTIFY_MAX_PER_PASS) || 10;
 const BCC = (process.env.PENDING_NOTIFY_BCC || 'guyralphwilson@gmail.com').trim();
-// Where replies land: the Mailgun-receiving subdomain whose catch-all route already POSTs to
-// /api/webhooks/inbound-email (the track@ pipe). Each email gets Reply-To add-<token>@ here, and
-// pendingReplyHandler resolves the token back to (tenant, person).
-const REPLY_DOMAIN = (process.env.PENDING_REPLY_DOMAIN || 'mail.australiansidehustles.com.au').trim();
+const PORTAL_BASE = (process.env.PORTAL_BASE_URL || 'https://pb-webhook-server.vercel.app').replace(/\/$/, '');
+const DIGEST_INTERVAL_DAYS = Number(process.env.PENDING_DIGEST_INTERVAL_DAYS) || 7;
 
 function notifyEnabled() {
   return String(process.env.PENDING_NOTIFY_ENABLED || '').trim().toLowerCase() === 'true';
@@ -80,94 +72,131 @@ function sendMailgun(emailData) {
 
 function fmtDate(d, tz) {
   try {
-    return new Date(d).toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'long', timeZone: tz || 'Australia/Brisbane' });
+    return new Date(d).toLocaleDateString('en-AU', { day: 'numeric', month: 'long', timeZone: tz || 'Australia/Brisbane' });
   } catch (_) {
     return String(d).slice(0, 10);
   }
 }
 
-// The email itself. Reader-facing copy: " - " (never an em dash), "Wingguy database" (never
-// "Airtable"), benefit first, an explicit easy "no".
-function buildEmail({ coachFirstName, person, meetings, tz }) {
-  const who = person.name ? `${person.name} (${person.email})` : person.email;
-  const shortWho = person.name || person.email;
-  const newest = meetings[0];
-  const when = newest ? fmtDate(newest.meeting_start || newest.created_at, tz) : 'recently';
-  const meetingWord = meetings.length > 1 ? `${meetings.length} meetings (latest ${when})` : `your meeting on ${when}`;
+/**
+ * Group a tenant's ACTIVE pending entries into one person per email, with meeting count and
+ * latest date, and fill missing names off the transcripts.
+ */
+async function collectWaitingPeople(coachClientId, coach) {
+  const rows = await findPendingLeadMeetings({ coachClientId, limit: 200, activeOnly: true });
+  const byEmail = new Map();
+  const namelessMeetingIds = new Set();
+  for (const m of rows) {
+    for (const p of m.pending) {
+      // Pre-filter junk entries (role mailboxes stored before 2026-08-26) still show — the
+      // coach skips them himself. Operator/self addresses are never offered, full stop.
+      if (isSelfOrOperatorEmail(p.email, coach)) continue;
+      const cur = byEmail.get(p.email) || { email: p.email, name: p.name || null, meetings: 0, latest: null, latestTitle: null, meetingIds: [] };
+      if (!cur.name && p.name) cur.name = p.name;
+      cur.meetings++;
+      cur.meetingIds.push(String(m.id));
+      const when = m.meeting_start || m.created_at;
+      if (when && (!cur.latest || new Date(when) > new Date(cur.latest))) { cur.latest = when; cur.latestTitle = m.title || null; }
+      byEmail.set(p.email, cur);
+    }
+  }
+  for (const person of byEmail.values()) if (!person.name) person.meetingIds.forEach((id) => namelessMeetingIds.add(id));
+  if (namelessMeetingIds.size) {
+    const heads = await getMeetingsTranscriptHeads([...namelessMeetingIds]);
+    for (const person of byEmail.values()) {
+      if (person.name) continue;
+      for (const id of person.meetingIds) {
+        const name = nameFromTranscript(heads.get(id), person.email);
+        if (name) { person.name = name; break; }
+      }
+    }
+  }
+  return [...byEmail.values()].sort((a, b) => new Date(b.latest || 0) - new Date(a.latest || 0));
+}
 
-  const subject = `Want me to add ${shortWho} to your contacts?`;
+// Reader-facing copy rules: " - " (never an em dash), "Wingguy database" (never "Airtable").
+function buildDigestEmail({ coachFirstName, people, portalUrl, tz }) {
+  const n = people.length;
+  const subject = n === 1
+    ? `You've met someone who isn't in Wingguy yet`
+    : `You've met ${n} people who aren't in Wingguy yet`;
+  const lines = people.map((p) => {
+    const who = p.name ? `${p.name} (${p.email})` : p.email;
+    const when = p.latest ? ` - met ${fmtDate(p.latest, tz)}` : '';
+    const extra = p.meetings > 1 ? `, ${p.meetings} meetings` : '';
+    return `  - ${who}${when}${extra}`;
+  });
   const text =
 `Hi ${coachFirstName},
 
-You met ${who} - I've saved the transcript from ${meetingWord}, but they're not in your Wingguy database yet. That means I can't pull the meeting up by their name, or draft follow-ups to them in your voice.
+I've saved transcripts from your recent meetings, but ${n === 1 ? 'one person on them isn\'t' : 'some people on them aren\'t'} in your Wingguy database yet - so I can't pull those meetings up by name or draft follow-ups to them:
 
-Want me to add them? Just reply to this email with their LinkedIn profile link (linkedin.com/in/...) - plus their phone or a better email if you have one - and I'll create the record and attach the transcript automatically. (You can also tell me in a Wingguy chat instead.)
+${lines.join('\n')}
 
-Not someone you want to track? Just ignore this - I won't ask about them again.
+Add or skip them here (takes about a minute):
+${portalUrl}
+
+Anyone you skip I'll never ask about again. I'll only email you about this once a week, and only when someone new is waiting.
 
 - Wingguy`;
   return { subject, text };
 }
 
 /**
- * One notify pass. Sends at most MAX_PER_PASS emails, one per (tenant, person) not yet notified.
- * @param {object} [opts] { force, onlyClientId } — force bypasses the env gate (manual test job).
+ * One digest pass — safe to call every poll heartbeat; the comms log's last-sent stamp makes it
+ * fire at most once per DIGEST_INTERVAL_DAYS per tenant.
+ * @param {object} [opts] { force, onlyClientId } — force bypasses the env gate AND the week guard.
  */
 async function notifyPendingLeads(opts = {}) {
   const { force = false, onlyClientId = null } = opts;
   if (!force && !notifyEnabled()) return { skipped: 'PENDING_NOTIFY_ENABLED not true', sent: 0 };
 
-  const rows = await findPendingLeadMeetings({ coachClientId: onlyClientId || undefined, limit: 200 });
-  // Group meetings per (tenant, email) where at least one entry is NOT yet notified.
-  const byPerson = new Map();
-  for (const m of rows) {
-    for (const p of m.pending) {
-      if (p.notifiedAt) continue;
-      const key = `${m.coach_client_id}|${p.email}`;
-      const cur = byPerson.get(key) || { coachClientId: m.coach_client_id, person: p, meetings: [] };
-      if (!cur.person.name && p.name) cur.person = p; // prefer an entry that carries a name
-      cur.meetings.push(m);
-      byPerson.set(key, cur);
-    }
-  }
-  const summary = { checkedAt: new Date().toISOString(), waitingPeople: byPerson.size, sent: 0, failed: 0, details: [] };
-  if (!byPerson.size) return summary;
+  const rows = await findPendingLeadMeetings({ coachClientId: onlyClientId || undefined, limit: 200, activeOnly: true });
+  const tenants = [...new Set(rows.map((m) => m.coach_client_id))];
+  const summary = { checkedAt: new Date().toISOString(), tenantsWaiting: tenants.length, sent: 0, failed: 0, details: [] };
 
-  const coachCache = new Map();
-  for (const { coachClientId, person, meetings } of byPerson.values()) {
-    if (summary.sent + summary.failed >= MAX_PER_PASS) { log.info(`pending notify: cap ${MAX_PER_PASS} hit — rest next pass`); break; }
+  for (const coachClientId of tenants) {
     try {
-      let coach = coachCache.get(coachClientId);
-      if (coach === undefined) { coach = await clientService.getClientById(coachClientId); coachCache.set(coachClientId, coach || null); }
+      if (!force) {
+        const last = await lastCommAt({ coachClientId, channel: 'pending-digest' });
+        if (last && (Date.now() - last.getTime()) < DIGEST_INTERVAL_DAYS * 24 * 3600 * 1000) {
+          summary.details.push({ coachClientId, skipped: `digest sent ${last.toISOString()}` });
+          continue;
+        }
+      }
+      const coach = await clientService.getClientById(coachClientId);
       const to = coach && String(coach.clientEmailAddress || '').trim();
-      if (!to) { summary.details.push({ coachClientId, email: person.email, skipped: 'no client email address on record' }); continue; }
+      if (!to) { summary.details.push({ coachClientId, skipped: 'no client email address on record' }); continue; }
+
+      const people = await collectWaitingPeople(coachClientId, coach);
+      if (!people.length) { summary.details.push({ coachClientId, skipped: 'nothing waiting after filters' }); continue; }
 
       const coachFirstName = String(coach.clientName || '').trim().split(/\s+/)[0] || 'there';
-      const { subject, text } = buildEmail({ coachFirstName, person, meetings, tz: coach.timezone });
-      // Unguessable per-person reply token: the Reply-To routes the coach's reply through the
-      // existing inbound pipe to pendingReplyHandler, which maps it back to (tenant, person).
-      const replyToken = crypto.randomBytes(9).toString('base64url').toLowerCase().replace(/[^a-z0-9]/g, 'x');
-      const payload = {
-        from: `Wingguy <wingguy@${process.env.MAILGUN_DOMAIN}>`,
-        to,
-        subject,
-        text,
-        'h:Reply-To': `add-${replyToken}@${REPLY_DOMAIN}`,
-      };
+      const portalUrl = coach.portalToken
+        ? `${PORTAL_BASE}/new-leads?token=${encodeURIComponent(coach.portalToken)}`
+        : `${PORTAL_BASE}/new-leads`;
+      const { subject, text } = buildDigestEmail({ coachFirstName, people, portalUrl, tz: coach.timezone });
+      const payload = { from: `Wingguy <wingguy@${process.env.MAILGUN_DOMAIN}>`, to, subject, text };
       if (BCC && BCC.toLowerCase() !== to.toLowerCase()) payload.bcc = BCC;
       await sendMailgun(payload);
-      await markPendingLeadNotified({ coachClientId, email: person.email, replyToken });
+      await recordComm({
+        coachClientId,
+        channel: 'pending-digest',
+        recipient: to,
+        subject,
+        summary: `${people.length} waiting: ${people.map((p) => p.name || p.email).join(', ').slice(0, 500)}`,
+        meta: { people: people.map((p) => ({ email: p.email, name: p.name, meetings: p.meetings })) },
+      });
       summary.sent++;
-      summary.details.push({ coachClientId, email: person.email, to, meetings: meetings.length });
-      log.info(`pending notify: emailed ${coachClientId} (${to}) about ${person.email} (${meetings.length} meeting(s))`);
+      summary.details.push({ coachClientId, to, people: people.length });
+      log.info(`pending digest: emailed ${coachClientId} (${to}) - ${people.length} waiting`);
     } catch (e) {
-      // NOT stamped on failure — next pass retries the send.
       summary.failed++;
-      summary.details.push({ coachClientId, email: person.email, error: e.message });
-      log.warn(`pending notify: ${coachClientId} / ${person.email} failed: ${e.message}`);
+      summary.details.push({ coachClientId, error: e.message });
+      log.warn(`pending digest: ${coachClientId} failed: ${e.message}`);
     }
   }
   return summary;
 }
 
-module.exports = { notifyPendingLeads, notifyEnabled, buildEmail };
+module.exports = { notifyPendingLeads, notifyEnabled, buildDigestEmail, collectWaitingPeople };

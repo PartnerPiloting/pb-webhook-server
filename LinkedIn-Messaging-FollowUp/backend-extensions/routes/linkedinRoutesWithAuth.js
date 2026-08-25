@@ -2150,14 +2150,83 @@ router.post('/leads', async (req, res) => {
     };
 
     logger.info('LinkedIn Routes: Lead created successfully:', newLead.firstName, newLead.lastName);
+
+    // PENDING-LEAD RESOLVE: if this person was on the "people you've met" waiting list
+    // (recall_meetings.pending_leads), attach every waiting transcript to the new record now.
+    // Best-effort — a store hiccup must not fail the create the client just watched succeed.
+    const newLeadEmail = String(leadData['Email'] || '').trim().toLowerCase();
+    if (newLeadEmail) {
+      try {
+        const { resolvePendingLeadByEmail } = require('../../../services/recallWebhookDb');
+        const pr = await resolvePendingLeadByEmail({
+          email: newLeadEmail,
+          airtableLeadId: newLead.id,
+          coachClientId: req.client.clientId,
+          source: 'portal-new-lead',
+        });
+        if (pr.linked && pr.linked.length) {
+          newLead.attachedMeetings = pr.linked.length;
+          logger.info(`LinkedIn Routes: attached ${pr.linked.length} waiting meeting(s) to new lead ${newLead.id}`);
+        }
+      } catch (e) {
+        logger.warn(`LinkedIn Routes: pending-lead resolve failed for ${newLeadEmail}: ${e.message}`);
+      }
+    }
+
     res.status(201).json(newLead);
 
   } catch (error) {
     logger.error('LinkedIn Routes: Error creating lead:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       error: 'Failed to create lead',
-      details: error.message 
+      details: error.message
     });
+  }
+});
+
+/**
+ * GET /api/linkedin/pending-people
+ * "People you've met who aren't in Wingguy yet" — meeting participants parked on
+ * recall_meetings.pending_leads for this client, one row per person, names filled from
+ * transcript speaker labels where the provider's invite list had none. Empty list = the
+ * portal section doesn't render.
+ */
+router.get('/pending-people', async (req, res) => {
+  try {
+    const { collectWaitingPeople } = require('../../../services/pendingLeadNotifier');
+    const people = await collectWaitingPeople(req.client.clientId, req.client);
+    res.json({
+      people: people.map((p) => ({
+        email: p.email,
+        name: p.name || null,
+        meetings: p.meetings,
+        latest: p.latest,
+        latestTitle: p.latestTitle || null,
+      })),
+    });
+  } catch (error) {
+    logger.error('LinkedIn Routes: Error in /pending-people:', error);
+    res.status(500).json({ error: 'Failed to load pending people', details: error.message });
+  }
+});
+
+/**
+ * POST /api/linkedin/pending-people/skip  { email }
+ * The client said no to this person. Final by design (agreed with Guy 2026-08-26): the entry
+ * is stamped declined, drops off every list, and is never asked about again. The transcripts
+ * stay saved — and if the person is ever added as a lead by any route, they still attach.
+ */
+router.post('/pending-people/skip', async (req, res) => {
+  try {
+    const email = String((req.body && req.body.email) || '').trim().toLowerCase();
+    if (!email) return res.status(400).json({ error: 'email is required' });
+    const { markPendingLeadDeclined } = require('../../../services/recallWebhookDb');
+    const r = await markPendingLeadDeclined({ coachClientId: req.client.clientId, email });
+    logger.info(`LinkedIn Routes: ${req.client.clientId} skipped pending person ${email} (${r.stamped} meeting(s))`);
+    res.json({ ok: true, skipped: email, meetings: r.stamped });
+  } catch (error) {
+    logger.error('LinkedIn Routes: Error in /pending-people/skip:', error);
+    res.status(500).json({ error: 'Failed to skip', details: error.message });
   }
 });
 

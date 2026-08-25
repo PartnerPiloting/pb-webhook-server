@@ -537,11 +537,21 @@ async function insertImportedMeeting({ title, source, transcriptText, meetingSta
 }
 
 /**
+ * Is this pending entry still awaiting an answer? Resolved (lead created) and declined/skipped
+ * entries stay on the row as history — see resolvePendingLeadByEmail — but are dead for every
+ * "who's waiting?" purpose (digest, portal list, reply tokens, reconcile).
+ */
+function isActivePendingEntry(x) {
+  return !!x && !x.resolvedAt && !x.declinedAt;
+}
+
+/**
  * Meetings waiting on a lead to exist — pending_leads non-null, newest first, per tenant.
  * Pass `email` to narrow to meetings waiting on that specific address (drives both the
  * "email the coach about this person" pass and link-on-lead-create).
+ * Pass `activeOnly: true` to strip resolved/declined entries and drop meetings with none left.
  */
-async function findPendingLeadMeetings({ coachClientId, email, limit = 50 } = {}) {
+async function findPendingLeadMeetings({ coachClientId, email, limit = 50, activeOnly = false } = {}) {
   const p = getPool();
   if (!p) return [];
   const client = await p.connect();
@@ -562,7 +572,12 @@ async function findPendingLeadMeetings({ coachClientId, email, limit = 50 } = {}
       try { pending = JSON.parse(row.pending_leads) || []; } catch (_) { /* tolerate bad cell */ }
       return { ...row, pending };
     };
-    const rows = r.rows.map(clean);
+    let rows = r.rows.map(clean);
+    if (activeOnly) {
+      rows = rows
+        .map((row) => ({ ...row, pending: row.pending.filter(isActivePendingEntry) }))
+        .filter((row) => row.pending.length);
+    }
     if (!email) return rows;
     const needle = String(email).toLowerCase().trim();
     return rows.filter((row) => row.pending.some((x) => x.email === needle));
@@ -610,24 +625,36 @@ async function markPendingLeadDeclined({ coachClientId, email, atISO }) {
 }
 
 /**
- * A lead now EXISTS for `email` — link every meeting that was waiting on it and clear that entry
- * from pending_leads (column goes NULL when nothing left). Idempotent: re-running is a no-op.
- * Returns { linked: [meetingIds] }.
+ * A lead now EXISTS for `email` — link every meeting that was waiting on it and stamp the entry
+ * resolvedAt (+ the lead id). The entry STAYS on the row as history: before 2026-08-26 it was
+ * deleted, which erased every success and made the feature's hit rate unknowable. Resolved
+ * entries are invisible to all "who's waiting?" reads via isActivePendingEntry.
+ * Idempotent: re-running is a no-op (already-resolved entries are skipped). Returns { linked }.
  */
 async function resolvePendingLeadByEmail({ email, airtableLeadId, coachClientId, source = 'pending-resolved' }) {
   const needle = String(email || '').toLowerCase().trim();
   if (!needle || !airtableLeadId) return { linked: [], error: 'email and airtableLeadId required' };
-  const waiting = await findPendingLeadMeetings({ coachClientId, email: needle, limit: 200 });
+  // Not activeOnly: a DECLINED entry still resolves when the lead appears by another route
+  // (the coach adding the person later IS changing their mind). Only resolvedAt is final.
+  const waiting = (await findPendingLeadMeetings({ coachClientId, email: needle, limit: 200 }))
+    .filter((m) => m.pending.some((x) => x.email === needle && !x.resolvedAt));
   const p = getPool();
   if (!p) return { linked: [], error: 'database not available' };
+  const atISO = new Date().toISOString();
   const linked = [];
   for (const m of waiting) {
     try {
       await addMeetingLead(m.id, airtableLeadId, coachClientId || m.coach_client_id, source);
-      const remaining = m.pending.filter((x) => x.email !== needle);
+      // Re-read the FULL entry list for the update (this row's `pending` was active-filtered).
+      const full = await p.query(`SELECT pending_leads FROM recall_meetings WHERE id = $1`, [m.id]);
+      let all = [];
+      try { all = JSON.parse(full.rows[0].pending_leads) || []; } catch (_) { all = m.pending; }
+      const next = all.map((x) => (x.email === needle && !x.resolvedAt
+        ? { ...x, resolvedAt: atISO, leadId: String(airtableLeadId), resolvedVia: source }
+        : x));
       await p.query(
         `UPDATE recall_meetings SET pending_leads = $1, updated_at = now() WHERE id = $2`,
-        [remaining.length ? JSON.stringify(remaining) : null, m.id],
+        [JSON.stringify(next), m.id],
       );
       linked.push(String(m.id));
     } catch (e) {
@@ -636,6 +663,22 @@ async function resolvePendingLeadByEmail({ email, airtableLeadId, coachClientId,
     }
   }
   return { linked };
+}
+
+/**
+ * Transcript heads for a set of meeting ids — feeds read-time name enrichment (pairing a
+ * nameless pending email to a real transcript speaker, see pendingLeadFilter.js). Head only:
+ * speaker labels repeat throughout, the first few KB name everyone.
+ */
+async function getMeetingsTranscriptHeads(ids, chars = 6000) {
+  const p = getPool();
+  const clean = (Array.isArray(ids) ? ids : []).map((x) => parseInt(x, 10)).filter(Number.isFinite);
+  if (!p || !clean.length) return new Map();
+  const r = await p.query(
+    `SELECT id, left(transcript_text, $2) AS head FROM recall_meetings WHERE id = ANY($1::bigint[])`,
+    [clean, Math.max(500, chars)],
+  );
+  return new Map(r.rows.map((row) => [String(row.id), row.head || '']));
 }
 
 /**
@@ -1873,10 +1916,12 @@ module.exports = {
   confirmReconstruction,
   insertImportedMeeting,
   findPendingLeadMeetings,
+  isActivePendingEntry,
   stampPendingLead,
   markPendingLeadNotified,
   markPendingLeadDeclined,
   resolvePendingLeadByEmail,
+  getMeetingsTranscriptHeads,
   fathomRecordingIngested,
   providerRecordingIngested,
   findMeetingsByFathomRecordingId,

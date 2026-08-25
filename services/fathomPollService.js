@@ -251,7 +251,9 @@ async function reconcilePendingLeads() {
   const rows = await findPendingLeadMeetings({ limit: 200 });
   const pairs = new Map(); // "tenant|email" -> {coachClientId, email}
   for (const m of rows) {
-    for (const p of m.pending) {
+    // Resolved entries are done; declined ones STILL link if a lead appears by another route —
+    // declining the ask doesn't mean losing the meeting.
+    for (const p of m.pending.filter((x) => !x.resolvedAt)) {
       const key = `${m.coach_client_id}|${p.email}`;
       if (!pairs.has(key)) pairs.set(key, { coachClientId: m.coach_client_id, email: p.email });
     }

@@ -116,7 +116,9 @@ async function handlePendingReply(mailgunData) {
   const wingguyLeads = require('./wingguyLeads');
 
   // GATE 2 — the token must belong to a LIVE pending entry.
-  const rows = await db.findPendingLeadMeetings({ limit: 200 });
+  // activeOnly: a token whose entry has since been resolved (lead created another way) or
+  // skipped in the portal is dead — the late reply is dropped, not double-actioned.
+  const rows = await db.findPendingLeadMeetings({ limit: 200, activeOnly: true });
   let hit = null;
   for (const m of rows) {
     const entry = m.pending.find((x) => x.replyToken === token);

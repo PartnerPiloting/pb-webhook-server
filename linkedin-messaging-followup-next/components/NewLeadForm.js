@@ -14,7 +14,7 @@ try {
   console.error('Failed to import icons:', error);
 }
 
-const NewLeadForm = ({ onLeadCreated }) => {
+const NewLeadForm = ({ onLeadCreated, initialValues }) => {
   const [formData, setFormData] = useState({
     firstName: '',
     lastName: '',
@@ -23,7 +23,7 @@ const NewLeadForm = ({ onLeadCreated }) => {
     email: '',
     phone: '',
     location: '',
-    
+
     notes: '',
     followUpDate: '',
     noFollowUpNeeded: false, // If true, sets Cease FUP = 'Yes'
@@ -32,6 +32,14 @@ const NewLeadForm = ({ onLeadCreated }) => {
     priority: '',
     linkedinConnectionStatus: ''
   });
+
+  // Pre-fill from "People you've met" (name/email/phone) — the client only pastes the LinkedIn
+  // URL. Merges over the current values whenever a new person is handed in.
+  React.useEffect(() => {
+    if (initialValues && Object.keys(initialValues).length) {
+      setFormData(prev => ({ ...prev, ...initialValues }));
+    }
+  }, [initialValues]);
   
   const [isCreating, setIsCreating] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
