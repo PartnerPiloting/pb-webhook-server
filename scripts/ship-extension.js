@@ -4,22 +4,23 @@
 //   node scripts/ship-extension.js                        push to every configured folder
 //   node scripts/ship-extension.js --client=Guy-Wilson    one client only
 //
-// THREE-LANE DELIVERY (decided 2026-08-21 - doctrine in docs/wingguy-onboarding-checklist.md):
+// DELIVERY LANES (updated 2026-08-25 - doctrine in docs/wingguy-onboarding-checklist.md):
 // every update folder is GUY-OWNED and shared to the client VIEW-ONLY. Client rows carry
 // 'Extension Folder Provider' (gdrive | onedrive) + 'Extension Folder Ref'.
 //
-//   gdrive   - folder in Guy's My Drive, pushed via the Drive API as Guy. Runs anywhere the
-//              GOOGLE_SHIP_* env is set (prod Render one-off job today; mint the refresh token
-//              with scripts/ship-extension-google-auth.js). Ref = the folder ID (or full
-//              drive.google.com URL) of the folder that holds manifest.json.
-//   onedrive - folder in Guy's PERSONAL OneDrive. No API, no Azure app, no consent screens:
-//              the ship copies files into the locally synced folder and the OneDrive client
-//              carries them up. Therefore it runs ON GUY'S MACHINE (where %OneDrive% exists;
-//              override with ONEDRIVE_ROOT). Ref = the folder path relative to the OneDrive
-//              root, ending at the folder that holds manifest.json
-//              (Julian: 'Wingguy/wingguy-extension').
-//   (zip)    - the third lane has no code here: git archive "origin/main:wingguy-extension"
-//              --prefix=Wingguy/ --format=zip, handed to a tech client to self-manage.
+//   onedrive - THE DEFAULT synced lane. Folder in Guy's PERSONAL OneDrive. No API, no Azure
+//              app, no consent screens: the ship copies files into the locally synced folder
+//              and the OneDrive client carries them up. Therefore it runs ON GUY'S MACHINE
+//              (where %OneDrive% exists; override with ONEDRIVE_ROOT). Ref = the folder path
+//              relative to the OneDrive root, ending at the folder that holds manifest.json.
+//   (zip)    - no code here: git archive "origin/main:wingguy-extension" --prefix=Wingguy/
+//              --format=zip, handed to a tech client to self-manage.
+//   gdrive   - PARKED as a client lane 2026-08-25 (Drive's streamed G: mount loses the boot
+//              race and Chrome silently removes the extension - see the checklist doc). The
+//              push still works, kept dormant: folder in Guy's My Drive, pushed via the Drive
+//              API as Guy, anywhere the GOOGLE_SHIP_* env is set (prod Render one-off job;
+//              mint the refresh token with scripts/ship-extension-google-auth.js). Ref = the
+//              folder ID (or full drive.google.com URL) of the folder holding manifest.json.
 //
 // A lane that can't run in the current environment reports SKIPPED per client - never silently
 // dropped; run the same command in the other environment to cover those clients. Failures are
