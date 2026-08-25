@@ -670,19 +670,13 @@ router.post('/api/billing/webhook', express.raw({ type: 'application/json' }), a
 
         switch (event.type) {
             case 'customer.subscription.created': {
+                // Log only - the admin email for a new signup comes from
+                // invoice.payment_succeeded below, which carries the customer's
+                // name, email and amount. Emailing here too meant every signup
+                // produced two emails, one of them all "N/A/Unknown" (this event
+                // has no customer details attached).
                 const subscription = event.data.object;
-                const customerEmail = subscription.customer_email || 'Unknown';
-                logger.info(`🎉 NEW SUBSCRIPTION: ${customerEmail}`);
-                
-                // Send email notification to admin
-                await sendOnboardingNotification({
-                    type: 'subscription',
-                    customerEmail,
-                    amount: subscription.items?.data?.[0]?.price?.unit_amount / 100,
-                    planName: subscription.items?.data?.[0]?.price?.nickname || 'Subscription',
-                    customerId: subscription.customer
-                }, logger);
-                
+                logger.info(`🎉 NEW SUBSCRIPTION: customer ${subscription.customer}`);
                 break;
             }
 
