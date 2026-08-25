@@ -10608,7 +10608,11 @@ router.post("/api/onboard-client", async (req, res) => {
     // Add optional fields if provided
     if (wordpressUserId) newClientRecord[CLIENT_FIELDS.WORDPRESS_USER_ID] = parseInt(wordpressUserId, 10);
     if (req.body.stripeCustomerId) newClientRecord['Stripe Customer ID'] = String(req.body.stripeCustomerId).trim();
-    if (coachId) newClientRecord['Coach'] = coachId.trim();
+    // Every client has a coach and starts actively coached - no coachId given
+    // means Guy. Puts them on the coach dashboard from birth (missed for
+    // Paul Salvage, 25 Aug, and backfilled by hand).
+    newClientRecord['Coach'] = coachId ? coachId.trim() : 'Guy-Wilson';
+    newClientRecord['Coaching Status'] = 'Active';
     if (linkedinUrl) newClientRecord['LinkedIn URL'] = linkedinUrl.trim();
     if (phone) newClientRecord['Phone'] = phone.trim();
     if (googleCalendarEmail) newClientRecord[CLIENT_FIELDS.CALENDAR_EMAIL] = googleCalendarEmail.trim();
