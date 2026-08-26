@@ -90,6 +90,23 @@ const MASTER_FIELDS = [
     description: 'The client\'s Stripe customer id (cus_...). When set, billing lookups (portal Billing page, entitlement) address Stripe by this id instead of guessing by email - the join key between the Clients table and Stripe. Written by the Stripe checkout webhook for new signups; backfilled by hand for existing members during the PMPro cutover (stage 6). Added 2026-08-25 (Stripe cutover stage 2).'
   },
   {
+    name: 'Stripe Subscription ID',
+    type: 'singleLineText',
+    description: 'The client\'s Stripe subscription id (sub_...). Captured automatically by the entitlement webhook when subscription events arrive for a client whose Stripe Customer ID is on the row; backfilled by hand during the stage 6 member migration. Added 2026-08-26 (Stripe cutover stage 2b).'
+  },
+  {
+    name: 'Billing Source',
+    type: 'singleSelect',
+    description: 'Who manages this client\'s billing and Status: pmpro = the WordPress/PMPro daily sync (legacy; BLANK also means this until the backfill); stripe = the Stripe entitlement webhook (new-era clients); complimentary = free by Guy\'s decision - BOTH automated writers walk past them and their access is whatever Guy set by hand. Complimentary clients do not count toward referral introductions. Added 2026-08-26 (Stripe cutover stage 2b).',
+    options: {
+      choices: [
+        { name: 'pmpro', color: 'grayBright' },
+        { name: 'stripe', color: 'purpleBright' },
+        { name: 'complimentary', color: 'greenBright' }
+      ]
+    }
+  },
+  {
     name: 'Email Series Start Date',
     type: 'date',
     description: 'When the client email series (the 14-piece drip, content/one-pagers/SERIES-ARC.md) starts for this client. Per-client choice, set during onboarding; the convention is the END of onboarding (the Linked Helper launch session), so the drip takes over the drumbeat when the weekly sessions stop and fills the collection quiet zone. Blank = series not started. The drip engine (not yet built) sends nothing before this date. Added 2026-08-23.',

@@ -7677,6 +7677,18 @@ async function applyMembershipSyncToClients(allClients, membershipByWpUserId, lo
 
     logger.info(`\n--- Processing: ${clientName} (${clientId}) ---`);
 
+    // Stripe cutover stage 2 fence: this sync only manages clients whose billing
+    // lives in WordPress/PMPro. 'stripe' rows belong to the Stripe entitlement
+    // webhook; 'complimentary' rows are free by Guy's decision and belong to no
+    // billing system. Blank = legacy = pmpro (status quo until the backfill).
+    const billingSource = String(client.billingSource || '').trim().toLowerCase();
+    if (billingSource === 'stripe' || billingSource === 'complimentary') {
+      logger.info(`⏭️ SKIPPING: ${clientName} Billing Source = ${billingSource} - not this sync's to manage`);
+      results.skipped++;
+      results.details.push({ clientId, clientName, action: 'skipped', reason: `Billing Source = ${billingSource}`, status: currentStatus });
+      continue;
+    }
+
     if (statusManagement.toLowerCase() === 'manual') {
       logger.info(`⏭️ SKIPPING: ${clientName} has Status Management set to "Manual"`);
       results.skipped++;
@@ -10585,8 +10597,11 @@ router.post("/api/onboard-client", async (req, res) => {
       [CLIENT_FIELDS.AIRTABLE_BASE_ID]: airtableBaseId.trim(),
       [CLIENT_FIELDS.STATUS]: 'Active',
       // No WordPress User ID = Stripe-born: Manual keeps the PMPro sync's
-      // no-WP-ID force-pause off them (interim until Billing Source ships).
+      // no-WP-ID force-pause off them until the Stripe entitlement webhook
+      // takes the pen (stage 2 flip). Billing Source names their caretaker
+      // from birth either way.
       [CLIENT_FIELDS.STATUS_MANAGEMENT]: wordpressUserId ? 'Automatic' : 'Manual',
+      'Billing Source': wordpressUserId ? 'pmpro' : 'stripe',
       [CLIENT_FIELDS.SERVICE_LEVEL]: serviceLevel,
       [CLIENT_FIELDS.TIMEZONE]: timezone,
       [CLIENT_FIELDS.PROFILE_SCORING_TOKEN_LIMIT]: defaults.profileScoringTokenLimit,

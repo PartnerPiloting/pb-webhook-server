@@ -70,6 +70,25 @@ Stripe Customer ID: ${data.customerId}
     }
 }
 
+/**
+ * Plain admin alert email (Mailgun) - same plumbing as the onboarding
+ * notification, different subject/body. Never throws.
+ */
+async function sendAdminAlert({ subject, text }, logger) {
+    try {
+        const adminEmail = process.env.ADMIN_NOTIFICATION_EMAIL || process.env.ALERT_EMAIL || 'guyralphwilson@gmail.com';
+        if (!process.env.MAILGUN_API_KEY || !process.env.MAILGUN_DOMAIN) {
+            logger.warn(`Mailgun not configured - alert logged only: ${subject}`);
+            return;
+        }
+        const fromEmail = process.env.FROM_EMAIL || `noreply@${process.env.MAILGUN_DOMAIN}`;
+        await sendMailgunEmail({ from: fromEmail, to: adminEmail, subject, text });
+        logger.info(`📧 Admin alert sent: ${subject}`);
+    } catch (error) {
+        logger.error('Failed to send admin alert:', error.message);
+    }
+}
+
 // Middleware to check Stripe availability
 const requireStripe = (req, res, next) => {
     if (!isStripeAvailable()) {
@@ -673,29 +692,50 @@ router.post('/api/billing/webhook', express.raw({ type: 'application/json' }), a
 
         logger.info(`Webhook received: ${event.type}`);
 
+        // Stage 2b: the entitlement watcher, in shadow mode. Subscription events
+        // are judged (would-keep / would-pause) and recorded; nothing writes
+        // Status until STRIPE_ENTITLEMENT_MODE=live after the proving window.
+        const shadow = require('../services/stripeEntitlementShadow');
+
         switch (event.type) {
-            case 'customer.subscription.created': {
-                // Log only - the admin email for a new signup comes from
-                // invoice.payment_succeeded below, which carries the customer's
-                // name, email and amount. Emailing here too meant every signup
-                // produced two emails, one of them all "N/A/Unknown" (this event
-                // has no customer details attached).
+            case 'customer.subscription.created':
+            case 'customer.subscription.updated':
+            case 'customer.subscription.deleted': {
                 const subscription = event.data.object;
-                logger.info(`🎉 NEW SUBSCRIPTION: customer ${subscription.customer}`);
+                // deleted events sometimes arrive before the object shows 'canceled'
+                const subStatus = event.type === 'customer.subscription.deleted'
+                    ? 'canceled'
+                    : subscription.status;
+                if (event.type === 'customer.subscription.created') {
+                    // The admin email for a new signup comes from
+                    // invoice.payment_succeeded, which carries name/email/amount -
+                    // this event has no customer details attached.
+                    logger.info(`🎉 NEW SUBSCRIPTION: customer ${subscription.customer}`);
+                }
+                const client = await shadow.findClientForCustomer(subscription.customer, subscription.customer_email);
+                await shadow.captureSubscriptionId(client, subscription.id);
+                const verdict = await shadow.recordShadowDecision({
+                    eventId: event.id,
+                    eventType: event.type,
+                    customerId: subscription.customer,
+                    subscriptionId: subscription.id,
+                    subscriptionStatus: subStatus,
+                    client
+                });
+                await shadow.applyShadowDecision(client, verdict.wouldStatus, `stripe ${event.type}: ${subStatus}`);
                 break;
             }
 
             case 'invoice.payment_succeeded': {
                 const invoice = event.data.object;
-                
+
                 // Only notify for first-time payments (onboarding)
-                // Check if this is the customer's first invoice
-                const isFirstPayment = invoice.billing_reason === 'subscription_create' || 
+                const isFirstPayment = invoice.billing_reason === 'subscription_create' ||
                                        invoice.billing_reason === 'manual';
-                
+
                 if (isFirstPayment) {
                     logger.info(`🎉 NEW CUSTOMER PAYMENT: ${invoice.customer_email || invoice.id}`);
-                    
+
                     await sendOnboardingNotification({
                         type: 'payment',
                         customerEmail: invoice.customer_email,
@@ -708,15 +748,42 @@ router.post('/api/billing/webhook', express.raw({ type: 'application/json' }), a
                 break;
             }
 
-            case 'customer.subscription.deleted': {
-                const subscription = event.data.object;
-                logger.info(`❌ SUBSCRIPTION CANCELLED: ${subscription.customer_email || subscription.id}`);
-                break;
-            }
-
             case 'invoice.payment_failed': {
                 const invoice = event.data.object;
                 logger.warn(`⚠️ PAYMENT FAILED: ${invoice.customer_email || invoice.id}`);
+
+                const client = await shadow.findClientForCustomer(invoice.customer, invoice.customer_email);
+                await shadow.recordShadowDecision({
+                    eventId: event.id,
+                    eventType: event.type,
+                    customerId: invoice.customer,
+                    subscriptionId: typeof invoice.subscription === 'string' ? invoice.subscription : invoice.subscription?.id,
+                    subscriptionStatus: null,
+                    client
+                });
+
+                // The day-0 promise from the cutover brief: Guy hears about a
+                // failed payment immediately. Stripe keeps retrying (the
+                // three-week dunning window) - access is untouched here.
+                const nextTry = invoice.next_payment_attempt
+                    ? new Date(invoice.next_payment_attempt * 1000).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })
+                    : 'no further retries scheduled';
+                await sendAdminAlert({
+                    subject: `⚠️ Payment failed: ${client?.clientName || invoice.customer_name || invoice.customer_email || invoice.customer}`,
+                    text: [
+                        `A payment just failed - Stripe is handling the retries; nothing for you to do yet.`,
+                        ``,
+                        `Client: ${client?.clientName || 'not matched to a client record'}`,
+                        `Email: ${invoice.customer_email || 'unknown'}`,
+                        `Amount: $${(invoice.amount_due / 100).toFixed(2)}`,
+                        `Attempt: ${invoice.attempt_count || 1}`,
+                        `Next retry: ${nextTry}`,
+                        ``,
+                        `If the card recovers, everything continues on its own. If Stripe gives up`,
+                        `after its retry window, the subscription cancels and (once the entitlement`,
+                        `watcher is live) their access switches off automatically.`
+                    ].join('\n')
+                }, logger);
                 break;
             }
 
