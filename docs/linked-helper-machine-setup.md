@@ -12,8 +12,9 @@ that hole.
 Status of what is below:
 
 - **Proven on real hardware (Guy's Acer, 26 Aug 2026):** the launch command, the version-proof
-  path via `Update.exe`, "Restart after updates" already ticked by default, and the fact that
-  nothing reopens by itself after a restart.
+  path via `Update.exe`, "Restart after updates" already ticked by default, the fact that nothing
+  reopens by itself after a restart, and that the command starts **both** the Launcher and the
+  instance - so the hourly update check keeps running rather than being bypassed.
 - **Written but NOT yet tested end to end:** the two scheduled tasks in Part 4. The command they
   run is proven; the Task Scheduler wrapper around it is not. Test it on the Acer before running
   it on a client machine.
@@ -197,6 +198,12 @@ Airtable - that answers it for every client at once, in seconds, and it is the s
 before any follow-up call.
 
 Remote in when the data says it has stopped, or when you actually want to change a campaign.
+
+**Check the version number occasionally.** The command starts the Launcher, so updates should apply
+normally - confirmed as far as "the Launcher is running", not as far as "an update has been watched
+landing". Guy's Acer was on **2.130.25 on 26 Aug 2026**. If a machine has not moved off its version
+after a month, updates are not applying and it needs looking at - the failure would be silent, and a
+machine running a version LinkedIn has already broken looks perfectly alive while doing nothing.
 
 Note also that Linked Helper's Launcher can start an account on a machine other than the one you are
 sitting at - "Open on remote machine and run campaigns" - so routine campaign work may not need a
