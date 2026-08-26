@@ -11,13 +11,15 @@ that hole.
 
 Status of what is below:
 
+- ⚠ **BLOCKER, found 26 Aug 2026 - do not use this on a client machine yet.** The start command
+  does not start the campaigns runner. See "KNOWN GAP" in Part 3.
 - **Proven on real hardware (Guy's Acer, 26 Aug 2026):** the launch command, the version-proof
   path via `Update.exe`, "Restart after updates" already ticked by default, the fact that nothing
   reopens by itself after a restart, and that the command starts **both** the Launcher and the
   instance - so the hourly update check keeps running rather than being bypassed.
-- **Written but NOT yet tested end to end:** the two scheduled tasks in Part 4. The command they
-  run is proven; the Task Scheduler wrapper around it is not. Test it on the Acer before running
-  it on a client machine.
+- **Written but NOT yet tested end to end:** the two scheduled tasks in Part 4. The Task Scheduler
+  wrapper is untested, and pointless until the gap above is closed - it would faithfully start a
+  Linked Helper that then sits there doing nothing.
 
 ---
 
@@ -103,8 +105,48 @@ run the same thing without a human.
 (`app-2.130.25`), which changes every time Linked Helper updates itself - a command written that
 way works today and silently breaks in a month. `Update.exe` always points at the current version.
 
-To test it by hand: quit Linked Helper completely (check Task Manager shows no `linked-helper.exe`),
-then run it and watch. Campaigns should come back running, from where they left off, with no clicks.
+### ⚠ KNOWN GAP - this command does NOT start the campaigns runner (26 Aug 2026)
+
+Tested on the Acer: the command opens the Launcher and the instance correctly, but the instance
+comes up with **`--app-start-running-campaigns=false`** and the runner stopped. The button in the
+instance reads "Start campaigns runner", and nothing happens until a human presses it.
+
+`--start-account-id` appears to be the equivalent of the Launcher's plain **"Open"**, not
+**"Open and run campaigns"**. Appending `--app-start-running-campaigns=true` to the arguments makes
+no difference - the Launcher ignores it.
+
+**So this checklist is NOT yet usable on a client machine.** Everything else works; a machine set up
+this way would come back after a reboot with every window open and nothing running - which looks
+healthy and collects nothing. That is a worse failure than an obvious one.
+
+Open routes, cheapest first:
+
+1. Look in the instance's own **Settings** for an option to start the campaigns runner
+   automatically. Not yet checked.
+2. **Ask Linked Helper support the precise question:** "`--start-account-id` opens the account but
+   leaves the campaigns runner stopped - is there a command-line way to start the runner too?"
+   Depending on their answer to *learn a flag* is fine; depending on their cloud *at runtime* is
+   what we refuse to do.
+3. Read the flag names out of the Launcher's `app.asar`. Attempted 26 Aug, inconclusive.
+4. Last resort: a small script on the machine that detects the stopped runner and clicks Start.
+   Fragile against a Linked Helper redesign, but ours and on the machine.
+
+To test any candidate: quit Linked Helper completely (`Get-Process linked-helper` shows nothing),
+run the command, wait a minute, then check both the button and the flag:
+
+```powershell
+Get-CimInstance Win32_Process -Filter "Name='linked-helper.exe'" |
+  Where-Object { $_.CommandLine -like '*resources\out\*' -and $_.CommandLine -notlike '*--type=*' } |
+  ForEach-Object {
+    if ($_.CommandLine -match '--app-start-running-campaigns=(\w+)') { "app-start-running-campaigns = $($Matches[1])" }
+    else { "flag NOT PRESENT" }
+  }
+```
+
+Also unexplained from the same evening: the runner was found **stopped** some time after a
+successful manual start, around 9pm. Could be innocent (daily limits, action working hours) or could
+be the same gap. Worth pinning down, because it decides whether the watchdog needs to check the
+*runner* rather than just the *process*.
 
 ---
 
