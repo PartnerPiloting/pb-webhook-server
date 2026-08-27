@@ -173,6 +173,18 @@ function buildProfileBlock(profile = {}) {
     lines.push(String(profile.pageText).slice(0, PROFILE_CHAR_CAP));
   }
 
+  // Source ledger for the lines above (Wayne Merry, 2026-08-27). Each field is page-first with the
+  // CRM filling gaps, so a single unattributed line leaves the model GUESSING which source it came
+  // from when the coach asks what their CRM holds — and it guessed wrong, out loud. Only rendered
+  // when a CRM record was actually merged (no record → nothing to misattribute to).
+  if (Array.isArray(profile._filledFromPortal)) {
+    const ledgerLabels = { name: 'Name', headline: 'Headline', jobTitle: 'Job title', companyName: 'Company', about: 'About' };
+    const fromCrm = profile._filledFromPortal.map((k) => ledgerLabels[k]).filter(Boolean);
+    lines.push(fromCrm.length
+      ? `(Sources: ${fromCrm.join(', ')} came from your CRM record; every other profile line above came from the LinkedIn page. Location is tagged on its own line. When the coach asks what their CRM holds, answer from these sources — never guess.)`
+      : `(Sources: every profile line above came from the LinkedIn page — the CRM record matched but added none of these fields. Location is tagged on its own line. When the coach asks what their CRM holds, answer from these sources — never guess.)`);
+  }
+
   // Private CRM context pulled from the Portal (Airtable) by enrichProfileFromPortal(). Fenced + clearly
   // labelled so the model uses it for angle/tone/timing but NEVER quotes or reveals it to the lead.
   const portal = [];
@@ -330,10 +342,11 @@ async function enrichProfileFromPortal(req, profile = {}) {
     // see pickLocation(): there the CRM is the standing truth and the page must earn its place.
     const portal = portalFieldsFromRecord(records[0].fields || {});
     const merged = { ...profile };
+    const filledFromPortal = [];
     for (const [k, v] of Object.entries(portal)) {
       if (k === 'location') continue;   // handled by pickLocation below — deliberately NOT gap-fill
       const has = merged[k] != null && String(merged[k]).trim() !== '';
-      if (!has && v != null && String(v).trim() !== '') merged[k] = v;
+      if (!has && v != null && String(v).trim() !== '') { merged[k] = v; filledFromPortal.push(k); }
     }
     const picked = pickLocation(profile.location, portal.location);
     merged.location = picked.value;
@@ -341,6 +354,10 @@ async function enrichProfileFromPortal(req, profile = {}) {
     // guesses where it came from — which is exactly how it told Guy his CRM held "Australia" when that
     // string had been scraped off the page (Wayne Merry, 2026-08-27).
     merged._locationSource = picked.source;
+    // Which of the page-first fields the CRM actually supplied — buildProfileBlock renders this as a
+    // one-line source ledger, so the model never again tells Guy his CRM holds something it read off
+    // the page (the location half of Wayne Merry, 2026-08-27, applied to the rest of the merge).
+    merged._filledFromPortal = filledFromPortal;
     // Carry the matched record id so the chat agent can WRITE back (update_lead_email). Non-enumerable-ish
     // underscore key: buildProfileBlock/detectTemplate read named fields only, so it never reaches the model.
     merged._leadRecordId = records[0].id;

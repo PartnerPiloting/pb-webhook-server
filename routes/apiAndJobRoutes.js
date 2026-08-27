@@ -8556,22 +8556,15 @@ router.get("/api/calendar/availability", async (req, res) => {
       return res.status(401).json({ error: `Calendar not configured. Share your calendar with: ${require('../config/calendarServiceAccount.js').serviceAccountEmail || 'service account'}` });
     }
 
-    const resolveTz = async (loc, fallback) => {
-      const rule = getTimezoneFromLocation(loc);
-      if (rule) return rule;
-      const gemini = require('../config/geminiClient.js');
-      if (!gemini?.geminiModel) return fallback;
-      try {
-        const result = await gemini.geminiModel.generateContent(`What is the IANA timezone for "${loc}"? Reply ONLY with the timezone. Example: America/New_York`);
-        const text = (result.response?.candidates?.[0]?.content?.parts?.[0]?.text || '').trim();
-        const m = text.match(/^[A-Za-z]+\/[A-Za-z_]+$/);
-        if (m) return m[0];
-      } catch (e) {
-        logger.warn(`Gemini timezone fallback failed: ${e.message}`);
-      }
-      return fallback;
-    };
-    const leadTimezone = leadLocation.trim() ? await resolveTz(leadLocation, yourTimezone) : yourTimezone;
+    // Rules ONLY — the Gemini guess is gone (2026-08-27). An LLM asked for the timezone of a bare
+    // "Australia" (774 of Guy's leads are stored exactly like that) confidently picks one of five
+    // zones, not the same one every call, and the page then labels times with it as if it were fact.
+    // The rules table deliberately has NO bare-country entry; guessing a state papered over that.
+    // Unmappable now falls back to the coach's own zone with leadTzDetected:false, and the page
+    // renders its existing honest branch — the time labelled with the COACH's city — instead.
+    const detectedLeadTz = leadLocation.trim() ? getTimezoneFromLocation(leadLocation) : null;
+    const leadTimezone = detectedLeadTz || yourTimezone;
+    const leadTzDetected = !!detectedLeadTz;
 
     const formatTimeInTimezone = (isoTime, timezone) => {
       const date = new Date(isoTime);
@@ -8619,7 +8612,7 @@ router.get("/api/calendar/availability", async (req, res) => {
       })),
     }));
 
-    return res.json({ days: availabilitySlots, yourTimezone, leadTimezone });
+    return res.json({ days: availabilitySlots, yourTimezone, leadTimezone, leadTzDetected });
   } catch (error) {
     logger.error('Availability error:', error.message);
     return res.status(500).json({ error: error.message });
@@ -8650,22 +8643,6 @@ router.post("/api/calendar/chat", async (req, res) => {
       return res.status(500).json({ error: 'AI service not available' });
     }
 
-    // Resolve lead timezone: shared rules first, then Gemini fallback for unknowns
-    const resolveLeadTimezone = async (location, fallbackTz) => {
-      const rule = getTimezoneFromLocation(location);
-      if (rule) return rule;
-      if (!geminiConfig?.geminiModel) return fallbackTz;
-      try {
-        const prompt = `What is the IANA timezone identifier for "${location}"? Reply ONLY with the timezone. Example: America/New_York`;
-        const result = await geminiConfig.geminiModel.generateContent(prompt);
-        const text = (result.response?.candidates?.[0]?.content?.parts?.[0]?.text || '').trim();
-        const match = text.match(/^[A-Za-z]+\/[A-Za-z_]+$/);
-        if (match) return match[0];
-      } catch (e) {
-        logger.warn(`Gemini timezone fallback failed for "${location}": ${e.message}`);
-      }
-      return fallbackTz;
-    };
 
     // Format time in a specific timezone
     const formatTimeInTimezone = (isoTime, timezone) => {
@@ -8748,9 +8725,14 @@ router.post("/api/calendar/chat", async (req, res) => {
       return res.status(401).json({ error: calendarError });
     }
 
-    // Detect lead timezone: shared rules first, then Gemini fallback for unknowns
+    // Detect lead timezone: shared RULES only — no Gemini guess (2026-08-27, see availability above).
+    // This zone feeds the system prompt AND the interpretation of times the LEAD proposes ("Thu 9:30
+    // works"), so a guessed Sydney for a bare "Australia" would silently shift a lead's own words by
+    // an hour during DST. Unmappable → coach's zone, and the prompt is told it is an assumption.
     const leadLocationKnown = context.leadLocation && context.leadLocation.trim() !== '';
-    const leadTimezone = leadLocationKnown ? await resolveLeadTimezone(context.leadLocation, yourTimezone) : yourTimezone;
+    const detectedLeadTz = leadLocationKnown ? getTimezoneFromLocation(context.leadLocation) : null;
+    const leadTimezone = detectedLeadTz || yourTimezone;
+    const leadTzDetected = !!detectedLeadTz;
 
     // Get today's date IN THE USER'S TIMEZONE (not server time)
     // This ensures "today" and "tomorrow" are correct for the user
@@ -8891,7 +8873,7 @@ router.post("/api/calendar/chat", async (req, res) => {
 
 WHO IS WHO (CRITICAL):
 - USER: ${context.yourName} is the person you are chatting with. They are in ${yourTimezone.split('/').pop()?.replace('_', ' ')} (${yourTimezone}).
-- LEAD: ${context.leadName} is the person being invited to the meeting. They are in ${leadCity} (${leadTimezone}).
+- LEAD: ${context.leadName} is the person being invited to the meeting. ${leadTzDetected ? `They are in ${leadCity} (${leadTimezone}).` : `Their location ${leadLocationKnown ? `"${context.leadLocation}" could not be mapped to a timezone` : 'is not on file'} — every time below ASSUMES the USER's own timezone (${yourTimezone}). Say that assumption out loud whenever you propose, convert or confirm a time, and ask the user to confirm where the lead is based.`}
 - You are helping the USER book a meeting with the LEAD.
 
 PASTED MESSAGES (when user pastes text):
@@ -9290,6 +9272,7 @@ CALENDAR DATA RANGE:
       message: cleanMessage,
       action,
       leadTimezone,
+      leadTzDetected,
       yourTimezone,
     });
 
