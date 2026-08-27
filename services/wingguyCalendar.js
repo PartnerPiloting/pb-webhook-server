@@ -60,10 +60,13 @@ async function getCoachCalendarInfo(clientId) {
   // calendar (blank = the provider default) so "where did that meeting go?" has a boring answer.
   const calendarReadIds = rec.fields['Calendar Read IDs'] || null;
   const calendarWriteId = rec.fields['Calendar Write ID'] || null;
+  // Fallback identity for "which attendee is the coach" on lanes where Calendar Email must stay
+  // blank (Unipile) — see calendarProvider.coachSelfEmail. Never used as a calendar credential.
+  const clientEmailAddress = rec.fields['Client Email Address'] || null;
   if (!calendarEmail && !nylasGrantId && !unipileAccountId && !calendarProviderToken) {
     throw new Error('No calendar for this client — share a calendar with the service account (Google), connect via Unipile/Nylas, or connect a direct provider (e.g. Zoho) first.');
   }
-  return { calendarEmail, timezone, nylasGrantId, calendarProvider, unipileAccountId, calendarProviderToken, calendarProviderDomain, calendarReadIds, calendarWriteId };
+  return { calendarEmail, timezone, nylasGrantId, calendarProvider, unipileAccountId, calendarProviderToken, calendarProviderDomain, calendarReadIds, calendarWriteId, clientEmailAddress };
 }
 
 // The calendar provider a coach actually uses. ADDITIVE + Guy-safe: if the client shared a Google
@@ -93,6 +96,9 @@ function coachForCalendar(info) {
     nylasGrantId: info.nylasGrantId,
     unipileAccountId: info.unipileAccountId || null,
     googleCalendarEmail: info.calendarEmail || '',
+    // Last-resort "who is me" for self-attendee detection — blank Calendar Email is the norm on the
+    // Unipile lane, and without this no event ever looks like the coach's own (calendarProvider.js).
+    clientEmailAddress: info.clientEmailAddress || null,
     calendarProviderToken: info.calendarProviderToken || null,
     calendarProviderDomain: info.calendarProviderDomain || null,
     // The ONE nominated write target: the seam reads whichever name its branch uses (Zoho uid /
