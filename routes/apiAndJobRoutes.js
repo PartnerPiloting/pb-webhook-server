@@ -870,7 +870,7 @@ router.get("/score-lead", async (req, res) => {
         debugLogger.warn(`score-lead: Profile Full JSON is empty for lead ID: ${id}`);
          await clientBase("Leads").update(id, {
             "AI Score": 0,
-            "Scoring Status": "Skipped – Profile JSON missing",
+            "Scoring Status": "Skipped – Profile Too Thin", // was "Profile JSON missing" - not a defined choice in any base, so the write always failed
             "AI Profile Assessment": "",
             "AI Attribute Breakdown": "",
           });
@@ -887,7 +887,7 @@ router.get("/score-lead", async (req, res) => {
     if (about.length < 40) {
       await clientBase("Leads").update(id, {
         "AI Score": 0,
-        "Scoring Status": "Skipped – Profile JSON too small",
+        "Scoring Status": "Skipped – Profile Too Thin", // was "Profile JSON too small" - not a defined choice in any base, so the write always failed
         "AI Profile Assessment": "",
         "AI Attribute Breakdown": "",
       });
