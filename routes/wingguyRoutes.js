@@ -144,7 +144,11 @@ function buildProfileBlock(profile = {}) {
   };
   add('Name', profile.name);
   add('Headline', profile.headline);
-  add('Location', profile.location);
+  // Location carries its source (see pickLocation). The model must never have to guess whether this
+  // came from the CRM or off the page — it guessed wrong and told Guy so (Wayne Merry, 2026-08-27).
+  add('Location', profile.location && profile._locationSource
+    ? `${profile.location}  [source: ${profile._locationSource} — say which when you tell Guy where they are]`
+    : profile.location);
   add('Current role/company', profile.currentRole);
   add('Job title', profile.jobTitle);
   add('Company', profile.companyName);
@@ -257,6 +261,29 @@ function portalFieldsFromRecord(f = {}) {
   };
 }
 
+// LOCATION does NOT follow the page-wins rule the rest of the enrichment uses (Wayne Merry, 2026-08-27).
+// The messaging-surface scrape grabs a loose grey-text node and came back with a bare "Australia" while
+// the CRM held "Blackburn, Victoria, Australia". Gap-fill then DISCARDED the good value, and
+// getTimezoneFromLocation("Australia") maps to nothing — so the draft silently fell back to Guy's own
+// timezone and the model reported the scraped country as what the CRM held. Precedence now:
+//   1. the CRM's Location — curated, and the only one Guy can correct
+//   2. the page — ONLY when the CRM is blank, or when it names the SAME place with more detail
+//      (page CONTAINS the CRM string). That second case protects the ~5% of leads stored as a bare
+//      country: standing on their real profile page, "Blackburn, Victoria, Australia" still beats "Australia".
+// Where they said they are in the THREAD beats both, but that is the model's call, not this merge's —
+// it comes through propose_times' leadTimezoneOverride.
+function pickLocation(pageLoc, portalLoc) {
+  const page = String(pageLoc == null ? '' : pageLoc).trim();
+  const crm = String(portalLoc == null ? '' : portalLoc).trim();
+  if (!crm) return { value: page, source: page ? 'the LinkedIn page' : '' };
+  if (!page) return { value: crm, source: 'your CRM record' };
+  const p = page.toLowerCase();
+  const c = crm.toLowerCase();
+  // Same place, more detail on the page — take the detail.
+  if (p !== c && p.includes(c)) return { value: page, source: 'the LinkedIn page' };
+  return { value: crm, source: 'your CRM record' };
+}
+
 // Best-effort: enrich the scraped profile with the lead's stored Portal (Airtable) record, keyed by the
 // LinkedIn profile URL Wingguy already extracts (name as fallback). This is what lets a reply/rebook from
 // the MESSAGES draw on real context — it fills the gaps the page didn't provide (About/headline aren't in
@@ -299,13 +326,21 @@ async function enrichProfileFromPortal(req, profile = {}) {
     }
 
     // The live page wins where it has a value; the Portal fills gaps AND supplies the CRM-only fields
-    // (which are never on the page, so the loop always attaches them).
+    // (which are never on the page, so the loop always attaches them). LOCATION is the one exception —
+    // see pickLocation(): there the CRM is the standing truth and the page must earn its place.
     const portal = portalFieldsFromRecord(records[0].fields || {});
     const merged = { ...profile };
     for (const [k, v] of Object.entries(portal)) {
+      if (k === 'location') continue;   // handled by pickLocation below — deliberately NOT gap-fill
       const has = merged[k] != null && String(merged[k]).trim() !== '';
       if (!has && v != null && String(v).trim() !== '') merged[k] = v;
     }
+    const picked = pickLocation(profile.location, portal.location);
+    merged.location = picked.value;
+    // Provenance for the rendered "Location:" line. Without it the model sees one bare location and
+    // guesses where it came from — which is exactly how it told Guy his CRM held "Australia" when that
+    // string had been scraped off the page (Wayne Merry, 2026-08-27).
+    merged._locationSource = picked.source;
     // Carry the matched record id so the chat agent can WRITE back (update_lead_email). Non-enumerable-ish
     // underscore key: buildProfileBlock/detectTemplate read named fields only, so it never reaches the model.
     merged._leadRecordId = records[0].id;

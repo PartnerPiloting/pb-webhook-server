@@ -90,7 +90,7 @@ const AGENT_TOOLS = [
         includeLunch: { type: 'boolean', description: 'Set true ONLY when Guy explicitly wants to offer a lunch-time slot — otherwise lunch (12:00–12:45) is dropped from the list.' },
         includeSoon: { type: 'boolean', description: 'Set true ONLY when Guy explicitly asked for today/tomorrow — otherwise slots before the day after tomorrow are dropped (his one-clear-day rule). Past times are always dropped.' },
         includeWeekends: { type: 'boolean', description: 'Set true ONLY when Guy explicitly wants a weekend slot — otherwise weekend slots are dropped.' },
-        leadTimezoneOverride: { type: 'string', description: 'IANA timezone (e.g. "Pacific/Auckland") — set ONLY when the THREAD says the lead will be somewhere other than their profile location at the meeting time (e.g. "I\'m in NZ from Tuesday for a week" and the offered days fall in that window). The time list and its "(all times are … time)" line then render in THAT zone — where the lead will BE beats where they live. Tell Guy you did this. Leave unset normally.' },
+        leadTimezoneOverride: { type: 'string', description: 'IANA timezone (e.g. "Pacific/Auckland") — set it when the THREAD tells you where the lead is and the record does not, or is vaguer. TWO cases. (1) TRAVEL: they will be somewhere else at the meeting time ("I\'m in NZ from Tuesday for a week" and the offered days fall in that window) — where the lead will BE beats where they live. (2) VAGUE RECORD: the record holds only a country or something unmappable ("Australia") and the thread names an actual place ("happy to grab a coffee when you\'re in Melbourne") — the conversation beats a vague record, and this is the common one. The time list and its "(all times are … time)" line then render in THAT zone. ALWAYS tell Guy you took it from the thread, quote the line you took it from, and offer to save it to their record — never save it yourself off an inference. Leave unset when the record already pins them down.' },
       },
       required: ['slotTimes'],
     },
@@ -442,10 +442,16 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
       // the SILENT fallback — location missing/unrecognised means the times quietly assume Guy's
       // own timezone, so that variant is a warning the agent must relay, not bury.
       const leadLoc = String(profile.location || '').trim();
-      const tzKnown = availTz.leadTzDetected !== undefined ? availTz.leadTzDetected : !!(leadLoc && getTimezoneFromLocation(leadLoc));
-      const leadBase = tzKnown
-        ? `Lead is based in ${leadLoc} — ${tzDiffer ? `draft times are ${tzCity(leadTz)} time (both clocks shown in offeredTimes)` : `same clock as Guy right now (draft's "(all times are ${tzCity(leadTz)} time)" line covers it)`}. Tell Guy where the lead is based when you present the draft.`
-        : `⚠ Lead's location is ${leadLoc ? `"${leadLoc}", which I can't map to a timezone` : 'missing from the profile'} — the draft ASSUMES Guy's own timezone (${tzCity(tz)}). Say this to Guy plainly and ask him to confirm where the lead is based before sending.`;
+      const profileTzKnown = availTz.leadTzDetected !== undefined ? availTz.leadTzDetected : !!(leadLoc && getTimezoneFromLocation(leadLoc));
+      // Report the zone the times were ACTUALLY rendered in. This used to be derived from
+      // profile.location alone, so a thread override drafted (say) Melbourne times while telling Guy
+      // it had assumed Brisbane — confident and wrong in the same breath (2026-08-27).
+      const overrode = leadTz !== (availTz.leadTimezone || tz);
+      const leadBase = overrode
+        ? `Lead's record says ${leadLoc ? `"${leadLoc}"` : 'nothing about where they are'}, but the THREAD puts them in ${tzCity(leadTz)} — the draft is written in ${tzCity(leadTz)} time. Tell Guy you took that from the conversation rather than the record, quote the line you took it from, and ask whether to save it to their record (wingguy_update_lead) so every future draft gets it right. Do NOT save it yourself off an inference — that is Guy's call.`
+        : profileTzKnown
+          ? `Lead is based in ${leadLoc} — ${tzDiffer ? `draft times are ${tzCity(leadTz)} time (both clocks shown in offeredTimes)` : `same clock as Guy right now (draft's "(all times are ${tzCity(leadTz)} time)" line covers it)`}. Tell Guy where the lead is based when you present the draft.`
+          : `⚠ Lead's location is ${leadLoc ? `"${leadLoc}", which I can't map to a timezone` : 'missing from the record'} — the draft ASSUMES Guy's own timezone (${tzCity(tz)}). BEFORE you tell Guy that, re-read the thread: if the lead named a place they are in or near (a city, a suburb, "when you're in Melbourne"), call propose_times AGAIN with leadTimezoneOverride set to that zone — the conversation beats a vague record. Only if the thread says nothing about where they are, say this to Guy plainly and ask him to confirm where the lead is based before sending.`;
       // NO automatic holds (Guy's call, 2026-07-06 — the auto-hold experiment shipped and was pulled
       // the same afternoon: 8 HOLD blocks incl. duplicates piled up within half an hour and made the
       // diary unreadable). Guy places "HOLD: <lead name>" events MANUALLY when a promise is worth
