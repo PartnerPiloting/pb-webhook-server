@@ -452,12 +452,18 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
         : profileTzKnown
           ? `Lead is based in ${leadLoc} — ${tzDiffer ? `draft times are ${tzCity(leadTz)} time (both clocks shown in offeredTimes)` : `same clock as Guy right now (draft's "(all times are ${tzCity(leadTz)} time)" line covers it)`}. Tell Guy where the lead is based when you present the draft.`
           : `⚠ Lead's location is ${leadLoc ? `"${leadLoc}", which I can't map to a timezone` : 'missing from the record'} — the draft ASSUMES Guy's own timezone (${tzCity(tz)}). BEFORE you tell Guy that, re-read the thread: if the lead named a place they are in or near (a city, a suburb, "when you're in Melbourne"), call propose_times AGAIN with leadTimezoneOverride set to that zone — the conversation beats a vague record. Only if the thread says nothing about where they are, say this to Guy plainly and ask him to confirm where the lead is based before sending.`;
+      // THREAD-POISON GUARD (Shira, 2026-08-27): a junk location once made Wingguy tell a Melbourne
+      // lead "9am your time (Bunbury) … which is 11am for me". The record was fixed, but that wrong
+      // conversion now sits in the thread IN GUY'S OWN VOICE — and the next draft harmonised with it
+      // (kept the +2h maths, swapped the label to Melbourne: an impossible sentence). Earlier thread
+      // messages are HISTORY, not facts; the tool result above is the only source of time truth.
+      const poisonGuard = ' OVERRIDES THE THREAD: if any earlier message in this conversation states a different location or a different time conversion for this lead — even one Guy himself sent (a wrong city in brackets, a wrong "which is Xpm for me") — that message was WRONG. Never repeat it, never blend the draft with its arithmetic, and never average the two. Use ONLY the times in this tool result, and tell Guy plainly that the earlier message mis-stated the lead\'s timezone so he can clear it up with the lead.';
       // NO automatic holds (Guy's call, 2026-07-06 — the auto-hold experiment shipped and was pulled
       // the same afternoon: 8 HOLD blocks incl. duplicates piled up within half an hour and made the
       // diary unreadable). Guy places "HOLD: <lead name>" events MANUALLY when a promise is worth
       // protecting; book_meeting still respects and clears them (see below).
       return {
-        ok: true, offered: ordered.length, offeredTimes, leadBase, dropped,
+        ok: true, offered: ordered.length, offeredTimes, leadBase: leadBase + poisonGuard, dropped,
         ...(beyondNextWeek.length ? { beyondNextWeek, warning: `These offered times fall BEYOND next week (fallback weeks): ${beyondNextWeek.join('; ')}. Never describe them as "this week" or "next week" in the draft or to Guy, and only offer them because nearer days couldn't fill the options — say that plainly.` } : {}),
       };
     }
@@ -478,12 +484,22 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
       const cMin = minutesInTz(r.startISO, tz);
       const withinHours = (eMin == null || lMin == null || cMin == null) ? true : (cMin >= eMin && cMin <= lMin);
       const hitsLunch = inLunch(r.startISO, tz, prefs, r.durationMins);
+      // CODE-OWNED clock facts (Shira, 2026-08-27): display/leadDisplay alone didn't stop the model
+      // writing its own conversion in prose — it echoed a wrong "+2h" from an earlier thread message
+      // even though both strings here said the clocks matched. So the result now states the
+      // relationship in words and forbids model arithmetic outright.
+      const sameClock = r.display === r.leadDisplay;
+      const clockRule = (sameClock
+        ? `${r.display} for Guy IS the same wall-clock time for the lead — their clocks are IDENTICAL right now. Any draft or chat line must show ONE time, the same for both sides.`
+        : `${r.display} for Guy = ${r.leadDisplay} for the lead (${tzCity(r.leadTimezone)}). Quote these exact strings.`)
+        + ' NEVER derive a timezone conversion yourself. If any earlier message in this thread states a different conversion for this lead — even one Guy himself sent — that message was WRONG: use only these code-computed times, and tell Guy plainly the earlier message mis-stated the lead\'s timezone.';
       return {
         ok: true,
         startISO: r.startISO,
         durationMins: r.durationMins,
         display: r.display,
         leadDisplay: r.leadDisplay,
+        clockRule,
         free: r.clashes.length === 0,
         clashes: r.clashes,
         withinHours,
