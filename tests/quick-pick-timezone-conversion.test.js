@@ -154,6 +154,22 @@ function runTests() {
     }
   }
 
+  // Test 10: the Brisbane/Melbourne offset relationship FLIPS at the October DST boundary — equal
+  // in July, one hour apart in late October. Any label decided from "now" instead of the slot's own
+  // instant goes wrong on one side of this line (the quick-pick label bug, 2026-08-27).
+  {
+    const { getOffsetMinutesForDate } = require('../utils/slotTimeParser.js');
+    const winterSame = getOffsetMinutesForDate('Australia/Brisbane', '2025-07-24') === getOffsetMinutesForDate('Australia/Melbourne', '2025-07-24');
+    const springDiffer = getOffsetMinutesForDate('Australia/Brisbane', '2025-10-24') !== getOffsetMinutesForDate('Australia/Melbourne', '2025-10-24');
+    if (winterSame && springDiffer) {
+      console.log(`✓ Test 10: Brisbane/Melbourne offsets equal in July, differ in late October`);
+      passed++;
+    } else {
+      console.log(`✗ Test 10: Expected equal-July/differ-October, got winterSame=${winterSame}, springDiffer=${springDiffer}`);
+      failed++;
+    }
+  }
+
   // Test 9: a bare country maps to NOTHING — deliberately. There is no "australia" rule because
   // guessing a state from a country is wrong five ways; callers must fall back HONESTLY (coach's
   // zone + a said-out-loud assumption), never guess. This locks the gap in so nobody "fixes" it.

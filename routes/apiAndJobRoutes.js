@@ -9304,18 +9304,20 @@ router.post("/api/calendar/quick-pick-message", async (req, res) => {
     const yourFirstName = (context.yourName || '').split(' ')[0] || '';
     const leadTimezone = (context.leadLocation && getTimezoneFromLocation(context.leadLocation)) || context.leadTimezone || yourTimezone;
 
-    const getOffsetMinutes = (tz) => {
-      const d = new Date();
-      const parts = new Intl.DateTimeFormat('en-US', { timeZone: tz, timeZoneName: 'shortOffset' }).formatToParts(d);
+    // Offset AT A GIVEN INSTANT — never "now" (2026-08-27). This label used to be decided from
+    // TODAY's offsets, so while Brisbane and Melbourne share a clock in winter, a slot AFTER the
+    // 5 Oct DST change rendered in Melbourne time with NO label — reading as the coach's own time,
+    // an hour out. The 35-day slot window straddles the transition every spring and autumn, so the
+    // same/different call has to be made per slot, at the slot's own instant.
+    const offsetMinutesAt = (tz, atDate) => {
+      const parts = new Intl.DateTimeFormat('en-US', { timeZone: tz, timeZoneName: 'shortOffset' }).formatToParts(atDate);
       const m = (parts.find(p => p.type === 'timeZoneName')?.value || '').match(/GMT([+-])(\d+)(?::(\d+))?/);
       if (!m) return 0;
       return (m[1] === '+' ? 1 : -1) * (parseInt(m[2], 10) * 60 + parseInt(m[3] || '0', 10));
     };
-    const sameOffset = getOffsetMinutes(yourTimezone) === getOffsetMinutes(leadTimezone);
-    const tzLabel = sameOffset ? '' : ` (${leadTimezone.split('/').pop()})`;
 
     logger.info('Quick pick context:', {
-      yourTimezone, leadTimezone, sameOffset,
+      yourTimezone, leadTimezone,
       leadLocation: context.leadLocation,
       slotCount: selectedSlots.length,
       slot0: selectedSlots[0]?.time,
@@ -9331,7 +9333,8 @@ router.post("/api/calendar/quick-pick-message", async (req, res) => {
         hour: 'numeric', minute: '2-digit', hour12: true,
         timeZone: leadTimezone,
       });
-      return formatted + tzLabel;
+      const sameOffset = offsetMinutesAt(yourTimezone, date) === offsetMinutesAt(leadTimezone, date);
+      return formatted + (sameOffset ? '' : ` (${leadTimezone.split('/').pop()})`);
     };
 
     const formattedSlots = selectedSlots.map(s => formatTimeForMessage(s));
