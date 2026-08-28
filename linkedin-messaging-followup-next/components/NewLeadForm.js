@@ -43,8 +43,33 @@ const NewLeadForm = ({ onLeadCreated, initialValues }) => {
   
   const [isCreating, setIsCreating] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
-  const [showLinkedInHelper, setShowLinkedInHelper] = useState(false);
   const [duplicateCheck, setDuplicateCheck] = useState({ isChecking: false, duplicates: [] });
+  // "Right person" confirmation — when the pasted URL doesn't contain the name typed, the user
+  // must tick a confirm box before Create works. Reset whenever the URL or names change.
+  const [mismatchConfirmed, setMismatchConfirmed] = useState(false);
+
+  // The LinkedIn URL is the record's identity: dedup key, enrichment match key, what /wg and
+  // Linked Helper reconcile against. So it is REQUIRED — the flow is: find them on LinkedIn,
+  // paste the profile address, then fill in the rest (Guy, 2026-08-30).
+  const LINKEDIN_URL_SHAPE = /linkedin\.com\/in\/[^/?#\s]+/i;
+
+  // Does the pasted URL plausibly belong to the person named on the form? Most profile URLs carry
+  // the name ("linkedin.com/in/jane-doe-4b21"), so a slug containing NEITHER name is worth a
+  // "check it's the right person" nudge. Deliberately conservative: vanity/short/non-ASCII slugs
+  // (fewer than two readable words) return false — we can't judge those, so we never nag on them.
+  const slugNameMismatch = () => {
+    const m = String(formData.linkedinProfileUrl || '').toLowerCase().match(/linkedin\.com\/in\/([^/?#\s]+)/);
+    if (!m) return false;
+    let slug = m[1];
+    try { slug = decodeURIComponent(slug); } catch { /* keep raw */ }
+    const tokens = slug.split(/[-_.]/).filter(t => /^[a-z]{2,}$/.test(t));
+    if (tokens.length < 2) return false;
+    const first = String(formData.firstName || '').trim().toLowerCase();
+    const last = String(formData.lastName || '').trim().toLowerCase();
+    if (!first || !last) return false;
+    const appears = (name) => tokens.some(t => t === name || t.startsWith(name) || name.startsWith(t));
+    return !appears(first) && !appears(last);
+  };
 
   // Check for duplicate leads based on LinkedIn Profile URL
   const checkForDuplicates = async () => {
@@ -118,11 +143,16 @@ const NewLeadForm = ({ onLeadCreated, initialValues }) => {
     if (field === 'linkedinProfileUrl') {
       setDuplicateCheck({ isChecking: false, duplicates: [] });
     }
+    // A changed URL or name invalidates any earlier "yes, right person" confirmation
+    if (field === 'linkedinProfileUrl' || field === 'firstName' || field === 'lastName') {
+      setMismatchConfirmed(false);
+    }
   };
 
   // Validate required fields
   const validateForm = () => {
     const requiredFields = [
+      { field: 'linkedinProfileUrl', label: 'LinkedIn Profile URL' },
       { field: 'firstName', label: 'First Name' },
       { field: 'lastName', label: 'Last Name' },
       { field: 'source', label: 'Source' },
@@ -131,12 +161,32 @@ const NewLeadForm = ({ onLeadCreated, initialValues }) => {
 
     for (const { field, label } of requiredFields) {
       if (!formData[field] || formData[field].trim() === '') {
-        setMessage({ 
-          type: 'error', 
-          text: `${label} is required` 
+        setMessage({
+          type: 'error',
+          text: field === 'linkedinProfileUrl'
+            ? 'LinkedIn Profile URL is required - find their profile on LinkedIn and paste its address here'
+            : `${label} is required`
         });
         return false;
       }
+    }
+
+    // The URL has to actually be a LinkedIn profile address (linkedin.com/in/...)
+    if (!LINKEDIN_URL_SHAPE.test(formData.linkedinProfileUrl)) {
+      setMessage({
+        type: 'error',
+        text: 'That doesn\'t look like a LinkedIn profile URL - it should look like https://www.linkedin.com/in/username'
+      });
+      return false;
+    }
+
+    // "Right person" check: if the URL doesn't contain the name typed, ask for an explicit confirm
+    if (slugNameMismatch() && !mismatchConfirmed) {
+      setMessage({
+        type: 'error',
+        text: 'The URL doesn\'t appear to contain this person\'s name - tick "Yes, this is the right person" below the URL to confirm before creating'
+      });
+      return false;
     }
     
     // Require either a follow-up date OR "No follow-up needed" checkbox
@@ -180,11 +230,6 @@ const NewLeadForm = ({ onLeadCreated, initialValues }) => {
       // Prepare data for creation
       const createData = { ...formData };
       
-      // Show helper message if LinkedIn URL will be auto-generated
-      if (!createData.linkedinProfileUrl || createData.linkedinProfileUrl.trim() === '') {
-        setShowLinkedInHelper(true);
-      }
-
       const newLead = await createLead(createData);
       
       // Success! Clear form and show message
@@ -211,9 +256,8 @@ const NewLeadForm = ({ onLeadCreated, initialValues }) => {
         priority: '',
         linkedinConnectionStatus: ''
       });
-      
-      setShowLinkedInHelper(false);
-      
+      setMismatchConfirmed(false);
+
       // Notify parent component if callback provided
       if (onLeadCreated) {
         onLeadCreated(newLead);
@@ -232,7 +276,6 @@ const NewLeadForm = ({ onLeadCreated, initialValues }) => {
         type: 'error', 
         text: error.message || 'Failed to create lead. Please try again.' 
       });
-      setShowLinkedInHelper(false);
     } finally {
       setIsCreating(false);
     }
@@ -258,7 +301,7 @@ const NewLeadForm = ({ onLeadCreated, initialValues }) => {
       linkedinConnectionStatus: ''
     });
     setMessage({ type: '', text: '' });
-    setShowLinkedInHelper(false);
+    setMismatchConfirmed(false);
   };
 
   // Form field configurations (same as LeadDetailForm)
@@ -307,16 +350,6 @@ const NewLeadForm = ({ onLeadCreated, initialValues }) => {
         </div>
       )}
 
-      {/* LinkedIn URL helper message */}
-      {showLinkedInHelper && (
-        <div className="mb-6 p-4 rounded-lg bg-blue-100 text-blue-800">
-          <p className="text-sm">
-            💡 No LinkedIn URL yet - add it when you have it. Once you open their LinkedIn profile,
-            Wingguy fills in their details and score automatically.
-          </p>
-        </div>
-      )}
-
       {/* Duplicate lead warning message */}
       {duplicateCheck.duplicates.length > 0 && (
         <div className="mb-6 p-4 rounded-lg bg-yellow-100 text-yellow-800">
@@ -343,38 +376,11 @@ const NewLeadForm = ({ onLeadCreated, initialValues }) => {
           </h4>
           
           <div className="space-y-3">
+            {/* THE URL COMES FIRST (Guy, 2026-08-30): find them on LinkedIn, paste their profile
+                address, then fill in the rest. It's the record's identity — no URL, no lead. */}
             <div className="flex">
               <label className="w-32 text-sm font-medium text-gray-700 flex-shrink-0 py-2">
-                First Name *
-              </label>
-              <input
-                type="text"
-                value={formData.firstName || ''}
-                onChange={(e) => handleChange('firstName', e.target.value)}
-                className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                required
-                placeholder="Enter first name"
-              />
-            </div>
-            
-            <div className="flex">
-              <label className="w-32 text-sm font-medium text-gray-700 flex-shrink-0 py-2">
-                Last Name *
-              </label>
-              <input
-                type="text"
-                value={formData.lastName || ''}
-                onChange={(e) => handleChange('lastName', e.target.value)}
-                onBlur={checkForDuplicates}
-                className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                required
-                placeholder="Enter last name"
-              />
-            </div>
-
-            <div className="flex">
-              <label className="w-32 text-sm font-medium text-gray-700 flex-shrink-0 py-2">
-                LinkedIn Profile URL
+                LinkedIn Profile URL *
               </label>
               <div className="flex-1">
                 <input
@@ -387,12 +393,13 @@ const NewLeadForm = ({ onLeadCreated, initialValues }) => {
                     setTimeout(() => checkForDuplicates(), 100);
                   }}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                  placeholder="https://www.linkedin.com/in/username (optional)"
+                  required
+                  placeholder="https://www.linkedin.com/in/username"
                 />
                 <p className="text-xs text-gray-500 mt-1">
-                  Worth pasting if you have it - it&apos;s how Wingguy matches this person on LinkedIn,
-                  and their profile details and score are filled in automatically the first time you
-                  open their profile. Can be added later.
+                  Step 1: find this person on LinkedIn and paste their profile address here. It&apos;s how
+                  Wingguy prevents duplicates, and their profile details and score are filled in
+                  automatically the first time you open their profile.
                 </p>
               </div>
             </div>
@@ -414,7 +421,7 @@ const NewLeadForm = ({ onLeadCreated, initialValues }) => {
                           <ExclamationTriangleIcon className="h-5 w-5 text-red-600 mr-2" />
                         )}
                         <span className="text-sm font-medium text-red-800">
-                          {duplicateCheck.duplicates.length === 1 
+                          {duplicateCheck.duplicates.length === 1
                             ? `Duplicate found: ${String(duplicateCheck.duplicates[0]['First Name'] || '')} ${String(duplicateCheck.duplicates[0]['Last Name'] || '')}`
                             : `${duplicateCheck.duplicates.length} duplicates found`
                           }
@@ -426,6 +433,61 @@ const NewLeadForm = ({ onLeadCreated, initialValues }) => {
                       ✓ No duplicate LinkedIn profiles found
                     </div>
                   )}
+                </div>
+              </div>
+            )}
+
+            <div className="flex">
+              <label className="w-32 text-sm font-medium text-gray-700 flex-shrink-0 py-2">
+                First Name *
+              </label>
+              <input
+                type="text"
+                value={formData.firstName || ''}
+                onChange={(e) => handleChange('firstName', e.target.value)}
+                className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                required
+                placeholder="Enter first name"
+              />
+            </div>
+
+            <div className="flex">
+              <label className="w-32 text-sm font-medium text-gray-700 flex-shrink-0 py-2">
+                Last Name *
+              </label>
+              <input
+                type="text"
+                value={formData.lastName || ''}
+                onChange={(e) => handleChange('lastName', e.target.value)}
+                onBlur={checkForDuplicates}
+                className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                required
+                placeholder="Enter last name"
+              />
+            </div>
+
+            {/* "Right person" check — the pasted URL doesn't contain the name typed. Vanity slugs
+                are real, so this warns and asks for a tick rather than refusing outright. */}
+            {slugNameMismatch() && (
+              <div className="flex">
+                <div className="w-32 flex-shrink-0"></div>
+                <div className="flex-1 bg-yellow-50 border border-yellow-200 rounded-md p-3">
+                  <p className="text-sm text-yellow-800 mb-2">
+                    {ExclamationTriangleIcon && (
+                      <ExclamationTriangleIcon className="h-5 w-5 inline mr-1 align-text-bottom" />
+                    )}
+                    The URL you pasted doesn&apos;t appear to contain &quot;{formData.firstName} {formData.lastName}&quot; -
+                    double-check it&apos;s really their profile and not someone else&apos;s.
+                  </p>
+                  <label className="flex items-center text-sm text-yellow-900 font-medium cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={mismatchConfirmed}
+                      onChange={(e) => setMismatchConfirmed(e.target.checked)}
+                      className="h-4 w-4 mr-2"
+                    />
+                    Yes, this is the right person
+                  </label>
                 </div>
               </div>
             )}
