@@ -21,6 +21,7 @@ import React, { useState, useEffect, useCallback, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { getBackendBase } from '../services/api';
 import { PageNav, usePageAuth } from './WingguyReview';
+import ClaudeKeySection from './ClaudeKeySection';
 
 function WingguySetupInner() {
   const searchParams = useSearchParams();
@@ -243,7 +244,7 @@ function WingguySetupInner() {
       </header>
 
       {/* account plumbing - shown only to BYO-key clients, urgent when the key is missing/dead */}
-      <ClaudeKeySection authHeaders={authHeaders} />
+      <ClaudeKeySection authHeaders={authHeaders} variant="setup" />
 
       {/* the blanks */}
       <section className="flex flex-col gap-6">
@@ -363,151 +364,6 @@ function WingguySetupInner() {
         </p>
       </div>
     </Shell>
-  );
-}
-
-/**
- * "Your Claude key" - self-service for the BYO Anthropic key (Julian's ask, 28 Aug 2026).
- * One paste box is the whole door: first key, replacement, and re-check all go through it. The
- * stored key is never shown or sent to the browser - the status endpoint serves a masked tail
- * only, and every pasted key is live-tested against Anthropic server-side BEFORE being stored
- * (the common failure is a real key on an account with no credit, not a bad paste).
- * Managed-plan clients never see this section; on any status-load failure it hides rather than
- * breaking the page - the section is additive.
- */
-function ClaudeKeySection({ authHeaders }) {
-  const [st, setSt] = useState({ status: 'loading' }); // loading | hidden | ready(+key status)
-  const [draft, setDraft] = useState('');
-  const [busy, setBusy] = useState(false); // false | 'save' | 'recheck' | 'remove'
-  const [msg, setMsg] = useState(null); // { kind: 'ok' | 'err', text }
-
-  const endpoint = `${getBackendBase()}/api/wingguy/setup/claude-key`;
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch(endpoint, { headers: authHeaders() });
-        const data = await res.json().catch(() => ({}));
-        if (cancelled) return;
-        setSt(res.ok && data.ok && !data.managed ? { status: 'ready', ...data } : { status: 'hidden' });
-      } catch (e) {
-        if (!cancelled) setSt({ status: 'hidden' });
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [endpoint, authHeaders]);
-
-  const call = async (kind, options) => {
-    setBusy(kind); setMsg(null);
-    try {
-      const res = await fetch(endpoint, options);
-      const data = await res.json().catch(() => ({}));
-      if (res.ok && data.ok) {
-        setSt({ status: 'ready', ...data });
-        setDraft('');
-        setMsg({
-          kind: 'ok',
-          text: kind === 'remove'
-            ? 'Key removed. Drafting and your overnight brief are off until a new one is added.'
-            : 'Key checked with Anthropic and saved - Wingguy is running on it now.',
-        });
-      } else {
-        setMsg({ kind: 'err', text: data.error || 'That did not work - try again.' });
-      }
-    } catch (e) {
-      setMsg({ kind: 'err', text: 'Could not reach Wingguy - check your connection and try again.' });
-    }
-    setBusy(false);
-  };
-
-  const saveKey = () => call('save', {
-    method: 'POST',
-    headers: authHeaders({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ key: draft.trim() }),
-  });
-  const recheck = () => call('recheck', {
-    method: 'POST',
-    headers: authHeaders({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ recheck: true }),
-  });
-  const removeKey = () => {
-    if (!window.confirm('Remove your key? Wingguy stops drafting for you (and your overnight brief stops) until a new one is added.')) return;
-    call('remove', { method: 'DELETE', headers: authHeaders() });
-  };
-
-  if (st.status !== 'ready') return null;
-
-  const niceDate = (iso) => { try { return new Date(iso).toLocaleDateString(); } catch (e) { return ''; } };
-
-  return (
-    <section className="flex flex-col gap-4">
-      <SectionHead
-        title="Your Claude key"
-        sub="Wingguy writes with Claude, on your own Anthropic key, so your usage is billed to you and only you. Paste a key from the Anthropic Console here - it gets tested with Anthropic before anything is saved."
-      />
-
-      {st.failingSince ? (
-        <div className="border-l-4 border-red-600 bg-red-50 px-4 py-3 text-[15px] text-red-900">
-          <strong>Your key stopped working{niceDate(st.failingSince) ? ` on ${niceDate(st.failingSince)}` : ''}.</strong>{' '}
-          {st.failReason === 'billing'
-            ? 'The account looks out of credit, or over its spend limit. Top up or raise the limit in the Anthropic Console, then press "Check again" - or paste a new key.'
-            : 'It looks revoked or invalid. Paste a new key from the Anthropic Console.'}
-        </div>
-      ) : null}
-
-      {st.hasKey ? (
-        <p className="text-[15px] text-slate-600">
-          Key on file: <span className="font-mono text-slate-800">{st.masked}</span>
-          {st.addedAt ? ` · added ${niceDate(st.addedAt)}` : ''}
-          {!st.failingSince ? ' · working at last check' : ''}
-        </p>
-      ) : (
-        <div className="border-l-4 border-amber-500 bg-amber-50 px-4 py-3 text-[15px] text-amber-900">
-          <strong>No Claude key yet.</strong> Drafting and your overnight brief are switched off
-          until one is added. It takes a minute: create a key in the Anthropic Console, paste it
-          below, done.
-        </div>
-      )}
-
-      <div className="flex flex-col sm:flex-row gap-3 max-w-2xl">
-        <input
-          type="password"
-          autoComplete="off"
-          spellCheck={false}
-          className="flex-1 border border-slate-300 rounded px-3 py-2 font-mono text-sm text-slate-800 placeholder:font-sans"
-          placeholder={st.hasKey ? 'Paste a replacement key (sk-ant-…)' : 'Paste your key (sk-ant-…)'}
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          disabled={!!busy}
-        />
-        <button
-          type="button"
-          onClick={saveKey}
-          disabled={!!busy || !draft.trim()}
-          className="px-4 py-2 rounded bg-emerald-700 text-white text-sm font-semibold disabled:opacity-40 hover:bg-emerald-800"
-        >
-          {busy === 'save' ? 'Checking with Anthropic…' : st.hasKey ? 'Replace key' : 'Save key'}
-        </button>
-      </div>
-
-      {st.hasKey ? (
-        <div className="flex items-center gap-5 text-sm">
-          <button type="button" onClick={recheck} disabled={!!busy}
-            className="text-emerald-800 font-semibold underline underline-offset-2 disabled:opacity-40 hover:text-emerald-900">
-            {busy === 'recheck' ? 'Checking…' : 'Check again'}
-          </button>
-          <button type="button" onClick={removeKey} disabled={!!busy}
-            className="text-slate-500 underline underline-offset-2 disabled:opacity-40 hover:text-red-700">
-            {busy === 'remove' ? 'Removing…' : 'Remove key'}
-          </button>
-        </div>
-      ) : null}
-
-      {msg ? (
-        <p className={`text-[15px] ${msg.kind === 'ok' ? 'text-emerald-800' : 'text-red-700'}`}>{msg.text}</p>
-      ) : null}
-    </section>
   );
 }
 

@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useEffect, Suspense } from 'react';
+import React, { useState, useEffect, useCallback, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { getAttributes, saveAttribute, toggleAttributeActive, getTokenUsage, getPostTokenUsage, getPostAttributes, getPostAttributeForEditing, getPostAISuggestions, savePostAttributeChanges, togglePostAttributeActive } from '../services/api';
 import { CogIcon, UserGroupIcon, DocumentTextIcon, ArrowLeftIcon, CreditCardIcon, ShieldCheckIcon, KeyIcon, ExclamationTriangleIcon, ClipboardDocumentIcon, CheckIcon } from '@heroicons/react/24/outline';
@@ -8,6 +8,7 @@ import Link from 'next/link';
 import AIEditModal from './AIEditModal';
 import HelpButton from './HelpButton';
 import RescorePanel from './RescorePanel';
+import ClaudeKeySection from './ClaudeKeySection';
 import { ArrowPathIcon } from '@heroicons/react/24/outline';
 
 // Component that uses useSearchParams wrapped in Suspense
@@ -101,6 +102,12 @@ const SettingsWithParams = () => {
     setCurrentView('posts');
     loadTokenUsage('posts'); // Load post token usage
   };
+
+  // Stable (useCallback) because ClaudeKeySection uses it as an effect dependency. Never throws:
+  // getAuthenticatedHeaders throws pre-auth, and the section shows its own error state instead.
+  const claudeKeyAuthHeaders = useCallback((extra = {}) => {
+    try { return { ...getAuthenticatedHeaders(), ...extra }; } catch (e) { return { ...extra }; }
+  }, []);
 
   const handleViewSecurity = () => {
     setCurrentView('security');
@@ -697,6 +704,29 @@ const SettingsWithParams = () => {
                 </div>
               </div>
 
+              {/* Your Claude Key (BYO Anthropic key self-service; managed-plan clients get an explainer) */}
+              <div
+                className="bg-white rounded-lg border border-gray-200 p-6 hover:border-blue-300 cursor-pointer transition-colors"
+                onClick={() => setCurrentView('claudekey')}
+              >
+                <div className="flex items-center space-x-3 mb-4">
+                  <div className="flex-shrink-0">
+                    <KeyIcon className="h-8 w-8 text-sky-600" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-900">
+                      Your Claude Key
+                    </h3>
+                  </div>
+                </div>
+                <p className="text-sm text-gray-500 mb-4">
+                  Wingguy writes with Claude on your own Anthropic key. Add it, replace it, or check it is still working.
+                </p>
+                <div className="flex items-center text-sm text-sky-600 font-medium">
+                  Manage Claude Key →
+                </div>
+              </div>
+
               {/* Re-score Leads (gated by master "Rescore Enabled") */}
               {rescoreEnabled && (
               <div
@@ -748,6 +778,41 @@ const SettingsWithParams = () => {
           </p>
         </div>
         <RescorePanel />
+      </div>
+    );
+  }
+
+  // Your Claude Key view (shared ClaudeKeySection - same section as /my-wingguy/setup)
+  if (currentView === 'claudekey') {
+    return (
+      <div className="space-y-6">
+        <div>
+          <div className="flex items-center space-x-3">
+            <button
+              onClick={handleBackToMenu}
+              className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-sm font-medium rounded text-gray-700 bg-white hover:bg-gray-50"
+            >
+              <ArrowLeftIcon className="h-4 w-4 mr-1" />
+              Back to Settings
+            </button>
+            <div>
+              <h2 className="text-2xl font-bold text-gray-900">Your Claude Key</h2>
+              <p className="mt-1 text-sm text-gray-500">
+                Wingguy writes with Claude on your own Anthropic key - your usage is billed to you and only you
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="max-w-xl mx-auto">
+          <div className="bg-white rounded-lg border border-gray-200 p-6">
+            <div className="flex items-center space-x-3 mb-4">
+              <KeyIcon className="h-6 w-6 text-sky-600" />
+              <h3 className="text-lg font-semibold text-gray-900">Manage your key</h3>
+            </div>
+            <ClaudeKeySection authHeaders={claudeKeyAuthHeaders} variant="settings" />
+          </div>
+        </div>
       </div>
     );
   }
