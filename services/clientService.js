@@ -1755,6 +1755,74 @@ function clearSystemSettingsCache() {
     systemSettingsCacheTimestamp = null;
 }
 
+// --- Client Anthropic (Claude) key self-service --------------------------------------------------
+// The portal's "Your Claude key" section writes through here (routes/wingguyRoutes.js, which
+// live-tests a key against Anthropic BEFORE calling this). The key value is write-only from the
+// portal: stored on the master record, never sent back to a browser.
+
+/**
+ * Set (or clear, with '') a client's stored Anthropic key. Stamps when it was added and clears
+ * any standing key-failure flag - a freshly saved key starts clean.
+ */
+async function updateClientAnthropicKey(clientId, key) {
+    const base = initializeClientsBase();
+    const client = await getClientById(clientId);
+    if (!client) throw new Error(`Client ${clientId} not found`);
+    const clean = String(key || '').trim();
+    const fields = {
+        'Anthropic API Key': clean,
+        'Anthropic Key Added At': clean ? new Date().toISOString() : null,
+        'Anthropic Key Failing Since': null,
+        'Anthropic Key Fail Reason': '',
+    };
+    try {
+        await base('Clients').update([{ id: client.id, fields }]);
+    } catch (e) {
+        // The stamp fields roll out via ensure-client-fields.js; a base that predates them must
+        // not block the key write itself.
+        if (/UNKNOWN_FIELD_NAME/i.test(String(e))) {
+            await base('Clients').update([{ id: client.id, fields: { 'Anthropic API Key': clean } }]);
+        } else {
+            throw e;
+        }
+    }
+    clientsCache = null;
+    clientsCacheTimestamp = null;
+    logger.info(`Anthropic key ${clean ? 'updated' : 'removed'} for client ${clientId} (portal self-service)`);
+    return true;
+}
+
+/**
+ * Stamp a client's record when their stored key is rejected mid-flight ('revoked' | 'billing'),
+ * so the portal can show "your key stopped working since X" instead of the client discovering it
+ * draft-by-draft. Only the FIRST failure sets the timestamp ("failing since" stays honest);
+ * updateClientAnthropicKey clears it when a key is saved or re-checked good. Never throws -
+ * callers fire-and-forget this from error paths.
+ */
+async function noteClientKeyFailure(clientId, reason) {
+    try {
+        const base = initializeClientsBase();
+        const client = await getClientById(clientId);
+        if (!client) return false;
+        const already = client.rawRecord && client.rawRecord.get('Anthropic Key Failing Since');
+        if (already) return true;
+        await base('Clients').update([{
+            id: client.id,
+            fields: {
+                'Anthropic Key Failing Since': new Date().toISOString(),
+                'Anthropic Key Fail Reason': String(reason || ''),
+            },
+        }]);
+        clientsCache = null;
+        clientsCacheTimestamp = null;
+        logger.warn(`Anthropic key FAILING stamped for client ${clientId} (${reason})`);
+        return true;
+    } catch (e) {
+        logger.warn(`noteClientKeyFailure(${clientId}) could not stamp: ${e.message}`);
+        return false;
+    }
+}
+
 module.exports = {
     getAllClients,
     getAllActiveClients,
@@ -1781,6 +1849,9 @@ module.exports = {
     // Floor system functions
     getClientFloorConfig,
     updateClientFloorConfig,
+    // Client Claude-key self-service (portal "Your Claude key" section)
+    updateClientAnthropicKey,
+    noteClientKeyFailure,
     validateLeadAgainstFloor,
     getFloorValidationSummary,
     // Fire-and-forget tracking functions

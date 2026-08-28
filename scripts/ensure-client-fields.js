@@ -85,6 +85,23 @@ const LEADS_FIELDS = [
 // Fields to ensure on the master Clients base's Clients table (per-client config).
 const MASTER_FIELDS = [
   {
+    name: 'Anthropic Key Added At',
+    type: 'dateTime',
+    description: 'When the client\'s BYO Anthropic key was last saved (portal "Your Claude key" section or a re-check that passed). Written by clientService.updateClientAnthropicKey; shown masked on the setup page. Blank on keys pasted into Airtable by hand before this rollout. Added 2026-08-28 (Julian\'s key-ran-out session).',
+    options: { dateFormat: { name: 'iso', format: 'YYYY-MM-DD' }, timeFormat: { name: '24hour', format: 'HH:mm' }, timeZone: 'utc' }
+  },
+  {
+    name: 'Anthropic Key Failing Since',
+    type: 'dateTime',
+    description: 'First moment the client\'s stored Anthropic key was rejected mid-flight (revoked, or account out of credit / over its spend limit). Stamped fire-and-forget by clientService.noteClientKeyFailure from the drafting error path; drives the red "your key stopped working" banner on the setup page. Cleared whenever a key is saved or re-checked good. Blank = no standing failure. Added 2026-08-28.',
+    options: { dateFormat: { name: 'iso', format: 'YYYY-MM-DD' }, timeFormat: { name: '24hour', format: 'HH:mm' }, timeZone: 'utc' }
+  },
+  {
+    name: 'Anthropic Key Fail Reason',
+    type: 'singleLineText',
+    description: 'Why the stored Anthropic key is failing: "revoked" (invalid/revoked key) or "billing" (credit/spend limit). Written beside Anthropic Key Failing Since; cleared with it. Added 2026-08-28.'
+  },
+  {
     name: 'Stripe Customer ID',
     type: 'singleLineText',
     description: 'The client\'s Stripe customer id (cus_...). When set, billing lookups (portal Billing page, entitlement) address Stripe by this id instead of guessing by email - the join key between the Clients table and Stripe. Written by the Stripe checkout webhook for new signups; backfilled by hand for existing members during the PMPro cutover (stage 6). Added 2026-08-25 (Stripe cutover stage 2).'

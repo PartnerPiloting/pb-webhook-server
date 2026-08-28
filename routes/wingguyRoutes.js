@@ -25,7 +25,7 @@
 const express = require('express');
 const { createLogger } = require('../utils/contextLogger');
 const { authenticateUserWithTestMode } = require('../middleware/authMiddleware');
-const { getAnthropicClient, resolveClientAnthropic, NO_ANTHROPIC_KEY_MSG, isAnthropicConfigured, anthropicKeyError } = require('../config/anthropicClient');
+const { getAnthropicClient, getAnthropicClientForKey, resolveClientAnthropic, NO_ANTHROPIC_KEY_MSG, isAnthropicConfigured, anthropicKeyError, claudeModelId } = require('../config/anthropicClient');
 const rulesSource = require('../services/wingguyRulesSource');
 const { getBookingPrefs } = require('../config/wingguyBookingPrefs');
 const { createBookingEvent } = require('../services/wingguyCalendar');
@@ -104,9 +104,16 @@ const ANTHROPIC_KEY_ERROR_MSG = {
 // route handles a rejected key / overload / real bug identically. Key/billing failure -> 400 + a
 // clear "fix your key" message (surfaced, never retried on the platform key); transient upstream
 // overload -> 503 "try again"; anything else -> 500 raw.
-function respondClaudeError(res, e) {
+function respondClaudeError(res, e, req) {
   const keyReason = anthropicKeyError(e);
-  if (keyReason) return res.status(400).json({ ok: false, error: ANTHROPIC_KEY_ERROR_MSG[keyReason], keyError: keyReason });
+  if (keyReason) {
+    // Stamp the record so the portal's "Your Claude key" section can show "stopped working since
+    // X" instead of the client discovering it draft-by-draft. Fire-and-forget: the response must
+    // never wait on (or fail over) an Airtable write.
+    const cid = req && req.client && req.client.clientId;
+    if (cid) clientService.noteClientKeyFailure(cid, keyReason).catch(() => {});
+    return res.status(400).json({ ok: false, error: ANTHROPIC_KEY_ERROR_MSG[keyReason], keyError: keyReason });
+  }
   const friendly = transientClaudeError(e);
   return res.status(friendly ? 503 : 500).json({ ok: false, error: friendly || e.message });
 }
@@ -512,7 +519,7 @@ module.exports = function mountWingguy(app) {
       });
     } catch (e) {
       logger.error(`[Wingguy] draft-thanks failed: ${e.message}`);
-      return respondClaudeError(res, e);
+      return respondClaudeError(res, e, req);
     }
   });
 
@@ -571,7 +578,7 @@ module.exports = function mountWingguy(app) {
       return res.json({ ok: true, draft, model: WINGGUY_DRAFT_MODEL_ID, mode: 'reply' });
     } catch (e) {
       logger.error(`[Wingguy] draft-reply failed: ${e.message}`);
-      return respondClaudeError(res, e);
+      return respondClaudeError(res, e, req);
     }
   });
 
@@ -702,7 +709,7 @@ module.exports = function mountWingguy(app) {
     } catch (e) {
       logger.error(`[Wingguy] chat failed: ${e.message}`);
       // Key/billing failure -> clear "fix your key" (400); transient overload -> 503; else 500.
-      return respondClaudeError(res, e);
+      return respondClaudeError(res, e, req);
     }
   });
 
@@ -929,6 +936,115 @@ module.exports = function mountWingguy(app) {
     } catch (e) {
       logger.error(`[Wingguy] setup write failed for ${tenantId} (${scope}/${key}): ${e.message}`);
       return res.status(500).json({ ok: false, error: e.message });
+    }
+  });
+
+  // --- "Your Claude key" - portal self-service for the BYO Anthropic key ------------------------
+  // Add, replace, re-check, or remove the stored key from the setup page. The key VALUE is
+  // write-only: stored on the master record, never sent back to a browser (status serves a masked
+  // tail only). A pasted key is live-tested against Anthropic BEFORE it is stored, because the
+  // common failure is not a bad paste - it is a valid key on an account with no credit (Julian,
+  // 28 Aug), which dies identically a month later. Managed-plan clients have no key to manage;
+  // the status says so and the write doors refuse.
+
+  const CLAUDE_KEY_SHAPE = /^sk-ant-[A-Za-z0-9_-]{24,}$/;
+
+  const maskClaudeKey = (key) => (String(key || '').trim() ? `sk-ant-…${String(key).trim().slice(-4)}` : '');
+
+  function claudeKeyStatusFor(client) {
+    const raw = client && client.rawRecord;
+    const get = (f) => { try { return raw ? (raw.get(f) || null) : null; } catch (_) { return null; } };
+    return {
+      ok: true,
+      managed: !!(client && client.managedClaudeKey),
+      hasKey: !!String((client && client.anthropicApiKey) || '').trim(),
+      masked: maskClaudeKey(client && client.anthropicApiKey),
+      addedAt: get('Anthropic Key Added At'),
+      failingSince: get('Anthropic Key Failing Since'),
+      failReason: get('Anthropic Key Fail Reason'),
+    };
+  }
+
+  // The cheapest real call that exercises BILLING, not just auth: /v1/models would accept a key
+  // whose account has no credit, which is exactly the trap this exists to catch. Throws the raw
+  // SDK error for anthropicKeyError to classify.
+  async function probeClaudeKey(key) {
+    const llm = getAnthropicClientForKey(key);
+    await llm.messages.create({
+      model: claudeModelId,
+      max_tokens: 1,
+      messages: [{ role: 'user', content: 'ping' }],
+    });
+  }
+
+  router.get('/setup/claude-key', async (req, res) => {
+    try {
+      // Fresh read, not req.client: the auth middleware may serve a cached record, and this
+      // status is the page's source of truth right after a save elsewhere.
+      const client = await clientService.getClientById(req.client.clientId);
+      return res.json(claudeKeyStatusFor(client || req.client));
+    } catch (e) {
+      return res.json(claudeKeyStatusFor(req.client));
+    }
+  });
+
+  // Save a new key ({ key }) or re-test the stored one ({ recheck: true }) - both probe Anthropic
+  // first and only touch the record when the probe passes, so a standing good key can never be
+  // replaced by a dead one.
+  router.post('/setup/claude-key', async (req, res) => {
+    const tenantId = req.client.clientId;
+    if (req.client.managedClaudeKey) {
+      return res.status(400).json({ ok: false, error: 'Your account runs on the managed plan - there is no key to manage here.' });
+    }
+    const recheck = !!(req.body && req.body.recheck);
+    const key = recheck
+      ? String(req.client.anthropicApiKey || '').trim()
+      : String((req.body && req.body.key) || '').trim();
+    if (!key) {
+      return res.status(400).json({ ok: false, error: recheck ? 'There is no key on file to check.' : 'Paste your key first.' });
+    }
+    if (!recheck && !CLAUDE_KEY_SHAPE.test(key)) {
+      return res.status(400).json({ ok: false, error: 'That does not look like an Anthropic key - it should start with sk-ant-. Copy it exactly from the Anthropic Console.' });
+    }
+    try {
+      await probeClaudeKey(key);
+    } catch (e) {
+      const reason = anthropicKeyError(e);
+      if (reason === 'revoked') {
+        return res.status(400).json({ ok: false, keyError: reason, error: 'Anthropic rejected that key - it looks revoked or mistyped. Check it in the Anthropic Console and paste it again. Nothing was saved.' });
+      }
+      if (reason === 'billing') {
+        return res.status(400).json({ ok: false, keyError: reason, error: 'That key is real, but its account declined the request - most likely no credit, or the spend limit is reached. Top up or raise the limit in the Anthropic Console, then save the key again. Nothing was saved.' });
+      }
+      if (transientClaudeError(e)) {
+        return res.status(503).json({ ok: false, error: 'Anthropic is busy right now - nothing saved. Try again in a minute.' });
+      }
+      logger.error(`[Wingguy] claude-key probe failed for ${tenantId}: ${e.message}`);
+      return res.status(500).json({ ok: false, error: 'Could not check that key - nothing saved. Try again shortly.' });
+    }
+    try {
+      // Re-saving the same key on a recheck is deliberate: it clears the failing-since stamp.
+      await clientService.updateClientAnthropicKey(tenantId, key);
+      logger.info(`[Wingguy] claude-key ${recheck ? 'rechecked good' : 'saved'} for ${tenantId} (…${key.slice(-4)})${pageName(req) ? ` by ${pageName(req)}` : ''}`);
+      return res.json({ ok: true, managed: false, hasKey: true, masked: maskClaudeKey(key), addedAt: new Date().toISOString(), failingSince: null, failReason: null });
+    } catch (e) {
+      logger.error(`[Wingguy] claude-key save failed for ${tenantId}: ${e.message}`);
+      return res.status(500).json({ ok: false, error: 'The key checked out with Anthropic but could not be saved. Try again shortly.' });
+    }
+  });
+
+  router.delete('/setup/claude-key', async (req, res) => {
+    const tenantId = req.client.clientId;
+    if (req.client.managedClaudeKey) {
+      return res.status(400).json({ ok: false, error: 'Your account runs on the managed plan - there is no key to remove.' });
+    }
+    try {
+      await clientService.updateClientAnthropicKey(tenantId, '');
+      logger.info(`[Wingguy] claude-key removed for ${tenantId}${pageName(req) ? ` by ${pageName(req)}` : ''}`);
+      return res.json({ ok: true, managed: false, hasKey: false, masked: '', addedAt: null, failingSince: null, failReason: null });
+    } catch (e) {
+      logger.error(`[Wingguy] claude-key removal failed for ${tenantId}: ${e.message}`);
+      return res.status(500).json({ ok: false, error: 'Could not remove the key. Try again shortly.' });
     }
   });
 
@@ -1237,7 +1353,7 @@ module.exports = function mountWingguy(app) {
 
       return res.status(400).json({ ok: false, error: `unknown assist mode "${mode}"` });
     } catch (e) {
-      if (transientClaudeError(e)) return respondClaudeError(res, e);
+      if (transientClaudeError(e)) return respondClaudeError(res, e, req);
       logger.error(`[Wingguy] setup assist (${mode}) failed for ${tenantId}: ${e.message}`);
       return res.status(500).json({ ok: false, error: 'That did not work - try again in a moment.' });
     }
