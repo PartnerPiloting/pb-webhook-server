@@ -14,6 +14,14 @@ try {
   console.error('Failed to import icons:', error);
 }
 
+// ---- Live LinkedIn verification (via the Wingguy extension) -----------------------------------
+// The real "is this the right person" check (Guy, 2026-08-30): the extension (0.3.14+) opens the
+// pasted profile in a hidden tab using the user's own LinkedIn session and returns the profile's
+// actual name + headline. The server can never do this - only the browser can. When the extension
+// isn't installed (or the check can't complete) the form falls back to the URL-slug name heuristic.
+const LIVE_CHECK_TIMEOUT_MS = 45000; // hidden-tab read takes ~5-15s; be generous before falling back
+const PING_TIMEOUT_MS = 2500;
+
 const NewLeadForm = ({ onLeadCreated, initialValues }) => {
   const [formData, setFormData] = useState({
     firstName: '',
@@ -44,9 +52,78 @@ const NewLeadForm = ({ onLeadCreated, initialValues }) => {
   const [isCreating, setIsCreating] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
   const [duplicateCheck, setDuplicateCheck] = useState({ isChecking: false, duplicates: [] });
-  // "Right person" confirmation — when the pasted URL doesn't contain the name typed, the user
-  // must tick a confirm box before Create works. Reset whenever the URL or names change.
+  // "Right person" confirmation — when the check (live or heuristic) doubts the URL belongs to the
+  // person named, the user must tick a confirm box before Create works. Reset on URL/name changes.
   const [mismatchConfirmed, setMismatchConfirmed] = useState(false);
+
+  // Live LinkedIn check state. status: idle | checking | found | notfound | unavailable.
+  // `url` records which URL the result belongs to, so a changed URL invalidates it.
+  const [liveCheck, setLiveCheck] = useState({ status: 'idle', url: '', name: '', headline: '' });
+  const extensionAvailable = React.useRef(null); // null = unknown, then true/false after the ping
+  const pendingVerify = React.useRef({});        // nonce → true while a request is in flight
+
+  // Listen for the extension bridge's replies, and ping once to learn whether it's installed.
+  React.useEffect(() => {
+    const onMessage = (event) => {
+      if (event.source !== window || !event.data) return;
+      const d = event.data;
+      if (d.type === 'WG_PORTAL_PONG') { extensionAvailable.current = true; return; }
+      if (d.type === 'WG_PORTAL_VERIFY_PROFILE_RESULT' && d.nonce && pendingVerify.current[d.nonce]) {
+        const forUrl = pendingVerify.current[d.nonce];
+        delete pendingVerify.current[d.nonce];
+        setLiveCheck((prev) => {
+          // Only accept the reply if the field still holds the URL we asked about
+          if (prev.status !== 'checking' || prev.url !== forUrl) return prev;
+          if (d.ok && d.found) return { status: 'found', url: forUrl, name: String(d.name || ''), headline: String(d.headline || '') };
+          if (d.ok && !d.found) return { status: 'notfound', url: forUrl, name: '', headline: '' };
+          return { status: 'unavailable', url: forUrl, name: '', headline: '' };
+        });
+      }
+    };
+    window.addEventListener('message', onMessage);
+    const pingNonce = `wgping-${Math.random().toString(36).slice(2)}`;
+    try { window.postMessage({ type: 'WG_PORTAL_PING', nonce: pingNonce }, window.location.origin); } catch { /* no-op */ }
+    const pingTimer = setTimeout(() => { if (extensionAvailable.current === null) extensionAvailable.current = false; }, PING_TIMEOUT_MS);
+    return () => { window.removeEventListener('message', onMessage); clearTimeout(pingTimer); };
+  }, []);
+
+  // Ask the extension to open this profile (hidden) and tell us who it belongs to.
+  const startLiveCheck = () => {
+    const url = String(formData.linkedinProfileUrl || '').trim();
+    if (!url || !LINKEDIN_URL_SHAPE.test(url)) return;
+    if (extensionAvailable.current === false) return;              // no extension → heuristic path
+    if (liveCheck.url === url && liveCheck.status !== 'idle') return; // already checked/checking this URL
+    const nonce = `wgverify-${Math.random().toString(36).slice(2)}`;
+    pendingVerify.current[nonce] = url;
+    setLiveCheck({ status: 'checking', url, name: '', headline: '' });
+    try { window.postMessage({ type: 'WG_PORTAL_VERIFY_PROFILE', url, nonce }, window.location.origin); } catch { /* no-op */ }
+    setTimeout(() => {
+      if (pendingVerify.current[nonce]) {
+        delete pendingVerify.current[nonce];
+        setLiveCheck((prev) => (prev.status === 'checking' && prev.url === url ? { status: 'unavailable', url, name: '', headline: '' } : prev));
+      }
+    }, LIVE_CHECK_TIMEOUT_MS);
+  };
+
+  // Does the live-verified LinkedIn name match the names typed? Both first AND last must appear
+  // (prefix-tolerant both ways, so Janey/Jane and Jon/Jonathan pass).
+  const liveNameMatches = () => {
+    if (liveCheck.status !== 'found' || !liveCheck.name) return null; // no verdict
+    const tokens = liveCheck.name.toLowerCase().split(/[^\p{L}']+/u).filter(Boolean);
+    const first = String(formData.firstName || '').trim().toLowerCase();
+    const last = String(formData.lastName || '').trim().toLowerCase();
+    if (!first || !last || !tokens.length) return null;
+    const appears = (name) => tokens.some((t) => t === name || t.startsWith(name) || name.startsWith(t));
+    return appears(first) && appears(last);
+  };
+
+  // Copy the verified LinkedIn name into the name fields (the "Use LinkedIn's name" button).
+  const useLinkedInName = () => {
+    const parts = String(liveCheck.name || '').trim().split(/\s+/);
+    if (!parts.length) return;
+    setFormData((prev) => ({ ...prev, firstName: parts[0], lastName: parts.slice(1).join(' ') }));
+    setMismatchConfirmed(false);
+  };
 
   // The LinkedIn URL is the record's identity: dedup key, enrichment match key, what /wg and
   // Linked Helper reconcile against. So it is REQUIRED — the flow is: find them on LinkedIn,
@@ -147,7 +224,22 @@ const NewLeadForm = ({ onLeadCreated, initialValues }) => {
     if (field === 'linkedinProfileUrl' || field === 'firstName' || field === 'lastName') {
       setMismatchConfirmed(false);
     }
+    // A changed URL invalidates the live LinkedIn check
+    if (field === 'linkedinProfileUrl') {
+      setLiveCheck({ status: 'idle', url: '', name: '', headline: '' });
+    }
   };
+
+  // When the live check identifies the person and the name fields are still empty, fill them in —
+  // paste the URL first, get the name for free.
+  React.useEffect(() => {
+    if (liveCheck.status === 'found' && liveCheck.name
+        && !String(formData.firstName || '').trim() && !String(formData.lastName || '').trim()) {
+      const parts = liveCheck.name.trim().split(/\s+/);
+      setFormData((prev) => ({ ...prev, firstName: parts[0] || '', lastName: parts.slice(1).join(' ') }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liveCheck.status]);
 
   // Validate required fields
   const validateForm = () => {
@@ -180,8 +272,33 @@ const NewLeadForm = ({ onLeadCreated, initialValues }) => {
       return false;
     }
 
-    // "Right person" check: if the URL doesn't contain the name typed, ask for an explicit confirm
-    if (slugNameMismatch() && !mismatchConfirmed) {
+    // "Right person" checks, strongest evidence first.
+    const urlNow = String(formData.linkedinProfileUrl || '').trim();
+    const liveIsCurrent = liveCheck.url === urlNow;
+    if (liveIsCurrent && liveCheck.status === 'checking') {
+      setMessage({
+        type: 'error',
+        text: 'Still checking that profile on LinkedIn - give it a few seconds, then try again'
+      });
+      return false;
+    }
+    const verdict = liveIsCurrent ? liveNameMatches() : null;
+    if (verdict === false && !mismatchConfirmed) {
+      setMessage({
+        type: 'error',
+        text: `LinkedIn says that profile belongs to "${liveCheck.name}", not "${formData.firstName} ${formData.lastName}" - use LinkedIn's name, fix the URL, or tick "Yes, this is the right person" to confirm`
+      });
+      return false;
+    }
+    if (verdict === null && liveIsCurrent && liveCheck.status === 'notfound' && !mismatchConfirmed) {
+      setMessage({
+        type: 'error',
+        text: 'That profile couldn\'t be read on LinkedIn - check the URL is right (and that you\'re signed in to LinkedIn), or tick "Yes, this is the right person" to create anyway'
+      });
+      return false;
+    }
+    // No live verdict → fall back to the URL-slug heuristic
+    if (verdict === null && liveCheck.status !== 'found' && slugNameMismatch() && !mismatchConfirmed) {
       setMessage({
         type: 'error',
         text: 'The URL doesn\'t appear to contain this person\'s name - tick "Yes, this is the right person" below the URL to confirm before creating'
@@ -387,10 +504,10 @@ const NewLeadForm = ({ onLeadCreated, initialValues }) => {
                   type="url"
                   value={formData.linkedinProfileUrl}
                   onChange={(e) => handleChange('linkedinProfileUrl', e.target.value)}
-                  onBlur={checkForDuplicates}
+                  onBlur={() => { checkForDuplicates(); startLiveCheck(); }}
                   onPaste={(e) => {
-                    // Trigger duplicate check after paste event processes
-                    setTimeout(() => checkForDuplicates(), 100);
+                    // Trigger duplicate + live LinkedIn checks after the paste event processes
+                    setTimeout(() => { checkForDuplicates(); startLiveCheck(); }, 100);
                   }}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                   required
@@ -466,9 +583,82 @@ const NewLeadForm = ({ onLeadCreated, initialValues }) => {
               />
             </div>
 
-            {/* "Right person" check — the pasted URL doesn't contain the name typed. Vanity slugs
-                are real, so this warns and asks for a tick rather than refusing outright. */}
-            {slugNameMismatch() && (
+            {/* Live LinkedIn check status (extension 0.3.14+; silent when unavailable) */}
+            {liveCheck.url === String(formData.linkedinProfileUrl || '').trim() && liveCheck.status === 'checking' && (
+              <div className="flex">
+                <div className="w-32 flex-shrink-0"></div>
+                <div className="flex-1 flex items-center text-blue-600 text-sm">
+                  <div className="animate-spin h-4 w-4 border-2 border-blue-600 border-t-transparent rounded-full mr-2"></div>
+                  Checking this profile on LinkedIn...
+                </div>
+              </div>
+            )}
+            {liveCheck.url === String(formData.linkedinProfileUrl || '').trim() && liveCheck.status === 'found' && liveNameMatches() !== false && (
+              <div className="flex">
+                <div className="w-32 flex-shrink-0"></div>
+                <div className="flex-1 text-green-600 text-sm">
+                  ✓ Verified on LinkedIn: <span className="font-medium">{liveCheck.name}</span>
+                  {liveCheck.headline ? <span className="text-gray-500"> - {liveCheck.headline}</span> : null}
+                </div>
+              </div>
+            )}
+
+            {/* "Right person" checks, strongest evidence first: LinkedIn's real name beats the
+                URL-slug heuristic; the heuristic only speaks when there's no live verdict. */}
+            {liveCheck.url === String(formData.linkedinProfileUrl || '').trim() && liveCheck.status === 'found' && liveNameMatches() === false ? (
+              <div className="flex">
+                <div className="w-32 flex-shrink-0"></div>
+                <div className="flex-1 bg-yellow-50 border border-yellow-300 rounded-md p-3">
+                  <p className="text-sm text-yellow-900 mb-2">
+                    {ExclamationTriangleIcon && (
+                      <ExclamationTriangleIcon className="h-5 w-5 inline mr-1 align-text-bottom" />
+                    )}
+                    LinkedIn says this profile belongs to <span className="font-semibold">{liveCheck.name}</span>,
+                    but you&apos;ve typed &quot;{formData.firstName} {formData.lastName}&quot;.
+                  </p>
+                  <div className="flex items-center gap-4">
+                    <button
+                      type="button"
+                      onClick={useLinkedInName}
+                      className="px-3 py-1.5 text-sm font-medium bg-yellow-200 hover:bg-yellow-300 text-yellow-900 rounded-md"
+                    >
+                      Use LinkedIn&apos;s name
+                    </button>
+                    <label className="flex items-center text-sm text-yellow-900 font-medium cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={mismatchConfirmed}
+                        onChange={(e) => setMismatchConfirmed(e.target.checked)}
+                        className="h-4 w-4 mr-2"
+                      />
+                      Yes, this is the right person
+                    </label>
+                  </div>
+                </div>
+              </div>
+            ) : liveCheck.url === String(formData.linkedinProfileUrl || '').trim() && liveCheck.status === 'notfound' ? (
+              <div className="flex">
+                <div className="w-32 flex-shrink-0"></div>
+                <div className="flex-1 bg-yellow-50 border border-yellow-200 rounded-md p-3">
+                  <p className="text-sm text-yellow-800 mb-2">
+                    {ExclamationTriangleIcon && (
+                      <ExclamationTriangleIcon className="h-5 w-5 inline mr-1 align-text-bottom" />
+                    )}
+                    That profile couldn&apos;t be read on LinkedIn - double-check the URL
+                    (and that you&apos;re signed in to LinkedIn in this browser).
+                  </p>
+                  <label className="flex items-center text-sm text-yellow-900 font-medium cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={mismatchConfirmed}
+                      onChange={(e) => setMismatchConfirmed(e.target.checked)}
+                      className="h-4 w-4 mr-2"
+                    />
+                    Yes, this is the right person - create anyway
+                  </label>
+                </div>
+              </div>
+            ) : liveCheck.status !== 'found' && slugNameMismatch() ? (
               <div className="flex">
                 <div className="w-32 flex-shrink-0"></div>
                 <div className="flex-1 bg-yellow-50 border border-yellow-200 rounded-md p-3">
@@ -490,7 +680,7 @@ const NewLeadForm = ({ onLeadCreated, initialValues }) => {
                   </label>
                 </div>
               </div>
-            )}
+            ) : null}
 
             <div className="flex">
               <label className="w-32 text-sm font-medium text-gray-700 flex-shrink-0 py-2">
