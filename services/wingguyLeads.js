@@ -356,8 +356,34 @@ async function enrichLeadFromScrape(airtableBaseId, leadRecordId, profile = {}, 
 
   const base = clientService.getClientBase(airtableBaseId);
   if (!base) return { ok: false, error: 'CRM base unavailable' };
-  await base('Leads').update([{ id: leadRecordId, fields }]);
+  try {
+    await base('Leads').update([{ id: leadRecordId, fields }]);
+  } catch (e) {
+    // A failing write here means every /wg has stopped enriching (an Airtable field rename, a
+    // permissions change) — worth one email a day, not a silent log line. Same lesson as the
+    // batchScorer skipped-leads write that failed silently Dec 2025 → Aug 2026.
+    alertOnceDaily('scrape-writeback',
+      'Wingguy scrape write-back failing',
+      `Writing the extension's profile scrape onto lead ${leadRecordId} (base ${airtableBaseId}) failed: ${e.message}\n` +
+      `Fields attempted: ${Object.keys(fields).join(', ')}\n` +
+      `Leads added by referral/extension are NOT being enriched until this is fixed. ` +
+      `Check services/wingguyLeads.js enrichLeadFromScrape and the Leads field names.`);
+    return { ok: false, error: e.message, scoreNow: false };
+  }
   return { ok: true, changed: true, wrote, scoreNow };
+}
+
+// One admin email per failure KIND per day — enough to know it's broken, no alert fatigue.
+// Uses the same Mailgun alertAdmin pipe as batchScorer (proven delivering in prod logs).
+const alertLastSent = new Map(); // kind → ms
+function alertOnceDaily(kind, subject, text) {
+  try {
+    const last = alertLastSent.get(kind) || 0;
+    if (Date.now() - last < 24 * 60 * 60 * 1000) return;
+    alertLastSent.set(kind, Date.now());
+    const { alertAdmin } = require('../utils/appHelpers');
+    alertAdmin(subject, text).catch(() => {});
+  } catch (_) { /* alerting must never break the write path */ }
 }
 
 // Fire-and-forget instant score via the existing single-lead door (GET /score-lead in
@@ -380,9 +406,23 @@ async function scoreLeadInstant(clientId, leadRecordId, log) {
     });
     const body = await resp.json().catch(() => ({}));
     if (log) log(`instant score for ${leadRecordId}: http ${resp.status}${body && body.finalPct != null ? ` score=${body.finalPct}` : ''}${body && body.skipped ? ` skipped (${body.reason})` : ''}`);
+    if (!resp.ok) {
+      // A skipped-too-thin lead is a 200 (legit outcome); a non-2xx means the scoring door itself is
+      // failing. Leads still get scored by tonight's batch, so this is a degradation, not an outage —
+      // but a persistent one should reach Guy, once a day.
+      alertOnceDaily('instant-score',
+        'Wingguy instant scoring failing',
+        `The on-the-spot score call (GET /score-lead) returned http ${resp.status} for lead ${leadRecordId} (client ${clientId}): ${(body && body.error) || 'no error body'}\n` +
+        `Same-day scores (Thanks-for-Connecting screen, new-lead creates) are not appearing; the nightly batch is still the backstop. ` +
+        `Check /score-lead in routes/apiAndJobRoutes.js and the Gemini config.`);
+    }
     return { ok: resp.ok, ...body };
   } catch (e) {
     if (log) log(`instant score for ${leadRecordId} failed (non-fatal): ${e.message}`);
+    alertOnceDaily('instant-score',
+      'Wingguy instant scoring failing',
+      `The on-the-spot score call (GET /score-lead) for lead ${leadRecordId} (client ${clientId}) did not complete: ${e.message}\n` +
+      `Same-day scores (Thanks-for-Connecting screen, new-lead creates) are not appearing; the nightly batch is still the backstop.`);
     return { ok: false, error: e.message };
   }
 }

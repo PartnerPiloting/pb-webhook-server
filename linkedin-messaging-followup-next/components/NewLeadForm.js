@@ -311,8 +311,8 @@ const NewLeadForm = ({ onLeadCreated, initialValues }) => {
       {showLinkedInHelper && (
         <div className="mb-6 p-4 rounded-lg bg-blue-100 text-blue-800">
           <p className="text-sm">
-            💡 Since no LinkedIn URL was provided, a placeholder was automatically generated. 
-            You can update this later when the LinkedIn profile becomes known.
+            💡 No LinkedIn URL yet - add it when you have it. Once you open their LinkedIn profile,
+            Wingguy fills in their details and score automatically.
           </p>
         </div>
       )}
@@ -390,7 +390,9 @@ const NewLeadForm = ({ onLeadCreated, initialValues }) => {
                   placeholder="https://www.linkedin.com/in/username (optional)"
                 />
                 <p className="text-xs text-gray-500 mt-1">
-                  Leave blank to auto-generate placeholder. Can be updated later.
+                  Worth pasting if you have it - it&apos;s how Wingguy matches this person on LinkedIn,
+                  and their profile details and score are filled in automatically the first time you
+                  open their profile. Can be added later.
                 </p>
               </div>
             </div>
