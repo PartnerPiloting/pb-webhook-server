@@ -374,6 +374,25 @@ async function enrichProfileFromPortal(req, profile = {}) {
     // (Mary Anne, 2026-07-03): the invite email now comes from the SAME enriched record the context is built on.
     merged._leadEmail = (records[0].fields && records[0].fields['Email']) || '';
     logger.info(`[Wingguy] enrich: merged Portal record ${records[0].id} (status=${portal.status || '—'}, ceaseFup=${portal.ceaseFup ? 'yes' : 'no'})`);
+
+    // WRITE-BACK (Guy, 2026-08-29): the reverse of the merge above. Leads that never went through
+    // Linked Helper (referrals, extension adds) have no About/headline/profile JSON on record — but
+    // the page scrape in `profile` has it all, so persist it (fill-blanks only, see
+    // enrichLeadFromScrape) and, when that makes the lead scorable, score them on the spot via the
+    // existing /score-lead door. Fire-and-forget: a draft turn never waits on it and a failure here
+    // must never touch the response — the nightly batch remains the backstop.
+    if (profile.about || profile.headline) {
+      const recId = records[0].id;
+      const cid = req.client.clientId;
+      wingguyLeads.enrichLeadFromScrape(req.client.airtableBaseId, recId, profile, records[0].fields || {})
+        .then((r) => {
+          if (r && r.changed) logger.info(`[Wingguy] scrape write-back ${recId}: wrote ${r.wrote.join(', ')}`);
+          if (r && r.scoreNow) {
+            return wingguyLeads.scoreLeadInstant(cid, recId, (m) => logger.info(`[Wingguy] ${m}`));
+          }
+        })
+        .catch((e) => logger.warn(`[Wingguy] scrape write-back ${recId} failed (non-fatal): ${e.message}`));
+    }
     return merged;
   } catch (e) {
     logger.error(`[Wingguy] enrich failed (continuing with page profile): ${e.message}`);

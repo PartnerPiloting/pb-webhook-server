@@ -250,4 +250,141 @@ async function updateLeadFacts(airtableBaseId, leadRecordId, { location = '', em
   return { ok: true, changed: true, changes, notes };
 }
 
-module.exports = { updateLeadEmails, buildAltEmails, findLeadRecord, createLead, updateLeadContact, updateLeadFacts };
+// Persist what the extension just scraped onto the lead's record — the write-back half of the
+// profile read (Guy, 2026-08-29). Leads added by referral or via the extension never went through
+// Linked Helper, so their records carry no About/headline/profile JSON: no score, thin dossiers,
+// generic drafts. The extension already reads all of it on every /wg (full About behind "see more",
+// headline, location) and then throws it away after drafting — this keeps it instead, so the FIRST
+// time anyone opens a referred lead's profile they are permanently enriched.
+//
+// FILL BLANKS ONLY, like updateLeadContact: a value already on the record — Linked Helper's scrape,
+// a human edit — always wins, and a blinded scrape (LinkedIn markup change) can never erase stored
+// material because empties are never written. Idempotent: the second /wg turn writes nothing.
+//
+// TRUST RULES (which payload fields are really the lead's own profile):
+//   about    — trusted whenever non-empty: every extension path that leaves it non-empty read it
+//              off the person's OWN profile (profile page, same-person bubble, or the hidden-tab
+//              read of their profileUrl); the wrong-person messaging case blanks it client-side.
+//   location — same property: the messaging scrape blanks it (Wayne Merry, 2026-08-27), so
+//              non-empty means profile page or hidden-tab — trusted.
+//   headline — trusted ONLY from the profile surface (trustPage): on the messaging surface the
+//              header text lands in `headline` and that is a thread snippet, not their headline.
+//
+// SCORING HANDOFF: when the record had no Profile Full JSON, synthesize one in the exact shape the
+// scorers already read (about / headline / organization_1 fallbacks — utils/appHelpers
+// isMissingCritical) and stamp Scoring Status = 'To Be Scored' so the nightly batch picks the lead
+// up. The batch gate demands a job entry, which a page scrape doesn't have — a "Title at Company"
+// headline is parsed into organization_title_1/organization_1 to satisfy it honestly; leads whose
+// headline doesn't parse are covered by the instant score below, whose gate is About-only.
+//
+// `recordFields` is the fields object enrichProfileFromPortal ALREADY read this turn — passed in so
+// this costs zero extra Airtable reads and can no-op for free on every later turn of the session.
+// Returns { ok, changed, wrote:[...], scoreNow } — scoreNow = the caller should trigger an instant
+// score (JSON now present + a real About + not already scored).
+async function enrichLeadFromScrape(airtableBaseId, leadRecordId, profile = {}, recordFields = {}) {
+  if (!airtableBaseId || !leadRecordId) return { ok: false, error: 'no base/record to enrich' };
+  const f = recordFields || {};
+  const has = (v) => v != null && String(v).trim() !== '';
+  const pick = (v, cap) => String(v == null ? '' : v).trim().slice(0, cap || 10000);
+
+  const trustPage = profile._wgSurface === 'profile' || !!profile._wgPageKept;
+  const about = pick(profile.about, 4000);
+  const location = pick(profile.location, 300);
+  const headline = trustPage ? pick(profile.headline, 500) : '';
+  const url = pick(profile.profileUrl, 500);
+
+  const fields = {};
+  const wrote = [];
+  const put = (name, val) => {
+    if (val && !has(f[name])) { fields[name] = val; wrote.push(name); }
+  };
+  put('About', about);
+  put('Headline', headline);
+  put('Location', location);
+  put('LinkedIn Profile URL', url);
+
+  // Synthesize the scoring JSON only when the record has none — an LH scrape is always richer and
+  // is never touched. Keys match what the scorers read (about/headline/organization_X).
+  const hadJson = has(f['Profile Full JSON']);
+  let jsonWritten = false;
+  if (!hadJson && (about || headline)) {
+    const synth = {
+      about: about || pick(f['About'], 4000),
+      headline: headline || pick(f['Headline'], 500),
+      location: location || pick(f['Location'], 300),
+      linkedinProfileUrl: url || pick(f['LinkedIn Profile URL'], 500),
+      source: 'wingguy-extension-scrape',
+      scrapedAt: new Date().toISOString(),
+    };
+    // "Title at Company" → the org fallback the batch gate needs. Conservative: plain " at "
+    // (or @) once, both halves non-empty; anything fancier risks inventing a job.
+    const m = /^(.{2,120}?)\s+(?:at|@)\s+(.{2,160})$/i.exec(synth.headline || '');
+    if (m) { synth.organization_title_1 = m[1].trim(); synth.organization_1 = m[2].trim(); }
+    fields['Profile Full JSON'] = JSON.stringify(synth);
+    wrote.push('Profile Full JSON');
+    jsonWritten = true;
+    // Fresh material → into the scoring queue. Only ever from blank or the too-thin skip (which
+    // this write may have just cured); a 'Scored' / 'Manually Excluded' status is never touched.
+    const status = String(f['Scoring Status'] || '').trim();
+    if (!status || status === 'Skipped – Profile Too Thin') {
+      fields['Scoring Status'] = 'To Be Scored';
+      wrote.push('Scoring Status');
+    }
+  }
+
+  // Instant-score signal (lazy scoring, Guy 2026-08-29): score at the moment somebody cared about
+  // the lead instead of waiting for tonight's batch. Fires for fresh material (jsonWritten) AND for
+  // a lead who already had JSON but is still sitting unscored (the "they connected this morning"
+  // gap). About-gated to ≥40 chars because that is /score-lead's own too-thin bar — firing under it
+  // would just stamp them Skipped and steal tonight's retry.
+  const statusNow = String(fields['Scoring Status'] || f['Scoring Status'] || '').trim();
+  // The About that /score-lead will actually gate on lives INSIDE the JSON it reads — for a
+  // pre-existing (LH) JSON check that, not the About field, or a divergence could get a lead
+  // stamped Skipped that tonight's batch (whose gate is headline+job, not About) would have scored.
+  let aboutForGate = about || pick(f['About'], 4000);
+  if (!jsonWritten && hadJson) {
+    try {
+      const j = JSON.parse(String(f['Profile Full JSON']));
+      aboutForGate = pick(j.about || j.summary || j.linkedinDescription, 4000);
+    } catch (_) { aboutForGate = ''; }
+  }
+  const scoreNow = (jsonWritten || hadJson)
+    && aboutForGate.length >= 40
+    && (!statusNow || statusNow === 'To Be Scored');
+
+  if (!wrote.length) return { ok: true, changed: false, wrote: [], scoreNow };
+
+  const base = clientService.getClientBase(airtableBaseId);
+  if (!base) return { ok: false, error: 'CRM base unavailable' };
+  await base('Leads').update([{ id: leadRecordId, fields }]);
+  return { ok: true, changed: true, wrote, scoreNow };
+}
+
+// Fire-and-forget instant score via the existing single-lead door (GET /score-lead in
+// routes/apiAndJobRoutes.js) — a self-call, the same pattern the Apify pipeline uses, so the
+// scoring logic stays in exactly one place. Never throws, never awaited by a draft turn.
+const instantScoreFiredAt = new Map(); // recordId → ms; suppresses double-fires from racing chat turns
+async function scoreLeadInstant(clientId, leadRecordId, log) {
+  try {
+    // The write-back is fire-and-forget, so turn 2 of a chat session can re-read the record before
+    // turn 1's score has landed and try to score again. One instant score per record per 10 minutes;
+    // after that the record's own Scoring Status = 'Scored' is the real guard.
+    const last = instantScoreFiredAt.get(leadRecordId) || 0;
+    if (Date.now() - last < 10 * 60 * 1000) return { ok: true, deduped: true };
+    instantScoreFiredAt.set(leadRecordId, Date.now());
+    if (instantScoreFiredAt.size > 2000) instantScoreFiredAt.clear(); // bound the map; a re-fire is harmless
+    const port = process.env.PORT || 3001;
+    const resp = await fetch(`http://localhost:${port}/score-lead?recordId=${encodeURIComponent(leadRecordId)}`, {
+      headers: { 'x-client-id': clientId },
+      signal: AbortSignal.timeout(120000),
+    });
+    const body = await resp.json().catch(() => ({}));
+    if (log) log(`instant score for ${leadRecordId}: http ${resp.status}${body && body.finalPct != null ? ` score=${body.finalPct}` : ''}${body && body.skipped ? ` skipped (${body.reason})` : ''}`);
+    return { ok: resp.ok, ...body };
+  } catch (e) {
+    if (log) log(`instant score for ${leadRecordId} failed (non-fatal): ${e.message}`);
+    return { ok: false, error: e.message };
+  }
+}
+
+module.exports = { updateLeadEmails, buildAltEmails, findLeadRecord, createLead, updateLeadContact, updateLeadFacts, enrichLeadFromScrape, scoreLeadInstant };
