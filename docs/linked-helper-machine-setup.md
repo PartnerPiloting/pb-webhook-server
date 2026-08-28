@@ -11,15 +11,15 @@ that hole.
 
 Status of what is below:
 
-- ⚠ **BLOCKER, found 26 Aug 2026 - do not use this on a client machine yet.** The start command
-  does not start the campaigns runner. See "KNOWN GAP" in Part 3.
 - **Proven on real hardware (Guy's Acer, 26 Aug 2026):** the launch command, the version-proof
   path via `Update.exe`, "Restart after updates" already ticked by default, the fact that nothing
   reopens by itself after a restart, and that the command starts **both** the Launcher and the
   instance - so the hourly update check keeps running rather than being bypassed.
-- **Written but NOT yet tested end to end:** the two scheduled tasks in Part 4. The Task Scheduler
-  wrapper is untested, and pointless until the gap above is closed - it would faithfully start a
-  Linked Helper that then sits there doing nothing.
+- **Proven 28 Aug 2026:** the campaigns runner can be started with no mouse, via Linked Helper's
+  own control channel (Part 3a), and a machine's full health reads out of its window title (Part 3b).
+  Watched live: `Idle` -> `CLICKED <BUTTON>` -> `Running campaigns...`.
+- **Written but NOT yet tested end to end:** the two scheduled tasks in Part 4, and the nightly
+  backup cycle. Both are assembly of proven parts now, but neither has run unattended.
 
 ---
 
@@ -105,54 +105,92 @@ run the same thing without a human.
 (`app-2.130.25`), which changes every time Linked Helper updates itself - a command written that
 way works today and silently breaks in a month. `Update.exe` always points at the current version.
 
-### ⚠ KNOWN GAP - this command does NOT start the campaigns runner (26 Aug 2026)
+### The runner does NOT start with the account - and here is how we start it
 
-Tested on the Acer: the command opens the Launcher and the instance correctly, but the instance
-comes up with **`--app-start-running-campaigns=false`** and the runner stopped. The button in the
-instance reads "Start campaigns runner", and nothing happens until a human presses it.
+The command above opens the Launcher and the instance, but the instance comes up with
+`--app-start-running-campaigns=false` and the runner stopped. `--start-account-id` is the equivalent
+of the Launcher's plain **"Open"**, not **"Open and run campaigns"**, and appending
+`--app-start-running-campaigns=true` makes no difference - the Launcher ignores it.
 
-`--start-account-id` appears to be the equivalent of the Launcher's plain **"Open"**, not
-**"Open and run campaigns"**. Appending `--app-start-running-campaigns=true` to the arguments makes
-no difference - the Launcher ignores it.
+This is deliberate on Linked Helper's part, not an oversight. Their code takes a
+`shouldStartRunningCampaigns` flag which **defaults to false** unless the caller explicitly asks for
+it, and only the two menu items ("Open" / "Open and run campaigns") ever set it. There is no
+command-line route. Do not go looking for a flag; there isn't one.
 
-**So this checklist is NOT yet usable on a client machine.** Everything else works; a machine set up
-this way would come back after a reboot with every window open and nothing running - which looks
-healthy and collects nothing. That is a worse failure than an obvious one.
+**So something has to press the button - see Part 3a. That is solved.**
 
-Open routes, cheapest first:
+---
 
-1. Look in the instance's own **Settings** for an option to start the campaigns runner
-   automatically. Not yet checked.
-2. **Ask Linked Helper support the precise question:** "`--start-account-id` opens the account but
-   leaves the campaigns runner stopped - is there a command-line way to start the runner too?"
-   Depending on their answer to *learn a flag* is fine; depending on their cloud *at runtime* is
-   what we refuse to do.
-3. Read the flag names out of the Launcher's `app.asar`. Attempted 26 Aug, inconclusive.
-4. Last resort: a small script on the machine that detects the stopped runner and clicks Start.
-   Fragile against a Linked Helper redesign, but ours and on the machine.
+## Part 3a - Pressing the campaigns runner button (PROVEN 28 Aug 2026)
 
-To test any candidate: quit Linked Helper completely (`Get-Process linked-helper` shows nothing),
-run the command, wait a minute, then check both the button and the flag:
+Windows' own accessibility route is a dead end: Linked Helper's windows are visible to it but their
+contents are not - a probe returns the two window names and zero buttons.
 
-```powershell
-Get-CimInstance Win32_Process -Filter "Name='linked-helper.exe'" |
-  Where-Object { $_.CommandLine -like '*resources\out\*' -and $_.CommandLine -notlike '*--type=*' } |
-  ForEach-Object {
-    if ($_.CommandLine -match '--app-start-running-campaigns=(\w+)') { "app-start-running-campaigns = $($Matches[1])" }
-    else { "flag NOT PRESENT" }
-  }
+The way in is that **Linked Helper already runs with Chrome's control channel open**. Its instance
+carries `--remote-debugging-port=0` ("pick any free port"), listening on 127.0.0.1 only. We connect
+to that, find its own interface page (`type: page`, `title: "Linked Helper 2"`), and activate the
+control in the page - the same thing a mouse click does, with no dependence on window position,
+size, zoom or theme.
+
+⚠ **The port changes on every launch.** Never hardcode it - discover it each run by looking at what
+the `linked-helper` processes are listening on and asking each port for `/json/version`.
+
+⚠ **Match `^start campaigns runner$` exactly.** A looser match (e.g. `campaigns runner`) also finds
+the **Stop** button on a healthy machine and would switch a working client off. Matching only Start
+means the script is a no-op when the runner is already going, so it is safe to run every 15 minutes
+forever.
+
+The script is `scripts/linked-helper/lh-start-runner.ps1`. It reports the state before, what it did,
+and the state after, and refuses to act if the runner is already running.
+
+Live proof on Guy's Acer, 28 Aug 2026:
+
+```
+BEFORE : IDLE      ... | 2.130.28 | Idle | LinkedIn messaging page ...
+ACTION : CLICKED <BUTTON>
+AFTER  : RUNNING   ... | 2.130.28 | Running campaigns... | LinkedIn messaging page ...
 ```
 
-Also unexplained from the same evening: the runner was found **stopped** some time after a
-successful manual start, around 9pm. Could be innocent (daily limits, action working hours) or could
-be the same gap. Worth pinning down, because it decides whether the watchdog needs to check the
-*runner* rather than just the *process*.
+---
+
+## Part 3b - Reading a machine's health from its window title
+
+The instance's window title carries the whole health picture, with no accessibility and nothing that
+breaks when Linked Helper redesigns a screen:
+
+```
+Guy Wilson | Linked Helper 2 Instance #16045 | 2.130.28 | Running campaigns... | LinkedIn logged in (...)
+```
+
+Four signals in one string: **which account** (`Instance #16045`), **which version**, **runner state**
+(`Idle` vs `Running campaigns...`), and **whether the LinkedIn session is still alive**
+(`LinkedIn logged in`) - that last one catches a logged-out session, which would otherwise be
+completely silent.
+
+```powershell
+$t=(Get-Process linked-helper | Where-Object {$_.MainWindowTitle -like '*Instance*'}).MainWindowTitle
+$id=if($t -match 'Instance #(\d+)'){$Matches[1]}
+$st=if($t -match 'Running campaigns'){'RUNNING'}elseif($t -match '\| Idle \|'){'IDLE'}else{'UNKNOWN'}
+$li=if($t -match 'LinkedIn logged in'){'ok'}else{'LOGGED OUT'}
+"account=$id runner=$st linkedin=$li"
+```
+
+This is what each machine should report in every 15 minutes. **Detection matters more than the
+fix:** the failure that hurt (Roland's ten weeks, Luke's lapsed trial) was never "a machine needed a
+click", it was "nobody noticed". Even if the presser ever breaks, a reporting machine turns a silent
+death into an email.
+
+⚠ Not yet confirmed: whether the title stays on `Running campaigns...` when the runner is on but the
+campaigns are sleeping (outside working hours, daily limit reached, empty queue). It held over
+several minutes on 28 Aug. If it does drift, read `Idle` as "possibly fine" rather than "broken".
 
 ---
 
 ## Part 4 - Make Windows do it
 
-⚠ **Not yet tested end to end. Prove this on the Acer first.**
+⚠ **Not yet tested end to end. Prove this on the Acer first.** The watchdog below must be
+upgraded to check the **runner** (Part 3b) and not merely that the process exists - a Linked Helper
+sitting open with the runner off looks perfectly healthy to a process check.
 
 Two jobs in one: run at sign-in, and check every fifteen minutes that it is still alive. The second
 half is what covers crashes rather than just restarts - worst case, fifteen minutes of downtime.
