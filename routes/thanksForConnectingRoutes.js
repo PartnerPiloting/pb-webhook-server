@@ -23,6 +23,7 @@ const logger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 't
 const airtableClient = require('../config/airtableClient.js');
 const { getClientById } = require('../services/clientService');
 const { LEAD_FIELDS } = require('../constants/airtableUnifiedConstants');
+const { scoreLeadInstant } = require('../services/wingguyLeads');
 
 const THANKS_STATUS_FIELD = 'Thanks Status';
 const VALID_STATUSES = ['Messaged', 'Skipped'];
@@ -34,6 +35,26 @@ const STATUS_ALIASES = { 'Let go': 'Skipped' };
 const normalizeStatus = (s) => (s ? (STATUS_ALIASES[s] || s) : null);
 const DEFAULT_LOOKBACK_DAYS = 14; // ≈ the LH connection window; bounds the queue + solves cold-start flood
 const MAX_ITEMS = 1000;           // safety cap on a single worklist fetch (keeps the MOST RECENT — see sort below)
+const MAX_INSTANT_SCORES = 8;     // per worklist load — bounds the Gemini burst; the nightly batch gets the rest
+
+// Is this record a candidate for an on-the-spot score? (Guy, 2026-08-29: a fresh connection sits
+// unscored until tonight's batch — exactly the person this screen is about.) Same bar as the
+// /score-lead door it fires: unscored (status blank or To Be Scored — never Scored / Skipped /
+// Manually Excluded) with a Profile Full JSON whose About is ≥40 chars. Under that bar we leave
+// them to the batch, whose gate (headline+job, About optional) can still score them — firing
+// /score-lead at a thin-About lead would just stamp them Skipped and steal the batch's chance.
+function instantScoreCandidate(r) {
+  const status = String(r.get(LEAD_FIELDS.SCORING_STATUS) || '').trim();
+  if (status && status !== 'To Be Scored') return false;
+  const json = r.get(LEAD_FIELDS.PROFILE_FULL_JSON);
+  if (!json) return false;
+  try {
+    const p = JSON.parse(json);
+    return String(p.about || p.summary || p.linkedinDescription || '').trim().length >= 40;
+  } catch (_) {
+    return false;
+  }
+}
 
 function parseBoolFlag(val, defaultValue = false) {
   if (val === undefined || val === null || val === '') return defaultValue;
@@ -158,6 +179,7 @@ module.exports = function mountThanksForConnecting(app, base) {
       const b = await getBaseForRequest(clientId);
       const formula = buildFormula(lookbackDays, outstandingOnly);
       const items = [];
+      const scoreQueue = []; // record ids to instant-score, most-recent connections first (page order)
       await new Promise((resolve, reject) => {
         b('Leads')
           .select({
@@ -173,6 +195,7 @@ module.exports = function mountThanksForConnecting(app, base) {
               for (const r of records) {
                 if (items.length >= MAX_ITEMS) break;
                 items.push(mapItem(r));
+                if (scoreQueue.length < MAX_INSTANT_SCORES && instantScoreCandidate(r)) scoreQueue.push(r.id);
               }
               if (items.length >= MAX_ITEMS) return resolve();
               fetchNextPage();
@@ -180,6 +203,17 @@ module.exports = function mountThanksForConnecting(app, base) {
             (err) => (err ? reject(err) : resolve())
           );
       });
+
+      // LAZY SCORING (Guy, 2026-08-29): score the unscored leads this screen just surfaced, via the
+      // existing /score-lead door, so the score is there on the next refresh instead of tomorrow.
+      // Fire-and-forget — the worklist response never waits on Gemini, and scoreLeadInstant's own
+      // per-record dedup stops a refreshing screen from re-firing the same leads for 10 minutes.
+      if (scoreQueue.length) {
+        logger.info(`thanksForConnecting: instant-scoring ${scoreQueue.length} unscored recent connection(s) for ${clientId}`);
+        for (const recId of scoreQueue) {
+          scoreLeadInstant(clientId, recId, (m) => logger.info(`thanksForConnecting: ${m}`)).catch(() => {});
+        }
+      }
 
       // "N to thank" = the outstanding count regardless of which view is shown.
       const outstandingCount = outstandingOnly
@@ -192,6 +226,7 @@ module.exports = function mountThanksForConnecting(app, base) {
         lookbackDays,
         outstandingCount,
         truncated: items.length >= MAX_ITEMS, // hit the cap — there may be older rows beyond this
+        scoringQueued: scoreQueue.length,     // scores being generated in the background; refresh to see them
         items
       });
     } catch (e) {

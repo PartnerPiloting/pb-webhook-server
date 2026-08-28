@@ -108,7 +108,7 @@ const AGENT_TOOLS = [
   },
   {
     name: 'create_lead',
-    description: 'Create a NEW lead record in Guy\'s CRM (Airtable) for someone who ISN\'T there yet — use it when the context says this lead is NOT in the CRM (e.g. Guy just accepted a connection request from someone new) and Guy wants them saved. It files them the way inbound leads normally land: Connected, dated today, so they slot into Guy\'s pipeline. Pass whatever you know — at minimum a name or the LinkedIn URL. Don\'t block on email: LinkedIn rarely shows one, so create the record now and file the email later with update_lead_email once it surfaces. Safe to call even if you\'re unsure they\'re new — it dedupes on the LinkedIn profile first, so it won\'t make a duplicate (it\'ll just point at the existing record). After a successful create you can update_lead_email / book_meeting for them in the same conversation. On a fresh create, Wingguy automatically starts reading the lead\'s LinkedIn Contact Info in Guy\'s browser to fill in their phone (and email, if you didn\'t already have one from the thread). That read finishes AFTER your reply and the panel posts the real result, so tell Guy their contact details are being pulled from LinkedIn now — do NOT claim a phone/email has already been filed, and do NOT ask him for the phone.',
+    description: 'Create a NEW lead record in Guy\'s CRM (Airtable) for someone who ISN\'T there yet — use it when the context says this lead is NOT in the CRM (e.g. Guy just accepted a connection request from someone new) and Guy wants them saved. It files them the way inbound leads normally land: Connected, dated today, so they slot into Guy\'s pipeline. Pass whatever you know — at minimum a name or the LinkedIn URL. If their LinkedIn profile is NOT in view and you don\'t have their URL, ask Guy to paste it BEFORE creating — it\'s the dedup key and it lets Wingguy enrich and score the new record from their profile; only create on a bare name if Guy says he doesn\'t have the URL. Don\'t block on email: LinkedIn rarely shows one, so create the record now and file the email later with update_lead_email once it surfaces. Safe to call even if you\'re unsure they\'re new — it dedupes on the LinkedIn profile first, so it won\'t make a duplicate (it\'ll just point at the existing record). After a successful create you can update_lead_email / book_meeting for them in the same conversation. On a fresh create, Wingguy automatically starts reading the lead\'s LinkedIn Contact Info in Guy\'s browser to fill in their phone (and email, if you didn\'t already have one from the thread). That read finishes AFTER your reply and the panel posts the real result, so tell Guy their contact details are being pulled from LinkedIn now — do NOT claim a phone/email has already been filed, and do NOT ask him for the phone.',
     input_schema: {
       type: 'object',
       properties: {
@@ -557,6 +557,20 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
       // pull the lead's LinkedIn Contact Info and patch email/phone onto the new record.
       if (r && r.ok && r.created && r.leadRecordId && /\/in\//i.test(leadUrl)) {
         enrichContact = { leadRecordId: r.leadRecordId, profileUrl: leadUrl, manual: false };
+      }
+      // PROFILE WRITE-BACK AT BIRTH (Guy, 2026-08-29): the scrape in `profile` is the richest view
+      // of this person we may ever get without Linked Helper — persist it onto the brand-new record
+      // now (About/headline/JSON, fill-blanks vs what createLead just wrote) and score on the spot
+      // when the material clears the bar, so a referred lead is born enriched + scored instead of
+      // waiting for the next /wg visit. Fresh creates only: for an existing match we don't hold the
+      // record's fields here, and the route-level hook covers them on the next matched turn.
+      // Fire-and-forget — the create's reply never waits on it and a failure is non-fatal.
+      if (r && r.ok && r.created && r.leadRecordId && (profile.about || profile.headline)) {
+        const enrichScrape = deps.enrichLeadFromScrape || wingguyLeads.enrichLeadFromScrape;
+        const scoreInstant = deps.scoreLeadInstant || wingguyLeads.scoreLeadInstant;
+        enrichScrape(airtableBaseId, r.leadRecordId, profile, r.fields || {})
+          .then((er) => (er && er.scoreNow ? scoreInstant(coach.clientId, r.leadRecordId) : null))
+          .catch(() => { /* enrichment is a bonus, not part of the create contract */ });
       }
       return r;
     }
