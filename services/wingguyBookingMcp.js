@@ -157,10 +157,15 @@ async function runCheckTime({ date, time, side, lead_location, duration_mins } =
   if (!withinHours) flags.push('OUTSIDE the coach\'s booking hours — flag it and get an explicit yes before booking');
   if (hitsLunch) flags.push('hits the coach\'s lunch hold — flag it');
   if (r.clashes.length) flags.push(`CLASHES with: ${r.clashes.map((c) => `${c.summary} (${c.display})`).join('; ')}`);
+  // A missing/unrecognised location used to make the Lead display silently echo the coach's clock,
+  // which read as "the clocks are identical" — never let that pass as a real conversion.
+  if (!r.leadTzDetected) {
+    flags.push(`lead timezone UNKNOWN (location ${lead_location ? `"${lead_location}" not recognised` : 'not provided'}) — NEVER tell the human the clocks match. Ask where the lead is based, record it with wingguy_update_lead, then re-check before writing any lead-facing time`);
+  }
   return {
     text:
       `startISO=${r.startISO} (pass THIS to wingguy_book_meeting — never build your own)\n` +
-      `Coach: ${r.display} · Lead: ${r.leadDisplay} · ${r.durationMins} mins\n` +
+      `Coach: ${r.display} · Lead: ${r.leadTzDetected ? r.leadDisplay : 'UNKNOWN (no recognised location — no lead-side time exists)'} · ${r.durationMins} mins\n` +
       (flags.length ? `⚠ ${flags.join('\n⚠ ')}` : 'Free, within hours, no flags.'),
   };
 }

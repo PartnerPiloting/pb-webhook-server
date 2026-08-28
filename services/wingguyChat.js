@@ -488,17 +488,22 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
       // writing its own conversion in prose — it echoed a wrong "+2h" from an earlier thread message
       // even though both strings here said the clocks matched. So the result now states the
       // relationship in words and forbids model arithmetic outright.
+      // The "clocks are IDENTICAL" claim is only honest when the lead's timezone was actually
+      // DETECTED — with no recognised location the fallback made both displays match and this rule
+      // then insisted a Hong Kong lead shared Guy's clock (Pedro, 2026-08-28).
       const sameClock = r.display === r.leadDisplay;
-      const clockRule = (sameClock
-        ? `${r.display} for Guy IS the same wall-clock time for the lead — their clocks are IDENTICAL right now. Any draft or chat line must show ONE time, the same for both sides.`
-        : `${r.display} for Guy = ${r.leadDisplay} for the lead (${tzCity(r.leadTimezone)}). Quote these exact strings.`)
+      const clockRule = (!r.leadTzDetected
+        ? `⚠ The lead's timezone is UNKNOWN — their record's location is ${profile.location ? `"${profile.location}", which can't be mapped to a timezone` : 'empty'} — so ONLY the Guy-side time is real: ${r.display} (${tzCity(r.yourTimezone)}). Do NOT claim the clocks match and do NOT write any lead-side time. Ask Guy where the lead is based (if the thread already names a place, say so), get the location saved to the lead's record, then re-run check_time.`
+        : sameClock
+          ? `${r.display} for Guy IS the same wall-clock time for the lead — their clocks are IDENTICAL right now. Any draft or chat line must show ONE time, the same for both sides.`
+          : `${r.display} for Guy = ${r.leadDisplay} for the lead (${tzCity(r.leadTimezone)}). Quote these exact strings.`)
         + ' NEVER derive a timezone conversion yourself. If any earlier message in this thread states a different conversion for this lead — even one Guy himself sent — that message was WRONG: use only these code-computed times, and tell Guy plainly the earlier message mis-stated the lead\'s timezone.';
       return {
         ok: true,
         startISO: r.startISO,
         durationMins: r.durationMins,
         display: r.display,
-        leadDisplay: r.leadDisplay,
+        leadDisplay: r.leadTzDetected ? r.leadDisplay : 'UNKNOWN (lead timezone not detected — see clockRule)',
         clockRule,
         free: r.clashes.length === 0,
         clashes: r.clashes,

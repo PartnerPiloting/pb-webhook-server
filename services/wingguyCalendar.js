@@ -332,11 +332,24 @@ async function clashesForWindow(info, startISO, len) {
 
 // Verify a SPECIFIC proposed time (Guy's words → date/time/side). Code owns the timezone conversion
 // and the clash read; returns both-side display strings + any clashes so the agent can WARN before
-// booking. Returns { ok, startISO, durationMins, display, leadDisplay, yourTimezone, leadTimezone, clashes }.
+// booking. Returns { ok, startISO, durationMins, display, leadDisplay, yourTimezone, leadTimezone,
+// leadTzDetected, clashes }.
 async function checkProposedTime(clientId, { date, time, side = 'coach', leadLocation = '', durationMins }) {
   const info = await getCoachCalendarInfo(clientId);
   const yourTimezone = info.timezone;
-  const leadTimezone = (leadLocation && getTimezoneFromLocation(leadLocation)) || yourTimezone;
+  // Same real-detection-vs-silent-fallback split as getAvailabilityForCoach: with no recognised
+  // location the fallback made leadDisplay echo the coach's clock, and every surface then asserted
+  // "the clocks are identical" for a lead who was actually 2 hours away (Pedro/Hong Kong,
+  // 2026-08-28). leadTzDetected lets callers say "unknown" instead.
+  const detectedTz = leadLocation ? getTimezoneFromLocation(leadLocation) : null;
+  const leadTzDetected = !!detectedTz;
+  const leadTimezone = detectedTz || yourTimezone;
+  if (side === 'lead' && !leadTzDetected) {
+    return {
+      ok: false,
+      error: `Lead location ${leadLocation ? `"${leadLocation}" NOT recognised` : 'NOT provided'} — a time given in the LEAD's timezone can't be converted without knowing where they are. Ask the coach where the lead is based, save it to the lead's record, then re-run this check.`,
+    };
+  }
   const tz = side === 'lead' ? leadTimezone : yourTimezone;
   const startISO = wallClockToISO(date, time, tz);
   if (!startISO) return { ok: false, error: `Couldn't read "${date} ${time}" as a time — give a date (YYYY-MM-DD) and a clock time (e.g. 14:00 or 2:00pm).` };
@@ -349,6 +362,7 @@ async function checkProposedTime(clientId, { date, time, side = 'coach', leadLoc
     durationMins: len,
     yourTimezone,
     leadTimezone,
+    leadTzDetected,
     display: formatInTz(startISO, yourTimezone),
     leadDisplay: formatInTz(startISO, leadTimezone),
     clashes,
