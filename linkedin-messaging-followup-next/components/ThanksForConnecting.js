@@ -106,7 +106,7 @@ export default function ThanksForConnecting() {
   const [items, setItems] = useState([]);
   const [outstandingCount, setOutstandingCount] = useState(0);
   const [windowDays, setWindowDays] = useState(null); // null = use client's configured default
-  const [sortDir, setSortDir] = useState('oldest'); // 'oldest' | 'newest'
+  const [sortDir, setSortDir] = useState('oldest'); // 'oldest' | 'newest' | 'score'
   const [truncated, setTruncated] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -179,6 +179,19 @@ export default function ThanksForConnecting() {
 
   // Sort in the UI so order is guaranteed regardless of API order or any caching.
   const sortedItems = useMemo(() => {
+    if (sortDir === 'score') {
+      // Highest score first; unscored leads sink to the bottom, tie-broken oldest-connected first
+      // so working top-down still clears the longest-waiting of equals.
+      return [...items].sort((a, b) => {
+        const sa = Number(a.aiScore), sb = Number(b.aiScore);
+        const na = Number.isFinite(sa) ? sa : -Infinity;
+        const nb = Number.isFinite(sb) ? sb : -Infinity;
+        if (nb !== na) return nb - na;
+        const ta = a.dateConnected ? new Date(a.dateConnected).getTime() : Infinity;
+        const tb = b.dateConnected ? new Date(b.dateConnected).getTime() : Infinity;
+        return ta - tb;
+      });
+    }
     const dir = sortDir === 'newest' ? -1 : 1;
     return [...items].sort((a, b) => {
       const ta = a.dateConnected ? new Date(a.dateConnected).getTime() : Infinity;
@@ -234,6 +247,7 @@ export default function ThanksForConnecting() {
               >
                 <option value="oldest">Oldest first</option>
                 <option value="newest">Most recent first</option>
+                <option value="score">Highest score first</option>
               </select>
             </label>
             <label className="flex items-center gap-2 text-xs text-gray-500">
