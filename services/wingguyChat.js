@@ -20,7 +20,7 @@ const { WINGGUY_VOICE, WINGGUY_AGENT_INSTRUCTIONS } = require('./../config/wingg
 const { getBookingPrefs } = require('../config/wingguyBookingPrefs');
 const { getVoicePrefs } = require('../config/wingguyVoicePrefs');
 const wingguyCalendar = require('./wingguyCalendar');
-const { getTimezoneFromLocation } = require('../linkedin-messaging-followup-next/lib/timezoneFromLocation.js');
+const { resolveLeadTimezone } = require('./leadLocationResolver');
 const wingguyLeads = require('./wingguyLeads');
 const wingguyRules = require('./wingguyRulesMcp');
 
@@ -344,7 +344,7 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
   const runTool = async (name, input) => {
     if (name === 'check_availability') {
       const avail = await getAvailability(coach.clientId, profile.location || '');
-      availTz = { yourTimezone: avail.yourTimezone, leadTimezone: avail.leadTimezone, leadTzDetected: avail.leadTzDetected };
+      availTz = { yourTimezone: avail.yourTimezone, leadTimezone: avail.leadTimezone, leadTzDetected: avail.leadTzDetected, leadTzCandidates: avail.leadTzCandidates, leadTzAssumedNote: avail.leadTzAssumedNote };
       // The shared pipeline (wingguyCalendar.filterAvailability) enforces ALL the offer rules in one
       // place — hours bounds, lunch hold, no past/too-soon days (includeSoon lifts notice only), the
       // daily meeting cap — and labels each slot exactly as it will read in the lead's timezone.
@@ -442,7 +442,11 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
       // the SILENT fallback — location missing/unrecognised means the times quietly assume Guy's
       // own timezone, so that variant is a warning the agent must relay, not bury.
       const leadLoc = String(profile.location || '').trim();
-      const profileTzKnown = availTz.leadTzDetected !== undefined ? availTz.leadTzDetected : !!(leadLoc && getTimezoneFromLocation(leadLoc));
+      const fromAvail = availTz.leadTzDetected !== undefined;
+      const profileResolved = fromAvail ? null : resolveLeadTimezone(leadLoc);
+      const profileTzKnown = fromAvail ? availTz.leadTzDetected : profileResolved.detected;
+      const tzCandidates = (fromAvail ? availTz.leadTzCandidates : profileResolved.candidates) || [];
+      const tzAssumedNote = fromAvail ? availTz.leadTzAssumedNote : profileResolved.assumedNote;
       // Report the zone the times were ACTUALLY rendered in. This used to be derived from
       // profile.location alone, so a thread override drafted (say) Melbourne times while telling Guy
       // it had assumed Brisbane — confident and wrong in the same breath (2026-08-27).
@@ -450,8 +454,10 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
       const leadBase = overrode
         ? `Lead's record says ${leadLoc ? `"${leadLoc}"` : 'nothing about where they are'}, but the THREAD puts them in ${tzCity(leadTz)} — the draft is written in ${tzCity(leadTz)} time. Tell Guy you took that from the conversation rather than the record, quote the line you took it from, and ask whether to save it to their record (wingguy_update_lead) so every future draft gets it right. Do NOT save it yourself off an inference — that is Guy's call.`
         : profileTzKnown
-          ? `Lead is based in ${leadLoc} — ${tzDiffer ? `draft times are ${tzCity(leadTz)} time (both clocks shown in offeredTimes)` : `same clock as Guy right now (draft's "(all times are ${tzCity(leadTz)} time)" line covers it)`}. Tell Guy where the lead is based when you present the draft.`
-          : `⚠ Lead's location is ${leadLoc ? `"${leadLoc}", which I can't map to a timezone` : 'missing from the record'} — the draft ASSUMES Guy's own timezone (${tzCity(tz)}). BEFORE you tell Guy that, re-read the thread: if the lead named a place they are in or near (a city, a suburb, "when you're in Melbourne"), call propose_times AGAIN with leadTimezoneOverride set to that zone — the conversation beats a vague record. Only if the thread says nothing about where they are, say this to Guy plainly and ask him to confirm where the lead is based before sending.`;
+          ? `Lead is based in ${leadLoc} — ${tzDiffer ? `draft times are ${tzCity(leadTz)} time (both clocks shown in offeredTimes)` : `same clock as Guy right now (draft's "(all times are ${tzCity(leadTz)} time)" line covers it)`}. Tell Guy where the lead is based when you present the draft.${tzAssumedNote ? ` Note: ${tzAssumedNote}.` : ''}`
+          : tzCandidates.length
+            ? `⚠ Lead's location "${leadLoc}" is AMBIGUOUS — could be ${tzCandidates.map((c) => `${c.place} (${c.timezone})`).join(' or ')} — so the draft ASSUMES Guy's own timezone (${tzCity(tz)}). Do NOT send it like that: check the thread for a clue to which one, otherwise ask Guy WHICH place it is, get it saved to the record (wingguy_update_lead), then redo the times.`
+            : `⚠ Lead's location is ${leadLoc ? `"${leadLoc}", which I can't map to a timezone` : 'missing from the record'} — the draft ASSUMES Guy's own timezone (${tzCity(tz)}). BEFORE you tell Guy that, re-read the thread: if the lead named a place they are in or near (a city, a suburb, "when you're in Melbourne"), call propose_times AGAIN with leadTimezoneOverride set to that zone — the conversation beats a vague record. Only if the thread says nothing about where they are, say this to Guy plainly and ask him to confirm where the lead is based before sending.`;
       // THREAD-POISON GUARD (Shira, 2026-08-27): a junk location once made Wingguy tell a Melbourne
       // lead "9am your time (Bunbury) … which is 11am for me". The record was fixed, but that wrong
       // conversion now sits in the thread IN GUY'S OWN VOICE — and the next draft harmonised with it
@@ -492,11 +498,15 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
       // DETECTED — with no recognised location the fallback made both displays match and this rule
       // then insisted a Hong Kong lead shared Guy's clock (Pedro, 2026-08-28).
       const sameClock = r.display === r.leadDisplay;
+      const whichAsk = (r.leadTzCandidates && r.leadTzCandidates.length)
+        ? { where: `"${profile.location}" is AMBIGUOUS (could be ${r.leadTzCandidates.map((c) => `${c.place} (${c.timezone})`).join(' or ')})`, ask: 'WHICH place it is' }
+        : { where: profile.location ? `"${profile.location}", which can't be mapped to a timezone` : 'empty', ask: 'where the lead is based' };
       const clockRule = (!r.leadTzDetected
-        ? `⚠ The lead's timezone is UNKNOWN — their record's location is ${profile.location ? `"${profile.location}", which can't be mapped to a timezone` : 'empty'} — so ONLY the Guy-side time is real: ${r.display} (${tzCity(r.yourTimezone)}). Do NOT claim the clocks match and do NOT write any lead-side time. Ask Guy where the lead is based (if the thread already names a place, say so), get the location saved to the lead's record, then re-run check_time.`
+        ? `⚠ The lead's timezone is UNKNOWN — their record's location is ${whichAsk.where} — so ONLY the Guy-side time is real: ${r.display} (${tzCity(r.yourTimezone)}). Do NOT claim the clocks match and do NOT write any lead-side time. Ask Guy ${whichAsk.ask} (if the thread already names a place, say so), get the location saved to the lead's record, then re-run check_time.`
         : sameClock
           ? `${r.display} for Guy IS the same wall-clock time for the lead — their clocks are IDENTICAL right now. Any draft or chat line must show ONE time, the same for both sides.`
           : `${r.display} for Guy = ${r.leadDisplay} for the lead (${tzCity(r.leadTimezone)}). Quote these exact strings.`)
+        + (r.leadTzDetected && r.leadTzAssumedNote ? ` Note: ${r.leadTzAssumedNote} — relay that to Guy.` : '')
         + ' NEVER derive a timezone conversion yourself. If any earlier message in this thread states a different conversion for this lead — even one Guy himself sent — that message was WRONG: use only these code-computed times, and tell Guy plainly the earlier message mis-stated the lead\'s timezone.';
       return {
         ok: true,

@@ -44,7 +44,7 @@ const { handleClientError } = require('../utils/errorHandler.js');
 const logCriticalError = async () => {}; // No-op
 // Structured logging for 100% error coverage
 const { createLogger } = require('../utils/contextLogger.js');
-const { getTimezoneFromLocation } = require('../linkedin-messaging-followup-next/lib/timezoneFromLocation.js');
+const { detectTimezone: getTimezoneFromLocation } = require('../services/leadLocationResolver.js');
 const { parseSlotTimeAsUTC } = require('../utils/slotTimeParser.js');
 
 // Module-level logger for routes without specific runId context

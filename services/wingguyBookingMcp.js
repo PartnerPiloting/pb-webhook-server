@@ -61,8 +61,11 @@ async function runCheckAvailability({ lead_location, include_lunch, include_soon
       // Where the lead is based, or a loud flag that we're guessing — the coach must ALWAYS hear
       // which one it is (Guy 2026-07-13; the silent assume-coach's-tz fallback is the trap).
       (filtered.leadTzDetected
-        ? `Lead is based in "${filtered.leadLocation}" — ALWAYS tell the coach where the lead is based when you present times. `
-        : `⚠ Lead location ${filtered.leadLocation ? `"${filtered.leadLocation}" NOT recognised` : 'NOT provided'} — lead timezone is ASSUMED to be the coach's. Tell the coach this plainly and confirm where the lead is based before offering times. `) +
+        ? `Lead is based in "${filtered.leadLocation}" — ALWAYS tell the coach where the lead is based when you present times. ` +
+          (filtered.leadTzAssumedNote ? `Note: ${filtered.leadTzAssumedNote}. ` : '')
+        : (filtered.leadTzCandidates && filtered.leadTzCandidates.length)
+          ? `⚠ Lead location "${filtered.leadLocation}" is AMBIGUOUS — could be ${filtered.leadTzCandidates.map((c) => `${c.place} (${c.timezone})`).join(' or ')}. ASK the coach which one (and save it to the lead's record) before offering times; until then the labels below assume the coach's own timezone. `
+          : `⚠ Lead location ${filtered.leadLocation ? `"${filtered.leadLocation}" NOT recognised` : 'NOT provided'} — lead timezone is ASSUMED to be the coach's. Tell the coach this plainly and confirm where the lead is based before offering times. `) +
       `Each "label" is EXACTLY how that slot reads in the LEAD's timezone — pick slots by label, then use that slot's "time" ISO for booking. NEVER build an ISO yourself. ` +
       (filtered.leadTimezone && filtered.leadTimezone !== filtered.yourTimezone
         ? `The lead's timezone DIFFERS from the coach's: when you write these times into a message, add ONE line under the list — "(all times are ${wingguyCalendar.tzCity(filtered.leadTimezone)} time)" — never a marker on every line, and never leave converted times unlabelled. `
@@ -160,7 +163,12 @@ async function runCheckTime({ date, time, side, lead_location, duration_mins } =
   // A missing/unrecognised location used to make the Lead display silently echo the coach's clock,
   // which read as "the clocks are identical" — never let that pass as a real conversion.
   if (!r.leadTzDetected) {
-    flags.push(`lead timezone UNKNOWN (location ${lead_location ? `"${lead_location}" not recognised` : 'not provided'}) — NEVER tell the human the clocks match. Ask where the lead is based, record it with wingguy_update_lead, then re-check before writing any lead-facing time`);
+    const why = (r.leadTzCandidates && r.leadTzCandidates.length)
+      ? `location "${lead_location}" is AMBIGUOUS — could be ${r.leadTzCandidates.map((c) => `${c.place} (${c.timezone})`).join(' or ')}. Ask the coach WHICH one`
+      : `location ${lead_location ? `"${lead_location}" not recognised` : 'not provided'}. Ask where the lead is based`;
+    flags.push(`lead timezone UNKNOWN (${why}) — NEVER tell the human the clocks match. Record the answer with wingguy_update_lead, then re-check before writing any lead-facing time`);
+  } else if (r.leadTzAssumedNote) {
+    flags.push(r.leadTzAssumedNote);
   }
   return {
     text:

@@ -4,7 +4,7 @@
 // Assistant + the /api/calendar/availability route already use:
 //   - calendarServiceAccount.getBatchAvailability (Google service-account free/busy)
 //   - the coach's Calendar Email (any provider; column formerly 'Google Calendar Email') + Timezone from the Master Clients base
-//   - getTimezoneFromLocation for the lead's timezone (rule-based; falls back to the coach's tz)
+//   - leadLocationResolver for the lead's timezone (AU/NZ list + world DB; falls back to the coach's tz)
 //
 // Returns timezone-correct DISPLAY STRINGS for both sides so the agent never does timezone math
 // itself — it just picks slots and writes the message using `display` (coach) / `leadDisplay` (lead).
@@ -12,7 +12,7 @@
 // config/wingguyBookingPrefs.js and are applied by the agent.
 
 const { DateTime } = require('luxon');
-const { getTimezoneFromLocation } = require('../linkedin-messaging-followup-next/lib/timezoneFromLocation.js');
+const { resolveLeadTimezone } = require('./leadLocationResolver');
 const { getBookingPrefs } = require('../config/wingguyBookingPrefs');
 const { createCalendarEvent, deleteCalendarEvent, getMeetingsInWindow } = require('./calendarProvider');
 
@@ -193,10 +193,15 @@ async function getAvailabilityForCoach(clientId, leadLocation = '') {
   const yourTimezone = info.timezone;
   // leadTzDetected distinguishes a REAL detection from the silent assume-coach's-tz fallback, so
   // every surface can tell the coach where the lead is based — or that it doesn't know (Guy's
-  // "can Wingguy always say where the recipient is based?", 2026-07-13).
-  const detectedTz = leadLocation ? getTimezoneFromLocation(leadLocation) : null;
+  // "can Wingguy always say where the recipient is based?", 2026-07-13). Resolution is the AU/NZ
+  // list first, then the world database; an ambiguous name ("Springfield") comes back NOT detected
+  // with leadTzCandidates so the agent can ask which one (Guy 2026-08-28).
+  const resolved = resolveLeadTimezone(leadLocation);
+  const detectedTz = resolved.detected ? resolved.timezone : null;
   const leadTimezone = detectedTz || yourTimezone;
   const leadTzDetected = !!detectedTz;
+  const leadTzCandidates = resolved.candidates;
+  const leadTzAssumedNote = resolved.assumedNote;
 
   const dateStr = todayInTz(yourTimezone);
   const dates = [];
@@ -213,7 +218,7 @@ async function getAvailabilityForCoach(clientId, leadLocation = '') {
     if (error) throw new Error(`${providerForInfo(info)} availability read failed: ${error}`);
     const nylasPrefs = getBookingPrefs(clientId);
     const days = buildDaysFromBusy({ busyEvents: events, dates, yourTimezone, leadTimezone, lunch: nylasPrefs.lunch });
-    return { yourTimezone, leadTimezone, leadLocation, leadTzDetected, days };
+    return { yourTimezone, leadTimezone, leadLocation, leadTzDetected, leadTzCandidates, leadTzAssumedNote, days };
   }
 
   // Google service-account read (Guy's proven path — unchanged unless Calendar Read IDs lists
@@ -238,7 +243,7 @@ async function getAvailabilityForCoach(clientId, leadLocation = '') {
     })),
   }));
 
-  return { yourTimezone, leadTimezone, leadLocation, leadTzDetected, days: mapped };
+  return { yourTimezone, leadTimezone, leadLocation, leadTzDetected, leadTzCandidates, leadTzAssumedNote, days: mapped };
 }
 
 // A "meeting" for the daily count = a BUSY event overlapping the booking-hours window (9–17) that
@@ -340,14 +345,19 @@ async function checkProposedTime(clientId, { date, time, side = 'coach', leadLoc
   // Same real-detection-vs-silent-fallback split as getAvailabilityForCoach: with no recognised
   // location the fallback made leadDisplay echo the coach's clock, and every surface then asserted
   // "the clocks are identical" for a lead who was actually 2 hours away (Pedro/Hong Kong,
-  // 2026-08-28). leadTzDetected lets callers say "unknown" instead.
-  const detectedTz = leadLocation ? getTimezoneFromLocation(leadLocation) : null;
+  // 2026-08-28). leadTzDetected lets callers say "unknown" instead; an ambiguous name carries
+  // candidates so the agent can ask "which Perth?".
+  const resolved = resolveLeadTimezone(leadLocation);
+  const detectedTz = resolved.detected ? resolved.timezone : null;
   const leadTzDetected = !!detectedTz;
   const leadTimezone = detectedTz || yourTimezone;
   if (side === 'lead' && !leadTzDetected) {
+    const whichOne = resolved.ambiguous
+      ? `"${leadLocation}" is AMBIGUOUS — could be ${resolved.candidates.map((c) => `${c.place} (${c.timezone})`).join(' or ')}. Ask the coach which one`
+      : `${leadLocation ? `"${leadLocation}" NOT recognised` : 'NOT provided'} — a time given in the LEAD's timezone can't be converted without knowing where they are. Ask the coach where the lead is based`;
     return {
       ok: false,
-      error: `Lead location ${leadLocation ? `"${leadLocation}" NOT recognised` : 'NOT provided'} — a time given in the LEAD's timezone can't be converted without knowing where they are. Ask the coach where the lead is based, save it to the lead's record, then re-run this check.`,
+      error: `Lead location ${whichOne}, save it to the lead's record, then re-run this check.`,
     };
   }
   const tz = side === 'lead' ? leadTimezone : yourTimezone;
@@ -363,6 +373,8 @@ async function checkProposedTime(clientId, { date, time, side = 'coach', leadLoc
     yourTimezone,
     leadTimezone,
     leadTzDetected,
+    leadTzCandidates: resolved.candidates,
+    leadTzAssumedNote: resolved.assumedNote,
     display: formatInTz(startISO, yourTimezone),
     leadDisplay: formatInTz(startISO, leadTimezone),
     clashes,
@@ -580,18 +592,20 @@ function filterAvailability(avail, prefs, { includeLunch = false, includeSoon = 
     const slotsWanted = prefs.slotsToOffer || 3;
     const nearSlotCount = near.reduce((n, d) => n + d.freeSlots.length, 0);
     if (nearSlotCount >= slotsWanted) {
-      return { yourTimezone: avail.yourTimezone, leadTimezone: avail.leadTimezone, leadLocation: avail.leadLocation, leadTzDetected: avail.leadTzDetected, window, days: near };
+      return { yourTimezone: avail.yourTimezone, leadTimezone: avail.leadTimezone, leadLocation: avail.leadLocation, leadTzDetected: avail.leadTzDetected, leadTzCandidates: avail.leadTzCandidates, leadTzAssumedNote: avail.leadTzAssumedNote, window, days: near };
     }
     return {
       yourTimezone: avail.yourTimezone,
       leadTimezone: avail.leadTimezone,
       leadLocation: avail.leadLocation,
       leadTzDetected: avail.leadTzDetected,
+      leadTzCandidates: avail.leadTzCandidates,
+      leadTzAssumedNote: avail.leadTzAssumedNote,
       window,
       days: days.map((d) => (d.date >= farStart ? { ...d, fallbackWeek: true } : d)),
     };
   }
-  return { yourTimezone: avail.yourTimezone, leadTimezone: avail.leadTimezone, leadLocation: avail.leadLocation, leadTzDetected: avail.leadTzDetected, window, days };
+  return { yourTimezone: avail.yourTimezone, leadTimezone: avail.leadTimezone, leadLocation: avail.leadLocation, leadTzDetected: avail.leadTzDetected, leadTzCandidates: avail.leadTzCandidates, leadTzAssumedNote: avail.leadTzAssumedNote, window, days };
 }
 
 /**
