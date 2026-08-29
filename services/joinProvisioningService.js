@@ -337,10 +337,24 @@ async function stepCreateBase(job) {
 }
 
 async function stepValidateBase(job) {
-  const { validateBaseStructure } = require('../scripts/onboard-new-client');
-  const v = await validateBaseStructure(job.base_id);
-  if (!v.valid) throw new Error(`Base ${job.base_id} failed validation: ${(v.errors || []).join('; ')}`);
-  return { warnings: v.warnings || [] };
+  // Validate against the schema the base was built from. (The older
+  // validateBaseStructure in scripts/onboard-new-client.js expects the
+  // template-duplication era's extra tables - LinkedIn Posts, Connections -
+  // which config/clientBaseSchema.json deliberately dropped.)
+  const schema = require('../config/clientBaseSchema.json');
+  const Airtable = require('airtable');
+  Airtable.configure({ apiKey: process.env.AIRTABLE_API_KEY });
+  const base = Airtable.base(job.base_id);
+  const errors = [];
+  for (const t of schema.tables) {
+    try {
+      await base(t.name).select({ maxRecords: 1 }).firstPage();
+    } catch (e) {
+      errors.push(`Table "${t.name}" not reachable: ${e && e.message}`);
+    }
+  }
+  if (errors.length) throw new Error(`Base ${job.base_id} failed validation: ${errors.join('; ')}`);
+  return { tablesChecked: schema.tables.map((t) => t.name) };
 }
 
 async function stepFinishRow(job) {
