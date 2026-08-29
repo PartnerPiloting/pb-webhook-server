@@ -102,6 +102,23 @@ const PAGES = {
       'A working day with the machinery running - introductions drafted from one sentence, '
       + 'mornings that brief you, bookings that book themselves. Told flat, exactly as it happens.',
   },
+  // The joining page (Stripe cutover stage 3): the plain version of what a new
+  // member is saying yes to - the two fears dissolved, the road map, the money,
+  // and the one button into Stripe Checkout. Written to serve both the person
+  // who already said yes on a call and the person who asked "send me something
+  // on the pricing". ?ref=<Client ID> carries an introducer through to checkout.
+  join: {
+    file: 'join.html',
+    title: 'Joining - I Know A Guy',
+    description:
+      'What you are saying yes to, plainly: what it makes possible, the road we build in order, '
+      + 'what it costs, and what happens in the first 24 hours.',
+  },
+  joinThanks: {
+    file: 'join-thanks.html',
+    title: 'Welcome aboard - I Know A Guy',
+    description: 'Payment done - here is exactly what happens in the next 24 hours.',
+  },
 };
 
 const cachedBodies = {};
@@ -168,6 +185,93 @@ module.exports = function mountMarketingSite(app) {
   router.get('/a-day-in-the-life', servePage(PAGES.day));
   // The page's original URL - keep any link already sent working forever.
   router.get('/what-you-just-saw', (req, res) => res.redirect(301, '/a-day-in-the-life'));
+
+  // Joining (Stripe cutover stage 3). GET /join is the page; the button POSTs
+  // to /site/join/checkout, which creates a Stripe Checkout session ($250
+  // joining fee on the first invoice + $150/month subscription) and redirects
+  // to Stripe's own hosted payment page. Prices are found by lookup key and
+  // created on first use, so nothing has to be pre-clicked in the dashboard.
+  router.get('/join', servePage(PAGES.join));
+  router.get('/join/thanks', servePage(PAGES.joinThanks));
+
+  const MONTHLY_LOOKUP = 'ikag_membership_150_monthly';
+  const SETUP_LOOKUP = 'ikag_setup_fee_100';
+  const parseForm2 = express.urlencoded({ extended: false, limit: '8kb' });
+  let cachedPriceIds = null;
+
+  async function ensureJoinPrices(stripe) {
+    if (cachedPriceIds) return cachedPriceIds;
+    const found = await stripe.prices.list({ lookup_keys: [MONTHLY_LOOKUP, SETUP_LOOKUP], limit: 10 });
+    let monthly = found.data.find((p) => p.lookup_key === MONTHLY_LOOKUP);
+    let setup = found.data.find((p) => p.lookup_key === SETUP_LOOKUP);
+    if (!monthly) {
+      const product = await stripe.products.create({
+        name: 'I Know A Guy membership',
+        description: 'Network Accelerator membership - weekly sessions plus the machinery.',
+      });
+      monthly = await stripe.prices.create({
+        product: product.id, currency: 'aud', unit_amount: 15000,
+        recurring: { interval: 'month' }, lookup_key: MONTHLY_LOOKUP,
+        nickname: 'Membership $150/month',
+      });
+    }
+    // Its own product, so Checkout's breakdown reads "Set-up fee" + the
+    // membership rather than the membership listed twice.
+    if (!setup) {
+      const feeProduct = await stripe.products.create({
+        name: 'Set-up fee',
+        description: 'One-off set-up - with your first month, this makes up the $250 to get started.',
+      });
+      setup = await stripe.prices.create({
+        product: feeProduct.id, currency: 'aud', unit_amount: 10000,
+        lookup_key: SETUP_LOOKUP, nickname: 'Set-up fee $100',
+      });
+    }
+    cachedPriceIds = { monthly: monthly.id, setup: setup.id };
+    return cachedPriceIds;
+  }
+
+  router.post('/site/join/checkout', parseForm2, async (req, res) => {
+    try {
+      const { stripe, isStripeAvailable } = require('../config/stripeClient');
+      if (!isStripeAvailable()) {
+        return res.status(503).send('Payments are briefly unavailable - please try again shortly, or reply to any email from Guy.');
+      }
+      const prices = await ensureJoinPrices(stripe);
+      const ref = String((req.body && req.body.ref) || '').slice(0, 80).trim();
+      const origin = `${req.protocol}://${req.get('host')}`;
+      const session = await stripe.checkout.sessions.create({
+        mode: 'subscription',
+        // "$250 to get started" = the first month ($150, the subscription's
+        // normal first charge, today) + a $100 set-up fee. The next $150
+        // lands a month from now. A plain subscription: Stripe's two delay
+        // levers both misfire here (trial_period_days dresses the page in
+        // free-trial wording; billing_cycle_anchor + proration 'none' is
+        // rejected alongside a one-time price), and this needs neither.
+        line_items: [
+          { price: prices.monthly, quantity: 1 },
+          { price: prices.setup, quantity: 1 },
+        ],
+        success_url: `${origin}/join/thanks`,
+        cancel_url: `${origin}/join`,
+        metadata: { source: 'knowaguy-join', referrer: ref || '' },
+        subscription_data: { metadata: { source: 'knowaguy-join', referrer: ref || '' } },
+        // The joiner's own name, asked on the Stripe page itself - the
+        // cardholder name is whoever's card it is, so it can't be trusted as
+        // identity. These land on the session and the webhook builds the
+        // master Clients row from them (checkout.session.completed).
+        custom_fields: [
+          { key: 'first_name', label: { type: 'custom', custom: 'First name' }, type: 'text' },
+          { key: 'last_name', label: { type: 'custom', custom: 'Last name' }, type: 'text' },
+        ],
+      });
+      logger.info(`[site] join checkout session created${ref ? ` (ref=${ref})` : ''}`);
+      return res.redirect(303, session.url);
+    } catch (err) {
+      logger.error(`[site] join checkout failed: ${err && err.message}`);
+      return res.status(500).send('Something went wrong starting the payment - please try again, or reply to any email from Guy.');
+    }
+  });
 
   // Public images for the site. Scoped to content/site/assets rather than
   // content/site, so homepage.html can never be served as a raw file.

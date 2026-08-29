@@ -660,11 +660,12 @@ router.get('/api/billing/subscription', authenticateUserWithTestMode, requireStr
 /**
  * POST /api/billing/webhook
  * Stripe webhook handler for new subscription events
- * 
+ *
  * Listens for:
  * - customer.subscription.created (notify admin)
  * - customer.subscription.deleted (notify admin)
  * - invoice.payment_failed (notify admin)
+ * - checkout.session.completed (knowaguy join -> create Clients row)
  */
 router.post('/api/billing/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
     const logger = createLogger({ 
@@ -729,6 +730,18 @@ router.post('/api/billing/webhook', express.raw({ type: 'application/json' }), a
                     client
                 });
                 await shadow.applyShadowDecision(client, verdict.wouldStatus, `stripe ${event.type}: ${subStatus}`);
+                break;
+            }
+
+            case 'checkout.session.completed': {
+                const session = event.data.object;
+                if (((session.metadata && session.metadata.source) || '') !== 'knowaguy-join') {
+                    logger.info('Checkout session completed (not a knowaguy join) - no action');
+                    break;
+                }
+                // Stage 4: the full provisioning chain, run out-of-band on a
+                // resumable ledger (services/joinProvisioningService).
+                await require('../services/joinProvisioningService').enqueueFromSession(session, logger);
                 break;
             }
 
@@ -803,6 +816,44 @@ router.post('/api/billing/webhook', express.raw({ type: 'application/json' }), a
         logger.error('Webhook error:', error.message);
         res.status(500).json({ error: 'Webhook processing failed' });
     }
+});
+
+/**
+ * Join provisioning admin doors (stage 4). Same debug-key convention as
+ * /api/onboard-client: x-debug-key header must match DEBUG_API_KEY (or
+ * PB_WEBHOOK_SECRET). List the ledger, inspect one job, retry a failed one
+ * from the step it stopped at.
+ */
+function requireDebugKey(req, res) {
+    const key = req.headers['x-debug-key'] || req.query.debugKey;
+    if (!key || key !== (process.env.DEBUG_API_KEY || process.env.PB_WEBHOOK_SECRET)) {
+        res.status(401).json({ success: false, error: 'Admin authentication required. Provide debugKey.' });
+        return false;
+    }
+    return true;
+}
+
+router.get('/api/join-provision/jobs', async (req, res) => {
+    if (!requireDebugKey(req, res)) return;
+    const provisioning = require('../services/joinProvisioningService');
+    res.json({ jobs: await provisioning.listJobs(req.query.limit) });
+});
+
+router.get('/api/join-provision/jobs/:id', async (req, res) => {
+    if (!requireDebugKey(req, res)) return;
+    const provisioning = require('../services/joinProvisioningService');
+    const job = await provisioning.getJob(req.params.id);
+    if (!job) return res.status(404).json({ error: 'Job not found' });
+    res.json({ job });
+});
+
+router.post('/api/join-provision/jobs/:id/retry', async (req, res) => {
+    if (!requireDebugKey(req, res)) return;
+    const logger = createLogger({ runId: 'JOIN', clientId: 'SYSTEM', operation: 'join_provision_retry' });
+    const provisioning = require('../services/joinProvisioningService');
+    const job = await provisioning.runJob(req.params.id, logger);
+    if (!job) return res.status(404).json({ error: 'Job not found' });
+    res.json({ job: { id: job.id, state: job.state, current_step: job.current_step, error: job.error || null } });
 });
 
 module.exports = router;
