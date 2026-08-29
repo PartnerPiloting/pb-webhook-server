@@ -195,9 +195,11 @@ const STEPS = [
   ['validate_base', stepValidateBase],
   ['finish_row', stepFinishRow],
   ['mint_token', stepMintToken],
+  // Active the moment their login exists - the welcome draft is for Guy's
+  // convenience and must never hold the client's access hostage.
+  ['activate', stepActivate],
   ['create_tasks', stepCreateTasks],
   ['draft_welcome', stepDraftWelcome],
-  ['activate', stepActivate],
   ['notify_guy', stepNotifyGuy],
 ];
 
@@ -304,7 +306,7 @@ async function stepSendAck(job) {
     '',
     "Payment's done - your receipt from Stripe is on its way separately.",
     '',
-    "Here's what happens next: your workspace is being built right now, and within the day you'll get a welcome email from me with your own login and your first set-up steps - each takes minutes.",
+    "Here's what happens next: your workspace is being built right now, and you'll soon get a welcome email from me with your own login and your first set-up steps - each takes minutes.",
     '',
     "Nothing else is needed from you right now. If anything looks odd - no receipt, no welcome email by tomorrow - just reply to this email and I'll sort it.",
     '',
@@ -345,9 +347,16 @@ async function stepFinishRow(job) {
   const base = masterBase();
   await base('Clients').update(job.client_record_id, {
     'Airtable Base ID': job.base_id,
-    // Same tier defaults the onboarding door writes for a new client.
+    // Same defaults the onboarding door writes - verified field-for-field
+    // against Paul Salvage's row (the first Stripe-era client).
+    'Service Level': '1-Lead Scoring',
     'Profile Scoring Token Limit': 6000,
     'Post Scoring Token Limit': 3000,
+    'Posts Daily Target': 10,
+    'Leads Batch Size for Post Collection': 10,
+    'Max Post Batches Per Day Guardrail': 3,
+    'Post Scrape Batch Size': 10,
+    'Processing Stream': 1,
     'Wingguy Enabled': 'Yes',
     'Thanks for Connecting': 'Yes',
     'Followup Brief': 'Yes',
@@ -444,7 +453,7 @@ async function stepNotifyGuy(job, logger) {
     '',
     'Their acknowledgement email went out automatically. The WELCOME EMAIL is sitting in your drafts - read it, tweak it, send it. Booking the first session happens from their reply.',
     '',
-    'Service Level is the table default - adjust it on the row if this client is a different tier.',
+    'Service Level starts at 1-Lead Scoring - adjust it on the row if this client is a different tier.',
     extras.length ? `\nNeeds a human (${extras.length}):\n- ${extras.join('\n- ')}` : null,
   ].filter((l) => l !== null).join('\n');
   await alertGuy(`Provisioned: ${fullName} (${job.client_id})`, text, logger);
