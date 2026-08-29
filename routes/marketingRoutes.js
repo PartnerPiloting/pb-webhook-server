@@ -245,7 +245,12 @@ module.exports = function mountMarketingSite(app) {
         success_url: `${origin}/join/thanks`,
         cancel_url: `${origin}/join`,
         metadata: { source: 'knowaguy-join', referrer: ref || '' },
-        subscription_data: { metadata: { source: 'knowaguy-join', referrer: ref || '' } },
+        // The $250 covers month one, so today's charge is the joining fee
+        // alone and the $150/month starts thirty days in.
+        subscription_data: {
+          trial_period_days: 30,
+          metadata: { source: 'knowaguy-join', referrer: ref || '' },
+        },
       });
       logger.info(`[site] join checkout session created${ref ? ` (ref=${ref})` : ''}`);
       return res.redirect(303, session.url);
