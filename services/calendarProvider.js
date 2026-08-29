@@ -35,6 +35,22 @@ function activeProvider(coach) {
   return String(p).trim().toLowerCase();
 }
 
+/* ---- Who is "me" in a calendar event (2026-08-27) -----------------------------------------------
+ * Every provider mapper marks one attendee `self` so isCoachAttending() can tell the coach's own
+ * meetings from everything else in the window. That identity came ONLY from Calendar Email — which
+ * is deliberately BLANK on the Unipile lane, because a value there forces the legacy Google
+ * service-account path (see wingguyCalendar.providerForInfo). Blank => no self row => every event
+ * rejected => fathomIngestService.relevantCalendarEvents() returned [] for every recording, which
+ * silently switched off the calendar-based lead-matching fallback (built for Julian's impromptu
+ * calls), back-to-back splitting, and calendar-sourced pending-lead capture — for Fathom, Granola
+ * and Fireflies alike, since all three share that helper. Fall back to the address on the client
+ * record. Inert wherever Calendar Email is set (Google/Zoho tenants), so those paths don't move.
+ */
+function coachSelfEmail(coach) {
+  if (!coach) return '';
+  return String(coach.googleCalendarEmail || coach.calendarEmail || coach.clientEmailAddress || '').trim();
+}
+
 /* ---- Multi-calendar read scope (2026-07-17) ------------------------------------------------------
  * The no-double-book guarantee is only TRUE if availability reads see EVERY calendar the coach keeps
  * (miss the personal calendar and Wingguy books a lead over the dentist). Read scope comes from the
@@ -208,7 +224,7 @@ async function getViaNylas(coach, timeMin, timeMax) {
 
   const startSec = Math.floor(new Date(timeMin).getTime() / 1000);
   const endSec = Math.floor(new Date(timeMax).getTime() / 1000);
-  const selfEmail = String(coach.googleCalendarEmail || coach.calendarEmail || '').toLowerCase();
+  const selfEmail = coachSelfEmail(coach).toLowerCase();
   const tz = coach.timezone || null;
   const events = [];
   for (const calendarId of calendarIds) {
@@ -549,7 +565,7 @@ async function getViaUnipile(coach, timeMin, timeMax) {
       calendarIds = [await unipileWriteCalendarId(coach)];
     }
 
-    const selfEmail = String(coach.googleCalendarEmail || coach.calendarEmail || '').toLowerCase();
+    const selfEmail = coachSelfEmail(coach).toLowerCase();
     const tz = coach.timezone || null;
     const events = [];
     for (const calendarId of calendarIds) {
@@ -592,7 +608,7 @@ async function createViaUnipile(coach, details) {
     // Unipile REQUIRES >=1 attendee (unlike Nylas/Zoho, which allow guest-less HOLDs). For an
     // attendee-less utility event (offer HOLD) add the coach's own address and force notify off so
     // nobody is emailed. VERIFY-LIVE: confirm a self-only HOLD doesn't notify the coach.
-    const selfEmail = String(coach.googleCalendarEmail || coach.calendarEmail || '').trim();
+    const selfEmail = coachSelfEmail(coach);
     if (!attendees.length) {
       if (selfEmail) attendees = [{ email: selfEmail }];
       notify = false;
@@ -813,7 +829,7 @@ async function getViaZoho(coach, timeMin, timeMax) {
   try {
     const accessToken = await getZohoAccessToken(coach);
     const { calendarBase } = zohoHosts(coach.calendarProviderDomain);
-    const selfEmail = String(coach.googleCalendarEmail || coach.calendarEmail || '').toLowerCase();
+    const selfEmail = coachSelfEmail(coach).toLowerCase();
     const tz = coach.timezone || null;
 
     // Read scope: default = the one write calendar (today's behaviour); 'all' = every calendar on
@@ -912,7 +928,7 @@ async function deleteViaZoho(coach, eventId) {
 }
 
 module.exports = {
-  getMeetingsInWindow, createCalendarEvent, deleteCalendarEvent, activeProvider, listCalendars,
+  getMeetingsInWindow, createCalendarEvent, deleteCalendarEvent, activeProvider, listCalendars, coachSelfEmail,
   mapNylasEvent, mapNylasStatus, mapUnipileEvent, mapUnipileStatus, listUnipileCalendars,
   mapZohoEvent, mapZohoStatus, zohoToISO, isoToZoho, zohoHosts,
   parseReadIds, dedupEvents, allDaySpan, zohoDateOnly, googleAllDayNormalise,

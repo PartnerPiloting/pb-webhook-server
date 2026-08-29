@@ -25,7 +25,7 @@
 const express = require('express');
 const { createLogger } = require('../utils/contextLogger');
 const { authenticateUserWithTestMode } = require('../middleware/authMiddleware');
-const { getAnthropicClient, resolveClientAnthropic, NO_ANTHROPIC_KEY_MSG, isAnthropicConfigured, anthropicKeyError } = require('../config/anthropicClient');
+const { getAnthropicClient, getAnthropicClientForKey, resolveClientAnthropic, NO_ANTHROPIC_KEY_MSG, isAnthropicConfigured, anthropicKeyError, claudeModelId } = require('../config/anthropicClient');
 const rulesSource = require('../services/wingguyRulesSource');
 const { getBookingPrefs } = require('../config/wingguyBookingPrefs');
 const { createBookingEvent } = require('../services/wingguyCalendar');
@@ -104,9 +104,16 @@ const ANTHROPIC_KEY_ERROR_MSG = {
 // route handles a rejected key / overload / real bug identically. Key/billing failure -> 400 + a
 // clear "fix your key" message (surfaced, never retried on the platform key); transient upstream
 // overload -> 503 "try again"; anything else -> 500 raw.
-function respondClaudeError(res, e) {
+function respondClaudeError(res, e, req) {
   const keyReason = anthropicKeyError(e);
-  if (keyReason) return res.status(400).json({ ok: false, error: ANTHROPIC_KEY_ERROR_MSG[keyReason], keyError: keyReason });
+  if (keyReason) {
+    // Stamp the record so the portal's "Your Claude key" section can show "stopped working since
+    // X" instead of the client discovering it draft-by-draft. Fire-and-forget: the response must
+    // never wait on (or fail over) an Airtable write.
+    const cid = req && req.client && req.client.clientId;
+    if (cid) clientService.noteClientKeyFailure(cid, keyReason).catch(() => {});
+    return res.status(400).json({ ok: false, error: ANTHROPIC_KEY_ERROR_MSG[keyReason], keyError: keyReason });
+  }
   const friendly = transientClaudeError(e);
   return res.status(friendly ? 503 : 500).json({ ok: false, error: friendly || e.message });
 }
@@ -144,7 +151,11 @@ function buildProfileBlock(profile = {}) {
   };
   add('Name', profile.name);
   add('Headline', profile.headline);
-  add('Location', profile.location);
+  // Location carries its source (see pickLocation). The model must never have to guess whether this
+  // came from the CRM or off the page — it guessed wrong and told Guy so (Wayne Merry, 2026-08-27).
+  add('Location', profile.location && profile._locationSource
+    ? `${profile.location}  [source: ${profile._locationSource} — say which when you tell Guy where they are]`
+    : profile.location);
   add('Current role/company', profile.currentRole);
   add('Job title', profile.jobTitle);
   add('Company', profile.companyName);
@@ -167,6 +178,18 @@ function buildProfileBlock(profile = {}) {
   if (!profile.about && profile.pageText) {
     lines.push('Raw profile page text (mine for the hook; ignore nav/buttons/"People also viewed"):');
     lines.push(String(profile.pageText).slice(0, PROFILE_CHAR_CAP));
+  }
+
+  // Source ledger for the lines above (Wayne Merry, 2026-08-27). Each field is page-first with the
+  // CRM filling gaps, so a single unattributed line leaves the model GUESSING which source it came
+  // from when the coach asks what their CRM holds — and it guessed wrong, out loud. Only rendered
+  // when a CRM record was actually merged (no record → nothing to misattribute to).
+  if (Array.isArray(profile._filledFromPortal)) {
+    const ledgerLabels = { name: 'Name', headline: 'Headline', jobTitle: 'Job title', companyName: 'Company', about: 'About' };
+    const fromCrm = profile._filledFromPortal.map((k) => ledgerLabels[k]).filter(Boolean);
+    lines.push(fromCrm.length
+      ? `(Sources: ${fromCrm.join(', ')} came from your CRM record; every other profile line above came from the LinkedIn page. Location is tagged on its own line. When the coach asks what their CRM holds, answer from these sources — never guess.)`
+      : `(Sources: every profile line above came from the LinkedIn page — the CRM record matched but added none of these fields. Location is tagged on its own line. When the coach asks what their CRM holds, answer from these sources — never guess.)`);
   }
 
   // Private CRM context pulled from the Portal (Airtable) by enrichProfileFromPortal(). Fenced + clearly
@@ -257,6 +280,29 @@ function portalFieldsFromRecord(f = {}) {
   };
 }
 
+// LOCATION does NOT follow the page-wins rule the rest of the enrichment uses (Wayne Merry, 2026-08-27).
+// The messaging-surface scrape grabs a loose grey-text node and came back with a bare "Australia" while
+// the CRM held "Blackburn, Victoria, Australia". Gap-fill then DISCARDED the good value, and
+// getTimezoneFromLocation("Australia") maps to nothing — so the draft silently fell back to Guy's own
+// timezone and the model reported the scraped country as what the CRM held. Precedence now:
+//   1. the CRM's Location — curated, and the only one Guy can correct
+//   2. the page — ONLY when the CRM is blank, or when it names the SAME place with more detail
+//      (page CONTAINS the CRM string). That second case protects the ~5% of leads stored as a bare
+//      country: standing on their real profile page, "Blackburn, Victoria, Australia" still beats "Australia".
+// Where they said they are in the THREAD beats both, but that is the model's call, not this merge's —
+// it comes through propose_times' leadTimezoneOverride.
+function pickLocation(pageLoc, portalLoc) {
+  const page = String(pageLoc == null ? '' : pageLoc).trim();
+  const crm = String(portalLoc == null ? '' : portalLoc).trim();
+  if (!crm) return { value: page, source: page ? 'the LinkedIn page' : '' };
+  if (!page) return { value: crm, source: 'your CRM record' };
+  const p = page.toLowerCase();
+  const c = crm.toLowerCase();
+  // Same place, more detail on the page — take the detail.
+  if (p !== c && p.includes(c)) return { value: page, source: 'the LinkedIn page' };
+  return { value: crm, source: 'your CRM record' };
+}
+
 // Best-effort: enrich the scraped profile with the lead's stored Portal (Airtable) record, keyed by the
 // LinkedIn profile URL Wingguy already extracts (name as fallback). This is what lets a reply/rebook from
 // the MESSAGES draw on real context — it fills the gaps the page didn't provide (About/headline aren't in
@@ -299,13 +345,26 @@ async function enrichProfileFromPortal(req, profile = {}) {
     }
 
     // The live page wins where it has a value; the Portal fills gaps AND supplies the CRM-only fields
-    // (which are never on the page, so the loop always attaches them).
+    // (which are never on the page, so the loop always attaches them). LOCATION is the one exception —
+    // see pickLocation(): there the CRM is the standing truth and the page must earn its place.
     const portal = portalFieldsFromRecord(records[0].fields || {});
     const merged = { ...profile };
+    const filledFromPortal = [];
     for (const [k, v] of Object.entries(portal)) {
+      if (k === 'location') continue;   // handled by pickLocation below — deliberately NOT gap-fill
       const has = merged[k] != null && String(merged[k]).trim() !== '';
-      if (!has && v != null && String(v).trim() !== '') merged[k] = v;
+      if (!has && v != null && String(v).trim() !== '') { merged[k] = v; filledFromPortal.push(k); }
     }
+    const picked = pickLocation(profile.location, portal.location);
+    merged.location = picked.value;
+    // Provenance for the rendered "Location:" line. Without it the model sees one bare location and
+    // guesses where it came from — which is exactly how it told Guy his CRM held "Australia" when that
+    // string had been scraped off the page (Wayne Merry, 2026-08-27).
+    merged._locationSource = picked.source;
+    // Which of the page-first fields the CRM actually supplied — buildProfileBlock renders this as a
+    // one-line source ledger, so the model never again tells Guy his CRM holds something it read off
+    // the page (the location half of Wayne Merry, 2026-08-27, applied to the rest of the merge).
+    merged._filledFromPortal = filledFromPortal;
     // Carry the matched record id so the chat agent can WRITE back (update_lead_email). Non-enumerable-ish
     // underscore key: buildProfileBlock/detectTemplate read named fields only, so it never reaches the model.
     merged._leadRecordId = records[0].id;
@@ -315,6 +374,25 @@ async function enrichProfileFromPortal(req, profile = {}) {
     // (Mary Anne, 2026-07-03): the invite email now comes from the SAME enriched record the context is built on.
     merged._leadEmail = (records[0].fields && records[0].fields['Email']) || '';
     logger.info(`[Wingguy] enrich: merged Portal record ${records[0].id} (status=${portal.status || '—'}, ceaseFup=${portal.ceaseFup ? 'yes' : 'no'})`);
+
+    // WRITE-BACK (Guy, 2026-08-29): the reverse of the merge above. Leads that never went through
+    // Linked Helper (referrals, extension adds) have no About/headline/profile JSON on record — but
+    // the page scrape in `profile` has it all, so persist it (fill-blanks only, see
+    // enrichLeadFromScrape) and, when that makes the lead scorable, score them on the spot via the
+    // existing /score-lead door. Fire-and-forget: a draft turn never waits on it and a failure here
+    // must never touch the response — the nightly batch remains the backstop.
+    if (profile.about || profile.headline) {
+      const recId = records[0].id;
+      const cid = req.client.clientId;
+      wingguyLeads.enrichLeadFromScrape(req.client.airtableBaseId, recId, profile, records[0].fields || {})
+        .then((r) => {
+          if (r && r.changed) logger.info(`[Wingguy] scrape write-back ${recId}: wrote ${r.wrote.join(', ')}`);
+          if (r && r.scoreNow) {
+            return wingguyLeads.scoreLeadInstant(cid, recId, (m) => logger.info(`[Wingguy] ${m}`));
+          }
+        })
+        .catch((e) => logger.warn(`[Wingguy] scrape write-back ${recId} failed (non-fatal): ${e.message}`));
+    }
     return merged;
   } catch (e) {
     logger.error(`[Wingguy] enrich failed (continuing with page profile): ${e.message}`);
@@ -460,7 +538,7 @@ module.exports = function mountWingguy(app) {
       });
     } catch (e) {
       logger.error(`[Wingguy] draft-thanks failed: ${e.message}`);
-      return respondClaudeError(res, e);
+      return respondClaudeError(res, e, req);
     }
   });
 
@@ -519,7 +597,7 @@ module.exports = function mountWingguy(app) {
       return res.json({ ok: true, draft, model: WINGGUY_DRAFT_MODEL_ID, mode: 'reply' });
     } catch (e) {
       logger.error(`[Wingguy] draft-reply failed: ${e.message}`);
-      return respondClaudeError(res, e);
+      return respondClaudeError(res, e, req);
     }
   });
 
@@ -650,7 +728,7 @@ module.exports = function mountWingguy(app) {
     } catch (e) {
       logger.error(`[Wingguy] chat failed: ${e.message}`);
       // Key/billing failure -> clear "fix your key" (400); transient overload -> 503; else 500.
-      return respondClaudeError(res, e);
+      return respondClaudeError(res, e, req);
     }
   });
 
@@ -877,6 +955,115 @@ module.exports = function mountWingguy(app) {
     } catch (e) {
       logger.error(`[Wingguy] setup write failed for ${tenantId} (${scope}/${key}): ${e.message}`);
       return res.status(500).json({ ok: false, error: e.message });
+    }
+  });
+
+  // --- "Your Claude key" - portal self-service for the BYO Anthropic key ------------------------
+  // Add, replace, re-check, or remove the stored key from the setup page. The key VALUE is
+  // write-only: stored on the master record, never sent back to a browser (status serves a masked
+  // tail only). A pasted key is live-tested against Anthropic BEFORE it is stored, because the
+  // common failure is not a bad paste - it is a valid key on an account with no credit (Julian,
+  // 28 Aug), which dies identically a month later. Managed-plan clients have no key to manage;
+  // the status says so and the write doors refuse.
+
+  const CLAUDE_KEY_SHAPE = /^sk-ant-[A-Za-z0-9_-]{24,}$/;
+
+  const maskClaudeKey = (key) => (String(key || '').trim() ? `sk-ant-…${String(key).trim().slice(-4)}` : '');
+
+  function claudeKeyStatusFor(client) {
+    const raw = client && client.rawRecord;
+    const get = (f) => { try { return raw ? (raw.get(f) || null) : null; } catch (_) { return null; } };
+    return {
+      ok: true,
+      managed: !!(client && client.managedClaudeKey),
+      hasKey: !!String((client && client.anthropicApiKey) || '').trim(),
+      masked: maskClaudeKey(client && client.anthropicApiKey),
+      addedAt: get('Anthropic Key Added At'),
+      failingSince: get('Anthropic Key Failing Since'),
+      failReason: get('Anthropic Key Fail Reason'),
+    };
+  }
+
+  // The cheapest real call that exercises BILLING, not just auth: /v1/models would accept a key
+  // whose account has no credit, which is exactly the trap this exists to catch. Throws the raw
+  // SDK error for anthropicKeyError to classify.
+  async function probeClaudeKey(key) {
+    const llm = getAnthropicClientForKey(key);
+    await llm.messages.create({
+      model: claudeModelId,
+      max_tokens: 1,
+      messages: [{ role: 'user', content: 'ping' }],
+    });
+  }
+
+  router.get('/setup/claude-key', async (req, res) => {
+    try {
+      // Fresh read, not req.client: the auth middleware may serve a cached record, and this
+      // status is the page's source of truth right after a save elsewhere.
+      const client = await clientService.getClientById(req.client.clientId);
+      return res.json(claudeKeyStatusFor(client || req.client));
+    } catch (e) {
+      return res.json(claudeKeyStatusFor(req.client));
+    }
+  });
+
+  // Save a new key ({ key }) or re-test the stored one ({ recheck: true }) - both probe Anthropic
+  // first and only touch the record when the probe passes, so a standing good key can never be
+  // replaced by a dead one.
+  router.post('/setup/claude-key', async (req, res) => {
+    const tenantId = req.client.clientId;
+    if (req.client.managedClaudeKey) {
+      return res.status(400).json({ ok: false, error: 'Your account runs on the managed plan - there is no key to manage here.' });
+    }
+    const recheck = !!(req.body && req.body.recheck);
+    const key = recheck
+      ? String(req.client.anthropicApiKey || '').trim()
+      : String((req.body && req.body.key) || '').trim();
+    if (!key) {
+      return res.status(400).json({ ok: false, error: recheck ? 'There is no key on file to check.' : 'Paste your key first.' });
+    }
+    if (!recheck && !CLAUDE_KEY_SHAPE.test(key)) {
+      return res.status(400).json({ ok: false, error: 'That does not look like an Anthropic key - it should start with sk-ant-. Copy it exactly from the Anthropic Console.' });
+    }
+    try {
+      await probeClaudeKey(key);
+    } catch (e) {
+      const reason = anthropicKeyError(e);
+      if (reason === 'revoked') {
+        return res.status(400).json({ ok: false, keyError: reason, error: 'Anthropic rejected that key - it looks revoked or mistyped. Check it in the Anthropic Console and paste it again. Nothing was saved.' });
+      }
+      if (reason === 'billing') {
+        return res.status(400).json({ ok: false, keyError: reason, error: 'That key is real, but its account declined the request - most likely no credit, or the spend limit is reached. Top up or raise the limit in the Anthropic Console, then save the key again. Nothing was saved.' });
+      }
+      if (transientClaudeError(e)) {
+        return res.status(503).json({ ok: false, error: 'Anthropic is busy right now - nothing saved. Try again in a minute.' });
+      }
+      logger.error(`[Wingguy] claude-key probe failed for ${tenantId}: ${e.message}`);
+      return res.status(500).json({ ok: false, error: 'Could not check that key - nothing saved. Try again shortly.' });
+    }
+    try {
+      // Re-saving the same key on a recheck is deliberate: it clears the failing-since stamp.
+      await clientService.updateClientAnthropicKey(tenantId, key);
+      logger.info(`[Wingguy] claude-key ${recheck ? 'rechecked good' : 'saved'} for ${tenantId} (…${key.slice(-4)})${pageName(req) ? ` by ${pageName(req)}` : ''}`);
+      return res.json({ ok: true, managed: false, hasKey: true, masked: maskClaudeKey(key), addedAt: new Date().toISOString(), failingSince: null, failReason: null });
+    } catch (e) {
+      logger.error(`[Wingguy] claude-key save failed for ${tenantId}: ${e.message}`);
+      return res.status(500).json({ ok: false, error: 'The key checked out with Anthropic but could not be saved. Try again shortly.' });
+    }
+  });
+
+  router.delete('/setup/claude-key', async (req, res) => {
+    const tenantId = req.client.clientId;
+    if (req.client.managedClaudeKey) {
+      return res.status(400).json({ ok: false, error: 'Your account runs on the managed plan - there is no key to remove.' });
+    }
+    try {
+      await clientService.updateClientAnthropicKey(tenantId, '');
+      logger.info(`[Wingguy] claude-key removed for ${tenantId}${pageName(req) ? ` by ${pageName(req)}` : ''}`);
+      return res.json({ ok: true, managed: false, hasKey: false, masked: '', addedAt: null, failingSince: null, failReason: null });
+    } catch (e) {
+      logger.error(`[Wingguy] claude-key removal failed for ${tenantId}: ${e.message}`);
+      return res.status(500).json({ ok: false, error: 'Could not remove the key. Try again shortly.' });
     }
   });
 
@@ -1185,7 +1372,7 @@ module.exports = function mountWingguy(app) {
 
       return res.status(400).json({ ok: false, error: `unknown assist mode "${mode}"` });
     } catch (e) {
-      if (transientClaudeError(e)) return respondClaudeError(res, e);
+      if (transientClaudeError(e)) return respondClaudeError(res, e, req);
       logger.error(`[Wingguy] setup assist (${mode}) failed for ${tenantId}: ${e.message}`);
       return res.status(500).json({ ok: false, error: 'That did not work - try again in a moment.' });
     }

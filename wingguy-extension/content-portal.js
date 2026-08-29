@@ -374,5 +374,50 @@
   
   // Check for extension data on page load
   checkForExtensionData();
-  
+
+  // ---- Live profile verification bridge (0.3.14, Guy 2026-08-30) --------------------------------
+  // The portal's New Lead form requires a LinkedIn URL and wants to CHECK it against LinkedIn -
+  // something only this browser (with the user's LinkedIn session) can do, never the server. The
+  // page posts WG_PORTAL_VERIFY_PROFILE {url, nonce}; we relay to the background's existing
+  // WG_SCRAPE_PROFILE_TAB (the proven hidden-tab profile read) and post back ONLY the person's
+  // name + headline - enough to answer "does this profile exist and who is it", nothing more.
+  // WG_PORTAL_PING lets the form detect the extension quickly so browsers without it skip the
+  // check instead of waiting on a timeout. Same-window messages only; profile URLs only.
+  window.addEventListener('message', (event) => {
+    if (event.source !== window) return;
+    const d = event.data;
+    if (!d || !d.nonce) return;
+    if (d.type === 'WG_PORTAL_PING') {
+      window.postMessage({ type: 'WG_PORTAL_PONG', nonce: d.nonce }, window.location.origin);
+      return;
+    }
+    if (d.type !== 'WG_PORTAL_VERIFY_PROFILE') return;
+    const reply = (payload) => {
+      try {
+        window.postMessage({ type: 'WG_PORTAL_VERIFY_PROFILE_RESULT', nonce: d.nonce, ...payload }, window.location.origin);
+      } catch (_) { /* page navigated away - nothing to do */ }
+    };
+    const url = String(d.url || '');
+    if (!/^https?:\/\/(www\.)?linkedin\.com\/in\/[^\s]+$/i.test(url.trim())) {
+      reply({ ok: false, error: 'not a LinkedIn profile URL' });
+      return;
+    }
+    if (!chrome.runtime?.id) { reply({ ok: false, error: 'extension unavailable' }); return; }
+    try {
+      chrome.runtime.sendMessage({ type: 'WG_SCRAPE_PROFILE_TAB', profileUrl: url.trim() }, (resp) => {
+        if (chrome.runtime.lastError) { reply({ ok: false, error: chrome.runtime.lastError.message }); return; }
+        const p = (resp && resp.success && resp.data) || null;
+        if (p && (p.name || p.headline)) {
+          reply({ ok: true, found: true, name: String(p.name || ''), headline: String(p.headline || '') });
+        } else {
+          // The tab loaded but no profile could be read - a dead URL, an authwall, or a markup
+          // change. The form treats this as "couldn't verify", not "wrong person".
+          reply({ ok: true, found: false });
+        }
+      });
+    } catch (e) {
+      reply({ ok: false, error: e.message });
+    }
+  });
+
 })();

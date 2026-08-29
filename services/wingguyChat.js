@@ -20,7 +20,7 @@ const { WINGGUY_VOICE, WINGGUY_AGENT_INSTRUCTIONS } = require('./../config/wingg
 const { getBookingPrefs } = require('../config/wingguyBookingPrefs');
 const { getVoicePrefs } = require('../config/wingguyVoicePrefs');
 const wingguyCalendar = require('./wingguyCalendar');
-const { getTimezoneFromLocation } = require('../linkedin-messaging-followup-next/lib/timezoneFromLocation.js');
+const { resolveLeadTimezone } = require('./leadLocationResolver');
 const wingguyLeads = require('./wingguyLeads');
 const wingguyRules = require('./wingguyRulesMcp');
 
@@ -90,7 +90,7 @@ const AGENT_TOOLS = [
         includeLunch: { type: 'boolean', description: 'Set true ONLY when Guy explicitly wants to offer a lunch-time slot — otherwise lunch (12:00–12:45) is dropped from the list.' },
         includeSoon: { type: 'boolean', description: 'Set true ONLY when Guy explicitly asked for today/tomorrow — otherwise slots before the day after tomorrow are dropped (his one-clear-day rule). Past times are always dropped.' },
         includeWeekends: { type: 'boolean', description: 'Set true ONLY when Guy explicitly wants a weekend slot — otherwise weekend slots are dropped.' },
-        leadTimezoneOverride: { type: 'string', description: 'IANA timezone (e.g. "Pacific/Auckland") — set ONLY when the THREAD says the lead will be somewhere other than their profile location at the meeting time (e.g. "I\'m in NZ from Tuesday for a week" and the offered days fall in that window). The time list and its "(all times are … time)" line then render in THAT zone — where the lead will BE beats where they live. Tell Guy you did this. Leave unset normally.' },
+        leadTimezoneOverride: { type: 'string', description: 'IANA timezone (e.g. "Pacific/Auckland") — set it when the THREAD tells you where the lead is and the record does not, or is vaguer. TWO cases. (1) TRAVEL: they will be somewhere else at the meeting time ("I\'m in NZ from Tuesday for a week" and the offered days fall in that window) — where the lead will BE beats where they live. (2) VAGUE RECORD: the record holds only a country or something unmappable ("Australia") and the thread names an actual place ("happy to grab a coffee when you\'re in Melbourne") — the conversation beats a vague record, and this is the common one. The time list and its "(all times are … time)" line then render in THAT zone. ALWAYS tell Guy you took it from the thread, quote the line you took it from, and offer to save it to their record — never save it yourself off an inference. Leave unset when the record already pins them down.' },
       },
       required: ['slotTimes'],
     },
@@ -108,7 +108,7 @@ const AGENT_TOOLS = [
   },
   {
     name: 'create_lead',
-    description: 'Create a NEW lead record in Guy\'s CRM (Airtable) for someone who ISN\'T there yet — use it when the context says this lead is NOT in the CRM (e.g. Guy just accepted a connection request from someone new) and Guy wants them saved. It files them the way inbound leads normally land: Connected, dated today, so they slot into Guy\'s pipeline. Pass whatever you know — at minimum a name or the LinkedIn URL. Don\'t block on email: LinkedIn rarely shows one, so create the record now and file the email later with update_lead_email once it surfaces. Safe to call even if you\'re unsure they\'re new — it dedupes on the LinkedIn profile first, so it won\'t make a duplicate (it\'ll just point at the existing record). After a successful create you can update_lead_email / book_meeting for them in the same conversation. On a fresh create, Wingguy automatically starts reading the lead\'s LinkedIn Contact Info in Guy\'s browser to fill in their phone (and email, if you didn\'t already have one from the thread). That read finishes AFTER your reply and the panel posts the real result, so tell Guy their contact details are being pulled from LinkedIn now — do NOT claim a phone/email has already been filed, and do NOT ask him for the phone.',
+    description: 'Create a NEW lead record in Guy\'s CRM (Airtable) for someone who ISN\'T there yet — use it when the context says this lead is NOT in the CRM (e.g. Guy just accepted a connection request from someone new) and Guy wants them saved. It files them the way inbound leads normally land: Connected, dated today, so they slot into Guy\'s pipeline. Pass whatever you know — at minimum a name or the LinkedIn URL. If their LinkedIn profile is NOT in view and you don\'t have their URL, ask Guy to paste it BEFORE creating — it\'s the dedup key and it lets Wingguy enrich and score the new record from their profile; only create on a bare name if Guy says he doesn\'t have the URL. Don\'t block on email: LinkedIn rarely shows one, so create the record now and file the email later with update_lead_email once it surfaces. Safe to call even if you\'re unsure they\'re new — it dedupes on the LinkedIn profile first, so it won\'t make a duplicate (it\'ll just point at the existing record). After a successful create you can update_lead_email / book_meeting for them in the same conversation. On a fresh create, Wingguy automatically starts reading the lead\'s LinkedIn Contact Info in Guy\'s browser to fill in their phone (and email, if you didn\'t already have one from the thread). That read finishes AFTER your reply and the panel posts the real result, so tell Guy their contact details are being pulled from LinkedIn now — do NOT claim a phone/email has already been filed, and do NOT ask him for the phone.',
     input_schema: {
       type: 'object',
       properties: {
@@ -344,7 +344,7 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
   const runTool = async (name, input) => {
     if (name === 'check_availability') {
       const avail = await getAvailability(coach.clientId, profile.location || '');
-      availTz = { yourTimezone: avail.yourTimezone, leadTimezone: avail.leadTimezone, leadTzDetected: avail.leadTzDetected };
+      availTz = { yourTimezone: avail.yourTimezone, leadTimezone: avail.leadTimezone, leadTzDetected: avail.leadTzDetected, leadTzCandidates: avail.leadTzCandidates, leadTzAssumedNote: avail.leadTzAssumedNote };
       // The shared pipeline (wingguyCalendar.filterAvailability) enforces ALL the offer rules in one
       // place — hours bounds, lunch hold, no past/too-soon days (includeSoon lifts notice only), the
       // daily meeting cap — and labels each slot exactly as it will read in the lead's timezone.
@@ -442,16 +442,34 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
       // the SILENT fallback — location missing/unrecognised means the times quietly assume Guy's
       // own timezone, so that variant is a warning the agent must relay, not bury.
       const leadLoc = String(profile.location || '').trim();
-      const tzKnown = availTz.leadTzDetected !== undefined ? availTz.leadTzDetected : !!(leadLoc && getTimezoneFromLocation(leadLoc));
-      const leadBase = tzKnown
-        ? `Lead is based in ${leadLoc} — ${tzDiffer ? `draft times are ${tzCity(leadTz)} time (both clocks shown in offeredTimes)` : `same clock as Guy right now (draft's "(all times are ${tzCity(leadTz)} time)" line covers it)`}. Tell Guy where the lead is based when you present the draft.`
-        : `⚠ Lead's location is ${leadLoc ? `"${leadLoc}", which I can't map to a timezone` : 'missing from the profile'} — the draft ASSUMES Guy's own timezone (${tzCity(tz)}). Say this to Guy plainly and ask him to confirm where the lead is based before sending.`;
+      const fromAvail = availTz.leadTzDetected !== undefined;
+      const profileResolved = fromAvail ? null : resolveLeadTimezone(leadLoc);
+      const profileTzKnown = fromAvail ? availTz.leadTzDetected : profileResolved.detected;
+      const tzCandidates = (fromAvail ? availTz.leadTzCandidates : profileResolved.candidates) || [];
+      const tzAssumedNote = fromAvail ? availTz.leadTzAssumedNote : profileResolved.assumedNote;
+      // Report the zone the times were ACTUALLY rendered in. This used to be derived from
+      // profile.location alone, so a thread override drafted (say) Melbourne times while telling Guy
+      // it had assumed Brisbane — confident and wrong in the same breath (2026-08-27).
+      const overrode = leadTz !== (availTz.leadTimezone || tz);
+      const leadBase = overrode
+        ? `Lead's record says ${leadLoc ? `"${leadLoc}"` : 'nothing about where they are'}, but the THREAD puts them in ${tzCity(leadTz)} — the draft is written in ${tzCity(leadTz)} time. Tell Guy you took that from the conversation rather than the record, quote the line you took it from, and ask whether to save it to their record (wingguy_update_lead) so every future draft gets it right. Do NOT save it yourself off an inference — that is Guy's call.`
+        : profileTzKnown
+          ? `Lead is based in ${leadLoc} — ${tzDiffer ? `draft times are ${tzCity(leadTz)} time (both clocks shown in offeredTimes)` : `same clock as Guy right now (draft's "(all times are ${tzCity(leadTz)} time)" line covers it)`}. Tell Guy where the lead is based when you present the draft.${tzAssumedNote ? ` Note: ${tzAssumedNote}.` : ''}`
+          : tzCandidates.length
+            ? `⚠ Lead's location "${leadLoc}" is AMBIGUOUS — could be ${tzCandidates.map((c) => `${c.place} (${c.timezone})`).join(' or ')} — so the draft ASSUMES Guy's own timezone (${tzCity(tz)}). Do NOT send it like that: check the thread for a clue to which one, otherwise ask Guy WHICH place it is, get it saved to the record (wingguy_update_lead), then redo the times.`
+            : `⚠ Lead's location is ${leadLoc ? `"${leadLoc}", which I can't map to a timezone` : 'missing from the record'} — the draft ASSUMES Guy's own timezone (${tzCity(tz)}). BEFORE you tell Guy that, re-read the thread: if the lead named a place they are in or near (a city, a suburb, "when you're in Melbourne"), call propose_times AGAIN with leadTimezoneOverride set to that zone — the conversation beats a vague record. Only if the thread says nothing about where they are, say this to Guy plainly and ask him to confirm where the lead is based before sending.`;
+      // THREAD-POISON GUARD (Shira, 2026-08-27): a junk location once made Wingguy tell a Melbourne
+      // lead "9am your time (Bunbury) … which is 11am for me". The record was fixed, but that wrong
+      // conversion now sits in the thread IN GUY'S OWN VOICE — and the next draft harmonised with it
+      // (kept the +2h maths, swapped the label to Melbourne: an impossible sentence). Earlier thread
+      // messages are HISTORY, not facts; the tool result above is the only source of time truth.
+      const poisonGuard = ' OVERRIDES THE THREAD: if any earlier message in this conversation states a different location or a different time conversion for this lead — even one Guy himself sent (a wrong city in brackets, a wrong "which is Xpm for me") — that message was WRONG. Never repeat it, never blend the draft with its arithmetic, and never average the two. Use ONLY the times in this tool result, and tell Guy plainly that the earlier message mis-stated the lead\'s timezone so he can clear it up with the lead.';
       // NO automatic holds (Guy's call, 2026-07-06 — the auto-hold experiment shipped and was pulled
       // the same afternoon: 8 HOLD blocks incl. duplicates piled up within half an hour and made the
       // diary unreadable). Guy places "HOLD: <lead name>" events MANUALLY when a promise is worth
       // protecting; book_meeting still respects and clears them (see below).
       return {
-        ok: true, offered: ordered.length, offeredTimes, leadBase, dropped,
+        ok: true, offered: ordered.length, offeredTimes, leadBase: leadBase + poisonGuard, dropped,
         ...(beyondNextWeek.length ? { beyondNextWeek, warning: `These offered times fall BEYOND next week (fallback weeks): ${beyondNextWeek.join('; ')}. Never describe them as "this week" or "next week" in the draft or to Guy, and only offer them because nearer days couldn't fill the options — say that plainly.` } : {}),
       };
     }
@@ -472,12 +490,31 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
       const cMin = minutesInTz(r.startISO, tz);
       const withinHours = (eMin == null || lMin == null || cMin == null) ? true : (cMin >= eMin && cMin <= lMin);
       const hitsLunch = inLunch(r.startISO, tz, prefs, r.durationMins);
+      // CODE-OWNED clock facts (Shira, 2026-08-27): display/leadDisplay alone didn't stop the model
+      // writing its own conversion in prose — it echoed a wrong "+2h" from an earlier thread message
+      // even though both strings here said the clocks matched. So the result now states the
+      // relationship in words and forbids model arithmetic outright.
+      // The "clocks are IDENTICAL" claim is only honest when the lead's timezone was actually
+      // DETECTED — with no recognised location the fallback made both displays match and this rule
+      // then insisted a Hong Kong lead shared Guy's clock (Pedro, 2026-08-28).
+      const sameClock = r.display === r.leadDisplay;
+      const whichAsk = (r.leadTzCandidates && r.leadTzCandidates.length)
+        ? { where: `"${profile.location}" is AMBIGUOUS (could be ${r.leadTzCandidates.map((c) => `${c.place} (${c.timezone})`).join(' or ')})`, ask: 'WHICH place it is' }
+        : { where: profile.location ? `"${profile.location}", which can't be mapped to a timezone` : 'empty', ask: 'where the lead is based' };
+      const clockRule = (!r.leadTzDetected
+        ? `⚠ The lead's timezone is UNKNOWN — their record's location is ${whichAsk.where} — so ONLY the Guy-side time is real: ${r.display} (${tzCity(r.yourTimezone)}). Do NOT claim the clocks match and do NOT write any lead-side time. Ask Guy ${whichAsk.ask} (if the thread already names a place, say so), get the location saved to the lead's record, then re-run check_time.`
+        : sameClock
+          ? `${r.display} for Guy IS the same wall-clock time for the lead — their clocks are IDENTICAL right now. Any draft or chat line must show ONE time, the same for both sides.`
+          : `${r.display} for Guy = ${r.leadDisplay} for the lead (${tzCity(r.leadTimezone)}). Quote these exact strings.`)
+        + (r.leadTzDetected && r.leadTzAssumedNote ? ` Note: ${r.leadTzAssumedNote} — relay that to Guy.` : '')
+        + ' NEVER derive a timezone conversion yourself. If any earlier message in this thread states a different conversion for this lead — even one Guy himself sent — that message was WRONG: use only these code-computed times, and tell Guy plainly the earlier message mis-stated the lead\'s timezone.';
       return {
         ok: true,
         startISO: r.startISO,
         durationMins: r.durationMins,
         display: r.display,
-        leadDisplay: r.leadDisplay,
+        leadDisplay: r.leadTzDetected ? r.leadDisplay : 'UNKNOWN (lead timezone not detected — see clockRule)',
+        clockRule,
         free: r.clashes.length === 0,
         clashes: r.clashes,
         withinHours,
@@ -520,6 +557,20 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
       // pull the lead's LinkedIn Contact Info and patch email/phone onto the new record.
       if (r && r.ok && r.created && r.leadRecordId && /\/in\//i.test(leadUrl)) {
         enrichContact = { leadRecordId: r.leadRecordId, profileUrl: leadUrl, manual: false };
+      }
+      // PROFILE WRITE-BACK AT BIRTH (Guy, 2026-08-29): the scrape in `profile` is the richest view
+      // of this person we may ever get without Linked Helper — persist it onto the brand-new record
+      // now (About/headline/JSON, fill-blanks vs what createLead just wrote) and score on the spot
+      // when the material clears the bar, so a referred lead is born enriched + scored instead of
+      // waiting for the next /wg visit. Fresh creates only: for an existing match we don't hold the
+      // record's fields here, and the route-level hook covers them on the next matched turn.
+      // Fire-and-forget — the create's reply never waits on it and a failure is non-fatal.
+      if (r && r.ok && r.created && r.leadRecordId && (profile.about || profile.headline)) {
+        const enrichScrape = deps.enrichLeadFromScrape || wingguyLeads.enrichLeadFromScrape;
+        const scoreInstant = deps.scoreLeadInstant || wingguyLeads.scoreLeadInstant;
+        enrichScrape(airtableBaseId, r.leadRecordId, profile, r.fields || {})
+          .then((er) => (er && er.scoreNow ? scoreInstant(coach.clientId, r.leadRecordId) : null))
+          .catch(() => { /* enrichment is a bonus, not part of the create contract */ });
       }
       return r;
     }

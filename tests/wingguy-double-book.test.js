@@ -27,7 +27,7 @@ const fakeDeps = (counters) => ({
   },
   checkProposedTime: async (_clientId, { date, time }) => ({
     ok: true, startISO: CLASH_ISO, durationMins: 30,
-    yourTimezone: 'Australia/Brisbane', leadTimezone: 'Australia/Brisbane',
+    yourTimezone: 'Australia/Brisbane', leadTimezone: 'Australia/Brisbane', leadTzDetected: true,
     display: '2:00 pm', leadDisplay: '2:00 pm',
     clashes: [{ summary: 'Standup', display: '2:00 pm' }],
   }),

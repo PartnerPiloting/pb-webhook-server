@@ -422,7 +422,10 @@ function CalendarBookingContent() {
     setLoadingAvailability(true);
     setQuickPickError('');
     const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.replace('/api/linkedin', '') || 'https://pb-webhook-server.onrender.com';
-    const leadLoc = formData.leadLocation?.trim() || 'Brisbane';
+    // Blank stays blank (2026-08-27) — this used to default to 'Brisbane', silently pinning an
+    // unknown lead to a real timezone. The server now answers leadTzDetected:false for a blank or
+    // unmappable location and the message falls back to times labelled with YOUR city — honest.
+    const leadLoc = formData.leadLocation?.trim() || '';
     fetch(`${baseUrl}/api/calendar/availability?leadLocation=${encodeURIComponent(leadLoc)}`, {
       headers: { 'x-client-id': clientInfo.clientId },
     })
@@ -433,7 +436,10 @@ function CalendarBookingContent() {
           setAvailabilityDays([]);
         } else {
           setAvailabilityDays(data.days || []);
-          if (data.leadTimezone) setLeadTimezone(data.leadTimezone);
+          // Only trust a DETECTED zone (2026-08-27). Undetected comes back as the coach's own zone
+          // with leadTzDetected:false — storing that would render the "same timezone" branch and
+          // hide that the lead's clock is unknown.
+          if (data.leadTimezone && data.leadTzDetected !== false) setLeadTimezone(data.leadTimezone);
         }
       })
       .catch(err => {
@@ -893,8 +899,8 @@ function CalendarBookingContent() {
           bookingAction
         }]);
         
-        // Update timezone info
-        if (data.leadTimezone) {
+        // Update timezone info — only when actually detected (2026-08-27, see availability fetch).
+        if (data.leadTimezone && data.leadTzDetected !== false) {
           setLeadTimezone(data.leadTimezone);
         }
         

@@ -923,6 +923,12 @@
         base.about = '';
         base.recentPosts = [];
         base.pageText = '';
+        // Location too (Wayne Merry, 2026-08-27). On /messaging/ there is no top card, so the
+        // profile_location selector matches whatever small grey text it finds first — it returned a
+        // bare "Australia" for a lead whose record said "Blackburn, Victoria, Australia", and the
+        // server then kept the junk over the real value. A wrong location is worse than none: none is
+        // honest and the CRM fills it, wrong silently picks the wrong timezone and reads confident.
+        base.location = '';
       }
     }
     // Un-scramble the internal /in/ACoA… member-id URL to the vanity slug ONCE, here at the source, so

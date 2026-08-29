@@ -30,6 +30,7 @@ global.fetch = async (url) => {
 };
 
 const { getCoachCalendarInfo, providerForInfo, coachForCalendar } = require('../services/wingguyCalendar');
+const { coachSelfEmail, mapUnipileEvent } = require('../services/calendarProvider');
 
 (async () => {
   console.log('getCoachCalendarInfo() — a Unipile account id is a real calendar credential:');
@@ -74,6 +75,50 @@ const { getCoachCalendarInfo, providerForInfo, coachForCalendar } = require('../
   check('absent account id stays null, never undefined-to-env leakage', () => {
     const c = coachForCalendar({ calendarProvider: 'zoho', calendarProviderToken: 't', timezone: 'Australia/Brisbane' });
     assert.strictEqual(c.unipileAccountId, null);
+  });
+
+  // ---- "which attendee is me" on the Unipile lane (2026-08-27) -------------------------------
+  // Calendar Email is blank BY DESIGN here (a value forces the legacy Google path), and that blank
+  // used to leave every event without a self row -> isCoachAttending() false -> the Fathom/Granola/
+  // Fireflies calendar fallback silently never ran. The client's own address is the stand-in.
+  console.log('\ncoachSelfEmail() — the coach identity that survives a blank Calendar Email:');
+  check('Calendar Email still wins when set (Google/Zoho tenants do not move)', () =>
+    assert.strictEqual(coachSelfEmail({ googleCalendarEmail: 'cal@x.com', clientEmailAddress: 'rec@x.com' }), 'cal@x.com'));
+  check('blank Calendar Email falls back to the client record address', () =>
+    assert.strictEqual(coachSelfEmail({ googleCalendarEmail: '', clientEmailAddress: 'paul@delvr.ai' }), 'paul@delvr.ai'));
+  check('nothing on file returns empty, not undefined', () =>
+    assert.strictEqual(coachSelfEmail({}), ''));
+  check('no coach object at all is tolerated', () =>
+    assert.strictEqual(coachSelfEmail(null), ''));
+
+  await checkAsync('a Unipile row carries the record email through to the seam', async () => {
+    mockFields = { 'Client ID': 'Paul-Salvage', 'Calendar Provider': 'unipile', 'Unipile Account ID': 'acc999', 'Client Email Address': 'paul@delvr.ai', Timezone: 'Australia/Brisbane' };
+    const info = await getCoachCalendarInfo('Paul-Salvage');
+    assert.strictEqual(info.clientEmailAddress, 'paul@delvr.ai');
+    const c = coachForCalendar(info);
+    assert.strictEqual(c.googleCalendarEmail, '', 'Calendar Email must stay blank on this lane');
+    assert.strictEqual(coachSelfEmail(c), 'paul@delvr.ai');
+  });
+
+  console.log('\nmapUnipileEvent() — the coach is found in their own meeting:');
+  const unipileEvent = {
+    id: 'ev1',
+    title: 'Paul & a lead',
+    start: { date_time: '2026-08-28T03:00:00Z' },
+    end: { date_time: '2026-08-28T03:30:00Z' },
+    organizer: { email: 'paul@delvr.ai' },
+    attendees: [{ email: 'lead@example.com', response_status: 'accepted' }],
+  };
+  check('a self row is synthesised from the fallback address (was: no self row at all)', () => {
+    const mapped = mapUnipileEvent(unipileEvent, coachSelfEmail({ clientEmailAddress: 'paul@delvr.ai' }).toLowerCase(), 'Australia/Brisbane');
+    const self = mapped.attendees.find((a) => a.self);
+    assert.ok(self, 'expected a self attendee row');
+    assert.strictEqual(self.email, 'paul@delvr.ai');
+    assert.strictEqual(self.organizer, true, 'organiser flag drives isCoachAttending()');
+  });
+  check('with no identity at all there is still no self row (the old, broken state)', () => {
+    const mapped = mapUnipileEvent(unipileEvent, '', 'Australia/Brisbane');
+    assert.strictEqual(mapped.attendees.some((a) => a.self), false);
   });
 
   global.fetch = realFetch;

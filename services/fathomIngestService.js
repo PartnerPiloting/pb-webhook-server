@@ -269,7 +269,10 @@ async function ingestFathomMeeting(opts = {}) {
   if (!f.ok) return f;
   const meeting = f.meeting;
 
-  const coachEmails = [coach.googleCalendarEmail, coach.calendarEmail].filter(Boolean);
+  // clientEmailAddress joins the list for the same reason the Unipile calendar read needs it: on
+  // that lane Calendar Email is blank by design, and without their own address here the coach can
+  // be mistaken for a lead candidate. Parity with granolaIngestService / firefliesIngestService.
+  const coachEmails = [coach.googleCalendarEmail, coach.calendarEmail, coach.clientEmailAddress].filter(Boolean);
   const coachNames = [coach.clientName, 'Guy Wilson'].filter(Boolean);
   const events = await relevantCalendarEvents(meeting, coach, calendarEvents);
 

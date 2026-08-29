@@ -104,6 +104,86 @@ function runTests() {
     }
   }
 
+  // ---- DST-OFF MIRRORS (2026-08-27) ----
+  // Every test above is pinned to 27 March — inside Australian daylight saving. The other half of
+  // the year, when Brisbane and Melbourne share a clock, had NO coverage — and that identical-clocks
+  // window is exactly what hid the Wayne Merry location bug for a week. Same conversions, July date.
+
+  // Test 6: DST off - 3:30pm Brisbane (05:30 UTC) -> 3:30pm Melbourne (SAME clock)
+  {
+    const slotTime = '2025-07-24T05:30:00.000Z';
+    const date = parseSlotTimeAsUTC(slotTime, 'Australia/Brisbane');
+    const melbTime = formatTimeInTimezone(date, 'Australia/Melbourne');
+    const bneTime = formatTimeInTimezone(date, 'Australia/Brisbane');
+    if (melbTime === '3:30 pm' && bneTime === '3:30 pm') {
+      console.log(`✓ Test 6: DST off — ${bneTime} Brisbane -> ${melbTime} Melbourne (same clock)`);
+      passed++;
+    } else {
+      console.log(`✗ Test 6: Expected 3:30 pm in both, got Melbourne "${melbTime}", Brisbane "${bneTime}"`);
+      failed++;
+    }
+  }
+
+  // Test 7: DST off - no-Z Brisbane local stays 3:30pm in Melbourne too
+  {
+    const slotTime = '2025-07-24T15:30:00';
+    const date = parseSlotTimeAsUTC(slotTime, 'Australia/Brisbane');
+    const melbTime = formatTimeInTimezone(date, 'Australia/Melbourne');
+    const bneTime = formatTimeInTimezone(date, 'Australia/Brisbane');
+    if (melbTime === '3:30 pm' && bneTime === '3:30 pm') {
+      console.log(`✓ Test 7: DST off — ${slotTime} (Brisbane local) -> ${melbTime} Melbourne`);
+      passed++;
+    } else {
+      console.log(`✗ Test 7: Expected 3:30 pm in both, got Melbourne "${melbTime}", Brisbane "${bneTime}"`);
+      failed++;
+    }
+  }
+
+  // Test 8: DST off - Perth (UTC+8) 10am -> Melbourne (UTC+10) 12pm, not 1pm
+  {
+    const slotTime = '2025-07-24T02:00:00.000Z';
+    const date = parseSlotTimeAsUTC(slotTime, 'Australia/Perth');
+    const melbTime = formatTimeInTimezone(date, 'Australia/Melbourne');
+    const perthTime = formatTimeInTimezone(date, 'Australia/Perth');
+    if (melbTime === '12:00 pm' && perthTime === '10:00 am') {
+      console.log(`✓ Test 8: DST off — ${perthTime} Perth -> ${melbTime} Melbourne`);
+      passed++;
+    } else {
+      console.log(`✗ Test 8: Expected Perth "10:00 am", Melbourne "12:00 pm". Got Perth "${perthTime}", Melbourne "${melbTime}"`);
+      failed++;
+    }
+  }
+
+  // Test 10: the Brisbane/Melbourne offset relationship FLIPS at the October DST boundary — equal
+  // in July, one hour apart in late October. Any label decided from "now" instead of the slot's own
+  // instant goes wrong on one side of this line (the quick-pick label bug, 2026-08-27).
+  {
+    const { getOffsetMinutesForDate } = require('../utils/slotTimeParser.js');
+    const winterSame = getOffsetMinutesForDate('Australia/Brisbane', '2025-07-24') === getOffsetMinutesForDate('Australia/Melbourne', '2025-07-24');
+    const springDiffer = getOffsetMinutesForDate('Australia/Brisbane', '2025-10-24') !== getOffsetMinutesForDate('Australia/Melbourne', '2025-10-24');
+    if (winterSame && springDiffer) {
+      console.log(`✓ Test 10: Brisbane/Melbourne offsets equal in July, differ in late October`);
+      passed++;
+    } else {
+      console.log(`✗ Test 10: Expected equal-July/differ-October, got winterSame=${winterSame}, springDiffer=${springDiffer}`);
+      failed++;
+    }
+  }
+
+  // Test 9: a bare country maps to NOTHING — deliberately. There is no "australia" rule because
+  // guessing a state from a country is wrong five ways; callers must fall back HONESTLY (coach's
+  // zone + a said-out-loud assumption), never guess. This locks the gap in so nobody "fixes" it.
+  {
+    const tz = getTimezoneFromLocation('Australia');
+    if (tz === null) {
+      console.log(`✓ Test 9: "Australia" -> null (bare country must NOT resolve)`);
+      passed++;
+    } else {
+      console.log(`✗ Test 9: Expected null for bare "Australia", got ${tz}`);
+      failed++;
+    }
+  }
+
   console.log(`\n${passed} passed, ${failed} failed`);
   return failed === 0;
 }

@@ -387,7 +387,7 @@ async function scoreChunk(records, clientId, clientBase, runId = 'UNKNOWN', pers
                 id: rec.id,
                 fields: { 
                     [LEAD_FIELDS.AI_SCORE]: 0, 
-                    [LEAD_FIELDS.SCORING_STATUS]: "Skipped – Missing Critical Data", 
+                    [LEAD_FIELDS.SCORING_STATUS]: "Skipped – Profile Too Thin", // must be an option that EXISTS in every base - an unknown choice makes Airtable reject the write and the lead re-queues forever
                     [LEAD_FIELDS.AI_PROFILE_ASSESSMENT]: "Missing required fields: headline or job history", 
                     "AI Attribute Breakdown": "", 
                     [LEAD_FIELDS.DATE_SCORED]: new Date().toISOString() 
@@ -407,15 +407,12 @@ async function scoreChunk(records, clientId, clientBase, runId = 'UNKNOWN', pers
             for (let i = 0; i < airtableUpdatesForSkipped.length; i += 10) {
                 await clientBase("Leads").update(airtableUpdatesForSkipped.slice(i, i + 10));
             }
-        } catch (airtableError) { 
+        } catch (airtableError) {
             log.error(`Airtable update error for skipped leads: ${airtableError.message}`);
-            // Don't alert for missing select option - client's Scoring Status field may not have "Skipped – Missing Critical Data"
-            const isMissingSelectOption = /INVALID_MULTIPLE_CHOICE_OPTIONS|create new select option/i.test(String(airtableError));
-            if (!isMissingSelectOption) {
-                await alertAdmin("Airtable Update Failed (Skipped Leads in batchScorer)", `Client: ${clientId || 'unknown'}\nError: ${String(airtableError)}`);
-            } else {
-                log.warn(`Skipped leads update failed (client missing "Skipped – Missing Critical Data" option) - not alerting`);
-            }
+            // Always alert. A swallowed missing-select-option error here hid a broken status write
+            // from Dec 2025 to Aug 2026 (leads bounced back to "To Be Scored" every night, silently
+            // starving the queue behind them) - never special-case this away again.
+            await alertAdmin("Airtable Update Failed (Skipped Leads in batchScorer)", `Client: ${clientId || 'unknown'}\nError: ${String(airtableError)}`);
         }
     }
 

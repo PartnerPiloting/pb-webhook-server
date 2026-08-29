@@ -21,6 +21,7 @@ import React, { useState, useEffect, useCallback, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { getBackendBase } from '../services/api';
 import { PageNav, usePageAuth } from './WingguyReview';
+import ClaudeKeySection from './ClaudeKeySection';
 
 function WingguySetupInner() {
   const searchParams = useSearchParams();
@@ -241,6 +242,9 @@ function WingguySetupInner() {
           first - it is a ten-minute read and it makes this page quicker.
         </p>
       </header>
+
+      {/* account plumbing - shown only to BYO-key clients, urgent when the key is missing/dead */}
+      <ClaudeKeySection authHeaders={authHeaders} variant="setup" />
 
       {/* the blanks */}
       <section className="flex flex-col gap-6">
