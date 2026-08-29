@@ -719,7 +719,7 @@ async function createClientRowFromJoin(session, shadow, logger) {
             'Billing Source': 'stripe',
             'Stripe Customer ID': session.customer ? String(session.customer) : undefined,
             'Stripe Subscription ID': session.subscription ? String(session.subscription) : undefined,
-            'Comment': `Joined via knowaguy /join${referrer ? ` (ref: ${referrer})` : ''} - awaiting provisioning`,
+            'Coach Notes': `Joined via knowaguy /join${referrer ? ` (ref: ${referrer})` : ''} - awaiting provisioning`,
         };
         Object.keys(record).forEach((k) => { if (record[k] === undefined) delete record[k]; });
         const created = await base('Clients').create(record, { typecast: true });
