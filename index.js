@@ -218,6 +218,11 @@ const allowedOrigins = [
     // no Origin header, so command-line testing cannot catch it.
     'https://knowaguy.com.au',
     'https://www.knowaguy.com.au',
+    // Same lesson again: until knowaguy.com.au fronts the app, the site's own
+    // pages carry the Render hostname as their Origin, so form POSTs (e.g.
+    // /site/join/checkout) fail CORS without these.
+    'https://pb-webhook-server.onrender.com',
+    'https://pb-webhook-server-staging.onrender.com',
     /^chrome-extension:\/\/[a-z0-9]+$/i,
     null
 ];
