@@ -201,27 +201,49 @@ module.exports = function mountMarketingSite(app) {
 
   async function ensureJoinPrices(stripe) {
     if (cachedPriceIds) return cachedPriceIds;
-    const found = await stripe.prices.list({ lookup_keys: [MONTHLY_LOOKUP, JOINING_LOOKUP], limit: 10 });
+    const found = await stripe.prices.list({
+      lookup_keys: [MONTHLY_LOOKUP, JOINING_LOOKUP], limit: 10, expand: ['data.product'],
+    });
     let monthly = found.data.find((p) => p.lookup_key === MONTHLY_LOOKUP);
     let joining = found.data.find((p) => p.lookup_key === JOINING_LOOKUP);
-    if (!monthly || !joining) {
+    if (!monthly) {
       const product = await stripe.products.create({
         name: 'I Know A Guy membership',
         description: 'Network Accelerator membership - weekly sessions plus the machinery.',
       });
-      if (!monthly) {
-        monthly = await stripe.prices.create({
-          product: product.id, currency: 'aud', unit_amount: 15000,
-          recurring: { interval: 'month' }, lookup_key: MONTHLY_LOOKUP,
-          nickname: 'Membership $150/month',
-        });
-      }
-      if (!joining) {
-        joining = await stripe.prices.create({
-          product: product.id, currency: 'aud', unit_amount: 25000,
-          lookup_key: JOINING_LOOKUP, nickname: 'Joining fee $250',
-        });
-      }
+      monthly = await stripe.prices.create({
+        product: product.id, currency: 'aud', unit_amount: 15000,
+        recurring: { interval: 'month' }, lookup_key: MONTHLY_LOOKUP,
+        nickname: 'Membership $150/month',
+      });
+    }
+    // The joining fee lives on its own product so Checkout's breakdown reads
+    // "Joining fee" + "membership" rather than the membership charged twice.
+    // The first cut put both prices on the shared product - migrate that price
+    // if we find it there (transfer_lookup_key moves the key to the new price).
+    const joiningProductName = joining && joining.product && joining.product.name;
+    if (joining && joiningProductName !== 'Joining fee') {
+      const feeProduct = await stripe.products.create({
+        name: 'Joining fee',
+        description: 'One-off joining fee - covers your first month.',
+      });
+      const migrated = await stripe.prices.create({
+        product: feeProduct.id, currency: 'aud', unit_amount: 25000,
+        lookup_key: JOINING_LOOKUP, transfer_lookup_key: true,
+        nickname: 'Joining fee $250',
+      });
+      await stripe.prices.update(joining.id, { active: false }).catch(() => {});
+      joining = migrated;
+    }
+    if (!joining) {
+      const feeProduct = await stripe.products.create({
+        name: 'Joining fee',
+        description: 'One-off joining fee - covers your first month.',
+      });
+      joining = await stripe.prices.create({
+        product: feeProduct.id, currency: 'aud', unit_amount: 25000,
+        lookup_key: JOINING_LOOKUP, nickname: 'Joining fee $250',
+      });
     }
     cachedPriceIds = { monthly: monthly.id, joining: joining.id };
     return cachedPriceIds;
@@ -246,9 +268,12 @@ module.exports = function mountMarketingSite(app) {
         cancel_url: `${origin}/join`,
         metadata: { source: 'knowaguy-join', referrer: ref || '' },
         // The $250 covers month one, so today's charge is the joining fee
-        // alone and the $150/month starts thirty days in.
+        // alone and the $150/month starts thirty days in. A delayed billing
+        // anchor (not a trial) keeps Checkout's wording as a plain
+        // subscription - no "Try"/"30 days free"/"start trial" framing.
         subscription_data: {
-          trial_period_days: 30,
+          billing_cycle_anchor: Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60,
+          proration_behavior: 'none',
           metadata: { source: 'knowaguy-join', referrer: ref || '' },
         },
       });
