@@ -4,7 +4,8 @@
  * Why this exists (Guy, 2026-07-23): the live sweep + read-threads-while-you-wait pattern made every
  * question a 2-minute spinner — unusable as a daily assistant. So ALL the work happens BEFORE the
  * human asks: this module runs the sweep, READS what each surfaced person actually said, triages them
- * (park / draft / clear / attention), writes the memory-jog lines, pre-writes real Gmail reply
+ * (drop / park / draft / clear / attention — every verdict a RECOMMENDATION, nothing automatic,
+ * Guy 2026-08-29), writes the recommendation + memory-jog lines, pre-writes real Gmail reply
  * drafts, and stores the finished brief in Postgres. The chat then serves it INSTANTLY via
  * wingguy_followup_brief, and rebuilds happen in the background via wingguy_prepare_brief or the
  * overnight cron (scripts/prepare-followup-brief.js).
@@ -117,8 +118,8 @@ function linkedInTail(notes, n = THREAD_MSGS) {
  * and/or the LinkedIn tail. Also captures the newest inbound email (id + subject) for threading a
  * reply draft. Failures degrade to whatever is available — never throw.
  */
-async function gatherPersonContext(mailProvider, coach, item) {
-  const out = { transcript: [], lastInbound: null, channel: null };
+async function gatherPersonContext(mailProvider, coach, item, tenant) {
+  const out = { transcript: [], lastInbound: null, channel: null, callOutcome: [] };
   const email = (item.lead.email || '').toLowerCase();
   if (email) {
     try {
@@ -140,6 +141,38 @@ async function gatherPersonContext(mailProvider, coach, item) {
     out.transcript.push(...li.map((l) => `LINKEDIN: ${l.length > 300 ? `${l.slice(0, 300)} …[record clipped]` : l}`));
     if (!out.channel) out.channel = 'linkedin';
   }
+  // CALL-AWARE TRIAGE (Guy 2026-08-29, the Nea Dhillon morning): when this person has a stored
+  // dossier, its call recaps, standing, promises and sent-email record ride into triage as GROUND
+  // TRUTH. Without this, the verdict for someone the coach has MET is derived from the clipped
+  // message shadow of a call the deep read already understood — Nea's row claimed her email
+  // "appears cut off" (it was our 300-char clip) and proposed a follow-up the transcript had
+  // already resolved ("not now, 6-8 months") with an email the mailbox showed already sent.
+  // Best-effort: no dossier (outside the deep-read slice) means triage reads the messages alone.
+  if (tenant) {
+    try {
+      const dossier = require('./wingguyDossier');
+      const fullName = `${item.lead.first} ${item.lead.last}`.trim();
+      const row = (await dossier.getDossierRow(tenant, item.key))
+        || (fullName ? await dossier.findDossierByName(tenant, fullName) : null);
+      const p = row && row.payload ? (typeof row.payload === 'string' ? JSON.parse(row.payload) : row.payload) : null;
+      if (p) {
+        const lines = [];
+        for (const r of (Array.isArray(p.meetingRecaps) ? p.meetingRecaps : []).slice(0, 2)) {
+          lines.push(`CALL ${r.date || '?'} — what it was for: ${String(r.about || '(not recorded)').slice(0, 300)} HOW IT WAS LEFT: ${String(r.ended || '(not recorded)').slice(0, 400)}`);
+        }
+        if (p.standing) lines.push(`WHERE IT STANDS: ${String(p.standing).slice(0, 600)}`);
+        const you = Array.isArray(p.commitmentsYou) ? p.commitmentsYou : [];
+        const them = Array.isArray(p.commitmentsThem) ? p.commitmentsThem : [];
+        if (you.length) lines.push(`COACH PROMISED: ${you.join(' · ').slice(0, 400)}`);
+        if (them.length) lines.push(`THEY PROMISED: ${them.join(' · ').slice(0, 400)}`);
+        const sent = p.emailRecord && Array.isArray(p.emailRecord.outbound) ? p.emailRecord.outbound : [];
+        if (sent.length) {
+          lines.push(`EMAILS THE COACH ALREADY SENT THEM (from the mailbox itself): ${sent.slice(0, 5).map((o) => `${o.date} "${o.subject}"${Array.isArray(o.links) && o.links.length ? ` [${o.links.length} link${o.links.length === 1 ? '' : 's'} in the body]` : ''}`).join(' · ')}`);
+        }
+        out.callOutcome = lines;
+      }
+    } catch (_) { /* dossier store down — triage works from the messages alone */ }
+  }
   return out;
 }
 
@@ -153,20 +186,26 @@ function parseJson(text) {
   return require('./wingguyDossier').parseJsonArrayLoose(text);
 }
 
-const TRIAGE_SYSTEM = `You triage a coach's follow-up queue. For each person you get the engine's mechanical signal (tier/why) plus what was ACTUALLY said recently (email snippets and/or LinkedIn lines, oldest first; THEM = the person, YOU = the coach). Read the words — the mechanical signal is often wrong about what is owed.
+const TRIAGE_SYSTEM = `You triage a coach's follow-up queue. For each person you get the engine's mechanical signal (tier/why), what was ACTUALLY said recently (email snippets and/or LinkedIn lines, oldest first; THEM = the person, YOU = the coach), and — for people the coach has met — a CALL OUTCOME + SENT RECORD block from the call-transcript store and the mailbox. Read the words — the mechanical signal is often wrong about what is owed.
 
-Classify each person:
-- "park": they named a future time ("September sounds good", "after the holidays", "next quarter") — nothing is owed until then. Give park_date (ISO YYYY-MM-DD, resolved against today's date, leaning a few days LATER than the literal phrase so the nudge never lands early).
+GROUND TRUTH ORDER: the CALL OUTCOME + SENT RECORD block, when present, OUTRANKS the message snippets. A decision about someone the coach has MET flows from what was said on the call, not from the email shadow around it. And check the SENT record before declaring anything owed: a promise the record shows already delivered is DONE — never re-propose it.
+
+CLIPPED RECORDS: snippets are cut at a fixed length, and LinkedIn lines may end with "…[record clipped]". A cut means OUR COPY of the record stops there — NEVER that the sender stopped mid-sentence, trailed off, or that a message "appears cut off". Never build a verdict on where a clipped line ends.
+
+THE COACH'S DOCTRINE — their time is the scarce resource, and a drop costs almost nothing (dropping only stops the chasing; if the person ever writes again they surface immediately). So:
+- "drop": the DEFAULT for a resolved "not now". Recommend drop when they love it but show no financial ability or buying signal; when they are building their own product first and are months from needing anything; when they gave a clean "not right now" with nothing concrete booked; or when the enthusiasm is one-sided. Warmth alone is never a reason to keep chasing — let them come back.
+- "park": ONLY for a dated, two-sided reason to return — they named a real time ("September sounds good", "after the audit", "next quarter") or a concrete event, and returning then serves both sides. Give park_date (ISO YYYY-MM-DD, resolved against today's date, leaning a few days LATER than the literal phrase so the nudge never lands early). A vague "someday / when things settle" is a drop, not a park.
 - "draft": a real reply is owed — they asked something, offered something, or left a live thread with the coach clearly to answer. ALSO: if their last message DELIVERS something they promised (a list, an intro, a document, information the coach asked for), that deserves a short warm acknowledgment — verdict "draft", never "clear" (the coach's standing preference: a delivered promise is always acknowledged). Give draft_instruction: 1-2 sentences on what the reply should do (ground it ONLY in what was said — never invent facts).
 - "clear": nothing is owed — their last message was a pleasantry/close ("thanks, see you Thursday", "no worries"), or the exchange is plainly finished.
 - "attention": something is owed but a canned reply would be wrong (complex/sensitive/ambiguous) — the coach should look personally. Say why in the why_line.
 
 For EVERY person also give:
-- why_line: ONE short line the coach sees in the brief — plain, specific, human ("she said September sounds good", "asked which podcast episode you meant"). Not a category label.
-- jog: 1-2 sentences of memory-jog — who this is and where things stand, from the transcript only.
+- recommendation: ONE sentence of direct advice in the coach's ear, first person, verdict first with the reason from the record ("I'd drop her — loved the model but she's product-first and months from budget; let her come back to you", "I'd park him to mid-October — he asked you to try again after the audit"). This is the headline the coach reads; it must stand alone. Every verdict here is a RECOMMENDATION the coach clicks — nothing happens automatically, so say it as advice, never as a done deed.
+- why_line: ONE short factual line — plain, specific, human ("she said September sounds good", "asked which podcast episode you meant"). Not a category label.
+- jog: 1-2 sentences of memory-jog — who this is and where things stand, from the record only. For someone the coach has MET, open with the call and its outcome ("Call 13 Aug went well, but…") — the call is the part they cannot remember.
 
 Return ONLY a JSON array, one object per person, same order as given:
-[{"key": "<the person's key exactly as given>", "verdict": "park|draft|clear|attention", "why_line": "...", "jog": "...", "park_date": "YYYY-MM-DD or null", "draft_instruction": "... or null"}]`;
+[{"key": "<the person's key exactly as given>", "verdict": "drop|park|draft|clear|attention", "recommendation": "...", "why_line": "...", "jog": "...", "park_date": "YYYY-MM-DD or null", "draft_instruction": "... or null"}]`;
 
 async function triage(client, items, contexts, todayIso) {
   const people = items.map((item, i) => {
@@ -177,6 +216,9 @@ async function triage(client, items, contexts, todayIso) {
       `ENGINE SIGNAL: ${item.tier} — ${item.why}${item.gated ? ' (flagged Cease/Series but surfaced: real obligation)' : ''}`,
       `RECENT EXCHANGE:`,
       ...(contexts[i].transcript.length ? contexts[i].transcript : ['(no readable messages found)']),
+      ...((contexts[i].callOutcome || []).length
+        ? ['CALL OUTCOME + SENT RECORD (ground truth — outranks the snippets above):', ...contexts[i].callOutcome]
+        : []),
     ].join('\n');
   }).join('\n\n---\n\n');
   // Two attempts: the model occasionally malforms its own JSON (bare object stream, unescaped
@@ -185,7 +227,9 @@ async function triage(client, items, contexts, todayIso) {
   for (let attempt = 0; attempt < 2; attempt++) {
     const response = await client.messages.create({
       model: MODEL_ID,
-      max_tokens: 4000,
+      // 4000 -> 6000 (2026-08-29): the recommendation field adds a sentence per person; a
+      // truncated response is not a shorter triage, it is INVALID JSON for the whole batch.
+      max_tokens: 6000,
       thinking: NO_THINKING,
       system: TRIAGE_SYSTEM + (attempt ? '\nSTRICT: your previous output was not a valid JSON array. Return ONE array [ ... ] containing all objects, comma-separated, with every inner double-quote escaped and no raw newlines inside strings.' : ''),
       messages: [{ role: 'user', content: require('./wingguyDossier').scrub(`Today is ${todayIso}.\n\n${people}`) }],
@@ -354,7 +398,7 @@ async function prepareFollowupBrief(tenant) {
 
     // Read what each to-prep person actually said (sequential quick provider calls).
     const contexts = [];
-    for (const { item } of toPrep) contexts.push(await gatherPersonContext(mailProvider, sweep.coach, item));
+    for (const { item } of toPrep) contexts.push(await gatherPersonContext(mailProvider, sweep.coach, item, tenant));
 
     // Triage in batches (a first full run can be ~100+ people — far past one call's output budget).
     // A failed batch degrades those people to engine-signal entries, never fails the whole run.
@@ -400,11 +444,12 @@ async function prepareFollowupBrief(tenant) {
         gated: !!item.gated,
         channel: ctx.channel,
         verdict: v.verdict || 'attention',
+        recommendation: v.recommendation || null, // the advice headline ("I'd drop her — …"); screen + chat lead with it
         whyLine: v.why_line || item.why,
         jog: v.jog || '',
         parkDate: v.park_date || null,
-        parked: false,     // set true below when the park date is auto-stamped to Reconnect On
-        parkError: null,   // why an auto-stamp attempt failed (falls back to propose-then-confirm)
+        parked: false,     // NEVER set any more (2026-08-29, nothing automatic) — kept so old renderers stay honest
+        parkError: null,
         draftHtml: null,
         draftText: null,
         draftError: null,
@@ -456,32 +501,11 @@ async function prepareFollowupBrief(tenant) {
     // and a triage/draft failure only degrades that person's entry, never removes it.
     const items = all.map((item) => entryByKey.get(item.key)).filter(Boolean);
 
-    // AUTO-PARK — stamp-and-tell (Guy, 2026-08-03: "the few times you might get that wrong would
-    // more than justify the reduction in noise"). A park verdict with a clear FUTURE date is
-    // stamped to Reconnect On right here, and the brief reports it as a DONE DEED with an un-park
-    // escape — instead of re-proposing the same date in every brief until someone types "yes".
-    // Deliberately BRIEF-ONLY: the backlog worklist parks dozens off one AI pass, so it stays
-    // propose-then-confirm. Unclear dates still ask; a date on/before today means their own window
-    // has closed ("reach out now", the Joe Cozzupoli rule) — never stamped. A failed write falls
-    // back to the old propose line via parkError: a park must never silently not-happen.
-    if (sweep.coach && sweep.coach.airtableBaseId) {
-      const leadsBase = require('./clientService').getClientBase(sweep.coach.airtableBaseId);
-      for (const entry of items) {
-        if (entry.verdict !== 'park' || !entry.recId) continue;
-        const d = /^\d{4}-\d{2}-\d{2}$/.test(String(entry.parkDate || '')) ? entry.parkDate : null;
-        if (!d || d <= todayIso) continue;
-        try {
-          await leadsBase('Leads').update(entry.recId, { 'Reconnect On': d });
-          entry.parked = true;
-          console.log(`[followupBrief] auto-parked ${entry.name} until ${d} (${tenant})`);
-        } catch (e) {
-          entry.parkError = /Reconnect On|UNKNOWN_FIELD_NAME|422|INVALID|Unknown field/i.test(e.message)
-            ? 'the Reconnect On field is missing on this base (scripts/add-reconnect-on-field.js)'
-            : e.message;
-          console.warn(`[followupBrief] auto-park FAILED for ${entry.name} (${tenant}): ${e.message}`);
-        }
-      }
-    }
+    // NOTHING AUTOMATIC (Guy 2026-08-29, reversing the 2026-08-03 stamp-and-tell): every verdict
+    // — park included — is a RECOMMENDATION the human clicks, never a write the system makes on
+    // its own. The park verdict ships with its suggested date; the screen offers "Park to <date>"
+    // as one click and the chat confirms via wingguy_set_reconnect. Payloads stamped under the old
+    // rule (parked=true) still render as done deeds; nothing new is ever stamped here.
 
     const payload = {
       preparedAt: new Date().toISOString(),
@@ -540,11 +564,14 @@ function formatBrief(row) {
   if (!row || !row.payload) return null;
   const p = typeof row.payload === 'string' ? JSON.parse(row.payload) : row.payload;
   const ageH = p.preparedAt ? (Date.now() - new Date(p.preparedAt).getTime()) / 3600000 : 999;
-  const piles = { park: [], draft: [], clear: [], attention: [] };
+  const piles = { drop: [], park: [], draft: [], clear: [], attention: [] };
   for (const it of (p.items || [])) (piles[it.verdict] || piles.attention).push(it);
 
   // Names render as markdown links to the lead's LinkedIn profile (Guy: "glance at their profile").
   const nm = (it) => (it.linkedin ? `[${it.name}](${it.linkedin})` : it.name);
+  // Recommendation-first (Guy 2026-08-29): the advice headline leads every line when the triage
+  // wrote one; the factual why_line is the fallback for pre-change payloads.
+  const rec = (it) => (it.recommendation && String(it.recommendation).trim()) || it.whyLine;
 
   const lines = [];
   // Full-list era (2026-08-24): EVERY surfaced person is in the payload with a story — but the
@@ -560,7 +587,7 @@ function formatBrief(row) {
     lines.push(`\nREPLIES OWED (${piles.draft.length}${piles.draft.length > PILE_CAP ? `, first ${PILE_CAP} here — the queue pages the rest` : ''}) — email people have drafts IN THE BRIEF (show → tweak in chat → on approval push to Gmail with wingguy_create_draft, threaded via the reply id below; never push unasked). LinkedIn people get NO pre-written message by design — relay their /wg pointer + angle (they open the thread and type /wg; it drafts from the live conversation and calendar):`);
     for (const it of piles.draft.slice(0, PILE_CAP)) {
       const liTag = it.channel === 'linkedin' ? (it.draftText ? ' [LinkedIn — paste-ready]' : ' [LinkedIn — open the thread and type /wg]') : '';
-      lines.push(`- ${nm(it)} — ${it.whyLine}${liTag}${it.draftError ? ` [draft generation FAILED: ${it.draftError}]` : ''}${it.draftPending ? ' [draft arrives next overnight run — ask me to draft it now if wanted]' : ''}`);
+      lines.push(`- ${nm(it)} — ${rec(it)}${liTag}${it.draftError ? ` [draft generation FAILED: ${it.draftError}]` : ''}${it.draftPending ? ' [draft arrives next overnight run — ask me to draft it now if wanted]' : ''}`);
       if (it.draftText) lines.push(`    draft: "${it.draftText}"`);
       else if (it.wgAngle) lines.push(`    /wg angle: ${it.wgAngle}`);
       if (it.email && it.replyToMessageId) lines.push(`    push with: to=${it.email}, subject="${it.pushSubject}", reply_to_message_id=${it.replyToMessageId}`);
@@ -568,8 +595,17 @@ function formatBrief(row) {
     }
     if (piles.draft.length > PILE_CAP) lines.push(`  …and ${piles.draft.length - PILE_CAP} more with stories ready — work them via wingguy_queue (ten a page), or ask for anyone by name.`);
   }
+  if (piles.drop.length) {
+    // Drop-biased doctrine (Guy 2026-08-29): a resolved "not now" is a recommended DROP, not a
+    // park — his time is the scarce resource, and a dropped person who writes again still
+    // surfaces. RECOMMENDATION ONLY: nothing is ceased until the human says so.
+    lines.push(`\nRECOMMENDED DROPS (${piles.drop.length}${piles.drop.length > PILE_CAP ? `, first ${PILE_CAP} here — the queue pages the rest` : ''}) — resolved "not now"s; dropping only stops the chasing (nothing is sent, and a new message from them still surfaces). Relay the recommendations; cease ONLY the names the human confirms (wingguy_cease_followups per name — never drop unconfirmed):`);
+    for (const it of piles.drop.slice(0, PILE_CAP)) lines.push(`- ${nm(it)} — ${rec(it)}${it.jog ? `\n    jog: ${it.jog}` : ''}`);
+    if (piles.drop.length > PILE_CAP) lines.push(`  …and ${piles.drop.length - PILE_CAP} more — via wingguy_queue, or ask by name.`);
+  }
   if (piles.park.length) {
-    // Stamp-and-tell (Guy 2026-08-03): clear future dates were ALREADY stamped at preparation time
+    // LEGACY PAYLOADS ONLY (auto-park retired 2026-08-29 — nothing automatic): under the old
+    // 2026-08-03 stamp-and-tell rule, clear future dates were ALREADY stamped at preparation time
     // — report them once as a done deed with an un-park escape. Only unclear/passed/failed cases
     // still ask (pre-change stored payloads have no `parked` flag, so they render as asks — right,
     // since nothing was stamped for them).
@@ -580,19 +616,19 @@ function formatBrief(row) {
       for (const it of stamped) lines.push(`- ${nm(it)} — ${it.whyLine} → parked till ${it.parkDate}${it.jog ? `\n    jog: ${it.jog}` : ''}`);
     }
     if (ask.length) {
-      lines.push(`\nJUST NEED A DATE (${ask.length}) — they named a time; confirm to park via wingguy_set_reconnect:`);
+      lines.push(`\nRECOMMENDED PARKS (${ask.length}) — a dated reason to come back; NOTHING is stamped until the human confirms (then wingguy_set_reconnect):`);
       for (const it of ask) {
         const passed = it.parkDate && it.parkDate <= new Date().toISOString().slice(0, 10);
         const tail = passed
           ? `their own window (${it.parkDate}) has PASSED — reach out now, natural opening`
           : `park until ${it.parkDate || '(date unclear — ask)'}`;
-        lines.push(`- ${nm(it)} — ${it.whyLine} → ${tail}${it.parkError ? ` [auto-park failed: ${it.parkError}]` : ''}${it.jog ? `\n    jog: ${it.jog}` : ''}`);
+        lines.push(`- ${nm(it)} — ${rec(it)} → ${tail}${it.parkError ? ` [auto-park failed: ${it.parkError}]` : ''}${it.jog ? `\n    jog: ${it.jog}` : ''}`);
       }
     }
   }
   if (piles.attention.length) {
     lines.push(`\nNEEDS YOUR EYES (${piles.attention.length}${piles.attention.length > PILE_CAP ? `, first ${PILE_CAP} here — the queue pages the rest` : ''}):`);
-    for (const it of piles.attention.slice(0, PILE_CAP)) lines.push(`- ${nm(it)} — ${it.whyLine}${it.jog ? `\n    jog: ${it.jog}` : ''}`);
+    for (const it of piles.attention.slice(0, PILE_CAP)) lines.push(`- ${nm(it)} — ${rec(it)}${it.jog ? `\n    jog: ${it.jog}` : ''}`);
     if (piles.attention.length > PILE_CAP) lines.push(`  …and ${piles.attention.length - PILE_CAP} more — via wingguy_queue, or ask by name.`);
   }
   if (piles.clear.length) {
@@ -612,4 +648,4 @@ function formatBrief(row) {
   return lines.join('\n');
 }
 
-module.exports = { prepareFollowupBrief, getBrief, setStatus, formatBrief, linkedInTail, writeDraft, draftPlainText, entrySig, canReuseEntry, refreshEntry, _setPool, STALE_HOURS, REFRESH_DAYS };
+module.exports = { prepareFollowupBrief, getBrief, setStatus, formatBrief, linkedInTail, gatherPersonContext, writeDraft, draftPlainText, entrySig, canReuseEntry, refreshEntry, _setPool, STALE_HOURS, REFRESH_DAYS };

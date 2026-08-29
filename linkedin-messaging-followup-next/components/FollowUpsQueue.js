@@ -76,8 +76,10 @@ function newYearIso() {
 }
 
 // Row grouping label from the item's shape. Kind is the engine's verdict, not a guess.
+// Recommendation wording (2026-08-29): every verdict is advice the human clicks — nothing automatic.
 function tierChip(it) {
-  if (it.kind === 'park') return { label: 'PARK PROPOSED', cls: 'bg-sky-100 text-sky-800' };
+  if (it.kind === 'drop') return { label: 'DROP RECOMMENDED', cls: 'bg-red-100 text-red-700' };
+  if (it.kind === 'park') return { label: 'PARK RECOMMENDED', cls: 'bg-sky-100 text-sky-800' };
   if (it.kind === 'attention') return { label: 'NEEDS JUDGEMENT', cls: 'bg-amber-100 text-amber-800' };
   if (it.kind === 'reopen') return { label: 'WENT QUIET', cls: 'bg-gray-100 text-gray-600' };
   return { label: 'REPLY OWED', cls: 'bg-emerald-100 text-emerald-800' };
@@ -411,8 +413,9 @@ export default function FollowUpsQueue() {
               <select className="border rounded px-2 py-1 text-sm text-gray-700" value={tierFilter} onChange={(e) => setTierFilter(e.target.value)}>
                 <option value="all">Everything</option>
                 <option value="draft">Replies owed</option>
+                <option value="drop">Drops recommended</option>
                 <option value="reopen">Went quiet</option>
-                <option value="park">Park proposals</option>
+                <option value="park">Parks recommended</option>
                 <option value="attention">Needs judgement</option>
               </select>
             </label>
@@ -477,7 +480,11 @@ export default function FollowUpsQueue() {
                             )}
                             <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${badge.cls}`}>{badge.label}</span>
                           </div>
-                          {it.whyLine && <div className="text-sm text-gray-800 mt-0.5">{it.whyLine}{it.kind === 'park' && it.parkDate && !it.parkPassed ? ` — proposed park to ${formatDate(it.parkDate)}` : ''}{it.parkPassed ? ` — their own window (${formatDate(it.parkDate)}) has passed; reach out now` : ''}</div>}
+                          {/* Recommendation-first (2026-08-29): the advice headline leads the row;
+                              the factual whyLine only renders when there is no recommendation
+                              (pre-change payloads), so rows never say the same thing twice. */}
+                          {it.recommendation && <div className="text-sm font-medium text-gray-900 mt-0.5">{it.recommendation}{it.parkPassed ? ` — their own window (${formatDate(it.parkDate)}) has passed; reach out now` : ''}</div>}
+                          {!it.recommendation && it.whyLine && <div className="text-sm text-gray-800 mt-0.5">{it.whyLine}{it.kind === 'park' && it.parkDate && !it.parkPassed ? ` — proposed park to ${formatDate(it.parkDate)}` : ''}{it.parkPassed ? ` — their own window (${formatDate(it.parkDate)}) has passed; reach out now` : ''}</div>}
                           {it.jog && <div className="text-sm text-gray-500 mt-0.5">{it.jog}</div>}
                           {it.wgAngle && <div className="text-xs text-amber-800 mt-0.5"><span className="font-semibold">/wg angle:</span> {it.wgAngle}</div>}
                           <button className="text-xs text-blue-600 hover:underline mt-1" onClick={() => toggleStory(it)}>
@@ -491,13 +498,24 @@ export default function FollowUpsQueue() {
                               href={it.draftUrl} target="_blank" rel="noreferrer"
                               title={it.draftState === 'ready' ? 'Open the ready-made message (copy button + LinkedIn link)' : 'Open the context card — write the reply in the thread with /wg'}
                             >{it.draftState === 'ready' ? 'Draft' : 'Card'}</a>
-                          ) : (
+                          ) : (it.kind !== 'drop' && it.kind !== 'park' &&
                             <button className="px-3 py-1.5 rounded text-sm border bg-gray-50 text-gray-400 border-gray-200 cursor-not-allowed" title="No pre-written draft — the story below has the context; ask in chat for wording" disabled>Draft</button>
+                          )}
+                          {/* One-click recommended park (2026-08-29): the triage's suggested date as a
+                              single button — still the human's click, nothing pre-stamped. */}
+                          {it.kind === 'park' && it.parkDate && !it.parkPassed && (
+                            <button
+                              className="px-3 py-1.5 rounded text-sm font-medium text-white bg-sky-700 hover:bg-sky-600"
+                              onClick={() => doAction(it, 'park', it.parkDate)}
+                              title="Park to the recommended date — they surface at the top of the queue on the day"
+                            >Park to {formatDate(it.parkDate)}</button>
                           )}
                           <button className="px-3 py-1.5 rounded text-sm border bg-white text-gray-700 border-gray-300 hover:bg-gray-50" onClick={() => doAction(it, 'done')} title="Handled — no change to the relationship">Done</button>
                           <button className="px-3 py-1.5 rounded text-sm border bg-white text-gray-700 border-gray-300 hover:bg-gray-50" onClick={() => setParkFor(parkFor === key ? null : key)} title="Not now, definitely later — pick a date">Park</button>
                           <button
-                            className="px-3 py-1.5 rounded text-sm border bg-white text-red-700 border-red-200 hover:bg-red-50"
+                            className={it.kind === 'drop'
+                              ? 'px-3 py-1.5 rounded text-sm font-medium text-white bg-red-700 hover:bg-red-600'
+                              : 'px-3 py-1.5 rounded text-sm border bg-white text-red-700 border-red-200 hover:bg-red-50'}
                             onClick={() => { if (window.confirm(`Drop ${it.name} permanently? Nothing is sent; a new message from them still surfaces.`)) doAction(it, 'drop'); }}
                             title="Relationship over — timers silenced permanently; nothing sent"
                           >Drop</button>

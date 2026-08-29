@@ -683,7 +683,7 @@ async function prepareDossiers(tenant, opts = {}) {
       const DOSSIER_BRIEF_TOP = 25;
       const briefItems = (p && p.items) || [];
       if (briefItems.length > DOSSIER_BRIEF_TOP) console.log(`[dossier] brief has ${briefItems.length} items — deep dossiers for the top ${DOSSIER_BRIEF_TOP} only (rest live on demand)`);
-      addFrom(briefItems.slice(0, DOSSIER_BRIEF_TOP), ['draft', 'park', 'attention']);
+      addFrom(briefItems.slice(0, DOSSIER_BRIEF_TOP), ['draft', 'park', 'attention', 'drop']);
     } catch (_) {}
     try {
       const row = await backlog.getWorklist(tenant);

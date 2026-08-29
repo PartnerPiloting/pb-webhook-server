@@ -1385,7 +1385,7 @@ const TOOL_DEFS = [
   {
     name: 'wingguy_followup_brief',
     description:
-      'The PREPARED daily store BEHIND the action queue — for follow-up requests call wingguy_queue FIRST (the human wants action, not status). Call THIS for: a today-person\'s full detail (jog + draft text + push parameters — draft is IN the brief: show it, let the human tweak in chat, and ONLY on approval push via wingguy_create_draft with the entry\'s to/subject/reply_to_message_id; LinkedIn people get paste-ready text), park proposals (stamp via wingguy_set_reconnect on confirm), or when the human EXPLICITLY asks for status ("what\'s parked?", "was X checked?", "when was the brief built?") — the diagnostics/checked-clear tail answers those instantly. If it reports STALE or missing, offer wingguy_prepare_brief (background rebuild). wingguy_followup_sweep = live fallback only.',
+      'The PREPARED daily store BEHIND the action queue — for follow-up requests call wingguy_queue FIRST (the human wants action, not status). Call THIS for: a today-person\'s full detail (jog + draft text + push parameters — draft is IN the brief: show it, let the human tweak in chat, and ONLY on approval push via wingguy_create_draft with the entry\'s to/subject/reply_to_message_id; LinkedIn people get paste-ready text), recommended parks (stamp via wingguy_set_reconnect ONLY on the human\'s confirm) and recommended drops (cease via wingguy_cease_followups ONLY on the human\'s confirm — a drop recommendation is advice, never a done deed), or when the human EXPLICITLY asks for status ("what\'s parked?", "was X checked?", "when was the brief built?") — the diagnostics/checked-clear tail answers those instantly. If it reports STALE or missing, offer wingguy_prepare_brief (background rebuild). wingguy_followup_sweep = live fallback only.',
     zodSchema: {},
     jsonSchema: { type: 'object', properties: {}, required: [] },
     run: runFollowupBriefRead,
@@ -1401,7 +1401,7 @@ const TOOL_DEFS = [
   {
     name: 'wingguy_queue',
     description:
-      'THE ACTION QUEUE — THE FIRST CALL for "show me my follow-ups" / "what\'s due" / "who do I owe" / "who has gone quiet?". NOT "prep me for today\'s meetings" — that is diary prep (wingguy_list_events + wingguy_dossier per attendee), a different job the coach asks for every morning; never hijack it with this queue. ONE ranked, pageable to-do list (ten per page), every line an ACTION waiting for a yes WITH the person\'s "who:" memory-jog attached (relay it — the human should never have to ask who someone is): today\'s due items first (drafts ready / park proposals / needs-eyes), then backlog reopens (drafts ready), then backlog parks. Fast (~2-4s) — merges the prepared stores at serve time, then re-checks the LIVE world (Cease FUP, Reconnect On stamps, upcoming bookings, and messages the coach has SENT since the stores were built — LinkedIn via the lead\'s Notes, email via the mailbox) so a stale store entry never surfaces: someone the coach already replied to drops off without waiting for the overnight rebuild. Work it top-down: name a person → serve their jog + draft (from wingguy_followup_brief for today\'s people, wingguy_backlog name=... for backlog people; DEEP memory — "any emails? how did the call go? what did we agree?" — comes INSTANTLY from wingguy_dossier) → tweak → push/copy on approval → they drop off. "Next ten" = page 2, 3… DELIBERATELY ABSENT (pure action, no status): parked-until-date people (they surface on their day), nothing-owed people, anything already done — relay status info ONLY if the human explicitly asks ("what\'s parked?", "was X checked?").',
+      'THE ACTION QUEUE — THE FIRST CALL for "show me my follow-ups" / "what\'s due" / "who do I owe" / "who has gone quiet?". NOT "prep me for today\'s meetings" — that is diary prep (wingguy_list_events + wingguy_dossier per attendee), a different job the coach asks for every morning; never hijack it with this queue. ONE ranked, pageable to-do list (ten per page), every line an ACTION waiting for a yes WITH the person\'s "who:" memory-jog attached (relay it — the human should never have to ask who someone is): today\'s due items first (drafts ready / recommended drops / recommended parks / needs-eyes — every verdict is a RECOMMENDATION with its reasoning line: relay the advice, act ONLY on the human\'s explicit confirmation, never automatically), then backlog reopens (drafts ready), then backlog parks. Fast (~2-4s) — merges the prepared stores at serve time, then re-checks the LIVE world (Cease FUP, Reconnect On stamps, upcoming bookings, and messages the coach has SENT since the stores were built — LinkedIn via the lead\'s Notes, email via the mailbox) so a stale store entry never surfaces: someone the coach already replied to drops off without waiting for the overnight rebuild. Work it top-down: name a person → serve their jog + draft (from wingguy_followup_brief for today\'s people, wingguy_backlog name=... for backlog people; DEEP memory — "any emails? how did the call go? what did we agree?" — comes INSTANTLY from wingguy_dossier) → tweak → push/copy on approval → they drop off. "Next ten" = page 2, 3… DELIBERATELY ABSENT (pure action, no status): parked-until-date people (they surface on their day), nothing-owed people, anything already done — relay status info ONLY if the human explicitly asks ("what\'s parked?", "was X checked?").',
     zodSchema: {
       page: z.number().optional().describe('Page number, 10 per page (default 1). "next ten" = the next page.'),
     },
@@ -1757,8 +1757,11 @@ async function buildQueue(tenant = TENANT) {
     for (const it of ((p && p.items) || [])) {
       const draftState = deriveDraftState(it);
       if (it.verdict === 'draft') items.push({ ...it, src: 'today', kind: 'draft', builtAt, draftState });
-      // it.parked = the brief already stamped their Reconnect On (stamp-and-tell, 2026-08-03) —
-      // nothing left to action, so not queued (the live gate below would drop them anyway).
+      // Recommended drops (2026-08-29): a resolved "not now" surfaces as advice + a one-click
+      // Drop — RECOMMENDATION ONLY, the cease happens when the human clicks, never before.
+      else if (it.verdict === 'drop') items.push({ ...it, src: 'today', kind: 'drop', builtAt, draftState });
+      // it.parked = a Reconnect On stamped under the retired 2026-08-03 auto-park rule (legacy
+      // payloads only) — nothing left to action, so not queued (the live gate drops them anyway).
       // A park proposal whose date has already PASSED is not a park decision any more — their own
       // named window closed, so it serves as "reach out now" (Joe Cozzupoli, 2026-07-24).
       else if (it.verdict === 'park' && !it.parked) items.push({ ...it, src: 'today', kind: 'park', builtAt, draftState, parkPassed: !!(it.parkDate && it.parkDate <= todayIso) });
@@ -1818,16 +1821,19 @@ async function runQueue({ page } = {}, tenant = TENANT) {
   if (!deduped.length) {
     return { text: `${screenDoor}The queue is empty — nothing actionable right now (parked people surface on their dates${suppTotal ? `; the live re-check dropped ${suppTotal}: ${supp.messaged} already messaged since the list was built, ${supp.booked} already booked, ${supp.ceased} ceased, ${supp.parked} parked on a reconnect stamp` : ''}${doneNote}).` };
   }
-  // Chat line per item kind — same strings as ever, now derived from the structured item.
+  // Chat line per item kind — recommendation-first (Guy 2026-08-29): the triage's advice headline
+  // leads when it exists; why_line is the fallback for pre-change payloads.
   const lineFor = (it) => {
+    const rec = (it.recommendation && String(it.recommendation).trim()) || it.whyLine;
+    if (it.kind === 'drop') return `${rec} → recommended DROP (act only on the human's confirmation; nothing sent, a new message from them still surfaces)`;
     if (it.kind === 'park') {
       return it.parkPassed
         ? `their own window (${it.parkDate}) has PASSED — reach out now, natural opening [draft in dossier]`
-        : `${it.whyLine} → propose park ${it.parkDate || '?'}`;
+        : `${rec} → recommend park ${it.parkDate || '?'} (confirm before stamping)`;
     }
-    if (it.kind === 'attention') return `${it.whyLine} [needs your judgment]`;
+    if (it.kind === 'attention') return `${rec} [needs your judgment]`;
     if (it.kind === 'reopen') return `${it.whyLine} (${it.quietDays}d quiet)${draftMarker(it.draftState, 'backlog')}`;
-    return `${it.whyLine}${draftMarker(it.draftState, 'today')}`;
+    return `${rec}${draftMarker(it.draftState, 'today')}`;
   };
   const PAGE = 10;
   const pg = Math.max(1, parseInt(page, 10) || 1);

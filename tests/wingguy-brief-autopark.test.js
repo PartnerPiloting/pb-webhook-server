@@ -1,9 +1,10 @@
 /**
- * Tests for stamp-and-tell auto-parking in the brief (services/wingguyFollowupBrief.formatBrief) —
- * Guy's 2026-08-03 call: a park verdict with a clear future date is stamped to Reconnect On at
- * preparation time and reported as a DONE DEED ("PARKED FOR YOU") with an un-park escape, instead
- * of re-proposing the same date every brief. Unclear dates, passed windows, failed stamps, and
- * pre-change stored payloads (no `parked` flag) all still ASK the old way.
+ * Tests for park rendering in the brief (services/wingguyFollowupBrief.formatBrief).
+ * HISTORY: the 2026-08-03 stamp-and-tell auto-park was RETIRED on 2026-08-29 (Guy: "nothing
+ * automatic") — nothing is stamped at preparation time any more. These tests now pin the legacy
+ * contract: payloads stamped under the old rule (parked=true) still render as done deeds with the
+ * un-park escape, and everything else — unclear dates, passed windows, old failed stamps,
+ * pre-change payloads — renders as a RECOMMENDED PARK the human confirms.
  *
  * Pure formatting — no network, no stores. ⚠ Synthetic content only.
  *
@@ -64,7 +65,7 @@ const legacyRow = {
     assert.ok(!text.includes('Dana Stamped — said timing is not right until October → park until'));
   });
   await check('unclear date still asks', () => {
-    assert.ok(text.includes('JUST NEED A DATE (3)'));
+    assert.ok(text.includes('RECOMMENDED PARKS (3)'));
     assert.ok(text.includes('Ursula Unclear — said "maybe later in the year" → park until (date unclear — ask)'));
   });
   await check('a passed window reads "reach out now", never a stamp', () => {
@@ -75,7 +76,7 @@ const legacyRow = {
   });
   await check('pre-change stored payload (no parked flag) renders as an ask, never as stamped', () => {
     assert.ok(!legacy.includes('PARKED FOR YOU'));
-    assert.ok(legacy.includes('JUST NEED A DATE (1)'));
+    assert.ok(legacy.includes('RECOMMENDED PARKS (1)'));
     assert.ok(legacy.includes('Olive Oldpayload — she said September sounds good → park until 2099-09-15'));
   });
 

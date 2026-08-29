@@ -93,7 +93,8 @@ module.exports = function mountWingguyFollowups(app) {
         email: it.email || null,
         linkedin: it.linkedin || null,
         src: it.src,                 // 'today' | 'backlog'
-        kind: it.kind,               // 'draft' | 'park' | 'attention' | 'reopen'
+        kind: it.kind,               // 'drop' | 'draft' | 'park' | 'attention' | 'reopen'
+        recommendation: it.recommendation || null, // advice headline ("I'd drop her — …"); the row leads with it
         whyLine: it.whyLine || '',
         jog: it.jog || '',
         quietDays: it.quietDays ?? null,
