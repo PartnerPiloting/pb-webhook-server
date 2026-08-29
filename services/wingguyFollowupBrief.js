@@ -315,7 +315,9 @@ async function writeDraft(client, rulesText, item, context, instruction, tz) {
  */
 function entrySig(item) {
   const s = item.signals || {};
-  return `s1|${item.tier}|${s.lastInboundMs || 0}|${s.lastOutboundMs || 0}|${item.lead.reconnectOn || ''}`;
+  // s2 (2026-08-29): one-time global re-prep so every stored entry gains the recommendation-first,
+  // drop-biased, call-aware triage (Guy's go, same day). Subsequent nights are cheap again.
+  return `s2|${item.tier}|${s.lastInboundMs || 0}|${s.lastOutboundMs || 0}|${item.lead.reconnectOn || ''}`;
 }
 
 /**
