@@ -256,6 +256,14 @@ module.exports = function mountMarketingSite(app) {
         cancel_url: `${origin}/join`,
         metadata: { source: 'knowaguy-join', referrer: ref || '' },
         subscription_data: { metadata: { source: 'knowaguy-join', referrer: ref || '' } },
+        // The joiner's own name, asked on the Stripe page itself - the
+        // cardholder name is whoever's card it is, so it can't be trusted as
+        // identity. These land on the session and the webhook builds the
+        // master Clients row from them (checkout.session.completed).
+        custom_fields: [
+          { key: 'first_name', label: { type: 'custom', custom: 'First name' }, type: 'text' },
+          { key: 'last_name', label: { type: 'custom', custom: 'Last name' }, type: 'text' },
+        ],
       });
       logger.info(`[site] join checkout session created${ref ? ` (ref=${ref})` : ''}`);
       return res.redirect(303, session.url);

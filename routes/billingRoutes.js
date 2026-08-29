@@ -658,13 +658,89 @@ router.get('/api/billing/subscription', authenticateUserWithTestMode, requireStr
 });
 
 /**
+ * Stage 3: a paid join from the knowaguy /join page births the master Clients
+ * row - name from the checkout page's own First/Last name questions (the
+ * cardholder name is whoever's card it is, never identity), email from
+ * Stripe's contact box, Stripe ids from the payment. Everything else
+ * (workspace, portal token, welcome email) stays manual provisioning:
+ * Status starts Paused until Guy builds the workspace and flips it.
+ */
+async function createClientRowFromJoin(session, shadow, logger) {
+    try {
+        const email = ((session.customer_details && session.customer_details.email) || session.customer_email || '').trim();
+        const custom = Array.isArray(session.custom_fields) ? session.custom_fields : [];
+        const fieldVal = (key) => {
+            const f = custom.find((c) => c && c.key === key);
+            return (f && f.text && f.text.value) ? String(f.text.value).trim() : '';
+        };
+        let firstName = fieldVal('first_name');
+        let lastName = fieldVal('last_name');
+        if (!firstName && !lastName) {
+            // Sessions from before the name questions existed: billing name.
+            const parts = String((session.customer_details && session.customer_details.name) || '').trim().split(/\s+/).filter(Boolean);
+            firstName = parts.shift() || '';
+            lastName = parts.join(' ');
+        }
+        const fullName = `${firstName} ${lastName}`.trim() || email;
+
+        const existing = await shadow.findClientForCustomer(session.customer, email);
+        if (existing) {
+            logger.info(`[join] ${email} already has a Clients row (${existing.clientId || existing.id}) - capturing subscription id only`);
+            if (session.subscription) await shadow.captureSubscriptionId(existing, String(session.subscription));
+            return;
+        }
+
+        const Airtable = require('airtable');
+        Airtable.configure({ apiKey: process.env.AIRTABLE_API_KEY });
+        const base = Airtable.base(process.env.MASTER_CLIENTS_BASE_ID);
+
+        // Client ID from the name, house style ("Guy Wilson" -> "Guy-Wilson"),
+        // suffixed if someone of the same name already has a row.
+        const slugBase = fullName.replace(/[^A-Za-z0-9 ]/g, '').trim().replace(/\s+/g, '-') || 'New-Member';
+        let clientId = slugBase;
+        for (let n = 2; n <= 9; n++) {
+            const clash = await base('Clients').select({
+                filterByFormula: `{Client ID} = "${clientId}"`, maxRecords: 1,
+            }).firstPage();
+            if (!clash.length) break;
+            clientId = `${slugBase}-${n}`;
+        }
+
+        const referrer = (session.metadata && session.metadata.referrer) || '';
+        const record = {
+            'Client ID': clientId,
+            'Client Name': fullName,
+            'Client First Name': firstName || fullName.split(' ')[0],
+            'Client Email Address': email,
+            'Status': 'Paused',
+            // Manual + stripe from birth: keeps the PMPro sync's no-WP-ID
+            // force-pause off them, and names their billing caretaker.
+            'Status Management': 'Manual',
+            'Billing Source': 'stripe',
+            'Stripe Customer ID': session.customer ? String(session.customer) : undefined,
+            'Stripe Subscription ID': session.subscription ? String(session.subscription) : undefined,
+            'Comment': `Joined via knowaguy /join${referrer ? ` (ref: ${referrer})` : ''} - awaiting provisioning`,
+        };
+        Object.keys(record).forEach((k) => { if (record[k] === undefined) delete record[k]; });
+        const created = await base('Clients').create(record, { typecast: true });
+        logger.info(`[join] Created master Clients row ${clientId} (${created.id}) for ${email}`);
+    } catch (e) {
+        // The payment succeeded regardless - never fail the webhook over the
+        // clerical row. Guy's new-customer email still fires and he can
+        // create the row by hand, Paul-style.
+        logger.error(`[join] Failed to create client row: ${e && e.message}`);
+    }
+}
+
+/**
  * POST /api/billing/webhook
  * Stripe webhook handler for new subscription events
- * 
+ *
  * Listens for:
  * - customer.subscription.created (notify admin)
  * - customer.subscription.deleted (notify admin)
  * - invoice.payment_failed (notify admin)
+ * - checkout.session.completed (knowaguy join -> create Clients row)
  */
 router.post('/api/billing/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
     const logger = createLogger({ 
@@ -729,6 +805,16 @@ router.post('/api/billing/webhook', express.raw({ type: 'application/json' }), a
                     client
                 });
                 await shadow.applyShadowDecision(client, verdict.wouldStatus, `stripe ${event.type}: ${subStatus}`);
+                break;
+            }
+
+            case 'checkout.session.completed': {
+                const session = event.data.object;
+                if (((session.metadata && session.metadata.source) || '') !== 'knowaguy-join') {
+                    logger.info('Checkout session completed (not a knowaguy join) - no action');
+                    break;
+                }
+                await createClientRowFromJoin(session, shadow, logger);
                 break;
             }
 
