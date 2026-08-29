@@ -83,7 +83,10 @@ const row = {
       standing: 'Warm but resolved — ball in her court, her app is months from market.',
       commitmentsYou: ['Send the model email (13 Aug)'],
       commitmentsThem: ['Read the material and get back to you'],
-      emailRecord: { outbound: [{ date: '2099-08-13', subject: 'Great to catch up today, Nea', links: ['https://example.com/a', 'https://example.com/b'] }] },
+      emailRecord: {
+        outbound: [{ date: '2099-08-13', subject: 'Great to catch up today, Nea', links: ['https://example.com/a', 'https://example.com/b'] }],
+        lastOutbound: { date: '2099-08-13', subject: 'Great to catch up today, Nea', text: 'Hi Nea, as promised here is the fuller picture of the model and the pricing links.' },
+      },
     },
   } : null);
   dossier.findDossierByName = async () => null;
@@ -99,6 +102,9 @@ const row = {
     });
     await check('the sent-email record rides in with dates, subjects and link counts', () => {
       assert.ok(ctx.callOutcome.some((l) => l.includes('ALREADY SENT') && l.includes('2099-08-13 "Great to catch up today, Nea" [2 links in the body]')));
+    });
+    await check('the last outbound rides in as text — the delivered-promise evidence (Nea rerun 1 miss)', () => {
+      assert.ok(ctx.callOutcome.some((l) => l.includes("THE COACH'S LAST EMAIL TO THEM") && l.includes('fuller picture of the model')));
     });
 
     dossier.getDossierRow = async () => { throw new Error('store down'); };

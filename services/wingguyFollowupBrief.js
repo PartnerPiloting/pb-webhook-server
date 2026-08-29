@@ -169,6 +169,14 @@ async function gatherPersonContext(mailProvider, coach, item, tenant) {
         if (sent.length) {
           lines.push(`EMAILS THE COACH ALREADY SENT THEM (from the mailbox itself): ${sent.slice(0, 5).map((o) => `${o.date} "${o.subject}"${Array.isArray(o.links) && o.links.length ? ` [${o.links.length} link${o.links.length === 1 ? '' : 's'} in the body]` : ''}`).join(' · ')}`);
         }
+        // The last outbound IN ITS OWN WORDS: the index above proved insufficient on the first
+        // live rerun (Nea, 29 Aug) — the triage saw "Great to catch up today, Nea" in the sent
+        // list yet still declared the promised model-detail email owed, because a subject line
+        // can't show that the body WAS the promised material. The text can.
+        const lo = p.emailRecord && p.emailRecord.lastOutbound;
+        if (lo && lo.text) {
+          lines.push(`THE COACH'S LAST EMAIL TO THEM (${lo.date} "${lo.subject}") — read this before calling any send-material promise unfulfilled: ${String(lo.text).slice(0, 700)}`);
+        }
         out.callOutcome = lines;
       }
     } catch (_) { /* dossier store down — triage works from the messages alone */ }
@@ -188,7 +196,7 @@ function parseJson(text) {
 
 const TRIAGE_SYSTEM = `You triage a coach's follow-up queue. For each person you get the engine's mechanical signal (tier/why), what was ACTUALLY said recently (email snippets and/or LinkedIn lines, oldest first; THEM = the person, YOU = the coach), and — for people the coach has met — a CALL OUTCOME + SENT RECORD block from the call-transcript store and the mailbox. Read the words — the mechanical signal is often wrong about what is owed.
 
-GROUND TRUTH ORDER: the CALL OUTCOME + SENT RECORD block, when present, OUTRANKS the message snippets. A decision about someone the coach has MET flows from what was said on the call, not from the email shadow around it. And check the SENT record before declaring anything owed: a promise the record shows already delivered is DONE — never re-propose it.
+GROUND TRUTH ORDER: the CALL OUTCOME + SENT RECORD block, when present, OUTRANKS the message snippets. A decision about someone the coach has MET flows from what was said on the call, not from the email shadow around it. And check the SENT record before declaring anything owed: a promise the record shows already delivered is DONE — never re-propose it. In particular, a coach's wrap email sent on or after the call day usually IS the promised "more detail" — read the last email's text (given below the sent list) before declaring any send-material promise outstanding; if that email covers the promised ground, the promise is fulfilled and the ball is with the other person.
 
 CLIPPED RECORDS: snippets are cut at a fixed length, and LinkedIn lines may end with "…[record clipped]". A cut means OUR COPY of the record stops there — NEVER that the sender stopped mid-sentence, trailed off, or that a message "appears cut off". Never build a verdict on where a clipped line ends.
 
