@@ -76,6 +76,12 @@ Stripe Customer ID: ${data.customerId}
  */
 async function sendAdminAlert({ subject, text }, logger) {
     try {
+        // Alerts fired from the staging test bench must never look real - Guy
+        // took a signed staging drill for a genuine failed charge (26 Aug).
+        if ((process.env.ENVIRONMENT || '').toLowerCase() === 'staging') {
+            subject = `[TEST - staging drill, not a real charge] ${subject}`;
+            text = `THIS IS A TEST from the staging server - no real payment event occurred.\n\n${text}`;
+        }
         const adminEmail = process.env.ADMIN_NOTIFICATION_EMAIL || process.env.ALERT_EMAIL || 'guyralphwilson@gmail.com';
         if (!process.env.MAILGUN_API_KEY || !process.env.MAILGUN_DOMAIN) {
             logger.warn(`Mailgun not configured - alert logged only: ${subject}`);
