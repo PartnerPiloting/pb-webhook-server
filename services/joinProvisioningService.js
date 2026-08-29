@@ -306,19 +306,19 @@ async function stepSendAck(job) {
     '',
     "Payment's done - your receipt from Stripe is on its way separately.",
     '',
-    "Here's what happens next: your workspace is being built right now, and you'll soon get a welcome email from me with your own login and your first set-up steps - each takes minutes.",
+    "Here's what happens next: your I Know A Guy workspace is being built right now, and you'll soon get a welcome email from me with your own login and your first set-up steps - each takes minutes.",
     '',
     "Nothing else is needed from you right now. If anything looks odd - no receipt, no welcome email by tomorrow - just reply to this email and I'll sort it.",
     '',
     'Guy',
   ].join('\n');
-  const sent = await sendTextEmail({ to: p.email, subject: "You're in - welcome aboard", text });
+  const sent = await sendTextEmail({ to: p.email, subject: "You're in - welcome to I Know A Guy", text });
   const { recordComm } = require('./commsLog');
   await recordComm({
     coachClientId: job.client_id || COACH_ID,
     channel: 'join-ack',
     recipient: p.email,
-    subject: "You're in - welcome aboard",
+    subject: "You're in - welcome to I Know A Guy",
     summary: 'Automatic joining acknowledgement (payment received, welcome email to follow)',
     meta: { gmailId: sent && sent.id, jobId: job.id },
   });
@@ -490,7 +490,9 @@ async function alertGuy(subject, text, logger = defaultLogger) {
 async function alertGuyOfFailure(job, stepName, message, logger) {
   const p = job.payload || {};
   await alertGuy(
-    `⚠ Join provisioning stopped: ${p.firstName || ''} ${p.lastName || ''}`.trim(),
+    // Plain ASCII only in subjects - the text-mail lane doesn't RFC-2047
+    // encode them, so an emoji arrives as mojibake.
+    `Join provisioning STOPPED: ${p.firstName || ''} ${p.lastName || ''}`.trim(),
     [
       `Provisioning for ${p.email} stopped at step "${stepName}".`,
       '',
