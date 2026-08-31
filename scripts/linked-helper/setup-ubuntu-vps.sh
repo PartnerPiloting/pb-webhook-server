@@ -2,7 +2,10 @@
 # Linked Helper VPS - one-command setup for a fresh Ubuntu server.
 #
 # Turns a bare Ubuntu VPS (22.04/24.04, x64) into a self-healing Linked Helper machine:
-#   - XFCE desktop on the console X session, with auto-login (survives reboots unattended)
+#   - GNOME desktop on the console X session, with auto-login (survives reboots unattended)
+#     GNOME because LH's requirements page says "Gnome GUI is mandatory" on Linux
+#     (KDE/LXDE/XFCE "not officially supported"). Wayland is disabled - x11vnc and
+#     xdotool need plain X11.
 #   - Headless X via the dummy video driver (a VPS has no monitor)
 #   - x11vnc mirroring the ONE console screen + xRDP bridged to it, so every remote login
 #     (client's built-in RDP app, Guy's Splashtop) sees the SAME screen LH is running on.
@@ -83,14 +86,26 @@ Section "Screen"
 EndSection
 EOF
 
-echo "== auto-login to the console desktop =="
-mkdir -p /etc/lightdm/lightdm.conf.d
-cat > /etc/lightdm/lightdm.conf.d/50-autologin.conf <<EOF
-[Seat:*]
-autologin-user=$LH_USER
-autologin-user-timeout=0
-user-session=xfce
-EOF
+echo "== auto-login to the console desktop (GDM, Wayland off - x11vnc needs X11) =="
+python3 - "$LH_USER" <<'PYEOF'
+import re, sys
+user = sys.argv[1]
+p = '/etc/gdm3/custom.conf'
+s = open(p).read()
+def setkey(s, key, val):
+    if re.search(rf'^\s*#?\s*{key}\s*=', s, re.M):
+        return re.sub(rf'^\s*#?\s*{key}\s*=.*$', f'{key}={val}', s, count=1, flags=re.M)
+    return s.replace('[daemon]', f'[daemon]
+{key}={val}', 1)
+s = setkey(s, 'WaylandEnable', 'false')
+s = setkey(s, 'AutomaticLoginEnable', 'true')
+s = setkey(s, 'AutomaticLogin', user)
+open(p, 'w').write(s)
+print('gdm3 custom.conf updated')
+PYEOF
+# GNOME idle/lock would blank the unattended session - disable for the LH user
+sudo -u "$LH_USER" dbus-launch gsettings set org.gnome.desktop.session idle-delay 0 2>/dev/null || true
+sudo -u "$LH_USER" dbus-launch gsettings set org.gnome.desktop.screensaver lock-enabled false 2>/dev/null || true
 
 echo "== x11vnc mirroring the console display =="
 install -o "$LH_USER" -g "$LH_USER" -m 700 -d "$LH_HOME/.vnc"
@@ -99,13 +114,13 @@ chown "$LH_USER:$LH_USER" "$LH_HOME/.vnc/passwd"
 cat > /etc/systemd/system/x11vnc.service <<EOF
 [Unit]
 Description=x11vnc on the console display
-After=lightdm.service
-Requires=lightdm.service
+After=gdm.service
+Requires=gdm.service
 [Service]
 User=$LH_USER
 Environment=DISPLAY=:0
 ExecStartPre=/bin/sh -c 'for i in \$(seq 1 60); do [ -S /tmp/.X11-unix/X0 ] && exit 0; sleep 2; done; exit 1'
-ExecStart=/usr/bin/x11vnc -display :0 -auth guess -rfbauth $LH_HOME/.vnc/passwd -localhost -forever -shared -noxdamage
+ExecStart=/usr/bin/x11vnc -display :0 -auth /run/user/$(id -u $LH_USER)/gdm/Xauthority -auth guess -rfbauth $LH_HOME/.vnc/passwd -localhost -forever -shared -noxdamage
 Restart=always
 RestartSec=5
 [Install]

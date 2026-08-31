@@ -316,6 +316,14 @@ x11vnc console bridge (every login MUST land on the ONE real screen - a fresh-se
 setup shows an empty desktop); the dummy-monitor X config on the provider's image; whether the
 window-title health string matches the Windows format.
 
+**Official sizing (LH requirements page, checked 29 Aug 2026):** one account needs 2.5 GB free
+RAM, 0.5-1 "real core" (their definition: **2 VPS vCores = 1 real core**), 4 GB disk, SSD. So the
+A$7 OVH VPS-1 (2 vCores / 4 GB / 40 GB NVMe) meets the single-account spec exactly - dogfood on
+that, upgrade to the 8 GB tier only if it strains. Also per that page: **"Gnome GUI is mandatory"**
+on Linux (KDE/LXDE/XFCE not officially supported) - the setup script installs GNOME for that
+reason, with Wayland disabled (x11vnc/xdotool need X11) - and **ARM processors are not supported**
+on Windows/Linux (irrelevant for x86 VPSes; it is why LH cannot run on Guy's ARM Surface).
+
 ⚠ **Linked Helper's own caveat, stated on their downloads page:** Ubuntu is supported (18.04+, GUI
 required) but "we do not recommend using Ubuntu because of the unstable graphical interface" -
 aimed mostly at multi-account setups (they push Windows Server there). We run one account per
