@@ -1,0 +1,2 @@
+scripts/linked-helper/*.sh text eol=lf
+scripts/linked-helper/*.py text eol=lf
