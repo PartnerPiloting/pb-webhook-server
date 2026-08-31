@@ -291,6 +291,42 @@ remote desktop session at all. Not yet tested; worth ten minutes.
 
 ---
 
+---
+
+## Part 5 - Ubuntu VPS: the standard machine (DIRECTION as of 29 Aug 2026)
+
+★ **The default for every client is now a small Sydney VPS running Ubuntu**, not a spare laptop:
+~A$7-13/mo inc GST (OVH VPS-1 A$6.29 ex GST = 2 vCPU/4 GB; spec the 8 GB VPS-2 ~A$13 for comfort),
+opened in the CLIENT's own provider account with their own card (clean exit story). No proxy - one
+client per VPS is its own unique Australian IP. Sydney for everyone; a city-match is not worth
+paying for (Perth->Sydney ~50 ms, and set the client's real timezone inside Linked Helper instead).
+Client access = the free RDP app built into Windows/Mac; Guy = Splashtop.
+
+**The build is `scripts/linked-helper/setup-ubuntu-vps.sh`** - one command on a fresh VPS installs
+the desktop, remote access, Linked Helper (their official .deb), auto-login, the watchdog
+(`lh-watchdog.py`, the Linux port of the proven Windows presser + title health check), and a 03:00
+nightly maintenance reboot. A script rather than a snapshot because snapshots do not move between
+provider accounts and each client owns theirs.
+
+⚠ **STATUS: WRITTEN, NOT YET RUN ON A REAL VPS.** Nothing in it is exotic, but the first run will
+find wrinkles - do it on Guy's own machine (dogfood: move Guy's LH from the Acer via the proven
+.lhd2 export/import, run two clean weeks) before any client. Things the first run must verify:
+the .deb's binary path and whether `--start-account-id` behaves identically on Linux; the xRDP ->
+x11vnc console bridge (every login MUST land on the ONE real screen - a fresh-session-per-login
+setup shows an empty desktop); the dummy-monitor X config on the provider's image; whether the
+window-title health string matches the Windows format.
+
+⚠ **Linked Helper's own caveat, stated on their downloads page:** Ubuntu is supported (18.04+, GUI
+required) but "we do not recommend using Ubuntu because of the unstable graphical interface" -
+aimed mostly at multi-account setups (they push Windows Server there). We run one account per
+machine, the easy case; the dogfood fortnight is what settles whether their caveat bites.
+
+Phase 2 (deliberately not in the script yet): the nightly backup export + off-machine upload - needs
+the Launcher-side backup button flow proven via the same DevTools channel first. Until then the
+03:00 reboot gives the clean-restart benefits and backups stay manual/weekly.
+
+---
+
 ## Gotchas
 
 - **Never Sign Out of a remote session.** Close the window. Signing out kills the campaigns.
