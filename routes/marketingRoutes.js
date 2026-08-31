@@ -119,6 +119,19 @@ const PAGES = {
     title: 'Welcome aboard - I Know A Guy',
     description: 'Payment done - here is exactly what happens in the next 24 hours.',
   },
+  // The cost-and-worth page, sent by link after a conversation - it answers
+  // "what does it cost" for someone who has already seen the thing working.
+  // Deliberately has NOTHING to click: /join is the door, this is the case for
+  // walking through it, and mixing the two turns a considered read into a
+  // sales page. Wears the one-pager shell rather than the homepage palette
+  // because it goes out alongside /series/nodes and reads as a letter.
+  numbers: {
+    file: 'the-numbers.html',
+    title: 'The numbers - I Know A Guy',
+    description:
+      'What it costs and what it is worth - the price, the tools it runs on, and why a network '
+      + 'that produces its own work beats renting a room in somebody else\'s.',
+  },
 };
 
 const cachedBodies = {};
@@ -193,6 +206,8 @@ module.exports = function mountMarketingSite(app) {
   // created on first use, so nothing has to be pre-clicked in the dashboard.
   router.get('/join', servePage(PAGES.join));
   router.get('/join/thanks', servePage(PAGES.joinThanks));
+  // Sent by link, never linked from the site's own navigation.
+  router.get('/the-numbers', servePage(PAGES.numbers));
 
   const MONTHLY_LOOKUP = 'ikag_membership_150_monthly';
   const SETUP_LOOKUP = 'ikag_setup_fee_100';
