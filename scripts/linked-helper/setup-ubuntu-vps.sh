@@ -38,6 +38,8 @@ VNC_PASSWORD="${VNC_PASSWORD:?Set VNC_PASSWORD (used for RDP/VNC access to the s
 REPORT_URL="${REPORT_URL:-}"
 REPORT_SECRET="${REPORT_SECRET:-}"
 LH_USER="${LH_USER:-lh}"
+TS_AUTHKEY="${TS_AUTHKEY:-}"          # optional: Tailscale auth key (tskey-auth-...)
+TS_HOSTNAME="${TS_HOSTNAME:-lh-$CLIENT_ID}"
 LH_DEB_URL="https://do0ca1hx6twig.cloudfront.net/linked-helper/444657160c922f6b8048468fef840020/latest/linux/x64/linked-helper.deb"
 
 [ "$(id -u)" = 0 ] || { echo "Run as root"; exit 1; }
@@ -159,9 +161,23 @@ print('xrdp.ini updated')
 PY
 systemctl enable xrdp
 
-echo "== firewall: SSH + RDP only, VNC stays localhost =="
+echo "== Tailscale (private network - no public RDP door) =="
+# Access by NAME, not address: a client's home IP changes constantly and
+# IP-allowlisting locks you out (it did, twice, on 1 Sep 2026). Tailscale also
+# means RDP is never exposed to the internet at all.
+if [ -n "$TS_AUTHKEY" ]; then
+  curl -fsSL https://tailscale.com/install.sh | sh >/dev/null 2>&1
+  tailscale up --authkey="$TS_AUTHKEY" --hostname="$TS_HOSTNAME" --ssh=false
+  echo "joined tailnet as $TS_HOSTNAME ($(tailscale ip -4 2>/dev/null))"
+else
+  echo "WARNING: no TS_AUTHKEY given - RDP will have NO route in. Set one, or"
+  echo "         open 3389 to a known address manually (fragile - see docs)."
+fi
+
+echo "== firewall: SSH from anywhere, RDP over the private network ONLY =="
 ufw allow OpenSSH >/dev/null
-ufw allow 3389/tcp >/dev/null
+ufw allow in on tailscale0 to any port 3389 proto tcp >/dev/null
+ufw allow in on tailscale0 to any port 22 proto tcp >/dev/null
 ufw --force enable >/dev/null
 systemctl enable fail2ban
 

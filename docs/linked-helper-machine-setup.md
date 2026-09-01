@@ -308,6 +308,27 @@ the desktop, remote access, Linked Helper (their official .deb), auto-login, the
 nightly maintenance reboot. A script rather than a snapshot because snapshots do not move between
 provider accounts and each client owns theirs.
 
+### Access: Tailscale, not an open port (settled 1 Sep 2026)
+
+**Every machine joins a Tailscale private network and is reached by NAME** - `lh-guy-wilson`,
+`lh-julian-davis` - never by address. Pass `TS_AUTHKEY` to the setup script and it joins itself.
+RDP is then firewalled to the tailnet interface only, so **port 3389 is never exposed to the
+internet**.
+
+Why this is not optional: IP-allowlisting locked Guy out **twice in one afternoon** as his home
+address changed. On a client's home broadband it would be worse, and an internet-facing RDP port is
+among the most brute-forced things there is. Tailscale's free tier covers 100 devices; when this
+goes commercial the correct plan is their Starter tier, billed **per person, not per machine** - one
+user, thirty client machines, still cheap.
+
+Guy's laptop and the Sydney machine joined 1 Sep 2026; latency Brisbane->Sydney measured at 61 ms.
+His desktop shortcut (`Sydney Linked Helper.rdp`) points at `lh-guy-wilson`.
+⚠ Auth keys expire (90 days max) and should be **revoked after use** - they only add machines, and
+revoking does not disconnect machines already joined.
+
+★ **Splashtop is being dropped** - no Linux build via team deployment (checked live: Windows and Mac
+only), and Tailscale + RDP does the same job for free on both platforms.
+
 ### ⚠ Gotchas found on the FIRST real build (Guy's Sydney VPS, 1 Sep 2026)
 
 All four are now fixed in the setup script - they are recorded here because each cost real time and
