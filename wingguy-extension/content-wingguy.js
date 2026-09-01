@@ -1953,6 +1953,29 @@
             const verb = isNew ? `✓ Added ${pick.name} and saved` : '✓ Saved';
             const to = isNew ? '' : ` to ${pick.name}`;
             card.replaceChildren(el('div', 'wingguy-rescue-done', `${verb} ${msgs}${to}${extrasNote(extras)}`));
+
+            // A rescue create is made from a MESSAGE THREAD, so nothing here knows who the person
+            // actually is — the record lands with a name and a URL and no profile at all. That lead is
+            // then invisible to the nightly scorer (it only reads 'To Be Scored') and unreachable by
+            // Linked Helper unless the client runs campaigns, so it stays blank forever. Julian had 14
+            // of them by 2026-09-02, every one a real conversation.
+            //
+            // So: fetch their profile in a hidden tab and persist it, which scores them on the spot.
+            // AFTER the success card is shown and deliberately not awaited — the save is already done
+            // and safe, this takes a few seconds, and it must never make a working flow look slow or
+            // failed. The card updates in place if it is still on screen.
+            if (isNew && pick.linkedinProfileUrl) {
+              bg({ type: 'WG_ENRICH_FROM_PROFILE', leadRecordId: leadId, profileUrl: pick.linkedinProfileUrl })
+                .then((r) => {
+                  console.log(`[Wingguy] rescue-enrich ${pick.name}:`, r);
+                  if (!r || !r.enriched || !card.isConnected) return;
+                  const note = r.scored ? ' · profile read and scored' : ' · profile read';
+                  const done = card.querySelector('.wingguy-rescue-done');
+                  if (done) done.textContent += note;
+                })
+                .catch((e) => console.log('[Wingguy] rescue-enrich failed (non-fatal):', e && e.message));
+            }
+
             setTimeout(dismissCaptureRescue, 2500);
           } catch (err) {
             saveBtn.disabled = false;

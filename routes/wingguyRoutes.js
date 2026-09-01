@@ -736,6 +736,50 @@ module.exports = function mountWingguy(app) {
   // Info (email + phone — only the logged-in browser tab can see them) and posts them here to patch
   // the record the chat agent just created. Narrow + non-destructive: fills phone always (when empty)
   // and email only when the record has none (so a thread-supplied address wins). Guy's rule 2026-07-08.
+  // Enrich ONE known lead record from a profile scrape the caller already has, then score it if that
+  // made it scorable. Same two calls the /wg turn hook makes (enrichProfileFromPortal) — this is the
+  // door for callers that have a record id but are NOT on the person's profile page.
+  //
+  // Why it exists (Guy, 2026-09-02): the capture-rescue card creates a lead from a MESSAGE THREAD, so
+  // there is no profile scrape in that turn and nothing downstream ever fetched one. Julian had 14
+  // such leads — every one a real conversation — sitting with a name, a URL and no score, invisible to
+  // the nightly batch (it only reads 'To Be Scored') and unreachable by Linked Helper (his has not run
+  // since June). The extension now does a hidden-tab profile read after creating and posts it here.
+  //
+  // Fill-blanks-only and idempotent (enrichLeadFromScrape): safe to call twice, never overwrites LH
+  // material or a human edit, and an empty scrape writes nothing rather than blanking the record.
+  router.post('/enrich-lead', async (req, res) => {
+    if (!ENABLED) return res.status(503).json({ ok: false, error: 'Wingguy is disabled.' });
+    const { leadRecordId, profile } = req.body || {};
+    if (!leadRecordId) return res.status(400).json({ ok: false, error: 'leadRecordId required.' });
+    const p = profile && typeof profile === 'object' ? profile : {};
+    if (!p.about && !p.headline) {
+      // Nothing usable came back from the read — say so plainly rather than writing an empty record.
+      return res.json({ ok: true, changed: false, scored: false, reason: 'scrape had no about/headline' });
+    }
+    try {
+      const baseId = req.client && req.client.airtableBaseId;
+      const base = clientService.getClientBase(baseId);
+      if (!base) return res.status(400).json({ ok: false, error: 'no leads base for this client' });
+      const rec = await base('Leads').find(leadRecordId);
+      if (!rec) return res.status(404).json({ ok: false, error: 'lead not found' });
+
+      const r = await wingguyLeads.enrichLeadFromScrape(baseId, leadRecordId, p, rec.fields || {});
+      if (r && r.changed) logger.info(`[Wingguy] enrich-lead ${leadRecordId}: wrote ${r.wrote.join(', ')}`);
+      let scored = false;
+      if (r && r.scoreNow) {
+        // Awaited here (unlike the /wg hook, which must never delay a draft): this call is the whole
+        // point of the request, and the extension shows the outcome to the human.
+        const s = await wingguyLeads.scoreLeadInstant(req.client.clientId, leadRecordId, (m) => logger.info(`[Wingguy] ${m}`));
+        scored = !!(s && s.ok);
+      }
+      return res.json({ ok: true, changed: !!(r && r.changed), wrote: (r && r.wrote) || [], scored });
+    } catch (e) {
+      logger.error(`[Wingguy] enrich-lead ${leadRecordId} failed: ${e.message}`);
+      return res.status(500).json({ ok: false, error: e.message });
+    }
+  });
+
   router.post('/lead-contact', async (req, res) => {
     if (!ENABLED) return res.status(503).json({ ok: false, error: 'Wingguy is disabled.' });
     const { leadRecordId, email = '', phone = '' } = req.body || {};
