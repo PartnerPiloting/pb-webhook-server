@@ -315,12 +315,21 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           console.log('[Wingguy][bg] enrich-from-profile: nothing usable read for', message.profileUrl);
           return { success: true, data: { enriched: false, reason: 'profile read came back empty' } };
         }
-        // The hidden tab loads the real /in/ page, so scrapeProfile() stamps _wgSurface:'profile' —
-        // which is what makes the server trust the headline (a messaging-surface "headline" is a
-        // thread snippet). Pass the URL through so the record's own link gets filled when blank.
+        // Send ONLY the six fields enrichLeadFromScrape reads. A full scrape also carries pageText
+        // and recentPosts — tens of KB that the server would ignore — and none of it should leave
+        // the client's browser without a reason. _wgSurface is one of the six: the hidden tab loads
+        // the real /in/ page so scrapeProfile() stamps it 'profile', and that is what makes the
+        // server trust the headline (a messaging-surface "headline" is a thread snippet).
         const res = await wingguyEnrichLead({
           leadRecordId: message.leadRecordId,
-          profile: { ...profile, profileUrl: message.profileUrl },
+          profile: {
+            _wgSurface: profile._wgSurface,
+            _wgPageKept: profile._wgPageKept,
+            about: profile.about,
+            headline: profile.headline,
+            location: profile.location,
+            profileUrl: message.profileUrl,
+          },
         });
         return { success: true, data: { enriched: !!(res && res.changed), scored: !!(res && res.scored) } };
       } catch (e) {

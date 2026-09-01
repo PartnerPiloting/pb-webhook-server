@@ -761,7 +761,17 @@ module.exports = function mountWingguy(app) {
       const baseId = req.client && req.client.airtableBaseId;
       const base = clientService.getClientBase(baseId);
       if (!base) return res.status(400).json({ ok: false, error: 'no leads base for this client' });
-      const rec = await base('Leads').find(leadRecordId);
+      // Airtable THROWS on an unknown id rather than returning null, so a bad id must be caught here
+      // or it surfaces as a 500 and reads like the endpoint is broken.
+      let rec;
+      try {
+        rec = await base('Leads').find(leadRecordId);
+      } catch (e) {
+        if (/NOT_FOUND|MODEL_ID_NOT_FOUND|could not be found/i.test(String(e && (e.error || e.message)))) {
+          return res.status(404).json({ ok: false, error: 'lead not found' });
+        }
+        throw e;
+      }
       if (!rec) return res.status(404).json({ ok: false, error: 'lead not found' });
 
       const r = await wingguyLeads.enrichLeadFromScrape(baseId, leadRecordId, p, rec.fields || {});
