@@ -762,12 +762,19 @@ module.exports = function mountWingguy(app) {
       const base = clientService.getClientBase(baseId);
       if (!base) return res.status(400).json({ ok: false, error: 'no leads base for this client' });
       // Airtable THROWS on an unknown id rather than returning null, so a bad id must be caught here
-      // or it surfaces as a 500 and reads like the endpoint is broken.
+      // or it surfaces as a 500 and reads like the endpoint is broken. ⚠ Verified live 2026-09-02:
+      // a well-formed id that does not exist comes back NOT_AUTHORIZED ("You are not authorized to
+      // perform this operation"), NOT the NOT_FOUND you would expect — so that must be treated as
+      // missing too. Safe to conflate here because the SAME token just opened this base a line ago:
+      // a genuine permissions failure would have thrown there. Logged either way so a real one is
+      // still visible.
       let rec;
       try {
         rec = await base('Leads').find(leadRecordId);
       } catch (e) {
-        if (/NOT_FOUND|MODEL_ID_NOT_FOUND|could not be found/i.test(String(e && (e.error || e.message)))) {
+        const msg = String((e && (e.error || e.message)) || '');
+        if (/NOT_FOUND|MODEL_ID_NOT_FOUND|could not be found|NOT_AUTHORIZED|not authorized/i.test(msg)) {
+          logger.warn(`[Wingguy] enrich-lead: no such lead ${leadRecordId} in ${baseId} (${msg})`);
           return res.status(404).json({ ok: false, error: 'lead not found' });
         }
         throw e;
