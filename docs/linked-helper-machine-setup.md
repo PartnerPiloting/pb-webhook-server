@@ -308,7 +308,35 @@ the desktop, remote access, Linked Helper (their official .deb), auto-login, the
 nightly maintenance reboot. A script rather than a snapshot because snapshots do not move between
 provider accounts and each client owns theirs.
 
-⚠ **STATUS: WRITTEN, NOT YET RUN ON A REAL VPS.** Nothing in it is exotic, but the first run will
+### ⚠ Gotchas found on the FIRST real build (Guy's Sydney VPS, 1 Sep 2026)
+
+All four are now fixed in the setup script - they are recorded here because each cost real time and
+would otherwise be re-discovered per client.
+
+1. **★ Ubuntu 24.04 kills Linked Helper on launch.** 24.04 restricts unprivileged user namespaces,
+   which Electron needs for its sandbox. LH dies instantly showing only `'disconnect' fired`; the
+   real evidence is `traps: linked-helper ... trap int3` plus an apparmor `userns_create` line in
+   `journalctl`. Fix: `kernel.apparmor_restrict_unprivileged_userns=0` (persisted in
+   `/etc/sysctl.d/60-linked-helper.conf`). **Without this the whole thing looks broken for no
+   visible reason.**
+2. **The VPS image ships with no swap at all**, so any memory spike would OOM-kill LH outright
+   rather than merely slow down. Script now adds a 4 GB swapfile with `swappiness=10`.
+3. **No browser installed**, so LH throws "Failed to execute default Web Browser" whenever it tries
+   to open a link (help, verification). Script now installs Firefox.
+4. **The script installed XFCE/lightdm but configured gdm3** - a half-applied edit. Everything
+   downstream (autologin, x11vnc) silently did nothing. Now consistently lightdm + XFCE.
+
+Also worth knowing: OVH's default install expires the `ubuntu` password immediately and demands an
+interactive change, which blocks all automation. **Rebuild via the API with `doNotSendPassword:true`
+and the SSH key in the payload** - no password ever exists, no gate. Do this for every client
+machine; the panel's own dialog does not offer the option.
+
+⚠ **STATUS: FIRST BUILD DONE 1 Sep 2026 (Guy's machine). Proven: unattended reboot -> autologin ->
+LH starts -> screen reachable over RDP -> 1.2 GB data import -> instance runs clean.** Still
+unproven: the watchdog on a real schedule over days, the nightly backup (not built), and whether LH
+stays stable on XFCE over a fortnight.
+
+⚠ **(superseded) STATUS: WRITTEN, NOT YET RUN ON A REAL VPS.** Nothing in it is exotic, but the first run will
 find wrinkles - do it on Guy's own machine (dogfood: move Guy's LH from the Acer via the proven
 .lhd2 export/import, run two clean weeks) before any client. Things the first run must verify:
 the .deb's binary path and whether `--start-account-id` behaves identically on Linux; the xRDP ->

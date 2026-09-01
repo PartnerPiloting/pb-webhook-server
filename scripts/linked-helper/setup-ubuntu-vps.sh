@@ -60,6 +60,28 @@ apt-get install -y -qq xfce4 xfce4-terminal lightdm xserver-xorg-video-dummy \
   x11vnc xrdp xdotool wmctrl curl wget jq python3 python3-websockets \
   fail2ban ufw fonts-liberation libasound2
 
+echo "== Ubuntu 24.04 userns fix (Linked Helper dies without it) =="
+# Ubuntu 24.04 restricts unprivileged user namespaces, which kills Electron apps'
+# sandbox on launch. Linked Helper crashes instantly with a useless
+# "'disconnect' fired" popup and a "trap int3" in dmesg. Found live 2026-09-01.
+sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 >/dev/null
+cat > /etc/sysctl.d/60-linked-helper.conf <<'EOF'
+# Linked Helper (Electron) needs unprivileged user namespaces for its sandbox.
+# Ubuntu 24.04 restricts these by default, which kills the app on launch.
+kernel.apparmor_restrict_unprivileged_userns=0
+EOF
+
+echo "== swap cushion (VPS images ship with none) =="
+if ! swapon --show | grep -q .; then
+  fallocate -l 4G /swapfile && chmod 600 /swapfile && mkswap /swapfile >/dev/null && swapon /swapfile
+  grep -q "/swapfile" /etc/fstab || echo "/swapfile none swap sw 0 0" >> /etc/fstab
+  sysctl -q vm.swappiness=10
+  grep -q swappiness /etc/sysctl.conf || echo "vm.swappiness=10" >> /etc/sysctl.conf
+fi
+
+echo "== a browser, so LH can open help/verification links =="
+apt-get install -y -qq firefox 2>/dev/null || true
+
 echo "== headless X: dummy monitor 1920x1080 =="
 mkdir -p /etc/X11/xorg.conf.d
 cat > /etc/X11/xorg.conf.d/10-dummy.conf <<'EOF'
@@ -86,26 +108,21 @@ Section "Screen"
 EndSection
 EOF
 
-echo "== auto-login to the console desktop (GDM, Wayland off - x11vnc needs X11) =="
-python3 - "$LH_USER" <<'PYEOF'
-import re, sys
-user = sys.argv[1]
-p = '/etc/gdm3/custom.conf'
-s = open(p).read()
-def setkey(s, key, val):
-    if re.search(rf'^\s*#?\s*{key}\s*=', s, re.M):
-        return re.sub(rf'^\s*#?\s*{key}\s*=.*$', f'{key}={val}', s, count=1, flags=re.M)
-    return s.replace('[daemon]', f'[daemon]
-{key}={val}', 1)
-s = setkey(s, 'WaylandEnable', 'false')
-s = setkey(s, 'AutomaticLoginEnable', 'true')
-s = setkey(s, 'AutomaticLogin', user)
-open(p, 'w').write(s)
-print('gdm3 custom.conf updated')
-PYEOF
-# GNOME idle/lock would blank the unattended session - disable for the LH user
-sudo -u "$LH_USER" dbus-launch gsettings set org.gnome.desktop.session idle-delay 0 2>/dev/null || true
-sudo -u "$LH_USER" dbus-launch gsettings set org.gnome.desktop.screensaver lock-enabled false 2>/dev/null || true
+echo "== auto-login to the console desktop (lightdm + XFCE) =="
+# XFCE deliberately, not GNOME: lighter (fits the A$8 4GB VPS) and pure X11,
+# which x11vnc/xdotool need. LH's docs say "Gnome GUI is mandatory" but their
+# instability warning is aimed at multi-account GNOME setups; we run one
+# account per machine. Revisit only if LH misbehaves.
+install -d /etc/lightdm/lightdm.conf.d
+cat > /etc/lightdm/lightdm.conf.d/50-autologin.conf <<EOF
+[Seat:*]
+autologin-user=$LH_USER
+autologin-user-timeout=0
+user-session=xfce
+EOF
+echo "/usr/sbin/lightdm" > /etc/X11/default-display-manager
+# light-locker would blank/lock the unattended session
+apt-get remove -y -qq light-locker >/dev/null 2>&1 || true
 
 echo "== x11vnc mirroring the console display =="
 install -o "$LH_USER" -g "$LH_USER" -m 700 -d "$LH_HOME/.vnc"
@@ -114,13 +131,13 @@ chown "$LH_USER:$LH_USER" "$LH_HOME/.vnc/passwd"
 cat > /etc/systemd/system/x11vnc.service <<EOF
 [Unit]
 Description=x11vnc on the console display
-After=gdm.service
-Requires=gdm.service
+After=display-manager.service
+Requires=display-manager.service
 [Service]
 User=$LH_USER
 Environment=DISPLAY=:0
 ExecStartPre=/bin/sh -c 'for i in \$(seq 1 60); do [ -S /tmp/.X11-unix/X0 ] && exit 0; sleep 2; done; exit 1'
-ExecStart=/usr/bin/x11vnc -display :0 -auth /run/user/$(id -u $LH_USER)/gdm/Xauthority -auth guess -rfbauth $LH_HOME/.vnc/passwd -localhost -forever -shared -noxdamage
+ExecStart=/usr/bin/x11vnc -display :0 -auth guess -rfbauth $LH_HOME/.vnc/passwd -localhost -forever -shared -noxdamage
 Restart=always
 RestartSec=5
 [Install]
@@ -163,7 +180,7 @@ LH_BIN=$LH_BIN
 REPORT_URL=$REPORT_URL
 REPORT_SECRET=$REPORT_SECRET
 EOF
-chmod 600 /etc/linked-helper-machine.conf
+chmod 644 /etc/linked-helper-machine.conf  # watchdog runs as $LH_USER; holds no secrets
 
 echo "== LH autostart on desktop login =="
 install -o "$LH_USER" -g "$LH_USER" -d "$LH_HOME/.config/autostart"
