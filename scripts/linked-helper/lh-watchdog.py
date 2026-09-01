@@ -164,7 +164,7 @@ def main():
             result = asyncio.get_event_loop().run_until_complete(press_start(ws_url))
             actions.append(f"press:{result}")
             print(f"press result: {result}")
-            time.sleep(8)
+            time.sleep(20)
             health = parse_title(instance_title())
             print(f"health after press: {health}")
         else:

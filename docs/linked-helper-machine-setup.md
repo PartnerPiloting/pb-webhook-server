@@ -308,6 +308,33 @@ the desktop, remote access, Linked Helper (their official .deb), auto-login, the
 nightly maintenance reboot. A script rather than a snapshot because snapshots do not move between
 provider accounts and each client owns theirs.
 
+### Nightly backup - PROVEN END TO END 1 Sep 2026
+
+`scripts/linked-helper/lh-nightly-backup.sh`, cron at **02:30** (deliberately before the 03:00
+reboot, while the machine is quiet). Sequence, all unattended:
+
+**stop Linked Helper -> archive `~/.config/linked-helper` (caches excluded) -> upload to Google
+Drive -> restart Linked Helper -> watchdog presses "Start campaigns runner" within 5 min.**
+
+Watched live on Guy's machine: 1.8 GB of data compressed to **856 MB**, uploaded in ~60 s, LH back
+up, and the watchdog logged `press result: CLICKED <BUTTON>` -> `state: RUNNING`. **LinkedIn stayed
+logged in through the restart** - no re-verification, which matters because it means the nightly
+cycle costs nothing in disruption. Keeps 21 days, prunes older.
+
+Why stop LH first: its own backup feature refuses to run on an open account, for the same reason a
+copy would be unsafe - the database is mid-write. The archive is a data-directory copy, not their
+`.lhd2` format; for **disaster recovery onto a NEW machine the supported `.lhd2` export is still
+the right artefact**, so keep taking one occasionally until that too is automated (it needs the
+same DevTools button-press trick).
+
+Setup needs a one-time OAuth token per storage account: run `rclone authorize "drive"` on a machine
+with a browser, pass the JSON to the setup script as `RCLONE_TOKEN`. ⚠ rclone's shared Google
+client_id is being retired during 2026 - make your own before then
+(https://rclone.org/drive/#making-your-own-client-id).
+
+⚠ Bug found and fixed the same evening: the watchdog re-read the window title 8 s after pressing,
+catching a transient `LinkedIn logged out` mid-refresh. Now 20 s.
+
 ### Access: Tailscale, not an open port (settled 1 Sep 2026)
 
 **Every machine joins a Tailscale private network and is reached by NAME** - `lh-guy-wilson`,
