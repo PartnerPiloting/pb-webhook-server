@@ -105,11 +105,16 @@ async function updateLeadEmails(airtableBaseId, leadRecordId, { setPrimary = '',
 // not free-form: it writes ONLY the intake fields and only after a dedup check, so it mirrors how live
 // inflow lands (a Connected Candidate with Date Connected set) and slots into the pipeline instead of
 // becoming an orphan the scoring/FUP logic never sees. The narrow companion to updateLeadEmails.
+// INTRODUCTIONS (Guy, 2026-09-02): when a lead pulls a THIRD person into a thread, that person needs a
+// record before the coach replies to them - so the create also takes `location` (drives the lead-timezone
+// maths; a missing one is exactly how the Paul mis-booking happened) and `introducedBy` (filed as the
+// first line of Notes, so the provenance survives).
 //   Returns { ok, created, leadRecordId, fields }             on a fresh create
 //           { ok:true, exists:true, leadRecordId, ... }        when the person is ALREADY in the base
 //           { ok:false, error }                                on a bad call / Airtable failure.
 async function createLead(airtableBaseId, {
   firstName = '', lastName = '', linkedinUrl = '', email = '', phone = '', notes = '',
+  location = '', introducedBy = '',
   source = 'They Reached Out To Me', connectionStatus = 'Connected', status = 'In Process',
   dateConnectedISO = '',
 } = {}) {
@@ -140,10 +145,15 @@ async function createLead(airtableBaseId, {
   if (url) fields['LinkedIn Profile URL'] = url;
   if (mail && EMAIL_SHAPE.test(mail)) fields['Email'] = mail;
   if (tel) fields['Phone'] = tel;
+  const loc = String(location || '').trim();
+  if (loc) fields['Location'] = loc;
   if (source) fields['Source'] = source;
   if (connectionStatus) fields['LinkedIn Connection Status'] = connectionStatus;
   if (status) fields['Status'] = status;
-  if (notes) fields['Notes'] = String(notes).trim();
+  // Provenance first: "Introduced by X" leads the Notes so anyone reading the record knows how they came in.
+  const intro = String(introducedBy || '').trim();
+  const noteText = [intro ? `Introduced by ${intro}` : '', String(notes || '').trim()].filter(Boolean).join('\n');
+  if (noteText) fields['Notes'] = noteText;
   // A lead is "connected" iff {Date Connected} is set — so when we file them as Connected, stamp it.
   // Caller may pass an explicit ISO; otherwise use now (this is the moment Guy accepted them).
   if (connectionStatus === 'Connected') fields['Date Connected'] = dateConnectedISO || new Date().toISOString();

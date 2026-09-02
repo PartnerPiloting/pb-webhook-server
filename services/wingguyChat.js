@@ -116,6 +116,8 @@ const AGENT_TOOLS = [
         lastName: { type: 'string', description: 'The lead\'s last name.' },
         linkedinUrl: { type: 'string', description: 'The lead\'s LinkedIn profile URL (linkedin.com/in/...) — the strongest dedup key; include it whenever the profile is in view.' },
         email: { type: 'string', description: 'The lead\'s email, ONLY if they\'ve given one (e.g. in the thread). Omit if you don\'t have one — don\'t guess.' },
+        location: { type: 'string', description: 'Where they\'re based (e.g. "Sydney, New South Wales") — only if the profile in view, the thread, or Guy stated it; never a guess. Drives the lead-timezone maths for meeting times.' },
+        introducedBy: { type: 'string', description: 'When this person was INTRODUCED to Guy by someone else (a third name pulled into a thread): the introducer\'s name. Filed as the first line of Notes.' },
         notes: { type: 'string', description: 'Optional short context for the record (e.g. how they came in).' },
       },
     },
@@ -528,6 +530,8 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
         lastName: (input && input.lastName) || profile.lastName || '',
         linkedinUrl: leadUrl,
         email: (input && input.email) || '',
+        location: (input && input.location) || profile.location || '',
+        introducedBy: (input && input.introducedBy) || '',
         notes: (input && input.notes) || '',
       });
       // Whether we created the record or matched an existing one, this turn's later tools

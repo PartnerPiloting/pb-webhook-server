@@ -50,6 +50,8 @@ async function runCreateLead(args = {}, tenant = TENANT) {
     linkedinUrl: url,
     email: String(args.email || '').trim(),
     phone: String(args.phone || '').trim(),
+    location: String(args.location || '').trim(),
+    introducedBy: String(args.introduced_by || '').trim(),
     notes: String(args.notes || '').trim(),
   });
 
@@ -87,9 +89,15 @@ async function runCreateLead(args = {}, tenant = TENANT) {
   if (r.fields && r.fields['LinkedIn Profile URL']) bits.push(`LinkedIn ${r.fields['LinkedIn Profile URL']}`);
   if (r.fields && r.fields['Email']) bits.push(`email ${r.fields['Email']}`);
   if (r.fields && r.fields['Phone']) bits.push(`phone ${r.fields['Phone']}`);
+  if (r.fields && r.fields['Location']) bits.push(`based in ${r.fields['Location']}`);
   const detail = bits.length ? ` (${bits.join(', ')})` : '';
+  // No location = no lead timezone. Say so at birth, so the next step is "ask where they are", not
+  // "offer times on a guessed clock" (the Paul mis-booking, 2026-09-02).
+  const locNote = (r.fields && r.fields['Location'])
+    ? ''
+    : ' ⚠ NO LOCATION on file — their timezone is unknown, so do NOT offer meeting times yet: ask where they\'re based (or ask whoever introduced them), then save it with wingguy_update_lead.';
   return {
-    text: `Created ${who} in the CRM${detail} — filed Connected and dated today, so they enter the pipeline. Record ${r.leadRecordId}.${attachedNote} `
+    text: `Created ${who} in the CRM${detail} — filed Connected and dated today, so they enter the pipeline. Record ${r.leadRecordId}.${attachedNote}${locNote} `
       + `Phone/email from LinkedIn aren't pulled from here (that's the browser extension's job) — file an email later if one surfaces.`,
   };
 }
@@ -171,13 +179,15 @@ const TOOL_DEFS = [
   {
     name: 'wingguy_create_lead',
     description:
-      'Create a NEW lead in the coach\'s CRM (Airtable) for someone who ISN\'T there yet — use it when a person the coach is dealing with has no CRM record (e.g. a new connection). It files them the way inbound leads land: Connected, dated today, so they slot into the pipeline. Pass whatever you know — at MINIMUM a name or the LinkedIn URL. Don\'t block on email: LinkedIn rarely shows one, so create the record now and file the email later. SAFE to call even if unsure they\'re new — it dedupes on the LinkedIn profile first (then first+last name), so it won\'t make a duplicate; it hands back the existing record instead. Note: unlike the browser extension, this does NOT auto-read their LinkedIn contact info, so only pass email/phone you already have.',
+      'Create a NEW lead in the coach\'s CRM (Airtable) for someone who ISN\'T there yet — use it when a person the coach is dealing with has no CRM record: a new connection, OR a THIRD PERSON someone has just introduced the coach to in a thread (an intro on LinkedIn or a cc on an email). Create them BEFORE drafting any reply to them — every downstream step (timezone maths, invites, follow-ups, the dossier) hangs off the record. It files them the way inbound leads land: Connected, dated today, so they slot into the pipeline. Pass whatever you know — at MINIMUM a name or the LinkedIn URL; for an introduction ALSO pass introduced_by (who made the intro) and location if the thread or their profile shows where they\'re based. LOCATION MATTERS: without it their timezone is unknown and NO meeting times may be offered — if nobody has said where they are, ask the coach (or suggest asking the introducer) rather than guessing. Don\'t block on email: LinkedIn rarely shows one, so create the record now and file the email later. SAFE to call even if unsure they\'re new — it dedupes on the LinkedIn profile first (then first+last name), so it won\'t make a duplicate; it hands back the existing record instead. Note: unlike the browser extension, this does NOT auto-read their LinkedIn contact info, so only pass email/phone you already have.',
     zodSchema: {
       first_name: z.string().optional().describe('The lead\'s first name.'),
       last_name: z.string().optional().describe('The lead\'s last name.'),
       linkedin_url: z.string().optional().describe('The lead\'s LinkedIn profile URL (linkedin.com/in/...) — the strongest dedup key; include it whenever the profile is known.'),
       email: z.string().optional().describe('The lead\'s email, ONLY if you already have one (e.g. from a thread). Omit if you don\'t — don\'t guess.'),
       phone: z.string().optional().describe('The lead\'s phone, ONLY if you already have one. Omit otherwise.'),
+      location: z.string().optional().describe('Where they\'re based, as specific as known (e.g. "Sydney, New South Wales") — drives the lead-timezone maths for meeting times. Only what the thread, their profile, or the coach actually stated; never a guess.'),
+      introduced_by: z.string().optional().describe('For an introduction: the name of the person who introduced them (filed as the first line of Notes).'),
       notes: z.string().optional().describe('Optional short context for the record (e.g. how they came in).'),
     },
     jsonSchema: {
@@ -188,6 +198,8 @@ const TOOL_DEFS = [
         linkedin_url: { type: 'string', description: 'The lead\'s LinkedIn profile URL (linkedin.com/in/...) — the strongest dedup key; include it whenever the profile is known.' },
         email: { type: 'string', description: 'The lead\'s email, ONLY if you already have one (e.g. from a thread). Omit if you don\'t — don\'t guess.' },
         phone: { type: 'string', description: 'The lead\'s phone, ONLY if you already have one. Omit otherwise.' },
+        location: { type: 'string', description: 'Where they\'re based, as specific as known (e.g. "Sydney, New South Wales") — drives the lead-timezone maths for meeting times. Only what the thread, their profile, or the coach actually stated; never a guess.' },
+        introduced_by: { type: 'string', description: 'For an introduction: the name of the person who introduced them (filed as the first line of Notes).' },
         notes: { type: 'string', description: 'Optional short context for the record (e.g. how they came in).' },
       },
       required: [],

@@ -116,6 +116,23 @@ function stubBase({ existing = [] } = {}) {
     } finally { clientService.getClientBase = orig; }
   }
 
+  // ── 5b. createLead: an INTRODUCED person — location lands in Location, introducer leads the Notes ──
+  console.log('\ncreateLead — introduction files location + "Introduced by" provenance:');
+  {
+    const base = stubBase({ existing: [] });
+    const orig = clientService.getClientBase;
+    clientService.getClientBase = () => base.table;
+    try {
+      const r = await wingguyLeads.createLead('baseX', { firstName: 'Paul', lastName: 'Example', location: 'Melbourne, Victoria', introducedBy: 'Jane Smith', notes: 'wants to talk referrals' });
+      await acheck('Location written', () => assert.strictEqual(r.fields['Location'], 'Melbourne, Victoria'));
+      await acheck('Notes start with "Introduced by <name>"', () => assert.ok(/^Introduced by Jane Smith\n/.test(r.fields['Notes']), r.fields['Notes']));
+      await acheck('caller notes kept after the provenance line', () => assert.ok(/wants to talk referrals$/.test(r.fields['Notes'])));
+      const r2 = await wingguyLeads.createLead('baseX', { firstName: 'Paul', lastName: 'Example', introducedBy: 'Jane Smith' });
+      await acheck('introducer alone still writes Notes', () => assert.strictEqual(r2.fields['Notes'], 'Introduced by Jane Smith'));
+      await acheck('no Location written when none given', () => assert.ok(!r2.fields['Location']));
+    } finally { clientService.getClientBase = orig; }
+  }
+
   // ── 6. updateLeadContact: LinkedIn contact enrich is NON-DESTRUCTIVE (thread email wins; phone fills) ──
   console.log('\nupdateLeadContact — fills phone always, email only when empty:');
   {
