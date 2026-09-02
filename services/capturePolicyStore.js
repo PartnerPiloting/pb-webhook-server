@@ -63,6 +63,11 @@ async function ensureSchema(client) {
   `);
   await client.query(`CREATE INDEX IF NOT EXISTS idx_capture_pending_due ON capture_pending (release_at) WHERE status = 'held';`);
   await client.query(`CREATE INDEX IF NOT EXISTS idx_capture_pending_coach ON capture_pending (coach_client_id);`);
+  // 2026-09-02: REVIEW holds — a capture the ingest could not attribute with confidence (see
+  // granolaIngestService). status 'review' never auto-releases; the coach assigns a lead
+  // (assigned_lead) through wingguy_recording_release, or vetoes it. hold_reason says why.
+  await client.query(`ALTER TABLE capture_pending ADD COLUMN IF NOT EXISTS hold_reason TEXT;`);
+  await client.query(`ALTER TABLE capture_pending ADD COLUMN IF NOT EXISTS assigned_lead TEXT;`);
 
   // Tombstones: the never-again list. A provider retry, regenerate, or poll pass that hits a
   // tombstone walks away without fetching anything.
@@ -179,7 +184,41 @@ async function holdCapture({ source, providerRecordingId, coachClientId, title, 
   }
 }
 
-/** Everything a client currently has in the window (newest first). */
+/**
+ * Park a capture the ingest could NOT attribute with confidence. Never auto-releases: the row
+ * waits (status 'review') until the coach assigns a lead or vetoes it. Idempotent per
+ * (source, provider id). The transcript is not stored anywhere by this call.
+ */
+async function holdForReview({ source, providerRecordingId, coachClientId, title, meetingStart, matchedLeads, reason }) {
+  const p = getPool();
+  if (!p) return { ok: false, error: 'database not available' };
+  const client = await p.connect();
+  try {
+    await ensureSchema(client);
+    const r = await client.query(
+      `INSERT INTO capture_pending (source, provider_recording_id, coach_client_id, title, meeting_start, matched_leads, release_at, status, hold_reason)
+       VALUES ($1, $2, $3, $4, $5, $6, now(), 'review', $7)
+       ON CONFLICT (source, provider_recording_id) DO UPDATE
+         SET status = CASE WHEN capture_pending.status = 'vetoed' THEN 'vetoed' ELSE 'review' END,
+             hold_reason = EXCLUDED.hold_reason,
+             matched_leads = COALESCE(EXCLUDED.matched_leads, capture_pending.matched_leads),
+             last_error = NULL
+       RETURNING id, status`,
+      [
+        String(source).toLowerCase(), String(providerRecordingId), String(coachClientId).trim(),
+        title || null, meetingStart ? new Date(meetingStart) : null,
+        matchedLeads ? JSON.stringify(matchedLeads) : null, String(reason || '').slice(0, 500) || null,
+      ],
+    );
+    return { ok: true, id: r.rows[0].id, status: r.rows[0].status };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  } finally {
+    client.release();
+  }
+}
+
+/** Everything a client currently has waiting: the holding window AND the review pile (window first). */
 async function listHeldCaptures(coachClientId, { limit = 25 } = {}) {
   const p = getPool();
   if (!p) return [];
@@ -187,10 +226,10 @@ async function listHeldCaptures(coachClientId, { limit = 25 } = {}) {
   try {
     await ensureSchema(client);
     const r = await client.query(
-      `SELECT id, source, provider_recording_id, title, meeting_start, matched_leads, release_at, status, last_error, created_at
+      `SELECT id, source, provider_recording_id, title, meeting_start, matched_leads, release_at, status, last_error, created_at, hold_reason, assigned_lead
        FROM capture_pending
-       WHERE coach_client_id = $1 AND status = 'held'
-       ORDER BY release_at ASC
+       WHERE coach_client_id = $1 AND status IN ('held', 'review')
+       ORDER BY (status = 'review') ASC, release_at ASC
        LIMIT $2`,
       [String(coachClientId).trim(), limit],
     );
@@ -200,7 +239,7 @@ async function listHeldCaptures(coachClientId, { limit = 25 } = {}) {
   }
 }
 
-/** Held rows whose release time has passed — the sweep's worklist. */
+/** Held rows whose release time has passed — the sweep's worklist. Review rows never appear here. */
 async function dueHeldCaptures({ limit = 10 } = {}) {
   const p = getPool();
   if (!p) return [];
@@ -208,7 +247,7 @@ async function dueHeldCaptures({ limit = 10 } = {}) {
   try {
     await ensureSchema(client);
     const r = await client.query(
-      `SELECT id, source, provider_recording_id, coach_client_id, title, release_at, last_error
+      `SELECT id, source, provider_recording_id, coach_client_id, title, release_at, last_error, assigned_lead
        FROM capture_pending
        WHERE status = 'held' AND release_at <= now()
        ORDER BY release_at ASC
@@ -230,17 +269,22 @@ async function vetoHeldCapture({ id, coachClientId, reason = 'vetoed' }) {
     await ensureSchema(client);
     const r = await client.query(
       `UPDATE capture_pending SET status = 'vetoed'
-       WHERE id = $1 AND coach_client_id = $2 AND status = 'held'
+       WHERE id = $1 AND coach_client_id = $2 AND status IN ('held', 'review')
        RETURNING source, provider_recording_id, title`,
       [Number(id), String(coachClientId).trim()],
     );
     if (!r.rows.length) return { ok: false, error: 'no held capture with that id for this client' };
     const row = r.rows[0];
-    await client.query(
-      `INSERT INTO capture_tombstones (source, provider_recording_id, coach_client_id, reason)
-       VALUES ($1, $2, $3, $4) ON CONFLICT (source, provider_recording_id) DO NOTHING`,
-      [row.source, row.provider_recording_id, String(coachClientId).trim(), reason],
-    );
+    // A chunk id ("note#2") tombstones its chunk; the note-level check strips the suffix, so a
+    // vetoed chunk also stops the whole note being re-filed by a regenerate — deleted stays deleted.
+    const tombIds = [...new Set([row.provider_recording_id, String(row.provider_recording_id).replace(/#\d+$/, '')])];
+    for (const tid of tombIds) {
+      await client.query(
+        `INSERT INTO capture_tombstones (source, provider_recording_id, coach_client_id, reason)
+         VALUES ($1, $2, $3, $4) ON CONFLICT (source, provider_recording_id) DO NOTHING`,
+        [row.source, tid, String(coachClientId).trim(), reason],
+      );
+    }
     return { ok: true, title: row.title, source: row.source, providerRecordingId: row.provider_recording_id };
   } catch (e) {
     return { ok: false, error: e.message };
@@ -249,23 +293,45 @@ async function vetoHeldCapture({ id, coachClientId, reason = 'vetoed' }) {
   }
 }
 
-/** Pull a held capture's release time to NOW ("take it now"). The sweep files it on its next pass. Tenant-checked. */
-async function releaseHeldCaptureNow({ id, coachClientId }) {
+/**
+ * Pull a held capture's release time to NOW ("take it now"). The sweep files it on its next pass.
+ * For a REVIEW row, `assignedLeadEmail` is the coach's answer ("that was Pedro") — the sweep
+ * files the chunk to that lead. Released without an assignment, the ingest re-plans it and,
+ * if it is still ambiguous, puts it straight back in review. Tenant-checked.
+ */
+async function releaseHeldCaptureNow({ id, coachClientId, assignedLeadEmail }) {
   const p = getPool();
   if (!p) return { ok: false, error: 'database not available' };
   const client = await p.connect();
   try {
     await ensureSchema(client);
     const r = await client.query(
-      `UPDATE capture_pending SET release_at = now()
-       WHERE id = $1 AND coach_client_id = $2 AND status = 'held'
-       RETURNING source, provider_recording_id, title`,
-      [Number(id), String(coachClientId).trim()],
+      `UPDATE capture_pending SET release_at = now(), status = 'held', last_error = NULL,
+              assigned_lead = COALESCE($3, assigned_lead)
+       WHERE id = $1 AND coach_client_id = $2 AND status IN ('held', 'review')
+       RETURNING source, provider_recording_id, title, assigned_lead`,
+      [Number(id), String(coachClientId).trim(), assignedLeadEmail ? String(assignedLeadEmail).toLowerCase().trim() : null],
     );
     if (!r.rows.length) return { ok: false, error: 'no held capture with that id for this client' };
     return { ok: true, ...r.rows[0] };
   } catch (e) {
     return { ok: false, error: e.message };
+  } finally {
+    client.release();
+  }
+}
+
+/** Sweep bookkeeping: a released review row that is STILL ambiguous goes back to review, not into a retry loop. */
+async function markHeldCaptureReview(id, reason) {
+  const p = getPool();
+  if (!p) return;
+  const client = await p.connect();
+  try {
+    await ensureSchema(client);
+    await client.query(
+      `UPDATE capture_pending SET status = 'review', hold_reason = COALESCE($2, hold_reason), last_error = NULL WHERE id = $1`,
+      [Number(id), reason ? String(reason).slice(0, 500) : null],
+    );
   } finally {
     client.release();
   }
@@ -293,9 +359,11 @@ module.exports = {
   isCaptureBlocked,
   addTombstone,
   holdCapture,
+  holdForReview,
   listHeldCaptures,
   dueHeldCaptures,
   vetoHeldCapture,
   releaseHeldCaptureNow,
   markHeldCaptureReleased,
+  markHeldCaptureReview,
 };

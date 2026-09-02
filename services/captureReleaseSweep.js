@@ -17,7 +17,7 @@
  */
 
 const { createSafeLogger } = require('../utils/loggerHelper');
-const { dueHeldCaptures, markHeldCaptureReleased } = require('./capturePolicyStore');
+const { dueHeldCaptures, markHeldCaptureReleased, markHeldCaptureReview } = require('./capturePolicyStore');
 
 const log = createSafeLogger('SYSTEM', null, 'capture_release');
 
@@ -42,9 +42,10 @@ async function releaseDueCaptures() {
       if (row.source === 'granola') {
         const { ingestGranolaNote } = require('./granolaIngestService');
         result = await ingestGranolaNote({
-          noteId: row.provider_recording_id,
+          noteId: row.provider_recording_id,          // may be "<note>#<chunk>" for a review row
           coachClientId: row.coach_client_id,
           bypassHold: true,
+          assignedLeadEmail: row.assigned_lead || undefined,
         });
       } else if (row.source === 'fireflies') {
         const { ingestFirefliesTranscript } = require('./firefliesIngestService');
@@ -62,6 +63,16 @@ async function releaseDueCaptures() {
       // window) is DONE, not a failure — mark it released so it leaves the queue.
       const done = !!result.ok && (!!result.meetingId || !!result.skipped);
       const stillHeld = !!result.ok && !!result.held; // shouldn't happen with bypassHold — treat as retry
+      // The ingest could not attribute this capture with confidence: it is parked for the
+      // coach (review), not retried. When THIS row is the chunk in question it goes back to
+      // review here; other chunks of the same note were held by the ingest itself.
+      const needsReview = !!result.ok && !!result.review && !result.meetingId;
+      if (needsReview) {
+        const why = (result.held || []).map((h) => `${h.verdict}: ${h.reason}`).join('; ') || 'could not attribute with confidence';
+        await markHeldCaptureReview(row.id, why);
+        log.info(`capture id=${row.id} ${row.source}/${row.provider_recording_id} needs review — ${why}`);
+        continue;
+      }
       if (done) {
         await markHeldCaptureReleased(row.id, { ok: true });
         released++;

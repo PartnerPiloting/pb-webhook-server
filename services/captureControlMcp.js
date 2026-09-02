@@ -47,17 +47,31 @@ async function runRecordingsList(args = {}, tenant = TENANT) {
   ]);
 
   const lines = [];
-  if (held.length) {
-    lines.push(`WAITING IN THE CAPTURE WINDOW (${held.length}) - the words have NOT been fetched yet:`);
-    for (const h of held) {
-      let who = '';
-      try {
-        const m = JSON.parse(h.matched_leads || '[]');
-        if (m.length) who = ` with ${m.map((x) => x.name || x.email).join(', ')}`;
-      } catch (_e) { /* leave blank */ }
-      lines.push(`  - hold #${h.id}: "${h.title || 'untitled'}"${who} - releases in ~${minutesUntil(h.release_at)} min (${fmtWhen(h.release_at)})${h.last_error ? ` [last attempt failed: ${h.last_error}]` : ''}`);
+  const whoOf = (h) => {
+    try {
+      const m = JSON.parse(h.matched_leads || '[]');
+      if (m.length) return m.map((x) => x.name || x.email).join(', ');
+    } catch (_e) { /* leave blank */ }
+    return '';
+  };
+  const window = held.filter((h) => h.status !== 'review');
+  const review = held.filter((h) => h.status === 'review');
+  if (window.length) {
+    lines.push(`WAITING IN THE CAPTURE WINDOW (${window.length}) - the words have NOT been fetched yet:`);
+    for (const h of window) {
+      const who = whoOf(h);
+      lines.push(`  - hold #${h.id}: "${h.title || 'untitled'}"${who ? ` with ${who}` : ''} - releases in ~${minutesUntil(h.release_at)} min (${fmtWhen(h.release_at)})${h.last_error ? ` [last attempt failed: ${h.last_error}]` : ''}`);
     }
     lines.push(`  To stop one being taken: veto it by hold number. To take one now: release it by hold number.`);
+    lines.push('');
+  }
+  if (review.length) {
+    lines.push(`NEEDS YOUR CALL (${review.length}) - Wingguy could not work out with confidence who these were with, so it filed NOTHING rather than guess:`);
+    for (const h of review) {
+      const who = whoOf(h);
+      lines.push(`  - hold #${h.id}: "${h.title || 'untitled'}" - ${fmtWhen(h.meeting_start)}${who ? ` - calendar suggested ${who}` : ''}${h.hold_reason ? ` - why: ${h.hold_reason}` : ''}`);
+    }
+    lines.push(`  Tell Wingguy who it was ("hold #12 was Pedro Demartini") and it files the transcript to that person: release the hold number with the person's email. Or veto it if it should not be kept.`);
     lines.push('');
   }
   if (stored.length) {
@@ -81,18 +95,32 @@ async function runRecordingVeto(args = {}, tenant = TENANT) {
   return { text: `Done - "${r.title || 'that capture'}" will NOT be taken. Its words were never fetched, and it's now on the never-again list, so a provider retry can't bring it back.` };
 }
 
-/** Release a held capture right now, then run a sweep pass so it files within seconds. */
+/**
+ * Release a held capture right now, then run a sweep pass so it files within seconds. For a
+ * review hold, `lead_email` is the coach's answer to "who was this with?" - the chunk is filed
+ * to that lead. Released without one, it is re-planned and comes back to review if still unclear.
+ */
 async function runRecordingRelease(args = {}, tenant = TENANT) {
   const { releaseHeldCaptureNow } = require('./capturePolicyStore');
-  const r = await releaseHeldCaptureNow({ id: args.hold_id, coachClientId: tenant });
+  const leadEmail = String(args.lead_email || '').trim() || undefined;
+  if (leadEmail && !leadEmail.includes('@')) return { text: `lead_email must be the person's email address as it appears on their lead record (got "${leadEmail}").`, isError: true };
+  const r = await releaseHeldCaptureNow({ id: args.hold_id, coachClientId: tenant, assignedLeadEmail: leadEmail });
   if (!r.ok) return { text: `Couldn't release: ${r.error}`, isError: true };
-  let filed = null;
+  let pass = null;
   try {
     const { releaseDueCaptures } = require('./captureReleaseSweep');
-    filed = await releaseDueCaptures();
+    pass = await releaseDueCaptures();
   } catch (_e) { /* the scheduled sweep will pick it up within minutes */ }
-  const note = filed && filed.released > 0
-    ? 'It has been fetched and filed - ask about the meeting in a moment.'
+  if (pass && pass.failed > 0 && !pass.released) {
+    return { text: `Released "${r.title || 'the capture'}" but filing it failed just now - it will be retried within minutes. If it keeps failing, check the hold's last error in wingguy_recordings.`, isError: false };
+  }
+  const { listHeldCaptures } = require('./capturePolicyStore');
+  const still = (await listHeldCaptures(tenant, { limit: 100 }).catch(() => [])).find((h) => Number(h.id) === Number(args.hold_id));
+  if (still && still.status === 'review') {
+    return { text: `Looked at "${r.title || 'the capture'}" again and still could not tell who it was with (${still.hold_reason || 'ambiguous'}). It stays in the review pile. Tell me the person and I will file it to them: release hold #${still.id} with their email.` };
+  }
+  const note = pass && pass.released > 0
+    ? `It has been fetched and filed${leadEmail ? ` to ${leadEmail}` : ''} - ask about the meeting in a moment.`
     : 'It will be fetched and filed within the next few minutes.';
   return { text: `Released "${r.title || 'the capture'}" from the holding window. ${note}` };
 }
@@ -107,7 +135,14 @@ async function runRecordingDelete(args = {}, tenant = TENANT) {
   const providerId = d.provider_recording_id || d.fathom_recording_id;
   let tomb = '';
   if (d.source && providerId) {
-    const t = await addTombstone({ source: d.source, providerRecordingId: providerId, coachClientId: tenant, reason: 'deleted' });
+    // A split chunk ("note#2") tombstones its own id AND the bare note id: the note-level check
+    // strips the suffix, so a regenerate cannot re-file the note after any part was deleted.
+    const ids = [...new Set([String(providerId), String(providerId).replace(/#\d+$/, '')])];
+    let t = { ok: true };
+    for (const pid of ids) {
+      const one = await addTombstone({ source: d.source, providerRecordingId: pid, coachClientId: tenant, reason: 'deleted' });
+      if (!one.ok) t = one;
+    }
     tomb = t.ok
       ? " It's also on the never-again list, so the capture system can't re-file it."
       : ` ⚠ BUT the never-again marker failed to save (${t.error}) - the capture system could re-file this meeting from the provider. Tell Guy.`;
@@ -144,8 +179,13 @@ async function runRecordingsPurge(args = {}, tenant = TENANT) {
   for (const row of r.rows || []) {
     const providerId = row.provider_recording_id || row.fathom_recording_id;
     if (!row.source || !providerId) continue;
-    const t = await addTombstone({ source: row.source, providerRecordingId: providerId, coachClientId: tenant, reason: 'purged' });
-    if (t.ok) tombOk++; else tombFail++;
+    const ids = [...new Set([String(providerId), String(providerId).replace(/#\d+$/, '')])];
+    let ok = true;
+    for (const pid of ids) {
+      const t = await addTombstone({ source: row.source, providerRecordingId: pid, coachClientId: tenant, reason: 'purged' });
+      if (!t.ok) ok = false;
+    }
+    if (ok) tombOk++; else tombFail++;
   }
   const tombNote = tombFail
     ? ` ⚠ ${tombFail} never-again marker(s) failed to save - those meetings could be re-filed from the provider. Tell Guy.`
@@ -188,13 +228,17 @@ const TOOL_DEFS = [
   {
     name: 'wingguy_recording_release',
     description:
-      'Release a capture from the holding window RIGHT NOW instead of waiting out the client\'s hold period (get the hold number from wingguy_recordings). Use when the client says "take that one now" - typically because they want the follow-up email drafted straight after the call.',
+      'Release a capture from the holding window RIGHT NOW instead of waiting out the client\'s hold period (get the hold number from wingguy_recordings). Use when the client says "take that one now" - typically because they want the follow-up email drafted straight after the call. ALSO the answer door for a hold listed under NEEDS YOUR CALL: pass lead_email (the person\'s email as on their lead record) to file that transcript to them - e.g. "hold #12 was Pedro" -> look Pedro up, then release with his email.',
     zodSchema: {
       hold_id: z.number().describe('The hold number from wingguy_recordings.'),
+      lead_email: z.string().optional().describe('For a NEEDS YOUR CALL hold: the email of the lead this transcript belongs to. Files it to that person. Omit for an ordinary holding-window release.'),
     },
     jsonSchema: {
       type: 'object',
-      properties: { hold_id: { type: 'number', description: 'The hold number from wingguy_recordings.' } },
+      properties: {
+        hold_id: { type: 'number', description: 'The hold number from wingguy_recordings.' },
+        lead_email: { type: 'string', description: 'For a NEEDS YOUR CALL hold: the email of the lead this transcript belongs to. Files it to that person. Omit for an ordinary holding-window release.' },
+      },
       required: ['hold_id'],
     },
     run: runRecordingRelease,

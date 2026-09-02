@@ -742,6 +742,34 @@ async function providerRecordingIngested(source, providerRecordingId) {
 }
 
 /**
+ * providerRecordingIngested for a provider whose ONE recording may have been filed as SEVERAL
+ * rows: a Granola note split by timestamp files as "<note id>#1", "<note id>#2", ... (a single
+ * chunk keeps the bare id). Any filed chunk means the note has been handled — a webhook retry
+ * or regenerate must not file it again.
+ */
+async function providerRecordingIngestedAny(source, providerRecordingId) {
+  if (!source || !providerRecordingId) return false;
+  const p = getPool();
+  if (!p) return false;
+  const client = await p.connect();
+  try {
+    await ensureSchema(client);
+    const base = String(providerRecordingId).replace(/#\d+$/, '');
+    const r = await client.query(
+      `SELECT 1 FROM recall_meetings
+       WHERE source = $1
+         AND (provider_recording_id = $2 OR provider_recording_id LIKE $2 || '#%')
+         AND transcript_text IS NOT NULL AND btrim(transcript_text) <> ''
+       LIMIT 1`,
+      [String(source).toLowerCase(), base],
+    );
+    return r.rows.length > 0;
+  } finally {
+    client.release();
+  }
+}
+
+/**
  * The filed meetings carved out of ONE Fathom recording — what the splitter actually did with it.
  * Exists so the raw-feed MCP tools can SELF-DISCLOSE the store's filing state: a back-to-back
  * recording looks like one mis-filed lump in the raw Fathom API, and on 2026-07-28 that lump was
@@ -1924,6 +1952,7 @@ module.exports = {
   getMeetingsTranscriptHeads,
   fathomRecordingIngested,
   providerRecordingIngested,
+  providerRecordingIngestedAny,
   findMeetingsByFathomRecordingId,
   findEmptyTranscriptMeetings,
   splitMeeting,

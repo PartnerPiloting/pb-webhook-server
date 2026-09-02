@@ -139,12 +139,14 @@ router.post('/webhooks/granola/:clientId', rawJson, async (req, res) => {
   //    retry + note.regenerated give natural re-attempts for transient failures.
   try {
     const result = await ingestGranolaNote({ noteId, coachClientId: clientId });
-    if (result.ok && result.held) {
+    if (result.ok && result.review) {
+      log.info(`GRANOLA-WEBHOOK note=${noteId}: ${(result.filed || []).length} chunk(s) filed, ${result.held.length} HELD FOR REVIEW (${result.held.map((h) => h.verdict).join(', ')}), ${(result.dropped || []).length} dropped`);
+    } else if (result.ok && result.held) {
       log.info(`GRANOLA-WEBHOOK note=${noteId} HELD in the capture window until ${result.releaseAt || 'release'} — transcript not fetched`);
     } else if (result.ok && result.skipped) {
       log.info(`GRANOLA-WEBHOOK note=${noteId} declined by capture policy (${result.skipped}) — nothing stored`);
     } else if (result.ok) {
-      log.info(`GRANOLA-WEBHOOK ingested note=${noteId} -> meeting_id=${result.meetingId}`);
+      log.info(`GRANOLA-WEBHOOK ingested note=${noteId} -> meeting_id=${result.meetingId}${result.mode === 'split' ? ` (split: ${(result.filed || []).length} filed, ${(result.dropped || []).length} dropped)` : ''}`);
     } else {
       log.warn(`GRANOLA-WEBHOOK ingest not completed for ${noteId}: ${result.error}`);
     }
@@ -152,7 +154,10 @@ router.post('/webhooks/granola/:clientId', rawJson, async (req, res) => {
       ok: true,
       received: true,
       processed: !!(result.ok && result.meetingId),
-      held: !!result.held,
+      held: !!result.held && !result.review,
+      review: !!result.review,
+      filed: (result.filed || []).length || undefined,
+      dropped: (result.dropped || []).length || undefined,
       policy_skipped: result.skipped || null,
       note_id: noteId,
       meeting_id: result.meetingId || null,
