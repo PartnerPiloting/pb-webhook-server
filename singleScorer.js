@@ -29,7 +29,12 @@ async function scoreLeadNow(fullLead = {}, dependencies, logger = null) {
     const userLeadData = slimLead(fullLead);
     const userPromptContent = `Score the following single lead based on the criteria and JSON schema provided in the system instructions. The lead is: ${JSON.stringify(userLeadData, null, 2)}`;
     
-    const maxOutputForSingleLead = 4096; // Production-appropriate value
+    // Gemini 2.5 models spend hidden "thinking" tokens out of the SAME maxOutputTokens budget as the
+    // visible answer. On gemini-2.5-flash a rich profile routinely burns 3,500-4,000 thinking tokens,
+    // so the old 4096 cap left only 150-700 tokens for the JSON and it was cut off mid-string
+    // (finishReason MAX_TOKENS -> "Unterminated string in JSON"). The batch scorer uses 60000 and
+    // never hit this. Keep the cap generous; the model stops on its own when the JSON is complete.
+    const maxOutputForSingleLead = Math.max(4096, parseInt(process.env.GEMINI_SINGLE_MAX_OUTPUT_TOKENS || "32768", 10) || 32768);
 
     logger.debug( `Calling Gemini for single lead - Model: ${geminiModelId}, Max tokens: ${maxOutputForSingleLead}`);
 
@@ -94,7 +99,7 @@ async function scoreLeadNow(fullLead = {}, dependencies, logger = null) {
         }
 
         if (modelFinishReason === 'MAX_TOKENS') {
-            logger.warn('scoreLeadNow', `Gemini API call finished due to MAX_TOKENS (limit: ${maxOutputForSingleLead}) - Output may be truncated. SafetyRatings: ${JSON.stringify(modelSafetyRatings)}`);
+            logger.warn('scoreLeadNow', `Gemini API call finished due to MAX_TOKENS (limit: ${maxOutputForSingleLead}, thinking tokens: ${usageMetadata.thoughtsTokenCount ?? "?"}, answer tokens: ${usageMetadata.candidatesTokenCount ?? "?"}) - Output may be truncated. SafetyRatings: ${JSON.stringify(modelSafetyRatings)}`);
             if (rawResponseText.trim() === "") {
                  logger.error('scoreLeadNow', 'MAX_TOKENS finish reason AND no text content returned - will likely cause parsing error');
             }
@@ -111,7 +116,7 @@ async function scoreLeadNow(fullLead = {}, dependencies, logger = null) {
 
     logger.debug('scoreLeadNow',
         `TOKENS single lead (Gemini) – Prompt: ${usageMetadata.promptTokenCount || "?"}, ` +
-        `Candidates: ${usageMetadata.candidatesTokenCount || "?"}, Total: ${usageMetadata.totalTokenCount || "?"}`
+        `Thinking: ${usageMetadata.thoughtsTokenCount ?? "?"}, Candidates: ${usageMetadata.candidatesTokenCount || "?"}, Total: ${usageMetadata.totalTokenCount || "?"}`
     );
 
     if (process.env.DEBUG_RAW_GEMINI === "1") {
