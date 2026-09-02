@@ -1010,9 +1010,10 @@ platform, whoever set it up. That's a genuine advantage if you're often the gues
 it's not as automatic as Fathom - it needs you in the loop at the start of each call to make sure
 the note is running (one click, or none if you already opened the meeting during your prep) - it
 costs a little each month, it can only tell *your* voice from everyone else's - so on group calls
-the transcript can't say which of the others said what - and when calls run back-to-back it needs
-one habit from you: when it offers to start a note for the next meeting, let it. Otherwise two
-meetings land in one note, and they can't be pulled apart afterwards.
+the transcript can't say which of the others said what - and when calls run back-to-back it helps
+to let it start a fresh note when it offers to. If you don't, the system still pulls the meetings
+apart using the timestamps in the note and files each one under the right person - but when it
+can't tell who a stretch of conversation was with, it holds it and asks you rather than guess.
 
 **Already using a note-taker you like? Tell Guy what it is.** Some connect to the system directly,
 and anything that produces a transcript can be brought in - so you don't have to abandon a tool
