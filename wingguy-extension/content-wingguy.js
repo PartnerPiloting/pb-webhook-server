@@ -705,6 +705,87 @@
     return '';
   }
 
+  // ---- GROUP threads (introductions live here — "Ann, Dimitri, and you") ----------------------
+  // Every participant other than the signed-in user, read off the conversation's own profile links
+  // (each message row links its sender). Returns [{ name, profileUrl }] in order of first
+  // appearance; profileUrl may be the internal /in/ACoA form (callers resolve it) or '' when a
+  // sender has no link in view.
+  function threadParticipants(convo, groupTitle) {
+    const self = selfNavName().toLowerCase();
+    const selfFirst = self.split(/\s+/)[0] || '';
+    const out = [];
+    const seen = new Map(); // lower-cased name → entry
+    const add = (rawName, href) => {
+      let t = cleanText(rawName);
+      const vm = t.match(/^view\s+(.+?)[’']s\s+profile$/i);
+      if (vm) t = vm[1];
+      if (!looksLikeName(t) || /profile/i.test(t)) return;
+      const low = t.toLowerCase();
+      if (self && (low === self || (selfFirst && low === selfFirst))) return;
+      const u = normalizeInUrl(href);
+      const cur = seen.get(low);
+      if (cur) {
+        // Prefer a vanity link over the internal member-id form when both are seen.
+        if (u && (!cur.profileUrl || (/\/in\/ACoA/i.test(cur.profileUrl) && !/\/in\/ACoA/i.test(u)))) cur.profileUrl = u;
+        return;
+      }
+      const e = { name: t, profileUrl: u };
+      seen.set(low, e); out.push(e);
+    };
+    let links = [];
+    try { links = [...(convo || document).querySelectorAll('a[href*="/in/"]')]; } catch (_) {}
+    for (const a of links) {
+      if (insideWingguy(a)) continue;
+      const img = a.querySelector ? a.querySelector('img[alt]') : null;
+      add(a.getAttribute('aria-label') || a.textContent || (img && img.getAttribute('alt')), a.getAttribute('href'));
+    }
+    // The group heading names the others by first name ("Ann, Dimitri, and you"). When it does,
+    // keep only those — it is the surest way to drop the coach's own row links when the nav name
+    // couldn't be read, and any stray link to a third profile mentioned in a message.
+    if (isGroupTitle(groupTitle)) {
+      const firsts = String(groupTitle).replace(/\d+\s+people in this conversation/i, '')
+        .split(/,|\band\b/).map((x) => cleanText(x).toLowerCase()).filter((x) => x && x !== 'you');
+      const kept = out.filter((p) => firsts.includes(p.name.toLowerCase().split(/\s+/)[0]));
+      if (kept.length) return kept;
+    }
+    return out;
+  }
+  // Is this conversation a GROUP (3+ people)? True on a group heading, or on two-plus other
+  // participants when the coach's own name is known (so their own row links can't fake a group).
+  // Returns { title, participants, primary } or null.
+  function detectGroupThread(convo) {
+    if (!convo) return null;
+    let title = '';
+    try { const h = convo.querySelector('h2, h3, [class*="title"]'); title = cleanText(h && h.textContent); } catch (_) {}
+    const participants = threadParticipants(convo, title);
+    const isGroup = isGroupTitle(title) || (!!selfNavName() && participants.length >= 2);
+    if (!isGroup) return null;
+    // Whose reply is this? The LAST person other than the coach to speak — in an introduction that is
+    // the person being introduced, once they've said hello. Falls back to the first participant.
+    let thread = [];
+    try { thread = isNewUiConvoContainer(convo) ? scrapeNewUiThread(convo) : scrapeOpenThread(); } catch (_) {}
+    let primary = null;
+    for (let i = thread.length - 1; i >= 0 && !primary; i--) {
+      const s = String(thread[i].sender || '').toLowerCase();
+      if (!s || s === 'unknown') continue;
+      primary = participants.find((p) => s === p.name.toLowerCase() || s.split(/\s+/)[0] === p.name.toLowerCase().split(/\s+/)[0]) || null;
+    }
+    if (!primary) primary = participants[0] || null;
+    console.log('[Wingguy] GROUP thread:', JSON.stringify(title), '| participants:',
+      participants.map((p) => `${p.name}${p.profileUrl ? '' : ' (no link)'}`).join(', ') || '(none read)', '| replying to:', primary ? primary.name : '(nobody)');
+    return { title, participants, primary };
+  }
+  // Un-scramble each participant's internal /in/ACoA link to the vanity slug (in place).
+  async function resolveParticipantUrls(participants) {
+    for (const p of participants || []) {
+      if (p.profileUrl && /\/in\/ACoA/i.test(p.profileUrl)) {
+        const real = await resolveAcoaToVanity(p.profileUrl);
+        if (real && !/\/in\/ACoA/i.test(real)) p.profileUrl = real;
+      }
+    }
+    return participants;
+  }
+
   function scrapeMessagingHeader(containerOpt) {
     // NOTE: .isConnected (not document.contains) — the messaging composer lives in an open shadow root,
     // and document.contains() can't see into shadow DOM, so it wrongly reported the box as "gone" and we
@@ -712,6 +793,15 @@
     const anchor = (lastFocusedEditable && lastFocusedEditable.isConnected) ? lastFocusedEditable : null;
     const convo = containerOpt || (anchor && closestConversationContainer(anchor)) ||
       document.querySelector(CONVO_SELECTORS()) || newUiConvoFromDocument();
+    // GROUP thread (an introduction, typically): there is no single "person this thread is with".
+    // Hand back the roster plus the person we're replying to AS the identity, so everything
+    // downstream (CRM match, email lookup, capture, the draft) works on a real person — never on
+    // the group heading (Ann/Dimitri, 2026-09-02).
+    const grp = detectGroupThread(convo);
+    if (grp) {
+      const p = grp.primary || { name: '', profileUrl: '' };
+      return { name: p.name, headline: '', profileUrl: p.profileUrl, group: grp };
+    }
     if (convo && isNewUiConvoContainer(convo)) {
       const h = scrapeNewUiHeader(convo);
       if (h) { console.log('[Wingguy] messaging-header (new-UI) →', h.name, '|', h.profileUrl || '(no /in/ url)'); return h; }
@@ -906,6 +996,14 @@
       if (h.name) { base.name = h.name; base.nameSource = 'messaging-header'; }
       if (h.headline) base.headline = h.headline;
       if (h.profileUrl) base.profileUrl = h.profileUrl;
+      if (h.group) {
+        // Roster goes up with the profile so the server can say who is on file and who isn't.
+        const participants = await resolveParticipantUrls(h.group.participants || []);
+        base.group = { title: h.group.title || '', participants, replyTo: h.name || '' };
+        base.nameSource = 'group-thread';
+        const me = participants.find((p) => p.name === h.name);
+        if (me && me.profileUrl) base.profileUrl = me.profileUrl;
+      }
       if (samePerson) {
         // The lazy-section pass was skipped above (no auto-scroll on the messaging surface), so
         // force About/Activity into the DOM now and re-read. Header stays the name authority.
@@ -1012,7 +1110,15 @@
     // "profile" blocks LinkedIn's row-link text ("View Guy's profile") — that once leaked through as a
     // person's "name" and prefilled the rescue card with junk (Adrian Rampoldi capture, 2026-08-01).
     return !!t && t.length >= 2 && t.length < 60 && /[A-Za-z]/.test(t) &&
-      !/(message|reaction|status|sent the following|edited|open the options|see more|today|yesterday|active now|profile|· )/i.test(t);
+      !/(message|reaction|status|sent the following|edited|open the options|see more|today|yesterday|active now|profile|· )/i.test(t) &&
+      !isGroupTitle(t);
+  }
+  // A GROUP thread's heading is not a person ("Ann, Dimitri, and you 3 people in this conversation",
+  // Guy 2026-09-02). It used to pass as a name, so the CRM lookup searched for someone called
+  // "ann, … conversation", the chat said the lead was "not in the CRM" (both were), and the rescue
+  // card offered to create a lead with that junk title.
+  function isGroupTitle(t) {
+    return /(\band you\b|people in this conversation|^\d+\s+people\b)/i.test(String(t || ''));
   }
   function senderForItem(item) {
     const group = item.closest(selStr('message_group_item')) || item;
@@ -1692,6 +1798,30 @@
       const ceaseNote = qres && qres.autoCeased ? ' — follow-ups ceased (door open: their reply resurfaces them)' : '';
       showCaptureToast(`✓ Saved ${thread.length} messages to ${who}${extrasNote(extras)}${ceaseNote}`);
 
+      // GROUP thread: the conversation belongs to EVERY participant on file, not just the one we're
+      // replying to (an introduction is Ann's story as much as Dimitri's, 2026-09-02). Save it onto
+      // each other participant's record too; anyone not in the Portal is named, never guessed.
+      if (hdr && hdr.group && Array.isArray(hdr.group.participants)) {
+        const primarySlug = slugOfInUrl(profileUrl);
+        const others = await resolveParticipantUrls(hdr.group.participants.filter((p) =>
+          p.name !== (hdr.name || '') && p.profileUrl && /\/in\//.test(p.profileUrl)));
+        const savedTo = [], missing = [];
+        for (const p of others) {
+          try {
+            if (/\/in\/ACoA/i.test(p.profileUrl) || slugOfInUrl(p.profileUrl) === primarySlug) { missing.push(p.name); continue; }
+            const lk = await bg({ type: 'LOOKUP_LEAD', linkedinUrl: p.profileUrl });
+            const l = ((lk && lk.leads) || [])[0];
+            if (!l) { missing.push(p.name); continue; }
+            await bg({ type: 'QUICK_UPDATE', leadId: l.id, content, section: 'linkedin' });
+            savedTo.push(`${l.firstName || ''} ${l.lastName || ''}`.trim() || p.name);
+          } catch (e) { console.log('[Wingguy] group save failed for', p.name, e.message); missing.push(p.name); }
+        }
+        console.log('[Wingguy] group thread also saved to:', savedTo, '| not in Portal:', missing);
+        if (savedTo.length || missing.length) {
+          showCaptureToast(`✓ Group thread — also saved to ${savedTo.join(', ') || 'nobody else'}${missing.length ? ` · not in your Portal: ${missing.join(', ')}` : ''}`);
+        }
+      }
+
       // Learn-from-my-edit: if this send follows a Wingguy insert, pair the AI's draft with the
       // message that actually went out (the newest message in the thread, if it's ours). Fire-and-
       // forget — a pairing failure never touches the capture above. The backend drops unchanged
@@ -2208,7 +2338,10 @@
   // The CONTEXT header: just who we're working with. (The old Thanks/Reply mode tabs are gone —
   // 2026-06-28 — the unified chat agent works out the move itself; Guy steers it in chat.)
   function renderContext(profile) {
-    const who = `${escapeHtml(profile.name || '(name not found)')}${profile.headline ? ` <span class="wingguy-muted">· ${escapeHtml(profile.headline)}</span>` : ''}`;
+    const g = profile.group;
+    const who = g
+      ? `Group: ${escapeHtml((g.participants || []).map((p) => p.name).join(', ') || g.title || 'several people')} <span class="wingguy-muted">· replying to ${escapeHtml(profile.name || '?')}</span>`
+      : `${escapeHtml(profile.name || '(name not found)')}${profile.headline ? ` <span class="wingguy-muted">· ${escapeHtml(profile.headline)}</span>` : ''}`;
     // Say it plainly when a gap actually changes what they're about to get. No error codes, no
     // landmark names — and it says someone is already on it, because a known issue lands very
     // differently from a product that has quietly gone vague on you.

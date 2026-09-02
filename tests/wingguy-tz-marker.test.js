@@ -100,13 +100,18 @@ function makeRun({ leadTimezone, location, detected = true, intro = 'A few times
     bris.proposeResult && /based in Brisbane, Queensland/.test(bris.proposeResult.leadBase),
     `leadBase: ${bris.proposeResult && bris.proposeResult.leadBase}`));
 
-  console.log('\nMissing/unrecognised location — leadBase is a warning, not a guess dressed as a fact:');
+  console.log('\nMissing/unrecognised location — HARD STOP (2026-09-02): no time list, no draft, the model is told to ask:');
   const noloc = await makeRun({ leadTimezone: 'Australia/Brisbane', location: '', detected: false });
-  check('a draft was produced', () => assert.ok(noloc.res && noloc.res.draft, `no draft: ${JSON.stringify(noloc.res)}`));
-  check('draft marker falls back to GUY\'s clock (Brisbane)', () => assert.ok(noloc.res.draft.includes('(all times are Brisbane time)'), noloc.res.draft));
-  check('leadBase warns the location is missing and tz is ASSUMED', () => assert.ok(
-    noloc.proposeResult && /⚠/.test(noloc.proposeResult.leadBase) && /missing/.test(noloc.proposeResult.leadBase) && /ASSUMES/.test(noloc.proposeResult.leadBase),
-    `leadBase: ${noloc.proposeResult && noloc.proposeResult.leadBase}`));
+  check('NO draft was produced', () => assert.ok(!(noloc.res && noloc.res.draft), `a draft was produced:\n${noloc.res && noloc.res.draft}`));
+  check('propose_times refused (ok:false)', () => assert.ok(noloc.proposeResult && noloc.proposeResult.ok === false, JSON.stringify(noloc.proposeResult)));
+  check('refusal says the timezone is UNKNOWN and names the override door', () => assert.ok(
+    noloc.proposeResult && /UNKNOWN/.test(noloc.proposeResult.error) && /leadTimezoneOverride/.test(noloc.proposeResult.error),
+    `error: ${noloc.proposeResult && noloc.proposeResult.error}`));
+
+  console.log('\nMissing location but Guy said "use my clock" (override = coach tz) — the draft proceeds on Brisbane time:');
+  const nolocOk = await makeRun({ leadTimezone: 'Australia/Brisbane', location: '', detected: false, leadTimezoneOverride: 'Australia/Brisbane' });
+  check('a draft was produced', () => assert.ok(nolocOk.res && nolocOk.res.draft, `no draft: ${JSON.stringify(nolocOk.res)}`));
+  check('marker is Brisbane', () => assert.ok(nolocOk.res.draft.includes('(all times are Brisbane time)'), nolocOk.res.draft));
 
   console.log('\nModel intro already ends with its own "do these work" question — stripped, no double ask:');
   const dup = await makeRun({ leadTimezone: 'Australia/Brisbane', location: 'Brisbane, Queensland',

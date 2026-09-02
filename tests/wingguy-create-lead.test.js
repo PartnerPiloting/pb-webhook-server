@@ -133,6 +133,33 @@ function stubBase({ existing = [] } = {}) {
     } finally { clientService.getClientBase = orig; }
   }
 
+  // ── 5c. GROUP thread guard (2026-09-02): creating a DIFFERENT participant must not inherit the
+  //       person-in-view's URL/location (Dimitri in view; Guy says "add Ann") ──
+  console.log('\nagent — create_lead for ANOTHER participant does not borrow the profile URL/location:');
+  {
+    let seen = null;
+    let call = 0;
+    const client = { messages: { create: async () => {
+      call++;
+      if (call === 1) return { stop_reason: 'tool_use', content: [{ type: 'tool_use', id: 'c1', name: 'create_lead', input: { firstName: 'Ann', lastName: 'Luong', introducedBy: '' } }] };
+      return { stop_reason: 'end_turn', content: [{ type: 'text', text: 'added Ann' }] };
+    } } };
+    const res = await runWingguyChatTurn({
+      coach: { clientId: 'Guy-Wilson', clientName: 'Guy' },
+      profile: { name: 'Dimitri Tsitsikas', profileUrl: 'https://www.linkedin.com/in/dimitri-t', location: 'Melbourne, Victoria',
+        group: { title: 'Ann, Dimitri, and you', participants: [{ name: 'Ann Luong', profileUrl: '' }, { name: 'Dimitri Tsitsikas', profileUrl: 'https://www.linkedin.com/in/dimitri-t' }] } },
+      messages: [{ role: 'user', content: 'add Ann to my leads' }],
+      airtableBaseId: 'baseX',
+      leadRecordId: 'recDimitri',
+      deps: { client, createLead: async (_b, args) => { seen = args; return { ok: true, created: true, leadRecordId: 'recAnn', fields: { 'First Name': 'Ann' } }; } },
+    });
+    await acheck('turn completed', () => assert.ok(res.ok));
+    await acheck('Ann is created under her own name', () => assert.strictEqual(seen && seen.firstName, 'Ann'));
+    await acheck('Dimitri\'s URL is NOT stamped on Ann', () => assert.strictEqual(seen && seen.linkedinUrl, ''));
+    await acheck('Dimitri\'s location is NOT stamped on Ann', () => assert.strictEqual(seen && seen.location, ''));
+    await acheck('no enrich signal (no URL to read)', () => assert.ok(!res.enrichContact, JSON.stringify(res.enrichContact)));
+  }
+
   // ── 6. updateLeadContact: LinkedIn contact enrich is NON-DESTRUCTIVE (thread email wins; phone fills) ──
   console.log('\nupdateLeadContact — fills phone always, email only when empty:');
   {

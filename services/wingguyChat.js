@@ -367,6 +367,25 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
           leadTz = String(input.leadTimezoneOverride);
         } catch (_) { /* invalid zone — profile-derived stands */ }
       }
+      // HARD STOP when the lead's clock is unknown (Guy, 2026-09-02 — twice in a week a time list
+      // went out on a guessed clock: Paul, then Dimitri). The warning under the draft was not enough;
+      // the draft simply got sent. So: no recognised location and no explicit override → NO time
+      // list and NO draft. The override is the one door: the thread named a place, Guy named a
+      // place, or Guy said in so many words to use his own clock.
+      const overrideOk = !!(input.leadTimezoneOverride && leadTz === String(input.leadTimezoneOverride));
+      const upfrontLoc = String(profile.location || '').trim();
+      const upfront = availTz.leadTzDetected !== undefined
+        ? { detected: !!availTz.leadTzDetected, candidates: availTz.leadTzCandidates || [] }
+        : resolveLeadTimezone(upfrontLoc);
+      if (!upfront.detected && !overrideOk) {
+        const why = (upfront.candidates && upfront.candidates.length)
+          ? `their location "${upfrontLoc}" is AMBIGUOUS — ${upfront.candidates.map((c) => `${c.place} (${c.timezone})`).join(' or ')}`
+          : (upfrontLoc ? `their location "${upfrontLoc}" can't be mapped to a timezone` : 'no location is on file for them');
+        return {
+          ok: false,
+          error: `STOPPED — ${profile.name || 'this lead'}'s timezone is UNKNOWN (${why}). No time list was built and the draft was NOT touched. Do NOT write times into a draft yourself, and do not pick a clock for them. In order: (1) re-read the thread — if they named where they are or will be, call propose_times again with leadTimezoneOverride set to that IANA zone and tell Guy you took it from the thread; (2) otherwise ask Guy where they're based (for an introduction, suggest asking the person who introduced them) and, when he answers, call again with leadTimezoneOverride for that place and ask him to put the location on their record in the Portal so it sticks; (3) only if Guy explicitly says to use his own clock, call again with leadTimezoneOverride="${tz}".`,
+        };
+      }
       const eMin = hhmmToMin(prefs.earliestStart) ?? 0;
       const lMin = hhmmToMin(prefs.lastStart) ?? 24 * 60;
       const len = prefs.meetingLengthMins || 30;
@@ -524,13 +543,19 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
       };
     }
     if (name === 'create_lead') {
-      const leadUrl = (input && input.linkedinUrl) || profile.profileUrl || '';
+      // GROUP threads (2026-09-02): creating a DIFFERENT participant must not inherit the person-in-
+      // view's URL or location — that would stamp Dimitri's link onto Ann's record. The page values
+      // are only a fallback when the name being created IS the person in view.
+      const inFirst = String((input && input.firstName) || '').trim().split(/\s+/)[0].toLowerCase();
+      const profFirst = String(profile.name || '').trim().split(/\s+/)[0].toLowerCase();
+      const sameAsProfile = !inFirst || !profFirst || inFirst === profFirst;
+      const leadUrl = (input && input.linkedinUrl) || (sameAsProfile ? profile.profileUrl : '') || '';
       const r = await createLead(airtableBaseId, {
         firstName: (input && input.firstName) || profile.firstName || '',
-        lastName: (input && input.lastName) || profile.lastName || '',
+        lastName: (input && input.lastName) || (sameAsProfile ? profile.lastName : '') || '',
         linkedinUrl: leadUrl,
         email: (input && input.email) || '',
-        location: (input && input.location) || profile.location || '',
+        location: (input && input.location) || (sameAsProfile ? profile.location : '') || '',
         introducedBy: (input && input.introducedBy) || '',
         notes: (input && input.notes) || '',
       });

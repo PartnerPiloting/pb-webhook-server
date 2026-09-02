@@ -149,6 +149,22 @@ function buildProfileBlock(profile = {}) {
     const v = (val == null ? '' : String(val)).trim();
     if (v) lines.push(`${label}: ${v}`);
   };
+  // GROUP CONVERSATION roster (2026-09-02): who is in the thread, who is on file, and which of them
+  // the LEAD PROFILE below belongs to. Rendered first so the model can never mistake the group for
+  // one person or draft to the introducer by accident.
+  if (profile.group && (Array.isArray(profile._roster) || Array.isArray(profile.group.participants))) {
+    const roster = Array.isArray(profile._roster) ? profile._roster
+      : profile.group.participants.map((p) => ({ name: p.name, profileUrl: p.profileUrl, onFile: null, isPrimary: p.name === profile.name }));
+    lines.push(`GROUP CONVERSATION — ${roster.length + 1} people including Guy${profile.group.title ? ` ("${String(profile.group.title).slice(0, 80)}")` : ''}. The people other than Guy:`);
+    roster.forEach((p) => {
+      const facts = [];
+      if (p.onFile === true) { facts.push('ON FILE in the CRM'); if (p.location) facts.push(`based in ${p.location}`); if (p.status) facts.push(`status ${p.status}`); }
+      else if (p.onFile === false) facts.push('NOT in the CRM');
+      lines.push(`  - ${p.name}${p.profileUrl ? ` <${p.profileUrl}>` : ''}${facts.length ? ` — ${facts.join(', ')}` : ''}${p.isPrimary ? '   ← YOU ARE REPLYING TO THIS PERSON (the last one other than Guy to speak). The LEAD PROFILE below is theirs, and the email/booking tools act on THEIR record.' : ''}`);
+    });
+    lines.push(`In your chat reply, say who the draft is addressed to. If Guy wants to reply to someone else in the group, draft to that person by name and say plainly that the booking tools are still pointed at ${profile.name || 'the primary person'}'s record. Someone marked NOT in the CRM is added with create_lead using THAT person's own name and URL from this list (and introducedBy = whoever introduced them) — never the URL of the person in view.`);
+    lines.push('');
+  }
   add('Name', profile.name);
   add('Headline', profile.headline);
   // Location carries its source (see pickLocation). The model must never have to guess whether this
@@ -249,7 +265,7 @@ const CONVO_CHAR_CAP = 8000;
 
 // Format the scraped thread as "Sender: text" lines, oldest→newest, labelling who the prospect is
 // so the model knows which side is Guy. Accepts an array of { sender, text }.
-function buildConversationBlock(conversation = [], prospectName = '') {
+function buildConversationBlock(conversation = [], prospectName = '', group = null) {
   if (!Array.isArray(conversation)) return '';
   const msgs = conversation
     .map((m) => ({ sender: String((m && m.sender) || '').trim(), text: String((m && m.text) || '').trim() }))
@@ -257,8 +273,67 @@ function buildConversationBlock(conversation = [], prospectName = '') {
   if (!msgs.length) return '';
   const recent = msgs.slice(-CONVO_MAX_MESSAGES);
   const body = recent.map((m) => `${m.sender || 'Unknown'}: ${m.text}`).join('\n').slice(-CONVO_CHAR_CAP);
-  const who = prospectName ? `\n(The other person is ${prospectName}; the other sender is Guy — draft Guy's next message.)` : '';
+  const others = group && Array.isArray(group.participants) ? group.participants.map((p) => p.name).filter(Boolean) : [];
+  const who = others.length
+    ? `\n(GROUP conversation: the senders other than Guy are ${others.join(', ')}. Draft Guy's next message to ${prospectName || others[0]} unless Guy says otherwise — and address it to them by name, since more than one person will read it.)`
+    : (prospectName ? `\n(The other person is ${prospectName}; the other sender is Guy — draft Guy's next message.)` : '');
   return `${body}${who}`;
+}
+
+// GROUP threads (2026-09-02, Ann → Dimitri introduction): the extension sends the whole roster
+// (profile.group.participants) with the person being replied to as the profile itself. Look up
+// every OTHER participant so the model can say who is on file and who isn't — before this, a
+// three-person thread had no identity at all and both leads were reported "not in the CRM".
+// Attaches profile._roster = [{ name, profileUrl, onFile, recordId, location, status, isPrimary }].
+// Never throws: a lookup miss is "onFile: false", an error leaves the roster unlabelled.
+async function attachGroupRoster(req, profile = {}) {
+  const g = profile && profile.group;
+  if (!g || !Array.isArray(g.participants) || !g.participants.length) return profile;
+  const roster = g.participants.map((p) => ({ name: String(p.name || '').trim(), profileUrl: String(p.profileUrl || '').trim(), onFile: null, isPrimary: false }));
+  const primarySlug = canonicalLinkedinSlug(profile.profileUrl || '');
+  const primaryName = String(profile.name || '').trim().toLowerCase();
+  try {
+    const base = req.client && req.client.airtableBaseId ? clientService.getClientBase(req.client.airtableBaseId) : null;
+    for (const p of roster) {
+      const slug = canonicalLinkedinSlug(p.profileUrl);
+      p.isPrimary = (slug && slug === primarySlug) || (!!primaryName && p.name.toLowerCase() === primaryName);
+      if (p.isPrimary) {
+        // The primary was already matched (or not) by enrichProfileFromPortal — reuse that answer.
+        p.onFile = !!profile._leadRecordId;
+        p.recordId = profile._leadRecordId || '';
+        p.location = profile.location || '';
+        p.status = profile.status || '';
+        continue;
+      }
+      if (!base) continue;
+      let rec = null;
+      if (slug) {
+        const cands = await base('Leads').select({ filterByFormula: slugPrefilterFormula(slug), maxRecords: 50 }).firstPage();
+        rec = findExactSlugMatch(cands, slug)[0] || null;
+      }
+      if (!rec && p.name) {
+        const parts = p.name.split(/\s+/);
+        const first = (parts[0] || '').toLowerCase().replace(/"/g, '');
+        const last = (parts.length > 1 ? parts[parts.length - 1] : '').toLowerCase().replace(/"/g, '');
+        if (first && last) {
+          const hits = await base('Leads').select({
+            filterByFormula: `AND(LOWER({First Name}) = "${first}", LOWER({Last Name}) = "${last}")`, maxRecords: 2,
+          }).firstPage();
+          if (hits.length === 1) rec = hits[0]; // an exact full-name match only — never guess between two
+        }
+      }
+      p.onFile = !!rec;
+      if (rec) {
+        p.recordId = rec.id;
+        p.location = (rec.fields && rec.fields['Location']) || '';
+        p.status = (rec.fields && rec.fields['Status']) || '';
+      }
+    }
+  } catch (e) {
+    logger.warn(`[Wingguy] group roster lookup failed (non-fatal): ${e.message}`);
+  }
+  logger.info(`[Wingguy] group thread roster: ${roster.map((p) => `${p.name}=${p.onFile === null ? '?' : (p.onFile ? 'on-file' : 'NOT')}${p.isPrimary ? '*' : ''}`).join(', ')}`);
+  return { ...profile, _roster: roster };
 }
 
 // The approved enrichment set — map an Airtable Leads record's fields to the profile shape we draft from.
@@ -674,7 +749,7 @@ module.exports = function mountWingguy(app) {
 
       // Enrich the scraped profile with the lead's stored Portal record (About/headline the messaging DOM
       // lacks + CRM-only context: AI assessment, your notes, status, follow-up date, do-not-FUP flag).
-      const enriched = await enrichProfileFromPortal(req, profile);
+      const enriched = await attachGroupRoster(req, await enrichProfileFromPortal(req, profile));
 
       // Detect the campaign from the profile + thread, then get the agent's system prefix from the
       // rules-source seam. Config mode: [voice, agent instructions] + the campaign template embedded
@@ -710,7 +785,7 @@ module.exports = function mountWingguy(app) {
         deps: { client: chatClient },
         // Reuse the route's grounding-block formatting so the agent sees the same shape as the other endpoints.
         profileBlock: buildProfileBlock(enriched),
-        convoBlock: buildConversationBlock(conversation, enriched && enriched.name),
+        convoBlock: buildConversationBlock(conversation, enriched && enriched.name, enriched && enriched.group),
         profileThin: profileIsThin(enriched),
       });
       if (!result.ok) return res.status(502).json({ ok: false, error: result.error });
