@@ -45,6 +45,7 @@ const bris = (iso) => (iso ? new Date(iso).toLocaleString('en-AU', { timeZone: '
       console.log(`     would file as provider id: ${c.providerRecordingId}`);
     }
     for (const t of r.chunkTranscripts || []) {
+      if (!String(t.transcriptText || '').trim()) continue;   // absorbed / empty chunks have no words of their own
       const head = String(t.transcriptText || '').split('\n').slice(0, 3).map((l) => l.slice(0, 140)).join('\n        ');
       const tail = String(t.transcriptText || '').split('\n').slice(-2).map((l) => l.slice(0, 140)).join('\n        ');
       console.log(`  chunk ${t.index} text (${t.verdict}):\n        ${head}\n        ...\n        ${tail}`);
