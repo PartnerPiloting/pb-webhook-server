@@ -30,6 +30,7 @@ const { normalizeEmail } = require('./recallImportService');
 const { splitFathomMeeting, dedupeMeetingEvents, resolveSpeakingEvents } = require('./fathomSplitService');
 const { extractMeetingUrl, isCoachAttending } = require('./recallAutoJoinService');
 const { getMeetingsInWindow } = require('./calendarProvider');
+const { claimSameLeadEmails } = require('./pendingLeadFilter');
 const { createSafeLogger } = require('../utils/loggerHelper');
 
 const log = createSafeLogger('SYSTEM', null, 'fathom_ingest');
@@ -120,7 +121,11 @@ function extractLeadEmails(meeting) {
   const externalNames = {};
   for (const p of ext) {
     const e = (p.email || '').toLowerCase().trim();
-    if (e && p.name && !externalNames[e]) externalNames[e] = String(p.name).trim();
+    // Fathom repeats the ADDRESS in the name slot when it has no name for an invitee (Alix
+    // 2026-09-02: "alix.simpson@absorblms.com <alix.simpson@absorblms.com>"). That is not a
+    // name — treat it as blank so the name fallbacks and transcript pairing get their turn.
+    const name = String(p.name || '').trim();
+    if (e && name && !name.includes('@') && !externalNames[e]) externalNames[e] = name;
   }
   return { external, internal, externalNames };
 }
@@ -339,7 +344,7 @@ async function ingestFathomMeeting(opts = {}) {
         // SELF-HEAL: lead resolved by NAME — record the booking email(s) that matched nobody.
         if (sp.leadMatchMethod === 'name') {
           for (const le of (sp._learnEmails || [])) {
-            try { await learnEmailForLead(coach, m.leadId, le); } catch (e) { log.warn(`self-heal email failed for ${m.leadId}: ${e.message}`); }
+            try { await learnEmailForLead(coach, m.leadId, le, { preferWork: true }); } catch (e) { log.warn(`self-heal email failed for ${m.leadId}: ${e.message}`); }
           }
         }
       }
@@ -384,7 +389,7 @@ async function ingestFathomMeeting(opts = {}) {
   // via the invitee's NAME. A UNIQUE name match links the lead and flags the email to self-heal,
   // so someone booking with a brand-new business email still attaches AND has it learned for next
   // time. Read-only here (runs in dryRun too, so the plan reflects it); the write happens below.
-  const remainingUnmatched = [];
+  let remainingUnmatched = [];
   for (const rawEmail of unmatched) {
     const name = emails.externalNames[String(rawEmail).toLowerCase().trim()];
     let healed = false;
@@ -432,6 +437,28 @@ async function ingestFathomMeeting(opts = {}) {
     }
   }
 
+  // Q2(C) — SAME PERSON, SECOND ADDRESS (Alix Simpson, 2026-09-02): the call matched exactly ONE
+  // lead, and a leftover address reads as that lead's name in its local part
+  // (alix.simpson@absorblms.com ↔ Alix Simpson). That is the one person on the call under another
+  // address, not a stranger — LEARN it onto the lead (work address promoted to primary, see
+  // learnEmailForLead preferWork) instead of parking it as "someone you met who isn't in Wingguy
+  // yet". Refuses when >1 lead matched or the local part doesn't read as the name, so a genuine
+  // third party on the same call is still parked. Read-only here; the write happens below.
+  const learnEmails = [];
+  {
+    const c1 = claimSameLeadEmails({ matched, candidates: remainingUnmatched.map((e) => ({ email: e })) });
+    const c2 = claimSameLeadEmails({ matched, candidates: calendarUnmatched });
+    remainingUnmatched = c1.rest.map((x) => x.email);
+    calendarUnmatched = c2.rest;
+    const seenLearn = new Set();
+    for (const l of [...c1.claimed, ...c2.claimed]) {
+      if (seenLearn.has(l.email)) continue;
+      seenLearn.add(l.email);
+      learnEmails.push(l);
+      log.info(`single-path same-person address: ${l.email} reads as lead "${l.leadName}" (${l.leadId}) — learning it onto the record instead of parking it`);
+    }
+  }
+
   // PENDING LEADS: participants we could IDENTIFY (an email off the booking or Fathom's invitee
   // list, name where known) but who match NO lead. Stored ON the meeting row — so "met someone who
   // isn't a lead yet" is a queryable, resolvable state instead of a silent loss. When the lead is
@@ -467,6 +494,7 @@ async function ingestFathomMeeting(opts = {}) {
     externalEmails: emails.external,
     matchedLeads: matched,
     unmatchedEmails: remainingUnmatched,
+    learnEmails,
     pendingLeads,
     lumpSuspect,
     source: SOURCE,
@@ -498,8 +526,16 @@ async function ingestFathomMeeting(opts = {}) {
     catch (e) { log.warn(`failed to link lead ${m.leadId} to meeting ${meetingId}: ${e.message}`); }
     // SELF-HEAL: lead resolved by NAME — record the booking email so future lookups by it resolve.
     if (m.via === 'name' && m.email) {
-      try { await learnEmailForLead(coach, m.leadId, m.email); } catch (e) { log.warn(`self-heal email failed for ${m.leadId}: ${e.message}`); }
+      try { await learnEmailForLead(coach, m.leadId, m.email, { preferWork: true }); } catch (e) { log.warn(`self-heal email failed for ${m.leadId}: ${e.message}`); }
     }
+  }
+  // SELF-HEAL (Q2(C)): the same person's second address — learn it; a work address becomes primary.
+  for (const l of learnEmails) {
+    try {
+      const r = await learnEmailForLead(coach, l.leadId, l.email, { preferWork: true });
+      if (r && r.promoted) log.info(`same-person address ${l.email} is now the PRIMARY email for "${l.leadName}" (${l.leadId}); "${r.previousPrimary || 'blank'}" kept under Alt Emails`);
+      else if (r && r.learned) log.info(`same-person address ${l.email} filed under Alt Emails for "${l.leadName}" (${l.leadId})`);
+    } catch (e) { log.warn(`same-person email learn failed for ${l.leadId}: ${e.message}`); }
   }
   log.info(`ingested fathom single rec=${plan.recordingId} -> meeting_id=${meetingId} (${plan.transcriptLines} lines, ${linkedLeads.length} leads)`);
   return { ok: true, mode: 'single', meetingId, botId: ins.bot_id, plan, linkedLeads };

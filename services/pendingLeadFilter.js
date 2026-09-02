@@ -98,14 +98,48 @@ function tokens(s) {
   return String(s || '').toLowerCase().split(/[^a-z0-9]+/).filter((t) => t.length >= 2);
 }
 
+/** Freemail / ISP address (or blank)? A company-domain address is the person's WORK address. */
+function isFreemailEmail(email) {
+  const e = String(email || '').toLowerCase().trim();
+  const domain = e.includes('@') ? e.split('@')[1] : '';
+  return !domain || FREEMAIL_DOMAINS.has(domain);
+}
+
+/**
+ * Does this email's local part read as this person's name? Accepts the common shapes:
+ * "alix.simpson@" / "alixsimpson@" / "alix.n.simpson@" ↔ "Alix Simpson", "asimpson@" (initial +
+ * surname), one-char typo tolerated ("simson"). Conservative by design: a surname alone, or a bare
+ * first name against a two-word name, is NOT enough — a wrong claim attaches an address to the
+ * wrong person, which is worse than asking.
+ */
+function localPartMatchesName(email, fullName) {
+  const local = String(email || '').toLowerCase().split('@')[0];
+  const emailTokens = tokens(local);
+  const nameTokens = tokens(fullName);
+  if (!emailTokens.length || !nameTokens.length) return false;
+  let hits = 0;
+  for (const nt of nameTokens) {
+    if (emailTokens.some((et) => tokenClose(et, nt) || et.startsWith(nt) || nt.startsWith(et))) hits++;
+  }
+  // Every name token found in the email (>=2 tokens), or a single-token name that IS the whole
+  // local part ("manish" ↔ manish@).
+  if (nameTokens.length >= 2 && hits === nameTokens.length) return true;
+  if (nameTokens.length === 1) return emailTokens.length === 1 && hits === 1;
+  // Glued shapes: "alixsimpson" (typo-tolerant) and "asimpson" (initial + surname, exact only —
+  // one substitution there would let bsimpson@ pass as Alix).
+  const first = nameTokens[0];
+  const last = nameTokens[nameTokens.length - 1];
+  const glued = local.replace(/[^a-z0-9]+/g, '');
+  return tokenClose(glued, `${first}${last}`) || glued === `${first[0]}${last}`;
+}
+
 /**
  * Find a real speaker name for `email` in canonical "[HH:MM:SS] Name: text" transcript lines.
  * Returns the speaker's display name, or null when no confident match.
  */
 function nameFromTranscript(transcriptText, email) {
   const local = String(email || '').toLowerCase().split('@')[0];
-  const emailTokens = tokens(local);
-  if (!emailTokens.length || !transcriptText) return null;
+  if (!tokens(local).length || !transcriptText) return null;
 
   // Collect distinct speaker labels, skipping diarization placeholders ("Speaker 1").
   const speakers = new Set();
@@ -118,22 +152,47 @@ function nameFromTranscript(transcriptText, email) {
 
   let best = null;
   for (const speaker of speakers) {
-    const nameTokens = tokens(speaker);
-    if (!nameTokens.length) continue;
-    let hits = 0;
-    for (const nt of nameTokens) {
-      if (emailTokens.some((et) => tokenClose(et, nt) || et.startsWith(nt) || nt.startsWith(et))) hits++;
-    }
-    // Confident = every name token found in the email (>=2 tokens), or a single-token name
-    // that IS the whole local part ("manish" ↔ manish@).
-    const confident = (nameTokens.length >= 2 && hits === nameTokens.length)
-      || (nameTokens.length === 1 && emailTokens.length === 1 && hits === 1);
-    if (confident) {
-      if (best && best !== speaker) return null; // two speakers both match — refuse to guess
-      best = speaker;
-    }
+    if (!localPartMatchesName(local, speaker)) continue;
+    if (best && best !== speaker) return null; // two speakers both match — refuse to guess
+    best = speaker;
   }
   return best;
+}
+
+/**
+ * SAME PERSON, SECOND ADDRESS (Alix Simpson, 2026-09-02). A call matched exactly ONE lead (by her
+ * Gmail off the booking) while Fathom's invitee list also carried her work address with no name on
+ * it. The work address matched nobody, so it was parked as "someone you met who isn't in Wingguy
+ * yet" — a stranger who was the one person on the call. Here: when exactly one lead matched and a
+ * leftover address reads as that lead's name (localPartMatchesName), CLAIM it for the lead (the
+ * caller learns it onto the record) instead of parking it. Refuses when >1 lead matched (whose
+ * address is it?) or the local part doesn't read as the name, so a genuine third party on the
+ * same call is still parked. Pure; returns { claimed: [{email, leadId, leadName}], rest: [...] }.
+ *
+ * @param {object} p
+ * @param {object[]} p.matched    [{leadId, name, email}] — leads already linked to this meeting
+ * @param {object[]} p.candidates [{email, name?}]         — addresses that matched no lead
+ */
+function claimSameLeadEmails({ matched, candidates } = {}) {
+  const list = Array.isArray(candidates) ? candidates : [];
+  const leads = new Map();
+  for (const m of (Array.isArray(matched) ? matched : [])) if (m && m.leadId) leads.set(m.leadId, m);
+  if (leads.size !== 1) return { claimed: [], rest: [...list] };
+  const lead = [...leads.values()][0];
+  const leadName = String(lead.name || '').trim();
+  const onLead = new Set(matched.map((m) => String((m && m.email) || '').toLowerCase().trim()).filter(Boolean));
+  const claimed = [];
+  const rest = [];
+  for (const c of list) {
+    const e = String((c && c.email) || '').toLowerCase().trim();
+    if (!e || onLead.has(e)) continue; // blank, or already the address this lead matched on
+    if (leadName && !isJunkPendingEmail(e) && localPartMatchesName(e, leadName)) {
+      claimed.push({ email: e, leadId: lead.leadId, leadName });
+    } else {
+      rest.push(c);
+    }
+  }
+  return { claimed, rest };
 }
 
 /**
@@ -155,4 +214,7 @@ function refinePendingLeads(pendingLeads, { transcriptText, coach, log } = {}) {
   return out;
 }
 
-module.exports = { isJunkPendingEmail, isSelfOrOperatorEmail, nameFromTranscript, refinePendingLeads, tokenClose };
+module.exports = {
+  isJunkPendingEmail, isSelfOrOperatorEmail, isFreemailEmail, nameFromTranscript, localPartMatchesName,
+  claimSameLeadEmails, refinePendingLeads, tokenClose,
+};

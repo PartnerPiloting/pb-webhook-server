@@ -430,12 +430,20 @@ async function findLeadByAltEmail(client, normalizedEmail, clientBase) {
  *
  * Kill-switch: set EMAIL_SELFHEAL_ENABLED=false to disable the write-back globally.
  *
+ * WORK ADDRESS WINS (Guy, 2026-09-02, Alix Simpson): with `preferWork`, a learned COMPANY-domain
+ * address is PROMOTED to the primary {Email} when the current primary is a freemail address
+ * (gmail/outlook/...), and the old primary moves under {Alt Emails} so nothing it matched on is
+ * lost. A blank primary is always filled by whatever is learned. Work-to-work is never swapped
+ * automatically (an old job's address vs a new one is a judgement call, not a rule).
+ *
  * @param {Object} client - client object with airtableBaseId
  * @param {string} leadId - Airtable record id of the matched lead
  * @param {string} email - the email to learn
- * @returns {Promise<{learned: boolean, reason?: string}>}
+ * @param {Object} [opts]
+ * @param {boolean} [opts.preferWork=false] - promote a work address over a freemail primary
+ * @returns {Promise<{learned: boolean, promoted?: boolean, previousPrimary?: string, reason?: string}>}
  */
-async function learnEmailForLead(client, leadId, email) {
+async function learnEmailForLead(client, leadId, email, { preferWork = false } = {}) {
     if (String(process.env.EMAIL_SELFHEAL_ENABLED || 'true').trim().toLowerCase() === 'false') {
         return { learned: false, reason: 'disabled' };
     }
@@ -456,6 +464,21 @@ async function learnEmailForLead(client, leadId, email) {
         }
         const existing = String(rec.fields['Alt Emails'] || '');
         const existingList = existing.toLowerCase().split(ALT_EMAIL_SPLIT).map(e => e.trim()).filter(Boolean);
+
+        // PROMOTE: blank primary → fill it; freemail primary + work address learned (preferWork) →
+        // swap. updateLeadEmails keeps the displaced primary under Alt Emails and de-dupes.
+        const { isFreemailEmail } = require('./pendingLeadFilter');
+        const promote = !primary || (preferWork && !isFreemailEmail(normalized) && isFreemailEmail(primary));
+        if (promote) {
+            const { updateLeadEmails } = require('./wingguyLeads');
+            const r = await updateLeadEmails(client.airtableBaseId, leadId, { setPrimary: normalized });
+            if (r && r.ok) {
+                logger.info(`[SELF-HEAL] promoted "${normalized}" to PRIMARY email for lead ${leadId} (was "${primary || 'blank'}"${primary ? ', kept under Alt Emails' : ''}) (client ${client.clientId})`);
+                return { learned: true, promoted: true, previousPrimary: primary };
+            }
+            logger.warn(`[SELF-HEAL] promote of "${normalized}" for lead ${leadId} declined (${(r && r.error) || 'unknown'}) — filing under Alt Emails instead`);
+        }
+
         if (existingList.includes(normalized)) {
             return { learned: false, reason: 'already_known' };
         }
