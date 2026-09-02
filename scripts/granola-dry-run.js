@@ -40,7 +40,7 @@ const bris = (iso) => (iso ? new Date(iso).toLocaleString('en-AU', { timeZone: '
     for (const c of p.chunks) {
       console.log(`  chunk ${c.index} [${c.verdict.toUpperCase()}] "${c.title}"`);
       console.log(`     words ${bris(c.start)} -> ${bris(c.end)} (${c.durationSeconds != null ? Math.round(c.durationSeconds / 60) : '?'} min, ${c.transcriptLines} lines) | other voice ${c.themSeconds}s in ${c.themCount} lines, first at ${c.firstThemAt ? bris(c.firstThemAt) : '-'} | display names: ${c.speakerNames.join(', ') || '-'} (${c.nameCheck})`);
-      console.log(`     leads: ${c.matchedLeads.map((m) => `${m.name} <${m.email}> via ${m.via}`).join('; ') || 'NONE'}${c.pendingLeads.length ? ` | pending: ${c.pendingLeads.map((x) => x.email).join(', ')}` : ''}`);
+      console.log(`     leads: ${c.matchedLeads.map((m) => `${m.name} <${m.email}> via ${m.via}`).join('; ') || 'NONE'}${c.pendingLeads.length ? ` | pending: ${c.pendingLeads.map((x) => x.email).join(', ')}` : ''}${c.absorbedSpillSeconds ? ` | absorbed ${c.absorbedSpillSeconds}s spill-over from after the slot` : ''}${c.cutSteeredByNames ? ' | cut steered by display names' : ''}`);
       if (c.reason) console.log(`     why: ${c.reason}`);
       console.log(`     would file as provider id: ${c.providerRecordingId}`);
     }

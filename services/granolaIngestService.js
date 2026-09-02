@@ -179,10 +179,23 @@ function normalizeGranolaTranscript(note, { coachName, otherName } = {}) {
  * leads; an invitee whose email matched nobody gets a unique-NAME match (email self-heals at
  * write time). Returns { matched:[{email, leadId, name, via}], pending:[{email, name?}] }.
  */
+/** One entry per lead: a person invited under two addresses (primary + alt) must not link or label twice. */
+function dedupeByLead(matched) {
+  const seen = new Set();
+  return (matched || []).filter((m) => {
+    const key = m.leadId || m.email;
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 async function leadsForEvent(coach, event, coachEmails) {
   const participants = calendarParticipantEmails(event ? [event] : [], coachEmails);
   if (!participants.length) return { matched: [], pending: [] };
-  const { matched, unmatched } = await matchLeads(coach, participants.map((x) => x.email));
+  const raw = await matchLeads(coach, participants.map((x) => x.email));
+  const matched = dedupeByLead(raw.matched);
+  const unmatched = raw.unmatched;
   const nameByEmail = new Map(participants.map((x) => [x.email, x.name || '']));
   const pending = [];
   for (const rawEmail of unmatched) {
@@ -201,7 +214,7 @@ async function leadsForEvent(coach, event, coachEmails) {
     }
     if (!healed) pending.push({ email, ...(name ? { name } : {}) });
   }
-  return { matched, pending };
+  return { matched: dedupeByLead(matched), pending };
 }
 
 /** Resolve a coach-assigned lead (review release) by email. */
@@ -269,7 +282,8 @@ async function ingestGranolaNote(opts = {}) {
   // ---- Evidence 1: Granola's own linked calendar event (when the coach picked it) ----------
   const people = extractNotePeople(note, coachEmails);
   const peopleEmails = people.filter((p) => p.email).map((p) => p.email);
-  const linked = await matchLeads(coach, peopleEmails);
+  const linkedRaw = await matchLeads(coach, peopleEmails);
+  const linked = { matched: dedupeByLead(linkedRaw.matched), unmatched: linkedRaw.unmatched };
 
   // ---- Evidence 2: the coach's calendar over the note's span --------------------------------
   const readCalendar = async (meta) => {
@@ -329,7 +343,7 @@ async function ingestGranolaNote(opts = {}) {
   const { segments, untimed, total } = extractSegments(note);
   let planned;
   if (segments.length) {
-    planned = planGranolaChunks({ segments, events });
+    planned = planGranolaChunks({ segments, events, coachNames });
   } else if (total > 0) {
     // No usable timestamps on this payload: one untimed chunk. Only Granola's OWN linked event
     // can attribute it (no window guessing) — otherwise it goes to review.
@@ -381,19 +395,23 @@ async function ingestGranolaNote(opts = {}) {
         reason = `the other side's display name (${c.speakerNames.join(', ')}) matches none of: ${matched.map((m) => m.name).join(', ')}`;
       }
     }
-    // A filable chunk with no lead at all: open mode files it unlinked (pending leads carry the
-    // identities we saw, so the auto-link machinery can attach it later); leads-only drops it.
-    if (verdict === 'file' && matched.length === 0) {
-      if (policy.mode === 'leads-only') { verdict = 'drop-no-lead'; reason = 'leads-only: nobody on this booking is a lead'; }
-      else verdict = 'file-unlinked';
-    }
-
     const otherName = matched.length === 1 ? (matched[0].name || null) : (matched.length === 0 && pending.length === 1 && pending[0].name ? pending[0].name : null);
     const transcriptText = c.untimed
       ? normalizeGranolaTranscript(note, { coachName, otherName })
       : segmentsToTranscript(c.segments, { coachName, otherName });
     const refined = require('./pendingLeadFilter').refinePendingLeads(pending, { transcriptText, coach, log });
-    const title = c.event?.summary || (multi ? `${meta.title} (part ${c.index})` : meta.title);
+
+    // A filable chunk with no lead at all. Leads-only: dropped. Open mode: when we at least
+    // IDENTIFIED someone (a real invitee address that is not a lead yet), file it unlinked so the
+    // pending-lead machinery attaches it when that lead is created; when nobody usable is on
+    // the booking (a role address, an invite-less event) nothing would ever link it, so it goes
+    // to the coach instead of vanishing into an unlinked row.
+    if (verdict === 'file' && matched.length === 0) {
+      if (policy.mode === 'leads-only') { verdict = 'drop-no-lead'; reason = 'leads-only: nobody on this booking is a lead'; }
+      else if (refined.length) verdict = 'file-unlinked';
+      else { verdict = 'review-no-lead'; reason = `booking "${String(c.event?.summary || '').trim()}" found, but nobody on it is a known lead (invitees: ${pending.map((p) => p.email).join(', ') || 'none'})`; }
+    }
+    const title = String(c.event?.summary || '').trim() || (multi ? `${meta.title} (part ${c.index})` : meta.title);
     const durationSeconds = c.start && c.end ? Math.max(0, Math.round((Date.parse(c.end) - Date.parse(c.start)) / 1000)) : meta.durationSeconds;
 
     chunkPlans.push({
@@ -403,6 +421,8 @@ async function ingestGranolaNote(opts = {}) {
       booking: c.event ? { summary: c.event.summary, start: c.event.start, end: c.event.end } : null,
       start: c.start, end: c.end, durationSeconds,
       themSeconds: c.themSeconds, themCount: c.themCount, firstThemAt: c.firstThemAt, speakerNames: c.speakerNames,
+      absorbedSpillSeconds: c.absorbedSpillSeconds || undefined,
+      cutSteeredByNames: c.cutSteeredByNames || undefined,
       nameCheck: nameCheck.verdict,
       matchedLeads: matched,
       pendingLeads: refined,
@@ -444,7 +464,7 @@ async function ingestGranolaNote(opts = {}) {
   const held = [];
   const dropped = [];
   for (const cp of chunkPlans) {
-    if (cp.verdict.startsWith('drop')) {
+    if (cp.verdict.startsWith('drop') || cp.verdict === 'absorbed-into-previous') {
       dropped.push({ index: cp.index, verdict: cp.verdict, reason: cp.reason });
       log.info(`granola note=${realNoteId} chunk ${cp.index} dropped (${cp.verdict}): ${cp.reason}`);
       continue;

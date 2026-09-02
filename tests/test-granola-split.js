@@ -97,21 +97,49 @@ test('case 2: goodbye spilling 1 min into the next slot stays one chunk', () => 
   assert.strictEqual(chunks[0].event.summary, 'Melissa Jarmyn & Guy Wilson');
   assert.deepStrictEqual(chunks[0].speakerNames, ['melissajarmyn']);
   // The talk ran straight through 3:30 with no pause: whatever fell after the cut is Melissa's
-  // spill-over, far too thin to be Leanne's meeting.
+  // spill-over, far too thin to be Leanne's meeting — it is given back to Melissa's chunk.
   assert.strictEqual(chunks[1].contiguousStart, true);
-  assert.ok(['drop-spill', 'drop-too-short', 'drop-no-other-voice'].includes(chunks[1].verdict), chunks[1].verdict);
+  assert.strictEqual(chunks[1].verdict, 'absorbed-into-previous');
+  assert.ok(chunks[0].absorbedSpillSeconds > 0);
+  assert.strictEqual(chunks[0].end >= bris(d, '15:30'), true);   // Melissa's chunk now runs to her last word
 });
 
-test('case 2b: a 4-minute spill with no pause is still a spill; a real 25-minute next call is not', () => {
+test('case 2b: a 4-minute spill with no pause goes back to the earlier call; a real 25-minute next call does not', () => {
   const d = '2026-08-28';
   const spill = note(talk(d, '15:00', '15:34', 'them'), talk(d, '15:00', '15:34', 'me'));
   const events = [ev('Melissa Jarmyn & Guy Wilson', d, '15:00', '15:30', 'melissa@agileedgeconsulting.com.au'), ev('Leanne van Rensburg & Guy Wilson', d, '15:30', '16:00', 'leanne@praxispartners.io')];
   let r = planGranolaChunks({ segments: extractSegments(spill).segments, events });
-  assert.strictEqual(r.chunks[1].verdict, 'drop-spill');
+  assert.strictEqual(r.chunks[1].verdict, 'absorbed-into-previous');
+  assert.strictEqual(r.chunks[0].verdict, 'file');
+  assert.strictEqual(r.chunks[0].segments.length, extractSegments(spill).segments.length); // nothing lost
   const real = note(talk(d, '15:00', '15:55', 'them'), talk(d, '15:00', '15:55', 'me'));
   r = planGranolaChunks({ segments: extractSegments(real).segments, events });
   assert.strictEqual(r.chunks[1].verdict, 'file');   // 25 min of other voice after 3:30 is a meeting
   assert.strictEqual(r.chunks[0].verdict, 'file');
+});
+
+test('case 3b: continuous talk across a boundary, steered by display names (Jay\'s goodbye stays with Jay)', () => {
+  const d = '2026-08-25';
+  // Jay talks 10:30 -> 11:03 with no pause, April's first line is 11:03:20.
+  const n = note(
+    talk(d, '10:30', '11:03', 'them', 'Jay'), talk(d, '10:30', '11:03', 'me'),
+    talk(d, '11:03', '11:40', 'them', 'April Balaba'), talk(d, '11:03', '11:40', 'me'),
+  );
+  const events = [
+    ev('Jay Critchley & Guy Wilson', d, '10:30', '11:00', 'jay@jay.associates'),
+    ev('April & Guy LinkedIn', d, '11:00', '11:30', 'april.balaba@fortix.com.au'),
+  ];
+  const { chunks } = planGranolaChunks({ segments: extractSegments(n).segments, events, coachNames: ['Guy Wilson'] });
+  assert.strictEqual(chunks.length, 2);
+  assert.strictEqual(chunks[1].cutSteeredByNames, true);
+  assert.deepStrictEqual(chunks[0].speakerNames, ['Jay']);
+  assert.deepStrictEqual(chunks[1].speakerNames, ['April Balaba']);
+  assert.strictEqual(chunks[0].end >= bris(d, '11:02'), true);
+  // Without names the cut would sit at 11:00 and Jay's last 3 minutes would land on April.
+  const noNames = note(talk(d, '10:30', '11:03', 'them'), talk(d, '10:30', '11:03', 'me'), talk(d, '11:03', '11:40', 'them'), talk(d, '11:03', '11:40', 'me'));
+  const r2 = planGranolaChunks({ segments: extractSegments(noNames).segments, events, coachNames: ['Guy Wilson'] });
+  assert.strictEqual(r2.chunks[1].cutSteeredByNames, undefined);
+  assert.strictEqual(r2.chunks[1].start, bris(d, '11:00'));
 });
 
 test('case 3: three back-to-back calls in one note -> three filable chunks, split at the silences', () => {
