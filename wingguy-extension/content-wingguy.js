@@ -506,18 +506,73 @@
   // ---- profile scraping (best-effort, multiple fallbacks) -------------------
   // LinkedIn's DOM is volatile; selectors are intentionally redundant. In the productised
   // version these move to remote extension-config; for now sensible defaults + Copy fallback.
-  async function expandAboutSeeMore() {
-    // Click the About section's "see more" so the full text is in the DOM before we read it.
+  // The lines under the person's name in the new-build top card, read as a sequence rather than by
+  // position. Walks up from the name element to the block that also holds "Contact info" (the one
+  // durable text on that card), then takes every <p> after the name in document order. Returns
+  // { headline, location } - either may be '' when the card is not this shape (old build, or the
+  // name element was not found), in which case the selector read stands.
+  function readTopCardRun(nameEl) {
+    const out = { headline: '', location: '' };
     try {
-      const aboutAnchor = deepGetById('about');
-      const section = aboutAnchor ? aboutAnchor.closest('section') : null;
+      if (!nameEl) return out;
+      let card = nameEl;
+      for (let i = 0; i < 10 && card; i++) {
+        card = card.parentElement;
+        if (card && /contact info/i.test(cleanText(card.textContent))) break;
+      }
+      if (!card) return out;
+      const all = Array.from(card.querySelectorAll('h1, h2, p'));
+      const idx = all.indexOf(nameEl);
+      const lines = all.slice(idx + 1).filter((e) => e.tagName === 'P').map((e) => cleanText(e.textContent));
+      const chip = (s) => !s || s.length <= 3
+        || /^(?:he|she|they|ze|xe|hir)\s*\/\s*[a-z]+(?:\s*\/\s*[a-z]+)?$/i.test(s)
+        || /^·?\s*\d(?:st|nd|rd|th)\+?$/i.test(s) || /^·$/.test(s)
+        || /contact info/i.test(s) || /^https?:\/\//i.test(s) || /followers$/i.test(s) || /mutual connection/i.test(s);
+      out.headline = lines.find((s) => !chip(s)) || '';
+      const ci = lines.findIndex((s) => /contact info/i.test(s));
+      if (ci > 0) {
+        for (let j = ci - 1; j >= 0; j--) { if (!chip(lines[j])) { out.location = lines[j]; break; } }
+        if (out.location === out.headline) out.location = '';
+      }
+    } catch (_) { /* best-effort */ }
+    return out;
+  }
+
+  // The About section, on either build. Old markup: an element with id="about" whose section holds
+  // the copy in aria-hidden spans. New (2026-08 sdui) markup: NO id anchors, hashed class names, and
+  // the section is just an <h2>About</h2> followed by the copy - so the heading text is the only
+  // durable hook. Found live 2026-09-03 (Peter Creeden): the id read returned nothing on a profile
+  // with a 1,000-character About, and because the self-check skips a landmark whose container is
+  // missing, About had been silently blank for every new-build profile since early August with
+  // zero rows in the health table to show for it. Returns the section (or nearest text block).
+  function findAboutSection() {
+    const aboutAnchor = deepGetById('about');
+    if (aboutAnchor) return aboutAnchor.closest('section') || aboutAnchor.parentElement;
+    const h2 = deepQueryAll('h2, h3').find((el) => /^about$/i.test(cleanText(el.textContent)));
+    if (!h2) return null;
+    if (h2.closest('section')) return h2.closest('section');
+    // No <section> wrapper: walk up to the first ancestor that holds more than the heading.
+    let block = h2;
+    for (let i = 0; i < 5 && block; i++) {
+      block = block.parentElement;
+      if (block && cleanText(block.textContent).length > cleanText(h2.textContent).length + 40) return block;
+    }
+    return null;
+  }
+
+  async function expandAboutSeeMore() {
+    // Click the About section's "see more" so the full text is in the DOM before we read it. The
+    // new build renders it as a bare "… more" span, not a "see more" button - match both.
+    try {
+      const section = findAboutSection();
       if (!section) return;
-      const btn = Array.from(section.querySelectorAll('button')).find((b) =>
-        /see more/i.test(b.getAttribute('aria-label') || b.textContent || '')
+      const btn = Array.from(section.querySelectorAll('button, span[role="button"], span, a')).find((b) =>
+        (b.children.length === 0 && /^(?:…\s*)?(?:see\s+)?more$/i.test(cleanText(b.textContent)))
+        || /see more/i.test(b.getAttribute('aria-label') || '')
       );
       if (btn) {
-        btn.click();
-        await new Promise((r) => setTimeout(r, 250));
+        (btn.closest('button') || btn).click();
+        await new Promise((r) => setTimeout(r, 300));
       }
     } catch (_) { /* non-fatal */ }
   }
@@ -543,16 +598,25 @@
   }
 
   function readAbout() {
-    const aboutAnchor = deepGetById('about');
-    const section = aboutAnchor ? aboutAnchor.closest('section') : null;
+    const section = findAboutSection();
     if (!section) return '';
-    // The About copy is usually in spans marked aria-hidden="true" (LinkedIn duplicates text for a11y).
+    // Old build: the copy is duplicated into spans marked aria-hidden="true" (LinkedIn's a11y trick).
     const spans = Array.from(section.querySelectorAll(selStr('profile_about_spans')))
       .map((s) => cleanText(s.textContent))
       .filter(Boolean);
-    // Drop the heading ("About") and dedupe.
-    const text = Array.from(new Set(spans)).filter((t) => t.toLowerCase() !== 'about').join(' ');
-    return text.slice(0, 4000);
+    if (spans.length) {
+      const text = Array.from(new Set(spans)).filter((t) => t.toLowerCase() !== 'about').join(' ');
+      if (text) return text.slice(0, 4000);
+    }
+    // New build: no marked spans at all - the copy is plain text under the heading, with the
+    // "… more" toggle and a "Top skills" sub-block inside the same section. Take the visible text,
+    // drop the heading, drop the toggle, cut at Top skills. Proven live 2026-09-03: 1,003 clean
+    // characters from a profile the old read returned nothing for.
+    let text = cleanText(section.innerText || section.textContent) || '';
+    text = text.replace(/^\s*about\s*/i, '').replace(/\s*(?:…\s*)?(?:see\s+)?(?:more|less)\s*$/i, '');
+    const skills = text.search(/\bTop skills\b/);
+    if (skills > 0) text = text.slice(0, skills);
+    return text.replace(/\s+/g, ' ').trim().slice(0, 4000);
   }
 
   // The Activity section (their recent post previews). Three-layer find: the store-correctable id
@@ -943,6 +1007,21 @@
     let headline = cleanText(headlineEl && headlineEl.textContent);
     const locationEl = findByKey('profile_location', topCard);
     let location = cleanText(locationEl && locationEl.textContent);
+    // New-build top card (2026-09-03, live on Aaron Dormer / Peter Creeden): the name is an <h2>
+    // followed by a run of <p>s - pronoun chip, "· 1st", "· 2nd", THEN the headline, company,
+    // location, "·", "Contact info". A position-based selector ("first p after the name") lands on
+    // the pronoun chip, which is how "He/Him" reached a record as a headline. Read the run by
+    // MEANING instead: skip the chips and take the first real line; location is the last real
+    // line before "Contact info". Only overrides a selector read that is empty or is itself a chip.
+    if (!inThread) {
+      const chip = (s) => !s || s.length <= 3
+        || /^(?:he|she|they|ze|xe|hir)\s*\/\s*[a-z]+(?:\s*\/\s*[a-z]+)?$/i.test(s)
+        || /^·?\s*\d(?:st|nd|rd|th)\+?$/i.test(s) || /^·$/.test(s)
+        || /contact info/i.test(s) || /^https?:\/\//i.test(s) || /followers$/i.test(s) || /mutual connection/i.test(s);
+      const tc = readTopCardRun(nameEl);
+      if (chip(headline) && tc.headline) headline = tc.headline;
+      if (chip(location) && tc.location) location = tc.location;
+    }
 
     // RAW FALLBACK: the whole profile's visible text. Robust to LinkedIn's class churn — when the
     // structured selectors miss, the model still gets real content to hook on (like AI Blaze does).
@@ -977,13 +1056,15 @@
     // Grade our own homework on the page we just read. Not awaited and never surfaced — this is the
     // silent half. The half the person sees is draftGapNotice(), rendered with the context header.
     try {
-      const aboutAnchor = deepGetById('about');
       runSelfCheck(inThread ? 'messaging' : 'profile', {
         // Same container resolution as the thread reader: classic selectors, then the new-UI
         // structural matcher. If neither finds one, the convo-scoped checks are skipped, not
         // checked against the whole document (see runSelfCheck).
         convo: document.querySelector(CONVO_SELECTORS()) || newUiConvoFromDocument() || null,
-        about: (aboutAnchor && aboutAnchor.closest('section')) || null,
+        // Same finder the read uses (heading-text fallback included), so a profile that HAS an
+        // About now produces a health row for the spans landmark even on the new build - which is
+        // exactly the blindness the id-only scope hid for a month.
+        about: findAboutSection(),
         activity: activityScope.section,
       }).catch(() => {});
     } catch (_) { /* a self-check must never break a scrape */ }
