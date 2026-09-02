@@ -757,13 +757,19 @@
     if (!convo) return null;
     let title = '';
     try { const h = convo.querySelector('h2, h3, [class*="title"]'); title = cleanText(h && h.textContent); } catch (_) {}
-    const participants = threadParticipants(convo, title);
+    let participants = threadParticipants(convo, title);
+    let thread = [];
+    try { thread = isNewUiConvoContainer(convo) ? scrapeNewUiThread(convo) : scrapeOpenThread(); } catch (_) {}
+    // A participant is someone who has SPOKEN in this thread (a sender), unless the heading itself
+    // names the group. A profile link pasted inside a message ("have a look at John's profile") must
+    // never make John a participant — or get the conversation saved onto John's record.
+    const senders = new Set(thread.map((m) => String(m.sender || '').toLowerCase().trim()).filter((x) => x && x !== 'unknown'));
+    const spoke = (p) => { const low = p.name.toLowerCase(); const first = low.split(/\s+/)[0]; return senders.has(low) || [...senders].some((x) => x.split(/\s+/)[0] === first); };
+    if (!isGroupTitle(title)) participants = participants.filter(spoke);
     const isGroup = isGroupTitle(title) || (!!selfNavName() && participants.length >= 2);
     if (!isGroup) return null;
     // Whose reply is this? The LAST person other than the coach to speak — in an introduction that is
     // the person being introduced, once they've said hello. Falls back to the first participant.
-    let thread = [];
-    try { thread = isNewUiConvoContainer(convo) ? scrapeNewUiThread(convo) : scrapeOpenThread(); } catch (_) {}
     let primary = null;
     for (let i = thread.length - 1; i >= 0 && !primary; i--) {
       const s = String(thread[i].sender || '').toLowerCase();
