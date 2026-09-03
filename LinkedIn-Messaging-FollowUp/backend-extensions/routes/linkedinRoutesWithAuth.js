@@ -728,7 +728,7 @@ router.get('/leads/export', async (req, res) => {
                   connection_status: normalize(f['LinkedIn Connection Status']),
                   lead_has_replied: f['Lead Has Replied'] ? 'Yes' : '',
                   date_connected: normalize(f['Date Connected']),
-                  date_created: normalize(f['Date Created']),
+                  date_created: normalize(f['Date Created'] || (record._rawJson && record._rawJson.createdTime) || ''), // new bases carry no Date Created field
                   follow_up_date: normalize(f['Follow-Up Date']),
                   cease_fup: normalize(f['Cease FUP']),
                   source: normalize(f['Source']),

@@ -6,6 +6,12 @@
 // scripts/create-client-base.js (first used for Paul Salvage, 2026-08-25),
 // so the join provisioning chain (stage 4) can call it in-process.
 //
+// Since 2026-09-04 the schema carries no field the API cannot create as a
+// primary (LinkedIn Profile URL is the Leads primary; Profile Key, Date Created
+// and Posts Relevance Status are gone - the server no longer reads them), so a
+// join should produce a finished base with manualSteps empty. The fallback
+// below stays as a safety net.
+//
 // Computed fields (formula, createdTime) may not be creatable through the
 // API. Strategy: try the full schema first; if the API refuses, create the
 // base without them (a computed primary becomes a plain-text placeholder)

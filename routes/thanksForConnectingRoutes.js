@@ -134,7 +134,7 @@ module.exports = function mountThanksForConnecting(app, base) {
     const dateConnected = r.get(LEAD_FIELDS.DATE_CONNECTED) || null;
     return {
       id: r.id,
-      profileKey: r.get('Profile Key') || null,
+      profileKey: r.get('Profile Key') || r.id, // new bases (Sep 2026) have no Profile Key field
       firstName: first,
       lastName: last,
       name: `${first} ${last}`.trim(),

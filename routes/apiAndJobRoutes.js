@@ -10721,7 +10721,7 @@ router.post("/api/validate-client-base", async (req, res) => {
         
         const requiredLeadFields = [
           'First Name', 'Last Name', 'LinkedIn Profile URL', 'AI Score', 
-          'Status', 'Notes', 'Scoring Status', 'Date Created'
+          'Status', 'Notes', 'Scoring Status' // Date Created dropped Sep 2026 - new bases read Airtable's record stamp instead
         ];
         
         if (leadsRecords.length > 0) {

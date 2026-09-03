@@ -16,6 +16,7 @@ const logger = createLogger({
 // Removed old error logger - now using production issue tracking
 const logCriticalError = async () => {};
 const { getLastTwoOrgs, canonicalUrl, safeDate } = require('../utils/appHelpers.js');
+const { canonicalLinkedinSlug, slugPrefilterFormula, findExactSlugMatch, escapeFormulaText } = require('../utils/linkedinCanonical');
 const { slimLead } = require('../promptBuilder.js');
 const airtableService = require('./airtableService');
 // Updated to use new run ID system
@@ -26,6 +27,37 @@ const { safeUpdateMetrics } = require('./runRecordAdapterSimple');
 const { CLIENT_TABLES, LEAD_FIELDS, SCORING_STATUS_VALUES, CONNECTION_STATUS_VALUES, LEAD_STATUS_VALUES, CLIENT_RUN_FIELDS } = require('../constants/airtableUnifiedConstants');
 const { validateFieldNames, createValidatedObject } = require('../utils/airtableFieldValidator');
 const { stripCredentialSuffixes, isBrokenLastName, deriveNameFromFull } = require('../utils/nameNormalizer');
+
+// Duplicate check by LinkedIn address, computed at query time (2026-09-04). This replaces the
+// old `{Profile Key} = key` lookup: Profile Key was a formula field the Airtable API cannot
+// create, so every new client base needed a hand-built field before leads could be
+// de-duplicated. Nothing is stored now - the stored address is canonicalised INSIDE the query,
+// so a client editing a URL in Airtable can never leave a stale key behind. Existing bases keep
+// their Profile Key field; it is simply no longer read.
+//
+// Slug handshake first, the same one wingguyLeads.createLead uses (SEARCH prefilter, then
+// strict canonical-slug equality - never containment). Slug equality is a superset of the old
+// canonical-URL equality for any /in/ address, so old-base behaviour is preserved. Addresses
+// without an /in/ slug (profile/view?id=...) fall back to exact canonical-URL equality, which
+// is precisely what the Profile Key formula used to compute.
+async function findExistingLeadByUrl(airtableBase, url) {
+    const urlField = LEAD_FIELDS.LINKEDIN_PROFILE_URL;
+    const slug = canonicalLinkedinSlug(url);
+    if (slug) {
+        const candidates = await airtableBase(CLIENT_TABLES.LEADS).select({
+            filterByFormula: slugPrefilterFormula(slug, urlField),
+            maxRecords: 50
+        }).firstPage();
+        return findExactSlugMatch(candidates, slug, urlField);
+    }
+    const key = escapeFormulaText(canonicalUrl(url));
+    const f = `{${urlField}}`;
+    const canonicalStored = `LOWER(SUBSTITUTE(SUBSTITUTE(IF(RIGHT(${f}, 1) = "/", LEFT(${f}, LEN(${f}) - 1), ${f}), "https://", ""), "http://", ""))`;
+    return airtableBase(CLIENT_TABLES.LEADS).select({
+        filterByFormula: `${canonicalStored} = "${key}"`,
+        maxRecords: 1
+    }).firstPage();
+}
 
 async function upsertLead(
     lead, 
@@ -110,7 +142,6 @@ async function upsertLead(
         logger.warn("leadService/upsertLead: Skipping upsert. No finalUrl could be determined for lead:", firstName, lastName);
         return; 
     }
-    const profileKey = canonicalUrl(finalUrl); 
 
     let currentConnectionStatus = CONNECTION_STATUS_VALUES.CANDIDATE; 
     if (connectionDegree === "1st") currentConnectionStatus = CONNECTION_STATUS_VALUES.CONNECTED;
@@ -170,10 +201,7 @@ async function upsertLead(
     if (ai_excluded_val !== null) fields[LEAD_FIELDS.AI_EXCLUDED] = (ai_excluded_val === "Yes" || ai_excluded_val === true);
     if (exclude_details_val !== null) fields[LEAD_FIELDS.EXCLUDE_DETAILS] = exclude_details_val;
 
-    const existing = await airtableBase(CLIENT_TABLES.LEADS).select({ 
-        filterByFormula: `{Profile Key} = "${profileKey}"`, 
-        maxRecords: 1 
-    }).firstPage();
+    const existing = await findExistingLeadByUrl(airtableBase, finalUrl);
 
     let recordId;
     

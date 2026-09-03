@@ -5,20 +5,12 @@
       "name": "Leads",
       "fields": [
         {
-          "name": "Profile Key",
-          "type": "formula",
-          "options": {
-            "formula": "LOWER(\r\n  SUBSTITUTE(\r\n    SUBSTITUTE(\r\n      IF(\r\n        RIGHT({LinkedIn Profile URL}, 1) = \"/\",\r\n        LEFT({LinkedIn Profile URL}, LEN({LinkedIn Profile URL}) - 1),\r\n        {LinkedIn Profile URL}\r\n      ),\r\n      \"https://\",\r\n      \"\"\r\n    ),\r\n    \"http://\",\r\n    \"\"\r\n  )\r\n)"
-          },
-          "computed": true
+          "name": "LinkedIn Profile URL",
+          "type": "url"
         },
         {
           "name": "First Name",
           "type": "singleLineText"
-        },
-        {
-          "name": "LinkedIn Profile URL",
-          "type": "url"
         },
         {
           "name": "Last Name",
@@ -319,11 +311,6 @@
           "type": "multilineText"
         },
         {
-          "name": "Date Created",
-          "type": "createdTime",
-          "computed": true
-        },
-        {
           "name": "Scoring Status",
           "type": "singleSelect",
           "options": {
@@ -450,14 +437,6 @@
             "icon": "check",
             "color": "greenBright"
           }
-        },
-        {
-          "name": "Posts Relevance Status",
-          "type": "formula",
-          "options": {
-            "formula": "IF(\r\n  {Posts Relevance Percentage} >= 50,\r\n  \"Relevant\",\r\n  \"Irrelevant\"\r\n)"
-          },
-          "computed": true
         },
         {
           "name": "Time Posts Added",
