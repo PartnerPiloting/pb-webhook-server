@@ -324,5 +324,6 @@ async function trackLeadProcessingMetrics(runId, clientId, metrics) {
 
 module.exports = {
     upsertLead,
+    findExistingLeadByUrl,
     trackLeadProcessingMetrics
 };
