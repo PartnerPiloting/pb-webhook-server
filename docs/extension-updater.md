@@ -78,7 +78,8 @@ The token travels as a HEADER, never in the URL, so it never lands in the reques
 
 Then, over remote access on their machine:
 
-1. Open a **normal, NOT administrator** shell as the machine's own user. The scheduled job is
+1. Open a **normal, NOT administrator PowerShell** as the machine's own user. PowerShell, not
+   Command Prompt - the line is written for PowerShell. The scheduled job is
    per-user and must run as the person whose browser it is.
 2. Paste the line. It creates the folder, registers the schedule, **verifies the schedule really
    exists**, and downloads immediately so you see it work before you leave.
@@ -113,6 +114,11 @@ for ~10 weeks because nobody noticed, not because nobody could fix it).
   That machine defeats every other lane too, so it is not a reason to prefer something else.
 - **Deleting the folder breaks the extension.** The check-in catches it.
 - **Developer-mode nagging** continues, as it does today. Milder in Edge than Chrome.
+- ⚠ **The install line is PowerShell-native and must be pasted into PowerShell.** It used to be
+  wrapped in `powershell -Command "..."`, which only works from a Command Prompt: pasted into
+  PowerShell the outer session expands `$t` first, and since it does not exist there the token
+  silently vanishes, leaving `@{'x-portal-token'=}`. Guy hit this on his own machine 2026-09-03.
+  The wrapper is gone - do not put it back.
 - ⚠ **A denied scheduled-task registration used to look like success.**
   `Register-ScheduledTask` raises a NON-TERMINATING CIM error, which sails past
   `$ErrorActionPreference='Stop'` - the script logged "registered" and cheerfully downloaded

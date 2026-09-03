@@ -45,13 +45,16 @@ const DEFAULT_SERVER = (process.env.EXTENSION_DIST_SERVER || 'https://pb-webhook
     console.error(`WARNING: ${client.clientId} is "${client.status}", not Active. The updater will be refused until they are Active.\n`);
   }
 
-  // NOTE: single quotes only inside the -Command string, and Join-Path instead of a quoted
-  // path. An earlier version used escaped double-quotes around the temp path and broke
-  // depending on how the line was pasted (found 2026-09-03). Keep it quote-free inside.
+  // PowerShell-NATIVE, with no `powershell -Command "..."` wrapper. The wrapper only works
+  // from a Command Prompt: pasted into PowerShell, the OUTER session expands $t first and,
+  // since it does not exist there, the token silently vanishes leaving @{'x-portal-token'=}.
+  // Guy hit this on his own machine, 2026-09-03. Assume the person is already in PowerShell -
+  // that is what anyone opens. Set-ExecutionPolicy -Scope Process replaces the -ExecutionPolicy
+  // flag the wrapper used to carry, and affects only that one window.
   const win =
-    `powershell -ExecutionPolicy Bypass -Command "$t='${token}'; $p=Join-Path $env:TEMP 'wg.ps1'; ` +
+    `Set-ExecutionPolicy -Scope Process Bypass -Force; $t='${token}'; $p=Join-Path $env:TEMP 'wg.ps1'; ` +
     `Invoke-WebRequest -Uri '${DEFAULT_SERVER}/extension/dist/installer' -Headers @{'x-portal-token'=$t} -OutFile $p -UseBasicParsing; ` +
-    `& $p -Install -Server '${DEFAULT_SERVER}' -Token $t"`;
+    `& $p -Install -Server '${DEFAULT_SERVER}' -Token $t`;
 
   const mac =
     `T='${token}'; curl -sS -H "x-portal-token: $T" '${DEFAULT_SERVER}/extension/dist/installer.sh' -o /tmp/wg.sh && ` +
@@ -61,7 +64,8 @@ const DEFAULT_SERVER = (process.env.EXTENSION_DIST_SERVER || 'https://pb-webhook
 Install the Wingguy extension updater for ${client.clientId}
 ${'='.repeat(60)}
 
-On THEIR machine, in a normal (NOT administrator) shell, paste one line:
+On THEIR machine, open a normal PowerShell (NOT administrator) and paste one line.
+PowerShell, not Command Prompt - the line is written for PowerShell.
 
 WINDOWS - PowerShell
 --------------------
