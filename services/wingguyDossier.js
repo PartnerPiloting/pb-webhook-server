@@ -595,12 +595,18 @@ const DEEP_SYSTEM = `You prepare a coach's memory-dossier for one contact. From 
  "meeting_recaps": [{"date": "YYYY-MM-DD", "title": "the meeting title", "about": "one sentence: what this call was for", "happened": "a full paragraph, and be generous with it — what was actually discussed, what THEY said in their own words, what they reacted to, where it warmed or cooled, what was decided. The coach cannot remember this call and is walking into the next one; detail here is the whole point, so do not compress it into a summary line.", "personal": "any human detail that came up in THIS call, or empty string", "ended": "one sentence: how the call was left — what each side said they would do next"}],
  "next_move": "one sentence: the smartest next action. For a WARM relationship that has clearly ended, that may be a one-line graceful close (door-open goodbye) — say so explicitly. For a cold or never-real thread, say exactly: nothing — let it rest."}
 Write one meeting_recaps entry per meeting you were given a FULL TRANSCRIPT for, newest first; if you were given no transcript, return an empty array rather than reconstructing a call from the emails around it. Ground everything ONLY in the material given.
-PARTIAL INPUT IS NEVER A MEETING FACT. A transcript ending with a [TRANSCRIPT CLIPPED FOR LENGTH …] marker (or any material ending with [MATERIAL CLIPPED …]) means YOUR INPUT was cut, not that the call ended there. Never write that a call "ended", "cut off", "cut out" or "was interrupted" at the point your text stops. For a clipped call: open its "happened" with the coverage ("covers roughly the first N% of the call"), keep standing/commitments/next_move within what that portion supports, and set "ended" to exactly what is true — the ending is not in this material. Even without a marker, describe how a call ended only when the words themselves close the meeting (goodbyes, agreed next steps). Return ONLY the JSON object.`;
+PARTIAL INPUT IS NEVER A MEETING FACT. A transcript ending with a [TRANSCRIPT CLIPPED FOR LENGTH …] marker (or any material ending with [MATERIAL CLIPPED …]) means YOUR INPUT was cut, not that the call ended there. Never write that a call "ended", "cut off", "cut out" or "was interrupted" at the point your text stops. For a clipped call: open its "happened" with the coverage ("covers roughly the first N% of the call"), keep standing/commitments/next_move within what that portion supports, and set "ended" to exactly what is true — the ending is not in this material. Even without a marker, describe how a call ended only when the words themselves close the meeting (goodbyes, agreed next steps). LOCATION IS NEVER INFERRED. The material may open with a RECORD LOCATION line - that is the CRM record, and it is authoritative. Never state, infer or "confirm" where the contact lives from a scheduling line, a timezone remark ("your time (X)", "X time"), a date or a place mentioned in passing; a coach message naming a different place is the coach's slip, not a fact about the contact. In "personal", mention where they live ONLY when THEY said it in their own words and it agrees with the record; otherwise leave location out entirely. If the record location is missing, say nothing about location rather than guessing.
+Return ONLY the JSON object.`;
 
-async function deepRead(llm, name, timeline, meetings) {
+async function deepRead(llm, name, timeline, meetings, opts = {}) {
   const withTranscript = meetings.filter((m) => m.transcript);
+  // Record location goes in as an authoritative line (2026-09-03): without it the model inferred a
+  // home town from a mis-typed "your time (Bunbury)" scheduling line and carried it into PERSONAL
+  // for a Melbourne contact (Shira Friedman) - the CRM field, not the thread, decides where they are.
+  const recordLocation = opts.location ? String(opts.location).trim() : '';
   const material = [
     `CONTACT: ${name}`,
+    ...(recordLocation ? [`RECORD LOCATION (authoritative, from the CRM record - never contradict or re-derive it from messages): ${recordLocation}`] : []),
     `TIMELINE (oldest first):`,
     ...timeline.map((t) => `${t.date} [${t.kind}/${t.dir}] ${t.subject ? `(${t.subject}) ` : ''}${t.fullText ? `FULL TEXT: ${t.fullText}` : (t.text || '')}`),
     ...(meetings.length ? ['MEETING SUMMARIES:', ...meetings.map((m) => `${m.date || '?'} "${m.title}": ${m.summary || '(no summary stored)'}`)] : []),
@@ -812,7 +818,7 @@ async function prepareDossiers(tenant, opts = {}) {
         const existing = await getDossierRow(tenant, person.key);
         if (!person.force && existing && existing.basis === basis) { out.cached++; continue; }
 
-        const read = await deepRead(llm, person.name, timeline, meetings);
+        const read = await deepRead(llm, person.name, timeline, meetings, { location: (rec && String(rec.fields['Location'] || '').trim()) || null });
         const lastHuman = [...timeline].reverse().find((t) => t.kind !== 'calendar');
 
         // The email-record facts pass — best-effort, like the guidance draft: a facts failure
