@@ -27,6 +27,7 @@
 [CmdletBinding()]
 param(
   [switch]$Install,
+  [switch]$Uninstall,
   [string]$Server = "https://pb-webhook-server.onrender.com",
   [string]$Token,
   [string]$Folder = "C:\Wingguy",
@@ -59,6 +60,40 @@ function Send-Checkin($server, $token, $payload) {
   try {
     Invoke-RestMethod -Method Post -Uri "$server/extension/dist/checkin" -Headers @{ "x-portal-token" = $token } -ContentType "application/json" -Body ($payload | ConvertTo-Json -Compress) -TimeoutSec 20 | Out-Null
   } catch { Write-Log "check-in failed (ignored): $($_.Exception.Message)" }
+}
+
+# -------------------------------------------------------------- uninstall ----
+# Removes every piece the install put on the machine, and says so line by line. A client who
+# leaves, or who asks "how do I get rid of it?", deserves a one-line answer - and being able to
+# take it off cleanly is part of being trusted to put it on. Run as the same user who installed.
+#
+#   powershell -ExecutionPolicy Bypass -File wingguy-update.ps1 -Uninstall
+#
+# Leaves the browser alone: the extension must be removed from the extensions page by hand
+# (Chrome/Edge do not let a script do that), so that is the one step this cannot take.
+if ($Uninstall) {
+  $scriptHome = Join-Path $env:LOCALAPPDATA "Wingguy"
+  $startupFile = Join-Path ([Environment]::GetFolderPath('Startup')) "Wingguy Extension Update.vbs"
+
+  schtasks /Delete /TN $TaskName /F 2>&1 | Out-Null
+  schtasks /Query /TN $TaskName 2>&1 | Out-Null
+  if ($LASTEXITCODE -ne 0) { Write-Host "removed  scheduled task '$TaskName'" } else { Write-Host "FAILED   scheduled task '$TaskName' is still present" }
+
+  if (Test-Path $startupFile) { Remove-Item -Path $startupFile -Force }
+  if (-not (Test-Path $startupFile)) { Write-Host "removed  login run (Startup folder)" } else { Write-Host "FAILED   login run still present: $startupFile" }
+
+  if (Test-Path $Folder) { Remove-Item -Path $Folder -Recurse -Force }
+  if (-not (Test-Path $Folder)) { Write-Host "removed  extension folder $Folder" } else { Write-Host "FAILED   extension folder still present: $Folder" }
+
+  # The script home goes last because the log lives in it - and this very script may be running
+  # from it, which Windows allows (the file is already loaded).
+  if (Test-Path $scriptHome) { Remove-Item -Path $scriptHome -Recurse -Force -ErrorAction SilentlyContinue }
+  if (-not (Test-Path $scriptHome)) { Write-Host "removed  updater script and log ($scriptHome)" } else { Write-Host "FAILED   updater files still present: $scriptHome" }
+
+  Write-Host ""
+  Write-Host "One step left that a script cannot do: open chrome://extensions or edge://extensions"
+  Write-Host "and click Remove on the Wingguy card."
+  return
 }
 
 # ---------------------------------------------------------------- install ----

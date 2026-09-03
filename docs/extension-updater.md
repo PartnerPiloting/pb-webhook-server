@@ -94,6 +94,21 @@ Then, over remote access on their machine:
 ⚠ **If the install stops with "Could not register the scheduled task"**, that is the safety net
 doing its job - see the note under Traps. Do not carry on; the extension would never update.
 
+## Removing it
+
+A client who leaves, or who asks "how do I get rid of it?", gets a one-line answer. On their
+machine, as the user who installed it:
+
+```
+powershell -ExecutionPolicy Bypass -File "$env:LOCALAPPDATA\Wingguy\wingguy-update.ps1" -Uninstall
+```
+
+It removes all four pieces - the scheduled task, the login run, `C:\Wingguy`, and the updater
+script with its log - and reports each one as `removed` or `FAILED`. The one thing it cannot do
+is take the extension out of the browser: that is a click on the extensions page.
+
+Being able to take it off cleanly is part of being trusted to put it on.
+
 ## Checking on it
 
 ```
