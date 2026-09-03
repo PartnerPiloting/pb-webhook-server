@@ -412,7 +412,10 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
       // always earns its place; upgraded from differ-only after the 2026-07-13 Marianne mis-read).
       // One line, not a tag on every slot. leadTz falls back to Guy's tz when unknown, which
       // matches the rulebook's "can't work out the lead's clock → coach's clock" fallback.
-      const tzDiffer = leadTz !== tz;
+      // Real clocks, not names (Farhad, 2026-09-03): Sydney vs Brisbane only differ in daylight
+      // saving. "Both clocks" in offeredTimes / leadBase only when at least one offered slot
+      // actually reads differently on the two sides.
+      const tzDiffer = ordered.some((iso) => wingguyCalendar.clockGapMins(iso, tz, leadTz) !== 0);
       const bullets = ordered.map((iso) => `- ${fmtSlot(iso, leadTz)}`).join('\n')
         + `\n\n(all times are ${tzCity(leadTz)} time)`;
       // CODE-OWNED connecting line above the list (Guy, 2026-07-15 — drafts kept jumping from the
@@ -475,7 +478,7 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
       const leadBase = overrode
         ? `Lead's record says ${leadLoc ? `"${leadLoc}"` : 'nothing about where they are'}, but the THREAD puts them in ${tzCity(leadTz)} — the draft is written in ${tzCity(leadTz)} time. Tell Guy you took that from the conversation rather than the record, quote the line you took it from, and ask whether to save it to their record (wingguy_update_lead) so every future draft gets it right. Do NOT save it yourself off an inference — that is Guy's call.`
         : profileTzKnown
-          ? `Lead is based in ${leadLoc} — ${tzDiffer ? `draft times are ${tzCity(leadTz)} time (both clocks shown in offeredTimes)` : `same clock as Guy right now (draft's "(all times are ${tzCity(leadTz)} time)" line covers it)`}. Tell Guy where the lead is based when you present the draft.${tzAssumedNote ? ` Note: ${tzAssumedNote}.` : ''}`
+          ? `Lead is based in ${leadLoc} — ${tzDiffer ? `draft times are ${tzCity(leadTz)} time (both clocks shown in offeredTimes)` : `same clock as Guy on every offered date — no daylight-saving gap, so show ONE time and never add an hour (the draft's "(all times are ${tzCity(leadTz)} time)" line covers it)`}. Tell Guy where the lead is based when you present the draft.${tzAssumedNote ? ` Note: ${tzAssumedNote}.` : ''}`
           : tzCandidates.length
             ? `⚠ Lead's location "${leadLoc}" is AMBIGUOUS — could be ${tzCandidates.map((c) => `${c.place} (${c.timezone})`).join(' or ')} — so the draft ASSUMES Guy's own timezone (${tzCity(tz)}). Do NOT send it like that: check the thread for a clue to which one, otherwise ask Guy WHICH place it is, get it saved to the record (wingguy_update_lead), then redo the times.`
             : `⚠ Lead's location is ${leadLoc ? `"${leadLoc}", which I can't map to a timezone` : 'missing from the record'} — the draft ASSUMES Guy's own timezone (${tzCity(tz)}). BEFORE you tell Guy that, re-read the thread: if the lead named a place they are in or near (a city, a suburb, "when you're in Melbourne"), call propose_times AGAIN with leadTimezoneOverride set to that zone — the conversation beats a vague record. Only if the thread says nothing about where they are, say this to Guy plainly and ask him to confirm where the lead is based before sending.`;

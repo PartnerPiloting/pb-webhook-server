@@ -50,8 +50,31 @@ async function runCheckAvailability({ lead_location, include_lunch, include_soon
   // Daily load is a PREFERENCE, not a cap (Guy 2026-07-10, after the hard version emptied next
   // week): busy days stay offerable, flagged — stacking them beats spilling into a fallback week.
   const busy = (d) => d.busyDay ? ` ⚠ BUSY DAY — already ${d.meetingCount} meetings (at/over his preferred ${prefs.maxMeetingsPerDay}/day): still offerable and BETTER than a fallback week, but prefer lighter days first and tell the coach how loaded it is` : '';
+  // Per-DATE real-clock comparison (Farhad, 2026-09-03: "lead timezone DIFFERS" was said off the
+  // IANA names alone, so a September Sydney slot — same clock as Brisbane until 4 October — got an
+  // hour added by the chat). The names can differ while the clocks match, and a daylight-saving
+  // change can sit inside the window, so every day line states which it is and the summary below
+  // says same / differs / changes-inside-window from the data, never from the names.
+  const leadTz = filtered.leadTimezone || coachTz;
+  const tzNamesDiffer = !!(filtered.leadTimezone && filtered.leadTimezone !== coachTz);
+  const dayGap = (d) => (d.freeSlots.length ? wingguyCalendar.clockGapMins(d.freeSlots[0].time, coachTz, leadTz) : 0);
+  const gaps = filtered.days.map(dayGap);
+  const anyDiff = gaps.some((g) => g !== 0);
+  const allDiff = gaps.length > 0 && gaps.every((g) => g !== 0);
+  const clocks = (d) => (tzNamesDiffer ? ` · CLOCKS: ${wingguyCalendar.clockGapLabel(dayGap(d), coachTz, leadTz)}` : '');
+  const leadCity = wingguyCalendar.tzCity(leadTz);
+  const coachCity = wingguyCalendar.tzCity(coachTz);
+  const firstDiff = filtered.days.find((d) => dayGap(d) !== 0);
+  const firstSame = filtered.days.find((d) => dayGap(d) === 0);
+  const clockNote = !tzNamesDiffer
+    ? ''
+    : !anyDiff
+      ? `SAME CLOCK: ${leadCity} and ${coachCity} read IDENTICALLY on every date below — the lead's timezone name differs from the coach's, but there is no daylight-saving gap in this window. Each slot's label and its "coach:" time are the same. Show ONE time, never a second time in brackets, never a conversion, and never add an hour from memory. Still tell the coach where the lead is based, and keep the single "(all times are ${leadCity} time)" line under any list. `
+      : allDiff
+        ? `The lead's clock DIFFERS from the coach's on every date below (${wingguyCalendar.clockGapLabel(gaps[0], coachTz, leadTz)}). Take the lead's time from each slot's label and the coach's from its "coach:" value — never convert yourself. When you write these times into a message, add ONE line under the list — "(all times are ${leadCity} time)" — never a marker on every line, and never leave converted times unlabelled. `
+        : `⚠ DAYLIGHT-SAVING CHANGE INSIDE THIS WINDOW: ${leadCity} and ${coachCity} read the same on some dates below and differ on others (same clock on ${firstSame ? firstSame.date : '?'}; ${wingguyCalendar.clockGapLabel(firstDiff ? dayGap(firstDiff) : 0, coachTz, leadTz)} on ${firstDiff ? firstDiff.date : '?'}). Each day line below says CLOCKS: which — trust that per date, never assume one gap applies to the whole window. Take the lead's time from each slot's label and the coach's from its "coach:" value; on a same-clock date show ONE time. Add ONE "(all times are ${leadCity} time)" line under any list. `;
   const lines = filtered.days.map((d) =>
-    `${d.date} (${d.day}, ${d.meetingCount || 0} meetings)${busy(d)}${d.fallbackWeek ? ' ⚠ FALLBACK WEEK — beyond next week; use ONLY to top up when the nearer days (including busy ones) can\'t fill the options, and never call these "next week"' : ''}:\n` +
+    `${d.date} (${d.day}, ${d.meetingCount || 0} meetings)${clocks(d)}${busy(d)}${d.fallbackWeek ? ' ⚠ FALLBACK WEEK — beyond next week; use ONLY to top up when the nearer days (including busy ones) can\'t fill the options, and never call these "next week"' : ''}:\n` +
     d.freeSlots.map((s) => `  - label="${s.label}" (coach: ${s.display}) time=${s.time}${pinch(s)}`).join('\n'));
   return {
     text:
@@ -67,9 +90,7 @@ async function runCheckAvailability({ lead_location, include_lunch, include_soon
           ? `⚠ Lead location "${filtered.leadLocation}" is AMBIGUOUS — could be ${filtered.leadTzCandidates.map((c) => `${c.place} (${c.timezone})`).join(' or ')}. ASK the coach which one (and save it to the lead's record) before offering times; until then the labels below assume the coach's own timezone. `
           : `⚠ Lead location ${filtered.leadLocation ? `"${filtered.leadLocation}" NOT recognised` : 'NOT provided'} — lead timezone is ASSUMED to be the coach's. Do NOT put any of these times into a message or draft yet: tell the coach plainly that the lead's location is unknown, ask where they're based (or suggest asking whoever introduced them), save it with wingguy_update_lead, then re-run this check. A time offered on a guessed clock to a warm lead is the expensive mistake. `) +
       `Each "label" is EXACTLY how that slot reads in the LEAD's timezone — pick slots by label, then use that slot's "time" ISO for booking. NEVER build an ISO yourself. ` +
-      (filtered.leadTimezone && filtered.leadTimezone !== filtered.yourTimezone
-        ? `The lead's timezone DIFFERS from the coach's: when you write these times into a message, add ONE line under the list — "(all times are ${wingguyCalendar.tzCity(filtered.leadTimezone)} time)" — never a marker on every line, and never leave converted times unlabelled. `
-        : '') +
+      clockNote +
       `Prefer the least-busy days and vary the time of day across the options.\n\n` +
       lines.join('\n'),
   };
@@ -170,10 +191,20 @@ async function runCheckTime({ date, time, side, lead_location, duration_mins } =
   } else if (r.leadTzAssumedNote) {
     flags.push(r.leadTzAssumedNote);
   }
+  // Real-clock line for THIS date (Farhad, 2026-09-03): a Sydney lead in September is on the same
+  // clock as Brisbane, and "Coach: 10:00 am · Lead: 10:00 am" alone did not stop the chat adding an
+  // hour from memory. Say it in words, from the data.
+  const gap = wingguyCalendar.clockGapMins(r.startISO, tz, r.leadTimezone);
+  const clockLine = (r.leadTzDetected && r.leadTimezone && r.leadTimezone !== tz)
+    ? (gap === 0
+      ? `Clocks on this date: SAME — ${wingguyCalendar.tzCity(r.leadTimezone)} and ${wingguyCalendar.tzCity(tz)} read identically (no daylight-saving gap on ${date}). Say ONE time; do not convert or add an hour.\n`
+      : `Clocks on this date: ${wingguyCalendar.clockGapLabel(gap, tz, r.leadTimezone)} — use the Coach and Lead values above exactly; never convert yourself.\n`)
+    : '';
   return {
     text:
       `startISO=${r.startISO} (pass THIS to wingguy_book_meeting — never build your own)\n` +
       `Coach: ${r.display} · Lead: ${r.leadTzDetected ? r.leadDisplay : 'UNKNOWN (no recognised location — no lead-side time exists)'} · ${r.durationMins} mins\n` +
+      clockLine +
       (flags.length ? `⚠ ${flags.join('\n⚠ ')}` : 'Free, within hours, no flags.'),
   };
 }

@@ -528,6 +528,26 @@ function offerWindowInfo(tz) {
 function tzCity(tz) {
   return (String(tz || '').split('/').pop() || '').replace(/_/g, ' ');
 }
+// REAL-CLOCK gap for one instant: minutes the LEAD's clock is ahead of the coach's (0 = same
+// clock). Two IANA names differing (Australia/Sydney vs Australia/Brisbane) does NOT mean the
+// clocks differ — outside daylight saving they read identically. The Farhad mis-read
+// (2026-09-03): the tool said "DIFFERS" off the names alone and the chat added an hour that did
+// not exist for a September date. Every "same/different" claim now comes from this, per date.
+function clockGapMins(iso, coachTz, leadTz) {
+  const ms = Date.parse(iso);
+  if (isNaN(ms) || !coachTz || !leadTz) return 0;
+  const d = DateTime.fromMillis(ms);
+  return d.setZone(leadTz).offset - d.setZone(coachTz).offset;
+}
+// Plain-English label for a clockGapMins value: "same clock" | "Sydney is 1h ahead of Brisbane".
+function clockGapLabel(gapMins, coachTz, leadTz) {
+  if (!gapMins) return 'same clock';
+  const abs = Math.abs(gapMins);
+  const h = Math.floor(abs / 60);
+  const m = abs % 60;
+  const span = m ? `${h}h ${m}m` : `${h}h`;
+  return `${tzCity(leadTz)} is ${span} ${gapMins > 0 ? 'ahead of' : 'behind'} ${tzCity(coachTz)}`;
+}
 // Format a slot for the LinkedIn message in the lead's timezone, Guy's style: "Wed 1 July, 1:30 pm".
 function fmtSlot(iso, tz) {
   const d = new Date(iso);
@@ -762,7 +782,7 @@ module.exports = {
   getAvailabilityForCoach, createBookingEvent, checkProposedTime, getClashesForISO, buildDaysFromBusy, meetingPlatformLabel,
   deleteOfferHolds, isHoldForLead, isHoldSummary, holdTitle,
   // shared offer-time pipeline + booking guard (used by the panel agent AND the connector tools)
-  filterAvailability, bookMeetingGuarded, fmtSlot, tzCity, inLunch, hhmmToMin, minutesInTz, earliestOfferDate, dateStrInTz, isWeekendInTz, firstFarWeekDate, offerWindowInfo,
+  filterAvailability, bookMeetingGuarded, fmtSlot, tzCity, clockGapMins, clockGapLabel, inLunch, hhmmToMin, minutesInTz, earliestOfferDate, dateStrInTz, isWeekendInTz, firstFarWeekDate, offerWindowInfo,
   // read-only calendar listing (provider-agnostic) + its display helper
   listEventsForCoach, resolveListWindow, timeOnlyInTz,
   // coach calendar identity (roster fields incl. multi-calendar read/write scope) — for setup/check scripts
