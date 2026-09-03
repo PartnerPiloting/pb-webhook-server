@@ -119,6 +119,12 @@ for ~10 weeks because nobody noticed, not because nobody could fix it).
   PowerShell the outer session expands `$t` first, and since it does not exist there the token
   silently vanishes, leaving `@{'x-portal-token'=}`. Guy hit this on his own machine 2026-09-03.
   The wrapper is gone - do not put it back.
+- ⚠ **The login run is a Startup-folder .vbs, not `schtasks /SC ONLOGON`.** ONLOGON was denied on
+  Guy's machine even though the DAILY task registered fine (2026-09-03) - it wants rights a
+  per-user daily task does not. The Startup folder needs no permissions at all. It matters
+  because `schtasks` cannot set "run as soon as possible after a missed start", so without a
+  login run a laptop shut at 3am would skip that day entirely. The .vbs wrapper launches the
+  .cmd hidden so nothing flashes on screen at login (chain proven 2026-09-03).
 - ⚠ **Scheduling uses `schtasks`, never `Register-ScheduledTask`.** The PowerShell cmdlet creates
   in Task Scheduler's ROOT folder, which needs elevation - it failed with "Access is denied" on
   Guy's own machine in a normal PowerShell as himself (2026-09-03), so it would have failed on

@@ -93,26 +93,39 @@ powershell.exe -ExecutionPolicy Bypass -WindowStyle Hidden -File "%~dp0wingguy-u
 "@
   Set-Content -Path $launcher -Value $launcherBody -Encoding ascii
 
-  # Two tasks rather than two triggers: schtasks takes one schedule per task. The logon task is
-  # what covers the laptop that was shut at 3am, and the updater is idempotent so a day where
-  # both fire costs nothing.
-  $logonTaskName = "$TaskName (logon)"
+  # THE DAILY RUN: schtasks, proven to work unelevated.
   $tr = '"' + $launcher + '"'
-
   schtasks /Create /TN $TaskName /TR $tr /SC DAILY /ST 03:00 /F | Out-Null
-  schtasks /Create /TN $logonTaskName /TR $tr /SC ONLOGON /F | Out-Null
-
-  # Verify rather than trust. schtasks reports failure on stdout and a non-zero exit code, both
-  # of which are easy to miss - so confirm the tasks are actually queryable before saying so.
-  schtasks /Query /TN $TaskName | Out-Null
+  schtasks /Query /TN $TaskName 2>&1 | Out-Null
   if ($LASTEXITCODE -ne 0) {
     throw "Could not create the scheduled task '$TaskName'. The extension would never update itself. Check you are in a NORMAL (non-admin) PowerShell as the machine's own user, and that policy allows scheduled tasks."
   }
-  schtasks /Query /TN $logonTaskName | Out-Null
-  if ($LASTEXITCODE -ne 0) {
-    Write-Log "WARNING: the daily task exists but the logon task '$logonTaskName' does not. Updates will still arrive at 3am, just not at login."
+  Write-Log "Daily task '$TaskName' created and verified (3am)"
+
+  # THE LOGIN RUN: the Startup folder, NOT schtasks /SC ONLOGON.
+  #
+  # ONLOGON was denied on Guy's own machine even though the DAILY task registered fine
+  # (2026-09-03) - it wants rights a per-user daily task does not. The Startup folder needs no
+  # permissions whatsoever, and it matters: schtasks cannot set "run as soon as possible after a
+  # missed start", so without a login run a laptop that is shut at 3am would simply skip that day.
+  #
+  # A .vbs wrapper rather than the .cmd directly, so nothing flashes on screen at login.
+  $startupDir = [Environment]::GetFolderPath('Startup')
+  $startupFile = Join-Path $startupDir "Wingguy Extension Update.vbs"
+  $vbs = 'CreateObject("WScript.Shell").Run """' + $launcher + '""", 0, False'
+  $loginOk = $false
+  try {
+    Set-Content -Path $startupFile -Value $vbs -Encoding ascii -ErrorAction Stop
+    $loginOk = Test-Path $startupFile
+  } catch { $loginOk = $false }
+
+  if ($loginOk) {
+    Write-Log "Login run installed and verified (Startup folder)"
+    Write-Log "SCHEDULED: daily at 3am, and again at login. Ready."
+  } else {
+    Write-Log "WARNING: the daily 3am task is in place, but the login run could not be installed."
+    Write-Log "SCHEDULED: daily at 3am ONLY. A machine that is off at 3am will not catch up until the next 3am."
   }
-  Write-Log "Scheduled tasks created and verified (daily 3am + at logon)"
 
   # Prove it works before walking away - the whole point of installing this in person.
   & $installedScript -Server $Server -Token $Token -Folder $Folder -Force
