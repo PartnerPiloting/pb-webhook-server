@@ -18,6 +18,7 @@ const { createLogger } = require('../utils/contextLogger');
 
 // Logo path - check for various possible filenames
 const LOGO_PATHS = [
+    path.join(__dirname, '..', 'assets', 'knowaguy-logo.png'), // I Know a Guy - the invoice identity from Sep 2026
     path.join(__dirname, '..', 'assets', 'ash-logo.png'),
     path.join(__dirname, '..', 'assets', 'ASH-HighRes-white-bg.jpg'),
     path.join(__dirname, '..', 'assets', 'logo.png'),
@@ -99,7 +100,9 @@ async function generateInvoicePdf(invoiceData) {
             
             if (BUSINESS_CONFIG.logoPath && fs.existsSync(BUSINESS_CONFIG.logoPath)) {
                 // Add logo on the left (scaled to reasonable size)
-                doc.image(BUSINESS_CONFIG.logoPath, 50, 40, { width: 180 });
+                // fit, not width: the I Know a Guy mark is nearly square, and a fixed 180pt
+                // width would run it down into the TAX INVOICE title.
+                doc.image(BUSINESS_CONFIG.logoPath, 50, 30, { fit: [180, 80] });
                 headerBottomY = 110; // Adjust for logo height
             } else {
                 // Fallback to text header if no logo
