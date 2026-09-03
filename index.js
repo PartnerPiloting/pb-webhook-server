@@ -1847,6 +1847,16 @@ try {
     moduleLogger.error("index.js: Error mounting extension config routes", e.message, e.stack);
 }
 
+// Extension distribution — client machines pull the extension straight from us on a schedule
+// (no cloud account, no sync app). See docs/extension-updater.md.
+try {
+    const extensionDistRoutes = require('./routes/extensionDistRoutes.js');
+    app.use('/extension/dist', extensionDistRoutes);
+    moduleLogger.info("index.js: Extension dist routes mounted at /extension/dist");
+} catch(e) {
+    moduleLogger.error("index.js: Error mounting extension dist routes", e.message, e.stack);
+}
+
 // Zoho Calendar OAuth connect flow (per-client "connect my Zoho calendar" — see routes/zohoAuthRoutes.js)
 try {
     const zohoAuthRoutes = require('./routes/zohoAuthRoutes.js');
