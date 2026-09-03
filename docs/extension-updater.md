@@ -119,6 +119,14 @@ for ~10 weeks because nobody noticed, not because nobody could fix it).
   PowerShell the outer session expands `$t` first, and since it does not exist there the token
   silently vanishes, leaving `@{'x-portal-token'=}`. Guy hit this on his own machine 2026-09-03.
   The wrapper is gone - do not put it back.
+- ⚠ **Scheduling uses `schtasks`, never `Register-ScheduledTask`.** The PowerShell cmdlet creates
+  in Task Scheduler's ROOT folder, which needs elevation - it failed with "Access is denied" on
+  Guy's own machine in a normal PowerShell as himself (2026-09-03), so it would have failed on
+  every client machine too. `schtasks` creates in the user's own context and works unelevated;
+  proven on that same machine. **Do not switch back.** The arguments are carried in a
+  `run-update.cmd` launcher so the `/TR` value is one quoted path with nothing to escape - a
+  `/TR` full of nested quotes is the classic way to get a task that registers happily and then
+  fails silently every night.
 - ⚠ **A denied scheduled-task registration used to look like success.**
   `Register-ScheduledTask` raises a NON-TERMINATING CIM error, which sails past
   `$ErrorActionPreference='Stop'` - the script logged "registered" and cheerfully downloaded

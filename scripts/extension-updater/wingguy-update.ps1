@@ -75,28 +75,44 @@ if ($Install) {
   $installedScript = Join-Path $scriptHome "wingguy-update.ps1"
   Copy-Item -Path $PSCommandPath -Destination $installedScript -Force
 
-  $taskArgs = '-ExecutionPolicy Bypass -WindowStyle Hidden -File "' + $installedScript + '" -Server "' + $Server + '" -Token "' + $Token + '" -Folder "' + $Folder + '"'
-  $action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument $taskArgs
+  # SCHEDULING: schtasks.exe, NOT Register-ScheduledTask.
+  #
+  # Register-ScheduledTask creates in Task Scheduler's ROOT folder, which needs elevation - it
+  # failed with "Access is denied" on Guy's own machine in a normal PowerShell as himself
+  # (2026-09-03). schtasks creates a task in the user's own context and works unelevated; proven
+  # on that same machine minutes later. Do not switch back.
+  #
+  # A .cmd launcher carries the arguments so the /TR value is ONE quoted path with nothing to
+  # escape. Building a /TR full of nested quotes is the classic way to get a task that registers
+  # happily and then fails silently every night.
+  $launcher = Join-Path $scriptHome "run-update.cmd"
+  $launcherBody = @"
+@echo off
+rem Written by wingguy-update.ps1 -Install. Keeps the Wingguy browser extension up to date.
+powershell.exe -ExecutionPolicy Bypass -WindowStyle Hidden -File "%~dp0wingguy-update.ps1" -Server "$Server" -Token "$Token" -Folder "$Folder"
+"@
+  Set-Content -Path $launcher -Value $launcherBody -Encoding ascii
 
-  # Two triggers: a quiet daily run, and one at logon for the laptop that was shut at 3am.
-  $triggers = @(
-    (New-ScheduledTaskTrigger -Daily -At 3:00am),
-    (New-ScheduledTaskTrigger -AtLogOn)
-  )
-  # StartWhenAvailable is what makes a missed run a DELAY rather than a failure.
-  $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -DontStopIfGoingOnBatteries -AllowStartIfOnBatteries -ExecutionTimeLimit (New-TimeSpan -Minutes 15)
+  # Two tasks rather than two triggers: schtasks takes one schedule per task. The logon task is
+  # what covers the laptop that was shut at 3am, and the updater is idempotent so a day where
+  # both fire costs nothing.
+  $logonTaskName = "$TaskName (logon)"
+  $tr = '"' + $launcher + '"'
 
-  Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction SilentlyContinue
-  # Register-ScheduledTask raises a NON-TERMINATING CIM error on failure, which sails straight
-  # past $ErrorActionPreference='Stop'. Without the verify below, a denied registration still
-  # logged "registered" and the run went on to download files happily - so an install could look
-  # perfect and never update again. Found by testing, 2026-09-03. Do not remove the verify.
-  Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $triggers -Settings $settings -Description "Keeps the Wingguy browser extension up to date." -ErrorAction SilentlyContinue | Out-Null
-  $registered = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
-  if (-not $registered) {
-    throw "Could not register the scheduled task '$TaskName'. The extension would never update itself. Check you are in a NORMAL (non-admin) PowerShell as the machine's own user, and that policy allows scheduled tasks."
+  schtasks /Create /TN $TaskName /TR $tr /SC DAILY /ST 03:00 /F | Out-Null
+  schtasks /Create /TN $logonTaskName /TR $tr /SC ONLOGON /F | Out-Null
+
+  # Verify rather than trust. schtasks reports failure on stdout and a non-zero exit code, both
+  # of which are easy to miss - so confirm the tasks are actually queryable before saying so.
+  schtasks /Query /TN $TaskName | Out-Null
+  if ($LASTEXITCODE -ne 0) {
+    throw "Could not create the scheduled task '$TaskName'. The extension would never update itself. Check you are in a NORMAL (non-admin) PowerShell as the machine's own user, and that policy allows scheduled tasks."
   }
-  Write-Log "Scheduled task '$TaskName' registered and verified present (daily 3am + at logon, catches up if missed)"
+  schtasks /Query /TN $logonTaskName | Out-Null
+  if ($LASTEXITCODE -ne 0) {
+    Write-Log "WARNING: the daily task exists but the logon task '$logonTaskName' does not. Updates will still arrive at 3am, just not at login."
+  }
+  Write-Log "Scheduled tasks created and verified (daily 3am + at logon)"
 
   # Prove it works before walking away - the whole point of installing this in person.
   & $installedScript -Server $Server -Token $Token -Folder $Folder -Force
