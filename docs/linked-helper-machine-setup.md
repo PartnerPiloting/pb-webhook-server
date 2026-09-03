@@ -327,6 +327,16 @@ copy would be unsafe - the database is mid-write. The archive is a data-director
 the right artefact**, so keep taking one occasionally until that too is automated (it needs the
 same DevTools button-press trick).
 
+⚠ **Exclusions matter more than they look (fixed 3 Sep 2026).** The archive ballooned 897 MB ->
+1.4 GB overnight. Cause: Linked Helper writes a **292 MB `lh.db.backup.<version>.archived.lhd2`
+every time it self-updates**, and those piled up alongside our own `.imported.lhd2` from the
+migration - 876 MB of stale copies. The nightly job was also packing up the **Linked Helper program
+itself** (`Instances/`, 676 MB), which is a free download and never needs backing up. With both
+excluded the archive is **292 MB** - and the only thing that actually matters, `lh.db` (1.2 GB
+uncompressed), is verified present. ⚠ tar patterns match the member name as stored, so
+`--exclude="./.config/..."` silently matches nothing; use `--exclude="*/Instances"` plus
+`--exclude="*/Instances/*"`.
+
 Setup needs a one-time OAuth token per storage account: run `rclone authorize "drive"` on a machine
 with a browser, pass the JSON to the setup script as `RCLONE_TOKEN`. ⚠ rclone's shared Google
 client_id is being retired during 2026 - make your own before then

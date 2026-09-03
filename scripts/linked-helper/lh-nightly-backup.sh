@@ -25,11 +25,7 @@ pgrep -f "linked-helper" >/dev/null && { pkill -9 -f "linked-helper"; sleep 3; }
 mkdir -p "$WORK"
 ARCHIVE="$WORK/lh-${CLIENT_ID}-${STAMP}.tar.zst"
 say "archiving data (caches excluded)"
-tar --use-compress-program="zstd -3 -T2" \
-    --exclude="*/Cache/*" --exclude="*/Code Cache/*" --exclude="*/GPUCache/*" \
-    --exclude="*/DawnCache/*" --exclude="*/DawnGraphiteCache/*" --exclude="*/DawnWebGPUCache/*" \
-    --exclude="*/ShaderCache/*" --exclude="*/Crashpad/*" \
-    -cf "$ARCHIVE" -C /home/lh .config/linked-helper 2>>"$LOG"
+tar --use-compress-program="zstd -3 -T2" --exclude="*/Cache/*" --exclude="*/Code Cache/*" --exclude="*/GPUCache/*" --exclude="*/DawnCache/*" --exclude="*/DawnGraphiteCache/*" --exclude="*/DawnWebGPUCache/*" --exclude="*/ShaderCache/*" --exclude="*/Crashpad/*" --exclude="*/Shared Dictionary/cache/*" --exclude="*/Instances" --exclude="*/Instances/*" --exclude="*.archived.lhd2" --exclude="*.imported.lhd2" -cf "$ARCHIVE" -C /home/lh .config/linked-helper 2>>"$LOG"
 SIZE=$(du -m "$ARCHIVE" | cut -f1)
 say "archive built: ${SIZE} MB"
 
