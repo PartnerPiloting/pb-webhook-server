@@ -47,6 +47,7 @@ machine pulls from us into a fixed local folder.
 | `scripts/extension-updater/wingguy-update.ps1` | Windows: install + daily update. |
 | `scripts/extension-updater/wingguy-update.sh` | macOS: same logic, launchd. **UNPROVEN** - see below. |
 | `scripts/extension-fleet.js` | Who is on what version, and who has gone quiet. |
+| `scripts/extension-install-command.js` | Prints the ready-to-paste install line for one client, token filled in. |
 
 **Deliberately no zip.** No archive library is needed on either end, the client never unzips
 (so the "which nested folder do I load?" trap disappears), and a partial download is detected
@@ -62,32 +63,35 @@ carries exactly one secret.
 
 ## Installing it for a client
 
-Over remote access, on their machine. The client watches; they run nothing.
-
-**Windows**
+On your own machine, get the line:
 
 ```
-powershell -ExecutionPolicy Bypass -File wingguy-update.ps1 -Install -Server "https://pb-webhook-server.onrender.com" -Token "<their portal token>"
+node scripts/extension-install-command.js <Client-ID>
 ```
 
-**macOS**
+That prints a single line for Windows and one for macOS, with the client's own Portal Token
+already in it - nothing to look up or assemble while sitting in front of someone else's computer.
+The server serves the updater itself (`GET /extension/dist/installer`), so **nothing has to be
+copied across the remote session** - that used to be the clumsiest step of the job.
 
-```
-chmod +x wingguy-update.sh
-./wingguy-update.sh --install --server "https://pb-webhook-server.onrender.com" --token "<their portal token>"
-```
+The token travels as a HEADER, never in the URL, so it never lands in the request logs.
 
-Either one creates the folder (`C:\Wingguy` / `~/Wingguy`), registers the schedule (daily 3am
-plus at logon, catching up if the machine was off), and runs once immediately so you see it work
-before you leave.
+Then, over remote access on their machine:
 
-Then, still on their machine:
-
-1. Browser → `chrome://extensions` or `edge://extensions`
-2. **Developer mode** on - in Edge the toggle is in the **left sidebar**, not the top right
-3. **Load unpacked** → the folder
-4. Open their portal once **in that browser** - extension storage is per browser, so it knows
+1. Open a **normal, NOT administrator** shell as the machine's own user. The scheduled job is
+   per-user and must run as the person whose browser it is.
+2. Paste the line. It creates the folder, registers the schedule, **verifies the schedule really
+   exists**, and downloads immediately so you see it work before you leave.
+3. Browser -> `chrome://extensions` or `edge://extensions`
+4. **Developer mode** on - in Edge the toggle is in the **left sidebar**, not the top right
+5. **Load unpacked** -> `C:\Wingguy` (Mac: `~/Wingguy`)
+6. Open their portal once **in that browser** - extension storage is per browser, so it knows
    nothing until you do
+7. `/wg` on any LinkedIn profile. A message about a missing Anthropic key is correct behaviour,
+   not a broken install.
+
+⚠ **If the install stops with "Could not register the scheduled task"**, that is the safety net
+doing its job - see the note under Traps. Do not carry on; the extension would never update.
 
 ## Checking on it
 
@@ -109,6 +113,12 @@ for ~10 weeks because nobody noticed, not because nobody could fix it).
   That machine defeats every other lane too, so it is not a reason to prefer something else.
 - **Deleting the folder breaks the extension.** The check-in catches it.
 - **Developer-mode nagging** continues, as it does today. Milder in Edge than Chrome.
+- ⚠ **A denied scheduled-task registration used to look like success.**
+  `Register-ScheduledTask` raises a NON-TERMINATING CIM error, which sails past
+  `$ErrorActionPreference='Stop'` - the script logged "registered" and cheerfully downloaded
+  files, so an install could look perfect and never update again. Found by testing 2026-09-03.
+  Both scripts now VERIFY the schedule exists after creating it and fail loudly if it does not.
+  **Do not remove that verify.**
 - ⚠ **The macOS script is UNPROVEN as at 2026-09-03.** It is the proven Windows logic translated,
   but the only Mac in the client base is Julian's. Walk it with him before sending it to anyone.
 
@@ -122,3 +132,10 @@ for ~10 weeks because nobody noticed, not because nobody could fix it).
 - the Windows updater end to end: empty folder → 14 files at 0.3.17, **byte-identical to
   `origin/main`**; a second run correctly did nothing; a bad token failed cleanly without
   touching the folder
+- the installer endpoints (both scripts served, 401 without a token) and the one-line install
+  running start to finish from a paste
+
+**NOT proven:** that `Register-ScheduledTask` succeeds on a real client machine. The test
+environment denied it, which is what exposed the silent-success bug - so the failure path is
+well proven and the success path is not. Worth confirming on the first real install; the script
+now tells you plainly either way.

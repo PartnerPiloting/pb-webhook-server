@@ -149,4 +149,31 @@ router.post('/checkin', requireClient, async (req, res) => {
   res.json({ ok: true });
 });
 
+/**
+ * GET /extension/dist/installer      -> the Windows updater script
+ * GET /extension/dist/installer.sh   -> the macOS updater script
+ *
+ * Serving the updater itself is what turns installing on a client machine into ONE pasted line:
+ * nothing has to be copied across the remote session first, which was the clumsiest step of the
+ * whole job. Same portal-token gate as everything else here, so the line Guy pastes carries the
+ * one secret it already needed.
+ *
+ * scripts/extension-install-command.js prints the ready-to-paste line for a given client.
+ */
+function serveUpdater(fileName, contentType) {
+  return (req, res) => {
+    const abs = path.join(__dirname, '..', 'scripts', 'extension-updater', fileName);
+    try {
+      const body = fs.readFileSync(abs, 'utf8');
+      res.type(contentType).send(body);
+    } catch (e) {
+      log.error(`installer read failed (${fileName}): ${e.message}`);
+      res.status(500).json({ ok: false, error: 'could not read the installer' });
+    }
+  };
+}
+
+router.get('/installer', requireClient, serveUpdater('wingguy-update.ps1', 'text/plain'));
+router.get('/installer.sh', requireClient, serveUpdater('wingguy-update.sh', 'text/plain'));
+
 module.exports = router;

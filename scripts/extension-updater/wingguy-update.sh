@@ -111,7 +111,14 @@ PLISTEOF
 
   launchctl unload "$PLIST" 2>/dev/null || true
   launchctl load "$PLIST"
-  log "launchd job '$LABEL' loaded (daily 3am + at login)"
+  # Verify rather than assume - the Windows equivalent silently claimed success when
+  # registration was denied (found by testing 2026-09-03), and launchctl can fail just as
+  # quietly. An install that cannot schedule itself must fail loudly, not look perfect.
+  if ! launchctl list | grep -q "$LABEL"; then
+    log "ERROR: launchd job '$LABEL' did not load - the extension would never update itself."
+    exit 1
+  fi
+  log "launchd job '$LABEL' loaded and verified (daily 3am + at login)"
 
   # Prove it works before walking away - the whole point of installing this in person.
   "$INSTALLED" --server "$SERVER" --token "$TOKEN" --folder "$FOLDER" --force

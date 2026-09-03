@@ -87,8 +87,16 @@ if ($Install) {
   $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -DontStopIfGoingOnBatteries -AllowStartIfOnBatteries -ExecutionTimeLimit (New-TimeSpan -Minutes 15)
 
   Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction SilentlyContinue
-  Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $triggers -Settings $settings -Description "Keeps the Wingguy browser extension up to date." | Out-Null
-  Write-Log "Scheduled task '$TaskName' registered (daily 3am + at logon, catches up if missed)"
+  # Register-ScheduledTask raises a NON-TERMINATING CIM error on failure, which sails straight
+  # past $ErrorActionPreference='Stop'. Without the verify below, a denied registration still
+  # logged "registered" and the run went on to download files happily - so an install could look
+  # perfect and never update again. Found by testing, 2026-09-03. Do not remove the verify.
+  Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $triggers -Settings $settings -Description "Keeps the Wingguy browser extension up to date." -ErrorAction SilentlyContinue | Out-Null
+  $registered = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+  if (-not $registered) {
+    throw "Could not register the scheduled task '$TaskName'. The extension would never update itself. Check you are in a NORMAL (non-admin) PowerShell as the machine's own user, and that policy allows scheduled tasks."
+  }
+  Write-Log "Scheduled task '$TaskName' registered and verified present (daily 3am + at logon, catches up if missed)"
 
   # Prove it works before walking away - the whole point of installing this in person.
   & $installedScript -Server $Server -Token $Token -Folder $Folder -Force
