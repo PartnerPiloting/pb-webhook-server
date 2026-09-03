@@ -213,7 +213,7 @@ async function generateInvoicePdf(invoiceData) {
                     doc.fontSize(10)
                        .font('Helvetica')
                        .fillColor('#2d3748')
-                       .text(item.description || 'Subscription', 60, rowY, { width: 380 })
+                       .text(plainDescription(item.description), 60, rowY, { width: 380 })
                        .text(`$${itemSubtotal.toFixed(2)}`, 450, rowY, { align: 'right', width: 85 });
                     rowY += 25;
                 }
@@ -288,6 +288,13 @@ async function generateInvoicePdf(invoiceData) {
  */
 function getBusinessConfig() {
     return { ...BUSINESS_CONFIG };
+}
+
+// Stripe writes quantity lines as "1 × Plan" - the multiplication sign has no glyph
+// in PDFKit's built-in Helvetica (and PMPro-era invoices carry it double-encoded as
+// A-tilde + em dash), so it printed as a garbled box. Plain "x" draws everywhere.
+function plainDescription(description) {
+    return String(description || 'Subscription').replace(/Ã—|×/g, 'x');
 }
 
 module.exports = {
