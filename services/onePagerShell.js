@@ -67,6 +67,15 @@ function css() {
   .op-cat a.title { font-size:19px; color:#221f1a; text-decoration:none; }
   .op-cat a.title:hover { color:#9a6a2f; }
   .op-cat .dek { font-style:italic; color:#6f6558; font-size:15px; line-height:1.5; margin:4px 0 0; }
+  /* Numbered to match the send order, so the list reads as a sequence. */
+  .op-cat ol { counter-reset:op-n; }
+  .op-cat ol > li { position:relative; padding-left:34px; counter-increment:op-n; }
+  .op-cat ol > li::before { content:counter(op-n); position:absolute; left:0; top:2px;
+    font-size:13px; color:#96703f; font-variant-numeric:tabular-nums; }
+  .op-cat .op-note { color:#6f6558; font-size:14px; line-height:1.55; margin:0 0 20px; font-style:italic; }
+  .op-cat .op-h2-more { margin-top:28px; padding-top:22px; border-top:1px solid #e4dccb; }
+  .op-cat ul.op-plain { list-style:none; margin:0; padding:0; }
+  .op-cat ul.op-plain li { padding-left:0; }
   @media (max-width:520px) {
     .op-mast,.op-c,.op-foot,.op-cat .op-c { padding-left:22px; padding-right:22px; }
     .op-t { font-size:24px; }
@@ -74,11 +83,12 @@ function css() {
   }`;
 }
 
-// The masthead is shared by every card.
-function masthead(eyebrow) {
+// The masthead is shared by every card. `qs` keeps the wordmark link inside
+// the reader's audience ('' or '?audience=client').
+function masthead(eyebrow, qs = '') {
   return `<div class="op-mast">
     <p class="op-eb">${esc(eyebrow || SERIES_NAME)}</p>
-    <p class="op-wm"><a href="/series">${esc(WORDMARK)}</a></p>
+    <p class="op-wm"><a href="/series${qs}">${esc(WORDMARK)}</a></p>
   </div>`;
 }
 
@@ -86,9 +96,9 @@ function masthead(eyebrow) {
 // for web pages, reply+unsubscribe for emails). `greeting` and `introHtml` are
 // email-only (introHtml = an optional lead-in above the title, e.g. the client
 // edition-1 welcome).
-function articleCard({ eyebrow, title, dek, greeting, kicker, introHtml, bodyHtml, footerHtml } = {}) {
+function articleCard({ eyebrow, title, dek, greeting, kicker, introHtml, bodyHtml, footerHtml, qs = '' } = {}) {
   return `<div class="op">
-    ${masthead(eyebrow)}
+    ${masthead(eyebrow, qs)}
     <div class="op-c">
       ${greeting ? `<p class="op-greet">${esc(greeting)}</p>` : ''}
       ${kicker ? `<p class="op-kicker">${esc(kicker)}</p>` : ''}
@@ -105,25 +115,47 @@ function articleCard({ eyebrow, title, dek, greeting, kicker, introHtml, bodyHtm
 
 // The standing footer for the public library pages (no unsubscribe here — that
 // is an email concern). Points back to the map, per the "never two clicks from
-// orientation" rule.
-function libraryFooter() {
+// orientation" rule. `qs` carries the audience ('' or '?audience=client') so a
+// client who follows the link stays in the client view.
+function libraryFooter(qs = '') {
   return `<div class="op-foot">
     New here, or want to see where it's all heading? It's all on one page -
-    <a href="/series">start at the map</a>.
+    <a href="/series${qs}">start at the map</a>.
   </div>`;
 }
 
 // The catalogue card that lists every piece, ordered by arc position.
-function catalogueCard(pieces) {
-  const items = pieces.map(p => `<li>
-      <a class="title" href="/series/${esc(p.slug)}">${esc(p.title)}</a>
+// The catalogue. Listed in SEND ORDER, not arc order, and numbered to match -
+// so what you read here is what a subscriber actually receives, in the same
+// sequence. Sorting by the frontmatter `order` instead (the arc position) is
+// what made the first library item differ from the first email, which reads as
+// a bug to anyone who hasn't seen the manifest.
+//
+// `extras` are pieces that are library-only and never emailed; they get their
+// own section rather than being silently mixed into a numbered run. A piece
+// may carry `num` (its true run position) when the sequence has a gap - the
+// client run renders its step 1 as the landing map, so the list starts at 2.
+// `qs` carries the audience through every link ('' or '?audience=client');
+// without it one click drops a client back into the prospect view.
+function catalogueCard(pieces, extras = [], { qs = '', note } = {}) {
+  const item = (p, n) => `<li${n ? ` value="${n}"` : ''}>
+      <a class="title" href="/series/${esc(p.slug)}${qs}">${esc(p.title)}</a>
       ${p.dek ? `<p class="dek">${esc(p.dek)}</p>` : ''}
-    </li>`).join('\n');
+    </li>`;
+
+  const main = pieces.map((p, i) => item(p, p.num || i + 1)).join('\n');
+  const extraBlock = extras.length ? `
+      <h2 class="op-h2-more">Also in the library</h2>
+      <p class="op-note">Not part of the weekly run - a little more craft, for anyone who wants to go deeper.</p>
+      <ul class="op-plain">${extras.map(p => item(p)).join('\n')}</ul>` : '';
+
   return `<div class="op op-cat">
-    ${masthead(SERIES_NAME)}
+    ${masthead(SERIES_NAME, qs)}
     <div class="op-c">
-      <h2>The full library</h2>
-      <ol>${items}</ol>
+      <h2>The series, in order</h2>
+      <p class="op-note">${note || 'These arrive by email one a week, in this order. Read them here in any order you like - nothing depends on having read the one before.'}</p>
+      <ol>${main}</ol>
+      ${extraBlock}
     </div>
     <div class="op-bar"></div>
   </div>`;

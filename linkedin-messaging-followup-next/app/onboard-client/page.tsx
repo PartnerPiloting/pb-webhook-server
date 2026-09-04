@@ -284,7 +284,7 @@ export default function OnboardClientPage() {
         linkedinUrl: fields['LinkedIn URL'] || '',
         timezone: fields['Timezone'] || 'Australia/Brisbane',
         phone: fields['Phone'] || '',
-        googleCalendarEmail: fields['Google Calendar Email'] || '',
+        googleCalendarEmail: fields['Calendar Email'] || fields['Google Calendar Email'] || '',
         status: fields['Status'] || 'Active',
         // Advanced settings
         profileScoringTokenLimit: String(fields['Profile Scoring Token Limit'] || '6000'),
@@ -1029,7 +1029,7 @@ export default function OnboardClientPage() {
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Google Calendar Email
+                      Calendar Email (any provider - Google, Zoho, etc.)
                     </label>
                     <input
                       type="email"
@@ -1202,6 +1202,9 @@ export default function OnboardClientPage() {
               <li>Look up the client's WordPress User ID from PMPro</li>
               <li>Fill in this form and validate the base</li>
             </ol>
+            <p className="mt-4 pt-3 border-t border-blue-200 text-sm text-blue-700">
+              💡 <strong>Checking the client's portal?</strong> Open it in an incognito window so your own portal session stays logged in — then just close the window when you're done.
+            </p>
           </div>
         )}
       </div>

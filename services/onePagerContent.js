@@ -19,7 +19,14 @@ const path = require('path');
 const CONTENT_DIR = path.join(__dirname, '..', 'content', 'one-pagers');
 
 // Files in the content dir that are planning docs, not series pieces.
-const NON_PIECE_FILES = new Set(['SERIES-ARC.md', 'PROSPECT-SERIES-PLAN.md']);
+// Planning documents that live alongside the pieces but are NOT pieces. Anything
+// added here must be listed, or it gets published to the public library - which
+// is how SERIES-WEBSITE-PASS.md ended up readable by prospects.
+const NON_PIECE_FILES = new Set([
+  'SERIES-ARC.md',
+  'PROSPECT-SERIES-PLAN.md',
+  'SERIES-WEBSITE-PASS.md',
+]);
 
 // ---- markdown -> HTML processor (lazy, cached) ----
 let _processorPromise = null;
@@ -142,6 +149,14 @@ function linkifyStepPointers(html) {
   });
 }
 
+// In-body links to the library and other pieces are authored (and linkified)
+// as plain /series or /series/<slug>. The client rendering must carry the
+// audience through them, or one click drops the reader back into the prospect
+// view. Links that already have a query string are left alone.
+function keepAudienceOnLinks(html) {
+  return html.replace(/href="\/series(\/[a-z0-9-]+)?"/g, 'href="/series$1?audience=client"');
+}
+
 // Slugs are lowercase-hyphen only; sanitise to keep the value safe for path.join
 // (belt-and-braces — routes sanitise too).
 function safeSlug(slug) {
@@ -170,6 +185,7 @@ async function renderPiece(slug, { audience = 'prospect' } = {}) {
 
   let bodyHtml = await markdownToHtml(md);
   bodyHtml = linkifyStepPointers(bodyHtml);
+  if (audience === 'client') bodyHtml = keepAudienceOnLinks(bodyHtml);
 
   return {
     slug: meta.slug || slug,

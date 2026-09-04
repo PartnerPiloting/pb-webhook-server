@@ -179,6 +179,12 @@ const allowedOrigins = [
     /^https:\/\/[a-z0-9-]+\.vercel\.app$/i,
     'https://australiansidehustles.com.au',
     'https://www.australiansidehustles.com.au',
+    // The public I Know A Guy site is served from this same app, so its own
+    // pages must be allowed to call it. Without these, the enquiry form fails
+    // with a CORS 500 for every real visitor while curl succeeds - curl sends
+    // no Origin header, so command-line testing cannot catch it.
+    'https://knowaguy.com.au',
+    'https://www.knowaguy.com.au',
     /^chrome-extension:\/\/[a-z0-9]+$/i,
     null
 ];
@@ -219,8 +225,11 @@ app.get('/deploy-info', (req, res) => {
     });
 });
 
-// Friendly root route to reduce confusion when visiting http://localhost:3001
-app.get('/', (req, res) => {
+// The old dev index. It used to sit at "/" as a friendly landing when visiting
+// http://localhost:3001, but "/" is now the public I Know A Guy homepage
+// (routes/marketingRoutes.js) — a prospect must never land on a list of API
+// endpoints. Kept at /_dev because it is still a handy local orientation page.
+app.get('/_dev', (req, res) => {
         res.setHeader('Content-Type', 'text/html; charset=utf-8');
         const apiBase = `http://localhost:${process.env.PORT || 3001}`;
         const uiUrl = 'http://localhost:3000/top-scoring-leads?testClient=Guy-Wilson';
@@ -1908,6 +1917,18 @@ try {
     }
 } catch(e) {
     moduleLogger.error('index.js: Error mounting one-pager series routes', e.message, e.stack);
+}
+
+// The public marketing site (I Know A Guy). Homepage at /home for now; the
+// root route stays the old dev index until Guy signs off on flipping it.
+try {
+    const mountMarketingSite = require('./routes/marketingRoutes.js');
+    if (typeof mountMarketingSite === 'function') {
+        mountMarketingSite(app);
+        moduleLogger.info('index.js: Marketing site routes mounted at /home');
+    }
+} catch(e) {
+    moduleLogger.error('index.js: Error mounting marketing site routes', e.message, e.stack);
 }
 
 // EMERGENCY DEBUG ROUTE - Direct in index.js

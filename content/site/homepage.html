@@ -1,4 +1,3 @@
-<title>I Know A Guy - Network building, rethought</title>
 <style>
   :root {
     --paper:   #F2EEE6;
@@ -91,6 +90,19 @@
     text-transform: uppercase; color: var(--teal); margin: 0 0 0.9rem;
     font-weight: 600;
   }
+
+  /* ---- the dare (begin with the end in mind) ---- */
+  .dare-wrap { max-width: 46rem; margin: 0.35rem auto 0; padding: 0 var(--pad); }
+  .dare {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 12px;
+    padding: 0.95rem 1.15rem; max-width: 38rem;
+    font-size: 0.98rem; line-height: 1.55; color: var(--ink-soft);
+    box-shadow: 0 10px 26px -20px var(--shadow);
+  }
+  .dare .eyebrow { margin-bottom: 0.35rem; }
+  .dare a { color: var(--teal); font-weight: 600; text-decoration: none; border-bottom: 1px solid color-mix(in srgb, var(--teal) 45%, transparent); }
+  .dare a:hover { border-bottom-color: var(--teal); }
+  .dare a:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
 
   /* ---- hero ---- */
   header.hero { padding: clamp(2rem, 7vw, 4.5rem) 0 clamp(2.5rem, 8vw, 5rem); position: relative; overflow: hidden; }
@@ -261,6 +273,13 @@
   <a class="btn btn-ghost" href="#chat">Let's talk</a>
 </nav>
 
+<div class="dare-wrap">
+  <div class="dare">
+    <p class="eyebrow">Begin with the end in mind</p>
+    Before a word of theory: <a href="/a-day-in-the-life">a day in the life</a> - my actual working day with all of this running, told flat, exactly as it happens. Most people's first reaction is <em>"that can't be real."</em> See if yours is different - then come back, and this page will explain how it's possible.
+  </div>
+</div>
+
 <header class="hero" id="top">
   <div class="wrap">
     <svg class="hero-net" viewBox="0 0 200 160" fill="none" aria-hidden="true">
@@ -400,7 +419,7 @@
   <div class="wrap reading">
     <p class="eyebrow">And you can do far more of it</p>
     <h2>You never have to carry it in your head.</h2>
-    <p>That one thing - turning up genuinely present - is the only real work left. And here's what lets you do a great deal more of it. Once a few of these relationships are running at once, the old limit shows up: remembering it all. Who's this again - first meeting or second? What did we say last time? What did I offer them? That mental juggling is what caps how many people you can really keep up with.</p>
+    <p>That one thing - turning up genuinely present - is the only real work left. And here's what lets you do a great deal more of it. Once a few of these relationships are running at once, the old limit shows up: remembering it all. Who's this again - first meeting or second? What did we say last time? What did I promise - and who's quietly waiting on a reply I've forgotten I owe? Anyone who's tried to keep follow-ups straight for more than a handful of people knows that feeling. It isn't just tiring - it's the quiet dread that caps how many people you can really keep up with.</p>
     <p>So you stop juggling, and just ask. <em>"Prep me for today's meetings"</em> - and up it comes: first call or second, what you covered last time, the thing you offered that they never got back to you on, who's due a follow-up. You walk in fully briefed and completely present, carrying none of it.</p>
 
     <div class="scene" role="img" aria-label="An AI meeting briefing generated from past calls, emails and messages.">
@@ -422,6 +441,12 @@
     <h2>The part that compounds.</h2>
     <p>There's one more turn, and it's the one that changes the scale of everything. Find a few of these people - the ones who really get it - and show them how to build their network the same way you're building yours. Now they're bringing in their own good people. You introduce yours to theirs. And it stops being you networking alone - it becomes a web of high-quality people, all quietly recommending each other. Even the introductions get easier: a warm, specific one can be drawn straight from what was actually said in your calls and messages with each of them.</p>
     <p class="more">More on this: <a href="/series/nodes">Building nodes</a> →</p>
+  </div>
+</section>
+
+<section class="honesty">
+  <div class="wrap reading">
+    <p>One more thing, said plainly. Plenty of people will tell you networking works like this - choose well, give first, follow up properly. They're right, and none of it is new. The difference is that I stopped telling and built it. Everything you've just read is running today, on real conversations - including the ones that got this page in front of you.</p>
   </div>
 </section>
 
@@ -502,7 +527,7 @@
       <p class="sig">- (I know a) Guy</p>
     </div>
 
-    <p class="doors">Not quite ready for that? Perfectly fine. You can <a href="/series">read the thinking behind all this</a> at your own pace - or have it come to you by email, one short piece a week, no rush and no hard sell.</p>
+    <p class="doors">Not quite ready for that? Perfectly fine. Never took the dare at the top? <a href="/a-day-in-the-life">A day in the life</a> is what a working day of this actually looks like - it's the same page I send people after a live demonstration. You can also <a href="/series">read the thinking behind all this</a> at your own pace - or have it come to you by email, one short piece a week, no rush and no hard sell.</p>
 
     <form class="subscribe" id="subscribe-form">
       <label class="sr-only" for="s-email">Your email</label>

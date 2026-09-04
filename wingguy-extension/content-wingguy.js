@@ -506,18 +506,73 @@
   // ---- profile scraping (best-effort, multiple fallbacks) -------------------
   // LinkedIn's DOM is volatile; selectors are intentionally redundant. In the productised
   // version these move to remote extension-config; for now sensible defaults + Copy fallback.
-  async function expandAboutSeeMore() {
-    // Click the About section's "see more" so the full text is in the DOM before we read it.
+  // The lines under the person's name in the new-build top card, read as a sequence rather than by
+  // position. Walks up from the name element to the block that also holds "Contact info" (the one
+  // durable text on that card), then takes every <p> after the name in document order. Returns
+  // { headline, location } - either may be '' when the card is not this shape (old build, or the
+  // name element was not found), in which case the selector read stands.
+  function readTopCardRun(nameEl) {
+    const out = { headline: '', location: '' };
     try {
-      const aboutAnchor = deepGetById('about');
-      const section = aboutAnchor ? aboutAnchor.closest('section') : null;
+      if (!nameEl) return out;
+      let card = nameEl;
+      for (let i = 0; i < 10 && card; i++) {
+        card = card.parentElement;
+        if (card && /contact info/i.test(cleanText(card.textContent))) break;
+      }
+      if (!card) return out;
+      const all = Array.from(card.querySelectorAll('h1, h2, p'));
+      const idx = all.indexOf(nameEl);
+      const lines = all.slice(idx + 1).filter((e) => e.tagName === 'P').map((e) => cleanText(e.textContent));
+      const chip = (s) => !s || s.length <= 3
+        || /^(?:he|she|they|ze|xe|hir)\s*\/\s*[a-z]+(?:\s*\/\s*[a-z]+)?$/i.test(s)
+        || /^·?\s*\d(?:st|nd|rd|th)\+?$/i.test(s) || /^·$/.test(s)
+        || /contact info/i.test(s) || /^https?:\/\//i.test(s) || /followers$/i.test(s) || /mutual connection/i.test(s);
+      out.headline = lines.find((s) => !chip(s)) || '';
+      const ci = lines.findIndex((s) => /contact info/i.test(s));
+      if (ci > 0) {
+        for (let j = ci - 1; j >= 0; j--) { if (!chip(lines[j])) { out.location = lines[j]; break; } }
+        if (out.location === out.headline) out.location = '';
+      }
+    } catch (_) { /* best-effort */ }
+    return out;
+  }
+
+  // The About section, on either build. Old markup: an element with id="about" whose section holds
+  // the copy in aria-hidden spans. New (2026-08 sdui) markup: NO id anchors, hashed class names, and
+  // the section is just an <h2>About</h2> followed by the copy - so the heading text is the only
+  // durable hook. Found live 2026-09-03 (Peter Creeden): the id read returned nothing on a profile
+  // with a 1,000-character About, and because the self-check skips a landmark whose container is
+  // missing, About had been silently blank for every new-build profile since early August with
+  // zero rows in the health table to show for it. Returns the section (or nearest text block).
+  function findAboutSection() {
+    const aboutAnchor = deepGetById('about');
+    if (aboutAnchor) return aboutAnchor.closest('section') || aboutAnchor.parentElement;
+    const h2 = deepQueryAll('h2, h3').find((el) => /^about$/i.test(cleanText(el.textContent)));
+    if (!h2) return null;
+    if (h2.closest('section')) return h2.closest('section');
+    // No <section> wrapper: walk up to the first ancestor that holds more than the heading.
+    let block = h2;
+    for (let i = 0; i < 5 && block; i++) {
+      block = block.parentElement;
+      if (block && cleanText(block.textContent).length > cleanText(h2.textContent).length + 40) return block;
+    }
+    return null;
+  }
+
+  async function expandAboutSeeMore() {
+    // Click the About section's "see more" so the full text is in the DOM before we read it. The
+    // new build renders it as a bare "… more" span, not a "see more" button - match both.
+    try {
+      const section = findAboutSection();
       if (!section) return;
-      const btn = Array.from(section.querySelectorAll('button')).find((b) =>
-        /see more/i.test(b.getAttribute('aria-label') || b.textContent || '')
+      const btn = Array.from(section.querySelectorAll('button, span[role="button"], span, a')).find((b) =>
+        (b.children.length === 0 && /^(?:…\s*)?(?:see\s+)?more$/i.test(cleanText(b.textContent)))
+        || /see more/i.test(b.getAttribute('aria-label') || '')
       );
       if (btn) {
-        btn.click();
-        await new Promise((r) => setTimeout(r, 250));
+        (btn.closest('button') || btn).click();
+        await new Promise((r) => setTimeout(r, 300));
       }
     } catch (_) { /* non-fatal */ }
   }
@@ -543,16 +598,25 @@
   }
 
   function readAbout() {
-    const aboutAnchor = deepGetById('about');
-    const section = aboutAnchor ? aboutAnchor.closest('section') : null;
+    const section = findAboutSection();
     if (!section) return '';
-    // The About copy is usually in spans marked aria-hidden="true" (LinkedIn duplicates text for a11y).
+    // Old build: the copy is duplicated into spans marked aria-hidden="true" (LinkedIn's a11y trick).
     const spans = Array.from(section.querySelectorAll(selStr('profile_about_spans')))
       .map((s) => cleanText(s.textContent))
       .filter(Boolean);
-    // Drop the heading ("About") and dedupe.
-    const text = Array.from(new Set(spans)).filter((t) => t.toLowerCase() !== 'about').join(' ');
-    return text.slice(0, 4000);
+    if (spans.length) {
+      const text = Array.from(new Set(spans)).filter((t) => t.toLowerCase() !== 'about').join(' ');
+      if (text) return text.slice(0, 4000);
+    }
+    // New build: no marked spans at all - the copy is plain text under the heading, with the
+    // "… more" toggle and a "Top skills" sub-block inside the same section. Take the visible text,
+    // drop the heading, drop the toggle, cut at Top skills. Proven live 2026-09-03: 1,003 clean
+    // characters from a profile the old read returned nothing for.
+    let text = cleanText(section.innerText || section.textContent) || '';
+    text = text.replace(/^\s*about\s*/i, '').replace(/\s*(?:…\s*)?(?:see\s+)?(?:more|less)\s*$/i, '');
+    const skills = text.search(/\bTop skills\b/);
+    if (skills > 0) text = text.slice(0, skills);
+    return text.replace(/\s+/g, ' ').trim().slice(0, 4000);
   }
 
   // The Activity section (their recent post previews). Three-layer find: the store-correctable id
@@ -705,6 +769,93 @@
     return '';
   }
 
+  // ---- GROUP threads (introductions live here — "Ann, Dimitri, and you") ----------------------
+  // Every participant other than the signed-in user, read off the conversation's own profile links
+  // (each message row links its sender). Returns [{ name, profileUrl }] in order of first
+  // appearance; profileUrl may be the internal /in/ACoA form (callers resolve it) or '' when a
+  // sender has no link in view.
+  function threadParticipants(convo, groupTitle) {
+    const self = selfNavName().toLowerCase();
+    const selfFirst = self.split(/\s+/)[0] || '';
+    const out = [];
+    const seen = new Map(); // lower-cased name → entry
+    const add = (rawName, href) => {
+      let t = cleanText(rawName);
+      const vm = t.match(/^view\s+(.+?)[’']s\s+profile$/i);
+      if (vm) t = vm[1];
+      if (!looksLikeName(t) || /profile/i.test(t)) return;
+      const low = t.toLowerCase();
+      if (self && (low === self || (selfFirst && low === selfFirst))) return;
+      const u = normalizeInUrl(href);
+      const cur = seen.get(low);
+      if (cur) {
+        // Prefer a vanity link over the internal member-id form when both are seen.
+        if (u && (!cur.profileUrl || (/\/in\/ACoA/i.test(cur.profileUrl) && !/\/in\/ACoA/i.test(u)))) cur.profileUrl = u;
+        return;
+      }
+      const e = { name: t, profileUrl: u };
+      seen.set(low, e); out.push(e);
+    };
+    let links = [];
+    try { links = [...(convo || document).querySelectorAll('a[href*="/in/"]')]; } catch (_) {}
+    for (const a of links) {
+      if (insideWingguy(a)) continue;
+      const img = a.querySelector ? a.querySelector('img[alt]') : null;
+      add(a.getAttribute('aria-label') || a.textContent || (img && img.getAttribute('alt')), a.getAttribute('href'));
+    }
+    // The group heading names the others by first name ("Ann, Dimitri, and you"). When it does,
+    // keep only those — it is the surest way to drop the coach's own row links when the nav name
+    // couldn't be read, and any stray link to a third profile mentioned in a message.
+    if (isGroupTitle(groupTitle)) {
+      const firsts = String(groupTitle).replace(/\d+\s+people in this conversation/i, '')
+        .split(/,|\band\b/).map((x) => cleanText(x).toLowerCase()).filter((x) => x && x !== 'you');
+      const kept = out.filter((p) => firsts.includes(p.name.toLowerCase().split(/\s+/)[0]));
+      if (kept.length) return kept;
+    }
+    return out;
+  }
+  // Is this conversation a GROUP (3+ people)? True on a group heading, or on two-plus other
+  // participants when the coach's own name is known (so their own row links can't fake a group).
+  // Returns { title, participants, primary } or null.
+  function detectGroupThread(convo) {
+    if (!convo) return null;
+    let title = '';
+    try { const h = convo.querySelector('h2, h3, [class*="title"]'); title = cleanText(h && h.textContent); } catch (_) {}
+    let participants = threadParticipants(convo, title);
+    let thread = [];
+    try { thread = isNewUiConvoContainer(convo) ? scrapeNewUiThread(convo) : scrapeOpenThread(); } catch (_) {}
+    // A participant is someone who has SPOKEN in this thread (a sender), unless the heading itself
+    // names the group. A profile link pasted inside a message ("have a look at John's profile") must
+    // never make John a participant — or get the conversation saved onto John's record.
+    const senders = new Set(thread.map((m) => String(m.sender || '').toLowerCase().trim()).filter((x) => x && x !== 'unknown'));
+    const spoke = (p) => { const low = p.name.toLowerCase(); const first = low.split(/\s+/)[0]; return senders.has(low) || [...senders].some((x) => x.split(/\s+/)[0] === first); };
+    if (!isGroupTitle(title)) participants = participants.filter(spoke);
+    const isGroup = isGroupTitle(title) || (!!selfNavName() && participants.length >= 2);
+    if (!isGroup) return null;
+    // Whose reply is this? The LAST person other than the coach to speak — in an introduction that is
+    // the person being introduced, once they've said hello. Falls back to the first participant.
+    let primary = null;
+    for (let i = thread.length - 1; i >= 0 && !primary; i--) {
+      const s = String(thread[i].sender || '').toLowerCase();
+      if (!s || s === 'unknown') continue;
+      primary = participants.find((p) => s === p.name.toLowerCase() || s.split(/\s+/)[0] === p.name.toLowerCase().split(/\s+/)[0]) || null;
+    }
+    if (!primary) primary = participants[0] || null;
+    console.log('[Wingguy] GROUP thread:', JSON.stringify(title), '| participants:',
+      participants.map((p) => `${p.name}${p.profileUrl ? '' : ' (no link)'}`).join(', ') || '(none read)', '| replying to:', primary ? primary.name : '(nobody)');
+    return { title, participants, primary };
+  }
+  // Un-scramble each participant's internal /in/ACoA link to the vanity slug (in place).
+  async function resolveParticipantUrls(participants) {
+    for (const p of participants || []) {
+      if (p.profileUrl && /\/in\/ACoA/i.test(p.profileUrl)) {
+        const real = await resolveAcoaToVanity(p.profileUrl);
+        if (real && !/\/in\/ACoA/i.test(real)) p.profileUrl = real;
+      }
+    }
+    return participants;
+  }
+
   function scrapeMessagingHeader(containerOpt) {
     // NOTE: .isConnected (not document.contains) — the messaging composer lives in an open shadow root,
     // and document.contains() can't see into shadow DOM, so it wrongly reported the box as "gone" and we
@@ -712,6 +863,15 @@
     const anchor = (lastFocusedEditable && lastFocusedEditable.isConnected) ? lastFocusedEditable : null;
     const convo = containerOpt || (anchor && closestConversationContainer(anchor)) ||
       document.querySelector(CONVO_SELECTORS()) || newUiConvoFromDocument();
+    // GROUP thread (an introduction, typically): there is no single "person this thread is with".
+    // Hand back the roster plus the person we're replying to AS the identity, so everything
+    // downstream (CRM match, email lookup, capture, the draft) works on a real person — never on
+    // the group heading (Ann/Dimitri, 2026-09-02).
+    const grp = detectGroupThread(convo);
+    if (grp) {
+      const p = grp.primary || { name: '', profileUrl: '' };
+      return { name: p.name, headline: '', profileUrl: p.profileUrl, group: grp };
+    }
     if (convo && isNewUiConvoContainer(convo)) {
       const h = scrapeNewUiHeader(convo);
       if (h) { console.log('[Wingguy] messaging-header (new-UI) →', h.name, '|', h.profileUrl || '(no /in/ url)'); return h; }
@@ -847,6 +1007,21 @@
     let headline = cleanText(headlineEl && headlineEl.textContent);
     const locationEl = findByKey('profile_location', topCard);
     let location = cleanText(locationEl && locationEl.textContent);
+    // New-build top card (2026-09-03, live on Aaron Dormer / Peter Creeden): the name is an <h2>
+    // followed by a run of <p>s - pronoun chip, "· 1st", "· 2nd", THEN the headline, company,
+    // location, "·", "Contact info". A position-based selector ("first p after the name") lands on
+    // the pronoun chip, which is how "He/Him" reached a record as a headline. Read the run by
+    // MEANING instead: skip the chips and take the first real line; location is the last real
+    // line before "Contact info". Only overrides a selector read that is empty or is itself a chip.
+    if (!inThread) {
+      const chip = (s) => !s || s.length <= 3
+        || /^(?:he|she|they|ze|xe|hir)\s*\/\s*[a-z]+(?:\s*\/\s*[a-z]+)?$/i.test(s)
+        || /^·?\s*\d(?:st|nd|rd|th)\+?$/i.test(s) || /^·$/.test(s)
+        || /contact info/i.test(s) || /^https?:\/\//i.test(s) || /followers$/i.test(s) || /mutual connection/i.test(s);
+      const tc = readTopCardRun(nameEl);
+      if (chip(headline) && tc.headline) headline = tc.headline;
+      if (chip(location) && tc.location) location = tc.location;
+    }
 
     // RAW FALLBACK: the whole profile's visible text. Robust to LinkedIn's class churn — when the
     // structured selectors miss, the model still gets real content to hook on (like AI Blaze does).
@@ -881,13 +1056,15 @@
     // Grade our own homework on the page we just read. Not awaited and never surfaced — this is the
     // silent half. The half the person sees is draftGapNotice(), rendered with the context header.
     try {
-      const aboutAnchor = deepGetById('about');
       runSelfCheck(inThread ? 'messaging' : 'profile', {
         // Same container resolution as the thread reader: classic selectors, then the new-UI
         // structural matcher. If neither finds one, the convo-scoped checks are skipped, not
         // checked against the whole document (see runSelfCheck).
         convo: document.querySelector(CONVO_SELECTORS()) || newUiConvoFromDocument() || null,
-        about: (aboutAnchor && aboutAnchor.closest('section')) || null,
+        // Same finder the read uses (heading-text fallback included), so a profile that HAS an
+        // About now produces a health row for the spans landmark even on the new build - which is
+        // exactly the blindness the id-only scope hid for a month.
+        about: findAboutSection(),
         activity: activityScope.section,
       }).catch(() => {});
     } catch (_) { /* a self-check must never break a scrape */ }
@@ -906,6 +1083,14 @@
       if (h.name) { base.name = h.name; base.nameSource = 'messaging-header'; }
       if (h.headline) base.headline = h.headline;
       if (h.profileUrl) base.profileUrl = h.profileUrl;
+      if (h.group) {
+        // Roster goes up with the profile so the server can say who is on file and who isn't.
+        const participants = await resolveParticipantUrls(h.group.participants || []);
+        base.group = { title: h.group.title || '', participants, replyTo: h.name || '' };
+        base.nameSource = 'group-thread';
+        const me = participants.find((p) => p.name === h.name);
+        if (me && me.profileUrl) base.profileUrl = me.profileUrl;
+      }
       if (samePerson) {
         // The lazy-section pass was skipped above (no auto-scroll on the messaging surface), so
         // force About/Activity into the DOM now and re-read. Header stays the name authority.
@@ -1012,7 +1197,15 @@
     // "profile" blocks LinkedIn's row-link text ("View Guy's profile") — that once leaked through as a
     // person's "name" and prefilled the rescue card with junk (Adrian Rampoldi capture, 2026-08-01).
     return !!t && t.length >= 2 && t.length < 60 && /[A-Za-z]/.test(t) &&
-      !/(message|reaction|status|sent the following|edited|open the options|see more|today|yesterday|active now|profile|· )/i.test(t);
+      !/(message|reaction|status|sent the following|edited|open the options|see more|today|yesterday|active now|profile|· )/i.test(t) &&
+      !isGroupTitle(t);
+  }
+  // A GROUP thread's heading is not a person ("Ann, Dimitri, and you 3 people in this conversation",
+  // Guy 2026-09-02). It used to pass as a name, so the CRM lookup searched for someone called
+  // "ann, … conversation", the chat said the lead was "not in the CRM" (both were), and the rescue
+  // card offered to create a lead with that junk title.
+  function isGroupTitle(t) {
+    return /(\band you\b|people in this conversation|^\d+\s+people\b)/i.test(String(t || ''));
   }
   function senderForItem(item) {
     const group = item.closest(selStr('message_group_item')) || item;
@@ -1692,6 +1885,30 @@
       const ceaseNote = qres && qres.autoCeased ? ' — follow-ups ceased (door open: their reply resurfaces them)' : '';
       showCaptureToast(`✓ Saved ${thread.length} messages to ${who}${extrasNote(extras)}${ceaseNote}`);
 
+      // GROUP thread: the conversation belongs to EVERY participant on file, not just the one we're
+      // replying to (an introduction is Ann's story as much as Dimitri's, 2026-09-02). Save it onto
+      // each other participant's record too; anyone not in the Portal is named, never guessed.
+      if (hdr && hdr.group && Array.isArray(hdr.group.participants)) {
+        const primarySlug = slugOfInUrl(profileUrl);
+        const others = await resolveParticipantUrls(hdr.group.participants.filter((p) =>
+          p.name !== (hdr.name || '') && p.profileUrl && /\/in\//.test(p.profileUrl)));
+        const savedTo = [], missing = [];
+        for (const p of others) {
+          try {
+            if (/\/in\/ACoA/i.test(p.profileUrl) || slugOfInUrl(p.profileUrl) === primarySlug) { missing.push(p.name); continue; }
+            const lk = await bg({ type: 'LOOKUP_LEAD', linkedinUrl: p.profileUrl });
+            const l = ((lk && lk.leads) || [])[0];
+            if (!l) { missing.push(p.name); continue; }
+            await bg({ type: 'QUICK_UPDATE', leadId: l.id, content, section: 'linkedin' });
+            savedTo.push(`${l.firstName || ''} ${l.lastName || ''}`.trim() || p.name);
+          } catch (e) { console.log('[Wingguy] group save failed for', p.name, e.message); missing.push(p.name); }
+        }
+        console.log('[Wingguy] group thread also saved to:', savedTo, '| not in Portal:', missing);
+        if (savedTo.length || missing.length) {
+          showCaptureToast(`✓ Group thread — also saved to ${savedTo.join(', ') || 'nobody else'}${missing.length ? ` · not in your Portal: ${missing.join(', ')}` : ''}`);
+        }
+      }
+
       // Learn-from-my-edit: if this send follows a Wingguy insert, pair the AI's draft with the
       // message that actually went out (the newest message in the thread, if it's ours). Fire-and-
       // forget — a pairing failure never touches the capture above. The backend drops unchanged
@@ -1953,6 +2170,29 @@
             const verb = isNew ? `✓ Added ${pick.name} and saved` : '✓ Saved';
             const to = isNew ? '' : ` to ${pick.name}`;
             card.replaceChildren(el('div', 'wingguy-rescue-done', `${verb} ${msgs}${to}${extrasNote(extras)}`));
+
+            // A rescue create is made from a MESSAGE THREAD, so nothing here knows who the person
+            // actually is — the record lands with a name and a URL and no profile at all. That lead is
+            // then invisible to the nightly scorer (it only reads 'To Be Scored') and unreachable by
+            // Linked Helper unless the client runs campaigns, so it stays blank forever. Julian had 14
+            // of them by 2026-09-02, every one a real conversation.
+            //
+            // So: fetch their profile in a hidden tab and persist it, which scores them on the spot.
+            // AFTER the success card is shown and deliberately not awaited — the save is already done
+            // and safe, this takes a few seconds, and it must never make a working flow look slow or
+            // failed. The card updates in place if it is still on screen.
+            if (isNew && pick.linkedinProfileUrl) {
+              bg({ type: 'WG_ENRICH_FROM_PROFILE', leadRecordId: leadId, profileUrl: pick.linkedinProfileUrl })
+                .then((r) => {
+                  console.log(`[Wingguy] rescue-enrich ${pick.name}:`, r);
+                  if (!r || !r.enriched || !card.isConnected) return;
+                  const note = r.scored ? ' · profile read and scored' : ' · profile read';
+                  const done = card.querySelector('.wingguy-rescue-done');
+                  if (done) done.textContent += note;
+                })
+                .catch((e) => console.log('[Wingguy] rescue-enrich failed (non-fatal):', e && e.message));
+            }
+
             setTimeout(dismissCaptureRescue, 2500);
           } catch (err) {
             saveBtn.disabled = false;
@@ -2185,7 +2425,10 @@
   // The CONTEXT header: just who we're working with. (The old Thanks/Reply mode tabs are gone —
   // 2026-06-28 — the unified chat agent works out the move itself; Guy steers it in chat.)
   function renderContext(profile) {
-    const who = `${escapeHtml(profile.name || '(name not found)')}${profile.headline ? ` <span class="wingguy-muted">· ${escapeHtml(profile.headline)}</span>` : ''}`;
+    const g = profile.group;
+    const who = g
+      ? `Group: ${escapeHtml((g.participants || []).map((p) => p.name).join(', ') || g.title || 'several people')} <span class="wingguy-muted">· replying to ${escapeHtml(profile.name || '?')}</span>`
+      : `${escapeHtml(profile.name || '(name not found)')}${profile.headline ? ` <span class="wingguy-muted">· ${escapeHtml(profile.headline)}</span>` : ''}`;
     // Say it plainly when a gap actually changes what they're about to get. No error codes, no
     // landmark names — and it says someone is already on it, because a known issue lands very
     // differently from a product that has quietly gone vague on you.

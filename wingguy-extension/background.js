@@ -301,6 +301,44 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       .catch(error => sendResponse({ success: false, error: error.message }));
     return true;
   }
+
+  // Wingguy 0.3.15: read a freshly-created lead's PROFILE in a hidden tab and persist it to their
+  // record (scoring them on the spot when that makes them scorable). One message because the two
+  // halves are useless apart, and the caller is mid-flow on a message thread, not a profile page.
+  // Never rejects: enrichment is a bonus on top of the create + thread save, so a failure here is
+  // reported as {enriched:false} and the nightly batch remains the backstop.
+  if (message.type === 'WG_ENRICH_FROM_PROFILE') {
+    (async () => {
+      try {
+        const profile = await scrapeProfileViaTab(message.profileUrl);
+        if (!profile || (!profile.about && !profile.headline)) {
+          console.log('[Wingguy][bg] enrich-from-profile: nothing usable read for', message.profileUrl);
+          return { success: true, data: { enriched: false, reason: 'profile read came back empty' } };
+        }
+        // Send ONLY the six fields enrichLeadFromScrape reads. A full scrape also carries pageText
+        // and recentPosts — tens of KB that the server would ignore — and none of it should leave
+        // the client's browser without a reason. _wgSurface is one of the six: the hidden tab loads
+        // the real /in/ page so scrapeProfile() stamps it 'profile', and that is what makes the
+        // server trust the headline (a messaging-surface "headline" is a thread snippet).
+        const res = await wingguyEnrichLead({
+          leadRecordId: message.leadRecordId,
+          profile: {
+            _wgSurface: profile._wgSurface,
+            _wgPageKept: profile._wgPageKept,
+            about: profile.about,
+            headline: profile.headline,
+            location: profile.location,
+            profileUrl: message.profileUrl,
+          },
+        });
+        return { success: true, data: { enriched: !!(res && res.changed), scored: !!(res && res.scored) } };
+      } catch (e) {
+        console.log('[Wingguy][bg] enrich-from-profile failed (non-fatal):', e.message);
+        return { success: true, data: { enriched: false, reason: e.message } };
+      }
+    })().then(sendResponse);
+    return true;
+  }
 });
 
 const sleepBg = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -512,6 +550,20 @@ async function wingguyLeadContact(payload) {
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
     throw new Error(errorData.error || `Lead-contact failed: ${response.status}`);
+  }
+  return response.json();
+}
+
+// Wingguy: POST /api/wingguy/enrich-lead — persist a profile scrape onto a known record and score it.
+// Used after a capture-rescue create, where the human is on a MESSAGE THREAD and the profile has to be
+// fetched separately (see WG_ENRICH_FROM_PROFILE below).
+async function wingguyEnrichLead(payload) {
+  const apiBase = await getWingguyApiBase();
+  const headers = await getAuthHeaders();
+  const response = await fetch(`${apiBase}/enrich-lead`, { method: 'POST', headers, body: JSON.stringify(payload || {}) });
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || `Enrich-lead failed: ${response.status}`);
   }
   return response.json();
 }

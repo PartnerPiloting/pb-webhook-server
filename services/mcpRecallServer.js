@@ -22,7 +22,7 @@ const express = require('express');
 
 const clientService = require('./clientService');
 const { findLeadByEmail } = require('./inboundEmailService');
-const { getMeetingsForLead, getParticipantsForMeeting } = require('./recallWebhookDb');
+const { getMeetingsForLead, getParticipantsForMeeting, findMeetingsByFathomRecordingId } = require('./recallWebhookDb');
 const { normalizeFathomApiTranscript } = require('./fathomIngestService');
 const { registerWingguyRulesTools } = require('./wingguyRulesMcp');
 const { registerWingguyBookingTools } = require('./wingguyBookingMcp');
@@ -186,16 +186,55 @@ async function coachFathomKey(coachClientId = DEFAULT_COACH_CLIENT_ID) {
   return coachClient.fathomApiKey;
 }
 
+/**
+ * What the STORE did with a raw Fathom recording, said in the raw tool's own output.
+ * A back-to-back session is ONE lump in the Fathom API even after the splitter has filed it as
+ * separate per-person meetings — on 2026-07-28 that lump was misread as "Rick is filed under
+ * April" and a "repair" was offered against data that was already correct. The guard is
+ * structural: every raw-feed response carries the filing verdict, so the wrong conclusion cannot
+ * be drawn from the raw view alone. Distinguishes "not ingested" from "could not check".
+ */
+async function storeFilingStatus(fathomRecordingId) {
+  let rows;
+  try {
+    rows = await findMeetingsByFathomRecordingId(fathomRecordingId);
+  } catch {
+    rows = null;
+  }
+  if (rows === null) {
+    return 'Store cross-check UNAVAILABLE — could not reach the transcript store; do not draw filing conclusions either way.';
+  }
+  if (!rows.length) {
+    return 'Store status: NOT in the transcript store yet (not ingested, or ingest failed) — the poller may still be coming.';
+  }
+  const parts = rows.map((m) => {
+    const mins = m.duration_seconds ? `${Math.round(m.duration_seconds / 60)} min` : '?';
+    return `#${m.id} "${m.title}" (${mins}${m.has_transcript ? '' : ', EMPTY'})`;
+  });
+  return `Store status: ALREADY FILED as ${rows.length} meeting(s): ${parts.join(' + ')}. `
+    + 'The splitter has done its job — do NOT diagnose mis-filing from this raw lump. '
+    + 'For a per-person transcript use recall_latest_transcript.';
+}
+
 async function runFathomListMeetings({ query, after }, coachClientId = DEFAULT_COACH_CLIENT_ID) {
   const key = await coachFathomKey(coachClientId);
   let items = await fathomFetchMeetings(key, { createdAfter: after });
   items = items.filter((m) => fathomMeetingMatches(m, query));
   if (!items.length) return { text: 'No Fathom recordings matched.' };
-  const lines = items.map((m) => {
+  const lines = await Promise.all(items.map(async (m) => {
     const s = fathomMeetingSummary(m);
-    return `- recording_id=${s.recordingId} | "${s.title}" | start=${s.start}${s.durMin ? ` | ${s.durMin} min` : ''}${s.invitees.length ? ` | invitees: ${s.invitees.join(', ')}` : ''}`;
-  });
-  return { text: `Fathom recordings (newest window, ${items.length} shown):\n${lines.join('\n')}` };
+    // Per-recording store verdict: a back-to-back lump lists under ONE title here even when the
+    // store has already split it into several meetings — say what the store holds, per line.
+    let filed = '';
+    try {
+      const rows = await findMeetingsByFathomRecordingId(s.recordingId);
+      if (rows === null) filed = ' | store: could not check';
+      else if (!rows.length) filed = ' | store: not ingested';
+      else filed = ` | store: filed as ${rows.length} meeting(s) — ${rows.map((r) => `#${r.id} "${r.title}"`).join(' + ')}`;
+    } catch { filed = ' | store: could not check'; }
+    return `- recording_id=${s.recordingId} | "${s.title}" | start=${s.start}${s.durMin ? ` | ${s.durMin} min` : ''}${s.invitees.length ? ` | invitees: ${s.invitees.join(', ')}` : ''}${filed}`;
+  }));
+  return { text: `Fathom recordings (newest window, ${items.length} shown). NOTE: a raw recording can span back-to-back calls — the "store:" field on each line is the filing truth.\n${lines.join('\n')}` };
 }
 
 async function runFathomTranscript({ recording_id, query, after }, coachClientId = DEFAULT_COACH_CLIENT_ID) {
@@ -222,6 +261,7 @@ async function runFathomTranscript({ recording_id, query, after }, coachClientId
     `Start: ${s.start}${s.durMin ? ` | Duration: ${s.durMin} min` : ''}`,
     s.invitees.length ? `External invitees: ${s.invitees.join(', ')}` : '',
     'Source: Fathom API direct (raw recording — may span back-to-back calls; check timestamps/speakers)',
+    await storeFilingStatus(s.recordingId),
     '---',
     '',
   ].filter(Boolean).join('\n');
@@ -261,7 +301,7 @@ function createRecallMcpServer(coachClientId = DEFAULT_COACH_CLIENT_ID) {
     {
       title: 'List recent Fathom recordings',
       description:
-        'Lists the most recent Fathom recordings (title, start time, duration, external invitees, recording_id) straight from the Fathom API, bypassing the transcript store. Use to see what Fathom captured — e.g. to find the right recording before calling fathom_transcript.',
+        'Lists the most recent Fathom recordings (title, start time, duration, external invitees, recording_id) straight from the Fathom API — this is the RAW feed, NOT the filing truth. A back-to-back session appears as ONE recording under one title here even when the store has already split it into separate per-person meetings (each line carries a "store:" field with the actual filing state — trust that field). NEVER conclude a meeting is missing or mis-filed because its person does not appear in this list; check recall_latest_transcript first.',
       inputSchema: {
         query: z.string().optional().describe('Optional filter — matches meeting title or invitee name/email (case-insensitive)'),
         after: z.string().optional().describe('Optional ISO 8601 date — only recordings created on or after this date/time'),
@@ -278,7 +318,7 @@ function createRecallMcpServer(coachClientId = DEFAULT_COACH_CLIENT_ID) {
     {
       title: 'Verbatim transcript direct from Fathom',
       description:
-        'Fetches a verbatim meeting transcript DIRECTLY from Fathom, bypassing the transcript store. Use when the user says to get it "from Fathom", or when recall_latest_transcript returns nothing/wrong content. NOTE: Fathom returns whole recordings — a back-to-back session comes back as ONE transcript covering all its calls (use timestamps + speaker names to find the right portion).',
+        'Fetches a verbatim meeting transcript DIRECTLY from Fathom — the RAW recording, NOT the filing truth. A back-to-back session comes back as ONE lump covering all its calls even when the store has already split it correctly (the header\'s "Store status" line reports what the splitter actually filed — trust that line). NEVER diagnose a filing/attribution problem from this output, and never propose repairing data based on it. Use when the user says to get it "from Fathom", or when recall_latest_transcript returns nothing/wrong content; use timestamps + speaker names to find the right portion.',
       inputSchema: {
         recording_id: z.string().optional().describe('Fathom recording_id (from fathom_list_meetings) — most precise'),
         query: z.string().optional().describe('Title or invitee name/email to match (most recent matching recording is returned)'),
