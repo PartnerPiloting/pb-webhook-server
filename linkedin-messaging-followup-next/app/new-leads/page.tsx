@@ -11,33 +11,16 @@ import EnvironmentValidator from "../../components/EnvironmentValidator";
 export const dynamic = 'force-dynamic'
 
 export default function NewLeadsPage() {
-  // "People you've met" -> pre-fill the form; bump refreshKey after a create so the list
-  // drops anyone whose lead now exists (the server attaches their transcripts on create).
-  const [prefill, setPrefill] = useState<any>(null);
+  // "People you've met": Add is one click inside that section (Guy, 2026-09-04) - the record is
+  // created there and the server attaches the waiting transcripts on create. We only bump
+  // refreshKey so "Possible matches" re-checks; the met list keeps the added row on screen itself
+  // (it carries the LinkedIn box) until Done. The form below is a plain form again.
   const [refreshKey, setRefreshKey] = useState(0);
 
-  const handleAddPerson = (person: any) => {
-    const nameParts = String(person.name || '').trim().split(/\s+/).filter(Boolean);
-    const lastName = nameParts.length > 1 ? nameParts[nameParts.length - 1] : '';
-    const firstName = nameParts.length > 1 ? nameParts.slice(0, -1).join(' ') : (nameParts[0] || '');
-    setPrefill({
-      firstName,
-      lastName,
-      email: person.email || '',
-      // The met-path (2026-09-04): the recorder's address is the identity the transcripts attach
-      // by, whatever email ends up typed; the LinkedIn URL can wait; no follow-up nag.
-      pendingEmail: person.email || '',
-      fromMetList: true,
-      noFollowUpNeeded: true,
-      followUpDate: '',
-    });
-    // Bring the form into view so the pre-fill is obvious
-    if (typeof window !== 'undefined') window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
-  };
+  const handleAdded = () => setRefreshKey((k) => k + 1);
 
   const handleLeadCreated = (newLead: any) => {
     console.log('New lead created:', newLead);
-    setPrefill(null);
     setRefreshKey((k) => k + 1);
   };
 
@@ -47,8 +30,8 @@ export default function NewLeadsPage() {
         <Layout>
           <div className="p-8">
             <PossibleMatches refreshKey={refreshKey} />
-            <PeopleYouveMet onAddPerson={handleAddPerson} refreshKey={refreshKey} />
-            <NewLeadForm onLeadCreated={handleLeadCreated} initialValues={prefill} />
+            <PeopleYouveMet onAdded={handleAdded} refreshKey={refreshKey} />
+            <NewLeadForm onLeadCreated={handleLeadCreated} initialValues={null} />
           </div>
         </Layout>
       </ErrorBoundary>
