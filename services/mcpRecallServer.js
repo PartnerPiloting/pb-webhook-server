@@ -97,7 +97,13 @@ async function runRecallLatestTranscript({ email, after }, coachClientId = DEFAU
   const coachClient = await clientService.getClientById(coachClientId);
   if (!coachClient?.airtableBaseId) return { text: 'Server config error: coach base not set.', isError: true };
   const lead = await findLeadByEmail(coachClient, clean);
-  if (!lead?.id) return { text: `No lead found for email: ${clean}`, isError: true };
+  // A miss is never silent (Rick Wong / Cynthia Lau, 2026-09-04): before saying "no lead" or
+  // "no meetings", check the parked list and, if the person is there, say so and name the door.
+  const { waitingHintForEmail, waitingHintForLead } = require('./pendingPeopleLookup');
+  if (!lead?.id) {
+    const hint = await waitingHintForEmail(coachClient, clean);
+    return { text: `No lead found for email: ${clean}${hint}`, isError: !hint };
+  }
 
   const leadName = [lead.firstName, lead.lastName].filter(Boolean).join(' ').trim() || clean;
   let rows = await getMeetingsForLead(lead.id, 100);
@@ -110,7 +116,10 @@ async function runRecallLatestTranscript({ email, after }, coachClientId = DEFAU
       });
     }
   }
-  if (!rows || rows.length === 0) return { text: `No meetings found for ${leadName} (${clean}).` };
+  if (!rows || rows.length === 0) {
+    const hint = await waitingHintForLead(coachClient, { name: leadName, email: lead.email || clean });
+    return { text: `No meetings found for ${leadName} (${clean}).${hint}` };
+  }
 
   // Prefer the newest meeting that actually HAS a transcript. A header-only row (capture failed,
   // or an auto-split child built from a calendar event with no utterances) otherwise wins on
@@ -286,7 +295,7 @@ function createRecallMcpServer(coachClientId = DEFAULT_COACH_CLIENT_ID) {
     {
       title: 'Latest transcript for a lead (reviewed store)',
       description:
-        'Fetches the latest meeting transcript for a lead from the reviewed transcript STORE (meetings already filed and split per person). Use when asked for a transcript for a specific person (by email). If the result looks wrong (missing, empty, or contains a different person\'s call), fall back to fathom_transcript to pull the raw recording straight from Fathom.',
+        'Fetches the latest meeting transcript for a lead from the reviewed transcript STORE (meetings already filed and split per person). Use when asked for a transcript for a specific person (by email). If the result looks wrong (missing, empty, or contains a different person\'s call), fall back to fathom_transcript to pull the raw recording straight from Fathom. If it answers "no lead" or "no meetings" but adds a BUT line about a PARKED meeting, relay that to the human and offer the door it names (wingguy_create_lead or wingguy_update_lead with that email) - the meeting exists; only the address is missing. Never conclude the call was not recorded.',
       inputSchema: {
         email: z.string().describe('The lead\'s email address (must match their Airtable record)'),
         after: z.string().optional().describe('Optional ISO 8601 date — only return meetings on or after this date/time'),

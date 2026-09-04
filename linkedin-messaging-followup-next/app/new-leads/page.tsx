@@ -3,6 +3,7 @@ import React, { useState } from "react";
 import Layout from "../../components/Layout";
 import NewLeadForm from "../../components/NewLeadForm";
 import PeopleYouveMet from "../../components/PeopleYouveMet";
+import PossibleMatches from "../../components/PossibleMatches";
 import ErrorBoundary from "../../components/ErrorBoundary";
 import EnvironmentValidator from "../../components/EnvironmentValidator";
 
@@ -23,6 +24,12 @@ export default function NewLeadsPage() {
       firstName,
       lastName,
       email: person.email || '',
+      // The met-path (2026-09-04): the recorder's address is the identity the transcripts attach
+      // by, whatever email ends up typed; the LinkedIn URL can wait; no follow-up nag.
+      pendingEmail: person.email || '',
+      fromMetList: true,
+      noFollowUpNeeded: true,
+      followUpDate: '',
     });
     // Bring the form into view so the pre-fill is obvious
     if (typeof window !== 'undefined') window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
@@ -39,6 +46,7 @@ export default function NewLeadsPage() {
       <ErrorBoundary>
         <Layout>
           <div className="p-8">
+            <PossibleMatches refreshKey={refreshKey} />
             <PeopleYouveMet onAddPerson={handleAddPerson} refreshKey={refreshKey} />
             <NewLeadForm onLeadCreated={handleLeadCreated} initialValues={prefill} />
           </div>

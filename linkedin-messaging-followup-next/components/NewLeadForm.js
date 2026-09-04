@@ -38,16 +38,24 @@ const NewLeadForm = ({ onLeadCreated, initialValues }) => {
     source: 'Follow-Up Personally', // Default value
     status: 'On The Radar', // Default value
     priority: '',
-    linkedinConnectionStatus: ''
+    linkedinConnectionStatus: '',
+    // Met-path controls (not Airtable fields). pendingEmail = the address the recorder saw, the
+    // identity the waiting transcripts attach by. fromMetList relaxes the LinkedIn URL rule.
+    pendingEmail: '',
+    fromMetList: false
   });
 
-  // Pre-fill from "People you've met" (name/email/phone) — the client only pastes the LinkedIn
-  // URL. Merges over the current values whenever a new person is handed in.
+  // Pre-fill from "People you've met" (name/email/phone). Merges over the current values
+  // whenever a new person is handed in. On the met-path the LinkedIn URL is optional (Guy,
+  // 2026-09-04): for someone off a recorded call, the email is the identity and the transcript is
+  // the value - neither needs LinkedIn. The URL can be pasted later from their record.
   React.useEffect(() => {
     if (initialValues && Object.keys(initialValues).length) {
       setFormData(prev => ({ ...prev, ...initialValues }));
     }
   }, [initialValues]);
+
+  const metPath = !!formData.fromMetList;
   
   const [isCreating, setIsCreating] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
@@ -241,10 +249,29 @@ const NewLeadForm = ({ onLeadCreated, initialValues }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [liveCheck.status]);
 
+  // Someone added WITHOUT a LinkedIn URL can't be caught by the URL duplicate check, so check the
+  // name instead: an exact first + last match already in Wingguy is almost certainly them.
+  const findSameNameLeads = async () => {
+    const first = String(formData.firstName || '').trim().toLowerCase();
+    const last = String(formData.lastName || '').trim().toLowerCase();
+    if (!first || !last) return [];
+    try {
+      const response = await searchLeads(`${first} ${last}`, 'all');
+      const results = response.leads || response || [];
+      return results.filter((lead) =>
+        String(lead['First Name'] || '').trim().toLowerCase() === first
+        && String(lead['Last Name'] || '').trim().toLowerCase() === last);
+    } catch (error) {
+      console.error('Error checking for same-name leads:', error);
+      return [];
+    }
+  };
+
   // Validate required fields
   const validateForm = () => {
+    const urlOptional = metPath;
     const requiredFields = [
-      { field: 'linkedinProfileUrl', label: 'LinkedIn Profile URL' },
+      ...(urlOptional ? [] : [{ field: 'linkedinProfileUrl', label: 'LinkedIn Profile URL' }]),
       { field: 'firstName', label: 'First Name' },
       { field: 'lastName', label: 'Last Name' },
       { field: 'source', label: 'Source' },
@@ -261,6 +288,15 @@ const NewLeadForm = ({ onLeadCreated, initialValues }) => {
         });
         return false;
       }
+    }
+
+    // Met-path with no URL: skip every URL check. Still needs the address the transcripts attach by.
+    if (urlOptional && !String(formData.linkedinProfileUrl || '').trim()) {
+      if (!String(formData.email || '').trim() && !String(formData.pendingEmail || '').trim()) {
+        setMessage({ type: 'error', text: 'An email address is needed for someone added without a LinkedIn URL - it is how their meeting transcripts find them' });
+        return false;
+      }
+      return true;
     }
 
     // The URL has to actually be a LinkedIn profile address (linkedin.com/in/...)
@@ -332,11 +368,25 @@ const NewLeadForm = ({ onLeadCreated, initialValues }) => {
     console.log('Duplicate check result:', duplicates);
     if (duplicates.length > 0) {
       console.log('Duplicates found, preventing creation');
-      setMessage({ 
-        type: 'error', 
-        text: 'Duplicate LinkedIn Profile found. Please check the details.' 
+      setMessage({
+        type: 'error',
+        text: 'Duplicate LinkedIn Profile found. Please check the details.'
       });
       return;
+    }
+    // No URL to check on the met-path - check the name instead (a duplicate is one click away
+    // otherwise). Same name already in Wingguy = add this email to THAT record, don't create.
+    if (metPath && !String(formData.linkedinProfileUrl || '').trim()) {
+      const sameName = await findSameNameLeads();
+      if (sameName.length > 0) {
+        const who = `${String(sameName[0]['First Name'] || '')} ${String(sameName[0]['Last Name'] || '')}`.trim();
+        const theirEmail = String(sameName[0]['Email'] || '').trim();
+        setMessage({
+          type: 'error',
+          text: `${who} is already in Wingguy${theirEmail ? ` (${theirEmail})` : ''}. If that's the same person, open their record in Lead Search and add ${String(formData.pendingEmail || formData.email || 'this email')} there instead - their meetings will attach as soon as the address is on the record.`
+        });
+        return;
+      }
     }
 
     console.log('No duplicates found, proceeding with creation');
@@ -371,7 +421,9 @@ const NewLeadForm = ({ onLeadCreated, initialValues }) => {
         source: 'Follow-Up Personally', // Keep default
         status: 'On The Radar', // Keep default
         priority: '',
-        linkedinConnectionStatus: ''
+        linkedinConnectionStatus: '',
+        pendingEmail: '',
+        fromMetList: false
       });
       setMismatchConfirmed(false);
 
@@ -415,7 +467,9 @@ const NewLeadForm = ({ onLeadCreated, initialValues }) => {
       source: 'Follow-Up Personally',
       status: 'On The Radar',
       priority: '',
-      linkedinConnectionStatus: ''
+      linkedinConnectionStatus: '',
+      pendingEmail: '',
+      fromMetList: false
     });
     setMessage({ type: '', text: '' });
     setMismatchConfirmed(false);
@@ -485,7 +539,22 @@ const NewLeadForm = ({ onLeadCreated, initialValues }) => {
       )}
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        
+
+        {/* Met-path banner: added from "People you've met" - transcripts attach automatically,
+            LinkedIn URL optional for now. */}
+        {metPath && (
+          <div className="p-4 rounded-lg bg-blue-50 border border-blue-200 text-sm text-blue-900">
+            <p className="font-medium">Adding someone you met on a recorded call</p>
+            <p className="mt-1">
+              Their meeting transcripts attach to this record automatically when you click Create - you don&apos;t
+              need their LinkedIn address for that. Paste it now if you have it, or add it to their record later.
+              {formData.pendingEmail ? (
+                <> The address Wingguy saw on the recording was <span className="font-medium">{formData.pendingEmail}</span>; it stays on the record even if you change the email below.</>
+              ) : null}
+            </p>
+          </div>
+        )}
+
         {/* Basic Information - Required Fields First */}
         <div className="space-y-6">
           <h4 className="text-lg font-semibold text-gray-900 border-b border-gray-200 pb-2">
@@ -497,7 +566,7 @@ const NewLeadForm = ({ onLeadCreated, initialValues }) => {
                 address, then fill in the rest. It's the record's identity — no URL, no lead. */}
             <div className="flex">
               <label className="w-32 text-sm font-medium text-gray-700 flex-shrink-0 py-2">
-                LinkedIn Profile URL *
+                LinkedIn Profile URL {metPath ? '' : '*'}
               </label>
               <div className="flex-1">
                 <input
@@ -510,13 +579,18 @@ const NewLeadForm = ({ onLeadCreated, initialValues }) => {
                     setTimeout(() => { checkForDuplicates(); startLiveCheck(); }, 100);
                   }}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                  required
-                  placeholder="https://www.linkedin.com/in/username"
+                  required={!metPath}
+                  placeholder={metPath ? 'https://www.linkedin.com/in/username (optional for now)' : 'https://www.linkedin.com/in/username'}
                 />
                 <p className="text-xs text-gray-500 mt-1">
-                  Step 1: find this person on LinkedIn and paste their profile address here. It&apos;s how
-                  Wingguy prevents duplicates, and their profile details and score are filled in
-                  automatically the first time you open their profile.
+                  {metPath ? (
+                    <>Optional for someone you met. When you do add it, Wingguy fills in their profile details and
+                    score the first time you open their profile, and can match them if they later arrive from Linked Helper.</>
+                  ) : (
+                    <>Step 1: find this person on LinkedIn and paste their profile address here. It&apos;s how
+                    Wingguy prevents duplicates, and their profile details and score are filled in
+                    automatically the first time you open their profile.</>
+                  )}
                 </p>
               </div>
             </div>

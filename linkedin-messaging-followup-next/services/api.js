@@ -463,6 +463,13 @@ export const createLead = async (leadData) => {
     if (leadData.noFollowUpNeeded === true) {
       backendData['Cease FUP'] = 'Yes';
     }
+
+    // Added from "People you've met": carry the recorder's address as a control key (not an
+    // Airtable field) so the server attaches the waiting transcripts by identity, not by whatever
+    // email was typed. Server strips every "__" key before writing.
+    if (leadData.pendingEmail && String(leadData.pendingEmail).trim()) {
+      backendData.__pendingEmail = String(leadData.pendingEmail).trim().toLowerCase();
+    }
     
     // Wrap initial notes with Manual Notes section header and timestamp
     if (backendData['Notes'] && backendData['Notes'].trim()) {
@@ -536,6 +543,23 @@ export const getPendingPeople = async () => {
 // Skip is final by design: the person drops off the list and is never asked about again.
 export const skipPendingPerson = async (email) => {
   const response = await api.post('/pending-people/skip', { email });
+  return response.data;
+};
+
+// "Possible match": a record with no LinkedIn URL (someone you met) beside a full record that
+// shares its name. You decide - combine them, or say they're different people.
+export const getPossibleMatches = async () => {
+  const response = await api.get('/possible-matches');
+  return response.data?.matches || [];
+};
+
+export const mergePossibleMatch = async (skeletonId, targetId) => {
+  const response = await api.post('/possible-matches/merge', { skeletonId, targetId });
+  return response.data;
+};
+
+export const dismissPossibleMatch = async (skeletonId, candidateId) => {
+  const response = await api.post('/possible-matches/dismiss', { skeletonId, candidateId });
   return response.data;
 };
 

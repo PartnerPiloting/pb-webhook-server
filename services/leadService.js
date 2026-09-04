@@ -201,13 +201,48 @@ async function upsertLead(
     if (ai_excluded_val !== null) fields[LEAD_FIELDS.AI_EXCLUDED] = (ai_excluded_val === "Yes" || ai_excluded_val === true);
     if (exclude_details_val !== null) fields[LEAD_FIELDS.EXCLUDE_DETAILS] = exclude_details_val;
 
-    const existing = await findExistingLeadByUrl(airtableBase, finalUrl);
+    let existing = await findExistingLeadByUrl(airtableBase, finalUrl);
+
+    // SKELETON COVER (2026-09-04, see services/skeletonLeads.js). A person the coach MET can be
+    // filed with a name + email and NO LinkedIn URL. The URL lookup above cannot see such a
+    // record, so without this a Linked Helper arrival of the same person would breed a duplicate.
+    //   same email  -> ADOPT the skeleton (update in place; the URL + profile fill in, and it is
+    //                  queued for scoring now that it has an About section).
+    //   same name   -> never merge on our own; create normally and log it - the New Leads page
+    //                  offers the coach a one-click combine ("Possible match").
+    let adoptedSkeleton = false;
+    if (!existing.length) {
+        const skeletonLeads = require('./skeletonLeads');
+        const incomingEmail = String(fields[LEAD_FIELDS.EMAIL] || '').trim().toLowerCase();
+        if (incomingEmail) {
+            const sk = await skeletonLeads.findSkeletonByEmail(airtableBase, incomingEmail).catch((e) => {
+                logger.warn(`leadService/upsertLead: skeleton-by-email lookup failed (${e.message}) - creating normally`);
+                return null;
+            });
+            if (sk) {
+                existing = [sk];
+                adoptedSkeleton = true;
+                logger.info(`leadService/upsertLead: adopting skeleton ${sk.id} (same email ${incomingEmail}, no URL on record) for ${finalUrl}`);
+            }
+        }
+        if (!adoptedSkeleton && cleanFirstName && cleanLastName) {
+            const named = await skeletonLeads.findSkeletonsByName(airtableBase, cleanFirstName, cleanLastName).catch(() => []);
+            if (named.length) {
+                logger.info(`leadService/upsertLead: possible match - "${cleanFirstName} ${cleanLastName}" arriving from Linked Helper shares a name with URL-less record(s) ${named.map((r) => r.id).join(', ')}; creating normally, the New Leads page will offer to combine them`);
+            }
+        }
+    }
 
     let recordId;
-    
+
     if (existing.length) {
         isNewLead = false;
         logger.info(`leadService/upsertLead: Updating existing lead ${finalUrl} (ID: ${existing[0].id})`);
+        // An adopted skeleton has never had an About section to score - queue it now, unless the
+        // webhook already said what its scoring status should be.
+        if (adoptedSkeleton && fields[LEAD_FIELDS.SCORING_STATUS] === undefined) {
+            fields[LEAD_FIELDS.SCORING_STATUS] = SCORING_STATUS_VALUES.NOT_SCORED;
+        }
         // For "Date Connected", update if:
         // 1. We have a new connection date from the webhook, OR
         // 2. Status is now "Connected" but there's no existing date

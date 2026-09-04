@@ -2105,9 +2105,26 @@ router.post('/leads', async (req, res) => {
   logger.info(`LinkedIn Routes: Authenticated client: ${req.client.clientName} (${req.client.clientId})`);
   
   try {
-    const leadData = req.body;
+    // Control keys (double-underscore) ride in the body but are NOT Airtable fields.
+    //   __pendingEmail: set when the person was added from "People you've met" - the address the
+    //   recorder saw. The waiting transcripts attach by THIS identity no matter what email the
+    //   client typed (2026-09-04: Rick typed a different address for Cynthia Lau, the string
+    //   match failed, and nothing said so).
+    const { __pendingEmail, ...leadData } = req.body || {};
+    const pendingEmail = String(__pendingEmail || '').trim().toLowerCase();
+    for (const k of Object.keys(leadData)) if (k.startsWith('__')) delete leadData[k];
     const airtableBase = await getAirtableBase(req);
-    
+
+    // Met-path safety: a typed email wins as primary, but the recorder's address must stay on the
+    // record too (Alt Emails), or the NEXT recording of this person parks again. A blank email
+    // takes the recorder's address as primary.
+    const typedEmail = String(leadData['Email'] || '').trim().toLowerCase();
+    if (pendingEmail && !typedEmail) leadData['Email'] = pendingEmail;
+    if (pendingEmail && typedEmail && typedEmail !== pendingEmail) {
+      const { buildAltEmails } = require('../../../services/wingguyLeads');
+      leadData['Alt Emails'] = buildAltEmails([leadData['Alt Emails'] || '', pendingEmail], typedEmail);
+    }
+
     logger.info('LinkedIn Routes: Creating lead with data:', leadData);
 
     // DEBUG: Log exactly what we're sending to Airtable
@@ -2120,9 +2137,21 @@ router.post('/leads', async (req, res) => {
 
     logger.info('LinkedIn Routes: Record to create:', recordToCreate);
 
-    // Create the lead in Airtable
-    const createdRecords = await airtableBase('Leads').create([recordToCreate]);
-    
+    // Create the lead in Airtable. A base that predates the Alt Emails field rejects the whole
+    // create with "Unknown field name" - retry without it rather than lose the lead.
+    let createdRecords;
+    try {
+      createdRecords = await airtableBase('Leads').create([recordToCreate]);
+    } catch (e) {
+      if (recordToCreate.fields['Alt Emails'] !== undefined && /Alt Emails/i.test(String(e.message || ''))) {
+        logger.warn('LinkedIn Routes: base has no Alt Emails field - creating without it');
+        delete recordToCreate.fields['Alt Emails'];
+        createdRecords = await airtableBase('Leads').create([recordToCreate]);
+      } else {
+        throw e;
+      }
+    }
+
     if (createdRecords.length === 0) {
       return res.status(500).json({ error: 'Failed to create lead' });
     }
@@ -2154,24 +2183,28 @@ router.post('/leads', async (req, res) => {
     // PENDING-LEAD RESOLVE: if this person was on the "people you've met" waiting list
     // (recall_meetings.pending_leads), attach every waiting transcript to the new record now.
     // Best-effort — a store hiccup must not fail the create the client just watched succeed.
+    // Resolve by EVERY address we know for them: the one typed AND the one the recorder saw.
     const newLeadEmail = String(leadData['Email'] || '').trim().toLowerCase();
-    if (newLeadEmail) {
+    const resolveEmails = [...new Set([pendingEmail, newLeadEmail].filter(Boolean))];
+    let attached = 0;
+    for (const em of resolveEmails) {
       try {
         const { resolvePendingLeadByEmail } = require('../../../services/recallWebhookDb');
         const pr = await resolvePendingLeadByEmail({
-          email: newLeadEmail,
+          email: em,
           airtableLeadId: newLead.id,
           coachClientId: req.client.clientId,
-          source: 'portal-new-lead',
+          source: em === pendingEmail && em !== newLeadEmail ? 'portal-new-lead-pending' : 'portal-new-lead',
         });
         if (pr.linked && pr.linked.length) {
-          newLead.attachedMeetings = pr.linked.length;
-          logger.info(`LinkedIn Routes: attached ${pr.linked.length} waiting meeting(s) to new lead ${newLead.id}`);
+          attached += pr.linked.length;
+          logger.info(`LinkedIn Routes: attached ${pr.linked.length} waiting meeting(s) under ${em} to new lead ${newLead.id}`);
         }
       } catch (e) {
-        logger.warn(`LinkedIn Routes: pending-lead resolve failed for ${newLeadEmail}: ${e.message}`);
+        logger.warn(`LinkedIn Routes: pending-lead resolve failed for ${em}: ${e.message}`);
       }
     }
+    if (attached) newLead.attachedMeetings = attached;
 
     res.status(201).json(newLead);
 
@@ -2227,6 +2260,66 @@ router.post('/pending-people/skip', async (req, res) => {
   } catch (error) {
     logger.error('LinkedIn Routes: Error in /pending-people/skip:', error);
     res.status(500).json({ error: 'Failed to skip', details: error.message });
+  }
+});
+
+/**
+ * GET /api/linkedin/possible-matches
+ * "Possible match" pairs for the New Leads page (2026-09-04, see services/skeletonLeads.js):
+ * a record with no LinkedIn URL (someone the client met) beside a full record that shares its
+ * exact first + last name (usually just arrived from Linked Helper). We never merge on a name
+ * alone - the client says whether it's the same person. Empty list = the section doesn't render.
+ */
+router.get('/possible-matches', async (req, res) => {
+  try {
+    const airtableBase = await getAirtableBase(req);
+    const { listPossibleMatches } = require('../../../services/skeletonLeads');
+    const matches = await listPossibleMatches(airtableBase, req.client.clientId);
+    res.json({ matches });
+  } catch (error) {
+    logger.error('LinkedIn Routes: Error in /possible-matches:', error);
+    res.status(500).json({ error: 'Failed to load possible matches', details: error.message });
+  }
+});
+
+/**
+ * POST /api/linkedin/possible-matches/merge  { skeletonId, targetId }
+ * Same person: fold the URL-less record into the full one (email/alternates, phone, location,
+ * notes, search terms carried over; transcript links moved), then delete the URL-less record.
+ */
+router.post('/possible-matches/merge', async (req, res) => {
+  try {
+    const skeletonId = String((req.body && req.body.skeletonId) || '').trim();
+    const targetId = String((req.body && req.body.targetId) || '').trim();
+    if (!skeletonId || !targetId) return res.status(400).json({ error: 'skeletonId and targetId are required' });
+    const airtableBase = await getAirtableBase(req);
+    const { mergeSkeletonInto } = require('../../../services/skeletonLeads');
+    const r = await mergeSkeletonInto(airtableBase, req.client.clientId, skeletonId, targetId);
+    if (!r.ok) return res.status(400).json({ error: r.error });
+    logger.info(`LinkedIn Routes: ${req.client.clientId} merged ${skeletonId} into ${targetId} (${r.meetingsMoved} meeting link(s) moved)`);
+    res.json(r);
+  } catch (error) {
+    logger.error('LinkedIn Routes: Error in /possible-matches/merge:', error);
+    res.status(500).json({ error: 'Failed to merge', details: error.message });
+  }
+});
+
+/**
+ * POST /api/linkedin/possible-matches/dismiss  { skeletonId, candidateId }
+ * Different people: remember it so this pair is never offered again. Both records stay.
+ */
+router.post('/possible-matches/dismiss', async (req, res) => {
+  try {
+    const skeletonId = String((req.body && req.body.skeletonId) || '').trim();
+    const candidateId = String((req.body && req.body.candidateId) || '').trim();
+    if (!skeletonId || !candidateId) return res.status(400).json({ error: 'skeletonId and candidateId are required' });
+    const { dismissMatch } = require('../../../services/skeletonLeads');
+    const r = await dismissMatch(req.client.clientId, skeletonId, candidateId);
+    if (!r.ok) return res.status(500).json({ error: r.error });
+    res.json({ ok: true });
+  } catch (error) {
+    logger.error('LinkedIn Routes: Error in /possible-matches/dismiss:', error);
+    res.status(500).json({ error: 'Failed to dismiss', details: error.message });
   }
 });
 

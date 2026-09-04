@@ -165,8 +165,19 @@ async function runUpdateLead(args = {}, tenant = TENANT) {
   const who = `${rec.fields['First Name'] || ''} ${rec.fields['Last Name'] || ''}`.trim() || rec.fields['Email'] || rec.id;
   if (!r.changed) return { text: `${who}'s record already has those exact values — nothing changed.` };
   const lines = r.changes.map((c) => `${c.field}: ${c.from ? `"${c.from}"` : '(was empty)'} → "${c.to}"`);
+
+  // A new address on the record is the link door for a parked meeting (2026-09-04): any meeting
+  // waiting under that email attaches now. Best-effort - the update itself already succeeded.
+  let attached = '';
+  if (mail && r.changes.some((c) => c.field === 'Email')) {
+    try {
+      const { resolvePendingLeadByEmail } = require('./recallWebhookDb');
+      const pr = await resolvePendingLeadByEmail({ email: mail.toLowerCase(), airtableLeadId: rec.id, coachClientId: tenant, source: 'lead-email-updated' });
+      if (pr.linked && pr.linked.length) attached = ` Also attached ${pr.linked.length} meeting transcript(s) that had been parked under ${mail.toLowerCase()} - they are on ${who}'s record now.`;
+    } catch (e) { console.warn(`[wingguy_update_lead] pending resolve failed for ${mail}: ${e.message}`); }
+  }
   return {
-    text: `Updated ${who} — ${lines.join('; ')}.${r.notes.length ? ` (${r.notes.join('; ')})` : ''} `
+    text: `Updated ${who} — ${lines.join('; ')}.${r.notes.length ? ` (${r.notes.join('; ')})` : ''}${attached} `
       + `Tell the coach exactly what changed, old value included, so a wrong write is caught on the spot.`,
   };
 }

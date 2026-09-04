@@ -1253,7 +1253,7 @@ router.post('/mcp/:token', express.json(), async (req, res) => {
         tools: [
           {
             name: 'recall_latest_transcript',
-            description: 'Fetches the latest meeting transcript for a lead from the reviewed transcript STORE (meetings already filed and split per person). Use when asked for a transcript for a specific person (by email). Returns the formatted transcript text. If the result looks wrong (missing, empty, or contains a different person\'s call), fall back to fathom_transcript to pull the raw recording straight from Fathom.',
+            description: 'Fetches the latest meeting transcript for a lead from the reviewed transcript STORE (meetings already filed and split per person). Use when asked for a transcript for a specific person (by email). Returns the formatted transcript text. If the result looks wrong (missing, empty, or contains a different person\'s call), fall back to fathom_transcript to pull the raw recording straight from Fathom. If it answers "no lead" or "no meetings" but adds a BUT line about a PARKED meeting, relay that to the human and offer the door it names (wingguy_create_lead or wingguy_update_lead with that email) - the meeting exists; only the address is missing. Never conclude the call was not recorded.',
             inputSchema: {
               type: 'object',
               properties: {

@@ -41,12 +41,22 @@ async function runRecordingsList(args = {}, tenant = TENANT) {
   const { listMeetingsForCoach } = require('./recallWebhookDb');
   const limit = Number(args.limit) > 0 ? Math.min(Math.round(Number(args.limit)), 100) : 25;
 
-  const [held, stored] = await Promise.all([
+  const [held, stored, waiting] = await Promise.all([
     listHeldCaptures(tenant, { limit: 50 }).catch(() => []),
     listMeetingsForCoach(tenant, { limit }),
+    // People met on a recorded call who are not in the database yet - their transcripts are
+    // saved but unreachable by name until they are added (2026-09-04).
+    (async () => {
+      try {
+        const clientService = require('./clientService');
+        const coach = await clientService.getClientById(tenant);
+        return require('./pendingPeopleLookup').waitingSection(coach);
+      } catch (_e) { return ''; }
+    })(),
   ]);
 
   const lines = [];
+  if (waiting) { lines.push(waiting); lines.push(''); }
   const whoOf = (h) => {
     try {
       const m = JSON.parse(h.matched_leads || '[]');
@@ -83,7 +93,7 @@ async function runRecordingsList(args = {}, tenant = TENANT) {
   } else {
     lines.push('No stored meetings for this account.');
   }
-  if (!held.length && !stored.length) return { text: 'Nothing held and nothing stored for this account.' };
+  if (!held.length && !stored.length && !waiting) return { text: 'Nothing held and nothing stored for this account.' };
   return { text: lines.join('\n') };
 }
 

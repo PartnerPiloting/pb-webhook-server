@@ -1883,6 +1883,17 @@ async function runDossier({ name, email } = {}, tenant = TENANT) {
         }
         if (live) return { text: dossier.formatLiveDossier(live) };
       } catch (e) { console.warn(`[dossier] live fallback failed for "${name}": ${e.message}`); }
+      // Last check before "unknown": is this person WAITING to be added - met on a recorded call,
+      // transcript saved, but not in the CRM yet? (2026-09-04) Say so and name the door.
+      let waiting = '';
+      try {
+        const clientService = require('./clientService');
+        const coach = await clientService.getClientById(tenant);
+        const look = require('./pendingPeopleLookup');
+        if (email) waiting = await look.waitingHintForEmail(coach, email);
+        if (!waiting) waiting = await look.waitingHintForLead(coach, { name, email });
+      } catch (_) { /* the hint is a bonus */ }
+      if (waiting) return { text: `No prepared dossier for "${name}" and no CRM record matches that name${email ? ` or ${email}` : ''}.${waiting}` };
       return { text: `No prepared dossier for "${name}" AND no CRM record matches that name${email ? ` or ${email}` : ''} — this person appears genuinely unknown to the system. Double-check the spelling with the human; the live dig (wingguy_lead_correspondence by email, recall transcripts by name) only helps if some history exists under a different spelling.` };
     }
     // Profile-link fallback for dossiers built before `linkedin` was stored in the payload
