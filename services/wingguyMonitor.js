@@ -18,6 +18,7 @@
 const { Pool } = require('pg');
 const { createLogger } = require('../utils/contextLogger');
 const { sendAlertEmail } = require('./emailNotificationService');
+const { RESOLVED_MISS_SQL } = require('./wingguySelectorStore');
 
 const log = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'wingguy-monitor' });
 
@@ -91,15 +92,25 @@ function recordChatTurn({ tenantId, profileThin, leadName }) {
 // ---------------------------------------------------------------------------
 
 async function landmarkFindings(client) {
+  // A miss the same machine resolved seconds later is a page that had not finished loading, not a
+  // landmark that moved — the profile read POLLS, and every pass files a health row. Counting those
+  // passes cost a false alarm on 2026-09-04 (profile_activity_anchor, Rick, three misses that the
+  // very next pass found). The rule lives in the selector store so this and the health summary can
+  // never drift apart; the full story is in the comment above RESOLVED_MISS_SQL there.
   const { rows } = await client.query(`
+    WITH h AS (
+      SELECT *, (NOT found AND ${RESOLVED_MISS_SQL}) AS retried_ok
+        FROM wingguy_selector_health h
+       WHERE h.created_at > now() - interval '24 hours'
+    )
     SELECT selector_key, COALESCE(tenant_id, '(shared)') AS tenant, COALESCE(surface, '') AS surface,
            COALESCE(extension_version, '?') AS version,
-           count(*) FILTER (WHERE NOT found) AS misses,
+           count(*) FILTER (WHERE NOT found AND NOT retried_ok) AS misses,
            count(*) FILTER (WHERE found) AS founds,
-           min(created_at) FILTER (WHERE NOT found) AS first_miss,
-           max(created_at) FILTER (WHERE NOT found) AS last_miss
-    FROM wingguy_selector_health
-    WHERE created_at > now() - interval '24 hours'
+           count(*) FILTER (WHERE retried_ok) AS retried,
+           min(created_at) FILTER (WHERE NOT found AND NOT retried_ok) AS first_miss,
+           max(created_at) FILTER (WHERE NOT found AND NOT retried_ok) AS last_miss
+    FROM h
     GROUP BY 1, 2, 3, 4
   `);
   const perTenant = rows
@@ -143,10 +154,18 @@ async function thinFindings(client) {
 
 async function weeklySummary(client) {
   const [health, metrics] = await Promise.all([
+    // Same "not every miss is a miss" rule as the alert — the heartbeat must not quote a miss count
+    // the alert would never act on, or the weekly all-green reads as a standing worry.
     client.query(`
-      SELECT count(*) AS checks, count(*) FILTER (WHERE NOT found) AS misses,
+      WITH h AS (
+        SELECT *, (NOT found AND ${RESOLVED_MISS_SQL}) AS retried_ok
+          FROM wingguy_selector_health h
+         WHERE h.created_at > now() - interval '7 days'
+      )
+      SELECT count(*) AS checks, count(*) FILTER (WHERE NOT found AND NOT retried_ok) AS misses,
+             count(*) FILTER (WHERE retried_ok) AS retried,
              count(DISTINCT selector_key) AS keys, array_to_string(array_agg(DISTINCT extension_version), ', ') AS versions
-      FROM wingguy_selector_health WHERE created_at > now() - interval '7 days'
+      FROM h
     `),
     client.query(`
       SELECT count(*) AS turns, count(*) FILTER (WHERE profile_thin) AS thin, count(DISTINCT tenant_id) AS tenants
@@ -184,7 +203,7 @@ function heartbeatEmailHtml(sum) {
   const m = sum.metrics || {};
   return `<p>Wingguy monitor - all green this week.</p>
     <ul>
-      <li>Landmark checks phoned home: ${esc(h.checks)} across ${esc(h.keys)} landmarks - ${esc(h.misses)} misses (below alert thresholds${Number(h.misses) ? '' : ' - a clean sheet'})</li>
+      <li>Landmark checks phoned home: ${esc(h.checks)} across ${esc(h.keys)} landmarks - ${esc(h.misses)} misses (below alert thresholds${Number(h.misses) ? '' : ' - a clean sheet'})${Number(h.retried) ? ` · ${esc(h.retried)} more resolved on a retry (page still loading, not counted)` : ''}</li>
       <li>Drafting turns: ${esc(m.turns)} across ${esc(m.tenants)} client(s) - ${esc(m.thin)} went out profile-blind (below thresholds)</li>
       <li>Extension versions seen in the field: ${esc(h.versions || '(none)')}</li>
     </ul>

@@ -287,6 +287,39 @@ async function recordHealth({ tenantId, checks, extensionVersion } = {}) {
 }
 
 /**
+ * NOT EVERY MISS IS A MISS (2026-09-05, after a false alarm on Rick's machine).
+ *
+ * A profile read does not happen once. The thin-profile path opens the profile in a hidden tab and
+ * POLLS it — scrapeProfileViaTab in the extension's background.js re-scrapes every 700ms until the
+ * post previews turn up, precisely because LinkedIn renders the Activity section a beat after the
+ * rest of the page (the fix for Luke's blank-posts reads, 2026-08-19). Every one of those passes
+ * runs the self-check and files a health row. So a read that needed one extra beat files a miss and
+ * then, two to four seconds later, a find — and the monitor read that pair as LinkedIn moving the
+ * furniture. It cost an alert and an investigation on 2026-09-04: profile_activity_anchor, three
+ * misses, each one resolved by the very next pass, selector working perfectly the whole time.
+ *
+ * So: a miss the SAME machine resolved on the SAME landmark moments later is a page that had not
+ * finished loading, not a landmark that moved. A landmark that genuinely moved never comes back
+ * within the window, so nothing real is hidden by this — and the resolved ones are counted
+ * separately rather than dropped, because "we retried and got it" is worth being able to see.
+ *
+ * The window is generous next to the poll loop it exists for (which gives up after ~12s) so a slow
+ * machine on a slow page still reads as the retry it is.
+ *
+ * Requires the outer query to alias wingguy_selector_health as `h`. Shared with wingguyMonitor.js,
+ * which applies the same rule to the daily alert — one definition, two readers.
+ */
+const RESOLVED_MISS_WINDOW_SECONDS = 60;
+const RESOLVED_MISS_SQL = `
+  EXISTS (SELECT 1 FROM wingguy_selector_health r
+           WHERE r.found
+             AND r.selector_key = h.selector_key
+             AND r.tenant_id IS NOT DISTINCT FROM h.tenant_id
+             AND r.surface    IS NOT DISTINCT FROM h.surface
+             AND r.created_at >  h.created_at
+             AND r.created_at <= h.created_at + interval '${RESOLVED_MISS_WINDOW_SECONDS} seconds')`;
+
+/**
  * What the field is reporting, grouped by landmark. This is the read I make when Guy says "is
  * anything broken" — misses over the window, which surfaces they were on, whose machine, and the most
  * recent shape sample for anything failing.
@@ -295,25 +328,31 @@ async function recordHealth({ tenantId, checks, extensionVersion } = {}) {
  * legitimately miss (no message body on a profile page). The signal is a landmark that USED to be
  * found on a surface and now never is — which is why `firstSeen`/`lastFound` are here and why the
  * alerting thresholds are deliberately not built yet. They need real traffic to be worth anything.
+ * `missed` counts only UNRESOLVED misses (see RESOLVED_MISS_SQL); `retried` is the rest.
  */
 async function getHealthSummary({ hours = 48 } = {}) {
   const window = Math.min(Math.max(Number(hours) || 48, 1), 24 * 30);
   return withClient(async (client) => {
     const { rows } = await client.query(
-      `SELECT selector_key,
+      `WITH h AS (
+         SELECT *, (NOT found AND ${RESOLVED_MISS_SQL}) AS retried_ok
+           FROM wingguy_selector_health h
+          WHERE h.created_at > now() - ($1 || ' hours')::interval
+       )
+       SELECT selector_key,
               surface,
               COUNT(*)::int                                        AS checks,
               COUNT(*) FILTER (WHERE found)::int                   AS found,
-              COUNT(*) FILTER (WHERE NOT found)::int               AS missed,
+              COUNT(*) FILTER (WHERE NOT found AND NOT retried_ok)::int AS missed,
+              COUNT(*) FILTER (WHERE retried_ok)::int              AS retried,
               COUNT(DISTINCT tenant_id)::int                       AS machines,
               MIN(created_at)                                      AS first_seen,
               MAX(created_at) FILTER (WHERE found)                 AS last_found,
-              MAX(created_at) FILTER (WHERE NOT found)             AS last_missed,
+              MAX(created_at) FILTER (WHERE NOT found AND NOT retried_ok) AS last_missed,
               (ARRAY_AGG(source ORDER BY created_at DESC))[1]      AS latest_source,
               (ARRAY_AGG(shape ORDER BY created_at DESC)
-                 FILTER (WHERE NOT found AND shape IS NOT NULL))[1] AS latest_miss_shape
-         FROM wingguy_selector_health
-        WHERE created_at > now() - ($1 || ' hours')::interval
+                 FILTER (WHERE NOT found AND NOT retried_ok AND shape IS NOT NULL))[1] AS latest_miss_shape
+         FROM h
         GROUP BY selector_key, surface
         ORDER BY missed DESC, selector_key ASC`,
       [String(window)]
@@ -329,6 +368,8 @@ module.exports = {
   getSelectorHistory,
   recordHealth,
   getHealthSummary,
+  RESOLVED_MISS_SQL,
+  RESOLVED_MISS_WINDOW_SECONDS,
   KNOWN_KEYS,
   SURFACES,
   __setTestPool,
