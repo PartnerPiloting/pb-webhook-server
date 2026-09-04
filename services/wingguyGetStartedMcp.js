@@ -45,9 +45,12 @@ async function resolveState(tenant) {
   return {
     coach,
     name: coach.clientFirstName || coach.clientName || '',
-    hasMailbox: !!coach.nylasGrantId,
+    // Ask the provider seam, not a Nylas-only field: Unipile tenants (Rick, Ashley, Dean, Owen...)
+    // were told "No mailbox connected yet" while drafts were landing in their Outlook (4 Sep 2026).
+    hasMailbox: require('./mailProvider').hasMailbox(coach),
     hasCalendar: !!coach.calendarProvider,
-    hasFathom: !!coach.fathomApiKey,
+    // Any transcript source counts, not just Fathom - a Fireflies or Granola client has notes too.
+    hasFathom: !!(coach.fathomApiKey || coach.firefliesApiKey || coach.granolaApiKey),
     hasZoom: !!coach.bookingZoom,
     clientRuleCount,
     rulesSeeded: clientRuleCount > 0,

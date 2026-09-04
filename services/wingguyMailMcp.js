@@ -579,12 +579,17 @@ async function runCreateDraft({ to, subject, html_body, cc, bcc, reply_to, reply
     : '';
   return {
     text:
-      `Draft created in ${coach.clientName || tenant}'s mailbox (Nylas). draftId=${result.draftId}\n` +
+      // Provider-neutral on purpose: this line is read by the CLIENT's Claude and repeated to them.
+      // It used to say "(Nylas)" and "no google.com/url wrapping", and Rick Wong (Outlook via
+      // Unipile) was told to "open it in Gmail" (4 Sep 2026). We cannot tell Outlook from Gmail for a
+      // Unipile tenant, so name neither - point at the Drafts folder of whatever they connected.
+      `Draft created in ${coach.clientName || tenant}'s own mailbox. draftId=${result.draftId}
+` +
       threadLine +
       ledgerLine +
       followUpLine +
       `To: ${toStr}${bccStr ? ` · Bcc: ${bccStr}` : ''} · Subject: ${String(subject).trim()}\n` +
-      `Hyperlinks are stored verbatim (no google.com/url wrapping) — open the draft, give it a final read, and send. No manual link-fixing needed.`,
+      `It is sitting in the Drafts folder of the email account connected to Wingguy (Outlook, Gmail, whichever was linked - not necessarily Gmail). Open it there, give it a final read, and send. Links are stored exactly as written.`,
   };
 }
 
@@ -1194,7 +1199,7 @@ async function runPrepareBrief(_args = {}, tenant = TENANT) {
 const RECIP_DESC = 'Recipients as objects {email, name}. name is optional but preferred (shows in the To line).';
 
 const REPLY_ID_DESC =
-  'Optional: to make this draft a threaded REPLY in an existing conversation, pass the Nylas message id of the message being replied to (find it with wingguy_find_message). Nylas sets the reply headers and files the draft on that thread. Omit for a fresh standalone email.';
+  'Optional: to make this draft a threaded REPLY in an existing conversation, pass the message id of the message being replied to (find it with wingguy_find_message). The reply headers are set and the draft is filed on that thread. Omit for a fresh standalone email.';
 
 const RESEND_OK_DESC =
   'Optional: set true ONLY when deliberately re-sending an asset this lead already received (e.g. they asked for the link again). Without it the asset-usage gate refuses a draft that repeats an asset to the same lead.';
@@ -1203,7 +1208,7 @@ const TOOL_DEFS = [
   {
     name: 'wingguy_create_draft',
     description:
-      'Create an email DRAFT (never sends) in the coach\'s own mailbox with hyperlinks intact. ALWAYS use this instead of the Gmail connector — for links because the Gmail connector rewrites every link into a google.com/url redirect (this does not), and for replies because this threads too: pass reply_to_message_id (from wingguy_find_message) and the draft lands IN the existing conversation. html_body is the full HTML body; put real <a href="...">text</a> links in and they are stored exactly as written; {{asset:key}} placeholders resolve to the asset library\'s stored URL. ASSET GATE: library links in the body are logged per-lead at draft time, and a draft repeating an asset to the same lead is refused unless resend_ok — check wingguy_lead_history when unsure. FOLLOW-UP: creating the draft also stamps the lead\'s Follow-Up Date to 14 days out (To recipients that match a lead; never the coach\'s own address, and never pulled back from a later date already set), so the person enters the follow-up queue whether or not the tracking BCC is used. Returns a draftId; the coach opens the draft, reads it, and sends it themselves.',
+      'Create an email DRAFT (never sends) in the coach\'s own connected mailbox (Outlook, Gmail or other - whatever they linked) with hyperlinks intact. ALWAYS use this for email drafts, never any other email connector — links land exactly as written (other connectors rewrite them), and it threads: pass reply_to_message_id (from wingguy_find_message) and the draft lands IN the existing conversation. html_body is the full HTML body; put real <a href="...">text</a> links in and they are stored exactly as written; {{asset:key}} placeholders resolve to the asset library\'s stored URL. ASSET GATE: library links in the body are logged per-lead at draft time, and a draft repeating an asset to the same lead is refused unless resend_ok — check wingguy_lead_history when unsure. FOLLOW-UP: creating the draft also stamps the lead\'s Follow-Up Date to 14 days out (To recipients that match a lead; never the coach\'s own address, and never pulled back from a later date already set), so the person enters the follow-up queue whether or not the tracking BCC is used. Returns a draftId; the coach opens the draft, reads it, and sends it themselves.',
     zodSchema: {
       to: z.array(z.object({ email: z.string(), name: z.string().optional() })).describe(RECIP_DESC),
       subject: z.string().describe('The email subject line.'),
@@ -1233,7 +1238,7 @@ const TOOL_DEFS = [
   {
     name: 'wingguy_find_message',
     description:
-      'Search recent messages in the coach\'s own mailbox (via their Nylas grant) and return message ids — the lookup step before drafting a threaded reply with wingguy_create_draft. Give the sender\'s email (from) and/or a subject; returns messageId + threadId + snippet, newest first. Read-only, works on any mailbox provider (Gmail, Outlook, IMAP).',
+      'Search recent messages in the coach\'s own mailbox and return message ids — the lookup step before drafting a threaded reply with wingguy_create_draft. Give the sender\'s email (from) and/or a subject; returns messageId + threadId + snippet, newest first. Read-only, works on any mailbox provider (Gmail, Outlook, IMAP).',
     zodSchema: {
       from: z.string().optional().describe('Sender email address to match, e.g. the lead being replied to.'),
       subject: z.string().optional().describe('Subject line to match.'),
@@ -1273,7 +1278,7 @@ const TOOL_DEFS = [
   {
     name: 'wingguy_lead_replied_since',
     description:
-      'Has this lead REPLIED by email since a given date? Checks the coach\'s own mailbox (via their Nylas grant — works on Gmail, Outlook, IMAP/Zoho alike) for inbound messages FROM the lead after since_iso, and answers YES with the last inbound message (date, subject, messageId for a threaded reply) or NO. Use before follow-ups: "did they ever come back to me?", "any reply since the call?". Narrow by design — one lead, one question; it is not a mailbox search.',
+      'Has this lead REPLIED by email since a given date? Checks the coach\'s own mailbox (Gmail, Outlook, IMAP/Zoho alike) for inbound messages FROM the lead after since_iso, and answers YES with the last inbound message (date, subject, messageId for a threaded reply) or NO. Use before follow-ups: "did they ever come back to me?", "any reply since the call?". Narrow by design — one lead, one question; it is not a mailbox search.',
     zodSchema: {
       lead_email: z.string().describe('The lead\'s email address (the sender to look for).'),
       since_iso: z.string().describe('ISO 8601 date/time — count only messages received AFTER this, e.g. "2026-06-01".'),
@@ -1291,7 +1296,7 @@ const TOOL_DEFS = [
   {
     name: 'wingguy_read_message',
     description:
-      'Read ONE email in full from the coach\'s own mailbox (via their Nylas grant — Gmail, Outlook, IMAP/Zoho alike): from/to/date/subject + the body as readable text. Use when the human says "read me their reply" / "what did that email say" — get the message_id from wingguy_find_message, wingguy_lead_correspondence, or wingguy_lead_replied_since first. Read-only; long bodies are truncated.',
+      'Read ONE email in full from the coach\'s own mailbox (Gmail, Outlook, IMAP/Zoho alike): from/to/date/subject + the body as readable text. Use when the human says "read me their reply" / "what did that email say" — get the message_id from wingguy_find_message, wingguy_lead_correspondence, or wingguy_lead_replied_since first. Read-only; long bodies are truncated.',
     zodSchema: {
       message_id: z.string().describe('The Nylas message id to read (from wingguy_find_message / wingguy_lead_correspondence).'),
     },

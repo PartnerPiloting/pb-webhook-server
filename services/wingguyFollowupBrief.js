@@ -594,7 +594,7 @@ function formatBrief(row) {
     // message (Guy's call 2026-08-01) — the reply is drafted live in the thread, where the
     // conversation and the calendar are both current. Old stored payloads may still hold a
     // LinkedIn draftText; render it the legacy way until the next preparation replaces it.
-    lines.push(`\nREPLIES OWED (${piles.draft.length}${piles.draft.length > PILE_CAP ? `, first ${PILE_CAP} here — the queue pages the rest` : ''}) — email people have drafts IN THE BRIEF (show → tweak in chat → on approval push to Gmail with wingguy_create_draft, threaded via the reply id below; never push unasked). LinkedIn people get NO pre-written message by design — relay their /wg pointer + angle (they open the thread and type /wg; it drafts from the live conversation and calendar):`);
+    lines.push(`\nREPLIES OWED (${piles.draft.length}${piles.draft.length > PILE_CAP ? `, first ${PILE_CAP} here — the queue pages the rest` : ''}) — email people have drafts IN THE BRIEF (show → tweak in chat → on approval push to their mailbox with wingguy_create_draft, threaded via the reply id below; never push unasked). LinkedIn people get NO pre-written message by design — relay their /wg pointer + angle (they open the thread and type /wg; it drafts from the live conversation and calendar):`);
     for (const it of piles.draft.slice(0, PILE_CAP)) {
       const liTag = it.channel === 'linkedin' ? (it.draftText ? ' [LinkedIn — paste-ready]' : ' [LinkedIn — open the thread and type /wg]') : '';
       lines.push(`- ${nm(it)} — ${rec(it)}${liTag}${it.draftError ? ` [draft generation FAILED: ${it.draftError}]` : ''}${it.draftPending ? ' [draft arrives next overnight run — ask me to draft it now if wanted]' : ''}`);
