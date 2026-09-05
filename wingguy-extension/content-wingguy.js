@@ -807,8 +807,7 @@
     // keep only those — it is the surest way to drop the coach's own row links when the nav name
     // couldn't be read, and any stray link to a third profile mentioned in a message.
     if (isGroupTitle(groupTitle)) {
-      const firsts = String(groupTitle).replace(/\d+\s+people in this conversation/i, '')
-        .split(/,|\band\b/).map((x) => cleanText(x).toLowerCase()).filter((x) => x && x !== 'you');
+      const firsts = headingFirstNames(groupTitle);
       const kept = out.filter((p) => firsts.includes(p.name.toLowerCase().split(/\s+/)[0]));
       if (kept.length) return kept;
     }
@@ -1198,14 +1197,33 @@
     // person's "name" and prefilled the rescue card with junk (Adrian Rampoldi capture, 2026-08-01).
     return !!t && t.length >= 2 && t.length < 60 && /[A-Za-z]/.test(t) &&
       !/(message|reaction|status|sent the following|edited|open the options|see more|today|yesterday|active now|profile|· )/i.test(t) &&
-      !isGroupTitle(t);
+      !isThreadHeading(t);
   }
-  // A GROUP thread's heading is not a person ("Ann, Dimitri, and you 3 people in this conversation",
-  // Guy 2026-09-02). It used to pass as a name, so the CRM lookup searched for someone called
-  // "ann, … conversation", the chat said the lead was "not in the CRM" (both were), and the rescue
-  // card offered to create a lead with that junk title.
-  function isGroupTitle(t) {
+  // A thread heading is LinkedIn's roster line, not a person — and it reads the same shape whether
+  // the thread has two people or ten ("Ann Smith and you 2 people in this conversation";
+  // "Ann, Dimitri, and you 3 people in this conversation", Guy 2026-09-02). It used to pass as a
+  // name, so the CRM lookup searched for someone called "ann, … conversation", the chat said the
+  // lead was "not in the CRM" (both were), and the rescue card offered to create a lead with that
+  // junk title. Every heading is rejected as a name — that part never depended on the head count.
+  function isThreadHeading(t) {
     return /(\band you\b|people in this conversation|^\d+\s+people\b)/i.test(String(t || ''));
+  }
+  // A GROUP is a heading with THREE OR MORE people in it. The head count is what separates an
+  // introduction from an ordinary 1:1 — without it every normal reply was labelled "Group:" and the
+  // capture toast said "Group thread" (Guy 2026-09-05), because a 1:1 heading also ends in "and you
+  // 2 people in this conversation". Prefer LinkedIn's own count; when the heading omits it, count
+  // the names listed before "you".
+  function isGroupTitle(t) {
+    const s = String(t || '');
+    if (!isThreadHeading(s)) return false;
+    const m = s.match(/(\d+)\s+people\b/i);
+    if (m) return Number(m[1]) >= 3;
+    return headingFirstNames(s).length >= 2;
+  }
+  // The others named in a heading, lower-cased ("Ann, Dimitri, and you …" → ['ann', 'dimitri']).
+  function headingFirstNames(t) {
+    return String(t || '').replace(/\d+\s+people in this conversation/i, '')
+      .split(/,|\band\b/).map((x) => cleanText(x).toLowerCase()).filter((x) => x && x !== 'you');
   }
   function senderForItem(item) {
     const group = item.closest(selStr('message_group_item')) || item;
