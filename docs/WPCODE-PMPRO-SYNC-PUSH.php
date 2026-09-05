@@ -11,41 +11,51 @@
  * Cron setup (e.g. cron-job.org):
  *   URL: https://australiansidehustles.com.au/?pmpro_sync_push=YOUR_SECRET
  *   Schedule: Daily (e.g. 2:00 AM AEST)
+ *
+ * Debug: Logs to wp-content/pmpro-sync-push.log (no wp-config changes needed)
  */
-add_action('init', function () {
+function pmpro_sync_push_log($msg) {
+	$log = defined('WP_CONTENT_DIR') ? WP_CONTENT_DIR . '/pmpro-sync-push.log' : __DIR__ . '/../wp-content/pmpro-sync-push.log';
+	file_put_contents($log, '[' . date('Y-m-d H:i:s') . '] ' . $msg . "\n", FILE_APPEND);
+}
+
+add_action('wp_loaded', function () {
 	$key = isset($_GET['pmpro_sync_push']) ? sanitize_text_field($_GET['pmpro_sync_push']) : '';
 	if (empty($key)) {
 		return;
 	}
 
-	// Require PMPro
-	if (!function_exists('pmpro_get_membership_level_for_user')) {
-		error_log('[PMPro Sync Push] PMPro not active');
+	pmpro_sync_push_log('TRIGGERED - key length: ' . strlen($key));
+
+	global $wpdb;
+	$mu_table = $wpdb->prefix . 'pmpro_memberships_users';
+	$ml_table = $wpdb->prefix . 'pmpro_membership_levels';
+
+	// Check if PMPro tables exist (no PMPro functions needed)
+	if ($wpdb->get_var("SHOW TABLES LIKE '{$mu_table}'") !== $mu_table) {
+		pmpro_sync_push_log('PMPro table not found: ' . $mu_table);
 		return;
 	}
 
-	global $wpdb;
-	$table = $wpdb->prefix . 'pmpro_memberships_users';
-
-	// Get distinct user IDs with active membership (status = 'active')
-	$user_ids = $wpdb->get_col(
+	// Get active members with level info - direct DB query, no PMPro functions
+	$rows = $wpdb->get_results(
 		$wpdb->prepare(
-			"SELECT DISTINCT user_id FROM {$table} WHERE status = %s",
+			"SELECT mu.user_id, mu.membership_id AS level_id, mu.enddate, ml.name AS level_name
+			 FROM {$mu_table} mu
+			 LEFT JOIN {$ml_table} ml ON ml.id = mu.membership_id
+			 WHERE mu.status = %s",
 			'active'
-		)
+		),
+		ARRAY_A
 	);
 
 	$memberships = array();
-	foreach ((array) $user_ids as $user_id) {
-		$level = pmpro_get_membership_level_for_user($user_id);
-		if (empty($level)) {
-			continue;
-		}
+	foreach ((array) $rows as $row) {
 		$memberships[] = array(
-			'wpUserId'  => (int) $user_id,
-			'levelId'   => isset($level->id) ? (int) $level->id : (int) $level->ID,
-			'levelName' => isset($level->name) ? $level->name : (isset($level->level_name) ? $level->level_name : 'Unknown'),
-			'enddate'   => isset($level->enddate) ? $level->enddate : null,
+			'wpUserId'  => (int) $row['user_id'],
+			'levelId'   => (int) $row['level_id'],
+			'levelName' => !empty($row['level_name']) ? $row['level_name'] : 'Unknown',
+			'enddate'   => !empty($row['enddate']) ? $row['enddate'] : null,
 		);
 	}
 
@@ -53,6 +63,8 @@ add_action('init', function () {
 		'secret'      => $key,
 		'memberships' => $memberships,
 	);
+
+	pmpro_sync_push_log('Sending ' . count($memberships) . ' members to pb-webhook-server...');
 
 	$response = wp_remote_post(
 		'https://pb-webhook-server.onrender.com/api/pmpro-sync-push',
@@ -64,11 +76,17 @@ add_action('init', function () {
 		)
 	);
 
+	if (is_wp_error($response)) {
+		pmpro_sync_push_log('wp_remote_post FAILED (WP_Error): ' . $response->get_error_message());
+		pmpro_sync_push_log('Error code: ' . $response->get_error_code());
+		return;
+	}
+
 	$code = wp_remote_retrieve_response_code($response);
 	$body = wp_remote_retrieve_body($response);
 	if ($code >= 200 && $code < 300) {
-		error_log('[PMPro Sync Push] Success: ' . count($memberships) . ' members sent');
+		pmpro_sync_push_log('Success: HTTP ' . $code . ' - ' . count($memberships) . ' members sent');
 	} else {
-		error_log('[PMPro Sync Push] Failed: HTTP ' . $code . ' - ' . substr($body, 0, 200));
+		pmpro_sync_push_log('Failed: HTTP ' . $code . ' - ' . substr($body, 0, 300));
 	}
-}, 5);
+}, 20);

@@ -19,7 +19,7 @@ add_filter( 'rest_pre_dispatch', function ( $result, $server, $request ) {
 		wp_remote_post(
 			'https://pb-webhook-server.onrender.com/api/debug/pmpro-webhook-received',
 			array(
-				'timeout'  => 5,
+				'timeout'  => 0.01,
 				'blocking' => false,
 				'body'     => wp_json_encode( array(
 					'stage'     => 'request_received',
@@ -44,7 +44,7 @@ add_filter( 'pmpro_get_membership_level_for_user', function ( $level, $user_id )
 	wp_remote_post(
 		'https://pb-webhook-server.onrender.com/api/debug/pmpro-webhook-received',
 		array(
-			'timeout'  => 5,
+			'timeout'  => 0.01,
 			'blocking' => false,
 			'body'     => wp_json_encode( array(
 				'stage'     => 'pmpro_finished',

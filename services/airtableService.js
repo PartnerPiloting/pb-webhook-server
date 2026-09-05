@@ -557,11 +557,17 @@ async function appendLeadScoringToJobTracking(runId, clientName, leadsProcessed,
     const newNotes = existingNotes + appendText;
     const endTime = new Date().toISOString();
 
-    await base(JOB_TRACKING_TABLE).update(record.id, {
+    // Only set Status = 'Completed' when this client succeeded. When a client fails, do NOT
+    // overwrite to 'Failed' - the run may have other successful clients; a single failure
+    // was incorrectly marking the whole run Failed and breaking pipeline health checks.
+    const updates = {
       [JOB_TRACKING_FIELDS.SYSTEM_NOTES]: newNotes,
-      [JOB_TRACKING_FIELDS.STATUS]: success ? 'Completed' : 'Failed',
       [JOB_TRACKING_FIELDS.END_TIME]: endTime
-    });
+    };
+    if (success) {
+      updates[JOB_TRACKING_FIELDS.STATUS] = 'Completed';
+    }
+    await base(JOB_TRACKING_TABLE).update(record.id, updates);
     logger.info(`appendLeadScoringToJobTracking: Appended "${appendText.trim()}" for ${baseRunId}`);
     return { success: true };
   } catch (error) {
