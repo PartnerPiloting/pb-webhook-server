@@ -164,7 +164,34 @@ powershell.exe -ExecutionPolicy Bypass -WindowStyle Hidden -File "%~dp0wingguy-u
 
   # Prove it works before walking away - the whole point of installing this in person.
   & $installedScript -Server $Server -Token $Token -Folder $Folder -Force
-  Write-Log "Install complete. Now load $Folder into the browser (developer mode -> Load unpacked)."
+  $updateExit = $LASTEXITCODE
+
+  # VERIFY the folder. Do NOT infer success from the absence of an error, because there are two
+  # ways to reach this line with $Folder still empty:
+  #   1. the update threw - it logs ERROR and exits 1, but `&` hands control back here, so the
+  #      old code went straight on to announce "Install complete" over nothing;
+  #   2. the update was KILLED mid-download - a dropped Splashtop session, a closed window, a
+  #      laptop that slept. That writes no log line at all, so a quiet log proves nothing either.
+  # Both end the same way: a registered updater, an empty folder, and Load unpacked failing in
+  # front of the client. Guy hit case 2 on his own Acer on 2026-09-05 - task registered,
+  # C:\Wingguy empty, nothing on screen saying so. The 3am and login runs do repair it within a
+  # day, but that is no help while you are still sitting at the machine.
+  $installedVersion = Get-LocalVersion $Folder
+  if (-not $installedVersion) {
+    Write-Log "FAILED: updater is scheduled, but nothing was downloaded to $Folder (update exit $updateExit)."
+    Write-Host ""
+    Write-Host "INSTALL INCOMPLETE - DO NOT load the extension yet." -ForegroundColor Red
+    Write-Host "Scheduling worked, but $Folder is empty - the download did not finish."
+    Write-Host "Re-run it with:  $scriptHome\run-update.cmd"
+    Write-Host "(The 3am and login runs will also repair this on their own.)"
+    Write-Host ""
+    exit 1
+  }
+
+  Write-Log "Install complete, verified $Folder at $installedVersion."
+  Write-Host ""
+  Write-Host "Verified: $Folder contains version $installedVersion." -ForegroundColor Green
+  Write-Host "Now load $Folder into the browser (developer mode -> Load unpacked)."
   return
 }
 
