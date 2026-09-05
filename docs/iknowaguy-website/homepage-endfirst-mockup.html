@@ -1,0 +1,194 @@
+<title>Start at the end - homepage variant B</title>
+<style>
+  :root {
+    --paper:   #F2EEE6;
+    --surface: #FBF9F4;
+    --ink:     #22201C;
+    --ink-soft:#4C473F;
+    --ink-faint:#726B60;
+    --line:    #DBD3C5;
+    --teal:    #1E5E58;
+    --teal-bright: #2C7C72;
+    --marker:  rgba(198,150,74,0.30);
+    --shadow:  rgba(34,32,28,0.10);
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+    --sans:  system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --mono:  "SF Mono", ui-monospace, "Cascadia Code", Menlo, Consolas, monospace;
+    --measure: 34rem;
+    --pad: clamp(1.25rem, 5vw, 2.5rem);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper:#1A1917; --surface:#232120; --ink:#ECE6DA; --ink-soft:#B6AD9E;
+      --ink-faint:#8A8073; --line:#35312B; --teal:#63B6AB; --teal-bright:#7FCABF;
+      --marker:rgba(212,168,98,0.28); --shadow:rgba(0,0,0,0.35);
+    }
+  }
+  :root[data-theme="light"] {
+    --paper:#F2EEE6; --surface:#FBF9F4; --ink:#22201C; --ink-soft:#4C473F;
+    --ink-faint:#726B60; --line:#DBD3C5; --teal:#1E5E58; --teal-bright:#2C7C72;
+    --marker:rgba(198,150,74,0.30); --shadow:rgba(34,32,28,0.10);
+  }
+  :root[data-theme="dark"] {
+    --paper:#1A1917; --surface:#232120; --ink:#ECE6DA; --ink-soft:#B6AD9E;
+    --ink-faint:#8A8073; --line:#35312B; --teal:#63B6AB; --teal-bright:#7FCABF;
+    --marker:rgba(212,168,98,0.28); --shadow:rgba(0,0,0,0.35);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--paper); color: var(--ink);
+    font-family: var(--sans); font-size: 1.0625rem; line-height: 1.65;
+    -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
+  }
+  .wrap { width: 100%; max-width: 46rem; margin: 0 auto; padding: 0 var(--pad); }
+  .reading { max-width: var(--measure); }
+
+  nav {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 1rem; padding: 1.25rem var(--pad); max-width: 46rem; margin: 0 auto;
+  }
+  .wordmark { font-family: var(--serif); font-size: 1.15rem; font-weight: 600; letter-spacing: 0.01em; color: var(--ink); text-decoration: none; }
+  .wordmark .amp { color: var(--teal); }
+  .nav-link { font-size: 0.9rem; color: var(--ink-faint); text-decoration: none; }
+  .nav-link:hover { color: var(--teal); }
+
+  .eyebrow { font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.16em; text-transform: uppercase; color: var(--teal); margin: 0 0 0.9rem; font-weight: 600; }
+
+  header.hero { padding: clamp(2rem, 7vw, 4rem) 0 clamp(2rem, 6vw, 3.5rem); position: relative; overflow: hidden; }
+  .hero-net { position: absolute; top: -1rem; right: -2rem; width: 240px; max-width: 45%; opacity: 0.5; pointer-events: none; color: var(--teal); }
+  @media (prefers-color-scheme: dark) { .hero-net { opacity: 0.35; } }
+  h1 {
+    font-family: var(--serif); font-weight: 600;
+    font-size: clamp(2.3rem, 7vw, 3.6rem); line-height: 1.06;
+    letter-spacing: -0.015em; margin: 0 0 1.4rem; text-wrap: balance; max-width: 15ch;
+  }
+  .lede { max-width: var(--measure); margin: 0 0 1rem; display: flex; flex-direction: column; gap: 1rem; }
+  .lede p { font-size: 1.2rem; line-height: 1.5; color: var(--ink-soft); margin: 0; }
+  .lede em { font-style: italic; color: var(--ink); }
+
+  .mark {
+    background-image: linear-gradient(var(--marker), var(--marker));
+    background-repeat: no-repeat; background-position: 0 88%;
+    background-size: 100% 0.42em; padding: 0 0.05em;
+  }
+
+  .scenes { display: flex; flex-direction: column; gap: 1.1rem; margin: 2rem 0 0; }
+  .scene { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: clamp(1.1rem, 3vw, 1.5rem); box-shadow: 0 12px 30px -18px var(--shadow); max-width: 32rem; }
+  .msg-label { font-family: var(--mono); font-size: 0.68rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-faint); margin: 0 0 0.5rem; }
+  .bubble-in { background: var(--paper); border: 1px solid var(--line); border-radius: 12px 12px 12px 3px; padding: 0.7rem 0.9rem; font-size: 0.98rem; color: var(--ink-soft); }
+  .scene-divider { display: flex; align-items: center; gap: 0.6rem; margin: 1rem 0 0.8rem; color: var(--teal); font-family: var(--mono); font-size: 0.68rem; letter-spacing: 0.12em; text-transform: uppercase; }
+  .scene-divider::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+  .scene-out { font-size: 0.95rem; color: var(--ink-soft); margin: 0; }
+  .scene-out strong { color: var(--ink); font-weight: 600; }
+
+  .cta-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.85rem 1.1rem; margin-top: 2rem; }
+  .btn {
+    font-family: var(--sans); font-size: 0.9rem; font-weight: 600;
+    color: #FBF9F4; background: var(--teal); border: none; border-radius: 999px;
+    padding: 0.6rem 1.15rem; text-decoration: none; display: inline-block; cursor: pointer;
+  }
+  .btn:hover { background: var(--teal-bright); }
+  .cta-note { font-size: 0.9rem; color: var(--ink-faint); }
+  .quiet-link { font-size: 0.95rem; color: var(--teal); text-decoration: none; border-bottom: 1px solid color-mix(in srgb, var(--teal) 40%, transparent); }
+  .quiet-link:hover { border-bottom-color: var(--teal); }
+
+  section { padding: clamp(2rem, 5.5vw, 3.25rem) 0; border-top: 1px solid var(--line); }
+  h2 {
+    font-family: var(--serif); font-weight: 600;
+    font-size: clamp(1.6rem, 4.2vw, 2.25rem); line-height: 1.12;
+    letter-spacing: -0.01em; margin: 0 0 1.1rem; text-wrap: balance; max-width: 18ch;
+  }
+  p { margin: 0 0 1.15rem; max-width: var(--measure); }
+  p:last-child { margin-bottom: 0; }
+
+  .honesty { background: var(--surface); border-top: none; }
+  .honesty p { font-family: var(--serif); font-style: italic; font-size: 1.15rem; line-height: 1.55; color: var(--ink-soft); max-width: var(--measure); }
+
+  .continues { text-align: center; padding: 2.5rem var(--pad) 3.5rem; }
+  .continues p { font-family: var(--mono); font-size: 0.75rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-faint); margin: 0 auto; max-width: 30rem; line-height: 1.9; }
+</style>
+
+<nav>
+  <a class="wordmark" href="#">I know a <span class="amp">Guy</span></a>
+  <a class="nav-link" href="#">The library</a>
+</nav>
+
+<div class="wrap">
+
+  <header class="hero">
+    <svg class="hero-net" viewBox="0 0 200 160" fill="none" aria-hidden="true">
+      <line x1="30" y1="40" x2="95" y2="20" stroke="currentColor" stroke-width="1"></line>
+      <line x1="95" y1="20" x2="150" y2="55" stroke="currentColor" stroke-width="1"></line>
+      <line x1="30" y1="40" x2="70" y2="100" stroke="currentColor" stroke-width="1"></line>
+      <line x1="70" y1="100" x2="150" y2="55" stroke="currentColor" stroke-width="1"></line>
+      <line x1="70" y1="100" x2="120" y2="130" stroke="currentColor" stroke-width="1"></line>
+      <line x1="150" y1="55" x2="120" y2="130" stroke="currentColor" stroke-width="1"></line>
+      <circle cx="30" cy="40" r="4.5" fill="currentColor"></circle>
+      <circle cx="95" cy="20" r="4.5" fill="currentColor"></circle>
+      <circle cx="150" cy="55" r="6" fill="currentColor"></circle>
+      <circle cx="70" cy="100" r="4.5" fill="currentColor"></circle>
+      <circle cx="120" cy="130" r="4.5" fill="currentColor"></circle>
+    </svg>
+    <p class="eyebrow">Network building, rethought</p>
+    <h1>Start at the end.</h1>
+    <div class="lede reading">
+      <p>Most pages save the good part for last. Let's do this backwards: here is what my working day looks like now - told flat, exactly as it happens. The rest of the page explains how this is possible, and why it works even if you'd never call yourself a networker.</p>
+    </div>
+
+    <div class="scenes">
+      <div class="scene">
+        <p class="msg-label">First coffee &middot; me, to Wingguy</p>
+        <div class="bubble-in">Prep me for today's meetings.</div>
+        <div class="scene-divider">Wingguy</div>
+        <p class="scene-out">Each person's story - who they are, what we said last time, <strong>what I promised</strong>, what to raise. Recently it briefed me on the very demonstration I was giving that morning - and flagged that my guest probably knew a man I'd spoken with that week. He did.</p>
+      </div>
+
+      <div class="scene">
+        <p class="msg-label">Mid-morning &middot; me, to Wingguy</p>
+        <div class="bubble-in">Here are two people. Draft the introduction - use my instructions and everything you have.</div>
+        <div class="scene-divider">Wingguy</div>
+        <p class="scene-out">The finished introduction emails - drawn from my calls with both, the transcripts, the emails, the LinkedIn threads - each telling its reader <strong>exactly why the other person matters to them</strong>. I read them, and I send them. <span class="mark">Most days.</span></p>
+      </div>
+
+      <div class="scene">
+        <p class="msg-label">Two reschedule emails overnight &middot; me, to Wingguy</p>
+        <div class="bubble-in">Sort it.</div>
+        <div class="scene-divider">Wingguy</div>
+        <p class="scene-out">Read both, worked out his timezone, proposed the answer - and offered to make the booking.</p>
+      </div>
+    </div>
+
+    <div class="cta-row">
+      <a class="btn" href="#chat">Worth a conversation? →</a>
+      <a class="quiet-link" href="#">Read the whole working day</a>
+    </div>
+  </header>
+
+  <section class="honesty">
+    <div class="reading">
+      <p>None of that is a mock-up or a roadmap. It's running today, on real conversations - including the ones that got this page in front of you. And no - I'd never have the time to do any of it by hand. Nobody would. That's rather the point.</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="reading">
+      <p class="eyebrow">Now, the part that actually matters</p>
+      <h2>You already know it works. That was never the problem.</h2>
+      <p>Nearly everything good comes to you the same way - someone who rates you putting their name behind you, saying <em>I know a guy</em>. We all know that, don't we?</p>
+      <p>And yet network building is the one thing we quietly avoid - because it feels awkward, or onerous, or a lot of effort for not much back. So we don't do the very thing we know works.</p>
+      <p>What you saw above is not the point - it's what makes the point <em>possible</em>. The point is a way of building a network where you choose who belongs in it, give before you ask, and let everything mechanical be handled - so the only part left is the part that was ever worth doing: the conversation.</p>
+    </div>
+  </section>
+
+  <section class="honesty">
+    <div class="reading">
+      <p>You may already be doing some networking - and it might be working, to a degree. If so, wonderful; keep at it. But it's always worth staying open-minded, because deep down most of us suspect there's a better way - and that it's worth a look. There's no magic wand here: it still takes consistent effort, and nothing happens overnight.</p>
+    </div>
+  </section>
+
+</div>
+
+<div class="continues">
+  <p>&mdash; from here the page continues exactly as it does today &mdash;<br>the room &middot; not a natural networker? good &middot; the shift &middot; scoring on attitude &middot; the scenes &middot; the close</p>
+</div>
