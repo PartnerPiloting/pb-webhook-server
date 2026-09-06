@@ -127,7 +127,83 @@ first campaign launches. This is also where the VPS conversation belongs: Linked
 computer, and on a laptop that sleeps it dies quietly. Offered, explained, and never pushed. From
 here the journey stops being plumbing and starts being strategy.
 
-## STEP 0 EXPANDED - get the record ready (you, solo, before the call) [solo]
+## STEP AUTO - what the join page does by itself (added 2026-09-06)
+
+**Nothing here is yours.** A client paying at knowaguy.com.au/join fires Stripe's
+`checkout.session.completed`, and `services/joinProvisioningService.js` runs ten idempotent steps in
+about twenty seconds. Live-drilled with a real $250 on 4 Sep 2026; **Kay Ridge is the first real
+one**, so treat her run as the proving run and read the notify email properly.
+
+**The ten steps, in order:**
+
+1. `create_row` - births the master Clients row, Status **Paused**
+2. `send_ack` - acknowledgement email, as Guy
+3. `create_base` - builds their own leads base
+4. `validate_base` - checks it against `config/clientBaseSchema.json`
+5. `finish_row` - the defaults below
+6. `mint_token` - their Portal Token
+7. `activate` - Status **Active**. Deliberately BEFORE the draft: their access never waits on
+   Guy's inbox
+8. `create_tasks` - their 20 tasks from the templates
+9. `draft_welcome` - welcome email drafted into Guy's mailbox, **never auto-sent**
+10. `notify_guy` - the "it's done" email, carrying any MANUAL / SEED / VALIDATION warnings
+
+**Set automatically, so do NOT set these by hand:**
+
+Client ID (slugged from their name, deduped `-2`..`-9`), Client Name, Client First Name, Client
+Email Address, Stripe Customer ID, Stripe Subscription ID, Status Active, Status Management Manual,
+Billing Source stripe, Coach Notes (join provenance + referrer), Airtable Base ID, Portal Token,
+Service Level `1-Lead Scoring`, Profile Scoring Token Limit 6000, Post Scoring Token Limit 3000,
+Posts Daily Target 10, Leads Batch Size for Post Collection 10, Max Post Batches Per Day Guardrail 3,
+Post Scrape Batch Size 10, Processing Stream 1, Coach, Coaching Status Active, Timezone
+`Australia/Brisbane`, Wingguy Enabled Yes, Thanks for Connecting Yes, Followup Brief Yes.
+
+**What is still yours after it runs:**
+
+- [ ] **Send the welcome draft.** It sits in Guy's mailbox and is never sent automatically - that is
+      by design, so nothing goes out unread.
+- [ ] **Timezone, if they are not on Brisbane time.** See the watch out below.
+- [ ] **Wingguy Enabled** - it arrives `Yes`. Correct for anyone getting the extension; turn it OFF
+      for a chat-only client.
+- [ ] Everything from step 1 onwards: connector link, calendar and mailbox, meeting link, recorder,
+      their Anthropic key, the extension folder.
+- [ ] **Managed vs BYO** - `Managed Claude Key` arrives blank, which means BYO. Right by default;
+      set it to Yes only for a managed-plan client.
+
+**Watch out - the Timezone is hardcoded.** Provisioning writes `Australia/Brisbane` flat; it is not
+derived from anything the client typed. Every meeting time Wingguy ever shows them or their leads
+uses this field, so a wrong one makes every offered time wrong and looks like a booking bug rather
+than a field. Check it on every new joiner. (Kay is Maleny - same clock - so she happens to be
+right. The next one may not be.)
+
+**Watch out - two switches arrive ON that the manual checklist says to leave off.** `Wingguy Enabled`
+and `Followup Brief` are both set to `Yes` by provisioning. See step 11 for what the Followup Brief
+one actually costs now - the old warning about it was out of date.
+
+**Watch out - check `manualSteps` is empty on the first real run.** Bases used to need three
+hand-built fields after every join (Profile Key formula, Date Created, Posts Relevance Status). The
+zero-UI schema removed them on 4 Sep 2026 and was proven on staging, **not yet on a real prod join**.
+The notify email lists anything the builder could not do as `MANUAL:` lines. Empty means it held.
+
+**Watch out - an existing payer short-circuits.** If the payer already has a Clients row (matched on
+Stripe customer id, then email), provisioning stops before creating anything, captures the
+subscription id onto the existing row, and emails Guy. Deliberate - it may be a rejoin or a duplicate
+payment. **The money is untouched; refunds are Guy's to do in Stripe.** Nothing is prevented before
+payment: there is no email pre-check, by design.
+
+**If a step fails** the chain stops clean at that step, emails Guy, and keeps its place; every step
+is idempotent so nothing double-runs on resume. Retry with
+`POST /api/join-provision/jobs/:id/retry` (x-debug-key). The ledger is Postgres
+`join_provision_jobs`, keyed by checkout session id. Last resort: **resend the checkout event from
+the Stripe dashboard.**
+
+---
+
+## STEP 0 EXPANDED - check what is left on the record (you, solo, before the call) [solo]
+
+Since auto-provisioning went live this is a **read**, not a build - the join page did the
+building (see STEP AUTO above). What follows is the checklist of what to verify, and what to set
+by hand for a client who did NOT come through the join page.
 
 **You do:**
 
@@ -692,9 +768,17 @@ these are the *concepts*; the labels may sit a click away):
 - [ ] Or the client's own proof: they draft something (a reply in chat, or a thanks note via the
       extension) and it comes back normally - no "your Anthropic key was rejected" message.
 
-**Watch out - switching the brief on before the key is in.** If Followup Brief = Yes but the
-Anthropic API Key field is still blank, the overnight brief doesn't fail - it quietly falls back to
-YOUR platform key, so you silently pay for their nightly run. No alarm fires because nothing broke.
+**Watch out - the brief is ON from provisioning, before any key exists. CORRECTED 2026-09-06.**
+This warning used to say the overnight brief would quietly fall back to Guy’s platform key and he
+would silently pay for their nightly run. **That is no longer what happens.** `config/anthropicClient.js`
+resolves three lanes in order: a stored client key (`client-stored-key`), then the platform key for
+the owner and managed-plan clients only (`platform-fallback`), then `none-blocked`. A BYO client with
+a blank Anthropic API Key lands in `none-blocked` - the brief does not run at all and is never billed
+to Guy.
+
+So the risk flipped: it is no longer Guy’s money, it is the client’s brief silently doing nothing
+between joining and this step. Not urgent, but do not promise a client their overnight brief before
+their key is on the row.
 The fix is just sequence: key in the field first, brief switched on second. (A managed-plan client is
 the deliberate exception - they're *meant* to run on your key.)
 
