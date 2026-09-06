@@ -357,10 +357,10 @@ code,.mono{font-family:"IBM Plex Mono",ui-monospace,monospace}
   <nav class="railstrip" aria-label="Stages">
     <a href="#s0"><span class="n">0</span> Record ready</a>
     <a href="#s1"><span class="n">1</span> Connector</a>
-    <a href="#s2"><span class="n">2</span> Rules session</a>
-    <a href="#s3"><span class="n">3</span> Calendar + mailbox</a>
-    <a href="#s4"><span class="n">4</span> Meeting link</a>
-    <a href="#s5"><span class="n">5</span> Email</a>
+    <a href="#s2"><span class="n">2</span> Calendar + mailbox</a>
+    <a href="#s3"><span class="n">3</span> Meeting link</a>
+    <a href="#s4"><span class="n">4</span> Email</a>
+    <a href="#s5"><span class="n">5</span> Rules session</a>
     <a href="#s6"><span class="n">6</span> Recorder</a>
     <a href="#s7"><span class="n">7</span> Dress rehearsal</a>
     <a href="#s8"><span class="n">8</span> Their Claude key</a>
@@ -524,50 +524,9 @@ code,.mono{font-family:"IBM Plex Mono",ui-monospace,monospace}
     <div class="stage-head">
       <div class="numeral">2</div>
       <div class="stage-title">
-        <h3>The rules session</h3>
-        <p class="sub">The client tells Wingguy how they actually work. It needs nothing connected -
-        no calendar, no email - and it is the moment they feel "this thing gets me". Let that land
-        before asking for more plumbing.</p>
-      </div>
-      <div class="tags"><span class="tag tag--time">~20 min</span><span class="tag">No dependencies</span></div>
-    </div>
-    <div class="stage-body">
-      <div class="script">
-        <span class="who">Say to the client</span>
-        <p>"This is the fun one. You're going to tell Wingguy how you actually work - how you talk,
-        what you offer, what you'd never say to a lead. It interviews you; you just answer honestly.
-        Takes about twenty minutes and it's what makes everything Wingguy writes sound like YOU.
-        Type: <strong>let's set up my rules</strong>."</p>
-      </div>
-      <div class="roles">
-        <div class="role role--guy">
-          <h4>I do</h4>
-          <p class="none">Genuinely nothing. Wingguy runs the whole interview.</p>
-        </div>
-        <div class="role role--client">
-          <h4>The client does</h4>
-          <ul><li>Types "let's set up my rules" and answers the interview - questions, examples, confirmation.</li></ul>
-        </div>
-        <div class="role role--claude">
-          <h4>Claude does</h4>
-          <ul><li>Runs the interview, writes the rules into their own rules store, reads them back for confirmation.</li></ul>
-        </div>
-      </div>
-      <div class="proof">
-        <h4>Check it worked</h4>
-        <div><ul><li>The client asks Wingguy <em>"what are my rules?"</em> and sees their own words reflected back.</li></ul></div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ============ STEP 3 ============ -->
-  <section class="stage" id="s3">
-    <div class="stage-head">
-      <div class="numeral">3</div>
-      <div class="stage-title">
         <h3>Calendar and mailbox</h3>
         <p class="sub">For a Google or Microsoft client the calendar and the mailbox are ONE
-        approval, not two - so step 3 and step 5 happen in the same two minutes. Zoho is the
+        approval, not two - so step 2 and step 4 happen in the same two minutes. Zoho is the
         exception.</p>
       </div>
       <div class="tags"><span class="tag tag--time">5 min, one approval</span><span class="tag">Branches by provider</span></div>
@@ -633,10 +592,10 @@ code,.mono{font-family:"IBM Plex Mono",ui-monospace,monospace}
         <div class="lanepanel" id="cal-zoho" hidden>
           <p class="why">Zoho splits the two: <strong>calendar</strong> is their own
           <span class="cmd">/auth/zoho/start</span> link (Claude builds it, I paste it);
-          <strong>mail</strong> is an app-specific password, handled at step 5.</p>
+          <strong>mail</strong> is an app-specific password, handled at step 4.</p>
           <div class="roles">
             <div class="role role--guy"><h4>I do</h4><ul><li>Paste the link Claude builds. Same one action.</li></ul></div>
-            <div class="role role--client"><h4>The client does</h4><ul><li>Approves the calendar link, then does the mail half separately at step 5.</li></ul></div>
+            <div class="role role--client"><h4>The client does</h4><ul><li>Approves the calendar link, then does the mail half separately at step 4.</li></ul></div>
             <div class="role role--claude"><h4>Claude does</h4><ul><li>Builds the Zoho start link, catches the refresh token, sets the Zoho fields, proves availability live.</li></ul></div>
           </div>
         </div>
@@ -661,10 +620,10 @@ code,.mono{font-family:"IBM Plex Mono",ui-monospace,monospace}
     </div>
   </section>
 
-  <!-- ============ STEP 4 ============ -->
-  <section class="stage" id="s4">
+  <!-- ============ STEP 3 ============ -->
+  <section class="stage" id="s3">
     <div class="stage-head">
-      <div class="numeral">4</div>
+      <div class="numeral">3</div>
       <div class="stage-title">
         <h3>The meeting link</h3>
         <p class="sub">One reusable personal link on every invite, automatically. We deliberately do
@@ -713,13 +672,13 @@ code,.mono{font-family:"IBM Plex Mono",ui-monospace,monospace}
     </div>
   </section>
 
-  <!-- ============ STEP 5 ============ -->
-  <section class="stage" id="s5">
+  <!-- ============ STEP 4 ============ -->
+  <section class="stage" id="s4">
     <div class="stage-head">
-      <div class="numeral">5</div>
+      <div class="numeral">4</div>
       <div class="stage-title">
         <h3>The email</h3>
-        <p class="sub">For Google and Microsoft clients there is nothing to do here - step 3 already
+        <p class="sub">For Google and Microsoft clients there is nothing to do here - step 2 already
         did it. Run the mail check to prove it and move on.</p>
       </div>
       <div class="tags"><span class="tag tag--only">Zoho only</span></div>
@@ -756,6 +715,54 @@ code,.mono{font-family:"IBM Plex Mono",ui-monospace,monospace}
       <div class="traps">
         <span class="lbl">Worth knowing</span>
         <button class="trap" data-trap="t-90day" type="button">App-password lane: the first deep-history question is slow</button>
+        <button class="trap" data-trap="t-novoice" type="button">Don't demo drafting yet - the rules aren't in</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ STEP 5 ============ -->
+  <section class="stage" id="s5">
+    <div class="stage-head">
+      <div class="numeral">5</div>
+      <div class="stage-title">
+        <h3>The rules session</h3>
+        <p class="sub">The client tells Wingguy how they actually work. <strong>Moved here on
+        purpose (6 Sep 2026).</strong> By now they have watched it read their diary and their mail,
+        so the interview lands on a client who already knows what a sign-off or a "never say that"
+        is going to change - and they arrive at it thinking "of course, I have to fill those in",
+        rather than being asked to describe themselves to something they have not seen work yet.</p>
+      </div>
+      <div class="tags"><span class="tag tag--time">~20 min</span><span class="tag tag--only">Nothing sounds like them until this is done</span></div>
+    </div>
+    <div class="stage-body">
+      <div class="script">
+        <span class="who">Say to the client</span>
+        <p>"This is the fun one. You're going to tell Wingguy how you actually work - how you talk,
+        what you offer, what you'd never say to a lead. It interviews you; you just answer honestly.
+        Takes about twenty minutes and it's what makes everything Wingguy writes sound like YOU.
+        Type: <strong>let's set up my rules</strong>."</p>
+      </div>
+      <div class="roles">
+        <div class="role role--guy">
+          <h4>I do</h4>
+          <p class="none">Genuinely nothing. Wingguy runs the whole interview.</p>
+        </div>
+        <div class="role role--client">
+          <h4>The client does</h4>
+          <ul><li>Types "let's set up my rules" and answers the interview - questions, examples, confirmation.</li></ul>
+        </div>
+        <div class="role role--claude">
+          <h4>Claude does</h4>
+          <ul><li>Runs the interview, writes the rules into their own rules store, reads them back for confirmation.</li></ul>
+        </div>
+      </div>
+      <div class="proof">
+        <h4>Check it worked</h4>
+        <div><ul><li>The client asks Wingguy <em>"what are my rules?"</em> and sees their own words reflected back.</li></ul></div>
+      </div>
+      <div class="traps">
+        <span class="lbl">Cost of the move</span>
+        <button class="trap" data-trap="t-novoice" type="button">Steps 1 to 4 have no voice on them</button>
       </div>
     </div>
   </section>
@@ -1276,6 +1283,30 @@ code,.mono{font-family:"IBM Plex Mono",ui-monospace,monospace}
     <div class="fix"><strong>The fix is just sequence:</strong> key in the field first, brief switched
     on second.</div>
     <p>A managed-plan client is the deliberate exception - they are <em>meant</em> to run on my key.</p>
+  </div>
+
+  <div id="t-novoice" data-title="Nothing sounds like them until step 5">
+    <p>The rules session used to sit at step 2, precisely so that the client's voice was in before
+    anything got drafted. Moving it to step 5 buys a better interview and costs this: between the
+    connector and the rules session, <strong>anything Wingguy writes is generic</strong>. No
+    sign-off, no offer, no turns of phrase - and none of the "what I'd never say" guardrails.</p>
+    <h5>What that means on the call</h5>
+    <ul>
+      <li><strong>Don't demo drafting before step 5.</strong> Prove the mailbox by asking it to
+      <em>find and read back</em> an email, never to write one. A flat first draft is the one
+      impression that's hard to walk back.</li>
+      <li>Same for the calendar step - "what's on my calendar this week?" reads back, it doesn't
+      compose.</li>
+      <li>If the client asks it to draft something off their own bat, say the honest thing:
+      "that's the next step - it doesn't know how you talk yet."</li>
+    </ul>
+    <h5>The other exposure</h5>
+    <p>A client who stalls somewhere around steps 2-4 now has plumbing and <strong>no voice on the
+    record at all</strong>. Under the old order they'd at least have their instructions. Watch for
+    a client going quiet before step 5 - that's the one to chase.</p>
+    <div class="fix"><strong>If a gap opens up:</strong> a two-minute mini-version - name, what they
+    do, email sign-off - closes the worst of it without spending the twenty-minute interview early.
+    The full session still happens at step 5.</div>
   </div>
 
   <div id="t-stale" data-title="The stale snapshot">
