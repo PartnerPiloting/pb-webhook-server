@@ -238,6 +238,18 @@ button.q.ok::after{content:"copied";opacity:.85}
 button.q.sel::after{content:"selected - press ctrl+C";opacity:.85}
 button.door{background:transparent;border-style:dashed}
 [data-view="traps"] .asks{display:none}
+
+/* external links to open alongside a step */
+.opens{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.opens .lbl{font-family:"IBM Plex Mono",monospace;font-size:9.5px;text-transform:uppercase;
+  letter-spacing:.12em;color:var(--slate)}
+.opens a{font-size:12px;text-decoration:none;color:var(--slate);border:1px solid var(--rule);
+  border-radius:3px;padding:4px 10px;background:var(--paper);display:inline-flex;align-items:center;gap:6px}
+.opens a::after{content:"97";font-size:11px;opacity:.6}
+.opens a:hover{border-color:var(--slate);color:var(--ink)}
+.opens a:focus-visible{outline:2px solid var(--slate);outline-offset:2px}
+.opens .note{font-size:12px;color:var(--ink-3)}
+[data-view="traps"] .opens{display:none}
 </style>
 
 <header class="masthead">
@@ -446,6 +458,11 @@ button.door{background:transparent;border-style:dashed}
       <div class="asks"><span class="lbl">Ask me</span><button type="button" class="q" data-q="Mint {{first}}'s calendar and mailbox link, and tell me which lane they're on."></button></div>
       <div class="gist"><b>Gist</b>Checks ALL their calendars, personal included, so they're never
       double-booked. <strong>"Before you click - is that your WORK email at the top?"</strong></div>
+      <div class="opens"><span class="lbl">Open</span>
+        <a href="https://dashboard.unipile.com" target="_blank" rel="noopener">Unipile dashboard</a>
+        <span class="note">Their account appears here the moment they approve - that is the
+        connection becoming visible. I still fetch the id and write the row.</span>
+      </div>
       <div class="lanes" data-lanegroup="cal">
         <div class="lanetabs" role="tablist" aria-label="Provider lane">
           <span class="lbl">Lane</span>
@@ -737,7 +754,7 @@ button.door{background:transparent;border-style:dashed}
           <div class="cols cols--2">
             <div class="col col--me"><h4>Me</h4><ol>
               <li>Create <span class="cmd">OneDrive/Wingguy-clients/&lt;id&gt;/Wingguy</span></li>
-              <li>Share the inner folder <strong>from onedrive.live.com</strong>, "Can view". Right-click "Give access to" is LAN sharing, not OneDrive.</li>
+              <li>Share the inner folder <strong>from <a href="https://onedrive.live.com" target="_blank" rel="noopener">onedrive.live.com</a></strong>, "Can view". Right-click "Give access to" is LAN sharing, not OneDrive.</li>
               <li>Row: Provider <span class="cmd">onedrive</span> + Ref</li>
               <li><span class="cmd">ship-extension.js --client=&lt;id&gt;</span> <strong>locally</strong>, must say OK</li>
             </ol></div>
@@ -836,7 +853,7 @@ button.door{background:transparent;border-style:dashed}
       revoke it in one click. Worst case in the world is a bill the size of the cap you set."</div>
       <div class="cols">
         <div class="col col--them"><h4>In the email, in order</h4><ol>
-          <li>console.anthropic.com - separate from claude.ai</li>
+          <li><a href="https://console.anthropic.com" target="_blank" rel="noopener">console.anthropic.com</a> - separate from claude.ai</li>
           <li><strong>Add credit / payment method.</strong> Pro does NOT cover the API - this is where people trip</li>
           <li>Workspace, call it Wingguy</li>
           <li><strong>Monthly spend limit on it.</strong> Don't let them skip</li>
