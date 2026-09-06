@@ -1,0 +1,219 @@
+<title>Client Journey Status</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+:root{
+  --paper:#eceeec; --panel:#f7f8f7; --panel-2:#e3e7e4;
+  --ink:#161a19; --ink-2:#4a544f; --ink-3:#79847e;
+  --rule:#cdd4cf; --rule-soft:#dde2de;
+  --accent:#1a6f63; --accent-soft:#d9e8e4; --accent-ink:#0f4d44;
+  --owed:#a8501c; --owed-soft:#f3e2d5;
+  --slate:#56656d; --slate-soft:#e2e6e8;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --paper:#0e1211; --panel:#151b19; --panel-2:#1d2523;
+    --ink:#e2e8e5; --ink-2:#a8b3ae; --ink-3:#7d8a85;
+    --rule:#2a3432; --rule-soft:#212a28;
+    --accent:#4cbfa9; --accent-soft:#16332e; --accent-ink:#8ad9c8;
+    --owed:#e0894f; --owed-soft:#332214;
+    --slate:#8ba0a9; --slate-soft:#1b2326;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#0e1211; --panel:#151b19; --panel-2:#1d2523;
+  --ink:#e2e8e5; --ink-2:#a8b3ae; --ink-3:#7d8a85;
+  --rule:#2a3432; --rule-soft:#212a28;
+  --accent:#4cbfa9; --accent-soft:#16332e; --accent-ink:#8ad9c8;
+  --owed:#e0894f; --owed-soft:#332214;
+  --slate:#8ba0a9; --slate-soft:#1b2326;
+}
+*{box-sizing:border-box}
+body{background:var(--paper);color:var(--ink);
+  font-family:"IBM Plex Sans","Segoe UI",system-ui,sans-serif;font-size:14px;line-height:1.5}
+h1,h2,h3{font-family:"IBM Plex Sans Condensed","Arial Narrow",sans-serif;margin:0;text-wrap:balance}
+p{margin:0}
+.mono,.cmd{font-family:"IBM Plex Mono",ui-monospace,monospace}
+.cmd{font-size:12px;background:var(--panel-2);border:1px solid var(--rule-soft);
+  border-radius:2px;padding:1px 5px;word-break:break-word}
+.wrap{width:75%;min-width:0;margin:0 auto}
+@media (max-width:1200px){.wrap{width:92%}}
+
+header{border-bottom:1px solid var(--rule);background:var(--panel);padding:18px 0 16px}
+.hd{display:flex;flex-wrap:wrap;gap:14px;align-items:baseline;justify-content:space-between}
+.hd h1{font-size:25px;font-weight:700;letter-spacing:-.015em}
+.who{color:var(--ink-2);font-size:13px}
+.who b{color:var(--ink);font-weight:600}
+.meta{display:flex;flex-wrap:wrap;gap:14px;margin-top:9px;font-size:11.5px;color:var(--ink-3)}
+.meta span{font-family:"IBM Plex Mono",monospace}
+
+.tally{display:flex;gap:8px;margin-top:13px;flex-wrap:wrap}
+.t{display:flex;align-items:baseline;gap:7px;border:1px solid var(--rule);border-radius:3px;
+  padding:6px 11px;background:var(--paper)}
+.t b{font-family:"IBM Plex Mono",monospace;font-size:17px;font-variant-numeric:tabular-nums;line-height:1}
+.t span{font-size:11px;text-transform:uppercase;letter-spacing:.1em;font-family:"IBM Plex Mono",monospace}
+.t--done{border-color:var(--accent)} .t--done b,.t--done span{color:var(--accent-ink)}
+.t--owed{border-color:var(--owed)} .t--owed b,.t--owed span{color:var(--owed)}
+.t--man{border-color:var(--slate)} .t--man b,.t--man span{color:var(--slate)}
+
+main{padding:22px 0 60px}
+.band{display:flex;align-items:center;gap:12px;margin:0 0 10px}
+.band h2{font-family:"IBM Plex Mono",monospace;font-size:10.5px;text-transform:uppercase;
+  letter-spacing:.16em;font-weight:600;color:var(--ink-3)}
+.band .line{flex:1;height:1px;background:var(--rule)}
+
+.todo{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:8px;margin-bottom:26px}
+.card{border:1px solid var(--rule);border-radius:3px;background:var(--panel);padding:12px 14px}
+.card--owed{border-left:3px solid var(--owed)}
+.card--fixed{border-left:3px solid var(--accent)}
+.card--wait{border-left:3px solid var(--slate)}
+.card h3{font-size:14.5px;font-weight:600;margin-bottom:4px}
+.card p{font-size:12.5px;color:var(--ink-2)}
+.card .st{font-family:"IBM Plex Mono",monospace;font-size:9.5px;letter-spacing:.12em;
+  text-transform:uppercase;display:block;margin-bottom:5px}
+.card--owed .st{color:var(--owed)} .card--fixed .st{color:var(--accent-ink)} .card--wait .st{color:var(--slate)}
+
+.rows{border:1px solid var(--rule);border-radius:3px;overflow:hidden;background:var(--panel)}
+.row{display:grid;grid-template-columns:34px 168px 92px 1fr;gap:12px;align-items:baseline;
+  padding:9px 14px;border-bottom:1px solid var(--rule-soft)}
+.row:last-child{border-bottom:0}
+.row--done{background:var(--panel)}
+.row--owed{background:var(--owed-soft)}
+.row--man{background:var(--paper)}
+.n{font-family:"IBM Plex Mono",monospace;font-size:13px;font-variant-numeric:tabular-nums;
+  color:var(--ink-3);text-align:right}
+.row--done .n{color:var(--accent)} .row--owed .n{color:var(--owed)}
+.nm{font-weight:600;font-size:13.5px}
+.pill{font-family:"IBM Plex Mono",monospace;font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;
+  border-radius:2px;padding:2px 7px;text-align:center;white-space:nowrap;border:1px solid}
+.p-done{color:#fff;background:var(--accent);border-color:var(--accent)}
+:root[data-theme="dark"] .p-done,:root:not([data-theme="light"]) .p-done{color:#08110f}
+.p-owed{color:var(--owed);background:transparent;border-color:var(--owed)}
+.p-man{color:var(--slate);background:transparent;border-color:var(--rule)}
+.ev{font-size:12.5px;color:var(--ink-2)}
+.ev b{color:var(--ink);font-weight:600}
+
+footer{border-top:1px solid var(--rule);margin-top:26px;padding-top:14px;
+  font-size:12px;color:var(--ink-3);display:flex;flex-wrap:wrap;gap:18px;justify-content:space-between}
+
+@media (max-width:820px){
+  .row{grid-template-columns:28px 1fr;row-gap:4px}
+  .pill{grid-column:2;justify-self:start}
+  .ev{grid-column:2}
+}
+</style>
+
+<header><div class="wrap">
+  <div class="hd">
+    <h1>Client Journey Status</h1>
+    <p class="who"><b>Owen Pyrah</b> · ACJ Tech · fractional CMO targeting</p>
+  </div>
+  <div class="meta">
+    <span>Owen-Pyrah</span>
+    <span>base appJHV2NP3KS57BlH</span>
+    <span>tz Australia/Perth</span>
+    <span>preflight run 6 Sep 2026</span>
+  </div>
+  <div class="tally">
+    <div class="t t--done"><b>9</b><span>Done</span></div>
+    <div class="t t--owed"><b>1</b><span>Owed</span></div>
+    <div class="t t--man"><b>5</b><span>Can't be checked</span></div>
+  </div>
+</div></header>
+
+<main><div class="wrap">
+
+  <div class="band"><h2>What this run turned up</h2><div class="line"></div></div>
+  <div class="todo">
+    <div class="card card--owed">
+      <h3>One instruction field is blank</h3>
+      <span class="st">Owed · step 6</span>
+      <p><span class="cmd">core_framing</span> never got filled. He has 27 instructions otherwise,
+      so the homework was done - this single essential just slipped through.</p>
+    </div>
+    <div class="card card--fixed">
+      <h3>Overnight brief switched on</h3>
+      <span class="st">Fixed today · step 11</span>
+      <p>His Claude key was in but the brief was blank, so it was never running. Now
+      <span class="cmd">Yes</span>. It'll draft on his own key from tonight.</p>
+    </div>
+    <div class="card card--wait">
+      <h3>Email series date not set</h3>
+      <span class="st">Not yet due · step 14</span>
+      <p>Correct, not a fault. It gets set at the Linked Helper session, which he hasn't had - and
+      he declined the VPS, so don't re-pitch it.</p>
+    </div>
+  </div>
+
+  <div class="band"><h2>The journey, step by step</h2><div class="line"></div></div>
+  <div class="rows">
+
+    <div class="row row--done"><div class="n">0</div><div class="nm">Record ready</div>
+      <div class="pill p-done">Done</div>
+      <div class="ev">Active · token round-trips · <b>tz Australia/Perth</b> (right for him)</div></div>
+
+    <div class="row row--man"><div class="n">1</div><div class="nm">Claude connector</div>
+      <div class="pill p-man">On his screen</div>
+      <div class="ev">Proof is Wingguy answering in <b>his</b> Claude. New tools need Refresh Tool List and a fresh chat.</div></div>
+
+    <div class="row row--done"><div class="n">2</div><div class="nm">Calendar + mailbox</div>
+      <div class="pill p-done">Done</div>
+      <div class="ev">provider unipile · Read IDs <b>all</b> · Write ID left at the provider default</div></div>
+
+    <div class="row row--done"><div class="n">3</div><div class="nm">Test the calendar</div>
+      <div class="pill p-done">Done</div>
+      <div class="ev">2 calendars back through the seam. Real test stays his: <b>"what's on my calendar this week?"</b> with a personal event showing.</div></div>
+
+    <div class="row row--done"><div class="n">4</div><div class="nm">Meeting link</div>
+      <div class="pill p-done">Done</div>
+      <div class="ev">Link set · phone and LinkedIn on the invite too</div></div>
+
+    <div class="row row--done"><div class="n">5</div><div class="nm">Test the email</div>
+      <div class="pill p-done">Done</div>
+      <div class="ev">unipile account connected. Real test stays his: find a known sender, then ask for the full text.</div></div>
+
+    <div class="row row--owed"><div class="n">6</div><div class="nm">Instructions (homework)</div>
+      <div class="pill p-owed">Owed</div>
+      <div class="ev"><b>27 instructions</b> of his own · setup-page essentials <b>4 of 5</b> · <span class="cmd">core_framing</span> blank</div></div>
+
+    <div class="row row--done"><div class="n">7</div><div class="nm">Recorder</div>
+      <div class="pill p-done">Done</div>
+      <div class="ev">fathom · 1 meeting stored, none held</div></div>
+
+    <div class="row row--man"><div class="n">8</div><div class="nm">Dress rehearsal</div>
+      <div class="pill p-man">Proven 2 Sep</div>
+      <div class="ev">Offer times → book → invite arrives with the link → cancel. Done in session 4.</div></div>
+
+    <div class="row row--done"><div class="n">9</div><div class="nm">Ship + install extension</div>
+      <div class="pill p-done">Done</div>
+      <div class="ev">OneDrive folder on file - <span class="cmd">ship-extension.js</span> reaches him</div></div>
+
+    <div class="row row--man"><div class="n">10</div><div class="nm">Prove the extension</div>
+      <div class="pill p-man">On his screen</div>
+      <div class="ev">Card at the shipped version → portal opened <b>once in that browser</b> → /wg shows the panel.</div></div>
+
+    <div class="row row--done"><div class="n">11</div><div class="nm">His Claude key</div>
+      <div class="pill p-done">Done</div>
+      <div class="ev">Key set · <b>Followup Brief now Yes</b> (was blank until today)</div></div>
+
+    <div class="row row--man"><div class="n">12</div><div class="nm">Demonstrate /wg</div>
+      <div class="pill p-man">On his screen</div>
+      <div class="ev">A real profile he'd message. <b>His edit of the draft is the lesson.</b></div></div>
+
+    <div class="row row--man"><div class="n">13</div><div class="nm">Feature tour</div>
+      <div class="pill p-man">Not started</div>
+      <div class="ev">Pick two or three. Lead with people-you've-met: a lead from a recorded call needs no LinkedIn URL.</div></div>
+
+    <div class="row row--man"><div class="n">14</div><div class="nm">Linked Helper + VPS</div>
+      <div class="pill p-man">Not started</div>
+      <div class="ev">The closing step. Email Series Start Date not set yet - that's due at this session. <b>VPS declined; don't re-pitch.</b></div></div>
+
+  </div>
+
+  <footer>
+    <p>Generated from <span class="mono">scripts/wingguy-onboarding-preflight.js</span>, run against
+    production. Read-only - the one change made today was flipping the brief on.</p>
+    <p class="mono">Steps: docs/wingguy-onboarding-checklist.md</p>
+  </footer>
+</div></main>
