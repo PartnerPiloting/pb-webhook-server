@@ -215,6 +215,29 @@ code,.mono,.cmd{font-family:"IBM Plex Mono",ui-monospace,monospace}
   .tags{grid-column:1/-1;justify-content:flex-start}
 }
 @media (prefers-reduced-motion:reduce){.drawer,.scrim{transition:none}}
+
+/* copy-paste prompts */
+#cname{font:inherit;font-size:13px;background:var(--paper);color:var(--ink);
+  border:1px solid var(--rule);border-radius:3px;padding:5px 9px;width:150px}
+#cname:focus-visible{outline:2px solid var(--accent);outline-offset:-1px}
+.asks{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.asks .lbl{font-family:"IBM Plex Mono",monospace;font-size:9.5px;text-transform:uppercase;
+  letter-spacing:.12em;color:var(--accent-ink)}
+button.q{font:inherit;font-family:"IBM Plex Mono",monospace;font-size:12px;text-align:left;
+  cursor:pointer;background:var(--accent-soft);border:1px solid var(--accent);
+  color:var(--accent-ink);border-radius:3px;padding:5px 10px;position:relative}
+button.q::after{content:"copy";font-size:9px;letter-spacing:.1em;text-transform:uppercase;
+  opacity:.55;margin-left:9px}
+button.q.paste::after{content:"copy + paste value"}
+button.q:hover{background:var(--accent);color:var(--paper)}
+:root[data-theme="dark"] button.q:hover,:root:not([data-theme="light"]) button.q:hover{color:#08110f}
+button.q:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+button.q.ok{background:var(--accent);color:var(--paper)}
+:root[data-theme="dark"] button.q.ok,:root:not([data-theme="light"]) button.q.ok{color:#08110f}
+button.q.ok::after{content:"copied";opacity:.85}
+button.q.sel::after{content:"selected - press ctrl+C";opacity:.85}
+button.door{background:transparent;border-style:dashed}
+[data-view="traps"] .asks{display:none}
 </style>
 
 <header class="masthead">
@@ -226,7 +249,10 @@ code,.mono,.cmd{font-family:"IBM Plex Mono",ui-monospace,monospace}
       Traps are click-through. Words live in <span class="mono">docs/wingguy-onboarding-checklist.md</span>.</p>
     </div>
     <div class="viewbar">
-      <span class="lbl">Show</span>
+      <span class="lbl">Client</span>
+      <input id="cname" type="text" value="Kay Ridge" spellcheck="false" aria-label="Client name">
+      <button type="button" class="q door" data-q="onboard {{name}}"></button>
+      <span class="lbl" style="margin-left:10px">Show</span>
       <div class="seg" role="group" aria-label="What to show">
         <button type="button" data-set="all" aria-pressed="true">All</button>
         <button type="button" data-set="actions" aria-pressed="false">My actions</button>
@@ -285,6 +311,7 @@ code,.mono,.cmd{font-family:"IBM Plex Mono",ui-monospace,monospace}
       <div class="tags"><span class="tag" style="border-color:var(--auto);color:var(--auto)">Untested in the wild</span></div>
     </div>
     <div class="stage-body">
+      <div class="asks"><span class="lbl">Ask me</span><button type="button" class="q" data-q="Has {{first}}'s signup provisioned cleanly? Tell me what is left to do."></button></div>
       <div class="cols">
         <div class="col col--me">
           <h4>The ten steps</h4>
@@ -346,6 +373,7 @@ code,.mono,.cmd{font-family:"IBM Plex Mono",ui-monospace,monospace}
       <div class="tags"><span class="tag tag--proof">Before every session</span></div>
     </div>
     <div class="stage-body">
+      <div class="asks"><span class="lbl">Ask me</span><button type="button" class="q" data-q="I'm about to onboard {{name}} - run the preflight and tell me where they're up to."></button></div>
       <div class="cols cols--2">
         <div class="col col--me">
           <h4>One command</h4>
@@ -383,6 +411,7 @@ code,.mono,.cmd{font-family:"IBM Plex Mono",ui-monospace,monospace}
       <div class="tags"><span class="tag tag--time">2 min</span></div>
     </div>
     <div class="stage-body">
+      <div class="asks"><span class="lbl">Ask me</span><button type="button" class="q" data-q="Give me {{first}}'s connector link so I can paste it to them."></button></div>
       <div class="gist"><b>Gist</b>"It's your personal key - don't forward it or put it in a shared doc."</div>
       <div class="cols">
         <div class="col col--me"><h4>Me + Claude</h4><ul>
@@ -414,6 +443,7 @@ code,.mono,.cmd{font-family:"IBM Plex Mono",ui-monospace,monospace}
       <div class="tags"><span class="tag tag--time">5 min</span></div>
     </div>
     <div class="stage-body">
+      <div class="asks"><span class="lbl">Ask me</span><button type="button" class="q" data-q="Mint {{first}}'s calendar and mailbox link, and tell me which lane they're on."></button></div>
       <div class="gist"><b>Gist</b>Checks ALL their calendars, personal included, so they're never
       double-booked. <strong>"Before you click - is that your WORK email at the top?"</strong></div>
       <div class="lanes" data-lanegroup="cal">
@@ -460,6 +490,7 @@ code,.mono,.cmd{font-family:"IBM Plex Mono",ui-monospace,monospace}
       <div class="tags"><span class="tag tag--proof">Prove it</span></div>
     </div>
     <div class="stage-body">
+      <div class="asks"><span class="lbl">Ask me</span><button type="button" class="q" data-q="{{first}} has approved - prove the calendar and list what came back."></button></div>
       <div class="cols">
         <div class="col col--me"><h4>Claude</h4><ul>
           <li>Multi-calendar health check, lists their calendars</li>
@@ -487,6 +518,7 @@ code,.mono,.cmd{font-family:"IBM Plex Mono",ui-monospace,monospace}
       <div class="tags"><span class="tag tag--time">5 min</span><span class="tag">Never skip</span></div>
     </div>
     <div class="stage-body">
+      <div class="asks"><span class="lbl">Ask me</span><button type="button" class="q paste" data-q="Put this on {{first}}'s row as their meeting link:"></button></div>
       <div class="gist"><b>Gist</b>"One link, on every invite, automatically - nothing to generate,
       nothing to forget." Switch on the waiting room while they're in there.</div>
       <div class="cols">
@@ -516,6 +548,7 @@ code,.mono,.cmd{font-family:"IBM Plex Mono",ui-monospace,monospace}
       <div class="tags"><span class="tag tag--proof">Prove it</span></div>
     </div>
     <div class="stage-body">
+      <div class="asks"><span class="lbl">Ask me</span><button type="button" class="q" data-q="Check {{first}}'s mailbox is live, and tell me what to get them to try."></button></div>
       <div class="cols">
         <div class="col col--them"><h4>The client - the test</h4><ol>
           <li>Find a recent email from someone they know</li>
@@ -547,6 +580,7 @@ code,.mono,.cmd{font-family:"IBM Plex Mono",ui-monospace,monospace}
       <div class="tags"><span class="tag tag--home">Homework</span><span class="tag tag--time">~20 min</span></div>
     </div>
     <div class="stage-body">
+      <div class="asks"><span class="lbl">Ask me</span><button type="button" class="q" data-q="Draft {{first}} the homework email for setting up their instructions."></button><button type="button" class="q" data-q="Has {{first}} done their instructions homework yet?"></button></div>
       <div class="gist"><b>Gist</b>"Open a chat any time this week and type <strong>let's set up my
       rules</strong>. It's what makes everything sound like you rather than a robot."</div>
       <div class="cols">
@@ -575,6 +609,7 @@ code,.mono,.cmd{font-family:"IBM Plex Mono",ui-monospace,monospace}
       <div class="tags"><span class="tag">Calendar first</span></div>
     </div>
     <div class="stage-body">
+      <div class="asks"><span class="lbl">Ask me</span><button type="button" class="q paste" data-q="Set {{first}} up on Granola - here's their API key:"></button><button type="button" class="q" data-q="Register {{first}}'s Granola webhook and give me the secret to paste."></button></div>
       <div class="gist"><b>Gist</b>"You finish a call and say 'draft an email based on the transcript
       of the call we just had'. That's the strain of holding it in your head, gone."</div>
       <div class="lanes" data-lanegroup="rec">
@@ -659,6 +694,7 @@ code,.mono,.cmd{font-family:"IBM Plex Mono",ui-monospace,monospace}
       <div class="tags"><span class="tag tag--time">10 min</span><span class="tag tag--time">Live in chat</span></div>
     </div>
     <div class="stage-body">
+      <div class="asks"><span class="lbl">Ask me</span><button type="button" class="q" data-q="We're doing {{first}}'s dress rehearsal - talk me through it."></button></div>
       <div class="cols cols--2">
         <div class="col col--me"><h4>Together</h4><ol>
           <li>Refresh Tool List, fresh chat</li>
@@ -684,6 +720,7 @@ code,.mono,.cmd{font-family:"IBM Plex Mono",ui-monospace,monospace}
       <div class="tags"><span class="tag tag--only">Wingguy Enabled only</span></div>
     </div>
     <div class="stage-body">
+      <div class="asks"><span class="lbl">Ask me</span><button type="button" class="q" data-q="Set up {{first}}'s extension folder - they're on OneDrive, Windows."></button><button type="button" class="q" data-q="Ship the extension to {{first}} and confirm it landed."></button></div>
       <div class="gist"><b>Ask first, then send ONE card</b>1. Own machine or company-managed?
       2. Personal Microsoft account? Own + personal = OneDrive. Company-managed = zip.</div>
       <div class="lanes" data-lanegroup="ship">
@@ -764,6 +801,7 @@ code,.mono,.cmd{font-family:"IBM Plex Mono",ui-monospace,monospace}
       <div class="tags"><span class="tag tag--proof">Prove it</span></div>
     </div>
     <div class="stage-body">
+      <div class="asks"><span class="lbl">Ask me</span><button type="button" class="q" data-q="{{first}} has loaded the extension - what do I watch them do?"></button></div>
       <div class="cols">
         <div class="col col--them"><h4>On their screen</h4><ol>
           <li>Wingguy card present, at the version I shipped</li>
@@ -793,6 +831,7 @@ code,.mono,.cmd{font-family:"IBM Plex Mono",ui-monospace,monospace}
       <div class="tags"><span class="tag tag--home">Homework</span><span class="tag tag--only">BYO only</span></div>
     </div>
     <div class="stage-body">
+      <div class="asks"><span class="lbl">Ask me</span><button type="button" class="q" data-q="Draft {{first}} the email about getting their own Claude key."></button><button type="button" class="q paste" data-q="{{first}}'s Claude key is:"></button></div>
       <div class="gist"><b>The framing that matters</b>"YOU set the monthly spend limit, and you can
       revoke it in one click. Worst case in the world is a bill the size of the cap you set."</div>
       <div class="cols">
@@ -828,6 +867,7 @@ code,.mono,.cmd{font-family:"IBM Plex Mono",ui-monospace,monospace}
       <div class="tags"><span class="tag">Needs 6 and 11</span></div>
     </div>
     <div class="stage-body">
+      <div class="asks"><span class="lbl">Ask me</span><button type="button" class="q" data-q="What should I get {{first}} to try with /wg?"></button></div>
       <div class="cols">
         <div class="col col--them"><h4>The client</h4><ol>
           <li>A <strong>real</strong> profile they'd actually message</li>
@@ -856,6 +896,7 @@ code,.mono,.cmd{font-family:"IBM Plex Mono",ui-monospace,monospace}
       <div class="tags"><span class="tag">Pick 2-3</span></div>
     </div>
     <div class="stage-body">
+      <div class="asks"><span class="lbl">Ask me</span><button type="button" class="q" data-q="What features should I show {{first}} next?"></button></div>
       <div class="cols cols--2">
         <div class="col col--me"><h4>Lead with: people you've met</h4><ul>
           <li>Add a lead from a recorded call <strong>without a LinkedIn URL</strong></li>
@@ -885,6 +926,7 @@ code,.mono,.cmd{font-family:"IBM Plex Mono",ui-monospace,monospace}
       <div class="tags"><span class="tag tag--only">Hands off to post-plumbing</span></div>
     </div>
     <div class="stage-body">
+      <div class="asks"><span class="lbl">Ask me</span><button type="button" class="q" data-q="We're at {{first}}'s Linked Helper session - what do I need ready?"></button></div>
       <div class="gist"><b>Gist</b>"This decides who you'll be meeting - and it's changeable, so we
       aim roughly right and adjust."</div>
       <div class="cols">
@@ -1206,6 +1248,42 @@ code,.mono,.cmd{font-family:"IBM Plex Mono",ui-monospace,monospace}
       });
     });
   });
+
+  // Copy-paste prompts. The name box rewrites every prompt live.
+  var nameEl=document.getElementById('cname');
+  function firstName(v){ return (v||'').trim().split(/\s+/)[0] || 'the client'; }
+  function render(){
+    var full=(nameEl.value||'').trim()||'the client', first=firstName(full);
+    document.querySelectorAll('button.q').forEach(function(b){
+      if(!b.dataset.tpl) b.dataset.tpl=b.getAttribute('data-q');
+      b.textContent=b.dataset.tpl.replace(/\{\{name\}\}/g,full).replace(/\{\{first\}\}/g,first);
+      b.classList.remove('ok','sel');
+    });
+  }
+  nameEl.addEventListener('input',render);
+  render();
+
+  document.addEventListener('click',function(e){
+    var b=e.target.closest('button.q'); if(!b) return;
+    var txt=b.textContent;
+    function flash(cls){
+      document.querySelectorAll('button.q').forEach(function(o){o.classList.remove('ok','sel');});
+      b.classList.add(cls);
+      setTimeout(function(){b.classList.remove(cls);},1800);
+    }
+    function fallback(){
+      // Clipboard blocked: select the text so Ctrl+C still works.
+      try{
+        var r=document.createRange(); r.selectNodeContents(b);
+        var sel=window.getSelection(); sel.removeAllRanges(); sel.addRange(r);
+        flash('sel');
+      }catch(_){}
+    }
+    if(navigator.clipboard&&navigator.clipboard.writeText){
+      navigator.clipboard.writeText(txt).then(function(){flash('ok');},fallback);
+    } else { fallback(); }
+  });
+
   var seg=document.querySelector('.seg');
   seg.addEventListener('click',function(e){
     var btn=e.target.closest('button[data-set]'); if(!btn) return;
