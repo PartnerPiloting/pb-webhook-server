@@ -38,7 +38,7 @@ client.
 
 1. **Memory** - read `project_<client>_onboarding.md` in the memory dir (create it on first contact).
 2. **Journey preflight** - run `node scripts/wingguy-onboarding-preflight.js <clientId>` as a
-   read-only Render one-off job. It prints the whole journey (checklist steps 0-8) as
+   read-only Render one-off job. It prints the whole journey as
    DONE / OWED / MANUAL, derived from the live system - record fields PLUS real probes (calendar
    through the seam, rules/variables store, transcript-pipe gates, held-capture errors, trap
    checks). This IS the ledger: never keep a stored done-list, it drifts (Ashley 2026-08-20: the
@@ -50,14 +50,19 @@ client.
 3. **Latest transcript** - `recall_latest_transcript` with the client's email (store first, never raw fathom_*).
 4. **Latest emails** - Gmail search to/from the client; read the most recent onboarding thread in full.
 5. **The process** - `git fetch origin && git show origin/main:docs/wingguy-onboarding-checklist.md`
-   (steps 0-8 with say-to-client wording, checks, traps). `wingguy_onboarding_guide` serves the same doc.
+   (steps 0-14 with say-to-client wording, checks, traps). `wingguy_onboarding_guide` serves the same doc.
+   ⚠ The checklist was RENUMBERED 2026-09-06 (15 beats; rules moved to step 6 as homework;
+   the extension is now steps 9-10, the Anthropic key 11, /wg 12, other features 13, LH 14).
+   The preflight script still prints the OLD numbering - trust the doc for step numbers, and use
+   the preflight for the DONE/OWED verdicts, matching them up by name rather than by number.
 
 Then place the client on the journey: which checklist step is DONE / IN FLIGHT / NEXT.
 
 ## The journey order - Wingguy first, Linked Helper LAST (decided 2026-08-22)
 
-For NEW clients, checklist steps 0-8 (the Wingguy plumbing) fill the early sessions and the
-Linked Helper hookup + first campaign are the CLOSING move (checklist step 9). The early sessions
+For NEW clients, checklist steps 0-13 (the Wingguy plumbing, through to the extension and the
+feature tour) fill the early sessions and the Linked Helper hookup + first campaign are the
+CLOSING move (checklist step 14, which is also where the VPS conversation belongs). The early sessions
 build trust and delight; LH's fiddly, get-it-right-critical setup lands when the client
 understands why. Never open a new client's journey with LH, and never let the final session start
 the targeting decision from scratch: the targeting CONVERSATION begins at session 1 and threads
@@ -158,9 +163,9 @@ one is five promises in an email that all work first go.
   next session date/agenda, and any new traps hit. Update the MEMORY.md hook line.
 - Draft the follow-up email: what we got done - homework (max 2-3 concrete items, written
   because verbal homework does not stick) - what's next.
-- **At the LH-launch wrap (step 9, the final session): set "Email Series Start Date" on the
+- **At the LH-launch wrap (step 14, the final session): set "Email Series Start Date" on the
   Clients row** - convention = that session's date (Guy 2026-08-23). The client email drip starts
-  there and takes over the drumbeat when sessions stop. The preflight's step 9 line polices it.
+  there and takes over the drumbeat when sessions stop. The preflight's Linked Helper line polices it.
 - **Suggested-prompts calibration (Guy 2026-08-23):** the wrap email's literal prompts-in-quotes
   are picked as TWO that exercise what this session just plumbed + ONE that points at the next
   step so it never lands cold. Use Wingguy Learning topics as the pointing device ("ask Wingguy:

@@ -328,6 +328,56 @@ code,.mono{font-family:"IBM Plex Mono",ui-monospace,monospace}
 @media (prefers-reduced-motion:reduce){
   .drawer,.scrim{transition:none}
 }
+
+/* ---------- journey band ---------- */
+.journey{
+  border-bottom:1px solid var(--rule);
+  background:var(--panel-2);
+  padding:20px clamp(16px,3vw,40px) 22px;
+}
+.journey-head{display:flex;flex-wrap:wrap;gap:14px;align-items:baseline;justify-content:space-between;margin-bottom:14px}
+.journey-head h2{
+  font-family:"IBM Plex Mono",monospace;font-size:11px;text-transform:uppercase;letter-spacing:.16em;
+  color:var(--ink-3);font-weight:600;
+}
+.key{display:flex;flex-wrap:wrap;gap:16px;font-size:12px;color:var(--ink-2)}
+.key span{display:inline-flex;align-items:center;gap:6px}
+.key i{width:14px;height:14px;border-radius:2px;display:inline-block;flex:0 0 auto}
+.key .k-live{background:var(--accent)}
+.key .k-proof{background:transparent;border:1px solid var(--slate)}
+.key .k-home{background:transparent;border:1px dashed var(--ink-3)}
+.key .k-solo{background:var(--rule)}
+
+.chain{display:flex;flex-wrap:wrap;gap:7px;align-items:stretch}
+.chain a{
+  text-decoration:none;display:flex;align-items:center;gap:9px;
+  background:var(--paper);border:1px solid var(--rule);border-radius:3px;
+  padding:8px 12px 8px 10px;color:var(--ink);font-size:13.5px;line-height:1.25;
+  max-width:250px;transition:border-color .12s,transform .12s;
+}
+.chain a:hover{border-color:var(--accent);transform:translateY(-1px)}
+.chain a:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.chain a .n{
+  font-family:"IBM Plex Mono",monospace;font-size:12px;font-variant-numeric:tabular-nums;
+  color:#fff;background:var(--accent);border-radius:2px;padding:2px 5px;flex:0 0 auto;font-weight:500;
+}
+:root[data-theme="dark"] .chain a .n,:root:not([data-theme="light"]) .chain a .n{color:#08110f}
+.chain a.m-proof{border-style:solid;border-color:var(--rule-soft);background:transparent}
+.chain a.m-proof .n{background:transparent;color:var(--slate);border:1px solid var(--slate)}
+.chain a.m-home{border-style:dashed;border-color:var(--ink-3);background:transparent}
+.chain a.m-home .n{background:transparent;color:var(--ink-2);border:1px dashed var(--ink-3)}
+.chain a.m-solo{background:transparent;border-color:var(--rule-soft);color:var(--ink-2)}
+.chain a.m-solo .n{background:var(--rule);color:var(--ink-2)}
+.chain .arrow{display:flex;align-items:center;color:var(--ink-3);font-size:12px;user-select:none}
+.chain .brk{flex-basis:100%;height:0}
+
+/* mode markers on stages */
+.tag--home{border-style:dashed;border-color:var(--ink-3);color:var(--ink-2)}
+.tag--proof{border-color:var(--slate);color:var(--slate)}
+.stage--proof{background:transparent}
+.stage--proof .numeral{color:var(--slate)}
+.stage--home{border-style:dashed}
+.stage--home .numeral{color:var(--ink-2)}
 </style>
 
 <header class="masthead">
@@ -337,10 +387,9 @@ code,.mono{font-family:"IBM Plex Mono",ui-monospace,monospace}
       <span class="rev">rev 2026-09-06</span>
     </div>
     <p class="standfirst">
-      Every connection that has to be made before a client is live - in order, with the branch
-      points and the traps that have actually bitten. <strong>Plumbing ends at the dress
-      rehearsal.</strong> What happens after that (targeting, the aha moments, the drumbeat)
-      is the second map.
+      Every connection that has to be made before a client is running on their own - in order, with
+      the branch points and the traps that have actually bitten. <strong>Plumbing ends where the
+      strategy starts:</strong> once Linked Helper is running, the second map takes over.
     </p>
   </div>
 
@@ -353,21 +402,50 @@ code,.mono{font-family:"IBM Plex Mono",ui-monospace,monospace}
       <button type="button" data-set="traps" aria-pressed="false">Traps only</button>
     </div>
   </div>
-
-  <nav class="railstrip" aria-label="Stages">
-    <a href="#s0"><span class="n">0</span> Record ready</a>
-    <a href="#s1"><span class="n">1</span> Connector</a>
-    <a href="#s2"><span class="n">2</span> Calendar + mailbox</a>
-    <a href="#s3"><span class="n">3</span> Meeting link</a>
-    <a href="#s4"><span class="n">4</span> Email</a>
-    <a href="#s5"><span class="n">5</span> Rules session</a>
-    <a href="#s6"><span class="n">6</span> Recorder</a>
-    <a href="#s7"><span class="n">7</span> Dress rehearsal</a>
-    <a href="#s8"><span class="n">8</span> Their Claude key</a>
-    <a href="#ext" class="is-track"><span class="n">↯</span> Extension delivery</a>
-    <a href="#s9" class="is-boundary"><span class="n">9</span> Linked Helper</a>
-  </nav>
 </header>
+
+<nav class="journey" aria-label="The whole journey">
+  <div class="journey-head">
+    <h2>The whole journey, in order</h2>
+    <div class="key">
+      <span><i class="k-live"></i> On the call</span>
+      <span><i class="k-proof"></i> Prove it, together</span>
+      <span><i class="k-home"></i> Their homework</span>
+      <span><i class="k-solo"></i> Me, on my own</span>
+    </div>
+  </div>
+  <div class="chain">
+    <a href="#s0" class="m-solo"><span class="n">0</span> Get their record ready</a>
+    <span class="arrow">→</span>
+    <a href="#s1"><span class="n">1</span> Claude connector (MCP)</a>
+    <span class="arrow">→</span>
+    <a href="#s2"><span class="n">2</span> Calendar + mailbox</a>
+    <span class="arrow">→</span>
+    <a href="#s3" class="m-proof"><span class="n">3</span> Test their calendar</a>
+    <span class="arrow">→</span>
+    <a href="#s4"><span class="n">4</span> Get their meeting link</a>
+    <span class="arrow">→</span>
+    <a href="#s5" class="m-proof"><span class="n">5</span> Test their email</a>
+    <span class="brk"></span>
+    <a href="#s6" class="m-home"><span class="n">6</span> Their rules - homework</a>
+    <span class="arrow">→</span>
+    <a href="#s7"><span class="n">7</span> Transcript recorder</a>
+    <span class="arrow">→</span>
+    <a href="#s8"><span class="n">8</span> Dress rehearsal</a>
+    <span class="arrow">→</span>
+    <a href="#s9"><span class="n">9</span> Ship + install the extension</a>
+    <span class="arrow">→</span>
+    <a href="#s10" class="m-proof"><span class="n">10</span> Prove it works for them</a>
+    <span class="brk"></span>
+    <a href="#s11" class="m-home"><span class="n">11</span> Anthropic key - by email</a>
+    <span class="arrow">→</span>
+    <a href="#s12"><span class="n">12</span> Demonstrate /wg on LinkedIn</a>
+    <span class="arrow">→</span>
+    <a href="#s13"><span class="n">13</span> The other features</a>
+    <span class="arrow">→</span>
+    <a href="#s14"><span class="n">14</span> Linked Helper, and the VPS</a>
+  </div>
+</nav>
 
 <main class="sheet">
 
@@ -401,16 +479,16 @@ code,.mono{font-family:"IBM Plex Mono",ui-monospace,monospace}
   <div class="band"><h2>Before the call</h2><div class="line"></div></div>
 
   <!-- ============ STEP 0 ============ -->
-  <section class="stage" id="s0">
+  <section class="stage stage--home" id="s0">
     <div class="stage-head">
       <div class="numeral">0</div>
       <div class="stage-title">
-        <h3>Get the record ready</h3>
+        <h3>Get their record ready</h3>
         <p class="sub">Behind the scenes there's a row with their name on it - status, timezone,
         secret access key. Set it up and health-check it before the session starts, so everything
         they touch just works.</p>
       </div>
-      <div class="tags"><span class="tag tag--only">Me, solo</span><span class="tag">Master Clients base</span></div>
+      <div class="tags"><span class="tag tag--home">Me, on my own</span><span class="tag">Master Clients base</span></div>
     </div>
     <div class="stage-body">
       <div class="roles">
@@ -435,8 +513,8 @@ code,.mono{font-family:"IBM Plex Mono",ui-monospace,monospace}
           drafting). It is <em>not</em> the chat, which always runs on the client's own claude.ai
           subscription.</p>
           <ul>
-            <li><strong>Bring-your-own</strong> (default): leave <span class="cmd">Managed Claude Key</span> blank. They create their own key at step 8.</li>
-            <li><strong>Managed plan</strong>: <span class="cmd">Managed Claude Key = Yes</span>, leave <span class="cmd">Anthropic API Key</span> blank, skip step 8 entirely.</li>
+            <li><strong>Bring-your-own</strong> (default): leave <span class="cmd">Managed Claude Key</span> blank. They get the key email at step 11.</li>
+            <li><strong>Managed plan</strong>: <span class="cmd">Managed Claude Key = Yes</span>, leave <span class="cmd">Anthropic API Key</span> blank, skip step 11 entirely.</li>
           </ul>
         </div>
         <div class="role role--claude">
@@ -461,18 +539,18 @@ code,.mono{font-family:"IBM Plex Mono",ui-monospace,monospace}
     </div>
   </section>
 
-  <div class="band"><h2>The live sessions</h2><div class="line"></div></div>
+  <div class="band"><h2>Session one - the connections</h2><div class="line"></div></div>
 
   <!-- ============ STEP 1 ============ -->
   <section class="stage" id="s1">
     <div class="stage-head">
       <div class="numeral">1</div>
       <div class="stage-title">
-        <h3>The connector</h3>
-        <p class="sub">Wingguy moves into the client's own Claude. This is the doorway - everything
-        else happens through it.</p>
+        <h3>The Claude connector</h3>
+        <p class="sub">Wingguy moves into the client's own Claude, as a custom connector. This is the
+        doorway - everything else happens through it.</p>
       </div>
-      <div class="tags"><span class="tag tag--time">2 min</span></div>
+      <div class="tags"><span class="tag tag--time">2 min</span><span class="tag">MCP</span></div>
     </div>
     <div class="stage-body">
       <div class="script">
@@ -526,8 +604,7 @@ code,.mono{font-family:"IBM Plex Mono",ui-monospace,monospace}
       <div class="stage-title">
         <h3>Calendar and mailbox</h3>
         <p class="sub">For a Google or Microsoft client the calendar and the mailbox are ONE
-        approval, not two - so step 2 and step 4 happen in the same two minutes. Zoho is the
-        exception.</p>
+        approval, not two - usually through a Unipile hosted link. Zoho is the exception.</p>
       </div>
       <div class="tags"><span class="tag tag--time">5 min, one approval</span><span class="tag">Branches by provider</span></div>
     </div>
@@ -592,23 +669,13 @@ code,.mono{font-family:"IBM Plex Mono",ui-monospace,monospace}
         <div class="lanepanel" id="cal-zoho" hidden>
           <p class="why">Zoho splits the two: <strong>calendar</strong> is their own
           <span class="cmd">/auth/zoho/start</span> link (Claude builds it, I paste it);
-          <strong>mail</strong> is an app-specific password, handled at step 4.</p>
+          <strong>mail</strong> is an app-specific password, handled at step 5.</p>
           <div class="roles">
             <div class="role role--guy"><h4>I do</h4><ul><li>Paste the link Claude builds. Same one action.</li></ul></div>
-            <div class="role role--client"><h4>The client does</h4><ul><li>Approves the calendar link, then does the mail half separately at step 4.</li></ul></div>
+            <div class="role role--client"><h4>The client does</h4><ul><li>Approves the calendar link, then does the mail half separately at step 5.</li></ul></div>
             <div class="role role--claude"><h4>Claude does</h4><ul><li>Builds the Zoho start link, catches the refresh token, sets the Zoho fields, proves availability live.</li></ul></div>
           </div>
         </div>
-      </div>
-
-      <div class="proof">
-        <h4>Check it worked</h4>
-        <div><ul>
-          <li>Claude runs the multi-calendar health check and lists their calendars.</li>
-          <li>Eyeball that list <strong>with the client</strong>: "does this look like your account?" One lonely, near-empty calendar usually means the wrong-account trap struck again.</li>
-          <li><strong>Best check of all</strong> - the client asks Wingguy "what's on my calendar this week?" and confirms it matches reality, <em>including something they know is on their personal calendar</em>.</li>
-          <li>Then the mail half: they ask Wingguy to find a recent email from a sender they know, then for the full text of it.</li>
-        </ul></div>
       </div>
 
       <div class="traps">
@@ -621,11 +688,61 @@ code,.mono{font-family:"IBM Plex Mono",ui-monospace,monospace}
   </section>
 
   <!-- ============ STEP 3 ============ -->
-  <section class="stage" id="s3">
+  <section class="stage stage--proof" id="s3">
     <div class="stage-head">
       <div class="numeral">3</div>
       <div class="stage-title">
-        <h3>The meeting link</h3>
+        <h3>Test their calendar</h3>
+        <p class="sub">A separate beat on purpose. The connection is invisible to us until someone
+        looks, so this step is never skipped and never taken on the client's word.</p>
+      </div>
+      <div class="tags"><span class="tag tag--proof">Prove it, together</span></div>
+    </div>
+    <div class="stage-body">
+      <div class="roles">
+        <div class="role role--claude">
+          <h4>Claude does</h4>
+          <ul>
+            <li>Runs the multi-calendar health check and lists their calendars.</li>
+            <li>Proves the availability pipeline - not just that the calendars exist, but that free time comes back.</li>
+          </ul>
+        </div>
+        <div class="role role--guy">
+          <h4>I do - eyeball it WITH them</h4>
+          <ul>
+            <li>Read the calendar list out: <em>"does this look like your account?"</em></li>
+            <li><strong>One lonely, near-empty calendar</strong> usually means the wrong-account trap struck. Don't move on.</li>
+          </ul>
+        </div>
+        <div class="role role--client">
+          <h4>The client does - the best check of all</h4>
+          <ul>
+            <li>Asks Wingguy: <strong>"what's on my calendar this week?"</strong></li>
+            <li>Confirms it matches reality - <strong>including something they know is on their personal calendar.</strong> That one detail is what proves the no-double-booking promise.</li>
+          </ul>
+        </div>
+      </div>
+      <div class="proof">
+        <h4>Don't move on until</h4>
+        <div><ul>
+          <li>The client has seen their own real week come back, in their own words, not mine.</li>
+          <li>A personal-calendar event showed up in it.</li>
+        </ul></div>
+      </div>
+      <div class="traps">
+        <span class="lbl">Traps</span>
+        <button class="trap" data-trap="t-wrongacct" type="button">The wrong-account trap shows up here</button>
+        <button class="trap" data-trap="t-invisible" type="button">Never mark it done on "yep, clicked it"</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ STEP 4 ============ -->
+  <section class="stage" id="s4">
+    <div class="stage-head">
+      <div class="numeral">4</div>
+      <div class="stage-title">
+        <h3>Get their meeting link</h3>
         <p class="sub">One reusable personal link on every invite, automatically. We deliberately do
         NOT generate a fresh link per meeting - one link that never changes is simpler, can't fail at
         booking time, and makes back-to-back call days painless.</p>
@@ -672,84 +789,95 @@ code,.mono{font-family:"IBM Plex Mono",ui-monospace,monospace}
     </div>
   </section>
 
-  <!-- ============ STEP 4 ============ -->
-  <section class="stage" id="s4">
-    <div class="stage-head">
-      <div class="numeral">4</div>
-      <div class="stage-title">
-        <h3>The email</h3>
-        <p class="sub">For Google and Microsoft clients there is nothing to do here - step 2 already
-        did it. Run the mail check to prove it and move on.</p>
-      </div>
-      <div class="tags"><span class="tag tag--only">Zoho only</span></div>
-    </div>
-    <div class="stage-body">
-      <div class="script">
-        <span class="who">Say to the client (Zoho lane only)</span>
-        <p>"Next is your mailbox. Once it's connected, Wingguy can draft emails as you - proper ones,
-        that thread into existing conversations - and it can answer things like 'show me my history
-        with this lead' or 'has she replied since Tuesday?'. It'll even stop you from accidentally
-        sending someone the same document twice."</p>
-      </div>
-      <div class="roles">
-        <div class="role role--guy">
-          <h4>I do</h4>
-          <ul><li>Take the app-specific password they read out and hand it to Claude. Nothing else.</li></ul>
-        </div>
-        <div class="role role--client">
-          <h4>The client does (Zoho)</h4>
-          <ul><li>In their Zoho settings, creates an <strong>app-specific password</strong> - a special password that only works for this one connection; their real password is never shared - and reads it out.</li></ul>
-        </div>
-        <div class="role role--claude">
-          <h4>Claude does</h4>
-          <ul><li>Sets up the connection from there and proves a live mailbox read.</li></ul>
-        </div>
-      </div>
-      <div class="proof">
-        <h4>Check it worked</h4>
-        <div><ul>
-          <li>The client asks Wingguy to find a recent email from a sender they know, then asks for the full text of it.</li>
-          <li>Their row shows a live mail connection: <span class="cmd">Email Provider = unipile</span> with a Unipile Account ID, or the Zoho equivalent.</li>
-        </ul></div>
-      </div>
-      <div class="traps">
-        <span class="lbl">Worth knowing</span>
-        <button class="trap" data-trap="t-90day" type="button">App-password lane: the first deep-history question is slow</button>
-        <button class="trap" data-trap="t-novoice" type="button">Don't demo drafting yet - the rules aren't in</button>
-      </div>
-    </div>
-  </section>
-
   <!-- ============ STEP 5 ============ -->
-  <section class="stage" id="s5">
+  <section class="stage stage--proof" id="s5">
     <div class="stage-head">
       <div class="numeral">5</div>
       <div class="stage-title">
-        <h3>The rules session</h3>
-        <p class="sub">The client tells Wingguy how they actually work. <strong>Moved here on
-        purpose (6 Sep 2026).</strong> By now they have watched it read their diary and their mail,
-        so the interview lands on a client who already knows what a sign-off or a "never say that"
-        is going to change - and they arrive at it thinking "of course, I have to fill those in",
-        rather than being asked to describe themselves to something they have not seen work yet.</p>
+        <h3>Test their email</h3>
+        <p class="sub">For Google and Microsoft clients the mailbox came free with step 2 - this is
+        where we prove it. Zoho clients connect their mail here first, then prove it.</p>
       </div>
-      <div class="tags"><span class="tag tag--time">~20 min</span><span class="tag tag--only">Nothing sounds like them until this is done</span></div>
+      <div class="tags"><span class="tag tag--proof">Prove it, together</span><span class="tag tag--only">Zoho: connect first</span></div>
     </div>
     <div class="stage-body">
       <div class="script">
         <span class="who">Say to the client</span>
-        <p>"This is the fun one. You're going to tell Wingguy how you actually work - how you talk,
-        what you offer, what you'd never say to a lead. It interviews you; you just answer honestly.
-        Takes about twenty minutes and it's what makes everything Wingguy writes sound like YOU.
-        Type: <strong>let's set up my rules</strong>."</p>
+        <p>"Your mailbox is connected too - let's prove it. Ask it to find a recent email from
+        someone you know, then ask it to read you the whole thing."</p>
+        <p><em>The Zoho lane only, before that:</em> "Zoho doesn't do the easy click-and-approve for
+        mail, so there's one manual bit - in your Zoho settings you create an app-specific password.
+        It's a special password that only works for this one connection; your real password is never
+        shared. Read it out to me and I'll do the rest."</p>
+      </div>
+      <div class="roles">
+        <div class="role role--client">
+          <h4>The client does - the test</h4>
+          <ol>
+            <li>Asks Wingguy to <strong>find a recent email from a sender they know</strong>.</li>
+            <li>Then asks for <strong>the full text of it</strong>. Finding it proves the connection; reading it proves the depth.</li>
+          </ol>
+        </div>
+        <div class="role role--guy">
+          <h4>I do</h4>
+          <ul>
+            <li>Confirm the row shows a live mail connection: <span class="cmd">Email Provider = unipile</span> with a Unipile Account ID, or the Zoho equivalent.</li>
+            <li><strong>Zoho only:</strong> take the app-specific password they read out and hand it to Claude. Nothing else.</li>
+          </ul>
+        </div>
+        <div class="role role--claude">
+          <h4>Claude does</h4>
+          <ul>
+            <li>Sets up the Zoho mail connection where that lane applies.</li>
+            <li>Proves a live mailbox read as that client.</li>
+          </ul>
+        </div>
+      </div>
+      <div class="traps">
+        <span class="lbl">Traps</span>
+        <button class="trap" data-trap="t-novoice" type="button">Don't ask it to WRITE one yet</button>
+        <button class="trap" data-trap="t-90day" type="button">App-password lane: the first deep-history question is slow</button>
+      </div>
+    </div>
+  </section>
+
+  <div class="band"><h2>Their homework, then session two</h2><div class="line"></div></div>
+
+  <!-- ============ STEP 6 ============ -->
+  <section class="stage stage--home" id="s6">
+    <div class="stage-head">
+      <div class="numeral">6</div>
+      <div class="stage-title">
+        <h3>Their rules - homework</h3>
+        <p class="sub">The client tells Wingguy how they actually work, in their own time.
+        <strong>Moved here on purpose (6 Sep 2026).</strong> By now they have watched it read their
+        diary and their mail, so they arrive at the interview thinking "of course, I have to fill
+        those in" - rather than being asked to describe themselves to something they haven't seen
+        work yet.</p>
+      </div>
+      <div class="tags"><span class="tag tag--home">Their homework</span><span class="tag tag--time">~20 min</span></div>
+    </div>
+    <div class="stage-body">
+      <div class="script">
+        <span class="who">Say to the client, at the end of session one</span>
+        <p>"Here's your homework, and it's the fun one. Open a chat any time this week and type:
+        <strong>let's set up my rules</strong>. Wingguy interviews you - how you talk, what you
+        offer, what you'd never say to a lead. You just answer honestly. Takes about twenty minutes
+        and it's what makes everything it writes sound like YOU rather than like a robot.</p>
+        <p>Do it before we next speak and you'll walk into that session with it already sounding like
+        you."</p>
       </div>
       <div class="roles">
         <div class="role role--guy">
           <h4>I do</h4>
-          <p class="none">Genuinely nothing. Wingguy runs the whole interview.</p>
+          <p class="none">Nothing during. Wingguy runs the whole interview.</p>
+          <ul style="margin-top:9px">
+            <li>Before the next session: check it actually happened. A client who hasn't done it is the single most common reason session two drags.</li>
+          </ul>
         </div>
         <div class="role role--client">
           <h4>The client does</h4>
-          <ul><li>Types "let's set up my rules" and answers the interview - questions, examples, confirmation.</li></ul>
+          <ul><li>Types "let's set up my rules" in their own Claude and answers the interview - questions, examples, confirmation.</li></ul>
         </div>
         <div class="role role--claude">
           <h4>Claude does</h4>
@@ -762,17 +890,17 @@ code,.mono{font-family:"IBM Plex Mono",ui-monospace,monospace}
       </div>
       <div class="traps">
         <span class="lbl">Cost of the move</span>
-        <button class="trap" data-trap="t-novoice" type="button">Steps 1 to 4 have no voice on them</button>
+        <button class="trap" data-trap="t-novoice" type="button">Steps 1 to 5 have no voice on them</button>
       </div>
     </div>
   </section>
 
-  <!-- ============ STEP 6 ============ -->
-  <section class="stage" id="s6">
+  <!-- ============ STEP 7 ============ -->
+  <section class="stage" id="s7">
     <div class="stage-head">
-      <div class="numeral">6</div>
+      <div class="numeral">7</div>
       <div class="stage-title">
-        <h3>The meeting recorder</h3>
+        <h3>Their transcript recorder</h3>
         <p class="sub">Two moments sell this: "draft an email based on the transcript of the call we
         just had", and "prep me for my meetings". After those two, they will never want a transcript
         missed - which is the whole pitch.</p>
@@ -911,22 +1039,23 @@ code,.mono{font-family:"IBM Plex Mono",ui-monospace,monospace}
     </div>
   </section>
 
-  <!-- ============ STEP 7 ============ -->
-  <section class="stage" id="s7">
+  <!-- ============ STEP 8 ============ -->
+  <section class="stage" id="s8">
     <div class="stage-head">
-      <div class="numeral">7</div>
+      <div class="numeral">8</div>
       <div class="stage-title">
         <h3>The dress rehearsal</h3>
-        <p class="sub">Prove the whole chain end to end, with a safety net. This is where plumbing
-        ends and the client is live.</p>
+        <p class="sub">Prove the whole chain end to end, with a safety net: rules → calendar →
+        booking → invite → mail. After this they are live in chat, and everything that follows is
+        the extension.</p>
       </div>
-      <div class="tags"><span class="tag tag--time">10 min</span><span class="tag tag--time">Plumbing complete</span></div>
+      <div class="tags"><span class="tag tag--time">10 min</span><span class="tag tag--time">Live in chat</span></div>
     </div>
     <div class="stage-body">
       <div class="script">
         <span class="who">Say to the client</span>
-        <p>"Last step - we prove the whole thing end to end, with a safety net. We'll have Wingguy
-        book a real test meeting, watch the invite arrive with your link on it, and then cancel it
+        <p>"Now we prove the whole thing end to end, with a safety net. We'll have Wingguy book a
+        real test meeting, watch the invite arrive with your link on it, and then cancel it
         together."</p>
         <p><em>And at the end:</em> "That's it - you're live. From here, anything you want changed,
         just tell Wingguy 'update my rules'."</p>
@@ -956,91 +1085,24 @@ code,.mono{font-family:"IBM Plex Mono",ui-monospace,monospace}
       </div>
       <div class="proof">
         <h4>Check it worked</h4>
-        <div><ul><li>The invite landed in a real inbox with a working join link on it, and the cancellation cleared it. That is the whole chain proven: rules → calendar → booking → invite → mail.</li></ul></div>
+        <div><ul><li>The invite landed in a real inbox with a working join link on it, and the cancellation cleared it. That is the whole chain proven.</li></ul></div>
       </div>
     </div>
   </section>
 
-  <!-- ============ STEP 8 ============ -->
-  <section class="stage" id="s8">
-    <div class="stage-head">
-      <div class="numeral">8</div>
-      <div class="stage-title">
-        <h3>Their own Claude key</h3>
-        <p class="sub">The chat runs on their claude.ai subscription, but two things run on our
-        servers - the overnight follow-up brief and the extension's LinkedIn drafting - and those
-        need a Claude <em>API</em> key. Their key, their cap, their off switch.</p>
-      </div>
-      <div class="tags"><span class="tag tag--time">~15 min</span><span class="tag tag--only">BYO clients only</span></div>
-    </div>
-    <div class="stage-body">
-      <div class="script">
-        <span class="who">Say to the client</span>
-        <p>"There's one bit of the AI that works for you while you're asleep - overnight it goes
-        through your follow-ups and pre-writes your replies - and your LinkedIn drafting runs on our
-        servers too. That runs on a Claude key that's yours, not mine.</p>
-        <p>You'll set it up in Anthropic's console: it takes about fifteen minutes, most of which is
-        them, not you. The important part - and the reason you can relax about it - is that YOU put a
-        monthly spend limit on it, a number you choose, and you can revoke it with one click any
-        time. Worst case in the whole world is a bill the size of the cap you set. I'll walk you
-        through it, then you send me the key once and we're done."</p>
-      </div>
-      <div class="roles">
-        <div class="role role--client">
-          <h4>The client does - read these out one at a time</h4>
-          <ol>
-            <li><strong>console.anthropic.com</strong>, sign in or create an account. Separate from their claude.ai login even on the same email.</li>
-            <li><strong>Add a little credit / a payment method.</strong> This is where people trip: the API is pay-as-you-go and needs its own funding. A claude.ai Pro subscription does NOT cover it.</li>
-            <li>Create a <strong>Workspace</strong> (call it "Wingguy"). A walled-off compartment - it's what lets the spend cap apply to us alone.</li>
-            <li><strong>Set a monthly spend limit on that workspace.</strong> Their number, their safety net. Don't let them skip it.</li>
-            <li>Create an <strong>API key</strong> in that workspace and copy it. <strong>Shown once</strong> - click away and they just make a new one.</li>
-            <li>Send it to me (starts with <span class="cmd">sk-ant-</span>).</li>
-          </ol>
-          <p style="margin-top:8px;color:var(--ink-3);font-size:13.5px">The console shifts its layout
-          occasionally - these are the <em>concepts</em>; the labels may sit a click away.</p>
-        </div>
-        <div class="role role--guy">
-          <h4>I do</h4>
-          <ul>
-            <li>Paste the key into <span class="cmd">Anthropic API Key</span> on their row. That's the whole install - the stored key is the only client lane.</li>
-            <li><strong>Only now</strong> flip <span class="cmd">Followup Brief = Yes</span>. Order matters.</li>
-          </ul>
-        </div>
-        <div class="role role--claude">
-          <h4>Claude does</h4>
-          <ul>
-            <li>Runs the brief and checks the log line reads <span class="cmd">anthropic lane=client-stored-key</span>, not <span class="cmd">platform-fallback</span>.</li>
-          </ul>
-        </div>
-      </div>
-      <div class="proof">
-        <h4>Check it worked</h4>
-        <div><ul>
-          <li>Ask Claude: <em>"prepare the follow-up brief for [client ID]"</em> - the run log must show <span class="cmd">lane=client-stored-key</span>. <span class="cmd">platform-fallback</span> means the field is blank or didn't save: re-paste.</li>
-          <li>Or the client's own proof: they draft something and it comes back normally, with no "your Anthropic key was rejected" message.</li>
-        </ul></div>
-      </div>
-      <div class="traps">
-        <span class="lbl">Traps</span>
-        <button class="trap" data-trap="t-brief-order" type="button">Brief switched on before the key is in</button>
-        <button class="trap" data-trap="t-twokeys" type="button">The two-keys confusion</button>
-        <button class="trap" data-trap="t-revoked" type="button">A revoked or capped key later on</button>
-      </div>
-    </div>
-  </section>
+  <div class="band"><h2>The extension</h2><div class="line"></div></div>
 
-  <!-- ============ EXTENSION TRACK ============ -->
-  <div class="band"><h2>Runs alongside - not a numbered step</h2><div class="line"></div></div>
-
-  <section class="stage stage--track" id="ext">
+  <!-- ============ STEP 9 ============ -->
+  <section class="stage" id="s9">
     <div class="stage-head">
-      <div class="numeral">↯</div>
+      <div class="numeral">9</div>
       <div class="stage-title">
-        <h3>Extension delivery</h3>
+        <h3>Ship and install the extension</h3>
         <p class="sub">The extension installs once, but it gets improved - and updates must reach the
-        client's computer with <strong>zero ongoing effort from them</strong>. One <strong>Wingguy</strong>
-        folder per client, owned by me in my cloud storage, shared <strong>view-only</strong>. Their
-        sync tool pulls it down; the browser picks up the new version at next restart.</p>
+        client's computer with <strong>zero ongoing effort from them</strong>. One
+        <strong>Wingguy</strong> folder per client, owned by me in my cloud storage, shared
+        <strong>view-only</strong>. Their sync tool pulls it down; the browser picks up the new
+        version at next restart.</p>
       </div>
       <div class="tags"><span class="tag tag--only">Wingguy Enabled = Yes only</span><span class="tag">Ask → lane → folder → ship → install</span></div>
     </div>
@@ -1178,14 +1240,10 @@ code,.mono{font-family:"IBM Plex Mono",ui-monospace,monospace}
               </ul>
             </div>
             <div class="role role--claude">
-              <h4>Wrap-up, any lane</h4>
-              <ul>
-                <li>Client confirms the "you'll know it worked when" of their last step.</li>
-                <li>OneDrive lane: the preflight now shows "extension updates DONE" - it checks Provider/Ref before every session. The zip lane stays manual by design.</li>
-              </ul>
-              <p style="margin-top:9px;color:var(--ink-3);font-size:13.5px"><strong>Mac variants are
-              unproven</strong> - same skeletons, Finder instead of File Explorer, pin wording is
-              "Always Keep on This Device". Do NOT send a Mac card cold.</p>
+              <h4>Mac variants</h4>
+              <p><strong>Unproven</strong> - same skeletons, Finder instead of File Explorer, pin
+              wording is "Always Keep on This Device". Do NOT send a Mac card cold; walk it live with
+              the first Mac client, then freeze it.</p>
             </div>
           </div>
           <div class="traps">
@@ -1214,40 +1272,267 @@ code,.mono{font-family:"IBM Plex Mono",ui-monospace,monospace}
     </div>
   </section>
 
-  <!-- ============ BOUNDARY ============ -->
-  <div class="band"><h2>Where plumbing ends</h2><div class="line"></div></div>
-
-  <section class="stage stage--boundary" id="s9">
+  <!-- ============ STEP 10 ============ -->
+  <section class="stage stage--proof" id="s10">
     <div class="stage-head">
-      <div class="numeral">9</div>
+      <div class="numeral">10</div>
       <div class="stage-title">
-        <h3>Linked Helper, last on purpose</h3>
-        <p class="sub">Decided 2026-08-22, new clients only. The engine that fills the database goes
-        in last, once everything above is proven, the targeting has had weeks to settle, and the
-        profile says connector. <strong>Nothing is lost by waiting</strong> - the trial only starts
-        when the first campaign launches. This is the hinge into the second map.</p>
+        <h3>Prove it works for them</h3>
+        <p class="sub">Installed is not the same as working. This beat exists because a perfectly
+        good install looks broken until the portal has been opened once in that browser.</p>
       </div>
-      <div class="tags"><span class="tag tag--only">Hands off to post-plumbing</span></div>
+      <div class="tags"><span class="tag tag--proof">Prove it, together</span></div>
+    </div>
+    <div class="stage-body">
+      <div class="roles">
+        <div class="role role--client">
+          <h4>The client does - on their screen, while I watch</h4>
+          <ol>
+            <li>Confirms the <strong>Wingguy card</strong> is on their extensions page, at the version I shipped.</li>
+            <li><strong>Opens their portal once in THIS browser.</strong> That's how the extension knows who they are.</li>
+            <li>Opens any LinkedIn profile and types <strong>/wg</strong>.<br><em>You'll know it worked when: the Wingguy panel appears.</em></li>
+          </ol>
+        </div>
+        <div class="role role--guy">
+          <h4>I do</h4>
+          <ul>
+            <li>Watch their screen for this - don't take "yeah it's there" over a shared screen you can see.</li>
+            <li>Confirm the version on the card matches what I shipped. A stale version means the folder isn't flowing.</li>
+          </ul>
+        </div>
+        <div class="role role--claude">
+          <h4>Claude does</h4>
+          <ul>
+            <li>Confirms their <span class="cmd">Extension Folder Provider</span> / <span class="cmd">Ref</span> are set, so the preflight can tick "extension updates" from here on.</li>
+          </ul>
+        </div>
+      </div>
+      <div class="proof">
+        <h4>Don't move on until</h4>
+        <div><ul>
+          <li>The panel has appeared on a real LinkedIn profile, on their machine, with them driving.</li>
+          <li>Note: the panel appearing proves the <em>install</em>. It does not yet prove <em>drafting</em> - that needs their Anthropic key, which is the next step.</li>
+        </ul></div>
+      </div>
+      <div class="traps">
+        <span class="lbl">Traps</span>
+        <button class="trap" data-trap="t-perbrowser" type="button">Storage is per browser - this is where it bites</button>
+        <button class="trap" data-trap="t-installtraps" type="button">Three that bite at load time</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ STEP 11 ============ -->
+  <section class="stage stage--home" id="s11">
+    <div class="stage-head">
+      <div class="numeral">11</div>
+      <div class="stage-title">
+        <h3>The Anthropic key - by email</h3>
+        <p class="sub">The chat runs on their claude.ai subscription, but two things run on our
+        servers - the overnight follow-up brief and the extension's LinkedIn drafting - and those
+        need a Claude <em>API</em> key. Their key, their cap, their off switch.
+        <strong>Sent as homework, not walked through live</strong> - it's fifteen minutes of them
+        clicking around a website that isn't ours.</p>
+      </div>
+      <div class="tags"><span class="tag tag--home">Their homework</span><span class="tag tag--only">BYO clients only</span></div>
+    </div>
+    <div class="stage-body">
+      <div class="script">
+        <span class="who">The email - the framing that matters</span>
+        <p>"There's one bit of the AI that works for you while you're asleep - overnight it goes
+        through your follow-ups and pre-writes your replies - and your LinkedIn drafting runs on our
+        servers too. That runs on a Claude key that's yours, not mine.</p>
+        <p>The important part, and the reason you can relax about it: YOU put a monthly spend limit
+        on it, a number you choose, and you can revoke it with one click any time. Worst case in the
+        whole world is a bill the size of the cap you set. Send me the key when you've got it and
+        we're done."</p>
+      </div>
+      <div class="roles">
+        <div class="role role--client">
+          <h4>The steps in the email - one per line, in this order</h4>
+          <ol>
+            <li><strong>console.anthropic.com</strong>, sign in or create an account. Separate from their claude.ai login even on the same email.</li>
+            <li><strong>Add a little credit / a payment method.</strong> This is where people trip: the API is pay-as-you-go and needs its own funding. A claude.ai Pro subscription does NOT cover it.</li>
+            <li>Create a <strong>Workspace</strong> (call it "Wingguy"). A walled-off compartment - it's what lets the spend cap apply to us alone.</li>
+            <li><strong>Set a monthly spend limit on that workspace.</strong> Their number, their safety net. Don't let them skip it.</li>
+            <li>Create an <strong>API key</strong> in that workspace and copy it. <strong>Shown once</strong> - click away and they just make a new one.</li>
+            <li>Send it to me (starts with <span class="cmd">sk-ant-</span>).</li>
+          </ol>
+          <p style="margin-top:8px;color:var(--ink-3);font-size:13.5px">The console shifts its layout
+          occasionally - write these as <em>concepts</em>, not exact button names, and offer to do it
+          together if anything doesn't match.</p>
+        </div>
+        <div class="role role--guy">
+          <h4>I do, when the key arrives</h4>
+          <ul>
+            <li>Paste it into <span class="cmd">Anthropic API Key</span> on their row. That's the whole install - the stored key is the only client lane.</li>
+            <li><strong>Only now</strong> flip <span class="cmd">Followup Brief = Yes</span>. Order matters.</li>
+          </ul>
+        </div>
+        <div class="role role--claude">
+          <h4>Claude does</h4>
+          <ul>
+            <li>Runs the brief and checks the log line reads <span class="cmd">anthropic lane=client-stored-key</span>, not <span class="cmd">platform-fallback</span>.</li>
+          </ul>
+        </div>
+      </div>
+      <div class="proof">
+        <h4>Check it worked</h4>
+        <div><ul>
+          <li>Ask Claude: <em>"prepare the follow-up brief for [client ID]"</em> - the run log must show <span class="cmd">lane=client-stored-key</span>. <span class="cmd">platform-fallback</span> means the field is blank or didn't save: re-paste.</li>
+        </ul></div>
+      </div>
+      <div class="traps">
+        <span class="lbl">Traps</span>
+        <button class="trap" data-trap="t-brief-order" type="button">Brief switched on before the key is in</button>
+        <button class="trap" data-trap="t-twokeys" type="button">The two-keys confusion</button>
+        <button class="trap" data-trap="t-revoked" type="button">A revoked or capped key later on</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ STEP 12 ============ -->
+  <section class="stage" id="s12">
+    <div class="stage-head">
+      <div class="numeral">12</div>
+      <div class="stage-title">
+        <h3>Demonstrate /wg on LinkedIn</h3>
+        <p class="sub">The payoff beat. Their key is in, their rules are set, the panel loads - so
+        now it drafts in their voice on a real profile, with them watching.</p>
+      </div>
+      <div class="tags"><span class="tag">Needs steps 6 and 11 done</span></div>
+    </div>
+    <div class="stage-body">
+      <div class="script">
+        <span class="who">Say to the client</span>
+        <p>"Right - this is the bit I've been wanting to show you. Find someone real on LinkedIn,
+        someone you'd genuinely reach out to. Type /wg on their profile and watch what it writes.
+        That's your voice, from the interview you did, on a person it just read."</p>
+      </div>
+      <div class="roles">
+        <div class="role role--client">
+          <h4>The client does</h4>
+          <ol>
+            <li>Opens a <strong>real</strong> profile they'd actually message - not a made-up test.</li>
+            <li>Types <strong>/wg</strong> and reads what comes back.</li>
+            <li>Edits it. <strong>Their edit is the lesson</strong> - it shows them the thing is a starting point, not an oracle, and it teaches Wingguy at the same time.</li>
+          </ol>
+        </div>
+        <div class="role role--guy">
+          <h4>I do</h4>
+          <ul>
+            <li>Point out that the draft came from <em>their</em> rules - link it back to the homework they did at step 6, so the interview pays off visibly.</li>
+            <li>Show them "update my rules" as the door for anything that sounds off.</li>
+          </ul>
+        </div>
+        <div class="role role--claude">
+          <h4>Claude does</h4>
+          <ul>
+            <li>Drafts on their stored key - which is why step 11 comes first.</li>
+            <li>Picks up their edit as a signal, so the next draft is closer.</li>
+          </ul>
+        </div>
+      </div>
+      <div class="proof">
+        <h4>Check it worked</h4>
+        <div><ul>
+          <li>They read the draft and say some version of "that actually sounds like me". That sentence is the whole point of the journey so far.</li>
+          <li>No "your Anthropic key was rejected" message - if that appears, the key didn't save.</li>
+        </ul></div>
+      </div>
+    </div>
+  </section>
+
+  <div class="band"><h2>Widening out</h2><div class="line"></div></div>
+
+  <!-- ============ STEP 13 ============ -->
+  <section class="stage" id="s13">
+    <div class="stage-head">
+      <div class="numeral">13</div>
+      <div class="stage-title">
+        <h3>The other features</h3>
+        <p class="sub">Now that the core works, show the things they'd never find on their own. Pick
+        what fits this client - don't tour the whole cabinet.</p>
+      </div>
+      <div class="tags"><span class="tag">Pick two or three</span></div>
     </div>
     <div class="stage-body">
       <div class="roles">
         <div class="role role--guy">
+          <h4>The one to lead with - people you've met</h4>
+          <p>A lead who came out of a recorded conversation can be added <strong>without a LinkedIn
+          URL</strong>. That matters because the people they meet on calls are often not the people
+          Linked Helper collected - and until this shipped, those people fell down a crack.</p>
+          <ul style="margin-top:9px">
+            <li>Transcripts attach <strong>by identity, not by exact email string</strong>. A recorder that mangles an address no longer silently loses the meeting.</li>
+            <li>If Wingguy is holding a <strong>parked meeting</strong> for someone, it says so and offers the door - it never stays quiet about a miss.</li>
+            <li>The New Leads page offers <strong>possible matches</strong> to merge: same person, combine - or different people, dismiss. Never an automatic merge.</li>
+          </ul>
+        </div>
+        <div class="role role--client">
+          <h4>Others worth showing, if they fit</h4>
+          <ul>
+            <li><strong>"Prep me for my meetings"</strong> - the dossier before a call, pulling last time's transcript.</li>
+            <li><strong>The follow-up queue</strong> - recommendation-first, so it tells them what to do rather than handing them a list.</li>
+            <li><strong>"What's my history with this person?"</strong> - the mail and meeting record in one answer.</li>
+            <li><strong>Their portal</strong> - the setup page, their instructions, and the review screen.</li>
+          </ul>
+        </div>
+        <div class="role role--claude">
+          <h4>Claude does</h4>
+          <ul>
+            <li>Serves the matching playbook topic when the client wants to go deeper, rather than me explaining it twice.</li>
+          </ul>
+        </div>
+      </div>
+      <div class="traps">
+        <span class="lbl">Traps</span>
+        <button class="trap" data-trap="t-skeleton" type="button">A lead with no URL stays out of the scoring queue</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ STEP 14 ============ -->
+  <section class="stage" id="s14">
+    <div class="stage-head">
+      <div class="numeral">14</div>
+      <div class="stage-title">
+        <h3>Linked Helper, and why it belongs on a VPS</h3>
+        <p class="sub">The engine that fills the database goes in last on purpose (decided
+        2026-08-22). By now the client understands why collection matters and wants it right.
+        <strong>Nothing is lost by waiting</strong> - the trial only starts when the first campaign
+        launches. This is the hinge into the second map.</p>
+      </div>
+      <div class="tags"><span class="tag tag--only">Hands off to post-plumbing</span></div>
+    </div>
+    <div class="stage-body">
+      <div class="script">
+        <span class="who">Say to the client</span>
+        <p>"Now that you've seen what Wingguy does with the people in your database, let's fill it.
+        This is the step that decides who you'll be meeting, so it's worth the thought you've already
+        been giving it - and remember, it's changeable, so we aim roughly right and adjust."</p>
+      </div>
+      <div class="roles">
+        <div class="role role--guy">
           <h4>I do</h4>
           <ul>
-            <li>Confirm the targeting is decided BEFORE this session - it should have threaded through every session since session 1.</li>
+            <li>Confirm the targeting is decided BEFORE this session - it should have threaded through every session since session one.</li>
             <li>Confirm their profile says <strong>connector</strong> (headline + About, connector first) - the first thing every new connection does is look them up.</li>
             <li>Then the hookup: Linked Helper install, the search URL into Campaign 1, webhook into their leads base.</li>
             <li>Set <span class="cmd">Email Series Start Date</span> on their Clients row - convention is this session's date. Blank = the series never starts for them.</li>
           </ul>
         </div>
         <div class="role role--client">
-          <h4>Say to the client</h4>
-          <div class="script" style="margin:0">
-            <p>"Now that you've seen what Wingguy does with the people in your database, let's fill
-            it. This is the step that decides who you'll be meeting, so it's worth the thought you've
-            already been giving it - and remember, it's changeable, so we aim roughly right and
-            adjust."</p>
-          </div>
+          <h4>The VPS conversation - an overview, not a push</h4>
+          <p>Linked Helper runs on a computer, not in the cloud. On the client's own machine it
+          <strong>dies quietly</strong>: the laptop sleeps, Windows restarts, nothing reopens by
+          itself, and nobody notices for weeks. One client's ran dead for about ten weeks; another's
+          trial lapsed while it sat idle.</p>
+          <p style="margin-top:9px">A small VPS is a computer that never sleeps and never gets shut
+          for the school run - and one I can see, so a stall is something I fix rather than something
+          they discover.</p>
+          <p style="margin-top:9px"><strong>Offer it, explain it, and take no for an answer.</strong>
+          Clients have declined and stayed happy. Don't re-pitch a client who has said no.</p>
         </div>
         <div class="role role--claude">
           <h4>Claude does</h4>
@@ -1257,10 +1542,15 @@ code,.mono{font-family:"IBM Plex Mono",ui-monospace,monospace}
           </ul>
         </div>
       </div>
+      <div class="proof">
+        <h4>Check it worked</h4>
+        <div><ul><li>First profiles land in their leads base and get scored overnight.</li></ul></div>
+      </div>
       <div class="traps">
         <span class="lbl">Traps</span>
         <button class="trap" data-trap="t-trial" type="button">The 14-day trial clock</button>
         <button class="trap" data-trap="t-onemachine" type="button">One LinkedIn account, one machine</button>
+        <button class="trap" data-trap="t-lhsilent" type="button">It dies silently - that's the whole VPS argument</button>
       </div>
     </div>
   </section>
@@ -1503,6 +1793,44 @@ code,.mono{font-family:"IBM Plex Mono",ui-monospace,monospace}
 
   <div id="t-onemachine" data-title="One LinkedIn account, one machine">
     <p>Never run Linked Helper from two computers at once against the same LinkedIn account.</p>
+    <p>This is also the reason a VPS is a <em>move</em>, not an <em>addition</em> - if collection
+    moves to the VPS, it stops running on their laptop.</p>
+  </div>
+
+  <div id="t-lhsilent" data-title="Linked Helper dies silently">
+    <p>Linked Helper runs on a machine we can't see, and it stops without telling anyone. A laptop
+    sleeps, Windows restarts, and <strong>nothing reopens by itself</strong> - the Launcher doesn't
+    auto-start, and opening the Launcher doesn't reopen the instance either.</p>
+    <h5>What it has actually cost</h5>
+    <ul>
+      <li>One client's ran dead for roughly <strong>ten weeks</strong> before anyone noticed.</li>
+      <li>Another's <strong>trial lapsed</strong> while the thing sat idle - burning the clock for nothing.</li>
+    </ul>
+    <h5>Why that argues for a VPS</h5>
+    <p>A small always-on machine doesn't sleep, doesn't get shut for the school run, and is one I can
+    see. Recovery doesn't depend on a human clicking anything - the Launcher's "open and run
+    campaigns" is <strong>a command we can issue</strong>, so a stall becomes something I fix rather
+    than something they discover.</p>
+    <div class="fix"><strong>Offer it, explain it, take no for an answer.</strong> Clients have
+    declined and stayed perfectly happy on their own machine. Don't re-pitch a client who has said
+    no - note the decision and move on.</div>
+    <p class="seen">Full machine setup: docs/linked-helper-machine-setup.md on main.</p>
+  </div>
+
+  <div id="t-skeleton" data-title="A lead with no URL stays out of the scoring queue">
+    <p>Someone added from a recorded conversation without a LinkedIn URL is a <strong>skeleton</strong>
+    record. It holds their meetings and their emails, but it deliberately <strong>stays out of the
+    scoring queue</strong> until a URL or an About section arrives - there's nothing to score yet.</p>
+    <ul>
+      <li>The URL is still required on the <em>blank</em> new-lead form, and it's still the key Linked
+      Helper matches on.</li>
+      <li>When Linked Helper later collects that same person, a <strong>same-email</strong> skeleton is
+      adopted automatically and joins the scoring queue.</li>
+      <li>A <strong>same-name-only</strong> match is never merged automatically - it's offered as a
+      possible match for a human to confirm.</li>
+    </ul>
+    <div class="fix">Set expectations on the call: "this person is in, and their history is attached -
+    they'll get scored once we have their profile."</div>
   </div>
 </div>
 
@@ -1511,7 +1839,7 @@ code,.mono{font-family:"IBM Plex Mono",ui-monospace,monospace}
   <div class="drawer-head">
     <div>
       <span class="eyebrow">Watch out</span>
-      <h3 id="drawer-title">—</h3>
+      <h3 id="drawer-title">Watch out</h3>
     </div>
     <button class="drawer-close" type="button" id="drawer-close">Close</button>
   </div>

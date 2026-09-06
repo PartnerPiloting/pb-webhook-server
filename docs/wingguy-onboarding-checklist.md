@@ -35,66 +35,99 @@ of a client.
 
 ## THE OVERVIEW - the whole journey, one paragraph per step
 
-**Step 0 - I get your record ready (before our call).** Behind the scenes there's a row with your
-name on it - your status, your timezone, your secret access key. I set that up and run an
+**Reordered 2026-09-06.** The rules session moved from step 2 to step 6 and became homework; the
+proving steps (calendar, email, extension) were split out as beats of their own; the extension came
+in off its parallel track and into the numbered spine; and the journey now runs all the way through
+to the Linked Helper and VPS conversation. The reasoning for the rules move is in STEP 6 EXPANDED.
+
+Each step is tagged with who does the work: **[live]** on a call together, **[homework]** them, in
+their own time, **[proof]** a beat that exists only to prove the step before it, and **[solo]** me,
+before or between sessions.
+
+**Step 0 - I get your record ready (before our call). [solo]** Behind the scenes there's a row with
+your name on it - your status, your timezone, your secret access key. I set that up and run an
 automatic health check on it before we start, so everything you touch from here just works.
 
-**Step 1 - Wingguy joins your Claude (2 minutes).** I send you a private link, you paste it into
-your Claude's settings, and from then on Wingguy lives inside your own Claude - you just talk to
-it in any chat. This is the doorway; everything else happens through it.
+**Step 1 - Wingguy joins your Claude (2 minutes). [live]** I send you a private link, you paste it
+into your Claude's settings, and from then on Wingguy lives inside your own Claude - you just talk
+to it in any chat. This is the doorway; everything else happens through it.
 
-**Step 2 - Wingguy learns how you work (about 20 minutes).** You tell Wingguy "let's set up my
-rules" and it interviews you - your voice, your offer, what you'd never say. That's what makes
-everything it writes sound like you and not like a robot. Nothing else needs to be connected for
-this - it's the first real taste of what you've bought.
+**Step 2 - Wingguy meets your calendar and your mailbox (5 minutes, one approval). [live]** You
+click one link and approve once. Your calendar, so Wingguy can offer meeting times that are
+genuinely free - checking ALL your calendars, personal ones included, so it never double-books you.
+And your mailbox at the same time: for Google and Microsoft clients the two happen in the same
+click. One thing to get right here: approve it from the correct account (we'll check together).
 
-**Step 3 - Wingguy meets your calendar and your mailbox (5 minutes, one approval).** You click
-one link and approve once. Your calendar, so Wingguy can offer meeting times that are genuinely
-free - checking ALL your calendars, personal ones included, so it never double-books you. And
-your mailbox at the same time (that's step 5 below - for Google and Microsoft clients the two
-happen in the same click). One thing to get right here: approve it from the correct account
-(we'll check together).
+**Step 3 - We test your calendar. [proof]** Its own step on purpose. You ask Wingguy what's on your
+calendar this week and check it against reality - including something you know is on your personal
+calendar. Until you've said "yes, that's my week", the step before it isn't finished.
 
-**Step 4 - Your meeting link (5 minutes).** Every invite Wingguy books needs a "click here to
-join" link. We use one reusable personal link - yours - on every invite, automatically. If you
-don't have one yet we'll create it together on this call, and switch on the waiting room so nobody
-wanders into the wrong meeting.
+**Step 4 - Your meeting link (5 minutes). [live]** Every invite Wingguy books needs a "click here to
+join" link. We use one reusable personal link - yours - on every invite, automatically. If you don't
+have one yet we'll create it together on this call, and switch on the waiting room so nobody wanders
+into the wrong meeting.
 
-**Step 5 - Wingguy meets your email.** Wingguy can draft emails as you, reply into existing
-conversations properly, tell you your history with any lead, and stop you accidentally sending
-someone the same document twice. For Google and Microsoft clients this needs no separate step -
-the one approval back at step 3 covered it. Zoho clients connect their mail separately.
+**Step 5 - We test your email. [proof]** You ask Wingguy to find a recent email from someone you
+know, then to read you the whole thing. Finding it proves the connection; reading it proves the
+depth. (Zoho clients connect their mail here first - it's the one lane where mail is a separate job
+from the calendar.)
 
-**Step 6 - Your meeting recorder (Granola).** The first time you say "draft an email based on
-the transcript of the call we just had" and see the job it does, you'll get it - that's not just
-work off your plate, it's the strain of holding the call in your head, gone. Then before your
-next call you'll say "prep me for my meetings" and Wingguy pulls the transcript from last time
-and clues you in. After those two moments you will not want a single transcript to ever be
-missed - and that's why we recommend Granola: it takes notes right on your computer, no bot in
-your calls, and it works on any platform, even when you're not the host. (See the expanded step
-before promising it.)
+**Step 6 - Your instructions, in your own time (about 20 minutes). [homework]** You open a chat any
+time that week and type "let's set up my rules", and Wingguy interviews you - your voice, your
+offer, what you'd never say. That's what makes everything it writes sound like you and not like a
+robot. It's homework rather than call time, and it comes AFTER you've watched Wingguy read your
+diary and your mail, so you already know what you're setting up and why.
 
-**Step 7 - The dress rehearsal (10 minutes).** We prove the whole chain works: Wingguy offers
-times for a real lead, books a test meeting, the invite arrives with your link on it, and we
-cancel it together. Then you're live.
+**Step 7 - Your meeting recorder. [live]** The first time you say "draft an email based on the
+transcript of the call we just had" and see the job it does, you'll get it - that's not just work
+off your plate, it's the strain of holding the call in your head, gone. Then before your next call
+you'll say "prep me for my meetings" and Wingguy pulls the transcript from last time and clues you
+in. After those two moments you will not want a single transcript to ever be missed - and that's why
+we recommend Granola: it takes notes right on your computer, no bot in your calls, and it works on
+any platform, even when you're not the host. (See the expanded step before promising it.)
 
-**Step 8 - Your own Claude key (BYO clients only, ~15 minutes).** Some things Wingguy does happen
-on our servers while you're asleep - overnight it reads your follow-ups and pre-writes your drafts
-- and your Chrome extension drafts on LinkedIn too. That work runs on a Claude API key that's
-yours: you create it, you put a monthly spend cap on it, and you can switch it off any time. You
-hand it to me once and it lives safely on your record. (On a managed plan? Skip this - your
+**Step 8 - The dress rehearsal (10 minutes). [live]** We prove the whole chain works: Wingguy offers
+times for a real lead, books a test meeting, the invite arrives with your link on it, and we cancel
+it together. After this you're live in chat, and everything that follows is the extension.
+
+**Step 9 - Your Wingguy extension, shipped and installed. [solo, then live]** The piece that puts
+Wingguy inside LinkedIn. I set up a folder in my own cloud storage and share it to you view-only, so
+every improvement I make reaches your computer without you downloading anything, ever. Then we load
+it into your browser together - it's the fiddliest single step in the journey, so we do it on a
+call.
+
+**Step 10 - We prove the extension works for you. [proof]** Installed isn't the same as working. You
+open your portal once in that browser - that's how the extension knows it's you - then open any
+LinkedIn profile and type /wg, and the panel appears. Skip the portal step and a perfectly good
+install looks broken.
+
+**Step 11 - Your own Claude key (BYO clients only, ~15 minutes). [homework]** Some things Wingguy
+does happen on our servers while you're asleep - overnight it reads your follow-ups and pre-writes
+your drafts - and your LinkedIn drafting runs there too. That work runs on a Claude API key that's
+yours: you create it, you put a monthly spend cap on it, and you can switch it off any time. I send
+this one as an email rather than walking it live: it's fifteen minutes of clicking around a website
+that isn't ours, and it's better done at your own pace. (On a managed plan? Skip this - your
 drafting runs on my account and there's nothing for you to do.)
 
-**Step 9 - Linked Helper, last on purpose (decided 2026-08-22, new clients only).** The engine that
-fills your database goes in last, once everything above is proven, your targeting has had a few
-weeks to settle, and your profile says connector. Nothing is lost by waiting - the Linked Helper
-trial only starts when the first campaign launches. The targeting conversation starts at session 1
-and threads through every session, so this final step launches at full speed. (Clients already
-mid-journey on the old LH-first order finish that way.)
+**Step 12 - We put /wg to work on a real profile. [live]** The payoff. Your key is in, your
+instructions are set, the panel loads - so now it drafts in your voice on someone you'd genuinely
+reach out to, with you watching. Your edit of that first draft is the lesson: it's a starting point,
+not an oracle, and editing it teaches Wingguy at the same time.
 
----
+**Step 13 - The rest of what it can do. [live]** Now that the core works, the things you'd never
+find on your own. The one to lead with: people you've met on a recorded call can be added as leads
+without a LinkedIn URL at all, and their transcripts attach to them properly. Then prep-me-for-my
+-meetings, the follow-up queue, and your history with any person - pick the two or three that fit
+this client rather than touring the whole cabinet.
 
-## STEP 0 EXPANDED - get the record ready (you, solo, before the call)
+**Step 14 - Linked Helper, last on purpose, and where it should run. [live]** The engine that fills
+your database goes in last, once everything above is proven, your targeting has had a few weeks to
+settle, and your profile says connector. Nothing is lost by waiting - the trial only starts when the
+first campaign launches. This is also where the VPS conversation belongs: Linked Helper runs on a
+computer, and on a laptop that sleeps it dies quietly. Offered, explained, and never pushed. From
+here the journey stops being plumbing and starts being strategy.
+
+## STEP 0 EXPANDED - get the record ready (you, solo, before the call) [solo]
 
 **You do:**
 
@@ -110,13 +143,13 @@ mid-journey on the old LH-first order finish that way.)
       brief and the Chrome-extension drafting; it is NOT the chat, which always runs on the client's
       own claude.ai subscription):
       - **Bring-your-own (default, like Julian):** leave **Managed Claude Key** blank. They create
-        their own Anthropic API key in Step 8 and you paste it into their **Anthropic API Key**
+        their own Anthropic API key at Step 11 and you paste it into their **Anthropic API Key**
         field. Their drafting then runs on their key + their spend cap - not your account.
       - **Managed plan:** **Managed Claude Key = Yes**. Their drafting runs on your account (they
-        pay you); leave **Anthropic API Key** blank and skip Step 8.
+        pay you); leave **Anthropic API Key** blank and skip Step 11.
 - [ ] **Followup Brief = Yes** only once the AI lane above is settled. For a BYO client, do NOT
       switch it on until their **Anthropic API Key** is in the record - otherwise their overnight
-      brief quietly runs on YOUR key instead of theirs (see Step 8's "Watch out").
+      brief quietly runs on YOUR key instead of theirs (see Step 11's "Watch out").
 
 **Check it worked:** ask Claude - *"run the onboarding preflight for [client ID]"*
 (`scripts/wingguy-onboarding-preflight.js <clientId>`). It prints the whole journey - every step
@@ -126,7 +159,7 @@ before every session, not only the first one. All green on today's steps before 
 
 ---
 
-## STEP 1 EXPANDED - the connector
+## STEP 1 EXPANDED - the connector [live]
 
 **Say to the client:** "Wingguy is going to live inside your own Claude - the same Claude you
 already use. I'm sending you a private link right now. It's your personal key, so keep it to
@@ -162,29 +195,10 @@ free-plan connector limit, needs a fresh chat).
 
 ---
 
-## STEP 2 EXPANDED - the rules session
-
-**Say to the client:** "This is the fun one. You're going to tell Wingguy how you actually work -
-how you talk, what you offer, what you'd never say to a lead. It interviews you; you just answer
-honestly. Takes about twenty minutes and it's what makes everything Wingguy writes sound like YOU.
-Type: let's set up my rules."
-
-**The client does:** types **"let's set up my rules"** and follows the interview. Wingguy runs the
-whole thing - questions, examples, confirmation. There is genuinely nothing for you to do.
-
-**Check it worked:** at the end, the client can ask Wingguy *"what are my rules?"* and see their
-own words reflected back.
-
-**Why this is step 2 and not later:** it needs nothing connected - no calendar, no email - and
-it's the moment the client feels "this thing gets me". Let that land before asking them to do
-more plumbing.
-
----
-
-## STEP 3 EXPANDED - the calendar (and the mailbox, same click, for most clients)
+## STEP 2 EXPANDED - the calendar and the mailbox, usually Unipile [live]
 
 **Know this before anything else: for a Google or Microsoft client, the calendar and the mailbox
-are ONE approval, not two.** One link covers both, so step 3 and step 5 happen in the same two
+are ONE approval, not two.** One link covers both, so step 2 and step 5 happen in the same two
 minutes. Zoho is the exception - there, calendar and mail connect separately.
 
 **Which lane is this client on?** Their email domain settles it (an MX lookup takes seconds -
@@ -193,7 +207,7 @@ Claude does this, don't go looking yourself).
 | Their provider | The lane | How it goes |
 |---|---|---|
 | Google or Microsoft | **Unipile hosted link** - calendar AND mail in one | Claude mints the link, you paste it, they approve |
-| Zoho | calendar = their own `/auth/zoho/start` link; mail = app-specific password | Claude builds the link, you paste it |
+| Zoho | calendar = their own `/auth/zoho/start` link; mail = app-specific password (step 5) | Claude builds the link, you paste it |
 
 **YOU DO - the whole of your part:** paste the link Claude hands you into the meeting chat.
 That is the entire step from your side. If you find yourself opening a dashboard, copying an
@@ -228,7 +242,7 @@ approves. Ten seconds.
 
 **Watch out - "just share your Google calendar with us" CANNOT BOOK.** Sharing a Google calendar
 with the service account is read-only by design (`calendar.readonly`). Wingguy will see their
-diary and happily offer times, then fail at the moment of booking - and step 7, the dress
+diary and happily offer times, then fail at the moment of booking - and step 8, the dress
 rehearsal, is where you find out. It is not a quicker version of this step. Anyone who needs a
 meeting booked goes through the hosted link.
 
@@ -246,21 +260,38 @@ client who has approved and a client who has not look identical from our side un
 fetches the account id by hand. That is why "proves it live" above is not optional, and why this
 step is never marked done on the strength of the client saying "yep, clicked it".
 
-**Check it worked:**
+---
 
-- [ ] Claude runs the multi-calendar health check for them
-      (`scripts/wingguy-multi-calendar-check.js`) and lists their calendars
-      (`scripts/wingguy-list-calendars.js`).
-- [ ] Eyeball that calendar list WITH the client: "does this look like your account?" One lonely,
-      near-empty calendar usually means the wrong-account trap struck again.
-- [ ] Best check of all - the client asks Wingguy: **"what's on my calendar this week?"** and
-      confirms it matches reality, including something they know is on their personal calendar.
-- [ ] Then the mail half: the client asks Wingguy to find a recent email from a sender they know,
-      and then for the full text of it.
+## STEP 3 EXPANDED - test their calendar [proof]
+
+A beat of its own, on purpose. The connection is invisible to us until someone goes and looks (see
+step 2's "invisible connection" trap), so this is never skipped and never taken on the client's word.
+
+**CLAUDE DOES:**
+
+- [ ] Runs the multi-calendar health check (`scripts/wingguy-multi-calendar-check.js`) and lists
+      their calendars (`scripts/wingguy-list-calendars.js`).
+- [ ] Proves the availability pipeline - not just that the calendars exist, but that free time comes
+      back out of them.
+
+**YOU DO - eyeball it WITH the client:**
+
+- [ ] Read the calendar list out: *"does this look like your account?"*
+- [ ] **One lonely, near-empty calendar** usually means the wrong-account trap struck at step 2.
+      Don't move on - re-click the link in a private window and do it again.
+
+**THE CLIENT DOES - the best check of all:**
+
+- [ ] Asks Wingguy: **"what's on my calendar this week?"**
+- [ ] Confirms it matches reality - **including something they know is on their personal calendar.**
+      That one detail is what proves the no-double-booking promise.
+
+**Don't move on until** the client has seen their own real week come back, in their own words rather
+than mine, with a personal-calendar event in it.
 
 ---
 
-## STEP 4 EXPANDED - the meeting link
+## STEP 4 EXPANDED - the meeting link [live]
 
 **The policy first, so you can explain it with confidence:** one reusable personal meeting link
 on every invite, automatically. We deliberately do NOT generate a fresh link per meeting - one
@@ -294,37 +325,91 @@ time with nothing to click. Catch it here, together on the call, not after the f
 
 ---
 
-## STEP 5 EXPANDED - the email
+## STEP 5 EXPANDED - test their email [proof]
 
-**For Google and Microsoft clients there is nothing to do here - step 3 already did it.** The one
-approval they clicked covered calendar and mailbox together. Run the mail check below to prove it
-and move on.
+**For Google and Microsoft clients the mailbox came free with step 2** - this step exists to prove
+it. Zoho clients connect their mail here first, then prove it.
 
-**Say to the client** (if their mailbox is connecting separately, i.e. Zoho): "Next is your
-mailbox. Once it's connected, Wingguy can draft emails as you - proper ones, that thread into
-existing conversations - and it can answer things like 'show me my history with this lead' or
-'has she replied since Tuesday?'. It'll even stop you from accidentally sending someone the same
-document twice."
+**Say to the client:** "Your mailbox is connected too - let's prove it. Ask it to find a recent
+email from someone you know, then ask it to read you the whole thing."
 
-**The Zoho lane only.** Zoho doesn't offer the easy click-and-approve route for mail, so it's a
-one-off manual step: in their Zoho settings they create an **app-specific password** - a special
-password that only works for this one connection; their real password is never shared - and read
-it out to you. Claude sets up the connection from there.
+**The Zoho lane only, before that.** Say: "Zoho doesn't do the easy click-and-approve for mail, so
+there's one manual bit - in your Zoho settings you create an app-specific password. It's a special
+password that only works for this one connection; your real password is never shared. Read it out to
+me and I'll do the rest."
 
-**Check it worked:**
+**THE CLIENT DOES - the test:**
 
-- [ ] The client asks Wingguy to find a recent email from a sender they know, then asks for the
-      full text of it.
-- [ ] Their row shows a live mail connection: **Email Provider** = `unipile` with a **Unipile
-      Account ID** (Google/Microsoft), or the Zoho/Nylas equivalent for that lane.
+1. Asks Wingguy to **find a recent email from a sender they know**.
+2. Then asks for **the full text of it**. Finding it proves the connection; reading it proves the
+   depth.
+
+**YOU DO:**
+
+- [ ] Confirm the row shows a live mail connection: **Email Provider** = `unipile` with a **Unipile
+      Account ID** (Google/Microsoft), or the Zoho equivalent for that lane.
+- [ ] Zoho only: take the app-specific password they read out and hand it to Claude. Nothing else.
+
+**Watch out - do NOT ask it to write an email yet.** Their instructions don't go in until step 6, so
+anything it drafts before then has no voice on it: no sign-off, no offer, none of their turns of
+phrase. Prove the mailbox by *finding and reading*, never by composing. A flat first draft is the one
+impression that's hard to walk back.
 
 **Worth knowing (app-password connections only):** the last ~90 days of mail is instantly
 searchable; older mail still works but Wingguy has to fetch it the slow way, so the first
-deep-history question can take noticeably longer. Normal, not broken.
+deep-history question can take noticeably longer. Normal, not broken - but say so before they ask.
 
 ---
 
-## STEP 6 EXPANDED - the meeting recorder (Granola)
+## STEP 6 EXPANDED - their instructions, as homework [homework]
+
+**Say to the client, at the end of session one:** "Here's your homework, and it's the fun one. Open a
+chat any time this week and type: **let's set up my rules**. Wingguy interviews you - how you talk,
+what you offer, what you'd never say to a lead. You just answer honestly. Takes about twenty minutes
+and it's what makes everything it writes sound like YOU rather than like a robot. Do it before we
+next speak and you'll walk into that session with it already sounding like you."
+
+**The client does:** types **"let's set up my rules"** in their own Claude and follows the interview.
+Wingguy runs the whole thing - questions, examples, confirmation. There is genuinely nothing for you
+to do while it happens.
+
+**You do:** before the next session, check it actually happened. A client who hasn't done their
+homework is the single most common reason session two drags.
+
+**Check it worked:** the client can ask Wingguy *"what are my rules?"* and see their own words
+reflected back.
+
+**Why this moved here (decided 2026-09-06 - it used to be step 2).** It used to sit early, on the
+argument that it needs nothing connected and it is the moment the client feels "this thing gets me".
+Guy moved it. The reasoning:
+
+- **The interview is better with context.** A client answering "what would you never say to a lead?"
+  in the first ten minutes is guessing at an abstraction. The same client, after watching Wingguy
+  read their actual diary and pull up a real email thread, is answering a concrete question about a
+  thing they have just seen work. Sharper instructions, fewer rewrites later.
+- **They arrive at it wanting to.** Having seen where it is going, the client thinks "of course, I
+  have to fill those in" - rather than being asked to describe themselves to something they have not
+  seen do anything yet.
+- **Session one gets its time back.** Twenty minutes of interview no longer eats the session where
+  the connections happen. Session one now lands four connections and two proofs.
+
+**Watch out - nothing sounds like them until this is done.** Between step 1 and step 6, anything
+Wingguy writes is generic: no sign-off, no offer, no turns of phrase, and none of the "what I'd never
+say" guardrails.
+
+- **Do not demo drafting before this step.** Prove the mailbox at step 5 by asking it to *find and
+  read back* an email, never to write one. A flat first draft is the one impression that is hard to
+  walk back.
+- If the client asks it to draft something off their own bat, say the honest thing: "that's the next
+  step - it doesn't know how you talk yet."
+- **A client who stalls between steps 2 and 6 now has plumbing and no instructions at all.** Under
+  the old order they would at least have their voice banked. Watch for a client going quiet before
+  step 6 - that is the one to chase. If a real gap opens up, a two-minute mini-version (name, what
+  they do, email sign-off) closes the worst of it without spending the full interview early.
+
+---
+
+## STEP 7 EXPANDED - the meeting recorder (Granola) [live]
 
 **Why this step earns its place - two moments sell it:** the first time the client says *"draft
 an email based on the transcript of the call we just had"* and sees the job it does - that's not
@@ -371,7 +456,7 @@ registration listed cleanly: `--list` on the same script.)
 **Watch out:**
 
 1. **Calendar before Granola - the order is load-bearing.** Wingguy works out who a meeting was
-   with by looking at the client's calendar, so Granola connected before the calendar (step 3)
+   with by looking at the client's calendar, so Granola connected before the calendar (step 2)
    just files orphan notes. Never swap these steps.
 2. **The first client through is the proving run.** The pipe is live on prod but its switches
    ship dark and the note shape hasn't been verified against a real client note yet. Until a
@@ -461,7 +546,7 @@ flow and it turns "configured" into "proven" while they are still on the screen.
 
 ---
 
-## STEP 7 EXPANDED - the dress rehearsal
+## STEP 8 EXPANDED - the dress rehearsal [live]
 
 **Say to the client:** "Last step - we prove the whole thing end to end, with a safety net. We'll
 have Wingguy book a real test meeting, watch the invite arrive with your link on it, and then
@@ -484,7 +569,76 @@ Wingguy 'update my rules'."
 
 ---
 
-## STEP 8 EXPANDED - your own Claude key (BYO clients only)
+## STEP 9 EXPANDED - ship and install the extension [solo, then live]
+
+The extension is the piece that puts Wingguy inside LinkedIn. It installs once, but it gets improved
+- and updates must reach the client's computer with ZERO ongoing effort from them.
+
+**The mechanism, and the reference material.** One **Wingguy** folder per client, owned by Guy in
+HIS cloud storage and shared to the client VIEW-ONLY; the client's own sync tool pulls it down; the
+browser picks up a new version at the next restart. The full detail lives in the reference sections
+further down this document, and they are the canonical text:
+
+- **THE EXTENSION UPDATE FOLDER** - the model, which lanes exist, why work Microsoft accounts and
+  Google Drive are both out, the comms doctrine, and the ask email.
+- **THE ONEDRIVE LANE** - the default for every synced client.
+- **THE ZIP LANE** - tech self-managers and company-locked machines.
+- **THE INSTALL CARD** - loading the extension into Chrome or Edge, one-time, any lane.
+
+**The order of the step:**
+
+1. **The ask email** (before anything else): is the computer their own or company-managed, and do
+   they have a personal Microsoft account. Two questions, then exactly ONE card that matches their
+   answer.
+2. **You set up the folder** and share it view-only, set **Extension Folder Provider** + **Extension
+   Folder Ref** on their row, and ship to them once so the folder is not empty when they look.
+3. **They connect the folder** (their card) and reply "done"; you confirm the files arrived. The loop
+   closes BEFORE the call - no session ever starts with a delivery surprise.
+4. **You load it together on the call** using the install card. Do this live for anyone
+   non-technical; it is the fiddliest single step in the whole journey.
+
+**Watch out - view-only is load-bearing.** The folder's contents execute inside the client's
+browser, so only Guy's account may ever be able to write to it. Never grant edit rights.
+
+---
+
+## STEP 10 EXPANDED - prove the extension works for them [proof]
+
+Installed is not the same as working. This beat exists because a perfectly good install looks broken
+until the portal has been opened once in that browser.
+
+**THE CLIENT DOES - on their screen, while you watch:**
+
+1. Confirms the **Wingguy card** is on their extensions page, at the version you shipped.
+2. **Opens their portal once in THIS browser.** That is how the extension knows who they are.
+3. Opens any LinkedIn profile and types **/wg**. *You'll know it worked when: the Wingguy panel
+   appears.*
+
+**YOU DO:**
+
+- [ ] Watch their screen for this - don't take "yeah, it's there" over a shared screen you can see.
+- [ ] Confirm the version on the card matches what you shipped. A stale version means the folder
+      isn't flowing, which is a step 9 problem, not a step 10 one.
+
+**Don't move on until** the panel has appeared on a real LinkedIn profile, on their machine, with
+them driving.
+
+**Note what this does and doesn't prove.** The panel appearing proves the *install*. It does not yet
+prove *drafting* - that needs their Anthropic key, which is the next step. Don't let a client try to
+draft here and conclude the extension is broken.
+
+**Watch out - the extension's storage is PER BROWSER.** A fresh install in Edge inherits nothing
+from the same person's Chrome copy, and vice versa. The portal-opened-once step is not optional, and
+it has to happen in whichever browser they're actually using.
+
+---
+
+## STEP 11 EXPANDED - their own Claude key, sent by email (BYO clients only) [homework]
+
+**Sent as homework, not walked through live (2026-09-06).** It is fifteen minutes of the client
+clicking around a website that is not ours, and it goes better at their own pace than on a call
+with you waiting. Send it as an email after step 10, and paste the key onto their row when it
+comes back. Everything below is the content of that email, plus your half.
 
 **Skip this entirely for managed-plan clients** (Managed Claude Key = Yes). This step is only for
 clients who run their drafting on their own key - the default.
@@ -496,15 +650,15 @@ subscription). We put that key on the client's own account so those runs are bil
 by them, and switch-off-able by them. It's the one part of setup where the client does a little
 homework in a website that isn't ours.
 
-**Say to the client:** "There's one bit of the AI that works for you while you're asleep - overnight
+**The email - the framing that matters:** "There's one bit of the AI that works for you while you're asleep - overnight
 it goes through your follow-ups and pre-writes your replies - and your LinkedIn drafting runs on our
 servers too. That runs on a Claude key that's yours, not mine. You'll set it up in Anthropic's
 console: it takes about fifteen minutes, most of which is them, not you. The important part - and the
 reason you can relax about it - is that YOU put a monthly spend limit on it, a number you choose, and
 you can revoke it with one click any time. Worst case in the whole world is a bill the size of the cap
-you set. I'll walk you through it, then you send me the key once and we're done."
+you set. Send me the key when you've got it and we're done."
 
-**The client does** (read these out one at a time - the console shifts its layout occasionally, so
+**The steps in the email** (write them one per line, in this order - the console shifts its layout occasionally, so
 these are the *concepts*; the labels may sit a click away):
 
 1. Goes to **console.anthropic.com** and signs in (or creates an account - this is separate from
@@ -557,7 +711,69 @@ the same: they make a fresh key (or raise the cap) and you paste it into the fie
 
 ---
 
-## STEP 9 EXPANDED - Linked Helper, last on purpose
+## STEP 12 EXPANDED - demonstrate /wg on LinkedIn [live]
+
+The payoff beat. Their key is in (step 11), their instructions are set (step 6), the panel loads
+(step 10) - so now it drafts in their voice on a real profile, with them watching.
+
+**Say to the client:** "Right - this is the bit I've been wanting to show you. Find someone real on
+LinkedIn, someone you'd genuinely reach out to. Type /wg on their profile and watch what it writes.
+That's your voice, from the interview you did, on a person it just read."
+
+**THE CLIENT DOES:**
+
+1. Opens a **real** profile they'd actually message - not a made-up test.
+2. Types **/wg** and reads what comes back.
+3. Edits it. **Their edit is the lesson** - it shows them the thing is a starting point rather than
+   an oracle, and it teaches Wingguy at the same time.
+
+**YOU DO:**
+
+- [ ] Point out that the draft came from THEIR instructions - link it back to the homework they did
+      at step 6, so the twenty minutes they spent pays off visibly.
+- [ ] Show them "update my rules" as the door for anything that sounds off.
+
+**Check it worked:** they read the draft and say some version of *"that actually sounds like me"*.
+That sentence is the whole point of the journey up to here. If a "your Anthropic key was rejected"
+message appears instead, the key didn't save - back to step 11.
+
+---
+
+## STEP 13 EXPANDED - the rest of what it can do [live]
+
+Now that the core works, show the things they'd never find on their own. **Pick two or three that
+fit this client** - don't tour the whole cabinet.
+
+**The one to lead with - people you've met.** A lead who came out of a recorded conversation can be
+added **without a LinkedIn URL**. That matters because the people a client meets on calls are often
+not the people Linked Helper collected, and until this shipped (2026-09-04) those people fell down a
+crack.
+
+- Transcripts attach **by identity, not by exact email string**. A recorder that mangles an address
+  no longer silently loses the meeting - which is exactly how a client concluded the system was
+  broken.
+- If Wingguy is holding a **parked meeting** for someone, it says so and offers the door. It never
+  stays quiet about a miss.
+- The New Leads page offers **possible matches** to merge - same person, combine; different people,
+  dismiss. Never an automatic merge on name alone.
+
+**Watch out - a lead with no URL stays out of the scoring queue.** A skeleton record holds their
+meetings and their emails, but it isn't scored until a URL or an About section arrives, because
+there's nothing to score yet. When Linked Helper later collects that same person, a same-email
+skeleton is adopted automatically and joins the queue. Set the expectation on the call: "this person
+is in and their history is attached - they'll get scored once we have their profile."
+
+**Others worth showing, if they fit:**
+
+- **"Prep me for my meetings"** - the dossier before a call, pulling last time's transcript.
+- **The follow-up queue** - recommendation-first, so it tells them what to do rather than handing
+  them a list.
+- **"What's my history with this person?"** - the mail and meeting record in one answer.
+- **Their portal** - the setup page, their instructions, and the review screen.
+
+---
+
+## STEP 14 EXPANDED - Linked Helper, last on purpose, and where it should run [live]
 
 This is the closing move of onboarding for new clients (decided 2026-08-22), and it deliberately
 comes after everything else. The early sessions build trust through the Wingguy plumbing; by the
@@ -595,6 +811,32 @@ you've already been giving it - and remember, it's changeable, so we aim roughly
 - One LinkedIn account, one machine - never run Linked Helper from two computers at once.
 - When the trial ends: yearly + pro, and Guy has a 10% promo code - send it before the trial runs
   out.
+
+---
+
+### The VPS conversation - an overview, not a push (belongs here, 2026-09-06)
+
+Linked Helper runs on a computer, not in the cloud, and on the client's own machine it **dies
+quietly**. The laptop sleeps, Windows restarts, and nothing reopens by itself - the Launcher does not
+auto-start, and opening the Launcher does not reopen the instance either. Nobody notices for weeks:
+one client's ran dead for roughly ten weeks, another's trial lapsed while it sat idle.
+
+**What to say:** "Linked Helper is a program that has to actually be running for anything to happen.
+On your laptop that means it stops every time the machine sleeps or restarts, and you'd have no way
+of knowing. A small always-on machine - a VPS - doesn't sleep and doesn't get shut for the school
+run. It's also one I can see, so if it stalls it's something I fix rather than something you
+discover."
+
+**Why it is a move, not an addition:** one LinkedIn account runs on one machine. If collection moves
+to the VPS, it stops running on their laptop - that is the point, but say it out loud so nobody is
+surprised.
+
+**Offer it, explain it, and take no for an answer.** Clients have declined and stayed perfectly
+happy. Note the decision on their record and **do not re-pitch a client who has said no.**
+
+Machine setup detail, if it goes ahead: `docs/linked-helper-machine-setup.md` on main. Recovery does
+not depend on anyone clicking anything - the Launcher's "open and run campaigns" is a command we can
+issue.
 
 ---
 
@@ -913,7 +1155,6 @@ Read this out, watching their shared screen:
 4. Then run the card above from step 1, together.
 
 ---
-
 
 ## THE INSTALL CARD - loading the extension into Chrome or Edge (one-time, any lane)
 
