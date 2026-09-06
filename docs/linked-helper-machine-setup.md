@@ -345,6 +345,49 @@ client_id is being retired during 2026 - make your own before then
 ⚠ Bug found and fixed the same evening: the watchdog re-read the window title 8 s after pressing,
 catching a transient `LinkedIn logged out` mid-refresh. Now 20 s.
 
+### ⚠⚠ Watchdog bugs found 7 Sep 2026 - it could NEVER start a stopped Linked Helper
+
+Found while testing the tidy-up, after a throttled upload left LH down for ~30 min and the watchdog
+sat through six cycles doing nothing.
+
+**1. `pgrep -f 'linked-helper'` matched its own shell.** The command line of the shell running that
+very pgrep contains the string, so `lh_pids()` never returned empty, the watchdog always concluded
+LH was running, and **the "start it if it's down" branch had never once executed.** Invisible until
+now because the desktop autostart covers the boot case - this was the first time LH was down while
+the machine stayed up. Fix: the `[l]inked-helper` bracket trick.
+
+**2. It decided from processes, not from the window.** Stray child processes with no instance window
+left it doing nothing at all. Now it reads the window title first and starts LH whenever the state
+is `NOT OPEN`, regardless of what processes exist.
+
+**3. A fixed 60 s wait after starting landed mid-load** ("Initializing.../Loading...") and wasted the
+cycle. Now polls up to ~3 min until the state settles to IDLE or RUNNING.
+
+**Proven after the fix:** LH killed outright -> watchdog started it -> waited for settle -> pressed
+"Start campaigns runner" -> `Running campaigns... | LinkedIn logged in`. The first press right after
+a cold start can return `NOT FOUND` (screen still drawing); the next 5-minute cycle gets it.
+
+### ⚠ Google Drive throttling holds LH down - backup reordered
+
+7 Sep: a manual daytime backup stalled on `rateLimitExceeded` from Google and, because the old
+script restarted LH only *after* the upload, campaigns stayed down for the whole transfer. **The
+upload never needed LH stopped.** Now: stop -> tidy -> archive (~10 s) -> **restart LH** -> upload.
+Downtime is seconds, not the length of the transfer. Upload also gets `timeout 40m`, `--retries 3`
+and a drive pacer so a throttled transfer fails cleanly instead of hanging forever.
+
+⚠ **The root cause is still open:** rclone's *shared* Google client_id is rate-limited across all
+its users worldwide and is being retired during 2026. Guy needs his own client_id
+(https://rclone.org/drive/#making-your-own-client-id) before this bites at 02:30 rather than in a
+test. Nightly runs have not hit it yet - 2:30am is quieter.
+
+### Nightly tidy-up (added 7 Sep 2026)
+
+Linked Helper parks a ~292 MB `lh.db.backup.<version>.archived.lhd2` on every self-update and never
+removes them - 1.17 GB had accumulated in a week, and disk went 23% -> 40%. The nightly job now
+keeps the **most recent** one (LH's own safety net if an update goes bad) and deletes the rest once
+older than 3 days, plus our `.imported.lhd2` migration artefact. Runs while LH is stopped, so the
+files are safe to touch, and `lh.db` itself is never a candidate. First run freed 584 MB.
+
 ### Access: Tailscale, not an open port (settled 1 Sep 2026)
 
 **Every machine joins a Tailscale private network and is reached by NAME** - `lh-guy-wilson`,

@@ -42,7 +42,10 @@ def sh(cmd):
 
 
 def lh_pids():
-    out = sh("pgrep -f 'linked-helper' || true")
+    # NOTE the [l] - without it pgrep matches the shell running this very
+    # command (its cmdline contains "linked-helper"), so this never returned
+    # empty and the watchdog could never start a fully-stopped Linked Helper.
+    out = sh("pgrep -f '[l]inked-helper' || true")
     return [int(p) for p in out.split() if p.isdigit()]
 
 
@@ -60,7 +63,7 @@ def parse_title(t):
         return {"state": "NOT OPEN", "linkedin": "unknown", "account": None, "version": None}
     m = re.search(r"Instance #(\d+)", t)
     v = re.search(r"\|\s*([\d.]+)\s*\|", t)
-    if "Running campaigns" in t:
+    if "Running campaign" in t:
         state = "RUNNING"
     elif re.search(r"\|\s*Idle\s*\|", t):
         state = "IDLE"
@@ -149,14 +152,26 @@ def main():
     conf = load_conf()
     actions = []
 
-    if not lh_pids():
-        actions.append("started-lh")
-        print("Linked Helper not running - starting it")
-        start_lh(conf)
-        time.sleep(45)  # give the instance time to open before reading state
-
     health = parse_title(instance_title())
     print(f"health: {health}")
+
+    # Decide from the WINDOW, not from process presence: stray child processes
+    # with no instance window used to leave the watchdog doing nothing at all.
+    if health["state"] == "NOT OPEN":
+        actions.append("started-lh")
+        print("no Linked Helper instance window - starting it")
+        subprocess.run("pkill -f '[l]inked-helper' || true", shell=True)
+        time.sleep(5)
+        start_lh(conf)
+        # Poll until it settles rather than guessing a fixed wait - the app
+        # shows "Initializing..."/"Loading..." for a while, and a fixed 60s
+        # landed mid-load and wasted the whole cycle.
+        for _ in range(18):          # up to ~3 min
+            time.sleep(10)
+            health = parse_title(instance_title())
+            if health["state"] in ("IDLE", "RUNNING"):
+                break
+        print(f"health after start: {health}")
 
     if health["state"] == "IDLE":
         ws_url = find_ui_page()
