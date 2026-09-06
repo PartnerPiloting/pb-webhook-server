@@ -51,10 +51,10 @@ client.
 4. **Latest emails** - Gmail search to/from the client; read the most recent onboarding thread in full.
 5. **The process** - `git fetch origin && git show origin/main:docs/wingguy-onboarding-checklist.md`
    (steps 0-14 with say-to-client wording, checks, traps). `wingguy_onboarding_guide` serves the same doc.
-   ⚠ The checklist was RENUMBERED 2026-09-06 (15 beats; rules moved to step 6 as homework;
-   the extension is now steps 9-10, the Anthropic key 11, /wg 12, other features 13, LH 14).
-   The preflight script still prints the OLD numbering - trust the doc for step numbers, and use
-   the preflight for the DONE/OWED verdicts, matching them up by name rather than by number.
+   ⚠ RENUMBERED 2026-09-06 (15 beats; rules moved to step 6 as HOMEWORK; the extension is now
+   steps 9-10, the Anthropic key 11, /wg 12, the feature tour 13, LH + the VPS 14). The preflight
+   script prints the SAME numbers - they were brought into line the same day, so a preflight line
+   and a doc step with the same number are the same thing.
 
 Then place the client on the journey: which checklist step is DONE / IN FLIGHT / NEXT.
 
