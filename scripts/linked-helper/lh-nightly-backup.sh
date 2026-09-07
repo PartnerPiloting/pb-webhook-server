@@ -13,6 +13,7 @@ STAMP=$(date +%Y-%m-%d)
 WORK=/var/tmp/lh-backup
 REMOTE_DIR="gdrive:Linked Helper Backups/${CLIENT_ID}"
 KEEP_DAYS=21
+KEEP_LHD2=3          # supported-format exports kept in <client>/lhd2
 
 say(){ echo "$(date -Is) $*" >> "$LOG"; }
 
@@ -27,10 +28,20 @@ pgrep -f "linked-helper" >/dev/null && { pkill -9 -f "linked-helper"; sleep 3; }
 # (its safety net if an update goes bad); remove the rest once they are older
 # than STALE_DAYS. Also removes our own .imported.lhd2 migration artefact.
 # Runs here because Linked Helper is stopped - safe to touch its files.
+#
+# The newest .archived.lhd2 is ALSO the only supported-format backup we get for
+# free: Linked Helper writes it itself (doAutoBackup) on every self-update. Unlike
+# our tar it is the artefact LH accepts back on a rebuild, and the one a client
+# could take elsewhere. Uploaded below, AFTER Linked Helper is back up.
 STALE_DAYS=3
+LHD2_SRC=""
 DBDIR=$(dirname "$(find /home/lh/.config/linked-helper -name lh.db -print -quit 2>/dev/null)")
 if [ -n "$DBDIR" ] && [ -d "$DBDIR" ]; then
   FREED=0
+  # newest .archived.lhd2 - kept on disk, and uploaded after the restart
+  LHD2_SRC=$(find "$DBDIR" -maxdepth 1 -name "*.archived.lhd2" -printf "%T@ %p
+" 2>/dev/null              | sort -rn | head -1 | cut -d" " -f2-)
+  [ -n "$LHD2_SRC" ] && say "supported-format export on disk: $(basename "$LHD2_SRC") ($(du -m "$LHD2_SRC" | cut -f1) MB)"
   # every .archived.lhd2 EXCEPT the newest, if older than STALE_DAYS
   find "$DBDIR" -maxdepth 1 -name "*.archived.lhd2" -printf "%T@ %p
 " 2>/dev/null     | sort -rn | tail -n +2 | cut -d" " -f2- | while read -r f; do
@@ -65,11 +76,31 @@ say "uploading to $REMOTE_DIR"
 # --timeout/--retries so a throttled transfer fails cleanly instead of hanging.
 if timeout 40m rclone copy "$ARCHIVE" "$REMOTE_DIR" --drive-chunk-size 32M      --retries 3 --low-level-retries 10 --timeout 5m --drive-pacer-min-sleep 200ms 2>>"$LOG"; then
   say "upload OK"
-  rclone delete "$REMOTE_DIR" --min-age ${KEEP_DAYS}d 2>>"$LOG" && say "pruned copies older than ${KEEP_DAYS}d"
+  # --max-depth 1 so this only ages out the nightly tars, never the lhd2/ folder
+  # below. Those are produced irregularly - only when Linked Helper updates itself
+  # - so an age rule would delete one and then re-upload it the same night.
+  rclone delete "$REMOTE_DIR" --max-depth 1 --min-age ${KEEP_DAYS}d 2>>"$LOG" && say "pruned copies older than ${KEEP_DAYS}d"
 else
   say "UPLOAD FAILED - archive kept locally at $ARCHIVE"
 fi
 rm -f "$ARCHIVE"
+
+# Linked Helper's own supported-format export. Its filename carries the LH
+# version, so each update contributes one file and re-running is a no-op -
+# rclone skips a file already there at the same size and modtime.
+if [ -n "$LHD2_SRC" ] && [ -f "$LHD2_SRC" ]; then
+  say "uploading supported-format export $(basename "$LHD2_SRC")"
+  if timeout 40m rclone copy "$LHD2_SRC" "$REMOTE_DIR/lhd2" --drive-chunk-size 32M       --retries 3 --low-level-retries 10 --timeout 5m --drive-pacer-min-sleep 200ms 2>>"$LOG"; then
+    say "export upload OK"
+    rclone lsf "$REMOTE_DIR/lhd2" --format "tp" 2>>"$LOG" | sort -r | tail -n +$((KEEP_LHD2 + 1))       | cut -d";" -f2- | while read -r old; do
+        rclone deletefile "$REMOTE_DIR/lhd2/$old" 2>>"$LOG" && say "pruned old export: $old"
+      done
+  else
+    say "EXPORT UPLOAD FAILED - stays on the machine, next run retries"
+  fi
+else
+  say "no .archived.lhd2 on disk - none uploaded (LH writes one on its next self-update)"
+fi
 
 # Safety net: if the restart above somehow did not happen, do it now.
 if [ "${LH_RESTARTED:-no}" != "yes" ] || ! pgrep -f "[l]inked-helper" >/dev/null; then
