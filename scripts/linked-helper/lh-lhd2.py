@@ -185,12 +185,53 @@ async def call_main_window(ws_url, method, args):
             raw = await asyncio.wait_for(ws.recv(), timeout=max(5, deadline - time.time()))
             msg = json.loads(raw)
             if msg.get("id") == 1:
+                # DevTools reports a destroyed context (page reloaded mid-call) as a
+                # top-level "error", not inside "result". The first version only
+                # looked in "result" and reported it as "no value returned".
+                if "error" in msg:
+                    return {"ok": False, "error": "devtools: " + json.dumps(msg["error"])[:400]}
                 res = msg.get("result", {})
                 if "exceptionDetails" in res:
                     return {"ok": False, "error": json.dumps(res["exceptionDetails"])[:400]}
                 value = res.get("result", {}).get("value")
-                return json.loads(value) if value else {"ok": False, "error": "no value returned"}
+                if not value:
+                    return {"ok": False, "error": "no value; raw reply: " + json.dumps(res)[:400]}
+                return json.loads(value)
     return {"ok": False, "error": "timed out"}
+
+
+def ensure_writable(path, user):
+    """The launcher runs as the LH user, but this tool is run by root (cron). A
+    directory root creates is 755 and the launcher cannot write into it - the
+    export then runs its full ~90 s and produces nothing. That was the second
+    live failure. So own the directory to the LH user and prove it is writable."""
+    import shutil
+    d = os.path.dirname(os.path.abspath(path)) or "."
+    os.makedirs(d, exist_ok=True)
+    try:
+        shutil.chown(d, user=user, group=user)
+    except Exception as e:
+        say("could not chown %s to %s (%s) - continuing, the write test decides" % (d, user, e))
+    probe = subprocess.run(["sudo", "-u", user, "test", "-w", d])
+    if probe.returncode != 0:
+        raise RuntimeError("user %s cannot write to %s" % (user, d))
+    if os.path.exists(path):
+        os.remove(path)     # so a stale file can never be mistaken for this run's
+
+
+def wait_for_file(path, quiet_s=10, timeout_s=300):
+    """The file on disk is the success signal, whatever the JS reply said. Wait
+    for it to appear and stop growing."""
+    deadline = time.time() + timeout_s
+    last = -1
+    while time.time() < deadline:
+        if os.path.exists(path):
+            size = os.path.getsize(path)
+            if size == last and size > 0:
+                return True
+            last = size
+        time.sleep(quiet_s)
+    return os.path.exists(path) and os.path.getsize(path) > 0
 
 
 def verify(path):
@@ -231,7 +272,15 @@ def main():
 
     account = int(c["LH_ACCOUNT_ID"])
     version = instance_version(c)
+    user = c.get("LH_USER", "lh")
     say("%s account %s, instance version %s, path %s" % (action, account, version, path))
+
+    if action == "export":
+        try:
+            ensure_writable(path, user)
+        except Exception as e:
+            say("FAILED before starting: %s" % e)
+            return 1
 
     if lh_pids():
         say("Linked Helper is running - stopping it (the export refuses while the instance is up)")
@@ -244,6 +293,9 @@ def main():
         say("FAILED: the launcher never became usable")
         stop_lh()
         return 1
+    # The function existing is necessary, not sufficient - the by-hand run that
+    # worked had waited 25 s. Give the launcher a moment to finish settling.
+    time.sleep(10)
     say("launcher ready")
 
     t0 = time.time()
@@ -251,21 +303,33 @@ def main():
         ws, action + "Backup",
         {"linkedInAccountId": account, "version": version, "backupPath": path}))
     took = round(time.time() - t0, 1)
+    say("launcher replied after %ss: %s" % (took, json.dumps(result)))
+
+    if action == "export":
+        # Whatever the reply said, the file is the truth.
+        if not wait_for_file(path):
+            say("FAILED: no file appeared at %s" % path)
+            stop_lh()
+            return 1
 
     say("stopping the launcher")
     stop_lh()
 
-    if not result.get("ok"):
-        say("FAILED after %ss: %s" % (took, result.get("error")))
-        return 1
-    say("%s finished in %ss" % (action, took))
-
-    if action == "export":
-        try:
-            verify(path)
-        except Exception as e:
-            say("FAILED verification: %s" % e)
+    if action == "import":
+        if not result.get("ok"):
+            say("FAILED: %s" % result.get("error"))
             return 1
+        say("import finished in %ss" % took)
+        return 0
+
+    try:
+        verify(path)
+    except Exception as e:
+        say("FAILED verification: %s" % e)
+        return 1
+    if not result.get("ok"):
+        say("note: the launcher reported a problem but the file verifies - treating as success")
+    say("export finished in %ss" % took)
     return 0
 
 
