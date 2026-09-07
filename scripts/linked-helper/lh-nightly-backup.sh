@@ -76,12 +76,22 @@ mkdir -p "$WORK"
 # refuses while the instance is running), drives it, and leaves LH stopped for
 # the tar below. Roughly 100 s for a 1.2 GB database. If it fails we still take
 # the tar - losing the nicer artefact must never cost us the working one.
-EXPORT="$WORK/lh-${CLIENT_ID}-${STAMP}.lhd2"
-if /usr/local/bin/lh-lhd2.py export "$EXPORT" >>"$LOG" 2>&1; then
-  say "export built: $(du -m "$EXPORT" | cut -f1) MB"
-else
-  say "EXPORT FAILED - carrying on with the data-directory archive"
-  rm -f "$EXPORT"
+# OFF by default: set LH_EXPORT_NIGHTLY=yes in /etc/linked-helper-machine.conf
+# to enable it on a machine. The export itself is proven - it produced a valid
+# file by hand on 7 Sep - but driven from this job it has not yet succeeded
+# end to end, and a step that costs ~2 min of campaign downtime does not run on
+# a client machine until it earns it. Until then LH's own .archived.lhd2 (see
+# the tidy-up above) is the supported-format artefact we ship.
+EXPORT=""
+if [ "${LH_EXPORT_NIGHTLY:-no}" = yes ]; then
+  EXPORT="$WORK/lh-${CLIENT_ID}-${STAMP}.lhd2"
+  if /usr/local/bin/lh-lhd2.py export "$EXPORT" >>"$LOG" 2>&1; then
+    say "export built: $(du -m "$EXPORT" | cut -f1) MB"
+  else
+    say "EXPORT FAILED - carrying on with the data-directory archive"
+    rm -f "$EXPORT"
+    EXPORT=""
+  fi
 fi
 
 ARCHIVE="$WORK/lh-${CLIENT_ID}-${STAMP}.tar.zst"
