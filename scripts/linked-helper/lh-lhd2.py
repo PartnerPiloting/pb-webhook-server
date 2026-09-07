@@ -123,13 +123,48 @@ def find_launcher_page():
     return None
 
 
-def wait_for_launcher():
+READY_JS = (
+    "(function(){try{var s=window.mainWindowService;"
+    "return !!(s&&s.mainWindow&&typeof s.mainWindow.%s===\"function\");}"
+    "catch(e){return false;}})()"
+)
+
+
+async def eval_js(ws_url, expr, timeout=20):
+    import websockets
+    async with websockets.connect(ws_url, max_size=2 ** 24, open_timeout=timeout) as ws:
+        await ws.send(json.dumps({"id": 1, "method": "Runtime.evaluate", "params": {
+            "expression": expr, "returnByValue": True, "awaitPromise": True}}))
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            msg = json.loads(await asyncio.wait_for(ws.recv(), timeout=timeout))
+            if msg.get("id") == 1:
+                return msg.get("result", {}).get("result", {}).get("value")
+    return None
+
+
+def wait_for_launcher(method):
+    """A page appearing is NOT the same as the page being usable. The launcher
+    serves its DevTools target within a few seconds but takes ~25 s to build the
+    UI, and calling too early gives "Cannot read properties of undefined
+    (reading 'callWrite')" - which is exactly what happened on the first live
+    run. So poll for the function itself, not for the page."""
     deadline = time.time() + LAUNCHER_SETTLE_S
+    seen_page = False
     while time.time() < deadline:
         ws = find_launcher_page()
         if ws:
-            return ws
+            if not seen_page:
+                say("launcher page is up - waiting for it to finish loading")
+                seen_page = True
+            try:
+                if asyncio.run(eval_js(ws, READY_JS % method)) is True:
+                    return ws
+            except Exception:
+                pass
         time.sleep(3)
+    if seen_page:
+        say("the launcher page never exposed %s in %ds" % (method, LAUNCHER_SETTLE_S))
     return None
 
 
@@ -204,11 +239,12 @@ def main():
 
     say("starting the launcher alone, with a DevTools port")
     start_launcher_alone(c)
-    ws = wait_for_launcher()
+    ws = wait_for_launcher(action + "Backup")
     if not ws:
-        say("FAILED: the launcher never showed a DevTools page")
+        say("FAILED: the launcher never became usable")
         stop_lh()
         return 1
+    say("launcher ready")
 
     t0 = time.time()
     result = asyncio.run(call_main_window(
