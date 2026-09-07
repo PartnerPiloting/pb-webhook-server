@@ -49,12 +49,23 @@ const DEFAULT_SERVER = (process.env.EXTENSION_DIST_SERVER || 'https://pb-webhook
   // from a Command Prompt: pasted into PowerShell, the OUTER session expands $t first and,
   // since it does not exist there, the token silently vanishes leaving @{'x-portal-token'=}.
   // Guy hit this on his own machine, 2026-09-03. Assume the person is already in PowerShell -
-  // that is what anyone opens. Set-ExecutionPolicy -Scope Process replaces the -ExecutionPolicy
-  // flag the wrapper used to carry, and affects only that one window.
+  // that is what anyone opens.
+  //
+  // THE BYPASS RIDES WITH THE CHILD PROCESS, not with the pasted line. This used to open with
+  // `Set-ExecutionPolicy -Scope Process Bypass -Force; ...` and then run the downloaded script
+  // as `& $p`. That fails SILENTLY-ISH on a policy-managed machine: Set-ExecutionPolicy throws,
+  // but the statements are semicolon-separated so the rest of the line carries on regardless,
+  // the download succeeds, and `& $p` is then refused - leaving no C:\Wingguy and nothing to
+  // show for it. Dean Hobin's machine, 2026-09-07: first paste produced no folder at all, the
+  // form below installed cleanly minutes later on that same machine.
+  //
+  // `-File` (never `-Command`) keeps the vanishing-token fix intact: $p and $t are expanded by
+  // the CURRENT session and handed to the child as plain arguments, so there is no second round
+  // of parsing for a quote or a `$` to get lost in.
   const win =
-    `Set-ExecutionPolicy -Scope Process Bypass -Force; $t='${token}'; $p=Join-Path $env:TEMP 'wg.ps1'; ` +
+    `$t='${token}'; $p=Join-Path $env:TEMP 'wg.ps1'; ` +
     `Invoke-WebRequest -Uri '${DEFAULT_SERVER}/extension/dist/installer' -Headers @{'x-portal-token'=$t} -OutFile $p -UseBasicParsing; ` +
-    `& $p -Install -Server '${DEFAULT_SERVER}' -Token $t`;
+    `& powershell.exe -ExecutionPolicy Bypass -File $p -Install -Server '${DEFAULT_SERVER}' -Token $t`;
 
   const mac =
     `T='${token}'; curl -sS -H "x-portal-token: $T" '${DEFAULT_SERVER}/extension/dist/installer.sh' -o /tmp/wg.sh && ` +

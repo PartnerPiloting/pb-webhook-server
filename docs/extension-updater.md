@@ -134,6 +134,18 @@ for ~10 weeks because nobody noticed, not because nobody could fix it).
   PowerShell the outer session expands `$t` first, and since it does not exist there the token
   silently vanishes, leaving `@{'x-portal-token'=}`. Guy hit this on his own machine 2026-09-03.
   The wrapper is gone - do not put it back.
+- ⚠ **The execution-policy bypass must ride with the CHILD PROCESS, not the pasted line.**
+  The line used to open with `Set-ExecutionPolicy -Scope Process Bypass -Force;` and then run
+  the downloaded script as `& $p`. On a policy-managed machine `Set-ExecutionPolicy` throws -
+  but the statements are semicolon-separated, so the rest of the line carries on regardless:
+  the download succeeds and `& $p` is then refused. The paste ends with **no `C:\Wingguy` and
+  nothing obviously wrong on screen**, which is the worst shape a failure can take. Dean Hobin,
+  2026-09-07. It now runs the file as
+  `& powershell.exe -ExecutionPolicy Bypass -File $p -Install ...`, which installed cleanly on
+  that same machine minutes later. Still `-File`, NEVER `-Command` - that is what keeps the
+  token from vanishing. Note that a Group Policy execution policy overrides the
+  `-ExecutionPolicy` switch as well; a machine that refuses this form too needs a different
+  lane, not another variation of the line.
 - ⚠ **The login run is a Startup-folder .vbs, not `schtasks /SC ONLOGON`.** ONLOGON was denied on
   Guy's machine even though the DAILY task registered fine (2026-09-03) - it wants rights a
   per-user daily task does not. The Startup folder needs no permissions at all. It matters
@@ -170,7 +182,14 @@ for ~10 weeks because nobody noticed, not because nobody could fix it).
 - the installer endpoints (both scripts served, 401 without a token) and the one-line install
   running start to finish from a paste
 
-**NOT proven:** that `Register-ScheduledTask` succeeds on a real client machine. The test
-environment denied it, which is what exposed the silent-success bug - so the failure path is
-well proven and the success path is not. Worth confirming on the first real install; the script
-now tells you plainly either way.
+2026-09-07, the first real CLIENT machine end to end (Dean Hobin, `DEANS_LENOVO`):
+
+- the one-line install from a paste, in 32-bit Windows PowerShell as the machine's own user
+- daily task created **and verified**, login run created **and verified**, 14 files staged,
+  `C:\Wingguy` verified at 0.3.18, and the machine checked in within the minute
+- the scheduling question this section used to leave open is now closed: `schtasks` registers
+  unelevated on a real client machine. Four client machines report in (Rick, Roland, Sam,
+  Dean), all on the same version.
+
+**NOT proven:** the macOS lane, still - see the limits above. And nothing here proves a machine
+under a Group Policy execution policy, which would refuse the `-ExecutionPolicy` switch too.
