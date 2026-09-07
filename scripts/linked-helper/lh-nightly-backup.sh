@@ -14,6 +14,8 @@ WORK=/var/tmp/lh-backup
 REMOTE_DIR="gdrive:Linked Helper Backups/${CLIENT_ID}"
 KEEP_DAYS=21
 KEEP_LHD2=10         # supported-format exports kept in <client>/lhd2
+# Where Linked Helper publishes its launcher package (the setup script installs from the same URL).
+LH_DEB_URL="${LH_DEB_URL:-https://do0ca1hx6twig.cloudfront.net/linked-helper/444657160c922f6b8048468fef840020/latest/linux/x64/linked-helper.deb}"
 
 say(){ echo "$(date -Is) $*" >> "$LOG"; }
 
@@ -71,6 +73,32 @@ if [ -n "$DBDIR" ] && [ -d "$DBDIR" ]; then
 fi
 
 mkdir -p "$WORK"
+
+# --- keep the LAUNCHER current. Linked Helper is two programs: the instance
+# (runs campaigns) updates itself fine; the launcher is a system package the
+# app cannot replace as an ordinary user, so it sits on its install version
+# saying "downloading update" forever. This job runs as root with LH stopped -
+# the one safe moment - so fetch the vendor's latest and install it if newer.
+# wget -N only re-downloads when the file has changed upstream. Never fatal.
+# Off switch: LH_UPGRADE_LAUNCHER=no in /etc/linked-helper-machine.conf.
+if [ "${LH_UPGRADE_LAUNCHER:-yes}" = yes ]; then
+  if timeout 10m wget -q -N -P "$WORK" "$LH_DEB_URL" 2>>"$LOG" && [ -f "$WORK/linked-helper.deb" ]; then
+    NEW=$(dpkg-deb -f "$WORK/linked-helper.deb" Version 2>/dev/null)
+    CUR=$(dpkg-query -W -f '${Version}' linked-helper 2>/dev/null)
+    if [ -n "$NEW" ] && dpkg --compare-versions "$NEW" gt "${CUR:-0}"; then
+      say "launcher upgrade available: ${CUR:-none} -> $NEW - installing"
+      if DEBIAN_FRONTEND=noninteractive timeout 10m apt-get install -y -qq "$WORK/linked-helper.deb" >>"$LOG" 2>&1; then
+        say "launcher upgraded to $(dpkg-query -W -f '${Version}' linked-helper)"
+      else
+        say "LAUNCHER UPGRADE FAILED - still on ${CUR:-none}, carrying on"
+      fi
+    else
+      say "launcher ${CUR:-none} is current (vendor latest ${NEW:-unknown})"
+    fi
+  else
+    say "could not fetch the launcher package - skipping the upgrade check"
+  fi
+fi
 
 # --- Linked Helper's own supported-format export, taken while LH is stopped.
 # lh-lhd2.py starts the launcher on its own (the export only exists there, and
