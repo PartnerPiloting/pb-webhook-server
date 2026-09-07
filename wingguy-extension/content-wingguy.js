@@ -475,10 +475,22 @@
       for (const h of hosts) { if (budget <= 0) break; visit(h.shadowRoot); }
     };
     visit(rootEl);
-    return parts.join('\n').replace(/\n{3,}/g, '\n\n').replace(/[ \t]+/g, ' ').trim().slice(0, cap);
+    return capText(parts.join('\n').replace(/\n{3,}/g, '\n\n').replace(/[ \t]+/g, ' ').trim(), cap);
   }
   function cleanText(t) {
     return (t || '').replace(/\s+/g, ' ').trim();
+  }
+  // Cut a string to a length WITHOUT splitting an emoji in half. An emoji is two code units that
+  // only mean anything as a pair, so counting characters and chopping can land between them — and a
+  // lone half is not valid text. Anthropic rejects the whole request with a 400 before Claude reads
+  // any of it, the panel can only say "couldn't reach Wingguy", and that thread then fails the same
+  // way on every retry (Roland Illyes' group thread, 2026-09-07). Use this for ANY length cap on
+  // scraped text: back off one character when the cut would land on the first half of a pair.
+  function capText(t, max) {
+    const s = String(t || '');
+    if (s.length <= max) return s;
+    const last = s.charCodeAt(max - 1);
+    return s.slice(0, last >= 0xD800 && last <= 0xDBFF ? max - 1 : max);
   }
   function escapeHtml(s) {
     return String(s)
@@ -606,7 +618,7 @@
       .filter(Boolean);
     if (spans.length) {
       const text = Array.from(new Set(spans)).filter((t) => t.toLowerCase() !== 'about').join(' ');
-      if (text) return text.slice(0, 4000);
+      if (text) return capText(text, 4000);
     }
     // New build: no marked spans at all - the copy is plain text under the heading, with the
     // "… more" toggle and a "Top skills" sub-block inside the same section. Take the visible text,
@@ -616,7 +628,7 @@
     text = text.replace(/^\s*about\s*/i, '').replace(/\s*(?:…\s*)?(?:see\s+)?(?:more|less)\s*$/i, '');
     const skills = text.search(/\bTop skills\b/);
     if (skills > 0) text = text.slice(0, skills);
-    return text.replace(/\s+/g, ' ').trim().slice(0, 4000);
+    return capText(text.replace(/\s+/g, ' ').trim(), 4000);
   }
 
   // The Activity section (their recent post previews). Three-layer find: the store-correctable id
@@ -668,7 +680,7 @@
       .filter((t) => t && t.length > 25
         && !excl.includes(t.toLowerCase())
         && !(t.length < 120 && (ACTIVITY_ATTRIBUTION.test(t) || ACTIVITY_CHROME.test(t))));
-    return Array.from(new Set(items)).slice(0, 3).map((t) => t.slice(0, 400));
+    return Array.from(new Set(items)).slice(0, 3).map((t) => capText(t, 400));
   }
 
   // Name fallbacks for when LinkedIn's DOM selectors miss (markup shifts, or the messaging
@@ -970,8 +982,8 @@
   // shadow-crossing walk when the plain read comes up thin.
   function readPageTextNow() {
     const mainEl = document.querySelector('main') || document.body;
-    let pageText = (mainEl.innerText || '')
-      .replace(/\n{3,}/g, '\n\n').replace(/[ \t]+/g, ' ').trim().slice(0, 6000);
+    let pageText = capText((mainEl.innerText || '')
+      .replace(/\n{3,}/g, '\n\n').replace(/[ \t]+/g, ' ').trim(), 6000);
     if (pageText.length < 500) {
       const deepText = deepInnerText(document.body);
       if (deepText.length > pageText.length) pageText = deepText;

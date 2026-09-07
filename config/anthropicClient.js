@@ -22,6 +22,60 @@ const logger = createLogger({
 // Clean, stable model IDs — no dated-preview-string pain (unlike Gemini). Env-switchable.
 const CLAUDE_MODEL_ID = process.env.CLAUDE_MODEL_ID || 'claude-opus-4-8';
 
+// --- Half an emoji must never leave here --------------------------------------------------------
+// An emoji is TWO code units that only mean anything as a pair. Anything that shortens text by
+// counting characters can cut between them — the extension caps a scraped LinkedIn post at 400
+// characters and the page text at 6,000 — and a lone half is not valid text. Anthropic rejects the
+// WHOLE request with `400 ... "no low surrogate in string"` before Claude reads a word of it, so the
+// caller gets a bare status code and the panel can only say "couldn't reach Wingguy". Worse, it is
+// not transient: the same thread fails identically on every retry (Roland Illyes' group thread,
+// 2026-09-07 — three attempts, same character position each time).
+//
+// The extension no longer cuts emojis in half, but a stray half can still arrive from any scrape, or
+// from older chat history being replayed turn after turn, so every outgoing call is swept here too.
+// One guard on the shared client covers every route rather than each one having to remember.
+//
+// Complete pairs are matched FIRST and kept, so real emoji survive untouched; only an orphan is dropped.
+function stripLoneSurrogates(text) {
+    return text.replace(/[\uD800-\uDBFF][\uDC00-\uDFFF]|[\uD800-\uDFFF]/g, (m) => (m.length === 2 ? m : ''));
+}
+
+// Sweep every string in a request payload. Returns the SAME value when nothing needed changing
+// (virtually every call), so the guard costs one scan and no allocation.
+function withoutLoneSurrogates(value) {
+    if (typeof value === 'string') {
+        const cleaned = stripLoneSurrogates(value);
+        return cleaned === value ? value : cleaned;
+    }
+    if (Array.isArray(value)) {
+        let changed = false;
+        const out = value.map((v) => { const c = withoutLoneSurrogates(v); if (c !== v) changed = true; return c; });
+        return changed ? out : value;
+    }
+    if (value && typeof value === 'object') {
+        let changed = false;
+        const out = {};
+        for (const [k, v] of Object.entries(value)) {
+            const c = withoutLoneSurrogates(v);
+            if (c !== v) changed = true;
+            out[k] = c;
+        }
+        return changed ? out : value;
+    }
+    return value;
+}
+
+// Patch a fresh SDK client so both message paths sweep their params on the way out. Wrapping at
+// construction means every caller — routes, chat agent, overnight jobs — is covered by holding the
+// client, with nothing to remember at the call site.
+function guardLoneSurrogates(client) {
+    for (const method of ['create', 'stream']) {
+        const original = client.messages[method].bind(client.messages);
+        client.messages[method] = (params, ...rest) => original(withoutLoneSurrogates(params), ...rest);
+    }
+    return client;
+}
+
 let anthropicClient = null;
 
 /**
@@ -41,7 +95,7 @@ function initializeAnthropic() {
     // maxRetries=4 (SDK default 2): the API auto-retries 429 / 5xx / 529 overloaded with
     // exponential backoff — a few extra attempts lets a transient Anthropic overload spike
     // self-heal before a client (e.g. the Wingguy chat panel) ever sees an error.
-    anthropicClient = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY, maxRetries: 4 });
+    anthropicClient = guardLoneSurrogates(new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY, maxRetries: 4 }));
 
     logger.info(`Anthropic client initialized successfully. Default Model ID: ${CLAUDE_MODEL_ID}`);
     return anthropicClient;
@@ -72,7 +126,7 @@ function getAnthropicClientForKey(apiKey) {
     const key = String(apiKey || '').trim();
     if (!key) return getAnthropicClient();
     let c = byoClients.get(key);
-    if (!c) { c = new Anthropic({ apiKey: key, maxRetries: 4 }); byoClients.set(key, c); }
+    if (!c) { c = guardLoneSurrogates(new Anthropic({ apiKey: key, maxRetries: 4 })); byoClients.set(key, c); }
     return c;
 }
 
@@ -160,5 +214,7 @@ module.exports = {
     NO_ANTHROPIC_KEY_MSG,
     isAnthropicConfigured,
     anthropicKeyError,
+    stripLoneSurrogates,
+    withoutLoneSurrogates,
     claudeModelId: CLAUDE_MODEL_ID,
 };
