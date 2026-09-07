@@ -220,6 +220,12 @@ Type=oneshot
 User=$LH_USER
 Environment=DISPLAY=:0
 ExecStart=/usr/bin/python3 /usr/local/bin/lh-watchdog.py
+# When a oneshot ends, systemd kills everything left in its cgroup - including
+# the Linked Helper the watchdog just launched. Found 8 Sep 2026: every cold
+# start by the watchdog died with it (the two earlier "recoveries" were cases
+# where the desktop session had already launched LH and the watchdog only
+# pressed the button). KillMode=process kills the watchdog alone.
+KillMode=process
 EOF
 cat > /etc/systemd/system/lh-watchdog.timer <<'EOF'
 [Unit]
