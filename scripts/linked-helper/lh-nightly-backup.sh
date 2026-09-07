@@ -66,6 +66,7 @@ if [ -n "$DBDIR" ] && [ -d "$DBDIR" ]; then
       done
   # any archive left behind by a failed run
   find /var/tmp/lh-backup -name "*.tar.zst" -mtime +1 -delete 2>/dev/null || true
+  find /var/tmp/lh-backup -name "*.lhd2" -mtime +1 -delete 2>/dev/null || true
   say "disk after tidy: $(df -h / | awk "NR==2{print \$5\" used, \"\$4\" free\"}")"
 fi
 
