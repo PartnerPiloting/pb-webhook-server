@@ -13,7 +13,7 @@ STAMP=$(date +%Y-%m-%d)
 WORK=/var/tmp/lh-backup
 REMOTE_DIR="gdrive:Linked Helper Backups/${CLIENT_ID}"
 KEEP_DAYS=21
-KEEP_LHD2=3          # supported-format exports kept in <client>/lhd2
+KEEP_LHD2=10         # supported-format exports kept in <client>/lhd2
 
 say(){ echo "$(date -Is) $*" >> "$LOG"; }
 
@@ -59,6 +59,20 @@ if [ -n "$DBDIR" ] && [ -d "$DBDIR" ]; then
 fi
 
 mkdir -p "$WORK"
+
+# --- Linked Helper's own supported-format export, taken while LH is stopped.
+# lh-lhd2.py starts the launcher on its own (the export only exists there, and
+# refuses while the instance is running), drives it, and leaves LH stopped for
+# the tar below. Roughly 100 s for a 1.2 GB database. If it fails we still take
+# the tar - losing the nicer artefact must never cost us the working one.
+EXPORT="$WORK/lh-${CLIENT_ID}-${STAMP}.lhd2"
+if /usr/local/bin/lh-lhd2.py export "$EXPORT" >>"$LOG" 2>&1; then
+  say "export built: $(du -m "$EXPORT" | cut -f1) MB"
+else
+  say "EXPORT FAILED - carrying on with the data-directory archive"
+  rm -f "$EXPORT"
+fi
+
 ARCHIVE="$WORK/lh-${CLIENT_ID}-${STAMP}.tar.zst"
 say "archiving data (caches excluded)"
 tar --use-compress-program="zstd -3 -T2" --exclude="*/Cache/*" --exclude="*/Code Cache/*" --exclude="*/GPUCache/*" --exclude="*/DawnCache/*" --exclude="*/DawnGraphiteCache/*" --exclude="*/DawnWebGPUCache/*" --exclude="*/ShaderCache/*" --exclude="*/Crashpad/*" --exclude="*/Shared Dictionary/cache/*" --exclude="*/Instances" --exclude="*/Instances/*" --exclude="*.archived.lhd2" --exclude="*.imported.lhd2" -cf "$ARCHIVE" -C /home/lh .config/linked-helper 2>>"$LOG"
@@ -84,6 +98,18 @@ else
   say "UPLOAD FAILED - archive kept locally at $ARCHIVE"
 fi
 rm -f "$ARCHIVE"
+
+# Our nightly export, taken above.
+if [ -f "${EXPORT:-}" ]; then
+  say "uploading nightly export $(basename "$EXPORT")"
+  if timeout 40m rclone copy "$EXPORT" "$REMOTE_DIR/lhd2" --drive-chunk-size 32M       --retries 3 --low-level-retries 10 --timeout 5m --drive-pacer-min-sleep 200ms 2>>"$LOG"; then
+    say "nightly export upload OK"
+  else
+    say "NIGHTLY EXPORT UPLOAD FAILED - kept locally at $EXPORT"
+    KEEP_EXPORT=yes
+  fi
+fi
+[ "${KEEP_EXPORT:-no}" = yes ] || rm -f "${EXPORT:-}"
 
 # Linked Helper's own supported-format export. Its filename carries the LH
 # version, so each update contributes one file and re-running is a no-op -
