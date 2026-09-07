@@ -18,6 +18,17 @@ KEEP_LHD2=10         # supported-format exports kept in <client>/lhd2
 say(){ echo "$(date -Is) $*" >> "$LOG"; }
 
 say "=== backup start ==="
+
+# Hold the watchdog off for the duration. It starts Linked Helper whenever it
+# sees no instance window, and this job now keeps LH down for ~2.5 min (the
+# export) rather than the ~15 s it used to - comfortably inside the watchdog's
+# 5-minute cycle. An instance opening mid-export would break it, since the
+# export refuses while one is running. The trap puts the timer back whatever
+# happens, including on a crash.
+restore_watchdog(){ systemctl start lh-watchdog.timer 2>/dev/null && say "watchdog timer restored"; }
+trap restore_watchdog EXIT INT TERM
+systemctl stop lh-watchdog.timer 2>/dev/null && say "watchdog timer held off"
+
 say "stopping Linked Helper"
 pkill -f "linked-helper" 2>/dev/null
 for i in $(seq 1 30); do pgrep -f "linked-helper" >/dev/null || break; sleep 2; done
