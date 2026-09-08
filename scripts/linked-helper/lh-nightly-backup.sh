@@ -12,8 +12,14 @@ LOG=/var/log/lh-backup.log
 STAMP=$(date +%Y-%m-%d)
 WORK=/var/tmp/lh-backup
 REMOTE_DIR="gdrive:Linked Helper Backups/${CLIENT_ID}"
-KEEP_DAYS=21
-KEEP_LHD2=10         # supported-format exports kept in <client>/lhd2
+KEEP_DAYS=28         # weekly folder copies: four of them
+KEEP_LHD2=7          # nightly supported-format exports kept in <client>/lhd2
+# Day for the full folder copy (ISO weekday, 7 = Sunday). Decided 8 Sep 2026: a
+# folder copy and an export are the SAME size (~300 MB), the folder copy only adds
+# the saved LinkedIn session, and a week-old session is nearly as good as a
+# day-old one - so the export goes nightly and the folder copy weekly. That also
+# halves the upload most nights, which is what Google throttles on.
+TAR_WEEKDAY="${TAR_WEEKDAY:-7}"
 # Where Linked Helper publishes its launcher package (the setup script installs from the same URL).
 LH_DEB_URL="${LH_DEB_URL:-https://do0ca1hx6twig.cloudfront.net/linked-helper/444657160c922f6b8048468fef840020/latest/linux/x64/linked-helper.deb}"
 
@@ -123,11 +129,18 @@ if [ "${LH_EXPORT_NIGHTLY:-no}" = yes ]; then
   fi
 fi
 
+# Folder copy on TAR_WEEKDAY - or on any night the export failed, so no night
+# passes without some backup leaving the machine.
+ARCHIVE=""
+if [ "$(date +%u)" = "$TAR_WEEKDAY" ] || [ -z "${EXPORT:-}" ]; then
 ARCHIVE="$WORK/lh-${CLIENT_ID}-${STAMP}.tar.zst"
 say "archiving data (caches excluded)"
 tar --use-compress-program="zstd -3 -T2" --exclude="*/Cache/*" --exclude="*/Code Cache/*" --exclude="*/GPUCache/*" --exclude="*/DawnCache/*" --exclude="*/DawnGraphiteCache/*" --exclude="*/DawnWebGPUCache/*" --exclude="*/ShaderCache/*" --exclude="*/Crashpad/*" --exclude="*/Shared Dictionary/cache/*" --exclude="*/Instances" --exclude="*/Instances/*" --exclude="*.archived.lhd2" --exclude="*.imported.lhd2" -cf "$ARCHIVE" -C /home/lh .config/linked-helper 2>>"$LOG"
 SIZE=$(du -m "$ARCHIVE" | cut -f1)
 say "archive built: ${SIZE} MB"
+else
+  say "no folder copy tonight (weekday $(date +%u), folder copy day is $TAR_WEEKDAY)"
+fi
 
 # Restart Linked Helper BEFORE uploading. The upload does not need LH stopped,
 # and a throttled upload used to hold campaigns down for the whole transfer
@@ -136,6 +149,7 @@ say "restarting Linked Helper (before the upload, so a slow upload costs no down
 systemd-run --uid="${LH_USER:-lh}" --gid="${LH_USER:-lh}" --setenv=DISPLAY=:0   --unit=lh-after-backup --collect "$LH_BIN" --start-account-id="$LH_ACCOUNT_ID" >/dev/null 2>&1 ||   sudo -u "${LH_USER:-lh}" DISPLAY=:0 setsid "$LH_BIN" --start-account-id="$LH_ACCOUNT_ID" >/dev/null 2>&1 &
 LH_RESTARTED=yes
 
+if [ -n "$ARCHIVE" ]; then
 say "uploading to $REMOTE_DIR"
 # --timeout/--retries so a throttled transfer fails cleanly instead of hanging.
 if timeout 40m rclone copy "$ARCHIVE" "$REMOTE_DIR" --drive-chunk-size 32M      --retries 3 --low-level-retries 10 --timeout 5m --drive-pacer-min-sleep 200ms 2>>"$LOG"; then
@@ -148,6 +162,7 @@ else
   say "UPLOAD FAILED - archive kept locally at $ARCHIVE"
 fi
 rm -f "$ARCHIVE"
+fi
 
 # Our nightly export, taken above.
 if [ -f "${EXPORT:-}" ]; then
