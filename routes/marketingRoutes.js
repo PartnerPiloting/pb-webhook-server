@@ -132,6 +132,21 @@ const PAGES = {
       'What it costs and what it is worth - the price, the tools it runs on, and why a network '
       + 'that produces its own work beats renting a room in somebody else\'s.',
   },
+  // The two legal pages. Written plainly, in Guy's voice, because a visitor
+  // may actually read them - but they exist first because Google requires a
+  // privacy policy and terms link on an authorised domain before it will let
+  // our own OAuth app (the rclone client_id the Linked Helper backups upload
+  // with) be published. Linked from each other and from nowhere else yet.
+  privacy: {
+    file: 'privacy.html',
+    title: 'Privacy policy - I Know A Guy',
+    description: 'What this site collects, what it is used for, and how to reach Guy about it.',
+  },
+  terms: {
+    file: 'terms.html',
+    title: 'Terms of use - I Know A Guy',
+    description: 'The short terms for using this site.',
+  },
 };
 
 const cachedBodies = {};
@@ -208,6 +223,8 @@ module.exports = function mountMarketingSite(app) {
   router.get('/join/thanks', servePage(PAGES.joinThanks));
   // Sent by link, never linked from the site's own navigation.
   router.get('/the-numbers', servePage(PAGES.numbers));
+  router.get('/privacy', servePage(PAGES.privacy));
+  router.get('/terms', servePage(PAGES.terms));
 
   const MONTHLY_LOOKUP = 'ikag_membership_150_monthly';
   const SETUP_LOOKUP = 'ikag_setup_fee_100';

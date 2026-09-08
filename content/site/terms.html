@@ -1,0 +1,89 @@
+<style>
+  :root {
+    --paper:   #F2EEE6;
+    --surface: #FBF9F4;
+    --ink:     #22201C;
+    --ink-soft:#4C473F;
+    --ink-faint:#726B60;
+    --line:    #DBD3C5;
+    --teal:    #1E5E58;
+    --teal-bright: #2C7C72;
+    --shadow:  rgba(34,32,28,0.10);
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+    --sans:  system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --measure: 34rem;
+    --pad: clamp(1.25rem, 5vw, 2.5rem);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper:#1A1917; --surface:#232120; --ink:#ECE6DA; --ink-soft:#B6AD9E;
+      --ink-faint:#8A8073; --line:#35312B; --teal:#63B6AB; --teal-bright:#7FCABF;
+      --shadow: rgba(0,0,0,0.35);
+    }
+  }
+  :root[data-theme="light"] {
+    --paper:#F2EEE6; --surface:#FBF9F4; --ink:#22201C; --ink-soft:#4C473F;
+    --ink-faint:#726B60; --line:#DBD3C5; --teal:#1E5E58; --teal-bright:#2C7C72; --shadow:rgba(34,32,28,0.10);
+  }
+  :root[data-theme="dark"] {
+    --paper:#1A1917; --surface:#232120; --ink:#ECE6DA; --ink-soft:#B6AD9E;
+    --ink-faint:#8A8073; --line:#35312B; --teal:#63B6AB; --teal-bright:#7FCABF; --shadow:rgba(0,0,0,0.35);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--paper); color: var(--ink);
+    font-family: var(--sans); font-size: 1.0625rem; line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: var(--measure); margin: 0 auto; padding: 0 var(--pad) 5rem; }
+  header.site {
+    max-width: var(--measure); margin: 0 auto;
+    padding: 1.6rem var(--pad) 0.4rem;
+    display: flex; align-items: baseline; justify-content: space-between;
+  }
+  .brand { font-family: var(--serif); font-size: 1.15rem; font-weight: 600; color: var(--ink); text-decoration: none; }
+  .brand em { font-style: normal; color: var(--teal); }
+  h1 {
+    font-family: var(--serif); font-weight: 600;
+    font-size: clamp(1.7rem, 5vw, 2.2rem); line-height: 1.2;
+    margin: 2.2rem 0 0.5rem; text-wrap: balance;
+  }
+  h2 { font-family: var(--serif); font-weight: 600; font-size: 1.25rem; margin: 2rem 0 0.4rem; }
+  p { margin: 0.75rem 0; color: var(--ink-soft); }
+  ul { margin: 0.4rem 0 0.8rem; padding-left: 1.2rem; }
+  li { margin: 0.35rem 0; color: var(--ink-soft); }
+  .quiet { color: var(--ink-faint); font-size: 0.95rem; }
+  a { color: var(--teal-bright); }
+</style>
+
+<header class="site">
+  <a class="brand" href="/">I Know a <em>Guy</em></a>
+  <span class="quiet">Terms of use</span>
+</header>
+
+<div class="wrap">
+  <h1>Terms of use</h1>
+  <p class="quiet">Last updated 8 September 2026</p>
+
+  <p>This website is run by Guy Wilson, trading as I Know A Guy, in Brisbane, Australia. Using the site means you accept these terms. They are short because there is not much to say.</p>
+
+  <h2>What the site is</h2>
+  <p>The site explains how I think about building a professional network and what working with me looks like. It is general information, offered in good faith. It is not advice for your particular situation, and results from networking depend on you and the people you meet - nothing here is a guarantee of any outcome.</p>
+
+  <h2>The writing</h2>
+  <p>The articles, pages and images on this site are mine unless they say otherwise. You are welcome to read them, link to them and send them to someone who would find them useful. Please do not republish them, sell them, or pass them off as your own.</p>
+
+  <h2>Getting in touch and the email series</h2>
+  <p>If you use the contact form or ask for the email series, I will use what you give me only as described in the <a href="/privacy">privacy policy</a>. You can stop the series at any time with the link in any email.</p>
+
+  <h2>Membership</h2>
+  <p>Becoming a member is a separate agreement, set out on the joining page and in the agreement you sign. Where these terms and that agreement differ, the agreement wins for anything to do with membership.</p>
+
+  <h2>The usual limits</h2>
+  <p>I take care to keep the site accurate and available, but I cannot promise it will always be either. To the extent the law allows, I am not liable for loss arising from your use of the site or reliance on what is written here. Nothing in these terms takes away rights you have under Australian Consumer Law.</p>
+
+  <h2>Changes</h2>
+  <p>If these terms change, the new version goes up here with a new date at the top.</p>
+
+  <p class="quiet">Questions: <a href="mailto:guy@knowaguy.com.au">guy@knowaguy.com.au</a>. These terms are governed by the laws of Queensland, Australia.</p>
+</div>

@@ -1,0 +1,104 @@
+<style>
+  :root {
+    --paper:   #F2EEE6;
+    --surface: #FBF9F4;
+    --ink:     #22201C;
+    --ink-soft:#4C473F;
+    --ink-faint:#726B60;
+    --line:    #DBD3C5;
+    --teal:    #1E5E58;
+    --teal-bright: #2C7C72;
+    --shadow:  rgba(34,32,28,0.10);
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+    --sans:  system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --measure: 34rem;
+    --pad: clamp(1.25rem, 5vw, 2.5rem);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper:#1A1917; --surface:#232120; --ink:#ECE6DA; --ink-soft:#B6AD9E;
+      --ink-faint:#8A8073; --line:#35312B; --teal:#63B6AB; --teal-bright:#7FCABF;
+      --shadow: rgba(0,0,0,0.35);
+    }
+  }
+  :root[data-theme="light"] {
+    --paper:#F2EEE6; --surface:#FBF9F4; --ink:#22201C; --ink-soft:#4C473F;
+    --ink-faint:#726B60; --line:#DBD3C5; --teal:#1E5E58; --teal-bright:#2C7C72; --shadow:rgba(34,32,28,0.10);
+  }
+  :root[data-theme="dark"] {
+    --paper:#1A1917; --surface:#232120; --ink:#ECE6DA; --ink-soft:#B6AD9E;
+    --ink-faint:#8A8073; --line:#35312B; --teal:#63B6AB; --teal-bright:#7FCABF; --shadow:rgba(0,0,0,0.35);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--paper); color: var(--ink);
+    font-family: var(--sans); font-size: 1.0625rem; line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: var(--measure); margin: 0 auto; padding: 0 var(--pad) 5rem; }
+  header.site {
+    max-width: var(--measure); margin: 0 auto;
+    padding: 1.6rem var(--pad) 0.4rem;
+    display: flex; align-items: baseline; justify-content: space-between;
+  }
+  .brand { font-family: var(--serif); font-size: 1.15rem; font-weight: 600; color: var(--ink); text-decoration: none; }
+  .brand em { font-style: normal; color: var(--teal); }
+  h1 {
+    font-family: var(--serif); font-weight: 600;
+    font-size: clamp(1.7rem, 5vw, 2.2rem); line-height: 1.2;
+    margin: 2.2rem 0 0.5rem; text-wrap: balance;
+  }
+  h2 { font-family: var(--serif); font-weight: 600; font-size: 1.25rem; margin: 2rem 0 0.4rem; }
+  p { margin: 0.75rem 0; color: var(--ink-soft); }
+  ul { margin: 0.4rem 0 0.8rem; padding-left: 1.2rem; }
+  li { margin: 0.35rem 0; color: var(--ink-soft); }
+  .quiet { color: var(--ink-faint); font-size: 0.95rem; }
+  a { color: var(--teal-bright); }
+</style>
+
+<header class="site">
+  <a class="brand" href="/">I Know a <em>Guy</em></a>
+  <span class="quiet">Privacy</span>
+</header>
+
+<div class="wrap">
+  <h1>Privacy policy</h1>
+  <p class="quiet">Last updated 8 September 2026</p>
+
+  <p>I Know A Guy is run by Guy Wilson, based in Brisbane, Australia. This page says what information this site collects, what it is used for, and how to reach me about it. It is written to be read, not to cover me.</p>
+
+  <h2>What this site collects</h2>
+  <ul>
+    <li><strong>If you get in touch through the form:</strong> your name, your email address, anything you write in the note, and who suggested you get in touch, if you tell me.</li>
+    <li><strong>If you ask for the email series:</strong> your email address, and a record of which emails have been sent to you.</li>
+    <li><strong>Ordinary web server records:</strong> the pages requested and the address they were requested from, kept briefly for keeping the site running and secure.</li>
+  </ul>
+  <p>There is no advertising on this site and no advertising trackers.</p>
+
+  <h2>What it is used for</h2>
+  <ul>
+    <li>To reply to you, personally, when you get in touch.</li>
+    <li>To send you the email series, if you asked for it. Every email in it carries a one-click unsubscribe, and the sending stops the moment you use it.</li>
+    <li>Nothing else. Your details are not sold, rented or passed to anyone for their own use.</li>
+  </ul>
+
+  <h2>Who handles it on my behalf</h2>
+  <p>Like any small business I use a few service providers to run things: web hosting, a database, and an email delivery service for the series. They process your details only to do those jobs for me. Some of them are outside Australia.</p>
+
+  <h2>Members</h2>
+  <p>If you become a member, the information involved in the work we do together is covered by the agreement you sign when you join, which goes into more detail than this page. This page covers the public website.</p>
+
+  <h2>Our own internal tools and Google</h2>
+  <p>We keep backups of our own working files in our own Google Drive, using a small internal tool that Google requires us to register. That tool touches only our own Google account and our own files. It never accesses anyone else's Google account, and it collects nothing from visitors to this site. Any use of Google user data by that tool complies with Google's API Services User Data Policy, including its Limited Use requirements.</p>
+
+  <h2>Your choices</h2>
+  <ul>
+    <li>Ask me what I hold about you, ask me to correct it, or ask me to delete it - email <a href="mailto:guy@knowaguy.com.au">guy@knowaguy.com.au</a> and I will.</li>
+    <li>Unsubscribe from the series with the link in any email, or by asking.</li>
+  </ul>
+
+  <h2>The formal bit</h2>
+  <p>I handle personal information in line with the Australian Privacy Principles. If you have a concern I have not resolved, you can raise it with the Office of the Australian Information Commissioner at <a href="https://www.oaic.gov.au">oaic.gov.au</a>.</p>
+
+  <p class="quiet">Questions about any of this: <a href="mailto:guy@knowaguy.com.au">guy@knowaguy.com.au</a>. See also the <a href="/terms">terms of use</a>.</p>
+</div>
