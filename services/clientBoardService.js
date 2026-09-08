@@ -175,9 +175,19 @@ function clientEmails(client) {
   return new Set([client.clientEmailAddress, client.lhAccountEmail, ...alts].map(lower).filter(Boolean));
 }
 
+// A "session" is a one-to-one: a group call (the weekly Mindset Mastery, a workshop) can carry
+// half the book as attendees and would stamp everyone with the same last-session date.
+const SESSION_MAX_ATTENDEES = 4;
+
 function eventMatchesClient(ev, emails, clientName) {
   const attendees = Array.isArray(ev.attendees) ? ev.attendees : [];
-  if (attendees.some((a) => !a.self && emails.has(lower(a.email)))) return true;
+  const others = attendees.filter((a) => !a.self);
+  if (others.length > SESSION_MAX_ATTENDEES) return false;
+  const mine = others.find((a) => emails.has(lower(a.email)));
+  if (mine) {
+    // A declined Calendly slot stays on the coach's calendar - it is not a session.
+    return lower(mine.responseStatus) !== 'declined';
+  }
   const title = lower(ev.summary);
   const name = lower(clientName);
   return Boolean(name) && title.includes(name);
