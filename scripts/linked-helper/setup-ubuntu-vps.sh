@@ -241,17 +241,28 @@ systemctl enable x11vnc.service lh-watchdog.timer
 
 echo "== nightly backup to cloud storage (02:30, before the reboot) =="
 # rclone needs a one-time OAuth token per storage account. Get it on a machine
-# with a browser: `rclone authorize "drive"`, then drop the JSON in as RCLONE_TOKEN.
+# with a browser: `rclone authorize "drive" <client_id> <client_secret>`, then
+# drop the JSON in as RCLONE_TOKEN, and pass the same RCLONE_CLIENT_ID and
+# RCLONE_CLIENT_SECRET. Without our own client_id rclone uses its shared one,
+# which is rate-limited across every rclone user worldwide and is being
+# retired during 2026 - Guy saw uploads refused on 7 Sep 2026 because of it.
 # The archive excludes browser caches - 1.8GB of data becomes ~850MB.
 apt-get install -y -qq zstd >/dev/null 2>&1 || true
 if [ -n "${RCLONE_TOKEN:-}" ]; then
   curl -fsSL https://rclone.org/install.sh | bash >/dev/null 2>&1 || apt-get install -y -qq rclone
   install -d -m 700 /root/.config/rclone
-  printf '[gdrive]
+  {
+    printf '[gdrive]
 type = drive
 scope = drive
-token = %s
-' "$RCLONE_TOKEN" > /root/.config/rclone/rclone.conf
+'
+    [ -n "${RCLONE_CLIENT_ID:-}" ] && printf 'client_id = %s
+client_secret = %s
+' "$RCLONE_CLIENT_ID" "${RCLONE_CLIENT_SECRET:-}"
+    printf 'token = %s
+' "$RCLONE_TOKEN"
+  } > /root/.config/rclone/rclone.conf
+  [ -n "${RCLONE_CLIENT_ID:-}" ] || echo "WARNING: no RCLONE_CLIENT_ID - using rclone shared client_id (throttled, retiring 2026)"
   chmod 600 /root/.config/rclone/rclone.conf
   rclone mkdir "gdrive:Linked Helper Backups/$CLIENT_ID" 2>/dev/null || true
   install -m 755 "$SRC_DIR/lh-nightly-backup.sh" /usr/local/bin/lh-nightly-backup.sh
