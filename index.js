@@ -1857,6 +1857,15 @@ try {
     moduleLogger.error("index.js: Error mounting extension dist routes", e.message, e.stack);
 }
 
+// The coach's client board - "My Clients" in the portal (see routes/clientBoardRoutes.js).
+try {
+    const clientBoardRoutes = require('./routes/clientBoardRoutes.js');
+    app.use('/api/client-board', clientBoardRoutes);
+    moduleLogger.info("index.js: Client board routes mounted at /api/client-board");
+} catch(e) {
+    moduleLogger.error("index.js: Error mounting client board routes", e.message, e.stack);
+}
+
 // Zoho Calendar OAuth connect flow (per-client "connect my Zoho calendar" — see routes/zohoAuthRoutes.js)
 try {
     const zohoAuthRoutes = require('./routes/zohoAuthRoutes.js');

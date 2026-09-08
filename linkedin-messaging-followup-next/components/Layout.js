@@ -275,10 +275,10 @@ const Layout = ({ children }) => {
               <Link
                 href={buildAuthUrl('/coached-clients')}
                 className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-green-600 bg-green-50 hover:bg-green-100 rounded-lg transition-colors"
-                title="View clients you are coaching"
+                title="Your clients - where each one is, who needs you next"
               >
                 <UsersIcon className="h-5 w-5" />
-                <span className="hidden sm:inline">My Coached Clients</span>
+                <span className="hidden sm:inline">My Clients</span>
               </Link>
               
               {/* Smart Follow-ups, Upload Emails, Owner — Guy-Wilson only */}
