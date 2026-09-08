@@ -172,3 +172,14 @@ one is five promises in an email that all work first go.
   talk me through..."), and the live-proof rule applies to every prompt: exercised as THAT client
   that day, or it doesn't go in.
 - If the transcript hasn't filed yet, say so and pick it up when it has - don't wrap from memory.
+- **Owed items go on the board, not only into memory (2026-09-09).** Every promise made on the
+  call - by Guy (promo code, an intro, a card to send) or by the client (homework) - becomes a
+  row in the master base's `Client Tasks` table: `Client` = the client's record, `Task` = the
+  promise in plain words, `Phase` = **"You owe"** (Guy's) or **"They owe"** (the client's),
+  `Status` = Todo. The My Clients board reads exactly those two phases and shows them on the
+  card; mark a row Done when it is kept. Anything else in Client Tasks is the old LH curriculum
+  and is ignored by the board.
+- **The board's groups are steered by two record fields.** `Launch Date` set = on the
+  onboarding journey. `Coaching Status` = **Paused** parks a client under Paused with their
+  access left on (a billing pause, "too busy this quarter"); **Graduated** moves them to
+  Running - set it at the LH-launch wrap together with the Email Series Start Date.
