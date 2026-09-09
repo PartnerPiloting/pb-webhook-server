@@ -132,6 +132,18 @@ const PAGES = {
       'What it costs and what it is worth - the price, the tools it runs on, and why a network '
       + 'that produces its own work beats renting a room in somebody else\'s.',
   },
+  // The longer "who's the guy" - the bus at 22, the companies, the why - with
+  // the real photos that used to live on the old Australian Side Hustles
+  // About page (that page dies when the ASH domain redirects here). Reached
+  // only by the quiet "more on this" link under the homepage portrait: the
+  // front page keeps its three paragraphs, the depth sits behind the link.
+  guy: {
+    file: 'guy.html',
+    title: 'Who\'s the guy? - I Know A Guy',
+    description:
+      'The longer version - a 1948 double-decker bus at 22, two companies built with my brother, '
+      + 'and why wealth was never the money.',
+  },
   // The two legal pages. Written plainly, in Guy's voice, because a visitor
   // may actually read them - but they exist first because Google requires a
   // privacy policy and terms link on an authorised domain before it will let
@@ -223,6 +235,7 @@ module.exports = function mountMarketingSite(app) {
   router.get('/join/thanks', servePage(PAGES.joinThanks));
   // Sent by link, never linked from the site's own navigation.
   router.get('/the-numbers', servePage(PAGES.numbers));
+  router.get('/guy', servePage(PAGES.guy));
   router.get('/privacy', servePage(PAGES.privacy));
   router.get('/terms', servePage(PAGES.terms));
 

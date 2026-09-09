@@ -1,0 +1,241 @@
+<style>
+  :root {
+    --paper:   #F2EEE6;
+    --surface: #FBF9F4;
+    --ink:     #22201C;
+    --ink-soft:#4C473F;
+    --ink-faint:#726B60;
+    --line:    #DBD3C5;
+    --teal:    #1E5E58;
+    --teal-bright: #2C7C72;
+    --marker:  rgba(198,150,74,0.30);
+    --shadow:  rgba(34,32,28,0.10);
+
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+    --sans:  system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --mono:  "SF Mono", ui-monospace, "Cascadia Code", Menlo, Consolas, monospace;
+
+    --measure: 34rem;
+    --pad: clamp(1.25rem, 5vw, 2.5rem);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper:   #1A1917;
+      --surface: #232120;
+      --ink:     #ECE6DA;
+      --ink-soft:#B6AD9E;
+      --ink-faint:#8A8073;
+      --line:    #35312B;
+      --teal:    #63B6AB;
+      --teal-bright: #7FCABF;
+      --marker:  rgba(212,168,98,0.28);
+      --shadow:  rgba(0,0,0,0.35);
+    }
+  }
+  :root[data-theme="light"] {
+    --paper:#F2EEE6; --surface:#FBF9F4; --ink:#22201C; --ink-soft:#4C473F;
+    --ink-faint:#726B60; --line:#DBD3C5; --teal:#1E5E58; --teal-bright:#2C7C72;
+    --marker:rgba(198,150,74,0.30); --shadow:rgba(34,32,28,0.10);
+  }
+  :root[data-theme="dark"] {
+    --paper:#1A1917; --surface:#232120; --ink:#ECE6DA; --ink-soft:#B6AD9E;
+    --ink-faint:#8A8073; --line:#35312B; --teal:#63B6AB; --teal-bright:#7FCABF;
+    --marker:rgba(212,168,98,0.28); --shadow:rgba(0,0,0,0.35);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 1.0625rem;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  .wrap { width: 100%; max-width: 46rem; margin: 0 auto; padding: 0 var(--pad); }
+  .reading { max-width: var(--measure); }
+
+  nav {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 1rem; padding: 1.25rem var(--pad);
+    max-width: 46rem; margin: 0 auto;
+  }
+  .wordmark {
+    font-family: var(--serif); font-size: 1.15rem; font-weight: 600;
+    letter-spacing: 0.01em; color: var(--ink); text-decoration: none;
+  }
+  .wordmark .amp { color: var(--teal); }
+  .nav-link {
+    font-size: 0.9rem; color: var(--ink-faint); text-decoration: none;
+    border-bottom: 1px solid transparent;
+  }
+  .nav-link:hover { color: var(--teal); border-bottom-color: var(--teal); }
+
+  .eyebrow {
+    font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.16em;
+    text-transform: uppercase; color: var(--teal); margin: 0 0 0.9rem;
+    font-weight: 600;
+  }
+
+  header.hero { padding: clamp(2rem, 7vw, 4rem) 0 clamp(2rem, 6vw, 3.25rem); }
+  h1 {
+    font-family: var(--serif); font-weight: 600;
+    font-size: clamp(2.2rem, 6.5vw, 3.3rem); line-height: 1.06;
+    letter-spacing: -0.015em; margin: 0 0 1.4rem;
+    text-wrap: balance; max-width: 14ch;
+  }
+  .lede { max-width: var(--measure); display: flex; flex-direction: column; gap: 1rem; }
+  .lede p { font-size: 1.2rem; line-height: 1.5; color: var(--ink-soft); margin: 0; }
+  .lede em { font-style: italic; color: var(--ink); }
+
+  .mark {
+    background-image: linear-gradient(var(--marker), var(--marker));
+    background-repeat: no-repeat;
+    background-position: 0 88%;
+    background-size: 100% 0.42em;
+    padding: 0 0.05em;
+  }
+
+  section { padding: clamp(2rem, 5.5vw, 3.25rem) 0; border-top: 1px solid var(--line); }
+  h2 {
+    font-family: var(--serif); font-weight: 600;
+    font-size: clamp(1.55rem, 4vw, 2.1rem); line-height: 1.12;
+    letter-spacing: -0.01em; margin: 0 0 1.1rem; text-wrap: balance; max-width: 20ch;
+  }
+  p { margin: 0 0 1.15rem; max-width: var(--measure); }
+  p:last-child { margin-bottom: 0; }
+  .lead-para { font-family: var(--serif); font-size: 1.28rem; line-height: 1.5; color: var(--ink); max-width: var(--measure); }
+
+  .honesty { background: var(--surface); border-top: none; }
+  .honesty p { font-family: var(--serif); font-style: italic; font-size: 1.15rem; line-height: 1.55; color: var(--ink-soft); max-width: var(--measure); }
+
+  .scene { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: clamp(1.1rem, 3vw, 1.6rem); margin: 1.75rem 0 0.4rem; box-shadow: 0 12px 30px -18px var(--shadow); max-width: 30rem; }
+  .msg-label { font-family: var(--mono); font-size: 0.68rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-faint); margin: 0 0 0.5rem; }
+  .bubble-in { background: var(--paper); border: 1px solid var(--line); border-radius: 12px 12px 12px 3px; padding: 0.7rem 0.9rem; font-size: 0.98rem; color: var(--ink-soft); max-width: 100%; }
+  .scene-divider { display: flex; align-items: center; gap: 0.6rem; margin: 1.1rem 0; color: var(--teal); font-family: var(--mono); font-size: 0.68rem; letter-spacing: 0.12em; text-transform: uppercase; }
+  .scene-divider::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+  .scene-out { font-size: 0.95rem; color: var(--ink-soft); margin: 0; }
+  .scene-out strong { color: var(--ink); font-weight: 600; }
+
+  .doors { margin-top: 2rem; padding-top: 1.4rem; border-top: 1px solid var(--line); font-size: 1rem; color: var(--ink-soft); max-width: 33rem; }
+  .doors a { color: var(--teal); text-decoration: none; border-bottom: 1px solid color-mix(in srgb, var(--teal) 40%, transparent); }
+  .doors a:hover { border-bottom-color: var(--teal); }
+  .doors a:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
+
+  footer { border-top: 1px solid var(--line); padding: 2rem var(--pad) 3rem; }
+  .foot-inner { max-width: 46rem; margin: 0 auto; display: flex; flex-wrap: wrap; gap: 0.75rem 2rem; justify-content: space-between; align-items: baseline; }
+  .signoff { font-family: var(--serif); font-style: italic; font-size: 1.05rem; color: var(--ink-soft); }
+  .foot-note { font-size: 0.85rem; color: var(--ink-faint); }
+
+  /* ---- exhibit: real screenshots as evidence ---- */
+  .exhibit { margin: 1.9rem 0 0; }
+  .exhibit-label {
+    font-family: var(--mono); font-size: 0.68rem; letter-spacing: 0.14em;
+    text-transform: uppercase; color: var(--teal); margin: 0 0 0.75rem; font-weight: 600;
+  }
+  /* Stacked, not side by side: at two-up each shot lands near 320px and the
+     text inside stops being readable - which defeats the point of showing a
+     receipt. Each figure is capped at the screenshot's own pixel width so it
+     is never upscaled into blur. */
+  .exhibit-shots { display: flex; flex-direction: column; gap: 1.5rem; }
+  .exhibit-shots figure { margin: 0; max-width: min(100%, var(--shot-w)); }
+  .exhibit-shots img {
+    width: 100%; height: auto; display: block; border-radius: 10px;
+    border: 1px solid var(--line); box-shadow: 0 12px 28px -18px var(--shadow);
+  }
+  .exhibit-shots figcaption { font-size: 0.85rem; color: var(--ink-faint); margin-top: 0.55rem; line-height: 1.45; }
+
+  /* ---- photos: real ones, from the years in question ---- */
+  .photos { display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); gap: 1.25rem; margin: 1.6rem 0 0.4rem; }
+  .photos figure { margin: 0; }
+  .photos img {
+    width: 100%; height: auto; display: block; border-radius: 10px;
+    border: 1px solid var(--line); box-shadow: 0 12px 28px -18px var(--shadow);
+  }
+  .photos figcaption { font-size: 0.85rem; color: var(--ink-faint); margin-top: 0.55rem; line-height: 1.45; }
+  .photos.single { max-width: 32rem; }
+</style>
+
+<nav>
+  <a class="wordmark" href="/">I know a <span class="amp">Guy</span></a>
+  <a class="nav-link" href="/series">The library</a>
+</nav>
+
+<div class="wrap">
+
+  <header class="hero">
+    <p class="eyebrow">The longer version</p>
+    <h1>Who&rsquo;s the guy?</h1>
+    <div class="lede">
+      <p>The front page gives you three paragraphs about me, which is all a busy reader needs. This is the rest - for anyone who got to the bottom and wondered who&rsquo;s been talking.</p>
+    </div>
+  </header>
+
+  <section>
+    <p class="eyebrow">At 22</p>
+    <h2>A bus, a plan, and a lot of water</h2>
+    <p class="lead-para">I talked a group of friends into buying a 1948 double-decker bus and driving it around Australia.</p>
+    <p>We did it up ourselves. Somebody painted &ldquo;Around Australia in 90 days&rdquo; across the back, which was optimistic, and off we went. We got stuck more than once - once in a fair bit of water - and we got there.</p>
+    <p>None of us knew much about engines. What I learned had nothing to do with engines anyway. It was how to get a group of people behind one idea, and how far that carries you when the road disappears.</p>
+    <div class="photos">
+      <figure>
+        <img src="/assets/bus-build.jpg" width="1024" height="768" alt="Two young men on the roof of a half-restored green and white double-decker bus" loading="lazy" decoding="async">
+        <figcaption>The rebuild, on the roof, before any of us knew what we were in for.</figcaption>
+      </figure>
+      <figure>
+        <img src="/assets/bus-flood.jpg" width="960" height="720" alt="The double-decker bus tilted in floodwater, three people wading beside it" loading="lazy" decoding="async">
+        <figcaption>Stuck. Ninety days turned out to be optimistic.</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section>
+    <p class="eyebrow">The years after</p>
+    <h2>Building things with other people</h2>
+    <p>The habit stuck. I renovated houses on the side of a corporate career, and spent part of that career working in Iran during the revolution, which is a story for a longer table than this one. Then my brother and I started two technology companies together. The first sold spreadsheet software back when you had to explain what a spreadsheet was. The second grew from three of us to more than a hundred people before it was acquired.</p>
+    <p>Every one of those ran on the same thing the bus did. Not capital, not cleverness - people who decided to get behind an idea and each other. The wall in this photo was the proof I walked past every morning: the companies that had taken a chance on a small firm because someone they trusted had said &ldquo;talk to Guy&rdquo;.</p>
+    <div class="photos single">
+      <figure>
+        <img src="/assets/office-wall.jpg" width="1024" height="706" alt="Guy at a desk, laughing, beside a wall of framed client logos" loading="lazy" decoding="async">
+        <figcaption>The office, and the clients on the wall.</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section>
+    <p class="eyebrow">What it all runs on</p>
+    <h2>Networks, before I had a word for it</h2>
+    <p>I&rsquo;ve been doing this for a long time - I just called it something different. During COVID a good friend and I ran an online group called the Connect Collaborative. About a hundred people a week, all of them there to meet each other rather than to be sold to. It worked because of who was in the room, and it confirmed something I&rsquo;d half known all my life: nothing happens in a crowd. Trust gets built one conversation at a time.</p>
+    <p>When I set up this business I went down the marketing road first - the courses, the SEO, the funnels - and backed away from it. It was slow, it was expensive, and it was turning me into a commodity. So I went back to the thing that had produced every good result in my life, and asked what it would look like if the grind were taken off it. That&rsquo;s what the front page describes.</p>
+  </section>
+
+  <section>
+    <p class="eyebrow">The why</p>
+    <h2>Memories, relationships, experiences</h2>
+    <p class="lead-para">I&rsquo;ve never thought of wealth as money. Money is just what you use to buy the other three.</p>
+    <p>There&rsquo;s a book called <em>Die With Zero</em> that talks about memory dividends - the idea that the earlier you do something, the longer you get to keep it. The bus has been paying out for fifty years. So has the skiing, the gliding, the family travel the businesses made possible, and now the part I enjoy most: watching something good happen in someone else&rsquo;s life because I knew who to introduce them to.</p>
+    <p>That last one is the fourth thing on my list - making a difference in the lives of others - and it&rsquo;s the reason this business exists. A network built from people who feel the same way is a very pleasant place to live.</p>
+    <div class="photos single">
+      <figure>
+        <img src="/assets/glider.jpg" width="1024" height="768" alt="Guy grinning in the front seat of a two-seat glider, thumbs up" loading="lazy" decoding="async">
+        <figcaption>Gliding. Still one of my favourite ways to spend a day.</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section>
+    <h2>So that&rsquo;s the guy</h2>
+    <p>If any of that sounds like your kind of people, the front page explains how the network works and what it asks of you. The door at the bottom of it is open, and I answer it myself.</p>
+    <p class="doors"><a href="/">Back to the front page</a> &middot; <a href="/series">The library</a></p>
+  </section>
+
+</div>
+
+<footer>
+  <div class="foot-inner">
+    <span class="signoff">(I know a) Guy</span>
+    <span class="foot-note">knowaguy.com.au &middot; Network building, rethought</span>
+  </div>
+</footer>
