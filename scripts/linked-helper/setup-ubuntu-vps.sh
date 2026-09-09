@@ -174,6 +174,29 @@ else
   echo "         open 3389 to a known address manually (fragile - see docs)."
 fi
 
+echo "== ssh: keys only =="
+# Some providers ship their own drop-in (Binary Lane: /etc/ssh/sshd_config.d/10-binarylane.conf
+# = "PasswordAuthentication yes"). sshd keeps the FIRST value it reads and drop-ins load in
+# name order, so a 99-* override is silently ignored - the file has to sort before theirs.
+# Only do this when root already has a key, or the machine would lock everyone out.
+if [ -s /root/.ssh/authorized_keys ]; then
+  cat > /etc/ssh/sshd_config.d/00-keys-only.conf <<'EOF'
+# Wingguy client machine: SSH by key only. Sorts before any provider drop-in on purpose.
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+PermitRootLogin prohibit-password
+EOF
+  if sshd -t; then
+    systemctl reload ssh 2>/dev/null || systemctl reload sshd 2>/dev/null || true
+    echo "password SSH is OFF (keys only)"
+  else
+    rm -f /etc/ssh/sshd_config.d/00-keys-only.conf
+    echo "WARNING: sshd rejected the keys-only config - left password SSH as the provider set it"
+  fi
+else
+  echo "WARNING: no key in /root/.ssh/authorized_keys - leaving password SSH on so nobody is locked out"
+fi
+
 echo "== firewall: SSH from anywhere, RDP over the private network ONLY =="
 ufw allow OpenSSH >/dev/null
 ufw allow in on tailscale0 to any port 3389 proto tcp >/dev/null
@@ -199,6 +222,11 @@ EOF
 chmod 644 /etc/linked-helper-machine.conf  # watchdog runs as $LH_USER; holds no secrets
 
 echo "== LH autostart on desktop login =="
+# Create .config FIRST, owned by the LH user. `install -d` on the nested path makes the
+# parent .config owned by ROOT, and then Linked Helper dies on login with
+# "Failed to get 'userData' path" and XFCE starts without its window manager or panel.
+# Found on the first client build (Julian Davis, Binary Lane, 9 Sep 2026).
+install -o "$LH_USER" -g "$LH_USER" -m 755 -d "$LH_HOME/.config"
 install -o "$LH_USER" -g "$LH_USER" -d "$LH_HOME/.config/autostart"
 cat > "$LH_HOME/.config/autostart/linked-helper.desktop" <<EOF
 [Desktop Entry]
@@ -208,6 +236,7 @@ Exec=$LH_BIN --start-account-id=$LH_ACCOUNT_ID
 X-GNOME-Autostart-enabled=true
 EOF
 chown "$LH_USER:$LH_USER" "$LH_HOME/.config/autostart/linked-helper.desktop"
+chown -R "$LH_USER:$LH_USER" "$LH_HOME"
 
 echo "== watchdog =="
 SRC_DIR="$(cd "$(dirname "$0")" && pwd)"

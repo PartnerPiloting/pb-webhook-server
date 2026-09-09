@@ -427,6 +427,18 @@ would otherwise be re-discovered per client.
 4. **The script installed XFCE/lightdm but configured gdm3** - a half-applied edit. Everything
    downstream (autologin, x11vnc) silently did nothing. Now consistently lightdm + XFCE.
 
+Two more from the first CLIENT build (Julian Davis, Binary Lane, Ubuntu 26.04, 9 Sep 2026), both
+now fixed in the script:
+
+5. **`install -d` on `~/.config/autostart` left `.config` itself owned by root**, so Linked Helper
+   died on login with "Failed to get 'userData' path" and XFCE came up with no window manager or
+   panel. The script now creates `.config` first as the LH user and finishes with a `chown -R` of
+   the whole home directory. Hand fix on a built machine: `chown -R lh:lh /home/lh`, restart lightdm.
+6. **Binary Lane ships `/etc/ssh/sshd_config.d/10-binarylane.conf` with `PasswordAuthentication
+   yes`**, and sshd keeps the FIRST value it reads, so a `99-*` override does nothing. The script
+   now writes `00-keys-only.conf` (sorts before theirs), only when root already has a key, and
+   checks `sshd -t` before reloading. Verify from outside: password SSH refused, key SSH accepted.
+
 Also worth knowing: OVH's default install expires the `ubuntu` password immediately and demands an
 interactive change, which blocks all automation. **Rebuild via the API with `doNotSendPassword:true`
 and the SSH key in the payload** - no password ever exists, no gate. Do this for every client
