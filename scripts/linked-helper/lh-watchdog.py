@@ -176,7 +176,10 @@ def main():
     if health["state"] == "IDLE":
         ws_url = find_ui_page()
         if ws_url:
-            result = asyncio.get_event_loop().run_until_complete(press_start(ws_url))
+            # asyncio.run, not get_event_loop(): Python 3.14 (Ubuntu 26.04) no longer creates
+            # a loop implicitly and raises RuntimeError, which crashed the watchdog on every
+            # IDLE cycle on the first Binary Lane build (Julian Davis, 9 Sep 2026).
+            result = asyncio.run(press_start(ws_url))
             actions.append(f"press:{result}")
             print(f"press result: {result}")
             time.sleep(20)
