@@ -118,4 +118,35 @@ async function latestPerClient() {
   }
 }
 
-module.exports = { recordCheckin, latestPerClient };
+/**
+ * Latest check-in for ONE client, or null - no database, no rows, or a read failure all come
+ * back as null because a check-in is evidence, never a gate. The onboarding preflight reads this
+ * (step 9): a client on the pull-updater lane has blank Extension Folder fields, so without this
+ * probe the journey printed every updater client as "updates are hand-delivered" (Sam Noble,
+ * 2026-09-09, the morning after his machine had pulled 0.3.19 on its own).
+ */
+async function latestForClient(clientId) {
+  const p = getPool();
+  if (!p || !clientId) return null;
+  let client;
+  try {
+    client = await p.connect();
+    await ensureSchema(client);
+    const { rows } = await client.query(
+      `SELECT client_id, version, action, agent, machine, note, checked_in_at
+         FROM wingguy_extension_checkins
+        WHERE client_id = $1
+        ORDER BY checked_in_at DESC
+        LIMIT 1`,
+      [String(clientId)]
+    );
+    return rows[0] || null;
+  } catch (e) {
+    log.warn(`check-in read failed for ${clientId}: ${e.message}`);
+    return null;
+  } finally {
+    if (client) client.release();
+  }
+}
+
+module.exports = { recordCheckin, latestPerClient, latestForClient };

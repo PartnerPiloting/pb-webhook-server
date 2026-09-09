@@ -14,9 +14,21 @@
 //     warnings: [string] }
 
 const cs = require('./clientService');
+const extensionDist = require('./extensionDistStore');
 
 const present = (v) => Boolean(v && String(v).trim());
 const short = (v, n = 12) => (present(v) ? `${String(v).slice(0, n)}…` : '(blank)');
+
+// A machine that has not checked in for this long has stopped collecting updates - same line the
+// fleet view (scripts/extension-fleet.js) draws, so the two never disagree about STALE.
+const CHECKIN_STALE_MS = 3 * 24 * 3600 * 1000;
+const ageLabel = (ts) => {
+  const mins = Math.floor((Date.now() - new Date(ts).getTime()) / 60000);
+  if (mins < 90) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 48) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
+};
 
 async function runPreflight(clientId) {
   const client = await cs.getClientById(clientId);
@@ -183,18 +195,36 @@ async function runPreflight(clientId) {
   step(8, 'dress rehearsal', MANUAL, 'prove live together: offer times → book → invite arrives WITH the meeting link → cancel');
 
   // ---- STEP 9: ship + install the extension ------------------------------------
+  // Two lanes deliver updates. The PULL UPDATER (docs/extension-updater.md) is a scheduled job on
+  // the client's own machine that fetches from us and checks in every run - so a recent check-in
+  // is the client's own computer reporting the version on its disk, the strongest proof there is.
+  // The ONEDRIVE share is the older lane, visible only as Extension Folder Provider/Ref on the row.
+  // Until 2026-09-09 only the folder fields were read, so every updater client printed as
+  // "hand-delivered" the morning after their machine had updated itself. Check-ins win.
   let extensionOnJourney = false;
   try {
     const raw = (client.rawRecord && client.rawRecord._rawJson && client.rawRecord._rawJson.fields) || {};
     const provider = raw['Extension Folder Provider'] || '';
     const ref = raw['Extension Folder Ref'] || '';
+    const folder = Boolean(provider && ref);
+    const checkin = await extensionDist.latestForClient(clientId);
+    const stale = checkin ? (Date.now() - new Date(checkin.checked_in_at).getTime()) > CHECKIN_STALE_MS : false;
+    const where = checkin ? `${checkin.version || '?'} · checked in ${ageLabel(checkin.checked_in_at)}${checkin.machine ? ` · ${checkin.machine}` : ''}` : '';
     extensionOnJourney = Boolean(client.wingguyEnabled);
     if (extensionOnJourney) {
-      step(9, 'ship + install', provider && ref ? DONE : OWED,
-        provider && ref ? `${provider} folder on file - ship-extension.js reaches this client`
-          : 'no update folder - send the ask email (own machine or company-managed? personal Microsoft account?), then the matching card; updates are hand-delivered until this is set');
-    } else if (provider || ref) {
-      step(9, 'ship + install', OWED, 'folder fields set but Wingguy Enabled is off - flip the gate or clear the fields');
+      if (checkin && checkin.action === 'error') {
+        step(9, 'ship + install', OWED, `pull updater reported an ERROR on its last run (${where})${checkin.note ? ` - ${checkin.note}` : ''} - the old version keeps working, but look at the machine`);
+      } else if (checkin && stale) {
+        step(9, 'ship + install', OWED, `pull updater STALE - last check-in ${ageLabel(checkin.checked_in_at)} (${checkin.version || '?'}${checkin.machine ? `, ${checkin.machine}` : ''}) - machine off or updater broken; updates are not reaching them until it checks in again`);
+      } else if (checkin) {
+        step(9, 'ship + install', DONE, `pull updater · ${where} - updates itself, nothing to ship${folder ? ` (also has a ${provider} folder on file - the updater is the live lane)` : ''}`);
+      } else if (folder) {
+        step(9, 'ship + install', DONE, `${provider} folder on file - ship-extension.js reaches this client (no pull-updater check-ins; fine while the folder syncs)`);
+      } else {
+        step(9, 'ship + install', OWED, 'no delivery lane - install the pull updater over remote access (node scripts/extension-install-command.js <Client-ID> prints the one paste-able line), or set up a OneDrive folder; updates are hand-delivered until one of those is in place');
+      }
+    } else if (checkin || provider || ref) {
+      step(9, 'ship + install', OWED, `${checkin ? `pull updater is checking in (${where})` : 'folder fields set'} but Wingguy Enabled is off - flip the gate or clear the delivery`);
     } else {
       step(9, 'ship + install', MANUAL, 'Wingguy Enabled is off - chat-only client, no extension on this journey');
     }

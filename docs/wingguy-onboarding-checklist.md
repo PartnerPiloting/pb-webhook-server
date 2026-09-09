@@ -91,8 +91,9 @@ times for a real lead, books a test meeting, the invite arrives with your link o
 it together. After this you're live in chat, and everything that follows is the extension.
 
 **Step 9 - Your Wingguy extension, shipped and installed. [solo, then live]** The piece that puts
-Wingguy inside LinkedIn. I set up a folder in my own cloud storage and share it to you view-only, so
-every improvement I make reaches your computer without you downloading anything, ever. Then we load
+Wingguy inside LinkedIn. I install a small updater on your computer over a remote session - it
+fetches every improvement I make from my server by itself, daily and at login, so nothing ever
+reaches you as a download. (Older setups use a shared OneDrive folder for the same job.) Then we load
 it into your browser together - it's the fiddliest single step in the journey, so we do it on a
 call.
 
@@ -650,18 +651,39 @@ Wingguy 'update my rules'."
 The extension is the piece that puts Wingguy inside LinkedIn. It installs once, but it gets improved
 - and updates must reach the client's computer with ZERO ongoing effort from them.
 
-**The mechanism, and the reference material.** One **Wingguy** folder per client, owned by Guy in
-HIS cloud storage and shared to the client VIEW-ONLY; the client's own sync tool pulls it down; the
-browser picks up a new version at the next restart. The full detail lives in the reference sections
-further down this document, and they are the canonical text:
+**The mechanism, and the reference material.** Two lanes deliver updates. **The pull updater is
+the default since 2026-09-03**: a scheduled job on the client's own machine fetches the extension
+from our server into a fixed local folder (`C:\Wingguy` or `~/Wingguy`), daily at 3am and again at
+login. No cloud account, no sync app, nothing for the client to do - Guy installs it over remote
+access in a couple of minutes, and every run checks in so `node scripts/extension-fleet.js` shows
+who is on what. The older **OneDrive lane** (one folder per client in Guy's cloud, shared view-only,
+synced by the client) still serves the clients already on it. The full detail lives in the reference
+sections further down this document and in `docs/extension-updater.md`, and they are the canonical
+text:
 
-- **THE EXTENSION UPDATE FOLDER** - the model, which lanes exist, why work Microsoft accounts and
-  Google Drive are both out, the comms doctrine, and the ask email.
-- **THE ONEDRIVE LANE** - the default for every synced client.
+- **`docs/extension-updater.md`** - the pull updater: why it exists, how it holds up, the one-line
+  install, the fleet view.
+- **THE EXTENSION UPDATE FOLDER** - the OneDrive model, which lanes exist, why work Microsoft accounts
+  and Google Drive are both out, the comms doctrine, and the ask email.
+- **THE ONEDRIVE LANE** - the synced-folder lane for clients already on it.
 - **THE ZIP LANE** - tech self-managers and company-locked machines.
 - **THE INSTALL CARD** - loading the extension into Chrome or Edge, one-time, any lane.
 
-**The order of the step:**
+**The order of the step (pull updater, the default):**
+
+1. **Get remote access** to their machine - Splashtop, set up on a call (Sam Noble, 2026-09-04) or
+   in the pre-session email.
+2. **Print the install line** with `node scripts/extension-install-command.js <Client-ID>` and paste
+   it into PowerShell on their machine. It reports the daily task, the login run and the version it
+   put on disk; `node scripts/extension-fleet.js` on prod confirms the machine has checked in. The
+   Mac script is UNPROVEN - walk it with a Mac client before relying on it.
+3. **Load it together on the same session** using the install card, from the updater's folder. Do
+   this live for anyone non-technical; it is the fiddliest single step in the whole journey.
+
+The preflight's step 9 reads the check-in ledger: a check-in in the last 3 days = DONE, older =
+STALE (the machine has stopped collecting updates), none and no folder = OWED.
+
+**The order of the step (OneDrive lane, existing clients):**
 
 1. **The ask email** (before anything else): is the computer their own or company-managed, and do
    they have a personal Microsoft account. Two questions, then exactly ONE card that matches their

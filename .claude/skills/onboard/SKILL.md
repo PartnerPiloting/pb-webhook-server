@@ -118,15 +118,21 @@ one is five promises in an email that all work first go.
   Unipile Account ID + Calendar Provider=unipile + Email Provider=unipile. Delete stray
   accounts the client connected by mistake (they bill).
 - **Sales Navigator gifts only take on never-Premium accounts** - confirm history before promising.
-- **Extension delivery runs the update-folder system - never improvise delivery on a call**
-  (Ashley 2026-08-20: ten minutes of a 30-minute session lost to OneDrive). The full doctrine,
-  ask email, and frozen instruction cards live in the checklist's "THE EXTENSION UPDATE FOLDER"
-  section (origin/main docs/wingguy-onboarding-checklist.md): ask cloud + Windows/Mac → send the
-  ONE matching card → client replies "done" → Guy confirms the share arrived BEFORE the session
-  → set Extension Folder Provider/Ref on the row → `scripts/ship-extension.js --client=<id>`
-  pushes and verifies. Cards are frozen canonical text - send them verbatim, never re-derive;
-  a client stalling on a step means fix the card the same day. The preflight's "extension
-  updates" line polices the fields. Fallback zip if ever needed:
+- **Extension delivery: the PULL UPDATER is the default lane (since 2026-09-03); OneDrive serves
+  the clients already on it - never improvise delivery on a call** (Ashley 2026-08-20: ten
+  minutes of a 30-minute session lost to OneDrive). Updater = remote access (Splashtop) →
+  `node scripts/extension-install-command.js <Client-ID>` prints ONE paste-able PowerShell line →
+  machine pulls daily + at login and checks in → `node scripts/extension-fleet.js` on prod shows
+  it. Doc: docs/extension-updater.md. The preflight's step 9 reads the check-in ledger first
+  (recent = DONE, 3+ days = STALE, none = falls back to the folder fields), so a blank
+  Extension Folder Provider/Ref on an updater client is NOT a gap - Sam Noble and Rick Wong are
+  on the updater with blank folder fields. OneDrive lane doctrine, ask email, and frozen
+  instruction cards live in the checklist's "THE EXTENSION UPDATE FOLDER" section (origin/main
+  docs/wingguy-onboarding-checklist.md): ask cloud + Windows/Mac → send the ONE matching card →
+  client replies "done" → Guy confirms the share arrived BEFORE the session → set Extension
+  Folder Provider/Ref on the row → `scripts/ship-extension.js --client=<id>` pushes and
+  verifies. Cards are frozen canonical text - send them verbatim, never re-derive; a client
+  stalling on a step means fix the card the same day. Fallback zip if ever needed:
   `git archive "origin/main:wingguy-extension" --prefix=Wingguy/ --format=zip` - unzip target
   somewhere permanent, never Downloads.
 - **Client keys never travel by Zoom chat** - Ashley's key was pasted there one session and lost.
