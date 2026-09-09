@@ -8,6 +8,9 @@
 //   1. LANDMARK MISSES — wingguy_selector_health rows the extensions phone home. A landmark that
 //      keeps missing = LinkedIn moved the furniture (or one client is being A/B-served new markup).
 //      The fix is a selector-store DB row; the email carries the raw rows to make that fast.
+//      Two kinds of miss are NOT symptoms and are filtered out: one the same machine resolved
+//      seconds later (page still loading — RESOLVED_MISS_SQL), and one on an OPTIONAL landmark
+//      (SOFT_KEYS — no About section, no posts, a brand-new thread with no messages yet).
 //   2. BLIND DRAFTS — wingguy_chat_metrics rows (one per chat turn, written by the chat route).
 //      A spike in profile_thin means profile reading is failing broadly (extension fetch broken,
 //      portal sync stalled, or LinkedIn changed shape) even if no single landmark looks guilty.
@@ -18,7 +21,7 @@
 const { Pool } = require('pg');
 const { createLogger } = require('../utils/contextLogger');
 const { sendAlertEmail } = require('./emailNotificationService');
-const { RESOLVED_MISS_SQL } = require('./wingguySelectorStore');
+const { RESOLVED_MISS_SQL, SOFT_KEYS } = require('./wingguySelectorStore');
 
 const log = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'wingguy-monitor' });
 
@@ -113,28 +116,51 @@ async function landmarkFindings(client) {
     FROM h
     GROUP BY 1, 2, 3, 4
   `);
-  const perTenant = rows
-    .map((r) => ({ ...r, misses: Number(r.misses), founds: Number(r.founds) }))
-    .filter((r) => r.misses >= MISS_MIN && r.misses / (r.misses + r.founds) >= MISS_RATE);
+  return pickLandmarkFindings(rows);
+}
+
+/** The alert rules, on the per-tenant/version slices the query above produces. Pure so the rules
+ *  can be tested without a database (tests/wingguy-monitor.test.js). */
+function pickLandmarkFindings(rows, { missMin = MISS_MIN, missRate = MISS_RATE } = {}) {
+  const soft = new Set(SOFT_KEYS);
+  const slices = rows.map((r) => ({ ...r, misses: Number(r.misses), founds: Number(r.founds) }));
+
+  // Per-tenant rule. OPTIONAL landmarks (SOFT_KEYS) are exempt: one person opening three brand-new
+  // message threads in a morning is three honest misses on message_body with nothing found, and
+  // that is exactly what fired the 2026-09-09 false alarm. A soft landmark that LinkedIn really did
+  // move still gets caught below, by everybody missing it at once.
+  const perTenant = slices
+    .filter((r) => !soft.has(r.selector_key))
+    .filter((r) => r.misses >= missMin && r.misses / (r.misses + r.founds) >= missRate);
 
   // Cross-tenant aggregate (added 2026-08-13, from the monitor's own first blind spot): a landmark
   // missing for EVERY client is the strongest possible "LinkedIn moved it" signal, but split per
   // tenant/version each slice can sit under MISS_MIN — the exact shape of the profile_name/headline/
   // location staleness the per-tenant rule failed to flag on day one. A key with ZERO finds anywhere
-  // and MISS_MIN total misses alerts regardless of how the misses are spread.
+  // and MISS_MIN total misses alerts regardless of how the misses are spread. For a soft landmark
+  // the misses must also come from at least two machines — a single quiet day of one client on new
+  // threads is the false alarm again, two clients both blind all day is not.
   const byKey = new Map();
-  for (const r of rows) {
+  for (const r of slices) {
     const agg = byKey.get(r.selector_key) || { selector_key: r.selector_key, tenant: '(all tenants)', misses: 0, founds: 0, versions: new Set(), tenants: new Set(), last_miss: null };
-    agg.misses += Number(r.misses);
-    agg.founds += Number(r.founds);
-    if (Number(r.misses)) { agg.versions.add(r.version); agg.tenants.add(r.tenant); }
+    agg.misses += r.misses;
+    agg.founds += r.founds;
+    if (r.misses) { agg.versions.add(r.version); agg.tenants.add(r.tenant); }
     if (r.last_miss && (!agg.last_miss || r.last_miss > agg.last_miss)) agg.last_miss = r.last_miss;
     byKey.set(r.selector_key, agg);
   }
   const flaggedKeys = new Set(perTenant.map((r) => r.selector_key));
   const deadEverywhere = [...byKey.values()]
-    .filter((a) => a.founds === 0 && a.misses >= MISS_MIN && !flaggedKeys.has(a.selector_key))
-    .map((a) => ({ ...a, versions: [...a.versions].join(', '), tenants: [...a.tenants].join(', '), note: 'zero finds across ALL tenants in 24h — strongest moved-furniture signal' }));
+    .filter((a) => a.founds === 0 && a.misses >= missMin && !flaggedKeys.has(a.selector_key))
+    .filter((a) => !soft.has(a.selector_key) || a.tenants.size >= 2)
+    .map((a) => ({
+      ...a,
+      versions: [...a.versions].join(', '),
+      tenants: [...a.tenants].join(', '),
+      note: soft.has(a.selector_key)
+        ? 'optional landmark, but zero finds across ALL tenants in 24h and missed on 2+ machines — likely moved'
+        : 'zero finds across ALL tenants in 24h — strongest moved-furniture signal',
+    }));
 
   return [...perTenant, ...deadEverywhere];
 }
@@ -401,4 +427,4 @@ function startWingguyMonitor() {
   setTimeout(tick, 60 * 1000);   // first look one minute after boot, not mid-startup
 }
 
-module.exports = { startWingguyMonitor, runDailyCheck, runWeeklyHeartbeat, runWeeklyLearningReview, recordChatTurn };
+module.exports = { startWingguyMonitor, runDailyCheck, runWeeklyHeartbeat, runWeeklyLearningReview, recordChatTurn, pickLandmarkFindings };

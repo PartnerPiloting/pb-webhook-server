@@ -70,6 +70,25 @@ const KNOWN_KEYS = [
  *  profile page") — the distinction that decides whether noise or a real alarm. */
 const SURFACES = ['profile', 'messaging', 'other'];
 
+/** Landmarks that are OPTIONAL even on their own surface — the `soft: true` entries of
+ *  SELF_CHECK_PLAN in content-wingguy.js, kept in step by tests/wingguy-monitor.test.js. A miss on
+ *  one of these is recorded but is not, on its own, a symptom: not everyone writes an About section
+ *  or posts, and a brand-new message thread has no message bubbles yet. That last case is the one
+ *  that bit on 2026-09-09 — Julian opened Wingguy three times on a "new message" to someone he had
+ *  never written to (recipient picker + profile card + empty composer, nothing sent), so
+ *  message_body and message_group_name missed 3/3 with zero finds, and the daily monitor read that
+ *  as LinkedIn moving the furniture. The health row does not carry the soft flag (older extensions
+ *  never will), so the rule lives here, server-side, next to KNOWN_KEYS. */
+const SOFT_KEYS = [
+  'profile_headline',
+  'profile_location',
+  'profile_about_spans',
+  'profile_activity_anchor',
+  'profile_activity_items',
+  'message_group_name',
+  'message_body',
+];
+
 const DEFAULT_TENANT = 'Guy-Wilson';
 
 function getPool() {
@@ -371,6 +390,7 @@ module.exports = {
   RESOLVED_MISS_SQL,
   RESOLVED_MISS_WINDOW_SECONDS,
   KNOWN_KEYS,
+  SOFT_KEYS,
   SURFACES,
   __setTestPool,
 };
