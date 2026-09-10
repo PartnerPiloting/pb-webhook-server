@@ -1,0 +1,53 @@
+{
+  "_comment": [
+    "Campaign 1 - the first one every client gets. Visit each profile in the search overnight,",
+    "extract everything, push it to the client's own leads database through their webhook.",
+    "Values copied from Guy's campaign 33 (Aug 2025) and the playbook topic YOUR FIRST CAMPAIGN:",
+    "batch 50, six-hour cooldown, 00:00-03:00 every day for the visit; the webhook action never",
+    "touches LinkedIn. Times are the MACHINE'S local time (the VPS carries the client's TZ).",
+    "{{WEBHOOK_URL}} is filled from /etc/linked-helper-machine.conf (CLIENT_ID or LH_WEBHOOK_URL)."
+  ],
+  "name": "Visit and extract profiles",
+  "description": "",
+  "actions": [
+    {
+      "name": "",
+      "actionType": "VisitAndExtract",
+      "actionSettings": {},
+      "coolDownMinutes": 360,
+      "maxActionResultsPerIteration": 50,
+      "workingHours": { "days": "all", "windows": [["00:00", "03:00"]] }
+    },
+    {
+      "name": "",
+      "actionType": "SendPersonToWebhook",
+      "actionSettings": {
+        "url": "{{WEBHOOK_URL}}",
+        "convertMultiLine": true,
+        "exportAsFlatObject": true,
+        "exportSettings": {
+          "educations": 3,
+          "messengers": 2,
+          "positions": 10,
+          "phoneNumbers": 2,
+          "websites": 3,
+          "languages": 3,
+          "thirdPartyEmails": 3,
+          "fullMessagingHistory": false,
+          "campaignMessagingHistory": false,
+          "positionFields": {
+            "title": true,
+            "description": true,
+            "locationName": true,
+            "dateStart": true,
+            "dateEnd": true,
+            "defaultPositionFlag": true
+          }
+        }
+      },
+      "coolDownMinutes": 1,
+      "maxActionResultsPerIteration": 80,
+      "workingHours": { "days": "all", "windows": [["01:00", "03:00"]] }
+    }
+  ]
+}
