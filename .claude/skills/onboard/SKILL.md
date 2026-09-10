@@ -172,6 +172,16 @@ one is five promises in an email that all work first go.
 - **At the LH-launch wrap (step 14, the final session): set "Email Series Start Date" on the
   Clients row** - convention = that session's date (Guy 2026-08-23). The client email drip starts
   there and takes over the drumbeat when sessions stop. The preflight's Linked Helper line polices it.
+- **At the VPS build wrap (the session where the client's Linked Helper machine went live), set
+  the two human fields the machine cannot report itself (Guy 2026-09-10):** `Remote Access
+  Method` = "Tailscale RDP" and `Remote Access Consent Date` = that session's date (the client
+  agreed on the call to Guy having standing access to a machine that is theirs). Everything else
+  about the machine - `LH Account ID`, `Machine Address`, `Machine Tailscale`, `Machine Status`,
+  `Machine Last Seen` - is written by the machine's own watchdog report every five minutes
+  (routes/linkedHelperMachineRoutes.js) once `Machine Report Secret` is set on the row and
+  REPORT_URL/REPORT_SECRET are in the machine's /etc/linked-helper-machine.conf. If those fields
+  are blank a day after the build, the reporting is not wired, not the machine dead. Never type
+  them by hand.
 - **Suggested-prompts calibration (Guy 2026-08-23):** the wrap email's literal prompts-in-quotes
   are picked as TWO that exercise what this session just plumbed + ONE that points at the next
   step so it never lands cold. Use Wingguy Learning topics as the pointing device ("ask Wingguy:

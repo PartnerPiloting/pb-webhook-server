@@ -388,6 +388,34 @@ keeps the **most recent** one (LH's own safety net if an update goes bad) and de
 older than 3 days, plus our `.imported.lhd2` migration artefact. Runs while LH is stopped, so the
 files are safe to touch, and `lh.db` itself is never a candidate. First run freed 584 MB.
 
+### The machine fills in its own client record (built 10 Sep 2026)
+
+Every machine's watchdog already posts a status report at the end of each five-minute cycle when
+`/etc/linked-helper-machine.conf` carries `REPORT_URL` and `REPORT_SECRET`. The server end is
+`routes/linkedHelperMachineRoutes.js`: it verifies the secret against the client's **Machine
+Report Secret** field and writes onto their Clients row **LH Account ID**, **Machine Address**
+(hostname + public IP), **Machine Tailscale** (name + 100.x), **Machine Status** (one line: runner
+state, LinkedIn state, LH version, launcher, disk, what the watchdog did) and **Machine Last
+Seen**. So the record fills itself in and a machine that goes quiet shows as a stale last-seen in
+Airtable - the fleet health signal, no remoting in.
+
+**Wiring a machine (once per client, ~2 minutes):**
+
+1. Mint a secret (any 24+ random characters, e.g. `openssl rand -base64 24 | tr -d '/+='`).
+2. Put it on the client's row: `node scripts/set-client-flag.js --client=<Client-ID>
+   --field="Machine Report Secret" --value=<secret>` (Render one-off job - needs the server env).
+3. Pass `REPORT_URL=https://pb-webhook-server.onrender.com/webhooks/lh-machine/<Client-ID>` and
+   `REPORT_SECRET=<secret>` to `setup-ubuntu-vps.sh` on a new build, or on an existing machine set
+   the two lines in `/etc/linked-helper-machine.conf` (mode 644 - the watchdog runs as `lh`; the
+   secret only lets a machine write its own status line, nothing else).
+4. Prove it: `systemctl start lh-watchdog.service`, then `GET /webhooks/lh-machine/<Client-ID>`
+   shows `last_seen` just now, and the row's Machine Status reads the same as the window title.
+
+Two fields stay human because the machine cannot know them: **Remote Access Method** and
+**Remote Access Consent Date** - set at the build-session wrap (the onboard skill says so).
+Never write the machine fields by hand; if they are blank a day after a build, the wiring above
+was skipped.
+
 ### Access: Tailscale, not an open port (settled 1 Sep 2026)
 
 **Every machine joins a Tailscale private network and is reached by NAME** - `lh-guy-wilson`,

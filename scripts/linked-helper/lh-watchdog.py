@@ -41,6 +41,24 @@ def sh(cmd):
     return subprocess.run(cmd, shell=True, capture_output=True, text=True).stdout.strip()
 
 
+def machine_info():
+    # What the machine knows about itself, for the status report -> the client's Clients row
+    # (routes/linkedHelperMachineRoutes.js). Every item best-effort: a missing tool or a slow
+    # lookup must never stop the watchdog from doing its real job.
+    info = {}
+    try:
+        info["hostname"] = sh("hostname")
+        info["tailscale_ip"] = sh("tailscale ip -4 2>/dev/null | head -1")
+        info["tailscale_name"] = sh("tailscale status --self --json 2>/dev/null | "
+                                    "python3 -c 'import sys,json;print(json.load(sys.stdin)[\"Self\"][\"HostName\"])' 2>/dev/null")
+        info["public_ip"] = sh("curl -4 -s --max-time 5 https://api.ipify.org 2>/dev/null")
+        info["disk_pct"] = sh("df --output=pcent / | tail -1 | tr -dc '0-9'")
+        info["launcher"] = sh("wmctrl -l | grep -o 'Launcher v[0-9.]*' | head -1 | sed 's/Launcher v//'")
+    except Exception as e:
+        info["error"] = str(e)[:80]
+    return info
+
+
 def lh_pids():
     # NOTE the [l] - without it pgrep matches the shell running this very
     # command (its cmdline contains "linked-helper"), so this never returned
@@ -191,7 +209,8 @@ def main():
 
     report(conf, {"client_id": conf.get("CLIENT_ID"),
                   "account_id": conf.get("LH_ACCOUNT_ID"),
-                  "health": health, "actions": actions, "ts": int(time.time())})
+                  "health": health, "actions": actions, "ts": int(time.time()),
+                  "machine": machine_info() if conf.get("REPORT_URL") else {}})
 
     # Non-zero exit makes failures visible in systemd/journalctl.
     if health["state"] not in ("RUNNING",) and actions:

@@ -189,6 +189,18 @@ try {
     moduleLogger.error('index.js: Error mounting firefliesWebhookRoutes', e.message, e.stack);
 }
 
+// Linked Helper machine self-registration - each client's VPS watchdog reports its health every
+// five minutes to /webhooks/lh-machine/:clientId, verified with THAT client's 'Machine Report
+// Secret', and the route writes account id / address / status / last-seen onto their Clients
+// row. Parses its own JSON (router-level), so it is fine here before the global parser.
+try {
+    const linkedHelperMachineRoutes = require('./routes/linkedHelperMachineRoutes.js');
+    app.use(linkedHelperMachineRoutes);
+    moduleLogger.info('index.js: Linked Helper machine report mounted at GET/POST /webhooks/lh-machine/:clientId');
+} catch (e) {
+    moduleLogger.error('index.js: Error mounting linkedHelperMachineRoutes', e.message, e.stack);
+}
+
 // The Stripe webhook verifies signatures against the raw body, same as the recorder
 // webhooks above - skip the global JSON parser for that one path so the route's own
 // express.raw() in routes/billingRoutes.js still sees the unparsed bytes.

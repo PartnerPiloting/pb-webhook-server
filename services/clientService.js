@@ -153,6 +153,10 @@ async function getAllClients() {
                 // (/webhooks/fireflies/<Client ID>) verifies every delivery against it.
                 const firefliesApiKey = record.get('Fireflies API Key') || null;
                 const firefliesWebhookSecret = record.get('Fireflies Webhook Secret') || null;
+                // Linked Helper machine self-registration (routes/linkedHelperMachineRoutes.js):
+                // the machine's watchdog reports with this secret; last-seen is the fleet signal.
+                const machineReportSecret = record.get('Machine Report Secret') || null;
+                const machineLastSeen = record.get('Machine Last Seen') || null;
                 // Capture policy (services/capturePolicyStore.js): blank fields = fully open =
                 // pre-policy behaviour. 'Leads Only' = a transcript is fetched only when someone
                 // on the call is already a lead; hold minutes = the veto window before fetching.
@@ -287,6 +291,8 @@ async function getAllClients() {
                     granolaWebhookSecret: granolaWebhookSecret,
                     firefliesApiKey: firefliesApiKey,
                     firefliesWebhookSecret: firefliesWebhookSecret,
+                    machineReportSecret: machineReportSecret,
+                    machineLastSeen: machineLastSeen,
                     captureMode: captureMode,
                     captureHoldMinutes: captureHoldMinutes,
                     followupBrief: followupBrief,

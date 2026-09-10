@@ -227,6 +227,39 @@ const MASTER_FIELDS = [
     name: 'Extension Folder Ref',
     type: 'singleLineText',
     description: 'The update folder itself, captured once at the extension onboarding step: for gdrive the folder ID out of the folder\'s drive.google.com URL; for onedrive the folder\'s share link. scripts/ship-extension.js resolves it, uploads the build, and verifies the folder\'s manifest version after every push. Added 2026-08-20.'
+  },
+  // Linked Helper machine self-registration (routes/linkedHelperMachineRoutes.js). The machine's
+  // watchdog reports every 5 minutes and the route writes these itself - never typed by hand.
+  {
+    name: 'Machine Report Secret',
+    type: 'singleLineText',
+    description: 'Shared secret the client\'s Linked Helper machine sends (x-lh-machine-secret header) with every watchdog status report to /webhooks/lh-machine/<Client ID>. Minted by Guy at build time (any 24+ random chars), the same value goes into the machine\'s /etc/linked-helper-machine.conf as REPORT_SECRET (setup-ubuntu-vps.sh takes REPORT_URL + REPORT_SECRET). Blank = every report for this client is rejected. Plaintext-at-rest like the other webhook secrets here. Added 2026-09-10.'
+  },
+  {
+    name: 'LH Account ID',
+    type: 'singleLineText',
+    description: 'The client\'s Linked Helper account number (e.g. 585942) - the number in the instance window title and in --start-account-id. Written by the machine\'s own status report (routes/linkedHelperMachineRoutes.js); a nuisance to re-derive by hand, so never blank it. Added 2026-09-10.'
+  },
+  {
+    name: 'Machine Address',
+    type: 'singleLineText',
+    description: 'Hostname + public IP of the client\'s Linked Helper machine, as the machine reports it (e.g. "linkedinhelper 112.213.37.4"). Written by the status report. Added 2026-09-10.'
+  },
+  {
+    name: 'Machine Tailscale',
+    type: 'singleLineText',
+    description: 'Tailnet name + 100.x address of the client\'s Linked Helper machine (e.g. "lh-rick-wong 100.72.251.51") - how Guy reaches it over Remote Desktop. Written by the status report. Added 2026-09-10.'
+  },
+  {
+    name: 'Machine Status',
+    type: 'singleLineText',
+    description: 'One line from the machine\'s latest watchdog report: runner state | LinkedIn state | LH version | launcher | disk % | what the watchdog did this cycle. Written every 5 minutes by routes/linkedHelperMachineRoutes.js. Added 2026-09-10.'
+  },
+  {
+    name: 'Machine Last Seen',
+    type: 'dateTime',
+    description: 'When the client\'s Linked Helper machine last reported in (every 5 minutes while alive). Stale = the machine is down, asleep, or its reporting is unset - the fleet health signal, readable from Airtable without remoting in. Added 2026-09-10.',
+    options: { timeZone: 'Australia/Brisbane', dateFormat: { name: 'iso' }, timeFormat: { name: '24hour' } }
   }
 ];
 
