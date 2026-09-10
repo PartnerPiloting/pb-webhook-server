@@ -17,6 +17,8 @@
 #     runner is off, press "Start campaigns runner" via LH's own DevTools channel;
 #     optionally report status to the server.
 #   - Nightly reboot at 03:00 local time (the maintenance window)
+#   - The standard campaigns built from recipes (lh-campaigns.py + lh-build-campaigns.sh),
+#     run once by hand AFTER the LinkedIn login - it needs the account row to exist
 #
 # Status: WRITTEN 2026-08-29, NOT YET RUN ON A REAL VPS. Test on Guy's own machine first.
 # See docs/linked-helper-machine-setup.md (Part 5 - Ubuntu VPS).
@@ -268,6 +270,15 @@ EOF
 systemctl daemon-reload
 systemctl enable x11vnc.service lh-watchdog.timer
 
+echo "== campaign builder (run AFTER the LinkedIn login - step 5 below) =="
+# Builds the standard campaigns through Linked Helper's own create command, with this
+# client's webhook address filled from /etc/linked-helper-machine.conf. Idempotent by
+# campaign name. Proven on Guy's machine 11 Sep 2026; see docs/linked-helper-machine-setup.md.
+install -m 755 "$SRC_DIR/lh-campaigns.py" /usr/local/bin/lh-campaigns.py
+install -m 755 "$SRC_DIR/lh-build-campaigns.sh" /usr/local/bin/lh-build-campaigns.sh
+install -d -m 755 /usr/local/share/linked-helper/campaigns
+install -m 644 "$SRC_DIR"/campaigns/*.json /usr/local/share/linked-helper/campaigns/
+
 echo "== nightly backup to cloud storage (02:30, before the reboot) =="
 # rclone needs a one-time OAuth token per storage account. Get it on a machine
 # with a browser: `rclone authorize "drive" <client_id> <client_secret>`, then
@@ -314,3 +325,5 @@ echo "  1. RDP to this machine (pick 'LinkedHelperConsole', password = your VNC 
 echo "  2. Log Linked Helper into the client's LH account + LinkedIn (one-time verification)"
 echo "  3. Tick 'Restart after updates' in the Launcher's Check-and-install-updates screen"
 echo "  4. Watch one watchdog cycle: systemctl start lh-watchdog.service; journalctl -u lh-watchdog"
+echo "  5. Build the standard campaigns (instance open + LinkedIn logged in): lh-build-campaigns.sh"
+echo "     then show the client what was built: lh-campaigns.py list / show <id>"

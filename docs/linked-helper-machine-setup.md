@@ -416,6 +416,39 @@ Two fields stay human because the machine cannot know them: **Remote Access Meth
 Never write the machine fields by hand; if they are blank a day after a build, the wiring above
 was skipped.
 
+### Standard campaigns by script (PROVEN 11 Sep 2026)
+
+Nobody builds campaigns by hand or from a CSV template any more. `lh-build-campaigns.sh` (installed
+by the build) asks the running instance to create each campaign in
+`/usr/local/share/linked-helper/campaigns/*.json` through Linked Helper's own create command - the
+same one the "Create campaign" button uses - with the client's webhook address filled from
+`/etc/linked-helper-machine.conf`. Idempotent by campaign name, so running it twice is harmless; an
+ARCHIVED campaign does not count, so re-running after an archive creates it fresh (LH cannot delete,
+only archive). It refuses while an action is mid-flight ("Running campaign #N" in the title).
+
+**It is a post-login step, not part of the unattended build:** the campaign attaches to the
+LinkedIn account row that only exists after the client has logged in once. Run it, then walk the
+client through what was built on a screen share - that replaces the old "download a template" step.
+
+Source of truth for the recipes = `scripts/linked-helper/campaigns/` in the repo. Recipe 1 = visit
+and extract (from Guy's campaign 33 + the playbook), 2 = TOP SCORERS (Guy's campaign 32, his own
+messages - the client rewrites them in the UI), 3 = Fractional in profile (Guy's campaign 40).
+To make a recipe from any campaign: `lh-campaigns.py export <id> --out x.json` (webhook swapped for
+the placeholder, hours converted to local, with a check that it rebuilds the exact rows).
+Other commands: `list`, `show <id>`, `diff <a> <b>`, `plan <recipe>`.
+
+How it reaches Linked Helper: the instance's DevTools port -> its interface page -> the webpack
+bundle's require (`self.webpackChunk_linked_helper_front.push(...)`) -> the data-layer singleton
+(found by TEXT, `async _callWriteImpl`, never by module id) -> `callWrite("people.campaigns.createCampaign", ...)`.
+Working hours are stored in UTC minutes; recipes are written in the machine's local time and
+converted. Every action must carry `target: []` and `excludeList: []` or the engine throws
+"invalid `people`".
+
+⚠ **Never enumerate `mainWindowService.mainWindow / browserWindow / window / contentWindow`
+from a probe.** They are @electron/remote proxies; enumerating them raised "An object could not be
+cloned" in the main process, a modal error box appeared, DevTools hung and the instance exited
+(Guy's box, 11 Sep 2026). The watchdog's normal path recovered it, LinkedIn stayed logged in.
+
 ### Access: Tailscale, not an open port (settled 1 Sep 2026)
 
 **Every machine joins a Tailscale private network and is reached by NAME** - `lh-guy-wilson`,
