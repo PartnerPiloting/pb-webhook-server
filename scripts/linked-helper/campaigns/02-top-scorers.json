@@ -1,0 +1,492 @@
+{
+  "_comment": [
+    "Exported from campaign 32 'TOP SCORERS' on 2026-09-11 (machine offset +600 min).",
+    "Times are the MACHINE'S local time (the VPS carries the client's TZ).",
+    "{{WEBHOOK_URL}} is filled from /etc/linked-helper-machine.conf (CLIENT_ID or LH_WEBHOOK_URL)."
+  ],
+  "name": "TOP SCORERS",
+  "description": "These candidates are the top scorers",
+  "actions": [
+    {
+      "name": "",
+      "actionType": "InvitePerson",
+      "overridePlatform": "linkedin",
+      "actionSettings": {
+        "messageTemplate": {
+          "type": "variants",
+          "variants": [
+            {
+              "type": "variant",
+              "child": {
+                "type": "group",
+                "children": [
+                  {
+                    "type": "text",
+                    "value": "Hi  "
+                  },
+                  {
+                    "type": "var",
+                    "name": "firstName"
+                  },
+                  {
+                    "type": "text",
+                    "value": ",\n\nI'm connecting with professionals who want to stay ahead in their careers—especially with AI reshaping how we work. \n\nMany are also exploring a low-risk side venture. \n\nLets stay connected so we can stay on top of these changes\n\n(I know a) Guy"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "saveAsLeadSN": false,
+        "extractEmailFromPAS": false,
+        "emailCustomFieldName": null,
+        "textInputMethod": "type",
+        "delays": {
+          "navigateToProfile": {
+            "min": 20000,
+            "max": 300000
+          },
+          "clickOnMoreButton": {
+            "min": 2000,
+            "max": 4000
+          },
+          "clickOnConnectButton": {
+            "min": 5000,
+            "max": 60000
+          },
+          "clickOnAddNoteButton": {
+            "min": 5000,
+            "max": 60000
+          },
+          "typeEmail": {
+            "min": 5000,
+            "max": 60000
+          },
+          "typeInvitationMessage": {
+            "min": 5000,
+            "max": 60000
+          },
+          "sendInvite": {
+            "min": 5000,
+            "max": 60000
+          },
+          "clickOnAcceptButton": {
+            "min": 5000,
+            "max": 60000
+          },
+          "clickProfileTitleOnRichQuerySuggestionPage": {
+            "min": 3000,
+            "max": 7000
+          }
+        }
+      },
+      "coolDownMinutes": 400,
+      "maxActionResultsPerIteration": 25,
+      "workingHours": [
+        {
+          "days": [
+            "sun"
+          ],
+          "windows": [
+            [
+              "05:00",
+              "12:00"
+            ]
+          ]
+        },
+        {
+          "days": [
+            "fri"
+          ],
+          "windows": [
+            [
+              "05:00",
+              "09:00"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "check who's already accepted invitations",
+      "actionType": "FilterContactsOutOfMyNetwork",
+      "actionSettings": {
+        "launchAutoCancelInvites": true,
+        "cancelInvitesOlderThan": 2592000000
+      },
+      "coolDownMinutes": 60,
+      "maxActionResultsPerIteration": -1,
+      "workingHours": {
+        "days": "all",
+        "windows": [
+          [
+            "09:00",
+            "23:00"
+          ]
+        ]
+      }
+    },
+    {
+      "name": "",
+      "actionType": "VisitAndExtract",
+      "actionSettings": null,
+      "coolDownMinutes": 1,
+      "maxActionResultsPerIteration": 10,
+      "workingHours": "always"
+    },
+    {
+      "name": "",
+      "actionType": "SendPersonToWebhook",
+      "actionSettings": {
+        "url": "{{WEBHOOK_URL}}",
+        "convertMultiLine": true,
+        "exportAsFlatObject": true,
+        "exportSettings": {
+          "educations": 3,
+          "messengers": 2,
+          "positions": 10,
+          "phoneNumbers": 2,
+          "websites": 3,
+          "languages": 3,
+          "thirdPartyEmails": 3,
+          "fullMessagingHistory": false,
+          "campaignMessagingHistory": false
+        }
+      },
+      "coolDownMinutes": 0,
+      "maxActionResultsPerIteration": -1,
+      "workingHours": {
+        "days": "all",
+        "windows": [
+          [
+            "09:00",
+            "23:00"
+          ]
+        ]
+      }
+    },
+    {
+      "name": "",
+      "actionType": "Waiter",
+      "actionSettings": {
+        "delay": 336
+      },
+      "coolDownMinutes": 0,
+      "maxActionResultsPerIteration": -1,
+      "workingHours": "always"
+    },
+    {
+      "name": "",
+      "actionType": "MessageToPerson",
+      "actionSettings": {
+        "messageTemplate": {
+          "type": "variants",
+          "variants": [
+            {
+              "type": "variant",
+              "child": {
+                "type": "group",
+                "children": [
+                  {
+                    "type": "text",
+                    "value": "Hi "
+                  },
+                  {
+                    "type": "var",
+                    "name": "firstName"
+                  },
+                  {
+                    "type": "text",
+                    "value": ",\n\nGreat to connect.\n\nI’m seeing more professionals use AI to streamline daily work and then channel that freed-up time into new ideas or side ventures.\n\nHow’s AI showing up in your world at the moment?\n\nTalk soon,\n(I know a) Guy"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "rejectIfReplied": false,
+        "rejectIfRepliedWithinCampaign": true,
+        "rejectIfMessagedAfterPreviousCampaignMessage": true,
+        "rejectIfMessaged": false,
+        "textInputMethod": "type",
+        "delays": {
+          "navigateToProfile": {
+            "min": 20000,
+            "max": 300000
+          },
+          "clickOnMessageButton": {
+            "min": 5000,
+            "max": 60000
+          },
+          "switchSendMethod": {
+            "min": 5000,
+            "max": 60000
+          },
+          "typeMessage": {
+            "min": 5000,
+            "max": 60000
+          },
+          "attachImage": {
+            "min": 5000,
+            "max": 60000
+          },
+          "sleepAfterScrollChatHistory": {
+            "min": 2000,
+            "max": 4000
+          },
+          "clickOnSendButton": {
+            "min": 5000,
+            "max": 60000
+          },
+          "removeSelectedFilterInMessagingWidget": {
+            "min": 5000,
+            "max": 60000
+          }
+        },
+        "subjectTemplate": {
+          "type": "group",
+          "children": []
+        }
+      },
+      "coolDownMinutes": 1,
+      "maxActionResultsPerIteration": 10,
+      "workingHours": {
+        "days": [
+          "sun",
+          "tue",
+          "wed",
+          "fri",
+          "sat"
+        ],
+        "windows": [
+          [
+            "05:00",
+            "09:00"
+          ]
+        ]
+      }
+    },
+    {
+      "name": "",
+      "actionType": "CheckForReplies",
+      "actionSettings": {
+        "moveToSuccessfulAfterMs": 345600000,
+        "treatMessageAcceptedAsReply": false,
+        "keepInQueueIfRequestIsNotAccepted": true
+      },
+      "coolDownMinutes": 60,
+      "maxActionResultsPerIteration": -1,
+      "workingHours": {
+        "days": "all",
+        "windows": [
+          [
+            "09:00",
+            "23:00"
+          ]
+        ]
+      }
+    },
+    {
+      "name": "",
+      "actionType": "MessageToPerson",
+      "actionSettings": {
+        "messageTemplate": {
+          "type": "variants",
+          "variants": [
+            {
+              "type": "variant",
+              "child": {
+                "type": "group",
+                "children": [
+                  {
+                    "type": "text",
+                    "value": "Hi "
+                  },
+                  {
+                    "type": "var",
+                    "name": "firstName"
+                  },
+                  {
+                    "type": "text",
+                    "value": ",\n\nI thought you might find value in this short 3-minute video. It shows a simple, practical way I see people using LinkedIn to connect with the right people, without heavy outreach or noise.\n\nhttps://share.synthesia.io/c8ff5004-b584-44f2-ac72-c22e5476b8a4\n\nIf it resonates, would you be open to a quick Zoom in the next week or two to swap ideas and explore possible collaboration?\n\nTalk soon,\n(I know a) Guy"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "rejectIfReplied": false,
+        "rejectIfRepliedWithinCampaign": true,
+        "rejectIfMessagedAfterPreviousCampaignMessage": true,
+        "rejectIfMessaged": false,
+        "subjectTemplate": {
+          "type": "group",
+          "children": []
+        },
+        "textInputMethod": "type",
+        "delays": {
+          "navigateToProfile": {
+            "min": 20000,
+            "max": 300000
+          },
+          "clickOnMessageButton": {
+            "min": 5000,
+            "max": 60000
+          },
+          "switchSendMethod": {
+            "min": 5000,
+            "max": 60000
+          },
+          "typeMessage": {
+            "min": 5000,
+            "max": 60000
+          },
+          "attachImage": {
+            "min": 5000,
+            "max": 60000
+          },
+          "sleepAfterScrollChatHistory": {
+            "min": 2000,
+            "max": 4000
+          },
+          "clickOnSendButton": {
+            "min": 5000,
+            "max": 60000
+          },
+          "removeSelectedFilterInMessagingWidget": {
+            "min": 5000,
+            "max": 60000
+          }
+        }
+      },
+      "coolDownMinutes": 1,
+      "maxActionResultsPerIteration": 10,
+      "workingHours": {
+        "days": [
+          "sun",
+          "tue",
+          "wed",
+          "fri",
+          "sat"
+        ],
+        "windows": [
+          [
+            "05:00",
+            "09:00"
+          ]
+        ]
+      }
+    },
+    {
+      "name": "",
+      "actionType": "CheckForReplies",
+      "actionSettings": {
+        "moveToSuccessfulAfterMs": 345600000,
+        "treatMessageAcceptedAsReply": false,
+        "keepInQueueIfRequestIsNotAccepted": true
+      },
+      "coolDownMinutes": 60,
+      "maxActionResultsPerIteration": -1,
+      "workingHours": {
+        "days": "all",
+        "windows": [
+          [
+            "09:00",
+            "23:00"
+          ]
+        ]
+      }
+    },
+    {
+      "name": "",
+      "actionType": "MessageToPerson",
+      "actionSettings": {
+        "messageTemplate": {
+          "type": "variants",
+          "variants": [
+            {
+              "type": "variant",
+              "child": {
+                "type": "group",
+                "children": [
+                  {
+                    "type": "text",
+                    "value": "Hi "
+                  },
+                  {
+                    "type": "var",
+                    "name": "firstName"
+                  },
+                  {
+                    "type": "text",
+                    "value": ",\n\nOne last share in case it’s useful — I write a short LinkedIn newsletter about practical ways people are using AI in their work.\n\nIf that’s of interest, here’s the link:\nhttps://www.linkedin.com/newsletters/7046073647416963073/\n\nNo need to reply — just thought I’d pass it on.\n\nTalk soon,\n(I know a) Guy"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "rejectIfReplied": false,
+        "rejectIfRepliedWithinCampaign": true,
+        "rejectIfMessagedAfterPreviousCampaignMessage": true,
+        "rejectIfMessaged": false,
+        "textInputMethod": "type",
+        "delays": {
+          "navigateToProfile": {
+            "min": 20000,
+            "max": 300000
+          },
+          "clickOnMessageButton": {
+            "min": 5000,
+            "max": 60000
+          },
+          "switchSendMethod": {
+            "min": 5000,
+            "max": 60000
+          },
+          "typeMessage": {
+            "min": 5000,
+            "max": 60000
+          },
+          "attachImage": {
+            "min": 5000,
+            "max": 60000
+          },
+          "sleepAfterScrollChatHistory": {
+            "min": 2000,
+            "max": 4000
+          },
+          "clickOnSendButton": {
+            "min": 5000,
+            "max": 60000
+          },
+          "removeSelectedFilterInMessagingWidget": {
+            "min": 5000,
+            "max": 60000
+          }
+        },
+        "subjectTemplate": {
+          "type": "group",
+          "children": []
+        }
+      },
+      "coolDownMinutes": 1,
+      "maxActionResultsPerIteration": 10,
+      "workingHours": {
+        "days": [
+          "sun",
+          "tue",
+          "wed",
+          "fri",
+          "sat"
+        ],
+        "windows": [
+          [
+            "05:00",
+            "09:00"
+          ]
+        ]
+      }
+    }
+  ]
+}

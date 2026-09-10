@@ -29,6 +29,9 @@ Commands (run as root or the LH user; the DB is read with mode=ro, never written
   lh-campaigns.py show <campaign-id>           every action, setting and hour (UTC + local)
   lh-campaigns.py diff <id-a> <id-b>           field-by-field comparison of two campaigns
   lh-campaigns.py plan <recipe.json>           print the payload that WOULD be sent, no LH contact
+  lh-campaigns.py export <campaign-id> [--name NAME] [--out recipe.json]
+                                               existing campaign -> recipe (webhook -> placeholder,
+                                               hours -> local), with a round-trip check
   lh-campaigns.py create <recipe.json> [--name NAME] [--compare ID] [--force]
                                                create it through the running instance
 
@@ -184,51 +187,139 @@ def recipe_days(spec):
     return [DAY_NAMES.index(d[:3].lower()) for d in spec]
 
 
-def build_working_hours(spec, offset_min):
-    """Recipe -> LH IWeekWorkingSchedule (UTC): {"0": [{"start":[h,m],"end":[h,m]}] | true | false, ...}.
+def _merge(intervals):
+    """Sort [s, e] minute pairs on one timeline and join the ones that touch (e + 1 == next s)."""
+    out = []
+    for s, e in sorted(intervals):
+        if out and s <= out[-1][1] + 1:
+            out[-1][1] = max(out[-1][1], e)
+        else:
+            out.append([s, e])
+    return out
 
-    spec = "always" | {"days": "all"|"weekdays"|[names], "windows": [["00:00","03:00"], ...]}
-    Local windows are shifted to UTC on a week timeline and split where they cross a UTC
-    day boundary, so a Brisbane 00:00-03:00 lands as 14:00-17:00 UTC the previous day.
-    """
-    if spec == "always":
-        return {str(d): True for d in range(7)}
-    utc = {d: [] for d in range(7)}
-    for d in recipe_days(spec.get("days")):
-        for start, end in spec["windows"]:
-            s = d * MIN_IN_DAY + hhmm_to_min(start) - offset_min
-            e = d * MIN_IN_DAY + hhmm_to_min(end) - offset_min
-            if e < s:
-                raise ValueError(f"window ends before it starts: {start}-{end}")
+
+def _shift_and_split(intervals_by_day, delta_min):
+    """Shift per-day [s, e] minute windows by delta on a week timeline, then cut them at day
+    boundaries and merge what touches. Used both ways: local -> UTC (delta = -offset) and
+    UTC -> local (delta = +offset). Returns {day: [[s, e], ...]} with s, e in minutes of day."""
+    timeline = []
+    for d, wins in intervals_by_day.items():
+        for s, e in wins:
+            s = d * MIN_IN_DAY + s + delta_min
+            e = d * MIN_IN_DAY + e + delta_min
             s %= MIN_IN_WEEK
             e %= MIN_IN_WEEK
             if e < s:                       # wrapped past Saturday night
                 e += MIN_IN_WEEK
-            while True:
-                day = (s // MIN_IN_DAY) % 7
-                day_end = (s // MIN_IN_DAY + 1) * MIN_IN_DAY - 1
-                seg_end = min(e, day_end)
-                utc[day].append({"start": [(s % MIN_IN_DAY) // 60, s % 60],
-                                 "end": [(seg_end % MIN_IN_DAY) // 60, seg_end % 60]})
-                if seg_end == e:
-                    break
-                s = seg_end + 1
-    return {str(d): (sorted(utc[d], key=lambda w: w["start"]) if utc[d] else False) for d in range(7)}
+            timeline.append([s, e])
+    # A window that wraps past Saturday night is split so both pieces sit inside the week.
+    pieces = []
+    for s, e in timeline:
+        if e >= MIN_IN_WEEK:
+            pieces += [[s, MIN_IN_WEEK - 1], [0, e - MIN_IN_WEEK]]
+        else:
+            pieces.append([s, e])
+    out = {d: [] for d in range(7)}
+    for s, e in _merge(pieces):
+        while True:
+            day = s // MIN_IN_DAY
+            day_end = (day + 1) * MIN_IN_DAY - 1
+            seg_end = min(e, day_end)
+            out[day].append([s - day * MIN_IN_DAY, seg_end - day * MIN_IN_DAY])
+            if seg_end == e:
+                break
+            s = seg_end + 1
+    return {d: _merge(v) for d, v in out.items()}
+
+
+def build_working_hours(spec, offset_min):
+    """Recipe -> LH IWeekWorkingSchedule (UTC): {"0": [{"start":[h,m],"end":[h,m]}] | true | false, ...}.
+
+    spec = "always"
+         | {"days": "all"|"weekdays"|[names], "windows": [["00:00","03:00"], ...]}
+         | a list of the above dicts (union), for schedules that differ by day.
+    Local windows are shifted to UTC on a week timeline and split where they cross a UTC
+    day boundary, so a Brisbane 00:00-03:00 lands as 14:00-17:00 UTC the previous day.
+    A day that ends up covered 00:00-23:59 is sent as `true`, which is how LH stores "all day".
+    """
+    if spec == "always":
+        return {str(d): True for d in range(7)}
+    specs = spec if isinstance(spec, list) else [spec]
+    local = {d: [] for d in range(7)}
+    for one in specs:
+        for d in recipe_days(one.get("days")):
+            for start, end in one["windows"]:
+                s, e = hhmm_to_min(start), hhmm_to_min(end)
+                if e < s:
+                    raise ValueError(f"window ends before it starts: {start}-{end}")
+                local[d].append([s, e])
+    utc = _shift_and_split(local, -offset_min)
+    sched = {}
+    for d in range(7):
+        wins = utc[d]
+        if not wins:
+            sched[str(d)] = False
+        elif wins == [[0, MIN_IN_DAY - 1]]:
+            sched[str(d)] = True
+        else:
+            sched[str(d)] = [{"start": [s // 60, s % 60], "end": [e // 60, e % 60]} for s, e in wins]
+    return sched
+
+
+def schedule_to_rows(sched):
+    """What LH's toWeekWorkingIntervals will store for a schedule: (day, all_day, start, end) tuples."""
+    rows = []
+    for d in range(7):
+        v = sched[str(d)]
+        if v is False or v == []:
+            rows.append((d, 0, None, None))
+        elif v is True:
+            rows.append((d, 1, 0, MIN_IN_DAY - 1))
+        else:
+            for w in v:
+                s, e = w["start"][0] * 60 + w["start"][1], w["end"][0] * 60 + w["end"][1]
+                rows.append((d, 1 if (s == 0 and e == MIN_IN_DAY - 1) else 0, s, e))
+    return sorted(rows)
+
+
+def rows_to_recipe_hours(rows, offset_min):
+    """DB rows (UTC) -> recipe workingHours in local time: "always", one dict, or a list of dicts."""
+    if rows and all(h["all_day"] for h in rows) and len({h["day"] for h in rows}) == 7:
+        return "always"
+    utc = {d: [] for d in range(7)}
+    for h in rows:
+        if h["all_day"]:
+            utc[h["day"]].append([0, MIN_IN_DAY - 1])
+        elif h["start"] is not None:
+            utc[h["day"]].append([h["start"], h["end"]])
+    local = _shift_and_split(utc, offset_min)
+    # Group days that share the same windows so the recipe stays readable.
+    groups = {}
+    for d in range(7):
+        if local[d]:
+            key = tuple((s, e) for s, e in local[d])
+            groups.setdefault(key, []).append(d)
+    specs = []
+    for key, days in groups.items():
+        specs.append({"days": "all" if len(days) == 7 else [DAY_NAMES[d] for d in days],
+                      "windows": [[min_to_hhmm(s), min_to_hhmm(e)] for s, e in key]})
+    if not specs:
+        return {"days": "all", "windows": []}     # never works - preserved as found
+    return specs[0] if len(specs) == 1 else specs
 
 
 def hours_local(rows, offset_min):
     """DB rows (UTC minutes) -> readable local windows, for `show`."""
+    spec = rows_to_recipe_hours(rows, offset_min)
+    if spec == "always":
+        return ["every day, all day"]
     out = []
-    for h in rows:
-        if h["all_day"]:
-            out.append(f"{DAY_NAMES[h['day']]} all day")
-        elif h["start"] is None:
-            out.append(f"{DAY_NAMES[h['day']]} off")
-        else:
-            s = (h["day"] * MIN_IN_DAY + h["start"] + offset_min) % MIN_IN_WEEK
-            e = (h["day"] * MIN_IN_DAY + h["end"] + offset_min) % MIN_IN_WEEK
-            out.append(f"{DAY_NAMES[s // MIN_IN_DAY]} {min_to_hhmm(s % MIN_IN_DAY)}-{min_to_hhmm(e % MIN_IN_DAY)}"
-                       f" (utc {DAY_NAMES[h['day']]} {min_to_hhmm(h['start'])}-{min_to_hhmm(h['end'])})")
+    for one in (spec if isinstance(spec, list) else [spec]):
+        days = one["days"] if isinstance(one["days"], str) else ",".join(one["days"])
+        out.append(f"{days}: " + (", ".join(f"{s}-{e}" for s, e in one["windows"]) or "never"))
+    out.append("utc rows: " + ", ".join(
+        f"{DAY_NAMES[h['day']]} " + ("all day" if h["all_day"] else "off" if h["start"] is None
+                                     else f"{min_to_hhmm(h['start'])}-{min_to_hhmm(h['end'])}") for h in rows))
     return out
 
 
@@ -269,8 +360,8 @@ def build_payload(recipe, c, li_account, name_override=None):
             "excludeList": [],
             "config": {
                 "actionType": a["actionType"],
-                "overridePlatform": None,
-                "actionSettings": fill(a.get("actionSettings", {}), values),
+                "overridePlatform": a.get("overridePlatform"),
+                "actionSettings": fill(a.get("actionSettings"), values),
                 "coolDown": cool_ms,
                 "maxActionResultsPerIteration": int(a.get("maxActionResultsPerIteration", -1)),
             },
@@ -394,7 +485,7 @@ def normalise(d):
         "actionSettings": a["actionSettings"],
         "coolDown": a["coolDown"],
         "maxActionResultsPerIteration": a["maxActionResultsPerIteration"],
-        "isDraft": a["isDraft"],
+        # isDraft is left out on purpose: 1 until a campaign is first started, 0 after.
         "overridePlatform": a["overridePlatform"],
         "hours": sorted((h["day"], h["all_day"], h["start"], h["end"]) for h in a["hours"]),
     } for a in d["actions"]]
@@ -451,6 +542,61 @@ def cmd_plan(c, recipe_path, name=None):
     return 0
 
 
+def cmd_export(c, cid, name=None, out=None):
+    """An existing campaign -> recipe JSON, webhook swapped for the placeholder, hours in local
+    time. Then proves the recipe rebuilds the exact working-interval rows LH holds now."""
+    with db(c) as con:
+        d = campaign_detail(con, cid)
+    off = local_offset_minutes()
+    actions = []
+    for a in d["actions"]:
+        settings = a["actionSettings"]
+        if isinstance(settings, dict) and isinstance(settings.get("url"), str) and "/lh-webhook/" in settings["url"]:
+            settings = {**settings, "url": "{{WEBHOOK_URL}}"}
+        item = {"name": a["name"]}
+        if a["description"]:
+            item["description"] = a["description"]
+        item["actionType"] = a["actionType"]
+        if a["overridePlatform"]:
+            item["overridePlatform"] = a["overridePlatform"]
+        item["actionSettings"] = settings          # None stays null - that is what LH stores for it
+        cool = a["coolDown"] or 0
+        if cool % 60000 == 0:
+            item["coolDownMinutes"] = cool // 60000
+        else:
+            item["coolDown"] = cool
+        item["maxActionResultsPerIteration"] = a["maxActionResultsPerIteration"]
+        item["workingHours"] = rows_to_recipe_hours(a["hours"], off)
+        actions.append(item)
+    recipe = {
+        "_comment": [
+            f"Exported from campaign {cid} {d['name']!r} on {time.strftime('%Y-%m-%d')} (machine offset {off:+d} min).",
+            "Times are the MACHINE'S local time (the VPS carries the client's TZ).",
+            "{{WEBHOOK_URL}} is filled from /etc/linked-helper-machine.conf (CLIENT_ID or LH_WEBHOOK_URL).",
+        ],
+        "name": name or d["name"],
+        "description": d["description"],
+        "actions": actions,
+    }
+    problems = 0
+    for i, (a, r) in enumerate(zip(d["actions"], recipe["actions"]), 1):
+        want = sorted((h["day"], h["all_day"], h["start"], h["end"]) for h in a["hours"])
+        got = schedule_to_rows(build_working_hours(r["workingHours"], off))
+        if want != got:
+            problems += 1
+            say(f"action {i} {a['actionType']}: hours do NOT round-trip\n   db:     {want}\n   recipe: {got}")
+    text = json.dumps(recipe, indent=2, ensure_ascii=False) + "\n"
+    verdict = "ROUND-TRIP FAILED" if problems else "round-trip OK: recipe rebuilds every working-interval row"
+    if out:
+        with open(out, "w", encoding="utf-8") as f:
+            f.write(text)
+        say(f"wrote {out} ({len(actions)} actions) - {verdict}")
+    else:
+        print(text, end="")
+        say(verdict)
+    return 1 if problems else 0
+
+
 def cmd_create(c, recipe_path, name=None, compare=None, force=False):
     recipe = load_recipe(recipe_path)
     with db(c) as con:
@@ -503,6 +649,8 @@ def main():
     s = sub.add_parser("show"); s.add_argument("id", type=int)
     s = sub.add_parser("diff"); s.add_argument("a", type=int); s.add_argument("b", type=int)
     s = sub.add_parser("plan"); s.add_argument("recipe"); s.add_argument("--name")
+    s = sub.add_parser("export"); s.add_argument("id", type=int); s.add_argument("--name")
+    s.add_argument("--out", help="write the recipe here instead of stdout")
     s = sub.add_parser("create"); s.add_argument("recipe"); s.add_argument("--name")
     s.add_argument("--compare", type=int, help="campaign id to diff the new one against")
     s.add_argument("--force", action="store_true", help="create even while an action is mid-flight")
@@ -517,6 +665,8 @@ def main():
             return cmd_diff(c, args.a, args.b)
         if args.cmd == "plan":
             return cmd_plan(c, args.recipe, args.name)
+        if args.cmd == "export":
+            return cmd_export(c, args.id, args.name, args.out)
         if args.cmd == "create":
             return cmd_create(c, args.recipe, args.name, args.compare, args.force)
     except Exception as e:

@@ -1,0 +1,193 @@
+{
+  "_comment": [
+    "Exported from campaign 40 'Fractional in profile' on 2026-09-11 (machine offset +600 min).",
+    "Times are the MACHINE'S local time (the VPS carries the client's TZ).",
+    "{{WEBHOOK_URL}} is filled from /etc/linked-helper-machine.conf (CLIENT_ID or LH_WEBHOOK_URL)."
+  ],
+  "name": "Fractional in profile",
+  "description": "",
+  "actions": [
+    {
+      "name": "",
+      "actionType": "InvitePerson",
+      "overridePlatform": "linkedin",
+      "actionSettings": {
+        "messageTemplate": {
+          "type": "variants",
+          "variants": [
+            {
+              "type": "variant",
+              "child": {
+                "type": "group",
+                "children": [
+                  {
+                    "type": "text",
+                    "value": "Hi "
+                  },
+                  {
+                    "type": "var",
+                    "name": "firstName"
+                  },
+                  {
+                    "type": "text",
+                    "value": ",\n\nI'm building a network of Fractional Professionals who only recommend others they trust.\nLooking at your profile - I think you'd be easy to recommend.\n\n(I know a) Guy"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "saveAsLeadSN": false,
+        "emailCustomFieldName": null,
+        "textInputMethod": "type",
+        "delays": {
+          "navigateToProfile": {
+            "min": 20000,
+            "max": 300000
+          },
+          "clickOnMoreButton": {
+            "min": 2000,
+            "max": 4000
+          },
+          "clickOnConnectButton": {
+            "min": 5000,
+            "max": 60000
+          },
+          "clickOnAddNoteButton": {
+            "min": 5000,
+            "max": 60000
+          },
+          "typeEmail": {
+            "min": 5000,
+            "max": 60000
+          },
+          "typeInvitationMessage": {
+            "min": 5000,
+            "max": 60000
+          },
+          "sendInvite": {
+            "min": 5000,
+            "max": 60000
+          },
+          "clickOnAcceptButton": {
+            "min": 5000,
+            "max": 60000
+          },
+          "clickProfileTitleOnRichQuerySuggestionPage": {
+            "min": 3000,
+            "max": 7000
+          }
+        }
+      },
+      "coolDownMinutes": 360,
+      "maxActionResultsPerIteration": 25,
+      "workingHours": [
+        {
+          "days": [
+            "tue",
+            "wed",
+            "thu"
+          ],
+          "windows": [
+            [
+              "10:00",
+              "13:00"
+            ]
+          ]
+        },
+        {
+          "days": [
+            "sat"
+          ],
+          "windows": [
+            [
+              "07:00",
+              "11:00"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "check who's already accepted invitations",
+      "actionType": "FilterContactsOutOfMyNetwork",
+      "actionSettings": {
+        "maxScrollDepth": 200,
+        "checkUntil": "PreviouslyFound",
+        "cancelInvitesOlderThan": 2592000000,
+        "launchAutoAcceptInvites": false,
+        "launchAutoCancelInvites": false
+      },
+      "coolDownMinutes": 60,
+      "maxActionResultsPerIteration": -1,
+      "workingHours": "always"
+    },
+    {
+      "name": "",
+      "actionType": "VisitAndExtract",
+      "actionSettings": null,
+      "coolDownMinutes": 1,
+      "maxActionResultsPerIteration": 10,
+      "workingHours": "always"
+    },
+    {
+      "name": "",
+      "actionType": "SendPersonToWebhook",
+      "actionSettings": {
+        "url": "{{WEBHOOK_URL}}",
+        "convertMultiLine": true,
+        "exportAsFlatObject": true,
+        "exportSettings": {
+          "educations": 3,
+          "messengers": 2,
+          "positions": 10,
+          "phoneNumbers": 2,
+          "websites": 3,
+          "languages": 3,
+          "thirdPartyEmails": 3,
+          "fullMessagingHistory": false,
+          "campaignMessagingHistory": false,
+          "positionFields": {
+            "title": true,
+            "description": true,
+            "locationName": true,
+            "dateStart": true,
+            "dateEnd": true,
+            "defaultPositionFlag": true
+          },
+          "educationFields": {
+            "degreeName": true,
+            "fieldOfStudy": true,
+            "description": true,
+            "dateStart": true,
+            "dateEnd": true
+          },
+          "phoneNumberFields": {
+            "type": true
+          },
+          "messengerFields": {
+            "provider": true
+          },
+          "languageFields": {
+            "proficiency": true
+          },
+          "thirdPartyEmailFields": {
+            "type": true,
+            "isValid": true
+          },
+          "miniProfileFields": {
+            "fullName": true,
+            "lastName": true,
+            "headline": true,
+            "avatar": true,
+            "originalValues": true,
+            "customValues": true
+          }
+        }
+      },
+      "coolDownMinutes": 0,
+      "maxActionResultsPerIteration": -1,
+      "workingHours": "always"
+    }
+  ]
+}
