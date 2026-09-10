@@ -263,8 +263,13 @@ def build_payload(recipe, c, li_account, name_override=None):
         actions.append({
             "name": a.get("name", ""),
             "description": a.get("description", ""),
+            # The UI sends an empty target and exclude list on every new action. Leave `target`
+            # out and the engine throws "invalid `people`" (found on the first live run, 11 Sep 2026).
+            "target": [],
+            "excludeList": [],
             "config": {
                 "actionType": a["actionType"],
+                "overridePlatform": None,
                 "actionSettings": fill(a.get("actionSettings", {}), values),
                 "coolDown": cool_ms,
                 "maxActionResultsPerIteration": int(a.get("maxActionResultsPerIteration", -1)),
