@@ -165,7 +165,18 @@ async function notifyPendingLeads(opts = {}) {
         }
       }
       const coach = await clientService.getClientById(coachClientId);
-      const to = coach && String(coach.clientEmailAddress || '').trim();
+      // Status gate. The pending rows live in Postgres and outlive the client: a Paused or
+      // cancelled tenant's parked meetings are still there, so without this check the digest
+      // kept emailing them (Paul Salvage, 10 Sep 2026, two days after his Status flipped to
+      // Paused - with a token-less portal link he could not even use). Only Active tenants hear
+      // from Wingguy; everyone else is left alone, silently.
+      const status = String((coach && coach.status) || '').trim();
+      if (status.toLowerCase() !== 'active') {
+        summary.details.push({ coachClientId, skipped: `client status is ${status || 'unknown'} (not Active)` });
+        log.info(`pending digest: skipped ${coachClientId} - status ${status || 'unknown'}`);
+        continue;
+      }
+      const to = String(coach.clientEmailAddress || '').trim();
       if (!to) { summary.details.push({ coachClientId, skipped: 'no client email address on record' }); continue; }
 
       const people = await collectWaitingPeople(coachClientId, coach);
