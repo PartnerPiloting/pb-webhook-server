@@ -944,6 +944,64 @@ Machine setup detail, if it goes ahead: `docs/linked-helper-machine-setup.md` on
 not depend on anyone clicking anything - the Launcher's "open and run campaigns" is a command we can
 issue.
 
+### The smooth path - decided 10 Sep 2026 after Rick Wong's build ran 2.5 hours
+
+Only ~15 minutes of a VPS build truly needs the client present (Linked Helper account, LinkedIn
+sign-in, the texted code). Everything else is you alone, or friction. The shape from here:
+
+| Who | What | How long |
+|---|---|---|
+| Client, by email | Buys the Binary Lane machine, guided by their own Claude via the playbook topic "Your Linked Helper machine". Sends the IP (+ password if they reset one) by text or Zoom chat, never email. | ~10 min, no call |
+| You, solo | `setup-ubuntu-vps.sh`, Tailscale via the `tailscale up` login link (no auth key), watchdog, backup. Screen size: read the client's monitor size from `/var/log/xrdp.log` the first time they connect, if they ever do, and set the dummy modeline to match. | ~20 min, no client |
+| Both, one call | You open Remote Desktop, share your screen on Zoom, hand the client remote control. They sign in to Linked Helper and LinkedIn and read the texted code. Password fields are dots. Tick "Restart after updates". | ~15 min |
+| Later, optional | Client wants to see the machine: send a ready-made `.rdp` (smart sizing on, dynamic resolution off, desktop size = server screen, screen mode 2) plus a Tailscale share. They install Tailscale on their OWN account - Gmail, not a work address. | 5 min follow-up |
+
+Buying the machine stays with the client - it is what makes it theirs. Don't take that on too.
+
+**The pre-session email (template, Guy's voice):**
+
+> **Subject:** Your Linked Helper machine - about ten minutes of your time
+>
+> Hi <Name>,
+>
+> Next step is the machine Linked Helper runs on.
+>
+> Linked Helper is a program that has to be running for anything to happen. On your laptop it stops
+> every time the machine sleeps or restarts, and you'd have no way of knowing. You're busy, and you
+> want this to be as close to set and forget as it can be. Otherwise you find out five days later
+> that it stopped, nothing has been coming in, and now you're the one who has to keep an eye on it.
+> That's a complete pain, and it's exactly what we're avoiding.
+>
+> So instead it goes on a small computer in a Sydney data centre that never sleeps. It doesn't get
+> shut for the school run, and it's one I can see - if it ever stalls, it's something I fix rather
+> than something you discover.
+>
+> On cost: it's about A$20 a month, on your own account and your own card, so it's yours - if you
+> ever walk away, you cancel it and nothing of yours is tangled up in mine. Put it next to what the
+> whole Wingguy setup replaces and it's small change. Having an assistant do what this does would
+> run to several thousand dollars a year, and doing it yourself costs the one thing you don't have.
+> It's worth the ten minutes to set up and it's worth the twenty dollars a month.
+>
+> Your part, and you don't need me for it: open a chat in Claude (the same Claude you've wired
+> Wingguy into, so it knows all about this system) and say
+>
+> Help me set up my Linked Helper machine
+>
+> It walks you through the purchase one screen at a time and tells you exactly what to send me at
+> the end.
+>
+> One rule: anything with a password in it comes to me by text or Zoom chat, not email. Email
+> systems mangle these things, and I'd rather not find that out on our call.
+>
+> Once I have what you send, I build the machine on my own - desktop, Linked Helper, the
+> self-restart, the nightly backup, and the monitoring that tells me if it ever stops. Then one
+> short call, about fifteen minutes, where you sign in to LinkedIn on it. That's the only bit that
+> needs you, because LinkedIn texts you a code the first time it sees a new machine.
+>
+> Cheers
+> Guy
+
+
 ---
 
 ## THE EXTENSION UPDATE FOLDER - delivery that survives updates

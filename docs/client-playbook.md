@@ -606,6 +606,67 @@ that's silently wrong otherwise.
 
 ---
 
+## YOUR LINKED HELPER MACHINE - SETTING IT UP IN TEN MINUTES
+
+Linked Helper is a program, not a website. It has to be actually running for anything to happen, and
+on a laptop that means it stops every time the machine sleeps or restarts - and nobody notices for
+weeks. So it runs on a small always-on computer in a Sydney data centre instead. It doesn't sleep, it
+doesn't get shut for the school run, and it's one I can see, so if it ever stalls it's something I
+fix rather than something you discover.
+
+**It's your machine.** You open the account and pay for it on your own card - about A$20 a month. If
+you ever walk away, you cancel it and nothing of yours is tangled up in mine. I do everything else.
+
+**Where to buy it: Binary Lane.** An Australian company with a data centre in Sydney. Go to
+binarylane.com.au, choose Linux VPS, and sign up. The machine has to be in Australia - Linked Helper
+signs in to LinkedIn as you, and if it did that from Singapore while your phone is in Sydney,
+LinkedIn sees one account in two countries at once, which is what a stolen account looks like.
+
+**The form, screen by screen.** Tell me what your screen shows and I'll keep you on track.
+
+1. **Confirm your email.** They send a code.
+2. **Configure your server.**
+   - Region: **Sydney**.
+   - Operating system: **Ubuntu**, the newest LTS version offered.
+   - Resources: **Standard**, and the **2 vCPU / 4 GB / 60 GB** row - about A$19.60.
+   - Hostname: **linkedinhelper**
+   - Backups: **Backups are not required.** I run the backups, and theirs is a two-day snapshot for
+     extra money.
+3. **Account details.** Your details and your card. **If you see a box for an SSH key, paste this in
+   exactly as it is.** It's a lock, not a key - it lets me in to build the machine and it's safe to
+   share:
+
+   `ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMHSFmW3Yds7YTIVRUK+1Bz1P0YfmNX8JoYQT34LIy73 wingguy-client-machines`
+
+4. **Complete purchase.** The machine is built in about thirty seconds and shows you an IP address -
+   four numbers with dots between them.
+5. **Only if there was no SSH key box:** open the machine, click **Recovery** in the left-hand menu,
+   then **Reset Password**. It shows a password on screen and emails it to you. That's how I get in
+   instead.
+
+**What to send Guy, by text or Zoom chat - not email:**
+
+- the IP address
+- the password, if you had to reset one
+
+**Then what.** I build the machine on my own - desktop, Linked Helper, the self-restart, the nightly
+backup, the monitoring. Then one short call, about fifteen minutes, where you sign in to LinkedIn on
+it. LinkedIn texts you a code the first time, and that's the one moment that needs you.
+
+**Three things not to do:**
+
+- Don't install Linked Helper on your laptop. One LinkedIn account runs on one machine, and that
+  machine is this one.
+- Don't sign in to LinkedIn anywhere new in the meantime.
+- Don't buy a Linked Helper licence yet. That decision comes later (see the topic on the trial and
+  which version to get).
+
+**You don't need to log in to the machine yourself.** Under the managed plan I run the campaigns. If
+you'd like to be able to look at it any time, say so and I'll send you a shortcut - it's a five-minute
+follow-up, not part of setup.
+
+---
+
 ## LINKED HELPER - THE TRIAL AND WHICH VERSION TO GET
 
 None of this needs deciding on day one, so don't let it slow you down. Here's what you need to know,
