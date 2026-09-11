@@ -117,6 +117,40 @@ async function saveDossier(tenantId, personKey, basis, payload) {
   } finally { c.release(); }
 }
 
+/**
+ * The material for the "offered times have passed" row flag (wingguyOfferedTimes), for EVERY
+ * stored person of a tenant in one query: the last full outbound email and the tail of the
+ * timeline - never the whole payload (a queue load would otherwise drag ~150 dossiers, MBs, per
+ * refresh). Returns [] when the store is down: the flag is decoration, never a gate.
+ * @returns {Array<{personKey:string, name:string, email:string|null, lastOutbound:Object|null, timelineTail:Array}>}
+ */
+async function listOfferSignals(tenantId) {
+  const p = getPool();
+  if (!p) return [];
+  const c = await p.connect();
+  try {
+    await ensureSchema(c);
+    const r = await c.query(
+      `SELECT person_key,
+              payload->>'name'  AS name,
+              payload->>'email' AS email,
+              payload->'emailRecord'->'lastOutbound' AS last_outbound,
+              (SELECT jsonb_agg(e ORDER BY n)
+                 FROM (SELECT e, n FROM jsonb_array_elements(COALESCE(payload->'timeline', '[]'::jsonb)) WITH ORDINALITY AS t(e, n)
+                       ORDER BY n DESC LIMIT 6) s) AS timeline_tail
+         FROM wingguy_dossiers WHERE tenant_id = $1`,
+      [tenantId],
+    );
+    return r.rows.map((row) => ({
+      personKey: row.person_key,
+      name: row.name || '',
+      email: row.email ? String(row.email).toLowerCase() : null,
+      lastOutbound: row.last_outbound && typeof row.last_outbound === 'object' ? row.last_outbound : null,
+      timelineTail: Array.isArray(row.timeline_tail) ? row.timeline_tail : [],
+    }));
+  } finally { c.release(); }
+}
+
 /** Find a person's dossier by (partial, case-insensitive) name. */
 async function findDossierByName(tenantId, name) {
   const p = getPool();
@@ -1018,4 +1052,4 @@ function formatDossier(row, opts = {}) {
   return lines.join('\n');
 }
 
-module.exports = { prepareDossiers, findDossierByName, getDossierRow, formatDossier, buildLiveMiniDossier, formatLiveDossier, scrub, parseJsonArrayLoose };
+module.exports = { prepareDossiers, findDossierByName, getDossierRow, listOfferSignals, formatDossier, buildLiveMiniDossier, formatLiveDossier, scrub, parseJsonArrayLoose };

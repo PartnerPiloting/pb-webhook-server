@@ -102,6 +102,11 @@ module.exports = function mountWingguyFollowups(app) {
         channel: it.channel || null,
         parkDate: it.parkDate || null,
         parkPassed: !!it.parkPassed,
+        // "offered times have passed" (2026-09-11): computed in buildQueue from the stored story,
+        // so chat's line and this tag never disagree.
+        offeredTimesPassed: !!it.offeredTimesPassed,
+        offeredTimes: it.offeredTimesPassed ? (it.offeredTimes || []) : [],
+        offeredOn: it.offeredTimesPassed ? (it.offeredOn || null) : null,
         draftState: it.draftState,   // 'ready' | 'wg-angle' | 'pending' | 'error' | 'none' — honest by construction
         wgAngle: it.draftState === 'wg-angle' ? (it.wgAngle || null) : null,
         draftUrl: (it.draftState === 'ready' || it.draftState === 'wg-angle') ? draftUrl(clientId, it.name) : null,

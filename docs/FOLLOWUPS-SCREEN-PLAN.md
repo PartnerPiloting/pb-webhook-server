@@ -196,9 +196,17 @@ What changed:
   claude-sonnet-5 (the panel chat's lane - latency-sensitive recall, not
   reasoning). Thinking off, as in the panel chat.
 
-Not built yet, worth doing next: an "offered times have passed" flag on the
-row itself. The story knows the offered dates and the screen knows today, so
-this needs no model call - it is what the Ask box caught on Simon.
+"Offered times have passed" row flag (same day, follow-on): the coach's LAST
+message offered dated slots, nobody replied, every slot is behind us -> an
+amber tag on the row (hover lists the slots) and a note on chat's queue line.
+No model call: `services/wingguyOfferedTimes.js` parses the slots out of the
+stored story's last outbound (full email body via `emailRecord.lastOutbound`,
+plus the timeline tail for LinkedIn), `wingguyDossier.listOfferSignals` reads
+only that material for the tenant in one query, and `buildQueue` attaches the
+flag so chat and the screen never disagree. Narrow by design: a slot is a
+weekday + day + month, or a day + month + clock time; a bare "26 August" in
+narrative is not an offer. Drops and parks are skipped. Tests:
+tests/wingguy-offered-times.test.js.
 
 Tests: tests/wingguy-followups-ask.test.js (pure; Anthropic client and tool
 defs stubbed).

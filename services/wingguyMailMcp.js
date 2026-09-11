@@ -1799,7 +1799,38 @@ async function buildQueue(tenant = TENANT) {
   }
   // Never serve what the live world has already answered (see applyLiveQueueGates).
   const live = deduped.length ? await applyLiveQueueGates(deduped, tenant) : { items: deduped, suppressed: { booked: 0, ceased: 0, parked: 0, messaged: 0, items: [] } };
+  await attachOfferedTimesFlags(live.items, tenant, todayIso);
   return { items: live.items, preGateCount, dismissedCount, suppressed: live.suppressed, briefPreparedAt, backlogCreatedAt };
+}
+
+// "Offered times have passed" (Guy 2026-09-11): the coach's last message offered dated slots,
+// nobody has replied, and every slot is behind us - the ball is back with the coach whatever the
+// verdict says. Read from the stored dossiers (one query, tail only) and attached HERE so chat and
+// the screen carry the same flag. Decoration only: a store failure leaves the queue untouched.
+// Drops and parks are skipped - a resolved "not now" or a dated reconnect makes the offer moot.
+async function attachOfferedTimesFlags(items, tenant, todayIso) {
+  const targets = items.filter((it) => it.kind !== 'drop' && it.kind !== 'park');
+  if (!targets.length) return;
+  let rows;
+  try { rows = await require('./wingguyDossier').listOfferSignals(tenant); } catch (_) { return; }
+  if (!rows || !rows.length) return;
+  const { offeredTimesSignal } = require('./wingguyOfferedTimes');
+  const byEmail = new Map();
+  const byName = new Map();
+  for (const r of rows) {
+    if (r.email) byEmail.set(r.email, r);
+    if (r.name) byName.set(String(r.name).trim().toLowerCase(), r);
+  }
+  for (const it of targets) {
+    const row = (it.email && byEmail.get(String(it.email).toLowerCase())) || byName.get(String(it.name || '').trim().toLowerCase());
+    if (!row) continue;
+    const sig = offeredTimesSignal(row, todayIso);
+    if (sig && sig.passed) {
+      it.offeredTimesPassed = true;
+      it.offeredTimes = sig.times;
+      it.offeredOn = sig.offeredOn;
+    }
+  }
 }
 
 async function runQueue({ page } = {}, tenant = TENANT) {
@@ -1828,8 +1859,10 @@ async function runQueue({ page } = {}, tenant = TENANT) {
   }
   // Chat line per item kind — recommendation-first (Guy 2026-08-29): the triage's advice headline
   // leads when it exists; why_line is the fallback for pre-change payloads.
+  // The offered-times flag rides the line too (same fact the screen shows as a tag).
+  const passedNote = (it) => (it.offeredTimesPassed ? ` ⚠ the times you offered (${(it.offeredTimes || []).join(', ')}) have all PASSED with no reply - offer fresh ones.` : '');
   const lineFor = (it) => {
-    const rec = (it.recommendation && String(it.recommendation).trim()) || it.whyLine;
+    const rec = ((it.recommendation && String(it.recommendation).trim()) || it.whyLine) + passedNote(it);
     if (it.kind === 'drop') return `${rec} → recommended DROP (act only on the human's confirmation; nothing sent, a new message from them still surfaces)`;
     if (it.kind === 'park') {
       return it.parkPassed
@@ -1837,7 +1870,7 @@ async function runQueue({ page } = {}, tenant = TENANT) {
         : `${rec} → recommend park ${it.parkDate || '?'} (confirm before stamping)`;
     }
     if (it.kind === 'attention') return `${rec} [needs your judgment]`;
-    if (it.kind === 'reopen') return `${it.whyLine} (${it.quietDays}d quiet)${draftMarker(it.draftState, 'backlog')}`;
+    if (it.kind === 'reopen') return `${it.whyLine} (${it.quietDays}d quiet)${passedNote(it)}${draftMarker(it.draftState, 'backlog')}`;
     return `${rec}${draftMarker(it.draftState, 'today')}`;
   };
   const PAGE = 10;

@@ -651,6 +651,12 @@ export default function FollowUpsQueue() {
                               <span className="font-medium text-gray-900">{it.name}</span>
                             )}
                             <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${badge.cls}`}>{badge.label}</span>
+                            {it.offeredTimesPassed && (
+                              <span
+                                className="text-xs px-2 py-0.5 rounded-full border font-medium bg-amber-50 text-amber-800 border-amber-300"
+                                title={`You offered ${(it.offeredTimes || []).join(', ')}${it.offeredOn ? ` on ${formatDate(it.offeredOn)}` : ''} - no reply, and every one has passed. Offer fresh times.`}
+                              >offered times have passed</span>
+                            )}
                           </div>
                           {/* Recommendation-first (2026-08-29): the advice headline leads the row;
                               the factual whyLine only renders when there is no recommendation
