@@ -6,6 +6,12 @@
 // Draft (opens the signed draft page), Done, Park (concrete date, resolved here — no chat
 // round-trip), Drop (cease, both stores). All data comes from /api/followups, which reads the
 // SAME buildQueue()/dossier store chat does — this file renders, it never decides.
+//
+// 2026-09-11 (Guy: "way too dense... what I need is a chat window where I can ask exactly what's
+// happened"): the row is TWO LINES - chip, name + live flags, one line of advice. Everything else
+// waits behind "Ask": a per-person question box (canned questions + free text) answered by
+// /api/followups/ask from the stored story plus live calendar/mailbox reads, with a glance column
+// beside it and the full story behind one link. The box answers; the buttons stay the hands.
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import HelpButton from './HelpButton';
@@ -90,7 +96,146 @@ function draftBadge(it) {
   if (it.draftState === 'wg-angle') return { label: 'open thread, use /wg', cls: 'bg-amber-100 text-amber-800 border-amber-300' };
   if (it.draftState === 'pending') return { label: 'draft coming overnight', cls: 'bg-gray-100 text-gray-600 border-gray-300' };
   if (it.draftState === 'error') return { label: 'no draft — ask in chat', cls: 'bg-red-50 text-red-700 border-red-200' };
-  return { label: 'no draft — story below', cls: 'bg-gray-100 text-gray-600 border-gray-300' };
+  return { label: 'no draft — ask below', cls: 'bg-gray-100 text-gray-600 border-gray-300' };
+}
+
+// The four questions Guy actually asks (2026-09-11). Sent as plain text, so free text works the same.
+const CANNED_QUESTIONS = [
+  'Where are we up to?',
+  'Have I missed anything?',
+  'What should I do now?',
+  'What did I promise?',
+];
+
+// The answer is plain text with **bold** and blank-line paragraphs — render exactly that, nothing more.
+function AnswerText({ text }) {
+  const paras = String(text || '').split(/\n{2,}/).map((s) => s.trim()).filter(Boolean);
+  return (
+    <>
+      {paras.map((para, i) => {
+        const parts = para.split(/(\*\*[^*]+\*\*)/g).filter(Boolean);
+        return (
+          <p key={i} className={i ? 'mt-2' : ''}>
+            {parts.map((seg, j) => (seg.startsWith('**') && seg.endsWith('**')
+              ? <strong key={j} className="font-semibold text-gray-900">{seg.slice(2, -2)}</strong>
+              : <React.Fragment key={j}>{seg.split('\n').map((line, k) => <React.Fragment key={k}>{k ? <br /> : null}{line}</React.Fragment>)}</React.Fragment>))}
+          </p>
+        );
+      })}
+    </>
+  );
+}
+
+// The Ask box: canned questions, free text, the running conversation for this one person.
+function AskPanel({ it, ask, onAsk }) {
+  const [draft, setDraft] = useState('');
+  const first = (it.name || '').split(' ')[0] || 'them';
+  const msgs = Array.isArray(ask?.messages) ? ask.messages : [];
+  const submit = (q) => {
+    const text = String(q || '').trim();
+    if (!text || ask?.pending) return;
+    setDraft('');
+    onAsk(it, text);
+  };
+  return (
+    <div>
+      <div className="flex items-center justify-between gap-3 mb-2 flex-wrap">
+        <div className="text-[11px] font-bold tracking-wide text-gray-500 uppercase">Ask about {first}</div>
+        <div className="text-xs text-gray-400">Answers come from the stored story, plus your calendar and mailbox when the question needs them</div>
+      </div>
+      <div className="flex flex-wrap gap-1.5 mb-3">
+        {CANNED_QUESTIONS.map((q) => (
+          <button
+            key={q}
+            className="px-3 py-1 rounded-full border text-sm bg-white text-gray-700 border-gray-300 hover:border-blue-500 hover:text-blue-700 disabled:opacity-50"
+            disabled={!!ask?.pending}
+            onClick={() => submit(q)}
+          >{q}</button>
+        ))}
+      </div>
+      <div className="space-y-2 max-w-3xl">
+        {msgs.length === 0 && !ask?.pending && (
+          <div className="text-sm text-gray-500">Pick a question above or type your own.</div>
+        )}
+        {msgs.map((m, i) => (
+          m.role === 'user'
+            ? <div key={i} className="ml-auto w-fit max-w-[60ch] bg-indigo-50 text-gray-900 rounded-lg rounded-br-sm px-3 py-2 text-sm">{m.content}</div>
+            : (
+              <div key={i} className="bg-white border rounded-lg rounded-bl-sm px-3 py-2 text-sm text-gray-800 leading-relaxed">
+                <AnswerText text={m.content} />
+                {Array.isArray(m.sources) && m.sources.length > 0 && (
+                  <div className="mt-2 text-[11px] text-gray-400">
+                    From: {m.sources.map((s) => <span key={s} className="inline-block border rounded-full px-1.5 mr-1 bg-gray-50">{s}</span>)}
+                  </div>
+                )}
+              </div>
+            )
+        ))}
+        {ask?.pending && <div className="text-sm text-gray-500 italic">Checking the story{ask.live ? ', your calendar and the mailbox' : ''}…</div>}
+        {ask?.error && <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded px-3 py-2">{ask.error}</div>}
+      </div>
+      <form className="mt-3 flex gap-2 max-w-3xl" onSubmit={(e) => { e.preventDefault(); submit(draft); }}>
+        <input
+          className="flex-1 border rounded-lg px-3 py-2 text-sm text-gray-800 bg-white"
+          placeholder={`Ask anything about ${first} - e.g. did he say anything about Teams?`}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          disabled={!!ask?.pending}
+        />
+        <button type="submit" className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-blue-600 hover:bg-blue-500 disabled:opacity-50" disabled={!!ask?.pending || !draft.trim()}>Ask</button>
+      </form>
+    </div>
+  );
+}
+
+// The glance column beside the Ask box: the jog, promises, a few things to remember, and the
+// full story (the old panel) behind one link for the rare time it is wanted whole.
+function GlancePanel({ it, story, builtAt, stale, source, onRefresh, refreshing }) {
+  const remember = Array.isArray(story?.remember) ? story.remember.slice(0, 4) : [];
+  const [showFull, setShowFull] = useState(false);
+  return (
+    <div className="text-sm text-gray-700 space-y-3 lg:border-l lg:pl-4">
+      {it.jog && (
+        <div>
+          <div className="text-[11px] font-bold tracking-wide text-gray-500 uppercase mb-0.5">The jog</div>
+          <div className="text-gray-700">{it.jog}</div>
+        </div>
+      )}
+      {it.wgAngle && (
+        <div className="text-xs text-amber-800"><span className="font-semibold">/wg angle:</span> {it.wgAngle}</div>
+      )}
+      {(story?.commitmentsYou || story?.commitmentsThem) && (
+        <div>
+          <div className="text-[11px] font-bold tracking-wide text-gray-500 uppercase mb-0.5">Promises</div>
+          {story.commitmentsYou && <div><span className="font-semibold">You:</span> {story.commitmentsYou}</div>}
+          {story.commitmentsThem && <div><span className="font-semibold">Them:</span> {story.commitmentsThem}</div>}
+        </div>
+      )}
+      {remember.length > 0 && (
+        <div>
+          <div className="text-[11px] font-bold tracking-wide text-gray-500 uppercase mb-0.5">Remember</div>
+          <ul className="list-disc ml-4 space-y-0.5">
+            {remember.map((r, i) => <li key={i}>{String(r)}</li>)}
+          </ul>
+        </div>
+      )}
+      <div className="flex items-center gap-2 text-xs text-gray-400 flex-wrap">
+        <span>Story built {formatDate(builtAt) || 'just now'}{source === 'live-mini' ? ' (live from the CRM)' : ''}</span>
+        {stale
+          ? <span className="text-amber-700 font-semibold">⚠ moved since</span>
+          : <span className="text-emerald-700 font-medium">✓ up to date</span>}
+        <button className="px-2 py-0.5 rounded border border-gray-300 bg-white text-gray-600 hover:bg-gray-50 disabled:opacity-50" onClick={onRefresh} disabled={refreshing}>{refreshing ? 'Refreshing…' : 'Refresh story'}</button>
+      </div>
+      <button className="text-xs text-blue-600 hover:underline" onClick={() => setShowFull((s) => !s)}>
+        {showFull ? '▴ Hide the full story' : '▸ Full story and timeline'}
+      </button>
+      {showFull && (
+        <div className="-mx-4 lg:-ml-4 lg:-mr-0 border-t">
+          <StoryPanel story={story} builtAt={builtAt} stale={stale} source={source} onRefresh={onRefresh} refreshing={refreshing} compact />
+        </div>
+      )}
+    </div>
+  );
 }
 
 const CHANNEL_CHIP = {
@@ -101,23 +246,25 @@ const CHANNEL_CHIP = {
 };
 
 // The expanded row — the person's dossier, served verbatim by /story.
-function StoryPanel({ story, builtAt, stale, source, onRefresh, refreshing }) {
+function StoryPanel({ story, builtAt, stale, source, onRefresh, refreshing, compact }) {
   const remember = Array.isArray(story?.remember) ? story.remember : [];
   const timeline = Array.isArray(story?.timeline) ? story.timeline : [];
   const meetings = Array.isArray(story?.meetings) ? story.meetings : [];
   return (
     <div className="bg-slate-50 border-t px-4 py-4 text-sm">
-      <div className="flex items-center gap-3 text-xs text-gray-400 mb-3 flex-wrap">
-        <span>Story built {formatDate(builtAt) || 'just now'}{source === 'live-mini' ? ' (live from the CRM — no prepared dossier yet)' : ''}</span>
-        {stale
-          ? <span className="text-amber-700 font-semibold">⚠ The conversation has moved since this was written</span>
-          : <span className="text-emerald-700 font-medium">✓ Up to date</span>}
-        <button
-          className="px-2 py-0.5 rounded border border-gray-300 bg-white text-gray-600 hover:bg-gray-50 disabled:opacity-50"
-          onClick={onRefresh}
-          disabled={refreshing}
-        >{refreshing ? 'Refreshing…' : 'Refresh story'}</button>
-      </div>
+      {!compact && (
+        <div className="flex items-center gap-3 text-xs text-gray-400 mb-3 flex-wrap">
+          <span>Story built {formatDate(builtAt) || 'just now'}{source === 'live-mini' ? ' (live from the CRM — no prepared dossier yet)' : ''}</span>
+          {stale
+            ? <span className="text-amber-700 font-semibold">⚠ The conversation has moved since this was written</span>
+            : <span className="text-emerald-700 font-medium">✓ Up to date</span>}
+          <button
+            className="px-2 py-0.5 rounded border border-gray-300 bg-white text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+            onClick={onRefresh}
+            disabled={refreshing}
+          >{refreshing ? 'Refreshing…' : 'Refresh story'}</button>
+        </div>
+      )}
       <div className="grid gap-5 lg:grid-cols-2">
         <div className="space-y-4">
           {story?.standing && (
@@ -224,6 +371,7 @@ export default function FollowUpsQueue() {
   const [selected, setSelected] = useState(() => new Set());
   const [expanded, setExpanded] = useState(null);     // person key
   const [stories, setStories] = useState({});         // key -> {loading, data, error, refreshing}
+  const [asks, setAsks] = useState({});               // key -> {messages:[{role,content,sources}], pending, live, error}
   const [parkFor, setParkFor] = useState(null);       // person key with the popover open
   const [showHidden, setShowHidden] = useState(false);
   const [busy, setBusy] = useState(() => new Set());  // keys with an action in flight
@@ -314,6 +462,30 @@ export default function FollowUpsQueue() {
     }
   }, [clientId, expanded, stories]);
 
+  // One question about one person. The server rebuilds its tool loop each turn from the text
+  // conversation we keep here, so a follow-up ("what did he say about Teams?") reads naturally.
+  const askAbout = useCallback(async (it, question) => {
+    const key = keyOf(it);
+    const live = /miss|appoint|calendar|booked|replied|reply|since|heard|come back|free|next week/i.test(question);
+    // Read the history from state as it stands now (never inside the updater — React may run
+    // updaters lazily), then commit the pending turn.
+    const history = [...(asks[key]?.messages || []), { role: 'user', content: question }];
+    setAsks((prev) => ({ ...prev, [key]: { messages: history, pending: true, live, error: null } }));
+    try {
+      const payload = history.map((m) => ({ role: m.role, content: m.content }));
+      const data = await apiPost('/ask', { name: it.name, email: it.email || undefined, messages: payload }, clientId);
+      setAsks((prev) => ({
+        ...prev,
+        [key]: { messages: [...(prev[key]?.messages || []), { role: 'assistant', content: data?.reply || '', sources: data?.sources || [] }], pending: false, live: false, error: null },
+      }));
+    } catch (e) {
+      // The API answers errors as JSON ({error, details}); show the human-readable half.
+      let msg = e?.message || 'Wingguy could not answer that';
+      try { const j = JSON.parse(msg); msg = j.details || j.error || msg; } catch (_) { /* plain text */ }
+      setAsks((prev) => ({ ...prev, [key]: { ...(prev[key] || { messages: [] }), pending: false, live: false, error: msg } }));
+    }
+  }, [clientId, asks]);
+
   const refreshStory = useCallback(async (it) => {
     const key = keyOf(it);
     setStories((prev) => ({ ...prev, [key]: { ...(prev[key] || {}), refreshing: true } }));
@@ -367,8 +539,8 @@ export default function FollowUpsQueue() {
           )}
         </div>
         <p className="text-sm text-gray-600">
-          Everyone you owe a reply or a nudge, with the story so far. Click a name to open LinkedIn,
-          expand the story, then <span className="font-medium">Draft</span>, <span className="font-medium">Done</span>,
+          Everyone you owe a reply or a nudge. Click a name to open LinkedIn, <span className="font-medium">Ask</span> what
+          is going on, then <span className="font-medium">Draft</span>, <span className="font-medium">Done</span>,
           <span className="font-medium"> Park</span> or <span className="font-medium">Drop</span>. Ceased, booked and
           already-messaged people are removed automatically.
           {briefPreparedAt ? <span className="text-gray-400"> Overnight brief prepared {formatDate(briefPreparedAt)}.</span> : null}
@@ -485,10 +657,11 @@ export default function FollowUpsQueue() {
                               (pre-change payloads), so rows never say the same thing twice. */}
                           {it.recommendation && <div className="text-sm font-medium text-gray-900 mt-0.5">{it.recommendation}{it.parkPassed ? ` — their own window (${formatDate(it.parkDate)}) has passed; reach out now` : ''}</div>}
                           {!it.recommendation && it.whyLine && <div className="text-sm text-gray-800 mt-0.5">{it.whyLine}{it.kind === 'park' && it.parkDate && !it.parkPassed ? ` — proposed park to ${formatDate(it.parkDate)}` : ''}{it.parkPassed ? ` — their own window (${formatDate(it.parkDate)}) has passed; reach out now` : ''}</div>}
-                          {it.jog && <div className="text-sm text-gray-500 mt-0.5">{it.jog}</div>}
-                          {it.wgAngle && <div className="text-xs text-amber-800 mt-0.5"><span className="font-semibold">/wg angle:</span> {it.wgAngle}</div>}
-                          <button className="text-xs text-blue-600 hover:underline mt-1" onClick={() => toggleStory(it)}>
-                            {expanded === key ? '▴ Hide story' : '▾ Show story'}
+                          {/* Two lines and stop (2026-09-11): the jog, the /wg angle and the story all
+                              live behind Ask now — the row is the chip, the name and the advice. */}
+                          <button className="text-xs text-blue-600 hover:underline mt-1 inline-flex items-center gap-1" onClick={() => toggleStory(it)}>
+                            <span className="inline-block w-4 h-4 rounded bg-blue-600 text-white text-[10px] leading-4 text-center font-bold">?</span>
+                            {expanded === key ? 'Hide ask' : 'Ask'}
                           </button>
                         </div>
                         <div className="flex items-center gap-1.5 shrink-0 relative">
@@ -523,19 +696,25 @@ export default function FollowUpsQueue() {
                         </div>
                       </div>
                       {expanded === key && (
-                        <div className="mb-3 -mt-1 rounded border bg-slate-50">
-                          {story?.loading && <div className="px-4 py-6 text-gray-500 text-sm">Loading the story…</div>}
-                          {story?.error && <div className="px-4 py-4 text-sm text-red-600">{story.error}</div>}
-                          {story?.data && (
-                            <StoryPanel
-                              story={story.data.story}
-                              builtAt={story.data.builtAt}
-                              stale={!!story.data.stale}
-                              source={story.data.source}
-                              refreshing={!!story.refreshing}
-                              onRefresh={() => refreshStory(it)}
-                            />
-                          )}
+                        <div className="mb-3 -mt-1 rounded-lg border bg-slate-50 px-4 py-4">
+                          <div className="grid gap-5 lg:grid-cols-[1fr_280px]">
+                            <AskPanel it={it} ask={asks[key]} onAsk={askAbout} />
+                            <div>
+                              {story?.loading && <div className="text-gray-500 text-sm lg:border-l lg:pl-4">Loading the story…</div>}
+                              {story?.error && <div className="text-sm text-red-600 lg:border-l lg:pl-4">{story.error}</div>}
+                              {story?.data && (
+                                <GlancePanel
+                                  it={it}
+                                  story={story.data.story}
+                                  builtAt={story.data.builtAt}
+                                  stale={!!story.data.stale}
+                                  source={story.data.source}
+                                  refreshing={!!story.refreshing}
+                                  onRefresh={() => refreshStory(it)}
+                                />
+                              )}
+                            </div>
+                          </div>
                         </div>
                       )}
                     </li>

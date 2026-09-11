@@ -17,6 +17,7 @@
 //   GET  /queue             the structured queue + who the live re-check hid and why
 //   GET  /story             a person's dossier payload as JSON (+ staleness); refresh=1 queues a rebuild
 //   POST /action            { name, email?, src?, action: drop|park|done, parkDate? }
+//   POST /ask               { name, email?, messages:[{role,content}] } -> a short answer about that person
 
 const express = require('express');
 const { createLogger } = require('../utils/contextLogger');
@@ -257,6 +258,32 @@ module.exports = function mountWingguyFollowups(app) {
     } catch (e) {
       logger.error(`followupsScreen: action error for ${clientId}: ${e?.message || e}`);
       res.status(500).json({ error: 'action_failed', details: e?.message || String(e) });
+    }
+  });
+
+  // The Ask box (2026-09-11): a question about ONE person, answered in a few sentences from the
+  // stored story plus live calendar/mailbox reads through the shared tool functions. Read-only by
+  // construction - services/wingguyFollowupsAsk.js has no acting tools. Runs on the tenant's own
+  // key lane; a blocked lane returns 402 with the standard "key isn't set up" message.
+  router.post('/ask', authenticateUserWithTestMode, async (req, res) => {
+    const clientId = getClientId(req);
+    const gate = await resolveGate(clientId);
+    if (!gate) return res.status(403).json({ error: 'feature_not_enabled' });
+    const { name, email, messages } = req.body || {};
+    if (!name && !email) return res.status(400).json({ error: 'name_or_email_required' });
+    if (!Array.isArray(messages) || !messages.length) return res.status(400).json({ error: 'question_required' });
+    try {
+      const { answerAboutPerson } = require('../services/wingguyFollowupsAsk');
+      const r = await answerAboutPerson({ coach: gate.client, person: { name, email }, messages });
+      if (!r.ok) {
+        if (r.blocked) return res.status(402).json({ error: 'key_not_set_up', details: r.error });
+        if (r.keyError) return res.status(402).json({ error: 'key_error', details: r.error });
+        return res.status(400).json({ error: 'ask_failed', details: r.error });
+      }
+      res.json({ ok: true, reply: r.reply, sources: r.sources, model: r.model });
+    } catch (e) {
+      logger.error(`followupsScreen: ask error for ${clientId}: ${e?.message || e}`);
+      res.status(500).json({ error: 'ask_failed', details: e?.message || String(e) });
     }
   });
 

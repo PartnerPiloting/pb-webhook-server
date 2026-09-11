@@ -160,12 +160,56 @@ linkedin-messaging-followup-next: `app/followups/page.tsx` +
   it was rejected 2026-08-10 in favour of cease-on-send (d17d035f). The screen
   plus bulk-drop is the intended way the 73-item backlog gets worked down.
 
+## The Ask box (Guy, 2026-09-11)
+
+Guy's symptom after a month on the screen: "way too dense - it would take me
+forever to read it. What I really need is a chat window where I can ask exactly
+what's happened, where we're up to." Tested live in chat on Simon Haines
+("have I missed any appointments? what should I do now?") and the answer was
+what he wanted: four short paragraphs, built from the stored story plus a live
+calendar read and a live mailbox check, and it caught that the stored draft
+was offering dates that had already passed.
+
+What changed:
+
+- The row is TWO LINES: verdict chip, name (+ draft badge), one line of advice.
+  The jog, the /wg angle and the story moved behind "Ask".
+- "Ask" opens a per-person box: four canned questions (Where are we up to? /
+  Have I missed anything? / What should I do now? / What did I promise?) plus
+  free text, with the running conversation kept while the row is open. Beside
+  it a glance column (jog, promises, remember, refresh) and the full story
+  behind one link.
+- `POST /api/followups/ask` -> `services/wingguyFollowupsAsk.js`: a small
+  question-answering agent scoped to one person. The stored dossier (same text
+  `wingguy_dossier` serves in chat) rides in the system prompt as ground truth,
+  so story questions make no tool call. Three READ-ONLY tools, all dispatched
+  through the shared TOOL_DEFS (never a second implementation): `calendar`
+  (wingguy_list_events), `replied_since` (wingguy_lead_replied_since),
+  `read_email` (wingguy_read_message). The answer reports its sources.
+- It ANSWERS, it never acts. No book/draft/park/drop/cease tool exists in it;
+  asked to do one it points at the row's buttons. Chat and the buttons stay
+  the hands. It is also not the LinkedIn-panel chat agent (wingguyChat.js),
+  which is built to act and has no story.
+- Key lane: resolveClientAnthropic, same one-door rule as the brief. Blocked
+  lane -> 402 with the standard message, nothing billed to the platform key.
+  Model: WINGGUY_ASK_MODEL_ID, falling back to WINGGUY_DRAFT_MODEL_ID, then
+  claude-sonnet-5 (the panel chat's lane - latency-sensitive recall, not
+  reasoning). Thinking off, as in the panel chat.
+
+Not built yet, worth doing next: an "offered times have passed" flag on the
+row itself. The story knows the offered dates and the screen knows today, so
+this needs no model call - it is what the Ask box caught on Simon.
+
+Tests: tests/wingguy-followups-ask.test.js (pure; Anthropic client and tool
+defs stubbed).
+
 ## Cost note
 
 Expanding a row can trigger a dossier rebuild, but only when the thread
 actually changed (fingerprint check), and on the client's own key. The
-overnight jobs are unchanged. No new model calls are introduced by the screen
-itself.
+overnight jobs are unchanged. The Ask box adds one model call per question on
+the client's own key - the story is cached across the turn's tool loop, so a
+story-only question is a few cents and a live one a little more.
 
 ## Testing
 
