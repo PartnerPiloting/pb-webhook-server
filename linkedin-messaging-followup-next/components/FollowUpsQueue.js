@@ -77,6 +77,11 @@ function addMonthsIso(months) {
   d.setMonth(d.getMonth() + months);
   return d.toISOString().slice(0, 10);
 }
+function addDaysIso(days) {
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0, 10);
+}
 function newYearIso() {
   return `${new Date().getFullYear() + 1}-01-05`; // first working-ish week of January
 }
@@ -369,12 +374,28 @@ function StoryPanel({ story, builtAt, stale, source, onRefresh, refreshing, comp
   );
 }
 
-function ParkPopover({ onPick, onClose }) {
-  const [customDate, setCustomDate] = useState('');
+// Park picker. Guy (2026-09-11, Nidhi's row): when the engine has a suggested date, Park should
+// DEFAULT to it - one click - with the manual choices still there. A suggested date that has
+// already passed is shown as such and not offered (the row says "reach out now" for a reason).
+function ParkPopover({ recommended, onPick, onClose }) {
+  const rec = recommended && recommended.date ? recommended : null;
+  const recUsable = !!(rec && !rec.passed);
+  const [customDate, setCustomDate] = useState(recUsable ? String(rec.date).slice(0, 10) : '');
   return (
     <div className="absolute right-0 top-full mt-1 z-20 bg-white border rounded-lg shadow-lg p-3 w-64">
       <div className="text-xs font-bold text-gray-600 mb-2">Park until…</div>
+      {recUsable && (
+        <button
+          className="w-full mb-2 px-2.5 py-1.5 rounded text-sm font-medium text-white bg-sky-700 hover:bg-sky-600"
+          onClick={() => onPick(String(rec.date).slice(0, 10))}
+          title="The date the overnight triage suggested from the conversation"
+        >Park to {formatDate(rec.date)} (recommended)</button>
+      )}
+      {rec && rec.passed && (
+        <div className="mb-2 text-xs text-amber-800">Suggested date {formatDate(rec.date)} has passed - pick a fresh one.</div>
+      )}
       <div className="flex flex-wrap gap-1.5 mb-2">
+        <button className="px-2.5 py-1 rounded border text-sm bg-white text-gray-700 border-gray-300 hover:bg-gray-50" onClick={() => onPick(addDaysIso(7))}>1 week</button>
         <button className="px-2.5 py-1 rounded border text-sm bg-white text-gray-700 border-gray-300 hover:bg-gray-50" onClick={() => onPick(addMonthsIso(1))}>1 month</button>
         <button className="px-2.5 py-1 rounded border text-sm bg-white text-gray-700 border-gray-300 hover:bg-gray-50" onClick={() => onPick(addMonthsIso(3))}>3 months</button>
         <button className="px-2.5 py-1 rounded border text-sm bg-white text-gray-700 border-gray-300 hover:bg-gray-50" onClick={() => onPick(newYearIso())}>New year</button>
@@ -735,7 +756,13 @@ export default function FollowUpsQueue() {
                             onClick={() => { if (window.confirm(`Drop ${it.name} permanently? Nothing is sent; a new message from them still surfaces.`)) doAction(it, 'drop'); }}
                             title="Relationship over — timers silenced permanently; nothing sent"
                           >Drop</button>
-                          {parkFor === key && <ParkPopover onPick={(d) => doAction(it, 'park', d)} onClose={() => setParkFor(null)} />}
+                          {parkFor === key && (
+                            <ParkPopover
+                              recommended={it.parkDate ? { date: it.parkDate, passed: !!it.parkPassed } : null}
+                              onPick={(d) => doAction(it, 'park', d)}
+                              onClose={() => setParkFor(null)}
+                            />
+                          )}
                         </div>
                       </div>
                       {expanded === key && (
