@@ -221,6 +221,19 @@ What changed:
 - Still NOT in it, by design: book, drop, cease, mark done, send. Those stay
   the row's buttons and chat. It is also not the LinkedIn-panel chat agent
   (wingguyChat.js), which has no story.
+
+Advice vs button date (Guy, 2026-09-12, Melissa Jarmyn's row): the advice
+line said "I'd park Melissa to early-to-mid October" and the one-click button
+said "Park to Sep 18" - both out of ONE triage answer (the why_line said "a
+couple of weeks", a third horizon). `reconcileParkDate` in
+wingguyFollowupBrief: when the advice (recommendation, else why_line) names a
+month, the park date must fall in it, otherwise the date is dropped and the
+row shows only the manual Park picker. Runs where entries are written (brief
+and backlog audit) and where they are read (buildQueue), so stored entries
+are covered without a rebuild. The triage prompts now also require the
+recommendation to name the park_date's day and month, and to resolve "a
+couple of weeks" from the day THEY said it. Tests:
+tests/wingguy-park-date-reconcile.test.js.
 - Key lane: resolveClientAnthropic, same one-door rule as the brief. Blocked
   lane -> 402 with the standard message, nothing billed to the platform key.
   Model: WINGGUY_ASK_MODEL_ID, falling back to WINGGUY_DRAFT_MODEL_ID, then

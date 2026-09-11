@@ -109,7 +109,7 @@ function parseJsonArr(text) {
 
 const TRIAGE_SYSTEM = `You triage a coach's NEGLECTED follow-up backlog — threads that went quiet 6 weeks to 12 months ago. For each person you get their recent exchange (oldest first; THEM = the person, YOU = the coach) and how long it's been silent. Classify:
 - "reopen": the relationship had real warmth or an open loop (they engaged, asked, promised, or the coach promised) and a genuine re-opening message is worth sending.
-- "park": they named a future time that hasn't arrived, or circumstances clearly say later — give park_date (ISO, resolved against today, lean later).
+- "park": they named a future time that hasn't arrived, or circumstances clearly say later — give park_date (ISO, resolved from the day THEY said it, lean later). The why_line must name the same month as park_date ("she said try again in October"); a date that contradicts the why_line is discarded.
 - "writeoff": politely dead — they declined, went cold after a pitch, or the exchange never had substance. No action.
 For every person: why_line (ONE short specific human line) and jog (1-2 sentences: who this is, where it left off). For "reopen" also draft_instruction (1-2 sentences: what the re-opening message should do, grounded ONLY in what was said).
 Return ONLY a JSON array, same order: [{"key":"<key as given>","verdict":"reopen|park|writeoff","why_line":"...","jog":"...","park_date":null,"draft_instruction":null}]`;
@@ -256,7 +256,7 @@ async function runBacklogAudit(tenant) {
     const item = {
       name: c.name, recId: c.recId || null, email: c.email, linkedin: c.linkedin,
       quietDays: c.quietDays, verdict: v.verdict,
-      whyLine: v.why_line || '', jog: v.jog || '', parkDate: v.park_date || null,
+      whyLine: v.why_line || '', jog: v.jog || '', parkDate: require('./wingguyFollowupBrief').reconcileParkDate(v.park_date, v.why_line, c.name),
       channel: c.email && c.lastInbound ? 'email' : 'linkedin',
       draftText: null, draftHtml: null, pushSubject: null,
       replyToMessageId: (c.lastInbound && c.lastInbound.id) || null,

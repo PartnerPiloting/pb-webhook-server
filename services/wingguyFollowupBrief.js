@@ -194,6 +194,26 @@ function parseJson(text) {
   return require('./wingguyDossier').parseJsonArrayLoose(text);
 }
 
+// The advice line and the park date come out of ONE triage answer, and the model can still
+// contradict itself inside it (Melissa Jarmyn, 2026-09-12: "I'd park Melissa to early-to-mid
+// October" beside park_date 2026-09-18 - the row showed both, and the wrong one was the button).
+// Rule: when the advice names a month, the date must fall in it; otherwise the date is dropped and
+// the row offers the manual Park picker instead. A wrong date must never be one click away.
+// Runs where entries are written (brief, backlog audit) AND where they are read (buildQueue), so
+// entries already in the store are covered without a rebuild.
+const MONTH_WORD = /\b(January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\b/g;
+const MONTH_INDEX = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };
+function reconcileParkDate(parkDate, advice, who) {
+  const d = String(parkDate || '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return null;
+  const named = new Set();
+  for (const m of String(advice || '').matchAll(MONTH_WORD)) named.add(MONTH_INDEX[m[1].slice(0, 3).toLowerCase()]);
+  if (!named.size) return d;
+  if (named.has(Number(d.slice(5, 7)))) return d;
+  console.warn(`[followupBrief] park date ${d} dropped for ${who || '?'}: the advice names month ${[...named].join('/')} - manual Park instead`);
+  return null;
+}
+
 const TRIAGE_SYSTEM = `You triage a coach's follow-up queue. For each person you get the engine's mechanical signal (tier/why), what was ACTUALLY said recently (email snippets and/or LinkedIn lines, oldest first; THEM = the person, YOU = the coach), and — for people the coach has met — a CALL OUTCOME + SENT RECORD block from the call-transcript store and the mailbox. Read the words — the mechanical signal is often wrong about what is owed.
 
 GROUND TRUTH ORDER: the CALL OUTCOME + SENT RECORD block, when present, OUTRANKS the message snippets. A decision about someone the coach has MET flows from what was said on the call, not from the email shadow around it. And check the SENT record before declaring anything owed: a promise the record shows already delivered is DONE — never re-propose it. In particular, a coach's wrap email sent on or after the call day usually IS the promised "more detail" — read the last email's text (given below the sent list) before declaring any send-material promise outstanding; if that email covers the promised ground, the promise is fulfilled and the ball is with the other person.
@@ -202,13 +222,13 @@ CLIPPED RECORDS: snippets are cut at a fixed length, and LinkedIn lines may end 
 
 THE COACH'S DOCTRINE — their time is the scarce resource, and a drop costs almost nothing (dropping only stops the chasing; if the person ever writes again they surface immediately). So:
 - "drop": the DEFAULT for a resolved "not now". Recommend drop when they love it but show no financial ability or buying signal; when they are building their own product first and are months from needing anything; when they gave a clean "not right now" with nothing concrete booked; or when the enthusiasm is one-sided. Warmth alone is never a reason to keep chasing — let them come back.
-- "park": ONLY for a dated, two-sided reason to return — they named a real time ("September sounds good", "after the audit", "next quarter") or a concrete event, and returning then serves both sides. Give park_date (ISO YYYY-MM-DD, resolved against today's date, leaning a few days LATER than the literal phrase so the nudge never lands early). A vague "someday / when things settle" is a drop, not a park.
+- "park": ONLY for a dated, two-sided reason to return — they named a real time ("September sounds good", "after the audit", "next quarter") or a concrete event, and returning then serves both sides. Give park_date (ISO YYYY-MM-DD, leaning a few days LATER than the literal phrase so the nudge never lands early). Resolve a relative phrase ("a couple of weeks", "after Bali") from the day THEY said it, then lean later. The recommendation MUST name the same window as park_date, as a day and month ("I'd park her to 18 Sep - ..."): the two are shown side by side and must never disagree - a date that contradicts the advice is discarded. A vague "someday / when things settle" is a drop, not a park.
 - "draft": a real reply is owed — they asked something, offered something, or left a live thread with the coach clearly to answer. ALSO: if their last message DELIVERS something they promised (a list, an intro, a document, information the coach asked for), that deserves a short warm acknowledgment — verdict "draft", never "clear" (the coach's standing preference: a delivered promise is always acknowledged). Give draft_instruction: 1-2 sentences on what the reply should do (ground it ONLY in what was said — never invent facts).
 - "clear": nothing is owed — their last message was a pleasantry/close ("thanks, see you Thursday", "no worries"), or the exchange is plainly finished.
 - "attention": something is owed but a canned reply would be wrong (complex/sensitive/ambiguous) — the coach should look personally. Say why in the why_line.
 
 For EVERY person also give:
-- recommendation: ONE sentence of direct advice in the coach's ear, first person, verdict first with the reason from the record ("I'd drop her — loved the model but she's product-first and months from budget; let her come back to you", "I'd park him to mid-October — he asked you to try again after the audit"). This is the headline the coach reads; it must stand alone. Every verdict here is a RECOMMENDATION the coach clicks — nothing happens automatically, so say it as advice, never as a done deed.
+- recommendation: ONE sentence of direct advice in the coach's ear, first person, verdict first with the reason from the record ("I'd drop her — loved the model but she's product-first and months from budget; let her come back to you", "I'd park him to 16 Oct — he asked you to try again after the audit"). This is the headline the coach reads; it must stand alone. Every verdict here is a RECOMMENDATION the coach clicks — nothing happens automatically, so say it as advice, never as a done deed.
 - why_line: ONE short factual line — plain, specific, human ("she said September sounds good", "asked which podcast episode you meant"). Not a category label.
 - jog: 1-2 sentences of memory-jog — who this is and where things stand, from the record only. For someone the coach has MET, open with the call and its outcome ("Call 13 Aug went well, but…") — the call is the part they cannot remember.
 
@@ -457,7 +477,7 @@ async function prepareFollowupBrief(tenant) {
         recommendation: v.recommendation || null, // the advice headline ("I'd drop her — …"); screen + chat lead with it
         whyLine: v.why_line || item.why,
         jog: v.jog || '',
-        parkDate: v.park_date || null,
+        parkDate: reconcileParkDate(v.park_date, v.recommendation || v.why_line, name),
         parked: false,     // NEVER set any more (2026-08-29, nothing automatic) — kept so old renderers stay honest
         parkError: null,
         draftHtml: null,
@@ -658,4 +678,4 @@ function formatBrief(row) {
   return lines.join('\n');
 }
 
-module.exports = { prepareFollowupBrief, getBrief, setStatus, formatBrief, linkedInTail, gatherPersonContext, writeDraft, draftPlainText, entrySig, canReuseEntry, refreshEntry, _setPool, STALE_HOURS, REFRESH_DAYS };
+module.exports = { prepareFollowupBrief, getBrief, setStatus, formatBrief, linkedInTail, gatherPersonContext, writeDraft, draftPlainText, entrySig, canReuseEntry, refreshEntry, reconcileParkDate, _setPool, STALE_HOURS, REFRESH_DAYS };

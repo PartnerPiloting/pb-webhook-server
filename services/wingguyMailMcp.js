@@ -1754,6 +1754,10 @@ async function buildQueue(tenant = TENANT) {
   const todayIso = new Date().toISOString().slice(0, 10);
   let briefPreparedAt = null;
   let backlogCreatedAt = null;
+  // Read-time guard (2026-09-12, Melissa Jarmyn): a stored park date that contradicts the advice
+  // line it sits beside is dropped here too, so entries built before the guard never show a
+  // wrong one-click date. Lazy require - the brief module requires this one.
+  const reconciledPark = (it) => require('./wingguyFollowupBrief').reconcileParkDate(it.parkDate, it.recommendation || it.whyLine, it.name);
   try {
     const row = await briefStore.getBrief(tenant);
     const p = row && row.payload ? (typeof row.payload === 'string' ? JSON.parse(row.payload) : row.payload) : null;
@@ -1769,7 +1773,7 @@ async function buildQueue(tenant = TENANT) {
       // payloads only) — nothing left to action, so not queued (the live gate drops them anyway).
       // A park proposal whose date has already PASSED is not a park decision any more — their own
       // named window closed, so it serves as "reach out now" (Joe Cozzupoli, 2026-07-24).
-      else if (it.verdict === 'park' && !it.parked) items.push({ ...it, src: 'today', kind: 'park', builtAt, draftState, parkPassed: !!(it.parkDate && it.parkDate <= todayIso) });
+      else if (it.verdict === 'park' && !it.parked) { const parkDate = reconciledPark(it); items.push({ ...it, parkDate, src: 'today', kind: 'park', builtAt, draftState, parkPassed: !!(parkDate && parkDate <= todayIso) }); }
       else if (it.verdict === 'attention') items.push({ ...it, src: 'today', kind: 'attention', builtAt, draftState });
     }
   } catch (_) { /* brief store down — queue still serves backlog */ }
@@ -1780,7 +1784,7 @@ async function buildQueue(tenant = TENANT) {
     const builtAt = backlogCreatedAt;
     const pend = ((p && p.items) || []).filter((i) => i.status === 'pending');
     for (const it of pend.filter((i) => i.verdict === 'reopen')) items.push({ ...it, src: 'backlog', kind: 'reopen', builtAt, draftState: deriveDraftState(it) });
-    for (const it of pend.filter((i) => i.verdict === 'park')) items.push({ ...it, src: 'backlog', kind: 'park', builtAt, draftState: deriveDraftState(it), parkPassed: !!(it.parkDate && it.parkDate <= todayIso) });
+    for (const it of pend.filter((i) => i.verdict === 'park')) { const parkDate = reconciledPark(it); items.push({ ...it, parkDate, src: 'backlog', kind: 'park', builtAt, draftState: deriveDraftState(it), parkPassed: !!(parkDate && parkDate <= todayIso) }); }
   } catch (_) { /* ignore */ }
   const preGateCount = items.length;
   // Dedupe by name (a person can appear in both stores — today's view wins).
