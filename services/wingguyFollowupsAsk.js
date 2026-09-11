@@ -100,6 +100,7 @@ DRAFTS
 - Which channel: reply where the conversation lives. The story's timeline shows the channel of each message; the person line below says whether they have an email address. A LinkedIn-only person gets a LinkedIn message (shorter, no links unless asked, no subject); say "copy this into the LinkedIn thread". An email person gets an email; say the coach can push it when happy. If both channels are live, use the one their last message came on, and say so.
 - Push only on the coach's say-so: "push it", "send it to my drafts", "put it in Gmail", "yes push" - then call push_draft with the SAME wording as simple HTML (<p> paragraphs, <a href> for links), replying in the existing thread when the story shows a reply_to_message_id ("push with: ..."), subject "Re: <their subject>". If the coach asks for a change and a push in one breath, apply the change, show the final wording in a draft block, and push in the same turn.
 - After a push, say it is in their mailbox Drafts, threaded, unsent, for them to read and send. Never say it was sent. A LinkedIn message cannot be pushed - the card's Copy button and profile link are the route.
+- Library links: write them as {{asset:key}} exactly as the rulebook says; they are turned into the real link before the card is shown and again at push. Never write a link whose key is not in the rulebook.
 - A draft must not contain a time that did not come from check_availability.
 
 WHEN TO USE TOOLS
@@ -232,7 +233,7 @@ const SOURCE_LABEL = {
  * @param {Object} p.coach       clientService record (clientId, timezone, anthropicApiKey, managedClaudeKey, clientName)
  * @param {Object} p.person      { name, email, linkedin } - linkedin = profile URL, shown beside any draft
  * @param {Array}  p.messages    running text conversation [{role:'user'|'assistant', content:string}], last = the question
- * @param {Object} [p.deps]      test seams: llm (Anthropic client), mailTools, bookingTools, dossierText, rulesText
+ * @param {Object} [p.deps]      test seams: llm (Anthropic client), mailTools, bookingTools, dossierText, rulesText, assets
  * @returns {{ok:boolean, reply?:string, sources?:string[], blocked?:boolean, error?:string, model?:string}}
  */
 async function answerAboutPerson({ coach, person, messages, deps = {} }) {
@@ -343,7 +344,23 @@ async function answerAboutPerson({ coach, person, messages, deps = {} }) {
   }
 
   if (!text) text = "I couldn't put an answer together for that - try asking it another way.";
-  return { ok: true, reply: normaliseDashes(text), sources: [...sources], model: MODEL_ID };
+  // Asset placeholders (Guy, 2026-09-11, Heinna's card): the rulebook has the model write library
+  // links as {{asset:key}} - the email push door resolves those, but a LinkedIn draft is COPIED
+  // off the card, so the real URL has to be there. Same resolver the push door uses; an unknown
+  // key stays visible on purpose (noticed beats silently dropped).
+  return { ok: true, reply: normaliseDashes(await resolveAssetPlaceholders(text, clientId, deps)), sources: [...sources], model: MODEL_ID };
+}
+
+async function resolveAssetPlaceholders(text, clientId, deps = {}) {
+  const s = String(text || '');
+  if (!/\{\{\s*asset:/.test(s)) return s;
+  let assets = deps.assets;
+  if (assets == null) {
+    try { assets = await require('./wingguyRulesStore').getAssets({ tenantId: clientId }); }
+    catch (e) { logger.warn(`followupsAsk: asset library unavailable for ${clientId}: ${e && e.message}`); return s; }
+  }
+  const { detectAssets } = deps.mailModule || require('./wingguyMailMcp');
+  return detectAssets(s, assets || []).html;
 }
 
 module.exports = { answerAboutPerson, normaliseDashes, todayLine, buildTools, MODEL_ID };

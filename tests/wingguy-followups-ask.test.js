@@ -69,7 +69,8 @@ function fakeTools() {
     ],
   };
 }
-const depsFor = (t, llm) => ({ llm, mailTools: t.mailTools, bookingTools: t.bookingTools, rulesText: RULES });
+const ASSETS = [{ asset_key: 'calendly_link', url: 'https://calendly.com/example/30min', status: 'active' }, { asset_key: 'old_deck', url: 'https://x/old', status: 'retired' }];
+const depsFor = (t, llm) => ({ llm, mailTools: t.mailTools, bookingTools: t.bookingTools, rulesText: RULES, assets: ASSETS });
 
 (async () => {
   console.log('wingguyFollowupsAsk');
@@ -212,6 +213,15 @@ const depsFor = (t, llm) => ({ llm, mailTools: t.mailTools, bookingTools: t.book
     const bad = await answerAboutPerson({ coach, person, messages: [{ role: 'assistant', content: 'x' }], deps: depsFor(t, llm) });
     assert.strictEqual(bad.ok, false);
     assert.strictEqual(bad.error, 'question_required');
+  });
+
+  await check('asset placeholders in the reply resolve to the real URL for the Copy card; unknown/retired keys stay visible', async () => {
+    const t = fakeTools();
+    const llm = fakeLlm([textTurn('Here you go:\n\n```draft\nHi Sam,\n\nBook here: {{asset:calendly_link}}\n\nAlso {{asset:old_deck}} and {{asset:nope}}.\n```')]);
+    const r = await answerAboutPerson({ coach, person, messages: [{ role: 'user', content: 'draft a nudge' }], deps: depsFor(t, llm) });
+    assert.strictEqual(r.ok, true);
+    assert.ok(r.reply.includes('Book here: https://calendly.com/example/30min'), r.reply);
+    assert.ok(r.reply.includes('{{asset:old_deck}}') && r.reply.includes('{{asset:nope}}'), 'retired + unknown keys left visible');
   });
 
   await check('helpers: normaliseDashes and todayLine', async () => {
