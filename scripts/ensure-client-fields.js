@@ -85,6 +85,11 @@ const LEADS_FIELDS = [
 // Fields to ensure on the master Clients base's Clients table (per-client config).
 const MASTER_FIELDS = [
   {
+    name: 'LH Account Email',
+    type: 'email',
+    description: "The email the client's LinkedIn account is logged in with - what Linked Helper stamps as my_email on every webhook payload. Often NOT the business email (Ashley, Owen, Szymon). The LH sender guard (routes/webhookHandlers.js) compares each incoming batch against THIS first, falling back to Client Email Address when blank; a mismatch = another person's Linked Helper is posting into this client's base (the Rish incident, 2026-07-18) and fires the \"LH webhook sender mismatch\" alert. Fill it from the alert email's \"Actual sender\" line when the sender is the client themselves. Also matched as an attendee email on the onboarding board. Added 2026-09-11."
+  },
+  {
     name: 'Anthropic Key Added At',
     type: 'dateTime',
     description: 'When the client\'s BYO Anthropic key was last saved (portal "Your Claude key" section or a re-check that passed). Written by clientService.updateClientAnthropicKey; shown masked on the setup page. Blank on keys pasted into Airtable by hand before this rollout. Added 2026-08-28 (Julian\'s key-ran-out session).',
