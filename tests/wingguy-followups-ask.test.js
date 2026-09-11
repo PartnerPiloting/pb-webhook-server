@@ -7,7 +7,8 @@
  *      wingguy_lead_replied_since) scoped to the tenant, and the sources say so.
  *   3. Two hands and only two: check_availability -> wingguy_check_availability (the only source of
  *      offered times) and push_draft -> wingguy_create_draft with the recipient PINNED to the person.
- *      Never book / park / drop / cease / send.
+ *      Never book / park / drop / cease / send. A park is a PROPOSAL (```park fence + reply.proposal)
+ *      that the screen turns into a confirm card; the date is checked in code (real, not past).
  *   4. A person with no email gets no mailbox tools and no push; a blocked key lane returns
  *      blocked, not a call.
  *   5. The rulebook rides in the system prompt (voice for drafts); reader-facing dashes are
@@ -25,7 +26,7 @@ const check = async (name, fn) => {
   catch (e) { failures++; console.error(`  ✗ ${name}\n    ${e.message}`); }
 };
 
-const { answerAboutPerson, normaliseDashes, todayLine, buildTools } = require('../services/wingguyFollowupsAsk');
+const { answerAboutPerson, normaliseDashes, todayLine, todayYmd, checkParkProposals, buildTools } = require('../services/wingguyFollowupsAsk');
 
 const coach = { clientId: 'Test-Coach', clientName: 'Test Coach', timezone: 'Australia/Brisbane', anthropicApiKey: 'sk-test' };
 const person = { name: 'Sam Example', email: 'sam@example.com' };
@@ -222,6 +223,37 @@ const depsFor = (t, llm) => ({ llm, mailTools: t.mailTools, bookingTools: t.book
     assert.strictEqual(r.ok, true);
     assert.ok(r.reply.includes('Book here: https://calendly.com/example/30min'), r.reply);
     assert.ok(r.reply.includes('{{asset:old_deck}}') && r.reply.includes('{{asset:nope}}'), 'retired + unknown keys left visible');
+  });
+
+  await check('park is a proposal: the fence rides through, reply.proposal is structured, no park tool is called', async () => {
+    const t = fakeTools();
+    const llm = fakeLlm([textTurn('Park him then - click to make it real.\n\n```park\n2099-11-24\nyour own promise — end of November, ahead of the Langley Park event\n```')]);
+    const r = await answerAboutPerson({ coach, person, messages: [{ role: 'user', content: 'Okay can you park until then?' }], deps: depsFor(t, llm) });
+    assert.strictEqual(r.ok, true, JSON.stringify(r));
+    assert.deepStrictEqual(t.log.map((l) => l.name), ['wingguy_dossier'], 'nothing acted on');
+    assert.deepStrictEqual(r.proposal, { kind: 'park', date: '2099-11-24', why: 'your own promise - end of November, ahead of the Langley Park event' });
+    assert.ok(/```park\n2099-11-24\nyour own promise - end of November/.test(r.reply), r.reply);
+    const sys = llm.calls[0].system.map((b) => b.text).join('\n');
+    assert.ok(/```park/.test(sys) && /PARKING/.test(sys), 'park-fence instruction present');
+  });
+
+  await check('a past or malformed park date never reaches the card', async () => {
+    const today = todayYmd('Australia/Brisbane');
+    const past = checkParkProposals('Sure.\n\n```park\n2020-01-05\n```', 'Australia/Brisbane');
+    assert.strictEqual(past.proposal, null);
+    assert.ok(!/```park/.test(past.text) && /2020-01-05.*behind us/.test(past.text), past.text);
+    const bad = checkParkProposals('```park\nend of November\n```', 'Australia/Brisbane');
+    assert.strictEqual(bad.proposal, null);
+    assert.ok(!/```park/.test(bad.text) && /Park button/.test(bad.text), bad.text);
+    const impossible = checkParkProposals('```park\n2099-02-31\n```', 'Australia/Brisbane');
+    assert.strictEqual(impossible.proposal, null);
+    const todayOk = checkParkProposals(`\`\`\`park\n${today}\n\`\`\``, 'Australia/Brisbane');
+    assert.deepStrictEqual(todayOk.proposal, { kind: 'park', date: today }, 'today itself is allowed');
+    const none = checkParkProposals('No fence here.', 'Australia/Brisbane');
+    assert.strictEqual(none.proposal, null);
+    assert.strictEqual(none.text, 'No fence here.');
+    const two = checkParkProposals('```park\n2099-01-05\n```\n\n```park\n2099-02-02\n```', 'Australia/Brisbane');
+    assert.strictEqual(two.proposal.date, '2099-01-05', 'first valid one is the proposal');
   });
 
   await check('helpers: normaliseDashes and todayLine', async () => {

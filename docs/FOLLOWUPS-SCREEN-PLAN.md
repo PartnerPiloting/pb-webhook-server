@@ -204,9 +204,23 @@ What changed:
   email people get an email. Reply where the conversation lives. This is a
   LIVE draft on request from the live story - not the retired overnight
   paste-ready LinkedIn draft (2026-08-01), which went stale by morning.
-- Still NOT in it, by design: book, park, drop, cease, mark done, send. Those
-  stay the row's buttons and chat. It is also not the LinkedIn-panel chat
-  agent (wingguyChat.js), which has no story.
+- Park PROPOSAL (Guy, 2026-09-12, Deon's row): "okay can you park until then?"
+  got "I can't action it from here" - a dead end after a clear instruction,
+  right after the box had offered to "flag this to resurface". Now the box
+  proposes and the coach clicks. The model has NO park tool; when asked to
+  park it writes the date in a ```park fence (YYYY-MM-DD, optional one-line
+  reason). `checkParkProposals` checks the date in code before it reaches the
+  screen - a malformed, impossible or past date is replaced with plain text
+  pointing at the row's Park button, because dates are where the model drifts
+  ("end of November" once became "23-25 November"). The screen draws the
+  fence as a card - "Park Deon until 24 Nov?" with one button - and that
+  button calls the SAME `POST /action` park the row's button calls. On
+  success the box says what it did, the top notice shows, and the row clears
+  a moment later. The reply also carries `proposal: {kind:'park', date, why}`
+  structured. Confirm-then-act, never silent.
+- Still NOT in it, by design: book, drop, cease, mark done, send. Those stay
+  the row's buttons and chat. It is also not the LinkedIn-panel chat agent
+  (wingguyChat.js), which has no story.
 - Key lane: resolveClientAnthropic, same one-door rule as the brief. Blocked
   lane -> 402 with the standard message, nothing billed to the platform key.
   Model: WINGGUY_ASK_MODEL_ID, falling back to WINGGUY_DRAFT_MODEL_ID, then

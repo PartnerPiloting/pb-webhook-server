@@ -17,7 +17,13 @@
 //   push_draft -> wingguy_create_draft: an email DRAFT in the coach's own mailbox, threaded, never
 //     sent, addressed ONLY to this person (the recipient is fixed server-side). Wording is shown in
 //     the box first; the push happens only when the coach says push/send it.
-// Still NOT here, by design: book, park, drop, cease. The row's buttons and chat stay those hands.
+// PARK, PROPOSED NOT DONE (Guy, 2026-09-12, Deon's row: "okay can you park until then?" got "I
+// can't action it from here" - a dead end after a clear instruction). The box has NO park tool.
+// When the coach asks to park, the model writes the date in a ```park fence; the screen renders
+// that as a confirm card ("Park Deon until Mon 24 Nov?") whose button calls the row's own park
+// action. The date is checked in code before it reaches the card (real date, not in the past)
+// because dates are exactly where the model drifts - "end of November" once became "23-25 Nov".
+// Still NOT here, by design: book, drop, cease, mark done, send. Those stay the row's buttons.
 // It is also NOT the LinkedIn-panel chat agent (wingguyChat.js) - that one has no story.
 //
 // Voice: the tenant's rendered rulebook (reply + follow-up + booking contexts) rides in the system
@@ -56,16 +62,43 @@ function normaliseDashes(s) {
 
 // Today, in the coach's own clock - the anchor every "have they replied since", "has that time
 // passed" question needs. Never the server's clock (Render is UTC).
+function todayYmd(tz) {
+  try {
+    return new Intl.DateTimeFormat('en-CA', { timeZone: tz || 'Australia/Brisbane', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+  } catch (_) {
+    return new Date().toISOString().slice(0, 10);
+  }
+}
 function todayLine(tz) {
   const zone = tz || 'Australia/Brisbane';
   try {
-    const d = new Date();
-    const long = new Intl.DateTimeFormat('en-AU', { timeZone: zone, weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).format(d);
-    const ymd = new Intl.DateTimeFormat('en-CA', { timeZone: zone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
-    return `TODAY IS ${long} (${ymd}, ${zone}).`;
+    const long = new Intl.DateTimeFormat('en-AU', { timeZone: zone, weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).format(new Date());
+    return `TODAY IS ${long} (${todayYmd(zone)}, ${zone}).`;
   } catch (_) {
     return `TODAY IS ${new Date().toISOString().slice(0, 10)} (UTC).`;
   }
+}
+
+// The park proposal, checked in code before it reaches the card. A ```park fence holds the date
+// (YYYY-MM-DD) on its first line and an optional one-line reason after it. A fence whose date is
+// malformed, impossible or already behind us is replaced with plain text pointing at the row's
+// Park button - a wrong date must never be one click from landing. Returns the cleaned text and
+// the first valid proposal (the screen renders the fence; the API also reports it structured).
+const PARK_FENCE = /```park\s*\n([\s\S]*?)\n?```/g;
+function checkParkProposals(text, tz) {
+  const today = todayYmd(tz);
+  let proposal = null;
+  const out = String(text || '').replace(PARK_FENCE, (_m, body) => {
+    const lines = String(body || '').split('\n').map((s) => s.trim()).filter(Boolean);
+    const date = lines[0] || '';
+    const why = normaliseDashes(lines.slice(1).join(' ')).trim();
+    const valid = /^\d{4}-\d{2}-\d{2}$/.test(date) && new Date(`${date}T00:00:00Z`).toISOString().slice(0, 10) === date;
+    if (!valid) return "(I couldn't settle on a proper date for that - use the row's Park button to pick one.)";
+    if (date < today) return `(The date I had in mind, ${date}, is already behind us - use the row's Park button to pick one.)`;
+    if (!proposal) proposal = { kind: 'park', date, ...(why ? { why } : {}) };
+    return `\`\`\`park\n${date}${why ? `\n${why}` : ''}\n\`\`\``;
+  });
+  return { text: out, proposal };
 }
 
 const SYSTEM_RULES = `You are Wingguy, working with the coach on ONE person from their follow-up queue. The coach is reading a busy screen and wants answers in a few sentences, not the whole file.
@@ -83,9 +116,17 @@ WHAT YOU CAN DO
 - ANSWER questions from the stored story, the live calendar and the live mailbox.
 - FIND TIMES TO OFFER with check_availability - the coach's real free slots with all their booking rules applied.
 - WRITE an email reply in the coach's voice (the rulebook below), show it in the box, and PUSH it to the coach's mailbox as an unsent draft with push_draft when they say so.
+- PROPOSE A PARK DATE when the coach wants to park / hold / come back to this person later - see PARKING below. You propose; the coach clicks.
 
 WHAT YOU CANNOT DO
-- Book a meeting, park, drop, cease, mark done, or send anything. Those are the row's buttons (Done, Park, Drop) and chat. The row's Draft button opens the overnight pre-written draft page, it does not send. If asked for one of these, say where it lives, then give the advice they need to do it well.
+- Book a meeting, drop, cease, mark done, or send anything. Those are the row's buttons (Done, Drop) and chat. The row's Draft button opens the overnight pre-written draft page, it does not send. If asked for one of these, say where it lives, then give the advice they need to do it well.
+- Park anyone yourself. You can only propose the date (PARKING below); nothing is parked until the coach clicks the card.
+
+PARKING
+- When the coach says to park, hold, snooze, or come back later ("park him until then", "park until December", "put her on ice for a month", "yes, flag it to resurface"), put the date inside a fenced block that opens with a line reading exactly \`\`\`park and closes with a line reading \`\`\`. First line of the block: the date as YYYY-MM-DD, nothing else. Optional second line: one short reason in the coach's terms (e.g. "your own promise - end of November, ahead of the Langley Park event"). The screen turns that block into a card with a Park button; the coach clicks to make it real, so tell them that in one line outside the block.
+- Choosing the date: the coach's own words win ("until the 24th", "3 months"). Otherwise use the promise in the story ("end of November" -> a weekday in the last week of November, a few days before any event it is tied to). Otherwise pick a sensible working day and say why. Resolve every relative phrase against TODAY above; never a date in the past, never a weekend if a weekday will do.
+- One date, one block. Do not offer a range or several blocks - pick, and say the reason in the block's second line.
+- If the coach only asks whether to park, advise; write the block only when they want it done.
 - Message anyone other than this person. push_draft is addressed to this person only.
 - Write for LinkedIn beyond suggesting wording to paste: a LinkedIn reply is typed in the thread (with /wg), not pushed.
 
@@ -234,7 +275,7 @@ const SOURCE_LABEL = {
  * @param {Object} p.person      { name, email, linkedin } - linkedin = profile URL, shown beside any draft
  * @param {Array}  p.messages    running text conversation [{role:'user'|'assistant', content:string}], last = the question
  * @param {Object} [p.deps]      test seams: llm (Anthropic client), mailTools, bookingTools, dossierText, rulesText, assets
- * @returns {{ok:boolean, reply?:string, sources?:string[], blocked?:boolean, error?:string, model?:string}}
+ * @returns {{ok:boolean, reply?:string, sources?:string[], proposal?:{kind:'park', date:string, why?:string}, blocked?:boolean, error?:string, model?:string}}
  */
 async function answerAboutPerson({ coach, person, messages, deps = {} }) {
   const clientId = coach && coach.clientId;
@@ -348,7 +389,9 @@ async function answerAboutPerson({ coach, person, messages, deps = {} }) {
   // links as {{asset:key}} - the email push door resolves those, but a LinkedIn draft is COPIED
   // off the card, so the real URL has to be there. Same resolver the push door uses; an unknown
   // key stays visible on purpose (noticed beats silently dropped).
-  return { ok: true, reply: normaliseDashes(await resolveAssetPlaceholders(text, clientId, deps)), sources: [...sources], model: MODEL_ID };
+  // Park proposals are checked before the card is drawn (a wrong date must not be one click away).
+  const parked = checkParkProposals(await resolveAssetPlaceholders(text, clientId, deps), coach.timezone || coach.timeZone);
+  return { ok: true, reply: normaliseDashes(parked.text), sources: [...sources], model: MODEL_ID, ...(parked.proposal ? { proposal: parked.proposal } : {}) };
 }
 
 async function resolveAssetPlaceholders(text, clientId, deps = {}) {
@@ -363,4 +406,4 @@ async function resolveAssetPlaceholders(text, clientId, deps = {}) {
   return detectAssets(s, assets || []).html;
 }
 
-module.exports = { answerAboutPerson, normaliseDashes, todayLine, buildTools, MODEL_ID };
+module.exports = { answerAboutPerson, normaliseDashes, todayLine, todayYmd, checkParkProposals, buildTools, MODEL_ID };

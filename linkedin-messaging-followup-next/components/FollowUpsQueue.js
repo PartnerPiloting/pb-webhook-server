@@ -12,6 +12,12 @@
 // waits behind "Ask": a per-person question box (canned questions + free text) answered by
 // /api/followups/ask from the stored story plus live calendar/mailbox reads, with a glance column
 // beside it and the full story behind one link. The box answers; the buttons stay the hands.
+//
+// 2026-09-12 (Guy, Deon's row: "okay can you park until then?" got "I can't action it from here"):
+// the box can now PROPOSE a park. The server puts the date in a ```park fence; this file draws it
+// as a confirm card ("Park Deon until 24 Nov?") whose button calls the SAME /action park the row's
+// button does. Confirm-then-act, never silent: dates are where the model drifts, and a visible
+// date on the card catches that before it is written.
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import HelpButton from './HelpButton';
@@ -138,16 +144,54 @@ function DraftCard({ text, it, onAsk, pending }) {
   );
 }
 
-// The answer is plain text with **bold**, blank-line paragraphs and ```draft fences — render
-// exactly that, nothing more.
-function AnswerText({ text, it, onAsk, pending }) {
-  const chunks = String(text || '').split(/```draft\s*\n([\s\S]*?)\n?```/g);
+// A park the box proposed, as a card (Guy, 2026-09-12): the date, the reason, one button that
+// calls the row's own park action. The server checks the date (real, not past) before the fence
+// reaches us; a fence we still cannot read points at the row's Park button rather than guessing.
+function ParkCard({ body, it, onPark, busy, parked }) {
+  const lines = String(body || '').split('\n').map((s) => s.trim()).filter(Boolean);
+  const date = lines[0] || '';
+  const why = lines.slice(1).join(' ');
+  const first = (it.name || '').split(' ')[0] || 'them';
+  const when = formatDate(date);
+  if (!when) return <p className="mt-2 text-gray-600">(No usable park date came back - use the row&apos;s Park button to pick one.)</p>;
+  const done = parked === date;
+  return (
+    <div className="my-2 rounded-lg border border-sky-200 bg-sky-50/40">
+      <div className="px-3 py-2 text-[11px] font-bold tracking-wide text-sky-800 uppercase border-b border-sky-100">{done ? `${first} parked` : `Park ${first}?`}</div>
+      <div className="px-3 py-2 text-sm text-gray-900">
+        Until <strong className="font-semibold">{when}</strong>{why ? <span className="text-gray-600"> - {why}</span> : null}. They surface at the top of the queue that day.
+        {!done && <span className="text-gray-500"> Nothing happens until you click.</span>}
+      </div>
+      <div className="px-3 py-2 flex items-center gap-2 flex-wrap border-t border-sky-100">
+        <button
+          className="px-3 py-1 rounded text-sm font-medium text-white bg-sky-700 hover:bg-sky-600 disabled:opacity-60"
+          disabled={!!busy || done}
+          onClick={() => onPark(it, date)}
+          title="Park to this date - the same as the row's Park button"
+        >{done ? 'Parked ✓' : (busy ? 'Parking…' : `Park until ${when}`)}</button>
+        {!done && <span className="text-xs text-gray-500">Different date? Use the row&apos;s Park button.</span>}
+      </div>
+    </div>
+  );
+}
+
+// The answer is plain text with **bold**, blank-line paragraphs and ```draft / ```park fences —
+// render exactly that, nothing more.
+function AnswerText({ text, it, onAsk, pending, onPark, busy, parked }) {
+  // split() with two groups yields [text, kind, body, text, kind, body, ...].
+  const chunks = String(text || '').split(/```(draft|park)\s*\n([\s\S]*?)\n?```/g);
   if (chunks.length > 1) {
     return (
       <>
-        {chunks.map((c, i) => (i % 2 === 1
-          ? <DraftCard key={i} text={c.trim()} it={it} onAsk={onAsk} pending={pending} />
-          : (c.trim() ? <AnswerText key={i} text={c} it={it} onAsk={onAsk} pending={pending} /> : null)))}
+        {chunks.map((c, i) => {
+          if (i % 3 === 1) return null; // the fence kind - consumed by the body chunk after it
+          if (i % 3 === 2) {
+            return chunks[i - 1] === 'park'
+              ? <ParkCard key={i} body={c} it={it} onPark={onPark} busy={busy} parked={parked} />
+              : <DraftCard key={i} text={c.trim()} it={it} onAsk={onAsk} pending={pending} />;
+          }
+          return c.trim() ? <AnswerText key={i} text={c} it={it} onAsk={onAsk} pending={pending} onPark={onPark} busy={busy} parked={parked} /> : null;
+        })}
       </>
     );
   }
@@ -169,7 +213,7 @@ function AnswerText({ text, it, onAsk, pending }) {
 }
 
 // The Ask box: canned questions, free text, the running conversation for this one person.
-function AskPanel({ it, ask, onAsk }) {
+function AskPanel({ it, ask, onAsk, onPark, busy }) {
   const [draft, setDraft] = useState('');
   const first = (it.name || '').split(' ')[0] || 'them';
   const msgs = Array.isArray(ask?.messages) ? ask.messages : [];
@@ -183,7 +227,7 @@ function AskPanel({ it, ask, onAsk }) {
     <div>
       <div className="flex items-center justify-between gap-3 mb-2 flex-wrap">
         <div className="text-[11px] font-bold tracking-wide text-gray-500 uppercase">Ask about {first}</div>
-        <div className="text-xs text-gray-400">Answers from the stored story, your calendar and mailbox. Ask for a draft and you get a card: Copy, their LinkedIn, and Push to email (unsent, in the thread).</div>
+        <div className="text-xs text-gray-400">Answers from the stored story, your calendar and mailbox. Ask for a draft and you get a card: Copy, their LinkedIn, and Push to email (unsent, in the thread). Say &quot;park until then&quot; and you get a date to confirm.</div>
       </div>
       <div className="flex flex-wrap gap-1.5 mb-3">
         {CANNED_QUESTIONS.map((q) => (
@@ -204,7 +248,7 @@ function AskPanel({ it, ask, onAsk }) {
             ? <div key={i} className="ml-auto w-fit max-w-[60ch] bg-indigo-50 text-gray-900 rounded-lg rounded-br-sm px-3 py-2 text-sm">{m.content}</div>
             : (
               <div key={i} className="bg-white border rounded-lg rounded-bl-sm px-3 py-2 text-sm text-gray-800 leading-relaxed">
-                <AnswerText text={m.content} it={it} onAsk={onAsk} pending={!!ask?.pending} />
+                <AnswerText text={m.content} it={it} onAsk={onAsk} pending={!!ask?.pending} onPark={onPark} busy={!!busy} parked={ask?.parked || null} />
                 {Array.isArray(m.sources) && m.sources.length > 0 && (
                   <div className="mt-2 text-[11px] text-gray-400">
                     From: {m.sources.map((s) => <span key={s} className="inline-block border rounded-full px-1.5 mr-1 bg-gray-50">{s}</span>)}
@@ -524,7 +568,7 @@ export default function FollowUpsQueue() {
   // conversation we keep here, so a follow-up ("what did he say about Teams?") reads naturally.
   const askAbout = useCallback(async (it, question) => {
     const key = keyOf(it);
-    const live = /miss|appoint|calendar|booked|replied|reply|since|heard|come back|free|next week|time|slot|offer|push|draft|avail/i.test(question);
+    const live = /miss|appoint|calendar|booked|replied|reply|since|heard|come back|free|next week|time|slot|offer|push|draft|avail|park|hold|snooze/i.test(question);
     // Read the history from state as it stands now (never inside the updater — React may run
     // updaters lazily), then commit the pending turn.
     const history = [...(asks[key]?.messages || []), { role: 'user', content: question }];
@@ -543,6 +587,34 @@ export default function FollowUpsQueue() {
       setAsks((prev) => ({ ...prev, [key]: { ...(prev[key] || { messages: [] }), pending: false, live: false, error: msg } }));
     }
   }, [clientId, asks]);
+
+  // The park card's button (2026-09-12): the same /action park the row's button calls, then the
+  // box says what it did before the row clears - so the confirmation is read where the ask was.
+  const parkFromAsk = useCallback(async (it, date) => {
+    const key = keyOf(it);
+    setBusy((prev) => new Set(prev).add(key));
+    try {
+      await apiPost('/action', { name: it.name, email: it.email || undefined, src: it.src, action: 'park', parkDate: date }, clientId);
+      setAsks((prev) => ({
+        ...prev,
+        [key]: {
+          ...(prev[key] || {}),
+          messages: [...(prev[key]?.messages || []), { role: 'assistant', content: `Done - **${it.name} is parked until ${formatDate(date)}**. They surface at the top of the queue that day. This row clears in a moment.`, sources: ['parked'] }],
+          parked: date,
+          error: null,
+        },
+      }));
+      setNotice(`${it.name} parked until ${formatDate(date)}`);
+      setTimeout(() => setNotice(null), 5000);
+      setTimeout(() => removeRow(key), 3000);
+    } catch (e) {
+      let msg = e?.message || 'The park did not land';
+      try { const j = JSON.parse(msg); msg = j.details || j.error || msg; } catch (_) { /* plain text */ }
+      setAsks((prev) => ({ ...prev, [key]: { ...(prev[key] || { messages: [] }), error: `Park failed: ${msg}` } }));
+    } finally {
+      setBusy((prev) => { const n = new Set(prev); n.delete(key); return n; });
+    }
+  }, [clientId, removeRow]);
 
   const refreshStory = useCallback(async (it) => {
     const key = keyOf(it);
@@ -768,7 +840,7 @@ export default function FollowUpsQueue() {
                       {expanded === key && (
                         <div className="mb-3 -mt-1 rounded-lg border bg-slate-50 px-4 py-4">
                           <div className="grid gap-5 lg:grid-cols-[1fr_280px]">
-                            <AskPanel it={it} ask={asks[key]} onAsk={askAbout} />
+                            <AskPanel it={it} ask={asks[key]} onAsk={askAbout} onPark={parkFromAsk} busy={isBusy} />
                             <div>
                               {story?.loading && <div className="text-gray-500 text-sm lg:border-l lg:pl-4">Loading the story…</div>}
                               {story?.error && <div className="text-sm text-red-600 lg:border-l lg:pl-4">{story.error}</div>}

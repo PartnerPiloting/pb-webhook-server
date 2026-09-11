@@ -267,9 +267,11 @@ module.exports = function mountWingguyFollowups(app) {
   });
 
   // The Ask box (2026-09-11): a question about ONE person, answered in a few sentences from the
-  // stored story plus live calendar/mailbox reads through the shared tool functions. Read-only by
-  // construction - services/wingguyFollowupsAsk.js has no acting tools. Runs on the tenant's own
-  // key lane; a blocked lane returns 402 with the standard "key isn't set up" message.
+  // stored story plus live calendar/mailbox reads through the shared tool functions. Its only
+  // write is an unsent mailbox draft; a park comes back as a PROPOSAL (reply.proposal, and a
+  // ```park fence the screen draws as a confirm card) - the click lands on /action above, the
+  // same door as the row's Park button. Runs on the tenant's own key lane; a blocked lane returns
+  // 402 with the standard "key isn't set up" message.
   router.post('/ask', authenticateUserWithTestMode, async (req, res) => {
     const clientId = getClientId(req);
     const gate = await resolveGate(clientId);
@@ -285,7 +287,7 @@ module.exports = function mountWingguyFollowups(app) {
         if (r.keyError) return res.status(402).json({ error: 'key_error', details: r.error });
         return res.status(400).json({ error: 'ask_failed', details: r.error });
       }
-      res.json({ ok: true, reply: r.reply, sources: r.sources, model: r.model });
+      res.json({ ok: true, reply: r.reply, sources: r.sources, model: r.model, ...(r.proposal ? { proposal: r.proposal } : {}) });
     } catch (e) {
       logger.error(`followupsScreen: ask error for ${clientId}: ${e?.message || e}`);
       res.status(500).json({ error: 'ask_failed', details: e?.message || String(e) });
