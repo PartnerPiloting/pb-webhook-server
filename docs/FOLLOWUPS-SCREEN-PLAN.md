@@ -186,10 +186,19 @@ What changed:
   through the shared TOOL_DEFS (never a second implementation): `calendar`
   (wingguy_list_events), `replied_since` (wingguy_lead_replied_since),
   `read_email` (wingguy_read_message). The answer reports its sources.
-- It ANSWERS, it never acts. No book/draft/park/drop/cease tool exists in it;
-  asked to do one it points at the row's buttons. Chat and the buttons stay
-  the hands. It is also not the LinkedIn-panel chat agent (wingguyChat.js),
-  which is built to act and has no story.
+- Two hands, added the same afternoon after Guy's first live use ("are the
+  dates proposed being checked from my calendar?" - they were not, v1 had no
+  availability tool and invented times): `check_availability` ->
+  wingguy_check_availability is the ONLY source of any day/date/time the box
+  may write (booking rules + lead-clock labels enforced in code, hard rule in
+  the prompt); `push_draft` -> wingguy_create_draft puts an UNSENT, threaded
+  draft in the coach's mailbox, recipient pinned server-side to this person,
+  only after the coach says push/send it. Wording is shown in the box first.
+  The tenant's rendered rulebook (reply + follow-up + booking) rides in the
+  system prompt (1h cache) so drafts sound like the coach.
+- Still NOT in it, by design: book, park, drop, cease, mark done, send. Those
+  stay the row's buttons and chat. It is also not the LinkedIn-panel chat
+  agent (wingguyChat.js), which has no story.
 - Key lane: resolveClientAnthropic, same one-door rule as the brief. Blocked
   lane -> 402 with the standard message, nothing billed to the platform key.
   Model: WINGGUY_ASK_MODEL_ID, falling back to WINGGUY_DRAFT_MODEL_ID, then

@@ -141,7 +141,7 @@ function AskPanel({ it, ask, onAsk }) {
     <div>
       <div className="flex items-center justify-between gap-3 mb-2 flex-wrap">
         <div className="text-[11px] font-bold tracking-wide text-gray-500 uppercase">Ask about {first}</div>
-        <div className="text-xs text-gray-400">Answers come from the stored story, plus your calendar and mailbox when the question needs them</div>
+        <div className="text-xs text-gray-400">Answers from the stored story, your calendar and mailbox. It can find times to offer and, when you say "push it", put a draft in your mailbox unsent.</div>
       </div>
       <div className="flex flex-wrap gap-1.5 mb-3">
         {CANNED_QUESTIONS.map((q) => (
@@ -171,7 +171,7 @@ function AskPanel({ it, ask, onAsk }) {
               </div>
             )
         ))}
-        {ask?.pending && <div className="text-sm text-gray-500 italic">Checking the story{ask.live ? ', your calendar and the mailbox' : ''}…</div>}
+        {ask?.pending && <div className="text-sm text-gray-500 italic">Working on it{ask.live ? ' - the story, your calendar and the mailbox' : ''}…</div>}
         {ask?.error && <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded px-3 py-2">{ask.error}</div>}
       </div>
       <form className="mt-3 flex gap-2 max-w-3xl" onSubmit={(e) => { e.preventDefault(); submit(draft); }}>
@@ -466,7 +466,7 @@ export default function FollowUpsQueue() {
   // conversation we keep here, so a follow-up ("what did he say about Teams?") reads naturally.
   const askAbout = useCallback(async (it, question) => {
     const key = keyOf(it);
-    const live = /miss|appoint|calendar|booked|replied|reply|since|heard|come back|free|next week/i.test(question);
+    const live = /miss|appoint|calendar|booked|replied|reply|since|heard|come back|free|next week|time|slot|offer|push|draft|avail/i.test(question);
     // Read the history from state as it stands now (never inside the updater — React may run
     // updaters lazily), then commit the pending turn.
     const history = [...(asks[key]?.messages || []), { role: 'user', content: question }];

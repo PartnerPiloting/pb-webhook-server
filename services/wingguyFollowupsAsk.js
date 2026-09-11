@@ -3,25 +3,33 @@
 // missed any appointments? What should I do now?" answered in a couple of sentences, right on the
 // row, instead of a dense story panel he has to read top to bottom.
 //
-// WHAT IT IS: a tiny question-answering agent scoped to ONE person. The person's stored dossier
-// (the same text wingguy_dossier serves in chat) is loaded up front as ground truth, so most
-// questions ("where are we up to?", "what did I promise?") need no tool call and answer in a couple
-// of seconds. Live questions ("have I missed anything?", "has he replied since?") reach the coach's
-// real calendar and mailbox through the SAME tool functions chat uses (TOOL_DEFS in wingguyMailMcp
-// and wingguyBookingMcp) - never a second implementation of a read.
+// WHAT IT IS: a small agent scoped to ONE person. The person's stored dossier (the same text
+// wingguy_dossier serves in chat) is loaded up front as ground truth, so most questions ("where
+// are we up to?", "what did I promise?") need no tool call and answer in a couple of seconds. Live
+// questions ("have I missed anything?", "has he replied since?") reach the coach's real calendar
+// and mailbox through the SAME tool functions chat uses (TOOL_DEFS in wingguyMailMcp and
+// wingguyBookingMcp) - never a second implementation of a read.
 //
-// WHAT IT IS NOT: hands. It answers; it never drafts-to-send, parks, drops, books or ceases. The
-// row's buttons stay the only actions on the screen (the one-queue rule, docs/FOLLOWUPS-SCREEN-PLAN.md).
-// It is also NOT the LinkedIn-panel chat agent (wingguyChat.js) - that one is built to act
-// (book/draft) and has no access to the story.
+// TWO HANDS, added the same afternoon after Guy's first live use ("are the dates proposed being
+// checked from my calendar?" - they were not; v1 had no availability tool and invented times):
+//   check_availability -> wingguy_check_availability: the ONLY source of any day/date/time the box
+//     may write. Booking rules, lead timezone labels, the one-clear-day rule - all enforced in code.
+//   push_draft -> wingguy_create_draft: an email DRAFT in the coach's own mailbox, threaded, never
+//     sent, addressed ONLY to this person (the recipient is fixed server-side). Wording is shown in
+//     the box first; the push happens only when the coach says push/send it.
+// Still NOT here, by design: book, park, drop, cease. The row's buttons and chat stay those hands.
+// It is also NOT the LinkedIn-panel chat agent (wingguyChat.js) - that one has no story.
 //
-// Billing: runs on the tenant's own lane via resolveClientAnthropic (stored key -> platform for the
-// owner/managed -> blocked). A blocked lane returns {ok:false, blocked:true} with the standard
-// message; nothing is billed to the platform key silently.
+// Voice: the tenant's rendered rulebook (reply + follow-up + booking contexts) rides in the system
+// prompt, cached 1h, so a pushed draft reads like the coach - the same block the overnight drafts
+// and the panel chat are written from.
+//
+// Billing: the tenant's own lane via resolveClientAnthropic (stored key -> platform for the
+// owner/managed -> blocked). A blocked lane returns {ok:false, blocked:true}; nothing is billed to
+// the platform key silently.
 //
 // Stateless per turn, like the panel chat: the screen sends the running text conversation
-// ([{role, content}]) and gets the reply back; tool blocks are rebuilt server-side each turn and
-// never persisted.
+// ([{role, content}]) and gets the reply back; tool blocks are rebuilt server-side each turn.
 
 const { resolveClientAnthropic, anthropicKeyError } = require('../config/anthropicClient');
 const { createLogger } = require('../utils/contextLogger');
@@ -34,9 +42,10 @@ const MODEL_ID = process.env.WINGGUY_ASK_MODEL_ID || process.env.WINGGUY_DRAFT_M
 // Thinking off, as in wingguyChat.js: with tools + a small answer budget, Sonnet 5's default
 // thinking produced empty turns there (2026-07-01). Answers here are short recall, not reasoning.
 const THINKING = { type: 'disabled' };
-const MAX_TOKENS = 1500;
-const MAX_TOOL_ITERATIONS = 5;
-const MAX_HISTORY_TURNS = 12;   // text turns kept from the screen's running conversation
+const MAX_TOKENS = 2500;          // an answer, or an HTML draft body plus a line of commentary
+const MAX_TOOL_ITERATIONS = 6;    // availability -> draft -> push is three; headroom for a re-read
+const MAX_HISTORY_TURNS = 12;     // text turns kept from the screen's running conversation
+const RULEBOOK_CONTEXTS = ['reply', 'follow-up', 'booking'];
 
 // Reader-facing text uses " - " (Guy's house style); the model is told, and this is the code guard.
 function normaliseDashes(s) {
@@ -59,7 +68,7 @@ function todayLine(tz) {
   }
 }
 
-const SYSTEM_RULES = `You are Wingguy, answering the coach's questions about ONE person from their follow-up queue. The coach is reading a busy screen and wants the answer in a few sentences, not the whole file.
+const SYSTEM_RULES = `You are Wingguy, working with the coach on ONE person from their follow-up queue. The coach is reading a busy screen and wants answers in a few sentences, not the whole file.
 
 HOW TO ANSWER
 - Lead with the answer. Two to four short paragraphs at most; a single sentence when that is all it takes.
@@ -70,16 +79,33 @@ HOW TO ANSWER
 - Use a plain spaced dash " - " for asides, never an em dash. No headings, no tables, no emoji. **Bold** the one or two phrases that carry the answer, sparingly.
 - Do not paste the dossier back. Summarise.
 
-WHAT YOU CAN AND CANNOT DO
-- You ANSWER. You do not send, draft-to-send, book, park, drop or cease anything, and you have no tools that do. If the coach asks you to do one of those, say the row's buttons (Draft, Done, Park, Drop) or chat do that, then give the advice they would need to click well.
-- You may SUGGEST wording for a message when asked, marked plainly as a suggestion to copy.
-- Stay on this one person. If the coach asks about someone else, say the box is scoped to this person and they can open that person's row.
+WHAT YOU CAN DO
+- ANSWER questions from the stored story, the live calendar and the live mailbox.
+- FIND TIMES TO OFFER with check_availability - the coach's real free slots with all their booking rules applied.
+- WRITE an email reply in the coach's voice (the rulebook below), show it in the box, and PUSH it to the coach's mailbox as an unsent draft with push_draft when they say so.
+
+WHAT YOU CANNOT DO
+- Book a meeting, park, drop, cease, mark done, or send anything. Those are the row's buttons (Done, Park, Drop) and chat. The row's Draft button opens the overnight pre-written draft page, it does not send. If asked for one of these, say where it lives, then give the advice they need to do it well.
+- Message anyone other than this person. push_draft is addressed to this person only.
+- Write for LinkedIn beyond suggesting wording to paste: a LinkedIn reply is typed in the thread (with /wg), not pushed.
+
+TIMES - HARD RULE
+- Never write a day, date or clock time as an offer unless it came back from check_availability IN THIS CONVERSATION. You have no calendar in your head. Do not work out "next week" yourself: the tool result opens with TODAY and the week boundaries - resolve every relative phrase against that. If the coach wants times beyond next week ("the week after", "when I'm back"), call check_availability with include_far_weeks true.
+- Offer two or three slots, on different days where possible, using each slot's "label" exactly as the tool wrote it, and end the list with one line saying whose time it is, as the tool reports (the lead's clock when it differs from the coach's).
+- Pass the person's location from the story as lead_location so the labels are on their clock.
+- Past references ("back on 26 August") are fine; those are not offers.
+
+DRAFTS
+- Wording first: when asked to draft, write the email and show it in the box, marked as a draft, in the coach's voice per the rulebook. Ground every line in the story. Keep it short.
+- Push only on the coach's say-so: "push it", "send it to my drafts", "put it in Gmail", "yes push" - then call push_draft with the wording as simple HTML (<p> paragraphs, <a href> for links), replying in the existing thread when the story shows a reply_to_message_id ("push with: ..."), subject "Re: <their subject>". If the coach asks for a change and a push in one breath, apply the change, show the final wording briefly, and push in the same turn.
+- After a push, say it is in their mailbox Drafts, threaded, unsent, for them to read and send. Never say it was sent.
+- A pushed draft must not contain a time that did not come from check_availability.
 
 WHEN TO USE TOOLS
-- The stored story below already answers "where are we up to", "what did I promise", "how did the call go". Do not call a tool for those.
-- "Have I missed anything / any appointments" -> read the calendar for the period the story covers (from the first contact to a week or two ahead) and compare with the story's dates.
-- "Has he replied / anything since" -> check the mailbox since the last date in the story. LinkedIn replies are already in the story's timeline (synced into the CRM record) - say if the story is older than the question needs and suggest "Refresh story".
-- "What did that email actually say" -> read the message if the story only has a snippet.
+- The stored story already answers "where are we up to", "what did I promise", "how did the call go". Do not call a tool for those.
+- "Have I missed anything / any appointments" -> calendar for the period the story covers (first contact to a week or two ahead), compared with the story's dates.
+- "Has he replied / anything since" -> replied_since from the last date in the story. LinkedIn replies are already in the story's timeline; if the story is older than the question needs, say so and suggest "Refresh story".
+- "What did that email actually say" -> read_email if the story only has a snippet.
 - Do not call the same tool twice with the same arguments.`;
 
 function buildTools(person) {
@@ -87,7 +113,7 @@ function buildTools(person) {
   const tools = [
     {
       name: 'calendar',
-      description: 'What is actually booked on the coach\'s own calendar for a date range (live). Use for "have I missed an appointment", "is anything booked with them", "what does next week look like for a new time". Returns every event in the range with attendees; look for this person\'s name or email. Also states TODAY in the coach\'s timezone.',
+      description: 'What is actually booked on the coach\'s own calendar for a date range (live). Use for "have I missed an appointment", "is anything booked with them". Returns every event in the range with attendees; look for this person\'s name or email. Also states TODAY in the coach\'s timezone. NOT for finding times to offer - use check_availability for that.',
       input_schema: {
         type: 'object',
         properties: {
@@ -95,6 +121,20 @@ function buildTools(person) {
           end_date: { type: 'string', description: 'Inclusive end date, YYYY-MM-DD. Keep ranges under ~40 days.' },
         },
         required: ['date', 'end_date'],
+      },
+    },
+    {
+      name: 'check_availability',
+      description: 'The coach\'s REAL offerable slots with every booking rule applied in code (hours, lunch hold, one-clear-day notice, daily load, nothing in the past). THE ONLY SOURCE of any time you may offer. Opens with TODAY and the this-week / next-week boundaries - resolve "next week" and every relative phrase against that. Each slot has a "label" (exactly how it reads on the lead\'s clock) - use labels verbatim. Days flagged BUSY DAY are still offerable but prefer lighter ones.',
+      input_schema: {
+        type: 'object',
+        properties: {
+          lead_location: { type: 'string', description: 'The person\'s location as the story states it (e.g. "Greater Sydney Area") - drives their-clock labels. Omit if unknown.' },
+          include_far_weeks: { type: 'boolean', description: 'true ONLY when the coach wants times beyond next week ("the week after", "when I\'m back").' },
+          include_soon: { type: 'boolean', description: 'true ONLY when the coach explicitly wants today or tomorrow.' },
+          include_lunch: { type: 'boolean', description: 'true ONLY when the coach explicitly wants a lunch-time slot.' },
+          include_weekends: { type: 'boolean', description: 'true ONLY when the coach explicitly wants a weekend.' },
+        },
       },
     },
   ];
@@ -117,11 +157,26 @@ function buildTools(person) {
         required: ['message_id'],
       },
     });
+    tools.push({
+      name: 'push_draft',
+      description: 'Create an UNSENT email draft to this person in the coach\'s own mailbox (threaded when reply_to_message_id is given). Call ONLY after the coach has said to push/send it to their drafts. The recipient is fixed to this person. Returns the draft id; the coach reads and sends it themselves.',
+      input_schema: {
+        type: 'object',
+        properties: {
+          subject: { type: 'string', description: 'Subject line. "Re: <their subject>" when replying in the thread.' },
+          html_body: { type: 'string', description: 'The full body as simple HTML: <p> per paragraph, <a href="…">…</a> for any link. No times that did not come from check_availability.' },
+          reply_to_message_id: { type: 'string', description: 'The message id to reply to (the story\'s "push with: reply_to_message_id=…" or a replied_since result) so the draft lands in the existing thread.' },
+          resend_ok: { type: 'boolean', description: 'true only if the coach explicitly wants an asset link re-sent that this person already received.' },
+        },
+        required: ['subject', 'html_body'],
+      },
+    });
   }
   return tools;
 }
 
-// Map the model's tool calls onto the shared MCP tool functions - one dispatch, no new reads.
+// Map the model's tool calls onto the shared MCP tool functions - one dispatch, no new reads or
+// writes. push_draft's recipient is pinned to the person here: the model never picks a "to".
 function makeToolRunner({ clientId, person, mailTools, bookingTools }) {
   const call = async (defs, name, args) => {
     const def = defs.find((d) => d.name === name);
@@ -133,6 +188,12 @@ function makeToolRunner({ clientId, person, mailTools, bookingTools }) {
     if (name === 'calendar') {
       return call(bookingTools, 'wingguy_list_events', { date: input.date, end_date: input.end_date });
     }
+    if (name === 'check_availability') {
+      const args = {};
+      if (input.lead_location) args.lead_location = String(input.lead_location);
+      for (const k of ['include_far_weeks', 'include_soon', 'include_lunch', 'include_weekends']) if (input[k] === true) args[k] = true;
+      return call(bookingTools, 'wingguy_check_availability', args);
+    }
     if (name === 'replied_since') {
       if (!person.email) return { ok: false, text: 'No email address on file for this person - the mailbox cannot be checked.' };
       return call(mailTools, 'wingguy_lead_replied_since', { lead_email: person.email, since_iso: input.since_iso });
@@ -140,20 +201,37 @@ function makeToolRunner({ clientId, person, mailTools, bookingTools }) {
     if (name === 'read_email') {
       return call(mailTools, 'wingguy_read_message', { message_id: input.message_id });
     }
+    if (name === 'push_draft') {
+      if (!person.email) return { ok: false, text: 'No email address on file for this person - a draft cannot be addressed. Give the coach the wording to paste instead.' };
+      const args = {
+        to: [{ email: person.email, ...(person.name ? { name: person.name } : {}) }],
+        subject: String(input.subject || ''),
+        html_body: String(input.html_body || ''),
+      };
+      if (input.reply_to_message_id) args.reply_to_message_id = String(input.reply_to_message_id);
+      if (input.resend_ok === true) args.resend_ok = true;
+      return call(mailTools, 'wingguy_create_draft', args);
+    }
     return { ok: false, text: `unknown tool ${name}` };
   };
 }
 
-// What the screen shows under the answer: which sources it came from.
-const SOURCE_LABEL = { calendar: 'calendar (live)', replied_since: 'mailbox (live)', read_email: 'mailbox (live)' };
+// What the screen shows under the answer: which sources it came from / what it did.
+const SOURCE_LABEL = {
+  calendar: 'calendar (live)',
+  check_availability: 'calendar (live)',
+  replied_since: 'mailbox (live)',
+  read_email: 'mailbox (live)',
+  push_draft: 'draft pushed to your mailbox',
+};
 
 /**
- * Answer one question about one person.
+ * Answer one question about one person (and, on the coach's say-so, push a draft).
  * @param {Object} p
  * @param {Object} p.coach       clientService record (clientId, timezone, anthropicApiKey, managedClaudeKey, clientName)
  * @param {Object} p.person      { name, email }
  * @param {Array}  p.messages    running text conversation [{role:'user'|'assistant', content:string}], last = the question
- * @param {Object} [p.deps]      test seams: llm (Anthropic client), mailTools, bookingTools, dossierText, now
+ * @param {Object} [p.deps]      test seams: llm (Anthropic client), mailTools, bookingTools, dossierText, rulesText
  * @returns {{ok:boolean, reply?:string, sources?:string[], blocked?:boolean, error?:string, model?:string}}
  */
 async function answerAboutPerson({ coach, person, messages, deps = {} }) {
@@ -188,6 +266,19 @@ async function answerAboutPerson({ coach, person, messages, deps = {} }) {
     }
   }
 
+  // The coach's voice for any draft: the rendered rulebook, best-effort (an answer-only turn
+  // works without it; a draft written without it would not sound like them, so say so).
+  let rulesText = deps.rulesText;
+  if (rulesText == null) {
+    try {
+      const r = await require('./wingguyRulesStore').renderRulesBlock({ tenantId: clientId, contexts: RULEBOOK_CONTEXTS });
+      rulesText = (r && r.text) || '';
+    } catch (e) {
+      logger.warn(`followupsAsk: rulebook unavailable for ${clientId}: ${e && e.message}`);
+      rulesText = '';
+    }
+  }
+
   // The screen's running conversation: text only, trimmed, must end with the question.
   const history = (Array.isArray(messages) ? messages : [])
     .filter((m) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string' && m.content.trim())
@@ -197,7 +288,14 @@ async function answerAboutPerson({ coach, person, messages, deps = {} }) {
   if (history[0].role !== 'user') history.shift();
 
   const system = [
-    { type: 'text', text: SYSTEM_RULES, cache_control: { type: 'ephemeral' } },
+    { type: 'text', text: SYSTEM_RULES },
+    {
+      type: 'text',
+      text: rulesText
+        ? `THE COACH'S RULEBOOK (voice and house style for any wording you write):\n\n${rulesText}`
+        : 'THE COACH\'S RULEBOOK could not be loaded this turn. If asked to draft, write plainly in the coach\'s voice as the story shows it and say the rulebook was unavailable.',
+      cache_control: { type: 'ephemeral', ttl: '1h' },
+    },
     { type: 'text', text: `THE PERSON: ${p.name || p.email}${p.email ? ` <${p.email}>` : ''}\nTHE COACH: ${coach.clientName || clientId}\n${todayLine(coach.timezone || coach.timeZone)}\n\nSTORED STORY (built by the overnight pass; ground truth for everything up to its build date):\n${dossierText}`, cache_control: { type: 'ephemeral' } },
   ];
 
@@ -226,7 +324,7 @@ async function answerAboutPerson({ coach, person, messages, deps = {} }) {
       for (const tu of uses) {
         let r;
         try { r = await runTool(tu.name, tu.input || {}); } catch (e) { r = { ok: false, text: e.message }; }
-        if (SOURCE_LABEL[tu.name]) sources.add(SOURCE_LABEL[tu.name]);
+        if (r.ok && SOURCE_LABEL[tu.name]) sources.add(SOURCE_LABEL[tu.name]);
         results.push({ type: 'tool_result', tool_use_id: tu.id, content: String(r.text || ''), ...(r.ok ? {} : { is_error: true }) });
       }
       convo.push({ role: 'user', content: results });
