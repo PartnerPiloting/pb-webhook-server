@@ -107,8 +107,45 @@ const CANNED_QUESTIONS = [
   'What did I promise?',
 ];
 
-// The answer is plain text with **bold** and blank-line paragraphs — render exactly that, nothing more.
-function AnswerText({ text }) {
+// A draft the box wrote, as a card (Guy, 2026-09-11): the wording, Copy, the person's LinkedIn
+// profile link, and for an email person a Push button (which just asks the box to push it - the
+// same words Guy would type). The server puts the wording in a ```draft fence; nothing else does.
+function DraftCard({ text, it, onAsk, pending }) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 2000); }
+    catch (_) { window.prompt('Copy the message:', text); }
+  };
+  return (
+    <div className="my-2 rounded-lg border border-blue-200 bg-blue-50/40">
+      <div className="px-3 py-2 text-[11px] font-bold tracking-wide text-blue-800 uppercase border-b border-blue-100">Draft</div>
+      <pre className="px-3 py-2 text-sm text-gray-900 whitespace-pre-wrap font-sans leading-relaxed">{text}</pre>
+      <div className="px-3 py-2 flex items-center gap-2 flex-wrap border-t border-blue-100">
+        <button className="px-3 py-1 rounded text-sm font-medium text-white bg-blue-600 hover:bg-blue-500" onClick={copy}>{copied ? 'Copied ✓' : 'Copy'}</button>
+        {it.linkedin && (
+          <a className="px-3 py-1 rounded text-sm border bg-white text-blue-700 border-blue-300 hover:bg-blue-50" href={it.linkedin} target="_blank" rel="noreferrer" title="Open their LinkedIn profile - paste the message in the thread there">Open LinkedIn</a>
+        )}
+        {it.email && (
+          <button className="px-3 py-1 rounded text-sm border bg-white text-emerald-800 border-emerald-300 hover:bg-emerald-50 disabled:opacity-50" disabled={!!pending} onClick={() => onAsk(it, 'Push it to my drafts.')} title="Put this in your mailbox as an unsent draft, in the existing thread">Push to email</button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// The answer is plain text with **bold**, blank-line paragraphs and ```draft fences — render
+// exactly that, nothing more.
+function AnswerText({ text, it, onAsk, pending }) {
+  const chunks = String(text || '').split(/```draft\s*\n([\s\S]*?)\n?```/g);
+  if (chunks.length > 1) {
+    return (
+      <>
+        {chunks.map((c, i) => (i % 2 === 1
+          ? <DraftCard key={i} text={c.trim()} it={it} onAsk={onAsk} pending={pending} />
+          : (c.trim() ? <AnswerText key={i} text={c} it={it} onAsk={onAsk} pending={pending} /> : null)))}
+      </>
+    );
+  }
   const paras = String(text || '').split(/\n{2,}/).map((s) => s.trim()).filter(Boolean);
   return (
     <>
@@ -141,7 +178,7 @@ function AskPanel({ it, ask, onAsk }) {
     <div>
       <div className="flex items-center justify-between gap-3 mb-2 flex-wrap">
         <div className="text-[11px] font-bold tracking-wide text-gray-500 uppercase">Ask about {first}</div>
-        <div className="text-xs text-gray-400">Answers from the stored story, your calendar and mailbox. It can find times to offer and, when you say "push it", put a draft in your mailbox unsent.</div>
+        <div className="text-xs text-gray-400">Answers from the stored story, your calendar and mailbox. Ask for a draft and you get a card: Copy, their LinkedIn, and Push to email (unsent, in the thread).</div>
       </div>
       <div className="flex flex-wrap gap-1.5 mb-3">
         {CANNED_QUESTIONS.map((q) => (
@@ -162,7 +199,7 @@ function AskPanel({ it, ask, onAsk }) {
             ? <div key={i} className="ml-auto w-fit max-w-[60ch] bg-indigo-50 text-gray-900 rounded-lg rounded-br-sm px-3 py-2 text-sm">{m.content}</div>
             : (
               <div key={i} className="bg-white border rounded-lg rounded-bl-sm px-3 py-2 text-sm text-gray-800 leading-relaxed">
-                <AnswerText text={m.content} />
+                <AnswerText text={m.content} it={it} onAsk={onAsk} pending={!!ask?.pending} />
                 {Array.isArray(m.sources) && m.sources.length > 0 && (
                   <div className="mt-2 text-[11px] text-gray-400">
                     From: {m.sources.map((s) => <span key={s} className="inline-block border rounded-full px-1.5 mr-1 bg-gray-50">{s}</span>)}
@@ -473,7 +510,7 @@ export default function FollowUpsQueue() {
     setAsks((prev) => ({ ...prev, [key]: { messages: history, pending: true, live, error: null } }));
     try {
       const payload = history.map((m) => ({ role: m.role, content: m.content }));
-      const data = await apiPost('/ask', { name: it.name, email: it.email || undefined, messages: payload }, clientId);
+      const data = await apiPost('/ask', { name: it.name, email: it.email || undefined, linkedin: it.linkedin || undefined, messages: payload }, clientId);
       setAsks((prev) => ({
         ...prev,
         [key]: { messages: [...(prev[key]?.messages || []), { role: 'assistant', content: data?.reply || '', sources: data?.sources || [] }], pending: false, live: false, error: null },

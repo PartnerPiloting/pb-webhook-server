@@ -196,6 +196,14 @@ What changed:
   only after the coach says push/send it. Wording is shown in the box first.
   The tenant's rendered rulebook (reply + follow-up + booking) rides in the
   system prompt (1h cache) so drafts sound like the coach.
+- Draft CARD (same day): any wording the box writes sits in a ```draft fence
+  and the screen renders it as a card - the message, Copy, "Open LinkedIn"
+  (the row's profile URL, passed to the server too) and, for an email person,
+  "Push to email" which just asks the box to push. LinkedIn people get a
+  LinkedIn-shaped message (shorter, no subject) to copy into the thread;
+  email people get an email. Reply where the conversation lives. This is a
+  LIVE draft on request from the live story - not the retired overnight
+  paste-ready LinkedIn draft (2026-08-01), which went stale by morning.
 - Still NOT in it, by design: book, park, drop, cease, mark done, send. Those
   stay the row's buttons and chat. It is also not the LinkedIn-panel chat
   agent (wingguyChat.js), which has no story.

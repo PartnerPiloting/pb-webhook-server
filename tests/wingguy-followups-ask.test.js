@@ -87,6 +87,7 @@ const depsFor = (t, llm) => ({ llm, mailTools: t.mailTools, bookingTools: t.book
     const sys = llm.calls[0].system.map((b) => b.text).join('\n');
     assert.ok(sys.includes(STORY), 'story rides in the system prompt');
     assert.ok(sys.includes(RULES), 'rulebook rides in the system prompt');
+    assert.ok(/```draft/.test(sys), 'draft-fence instruction present for the card');
     assert.ok(/TODAY IS/.test(sys), 'today anchor present');
     assert.ok(!/—/.test(r.reply) && r.reply.includes(' - '), `dashes normalised: ${r.reply}`);
   });
@@ -160,6 +161,19 @@ const depsFor = (t, llm) => ({ llm, mailTools: t.mailTools, bookingTools: t.book
     const names = buildTools(person).map((tl) => tl.name);
     assert.deepStrictEqual(names, ['calendar', 'check_availability', 'replied_since', 'read_email', 'push_draft']);
     for (const n of names) assert.ok(!/book|park|cease|reconnect|send|create_lead|done/i.test(n), n);
+  });
+
+  await check('LinkedIn profile URL rides in the person line (only a real linkedin.com URL)', async () => {
+    const t = fakeTools();
+    const llm = fakeLlm([textTurn('ok')]);
+    await answerAboutPerson({ coach, person: { ...person, linkedin: 'https://www.linkedin.com/in/sam-example' }, messages: [{ role: 'user', content: 'hi' }], deps: depsFor(t, llm) });
+    assert.ok(llm.calls[0].system.map((b) => b.text).join('\n').includes('LINKEDIN PROFILE: https://www.linkedin.com/in/sam-example'));
+    const llm2 = fakeLlm([textTurn('ok')]);
+    await answerAboutPerson({ coach, person: { ...person, linkedin: 'javascript:alert(1)' }, messages: [{ role: 'user', content: 'hi' }], deps: depsFor(fakeTools(), llm2) });
+    assert.ok(!llm2.calls[0].system.map((b) => b.text).join('\n').includes('LINKEDIN PROFILE'));
+    const llm3 = fakeLlm([textTurn('ok')]);
+    await answerAboutPerson({ coach, person: { name: 'LinkedIn Only' }, messages: [{ role: 'user', content: 'hi' }], deps: depsFor(fakeTools(), llm3) });
+    assert.ok(llm3.calls[0].system.map((b) => b.text).join('\n').includes('LinkedIn only'));
   });
 
   await check('person without an email: no mailbox tools, no push; a push attempt is refused', async () => {

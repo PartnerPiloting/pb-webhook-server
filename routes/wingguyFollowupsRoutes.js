@@ -17,7 +17,7 @@
 //   GET  /queue             the structured queue + who the live re-check hid and why
 //   GET  /story             a person's dossier payload as JSON (+ staleness); refresh=1 queues a rebuild
 //   POST /action            { name, email?, src?, action: drop|park|done, parkDate? }
-//   POST /ask               { name, email?, messages:[{role,content}] } -> a short answer about that person
+//   POST /ask               { name, email?, linkedin?, messages:[{role,content}] } -> a short answer about that person
 
 const express = require('express');
 const { createLogger } = require('../utils/contextLogger');
@@ -274,12 +274,12 @@ module.exports = function mountWingguyFollowups(app) {
     const clientId = getClientId(req);
     const gate = await resolveGate(clientId);
     if (!gate) return res.status(403).json({ error: 'feature_not_enabled' });
-    const { name, email, messages } = req.body || {};
+    const { name, email, linkedin, messages } = req.body || {};
     if (!name && !email) return res.status(400).json({ error: 'name_or_email_required' });
     if (!Array.isArray(messages) || !messages.length) return res.status(400).json({ error: 'question_required' });
     try {
       const { answerAboutPerson } = require('../services/wingguyFollowupsAsk');
-      const r = await answerAboutPerson({ coach: gate.client, person: { name, email }, messages });
+      const r = await answerAboutPerson({ coach: gate.client, person: { name, email, linkedin }, messages });
       if (!r.ok) {
         if (r.blocked) return res.status(402).json({ error: 'key_not_set_up', details: r.error });
         if (r.keyError) return res.status(402).json({ error: 'key_error', details: r.error });

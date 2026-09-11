@@ -96,10 +96,11 @@ TIMES - HARD RULE
 - Past references ("back on 26 August") are fine; those are not offers.
 
 DRAFTS
-- Wording first: when asked to draft, write the email and show it in the box, marked as a draft, in the coach's voice per the rulebook. Ground every line in the story. Keep it short.
-- Push only on the coach's say-so: "push it", "send it to my drafts", "put it in Gmail", "yes push" - then call push_draft with the wording as simple HTML (<p> paragraphs, <a href> for links), replying in the existing thread when the story shows a reply_to_message_id ("push with: ..."), subject "Re: <their subject>". If the coach asks for a change and a push in one breath, apply the change, show the final wording briefly, and push in the same turn.
-- After a push, say it is in their mailbox Drafts, threaded, unsent, for them to read and send. Never say it was sent.
-- A pushed draft must not contain a time that did not come from check_availability.
+- Wording first: when asked to draft, write the message in the coach's voice per the rulebook, grounded in the story, short. Put the wording - and ONLY the wording - inside a fenced block that opens with a line reading exactly \`\`\`draft and closes with a line reading \`\`\`. Plain text, a blank line between paragraphs, greeting and sign-off included, no subject line, no HTML, no commentary inside the block. The screen turns that block into a card with a Copy button, the person's LinkedIn profile link, and a Push button for email. Your commentary goes outside the block, in a sentence or two.
+- Which channel: reply where the conversation lives. The story's timeline shows the channel of each message; the person line below says whether they have an email address. A LinkedIn-only person gets a LinkedIn message (shorter, no links unless asked, no subject); say "copy this into the LinkedIn thread". An email person gets an email; say the coach can push it when happy. If both channels are live, use the one their last message came on, and say so.
+- Push only on the coach's say-so: "push it", "send it to my drafts", "put it in Gmail", "yes push" - then call push_draft with the SAME wording as simple HTML (<p> paragraphs, <a href> for links), replying in the existing thread when the story shows a reply_to_message_id ("push with: ..."), subject "Re: <their subject>". If the coach asks for a change and a push in one breath, apply the change, show the final wording in a draft block, and push in the same turn.
+- After a push, say it is in their mailbox Drafts, threaded, unsent, for them to read and send. Never say it was sent. A LinkedIn message cannot be pushed - the card's Copy button and profile link are the route.
+- A draft must not contain a time that did not come from check_availability.
 
 WHEN TO USE TOOLS
 - The stored story already answers "where are we up to", "what did I promise", "how did the call go". Do not call a tool for those.
@@ -229,7 +230,7 @@ const SOURCE_LABEL = {
  * Answer one question about one person (and, on the coach's say-so, push a draft).
  * @param {Object} p
  * @param {Object} p.coach       clientService record (clientId, timezone, anthropicApiKey, managedClaudeKey, clientName)
- * @param {Object} p.person      { name, email }
+ * @param {Object} p.person      { name, email, linkedin } - linkedin = profile URL, shown beside any draft
  * @param {Array}  p.messages    running text conversation [{role:'user'|'assistant', content:string}], last = the question
  * @param {Object} [p.deps]      test seams: llm (Anthropic client), mailTools, bookingTools, dossierText, rulesText
  * @returns {{ok:boolean, reply?:string, sources?:string[], blocked?:boolean, error?:string, model?:string}}
@@ -237,7 +238,11 @@ const SOURCE_LABEL = {
 async function answerAboutPerson({ coach, person, messages, deps = {} }) {
   const clientId = coach && coach.clientId;
   if (!clientId) return { ok: false, error: 'no_client' };
-  const p = { name: String((person && person.name) || '').trim(), email: String((person && person.email) || '').trim().toLowerCase() };
+  const p = {
+    name: String((person && person.name) || '').trim(),
+    email: String((person && person.email) || '').trim().toLowerCase(),
+    linkedin: /^https?:\/\/(www\.)?linkedin\.com\//i.test(String((person && person.linkedin) || '')) ? String(person.linkedin).trim() : '',
+  };
   if (!p.name && !p.email) return { ok: false, error: 'name_or_email_required' };
 
   // Key lane - the same one-door rule the overnight brief and the drafting path use.
@@ -296,7 +301,7 @@ async function answerAboutPerson({ coach, person, messages, deps = {} }) {
         : 'THE COACH\'S RULEBOOK could not be loaded this turn. If asked to draft, write plainly in the coach\'s voice as the story shows it and say the rulebook was unavailable.',
       cache_control: { type: 'ephemeral', ttl: '1h' },
     },
-    { type: 'text', text: `THE PERSON: ${p.name || p.email}${p.email ? ` <${p.email}>` : ''}\nTHE COACH: ${coach.clientName || clientId}\n${todayLine(coach.timezone || coach.timeZone)}\n\nSTORED STORY (built by the overnight pass; ground truth for everything up to its build date):\n${dossierText}`, cache_control: { type: 'ephemeral' } },
+    { type: 'text', text: `THE PERSON: ${p.name || p.email}${p.email ? ` <${p.email}>` : ' (no email address on file - LinkedIn only)'}${p.linkedin ? `\nLINKEDIN PROFILE: ${p.linkedin}` : ''}\nTHE COACH: ${coach.clientName || clientId}\n${todayLine(coach.timezone || coach.timeZone)}\n\nSTORED STORY (built by the overnight pass; ground truth for everything up to its build date):\n${dossierText}`, cache_control: { type: 'ephemeral' } },
   ];
 
   const tools = buildTools(p);
