@@ -1383,6 +1383,36 @@
     return out;
   }
 
+  // How many days since the LAST message in a scraped thread, read from the day label LinkedIn puts
+  // above it ("Today", "Yesterday", a weekday name for the past week, "JUN 17", "Jun 17, 2025").
+  // null when the label is missing or in a shape we don't recognise - callers must treat null as
+  // "don't know", never as "fresh" or "stale". Pure; `now` is injectable for tests.
+  const WG_MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+  const WG_WEEKDAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+  const WG_QUIET_THREAD_DAYS = 14; // silent this long = a reconnect, and the reconnect opens on their latest post
+  function threadQuietDays(thread, now = new Date()) {
+    const last = Array.isArray(thread) && thread.length ? thread[thread.length - 1] : null;
+    const label = last && last.day ? String(last.day).trim().toLowerCase().replace(/\s+/g, ' ') : '';
+    if (!label) return null;
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const dayMs = 86400000;
+    if (label === 'today') return 0;
+    if (label === 'yesterday') return 1;
+    const wd = WG_WEEKDAYS.indexOf(label);
+    if (wd >= 0) {
+      const back = (today.getDay() - wd + 7) % 7;
+      return back === 0 ? 7 : back; // LinkedIn says "Today" for today, so a bare weekday is last week's
+    }
+    const m = label.match(/^([a-z]{3,9})\.? (\d{1,2})(?:,? (\d{4}))?$/);
+    if (!m) return null;
+    const month = WG_MONTHS.indexOf(m[1].slice(0, 3));
+    if (month < 0) return null;
+    let when = new Date(m[3] ? Number(m[3]) : today.getFullYear(), month, Number(m[2]));
+    if (!m[3] && when > today) when = new Date(today.getFullYear() - 1, month, Number(m[2]));
+    const days = Math.round((today - when) / dayMs);
+    return days >= 0 ? days : null;
+  }
+
   // Code-side routing (deterministic, no AI): it's a REPLY only when the PROSPECT has actually said
   // something. A thread that contains only Guy's own outbound (e.g. just the connection-request note)
   // is still a first-touch THANKS — otherwise we'd misread Guy's own note as "a conversation". The
@@ -2538,11 +2568,18 @@
     //   hook, and the Portal CANNOT have them (they're this week's content, Luke 2026-08-19) — so
     //   this one deliberately bypasses the Portal gate. Bounded to early threads (≤2 messages);
     //   in an established conversation the thread itself is the material, not worth ~5s per turn.
+    // - QUIET THREAD (Guy 2026-09-13): an established conversation that has sat silent for a
+    //   fortnight or more is a reconnect, and the reconnect's best opener is what they posted
+    //   THIS week - not the stale thread. Same fetch, same Portal bypass. A thread whose day
+    //   labels we can't read stays on the old rule (null = don't know, not "stale").
     const wantThin = !profile.about && !profile.pageText;
+    const quietDays = threadQuietDays(thread);
+    const quietThread = quietDays != null && quietDays >= WG_QUIET_THREAD_DAYS;
     const wantPosts = profile._wgSurface === 'messaging'
       && !profile._wgPageKept
-      && (!thread || thread.length <= 2)
+      && (!thread || thread.length <= 2 || quietThread)
       && !(profile.recentPosts || []).length;
+    if (quietThread) console.log(`[Wingguy] thread quiet for ${quietDays} days — reading their recent posts for the reconnect`);
     if ((wantThin || wantPosts) && profile.profileUrl) {
       let fetchIt = wantPosts;
       if (!fetchIt) {
