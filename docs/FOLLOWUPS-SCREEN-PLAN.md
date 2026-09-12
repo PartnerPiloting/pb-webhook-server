@@ -222,6 +222,15 @@ What changed:
   the row's buttons and chat. It is also not the LinkedIn-panel chat agent
   (wingguyChat.js), which has no story.
 
+Reconnecting after a gap (Guy, 2026-09-12): the Ask box's drafts now follow
+his doctrine for messages after a park or a long silence - open with ONE
+specific thing in THEIR terms (their reason for the timing, their event,
+their promise), never the coach's pitch and never a recap; then a tiny ask.
+Leave the past alone when the gap is short, the ending was awkward (anchor to
+the neutral thing, never the lapse), or their circumstances changed (ask
+about that first). Lives in the Ask box system prompt only; overnight drafts
+and the panel chat draw on the rulebook and are unchanged.
+
 Advice vs button date (Guy, 2026-09-12, Melissa Jarmyn's row): the advice
 line said "I'd park Melissa to early-to-mid October" and the one-click button
 said "Park to Sep 18" - both out of ONE triage answer (the why_line said "a

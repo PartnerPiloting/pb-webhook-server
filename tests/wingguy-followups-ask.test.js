@@ -90,6 +90,7 @@ const depsFor = (t, llm) => ({ llm, mailTools: t.mailTools, bookingTools: t.book
     assert.ok(sys.includes(STORY), 'story rides in the system prompt');
     assert.ok(sys.includes(RULES), 'rulebook rides in the system prompt');
     assert.ok(/```draft/.test(sys), 'draft-fence instruction present for the card');
+    assert.ok(/RECONNECTING AFTER A GAP/.test(sys) && /One anchor, not a recap/.test(sys), 'reconnect doctrine present (anchor to their reason, tiny ask)');
     assert.ok(/TODAY IS/.test(sys), 'today anchor present');
     assert.ok(!/—/.test(r.reply) && r.reply.includes(' - '), `dashes normalised: ${r.reply}`);
   });
