@@ -201,6 +201,18 @@ try {
     moduleLogger.error('index.js: Error mounting linkedHelperMachineRoutes', e.message, e.stack);
 }
 
+// Contacts ingest - the generic door for a coach's own address book (Make.com watching Google
+// Contacts is the first feed). POST /webhooks/contacts/:clientId, authorised by that client's
+// Portal Token in x-portal-token; rows land in the contacts warehouse under that tenant. Parses
+// its own JSON (router-level), so it is fine here before the global parser.
+try {
+    const contactsIngestRoutes = require('./routes/contactsIngestRoutes.js');
+    app.use(contactsIngestRoutes);
+    moduleLogger.info('index.js: Contacts ingest mounted at GET/POST /webhooks/contacts/:clientId');
+} catch (e) {
+    moduleLogger.error('index.js: Error mounting contactsIngestRoutes', e.message, e.stack);
+}
+
 // The Stripe webhook verifies signatures against the raw body, same as the recorder
 // webhooks above - skip the global JSON parser for that one path so the route's own
 // express.raw() in routes/billingRoutes.js still sees the unparsed bytes.
