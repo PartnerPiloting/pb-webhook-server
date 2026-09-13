@@ -149,4 +149,73 @@ async function latestForClient(clientId) {
   }
 }
 
-module.exports = { recordCheckin, latestPerClient, latestForClient };
+/**
+ * DARK MACHINES (Guy 2026-09-13): the updater is silent by design - it never asks anyone for
+ * anything - so the only way a dead machine gets noticed is if we say so. A client whose machine
+ * has checked in before and then stopped for three days is exactly the Linked Helper failure
+ * shape, and Guy wants told, not made to go looking. This is the pure judgement; the queue
+ * (chat + the Follow-Ups screen) carries the line, because that is what the coach reads each
+ * morning.
+ *
+ * Who counts: the coach's OWN clients (never the coach), still Active and not on a coaching
+ * pause, with the extension on, that have checked in at least once. A client who never checked
+ * in is on a folder lane or not installed yet - nothing to watch here, the preflight covers
+ * that. Pure: `now` is injectable for tests.
+ */
+const DARK_AFTER_MS = 3 * 24 * 3600 * 1000;
+
+function darkMachineAlerts({ coachClientId, clients = [], checkins = [], now = Date.now(), darkAfterMs = DARK_AFTER_MS } = {}) {
+  if (!coachClientId) return [];
+  const latest = new Map();
+  for (const r of checkins || []) if (r && r.client_id) latest.set(String(r.client_id).trim(), r);
+  const out = [];
+  for (const c of clients || []) {
+    if (!c || c.coach !== coachClientId || c.clientId === coachClientId) continue;
+    if (String(c.status || '').trim() !== 'Active' || c.coachingStatus === 'Paused') continue;
+    if (!c.wingguyEnabled) continue;
+    const r = latest.get(String(c.clientId).trim());
+    if (!r) continue;
+    const at = new Date(r.checked_in_at).getTime();
+    if (!Number.isFinite(at)) continue;
+    const sinceMs = now - at;
+    const days = Math.max(0, Math.floor(sinceMs / 86400000));
+    const dark = sinceMs > darkAfterMs;
+    const error = r.action === 'error';
+    if (!dark && !error) continue;
+    const who = c.clientName || c.clientId;
+    const machine = r.machine ? ` (${r.machine})` : '';
+    const line = dark
+      ? `${who}'s machine${machine} has not checked in for ${days} days - last seen on ${r.version || '?'}. Machine off, or the updater has stopped; updates are not reaching them until it checks in again.`
+      : `${who}'s machine${machine} reported an error on its last update run${r.note ? ` - ${String(r.note).slice(0, 160)}` : ''}. The old version keeps working, but look at the machine.`;
+    out.push({
+      clientId: c.clientId,
+      clientName: who,
+      machine: r.machine || null,
+      version: r.version || null,
+      lastCheckinAt: new Date(at).toISOString(),
+      days,
+      kind: dark ? 'dark' : 'error',
+      line,
+    });
+  }
+  out.sort((a, b) => b.days - a.days);
+  return out;
+}
+
+/**
+ * The live version for one coach. Best-effort: any failure (no database, Airtable blip) returns
+ * [] - a monitoring read must never be able to fail the queue it rides on.
+ */
+async function darkMachinesForCoach(coachClientId) {
+  if (!coachClientId) return [];
+  try {
+    const clientService = require('./clientService');
+    const [clients, checkins] = await Promise.all([clientService.getAllClients(), latestPerClient()]);
+    return darkMachineAlerts({ coachClientId, clients, checkins });
+  } catch (e) {
+    log.warn(`dark-machine check skipped for ${coachClientId}: ${e.message}`);
+    return [];
+  }
+}
+
+module.exports = { recordCheckin, latestPerClient, latestForClient, darkMachineAlerts, darkMachinesForCoach, DARK_AFTER_MS };

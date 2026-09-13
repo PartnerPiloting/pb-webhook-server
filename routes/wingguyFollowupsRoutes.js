@@ -143,6 +143,9 @@ module.exports = function mountWingguyFollowups(app) {
         },
         briefPreparedAt: q.briefPreparedAt,
         backlogCreatedAt: q.backlogCreatedAt,
+        // Coached clients whose extension updater has gone quiet (3+ days) or errored - the same
+        // lines chat leads with. Empty for a client who coaches nobody.
+        fleetAlerts: q.fleetAlerts || [],
       });
     } catch (e) {
       logger.error(`followupsScreen: queue error for ${clientId}: ${e?.message || e}`);

@@ -463,6 +463,7 @@ export default function FollowUpsQueue() {
   const [hidden, setHidden] = useState({ counts: {}, items: [] });
   const [briefPreparedAt, setBriefPreparedAt] = useState(null);
   const [keyNotice, setKeyNotice] = useState(null);
+  const [fleetAlerts, setFleetAlerts] = useState([]); // coached clients' machines gone dark
   const [loading, setLoading] = useState(true);
   const [loadSecs, setLoadSecs] = useState(0);
   const [error, setError] = useState(null);
@@ -492,6 +493,7 @@ export default function FollowUpsQueue() {
       setHidden(data?.hidden || { counts: {}, items: [] });
       setBriefPreparedAt(data?.briefPreparedAt || null);
       setKeyNotice(data?.keyNotice || null);
+      setFleetAlerts(Array.isArray(data?.fleetAlerts) ? data.fleetAlerts : []);
     } catch (e) {
       setError(e?.message || 'Failed to load the queue');
       setItems([]);
@@ -675,6 +677,15 @@ export default function FollowUpsQueue() {
           already-messaged people are removed automatically.
           {briefPreparedAt ? <span className="text-gray-400"> Overnight brief prepared {formatDate(briefPreparedAt)}.</span> : null}
         </p>
+
+        {fleetAlerts.length > 0 && (
+          <div className="mt-3 text-sm text-red-800 bg-red-50 border border-red-200 rounded px-3 py-2">
+            <div className="font-semibold">Machine check</div>
+            {fleetAlerts.map((a) => (
+              <div key={a.clientId}>{a.line}</div>
+            ))}
+          </div>
+        )}
 
         {keyNotice && (
           <div className="mt-3 text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded px-3 py-2">

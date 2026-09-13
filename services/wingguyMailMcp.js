@@ -1804,7 +1804,11 @@ async function buildQueue(tenant = TENANT) {
   // Never serve what the live world has already answered (see applyLiveQueueGates).
   const live = deduped.length ? await applyLiveQueueGates(deduped, tenant) : { items: deduped, suppressed: { booked: 0, ceased: 0, parked: 0, messaged: 0, items: [] } };
   await attachOfferedTimesFlags(live.items, tenant, todayIso);
-  return { items: live.items, preGateCount, dismissedCount, suppressed: live.suppressed, briefPreparedAt, backlogCreatedAt };
+  // Dark machines (Guy 2026-09-13): a coached client's extension updater that has gone quiet for
+  // three days rides on the queue, because the queue is what the coach reads each morning and the
+  // updater itself never tells anyone. Best-effort - [] on any failure, never blocks the queue.
+  const fleetAlerts = await require('./extensionDistStore').darkMachinesForCoach(tenant);
+  return { items: live.items, preGateCount, dismissedCount, suppressed: live.suppressed, briefPreparedAt, backlogCreatedAt, fleetAlerts };
 }
 
 // "Offered times have passed" (Guy 2026-09-11): the coach's last message offered dated slots,
@@ -1853,13 +1857,18 @@ async function runQueue({ page } = {}, tenant = TENANT) {
     ? 'DOOR RULE — BEFORE relaying the list: tell the human their portal\'s Follow-Ups tab has this same queue with each person\'s story and one-click Draft/Done/Park/Drop, and ask whether they want the list here anyway or a specific person worked on. If they already asked for the list here (or say "show me anyway"), relay it in full as below — chat is always allowed to serve it (they may be on their phone).\n'
     : '';
   const q = await buildQueue(tenant);
-  if (!q.preGateCount) return { text: `${screenDoor}The queue is empty — nothing actionable right now (parked people surface on their dates).` };
+  // A coached client's machine gone dark leads the answer whatever the queue holds - it is the
+  // one thing here the coach cannot find out any other way (see extensionDistStore.darkMachineAlerts).
+  const fleetNote = (q.fleetAlerts || []).length
+    ? `⚠ MACHINE CHECK — relay this first, one plain line per person, before the queue: ${q.fleetAlerts.map((a) => a.line).join(' ')}\n`
+    : '';
+  if (!q.preGateCount) return { text: `${screenDoor}${fleetNote}The queue is empty — nothing actionable right now (parked people surface on their dates).` };
   const deduped = q.items;
   const supp = q.suppressed;
   const suppTotal = supp.booked + supp.ceased + supp.parked + supp.messaged;
   const doneNote = q.dismissedCount ? `, ${q.dismissedCount} marked done on the Follow-Ups screen` : '';
   if (!deduped.length) {
-    return { text: `${screenDoor}The queue is empty — nothing actionable right now (parked people surface on their dates${suppTotal ? `; the live re-check dropped ${suppTotal}: ${supp.messaged} already messaged since the list was built, ${supp.booked} already booked, ${supp.ceased} ceased, ${supp.parked} parked on a reconnect stamp` : ''}${doneNote}).` };
+    return { text: `${screenDoor}${fleetNote}The queue is empty — nothing actionable right now (parked people surface on their dates${suppTotal ? `; the live re-check dropped ${suppTotal}: ${supp.messaged} already messaged since the list was built, ${supp.booked} already booked, ${supp.ceased} ceased, ${supp.parked} parked on a reconnect stamp` : ''}${doneNote}).` };
   }
   // Chat line per item kind — recommendation-first (Guy 2026-08-29): the triage's advice headline
   // leads when it exists; why_line is the fallback for pre-change payloads.
@@ -1893,7 +1902,7 @@ async function runQueue({ page } = {}, tenant = TENANT) {
   const { draftUrl } = require('./wingguyDraftLink');
   const draftLink = (it) => (it.draftState === 'ready' ? ` · [draft](${draftUrl(tenant, it.name)})` : (it.draftState === 'wg-angle' ? ` · [card](${draftUrl(tenant, it.name)})` : ''));
   const lines = [
-    `${screenDoor}THE QUEUE — ${deduped.length} actionable, priority order (page ${pg}/${totalPages}; today's brief first, then backlog reopens, then parks). Each person's "who:" memory-jog is part of the list — ALWAYS relay it with their line, and keep their [draft]/[card] link ([draft] opens the ready-made message with a copy button; [card] is a LinkedIn person's context card — their reply gets written live in the thread with /wg, using the "/wg angle" line). Ask for anyone by name for the full detail in chat; "next ten" = next page.`,
+    `${screenDoor}${fleetNote}THE QUEUE — ${deduped.length} actionable, priority order (page ${pg}/${totalPages}; today's brief first, then backlog reopens, then parks). Each person's "who:" memory-jog is part of the list — ALWAYS relay it with their line, and keep their [draft]/[card] link ([draft] opens the ready-made message with a copy button; [card] is a LinkedIn person's context card — their reply gets written live in the thread with /wg, using the "/wg angle" line). Ask for anyone by name for the full detail in chat; "next ten" = next page.`,
     ...slice.map((it, i) => `${(pg - 1) * PAGE + i + 1}. ${nm(it)}${draftLink(it)} — ${lineFor(it)}${angleLine(it)}${jogLine(it)}`),
   ];
   if (pg < totalPages) lines.push(`(${deduped.length - pg * PAGE} more — say "next ten".)`);
