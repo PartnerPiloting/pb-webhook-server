@@ -1188,6 +1188,7 @@ time-bound CTA → sign-off.
 - **Guest self-serve booking page + flow:** `routes/guestBookingRoutes.js`; event text in `services/guestBookingEventBuilder.js`.
 - **Smart Booking Assistant (message generator + chat UI):** `linkedin-messaging-followup-next/app/calendar-booking/page.tsx` (endpoint `/api/calendar/quick-pick-message`).
 - **Existing Chrome extension scaffold (verify what it already does):** `chrome-extension/` (`content-linkedin.js`, `content-portal.js`, `background.js`, `popup.js`).
+- **Contacts warehouse ("who is Bob, what's their email?"):** `services/contactsStore.js` (per-tenant `wingguy_contacts`), feeds in `services/contactsSweep.js` (nightly `scripts/contacts-sweep-cron/index.js`), the lookup `wingguy_find_person` in `services/wingguyContactsMcp.js`, outside feeds via `routes/contactsIngestRoutes.js`. Memory `project_wingguy_contacts_lookup`.
 
 ---
 
@@ -5133,6 +5134,35 @@ stop Granola/Fathom's own cloud having the recording - that's their territory.
 policy seam when a Fathom client asks); playbook control-story paragraph (waits until Ashley is
 live on it); Ashley's fields not yet set (his capture stays off until Guy's own Granola note
 verifies the shape and this layer is proven on it).
+
+## Contacts warehouse - one door for "who is Bob, what's their email?" (step 1 SHIPPED 2026-09-13)
+
+**The problem:** naming a person without an address meant guessing which of several places they
+lived in (the leads base, a client's base, the comms log, the mailbox) and searching each in turn.
+**The shape:** one Postgres table per tenant (`wingguy_contacts`, sibling of `wingguy_comms_log`),
+one row per person, every source that vouched for them unioned on, freshest evidence kept. Feeds
+in; one lookup out. Everything keyed on `coach_client_id`, no env fallback - a coach's address
+book must never answer another coach's lookup.
+
+**Step 1 (this entry):** feeds = the tenant's leads (primary + alt emails; a lead with no address
+still lands keyed `lead:<id>` so the answer is "in your leads, no email" not "unknown") and the
+comms log. Tools on both transports: `wingguy_find_person` (ranked candidates, one PERSON per
+candidate - a lead's alt addresses fold under the primary - with email, source, evidence, lead id)
+and `wingguy_contacts_status`. Generic ingest door `POST /webhooks/contacts/:clientId`
+(x-portal-token = the client's Portal Token, rows tagged `ingest:<source>`) for a coach's own
+address book - Make.com watching Guy's Google Contacts is the first feed, nothing is Make-specific.
+Nightly cron `scripts/contacts-sweep-cron/index.js`: first run reads the whole base, later runs
+ask Airtable only for rows modified since (`LAST_MODIFIED_TIME()`). Proven on staging: Guy's
+16,368 leads in ~70s full, 3s incremental, lookups well under a second, other tenants see nothing.
+
+**Why not Google Contacts through Unipile:** the contacts scope is carved out of Unipile's
+verified shared Google app; bringing your own Google client key there moves EVERY Gmail/Calendar
+connection onto your app = owning Google verification + the CASA audit for gmail.modify - the
+exact reason Nylas was rejected. No middleman lends a verified app for contacts (Nango, Composio,
+Aurinko, CloudSponge, Pipedream all checked). So: clients get "everyone you've emailed" from the
+mail we already read (step 2); Guy's own Google Contacts arrive via Make (step 3); a curated few
+go back OUT to Google Contacts (step 4, create-only, milestone-gated - Postgres is the warehouse,
+Google Contacts the shop window). Detail + decisions: memory `project_wingguy_contacts_lookup`.
 
 ## Referral rate settled + referral tracking built (2026-09-14)
 
