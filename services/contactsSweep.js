@@ -54,7 +54,8 @@ function leadToContacts(rec) {
     linkedin_slug: canonicalLinkedinSlug(f['LinkedIn Profile URL'] || ''),
     lead_record_id: rec.id,
     last_seen_at: connectedOk,
-    evidence: connectedOk ? `lead record - connected ${fmtDay(connectedOk)}` : 'lead record',
+    // The source label already says "lead record"; evidence carries only the date.
+    evidence: connectedOk ? `connected ${fmtDay(connectedOk)}` : '',
   };
   const primary = contactsStore.cleanEmail(f['Email']);
   const out = [{ ...shared, email: primary, source: 'lead' }];

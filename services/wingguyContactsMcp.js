@@ -29,13 +29,44 @@ function describeSources(sources) {
   return (sources || []).map((s) => labels[s] || (s.startsWith('ingest:') ? `your ${s.slice(7)} feed` : s)).join(', ');
 }
 
+/**
+ * One PERSON per candidate: a lead's primary and alt addresses are separate warehouse rows
+ * (each is a real address to match on) but the same human, so rows sharing a lead record fold
+ * into one entry - primary first, the others listed as "also". Rows with no lead id stay as
+ * they are. Order of first appearance is kept (the store already ranked them).
+ */
+function groupByPerson(rows) {
+  const out = [];
+  const byLead = new Map();
+  for (const r of rows) {
+    const key = r.lead_record_id || null;
+    if (key && byLead.has(key)) {
+      const g = byLead.get(key);
+      if (r.email && !g.emails.includes(r.email)) {
+        // The primary ('lead') address leads the list whatever order the rows arrived in.
+        if ((r.sources || []).includes('lead')) g.emails.unshift(r.email); else g.emails.push(r.email);
+      }
+      for (const s of r.sources || []) if (!g.sources.includes(s)) g.sources.push(s);
+      continue;
+    }
+    const g = { ...r, emails: r.email ? [r.email] : [], sources: [...(r.sources || [])] };
+    out.push(g);
+    if (key) byLead.set(key, g);
+  }
+  return out;
+}
+
 function formatCandidate(r, i) {
   const bits = [];
   if (r.company) bits.push(r.company);
   if (r.headline && r.headline !== r.company) bits.push(r.headline);
   if (r.location) bits.push(r.location);
-  const who = r.name || (r.email ? r.email.split('@')[0] : 'unknown');
-  const line1 = `${i + 1}. ${who}${r.email ? ` <${r.email}>` : ' - NO EMAIL on file'}${bits.length ? ` - ${bits.join(', ')}` : ''}`;
+  const emails = r.emails || (r.email ? [r.email] : []);
+  const who = r.name || (emails[0] ? emails[0].split('@')[0] : 'unknown');
+  const addr = emails.length
+    ? ` <${emails[0]}>${emails.length > 1 ? ` (also ${emails.slice(1).join(', ')})` : ''}`
+    : ' - NO EMAIL on file';
+  const line1 = `${i + 1}. ${who}${addr}${bits.length ? ` - ${bits.join(', ')}` : ''}`;
   const from = describeSources(r.sources);
   const line2 = `   source: ${from || 'unknown'}${r.evidence ? ` - ${r.evidence}` : ''}${r.lead_record_id ? ` - lead ${r.lead_record_id}` : ''}${r.linkedin_slug ? ` - linkedin.com/in/${r.linkedin_slug}` : ''}`;
   return `${line1}\n${line2}`;
@@ -46,7 +77,8 @@ async function runFindPerson(args = {}, tenant = TENANT, deps = {}) {
   const query = String(args.query || '').trim();
   if (!query) return { text: 'Error: give a name, part of a name, or an email to look up.', isError: true };
   const limit = Math.max(1, Math.min(15, Number(args.limit) || 6));
-  const rows = await store.findPeople(tenant, query, { limit });
+  // Ask for a few more rows than we show, so folding alt addresses does not leave the list short.
+  const rows = groupByPerson(await store.findPeople(tenant, query, { limit: limit + 6 })).slice(0, limit);
   if (!rows.length) {
     return {
       text: `No one matching "${query}" in your contacts. If they're new, create them with wingguy_create_lead (a name or LinkedIn URL is enough); if you know their email, pass it and it will be filed. `
@@ -56,7 +88,9 @@ async function runFindPerson(args = {}, tenant = TENANT, deps = {}) {
   const lines = rows.map(formatCandidate);
   if (rows.length === 1) {
     const r = rows[0];
-    const email = r.email ? `Use ${r.email}.` : 'There is no email on file - ask for one or find it in a thread, then file it with wingguy_update_lead.';
+    const email = r.emails.length
+      ? `Use ${r.emails[0]}.${r.emails.length > 1 ? ' (The others are alternates on the same record - use them only if the coach says so.)' : ''}`
+      : 'There is no email on file - ask for one or find it in a thread, then file it with wingguy_update_lead.';
     return { text: `Found one match for "${query}":\n${lines[0]}\n${email}` };
   }
   return {
@@ -143,4 +177,4 @@ async function legacyToolCall(toolName, args, tenant = TENANT) {
   }
 }
 
-module.exports = { registerWingguyContactsTools, legacyToolList, legacyToolCall, TOOL_DEFS, runFindPerson, runContactsStatus };
+module.exports = { registerWingguyContactsTools, legacyToolList, legacyToolCall, TOOL_DEFS, runFindPerson, runContactsStatus, groupByPerson };

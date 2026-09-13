@@ -10,7 +10,7 @@ const assert = require('assert');
 const { normaliseContact, rankMatches, cleanEmail } = require('../services/contactsStore');
 const { leadToContacts } = require('../services/contactsSweep');
 const { shapeContact } = require('../routes/contactsIngestRoutes');
-const { runFindPerson, runContactsStatus, TOOL_DEFS } = require('../services/wingguyContactsMcp');
+const { runFindPerson, runContactsStatus, TOOL_DEFS, groupByPerson } = require('../services/wingguyContactsMcp');
 
 let failures = 0;
 const check = (name, fn) => { try { fn(); console.log(`  ✓ ${name}`); } catch (e) { failures++; console.error(`  ✗ ${name}\n    ${e.message}`); } };
@@ -77,7 +77,29 @@ const acheck = async (name, fn) => { try { await fn(); console.log(`  ✓ ${name
     assert.strictEqual(cs[1].email, 'alix.simpson@absorb.com'); assert.strictEqual(cs[1].source, 'lead-alt');
     assert.strictEqual(cs[1].company, 'Absorb'); assert.strictEqual(cs[1].lead_record_id, 'recA');
     assert.strictEqual(cs[0].linkedin_slug, 'alix-simpson');
-    assert.ok(/connected 20 Aug 2026/.test(cs[0].evidence));
+    assert.strictEqual(cs[0].evidence, 'connected 20 Aug 2026');
+  });
+  check('no connection date = no evidence text (the source label already says "lead record")', () => {
+    assert.strictEqual(leadToContacts({ id: 'recC', fields: { Email: 'c@d.co' } })[0].evidence, '');
+  });
+
+  console.log('\ngroupByPerson():');
+  check('primary + alt rows of one lead fold into one person, primary first', () => {
+    const g = groupByPerson([
+      { email: 'alix.n@gmail.com', name: 'Alix Simpson', lead_record_id: 'recA', sources: ['lead-alt'] },
+      { email: 'alix@absorb.com', name: 'Alix Simpson', lead_record_id: 'recA', sources: ['lead'] },
+      { email: 'other@x.com', name: 'Other Person', lead_record_id: 'recB', sources: ['lead'] },
+    ]);
+    assert.strictEqual(g.length, 2);
+    assert.deepStrictEqual(g[0].emails, ['alix@absorb.com', 'alix.n@gmail.com']);
+    assert.deepStrictEqual(g[0].sources.sort(), ['lead', 'lead-alt']);
+  });
+  check('rows without a lead id never fold together', () => {
+    const g = groupByPerson([
+      { email: 'a@x.com', name: 'Same Name', sources: ['comms-log'] },
+      { email: 'b@x.com', name: 'Same Name', sources: ['comms-log'] },
+    ]);
+    assert.strictEqual(g.length, 2);
   });
   check('no email at all still yields one lead-keyed row', () => {
     const cs = leadToContacts({ id: 'recB', fields: { 'First Name': 'No', 'Last Name': 'Mail' } });
@@ -118,6 +140,15 @@ const acheck = async (name, fn) => { try { await fn(); console.log(`  ✓ ${name
     assert.ok(/Found one match/.test(r.text), r.text);
     assert.ok(/Use bob@acme.com/.test(r.text), r.text);
     assert.ok(/lead record/.test(r.text) && /rec1/.test(r.text), r.text);
+  });
+  await acheck('one person with two addresses is ONE match, primary used, alt shown as "also"', async () => {
+    const r = await runFindPerson({ query: 'alix' }, 'T1', { store: stub([
+      { email: 'alix@absorb.com', name: 'Alix Simpson', lead_record_id: 'recA', sources: ['lead'] },
+      { email: 'alix.n@gmail.com', name: 'Alix Simpson', lead_record_id: 'recA', sources: ['lead-alt'] },
+    ]) });
+    assert.ok(/Found one match/.test(r.text), r.text);
+    assert.ok(/<alix@absorb.com> \(also alix.n@gmail.com\)/.test(r.text), r.text);
+    assert.ok(/Use alix@absorb.com\./.test(r.text), r.text);
   });
   await acheck('several matches ask the human to pick', async () => {
     const r = await runFindPerson({ query: 'bob' }, 'T1', { store: stub([
