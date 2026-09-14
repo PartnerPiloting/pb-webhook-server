@@ -7,7 +7,7 @@
  * Run: node tests/wingguy-contacts.test.js
  */
 const assert = require('assert');
-const { normaliseContact, rankMatches, cleanEmail } = require('../services/contactsStore');
+const { normaliseContact, rankMatches, cleanEmail, mergeContacts } = require('../services/contactsStore');
 const { leadToContacts } = require('../services/contactsSweep');
 const { shapeContact, firstPhone } = require('../routes/contactsIngestRoutes');
 const { runFindPerson, runContactsStatus, TOOL_DEFS, groupByPerson } = require('../services/wingguyContactsMcp');
@@ -47,6 +47,52 @@ const acheck = async (name, fn) => { try { await fn(); console.log(`  ✓ ${name
   check('bad last_seen_at is dropped, good one parsed', () => {
     assert.strictEqual(normaliseContact({ email: 'a@b.co', last_seen_at: 'nope' }).lastSeenAt, null);
     assert.ok(normaliseContact({ email: 'a@b.co', last_seen_at: '2026-09-01T00:00:00Z' }).lastSeenAt instanceof Date);
+  });
+
+  console.log('\nmergeContacts() - Postgres refuses the same conflict key twice in one batch:');
+  const N = (o) => normaliseContact(o);
+  check('one key appears exactly once', () => {
+    const m = mergeContacts([N({ email: 'a@b.co', source: 'comms-log' }), N({ email: 'A@B.co', source: 'comms-log-people' })]);
+    assert.strictEqual(m.length, 1);
+    assert.deepStrictEqual(m[0].sources, ['comms-log', 'comms-log-people']);
+  });
+  check('later non-null values win, earlier ones survive a null', () => {
+    const m = mergeContacts([
+      N({ email: 'a@b.co', name: 'A Person', company: 'Acme', source: 'lead' }),
+      N({ email: 'a@b.co', phone: '0412 000 111', source: 'comms-log' }),
+    ]);
+    assert.strictEqual(m[0].company, 'Acme');
+    assert.strictEqual(m[0].name, 'A Person');
+    assert.strictEqual(m[0].phone, '0412 000 111');
+  });
+  check('freshest sighting carries the evidence', () => {
+    const m = mergeContacts([
+      N({ email: 'a@b.co', last_seen_at: '2026-08-01', evidence: 'older', source: 'x' }),
+      N({ email: 'a@b.co', last_seen_at: '2026-09-01', evidence: 'newer', source: 'y' }),
+      N({ email: 'a@b.co', last_seen_at: '2026-07-01', evidence: 'oldest', source: 'z' }),
+    ]);
+    assert.strictEqual(m[0].evidence, 'newer');
+    assert.strictEqual(m[0].lastSeenAt.toISOString().slice(0, 10), '2026-09-01');
+  });
+  check('an undated row never displaces a dated one, but fills an empty evidence', () => {
+    const m = mergeContacts([
+      N({ email: 'a@b.co', last_seen_at: '2026-09-01', evidence: 'dated', source: 'x' }),
+      N({ email: 'a@b.co', evidence: 'undated', source: 'y' }),
+    ]);
+    assert.strictEqual(m[0].evidence, 'dated');
+    const m2 = mergeContacts([N({ email: 'a@b.co', source: 'x' }), N({ email: 'a@b.co', evidence: 'undated', source: 'y' })]);
+    assert.strictEqual(m2[0].evidence, 'undated');
+  });
+  check('two leads sharing one address collapse to a single row', () => {
+    const m = mergeContacts([
+      N({ email: 'shared@co.com', lead_record_id: 'rec1', name: 'First Person', source: 'lead' }),
+      N({ email: 'shared@co.com', lead_record_id: 'rec2', name: 'Second Person', source: 'lead' }),
+    ]);
+    assert.strictEqual(m.length, 1);
+    assert.strictEqual(m[0].leadRecordId, 'rec2');
+  });
+  check('distinct people are left alone', () => {
+    assert.strictEqual(mergeContacts([N({ email: 'a@b.co' }), N({ email: 'c@d.co' }), N({ lead_record_id: 'recX' })]).length, 3);
   });
 
   console.log('\nrankMatches():');

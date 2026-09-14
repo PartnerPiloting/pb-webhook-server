@@ -162,6 +162,36 @@ function rankMatches(rows, query) {
       || String(a.name || '').localeCompare(String(b.name || '')));
 }
 
+/**
+ * Fold a normalised list so each contact_key appears exactly ONCE, applying the same merge the
+ * database would: later non-null values win, sources union, the freshest evidence survives.
+ *
+ * Postgres refuses an INSERT ... ON CONFLICT DO UPDATE whose own VALUES list names the same
+ * conflict key twice ("cannot affect row a second time"), so a feed that mentions one person
+ * more than once in a batch would fail the WHOLE batch. Found on the first prod sweep
+ * (2026-09-14): the comms-log feed sends a recipient who is also named inside the digest's
+ * people list, and two leads can share an address just as easily.
+ */
+function mergeContacts(rows) {
+  const byKey = new Map();
+  for (const r of rows) {
+    const prev = byKey.get(r.contactKey);
+    if (!prev) { byKey.set(r.contactKey, { ...r, sources: [...r.sources] }); continue; }
+    for (const f of ['email', 'name', 'firstName', 'lastName', 'company', 'headline', 'location', 'phone', 'linkedinSlug', 'leadRecordId', 'meta']) {
+      if (r[f] != null) prev[f] = r[f];
+    }
+    for (const s of r.sources) if (!prev.sources.includes(s)) prev.sources.push(s);
+    // Evidence belongs to whichever sighting is newest; an undated row never displaces a dated one.
+    if (r.lastSeenAt && (!prev.lastSeenAt || r.lastSeenAt >= prev.lastSeenAt)) {
+      prev.lastSeenAt = r.lastSeenAt;
+      if (r.evidence) prev.evidence = r.evidence;
+    } else if (!prev.evidence && r.evidence) {
+      prev.evidence = r.evidence;
+    }
+  }
+  return [...byKey.values()];
+}
+
 // ---------------------------------------------------------------------------
 // Writes
 // ---------------------------------------------------------------------------
@@ -176,7 +206,7 @@ const COLS = ['coach_client_id', 'contact_key', 'email', 'name', 'first_name', '
 async function upsertContacts(coachClientId, contacts = []) {
   const tenant = clip(coachClientId, 80);
   if (!tenant) return { ok: false, error: 'coach_client_id required' };
-  const rows = (contacts || []).map(normaliseContact).filter(Boolean);
+  const rows = mergeContacts((contacts || []).map(normaliseContact).filter(Boolean));
   if (!rows.length) return { ok: true, written: 0 };
   const p = getPool();
   if (!p) return { ok: false, error: 'no database' };
@@ -353,5 +383,5 @@ async function tenantStatus(coachClientId) {
 module.exports = {
   upsertContacts, findPeople, tenantStatus, recordSweep, lastSweepAt,
   // pure, for tests
-  normaliseContact, rankMatches, cleanEmail,
+  normaliseContact, rankMatches, cleanEmail, mergeContacts,
 };
