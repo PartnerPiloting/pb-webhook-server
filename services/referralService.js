@@ -13,9 +13,9 @@
 //     (docs/wingguy.md "maintain 3 active paying referrals"; a short grace window is Guy's call, by
 //     hand, not automated here).
 //
-// Nothing here changes billing. The three-count is shown, never enforced - the rate change is
-// Guy's decision in Stripe, and the exact terms (what "on board" means, the grace window) are
-// still his to record. The number on the board is the evidence he decides from.
+// Nothing in THIS file changes billing - it shows the count. The rate itself is applied by the
+// nightly sweep in services/referralRateService.js (a -$120 credit on the referrer's next Stripe
+// invoice while three referrals are currently paying; Guy's rule, stated 2026-09-14).
 
 const clientService = require('./clientService');
 const { createLogger } = require('../utils/contextLogger');
@@ -153,7 +153,7 @@ function normaliseDirection(v) {
 }
 
 /** Create a referral row. Returns the stored row. */
-async function logReferral({ person, clientRecordId, direction = 'To Guy', stage = 'Introduced', introducedOn = null, how = '', company = '', linkedinUrl = '', email = '', introducedTo = '', notes = '' }) {
+async function logReferral({ person, clientRecordId, direction = 'To Guy', stage = 'Introduced', introducedOn = null, how = '', company = '', linkedinUrl = '', email = '', introducedTo = '', notes = '', becameClientRecordId = null }) {
   const base = clientService.initializeClientsBase();
   const fields = {
     Person: String(person || '').trim(),
@@ -168,6 +168,7 @@ async function logReferral({ person, clientRecordId, direction = 'To Guy', stage
   if (email) fields.Email = email;
   if (introducedTo) fields['Introduced To'] = introducedTo;
   if (notes) fields.Notes = notes;
+  if (becameClientRecordId) fields['Became Client'] = [becameClientRecordId];
   const created = await base(TABLE).create([{ fields }]);
   logger.info(`referral logged: ${fields.Person} (${direction}, ${stage})`);
   return rowFromRecord(created[0]);

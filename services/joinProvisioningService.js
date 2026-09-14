@@ -291,10 +291,45 @@ async function stepCreateRow(job, logger) {
   if (p.customerId) record['Stripe Customer ID'] = p.customerId;
   if (p.subscriptionId) record['Stripe Subscription ID'] = p.subscriptionId;
 
+  // Referral stamp: when the ?ref= name on the join page matches one of Guy's clients, the new
+  // row gets Introduced By = that client (what the referral rate counts) and the Referrals table
+  // gets a Signed row, so the pipeline and the count agree without anyone logging it by hand.
+  const referrer = await resolveReferrerClient(p.referrer);
+  if (referrer) record['Introduced By'] = [referrer.id];
+
   const created = await base('Clients').create(record, { typecast: true });
   job.client_record_id = created.id;
   job.client_id = clientId;
-  return { recordId: created.id, clientId };
+  if (referrer) {
+    try {
+      await require('./referralService').logReferral({
+        person: fullName, clientRecordId: referrer.id, direction: 'To Guy', stage: 'Signed',
+        introducedOn: new Date().toISOString().slice(0, 10), how: 'knowaguy /join page (ref name)',
+        email: p.email, becameClientRecordId: created.id,
+        notes: `${new Date().toISOString().slice(0, 10)} - signed up on the join page naming ${referrer.clientName} as referrer.`,
+      });
+    } catch (e) {
+      logger.warn(`[join] Introduced By set but the Referrals row failed: ${e.message}`);
+    }
+  }
+  return { recordId: created.id, clientId, introducedBy: referrer ? referrer.clientName : null };
+}
+
+/** The free-text referrer from the join page -> a Clients record, when it names one clearly. */
+async function resolveReferrerClient(referrer) {
+  const q = String(referrer || '').trim().toLowerCase();
+  if (!q) return null;
+  try {
+    const clientService = require('./clientService');
+    const all = await clientService.getAllClients();
+    const norm = (v) => String(v || '').trim().toLowerCase().replace(/[-_]+/g, ' ');
+    const exact = all.filter((c) => norm(c.clientName) === norm(q) || norm(c.clientId) === norm(q));
+    if (exact.length === 1) return exact[0];
+    const loose = all.filter((c) => norm(c.clientName).includes(norm(q)) || norm(q).includes(norm(c.clientName)));
+    return loose.length === 1 ? loose[0] : null;
+  } catch (e) {
+    return null;
+  }
 }
 
 async function stepSendAck(job) {
