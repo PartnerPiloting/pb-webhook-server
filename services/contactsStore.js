@@ -44,6 +44,7 @@ async function ensureTable(client) {
       company TEXT,
       headline TEXT,
       location TEXT,
+      phone TEXT,
       linkedin_slug TEXT,
       lead_record_id TEXT,
       sources TEXT[] NOT NULL DEFAULT '{}',
@@ -55,6 +56,10 @@ async function ensureTable(client) {
       UNIQUE (coach_client_id, contact_key)
     );
   `);
+  // Columns added after the table first shipped. CREATE TABLE IF NOT EXISTS does NOT add a
+  // column to a table that already exists (the warehouse was live from 2026-09-13), so every
+  // later column needs its own idempotent ALTER here.
+  await client.query(`ALTER TABLE wingguy_contacts ADD COLUMN IF NOT EXISTS phone TEXT;`);
   await client.query(`CREATE INDEX IF NOT EXISTS idx_wg_contacts_tenant_name ON wingguy_contacts (coach_client_id, lower(name));`);
   await client.query(`CREATE INDEX IF NOT EXISTS idx_wg_contacts_tenant_lead ON wingguy_contacts (coach_client_id, lead_record_id);`);
   await client.query(`
@@ -87,8 +92,11 @@ function clip(v, n = 200) {
 /**
  * Normalise one incoming contact into the row shape. Returns null when there is nothing to key
  * on (no email and no lead record) - a name alone is not a contact.
- * Accepts { email, name | first_name/last_name, company, headline, location, linkedin_url |
- * linkedin_slug, lead_record_id, source | sources[], last_seen_at, evidence, meta }.
+ * Accepts { email, name | first_name/last_name, company, headline, location, phone,
+ * linkedin_url | linkedin_slug, lead_record_id, source | sources[], last_seen_at, evidence, meta }.
+ *
+ * A phone number is kept as the human wrote it (spacing and + intact) - it is for a person to
+ * read and dial, never a match key, so normalising it would only lose information.
  */
 function normaliseContact(input = {}) {
   const email = cleanEmail(input.email);
@@ -117,6 +125,7 @@ function normaliseContact(input = {}) {
     company: clip(input.company || input.company_name, 120) || null,
     headline: clip(input.headline, 200) || null,
     location: clip(input.location, 120) || null,
+    phone: clip(input.phone, 60) || null,
     linkedinSlug: slug || null,
     leadRecordId: leadId || null,
     sources,
@@ -158,7 +167,7 @@ function rankMatches(rows, query) {
 // ---------------------------------------------------------------------------
 
 const COLS = ['coach_client_id', 'contact_key', 'email', 'name', 'first_name', 'last_name', 'company',
-  'headline', 'location', 'linkedin_slug', 'lead_record_id', 'sources', 'last_seen_at', 'evidence', 'meta'];
+  'headline', 'location', 'phone', 'linkedin_slug', 'lead_record_id', 'sources', 'last_seen_at', 'evidence', 'meta'];
 
 /**
  * Insert-or-merge a batch of contacts for ONE tenant. Chunks of 200 so a whole leads base lands
@@ -181,7 +190,7 @@ async function upsertContacts(coachClientId, contacts = []) {
       const values = chunk.map((r) => {
         const base = params.length;
         params.push(tenant, r.contactKey, r.email, r.name, r.firstName, r.lastName, r.company, r.headline,
-          r.location, r.linkedinSlug, r.leadRecordId, r.sources, r.lastSeenAt, r.evidence, r.meta ? JSON.stringify(r.meta) : null);
+          r.location, r.phone, r.linkedinSlug, r.leadRecordId, r.sources, r.lastSeenAt, r.evidence, r.meta ? JSON.stringify(r.meta) : null);
         return `(${COLS.map((_, j) => `$${base + j + 1}`).join(', ')})`;
       });
       await client.query(
@@ -194,6 +203,7 @@ async function upsertContacts(coachClientId, contacts = []) {
            company = COALESCE(EXCLUDED.company, wingguy_contacts.company),
            headline = COALESCE(EXCLUDED.headline, wingguy_contacts.headline),
            location = COALESCE(EXCLUDED.location, wingguy_contacts.location),
+           phone = COALESCE(EXCLUDED.phone, wingguy_contacts.phone),
            linkedin_slug = COALESCE(EXCLUDED.linkedin_slug, wingguy_contacts.linkedin_slug),
            lead_record_id = COALESCE(EXCLUDED.lead_record_id, wingguy_contacts.lead_record_id),
            sources = ARRAY(SELECT DISTINCT s FROM unnest(wingguy_contacts.sources || EXCLUDED.sources) AS s),
@@ -281,15 +291,25 @@ async function findPeople(coachClientId, query, { limit = 8 } = {}) {
   if (!p) return [];
   const tokens = q.toLowerCase().split(/\s+/).filter(Boolean).slice(0, 6);
   const params = [tenant];
+  // Phone is searchable too ("who is 0412 …?"), with separators stripped on BOTH sides so a
+  // query written 0412345678 still finds a stored "+61 412 345 678".
   const clauses = tokens.map((t) => {
-    params.push(`%${t.replace(/[%_\\]/g, (c) => `\\${c}`)}%`);
-    return `(coalesce(name,'') || ' ' || coalesce(email,'') || ' ' || coalesce(company,'')) ILIKE $${params.length}`;
+    const like = `%${t.replace(/[%_\\]/g, (c) => `\\${c}`)}%`;
+    params.push(like);
+    const textIdx = params.length;
+    const digits = t.replace(/\D/g, '');
+    if (digits.length >= 5) {
+      params.push(`%${digits}%`);
+      return `((coalesce(name,'') || ' ' || coalesce(email,'') || ' ' || coalesce(company,'')) ILIKE $${textIdx}
+               OR regexp_replace(coalesce(phone,''), '\\D', '', 'g') LIKE $${params.length})`;
+    }
+    return `(coalesce(name,'') || ' ' || coalesce(email,'') || ' ' || coalesce(company,'')) ILIKE $${textIdx}`;
   });
   const client = await p.connect();
   try {
     await ensureTable(client);
     const r = await client.query(
-      `SELECT id, email, name, first_name, last_name, company, headline, location, linkedin_slug,
+      `SELECT id, email, name, first_name, last_name, company, headline, location, phone, linkedin_slug,
               lead_record_id, sources, last_seen_at, evidence
          FROM wingguy_contacts
         WHERE coach_client_id = $1 ${clauses.length ? 'AND ' + clauses.join(' AND ') : ''}

@@ -42,6 +42,7 @@ function groupByPerson(rows) {
     const key = r.lead_record_id || null;
     if (key && byLead.has(key)) {
       const g = byLead.get(key);
+      if (!g.phone && r.phone) g.phone = r.phone;
       if (r.email && !g.emails.includes(r.email)) {
         // The primary ('lead') address leads the list whatever order the rows arrived in.
         if ((r.sources || []).includes('lead')) g.emails.unshift(r.email); else g.emails.push(r.email);
@@ -66,7 +67,7 @@ function formatCandidate(r, i) {
   const addr = emails.length
     ? ` <${emails[0]}>${emails.length > 1 ? ` (also ${emails.slice(1).join(', ')})` : ''}`
     : ' - NO EMAIL on file';
-  const line1 = `${i + 1}. ${who}${addr}${bits.length ? ` - ${bits.join(', ')}` : ''}`;
+  const line1 = `${i + 1}. ${who}${addr}${r.phone ? ` - ph ${r.phone}` : ''}${bits.length ? ` - ${bits.join(', ')}` : ''}`;
   const from = describeSources(r.sources);
   const line2 = `   source: ${from || 'unknown'}${r.evidence ? ` - ${r.evidence}` : ''}${r.lead_record_id ? ` - lead ${r.lead_record_id}` : ''}${r.linkedin_slug ? ` - linkedin.com/in/${r.linkedin_slug}` : ''}`;
   return `${line1}\n${line2}`;
@@ -90,7 +91,7 @@ async function runFindPerson(args = {}, tenant = TENANT, deps = {}) {
     const r = rows[0];
     const email = r.emails.length
       ? `Use ${r.emails[0]}.${r.emails.length > 1 ? ' (The others are alternates on the same record - use them only if the coach says so.)' : ''}`
-      : 'There is no email on file - ask for one or find it in a thread, then file it with wingguy_update_lead.';
+      : `There is no email on file${r.phone ? ` - only the phone number ${r.phone}` : ''} - ask for one or find it in a thread, then file it with wingguy_update_lead.`;
     return { text: `Found one match for "${query}":\n${lines[0]}\n${email}` };
   }
   return {
@@ -117,15 +118,15 @@ const TOOL_DEFS = [
   {
     name: 'wingguy_find_person',
     description:
-      'Look up WHO someone is and their EMAIL from the coach\'s contacts warehouse - one search across their leads, everyone Wingguy has written to, and any feeds they have added. Use it the moment a person is named without an address ("email Bob", "send it to Sarah at Acme", "who is J. Carter?") and BEFORE drafting to them. Pass a name, part of a name, a company, or an email. Returns ranked candidates with the email, where it came from and the freshest evidence, plus the lead record id when they are in the CRM. One match = use it. Several = show them and ask which; never guess. None = they may be new (wingguy_create_lead) or the warehouse may be empty (wingguy_contacts_status). Read-only.',
+      'Look up WHO someone is and their CONTACT DETAILS - email, phone, LinkedIn - from the coach\'s contacts warehouse, one search across their leads, everyone Wingguy has written to, and any feeds they have added. Use it the moment a person is named without an address ("email Bob", "send it to Sarah at Acme", "what\'s Rick\'s number?", "who is J. Carter?") and BEFORE drafting to them. Pass a name, part of a name, a company, an email, or a phone number. Returns ranked candidates with the email, where it came from and the freshest evidence, plus the lead record id when they are in the CRM. One match = use it. Several = show them and ask which; never guess. None = they may be new (wingguy_create_lead) or the warehouse may be empty (wingguy_contacts_status). Read-only.',
     zodSchema: {
-      query: z.string().describe('A name, part of a name, a company, or an email address.'),
+      query: z.string().describe('A name, part of a name, a company, an email address, or a phone number.'),
       limit: z.number().optional().describe('Max candidates to return (default 6, max 15).'),
     },
     jsonSchema: {
       type: 'object',
       properties: {
-        query: { type: 'string', description: 'A name, part of a name, a company, or an email address.' },
+        query: { type: 'string', description: 'A name, part of a name, a company, an email address, or a phone number.' },
         limit: { type: 'number', description: 'Max candidates to return (default 6, max 15).' },
       },
       required: ['query'],

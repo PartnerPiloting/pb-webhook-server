@@ -9,7 +9,7 @@
 const assert = require('assert');
 const { normaliseContact, rankMatches, cleanEmail } = require('../services/contactsStore');
 const { leadToContacts } = require('../services/contactsSweep');
-const { shapeContact } = require('../routes/contactsIngestRoutes');
+const { shapeContact, firstPhone } = require('../routes/contactsIngestRoutes');
 const { runFindPerson, runContactsStatus, TOOL_DEFS, groupByPerson } = require('../services/wingguyContactsMcp');
 
 let failures = 0;
@@ -39,6 +39,10 @@ const acheck = async (name, fn) => { try { await fn(); console.log(`  ✓ ${name
   check('source slugs are cleaned, deduped, keep the ingest: prefix', () => {
     const c = normaliseContact({ email: 'a@b.co', sources: ['ingest:Google Contacts', 'lead', 'lead'] });
     assert.deepStrictEqual(c.sources, ['ingest:googlecontacts', 'lead']);
+  });
+  check('phone kept verbatim (it is for a human to dial, not a match key)', () => {
+    assert.strictEqual(normaliseContact({ email: 'a@b.co', phone: '  +61 412 345 678 ' }).phone, '+61 412 345 678');
+    assert.strictEqual(normaliseContact({ email: 'a@b.co' }).phone, null);
   });
   check('bad last_seen_at is dropped, good one parsed', () => {
     assert.strictEqual(normaliseContact({ email: 'a@b.co', last_seen_at: 'nope' }).lastSeenAt, null);
@@ -82,6 +86,10 @@ const acheck = async (name, fn) => { try { await fn(); console.log(`  ✓ ${name
   check('no connection date = no evidence text (the source label already says "lead record")', () => {
     assert.strictEqual(leadToContacts({ id: 'recC', fields: { Email: 'c@d.co' } })[0].evidence, '');
   });
+  check('the lead Phone field is carried onto every address of that lead', () => {
+    const cs = leadToContacts({ id: 'recP', fields: { Email: 'p@q.co', 'Alt Emails': 'p2@q.co', Phone: '0412 999 888' } });
+    assert.deepStrictEqual(cs.map((c) => c.phone), ['0412 999 888', '0412 999 888']);
+  });
 
   console.log('\ngroupByPerson():');
   check('primary + alt rows of one lead fold into one person, primary first', () => {
@@ -118,6 +126,17 @@ const acheck = async (name, fn) => { try { await fn(); console.log(`  ✓ ${name
     assert.strictEqual(shapeContact({ email: 'a@b.co' }, 'zapier').source, 'ingest:zapier');
   });
   check('non-object is ignored', () => assert.strictEqual(shapeContact('junk', 'feed'), null));
+
+  console.log('\nfirstPhone() (Google/Unipile send an array):');
+  check('plain string phone', () => assert.strictEqual(firstPhone({ phone: ' 0412 345 678 ' }), '0412 345 678'));
+  check('array of {number} - first usable wins', () => {
+    assert.strictEqual(firstPhone({ phone_numbers: [{ number: '', type: 'work' }, { number: '+61 412 345 678', type: 'mobile' }] }), '+61 412 345 678');
+  });
+  check('array of bare strings', () => assert.strictEqual(firstPhone({ phones: ['07 5555 1234'] }), '07 5555 1234'));
+  check('nothing usable = empty', () => assert.strictEqual(firstPhone({ phone_numbers: [] }), ''));
+  check('phone flows through shapeContact', () => {
+    assert.strictEqual(shapeContact({ email: 'a@b.co', phone_numbers: [{ number: '0412 000 111' }] }, 'feed').phone, '0412 000 111');
+  });
 
   console.log('\nrunFindPerson() against a stubbed store:');
   const stub = (rowsOut, status) => ({
@@ -164,6 +183,26 @@ const acheck = async (name, fn) => { try { await fn(); console.log(`  ✓ ${name
     ]) });
     assert.ok(/NO EMAIL on file/.test(r.text), r.text);
     assert.ok(/wingguy_update_lead/.test(r.text), r.text);
+  });
+  await acheck('phone and LinkedIn are shown alongside the email', async () => {
+    const r = await runFindPerson({ query: 'bob' }, 'T1', { store: stub([
+      { email: 'bob@acme.com', name: 'Bob Carter', phone: '0412 345 678', linkedin_slug: 'bob-carter', sources: ['lead'] },
+    ]) });
+    assert.ok(/ph 0412 345 678/.test(r.text), r.text);
+    assert.ok(/linkedin.com\/in\/bob-carter/.test(r.text), r.text);
+  });
+  await acheck('no email but a phone offers the phone rather than nothing', async () => {
+    const r = await runFindPerson({ query: 'no mail' }, 'T1', { store: stub([
+      { email: null, name: 'No Mail', phone: '07 5555 1234', sources: ['lead'], lead_record_id: 'recB' },
+    ]) });
+    assert.ok(/only the phone number 07 5555 1234/.test(r.text), r.text);
+  });
+  await acheck('folding keeps a phone found on the alt-email row', async () => {
+    const r = await runFindPerson({ query: 'alix' }, 'T1', { store: stub([
+      { email: 'alix@absorb.com', name: 'Alix Simpson', lead_record_id: 'recA', sources: ['lead'] },
+      { email: 'alix.n@gmail.com', name: 'Alix Simpson', phone: '0400 111 222', lead_record_id: 'recA', sources: ['lead-alt'] },
+    ]) });
+    assert.ok(/ph 0400 111 222/.test(r.text), r.text);
   });
   await acheck('no match points at create_lead and status', async () => {
     const r = await runFindPerson({ query: 'ghost' }, 'T1', { store: stub([]) });

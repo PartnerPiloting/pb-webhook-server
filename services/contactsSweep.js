@@ -24,8 +24,8 @@ const { canonicalLinkedinSlug } = require('../utils/linkedinCanonical');
 
 // Richest-first field ladders: engine fields roll out per base over time, and a base that
 // predates one 422s on the unknown name - same degrade trick as the mail/dossier readers.
-const LEAD_FIELDS_FULL = ['First Name', 'Last Name', 'Email', 'Alt Emails', 'Company Name', 'Headline', 'Location', 'LinkedIn Profile URL', 'Date Connected'];
-const LEAD_FIELDS_CORE = ['First Name', 'Last Name', 'Email', 'LinkedIn Profile URL'];
+const LEAD_FIELDS_FULL = ['First Name', 'Last Name', 'Email', 'Alt Emails', 'Phone', 'Company Name', 'Headline', 'Location', 'LinkedIn Profile URL', 'Date Connected'];
+const LEAD_FIELDS_CORE = ['First Name', 'Last Name', 'Email', 'Phone', 'LinkedIn Profile URL'];
 
 function splitAltEmails(v) {
   return String(v || '').toLowerCase().split(/[;,\s]+/).map((s) => s.trim()).filter(Boolean);
@@ -51,6 +51,7 @@ function leadToContacts(rec) {
     company: f['Company Name'] || '',
     headline: f['Headline'] || '',
     location: f['Location'] || '',
+    phone: f['Phone'] || '',
     linkedin_slug: canonicalLinkedinSlug(f['LinkedIn Profile URL'] || ''),
     lead_record_id: rec.id,
     last_seen_at: connectedOk,

@@ -12,8 +12,9 @@
  *   POST /webhooks/contacts/:clientId   body: one contact, or { contacts: [...] } (max 500)
  *
  * Contact shape (all optional but email): { email, name | first_name/last_name, company,
- * headline, location, linkedin_url, source, seen_at }. Anything else is ignored; strings are
- * clipped, never echoed.
+ * headline, location, phone, linkedin_url, source, seen_at }. Anything else is ignored; strings
+ * are clipped, never echoed. Phone also accepts the array shape Google/Unipile use
+ * (phone_numbers: [{ number, type }]) - the first number wins.
  *
  * AUTH: the tenant's Portal Token - the same per-client secret the Chrome extension sends as
  * x-portal-token and the /mcp2 connector carries in its URL - sent here as the x-portal-token
@@ -59,6 +60,21 @@ async function authorise(req) {
   return { client };
 }
 
+/** First usable phone number, from a plain string or the {number|value} array shape. Pure. */
+function firstPhone(raw) {
+  if (!raw) return '';
+  const direct = raw.phone || raw.phone_number || raw.mobile;
+  if (typeof direct === 'string' && direct.trim()) return clip(direct, 60);
+  const list = raw.phone_numbers || raw.phones || (Array.isArray(direct) ? direct : null);
+  if (Array.isArray(list)) {
+    for (const p of list) {
+      const n = typeof p === 'string' ? p : (p && (p.number || p.value || p.phone));
+      if (n && String(n).trim()) return clip(n, 60);
+    }
+  }
+  return '';
+}
+
 /** One inbound contact -> the store's input shape, with the source tagged. Pure. */
 function shapeContact(raw, defaultSource) {
   if (!raw || typeof raw !== 'object') return null;
@@ -71,6 +87,7 @@ function shapeContact(raw, defaultSource) {
     company: clip(raw.company || raw.company_name || raw.organisation || raw.organization, 120),
     headline: clip(raw.headline || raw.job_title || raw.title, 200),
     location: clip(raw.location, 120),
+    phone: firstPhone(raw),
     linkedin_url: clip(raw.linkedin_url || raw.linkedin, 300),
     source: `ingest:${source}`,
     last_seen_at: raw.seen_at || raw.updated_at || raw.last_seen_at || null,
@@ -117,3 +134,4 @@ router.post('/webhooks/contacts/:clientId', express.json({ limit: '2mb' }), asyn
 
 module.exports = router;
 module.exports.shapeContact = shapeContact;
+module.exports.firstPhone = firstPhone;
