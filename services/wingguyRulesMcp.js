@@ -534,6 +534,147 @@ async function runGetClient({ client } = {}, tenant = TENANT) {
 // Definitions — one source of truth for names/descriptions/schemas
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Referrals - who introduced whom, and what came of it (coach-only, 2026-09-14)
+// ---------------------------------------------------------------------------
+
+function referralLine(r) {
+  const who = r.direction === 'From Guy'
+    ? `Guy -> ${r.introducedTo || '(recipient not recorded)'}: ${r.person}`
+    : `${r.clientName || '(no client)'} -> Guy: ${r.person}`;
+  const bits = [r.stage || 'no stage', r.introducedOn || 'no date', r.company || null, r.how || null].filter(Boolean);
+  const note = String(r.notes || '').split('\n')[0];
+  return `  #${r.id}  ${who}  [${bits.join(' · ')}]${note ? `\n      ${note}` : ''}`;
+}
+
+async function runReferrals(args = {}, tenant = TENANT) {
+  const clientService = require('./clientService');
+  const referrals = require('./referralService');
+  const action = String(args.action || 'list').toLowerCase();
+
+  let all;
+  try {
+    all = await clientService.getAllClients();
+  } catch (e) {
+    return { text: `Couldn't read the client directory: ${e.message}`, isError: true };
+  }
+  const mine = (all || []).filter((c) => c.coach && c.coach === tenant);
+  if (!mine.length) return { text: `No coached clients are visible to "${tenant}". Referrals are coach-only.`, isError: true };
+
+  const findClient = (q) => {
+    const s = String(q || '').trim().toLowerCase();
+    if (!s) return { client: null };
+    const exact = mine.filter((c) => (c.clientId || '').toLowerCase() === s || (c.clientName || '').toLowerCase() === s);
+    const hits = exact.length ? exact : mine.filter((c) => (c.clientId || '').toLowerCase().includes(s) || (c.clientName || '').toLowerCase().includes(s));
+    if (hits.length === 1) return { client: hits[0] };
+    if (!hits.length) return { error: `No coached client matched "${q}". Your clients: ${mine.map((c) => c.clientName).join(', ')}.` };
+    return { error: `"${q}" matched several: ${hits.map((c) => `${c.clientName} (${c.clientId})`).join(', ')}. Use the exact client id.` };
+  };
+
+  if (action === 'log') {
+    const person = String(args.person || '').trim();
+    if (!person) return { text: 'Who was introduced? Pass person (their full name).', isError: true };
+    const { client, error } = findClient(args.client);
+    if (error) return { text: error, isError: true };
+    if (!client) return { text: 'Which client is this introduction tied to? Pass client (the referrer for an intro TO Guy, the recipient for an intro FROM Guy).', isError: true };
+    const direction = referrals.normaliseDirection(args.direction);
+    if (!direction) return { text: `direction must be "To Guy" or "From Guy" (got "${args.direction}").`, isError: true };
+    const stage = args.stage ? referrals.normaliseStage(args.stage) : (direction === 'From Guy' ? 'Promised' : 'Introduced');
+    if (!stage) return { text: `Unknown stage "${args.stage}". Stages: ${referrals.STAGES.join(', ')}.`, isError: true };
+    try {
+      const today = new Date().toISOString().slice(0, 10);
+      const row = await referrals.logReferral({
+        person, clientRecordId: client.id, direction, stage,
+        introducedOn: args.introduced_on || today,
+        how: args.how || '', company: args.company || '', linkedinUrl: args.linkedin_url || '', email: args.email || '',
+        introducedTo: args.introduced_to || '', notes: args.note ? `${today} - ${args.note}` : '',
+      });
+      const who = direction === 'To Guy'
+        ? `${client.clientName} introduced ${person} to Guy`
+        : `Guy ${stage === 'Promised' ? 'promised' : 'introduced'} ${person} to ${args.introduced_to || client.clientName}`;
+      return { text: `Logged: ${who} (${stage}, ${row.introducedOn}). Row id ${row.id} - use it with action=update to move it along.` };
+    } catch (e) {
+      return { text: `Couldn't log the referral: ${e.message}`, isError: true };
+    }
+  }
+
+  if (action === 'update') {
+    let rowId = String(args.id || '').trim();
+    let scoped;
+    try {
+      scoped = referrals.scopeToCoach(await referrals.listAllReferrals(), all, tenant);
+    } catch (e) {
+      return { text: `Couldn't read the Referrals table: ${e.message}`, isError: true };
+    }
+    if (!rowId && args.person) {
+      const s = String(args.person).trim().toLowerCase();
+      const exact = scoped.filter((r) => r.person.toLowerCase() === s);
+      const hits = exact.length ? exact : scoped.filter((r) => r.person.toLowerCase().includes(s));
+      if (hits.length === 1) rowId = hits[0].id;
+      else if (!hits.length) return { text: `No referral row matched "${args.person}". Run action=list to see them.`, isError: true };
+      else return { text: `"${args.person}" matched several rows:\n${hits.map(referralLine).join('\n')}\nPass id.`, isError: true };
+    }
+    if (!rowId) return { text: 'Which row? Pass id (from the list) or person.', isError: true };
+    if (!scoped.some((r) => r.id === rowId)) return { text: `Row ${rowId} is not one of your referrals.`, isError: true };
+    const stage = args.stage ? referrals.normaliseStage(args.stage) : null;
+    if (args.stage && !stage) return { text: `Unknown stage "${args.stage}". Stages: ${referrals.STAGES.join(', ')}.`, isError: true };
+    let becameClientRecordId = null;
+    if (args.became_client) {
+      const { client, error } = findClient(args.became_client);
+      if (error) return { text: error, isError: true };
+      becameClientRecordId = client.id;
+    }
+    if (stage === 'Signed' && !becameClientRecordId) {
+      return { text: 'Signed needs became_client (the new client\'s name or id) so their Introduced By gets set - that is what makes them count. If they are not in the Clients table yet, add them first, then re-run.', isError: true };
+    }
+    try {
+      const row = await referrals.updateReferral(rowId, { stage, note: args.note || '', becameClientRecordId, introducedOn: args.introduced_on || null, how: args.how || null });
+      const extra = becameClientRecordId ? ' Introduced By set on their client row - they now count toward the referrer\'s total while Active and paying.' : '';
+      return { text: `Updated ${row.person}: ${row.stage}${args.note ? ' (note added)' : ''}.${extra}` };
+    } catch (e) {
+      return { text: `Couldn't update the referral: ${e.message}`, isError: true };
+    }
+  }
+
+  // list (default): one client's standing, or the whole book.
+  let rows;
+  try {
+    rows = referrals.scopeToCoach(await referrals.listAllReferrals(), all, tenant);
+  } catch (e) {
+    return { text: `Couldn't read the Referrals table: ${e.message}`, isError: true };
+  }
+  const { client, error } = findClient(args.client);
+  if (error) return { text: error, isError: true };
+
+  const standing = (c) => {
+    const s = referrals.summariseClient(c, all, rows);
+    const rate = s.referralRate
+      ? ` - AT THE REFERRAL RATE (${s.payingNow} paying)`
+      : ` - ${s.payingNow} of ${referrals.REFERRAL_RATE_COUNT} paying referrals toward the reduced rate`;
+    const paying = s.payingNames.length ? ` Paying now: ${s.payingNames.join(', ')}.` : '';
+    const owed = s.promisedFromGuy.length ? ` Guy still owes intros to: ${s.promisedFromGuy.join(', ')}.` : '';
+    return `${c.clientName}: ${s.introduced} introduced (${s.open} in play, ${s.signed} signed), ${s.introsFromGuy} intros back from Guy${rate}.${paying}${owed}`;
+  };
+
+  if (client) {
+    const theirs = rows.filter((r) => r.clientRecordId === client.id);
+    const lines = [standing(client), ''];
+    lines.push(theirs.length ? theirs.map(referralLine).join('\n') : '  (no introductions on record yet)');
+    return { text: lines.join('\n') };
+  }
+
+  const active = mine.filter((c) => rows.some((r) => r.clientRecordId === c.id) || referrals.summariseClient(c, all, rows).payingNow > 0);
+  const lines = [`Referrals across your book (${rows.length} introductions on record):`, ''];
+  for (const c of active) lines.push(standing(c));
+  if (!active.length) lines.push('  nobody has introduced anyone yet');
+  const open = rows.filter((r) => r.direction === 'To Guy' && referrals.OPEN_STAGES.includes(r.stage));
+  const owed = rows.filter((r) => r.direction === 'From Guy' && r.stage === 'Promised');
+  lines.push('', `In play (${open.length}):`, open.length ? open.map(referralLine).join('\n') : '  none');
+  lines.push('', `Guy owes (${owed.length}):`, owed.length ? owed.map(referralLine).join('\n') : '  none');
+  lines.push('', 'Log one: action=log person="Jane Smith" client=<referrer> direction="To Guy" how="LinkedIn group chat". Move one: action=update person="Jane Smith" stage="Call held" note="...". Signed: add became_client=<their client id>.');
+  return { text: lines.join('\n') };
+}
+
 const LAYER_DESC = 'Rule layer: "client" (this tenant\'s own rule — the default) · "foundation" (platform-wide, ALL tenants read it — reserved for Guy/platform calls) · "template" (the de-personalised seed for new clients; not runtime-read). If it\'s unclear whether a change is personal or platform-wide, ASK the human — never guess foundation.';
 const DIVERGENCE_DESC = '"active" (default) = everything currently applying. "divergence" = how this client differs from the shared set, in TWO sections: CHANGED (a shared instruction they replaced with their own version - both bodies side by side, flagged if the standard has moved since) and ADDED (their own instructions with no shared version behind them - shown in full, newest first). Other filters are ignored for divergence.';
 const TIER_DESC = 'FOUNDATION ONLY. "standard" (default) = shared and improved centrally, but a client MAY save their own version, which then replaces it for them. "locked" = a guardrail: no client can override it, ever. Locking is deliberate and rare — never set it without the human explicitly asking. Omitted on an edit = the existing tier is kept (editing a locked rule\'s wording never unlocks it).';
@@ -743,6 +884,46 @@ const TOOL_DEFS = [
       required: ['client'],
     },
     run: runGetClient,
+  },
+  {
+    name: 'wingguy_referrals',
+    description: 'Coach-only referral tracking: who introduced whom to Guy, what came of each introduction, and what Guy owes back. action=list (default) shows one client\'s standing (pass client) or the whole book: introductions in play, signed, how many referred clients are ACTIVE AND PAYING right now (the maintained count that earns the reduced rate - 3 = at the rate), and the intros Guy has promised but not yet made. action=log records a new introduction (person + client + direction: "To Guy" = the client introduced this person to Guy; "From Guy" = Guy introduced this person to the client or to a prospect - pass introduced_to). action=update moves a row along (stage, note); stage=Signed also needs became_client so the new client\'s Introduced By is set. Use it whenever an introduction is made, a referred prospect has a call or demo, or Guy asks "how many has X referred" / "what do I owe Roland".',
+    zodSchema: {
+      action: z.enum(['list', 'log', 'update']).optional().describe('list (default) | log a new introduction | update an existing row'),
+      client: z.string().optional().describe('Client name or id. list: narrow to this client. log: the client the intro is tied to (referrer for To Guy, recipient for From Guy).'),
+      person: z.string().optional().describe('The person introduced (full name). log: required. update: identifies the row when id is not given.'),
+      id: z.string().optional().describe('update: the row id from the list (rec...)'),
+      direction: z.string().optional().describe('log: "To Guy" (default) or "From Guy"'),
+      stage: z.string().optional().describe('Promised | Introduced | Call held | Demo held | Signed | Went quiet | Not a fit | Not a prospect'),
+      note: z.string().optional().describe('One line on what happened - stamped with today\'s date, newest first'),
+      introduced_on: z.string().optional().describe('YYYY-MM-DD the intro was made (log defaults to today)'),
+      how: z.string().optional().describe('Channel: LinkedIn group chat, email cc, Calendly self-booked, on a call...'),
+      company: z.string().optional().describe('log: their company'),
+      linkedin_url: z.string().optional().describe('log: their LinkedIn URL'),
+      email: z.string().optional().describe('log: their email'),
+      introduced_to: z.string().optional().describe('log, From Guy only: who Guy introduced them to, by name'),
+      became_client: z.string().optional().describe('update with stage=Signed: the new client\'s name or id'),
+    },
+    jsonSchema: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['list', 'log', 'update'], description: 'list (default) | log a new introduction | update an existing row' },
+        client: { type: 'string', description: 'Client name or id. list: narrow to this client. log: the client the intro is tied to (referrer for To Guy, recipient for From Guy).' },
+        person: { type: 'string', description: 'The person introduced (full name). log: required. update: identifies the row when id is not given.' },
+        id: { type: 'string', description: 'update: the row id from the list (rec...)' },
+        direction: { type: 'string', description: 'log: "To Guy" (default) or "From Guy"' },
+        stage: { type: 'string', description: 'Promised | Introduced | Call held | Demo held | Signed | Went quiet | Not a fit | Not a prospect' },
+        note: { type: 'string', description: 'One line on what happened - stamped with today\'s date, newest first' },
+        introduced_on: { type: 'string', description: 'YYYY-MM-DD the intro was made (log defaults to today)' },
+        how: { type: 'string', description: 'Channel: LinkedIn group chat, email cc, Calendly self-booked, on a call...' },
+        company: { type: 'string', description: 'log: their company' },
+        linkedin_url: { type: 'string', description: 'log: their LinkedIn URL' },
+        email: { type: 'string', description: 'log: their email' },
+        introduced_to: { type: 'string', description: 'log, From Guy only: who Guy introduced them to, by name' },
+        became_client: { type: 'string', description: 'update with stage=Signed: the new client\'s name or id' },
+      },
+    },
+    run: runReferrals,
   },
   {
     name: 'wingguy_edit_review',

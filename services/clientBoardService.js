@@ -14,6 +14,7 @@
 // and run PER CARD on demand, never for the whole grid.
 
 const clientService = require('./clientService');
+const referrals = require('./referralService');
 const { getPool } = require('./recallWebhookDb');
 const { createLogger } = require('../utils/contextLogger');
 
@@ -323,7 +324,7 @@ async function getBoard(coachClientId) {
   const all = await clientService.getAllClients();
   const mine = all.filter((c) => c.coach === coachClientId && c.clientId !== coachClientId);
 
-  const [lastUsed, ownRules, storedMeetings, lastSessions, extension, owed, events] = await Promise.all([
+  const [lastUsed, ownRules, storedMeetings, lastSessions, extension, owed, events, referralRows] = await Promise.all([
     lastUsedByTenant(),
     ownRulesByTenant(),
     storedMeetingsByTenant(),
@@ -331,6 +332,11 @@ async function getBoard(coachClientId) {
     extensionByClient(),
     owedByClientRecord(),
     coachCalendarEvents(coachClientId),
+    // The referral pipeline is one more Airtable read; a failure costs the referral column, not the board.
+    referrals.listAllReferrals().then((rows) => referrals.scopeToCoach(rows, all, coachClientId)).catch((e) => {
+      logger.warn(`board referrals skipped: ${e.message}`);
+      return [];
+    }),
   ]);
   const ctx = { lastUsed, ownRules, storedMeetings, extension };
 
@@ -358,7 +364,8 @@ async function getBoard(coachClientId) {
       status: client.status,
       coachingStatus: client.coachingStatus || null,
       launchDate: client.launchDate || null,
-      introducedBy: raw['Introduced By'] || null,
+      introducedBy: referrals.introducedByName(client, all),
+      referrals: referrals.summariseClient(client, all, referralRows),
       seriesStart: raw['Email Series Start Date'] || null,
       reconnectOn: raw['Reconnect On'] || null,
       pills,
@@ -391,6 +398,9 @@ async function getBoard(coachClientId) {
     pausedWithCheckIn: byGroup.paused.filter((c) => c.reconnectOn).length,
     referralsThisQuarter: newThisQuarter.filter((c) => present(c.introducedBy)).length,
     newThisQuarter: newThisQuarter.length,
+    // Introductions still in play (To Guy rows not yet signed or closed) and what Guy owes back.
+    referralsOpen: referralRows.filter((r) => r.direction === 'To Guy' && referrals.OPEN_STAGES.includes(r.stage)).length,
+    introsOwedByGuy: referralRows.filter((r) => r.direction === 'From Guy' && r.stage === 'Promised').length,
     calendarRead: events.length > 0,
   };
 

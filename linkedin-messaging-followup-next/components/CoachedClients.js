@@ -218,6 +218,27 @@ const CoachedClients = () => {
 
   // ---- render pieces ----
 
+  // Referral standing: introductions the client has made, and how many of them are paying today.
+  // The paying count is the maintained one that earns the reduced rate (3 = at the rate).
+  const referralText = (card) => {
+    const r = card.referrals;
+    if (!r) return null;
+    if (!r.introduced && !r.payingNow && !r.introsFromGuy) return null;
+    const parts = [];
+    if (r.introduced) parts.push(`${r.introduced} introduced${r.open ? ` (${r.open} in play)` : ''}`);
+    parts.push(r.referralRate ? `${r.payingNow} paying - at the referral rate` : `${r.payingNow} of 3 paying`);
+    if (r.promisedFromGuy && r.promisedFromGuy.length) parts.push(`you owe intros: ${r.promisedFromGuy.join(', ')}`);
+    return parts.join(' · ');
+  };
+
+  const ReferralLine = ({ card }) => {
+    const text = referralText(card);
+    if (!text) return null;
+    const r = card.referrals;
+    const cls = r.referralRate ? 'text-green-700' : (r.promisedFromGuy && r.promisedFromGuy.length ? 'text-amber-700' : 'text-gray-600');
+    return <span className={cls}>Referrals: {text}</span>;
+  };
+
   const OwedRow = ({ card }) => {
     const mine = card.owed.filter((o) => o.who === 'coach');
     const theirs = card.owed.filter((o) => o.who === 'client');
@@ -338,6 +359,7 @@ const CoachedClients = () => {
                 : <span className="text-red-600 font-medium">Next session: not booked</span>}
               <span>Last session: {agoText(card.lastSessionAt, 'none yet')}</span>
               <span>Last used Wingguy: {agoText(card.lastUsedAt)}</span>
+              <ReferralLine card={card} />
             </div>
           </div>
           <div className="flex items-center gap-2 shrink-0">
@@ -371,7 +393,10 @@ const CoachedClients = () => {
                 {card.coachingStatus === 'Graduated' ? ' · graduated' : ''}
               </div>
               <div className={daysAgo(card.lastUsedAt) !== null && daysAgo(card.lastUsedAt) > 30 ? 'text-amber-700' : 'text-gray-600'}>{agoText(card.lastUsedAt)}</div>
-              <div className="text-gray-600">{card.introducedBy ? `Introduced by ${card.introducedBy}` : '-'}</div>
+              <div className="text-gray-600 flex flex-col">
+                <span>{card.introducedBy ? `Introduced by ${card.introducedBy}` : '-'}</span>
+                <ReferralLine card={card} />
+              </div>
             </>
           ) : (
             <>
@@ -468,7 +493,12 @@ const CoachedClients = () => {
         <Tile label="Onboarding" value={strip.onboarding} sub={strip.onboardingNotBooked ? `${strip.onboardingNotBooked} with no session booked` : 'every one has a session booked'} subCls={strip.onboardingNotBooked ? 'text-red-600' : 'text-green-700'} />
         <Tile label="Plumbing complete" value={strip.plumbingComplete} sub={strip.plumbingCompleteEver === strip.plumbingComplete ? `all ${strip.plumbingComplete} still active` : `${strip.plumbingCompleteEver - strip.plumbingComplete} paused`} subCls="text-green-700" />
         <Tile label="Paused" value={strip.paused} sub={strip.pausedWithCheckIn ? `${strip.pausedWithCheckIn} with a check-in date` : 'no check-in dates set'} />
-        <Tile label="Referrals this quarter" value={strip.referralsThisQuarter} sub={`of ${strip.newThisQuarter} new client${strip.newThisQuarter === 1 ? '' : 's'} this quarter`} />
+        <Tile
+          label="Referrals"
+          value={strip.referralsOpen || 0}
+          sub={`in play · ${strip.referralsThisQuarter} of ${strip.newThisQuarter} new this quarter came by referral${strip.introsOwedByGuy ? ` · you owe ${strip.introsOwedByGuy} intro${strip.introsOwedByGuy === 1 ? '' : 's'}` : ''}`}
+          subCls={strip.introsOwedByGuy ? 'text-amber-700' : undefined}
+        />
       </div>
 
       {!strip.calendarRead && (

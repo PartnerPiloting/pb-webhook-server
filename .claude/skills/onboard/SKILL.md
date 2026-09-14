@@ -169,6 +169,10 @@ one is five promises in an email that all work first go.
   next session date/agenda, and any new traps hit. Update the MEMORY.md hook line.
 - Draft the follow-up email: what we got done - homework (max 2-3 concrete items, written
   because verbal homework does not stick) - what's next.
+- **Referrals (2026-09-14):** if the client introduced someone to Guy on the call, or Guy promised
+  them (or their referral) an introduction, log it with `wingguy_referrals` (action=log; direction
+  "To Guy" for their intro, "From Guy" + introduced_to for Guy's promise). A referred prospect who
+  had a call or demo moves along with action=update. This is the only record - Gmail is not.
 - **At the LH-launch wrap (step 14, the final session): set "Email Series Start Date" on the
   Clients row** - convention = that session's date (Guy 2026-08-23). The client email drip starts
   there and takes over the drumbeat when sessions stop. The preflight's Linked Helper line polices it.
