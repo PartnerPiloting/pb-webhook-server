@@ -198,10 +198,14 @@ SCALING lead-scoring** (high-volume → ~10× lever).
 scoring/summaries/follow-up prep · OpenAI = the portal's Start-Here help-Q&A (embeddings RAG — no Claude equivalent;
 keep, cheap, peripheral) · Claude = drafting/reasoning. Detail ↓ journal 2026-06-19 + 2026-06-22 entries.
 
-**Pricing (canonical).** $150/mo basics · **+$50 = Wingguy** → $200 full self-serve · **$300 = done-for-you**
-(Mr Busy + VA). Tier by **service level (DIY vs done-for-you), not feature**. Referral: maintain **3 active
-paying** referrals → $150 drops, **$50 floor** stays (conditional, grace window; $300→$50 tied to VA
-self-sufficiency). Separate **one-time setup** from recurring. **No contractual lock-in** (protect only months 1-3).
+**Pricing (canonical, corrected 2026-09-14).** **$250 for month one, then $150/mo** - one tier, no $200/$300
+tiers (ruled out 2026-08-16, do not re-pitch). **Referral rate (Guy's rule 2026-09-14):** a client who has
+introduced **three people who are currently paying** has the base $150 reduced to **$30/mo**. Maintained, not
+earned once - if one stops paying the count drops and the rate reverts; complimentary clients never count
+(Billing Source). Add-ons on top may come later; this is the core reduction only. The code holds the "three"
+(REFERRAL_RATE_COUNT, services/referralService.js) and never the dollar figure - money changes are an edit
+here + the business-model memory, count changes are one line of code. Tracking: the Referrals table +
+Introduced By in the master base, `wingguy_referrals`, the My Clients board. **No contractual lock-in**.
 **Cost reality (corrected 2026-06-30; resolved 2026-07-01):** the **extension runs on GUY's key** (his COGS —
 only the connector surface is ~$0 to Guy): ≈$1–1.5k/mo at ~70 Wingguy clients, so the ~100-client ballpark reads
 **~AUD $265k/yr at ~mid-70s% margin** (the old "78%" never counted extension AI). **Comfortably covered by the $50
@@ -5127,3 +5131,16 @@ stop Granola/Fathom's own cloud having the recording - that's their territory.
 policy seam when a Fathom client asks); playbook control-story paragraph (waits until Ashley is
 live on it); Ashley's fields not yet set (his capture stays off until Guy's own Granola note
 verifies the shape and this layer is proven on it).
+
+## Referral rate settled + referral tracking built (2026-09-14)
+
+Guy's rule, in his words: "if you introduce three people who are currently paying, your membership gets
+reduced from $150 to $30. There may be other add-ons later, but that is the core reduction in the base
+$150." Supersedes the 2026-06-08 "$150 drops, $50 floor stays" version. He expects to revise it, so the
+dollar figure lives ONLY in prose (canonical block above + memory project_business_model), never in code.
+
+Built the same day: `Referrals` table in the master Clients base (one row per introduction, To Guy / From
+Guy, stage), `Introduced By` link on Clients (the durable count basis, set when a referral signs),
+services/referralService.js (count = referred clients Active AND not complimentary - maintained, three =
+at the rate), `wingguy_referrals` chat tool (list / log / update, coach-only), a referral line per card +
+strip tile on My Clients, and a wrap-step line in the onboard skill. Seeded with Roland's eight intros.
