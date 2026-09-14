@@ -18,9 +18,13 @@
 //     referrer's last standing so Guy gets ONE email when someone reaches the rate or drops off it.
 //
 // "Currently paying", checked on the day the referrer's invoice is being prepared:
-//   * Billing Source stripe   -> their Stripe subscription is active/trialing AND its latest
-//                                invoice is paid. past_due (a missed payment mid-retry) does NOT
-//                                count that day - Guy's rule, stated 2026-09-14.
+//   * Billing Source stripe   -> their Stripe subscription is ACTIVE and its latest invoice is
+//                                paid for a non-zero amount. past_due (a missed payment mid-retry)
+//                                does NOT count that day - Guy's rule, stated 2026-09-14. Nor does
+//                                trialing: a free period Guy has granted (Guy McPhee to Feb 2027)
+//                                is access, not payment. A prepaid deal modelled as a long trial
+//                                (Jonathan Bunch's $797) is the known exception - by hand if ever
+//                                it matters.
 //   * Billing Source blank/pmpro (legacy members) -> Status Active, which the daily PMPro sync
 //                                keeps honest.
 //   * Billing Source complimentary -> never counts (the field says so).
@@ -42,20 +46,23 @@ const CURRENCY = 'aud';
 const LEAD_DAYS = 3;                         // add the credit when the renewal is this close
 const CREDIT_DESCRIPTION = 'Referral rate - three paying referrals';
 const GUY_EMAIL = process.env.ALERT_EMAIL || 'guyralphwilson@gmail.com';
-const PAYING_SUB_STATUSES = ['active', 'trialing'];
+// Entitlement (the webhook) treats trialing as access; "currently paying" for the referral count
+// is stricter - money actually changed hands on the last invoice.
+const PAYING_SUB_STATUSES = ['active'];
+const LIVE_SUB_STATUSES = ['active', 'trialing'];
 
 const lower = (v) => String(v || '').trim().toLowerCase();
 
 // ---------------------------------------------------------------------------------------------
 // Pure judgements (unit tested in tests/referral-rate.test.js)
 
-/** Is a Stripe subscription paid up today? Active or trialing, and the last invoice settled. */
+/** Is a Stripe subscription paid up today? Active, and the last invoice paid for real money. */
 function subscriptionIsPaying(sub) {
   if (!sub || !PAYING_SUB_STATUSES.includes(sub.status)) return false;
   const inv = sub.latest_invoice;
-  if (!inv) return true;                       // a brand-new sub with nothing invoiced yet
+  if (!inv) return false;                      // nothing invoiced yet = nothing paid yet
   if (typeof inv === 'string') return true;    // not expanded - status alone has to do
-  return inv.status === 'paid' || (inv.amount_due === 0 && inv.status !== 'open');
+  return inv.status === 'paid' && Number(inv.amount_paid || 0) > 0;
 }
 
 /**
@@ -150,7 +157,7 @@ async function fetchSubscription(stripe, client, cache) {
       sub = await stripe.subscriptions.retrieve(client.stripeSubscriptionId, { expand: ['latest_invoice'] });
     } else if (client.stripeCustomerId) {
       const list = await stripe.subscriptions.list({ customer: client.stripeCustomerId, status: 'all', limit: 5, expand: ['data.latest_invoice'] });
-      sub = list.data.find((s) => PAYING_SUB_STATUSES.includes(s.status)) || list.data[0] || null;
+      sub = list.data.find((s) => LIVE_SUB_STATUSES.includes(s.status)) || list.data[0] || null;
     }
   } catch (e) {
     defaultLogger.warn(`stripe read failed for ${client.clientId}: ${e.message}`);
@@ -222,7 +229,7 @@ async function runReferralRateSweep({ dryRun = false, now = Date.now(), logger =
     if (s.atRate && lower(r.billingSource) === 'stripe' && stripe) {
       const sub = await fetchSubscription(stripe, r, cache);
       const periodEnd = periodEndOf(sub);
-      if (!sub || !PAYING_SUB_STATUSES.includes(sub.status)) {
+      if (!sub || !LIVE_SUB_STATUSES.includes(sub.status)) {
         line.credit = 'skipped: their own subscription is not active';
       } else if (!renewalDue(periodEnd, now)) {
         line.credit = `not yet: renewal ${periodEnd ? new Date(periodEnd * 1000).toISOString().slice(0, 10) : 'unknown'}`;

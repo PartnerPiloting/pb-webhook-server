@@ -3,8 +3,8 @@
  *
  * Guy's rule: three currently-paying referrals -> $150 becomes $30, maintained not earned once.
  * These tests pin the judgements the nightly sweep is built on:
- *   - "currently paying" for a Stripe-billed referral = subscription active AND last invoice paid;
- *     a missed payment mid-retry does NOT count that day;
+ *   - "currently paying" for a Stripe-billed referral = subscription active AND last invoice paid
+ *     for real money; a missed payment mid-retry does NOT count that day, nor does a free trial;
  *   - legacy (PMPro) referrals count on Status Active; complimentary never counts;
  *   - the credit goes on only when the renewal is close (inside the lead window), never after it;
  *   - one email per transition (reached / lost), none while nothing changes.
@@ -22,7 +22,16 @@ const DAY = 24 * 60 * 60;
 
 console.log('subscriptionIsPaying');
 check('active with a paid latest invoice counts', () => {
-  assert.strictEqual(rate.subscriptionIsPaying({ status: 'active', latest_invoice: { status: 'paid' } }), true);
+  assert.strictEqual(rate.subscriptionIsPaying({ status: 'active', latest_invoice: { status: 'paid', amount_paid: 15000 } }), true);
+});
+check('a $30 referral-rate payer still counts - money changed hands', () => {
+  assert.strictEqual(rate.subscriptionIsPaying({ status: 'active', latest_invoice: { status: 'paid', amount_paid: 3000 } }), true);
+});
+check('trialing does not count - a free period is access, not payment', () => {
+  assert.strictEqual(rate.subscriptionIsPaying({ status: 'trialing', latest_invoice: { status: 'paid', amount_paid: 0 } }), false);
+});
+check('a $0 "paid" invoice (100% off, free month) does not count', () => {
+  assert.strictEqual(rate.subscriptionIsPaying({ status: 'active', latest_invoice: { status: 'paid', amount_paid: 0 } }), false);
 });
 check('past_due (a bounced card mid-retry) does not count that day', () => {
   assert.strictEqual(rate.subscriptionIsPaying({ status: 'past_due', latest_invoice: { status: 'open' } }), false);
@@ -41,7 +50,7 @@ check('an unexpanded latest_invoice id falls back to status alone', () => {
 console.log('referredClientIsPaying');
 check('stripe-billed: judged by the subscription', () => {
   const c = { billingSource: 'stripe', status: 'Active' };
-  assert.strictEqual(rate.referredClientIsPaying(c, { status: 'active', latest_invoice: { status: 'paid' } }), true);
+  assert.strictEqual(rate.referredClientIsPaying(c, { status: 'active', latest_invoice: { status: 'paid', amount_paid: 15000 } }), true);
   assert.strictEqual(rate.referredClientIsPaying(c, { status: 'past_due', latest_invoice: { status: 'open' } }), false);
   assert.strictEqual(rate.referredClientIsPaying(c, null), false);
 });
@@ -50,7 +59,7 @@ check('legacy (blank or pmpro): judged by Status Active', () => {
   assert.strictEqual(rate.referredClientIsPaying({ billingSource: 'pmpro', status: 'Paused' }, null), false);
 });
 check('complimentary never counts, even when Active with a paid sub', () => {
-  assert.strictEqual(rate.referredClientIsPaying({ billingSource: 'complimentary', status: 'Active' }, { status: 'active', latest_invoice: { status: 'paid' } }), false);
+  assert.strictEqual(rate.referredClientIsPaying({ billingSource: 'complimentary', status: 'Active' }, { status: 'active', latest_invoice: { status: 'paid', amount_paid: 15000 } }), false);
 });
 
 console.log('periodEndOf + renewalDue');
