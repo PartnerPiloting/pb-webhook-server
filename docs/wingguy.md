@@ -205,7 +205,9 @@ earned once - if one stops paying the count drops and the rate reverts; complime
 (Billing Source). Add-ons on top may come later; this is the core reduction only. The code holds the "three"
 (REFERRAL_RATE_COUNT, services/referralService.js) and never the dollar figure - money changes are an edit
 here + the business-model memory, count changes are one line of code. Tracking: the Referrals table +
-Introduced By in the master base, `wingguy_referrals`, the My Clients board. **No contractual lock-in**.
+Introduced By in the master base, `wingguy_referrals`, the My Clients board. **Applied by the machine:** a nightly
+sweep (services/referralRateService.js, Render cron) puts a -$120 credit line on the referrer's next Stripe invoice when
+three are paying on the day it is prepared; no credit = full $150, no undo step, no grace window. **No contractual lock-in**.
 **Cost reality (corrected 2026-06-30; resolved 2026-07-01):** the **extension runs on GUY's key** (his COGS —
 only the connector surface is ~$0 to Guy): ≈$1–1.5k/mo at ~70 Wingguy clients, so the ~100-client ballpark reads
 **~AUD $265k/yr at ~mid-70s% margin** (the old "78%" never counted extension AI). **Comfortably covered by the $50
@@ -5144,3 +5146,12 @@ Guy, stage), `Introduced By` link on Clients (the durable count basis, set when 
 services/referralService.js (count = referred clients Active AND not complimentary - maintained, three =
 at the rate), `wingguy_referrals` chat tool (list / log / update, coach-only), a referral line per card +
 strip tile on My Clients, and a wrap-step line in the onboard skill. Seeded with Roland's eight intros.
+
+Later the same day - Guy: "I don't want that to be a manual load." Built services/referralRateService.js: a
+nightly sweep (Render cron `cron-referral-rate-sweep-main`, 20:00 UTC) judges every referrer - referred
+clients paying TODAY (Stripe sub active + last invoice paid; legacy = Status Active; complimentary never) -
+and when three are paying and the referrer's Stripe renewal is within 3 days, adds ONE pending -$120
+invoice item, so the invoice reads $150, Referral rate -$120, $30. Default is always full price; the
+credit exists only when earned, one period at a time, so losing a referral needs no undo. Postgres ledger
+(grants unique per client+period, last standing) -> one email to Guy on reached / lost / each grant. The
+referrer must be Stripe-billed (Roland is PMPro until stage 6). The join page now stamps Introduced By.
