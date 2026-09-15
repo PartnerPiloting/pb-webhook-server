@@ -852,12 +852,12 @@ const TOOL_DEFS = [
   },
   {
     name: 'wingguy_assets',
-    description: 'Lists this tenant\'s ASSET LIBRARY (the {{asset:key}} links the rules send out — articles, videos, decks, the Zoom room), and optionally adds or updates one. Use when the human says "add this article to my assets", asks what links exist, or an asset\'s URL moved. Adding an asset does NOT make it go out — an asset-usage rule must reference it (propose/commit a rule change for that). Changes are history-logged.',
+    description: 'Lists this tenant\'s ASSET LIBRARY (the {{asset:key}} links the rules send out — articles, videos, decks, the Zoom room), and optionally adds or updates one. Use when the human says "add this article to my assets", asks what links exist, or an asset\'s URL moved. WHEN A LINK MOVES: point the SAME key at the new URL (every rule referencing it is then instantly right), and park the OLD address on a retired key of its own (e.g. retired_<what_it_was>) - retired URLs are refused by the draft door, so the dead one can never go out again. Adding an asset does NOT make it go out — an asset-usage rule must reference it (propose/commit a rule change for that). Changes are history-logged.',
     zodSchema: {
       set_key: z.string().optional().describe('Asset key to add/update (kebab/snake case, e.g. "newsletter_article_advocacy"). Omit to just list.'),
       set_url: z.string().optional().describe('The asset\'s URL — stored EXACTLY as given (rules never compose or alter URLs)'),
       set_kind: z.string().optional().describe('Optional kind tag, e.g. article | video | deck | page | link'),
-      retire: z.boolean().optional().describe('Set true to retire set_key instead of updating it (it stops resolving in rules)'),
+      retire: z.boolean().optional().describe('Set true to retire set_key instead of updating it. Retired means DEAD: the key stops resolving in rules AND its stored URL is refused by wingguy_create_draft, so a link that has moved can never go out again - even pasted in literally. To ban an old address, leave it on the retired row rather than blanking it'),
     },
     jsonSchema: {
       type: 'object',
@@ -865,7 +865,7 @@ const TOOL_DEFS = [
         set_key: { type: 'string', description: 'Asset key to add/update (kebab/snake case, e.g. "newsletter_article_advocacy"). Omit to just list.' },
         set_url: { type: 'string', description: 'The asset\'s URL — stored EXACTLY as given (rules never compose or alter URLs)' },
         set_kind: { type: 'string', description: 'Optional kind tag, e.g. article | video | deck | page | link' },
-        retire: { type: 'boolean', description: 'Set true to retire set_key instead of updating it (it stops resolving in rules)' },
+        retire: { type: 'boolean', description: 'Set true to retire set_key instead of updating it. Retired means DEAD: the key stops resolving in rules AND its stored URL is refused by wingguy_create_draft, so a link that has moved can never go out again - even pasted in literally. To ban an old address, leave it on the retired row rather than blanking it' },
       },
     },
     run: runAssets,

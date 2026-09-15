@@ -94,6 +94,43 @@ function detectAssets(html, assetRows = []) {
 }
 
 /**
+ * Retired assets are DEAD LINKS, and this is what makes retiring one mean something.
+ *
+ * Retiring a key stops {{asset:key}} resolving — but it does nothing about the URL itself, and the
+ * URL is the part that leaks. A dead address survives in old sent mail, in a rule somebody wrote
+ * before the move, and in the drafting model's own memory of the last twenty emails it read, so it
+ * keeps getting typed out literally long after the library stopped pointing at it. That is exactly
+ * how the old Australian Side Hustles benefits page was still going out as the join link on
+ * 2026-09-15, months after every other asset had moved to knowaguy.com.au.
+ *
+ * So: retire a key AND leave its old URL on the retired row, and this door refuses any draft
+ * carrying it. Banning a URL forever becomes a one-line wingguy_assets call the human can make
+ * themselves, and the ban holds no matter which surface or which instruction produced the text.
+ *
+ * An active row's URL always wins — the same address can be retired under one key and live under
+ * another (a page that moved purpose rather than moved house), and the live one is not a dead link.
+ *
+ * @param {string} html       the draft body, BEFORE token resolution
+ * @param {Array}  assetRows  [{asset_key, url, status}] — the tenant's library (getAssets rows)
+ * @returns {Array<{assetKey:string, url:string}>} retired links found in the body
+ */
+function findRetiredUrls(html, assetRows = []) {
+  const body = String(html || '');
+  const liveUrls = new Set(
+    assetRows.filter((a) => a.status !== 'retired' && a.url).map((a) => String(a.url).trim()),
+  );
+  const hits = [];
+  const seen = new Set();
+  for (const a of assetRows) {
+    if (a.status !== 'retired' || !a.url) continue;
+    const url = String(a.url).trim();
+    if (liveUrls.has(url) || seen.has(a.asset_key)) continue;
+    if (bodyCarriesUrl(body, url)) { seen.add(a.asset_key); hits.push({ assetKey: a.asset_key, url }); }
+  }
+  return hits;
+}
+
+/**
  * Any doubled-brace tokens still in a draft body after the asset pass. {{asset:key}} is this
  * door's to resolve; every OTHER {{...}} belongs to the RULES layer — variables like {{signoff}}
  * are substituted into rule text by the rules renderer before the drafting model ever writes a
@@ -475,6 +512,19 @@ async function runCreateDraft({ to, subject, html_body, cc, bcc, reply_to, reply
     catch (e) { console.warn(`[wingguyMailMcp] asset library read failed (drafting continues): ${e.message}`); }
   }
   const detected = detectAssets(html_body, assetRows);
+  // Dead links first — a wrong address that reaches a real person is worse than a typo'd token.
+  const dead = findRetiredUrls(html_body, assetRows);
+  if (dead.length) {
+    const lines = dead.map((d) => `- ${d.url}  (retired as "${d.assetKey}")`);
+    return {
+      text:
+        `Draft NOT created — the body carries a RETIRED link:\n${lines.join('\n')}\n` +
+        `Retired means dead: that address must not go to anyone again. Check wingguy_assets for the ` +
+        `current link and use that instead (or its {{asset:key}} token). If the link really is live ` +
+        `again, un-retire it with wingguy_assets first — this door will not take it while it is retired.`,
+      isError: true,
+    };
+  }
   if (detected.unresolved.length) {
     const known = assetRows.filter((a) => a.status !== 'retired' && a.url).map((a) => a.asset_key);
     return {
@@ -1208,7 +1258,7 @@ const TOOL_DEFS = [
   {
     name: 'wingguy_create_draft',
     description:
-      'Create an email DRAFT (never sends) in the coach\'s own connected mailbox (Outlook, Gmail or other - whatever they linked) with hyperlinks intact. ALWAYS use this for email drafts, never any other email connector — links land exactly as written (other connectors rewrite them), and it threads: pass reply_to_message_id (from wingguy_find_message) and the draft lands IN the existing conversation. html_body is the full HTML body; put real <a href="...">text</a> links in and they are stored exactly as written; {{asset:key}} placeholders resolve to the asset library\'s stored URL. ASSET GATE: library links in the body are logged per-lead at draft time, and a draft repeating an asset to the same lead is refused unless resend_ok — check wingguy_lead_history when unsure. FOLLOW-UP: creating the draft also stamps the lead\'s Follow-Up Date to 14 days out (To recipients that match a lead; never the coach\'s own address, and never pulled back from a later date already set), so the person enters the follow-up queue whether or not the tracking BCC is used. Returns a draftId; the coach opens the draft, reads it, and sends it themselves.',
+      'Create an email DRAFT (never sends) in the coach\'s own connected mailbox (Outlook, Gmail or other - whatever they linked) with hyperlinks intact. ALWAYS use this for email drafts, never any other email connector — links land exactly as written (other connectors rewrite them), and it threads: pass reply_to_message_id (from wingguy_find_message) and the draft lands IN the existing conversation. html_body is the full HTML body; put real <a href="...">text</a> links in and they are stored exactly as written; {{asset:key}} placeholders resolve to the asset library\'s stored URL. DEAD LINKS: a body carrying the URL of a RETIRED asset is refused outright - when a link moves, the old address is banned, so never reproduce a URL from an old email or from memory; take links from the asset library. ASSET GATE: library links in the body are logged per-lead at draft time, and a draft repeating an asset to the same lead is refused unless resend_ok — check wingguy_lead_history when unsure. FOLLOW-UP: creating the draft also stamps the lead\'s Follow-Up Date to 14 days out (To recipients that match a lead; never the coach\'s own address, and never pulled back from a later date already set), so the person enters the follow-up queue whether or not the tracking BCC is used. Returns a draftId; the coach opens the draft, reads it, and sends it themselves.',
     zodSchema: {
       to: z.array(z.object({ email: z.string(), name: z.string().optional() })).describe(RECIP_DESC),
       subject: z.string().describe('The email subject line.'),
@@ -2127,4 +2177,4 @@ async function legacyToolCall(toolName, args, tenant = TENANT) {
   }
 }
 
-module.exports = { registerWingguyMailTools, legacyToolList, legacyToolCall, TOOL_DEFS, detectAssets, findLeftoverPlaceholders, htmlToText, stripQuotedTail, settleEmailEditPairs, parseLinkedInLast, linkedInEverInbound, classifyLead, computeMailSignals, computeFollowupSweep, runFollowupSweep, chooseFollowUpStamp, coachOwnEmails, stampFollowUpForDraft, buildQueue, deriveDraftState, draftMarker };
+module.exports = { registerWingguyMailTools, legacyToolList, legacyToolCall, TOOL_DEFS, detectAssets, findRetiredUrls, findLeftoverPlaceholders, htmlToText, stripQuotedTail, settleEmailEditPairs, parseLinkedInLast, linkedInEverInbound, classifyLead, computeMailSignals, computeFollowupSweep, runFollowupSweep, chooseFollowUpStamp, coachOwnEmails, stampFollowUpForDraft, buildQueue, deriveDraftState, draftMarker };

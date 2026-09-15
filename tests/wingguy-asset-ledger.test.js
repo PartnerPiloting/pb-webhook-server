@@ -10,7 +10,7 @@
  */
 const assert = require('assert');
 const store = require('../services/wingguyRulesStore');
-const { detectAssets, findLeftoverPlaceholders } = require('../services/wingguyMailMcp');
+const { detectAssets, findRetiredUrls, findLeftoverPlaceholders } = require('../services/wingguyMailMcp');
 
 let failures = 0;
 const check = async (name, fn) => {
@@ -143,6 +143,44 @@ class FakeDb {
   await check('a bare-domain asset still matches its own exact URL', () => {
     const r = detectAssets('<a href="https://ash.com.au/">home</a>', twins);
     assert.ok(r.assetKeys.includes('home'));
+  });
+
+  // RETIRED URLS ARE DEAD LINKS (2026-09-15: the old Australian Side Hustles benefits page was
+  // still going out as the join link months after everything else moved to knowaguy.com.au).
+  // Retiring a key stopped the token resolving but did nothing about the URL, which kept being
+  // typed out literally from old mail and memory. findRetiredUrls is what makes retiring bite.
+  console.log('retired links - the dead-link refusal:');
+  const withDead = [
+    { asset_key: 'signup_link', url: 'https://knowaguy.com.au/join', status: 'active' },
+    { asset_key: 'retired_ash_signup_link', url: 'https://australiansidehustles.com.au/benefits-page-v1/', status: 'retired' },
+    { asset_key: 'home', url: 'https://knowaguy.com.au/', status: 'active' },
+  ];
+  await check('a retired URL pasted literally is caught', () => {
+    const hits = findRetiredUrls('<a href="https://australiansidehustles.com.au/benefits-page-v1/">Join here</a>', withDead);
+    assert.deepStrictEqual(hits.map((h) => h.assetKey), ['retired_ash_signup_link']);
+  });
+  await check('the live replacement passes clean', () => {
+    assert.deepStrictEqual(findRetiredUrls('<a href="https://knowaguy.com.au/join">Join here</a>', withDead), []);
+  });
+  await check('the token form of the live key passes clean too', () => {
+    assert.deepStrictEqual(findRetiredUrls('<a href="{{asset:signup_link}}">Join here</a>', withDead), []);
+  });
+  await check('a retired URL still logs nothing in the ledger (detectAssets is unchanged)', () => {
+    const r = detectAssets('<a href="https://australiansidehustles.com.au/benefits-page-v1/">x</a>', withDead);
+    assert.deepStrictEqual(r.assetKeys, []);
+  });
+  await check('a longer path under a retired URL is not the retired link', () => {
+    assert.deepStrictEqual(findRetiredUrls('https://australiansidehustles.com.au/benefits-page-v1/pricing', withDead), []);
+  });
+  await check('an active row sharing the URL wins - the same address is not dead', () => {
+    const shared = [
+      { asset_key: 'old_key', url: 'https://knowaguy.com.au/the-numbers', status: 'retired' },
+      { asset_key: 'cost_benefit_page', url: 'https://knowaguy.com.au/the-numbers', status: 'active' },
+    ];
+    assert.deepStrictEqual(findRetiredUrls('see https://knowaguy.com.au/the-numbers', shared), []);
+  });
+  await check('a retired row with no URL is harmless', () => {
+    assert.deepStrictEqual(findRetiredUrls('anything', [{ asset_key: 'k', url: null, status: 'retired' }]), []);
   });
 
   // --- Ledger against the fake pool -----------------------------------------
