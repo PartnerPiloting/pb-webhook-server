@@ -1,19 +1,25 @@
 /**
  * Contacts sweep - the FEEDS into the contacts warehouse (services/contactsStore.js).
  *
- * Step 1 (2026-09-13): two feeds, both things we already hold -
+ * Three feeds -
  *   'lead'      every record in the tenant's Leads base: primary {Email} (and each {Alt Emails}
  *               address as 'lead-alt'), name, company, headline, location, LinkedIn slug, the
  *               record id. A lead with no address still lands (keyed lead:<id>) so the lookup
  *               can say "in your leads, no email on file" instead of "unknown".
  *   'comms-log' everyone wingguy_comms_log has written to for this tenant (recipient), plus the
  *               people named inside a digest (meta.people) - the coach's own address skipped.
- * Later steps add the mailbox (everyone the coach has emailed) and a coach's own address book
- * via the ingest door - same table, same shape.
+ *   'mail-*'    (step 2, 2026-09-15) everyone the coach has actually corresponded with, read
+ *               through mailProvider so Nylas, Unipile and Zoho-over-IMAP all work unchanged.
+ *               Tagged by direction: 'mail-to' the coach wrote to them, 'mail-from' they wrote
+ *               to the coach, 'mail-thread' they merely shared a thread. THIS is the feed that
+ *               matters to clients - their leads bases are LinkedIn connections that rarely
+ *               carry an address, while their mail is full of people they genuinely deal with.
+ * A coach's own address book arrives separately through the ingest door - same table, same shape.
  *
- * INCREMENTAL BY DEFAULT: the first sweep of a tenant reads the whole base; every later one
- * asks Airtable only for rows modified since the last run (LAST_MODIFIED_TIME() formula, with
- * a day of slack). Pass { full: true } to force a full read.
+ * INCREMENTAL BY DEFAULT: the first sweep of a tenant reads the whole base (and a year of mail);
+ * every later one asks only for what changed since the last run - Airtable via
+ * LAST_MODIFIED_TIME(), the mailbox via its `after` cursor - with a day of slack either way.
+ * Pass { full: true } to force a full read.
  *
  * TENANCY: a sweep runs for ONE coach object at a time and writes under that coach's clientId.
  * sweepAll walks getAllClients() and skips anything without a leads base. No env defaults.
@@ -154,27 +160,165 @@ async function sweepCommsLog(coach, { full = false } = {}) {
   return { ok: true, rows: rows.length, contacts: contacts.length, mode: since ? 'incremental' : 'full' };
 }
 
-/** Both feeds for one coach. Never throws - each feed reports its own result. */
+// Feed 3 knobs. The mailbox is the only feed that talks to a third party per tenant, so it is
+// the only one that can hang: Ashley's and Roland's Outlook accounts 504 after 180s during the
+// Unipile outage (project_unipile_outlook_email_outage_20260910). One slow tenant must never
+// cost the other fourteen their nightly sweep, hence the hard per-tenant timeout.
+const MAIL_TIMEOUT_MS = 120000;
+const MAIL_FIRST_RUN_DAYS = 365;
+const MAIL_MAX_MESSAGES = 3000;
+
+/** Reject after ms rather than letting a stuck provider hold the whole sweep. */
+function withTimeout(promise, ms, label) {
+  let t;
+  const timeout = new Promise((_, reject) => { t = setTimeout(() => reject(new Error(`${label} timed out after ${Math.round(ms / 1000)}s`)), ms); });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(t));
+}
+
+/** A readable name for someone we only have an address for: bob.carter@x -> Bob Carter. */
+function nameFromEmail(email) {
+  const local = String(email || '').split('@')[0] || '';
+  if (!local || local.length < 2) return '';
+  const parts = local.split(/[._-]+/).filter((p) => p.length > 1 && !/^\d+$/.test(p));
+  if (parts.length < 2) return '';            // a single token is a handle, not a name
+  if (parts.length > 3) return '';            // long machine-ish locals are not names
+  return parts.map((p) => p.charAt(0).toUpperCase() + p.slice(1).toLowerCase()).join(' ');
+}
+
+/**
+ * One message -> the contacts it vouches for. Pure, so the direction logic is testable.
+ *
+ * Direction is the useful part: an address the coach WROTE to is a person they chose to contact
+ * ('mail-to'); an address that wrote to THEM is weaker but still real ('mail-from'). Someone who
+ * appears both ways collects both source tags, because sources union on merge.
+ *
+ * `isSelf` decides which side of that line the coach sits on - it must recognise every address
+ * the coach sends from, not just their record's one, or outbound mail reads as inbound.
+ */
+function messageToContacts(msg, { isSelf, isJunk } = {}) {
+  const parties = Array.isArray(msg && msg.parties) ? msg.parties : [];
+  if (!parties.length) return [];
+  const when = msg.date ? new Date(msg.date) : null;
+  const whenOk = when && !Number.isNaN(when.getTime()) ? when : null;
+  const fromEmail = String(msg.fromEmail || '').toLowerCase();
+  const outbound = !!fromEmail && isSelf(fromEmail);
+  const out = [];
+  for (const p of parties) {
+    const email = String(p.email || '').toLowerCase();
+    if (!email || isSelf(email)) continue;
+    if (isJunk && isJunk(email)) continue;
+    // On a message the coach sent, everyone else is someone they wrote to. On one they received,
+    // the sender wrote to them and the other recipients merely shared the thread.
+    out.push({
+      email,
+      name: p.name || nameFromEmail(email),
+      source: outbound ? 'mail-to' : (p.role === 'from' ? 'mail-from' : 'mail-thread'),
+      last_seen_at: whenOk,
+      evidence: whenOk
+        ? (outbound ? `you emailed them ${fmtDay(whenOk)}` : (p.role === 'from' ? `they emailed you ${fmtDay(whenOk)}` : `on a thread with you ${fmtDay(whenOk)}`))
+        : '',
+    });
+  }
+  return out;
+}
+
+/**
+ * Feed 3: the mailbox - everyone this coach has actually corresponded with.
+ *
+ * This is the feed that matters most to clients: their leads bases are LinkedIn connections and
+ * rarely carry an address (Dean 636 of 6,107; Julian 27 of 626), while their mail is full of
+ * people they genuinely deal with. Reads through mailProvider, so Nylas, Unipile and Julian's
+ * Zoho-over-IMAP all work without a word of provider code here.
+ */
+async function sweepMailbox(coach, { full = false, firstRunDays = MAIL_FIRST_RUN_DAYS, maxMessages = MAIL_MAX_MESSAGES, timeoutMs = MAIL_TIMEOUT_MS, mailProvider } = {}) {
+  const mp = mailProvider || require('./mailProvider');
+  const tenant = coach && coach.clientId;
+  if (!tenant) return { ok: false, error: 'coach.clientId required' };
+  // The ONE mailbox gate (see project_wingguy_unipile_migration) - never the raw provider field.
+  if (!mp.hasMailbox(coach)) return { ok: false, skipped: 'no mailbox connected' };
+
+  const startedAt = new Date();
+  let since = null;
+  if (!full) {
+    const last = await contactsStore.lastSweepAt(tenant, 'mail');
+    if (last) since = new Date(last.getTime() - 24 * 3600 * 1000);
+  }
+  if (!since) since = new Date(Date.now() - firstRunDays * 24 * 3600 * 1000);
+  const afterEpochSeconds = Math.floor(since.getTime() / 1000);
+
+  let r;
+  try {
+    r = await withTimeout(mp.listRecent(coach, { after: afterEpochSeconds, max: maxMessages }), timeoutMs, `${tenant} mailbox read`);
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+  if (!r || !r.ok) return { ok: false, error: (r && r.error) || 'mailbox read failed' };
+
+  const { isJunkPendingEmail } = require('./pendingLeadFilter');
+  // Every address that IS the coach: their record's address, plus whatever their own mailbox
+  // sends as. Without the second, their own outbound mail would file them as a contact.
+  const selfSet = new Set([
+    contactsStore.cleanEmail(coach.clientEmailAddress),
+    contactsStore.cleanEmail(coach.googleCalendarEmail),
+    contactsStore.cleanEmail(coach.calendarEmail),
+  ].filter(Boolean));
+  const isSelf = (e) => selfSet.has(String(e || '').toLowerCase());
+  // Role mailboxes, the operator's address and the coach's own company domain, exactly as the
+  // pending-people list already judges them - one junk rule for the whole product.
+  const isJunk = (e) => isJunkPendingEmail(e, coach);
+
+  const contacts = [];
+  for (const msg of (r.messages || [])) contacts.push(...messageToContacts(msg, { isSelf, isJunk }));
+
+  const w = await contactsStore.upsertContacts(tenant, contacts);
+  if (!w.ok) return { ok: false, error: w.error, messages: (r.messages || []).length };
+  // A partial read still stamps the sweep: the window it DID cover is now in the warehouse, and
+  // the next run's day of slack re-reads the overlap anyway.
+  await contactsStore.recordSweep(tenant, 'mail', {
+    rowsSeen: (r.messages || []).length,
+    at: startedAt,
+    note: `${full || !since ? 'full' : 'incremental'} since ${since.toISOString().slice(0, 10)}${r.truncated ? ' (truncated)' : ''}${r.partialError ? ` (partial: ${String(r.partialError).slice(0, 80)})` : ''}`,
+  });
+  return {
+    ok: true,
+    messages: (r.messages || []).length,
+    contacts: contacts.length,
+    mode: full ? 'full' : 'incremental',
+    truncated: !!r.truncated,
+    ...(r.partialError ? { partialError: String(r.partialError).slice(0, 120) } : {}),
+  };
+}
+
+/** Every feed for one coach. Never throws - each feed reports its own result. */
 async function sweepTenant(coach, opts = {}) {
   const out = { clientId: coach && coach.clientId };
   try { out.leads = await sweepLeads(coach, opts); } catch (e) { out.leads = { ok: false, error: e.message }; }
   try { out.commsLog = await sweepCommsLog(coach, opts); } catch (e) { out.commsLog = { ok: false, error: e.message }; }
+  if (opts.skipMail !== true) {
+    try { out.mail = await sweepMailbox(coach, opts); } catch (e) { out.mail = { ok: false, error: e.message }; }
+  }
   return out;
 }
 
 /** Every active client with a leads base - or just the ones named in `onlyClientIds`. */
-async function sweepAll({ full = false, onlyClientIds = null, clientService } = {}) {
+async function sweepAll({ full = false, onlyClientIds = null, clientService, skipMail = false } = {}) {
   const cs = clientService || require('./clientService');
+  const mp = require('./mailProvider');
   const clients = await cs.getAllClients();
   const want = onlyClientIds && onlyClientIds.length ? new Set(onlyClientIds) : null;
   const results = [];
   for (const coach of clients) {
     if (want && !want.has(coach.clientId)) continue;
     if (!want && String(coach.status || '').toLowerCase() !== 'active') continue;
-    if (!coach.airtableBaseId) continue;
-    results.push(await sweepTenant(coach, { full, clientService: cs }));
+    // A leads base OR a mailbox is enough to be worth sweeping - a coach on the connector with
+    // no CRM still has an address book in their mail.
+    if (!coach.airtableBaseId && !mp.hasMailbox(coach)) continue;
+    results.push(await sweepTenant(coach, { full, clientService: cs, skipMail }));
   }
   return results;
 }
 
-module.exports = { sweepLeads, sweepCommsLog, sweepTenant, sweepAll, leadToContacts, splitAltEmails, fmtDay };
+module.exports = {
+  sweepLeads, sweepCommsLog, sweepMailbox, sweepTenant, sweepAll,
+  leadToContacts, messageToContacts, nameFromEmail, splitAltEmails, fmtDay, withTimeout,
+};

@@ -25,6 +25,9 @@ function describeSources(sources) {
     'comms-log': 'Wingguy sent to them',
     'comms-log-people': 'named in a Wingguy digest',
     'mail': 'your mailbox',
+    'mail-to': 'you emailed them',
+    'mail-from': 'they emailed you',
+    'mail-thread': 'shared an email thread',
   };
   return (sources || []).map((s) => labels[s] || (s.startsWith('ingest:') ? `your ${s.slice(7)} feed` : s)).join(', ');
 }

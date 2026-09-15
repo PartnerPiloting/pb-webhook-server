@@ -60,6 +60,27 @@ function toParticipants(list) {
 }
 
 /**
+ * Everyone on a message, WITH their display name and which header they sat in. Added 2026-09-15
+ * for the contacts warehouse: the flat fromEmail/toEmails/ccEmails fields above keep addresses
+ * only, and an address book needs "Bob Carter", not "bob.carter@acme.com". Purely additive -
+ * existing callers read the flat fields and are untouched.
+ * @returns {Array<{email:string, name:string|null, role:'from'|'to'|'cc'}>}
+ */
+function mailParties({ from = [], to = [], cc = [] } = {}) {
+  const out = [];
+  const seen = new Set();
+  for (const [role, list] of [['from', from], ['to', to], ['cc', cc]]) {
+    for (const p of list) {
+      const email = String((p && p.email) || '').trim().toLowerCase();
+      if (!email || seen.has(email)) continue;
+      seen.add(email);
+      out.push({ email, name: (p && p.name) ? String(p.name).trim() : null, role });
+    }
+  }
+  return out;
+}
+
+/**
  * Real attachment filenames from a provider message object (Nylas `filename`, Unipile `name`).
  * Inline parts (signature images, embedded logos) are excluded — "was anything attached" must mean
  * a file the human deliberately sent, and the dossier's email record reports it mechanically from
@@ -283,6 +304,7 @@ async function listRecent(coach, { after, max = 3000, pageSize = 50 } = {}) {
         fromEmail: (toParticipants(m.from)[0] || {}).email || null,
         toEmails: toParticipants(m.to).map((p) => p.email.toLowerCase()),
         ccEmails: toParticipants(m.cc).map((p) => p.email.toLowerCase()),
+        parties: mailParties({ from: toParticipants(m.from), to: toParticipants(m.to), cc: toParticipants(m.cc) }),
         date: m.date ? new Date(m.date * 1000).toISOString() : null,
         snippet: m.snippet,
       });
@@ -502,6 +524,11 @@ async function listRecentViaUnipile(coach, { after, max = 3000, pageSize = 50 } 
         fromEmail: (fromUnipileParty(m.from_attendee) || {}).email || null,
         toEmails: (m.to_attendees || []).map(fromUnipileParty).filter(Boolean).map((p) => p.email.toLowerCase()),
         ccEmails: (m.cc_attendees || []).map(fromUnipileParty).filter(Boolean).map((p) => p.email.toLowerCase()),
+        parties: mailParties({
+          from: [fromUnipileParty(m.from_attendee)].filter(Boolean),
+          to: (m.to_attendees || []).map(fromUnipileParty).filter(Boolean),
+          cc: (m.cc_attendees || []).map(fromUnipileParty).filter(Boolean),
+        }),
         date: m.date || null,
         snippet: String(m.body_plain || '').slice(0, 200),
       });
@@ -522,4 +549,4 @@ async function getDraftViaUnipile(coach, draftId) {
   return { ok: true, draft: r.message };
 }
 
-module.exports = { createDraft, getDraft, findMessages, listRecent, getMessage, toParticipants, activeMailProvider, hasMailbox };
+module.exports = { createDraft, getDraft, findMessages, listRecent, getMessage, toParticipants, activeMailProvider, hasMailbox, mailParties };

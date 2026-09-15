@@ -20,9 +20,10 @@
 require('dotenv').config();
 
 function parseArgs(argv) {
-  const out = { full: false, clients: [] };
+  const out = { full: false, clients: [], skipMail: false };
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === '--full') out.full = true;
+    else if (argv[i] === '--no-mail') out.skipMail = true;
     else if (argv[i] === '--client' && argv[i + 1]) { out.clients.push(String(argv[++i]).trim()); }
   }
   const env = String(process.env.CONTACTS_SWEEP_CLIENT_IDS || '').split(',').map((s) => s.trim()).filter(Boolean);
@@ -31,18 +32,23 @@ function parseArgs(argv) {
 }
 
 async function main() {
-  const { full, clients } = parseArgs(process.argv.slice(2));
+  const { full, clients, skipMail } = parseArgs(process.argv.slice(2));
   const { sweepAll } = require('../../services/contactsSweep');
   const t0 = Date.now();
-  console.log(`[contacts-sweep] start${full ? ' (FULL)' : ''}${clients.length ? ` clients=${clients.join(',')}` : ' (all active)'}`);
-  const results = await sweepAll({ full, onlyClientIds: clients.length ? clients : null });
+  console.log(`[contacts-sweep] start${full ? ' (FULL)' : ''}${skipMail ? ' (no mail)' : ''}${clients.length ? ` clients=${clients.join(',')}` : ' (all active)'}`);
+  const results = await sweepAll({ full, skipMail, onlyClientIds: clients.length ? clients : null });
   let errors = 0;
   for (const r of results) {
     const l = r.leads || {};
     const c = r.commsLog || {};
+    const m = r.mail;
     if (l.ok === false && !l.skipped) errors++;
     if (c.ok === false) errors++;
-    console.log(`[contacts-sweep] ${r.clientId}: leads ${l.ok ? `${l.leads} rows -> ${l.contacts} contacts (${l.mode})` : (l.skipped || l.error)}; comms ${c.ok ? `${c.rows} rows -> ${c.contacts} contacts (${c.mode})` : c.error}`);
+    if (m && m.ok === false && !m.skipped) errors++;
+    const mailPart = !m ? 'skipped'
+      : m.ok ? `${m.messages} msgs -> ${m.contacts} contacts (${m.mode}${m.truncated ? ', truncated' : ''})`
+        : (m.skipped || m.error);
+    console.log(`[contacts-sweep] ${r.clientId}: leads ${l.ok ? `${l.leads} rows -> ${l.contacts} contacts (${l.mode})` : (l.skipped || l.error)}; comms ${c.ok ? `${c.rows} rows -> ${c.contacts} contacts (${c.mode})` : c.error}; mail ${mailPart}`);
   }
   console.log(`[contacts-sweep] done: ${results.length} tenant(s), ${errors} error(s), ${Math.round((Date.now() - t0) / 1000)}s`);
   process.exit(errors ? 1 : 0);

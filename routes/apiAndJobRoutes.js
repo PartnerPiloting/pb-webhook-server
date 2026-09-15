@@ -13247,8 +13247,11 @@ router.get("/api/cron/contacts-sweep", async (req, res) => {
   const startedAt = Date.now();
   try {
     const { sweepAll } = require('../services/contactsSweep');
-    const results = await sweepAll({ full, onlyClientIds: only.length ? only : null });
-    const errors = results.filter((r) => (r.leads && r.leads.ok === false && !r.leads.skipped) || (r.commsLog && r.commsLog.ok === false));
+    const skipMail = String(req.query.noMail || '').toLowerCase() === 'true';
+    const results = await sweepAll({ full, skipMail, onlyClientIds: only.length ? only : null });
+    const errors = results.filter((r) => (r.leads && r.leads.ok === false && !r.leads.skipped)
+      || (r.commsLog && r.commsLog.ok === false)
+      || (r.mail && r.mail.ok === false && !r.mail.skipped));
     const seconds = Math.round((Date.now() - startedAt) / 1000);
     log.info(`contacts sweep: ${results.length} tenant(s), ${errors.length} error(s), ${seconds}s${full ? ' (FULL)' : ''}`);
     // 200 even with per-tenant errors: one bad base must not read as a dead cron.
@@ -13263,6 +13266,9 @@ router.get("/api/cron/contacts-sweep", async (req, res) => {
         clientId: r.clientId,
         leads: r.leads && r.leads.ok ? { rows: r.leads.leads, contacts: r.leads.contacts, mode: r.leads.mode } : ((r.leads && (r.leads.skipped || r.leads.error)) || null),
         commsLog: r.commsLog && r.commsLog.ok ? { rows: r.commsLog.rows, contacts: r.commsLog.contacts, mode: r.commsLog.mode } : ((r.commsLog && r.commsLog.error) || null),
+        mail: !r.mail ? null : (r.mail.ok
+          ? { messages: r.mail.messages, contacts: r.mail.contacts, mode: r.mail.mode, ...(r.mail.truncated ? { truncated: true } : {}) }
+          : (r.mail.skipped || r.mail.error)),
       })),
     });
   } catch (err) {

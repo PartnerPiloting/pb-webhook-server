@@ -8,7 +8,8 @@
  */
 const assert = require('assert');
 const { normaliseContact, rankMatches, cleanEmail, mergeContacts } = require('../services/contactsStore');
-const { leadToContacts } = require('../services/contactsSweep');
+const { leadToContacts, messageToContacts, nameFromEmail, withTimeout, sweepMailbox } = require('../services/contactsSweep');
+const { mailParties } = require('../services/mailProvider');
 const { shapeContact, firstPhone } = require('../routes/contactsIngestRoutes');
 const { runFindPerson, runContactsStatus, TOOL_DEFS, groupByPerson } = require('../services/wingguyContactsMcp');
 
@@ -159,6 +160,94 @@ const acheck = async (name, fn) => { try { await fn(); console.log(`  ✓ ${name
     const cs = leadToContacts({ id: 'recB', fields: { 'First Name': 'No', 'Last Name': 'Mail' } });
     assert.strictEqual(cs.length, 1);
     assert.strictEqual(normaliseContact(cs[0]).contactKey, 'lead:recB');
+  });
+
+  console.log('\nmailParties() - names the flat fields throw away:');
+  check('from/to/cc keep their name and role, deduped', () => {
+    const p = mailParties({
+      from: [{ email: 'Bob@Acme.com', name: 'Bob Carter' }],
+      to: [{ email: 'guy@x.com' }, { email: 'bob@acme.com', name: 'dupe' }],
+      cc: [{ email: 'sue@y.com', name: 'Sue Lee' }],
+    });
+    assert.deepStrictEqual(p, [
+      { email: 'bob@acme.com', name: 'Bob Carter', role: 'from' },
+      { email: 'guy@x.com', name: null, role: 'to' },
+      { email: 'sue@y.com', name: 'Sue Lee', role: 'cc' },
+    ]);
+  });
+
+  console.log('\nnameFromEmail() - a readable name when the provider gave none:');
+  check('two or three dotted tokens become a name', () => {
+    assert.strictEqual(nameFromEmail('bob.carter@acme.com'), 'Bob Carter');
+    assert.strictEqual(nameFromEmail('mary_jane_watson@x.com'), 'Mary Jane Watson');
+  });
+  check('a single handle is NOT a name', () => {
+    assert.strictEqual(nameFromEmail('bcarter@acme.com'), '');
+    assert.strictEqual(nameFromEmail('info@acme.com'), '');
+  });
+  check('machine-ish locals are refused', () => {
+    assert.strictEqual(nameFromEmail('a.b.c.d.e@x.com'), '');
+    // digits are dropped, leaving one token - and a lone token is a handle, not a name
+    assert.strictEqual(nameFromEmail('bob.1234@x.com'), '');
+  });
+
+  console.log('\nmessageToContacts() - direction is the useful part:');
+  const SELF = new Set(['guy@wingguy.com']);
+  const ctx = { isSelf: (e) => SELF.has(e), isJunk: () => false };
+  check('outbound: everyone else is someone the coach wrote to', () => {
+    const cs = messageToContacts({
+      fromEmail: 'guy@wingguy.com', date: '2026-09-03T00:00:00Z',
+      parties: mailParties({ from: [{ email: 'guy@wingguy.com' }], to: [{ email: 'bob@acme.com', name: 'Bob Carter' }], cc: [{ email: 'sue@y.com' }] }),
+    }, ctx);
+    assert.strictEqual(cs.length, 2);
+    assert.ok(cs.every((c) => c.source === 'mail-to'), JSON.stringify(cs));
+    assert.strictEqual(cs[0].name, 'Bob Carter');
+    // en-AU renders September as "Sept", so match the stem rather than the exact abbreviation
+    assert.ok(/you emailed them 3 Sept? 2026/.test(cs[0].evidence), cs[0].evidence);
+  });
+  check('inbound: the sender wrote to them, others merely shared the thread', () => {
+    const cs = messageToContacts({
+      fromEmail: 'bob@acme.com', date: '2026-09-04T00:00:00Z',
+      parties: mailParties({ from: [{ email: 'bob@acme.com' }], to: [{ email: 'guy@wingguy.com' }, { email: 'sue@y.com' }] }),
+    }, ctx);
+    assert.deepStrictEqual(cs.map((c) => c.source), ['mail-from', 'mail-thread']);
+    assert.ok(/they emailed you/.test(cs[0].evidence));
+    assert.ok(/on a thread with you/.test(cs[1].evidence));
+  });
+  check('the coach is never filed as their own contact', () => {
+    const cs = messageToContacts({
+      fromEmail: 'bob@acme.com', date: '2026-09-04T00:00:00Z',
+      parties: mailParties({ from: [{ email: 'bob@acme.com' }], to: [{ email: 'guy@wingguy.com' }] }),
+    }, ctx);
+    assert.deepStrictEqual(cs.map((c) => c.email), ['bob@acme.com']);
+  });
+  check('junk addresses are dropped', () => {
+    const cs = messageToContacts({
+      fromEmail: 'noreply@service.com', date: '2026-09-04T00:00:00Z',
+      parties: mailParties({ from: [{ email: 'noreply@service.com' }], to: [{ email: 'guy@wingguy.com' }] }),
+    }, { isSelf: (e) => SELF.has(e), isJunk: (e) => e.startsWith('noreply@') });
+    assert.strictEqual(cs.length, 0);
+  });
+  check('a message with no parties yields nothing', () => {
+    assert.deepStrictEqual(messageToContacts({ fromEmail: 'a@b.co' }, ctx), []);
+  });
+
+  console.log('\nsweepMailbox() guards:');
+  await acheck('no mailbox = skipped, not an error', async () => {
+    const r = await sweepMailbox({ clientId: 'T1' }, { mailProvider: { hasMailbox: () => false } });
+    assert.strictEqual(r.ok, false);
+    assert.strictEqual(r.skipped, 'no mailbox connected');
+  });
+  await acheck('a hung provider is bounded, not fatal', async () => {
+    const r = await sweepMailbox({ clientId: 'T1' }, {
+      timeoutMs: 40,
+      mailProvider: { hasMailbox: () => true, listRecent: () => new Promise(() => {}) },
+    });
+    assert.strictEqual(r.ok, false);
+    assert.ok(/timed out/.test(r.error), r.error);
+  });
+  await acheck('withTimeout passes a fast result straight through', async () => {
+    assert.strictEqual(await withTimeout(Promise.resolve('done'), 1000, 'x'), 'done');
   });
 
   console.log('\nshapeContact() (ingest door):');
