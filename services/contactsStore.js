@@ -65,6 +65,11 @@ async function ensureTable(client) {
   // exist yet - which would have alerted on every tenant the night a new feed shipped.
   await client.query(`ALTER TABLE wingguy_contacts_sweeps ADD COLUMN IF NOT EXISTS last_error_at TIMESTAMPTZ;`);
   await client.query(`ALTER TABLE wingguy_contacts_sweeps ADD COLUMN IF NOT EXISTS last_error TEXT;`);
+  // last_run_at was NOT NULL when the table only ever recorded successes. Recording a FAILURE
+  // for a feed that has never once succeeded needs it null, and without this the insert is
+  // rejected, the failure is swallowed, and the staleness alert stays silent about the very
+  // tenant it exists to report (Julian's mail, 2026-09-15). Idempotent.
+  await client.query(`ALTER TABLE wingguy_contacts_sweeps ALTER COLUMN last_run_at DROP NOT NULL;`);
   await client.query(`CREATE INDEX IF NOT EXISTS idx_wg_contacts_tenant_name ON wingguy_contacts (coach_client_id, lower(name));`);
   await client.query(`CREATE INDEX IF NOT EXISTS idx_wg_contacts_tenant_lead ON wingguy_contacts (coach_client_id, lead_record_id);`);
   await client.query(`

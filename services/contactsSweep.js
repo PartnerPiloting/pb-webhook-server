@@ -323,7 +323,14 @@ async function sweepTenant(coach, opts = {}) {
   const out = { clientId: tenant };
   const note = async (source, r) => {
     if (!tenant || !r || r.ok !== false || r.skipped) return;
-    try { await contactsStore.recordSweepFailure(tenant, source, r.error); } catch (_e) { /* best effort */ }
+    try {
+      const w = await contactsStore.recordSweepFailure(tenant, source, r.error);
+      // Say so loudly if the bookkeeping itself fails: a swallowed failure record is how a
+      // broken feed becomes invisible, which is the whole thing the alert exists to prevent.
+      if (!w || !w.ok) console.warn(`[contactsSweep] could not record ${tenant}/${source} failure: ${(w && w.error) || 'unknown'}`);
+    } catch (e) {
+      console.warn(`[contactsSweep] could not record ${tenant}/${source} failure: ${e.message}`);
+    }
   };
   try { out.leads = await sweepLeads(coach, opts); } catch (e) { out.leads = { ok: false, error: e.message }; }
   await note('lead', out.leads);
