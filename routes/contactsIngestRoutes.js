@@ -11,10 +11,16 @@
  *   GET  /webhooks/contacts/:clientId   probe - is the client known and active (no data)
  *   POST /webhooks/contacts/:clientId   body: one contact, or { contacts: [...] } (max 500)
  *
- * Contact shape (all optional but email): { email, name | first_name/last_name, company,
- * headline, location, phone, linkedin_url, source, seen_at }. Anything else is ignored; strings
- * are clipped, never echoed. Phone also accepts the array shape Google/Unipile use
- * (phone_numbers: [{ number, type }]) - the first number wins.
+ * Contact shape - TWO dialects, both accepted, so Make can point straight at this door:
+ *   plain   { email, name | first_name/last_name, company, headline, location, phone,
+ *             linkedin_url, source, seen_at }
+ *   Google  the People API shape Make's Google Contacts modules emit - names[{givenName,
+ *           familyName}], emailAddresses[{value}], phoneNumbers[{value}],
+ *           organizations[{name,title}], addresses[{formattedValue}], urls[{value}]
+ * Anything else is ignored; strings are clipped, never echoed. A contact with several addresses
+ * becomes several rows sharing one identity, the same way a lead's primary and alt emails do.
+ * A contact with NO email is skipped - there is nothing to file it under - and counted in the
+ * `skipped` figure so a caller can see it happened.
  *
  * AUTH: the tenant's Portal Token - the same per-client secret the Chrome extension sends as
  * x-portal-token and the /mcp2 connector carries in its URL - sent here as the x-portal-token
@@ -60,39 +66,105 @@ async function authorise(req) {
   return { client };
 }
 
-/** First usable phone number, from a plain string or the {number|value} array shape. Pure. */
+/**
+ * Pull a value out of either a flat field or one of Google's repeated-field arrays.
+ *
+ * Google People (which is what Make's Google Contacts modules hand over) nests almost everything:
+ * `emailAddresses: [{value}]`, `phoneNumbers: [{value}]`, `names: [{givenName, familyName}]`,
+ * `organizations: [{name, title}]`. Understanding that here means a coach can point Make straight
+ * at this door instead of hand-mapping a dozen fields into a JSON body and getting one wrong.
+ * Plain field names still work, so a spreadsheet or a curl is unaffected.
+ */
+function pick(raw, flatKeys = [], arrayKey = null, itemKeys = []) {
+  for (const k of flatKeys) {
+    const v = raw && raw[k];
+    if (typeof v === 'string' && v.trim()) return v.trim();
+  }
+  const list = arrayKey && raw ? raw[arrayKey] : null;
+  if (Array.isArray(list)) {
+    for (const item of list) {
+      if (typeof item === 'string' && item.trim()) return item.trim();
+      for (const k of itemKeys) {
+        const v = item && item[k];
+        if (typeof v === 'string' && v.trim()) return v.trim();
+      }
+    }
+  }
+  return '';
+}
+
+/** Every email on a contact, flat field or Google's emailAddresses[]. Lowercased, deduped. */
+function allEmails(raw) {
+  const out = [];
+  const add = (v) => {
+    const e = String(v || '').trim().toLowerCase();
+    if (e && !out.includes(e)) out.push(e);
+  };
+  add(raw && raw.email);
+  for (const key of ['emailAddresses', 'emails', 'email_addresses']) {
+    const list = raw && raw[key];
+    if (!Array.isArray(list)) continue;
+    for (const item of list) add(typeof item === 'string' ? item : (item && (item.value || item.email || item.address)));
+  }
+  return out;
+}
+
+/** First usable phone number, from a plain string or any of the array shapes. Pure. */
 function firstPhone(raw) {
   if (!raw) return '';
   const direct = raw.phone || raw.phone_number || raw.mobile;
   if (typeof direct === 'string' && direct.trim()) return clip(direct, 60);
-  const list = raw.phone_numbers || raw.phones || (Array.isArray(direct) ? direct : null);
-  if (Array.isArray(list)) {
+  for (const key of ['phoneNumbers', 'phone_numbers', 'phones']) {
+    const list = raw[key] || (key === 'phones' && Array.isArray(direct) ? direct : null);
+    if (!Array.isArray(list)) continue;
     for (const p of list) {
-      const n = typeof p === 'string' ? p : (p && (p.number || p.value || p.phone));
+      const n = typeof p === 'string' ? p : (p && (p.value || p.number || p.phone));
       if (n && String(n).trim()) return clip(n, 60);
     }
   }
   return '';
 }
 
-/** One inbound contact -> the store's input shape, with the source tagged. Pure. */
+/** A LinkedIn profile out of Google's urls[] if one is in there. */
+function linkedinFrom(raw) {
+  const flat = clip(raw.linkedin_url || raw.linkedin, 300);
+  if (flat) return flat;
+  for (const key of ['urls', 'websites']) {
+    const list = raw[key];
+    if (!Array.isArray(list)) continue;
+    for (const u of list) {
+      const v = typeof u === 'string' ? u : (u && (u.value || u.url));
+      if (v && /linkedin\.com\/in\//i.test(v)) return clip(v, 300);
+    }
+  }
+  return '';
+}
+
+/**
+ * One inbound contact -> the store's input shape. Returns an ARRAY: a contact with three
+ * addresses is three rows sharing one identity, exactly as a lead's primary and alt emails are,
+ * so the lookup can match on any of them and still fold them into one person. Pure.
+ * Returns [] for anything with no usable address - a phone-only contact has nothing to key on.
+ */
 function shapeContact(raw, defaultSource) {
-  if (!raw || typeof raw !== 'object') return null;
+  if (!raw || typeof raw !== 'object') return [];
   const source = clip(raw.source, 30).toLowerCase().replace(/[^a-z0-9_-]/g, '') || defaultSource;
-  return {
-    email: clip(raw.email, 200),
-    name: clip(raw.name, 160),
-    first_name: clip(raw.first_name || raw.given_name || raw.firstName, 80),
-    last_name: clip(raw.last_name || raw.surname || raw.family_name || raw.lastName, 80),
-    company: clip(raw.company || raw.company_name || raw.organisation || raw.organization, 120),
-    headline: clip(raw.headline || raw.job_title || raw.title, 200),
-    location: clip(raw.location, 120),
+  const first = clip(pick(raw, ['first_name', 'given_name', 'firstName'], 'names', ['givenName', 'given_name']), 80);
+  const last = clip(pick(raw, ['last_name', 'surname', 'family_name', 'lastName'], 'names', ['familyName', 'family_name']), 80);
+  const shared = {
+    name: clip(pick(raw, ['name', 'display_name', 'displayName'], 'names', ['displayName', 'display_name']), 160),
+    first_name: first,
+    last_name: last,
+    company: clip(pick(raw, ['company', 'company_name', 'organisation', 'organization'], 'organizations', ['name']), 120),
+    headline: clip(pick(raw, ['headline', 'job_title', 'title', 'jobTitle'], 'organizations', ['title']), 200),
+    location: clip(pick(raw, ['location', 'city'], 'addresses', ['formattedValue', 'city']), 120),
     phone: firstPhone(raw),
-    linkedin_url: clip(raw.linkedin_url || raw.linkedin, 300),
+    linkedin_url: linkedinFrom(raw),
     source: `ingest:${source}`,
     last_seen_at: raw.seen_at || raw.updated_at || raw.last_seen_at || null,
     evidence: `from your ${source} feed`,
   };
+  return allEmails(raw).map((email) => ({ ...shared, email }));
 }
 
 router.get('/webhooks/contacts/:clientId', async (req, res) => {
@@ -119,19 +191,33 @@ router.post('/webhooks/contacts/:clientId', express.json({ limit: '2mb' }), asyn
   const list = Array.isArray(body.contacts) ? body.contacts : (Array.isArray(body) ? body : [body]);
   if (list.length > MAX_BATCH) return res.status(413).json({ ok: false, error: `max ${MAX_BATCH} contacts per call` });
 
-  const shaped = list.map((c) => shapeContact(c, defaultSource)).filter(Boolean);
-  const usable = shaped.filter((c) => contactsStore.cleanEmail(c.email));
-  if (!usable.length) return res.status(200).json({ ok: true, received: list.length, filed: 0, reason: 'no contact with a valid email' });
+  // One contact can carry several addresses, so rows out can exceed people in.
+  const usable = list.flatMap((c) => shapeContact(c, defaultSource)).filter((c) => contactsStore.cleanEmail(c.email));
+  const peopleFiled = new Set(usable.map((c) => `${c.first_name}|${c.last_name}|${c.name}`)).size;
+  if (!usable.length) {
+    return res.status(200).json({
+      ok: true, received: list.length, filed: 0,
+      reason: 'no contact had a usable email address (a phone-only contact has nothing to file it under)',
+    });
+  }
 
   const w = await contactsStore.upsertContacts(tenant, usable);
   if (!w.ok) {
     log.error(`CONTACTS-INGEST store failed for ${tenant}: ${w.error}`);
     return res.status(500).json({ ok: false, error: 'store failed' });
   }
-  log.info(`CONTACTS-INGEST ${tenant}: filed ${w.written} of ${list.length} (source ${defaultSource})`);
-  return res.status(200).json({ ok: true, received: list.length, filed: w.written, skipped: list.length - usable.length });
+  log.info(`CONTACTS-INGEST ${tenant}: filed ${w.written} address rows from ${list.length} contacts (source ${defaultSource})`);
+  return res.status(200).json({
+    ok: true,
+    received: list.length,
+    filed: w.written,
+    people: peopleFiled,
+    skipped: list.length - peopleFiled,
+  });
 });
 
 module.exports = router;
 module.exports.shapeContact = shapeContact;
 module.exports.firstPhone = firstPhone;
+module.exports.allEmails = allEmails;
+module.exports.linkedinFrom = linkedinFrom;

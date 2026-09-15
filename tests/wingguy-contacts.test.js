@@ -265,28 +265,64 @@ const acheck = async (name, fn) => { try { await fn(); console.log(`  ✓ ${name
     assert.strictEqual(await withTimeout(Promise.resolve('done'), 1000, 'x'), 'done');
   });
 
-  console.log('\nshapeContact() (ingest door):');
-  check('Make/Google-style keys map across and the source is tagged', () => {
-    const c = shapeContact({ email: 'X@Y.com', given_name: 'Guy', surname: 'Wilson', company_name: 'IKAG', job_title: 'Founder', source: 'Google Contacts' }, 'feed');
+  console.log('\nshapeContact() (ingest door) - the plain dialect:');
+  check('plain keys map across and the source is tagged', () => {
+    const [c] = shapeContact({ email: 'X@Y.com', given_name: 'Guy', surname: 'Wilson', company_name: 'IKAG', job_title: 'Founder', source: 'Google Contacts' }, 'feed');
     assert.strictEqual(c.first_name, 'Guy'); assert.strictEqual(c.last_name, 'Wilson');
     assert.strictEqual(c.company, 'IKAG'); assert.strictEqual(c.headline, 'Founder');
+    assert.strictEqual(c.email, 'x@y.com');
     assert.strictEqual(c.source, 'ingest:googlecontacts');
   });
   check('missing source falls back to the batch default', () => {
-    assert.strictEqual(shapeContact({ email: 'a@b.co' }, 'zapier').source, 'ingest:zapier');
+    assert.strictEqual(shapeContact({ email: 'a@b.co' }, 'zapier')[0].source, 'ingest:zapier');
   });
-  check('non-object is ignored', () => assert.strictEqual(shapeContact('junk', 'feed'), null));
+  check('non-object yields nothing', () => assert.deepStrictEqual(shapeContact('junk', 'feed'), []));
+  check('no email yields nothing - there is nothing to file it under', () => {
+    assert.deepStrictEqual(shapeContact({ names: [{ givenName: 'Phone', familyName: 'Only' }], phoneNumbers: [{ value: '0412 1' }] }, 'feed'), []);
+  });
 
-  console.log('\nfirstPhone() (Google/Unipile send an array):');
+  console.log('\nshapeContact() - the Google People dialect Make actually sends:');
+  const GOOGLE = {
+    resourceName: 'people/c123',
+    names: [{ givenName: 'Bob', familyName: 'Carter', displayName: 'Bob Carter' }],
+    emailAddresses: [{ value: 'Bob@Acme.com', type: 'work' }, { value: 'bob.personal@gmail.com', type: 'home' }],
+    phoneNumbers: [{ value: '+61 412 345 678', type: 'mobile' }],
+    organizations: [{ name: 'Acme Pty Ltd', title: 'Head of Sales' }],
+    addresses: [{ formattedValue: 'Sydney NSW', city: 'Sydney' }],
+    urls: [{ value: 'https://acme.com' }, { value: 'https://www.linkedin.com/in/bob-carter' }],
+  };
+  check('nested names, organisation, address and phone all come across', () => {
+    const [c] = shapeContact(GOOGLE, 'googlecontacts');
+    assert.strictEqual(c.first_name, 'Bob');
+    assert.strictEqual(c.last_name, 'Carter');
+    assert.strictEqual(c.name, 'Bob Carter');
+    assert.strictEqual(c.company, 'Acme Pty Ltd');
+    assert.strictEqual(c.headline, 'Head of Sales');
+    assert.strictEqual(c.location, 'Sydney NSW');
+    assert.strictEqual(c.phone, '+61 412 345 678');
+  });
+  check('LinkedIn is found among the other urls, not the first one', () => {
+    assert.strictEqual(shapeContact(GOOGLE, 'g')[0].linkedin_url, 'https://www.linkedin.com/in/bob-carter');
+  });
+  check('two addresses become two rows sharing one identity', () => {
+    const rows = shapeContact(GOOGLE, 'g');
+    assert.strictEqual(rows.length, 2);
+    assert.deepStrictEqual(rows.map((r) => r.email), ['bob@acme.com', 'bob.personal@gmail.com']);
+    assert.ok(rows.every((r) => r.name === 'Bob Carter' && r.company === 'Acme Pty Ltd'));
+  });
+  check('a duplicate address is not filed twice', () => {
+    const rows = shapeContact({ email: 'a@b.co', emailAddresses: [{ value: 'A@B.co' }] }, 'g');
+    assert.strictEqual(rows.length, 1);
+  });
+
+  console.log('\nfirstPhone() - every array shape Google, Make and Unipile use:');
   check('plain string phone', () => assert.strictEqual(firstPhone({ phone: ' 0412 345 678 ' }), '0412 345 678'));
+  check("Google's phoneNumbers[{value}]", () => assert.strictEqual(firstPhone({ phoneNumbers: [{ value: '07 1111 2222' }] }), '07 1111 2222'));
   check('array of {number} - first usable wins', () => {
     assert.strictEqual(firstPhone({ phone_numbers: [{ number: '', type: 'work' }, { number: '+61 412 345 678', type: 'mobile' }] }), '+61 412 345 678');
   });
   check('array of bare strings', () => assert.strictEqual(firstPhone({ phones: ['07 5555 1234'] }), '07 5555 1234'));
   check('nothing usable = empty', () => assert.strictEqual(firstPhone({ phone_numbers: [] }), ''));
-  check('phone flows through shapeContact', () => {
-    assert.strictEqual(shapeContact({ email: 'a@b.co', phone_numbers: [{ number: '0412 000 111' }] }, 'feed').phone, '0412 000 111');
-  });
 
   console.log('\nrunFindPerson() against a stubbed store:');
   const stub = (rowsOut, status) => ({
