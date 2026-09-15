@@ -169,6 +169,18 @@ const MAIL_BACKFILL_TIMEOUT_MS = 600000; // a first run reads a year and is minu
 const MAIL_FIRST_RUN_DAYS = 365;
 const MAIL_MAX_MESSAGES = 3000;
 
+/**
+ * How long to let a mailbox read run. Pulled out so the decision can be tested in milliseconds
+ * instead of by waiting for the real fuse to burn.
+ *   first read of a year of mail  -> ten minutes, or it gets killed and thrown away
+ *   already failed, never worked  -> the nightly bound, so it fails fast forever after
+ *   nightly incremental           -> the nightly bound, which is all a day of mail needs
+ */
+function mailTimeoutFor({ backfill = false, full = false, triedAndFailed = false, override } = {}) {
+  if (override) return override;
+  return (backfill || full) && !triedAndFailed ? MAIL_BACKFILL_TIMEOUT_MS : MAIL_TIMEOUT_MS;
+}
+
 /** Reject after ms rather than letting a stuck provider hold the whole sweep. */
 function withTimeout(promise, ms, label) {
   let t;
@@ -239,19 +251,24 @@ async function sweepMailbox(coach, { full = false, firstRunDays = MAIL_FIRST_RUN
   if (!mp.hasMailbox(coach)) return { ok: false, skipped: 'no mailbox connected' };
 
   const startedAt = new Date();
+  const state = await contactsStore.sweepState(tenant, 'mail');
   let since = null;
-  if (!full) {
-    const last = await contactsStore.lastSweepAt(tenant, 'mail');
-    if (last) since = new Date(last.getTime() - 24 * 3600 * 1000);
-  }
-  // No prior sweep (or a forced full) means a BACKFILL: a year of mail, not a day of it.
+  if (!full && state.lastRunAt) since = new Date(state.lastRunAt.getTime() - 24 * 3600 * 1000);
+  // No prior success (or a forced full) means a BACKFILL: a year of mail, not a day of it.
   const backfill = !since;
   if (!since) since = new Date(Date.now() - firstRunDays * 24 * 3600 * 1000);
   const afterEpochSeconds = Math.floor(since.getTime() / 1000);
   // Measured on Guy's mailbox: ~12 messages a second, so 3,000 is roughly four minutes. The
   // nightly timeout would kill that and throw the whole backfill away - every message read,
-  // nothing filed. A backfill gets ten minutes; the nightly incremental keeps its tight bound.
-  const limitMs = timeoutMs || ((backfill || full) ? MAIL_BACKFILL_TIMEOUT_MS : MAIL_TIMEOUT_MS);
+  // nothing filed. A backfill therefore gets ten minutes.
+  //
+  // BUT only its FIRST attempt. Julian's Zoho-over-IMAP cannot read a year of history at all,
+  // and without this his feed would spend ten minutes failing every single night, turning a
+  // seconds-long sweep into a ten-minute one forever. Once a failure is on the record with no
+  // success behind it, later attempts fail fast on the nightly bound - still tried, still
+  // recorded, still reported by the staleness alert, just not at the cost of everyone's sweep.
+  const triedAndFailed = !!state.lastErrorAt && !state.lastRunAt;
+  const limitMs = mailTimeoutFor({ backfill, full, triedAndFailed, override: timeoutMs });
 
   let r;
   try {
@@ -339,5 +356,5 @@ async function sweepAll({ full = false, onlyClientIds = null, clientService, ski
 
 module.exports = {
   sweepLeads, sweepCommsLog, sweepMailbox, sweepTenant, sweepAll,
-  leadToContacts, messageToContacts, nameFromEmail, splitAltEmails, fmtDay, withTimeout,
+  leadToContacts, messageToContacts, nameFromEmail, splitAltEmails, fmtDay, withTimeout, mailTimeoutFor,
 };

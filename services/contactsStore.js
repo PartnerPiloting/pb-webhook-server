@@ -320,6 +320,35 @@ async function recordSweepFailure(coachClientId, source, error, { at = new Date(
   }
 }
 
+/**
+ * The whole state of one feed: when it last succeeded, and when it last failed. Callers that
+ * only want the success can use lastSweepAt; this exists so a feed can tell "never tried" from
+ * "tried and failed", which decides how much patience to give it on the next attempt.
+ */
+async function sweepState(coachClientId, source) {
+  const p = getPool();
+  if (!p || !coachClientId || !source) return { lastRunAt: null, lastErrorAt: null, lastError: null };
+  const client = await p.connect();
+  try {
+    await ensureTable(client);
+    const r = await client.query(
+      `SELECT last_run_at, last_error_at, last_error FROM wingguy_contacts_sweeps WHERE coach_client_id = $1 AND source = $2`,
+      [coachClientId, source],
+    );
+    const row = r.rows[0];
+    if (!row) return { lastRunAt: null, lastErrorAt: null, lastError: null };
+    return {
+      lastRunAt: row.last_run_at ? new Date(row.last_run_at) : null,
+      lastErrorAt: row.last_error_at ? new Date(row.last_error_at) : null,
+      lastError: row.last_error || null,
+    };
+  } catch (e) {
+    return { lastRunAt: null, lastErrorAt: null, lastError: null };
+  } finally {
+    client.release();
+  }
+}
+
 async function lastSweepAt(coachClientId, source) {
   const p = getPool();
   if (!p || !coachClientId || !source) return null;
@@ -414,7 +443,7 @@ async function tenantStatus(coachClientId) {
 }
 
 module.exports = {
-  upsertContacts, findPeople, tenantStatus, recordSweep, recordSweepFailure, lastSweepAt,
+  upsertContacts, findPeople, tenantStatus, recordSweep, recordSweepFailure, lastSweepAt, sweepState,
   // pure, for tests
   normaliseContact, rankMatches, cleanEmail, mergeContacts,
 };

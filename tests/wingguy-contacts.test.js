@@ -8,7 +8,7 @@
  */
 const assert = require('assert');
 const { normaliseContact, rankMatches, cleanEmail, mergeContacts } = require('../services/contactsStore');
-const { leadToContacts, messageToContacts, nameFromEmail, withTimeout, sweepMailbox } = require('../services/contactsSweep');
+const { leadToContacts, messageToContacts, nameFromEmail, withTimeout, sweepMailbox, mailTimeoutFor } = require('../services/contactsSweep');
 const { mailParties } = require('../services/mailProvider');
 const { shapeContact, firstPhone } = require('../routes/contactsIngestRoutes');
 const { runFindPerson, runContactsStatus, TOOL_DEFS, groupByPerson } = require('../services/wingguyContactsMcp');
@@ -245,6 +245,19 @@ const acheck = async (name, fn) => { try { await fn(); console.log(`  ✓ ${name
     });
     assert.strictEqual(r.ok, false);
     assert.ok(/timed out/.test(r.error), r.error);
+  });
+  check('the FIRST read of a year of mail gets the long fuse', () => {
+    assert.strictEqual(mailTimeoutFor({ backfill: true }), 600000);
+    assert.strictEqual(mailTimeoutFor({ full: true }), 600000);
+  });
+  check('JULIAN: already failed and never worked = fail fast, not ten minutes every night', () => {
+    assert.strictEqual(mailTimeoutFor({ backfill: true, triedAndFailed: true }), 120000);
+  });
+  check('a nightly incremental keeps the tight bound', () => {
+    assert.strictEqual(mailTimeoutFor({}), 120000);
+  });
+  check('an explicit override always wins', () => {
+    assert.strictEqual(mailTimeoutFor({ backfill: true, override: 50 }), 50);
   });
   await acheck('a backfill gets minutes, not the nightly seconds - it must not be thrown away', async () => {
     // No prior sweep => backfill. A read that takes longer than the NIGHTLY bound must survive.
