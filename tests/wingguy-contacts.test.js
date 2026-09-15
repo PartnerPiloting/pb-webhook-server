@@ -246,6 +246,21 @@ const acheck = async (name, fn) => { try { await fn(); console.log(`  ✓ ${name
     assert.strictEqual(r.ok, false);
     assert.ok(/timed out/.test(r.error), r.error);
   });
+  await acheck('a backfill gets minutes, not the nightly seconds - it must not be thrown away', async () => {
+    // No prior sweep => backfill. A read that takes longer than the NIGHTLY bound must survive.
+    let askedAfter = null;
+    const r = await sweepMailbox({ clientId: 'T1' }, {
+      mailProvider: {
+        hasMailbox: () => true,
+        listRecent: async (_c, o) => { askedAfter = o.after; await new Promise((res) => setTimeout(res, 60)); return { ok: true, messages: [] }; },
+      },
+    });
+    assert.strictEqual(r.ok, true, JSON.stringify(r));
+    assert.strictEqual(r.mode, 'backfill');
+    // and it asked for a year of history, not a day
+    const daysBack = (Date.now() / 1000 - askedAfter) / 86400;
+    assert.ok(daysBack > 360 && daysBack < 370, `asked for ${Math.round(daysBack)} days`);
+  });
   await acheck('withTimeout passes a fast result straight through', async () => {
     assert.strictEqual(await withTimeout(Promise.resolve('done'), 1000, 'x'), 'done');
   });

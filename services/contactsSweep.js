@@ -164,7 +164,8 @@ async function sweepCommsLog(coach, { full = false } = {}) {
 // the only one that can hang: Ashley's and Roland's Outlook accounts 504 after 180s during the
 // Unipile outage (project_unipile_outlook_email_outage_20260910). One slow tenant must never
 // cost the other fourteen their nightly sweep, hence the hard per-tenant timeout.
-const MAIL_TIMEOUT_MS = 120000;
+const MAIL_TIMEOUT_MS = 120000;         // a nightly incremental read is one day of mail
+const MAIL_BACKFILL_TIMEOUT_MS = 600000; // a first run reads a year and is minutes, not seconds
 const MAIL_FIRST_RUN_DAYS = 365;
 const MAIL_MAX_MESSAGES = 3000;
 
@@ -230,7 +231,7 @@ function messageToContacts(msg, { isSelf, isJunk } = {}) {
  * people they genuinely deal with. Reads through mailProvider, so Nylas, Unipile and Julian's
  * Zoho-over-IMAP all work without a word of provider code here.
  */
-async function sweepMailbox(coach, { full = false, firstRunDays = MAIL_FIRST_RUN_DAYS, maxMessages = MAIL_MAX_MESSAGES, timeoutMs = MAIL_TIMEOUT_MS, mailProvider } = {}) {
+async function sweepMailbox(coach, { full = false, firstRunDays = MAIL_FIRST_RUN_DAYS, maxMessages = MAIL_MAX_MESSAGES, timeoutMs, mailProvider } = {}) {
   const mp = mailProvider || require('./mailProvider');
   const tenant = coach && coach.clientId;
   if (!tenant) return { ok: false, error: 'coach.clientId required' };
@@ -243,12 +244,18 @@ async function sweepMailbox(coach, { full = false, firstRunDays = MAIL_FIRST_RUN
     const last = await contactsStore.lastSweepAt(tenant, 'mail');
     if (last) since = new Date(last.getTime() - 24 * 3600 * 1000);
   }
+  // No prior sweep (or a forced full) means a BACKFILL: a year of mail, not a day of it.
+  const backfill = !since;
   if (!since) since = new Date(Date.now() - firstRunDays * 24 * 3600 * 1000);
   const afterEpochSeconds = Math.floor(since.getTime() / 1000);
+  // Measured on Guy's mailbox: ~12 messages a second, so 3,000 is roughly four minutes. The
+  // nightly timeout would kill that and throw the whole backfill away - every message read,
+  // nothing filed. A backfill gets ten minutes; the nightly incremental keeps its tight bound.
+  const limitMs = timeoutMs || ((backfill || full) ? MAIL_BACKFILL_TIMEOUT_MS : MAIL_TIMEOUT_MS);
 
   let r;
   try {
-    r = await withTimeout(mp.listRecent(coach, { after: afterEpochSeconds, max: maxMessages }), timeoutMs, `${tenant} mailbox read`);
+    r = await withTimeout(mp.listRecent(coach, { after: afterEpochSeconds, max: maxMessages }), limitMs, `${tenant} mailbox read`);
   } catch (e) {
     return { ok: false, error: e.message };
   }
@@ -277,13 +284,13 @@ async function sweepMailbox(coach, { full = false, firstRunDays = MAIL_FIRST_RUN
   await contactsStore.recordSweep(tenant, 'mail', {
     rowsSeen: (r.messages || []).length,
     at: startedAt,
-    note: `${full || !since ? 'full' : 'incremental'} since ${since.toISOString().slice(0, 10)}${r.truncated ? ' (truncated)' : ''}${r.partialError ? ` (partial: ${String(r.partialError).slice(0, 80)})` : ''}`,
+    note: `${backfill || full ? 'backfill' : 'incremental'} since ${since.toISOString().slice(0, 10)}${r.truncated ? ' (truncated)' : ''}${r.partialError ? ` (partial: ${String(r.partialError).slice(0, 80)})` : ''}`,
   });
   return {
     ok: true,
     messages: (r.messages || []).length,
     contacts: contacts.length,
-    mode: full ? 'full' : 'incremental',
+    mode: backfill || full ? 'backfill' : 'incremental',
     truncated: !!r.truncated,
     ...(r.partialError ? { partialError: String(r.partialError).slice(0, 120) } : {}),
   };
