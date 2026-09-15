@@ -14,10 +14,16 @@
  * leads base, 'mail' only if mailProvider says they have a mailbox, 'comms-log' whenever either
  * is true. A client with no mailbox is not "broken" for having no mail sweep.
  *
- * NEVER-RUN vs STALE: a brand new client has no stamps at all, and that is not a fault - it just
- * means the first sweep has not happened. A never-run feed only counts as stale once ANOTHER
- * feed for that same tenant has a stamp, which proves the tenant has been through a sweep and
- * this feed specifically did not make it.
+ * BROKEN vs NOT-YET-TRIED - the bit that stops this crying wolf. A feed with NO ROW at all was
+ * never attempted: a brand new client, or a feed that shipped today. Silent, always. The first
+ * draft flagged "no success stamp while other feeds have one", which read correctly on paper and
+ * would have emailed a fault for EVERY tenant the night the mail feed shipped, since none of
+ * them could have a mail stamp yet. So a fault now needs a recorded ATTEMPT: sweepTenant writes
+ * last_error_at when a feed genuinely fails, and recordSweep clears it on the next success.
+ *   no row                      -> silent (never tried)
+ *   success, recent             -> healthy
+ *   success, older than N days  -> stale
+ *   error and no/old success    -> broken
  *
  * NAG CONTROL: one email at most every `minHoursBetweenAlerts` while anything is stale - EXCEPT
  * when the stale set grows, which is new news and goes out immediately. The marker lives in the
@@ -43,25 +49,34 @@ function expectedFeeds(coach, mailProvider) {
 }
 
 /**
- * Compare expected feeds against the sweep stamps. Pure, so the "is this actually broken?"
+ * Compare expected feeds against the sweep rows. Pure, so the "is this actually broken?"
  * judgement is testable without a database.
  * @param {Array<{clientId:string, feeds:string[]}>} tenants
- * @param {Map<string, Date>} stamps  key `${clientId}::${feed}` -> last successful run
- * @returns {Array<{clientId:string, feed:string, lastRunAt:Date|null, daysStale:number|null}>}
+ * @param {Map<string, {lastRunAt:Date|null, lastErrorAt:Date|null, lastError:string|null}>} rows
+ *        keyed `${clientId}::${feed}`; a MISSING key means the feed was never attempted.
+ * @returns {Array<{clientId, feed, lastRunAt, lastError, daysStale}>}
  */
-function findStale(tenants, stamps, { staleDays = DEFAULT_STALE_DAYS, now = new Date() } = {}) {
+function findStale(tenants, rows, { staleDays = DEFAULT_STALE_DAYS, now = new Date() } = {}) {
   const out = [];
   for (const t of tenants) {
-    // Has this tenant EVER been swept? If not, nothing here is a fault yet.
-    const sweptBefore = (t.feeds || []).some((f) => stamps.get(`${t.clientId}::${f}`));
     for (const feed of t.feeds || []) {
-      const last = stamps.get(`${t.clientId}::${feed}`) || null;
-      if (!last) {
-        if (sweptBefore) out.push({ clientId: t.clientId, feed, lastRunAt: null, daysStale: null });
-        continue;
-      }
-      const days = (now - last) / 86400000;
-      if (days > staleDays) out.push({ clientId: t.clientId, feed, lastRunAt: last, daysStale: Math.floor(days) });
+      const row = rows.get(`${t.clientId}::${feed}`);
+      if (!row) continue;                       // never attempted - not a fault
+      const last = row.lastRunAt || null;
+      const erroredAt = row.lastErrorAt || null;
+      const daysSinceSuccess = last ? (now - last) / 86400000 : null;
+      // Broken: it was tried and failed, and there is no recent success behind that failure.
+      const brokenNow = !!erroredAt && (!last || last < erroredAt) && (daysSinceSuccess === null || daysSinceSuccess > staleDays);
+      // Stale: it used to work and has not since, whether or not an error was captured.
+      const goneQuiet = daysSinceSuccess !== null && daysSinceSuccess > staleDays;
+      if (!brokenNow && !goneQuiet) continue;
+      out.push({
+        clientId: t.clientId,
+        feed,
+        lastRunAt: last,
+        lastError: row.lastError || null,
+        daysStale: daysSinceSuccess === null ? null : Math.floor(daysSinceSuccess),
+      });
     }
   }
   return out;
@@ -69,17 +84,25 @@ function findStale(tenants, stamps, { staleDays = DEFAULT_STALE_DAYS, now = new 
 
 /** One line a human can act on. */
 function describeStale(s) {
-  if (!s.lastRunAt) return `${s.clientId} - ${s.feed}: has never worked (other feeds for them have)`;
-  return `${s.clientId} - ${s.feed}: last worked ${s.daysStale} day${s.daysStale === 1 ? '' : 's'} ago (${s.lastRunAt.toISOString().slice(0, 10)})`;
+  const why = s.lastError ? ` - ${String(s.lastError).slice(0, 120)}` : '';
+  if (s.lastRunAt === null) return `${s.clientId} - ${s.feed}: tried and failed, has never worked${why}`;
+  return `${s.clientId} - ${s.feed}: last worked ${s.daysStale} day${s.daysStale === 1 ? '' : 's'} ago (${s.lastRunAt.toISOString().slice(0, 10)})${why}`;
 }
 
 async function readStamps(client) {
   const r = await client.query(
-    `SELECT coach_client_id, source, last_run_at FROM wingguy_contacts_sweeps WHERE coach_client_id <> $1`,
+    `SELECT coach_client_id, source, last_run_at, last_error_at, last_error
+       FROM wingguy_contacts_sweeps WHERE coach_client_id <> $1`,
     [SYSTEM_TENANT],
   );
   const map = new Map();
-  for (const row of r.rows) map.set(`${row.coach_client_id}::${row.source}`, new Date(row.last_run_at));
+  for (const row of r.rows) {
+    map.set(`${row.coach_client_id}::${row.source}`, {
+      lastRunAt: row.last_run_at ? new Date(row.last_run_at) : null,
+      lastErrorAt: row.last_error_at ? new Date(row.last_error_at) : null,
+      lastError: row.last_error || null,
+    });
+  }
   return map;
 }
 

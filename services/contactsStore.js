@@ -60,6 +60,11 @@ async function ensureTable(client) {
   // column to a table that already exists (the warehouse was live from 2026-09-13), so every
   // later column needs its own idempotent ALTER here.
   await client.query(`ALTER TABLE wingguy_contacts ADD COLUMN IF NOT EXISTS phone TEXT;`);
+  // Failure columns (2026-09-15). last_run_at means SUCCESS; without a record of attempts,
+  // "this feed has no stamp" cannot tell a genuinely broken feed from one that simply did not
+  // exist yet - which would have alerted on every tenant the night a new feed shipped.
+  await client.query(`ALTER TABLE wingguy_contacts_sweeps ADD COLUMN IF NOT EXISTS last_error_at TIMESTAMPTZ;`);
+  await client.query(`ALTER TABLE wingguy_contacts_sweeps ADD COLUMN IF NOT EXISTS last_error TEXT;`);
   await client.query(`CREATE INDEX IF NOT EXISTS idx_wg_contacts_tenant_name ON wingguy_contacts (coach_client_id, lower(name));`);
   await client.query(`CREATE INDEX IF NOT EXISTS idx_wg_contacts_tenant_lead ON wingguy_contacts (coach_client_id, lead_record_id);`);
   await client.query(`
@@ -275,12 +280,40 @@ async function recordSweep(coachClientId, source, { rowsSeen = 0, note = '', at 
     await client.query(
       `INSERT INTO wingguy_contacts_sweeps (coach_client_id, source, last_run_at, rows_seen, note)
        VALUES ($1, $2, $3, $4, $5)
-       ON CONFLICT (coach_client_id, source) DO UPDATE SET last_run_at = EXCLUDED.last_run_at, rows_seen = EXCLUDED.rows_seen, note = EXCLUDED.note`,
+       ON CONFLICT (coach_client_id, source) DO UPDATE SET last_run_at = EXCLUDED.last_run_at, rows_seen = EXCLUDED.rows_seen, note = EXCLUDED.note,
+         last_error_at = NULL, last_error = NULL`,
       [coachClientId, source, at, rowsSeen, clip(note, 300) || null],
     );
     return { ok: true };
   } catch (e) {
     console.warn(`[contactsStore] recordSweep failed (${coachClientId}/${source}): ${e.message}`);
+    return { ok: false, error: e.message };
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Record that a feed was TRIED and failed. Leaves last_run_at (the last success) alone, so the
+ * staleness check can tell "broken" from "brand new": a feed with no row at all was never
+ * attempted and is nobody's fault; a row with an error and an old-or-absent success is a fault.
+ * Never throws - bookkeeping must not turn a feed failure into a sweep failure.
+ */
+async function recordSweepFailure(coachClientId, source, error, { at = new Date() } = {}) {
+  const p = getPool();
+  if (!p || !coachClientId || !source) return { ok: false };
+  const client = await p.connect();
+  try {
+    await ensureTable(client);
+    await client.query(
+      `INSERT INTO wingguy_contacts_sweeps (coach_client_id, source, last_run_at, rows_seen, note, last_error_at, last_error)
+       VALUES ($1, $2, NULL, 0, NULL, $3, $4)
+       ON CONFLICT (coach_client_id, source) DO UPDATE SET last_error_at = EXCLUDED.last_error_at, last_error = EXCLUDED.last_error`,
+      [coachClientId, source, at, clip(error, 300) || 'unknown error'],
+    );
+    return { ok: true };
+  } catch (e) {
+    console.warn(`[contactsStore] recordSweepFailure failed (${coachClientId}/${source}): ${e.message}`);
     return { ok: false, error: e.message };
   } finally {
     client.release();
@@ -381,7 +414,7 @@ async function tenantStatus(coachClientId) {
 }
 
 module.exports = {
-  upsertContacts, findPeople, tenantStatus, recordSweep, lastSweepAt,
+  upsertContacts, findPeople, tenantStatus, recordSweep, recordSweepFailure, lastSweepAt,
   // pure, for tests
   normaliseContact, rankMatches, cleanEmail, mergeContacts,
 };

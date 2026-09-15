@@ -296,13 +296,25 @@ async function sweepMailbox(coach, { full = false, firstRunDays = MAIL_FIRST_RUN
   };
 }
 
-/** Every feed for one coach. Never throws - each feed reports its own result. */
+/**
+ * Every feed for one coach. Never throws - each feed reports its own result, and a genuine
+ * failure (not a skip) is written to the sweeps row so the staleness alert can tell a broken
+ * feed from one that simply has not been invented yet. Bookkeeping is best-effort.
+ */
 async function sweepTenant(coach, opts = {}) {
-  const out = { clientId: coach && coach.clientId };
+  const tenant = coach && coach.clientId;
+  const out = { clientId: tenant };
+  const note = async (source, r) => {
+    if (!tenant || !r || r.ok !== false || r.skipped) return;
+    try { await contactsStore.recordSweepFailure(tenant, source, r.error); } catch (_e) { /* best effort */ }
+  };
   try { out.leads = await sweepLeads(coach, opts); } catch (e) { out.leads = { ok: false, error: e.message }; }
+  await note('lead', out.leads);
   try { out.commsLog = await sweepCommsLog(coach, opts); } catch (e) { out.commsLog = { ok: false, error: e.message }; }
+  await note('comms-log', out.commsLog);
   if (opts.skipMail !== true) {
     try { out.mail = await sweepMailbox(coach, opts); } catch (e) { out.mail = { ok: false, error: e.message }; }
+    await note('mail', out.mail);
   }
   return out;
 }
