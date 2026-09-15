@@ -13218,4 +13218,57 @@ router.get("/api/smart-followup/sweep-status", async (req, res) => {
   }
 });
 
+// ---------------------------------------------------------------
+// Contacts sweep - the nightly top-up of the contacts warehouse.
+//
+// Runs IN THE REQUEST, like the smart-follow-up cron endpoint above: the whole
+// point of a cron hitting an endpoint (rather than a cron running the script)
+// is that the web service already holds DATABASE_URL and the Airtable keys.
+// DATABASE_URL is set on the service, not in an env group, so a standalone
+// node cron would mean a second copy of the database credentials.
+//
+// Incremental by default - each tenant is asked only for records modified
+// since its last sweep, so a nightly pass across every client is seconds.
+// A FULL re-read (?full=true) is minutes and is not what the cron should call;
+// run that by hand as a one-off job when a base has been bulk-edited.
+//
+// GET /api/cron/contacts-sweep[?full=true][&clientId=X&clientId=Y]
+// Auth: Bearer PB_WEBHOOK_SECRET
+// ---------------------------------------------------------------
+router.get("/api/cron/contacts-sweep", async (req, res) => {
+  const auth = req.headers.authorization;
+  const secret = process.env.PB_WEBHOOK_SECRET;
+  if (!secret || auth !== `Bearer ${secret}`) {
+    return res.status(401).json({ ok: false, error: 'Unauthorized' });
+  }
+  const log = createLogger({ runId: 'CONTACTS-SWEEP', clientId: 'SYSTEM', operation: 'contacts_sweep_cron' });
+  const full = String(req.query.full || '').toLowerCase() === 'true';
+  const only = [].concat(req.query.clientId || []).map((s) => String(s).trim()).filter(Boolean);
+  const startedAt = Date.now();
+  try {
+    const { sweepAll } = require('../services/contactsSweep');
+    const results = await sweepAll({ full, onlyClientIds: only.length ? only : null });
+    const errors = results.filter((r) => (r.leads && r.leads.ok === false && !r.leads.skipped) || (r.commsLog && r.commsLog.ok === false));
+    const seconds = Math.round((Date.now() - startedAt) / 1000);
+    log.info(`contacts sweep: ${results.length} tenant(s), ${errors.length} error(s), ${seconds}s${full ? ' (FULL)' : ''}`);
+    // 200 even with per-tenant errors: one bad base must not read as a dead cron.
+    // The counts below are what to look at, and every failure is named.
+    return res.json({
+      ok: true,
+      tenants: results.length,
+      errors: errors.length,
+      seconds,
+      mode: full ? 'full' : 'incremental',
+      detail: results.map((r) => ({
+        clientId: r.clientId,
+        leads: r.leads && r.leads.ok ? { rows: r.leads.leads, contacts: r.leads.contacts, mode: r.leads.mode } : ((r.leads && (r.leads.skipped || r.leads.error)) || null),
+        commsLog: r.commsLog && r.commsLog.ok ? { rows: r.commsLog.rows, contacts: r.commsLog.contacts, mode: r.commsLog.mode } : ((r.commsLog && r.commsLog.error) || null),
+      })),
+    });
+  } catch (err) {
+    log.error(`contacts sweep failed: ${err.message}`);
+    return res.status(500).json({ ok: false, error: err.message, seconds: Math.round((Date.now() - startedAt) / 1000) });
+  }
+});
+
 module.exports = router;
