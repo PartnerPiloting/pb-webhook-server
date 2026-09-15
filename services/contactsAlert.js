@@ -37,14 +37,32 @@ const { sendAlertEmail } = require('./emailNotificationService');
 const SYSTEM_TENANT = '_system';
 const ALERT_SOURCE = 'stale-alert';
 const DEFAULT_STALE_DAYS = 3;
+// An OUTSIDE feed is judged far more slowly, because silence is usually innocent: Make's contact
+// watcher only fires when a contact actually changes, so a fortnight of nothing just means the
+// coach added nobody. Three days would cry wolf constantly; a month means something is wrong.
+const DEFAULT_INGEST_STALE_DAYS = 30;
 const DEFAULT_MIN_HOURS_BETWEEN = 72;
 
-/** Which feeds SHOULD this tenant have? Derived from what they actually have connected. */
-function expectedFeeds(coach, mailProvider) {
+function isIngestFeed(feed) {
+  return String(feed || '').startsWith('ingest:');
+}
+
+/**
+ * Which feeds SHOULD this tenant have?
+ *
+ * The built-in ones are derived from what they have connected. An outside feed (Make, Zapier, a
+ * spreadsheet) cannot be - nothing on the client record says a coach means to send contacts from
+ * somewhere else. So an ingest feed becomes expected only once it has actually delivered, which
+ * is exactly the right moment: before the first delivery there is nothing to miss, and after it
+ * a feed going quiet is worth mentioning.
+ * @param {string[]} [knownIngestFeeds] ingest sources already seen for this tenant
+ */
+function expectedFeeds(coach, mailProvider, knownIngestFeeds = []) {
   const feeds = [];
   if (coach && coach.airtableBaseId) feeds.push('lead');
   if (mailProvider && mailProvider.hasMailbox(coach)) feeds.push('mail');
   if (feeds.length) feeds.push('comms-log');
+  for (const f of knownIngestFeeds) if (isIngestFeed(f) && !feeds.includes(f)) feeds.push(f);
   return feeds;
 }
 
@@ -56,19 +74,20 @@ function expectedFeeds(coach, mailProvider) {
  *        keyed `${clientId}::${feed}`; a MISSING key means the feed was never attempted.
  * @returns {Array<{clientId, feed, lastRunAt, lastError, daysStale}>}
  */
-function findStale(tenants, rows, { staleDays = DEFAULT_STALE_DAYS, now = new Date() } = {}) {
+function findStale(tenants, rows, { staleDays = DEFAULT_STALE_DAYS, ingestStaleDays = DEFAULT_INGEST_STALE_DAYS, now = new Date() } = {}) {
   const out = [];
   for (const t of tenants) {
     for (const feed of t.feeds || []) {
       const row = rows.get(`${t.clientId}::${feed}`);
       if (!row) continue;                       // never attempted - not a fault
+      const limit = isIngestFeed(feed) ? ingestStaleDays : staleDays;
       const last = row.lastRunAt || null;
       const erroredAt = row.lastErrorAt || null;
       const daysSinceSuccess = last ? (now - last) / 86400000 : null;
       // Broken: it was tried and failed, and there is no recent success behind that failure.
-      const brokenNow = !!erroredAt && (!last || last < erroredAt) && (daysSinceSuccess === null || daysSinceSuccess > staleDays);
+      const brokenNow = !!erroredAt && (!last || last < erroredAt) && (daysSinceSuccess === null || daysSinceSuccess > limit);
       // Stale: it used to work and has not since, whether or not an error was captured.
-      const goneQuiet = daysSinceSuccess !== null && daysSinceSuccess > staleDays;
+      const goneQuiet = daysSinceSuccess !== null && daysSinceSuccess > limit;
       if (!brokenNow && !goneQuiet) continue;
       out.push({
         clientId: t.clientId,
@@ -82,9 +101,18 @@ function findStale(tenants, rows, { staleDays = DEFAULT_STALE_DAYS, now = new Da
   return out;
 }
 
-/** One line a human can act on. */
+/**
+ * One line a human can act on. An outside feed gets softer wording on purpose: nothing arriving
+ * from Make may simply mean the coach has added no contacts, and an alert that asserts a fault
+ * it cannot prove is how people learn to ignore alerts.
+ */
 function describeStale(s) {
   const why = s.lastError ? ` - ${String(s.lastError).slice(0, 120)}` : '';
+  if (isIngestFeed(s.feed)) {
+    const name = s.feed.slice('ingest:'.length);
+    if (s.lastRunAt === null) return `${s.clientId} - ${name} feed: a delivery failed and none has ever succeeded${why}`;
+    return `${s.clientId} - ${name} feed: nothing delivered in ${s.daysStale} days (last ${s.lastRunAt.toISOString().slice(0, 10)}) - either no new contacts, or the connection has stopped${why}`;
+  }
   if (s.lastRunAt === null) return `${s.clientId} - ${s.feed}: tried and failed, has never worked${why}`;
   return `${s.clientId} - ${s.feed}: last worked ${s.daysStale} day${s.daysStale === 1 ? '' : 's'} ago (${s.lastRunAt.toISOString().slice(0, 10)})${why}`;
 }
@@ -125,6 +153,7 @@ async function readAlertMarker(client) {
  */
 async function alertOnStaleFeeds({
   staleDays = DEFAULT_STALE_DAYS,
+  ingestStaleDays = DEFAULT_INGEST_STALE_DAYS,
   minHoursBetweenAlerts = DEFAULT_MIN_HOURS_BETWEEN,
   clientService,
   mailProvider,
@@ -141,12 +170,19 @@ async function alertOnStaleFeeds({
   try {
     client = await p.connect();
     const clients = (await cs.getAllClients()).filter((c) => String(c.status || '').toLowerCase() === 'active');
-    const tenants = clients
-      .map((c) => ({ clientId: c.clientId, feeds: expectedFeeds(c, mp) }))
-      .filter((t) => t.feeds.length);
-
     const stamps = await readStamps(client);
-    const stale = findStale(tenants, stamps, { staleDays, now });
+    // Outside feeds are discovered from what has actually delivered, not from the client record.
+    const ingestByTenant = new Map();
+    for (const key of stamps.keys()) {
+      const [tenantId, feed] = key.split('::');
+      if (!isIngestFeed(feed)) continue;
+      if (!ingestByTenant.has(tenantId)) ingestByTenant.set(tenantId, []);
+      ingestByTenant.get(tenantId).push(feed);
+    }
+    const tenants = clients
+      .map((c) => ({ clientId: c.clientId, feeds: expectedFeeds(c, mp, ingestByTenant.get(c.clientId) || []) }))
+      .filter((t) => t.feeds.length);
+    const stale = findStale(tenants, stamps, { staleDays, ingestStaleDays, now });
     const keys = stale.map((s) => `${s.clientId}::${s.feed}`).sort();
 
     const marker = await readAlertMarker(client);
@@ -170,7 +206,7 @@ async function alertOnStaleFeeds({
     const html = [
       '<p>These contacts feeds have stopped working. The nightly sweep still runs - these tenants just are not getting new people.</p>',
       '<ul>', ...lines.map((l) => `<li>${l}</li>`), '</ul>',
-      '<p>A mail feed usually means the client\'s mailbox is refusing reads (the Unipile Outlook outage did this). A lead feed usually means their Airtable base moved or lost access.</p>',
+      '<p>A mail feed usually means the client\'s mailbox is refusing reads (the Unipile Outlook outage did this). A lead feed usually means their Airtable base moved or lost access. An outside feed going quiet usually means the Make or Zapier scenario has stopped, its Google connection has expired, or the monthly operation limit ran out.</p>',
     ].join('');
     let emailed = false;
     try {
@@ -196,4 +232,4 @@ async function alertOnStaleFeeds({
   }
 }
 
-module.exports = { alertOnStaleFeeds, findStale, expectedFeeds, describeStale, SYSTEM_TENANT, ALERT_SOURCE };
+module.exports = { alertOnStaleFeeds, findStale, expectedFeeds, describeStale, isIngestFeed, SYSTEM_TENANT, ALERT_SOURCE };

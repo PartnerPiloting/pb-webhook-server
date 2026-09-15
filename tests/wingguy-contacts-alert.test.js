@@ -41,6 +41,20 @@ const TEN = [{ clientId: 'Dean', feeds: ['lead', 'mail', 'comms-log'] }];
     assert.deepStrictEqual(expectedFeeds({}, mpNo), []);
   });
 
+  console.log('\nexpectedFeeds() - an outside feed arms itself on first delivery:');
+  check('before any delivery, Make is not expected', () => {
+    assert.deepStrictEqual(expectedFeeds({ airtableBaseId: 'app1' }, mpNo, []), ['lead', 'comms-log']);
+  });
+  check('once it has delivered, it is watched', () => {
+    assert.deepStrictEqual(
+      expectedFeeds({ airtableBaseId: 'app1' }, mpNo, ['ingest:googlecontacts']),
+      ['lead', 'comms-log', 'ingest:googlecontacts'],
+    );
+  });
+  check('a non-ingest name cannot sneak in through that door', () => {
+    assert.deepStrictEqual(expectedFeeds({ airtableBaseId: 'app1' }, mpNo, ['mail']), ['lead', 'comms-log']);
+  });
+
   console.log('\nSILENCE - the cases that must never email:');
   check('a brand new client with no rows at all', () => {
     assert.deepStrictEqual(findStale(TEN, new Map(), { now: NOW }), []);
@@ -84,6 +98,32 @@ const TEN = [{ clientId: 'Dean', feeds: ['lead', 'mail', 'comms-log'] }];
     const s = findStale(TEN, rows, { now: NOW });
     assert.deepStrictEqual(s.map((x) => x.feed), ['mail']);
     assert.strictEqual(s[0].daysStale, 11);
+  });
+
+  console.log('\nOutside feeds are judged on a much longer fuse:');
+  const ING = [{ clientId: 'Guy', feeds: ['ingest:googlecontacts'] }];
+  check('a fortnight of silence from Make is NOT a fault - he just added nobody', () => {
+    const rows = new Map([['Guy::ingest:googlecontacts', ok(14)]]);
+    assert.deepStrictEqual(findStale(ING, rows, { now: NOW }), []);
+  });
+  check('a built-in feed quiet for the same fortnight IS a fault', () => {
+    const rows = new Map([['Guy::mail', ok(14)]]);
+    assert.strictEqual(findStale([{ clientId: 'Guy', feeds: ['mail'] }], rows, { now: NOW }).length, 1);
+  });
+  check('over a month of silence from Make does get raised', () => {
+    const rows = new Map([['Guy::ingest:googlecontacts', ok(40)]]);
+    const s = findStale(ING, rows, { now: NOW });
+    assert.strictEqual(s.length, 1);
+    assert.strictEqual(s[0].daysStale, 40);
+  });
+  check('the wording does not assert a fault it cannot prove', () => {
+    const line = describeStale({ clientId: 'Guy', feed: 'ingest:googlecontacts', lastRunAt: daysAgo(40), daysStale: 40, lastError: null });
+    assert.ok(/googlecontacts feed/.test(line), line);
+    assert.ok(/either no new contacts, or the connection has stopped/.test(line), line);
+  });
+  check('a delivery that failed outright is stated plainly', () => {
+    const line = describeStale({ clientId: 'Guy', feed: 'ingest:googlecontacts', lastRunAt: null, daysStale: null, lastError: 'store failed' });
+    assert.ok(/none has ever succeeded/.test(line), line);
   });
 
   console.log('\nTenants are judged independently:');

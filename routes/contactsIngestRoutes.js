@@ -206,6 +206,15 @@ router.post('/webhooks/contacts/:clientId', express.json({ limit: '2mb' }), asyn
     log.error(`CONTACTS-INGEST store failed for ${tenant}: ${w.error}`);
     return res.status(500).json({ ok: false, error: 'store failed' });
   }
+  // Stamp the feed so the staleness alert can watch it. An outside feed cannot be derived from
+  // the client record the way a mailbox can - Wingguy has no way to know a coach INTENDS to send
+  // contacts from Make. So the first successful delivery is what arms the watch: before one
+  // arrives nothing is expected, and after one the feed going quiet is worth a word.
+  const feedSources = [...new Set(usable.map((c) => c.source))];
+  for (const src of feedSources) {
+    try { await contactsStore.recordSweep(tenant, src, { rowsSeen: w.written, note: `${list.length} contacts delivered` }); }
+    catch (_e) { /* bookkeeping must never fail a delivery */ }
+  }
   log.info(`CONTACTS-INGEST ${tenant}: filed ${w.written} address rows from ${list.length} contacts (source ${defaultSource})`);
   return res.status(200).json({
     ok: true,
