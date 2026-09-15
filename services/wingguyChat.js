@@ -293,6 +293,65 @@ function unescapeModelNewlines(s) {
   return String(s || '').replace(/\\n/g, '\n');
 }
 
+// STAGE-1 OPENER GUARD (CODE, 2026-09-15 — Daniela Cavalletti, the THIRD time). A lead who accepted
+// the connection request and said nothing owes the coach nothing, so the first real message must
+// never open "following on from my note" / "in case it got buried". That ban is written three times
+// in prose (the stage list below, the store's stage-reading rule, the frac post-connection rule) and
+// the model still did it — Luke Watson 9 Aug, Alix Simpson 21 Aug, Daniela 15 Sep — and Dean sent
+// one to a real lead on 9 Sep. Same lesson as sign-offs, dates and time lists: a must-never-happen
+// is a code check, not a request. The guard reads the STAGE from data (no message from the lead,
+// no meeting ask from the coach = handshake only) and refuses the draft with the reason, so the
+// model redrafts. It fails OPEN: an unattributable sender, a group thread, or a coach message that
+// already asked for a call (stage 2, where a light "got buried" nudge is legitimate) all skip it.
+const STAGE1_BANNED_OPENER = /\b(following (up|on)( from| on)?|follow(ing)?[- ]up (properly|on|to)|my (earlier |previous |connection |last )?(note|message|request)|got buried|circling back|bumping this|floating this|in case (it|this) (got|slipped|was)|(i )?imagine you get a lot of these)\b/i;
+// The coach's real opener always ends on a call ask; the handshake note never mentions one.
+const MEETING_ASK = /\b(zoom|teams|google meet|meet\b|meeting|call|chat|catch[- ]?up|coffee)\b/i;
+
+function normName(s) {
+  return String(s || '').toLowerCase().replace(/[^a-z\s]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+function senderIs(sender, name) {
+  const s = normName(sender);
+  const n = normName(name);
+  if (!s || !n) return false;
+  const first = n.split(' ')[0];
+  return s === n || s === first || (first.length > 2 && s.startsWith(`${first} `));
+}
+
+/** Has the LEAD said anything? Unattributable senders count as "yes" so the guard fails open. */
+function leadHasSpoken(conversation = [], coachName = '', leadName = '') {
+  return (Array.isArray(conversation) ? conversation : []).some((m) => {
+    if (!m || !String(m.text || '').trim()) return false;
+    const s = normName(m.sender);
+    if (!s || s === 'unknown') return true;
+    if (senderIs(s, leadName)) return true;
+    if (senderIs(s, coachName) || s === 'you' || s === 'me') return false;
+    return true; // a named third party - not the handshake-only case
+  });
+}
+
+/** Has the COACH already asked for a call in this thread? (= the real opener has gone out, stage 2.) */
+function coachHasAskedToMeet(conversation = [], coachName = '') {
+  return (Array.isArray(conversation) ? conversation : []).some((m) =>
+    m && senderIs(m.sender, coachName) && MEETING_ASK.test(String(m.text || '')));
+}
+
+/** The banned phrase found in the draft's OPENING (greeting line + the next ~240 chars), else null. */
+function bannedStage1Opener(draft) {
+  const lines = String(draft || '').replace(/\r/g, '').split('\n').map((l) => l.trim()).filter(Boolean);
+  if (!lines.length) return null;
+  const greeting = /^(hi|hey|hello|g'day|dear|morning|afternoon)\b/i.test(lines[0]) && lines[0].length < 40;
+  const head = (greeting ? lines.slice(1) : lines).join(' ').slice(0, 240);
+  const m = head.match(STAGE1_BANNED_OPENER);
+  return m ? m[0] : null;
+}
+
+/** Stage 1 by DATA: nobody but the coach has spoken, and the coach never asked for a call. */
+function isHandshakeOnly({ conversation, coachName, leadName, group }) {
+  if (group) return false;
+  return !leadHasSpoken(conversation, coachName, leadName) && !coachHasAskedToMeet(conversation, coachName);
+}
+
 // Run one chat turn (which may involve several tool round-trips) to completion.
 // Returns { ok, reply, draft, booked, messages, model }.
 async function runWingguyChatTurn({ coach, profile = {}, conversation = [], messages = [], leadEmail, airtableBaseId = null, leadRecordId = null, profileBlock = '', convoBlock = '', campaignTemplate = null, systemPrefixBlocks = null, profileThin = false, deps = {} }) {
@@ -652,7 +711,20 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
       return result;
     }
     if (name === 'propose_message') {
-      currentDraft = unescapeModelNewlines(input && input.message).trim();
+      const draft = unescapeModelNewlines(input && input.message).trim();
+      // Stage-1 opener guard (see STAGE1_BANNED_OPENER above): refuse, explain, let the model redraft.
+      if (isHandshakeOnly({ conversation, coachName: coach.clientName, leadName: profile.name, group: profile.group })) {
+        const hit = bannedStage1Opener(draft);
+        if (hit) {
+          const who = profile.name || 'the lead';
+          console.warn(`WINGGUY-OPENER-GUARD refused "${hit}" for ${coach.clientId} → ${who}`);
+          return {
+            ok: false,
+            error: `REJECTED — draft NOT set. This thread holds no message from ${who}: they accepted the connection request and have said nothing, and the coach's note never asked for a meeting. So this is the coach's FIRST real message, not a follow-up. It opened with "${hit}", which tells ${who} they owed a reply to a connection request — they did not. Redraft: greeting, then "Thanks for connecting.", then the hook, the network line and the meeting ask. No reference to the earlier note. Then call propose_message again.`,
+          };
+        }
+      }
+      currentDraft = draft;
       return { ok: true };
     }
     if (name.startsWith('wingguy_')) {
@@ -707,4 +779,4 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
   return { ok: true, reply: assistantText, draft: currentDraft, booked: bookedEvent, enrichContact, messages: convo, model: MODEL_ID };
 }
 
-module.exports = { runWingguyChatTurn, AGENT_TOOLS, inLunch, chooseSignoff, getVoiceIdentity };
+module.exports = { runWingguyChatTurn, AGENT_TOOLS, inLunch, chooseSignoff, getVoiceIdentity, leadHasSpoken, coachHasAskedToMeet, bannedStage1Opener, isHandshakeOnly };

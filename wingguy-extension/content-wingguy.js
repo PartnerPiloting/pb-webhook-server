@@ -2602,10 +2602,22 @@
         renderContext(chatState.profile);
       }
     }
-    // Auto-kick the first turn (hidden). The kickoff differs for a fresh connection vs an open thread.
-    const kickoff = (thread && thread.length)
-      ? '(Opened from the LinkedIn conversation above. Read where things stand and give me the best next message to send — and if it\'s time to offer a meeting, suggest some times.)'
-      : '(Opened on this connection — no reply from them yet. Draft my thanks-for-connecting opener in my voice, using the campaign template.)';
+    // Auto-kick the first turn (hidden). THREE kickoffs, chosen by what the LEAD has done - not by
+    // whether the thread is empty. A thread holding only the coach's own connection note is still a
+    // first touch (classifyMode says so), but it used to get the "read the conversation, give me the
+    // next message" wording - the strongest push in the whole prompt toward "following on from my
+    // note" (Daniela Cavalletti 2026-09-15, the third time after Luke 9 Aug and Alix 21 Aug). The
+    // server now refuses that opener too; this stops the panel asking for it in the first place.
+    // A coach message that already asked for a call is stage 2 (nudge), which keeps the open wording.
+    const hasThread = !!(thread && thread.length);
+    const coachAskedToMeet = hasThread && thread.some((m) =>
+      classifyMode([m], profile.name) === 'thanks' && /\b(zoom|teams|google meet|meet\b|meeting|call|chat|catch[- ]?up|coffee)\b/i.test(String(m.text || '')));
+    const handshakeOnly = hasThread && classifyMode(thread, profile.name) === 'thanks' && !coachAskedToMeet;
+    const kickoff = !hasThread
+      ? '(Opened on this connection — no reply from them yet. Draft my thanks-for-connecting opener in my voice, using the campaign template.)'
+      : handshakeOnly
+        ? '(Opened from the LinkedIn conversation above. Everything in it is MINE — they accepted my connection request and have not said anything, and my note never asked for a meeting. So this is my FIRST real message, not a follow-up: draft my thanks-for-connecting opener from the campaign template, opening with "Thanks for connecting." and ending on the meeting ask. Do not refer to my earlier note.)'
+        : '(Opened from the LinkedIn conversation above. Read where things stand and give me the best next message to send — and if it\'s time to offer a meeting, suggest some times.)';
     sendChatTurn(kickoff, { hidden: true });
   }
 
