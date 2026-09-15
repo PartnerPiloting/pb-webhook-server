@@ -13254,6 +13254,16 @@ router.get("/api/cron/contacts-sweep", async (req, res) => {
       || (r.mail && r.mail.ok === false && !r.mail.skipped));
     const seconds = Math.round((Date.now() - startedAt) / 1000);
     log.info(`contacts sweep: ${results.length} tenant(s), ${errors.length} error(s), ${seconds}s${full ? ' (FULL)' : ''}`);
+    // A per-tenant failure does not fail this endpoint (one bad mailbox must not read as a dead
+    // cron), so something has to notice a feed that stays broken. Never fatal to the sweep.
+    let alert = null;
+    try {
+      const { alertOnStaleFeeds } = require('../services/contactsAlert');
+      alert = await alertOnStaleFeeds();
+      if (alert && alert.stale) log.warn(`contacts sweep: ${alert.stale} stale feed(s)${alert.emailed ? ' - alerted' : ''}`);
+    } catch (e) {
+      log.warn(`contacts stale check failed: ${e.message}`);
+    }
     // 200 even with per-tenant errors: one bad base must not read as a dead cron.
     // The counts below are what to look at, and every failure is named.
     return res.json({
@@ -13262,6 +13272,7 @@ router.get("/api/cron/contacts-sweep", async (req, res) => {
       errors: errors.length,
       seconds,
       mode: full ? 'full' : 'incremental',
+      ...(alert ? { staleFeeds: alert.stale, alerted: !!alert.emailed, ...(alert.lines ? { stale: alert.lines } : {}) } : {}),
       detail: results.map((r) => ({
         clientId: r.clientId,
         leads: r.leads && r.leads.ok ? { rows: r.leads.leads, contacts: r.leads.contacts, mode: r.leads.mode } : ((r.leads && (r.leads.skipped || r.leads.error)) || null),

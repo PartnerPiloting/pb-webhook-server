@@ -50,6 +50,18 @@ async function main() {
         : (m.skipped || m.error);
     console.log(`[contacts-sweep] ${r.clientId}: leads ${l.ok ? `${l.leads} rows -> ${l.contacts} contacts (${l.mode})` : (l.skipped || l.error)}; comms ${c.ok ? `${c.rows} rows -> ${c.contacts} contacts (${c.mode})` : c.error}; mail ${mailPart}`);
   }
+  // Per-tenant failures are reported above but do not fail the run; this is what notices a feed
+  // that STAYS broken. Never fatal.
+  try {
+    const { alertOnStaleFeeds } = require('../../services/contactsAlert');
+    const a = await alertOnStaleFeeds();
+    if (a && a.stale) {
+      console.log(`[contacts-sweep] STALE: ${a.stale} feed(s)${a.emailed ? ' - emailed Guy' : ` - not emailed (${a.reason || 'cooldown'})`}`);
+      (a.lines || []).forEach((l) => console.log(`[contacts-sweep]   ${l}`));
+    }
+  } catch (e) {
+    console.log(`[contacts-sweep] stale check failed: ${e.message}`);
+  }
   console.log(`[contacts-sweep] done: ${results.length} tenant(s), ${errors} error(s), ${Math.round((Date.now() - t0) / 1000)}s`);
   process.exit(errors ? 1 : 0);
 }
