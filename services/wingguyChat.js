@@ -347,6 +347,23 @@ function bannedStage1Opener(draft) {
   return m ? m[0] : null;
 }
 
+/**
+ * The LEAD's own booking link, if one of THEIR messages carries one (Candace 2026-09-15: "here's a
+ * link to my calendar"). The coach's own links never count. Found from DATA so the read happens
+ * whether or not the model passes leadBookingLink - the instruction moved the odds and the panel
+ * still offered three of Guy's times, two inside her trip, the same afternoon it shipped.
+ */
+function detectLeadBookingLink(conversation = [], coachName = '') {
+  for (const m of (Array.isArray(conversation) ? conversation : [])) {
+    if (!m || !m.text) continue;
+    const s = normName(m.sender);
+    if (senderIs(s, coachName) || s === 'you' || s === 'me') continue;
+    const url = leadBookingLink.findBookingLink(m.text);
+    if (url) return url;
+  }
+  return null;
+}
+
 /** Stage 1 by DATA: nobody but the coach has spoken, and the coach never asked for a call. */
 function isHandshakeOnly({ conversation, coachName, leadName, group }) {
   if (group) return false;
@@ -402,6 +419,9 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
   // panel can speak up on "nothing to add" only when Guy explicitly asked. (Guy, 2026-07-08.)
   let enrichContact = null;
   let availTz = {}; // { yourTimezone, leadTimezone } captured from check_availability, used by propose_times
+  // The lead's own booking link, from THEIR messages (data, not the model), and what reading it gave.
+  const threadBookingLink = detectLeadBookingLink(conversation, coach.clientName);
+  let leadLinkState = null; // { url, ok, reason } once check_availability has read one
 
   const runTool = async (name, input) => {
     if (name === 'check_availability') {
@@ -410,24 +430,38 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
       // The shared pipeline (wingguyCalendar.filterAvailability) enforces ALL the offer rules in one
       // place — hours bounds, lunch hold, no past/too-soon days (includeSoon lifts notice only), the
       // daily meeting cap — and labels each slot exactly as it will read in the lead's timezone.
-      const notBefore = /^d{4}-d{2}-d{2}$/.test(String(input.notBefore || '')) ? String(input.notBefore) : '';
+      const notBefore = /^\d{4}-\d{2}-\d{2}$/.test(String(input.notBefore || '')) ? String(input.notBefore) : '';
       let filtered = wingguyCalendar.filterAvailability(avail, prefs, { includeLunch: input.includeLunch, includeSoon: input.includeSoon, includeWeekends: input.includeWeekends, includeFarWeeks: input.includeFarWeeks || !!notBefore });
       if (notBefore) filtered = { ...filtered, days: filtered.days.filter((d) => String(d.date) >= notBefore), notBefore };
       // The lead sent their OWN booking link (Candace, 2026-09-15): read the slots their page shows
       // and keep only the times both can make. Booking still goes through book_meeting (Guy's invite).
-      if (input.leadBookingLink) {
+      // The link comes from the THREAD (data) when the model did not pass it - see detectLeadBookingLink.
+      const linkUrl = String(input.leadBookingLink || threadBookingLink || '');
+      if (linkUrl) {
         const reader = deps.readBookingLink || leadBookingLink.readBookingLink;
-        const lead = await reader(String(input.leadBookingLink), { timezone: avail.yourTimezone || 'Australia/Brisbane', rangeStart: notBefore || undefined });
+        const lead = await reader(linkUrl, { timezone: avail.yourTimezone || 'Australia/Brisbane', rangeStart: notBefore || undefined });
+        leadLinkState = { url: linkUrl, ok: !!lead.ok, reason: lead.reason || null };
+        const source = input.leadBookingLink ? 'model' : 'thread';
         if (lead.ok) {
           filtered = leadBookingLink.intersectAvailability(filtered, lead, { meetingMins: prefs.meetingLengthMins || 30 });
-          filtered.leadLink = { read: true, owner: lead.ownerName, event: lead.eventName, durationMins: lead.durationMins, leadSlots: lead.slots.length, note: filtered.days.length ? 'The days below are ONLY the times BOTH Guy and the lead are free. Do not offer a list - pick ONE slot (lightest day, mid-morning first), confirm it with Guy, then book_meeting.' : 'No time in the window where both are free - tell Guy plainly and let him choose which side bends (lunch, an earlier day, or booking through the link by hand).' };
+          filtered.leadLink = { read: true, url: linkUrl, source, owner: lead.ownerName, event: lead.eventName, durationMins: lead.durationMins, leadSlots: lead.slots.length, note: filtered.days.length ? 'The days below are ONLY the times BOTH Guy and the lead are free. Do not offer a list (propose_times will refuse) - pick ONE slot (lightest day, mid-morning first), tell Guy which and why, and on his yes call book_meeting.' : 'No time in the window where both are free - tell Guy plainly and let him choose which side bends (lunch, an earlier day, or booking through the link by hand).' };
         } else {
-          filtered.leadLink = { read: false, reason: lead.reason, note: "The lead's booking link could not be read - the slots below are Guy's only. Say so, and either offer times from Guy's side or suggest he books through the link by hand." };
+          filtered.leadLink = { read: false, url: linkUrl, source, reason: lead.reason, note: "The lead's booking link could not be read - the slots below are Guy's only. Say so, and either offer times from Guy's side or suggest he books through the link by hand." };
         }
       }
       return filtered;
     }
     if (name === 'propose_times') {
+      // NO TIME LIST when the lead sent their own booking link (Candace, 2026-09-15). They handed over
+      // a link to skip exactly this round trip, and the panel offered three of Guy's times anyway - two
+      // inside her trip, none on her page. Code, not prose: a readable link means ONE slot from the
+      // intersection, booked via book_meeting. An unreadable link falls open to the normal list.
+      if (threadBookingLink && !leadLinkState) {
+        return { ok: false, error: `STOPPED - the lead sent their own booking link (${threadBookingLink}). Call check_availability first: it reads that page and returns only the times BOTH are free. Then pick ONE slot and confirm it with Guy - no list.` };
+      }
+      if (leadLinkState && leadLinkState.ok) {
+        return { ok: false, error: `STOPPED - the lead sent their own booking link (${leadLinkState.url}) and Wingguy read it, so a list of times is the wrong move. check_availability already returned only the times BOTH are free: pick ONE (lightest day, mid-morning first), tell Guy which and why, and on his yes call book_meeting. If that result had no days, say so and let Guy choose which side bends.` };
+      }
       // CODE-OWNED time list: enforce order + Guy's hours + soft lunch-skip + lead-timezone formatting,
       // so none of those depend on the model getting it right.
       const tz = availTz.yourTimezone || 'Australia/Brisbane';
@@ -795,4 +829,4 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
   return { ok: true, reply: assistantText, draft: currentDraft, booked: bookedEvent, enrichContact, messages: convo, model: MODEL_ID };
 }
 
-module.exports = { runWingguyChatTurn, AGENT_TOOLS, inLunch, chooseSignoff, getVoiceIdentity, leadHasSpoken, coachHasAskedToMeet, bannedStage1Opener, isHandshakeOnly };
+module.exports = { runWingguyChatTurn, AGENT_TOOLS, inLunch, chooseSignoff, getVoiceIdentity, leadHasSpoken, coachHasAskedToMeet, bannedStage1Opener, isHandshakeOnly, detectLeadBookingLink };

@@ -5214,3 +5214,11 @@ from Guy's laptop - no login, no bot wall): `/api/booking/event_types/lookup?eve
   lead record). The lead's link only says WHEN. Booking THROUGH their page was deliberately not built.
 - Panel prompt (config/wingguyTemplates.js, fixed tier) got the booking-link bullet next to the
   away-window bullet. Test: tests/wingguy-lead-booking-link.test.js.
+
+**Same afternoon - the instruction failed the live test, so the panel got the code guard.** Guy ran it on
+Candace: the panel offered three of his times on Thu 24 Sep (inside her trip, not on her page) with the
+bullet live. Now services/wingguyChat.js finds the link in the LEAD's own messages (detectLeadBookingLink,
+never the coach's) and check_availability reads it whether or not the model passes leadBookingLink;
+propose_times REFUSES while a readable lead link exists (one slot via book_meeting, never a list) and
+falls open when the link is unreadable. Also fixed: the panel's notBefore regex had lost its
+backslashes on the way in (never matched). tests/wingguy-lead-booking-link-panel.test.js.
