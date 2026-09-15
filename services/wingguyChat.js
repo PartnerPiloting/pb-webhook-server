@@ -20,6 +20,7 @@ const { WINGGUY_VOICE, WINGGUY_AGENT_INSTRUCTIONS } = require('./../config/wingg
 const { getBookingPrefs } = require('../config/wingguyBookingPrefs');
 const { getVoicePrefs } = require('../config/wingguyVoicePrefs');
 const wingguyCalendar = require('./wingguyCalendar');
+const leadBookingLink = require('./wingguyLeadBookingLink');
 const { resolveLeadTimezone } = require('./leadLocationResolver');
 const wingguyLeads = require('./wingguyLeads');
 const wingguyRules = require('./wingguyRulesMcp');
@@ -409,7 +410,22 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
       // The shared pipeline (wingguyCalendar.filterAvailability) enforces ALL the offer rules in one
       // place — hours bounds, lunch hold, no past/too-soon days (includeSoon lifts notice only), the
       // daily meeting cap — and labels each slot exactly as it will read in the lead's timezone.
-      return wingguyCalendar.filterAvailability(avail, prefs, { includeLunch: input.includeLunch, includeSoon: input.includeSoon, includeWeekends: input.includeWeekends, includeFarWeeks: input.includeFarWeeks });
+      const notBefore = /^d{4}-d{2}-d{2}$/.test(String(input.notBefore || '')) ? String(input.notBefore) : '';
+      let filtered = wingguyCalendar.filterAvailability(avail, prefs, { includeLunch: input.includeLunch, includeSoon: input.includeSoon, includeWeekends: input.includeWeekends, includeFarWeeks: input.includeFarWeeks || !!notBefore });
+      if (notBefore) filtered = { ...filtered, days: filtered.days.filter((d) => String(d.date) >= notBefore), notBefore };
+      // The lead sent their OWN booking link (Candace, 2026-09-15): read the slots their page shows
+      // and keep only the times both can make. Booking still goes through book_meeting (Guy's invite).
+      if (input.leadBookingLink) {
+        const reader = deps.readBookingLink || leadBookingLink.readBookingLink;
+        const lead = await reader(String(input.leadBookingLink), { timezone: avail.yourTimezone || 'Australia/Brisbane', rangeStart: notBefore || undefined });
+        if (lead.ok) {
+          filtered = leadBookingLink.intersectAvailability(filtered, lead, { meetingMins: prefs.meetingLengthMins || 30 });
+          filtered.leadLink = { read: true, owner: lead.ownerName, event: lead.eventName, durationMins: lead.durationMins, leadSlots: lead.slots.length, note: filtered.days.length ? 'The days below are ONLY the times BOTH Guy and the lead are free. Do not offer a list - pick ONE slot (lightest day, mid-morning first), confirm it with Guy, then book_meeting.' : 'No time in the window where both are free - tell Guy plainly and let him choose which side bends (lunch, an earlier day, or booking through the link by hand).' };
+        } else {
+          filtered.leadLink = { read: false, reason: lead.reason, note: "The lead's booking link could not be read - the slots below are Guy's only. Say so, and either offer times from Guy's side or suggest he books through the link by hand." };
+        }
+      }
+      return filtered;
     }
     if (name === 'propose_times') {
       // CODE-OWNED time list: enforce order + Guy's hours + soft lunch-skip + lead-timezone formatting,

@@ -241,6 +241,8 @@ function makeToolRunner({ clientId, person, mailTools, bookingTools }) {
       const args = {};
       if (input.lead_location) args.lead_location = String(input.lead_location);
       for (const k of ['include_far_weeks', 'include_soon', 'include_lunch', 'include_weekends']) if (input[k] === true) args[k] = true;
+      if (input.lead_booking_link) args.lead_booking_link = String(input.lead_booking_link);
+      if (input.not_before) args.not_before = String(input.not_before);
       return call(bookingTools, 'wingguy_check_availability', args);
     }
     if (name === 'replied_since') {

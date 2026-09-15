@@ -18,6 +18,7 @@
 const { z } = require('zod');
 const { DateTime } = require('luxon');
 const wingguyCalendar = require('./wingguyCalendar');
+const leadBookingLink = require('./wingguyLeadBookingLink');
 const { getBookingPrefs } = require('../config/wingguyBookingPrefs');
 // NOTE: coachingClientLookupService + clientService are required LAZILY inside runBookMeeting —
 // their Airtable config crashes at module load when env vars are absent (local test runs).
@@ -28,19 +29,44 @@ const TENANT = (process.env.RECALL_COACH_CLIENT_ID || 'Guy-Wilson').trim();
 // Executors — return { text, isError? }
 // ---------------------------------------------------------------------------
 
-async function runCheckAvailability({ lead_location, include_lunch, include_soon, include_weekends, include_far_weeks } = {}, tenant = TENANT) {
+async function runCheckAvailability({ lead_location, include_lunch, include_soon, include_weekends, include_far_weeks, lead_booking_link, not_before } = {}, tenant = TENANT, deps = {}) {
   const prefs = getBookingPrefs(tenant);
   const avail = await wingguyCalendar.getAvailabilityForCoach(tenant, lead_location || '');
-  const filtered = wingguyCalendar.filterAvailability(avail, prefs, {
+  // A stated earliest date ("away for the next 1.5 weeks", "after the 20th") outranks the nearness
+  // rule: everything before it goes, and later weeks are plain days, not fallbacks.
+  const notBefore = /^\d{4}-\d{2}-\d{2}$/.test(String(not_before || '')) ? String(not_before) : '';
+  let filtered = wingguyCalendar.filterAvailability(avail, prefs, {
     includeLunch: !!include_lunch,
     includeSoon: !!include_soon,
     includeWeekends: !!include_weekends,
-    includeFarWeeks: !!include_far_weeks,
+    includeFarWeeks: !!include_far_weeks || !!notBefore,
   });
+  if (notBefore) filtered = { ...filtered, days: filtered.days.filter((d) => String(d.date) >= notBefore) };
   const win = filtered.window || wingguyCalendar.offerWindowInfo(filtered.yourTimezone || 'Australia/Brisbane');
-  const windowLine = `TODAY IS ${win.today} (${win.timezone}). This week = ${win.thisWeek}; next week = ${win.nextWeek}; later days are FALLBACK WEEKS. Resolve every relative date phrase ("next week", "Tuesday") against this anchor — never guess today's date.`;
+  const windowLine = `TODAY IS ${win.today} (${win.timezone}). This week = ${win.thisWeek}; next week = ${win.nextWeek}; later days are FALLBACK WEEKS. Resolve every relative date phrase ("next week", "Tuesday") against this anchor — never guess today's date.`
+    + (notBefore ? ` Days before ${notBefore} were removed because the lead is not available until then (not_before).` : '');
+  // The lead handed over a booking link (Candace, 2026-09-15): read the free slots THEIR page
+  // shows and keep only the times BOTH sides can make. The link never becomes the booking door -
+  // wingguy_book_meeting still sends the coach's own invite; the link only says WHEN.
+  let leadLinkLine = '';
+  let leadSlotCount = -1;
+  if (lead_booking_link) {
+    const reader = deps.readBookingLink || leadBookingLink.readBookingLink;
+    const coachTz = filtered.yourTimezone || 'Australia/Brisbane';
+    const lead = await reader(lead_booking_link, { timezone: coachTz, rangeStart: notBefore || undefined });
+    if (lead.ok) {
+      leadSlotCount = lead.slots.length;
+      filtered = leadBookingLink.intersectAvailability(filtered, lead, { meetingMins: prefs.meetingLengthMins || 30 });
+      leadLinkLine = `LEAD'S OWN CALENDAR READ: ${lead.ownerName || 'the lead'}'s Calendly page ("${lead.eventName || 'booking'}", ${lead.durationMins} min) offered ${lead.slots.length} slots in the scan window. The slots below are ONLY the times BOTH are free. The lead handed over a booking link, so do NOT send them a list of options - pick ONE (lightest day, mid-morning first) and book it with wingguy_book_meeting after the coach confirms, then tell the lead it is booked. If the coach would rather book through the lead's page by hand, name the same slot.`;
+    } else {
+      leadLinkLine = `⚠ Could not read the lead's booking link (${lead.reason}). The slots below are the COACH'S ONLY - tell the coach plainly, and either offer times from the coach's side or suggest booking through the link by hand.`;
+    }
+  }
   if (!filtered.days.length) {
-    return { text: `${windowLine}\n\nNo offerable slots in the scan window (after the coach's rules: notice period, hours, lunch, weekdays-only). Widen with include_soon / include_weekends only if the coach explicitly asked.` };
+    const why = leadLinkLine && leadLinkLine.startsWith('LEAD')
+      ? `No time in the scan window where BOTH the coach and the lead are free (the lead's page offered ${leadSlotCount === 0 ? 'nothing' : 'slots, none matching the coach\'s'}). Widen with include_lunch / include_soon only if the coach asks; otherwise tell the coach and let them pick a side to bend.`
+      : `No offerable slots in the scan window (after the coach's rules: notice period, hours, lunch, weekdays-only). Widen with include_soon / include_weekends only if the coach explicitly asked.`;
+    return { text: `${windowLine}\n\n${leadLinkLine ? `${leadLinkLine}\n\n` : ''}${why}` };
   }
   // Slots before the coach's preferred day start are legal but AT-A-PINCH only — mark them so a
   // chat model applies the "10:00+ first" rule without holding it in its head.
@@ -79,6 +105,7 @@ async function runCheckAvailability({ lead_location, include_lunch, include_soon
   return {
     text:
       `${windowLine}\n\n` +
+      (leadLinkLine ? `${leadLinkLine}\n\n` : '') +
       `Offerable slots (coach rules already applied: hours, lunch, notice, weekdays). ` +
       `Coach timezone: ${filtered.yourTimezone}; lead timezone: ${filtered.leadTimezone}. ` +
       // Where the lead is based, or a loud flag that we're guessing — the coach must ALWAYS hear
@@ -266,6 +293,8 @@ const SOON_DESC = 'Set true ONLY when the coach explicitly asks for today/tomorr
 const LUNCH_DESC = 'Set true ONLY when the coach explicitly wants a lunch-time meeting — otherwise his lunch hold is stripped.';
 const WEEKEND_DESC = 'Set true ONLY when the coach explicitly wants a weekend meeting — weekdays-only is enforced otherwise.';
 const FAR_WEEKS_DESC = 'Set true ONLY when the coach explicitly wants times beyond next week (e.g. "book them for when I\'m back from holidays") — normally the window is THIS week + NEXT week, with later days appearing only as flagged fallbacks when the near window can\'t fill the options.';
+const LINK_DESC = "The lead's OWN booking link when they sent one (Calendly, e.g. https://calendly.com/name/intro). The tool reads the free slots their page shows and returns ONLY the times both sides are free - then book ONE with wingguy_book_meeting rather than offering a list. Pass it whenever the thread contains one.";
+const NOT_BEFORE_DESC = "Earliest date the lead can meet, YYYY-MM-DD, when the thread says so (\"away for the next 1.5 weeks\", \"back on the 26th\", \"after Easter\"). Work it out from TODAY in the coach's timezone. Days before it are removed and later weeks stop being fallbacks.";
 
 const MEETING_LINK_DESC = 'ONE-OFF meeting link for THIS invite only ("book it on this link" / the lead asked for Teams instead of Zoom). Must be either a link the HUMAN pasted in this conversation, OR one of the coach\'s OWN standing links from their asset library (teams_room, meet_room, webex_room) that they have said yes to using — NEVER invent one, never use a link belonging to another lead or another person\'s invite. If the coach names a platform and no stored link for it exists, ask for the link — and offer to walk them through making a permanent one (the playbook has the recipe; store what they paste via wingguy_assets so it is never asked again). Omit for the coach\'s standing meeting room (the normal case). The coach\'s stored default is not changed.';
 
@@ -292,13 +321,15 @@ const TOOL_DEFS = [
   },
   {
     name: 'wingguy_check_availability',
-    description: 'The coach\'s REAL offerable slots with all his booking rules already enforced in code (hours, lunch hold, notice period, nothing in the past). ALWAYS use this — never the raw calendar — when finding times to offer a lead. The result opens with TODAY + this-week/next-week boundaries — resolve "next week" and every relative date phrase against that anchor, never a guess. Days at/over the coach\'s preferred daily load are flagged BUSY DAY (still offerable — prefer lighter days, and stack a busy near day BEFORE any FALLBACK WEEK day). Returns each slot with a "label" (exactly how it reads in the lead\'s timezone) and a "time" ISO to pass to wingguy_book_meeting. Pick by label; never do timezone math yourself.',
+    description: 'The coach\'s REAL offerable slots with all his booking rules already enforced in code (hours, lunch hold, notice period, nothing in the past). ALWAYS use this — never the raw calendar — when finding times to offer a lead. The result opens with TODAY + this-week/next-week boundaries — resolve "next week" and every relative date phrase against that anchor, never a guess. Days at/over the coach\'s preferred daily load are flagged BUSY DAY (still offerable — prefer lighter days, and stack a busy near day BEFORE any FALLBACK WEEK day). Returns each slot with a "label" (exactly how it reads in the lead\'s timezone) and a "time" ISO to pass to wingguy_book_meeting. Pick by label; never do timezone math yourself. If the lead sent their OWN booking link (Calendly), pass it as lead_booking_link and you get only the times BOTH are free; if they named an earliest date ("back in two weeks"), pass not_before.',
     zodSchema: {
       lead_location: z.string().optional().describe('The lead\'s location as written on LinkedIn (e.g. "Newcastle, New South Wales") — drives the lead-timezone labels. Omit if unknown (coach timezone assumed).'),
       include_lunch: z.boolean().optional().describe(LUNCH_DESC),
       include_soon: z.boolean().optional().describe(SOON_DESC),
       include_weekends: z.boolean().optional().describe(WEEKEND_DESC),
       include_far_weeks: z.boolean().optional().describe(FAR_WEEKS_DESC),
+      lead_booking_link: z.string().optional().describe(LINK_DESC),
+      not_before: z.string().optional().describe(NOT_BEFORE_DESC),
     },
     jsonSchema: {
       type: 'object',
@@ -308,6 +339,8 @@ const TOOL_DEFS = [
         include_soon: { type: 'boolean', description: SOON_DESC },
         include_weekends: { type: 'boolean', description: WEEKEND_DESC },
         include_far_weeks: { type: 'boolean', description: FAR_WEEKS_DESC },
+        lead_booking_link: { type: 'string', description: LINK_DESC },
+        not_before: { type: 'string', description: NOT_BEFORE_DESC },
       },
     },
     run: runCheckAvailability,
@@ -404,4 +437,4 @@ async function legacyToolCall(toolName, args, tenant = TENANT) {
   }
 }
 
-module.exports = { registerWingguyBookingTools, legacyToolList, legacyToolCall, TOOL_DEFS };
+module.exports = { registerWingguyBookingTools, legacyToolList, legacyToolCall, TOOL_DEFS, runCheckAvailability };

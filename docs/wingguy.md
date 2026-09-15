@@ -5185,3 +5185,32 @@ invoice item, so the invoice reads $150, Referral rate -$120, $30. Default is al
 credit exists only when earned, one period at a time, so losing a referral needs no undo. Postgres ledger
 (grants unique per client+period, last standing) -> one email to Guy on reached / lost / each grant. The
 referrer must be Stripe-billed (Roland is PMPro until stage 6). The join page now stamps Introduced By.
+
+## Lead booking links: read THEIR calendar, book the overlap (2026-09-15)
+
+Candace Ngok replied "here's a link to my calendar; feel free to send me an invite separately if
+30-mins doesn't work" with a Calendly link, and said she was away for the next 1.5 weeks. The panel
+offered three times from Guy's side - two of them inside her trip. Guy: "is it possible to access
+someone's calendar like this, figure out when they're free, and send them a Zoom link?"
+
+Yes. A Calendly booking page gets its free slots from two plain unauthenticated calls (proven with curl
+from Guy's laptop - no login, no bot wall): `/api/booking/event_types/lookup?event_type_slug=&profile_slug=`
+-> uuid + scheduling link, then `/api/booking/event_types/<uuid>/calendar/range?timezone=&range_start=&range_end=`
+(refuses ~7-week ranges; paged in 28-day chunks). Built:
+
+- **services/wingguyLeadBookingLink.js** - find/parse the link, read the slots in the coach's clock,
+  merge the lead's 15-minute-grid spots into free intervals, intersect with the coach's filtered slots
+  (the whole coach meeting must fit). Never throws: `{ ok:false, reason }` and the caller falls back to
+  coach-only slots with a plain "could not read the link" line. Calendly only for now; other hosts are
+  named in the reason. The calls are UNDOCUMENTED - when Calendly changes them this degrades to today's
+  behaviour, it does not break booking.
+- **check_availability gained two inputs on all three doors** (MCP `wingguy_check_availability`, the
+  extension panel, the Follow-Ups Ask box): `lead_booking_link` (returns ONLY the times both are free,
+  with a line telling the model to pick ONE and book it - the lead handed over a link to skip the
+  offer-a-list round trip) and `not_before` (YYYY-MM-DD from "away for the next 1.5 weeks": earlier
+  days removed, later weeks stop being fallbacks). Her Calendly still showed 17 Sep open while she said
+  she was away - the thread wins, so not_before matters even with a link.
+- **The booking door is unchanged**: wingguy_book_meeting sends the coach's OWN invite (Zoom room,
+  lead record). The lead's link only says WHEN. Booking THROUGH their page was deliberately not built.
+- Panel prompt (config/wingguyTemplates.js, fixed tier) got the booking-link bullet next to the
+  away-window bullet. Test: tests/wingguy-lead-booking-link.test.js.
