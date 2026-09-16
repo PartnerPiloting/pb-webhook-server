@@ -1138,8 +1138,12 @@
     // RAW FALLBACK: the whole profile's visible text. Robust to LinkedIn's class churn — when the
     // structured selectors miss, the model still gets real content to hook on (like AI Blaze does).
     const pageText = readPageTextNow();
-    // Profile pages only: in a thread the Experience on screen belongs to whoever is behind the
-    // bubble, not the person being written to.
+    // Blank here in a thread, because the Experience on screen belongs to whoever is behind the
+    // bubble. The samePerson branch below re-reads it alongside About/pageText when the bubble is
+    // over the lead's OWN profile - the routine "open profile -> Message -> /wg" flow. 0.3.24 and
+    // 0.3.25 blanked it here and never re-read it, so on that flow pageText arrived (re-read below)
+    // and experienceText did not: the exact "pageText=6000ch experienceText=0ch" in the prod log
+    // (Helia Singh, 2026-09-17). The read was fine; it simply never ran on the surface Guy uses.
     // Belt and braces: this is a nice-to-have field on a read that everything else depends on, so a
     // surprise from LinkedIn's DOM must cost the city, never the whole scrape.
     let experienceText = '';
@@ -1225,6 +1229,10 @@
         base.about = readAbout();
         base.recentPosts = readPostMaterial(activityScope, [base.name, base.headline]);
         base.pageText = readPageTextNow();
+        // Experience follows the same rule as pageText: same person behind the bubble, same page,
+        // so read it here too. This is the line 0.3.24/0.3.25 were missing.
+        try { base.experienceText = readExperienceTextNow(); base.experienceDiag = lastExperienceDiag; }
+        catch (e) { console.log('[Wingguy] experience read failed (continuing):', e.message); }
         // Tells startChat the real page was already read, so the About/pageText half of the
         // hidden-tab read is not worth repeating. It deliberately does NOT claim the post read was
         // conclusive: it used to, on the reasoning that "zero posts here means they genuinely have
@@ -1239,6 +1247,8 @@
         base.about = '';
         base.recentPosts = [];
         base.pageText = '';
+        base.experienceText = '';
+        base.experienceDiag = '';
         // Location too (Wayne Merry, 2026-08-27). On /messaging/ there is no top card, so the
         // profile_location selector matches whatever small grey text it finds first — it returned a
         // bare "Australia" for a lead whose record said "Blackburn, Victoria, Australia", and the
@@ -2717,7 +2727,9 @@
       }
       if (fetchIt) {
         const extras = await fetchProfileExtras(profile.profileUrl);
-        for (const k of ['headline', 'about', 'location', 'pageText']) {
+        // experienceText rides with pageText: the hidden-tab read is the only source of the lead's
+        // current-role city when /wg runs from a thread over someone ELSE's page.
+        for (const k of ['headline', 'about', 'location', 'pageText', 'experienceText']) {
           if (extras && extras[k] && !chatState.profile[k]) chatState.profile[k] = extras[k];
         }
         // Arrays don't fit the truthiness merge above (an empty [] is truthy, so posts would never
