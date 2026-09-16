@@ -52,6 +52,13 @@ function stripWorkMode(line) {
   return kept.join(', ').trim();
 }
 
+// "Keystart · Full-time" -> "Keystart". The employment type is chipped onto the company line in
+// some renderings and stands alone in others, so strip it wherever it appears.
+function stripEmploymentType(line) {
+  const parts = String(line || '').split(/\s*·\s*/).map((p) => p.trim()).filter(Boolean);
+  return parts.filter((p) => !EMPLOYMENT_TYPE.test(p)).join(' · ').trim();
+}
+
 // Does this line read like a place rather than a stray bit of the position block?
 function looksLikeLocation(line) {
   const s = cleanLine(line);
@@ -97,15 +104,20 @@ function currentRoleLocation(pageText) {
       if (!looksLikeLocation(cand)) break;
       const location = stripWorkMode(cand);
       if (!location) break;
-      // Walk back for the title: the nearest real line above the date range that isn't the
-      // employment type. Purely for telling Guy WHERE the answer came from.
-      let title = '';
-      for (let k = i - 1; k >= startIdx && k >= i - 3; k--) {
-        const t = lines[k];
-        if (!t || EMPLOYMENT_TYPE.test(t)) continue;
-        title = t;
-        break;
+      // Walk back for the title. LinkedIn renders "Title / Company · Employment type / dates", but
+      // the company line and the employment type each come and go, and the type is sometimes a line
+      // of its own ("Part-time") and sometimes chipped onto the company ("Keystart · Full-time").
+      // Taking the nearest line alone therefore reported Helia's role as "Keystart · Full-time"
+      // (2026-09-17). Collect the two real lines above the dates instead, nearest first, so the
+      // furthest is the title and the nearest the employer. Purely for telling Guy WHERE the answer
+      // came from — the location itself never depends on this.
+      const above = [];
+      for (let k = i - 1; k > startIdx && k >= i - 3 && above.length < 2; k--) {
+        const t = stripEmploymentType(lines[k]);
+        if (!t || EMPLOYMENT_TYPE.test(lines[k]) || BULLET.test(t) || DATE_RANGE.test(t)) continue;
+        above.push(t);
       }
+      const title = above.length > 1 ? `${above[1]} at ${above[0]}` : (above[0] || '');
       return { location, title, dateLine: line };
     }
   }

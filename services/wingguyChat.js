@@ -207,7 +207,7 @@ async function getVoiceIdentity(clientId, getVariablesFn) {
 
 // Compact, grounded context for the agent. `buildProfileBlock` / `buildConversationBlock` are passed
 // in so the formatting stays identical to the rest of Wingguy (the route owns those helpers).
-function buildContext({ profileBlock, convoBlock, leadEmail, coachName, prefs, campaignTemplate, voice, onFile = true, window = null, profileThin = false }) {
+function buildContext({ profileBlock, convoBlock, leadEmail, coachName, prefs, campaignTemplate, voice, onFile = true, window = null, profileThin = false, clockLine = '' }) {
   const tplBlock = campaignTemplate && campaignTemplate.instructions
     ? `CAMPAIGN TEMPLATE — "${campaignTemplate.label || campaignTemplate.id}" (use this for the opener / warm-reply message; it's Guy's real structure & voice — match its beats and sign-off):\n${campaignTemplate.instructions}\n\n`
     : '';
@@ -251,6 +251,7 @@ function buildContext({ profileBlock, convoBlock, leadEmail, coachName, prefs, c
     // message being drafted is already going to them - so the ask belongs IN that message, at the
     // offer-times turn (see THE INVITE ADDRESS IS PART OF THE OFFER in the agent instructions).
     `LEAD EMAIL FOR THE INVITE: ${leadEmail ? `${leadEmail}  [ON FILE - name this address in the message when you promise the invite, so the lead can correct it if it is wrong]` : '(NOT ON FILE - ask the LEAD for it in the message when you offer times; do NOT ask Guy, he almost never has it either. File what they give you with update_lead_email, then book.)'}\n` +
+    `${clockLine ? `${clockLine}\n` : ''}` +
     `CRM RECORD: ${onFile ? 'this lead is already in Guy\'s CRM' : 'this lead is NOT in Guy\'s CRM yet — no record matched them (e.g. a new connection). If Guy wants them saved, use create_lead.'}\n` +
     `COACH NAME: ${coachName || 'Guy Wilson'}\n` +
     `GUY'S BOOKING PREFERENCES (JSON): ${JSON.stringify(prefs)}`
@@ -399,6 +400,45 @@ function jobLocationOffer(profile) {
     + ` If he confirms, call again with leadTimezoneOverride="${resolved.timezone}" and ask him to save that location to the lead's record so it sticks. Do NOT treat it as confirmed until he says so, and do not write it to the record yourself.`;
 }
 
+// THE CLOCK LINE (Guy, 2026-09-17 — Helia Bidad). jobLocationOffer above is only reachable from
+// INSIDE two booking-tool errors: propose_times' hard stop and check_time's unknown-timezone
+// warning. A turn that never calls a booking tool therefore never learns the city — and that is
+// exactly what went wrong. With nothing usable on the record, Wingguy wrote "which city are you
+// based in?" straight to the lead while "Greater Perth Area" sat in the Experience section of the
+// page it had already scraped. The read worked; it was wired to fire only after the model had
+// already decided to ask.
+//
+// A fact the model needs BEFORE it decides what to do belongs in the per-turn context, not in the
+// error it gets back for deciding wrong — the same reasoning as LEAD EMAIL FOR THE INVITE.
+//
+// The role's location is USED, not merely offered: it is an explicit LinkedIn field, and the
+// alternative when the record is vague is a silent fall back to Guy's own clock, which is a guess.
+// The CRM write stays behind Guy's yes (pickLocation's rule, after Wayne Merry 2026-08-27) — what
+// changes is that nobody has to be asked which city before times can go out.
+function leadClockLine(profile) {
+  const rec = String((profile && profile.location) || '').trim();
+  const recResolved = resolveLeadTimezone(rec);
+  if (recResolved.detected) {
+    return `LEAD LOCATION FOR THE CLOCK: "${rec}" → ${recResolved.timezone}  [ON FILE - the booking tools already handle it; nothing to ask anyone]`;
+  }
+  const why = rec
+    ? ((recResolved.candidates && recResolved.candidates.length)
+      ? `the record says "${rec}", which is AMBIGUOUS (${recResolved.candidates.map((c) => `${c.place} (${c.timezone})`).join(' or ')})`
+      : `the record says "${rec}", which pins no timezone`)
+    : 'there is NO location on the record';
+  const found = currentRoleLocation(profile && profile.pageText);
+  const roleTz = found ? resolveLeadTimezone(found.location) : null;
+  if (!found || !roleTz || !roleTz.detected) {
+    return `LEAD LOCATION FOR THE CLOCK: ${why}, and their CURRENT ROLE on the page gives nothing usable either.`
+      + ` Ask GUY where they are based (for an introduction, suggest asking whoever made it) — never guess a clock, and write no lead-side time until you know.`;
+  }
+  const role = found.title ? ` (${found.title})` : '';
+  return `LEAD LOCATION FOR THE CLOCK: ${why} — BUT their CURRENT ROLE on the page${role} gives "${found.location}" → ${roleTz.timezone}.`
+    + ` USE that as their clock: pass leadTimezoneOverride="${roleTz.timezone}" to propose_times / check_time.`
+    + ` Do NOT ask the lead which city they are in, and do NOT ask Guy cold — it is an explicit field on the profile already in front of you, and asking for something you can already see reads as though nobody looked.`
+    + ` In your CHAT REPLY to Guy (never in the draft) say you took the city from the current role in their LinkedIn job history because the record ${rec ? `only says "${rec}"` : 'has nothing on it'}, and ask him to put it on their record in the Portal so it sticks — do NOT write it there yourself.`;
+}
+
 // Run one chat turn (which may involve several tool round-trips) to completion.
 // Returns { ok, reply, draft, booked, messages, model }.
 async function runWingguyChatTurn({ coach, profile = {}, conversation = [], messages = [], leadEmail, airtableBaseId = null, leadRecordId = null, profileBlock = '', convoBlock = '', campaignTemplate = null, systemPrefixBlocks = null, profileThin = false, deps = {} }) {
@@ -435,7 +475,7 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
       { type: 'text', text: WINGGUY_VOICE },
       { type: 'text', text: WINGGUY_AGENT_INSTRUCTIONS, cache_control: { type: 'ephemeral', ttl: '1h' } },
     ]),
-    { type: 'text', text: buildContext({ profileBlock, convoBlock, leadEmail, coachName: coach.clientName, prefs, campaignTemplate, voice, onFile: !!leadRecordId, window: wingguyCalendar.offerWindowInfo(coach.timezone || coach.timeZone || 'Australia/Brisbane'), profileThin }) },
+    { type: 'text', text: buildContext({ profileBlock, convoBlock, leadEmail, coachName: coach.clientName, prefs, campaignTemplate, voice, onFile: !!leadRecordId, window: wingguyCalendar.offerWindowInfo(coach.timezone || coach.timeZone || 'Australia/Brisbane'), profileThin, clockLine: leadClockLine(profile) }) },
   ];
 
   const convo = messages.map((m) => ({ role: m.role, content: m.content }));
@@ -890,4 +930,4 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
   return { ok: true, reply: assistantText, draft: currentDraft, booked: bookedEvent, enrichContact, messages: convo, model: MODEL_ID };
 }
 
-module.exports = { runWingguyChatTurn, AGENT_TOOLS, inLunch, chooseSignoff, getVoiceIdentity, leadHasSpoken, coachHasAskedToMeet, bannedStage1Opener, isHandshakeOnly, detectLeadBookingLink, buildContext, jobLocationOffer };
+module.exports = { runWingguyChatTurn, AGENT_TOOLS, inLunch, chooseSignoff, getVoiceIdentity, leadHasSpoken, coachHasAskedToMeet, bannedStage1Opener, isHandshakeOnly, detectLeadBookingLink, buildContext, jobLocationOffer, leadClockLine };
