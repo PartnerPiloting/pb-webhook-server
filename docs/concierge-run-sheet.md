@@ -178,14 +178,64 @@ Do:
 
 Worked when: It's in both diaries before you hang up.
 
-## Step 12 - After the call
+## Step 12 - Wrap the sitting
 
 Phase: After the call
 Who: You alone
 
 Do:
-- The instructions call: they open a chat and type "let's set up my rules", and you sit with them through the interview. From then on everything Wingguy writes sounds like them.
-- Linked Helper, last, once the rest is proven and their targeting has settled. Binary Lane, about $20 a month, their own card. You build and mind it. Their side is topping up campaigns and looking at how they're going.
-- Send the wrap email and log anything owed on the board.
+- Send the wrap email: what got done, the instructions call date, and what comes next in one line each.
+- Log anything owed on the board - yours under "You owe", theirs under "They owe".
+- Update their memory file with what was proven and what is still open.
 
 Worked when: What they never had to do - create an Anthropic key alone, connect a cloud folder, download or unzip anything, remember a setting, or come back to a page.
+
+## Step 13 - The instructions call
+
+Phase: After the call
+Who: talks, Wingguy types
+Minutes: 20
+Proves: 6
+
+Say: This is the twenty minutes that makes everything it writes sound like you and not like a robot.
+
+Do:
+- A few days after the sitting. They open a chat and type: let's set up my rules.
+- You sit with them through the interview - their voice, their offer, what they'd never say. Together, not homework. An Alex never does homework.
+- Start the targeting conversation while you're there: who are they looking for, and how would they find them. It threads through everything from here.
+
+Worked when: Ask Wingguy to draft a reply to a real message and they say "that sounds like me".
+
+## Step 14 - Their Linked Helper machine, built by you
+
+Phase: After the call
+Who: there for five minutes, to sign up and sign in
+Minutes: 45
+Proves: 14
+
+Say: Linked Helper wore you out last time because it lived on your laptop. From now on it lives on a small rented computer that never sleeps. I build it and I mind it. Your side is topping up campaigns and having a look at how they're going.
+
+Do:
+- Only once everything above is proven and their targeting has settled. Nothing is lost by waiting - the Linked Helper trial only starts when the first campaign launches.
+- Over Splashtop, with them there: sign them up at binarylane.com.au for the Linux VPS, about $20 a month, in any Australian city, on their own account and their own card. At signup paste in the wg_clients public key, and their own key if they have one.
+- Then you alone: one command on the fresh machine, scripts/linked-helper/setup-ubuntu-vps.sh, installs Linked Helper, remote access, the watchdog that restarts it, the nightly backup and the nightly reboot. It joins Tailscale by name, lh-<client-id>, and reports its own health onto their record every five minutes. Full detail: docs/linked-helper-machine-setup.md, Part 5.
+- With them there again: their LinkedIn signed in on the machine - their password and any code to their phone are theirs to type - and their Linked Helper licence. Pro, annual, one licence per LinkedIn account, with the promo code.
+- Set the two fields the machine can't fill in itself: Remote Access Method = Tailscale RDP, Remote Access Consent Date = today. Everything else about the machine writes itself.
+
+Worked when: Their record shows Machine Status and Machine Last Seen filling in by themselves, and stopping Linked Helper by hand brings it back within a few minutes.
+
+Watch: Any Australian city is fine, but the machine has to be in the same country as them - LinkedIn notices an account that is in two places at once. Never put Guy's own production key on a client machine, only the wg_clients one.
+
+## Step 15 - First campaign, and then it's theirs
+
+Phase: After the call
+Who: watches, then owns it
+Minutes: 30
+
+Do:
+- Build campaign 1 together from the targeting conversation - the standard campaigns go in by script - and prove the webhook: a connection lands in their database, scored overnight.
+- Show them the one thing they do from here: open Linked Helper, top up the campaign when it runs low, glance at how it's going. Theirs lasted months last time, so that's not much of a job.
+- Set Email Series Start Date to today and Coaching Status to Graduated. The weekly drumbeat hands over to the email series.
+- Point your people at them, as promised. That's where their referrals come from.
+
+Worked when: New people appear in their database without anyone touching the laptop, and they can tell you how the campaign is going without asking you.
