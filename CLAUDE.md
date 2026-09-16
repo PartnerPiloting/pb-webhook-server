@@ -64,3 +64,32 @@ NAME (wingguyLearningStore, Postgres), so beats can be edited, reordered or inse
 without scrambling anyone's place. Same rules as the playbook: Guy's voice, altitude-controlled
 (depth stays in the playbook topics - beats point down into them), show Guy before committing,
 edit against origin/main.
+
+## The browser extension - wingguy-extension/
+
+Guy's own Chrome loads it **unpacked from `C:\Wingguy`**, NOT from any checkout. Editing
+`wingguy-extension/` in a working tree changes nothing in his browser, and neither does editing it
+in the repo he happens to have open. Every client machine has its own equivalent local folder.
+
+**Always bump `manifest.json`'s version.** The updater compares versions and does nothing when they
+match, so content changed without a bump reaches nobody - it is not a cosmetic field.
+
+**After pushing an extension change, get it onto Guy's machine in the same session.** The scheduled
+task runs once a day at 03:00, so otherwise the fix he just asked for is not in his browser when he
+goes to test it - which is exactly how 2026-09-17 went. Wait for the Render deploy to finish (the
+updater pulls from the deployed server, not from git), then:
+
+```
+cmd //c "%LOCALAPPDATA%\Wingguy\run-update.cmd"
+```
+
+Safe to run any time - it prints `server=x local=y`, and exits doing nothing when they match. It
+holds Guy's portal token, which is why the command lives there and not in this repo. Then tell him
+to hit reload on the Wingguy card in `chrome://extensions`: the files change on disk, but Chrome
+keeps running the old copy until it is reloaded.
+
+**`scripts/ship-extension.js` is NOT the fleet.** It covers only the OneDrive lane (2 clients). Most
+machines are on the pull-updater lane and never appear in its output - reading it as coverage is
+wrong. The real fleet is `public.wingguy_extension_checkins` in Postgres. Note `ship-extension.js`
+copies from the WORKING TREE and `dotenv` reads `.env` from the CWD, so run it only from a clean
+worktree at `origin/main` - from a stale checkout it ships an OLDER build and rolls clients back.
