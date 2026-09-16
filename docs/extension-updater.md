@@ -47,7 +47,8 @@ machine pulls from us into a fixed local folder.
 | `scripts/extension-updater/wingguy-update.ps1` | Windows: install + daily update. |
 | `scripts/extension-updater/wingguy-update.sh` | macOS: same logic, launchd. **UNPROVEN** - see below. |
 | `scripts/extension-fleet.js` | Who is on what version, and who has gone quiet. |
-| `scripts/extension-install-command.js` | Prints the ready-to-paste install line for one client, token filled in. |
+| `services/extensionInstallCommand.js` | Builds the ready-to-paste install line. The ONE place its shape lives. |
+| `scripts/extension-install-command.js` | Prints that line for one client from the terminal, token filled in. |
 
 **Deliberately no zip.** No archive library is needed on either end, the client never unzips
 (so the "which nested folder do I load?" trap disappears), and a partial download is detected
@@ -63,14 +64,16 @@ carries exactly one secret.
 
 ## Installing it for a client
 
-On your own machine, get the line:
+The line is on the portal: My Clients → the client's card → **Concierge sheet** → beat 6, with a
+Copy button (since 2026-09-16). Or from the terminal on your own machine:
 
 ```
 node scripts/extension-install-command.js <Client-ID>
 ```
 
-That prints a single line for Windows and one for macOS, with the client's own Portal Token
-already in it - nothing to look up or assemble while sitting in front of someone else's computer.
+Either way it is the same line (both call `services/extensionInstallCommand.js`), for Windows and
+for macOS, with the client's own Portal Token already in it - nothing to look up or assemble while
+sitting in front of someone else's computer.
 The server serves the updater itself (`GET /extension/dist/installer`), so **nothing has to be
 copied across the remote session** - that used to be the clumsiest step of the job.
 

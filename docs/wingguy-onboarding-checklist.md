@@ -302,11 +302,21 @@ instead."
 **THE CLIENT DOES:** clicks the link, reads out the account shown on the permission screen,
 approves. Ten seconds.
 
-**CLAUDE DOES** - say *"connect <client>'s calendar and mail"* and it runs all of this:
+**THE CONCIERGE SHEET DOES IT (since 2026-09-16)** - on the portal, My Clients → the client's
+card → **Concierge sheet** → beat 3 → **Mint the approval link**. One click mints the link
+(`POST /api/client-board/:clientId/unipile-link`, `services/unipileHostedAuth.js`), and the moment
+the client approves it Unipile calls us back (`POST /api/unipile/notify/:token`,
+`routes/unipileNotifyRoutes.js`) and the row sets itself: Unipile Account ID, both providers,
+Calendar Read IDs = all, Calendar Email blanked. Nothing to read out of a dashboard, nothing to
+type. The sheet's beat 3 turns DONE when it lands - hit Re-check if you're waiting on it.
+
+**CLAUDE DOES** - say *"connect <client>'s calendar and mail"* and it runs all of this (the
+by-hand lane, still valid when you're not on the sheet):
 
 - mints the hosted link from Unipile and hands it over ready to paste
 - once they've approved, fetches the new account id from Unipile and puts it on their row
-  (nothing calls back to us - see the invisible-connection trap below)
+  (a link minted by HAND has no callback - only the sheet's link does; see the
+  invisible-connection trap below)
 - sets **Unipile Account ID**, **Calendar Provider** = `unipile`, **Email Provider** = `unipile`
 - leaves **Calendar Email** BLANK - a value there forces the old Google service-account path and
   Unipile gets silently ignored
@@ -331,11 +341,13 @@ prevention is in the script above ("check it shows your WORK email"). If they ge
 re-clicking the link in a private/incognito window is always safe. **Check this on every client,
 every time.**
 
-**Watch out - the connection is invisible to us until Claude goes and looks.** Unipile can ping a
-URL of ours the moment a client connects; we have never built the endpoint to catch it. So a
-client who has approved and a client who has not look identical from our side until someone
-fetches the account id by hand. That is why "proves it live" above is not optional, and why this
-step is never marked done on the strength of the client saying "yep, clicked it".
+**Watch out - a link minted BY HAND is invisible to us until Claude goes and looks.** Unipile
+pings a URL of ours the moment a client connects, but only if the link was minted with that URL
+in it - which the concierge sheet does and the dashboard does not. For a hand-minted link a
+client who has approved and one who has not look identical from our side until someone fetches
+the account id by hand. Either way "proves it live" above is not optional, and this step is never
+marked done on the strength of the client saying "yep, clicked it" - the callback sets the
+fields, it does not prove the calendar reads (that is step 3).
 
 ---
 
@@ -673,7 +685,8 @@ text:
 
 1. **Get remote access** to their machine - Splashtop, set up on a call (Sam Noble, 2026-09-04) or
    in the pre-session email.
-2. **Print the install line** with `node scripts/extension-install-command.js <Client-ID>` and paste
+2. **Copy the install line** from the concierge sheet (My Clients → their card → Concierge sheet →
+   beat 6), or print it with `node scripts/extension-install-command.js <Client-ID>`, and paste
    it into PowerShell on their machine. It reports the daily task, the login run and the version it
    put on disk; `node scripts/extension-fleet.js` on prod confirms the machine has checked in. The
    Mac script is UNPROVEN - walk it with a Mac client before relying on it.

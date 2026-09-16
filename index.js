@@ -1890,6 +1890,16 @@ try {
     moduleLogger.error("index.js: Error mounting client board routes", e.message, e.stack);
 }
 
+// Unipile's callback when a client approves a hosted calendar-and-mail link minted from the
+// concierge sheet (see routes/unipileNotifyRoutes.js + services/unipileHostedAuth.js).
+try {
+    const unipileNotifyRoutes = require('./routes/unipileNotifyRoutes.js');
+    app.use('/api/unipile', unipileNotifyRoutes);
+    moduleLogger.info("index.js: Unipile notify routes mounted at /api/unipile");
+} catch(e) {
+    moduleLogger.error("index.js: Error mounting Unipile notify routes", e.message, e.stack);
+}
+
 // Zoho Calendar OAuth connect flow (per-client "connect my Zoho calendar" — see routes/zohoAuthRoutes.js)
 try {
     const zohoAuthRoutes = require('./routes/zohoAuthRoutes.js');
