@@ -25,7 +25,7 @@ function parseConciergeDoc(md) {
     const head = lines.shift() || '';
     const m = head.match(/^(\d+)\s*-\s*(.+?)\s*$/);
     if (!m) continue;
-    const step = { n: Number(m[1]), title: m[2], phase: '', who: '', minutes: null, link: null, proves: [], say: '', dos: [], check: '', watch: '' };
+    const step = { n: Number(m[1]), title: m[2], phase: '', who: '', minutes: null, link: null, proves: [], why: '', say: '', dos: [], check: '', watch: '' };
     let inDo = false;
     for (const raw of lines) {
       const line = raw.trimEnd();
@@ -42,6 +42,7 @@ function parseConciergeDoc(md) {
       else if (key === 'link') step.link = Object.prototype.hasOwnProperty.call(CONCIERGE_LINKS, val) ? CONCIERGE_LINKS[val] : null;
       else if (key === 'proves') step.proves = val.split(',').map((s) => Number(s.trim())).filter((n) => Number.isInteger(n));
       else if (key === 'say') step.say = val;
+      else if (key === 'why') step.why = val;
       else if (key === 'do') inDo = true;
       else if (key === 'worked when') step.check = val;
       else if (key === 'watch') step.watch = val;
@@ -68,7 +69,7 @@ function parseStandardOverview(md) {
     const para = m[4].replace(/\s+/g, ' ').trim();
     steps.push({
       n, title, phase: tag, who: tag === 'solo' ? 'You alone' : tag === 'homework' ? 'the client, in their own time' : 'together', minutes: null,
-      link: STANDARD_LINKS[n] || null, proves: [n], say: '', dos: [para], check: '', watch: '',
+      link: STANDARD_LINKS[n] || null, proves: [n], why: '', say: '', dos: [para], check: '', watch: '',
     });
   }
   return steps;
@@ -100,6 +101,7 @@ h2.phase{font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:var(
 .step h3{margin:0;font-size:18px;line-height:1.25}
 .step.done h3{text-decoration:line-through;text-decoration-color:var(--muted)}
 .step .who{font-size:13px;color:var(--muted);margin:0}
+.why{margin:0;color:var(--ink2);font-size:15px}
 .say{border-left:3px solid var(--accent);padding:2px 0 2px 12px;margin:0;color:var(--ink2);font-style:italic}
 .say b{font-style:normal;color:var(--ink)}
 .dos{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:5px}
@@ -147,8 +149,11 @@ function renderBody(data,state){
   var s=state||{ticks:{}};
   var out=[];
   var f=data.client.firstName;
+  // The sheet is written to be read by BOTH people on a shared screen, so the doc says {{first}}
+  // wherever the client's name goes and "Guy" for the coach. tx() fills the name in, then escapes.
+  function tx(v){return esc(String(v==null?'':v).split('{{first}}').join(f));}
   out.push('<div class="wrap">');
-  out.push('<div><p class="lede" style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)">'+esc(data.mode==='concierge'?'Concierge run sheet':'Onboarding run sheet')+'</p><h1>'+esc(data.client.name)+'</h1><p class="lede">'+esc(data.mode==='concierge'?'One remote sitting, you driving. '+f+' is there for the first five minutes and the last five. Tick each step as you go - the ticks save into this page.':'The standard journey, one step per session or so. Tick each step as it lands - the ticks save into this page.')+'</p><p class="lede" style="font-size:13px">Made '+esc(data.generatedAt)+' from '+esc(f)+'&rsquo;s record.</p></div>');
+  out.push('<div><p class="lede" style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)">'+esc(data.mode==='concierge'?'Concierge run sheet':'Onboarding run sheet')+'</p><h1>'+esc(data.client.name)+'</h1><p class="lede">'+esc(data.mode==='concierge'?'Guy drives '+f+'\\u2019s computer and does the setup. '+f+' is here for the first twenty-five minutes, then leaves Guy to it. Each step says who does what. Tick them off as you go - the ticks save into this page.':'The standard journey, one step per session or so. Tick each step as it lands - the ticks save into this page.')+'</p><p class="lede" style="font-size:13px">Made '+esc(data.generatedAt)+' from '+esc(f)+'&rsquo;s record.</p></div>');
   var st=data.setup||{};
   out.push('<div class="facts"><div><div class="k">Timezone</div><div class="'+(st.timezone?'':'bad')+'">'+esc(st.timezone||'BLANK - fix first')+'</div></div><div><div class="k">Drafting key</div><div>'+esc(st.managedClaudeKey?'Managed plan':st.hasAnthropicKey?'Own key on record':'Own key, not yet on record')+'</div></div><div><div class="k">Login email</div><div>'+esc(st.loginEmail||'-')+'</div></div><div><div class="k">Calendar and mail</div><div>'+esc(st.unipileConnected?'connected ('+(st.calendarProvider||'unipile')+')':'not connected yet')+'</div></div></div>');
   if(data.facts&&data.facts.length){
@@ -159,13 +164,15 @@ function renderBody(data,state){
     if(step.phase!==phase){phase=step.phase;out.push('<h2 class="phase">'+esc(phase)+'</h2>');}
     var done=!!s.ticks[String(step.n)];
     out.push('<section class="step'+(done?' done':'')+'" data-step="'+step.n+'">');
-    out.push('<div class="head"><input type="checkbox" id="tick-'+step.n+'" data-tick="'+step.n+'"'+(done?' checked':'')+'><h3><label for="tick-'+step.n+'">'+step.n+'. '+esc(step.title)+'</label></h3></div>');
-    var who=step.who==='You alone'?'You alone. Nothing for '+f+'.':(f+': '+step.who);
-    out.push('<p class="who">'+esc(who)+(step.minutes?' &middot; about '+step.minutes+' min':'')+'</p>');
-    if(step.say)out.push('<p class="say"><b>Say: </b>'+esc(step.say)+'</p>');
-    if(step.dos&&step.dos.length)out.push('<ul class="dos">'+step.dos.map(function(d){return '<li>'+esc(d)+'</li>';}).join('')+'</ul>');
+    out.push('<div class="head"><input type="checkbox" id="tick-'+step.n+'" data-tick="'+step.n+'"'+(done?' checked':'')+'><h3><label for="tick-'+step.n+'">'+step.n+'. '+tx(step.title)+'</label></h3></div>');
+    var w=String(step.who||'');
+    var who=(w==='You alone'||w==='Guy alone')?'Guy alone. Nothing for '+f+'.':(/^Guy\\b/.test(w)?w:(f+': '+w));
+    out.push('<p class="who">'+tx(who)+(step.minutes?' &middot; about '+step.minutes+' min':'')+'</p>');
+    if(step.why)out.push('<p class="why">'+tx(step.why)+'</p>');
+    if(step.say)out.push('<p class="say"><b>Say: </b>'+tx(step.say)+'</p>');
+    if(step.dos&&step.dos.length)out.push('<ul class="dos">'+step.dos.map(function(d){return '<li>'+tx(d)+'</li>';}).join('')+'</ul>');
     if(step.link)out.push(linkBlock(step.link,data.links||{},data.minted));
-    if(step.check)out.push('<p class="check"><b>You\\'ll know it worked when: </b>'+esc(step.check)+'</p>');
+    if(step.check)out.push('<p class="check"><b>You\\'ll know it worked when: </b>'+tx(step.check)+'</p>');
     if(step.watch)out.push('<p class="watch"><b>Watch: </b>'+esc(step.watch)+'</p>');
     var vs=(step.proves||[]).map(function(n){return (data.verdicts||{})[n];}).filter(Boolean);
     if(vs.length)out.push('<div class="verdicts">'+vs.map(function(v){return '<div><span class="v '+esc(v.verdict)+'">'+esc(String(v.verdict).toUpperCase())+'</span>'+esc(v.evidence)+'</div>';}).join('')+'<div style="margin-top:2px">What the record said when this page was made.</div></div>');
@@ -290,7 +297,8 @@ function buildData({ mode, detail, steps, docText, minted, facts = [], now = new
     minted: minted ? { url: minted.url, mintedAt: now.toLocaleString('en-AU', { hour: 'numeric', minute: '2-digit', day: 'numeric', month: 'short' }) } : null,
     verdicts,
     steps,
-    docText,
+    // The doc feeds the page's "Ask Claude" prompt, so the client's name goes in here too.
+    docText: String(docText || '').split('{{first}}').join(String(name).split(' ')[0]),
     generatedAt: now.toLocaleString('en-AU', { hour: 'numeric', minute: '2-digit', weekday: 'short', day: 'numeric', month: 'short' }),
   };
 }

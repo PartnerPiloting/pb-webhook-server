@@ -1,286 +1,318 @@
-# The concierge run sheet - onboarding a client myself, in one sitting
+# The concierge run sheet - Guy sets a client up, in one sitting, with both of them looking at it
 
-This is the run sheet for the client who is not technical and would rather I did it: I log into
-their computer over Splashtop and do the whole setup in about an hour. They are there for the
-first twenty minutes - three things need their card or their passwords - and the last five.
-Everything in between is me at their keyboard. Plumbing first, all of it, then the instructions
-call, then the first campaign.
+This is the run sheet for the client who is not technical and would rather Guy did it. Guy logs
+into their computer over Splashtop and does the whole setup in about an hour. The client is there
+for the first twenty-five minutes - a few things need their card or their passwords - then they
+leave Guy to it and are not needed again that day.
 
-It is written for me to follow, step by step, in plain English. `node scripts/run-sheet.js
-<Client-ID> --mint` turns it into a page with the client's own links already filled in and a
-box to tick beside each step; the same file is what Claude reads when I say "I'm onboarding
-Alex, I'm up to step 6, I don't get this" in any chat. The standard week-by-week journey is
+It is written to be read by BOTH people on a shared screen, so it names them: "Guy" is the coach,
+`{{first}}` becomes the client's first name when the page is made. Plain English, one job per
+line, and every step says who does what. Nothing on it should embarrass anyone or need
+explaining. `node scripts/run-sheet.js <Client-ID> --mint` makes the page with the client's own
+links in it; the same file is what Claude reads when Guy says "I'm onboarding Alex, I'm up to
+step 6, I don't get this" in any chat. The standard week-by-week journey is
 `docs/wingguy-onboarding-checklist.md` - this sheet points into it and never repeats it.
 
-Who types what, on the day: I drive their machine over Splashtop. When a screen asks for their
-card or a password, I take my hands off and say "type it now" - they type on their own keyboard,
-I watch it go through, and I carry on. I never type a client's card or password, and I never
-ask them to read one out.
+The one rule on the day: Guy drives. When a screen asks for a card or a password, Guy takes his
+hands off and says "type it now" - the client types on their own keyboard and Guy carries on.
+Guy never types a client's card or password, and never asks them to read one out.
 
-Format, for the generator: each `## Step N - Title` block has `Phase:`, `Who:`, optional
-`Minutes:`, optional `Link:` (connector | unipile | installer | none), optional `Proves:` (the
-checklist step numbers the live preflight uses to mark it DONE), optional `Say:`, a `Do:` list,
-optional `Worked when:` and optional `Watch:`. Keep that shape.
+Format, for the generator: each `## Step N - Title` block has `Phase:`, `Who:` (the client's
+part, or "Guy alone"), optional `Minutes:`, optional `Link:` (connector | unipile | installer |
+none), optional `Proves:` (the checklist step numbers the live preflight uses to mark it DONE),
+`Why:` (one plain line on what the step does for the client), a `Do:` list (start each line with
+who does it), optional `Worked when:` and optional `Watch:`. Keep that shape.
 
-## Step 1 - Check the record
+## Step 1 - Guy checks the record
 
 Phase: Before the call
-Who: You alone
+Who: Guy alone
 Proves: 0
 
+Why: Behind the scenes there is a row with {{first}}'s name on it - status, timezone, secret access key. Everything else hangs off it.
+
 Do:
-- They paid on the join page, so the record, their secret key, their leads base and the welcome draft already exist. Send the welcome email.
-- Timezone on the record is theirs. Provisioning writes Brisbane flat, and every meeting time Wingguy ever offers comes from this field.
-- Own key or managed plan decided. This sheet assumes their own key (step 4). Managed Claude Key = Yes means step 4 disappears.
+- Guy: {{first}} paid on the join page, so the record, the key, the leads base and the welcome draft already exist. Send the welcome email.
+- Guy: check the timezone on the record is {{first}}'s. Every meeting time Wingguy ever offers comes from this field.
+- Guy: confirm the plan - this sheet assumes {{first}} runs on their own Claude key (step 4).
 
-Worked when: The record line below says DONE with their timezone in it.
+Worked when: The record line below says DONE with {{first}}'s timezone in it.
 
-## Step 2 - Pre-session answers in
+## Step 2 - {{first}}'s answers are in
 
 Phase: Before the call
-Who: You alone
+Who: Guy alone
+
+Why: A few answers from {{first}}'s reply decide how the session goes. They're listed at the top of this page.
 
 Do:
-- Which email address Wingguy works from. It decides which account has to be at the top of the approval screen.
-- Any call recorder already in use. Own machine or company-managed. Windows or Mac.
-- Tell them to have their credit card next to them for the first twenty minutes - two small sign-ups need it - and to be signed in to Claude, their email and LinkedIn in the browser they normally use.
-- Make this page the same day as the session - the calendar-and-mail link inside it only lasts a day.
+- Guy: which email address Wingguy works from. It decides which account has to be at the top of the approval screen.
+- Guy: any call recorder already in use, own machine or company-managed, Windows or Mac.
+- Guy: {{first}} has been asked to have a credit card handy for the first twenty-five minutes, and to be signed in to Claude, email and LinkedIn in the usual browser.
+- Guy: make this page the same day as the session - the calendar link inside it only lasts a day.
 
-Watch: Mac - the installer script is unproven on a real Mac. Plan a slower extension step and expect to do it by hand.
+Watch: Mac - the installer is unproven on a real Mac. Plan a slower extension step and expect to do it by hand.
 
-## Step 3 - Remote access on
+## Step 3 - Guy takes the wheel
 
-Phase: The session
-Who: runs one file, reads you a code
+Phase: The session - {{first}} is here
+Who: runs one small file and reads out a code
 Minutes: 3
 
-Say: I'll drive your screen for the next hour. You're here for the first twenty minutes, because a couple of sign-ups need your card, then you can go and do something else. I'll call you back for the last five.
+Why: For the next hour Guy drives {{first}}'s computer. {{first}} watches, types a card number or a password when asked, and otherwise relaxes.
 
 Do:
-- Send the Splashtop link in the Zoom chat. They run the file and read you the code.
-- Install the unattended streamer so you can get in later without them.
-- Ask them to confirm they're signed in to Claude, their email and LinkedIn in this browser.
+- Guy: send the Splashtop link in the Zoom chat.
+- {{first}}: click it, run the file it downloads, and read out the code on the screen.
+- Guy: connect, and install the unattended streamer so later fixes never need {{first}} at all.
+- {{first}}: confirm you're signed in to Claude, your email and LinkedIn in this browser.
 
-Worked when: You can move their mouse. This is the only technical thing they do all day.
+Worked when: Guy can move the mouse. That's the only technical thing {{first}} does all day.
 
-## Step 4 - Their own Claude key
+## Step 4 - {{first}}'s own Claude key
 
-Phase: The session
-Who: types their card details, nothing else
+Phase: The session - {{first}} is here
+Who: types a card number, nothing else
 Minutes: 10
 Proves: 11
 
-Say: There's one bit of the AI that works for you while you're asleep, and your LinkedIn drafting runs on our servers too. That runs on a key that's yours - you put a monthly cap on it, and the worst case in the whole world is a bill the size of the cap. I'll set it up, you just put your card in.
+Why: Some of Wingguy's work happens on Guy's servers while {{first}} is asleep - the overnight follow-ups, the LinkedIn drafting. That runs on a key that belongs to {{first}}, with a monthly cap {{first}} chooses. Worst case in the whole world is a bill the size of the cap.
 
 Do:
-- On their screen, open console.anthropic.com. Create the account with their email - it's separate from their claude.ai login even if it's the same address. Their password to type, not yours.
-- Billing: add a payment method. Hands off - they type the card. A small starting credit is plenty. The API is pay-as-you-go; their claude.ai subscription does not cover it.
-- Create a workspace called Wingguy, and set a monthly spend limit on it - their number, and don't let it be skipped. This is what makes the whole thing safe.
-- Create an API key inside that workspace. It's shown once. Paste it straight into your chat with Claude: "store this key for <client>". Claude puts it on the record and confirms it masked. Never via Zoom chat, never typed by hand into Airtable.
-- Then, and only then, Followup Brief = Yes on the record.
+- Guy: open console.anthropic.com and create the account with {{first}}'s email. It's separate from the Claude login even if it's the same address.
+- {{first}}: type a password for it.
+- Guy: go to Billing, add a payment method.
+- {{first}}: type the card details. A small starting credit is plenty - it's pay as you go.
+- Guy: create a workspace called Wingguy, and set a monthly spend limit on it. Ask {{first}} for the number. Don't skip this - it's what makes the whole thing safe.
+- Guy: create an API key inside that workspace. It's shown once. Paste it straight into your chat with Claude: "store this key for {{first}}". Claude puts it on the record and confirms it masked.
+- Guy: then, and only then, switch Followup Brief to Yes on the record.
 
-Worked when: Claude confirms the key stored, masked, and the record line below says DONE.
+Worked when: Claude confirms the key is stored, and the record line below says DONE.
 
 Watch: A key with no credit behind it is a dead key. If the account already existed, check it has money on it before moving on.
 
-## Step 5 - Their rented computer, bought
+## Step 5 - {{first}}'s rented computer, bought
 
-Phase: The session
-Who: types their card details, nothing else
+Phase: The session - {{first}} is here
+Who: types a card number, nothing else
 Minutes: 3
 
-Say: This is the small computer in a data centre that Linked Helper will run on instead of your laptop. About $20 a month, on your card, cancel any time. I build it later today and I mind it. You never open it.
+Why: Linked Helper wore {{first}} out last time because it lived on the laptop. From now on it lives on a small computer in a data centre that never sleeps. About $20 a month, on {{first}}'s card, cancel any time. Guy builds it later today and minds it. {{first}} never opens it.
 
 Do:
-- On their screen, open binarylane.com.au, Linux VPS. Sign up with their name and email - you type those.
-- Pick the 2 vCPU / 4 GB / 60 GB plan, about $20 a month. City: whichever Australian city is nearest them, all the same price. Operating system: the newest Ubuntu LTS offered. Name it lh-<client-id>, for example lh-alex-solti.
-- In the SSH key box, paste the wg_clients public key: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMHSFmW3Yds7YTIVRUK+1Bz1P0YfmNX8JoYQT34LIy73 wingguy-client-machines. If they have a key of their own, add it alongside - it's their machine.
-- Card: hands off, they type. Note the machine's address from the confirmation screen for step 15.
+- Guy: open binarylane.com.au, Linux VPS. Sign up with {{first}}'s name and email.
+- Guy: pick the 2 CPU / 4 GB / 60 GB plan, about $20 a month. City: the nearest Australian one, they all cost the same. Operating system: the newest Ubuntu offered. Name it lh-{{first}} in lower case, for example lh-alex-solti.
+- Guy: in the SSH key box paste the wg_clients public key: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMHSFmW3Yds7YTIVRUK+1Bz1P0YfmNX8JoYQT34LIy73 wingguy-client-machines. If {{first}} has a key of their own, add it alongside - it's their machine.
+- {{first}}: type the card details.
+- Guy: note the machine's address from the confirmation screen for step 15. Nothing else happens on it today.
 
-Worked when: Binary Lane shows the machine running and you have its address. Nothing else happens on it today.
+Worked when: Binary Lane shows the machine running and Guy has its address.
 
-Watch: Their machine has to be in the same country as them - LinkedIn notices an account that is in two places at once. Never put Guy's own production key on a client machine, only the wg_clients one.
+Watch: The machine must be in the same country as {{first}} - LinkedIn notices an account that seems to be in two places at once. Only the wg_clients key goes on a client machine, never Guy's own production key.
 
-## Step 6 - Wingguy into their Claude
+## Step 6 - Wingguy moves into {{first}}'s Claude
 
-Phase: The session
+Phase: The session - {{first}} is here
 Who: watches
 Minutes: 2
 Link: connector
 Proves: 1
 
-Do:
-- In their Claude: Customize, then Connectors, then Add custom connector. Name it Wingguy, paste the connector link.
-- New chat. Type: what can I do with Wingguy?
+Why: Wingguy lives inside {{first}}'s own Claude. No new program to learn - from here {{first}} just talks to it in any chat.
 
-Say: That's Wingguy living inside your own Claude now. From here you just talk to it in any chat.
+Do:
+- Guy: in {{first}}'s Claude open Customize, then Connectors, then Add custom connector. Name it Wingguy and paste the connector link below.
+- Guy: start a new chat and type: what can I do with Wingguy?
+- {{first}}: read what comes back. That's Wingguy introducing itself.
 
 Worked when: Wingguy introduces itself and lists what it can do.
 
 ## Step 7 - Calendar and mailbox, one click
 
-Phase: The session
-Who: glances at the email address, says "that's the one"
+Phase: The session - {{first}} is here
+Who: reads out the email address on the screen, types a password if asked
 Minutes: 2
 Link: unipile
 Proves: 2
 
+Why: One approval connects both the calendar and the mailbox. Then Wingguy can offer people times {{first}} is genuinely free, book the meeting, and draft emails as {{first}}.
+
 Do:
-- Paste the approval link into their browser. The permission screen comes up.
-- Before you click approve, ask them to read out the email address at the top. Wrong account? Redo it in a private window.
-- Click approve. A Google or Microsoft password prompt is theirs to type, never yours.
+- Guy: paste the approval link below into {{first}}'s browser. The permission screen comes up.
+- {{first}}: read out the email address at the top of that screen. It has to be the work one.
+- Guy: if it's the wrong account, close it and open the link again in a private window.
+- Guy: click approve.
+- {{first}}: if Google or Microsoft asks for a password, type it.
+- Guy: nothing to type onto the record - it fills itself in the moment {{first}} approves.
 
-Worked when: The record sets itself the moment they approve - account id, both providers, every calendar read. Nothing to type onto the row. If you want to see it, ask Claude for a fresh preflight.
+Worked when: The permission screen says done, and a fresh check shows the record connected.
 
-Watch: The link on this page was minted when the page was made and lasts a day. If it has gone stale, ask Claude to mint a fresh one - it takes a second.
+Watch: The link on this page was made when the page was made and lasts a day. If it has gone stale, ask Claude for a fresh one - it takes a second.
 
-## Step 8 - Prove calendar and mail, then they can go
+## Step 8 - {{first}} checks it can see the week
 
-Phase: The session
-Who: says "yes, that's my week", then leaves you to it
+Phase: The session - {{first}} is here
+Who: looks at the week on the screen and says "yes, that's mine"
 Minutes: 4
 Proves: 3, 5
 
+Why: Before going any further, {{first}} sees Wingguy read the real diary and the real mail. That's the moment it stops being a demo.
+
 Do:
-- In their chat type: what's on my calendar this week? They check it against reality, including something personal.
-- Then: find a recent email from [someone they name]. Then: read me the whole thing.
-- That's their twenty minutes done. Tell them you'll call them back for the last five, and carry on alone.
+- Guy: in {{first}}'s chat type: what's on my calendar this week?
+- {{first}}: check it against reality, including something personal. Say "yes, that's my week" or say what's missing.
+- Guy: then type: find a recent email from [someone {{first}} names]. Then: read me the whole thing.
+- {{first}}: confirm that's the real email.
 
-Say: That's Wingguy reading your diary and your mail. Now you know what it can see. Go and do something else - I'll shout when I need you.
+Worked when: {{first}} has said yes to both. Only {{first}} can.
 
-Worked when: They've confirmed both. Don't move on until they have - they're the only one who can.
+## Step 9 - Book the next call, then {{first}} can go
 
-## Step 9 - Their meeting link
+Phase: The session - {{first}} is here
+Who: agrees a time, then leaves Guy to it
+Minutes: 3
 
-Phase: The session
-Who: away
+Why: There's one more call a few days from now - twenty minutes where Wingguy learns how {{first}} talks. After that everything it writes sounds like {{first}}, not a robot. Book it now while both diaries are open.
+
+Do:
+- Guy: offer two or three times a few days out. Twenty minutes. It's a conversation, not homework.
+- {{first}}: pick one.
+- Guy: put it in both diaries.
+- Guy: tell {{first}} what happens next - the rest of today's setup is Guy alone, the rented computer gets built this afternoon, and a wrap-up email lists what got done.
+- {{first}}: that's you done for today. Leave the computer on and signed in, and go and do something else.
+
+Worked when: The next call is in both diaries and {{first}} has gone.
+
+## Step 10 - {{first}}'s meeting link
+
+Phase: The session - Guy alone
+Who: Guy alone
 Minutes: 3
 Proves: 4
 
+Why: Every invite Wingguy sends needs a "click here to join" link. One personal link, on every invite, automatically.
+
 Do:
-- If they have a personal Zoom link, paste it into their settings page.
-- If not, create one and turn on the waiting room. Ask them about it when they're back.
+- Guy: if {{first}} has a personal Zoom link, paste it into the settings page.
+- Guy: if not, create one and turn on the waiting room. Mention it in the wrap email.
 
-Worked when: The link is on their record. Every invite Wingguy books carries it.
+Worked when: The link is on the record.
 
-## Step 10 - Extension installed and proven
+## Step 11 - Wingguy inside LinkedIn
 
-Phase: The session
-Who: away
+Phase: The session - Guy alone
+Who: Guy alone
 Minutes: 8
 Link: installer
 Proves: 9, 10
 
+Why: This is the piece that puts Wingguy on any LinkedIn profile. It updates itself from Guy's server every night, so nothing ever reaches {{first}} as a download.
+
 Do:
-- Open PowerShell on their machine, not as administrator. Paste the installer line. It reports the daily task, the login run and the version on disk.
-- Chrome or Edge extensions page. Developer mode on. Load unpacked. Pick C:\Wingguy.
-- Open the portal link once in this browser. That's how the extension knows who they are. Skip it and a good install looks broken.
-- Open a LinkedIn profile of someone they'd genuinely reach out to. Type /wg. The panel appears and drafts - their key from step 4 is what makes it draft.
+- Guy: open PowerShell on the machine, not as administrator. Paste the installer line below. It reports the daily task, the login run and the version on disk.
+- Guy: open the Chrome or Edge extensions page. Developer mode on. Load unpacked. Pick C:\Wingguy.
+- Guy: open the portal link below once in this browser. That's how the extension knows it's {{first}}. Skip it and a good install looks broken.
+- Guy: open a LinkedIn profile of someone {{first}} would genuinely reach out to. Type /wg. The panel appears and drafts - the key from step 4 is what makes it draft.
 
-Worked when: The panel appears on a real profile, on their machine, and drafts. The version on the card matches what shipped.
+Worked when: The panel appears on a real profile and drafts. The version on the card matches what shipped.
 
-Watch: Fiddliest step in the journey - that's why you drive it.
+Watch: Fiddliest step in the journey - that's why Guy does it.
 
-## Step 11 - Dress rehearsal
+## Step 12 - Dress rehearsal
 
-Phase: The session
-Who: away
+Phase: The session - Guy alone
+Who: Guy alone
 Minutes: 8
 Proves: 8
 
+Why: Prove the whole chain once: offer times, book a meeting, the invite arrives with {{first}}'s link on it.
+
 Do:
-- In their chat: offer [a real lead] some times next week.
-- Book a test meeting with you as the guest. The invite lands in your inbox with their join link on it.
-- Cancel it.
+- Guy: in {{first}}'s chat type: offer [a real lead] some times next week.
+- Guy: book a test meeting with yourself as the guest. The invite lands in your inbox with {{first}}'s join link on it.
+- Guy: cancel it.
 
-Worked when: The invite arrived with their link. They're now live in chat.
+Worked when: The invite arrived with the right link. {{first}} is live in chat.
 
-## Step 12 - Meeting recorder
+## Step 13 - Meeting recorder
 
-Phase: The session
-Who: away, unless a key needs their login
+Phase: The session - Guy alone
+Who: Guy alone, unless the recorder needs {{first}}'s login
 Minutes: 5
 Proves: 7
 
-Do:
-- Granola: needs their Business plan for the key. Create the key in their Granola settings, paste it on the record, Claude registers the webhook.
-- Already on Fireflies? That lane is proven. Straight swap, secret on the record before their side is saved.
-- No recorder yet? Leave it for the instructions call and say so in the wrap email.
-
-Watch: Calendar before recorder, always. Wingguy works out who a meeting was with from the calendar.
-
-## Step 13 - Call them back: the draft, and the next date
-
-Phase: The session
-Who: back for five minutes - reads the draft, agrees a time
-Minutes: 5
-Proves: 12
-
-Say: Two moments will sell this to you. "Draft the follow-up from the call I just had." And before the next one, "prep me for my meetings." And here's the LinkedIn one.
+Why: Once calls are recorded, {{first}} can say "draft the follow-up from the call I just had" and "prep me for my meetings". Nobody expects this one until they've felt it.
 
 Do:
-- Show them the /wg draft from step 10 on someone they know. Say: that's a starting point, not an oracle - your edit is what teaches it.
-- Book the instructions call. Twenty minutes, a few days out. Together, not homework. They talk, Wingguy types.
-- Tell them the rented computer gets built today and Linked Helper comes last, once everything is proven. Their side is topping up campaigns.
+- Guy: Granola needs the Business plan for a key. Create the key in Granola's settings, paste it on the record, Claude registers the webhook.
+- Guy: already on Fireflies? That lane is proven. Straight swap, secret on the record first.
+- Guy: no recorder yet? Leave it for the instructions call and say so in the wrap email.
 
-Worked when: The next call is in both diaries before you hang up.
+Watch: Calendar before recorder, always - Wingguy works out who a meeting was with from the calendar.
 
 ## Step 14 - Wrap the sitting
 
 Phase: After the call
-Who: You alone
+Who: Guy alone
+
+Why: {{first}} gets one email that says what got done, when the next call is, and what happens next. Nothing to do.
 
 Do:
-- Send the wrap email: what got done, the instructions call date, and what comes next in one line each.
-- Log anything owed on the board - yours under "You owe", theirs under "They owe".
-- Update their memory file with what was proven and what is still open.
+- Guy: send the wrap email - what got done, the instructions call date, what comes next, one line each.
+- Guy: log anything owed on the board - yours under "You owe", {{first}}'s under "They owe".
+- Guy: update {{first}}'s memory file with what was proven and what is still open.
 
-Worked when: What they never had to do - create anything alone, connect a cloud folder, download or unzip anything, remember a setting, or come back to a page.
+Worked when: What {{first}} never had to do - create anything alone, connect a cloud folder, download or unzip anything, remember a setting, or come back to a page.
 
-## Step 15 - Build their machine
+## Step 15 - Guy builds the machine
 
 Phase: After the call
-Who: You alone, same day
+Who: Guy alone, same day
+
+Why: The computer bought in step 5 becomes {{first}}'s Linked Helper machine. It restarts itself, backs itself up, and tells the record how it's doing every five minutes.
 
 Do:
-- One command on the fresh machine from step 5, scripts/linked-helper/setup-ubuntu-vps.sh, installs Linked Helper, remote access, the watchdog that restarts it, the nightly backup and the nightly reboot. Pass the Tailscale auth key, the rclone token and the machine report secret. Full detail: docs/linked-helper-machine-setup.md, Part 5.
-- It joins Tailscale by name, lh-<client-id>, and reports its own health onto their record every five minutes.
-- Set the two fields the machine can't fill in itself: Remote Access Method = Tailscale RDP, Remote Access Consent Date = the date of the sitting. Everything else about the machine writes itself.
+- Guy: one command on the fresh machine, scripts/linked-helper/setup-ubuntu-vps.sh, installs Linked Helper, remote access, the watchdog, the nightly backup and the nightly reboot. Pass the Tailscale auth key, the rclone token and the machine report secret. Full detail in docs/linked-helper-machine-setup.md, Part 5.
+- Guy: it joins Tailscale by name, lh-{{first}}, and reports its own health onto the record.
+- Guy: set the two fields the machine can't fill in itself - Remote Access Method = Tailscale RDP, Remote Access Consent Date = today's date. Everything else writes itself.
 
-Worked when: Their record shows Machine Status and Machine Last Seen filling in by themselves, and stopping Linked Helper by hand brings it back within a few minutes.
+Worked when: The record shows Machine Status and Machine Last Seen filling in by themselves, and stopping Linked Helper by hand brings it back within a few minutes.
 
 ## Step 16 - The instructions call, and LinkedIn onto the machine
 
 Phase: After the call
-Who: talks, Wingguy types; then signs into LinkedIn once
+Who: talks for twenty minutes, then signs into LinkedIn once
 Minutes: 30
 Proves: 6
 
-Say: This is the twenty minutes that makes everything it writes sound like you and not like a robot.
+Why: This is the twenty minutes that makes everything Wingguy writes sound like {{first}}. And it's where {{first}} sees the first LinkedIn draft.
 
 Do:
-- A few days after the sitting. They open a chat and type: let's set up my rules.
-- You sit with them through the interview - their voice, their offer, what they'd never say. Together, not homework. An Alex never does homework.
-- Start the targeting conversation while you're there: who are they looking for, and how would they find them. It threads through everything from here.
-- Last ten minutes: you open the machine's screen, they sign into LinkedIn on it - their password and any code to their phone are theirs to type - and you put in their Linked Helper licence. Pro, annual, one licence per LinkedIn account, with the promo code.
-- A recorder left over from step 12 gets sorted here.
+- {{first}}: open a chat and type: let's set up my rules.
+- Guy: sit with {{first}} through the interview - their voice, their offer, what they'd never say. Together, not homework.
+- Guy: show {{first}} the LinkedIn draft from step 11 on someone they know. It's a starting point, not an oracle - {{first}}'s edit is what teaches it.
+- Guy: start the targeting conversation - who is {{first}} looking for, and how would they find them.
+- Guy: last ten minutes, open the machine's screen.
+- {{first}}: sign into LinkedIn on it - your password, and any code sent to your phone.
+- Guy: put in the Linked Helper licence. Pro, annual, one licence per LinkedIn account, with the promo code.
+- Guy: a recorder left over from step 13 gets sorted here.
 
-Worked when: Ask Wingguy to draft a reply to a real message and they say "that sounds like me". And LinkedIn is signed in on the machine.
+Worked when: {{first}} asks Wingguy to draft a reply to a real message and says "that sounds like me". And LinkedIn is signed in on the machine.
 
-## Step 17 - First campaign, and then it's theirs
+## Step 17 - First campaign, and then it's {{first}}'s
 
 Phase: After the call
 Who: watches, then owns it
 Minutes: 30
 Proves: 14
 
-Say: From here your side of Linked Helper is topping up the campaign when it runs low and having a look at how it's going. Yours lasted months last time.
+Why: From here {{first}}'s side of Linked Helper is topping up the campaign when it runs low and having a look at how it's going. New people appear in the database without anyone touching the laptop.
 
 Do:
-- Only once everything above is proven and their targeting has settled. Nothing is lost by waiting - the Linked Helper trial only starts when the first campaign launches.
-- Build campaign 1 together from the targeting conversation - the standard campaigns go in by script - and prove the webhook: a connection lands in their database, scored overnight.
-- Show them the one thing they do from here: open Linked Helper, top up the campaign, glance at how it's going.
-- Set Email Series Start Date to today and Coaching Status to Graduated. The weekly drumbeat hands over to the email series.
-- Point your people at them, as promised. That's where their referrals come from.
+- Guy: only once everything above is proven and {{first}}'s targeting has settled. Nothing is lost by waiting - the Linked Helper trial only starts when the first campaign launches.
+- Guy: build campaign 1 together from the targeting conversation - the standard campaigns go in by script - and prove a connection lands in the database, scored overnight.
+- Guy: show {{first}} the one thing they do from here - open Linked Helper, top up the campaign, glance at how it's going.
+- Guy: set Email Series Start Date to today and Coaching Status to Graduated. The weekly drumbeat hands over to the email series.
+- Guy: point your people at {{first}}, as promised. That's where the referrals come from.
 
-Worked when: New people appear in their database without anyone touching the laptop, and they can tell you how the campaign is going without asking you.
+Worked when: New people appear in {{first}}'s database without anyone touching the laptop, and {{first}} can say how the campaign is going without asking Guy.
