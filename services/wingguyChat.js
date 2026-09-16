@@ -245,7 +245,11 @@ function buildContext({ profileBlock, convoBlock, leadEmail, coachName, prefs, c
     `${convoBlock ? `LINKEDIN CONVERSATION SO FAR (oldest first):\n${convoBlock}\n\n` : ''}` +
     `${tplBlock}` +
     `${voiceBlock}` +
-    `LEAD EMAIL FOR THE INVITE: ${leadEmail ? leadEmail : '(not on file — ask Guy to add it before booking)'}\n` +
+    // The not-on-file wording used to send the model to Guy ("ask Guy to add it"), which is a dead end:
+    // if the address were findable Guy would have it. The lead is the only one who has it, and the
+    // message being drafted is already going to them - so the ask belongs IN that message, at the
+    // offer-times turn (see THE INVITE ADDRESS IS PART OF THE OFFER in the agent instructions).
+    `LEAD EMAIL FOR THE INVITE: ${leadEmail ? `${leadEmail}  [ON FILE - name this address in the message when you promise the invite, so the lead can correct it if it is wrong]` : '(NOT ON FILE - ask the LEAD for it in the message when you offer times; do NOT ask Guy, he almost never has it either. File what they give you with update_lead_email, then book.)'}\n` +
     `CRM RECORD: ${onFile ? 'this lead is already in Guy\'s CRM' : 'this lead is NOT in Guy\'s CRM yet — no record matched them (e.g. a new connection). If Guy wants them saved, use create_lead.'}\n` +
     `COACH NAME: ${coachName || 'Guy Wilson'}\n` +
     `GUY'S BOOKING PREFERENCES (JSON): ${JSON.stringify(prefs)}`
@@ -829,4 +833,4 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
   return { ok: true, reply: assistantText, draft: currentDraft, booked: bookedEvent, enrichContact, messages: convo, model: MODEL_ID };
 }
 
-module.exports = { runWingguyChatTurn, AGENT_TOOLS, inLunch, chooseSignoff, getVoiceIdentity, leadHasSpoken, coachHasAskedToMeet, bannedStage1Opener, isHandshakeOnly, detectLeadBookingLink };
+module.exports = { runWingguyChatTurn, AGENT_TOOLS, inLunch, chooseSignoff, getVoiceIdentity, leadHasSpoken, coachHasAskedToMeet, bannedStage1Opener, isHandshakeOnly, detectLeadBookingLink, buildContext };
