@@ -11,6 +11,44 @@ Ask only if genuinely ambiguous.
 - **PRE** - a session is coming up (usually tomorrow or today). Output: record fixed, agenda, pre-session email draft.
 - **LIVE** - Guy is on the call now, narrating ("we're at step 3", "he just clicked the link"). Act immediately, answer tersely, fix records live.
 - **WRAP** - the session just happened. Output: state updated, follow-up email draft, owed-items list.
+- **RUN SHEET** - "onboard <client>, concierge" / "make the run sheet for <client>". Output: ONE
+  tick-off page for that client, published as an Artifact, every link already in it. See below.
+
+## The run sheet (2026-09-16) - one page, every step, links filled in, ticks
+
+Guy's words: *"almost like an email that I would get, but with everything in it that I can just
+tick off"* - and NOT a feature on every client's portal card. Two modes, one generator:
+
+- **Concierge** (default) - the not-technical client Guy sets up HIMSELF over Splashtop in one
+  ~40-minute sitting (Alex Solti was the first). Steps = `docs/concierge-run-sheet.md`.
+- **Standard** (`--standard`) - the week-by-week journey. Steps = the checklist's THE OVERVIEW.
+
+How to make it (from Guy's machine - the dev checkout has the `.env`; it needs no server env):
+
+```
+node scripts/run-sheet.js <Client-ID> --mint --out <scratchpad>/run-sheet-<Client-ID>.html
+```
+
+`--mint` asks Unipile for the calendar-and-mail approval link with our callback in it, so the
+record sets itself when the client approves (services/unipileHostedAuth.js). **The link lasts a
+day - make the sheet the same day as the session.** Skip `--mint` if the record already shows
+Unipile connected (the script skips it anyway). Auth = Guy's own portal token in `.env` as
+`WINGGUY_PORTAL_TOKEN` (the same one My Clients uses).
+
+Then publish the file with the Artifact tool, `capabilities: {artifact: {}, sample: {}}`,
+favicon 📋. `artifact` = the ticks save into the page itself, so they are there on any device.
+`sample` = every step gets an "Ask Claude" box that explains that step from the doc text embedded
+in the page (Guy's "I'm up to here and I don't get this", without leaving the sheet).
+
+**"I'm onboarding <client>, I'm up to step N, I don't get this / I need to do X"** in any chat:
+read `docs/concierge-run-sheet.md` (or the checklist for a standard client) from origin/main,
+run the preflight if the record matters, and answer from the step text - one action, plain
+English, no architecture. If he needs a fresh approval link, mint it (the same POST the script
+uses, or re-run the script with `--mint`) and hand it over.
+
+Not on the portal: the earlier per-client "Concierge sheet" page and its card button were removed
+the same day at Guy's request. The master-record tick box `Concierge Onboarding` it used is now
+unused and can be deleted by hand.
 
 ## How to answer Guy - the two standing rules
 
@@ -113,10 +151,12 @@ one is five promises in an email that all work first go.
 - **Wrong-account trap on every OAuth connect** - the permission screen belongs to whoever is
   logged in. Check the account shown, every client, every time. Many clients have 2+ Google
   accounts (check the record email vs the correspondence email - they often differ).
-- **Unipile hosted-auth link**: one link covers calendar AND email; nothing calls back on
-  connect - read the new account_id out of the Unipile dashboard by hand, then set
-  Unipile Account ID + Calendar Provider=unipile + Email Provider=unipile. Delete stray
-  accounts the client connected by mistake (they bill).
+- **Unipile hosted-auth link**: one link covers calendar AND email. A link minted by the run
+  sheet / `POST /api/client-board/:id/unipile-link` carries our callback, so on approval the row
+  sets itself (Unipile Account ID, both providers, Read IDs=all, Calendar Email blanked). A link
+  minted BY HAND in the dashboard has no callback - then read the new account_id out of the
+  Unipile dashboard and set those fields yourself. Delete stray accounts the client connected by
+  mistake (they bill).
 - **Sales Navigator gifts only take on never-Premium accounts** - confirm history before promising.
 - **Extension delivery: the PULL UPDATER is the default lane (since 2026-09-03); OneDrive serves
   the clients already on it - never improvise delivery on a call** (Ashley 2026-08-20: ten
