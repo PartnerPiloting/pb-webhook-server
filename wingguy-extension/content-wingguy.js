@@ -1111,7 +1111,11 @@
     const pageText = readPageTextNow();
     // Profile pages only: in a thread the Experience on screen belongs to whoever is behind the
     // bubble, not the person being written to.
-    const experienceText = inThread ? '' : readExperienceTextNow();
+    // Belt and braces: this is a nice-to-have field on a read that everything else depends on, so a
+    // surprise from LinkedIn's DOM must cost the city, never the whole scrape.
+    let experienceText = '';
+    try { experienceText = inThread ? '' : readExperienceTextNow(); }
+    catch (e) { console.log('[Wingguy] experience read failed (continuing):', e.message); }
     if (!inThread) {
       console.log('[Wingguy] experience read:', experienceText ? `${experienceText.length} chars` : 'NONE (no Experience heading found on the page)');
     }
