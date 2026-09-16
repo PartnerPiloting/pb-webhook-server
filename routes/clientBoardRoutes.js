@@ -52,4 +52,22 @@ router.get('/:clientId/detail', authenticateUserWithTestMode, coachOnly, async (
   }
 });
 
+// Mint the "connect your calendar and mailbox" link for one client (the concierge sheet's beat 3).
+// Unipile calls us back on approval (routes/unipileNotifyRoutes.js) and the record is set
+// automatically - see services/unipileHostedAuth.js.
+router.post('/:clientId/unipile-link', authenticateUserWithTestMode, coachOnly, async (req, res) => {
+  const coachClientId = req.client.clientId;
+  const { clientId } = req.params;
+  const logger = createLogger({ runId: 'BOARD', clientId, operation: 'client_board_unipile_link' });
+  try {
+    const link = await board.mintUnipileLink(coachClientId, clientId);
+    logger.info(`hosted link minted for ${clientId} (expires ${link.expiresAt})`);
+    res.json({ success: true, ...link });
+  } catch (e) {
+    if (e.code === 'FORBIDDEN') return res.status(403).json({ success: false, error: 'Not your client' });
+    logger.error(`unipile link failed: ${e.message}`, e.stack);
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
 module.exports = router;

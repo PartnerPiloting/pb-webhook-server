@@ -425,11 +425,45 @@ async function getCardDetail(coachClientId, clientId) {
     clientName: client.clientName,
     preflight,
     tasks,
-    links: {
-      portalUrl: client.portalToken ? `https://pb-webhook-server.vercel.app/?token=${client.portalToken}` : null,
-      connectorUrl: client.portalToken ? `https://pb-webhook-server.onrender.com/mcp2/${client.portalToken}` : null,
+    links: buildLinks(client),
+    // What the concierge sheet needs to know before the session, straight off the record.
+    setup: {
+      timezone: client.timezone || null,
+      managedClaudeKey: !!client.managedClaudeKey,
+      hasAnthropicKey: !!client.anthropicApiKey,
+      unipileConnected: !!client.unipileAccountId,
+      calendarProvider: client.calendarProvider || null,
+      emailProvider: client.emailProvider || null,
+      loginEmail: client.clientEmailAddress || null,
     },
   };
 }
 
-module.exports = { getBoard, getCardDetail, OWED_PHASES };
+/** Every link the coach pastes during onboarding, minted from the record - nothing to look up. */
+function buildLinks(client) {
+  const token = client.portalToken;
+  let installer = null;
+  if (token) {
+    try { installer = require('./extensionInstallCommand').buildInstallCommands(token); } catch (_) { installer = null; }
+  }
+  return {
+    portalUrl: token ? `https://pb-webhook-server.vercel.app/?token=${token}` : null,
+    connectorUrl: token ? `https://pb-webhook-server.onrender.com/mcp2/${token}` : null,
+    installerWindows: installer ? installer.windows : null,
+    installerMac: installer ? installer.mac : null,
+  };
+}
+
+/** Mint the hosted calendar-and-mail link for one of the coach's clients. */
+async function mintUnipileLink(coachClientId, clientId) {
+  const client = await clientService.getClientById(clientId);
+  if (!client || client.coach !== coachClientId) {
+    const err = new Error('not your client');
+    err.code = 'FORBIDDEN';
+    throw err;
+  }
+  const { mintHostedLink } = require('./unipileHostedAuth');
+  return mintHostedLink(clientId);
+}
+
+module.exports = { getBoard, getCardDetail, mintUnipileLink, buildLinks, OWED_PHASES };

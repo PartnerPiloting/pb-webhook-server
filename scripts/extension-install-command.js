@@ -19,8 +19,7 @@
 require('dotenv').config();
 
 const clientService = require('../services/clientService');
-
-const DEFAULT_SERVER = (process.env.EXTENSION_DIST_SERVER || 'https://pb-webhook-server.onrender.com').replace(/\/+$/, '');
+const { buildInstallCommands } = require('../services/extensionInstallCommand');
 
 (async () => {
   const wanted = (process.argv[2] || '').trim();
@@ -62,14 +61,10 @@ const DEFAULT_SERVER = (process.env.EXTENSION_DIST_SERVER || 'https://pb-webhook
   // `-File` (never `-Command`) keeps the vanishing-token fix intact: $p and $t are expanded by
   // the CURRENT session and handed to the child as plain arguments, so there is no second round
   // of parsing for a quote or a `$` to get lost in.
-  const win =
-    `$t='${token}'; $p=Join-Path $env:TEMP 'wg.ps1'; ` +
-    `Invoke-WebRequest -Uri '${DEFAULT_SERVER}/extension/dist/installer' -Headers @{'x-portal-token'=$t} -OutFile $p -UseBasicParsing; ` +
-    `& powershell.exe -ExecutionPolicy Bypass -File $p -Install -Server '${DEFAULT_SERVER}' -Token $t`;
-
-  const mac =
-    `T='${token}'; curl -sS -H "x-portal-token: $T" '${DEFAULT_SERVER}/extension/dist/installer.sh' -o /tmp/wg.sh && ` +
-    `bash /tmp/wg.sh --install --server '${DEFAULT_SERVER}' --token "$T"`;
+  //
+  // The lines themselves are built in services/extensionInstallCommand.js since 2026-09-16, so
+  // the concierge sheet on the portal prints the identical line. Change them THERE.
+  const { windows: win, mac } = buildInstallCommands(token);
 
   console.log(`
 Install the Wingguy extension updater for ${client.clientId}
