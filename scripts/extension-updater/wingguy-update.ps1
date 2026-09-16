@@ -20,7 +20,7 @@
   Then load C:\Wingguy into the browser once (developer mode -> Load unpacked) and open their
   portal once in that browser to sign the extension in.
 
-  AFTER THAT: the scheduled task runs daily and at logon, catching up if the machine was off.
+  AFTER THAT: the scheduled task runs hourly and at logon, catching up if the machine was off.
   Ship a version and every machine collects it without anyone touching anything.
 #>
 
@@ -46,6 +46,49 @@ function Write-Log($msg) {
     if (-not (Test-Path $logDir)) { New-Item -ItemType Directory -Path $logDir -Force | Out-Null }
     Add-Content -Path (Join-Path $logDir "update.log") -Value $line -Encoding utf8
   } catch { }   # logging must never be the thing that fails a run
+}
+
+# THE CADENCE, in one place. Bump the tag whenever the schedule below changes and every machine
+# re-registers itself on its next run - see Set-UpdateSchedule.
+$script:CadenceTag = "hourly-1"
+
+function Set-UpdateSchedule($scriptHome, $taskName) {
+  # WHY HOURLY AND NOT DAILY (Guy, 2026-09-17). It was daily at 3am plus a login run. That is fine
+  # for a machine that gets shut at night - it catches up at login - but Guy's own PC stays logged
+  # in for days, so 3am was his ONLY trigger. A fix that went live at 07:46 was still not in his
+  # browser when he went to test it. A run where nothing has changed is one small request and an
+  # immediate exit, so asking twenty times a day costs nothing and turns a 24-hour worst case into
+  # an hour. The login run stays: it covers a laptop that was off for the last few hours.
+  #
+  # There is deliberately no push. Nothing can reach a client's laptop when it is asleep or behind
+  # their home router, so the only real question was ever how often the machine asks.
+  $launcher = Join-Path $scriptHome "run-update.cmd"
+  if (-not (Test-Path $launcher)) { return $false }   # not an installed machine; nothing to schedule
+  $tr = '"' + $launcher + '"'
+  # /SC HOURLY /MO 1 = every hour, from $st onward. A few minutes past the hour rather than on it.
+  schtasks /Create /TN $taskName /TR $tr /SC HOURLY /MO 1 /ST 00:05 /F | Out-Null
+  schtasks /Query /TN $taskName 2>&1 | Out-Null
+  if ($LASTEXITCODE -ne 0) { return $false }
+  Set-Content -Path (Join-Path $scriptHome "schedule.tag") -Value $script:CadenceTag -Encoding ascii
+  return $true
+}
+
+function Sync-UpdateSchedule($taskName) {
+  # SELF-HEAL, so a cadence change reaches machines already in the field without visiting any of
+  # them: each one re-registers its own task on its next run and is on the new schedule from then
+  # on. Guarded by a tag file so the normal case is a single file read and nothing else, and
+  # wrapped so a scheduling failure can never cost the update itself - the old schedule simply
+  # stays, which is the safe direction.
+  try {
+    $scriptHome = Join-Path $env:LOCALAPPDATA "Wingguy"
+    $tagFile = Join-Path $scriptHome "schedule.tag"
+    if ((Test-Path $tagFile) -and ((Get-Content $tagFile -Raw).Trim() -eq $script:CadenceTag)) { return }
+    if (Set-UpdateSchedule $scriptHome $taskName) {
+      Write-Log "Schedule moved to $($script:CadenceTag) (every hour, plus the login run)."
+    }
+  } catch {
+    Write-Log "Could not update the schedule (continuing on the old one): $($_.Exception.Message)"
+  }
 }
 
 function Get-LocalVersion($folder) {
@@ -128,14 +171,11 @@ powershell.exe -ExecutionPolicy Bypass -WindowStyle Hidden -File "%~dp0wingguy-u
 "@
   Set-Content -Path $launcher -Value $launcherBody -Encoding ascii
 
-  # THE DAILY RUN: schtasks, proven to work unelevated.
-  $tr = '"' + $launcher + '"'
-  schtasks /Create /TN $TaskName /TR $tr /SC DAILY /ST 03:00 /F | Out-Null
-  schtasks /Query /TN $TaskName 2>&1 | Out-Null
-  if ($LASTEXITCODE -ne 0) {
+  # THE HOURLY RUN: schtasks, proven to work unelevated. See Set-UpdateSchedule for why hourly.
+  if (-not (Set-UpdateSchedule $scriptHome $TaskName)) {
     throw "Could not create the scheduled task '$TaskName'. The extension would never update itself. Check you are in a NORMAL (non-admin) PowerShell as the machine's own user, and that policy allows scheduled tasks."
   }
-  Write-Log "Daily task '$TaskName' created and verified (3am)"
+  Write-Log "Hourly task '$TaskName' created and verified"
 
   # THE LOGIN RUN: the Startup folder, NOT schtasks /SC ONLOGON.
   #
@@ -156,10 +196,10 @@ powershell.exe -ExecutionPolicy Bypass -WindowStyle Hidden -File "%~dp0wingguy-u
 
   if ($loginOk) {
     Write-Log "Login run installed and verified (Startup folder)"
-    Write-Log "SCHEDULED: daily at 3am, and again at login. Ready."
+    Write-Log "SCHEDULED: every hour, and again at login. Ready."
   } else {
-    Write-Log "WARNING: the daily 3am task is in place, but the login run could not be installed."
-    Write-Log "SCHEDULED: daily at 3am ONLY. A machine that is off at 3am will not catch up until the next 3am."
+    Write-Log "WARNING: the hourly task is in place, but the login run could not be installed."
+    Write-Log "SCHEDULED: hourly ONLY. A machine that is off will not catch up until it is on at the top of an hour."
   }
 
   # Prove it works before walking away - the whole point of installing this in person.
@@ -174,7 +214,7 @@ powershell.exe -ExecutionPolicy Bypass -WindowStyle Hidden -File "%~dp0wingguy-u
   #      laptop that slept. That writes no log line at all, so a quiet log proves nothing either.
   # Both end the same way: a registered updater, an empty folder, and Load unpacked failing in
   # front of the client. Guy hit case 2 on his own Acer on 2026-09-05 - task registered,
-  # C:\Wingguy empty, nothing on screen saying so. The 3am and login runs do repair it within a
+  # C:\Wingguy empty, nothing on screen saying so. The hourly and login runs do repair it within a
   # day, but that is no help while you are still sitting at the machine.
   $installedVersion = Get-LocalVersion $Folder
   if (-not $installedVersion) {
@@ -183,7 +223,7 @@ powershell.exe -ExecutionPolicy Bypass -WindowStyle Hidden -File "%~dp0wingguy-u
     Write-Host "INSTALL INCOMPLETE - DO NOT load the extension yet." -ForegroundColor Red
     Write-Host "Scheduling worked, but $Folder is empty - the download did not finish."
     Write-Host "Re-run it with:  $scriptHome\run-update.cmd"
-    Write-Host "(The 3am and login runs will also repair this on their own.)"
+    Write-Host "(The hourly and login runs will also repair this on their own.)"
     Write-Host ""
     exit 1
   }
@@ -200,6 +240,9 @@ if (-not $Token) { throw "-Token is required" }
 
 $machine = "$env:COMPUTERNAME"
 $agent = "windows-ps"
+
+# Before the network call, so the cadence heals even on a run where the server is unreachable.
+Sync-UpdateSchedule $TaskName
 
 try {
   $headers = @{ "x-portal-token" = $Token }
