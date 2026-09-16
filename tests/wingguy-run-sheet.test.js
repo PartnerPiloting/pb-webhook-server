@@ -135,6 +135,13 @@ check('links render on their steps with copy buttons; the minted link and the ve
   assert.ok(html.includes('class="v owed"'));
 });
 
+check('no {{first}} placeholder survives in the rendered body - name filled in everywhere the reader looks', () => {
+  const body = html.replace(/<script id="rs-data"[^>]*>[\s\S]*?<\/script>/, '').replace(/<script id="rs-app">[\s\S]*?<\/script>/, '');
+  assert.ok(!body.includes('{{first}}'), 'placeholder left in visible text');
+  assert.ok(body.includes('The session - Test is here'), 'phase heading carries the name');
+  assert.ok(!data.docText.includes('{{first}}'), 'the Ask Claude prompt text carries the name too');
+});
+
 check('a tick in state renders the step as done and checked', () => {
   assert.ok(/id="tick-3" data-tick="3" checked/.test(html));
   assert.ok(/class="step done" data-step="3"/.test(html));
