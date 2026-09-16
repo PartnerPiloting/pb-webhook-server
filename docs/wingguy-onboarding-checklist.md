@@ -303,7 +303,9 @@ instead."
 approves. Ten seconds.
 
 **THE CONCIERGE SHEET DOES IT (since 2026-09-16)** - on the portal, My Clients → the client's
-card → **Concierge sheet** → beat 3 → **Mint the approval link**. One click mints the link
+card → **Concierge sheet** → step 5 → **Mint the approval link**. The sheet is one step at a time
+and the button only shows for clients with **Concierge Onboarding** ticked on their master record
+(the not-technical client Guy sets up himself over remote access). One click mints the link
 (`POST /api/client-board/:clientId/unipile-link`, `services/unipileHostedAuth.js`), and the moment
 the client approves it Unipile calls us back (`POST /api/unipile/notify/:token`,
 `routes/unipileNotifyRoutes.js`) and the row sets itself: Unipile Account ID, both providers,

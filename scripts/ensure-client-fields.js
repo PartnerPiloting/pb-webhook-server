@@ -85,6 +85,12 @@ const LEADS_FIELDS = [
 // Fields to ensure on the master Clients base's Clients table (per-client config).
 const MASTER_FIELDS = [
   {
+    name: 'Concierge Onboarding',
+    type: 'checkbox',
+    description: 'Tick for a client Guy onboards HIMSELF over remote access in one sitting (the not-technical client - Alex Solti was the first, 2026-09-16) instead of the week-by-week sessions. Shows the "Concierge sheet" button on their My Clients card: the step-by-step run sheet with every link minted from the record. Unticked = the button is hidden; nothing else changes. Added 2026-09-16.',
+    options: { icon: 'check', color: 'blueBright' }
+  },
+  {
     name: 'LH Account Email',
     type: 'email',
     description: "The email the client's LinkedIn account is logged in with - what Linked Helper stamps as my_email on every webhook payload. Often NOT the business email (Ashley, Owen, Szymon). The LH sender guard (routes/webhookHandlers.js) compares each incoming batch against THIS first, falling back to Client Email Address when blank; a mismatch = another person's Linked Helper is posting into this client's base (the Rish incident, 2026-07-18) and fires the \"LH webhook sender mismatch\" alert. Fill it from the alert email's \"Actual sender\" line when the sender is the client themselves. Also matched as an attendee email on the onboarding board. Added 2026-09-11."
