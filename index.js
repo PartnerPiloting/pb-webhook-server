@@ -2010,6 +2010,18 @@ try {
     moduleLogger.error('index.js: Error mounting Thanks for Connecting routes', e.message, e.stack);
 }
 
+// "Unanswered messages" worklist - who wrote to you and never got a reply.
+// Guy-first rollout via the WINGGUY_UNANSWERED_CLIENTS env allowlist, enforced inside the module.
+try {
+    const mountWingguyUnanswered = require('./routes/wingguyUnansweredRoutes.js');
+    if (typeof mountWingguyUnanswered === 'function') {
+        mountWingguyUnanswered(app);
+        moduleLogger.info('index.js: Unanswered messages routes mounted at /api/unanswered');
+    }
+} catch(e) {
+    moduleLogger.error('index.js: Error mounting Unanswered messages routes', e.message, e.stack);
+}
+
 // Follow-Ups screen API (per-client gated on `Followup Brief` inside the router module)
 try {
     const mountWingguyFollowups = require('./routes/wingguyFollowupsRoutes.js');
