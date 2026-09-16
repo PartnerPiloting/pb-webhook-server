@@ -98,7 +98,8 @@ check('facts from the reply email render at the top, blanks flagged, escaped', (
   assert.ok(h.includes('<div class="k">Recorder</div><div class="">none</div>'));
   assert.ok(h.includes('<div class="k">Machine</div><div class="bad">not answered - ask on the call</div>'));
   assert.ok(h.includes('a&lt;b&gt;@c'));
-  assert.ok(!html.includes('reply</div>'), 'no facts block when none given');
+  // The page's own script carries the "'s reply" template text, so test the RENDERED heading.
+  assert.ok(!html.includes('From Test&rsquo;s reply'), 'no facts block when none given');
 });
 
 check('the page carries its data, state, css and script blocks by id', () => {
