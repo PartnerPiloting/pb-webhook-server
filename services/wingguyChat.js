@@ -491,7 +491,10 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
       `lead="${(profile && profile.name) || '?'}"`,
       `record="${(profile && profile.location) || ''}"`,
       `pageText=${pt.length}ch`,
-      `experienceText=${String((profile && profile.experienceText) || '').length}ch`,
+      // absent = an extension too old to send the field at all; 0ch = it looked and found nothing.
+      // Telling those two apart is the difference between "reload the extension" and "my read is wrong".
+      `experienceText=${(profile && profile.experienceText === undefined) ? 'absent' : `${String((profile && profile.experienceText) || '').length}ch`}`,
+      `[${(profile && profile.experienceDiag) || 'no diag'}]`,
       `experienceHeading=${/^experience$/im.test(ex) ? 'yes' : 'NO'}`,
       `presentRole=${/\bpresent\b/i.test(ex) ? 'yes' : 'NO'}`,
       `roleLocation=${found ? JSON.stringify(found.location) : 'none'}`,

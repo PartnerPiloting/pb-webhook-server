@@ -1049,18 +1049,47 @@
   // Sent as its own field and used ONLY by that server-side parser — it is not added to the profile
   // block, so it costs nothing in the prompt. Raising the 6000 cap instead would have paid for the
   // whole page in tokens to reach one line of it, and would still break on a longer profile.
-  function readExperienceTextNow() {
-    const mainEl = document.querySelector('main') || document.body;
-    let full = (mainEl.innerText || '').replace(/\n{3,}/g, '\n\n').replace(/[ \t]+/g, ' ').trim();
-    if (full.length < 500) {
-      const deep = deepInnerText(document.body);
-      if (deep.length > full.length) full = deep;
-    }
-    const heading = /^experience$/im.exec(full);
-    if (!heading) return '';
+  // Set by readExperienceTextNow and sent with the scrape, so a failed read names its own cause in
+  // the server log instead of costing another round trip. Two of those today was two too many.
+  let lastExperienceDiag = '';
+
+  // Find the "Experience" heading and take everything after it. Matching is done per line AFTER
+  // trimming, NOT with an anchored /^experience$/m: innerText carries non-breaking spaces and stray
+  // leading/trailing spaces that a strict anchor fails on, silently, with no way to tell that from
+  // "the section isn't there" (2026-09-17 - my first attempt did exactly this).
+  function experienceSliceFrom(raw) {
+    const text = String(raw || '').replace(/ /g, ' ');
+    const lines = text.split('\n');
+    const idx = lines.findIndex((l) => l.replace(/\s+/g, ' ').trim().toLowerCase() === 'experience');
+    if (idx === -1) return '';
     // From the heading, far enough to cover the current role plus a few below it. The server anchors
     // on the "… - Present" date range, which is not always the first entry listed.
-    return capText(full.slice(heading.index), 3000);
+    return capText(lines.slice(idx).join('\n').replace(/[ \t]+/g, ' ').trim(), 3000);
+  }
+
+  function readExperienceTextNow() {
+    const mainEl = document.querySelector('main') || document.body;
+    const mainText = String(mainEl.innerText || '');
+    let slice = experienceSliceFrom(mainText);
+    let source = slice ? 'main' : '';
+    let deepText = '';
+    if (!slice) {
+      // ALWAYS look deeper before giving up. The new-UI build renders the profile inside open shadow
+      // roots, where a plain innerText read goes blind - the same reason readPageTextNow has a
+      // shadow-crossing fallback. But that one only fires when the plain read comes up SHORT, which
+      // it does not here: the top card and About fill it while Experience sits in a shadow tree,
+      // unseen. Length is the wrong test; whether we actually found the heading is the right one.
+      // 60k, NOT the 6000 default: that default is the whole reason we are here. Experience sits
+      // below the top card, About and the activity feed, so a 6000-char budget stops short of it
+      // every time - which is exactly how pageText has been failing since the feature was written.
+      // We only keep 3000 chars from the heading; the big budget is about reaching it at all.
+      deepText = String(deepInnerText(document.body, 60000) || '');
+      slice = experienceSliceFrom(deepText);
+      source = slice ? 'deep' : 'none';
+    }
+    const seen = /experience/i.test(mainText) ? 'main' : (/experience/i.test(deepText) ? 'deep' : 'nowhere');
+    lastExperienceDiag = `main=${mainText.length}ch deep=${deepText.length}ch heading=${source} word=${seen}`;
+    return slice;
   }
 
   async function scrapeProfile() {
@@ -1117,7 +1146,7 @@
     try { experienceText = inThread ? '' : readExperienceTextNow(); }
     catch (e) { console.log('[Wingguy] experience read failed (continuing):', e.message); }
     if (!inThread) {
-      console.log('[Wingguy] experience read:', experienceText ? `${experienceText.length} chars` : 'NONE (no Experience heading found on the page)');
+      console.log('[Wingguy] experience read:', experienceText ? `${experienceText.length} chars` : 'NONE', '|', lastExperienceDiag);
     }
 
     // Activity read keeps its section handle so the self-check below grades the item read inside
@@ -1140,6 +1169,7 @@
       recentPosts,
       pageText,
       experienceText,
+      experienceDiag: inThread ? '' : lastExperienceDiag,
       nameSource,
       // Which surface this was read from. The gap notice needs it: in a thread the profile-only
       // fields are deliberately blanked below (they belong to the person behind the bubble, not the
