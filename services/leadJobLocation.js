@@ -40,8 +40,21 @@ const EMPLOYMENT_TYPE = /^(full-?time|part-?time|self-?employed|contract|freelan
 const SKILLS_LINE = /\bskills?$/i;
 const BULLET = /^[•·*\-•▪>]/;
 
+// LinkedIn prints many labels twice - a visible span and a screen-reader span, adjacent, no line
+// break - so raw page text carries "ExperienceExperience" and "Greater Perth Area · HybridGreater
+// Perth Area · Hybrid" (prod diagnostic, Helia Singh, 2026-09-17). A line that is its own first half
+// repeated is that doubling; the first half is the real text. The extension un-doubles before it
+// sends, but this runs on the pageText fallback from older extensions too, so it lives here as well.
+function undouble(s) {
+  const n = s.length;
+  if (n < 4) return s;
+  if (n % 2 === 0) { const h = n / 2; if (s.slice(0, h) === s.slice(h)) return s.slice(0, h); }
+  else { const h = (n - 1) / 2; if (s[h] === ' ' && s.slice(0, h) === s.slice(h + 1)) return s.slice(0, h); }
+  return s;
+}
+
 function cleanLine(s) {
-  return String(s || '').replace(/\s+/g, ' ').trim();
+  return undouble(String(s || '').replace(/\s+/g, ' ').trim());
 }
 
 // Strip the work-mode chip off "Melbourne, Victoria, Australia · Remote" without eating a place
@@ -115,6 +128,10 @@ function currentRoleLocation(pageText) {
       for (let k = i - 1; k > startIdx && k >= i - 3 && above.length < 2; k--) {
         const t = stripEmploymentType(lines[k]);
         if (!t || EMPLOYMENT_TYPE.test(lines[k]) || BULLET.test(t) || DATE_RANGE.test(t)) continue;
+        // A bare duration ("7 mos", "10 yrs 2 mos") is LinkedIn's group total under a company
+        // header, never a title or an employer. Without this the walk-back reached up into it and
+        // reported John Zhao's role as "7 mos at Fractional CISO & DPO" (on main since 568b7cc0).
+        if (/^\d/.test(t) || /\b\d+\s*(yrs?|mos?|years?|months?)\b/i.test(t)) continue;
         above.push(t);
       }
       const title = above.length > 1 ? `${above[1]} at ${above[0]}` : (above[0] || '');

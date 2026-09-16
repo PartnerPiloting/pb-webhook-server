@@ -139,6 +139,37 @@ Greater Melbourne Area · Hybrid
 Education`;
   assert.strictEqual(currentRoleLocation(t).location, 'Greater Melbourne Area');
 });
+// LinkedIn's doubled visible+screen-reader spans, exactly as the prod diagnostic saw them on
+// Helia Singh (2026-09-17): every label printed twice on one line, no separator. The heading, the
+// date range AND the location all arrive doubled, so this is the whole section, not one line.
+check('doubled visible+screen-reader lines are read as their single half', () => {
+  const t = `ExperienceExperience
+Business Development SpecialistBusiness Development Specialist
+Keystart · Full-timeKeystart · Full-time
+Sep 2026 - Present · 1 moSep 2026 - Present · 1 mo
+Greater Perth Area · HybridGreater Perth Area · Hybrid
+As a Business Development Specialist, I see myself as a broker whisperer.
+EducationEducation`;
+  const r = currentRoleLocation(t);
+  assert.ok(r, 'nothing found');
+  assert.strictEqual(r.location, 'Greater Perth Area');
+  assert.strictEqual(r.title, 'Business Development Specialist at Keystart');
+});
+check('a doubled pair separated by one space is also un-doubled', () => {
+  const t = `Experience Experience
+Principal
+Mar 2026 - Present · 7 mos Mar 2026 - Present · 7 mos
+Greater Melbourne Area · Hybrid Greater Melbourne Area · Hybrid
+Education`;
+  assert.strictEqual(currentRoleLocation(t).location, 'Greater Melbourne Area');
+});
+check('a line that merely happens to repeat a word is left alone', () => {
+  assert.strictEqual(currentRoleLocation(`Experience
+Acme
+Mar 2026 - Present · 7 mos
+Walla Walla, Washington
+Education`).location, 'Walla Walla, Washington');
+});
 
 console.log(failures ? `\n${failures} FAILED\n` : '\nAll passed\n');
 process.exit(failures ? 1 : 0);

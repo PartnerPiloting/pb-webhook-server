@@ -1057,14 +1057,30 @@
   // trimming, NOT with an anchored /^experience$/m: innerText carries non-breaking spaces and stray
   // leading/trailing spaces that a strict anchor fails on, silently, with no way to tell that from
   // "the section isn't there" (2026-09-17 - my first attempt did exactly this).
+  // LinkedIn prints many labels TWICE - a visible span and a screen-reader span, adjacent, with no
+  // line break - so innerText yields "ExperienceExperience", "Sep 2026 - Present · 1 moSep 2026 -
+  // Present · 1 mo", "Greater Perth Area · HybridGreater Perth Area · Hybrid". Prod diagnostic on
+  // Helia Singh, 2026-09-17: word=main (the word IS on the page) but heading=none (no line is
+  // exactly "Experience"). A line that is its own first half repeated is that doubling, and the
+  // first half is the real text. Tolerates a single space between the halves too.
+  function undouble(s) {
+    const n = s.length;
+    if (n < 4) return s;
+    if (n % 2 === 0) { const h = n / 2; if (s.slice(0, h) === s.slice(h)) return s.slice(0, h); }
+    else { const h = (n - 1) / 2; if (s[h] === ' ' && s.slice(0, h) === s.slice(h + 1)) return s.slice(0, h); }
+    return s;
+  }
+
   function experienceSliceFrom(raw) {
     const text = String(raw || '').replace(/ /g, ' ');
-    const lines = text.split('\n');
-    const idx = lines.findIndex((l) => l.replace(/\s+/g, ' ').trim().toLowerCase() === 'experience');
+    // Every line trimmed and un-doubled BEFORE matching, and sent to the server that way, so the
+    // server's own strict "Experience" anchor and date-range regex see clean text.
+    const lines = text.split('\n').map((l) => undouble(l.replace(/\s+/g, ' ').trim()));
+    const idx = lines.findIndex((l) => l.toLowerCase() === 'experience');
     if (idx === -1) return '';
     // From the heading, far enough to cover the current role plus a few below it. The server anchors
     // on the "… - Present" date range, which is not always the first entry listed.
-    return capText(lines.slice(idx).join('\n').replace(/[ \t]+/g, ' ').trim(), 3000);
+    return capText(lines.slice(idx).join('\n').trim(), 3000);
   }
 
   function readExperienceTextNow() {
@@ -1088,7 +1104,12 @@
       source = slice ? 'deep' : 'none';
     }
     const seen = /experience/i.test(mainText) ? 'main' : (/experience/i.test(deepText) ? 'deep' : 'nowhere');
-    lastExperienceDiag = `main=${mainText.length}ch deep=${deepText.length}ch heading=${source} word=${seen}`;
+    // The actual lines that carry the word, so a miss shows the real rendering instead of a
+    // guess about it. Up to three, 80 chars each. This text already travels as pageText.
+    const sample = (seen === 'deep' ? deepText : mainText).split('\n')
+      .map((l) => l.replace(/\s+/g, ' ').trim()).filter((l) => /experience/i.test(l))
+      .slice(0, 3).map((l) => l.slice(0, 80)).join(' | ');
+    lastExperienceDiag = `main=${mainText.length}ch deep=${deepText.length}ch heading=${source} word=${seen} lines=<${sample}>`;
     return slice;
   }
 
