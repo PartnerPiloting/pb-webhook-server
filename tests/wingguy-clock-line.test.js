@@ -98,6 +98,35 @@ const HELIA_PAGE = [
     check('omitting it leaves the context clean', () => assert.ok(!/LEAD LOCATION FOR THE CLOCK/.test(buildContext({ profileBlock: 'x', convoBlock: '', leadEmail: '', coachName: 'Guy', prefs: {} }))));
   }
 
+  // ── 7. THE REAL PRODUCTION FAILURE: pageText truncated before Experience ────────────────────────
+  // Prod logging on 2026-09-17 showed every profile arriving at exactly 6000 chars — the scrape cap —
+  // with no "Experience" heading in it at all. The parser was fine; the haystack was empty. The
+  // extension now sends the section as its own field, and pageText stays as the fallback.
+  console.log('\npageText truncated before Experience (the Helia Singh failure):');
+  {
+    const TRUNCATED = `${'Helia Singh · She/Her · Perth, Australia. '.repeat(140)}`.slice(0, 6000);
+    check('reproduces the failure: truncated pageText alone finds nothing', () => {
+      const line = leadClockLine({ name: 'Helia', location: 'Australia', pageText: TRUNCATED });
+      assert.ok(/nothing usable/.test(line), line);
+    });
+    check('experienceText rescues it', () => {
+      const line = leadClockLine({ name: 'Helia', location: 'Australia', pageText: TRUNCATED, experienceText: HELIA_PAGE });
+      assert.ok(/Australia\/Perth/.test(line), line);
+    });
+    check('and it goes down the USE branch, asking nobody', () => {
+      const line = leadClockLine({ name: 'Helia', location: 'Australia', pageText: TRUNCATED, experienceText: HELIA_PAGE });
+      assert.ok(/USE that as their clock/.test(line) && !/Ask GUY/.test(line), line);
+    });
+    check('an older extension sending no experienceText still uses pageText', () => {
+      const line = leadClockLine({ name: 'Helia', location: 'Australia', pageText: HELIA_PAGE });
+      assert.ok(/Australia\/Perth/.test(line), line);
+    });
+    check('empty experienceText falls back rather than blanking the read', () => {
+      const line = leadClockLine({ name: 'Helia', location: 'Australia', pageText: HELIA_PAGE, experienceText: '' });
+      assert.ok(/Australia\/Perth/.test(line), line);
+    });
+  }
+
   console.log(failures ? `\n❌ ${failures} test(s) failed` : '\n✅ all clock-line tests passed');
   process.exit(failures ? 1 : 0);
 })().catch((e) => { console.error('FATAL', e); process.exit(1); });

@@ -359,6 +359,7 @@
       // recentPosts used to be dropped right here — the hidden-tab scrape read them and this return
       // threw them away, so thin-path drafts never saw a post even when the read worked.
       return { headline: p.headline || '', about: p.about || '', location: p.location || '', pageText: p.pageText || '',
+        experienceText: p.experienceText || '',
         recentPosts: Array.isArray(p.recentPosts) ? p.recentPosts : [] };
     } catch (e) {
       console.log('[Wingguy] thin-profile tab read failed:', e.message);
@@ -1037,6 +1038,31 @@
     return pageText;
   }
 
+  // The Experience section on its own, because pageText never reaches it.
+  //
+  // pageText is the whole profile capped at 6000 chars from the TOP, and the top card, About and the
+  // activity feed use that up long before Experience. Measured on prod 2026-09-17: every profile
+  // logged came back at exactly 6000 chars with no "Experience" heading in it at all — so the
+  // lead's city, which LinkedIn states plainly under their current role, could never be read. The
+  // server had a working parser and an empty haystack.
+  //
+  // Sent as its own field and used ONLY by that server-side parser — it is not added to the profile
+  // block, so it costs nothing in the prompt. Raising the 6000 cap instead would have paid for the
+  // whole page in tokens to reach one line of it, and would still break on a longer profile.
+  function readExperienceTextNow() {
+    const mainEl = document.querySelector('main') || document.body;
+    let full = (mainEl.innerText || '').replace(/\n{3,}/g, '\n\n').replace(/[ \t]+/g, ' ').trim();
+    if (full.length < 500) {
+      const deep = deepInnerText(document.body);
+      if (deep.length > full.length) full = deep;
+    }
+    const heading = /^experience$/im.exec(full);
+    if (!heading) return '';
+    // From the heading, far enough to cover the current role plus a few below it. The server anchors
+    // on the "… - Present" date range, which is not always the first entry listed.
+    return capText(full.slice(heading.index), 3000);
+  }
+
   async function scrapeProfile() {
     // If the user is acting inside a message thread — including a floating conversation bubble open OVER
     // someone else's /in/ profile — the person meant is the one in the THREAD, not the profile behind it.
@@ -1083,6 +1109,12 @@
     // RAW FALLBACK: the whole profile's visible text. Robust to LinkedIn's class churn — when the
     // structured selectors miss, the model still gets real content to hook on (like AI Blaze does).
     const pageText = readPageTextNow();
+    // Profile pages only: in a thread the Experience on screen belongs to whoever is behind the
+    // bubble, not the person being written to.
+    const experienceText = inThread ? '' : readExperienceTextNow();
+    if (!inThread) {
+      console.log('[Wingguy] experience read:', experienceText ? `${experienceText.length} chars` : 'NONE (no Experience heading found on the page)');
+    }
 
     // Activity read keeps its section handle so the self-check below grades the item read inside
     // the real container — and so the console line can carry a shape sample when the read is blind
@@ -1103,6 +1135,7 @@
       about: readAbout(),
       recentPosts,
       pageText,
+      experienceText,
       nameSource,
       // Which surface this was read from. The gap notice needs it: in a thread the profile-only
       // fields are deliberately blanked below (they belong to the person behind the bubble, not the

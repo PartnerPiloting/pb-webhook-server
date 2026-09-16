@@ -389,8 +389,16 @@ function isHandshakeOnly({ conversation, coachName, leadName, group }) {
 // Only fires when the job location resolves to a timezone the record's own location could not, so a
 // second vague string ("Australia" again) stays out of the way. pageText is only present on /wg
 // extension turns; from the connector there is nothing to read and the old ask stands.
+// Where the Experience text comes from. experienceText is the section on its own, added to the
+// extension 2026-09-17 after prod logging showed pageText hitting its 6000-char cap on EVERY profile
+// without once reaching the Experience heading — the parser was fine, the haystack was empty.
+// pageText stays as the fallback so an extension that hasn't updated yet behaves exactly as before.
+function roleText(profile) {
+  return (profile && (profile.experienceText || profile.pageText)) || '';
+}
+
 function jobLocationOffer(profile) {
-  const found = currentRoleLocation(profile && profile.pageText);
+  const found = currentRoleLocation(roleText(profile));
   if (!found) return '';
   const resolved = resolveLeadTimezone(found.location);
   if (!resolved.detected || !resolved.timezone) return '';
@@ -426,7 +434,7 @@ function leadClockLine(profile) {
       ? `the record says "${rec}", which is AMBIGUOUS (${recResolved.candidates.map((c) => `${c.place} (${c.timezone})`).join(' or ')})`
       : `the record says "${rec}", which pins no timezone`)
     : 'there is NO location on the record';
-  const found = currentRoleLocation(profile && profile.pageText);
+  const found = currentRoleLocation(roleText(profile));
   const roleTz = found ? resolveLeadTimezone(found.location) : null;
   if (!found || !roleTz || !roleTz.detected) {
     return `LEAD LOCATION FOR THE CLOCK: ${why}, and their CURRENT ROLE on the page gives nothing usable either.`
@@ -477,13 +485,15 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
   const clock = (() => {
     const line = leadClockLine(profile);
     const pt = String((profile && profile.pageText) || '');
-    const found = currentRoleLocation(pt);
+    const ex = roleText(profile);
+    const found = currentRoleLocation(ex);
     console.log('[Wingguy clock]',
       `lead="${(profile && profile.name) || '?'}"`,
       `record="${(profile && profile.location) || ''}"`,
       `pageText=${pt.length}ch`,
-      `experienceHeading=${/^experience$/im.test(pt) ? 'yes' : 'NO'}`,
-      `presentRole=${/\bpresent\b/i.test(pt) ? 'yes' : 'NO'}`,
+      `experienceText=${String((profile && profile.experienceText) || '').length}ch`,
+      `experienceHeading=${/^experience$/im.test(ex) ? 'yes' : 'NO'}`,
+      `presentRole=${/\bpresent\b/i.test(ex) ? 'yes' : 'NO'}`,
       `roleLocation=${found ? JSON.stringify(found.location) : 'none'}`,
       `branch=${/ON FILE/.test(line) ? 'record' : /USE that as their clock/.test(line) ? 'role' : 'ask-guy'}`);
     return { line };
