@@ -51,9 +51,10 @@ check('the links sit on the right steps and nowhere else', () => {
 });
 
 check('say / worked when / watch / proves parse where present', () => {
-  const remote = steps.find((s) => /Remote access/.test(s.title));
-  assert.ok(remote.say.startsWith("I'll drive"));
-  assert.ok(remote.check.includes('move their mouse'));
+  const remote = steps.find((s) => /^runs one small file/.test(s.who));
+  assert.ok(remote.why.length > 20, 'every session step opens with a plain "why" line');
+  assert.ok(remote.check.includes('mouse'));
+  assert.ok(remote.who.startsWith('runs'), 'who lines start with the client\'s action');
   const ext = steps.find((s) => s.link === 'installer');
   assert.deepStrictEqual(ext.proves, [9, 10]);
   assert.ok(ext.watch.includes('Fiddliest'));
@@ -111,7 +112,7 @@ check('steps the record proves DONE arrive ticked; steps that prove nothing, or 
   const ticks = rs.initialTicks(data);
   const record = steps.find((s) => s.proves.length === 1 && s.proves[0] === 0);
   const calendar = steps.find((s) => s.link === 'unipile');
-  const remote = steps.find((s) => /Remote access/.test(s.title));
+  const remote = steps.find((s) => /^runs one small file/.test(s.who));
   assert.strictEqual(ticks[String(record.n)], true, 'record step (preflight 0 = done) ticked');
   assert.strictEqual(ticks[String(calendar.n)], undefined, 'calendar step (preflight 2 = owed) not ticked');
   assert.strictEqual(ticks[String(remote.n)], undefined, 'remote access proves nothing - never pre-ticked');
