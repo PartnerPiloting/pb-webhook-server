@@ -36,7 +36,11 @@ function getTimezoneFromLocation(location) {
     loc.includes('wollongong') ||
     loc.includes('newcastle') ||
     loc.includes('central coast') ||
-    loc.includes('coffs harbour')
+    loc.includes('coffs harbour') ||
+    // "Greater Albury-Wodonga Area" - the one real place the 2026-09-17 sweep of 8,000 leads
+    // found the resolver did not know. Albury is NSW, Wodonga is VIC; same clock either way.
+    loc.includes('albury') ||
+    loc.includes('wodonga')
   ) {
     return 'Australia/Sydney';
   }

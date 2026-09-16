@@ -23,6 +23,7 @@ const wingguyCalendar = require('./wingguyCalendar');
 const leadBookingLink = require('./wingguyLeadBookingLink');
 const { resolveLeadTimezone } = require('./leadLocationResolver');
 const { currentRoleLocation } = require('./leadJobLocation');
+const { recordRoleLocation } = require('./leadRecordLocation');
 const wingguyLeads = require('./wingguyLeads');
 const wingguyRules = require('./wingguyRulesMcp');
 
@@ -398,6 +399,15 @@ function roleText(profile) {
 }
 
 function jobLocationOffer(profile) {
+  // Record first (see leadClockLine STEP TWO), page second - the same order the clock line uses,
+  // so the booking-tool error path never contradicts the per-turn context.
+  const rec = String((profile && profile.location) || '').trim();
+  const fromRecord = recordRoleLocation(profile && profile.rawProfileData, rec);
+  if (fromRecord) {
+    const where = fromRecord.source === 'current' ? `their current role at ${fromRecord.org}` : `their role at ${fromRecord.org}, which ended ${fromRecord.endYear} (an inference - say so)`;
+    return ` BEFORE asking, note the JOB HISTORY on their record gives "${fromRecord.location}" → ${fromRecord.timezone} (${where}).`
+      + ` Call again with leadTimezoneOverride="${fromRecord.timezone}", tell Guy the city came from the job history on the record since its Location only says "${rec || '(nothing)'}", and ask him to save it to the record so it sticks - do not write it there yourself.`;
+  }
   const found = currentRoleLocation(roleText(profile));
   if (!found) return '';
   const resolved = resolveLeadTimezone(found.location);
@@ -434,10 +444,28 @@ function leadClockLine(profile) {
       ? `the record says "${rec}", which is AMBIGUOUS (${recResolved.candidates.map((c) => `${c.place} (${c.timezone})`).join(' or ')})`
       : `the record says "${rec}", which pins no timezone`)
     : 'there is NO location on the record';
+  // STEP TWO - the job history already on the record (Guy, 2026-09-17). Linked Helper writes
+  // per-role locations into {Raw Profile Data} on import, and in a 60-lead sample of the 786
+  // "Australia" leads, 97% had a usable city here. Read BEFORE the page: it is on the server, it
+  // is deterministic, and the page scrape failed four ways in one day. A 'past' hit is an
+  // inference and is said to be one.
+  const fromRecord = recordRoleLocation(profile && profile.rawProfileData, rec);
+  if (fromRecord) {
+    const where = fromRecord.source === 'current'
+      ? `their CURRENT role at ${fromRecord.org}`
+      : `their role at ${fromRecord.org}, which ended ${fromRecord.endYear}`;
+    const caveat = fromRecord.source === 'past'
+      ? ` This is an INFERENCE from a past role - a person can move. Say so to Guy in one clause ("worked there until ${fromRecord.endYear}") so he can catch it if it is stale.`
+      : '';
+    return `LEAD LOCATION FOR THE CLOCK: ${why} — BUT their JOB HISTORY on the record gives "${fromRecord.location}" → ${fromRecord.timezone} (${where}).`
+      + ` USE that as their clock: pass leadTimezoneOverride="${fromRecord.timezone}" to propose_times / check_time.${caveat}`
+      + ` Do NOT ask the lead which city they are in, and do NOT ask Guy cold — the answer is already on their record.`
+      + ` In your CHAT REPLY to Guy (never in the draft) say you took the city from the job history on their record because the record's Location ${rec ? `only says "${rec}"` : 'is empty'}, and ask him to put it on their record in the Portal so it sticks — do NOT write it there yourself.`;
+  }
   const found = currentRoleLocation(roleText(profile));
   const roleTz = found ? resolveLeadTimezone(found.location) : null;
   if (!found || !roleTz || !roleTz.detected) {
-    return `LEAD LOCATION FOR THE CLOCK: ${why}, and their CURRENT ROLE on the page gives nothing usable either.`
+    return `LEAD LOCATION FOR THE CLOCK: ${why}, their job history on the record has no usable city, and their CURRENT ROLE on the page gives nothing either.`
       + ` Ask GUY where they are based (for an introduction, suggest asking whoever made it) — never guess a clock, and write no lead-side time until you know.`;
   }
   const role = found.title ? ` (${found.title})` : '';
@@ -498,7 +526,9 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
       `experienceHeading=${/^experience$/im.test(ex) ? 'yes' : 'NO'}`,
       `presentRole=${/\bpresent\b/i.test(ex) ? 'yes' : 'NO'}`,
       `roleLocation=${found ? JSON.stringify(found.location) : 'none'}`,
-      `branch=${/ON FILE/.test(line) ? 'record' : /USE that as their clock/.test(line) ? 'role' : 'ask-guy'}`);
+      // The record's job history, read server-side - the primary fallback from 2026-09-17.
+      (() => { const r = recordRoleLocation(profile && profile.rawProfileData, (profile && profile.location) || ''); return `recordRole=${r ? `${JSON.stringify(r.location)}/${r.source}${r.endYear ? '@' + r.endYear : ''}` : (profile && profile.rawProfileData ? 'none' : 'no-raw')}`; })(),
+      `branch=${/ON FILE/.test(line) ? 'record' : /JOB HISTORY on the record/.test(line) ? 'record-history' : /USE that as their clock/.test(line) ? 'page' : 'ask-guy'}`);
     return { line };
   })();
 

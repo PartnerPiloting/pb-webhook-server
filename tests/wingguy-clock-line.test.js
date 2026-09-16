@@ -72,7 +72,7 @@ const HELIA_PAGE = [
   {
     const line = leadClockLine({ name: 'Nobody', location: '', pageText: 'Experience\nSome Title\nA Company\n' });
     check('says the record has nothing', () => assert.ok(/NO location on the record/.test(line), line));
-    check('says the page has nothing either', () => assert.ok(/nothing usable/.test(line), line));
+    check('says the page has nothing either', () => assert.ok(/no usable city|nothing usable/.test(line), line));
     check('sends the question to GUY', () => assert.ok(/Ask GUY/.test(line), line));
     check('forbids guessing a clock', () => assert.ok(/never guess a clock/i.test(line), line));
   }
@@ -107,7 +107,7 @@ const HELIA_PAGE = [
     const TRUNCATED = `${'Helia Singh · She/Her · Perth, Australia. '.repeat(140)}`.slice(0, 6000);
     check('reproduces the failure: truncated pageText alone finds nothing', () => {
       const line = leadClockLine({ name: 'Helia', location: 'Australia', pageText: TRUNCATED });
-      assert.ok(/nothing usable/.test(line), line);
+      assert.ok(/no usable city|nothing usable/.test(line), line);
     });
     check('experienceText rescues it', () => {
       const line = leadClockLine({ name: 'Helia', location: 'Australia', pageText: TRUNCATED, experienceText: HELIA_PAGE });
@@ -125,6 +125,39 @@ const HELIA_PAGE = [
       const line = leadClockLine({ name: 'Helia', location: 'Australia', pageText: HELIA_PAGE, experienceText: '' });
       assert.ok(/Australia\/Perth/.test(line), line);
     });
+  }
+
+  // ── 8. STEP TWO: the job history on the record, read before the page (Guy, 2026-09-17) ─────────
+  // Helia's real {Raw Profile Data} shape: top card "Australia", current role with no city, a Perth
+  // role that ended 2023.02. This is the branch that makes the page scrape a last resort.
+  console.log('\nrecord job history beats the page (the proper fix):');
+  {
+    const HELIA_RAW = JSON.stringify({
+      organization_1: 'Wealthy Nations', organization_end_1: null, organization_location_1: null,
+      organization_2: 'Assurance Finance and Business Solutions Pty', organization_end_2: '2023.02', organization_location_2: 'Perth, Western Australia, Australia',
+      organization_3: 'iSelect', organization_end_3: '2010.12', organization_location_3: 'Melbourne, Victoria, Australia',
+    });
+    const line = leadClockLine({ name: 'Helia', location: 'Australia', rawProfileData: HELIA_RAW });
+    check('lands on Perth from the record, with NO page text at all', () => assert.ok(/Australia\/Perth/.test(line), line));
+    check('names the record as the source', () => assert.ok(/JOB HISTORY on the record/.test(line), line));
+    check('tells the model to USE it', () => assert.ok(/leadTimezoneOverride="Australia\/Perth"/.test(line), line));
+    check('a past-role hit is flagged as an inference with the end year', () => assert.ok(/INFERENCE/.test(line) && /until 2023/.test(line), line));
+    check('names the employer so Guy can be told where it came from', () => assert.ok(/Assurance Finance/.test(line), line));
+    check('forbids asking the lead', () => assert.ok(/Do NOT ask the lead/.test(line), line));
+
+    const CURRENT_RAW = JSON.stringify({ organization_1: 'Keystart', organization_end_1: null, organization_location_1: 'Greater Perth Area' });
+    const cur = leadClockLine({ name: 'Helia', location: 'Australia', rawProfileData: CURRENT_RAW });
+    check('a current-role hit carries no inference caveat', () => assert.ok(/Australia\/Perth/.test(cur) && /CURRENT role at Keystart/.test(cur) && !/INFERENCE/.test(cur), cur));
+
+    const FOREIGN_RAW = JSON.stringify({ organization_1: 'A', organization_end_1: null, organization_location_1: 'Tokyo, Japan' });
+    const far = leadClockLine({ name: 'X', location: 'Australia', rawProfileData: FOREIGN_RAW, pageText: 'Experience\nSome Title\nA Company\n' });
+    check('a foreign-only history under an "Australia" top card falls through, never a Tokyo clock', () => assert.ok(!/Tokyo/.test(far) && /Ask GUY/.test(far), far));
+
+    const both = leadClockLine({ name: 'Helia', location: 'Australia', rawProfileData: HELIA_RAW, pageText: HELIA_PAGE });
+    check('record wins over the page when both are present', () => assert.ok(/JOB HISTORY on the record/.test(both), both));
+
+    const good = leadClockLine({ name: 'Tammie', location: 'Sydney, New South Wales', rawProfileData: HELIA_RAW });
+    check('a record Location that already resolves is untouched by the job history', () => assert.ok(/ON FILE/.test(good) && /Australia\/Sydney/.test(good) && !/Perth/.test(good), good));
   }
 
   console.log(failures ? `\n❌ ${failures} test(s) failed` : '\n✅ all clock-line tests passed');

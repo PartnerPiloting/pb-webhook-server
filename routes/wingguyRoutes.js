@@ -352,6 +352,10 @@ function portalFieldsFromRecord(f = {}) {
     status: f['Status'],
     followUpDate: f['Follow-Up Date'],
     ceaseFup: f['Cease FUP'],
+    // Linked Helper's import payload, with per-role locations nobody read until 2026-09-17. Used
+    // server-side only, by leadRecordLocation - it is never rendered into the profile block, so its
+    // ~15KB never reaches the model.
+    rawProfileData: f['Raw Profile Data'],
   };
 }
 
