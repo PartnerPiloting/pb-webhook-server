@@ -470,12 +470,31 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
   // System prefix normally comes from the rules-source seam (routes pass it): config mode =
   // [voice, agent instructions] exactly as before; store mode = [rendered rulebook, agent
   // instructions]. The inline default keeps direct callers (the cloud test) working unchanged.
+  // ONE diagnostic line per turn for the clock decision. This area has failed silently twice now -
+  // first the read wired to a trigger that never fired (2026-09-17), then Wingguy still asking Helia
+  // Singh for her city with the fix live - and the panel gives no way to see WHICH branch ran. Facts
+  // only: lengths and yes/no. The page text itself is never logged.
+  const clock = (() => {
+    const line = leadClockLine(profile);
+    const pt = String((profile && profile.pageText) || '');
+    const found = currentRoleLocation(pt);
+    console.log('[Wingguy clock]',
+      `lead="${(profile && profile.name) || '?'}"`,
+      `record="${(profile && profile.location) || ''}"`,
+      `pageText=${pt.length}ch`,
+      `experienceHeading=${/^experience$/im.test(pt) ? 'yes' : 'NO'}`,
+      `presentRole=${/\bpresent\b/i.test(pt) ? 'yes' : 'NO'}`,
+      `roleLocation=${found ? JSON.stringify(found.location) : 'none'}`,
+      `branch=${/ON FILE/.test(line) ? 'record' : /USE that as their clock/.test(line) ? 'role' : 'ask-guy'}`);
+    return { line };
+  })();
+
   const system = [
     ...(systemPrefixBlocks || [
       { type: 'text', text: WINGGUY_VOICE },
       { type: 'text', text: WINGGUY_AGENT_INSTRUCTIONS, cache_control: { type: 'ephemeral', ttl: '1h' } },
     ]),
-    { type: 'text', text: buildContext({ profileBlock, convoBlock, leadEmail, coachName: coach.clientName, prefs, campaignTemplate, voice, onFile: !!leadRecordId, window: wingguyCalendar.offerWindowInfo(coach.timezone || coach.timeZone || 'Australia/Brisbane'), profileThin, clockLine: leadClockLine(profile) }) },
+    { type: 'text', text: buildContext({ profileBlock, convoBlock, leadEmail, coachName: coach.clientName, prefs, campaignTemplate, voice, onFile: !!leadRecordId, window: wingguyCalendar.offerWindowInfo(coach.timezone || coach.timeZone || 'Australia/Brisbane'), profileThin, clockLine: clock.line }) },
   ];
 
   const convo = messages.map((m) => ({ role: m.role, content: m.content }));
