@@ -23,10 +23,25 @@ tick off"* - and NOT a feature on every client's portal card. Two modes, one gen
   ~40-minute sitting (Alex Solti was the first). Steps = `docs/concierge-run-sheet.md`.
 - **Standard** (`--standard`) - the week-by-week journey. Steps = the checklist's THE OVERVIEW.
 
+**Before making it, do everything that can be done from the chair (Guy, 2026-09-16: "preceded
+with all the values we possibly can"):**
+
+1. **Read the client's reply to the pre-session email** (Gmail search to/from them, the latest
+   thread). Take off it: which email address Wingguy works from, any call recorder, own machine or
+   company-managed, Windows or Mac, the day they picked, anything else they volunteered.
+2. **Set the record from those answers, no asking** (the record doctrine below): Client Email
+   Address if it differs, Timezone, Managed Claude Key when that's the plan. Show the before→after.
+3. **Pick the approval link's door from the address** - the MX lookup says Google, Microsoft or
+   neither (Zoho / plain hosting = a different lane; say so, don't mint blindly).
+4. **Put the answers on the sheet** with `--fact` (one per answer; a key with no value shows as
+   "not answered - ask on the call" so nothing silently drops).
+
 How to make it (from Guy's machine - the dev checkout has the `.env`; it needs no server env):
 
 ```
-node scripts/run-sheet.js <Client-ID> --mint --out <scratchpad>/run-sheet-<Client-ID>.html
+node scripts/run-sheet.js <Client-ID> --mint --out <scratchpad>/run-sheet-<Client-ID>.html \
+  --fact "Wingguy works from=alex@futurefunding.com.au (Microsoft)" --fact "Recorder=none" \
+  --fact "Machine=Windows, his own" --fact "Session=Tue 23 Sep 10am"
 ```
 
 `--mint` asks Unipile for the calendar-and-mail approval link with our callback in it, so the

@@ -151,6 +151,9 @@ function renderBody(data,state){
   out.push('<div><p class="lede" style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)">'+esc(data.mode==='concierge'?'Concierge run sheet':'Onboarding run sheet')+'</p><h1>'+esc(data.client.name)+'</h1><p class="lede">'+esc(data.mode==='concierge'?'One remote sitting, you driving. '+f+' is there for the first five minutes and the last five. Tick each step as you go - the ticks save into this page.':'The standard journey, one step per session or so. Tick each step as it lands - the ticks save into this page.')+'</p><p class="lede" style="font-size:13px">Made '+esc(data.generatedAt)+' from '+esc(f)+'&rsquo;s record.</p></div>');
   var st=data.setup||{};
   out.push('<div class="facts"><div><div class="k">Timezone</div><div class="'+(st.timezone?'':'bad')+'">'+esc(st.timezone||'BLANK - fix first')+'</div></div><div><div class="k">Drafting key</div><div>'+esc(st.managedClaudeKey?'Managed plan':st.hasAnthropicKey?'Own key on record':'Own key, not yet on record')+'</div></div><div><div class="k">Login email</div><div>'+esc(st.loginEmail||'-')+'</div></div><div><div class="k">Calendar and mail</div><div>'+esc(st.unipileConnected?'connected ('+(st.calendarProvider||'unipile')+')':'not connected yet')+'</div></div></div>');
+  if(data.facts&&data.facts.length){
+    out.push('<div class="facts" style="margin-top:-6px"><div style="grid-column:1/-1" class="k">From '+esc(f)+'&rsquo;s reply</div>'+data.facts.map(function(x){return '<div><div class="k">'+esc(x.k)+'</div><div class="'+(x.v?'':'bad')+'">'+esc(x.v||'not answered - ask on the call')+'</div></div>';}).join('')+'</div>');
+  }
   var phase='';
   data.steps.forEach(function(step){
     if(step.phase!==phase){phase=step.phase;out.push('<h2 class="phase">'+esc(phase)+'</h2>');}
@@ -271,7 +274,7 @@ function renderRunSheet(data, state = { ticks: {} }) {
 }
 
 /** Shape the data object from a board detail payload + the parsed steps. */
-function buildData({ mode, detail, steps, docText, minted, now = new Date() }) {
+function buildData({ mode, detail, steps, docText, minted, facts = [], now = new Date() }) {
   const name = detail.clientName || detail.clientId;
   const verdicts = {};
   for (const s of (detail.preflight && detail.preflight.steps) || []) verdicts[s.n] = { verdict: s.verdict, evidence: s.evidence };
@@ -280,6 +283,10 @@ function buildData({ mode, detail, steps, docText, minted, now = new Date() }) {
     client: { id: detail.clientId, name, firstName: String(name).split(' ')[0] },
     links: detail.links || {},
     setup: detail.setup || {},
+    // What the client said in their reply to the pre-session email (address, recorder, machine,
+    // the day) - so on the day nothing has to be hunted for in the inbox. [{k, v}]; a blank v
+    // renders as "not answered - ask on the call".
+    facts: (facts || []).map((x) => ({ k: String(x.k || '').trim(), v: String(x.v == null ? '' : x.v).trim() })).filter((x) => x.k),
     minted: minted ? { url: minted.url, mintedAt: now.toLocaleString('en-AU', { hour: 'numeric', minute: '2-digit', day: 'numeric', month: 'short' }) } : null,
     verdicts,
     steps,
