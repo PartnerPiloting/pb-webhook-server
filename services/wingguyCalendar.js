@@ -14,7 +14,7 @@
 const { DateTime } = require('luxon');
 const { resolveLeadTimezone } = require('./leadLocationResolver');
 const { getBookingPrefs } = require('../config/wingguyBookingPrefs');
-const { createCalendarEvent, deleteCalendarEvent, getMeetingsInWindow } = require('./calendarProvider');
+const { createCalendarEvent, deleteCalendarEvent, getMeetingsInWindow, googleAllDayNormalise } = require('./calendarProvider');
 
 const DEFAULT_TZ = 'Australia/Brisbane';
 const DAYS_TO_SCAN = 49;     // ~7 weeks ahead — the visibility CEILING (free/busy fetch window). Widened from 21
@@ -284,55 +284,108 @@ function wallClockToISO(date, time, timezone) {
   return null;
 }
 
+// The coach's real events across a set of coach-timezone dates, in ONE read per source. Split out of
+// clashesForWindow so the single-time check (check_time, book_meeting) and the multi-slot backstop
+// (propose_times) read the calendar exactly the same way — the lesson from inLunch: when only one
+// caller applies a rule, the other one is the hole. `dates` = ['yyyy-MM-dd'] in the coach's tz.
+async function busyEventsForDates(info, dates) {
+  const yourTimezone = info.timezone;
+  const days = [...new Set(dates)].sort();
+  if (!days.length) return [];
+  const spanStart = DateTime.fromISO(`${days[0]}T00:00`, { zone: yourTimezone }).toJSDate();
+  const spanEnd = DateTime.fromISO(`${days[days.length - 1]}T23:59`, { zone: yourTimezone }).toJSDate();
+
+  if (usesProviderSeam(info)) {
+    const r = await getMeetingsInWindow(coachForCalendar(info), spanStart, spanEnd);
+    if (r.error) throw new Error(`${providerForInfo(info)} clash read failed: ${r.error}`);
+    // Provider events returned are real (busy) meetings — no transparency flag, treat all as busy.
+    return (r.events || []).map((e) => ({ ...e, isFree: false }));
+  }
+
+  // Primary calendar via getBatchAvailability (transparency-aware — a "Free"-marked event is not a
+  // clash, and an all-day event that is NOT marked free blocks the day, which is what caught Guy's
+  // "Moving in to our New Home" on 18 Sep 2026).
+  const calendarService = require('../config/calendarServiceAccount.js');
+  const { days: read, error } = await calendarService.getBatchAvailability(
+    info.calendarEmail, days, DAY_START_HOUR, DAY_END_HOUR, yourTimezone
+  );
+  if (error) throw new Error(error);
+  // getBatchAvailability hands an all-day event through as a bare date ("2026-09-18"), which
+  // new Date() reads as UTC midnight — 10am in Brisbane. Left alone, Guy's all-day "Moving in to our
+  // New Home" would block 10am Fri to 10am Sat: it catches a 2pm Friday by luck, misses a 9am
+  // Friday, and falsely blocks Saturday morning. googleAllDayNormalise pins the span to the coach's
+  // own midnights, which is what the whole-day block is supposed to mean.
+  let events = (read || [])
+    .flatMap((d) => (d && d.events) || [])
+    .map((e) => googleAllDayNormalise(e, yourTimezone));
+  // Extra read calendars (Calendar Read IDs) clash too — that's the whole point of multi-read.
+  // Read via the seam (all-day events already dropped there; anything timed counts as busy).
+  const readSet = googleReadSet(info);
+  if (Array.isArray(readSet) && readSet.length > 1) {
+    const extras = readSet.filter((id) => id !== info.calendarEmail);
+    const r = await getMeetingsInWindow(
+      { calendarProvider: 'google', googleCalendarEmail: extras[0], calendarReadIds: extras.join(', '), timezone: yourTimezone },
+      spanStart, spanEnd
+    );
+    if (r.error) throw new Error(`extra-calendar clash read failed: ${r.error}`);
+    events = events.concat((r.events || []).map((e) => ({ ...e, isFree: false })));
+  }
+  return events;
+}
+
+// Pure: which of `events` overlap [start, start+len). Returns [{ summary, display }] — empty means
+// the window is free. `display` is in the coach's timezone.
+function overlappingEvents(events, startISO, len, yourTimezone) {
+  const start = new Date(startISO).getTime();
+  const end = start + len * 60000;
+  return (events || [])
+    .filter((e) => !e.isFree && e.start && e.end)
+    .filter((e) => {
+      const es = new Date(e.start).getTime();
+      const ee = new Date(e.end).getTime();
+      return Number.isFinite(es) && Number.isFinite(ee) && es < end && ee > start;
+    })
+    .map((e) => ({ summary: e.summary || '(busy)', display: formatInTz(e.start, yourTimezone) }));
+}
+
 // Busy meetings on the candidate's day that overlap [start, end). Returns [{ summary, display }] —
 // empty means the window is free. `display` is in the coach's timezone. Provider-aware: a Nylas-only
 // client reads via their grant, Guy via the Google service account (proven path).
 async function clashesForWindow(info, startISO, len) {
   const yourTimezone = info.timezone;
-  const start = new Date(startISO);
-  const end = new Date(start.getTime() + len * 60000);
-  const dateInCoachTz = DateTime.fromJSDate(start).setZone(yourTimezone).toFormat('yyyy-MM-dd');
+  const dateInCoachTz = DateTime.fromJSDate(new Date(startISO)).setZone(yourTimezone).toFormat('yyyy-MM-dd');
+  const events = await busyEventsForDates(info, [dateInCoachTz]);
+  return overlappingEvents(events, startISO, len, yourTimezone);
+}
 
-  let events;
-  if (usesProviderSeam(info)) {
-    const dayStart = DateTime.fromISO(`${dateInCoachTz}T00:00`, { zone: yourTimezone }).toJSDate();
-    const dayEnd = DateTime.fromISO(`${dateInCoachTz}T23:59`, { zone: yourTimezone }).toJSDate();
-    const r = await getMeetingsInWindow(coachForCalendar(info), dayStart, dayEnd);
-    if (r.error) throw new Error(`${providerForInfo(info)} clash read failed: ${r.error}`);
-    // Provider events returned are real (busy) meetings — no transparency flag, treat all as busy.
-    events = (r.events || []).map((e) => ({ ...e, isFree: false }));
-  } else {
-    // Primary calendar via getBatchAvailability (transparency-aware — a "Free"-marked event is not
-    // a clash), exactly as before.
-    const calendarService = require('../config/calendarServiceAccount.js');
-    const { days, error } = await calendarService.getBatchAvailability(
-      info.calendarEmail, [dateInCoachTz], DAY_START_HOUR, DAY_END_HOUR, yourTimezone
-    );
-    if (error) throw new Error(error);
-    events = (days && days[0] && days[0].events) || [];
-    // Extra read calendars (Calendar Read IDs) clash too — that's the whole point of multi-read.
-    // Read via the seam (all-day events already dropped there; anything timed counts as busy).
-    const readSet = googleReadSet(info);
-    if (Array.isArray(readSet) && readSet.length > 1) {
-      const extras = readSet.filter((id) => id !== info.calendarEmail);
-      const r = await getMeetingsInWindow(
-        { calendarProvider: 'google', googleCalendarEmail: extras[0], calendarReadIds: extras.join(', '), timezone: yourTimezone },
-        DateTime.fromISO(`${dateInCoachTz}T00:00`, { zone: yourTimezone }).toJSDate(),
-        DateTime.fromISO(`${dateInCoachTz}T23:59`, { zone: yourTimezone }).toJSDate()
-      );
-      if (r.error) throw new Error(`extra-calendar clash read failed: ${r.error}`);
-      events = events.concat((r.events || []).map((e) => ({ ...e, isFree: false })));
-    }
+/**
+ * THE OFFER BACKSTOP (Guy, 2026-09-17 — the Tammie Lee message). propose_times filtered its slots on
+ * hours, lunch, weekends, notice and the past, but NEVER looked at the calendar. So an ISO the model
+ * invented rather than took from check_availability — Friday 2:00 pm, a weekday, inside hours, not
+ * lunch, enough notice — passed every filter and was formatted into the draft as an authoritative
+ * time list, on a day Guy had blocked out all day to move house. The lead had said "Friday PM suits
+ * me", the model agreed first and looked for times afterwards, and nothing downstream could catch it:
+ * the clash guard only fires at book_meeting, by which point the message has already been sent.
+ *
+ * Same lesson as the house dash and the stage-1 opener: a must-never-happen is a code check, not a
+ * request. One read for every candidate date, so a 4-slot list costs one calendar call.
+ *
+ * @returns {Promise<Map<string, Array<{summary,display}>>>} only the ISOs that clash appear as keys.
+ */
+async function clashingSlots(clientId, isos, durationMins) {
+  const list = (Array.isArray(isos) ? isos : []).filter((i) => !isNaN(Date.parse(i)));
+  const out = new Map();
+  if (!list.length) return out;
+  const info = await getCoachCalendarInfo(clientId);
+  const prefs = getBookingPrefs(clientId);
+  const len = Number(durationMins) > 0 ? Number(durationMins) : (prefs.meetingLengthMins || 30);
+  const tz = info.timezone;
+  const events = await busyEventsForDates(info, list.map((i) => dateStrInTz(i, tz)));
+  for (const iso of list) {
+    const clashes = overlappingEvents(events, iso, len, tz);
+    if (clashes.length) out.set(iso, clashes);
   }
-
-  return events
-    .filter((e) => !e.isFree && e.start && e.end)
-    .filter((e) => {
-      const es = new Date(e.start).getTime();
-      const ee = new Date(e.end).getTime();
-      return Number.isFinite(es) && Number.isFinite(ee) && es < end.getTime() && ee > start.getTime();
-    })
-    .map((e) => ({ summary: e.summary || '(busy)', display: formatInTz(e.start, yourTimezone) }));
+  return out;
 }
 
 // Verify a SPECIFIC proposed time (Guy's words → date/time/side). Code owns the timezone conversion
@@ -779,7 +832,7 @@ async function listEventsForCoach(clientId, { range, date, endDate } = {}) {
 }
 
 module.exports = {
-  getAvailabilityForCoach, createBookingEvent, checkProposedTime, getClashesForISO, buildDaysFromBusy, meetingPlatformLabel,
+  getAvailabilityForCoach, createBookingEvent, checkProposedTime, getClashesForISO, clashingSlots, overlappingEvents, buildDaysFromBusy, meetingPlatformLabel,
   deleteOfferHolds, isHoldForLead, isHoldSummary, holdTitle,
   // shared offer-time pipeline + booking guard (used by the panel agent AND the connector tools)
   filterAvailability, bookMeetingGuarded, fmtSlot, tzCity, clockGapMins, clockGapLabel, inLunch, hhmmToMin, minutesInTz, earliestOfferDate, dateStrInTz, isWeekendInTz, firstFarWeekDate, offerWindowInfo,

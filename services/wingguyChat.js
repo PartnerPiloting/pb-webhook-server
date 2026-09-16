@@ -82,7 +82,7 @@ const AGENT_TOOLS = [
   },
   {
     name: 'propose_times',
-    description: 'Use THIS (not propose_message) whenever you are offering the lead one or more meeting times. Pass intro + outro text in Guy\'s voice, plus slotTimes = the chosen slots\' "time" ISO values from check_availability (choose each slot by its "label", then pass that slot\'s "time"). The system SORTS them earliest-first, DROPS any outside Guy\'s booking hours or in his lunch hold, formats them in the lead\'s timezone, and assembles the final message — so you don\'t format or order the list yourself. It returns "offeredTimes": the exact date+time lines it wrote into the draft — when you tell Guy what you offered, QUOTE those, never restate the dates from memory (that is how the summary and the real draft drift apart). If it reports it dropped slots and too few remain, pick replacement slots and call again. If the lead\'s timezone differs from Guy\'s, note that in your intro/outro.',
+    description: 'Use THIS (not propose_message) whenever you are offering the lead one or more meeting times. Pass intro + outro text in Guy\'s voice, plus slotTimes = the chosen slots\' "time" ISO values from check_availability (choose each slot by its "label", then pass that slot\'s "time"). The system SORTS them earliest-first, DROPS any outside Guy\'s booking hours or in his lunch hold, formats them in the lead\'s timezone, and assembles the final message — so you don\'t format or order the list yourself. It returns "offeredTimes": the exact date+time lines it wrote into the draft — when you tell Guy what you offered, QUOTE those, never restate the dates from memory (that is how the summary and the real draft drift apart). If it reports it dropped slots and too few remain, pick replacement slots and call again. If the lead\'s timezone differs from Guy\'s, note that in your intro/outro. It also RE-READS GUY\'S CALENDAR and refuses the WHOLE list if he is not actually free at any of those times — so every slotTime must come from a check_availability result you can see, never a time you worked out yourself and never one just because the lead asked for that day. If it refuses, do NOT retry the same times or hand-pick around them: call check_availability again and offer what it actually returns, and if the lead\'s preferred day has nothing on it, say so plainly in your intro and offer the days Guy does have.',
     input_schema: {
       type: 'object',
       properties: {
@@ -407,6 +407,7 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
   const bookMeeting = deps.createBookingEvent || wingguyCalendar.createBookingEvent;
   const checkProposedTime = deps.checkProposedTime || wingguyCalendar.checkProposedTime;
   const getClashesForISO = deps.getClashesForISO || wingguyCalendar.getClashesForISO;
+  const clashingSlots = deps.clashingSlots || wingguyCalendar.clashingSlots;
   const updateLeadEmails = deps.updateLeadEmails || wingguyLeads.updateLeadEmails;
   const createLead = deps.createLead || wingguyLeads.createLead;
   const deleteOfferHolds = deps.deleteOfferHolds || wingguyCalendar.deleteOfferHolds;
@@ -540,6 +541,37 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
         if (cMin == null || cMin < eMin || cMin > lMin) { dropped.push({ iso, why: 'outside your booking hours' }); continue; }
         if (!input.includeLunch && inLunch(iso, tz, prefs, len)) { dropped.push({ iso, why: 'lunch hold' }); continue; }
         kept.push(iso);
+      }
+      // THE CALENDAR BACKSTOP (Guy, 2026-09-17 — Tammie Lee). Every filter above is arithmetic on the
+      // ISO itself: hours, lunch, weekend, notice, past. None of them opens the diary. So a time the
+      // model invented to match what the lead had asked for ("Friday PM suits me") sailed through and
+      // was rendered into the draft as a real offer, on a day Guy was blocked out all day. Slots are
+      // supposed to come from check_availability, which never returns a busy time — but "supposed to"
+      // is an instruction, and this is the surface where an instruction becomes a message Guy sends.
+      // Anything the calendar says is taken is dropped here with the clash named, so the model can
+      // see it picked a time that does not exist and choose again.
+      let clashMap = new Map();
+      try {
+        clashMap = await clashingSlots(coach.clientId, kept, len);
+      } catch (e) {
+        // A calendar read that FAILS must not silently become "no clashes" — that is the same hole
+        // wearing a different hat. Refuse the list and say why.
+        return { ok: false, error: `STOPPED — couldn't read your calendar to check those times are still free (${e.message}). No time list was built and the draft was NOT touched. Tell Guy the calendar read failed and try again; do not write times into a draft yourself.` };
+      }
+      // A clash is not the same kind of problem as a lunch hold, so it doesn't get the same
+      // treatment. Hours and lunch drop ONE slot from a list that was otherwise real. A clash means
+      // that slot was never on offer at all — the model either invented it or is working from a
+      // check_availability result that has gone stale — so quietly dropping it would send Guy a
+      // thinner list built on the same bad picking. The whole list goes back.
+      if (clashMap.size) {
+        const busy = [...clashMap.entries()]
+          .sort((a, b) => Date.parse(a[0]) - Date.parse(b[0]))
+          .map(([iso, c]) => `${fmtSlot(iso, tz)} — ${c.map((x) => `${x.summary} (${x.display})`).join('; ')}`);
+        return {
+          ok: false,
+          error: `STOPPED — Guy is NOT free at ${clashMap.size === 1 ? 'one of those times' : `${clashMap.size} of those times`}, so NO time list was built and the draft was NOT touched:\n${busy.map((b) => `- ${b}`).join('\n')}\nThese are his times, not the lead's. This happens when a slot didn't come from check_availability — never write a time into a draft because the lead suggested it or because it sounds free. Call check_availability NOW, pick slots by their "label" from what it actually returns, and call propose_times again. If the lead asked for a specific day and that day has nothing, say so plainly in the intro and offer the days he does have.`,
+          dropped,
+        };
       }
       const ordered = [...new Set(kept)].sort((a, b) => Date.parse(a) - Date.parse(b)); // earliest-first, deduped
       if (!ordered.length) {

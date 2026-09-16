@@ -66,7 +66,11 @@ function makeRun({ leadTimezone, location, detected = true, intro = 'A few times
       profile: { name: 'Marianne', location },
       messages: [{ role: 'user', content: 'draft a reply offering some times' }],
       leadEmail: 'marianne@example.com',
-      deps: { client: fakeClient, getAvailabilityForCoach: fakeAvail, createBookingEvent: async () => ({ ok: true }) },
+      // clashingSlots is propose_times' calendar backstop (2026-09-17). These tests are about which
+      // CLOCK the times render in, not whether the diary is free, so the calendar reads clear —
+      // without this stub the guard correctly refuses (there's no real calendar behind a fake coach)
+      // and no draft is produced for the marker assertions to read.
+      deps: { client: fakeClient, getAvailabilityForCoach: fakeAvail, createBookingEvent: async () => ({ ok: true }), clashingSlots: async () => new Map() },
     });
     return { res, proposeResult };
   })();

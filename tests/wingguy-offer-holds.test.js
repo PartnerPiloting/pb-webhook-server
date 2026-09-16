@@ -62,6 +62,9 @@ function firstToolResult(res) {
       deps: {
         client: fakeClientForTool('propose_times', { intro: 'Great, Sarah -', slotTimes: [PAST, TOMORROW, ELEVEN], outro: 'Let me know.' }),
         getAvailabilityForCoach: async () => ({ yourTimezone: 'Australia/Brisbane', leadTimezone: 'Australia/Brisbane', days: [] }),
+        // propose_times' calendar backstop (2026-09-17) — these tests are about the PAST/too-soon
+        // filters, not the diary, so the calendar reads clear.
+        clashingSlots: async () => new Map(),
       },
     });
     const result = firstToolResult(res);
@@ -83,6 +86,9 @@ function firstToolResult(res) {
         // eats the slot and the test goes red on Fridays.
         client: fakeClientForTool('propose_times', { intro: 'Great -', slotTimes: [PAST, TOMORROW], outro: 'Let me know.', includeSoon: true, includeWeekends: true }),
         getAvailabilityForCoach: async () => ({ yourTimezone: 'Australia/Brisbane', leadTimezone: 'Australia/Brisbane', days: [] }),
+        // propose_times' calendar backstop (2026-09-17) — these tests are about the PAST/too-soon
+        // filters, not the diary, so the calendar reads clear.
+        clashingSlots: async () => new Map(),
       },
     });
     const result = firstToolResult(res);

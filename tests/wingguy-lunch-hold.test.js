@@ -71,7 +71,9 @@ check('9:30 am is NOT lunch', () => assert.strictEqual(inLunch(NINE30, 'Australi
     profile: { name: 'Izack', location: 'Newcastle, New South Wales' },
     messages: [{ role: 'user', content: 'draft a reply offering some times' }],
     leadEmail: 'izack@example.com',
-    deps: { client: fakeClient, getAvailabilityForCoach: fakeAvail, createBookingEvent: async () => ({ ok: true }) },
+    // propose_times' calendar backstop (2026-09-17) — these tests are about the LUNCH hold, not the
+    // diary, so the calendar reads clear (there's no real calendar behind a fake coach).
+    deps: { client: fakeClient, getAvailabilityForCoach: fakeAvail, createBookingEvent: async () => ({ ok: true }), clashingSlots: async () => new Map() },
   });
 
   check('a draft was produced', () => assert.ok(res && res.draft, `no draft: ${JSON.stringify(res)}`));
