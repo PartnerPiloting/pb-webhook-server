@@ -84,12 +84,9 @@ const LEADS_FIELDS = [
 
 // Fields to ensure on the master Clients base's Clients table (per-client config).
 const MASTER_FIELDS = [
-  {
-    name: 'Concierge Onboarding',
-    type: 'checkbox',
-    description: 'Tick for a client Guy onboards HIMSELF over remote access in one sitting (the not-technical client - Alex Solti was the first, 2026-09-16) instead of the week-by-week sessions. Shows the "Concierge sheet" button on their My Clients card: the step-by-step run sheet with every link minted from the record. Unticked = the button is hidden; nothing else changes. Added 2026-09-16.',
-    options: { icon: 'check', color: 'blueBright' }
-  },
+  // 'Concierge Onboarding' (checkbox) was added 2026-09-16 for a portal button that was removed
+  // the same day - the run sheet (scripts/run-sheet.js) replaced it. The field still exists on
+  // the master table, unused; delete it by hand when convenient. Not re-created here.
   {
     name: 'LH Account Email',
     type: 'email',

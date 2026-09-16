@@ -302,11 +302,6 @@ const CoachedClients = () => {
           </div>
           {card.coachNotes && <p className="text-sm text-gray-500 italic">&ldquo;{card.coachNotes}&rdquo;</p>}
           <div className="flex gap-2 pt-1 flex-wrap">
-            {card.concierge && (
-              <button onClick={() => router.push(buildAuthUrl(`/coached-clients/${card.clientId}/concierge`))} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-blue-200 bg-blue-50 text-blue-700 text-sm font-medium hover:bg-blue-100" title="Step-by-step run sheet for doing the whole setup yourself over remote access - every link minted from the record">
-                <ClipboardDocumentIcon className="h-4 w-4" /> Concierge sheet
-              </button>
-            )}
             <button onClick={() => router.push(buildAuthUrl(`/client-tasks/${card.clientId}`))} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-gray-600 text-sm font-medium hover:bg-gray-50">
               <EyeIcon className="h-4 w-4" /> View all tasks{tasks.length ? ` (${tasks.length})` : ''}
             </button>

@@ -64,8 +64,8 @@ carries exactly one secret.
 
 ## Installing it for a client
 
-The line is on the portal: My Clients → the client's card → **Concierge sheet** → beat 6, with a
-Copy button (since 2026-09-16). Or from the terminal on your own machine:
+The line is on the client's run sheet (`node scripts/run-sheet.js <Client-ID>`, since
+2026-09-16) with a Copy button. Or on its own, from the terminal on your own machine:
 
 ```
 node scripts/extension-install-command.js <Client-ID>

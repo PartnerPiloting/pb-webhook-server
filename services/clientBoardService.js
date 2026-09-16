@@ -379,9 +379,6 @@ async function getBoard(coachClientId) {
       leadsBaseId: client.airtableBaseId || null,
       calendarProvider: client.calendarProvider || (client.googleCalendarEmail ? 'google' : null),
       coachNotes: client.coachNotes || '',
-      // Guy does this client's whole setup himself over remote access (the not-technical client).
-      // Shows the Concierge sheet button; a tick on the record, nothing derived.
-      concierge: raw['Concierge Onboarding'] === true,
     };
   });
 

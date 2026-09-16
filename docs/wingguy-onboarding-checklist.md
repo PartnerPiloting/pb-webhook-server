@@ -302,15 +302,14 @@ instead."
 **THE CLIENT DOES:** clicks the link, reads out the account shown on the permission screen,
 approves. Ten seconds.
 
-**THE CONCIERGE SHEET DOES IT (since 2026-09-16)** - on the portal, My Clients → the client's
-card → **Concierge sheet** → step 5 → **Mint the approval link**. The sheet is one step at a time
-and the button only shows for clients with **Concierge Onboarding** ticked on their master record
-(the not-technical client Guy sets up himself over remote access). One click mints the link
-(`POST /api/client-board/:clientId/unipile-link`, `services/unipileHostedAuth.js`), and the moment
-the client approves it Unipile calls us back (`POST /api/unipile/notify/:token`,
-`routes/unipileNotifyRoutes.js`) and the row sets itself: Unipile Account ID, both providers,
-Calendar Read IDs = all, Calendar Email blanked. Nothing to read out of a dashboard, nothing to
-type. The sheet's beat 3 turns DONE when it lands - hit Re-check if you're waiting on it.
+**THE RUN SHEET DOES IT (since 2026-09-16)** - `node scripts/run-sheet.js <Client-ID> --mint`
+makes the client's tick-off page (docs/concierge-run-sheet.md, or `--standard` for this
+journey) with the approval link already in it. `--mint` asks Unipile for the link the way the
+portal does (`POST /api/client-board/:clientId/unipile-link`, `services/unipileHostedAuth.js`) -
+with a signed callback address in it - and the moment the client approves, Unipile calls us back
+(`POST /api/unipile/notify/:token`, `routes/unipileNotifyRoutes.js`) and the row sets itself:
+Unipile Account ID, both providers, Calendar Read IDs = all, Calendar Email blanked. Nothing to
+read out of a dashboard, nothing to type. A fresh preflight shows step 2 DONE once it lands.
 
 **CLAUDE DOES** - say *"connect <client>'s calendar and mail"* and it runs all of this (the
 by-hand lane, still valid when you're not on the sheet):
@@ -687,9 +686,9 @@ text:
 
 1. **Get remote access** to their machine - Splashtop, set up on a call (Sam Noble, 2026-09-04) or
    in the pre-session email.
-2. **Copy the install line** from the concierge sheet (My Clients → their card → Concierge sheet →
-   beat 6), or print it with `node scripts/extension-install-command.js <Client-ID>`, and paste
-   it into PowerShell on their machine. It reports the daily task, the login run and the version it
+2. **Copy the install line** from the client's run sheet (`node scripts/run-sheet.js <Client-ID>`,
+   extension step), or print it with `node scripts/extension-install-command.js <Client-ID>`, and
+   paste it into PowerShell on their machine. It reports the daily task, the login run and the version it
    put on disk; `node scripts/extension-fleet.js` on prod confirms the machine has checked in. The
    Mac script is UNPROVEN - walk it with a Mac client before relying on it.
 3. **Load it together on the same session** using the install card, from the updater's folder. Do
