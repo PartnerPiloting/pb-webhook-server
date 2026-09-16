@@ -161,7 +161,7 @@ function renderBody(data,state){
   }
   var phase='';
   data.steps.forEach(function(step){
-    if(step.phase!==phase){phase=step.phase;out.push('<h2 class="phase">'+esc(phase)+'</h2>');}
+    if(step.phase!==phase){phase=step.phase;out.push('<h2 class="phase">'+tx(phase)+'</h2>');}
     var done=!!s.ticks[String(step.n)];
     out.push('<section class="step'+(done?' done':'')+'" data-step="'+step.n+'">');
     out.push('<div class="head"><input type="checkbox" id="tick-'+step.n+'" data-tick="'+step.n+'"'+(done?' checked':'')+'><h3><label for="tick-'+step.n+'">'+step.n+'. '+tx(step.title)+'</label></h3></div>');
@@ -173,7 +173,7 @@ function renderBody(data,state){
     if(step.dos&&step.dos.length)out.push('<ul class="dos">'+step.dos.map(function(d){return '<li>'+tx(d)+'</li>';}).join('')+'</ul>');
     if(step.link)out.push(linkBlock(step.link,data.links||{},data.minted));
     if(step.check)out.push('<p class="check"><b>You\\'ll know it worked when: </b>'+tx(step.check)+'</p>');
-    if(step.watch)out.push('<p class="watch"><b>Watch: </b>'+esc(step.watch)+'</p>');
+    if(step.watch)out.push('<p class="watch"><b>Watch: </b>'+tx(step.watch)+'</p>');
     var vs=(step.proves||[]).map(function(n){return (data.verdicts||{})[n];}).filter(Boolean);
     if(vs.length)out.push('<div class="verdicts">'+vs.map(function(v){return '<div><span class="v '+esc(v.verdict)+'">'+esc(String(v.verdict).toUpperCase())+'</span>'+esc(v.evidence)+'</div>';}).join('')+'<div style="margin-top:2px">What the record said when this page was made.</div></div>');
     out.push('<div class="explain" data-explain="'+step.n+'" hidden><div class="ask"><input type="text" placeholder="I don\\'t get this / what if... (or leave blank for a plain-English explanation)"><button class="go">Ask Claude</button></div><div class="out"></div></div>');
