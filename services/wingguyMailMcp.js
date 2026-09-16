@@ -38,6 +38,7 @@
 
 const { z } = require('zod');
 const mailProvider = require('./mailProvider');
+const { houseDashes } = require('../utils/houseDashes');
 // NOTE: clientService is required LAZILY inside the executor — its Airtable config crashes at module
 // load when env vars are absent (local test runs), same reason as wingguyBookingMcp.
 
@@ -361,24 +362,13 @@ function classifyLead(lead, { lastInboundMs, lastOutboundMs, everInbound, nowMs,
 }
 
 // ---------------------------------------------------------------------------
-// House style: never let an em/en dash reach a draft. Guy's convention is a
-// spaced hyphen " - " for ALL reader-facing prose, never "—" / "–" (an em dash
-// reads as AI polish). The rule lives in the rules store + writing-style docs,
-// but an instruction the author has to remember loses to the model's generation
-// default every time — this has slipped into real sends repeatedly (Phil Purcell,
-// Steven Gabris, James Bennett-Ackland). So the fix lives HERE, at the pipeline
-// chokepoint, where it doesn't depend on anyone's attention. Runs before asset
-// detection + the learn-from-edit ledger so the recorded body matches what ships.
-// Only touches em (U+2014) and en (U+2013) dashes and their HTML entities —
-// hyphen-minus compounds ("old-style", "3-min") use U+002D and are left alone,
-// so nothing a URL or a real compound needs is affected.
-function normaliseDashes(s) {
-  if (!s) return s;
-  return String(s)
-    .replace(/&mdash;|&#8212;|&#x2014;/gi, '—')   // entity forms → literal em
-    .replace(/&ndash;|&#8211;|&#x2013;/gi, '–')   // entity forms → literal en
-    .replace(/\s*[–—]\s*/g, ' - ');          // dash (± surrounding ws) → " - "
-}
+// House style: never let an em/en dash reach a draft. The rule and the reasoning
+// now live in utils/houseDashes.js, and the Anthropic client applies it to every
+// model response (2026-09-16), so a draft is already clean by the time it lands
+// here. This call stays as the belt to that braces: it also catches a body that
+// reached the tool some other way, and it runs before asset detection + the
+// learn-from-edit ledger, so the RECORDED body matches what actually ships.
+const normaliseDashes = houseDashes;
 
 // ---------------------------------------------------------------------------
 // Follow-up stamp at DRAFT time (added 2026-07-30)

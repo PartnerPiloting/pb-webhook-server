@@ -11,6 +11,7 @@
 require('dotenv').config();
 const Anthropic = require('@anthropic-ai/sdk');
 const { createLogger } = require('../utils/contextLogger');
+const { houseDashes, withHouseDashes } = require('../utils/houseDashes');
 
 // Module-level logger for config initialization.
 const logger = createLogger({
@@ -65,14 +66,66 @@ function withoutLoneSurrogates(value) {
     return value;
 }
 
-// Patch a fresh SDK client so both message paths sweep their params on the way out. Wrapping at
-// construction means every caller — routes, chat agent, overnight jobs — is covered by holding the
-// client, with nothing to remember at the call site.
+// --- No em dash ever leaves here ----------------------------------------------------------------
+// The mirror image of the guard above, on the way BACK IN. Guy's house style is a spaced hyphen
+// " - "; an em dash is the loudest AI tell in Australian business writing, and every reader he
+// cares about reads one as "a machine wrote this".
+//
+// The rule has been written in prose everywhere prose can go - the rules store, the writing-style
+// docs, the drafting prompts, CLAUDE.md - roughly ten times, and it kept losing to the model's
+// generation default in real sends. Two services had already given up and grown their own private
+// copy of the fix (wingguyMailMcp, wingguyFollowupsAsk), which is the tell that it belonged one
+// level down: the /wg panel that writes LinkedIn messages had no copy, so Guy was still watching em
+// dashes appear in drafts on his screen on 2026-09-16.
+//
+// So it moves to the client, next to the surrogate guard and for the same reason: hold the client,
+// be covered. Every text block and every string inside a tool_use input is swept, which catches
+// drafts (they arrive as propose_message/propose_times tool arguments, not as reply text) as well
+// as anything Claude says to the coach.
+//
+// Requests are NOT swept - what a lead actually wrote stays verbatim, dashes and all.
+// `stream` is NOT wrapped: its one caller is speaker reconstruction, which rebuilds a transcript of
+// what people said. That is a record, not prose Wingguy is writing, and records are not restyled.
+function houseDashesInResponse(msg) {
+    if (!msg || !Array.isArray(msg.content)) return msg;
+    let changed = false;
+    const content = msg.content.map((block) => {
+        if (!block || typeof block !== 'object') return block;
+        if (block.type === 'text' && typeof block.text === 'string') {
+            const cleaned = houseDashes(block.text);
+            if (cleaned === block.text) return block;
+            changed = true;
+            return { ...block, text: cleaned };
+        }
+        // Drafts arrive HERE, as tool arguments - propose_message's `message`, propose_times'
+        // `intro`/`outro`, wingguy_create_draft's `html_body`. Text blocks alone would miss them.
+        if (block.type === 'tool_use' && block.input) {
+            const cleaned = withHouseDashes(block.input);
+            if (cleaned === block.input) return block;
+            changed = true;
+            return { ...block, input: cleaned };
+        }
+        return block;
+    });
+    return changed ? { ...msg, content } : msg;
+}
+
+// Patch a fresh SDK client so both message paths sweep their params on the way out, and `create`
+// applies the house dash rule on the way back. Wrapping at construction means every caller —
+// routes, chat agent, overnight jobs — is covered by holding the client, with nothing to remember
+// at the call site.
 function guardLoneSurrogates(client) {
     for (const method of ['create', 'stream']) {
         const original = client.messages[method].bind(client.messages);
         client.messages[method] = (params, ...rest) => original(withoutLoneSurrogates(params), ...rest);
     }
+    const create = client.messages.create.bind(client.messages);
+    client.messages.create = (params, ...rest) => {
+        const out = create(params, ...rest);
+        // stream:true returns a Stream, not a Promise of a Message - leave it alone.
+        if (params && params.stream) return out;
+        return Promise.resolve(out).then(houseDashesInResponse);
+    };
     return client;
 }
 
@@ -216,5 +269,6 @@ module.exports = {
     anthropicKeyError,
     stripLoneSurrogates,
     withoutLoneSurrogates,
+    houseDashesInResponse,
     claudeModelId: CLAUDE_MODEL_ID,
 };

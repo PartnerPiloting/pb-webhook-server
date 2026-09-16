@@ -1602,12 +1602,21 @@
     try { console.log('[Wingguy] composer diagnostic:', collectEditables()); } catch (_) {}
   }
 
+  // House style, at the very last gate (2026-09-16). The server strips em/en dashes from every model
+  // response now (utils/houseDashes.js, applied in config/anthropicClient.js), so this should never
+  // find one. It runs anyway because THIS is the last point anything is a LinkedIn message rather
+  // than a draft: it also covers a panel running against an older server, and a dash pasted or typed
+  // into the box by hand. Costs one scan of a short string. Keep in step with utils/houseDashes.js.
+  function houseDashes(s) {
+    return String(s || '').replace(/\s*[–—]\s*/g, ' - ');
+  }
+
   // Insert at the user's CURSOR (AI-Blaze style): target the focused editable (the box they clicked
   // into / typed the trigger in), and use the browser's native input pipeline so LinkedIn's editor
   // observes it and keeps the line breaks. The Insert button is set not to steal focus, so the message
   // box stays focused when clicked.
   async function insertIntoComposer(text) {
-    const normalized = String(text).replace(/\r\n/g, '\n').trim();
+    const normalized = houseDashes(String(text).replace(/\r\n/g, '\n').trim());
     let target = resolveInsertTarget();
     if (!target) { logEditableDiagnostics(); return { ok: false, reason: 'no-focus' }; }
 
@@ -1655,7 +1664,7 @@
   // Copy the draft to the clipboard as BOTH plain text and HTML (one <div> per line). Pasting the
   // HTML flavour into LinkedIn's composer preserves the line breaks that a plain-text paste flattens.
   async function copyDraft(text) {
-    const normalized = String(text).replace(/\r\n/g, '\n').trim();
+    const normalized = houseDashes(String(text).replace(/\r\n/g, '\n').trim());
     const html = normalized.split('\n')
       .map((l) => (l.trim() ? `<div>${escapeHtml(l)}</div>` : '<div><br></div>'))
       .join('');

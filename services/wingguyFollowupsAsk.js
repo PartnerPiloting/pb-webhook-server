@@ -39,6 +39,7 @@
 
 const { resolveClientAnthropic, anthropicKeyError } = require('../config/anthropicClient');
 const { createLogger } = require('../utils/contextLogger');
+const { houseDashes } = require('../utils/houseDashes');
 
 const logger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'followups_ask' });
 
@@ -53,12 +54,10 @@ const MAX_TOOL_ITERATIONS = 6;    // availability -> draft -> push is three; hea
 const MAX_HISTORY_TURNS = 12;     // text turns kept from the screen's running conversation
 const RULEBOOK_CONTEXTS = ['reply', 'follow-up', 'booking'];
 
-// Reader-facing text uses " - " (Guy's house style); the model is told, and this is the code guard.
-function normaliseDashes(s) {
-  return String(s || '')
-    .replace(/&(?:mdash|ndash);/g, '—')
-    .replace(/\s*[—–]\s*/g, ' - ');
-}
+// Reader-facing text uses " - " (Guy's house style). The rule lives in utils/houseDashes.js and the
+// Anthropic client now applies it to every response, so this is a second pass over already-clean
+// text; it stays because it also covers text that never came from the model.
+const normaliseDashes = houseDashes;
 
 // Today, in the coach's own clock - the anchor every "have they replied since", "has that time
 // passed" question needs. Never the server's clock (Render is UTC).
