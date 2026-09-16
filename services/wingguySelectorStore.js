@@ -46,6 +46,8 @@ const KNOWN_KEYS = [
   'profile_about_spans',     // the About copy inside the About section
   'profile_activity_anchor', // the Activity section (their recent posts) — anchor ids
   'profile_activity_items',  // the post-preview text inside the Activity section
+  'profile_featured_anchor', // the Featured section (the posts they pinned) — anchor ids
+  'profile_featured_items',  // the post-preview text inside the Featured section
   'convo_container',         // the conversation containers (bubble / pane / thread)
   'convo_header',            // the open thread's header, where the participant's name lives
   'message_group_name',      // "who said this" on a run of message bubbles
@@ -85,6 +87,10 @@ const SOFT_KEYS = [
   'profile_about_spans',
   'profile_activity_anchor',
   'profile_activity_items',
+  // Featured is softer still than Activity — most people pin nothing at all, so a miss here is the
+  // norm, not a symptom.
+  'profile_featured_anchor',
+  'profile_featured_items',
   'message_group_name',
   'message_body',
 ];

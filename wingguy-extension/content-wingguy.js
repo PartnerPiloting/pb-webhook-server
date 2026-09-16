@@ -94,6 +94,13 @@
     // 2026-08 markup dropped the aria-hidden duplication (verified live on a real profile), so the
     // attribute is kept first for old-build accounts but plain span/p carry the new build.
     profile_activity_items: 'span[aria-hidden="true"], span, p',
+    // The Featured section — the posts they PINNED to their own profile. A separate section from
+    // Activity, and for months the reader never looked at it: Priti Ahuja 2026-09-16 had the post
+    // Guy wanted to open on sitting in Featured while Activity was showing her Comments tab, so
+    // "recent posts: none found" was true of Activity and wrong about the profile. Featured is read
+    // FIRST because a pinned post is the one they chose to lead with.
+    profile_featured_anchor: '#featured, #content_collections_featured',
+    profile_featured_items: 'span[aria-hidden="true"], span, p',
     convo_container: '.msg-overlay-conversation-bubble,.msg-convo-wrapper,.msg-thread,.msg-s-message-list-container,.scaffold-layout__detail',
     convo_header: 'header, [class*="overlay-bubble-header"], [class*="title-bar"], [class*="thread__header"], [class*="thread-header"]',
     message_group_name: '.msg-s-message-group__name, [class*="message-group__name"], [class*="event-listitem__name"]',
@@ -179,6 +186,10 @@
       // but recorded so the monitor's cross-tenant zero-finds rule can catch the next blinding.
       { key: 'profile_activity_anchor', soft: true },
       { key: 'profile_activity_items', soft: true, within: 'activity' },
+      // Featured is soft for the same reason Activity is — most people pin nothing — but graded so
+      // the monitor sees it go blind rather than nobody noticing for a month (the Activity lesson).
+      { key: 'profile_featured_anchor', soft: true },
+      { key: 'profile_featured_items', soft: true, within: 'featured' },
     ],
     messaging: [
       { key: 'thread_open_marker' },
@@ -241,6 +252,7 @@
       if (item.within === 'convo') { root = scopes && scopes.convo; if (!root) continue; }
       if (item.within === 'about') { root = scopes && scopes.about; if (!root) continue; }
       if (item.within === 'activity') { root = scopes && scopes.activity; if (!root) continue; }
+      if (item.within === 'featured') { root = scopes && scopes.featured; if (!root) continue; }
       // Probe at the SAME depth as the scrape (light pass, then shadow walk) — a shallower check
       // would report misses for content the scrape happily reads on the new-UI build.
       let found = false;
@@ -669,18 +681,52 @@
     } catch (_) { return ''; }
   }
 
-  function readRecentActivity(sectionOut, exclude) {
-    const section = findActivitySection();
-    if (sectionOut) sectionOut.section = section || null;
+  // The Featured section — posts, links and documents the person pinned to their own profile.
+  // Same three-layer find as Activity: the anchor id, then a heading that starts with "Featured",
+  // deep-walked for the shadow-root build.
+  function findFeaturedSection() {
+    const anchor = findByKey('profile_featured_anchor');
+    let section = anchor ? (anchor.closest('section') || anchor.parentElement) : null;
+    if (!section) {
+      const h = deepQueryAll('h2, h3').find((el) => /^featured\b/i.test(cleanText(el.textContent)));
+      if (h) section = h.closest('section') || h.parentElement;
+    }
+    return section;
+  }
+
+  // The shared harvest: long leaf-text runs inside a section, minus the person's own name/headline
+  // and minus short chrome. Deliberately does NOT cap the count — the merge in readPostMaterial
+  // does that, so Featured and Activity compete for the same three slots instead of each taking three.
+  function harvestPostText(section, itemsKey, exclude) {
     if (!section) return [];
-    // The person's own name/headline repeat on every activity card — exclude them by value.
     const excl = (exclude || []).map((s) => cleanText(s).toLowerCase()).filter(Boolean);
-    const items = deepQueryAll(selStr('profile_activity_items'), section)
+    return deepQueryAll(selStr(itemsKey), section)
       .map((el) => ownText(el).replace(/(…|\.\.\.)?\s*see more$/i, '').trim())
       .filter((t) => t && t.length > 25
         && !excl.includes(t.toLowerCase())
         && !(t.length < 120 && (ACTIVITY_ATTRIBUTION.test(t) || ACTIVITY_CHROME.test(t))));
-    return Array.from(new Set(items)).slice(0, 3).map((t) => capText(t, 400));
+  }
+
+  function readRecentActivity(sectionOut, exclude) {
+    const section = findActivitySection();
+    if (sectionOut) sectionOut.section = section || null;
+    // The person's own name/headline repeat on every activity card — exclude them by value.
+    return harvestPostText(section, 'profile_activity_items', exclude);
+  }
+
+  function readFeatured(sectionOut, exclude) {
+    const section = findFeaturedSection();
+    if (sectionOut) sectionOut.featured = section || null;
+    return harvestPostText(section, 'profile_featured_items', exclude);
+  }
+
+  // What the drafter gets as "their recent posts". Featured first: a pinned post is the one they
+  // chose to lead with, and it is also the one that survives LinkedIn parking the Activity section
+  // on the Comments tab (Priti Ahuja 2026-09-16 — Featured held the post, Activity held comments).
+  function readPostMaterial(scopeOut, exclude) {
+    const featured = readFeatured(scopeOut, exclude);
+    const activity = readRecentActivity(scopeOut, exclude);
+    return Array.from(new Set(featured.concat(activity))).slice(0, 3).map((t) => capText(t, 400));
   }
 
   // Name fallbacks for when LinkedIn's DOM selectors miss (markup shifts, or the messaging
@@ -1041,10 +1087,11 @@
     // Activity read keeps its section handle so the self-check below grades the item read inside
     // the real container — and so the console line can carry a shape sample when the read is blind
     // on a page that clearly has the section (that's the paste-to-Guy diagnostic).
-    const activityScope = { section: null };
-    const recentPosts = inThread ? [] : readRecentActivity(activityScope, [name, headline]);
+    const activityScope = { section: null, featured: null };
+    const recentPosts = inThread ? [] : readPostMaterial(activityScope, [name, headline]);
     if (!inThread) {
-      console.log('[Wingguy] activity read: section=', !!activityScope.section, '| posts:', recentPosts.length,
+      console.log('[Wingguy] post read: activity=', !!activityScope.section, '| featured=', !!activityScope.featured,
+        '| posts:', recentPosts.length,
         activityScope.section && !recentPosts.length ? '| shape: ' + shapeOf(activityScope.section) : '');
     }
 
@@ -1077,6 +1124,7 @@
         // exactly the blindness the id-only scope hid for a month.
         about: findAboutSection(),
         activity: activityScope.section,
+        featured: activityScope.featured,
       }).catch(() => {});
     } catch (_) { /* a self-check must never break a scrape */ }
 
@@ -1108,11 +1156,16 @@
         await autoScrollToLoad();
         await expandAboutSeeMore();
         base.about = readAbout();
-        base.recentPosts = readRecentActivity(activityScope, [base.name, base.headline]);
+        base.recentPosts = readPostMaterial(activityScope, [base.name, base.headline]);
         base.pageText = readPageTextNow();
-        // Tells startChat the real page was already read — zero posts here means they genuinely
-        // have none, so don't spend a hidden-tab read confirming it.
+        // Tells startChat the real page was already read, so the About/pageText half of the
+        // hidden-tab read is not worth repeating. It deliberately does NOT claim the post read was
+        // conclusive: it used to, on the reasoning that "zero posts here means they genuinely have
+        // none" — which was wrong twice over (Featured was never read, and LinkedIn can park
+        // Activity on the Comments tab), and it suppressed the one retry that would have found the
+        // post. Zero posts now still earns the hidden-tab read; posts found still skip it.
         base._wgPageKept = true;
+        base._wgPostsKept = base.recentPosts.length > 0;
         console.log('[Wingguy] bubble over the same person\'s profile — page reads kept | about:',
           base.about ? `${base.about.length} chars` : 'no', '| posts:', base.recentPosts.length);
       } else {
@@ -2576,7 +2629,7 @@
     const quietDays = threadQuietDays(thread);
     const quietThread = quietDays != null && quietDays >= WG_QUIET_THREAD_DAYS;
     const wantPosts = profile._wgSurface === 'messaging'
-      && !profile._wgPageKept
+      && !profile._wgPostsKept
       && (!thread || thread.length <= 2 || quietThread)
       && !(profile.recentPosts || []).length;
     if (quietThread) console.log(`[Wingguy] thread quiet for ${quietDays} days — reading their recent posts for the reconnect`);
