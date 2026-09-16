@@ -288,4 +288,20 @@ function buildData({ mode, detail, steps, docText, minted, now = new Date() }) {
   };
 }
 
-module.exports = { parseConciergeDoc, parseStandardOverview, renderRunSheet, buildData, STANDARD_LINKS, PAGE_JS, CSS };
+/**
+ * The starting ticks: a step arrives ticked when EVERY checklist step it proves is DONE on the
+ * live preflight. So a sheet made for a client part-way through the journey opens showing where
+ * they are, not blank (Guy, 2026-09-16). Steps that prove nothing (remote access, the
+ * pre-session answers) start unticked - only Guy knows.
+ */
+function initialTicks(data) {
+  const ticks = {};
+  for (const s of data.steps || []) {
+    if (!s.proves || !s.proves.length) continue;
+    const all = s.proves.every((n) => data.verdicts[n] && data.verdicts[n].verdict === 'done');
+    if (all) ticks[String(s.n)] = true;
+  }
+  return ticks;
+}
+
+module.exports = { parseConciergeDoc, parseStandardOverview, renderRunSheet, buildData, initialTicks, STANDARD_LINKS, PAGE_JS, CSS };

@@ -24,7 +24,7 @@
 try { require('dotenv').config(); } catch (_) { /* no dotenv here - env or --token still work */ }
 const fs = require('fs');
 const path = require('path');
-const { parseConciergeDoc, parseStandardOverview, renderRunSheet, buildData } = require('../services/runSheet');
+const { parseConciergeDoc, parseStandardOverview, renderRunSheet, buildData, initialTicks } = require('../services/runSheet');
 
 const args = process.argv.slice(2);
 const clientId = (args.find((a) => !a.startsWith('--')) || '').trim();
@@ -76,7 +76,10 @@ async function call(method, url) {
   }
 
   const data = buildData({ mode, detail, steps, docText, minted });
-  const html = renderRunSheet(data, { ticks: {} });
+  // Steps the record already proves DONE arrive ticked, so a part-way client's sheet opens
+  // showing where they are up to rather than blank.
+  const ticks = initialTicks(data);
+  const html = renderRunSheet(data, { ticks });
   const out = opt('out') || path.join(process.cwd(), `run-sheet-${clientId}.html`);
   fs.writeFileSync(out, html, 'utf8');
 

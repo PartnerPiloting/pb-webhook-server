@@ -95,6 +95,18 @@ check('the page carries its data, state, css and script blocks by id', () => {
   assert.ok(html.startsWith('<!doctype html>'));
 });
 
+check('steps the record proves DONE arrive ticked; steps that prove nothing, or are OWED, do not', () => {
+  const ticks = rs.initialTicks(data);
+  const record = steps.find((s) => s.proves.length === 1 && s.proves[0] === 0);
+  const calendar = steps.find((s) => s.link === 'unipile');
+  const remote = steps.find((s) => /Remote access/.test(s.title));
+  assert.strictEqual(ticks[String(record.n)], true, 'record step (preflight 0 = done) ticked');
+  assert.strictEqual(ticks[String(calendar.n)], undefined, 'calendar step (preflight 2 = owed) not ticked');
+  assert.strictEqual(ticks[String(remote.n)], undefined, 'remote access proves nothing - never pre-ticked');
+  const both = steps.find((s) => s.proves.length === 2);
+  assert.strictEqual(ticks[String(both.n)], undefined, 'a step needs EVERY proof done - one missing = unticked');
+});
+
 check('client data is escaped in the body but intact in the data block', () => {
   assert.ok(html.includes('<h1>Test &lt;Client&gt;</h1>'));
   assert.ok(html.includes('"name":"Test <Client>"'));
