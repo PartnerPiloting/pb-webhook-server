@@ -2,6 +2,11 @@
  * Make the onboarding run sheet for one client - a single tick-off page with their links in it.
  *
  *   node scripts/run-sheet.js <Client-ID> [--concierge|--standard] [--mint] [--out <file>]
+ *                            [--fact "Recorder=none"] [--fact "Machine=Windows, his own"] ...
+ *
+ * --fact puts what the client said in their reply to the pre-session email at the top of the
+ * sheet ("From Alex's reply"), one Key=Value per flag; a Key with no value renders as "not
+ * answered - ask on the call". Claude fills these from the reply email before making the sheet.
  *
  * WHY: Guy onboards the not-technical client himself, over remote access, in one sitting, and
  * wants "almost like an email I'd get, with every step and everything in it, that I tick off".
@@ -30,6 +35,13 @@ const args = process.argv.slice(2);
 const clientId = (args.find((a) => !a.startsWith('--')) || '').trim();
 const flag = (name) => args.includes(`--${name}`);
 const opt = (name) => { const i = args.indexOf(`--${name}`); return i >= 0 ? args[i + 1] : null; };
+const facts = args.reduce((acc, a, i) => {
+  if (a !== '--fact') return acc;
+  const raw = String(args[i + 1] || '');
+  const eq = raw.indexOf('=');
+  acc.push(eq >= 0 ? { k: raw.slice(0, eq), v: raw.slice(eq + 1) } : { k: raw, v: '' });
+  return acc;
+}, []);
 
 if (!clientId) {
   console.error('Usage: node scripts/run-sheet.js <Client-ID> [--concierge|--standard] [--mint] [--out <file>] [--token <portal token>]');
@@ -75,7 +87,7 @@ async function call(method, url) {
     }
   }
 
-  const data = buildData({ mode, detail, steps, docText, minted });
+  const data = buildData({ mode, detail, steps, docText, minted, facts });
   // Steps the record already proves DONE arrive ticked, so a part-way client's sheet opens
   // showing where they are up to rather than blank.
   const ticks = initialTicks(data);

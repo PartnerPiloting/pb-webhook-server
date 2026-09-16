@@ -90,6 +90,17 @@ const detail = {
 const data = rs.buildData({ mode: 'concierge', detail, steps, docText: conciergeMd, minted: { url: 'https://unipile/link' }, now: new Date('2026-09-16T04:00:00Z') });
 const html = rs.renderRunSheet(data, { ticks: { 3: true } });
 
+check('facts from the reply email render at the top, blanks flagged, escaped', () => {
+  const d = rs.buildData({ mode: 'concierge', detail, steps, docText: 'x', facts: [{ k: 'Recorder', v: 'none' }, { k: 'Machine', v: '' }, { k: 'Address', v: 'a<b>@c' }, { k: '', v: 'dropped' }] });
+  assert.strictEqual(d.facts.length, 3);
+  const h = rs.renderRunSheet(d);
+  assert.ok(h.includes('From Test&rsquo;s reply'));
+  assert.ok(h.includes('<div class="k">Recorder</div><div class="">none</div>'));
+  assert.ok(h.includes('<div class="k">Machine</div><div class="bad">not answered - ask on the call</div>'));
+  assert.ok(h.includes('a&lt;b&gt;@c'));
+  assert.ok(!html.includes('reply</div>'), 'no facts block when none given');
+});
+
 check('the page carries its data, state, css and script blocks by id', () => {
   for (const id of ['rs-data', 'rs-state', 'rs-css', 'rs-app']) assert.ok(html.includes(`id="${id}"`), id);
   assert.ok(html.startsWith('<!doctype html>'));
