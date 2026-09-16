@@ -22,6 +22,7 @@ const { getVoicePrefs } = require('../config/wingguyVoicePrefs');
 const wingguyCalendar = require('./wingguyCalendar');
 const leadBookingLink = require('./wingguyLeadBookingLink');
 const { resolveLeadTimezone } = require('./leadLocationResolver');
+const { currentRoleLocation } = require('./leadJobLocation');
 const wingguyLeads = require('./wingguyLeads');
 const wingguyRules = require('./wingguyRulesMcp');
 
@@ -374,6 +375,30 @@ function isHandshakeOnly({ conversation, coachName, leadName, group }) {
   return !leadHasSpoken(conversation, coachName, leadName) && !coachHasAskedToMeet(conversation, coachName);
 }
 
+// When the record's location can't be pinned to one timezone, the current role on the LinkedIn page
+// usually can. Twice on 2026-09-16 Guy answered "which city?" himself by scrolling to Experience and
+// reading the location under the current job — an explicit field, so this turns the cold question
+// into an offer he can confirm in one word.
+//
+// Deliberately an OFFER, never a silent write: {Location} on the record is the standing truth and
+// anything read off the page has to earn its place (the same rule enrichProfileFromPortal's
+// pickLocation follows, after a scraped string was reported to Guy as though it were his CRM —
+// Wayne Merry, 2026-08-27). Guy confirms, then it gets saved.
+//
+// Only fires when the job location resolves to a timezone the record's own location could not, so a
+// second vague string ("Australia" again) stays out of the way. pageText is only present on /wg
+// extension turns; from the connector there is nothing to read and the old ask stands.
+function jobLocationOffer(profile) {
+  const found = currentRoleLocation(profile && profile.pageText);
+  if (!found) return '';
+  const resolved = resolveLeadTimezone(found.location);
+  if (!resolved.detected || !resolved.timezone) return '';
+  const role = found.title ? ` (${found.title})` : '';
+  return ` BEFORE asking, note their CURRENT ROLE on the page${role} gives its location as "${found.location}" → ${resolved.timezone}.`
+    + ` OFFER that to Guy rather than asking cold — say it came from the current role in their LinkedIn job history, since the record itself only says "${String((profile && profile.location) || '').trim() || '(nothing)'}".`
+    + ` If he confirms, call again with leadTimezoneOverride="${resolved.timezone}" and ask him to save that location to the lead's record so it sticks. Do NOT treat it as confirmed until he says so, and do not write it to the record yourself.`;
+}
+
 // Run one chat turn (which may involve several tool round-trips) to completion.
 // Returns { ok, reply, draft, booked, messages, model }.
 async function runWingguyChatTurn({ coach, profile = {}, conversation = [], messages = [], leadEmail, airtableBaseId = null, leadRecordId = null, profileBlock = '', convoBlock = '', campaignTemplate = null, systemPrefixBlocks = null, profileThin = false, deps = {} }) {
@@ -496,7 +521,7 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
           : (upfrontLoc ? `their location "${upfrontLoc}" can't be mapped to a timezone` : 'no location is on file for them');
         return {
           ok: false,
-          error: `STOPPED — ${profile.name || 'this lead'}'s timezone is UNKNOWN (${why}). No time list was built and the draft was NOT touched. Do NOT write times into a draft yourself, and do not pick a clock for them. In order: (1) re-read the thread — if they named where they are or will be, call propose_times again with leadTimezoneOverride set to that IANA zone and tell Guy you took it from the thread; (2) otherwise ask Guy where they're based (for an introduction, suggest asking the person who introduced them) and, when he answers, call again with leadTimezoneOverride for that place and ask him to put the location on their record in the Portal so it sticks; (3) only if Guy explicitly says to use his own clock, call again with leadTimezoneOverride="${tz}".`,
+          error: `STOPPED — ${profile.name || 'this lead'}'s timezone is UNKNOWN (${why}). No time list was built and the draft was NOT touched. Do NOT write times into a draft yourself, and do not pick a clock for them. In order: (1) re-read the thread — if they named where they are or will be, call propose_times again with leadTimezoneOverride set to that IANA zone and tell Guy you took it from the thread; (2) otherwise ask Guy where they're based (for an introduction, suggest asking the person who introduced them) and, when he answers, call again with leadTimezoneOverride for that place and ask him to put the location on their record in the Portal so it sticks; (3) only if Guy explicitly says to use his own clock, call again with leadTimezoneOverride="${tz}".${jobLocationOffer(profile)}`,
         };
       }
       const eMin = hhmmToMin(prefs.earliestStart) ?? 0;
@@ -639,7 +664,7 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
         ? { where: `"${profile.location}" is AMBIGUOUS (could be ${r.leadTzCandidates.map((c) => `${c.place} (${c.timezone})`).join(' or ')})`, ask: 'WHICH place it is' }
         : { where: profile.location ? `"${profile.location}", which can't be mapped to a timezone` : 'empty', ask: 'where the lead is based' };
       const clockRule = (!r.leadTzDetected
-        ? `⚠ The lead's timezone is UNKNOWN — their record's location is ${whichAsk.where} — so ONLY the Guy-side time is real: ${r.display} (${tzCity(r.yourTimezone)}). Do NOT claim the clocks match and do NOT write any lead-side time. Ask Guy ${whichAsk.ask} (if the thread already names a place, say so), get the location saved to the lead's record, then re-run check_time.`
+        ? `⚠ The lead's timezone is UNKNOWN — their record's location is ${whichAsk.where} — so ONLY the Guy-side time is real: ${r.display} (${tzCity(r.yourTimezone)}). Do NOT claim the clocks match and do NOT write any lead-side time. Ask Guy ${whichAsk.ask} (if the thread already names a place, say so), get the location saved to the lead's record, then re-run check_time.${jobLocationOffer(profile)}`
         : sameClock
           ? `${r.display} for Guy IS the same wall-clock time for the lead — their clocks are IDENTICAL right now. Any draft or chat line must show ONE time, the same for both sides.`
           : `${r.display} for Guy = ${r.leadDisplay} for the lead (${tzCity(r.leadTimezone)}). Quote these exact strings.`)
@@ -833,4 +858,4 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
   return { ok: true, reply: assistantText, draft: currentDraft, booked: bookedEvent, enrichContact, messages: convo, model: MODEL_ID };
 }
 
-module.exports = { runWingguyChatTurn, AGENT_TOOLS, inLunch, chooseSignoff, getVoiceIdentity, leadHasSpoken, coachHasAskedToMeet, bannedStage1Opener, isHandshakeOnly, detectLeadBookingLink, buildContext };
+module.exports = { runWingguyChatTurn, AGENT_TOOLS, inLunch, chooseSignoff, getVoiceIdentity, leadHasSpoken, coachHasAskedToMeet, bannedStage1Opener, isHandshakeOnly, detectLeadBookingLink, buildContext, jobLocationOffer };
