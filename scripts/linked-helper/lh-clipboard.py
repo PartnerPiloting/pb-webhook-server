@@ -81,20 +81,27 @@ def set_clipboard(text):
     """Put text on the X clipboard, and on PRIMARY too so middle-click works.
 
     X11 has no clipboard daemon: whichever process last claimed the selection SERVES it, so the
-    helper has to stay alive afterwards. xclip's -loops 0 means "serve indefinitely"; without it
-    the content vanishes after the first paste, which looks exactly like the bug we are fixing.
-    Each new call replaces the previous owner, so old helpers exit on their own.
+    helper has to stay alive afterwards. Hence -loops 0 ("serve indefinitely") and a detached
+    process - without the first, the text vanishes after one paste; without the second, xclip
+    blocks this loop forever. Each new call takes ownership and the previous owner exits.
+
+    CLOSE STDIN. xclip reads until end-of-input before it claims the selection, so a pipe left
+    open means it waits forever and the clipboard never changes - while everything here still
+    reports success. That was the first version of this function (17 Sep 2026): the agent logged
+    "pasted 77 chars" and the clipboard was untouched.
     """
     env = {**os.environ, "DISPLAY": os.environ.get("DISPLAY", ":0")}
     data = text.encode("utf-8")
     ok = False
     for sel in ("clipboard", "primary"):
         try:
-            subprocess.Popen(
+            p = subprocess.Popen(
                 ["xclip", "-selection", sel, "-loops", "0"],
                 stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                 env=env, start_new_session=True,
-            ).stdin.write(data)
+            )
+            p.stdin.write(data)
+            p.stdin.close()          # the handover - see above
             ok = True
         except Exception as e:
             print(f"xclip {sel} failed: {e}", flush=True)
