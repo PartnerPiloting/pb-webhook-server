@@ -57,11 +57,13 @@ LH_HOME="$(getent passwd "$LH_USER" | cut -d: -f6)"
 echo "== packages (desktop, xrdp, tools) =="
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
+# xclip: the clipboard agent's hands (lh-clipboard.py). Without it there is no way to paste
+# anything into this machine at all - see the clipboard section below.
 apt-get install -y -qq xfce4 xfce4-terminal lightdm xserver-xorg-video-dummy \
-  x11vnc xrdp xdotool wmctrl curl wget jq python3 python3-websockets \
+  x11vnc xrdp xdotool wmctrl xclip curl wget jq python3 python3-websockets \
   fail2ban ufw fonts-liberation libasound2t64 2>/dev/null || \
 apt-get install -y -qq xfce4 xfce4-terminal lightdm xserver-xorg-video-dummy \
-  x11vnc xrdp xdotool wmctrl curl wget jq python3 python3-websockets \
+  x11vnc xrdp xdotool wmctrl xclip curl wget jq python3 python3-websockets \
   fail2ban ufw fonts-liberation libasound2
 
 echo "== Ubuntu 24.04 userns fix (Linked Helper dies without it) =="
@@ -150,17 +152,39 @@ EOF
 
 echo "== xRDP -> the same console screen (not a new session) =="
 # Route RDP logins to the x11vnc mirror so RDP shows the ONE real screen.
-python3 - <<'PY'
+#
+# The password is BAKED IN and autorun points straight at this session, deliberately. With
+# password=ask and no autorun, every single connection stops on an xrdp login box asking for a
+# password the client does not think of as "a password" - Rick Wong hit it every time he opened
+# the shortcut (10 Sep 2026) and Guy patched it by hand on that machine. It stayed out of this
+# script until 17 Sep, so every machine built in between repeated the same annoyance. It costs
+# nothing in security: the only route to port 3389 is the private network (ufw, below).
+VNC_PASSWORD="$VNC_PASSWORD" python3 - <<'PY'
+import os
 import re
-p='/etc/xrdp/xrdp.ini'
-s=open(p).read()
+p = '/etc/xrdp/xrdp.ini'
+s = open(p).read()
+pw = os.environ.get('VNC_PASSWORD', '')
+
 if 'name=LinkedHelperConsole' not in s:
-    block='\n[LinkedHelperConsole]\nname=LinkedHelperConsole\nlib=libvnc.so\nusername=na\npassword=ask\nip=127.0.0.1\nport=5900\n'
-    s=re.sub(r'\n\[Xorg\]', block+'\n[Xorg]', s, count=1)
-    # make the console mirror the first (default) option
-    open(p,'w').write(s)
-print('xrdp.ini updated')
+    block = ('\n[LinkedHelperConsole]\nname=LinkedHelperConsole\nlib=libvnc.so\n'
+             'username=na\npassword=%s\nip=127.0.0.1\nport=5900\n' % pw)
+    s = re.sub(r'\n\[Xorg\]', block + '\n[Xorg]', s, count=1)
+else:
+    # Already present from an earlier run - make sure the password is current, not 'ask'.
+    s = re.sub(r'(\[LinkedHelperConsole\][^\[]*?\npassword=)[^\n]*',
+               lambda m: m.group(1) + pw, s, count=1, flags=re.S)
+
+# Skip the session picker entirely and open this session.
+if re.search(r'^autorun=', s, flags=re.M):
+    s = re.sub(r'^autorun=.*$', 'autorun=LinkedHelperConsole', s, count=1, flags=re.M)
+else:
+    s = re.sub(r'^\[Globals\]\s*$', '[Globals]\nautorun=LinkedHelperConsole', s, count=1, flags=re.M)
+
+open(p, 'w').write(s)
+print('xrdp.ini updated (console session, password baked in, autorun set)')
 PY
+chmod 600 /etc/xrdp/xrdp.ini   # it now carries the screen password
 systemctl enable xrdp
 
 echo "== Tailscale (private network - no public RDP door) =="
@@ -267,8 +291,33 @@ OnUnitActiveSec=5min
 [Install]
 WantedBy=timers.target
 EOF
+echo "== clipboard agent (paste INTO this machine - the RDP connection cannot carry it) =="
+# You cannot paste from your own laptop into this machine, and no setting fixes it: xrdp bridges
+# onto the one always-on screen rather than starting a session of its own, and the clipboard only
+# travels on a session of its own (xrdp-chansrv is never started on this session type). Diagnosed
+# on Rick Wong's machine 17 Sep 2026 after he asked for it twice.
+#
+# So text arrives the other way round: someone asks Claude (wingguy_send_to_machine), it waits on
+# the server, and this agent collects it and puts it on the clipboard here. Ctrl+V.
+# It only talks to the server while someone is actually connected to the screen - see the script.
+install -m 755 "$SRC_DIR/lh-clipboard.py" /usr/local/bin/lh-clipboard.py
+cat > /etc/systemd/system/lh-clipboard.service <<EOF
+[Unit]
+Description=Linked Helper machine clipboard agent (collect text left for this machine)
+After=x11vnc.service
+[Service]
+User=$LH_USER
+Environment=DISPLAY=:0
+ExecStartPre=/bin/sh -c 'for i in \$(seq 1 60); do [ -S /tmp/.X11-unix/X0 ] && exit 0; sleep 2; done; exit 1'
+ExecStart=/usr/bin/python3 /usr/local/bin/lh-clipboard.py
+Restart=always
+RestartSec=10
+[Install]
+WantedBy=graphical.target
+EOF
+
 systemctl daemon-reload
-systemctl enable x11vnc.service lh-watchdog.timer
+systemctl enable x11vnc.service lh-watchdog.timer lh-clipboard.service
 
 echo "== campaign builder (run AFTER the LinkedIn login - step 5 below) =="
 # Builds the standard campaigns through Linked Helper's own create command, with this

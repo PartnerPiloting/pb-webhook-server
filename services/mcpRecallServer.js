@@ -32,6 +32,7 @@ const { registerWingguyGetStartedTools } = require('./wingguyGetStartedMcp');
 const { registerRecallImportTools } = require('./recallImportMcp');
 const { registerCaptureControlTools } = require('./captureControlMcp');
 const { registerWingguyContactsTools } = require('./wingguyContactsMcp');
+const { registerMachineClipboardTools } = require('./machineClipboardMcp');
 
 const BASE = '/mcp2';
 const DEFAULT_COACH_CLIENT_ID = (process.env.RECALL_COACH_CLIENT_ID || 'Guy-Wilson').trim();
@@ -356,6 +357,8 @@ function createRecallMcpServer(coachClientId = DEFAULT_COACH_CLIENT_ID) {
   registerRecallImportTools(server, coachClientId);
   // Capture control (the client's hands on their own store — held queue, veto, real delete).
   registerCaptureControlTools(server, coachClientId);
+  // Machine clipboard (paste into the Linked Helper machine - the connection cannot carry it).
+  registerMachineClipboardTools(server, coachClientId);
 
   return server;
 }
