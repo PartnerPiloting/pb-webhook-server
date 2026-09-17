@@ -102,6 +102,41 @@ async function runCreateLead(args = {}, tenant = TENANT) {
   };
 }
 
+// Find ONE lead from whatever identifier the caller happens to have, shared by every tool here that
+// writes to an existing record. LinkedIn slug is the strongest key; an email is matched against the
+// primary {Email} AND {Alt Emails} (Guy, 2026-09-17 — someone writes in from whichever address they
+// actually use, which is often an alternate, so matching only the primary dead-ends on exactly the
+// people who have just contacted you); a name is a substring over the full name and must be UNIQUE —
+// on several hits, hand back the list rather than write to the wrong person's record.
+// Returns { rec } when resolved, or { reply } — a finished tool response to hand straight back.
+async function findOneLead(base, { lookupUrl = '', lookupEmail = '', lookupName = '' } = {}) {
+  const wingguyLeads = require('./wingguyLeads');
+
+  let rec = null;
+  if (lookupUrl) rec = await wingguyLeads.findLeadRecord(base, { linkedinUrl: lookupUrl });
+  if (!rec && (lookupEmail || lookupName)) {
+    const esc = (s) => String(s).replace(/"/g, '\\"');
+    const formula = lookupEmail
+      ? `OR(LOWER({Email}) = "${esc(lookupEmail)}", FIND("${esc(lookupEmail)}", LOWER({Alt Emails} & "")) > 0)`
+      : `FIND(LOWER("${esc(lookupName)}"), LOWER({First Name} & " " & {Last Name})) > 0`;
+    const matches = await base('Leads').select({
+      filterByFormula: formula,
+      fields: ['First Name', 'Last Name', 'Email'],
+      maxRecords: 10,
+    }).all();
+    if (matches.length > 1) {
+      const list = matches.slice(0, 8).map((r) => `- ${`${r.fields['First Name'] || ''} ${r.fields['Last Name'] || ''}`.trim()}${r.fields['Email'] ? ` <${r.fields['Email']}>` : ''}`).join('\n');
+      return { reply: { text: `More than one lead matches "${lookupName || lookupEmail}" — tell me which, or pass lead_email / linkedin_url:\n${list}` } };
+    }
+    rec = matches[0] || null;
+  }
+  if (!rec) {
+    const tried = lookupUrl ? `LinkedIn ${lookupUrl}` : (lookupEmail ? `email ${lookupEmail}` : `name "${lookupName}"`);
+    return { reply: { text: `No lead found matching ${tried}. (Try another identifier — or if they're genuinely not in the CRM, create them with wingguy_create_lead.)`, isError: true } };
+  }
+  return { rec };
+}
+
 // Correct a lead's contact facts (Location / Email / Phone) on their EXISTING record — the update
 // companion to runCreateLead (Guy, 2026-08-20, after Dean Hobin's blank location left the booking
 // tools guessing his timezone). Finds the lead (LinkedIn slug strongest, then exact email, then
@@ -133,31 +168,9 @@ async function runUpdateLead(args = {}, tenant = TENANT) {
   const base = clientService.getClientBase(airtableBaseId);
   if (!base) return { text: 'Error: CRM base unavailable.', isError: true };
 
-  // Find the record. LinkedIn slug is the strongest key; email is exact; a name is a substring
-  // match over the full name and must be UNIQUE — on multiple hits, hand back the list instead of
-  // guessing (never correct the wrong person's record).
-  let rec = null;
-  if (lookupUrl) rec = await wingguyLeads.findLeadRecord(base, { linkedinUrl: lookupUrl });
-  if (!rec && (lookupEmail || lookupName)) {
-    const esc = (s) => String(s).replace(/"/g, '\\"');
-    const formula = lookupEmail
-      ? `LOWER({Email}) = "${esc(lookupEmail)}"`
-      : `FIND(LOWER("${esc(lookupName)}"), LOWER({First Name} & " " & {Last Name})) > 0`;
-    const matches = await base('Leads').select({
-      filterByFormula: formula,
-      fields: ['First Name', 'Last Name', 'Email'],
-      maxRecords: 10,
-    }).all();
-    if (matches.length > 1) {
-      const list = matches.slice(0, 8).map((r) => `- ${`${r.fields['First Name'] || ''} ${r.fields['Last Name'] || ''}`.trim()}${r.fields['Email'] ? ` <${r.fields['Email']}>` : ''}`).join('\n');
-      return { text: `More than one lead matches "${lookupName || lookupEmail}" — tell me which, or pass lead_email / linkedin_url:\n${list}` };
-    }
-    rec = matches[0] || null;
-  }
-  if (!rec) {
-    const tried = lookupUrl ? `LinkedIn ${lookupUrl}` : (lookupEmail ? `email ${lookupEmail}` : `name "${lookupName}"`);
-    return { text: `No lead found matching ${tried}. (Try another identifier — or if they're genuinely not in the CRM, create them with wingguy_create_lead.)`, isError: true };
-  }
+  const found = await findOneLead(base, { lookupUrl, lookupEmail, lookupName });
+  if (found.reply) return found.reply;
+  const rec = found.rec;
 
   const r = await wingguyLeads.updateLeadFacts(airtableBaseId, rec.id, { location: loc, email: mail, phone: tel });
   if (!r || !r.ok) return { text: `Error: ${(r && r.error) || 'the lead could not be updated.'}`, isError: true };
@@ -179,6 +192,88 @@ async function runUpdateLead(args = {}, tenant = TENANT) {
   return {
     text: `Updated ${who} — ${lines.join('; ')}.${r.notes.length ? ` (${r.notes.join('; ')})` : ''}${attached} `
       + `Tell the coach exactly what changed, old value included, so a wrong write is caught on the spot.`,
+  };
+}
+
+// Add or remove a lead's TAGS - the {Search Terms} chips - and, while we are on their record, file
+// the address they actually wrote in from (Guy, 2026-09-17). The tags define list membership, so an
+// unsubscribe is a tag edit; until now the only door was the Portal's chip editor by hand, which is
+// what made honouring "please take me off the list" a manual trip. The merge lives in
+// services/wingguyLeadTags so the Portal route and this tool cannot drift apart.
+//
+// The email goes to {Alt Emails}, NEVER the primary: someone replying to a newsletter from a personal
+// address has not asked for their mail to be redirected there, and promoting it would silently
+// repoint everything Wingguy sends them. Filed as an alternate it is matched on the way IN - which is
+// what closes the "an email from an address we have never seen resolves to nobody" dead end.
+async function runTagLead(args = {}, tenant = TENANT) {
+  const clientService = require('./clientService');
+  const wingguyLeads = require('./wingguyLeads');
+  const { updateLeadTags, asList, MAX_TAGS } = require('./wingguyLeadTags');
+
+  const lookupEmail = String(args.lead_email || '').trim().toLowerCase();
+  const lookupName = String(args.lead_name || '').trim();
+  const lookupUrl = String(args.linkedin_url || '').trim();
+  if (!lookupEmail && !lookupName && !lookupUrl) {
+    return { text: 'Error: give a linkedin_url (surest), lead_email or lead_name to find the lead.', isError: true };
+  }
+
+  const add = asList(args.add_tags);
+  const remove = asList(args.remove_tags);
+  const fileEmail = String(args.file_email || '').trim().toLowerCase();
+  if (!add.length && !remove.length && !fileEmail) {
+    return { text: 'Error: nothing to do - pass add_tags, remove_tags and/or file_email.', isError: true };
+  }
+
+  const client = await clientService.getClientById(tenant);
+  const airtableBaseId = client && client.airtableBaseId;
+  if (!airtableBaseId) {
+    return { text: "Error: no CRM base is configured for this coach, so the lead can't be tagged.", isError: true };
+  }
+  const base = clientService.getClientBase(airtableBaseId);
+  if (!base) return { text: 'Error: CRM base unavailable.', isError: true };
+
+  const found = await findOneLead(base, { lookupUrl, lookupEmail, lookupName });
+  if (found.reply) return found.reply;
+  const rec = found.rec;
+  const who = `${rec.fields['First Name'] || ''} ${rec.fields['Last Name'] || ''}`.trim() || rec.fields['Email'] || rec.id;
+
+  // The tag change is the job, so it goes first and its failure is the tool's failure.
+  const parts = [];
+  if (add.length || remove.length) {
+    const t = await updateLeadTags(base, rec.id, { add, remove });
+    if (!t || !t.ok) return { text: `Error: ${(t && t.error) || 'the tags could not be updated.'}`, isError: true };
+    if (!t.changed) {
+      parts.push(`tags already read "${t.before || '(none)'}" - nothing to change there`);
+    } else {
+      parts.push(`tags "${t.before || '(none)'}" → "${t.display || '(none)'}"`);
+      if (t.removed.length) parts.push(`removed ${t.removed.join(', ')}`);
+      if (t.added.length) parts.push(`added ${t.added.join(', ')}`);
+      if (t.overflow.length) {
+        parts.push(`⚠ NOT added, the record is at its ${MAX_TAGS}-tag limit: ${t.overflow.join(', ')}`);
+      }
+    }
+  }
+
+  // Filing the address is the bonus, not the contract - a hiccup here must not undo a good tag write.
+  if (fileEmail) {
+    try {
+      const e = await wingguyLeads.updateLeadEmails(airtableBaseId, rec.id, { addOthers: [fileEmail] });
+      if (e && e.ok && e.changed) {
+        parts.push(`filed ${fileEmail} under Alt Emails, so the next email from it finds this record`
+          + `${e.primaryEmail ? ` (their primary, ${e.primaryEmail}, is untouched)` : ' (they have no primary address on file)'}`);
+      } else if (e && e.ok) {
+        parts.push(`${fileEmail} was already on the record`);
+      } else {
+        parts.push(`⚠ could not file ${fileEmail}: ${(e && e.error) || 'unknown error'}`);
+      }
+    } catch (err) {
+      parts.push(`⚠ could not file ${fileEmail}: ${err.message}`);
+    }
+  }
+
+  return {
+    text: `${who} (record ${rec.id}) - ${parts.join('; ')}. `
+      + `Tell the coach exactly what changed, the old tags included, so a wrong write is caught on the spot.`,
   };
 }
 
@@ -243,6 +338,32 @@ const TOOL_DEFS = [
     },
     run: runUpdateLead,
   },
+  {
+    name: 'wingguy_tag_lead',
+    description:
+      'Add or remove the TAGS on a lead\'s CRM record - the Search Terms chips - and file an address they wrote in from. The tags are what LISTS are built out of, so this is the tool for "take Martin off the mindset mastery list", "unsubscribe her", "tag him as a referral", "that one isn\'t a banker". Pass remove_tags for what comes off and add_tags for what goes on; both are optional and both accept either a list or one comma-separated string. Existing tags keep the casing already on the record, so you can pass them however they were said. AN UNSUBSCRIBE IS THE MAIN CASE: remove the list tag AND add "unsubscribed" (the coach\'s standing tag for it) in the same call, so the record says why they left and not just that they left. ALSO PASS file_email whenever you got to this person from an email and that address is not already on their record - it is filed under Alt Emails, never as their primary, so nothing about where the coach writes to them changes, but the NEXT message from that address finds this record instead of dead-ending. Find the lead by linkedin_url (surest), lead_email (matches their primary OR any alternate) or lead_name; a name matching several people comes back as a list to choose from rather than a guess. Reports the tags old → new - ALWAYS relay that to the coach so a wrong write is caught on the spot. Tags can\'t be blanked wholesale from here and a record caps at 15. This tool is ONLY for tags and filing an alternate address: contact facts have wingguy_update_lead, dates and flags have wingguy_set_reconnect and wingguy_cease_followups, and someone not in the CRM yet needs wingguy_create_lead. Note that tagging someone unsubscribed does NOT by itself stop a newsletter that is already scheduled - tell the coach what still needs doing wherever they send it from.',
+    zodSchema: {
+      lead_name: z.string().optional().describe('The lead\'s name (or part of it) - must match exactly one person, or you\'ll get a list to disambiguate.'),
+      lead_email: z.string().optional().describe('An email for the lead - matched against their primary address AND any alternates on file, so the address they wrote in from works even if it isn\'t their main one.'),
+      linkedin_url: z.string().optional().describe('The lead\'s LinkedIn profile URL (linkedin.com/in/...) - the strongest lookup key.'),
+      add_tags: z.union([z.array(z.string()), z.string()]).optional().describe('Tags to put ON the record, as a list or one comma-separated string (e.g. ["unsubscribed"]).'),
+      remove_tags: z.union([z.array(z.string()), z.string()]).optional().describe('Tags to take OFF the record, as a list or one comma-separated string (e.g. ["mindset mastery"]). Case doesn\'t matter.'),
+      file_email: z.string().optional().describe('An address this person writes from, to be filed under Alt Emails so future mail from it matches them. Never becomes their primary. Only a real address you have seen, never a guess.'),
+    },
+    jsonSchema: {
+      type: 'object',
+      properties: {
+        lead_name: { type: 'string', description: 'The lead\'s name (or part of it) - must match exactly one person, or you\'ll get a list to disambiguate.' },
+        lead_email: { type: 'string', description: 'An email for the lead - matched against their primary address AND any alternates on file, so the address they wrote in from works even if it isn\'t their main one.' },
+        linkedin_url: { type: 'string', description: 'The lead\'s LinkedIn profile URL (linkedin.com/in/...) - the strongest lookup key.' },
+        add_tags: { anyOf: [{ type: 'array', items: { type: 'string' } }, { type: 'string' }], description: 'Tags to put ON the record, as a list or one comma-separated string (e.g. ["unsubscribed"]).' },
+        remove_tags: { anyOf: [{ type: 'array', items: { type: 'string' } }, { type: 'string' }], description: 'Tags to take OFF the record, as a list or one comma-separated string (e.g. ["mindset mastery"]). Case doesn\'t matter.' },
+        file_email: { type: 'string', description: 'An address this person writes from, to be filed under Alt Emails so future mail from it matches them. Never becomes their primary. Only a real address you have seen, never a guess.' },
+      },
+      required: [],
+    },
+    run: runTagLead,
+  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -285,4 +406,4 @@ async function legacyToolCall(toolName, args, tenant = TENANT) {
   }
 }
 
-module.exports = { registerWingguyLeadsTools, legacyToolList, legacyToolCall, TOOL_DEFS, runCreateLead, runUpdateLead };
+module.exports = { registerWingguyLeadsTools, legacyToolList, legacyToolCall, TOOL_DEFS, runCreateLead, runUpdateLead, runTagLead, findOneLead };
