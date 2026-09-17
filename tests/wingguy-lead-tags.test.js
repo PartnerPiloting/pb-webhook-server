@@ -108,6 +108,43 @@ check('a string of tags removes as several tags', () => {
   assert.deepStrictEqual(r.tokens, ['melbourne']);
 });
 
+// The live failure on Martin Kearns, 2026-09-17: the caller wrote a LIST into a text argument, so
+// `["unsubscribed"]` arrived as a string. It was stored verbatim - brackets and quote marks became
+// part of the tag - and the matching remove matched nothing and silently did nothing.
+console.log('a list written INTO a text argument (the Martin Kearns bug):');
+check('a bracketed string is unwrapped, not stored as punctuation', () => {
+  assert.deepStrictEqual(asList('["unsubscribed"]'), ['unsubscribed']);
+});
+check('several tags inside the brackets', () => {
+  assert.deepStrictEqual(asList('["unsubscribed", "referral"]'), ['unsubscribed', 'referral']);
+});
+check('single quotes are not valid JSON but still peel', () => {
+  assert.deepStrictEqual(asList("['mindset mastery']"), ['mindset mastery']);
+});
+check('an unterminated list still peels rather than storing a bracket', () => {
+  assert.deepStrictEqual(asList('["unsubscribed", ]'), ['unsubscribed']);
+});
+check('a bare quoted tag loses the quotes', () => {
+  assert.deepStrictEqual(asList('"mindset mastery"'), ['mindset mastery']);
+});
+check("an apostrophe INSIDE a tag survives", () => {
+  assert.deepStrictEqual(asList("guy's list"), ["guy's list"]);
+});
+check('the failed remove now actually removes', () => {
+  const r = mergeTags({ ...martin, remove: '["mindset mastery"]' });
+  assert.deepStrictEqual(r.removed, ['mindset mastery']);
+  assert.ok(!r.tokens.includes('mindset mastery'));
+});
+check('the failed add now writes a clean tag', () => {
+  const r = mergeTags({ ...martin, add: '["unsubscribed"]' });
+  assert.ok(r.tokens.includes('unsubscribed'), JSON.stringify(r.tokens));
+  assert.ok(!r.display.includes('['), r.display);
+  assert.ok(!r.display.includes('"'), r.display);
+});
+check('a tag that genuinely contains a bracket is left alone', () => {
+  assert.deepStrictEqual(asList('coaching [au]'), ['coaching [au]']);
+});
+
 // ---------------------------------------------------------------------------
 // The tool itself, against a stubbed Airtable base (same harness style as
 // tests/wingguy-update-lead.test.js) - no network.

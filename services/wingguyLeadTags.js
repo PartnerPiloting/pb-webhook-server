@@ -28,11 +28,45 @@ function splitCell(raw) {
   return parts.map(norm).filter(Boolean);
 }
 
-/** Accept tags as an array OR a single comma-separated string, so either call style works. */
+// Strip one layer of matched surrounding quotes - what survives when a JSON-ish string is split by
+// hand rather than parsed. 'foo' and "foo" both become foo; an apostrophe inside a tag is left alone.
+function unquote(s) {
+  const t = norm(s);
+  if (t.length >= 2 && ((t[0] === '"' && t.endsWith('"')) || (t[0] === "'" && t.endsWith("'")))) {
+    return norm(t.slice(1, -1));
+  }
+  return t;
+}
+
+/**
+ * Accept tags however they actually turn up. THREE shapes, because all three reach us (Guy,
+ * 2026-09-17, on Martin Kearns): a real array; plain comma-separated text; and - the one that bit -
+ * a STRING that merely LOOKS like an array, `["unsubscribed"]`, when the caller writes a list into a
+ * text argument. That third shape used to be stored verbatim, brackets and quote marks included, so
+ * the add wrote a junk tag and the remove matched nothing and silently did nothing.
+ */
 function asList(v) {
   if (v == null) return [];
-  const arr = Array.isArray(v) ? v : String(v).split(',');
-  return arr.map(norm).filter(Boolean);
+  if (Array.isArray(v)) return v.map(norm).filter(Boolean);
+
+  const s = norm(v);
+  if (!s) return [];
+
+  // A bracketed string: parse it properly if it is valid JSON, otherwise fall back to peeling the
+  // brackets and quotes off by hand - a half-formed list must still do the right thing, never write
+  // its own punctuation onto the record.
+  if (s.startsWith('[') && s.endsWith(']')) {
+    try {
+      const parsed = JSON.parse(s);
+      if (Array.isArray(parsed)) return parsed.map(norm).filter(Boolean);
+    } catch (e) {
+      // not valid JSON - fall through to the manual peel
+    }
+    return s.slice(1, -1).split(',').map(unquote).filter(Boolean);
+  }
+
+  // Plain text: comma-separated, and a lone quoted tag still comes through clean.
+  return s.split(',').map(unquote).filter(Boolean);
 }
 
 /**
