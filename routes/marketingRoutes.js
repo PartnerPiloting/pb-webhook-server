@@ -114,6 +114,20 @@ const PAGES = {
       'What you are saying yes to, plainly: what it makes possible, the road we build in order, '
       + 'what it costs, and what happens in the first 24 hours.',
   },
+  // The three Binary Lane screens a client meets when they buy their Linked
+  // Helper machine, with the SSH key to paste. Linked from the playbook topic
+  // "Your Linked Helper machine", which their own Claude reads out - the chat
+  // does the walking, this page is for the two or three moments where having
+  // seen the screen first helps. Every shot is dated in its caption on purpose:
+  // a stale picture of somebody else's site is worse than no picture, because
+  // people believe the image over the words.
+  machine: {
+    file: 'your-machine.html',
+    title: 'Your Linked Helper machine - I Know A Guy',
+    description:
+      'The three Binary Lane screens worth seeing before you meet them - choosing the machine, '
+      + 'adding the key so Guy can build it, and the one number to send back.',
+  },
   joinThanks: {
     file: 'join-thanks.html',
     title: 'Welcome aboard - I Know A Guy',
@@ -235,6 +249,7 @@ module.exports = function mountMarketingSite(app) {
   router.get('/join/thanks', servePage(PAGES.joinThanks));
   // Sent by link, never linked from the site's own navigation.
   router.get('/the-numbers', servePage(PAGES.numbers));
+  router.get('/your-machine', servePage(PAGES.machine));
   router.get('/guy', servePage(PAGES.guy));
   router.get('/privacy', servePage(PAGES.privacy));
   router.get('/terms', servePage(PAGES.terms));

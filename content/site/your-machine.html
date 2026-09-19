@@ -1,0 +1,221 @@
+<style>
+  /* The editorial shell the one-pagers use (routes/onePagerRoutes.js) rather
+     than the homepage's teal/paper palette - deliberately. This page is a
+     letter to somebody who has already had the conversation, and it is sent
+     alongside /series/nodes, so matching THAT is what matters. Single-theme,
+     like the rest of the site: every colour is painted explicitly. */
+  :root {
+    color-scheme: light;
+    --ground:   #e9e2d3;
+    --card:     #fbf9f3;
+    --ink:      #2c2823;
+    --ink-deep: #221f1a;
+    --ink-soft: #6f6558;
+    --ink-mid:  #4a423a;
+    --rule:     #e2dccd;
+    --rule-sc:  #efe9dc;
+    --dark:     #211d18;
+    --gold:     #c49a5e;
+    --gold-ink: #9a6a2f;
+    --cream:    #f3ede1;
+  }
+
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: Georgia, "Iowan Old Style", "Palatino Linotype", "Times New Roman", serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .op-page { padding: 28px 16px 52px; }
+
+  .op {
+    max-width: 640px;
+    margin: 0 auto 22px;
+    background: var(--card);
+    border-radius: 6px;
+    overflow: hidden;
+    box-shadow: 0 1px 3px rgba(0,0,0,.10);
+  }
+
+  .op-mast { background: var(--dark); padding: 34px 40px 30px; }
+  .op-eb {
+    font-size: 11px; letter-spacing: .22em; text-transform: uppercase;
+    color: var(--gold); margin: 0 0 12px;
+  }
+  .op-wm { font-size: 30px; margin: 0; font-weight: 400; }
+  .op-wm a { color: var(--cream); text-decoration: none; }
+
+  .op-c { padding: 34px 40px 8px; }
+
+  .op-t {
+    font-size: 28px; line-height: 1.25; margin: 0 0 12px;
+    color: var(--ink-deep); font-weight: 400; text-wrap: balance;
+  }
+  .op-dek {
+    font-style: italic; color: var(--ink-soft); font-size: 18px;
+    line-height: 1.5; margin: 0 0 20px; text-wrap: balance;
+  }
+  .op-r { border: 0; border-top: 1px solid var(--rule); margin: 0 0 22px; }
+
+  .op-body p { font-size: 17px; line-height: 1.66; margin: 0 0 1.15rem; }
+  .op-body h2 {
+    font-size: 21px; line-height: 1.3; margin: 1.9rem 0 .4rem;
+    color: var(--ink-deep); font-weight: 400; text-wrap: balance;
+  }
+  .op-body strong { font-weight: 700; }
+  .op-body em { font-style: italic; }
+  .op-body a { color: var(--gold-ink); }
+  .op-body a:focus-visible { outline: 2px solid var(--gold-ink); outline-offset: 2px; }
+
+  /* The price, stated once. Three lines, hairline rules, gold on the total -
+     enough structure to be found at a glance, not enough to read as an invoice. */
+  .price { margin: 1.4rem 0 1.15rem; }
+  .price dl { margin: 0; display: grid; grid-template-columns: 1fr auto; }
+  .price dt, .price dd {
+    margin: 0; padding: 9px 0; font-size: 16.5px; line-height: 1.45;
+    border-bottom: 1px solid var(--rule-sc);
+  }
+  .price dd {
+    text-align: right; padding-left: 18px;
+    font-variant-numeric: tabular-nums; color: var(--ink-mid);
+    white-space: nowrap;
+  }
+  .price dt.total, .price dd.total {
+    border-bottom: 0; border-top: 1px solid var(--gold);
+    padding-top: 12px; margin-top: 2px; color: var(--ink-deep);
+  }
+  .price dd.total { font-weight: 700; }
+
+  .op-foot {
+    padding: 18px 40px 6px; border-top: 1px solid var(--rule);
+    margin-top: 1.6rem; font-size: 14px; line-height: 1.6; color: var(--ink-soft);
+  }
+  .op-foot a { color: var(--gold-ink); }
+  .op-sign { margin: .9rem 0 0; }
+  .op-bar { background: var(--dark); height: 34px; }
+
+  @media (max-width: 520px) {
+    .op-mast, .op-c, .op-foot { padding-left: 22px; padding-right: 22px; }
+    .op-t { font-size: 24px; }
+    .op-wm { font-size: 26px; }
+    .price dt, .price dd { font-size: 16px; }
+  }
+</style>
+<style>
+  /* Screenshots. Every one is dated in its caption, because a stale picture of
+     somebody else's website is worse than no picture at all - people believe
+     the image over the words. The caveat at the top of the page and the date
+     under each shot are the whole reason this page can exist safely. */
+  .shot { margin: 22px 0 26px; }
+  .shot img {
+    display: block;
+    width: 100%;
+    height: auto;
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    background: #fff;
+  }
+  .shot figcaption {
+    margin-top: 8px;
+    font-size: 0.86rem;
+    line-height: 1.45;
+    color: var(--ink-soft);
+  }
+  .shot figcaption b { color: var(--ink-mid); }
+  .shot-narrow img { max-width: 420px; margin: 0 auto; }
+  .asof {
+    margin: 0 0 4px;
+    padding: 12px 14px;
+    background: var(--cream);
+    border-left: 3px solid var(--gold);
+    border-radius: 3px;
+    font-size: 0.92rem;
+    color: var(--ink-mid);
+  }
+  .keybox {
+    display: block;
+    padding: 10px 12px;
+    background: var(--dark);
+    color: #e8e1d3;
+    border-radius: 4px;
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    font-size: 0.74rem;
+    line-height: 1.5;
+    word-break: break-all;
+    white-space: pre-wrap;
+  }
+</style>
+
+<div class="op-page">
+  <article class="op">
+
+    <header class="op-mast">
+      <p class="op-eb">Network building, rethought</p>
+      <p class="op-wm"><a href="/">(I know a) Guy</a></p>
+    </header>
+
+    <div class="op-c">
+      <h1 class="op-t">Your Linked Helper machine</h1>
+      <p class="op-dek">The three screens worth seeing before you meet them. Ten minutes, and you can't break anything.</p>
+      <hr class="op-r">
+
+      <div class="op-body">
+
+        <p class="asof">These pictures were taken on <b>19 September 2026</b>. Binary Lane change their site from time to time - if what you're looking at doesn't match, go by what your Claude tells you rather than by the picture.</p>
+
+        <p>You don't need this page. Your Claude will walk you through the whole thing one screen at a time, and it adapts if something has moved. This is just here for the two or three moments where it helps to have seen the screen before you get to it.</p>
+
+        <h2 id="configure">Choosing the machine</h2>
+
+        <p>This is the first screen after you make an account. Almost everything on it is already set the way you want it - the location, Ubuntu, the newest LTS version.</p>
+
+        <p><b>One thing is not.</b> Look at section 2. The row selected by default is the small one at $4.90. You need the <b>2 VCPUs / 4 GB / 60 GB</b> row at <b>$19.60</b>, and it will not select itself. It's the only place on these screens where doing nothing gives you the wrong answer.</p>
+
+        <figure class="shot shot-narrow">
+          <img src="/assets/machine-configure.png" alt="Binary Lane sign-up screen showing location and operating system tiles, the list of server sizes, and the server settings section below.">
+          <figcaption><b>The sign-up screen, 19 September 2026.</b> Section 1 is location and operating system. Section 2 is the size - click the 2 VCPU row. Section 3 has the hostname, and a <b>View All</b> button that opens the part that matters next.</figcaption>
+        </figure>
+
+        <h2 id="ssh-key">Adding my key</h2>
+
+        <p>In section 3, click <b>View All</b>. That opens the fields Binary Lane keeps folded away, and one of them saves us both a job: <b>SSH Keys</b>, with a <b>+ Add SSH Key</b> button.</p>
+
+        <p>Put my key in there and I can get straight into your machine and build it, without you having to send me anything private. Name it <b>Wingguy</b>, paste this into the Public Key box exactly as it is, tick the box to use it for future machines, and click Create:</p>
+
+        <code class="keybox">ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMHSFmW3Yds7YTIVRUK+1Bz1P0YfmNX8JoYQT34LIy73 wingguy-client-machines</code>
+
+        <figure class="shot shot-narrow">
+          <img src="/assets/machine-ssh-key.png" alt="The Add SSH Key dialog, with a Name field, a Public Key box, and a tick box to use the key for all new servers.">
+          <figcaption><b>The Add SSH Key box, 19 September 2026.</b> It's a lock, not a key - it lets me in and it's safe to paste anywhere. Tick <b>Select this SSH Key for all new Cloud Server Installations</b> while you're there.</figcaption>
+        </figure>
+
+        <h2 id="ready">The one number to send me</h2>
+
+        <p>After you pay, a box appears saying <b>Your server is ready!</b>. Send me the <b>Primary Ip</b> - four numbers with dots between them. That's the only thing I need.</p>
+
+        <p>It isn't a secret, so text it, Zoom chat it, email it, whatever's easiest. Your key is already on the machine, so I can get in and start building straight away.</p>
+
+        <figure class="shot shot-narrow">
+          <img src="/assets/machine-ready.png" alt="The Your server is ready dialog, showing hostname, primary IP address highlighted, user, a hidden password and the installed SSH key.">
+          <figcaption><b>The finished box, 19 September 2026.</b> The Primary Ip is circled - that's the bit I need. It also shows a password, blanked out here; you don't need it and neither do I, but it's the only time it's ever displayed, so copy it somewhere if you'd like a spare way in.</figcaption>
+        </figure>
+
+        <h2>Then it's mine</h2>
+
+        <p>I build the whole thing on my own from there - the desktop, Linked Helper, the self-restart, the nightly backup, the monitoring. You don't install anything, and nothing goes on your laptop. Then one short call where you sign in to LinkedIn on it, and that's the only part that needs you.</p>
+
+        <p>If anything at all stops you - a card knocked back, a screen that doesn't match, a moment of "am I about to do something expensive" - stop and text me. Nothing here is urgent enough to guess at.</p>
+
+      </div>
+
+      <footer class="op-foot">
+        <p>Not sure why you're doing any of this? <a href="/a-day-in-the-life">Here's what it's all for</a>.</p>
+        <p class="op-sign">- (I know a) Guy</p>
+      </footer>
+    </div>
+
+    <div class="op-bar"></div>
+  </article>
+</div>

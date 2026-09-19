@@ -608,71 +608,119 @@ that's silently wrong otherwise.
 
 ## YOUR LINKED HELPER MACHINE - SETTING IT UP IN TEN MINUTES
 
-Linked Helper is a program, not a website. It has to be actually running for anything to happen, and
-on a laptop that means it stops every time the machine sleeps or restarts - and nobody notices for
-weeks. So it runs on a small always-on computer in an Australian data centre instead. It doesn't
-sleep, it doesn't get shut for the school run, and it's one I can see, so if it ever stalls it's
-something I fix rather than something you discover.
+Ten minutes, about $21.50 a month, and you can't break anything.
 
-**It's your machine.** You open the account and pay for it on your own card - about A$20 a month. If
-you ever walk away, you cancel it and nothing of yours is tangled up in mine. I do everything else.
+That last part is worth saying properly. If you pick the wrong city, or the wrong version, or change
+your mind entirely - you delete the machine and start again. It'll have cost you cents. Nothing on
+these screens is a decision you're stuck with.
 
-**Where to buy it: Binary Lane.** An Australian company, with data centres in Sydney, Melbourne,
-Brisbane, Perth and Adelaide. Go to binarylane.com.au, choose Linux VPS, and sign up. The machine has
-to be in Australia - Linked Helper signs in to LinkedIn as you, and if it did that from Singapore
-while your phone is in Melbourne, LinkedIn sees one account in two countries at once, which is what a
-stolen account looks like.
+We'll go one screen at a time. Tell me what you're looking at and I'll keep you on track. If you'd
+rather see the screens first, the three that matter are here, with pictures:
+https://knowaguy.com.au/your-machine
 
-**The form, screen by screen.** Tell me what your screen shows and I'll keep you on track.
+**Why it's not on your laptop.** Linked Helper is a program, not a website - it has to be actually
+running for anything to happen. On a laptop it stops every time the machine sleeps or restarts, and
+nobody notices for weeks. So it lives on a small always-on computer in a data centre instead. It
+doesn't sleep, it doesn't get shut for the school run, and it's one I can see - so if it ever stalls,
+it's something I fix rather than something you discover.
 
-1. **Confirm your email.** They send a code.
-2. **Configure your server.**
-   - Region: **an Australian city - your own if it's on the list.** Sydney, Melbourne, Brisbane,
-     Perth or Adelaide, all the same price and no difference in speed. The only one that matters is
-     that it's not Singapore.
-   - Operating system: **Ubuntu**, the newest LTS version offered. LTS matters - if there's a newer
-     one that doesn't say LTS, don't take it.
-   - Resources: **Standard**, and the **2 vCPU / 4 GB / 60 GB** row. That's A$19.60 a month before
-     GST, so a bit over $21 on the invoice.
-   - Hostname: **linkedinhelper**
-   - Backups: **Backups are not required.** I run the backups, and theirs is a two-day snapshot for
-     extra money.
-3. **Account details.** Your details and your card.
-4. **Complete purchase.** The machine is built in about thirty seconds and shows you an IP address -
-   four numbers with dots between them. Write that down.
-5. **Reset the root password.** Open the machine, click **Recovery** in the left-hand menu, then
-   **Reset Password**. **Tick the box that says send the new password to your email.** The password
-   does NOT appear on screen - all you'll see is a countdown - so if that box isn't ticked there is
-   nothing to send me and we have to do it again. This is how I get in to build the machine, so
-   don't skip it. Binary Lane does generate a password during signup, but you'll have clicked past
-   that screen by now and this is the only way to get one.
+**It's your machine.** Your account, your card. If you ever walk away you cancel it yourself and
+nothing of yours is tangled up in mine. Everything after the purchase is my job.
 
-**What to send me, by text on 0414 975 509 or in the Zoom chat - not email:**
+**Where: Binary Lane**, an Australian company with data centres in Sydney, Melbourne, Brisbane, Perth
+and Adelaide. Go to binarylane.com.au.
 
-- the IP address
-- the password from step 5
+**One thing to know before you start:** the machine must be in Australia. Linked Helper signs in to
+LinkedIn as you, and an account that appears to be in two countries at once is the pattern LinkedIn
+watches for. Any Australian city is fine. The only wrong answer on that list is Singapore.
 
-Email systems mangle these things, and I'd rather not find that out on our call.
+### 1. Create your account
 
-**If the purchase doesn't go through** - card knocked back, or the account held for a check - stop
-there and text me. Don't try again with a different card. New accounts get held for a quick look
-now and then, and that's easy for me to sort out. Two half-made accounts is not.
+Your email, and a password you choose.
 
-**Then what.** I build the machine on my own - desktop, Linked Helper, the self-restart, the nightly
-backup, the monitoring. Then one short call, about fifteen minutes, where you sign in to LinkedIn on
-it. LinkedIn texts you a code the first time, and that's the one moment that needs you.
+**Save that password somewhere you'll find it again** - your password manager, if you use one. It's
+how you get back into the control panel later.
 
-**Three things not to do:**
+### 2. Choose the machine
 
-- Don't install Linked Helper on your laptop. One LinkedIn account runs on one machine, and that
-  machine is this one.
-- Don't sign in to LinkedIn anywhere new in the meantime.
-- Don't buy a Linked Helper licence yet. That decision comes later (see the topic on the trial and
-  which version to get).
+Picture: https://knowaguy.com.au/your-machine#configure
 
-**You don't need to log in to the machine yourself.** Under the managed plan I run the campaigns. If
-you'd like to be able to look at it any time, say so and I'll send you a shortcut - it's a five-minute
-follow-up, not part of setup.
+Everything on this screen is already set correctly except one thing. I'll come to that.
+
+- **Location** - any Australian city, yours if it's on the list. Same price, same speed
+- **Ubuntu**, and under Select Version, the newest one marked **LTS**
+- **Resources** - stay on the **Standard** tab
+
+**Here's the one that matters.** The row selected by default is the small one at $4.90. You need to
+click the **2 VCPUs / 4 GB / 60 GB** row at **$19.60**. It will not select itself, and it's the only
+place on these screens where doing nothing gives you the wrong answer.
+
+### 3. Add my key so I can build it
+
+Picture: https://knowaguy.com.au/your-machine#ssh-key
+
+Still on that screen, under "Configure your server's settings", click **View All**. That opens the
+fields Binary Lane keeps folded away - and one of them saves us both a job.
+
+- **Hostname:** linkedinhelper
+- **SSH Keys:** click **+ Add SSH Key**
+
+In the box that opens:
+
+- **Name:** Wingguy
+- **Public Key:** paste this, exactly as it is, all one line:
+
+  `ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMHSFmW3Yds7YTIVRUK+1Bz1P0YfmNX8JoYQT34LIy73 wingguy-client-machines`
+
+- Tick **Select this SSH Key for all new Cloud Server Installations**
+- Click **Create**
+
+It's a lock, not a key - it lets me in to build your machine and it's safe to paste anywhere.
+
+Leave everything else on that screen alone. The backup settings are already off, which is what we
+want - I run the backups.
+
+### 4. Your details
+
+Name, address, and your mobile. Press **Send Validation SMS** and they'll text you a six-digit code
+to type in.
+
+### 5. Your card, and buy it
+
+The total shown includes GST - about $21.56 a month for this machine. Tick the terms box and click
+**Complete Purchase**.
+
+### 6. Send me one number
+
+Picture: https://knowaguy.com.au/your-machine#ready
+
+A box appears saying **"Your server is ready!"**. Send me the **Primary Ip** from it - four numbers
+with dots between them.
+
+That's the only thing I need, and it's not a secret, so text it, Zoom chat it, email it, whatever's
+easiest. Your key is already installed, so I can get straight in and start building.
+
+*(That box also shows a password. You don't need it and neither do I - but it's the only time it's
+ever displayed, so copy it somewhere if you'd like a spare way in.)*
+
+**If anything stops you** - card knocked back, account held for a check, a screen that doesn't match
+what I've described - just text me on 0414 975 509. Don't try again with a different card. New
+accounts get held for a quick look now and then and it's easy for me to sort out; two half-made
+accounts is not.
+
+**The rest is my job.** I build the whole thing on my own - the desktop, Linked Helper, the
+self-restart, the nightly backup, the monitoring. You don't install anything, and nothing goes on
+your laptop. Then one short call, about fifteen minutes, where you sign in to LinkedIn on it -
+LinkedIn texts you a code the first time it sees a new machine, and that's the only part that needs
+you.
+
+Two small things in the meantime: don't sign in to LinkedIn anywhere new, and don't buy a Linked
+Helper licence yet - that decision comes later and there's a separate topic on it.
+
+**The machine itself is set and forget.** It runs on its own, restarts itself, backs itself up, and I
+keep an eye on it. Your part is the campaigns - setting up new ones, and topping them up when they're
+running low so it never runs dry. I'll give you a shortcut into the machine and show you how, and
+I'll help you with that for as long as you want it.
 
 ---
 
