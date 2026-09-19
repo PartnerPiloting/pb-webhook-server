@@ -246,6 +246,19 @@ REPORT_URL=$REPORT_URL
 REPORT_SECRET=$REPORT_SECRET
 EOF
 chmod 644 /etc/linked-helper-machine.conf  # watchdog runs as $LH_USER; holds no secrets
+# REPORT_URL and REPORT_SECRET are optional, which means an unattended build happily
+# writes them EMPTY - and the conf then reads "REPORT_URL=" with nothing after it, which
+# at a glance looks configured. Guy's own machine was built that way on 1 Sep 2026, nine
+# days before reporting existed, and stayed invisible to Machine Last Seen and to the
+# backup watcher until 19 Sep - the one machine with real data on it was the one nothing
+# was watching. Optionality that is silent is how that happens, so say it out loud.
+if [ -z "${REPORT_URL:-}" ] || [ -z "${REPORT_SECRET:-}" ]; then
+  echo "WARNING: no REPORT_URL/REPORT_SECRET - THIS MACHINE WILL NEVER REPORT IN."
+  echo "         It will not appear in Machine Last Seen, and the backup watcher"
+  echo "         (services/lhBackupWatch.js) cannot see it. Mint a Machine Report"
+  echo "         Secret on the client's row and re-run with both set."
+  NO_REPORTING=yes
+fi
 
 echo "== LH autostart on desktop login =="
 # Create .config FIRST, owned by the LH user. `install -d` on the nested path makes the
@@ -368,6 +381,10 @@ cat > /etc/cron.d/lh-nightly-reboot <<'EOF'
 EOF
 
 echo
+if [ "${NO_REPORTING:-no}" = yes ]; then
+  echo "*** THIS MACHINE IS NOT WIRED FOR REPORTING - see the WARNING above. ***"
+  echo
+fi
 echo "DONE. Reboot now (reboot) - the machine should come back with the desktop"
 echo "auto-logged-in and Linked Helper open. First-time manual steps after reboot:"
 echo "  1. RDP to this machine (pick 'LinkedHelperConsole', password = your VNC password)"
