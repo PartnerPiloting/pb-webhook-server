@@ -610,44 +610,51 @@ that's silently wrong otherwise.
 
 Linked Helper is a program, not a website. It has to be actually running for anything to happen, and
 on a laptop that means it stops every time the machine sleeps or restarts - and nobody notices for
-weeks. So it runs on a small always-on computer in a Sydney data centre instead. It doesn't sleep, it
-doesn't get shut for the school run, and it's one I can see, so if it ever stalls it's something I
-fix rather than something you discover.
+weeks. So it runs on a small always-on computer in an Australian data centre instead. It doesn't
+sleep, it doesn't get shut for the school run, and it's one I can see, so if it ever stalls it's
+something I fix rather than something you discover.
 
 **It's your machine.** You open the account and pay for it on your own card - about A$20 a month. If
 you ever walk away, you cancel it and nothing of yours is tangled up in mine. I do everything else.
 
-**Where to buy it: Binary Lane.** An Australian company with a data centre in Sydney. Go to
-binarylane.com.au, choose Linux VPS, and sign up. The machine has to be in Australia - Linked Helper
-signs in to LinkedIn as you, and if it did that from Singapore while your phone is in Sydney,
-LinkedIn sees one account in two countries at once, which is what a stolen account looks like.
+**Where to buy it: Binary Lane.** An Australian company, with data centres in Sydney, Melbourne,
+Brisbane, Perth and Adelaide. Go to binarylane.com.au, choose Linux VPS, and sign up. The machine has
+to be in Australia - Linked Helper signs in to LinkedIn as you, and if it did that from Singapore
+while your phone is in Melbourne, LinkedIn sees one account in two countries at once, which is what a
+stolen account looks like.
 
 **The form, screen by screen.** Tell me what your screen shows and I'll keep you on track.
 
 1. **Confirm your email.** They send a code.
 2. **Configure your server.**
-   - Region: **Sydney**.
-   - Operating system: **Ubuntu**, the newest LTS version offered.
-   - Resources: **Standard**, and the **2 vCPU / 4 GB / 60 GB** row - about A$19.60.
+   - Region: **an Australian city - your own if it's on the list.** Sydney, Melbourne, Brisbane,
+     Perth or Adelaide, all the same price and no difference in speed. The only one that matters is
+     that it's not Singapore.
+   - Operating system: **Ubuntu**, the newest LTS version offered. LTS matters - if there's a newer
+     one that doesn't say LTS, don't take it.
+   - Resources: **Standard**, and the **2 vCPU / 4 GB / 60 GB** row. That's A$19.60 a month before
+     GST, so a bit over $21 on the invoice.
    - Hostname: **linkedinhelper**
    - Backups: **Backups are not required.** I run the backups, and theirs is a two-day snapshot for
      extra money.
-3. **Account details.** Your details and your card. **If you see a box for an SSH key, paste this in
-   exactly as it is.** It's a lock, not a key - it lets me in to build the machine and it's safe to
-   share:
-
-   `ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMHSFmW3Yds7YTIVRUK+1Bz1P0YfmNX8JoYQT34LIy73 wingguy-client-machines`
-
+3. **Account details.** Your details and your card.
 4. **Complete purchase.** The machine is built in about thirty seconds and shows you an IP address -
-   four numbers with dots between them.
-5. **Only if there was no SSH key box:** open the machine, click **Recovery** in the left-hand menu,
-   then **Reset Password**. It shows a password on screen and emails it to you. That's how I get in
-   instead.
+   four numbers with dots between them. Write that down.
+5. **Reset the root password.** Open the machine, click **Recovery** in the left-hand menu, then
+   **Reset Password**. It shows a password on screen and emails it to you. This is how I get in to
+   build the machine, so don't skip it - Binary Lane generates a password during signup but you'll
+   have clicked past it by now, and this is the only way to see one.
 
-**What to send Guy, by text or Zoom chat - not email:**
+**What to send me, by text on 0414 975 509 or in the Zoom chat - not email:**
 
 - the IP address
-- the password, if you had to reset one
+- the password from step 5
+
+Email systems mangle these things, and I'd rather not find that out on our call.
+
+**If the purchase doesn't go through** - card knocked back, or the account held for a check - stop
+there and text me. Don't try again with a different card. New accounts get held for a quick look
+now and then, and that's easy for me to sort out. Two half-made accounts is not.
 
 **Then what.** I build the machine on my own - desktop, Linked Helper, the self-restart, the nightly
 backup, the monitoring. Then one short call, about fifteen minutes, where you sign in to LinkedIn on
