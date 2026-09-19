@@ -101,7 +101,7 @@ Why: Linked Helper wore {{first}} out last time because it lived on the laptop. 
 
 Do:
 - Guy: open binarylane.com.au, Linux VPS. Sign up with {{first}}'s name and email.
-- Guy: pick the 2 CPU / 4 GB / 60 GB plan, about $20 a month. City: the nearest Australian one, they all cost the same. Operating system: the newest Ubuntu offered. Name it lh-{{first}} in lower case, for example lh-alex-solti.
+- Guy: pick the 2 CPU / 4 GB / 60 GB plan, about $19.60 a month before GST. City: any Australian one - {{first}}'s own if it is on the list, they all cost the same. Operating system: the newest Ubuntu **LTS** offered - not a newer non-LTS. Hostname: **linkedinhelper**, the same as the playbook topic tells clients, so every machine is named alike.
 - Guy: in the SSH key box paste the wg_clients public key: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMHSFmW3Yds7YTIVRUK+1Bz1P0YfmNX8JoYQT34LIy73 wingguy-client-machines. If {{first}} has a key of their own, add it alongside - it's their machine.
 - {{first}}: type the card details.
 - Guy: note the machine's address from the confirmation screen for step 15. Nothing else happens on it today.

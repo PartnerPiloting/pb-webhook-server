@@ -45,7 +45,11 @@ TS_HOSTNAME="${TS_HOSTNAME:-lh-$CLIENT_ID}"
 LH_DEB_URL="https://do0ca1hx6twig.cloudfront.net/linked-helper/444657160c922f6b8048468fef840020/latest/linux/x64/linked-helper.deb"
 
 [ "$(id -u)" = 0 ] || { echo "Run as root"; exit 1; }
-. /etc/os-release; case "${VERSION_ID%%.*}" in 18|20|22|24) ;; *) echo "WARNING: untested on Ubuntu $VERSION_ID";; esac
+# 26 added 19 Sep 2026: Binary Lane ships 26.04 LTS now, Sam Noble's and Rick Wong's
+# machines run it, and a full backup cycle was proven on 26.04 that day. Without it
+# every current build printed a warning that was simply out of date - and a warning
+# that is routinely wrong is one people stop reading.
+. /etc/os-release; case "${VERSION_ID%%.*}" in 18|20|22|24|26) ;; *) echo "WARNING: untested on Ubuntu $VERSION_ID";; esac
 
 echo "== timezone =="
 timedatectl set-timezone "$TZ_NAME"
