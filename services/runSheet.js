@@ -10,7 +10,11 @@
 //   - docs/wingguy-onboarding-checklist.md THE OVERVIEW (the standard week-by-week journey)
 // Both stay the master copy of the WORDS. This file only shapes them.
 
-const CONCIERGE_LINKS = { connector: 'connector', unipile: 'unipile', installer: 'installer', none: null };
+// wingguy-first is not a link but the four "Wingguy first" texts (content/wingguy-first.json),
+// minted onto the step the same way - a box and a Copy button each - so the run sheet never
+// carries its own copy of words that must not drift.
+const CONCIERGE_LINKS = { connector: 'connector', unipile: 'unipile', installer: 'installer', 'wingguy-first': 'wingguy-first', none: null };
+const { runSheetRows: wingguyFirstRows } = require('../utils/wingguyFirst');
 // Which checklist steps carry which link on the standard journey.
 const STANDARD_LINKS = { 1: 'connector', 2: 'unipile', 9: 'installer', 10: 'portal' };
 
@@ -134,9 +138,10 @@ button.copy.ok{background:var(--done)}
 // live DOM), keeps the ticks, and offers "explain this" via the sample capability.
 const PAGE_JS = `
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
-function linkBlock(kind,links,minted){
+function linkBlock(kind,links,minted,texts){
   var rows=[];
   if(kind==='connector')rows.push(['Paste this into their Claude',links.connectorUrl,'connector']);
+  else if(kind==='wingguy-first')(texts||[]).forEach(function(t){rows.push([t.label,t.text,'wingguy-first-'+t.key]);});
   else if(kind==='unipile')rows.push(['Paste this into their browser'+(minted&&minted.mintedAt?' (minted '+minted.mintedAt+', lasts a day)':''),minted&&minted.url,'unipile','Not minted - ask Claude to run the sheet again with --mint']);
   else if(kind==='installer'){rows.push(['Paste this into PowerShell on their machine',links.installerWindows,'installer']);rows.push(['Then open this once in their browser',links.portalUrl,'portal']);}
   else if(kind==='portal')rows.push(['Open this once in their browser',links.portalUrl,'portal']);
@@ -171,7 +176,7 @@ function renderBody(data,state){
     if(step.why)out.push('<p class="why">'+tx(step.why)+'</p>');
     if(step.say)out.push('<p class="say"><b>Say: </b>'+tx(step.say)+'</p>');
     if(step.dos&&step.dos.length)out.push('<ul class="dos">'+step.dos.map(function(d){return '<li>'+tx(d)+'</li>';}).join('')+'</ul>');
-    if(step.link)out.push(linkBlock(step.link,data.links||{},data.minted));
+    if(step.link)out.push(linkBlock(step.link,data.links||{},data.minted,data.wingguyFirst));
     if(step.check)out.push('<p class="check"><b>You\\'ll know it worked when: </b>'+tx(step.check)+'</p>');
     if(step.watch)out.push('<p class="watch"><b>Watch: </b>'+tx(step.watch)+'</p>');
     var vs=(step.proves||[]).map(function(n){return (data.verdicts||{})[n];}).filter(Boolean);
@@ -264,7 +269,8 @@ function buildDocument(data,state){
 
 /**
  * Render the whole page. `data` = { mode, client:{id,name,firstName}, links, setup, minted,
- * verdicts:{n:{verdict,evidence}}, steps, docText, generatedAt }, `state` = { ticks }.
+ * wingguyFirst:[{key,label,text}], verdicts:{n:{verdict,evidence}}, steps, docText, generatedAt },
+ * `state` = { ticks }.
  */
 function renderRunSheet(data, state = { ticks: {} }) {
   // Run the page's own renderBody in Node so the initial body is byte-for-byte what a republish
@@ -295,6 +301,9 @@ function buildData({ mode, detail, steps, docText, minted, facts = [], now = new
     // renders as "not answered - ask on the call".
     facts: (facts || []).map((x) => ({ k: String(x.k || '').trim(), v: String(x.v == null ? '' : x.v).trim() })).filter((x) => x.k),
     minted: minted ? { url: minted.url, mintedAt: now.toLocaleString('en-AU', { hour: 'numeric', minute: '2-digit', day: 'numeric', month: 'short' }) } : null,
+    // The "Wingguy first" texts, minted onto their step from the one canonical copy. Carried in
+    // the data block so a republish from inside the page renders the same words.
+    wingguyFirst: wingguyFirstRows(),
     verdicts,
     steps,
     // The doc feeds the page's "Ask Claude" prompt, so the client's name goes in here too.

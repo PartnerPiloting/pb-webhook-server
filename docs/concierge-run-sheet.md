@@ -19,7 +19,7 @@ Guy never types a client's card or password, and never asks them to read one out
 
 Format, for the generator: each `## Step N - Title` block has `Phase:`, `Who:` (the client's
 part, or "Guy alone"), optional `Minutes:`, optional `Link:` (connector | unipile | installer |
-none), optional `Proves:` (the checklist step numbers the live preflight uses to mark it DONE),
+wingguy-first | none), optional `Proves:` (the checklist step numbers the live preflight uses to mark it DONE),
 `Why:` (one plain line on what the step does for the client), a `Do:` list (start each line with
 who does it), optional `Worked when:` and optional `Watch:`. Keep that shape.
 
@@ -104,7 +104,7 @@ Do:
 - Guy: pick the 2 CPU / 4 GB / 60 GB plan, about $19.60 a month before GST. City: any Australian one - {{first}}'s own if it is on the list, they all cost the same. Operating system: the newest Ubuntu **LTS** offered - not a newer non-LTS. Hostname: **linkedinhelper**, the same as the playbook topic tells clients, so every machine is named alike.
 - Guy: in the SSH key box paste the wg_clients public key: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMHSFmW3Yds7YTIVRUK+1Bz1P0YfmNX8JoYQT34LIy73 wingguy-client-machines. If {{first}} has a key of their own, add it alongside - it's their machine.
 - {{first}}: type the card details.
-- Guy: note the machine's address from the confirmation screen for step 15. Nothing else happens on it today.
+- Guy: note the machine's address from the confirmation screen for step 16. Nothing else happens on it today.
 
 Worked when: Binary Lane shows the machine running and Guy has its address.
 
@@ -127,7 +127,27 @@ Do:
 
 Worked when: Wingguy introduces itself and lists what it can do.
 
-## Step 7 - Calendar and mailbox, one click
+## Step 7 - Wingguy first
+
+Phase: The session - {{first}} is here
+Who: watches
+Minutes: 3
+Link: wingguy-first
+
+Why: {{first}}'s Claude has a memory of its own, and it answers from that memory before it thinks to ask Wingguy. Left alone, one day it gives {{first}} a confident, out-of-date answer about the machine or the method, and {{first}} can't tell. This step tells Claude, in three places, to ask Wingguy first.
+
+Do:
+- Guy: in {{first}}'s Claude open Settings, then Customize, then the preferences box. Paste the preferences text below at the END of whatever is already there - never replace what {{first}} wrote. If the box is full, use the short form.
+- Guy: back in the chat from step 6, type the memory line below word for word, and wait for Claude to say it will remember.
+- Guy: open a NEW chat and type the check line below. Read the first line of the reply out loud.
+- Guy: tell {{first}} the one habit - start every Wingguy chat with "where are we up to?". Only Wingguy can answer it, so it opens the door for the rest of that chat.
+- {{first}}: nothing to type. If you use Claude's memory for other work, say so - nothing here touches it.
+
+Worked when: The first line of the reply to the check reads "Loaded tools". If it starts "Recalled memory", Wingguy was never asked - check the preferences text saved, say the memory line again, and run the check again in another new chat.
+
+Watch: After the connector, before anything is asked about the machine or the method - a wrong answer given once is what memory keeps. A work-managed Claude may have no preferences box or no memory; then the opener habit is the whole fix, and it works. Do the check again at the end of every later session.
+
+## Step 8 - Calendar and mailbox, one click
 
 Phase: The session - {{first}} is here
 Who: reads out the email address on the screen, types a password if asked
@@ -149,7 +169,7 @@ Worked when: The permission screen says done, and a fresh check shows the record
 
 Watch: The link on this page was made when the page was made and lasts a day. If it has gone stale, ask Claude for a fresh one - it takes a second.
 
-## Step 8 - {{first}} checks it can see the week
+## Step 9 - {{first}} checks it can see the week
 
 Phase: The session - {{first}} is here
 Who: looks at the week on the screen and says "yes, that's mine"
@@ -166,7 +186,7 @@ Do:
 
 Worked when: {{first}} has said yes to both. Only {{first}} can.
 
-## Step 9 - Book the next call, then {{first}} can go
+## Step 10 - Book the next call, then {{first}} can go
 
 Phase: The session - {{first}} is here
 Who: agrees a time, then leaves Guy to it
@@ -183,7 +203,7 @@ Do:
 
 Worked when: The next call is in both diaries and {{first}} has gone.
 
-## Step 10 - {{first}}'s meeting link
+## Step 11 - {{first}}'s meeting link
 
 Phase: The session - Guy alone
 Who: Guy alone
@@ -198,7 +218,7 @@ Do:
 
 Worked when: The link is on the record.
 
-## Step 11 - Wingguy inside LinkedIn
+## Step 12 - Wingguy inside LinkedIn
 
 Phase: The session - Guy alone
 Who: Guy alone
@@ -218,7 +238,7 @@ Worked when: The panel appears on a real profile and drafts. The version on the 
 
 Watch: Fiddliest step in the journey - that's why Guy does it.
 
-## Step 12 - Dress rehearsal
+## Step 13 - Dress rehearsal
 
 Phase: The session - Guy alone
 Who: Guy alone
@@ -234,7 +254,7 @@ Do:
 
 Worked when: The invite arrived with the right link. {{first}} is live in chat.
 
-## Step 13 - Meeting recorder
+## Step 14 - Meeting recorder
 
 Phase: The session - Guy alone
 Who: Guy alone, unless the recorder needs {{first}}'s login
@@ -250,7 +270,7 @@ Do:
 
 Watch: Calendar before recorder, always - Wingguy works out who a meeting was with from the calendar.
 
-## Step 14 - Wrap the sitting
+## Step 15 - Wrap the sitting
 
 Phase: After the call
 Who: Guy alone
@@ -264,7 +284,7 @@ Do:
 
 Worked when: What {{first}} never had to do - create anything alone, connect a cloud folder, download or unzip anything, remember a setting, or come back to a page.
 
-## Step 15 - Guy builds the machine
+## Step 16 - Guy builds the machine
 
 Phase: After the call
 Who: Guy alone, same day
@@ -278,7 +298,7 @@ Do:
 
 Worked when: The record shows Machine Status and Machine Last Seen filling in by themselves, and stopping Linked Helper by hand brings it back within a few minutes.
 
-## Step 16 - The instructions call, and LinkedIn onto the machine
+## Step 17 - The instructions call, and LinkedIn onto the machine
 
 Phase: After the call
 Who: talks for twenty minutes, then signs into LinkedIn once
@@ -290,16 +310,16 @@ Why: This is the twenty minutes that makes everything Wingguy writes sound like 
 Do:
 - {{first}}: open a chat and type: let's set up my rules.
 - Guy: sit with {{first}} through the interview - their voice, their offer, what they'd never say. Together, not homework.
-- Guy: show {{first}} the LinkedIn draft from step 11 on someone they know. It's a starting point, not an oracle - {{first}}'s edit is what teaches it.
+- Guy: show {{first}} the LinkedIn draft from step 12 on someone they know. It's a starting point, not an oracle - {{first}}'s edit is what teaches it.
 - Guy: start the targeting conversation - who is {{first}} looking for, and how would they find them.
 - Guy: last ten minutes, open the machine's screen.
 - {{first}}: sign into LinkedIn on it - your password, and any code sent to your phone.
 - Guy: put in the Linked Helper licence. Pro, annual, one licence per LinkedIn account, with the promo code.
-- Guy: a recorder left over from step 13 gets sorted here.
+- Guy: a recorder left over from step 14 gets sorted here.
 
 Worked when: {{first}} asks Wingguy to draft a reply to a real message and says "that sounds like me". And LinkedIn is signed in on the machine.
 
-## Step 17 - First campaign, and then it's {{first}}'s
+## Step 18 - First campaign, and then it's {{first}}'s
 
 Phase: After the call
 Who: watches, then owns it

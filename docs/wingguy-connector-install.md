@@ -43,6 +43,37 @@ in the Master Clients Base → "Portal Token" field).
 > That's it. Start a new chat and just type: **"what can I do with Wingguy?"** - Wingguy will take
 > it from there and walk you through everything.
 >
+> **Then one more minute - tell Claude to ask Wingguy first.** Your Claude has a memory of its own,
+> and it answers from that before it thinks to ask Wingguy. Left alone, one day it gives you a
+> confident answer that's a month out of date, and you can't tell. Three quick things fix it:
+>
+> 1. Open **Settings** → **Customize** and find the preferences box. Paste this at the **end** of
+>    whatever is already there:
+>
+>    I use Wingguy - Guy Wilson's I Know A Guy system - through the Wingguy connector. For
+>    anything about Wingguy, my Linked Helper machine, Linked Helper, my LinkedIn outreach,
+>    follow-ups, meetings booked through it, or how any of it works or is set up: call the
+>    Wingguy tools first, before answering - even if you think you already know the answer.
+>    Wingguy has the current version; anything you remember may be out of date. If Wingguy
+>    doesn't cover it, say so and suggest I ask Guy.
+>
+>    If the box is full, use this shorter line instead:
+>
+>    For anything about Wingguy or my Linked Helper machine, call the Wingguy tools first, even
+>    if you think you know the answer.
+>
+> 2. Back in your chat, type this word for word and wait for Claude to say it will remember:
+>
+>    Remember this: for anything about Wingguy or my Linked Helper machine, always call the
+>    Wingguy tools first.
+>
+> 3. Open a **new** chat and type: **Help me set up my Linked Helper machine**. Look at the first line of the
+>    reply - it should say **"Loaded tools"**. Send me a screenshot of that line. If it says
+>    "Recalled memory" instead, tell me and we'll sort it on our call.
+>
+> And one habit from here: start every Wingguy chat with **"where are we up to?"**. Only Wingguy can
+> answer it, so it makes sure Wingguy is in the room for the rest of that chat.
+>
 > Keep that link private - it's your personal key, so don't share it around.
 
 ---

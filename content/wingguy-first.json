@@ -1,0 +1,27 @@
+{
+  "_what": "The 'Wingguy first' texts - what goes into a client's Claude on onboarding day so it asks Wingguy before answering from its own memory. ONE copy, here. The concierge run sheet mints these onto the page (services/runSheet.js, link kind wingguy-first); the self-serve checklist and the connector install message carry them verbatim, and tests/wingguy-first.test.js fails if any copy drifts.",
+  "_why": "19 Sep 2026, proven with server logs: Claude.ai consults its own memory BEFORE loading connector tools. When memory has a confident answer the first line of the reply is 'Recalled memory', no tool is loaded, and Wingguy is never asked - Guy got the August Windows-laptop machine doctrine back for the exact sentence an email told a client to type. When memory has nothing, the first line is 'Loaded tools' and Wingguy answers. Nothing server-side can reach that first decision, so the fix lives in the client's Claude: a preferences paragraph, a memory pointer, an opener habit, and a canary that proves it took. Principle: memory holds pointers, never content. Facts live in Wingguy and update centrally.",
+  "_rules": [
+    "Edit the text HERE, then run: node tests/wingguy-first.test.js - it names every doc that has to be brought into line.",
+    "preferences: pasted APPENDED to the client's Settings -> Customize preferences box, never replacing what is there. About 500 characters - the box is small.",
+    "preferences_short: the fallback when the box is full. Under 150 characters.",
+    "memory_pointer: said in the client's first chat, word for word, before any content page can form in their memory.",
+    "opener: the phrase every Wingguy chat should start with. Only the server can answer it, so it forces the tools to load for the rest of that chat. Must be a registered client phrase.",
+    "canary: the acceptance test, 30 seconds, manual, the only check that measures the real thing. New chat, type the phrase, read the FIRST line. Run it at the end of every onboarding and after every doctrine change. Self-serve clients send a screenshot of that line. The phrase must be a registered client phrase that routes to wingguy_learn.",
+    "House style: plain spaced short dash ' - ', never an em dash. Australian English."
+  ],
+  "preferences": "I use Wingguy - Guy Wilson's I Know A Guy system - through the Wingguy connector. For anything about Wingguy, my Linked Helper machine, Linked Helper, my LinkedIn outreach, follow-ups, meetings booked through it, or how any of it works or is set up: call the Wingguy tools first, before answering - even if you think you already know the answer. Wingguy has the current version; anything you remember may be out of date. If Wingguy doesn't cover it, say so and suggest I ask Guy.",
+  "preferences_short": "For anything about Wingguy or my Linked Helper machine, call the Wingguy tools first, even if you think you know the answer.",
+  "memory_pointer": "Remember this: for anything about Wingguy or my Linked Helper machine, always call the Wingguy tools first.",
+  "opener": "where are we up to?",
+  "canary": {
+    "phrase": "Help me set up my Linked Helper machine",
+    "first_line": "Loaded tools",
+    "bad_first_line": "Recalled memory"
+  },
+  "where": {
+    "preferences": ["docs/wingguy-onboarding-checklist.md", "docs/wingguy-connector-install.md"],
+    "preferences_short": ["docs/wingguy-onboarding-checklist.md", "docs/wingguy-connector-install.md"],
+    "memory_pointer": ["docs/wingguy-onboarding-checklist.md", "docs/wingguy-connector-install.md"]
+  }
+}

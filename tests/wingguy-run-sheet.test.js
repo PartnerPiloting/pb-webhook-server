@@ -43,11 +43,15 @@ check('every step has a phase, a who and at least one do', () => {
 check('the links sit on the right steps and nowhere else', () => {
   const byLink = {};
   for (const s of steps) if (s.link) byLink[s.link] = (byLink[s.link] || []).concat(s.n);
-  assert.deepStrictEqual(Object.keys(byLink).sort(), ['connector', 'installer', 'unipile']);
+  assert.deepStrictEqual(Object.keys(byLink).sort(), ['connector', 'installer', 'unipile', 'wingguy-first']);
   assert.strictEqual(byLink.connector.length, 1);
   assert.strictEqual(byLink.unipile.length, 1);
   assert.strictEqual(byLink.installer.length, 1);
+  assert.strictEqual(byLink['wingguy-first'].length, 1);
   assert.ok(byLink.connector[0] < byLink.unipile[0] && byLink.unipile[0] < byLink.installer[0], 'connector before calendar before extension');
+  // Wingguy first goes IMMEDIATELY after the connector: memory forms from the first answer given,
+  // so nothing about the machine or the method may be asked before Claude is told to ask Wingguy.
+  assert.strictEqual(byLink['wingguy-first'][0], byLink.connector[0] + 1, 'Wingguy first is the step right after the connector');
 });
 
 check('say / worked when / watch / proves parse where present', () => {
@@ -131,6 +135,8 @@ check('links render on their steps with copy buttons; the minted link and the ve
   assert.ok(html.includes('https://unipile/link'));
   assert.ok(html.includes('data-copy="installer"'));
   assert.ok(html.includes('data-copy="portal"'));
+  assert.ok(html.includes('data-copy="wingguy-first-preferences"'), 'the Wingguy-first preferences text has its own copy button');
+  assert.ok(html.includes('data-copy="wingguy-first-canary"'), 'the canary phrase has its own copy button');
   assert.ok(html.includes('Active &amp; fine'));
   assert.ok(html.includes('class="v owed"'));
 });
