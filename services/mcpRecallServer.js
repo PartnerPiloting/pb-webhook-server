@@ -290,7 +290,24 @@ function asMcpResult(out) {
 // ---------------------------------------------------------------------------
 
 function createRecallMcpServer(coachClientId = DEFAULT_COACH_CLIENT_ID) {
-  const server = new McpServer({ name: 'recall-transcript', version: '2.0.0' });
+  // Server-level instructions sit ABOVE every tool description - the one steer the model reads
+  // before it has looked at a single tool. Added 19 Sep 2026 after "help me set up my Linked
+  // Helper machine" (the sentence a client's email told them to type) was answered from the
+  // model's own memory: wingguy_learn's description did not claim machine setup, and nothing
+  // higher up said "this system has its own answers - ask it first". Now something does.
+  const server = new McpServer(
+    { name: 'recall-transcript', version: '2.0.0' },
+    {
+      instructions:
+        "This is Wingguy - Guy Wilson's I Know A Guy system, plugged into this chat for one client. "
+        + "For ANY question about how the method works, or about setting up, buying or fixing any part of the kit it "
+        + "runs on (the Linked Helper machine and where to buy it, Linked Helper itself, the Chrome extension, the Claude "
+        + "connection, the Anthropic key, scoring, campaigns, the portal), call wingguy_learn FIRST and present its answer "
+        + "as Guy's own words. Never answer those from memory, from past chats, or from general knowledge about computers "
+        + "or LinkedIn - Guy runs a specific setup with specific suppliers, and an answer that is right in general is wrong "
+        + "for this client, and they cannot tell the difference. If wingguy_learn does not cover it, say so and point them to Guy.",
+    },
+  );
 
   server.registerTool(
     'recall_latest_transcript',

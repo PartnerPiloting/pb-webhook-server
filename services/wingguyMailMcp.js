@@ -2167,4 +2167,8 @@ async function legacyToolCall(toolName, args, tenant = TENANT) {
   }
 }
 
+// Stamp every sentence a client is told to type into the description of the tool that answers it
+// (content/client-phrases.json). Must run before export - see utils/clientPhrases.js for the why.
+require('../utils/clientPhrases').applyClientPhrases(TOOL_DEFS);
+
 module.exports = { registerWingguyMailTools, legacyToolList, legacyToolCall, TOOL_DEFS, detectAssets, findRetiredUrls, findLeftoverPlaceholders, htmlToText, stripQuotedTail, settleEmailEditPairs, parseLinkedInLast, linkedInEverInbound, classifyLead, computeMailSignals, computeFollowupSweep, runFollowupSweep, chooseFollowUpStamp, coachOwnEmails, stampFollowUpForDraft, buildQueue, deriveDraftState, draftMarker };

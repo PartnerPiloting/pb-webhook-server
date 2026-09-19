@@ -437,4 +437,8 @@ async function legacyToolCall(toolName, args, tenant = TENANT) {
   }
 }
 
+// Stamp every sentence a client is told to type into the description of the tool that answers it
+// (content/client-phrases.json). Must run before export - see utils/clientPhrases.js for the why.
+require('../utils/clientPhrases').applyClientPhrases(TOOL_DEFS);
+
 module.exports = { registerWingguyBookingTools, legacyToolList, legacyToolCall, TOOL_DEFS, runCheckAvailability };

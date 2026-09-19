@@ -1,0 +1,81 @@
+{
+  "_what": "Every sentence a client is TOLD TO TYPE into their Claude, and the tool that must answer it. Read by utils/clientPhrases.js, which stamps each phrase into its tool's description at load - so a phrase written into an email or a playbook topic cannot silently go unclaimed. Checked by tests/client-phrases.test.js.",
+  "_why": "19 Sep 2026: Guy typed 'Help me set up my LinkedHelper machine' - the exact sentence Steve Nelson's email told him to type - and got the August Windows-laptop doctrine back, answered from memory. wingguy_learn was never called, because its description claimed 'networking, outreach, LinkedIn, meetings, follow-up' and machine setup was none of those. A confident, coherent, obsolete answer that a client could not have told was wrong. This file is the reason that class of failure now fails a test instead of a client.",
+  "_rules": [
+    "Add a phrase here BEFORE it goes into anything a client reads. Then run: node tests/client-phrases.test.js",
+    "phrase: exactly what the client is told to type. Matching ignores case, straight/curly quotes and trailing punctuation.",
+    "tool: the MCP tool that must answer it. The test loads that tool's real definition and checks the phrase is in its description.",
+    "topic: for wingguy_learn only - the playbook title the phrase must resolve to (a leading substring). Omit for tour phrases and 'everything'.",
+    "tour: for wingguy_learn only - 'status' or 'advance' when the phrase drives the tour rather than serving a topic.",
+    "everything: true for the phrases that mean 'read me the whole playbook'.",
+    "where: repo files that tell the client to type it. The test checks each still contains the phrase - so a doc edit that reworded it fails loudly.",
+    "near_misses: sentences NOT in any doc that a client might plausibly type, with the topic they must NOT be served ('not'), and optionally the one they SHOULD reach ('expect'). A miss is fine - it is logged as a gap and the client is told to ask Guy. The wrong topic is not.",
+    "None of this proves a client's Claude will CHOOSE the tool. It proves the description claims the words and the matcher lands them. The only proof of choice is typing the sentence into a fresh chat once before it ships - do that too."
+  ],
+  "phrases": [
+    {
+      "phrase": "Help me set up my Linked Helper machine",
+      "tool": "wingguy_learn",
+      "topic": "YOUR LINKED HELPER MACHINE",
+      "where": ["content/templates/plan-one-pager.md", "docs/wingguy-onboarding-checklist.md"]
+    },
+    {
+      "phrase": "where are we up to?",
+      "tool": "wingguy_learn",
+      "tour": "status",
+      "where": ["docs/client-tour.md"]
+    },
+    {
+      "phrase": "continue",
+      "tool": "wingguy_learn",
+      "tour": "advance",
+      "where": ["docs/client-tour.md"]
+    },
+    {
+      "phrase": "read me everything",
+      "tool": "wingguy_learn",
+      "everything": true,
+      "where": ["docs/client-playbook.md"]
+    },
+    {
+      "phrase": "show me my follow-ups",
+      "tool": "wingguy_queue",
+      "where": ["docs/client-playbook.md", "docs/client-tour.md"]
+    },
+    {
+      "phrase": "let's set up my instructions",
+      "tool": "wingguy_setup_rules",
+      "where": ["docs/client-tour.md"]
+    },
+    {
+      "phrase": "what can I do with Wingguy?",
+      "tool": "wingguy_vision",
+      "where": ["docs/wingguy-onboarding-checklist.md"]
+    },
+    {
+      "phrase": "review my edits",
+      "tool": "wingguy_edit_review",
+      "where": ["docs/client-playbook.md"]
+    },
+    {
+      "phrase": "prep me for my meetings",
+      "tool": "wingguy_list_events",
+      "where": ["docs/wingguy-onboarding-checklist.md"]
+    },
+    {
+      "phrase": "what's on my calendar this week?",
+      "tool": "wingguy_list_events",
+      "where": ["docs/wingguy-onboarding-checklist.md"]
+    },
+    {
+      "phrase": "book it",
+      "tool": "wingguy_book_meeting",
+      "where": ["docs/client-playbook.md"]
+    }
+  ],
+  "near_misses": [
+    { "phrase": "help me set up my extension", "not": "YOUR LINKED HELPER MACHINE" },
+    { "phrase": "help me set up my instructions", "not": "YOUR LINKED HELPER MACHINE", "expect": "YOUR INSTRUCTIONS" },
+    { "phrase": "help me set up my Claude key", "not": "YOUR LINKED HELPER MACHINE" }
+  ]
+}

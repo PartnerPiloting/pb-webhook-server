@@ -462,17 +462,28 @@ const wantsEverything = (q) => ALL_EXACT.test(q) || ALL_PHRASE.test(q);
 // matching WHAT DO YOU DO on the word "what" alone - a bad serve AND a lost gap signal, since
 // the no-match branch is what feeds Guy's list of questions the playbook doesn't cover yet.
 // A whole-phrase substring match still beats everything, so "what do you do" stays routable.
-const MATCH_STOPWORDS = new Set(['what', 'about', 'your', 'you', 'the', 'and', 'for', 'with', 'that', 'this', 'are', 'can', 'could', 'should', 'would', 'does', 'how', 'why', 'when', 'tell', 'need', 'want', 'know', 'get', 'have', 'has']);
+// 'set', 'setting', 'help' added 2026-09-19: three titles say "set up" and one says "helper", so
+// on their own they decided ties by file order - "help me set up my instructions" went to YOUR
+// FIRST CAMPAIGN ("...HOW IT'S SET UP...") instead of YOUR INSTRUCTIONS. In this playbook they
+// are the "what" of setup questions: present in every one, discriminating in none.
+const MATCH_STOPWORDS = new Set(['what', 'about', 'your', 'you', 'the', 'and', 'for', 'with', 'that', 'this', 'are', 'can', 'could', 'should', 'would', 'does', 'how', 'why', 'when', 'tell', 'need', 'want', 'know', 'get', 'have', 'has', 'set', 'setting', 'help']);
+// Per-word scoring is on WHOLE words (2026-09-19). It was a substring test, so "help" scored
+// against "helper" and "set" against "setting", and "help me set up my extension" - a sentence with
+// no extension topic to land on - was served YOUR LINKED HELPER MACHINE with full confidence. A
+// wrong topic is worse than a miss: the miss is logged as a gap and the client is told to ask Guy,
+// which is the designed answer for a question the playbook does not cover yet.
 function findPlaybookTopic(topics, query) {
   const q = String(query || '').toLowerCase().trim();
   if (!q) return null;
   const words = q.split(/[^a-z0-9]+/).filter((w) => w.length > 2 && !MATCH_STOPWORDS.has(w));
+  // words are [a-z0-9]+ by construction, so they need no escaping inside the pattern
+  const wordRes = words.map((w) => new RegExp(`\\b${w}\\b`));
   let best = null;
   let bestScore = 0;
   for (const t of topics) {
     const title = t.title.toLowerCase();
     let score = title.includes(q) ? 100 : 0;
-    for (const w of words) if (title.includes(w)) score += 1;
+    for (const re of wordRes) if (re.test(title)) score += 1;
     if (score > bestScore) { bestScore = score; best = t; }
   }
   return bestScore > 0 ? best : null;
@@ -979,4 +990,11 @@ async function legacyToolCall(toolName, args, tenant = TENANT) {
   }
 }
 
-module.exports = { registerWingguyGetStartedTools, legacyToolList, legacyToolCall, TOOL_DEFS, loadTour };
+// Stamp every sentence a client is told to type into the description of the tool that answers it
+// (content/client-phrases.json). Must run before export - see utils/clientPhrases.js for the why.
+require('../utils/clientPhrases').applyClientPhrases(TOOL_DEFS);
+
+// findPlaybookTopic / loadPlaybook / the three special doors are exported for
+// tests/client-phrases.test.js, which runs the REAL matcher over every phrase a client is
+// told to type. Not for other callers.
+module.exports = { registerWingguyGetStartedTools, legacyToolList, legacyToolCall, TOOL_DEFS, loadTour, loadPlaybook, findPlaybookTopic, wantsEverything, wantsTourStatus, wantsTourAdvance };

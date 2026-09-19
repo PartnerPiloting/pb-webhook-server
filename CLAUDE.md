@@ -40,6 +40,24 @@ git fetch origin && git show origin/main:docs/client-playbook.md | grep "^## "
 - Voice is Guy in the first person, except claims about how good Wingguy is, which stay third
   person ("Guy reckons..."). The tool must never praise its own drafting.
 
+## Sentences clients are told to type - content/client-phrases.json
+
+Any sentence a client is told to type into their Claude - a tour beat's "say where are we up to", an
+email's "open a chat and say help me set up my Linked Helper machine" - goes in
+`content/client-phrases.json` **before** it goes into the email or topic. `utils/clientPhrases.js`
+stamps each phrase into the description of the tool that answers it, so a tool can never be left not
+knowing about a sentence we promised a client.
+
+```
+node tests/client-phrases.test.js
+```
+
+That checks the description quotes the phrase, the real matcher lands it on the right topic, and every
+doc the registry names still contains it. **It cannot check whether a client's Claude will choose the
+tool** - nothing can, from here - so every new phrase also gets typed into a fresh chat once before it
+ships. On 19 Sep 2026 "help me set up my Linked Helper machine" got the August Windows-laptop answer
+back from memory, confidently, because nobody had.
+
 ## Temporary worktrees
 
 Use one whenever you need a clean copy of `main` while a checkout is dirty. Rules:
