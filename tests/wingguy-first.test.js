@@ -132,5 +132,49 @@ check('the rendered page carries all four texts, each with its own Copy button',
   assert.ok(html.includes(esc(T.canary.first_line)), 'the page tells Guy what the first line must read');
 });
 
-console.log(failures ? `\n${failures} FAILED` : '\nall passed');
-process.exit(failures ? 1 : 0);
+// ---- 5. every wingguy_learn answer tells Claude not to keep it -------------------------------
+// The learning store no-ops without DATABASE_URL and the client lookup is caught, so the real
+// handler runs here end to end. Owner doors and the not_covered ack are not client-facing and
+// carry no footer - a footer on an ack would be noise.
+console.log('\n5. every client-facing wingguy_learn answer ends with the memory line');
+const learn = require('../services/wingguyGetStartedMcp');
+const learnDef = learn.TOOL_DEFS.find((d) => d.name === 'wingguy_learn');
+const withTimeout = (p, ms, what) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error(`${what} took longer than ${ms} ms`)), ms))]);
+
+(async () => {
+  check('the tool description itself says never to save the answer to memory', () => {
+    assert.ok(/NEVER save what this tool returns to memory/i.test(learnDef.description));
+  });
+  check('the footer says do not save, call again, and names the one thing worth remembering', () => {
+    assert.ok(/do not save/i.test(learn.MEMORY_FOOTER));
+    assert.ok(/call wingguy_learn again/i.test(learn.MEMORY_FOOTER));
+    assert.ok(/Wingguy tools first/i.test(learn.MEMORY_FOOTER));
+    assert.ok(!/[–—]/.test(learn.MEMORY_FOOTER), 'house style: no em dash');
+  });
+  const doors = [
+    ['the topic map (no args)', {}],
+    ['a topic', { topic: 'big picture' }],
+    ['everything', { topic: 'everything' }],
+    ['a miss (logged as a gap)', { topic: 'zzz nothing matches this zzz' }],
+    ['tour status', { topic: 'where are we up to' }],
+    ['tour continue', { topic: 'continue' }],
+  ];
+  for (const [name, args] of doors) {
+    try {
+      const out = await withTimeout(learnDef.run(args, 'Wingguy-First-Test'), 20000, name);
+      check(`${name} ends with the memory line`, () => {
+        assert.ok(!out.isError, `returned an error: ${String(out.text).slice(0, 120)}`);
+        assert.ok(String(out.text).trimEnd().endsWith(learn.MEMORY_FOOTER), `no memory line at the end of: ...${String(out.text).slice(-160)}`);
+      });
+    } catch (e) {
+      check(`${name} ends with the memory line`, () => { throw e; });
+    }
+  }
+  const ack = await learnDef.run({ not_covered: 'a test question' }, 'Wingguy-First-Test');
+  check('the not_covered ack carries no footer - nothing is shown to the user from it', () => {
+    assert.ok(!String(ack.text).includes(learn.MEMORY_FOOTER));
+  });
+
+  console.log(failures ? `\n${failures} FAILED` : '\nall passed');
+  process.exit(failures ? 1 : 0);
+})().catch((e) => { console.error(e); process.exit(1); });
