@@ -13075,6 +13075,30 @@ router.get("/api/smart-followup/sweep", async (req, res) => {
 // Smart Follow-Up Sweep - Cron Fallback
 // When web-triggered sweep gets stuck (Render kills background after 202),
 // cron hits this endpoint to run the sweep in the request context.
+// ---------------------------------------------------------------
+// GET /api/cron/lh-backup-watch
+// Daily: is every Linked Helper machine's backup actually reaching Drive?
+// Emails Guy only when one is not - see services/lhBackupWatch.js for why this
+// exists (every machine went unbacked 8-19 Sep 2026 and nothing said a word).
+// ?dry=1 surveys and reports without sending mail.
+// Auth: Bearer PB_WEBHOOK_SECRET
+// ---------------------------------------------------------------
+router.get("/api/cron/lh-backup-watch", async (req, res) => {
+  const auth = req.headers.authorization;
+  const secret = process.env.PB_WEBHOOK_SECRET;
+  if (!secret || auth !== `Bearer ${secret}`) {
+    return res.status(401).json({ ok: false, error: 'Unauthorized' });
+  }
+  try {
+    const { runBackupWatch } = require('../services/lhBackupWatch');
+    const result = await runBackupWatch({ dryRun: req.query.dry === '1' });
+    return res.json({ ok: true, ...result });
+  } catch (e) {
+    console.error(`[lh-backup-watch] ${e.message}`);
+    return res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 // Auth: Bearer PB_WEBHOOK_SECRET
 // ---------------------------------------------------------------
 router.get("/api/cron/smart-followup-sweep", async (req, res) => {

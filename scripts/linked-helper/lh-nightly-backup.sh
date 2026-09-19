@@ -25,6 +25,11 @@ LH_DEB_URL="${LH_DEB_URL:-https://do0ca1hx6twig.cloudfront.net/linked-helper/444
 
 say(){ echo "$(date -Is) $*" >> "$LOG"; }
 
+# What actually left the machine tonight. Read at the end to write the state file
+# that lh-watchdog.py carries to the server - the difference between "the job ran"
+# and "a backup exists somewhere other than this machine".
+LANDED=""
+
 say "=== backup start ==="
 
 # Hold the watchdog off for the duration. It starts Linked Helper whenever it
@@ -154,6 +159,7 @@ say "uploading to $REMOTE_DIR"
 # --timeout/--retries so a throttled transfer fails cleanly instead of hanging.
 if timeout 40m rclone copy "$ARCHIVE" "$REMOTE_DIR" --drive-chunk-size 32M      --retries 3 --low-level-retries 10 --timeout 5m --drive-pacer-min-sleep 200ms 2>>"$LOG"; then
   say "upload OK"
+  LANDED="folder copy ${SIZE:-?} MB"
   # --max-depth 1 so this only ages out the nightly tars, never the lhd2/ folder
   # below. Those are produced irregularly - only when Linked Helper updates itself
   # - so an age rule would delete one and then re-upload it the same night.
@@ -169,6 +175,7 @@ if [ -f "${EXPORT:-}" ]; then
   say "uploading nightly export $(basename "$EXPORT")"
   if timeout 40m rclone copy "$EXPORT" "$REMOTE_DIR/lhd2" --drive-chunk-size 32M       --retries 3 --low-level-retries 10 --timeout 5m --drive-pacer-min-sleep 200ms 2>>"$LOG"; then
     say "nightly export upload OK"
+    LANDED="nightly export $(du -m "$EXPORT" 2>/dev/null | cut -f1) MB"
   else
     say "NIGHTLY EXPORT UPLOAD FAILED - kept locally at $EXPORT"
     KEEP_EXPORT=yes
@@ -198,4 +205,35 @@ if [ "${LH_RESTARTED:-no}" != "yes" ] || ! pgrep -f "[l]inked-helper" >/dev/null
   say "restarting Linked Helper (fallback)"
   sudo -u "${LH_USER:-lh}" DISPLAY=:0 setsid "$LH_BIN" --start-account-id="$LH_ACCOUNT_ID" >/dev/null 2>&1 &
 fi
+# --- state file, for lh-watchdog.py to carry to the server -------------------
+# last_ok only moves when something actually reached Drive, so its age is the age
+# of the newest offsite copy - not the age of the last attempt. A job that runs
+# flawlessly every night and uploads nothing must still read as stale: that is
+# exactly the hole that let 8-19 Sep 2026 pass unnoticed on every machine.
+STATE=/var/lib/lh-backup-state.json
+python3 - "$STATE" "${LANDED:-}" "$CLIENT_ID" <<'PYSTATE' 2>>"$LOG" || say "state file write failed (non-fatal)"
+import json, sys, os, datetime
+path, landed, client = sys.argv[1], sys.argv[2], sys.argv[3]
+now = datetime.datetime.now().astimezone().isoformat(timespec="seconds")
+prev = {}
+try:
+    with open(path) as f:
+        prev = json.load(f)
+except Exception:
+    pass
+state = {
+    "client_id": client,
+    "last_run": now,
+    "result": "ok" if landed else "failed",
+    "what": landed or "nothing reached Drive",
+    "last_ok": now if landed else prev.get("last_ok"),
+}
+os.makedirs(os.path.dirname(path), exist_ok=True)
+tmp = path + ".tmp"
+with open(tmp, "w") as f:
+    json.dump(state, f)
+os.replace(tmp, path)
+PYSTATE
+say "state: ${LANDED:-NOTHING REACHED DRIVE}"
+
 say "=== backup done ==="

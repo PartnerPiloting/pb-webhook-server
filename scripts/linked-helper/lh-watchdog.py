@@ -153,6 +153,25 @@ async def press_start(ws_url):
     return "NO RESPONSE"
 
 
+def backup_state():
+    """What the nightly backup last managed, as it left /var/lib/lh-backup-state.json.
+
+    Carried on every watchdog report so the server learns the age of the newest
+    OFFSITE copy without a second endpoint, a second secret or a second thing to
+    install. Best-effort by design: a machine with no backup job, or a state file
+    that is missing or malformed, reports {} and the watchdog carries on. Losing
+    the backup line must never cost the health line.
+    """
+    try:
+        with open("/var/lib/lh-backup-state.json") as f:
+            st = json.load(f)
+        if not isinstance(st, dict):
+            return {}
+        return {k: st.get(k) for k in ("last_run", "last_ok", "result", "what") if st.get(k)}
+    except Exception:
+        return {}
+
+
 def report(conf, payload):
     if not conf.get("REPORT_URL"):
         return
@@ -210,6 +229,7 @@ def main():
     report(conf, {"client_id": conf.get("CLIENT_ID"),
                   "account_id": conf.get("LH_ACCOUNT_ID"),
                   "health": health, "actions": actions, "ts": int(time.time()),
+                  "backup": backup_state(),
                   "machine": machine_info() if conf.get("REPORT_URL") else {}})
 
     # Non-zero exit makes failures visible in systemd/journalctl.

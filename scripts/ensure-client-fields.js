@@ -268,6 +268,12 @@ const MASTER_FIELDS = [
     type: 'dateTime',
     description: 'When the client\'s Linked Helper machine last reported in (every 5 minutes while alive). Stale = the machine is down, asleep, or its reporting is unset - the fleet health signal, readable from Airtable without remoting in. Added 2026-09-10.',
     options: { timeZone: 'Australia/Brisbane', dateFormat: { name: 'iso' }, timeFormat: { name: '24hour' } }
+  },
+  {
+    name: 'Machine Last Backup',
+    type: 'dateTime',
+    description: 'When a Linked Helper backup last actually REACHED Google Drive - not when the job last ran. Carried on the machine\'s 5-minute watchdog report and watched daily by services/lhBackupWatch.js, which emails Guy when any machine passes two days. Added 2026-09-19 after every machine went unbacked from 8 to 19 Sep 2026 without anything noticing.',
+    options: { timeZone: 'Australia/Brisbane', dateFormat: { name: 'iso' }, timeFormat: { name: '24hour' } }
   }
 ];
 

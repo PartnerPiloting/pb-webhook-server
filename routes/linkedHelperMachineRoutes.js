@@ -54,6 +54,7 @@ const FIELDS = {
   tailscale: 'Machine Tailscale',
   status: 'Machine Status',
   lastSeen: 'Machine Last Seen',
+  lastBackup: 'Machine Last Backup',
 };
 
 function clip(v, n = 120) {
@@ -69,6 +70,19 @@ function secretMatches(header, stored) {
   return crypto.timingSafeEqual(a, b);
 }
 
+/**
+ * How long ago, in plain words, for the status line. Anything we cannot parse reads
+ * as 'never' rather than as a number nobody can trust.
+ */
+function ageWords(iso) {
+  const t = Date.parse(iso || '');
+  if (!Number.isFinite(t)) return 'never';
+  const hrs = Math.floor((Date.now() - t) / 3600000);
+  if (hrs < 1) return 'just now';
+  if (hrs < 48) return `${hrs}h ago`;
+  return `${Math.floor(hrs / 24)}d ago`;
+}
+
 /** One human line for the Machine Status field, from the watchdog's health + machine blocks. */
 function statusLine(body) {
   const h = body.health || {};
@@ -81,6 +95,15 @@ function statusLine(body) {
   if (m.disk_pct !== undefined && m.disk_pct !== null && m.disk_pct !== '') parts.push(`disk ${clip(m.disk_pct, 6)}%`);
   const actions = Array.isArray(body.actions) ? body.actions.map((a) => clip(a, 40)).filter(Boolean) : [];
   if (actions.length) parts.push(`did: ${actions.join(', ')}`);
+  // The backup line rides along on every report so "is it alive?" and "is it backed up?"
+  // are the same glance. A machine with no backup job says so rather than staying silent -
+  // silence is what let every machine go unbacked from 8 to 19 Sep 2026.
+  const b = body.backup || {};
+  if (b.last_ok || b.result) {
+    parts.push(`backup ${b.result === 'ok' ? 'ok' : 'FAILING'} ${ageWords(b.last_ok)}`);
+  } else {
+    parts.push('backup NOT INSTALLED');
+  }
   return parts.join(' | ').slice(0, 250);
 }
 
@@ -144,6 +167,11 @@ router.post('/webhooks/lh-machine/:clientId', express.json({ limit: '32kb' }), a
   if (address) fields[FIELDS.address] = address;
   const ts = [clip(m.tailscale_name, 60), clip(m.tailscale_ip, 45)].filter(Boolean).join(' ');
   if (ts) fields[FIELDS.tailscale] = ts;
+  // Only ever move this forward on a report that carries a real success. A machine whose
+  // backup job has just been removed, or whose state file is unreadable, must keep the old
+  // date and age into the alert - never quietly blank itself and look like a new machine.
+  const lastOk = clip(body.backup && body.backup.last_ok, 40);
+  if (lastOk && Number.isFinite(Date.parse(lastOk))) fields[FIELDS.lastBackup] = new Date(lastOk).toISOString();
 
   try {
     const base = clientService.initializeClientsBase();
