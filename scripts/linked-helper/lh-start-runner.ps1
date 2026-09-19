@@ -1,8 +1,12 @@
+# RETIRED with the Windows laptop method, 10 Sep 2026. Kept for the record: the mechanism here
+# (Linked Helper's own DevTools channel, match ONLY "Start campaigns runner") is what
+# lh-watchdog.py does on every client's Ubuntu VPS now. Do not deploy this to a client.
+#
 # Starts Linked Helper's campaigns runner without a mouse.
 #
 # Why this exists: after a Windows restart the start command opens Linked Helper but leaves the
 # campaigns runner STOPPED - deliberate on their part, no command-line flag exists. See
-# docs/linked-helper-machine-setup.md Part 3a.
+# docs/linked-helper-machine-setup.md, RETIRED appendix, Part 3a.
 #
 # Safe to run on a schedule: it matches ONLY "Start campaigns runner", so on a healthy machine it
 # finds nothing and does nothing. It can never stop a working client.

@@ -125,9 +125,10 @@ this client rather than touring the whole cabinet.
 **Step 14 - Linked Helper, last on purpose, and where it should run. [live]** The engine that fills
 your database goes in last, once everything above is proven, your targeting has had a few weeks to
 settle, and your profile says connector. Nothing is lost by waiting - the trial only starts when the
-first campaign launches. This is also where the VPS conversation belongs: Linked Helper runs on a
-computer, and on a laptop that sleeps it dies quietly. Offered, explained, and never pushed. From
-here the journey stops being plumbing and starts being strategy.
+first campaign launches. The machine it runs on - a small always-on computer in an Australian
+data centre, yours, about $20 a month - is bought earlier, in ten minutes with your own Claude
+walking you through it, and built by me; this is the session where you sign in to LinkedIn on it.
+From here the journey stops being plumbing and starts being strategy.
 
 ## STEP AUTO - what the join page does by itself (added 2026-09-06)
 
@@ -981,6 +982,13 @@ you've already been giving it - and remember, it's changeable, so we aim roughly
 ---
 
 ### The VPS conversation - an overview, not a push (belongs here, 2026-09-06)
+
+**SUPERSEDED 10 Sep 2026 - read the smooth path below instead.** The machine is now standard for
+every client and is bought BEFORE this session: concierge clients buy it in step 5 of the run
+sheet with Guy driving, self-serve clients from the ten-minute email below, guided by their own
+Claude. It is not offered, it is how Linked Helper is run. This section is kept for the one case
+it still fits - a client who already runs Linked Helper on their own machine and would rather not
+move. For them, and only them: offer, explain, and take no for an answer.
 
 Linked Helper runs on a computer, not in the cloud, and on the client's own machine it **dies
 quietly**. The laptop sleeps, Windows restarts, and nothing reopens by itself - the Launcher does not
