@@ -46,12 +46,35 @@ own job, not a story about them. Reciting someone's own week back to them with a
 reads as patronising, however well meant. Facts, then a short dry verdict - the same register as
 the "Let's get you started" email.
 
+**How to find the line.** Look for the sentence where they described their own job in their own
+words, as a task they have yet to do - not an achievement, not a story. It is usually in the part of
+the call where they stop telling you about the business and start telling you what they are on the
+hook for. Steve's was "my role is to go in and very much systemise their sales and actually start to
+fill up the advisors' calendars." Strip it to five words and hand it straight back.
+
+**The test:** if they would nod rather than smile, it is right. A smile means you have flattered
+them. A nod means you have understood the job.
+
+Under-claim on the second sentence. "The machinery that can do a hell of a lot of it" beats "the
+machinery that does it", because the client does it and the tool helps.
+
 ### 2. The length note
 
 > **The whole process, spread over several sessions**
 >
 > It's a long read. That's deliberate - I'd rather you knew why we're doing each piece than turn up
 > and have things done to you.
+
+### The rule that governs every "what it enables" line
+
+Every enabling line must be about **their** diary, **their** leads, **their** voice - never about
+what the tool is capable of in general. "It reads your actual diary" and "it can read a diary" are
+the same fact and completely different sentences. The first one makes them stop evaluating and start
+anticipating, and that anticipation is what carries them to session one.
+
+This is also why the page can afford to be long. It is not a list of what gets installed. It is a
+running demonstration that every piece is pointed at them, and that the thing they watched work on
+Guy's screen is about to work on theirs.
 
 ### 3. Session one - the plumbing
 
@@ -113,6 +136,9 @@ sheet, and promising it is worse than not sending the page at all.
 
 ## Refinement log
 
+- **2026-09-19** - added the method for finding the opening line (nod, not smile), the under-claim
+  rule, and the standing rule that every enabling line is about the client's own diary and voice.
+  Both came out of Guy's read of Steve's draft.
 - **2026-09-19** - first version, written while drafting Steve Nelson's. Decisions made in that
   pass: under-claim in the opener; no admiring recitals of the client's own story; the Anthropic key
   goes last inside session one; session two is a review, not a test; the machine gets a proper
