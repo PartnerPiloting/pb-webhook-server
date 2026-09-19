@@ -641,9 +641,11 @@ stolen account looks like.
 4. **Complete purchase.** The machine is built in about thirty seconds and shows you an IP address -
    four numbers with dots between them. Write that down.
 5. **Reset the root password.** Open the machine, click **Recovery** in the left-hand menu, then
-   **Reset Password**. It shows a password on screen and emails it to you. This is how I get in to
-   build the machine, so don't skip it - Binary Lane generates a password during signup but you'll
-   have clicked past it by now, and this is the only way to see one.
+   **Reset Password**. **Tick the box that says send the new password to your email.** The password
+   does NOT appear on screen - all you'll see is a countdown - so if that box isn't ticked there is
+   nothing to send me and we have to do it again. This is how I get in to build the machine, so
+   don't skip it. Binary Lane does generate a password during signup, but you'll have clicked past
+   that screen by now and this is the only way to get one.
 
 **What to send me, by text on 0414 975 509 or in the Zoom chat - not email:**
 
