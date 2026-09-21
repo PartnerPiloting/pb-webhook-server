@@ -596,8 +596,20 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
       }
       // CODE-OWNED time list: enforce order + Guy's hours + soft lunch-skip + lead-timezone formatting,
       // so none of those depend on the model getting it right.
-      const tz = availTz.yourTimezone || 'Australia/Brisbane';
-      let leadTz = availTz.leadTimezone || tz;
+      // BOTH clocks come from the RECORD when check_availability did not run in THIS turn (Dean /
+      // Reena, 2026-09-21). availTz is per chat turn: the panel called check_availability in one turn
+      // and propose_times in the next, so both sides fell through to the Brisbane default - a Sydney
+      // coach offered a "Greater Perth Area" lead three times marked "(all times are Brisbane time)".
+      // Right numbers for him only because Sydney and Brisbane read the same until 4 Oct; after that
+      // every offered time would have been an hour out. So: coach clock from his client record (same
+      // order as the offer window above), lead clock from their resolved location - Brisbane is the
+      // last resort, never the first.
+      const tz = availTz.yourTimezone || coach.timezone || coach.timeZone || 'Australia/Brisbane';
+      const upfrontLoc = String(profile.location || '').trim();
+      const upfront = availTz.leadTzDetected !== undefined
+        ? { detected: !!availTz.leadTzDetected, candidates: availTz.leadTzCandidates || [], timezone: availTz.leadTimezone || null }
+        : resolveLeadTimezone(upfrontLoc);
+      let leadTz = availTz.leadTimezone || (upfront.detected && upfront.timezone) || tz;
       // Thread-level override: where the lead will BE beats where they live (Sam-in-NZ, 2026-07-15 —
       // a Sydney lead travelling in NZ on the meeting day must see NZ times, not "(Sydney time)").
       // Only the model can know this (it read the thread), so it passes the zone; we validate it and
@@ -614,10 +626,6 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
       // list and NO draft. The override is the one door: the thread named a place, Guy named a
       // place, or Guy said in so many words to use his own clock.
       const overrideOk = !!(input.leadTimezoneOverride && leadTz === String(input.leadTimezoneOverride));
-      const upfrontLoc = String(profile.location || '').trim();
-      const upfront = availTz.leadTzDetected !== undefined
-        ? { detected: !!availTz.leadTzDetected, candidates: availTz.leadTzCandidates || [] }
-        : resolveLeadTimezone(upfrontLoc);
       if (!upfront.detected && !overrideOk) {
         const why = (upfront.candidates && upfront.candidates.length)
           ? `their location "${upfrontLoc}" is AMBIGUOUS — ${upfront.candidates.map((c) => `${c.place} (${c.timezone})`).join(' or ')}`
