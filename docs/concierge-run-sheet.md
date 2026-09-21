@@ -244,9 +244,10 @@ Proves: 7
 Why: Once calls are recorded, {{first}} can say "draft the follow-up from the call I just had" and "prep me for my meetings". Nobody expects this one until they've felt it.
 
 Do:
+- Guy: on Fathom (the default)? Sign in at fathom.video with the calendar account, install the desktop app from Settings > Fathom apps (the icon in the system tray is the proof it is running - no icon, no recordings), then Settings > API Access > generate a key and paste it on the record as Fathom API Key. The free plan is enough.
 - Guy: Granola needs the Business plan for a key. Create the key in Granola's settings, paste it on the record, Claude registers the webhook.
 - Guy: already on Fireflies? That lane is proven. Straight swap, secret on the record first.
-- Guy: no recorder yet? Leave it for the instructions call and say so in the wrap email.
+- Guy: no recorder yet? Leave it for the instructions call, and put the six Fathom steps in the wrap email (playbook topic "Fathom - setting it up"). Signing up is not the same as being set up - the desktop app is the step people miss.
 
 Watch: Calendar before recorder, always - Wingguy works out who a meeting was with from the calendar.
 

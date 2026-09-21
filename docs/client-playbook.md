@@ -1146,6 +1146,34 @@ notes of your meetings.
 
 ---
 
+## FATHOM - SETTING IT UP SO IT ACTUALLY RECORDS
+
+Six steps, about ten minutes, and the one that trips people up is number three.
+
+Signing up is not the same as being set up. Fathom records through a small program running on your
+computer - the desktop app. Without it you have an account that records nothing, and you don't find
+out until you go looking for a transcript that isn't there. That's exactly how it went for one of the
+group: account made, calendar connected, no app, and three weeks of calls that never filed.
+
+1. **Sign in.** Go to fathom.video and sign in with Google, using the same account as your calendar.
+   That matters - it's the calendar Fathom watches to know which meetings to join.
+2. **Connect your calendar** when it asks. If it doesn't ask, it's in Settings.
+3. **Install the desktop app.** In Settings, scroll down to Fathom apps and click Download for
+   Windows (or Mac). Run the installer. When it's right, the Fathom icon is sitting in your system
+   tray, down by the clock. Not there means nothing gets recorded - so check.
+4. **Admit it.** On a Zoom call, "your name's Fathom Notetaker" turns up in the waiting room. Let it
+   in. On someone else's call, ask the host to - most don't blink.
+5. **Send me your key.** Settings, API Access, generate an API key, and email it to me. I put it on
+   your record, and from then on your calls file themselves into the system - nothing else for you
+   to do.
+6. **Prove it on our next call.** If the notetaker appears in my waiting room, you're done.
+
+The free plan is all you need - transcripts are the fuel, and those are included. The one limit is
+the one from the transcripts topic: on calls where you're not the host, someone has to let it in,
+until Fathom's bot-free version reaches Windows.
+
+---
+
 ## THE FIRST MEETING - HOW IT ACTUALLY GOES
 
 First, why this meeting matters as much as it does. It doesn't matter how many posts you write or
