@@ -50,7 +50,8 @@ automatic health check on it before we start, so everything you touch from here 
 
 **Step 1 - Wingguy joins your Claude (2 minutes). [live]** I send you a private link, you paste it
 into your Claude's settings, and from then on Wingguy lives inside your own Claude - you just talk
-to it in any chat. This is the doorway; everything else happens through it.
+to it in any chat. This is the doorway; everything else happens through it. Then one more minute: we tell your Claude to ask Wingguy first, before its own
+memory - I give you the exact words to paste, and a thirty-second check proves it took.
 
 **Step 2 - Wingguy meets your calendar and your mailbox (5 minutes, one approval). [live]** You
 click one link and approve once. Your calendar, so Wingguy can offer meeting times that are
@@ -124,9 +125,10 @@ this client rather than touring the whole cabinet.
 **Step 14 - Linked Helper, last on purpose, and where it should run. [live]** The engine that fills
 your database goes in last, once everything above is proven, your targeting has had a few weeks to
 settle, and your profile says connector. Nothing is lost by waiting - the trial only starts when the
-first campaign launches. This is also where the VPS conversation belongs: Linked Helper runs on a
-computer, and on a laptop that sleeps it dies quietly. Offered, explained, and never pushed. From
-here the journey stops being plumbing and starts being strategy.
+first campaign launches. The machine it runs on - a small always-on computer in an Australian
+data centre, yours, about $20 a month - is bought earlier, in ten minutes with your own Claude
+walking you through it, and built by me; this is the session where you sign in to LinkedIn on it.
+From here the journey stops being plumbing and starts being strategy.
 
 ## STEP AUTO - what the join page does by itself (added 2026-09-06)
 
@@ -265,6 +267,51 @@ won't see them until they refresh: Settings → Connectors → Wingguy → **Ref
 start a fresh chat. Any time a client says "Wingguy says it can't do that" about something you
 know exists - it's this. (If a refresh ever doesn't do it, disconnecting and re-adding the
 connector is the sledgehammer version.)
+
+**Then, straight away - Wingguy first (added 20 Sep 2026).** Claude answers from its own memory
+before it loads connector tools. If memory has a confident answer, Wingguy is never asked, and one
+day the client gets a month-old answer about the machine or the method and cannot tell. Three
+pastes fix it and a thirty-second check proves it. The one copy of these words is
+`content/wingguy-first.json` - `node tests/wingguy-first.test.js` fails if this page drifts from it.
+
+**Say to the client:** "One more minute. Your Claude has a memory of its own, and it'll answer from
+that before it thinks to ask Wingguy. We're going to tell it, in a couple of places, to ask Wingguy
+first - so you always get the current answer, not something it remembered from a month ago."
+
+**The client does:**
+
+1. Opens **Settings** → **Customize** and finds the preferences box. Pastes this at the **end** of
+   whatever is already there, never replacing it:
+
+   > I use Wingguy - Guy Wilson's I Know A Guy system - through the Wingguy connector. For anything
+   > about Wingguy, my Linked Helper machine, Linked Helper, my LinkedIn outreach, follow-ups,
+   > meetings booked through it, or how any of it works or is set up: call the Wingguy tools first,
+   > before answering - even if you think you already know the answer. Wingguy has the current
+   > version; anything you remember may be out of date. If Wingguy doesn't cover it, say so and
+   > suggest I ask Guy.
+
+   If the box is full, this shorter line instead:
+
+   > For anything about Wingguy or my Linked Helper machine, call the Wingguy tools first, even if
+   > you think you know the answer.
+
+2. Back in the chat, types this word for word and waits for Claude to say it will remember:
+
+   > Remember this: for anything about Wingguy or my Linked Helper machine, always call the Wingguy
+   > tools first.
+
+3. Opens a **new** chat and types: **"Help me set up my Linked Helper machine"**. Reads the first line
+   of the reply.
+
+**Check it worked:** the first line reads **"Loaded tools"**. If it starts **"Recalled memory"**,
+Wingguy was never asked - check the preferences saved, say the memory line again, then a new chat
+and the check again. Self-serve clients: ask for a screenshot of that first line.
+
+**Watch out:** do this BEFORE anything about the machine or the method is asked - a wrong answer
+given once is what memory keeps. A work-managed Claude may have no preferences box or no memory;
+then the habit of opening every Wingguy chat with "where are we up to?" is the whole fix, and it
+works - only Wingguy can answer it, and the tools stay loaded for the rest of that chat. Repeat the
+check at the end of every later session and after every change to how things are done.
 
 **If it won't connect:** the troubleshooting list is in
 [wingguy-connector-install.md](wingguy-connector-install.md) section 3 (wrong/revoked token,
@@ -935,6 +982,13 @@ you've already been giving it - and remember, it's changeable, so we aim roughly
 ---
 
 ### The VPS conversation - an overview, not a push (belongs here, 2026-09-06)
+
+**SUPERSEDED 10 Sep 2026 - read the smooth path below instead.** The machine is now standard for
+every client and is bought BEFORE this session: concierge clients buy it in step 5 of the run
+sheet with Guy driving, self-serve clients from the ten-minute email below, guided by their own
+Claude. It is not offered, it is how Linked Helper is run. This section is kept for the one case
+it still fits - a client who already runs Linked Helper on their own machine and would rather not
+move. For them, and only them: offer, explain, and take no for an answer.
 
 Linked Helper runs on a computer, not in the cloud, and on the client's own machine it **dies
 quietly**. The laptop sleeps, Windows restarts, and nothing reopens by itself - the Launcher does not

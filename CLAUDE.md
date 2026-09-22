@@ -58,6 +58,42 @@ tool** - nothing can, from here - so every new phrase also gets typed into a fre
 ships. On 19 Sep 2026 "help me set up my Linked Helper machine" got the August Windows-laptop answer
 back from memory, confidently, because nobody had.
 
+## "Wingguy first" - content/wingguy-first.json
+
+Claude.ai answers from its own memory BEFORE it loads connector tools (proven with server logs, 19
+Sep 2026), so a registered phrase is not enough - the client's Claude has to be told to ask Wingguy
+first. On onboarding day that is a preferences paragraph, a memory line, an opener habit ("where are
+we up to?") and a canary: new chat, "help me set up my Linked Helper machine", first line must read
+"Loaded tools". The one copy of those words is `content/wingguy-first.json`. The concierge run sheet
+mints them onto the page; the checklist and the connector install message repeat them.
+
+```
+node tests/wingguy-first.test.js
+```
+
+That fails when any copy drifts. Edit the JSON, run the test, bring the docs it names into line.
+Never put the texts in a doc the test does not know about.
+
+## When a way of doing things changes - content/retired-terms.json
+
+A method change is not done until every doc describing the old way says so. The machine method
+changed on 10 Sep 2026 and the old Windows-laptop text sat on main looking current for nine days,
+while a Claude memory page served it to Guy as the answer. So, when a method is retired:
+
+1. Put a `Method status:` line at the top of the doc(s) that describe the current method - what is
+   current since when, and what it supersedes. `docs/linked-helper-machine-setup.md` is the model.
+2. Move the old text under a heading containing RETIRED or SUPERSEDED, or delete it. Never leave it
+   in place with a date on it - a date does not read as "wrong".
+3. Add the old method's distinctive words to `content/retired-terms.json`.
+
+```
+node tests/retired-terms.test.js
+```
+
+That names every client-facing doc that still uses one of those words (zero tolerance) and every
+operating doc that uses one outside a retired section. Run it whenever a doctrine changes and
+before any playbook or run-sheet edit.
+
 ## Temporary worktrees
 
 Use one whenever you need a clean copy of `main` while a checkout is dirty. Rules:

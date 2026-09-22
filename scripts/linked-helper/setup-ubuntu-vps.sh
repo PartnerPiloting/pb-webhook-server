@@ -1,7 +1,12 @@
 #!/usr/bin/env bash
 # Linked Helper VPS - one-command setup for a fresh Ubuntu server.
 #
-# Turns a bare Ubuntu VPS (22.04/24.04, x64) into a self-healing Linked Helper machine:
+# Method status: CURRENT since 10 Sep 2026 - this is THE way a client's Linked Helper machine is
+# built, for every client. Supersedes the Windows laptop method of August 2026 (retired; kept at
+# the end of docs/linked-helper-machine-setup.md for the record only).
+#
+# Turns a bare Ubuntu VPS (22.04 to 26.04 LTS, x64 - a Binary Lane 2 vCPU / 4 GB / 60 GB plan
+# in the client's own account) into a self-healing Linked Helper machine:
 #   - GNOME desktop on the console X session, with auto-login (survives reboots unattended)
 #     GNOME because LH's requirements page says "Gnome GUI is mandatory" on Linux
 #     (KDE/LXDE/XFCE "not officially supported"). Wayland is disabled - x11vnc and
@@ -20,16 +25,19 @@
 #   - The standard campaigns built from recipes (lh-campaigns.py + lh-build-campaigns.sh),
 #     run once by hand AFTER the LinkedIn login - it needs the account row to exist
 #
-# Status: WRITTEN 2026-08-29, NOT YET RUN ON A REAL VPS. Test on Guy's own machine first.
-# See docs/linked-helper-machine-setup.md (Part 5 - Ubuntu VPS).
+# Status: PROVEN. First build 1 Sep 2026 (Guy's own machine); first client build 9 Sep (Julian
+# Davis, Binary Lane); five machines running it by 19 Sep with the nightly backup and the daily
+# backup watcher on all of them. See docs/linked-helper-machine-setup.md (the VPS method, at the
+# top).
 #
 # Usage (as root on a fresh VPS):
 #   LH_ACCOUNT_ID=16045 CLIENT_ID=Guy-Wilson TZ_NAME=Australia/Brisbane \
 #   VNC_PASSWORD='choose-one' bash setup-ubuntu-vps.sh
 #
-# Optional: REPORT_URL + REPORT_SECRET for status reporting (watchdog posts JSON).
-# Deliberately NOT here yet: the nightly backup export/upload (phase 2 - needs the
-# Launcher-side backup button flow proven first).
+# REPORT_URL + REPORT_SECRET make the machine write its own health onto the client's record
+# (the watchdog posts JSON every 5 minutes) - the script warns loudly when they are empty, because
+# a machine that never reports in is the one nobody notices dying. The nightly backup is installed
+# by this script; its Drive credentials go on afterwards with lh-rclone-credentials.sh.
 
 set -euo pipefail
 

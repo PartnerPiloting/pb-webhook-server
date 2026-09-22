@@ -1,0 +1,48 @@
+{
+  "_what": "Words that belong to a way of doing things that has been retired. When a doctrine changes, the old method's distinctive terms go here, and tests/retired-terms.test.js names every doc that still uses them outside a section marked RETIRED or SUPERSEDED. Client-facing docs get zero tolerance.",
+  "_why": "The Linked Helper machine method changed on 10 Sep 2026 (the Ubuntu VPS for everyone) and the documents describing the old Windows-laptop way just sat there looking current: a Claude memory page served it back to Guy on 19 Sep for the exact sentence a client had been told to type, and docs/linked-helper-machine-setup.md on main still opened with netplwiz and powercfg with the VPS as 'Part 5'. Nothing tied a change of method to the documents that described the old one. This file is that tie.",
+  "_rules": [
+    "When a method is retired: add its distinctive terms here with the date and what replaced it, put a 'Method status:' line at the top of the doc(s) that describe the current method, move the old text under a heading containing RETIRED or SUPERSEDED (or delete it), then run: node tests/retired-terms.test.js",
+    "A term is a word or phrase that only the old method would use. Do not list words the current method also needs ('Windows' is still where the client's laptop runs the extension; 'Splashtop' is still how Guy drives a client's own computer).",
+    "client_facing: files and folders a client reads or is served. A retired term anywhere in them fails.",
+    "operating: Guy's and Claude's working docs and the machine scripts. A retired term is allowed only inside a section whose heading (or an ancestor heading) contains RETIRED or SUPERSEDED, in a paragraph that says retired / superseded / history, or in a script whose first ten lines say RETIRED.",
+    "method_docs: the docs that describe how the current method is built. Each must carry a 'Method status:' line in its first fifteen lines saying what is current since when, and what it supersedes.",
+    "Matching is case-insensitive on whole words; a term with a dot (Update.exe) is matched literally."
+  ],
+  "retired": [
+    { "term": "netplwiz", "retired": "2026-09-10", "was": "Windows auto sign-in for the laptop method", "now": "the Ubuntu VPS built by scripts/linked-helper/setup-ubuntu-vps.sh" },
+    { "term": "powercfg", "retired": "2026-09-10", "was": "Windows never-sleep settings for the laptop method", "now": "a VPS does not sleep" },
+    { "term": "keepalive", "retired": "2026-09-10", "was": "the Windows scheduled task 'Linked Helper keepalive'", "now": "lh-watchdog.py on the VPS, every 5 minutes" },
+    { "term": "Update.exe", "retired": "2026-09-10", "was": "the Windows launch command via Linked Helper's updater", "now": "LH autostarts on the VPS with --start-account-id" },
+    { "term": "Chrome Remote Desktop", "retired": "2026-09-10", "was": "remote access to a client's Windows laptop", "now": "RDP over Tailscale, by machine name" },
+    { "term": "RustDesk", "retired": "2026-09-10", "was": "the alternative remote-access pick for the laptop method", "now": "RDP over Tailscale" },
+    { "term": "mini PC", "retired": "2026-09-10", "was": "the $400 dedicated box once suggested to clients", "now": "a Binary Lane VPS at about $20 a month" },
+    { "term": "PN61", "retired": "2026-09-10", "was": "the ASUS mini PC model once named in Claude's memory", "now": "a Binary Lane VPS" },
+    { "term": "Acer", "retired": "2026-09-10", "was": "Guy's Acer laptop, the August 2026 test bed for the Windows method", "now": "Guy's own VPS, built 1 Sep 2026" },
+    { "term": "Aspire", "retired": "2026-09-10", "was": "the Acer Aspire 3 named in Claude's memory as the machine", "now": "a Binary Lane VPS" },
+    { "term": "spare laptop", "retired": "2026-09-10", "was": "the machine a client was asked to find", "now": "the client buys a VPS in ten minutes" },
+    { "term": "OVH", "retired": "2026-09-09", "was": "the first VPS provider (Guy's own machine, 1 Sep 2026)", "now": "Binary Lane, from the first client build 9 Sep 2026" }
+  ],
+  "client_facing": [
+    "docs/client-playbook.md",
+    "docs/client-tour.md",
+    "docs/wingguy-connector-install.md",
+    "content/templates/plan-one-pager.md",
+    "content/one-pagers",
+    "content/site",
+    "content/client-phrases.json",
+    "content/wingguy-first.json"
+  ],
+  "operating": [
+    "CLAUDE.md",
+    "docs/concierge-run-sheet.md",
+    "docs/wingguy-onboarding-checklist.md",
+    "docs/linked-helper-machine-setup.md",
+    ".claude/skills/onboard/SKILL.md",
+    "scripts/linked-helper"
+  ],
+  "method_docs": [
+    "docs/linked-helper-machine-setup.md",
+    "scripts/linked-helper/setup-ubuntu-vps.sh"
+  ]
+}
