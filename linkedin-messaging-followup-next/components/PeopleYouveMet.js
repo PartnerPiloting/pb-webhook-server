@@ -42,12 +42,19 @@ function splitName(name, email) {
  *         it asks "same person?" and only combines when you say so.
  * Skip -> final: the person drops off the list and Wingguy never asks about them again.
  *         Their transcripts stay saved, and adding them later by any route still attaches.
+ * Add all -> (Rick Wong, 2026-09-24) the same one-click Add for everyone still waiting, after a
+ *         confirm. One at a time, so Airtable's rate limit is never hit. People added this way
+ *         leave the list rather than each opening a LinkedIn box - with dozens that is a wall of
+ *         rows; their LinkedIn address can go in later from Lead Search.
  */
 const PeopleYouveMet = ({ onAdded, refreshKey }) => {
   const [people, setPeople] = useState([]);
   const [loaded, setLoaded] = useState(false);
   const [busyEmail, setBusyEmail] = useState(null);
   const [error, setError] = useState('');
+  // Add all: { done, total } while running; summary line once finished.
+  const [bulk, setBulk] = useState(null);
+  const [bulkSummary, setBulkSummary] = useState('');
   // email -> { id, name, url, phase, match, err }. phase: ask | saving | saved | collision | combined
   const [added, setAdded] = useState({});
   const addedRef = useRef({});
@@ -77,22 +84,59 @@ const PeopleYouveMet = ({ onAdded, refreshKey }) => {
 
   const setRow = (email, patch) => setAdded((prev) => ({ ...prev, [email]: { ...(prev[email] || {}), ...patch } }));
 
+  const createFromPending = async (p) => {
+    const { firstName, lastName } = splitName(p.name, p.email);
+    const lead = await createLead({
+      firstName,
+      lastName,
+      email: p.email,
+      // The recorder's address is the identity the transcripts attach by (server-side, on create).
+      pendingEmail: p.email,
+      // Someone off a call is not a follow-up target until you decide they are.
+      noFollowUpNeeded: true,
+      source: 'Follow-Up Personally',
+    });
+    return { lead, name: [firstName, lastName].filter(Boolean).join(' ') || p.email };
+  };
+
+  const handleAddAll = async () => {
+    const waiting = people.filter((p) => !added[p.email]);
+    if (waiting.length === 0) return;
+    const n = waiting.length;
+    if (!window.confirm(`Add all ${n} ${n === 1 ? 'person' : 'people'} to Wingguy? Their meeting transcripts attach straight away. Adding can't be undone from here.`)) return;
+    setError('');
+    setBulkSummary('');
+    let ok = 0;
+    let attached = 0;
+    const failed = [];
+    for (let i = 0; i < waiting.length; i++) {
+      const p = waiting[i];
+      setBulk({ done: i, total: n });
+      try {
+        const { lead } = await createFromPending(p);
+        ok += 1;
+        attached += lead.attachedMeetings || 0;
+        setPeople((prev) => prev.filter((x) => x.email !== p.email));
+      } catch (e) {
+        console.error('PeopleYouveMet: add-all failed for', p.email, e);
+        failed.push(p.name || p.email);
+      }
+    }
+    setBulk(null);
+    // Refresh the page once at the end, not once per person.
+    if (ok > 0 && onAdded) onAdded();
+    let msg = `Added ${ok} ${ok === 1 ? 'person' : 'people'}`;
+    if (attached > 0) msg += ` - ${attached} meeting ${attached === 1 ? 'transcript' : 'transcripts'} attached`;
+    msg += '. Add their LinkedIn addresses any time from Lead Search.';
+    setBulkSummary(msg);
+    if (failed.length) setError(`Couldn't add ${failed.length}: ${failed.join(', ')} - they are still on the list, try again.`);
+  };
+
   const handleAdd = async (p) => {
     setBusyEmail(p.email);
     setError('');
     try {
-      const { firstName, lastName } = splitName(p.name, p.email);
-      const lead = await createLead({
-        firstName,
-        lastName,
-        email: p.email,
-        // The recorder's address is the identity the transcripts attach by (server-side, on create).
-        pendingEmail: p.email,
-        // Someone off a call is not a follow-up target until you decide they are.
-        noFollowUpNeeded: true,
-        source: 'Follow-Up Personally',
-      });
-      const name = [firstName, lastName].filter(Boolean).join(' ') || p.email;
+      const { lead, name } = await createFromPending(p);
       setRow(p.email, { id: lead.id, name, url: '', phase: 'ask', match: null, err: '', attached: lead.attachedMeetings || 0 });
       if (onAdded) onAdded(lead);
     } catch (e) {
@@ -187,7 +231,8 @@ const PeopleYouveMet = ({ onAdded, refreshKey }) => {
     }
   };
 
-  if (!loaded || people.length === 0) return null;
+  if (!loaded || (people.length === 0 && !bulkSummary)) return null;
+  const waitingCount = people.filter((p) => !added[p.email]).length;
 
   const renderAddedRow = (p, row) => (
     <li key={p.email} className="px-6 py-3 bg-green-50">
@@ -278,9 +323,9 @@ const PeopleYouveMet = ({ onAdded, refreshKey }) => {
   return (
     <div className="mb-8 bg-white border border-blue-200 rounded-lg shadow-sm">
       <div className="px-6 py-4 border-b border-blue-100 bg-blue-50 rounded-t-lg">
-        <div className="flex items-center">
-          {UserGroupIcon && <UserGroupIcon className="h-6 w-6 text-blue-600 mr-2" />}
-          <div>
+        <div className="flex items-center gap-4">
+          {UserGroupIcon && <UserGroupIcon className="h-6 w-6 text-blue-600 shrink-0" />}
+          <div className="flex-1 min-w-0">
             <h3 className="text-lg font-semibold text-gray-900">
               People you&apos;ve met who aren&apos;t in Wingguy yet
             </h3>
@@ -290,8 +335,23 @@ const PeopleYouveMet = ({ onAdded, refreshKey }) => {
               then or later. Skip the rest and they won&apos;t be suggested again.
             </p>
           </div>
+          {(waitingCount > 1 || bulk) && (
+            <button
+              type="button"
+              onClick={handleAddAll}
+              disabled={!!bulk || !!busyEmail}
+              className="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 shrink-0"
+              title="Add everyone on this list - their meeting transcripts attach straight away"
+            >
+              {UserPlusIcon && <UserPlusIcon className="h-4 w-4 mr-1" />}
+              {bulk ? `Adding ${bulk.done + 1} of ${bulk.total}…` : `Add all (${waitingCount})`}
+            </button>
+          )}
         </div>
       </div>
+      {bulkSummary && (
+        <div className="px-6 py-2 text-sm text-green-700 bg-green-50">{bulkSummary}</div>
+      )}
       {error && (
         <div className="px-6 py-2 text-sm text-red-600">{error}</div>
       )}
@@ -316,7 +376,7 @@ const PeopleYouveMet = ({ onAdded, refreshKey }) => {
                 <button
                   type="button"
                   onClick={() => handleAdd(p)}
-                  disabled={busyEmail === p.email}
+                  disabled={busyEmail === p.email || !!bulk}
                   className="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50"
                   title="Add to Wingguy now - their meeting transcripts attach straight away"
                 >
@@ -326,7 +386,7 @@ const PeopleYouveMet = ({ onAdded, refreshKey }) => {
                 <button
                   type="button"
                   onClick={() => handleSkip(p.email)}
-                  disabled={busyEmail === p.email}
+                  disabled={busyEmail === p.email || !!bulk}
                   className="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md text-gray-700 bg-gray-100 hover:bg-gray-200 disabled:opacity-50"
                   title="Skip - Wingguy won't suggest this person again"
                 >
