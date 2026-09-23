@@ -91,12 +91,18 @@ async function collectWaitingPeople(coachClientId, coach) {
       // Pre-filter junk entries (role mailboxes stored before 2026-08-26) still show — the
       // coach skips them himself. Operator/self addresses are never offered, full stop.
       if (isSelfOrOperatorEmail(p.email, coach)) continue;
-      const cur = byEmail.get(p.email) || { email: p.email, name: p.name || null, meetings: 0, latest: null, latestTitle: null, meetingIds: [] };
+      const cur = byEmail.get(p.email) || { email: p.email, name: p.name || null, meetings: 0, latest: null, latestTitle: null, meetingIds: [], extraOnly: true, with: null };
       if (!cur.name && p.name) cur.name = p.name;
       cur.meetings++;
       cur.meetingIds.push(String(m.id));
+      // Someone is an "extra" only if EVERY meeting they're waiting on says they just joined a
+      // call booked with someone else. Booked once, or untagged (no booking lined up), = main.
+      if (p.role !== 'extra') cur.extraOnly = false;
       const when = m.meeting_start || m.created_at;
-      if (when && (!cur.latest || new Date(when) > new Date(cur.latest))) { cur.latest = when; cur.latestTitle = m.title || null; }
+      if (when && (!cur.latest || new Date(when) > new Date(cur.latest))) {
+        cur.latest = when; cur.latestTitle = m.title || null;
+        if (p.with) cur.with = p.with;
+      }
       byEmail.set(p.email, cur);
     }
   }
@@ -110,6 +116,11 @@ async function collectWaitingPeople(coachClientId, coach) {
         if (name) { person.name = name; break; }
       }
     }
+  }
+  for (const person of byEmail.values()) {
+    person.role = person.extraOnly ? 'extra' : 'main';
+    delete person.extraOnly;
+    if (person.role !== 'extra') person.with = null;
   }
   return [...byEmail.values()].sort((a, b) => new Date(b.latest || 0) - new Date(a.latest || 0));
 }

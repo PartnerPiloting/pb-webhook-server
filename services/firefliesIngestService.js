@@ -37,7 +37,7 @@ const clientService = require('./clientService');
 const { findLeadByName, learnEmailForLead } = require('./inboundEmailService');
 const { insertImportedMeeting, addMeetingLead, providerRecordingIngested } = require('./recallWebhookDb');
 const { generateMeetingSummary } = require('./recallSummaryService');
-const { matchLeads, calendarParticipantEmails, relevantCalendarEvents } = require('./fathomIngestService');
+const { matchLeads, calendarParticipantEmails, relevantCalendarEvents, pickAlignedEvent } = require('./fathomIngestService');
 const { createSafeLogger } = require('../utils/loggerHelper');
 
 const log = createSafeLogger('SYSTEM', null, 'fireflies_ingest');
@@ -202,6 +202,25 @@ function dominantOtherSpeaker(t, coachName) {
 }
 
 /**
+ * Who was the call WITH? (Rick Wong, 2026-09-24: he books a call with one person, others turn
+ * up, and "People you've met" listed them all alike.) `bookedPeople` = the guests on the calendar
+ * booking this recording belongs to ([{email, name?}]), or null when no booking lined up.
+ *   booked -> on the booking: the person the call was with
+ *   extra  -> the recorder saw them but they weren't on the booking; `with` names who it was with
+ * No booking = no tag: we don't know, so the portal shows them as it always has. Pure - tested.
+ */
+function tagPendingRoles(pendingLeads, bookedPeople) {
+  if (!Array.isArray(bookedPeople) || !bookedPeople.length) return pendingLeads;
+  const booked = new Set(bookedPeople.map((p) => String(p.email || '').toLowerCase().trim()).filter(Boolean));
+  const withLabel = bookedPeople.map((p) => p.name || p.email).filter(Boolean).slice(0, 3).join(', ');
+  return (pendingLeads || []).map((x) => {
+    const e = String((x && x.email) || '').toLowerCase().trim();
+    if (!e) return x;
+    return booked.has(e) ? { ...x, role: 'booked' } : { ...x, role: 'extra', ...(withLabel ? { with: withLabel } : {}) };
+  });
+}
+
+/**
  * Ingest one Fireflies transcript.
  *
  * @param {object} opts
@@ -255,15 +274,25 @@ async function ingestFirefliesTranscript(opts = {}) {
   // the booking on the coach's calendar carries the real participant emails, organizer included.
   // This is also the identity path for phone captures of face-to-face meetings, IF the coach
   // put the meeting in their calendar with the person's email (teach this at onboarding).
+  //
+  // Only the ONE booking this recording belongs to (pickAlignedEvent) - never every event it
+  // overlaps: Rick's 11:00 group session running into his 12:00 one-on-one put all 16 group
+  // guests on the one-on-one (2026-09-24). The same booking also says who the call was WITH:
+  // its guests are "booked", anyone else the recorder saw just joined ("extra").
   let calendarUnmatched = [];
-  if (matched.length === 0 && meta.meetingStart) {
+  let aligned = null;
+  if (meta.meetingStart) {
     const startIso = new Date(meta.meetingStart).toISOString();
     const endIso = meta.meetingEnd
       ? new Date(meta.meetingEnd).toISOString()
       : new Date(Date.parse(meta.meetingStart) + 60 * 60 * 1000).toISOString(); // no duration — assume an hour
     const pseudoMeeting = { recording_start_time: startIso, recording_end_time: endIso };
     const events = await relevantCalendarEvents(pseudoMeeting, coach, calendarEvents);
-    const calParticipants = calendarParticipantEmails(events, coachEmails);
+    aligned = pickAlignedEvent(events, startIso, endIso);
+  }
+  const bookedPeople = calendarParticipantEmails(aligned ? [aligned] : [], coachEmails);
+  if (matched.length === 0 && aligned) {
+    const calParticipants = bookedPeople;
     const cal = calParticipants.length ? await matchLeads(coach, calParticipants.map((x) => x.email)) : { matched: [], unmatched: [] };
     for (const m of cal.matched) matched.push({ ...m, via: 'calendar-email' });
     if (cal.matched.length) log.info(`fireflies calendar-email fallback matched ${cal.matched.length} lead(s) from ${calParticipants.length} calendar participant(s)`);
@@ -376,6 +405,7 @@ async function ingestFirefliesTranscript(opts = {}) {
   // Hygiene pass: drop role/self/own-domain addresses, and pair nameless emails to the REAL
   // speaker labels in the transcript (Fireflies' invite list often arrives with emails only).
   pendingLeads = require('./pendingLeadFilter').refinePendingLeads(pendingLeads, { transcriptText, coach, log });
+  pendingLeads = tagPendingRoles(pendingLeads, aligned ? bookedPeople : null);
 
   const plan = {
     transcriptId: realId,
@@ -457,6 +487,7 @@ module.exports = {
   dominantOtherSpeaker,
   extractPeople,
   extractMeta,
+  tagPendingRoles,
   ingestEnabled,
   SOURCE,
 };

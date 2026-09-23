@@ -186,6 +186,38 @@ function calendarParticipantEmails(events, coachEmails = []) {
 }
 
 /**
+ * The ONE calendar booking a recording belongs to, or null. Born 2026-09-24 (Rick Wong): his
+ * 11:00 group session ran past 12:00, his 12:00 one-on-one with Mikael overlapped it, and the
+ * calendar fallback took EVERY overlapping event - so all 16 group guests were filed as people
+ * he met on the Mikael call. Overlap alone is not belonging. Rule:
+ *   1. a booking that STARTS within 15 minutes of the recording wins (closest start first);
+ *   2. otherwise the recording must sit almost wholly inside one booking (a phone switched on
+ *      part-way through a face-to-face): the booking holding >= 75% of the recording;
+ *   3. otherwise nothing - a miss is recoverable, a wrong guest list is not.
+ * Pure - unit tested.
+ */
+const ALIGN_START_TOLERANCE_MS = 15 * 60 * 1000;
+function pickAlignedEvent(events, recStartIso, recEndIso) {
+  const recStart = Date.parse(recStartIso);
+  if (!Number.isFinite(recStart)) return null;
+  let recEnd = Date.parse(recEndIso);
+  if (!Number.isFinite(recEnd) || recEnd <= recStart) recEnd = recStart + 60 * 60 * 1000;
+  const recDur = recEnd - recStart;
+  const scored = (events || []).map((ev) => {
+    const s = Date.parse(ev && ev.start);
+    const e = Date.parse(ev && ev.end);
+    if (!Number.isFinite(s) || !Number.isFinite(e)) return null;
+    const overlap = Math.max(0, Math.min(e, recEnd) - Math.max(s, recStart));
+    return { ev, startDiff: Math.abs(s - recStart), overlapShare: overlap / recDur };
+  }).filter(Boolean);
+  const nearStart = scored.filter((x) => x.startDiff <= ALIGN_START_TOLERANCE_MS)
+    .sort((a, b) => a.startDiff - b.startDiff);
+  if (nearStart.length) return nearStart[0].ev;
+  const inside = scored.filter((x) => x.overlapShare >= 0.75).sort((a, b) => b.overlapShare - a.overlapShare);
+  return inside.length ? inside[0].ev : null;
+}
+
+/**
  * Resolve the lead for one split segment: try the calendar attendee emails first, then fall
  * back to matching the spoken lead NAME against Airtable (the back-to-back leads often have no
  * email in Fathom — only a spoken name — so name-fallback is load-bearing here).
@@ -373,7 +405,9 @@ async function ingestFathomMeeting(opts = {}) {
   // is what the transcript-speaker-name fallbacks below cannot do reliably.
   let calendarUnmatched = []; // [{email, name?}] — identified on the coach's calendar but no lead exists
   if (matched.length === 0) {
-    const calParticipants = calendarParticipantEmails(uniqueEvents, coachEmails);
+    // Only the booking this recording BELONGS to - never every event it brushes (pickAlignedEvent).
+    const aligned = pickAlignedEvent(uniqueEvents, meeting.recording_start_time || meeting.scheduled_start_time, meeting.recording_end_time || meeting.scheduled_end_time);
+    const calParticipants = calendarParticipantEmails(aligned ? [aligned] : [], coachEmails);
     const cal = calParticipants.length ? await matchLeads(coach, calParticipants.map((x) => x.email)) : { matched: [], unmatched: [] };
     for (const m of cal.matched) matched.push({ ...m, via: 'calendar-email' });
     if (cal.matched.length) log.info(`single-path calendar-email fallback matched ${cal.matched.length} lead(s) from ${calParticipants.length} calendar participant email(s)`);
@@ -578,6 +612,7 @@ module.exports = {
   matchLeadsForSegment,
   relevantCalendarEvents,
   calendarParticipantEmails,
+  pickAlignedEvent,
   ingestEnabled,
   SOURCE,
 };

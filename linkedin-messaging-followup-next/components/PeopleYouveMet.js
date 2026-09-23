@@ -46,6 +46,10 @@ function splitName(name, email) {
  *         confirm. One at a time, so Airtable's rate limit is never hit. People added this way
  *         leave the list rather than each opening a LinkedIn box - with dozens that is a wall of
  *         rows; their LinkedIn address can go in later from Lead Search.
+ * Extras -> (Rick Wong, 2026-09-24) he books a call with one person and others turn up. Anyone
+ *         who only ever JOINED a call booked with someone else (not on the calendar booking)
+ *         sits in a second group, "Also on those calls", saying whose call it was, with its own
+ *         Skip all. Add all never touches them - adding strangers must be a deliberate click.
  */
 const PeopleYouveMet = ({ onAdded, refreshKey }) => {
   const [people, setPeople] = useState([]);
@@ -100,7 +104,7 @@ const PeopleYouveMet = ({ onAdded, refreshKey }) => {
   };
 
   const handleAddAll = async () => {
-    const waiting = people.filter((p) => !added[p.email]);
+    const waiting = people.filter((p) => !added[p.email] && p.role !== 'extra');
     if (waiting.length === 0) return;
     const n = waiting.length;
     if (!window.confirm(`Add all ${n} ${n === 1 ? 'person' : 'people'} to Wingguy? Their meeting transcripts attach straight away. Adding can't be undone from here.`)) return;
@@ -208,6 +212,31 @@ const PeopleYouveMet = ({ onAdded, refreshKey }) => {
     setAdded((prev) => { const n = { ...prev }; delete n[email]; return n; });
   };
 
+  const handleSkipAllExtras = async () => {
+    const extras = people.filter((p) => !added[p.email] && p.role === 'extra');
+    if (extras.length === 0) return;
+    const n = extras.length;
+    if (!window.confirm(`Skip all ${n} ${n === 1 ? 'person' : 'people'} who only joined someone else's call? Wingguy won't suggest them again. The transcripts stay saved.`)) return;
+    setError('');
+    setBulkSummary('');
+    const failed = [];
+    for (let i = 0; i < extras.length; i++) {
+      const p = extras[i];
+      setBulk({ done: i, total: n, skipping: true });
+      try {
+        await skipPendingPerson(p.email);
+        setPeople((prev) => prev.filter((x) => x.email !== p.email));
+      } catch (e) {
+        console.error('PeopleYouveMet: skip-all failed for', p.email, e);
+        failed.push(p.name || p.email);
+      }
+    }
+    setBulk(null);
+    const done = n - failed.length;
+    setBulkSummary(`Skipped ${done} ${done === 1 ? 'person' : 'people'} who only joined someone else's call.`);
+    if (failed.length) setError(`Couldn't skip ${failed.length}: ${failed.join(', ')} - they are still on the list, try again.`);
+  };
+
   const handleSkip = async (email) => {
     setBusyEmail(email);
     setError('');
@@ -232,7 +261,10 @@ const PeopleYouveMet = ({ onAdded, refreshKey }) => {
   };
 
   if (!loaded || (people.length === 0 && !bulkSummary)) return null;
-  const waitingCount = people.filter((p) => !added[p.email]).length;
+  const mains = people.filter((p) => p.role !== 'extra');
+  const extras = people.filter((p) => p.role === 'extra');
+  const waitingCount = mains.filter((p) => !added[p.email]).length;
+  const extrasWaiting = extras.filter((p) => !added[p.email]).length;
 
   const renderAddedRow = (p, row) => (
     <li key={p.email} className="px-6 py-3 bg-green-50">
@@ -320,6 +352,50 @@ const PeopleYouveMet = ({ onAdded, refreshKey }) => {
     </li>
   );
 
+  const renderRow = (p) => {
+    const row = added[p.email];
+    if (row) return renderAddedRow(p, row);
+    return (
+      <li key={p.email} className="px-6 py-3 flex items-center justify-between gap-4 flex-wrap">
+        <div className="min-w-0">
+          <div className="font-medium text-gray-900 truncate">
+            {p.name || p.email}
+          </div>
+          <div className="text-sm text-gray-500 truncate">
+            {p.name ? `${p.email} - ` : ''}
+            {p.meetings > 1 ? `${p.meetings} meetings` : 'met'}
+            {p.latest ? ` ${fmtDate(p.latest)}` : ''}
+            {p.role === 'extra' && p.with
+              ? ` - joined your call with ${p.with}`
+              : (p.latestTitle ? ` - "${p.latestTitle}"` : '')}
+          </div>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={() => handleAdd(p)}
+            disabled={busyEmail === p.email || !!bulk}
+            className="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50"
+            title="Add to Wingguy now - their meeting transcripts attach straight away"
+          >
+            {UserPlusIcon && <UserPlusIcon className="h-4 w-4 mr-1" />}
+            {busyEmail === p.email ? 'Adding…' : 'Add'}
+          </button>
+          <button
+            type="button"
+            onClick={() => handleSkip(p.email)}
+            disabled={busyEmail === p.email || !!bulk}
+            className="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md text-gray-700 bg-gray-100 hover:bg-gray-200 disabled:opacity-50"
+            title="Skip - Wingguy won't suggest this person again"
+          >
+            {XMarkIcon && <XMarkIcon className="h-4 w-4 mr-1" />}
+            {busyEmail === p.email ? 'Skipping…' : 'Skip'}
+          </button>
+        </div>
+      </li>
+    );
+  };
+
   return (
     <div className="mb-8 bg-white border border-blue-200 rounded-lg shadow-sm">
       <div className="px-6 py-4 border-b border-blue-100 bg-blue-50 rounded-t-lg">
@@ -335,7 +411,7 @@ const PeopleYouveMet = ({ onAdded, refreshKey }) => {
               then or later. Skip the rest and they won&apos;t be suggested again.
             </p>
           </div>
-          {(waitingCount > 1 || bulk) && (
+          {(waitingCount > 1 || (bulk && !bulk.skipping)) && (
             <button
               type="button"
               onClick={handleAddAll}
@@ -344,7 +420,7 @@ const PeopleYouveMet = ({ onAdded, refreshKey }) => {
               title="Add everyone on this list - their meeting transcripts attach straight away"
             >
               {UserPlusIcon && <UserPlusIcon className="h-4 w-4 mr-1" />}
-              {bulk ? `Adding ${bulk.done + 1} of ${bulk.total}…` : `Add all (${waitingCount})`}
+              {bulk && !bulk.skipping ? `Adding ${bulk.done + 1} of ${bulk.total}…` : `Add all (${waitingCount})`}
             </button>
           )}
         </div>
@@ -356,48 +432,38 @@ const PeopleYouveMet = ({ onAdded, refreshKey }) => {
         <div className="px-6 py-2 text-sm text-red-600">{error}</div>
       )}
       <ul className="divide-y divide-gray-100">
-        {people.map((p) => {
-          const row = added[p.email];
-          if (row) return renderAddedRow(p, row);
-          return (
-            <li key={p.email} className="px-6 py-3 flex items-center justify-between gap-4 flex-wrap">
-              <div className="min-w-0">
-                <div className="font-medium text-gray-900 truncate">
-                  {p.name || p.email}
-                </div>
-                <div className="text-sm text-gray-500 truncate">
-                  {p.name ? `${p.email} - ` : ''}
-                  {p.meetings > 1 ? `${p.meetings} meetings` : 'met'}
-                  {p.latest ? ` ${fmtDate(p.latest)}` : ''}
-                  {p.latestTitle ? ` - "${p.latestTitle}"` : ''}
-                </div>
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => handleAdd(p)}
-                  disabled={busyEmail === p.email || !!bulk}
-                  className="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50"
-                  title="Add to Wingguy now - their meeting transcripts attach straight away"
-                >
-                  {UserPlusIcon && <UserPlusIcon className="h-4 w-4 mr-1" />}
-                  {busyEmail === p.email ? 'Adding…' : 'Add'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleSkip(p.email)}
-                  disabled={busyEmail === p.email || !!bulk}
-                  className="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md text-gray-700 bg-gray-100 hover:bg-gray-200 disabled:opacity-50"
-                  title="Skip - Wingguy won't suggest this person again"
-                >
-                  {XMarkIcon && <XMarkIcon className="h-4 w-4 mr-1" />}
-                  {busyEmail === p.email ? 'Skipping…' : 'Skip'}
-                </button>
-              </div>
-            </li>
-          );
-        })}
+        {mains.map(renderRow)}
       </ul>
+      {extras.length > 0 && (
+        <div className="border-t border-blue-100">
+          <div className="px-6 py-3 bg-gray-50 flex items-center gap-4">
+            <div className="flex-1 min-w-0">
+              <h4 className="text-sm font-semibold text-gray-800">
+                Also on those calls ({extras.length})
+              </h4>
+              <p className="text-sm text-gray-600">
+                These people weren&apos;t on your calendar booking - they joined a call you&apos;d booked with someone
+                else. Add anyone you want to keep in touch with, and skip the rest.
+              </p>
+            </div>
+            {(extrasWaiting > 1 || (bulk && bulk.skipping)) && (
+              <button
+                type="button"
+                onClick={handleSkipAllExtras}
+                disabled={!!bulk || !!busyEmail}
+                className="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md text-gray-700 bg-gray-200 hover:bg-gray-300 disabled:opacity-50 shrink-0"
+                title="Skip everyone in this group - Wingguy won't suggest them again"
+              >
+                {XMarkIcon && <XMarkIcon className="h-4 w-4 mr-1" />}
+                {bulk && bulk.skipping ? `Skipping ${bulk.done + 1} of ${bulk.total}…` : `Skip all (${extrasWaiting})`}
+              </button>
+            )}
+          </div>
+          <ul className="divide-y divide-gray-100">
+            {extras.map(renderRow)}
+          </ul>
+        </div>
+      )}
     </div>
   );
 };

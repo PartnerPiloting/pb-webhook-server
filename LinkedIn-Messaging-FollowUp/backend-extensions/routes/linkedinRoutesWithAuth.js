@@ -2235,6 +2235,10 @@ router.get('/pending-people', async (req, res) => {
         meetings: p.meetings,
         latest: p.latest,
         latestTitle: p.latestTitle || null,
+        // 'main' = the person a call was booked with (or unknown); 'extra' = only ever joined a
+        // call booked with someone else - `with` names who (2026-09-24).
+        role: p.role || 'main',
+        with: p.with || null,
       })),
     });
   } catch (error) {
