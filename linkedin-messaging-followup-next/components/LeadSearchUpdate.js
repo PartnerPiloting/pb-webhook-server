@@ -36,6 +36,7 @@ const LeadSearchUpdate = () => {
   const [allLeads, setAllLeads] = useState([]); // Store all search results
   const [leads, setLeads] = useState([]); // Display leads (paginated subset)
   const [totalLeads, setTotalLeads] = useState(null); // Total matching records (null when no filters)
+  const [totalCapped, setTotalCapped] = useState(null); // Set when matches exceed the server's count cap
   const [currentPage, setCurrentPage] = useState(1);
   const [leadsPerPage] = useState(25); // Show 25 leads per page
   const [selectedLead, setSelectedLead] = useState(null);
@@ -126,6 +127,7 @@ const LeadSearchUpdate = () => {
       // With API pagination, we only get the current page
       setLeads(filteredResults);
       setTotalLeads(total); // Set total from API (null when no filters, number when filtered)
+      setTotalCapped(response.totalCapped || null);
       setCurrentPage(page);
       
       // For now, assume we have more data if we get a full page (we'll improve this later)
@@ -371,7 +373,7 @@ const LeadSearchUpdate = () => {
         pageItemCount={leads.length}
         pageSize={leadsPerPage}
         // Pass total from API (null when no filters, number when filtered)
-        knownTotal={totalLeads}
+        knownTotal={totalLeads ?? (totalCapped ? `${totalCapped.toLocaleString('en-AU')}+` : null)}
         onPageChange={handlePageChange}
         isLoading={isLoading}
         disableNext={leads.length < leadsPerPage}

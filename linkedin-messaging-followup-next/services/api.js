@@ -301,7 +301,8 @@ export const searchLeads = async (query, priority = 'all', searchTerms = '', lim
       ...lead
     }));
     
-    return { leads: mappedLeads, total };
+    // totalCapped: the server stopped counting at this many (there are more)
+    return { leads: mappedLeads, total, totalCapped: response.data.totalCapped || null };
   } catch (error) {
     console.error('Search error:', error);
     throw new Error('Failed to search leads');

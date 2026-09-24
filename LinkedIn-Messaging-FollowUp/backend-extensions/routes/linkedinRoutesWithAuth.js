@@ -440,7 +440,12 @@ router.get('/leads/search', async (req, res) => {
 
     logger.info(`LinkedIn Routes: Streaming pages for offset=${pageOffset}, limit=${pageLimit}…`);
 
-    // If filters are applied, count total matching records (expensive but useful)
+    // If filters are applied, count total matching records (expensive but useful).
+    // Capped: Airtable hands back 100 rows per request, so counting a broad filter (e.g. Guy's
+    // 14k "not connected") took 25-45s and the page timed out at 30s. Past the cap we stop and
+    // report "at least COUNT_CAP" (totalCapped) instead of an exact total.
+    const COUNT_CAP = 1000;
+    let totalCapped = null;
     if (hasFilters) {
       logger.info('LinkedIn Routes: Filters detected, counting total matching records...');
       let countTotal = 0;
@@ -450,6 +455,10 @@ router.get('/leads/search', async (req, res) => {
           .eachPage(
             (records, fetchNextPage) => {
               countTotal += records.length;
+              if (countTotal > COUNT_CAP) {
+                totalCapped = COUNT_CAP;
+                return resolve();
+              }
               fetchNextPage();
             },
             (err) => {
@@ -458,8 +467,8 @@ router.get('/leads/search', async (req, res) => {
             }
           );
       });
-      totalCount = countTotal;
-      logger.info(`LinkedIn Routes: Total matching records: ${totalCount}`);
+      totalCount = totalCapped ? null : countTotal;
+      logger.info(`LinkedIn Routes: Total matching records: ${totalCapped ? `more than ${COUNT_CAP}` : totalCount}`);
     }
 
     for (const passFilter of passFilters) {
@@ -538,7 +547,8 @@ router.get('/leads/search', async (req, res) => {
 
     res.json({
       leads: transformedLeads,
-      total: totalCount, // null when no filters, number when filtered
+      total: totalCount, // null when no filters (or over the count cap), number when filtered
+      totalCapped, // set (= the cap) when there are more matches than we counted
       offset: pageOffset,
       limit: pageLimit
     });
