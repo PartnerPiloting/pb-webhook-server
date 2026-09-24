@@ -1239,6 +1239,33 @@ until Fathom's bot-free version reaches Windows.
 
 ---
 
+## BEFORE EVERY CALL - get ready for the meeting: Wingguy will brief you, and remind you what was said on the last call
+
+With a few calls a week, it happens to everybody: you sit down to a call and can't quite remember
+why you're meeting, or what the two of you said last time.
+
+So don't go digging through your inbox and your notes. **Say "prep me for my meetings"** and Wingguy
+briefs you on everyone you're seeing today. Or ask about one person: *"remind me about Sarah before
+our call."*
+
+**Before a first call,** it tells you why you're meeting at all - how the meeting came about and
+what they said they wanted from it - plus something personal worth opening with. Your icebreaker is
+sorted before you've said hello.
+
+**Before a second call,** it gives you a proper recap of the last one: what it was for, what was
+actually said, how you left it, and what each of you said you'd do. You walk in picking up exactly
+where you left off - which is most of what makes someone feel you were really listening.
+
+It also shows you where things stand between you, the last email you sent them in full - often the
+natural way to open the call - and every link you've already sent, so you never send the same
+article twice.
+
+It's all prepared ahead of time, so there's no waiting. It draws on your calendar, your email, your
+LinkedIn messages and your call transcripts - which is one more reason to record your calls. Without
+a recording, the recap of what was said simply isn't there.
+
+---
+
 ## THE FIRST MEETING - HOW IT ACTUALLY GOES
 
 First, why this meeting matters as much as it does. It doesn't matter how many posts you write or
@@ -1272,9 +1299,8 @@ opening buys you: it hands you the rest of the meeting, because from there all y
 questions.
 
 **Prepare properly, closer to the time.** Have a good look at their profile again, and at anything
-they've said in their messages, so you can talk with them about their actual work. If your meetings
-are recorded, you can simply ask Wingguy to prepare you for the call and it will pull what you need
-together, including anything from previous conversations.
+they've said in their messages, so you can talk with them about their actual work. Or let Wingguy
+do it - see the topic on getting ready before every call.
 
 **Record the meeting.** This is the one piece of housekeeping that pays for itself immediately. Once
 it's recorded, the system has the transcript, and afterwards you can literally say in Claude: *draft
@@ -1365,6 +1391,28 @@ to press send.
 Guy reckons this is the single most valuable thing the system does for you, once you're up and
 running. The meetings are the fun part - but the follow-up is where a pile of nice conversations
 either turns into a network, or turns into a list of people you once met.
+
+---
+
+## ASK ABOUT ANYONE - have they replied, read their email, your emails with them, what you have sent
+
+Half the admin of networking is looking things up. Did he ever reply? What did I actually send her?
+Where did we leave it?
+
+You don't need to go hunting. Just ask Wingguy, in plain words:
+
+- *"Has Sarah replied since our call?"* - a straight yes or no, and if yes, her latest message.
+- *"Show me my emails with Sarah"* - the back and forth between you, both ways, newest first.
+- *"Read me her reply"* - the whole message, without opening your inbox.
+- *"Have I sent her the article yet?"* - Wingguy keeps track of every link it's drafted to her.
+
+From there, *"draft a reply"* puts one in your drafts, in the same thread, ready for you to read.
+Nothing goes anywhere until you send it.
+
+**One person at a time, by design.** These look at your email with one person. They're not a search
+of your whole inbox - for that, your inbox is still the right tool.
+
+It works whether your mail is Gmail, Outlook or Zoho, once your mailbox is connected to Wingguy.
 
 ---
 

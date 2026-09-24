@@ -78,7 +78,7 @@
     {
       "phrase": "prep me for my meetings",
       "tool": "wingguy_list_events",
-      "where": ["docs/wingguy-onboarding-checklist.md"]
+      "where": ["docs/wingguy-onboarding-checklist.md", "docs/client-playbook.md"]
     },
     {
       "phrase": "what's on my calendar this week?",
