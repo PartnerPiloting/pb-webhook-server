@@ -128,6 +128,14 @@ const PAGES = {
       'The three Binary Lane screens worth seeing before you meet them - choosing the machine, '
       + 'adding the key so Guy can build it, and the one number to send back.',
   },
+  // A made-up introduction email in the real introduction-emails-html layout.
+  // Linked as a "Picture:" from the playbook topic "The inner circle" - the
+  // chat can only send text, so this is where a client sees what one looks like.
+  introExample: {
+    file: 'introduction-example.html',
+    title: 'What an introduction looks like - I Know A Guy',
+    description: 'One line in a chat, and this is the draft waiting in your mailbox - a two-sided introduction, names made up, layout real.',
+  },
   joinThanks: {
     file: 'join-thanks.html',
     title: 'Welcome aboard - I Know A Guy',
@@ -250,6 +258,7 @@ module.exports = function mountMarketingSite(app) {
   // Sent by link, never linked from the site's own navigation.
   router.get('/the-numbers', servePage(PAGES.numbers));
   router.get('/your-machine', servePage(PAGES.machine));
+  router.get('/introduction-example', servePage(PAGES.introExample));
   router.get('/guy', servePage(PAGES.guy));
   router.get('/privacy', servePage(PAGES.privacy));
   router.get('/terms', servePage(PAGES.terms));

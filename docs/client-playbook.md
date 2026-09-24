@@ -1330,6 +1330,77 @@ You're building a node, alongside other people building nodes. That's where the 
 
 ---
 
+## THE INNER CIRCLE - WHO'S IN IT, HOW IT WORKS, AND MAKING INTRODUCTIONS
+
+Everyone who joins asks about this sooner or later, so here it is plainly.
+
+**Who's in it.** The inner circle is everyone building their network the way you are - the people
+on this system with me. That makes it a different thing from a networking group. Nobody bought a
+ticket to get in. Everyone got here the same way you did: they chose to build deliberately, and
+they look for people on the same attitude you look for. That shared filter is what makes the circle
+work. When someone in it tells you "you should meet this person", it means something, because
+they're judging people the way you would.
+
+**And behind every one of them, their wider network.** Everyone in the circle has built up their own
+people over the years - clients, colleagues, old friends from past jobs - people who know them well,
+trust them, and take their recommendations seriously. Do the sums. Picture the circle at 100 people,
+each with 100 people like that. That's 10,000 people, and every one of them is a single trusted
+introduction away from you. These aren't cold contacts. Each one comes with someone vouching for
+you.
+
+**Why it matters to you.** On your own, you have one set of eyes and ears. In the circle, you have a
+group of people who know what you do and are listening out for you - and each of them is listening
+across their whole wider network. That's the whole idea of "I know a guy", multiplied.
+
+**How it works in practice.** Four things, and none of them are complicated:
+
+- **I introduce you to each other.** When two people in the circle ought to know each other, I'll
+  send an introduction. It doesn't have to be a business fit. Often it isn't - it's that you're both
+  good people, and you'll be brilliant at recommending each other.
+- **You meet, and you learn what the other offers.** This is the part that makes the rest work. You
+  can only recommend someone if you understand what they do and who they help, clearly enough to
+  spot the right person when they cross your path. Half an hour does it. Treat it exactly like any
+  other first meeting: them first, you second, and book the next one if it's going well.
+- **You listen out for each other - and introduce across your wider networks.** When someone you
+  know needs what a circle member does, you know a guy. When a circle member's client needs what
+  someone you know does, they know a guy. Introductions run in every direction: circle to circle,
+  and out into each other's wider networks.
+- **You bring builders in.** Now and then you'll meet someone - often from your wider network - who
+  clearly wants to build their network the way you are. Introduce them to me. I hand them back -
+  you end up working alongside them - and the circle gets bigger for everyone.
+
+**Your contacts are safe to share.** Because we all score on the same attitude, the good people you
+meet are people the rest of the circle would be glad to know too. So when one of your contacts needs
+something a circle member does, making the introduction is an easy yes.
+
+**Making an introduction takes about a minute.** This is where Wingguy does the heavy lifting. In a
+chat, say something like *"introduce Sarah to Tom - Sarah's looking for a good bookkeeper"*.
+Wingguy then:
+
+- pulls up what it knows about both of them - their profiles, your notes, what came up in your
+  conversations
+- writes the two-sided email: who each person is and why they should talk, with each name linked to
+  their LinkedIn profile
+- asks one of them to reach out, with the other person's email address written into the email so
+  there's no scrolling or hunting
+- puts the draft in your mailbox for you to read, tweak and send
+
+Picture: https://knowaguy.com.au/introduction-example
+
+It never guesses a LinkedIn address or an email - if it can't find one, it asks you. And if you're
+introducing the same person to several people in one week, it'll suggest spacing them so each one
+gets proper attention.
+
+Guy reckons a good introduction is the most valuable thing you can send anyone - it costs you a
+minute and it's remembered for years. It's also the easiest way to stay front of mind. Nobody
+forgets the person who introduced them to someone useful.
+
+**Your move.** Next time you're on a call and you think "they should meet so-and-so", don't make a
+note to do it later. Say it on the call, then open a chat afterwards and ask Wingguy to draft it.
+Five minutes after hanging up, the introduction is in your drafts.
+
+---
+
 ## YOUR DAILY FOLLOW-UP LIST - THE BIT EVERYBODY ELSE DROPS
 
 Be honest with yourself for a second. Right now, do you know who you promised to get back to? Who you
