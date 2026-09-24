@@ -263,9 +263,10 @@ first.** "How about we catch up next week?" - there and then. The first call was
 second is where they find out what you're building, and it's exactly where most networkers let it
 all slip away.
 
-And you're not doing this alone. Everyone on the system with Guy is in the inner circle, listening
-out for each other - and when you think "they should meet so-and-so", I'll draft the introduction
-from one line. The topics on *the inner circle* and *making introductions* explain how it works.
+And you're not doing this alone. You're part of Guy's inner circle - people building their networks
+the same way, listening out for each other, and meeting by introduction. When you think "they
+should meet so-and-so", I'll draft the introduction from one line. The topics on *the inner circle*
+and *making introductions* explain how it works.
 
 **Your move:** run your first discovery call end to end - booked by me, recorded, second meeting
 in the diary before you hang up. The topics on *getting the meeting in the diary*, *the first

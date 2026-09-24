@@ -22,6 +22,8 @@ And behind every one of them sits their wider network. Everyone in that circle h
 
 Do the sums. A circle of a hundred people, each with a hundred people like that, is ten thousand people. Every one of them is a single trusted introduction away from you. None of them are cold contacts or names on a list - each one comes with somebody vouching for you on the way in.
 
+And you don't reach them by looking anyone up. There's no directory. You meet people in the circle the same way you'd meet anyone worth knowing - someone who knows you both makes the introduction. That's slower than a list, and far better, because every connection arrives with somebody vouching for it.
+
 That's the real difference between collecting contacts and joining something. A contact list of ten thousand is worth almost nothing - nobody on it is listening for you. Ten thousand people you can reach through someone they trust is a different animal altogether.
 
 But it only works on one condition, and it's the one people skip. You can only recommend someone if you understand what they do - clearly enough to spot the right person the moment they cross your path. A circle full of people who've never actually talked is just a directory with better manners.

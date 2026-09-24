@@ -1334,12 +1334,18 @@ You're building a node, alongside other people building nodes. That's where the 
 
 Everyone who joins asks about this sooner or later, so here it is plainly.
 
-**Who's in it.** The inner circle is everyone building their network the way you are - the people
-on this system with me. That makes it a different thing from a networking group. Nobody bought a
-ticket to get in. Everyone got here the same way you did: they chose to build deliberately, and
-they look for people on the same attitude you look for. That shared filter is what makes the circle
-work. When someone in it tells you "you should meet this person", it means something, because
-they're judging people the way you would.
+**Who's in it.** The inner circle isn't a list of members - it's everyone building their network the
+way you are. Mostly that's the people on this system with me. But it's also people who are about to
+join, and people who've been with us before and still build the same way. What they share is the
+method and the attitude, not a subscription. That shared filter is what makes the circle work. When
+someone in it tells you "you should meet this person", it means something, because they're judging
+people the way you would.
+
+**There's no directory - it's all by introduction.** You won't find a list to look people up in,
+and that's deliberate. You meet people in the circle because someone who knows you both thinks you
+should. Usually that's me to start with, and in time it's other people in the circle too. And the
+same goes outwards: people in the circle introduce each other to people in their wider networks.
+Every connection arrives with someone vouching for it, which is exactly why it's worth having.
 
 **And behind every one of them, their wider network.** Everyone in the circle has built up their own
 people over the years - clients, colleagues, old friends from past jobs - people who know them well,
