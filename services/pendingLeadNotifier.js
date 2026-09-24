@@ -127,7 +127,14 @@ async function collectWaitingPeople(coachClientId, coach) {
 }
 
 // Reader-facing copy rules: " - " (never an em dash), "Wingguy database" (never "Airtable").
+// Only the MAIN list is counted and named (Guy, 2026-09-24): Rick's digest would have said
+// "You've met 12 people" when all 12 were silent guests on a group webinar. Extras (joined a call
+// booked with someone else, or sat quiet on a group call) get one line, not a list - and when
+// ONLY extras are waiting, no digest is sent at all (see mainPeople / notifyPendingLeads).
+const mainPeople = (people) => (people || []).filter((p) => p.role !== 'extra');
 function buildDigestEmail({ coachFirstName, people, portalUrl, tz }) {
+  const extrasCount = (people || []).length - mainPeople(people).length;
+  people = mainPeople(people);
   const n = people.length;
   const subject = n === 1
     ? `You've met someone who isn't in Wingguy yet`
@@ -144,7 +151,7 @@ function buildDigestEmail({ coachFirstName, people, portalUrl, tz }) {
 I've saved transcripts from your recent meetings, but ${n === 1 ? 'one person on them isn\'t' : 'some people on them aren\'t'} in your Wingguy database yet - so I can't pull those meetings up by name or draft follow-ups to them:
 
 ${lines.join('\n')}
-
+${extrasCount ? `\nPlus ${extrasCount} ${extrasCount === 1 ? 'other person who was' : 'others who were'} on those calls - they joined a call booked with someone else, or sat quietly on a group call. They're in a separate list on the same page, with a Skip all button.\n` : ''}
 Add or skip them here (takes about a minute):
 ${portalUrl}
 
@@ -191,14 +198,17 @@ async function notifyPendingLeads(opts = {}) {
       const to = String(coach.clientEmailAddress || '').trim();
       if (!to) { summary.details.push({ coachClientId, skipped: 'no client email address on record' }); continue; }
 
-      const people = await collectWaitingPeople(coachClientId, coach);
-      if (!people.length) { summary.details.push({ coachClientId, skipped: 'nothing waiting after filters' }); continue; }
+      const allWaiting = await collectWaitingPeople(coachClientId, coach);
+      if (!allWaiting.length) { summary.details.push({ coachClientId, skipped: 'nothing waiting after filters' }); continue; }
+      // Extras alone never earn an email - nobody the coach actually met is waiting.
+      const people = mainPeople(allWaiting);
+      if (!people.length) { summary.details.push({ coachClientId, skipped: `only extras waiting (${allWaiting.length})` }); continue; }
 
       const coachFirstName = String(coach.clientName || '').trim().split(/\s+/)[0] || 'there';
       const portalUrl = coach.portalToken
         ? `${PORTAL_BASE}/new-leads?token=${encodeURIComponent(coach.portalToken)}`
         : `${PORTAL_BASE}/new-leads`;
-      const { subject, text } = buildDigestEmail({ coachFirstName, people, portalUrl, tz: coach.timezone });
+      const { subject, text } = buildDigestEmail({ coachFirstName, people: allWaiting, portalUrl, tz: coach.timezone });
       const payload = { from: `Wingguy <wingguy@${process.env.MAILGUN_DOMAIN}>`, to, subject, text };
       if (BCC && BCC.toLowerCase() !== to.toLowerCase()) payload.bcc = BCC;
       await sendMailgun(payload);
@@ -222,4 +232,4 @@ async function notifyPendingLeads(opts = {}) {
   return summary;
 }
 
-module.exports = { notifyPendingLeads, notifyEnabled, buildDigestEmail, collectWaitingPeople };
+module.exports = { notifyPendingLeads, notifyEnabled, buildDigestEmail, collectWaitingPeople, mainPeople };
