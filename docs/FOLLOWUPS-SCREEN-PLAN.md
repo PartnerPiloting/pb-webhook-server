@@ -261,6 +261,29 @@ weekday + day + month, or a day + month + clock time; a bare "26 August" in
 narrative is not an offer. Drops and parks are skipped. Tests:
 tests/wingguy-offered-times.test.js.
 
+"Time agreed, not booked" (2026-09-14, the Max Dagenais miss): Guy offered
+three slots on 9 Sep, Max picked "Thursday 17 September, 2:00 pm" on 10 Sep
+and asked for the invite, and nothing was booked for four days. Nothing
+flagged it: Dean was cc'd, so the sweep's 1:1-only reply signal ignored the
+thread, and the offered-times flag stands down the moment the lead speaks.
+Now the sweep (`computeFollowupSweep`) runs the other half: from its mailbox
+window it picks recent lead-replied threads the coach wrote on (ANY party
+count, `wingguyAcceptedTimes.pickAcceptCandidates`), reads the lead's newest
+message in full, and only when that names a dated slot reads the coach's
+messages around it (`findAcceptedUnbooked` in wingguyMailMcp) to confirm the
+slot was offered and not re-offered since (`acceptedTimeSignal`). The calendar
+cross-check then decides: any non-declined event with that person on or after
+the day they said yes = resolved (invite sent or meeting held), otherwise they
+surface at a new top tier, `unbooked`, ahead of deferrals. The brief writes
+that entry in code (`unbookedEntry`, no triage, no draft): verdict attention,
+recommendation "Send the invite - they said yes to Thu 17 Sep 2:00 pm on
+10 Sep - nothing is in your diary with them." The brief lists them first, the
+queue line ends "book it on their go", the screen chip reads NOT BOOKED with a
+red "said yes to <slot> - not booked" tag. Same narrowness as the offered-times
+flag: the reply must name the slot in a form the extractor reads ("Thursday
+works" is not caught - the Ask box still is, on request). Tests:
+tests/wingguy-accepted-times.test.js.
+
 Tests: tests/wingguy-followups-ask.test.js (pure; Anthropic client and tool
 defs stubbed).
 

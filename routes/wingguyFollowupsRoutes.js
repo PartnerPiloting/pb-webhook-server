@@ -107,6 +107,9 @@ module.exports = function mountWingguyFollowups(app) {
         offeredTimesPassed: !!it.offeredTimesPassed,
         offeredTimes: it.offeredTimesPassed ? (it.offeredTimes || []) : [],
         offeredOn: it.offeredTimesPassed ? (it.offeredOn || null) : null,
+        // "they said yes, nothing booked" (2026-09-14): the slot they picked and when — the row
+        // shows a red tag; the fix is a booking, made from chat on the coach's go.
+        unbooked: it.unbooked ? { slot: it.unbooked.slot || null, acceptedOn: it.unbooked.acceptedOn || null } : null,
         draftState: it.draftState,   // 'ready' | 'wg-angle' | 'pending' | 'error' | 'none' — honest by construction
         wgAngle: it.draftState === 'wg-angle' ? (it.wgAngle || null) : null,
         draftUrl: (it.draftState === 'ready' || it.draftState === 'wg-angle') ? draftUrl(clientId, it.name) : null,

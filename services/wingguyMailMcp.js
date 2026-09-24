@@ -199,6 +199,12 @@ const DEFERRAL_LIVE_DAYS = 45;
 // Calendar cross-check: look this far forward for an already-booked meeting with a surfaced lead
 // (don't nag someone who's already in your diary). Covers the cadence/deferral horizon comfortably.
 const CAL_LOOKAHEAD_DAYS = 60;
+// "They said yes to a time, nothing is booked" (Guy 2026-09-14, the Max Dagenais miss): how far
+// back a lead's yes still counts, and how many recent lead-replied threads the sweep reads in full
+// to look for one. Each candidate costs one message read (the lead's reply); only a reply that
+// names a dated slot costs the extra reads of the coach's offer around it.
+const ACCEPT_LOOKBACK_DAYS = 21;
+const ACCEPT_MAX_THREADS = 30;
 
 // "DD-MM-YY H:MM AM - <Sender Name> - <text>" — the line format inside the Notes LinkedIn block.
 const LI_MSG_RE = /^(\d{2})-(\d{2})-(\d{2})\s+\d{1,2}:\d{2}\s*[AP]M\s*-\s*(.+?)\s*-\s*/i;
@@ -795,8 +801,81 @@ async function runLeadRepliedSince({ lead_email, since_iso } = {}, tenant = TENA
 // Ranking = closeness-to-broken-promise (the settled 2026-07-21 design): a DUE DATED PROMISE
 // outranks a recent reply — forgetting "I said I'd ping you today" costs more than a slow answer.
 // (Was reply-first until 2026-07-24, which buried ten due promises below the prepared fold.)
-const TIER_ORDER = { deferral: 0, reply: 1, cadence: 2 };
-const TIER_LABEL = { reply: '↩ REPLY OWED', deferral: '📅 DEFERRAL DUE', cadence: '⏳ WENT QUIET' };
+const TIER_ORDER = { unbooked: 0, deferral: 1, reply: 2, cadence: 3 };
+const TIER_LABEL = { unbooked: '📌 TIME AGREED, NOT BOOKED', reply: '↩ REPLY OWED', deferral: '📅 DEFERRAL DUE', cadence: '⏳ WENT QUIET' };
+
+/**
+ * "They said yes to a time and nothing is in your diary" — the I/O half (the pure half is
+ * wingguyAcceptedTimes). From the sweep's mailbox window, pick the recent lead-replied threads the
+ * coach wrote on (ANY party count — Dean cc'd on the Max thread is exactly the case), read the
+ * lead's newest message in full, and only when it names a dated slot read the coach's messages
+ * around it to confirm the slot was offered and not since renegotiated. One yes per lead (the
+ * newest). Best-effort: a mailbox read that fails just skips that thread.
+ * @returns {Promise<{accepted: Map<string,{slot,acceptedOn,offeredOn}>, checked: boolean, reads: number}>}
+ */
+/** An ISO instant re-expressed in the coach's zone ("2026-09-10T09:50:00.000+10:00"), so its
+ *  first ten characters are the coach's civil day. Falls back to the input on a bad zone. */
+function inCoachZone(iso, tz) {
+  try {
+    const { DateTime } = require('luxon');
+    const d = DateTime.fromISO(String(iso), { zone: 'utc' }).setZone(tz || 'UTC');
+    return d.isValid ? d.toISO() : String(iso);
+  } catch (_) { return String(iso); }
+}
+
+async function findAcceptedUnbooked(coach, messages, leadEmails, nowMs) {
+  const { pickAcceptCandidates, acceptedTimeSignal, stripQuotedDeep, MAX_SLOTS_IN_A_YES } = require('./wingguyAcceptedTimes');
+  const { extractOfferedTimes } = require('./wingguyOfferedTimes');
+  const accepted = new Map();
+  const coachEmails = coachOwnEmails(coach);
+  if (!coachEmails.size) return { accepted, checked: false, reads: 0 };
+  const tz = coach.timezone || 'UTC';
+  // Days are the COACH's days: Max's yes landed 23:50 UTC on the 9th = the morning of the 10th in
+  // Brisbane, and "on 10 Sep" is what Guy would say. Offers resolve their missing year from the
+  // same day, and the calendar cross-check compares event days in the same zone.
+  messages = (messages || []).map((m) => (m && m.date ? { ...m, date: inCoachZone(m.date, tz) } : m));
+  const cands = pickAcceptCandidates(messages, { leadEmails, coachEmails, nowMs, lookbackDays: ACCEPT_LOOKBACK_DAYS, max: ACCEPT_MAX_THREADS });
+  let reads = 0;
+  const bodies = new Map(); // message id -> stripped text (a coach offer is read once, however many replies it has)
+  const readText = async (id) => {
+    if (bodies.has(id)) return bodies.get(id);
+    reads++;
+    let text = null;
+    try {
+      const r = await mailProvider.getMessage(coach, id);
+      if (r && r.ok && r.message) text = stripQuotedDeep(stripQuotedTail(htmlToText(r.message.body) || String(r.message.snippet || '')));
+    } catch (_) { /* unreadable message = no evidence, never a failure */ }
+    bodies.set(id, text);
+    return text;
+  };
+  const day = (iso) => String(iso || '').slice(0, 10);
+  const coachFrom = [...coachEmails][0];
+  for (const c of cands) {
+    for (const lm of c.leadMsgs) {                     // newest first; the first message that names a slot decides
+      const leadText = await readText(lm.id);
+      if (!leadText) continue;
+      const named = extractOfferedTimes(leadText, day(lm.date));
+      if (!named.length || new Set(named.map((s) => s.iso)).size > MAX_SLOTS_IN_A_YES) continue;
+      const chain = [{ fromEmail: c.leadEmail, date: lm.date, text: leadText }];
+      const before = c.coachMsgs.filter((x) => x.ms < lm.ms).reverse().slice(0, 2); // newest first
+      let offerFound = false;
+      for (const cm of before) {                       // stop at the first coach message that offered slots
+        const t = await readText(cm.id);
+        if (t == null) continue;
+        chain.push({ fromEmail: coachFrom, date: cm.date, text: t });
+        if (extractOfferedTimes(t, day(cm.date)).length) { offerFound = true; break; }
+      }
+      if (!offerFound) continue;
+      for (const cm of c.coachMsgs.filter((x) => x.ms > lm.ms).slice(0, 2)) { // did the coach re-offer since? (supersedes)
+        const t = await readText(cm.id);
+        if (t != null) chain.push({ fromEmail: coachFrom, date: cm.date, text: t });
+      }
+      const sig = acceptedTimeSignal(chain, { coachEmails, leadEmail: c.leadEmail });
+      if (sig) { accepted.set(c.leadEmail, sig); break; }
+    }
+  }
+  return { accepted, checked: true, reads };
+}
 
 /**
  * The follow-up sweep core (Stage A), STRUCTURED. Rebuilds "who do I owe a follow-up, and in what
@@ -804,7 +883,7 @@ const TIER_LABEL = { reply: '↩ REPLY OWED', deferral: '📅 DEFERRAL DUE', cad
  * record. Stores nothing. Returns { ok, coach, surfaced (ranked, uncapped), counts, ... } for the
  * brief PREPARER and the text tool alike — runFollowupSweep wraps this with cap + formatting.
  */
-async function computeFollowupSweep({ window_days } = {}, tenant = TENANT) {
+async function computeFollowupSweep({ window_days, accepted_check } = {}, tenant = TENANT) {
   const clientService = require('./clientService');
   const coach = await clientService.getClientById(tenant);
   if (!coach) return { ok: false, error: `Server config error: coach client "${tenant}" not found.` };
@@ -908,6 +987,20 @@ async function computeFollowupSweep({ window_days } = {}, tenant = TENANT) {
     const lead = byEmail.get(email);
     if (lead) { lead.lastInboundMs = sig.lastInboundMs; lead.lastOutboundMs = sig.lastOutboundMs; }
   }
+  // --- 2b. "They said yes to a time" — the one signal the 1:1 rule above must NOT filter ---
+  // Max Dagenais (2026-09-14): Guy offered three slots, Max picked one and asked for the invite,
+  // Dean was cc'd, so the thread had 3 parties and never counted as a reply owed; nothing was
+  // booked and nobody noticed for four days. This reads the full bodies it needs (see
+  // findAcceptedUnbooked - a minute or so against a busy mailbox), so it runs on request only:
+  // the overnight brief asks for it; the live chat sweep tool does not, and says so.
+  let acceptedUnbooked = { accepted: new Map(), checked: false, reads: 0 };
+  if (accepted_check) {
+    try {
+      acceptedUnbooked = await findAcceptedUnbooked(coach, mail.messages, new Set(byEmail.keys()), nowMs);
+    } catch (e) {
+      console.warn(`[wingguyMailMcp] accepted-time check skipped: ${e.message}`);
+    }
+  }
 
   // --- 3. Merge LinkedIn history, classify, rank ---
   const surfaced = [];
@@ -926,9 +1019,23 @@ async function computeFollowupSweep({ window_days } = {}, tenant = TENANT) {
       }
     }
   }
+  const { unbookedLine } = require('./wingguyAcceptedTimes');
   for (const lead of leads) {
     let lastInboundMs = lead.lastInboundMs;
     let lastOutboundMs = lead.lastOutboundMs;
+    // A yes with no booking outranks every other tier for that person — it is the most concrete
+    // thing owed, and it stays on top until the invite exists (the calendar cross-check drops it)
+    // or the coach re-offers (findAcceptedUnbooked treats a fresh offer as superseding).
+    const yes = lead.email ? acceptedUnbooked.accepted.get(lead.email) : null;
+    if (yes) {
+      surfaced.push({
+        lead, tier: 'unbooked', why: unbookedLine(yes), gated: false,
+        sortKey: -Date.parse(yes.slot.iso), // soonest (or most overdue) slot first
+        unbooked: yes,
+        signals: { lastInboundMs: lastInboundMs || 0, lastOutboundMs: lastOutboundMs || 0, acceptedSlot: `${yes.slot.iso}|${yes.slot.label}` },
+      });
+      continue;
+    }
     const li = parseLinkedInLast(lead.notes, lead.first);
     if (li) { // FULL depth (2026-08-24): cadence is open-ended, so an old LI outbound is exactly the
               // signal we need. Stale-signal noise is already handled downstream — reply-owed has its
@@ -962,13 +1069,19 @@ async function computeFollowupSweep({ window_days } = {}, tenant = TENANT) {
     try {
       const wingguyCalendar = require('./wingguyCalendar');
       const fmt = (ms) => new Date(ms).toISOString().slice(0, 10);
-      const cal = await wingguyCalendar.listEventsForCoach(tenant, { date: fmt(todayMidMs), endDate: fmt(todayMidMs + CAL_LOOKAHEAD_DAYS * MS_DAY) });
+      // The window reaches BACK as far as a yes can be old (ACCEPT_LOOKBACK_DAYS), so an accepted
+      // slot that already came and went can be checked against what was actually held. Only the
+      // forward half feeds the every-tier suppression below — past events never silence a nudge.
+      const cal = await wingguyCalendar.listEventsForCoach(tenant, { date: fmt(todayMidMs - ACCEPT_LOOKBACK_DAYS * MS_DAY), endDate: fmt(todayMidMs + CAL_LOOKAHEAD_DAYS * MS_DAY) });
       if (cal && cal.ok && Array.isArray(cal.events)) {
         calChecked = true;
         const bookedEmails = new Set();
         const titleBlobs = [];
+        const eventDaysByEmail = new Map(); // email -> [YYYY-MM-DD of every non-declined event, past and future]
         for (const ev of cal.events) {
           if (ev.isFree) continue; // free/transparent time isn't a booked meeting
+          const evDay = ev.start ? inCoachZone(ev.start, coach.timezone).slice(0, 10) : null; // the coach's civil day
+          const future = !evDay || Date.parse(`${evDay}T00:00:00Z`) >= todayMidMs;
           for (const a of (ev.attendees || [])) {
             if (!a || !a.email) continue;
             // Response-aware (Celeste, 2026-07-24): a DECLINED invite is NOT a booked meeting —
@@ -978,17 +1091,29 @@ async function computeFollowupSweep({ window_days } = {}, tenant = TENANT) {
             // pencil-in invite is silenced only while the event sits ahead — once the event date
             // passes unanswered, the due stamp surfaces (see the every-tier suppression below).
             if (String(a.responseStatus || '').toLowerCase() === 'declined') continue;
-            bookedEmails.add(String(a.email).toLowerCase());
+            const em = String(a.email).toLowerCase();
+            if (evDay) { if (!eventDaysByEmail.has(em)) eventDaysByEmail.set(em, []); eventDaysByEmail.get(em).push(evDay); }
+            if (future) bookedEmails.add(em);
           }
-          titleBlobs.push(`${ev.summary || ''} ${(ev.attendees || []).map((a) => a.displayName || '').join(' ')}`.toLowerCase());
+          if (future) titleBlobs.push(`${ev.summary || ''} ${(ev.attendees || []).map((a) => a.displayName || '').join(' ')}`.toLowerCase());
         }
         const kept = [];
         for (const s of surfaced) {
+          const email = (s.lead.email || '').toLowerCase();
+          if (s.tier === 'unbooked') {
+            // Resolved when ANY event with them sits on or after the day they said yes — the
+            // invite went out (whatever the title), or the meeting was held. An older event
+            // (the intro call the offer came out of) is not the one they agreed to.
+            const days = eventDaysByEmail.get(email) || [];
+            const since = String(s.unbooked.acceptedOn || '').slice(0, 10);
+            if (days.some((d) => d >= since)) { bookedSuppressed++; continue; }
+            kept.push(s);
+            continue;
+          }
           // A real upcoming booking silences EVERY tier, due stamps included (Guy 2026-07-29,
           // Rosh Java: a due "check back" note on an already-rebooked lead is noise). The stamp
           // is NOT cleared — if the booking is cancelled or passes, it stops matching the forward
           // window and the due note surfaces again, so the safety net survives, just quieter.
-          const email = (s.lead.email || '').toLowerCase();
           const full = `${s.lead.first} ${s.lead.last}`.trim().toLowerCase();
           const emailHit = !!email && bookedEmails.has(email);
           const nameHit = !!s.lead.first && !!s.lead.last && titleBlobs.some((b) => b.includes(full));
@@ -1006,7 +1131,10 @@ async function computeFollowupSweep({ window_days } = {}, tenant = TENANT) {
     ok: true,
     coach,
     surfaced,
-    counts: { gatedCadence, coldCadence, bookedSuppressed, calChecked, leadsScanned: leads.length, parkedCount, nextReconnect },
+    counts: {
+      gatedCadence, coldCadence, bookedSuppressed, calChecked, leadsScanned: leads.length, parkedCount, nextReconnect,
+      acceptChecked: acceptedUnbooked.checked, acceptReads: acceptedUnbooked.reads, unbooked: surfaced.filter((s) => s.tier === 'unbooked').length,
+    },
     mailInfo: { count: mail.messages.length, partialError: mail.partialError || null, truncated: !!mail.truncated },
     windowDays,
     emailDays,
@@ -1040,7 +1168,7 @@ async function runFollowupSweep({ window_days, limit } = {}, tenant = TENANT) {
       lines.join('\n') +
       (more > 0 ? `\n(${more} more behind these — call again with limit to show all.)` : '') +
       `\n[diagnostics — do not relay unless asked: ${counts.leadsScanned} leads scanned; ${mailInfo.count} emails/${emailDays}d${mailInfo.partialError ? ' ⚠PARTIAL' : (mailInfo.truncated ? ' ⚠capped' : '')}, LinkedIn full history; suppressed ${gatedCadence} Cease/Series + ${coldCadence} cold-outreach${calChecked ? ` + ${bookedSuppressed} already-booked` : ''}. ` +
-      `REPLY OWED = a lead replied last on a 1:1 thread (≤${REPLY_LIVE_DAYS}d), ball in your court — intro/group threads (3+ parties) are NOT counted; DEFERRAL DUE = a stamped Reconnect On date has arrived (≤${DEFERRAL_LIVE_DAYS}d past), ranks above cadence; WENT QUIET = you spoke last ${CADENCE_OVERDUE_DAYS}d+ ago on a 1:1 thread (no upper limit — only a reply, a park, or Cease FUP removes someone), connected/replied leads only, freshest silence first. A FUTURE Reconnect On parks a lead from cadence until then. Calendar cross-check ${calChecked ? 'ON (already-booked leads dropped)' : '⚠ SKIPPED this run (calendar read failed) — verify already-booked before nudging'}.]`,
+      `TIME AGREED, NOT BOOKED = you offered dated slots, they named one in their reply (≤${ACCEPT_LOOKBACK_DAYS}d, any thread incl. cc'd people), and no event with them sits in your calendar on or after that reply - send the invite (this check runs in the OVERNIGHT brief and the queue, not in this live sweep); REPLY OWED = a lead replied last on a 1:1 thread (≤${REPLY_LIVE_DAYS}d), ball in your court — intro/group threads (3+ parties) are NOT counted; DEFERRAL DUE = a stamped Reconnect On date has arrived (≤${DEFERRAL_LIVE_DAYS}d past), ranks above cadence; WENT QUIET = you spoke last ${CADENCE_OVERDUE_DAYS}d+ ago on a 1:1 thread (no upper limit — only a reply, a park, or Cease FUP removes someone), connected/replied leads only, freshest silence first. A FUTURE Reconnect On parks a lead from cadence until then. Calendar cross-check ${calChecked ? 'ON (already-booked leads dropped)' : '⚠ SKIPPED this run (calendar read failed) — verify already-booked before nudging'}.]`,
   };
 }
 
@@ -1714,7 +1842,9 @@ async function applyLiveQueueGates(items, tenant) {
       // nothing here was owed any more the moment the human hit send. LinkedIn is date-granular
       // (Notes lines carry civil dates, so a same-day outbound can't be older than the build);
       // email compares real timestamps. LinkedHelper's minutes-to-hours sync lag is the only wait.
-      const builtMs = it.builtAt ? Date.parse(it.builtAt) : null;
+      // An unbooked yes is exempt (2026-09-14): what is owed there is a BOOKING, not a message —
+      // "invite on its way" without the invite must not hide the row. Only the calendar clears it.
+      const builtMs = it.builtAt && !it.unbooked ? Date.parse(it.builtAt) : null;
       if (builtMs != null) {
         const buildDay = civilDayMs(it.builtAt);
         if (g && g.liLast && !g.liLast.inbound && buildDay != null && g.liLast.ms >= buildDay) {
@@ -1922,6 +2052,9 @@ async function runQueue({ page } = {}, tenant = TENANT) {
         ? `their own window (${it.parkDate}) has PASSED — reach out now, natural opening [draft in dossier]`
         : `${rec} → recommend park ${it.parkDate || '?'} (confirm before stamping)`;
     }
+    // A yes with no invite behind it (2026-09-14): the advice IS the action — book it
+    // (wingguy_check_time then wingguy_book_meeting on the human's go), no judgment call to make.
+    if (it.kind === 'attention' && it.unbooked) return `${rec} → book it on their go`;
     if (it.kind === 'attention') return `${rec} [needs your judgment]`;
     if (it.kind === 'reopen') return `${it.whyLine} (${it.quietDays}d quiet)${passedNote(it)}${draftMarker(it.draftState, 'backlog')}`;
     return `${rec}${draftMarker(it.draftState, 'today')}`;

@@ -97,6 +97,7 @@ function newYearIso() {
 function tierChip(it) {
   if (it.kind === 'drop') return { label: 'DROP RECOMMENDED', cls: 'bg-red-100 text-red-700' };
   if (it.kind === 'park') return { label: 'PARK RECOMMENDED', cls: 'bg-sky-100 text-sky-800' };
+  if (it.unbooked) return { label: 'NOT BOOKED', cls: 'bg-red-100 text-red-700' }; // they said yes to a slot; no invite behind it
   if (it.kind === 'attention') return { label: 'NEEDS JUDGEMENT', cls: 'bg-amber-100 text-amber-800' };
   if (it.kind === 'reopen') return { label: 'WENT QUIET', cls: 'bg-gray-100 text-gray-600' };
   return { label: 'REPLY OWED', cls: 'bg-emerald-100 text-emerald-800' };
@@ -797,6 +798,12 @@ export default function FollowUpsQueue() {
                                 className="text-xs px-2 py-0.5 rounded-full border font-medium bg-amber-50 text-amber-800 border-amber-300"
                                 title={`You offered ${(it.offeredTimes || []).join(', ')}${it.offeredOn ? ` on ${formatDate(it.offeredOn)}` : ''} - no reply, and every one has passed. Offer fresh times.`}
                               >offered times have passed</span>
+                            )}
+                            {it.unbooked && it.unbooked.slot && (
+                              <span
+                                className="text-xs px-2 py-0.5 rounded-full border font-medium bg-red-50 text-red-800 border-red-300"
+                                title={`They said yes to ${it.unbooked.slot.label}${it.unbooked.acceptedOn ? ` on ${formatDate(it.unbooked.acceptedOn)}` : ''} and nothing with them is in your calendar since. Ask Wingguy to book it.`}
+                              >said yes to {it.unbooked.slot.label} - not booked</span>
                             )}
                           </div>
                           {/* Recommendation-first (2026-08-29): the advice headline leads the row;

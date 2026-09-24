@@ -337,7 +337,41 @@ function entrySig(item) {
   const s = item.signals || {};
   // s2 (2026-08-29): one-time global re-prep so every stored entry gains the recommendation-first,
   // drop-biased, call-aware triage (Guy's go, same day). Subsequent nights are cheap again.
-  return `s2|${item.tier}|${s.lastInboundMs || 0}|${s.lastOutboundMs || 0}|${item.lead.reconnectOn || ''}`;
+  // acceptedSlot (2026-09-14): a different agreed slot is a different story, same dates or not.
+  return `s2|${item.tier}|${s.lastInboundMs || 0}|${s.lastOutboundMs || 0}|${item.lead.reconnectOn || ''}|${s.acceptedSlot || ''}`;
+}
+
+/**
+ * The entry for a "they said yes, nothing booked" person — written in code, no model call: the
+ * facts are exact (the slot, the day they said it) and the advice is always the same (send the
+ * invite). Keeps the calendar-empty case out of the drop-biased triage, which has no business
+ * recommending anything else here. Pure — unit-tested.
+ */
+function unbookedEntry(item, sig) {
+  const { unbookedLine } = require('./wingguyAcceptedTimes');
+  const name = `${item.lead.first} ${item.lead.last}`.trim() || item.lead.email || '(no name)';
+  const u = item.unbooked || {};
+  return {
+    sig,
+    builtAt: new Date().toISOString(),
+    draftPending: false,
+    name,
+    recId: item.lead.recId || null,
+    email: item.lead.email || null,
+    linkedin: item.lead.linkedinUrl || null,
+    tier: item.tier,
+    engineWhy: item.why,
+    gated: false,
+    channel: 'email',
+    verdict: 'attention',
+    recommendation: `Send the invite - ${unbookedLine(u)}.`,
+    whyLine: item.why,
+    jog: '',
+    unbooked: { slot: u.slot || null, acceptedOn: u.acceptedOn || null, offeredOn: u.offeredOn || null },
+    parkDate: null, parked: false, parkError: null,
+    draftHtml: null, draftText: null, draftError: null, wgAngle: null,
+    replyToMessageId: null, pushSubject: null, threadSubject: null,
+  };
 }
 
 /**
@@ -397,7 +431,9 @@ async function prepareFollowupBrief(tenant) {
       return { ok: false, blocked: true, reason: lane.message };
     }
 
-    const sweep = await computeFollowupSweep({}, tenant);
+    // accepted_check: the "they said yes, nothing booked" pass (2026-09-14) — reads full bodies,
+    // so it is the brief's job, not the live sweep tool's.
+    const sweep = await computeFollowupSweep({ accepted_check: true }, tenant);
     if (!sweep.ok) throw new Error(sweep.error);
 
     // EVERY surfaced person, in the sweep's rank order (see the incremental block at the top).
@@ -420,6 +456,9 @@ async function prepareFollowupBrief(tenant) {
     const toPrep = [];
     for (const item of all) {
       const sig = entrySig(item);
+      // A yes with no booking is written in code every night — no triage, no draft, nothing to
+      // reuse. The sweep already decided it is still open (calendar cross-check).
+      if (item.tier === 'unbooked') { entryByKey.set(item.key, unbookedEntry(item, sig)); continue; }
       const prev = prevByKey.get(item.lead.recId || item.key);
       if (canReuseEntry(prev, sig, nowMs)) entryByKey.set(item.key, refreshEntry(prev, item));
       else toPrep.push({ item, sig });
@@ -594,8 +633,8 @@ function formatBrief(row) {
   if (!row || !row.payload) return null;
   const p = typeof row.payload === 'string' ? JSON.parse(row.payload) : row.payload;
   const ageH = p.preparedAt ? (Date.now() - new Date(p.preparedAt).getTime()) / 3600000 : 999;
-  const piles = { drop: [], park: [], draft: [], clear: [], attention: [] };
-  for (const it of (p.items || [])) (piles[it.verdict] || piles.attention).push(it);
+  const piles = { unbooked: [], drop: [], park: [], draft: [], clear: [], attention: [] };
+  for (const it of (p.items || [])) (it.unbooked ? piles.unbooked : (piles[it.verdict] || piles.attention)).push(it);
 
   // Names render as markdown links to the lead's LinkedIn profile (Guy: "glance at their profile").
   const nm = (it) => (it.linkedin ? `[${it.name}](${it.linkedin})` : it.name);
@@ -609,6 +648,13 @@ function formatBrief(row) {
   // (wingguy_queue) is the door that pages through everything ten at a time.
   const PILE_CAP = 10;
   lines.push(`Prepared ${p.preparedAt ? p.preparedAt.slice(0, 16).replace('T', ' ') : '?'} UTC${ageH > STALE_HOURS ? ' ⚠ STALE — offer a refresh (wingguy_prepare_brief)' : ''}. ${p.totalSurfaced} surfaced, ${ (p.items || []).length } with prepared stories. Keep the markdown name-links when relaying.`);
+  if (piles.unbooked.length) {
+    // First, always (Guy 2026-09-14, Max Dagenais): a person who picked a slot the coach offered
+    // and has no invite is the most concrete thing owed — one line each, and the fix is a booking,
+    // not a message. Booking stays on the human's go (wingguy_check_time → wingguy_book_meeting).
+    lines.push(`\nTIME AGREED, NOT BOOKED (${piles.unbooked.length}) - relay these FIRST. They picked a slot you offered and nothing with them is in your calendar since. Offer to book it now (wingguy_check_time for the ISO, then wingguy_book_meeting on their go - never book unasked):`);
+    for (const it of piles.unbooked) lines.push(`- ${nm(it)} - ${rec(it)}`);
+  }
   if (piles.draft.length) {
     // Email people carry a pre-written draft; LinkedIn people carry a /wg ANGLE instead of a
     // message (Guy's call 2026-08-01) — the reply is drafted live in the thread, where the
@@ -678,4 +724,4 @@ function formatBrief(row) {
   return lines.join('\n');
 }
 
-module.exports = { prepareFollowupBrief, getBrief, setStatus, formatBrief, linkedInTail, gatherPersonContext, writeDraft, draftPlainText, entrySig, canReuseEntry, refreshEntry, reconcileParkDate, _setPool, STALE_HOURS, REFRESH_DAYS };
+module.exports = { prepareFollowupBrief, getBrief, setStatus, formatBrief, linkedInTail, gatherPersonContext, writeDraft, draftPlainText, entrySig, canReuseEntry, refreshEntry, unbookedEntry, reconcileParkDate, _setPool, STALE_HOURS, REFRESH_DAYS };
