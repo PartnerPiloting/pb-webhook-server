@@ -95,6 +95,43 @@ async function sendAdminAlert({ subject, text }, logger) {
     }
 }
 
+/**
+ * A paused client paid through their restart link (/rejoin). Point their row
+ * at the new subscription - the old one is dead, and the referral sweep and
+ * portal billing page read this field. Status is not touched here: the
+ * subscription.created event does that through the entitlement watcher.
+ */
+async function recordRejoin(session, logger) {
+    const clientId = session.metadata && session.metadata.clientId;
+    const subscriptionId = session.subscription ? String(session.subscription) : '';
+    try {
+        const clientService = require('../services/clientService');
+        const client = clientId ? await clientService.getClientById(clientId) : null;
+        if (!client) {
+            await sendAdminAlert({ subject: `Restart payment with no matching client (${clientId || 'no id'})`, text: `Checkout session ${session.id} paid through a restart link, but no client "${clientId}" was found. Check Stripe.` }, logger);
+            return;
+        }
+        if (subscriptionId) {
+            const Airtable = require('airtable');
+            Airtable.configure({ apiKey: process.env.AIRTABLE_API_KEY });
+            await Airtable.base(process.env.MASTER_CLIENTS_BASE_ID)('Clients').update(client.id, { 'Stripe Subscription ID': subscriptionId }, { typecast: true });
+            try { clientService.clearCache(); } catch (_) {}
+        }
+        logger.info(`[rejoin] ${clientId} restarted - subscription ${subscriptionId}`);
+        await sendAdminAlert({
+            subject: `Restarted: ${client.clientName || clientId}`,
+            text: [
+                `${client.clientName || clientId} paid through their restart link. Their account switches back to Active by itself.`,
+                '',
+                `New subscription: ${subscriptionId || 'unknown'}`,
+                `If their old unpaid invoice is still open in Stripe, void it so it doesn't sit there as money owed.`,
+            ].join('\n')
+        }, logger);
+    } catch (e) {
+        logger.error(`[rejoin] could not record restart for ${clientId}: ${e.message}`);
+    }
+}
+
 // Middleware to check Stripe availability
 const requireStripe = (req, res, next) => {
     if (!isStripeAvailable()) {
@@ -729,13 +766,26 @@ router.post('/api/billing/webhook', express.raw({ type: 'application/json' }), a
                     subscriptionStatus: subStatus,
                     client
                 });
-                await shadow.applyShadowDecision(client, verdict.wouldStatus, `stripe ${event.type}: ${subStatus}`);
+                const applied = await shadow.applyShadowDecision(client, verdict.wouldStatus, `stripe ${event.type}: ${subStatus}`);
+                // Stripe gave up on the card: draft the "your account has paused"
+                // email and tell Guy once (services/billingLapseService).
+                if (event.type === 'customer.subscription.deleted' && applied.applied && verdict.wouldStatus === 'Paused') {
+                    await require('../services/billingLapseService').onPaused({ client, subscription }, logger);
+                }
                 break;
             }
 
             case 'checkout.session.completed': {
                 const session = event.data.object;
-                if (((session.metadata && session.metadata.source) || '') !== 'knowaguy-join') {
+                const sessionSource = (session.metadata && session.metadata.source) || '';
+                if (sessionSource === 'knowaguy-rejoin') {
+                    // A paused client restarting from the link in their paused
+                    // email. The new subscription replaces the dead one on their
+                    // row; subscription.created (above) flips them back to Active.
+                    await recordRejoin(session, logger);
+                    break;
+                }
+                if (sessionSource !== 'knowaguy-join') {
                     logger.info('Checkout session completed (not a knowaguy join) - no action');
                     break;
                 }
@@ -784,13 +834,23 @@ router.post('/api/billing/webhook', express.raw({ type: 'application/json' }), a
                 // The day-0 promise from the cutover brief: Guy hears about a
                 // failed payment immediately. Stripe keeps retrying (the
                 // three-week dunning window) - access is untouched here.
+                // Only the FIRST failure of an invoice emails: the retries
+                // used to send Guy one each (nine for Ashley in Sep 2026), and
+                // the outcome arrives anyway as the pause summary.
+                if ((invoice.attempt_count || 1) > 1) {
+                    logger.info(`Payment retry ${invoice.attempt_count} failed for ${client?.clientId || invoice.customer} - already reported on the first failure`);
+                    break;
+                }
+                const drafted = await require('../services/billingLapseService').onPaymentFailed({ client, invoice }, logger);
                 const nextTry = invoice.next_payment_attempt
                     ? new Date(invoice.next_payment_attempt * 1000).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })
                     : 'no further retries scheduled';
                 await sendAdminAlert({
                     subject: `⚠️ Payment failed: ${client?.clientName || invoice.customer_name || invoice.customer_email || invoice.customer}`,
                     text: [
-                        `A payment just failed - Stripe is handling the retries; nothing for you to do yet.`,
+                        drafted.drafted
+                            ? `A payment just failed. A "your card didn't go through" email with their pay link is waiting in your drafts - read it and send it. Stripe keeps retrying meanwhile.`
+                            : `A payment just failed - Stripe is handling the retries. (No draft for them: ${drafted.reason}.)`,
                         ``,
                         `Client: ${client?.clientName || 'not matched to a client record'}`,
                         `Email: ${invoice.customer_email || 'unknown'}`,
@@ -798,9 +858,9 @@ router.post('/api/billing/webhook', express.raw({ type: 'application/json' }), a
                         `Attempt: ${invoice.attempt_count || 1}`,
                         `Next retry: ${nextTry}`,
                         ``,
-                        `If the card recovers, everything continues on its own. If Stripe gives up`,
-                        `after its retry window, the subscription cancels and (once the entitlement`,
-                        `watcher is live) their access switches off automatically.`
+                        `You won't get an email for each retry. If the card recovers, everything`,
+                        `continues on its own. If Stripe gives up, the subscription cancels, their`,
+                        `access pauses, and you get one summary with a "paused" draft ready.`
                     ].join('\n')
                 }, logger);
                 break;
