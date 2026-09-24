@@ -365,9 +365,11 @@ const PeopleYouveMet = ({ onAdded, refreshKey }) => {
             {p.name ? `${p.email} - ` : ''}
             {p.meetings > 1 ? `${p.meetings} meetings` : 'met'}
             {p.latest ? ` ${fmtDate(p.latest)}` : ''}
-            {p.role === 'extra' && p.with
-              ? ` - joined your call with ${p.with}`
-              : (p.latestTitle ? ` - "${p.latestTitle}"` : '')}
+            {p.role === 'extra' && p.quiet
+              ? ` - on a group call, didn't speak`
+              : p.role === 'extra' && p.with
+                ? ` - joined your call with ${p.with}`
+                : (p.latestTitle ? ` - "${p.latestTitle}"` : '')}
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
@@ -442,8 +444,8 @@ const PeopleYouveMet = ({ onAdded, refreshKey }) => {
                 Also on those calls ({extras.length})
               </h4>
               <p className="text-sm text-gray-600">
-                These people weren&apos;t on your calendar booking - they joined a call you&apos;d booked with someone
-                else. Add anyone you want to keep in touch with, and skip the rest.
+                These people joined a call you&apos;d booked with someone else, or sat quietly on a big group
+                call. Add anyone you want to keep in touch with, and skip the rest.
               </p>
             </div>
             {(extrasWaiting > 1 || (bulk && bulk.skipping)) && (

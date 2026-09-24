@@ -208,16 +208,50 @@ function dominantOtherSpeaker(t, coachName) {
  *   booked -> on the booking: the person the call was with
  *   extra  -> the recorder saw them but they weren't on the booking; `with` names who it was with
  * No booking = no tag: we don't know, so the portal shows them as it always has. Pure - tested.
+ *
+ * GROUP calls (Guy, 2026-09-24): a booking with more than GROUP_MIN_GUESTS-1 guests is a group
+ * session - being on its invite says nothing about having MET someone (Rick's 16-guest realtor
+ * webinar). There, only guests who SPOKE are booked; the silent ones are extras marked `quiet`.
+ * `spokeNames` = the transcript's speaker labels; null/empty = speakers unknown, so nobody is
+ * demoted (a miss beats hiding the one person he actually talked to).
  */
-function tagPendingRoles(pendingLeads, bookedPeople) {
+const GROUP_MIN_GUESTS = 5;
+const normName = (s) => String(s || '').toLowerCase().replace(/[^a-z\s]/g, ' ').replace(/\s+/g, ' ').trim();
+function spokeOnCall(person, spoke) {
+  const n = normName(person && person.name);
+  if (!n) return false;
+  if (spoke.has(n)) return true;
+  // "Tony" as a speaker label vs "Tony Lao" on the invite (or the reverse): same first name, and
+  // one side has only the first name. Two full names that differ are different people.
+  const [first, ...rest] = n.split(' ');
+  for (const s of spoke) {
+    const [sf, ...sr] = s.split(' ');
+    if (sf === first && (!rest.length || !sr.length)) return true;
+  }
+  return false;
+}
+function tagPendingRoles(pendingLeads, bookedPeople, spokeNames = null) {
   if (!Array.isArray(bookedPeople) || !bookedPeople.length) return pendingLeads;
   const booked = new Set(bookedPeople.map((p) => String(p.email || '').toLowerCase().trim()).filter(Boolean));
   const withLabel = bookedPeople.map((p) => p.name || p.email).filter(Boolean).slice(0, 3).join(', ');
+  const spoke = new Set((spokeNames || []).map(normName).filter(Boolean));
+  const isGroup = booked.size >= GROUP_MIN_GUESTS && spoke.size > 0;
   return (pendingLeads || []).map((x) => {
     const e = String((x && x.email) || '').toLowerCase().trim();
     if (!e) return x;
+    if (isGroup) return spokeOnCall(x, spoke) ? { ...x, role: 'booked' } : { ...x, role: 'extra', quiet: true };
     return booked.has(e) ? { ...x, role: 'booked' } : { ...x, role: 'extra', ...(withLabel ? { with: withLabel } : {}) };
   });
+}
+
+/** The distinct real speaker labels on a Fireflies transcript ("Speaker 2" placeholders dropped). */
+function speakerNames(t) {
+  const out = new Set();
+  for (const s of (Array.isArray(t && t.sentences) ? t.sentences : [])) {
+    const name = String((s && s.speaker_name) || '').trim();
+    if (name && !/^speaker(\s*\d+)?$/i.test(name)) out.add(name);
+  }
+  return [...out];
 }
 
 /**
@@ -405,7 +439,7 @@ async function ingestFirefliesTranscript(opts = {}) {
   // Hygiene pass: drop role/self/own-domain addresses, and pair nameless emails to the REAL
   // speaker labels in the transcript (Fireflies' invite list often arrives with emails only).
   pendingLeads = require('./pendingLeadFilter').refinePendingLeads(pendingLeads, { transcriptText, coach, log });
-  pendingLeads = tagPendingRoles(pendingLeads, aligned ? bookedPeople : null);
+  pendingLeads = tagPendingRoles(pendingLeads, aligned ? bookedPeople : null, speakerNames(transcript));
 
   const plan = {
     transcriptId: realId,
@@ -488,6 +522,7 @@ module.exports = {
   extractPeople,
   extractMeta,
   tagPendingRoles,
+  speakerNames,
   ingestEnabled,
   SOURCE,
 };

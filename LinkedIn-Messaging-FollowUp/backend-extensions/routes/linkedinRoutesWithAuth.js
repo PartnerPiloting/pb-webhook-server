@@ -2239,6 +2239,8 @@ router.get('/pending-people', async (req, res) => {
         // call booked with someone else - `with` names who (2026-09-24).
         role: p.role || 'main',
         with: p.with || null,
+        // extra because they sat silent on a group call (more than 4 guests), not a crasher.
+        quiet: !!p.quiet,
       })),
     });
   } catch (error) {

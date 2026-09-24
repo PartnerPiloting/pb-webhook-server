@@ -76,5 +76,44 @@ check('booked guest with no name: "with" falls back to the address', () => {
   assert.strictEqual(out[0].with, 'a@b.com');
 });
 
+console.log('tagPendingRoles - group calls (more than 4 guests): only those who spoke are main:');
+const webinar = [
+  { email: 'angela@ajarealty.com.au', name: 'Angela Lin' },
+  { email: 'tonylao@starwave.com.au', name: 'Tony Lao' },
+  { email: 'eloise@prdbn.com.au', name: 'Eloise Bartlett' },
+  { email: 'donna@imagedi.com' },
+  { email: 'frank@prdbn.com.au', name: 'Francesco' },
+];
+const guests = webinar.map((g) => ({ ...g }));
+check('Rick\'s realtor webinar: the two who spoke are booked, the silent three are quiet extras', () => {
+  const out = tagPendingRoles(guests, webinar, ['Rick Wong', 'Angela Lin', 'Tony']);
+  const byEmail = Object.fromEntries(out.map((x) => [x.email, x]));
+  assert.strictEqual(byEmail['angela@ajarealty.com.au'].role, 'booked');
+  assert.strictEqual(byEmail['tonylao@starwave.com.au'].role, 'booked', 'speaker "Tony" = invite "Tony Lao"');
+  for (const e of ['eloise@prdbn.com.au', 'donna@imagedi.com', 'frank@prdbn.com.au']) {
+    assert.strictEqual(byEmail[e].role, 'extra', e);
+    assert.strictEqual(byEmail[e].quiet, true, e);
+  }
+});
+check('a different full name with the same first name did NOT speak ("Tony Smith" is not "Tony Lao")', () => {
+  const out = tagPendingRoles(guests, webinar, ['Tony Smith']);
+  assert.strictEqual(out.find((x) => x.email === 'tonylao@starwave.com.au').role, 'extra');
+});
+check('group call but no speaker labels at all = nobody demoted (unknown, not silent)', () => {
+  const out = tagPendingRoles(guests, webinar, []);
+  assert.ok(out.every((x) => x.role === 'booked'));
+  assert.ok(out.every((x) => !x.quiet));
+});
+check('4 guests is not a group - the booked rule still applies, nobody marked quiet', () => {
+  const four = webinar.slice(0, 4);
+  const out = tagPendingRoles(four.map((g) => ({ ...g })), four, ['Angela Lin']);
+  assert.ok(out.every((x) => x.role === 'booked' && !x.quiet));
+});
+check('speakerNames drops "Speaker 2" placeholders and repeats', () => {
+  const { speakerNames } = require('../services/firefliesIngestService');
+  const got = speakerNames({ sentences: [{ speaker_name: 'Rick Wong' }, { speaker_name: 'Speaker 2' }, { speaker_name: 'Rick Wong' }, { speaker_name: 'Angela Lin' }] });
+  assert.deepStrictEqual(got.sort(), ['Angela Lin', 'Rick Wong']);
+});
+
 if (failures) { console.error(`\n${failures} FAILED`); process.exit(1); }
 console.log('\nall passed');

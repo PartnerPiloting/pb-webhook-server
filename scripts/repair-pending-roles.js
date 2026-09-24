@@ -54,7 +54,8 @@ const isActive = (x) => !!x && !x.resolvedAt && !x.declinedAt;
       const out = { ...x };
       if (f.role) out.role = f.role; else delete out.role;
       if (f.with) out.with = f.with; else delete out.with;
-      if (out.role) { lines.push(`${out.role.padEnd(6)} ${x.email}${out.with ? ` (with ${out.with})` : ''}`); tagged++; }
+      if (f.quiet) out.quiet = true; else delete out.quiet;
+      if (out.role) { lines.push(`${out.role.padEnd(6)} ${x.email}${out.with ? ` (with ${out.with})` : ''}${out.quiet ? ' (silent on a group call)' : ''}`); tagged++; }
       else lines.push(`keep   ${x.email} (no booking lined up)`);
       next.push(out);
     }
