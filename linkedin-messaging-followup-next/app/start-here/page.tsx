@@ -1,804 +1,145 @@
 "use client";
-import React, { useEffect, useRef, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
-import { ChevronDownIcon, LinkIcon } from '@heroicons/react/24/solid';
+// Start Here - a one-screen signpost to where learning actually lives now.
+//
+// Until 24 Sep 2026 this page was a 63-topic manual pulled from the Airtable Help table. About a third
+// were operator docs, a third taught the pre-VPS Linked Helper setup, and several described post
+// scoring and Apify, retired in May. Learning now lives in Wingguy (the playbook, served by
+// wingguy_learn), the email series library, and each screen's own Help button - so this page's only
+// job is to point at those. It is a signpost, not a shelf: resist adding topics back.
+// The old page is in git history (git log -- linkedin-messaging-followup-next/app/start-here/page.tsx).
+//
+// The URL stays /start-here on purpose: 420 onboarding tasks and older emails link to
+// /start-here?topic=..., and they now land here instead of dying. The topic param is ignored.
+//
+// Every phrase a client is told to type below is REGISTERED in content/client-phrases.json, which
+// stamps it into wingguy_learn's description and tests that it lands on the right playbook topic.
+// Change a phrase there first, then here - node tests/client-phrases.test.js fails if they drift.
+import React, { useState } from 'react';
 import ErrorBoundary from '../../components/ErrorBoundary';
 import EnvironmentValidator from '../../components/EnvironmentValidator';
 import Layout from '../../components/Layout';
-import { getStartHereHelp, getHelpTopic } from '../../services/api';
-import { renderHelpHtml } from '../../components/HelpHtmlRenderer';
+import { getClientProfile, buildAuthUrl } from '../../utils/clientUtils';
 
 export const dynamic = 'force-dynamic';
 
-// topicType: 'heading' = section divider (non-expandable), 'divider' = visual line separator, 'content' = normal expandable topic
-interface HelpTopic { id: string; title: string; order: number; body?: string; contextType?: string | null; section?: string | null; topicType?: 'heading' | 'divider' | 'content'; }
-interface TopicBlockText { type: 'text'; markdown: string }
-interface TopicBlockMedia { type: 'media'; token: string; media: { media_id: number|string; type: string; url: string|null; caption?: string|null; description?: string|null; instructions?: string|null; attachment?: any } }
-interface TopicBlockMissing { type: 'media-missing'; token: string; media_id: string }
-type TopicBlock = TopicBlockText | TopicBlockMedia | TopicBlockMissing;
-interface HelpSubCategory { id: string; name: string; order: number; description?: string | null; topics: HelpTopic[]; }
-interface HelpCategory { id: string; name: string; order: number; description?: string | null; subCategories: HelpSubCategory[]; }
-interface HelpResponse { area: string; fetchedAt: string; categories: HelpCategory[]; meta: any; }
+// The client view of the series library: the ten-step map on top, every piece beneath in send order.
+// Without ?audience=client it serves the PROSPECT version - a different map and pitch-style endings.
+const LIBRARY_URL = 'https://knowaguy.com.au/series?audience=client';
 
-const StartHereContent: React.FC = () => {
-  const [data, setData] = useState<HelpResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [sectionLoading, setSectionLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [copySuccess, setCopySuccess] = useState<Record<string, boolean>>({});
-  const [activeSection, setActiveSection] = useState<string>('Getting Better Results'); // Default to Getting Better Results
-  const [viewMode, setViewMode] = useState<'focused' | 'full'>('full'); // Track if showing focused topic view or full tree
-  const searchParams = useSearchParams();
-  // Map-based open state (reverted to stable approach)
-  const [openCats, setOpenCats] = useState<Record<string, boolean>>({});
-  const [openSubs, setOpenSubs] = useState<Record<string, boolean>>({});
-  const [openTopics, setOpenTopics] = useState<Record<string, boolean>>({});
-  const [qaLoading, setQaLoading] = useState<Record<string, boolean>>({});
-  // Legacy single-answer store (kept briefly for compatibility, will phase out)
-  const [qaAnswer, setQaAnswer] = useState<Record<string, { answer: string; method: string }>>({});
-  // Conversation history per topic: array of messages { role: 'user'|'assistant', text, method? }
-  const [qaHistory, setQaHistory] = useState<Record<string, { role: 'user'|'assistant'; text: string; method?: string }[]>>({});
-  const [qaInput, setQaInput] = useState<Record<string, string>>({});
-  const [topicBlocks, setTopicBlocks] = useState<Record<string, TopicBlock[]>>({});
-  // Store full topic details (including bodyHtml) so we can render server-resolved HTML with media
-  const [topicDetails, setTopicDetails] = useState<Record<string, any>>({});
-  const [topicLoadState, setTopicLoadState] = useState<Record<string, 'idle'|'loading'|'error'|'ready'>>({});
-  // Safety timers to flip stuck loading -> error after a grace period
-  const topicLoadingTimers = useRef<Record<string, any>>({});
-  // Track if this is the initial load (with topic deep link)
-  const initialLoadDone = useRef(false);
+// Registered in content/client-phrases.json - see the note at the top.
+const OPENER = 'where are we up to?';
+const STARTERS = [
+  'Who should I be connecting with?',
+  'What do I say to thank someone for connecting?',
+  'How do I keep on top of follow-ups?',
+];
+const EVERYTHING = 'read me everything';
 
-  // Local renderer to display topic blocks/HTML directly from state (no global window helper)
-  const renderBlocksInline = (id: string, blocks?: TopicBlock[]) => {
-    if (!Array.isArray(blocks) || blocks.length === 0) return null;
-    return blocks.map((b, i) => {
-      if (b.type === 'text') return renderMarkdown(b.markdown, id + '::' + i);
-      if (b.type === 'media') {
-        const m = b.media;
-        if ((m.type || '').toLowerCase().includes('image') && m.url) {
-          // Check if it's an SVG - render as large scrollable image
-          const isSvg = m.url.toLowerCase().endsWith('.svg') || (m.type || '').toLowerCase().includes('svg');
-          
-          if (isSvg) {
-            return (
-              <figure key={id + '::m::' + i} className="space-y-2 my-4">
-                <div className="border rounded-lg overflow-auto max-h-[600px] bg-white p-4">
-                  <img 
-                    src={m.url} 
-                    alt={m.caption || 'diagram'} 
-                    className="max-w-none"
-                    style={{ minWidth: '100%', height: 'auto' }}
-                  />
-                </div>
-                <figcaption className="text-[11px] text-gray-500 italic">
-                  {m.caption || `Diagram ${m.media_id}`}
-                  <span className="ml-2 text-gray-400">(scroll to view full diagram)</span>
-                </figcaption>
-              </figure>
-            );
-          }
-          
-          // Regular image rendering
-          return (
-            <figure key={id + '::m::' + i} className="space-y-1">
-              <img src={m.url} alt={m.caption || 'media'} className="rounded border" />
-              <figcaption className="text-[11px] text-gray-500">{m.caption || `Image ${m.media_id}`}</figcaption>
-            </figure>
-          );
-        }
-        if ((m.type || '').toLowerCase().includes('link') && m.url) {
-          return (
-            <p key={id + '::m::' + i} className="text-blue-600 underline">
-              <a href={m.url} target="_blank" rel="noreferrer">{m.caption || m.url}</a>
-            </p>
-          );
-        }
-        if (m.url) {
-          return (
-            <p key={id + '::m::' + i}>
-              <a className="text-blue-600 underline" href={m.url} target="_blank" rel="noreferrer">{m.caption || `Asset ${m.media_id}`}</a>
-            </p>
-          );
-        }
-        return <p key={id + '::m::' + i} className="text-xs text-gray-400">(media missing url)</p>;
-      }
-      if (b.type === 'media-missing') return <p key={id + '::mm::' + i} className="text-xs text-amber-600">Missing media {b.media_id}</p>;
-      return null;
-    });
-  };
-
-  // (Removed activeTopic useEffect; fetch handled inside toggleTopic when opened)
-
-  useEffect(() => {
-    let active = true;
-    (async () => {
-      try {
-        // Check if refresh parameter is present in URL
-        const shouldRefresh = searchParams.get('refresh') === '1';
-        const topicParam = searchParams.get('topic');
-        
-        // If there's a topic parameter AND this is the initial load, load ALL sections to find it
-        // Otherwise, just load the active section
-        const isInitialDeepLink = topicParam && !initialLoadDone.current;
-        const sectionToLoad = isInitialDeepLink ? 'all' : activeSection;
-        if (isInitialDeepLink) initialLoadDone.current = true;
-        
-        // Show loading indicator when switching sections (but not initial load)
-        if (!loading) setSectionLoading(true);
-        const resp = await getStartHereHelp({ 
-          refresh: shouldRefresh,
-          section: sectionToLoad // Load all sections only on initial deep link load
-        });
-        if (!active) return;
-        setData(resp);
-        setLoading(false);
-        setSectionLoading(false);
-      } catch (e:any) {
-        console.error('StartHere load error', e);
-        if (!active) return;
-        setError(e.message || 'Failed to load Start Here content');
-        setLoading(false);
-        setSectionLoading(false);
-      }
-    })();
-    return () => { active = false; };
-  }, [searchParams, activeSection]); // Re-fetch when section changes
-
-  // Auto-expand topic from URL parameter
-  useEffect(() => {
-    if (!data || loading) return;
-    const topicParam = searchParams.get('topic');
-    if (!topicParam) {
-      // No topic param means navigating normally - ensure full view
-      setViewMode('full');
-      return;
-    }
-
-    // Deep link detected - set focused view
-    setViewMode('focused');
-    console.log('[Deep Link] Looking for topic:', topicParam);
-    console.log('[Deep Link] Available categories:', data.categories.length);
-
-    // Find the topic and its parent category/subcategory (searching across all loaded data)
-    for (const cat of data.categories) {
-      for (const sub of cat.subCategories) {
-        const topic = sub.topics.find(t => t.id === topicParam);
-        if (topic) {
-          console.log('[Deep Link] FOUND topic:', topic.title);
-          console.log('[Deep Link] Topic object:', topic);
-          console.log('[Deep Link] Topic section value:', topic.section, 'Type:', typeof topic.section);
-          console.log('[Deep Link] Current activeSection:', activeSection);
-          
-          // Switch to the correct section tab if topic has section info
-          if (topic.section) {
-            console.log('[Deep Link] Will switch to section:', topic.section);
-            // Only switch section if it's different from current (avoid re-render loop)
-            if (topic.section !== activeSection) {
-              setActiveSection(topic.section);
-            }
-          } else {
-            console.log('[Deep Link] WARNING: Topic has no section field!');
-          }
-          
-          // Open the hierarchy
-          setOpenCats({ [cat.id]: true });
-          setOpenSubs({ [sub.id]: true });
-          setOpenTopics({ [topic.id]: true });
-          
-          // Load topic content
-          const loadState = topicLoadState[topic.id];
-          if (loadState === undefined || loadState === 'idle' || loadState === 'error') {
-            setTopicLoadState(s=>({...s,[topic.id]:'loading'}));
-            try {
-              if (topicLoadingTimers.current[topic.id]) clearTimeout(topicLoadingTimers.current[topic.id]);
-              topicLoadingTimers.current[topic.id] = setTimeout(() => {
-                setTopicLoadState(s => (s[topic.id] === 'loading' ? { ...s, [topic.id]: 'error' } : s));
-              }, 15000);
-            } catch {}
-            getHelpTopic(topic.id, { includeInstructions: false })
-              .then(data => {
-                setTopicBlocks(s=>({...s,[topic.id]: data.blocks || [] }));
-                setTopicDetails(s=>({...s,[topic.id]: data }));
-                setTopicLoadState(s=>({...s,[topic.id]:'ready'}));
-                // Scroll to topic after content loads
-                setTimeout(() => {
-                  const el = document.getElementById(`topic-${topic.id}`);
-                  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                }, 300);
-              })
-              .catch(err => {
-                console.error('topic load error', topic.id, err);
-                setTopicLoadState(s=>({...s,[topic.id]:'error'}));
-              })
-              .finally(() => {
-                try { clearTimeout(topicLoadingTimers.current[topic.id]); delete topicLoadingTimers.current[topic.id]; } catch {}
-              });
-          } else {
-            // Already loaded, just scroll
-            setTimeout(() => {
-              const el = document.getElementById(`topic-${topic.id}`);
-              if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            }, 300);
-          }
-          
-          // Found the topic, stop searching
-          return;
-        }
-      }
-    }
-  }, [data, loading, searchParams, topicLoadState]);
-
-  if (loading) {
-    return <div className="text-gray-500">Loading Start Here content...</div>;
-  }
-  if (error) {
-    return <div className="text-red-600">{error}</div>;
-  }
-  if (!data) {
-    return <div className="text-gray-500">No Start Here content available.</div>;
-  }
-
-  const toggleCat = (id:string) => {
-    // Exclusive category open
-    setOpenCats({ [id]: !openCats[id] });
-    setOpenSubs({});
-    setOpenTopics({});
-  };
-  const toggleSubCategory = (id:string) => {
-    setOpenSubs({ [id]: !openSubs[id] });
-    setOpenTopics({});
-  };
-  // If monologue content is literally just a URL, return it; otherwise null
-  // Handles: plain URL, URL in angle brackets (backend autoFormatHelpBody), or URL inside <p> tags
-  const extractSingleUrl = (content: string | undefined): string | null => {
-    if (!content || typeof content !== 'string') return null;
-    let stripped = content.replace(/\s+/g, ' ').trim();
-    // Strip common HTML wrappers (<p>, </p>, etc.) but NOT angle-bracket-wrapped URLs like <https://...>
-    stripped = stripped.replace(/<\/?p[^>]*>/gi, '').replace(/<\/?div[^>]*>/gi, '').trim();
-    // Match: plain URL, or URL wrapped in angle brackets (markdown autolink format from backend)
-    const m = stripped.match(/^<?(https?:\/\/[^\s>]+)>?$/);
-    if (!m) return null;
-    return m[1].replace(/[.,;:!?)\]]+$/, '') || m[1];
-  };
-
-  const toggleTopic = (id: string, topic?: HelpTopic) => {
-    // If topic content is just a URL, open in new tab and don't expand
-    const body = topic?.body ?? topic?.bodyHtml;
-    if (typeof body === 'string') {
-      const url = extractSingleUrl(body);
-      if (url) {
-        window.open(url, '_blank', 'noopener,noreferrer');
-        return;
-      }
-    }
-
-    // Helper to (re)load a topic's content without changing open state
-    const loadTopic = (topicId: string) => {
-      setTopicLoadState(s=>({...s,[topicId]:'loading'}));
-      // Start safety timeout (15s) to avoid indefinite loading state in edge cases
-      try {
-        if (topicLoadingTimers.current[topicId]) { clearTimeout(topicLoadingTimers.current[topicId]); }
-        topicLoadingTimers.current[topicId] = setTimeout(() => {
-          setTopicLoadState(s => (s[topicId] === 'loading' ? { ...s, [topicId]: 'error' } : s));
-        }, 15000);
-      } catch {}
-      getHelpTopic(topicId, { includeInstructions: false })
-        .then(data => {
-          setTopicBlocks(s=>({...s,[topicId]: data.blocks || [] }));
-          setTopicDetails(s=>({...s,[topicId]: data }));
-          setTopicLoadState(s=>({...s,[topicId]:'ready'}));
-        })
-        .catch(err => {
-          console.error('topic load error', topicId, err);
-          setTopicLoadState(s=>({...s,[topicId]:'error'}));
-        })
-        .finally(() => {
-          try { clearTimeout(topicLoadingTimers.current[topicId]); delete topicLoadingTimers.current[topicId]; } catch {}
-        });
-    };
-
-    const willOpen = !openTopics[id];
-    
-    setOpenTopics(prev => {
-      const next: Record<string, boolean> = { [id]: willOpen }; // exclusive topic
-      if (willOpen) {
-        const state = topicLoadState[id];
-        if (state === undefined || state === 'idle' || state === 'error') {
-          loadTopic(id);
-        }
-      }
-      return next;
-    });
-    
-    // Scroll expanded topic into view so user sees the content they just opened
-    if (willOpen) {
-      setTimeout(() => {
-        const el = document.getElementById(`topic-${id}`);
-        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-      }, 100);
-    }
-  };
-
-  const copyTopicLink = (topicId: string) => {
-    // Build generic URL with just the topic parameter (no client ID required)
-    const url = new URL(window.location.origin + window.location.pathname);
-    url.searchParams.set('topic', topicId);
-    
-    navigator.clipboard.writeText(url.toString()).then(() => {
-      setCopySuccess(s => ({ ...s, [topicId]: true }));
-      setTimeout(() => {
-        setCopySuccess(s => ({ ...s, [topicId]: false }));
-      }, 2000);
-    }).catch(err => {
-      console.error('Failed to copy link:', err);
-      alert('Failed to copy link to clipboard');
-    });
-  };
-
-  const askQuestion = async (topicId: string) => {
-    const question = (qaInput[topicId] || '').trim();
-    if (!question) return;
-    // Append user message immediately
-    setQaHistory(h => ({ ...h, [topicId]: [...(h[topicId] || []), { role: 'user', text: question }] }));
-    setQaInput(s => ({ ...s, [topicId]: '' }));
-    setQaLoading(s => ({ ...s, [topicId]: true }));
+const CopyPhrase: React.FC<{ text: string }> = ({ text }) => {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
     try {
-  // Always talk to backend base (env-aware; defaults: localhost in dev, staging in preview, prod in production)
-  const { getBackendBase } = await import('../../services/api');
-  const baseUrl = getBackendBase();
-      const resp = await fetch(`${baseUrl}/api/help/qa`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ topicId, question, includeInstructions: true }) });
-        if (resp.ok) {
-        const json = await resp.json();
-        // Compose enriched message with citations & completeness (12c)
-        let enriched = json.answer || '';
-        if (json.sources && Array.isArray(json.sources) && json.sources.length) {
-          const sourceLines = json.sources.map((s:any) => `[#${s.id}] ${s.type}: ${s.title}${s.score ? ` (score ${s.score})` : ''}`);
-          enriched += '\n\nSources:\n' + sourceLines.join('\n');
-        }
-        if (json.completeness && json.completeness.note) {
-          enriched += `\n\n_${json.completeness.note}_`;
-        }
-        // Store legacy single-answer (optional)
-        setQaAnswer(s => ({ ...s, [topicId]: { answer: enriched, method: json.method } }));
-        // Append assistant message
-        setQaHistory(h => ({ ...h, [topicId]: [...(h[topicId] || []), { role: 'assistant', text: enriched, method: json.method }] }));
-      } else {
-        setQaHistory(h => ({ ...h, [topicId]: [...(h[topicId] || []), { role: 'assistant', text: 'Error answering question.', method: 'error' }] }));
-      }
-    } catch (e:any) {
-      setQaHistory(h => ({ ...h, [topicId]: [...(h[topicId] || []), { role: 'assistant', text: 'Network error.', method: 'error' }] }));
-    } finally {
-      setQaLoading(s => ({ ...s, [topicId]: false }));
+      await navigator.clipboard.writeText(text);
+    } catch {
+      // Older browsers: fall back to a hidden textarea.
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand('copy'); } catch { /* nothing more we can do */ }
+      document.body.removeChild(ta);
     }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
   };
-
-  // Clean and format an assistant answer by stripping internal reference labels
-  const sanitizeAnswer = (raw: string) => {
-    if (!raw) return raw;
-    const lines = raw.split(/\n+/);
-    const skipLabels = new Set(['additional reference:', 'additional references:', 'manual:', 'lh snapshot:', 'topic reference:']);
-    const out: string[] = [];
-    for (let i=0;i<lines.length;i++) {
-      const l = lines[i].trim();
-      if (!l) { out.push(''); continue; }
-      const lower = l.toLowerCase();
-      if (skipLabels.has(lower)) continue; // drop pure label lines
-      // Remove leading label + content pattern e.g. "Manual: some text"
-      const colonIdx = l.indexOf(':');
-      if (colonIdx > -1) {
-        const head = l.slice(0, colonIdx+1).toLowerCase();
-        if (skipLabels.has(head)) {
-          const rest = l.slice(colonIdx+1).trim();
-          if (rest) out.push(rest); else continue;
-          continue;
-        }
-      }
-      out.push(l);
-    }
-    // Rejoin, collapse excess blank lines
-    let cleaned = out.join('\n');
-    cleaned = cleaned.replace(/\n{3,}/g,'\n\n');
-    return cleaned.trim();
-  };
-
   return (
-    <div className="max-w-5xl mx-auto space-y-5">
-      {/* Section Tabs */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-1 flex gap-1">
-        {['Setup', 'Regular Tasks', 'Getting Better Results'].map(section => (
-          <button
-            key={section}
-            onClick={() => {
-              setActiveSection(section);
-              setViewMode('full'); // Switch to full view when clicking section tabs
-            }}
-            className={`flex-1 px-4 py-2 text-sm font-medium rounded-md transition ${
-              activeSection === section
-                ? 'bg-blue-500 text-white shadow-sm'
-                : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
-            }`}
-          >
-            {section}
-          </button>
-        ))}
-      </div>
-      
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="text-xs text-gray-500 pl-1 tracking-wide">{data.meta?.totalTopics ?? 0} topics • fetched {new Date(data.fetchedAt).toLocaleTimeString()} {data.meta?.cached && '(cached)'} • ordering: {data.meta?.orderingStrategy || 'default'} • mode: {viewMode === 'focused' ? 'Focused' : 'Full'}</div>
-      </div>
-      <div className="relative">
-        {sectionLoading && (
-          <div className="absolute inset-0 bg-white/80 z-10 flex items-center justify-center rounded-lg">
-            <div className="text-sm text-gray-600 flex items-center gap-2">
-              <svg className="animate-spin h-4 w-4 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-              </svg>
-              Loading {activeSection}...
-            </div>
-          </div>
-        )}
-      
-      {/* Focused view: Show only the active topic */}
-      {viewMode === 'focused' && (() => {
-        const topicParam = searchParams.get('topic');
-        if (!topicParam) return null;
-        
-        // Find the topic in data
-        let foundTopic: HelpTopic | null = null;
-        let foundCat: HelpCategory | null = null;
-        let foundSub: HelpSubCategory | null = null;
-        
-        for (const cat of data.categories) {
-          for (const sub of cat.subCategories) {
-            const topic = sub.topics.find(t => t.id === topicParam);
-            if (topic) {
-              foundTopic = topic;
-              foundCat = cat;
-              foundSub = sub;
-              break;
-            }
-          }
-          if (foundTopic) break;
-        }
-        
-        if (!foundTopic) return <div className="text-gray-500 text-sm">Topic not found</div>;
-        
-        const topicId = foundTopic.id;
-        const isOpen = !!openTopics[topicId];
-        const loadState = topicLoadState[topicId] || 'idle';
-        const blocks = topicBlocks[topicId];
-        const full = topicDetails[topicId];
-        
-        // Debug logging for focused view
-        console.log('[Focused View] topicId:', topicId);
-        console.log('[Focused View] loadState:', loadState);
-        console.log('[Focused View] blocks:', blocks?.length, 'blocks');
-        console.log('[Focused View] has bodyHtml:', !!full?.bodyHtml);
-        
-        // In focused mode, always show content (no collapse/expand needed)
-        return (
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-            <h2 className="text-xl font-semibold text-gray-900 mb-4">{foundTopic.title}</h2>
-            
-            <div className="mt-4 space-y-4">
-              {loadState === 'loading' && (
-                <div className="text-sm text-gray-500">Loading topic content...</div>
-              )}
-              {loadState === 'error' && (
-                <div className="text-sm text-red-600">Failed to load topic content</div>
-              )}
-              {loadState === 'ready' && (
-                <div className="prose prose-sm max-w-none">
-                  {/* Prefer server-resolved HTML (includes media resolution for {{media:n}}) when available */}
-                  {full && typeof full.bodyHtml === 'string' && full.bodyHtml.trim() ? (
-                    renderHelpHtml(full.bodyHtml, topicId + '::html')
-                  ) : blocks && blocks.length ? (
-                    renderBlocksInline(topicId, blocks)
-                  ) : (
-                    <div className="text-sm text-gray-400">No content available</div>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-        );
-      })()}
-      
-      {viewMode === 'full' && (
-      <div className="space-y-6">
-        {/* Flat list with category headers - no accordions needed */}
-        {data.categories.sort((a,b)=>a.order-b.order).map(cat => {
-          // Flatten all topics from all subcategories, sort ONLY by topic_order (ignore sub-category order)
-          const allTopics = cat.subCategories
-            .flatMap(sub => sub.topics.map(t => ({ ...t, subCategoryName: sub.name, subCategoryId: sub.id })))
-            .sort((a,b)=>a.order-b.order);
-          
-          if (allTopics.length === 0) return null;
-          
-          return (
-            <div key={cat.id} className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-              {/* Category Header - always visible, not clickable */}
-              <div className="px-5 py-3 bg-gray-50 border-b border-gray-200">
-                <h3 className="font-semibold text-gray-900 text-sm uppercase tracking-wide">{cat.name}</h3>
-                {cat.description && (
-                  <p className="text-xs text-gray-500 mt-1">{cat.description}</p>
-                )}
-              </div>
-              
-              {/* Topics list - always visible */}
-              <div className="divide-y divide-gray-100">
-                {allTopics.map(t => {
-                  // Normalize topicType: default to 'content' if missing (guardrail 1)
-                  const topicType = t.topicType || 'content';
-                  
-                  // === DIVIDER: Just a visual line separator ===
-                  if (topicType === 'divider') {
-                    return (
-                      <div key={t.id} id={`topic-${t.id}`} className="py-2 px-5">
-                        <hr className="border-t-2 border-gray-200" />
-                      </div>
-                    );
-                  }
-                  
-                  // === HEADING: Non-expandable section divider (guardrail 2: never expand even if body exists) ===
-                  if (topicType === 'heading') {
-                    return (
-                      <div key={t.id} id={`topic-${t.id}`} className="px-5 py-3 bg-blue-50/50 border-l-4 border-blue-400">
-                        <div className="font-semibold text-gray-900 text-[15px]">{t.title}</div>
-                      </div>
-                    );
-                  }
-                  
-                  // === CONTENT: Normal expandable topic (current behavior) ===
-                  const tOpen = !!openTopics[t.id];
-                  
-                  return (
-                    <div key={t.id} id={`topic-${t.id}`} className="group">
-                      <div className="flex items-center hover:bg-gray-50 transition-colors">
-                        <button 
-                          onClick={()=>toggleTopic(t.id, t)} 
-                          className="flex-1 flex items-center justify-between gap-3 text-left px-5 py-3 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500"
-                        >
-                          <span className="flex-1 text-gray-800 leading-snug">
-                            <span className="font-medium">{t.title}</span>
-                          </span>
-                          <ChevronDownIcon className={`h-4 w-4 text-gray-400 flex-shrink-0 transition-transform ${tOpen ? 'rotate-180 text-blue-500' : 'group-hover:text-gray-600'}`} />
-                        </button>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); copyTopicLink(t.id); }}
-                          className="px-4 py-3 text-gray-400 hover:text-blue-600 transition-colors"
-                          title="Copy link to this topic"
-                        >
-                          {copySuccess[t.id] ? (
-                            <span className="text-xs font-medium text-green-600">✓</span>
-                          ) : (
-                            <LinkIcon className="h-4 w-4" />
-                          )}
-                        </button>
-                      </div>
-                      
-                      {/* Expanded topic content */}
-                      {tOpen && (
-                        <div className="px-5 pb-5 pt-2 space-y-4 bg-gray-50/50 border-t border-gray-100">
-                          {topicLoadState[t.id]==='error' && (
-                            <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded p-2 flex items-center justify-between">
-                              <span>Failed to load topic content.</span>
-                              <button onClick={()=>{ setTopicLoadState(s=>({...s,[t.id]:'idle'})); toggleTopic(t.id); }} className="text-red-700 underline font-medium">Retry</button>
-                            </div>
-                          )}
-                          <div className="text-[13px] leading-relaxed text-gray-700 space-y-4">
-                            {(() => {
-                              const st = topicLoadState[t.id];
-                              if (st === 'loading') return <div className="text-xs text-gray-400">Loading topic content…</div>;
-                              if (st === 'error') return null;
-                              const full = topicDetails[t.id];
-                              const blocks = topicBlocks[t.id];
-                              if (full && typeof full.bodyHtml === 'string' && full.bodyHtml.trim()) {
-                                return renderHelpHtml(full.bodyHtml, t.id + '::html');
-                              }
-                              if (blocks && blocks.length) return renderBlocksInline(t.id, blocks);
-                              const fallback = (t as any).body || '';
-                              if (fallback) return renderMarkdown(String(fallback), t.id + '::fallback');
-                              return <div className="text-xs text-gray-400">Preparing topic content…</div>;
-                            })()}
-                          </div>
-                          
-                          {/* Q&A section */}
-                          <div className="bg-white border border-gray-200 rounded-md p-3 flex flex-col gap-2 max-h-96 overflow-hidden">
-                            <div className="flex-1 overflow-auto pr-1 space-y-3 order-1">
-                              {qaHistory[t.id] && qaHistory[t.id].length > 0 ? (
-                                qaHistory[t.id].map((m, idx) => (
-                                  <div key={t.id+'::msg::'+idx} className={`text-[12px] leading-relaxed rounded-md px-2 py-1.5 border ${m.role==='user' ? 'bg-blue-50/70 border-blue-200 text-gray-800' : 'bg-white border-gray-200 text-gray-700'}`}> 
-                                    {m.role==='assistant' ? (
-                                      <>
-                                        {renderMarkdown(sanitizeAnswer(m.text), t.id+'::ans::'+idx)}
-                                        {m.method && m.method !== 'error' && (
-                                          <div className="mt-1 text-[9px] tracking-wide text-gray-300" title="Internal retrieval method (hidden from end users)">/* {m.method} */</div>
-                                        )}
-                                      </>
-                                    ) : (
-                                      <div className="font-medium">{m.text}</div>
-                                    )}
-                                  </div>
-                                ))
-                              ) : (
-                                <div className="text-[11px] text-gray-400">Ask a question below to start a mini Q&A for this topic.</div>
-                              )}
-                            </div>
-                            <div className="flex gap-2 border-t border-gray-100 pt-2 order-2">
-                              <input
-                                type="text"
-                                value={qaInput[t.id] || ''}
-                                onChange={e=>setQaInput(s=>({...s,[t.id]:e.target.value}))}
-                                placeholder="Ask a question about this topic..."
-                                className="flex-1 text-xs px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                onKeyDown={e=>{ if(e.key==='Enter'){ e.preventDefault(); askQuestion(t.id);} }}
-                              />
-                              <button onClick={()=>askQuestion(t.id)} disabled={qaLoading[t.id]} className="px-3 py-1 text-xs font-medium rounded bg-blue-600 text-white disabled:opacity-50 disabled:cursor-not-allowed min-w-[52px]">{qaLoading[t.id] ? '...' : 'Ask'}</button>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-      )}
-      </div>
-    </div>
+    <button
+      type="button"
+      onClick={copy}
+      className="group inline-flex items-center gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-1.5 text-left text-sm text-gray-800 hover:border-blue-300 hover:bg-blue-50"
+      title="Copy, then paste it into Claude"
+    >
+      <span className="italic">{text}</span>
+      <span className="text-xs text-gray-400 group-hover:text-blue-600">{copied ? 'Copied' : 'Copy'}</span>
+    </button>
   );
 };
 
-// Basic markdown + media renderer (inside same file for now)
-function renderMarkdown(md: string, keyPrefix: string) {
-  // If backend already sent HTML, render it as HTML (with a minimal sanitizer)
-  const isLikelyHtml = /<\s*(h[1-6]|p|ul|ol|li|em|strong|blockquote|hr|br|a|figure|img|div|span|table|thead|tbody|tr|td)\b/i.test(md);
-  if (isLikelyHtml) {
-    const sanitized = basicSanitizeHtml(md);
-    return <div key={keyPrefix} className="prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: sanitized }} />;
-  }
-  // 1. Normalize newlines and unescape common escaped markdown chars introduced by Airtable / JSON
-  let text = md.replace(/\r\n?/g,'\n');
-  // Unescape sequences like \* \- \# \" \` etc
-  text = text.replace(/\\([*`_#\-])/g,'$1');
-  // Unescape escaped quotes specifically (\\")
-  text = text.replace(/\\"/g,'"');
-  // Remove backslash before heading hashes at start of line (\### -> ###)
-  text = text.replace(/(^|\n)\\(#{1,6})/g,'$1$2');
-  // Remove backslash before list hyphen (\- )
-  text = text.replace(/(^|\n)\\-\s/g,'$1- ');
-  // Unescape escaped digit list markers like 1\. to 1.
-  text = text.replace(/(^|\n)(\s*\d+)\\\./g,'$1$2.');
+const Step: React.FC<{ n: number; title: string; note?: string; children: React.ReactNode }> = ({ n, title, note, children }) => (
+  <section className="flex gap-4 rounded-lg border border-gray-200 bg-white p-5">
+    <div className="flex h-8 w-8 flex-none items-center justify-center rounded-full bg-blue-600 text-sm font-semibold text-white">{n}</div>
+    <div className="min-w-0 flex-1 space-y-2">
+      <h2 className="text-base font-semibold text-gray-900">
+        {title}
+        {note && <span className="ml-2 text-sm font-normal italic text-gray-500">- {note}</span>}
+      </h2>
+      <div className="space-y-3 text-sm leading-relaxed text-gray-700">{children}</div>
+    </div>
+  </section>
+);
 
-  // 1b. Heuristic heading promotion: Convert standalone Title Case lines into ### headings
-  // Criteria: line not already markdown heading/list, 2-10 words, majority words capitalized, no ending period, previous line blank
-  const rawLines = text.split(/\n/);
-  for (let i=0;i<rawLines.length;i++) {
-    const line = rawLines[i];
-    const trimmed = line.trim();
-    if (!trimmed) continue;
-    if (/^#{1,6}\s/.test(trimmed)) continue; // already heading
-    if (/^([-*]|\d+\.)\s+/.test(trimmed)) continue; // list item
-    if (/^[`>]/.test(trimmed)) continue; // code/quote
-    if (trimmed.length > 70 || trimmed.length < 4) continue;
-    if (/[.!?:]$/.test(trimmed)) continue; // likely sentence
-    const words = trimmed.split(/\s+/);
-    if (words.length < 2 || words.length > 10) continue;
-    let capCount = 0;
-    for (const w of words) {
-      if (/^[A-Z][A-Za-z0-9'()\/-]*$/.test(w)) capCount++;
-    }
-    if (capCount / words.length >= 0.6) {
-      const prev = i>0 ? rawLines[i-1].trim() : '';
-      if (prev === '' || /^---+$/.test(prev)) {
-        rawLines[i] = '### ' + trimmed; // promote
-      }
-    }
-  }
-  text = rawLines.join('\n');
+const StartHereContent: React.FC = () => {
+  // Layout only mounts its children once the client is initialised, so the profile is ready here.
+  const [profile] = useState<any>(() => getClientProfile());
+  const wingguyOn = profile?.features?.wingguy === true;
 
-  // 2. Escape HTML angle brackets
-  let safe = text.replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  return (
+    <div className="max-w-3xl space-y-4">
+      <p className="text-gray-700">
+        Everything you need to learn this system is already inside Wingguy. Here&apos;s how to use it.
+      </p>
 
-  // 3. Horizontal rules ---
-  safe = safe.replace(/^\s*---+\s*$/gm,'<hr/>');
+      <Step n={1} title="Set up Wingguy" note={wingguyOn ? "skip this if you've done it" : undefined}>
+        {wingguyOn ? (
+          <>
+            <p>Wingguy plugs into your Claude. It takes a couple of minutes.</p>
+            <p>
+              <a href={buildAuthUrl('/my-wingguy')} className="font-medium text-blue-700 hover:underline">
+                Set it up &rarr;
+              </a>
+            </p>
+          </>
+        ) : (
+          <p>Wingguy isn&apos;t switched on for you yet - let me know and we&apos;ll set it up together.</p>
+        )}
+      </Step>
 
-  // 4. Headings (after unescape) – apply consistent spacing + visual hierarchy
-  // Add top margin except when it's the very first element
-  let headingIndex = 0;
-  safe = safe.replace(/^######\s+(.*)$/gm,(_,c)=>`<h6 class=\"mt-5 mb-1 text-[13px] font-semibold text-gray-700 tracking-wide\">${c}<\/h6>`)
-             .replace(/^#####\s+(.*)$/gm,(_,c)=>`<h5 class=\"mt-5 mb-1 text-[14px] font-semibold text-gray-700 tracking-wide\">${c}<\/h5>`)
-             .replace(/^####\s+(.*)$/gm,(_,c)=>`<h4 class=\"mt-6 mb-2 text-[15px] font-semibold text-gray-800\">${c}<\/h4>`)
-             .replace(/^###\s+(.*)$/gm,(_,c)=>`<h3 class=\"mt-6 mb-2 text-base font-semibold text-gray-900\">${c}<\/h3>`)
-             .replace(/^##\s+(.*)$/gm,(_,c)=>`<h2 class=\"mt-7 mb-3 text-lg font-semibold text-gray-900\">${c}<\/h2>`)
-             .replace(/^#\s+(.*)$/gm,(_,c)=>`<h1 class=\"mt-8 mb-4 text-xl font-bold text-gray-900\">${c}<\/h1>`);
+      <Step n={2} title="Ask it anything">
+        <p>
+          Start each chat with <strong>&ldquo;{OPENER}&rdquo;</strong> - it picks up where you left off, and makes
+          sure you&apos;re getting my method, not general advice off the internet.
+        </p>
+        <div className="flex">
+          <CopyPhrase text={OPENER} />
+        </div>
+        <p>Then just ask, in your own words. Some good places to start:</p>
+        <div className="flex flex-col items-start gap-2">
+          {STARTERS.map((s) => <CopyPhrase key={s} text={s} />)}
+        </div>
+        <p>
+          Want the whole lot at once? Say <strong>&ldquo;{EVERYTHING}&rdquo;</strong>.
+        </p>
+      </Step>
 
-  // Ensure first heading does not get excessive top margin
-  safe = safe.replace(/^(<h[1-6][^>]*class=\\" )mt-[0-9]+/m,(m)=>m.replace(/mt-[0-9]+/,'mt-2'));
+      <Step n={3} title="Read the library">
+        <p>The whole method on one page, then a short piece on each step. Read whatever grabs you.</p>
+        <p>
+          <a href={LIBRARY_URL} target="_blank" rel="noopener noreferrer" className="font-medium text-blue-700 hover:underline">
+            Open the library &rarr;
+          </a>
+        </p>
+      </Step>
 
-  // 5. Bold / Italic (do after headings so we don't bold inside tags accidentally)
-  safe = safe.replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>');
-  safe = safe.replace(/(^|\s)\*(?!\*)([^*]+)\*(?=\s|$)/g,'$1<em>$2</em>');
+      <Step n={4} title="Stuck on a screen?">
+        <p>Click the <strong>Help</strong> button at the top of it.</p>
+      </Step>
 
-  // 6. Lists (unordered + ordered)
-  const lines = safe.split(/\n/);
-  const out: string[] = [];
-  let ulist: string[] = [];
-  let olist: string[] = [];
-  const flushU = () => { if (ulist.length) { out.push('<ul class="list-disc pl-5">'+ulist.join('')+'</ul>'); ulist = []; } };
-  const flushO = () => { if (olist.length) { out.push('<ol class="list-decimal pl-5">'+olist.join('')+'</ol>'); olist = []; } };
-  for (const rawLine of lines) {
-    const line = rawLine.trimEnd();
-    if (/^\s*[-*]\s+/.test(line)) {
-      flushO();
-      ulist.push('<li>'+ line.replace(/^\s*[-*]\s+/,'') +'</li>');
-    } else if (/^\s*\d+\.\s+/.test(line)) {
-      flushU();
-      olist.push('<li>'+ line.replace(/^\s*\d+\.\s+/,'') +'</li>');
-    } else {
-      flushU(); flushO();
-      out.push(line);
-    }
-  }
-  flushU(); flushO();
-  safe = out.join('\n');
-
-  // 7. Paragraph wrapping & blank line spacing
-  // Split again and wrap plain text lines (that are not already block-level HTML) into <p> tags
-  const blockLevelStarts = /^(<h[1-6]|<ul|<ol|<li|<hr|<blockquote|<pre|<figure)/i;
-  const paraLines = safe.split(/\n/);
-  const paraOut: string[] = [];
-  let buffer: string[] = [];
-  const flushPara = () => {
-    if (!buffer.length) return;
-    const content = buffer.join(' ').trim();
-    if (content) paraOut.push(`<p class=\"mt-2 leading-relaxed text-gray-700\">${content}<\/p>`);
-    buffer = [];
-  };
-  for (const ln of paraLines) {
-    const trimmed = ln.trim();
-    if (!trimmed) { flushPara(); continue; }
-    if (blockLevelStarts.test(trimmed)) { flushPara(); paraOut.push(trimmed); continue; }
-    // Inline line: accumulate
-    buffer.push(trimmed);
-  }
-  flushPara();
-  safe = paraOut.join('\n');
-
-  // 8. Add extra blank line after major headings for readability (handled via Tailwind margins visually)
-
-  return renderHelpHtml(safe, keyPrefix);
-}
-
-// Minimal HTML sanitizer for curated Help content.
-// - Strips <script>/<style>
-// - Removes inline event handlers (on*) and javascript: URLs
-// Note: For untrusted input consider a full sanitizer like DOMPurify.
-function basicSanitizeHtml(input: string): string {
-  if (!input) return '';
-  let html = String(input);
-  // Remove script and style blocks completely (use RegExp constructor to avoid TSX parsing pitfalls)
-  html = html.replace(new RegExp('<script[^>]*>[\\s\\S]*?<\\/script>', 'gi'), '');
-  html = html.replace(new RegExp('<style[^>]*>[\\s\\S]*?<\\/style>', 'gi'), '');
-  // Neutralize javascript: URLs in href/src while preserving the quote style
-  html = html.replace(/\s(href|src)\s*=\s*(['"])\s*javascript:[^'"']*\2/gi, ' $1="#"');
-  // Remove inline event handlers like onclick, onerror
-  html = html.replace(/\son[a-z]+\s*=\s*(".*?"|'.*?'|[^\s>]+)/gi, '');
-  return html;
-}
-
-function renderTopicContent(topicId: string) {
-  const fn = (window as any).__renderTopic;
-  if (!fn) return <div className="text-gray-400 text-xs">Preparing renderer...</div>;
-  const out = fn(topicId);
-  if (!out) return <div className="text-gray-400 text-xs">Loading content...</div>;
-  return out;
-}
+      <Step n={5} title="Still stuck?">
+        <p>Ask me.</p>
+      </Step>
+    </div>
+  );
+};
 
 export default function StartHerePage() {
   return (
@@ -807,7 +148,7 @@ export default function StartHerePage() {
         <Layout>
           <div className="w-full">
             <div className="mb-6">
-              <h1 className="text-2xl font-semibold text-gray-900">Start Here - Setup & Training</h1>
+              <h1 className="text-2xl font-semibold text-gray-900">Start Here</h1>
             </div>
             <StartHereContent />
           </div>

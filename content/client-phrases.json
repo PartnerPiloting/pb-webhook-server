@@ -23,7 +23,7 @@
       "phrase": "where are we up to?",
       "tool": "wingguy_learn",
       "tour": "status",
-      "where": ["docs/client-tour.md"]
+      "where": ["docs/client-tour.md", "linkedin-messaging-followup-next/app/start-here/page.tsx"]
     },
     {
       "phrase": "continue",
@@ -35,7 +35,25 @@
       "phrase": "read me everything",
       "tool": "wingguy_learn",
       "everything": true,
-      "where": ["docs/client-playbook.md"]
+      "where": ["docs/client-playbook.md", "linkedin-messaging-followup-next/app/start-here/page.tsx"]
+    },
+    {
+      "phrase": "Who should I be connecting with?",
+      "tool": "wingguy_learn",
+      "topic": "WHO YOU'RE LOOKING FOR",
+      "where": ["linkedin-messaging-followup-next/app/start-here/page.tsx"]
+    },
+    {
+      "phrase": "What do I say to thank someone for connecting?",
+      "tool": "wingguy_learn",
+      "topic": "THANKS FOR CONNECTING",
+      "where": ["linkedin-messaging-followup-next/app/start-here/page.tsx"]
+    },
+    {
+      "phrase": "How do I keep on top of follow-ups?",
+      "tool": "wingguy_learn",
+      "topic": "YOUR DAILY FOLLOW-UP LIST",
+      "where": ["linkedin-messaging-followup-next/app/start-here/page.tsx"]
     },
     {
       "phrase": "show me my follow-ups",

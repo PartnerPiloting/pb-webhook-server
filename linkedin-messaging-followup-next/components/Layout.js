@@ -64,7 +64,7 @@ const NavigationWithParams = ({ pathname, showThanksForConnecting = false, showW
     // LEGACY-DISABLED 2026-05-16: Top Scoring Posts retired (Apify cost). Resurrect by un-commenting.
     // { name: 'Top Scoring Posts', href: '/top-scoring-posts', icon: TrophyIcon, description: 'Leads with high-relevance posts ready for action', minLevel: 2 },
     { name: 'Settings', href: '/settings', icon: CogIcon, description: 'Configure scoring attributes and settings', minLevel: 1, fn: 'Settings' },
-    { name: 'Start Here', href: '/start-here', icon: BookOpenIcon, description: 'Onboarding categories and topics', minLevel: 1 }
+    { name: 'Start Here', href: '/start-here', icon: BookOpenIcon, description: 'How to learn the system', minLevel: 1 }
   ];
   const gates = { thanksForConnecting: showThanksForConnecting, wingguy: showWingguy, followupsScreen: showFollowupsScreen };
   // An assistant sees only the tabs their row has ticked (fn names match the Assistants table's
