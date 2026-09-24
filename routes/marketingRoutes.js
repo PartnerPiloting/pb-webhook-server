@@ -128,6 +128,19 @@ const PAGES = {
       'The three Binary Lane screens worth seeing before you meet them - choosing the machine, '
       + 'adding the key so Guy can build it, and the one number to send back.',
   },
+  // A made-up introduction email in the real introduction-emails-html layout.
+  // Linked as a "Picture:" from the playbook topic "The inner circle" - the
+  // chat can only send text, so this is where a client sees what one looks like.
+  introExample: {
+    file: 'introduction-example.html',
+    title: 'What an introduction looks like - I Know A Guy',
+    description: 'One line in a chat, and this is the draft waiting in your mailbox - a two-sided introduction, names made up, layout real.',
+  },
+  rejoinThanks: {
+    file: 'rejoin-thanks.html',
+    title: 'Welcome back - I Know A Guy',
+    description: 'Payment done - your account switches back on by itself.',
+  },
   joinThanks: {
     file: 'join-thanks.html',
     title: 'Welcome aboard - I Know A Guy',
@@ -250,6 +263,7 @@ module.exports = function mountMarketingSite(app) {
   // Sent by link, never linked from the site's own navigation.
   router.get('/the-numbers', servePage(PAGES.numbers));
   router.get('/your-machine', servePage(PAGES.machine));
+  router.get('/introduction-example', servePage(PAGES.introExample));
   router.get('/guy', servePage(PAGES.guy));
   router.get('/privacy', servePage(PAGES.privacy));
   router.get('/terms', servePage(PAGES.terms));
@@ -329,6 +343,45 @@ module.exports = function mountMarketingSite(app) {
       return res.redirect(303, session.url);
     } catch (err) {
       logger.error(`[site] join checkout failed: ${err && err.message}`);
+      return res.status(500).send('Something went wrong starting the payment - please try again, or reply to any email from Guy.');
+    }
+  });
+
+  // Restarting after a lapse. The link lives in the "your account has paused"
+  // draft (services/billingLapseService) and is signed per client, so it can
+  // sit in an inbox for months. It opens a fresh Checkout for the $150 monthly
+  // only - no set-up fee - on their EXISTING Stripe customer, so the webhook
+  // finds their row by customer id and switches them back to Active.
+  router.get('/rejoin/thanks', servePage(PAGES.rejoinThanks));
+  router.get('/rejoin', async (req, res) => {
+    const clientId = String(req.query.c || '').slice(0, 80);
+    const unknown = 'This restart link is not valid any more - just reply to any email from Guy and he will send a fresh one.';
+    try {
+      const lapse = require('../services/billingLapseService');
+      if (!lapse.verifyRejoinToken(clientId, req.query.t)) return res.status(404).send(unknown);
+      const client = await require('../services/clientService').getClientById(clientId);
+      if (!client || !client.stripeCustomerId) return res.status(404).send(unknown);
+      if (client.status === 'Active') return res.redirect(303, '/rejoin/thanks');
+      const { stripe, isStripeAvailable } = require('../config/stripeClient');
+      if (!isStripeAvailable()) {
+        return res.status(503).send('Payments are briefly unavailable - please try again shortly, or reply to any email from Guy.');
+      }
+      const prices = await ensureJoinPrices(stripe);
+      const origin = `${req.protocol}://${req.get('host')}`;
+      const meta = { source: 'knowaguy-rejoin', clientId };
+      const session = await stripe.checkout.sessions.create({
+        mode: 'subscription',
+        customer: client.stripeCustomerId,
+        line_items: [{ price: prices.monthly, quantity: 1 }],
+        success_url: `${origin}/rejoin/thanks`,
+        cancel_url: `${origin}/`,
+        metadata: meta,
+        subscription_data: { metadata: meta },
+      });
+      logger.info(`[site] rejoin checkout session created for ${clientId}`);
+      return res.redirect(303, session.url);
+    } catch (err) {
+      logger.error(`[site] rejoin checkout failed for ${clientId}: ${err && err.message}`);
       return res.status(500).send('Something went wrong starting the payment - please try again, or reply to any email from Guy.');
     }
   });

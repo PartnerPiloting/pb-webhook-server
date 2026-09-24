@@ -26,6 +26,7 @@ const LeadSearchEnhanced = ({
   const [nameSearch, setNameSearch] = useState('');
   const [linkedinLookupError, setLinkedinLookupError] = useState('');
   const [priority, setPriority] = useState('all');
+  const [connection, setConnection] = useState('all');
   const [searchTerms, setSearchTerms] = useState('');
 
   // Export modal state
@@ -92,6 +93,7 @@ const LeadSearchEnhanced = ({
       const p = new URLSearchParams();
       if (nameSearch) p.set('q', nameSearch);
       if (priority !== 'all') p.set('priority', priority);
+      if (connection !== 'all') p.set('connection', connection);
       if (searchTerms) p.set('searchTerms', searchTerms);
       p.set('type', 'csv'); // New type that returns all fields
       p.set('format', 'csv');
@@ -197,7 +199,8 @@ const LeadSearchEnhanced = ({
       onSearch({
         nameQuery: value,
         priority,
-        searchTerms
+        searchTerms,
+        connection
       });
     }
   };
@@ -212,7 +215,22 @@ const LeadSearchEnhanced = ({
       onSearch({
         nameQuery: nameSearch,
         priority: value,
-        searchTerms
+        searchTerms,
+        connection
+      });
+    }
+  };
+
+  // Handle connection filter change
+  const handleConnectionChange = (e) => {
+    const value = e.target.value;
+    setConnection(value);
+    if (onSearch) {
+      onSearch({
+        nameQuery: nameSearch,
+        priority,
+        searchTerms,
+        connection: value
       });
     }
   };
@@ -227,7 +245,8 @@ const LeadSearchEnhanced = ({
       onSearch({
         nameQuery: nameSearch,
         priority,
-        searchTerms: termsString
+        searchTerms: termsString,
+        connection
       });
     }
   };
@@ -269,6 +288,7 @@ const LeadSearchEnhanced = ({
         const p = new URLSearchParams();
         if (nameSearch) p.set('q', nameSearch);
         if (priority !== 'all') p.set('priority', priority);
+        if (connection !== 'all') p.set('connection', connection);
         if (searchTerms) p.set('searchTerms', searchTerms);
         p.set('type', exportType);
         p.set('format', 'txt');
@@ -543,6 +563,7 @@ const LeadSearchEnhanced = ({
       const p = new URLSearchParams();
       if (nameSearch) p.set('q', nameSearch);
       if (priority !== 'all') p.set('priority', priority);
+      if (connection !== 'all') p.set('connection', connection);
       if (searchTerms) p.set('searchTerms', searchTerms);
       p.set('type', exportType || 'linkedin');
       p.set('format', fmt);
@@ -689,6 +710,18 @@ const LeadSearchEnhanced = ({
               <option value="Two">Two</option>
               <option value="Three">Three</option>
             </select>
+            <label className="block text-sm font-medium text-gray-700 mb-2 mt-4">
+              Connected/Not Connected
+            </label>
+            <select
+              value={connection}
+              onChange={handleConnectionChange}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white"
+            >
+              <option value="all">All</option>
+              <option value="connected">Connected</option>
+              <option value="not_connected">Not connected</option>
+            </select>
           </div>
           {/* Search Terms Filter - more space, 4 columns */}
           <div className="md:col-span-4">
@@ -725,6 +758,11 @@ const LeadSearchEnhanced = ({
           {priority !== 'all' && (
             <span className="px-2 py-1 bg-green-100 text-green-800 rounded-full text-xs">
               Priority: {priority}
+            </span>
+          )}
+          {connection !== 'all' && (
+            <span className="px-2 py-1 bg-purple-100 text-purple-800 rounded-full text-xs">
+              {connection === 'connected' ? 'Connected' : 'Not connected'}
             </span>
           )}
         </div>

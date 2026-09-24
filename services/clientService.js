@@ -1850,6 +1850,7 @@ module.exports = {
     logExecution,     // Add the new logging function
     formatExecutionLog,
     clearCache,
+    getAllAssistants,
     getClientTokenLimits,  // Add the new token limits function
     getClientBase,     // Add the new base connection function
     initializeClientsBase,  // Export the base initialization function

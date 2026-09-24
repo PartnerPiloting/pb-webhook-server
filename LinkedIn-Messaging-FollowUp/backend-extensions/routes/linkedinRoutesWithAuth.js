@@ -279,7 +279,7 @@ router.get('/leads/search', async (req, res) => {
   
   try {
     const airtableBase = await getAirtableBase(req);
-    const { query, priority, q, searchTerms, limit, offset, sortField, sortDirection } = req.query;
+    const { query, priority, q, searchTerms, limit, offset, sortField, sortDirection, connection } = req.query;
     
     // Support both 'query' and 'q' parameter names for backward compatibility
     const searchTerm = query || q;
@@ -294,7 +294,7 @@ router.get('/leads/search', async (req, res) => {
     let filterParts = [];
     
     // Track if any filters are applied (for total count optimization)
-    const hasFilters = (searchTerm && searchTerm.trim() !== '') || (priority && priority !== 'all') || (searchTerms && searchTerms.trim() !== '');
+    const hasFilters = (searchTerm && searchTerm.trim() !== '') || (priority && priority !== 'all') || (searchTerms && searchTerms.trim() !== '') || connection === 'connected' || connection === 'not_connected';
     
     // Add name, email, and LinkedIn URL search filter (only if search term provided)
     if (searchTerm && searchTerm.trim() !== '') {
@@ -364,6 +364,10 @@ router.get('/leads/search', async (req, res) => {
     if (priority && priority !== 'all') {
       filterParts.push(`{Priority} = "${priority}"`);
     }
+
+    // Connection filter: connected = has a Date Connected (the reliable signal), not = blank
+    if (connection === 'connected') filterParts.push('{Date Connected}');
+    if (connection === 'not_connected') filterParts.push('NOT({Date Connected})');
     
     // Always exclude multi-tenant entries
     filterParts.push(`NOT(OR(
@@ -436,7 +440,12 @@ router.get('/leads/search', async (req, res) => {
 
     logger.info(`LinkedIn Routes: Streaming pages for offset=${pageOffset}, limit=${pageLimit}…`);
 
-    // If filters are applied, count total matching records (expensive but useful)
+    // If filters are applied, count total matching records (expensive but useful).
+    // Capped: Airtable hands back 100 rows per request, so counting a broad filter (e.g. Guy's
+    // 14k "not connected") took 25-45s and the page timed out at 30s. Past the cap we stop and
+    // report "at least COUNT_CAP" (totalCapped) instead of an exact total.
+    const COUNT_CAP = 1000;
+    let totalCapped = null;
     if (hasFilters) {
       logger.info('LinkedIn Routes: Filters detected, counting total matching records...');
       let countTotal = 0;
@@ -446,6 +455,10 @@ router.get('/leads/search', async (req, res) => {
           .eachPage(
             (records, fetchNextPage) => {
               countTotal += records.length;
+              if (countTotal > COUNT_CAP) {
+                totalCapped = COUNT_CAP;
+                return resolve();
+              }
               fetchNextPage();
             },
             (err) => {
@@ -454,8 +467,8 @@ router.get('/leads/search', async (req, res) => {
             }
           );
       });
-      totalCount = countTotal;
-      logger.info(`LinkedIn Routes: Total matching records: ${totalCount}`);
+      totalCount = totalCapped ? null : countTotal;
+      logger.info(`LinkedIn Routes: Total matching records: ${totalCapped ? `more than ${COUNT_CAP}` : totalCount}`);
     }
 
     for (const passFilter of passFilters) {
@@ -534,7 +547,8 @@ router.get('/leads/search', async (req, res) => {
 
     res.json({
       leads: transformedLeads,
-      total: totalCount, // null when no filters, number when filtered
+      total: totalCount, // null when no filters (or over the count cap), number when filtered
+      totalCapped, // set (= the cap) when there are more matches than we counted
       offset: pageOffset,
       limit: pageLimit
     });
@@ -558,7 +572,7 @@ router.get('/leads/export', async (req, res) => {
 
   try {
     const airtableBase = await getAirtableBase(req);
-  const { type = 'linkedin', format = 'txt', query, q, priority, searchTerms, limit } = req.query;
+  const { type = 'linkedin', format = 'txt', query, q, priority, searchTerms, limit, connection } = req.query;
 
     const exportType = String(type).toLowerCase();
     const exportFormat = String(format).toLowerCase();
@@ -617,6 +631,10 @@ router.get('/leads/export', async (req, res) => {
     if (priority && priority !== 'all') {
       filterParts.push(`{Priority} = "${priority}"`);
     }
+
+    // Connection filter: connected = has a Date Connected (the reliable signal), not = blank
+    if (connection === 'connected') filterParts.push('{Date Connected}');
+    if (connection === 'not_connected') filterParts.push('NOT({Date Connected})');
     filterParts.push(`NOT(OR(
       SEARCH("multi", LOWER({First Name})) > 0,
       SEARCH("multi", LOWER({Last Name})) > 0,

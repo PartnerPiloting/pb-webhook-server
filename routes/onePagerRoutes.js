@@ -27,7 +27,7 @@ const CLIENT_MAP_SLUG = 'the-process';     // the client library landing (#12, s
 // skips" is deliberately KEPT (Guy judged it library-safe for warm prospects).
 // The pages themselves stay reachable at /series/:slug — this only hides them
 // from the browse list. The client view (?audience=client) ignores this list:
-// these pieces are steps 1, 13 and 21 of the client run, and hiding them from
+// these pieces are steps 1, 13 and 24 of the client run, and hiding them from
 // the audience they were written for was a bug, not a boundary.
 const HIDDEN_FROM_CATALOGUE = new Set([
   MAP_SLUG,
@@ -71,7 +71,7 @@ module.exports = function mountOnePagers(app /*, base */) {
       // pieces kept library-only) falls through to its own section rather than
       // being numbered into a sequence it isn't part of. The map is rendered in
       // full above the list, so it isn't re-listed - but for clients it IS step
-      // 1 of the run, so the rest keep their true run numbers (2..21) instead
+      // 1 of the run, so the rest keep their true run numbers (2..24) instead
       // of closing the gap.
       const run = MANIFEST[audience] || [];
       const bySlug = new Map(visible.map(p => [p.slug, p]));

@@ -96,7 +96,13 @@ router.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
         // Check if client is active - CRITICAL SECURITY CHECK
         if (client.status !== 'Active') {
             log.warn(`Inactive client attempted webhook access: ${clientId} (status: ${client.status})`);
-            await alertAdmin("Inactive Client Webhook Attempt", `Client: ${clientId} (${client.clientName})\\nStatus: ${client.status}\\nAttempted webhook access denied`);
+            // Linked Helper sends every lead it finds, so one email per refusal
+            // flooded Guy's inbox. First refusal emails, then a weekly reminder.
+            const lapse = require('../services/billingLapseService.js');
+            const verdict = await lapse.shouldAlertInactiveWebhook(clientId, client.status);
+            if (verdict.alert) {
+                await alertAdmin(`${client.clientName || clientId} is ${client.status} but Linked Helper is still sending leads`, lapse.inactiveWebhookText(client, verdict));
+            }
             return res.status(403).json({ 
                 error: "Client account is not active. Please check your account status.",
                 clientStatus: client.status

@@ -28,9 +28,15 @@ const LeadSearchUpdate = () => {
   const [search, setSearch] = useState('');
   const [priority, setPriority] = useState('all');
   const [searchTerms, setSearchTerms] = useState('');
+  // Connection filter ('all' | 'connected' | 'not_connected'). Read through a ref inside
+  // performSearch so every search path (typing, paging, sorting) picks up the current value.
+  const [connection, setConnection] = useState('all');
+  const connectionRef = useRef('all');
+  connectionRef.current = connection;
   const [allLeads, setAllLeads] = useState([]); // Store all search results
   const [leads, setLeads] = useState([]); // Display leads (paginated subset)
   const [totalLeads, setTotalLeads] = useState(null); // Total matching records (null when no filters)
+  const [totalCapped, setTotalCapped] = useState(null); // Set when matches exceed the server's count cap
   const [currentPage, setCurrentPage] = useState(1);
   const [leadsPerPage] = useState(25); // Show 25 leads per page
   const [selectedLead, setSelectedLead] = useState(null);
@@ -95,7 +101,7 @@ const LeadSearchUpdate = () => {
       const offset = (page - 1) * leadsPerPage;
       
       // Use backend search with pagination and sorting - returns { leads: [...], total: number|null }
-      const response = await searchLeads(query, currentPriority, currentSearchTerms, leadsPerPage, offset, currentSortField, currentSortDirection);
+      const response = await searchLeads(query, currentPriority, currentSearchTerms, leadsPerPage, offset, currentSortField, currentSortDirection, connectionRef.current);
       const results = response.leads || [];
       const total = response.total;
       
@@ -121,6 +127,7 @@ const LeadSearchUpdate = () => {
       // With API pagination, we only get the current page
       setLeads(filteredResults);
       setTotalLeads(total); // Set total from API (null when no filters, number when filtered)
+      setTotalCapped(response.totalCapped || null);
       setCurrentPage(page);
       
       // For now, assume we have more data if we get a full page (we'll improve this later)
@@ -169,7 +176,7 @@ const LeadSearchUpdate = () => {
     // Trigger initial search with empty query to show first page of leads
     currentSearchRef.current += 1;
     performSearch('', priority, searchTerms, currentSearchRef.current, 1, sortField, sortDirection);
-  }, [performSearch, priority, searchTerms, sortField, sortDirection]);
+  }, [performSearch, priority, searchTerms, sortField, sortDirection, connection]);
 
   // Effect to trigger search when query, priority, or searchTerms changes
   useEffect(() => {
@@ -187,7 +194,7 @@ const LeadSearchUpdate = () => {
       // Use debounced search for user typing
       debouncedSearch(search, priority, searchTerms, requestId, 1, sortField, sortDirection);
     }
-  }, [search, priority, searchTerms, debouncedSearch, performSearch]);
+  }, [search, priority, searchTerms, connection, debouncedSearch, performSearch]);
 
   // Handle lead selection - fetch full details and open modal
   const handleLeadSelect = async (lead) => {
@@ -297,13 +304,14 @@ const LeadSearchUpdate = () => {
   };
 
   // Handle enhanced search from LeadSearchEnhanced component
-  const handleEnhancedSearch = ({ nameQuery, priority: newPriority, searchTerms: newSearchTerms }) => {
+  const handleEnhancedSearch = ({ nameQuery, priority: newPriority, searchTerms: newSearchTerms, connection: newConnection }) => {
     console.log('🔍 Enhanced search triggered:', { nameQuery, priority: newPriority, searchTerms: newSearchTerms });
     
     // Update all search states
     setSearch(nameQuery || '');
     setPriority(newPriority || 'all');
     setSearchTerms(newSearchTerms || '');
+    setConnection(newConnection || 'all');
     
     // Only clear selected lead if modal is not open (don't interfere with modal viewing)
     if (!isModalOpen) {
@@ -365,7 +373,7 @@ const LeadSearchUpdate = () => {
         pageItemCount={leads.length}
         pageSize={leadsPerPage}
         // Pass total from API (null when no filters, number when filtered)
-        knownTotal={totalLeads}
+        knownTotal={totalLeads ?? (totalCapped ? `${totalCapped.toLocaleString('en-AU')}+` : null)}
         onPageChange={handlePageChange}
         isLoading={isLoading}
         disableNext={leads.length < leadsPerPage}
