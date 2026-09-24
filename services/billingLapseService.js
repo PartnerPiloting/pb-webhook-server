@@ -17,7 +17,8 @@
 //
 // Drafts only - nothing here ever sends to a client. Nothing is removed on a
 // pause either: a lapsed card is not a client leaving, and a restart must find
-// everything exactly as it was. The tidy-up (key, mailbox, portal) is separate.
+// everything exactly as it was. The tidy-up (key, mailbox, portal) is
+// clientOffboardService - on Guy's say-so, or 30 days after a lapse.
 //
 // Every action is keyed in a Postgres ledger (billing_lapse_events), so Stripe
 // replaying an event never produces a second draft.
@@ -38,33 +39,36 @@ const REMINDER_EVERY_MS = 7 * 24 * 60 * 60 * 1000;
 
 let schemaReady = false;
 
+async function ensureLedger(db = require('./recallWebhookDb').getPool()) {
+  if (schemaReady || !db) return;
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS billing_lapse_events (
+      id SERIAL PRIMARY KEY,
+      event_key TEXT UNIQUE NOT NULL,
+      client_id TEXT,
+      kind TEXT NOT NULL,
+      detail JSONB NOT NULL DEFAULT '{}'::jsonb,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `);
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS inactive_webhook_alerts (
+      client_id TEXT PRIMARY KEY,
+      status TEXT,
+      first_refused_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      last_alerted_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      refused_count INTEGER NOT NULL DEFAULT 1
+    )
+  `);
+  schemaReady = true;
+}
+
 async function withDb(fn) {
   const pool = require('./recallWebhookDb').getPool();
   if (!pool) return null;
   const client = await pool.connect();
   try {
-    if (!schemaReady) {
-      await client.query(`
-        CREATE TABLE IF NOT EXISTS billing_lapse_events (
-          id SERIAL PRIMARY KEY,
-          event_key TEXT UNIQUE NOT NULL,
-          client_id TEXT,
-          kind TEXT NOT NULL,
-          detail JSONB NOT NULL DEFAULT '{}'::jsonb,
-          created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-        )
-      `);
-      await client.query(`
-        CREATE TABLE IF NOT EXISTS inactive_webhook_alerts (
-          client_id TEXT PRIMARY KEY,
-          status TEXT,
-          first_refused_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-          last_alerted_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-          refused_count INTEGER NOT NULL DEFAULT 1
-        )
-      `);
-      schemaReady = true;
-    }
+    await ensureLedger(client);
     return await fn(client);
   } finally {
     client.release();
@@ -288,6 +292,8 @@ async function pausedSummaryForGuy(client, subscription, cardFailure) {
   } catch (_) { /* summary still goes without it */ }
 
   const on = (v) => (v ? 'yes' : 'no');
+  const offboardDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+    .toLocaleDateString('en-AU', { day: 'numeric', month: 'short', timeZone: 'Australia/Brisbane' });
   const lines = [
     cardFailure
       ? `Stripe gave up on ${name}'s card after its retries and cancelled the subscription, so their account is now Paused.`
@@ -302,7 +308,8 @@ async function pausedSummaryForGuy(client, subscription, cardFailure) {
     "- Linked Helper: you'll get one email if it sends a lead while they're paused",
     '',
     'If they restart, everything switches back on by itself.',
-    "If they've left, the tidy-up (key, mailbox, portal login) is still a manual job for now.",
+    `If they haven't restarted by ${offboardDate}, they're offboarded automatically: their mailbox connection, Claude key and portal login are removed, and you get a summary.`,
+    `If they've told you they're leaving, don't wait - tell Claude "offboard ${name}".`,
   ];
   if (openInvoice) {
     lines.push('', `Their unpaid ${money(openInvoice.amount_due)} invoice (${openInvoice.number || openInvoice.id}) is still open in Stripe. Stripe won't charge it again, but if they restart, void it so it doesn't sit there as money owed.`);
@@ -380,6 +387,7 @@ module.exports = {
   inactiveWebhookText,
   rejoinUrl,
   verifyRejoinToken,
+  ensureLedger,
   // exposed for tests
   paymentFailedEmail,
   pausedEmail,

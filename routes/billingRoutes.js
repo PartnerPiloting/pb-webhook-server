@@ -917,7 +917,8 @@ router.post('/api/join-provision/jobs/:id/retry', async (req, res) => {
 });
 
 /**
- * Referral rate sweep (services/referralRateService.js). Nightly from a Render cron; also the
+ * Referral rate sweep (services/referralRateService.js), plus the 30-day lapse
+ * offboard sweep (services/clientOffboardService.js). Nightly from a Render cron; also the
  * door for a dry run by hand. Guy's rule: three currently-paying referrals -> a $120 credit on
  * the referrer's next invoice, judged fresh every period. ?dry=1 reports without writing.
  * Auth: x-debug-key OR Authorization: Bearer <PB_WEBHOOK_SECRET> (the cron convention).
@@ -931,7 +932,16 @@ router.post('/api/billing/referral-rate/sweep', async (req, res) => {
     const logger = createLogger({ runId: 'REFRATE', clientId: 'SYSTEM', operation: 'referral_rate_sweep' });
     try {
         const report = await require('../services/referralRateService').runReferralRateSweep({ dryRun, logger });
-        res.json({ success: true, ...report });
+        // Riding the same nightly cron: clients whose card lapsed 30+ days ago
+        // and never restarted are offboarded (services/clientOffboardService).
+        let lapseOffboard;
+        try {
+            lapseOffboard = await require('../services/clientOffboardService').runLapseOffboardSweep({ dryRun, logger });
+        } catch (e) {
+            logger.error(`lapse offboard sweep failed: ${e.message}`);
+            lapseOffboard = { error: e.message };
+        }
+        res.json({ success: true, ...report, lapseOffboard });
     } catch (e) {
         logger.error(`referral rate sweep failed: ${e.message}`, e.stack);
         res.status(500).json({ success: false, error: e.message });

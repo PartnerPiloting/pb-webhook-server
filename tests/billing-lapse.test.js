@@ -8,7 +8,7 @@
  * Pins: the paused client's Linked Helper alerts once then weekly (not per lead); retries of a
  * failed invoice never draft again; a Guy-made cancel (someone leaving) drafts no restart pitch;
  * the restart link is signed per client and can't be pointed at someone else; the client
- * emails use the plain short dash.
+ * emails use the plain short dash; offboarding refuses the owner account.
  */
 const assert = require('assert');
 
@@ -61,6 +61,15 @@ const lapse = require('../services/billingLapseService.js');
   }
   assert.ok(/\$150/.test(lapse.paymentFailedEmail(client, { amount_due: 15000, hosted_invoice_url: 'u' }).html));
   assert.ok(lapse.pausedEmail(client).html.includes('/rejoin?c=Ashley-Knowles'));
+
+  // 6. Offboarding: the owner account can never be offboarded; the plan reads plainly.
+  const off = require('../services/clientOffboardService.js');
+  const owner = await off.planOffboard('Guy-Wilson');
+  assert.strictEqual(owner.ok, false);
+  assert.ok(/owner account/.test(off.planText(owner)));
+  const txt = off.planText({ ok: true, client: { clientName: 'Test Client' }, actions: [{ text: 'Delete their mailbox connection' }], warnings: [], manual: ['Stop their campaigns'] });
+  assert.ok(txt.startsWith('Offboarding Test Client would:'));
+  assert.ok(!/[–—]/.test(txt));
 
   console.log('billing-lapse: all passed');
 })().catch((e) => { console.error(e); process.exit(1); });
