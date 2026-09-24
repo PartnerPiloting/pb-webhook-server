@@ -1330,7 +1330,7 @@ You're building a node, alongside other people building nodes. That's where the 
 
 ---
 
-## THE INNER CIRCLE - WHO'S IN IT, HOW IT WORKS, AND MAKING INTRODUCTIONS
+## THE INNER CIRCLE - WHO'S IN IT AND HOW IT WORKS
 
 Everyone who joins asks about this sooner or later, so here it is plainly.
 
@@ -1373,16 +1373,49 @@ across their whole wider network. That's the whole idea of "I know a guy", multi
 meet are people the rest of the circle would be glad to know too. So when one of your contacts needs
 something a circle member does, making the introduction is an easy yes.
 
-**Making an introduction takes about a minute.** This is where Wingguy does the heavy lifting. In a
-chat, say something like *"introduce Sarah to Tom - Sarah's looking for a good bookkeeper"*.
-Wingguy then:
+**Where introductions come in.** Almost everything above runs on one small act - one person
+introducing two others. Wingguy drafts those for you from a single line, and the topic on *making
+introductions* shows how, and what a good one looks like.
+
+**Your move.** Next time I introduce you to someone in the circle, book the half hour that week -
+while the introduction is still warm. It's the cheapest way there is to add a whole wider network to
+the people listening out for you.
+
+---
+
+## MAKING INTRODUCTIONS - WHAT MAKES ONE LAND, AND LETTING WINGGUY WRITE IT
+
+Of everything you'll send anyone, an introduction is the thing they'll remember longest. It costs
+you a minute. It can change the direction of somebody's year. And it's the easiest way there is to
+stay front of mind - nobody forgets the person who introduced them to someone useful.
+
+**Say it on the call first.** The best introductions start out loud. You're listening to someone
+and you think, "they should meet so-and-so". Say so there and then: *"I know someone you should
+meet - mind if I introduce you?"* You get their yes, you've shown you were really listening, and
+afterwards all that's left is the email.
+
+**What makes one land.** Most introductions go nowhere - "you two should connect!", both reply
+"sounds great", and nothing happens. The ones that turn into a conversation have four things:
+
+- **It's two-sided.** Each person learns who the other is and why they matter - not just "meet my
+  friend".
+- **Facts, not adjectives.** "Founded a safety-training firm and just signed her first national
+  builder" does more than "amazing, brilliant, you'll love her". Facts are what someone can repeat
+  to a third person.
+- **A reason to talk.** One or two lines on why these two, now. It doesn't have to be a business
+  fit. Often the best reason is that they're both good people who'll be brilliant at recommending
+  each other - once they know what the other offers.
+- **One person makes the first move.** Ask one of them - usually the one who'll get the most out of
+  it - to reach out, with the other person's email address right there in the body. Two people who
+  are both "happy to chat" is how introductions die.
+
+**Letting Wingguy write it.** In a chat, say something like *"introduce Sarah to Tom - Sarah's
+looking for a good bookkeeper"*. Wingguy:
 
 - pulls up what it knows about both of them - their profiles, your notes, what came up in your
   conversations
-- writes the two-sided email: who each person is and why they should talk, with each name linked to
-  their LinkedIn profile
-- asks one of them to reach out, with the other person's email address written into the email so
-  there's no scrolling or hunting
+- writes the two-sided email, with each name linked to their LinkedIn profile
+- asks one of them to make the first move, with the other's email address written in
 - puts the draft in your mailbox for you to read, tweak and send
 
 Picture: https://knowaguy.com.au/introduction-example
@@ -1391,13 +1424,8 @@ It never guesses a LinkedIn address or an email - if it can't find one, it asks 
 introducing the same person to several people in one week, it'll suggest spacing them so each one
 gets proper attention.
 
-Guy reckons a good introduction is the most valuable thing you can send anyone - it costs you a
-minute and it's remembered for years. It's also the easiest way to stay front of mind. Nobody
-forgets the person who introduced them to someone useful.
-
-**Your move.** Next time you're on a call and you think "they should meet so-and-so", don't make a
-note to do it later. Say it on the call, then open a chat afterwards and ask Wingguy to draft it.
-Five minutes after hanging up, the introduction is in your drafts.
+**Your move.** Next time you hear yourself think "they should meet so-and-so" on a call, say it out
+loud, then ask Wingguy for the draft when you hang up. Five minutes later, it's in your drafts.
 
 ---
 

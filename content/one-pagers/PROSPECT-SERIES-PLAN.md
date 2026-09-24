@@ -48,7 +48,7 @@ Subjects/From/preheader are **wrapper** (same drawer as greeting + footer) - pag
 Rejected: `I know a guy #N:` subject prefix (doubles the From, eats ~16 chars); title-only no
 numbering (most personal, least series-sense).
 
-## The client run (send order) - 22 emails (banked 2026-07-08; #42 added 2026-09-24)
+## The client run (send order) - 24 emails (banked 2026-07-08; #42, #82, #84 added 2026-09-24)
 
 Journey order, map first (they've bought - orientation before persuasion), paradigm/proof interleaved as breathers so it isn't five philosophy emails before anything actionable. Guy's law: everything vies for a higher slot, but there are only so many - this is good enough to ship, not to keep reshuffling.
 
@@ -75,7 +75,9 @@ Journey order, map first (they've bought - orientation before persuasion), parad
 | 19 | builders-not-blobs (#67) | vision setup |
 | 20 | nodes (#70) | **step 8** |
 | 21 | i-know-a-guy-principle (#80) | **step 9** |
-| 22 | increase-your-intelligence (#90) | **step 10** |
+| 22 | ten-thousand-people (#82) | the inner circle + wider network |
+| 23 | introductions-that-land (#84) | step 9 (craft) - writing an introduction |
+| 24 | increase-your-intelligence (#90) | **step 10** |
 
 Known soft spots (accepted, not blockers): #50's drip-week vs the client's real campaign-week can't fully align (would move earlier before later); #20 is the most droppable; three orientation emails up front (#12/#5/#10) is the ceiling before an eager client needs something to *do*. Client-run endings use each file's `ENDING:CLIENT` block (or the shared body where there's no split).
 
