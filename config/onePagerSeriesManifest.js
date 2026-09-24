@@ -2,7 +2,7 @@
 //
 // The SEND ORDER for each audience. This is NOT the frontmatter `order` (that's
 // the arc position). Source of truth = content/one-pagers/PROSPECT-SERIES-PLAN.md
-// (prospect run = 18, client run = 21). The drip walks these arrays: a person
+// (prospect run = 18, client run = 22). The drip walks these arrays: a person
 // with "Series Sent Count" = N is due list[N] next (0-indexed); when N reaches
 // the array length, their run is complete.
 
@@ -46,13 +46,14 @@ const client = [
   'connection-isnt-charm',       // 12 how to open the call (craft)
   'discovery-call-craft',        // 13 step 6 (craft)
   'reason-to-follow-up',         // 14 step 7
-  'pleasing-methods',            // 15 reinforcement
-  'four-hours-not-forty',        // 16 feasibility
-  'you-could-build-this',        // 17 objection
-  'builders-not-blobs',          // 18 vision setup
-  'nodes',                       // 19 step 8
-  'i-know-a-guy-principle',      // 20 step 9
-  'increase-your-intelligence',  // 21 step 10 (Wingguy)
+  'every-link-is-homework',      // 15 step 7 (craft) - the right link at the right moment
+  'pleasing-methods',            // 16 reinforcement
+  'four-hours-not-forty',        // 17 feasibility
+  'you-could-build-this',        // 18 objection
+  'builders-not-blobs',          // 19 vision setup
+  'nodes',                       // 20 step 8
+  'i-know-a-guy-principle',      // 21 step 9
+  'increase-your-intelligence',  // 22 step 10 (Wingguy)
 ];
 
 module.exports = { prospect, client };
