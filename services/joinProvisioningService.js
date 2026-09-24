@@ -6,7 +6,9 @@
 //
 // Steps, in order (each idempotent, each recorded on the job):
 //   create_row      master Clients row (name from checkout's own questions)
-//   send_ack        immediate acknowledgement email to the joiner, as Guy
+//   match_lead      find them in Guy's own Leads; copy LinkedIn, phone, other
+//                   emails and timezone onto the row (best-effort, never fails)
+//   send_ack       immediate acknowledgement email to the joiner, as Guy
 //   create_base     "My Leads - <name>" built from the version-controlled schema
 //   validate_base   structural check of the new base
 //   finish_row      base id + standard tier defaults onto the row
@@ -190,6 +192,7 @@ async function runJob(jobId, logger = defaultLogger) {
 
 const STEPS = [
   ['create_row', stepCreateRow],
+  ['match_lead', stepMatchLead],
   ['send_ack', stepSendAck],
   ['create_base', stepCreateBase],
   ['validate_base', stepValidateBase],
@@ -332,6 +335,35 @@ async function resolveReferrerClient(referrer) {
   }
 }
 
+/**
+ * The joiner is nearly always a lead in Guy's base already - copy what the checkout never asks
+ * for onto their row. Never throws: a paid join must not stop because a lookup did. The timezone
+ * it finds rides on the step output, and finish_row writes it in place of the Brisbane default.
+ */
+async function stepMatchLead(job, logger) {
+  const p = job.payload;
+  try {
+    const { findJoinerLead, clientFieldsFromLead } = require('./joinLeadMatch');
+    const coach = await require('./clientService').getClientById(COACH_ID);
+    if (!coach || !coach.airtableBaseId) return { matched: false, reason: `no leads base on ${COACH_ID}` };
+    const Airtable = require('airtable');
+    Airtable.configure({ apiKey: process.env.AIRTABLE_API_KEY });
+    const found = await findJoinerLead(Airtable.base(coach.airtableBaseId)('Leads'), p);
+    if (!found.record) return { matched: false, reason: found.reason };
+
+    const { fields, timezone, summary } = clientFieldsFromLead(found.record.fields, p.email);
+    const row = await masterBase()('Clients').find(job.client_record_id);
+    const notes = String(row.fields['Coach Notes'] || '');
+    fields['Coach Notes'] = [notes,
+      `Lead record in ${COACH_ID}'s base: ${found.record.id} (matched by ${found.matchedBy})`].filter(Boolean).join('\n');
+    await masterBase()('Clients').update(job.client_record_id, fields, { typecast: true });
+    return { matched: true, leadId: found.record.id, matchedBy: found.matchedBy, timezone, summary };
+  } catch (e) {
+    logger.warn(`[join] Lead match skipped for ${p.email}: ${e && e.message}`);
+    return { matched: false, error: (e && e.message) || String(e) };
+  }
+}
+
 async function stepSendAck(job) {
   const p = job.payload;
   const { sendTextEmail } = require('./gmailApiService');
@@ -394,6 +426,7 @@ async function stepValidateBase(job) {
 
 async function stepFinishRow(job) {
   const base = masterBase();
+  const match = (job.steps.match_lead && job.steps.match_lead.output) || {};
   await base('Clients').update(job.client_record_id, {
     'Airtable Base ID': job.base_id,
     // Same defaults the onboarding door writes - verified field-for-field
@@ -411,9 +444,11 @@ async function stepFinishRow(job) {
     'Followup Brief': 'Yes',
     'Coach': COACH_ID,
     'Coaching Status': 'Active',
-    'Timezone': 'Australia/Brisbane',
+    // From their lead record when it could be pinned; Brisbane (Guy's own) only as the fallback,
+    // and notify_guy says which it was.
+    'Timezone': match.timezone || 'Australia/Brisbane',
   }, { typecast: true });
-  return { baseLinked: job.base_id };
+  return { baseLinked: job.base_id, timezone: match.timezone || 'Australia/Brisbane (default)' };
 }
 
 async function stepMintToken(job) {
@@ -492,6 +527,15 @@ async function stepNotifyGuy(job, logger) {
   (baseStep.seedWarnings || []).forEach((w) => extras.push(`SEED WARNING: ${w}`));
   const valWarnings = ((job.steps.validate_base && job.steps.validate_base.output) || {}).warnings || [];
   valWarnings.forEach((w) => extras.push(`VALIDATION: ${w}`));
+  const match = (job.steps.match_lead && job.steps.match_lead.output) || {};
+  if (!match.matched) {
+    extras.push(`NOT FOUND in your leads (${match.reason || match.error || 'no reason given'}) - LinkedIn, phone and timezone are blank or defaulted; timezone is Brisbane until you set it`);
+  } else if (!match.timezone) {
+    extras.push('TIMEZONE: their lead record has no usable location - left at Brisbane, set it on the row');
+  }
+  const fromLead = match.matched
+    ? `From their lead record (${match.leadId}, matched by ${match.matchedBy}): ${(match.summary || []).join('; ') || 'nothing to copy'}`
+    : null;
   const text = [
     `${fullName} <${p.email}> is fully provisioned.`,
     '',
@@ -499,6 +543,7 @@ async function stepNotifyGuy(job, logger) {
     `Base: ${job.base_id}`,
     `Portal: ${job.portal_url}`,
     p.referrer ? `Referred by: ${p.referrer}` : null,
+    fromLead,
     '',
     'Their acknowledgement email went out automatically. The WELCOME EMAIL is sitting in your drafts - read it, tweak it, send it. Booking the first session happens from their reply.',
     '',

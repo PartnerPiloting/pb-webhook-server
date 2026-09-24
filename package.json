@@ -47,6 +47,7 @@
     "test:client-phrases": "node tests/client-phrases.test.js",
     "test:wingguy-first": "node tests/wingguy-first.test.js",
     "test:retired-terms": "node tests/retired-terms.test.js",
+    "test:join-lead-match": "node tests/join-lead-match.test.js",
     "diagnose:oauth": "node scripts/diagnose-google-oauth-scopes.js",
     "diagnose:oauth:harness": "node scripts/oauth-diagnostic-harness.js",
     "test:cc-outreach": "node tests/corporateCaptivesOutreach.harness.js",
