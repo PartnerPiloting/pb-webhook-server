@@ -711,7 +711,7 @@ const LeadSearchEnhanced = ({
               <option value="Three">Three</option>
             </select>
             <label className="block text-sm font-medium text-gray-700 mb-2 mt-4">
-              Connection
+              Connected/Not Connected
             </label>
             <select
               value={connection}
