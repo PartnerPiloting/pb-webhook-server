@@ -205,6 +205,17 @@ const LeadDetailModal = ({
                   {safeRender(lead['First Name'])} {safeRender(lead['Last Name'])}
                 </h2>
                 <div className="text-sm text-gray-500 mt-1">
+                  {(() => {
+                    // Date connected is the reliable connection signal - blank = not connected yet
+                    const dc = lead.dateConnected || lead['Date Connected'];
+                    const d = dc ? new Date(dc) : null;
+                    if (!d) return <span className="font-medium text-gray-600">Not connected yet</span>;
+                    const label = isNaN(d.getTime())
+                      ? String(dc)
+                      : d.toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' });
+                    return <span className="font-medium text-green-700">Connected {label}</span>;
+                  })()}
+                  <span className="mx-2 text-gray-300">|</span>
                   Profile Key: {safeRender(lead.id || lead['Profile Key'])}
                 </div>
               </div>

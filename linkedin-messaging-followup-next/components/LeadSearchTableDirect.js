@@ -37,6 +37,7 @@ export default function LeadSearchTableDirect({
     { key: 'AI Score', label: 'Score', sortable: true, isNumeric: true },
     { key: 'Priority', label: 'Priority', sortable: true },
     { key: 'Status', label: 'Status', sortable: true },
+    { key: 'Date Connected', label: 'Connected', sortable: true, isDate: true },
     { key: 'searchTerms', label: 'Search Terms', sortable: false },
     { key: 'linkedinProfileUrl', label: 'LinkedIn', sortable: false },
   { key: 'email', label: 'Email', sortable: false },
@@ -64,6 +65,12 @@ export default function LeadSearchTableDirect({
       const aVal = getCellValue(a, sortKey);
       const bVal = getCellValue(b, sortKey);
       const column = columns.find((col) => col.key === sortKey);
+      if (column?.isDate) {
+        // Not connected yet (no date) always sits at the bottom, either direction
+        if (!aVal || !bVal) return (aVal ? 0 : 1) - (bVal ? 0 : 1);
+        const diff = new Date(aVal) - new Date(bVal);
+        return sortDir === 'asc' ? diff : -diff;
+      }
       if (column?.isNumeric) {
         const aNum = parseFloat(aVal) || 0;
         const bNum = parseFloat(bVal) || 0;
@@ -86,7 +93,7 @@ export default function LeadSearchTableDirect({
       newSortDir = sortDir === 'asc' ? 'desc' : 'asc';
     } else {
       // New column - default direction based on type
-      newSortDir = column.isNumeric ? 'desc' : 'asc';
+      newSortDir = column.isNumeric || column.isDate ? 'desc' : 'asc';
     }
     
     // If parent controls sorting (server-side), notify parent
@@ -183,6 +190,14 @@ export default function LeadSearchTableDirect({
       };
       const colorClass = colorMap[status] || 'bg-gray-100 text-gray-800';
       return <span className={`px-2 py-1 rounded-full text-xs ${colorClass}`}>{status}</span>;
+    }
+    if (key === 'Date Connected') {
+      const dc = lead['Date Connected'];
+      if (!dc) return <span className="text-gray-400 text-sm">Not connected</span>;
+      const d = new Date(dc);
+      return isNaN(d.getTime())
+        ? String(dc)
+        : d.toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' });
     }
     const value = getCellValue(lead, key);
     return value || <span className="text-gray-400 text-sm">-</span>;

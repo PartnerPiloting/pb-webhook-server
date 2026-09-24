@@ -388,7 +388,8 @@ router.get('/leads/search', async (req, res) => {
       'Status': 'Status',
       'First Name': 'First Name',
       'Last Name': 'Last Name',
-      'Location': 'Location'
+      'Location': 'Location',
+      'Date Connected': 'Date Connected'
     };
     
     // Determine sort configuration
@@ -421,6 +422,13 @@ router.get('/leads/search', async (req, res) => {
       selectOptions.filterByFormula = filterFormula;
     }
 
+    // Connection-date sort: people with no Date Connected (not connected yet) always go
+    // to the bottom, whichever way the dates run. Airtable puts blanks first on an ascending
+    // sort, so read the dated rows first and the blank ones after, as two passes.
+    const passFilters = effectiveSortField === 'Date Connected'
+      ? [`AND(${filterFormula}, {Date Connected})`, `AND(${filterFormula}, NOT({Date Connected}))`]
+      : [filterFormula];
+
     let collected = [];
     let skipped = 0;
     let done = false;
@@ -450,9 +458,11 @@ router.get('/leads/search', async (req, res) => {
       logger.info(`LinkedIn Routes: Total matching records: ${totalCount}`);
     }
 
+    for (const passFilter of passFilters) {
+    if (done) break;
     await new Promise((resolve, reject) => {
       airtableBase('Leads')
-        .select(selectOptions)
+        .select({ ...selectOptions, ...(passFilter ? { filterByFormula: passFilter } : {}) })
         .eachPage(
           (records, fetchNextPage) => {
             if (done) return; // Safety guard
@@ -479,6 +489,7 @@ router.get('/leads/search', async (req, res) => {
           }
         );
     });
+    }
 
     logger.info(`LinkedIn Routes: Returning ${collected.length} leads (offset: ${pageOffset}, limit: ${pageLimit}, skipped: ${skipped})`);
 

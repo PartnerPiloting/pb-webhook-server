@@ -936,7 +936,7 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating, onDelete }) => {
               LinkedIn-imported leads it sits at "Candidate" regardless of whether they're
               actually connected, so it must not be read as connection state. */}
           <div className="flex">
-            <label className="w-28 text-sm font-medium text-gray-700 flex-shrink-0 py-2">Connection</label>
+            <label className="w-28 text-sm font-medium text-gray-700 flex-shrink-0 py-2">Date connected</label>
             <div className="flex-1 py-2 text-sm">
               {(() => {
                 const dc = lead?.dateConnected || lead?.['Date Connected'] || null;
@@ -945,7 +945,7 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating, onDelete }) => {
                   const label = isNaN(d.getTime())
                     ? String(dc)
                     : d.toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' });
-                  return <span className="text-green-700 font-medium">Connected - {label}</span>;
+                  return <span className="text-green-700 font-medium">{label}</span>;
                 }
                 return <span className="text-gray-500">Not connected yet</span>;
               })()}
