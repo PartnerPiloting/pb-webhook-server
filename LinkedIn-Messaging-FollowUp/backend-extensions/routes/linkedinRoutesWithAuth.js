@@ -279,7 +279,7 @@ router.get('/leads/search', async (req, res) => {
   
   try {
     const airtableBase = await getAirtableBase(req);
-    const { query, priority, q, searchTerms, limit, offset, sortField, sortDirection } = req.query;
+    const { query, priority, q, searchTerms, limit, offset, sortField, sortDirection, connection } = req.query;
     
     // Support both 'query' and 'q' parameter names for backward compatibility
     const searchTerm = query || q;
@@ -294,7 +294,7 @@ router.get('/leads/search', async (req, res) => {
     let filterParts = [];
     
     // Track if any filters are applied (for total count optimization)
-    const hasFilters = (searchTerm && searchTerm.trim() !== '') || (priority && priority !== 'all') || (searchTerms && searchTerms.trim() !== '');
+    const hasFilters = (searchTerm && searchTerm.trim() !== '') || (priority && priority !== 'all') || (searchTerms && searchTerms.trim() !== '') || connection === 'connected' || connection === 'not_connected';
     
     // Add name, email, and LinkedIn URL search filter (only if search term provided)
     if (searchTerm && searchTerm.trim() !== '') {
@@ -364,6 +364,10 @@ router.get('/leads/search', async (req, res) => {
     if (priority && priority !== 'all') {
       filterParts.push(`{Priority} = "${priority}"`);
     }
+
+    // Connection filter: connected = has a Date Connected (the reliable signal), not = blank
+    if (connection === 'connected') filterParts.push('{Date Connected}');
+    if (connection === 'not_connected') filterParts.push('NOT({Date Connected})');
     
     // Always exclude multi-tenant entries
     filterParts.push(`NOT(OR(
@@ -558,7 +562,7 @@ router.get('/leads/export', async (req, res) => {
 
   try {
     const airtableBase = await getAirtableBase(req);
-  const { type = 'linkedin', format = 'txt', query, q, priority, searchTerms, limit } = req.query;
+  const { type = 'linkedin', format = 'txt', query, q, priority, searchTerms, limit, connection } = req.query;
 
     const exportType = String(type).toLowerCase();
     const exportFormat = String(format).toLowerCase();
@@ -617,6 +621,10 @@ router.get('/leads/export', async (req, res) => {
     if (priority && priority !== 'all') {
       filterParts.push(`{Priority} = "${priority}"`);
     }
+
+    // Connection filter: connected = has a Date Connected (the reliable signal), not = blank
+    if (connection === 'connected') filterParts.push('{Date Connected}');
+    if (connection === 'not_connected') filterParts.push('NOT({Date Connected})');
     filterParts.push(`NOT(OR(
       SEARCH("multi", LOWER({First Name})) > 0,
       SEARCH("multi", LOWER({Last Name})) > 0,
