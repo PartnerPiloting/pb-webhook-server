@@ -200,6 +200,10 @@ your spelling, your sign-off, the words you'd never use, what to pick out of som
 Setting them up is a guided conversation you and Guy usually kick off together, and from then on
 you change them any time by just telling me.
 
+The same goes for the links I put in your emails - each one goes out only when your instructions
+say when it earns its place. The topic on *your links* explains what to put in your library and how
+to tell me when each one should go.
+
 **Your move:** tell Guy which calendar and email you use so he can connect them, and when you're
 ready, say **"let's set up my instructions"** - it walks you through a piece at a time, and you
 can stop and resume whenever you like.

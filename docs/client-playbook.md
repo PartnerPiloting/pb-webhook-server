@@ -915,6 +915,71 @@ shoulder at what they tweaked.
 
 ---
 
+## YOUR LINKS - WHAT WINGGUY SENDS AND WHEN
+
+When Wingguy drafts an email for you, it'll often include a link - your meeting room, an article
+you wrote, a short video, a page about what you do. Those links come from one place: your **link
+library**. Wingguy never makes up a web address or rebuilds one from memory. If a link isn't in
+your library, it doesn't go out - it tells you it's missing and asks you for it.
+
+**What to put in it.** Start with what you already send people. Most people have more than they
+think:
+
+- **Your meeting room** - it goes on every invite. You set this one on your setup page.
+- **The one link you'd send someone who asked what you do** - a landing page, a one-pager, a short
+  video. This is the most useful link you'll have, because Wingguy reaches for it whenever a message
+  wants a link and nothing more specific fits. Also on your setup page.
+- **Your LinkedIn profile** - for first emails and calendar invites.
+- **Anything you've written or made** that explains your thinking - articles, newsletter editions,
+  a short deck, a video of you explaining how you work.
+- **Other people's material you rate** - a talk or an article that makes your point better than you
+  could.
+
+Don't wait until you have a full library. One good "what I do" link is plenty to start with. Add
+the rest as you notice yourself pasting the same link into emails.
+
+**The part that matters: when each link goes out.** A link sitting in your library does nothing.
+Wingguy only sends it when one of your instructions says when to. That's deliberate - the right
+piece at the right moment builds interest, and everything at once is homework nobody does.
+
+So for every link, give Wingguy a line or two answering three questions:
+
+- **When does it earn its place?** "After a first call" / "the morning of a meeting" / "only once
+  I've explained the system out loud".
+- **Who is it for?** "People frustrated that LinkedIn isn't working for them" / "anyone on a
+  consulting path".
+- **Who must never get it?** "Not for financial services - the regulator angle makes it land
+  wrong" / "never for founders who've already made the leap".
+
+Here's how some of mine read:
+
+- After a first call, two links. My article on why networking feels productive but delivers little
+  always goes first. My landing page always goes second. A third only if the call clearly called
+  for it - two that land beat four that get skimmed.
+- My two-part deck goes out in order: the problem first, then the answer only after I've walked
+  them through the system out loud. Never both in the same email.
+- The pricing page is for the second or third call, or when someone asks about cost. Any earlier
+  and it closes their thinking instead of opening it.
+
+Notice these are judgements, not keyword triggers. Wingguy reads the conversation and works out
+which one fits - which is why the right piece turns up at the right moment, rather than the same
+link every time.
+
+**How to add one.** Just tell Wingguy in a chat - "add this to my links" and the address - and in
+the same breath, when it should go out and who it's for. It'll show you the instruction it plans to
+write before saving anything. And if you're not sure yet, it'll ask - that conversation is the
+useful part.
+
+**When a link moves.** An article gets republished, a page changes address - tell Wingguy the new
+one. Everything that uses that link is right in one go, and the old address is blocked so a dead
+link can never go out by accident.
+
+**Tuning it.** If a draft sends the wrong piece, or sends one too early, say so - "that deck's too
+early for someone at this stage". The note on that link gets sharper, and it sticks for every draft
+after.
+
+---
+
 ## WORKING YOUR LIST IN THE PORTAL
 
 This is where the scoring earns its keep, and it's a quick job once you're in the rhythm of it.
