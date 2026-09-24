@@ -133,10 +133,20 @@ const StartHereContent: React.FC = () => {
             )}
           </Step>
 
-          <Step n={2} title="Ask it anything">
+          <Step n={2} title="Ask Claude anything">
+            {/* The portal can't see into a client's Claude - it only knows whether Wingguy is switched on for
+                them. Without Wingguy these buttons would open Claude on its own, answering from general
+                knowledge - exactly what this page warns against - so they only show once it's switched on. */}
+            {!wingguyOn ? (
+              <p>
+                Once Wingguy is set up, this is where you&apos;ll ask Claude how anything in this system works - in your
+                own words - and get my method, not general advice off the internet.
+              </p>
+            ) : (
+            <>
             <p>
-              Once Wingguy is connected to your Claude, you can ask it anything about how this works - in your own
-              words - and you&apos;ll get my method, not general advice off the internet.
+              Once Wingguy is connected to your Claude, ask anything about how this works - in your own words - and
+              you&apos;ll get my method, not general advice off the internet.
             </p>
             <p>
               Start each chat with <strong>&ldquo;{OPENER}&rdquo;</strong> - it picks up where you left off.
@@ -154,6 +164,8 @@ const StartHereContent: React.FC = () => {
               already typed in - just press send. Using Claude in a web browser instead? Click <strong>Copy</strong> and
               paste it into a new chat.
             </p>
+            </>
+            )}
           </Step>
         </div>
 
