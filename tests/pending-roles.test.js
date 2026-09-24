@@ -115,5 +115,29 @@ check('speakerNames drops "Speaker 2" placeholders and repeats', () => {
   assert.deepStrictEqual(got.sort(), ['Angela Lin', 'Rick Wong']);
 });
 
+console.log('weekly digest - counts only the people actually met:');
+{
+  const { buildDigestEmail, mainPeople } = require('../services/pendingLeadNotifier');
+  const waiting = [
+    { email: 'mikael@gopartnering.com', name: 'Mikael Lindback', role: 'main', meetings: 1 },
+    { email: 'angela@ajarealty.com.au', name: 'Angela Lin', role: 'extra', quiet: true, meetings: 1 },
+    { email: 'donna@imagedi.com', role: 'extra', quiet: true, meetings: 1 },
+  ];
+  check('subject and list count the main person only; extras get one line', () => {
+    const { subject, text } = buildDigestEmail({ coachFirstName: 'Rick', people: waiting, portalUrl: 'https://x/new-leads', tz: 'Australia/Sydney' });
+    assert.strictEqual(subject, "You've met someone who isn't in Wingguy yet");
+    assert.ok(text.includes('Mikael Lindback'));
+    assert.ok(!text.includes('Angela Lin') && !text.includes('donna@imagedi.com'), 'extras are not listed by name');
+    assert.ok(text.includes('Plus 2 others who were on those calls'));
+  });
+  check('no extras = no "Plus" line', () => {
+    const { text } = buildDigestEmail({ coachFirstName: 'Rick', people: [waiting[0]], portalUrl: 'https://x', tz: 'Australia/Sydney' });
+    assert.ok(!text.includes('Plus '));
+  });
+  check('only extras waiting = nobody to email about (Rick today: 12 silent webinar guests)', () => {
+    assert.strictEqual(mainPeople(waiting.slice(1)).length, 0);
+  });
+}
+
 if (failures) { console.error(`\n${failures} FAILED`); process.exit(1); }
 console.log('\nall passed');
