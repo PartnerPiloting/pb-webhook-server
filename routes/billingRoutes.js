@@ -48,7 +48,7 @@ Amount: $${data.amount?.toFixed(2) || 'N/A'}
 Product: ${data.description || data.planName || 'N/A'}
 Type: ${data.type === 'subscription' ? 'Subscription' : 'One-time Payment'}
 
-Please set up their account in Airtable.
+A sign-up through the website sets up its own account - you'll get a separate email if anything needs you.
 
 Stripe Customer ID: ${data.customerId}
         `.trim();
@@ -802,11 +802,22 @@ router.post('/api/billing/webhook', express.raw({ type: 'application/json' }), a
                 const isFirstPayment = invoice.billing_reason === 'subscription_create' ||
                                        invoice.billing_reason === 'manual';
 
-                if (isFirstPayment) {
+                // Where the subscription's metadata sits depends on the Stripe
+                // API version: invoice.parent.subscription_details (2025+) or
+                // invoice.subscription_details (older).
+                const subDetails = invoice.parent?.subscription_details || invoice.subscription_details || null;
+                const subSource = subDetails?.metadata?.source || '';
+
+                if (isFirstPayment && subSource === 'knowaguy-rejoin') {
+                    // A paused client restarting from their restart link is not
+                    // a new client - Guy already gets "Restarted: <name>" from
+                    // recordRejoin. (Ashley Knowles, 25 Sep 2026, got both.)
+                    logger.info(`Restart payment for ${invoice.customer_email || invoice.id} - no new-client alert`);
+                } else if (isFirstPayment) {
                     logger.info(`🎉 NEW CUSTOMER PAYMENT: ${invoice.customer_email || invoice.id}`);
 
                     await sendOnboardingNotification({
-                        type: 'payment',
+                        type: subDetails || invoice.subscription ? 'subscription' : 'payment',
                         customerEmail: invoice.customer_email,
                         customerName: invoice.customer_name,
                         amount: invoice.amount_paid / 100,
