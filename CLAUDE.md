@@ -129,9 +129,11 @@ in the repo he happens to have open. Every client machine has its own equivalent
 match, so content changed without a bump reaches nobody - it is not a cosmetic field.
 
 **After pushing an extension change, get it onto Guy's machine in the same session.** The scheduled
-task runs once a day at 03:00, so otherwise the fix he just asked for is not in his browser when he
-goes to test it - which is exactly how 2026-09-17 went. Wait for the Render deploy to finish (the
-updater pulls from the deployed server, not from git), then:
+task runs every hour at five past (since 2026-09-17 - it was once a day at 03:00, which is how that
+day's fix missed him), so a change reaches every machine within the hour on its own. Tell Guy and
+clients "within the hour", never "tomorrow". But Guy usually tests straight away, so don't make him
+wait: once the Render deploy has finished (the updater pulls from the deployed server, not from
+git), run:
 
 ```
 cmd //c "%LOCALAPPDATA%\Wingguy\run-update.cmd"
