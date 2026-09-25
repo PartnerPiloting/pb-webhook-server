@@ -139,6 +139,14 @@ const PAGES = {
   // A clickable copy of the portal Follow-Ups screen with made-up people (real
   // leads' circumstances must never appear on a public page). Linked from the
   // day page's morning section and from series email "reason-to-follow-up".
+  // Three made-up new connections: the bulk thank-you everyone sends beside the
+  // Wingguy draft, plus a copy of the worklist. Linked as a "Picture:" from the
+  // playbook topic THANKS FOR CONNECTING and from series email #8.
+  thanksExample: {
+    file: 'thanks-for-connecting-example.html',
+    title: 'Thanks for connecting, done properly - I Know A Guy',
+    description: 'Three new connections: the message everyone sends, and the one Wingguy drafted in about twenty seconds. Names made up, drafts real in style.',
+  },
   followupsExample: {
     file: 'follow-ups-example.html',
     title: 'Your follow-ups, already sorted - I Know A Guy',
@@ -273,6 +281,7 @@ module.exports = function mountMarketingSite(app) {
   router.get('/your-machine', servePage(PAGES.machine));
   router.get('/introduction-example', servePage(PAGES.introExample));
   router.get('/follow-ups-example', servePage(PAGES.followupsExample));
+  router.get('/thanks-for-connecting-example', servePage(PAGES.thanksExample));
   router.get('/guy', servePage(PAGES.guy));
   router.get('/privacy', servePage(PAGES.privacy));
   router.get('/terms', servePage(PAGES.terms));

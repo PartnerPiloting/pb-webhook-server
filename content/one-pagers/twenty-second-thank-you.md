@@ -32,6 +32,8 @@ What does a good one look like? Short. Specific - one real detail from their wor
 
 <!-- ENDING:CLIENT -->
 So this week: when the next good connection lands, don't reach for the photocopy, and don't settle for the automatic floor. Open their profile, find the one thing worth being genuinely curious about, and spend the twenty seconds. Every relationship in this whole process starts inside that little window of mutual attention - it's the cheapest bit of leverage you'll get all week.
+
+Your Thanks for Connecting screen makes that easy to keep up: everyone who's accepted and not yet been thanked, score beside them, your place kept. Click a name, type /wg, and the draft is waiting. [Here's what that looks like](https://knowaguy.com.au/thanks-for-connecting-example).
 <!-- /ENDING:CLIENT -->
 
 <!-- ENDING:PROSPECT -->

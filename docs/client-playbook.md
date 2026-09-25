@@ -323,11 +323,6 @@ with something real - "saw your post on...". Nice to have, but not a reason to u
 because Wingguy reads a person's recent posts anyway when it writes your thanks-for-connecting -
 Premium users aren't missing that.
 
-**A tactic if the Sales Navigator price makes you wince.** It is a lot more per month. So take it
-for the free trial period, run your searches hard, fill up Linked Helper's queue with everyone you
-can get - then close it back down to Premium. The people are already sitting in Linked Helper's
-queue by then, and you may not need another search for months.
-
 **What's a boolean?** Just the words **AND**, **OR** and **NOT**, used to combine your search terms -
 *"Finance Broker OR Loan Broker AND New South Wales"*. That's all it is. Two rules matter: they must
 be **in capitals**, and on Premium you can use **no more than five of them**. Six and LinkedIn throws
@@ -436,10 +431,10 @@ And the record backs it up: in all my time running this, I've not seen one perso
 Helper lose their account. Nobody can honestly promise you zero risk - but there's a world of
 difference between a tool built around staying safe and a tool built around looking good.
 
-The price is the clunkiness: a computer that stays on, an app you glance at now and then, the odd
-Windows update to check after. There's a topic on the plumbing that covers how to set that up so it
-barely bothers you. It's a small tax - and it's buying insurance on the one asset in this whole
-system you can't replace.
+The price is the clunkiness: it needs a computer that's always on. That's why yours runs on its own
+small machine in the cloud, which I keep an eye on for you - there's a topic on *your Linked Helper
+machine*. It's a small tax - and it's buying insurance on the one asset in this whole system you
+can't replace.
 
 ---
 
@@ -533,27 +528,13 @@ one thing at a time. You'll watch it running and think it's being sluggish; it i
 careful. These people are specialists in doing this without your account getting flagged, which is
 precisely why I'm not interested in building my own version of it.
 
-**Where it runs matters.** Because it's an app, it needs its computer switched on and awake to do
-its work. So ideally it lives on a machine that can run 24/7 - an old laptop lying around is perfect
-for this, left plugged in and turned on. It doesn't need much horsepower.
-
-What you don't want is it living on the laptop you carry about and use all day. That machine gets
-closed, goes to sleep and moves between networks, so Linked Helper keeps stopping in the middle of
-work it should be getting on with. If it has to be your everyday laptop, there's a setting for what
-happens when the lid closes - set it to "nothing" and it keeps working with the lid shut.
-
-There's a second reason, and it's the better one. A lot of what Linked Helper does is best done
-overnight - that way it isn't working on your LinkedIn account at the same time as you are during the
-day. A dedicated machine that just stays on lets all of that happen quietly, without you having to
-think about it.
-
-**You don't have to wait for the perfect machine.** Linked Helper can move its whole database across
-to another computer later, so you can install it on whatever you're using today and shift it to the
-dedicated machine when that's ready. Don't let the hardware question hold up getting started.
-
-**Two small habits once it's running.** Keep an eye that it's still going - the classic culprit is a
-Windows update quietly restarting the machine. And if the machine isn't the one in front of you,
-being able to remote into it makes that check painless - it's what Guy does with his own.
+**Where it runs: your own Linked Helper machine.** Because it's an app, it needs a computer that's
+switched on and awake around the clock. So it doesn't live on your laptop - a laptop sleeps, gets
+closed and restarts for updates, and Linked Helper quietly stops every time. Instead it runs on a
+small always-on computer in an Australian data centre, in your name, for about $21.50 a month. It
+keeps working whether or not you're at your desk, and it's one I can see - so if it ever stalls, I'm
+the one who notices and fixes it. The topic on *your Linked Helper machine* walks you through
+getting one in about ten minutes.
 
 If you're brand new, this is where you and Guy finish the setup. If you've already got it running,
 skip straight past it, and pull it back up any time you want a refresher.
@@ -1039,11 +1020,23 @@ to say yes to except connecting. The Zoom ask lives here, in the thanks-for-conn
 earned. Second, this is the one deliberately generic message in the whole system - it goes out at
 volume through Linked Helper, so it can't be tailored, and that's fine.
 
-The catch is obvious: doing it properly, one person at a time, is extremely time intensive. That's
-precisely where Wingguy comes in - and the Chrome extension in particular. It reads the profile and
-writes the message for you. Guy reckons it writes them better than he would. That's the
-trade you're making - the tailored message wins far more meetings, and the tool is what makes the
-tailored message affordable in time.
+**Where you do it: the Thanks for Connecting screen.** The catch has always been the effort. On
+LinkedIn itself you'd have to dig through your recent connections, remember who you'd already
+thanked, and write each one from scratch - which is exactly why almost nobody has ever done it
+properly. The Thanks for Connecting screen in your portal does the remembering. It lists everyone
+who's accepted and hasn't been thanked yet, with their score beside them - sort by highest score if
+you like. Click a name and their LinkedIn opens; type /wg in the message box and Wingguy reads their
+profile and writes the message right there. Mark them Messaged and they leave the list, or Skipped
+if they're not worth a personal note. Your place is kept, so you can do three today and ten
+tomorrow.
+
+**How it comes to sound like you.** Guy finds the drafts often sound more like him than he does at
+the end of a long day - but that's earned, not switched on. The instructions it writes from already
+read like a person, not a machine. Then you shape them to how you talk (see *your instructions*),
+and it learns from every change you make to a draft before you send it (see *your edits*). On day
+one it's good. A few weeks in, it's you.
+
+Picture: https://knowaguy.com.au/thanks-for-connecting-example
 
 ---
 

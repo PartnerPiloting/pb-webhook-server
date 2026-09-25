@@ -1,0 +1,227 @@
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800&display=swap">
+<style>
+:root{
+  --bg:#f5f7fa; --paper:#ffffff; --ink:#172033; --ink-2:#4a5568; --ink-3:#7b8494;
+  --line:#e3e7ee; --line-2:#eef1f5; --link:#2358c9;
+  --green:#157a47; --green-bg:#e3f5ea; --green-ink:#0f6b3c; --green-line:#b9e3c9;
+  --grey-bg:#f1f3f6; --amber-bg:#fdf1c7; --amber-ink:#8a5a00; --amber-line:#f0d27a;
+  --shadow:0 1px 2px rgba(23,32,51,.05),0 8px 24px rgba(23,32,51,.06);
+  --font:"Figtree",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --ui:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --bg:#0f141c; --paper:#161d28; --ink:#e6ebf3; --ink-2:#b3bccb; --ink-3:#8590a3;
+    --line:#29323f; --line-2:#212936; --link:#7fa8f5;
+    --green:#2f9e63; --green-bg:#173726; --green-ink:#7fd8a6; --green-line:#2a5a3f;
+    --grey-bg:#1c2431; --amber-bg:#3a2e10; --amber-ink:#f0c562; --amber-line:#6b5418;
+    --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px rgba(0,0,0,.3);
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#0f141c; --paper:#161d28; --ink:#e6ebf3; --ink-2:#b3bccb; --ink-3:#8590a3;
+  --line:#29323f; --line-2:#212936; --link:#7fa8f5;
+  --green:#2f9e63; --green-bg:#173726; --green-ink:#7fd8a6; --green-line:#2a5a3f;
+  --grey-bg:#1c2431; --amber-bg:#3a2e10; --amber-ink:#f0c562; --amber-line:#6b5418;
+  --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px rgba(0,0,0,.3);
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--font);font-size:16px;line-height:1.55;padding-inline:16px;padding-block:0 64px}
+.wrap{max-width:1040px;margin:0 auto}
+.lede{max-width:680px;padding-block:56px 28px}
+.eyebrow{font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);font-weight:700;margin:0 0 14px}
+h1{font-size:clamp(30px,4.6vw,44px);line-height:1.1;letter-spacing:-.02em;font-weight:800;margin:0 0 18px;text-wrap:balance}
+.lede p{color:var(--ink-2);font-size:18px;margin:0 0 12px}
+.lede p strong{color:var(--ink)}
+.sample{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--amber-ink);background:var(--amber-bg);border:1px solid var(--amber-line);border-radius:999px;padding:2px 10px}
+
+.people{display:flex;flex-direction:column;gap:22px}
+.person{background:var(--paper);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);overflow:hidden}
+.who{display:flex;gap:14px;align-items:flex-start;padding:18px 20px;border-bottom:1px solid var(--line)}
+.avatar{flex:none;width:44px;height:44px;border-radius:50%;display:grid;place-items:center;font-weight:700;color:#fff;font-family:var(--ui)}
+.who h2{font-size:17px;margin:0;font-weight:700}
+.who .head{margin:2px 0 8px;color:var(--ink-2);font-size:14px}
+.who .from{margin:0;font-size:14px;color:var(--ink-2);border-left:3px solid var(--line);padding-left:10px}
+.who .from b{color:var(--ink-3);font-weight:600;font-size:12px;letter-spacing:.04em;text-transform:uppercase;display:block;margin-bottom:2px}
+.score{margin-left:auto;flex:none;font-family:var(--ui);font-size:12px;font-weight:700;border-radius:6px;padding:3px 8px;background:var(--green-bg);color:var(--green-ink);font-variant-numeric:tabular-nums}
+.msgs{display:grid;grid-template-columns:1fr 1.35fr}
+.msg{padding:16px 20px}
+.msg + .msg{border-left:1px solid var(--line)}
+.msg .label{font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;margin:0 0 8px}
+.bubble{border-radius:10px;padding:12px 14px;font-family:var(--ui);font-size:14.5px;line-height:1.5;white-space:pre-wrap}
+.bulk .label{color:var(--ink-3)}
+.bulk .bubble{background:var(--grey-bg);color:var(--ink-2)}
+.bulk .verdict{margin:8px 0 0;font-size:13px;color:var(--ink-3)}
+.good .label{color:var(--green-ink)}
+.good .bubble{background:var(--green-bg);border:1px solid var(--green-line);color:var(--ink)}
+.good .verdict{margin:8px 0 0;font-size:13px;color:var(--ink-2)}
+
+.screen{margin-top:44px}
+.screen h3,.why h3{font-size:22px;margin:0 0 6px;font-weight:800;letter-spacing:-.01em}
+.screen > p{margin:0 0 16px;color:var(--ink-2);max-width:680px}
+.list{background:var(--paper);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);overflow:hidden;font-family:var(--ui)}
+.list .bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:12px 16px;border-bottom:1px solid var(--line);font-size:13px;color:var(--ink-2)}
+.list .bar strong{color:var(--ink);font-size:15px;margin-right:6px}
+.pill{border:1px solid var(--line);border-radius:999px;padding:2px 10px;font-size:12px}
+.pill.on{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+.row{display:grid;grid-template-columns:56px 1fr auto;gap:12px;align-items:center;padding:10px 16px;border-bottom:1px solid var(--line-2);font-size:14px}
+.row:last-child{border-bottom:0}
+.row .s{font-weight:700;font-variant-numeric:tabular-nums;color:var(--green-ink)}
+.row .s.mid{color:var(--ink-2)}
+.row .n{color:var(--link);font-weight:600}
+.row .h{color:var(--ink-3);font-size:13px;display:block}
+.row .b{display:flex;gap:6px}
+.btn{font-family:inherit;font-size:12px;border-radius:6px;border:1px solid var(--line);background:var(--paper);color:var(--ink);padding:4px 10px}
+
+.why{margin-top:44px;display:grid;grid-template-columns:1fr 1fr;gap:28px}
+.why ul{margin:8px 0 0;padding-left:18px;color:var(--ink-2)}
+.why li{margin-bottom:6px}
+.why li b{color:var(--ink)}
+.why p{margin:8px 0 0;color:var(--ink-2)}
+.close{max-width:680px;padding-block:36px 0}
+.close p{font-size:17px;color:var(--ink-2);margin:0 0 10px}
+.close a{color:var(--link)}
+
+@media (max-width:760px){
+  .msgs{grid-template-columns:1fr}
+  .msg + .msg{border-left:0;border-top:1px solid var(--line)}
+  .why{grid-template-columns:1fr}
+  .row{grid-template-columns:44px 1fr}
+  .row .b{grid-column:2}
+}
+</style>
+
+<div class="wrap">
+  <header class="lede">
+    <p class="eyebrow">Wingguy · Thanks for Connecting</p>
+    <h1>The message that decides whether you ever meet</h1>
+    <p>When someone accepts your connection request, most people say nothing. The rest send the same line to everybody. Nobody has ever written a real one to every new connection, because it took too long.</p>
+    <p><strong>Here are three new connections, what everyone sends them, and what Wingguy drafted in about twenty seconds each.</strong></p>
+    <p><span class="sample">Example - made-up people</span></p>
+  </header>
+
+  <section class="people" aria-label="Three example new connections">
+
+    <article class="person">
+      <div class="who">
+        <div class="avatar" style="background:#3a6ea5" aria-hidden="true">RT</div>
+        <div>
+          <h2>Rachel Tomlinson</h2>
+          <p class="head">Fractional CFO · Getting founder-led businesses bank-ready</p>
+          <p class="from"><b>From her About section</b>Twelve years in corporate lending before I switched sides of the table.</p>
+        </div>
+        <span class="score" title="Attitude score">86</span>
+      </div>
+      <div class="msgs">
+        <div class="msg bulk">
+          <p class="label">What everyone sends</p>
+          <div class="bubble">Thanks for connecting, Rachel! I'd love to learn more about your business. Let me know if you'd like to jump on a call.</div>
+          <p class="verdict">Could have gone to anyone. Deleted.</p>
+        </div>
+        <div class="msg good">
+          <p class="label">What Wingguy drafted</p>
+          <div class="bubble">Hi Rachel - thanks for connecting. Twelve years on the lender's side before switching sides means you know what the bank wants to see well before the founder does. I'm curious what made you jump.
+
+Worth a quick Zoom in the next couple of weeks?
+
+Guy</div>
+          <p class="verdict">One real detail, read properly, and a question about her. No pitch.</p>
+        </div>
+      </div>
+    </article>
+
+    <article class="person">
+      <div class="who">
+        <div class="avatar" style="background:#8a5a9e" aria-hidden="true">MO</div>
+        <div>
+          <h2>Marcus Obi</h2>
+          <p class="head">Head of Partnerships · Regional freight and logistics</p>
+          <p class="from"><b>From a recent post</b>We lost our biggest client last year. Here's what winning them back taught me about partnerships.</p>
+        </div>
+        <span class="score" title="Attitude score">81</span>
+      </div>
+      <div class="msgs">
+        <div class="msg bulk">
+          <p class="label">What everyone sends</p>
+          <div class="bubble">Thanks for connecting, Marcus! I'd love to learn more about your business. Let me know if you'd like to jump on a call.</div>
+          <p class="verdict">Exactly the same as Rachel's.</p>
+        </div>
+        <div class="msg good">
+          <p class="label">What Wingguy drafted</p>
+          <div class="bubble">Hi Marcus - thanks for connecting. Your post about winning back your biggest client stayed with me - most people only write about the wins, not the year in between. How did you get back in the door?
+
+I'd love to hear it over a quick Zoom if you're up for it.
+
+Guy</div>
+          <p class="verdict">He wrote that post hoping someone would notice. Someone did.</p>
+        </div>
+      </div>
+    </article>
+
+    <article class="person">
+      <div class="who">
+        <div class="avatar" style="background:#2f8f7a" aria-hidden="true">HP</div>
+        <div>
+          <h2>Helen Park</h2>
+          <p class="head">Workplace psychologist · Burnout prevention for professional services firms</p>
+          <p class="from"><b>From her profile</b>Runs a Saturday parkrun for 200 people. Works mostly with law and accounting firms.</p>
+        </div>
+        <span class="score" title="Attitude score">78</span>
+      </div>
+      <div class="msgs">
+        <div class="msg bulk">
+          <p class="label">What everyone sends</p>
+          <div class="bubble">Thanks for connecting, Helen! I'd love to learn more about your business. Let me know if you'd like to jump on a call.</div>
+          <p class="verdict">Three people, one message.</p>
+        </div>
+        <div class="msg good">
+          <p class="label">What Wingguy drafted</p>
+          <div class="bubble">Hi Helen - thanks for connecting. Burnout prevention for law and accounting firms is a brave niche - they're the people least likely to admit they need it. And a Saturday parkrun for 200 might be the best burnout prevention going. How do you get firms to say yes?
+
+Happy to compare notes on a quick Zoom.
+
+Guy</div>
+          <p class="verdict">Two details, connected. It reads like someone who was paying attention.</p>
+        </div>
+      </div>
+    </article>
+  </section>
+
+  <section class="screen">
+    <h3>It keeps your place, too</h3>
+    <p>The other reason nobody does this properly: on LinkedIn you'd have to dig through your recent connections and remember who you'd already thanked. The Thanks for Connecting screen does the remembering. Everyone who's accepted and not yet been thanked, score beside them. Click a name, type /wg in the message box, and the draft is there. Mark them Messaged and they drop off the list.</p>
+    <div class="list" aria-label="Example Thanks for Connecting list">
+      <div class="bar"><strong>Thanks for Connecting</strong><span class="pill on">Outstanding only</span><span class="pill">All recent</span><span class="pill">Highest score first</span></div>
+      <div class="row"><span class="s">86</span><span><span class="n">Rachel Tomlinson</span><span class="h">Fractional CFO · Brisbane</span></span><span class="b"><span class="btn">Messaged</span><span class="btn">Skipped</span></span></div>
+      <div class="row"><span class="s">81</span><span><span class="n">Marcus Obi</span><span class="h">Head of Partnerships · Toowoomba</span></span><span class="b"><span class="btn">Messaged</span><span class="btn">Skipped</span></span></div>
+      <div class="row"><span class="s">78</span><span><span class="n">Helen Park</span><span class="h">Workplace psychologist · Melbourne</span></span><span class="b"><span class="btn">Messaged</span><span class="btn">Skipped</span></span></div>
+      <div class="row"><span class="s mid">54</span><span><span class="n">Daniel Frost</span><span class="h">Sales Director · Sydney</span></span><span class="b"><span class="btn">Messaged</span><span class="btn">Skipped</span></span></div>
+    </div>
+  </section>
+
+  <section class="why">
+    <div>
+      <h3>Why the second one works</h3>
+      <ul>
+        <li><b>Short.</b> Four lines, not a letter.</li>
+        <li><b>Specific.</b> One real thing from their world, understood, not parroted back.</li>
+        <li><b>Curious.</b> It asks about them. The whole point is to find out what they do.</li>
+        <li><b>Patient.</b> No pitch, no link, no booking page. Just an easy yes to a conversation.</li>
+      </ul>
+    </div>
+    <div>
+      <h3>And it sounds like you</h3>
+      <p>These are written from my instructions. Yours start out the same way, already reading like a person rather than a machine. Then you shape them to how you talk, and Wingguy learns from every change you make to a draft before you send it.</p>
+      <p>On day one it's good. A few weeks in, it reads like you - and I find it often sounds more like me than I do at the end of a long day.</p>
+    </div>
+  </section>
+
+  <section class="close">
+    <p>Twenty seconds each, for every new connection. That's the difference between a list of people you're connected to and a diary full of conversations.</p>
+    <p><a href="/follow-ups-example">See what happens after the conversation</a> · <a href="/a-day-in-the-life">Here's what it's all for</a></p>
+  </section>
+</div>
