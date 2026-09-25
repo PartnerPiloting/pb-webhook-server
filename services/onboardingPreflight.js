@@ -265,7 +265,7 @@ async function runPreflight(clientId) {
     const raw14 = (client.rawRecord && client.rawRecord._rawJson && client.rawRecord._rawJson.fields) || {};
     const seriesStart = raw14['Email Series Start Date'] || '';
     step(14, 'linked helper + VPS', MANUAL,
-      'the CLOSING step for new clients - hookup + Campaign 1 once targeting is decided and the profile says connector; trial clock starts at first campaign launch; offer the VPS, never re-pitch a no'
+      'the CLOSING step for new clients - hookup + the connect campaign once targeting is decided and the profile says connector; trial clock starts at first campaign launch; offer the VPS, never re-pitch a no'
       + (seriesStart ? ` · email series starts ${seriesStart}` : ' · Email Series Start Date NOT SET - set it at this session'));
   } catch (e) {
     step(14, 'linked helper + VPS', MANUAL, `the CLOSING step for new clients (series-date probe failed: ${e.message})`);

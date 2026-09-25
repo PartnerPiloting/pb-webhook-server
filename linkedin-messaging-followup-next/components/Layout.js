@@ -57,7 +57,7 @@ const NavigationWithParams = ({ pathname, showThanksForConnecting = false, showW
     // Optional since 2026-09-25 (Guy): the method is now one connect campaign + Thanks for Connecting.
     // hideGate, not gate: only an explicit master "Top Scoring Leads" = No hides it, so existing
     // clients keep the tab and new clients (provisioned No) don't see it. URL stays reachable.
-    { name: 'Top Scoring Leads', href: '/top-scoring-leads', icon: TrophyIcon, description: 'Pick the best candidates for the next LH batch', minLevel: 1, hideGate: 'topScoringLeadsOff', fn: 'Top Scoring Leads' },
+    { name: 'Top Scoring Leads', href: '/top-scoring-leads', icon: TrophyIcon, description: 'Optional: existing network or narrow audiences', minLevel: 1, hideGate: 'topScoringLeadsOff', fn: 'Top Scoring Leads' },
     // Per-client rollout: only shown when the master "Thanks for Connecting" switch is on (gated below).
     { name: 'Thanks for Connecting', href: '/thanks-for-connecting', icon: HandRaisedIcon, description: 'Welcome your recent connections', minLevel: 1, gate: 'thanksForConnecting', fn: 'Thanks for Connecting' },
     // Per-client Wingguy rollout: the setup page (and the what's-changed page via its own nav).

@@ -9,9 +9,9 @@ paragraph, ` - ` dashes, Australian English. Every email ends with a clear "send
 
 - Warm one-liner acknowledging how they signed up.
 - Portal login link + "save it somewhere handy, you only see the token once".
-- ONE reading ask, pinpointed ("the orientation at the top of the Setup section under Start here"),
-  with why ("covers where Linked Helper fits - it goes in last, on purpose, and the reading
-  explains what we build first and why").
+- ONE reading ask, pinpointed - a named Wingguy Learning topic they ask Claude for (e.g. "ask
+  Claude for the process, start to finish"), with why ("covers where Linked Helper fits - it goes
+  in last, on purpose, and it explains what we build first and why").
 - Two think-abouts, not tasks: who the first outreach lists are, and how many discovery calls a
   week they'd genuinely commit to ("start smaller than feels ambitious").
 - Offer 2-3 concrete session times, "(all times are Brisbane time)" if same tz - otherwise the
@@ -73,8 +73,8 @@ first - the email inherits its truthfulness from the preflight, never from memor
 ## 3. Day-of ("one link to click before we start")
 *Real example: "Today's session - one link to click before we start" to Owen, 19 Aug 2026.*
 
-- Open by acknowledging their completed homework specifically ("campaign uploaded, webhook
-  renamed, Premium sorted... scoring away quietly every night since").
+- Open by acknowledging their completed homework specifically ("campaign started, first
+  acceptances landing, Premium sorted... scoring each new connection as it arrives").
 - The ONE action for today with the link in the email.
 - Today's agenda in two lines.
 

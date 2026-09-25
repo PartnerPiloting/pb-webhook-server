@@ -134,7 +134,7 @@ const MASTER_FIELDS = [
   {
     name: 'Email Series Start Date',
     type: 'date',
-    description: 'When the client email series (the 14-piece drip, content/one-pagers/SERIES-ARC.md) starts for this client. Per-client choice, set during onboarding; the convention is the END of onboarding (the Linked Helper launch session), so the drip takes over the drumbeat when the weekly sessions stop and fills the collection quiet zone. Blank = series not started. The drip engine (not yet built) sends nothing before this date. Added 2026-08-23.',
+    description: 'When the client email series (22 emails - twice a week for 1-15, then weekly; order in config/onePagerSeriesManifest.js) starts for this client. Per-client choice, set during onboarding; the convention is the END of onboarding (the Linked Helper launch session), so the drip takes over the drumbeat when the weekly sessions stop and fills the collection quiet zone. Blank = series not started. The drip engine (not yet built) sends nothing before this date. Added 2026-08-23.',
     options: { dateFormat: { name: 'iso', format: 'YYYY-MM-DD' } }
   },
   {

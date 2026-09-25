@@ -146,7 +146,7 @@ function catalogueCard(pieces, extras = [], { qs = '', note } = {}) {
   const main = pieces.map((p, i) => item(p, p.num || i + 1)).join('\n');
   const extraBlock = extras.length ? `
       <h2 class="op-h2-more">Also in the library</h2>
-      <p class="op-note">Not part of the weekly run - a little more craft, for anyone who wants to go deeper.</p>
+      <p class="op-note">Not part of the email run - a little more craft, for anyone who wants to go deeper.</p>
       <ul class="op-plain">${extras.map(p => item(p)).join('\n')}</ul>` : '';
 
   return `<div class="op op-cat">

@@ -185,7 +185,7 @@ export default function RescorePanel() {
               className={`px-3 py-2 rounded text-white ${busy || (estimate && !estimate.fits) ? 'bg-gray-300 cursor-not-allowed' : 'bg-emerald-700 hover:bg-emerald-600'}`}
               disabled={busy || (estimate && !estimate.fits)}
               onClick={() => startRun('commit')}
-              title="Re-scores and SAVES. New scores flow into Top Scoring Leads."
+              title="Re-scores and SAVES. New scores show wherever your leads do - Thanks for Connecting, search, Top Scoring Leads."
             >{starting ? "Starting…" : "Re-score & apply"}</button>
           )}
           {error && <span className="text-sm text-red-600">{error}</span>}

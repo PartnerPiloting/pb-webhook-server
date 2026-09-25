@@ -325,8 +325,8 @@ Premium users aren't missing that.
 
 **A tactic if the Sales Navigator price makes you wince.** It is a lot more per month. So take it
 for the free trial period, run your searches hard, fill up Linked Helper's queue with everyone you
-can get - then close it back down to Premium. The people are already extracted into your own
-database by then, and you may not need another search for months.
+can get - then close it back down to Premium. The people are already sitting in Linked Helper's
+queue by then, and you may not need another search for months.
 
 **What's a boolean?** Just the words **AND**, **OR** and **NOT**, used to combine your search terms -
 *"Finance Broker OR Loan Broker AND New South Wales"*. That's all it is. Two rules matter: they must
@@ -980,7 +980,8 @@ after.
 
 This is where the scoring earns its keep, and it's a quick job once you're in the rhythm of it.
 
-In the portal, your people come up with **their score beside them**. That's all the score is for - it
+On your **Thanks for Connecting** screen, your new connections come up with **their score beside
+them**. That's all the score is for - it
 puts the promising ones in front of you and keeps you from spending your attention evenly across
 everybody.
 
