@@ -657,7 +657,11 @@ async function runReferrals(args = {}, tenant = TENANT) {
   };
 
   if (client) {
-    const theirs = rows.filter((r) => r.clientRecordId === client.id);
+    // A client-to-client introduction hangs off ONE of the two clients; the other is its Person.
+    // "Who have I introduced Dean to?" must find it from either side.
+    const nameOf = (s) => String(s || '').trim().toLowerCase();
+    const theirs = rows.filter((r) => r.clientRecordId === client.id
+      || (r.direction === 'From Guy' && nameOf(r.person) === nameOf(client.clientName)));
     const lines = [standing(client), ''];
     lines.push(theirs.length ? theirs.map(referralLine).join('\n') : '  (no introductions on record yet)');
     return { text: lines.join('\n') };
@@ -887,7 +891,7 @@ const TOOL_DEFS = [
   },
   {
     name: 'wingguy_referrals',
-    description: 'Coach-only referral tracking: who introduced whom to Guy, what came of each introduction, and what Guy owes back. action=list (default) shows one client\'s standing (pass client) or the whole book: introductions in play, signed, how many referred clients are ACTIVE AND PAYING right now (the maintained count that earns the reduced rate - 3 = at the rate), and the intros Guy has promised but not yet made. action=log records a new introduction (person + client + direction: "To Guy" = the client introduced this person to Guy; "From Guy" = Guy introduced this person to the client or to a prospect - pass introduced_to). action=update moves a row along (stage, note); stage=Signed also needs became_client so the new client\'s Introduced By is set. Use it whenever an introduction is made, a referred prospect has a call or demo, or Guy asks "how many has X referred" / "what do I owe Roland".',
+    description: 'Coach-only referral tracking: who introduced whom to Guy, what came of each introduction, and what Guy owes back. action=list (default) shows one client\'s standing (pass client) or the whole book: introductions in play, signed, how many referred clients are ACTIVE AND PAYING right now (the maintained count that earns the reduced rate - 3 = at the rate), and the intros Guy has promised but not yet made. action=log records a new introduction (person + client + direction: "To Guy" = the client introduced this person to Guy; "From Guy" = Guy introduced this person to the client or to a prospect - pass introduced_to). action=update moves a row along (stage, note); stage=Signed also needs became_client so the new client\'s Introduced By is set. Use it whenever an introduction is made, a referred prospect has a call or demo, or Guy asks "how many has X referred" / "what do I owe Roland". INTRODUCTIONS GUY MAKES are logged BY THEMSELVES when drafted through wingguy_create_draft (one email to two people, at least one a client): a From Guy row at Promised, moved to Introduced once the send shows up. Do NOT log those again here - only log introductions made outside a Wingguy draft (phone, LinkedIn, in person). "Who have I introduced X to?" = action=list client=X (finds X on either side). When the queue/brief lists INTRODUCTIONS TO CHECK ON, record Guy\'s answer with action=update: they met -> stage "Call held", went nowhere -> "Went quiet", anything else -> a note.',
     zodSchema: {
       action: z.enum(['list', 'log', 'update']).optional().describe('list (default) | log a new introduction | update an existing row'),
       client: z.string().optional().describe('Client name or id. list: narrow to this client. log: the client the intro is tied to (referrer for To Guy, recipient for From Guy).'),

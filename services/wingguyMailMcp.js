@@ -618,6 +618,20 @@ async function runCreateDraft({ to, subject, html_body, cc, bcc, reply_to, reply
     followUpLine = `⚠ Follow-up stamp skipped (${e.message}) — the draft is fine, but the queue won't pick this lead up unless the BCC lands.\n`;
   }
 
+  // --- Introduction log (best-effort): a draft introducing one of the coach's clients to someone
+  // becomes a Referrals row, marked made once the send shows up (services/wingguyIntroductions.js).
+  let introLine = '';
+  try {
+    introLine = await require('./wingguyIntroductions').logIntroductionDraft({
+      tenant, coach,
+      recipients: [...recipients, ...mailProvider.toParticipants(cc)],
+      subject, text: htmlToText(detected.html), threadId: result.threadId,
+      selfEmails: coachOwnEmails(coach),
+    });
+  } catch (e) {
+    introLine = `⚠ This looks like an introduction but it was NOT logged (${e.message}) - log it with wingguy_referrals action=log direction="From Guy".\n`;
+  }
+
   const toStr = recipients.map((r) => r.email).join(', ');
   const bccStr = mailProvider.toParticipants(bcc).map((r) => r.email).join(', ');
   const threadLine = reply_to_message_id
@@ -634,6 +648,7 @@ async function runCreateDraft({ to, subject, html_body, cc, bcc, reply_to, reply
       threadLine +
       ledgerLine +
       followUpLine +
+      introLine +
       `To: ${toStr}${bccStr ? ` · Bcc: ${bccStr}` : ''} · Subject: ${String(subject).trim()}\n` +
       `It is sitting in the Drafts folder of the email account connected to Wingguy (Outlook, Gmail, whichever was linked - not necessarily Gmail). Open it there, give it a final read, and send. Links are stored exactly as written.`,
   };
@@ -1376,7 +1391,7 @@ const TOOL_DEFS = [
   {
     name: 'wingguy_create_draft',
     description:
-      'Create an email DRAFT (never sends) in the coach\'s own connected mailbox (Outlook, Gmail or other - whatever they linked) with hyperlinks intact. ALWAYS use this for email drafts, never any other email connector — links land exactly as written (other connectors rewrite them), and it threads: pass reply_to_message_id (from wingguy_find_message) and the draft lands IN the existing conversation. html_body is the full HTML body; put real <a href="...">text</a> links in and they are stored exactly as written; {{asset:key}} placeholders resolve to the asset library\'s stored URL. DEAD LINKS: a body carrying the URL of a RETIRED asset is refused outright - when a link moves, the old address is banned, so never reproduce a URL from an old email or from memory; take links from the asset library. ASSET GATE: library links in the body are logged per-lead at draft time, and a draft repeating an asset to the same lead is refused unless resend_ok — check wingguy_lead_history when unsure. FOLLOW-UP: creating the draft also stamps the lead\'s Follow-Up Date to 14 days out (To recipients that match a lead; never the coach\'s own address, and never pulled back from a later date already set), so the person enters the follow-up queue whether or not the tracking BCC is used. Returns a draftId; the coach opens the draft, reads it, and sends it themselves.',
+      'Create an email DRAFT (never sends) in the coach\'s own connected mailbox (Outlook, Gmail or other - whatever they linked) with hyperlinks intact. ALWAYS use this for email drafts, never any other email connector — links land exactly as written (other connectors rewrite them), and it threads: pass reply_to_message_id (from wingguy_find_message) and the draft lands IN the existing conversation. html_body is the full HTML body; put real <a href="...">text</a> links in and they are stored exactly as written; {{asset:key}} placeholders resolve to the asset library\'s stored URL. DEAD LINKS: a body carrying the URL of a RETIRED asset is refused outright - when a link moves, the old address is banned, so never reproduce a URL from an old email or from memory; take links from the asset library. ASSET GATE: library links in the body are logged per-lead at draft time, and a draft repeating an asset to the same lead is refused unless resend_ok — check wingguy_lead_history when unsure. FOLLOW-UP: creating the draft also stamps the lead\'s Follow-Up Date to 14 days out (To recipients that match a lead; never the coach\'s own address, and never pulled back from a later date already set), so the person enters the follow-up queue whether or not the tracking BCC is used. INTRODUCTIONS: a draft to exactly two people (To + Cc) that introduces one of the coach\'s clients to someone is logged in the coach\'s Referrals by itself (the reply says so) - never log it again with wingguy_referrals. Returns a draftId; the coach opens the draft, reads it, and sends it themselves.',
     zodSchema: {
       to: z.array(z.object({ email: z.string(), name: z.string().optional() })).describe(RECIP_DESC),
       subject: z.string().describe('The email subject line.'),
@@ -1924,6 +1939,7 @@ async function buildQueue(tenant = TENANT) {
   const todayIso = new Date().toISOString().slice(0, 10);
   let briefPreparedAt = null;
   let backlogCreatedAt = null;
+  let introChecks = [];
   // Read-time guard (2026-09-12, Melissa Jarmyn): a stored park date that contradicts the advice
   // line it sits beside is dropped here too, so entries built before the guard never show a
   // wrong one-click date. Lazy require - the brief module requires this one.
@@ -1932,6 +1948,7 @@ async function buildQueue(tenant = TENANT) {
     const row = await briefStore.getBrief(tenant);
     const p = row && row.payload ? (typeof row.payload === 'string' ? JSON.parse(row.payload) : row.payload) : null;
     briefPreparedAt = (p && p.preparedAt) || null;
+    introChecks = (p && p.introductions) || [];
     const builtAt = briefPreparedAt; // for the live re-check's cease-waiver comparison
     for (const it of ((p && p.items) || [])) {
       const draftState = deriveDraftState(it);
@@ -1978,7 +1995,7 @@ async function buildQueue(tenant = TENANT) {
   // three days rides on the queue, because the queue is what the coach reads each morning and the
   // updater itself never tells anyone. Best-effort - [] on any failure, never blocks the queue.
   const fleetAlerts = await require('./extensionDistStore').darkMachinesForCoach(tenant);
-  return { items: live.items, preGateCount, dismissedCount, suppressed: live.suppressed, briefPreparedAt, backlogCreatedAt, fleetAlerts };
+  return { items: live.items, preGateCount, dismissedCount, suppressed: live.suppressed, briefPreparedAt, backlogCreatedAt, fleetAlerts, introChecks };
 }
 
 // "Offered times have passed" (Guy 2026-09-11): the coach's last message offered dated slots,
@@ -2011,6 +2028,13 @@ async function attachOfferedTimesFlags(items, tenant, todayIso) {
   }
 }
 
+/** The introductions section the queue and the brief both carry ('' when none are due). */
+function introChecksNote(checks) {
+  if (!(checks || []).length) return '';
+  const { CHECK_DAYS } = require('./wingguyIntroductions');
+  return `\n\nINTRODUCTIONS TO CHECK ON (${checks.length}) - relay one plain line each and ask how it went. Record the answer with wingguy_referrals action=update person=<name>: "they met" -> stage "Call held"; "went nowhere" -> stage "Went quiet"; anything else ("remind me later", what they said) -> a note. Any answer quietens it for ${CHECK_DAYS} days. Never contact either person unasked:\n${checks.map((c) => `- ${c.line}`).join('\n')}`;
+}
+
 async function runQueue({ page } = {}, tenant = TENANT) {
   // THE DOOR RULE (Guy 2026-08-15, the day the Follow-Ups screen shipped): the SCREEN is the
   // volume door — chat is the thinking door. A client WITH the screen gets pointed at it first
@@ -2032,13 +2056,16 @@ async function runQueue({ page } = {}, tenant = TENANT) {
   const fleetNote = (q.fleetAlerts || []).length
     ? `⚠ MACHINE CHECK — relay this first, one plain line per person, before the queue: ${q.fleetAlerts.map((a) => a.line).join(' ')}\n`
     : '';
-  if (!q.preGateCount) return { text: `${screenDoor}${fleetNote}The queue is empty — nothing actionable right now (parked people surface on their dates).` };
+  // Introductions gone quiet (2026-09-25, services/wingguyIntroductions.js) - worked out overnight
+  // with the brief, served here because "my follow-ups" lands on the queue, not the brief.
+  const introNote = introChecksNote(q.introChecks);
+  if (!q.preGateCount) return { text: `${screenDoor}${fleetNote}The queue is empty — nothing actionable right now (parked people surface on their dates).${introNote}` };
   const deduped = q.items;
   const supp = q.suppressed;
   const suppTotal = supp.booked + supp.ceased + supp.parked + supp.messaged;
   const doneNote = q.dismissedCount ? `, ${q.dismissedCount} marked done on the Follow-Ups screen` : '';
   if (!deduped.length) {
-    return { text: `${screenDoor}${fleetNote}The queue is empty — nothing actionable right now (parked people surface on their dates${suppTotal ? `; the live re-check dropped ${suppTotal}: ${supp.messaged} already messaged since the list was built, ${supp.booked} already booked, ${supp.ceased} ceased, ${supp.parked} parked on a reconnect stamp` : ''}${doneNote}).` };
+    return { text: `${screenDoor}${fleetNote}The queue is empty — nothing actionable right now (parked people surface on their dates${suppTotal ? `; the live re-check dropped ${suppTotal}: ${supp.messaged} already messaged since the list was built, ${supp.booked} already booked, ${supp.ceased} ceased, ${supp.parked} parked on a reconnect stamp` : ''}${doneNote}).${introNote}` };
   }
   // Chat line per item kind — recommendation-first (Guy 2026-08-29): the triage's advice headline
   // leads when it exists; why_line is the fallback for pre-change payloads.
@@ -2079,6 +2106,7 @@ async function runQueue({ page } = {}, tenant = TENANT) {
     ...slice.map((it, i) => `${(pg - 1) * PAGE + i + 1}. ${nm(it)}${draftLink(it)} — ${lineFor(it)}${angleLine(it)}${jogLine(it)}`),
   ];
   if (pg < totalPages) lines.push(`(${deduped.length - pg * PAGE} more — say "next ten".)`);
+  if (pg === 1 && introNote) lines.push(introNote);
   if (suppTotal || q.dismissedCount) lines.push(`\n[live re-check — do not relay unless asked: dropped ${suppTotal} stale entr${suppTotal === 1 ? 'y' : 'ies'} (${supp.messaged} already messaged since the list was built, ${supp.booked} already booked, ${supp.ceased} ceased, ${supp.parked} parked on a reconnect stamp)${doneNote}.]`);
   lines.push('', LEVERS_NOTE);
   return { text: lines.join('\n') };
@@ -2304,4 +2332,4 @@ async function legacyToolCall(toolName, args, tenant = TENANT) {
 // (content/client-phrases.json). Must run before export - see utils/clientPhrases.js for the why.
 require('../utils/clientPhrases').applyClientPhrases(TOOL_DEFS);
 
-module.exports = { registerWingguyMailTools, legacyToolList, legacyToolCall, TOOL_DEFS, detectAssets, findRetiredUrls, findLeftoverPlaceholders, htmlToText, stripQuotedTail, settleEmailEditPairs, parseLinkedInLast, linkedInEverInbound, classifyLead, computeMailSignals, computeFollowupSweep, runFollowupSweep, chooseFollowUpStamp, coachOwnEmails, stampFollowUpForDraft, buildQueue, deriveDraftState, draftMarker };
+module.exports = { registerWingguyMailTools, legacyToolList, legacyToolCall, TOOL_DEFS, detectAssets, findRetiredUrls, findLeftoverPlaceholders, htmlToText, stripQuotedTail, settleEmailEditPairs, parseLinkedInLast, linkedInEverInbound, classifyLead, computeMailSignals, computeFollowupSweep, runFollowupSweep, chooseFollowUpStamp, coachOwnEmails, stampFollowUpForDraft, buildQueue, deriveDraftState, draftMarker, introChecksNote };
