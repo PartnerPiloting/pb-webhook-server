@@ -44,6 +44,9 @@ const NavigationWithParams = ({ pathname, showThanksForConnecting = false, showW
   const serviceLevel = parseInt(searchParams.get('level') || '2', 10);
   const clientParam = searchParams.get('client') || searchParams.get('testClient') || '';
   const nav = [
+    // FIRST on purpose (Guy, 25 Sep 2026): the tab bar reads as the full list of what a client can do, and
+    // most of Wingguy has no tab. Was "Start Here"; the URL stays /start-here so old links still land.
+    { name: 'What Wingguy can do', href: '/start-here', icon: BookOpenIcon, description: 'Everything it does, and where', minLevel: 1 },
     { name: 'Lead Search & Update', href: '/', icon: MagnifyingGlassIcon, description: 'Find and update existing leads', minLevel: 1, fn: 'Lead Search & Update' },
     // Guy's tab rule (2026-08-15): a client with the smart Follow-Ups screen does NOT also see the
     // simple manager — `hideGate` hides this tab when that gate is on. The /follow-up page itself
@@ -66,8 +69,7 @@ const NavigationWithParams = ({ pathname, showThanksForConnecting = false, showW
     { name: 'My Wingguy', href: '/my-wingguy', icon: SparklesIcon, description: 'Your setup, and what has changed', minLevel: 1, gate: 'wingguy', fn: 'My Wingguy' },
     // LEGACY-DISABLED 2026-05-16: Top Scoring Posts retired (Apify cost). Resurrect by un-commenting.
     // { name: 'Top Scoring Posts', href: '/top-scoring-posts', icon: TrophyIcon, description: 'Leads with high-relevance posts ready for action', minLevel: 2 },
-    { name: 'Settings', href: '/settings', icon: CogIcon, description: 'Configure scoring attributes and settings', minLevel: 1, fn: 'Settings' },
-    { name: 'Start Here', href: '/start-here', icon: BookOpenIcon, description: 'How to learn the system', minLevel: 1 }
+    { name: 'Settings', href: '/settings', icon: CogIcon, description: 'Configure scoring attributes and settings', minLevel: 1, fn: 'Settings' }
   ];
   const gates = { thanksForConnecting: showThanksForConnecting, wingguy: showWingguy, followupsScreen: showFollowupsScreen, topScoringLeadsOff: hideTopScoringLeads };
   // An assistant sees only the tabs their row has ticked (fn names match the Assistants table's

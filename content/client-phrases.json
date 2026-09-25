@@ -58,37 +58,42 @@
     {
       "phrase": "show me my follow-ups",
       "tool": "wingguy_queue",
-      "where": ["docs/client-playbook.md", "docs/client-tour.md"]
+      "where": ["docs/client-playbook.md", "docs/client-tour.md", "linkedin-messaging-followup-next/app/start-here/page.tsx"]
     },
     {
       "phrase": "let's set up my instructions",
       "tool": "wingguy_setup_rules",
-      "where": ["docs/client-tour.md"]
+      "where": ["docs/client-tour.md", "linkedin-messaging-followup-next/app/start-here/page.tsx"]
     },
     {
       "phrase": "what can I do with Wingguy?",
       "tool": "wingguy_vision",
-      "where": ["docs/wingguy-onboarding-checklist.md"]
+      "where": ["docs/wingguy-onboarding-checklist.md", "linkedin-messaging-followup-next/app/start-here/page.tsx"]
     },
     {
       "phrase": "review my edits",
       "tool": "wingguy_edit_review",
-      "where": ["docs/client-playbook.md"]
+      "where": ["docs/client-playbook.md", "linkedin-messaging-followup-next/app/start-here/page.tsx"]
     },
     {
       "phrase": "prep me for my meetings",
       "tool": "wingguy_list_events",
-      "where": ["docs/wingguy-onboarding-checklist.md", "docs/client-playbook.md"]
+      "where": ["docs/wingguy-onboarding-checklist.md", "docs/client-playbook.md", "linkedin-messaging-followup-next/app/start-here/page.tsx"]
     },
     {
       "phrase": "what's on my calendar this week?",
       "tool": "wingguy_list_events",
-      "where": ["docs/wingguy-onboarding-checklist.md"]
+      "where": ["docs/wingguy-onboarding-checklist.md", "linkedin-messaging-followup-next/app/start-here/page.tsx"]
     },
     {
       "phrase": "book it",
       "tool": "wingguy_book_meeting",
-      "where": ["docs/client-playbook.md"]
+      "where": ["docs/client-playbook.md", "linkedin-messaging-followup-next/app/start-here/page.tsx"]
+    },
+    {
+      "phrase": "draft the follow-up from my last call",
+      "tool": "wingguy_dossier",
+      "where": ["linkedin-messaging-followup-next/app/start-here/page.tsx"]
     }
   ],
   "near_misses": [
