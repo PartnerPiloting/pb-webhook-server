@@ -1239,6 +1239,37 @@ until Fathom's bot-free version reaches Windows.
 
 ---
 
+## NEW LEADS - PEOPLE YOU'VE MET, AND ADDING SOMEONE BY HAND
+
+Most of your people arrive through Linked Helper. But some of the best ones don't - you meet them on
+a call, someone introduces you, you get chatting at an event. The New Leads screen is how they get
+into your system too, so they get the same prep and follow-up as everyone else.
+
+**People you've met.** When a recorded call has someone on it who isn't in your system yet, they
+don't vanish. They wait on New Leads, under "People you've met who aren't in Wingguy yet". Click
+**Add** and they become a lead with the call's transcript already attached, so their prep and
+follow-up start from what you actually discussed. **Skip** takes them off the list for good - use it
+for the assistant who came along to take notes, not for someone you're unsure about. When people
+are waiting, you'll also get one short email a week listing them, so nobody you've met slips
+through.
+
+**No LinkedIn link? Add them anyway.** For someone you only know from a call or an email, the
+LinkedIn link is optional. Add it when you find their profile - that's what lets them be scored.
+
+**Adding someone by hand.** Met someone at an event, or been handed a name? Use the form on the same
+screen. Put in what you have, and a line on how you met - that's the most useful thing you can add.
+
+**Possible matches.** Sometimes the same person turns up twice - their work email on one call, their
+personal one on another. New Leads shows them side by side. Choose **Same person - combine**, or
+**Different people** and it won't ask again. It never combines anyone on a name alone - that's
+always your call.
+
+Why it matters: someone you met and forgot to add is the most expensive miss in this whole system.
+They were warm, and they went cold only because they weren't on any list. This screen is how that
+stops happening.
+
+---
+
 ## BEFORE EVERY CALL - get ready for the meeting: Wingguy will brief you, and remind you what was said on the last call
 
 With a few calls a week, it happens to everybody: you sit down to a call and can't quite remember
