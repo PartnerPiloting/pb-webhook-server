@@ -502,19 +502,19 @@ the safest.
 This is the flow underneath everything, and you and Guy set it up together as the closing step of
 your onboarding.
 
-1. **You feed the search URL into Linked Helper.** It extracts all the people from that search into
-   its queue, ready for a campaign. You can keep adding searches to the queue whenever you like.
-2. **The campaign works through the queue** at a rate per day you set. Often it's as simple as: visit
-   their profile, let them see you've visited, then send the connection request - mostly to
-   second-level connections, meaning new people. You're aiming for **45% to 50%** of the people you
-   reach out to actually connecting - for context, most people running outreach would call 35%
-   exceptional.
-3. **Linked Helper pushes what it finds straight into your database.** As it visits each profile it
-   extracts everything on it, and a live connection - a webhook - updates your own leads database in
-   the I Know A Guy system. Nothing to export, nothing to import.
-4. **Once a day, anything in your database that hasn't been scored gets scored** - on headline, About
-   section and posts, against the attributes you've set up. That's the attitude filter doing its
-   work, and it's happening from the moment profiles start landing - not just once people accept.
+1. **You feed the search URL into Linked Helper.** It collects everyone in that search into its
+   queue, ready for the campaign. You can keep adding searches whenever you like.
+2. **The campaign works through the queue** at a steady, safe pace, sending each person your
+   connection request with a short "let's collaborate" note - mostly second-level connections,
+   meaning new people. You're aiming for **50% to 60%** of them to accept - for context, most people
+   running outreach would call 35% exceptional.
+3. **The people who accept flow straight into your database.** Linked Helper visits each new
+   connection's profile, extracts everything on it, and a live connection - a webhook - updates your
+   own leads database in the I Know A Guy system. Nothing to export, nothing to import. The people
+   who don't accept never arrive, so your database only holds people who said yes.
+4. **Each new connection gets scored** - on headline, About section and posts, against the
+   attributes you've set up. That's the attitude filter, and it's what puts the promising ones at
+   the top of your Thanks for Connecting screen.
 
 From that point on, your database is the record of everything: every message, every reply, every
 meeting.

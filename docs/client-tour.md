@@ -152,18 +152,18 @@ full thinking.
 This is the beat where it all clicks together - and it's one you and Guy do live on a call, so
 here I'll just give you the shape of what's coming.
 
-Your search feeds Linked Helper. Linked Helper visits each person, extracts their profile, sends
-your connection request, and pushes everything it finds straight into your own database - no
-exporting, no spreadsheets. Then, once a day, everyone new gets scored against your attributes.
-From that point on, your database is the record of everything.
+Your search feeds Linked Helper. It sends your connection request with a short note in your words,
+and the people who accept flow straight into your own database - no exporting, no spreadsheets -
+where each one is scored and lands on your Thanks for Connecting screen. From that point on, your
+database is the record of everything.
 
-On the call, you and Guy will build your first campaign together - the settings, the pacing, the
-overnight working hours, and the pipe into your database - and then prove it works by watching a
-few real people land in your portal before leaving it to run.
+On the call, you and Guy go through your campaign together. It comes already built, so the work is
+making the connection note yours, putting your search in, and starting it. Then we watch for the
+first acceptances to land in your portal, which proves the pipe works.
 
 **Your move:** nothing to do solo here - just make sure the machine from the Linked Helper beat is
 ready, and bring your search URL to the call. If you're curious beforehand, the topics on *the
-plumbing* and *your first campaign* explain every setting and why it's set that way.
+plumbing* and *your first campaign* explain each step and why it's there.
 
 ---
 
