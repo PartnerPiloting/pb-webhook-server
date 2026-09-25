@@ -403,5 +403,5 @@ echo "  1. RDP to this machine (pick 'LinkedHelperConsole', password = your VNC 
 echo "  2. Log Linked Helper into the client's LH account + LinkedIn (one-time verification)"
 echo "  3. Tick 'Restart after updates' in the Launcher's Check-and-install-updates screen"
 echo "  4. Watch one watchdog cycle: systemctl start lh-watchdog.service; journalctl -u lh-watchdog"
-echo "  5. Build the standard campaigns (instance open + LinkedIn logged in): lh-build-campaigns.sh"
+echo "  5. Build the connect campaign (instance open + LinkedIn logged in): lh-build-campaigns.sh"
 echo "     then show the client what was built: lh-campaigns.py list / show <id>"

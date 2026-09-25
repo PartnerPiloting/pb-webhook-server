@@ -154,6 +154,14 @@ was skipped.
 
 ### Standard campaigns by script (PROVEN 11 Sep 2026)
 
+**ONE campaign by default (Guy, 25 Sep 2026).** `lh-build-campaigns.sh` with no arguments builds only
+recipe 03, the connect campaign: connection request, keep only who accepts, extract them into Wingguy,
+where they are scored and worked on Thanks for Connecting. That is the whole method now. Recipes 01
+(visit and extract - used to wake up a client's existing network) and 02 (top scorers - the old
+score-first route, for a narrow-audience client) stay installed and are built by name when needed:
+`lh-build-campaigns.sh visit-and-extract`, or `--all`. Recipe 03 carries Guy's own name and connection
+note - rename it and rewrite the note in the client's words in the UI straight after building.
+
 Nobody builds campaigns by hand or from a CSV template any more. `lh-build-campaigns.sh` (installed
 by the build) asks the running instance to create each campaign in
 `/usr/local/share/linked-helper/campaigns/*.json` through Linked Helper's own create command - the
