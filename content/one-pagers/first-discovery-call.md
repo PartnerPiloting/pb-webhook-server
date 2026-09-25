@@ -33,6 +33,8 @@ If you've fumbled a few of these already - walked in and started pitching, felt 
 <!-- ENDING:CLIENT -->
 So before your next one, drop the spiel. Don't prepare a word about yourself. Prepare your curiosity instead - a handful of genuine questions about them and their world - and walk in to discover, not to sell.
 
+And when you meet someone on a call who isn't in your system yet, you don't have to remember to add them. They'll be waiting on your New Leads screen with the transcript attached - one click.
+
 "Fine," I hear you say, "but if I'm not pitching myself, what on earth do I actually *say* for half an hour?" Fair question - and it's a craft of its own. That's exactly where we go next.
 <!-- /ENDING:CLIENT -->
 
