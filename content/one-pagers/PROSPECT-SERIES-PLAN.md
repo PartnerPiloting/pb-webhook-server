@@ -48,9 +48,16 @@ Subjects/From/preheader are **wrapper** (same drawer as greeting + footer) - pag
 Rejected: `I know a guy #N:` subject prefix (doubles the From, eats ~16 chars); title-only no
 numbering (most personal, least series-sense).
 
-## The client run (send order) - 24 emails (banked 2026-07-08; #42, #82, #84 added 2026-09-24)
+## The client run (send order) - 22 emails (banked 2026-07-08; #42, #82, #84 added 2026-09-24; #20, #65 cut 2026-09-25)
 
 Journey order, map first (they've bought - orientation before persuasion), paradigm/proof interleaved as breathers so it isn't five philosophy emails before anything actionable. Guy's law: everything vies for a higher slot, but there are only so many - this is good enough to ship, not to keep reshuffling.
+
+**Decided 2026-09-25 (Guy):**
+- **Pace: TWICE A WEEK for emails 1-15** (the journey steps - they must land while the client is doing that step, not weeks after), **then WEEKLY for 16 onward** (the vision pieces - presence, slowness is the feature). ~7.5 weeks + ~7 weeks = ~15 weeks. At this pace patience-curve (#9) lands around week 5, before the month-three flat stretch it's about - so it stays at #9.
+- **Cut from the client run:** pleasing-methods (#20) and you-could-build-this (#65). Both argue a prospect out of an option a paying client has already ruled out (breakfast networking; building it yourself), and neither had a client ending. Both stay in the prospect run and the library.
+- **four-hours-not-forty (#60) now has split endings:** prospect keeps the "couldn't I build that myself? That's next" tease into #65; client gets a this-week action with no tease (builders-not-blobs opens fresh, needs no bridge).
+- **Still to write: a referral piece** (clients introducing people to Guy - the referral rate went live 14 Sep, after the series was locked). Slot: after i-know-a-guy-principle. Source: the referral doctrine drafts.
+- **Review pass:** Guy reviews every client email one by one, in send order, before the client drip is switched on. #1 (the-process) and #22 (increase-your-intelligence) need a FACT check against today's product - both locked 2026-07-07, before Unipile, the follow-up queue, prep-me-for-today and people-you've-met shipped.
 
 | # | Piece | Role |
 |---|---|---|
@@ -69,17 +76,15 @@ Journey order, map first (they've bought - orientation before persuasion), parad
 | 13 | discovery-call-craft (#47) | step 6 (craft) |
 | 14 | reason-to-follow-up (#40) | step 7 |
 | 15 | every-link-is-homework (#42) | step 7 (craft) - the right link at the right moment |
-| 16 | pleasing-methods (#20) | reinforcement (shakiest slot - it's really a prospect piece; droppable) |
-| 17 | four-hours-not-forty (#60) | feasibility |
-| 18 | you-could-build-this (#65) | objection |
-| 19 | builders-not-blobs (#67) | vision setup |
-| 20 | nodes (#70) | **step 8** |
-| 21 | i-know-a-guy-principle (#80) | **step 9** |
-| 22 | ten-thousand-people (#82) | the inner circle + wider network |
-| 23 | introductions-that-land (#84) | step 9 (craft) - writing an introduction |
-| 24 | increase-your-intelligence (#90) | **step 10** |
+| 16 | four-hours-not-forty (#60) | feasibility - **weekly from here** |
+| 17 | builders-not-blobs (#67) | vision setup |
+| 18 | nodes (#70) | **step 8** |
+| 19 | i-know-a-guy-principle (#80) | **step 9** |
+| 20 | ten-thousand-people (#82) | the inner circle + wider network |
+| 21 | introductions-that-land (#84) | step 9 (craft) - writing an introduction |
+| 22 | increase-your-intelligence (#90) | **step 10** |
 
-Known soft spots (accepted, not blockers): #50's drip-week vs the client's real campaign-week can't fully align (would move earlier before later); #20 is the most droppable; three orientation emails up front (#12/#5/#10) is the ceiling before an eager client needs something to *do*. Client-run endings use each file's `ENDING:CLIENT` block (or the shared body where there's no split).
+Known soft spots (accepted, not blockers): #50's drip-week vs the client's real campaign-week can't fully align (the twice-a-week front half mostly solves it); three orientation emails up front (#12/#5/#10) is the ceiling before an eager client needs something to *do*. Client-run endings use each file's `ENDING:CLIENT` block (or the shared body where there's no split).
 
 ## Who gets what (audience routing)
 - **Prospect drip** = the 17 above (paradigm only).

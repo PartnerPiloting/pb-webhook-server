@@ -27,7 +27,7 @@ const CLIENT_MAP_SLUG = 'the-process';     // the client library landing (#12, s
 // skips" is deliberately KEPT (Guy judged it library-safe for warm prospects).
 // The pages themselves stay reachable at /series/:slug — this only hides them
 // from the browse list. The client view (?audience=client) ignores this list:
-// these pieces are steps 1, 13 and 24 of the client run, and hiding them from
+// these pieces are steps 1, 13 and 22 of the client run, and hiding them from
 // the audience they were written for was a bug, not a boundary.
 const HIDDEN_FROM_CATALOGUE = new Set([
   MAP_SLUG,

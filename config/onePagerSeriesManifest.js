@@ -2,7 +2,7 @@
 //
 // The SEND ORDER for each audience. This is NOT the frontmatter `order` (that's
 // the arc position). Source of truth = content/one-pagers/PROSPECT-SERIES-PLAN.md
-// (prospect run = 18, client run = 24). The drip walks these arrays: a person
+// (prospect run = 18, client run = 22). The drip walks these arrays: a person
 // with "Series Sent Count" = N is due list[N] next (0-indexed); when N reaches
 // the array length, their run is complete.
 
@@ -47,15 +47,16 @@ const client = [
   'discovery-call-craft',        // 13 step 6 (craft)
   'reason-to-follow-up',         // 14 step 7
   'every-link-is-homework',      // 15 step 7 (craft) - the right link at the right moment
-  'pleasing-methods',            // 16 reinforcement
-  'four-hours-not-forty',        // 17 feasibility
-  'you-could-build-this',        // 18 objection
-  'builders-not-blobs',          // 19 vision setup
-  'nodes',                       // 20 step 8
-  'i-know-a-guy-principle',      // 21 step 9
-  'ten-thousand-people',         // 22 the inner circle + wider network
-  'introductions-that-land',     // 23 step 9 (craft) - writing an introduction
-  'increase-your-intelligence',  // 24 step 10 (Wingguy)
+  'four-hours-not-forty',        // 16 feasibility (client ending: a this-week action, no build-it tease)
+  'builders-not-blobs',          // 17 vision setup
+  'nodes',                       // 18 step 8
+  'i-know-a-guy-principle',      // 19 step 9
+  'ten-thousand-people',         // 20 the inner circle + wider network
+  'introductions-that-land',     // 21 step 9 (craft) - writing an introduction
+  'increase-your-intelligence',  // 22 step 10 (Wingguy)
 ];
+// 2026-09-25 (Guy): pleasing-methods and you-could-build-this CUT from the
+// client run - both argue a prospect out of an option a client has already
+// ruled out. They stay in the prospect run and the library.
 
 module.exports = { prospect, client };

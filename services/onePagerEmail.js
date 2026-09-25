@@ -10,7 +10,7 @@
 // Email numbering per audience:
 //   prospect: #1 = the intro (permission/value, no teaching), #2..#19 = the 18
 //             manifest pieces. So content index = sentCount - 1.
-//   client:   #1..#21 = the 21 manifest pieces; #1 (the map) carries a welcome
+//   client:   #1..#22 = the 22 manifest pieces; #1 (the map) carries a welcome
 //             opener folded in. Content index = sentCount.
 
 const content = require('./onePagerContent');

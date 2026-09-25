@@ -24,8 +24,14 @@ Here's the part I want to be careful about, though, because it's where people mi
 
 Which is where the title comes from. Work that used to cost you the equivalent of forty hours of dread and effort - or, more honestly, work that simply never got done because the load was too high - now costs something like four. And because it costs almost nothing, you actually do it. Consistently. Which, as we've seen, was the entire game all along. The quiet gift here isn't speed. It's that the floor comes up: the tired-you at the end of a long day still sends something genuinely good, because the expensive part isn't resting on your willpower anymore.
 
+<!-- ENDING:PROSPECT -->
 Now - if you've been reading all this thinking *"hang on, if it's just tech doing the heavy lifting, couldn't I simply build that myself?"* - that's a fair thought, and a common one. It deserves a proper answer.
 
 That's next.
+<!-- /ENDING:PROSPECT -->
+
+<!-- ENDING:CLIENT -->
+So here's one for this week. Notice the touch you'd normally let slide because it's late and you're tired - the thank-you, the follow-up, the "saw this and thought of you" - and send it anyway, with the heavy part done for you. That's the whole game, played on an ordinary Tuesday.
+<!-- /ENDING:CLIENT -->
 
 <!-- Draft 2026-07-08. NEW launch-set piece #60 (was tagged post-launch; promoted to launch by Guy 2026-07-08 - "all in"). Both audiences, outsider-safe. Penny-drop: networking lapses not from laziness/lack-of-skill but from COGNITIVE LOAD (mentally expensive per-person) - and that load is now removable. Built from arc + wingguy.md sweep: friction-removal-not-eloquence (barrier was never message quality; thoughtful-per-person is mentally expensive so it doesn't get done; AI drops the cost → CONSISTENCY is the real results channel; AI raises the quality FLOOR - tired-human-at-9pm); "assistant who was in all your meetings" (transcripts-as-memory, "prep me for today's meetings" / "draft the follow-up"); "the real competitor is the client's TIME"; lead-with-the-goal-not-the-tech + "in the future you won't say an AI business, it'll just be a business" (Alasdair). TECH KEPT GENERIC - Wingguy NOT named (staged reveal; #90 is the adopt-the-tools CTA, this is the deeper FEASIBILITY paradigm - per arc's #60-vs-#90 split). Callback to #50 (consistency = the game). Ends teasing #65 ("I could build that") = its companion piece. Prospect-safe: feasibility argument, no product/pricing, no CTA. VA story (parked for #60) held back - may become its own piece or fold in later. -->
