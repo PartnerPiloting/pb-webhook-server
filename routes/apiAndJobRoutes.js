@@ -10604,6 +10604,8 @@ router.post("/api/onboard-client", async (req, res) => {
       'Wingguy Enabled': 'Yes',
       'Thanks for Connecting': 'Yes',
       'Followup Brief': 'Yes',
+      // Top Scoring Leads starts hidden (Guy, 2026-09-25): one connect campaign is the method now.
+      'Top Scoring Leads': 'No',
     };
     
     // Add optional fields if provided

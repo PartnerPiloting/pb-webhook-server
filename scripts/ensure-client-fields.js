@@ -155,6 +155,17 @@ const MASTER_FIELDS = [
     }
   },
   {
+    name: 'Top Scoring Leads',
+    type: 'singleSelect',
+    description: 'Per-client switch for the Top Scoring Leads portal tab. BLANK or Yes = shown (every client before this field existed keeps it). No = hidden. New clients are provisioned with No (Guy, 2026-09-25): the method is now the one connect campaign + Thanks for Connecting. Flip to Yes for a client waking up their existing network or with a narrow audience. Added 2026-09-25.',
+    options: {
+      choices: [
+        { name: 'Yes', color: 'greenBright' },
+        { name: 'No', color: 'grayBright' }
+      ]
+    }
+  },
+  {
     name: 'Followup Brief',
     type: 'singleSelect',
     description: 'Per-client switch for the overnight PREPARED follow-up brief (services/wingguyFollowupBrief.js): Yes = the nightly cron prepares this client\'s brief (sweep + read their threads + triage + pre-write reply drafts, stored for instant serving in their Wingguy chat). Blank/No = not prepared automatically (they can still trigger it on demand in chat). Opt-in by design. Added 2026-07-23.',

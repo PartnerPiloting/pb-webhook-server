@@ -84,6 +84,8 @@ router.get('/test', authenticateUserWithTestMode, async (req, res) => {
         topScoringPosts: (req.client.serviceLevel || 1) >= 2,
         // Per-client rollout switch for the "Thanks for Connecting" worklist tab
         thanksForConnecting: req.client.thanksForConnectingEnabled === true,
+        // Top Scoring Leads tab, hidden only on an explicit No (a missing key keeps it shown)
+        topScoringLeadsHidden: req.client.topScoringLeadsHidden === true,
         // Per-client Wingguy switch: gates the "My Wingguy" tab (setup + what's-changed pages)
         wingguy: req.client.wingguyEnabled === true,
         // The Follow-Ups screen rides the SAME switch as the overnight stores it is a window

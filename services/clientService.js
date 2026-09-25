@@ -222,6 +222,9 @@ async function getAllClients() {
                 // Connecting" Yes/No switch; lookback bounds the Outstanding queue (default applied
                 // in the route when blank). Added 2026-06-20.
                 const thanksForConnectingEnabled = record.get('Thanks for Connecting') === 'Yes';
+                // Top Scoring Leads tab: blank/Yes = shown (every client before 2026-09-25), No = hidden.
+                // New clients are provisioned with No - the method is now the one connect campaign.
+                const topScoringLeadsHidden = record.get('Top Scoring Leads') === 'No';
                 const connectionLookbackDays = Number(record.get('Connection Lookback Days')) || null;
                 // The email of the LinkedIn/Linked Helper account allowed to post into this client's
                 // webhook (LH announces it as my_email on every payload). Optional field; when blank
@@ -324,6 +327,7 @@ async function getAllClients() {
                     coachPhone: coachPhone,
                     // "Thanks for Connecting" worklist gate + lookback (per-client rollout)
                     thanksForConnectingEnabled: thanksForConnectingEnabled,
+                    topScoringLeadsHidden: topScoringLeadsHidden,
                     connectionLookbackDays: connectionLookbackDays,
                     // LH sender guard: which LinkedIn account may post into this client's webhook
                     lhAccountEmail: lhAccountEmail,

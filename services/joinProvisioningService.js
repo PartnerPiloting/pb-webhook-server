@@ -442,6 +442,7 @@ async function stepFinishRow(job) {
     'Wingguy Enabled': 'Yes',
     'Thanks for Connecting': 'Yes',
     'Followup Brief': 'Yes',
+    'Top Scoring Leads': 'No',
     'Coach': COACH_ID,
     'Coaching Status': 'Active',
     // From their lead record when it could be pinned; Brisbane (Guy's own) only as the fallback,
