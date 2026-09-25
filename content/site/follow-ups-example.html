@@ -1,0 +1,287 @@
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800&display=swap">
+<style>
+:root{
+  --bg:#f5f7fa; --paper:#ffffff; --ink:#172033; --ink-2:#4a5568; --ink-3:#7b8494;
+  --line:#e3e7ee; --line-2:#eef1f5;
+  --link:#2358c9;
+  --green:#157a47; --green-bg:#e3f5ea; --green-ink:#0f6b3c;
+  --amber-bg:#fdf1c7; --amber-ink:#8a5a00; --amber-line:#f0d27a;
+  --blue-bg:#e2edfb; --blue-ink:#1d5bb0; --blue:#1d64b8;
+  --red:#c42b2b; --red-bg:#fde4e4; --red-ink:#a52020;
+  --btn-bg:#ffffff; --btn-line:#d5dbe4;
+  --shadow:0 1px 2px rgba(23,32,51,.05),0 8px 24px rgba(23,32,51,.06);
+  --font:"Figtree",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --ui:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --bg:#0f141c; --paper:#161d28; --ink:#e6ebf3; --ink-2:#b3bccb; --ink-3:#8590a3;
+    --line:#29323f; --line-2:#212936;
+    --link:#7fa8f5;
+    --green:#2f9e63; --green-bg:#173726; --green-ink:#7fd8a6;
+    --amber-bg:#3a2e10; --amber-ink:#f0c562; --amber-line:#6b5418;
+    --blue-bg:#16294a; --blue-ink:#8fb6f2; --blue:#3a78d0;
+    --red:#d64545; --red-bg:#3d1a1c; --red-ink:#f19a9a;
+    --btn-bg:#1c2431; --btn-line:#334052;
+    --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px rgba(0,0,0,.3);
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#0f141c; --paper:#161d28; --ink:#e6ebf3; --ink-2:#b3bccb; --ink-3:#8590a3;
+  --line:#29323f; --line-2:#212936;
+  --link:#7fa8f5;
+  --green:#2f9e63; --green-bg:#173726; --green-ink:#7fd8a6;
+  --amber-bg:#3a2e10; --amber-ink:#f0c562; --amber-line:#6b5418;
+  --blue-bg:#16294a; --blue-ink:#8fb6f2; --blue:#3a78d0;
+  --red:#d64545; --red-bg:#3d1a1c; --red-ink:#f19a9a;
+  --btn-bg:#1c2431; --btn-line:#334052;
+  --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px rgba(0,0,0,.3);
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--font);font-size:16px;line-height:1.55;padding-inline:16px;padding-block:0 64px}
+.wrap{max-width:1120px;margin:0 auto}
+.lede{max-width:680px;padding-block:56px 32px}
+.eyebrow{font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);font-weight:700;margin:0 0 14px}
+h1{font-size:clamp(30px,4.6vw,46px);line-height:1.1;letter-spacing:-.02em;font-weight:800;margin:0 0 18px;text-wrap:balance}
+.lede p{color:var(--ink-2);font-size:18px;margin:0 0 12px}
+.lede p strong{color:var(--ink)}
+
+/* the screen */
+.screen{background:var(--paper);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);overflow:hidden;font-family:var(--ui)}
+.bar{display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--line);background:var(--line-2)}
+.dot{width:10px;height:10px;border-radius:50%;background:var(--btn-line)}
+.bar .url{margin-left:10px;font-size:12px;color:var(--ink-3);background:var(--paper);border:1px solid var(--line);border-radius:6px;padding:3px 10px;flex:1;max-width:360px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sample{margin-left:auto;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--amber-ink);background:var(--amber-bg);border:1px solid var(--amber-line);border-radius:999px;padding:2px 10px;white-space:nowrap}
+.head{padding:18px 20px 14px;border-bottom:1px solid var(--line)}
+.head-top{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.head h2{font-size:18px;margin:0 8px 0 0;font-weight:700}
+.pill{font-size:12px;border-radius:999px;padding:2px 10px;border:1px solid var(--line);color:var(--ink-2);background:var(--paper);font-variant-numeric:tabular-nums}
+.pill.count{background:var(--blue-bg);color:var(--blue-ink);border-color:transparent;font-weight:600}
+.pill.hidden-n{background:var(--amber-bg);color:var(--amber-ink);border-color:var(--amber-line)}
+.head p{margin:8px 0 0;font-size:13px;color:var(--ink-2)}
+.head p span{color:var(--ink-3)}
+.cols{display:grid;grid-template-columns:128px 1fr auto;gap:16px;padding:8px 20px;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);border-bottom:1px solid var(--line)}
+.row{display:grid;grid-template-columns:128px 1fr auto;gap:16px;align-items:start;padding:14px 20px;border-bottom:1px solid var(--line-2);transition:opacity .35s ease, transform .35s ease}
+.row.leaving{opacity:0;transform:translateX(24px)}
+.chip{display:inline-block;font-size:10px;font-weight:700;letter-spacing:.05em;line-height:1.3;text-transform:uppercase;border-radius:4px;padding:3px 6px;max-width:112px}
+.c-judge{background:var(--amber-bg);color:var(--amber-ink)}
+.c-reply{background:var(--green-bg);color:var(--green-ink)}
+.c-park{background:var(--blue-bg);color:var(--blue-ink)}
+.c-drop{background:var(--red-bg);color:var(--red-ink)}
+.who{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-bottom:3px}
+.name{color:var(--link);font-weight:600;font-size:15px}
+.tag{font-size:11px;border-radius:999px;padding:1px 8px;border:1px solid var(--line);color:var(--ink-2)}
+.t-ready{background:var(--green-bg);color:var(--green-ink);border-color:transparent}
+.t-warn{background:var(--amber-bg);color:var(--amber-ink);border-color:var(--amber-line)}
+.advice{font-size:14px;color:var(--ink);margin:0}
+.ask{margin-top:6px;display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--link);background:none;border:0;padding:0;cursor:pointer;font-family:inherit}
+.ask i{font-style:normal;display:inline-grid;place-items:center;width:15px;height:15px;border-radius:3px;background:var(--link);color:var(--paper);font-size:10px;font-weight:700}
+.acts{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.btn{font-family:inherit;font-size:13px;border-radius:6px;border:1px solid var(--btn-line);background:var(--btn-bg);color:var(--ink);padding:6px 12px;cursor:pointer;white-space:nowrap}
+.btn:hover{border-color:var(--ink-3)}
+.btn:focus-visible,.ask:focus-visible{outline:2px solid var(--link);outline-offset:2px}
+.btn[disabled]{color:var(--ink-3);cursor:default;opacity:.6}
+.btn.go{background:var(--green);border-color:var(--green);color:#fff;font-weight:600}
+.btn.parkto{background:var(--blue);border-color:var(--blue);color:#fff;font-weight:600}
+.btn.drop-rec{background:var(--red);border-color:var(--red);color:#fff;font-weight:600}
+.btn.drop{color:var(--red)}
+.panel{grid-column:2 / -1;margin-top:10px;border:1px solid var(--line);border-radius:8px;background:var(--line-2);padding:12px 14px;font-size:14px}
+.panel .q{font-weight:600;margin:0 0 6px}
+.panel .a{margin:0;color:var(--ink-2)}
+.draft{white-space:pre-wrap;background:var(--paper);border:1px solid var(--line);border-radius:6px;padding:10px 12px;margin:8px 0 0;color:var(--ink);font-family:inherit;font-size:14px}
+.panel .note{margin:8px 0 0;font-size:12px;color:var(--ink-3)}
+.empty{padding:40px 20px;text-align:center;color:var(--ink-2)}
+.empty strong{display:block;font-size:17px;color:var(--ink);margin-bottom:6px}
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%) translateY(20px);background:var(--ink);color:var(--bg);font-size:14px;padding:10px 16px;border-radius:8px;max-width:min(92vw,560px);opacity:0;pointer-events:none;transition:opacity .25s,transform .25s;font-family:var(--font)}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+/* explainer */
+.notes{display:grid;grid-template-columns:repeat(3,1fr);gap:28px;padding-block:44px 8px}
+.notes h3{font-size:17px;margin:0 0 8px;font-weight:700}
+.notes p{margin:0;color:var(--ink-2);font-size:15px}
+.legend{display:flex;flex-direction:column;gap:6px;margin-top:10px}
+.legend div{display:flex;gap:8px;align-items:baseline;font-size:14px;color:var(--ink-2)}
+.close{max-width:680px;padding-block:36px 0}
+.close p{font-size:18px;color:var(--ink-2);margin:0}
+.close p strong{color:var(--ink)}
+
+@media (max-width:760px){
+  .cols{display:none}
+  .row{grid-template-columns:1fr;gap:8px}
+  .acts{justify-content:flex-start}
+  .panel{grid-column:1}
+  .notes{grid-template-columns:1fr}
+  .bar .url{display:none}
+}
+@media (prefers-reduced-motion:reduce){.row,.toast{transition:none}}
+</style>
+
+<div class="wrap">
+  <header class="lede">
+    <p class="eyebrow">Wingguy · Follow-Ups</p>
+    <h1>Every morning, your follow-ups are already sorted</h1>
+    <p>Overnight, Wingguy reads every conversation you've had - LinkedIn, email, call recordings. It works out who you owe a reply or a nudge, says in one line what it would do and why, and drafts the message where one is needed.</p>
+    <p><strong>Nothing happens until you click.</strong> Draft, Done, Park or Drop. Try it below - the people are made up, but the screen is the real one.</p>
+  </header>
+
+  <section class="screen" aria-label="Example Follow-Ups screen">
+    <div class="bar" aria-hidden="true">
+      <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+      <span class="url">portal / followups</span>
+      <span class="sample">Example - made-up names</span>
+    </div>
+    <div class="head">
+      <div class="head-top">
+        <h2>Follow-Ups</h2>
+        <span class="pill count" id="count">10 to action</span>
+        <span class="pill" id="cleared">0 cleared this session</span>
+        <span class="pill hidden-n">12 already handled - hidden</span>
+      </div>
+      <p>Everyone you owe a reply or a nudge. Click a name to open LinkedIn, Ask what is going on, then Draft, Done, Park or Drop. <span>Overnight brief prepared this morning.</span></p>
+    </div>
+    <div class="cols" aria-hidden="true"><span>Status</span><span>Lead</span><span style="text-align:right">Action</span></div>
+    <div id="rows"></div>
+  </section>
+
+  <section class="notes">
+    <div>
+      <h3>It sorts before you arrive</h3>
+      <p>The work happens overnight. By the time you sit down, every person has a verdict and a reason, and anyone who has already replied or booked has dropped off the list.</p>
+      <div class="legend">
+        <div><span class="chip c-reply">Reply owed</span> the ball is in your court</div>
+        <div><span class="chip c-judge">Needs judgement</span> too delicate for a template</div>
+        <div><span class="chip c-park">Park</span> a dated reason to wait</div>
+        <div><span class="chip c-drop">Drop</span> stop chasing, door left open</div>
+      </div>
+    </div>
+    <div>
+      <h3>It remembers what was said</h3>
+      <p>The recommendation comes from the actual conversation - the promise you made on the call, the times you offered that have now passed, the "try me in October". Click Ask and it will tell you the whole story, or write the message with you.</p>
+    </div>
+    <div>
+      <h3>You stay in charge</h3>
+      <p>Drop only means you stop chasing. Nobody is removed from LinkedIn, and if they get back in touch, they show up again. Park brings them back on the date you choose. Every action is your click, never the system's.</p>
+    </div>
+  </section>
+
+  <section class="close">
+    <p>The follow-up is where most network building quietly fails - not because people don't care, but because it slips. <strong>This screen is how it stops slipping.</strong></p>
+    <p style="margin-top:20px;font-size:16px">Not sure why you'd do any of this? <a href="/a-day-in-the-life" style="color:var(--link)">Here's what it's all for.</a></p>
+  </section>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+const PEOPLE = [
+  {id:'a', name:'Priya Menon', chip:'judge', tags:[['no draft - ask below','']],
+   advice:"I'd look at this one personally - there are two competing reschedule threads (Thu 3pm vs the newer Fri 11am) and Priya just apologised for a mix-up, so a canned reply risks tangling the calendar further.",
+   ask:["What's going on with Priya?","You offered Thursday 3pm by email on the 12th. Two days later on LinkedIn she suggested Friday 11am instead, then apologised for double-booking herself. Neither time has been confirmed. I'd reply on LinkedIn, where she last wrote, and settle on Friday 11am - it's still free in your calendar."]},
+  {id:'b', name:'Tom Hallett', chip:'reply', tags:[['draft ready','ready']], draft:true,
+   advice:"I'd send Tom a light check-in - he said he'd come back once his big project delivery calmed down, and enough time has passed that a no-pressure nudge is fair without being pushy.",
+   text:"Hi Tom,\n\nHope the project has settled down a bit. You mentioned you'd be clearer once delivery wrapped up - no rush at all, but if you'd still like to pick up where we left off, I'm around the week after next.\n\nCheers,\nGuy"},
+  {id:'c', name:'Grace Okafor', chip:'park', tags:[['no draft - ask below','']], parkTo:'Oct 20',
+   advice:"I'd park Grace to 20 Oct - she's travelling until mid-October and agreed to reconnect about next steps once she's back."},
+  {id:'d', name:'Daniel Reyes', chip:'reply', tags:[['draft ready','ready']], draft:true,
+   advice:"I'd draft a check-in to Daniel - he promised an update after his board meeting on the 3rd and it never came, and the two intros you promised him are still outstanding too.",
+   text:"Hi Daniel,\n\nHow did the board meeting land? No pressure on the update - I also owe you those two introductions, so I'll send them through this week either way.\n\nCheers,\nGuy"},
+  {id:'e', name:'Sophie Tran', chip:'drop', tags:[['no draft - ask below','']], dropRec:true,
+   advice:"I'd drop Sophie - she's said clearly she's not looking for anything new and is happy with things ticking along. A clean close, and the door stays open."},
+  {id:'f', name:'Mark Ellison', chip:'reply', tags:[['open thread, use /wg','warn'],['offered times have passed','warn']], card:true,
+   advice:"I'd reply confirming a coffee time with Mark - you offered three slots and he hasn't picked one, and all three have now passed.",
+   ask:["What times could I offer Mark now?","Your calendar has Tuesday 10am and Wednesday 2pm free next week, and neither clashes with anything. I'd offer those two and say you'll send a link once he picks. Want me to write it?"]},
+  {id:'g', name:'Hannah Kowalski', chip:'judge', tags:[['no draft - ask below','']],
+   advice:"I'd have you personally follow up with Hannah - you owe her the promised links, plus a real answer to her question about whether you make introductions yourself or just coach the system. That deserves a considered reply, not a canned one."},
+  {id:'h', name:'Leila Haddad', chip:'drop', tags:[['no draft - ask below','']], dropRec:true,
+   advice:"I'd drop Leila for now - she asked to sit with the pricing decision for a few weeks and said she'd reach out herself when ready, so the ball is genuinely hers."},
+  {id:'i', name:'Ben Achterberg', chip:'reply', tags:[['open thread, use /wg','warn']], card:true,
+   advice:"I'd send Ben a quick note to reschedule - he confirmed the call twice but didn't show, and your last message asking for a new time went unanswered."},
+  {id:'j', name:'Chris Donnelly', chip:'judge', tags:[['no draft - ask below','']],
+   advice:"I'd check in personally - Chris asked to understand what you do before committing to a call, and the recording clips you promised haven't gone out yet."}
+];
+const CHIP = {judge:['c-judge','Needs judgement'], reply:['c-reply','Reply owed'], park:['c-park','Park recommended'], drop:['c-drop','Drop recommended']};
+let live = PEOPLE.slice(), cleared = 0;
+const rowsEl = document.getElementById('rows');
+const esc = s => s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+function render(){
+  if(!live.length){
+    rowsEl.innerHTML = '<div class="empty"><strong>All caught up.</strong>That\'s the morning done. <br><br><button class="btn" id="reset">Reset the example</button></div>';
+    document.getElementById('reset').onclick = () => { live = PEOPLE.slice(); cleared = 0; render(); };
+  } else {
+    rowsEl.innerHTML = live.map(p => {
+      const [cls,label] = CHIP[p.chip];
+      const tags = p.tags.map(([t,k]) => `<span class="tag ${k==='ready'?'t-ready':k==='warn'?'t-warn':''}">${esc(t)}</span>`).join('');
+      let first = '';
+      if(p.draft) first = `<button class="btn go" data-act="draft" data-id="${p.id}">Draft</button>`;
+      else if(p.card) first = `<button class="btn go" data-act="card" data-id="${p.id}">Card</button>`;
+      else if(p.parkTo) first = `<button class="btn parkto" data-act="park" data-id="${p.id}">Park to ${p.parkTo}</button>`;
+      else if(p.chip==='judge') first = `<button class="btn" disabled>Draft</button>`;
+      return `<div class="row" id="row-${p.id}">
+        <div><span class="chip ${cls}">${label}</span></div>
+        <div>
+          <div class="who"><span class="name">${esc(p.name)}</span>${tags}</div>
+          <p class="advice">${esc(p.advice)}</p>
+          <button class="ask" data-act="ask" data-id="${p.id}"><i>?</i>Ask</button>
+        </div>
+        <div class="acts">${first}
+          <button class="btn" data-act="done" data-id="${p.id}">Done</button>
+          <button class="btn" data-act="park" data-id="${p.id}">Park</button>
+          <button class="btn ${p.dropRec?'drop-rec':'drop'}" data-act="drop" data-id="${p.id}">Drop</button>
+        </div>
+        <div class="panel" id="panel-${p.id}" hidden></div>
+      </div>`;
+    }).join('');
+  }
+  document.getElementById('count').textContent = `${live.length} to action`;
+  document.getElementById('cleared').textContent = `${cleared} cleared this session`;
+}
+
+let toastT;
+function toast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), 3200);
+}
+
+function remove(id, msg){
+  const row = document.getElementById('row-'+id);
+  row.classList.add('leaving');
+  toast(msg);
+  setTimeout(() => { live = live.filter(p => p.id !== id); cleared++; render(); }, 350);
+}
+
+function openPanel(p, html){
+  const el = document.getElementById('panel-'+p.id);
+  if(!el.hidden && el.dataset.kind === html.kind){ el.hidden = true; return; }
+  el.innerHTML = html.body; el.dataset.kind = html.kind; el.hidden = false;
+}
+
+rowsEl.addEventListener('click', e => {
+  const b = e.target.closest('[data-act]'); if(!b) return;
+  const p = live.find(x => x.id === b.dataset.id); if(!p) return;
+  const first = p.name.split(' ')[0];
+  switch(b.dataset.act){
+    case 'done':  remove(p.id, `Done - ${first} is off today's list.`); break;
+    case 'park':  remove(p.id, `Parked - ${first} comes back ${p.parkTo ? 'on '+p.parkTo : 'on the date you pick'}.`); break;
+    case 'drop':  remove(p.id, `Dropped - no more chasing ${first}. If they get in touch, they'll show up again.`); break;
+    case 'draft':
+      openPanel(p, {kind:'draft', body:`<p class="q">Draft ready - email</p><div class="draft">${esc(p.text)}</div><p class="note">In the real screen this goes straight into your email drafts to check and send. Nothing is sent for you.</p>`});
+      break;
+    case 'card':
+      openPanel(p, {kind:'card', body:`<p class="q">LinkedIn - open the thread</p><p class="a">This conversation lives on LinkedIn, so Wingguy doesn't pre-write it. Open ${esc(first)}'s thread, type <strong>/wg</strong>, and the extension writes the reply right there, reading the whole conversation first.</p>`});
+      break;
+    case 'ask': {
+      const qa = p.ask || [`What's the story with ${first}?`, 'Ask gives you the full history in plain English - every call, email and message with this person, what was promised on each side, and what it would do next. It can check your calendar for real free times and write the message with you.'];
+      openPanel(p, {kind:'ask', body:`<p class="q">${esc(qa[0])}</p><p class="a">${esc(qa[1])}</p>`});
+      break;
+    }
+  }
+});
+
+render();
+</script>

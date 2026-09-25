@@ -136,6 +136,14 @@ const PAGES = {
     title: 'What an introduction looks like - I Know A Guy',
     description: 'One line in a chat, and this is the draft waiting in your mailbox - a two-sided introduction, names made up, layout real.',
   },
+  // A clickable copy of the portal Follow-Ups screen with made-up people (real
+  // leads' circumstances must never appear on a public page). Linked from the
+  // day page's morning section and from series email "reason-to-follow-up".
+  followupsExample: {
+    file: 'follow-ups-example.html',
+    title: 'Your follow-ups, already sorted - I Know A Guy',
+    description: 'A clickable example of the Wingguy Follow-Ups screen - every morning, who is owed a reply, what to do about it, and the message drafted. Names made up, screen real.',
+  },
   rejoinThanks: {
     file: 'rejoin-thanks.html',
     title: 'Welcome back - I Know A Guy',
@@ -264,6 +272,7 @@ module.exports = function mountMarketingSite(app) {
   router.get('/the-numbers', servePage(PAGES.numbers));
   router.get('/your-machine', servePage(PAGES.machine));
   router.get('/introduction-example', servePage(PAGES.introExample));
+  router.get('/follow-ups-example', servePage(PAGES.followupsExample));
   router.get('/guy', servePage(PAGES.guy));
   router.get('/privacy', servePage(PAGES.privacy));
   router.get('/terms', servePage(PAGES.terms));

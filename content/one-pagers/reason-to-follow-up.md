@@ -34,6 +34,10 @@ Look at what that changes. The moment the two of you are both out there, deliber
 
 So don't hand your best conversations over to goodwill and hope. Before you leave one, plant the reason to return - something to share, someone to introduce, a thread to pick up next time. Relationships live on motion.
 
+<!-- ENDING:CLIENT -->
+Keeping track of all those threads is exactly what the Follow-Ups screen in Wingguy is for - each morning it shows who's owed a reply, what you promised, and what it would do next, with the message drafted. [Here's what it looks like](https://knowaguy.com.au/follow-ups-example), with made-up names. If it isn't switched on for you yet, just ask me.
+<!-- /ENDING:CLIENT -->
+
 Keep that up, with the right people, and a curious thing happens. Somewhere along the way you cross a quiet line - from someone who *networks* to someone who *builds* - and what began as tending a handful of relationships one at a time turns into something that grows on its own. That's the whole point of everything so far, and it's where we finish.
 
 <!-- Approved final by Guy 2026-07-07 (enriched with mutual-building strategy + networker->builder threshold tease). First draft 2026-07-07. #40, map step 7. Penny-drop: relationships persist on MOTION, not goodwill - "let's stay in touch/refer each other" dies because there's nothing to come back FOR; you need a reason (give-first: something to share, someone to introduce, a thread to pick up - NOT "got any referrals?"). Ties to #47's two-call structure (first-call-about-them hands you the reason). Then the MULTIPLICATION seed, kept light per coordination: the follow-up is where you spot BUILDERS + start teaching them → they build their own → their finds flow back to you. Teases #70 (step 8, nodes - "grows on its own... where we finish"). Coordination held: #40 = follow-up mechanism + FIRST builder-identification + teaching; the full nodes crescendo stays #70; the builders-not-blobs paradigm stays #67. Outsider-safe, both audiences, no tech. -->
