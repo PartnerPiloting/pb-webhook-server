@@ -87,13 +87,15 @@ Here's the whole thing in order, so you can see where any one piece fits.
 3. **Build the search on LinkedIn.** You need a paid account. Work the boolean out with Claude
    rather than alone, then look at the actual people it returns before you commit. When you're happy,
    copy the URL of that search.
-4. **Feed the URL to Linked Helper.** It extracts those profiles into a campaign queue - typically
-   visit the profile, then send the connection request - and pushes everything it finds straight into
-   your database. Expect 45% to 50% to accept - well above what most outreach ever sees.
-5. **Anything unscored gets scored** - on headline, About section and posts, against the attributes
-   you've set up. That's the attitude filter.
-6. **Work your list in the portal.** Everyone comes up with their score beside them. Skip the low
-   ones. For the high ones, open their profile, decide you want them, and set Wingguy to work.
+4. **Feed the URL to Linked Helper.** It sends each person your connection request, with a short
+   "let's collaborate" note in your words, and waits. Often half or more accept - well above what
+   most outreach ever sees. Only the people who accept come through to your database; the rest never
+   clutter it.
+5. **Everyone who accepts gets scored** - on headline, About section and posts, against the
+   attributes you've set up. That's the attitude filter.
+6. **Work your new connections on Thanks for Connecting.** Each one comes up with their score beside
+   them. Skip the low ones. For the high ones, open their profile, decide you want them, and set
+   Wingguy to work.
 7. **Send your thanks-for-connecting.** Tailored to something real on their profile, ending with
    "how about a quick Zoom?" This single message decides most of your results, and it's what Wingguy
    writes for you.
@@ -452,26 +454,29 @@ later.
 are topics on who you're looking for and on building that search with Claude - and you feed Linked
 Helper the URL. It pulls the profiles out of that search and queues them up.
 
-**Campaign one: visit and extract.** Overnight, it visits each profile the way a person would - so
-they see you've viewed them, which is a small good thing in itself - and extracts what's public:
-headline, About section, posts. A live pipe pushes each one straight into your database, and once a
-day everything unscored gets scored against your attributes. The ones you ship with are all about
-attitude - is this someone who builds relationships? - deliberately not skewed to any industry.
-That's your base level, and there are topics on both the plumbing and the attributes.
+**One campaign does the job.** Linked Helper sends each person in your search your connection
+request, with a short note - "let's collaborate", in your words. Then it waits. The people who
+accept get their profile extracted and pushed through a live pipe into your database, where they're
+scored against your attributes. The people who don't accept never reach your database at all.
 
-**Campaign two: connect and follow up.** In your portal you pick your top scorers - say the top ten
-or twenty percent - and feed that group back into Linked Helper. This campaign sends them your
-connection request, and it can send follow-up messages after that too.
+**The filter sits after the connection, not before it.** Your search decides who gets invited. Your
+scoring decides who gets your real attention. Everyone who accepts shows up on your Thanks for
+Connecting screen with their score beside them - the high scorers get a genuine welcome, the rest
+can wait. So the search matters - there are topics on who you're looking for and on building it with
+Claude - and so does the scoring, just at a different moment.
 
-**The loop between those two is the method.** Most people point a tool at a search and blast
-connection requests at everyone in it. We don't. We extract first, score overnight, and only invite
-the people who score like connectors. Every request that goes out has already passed a filter -
-which is better for your results, and better for your LinkedIn account.
+**And you can measure it.** Linked Helper shows you how many requests went out and how many of those
+people are now connections. Ask any AI what a good acceptance rate looks like and you'll hear around
+35%. I get 50% to 60% with a collaborate note - because it's an offer, not a pitch, and my profile
+says connector. Watch yours in the first couple of weeks. If it's well under that, it's usually the
+note or the search, and both are easy to change.
 
-**And you can measure it.** Linked Helper shows you how many requests went out and how many of
-those people are now connections. Ask any AI what an extremely good acceptance rate looks like and
-you'll hear around 35%. We expect 45% to 50% - because by the time your request lands, it's aimed
-at scored people, and your profile says connector.
+**There's another way, and it still works.** The original version of this system extracted everyone
+in a search first, scored them, and only invited the top scorers - picked on a Top Scoring Leads
+screen and pasted back into Linked Helper, every week. That weekly step is exactly where people
+stall. I switched to the simple way because it's just as effective with far less to remember. The
+score-first route is still there for a very narrow audience where every request counts, or for
+waking up people you're already connected to - ask me if that's you.
 
 **Stopped and started.** Every campaign is one or the other, and you can flip any of them at any
 time. Behind them sits the campaign runner, which runs whatever's started - stop the runner and
@@ -557,9 +562,9 @@ skip straight past it, and pull it back up any time you want a refresher.
 
 ## YOUR FIRST CAMPAIGN - HOW IT'S SET UP AND WHY
 
-This is the campaign we build together first. It does only two things - visit and extract profiles,
-then push them to your database - and it's the one that gets your funnel filling. Here's the shape,
-and more importantly why each setting is what it is.
+This is the one campaign your system runs. It sends your connection requests, keeps the people who
+accept, and pushes them into your database - it's what keeps your funnel filling. Here's the shape,
+and why each step is there.
 
 **First, two things to get straight about the app.** Linked Helper has a **launcher** (dark blue
 icon) and an **instance** (aqua icon). The launcher is where your licence lives; the instance is your
@@ -569,29 +574,21 @@ bring everything back up. And you'll enter **two sets of credentials**: one to r
 Helper itself, and once, your LinkedIn login. Expect LinkedIn to ask you to confirm on your phone the
 first time. In practice you never have to enter it again.
 
-**Then the campaign.** Create a new one, choose an empty campaign rather than a template, and call it
-*visit and extract profiles* - that's literally what it does. Then add two actions:
+**Then the campaign - it's already built.** Your Linked Helper machine comes with it made, so
+there's nothing to build from scratch. What we do together is make it yours, and make sure you know
+what each step does:
 
-**Action one: Visit and Extract Profiles.** This goes to each person's LinkedIn profile, visits it
-properly - so it shows up as you having viewed them, which is a small good thing in itself - and
-pulls off everything it can. On second-level connections you won't get an email address, but you do
-get their headline, their About section and their posts. That's plenty to score on.
+1. **Invite.** It sends your connection request with a short note. The note starts out as mine, and
+   we rewrite it together in your words. Keep it an offer, not a pitch - something like "I'm
+   building a network of people who only recommend others they trust. Looking at your profile, I
+   think you'd be easy to recommend."
+2. **Check who accepted.** Anyone who hasn't accepted simply drops out.
+3. **Visit and extract.** For the ones who accepted, it visits their profile properly - so they see
+   you've viewed them - and pulls off their headline, About section and posts.
+4. **Send to your database.** The pipe into your own database - the address has your name in it.
 
-Set this action's **working hours to 00:00-03:00, every day of the week** (and check the timezone at
-the top is right for you). The reason: it's better not to have two sets of fingers on your LinkedIn
-account at once. If Linked Helper is browsing while you're also on LinkedIn during the day, that's
-the pattern you don't want. Overnight, it works alone.
-
-Then the pacing. Set **bunch size 50** and **timeout between bunches 360 minutes**. Work through what
-that does: between midnight and 3am it extracts 50 profiles, then waits six hours - by which time
-it's outside working hours again, so it stops. The effect is that you extract 50 a day rather than
-tearing through the whole list at once, which is roughly 350 people a week landing in your database,
-at a pace that looks entirely human.
-
-**Action two: Send Person to Webhook.** This is the pipe into your own database - I'll give you the
-exact address, which has your name in it. Leave its working hours alone: this action never touches
-LinkedIn, so it can run 24/7, and it's already governed by the first action anyway - nothing reaches
-it until the first one has done its work.
+The pacing is already set to stay well inside LinkedIn's limits. Leave it as it is unless I say
+otherwise.
 
 **One distinction that trips everyone up: collecting is not running.** When you paste your search URL
 in, Linked Helper starts *collecting* - building the queue of who's in that search. That's shallow
@@ -599,10 +596,9 @@ and fast, just a list. The campaign then works through that queue doing the deep
 They're separate, they can run at the same time, and you can stop collecting whenever you like or
 empty the queue and start again if you don't like who turned up.
 
-**Finally, prove it works.** Before leaving it to run overnight, we do a small test: temporarily add
-a working-hours window for right now, let it process a few people, and watch them appear in your
-portal. That confirms the webhook address was typed correctly - which is exactly the sort of thing
-that's silently wrong otherwise.
+**Finally, prove it works.** Once your search is in and the campaign is started, we watch for the
+first acceptances to land in your portal. That confirms the pipe is connected - which is exactly the
+sort of thing that's silently wrong otherwise. Give it a day or two; people have to accept first.
 
 ---
 

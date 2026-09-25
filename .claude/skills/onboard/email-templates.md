@@ -86,8 +86,8 @@ first - the email inherits its truthfulness from the preflight, never from memor
   plumbing is proven end to end - normally the part that takes the longest").
 - Homework: 2-3 written items max, each with the exact first step and any reassurance needed
   (spend-cap framing for the API key: "worst case in the whole world is a bill the size of the
-  cap you set"). Homework that feeds the next session says so: "Upload Campaign 2, ready for us
-  to work on together next time".
+  cap you set"). Homework that feeds the next session says so: "Put your search into your connect
+  campaign, ready for us to start it together next time".
 - Next session date + agenda in one line.
 - Anything Guy owes them, stated as Guy's item so they see it tracked ("I'll send it before your
   trial runs out").
