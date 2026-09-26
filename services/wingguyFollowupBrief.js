@@ -113,13 +113,28 @@ function linkedInTail(notes, n = THREAD_MSGS) {
   return lines.slice(0, n).reverse();
 }
 
+// Whose message ends the LinkedIn thread (Guy 2026-09-26, the Owen Senior morning): a
+// mechanical fact the triage was left to infer from date lines, and it recommended open-ended
+// follow-ups to people who had already been nudged and gone quiet. Same line format and
+// direction convention as wingguyDossier.gatherLinkedIn: sender starting with the lead's first
+// name = theirs. Pure — unit-tested.
+const LI_LINE_RE = /^(\d{2})-(\d{2})-(\d{2})\s+\d{1,2}:\d{2}\s*[AP]M\s*-\s*(.+?)\s*-\s*/;
+function linkedInLastWord(notes, leadFirst) {
+  const tail = linkedInTail(notes, 1); // newest line of the block
+  const m = tail.length ? tail[tail.length - 1].match(LI_LINE_RE) : null;
+  if (!m) return null;
+  const theirs = leadFirst && m[4].trim().toLowerCase().startsWith(String(leadFirst).toLowerCase());
+  return { dir: theirs ? 'them' : 'you', dateIso: `20${m[3]}-${m[2]}-${m[1]}` };
+}
+
 /**
  * Build the triage context for one surfaced person: recent 1:1 email exchange (via findMessages)
  * and/or the LinkedIn tail. Also captures the newest inbound email (id + subject) for threading a
- * reply draft. Failures degrade to whatever is available — never throw.
+ * reply draft, and the mechanical last word (whose message ends the thread, and when) for the
+ * triage's nudge-or-let-go doctrine. Failures degrade to whatever is available — never throw.
  */
 async function gatherPersonContext(mailProvider, coach, item, tenant) {
-  const out = { transcript: [], lastInbound: null, channel: null, callOutcome: [] };
+  const out = { transcript: [], lastInbound: null, channel: null, callOutcome: [], lastWord: null };
   const email = (item.lead.email || '').toLowerCase();
   if (email) {
     try {
@@ -130,6 +145,7 @@ async function gatherPersonContext(mailProvider, coach, item, tenant) {
           const theirs = (m.fromEmail || '').toLowerCase() === email;
           out.transcript.push(`${(m.date || '').slice(0, 10)} ${theirs ? 'THEM' : 'YOU'}: [${m.subject || ''}] ${String(m.snippet || '').slice(0, 300)}`);
           if (theirs) out.lastInbound = { id: m.id, subject: m.subject || '', date: m.date };
+          if (/^\d{4}-\d{2}-\d{2}/.test(String(m.date || ''))) out.lastWord = { dir: theirs ? 'them' : 'you', dateIso: String(m.date).slice(0, 10) };
         }
         out.channel = 'email';
       }
@@ -140,6 +156,8 @@ async function gatherPersonContext(mailProvider, coach, item, tenant) {
     // Mark the slice: an unmarked cut reads as the sender stopping mid-thought.
     out.transcript.push(...li.map((l) => `LINKEDIN: ${l.length > 300 ? `${l.slice(0, 300)} …[record clipped]` : l}`));
     if (!out.channel) out.channel = 'linkedin';
+    const liWord = linkedInLastWord(item.lead.notes, item.lead.first);
+    if (liWord && (!out.lastWord || liWord.dateIso >= out.lastWord.dateIso)) out.lastWord = liWord;
   }
   // CALL-AWARE TRIAGE (Guy 2026-08-29, the Nea Dhillon morning): when this person has a stored
   // dossier, its call recaps, standing, promises and sent-email record ride into triage as GROUND
@@ -227,7 +245,9 @@ THE COACH'S DOCTRINE — their time is the scarce resource, and a drop costs alm
 - "clear": nothing is owed — their last message was a pleasantry/close ("thanks, see you Thursday", "no worries"), or the exchange is plainly finished.
 - "attention": something is owed but a canned reply would be wrong (complex/sensitive/ambiguous) — the coach should look personally. Say why in the why_line.
 
-For EVERY person also give:
+THE LAST WORD line, when present, is mechanical fact: whose message currently ends the thread and how long the silence has run. When the last word is the COACH's, no reply is owed to anyone — the only question is whether ONE more touch is worth the coach's time. In particular:
+- THE ONE-SIDED THREAD: their only contribution ever is pleasantry-level ("Sounds good", "Thanks") and the coach's substantive message has sat unanswered for weeks. That is one-sided enthusiasm — default "drop", stated plainly ("I'd drop him — one warm word, then silence on the real pitch; let him come back to you"). Recommend a nudge INSTEAD only when the record shows a genuine reason this person is worth one more ask, and then say it is the last ("I'd give him one light nudge, then let him go" — verdict "draft", draft_instruction says the nudge is the final touch). NEVER an open-ended "I'd follow up" for this shape.
+- When such a person has never met the coach (no CALL OUTCOME block) and the silence is 28 days or more, a LinkedIn nudge sent from the thread is automatically the goodbye — the system ceases further follow-ups the moment it goes out. Say so: "one /wg touch — the send is the goodbye, nothing to track afterwards".
 - recommendation: ONE sentence of direct advice in the coach's ear, first person, verdict first with the reason from the record ("I'd drop her — loved the model but she's product-first and months from budget; let her come back to you", "I'd park him to 16 Oct — he asked you to try again after the audit"). This is the headline the coach reads; it must stand alone. Every verdict here is a RECOMMENDATION the coach clicks — nothing happens automatically, so say it as advice, never as a done deed.
 - why_line: ONE short factual line — plain, specific, human ("she said September sounds good", "asked which podcast episode you meant"). Not a category label.
 - jog: 1-2 sentences of memory-jog — who this is and where things stand, from the record only. For someone the coach has MET, open with the call and its outcome ("Call 13 Aug went well, but…") — the call is the part they cannot remember.
@@ -236,12 +256,22 @@ Return ONLY a JSON array, one object per person, same order as given:
 [{"key": "<the person's key exactly as given>", "verdict": "drop|park|draft|clear|attention", "recommendation": "...", "why_line": "...", "jog": "...", "park_date": "YYYY-MM-DD or null", "draft_instruction": "... or null"}]`;
 
 async function triage(client, items, contexts, todayIso) {
+  // The mechanical last-word line (2026-09-26): dates in the transcript proved too weak a signal —
+  // the model recommended open-ended follow-ups to people the coach had already nudged. State the
+  // fact outright, with the silence measured, and let the doctrine block do the rest.
+  const lastWordLine = (ctx) => {
+    const lw = ctx.lastWord;
+    if (!lw) return null;
+    const days = Math.max(0, Math.floor((Date.parse(`${todayIso}T00:00:00Z`) - Date.parse(`${lw.dateIso}T00:00:00Z`)) / 86400000));
+    return `THE LAST WORD: ${lw.dir === 'them' ? 'THEIRS' : "the COACH'S"} (${lw.dateIso} — ${days} day${days === 1 ? '' : 's'} of silence since)`;
+  };
   const people = items.map((item, i) => {
     const name = `${item.lead.first} ${item.lead.last}`.trim() || item.lead.email || `#${i}`;
     return [
       `KEY: ${item.key}`,
       `NAME: ${name}`,
       `ENGINE SIGNAL: ${item.tier} — ${item.why}${item.gated ? ' (flagged Cease/Series but surfaced: real obligation)' : ''}`,
+      ...(lastWordLine(contexts[i]) ? [lastWordLine(contexts[i])] : []),
       `RECENT EXCHANGE:`,
       ...(contexts[i].transcript.length ? contexts[i].transcript : ['(no readable messages found)']),
       ...((contexts[i].callOutcome || []).length
@@ -338,7 +368,10 @@ function entrySig(item) {
   // s2 (2026-08-29): one-time global re-prep so every stored entry gains the recommendation-first,
   // drop-biased, call-aware triage (Guy's go, same day). Subsequent nights are cheap again.
   // acceptedSlot (2026-09-14): a different agreed slot is a different story, same dates or not.
-  return `s2|${item.tier}|${s.lastInboundMs || 0}|${s.lastOutboundMs || 0}|${item.lead.reconnectOn || ''}|${s.acceptedSlot || ''}`;
+  // s3 (2026-09-26, the Owen Senior morning): re-prep so every stored recommendation gains the
+  // one-sided-thread doctrine — a pleasantry-only replier who ignored the pitch gets "drop" or
+  // "one nudge, then let go", never an open-ended "I'd follow up".
+  return `s3|${item.tier}|${s.lastInboundMs || 0}|${s.lastOutboundMs || 0}|${item.lead.reconnectOn || ''}|${s.acceptedSlot || ''}`;
 }
 
 /**
@@ -739,4 +772,4 @@ function formatBrief(row) {
   return lines.join('\n');
 }
 
-module.exports = { prepareFollowupBrief, getBrief, setStatus, formatBrief, linkedInTail, gatherPersonContext, writeDraft, draftPlainText, entrySig, canReuseEntry, refreshEntry, unbookedEntry, reconcileParkDate, _setPool, STALE_HOURS, REFRESH_DAYS };
+module.exports = { prepareFollowupBrief, getBrief, setStatus, formatBrief, linkedInTail, linkedInLastWord, gatherPersonContext, writeDraft, draftPlainText, entrySig, canReuseEntry, refreshEntry, unbookedEntry, reconcileParkDate, _setPool, STALE_HOURS, REFRESH_DAYS };
