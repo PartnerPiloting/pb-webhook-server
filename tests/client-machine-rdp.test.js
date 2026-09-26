@@ -44,5 +44,14 @@ check('refuses to build without an address', () => {
   assert.throws(() => buildRdpFile({}));
 });
 
+check('the Windows updater declares a version the server can read (self-update depends on it)', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const ps1 = fs.readFileSync(path.join(__dirname, '..', 'scripts', 'extension-updater', 'wingguy-update.ps1'), 'utf8');
+  const m = ps1.match(/\$script:UpdaterVersion = "([^"]+)"/);
+  assert.ok(m, 'no $script:UpdaterVersion line - installed updaters would never update themselves');
+  assert.ok(/Sync-MachineIcon \$Server \$headers/.test(ps1), 'the update run no longer places the machine icon');
+});
+
 if (failures) { console.error(`\n${failures} failed`); process.exit(1); }
 console.log('\nall passed');

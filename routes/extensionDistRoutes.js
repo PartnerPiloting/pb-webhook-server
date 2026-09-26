@@ -25,6 +25,8 @@ const crypto = require('crypto');
 
 const clientService = require('../services/clientService');
 const { recordCheckin } = require('../services/extensionDistStore');
+const { tailscaleAddress, buildRdpFile } = require('../services/clientMachineRdp');
+const { MASTER_TABLES } = require('../constants/airtableUnifiedConstants');
 const { createSafeLogger } = require('../utils/loggerHelper');
 
 const log = createSafeLogger('SYSTEM', null, 'extension_dist_routes');
@@ -61,9 +63,30 @@ function buildList() {
     };
   });
   const manifest = JSON.parse(fs.readFileSync(path.join(EXT_DIR, 'manifest.json'), 'utf8'));
-  listCache = { version: manifest.version, files };
+  listCache = { version: manifest.version, files, updaterVersion: readUpdaterVersion() };
   listCachedAt = Date.now();
   return listCache;
+}
+
+const UPDATER_PS1 = path.join(__dirname, '..', 'scripts', 'extension-updater', 'wingguy-update.ps1');
+
+/**
+ * The version the Windows updater script declares ($script:UpdaterVersion). Installed copies
+ * compare it with their own on every run and replace themselves when it differs (Update-Self in
+ * the script, since 2026-09-26). Null if the line is missing - installed copies then do nothing.
+ */
+function readUpdaterVersion() {
+  try {
+    const m = fs.readFileSync(UPDATER_PS1, 'utf8').match(/\$script:UpdaterVersion = "([^"]+)"/);
+    return m ? m[1] : null;
+  } catch (_e) {
+    return null;
+  }
+}
+
+/** Today in Brisbane as YYYY-MM-DD - the date a proof is recorded against. */
+function brisbaneDate() {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Australia/Brisbane' }).format(new Date());
 }
 
 /** Portal-token gate. Sets req.wgClient on success. */
@@ -101,7 +124,7 @@ router.get('/', requireClient, (req, res) => {
       res.type('text/plain').send(lines.join('\n') + '\n');
       return;
     }
-    res.json({ ok: true, version, count: files.length, files });
+    res.json({ ok: true, version, count: files.length, files, updaterVersion: buildList().updaterVersion });
   } catch (e) {
     log.error(`list failed: ${e.message}`);
     res.status(500).json({ ok: false, error: 'could not read the extension folder' });
@@ -131,6 +154,19 @@ router.get('/file', requireClient, (req, res) => {
 });
 
 /**
+ * GET /extension/dist/machine-icon
+ * The client's desktop icon for their Linked Helper machine (a Remote Desktop file), built from
+ * the address the machine itself reported to their row. The updater keeps it on the desktop, so
+ * it is already there when the onboarding call switches it on. { rdp: null } = no machine yet.
+ */
+router.get('/machine-icon', requireClient, (req, res) => {
+  const raw = (req.wgClient.rawRecord && req.wgClient.rawRecord._rawJson && req.wgClient.rawRecord._rawJson.fields) || {};
+  const address = tailscaleAddress(raw['Machine Tailscale']);
+  if (!address) return res.json({ ok: true, rdp: null });
+  return res.json({ ok: true, address, rdp: buildRdpFile({ address }) });
+});
+
+/**
  * POST /extension/dist/checkin
  * Body: { version, action, agent, machine, note }. The version reported is what is ON DISK
  * after the run, not what we hoped to deliver — a machine claiming an old version is the
@@ -146,6 +182,23 @@ router.post('/checkin', requireClient, async (req, res) => {
     machine: b.machine,
     note: b.note,
   });
+  // THE ICON PROOF (2026-09-26): the updater on the client's own laptop reached their machine's
+  // Remote Desktop port - Tailscale is on, the share is accepted, the icon will connect. The first
+  // time that happens, record the day. Never overwritten, never blanked; a failed write is logged
+  // and costs the check-in nothing.
+  if (b.machine_reachable === true) {
+    const raw = (req.wgClient.rawRecord && req.wgClient.rawRecord._rawJson && req.wgClient.rawRecord._rawJson.fields) || {};
+    if (!raw['Machine Icon Proven']) {
+      try {
+        const base = clientService.initializeClientsBase();
+        await base(MASTER_TABLES.CLIENTS).update(req.wgClient.id, { 'Machine Icon Proven': brisbaneDate() });
+        clientService.clearCache();
+        log.info(`machine icon proven for ${req.wgClient.clientId} (${b.machine || 'unknown laptop'})`);
+      } catch (e) {
+        log.error(`could not record Machine Icon Proven for ${req.wgClient.clientId}: ${e.message}`);
+      }
+    }
+  }
   res.json({ ok: true });
 });
 

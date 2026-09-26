@@ -269,7 +269,7 @@ async function runPreflight(clientId) {
     const iconProven = raw14['Machine Icon Proven'] || '';
     const iconLine = !machineBuilt ? ''
       : iconProven ? ` · desktop icon proven ${iconProven}`
-      : ' · NO DESKTOP ICON - client cannot open their own machine: Tailscale on their laptop + share + node scripts/make-client-rdp.js <Client-ID>, prove the double-click, set Machine Icon Proven';
+      : ' · NO DESKTOP ICON PROVEN - the updater places the icon itself; switch it on with the Tailscale share link and it records the proof (old updater? paste their install line) - checklist step 14';
     step(14, 'linked helper + VPS', MANUAL,
       'the CLOSING step for new clients - hookup + the connect campaign once targeting is decided and the profile says connector; trial clock starts at first campaign launch; offer the VPS, never re-pitch a no'
       + (seriesStart ? ` · email series starts ${seriesStart}` : ' · Email Series Start Date NOT SET - set it at this session')

@@ -943,6 +943,24 @@ is in and their history is attached - they'll get scored once we have their prof
 
 ## STEP 14 EXPANDED - Linked Helper, last on purpose, and where it should run [live]
 
+> **⚠ GUY - BEFORE EVERY MACHINE CALL: THE DESKTOP ICON (added 26 Sep 2026)**
+>
+> "The icon" = a Remote Desktop file on the client's desktop that opens their Linked Helper
+> machine. **It puts itself there.** Once their machine is built, the Wingguy updater on their
+> laptop (the one that keeps the extension current) drops "Linked Helper machine" on their desktop
+> within the hour. So it should already be there when the call starts - the call only switches it on.
+>
+> - **Not there?** Their updater is an older copy (anyone installed before 26 Sep - Sam included)
+>   or has never been installed. Take control of their laptop and paste their install line from
+>   the run sheet (`node scripts/extension-install-command.js <Client-ID>`). It upgrades the
+>   updater and the icon appears within a minute. Last resort: `node scripts/make-client-rdp.js
+>   <Client-ID>` and drag the file into the Zoom chat.
+> - **Switching it on** = the Tailscale share link (steps below). Until they accept it, the icon
+>   is harmless - it just won't connect.
+> - **The proof records itself.** The first time the updater on their laptop can reach the
+>   machine, `Machine Icon Proven` fills in on their row. Still have them double-click it once
+>   while you watch - that is the real test.
+
 This is the closing move of onboarding for new clients (decided 2026-08-22), and it deliberately
 comes after everything else. The early sessions build trust through the Wingguy plumbing; by the
 time you get here the client understands why the collection engine matters and wants it right.
@@ -1048,14 +1066,16 @@ emailed "icon on your desktop" and there wasn't one. Now it is done on the same 
 - [ ] **They install the app and sign in with the SAME account.** Accept as one account and sign
       the app in as another, and the machine never appears and the icon never connects. Wrong
       account? Remove it in the same Share box and send a fresh link.
-- [ ] **Make the icon:** `node scripts/make-client-rdp.js <Client-ID>` (add `--size=2560x1440` if
-      their machine's screen was changed to match their monitor). It reads the 100.x address the
-      machine reported to their row and writes `client-icons/<Client-ID>/Linked Helper machine.rdp`.
-- [ ] **Send it in the Zoom chat** and have them save it to their desktop. Never email it -
-      Outlook blocks .rdp attachments.
+- [ ] **The icon should already be on their desktop** - the updater put it there (see the box at
+      the top of this step). If not: paste their install line on their laptop (upgrades the
+      updater, icon within a minute), or as a last resort `node scripts/make-client-rdp.js
+      <Client-ID>` (add `--size=2560x1440` if their machine's screen was changed to match their
+      monitor) and drag the file into the Zoom chat. Never email it - Outlook blocks .rdp.
 - [ ] **Prove it:** you close your Remote Desktop window, they double-click the icon and see the
       Linked Helper screen - no password prompt, the machine has it built in.
-- [ ] **Set `Machine Icon Proven`** on their Clients row to today. The preflight flags any built
+- [ ] **Check `Machine Icon Proven`** on their Clients row - the updater fills it in the first time
+      their laptop reaches the machine (within the hour; paste the install line again to make it
+      run now). Set it by hand only if they are not on the updater. The preflight flags any built
       machine with it blank.
 
 **Mac:** the same file opens in Microsoft's free Windows App (Mac App Store). UNPROVEN - walk the

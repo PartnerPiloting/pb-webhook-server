@@ -62,6 +62,24 @@ carries exactly one secret.
 **What is served is the deployed `wingguy-extension` folder** - identical to what
 `scripts/ship-extension.js` copies into the OneDrive lane. One source of truth for both.
 
+## It also looks after the machine icon, and itself (since 2026-09-26)
+
+Two jobs beyond the extension, both wrapped so they can never cost the extension update:
+
+- **The Linked Helper machine icon.** Once the client's machine is built (their row has a
+  `Machine Tailscale` address), each run fetches `GET /extension/dist/machine-icon` and keeps
+  "Linked Helper machine.rdp" on their desktop - written when missing or changed. It then tries
+  the machine's Remote Desktop port; the first time it gets through, the check-in carries
+  `machine_reachable: true` and the server fills in `Machine Icon Proven` on their row. Why: the
+  icon was a "later, optional" step that never happened, and a client was promised one that
+  did not exist. See checklist step 14.
+- **Updating itself.** The file list carries `updaterVersion`, read from `$script:UpdaterVersion`
+  in the script. When an installed copy sees a different one it downloads the new script, checks
+  it parses and carries that version, and writes it over itself for the next run. **Bump
+  `$script:UpdaterVersion` whenever you change `wingguy-update.ps1`** - without the bump nothing in
+  the field changes. Copies installed before 2026-09-26 predate this and need their install line
+  pasted once; after that they keep themselves current. Windows only - the Mac script has neither job.
+
 ## Installing it for a client
 
 The line is on the client's run sheet (`node scripts/run-sheet.js <Client-ID>`, since

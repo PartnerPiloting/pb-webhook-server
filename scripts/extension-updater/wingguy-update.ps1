@@ -52,6 +52,15 @@ function Write-Log($msg) {
 # re-registers itself on its next run - see Set-UpdateSchedule.
 $script:CadenceTag = "hourly-1"
 
+# THE UPDATER'S OWN VERSION. Bump it whenever this file changes: every installed copy compares it
+# with the one the server holds on each run and replaces itself when they differ (Update-Self).
+# Before 2026-09-26 an installed copy never changed, so improvements only reached machines that
+# were re-installed by hand.
+$script:UpdaterVersion = "2026-09-26.1"
+
+# Extra fields for this run's check-in (the machine icon step fills them in).
+$script:CheckinExtra = @{}
+
 function Set-UpdateSchedule($scriptHome, $taskName) {
   # WHY HOURLY AND NOT DAILY (Guy, 2026-09-17). It was daily at 3am plus a login run. That is fine
   # for a machine that gets shut at night - it catches up at login - but Guy's own PC stays logged
@@ -101,8 +110,72 @@ function Send-Checkin($server, $token, $payload) {
   # Monitoring only. A machine that stops checking in is the signal we want - but a failed
   # check-in must never fail the update itself.
   try {
+    foreach ($k in $script:CheckinExtra.Keys) { $payload[$k] = $script:CheckinExtra[$k] }
+    $payload["updater"] = $script:UpdaterVersion
     Invoke-RestMethod -Method Post -Uri "$server/extension/dist/checkin" -Headers @{ "x-portal-token" = $token } -ContentType "application/json" -Body ($payload | ConvertTo-Json -Compress) -TimeoutSec 20 | Out-Null
   } catch { Write-Log "check-in failed (ignored): $($_.Exception.Message)" }
+}
+
+function Update-Self($server, $headers, $wanted) {
+  # SELF-UPDATE (2026-09-26). The server says which updater version it holds; when that differs
+  # from this copy, fetch it, prove it is a complete, parseable PowerShell script carrying that
+  # version, and only then write it over the installed copy. It takes effect on the NEXT run -
+  # this run carries on as it started. Wrapped so a failure can never cost the extension update:
+  # the old copy simply stays, which is the safe direction.
+  try {
+    if (-not $wanted -or $wanted -eq $script:UpdaterVersion) { return }
+    $installed = Join-Path (Join-Path $env:LOCALAPPDATA "Wingguy") "wingguy-update.ps1"
+    if ($PSCommandPath -ne $installed) { return }   # a one-off run from elsewhere never rewrites the install
+    $tmp = Join-Path $env:TEMP ("wingguy-update-" + [guid]::NewGuid().ToString("N") + ".ps1")
+    Invoke-WebRequest -Uri "$server/extension/dist/installer" -Headers $headers -OutFile $tmp -TimeoutSec 60 -UseBasicParsing
+    $body = Get-Content $tmp -Raw
+    $errs = $null
+    [System.Management.Automation.Language.Parser]::ParseInput($body, [ref]$null, [ref]$errs) | Out-Null
+    if ($errs -and $errs.Count -gt 0) { throw "downloaded updater does not parse ($($errs.Count) error(s))" }
+    if ($body -notmatch [regex]::Escape('$script:UpdaterVersion = "' + $wanted + '"')) { throw "downloaded updater is not version $wanted" }
+    Copy-Item -Path $tmp -Destination $installed -Force
+    Remove-Item -Path $tmp -Force -ErrorAction SilentlyContinue
+    Write-Log "Updater replaced itself: $($script:UpdaterVersion) -> $wanted (takes effect next run)."
+  } catch {
+    Write-Log "Updater self-update skipped (keeping $($script:UpdaterVersion)): $($_.Exception.Message)"
+  }
+}
+
+function Sync-MachineIcon($server, $headers) {
+  # THE CLIENT'S DESKTOP ICON (2026-09-26). Every client needs a way into their own Linked Helper
+  # machine: a Remote Desktop file on the desktop that opens it. Once their machine is built the
+  # server hands us that file, and we keep it on the desktop - written when missing or changed,
+  # so it is already there at the onboarding call and comes back if it is ever deleted.
+  # It cannot connect until the client has accepted the Tailscale share; that is the call's job.
+  #
+  # Then the PROOF: can this laptop actually reach the machine's Remote Desktop port? The first
+  # time it can, the server fills in Machine Icon Proven - nobody has to remember to.
+  # Wrapped: nothing here may ever cost the extension update.
+  try {
+    $icon = Invoke-RestMethod -Uri "$server/extension/dist/machine-icon" -Headers $headers -TimeoutSec 30
+    if (-not $icon -or -not $icon.rdp) { return }   # no machine built yet - nothing to place
+    $desktop = [Environment]::GetFolderPath('Desktop')
+    $file = Join-Path $desktop "Linked Helper machine.rdp"
+    $current = $null
+    if (Test-Path $file) { $current = Get-Content $file -Raw }
+    if ($current -ne $icon.rdp) {
+      [System.IO.File]::WriteAllText($file, $icon.rdp, [System.Text.Encoding]::ASCII)
+      Write-Log "Machine icon placed on the desktop ($($icon.address))."
+      $script:CheckinExtra["icon"] = "placed"
+    } else {
+      $script:CheckinExtra["icon"] = "present"
+    }
+    $reachable = $false
+    $tcp = New-Object System.Net.Sockets.TcpClient
+    try {
+      $wait = $tcp.BeginConnect($icon.address, 3389, $null, $null)
+      if ($wait.AsyncWaitHandle.WaitOne(4000) -and $tcp.Connected) { $reachable = $true }
+    } catch { $reachable = $false } finally { $tcp.Close() }
+    $script:CheckinExtra["machine_reachable"] = $reachable
+    if ($reachable) { Write-Log "Machine reachable from this laptop ($($icon.address))." }
+  } catch {
+    Write-Log "Machine icon step skipped: $($_.Exception.Message)"
+  }
 }
 
 # -------------------------------------------------------------- uninstall ----
@@ -247,6 +320,8 @@ Sync-UpdateSchedule $TaskName
 try {
   $headers = @{ "x-portal-token" = $Token }
   $list = Invoke-RestMethod -Uri "$Server/extension/dist" -Headers $headers -TimeoutSec 60
+  Update-Self $Server $headers $list.updaterVersion
+  Sync-MachineIcon $Server $headers
 
   $remoteVersion = $list.version
   $localVersion = Get-LocalVersion $Folder
