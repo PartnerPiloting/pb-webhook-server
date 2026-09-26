@@ -208,6 +208,14 @@ user, thirty client machines, still cheap.
 
 Guy's laptop and the Sydney machine joined 1 Sep 2026; latency Brisbane->Sydney measured at 61 ms.
 His desktop shortcut (`Sydney Linked Helper.rdp`) points at `lh-guy-wilson`.
+
+**Every client gets the same kind of icon on their own laptop (since 26 Sep 2026)** - Tailscale
+installed under their OWN account, the one machine shared to them, and a `.rdp` built by
+`node scripts/make-client-rdp.js <Client-ID>` pointing at the machine's 100.x address (a shared
+machine's name does not resolve the same on their side). xrdp.ini carries the screen password, so
+the double-click lands straight on the Linked Helper screen. Done and proven at the machine session,
+then `Machine Icon Proven` is set on their row - steps in `docs/wingguy-onboarding-checklist.md`,
+"The client's desktop icon".
 ⚠ Auth keys expire (90 days max) and should be **revoked after use** - they only add machines, and
 revoking does not disconnect machines already joined.
 

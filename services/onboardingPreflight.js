@@ -264,9 +264,16 @@ async function runPreflight(clientId) {
   try {
     const raw14 = (client.rawRecord && client.rawRecord._rawJson && client.rawRecord._rawJson.fields) || {};
     const seriesStart = raw14['Email Series Start Date'] || '';
+    // The client's own way into their machine (added 2026-09-26). Only once there IS a machine.
+    const machineBuilt = present(raw14['Machine Tailscale']);
+    const iconProven = raw14['Machine Icon Proven'] || '';
+    const iconLine = !machineBuilt ? ''
+      : iconProven ? ` · desktop icon proven ${iconProven}`
+      : ' · NO DESKTOP ICON - client cannot open their own machine: Tailscale on their laptop + share + node scripts/make-client-rdp.js <Client-ID>, prove the double-click, set Machine Icon Proven';
     step(14, 'linked helper + VPS', MANUAL,
       'the CLOSING step for new clients - hookup + the connect campaign once targeting is decided and the profile says connector; trial clock starts at first campaign launch; offer the VPS, never re-pitch a no'
-      + (seriesStart ? ` · email series starts ${seriesStart}` : ' · Email Series Start Date NOT SET - set it at this session'));
+      + (seriesStart ? ` · email series starts ${seriesStart}` : ' · Email Series Start Date NOT SET - set it at this session')
+      + iconLine);
   } catch (e) {
     step(14, 'linked helper + VPS', MANUAL, `the CLOSING step for new clients (series-date probe failed: ${e.message})`);
   }

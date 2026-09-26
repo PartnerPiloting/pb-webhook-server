@@ -22,3 +22,6 @@ env-var-analysis.json
 
 # Generated review page for the client playbook (scripts/build-playbook-page.js)
 playbook-review.html
+
+# Client desktop icons for their Linked Helper machine (scripts/make-client-rdp.js)
+client-icons/

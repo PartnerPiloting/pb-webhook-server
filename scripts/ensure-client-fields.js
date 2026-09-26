@@ -285,6 +285,12 @@ const MASTER_FIELDS = [
     type: 'dateTime',
     description: 'When a Linked Helper backup last actually REACHED Google Drive - not when the job last ran. Carried on the machine\'s 5-minute watchdog report and watched daily by services/lhBackupWatch.js, which emails Guy when any machine passes two days. Added 2026-09-19 after every machine went unbacked from 8 to 19 Sep 2026 without anything noticing.',
     options: { timeZone: 'Australia/Brisbane', dateFormat: { name: 'iso' }, timeFormat: { name: '24hour' } }
+  },
+  {
+    name: 'Machine Icon Proven',
+    type: 'date',
+    description: 'The day the client double-clicked the Remote Desktop icon on their OWN laptop and saw their Linked Helper machine (Tailscale on their laptop under their own account, the machine shared to them, the .rdp from scripts/make-client-rdp.js). Set by hand at the machine session - checklist step 14. Blank with Machine Tailscale filled = the client has no way into their own machine; the onboarding preflight flags it. Added 2026-09-26 after Sam Noble was told "icon on your desktop" and there was none.',
+    options: { dateFormat: { name: 'iso' } }
   }
 ];
 

@@ -241,6 +241,14 @@ one is five promises in an email that all work first go.
   REPORT_URL/REPORT_SECRET are in the machine's /etc/linked-helper-machine.conf. If those fields
   are blank a day after the build, the reporting is not wired, not the machine dead. Never type
   them by hand.
+- **The client's desktop icon is part of that same session, not a follow-up (Guy 2026-09-26).**
+  Every client ends up needing to open their own machine, and "later, optional" meant it never
+  happened - Sam Noble was told "icon on your desktop" and had none. Before the call ends: Tailscale
+  on THEIR laptop under their own Gmail, share the one machine to them, `node scripts/make-client-rdp.js
+  <Client-ID>` and send the file in the Zoom chat (never email - Outlook blocks .rdp), and they
+  double-click it and see the Linked Helper screen. Then set `Machine Icon Proven` = that date. No
+  proof, no date. The preflight's step 14 line flags any built machine with the date blank. Never
+  write "icon on your desktop" in an email unless that date is set.
 - **Suggested-prompts calibration (Guy 2026-08-23):** the wrap email's literal prompts-in-quotes
   are picked as TWO that exercise what this session just plumbed + ONE that points at the next
   step so it never lands cold. Use Wingguy Learning topics as the pointing device ("ask Wingguy:

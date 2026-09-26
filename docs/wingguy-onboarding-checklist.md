@@ -127,7 +127,8 @@ your database goes in last, once everything above is proven, your targeting has 
 settle, and your profile says connector. Nothing is lost by waiting - the trial only starts when the
 first campaign launches. The machine it runs on - a small always-on computer in an Australian
 data centre, yours, about $20 a month - is bought earlier, in ten minutes with your own Claude
-walking you through it, and built by me; this is the session where you sign in to LinkedIn on it.
+walking you through it, and built by me; this is the session where you sign in to LinkedIn on it,
+and leave with an icon on your own desktop that opens it.
 From here the journey stops being plumbing and starts being strategy.
 
 ## STEP AUTO - what the join page does by itself (added 2026-09-06)
@@ -967,6 +968,10 @@ you've already been giving it - and remember, it's changeable, so we aim roughly
       drumbeat when the onboarding sessions stop, covering the collection quiet zone. Blank = the
       series never starts for them. (Until the drip send loop is built, the date is recorded but
       nothing sends - set it anyway so launch day is on the record.)
+- [ ] **Their desktop icon, proven on the call** - Tailscale on their laptop, the machine shared
+      to them, the .rdp from `node scripts/make-client-rdp.js <Client-ID>`, one double-click that
+      lands on their Linked Helper screen. Then set `Machine Icon Proven`. Steps: "The client's
+      desktop icon" below.
 
 **Check it worked:** first profiles land in their leads base and get scored overnight.
 
@@ -1022,9 +1027,37 @@ sign-in, the texted code). Everything else is you alone, or friction. The shape 
 | Client, by email | Buys the Binary Lane machine, guided by their own Claude via the playbook topic "Your Linked Helper machine". Sends the IP (+ password if they reset one) by text or Zoom chat, never email. | ~10 min, no call |
 | You, solo | `setup-ubuntu-vps.sh`, Tailscale via the `tailscale up` login link (no auth key), watchdog, backup. Screen size: read the client's monitor size from `/var/log/xrdp.log` the first time they connect, if they ever do, and set the dummy modeline to match. | ~20 min, no client |
 | Both, one call | You open Remote Desktop, share your screen on Zoom, hand the client remote control. They sign in to Linked Helper and LinkedIn and read the texted code. Password fields are dots. Tick "Restart after updates". | ~15 min |
-| Later, optional | Client wants to see the machine: send a ready-made `.rdp` (smart sizing on, dynamic resolution off, desktop size = server screen, screen mode 2) plus a Tailscale share. They install Tailscale on their OWN account - Gmail, not a work address. | 5 min follow-up |
+| Both, same call | **Their desktop icon - required, not optional (since 26 Sep 2026).** See "The client's desktop icon" below. | ~10 min |
 
 Buying the machine stays with the client - it is what makes it theirs. Don't take that on too.
+
+### The client's desktop icon - part of the machine session (decided 26 Sep 2026)
+
+Every client ends up needing to open their own machine - to top up a campaign, or just to see it
+running. Until 26 Sep this was a "later, optional" follow-up, so it never happened: Sam Noble was
+emailed "icon on your desktop" and there wasn't one. Now it is done on the same call, and proven.
+
+- [ ] **Tailscale on their laptop.** They go to tailscale.com/download, install it, and sign in
+      with their OWN Gmail - not a work address, and never yours. Their own account is what keeps
+      the machine theirs if they leave.
+- [ ] **Share the one machine to them.** Tailscale admin (login.tailscale.com) -> Machines ->
+      the `...` on `lh-<client>` -> Share -> their Gmail. They accept the invite in the email
+      Tailscale sends. They see that machine and nothing else of yours.
+- [ ] **Make the icon:** `node scripts/make-client-rdp.js <Client-ID>` (add `--size=2560x1440` if
+      their machine's screen was changed to match their monitor). It reads the 100.x address the
+      machine reported to their row and writes `client-icons/<Client-ID>/Linked Helper machine.rdp`.
+- [ ] **Send it in the Zoom chat** and have them save it to their desktop. Never email it -
+      Outlook blocks .rdp attachments.
+- [ ] **Prove it:** you close your Remote Desktop window, they double-click the icon and see the
+      Linked Helper screen - no password prompt, the machine has it built in.
+- [ ] **Set `Machine Icon Proven`** on their Clients row to today. The preflight flags any built
+      machine with it blank.
+
+**Mac:** the same file opens in Microsoft's free Windows App (Mac App Store). UNPROVEN - walk the
+first Mac client through it live, then write down what actually happened here.
+
+**Only one person on the screen at a time.** If you are both connected you see the same screen and
+fight over the mouse - say so, so nobody is surprised.
 
 **The pre-session email (template, Guy's voice):**
 
