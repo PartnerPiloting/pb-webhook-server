@@ -354,6 +354,30 @@ function bannedStage1Opener(draft) {
   return m ? m[0] : null;
 }
 
+// CV-tally hook guard (Johnidy Ong, 2026-09-26 - the third strike). With his three posts in the
+// profile block, profile-hook-craft v4 in the rulebook AND a HOOK CHECK planted under the posts,
+// the draft still hooked on "20+ years architecting... across banking, government and telco" -
+// a near-verbatim clone of the frac rule's About-hook worked example. Instructions lose to
+// examples; what the opener guard proved (Daniela 2026-09-15) is that the move that wins is a
+// refusal at the chokepoint. When the lead's recent posts are in hand, a draft whose hook counts
+// years of experience is refused once, with the redraft path spelled out.
+const CV_TALLY_HOOK = /\b\d{1,2}\s*\+?\s*(?:years?|yrs)['’]?\b|\bdecades?\b/i;
+
+/** The CV-tally phrase in the draft's HOOK - the first non-greeting paragraph - else null. Only the
+ * hook is judged: a years mention further down (the network line, an anecdote) is not the hook. A
+ * short opener line ("Glad that landed, Sam." / "Thanks for connecting.") is skipped; a long first
+ * line is the hook itself even when it starts warm ("Great, Sam - your post..."). */
+function cvTallyHook(draft) {
+  const lines = String(draft || '').replace(/\r/g, '').split('\n').map((l) => l.trim()).filter(Boolean);
+  while (lines.length && lines[0].length < 60
+      && /^(hi|hey|hello|g'day|dear|morning|afternoon|great|perfect|thanks|glad)\b/i.test(lines[0])) {
+    lines.shift();
+  }
+  if (!lines.length) return null;
+  const m = lines[0].slice(0, 400).match(CV_TALLY_HOOK);
+  return m ? m[0] : null;
+}
+
 /**
  * The LEAD's own booking link, if one of THEIR messages carries one (Candace 2026-09-15: "here's a
  * link to my calendar"). The coach's own links never count. Found from DATA so the read happens
@@ -543,6 +567,7 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
   const convo = messages.map((m) => ({ role: m.role, content: m.content }));
   let currentDraft = null;
   let bookedEvent = null;
+  let cvGuardFired = false; // the hook guard refuses at most ONCE per turn - a visible bad draft beats a stuck one
   // The "enrich contact" signal → passed back to the extension, which reads this lead's LinkedIn Contact
   // Info (email + phone — only the logged-in browser tab can see them) and patches any MISSING ones on
   // (updateLeadContact is fill-blanks-only, never clobbers). Set in exactly two places, never on an
@@ -945,6 +970,19 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
           };
         }
       }
+      // Hook guard (see cvTallyHook above): only when their posts are actually in hand - with no
+      // posts the About/experience is all there is, and the tally may be the honest best.
+      if (!cvGuardFired && Array.isArray(profile.recentPosts) && profile.recentPosts.length) {
+        const tally = cvTallyHook(draft);
+        if (tally) {
+          cvGuardFired = true;
+          console.warn(`WINGGUY-HOOK-GUARD refused "${tally}" for ${coach.clientId} -> ${profile.name || 'lead'} (${profile.recentPosts.length} posts in hand)`);
+          return {
+            ok: false,
+            error: `REJECTED - draft NOT set. The hook counts years of experience ("${tally}") - a CV tally - while ${profile.name || 'the lead'}'s recent posts are sitting in the LEAD PROFILE above. A post that shows what they think beats the CV every time (the HOOK CHECK under the posts). Redraft with the hook built on the best-fitting post - one that echoes the network idea (the right people around you, trust, referring) wins outright. Do not reuse the worked example's sentence shape; write the hook fresh from the post. If you judge that NO post fits (a joke, a bare repost, a post about someone else), redraft from their About WITHOUT the years-count and say in your chat reply why no post fitted. Then call propose_message again.`,
+          };
+        }
+      }
       currentDraft = draft;
       return { ok: true };
     }
@@ -1000,4 +1038,4 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
   return { ok: true, reply: assistantText, draft: currentDraft, booked: bookedEvent, enrichContact, messages: convo, model: MODEL_ID };
 }
 
-module.exports = { runWingguyChatTurn, AGENT_TOOLS, inLunch, chooseSignoff, getVoiceIdentity, leadHasSpoken, coachHasAskedToMeet, bannedStage1Opener, isHandshakeOnly, detectLeadBookingLink, buildContext, jobLocationOffer, leadClockLine };
+module.exports = { runWingguyChatTurn, AGENT_TOOLS, inLunch, chooseSignoff, getVoiceIdentity, leadHasSpoken, coachHasAskedToMeet, bannedStage1Opener, isHandshakeOnly, detectLeadBookingLink, buildContext, jobLocationOffer, leadClockLine, cvTallyHook };
