@@ -243,8 +243,10 @@ one is five promises in an email that all work first go.
   them by hand.
 - **The client's desktop icon is part of that same session, not a follow-up (Guy 2026-09-26).**
   Every client ends up needing to open their own machine, and "later, optional" meant it never
-  happened - Sam Noble was told "icon on your desktop" and had none. Before the call ends: Tailscale
-  on THEIR laptop under their own Gmail, share the one machine to them, `node scripts/make-client-rdp.js
+  happened - Sam Noble was told "icon on your desktop" and had none. Before the call ends: paste the
+  machine's Tailscale share link (Machines -> `...` -> Share -> Copy share link) in the Zoom chat -
+  link FIRST, it walks them through account, accept and app download; they sign the app in with the
+  SAME account they accepted with - then `node scripts/make-client-rdp.js
   <Client-ID>` and send the file in the Zoom chat (never email - Outlook blocks .rdp), and they
   double-click it and see the Linked Helper screen. Then set `Machine Icon Proven` = that date. No
   proof, no date. The preflight's step 14 line flags any built machine with the date blank. Never

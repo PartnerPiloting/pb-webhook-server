@@ -968,8 +968,8 @@ you've already been giving it - and remember, it's changeable, so we aim roughly
       drumbeat when the onboarding sessions stop, covering the collection quiet zone. Blank = the
       series never starts for them. (Until the drip send loop is built, the date is recorded but
       nothing sends - set it anyway so launch day is on the record.)
-- [ ] **Their desktop icon, proven on the call** - Tailscale on their laptop, the machine shared
-      to them, the .rdp from `node scripts/make-client-rdp.js <Client-ID>`, one double-click that
+- [ ] **Their desktop icon, proven on the call** - the Tailscale share link (which installs
+      Tailscale on their laptop as it goes), the .rdp from `node scripts/make-client-rdp.js <Client-ID>`, one double-click that
       lands on their Linked Helper screen. Then set `Machine Icon Proven`. Steps: "The client's
       desktop icon" below.
 
@@ -1037,12 +1037,17 @@ Every client ends up needing to open their own machine - to top up a campaign, o
 running. Until 26 Sep this was a "later, optional" follow-up, so it never happened: Sam Noble was
 emailed "icon on your desktop" and there wasn't one. Now it is done on the same call, and proven.
 
-- [ ] **Tailscale on their laptop.** They go to tailscale.com/download, install it, and sign in
-      with their OWN Gmail - not a work address, and never yours. Their own account is what keeps
-      the machine theirs if they leave.
-- [ ] **Share the one machine to them.** Tailscale admin (login.tailscale.com) -> Machines ->
-      the `...` on `lh-<client>` -> Share -> their Gmail. They accept the invite in the email
-      Tailscale sends. They see that machine and nothing else of yours.
+- [ ] **Ask which account they'll use** - one they own personally and will keep: Gmail, or a
+      personal Microsoft account. Not a work address, and never yours. Their own account is what
+      keeps the machine theirs if they leave.
+- [ ] **Send the share link - link first, no install first (Guy 26 Sep 2026).** Tailscale admin
+      (login.tailscale.com) -> Machines -> the `...` on `lh-<client>` -> Share -> **Copy share
+      link**, paste it in the Zoom chat. One click walks them through it: sign in with that account
+      (which creates their Tailscale account), accept the machine, then download the app. They see
+      that machine and nothing else of yours; its row then shows "Shared out +1".
+- [ ] **They install the app and sign in with the SAME account.** Accept as one account and sign
+      the app in as another, and the machine never appears and the icon never connects. Wrong
+      account? Remove it in the same Share box and send a fresh link.
 - [ ] **Make the icon:** `node scripts/make-client-rdp.js <Client-ID>` (add `--size=2560x1440` if
       their machine's screen was changed to match their monitor). It reads the 100.x address the
       machine reported to their row and writes `client-icons/<Client-ID>/Linked Helper machine.rdp`.

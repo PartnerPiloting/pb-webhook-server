@@ -61,8 +61,9 @@ Icon for ${client.clientId}: ${file}
   points at ${address} (${tailscale.trim()}), screen ${size.width}x${size.height}
 
 Before it works on their laptop:
-  1. They install Tailscale and sign in with their OWN Gmail.
-  2. You share ${tailscale.trim().split(/\s+/)[0] || 'the machine'} to that address (Tailscale admin -> Machines -> ... -> Share), they accept.
+  1. Ask which account they'll use - their OWN Gmail or personal Microsoft, one they'll keep.
+  2. Share ${tailscale.trim().split(/\s+/)[0] || 'the machine'}: Tailscale admin -> Machines -> ... -> Share -> Copy share link, paste in the Zoom chat.
+     The link walks them through sign-in, accept and the app download. They sign the app in with the SAME account.
   3. Send this file in the Zoom chat (never email - Outlook blocks .rdp), they save it to their desktop.
   4. They double-click it and see the Linked Helper screen. Then set "Machine Icon Proven" on their row.
 `);
