@@ -809,7 +809,7 @@ module.exports = function mountWingguy(app) {
         leadName: enriched && enriched.name,
       });
 
-      logger.info(`[Wingguy] chat turn for ${coach.clientId}: ${result.messages.length} msgs, draft=${result.draft ? 'yes' : 'no'}, booked=${result.booked ? result.booked.eventId : 'no'}${profileIsThin(enriched) ? ', profile=THIN' : ''}`);
+      logger.info(`[Wingguy] chat turn for ${coach.clientId}: ${result.messages.length} msgs, draft=${result.draft ? 'yes' : 'no'}, booked=${result.booked ? result.booked.eventId : 'no'}, posts=${Array.isArray(enriched.recentPosts) ? enriched.recentPosts.length : 0}${profileIsThin(enriched) ? ', profile=THIN' : ''}`);
       return res.json(result);
     } catch (e) {
       logger.error(`[Wingguy] chat failed: ${e.message}`);
