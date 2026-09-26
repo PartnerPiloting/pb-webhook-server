@@ -185,6 +185,10 @@ function buildProfileBlock(profile = {}) {
       const t = String(p || '').trim();
       if (t) lines.push(`  - ${t.slice(0, 400)}`);
     });
+    // HOOK CHECK sits right under the posts (Johnidy retry, 2026-09-26): with profile-hook-craft v4
+    // live in the rulebook the draft STILL hooked on "20+ years" - a rule buried in a long rulebook
+    // loses to a CV sitting in the data. Same move as the thin-profile guard: say it next to the data.
+    lines.push('  HOOK CHECK - decide this BEFORE writing: does one of these posts show what they think (not a joke, a bare repost, or a post about someone else)? If yes, the hook comes from that post - not from the About, and never from years of experience or a list of industries. A post that echoes the network idea (the right people around you, trust, referring) always wins. In your chat reply to the coach (never in the draft), say in one line which post you used, or why none fitted.');
   }
   if (profile.about) {
     add('About (their own words)', String(profile.about).slice(0, PROFILE_CHAR_CAP));

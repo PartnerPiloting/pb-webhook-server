@@ -30,8 +30,16 @@ assert.ok(postsAt < aboutAt, 'posts come before the About');
 assert.ok(block.includes('right people in the room'), 'the post text itself is carried');
 console.log('  ✓ posts come before the About');
 
+// The hook check rides WITH the posts - a rule in the rulebook alone lost to the CV (Johnidy retry).
+const checkAt = block.indexOf('HOOK CHECK');
+assert.ok(checkAt > postsAt && checkAt < aboutAt, 'hook check sits under the posts, above the About');
+assert.ok(/never from years of experience/.test(block), 'hook check rules out the CV tally');
+assert.ok(/which post you used/.test(block), 'hook check asks the chat to name the post');
+console.log('  ✓ hook check sits right under the posts');
+
 const noPosts = buildProfileBlock({ name: 'Sam', about: 'Builds psychological safety into teams.' });
 assert.ok(!noPosts.includes('Recent posts'), 'no posts line when there are no posts');
+assert.ok(!noPosts.includes('HOOK CHECK'), 'no hook check when there are no posts');
 assert.ok(noPosts.includes('About (their own words)'), 'About still rendered on its own');
 console.log('  ✓ no posts - About alone, no empty posts heading');
 
