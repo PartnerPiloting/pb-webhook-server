@@ -36,9 +36,11 @@ GROUNDING RULES (these override fluency — a plain grounded line beats a smooth
 - GROUND THE FACTS. Use ONLY details present in the supplied profile / page text. Never invent
   companies, roles, events or claims, and never assert a trait that isn't clearly stated
   (e.g. don't call someone "disruptive" or say they're "scaling" unless the page says so).
-- MINE THE PAGE TEXT FOR AN INTERPRETED HOOK — IN THIS ORDER. (1) FIRST check their About/summary for
-  passion statements, values, or mission-related content. (2) Then look across their profile AND posts
-  for emotionally-positive statements, attitudes toward collaboration, openness/willingness, or special
+- MINE THE PAGE TEXT FOR AN INTERPRETED HOOK — IN THIS ORDER. (1) FIRST check their recent posts and
+  featured content - a post that echoes the network idea (the right people around you, trust, referring)
+  beats anything else; skip jokes, bare reposts and posts about someone else. (2) Then their About/summary
+  for passion statements, values, or mission-related content. Never hook on a CV tally (years of
+  experience, lists of industries). Look across their profile AND posts for emotionally-positive statements, attitudes toward collaboration, openness/willingness, or special
   talents. Pick the ONE best hook and INTERPRET it — show you understood their thinking/approach
   (e.g. "I love your philosophy of great hires happening by process, not chance") rather than quoting a
   tagline. Ignore nav, buttons, "People also viewed", ads and other boilerplate.
@@ -78,10 +80,10 @@ for CONCURRENT experience to decide if they are BOTH a business owner and employ
 are SEQUENTIAL they are NOT both. Do not state the classification in the message.
 
 STEP 2 — FIND AN INTERESTING POINT to include. PRIORITY — before analysing experience you MUST first
-check: (1) Profile Summary/About — passions, values, what they care about professionally, mission/
-purpose, how they describe themselves; (2) Top Skills — standout capabilities; (3) Featured Content —
-projects/articles/work they've highlighted; (4) Recent Posts — themes, attitudes, topics they engage
-with. Prioritise these OVER job titles — they reveal values, collaboration style/openness, unique
+check: (1) Recent Posts and Featured Content — themes, attitudes, topics they engage with, in their own
+words right now (skip jokes, bare reposts and posts about someone else); (2) Profile Summary/About —
+passions, values, what they care about professionally, mission/purpose, how they describe themselves;
+(3) Top Skills — standout capabilities. Years of experience and lists of industries are never the point. Prioritise these OVER job titles — they reveal values, collaboration style/openness, unique
 talents, positive/emotional attitudes, and what they genuinely care about. Also look for emotionally
 positive statements, attitudes toward collaboration, willingness, openness, or special talents across
 their profile and posts. Where a profile statement relates to the value proposition (e.g. "helping
@@ -172,8 +174,9 @@ FOUR SHORT BEATS, in order - EACH its OWN short paragraph (not one block):
 1. ACKNOWLEDGE - one line reacting to what they actually said in their reply (e.g. "Glad that landed,
    {firstname}."). If no reply text is provided, open warmly without inventing what they said.
 2. THE RECOMMEND HOOK - one sentence. Pick ONE specific thing from their profile that genuinely makes
-   them easy to recommend, and tie it to recommendability. Check the About/summary FIRST (values,
-   mission, passion), then top skills, featured content, then recent posts. INTERPRET it - don't read
+   them easy to recommend, and tie it to recommendability. Check recent posts and featured content FIRST
+   (a post echoing the network idea wins; skip jokes, bare reposts and posts about someone else), then
+   the About/summary (values, mission, passion), then top skills. Never a CV tally of years and industries. INTERPRET it - don't read
    it back. End the thought on why it makes them recommendable (e.g. "...which is exactly what makes
    someone easy to recommend").
 3. THE VISION - one sentence: the network is fractional professionals who refer each other, rather

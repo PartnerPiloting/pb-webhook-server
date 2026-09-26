@@ -176,15 +176,18 @@ function buildProfileBlock(profile = {}) {
   add('Job title', profile.jobTitle);
   add('Company', profile.companyName);
   add('LinkedIn URL', profile.profileUrl);
-  if (profile.about) {
-    add('About (their own words)', String(profile.about).slice(0, PROFILE_CHAR_CAP));
-  }
+  // Posts BEFORE About (Johnidy Ong, 2026-09-26): with a long About read first, the model hooked on
+  // "20+ years across three sectors" and parked a post that was the network idea in his own words.
+  // What is read first gets the weight; the profile-hook-craft instruction says the same in words.
   if (Array.isArray(profile.recentPosts) && profile.recentPosts.length) {
-    lines.push('Recent posts / featured (passion signal — prefer for the hook):');
+    lines.push('Recent posts / featured (their own words, fresh - the first place to look for the hook; see profile-hook-craft for which posts fit):');
     profile.recentPosts.slice(0, 5).forEach((p) => {
       const t = String(p || '').trim();
       if (t) lines.push(`  - ${t.slice(0, 400)}`);
     });
+  }
+  if (profile.about) {
+    add('About (their own words)', String(profile.about).slice(0, PROFILE_CHAR_CAP));
   }
   if (profile.connectionMessage) {
     add('Their connection-request note', profile.connectionMessage);
@@ -1864,3 +1867,4 @@ module.exports = function mountWingguy(app) {
 
   app.use('/api/wingguy', router);
 };
+module.exports.buildProfileBlock = buildProfileBlock;
