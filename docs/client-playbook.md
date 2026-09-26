@@ -686,18 +686,67 @@ accounts get held for a quick look now and then and it's easy for me to sort out
 accounts is not.
 
 **The rest is my job.** I build the whole thing on my own - the desktop, Linked Helper, the
-self-restart, the nightly backup, the monitoring. You don't install anything, and nothing goes on
-your laptop. Then one short call, about fifteen minutes, where you sign in to LinkedIn on it -
-LinkedIn texts you a code the first time it sees a new machine, and that's the only part that needs
-you.
+self-restart, the nightly backup, the monitoring. You don't install anything for that. Then one
+short call, about half an hour, where you sign in to LinkedIn on it - LinkedIn texts you a code the
+first time it sees a new machine - and you leave with an icon on your own desktop that opens it.
 
 Two small things in the meantime: don't sign in to LinkedIn anywhere new, and don't buy a Linked
 Helper licence yet - that decision comes later and there's a separate topic on it.
 
 **The machine itself is set and forget.** It runs on its own, restarts itself, backs itself up, and I
 keep an eye on it. Your part is the campaigns - setting up new ones, and topping them up when they're
-running low so it never runs dry. I'll give you a shortcut into the machine and show you how, and
-I'll help you with that for as long as you want it.
+running low so it never runs dry. That's what the icon on your desktop is for - see OPEN YOUR LINKED HELPER MACHINE. I'll help you
+with the campaigns for as long as you want it.
+
+---
+
+## OPEN YOUR LINKED HELPER MACHINE - THE ICON ON YOUR DESKTOP
+
+Your Linked Helper machine lives in a data centre, but you can look at it any time. There's an icon
+on your desktop called **Linked Helper machine** - double-click it and a window opens showing the
+machine's screen, with Linked Helper on it. That's where you set up new campaigns and top up the
+ones that are running low.
+
+Picture: https://knowaguy.com.au/your-machine#icon
+
+We set this up together on the call where you signed in to LinkedIn on the machine. If you don't
+have the icon, we haven't done that part yet - tell me and we'll do it next time we talk. It takes
+about ten minutes.
+
+**What we set up on that call, so you know what the pieces are:**
+
+- **Tailscale** - a small app on your laptop that makes a private, locked connection to your
+  machine. You signed in to it with your own Google account, so it's yours. It lives by your clock,
+  usually tucked behind the little ^ arrow. It needs to be running and signed in for the desktop
+  icon to work.
+- **I shared your machine with you** - just yours. Nobody else can see it, and you can't see
+  anyone else's.
+- **The icon itself** - a Remote Desktop file that points at your machine. No password to
+  remember - it opens straight onto the Linked Helper screen.
+
+**Using it:**
+
+- Double-click the icon. The window might take a few seconds to show the screen.
+- When you've finished, just close the window. Closing it doesn't stop anything - Linked Helper
+  keeps running on the machine, the same as before you looked.
+- Don't close Linked Helper itself, and don't sign out of LinkedIn inside it. If you do by
+  accident, don't worry - the machine restarts Linked Helper by itself within about five minutes.
+  A LinkedIn sign-out is the one thing it can't fix on its own, so let me know if that happens.
+- If I happen to be looking at your machine at the same time, we see the same screen and share
+  the mouse. Nothing breaks - one of us just waits.
+
+**If the icon doesn't open your machine:**
+
+- **Check Tailscale first.** Windows usually hides it: click the little **^** arrow next to your
+  clock, and it's the square of dots. Click that. If it says you're signed out or disconnected, sign
+  in or switch it on, then try the desktop icon again. This is nearly always it.
+  Picture: https://knowaguy.com.au/your-machine#tailscale
+- **Icon gone from your desktop?** Ask me and I'll send you another one. There's nothing on it you
+  can lose.
+- Still stuck? Text me on 0414 975 509 with a photo of what you're seeing.
+
+**On a Mac:** the same icon opens in Microsoft's free **Windows App** from the App Store. Install
+that first and it takes over from there.
 
 ---
 

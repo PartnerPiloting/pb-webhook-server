@@ -99,6 +99,8 @@
   "near_misses": [
     { "phrase": "help me set up my extension", "not": "YOUR LINKED HELPER MACHINE" },
     { "phrase": "help me set up my instructions", "not": "YOUR LINKED HELPER MACHINE", "expect": "YOUR INSTRUCTIONS" },
-    { "phrase": "help me set up my Claude key", "not": "YOUR LINKED HELPER MACHINE" }
+    { "phrase": "help me set up my Claude key", "not": "YOUR LINKED HELPER MACHINE" },
+    { "phrase": "how do I open my Linked Helper machine", "not": "YOUR LINKED HELPER MACHINE", "expect": "OPEN YOUR LINKED HELPER MACHINE" },
+    { "phrase": "the icon on my desktop won't open", "expect": "OPEN YOUR LINKED HELPER MACHINE" }
   ]
 }
