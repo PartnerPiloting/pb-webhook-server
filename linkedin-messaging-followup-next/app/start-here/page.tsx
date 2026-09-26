@@ -1,6 +1,8 @@
 "use client";
 // "What Wingguy can do" - organised by PLACE, not by job: three colour-blocked bands (LinkedIn /wg,
-// Ask Claude, screens here) and a foundation band for call recordings.
+// Ask Claude, screens here) and two message bands: call recordings (the raw material) and voice
+// (the drafts sound like you, and you can keep tuning it - Guy, 26 Sep: the #1 objection is "AI
+// will sound like AI"; the answer is a message on the page, not a card named after a settings tab).
 //
 // Why (Guy, 26 Sep 2026): the previous job-by-job table gave every row equal weight - a wall of text
 // where the magic phrases sat in fine print. The page's own headline is "it's on LinkedIn, and in
@@ -101,6 +103,7 @@ const TONES = {
   orange: { head: 'bg-orange-50 border-orange-100', num: 'bg-orange-100 text-orange-700', tick: 'text-orange-600', border: 'border-gray-200' },
   blue: { head: 'bg-blue-50 border-blue-100', num: 'bg-blue-100 text-blue-700', tick: 'text-blue-700', border: 'border-gray-200' },
   amber: { head: 'bg-amber-50 border-amber-200', num: '', tick: 'text-orange-600', border: 'border-amber-200' },
+  violet: { head: 'bg-violet-50 border-violet-100', num: '', tick: 'text-violet-600', border: 'border-violet-100' },
 } as const;
 type Tone = keyof typeof TONES;
 
@@ -184,12 +187,15 @@ const WhatWingguyCanDo: React.FC = () => {
         </div>
       </Band>
 
-      <Band tone="blue" num="3" title="Screens here" how="the three tabs that matter day to day.">
-        <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
+      <Band tone="blue" num="3" title="Screens here" how="the tabs that matter day to day.">
+        <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
           {[
+            // Queues first, levers last - the top three are things waiting for you.
             { name: 'Thanks for Connecting', href: '/thanks-for-connecting', what: "who's new, best first - welcome them properly" },
             { name: 'Follow-Ups', href: '/followups', what: 'sorted overnight, drafts ready' },
             { name: 'New Leads', href: '/new-leads', what: 'people you met on calls, waiting with the transcript' },
+            { name: 'Lead Search & Update', href: '/', what: 'search a name or paste a LinkedIn URL - their whole story, every detail fixable' },
+            { name: 'Your scoring rules', href: '/settings', what: 'what makes a lead worth your time - every new lead is scored against them, yours to tune (under Settings)' },
           ].map((s) => (
             <a key={s.name} href={buildAuthUrl(s.href)} className="block rounded-lg border border-gray-200 px-3.5 py-3 hover:border-blue-100 hover:bg-blue-50">
               <span className="text-[15px] font-semibold text-blue-700">{s.name}</span>
@@ -208,6 +214,35 @@ const WhatWingguyCanDo: React.FC = () => {
         <Tick tone="amber"><strong className="font-semibold text-gray-900">The follow-up draft</strong> picks up what they actually said on the call - it reads like you wrote it ten minutes after hanging up</Tick>
         <Tick tone="amber"><strong className="font-semibold text-gray-900">Someone you met on a call</strong> lands on New Leads by themselves, transcript attached</Tick>
         <p className="mt-2.5 text-[15px] font-semibold text-gray-900">The more calls you record, the sharper all of the above gets - and the less typing you do.</p>
+      </Band>
+
+      <Band
+        tone="violet"
+        title="It sounds like you - because it's built from you"
+        how="the drafts aren't AI-generated - Wingguy works out what you would say, and you can keep tuning it."
+      >
+        <Tick tone="violet">
+          {wingguyOn ? (
+            <a href={buildAuthUrl('/my-wingguy/setup')} className="font-semibold text-gray-900 hover:underline">Give it your instructions</a>
+          ) : (
+            <strong className="font-semibold text-gray-900">Give it your instructions</strong>
+          )}
+          {' '}- how you open, how you sign off, what you&apos;d never say
+        </Tick>
+        <Tick tone="violet">
+          <strong className="font-semibold text-gray-900">Every edit teaches it</strong> - change a draft before sending, then say{' '}
+          <Say text="review my edits" live={wingguyOn} /> and it learns the pattern
+        </Tick>
+        <Tick tone="violet">
+          <strong className="font-semibold text-gray-900">Nothing is hidden</strong> -{' '}
+          {wingguyOn ? (
+            <a href={buildAuthUrl('/my-wingguy/review')} className="text-violet-700 hover:underline">What&apos;s changed lately</a>
+          ) : (
+            <span>What&apos;s changed lately</span>
+          )}
+          {' '}lists every adjustment, with an undo on each
+        </Tick>
+        <p className="mt-2.5 text-[15px] font-semibold text-gray-900">Keep honing and the drafts get better than what you&apos;d dash off on a busy Tuesday - that&apos;s the goal.</p>
       </Band>
 
       <div className="mt-6 space-y-2 text-sm text-gray-500">
