@@ -15,7 +15,7 @@ const assert = require('assert');
 let failures = 0;
 const check = (name, fn) => { try { fn(); console.log(`  ✓ ${name}`); } catch (e) { failures++; console.error(`  ✗ ${name}\n    ${e.message}`); } };
 
-const { extractOfferedTimes, offeredTimesSignal } = require('../services/wingguyOfferedTimes');
+const { extractOfferedTimes, offeredTimesSignal, lastWordSignal } = require('../services/wingguyOfferedTimes');
 
 const SIMON_EMAIL = `Hi Simon,
 
@@ -116,6 +116,45 @@ check('an older full email must not be read against a newer LinkedIn message', (
 check('no material -> null', () => {
   assert.strictEqual(offeredTimesSignal(null, '2026-09-11'), null);
   assert.strictEqual(offeredTimesSignal({ lastOutbound: null, timelineTail: [] }, '2026-09-11'), null);
+});
+
+// --- lastWordSignal (2026-09-26, the Owen Senior card): whose message is the thread's last
+// word, and how long the silence has run. Feeds the queue's REPLY OWED / WENT QUIET chip.
+
+check('coach spoke last -> lastDir you, silence measured to today', () => {
+  const sig = { timelineTail: [
+    { date: '2026-09-02', kind: 'linkedin', dir: 'them', text: 'Sounds good, thanks Guy' },
+    { date: '2026-09-09', kind: 'linkedin', dir: 'you', text: 'Good to hear from you. Worth a quick Zoom?' },
+  ] };
+  assert.deepStrictEqual(lastWordSignal(sig, '2026-09-26'), { lastDir: 'you', lastDate: '2026-09-09', quietDays: 17 });
+});
+
+check('they spoke last -> lastDir them', () => {
+  const sig = { timelineTail: [
+    { date: '2026-09-09', kind: 'linkedin', dir: 'you', text: 'Worth a quick Zoom?' },
+    { date: '2026-09-20', kind: 'linkedin', dir: 'them', text: 'Yes - how does next week look?' },
+  ] };
+  assert.deepStrictEqual(lastWordSignal(sig, '2026-09-26'), { lastDir: 'them', lastDate: '2026-09-20', quietDays: 6 });
+});
+
+check('a trailing calendar row is machinery, not the last word', () => {
+  const sig = { timelineTail: [
+    { date: '2026-09-09', kind: 'email', dir: 'you', text: 'Invite sent for Thursday.' },
+    { date: '2026-09-10', kind: 'calendar', dir: 'them', text: 'Accepted' },
+  ] };
+  assert.deepStrictEqual(lastWordSignal(sig, '2026-09-26'), { lastDir: 'you', lastDate: '2026-09-09', quietDays: 17 });
+});
+
+check('same-day message -> 0 days quiet, never negative', () => {
+  const sig = { timelineTail: [{ date: '2026-09-26', kind: 'email', dir: 'you', text: 'Just sent.' }] };
+  assert.strictEqual(lastWordSignal(sig, '2026-09-26').quietDays, 0);
+});
+
+check('no tail, undated or unreadable last word -> null', () => {
+  assert.strictEqual(lastWordSignal(null, '2026-09-26'), null);
+  assert.strictEqual(lastWordSignal({ timelineTail: [] }, '2026-09-26'), null);
+  assert.strictEqual(lastWordSignal({ timelineTail: [{ kind: 'linkedin', dir: 'you', text: 'undated' }] }, '2026-09-26'), null);
+  assert.strictEqual(lastWordSignal({ timelineTail: [{ date: '2026-09-09', kind: 'email', dir: 'other', text: 'a third party' }] }, '2026-09-26'), null);
 });
 
 if (failures) { console.error(`\n${failures} failed`); process.exit(1); }

@@ -94,12 +94,21 @@ function newYearIso() {
 
 // Row grouping label from the item's shape. Kind is the engine's verdict, not a guess.
 // Recommendation wording (2026-08-29): every verdict is advice the human clicks — nothing automatic.
+// A 'draft' verdict covers two opposite states, and only the record knows which (2026-09-26,
+// the Owen Senior card: "REPLY OWED" over a thread where the coach's message was the last word
+// and the lead had been quiet 17 days). lastDir comes from the stored story at serve time;
+// without it we keep the old default rather than guess. The Show filter uses the same bucket,
+// so a Went-quiet chip never lists under "Replies owed".
+function effectiveKind(it) {
+  if (it.kind === 'draft' && !it.unbooked && it.lastDir === 'you') return 'reopen';
+  return it.kind;
+}
 function tierChip(it) {
   if (it.kind === 'drop') return { label: 'DROP RECOMMENDED', cls: 'bg-red-100 text-red-700' };
   if (it.kind === 'park') return { label: 'PARK RECOMMENDED', cls: 'bg-sky-100 text-sky-800' };
   if (it.unbooked) return { label: 'NOT BOOKED', cls: 'bg-red-100 text-red-700' }; // they said yes to a slot; no invite behind it
   if (it.kind === 'attention') return { label: 'NEEDS JUDGEMENT', cls: 'bg-amber-100 text-amber-800' };
-  if (it.kind === 'reopen') return { label: 'WENT QUIET', cls: 'bg-gray-100 text-gray-600' };
+  if (effectiveKind(it) === 'reopen') return { label: 'WENT QUIET', cls: 'bg-gray-100 text-gray-600' };
   return { label: 'REPLY OWED', cls: 'bg-emerald-100 text-emerald-800' };
 }
 
@@ -508,7 +517,7 @@ export default function FollowUpsQueue() {
 
   const visible = useMemo(() => {
     let list = items;
-    if (tierFilter !== 'all') list = list.filter((it) => it.kind === tierFilter);
+    if (tierFilter !== 'all') list = list.filter((it) => effectiveKind(it) === tierFilter);
     if (sortMode === 'quiet') list = [...list].sort((a, b) => (b.quietDays ?? -1) - (a.quietDays ?? -1));
     else if (sortMode === 'recent') list = [...list].sort((a, b) => (a.quietDays ?? 1e9) - (b.quietDays ?? 1e9));
     return list;

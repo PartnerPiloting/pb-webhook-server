@@ -1990,7 +1990,7 @@ async function buildQueue(tenant = TENANT) {
   }
   // Never serve what the live world has already answered (see applyLiveQueueGates).
   const live = deduped.length ? await applyLiveQueueGates(deduped, tenant) : { items: deduped, suppressed: { booked: 0, ceased: 0, parked: 0, messaged: 0, items: [] } };
-  await attachOfferedTimesFlags(live.items, tenant, todayIso);
+  await attachStorySignals(live.items, tenant, todayIso);
   // Dark machines (Guy 2026-09-13): a coached client's extension updater that has gone quiet for
   // three days rides on the queue, because the queue is what the coach reads each morning and the
   // updater itself never tells anyone. Best-effort - [] on any failure, never blocks the queue.
@@ -1998,27 +1998,39 @@ async function buildQueue(tenant = TENANT) {
   return { items: live.items, preGateCount, dismissedCount, suppressed: live.suppressed, briefPreparedAt, backlogCreatedAt, fleetAlerts, introChecks };
 }
 
-// "Offered times have passed" (Guy 2026-09-11): the coach's last message offered dated slots,
-// nobody has replied, and every slot is behind us - the ball is back with the coach whatever the
-// verdict says. Read from the stored dossiers (one query, tail only) and attached HERE so chat and
-// the screen carry the same flag. Decoration only: a store failure leaves the queue untouched.
-// Drops and parks are skipped - a resolved "not now" or a dated reconnect makes the offer moot.
-async function attachOfferedTimesFlags(items, tenant, todayIso) {
-  const targets = items.filter((it) => it.kind !== 'drop' && it.kind !== 'park');
-  if (!targets.length) return;
+// Story-derived row signals, read from the stored dossiers (one query, tail only) and attached
+// HERE so chat and the screen always agree. Decoration only: a store failure leaves the queue
+// untouched. Two signals ride the same rows:
+//   - "Offered times have passed" (Guy 2026-09-11): the coach's last message offered dated slots,
+//     nobody replied, every slot is behind us - the ball is back with the coach whatever the
+//     verdict says. Drops and parks are skipped - a resolved "not now" or a dated reconnect makes
+//     the offer moot.
+//   - Whose message is the last word + how long quiet (Guy 2026-09-26, the Owen Senior card): a
+//     'draft' verdict covers both "they wrote, answer them" and "you wrote, nudge them", and the
+//     screen dressed every one as REPLY OWED with an empty quiet column. Attached at read time so
+//     entries already in the stores are covered without a rebuild. Never overwrites a quietDays
+//     the backlog audit already computed.
+async function attachStorySignals(items, tenant, todayIso) {
+  if (!items.length) return;
   let rows;
   try { rows = await require('./wingguyDossier').listOfferSignals(tenant); } catch (_) { return; }
   if (!rows || !rows.length) return;
-  const { offeredTimesSignal } = require('./wingguyOfferedTimes');
+  const { offeredTimesSignal, lastWordSignal } = require('./wingguyOfferedTimes');
   const byEmail = new Map();
   const byName = new Map();
   for (const r of rows) {
     if (r.email) byEmail.set(r.email, r);
     if (r.name) byName.set(String(r.name).trim().toLowerCase(), r);
   }
-  for (const it of targets) {
+  for (const it of items) {
     const row = (it.email && byEmail.get(String(it.email).toLowerCase())) || byName.get(String(it.name || '').trim().toLowerCase());
     if (!row) continue;
+    const word = lastWordSignal(row, todayIso);
+    if (word) {
+      it.lastDir = word.lastDir;
+      if (it.quietDays == null) it.quietDays = word.quietDays;
+    }
+    if (it.kind === 'drop' || it.kind === 'park') continue;
     const sig = offeredTimesSignal(row, todayIso);
     if (sig && sig.passed) {
       it.offeredTimesPassed = true;
@@ -2084,6 +2096,9 @@ async function runQueue({ page } = {}, tenant = TENANT) {
     if (it.kind === 'attention' && it.unbooked) return `${rec} → book it on their go`;
     if (it.kind === 'attention') return `${rec} [needs your judgment]`;
     if (it.kind === 'reopen') return `${it.whyLine} (${it.quietDays}d quiet)${passedNote(it)}${draftMarker(it.draftState, 'backlog')}`;
+    // The last word is the coach's (2026-09-26, the Owen Senior card): this is a nudge, not a
+    // reply owed - say so, with the silence measured, exactly as the screen's chip does.
+    if (it.lastDir === 'you' && it.quietDays != null) return `${rec} (your message is the last word - quiet ${it.quietDays}d)${draftMarker(it.draftState, 'today')}`;
     return `${rec}${draftMarker(it.draftState, 'today')}`;
   };
   const PAGE = 10;

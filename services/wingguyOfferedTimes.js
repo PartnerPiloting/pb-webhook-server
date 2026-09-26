@@ -98,4 +98,26 @@ function offeredTimesSignal(sig, todayIso) {
   return { passed: true, times: slots.map((s) => s.label), offeredOn: sentIso || null };
 }
 
-module.exports = { extractOfferedTimes, offeredTimesSignal };
+/**
+ * Whose message is the conversation's last word, and how long ago (Guy 2026-09-26 - the Owen
+ * Senior card: the screen said "REPLY OWED" over a thread where the coach's 9 Sep message was
+ * the last word and the lead had been quiet 17 days; the record knew, the label didn't). Same
+ * material and conventions as offeredTimesSignal: dossier timeline tail, calendar rows ignored.
+ * @param {Object} sig  { timelineTail: [{date,kind,dir,text}] }
+ * @param {string} todayIso  YYYY-MM-DD
+ * @returns {{lastDir:'you'|'them', lastDate:string, quietDays:number}|null}  null = no readable tail
+ */
+function lastWordSignal(sig, todayIso) {
+  if (!sig) return null;
+  const tail = (Array.isArray(sig.timelineTail) ? sig.timelineTail : []).filter((t) => t && t.kind !== 'calendar');
+  const last = tail.length ? tail[tail.length - 1] : null;
+  if (!last || (last.dir !== 'you' && last.dir !== 'them')) return null;
+  const lastDate = String(last.date || '').slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(lastDate)) return null;
+  const today = String(todayIso || new Date().toISOString().slice(0, 10)).slice(0, 10);
+  const days = Math.floor((Date.parse(`${today}T00:00:00Z`) - Date.parse(`${lastDate}T00:00:00Z`)) / 86400000);
+  if (!Number.isFinite(days)) return null;
+  return { lastDir: last.dir, lastDate, quietDays: Math.max(0, days) };
+}
+
+module.exports = { extractOfferedTimes, offeredTimesSignal, lastWordSignal };

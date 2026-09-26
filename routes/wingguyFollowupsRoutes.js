@@ -99,6 +99,7 @@ module.exports = function mountWingguyFollowups(app) {
         whyLine: it.whyLine || '',
         jog: it.jog || '',
         quietDays: it.quietDays ?? null,
+        lastDir: it.lastDir || null,   // 'you' | 'them' — whose message is the thread's last word (from the stored story)
         channel: it.channel || null,
         parkDate: it.parkDate || null,
         parkPassed: !!it.parkPassed,
