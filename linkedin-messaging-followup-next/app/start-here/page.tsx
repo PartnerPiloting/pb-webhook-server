@@ -1,6 +1,7 @@
 "use client";
 // "What Wingguy can do" - organised by PLACE, not by job: three colour-blocked bands (LinkedIn /wg,
-// Ask Claude, screens here) and two message bands: call recordings (the raw material) and voice
+// Ask Claude, screens here) and three message bands: leads arriving (the campaign that feeds
+// Wingguy - Guy, 28 Sep: the page never said where leads COME FROM), call recordings (the raw material) and voice
 // (the drafts sound like you, and you can keep tuning it - Guy, 26 Sep: the #1 objection is "AI
 // will sound like AI"; the answer is a message on the page, not a card named after a settings tab).
 //
@@ -103,6 +104,7 @@ const TONES = {
   orange: { head: 'bg-orange-50 border-orange-100', num: 'bg-orange-100 text-orange-700', tick: 'text-orange-600', border: 'border-gray-200' },
   blue: { head: 'bg-blue-50 border-blue-100', num: 'bg-blue-100 text-blue-700', tick: 'text-blue-700', border: 'border-gray-200' },
   amber: { head: 'bg-amber-50 border-amber-200', num: '', tick: 'text-orange-600', border: 'border-amber-200' },
+  green: { head: 'bg-green-50 border-green-200', num: '', tick: 'text-green-700', border: 'border-green-200' },
   violet: { head: 'bg-violet-50 border-violet-100', num: '', tick: 'text-violet-600', border: 'border-violet-100' },
 } as const;
 type Tone = keyof typeof TONES;
@@ -203,6 +205,17 @@ const WhatWingguyCanDo: React.FC = () => {
             </a>
           ))}
         </div>
+      </Band>
+
+      <Band
+        tone="green"
+        title="New leads find you - you don't add them"
+        how="a campaign runs your LinkedIn search in the background, every day."
+      >
+        <Tick tone="green"><strong className="font-semibold text-gray-900">The search is yours</strong> - a LinkedIn search built from who you&apos;re looking for. Want to aim it differently? That&apos;s a conversation with me.</Tick>
+        <Tick tone="green"><strong className="font-semibold text-gray-900">That&apos;s what your Linked Helper machine is doing</strong> - working through the search, inviting people, and feeding every one of them into Wingguy</Tick>
+        <Tick tone="green"><strong className="font-semibold text-gray-900">Each arrival is scored the moment it lands</strong> - against your scoring rules, so the best ones rise to the top</Tick>
+        <p className="mt-2.5 text-[15px] font-semibold text-gray-900">By the time you see a lead, the finding and the sorting are already done - your job starts at &ldquo;worth talking to&rdquo;.</p>
       </Band>
 
       <Band
