@@ -627,10 +627,12 @@ function AddInstruction({ assist, commitChange }) {
   const [text, setText] = useState('');
   const [state, setState] = useState(null); // null | 'loading' | 'done' | {proposal} | {overlap} | {error}
 
-  const run = async () => {
+  // forceNew = the client has read the overlap note and says it is a separate point. Their call wins
+  // (Matthew Bulat, 2026-09-28 - a wet-season rule was blocked as a "twin" of the timezone one).
+  const run = async (forceNew = false) => {
     setState('loading');
     try {
-      const r = await assist({ mode: 'change', request: text });
+      const r = await assist({ mode: 'change', request: text, ...(forceNew ? { forceNew: true } : {}) });
       setState(r.action === 'overlap' ? { overlap: r } : { proposal: r });
     } catch (e) { setState({ error: e.message }); }
   };
@@ -652,7 +654,7 @@ function AddInstruction({ assist, commitChange }) {
       />
       <button
         type="button"
-        onClick={run}
+        onClick={() => run(false)}
         disabled={!text.trim() || state === 'loading'}
         className="self-start px-4 py-2 text-sm font-semibold text-emerald-900 bg-emerald-50 border border-emerald-600 hover:bg-emerald-100 disabled:opacity-50"
       >
@@ -671,9 +673,17 @@ function AddInstruction({ assist, commitChange }) {
             </p>
             {state.overlap.why ? <p className="text-sm text-slate-700 leading-relaxed">{state.overlap.why}</p> : null}
             <p className="text-sm text-slate-700 leading-relaxed">
-              Rather than adding a twin that would fight it, find it in the list below, open it, and
-              tell it your change there.
+              If yours really belongs in that one, find it in the list below, open it, and tell it your
+              change there. If it&apos;s a separate point, add it as your own - it won&apos;t change the
+              other one.
             </p>
+            <button
+              type="button"
+              onClick={() => run(true)}
+              className="self-start mt-1 px-4 py-2 text-sm font-semibold text-emerald-900 bg-emerald-50 border border-emerald-600 hover:bg-emerald-100"
+            >
+              Add it as my own anyway
+            </button>
           </div>
         ) : (
           <ProposalCard

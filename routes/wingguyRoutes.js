@@ -24,6 +24,7 @@
 
 const express = require('express');
 const { createLogger } = require('../utils/contextLogger');
+const setupAssistJson = require('../utils/setupAssistJson');
 const { authenticateUserWithTestMode } = require('../middleware/authMiddleware');
 const { getAnthropicClient, getAnthropicClientForKey, resolveClientAnthropic, NO_ANTHROPIC_KEY_MSG, isAnthropicConfigured, anthropicKeyError, claudeModelId } = require('../config/anthropicClient');
 const rulesSource = require('../services/wingguyRulesSource');
@@ -1307,12 +1308,12 @@ module.exports = function mountWingguy(app) {
   });
 
   // Pull a JSON object out of a model reply that may carry prose around it.
+  // Matthew Bulat, 2026-09-28: first-{ to last-} broke when the reply held more than the one object
+  // (a second object, or a note after it with a brace in it) - "Unexpected non-whitespace character
+  // after JSON" - and his instruction was thrown away as "That did not work". Now each "{" is tried in
+  // turn, walked to its OWN matching "}" (braces inside strings ignored), and the first that parses wins.
   function extractJson(text) {
-    const s = String(text || '');
-    const start = s.indexOf('{');
-    const end = s.lastIndexOf('}');
-    if (start < 0 || end <= start) throw new Error('the assistant did not return usable JSON');
-    return JSON.parse(s.slice(start, end + 1));
+    return setupAssistJson.extractFirstJsonObject(text);
   }
 
   async function runAssistModel(anthropic, system, userText, maxTokens = 900) {
@@ -1440,7 +1441,7 @@ module.exports = function mountWingguy(app) {
       }
 
       if (mode === 'change') {
-        const { ruleKey, request } = req.body || {};
+        const { ruleKey, request, forceNew } = req.body || {};
         if (!String(request || '').trim()) return res.status(400).json({ ok: false, error: 'Say what you would like changed first.' });
         const rules = await wingguyStore.getActiveRules({ tenantId, shadowed: true });
         const generic = rules.filter((r) => !r.campaign);
@@ -1481,12 +1482,21 @@ module.exports = function mountWingguy(app) {
         // ADD a new instruction - with the overlap guard Guy promised on the page: if something
         // already covers the ground, lead with "amend that one instead" rather than minting a twin.
         const index = generic.map((r) => `- ${r.rule_key} (${r.context}): ${titles.titleFor(r.rule_key)}${titles.gistFor(r.rule_key) ? ' - ' + titles.gistFor(r.rule_key) : ''}`).join('\n');
+        // TOO EAGER (Matthew Bulat, 2026-09-28): "avoid the North Queensland wet season for visits" was
+        // refused as overlapping "Getting timezones right" - a shared instruction about how times are
+        // WRITTEN, not which months to travel - and he was told to edit that shared one instead, which
+        // would have forked it for him for good. Now overlap means the SAME decision, not a shared
+        // topic, and "add it as my own anyway" (forceNew) skips the check - the client has the last say.
+        const addShape = `{"ruleKey": string, "context": string, "ruleType": string, "explanation": string, "body": string}  - ruleKey is a new kebab-case key, context is one of global|outreach|reply|booking|post-call|follow-up, ruleType is one of voice|formatting|stage-logic|scheduling|asset-usage|qualifying, body is the complete instruction in second person ("you"), explanation is 1-2 plain sentences`;
+        const addSystem = forceNew
+          ? `You maintain a client's writing instructions. They want to add a new one of their own, and have already decided it stands on its own. Write it up. Reply with ONE JSON object only:\n${addShape}\nBritish/Australian spelling. No em dashes - use " - ".`
+          : `You maintain a client's writing instructions. They want to add a new one. FIRST check the existing list for one that already makes the SAME decision - two instructions that say the same thing, or tell the writer opposite things, quietly fight each other. Sharing a broad topic is NOT overlap: both being about dates, meetings, tone or people does not make them the same instruction. Only report overlap when an existing instruction already covers THIS specific request, so adding it would duplicate or contradict it. When in doubt, it is new. Reply with ONE JSON object only, ONE of:\n{"overlapKey": string, "why": string}  - an existing instruction already makes this decision; why is 1-2 plain sentences\n${addShape}  - genuinely new\nBritish/Australian spelling. No em dashes - use " - ".`;
         const raw = await runAssistModel(anthropic,
-          `You maintain a client's writing instructions. They want to add a new one. FIRST check the existing list for one that already covers the same ground - overlapping instructions quietly fight each other. Reply with JSON only, ONE of:\n{"overlapKey": string, "why": string}  - an existing instruction covers this ground; why is 1-2 plain sentences\n{"ruleKey": string, "context": string, "ruleType": string, "explanation": string, "body": string}  - genuinely new; ruleKey is a new kebab-case key, context is one of global|outreach|reply|booking|post-call|follow-up, ruleType is one of voice|formatting|stage-logic|scheduling|asset-usage|qualifying, body is the complete instruction in second person ("you"), explanation is 1-2 plain sentences. British/Australian spelling. No em dashes - use " - ".`,
+          addSystem,
           `Their existing instructions:\n${index}\n\nWhat they want, in their words:\n${String(request).slice(0, 1500)}`,
           1600);
         const j = extractJson(raw);
-        if (j.overlapKey) {
+        if (j.overlapKey && !forceNew) {
           const hit = generic.find((r) => r.rule_key === j.overlapKey);
           return res.json({
             ok: true,
@@ -1497,9 +1507,16 @@ module.exports = function mountWingguy(app) {
             found: !!hit,
           });
         }
-        const newKey = String(j.ruleKey || '').trim();
+        let newKey = String(j.ruleKey || '').trim();
         if (!/^[a-z0-9][a-z0-9-]{2,60}$/.test(newKey)) return res.status(500).json({ ok: false, error: 'Could not coin a sensible name for that - try wording it differently.' });
-        if (generic.some((r) => r.rule_key === newKey)) return res.status(409).json({ ok: false, error: 'That clashes with an existing instruction - try again.' });
+        // A name already taken is a naming accident, not a reason to refuse the client's instruction:
+        // their own version gets a suffix so it sits alongside, never on top of, the existing one.
+        if (generic.some((r) => r.rule_key === newKey)) {
+          const base = newKey.slice(0, 55);
+          let n = 2;
+          while (generic.some((r) => r.rule_key === `${base}-${n}`)) n++;
+          newKey = `${base}-${n}`;
+        }
         if (!wingguyStore.CONTEXTS.includes(j.context) || !wingguyStore.RULE_TYPES.includes(j.ruleType)) {
           return res.status(500).json({ ok: false, error: 'Could not place that instruction - try wording it differently.' });
         }
