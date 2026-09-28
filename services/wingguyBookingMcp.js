@@ -126,7 +126,28 @@ async function runCheckAvailability({ lead_location, include_lunch, include_soon
 // "What's on my calendar?" — the read-only counterpart to check_availability. Routes through the
 // SAME provider seam as booking (google | nylas | zoho), so every tenant can ask this inside Wingguy
 // rather than needing a separate calendar connector in their Claude (impossible for Zoho anyway).
-async function runListEvents({ range, date, end_date } = {}, tenant = TENANT) {
+//
+// Call run sheet (Guy 2026-09-28): a coach can keep a "how a first call should flow" page as the
+// `call_run_sheet` asset. When it exists, the diary carries it as the first thing to relay, so
+// "prep me for today's meetings" opens with the link. No asset = no line; a store hiccup never
+// blocks the diary.
+const RUN_SHEET_KEY = 'call_run_sheet';
+
+async function runSheetLine(tenant, deps = {}) {
+  try {
+    const getAssets = deps.getAssets || require('./wingguyRulesStore').getAssets;
+    const rows = await getAssets({ tenantId: tenant });
+    const a = (rows || []).find((x) => x.asset_key === RUN_SHEET_KEY && x.status !== 'retired' && x.url);
+    return a
+      ? `CALL RUN SHEET: ${a.url} - when prepping meetings, put this link as the VERY FIRST line of the prep ` +
+        `("Your call run sheet: <link>"), before any meeting. Skip it for a plain "what's on today?".\n\n`
+      : '';
+  } catch (_) {
+    return '';
+  }
+}
+
+async function runListEvents({ range, date, end_date } = {}, tenant = TENANT, deps = {}) {
   const r = await wingguyCalendar.listEventsForCoach(tenant, { range, date, endDate: end_date });
   const tz = r.timezone || 'Australia/Brisbane';
   if (!r.ok) return { text: `Couldn't read the calendar${r.provider ? ` (${r.provider})` : ''}: ${r.error}`, isError: true };
@@ -186,6 +207,7 @@ async function runListEvents({ range, date, end_date } = {}, tenant = TENANT) {
   return {
     text:
       `${anchor}\n\n` +
+      (await runSheetLine(tenant, deps)) +
       `The coach's calendar for ${span}, read live from their own calendar (${r.provider}). All times are ${tz}.\n\n` +
       `${blocks.join('\n\n')}\n\n` +
       `These are what's BOOKED — for when they're FREE to offer a lead, use wingguy_check_availability (it applies their booking rules).`,
@@ -303,7 +325,7 @@ const RANGE_DESC = 'Which window to list: "today" (default), "tomorrow", "this_w
 const TOOL_DEFS = [
   {
     name: 'wingguy_list_events',
-    description: 'What is actually ON the coach\'s calendar for a day or a range ("what\'s on today?", "what does my week look like?", "am I free Thursday afternoon?", "what\'s my next meeting?"). ALSO the FIRST call for the daily "prep me for today\'s meetings" / "prepare me for my 2pm" - start here to get the meetings, then call wingguy_dossier per attendee for the history, past emails and what was agreed last time (pass the attendee\'s invite email as email= too — the lookup is surer and reaches Alt Emails). That phrase means the DIARY, never the follow-up queue. Reads their real calendar live, whichever provider they use (Google, Nylas or Zoho) — so this is the RIGHT tool for the coach\'s own diary, and works for every client. This shows what is BOOKED; to find times to OFFER A LEAD use wingguy_check_availability instead (that one applies their booking rules). Read-only — it never changes anything. Defaults to today.',
+    description: 'What is actually ON the coach\'s calendar for a day or a range ("what\'s on today?", "what does my week look like?", "am I free Thursday afternoon?", "what\'s my next meeting?"). ALSO the FIRST call for the daily "prep me for today\'s meetings" / "prepare me for my 2pm" - start here to get the meetings, then call wingguy_dossier per attendee for the history, past emails and what was agreed last time (pass the attendee\'s invite email as email= too — the lookup is surer and reaches Alt Emails). That phrase means the DIARY, never the follow-up queue. If the result carries a CALL RUN SHEET line, the prep OPENS with that link. Reads their real calendar live, whichever provider they use (Google, Nylas or Zoho) — so this is the RIGHT tool for the coach\'s own diary, and works for every client. This shows what is BOOKED; to find times to OFFER A LEAD use wingguy_check_availability instead (that one applies their booking rules). Read-only — it never changes anything. Defaults to today.',
     zodSchema: {
       range: z.enum(['today', 'tomorrow', 'this_week', 'next_week']).optional().describe(RANGE_DESC),
       date: z.string().optional().describe('Explicit calendar date to list, YYYY-MM-DD. Overrides `range`. Use only when the coach named a specific date.'),
@@ -441,4 +463,4 @@ async function legacyToolCall(toolName, args, tenant = TENANT) {
 // (content/client-phrases.json). Must run before export - see utils/clientPhrases.js for the why.
 require('../utils/clientPhrases').applyClientPhrases(TOOL_DEFS);
 
-module.exports = { registerWingguyBookingTools, legacyToolList, legacyToolCall, TOOL_DEFS, runCheckAvailability };
+module.exports = { registerWingguyBookingTools, legacyToolList, legacyToolCall, TOOL_DEFS, runCheckAvailability, runListEvents };
