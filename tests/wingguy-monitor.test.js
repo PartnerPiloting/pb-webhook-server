@@ -20,7 +20,7 @@ const fs = require('fs');
 const path = require('path');
 
 const { pickLandmarkFindings } = require('../services/wingguyMonitor');
-const { SOFT_KEYS, KNOWN_KEYS } = require('../services/wingguySelectorStore');
+const { SOFT_KEYS, KNOWN_KEYS, INFO_KEYS } = require('../services/wingguySelectorStore');
 
 let failures = 0;
 const check = async (name, fn) => {
@@ -92,6 +92,20 @@ const slice = (selector_key, tenant, misses, founds, extra = {}) => ({
     const rows = [slice('convo_header', 'Guy-Wilson', 2, 0)];
     assert.strictEqual(pickLandmarkFindings(rows).length, 0);
     assert.strictEqual(pickLandmarkFindings(rows, { missMin: 2 }).length, 1);
+  });
+
+  await check('an INFO key (the deferred About/Featured block) never alerts, however blind, on however many machines', () => {
+    // The 16-28 Sep 2026 shape: nobody scrolled before clicking, on every machine, all day.
+    const rows = [
+      slice('profile_deferred_cards', 'Guy-Wilson', 6, 0, { surface: 'profile' }),
+      slice('profile_deferred_cards', 'Matthew-Bulat', 3, 0, { surface: 'profile', version: '0.3.28' }),
+    ];
+    assert.deepStrictEqual(pickLandmarkFindings(rows), []);
+  });
+
+  await check('every INFO_KEY is a KNOWN_KEY (or the health row is binned at the door)', () => {
+    const unknown = INFO_KEYS.filter((k) => !KNOWN_KEYS.includes(k));
+    assert.deepStrictEqual(unknown, [], `not in KNOWN_KEYS: ${unknown.join(', ')}`);
   });
 
   await check('every SOFT_KEY is a KNOWN_KEY', () => {

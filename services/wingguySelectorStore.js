@@ -48,6 +48,7 @@ const KNOWN_KEYS = [
   'profile_activity_items',  // the post-preview text inside the Activity section
   'profile_featured_anchor', // the Featured section (the posts they pinned) — anchor ids
   'profile_featured_items',  // the post-preview text inside the Featured section
+  'profile_deferred_cards',  // not a selector: did LinkedIn's deferred About/Featured block render before the read
   'convo_container',         // the conversation containers (bubble / pane / thread)
   'convo_header',            // the open thread's header, where the participant's name lives
   'message_group_name',      // "who said this" on a run of message bubbles
@@ -91,8 +92,20 @@ const SOFT_KEYS = [
   // norm, not a symptom.
   'profile_featured_anchor',
   'profile_featured_items',
+  'profile_deferred_cards',
   'message_group_name',
   'message_body',
+];
+
+/** Health rows that are INFORMATION, not landmarks - the monitor never alerts on them. Since the
+ *  sdui build (2026-08) LinkedIn renders About and Featured inside one deferred block that only a
+ *  real mouse-wheel scroll unlocks, and nothing a script does can trigger it. The extension asks the
+ *  person to scroll and files profile_deferred_cards found/not-found so the health read shows how
+ *  often the draft got their About. Zero finds means nobody scrolled before clicking, which is a
+ *  coaching point, not a moved landmark - and it is exactly what the 16-28 Sep 2026 "Featured moved"
+ *  emails were (About was blind on 40/40 reads over the same period and nobody knew). */
+const INFO_KEYS = [
+  'profile_deferred_cards',
 ];
 
 const DEFAULT_TENANT = 'Guy-Wilson';
@@ -397,6 +410,7 @@ module.exports = {
   RESOLVED_MISS_WINDOW_SECONDS,
   KNOWN_KEYS,
   SOFT_KEYS,
+  INFO_KEYS,
   SURFACES,
   __setTestPool,
 };

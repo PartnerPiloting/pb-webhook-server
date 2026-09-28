@@ -101,6 +101,10 @@
     // FIRST because a pinned post is the one they chose to lead with.
     profile_featured_anchor: '#featured, #content_collections_featured',
     profile_featured_items: 'span[aria-hidden="true"], span, p',
+    // The deferred block About and Featured render inside (sdui build, 2026-08). It stays a 1px
+    // placeholder until a real mouse-wheel scroll, and nothing a script does unlocks it - see
+    // waitForDeferredCards. Its health row records whether it had rendered, not whether it exists.
+    profile_deferred_cards: '[id^="profileCardsAboveActivity"]',
     convo_container: '.msg-overlay-conversation-bubble,.msg-convo-wrapper,.msg-thread,.msg-s-message-list-container,.scaffold-layout__detail',
     convo_header: 'header, [class*="overlay-bubble-header"], [class*="title-bar"], [class*="thread__header"], [class*="thread-header"]',
     message_group_name: '.msg-s-message-group__name, [class*="message-group__name"], [class*="event-listitem__name"]',
@@ -188,8 +192,14 @@
       { key: 'profile_activity_items', soft: true, within: 'activity' },
       // Featured is soft for the same reason Activity is — most people pin nothing — but graded so
       // the monitor sees it go blind rather than nobody noticing for a month (the Activity lesson).
-      { key: 'profile_featured_anchor', soft: true },
+      // Graded only when the page actually shows a "Featured" heading: the 24 Sep alarm was eight
+      // profiles that had simply pinned nothing, and no selector row can fix an absent section.
+      { key: 'profile_featured_anchor', soft: true, deferred: true, heading: /^featured\b/i },
       { key: 'profile_featured_items', soft: true, within: 'featured' },
+      // Not a landmark: did LinkedIn's deferred About/Featured block render before we read? found =
+      // the person scrolled first (or did when asked). Filed so the health read shows how often the
+      // draft got About; the monitor leaves it out of the alerts (INFO_KEYS, server side).
+      { key: 'profile_deferred_cards', soft: true },
     ],
     messaging: [
       { key: 'thread_open_marker' },
@@ -253,6 +263,23 @@
       if (item.within === 'about') { root = scopes && scopes.about; if (!root) continue; }
       if (item.within === 'activity') { root = scopes && scopes.activity; if (!root) continue; }
       if (item.within === 'featured') { root = scopes && scopes.featured; if (!root) continue; }
+      const deferred = (scopes && scopes.deferred) || null;
+      // The deferred-block row itself: only meaningful on a build that has the block at all.
+      if (item.key === 'profile_deferred_cards') {
+        if (!deferred || !deferred.present) continue;
+        checks.push({ key: item.key, surface, found: !!deferred.rendered, source: 'default', shape: '' });
+        continue;
+      }
+      // A landmark inside the deferred block is not checkable until the block has rendered - the
+      // person clicked before scrolling, and a miss here would say "moved" about furniture that has
+      // not been unpacked yet (every Featured miss from 16 to 28 Sep 2026 was this).
+      if (item.deferred && deferred && deferred.present && !deferred.rendered) continue;
+      // An optional section that the page does not show at all (no heading) is absent, not moved.
+      if (item.heading) {
+        let shown = false;
+        try { shown = deepQueryAll('h2, h3').some((el) => item.heading.test(cleanText(el.textContent))); } catch (_) { shown = false; }
+        if (!shown) continue;
+      }
       // Probe at the SAME depth as the scrape (light pass, then shadow walk) — a shallower check
       // would report misses for content the scrape happily reads on the new-UI build.
       let found = false;
@@ -512,20 +539,43 @@
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
   // LinkedIn lazy-renders profile sections (About/Experience aren't in the DOM until scrolled near).
-  // Step down the page to force them to load, then restore the user's scroll position. This is the
-  // "auto-expand the page you're already on" restraint — NOT driving LinkedIn across profiles.
-  async function autoScrollToLoad() {
+  // Since the sdui build (2026-08) About and Featured render inside ONE deferred block,
+  // div[id^="profileCardsAboveActivity"], that stays a 1px placeholder until the viewer scrolls with
+  // the mouse wheel. Only a TRUSTED gesture unlocks it: window.scrollTo, scrollTop on the real
+  // scroller (main#workspace), synthetic wheel / keydown / pointer events, even a real click all
+  // leave it empty; one real wheel tick fills it instantly with no network call (proved 2026-09-29
+  // on Guy's own profile and a stranger's). The old autoScrollToLoad() stepped window.scrollY - a
+  // no-op on both counts - which is why About was blind on 40/40 profile reads and Featured on
+  // 36/36 since the Featured read shipped, with the monitor reading it as a moved landmark.
+  // The one thing that works is asking: the panel says "give the page one scroll", and this waits
+  // for the block to fill. Below-Activity parts (Education, Skills...) are gated the same way;
+  // Experience is not (it renders on load), which is why experienceText kept working.
+  const DEFERRED_WAIT_MS = 10000;
+  function deferredCardsState() {
     try {
-      const startY = window.scrollY;
-      const step = Math.max(500, Math.floor(window.innerHeight * 0.9));
-      const maxY = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
-      for (let y = step; y <= maxY; y += step) {
-        window.scrollTo(0, y);
-        await sleep(110);
-      }
-      window.scrollTo(0, startY);
-      await sleep(150);
-    } catch (_) { /* non-fatal */ }
+      const wrap = findByKey('profile_deferred_cards');
+      if (!wrap) return { present: false, rendered: false };
+      return { present: true, rendered: wrap.offsetHeight > 1 || !!wrap.querySelector('section') };
+    } catch (_) { return { present: false, rendered: false }; }
+  }
+  async function waitForDeferredCards() {
+    const first = deferredCardsState();
+    if (!first.present || first.rendered) return first;
+    // Only worth waiting when a person is looking at the panel. The hidden read tab has nobody to
+    // scroll, so there the read goes ahead without About - Activity and Experience still come through.
+    const body = document.getElementById('wingguy-body');
+    if (!body) return first;
+    body.innerHTML = `<div class="wingguy-muted">LinkedIn hasn't loaded their About yet - give the page one scroll and I'll read it.</div>`;
+    const until = Date.now() + DEFERRED_WAIT_MS;
+    let state = first;
+    while (Date.now() < until && !state.rendered) {
+      await sleep(250);
+      state = deferredCardsState();
+    }
+    if (state.rendered) await sleep(300);   // let the freshly rendered cards settle before the read
+    console.log('[Wingguy] deferred cards (About/Featured):', state.rendered ? 'rendered' : 'still unrendered after the wait');
+    body.innerHTML = `<div class="wingguy-muted">Reading this profile… (scanning the page)</div>`;
+    return state;
   }
 
   // ---- profile scraping (best-effort, multiple fallbacks) -------------------
@@ -1118,8 +1168,10 @@
     // someone else's /in/ profile — the person meant is the one in the THREAD, not the profile behind it.
     const inThread = isMessagingPage() || !!activeThreadContainer();
     console.log('[Wingguy] scrapeProfile: inThread=', inThread, '(msgPage=', isMessagingPage(), 'bubble/thread=', !!activeThreadContainer(), ')');
+    // About/Featured only render after a real scroll (see waitForDeferredCards). Ask, wait, then read.
+    let deferred = { present: false, rendered: false };
     if (!inThread) {
-      await autoScrollToLoad();   // force lazy sections (About/Experience) into the DOM (profile pages only)
+      deferred = await waitForDeferredCards();
       await expandAboutSeeMore();
     }
     // findByKey = light-DOM pass then shadow walk. The new-UI build renders the whole profile
@@ -1217,6 +1269,9 @@
         about: findAboutSection(),
         activity: activityScope.section,
         featured: activityScope.featured,
+        // Whether LinkedIn's deferred About/Featured block had rendered when we read. Unrendered =
+        // the person clicked before scrolling, and nothing in that block is checkable.
+        deferred,
       }).catch(() => {});
     } catch (_) { /* a self-check must never break a scrape */ }
 
@@ -1243,9 +1298,9 @@
         if (me && me.profileUrl) base.profileUrl = me.profileUrl;
       }
       if (samePerson) {
-        // The lazy-section pass was skipped above (no auto-scroll on the messaging surface), so
-        // force About/Activity into the DOM now and re-read. Header stays the name authority.
-        await autoScrollToLoad();
+        // The deferred-block wait was skipped above (messaging surface), so run it now against the
+        // profile behind the bubble and re-read. Header stays the name authority.
+        await waitForDeferredCards();
         await expandAboutSeeMore();
         base.about = readAbout();
         base.recentPosts = readPostMaterial(activityScope, [base.name, base.headline]);

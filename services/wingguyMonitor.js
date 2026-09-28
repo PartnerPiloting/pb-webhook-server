@@ -21,7 +21,7 @@
 const { Pool } = require('pg');
 const { createLogger } = require('../utils/contextLogger');
 const { sendAlertEmail } = require('./emailNotificationService');
-const { RESOLVED_MISS_SQL, SOFT_KEYS } = require('./wingguySelectorStore');
+const { RESOLVED_MISS_SQL, SOFT_KEYS, INFO_KEYS } = require('./wingguySelectorStore');
 
 const log = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'wingguy-monitor' });
 
@@ -123,7 +123,12 @@ async function landmarkFindings(client) {
  *  can be tested without a database (tests/wingguy-monitor.test.js). */
 function pickLandmarkFindings(rows, { missMin = MISS_MIN, missRate = MISS_RATE } = {}) {
   const soft = new Set(SOFT_KEYS);
-  const slices = rows.map((r) => ({ ...r, misses: Number(r.misses), founds: Number(r.founds) }));
+  // INFO_KEYS are facts about the page, not landmarks (did LinkedIn's deferred About/Featured block
+  // render before the read?). Nothing in the store can fix them, so they never make an alert.
+  const info = new Set(INFO_KEYS);
+  const slices = rows
+    .filter((r) => !info.has(r.selector_key))
+    .map((r) => ({ ...r, misses: Number(r.misses), founds: Number(r.founds) }));
 
   // Per-tenant rule. OPTIONAL landmarks (SOFT_KEYS) are exempt: one person opening three brand-new
   // message threads in a morning is three honest misses on message_body with nothing found, and
