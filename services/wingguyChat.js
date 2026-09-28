@@ -25,6 +25,7 @@ const { resolveLeadTimezone } = require('./leadLocationResolver');
 const { currentRoleLocation } = require('./leadJobLocation');
 const { recordRoleLocation } = require('./leadRecordLocation');
 const wingguyLeads = require('./wingguyLeads');
+const { coachOwnEmails } = require('../utils/coachOwnEmails');
 const wingguyRules = require('./wingguyRulesMcp');
 
 const MODEL_ID = process.env.WINGGUY_DRAFT_MODEL_ID || 'claude-sonnet-5';
@@ -208,7 +209,28 @@ async function getVoiceIdentity(clientId, getVariablesFn) {
 
 // Compact, grounded context for the agent. `buildProfileBlock` / `buildConversationBlock` are passed
 // in so the formatting stays identical to the rest of Wingguy (the route owns those helpers).
-function buildContext({ profileBlock, convoBlock, leadEmail, coachName, prefs, campaignTemplate, voice, onFile = true, window = null, profileThin = false, clockLine = '' }) {
+// WHO IS WHO (Matthew Bulat, 2026-09-28). The rulebook and the tool descriptions call the coach "Guy"
+// throughout - written when Guy was the only coach. For any other client the model maps "Guy" onto the
+// coach by itself, until the LEAD is called Guy: Matthew ran /wg on Guy Wilson's profile and got "Hi
+// Matthew" in Guy's voice, twice, with every setting right. So the sender and the recipient are named
+// first, from data, before anything else is read.
+function whoIsWhoBlock(coachName, leadName) {
+  const coach = String(coachName || 'Guy Wilson').trim();
+  const coachFirst = coach.split(/\s+/)[0];
+  const lead = String(leadName || '').trim();
+  const leadFirst = lead.split(/\s+/)[0];
+  let s = `WHO IS WHO: every draft is written AS ${coach} (the coach - the SENDER, who signs it). ` +
+    `The RECIPIENT is ${lead ? `the lead, ${lead}` : 'the lead'}.`;
+  if (coachFirst.toLowerCase() !== 'guy') {
+    s += ` Wherever these instructions say "Guy", they mean the coach, ${coachFirst} - never the lead.`;
+    if (leadFirst.toLowerCase() === 'guy') {
+      s += ` ⚠ This lead happens to be called Guy as well. They are the RECIPIENT: greet them ("Hi ${leadFirst},"), and never open "Hi ${coachFirst}" - that is the sender's own name.`;
+    }
+  }
+  return `${s}\n\n`;
+}
+
+function buildContext({ profileBlock, convoBlock, leadEmail, coachName, leadName = '', prefs, campaignTemplate, voice, onFile = true, window = null, profileThin = false, clockLine = '' }) {
   const tplBlock = campaignTemplate && campaignTemplate.instructions
     ? `CAMPAIGN TEMPLATE — "${campaignTemplate.label || campaignTemplate.id}" (use this for the opener / warm-reply message; it's Guy's real structure & voice — match its beats and sign-off):\n${campaignTemplate.instructions}\n\n`
     : '';
@@ -240,7 +262,8 @@ function buildContext({ profileBlock, convoBlock, leadEmail, coachName, prefs, c
       `- In your CHAT REPLY to ${(coachName || 'Guy').split(/\s+/)[0]} (never in the draft itself), say plainly: this person isn't in the Portal yet so the draft is generic — opening their LinkedIn profile page and typing /wg there gets a personalised one.\n\n`
     : '';
   return (
-    `CONTEXT FOR THIS CHAT (you are helping Guy with this lead):\n\n` +
+    `CONTEXT FOR THIS CHAT (you are helping ${who} with this lead):\n\n` +
+    whoIsWhoBlock(coachName, leadName) +
     dateBlock +
     `${profileBlock ? `LEAD PROFILE:\n${profileBlock}\n\n` : ''}` +
     thinBlock +
@@ -352,6 +375,27 @@ function bannedStage1Opener(draft) {
   const head = (greeting ? lines.slice(1) : lines).join(' ').slice(0, 240);
   const m = head.match(STAGE1_BANNED_OPENER);
   return m ? m[0] : null;
+}
+
+// WRONG-WAY GREETING GUARD (Matthew Bulat, 2026-09-28 - see whoIsWhoBlock). A draft that greets the
+// COACH by name is written to the wrong person: the sender never opens a message with their own name.
+// Prose (the WHO IS WHO line) asks for the right direction; this refuses the wrong one. Reads only the
+// greeting - the first line's opening words - so the coach's name further down ("Matthew here") and a
+// lead who shares the coach's first name both pass. Returns the offending line, or null.
+function wrongWayGreeting(draft, coachName, leadName) {
+  const coachFirst = normName(coachName).split(' ')[0];
+  const leadFirst = normName(leadName).split(' ')[0];
+  if (!coachFirst || coachFirst.length < 2 || coachFirst === leadFirst) return null;
+  const firstLine = String(draft || '').replace(/\r/g, '').split('\n').map((l) => l.trim()).find(Boolean) || '';
+  const opening = normName(firstLine).split(' ').slice(0, 4);
+  if (!opening.includes(coachFirst)) return null;
+  if (leadFirst && opening.includes(leadFirst)) return null;
+  return firstLine;
+}
+function wrongWayRefusal(line, coachName, leadName) {
+  const coachFirst = String(coachName || '').trim().split(/\s+/)[0];
+  const lead = String(leadName || '').trim() || 'the lead';
+  return `REJECTED - draft NOT set. It opens "${line}", greeting ${coachFirst} - but ${coachFirst} is the SENDER of this message (the coach). The recipient is ${lead}. Redraft as ${coachFirst} writing TO ${lead.split(/\s+/)[0]}: greet ${lead.split(/\s+/)[0]}, speak in ${coachFirst}'s voice, and read the thread with ${coachFirst}'s messages as the coach's own. Then call the tool again.`;
 }
 
 // CV-tally hook guard (Johnidy Ong, 2026-09-26 - the third strike). With his three posts in the
@@ -561,7 +605,7 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
       { type: 'text', text: WINGGUY_VOICE },
       { type: 'text', text: WINGGUY_AGENT_INSTRUCTIONS, cache_control: { type: 'ephemeral', ttl: '1h' } },
     ]),
-    { type: 'text', text: buildContext({ profileBlock, convoBlock, leadEmail, coachName: coach.clientName, prefs, campaignTemplate, voice, onFile: !!leadRecordId, window: wingguyCalendar.offerWindowInfo(coach.timezone || coach.timeZone || 'Australia/Brisbane'), profileThin, clockLine: clock.line }) },
+    { type: 'text', text: buildContext({ profileBlock, convoBlock, leadEmail, coachName: coach.clientName, leadName: profile.name, prefs, campaignTemplate, voice, onFile: !!leadRecordId, window: wingguyCalendar.offerWindowInfo(coach.timezone || coach.timeZone || 'Australia/Brisbane'), profileThin, clockLine: clock.line }) },
   ];
 
   const convo = messages.map((m) => ({ role: m.role, content: m.content }));
@@ -618,6 +662,13 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
       }
       if (leadLinkState && leadLinkState.ok) {
         return { ok: false, error: `STOPPED - the lead sent their own booking link (${leadLinkState.url}) and Wingguy read it, so a list of times is the wrong move. check_availability already returned only the times BOTH are free: pick ONE (lightest day, mid-morning first), tell Guy which and why, and on his yes call book_meeting. If that result had no days, say so and let Guy choose which side bends.` };
+      }
+      {
+        const wrongWay = wrongWayGreeting(unescapeModelNewlines(input && input.intro), coach.clientName, profile.name);
+        if (wrongWay) {
+          console.warn(`WINGGUY-DIRECTION-GUARD refused "${wrongWay}" (times intro) for ${coach.clientId} → ${profile.name || 'lead'}`);
+          return { ok: false, error: wrongWayRefusal(wrongWay, coach.clientName, profile.name) };
+        }
       }
       // CODE-OWNED time list: enforce order + Guy's hours + soft lunch-skip + lead-timezone formatting,
       // so none of those depend on the model getting it right.
@@ -866,6 +917,7 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
         location: (input && input.location) || (sameAsProfile ? profile.location : '') || '',
         introducedBy: (input && input.introducedBy) || '',
         notes: (input && input.notes) || '',
+        ownEmails: coachOwnEmails(coach),
       });
       // Whether we created the record or matched an existing one, this turn's later tools
       // (update_lead_email / book_meeting) should now act on it.
@@ -934,7 +986,7 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
       if (!primaryEmail && !otherEmails.length) {
         return { ok: false, error: 'Nothing to update — pass primaryEmail and/or otherEmails.' };
       }
-      const r = await updateLeadEmails(airtableBaseId, currentLeadRecordId, { setPrimary: primaryEmail, addOthers: otherEmails });
+      const r = await updateLeadEmails(airtableBaseId, currentLeadRecordId, { setPrimary: primaryEmail, addOthers: otherEmails, ownEmails: coachOwnEmails(coach) });
       // If the primary changed, the calendar invite should now go to the new address (this turn onward).
       if (r && r.ok && r.changed && r.primaryEmail) currentLeadEmail = r.primaryEmail;
       return r;
@@ -958,6 +1010,11 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
     }
     if (name === 'propose_message') {
       const draft = unescapeModelNewlines(input && input.message).trim();
+      const wrongWay = wrongWayGreeting(draft, coach.clientName, profile.name);
+      if (wrongWay) {
+        console.warn(`WINGGUY-DIRECTION-GUARD refused "${wrongWay}" for ${coach.clientId} → ${profile.name || 'lead'}`);
+        return { ok: false, error: wrongWayRefusal(wrongWay, coach.clientName, profile.name) };
+      }
       // Stage-1 opener guard (see STAGE1_BANNED_OPENER above): refuse, explain, let the model redraft.
       if (isHandshakeOnly({ conversation, coachName: coach.clientName, leadName: profile.name, group: profile.group })) {
         const hit = bannedStage1Opener(draft);
@@ -1038,4 +1095,4 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
   return { ok: true, reply: assistantText, draft: currentDraft, booked: bookedEvent, enrichContact, messages: convo, model: MODEL_ID };
 }
 
-module.exports = { runWingguyChatTurn, AGENT_TOOLS, inLunch, chooseSignoff, getVoiceIdentity, leadHasSpoken, coachHasAskedToMeet, bannedStage1Opener, isHandshakeOnly, detectLeadBookingLink, buildContext, jobLocationOffer, leadClockLine, cvTallyHook };
+module.exports = { runWingguyChatTurn, AGENT_TOOLS, inLunch, chooseSignoff, getVoiceIdentity, whoIsWhoBlock, wrongWayGreeting, leadHasSpoken, coachHasAskedToMeet, bannedStage1Opener, isHandshakeOnly, detectLeadBookingLink, buildContext, jobLocationOffer, leadClockLine, cvTallyHook };

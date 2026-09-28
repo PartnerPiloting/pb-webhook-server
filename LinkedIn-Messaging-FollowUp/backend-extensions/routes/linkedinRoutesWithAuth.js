@@ -4,6 +4,7 @@ const { createLogger } = require('../../../utils/contextLogger');
 const { logNotesChange } = require('../../../utils/notesAuditLogger');
 const { stripCredentialSuffixes } = require('../../../utils/nameNormalizer');
 const { canonicalLinkedinSlug, slugPrefilterFormula, findExactSlugMatch } = require('../../../utils/linkedinCanonical');
+const { isCoachOwnEmail } = require('../../../utils/coachOwnEmails');
 const geminiConfig = require('../../../config/geminiClient');
 const logger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'api' });
 
@@ -2539,7 +2540,12 @@ router.patch('/leads/:id/quick-update', async (req, res) => {
     if (followUpDate !== undefined) {
       updates['Follow-Up Date'] = followUpDate || null;
     }
-    if (email !== undefined) {
+    // Never the client's OWN address onto a lead (Matthew Bulat, 2026-09-28): the extension scans the
+    // lead's messages for an email they "proffered", and Guy's messages to Matthew held Matthew's own
+    // address - so it landed on Guy's record and Wingguy treated Guy as Matthew. Left untouched instead.
+    if (email !== undefined && isCoachOwnEmail(req.client, email)) {
+      logger.warn(`LinkedIn Routes: quick-update refused ${req.client.clientId}'s own email for lead ${leadId}`);
+    } else if (email !== undefined) {
       const newPrimary = String(email || '').trim();
       const oldPrimary = String(currentLead.fields['Email'] || '').trim();
       updates['Email'] = newPrimary;

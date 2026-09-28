@@ -419,18 +419,7 @@ function chooseFollowUpStamp(existing, referenceDate, days = FOLLOWUP_STAMP_DAYS
 }
 
 /** The coach's OWN addresses — a draft to any of these is a self-reminder, not a lead email. */
-function coachOwnEmails(coach) {
-  const set = new Set();
-  const add = (v) => { const e = String(v || '').trim().toLowerCase(); if (e) set.add(e); };
-  add(coach.clientEmailAddress);
-  add(coach.googleCalendarEmail);   // the {Calendar Email} column — the mailbox Wingguy reads
-  add(coach.calendarEmail);
-  // Same source the inbound path filters on, so both doors treat the same addresses as "self".
-  try {
-    String(coach.rawRecord?.get('Alternative Email Addresses') || '').split(';').forEach(add);
-  } catch (_) { /* rawRecord absent (cached/stubbed client) — the primary addresses still apply */ }
-  return set;
-}
+const { coachOwnEmails } = require('../utils/coachOwnEmails');
 
 /**
  * Stamp `Follow-Up Date` (+14) on every To recipient that resolves to a lead in the tenant's base.

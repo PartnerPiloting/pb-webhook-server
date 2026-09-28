@@ -64,14 +64,21 @@ function buildAltEmails(sources, primaryEmail) {
 //   addOthers[] — extra addresses filed under {Alt Emails} too.
 // Returns { ok, changed, primaryEmail, altEmails } (or { ok:false, error }). Throws only on a genuine
 // Airtable failure — a no-op still returns ok. Narrow by design: touches ONLY Email + Alt Emails.
-async function updateLeadEmails(airtableBaseId, leadRecordId, { setPrimary = '', addOthers = [] } = {}) {
+//   ownEmails   — the coach's own addresses (utils/coachOwnEmails). None of them is ever written onto a
+//                 lead: a primary that is the coach's own is refused, and own addresses are dropped from
+//                 addOthers (Matthew Bulat, 2026-09-28 — his own address landed on Guy's record).
+async function updateLeadEmails(airtableBaseId, leadRecordId, { setPrimary = '', addOthers = [], ownEmails = null } = {}) {
   if (!airtableBaseId) return { ok: false, error: 'no CRM base for this client' };
   if (!leadRecordId) return { ok: false, error: "couldn't find this lead's CRM record — ask Guy to update it in the Portal" };
 
+  const isOwn = (e) => !!ownEmails && ownEmails.has(String(e || '').trim().toLowerCase());
   const newPrimaryRaw = String(setPrimary || '').trim().toLowerCase();
+  if (isOwn(newPrimaryRaw)) {
+    return { ok: false, error: `"${setPrimary}" is the coach's OWN email address, not this lead's - it was not saved. The lead's address has to come from the lead.` };
+  }
   const newPrimary = newPrimaryRaw && EMAIL_SHAPE.test(newPrimaryRaw) ? newPrimaryRaw : '';
   if (setPrimary && !newPrimary) return { ok: false, error: `"${setPrimary}" doesn't look like a valid email address` };
-  const others = Array.isArray(addOthers) ? addOthers : [addOthers];
+  const others = (Array.isArray(addOthers) ? addOthers : [addOthers]).filter((e) => !isOwn(e));
 
   const base = clientService.getClientBase(airtableBaseId);
   if (!base) return { ok: false, error: 'CRM base unavailable' };
@@ -116,7 +123,7 @@ async function createLead(airtableBaseId, {
   firstName = '', lastName = '', linkedinUrl = '', email = '', phone = '', notes = '',
   location = '', introducedBy = '',
   source = 'They Reached Out To Me', connectionStatus = 'Connected', status = 'In Process',
-  dateConnectedISO = '',
+  dateConnectedISO = '', ownEmails = null,
 } = {}) {
   if (!airtableBaseId) return { ok: false, error: 'no CRM base for this client' };
 
@@ -137,7 +144,9 @@ async function createLead(airtableBaseId, {
     return { ok: true, exists: true, leadRecordId: existing.id, name, error: `already in the CRM${name ? ` (${name})` : ''}` };
   }
 
-  const mail = String(email || '').trim().toLowerCase();
+  let mail = String(email || '').trim().toLowerCase();
+  // Never the coach's own address (see updateLeadEmails) - the record is made without it instead.
+  if (mail && ownEmails && ownEmails.has(mail)) mail = '';
   const tel = String(phone || '').trim();
   const fields = {};
   if (first) fields['First Name'] = first;
