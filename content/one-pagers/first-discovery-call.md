@@ -12,13 +12,15 @@ audience: outsider-safe
 
 Most people walk into their first call with a knot in their stomach.
 
-They've rehearsed how to explain what they do. They're braced for the awkward silence, the polite "hmm, not quite what we're after," the small rejection they can feel coming. Because somewhere along the way they decided this call is a performance - a pitch, a test where they're the one being marked. And nobody enjoys a test they might fail.
+They've rehearsed how to explain what they do. They're braced for the polite brush-off. Because somewhere along the way they decided this call is a performance - a pitch, a test where they're the one being marked. And nobody enjoys a test they might fail.
 
 Here's the thing: that dread is entirely manufactured. It comes from one wrong idea about what the call is *for*.
 
-You think the discovery call is where you present yourself - make a good enough case that this person will want what you offer. So you prepare your spiel, you polish your explanation, and you steel yourself for the verdict. The whole encounter is set up, in your head, as something you can pass or fail.
+You think the call is where you present yourself and wait for the verdict.
 
 Flip it. **The call isn't a pitch. It's a discovery.** You're not there to be assessed - you're there to *learn*. And the moment that lands, the fear simply drains out of it, because nobody has ever been rejected for taking a genuine interest in another human being.
+
+And it starts before a single question. First you connect - "Oh, you're on the Gold Coast? I lived there for years," a bit of common ground, something that gets you both laughing. That isn't small talk for its own sake. Once people feel you're human, they open up - and an open person answers your questions properly. They like you, and from there things want to move on.
 
 So - what can you discover?
 
@@ -35,7 +37,7 @@ So before your next one, drop the spiel. Don't prepare a word about yourself. Pr
 
 And when you meet someone on a call who isn't in your system yet, you don't have to remember to add them. They'll be waiting on your New Leads screen with the transcript attached - one click.
 
-"Fine," I hear you say, "but if I'm not pitching myself, what on earth do I actually *say* for half an hour?" Fair question - and it's a craft of its own. That's exactly where we go next.
+"Fine," I hear you say, "but I'm hopeless at small talk." Plenty of people are - technical people most of all. Good news: connection isn't charm. It's two small moves anyone can make, and that's next.
 <!-- /ENDING:CLIENT -->
 
 <!-- ENDING:PROSPECT -->
