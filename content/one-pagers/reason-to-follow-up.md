@@ -1,7 +1,7 @@
 ---
 slug: reason-to-follow-up
 title: A reason to follow up
-dek: "Great conversations don't die from a lack of goodwill. They die from a lack of a next thing. Here's how to make sure there's always a reason to come back."
+dek: "Great conversations don't die from a lack of goodwill. They die from a lack of a next thing."
 series: network-building-rethought
 order: 40
 status: final
@@ -10,34 +10,26 @@ audience: outsider-safe
 
 # A reason to follow up
 
-You've had one of those coffees. Ninety good minutes, real rapport, the conversation ranging easily across what you both do. You stand up saying - and meaning - "we should definitely stay in touch," maybe even "let's keep an eye out for each other." You leave a little lifted.
+You've had one of those coffees. Real rapport, the conversation ranging easily. You stand up saying - and meaning - "we should definitely stay in touch." You leave a little lifted.
 
-And then nothing happens.
+And then nothing happens. Not out of rudeness. A week goes by, then a month, and the warmth quietly cools. Two people who genuinely got on, drifting apart for no dramatic reason at all.
 
-Not out of rudeness. A week goes by, then a month. The warmth quietly cools. Six months on you'd struggle to remember what you talked about, and the introduction you were each going to make never materialised. Two people who genuinely got on, drifting apart for no dramatic reason at all.
+It's almost never a lack of goodwill. We're taught that relationships are held together by how much we like each other, so we trust the fondness to do the work. It won't. **Goodwill doesn't sustain a relationship. Motion does.** What keeps two people connected is having a *reason to come back*. Take that away and even the best conversation is a lovely dead end.
 
-Here's why it happens, and it's almost never a lack of goodwill. We're taught to believe relationships are held together by *how much we like each other* - by good intentions and warm feeling. So we lean on "we got on well, we'll stay in touch," and trust the fondness to do the work.
+**The first reason is built into the first call.** Make that call all about them - their work, what they're wrestling with, where they're headed. Done properly, it leaves them knowing a lot less about you than you know about them, and most people notice. They'll want to hear your side. So the second call is your turn: "Last time was all about you - I'd love to tell you a bit about what I do." It's a natural reason to meet again, and from there you pick up the threads.
 
-It won't. **Goodwill doesn't sustain a relationship. Motion does.** What keeps two people connected isn't the warmth of the first meeting - it's having a *reason to come back*. Something to talk about next. Take that away and even the best conversation is a lovely dead end.
+**After that, give - don't ask.** The reason is never "so - got any referrals for me?" People can smell that a mile off. Real reasons run the other way: something you came across that would help them, a person they ought to meet, a thought you've been turning over since they said something that stuck. Over time you can nearly always think of someone worth introducing them to, and that's reason enough to stay close.
 
-So the real question after any good meeting isn't "did we click?" It's "what's the next thing?"
+**The best reason is permanent.** Every so often you'll meet a builder - someone who lights up at the idea of a network, not just a contact list. When you do, don't just keep in touch. Show them how you go about it, and agree to build each other's networks. From then on the reason to follow up never runs dry. Every good person they meet is a possible introduction for you, and every one you meet is one for them.
 
-And the answer is almost never "so - got any referrals for me?" That's the transactional move, and people can smell it a mile off; it's the surest way to guarantee there is no next time. The reasons that actually pull a relationship forward run the other way. Something you came across that would genuinely help them. A person in your world they ought to meet. A thought you've been turning over since they said something that stuck. You *give* a reason to reconnect; you don't ask for one.
-
-If you followed the last piece, you've already got the cleanest version of this handed to you. Keep that first call short and all about them, and you walk away holding the reason on a plate: *"you mentioned you were wrestling with X - I've been thinking about it, and I know exactly who you should talk to."* No manufacturing required.
-
-That give-and-introduce rhythm alone will keep most relationships alive for years - over time you can nearly always think of someone worth introducing them to, and those introductions are reason enough to stay close. That works. But there's a version that works far better, and it turns an occasional reason to follow up into a permanent one.
-
-Every so often, as you get to know someone, you'll realise they're a builder - the kind of person who lights up at the idea of a network, not just a contact list, and who'd happily grow one of their own if they knew how. When you meet one, don't just keep in touch. Invite them into exactly what you're doing: show them how you go about it, and quietly agree to build each other's networks.
-
-Look at what that changes. The moment the two of you are both out there, deliberately, looking out for one another, the reason to follow up never runs dry again. Every good person they meet is a possible introduction for you; every one you meet is one for them. Getting to know new people, chasing down leads, making introductions - it stops being effort you have to motivate and becomes the natural business of two people building something together. Help them build their network, and their network quietly becomes part of yours.
-
-So don't hand your best conversations over to goodwill and hope. Before you leave one, plant the reason to return - something to share, someone to introduce, a thread to pick up next time. Relationships live on motion.
+So before you leave a good conversation, plant the reason to return. Relationships live on motion.
 
 <!-- ENDING:CLIENT -->
-Keeping track of all those threads is exactly what the Follow-Ups screen in Wingguy is for - each morning it shows who's owed a reply, what you promised, and what it would do next, with the message drafted. [Here's what it looks like](https://knowaguy.com.au/follow-ups-example), with made-up names. If it isn't switched on for you yet, just ask me.
+And when you meet a builder, introduce them to me. I'll very likely have someone to introduce back to them - and now they're part of the inner circle, which means more contact with them, not less, because we're all looking out for each other.
+
+Keeping track of all those threads is what the Follow-Ups screen in Wingguy is for - [here's what it looks like](https://knowaguy.com.au/follow-ups-example).
 <!-- /ENDING:CLIENT -->
 
-Keep that up, with the right people, and a curious thing happens. Somewhere along the way you cross a quiet line - from someone who *networks* to someone who *builds* - and what began as tending a handful of relationships one at a time turns into something that grows on its own. That's the whole point of everything so far, and it's where we finish.
+Keep that up with the right people and you cross a quiet line - from someone who *networks* to someone who *builds*. That's where we finish.
 
-<!-- Approved final by Guy 2026-07-07 (enriched with mutual-building strategy + networker->builder threshold tease). First draft 2026-07-07. #40, map step 7. Penny-drop: relationships persist on MOTION, not goodwill - "let's stay in touch/refer each other" dies because there's nothing to come back FOR; you need a reason (give-first: something to share, someone to introduce, a thread to pick up - NOT "got any referrals?"). Ties to #47's two-call structure (first-call-about-them hands you the reason). Then the MULTIPLICATION seed, kept light per coordination: the follow-up is where you spot BUILDERS + start teaching them → they build their own → their finds flow back to you. Teases #70 (step 8, nodes - "grows on its own... where we finish"). Coordination held: #40 = follow-up mechanism + FIRST builder-identification + teaching; the full nodes crescendo stays #70; the builders-not-blobs paradigm stays #67. Outsider-safe, both audiences, no tech. -->
+<!-- Approved final by Guy 2026-07-07; CUT + REWORKED by Guy 2026-09-29 (962 -> ~590 words). #40, map step 7. Penny-drop: relationships persist on MOTION, not goodwill. Three reasons in order: (1) the all-about-them first call makes the SECOND call "your turn" - self-contained, because in the prospect run this piece comes BEFORE first-discovery-call, so no "last piece" back-reference; (2) give, don't ask - never "got any referrals?"; (3) builders - agree to build each other's networks. Client ending only: introduce builders to Guy -> he refers back -> they're in the inner circle (a concept, not a list) -> more contact. Prospects don't get "inner circle" (unexplained to them). Follow-Ups pointer kept (feature-pointer plan). Teases #70 (networker -> builder). -->
