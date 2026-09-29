@@ -1,0 +1,291 @@
+<style>
+  /* The editorial shell the one-pagers use (routes/onePagerRoutes.js) rather
+     than the homepage's teal/paper palette - deliberately. This page is a
+     letter to somebody who has already had the conversation, and it is sent
+     alongside /series/nodes, so matching THAT is what matters. Single-theme,
+     like the rest of the site: every colour is painted explicitly. */
+  :root {
+    color-scheme: light;
+    --ground:   #e9e2d3;
+    --card:     #fbf9f3;
+    --ink:      #2c2823;
+    --ink-deep: #221f1a;
+    --ink-soft: #6f6558;
+    --ink-mid:  #4a423a;
+    --rule:     #e2dccd;
+    --rule-sc:  #efe9dc;
+    --dark:     #211d18;
+    --gold:     #c49a5e;
+    --gold-ink: #9a6a2f;
+    --cream:    #f3ede1;
+  }
+
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: Georgia, "Iowan Old Style", "Palatino Linotype", "Times New Roman", serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .op-page { padding: 28px 16px 52px; }
+
+  .op {
+    max-width: 640px;
+    margin: 0 auto 22px;
+    background: var(--card);
+    border-radius: 6px;
+    overflow: hidden;
+    box-shadow: 0 1px 3px rgba(0,0,0,.10);
+  }
+
+  .op-mast { background: var(--dark); padding: 34px 40px 30px; }
+  .op-eb {
+    font-size: 11px; letter-spacing: .22em; text-transform: uppercase;
+    color: var(--gold); margin: 0 0 12px;
+  }
+  .op-wm { font-size: 30px; margin: 0; font-weight: 400; }
+  .op-wm a { color: var(--cream); text-decoration: none; }
+
+  .op-c { padding: 34px 40px 8px; }
+
+  .op-t {
+    font-size: 28px; line-height: 1.25; margin: 0 0 12px;
+    color: var(--ink-deep); font-weight: 400; text-wrap: balance;
+  }
+  .op-dek {
+    font-style: italic; color: var(--ink-soft); font-size: 18px;
+    line-height: 1.5; margin: 0 0 20px; text-wrap: balance;
+  }
+  .op-r { border: 0; border-top: 1px solid var(--rule); margin: 0 0 22px; }
+
+  .op-body p { font-size: 17px; line-height: 1.66; margin: 0 0 1.15rem; }
+  .op-body h2 {
+    font-size: 21px; line-height: 1.3; margin: 1.9rem 0 .4rem;
+    color: var(--ink-deep); font-weight: 400; text-wrap: balance;
+  }
+  .op-body strong { font-weight: 700; }
+  .op-body em { font-style: italic; }
+  .op-body a { color: var(--gold-ink); }
+  .op-body a:focus-visible { outline: 2px solid var(--gold-ink); outline-offset: 2px; }
+
+  /* The price, stated once. Three lines, hairline rules, gold on the total -
+     enough structure to be found at a glance, not enough to read as an invoice. */
+  .price { margin: 1.4rem 0 1.15rem; }
+  .price dl { margin: 0; display: grid; grid-template-columns: 1fr auto; }
+  .price dt, .price dd {
+    margin: 0; padding: 9px 0; font-size: 16.5px; line-height: 1.45;
+    border-bottom: 1px solid var(--rule-sc);
+  }
+  .price dd {
+    text-align: right; padding-left: 18px;
+    font-variant-numeric: tabular-nums; color: var(--ink-mid);
+    white-space: nowrap;
+  }
+  .price dt.total, .price dd.total {
+    border-bottom: 0; border-top: 1px solid var(--gold);
+    padding-top: 12px; margin-top: 2px; color: var(--ink-deep);
+  }
+  .price dd.total { font-weight: 700; }
+
+  .op-foot {
+    padding: 18px 40px 6px; border-top: 1px solid var(--rule);
+    margin-top: 1.6rem; font-size: 14px; line-height: 1.6; color: var(--ink-soft);
+  }
+  .op-foot a { color: var(--gold-ink); }
+  .op-sign { margin: .9rem 0 0; }
+  .op-bar { background: var(--dark); height: 34px; }
+
+  @media (max-width: 520px) {
+    .op-mast, .op-c, .op-foot { padding-left: 22px; padding-right: 22px; }
+    .op-t { font-size: 24px; }
+    .op-wm { font-size: 26px; }
+    .price dt, .price dd { font-size: 16px; }
+  }
+</style>
+<style>
+  /* Screenshots. Every one is dated in its caption, because a stale picture of
+     somebody else's website is worse than no picture at all - people believe
+     the image over the words. The caveat at the top of the page and the date
+     under each shot are the whole reason this page can exist safely. */
+  .shot { margin: 22px 0 26px; }
+  .shot img {
+    display: block;
+    width: 100%;
+    height: auto;
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    background: #fff;
+  }
+  .shot figcaption {
+    margin-top: 8px;
+    font-size: 0.86rem;
+    line-height: 1.45;
+    color: var(--ink-soft);
+  }
+  .shot figcaption b { color: var(--ink-mid); }
+  .shot-narrow img { max-width: 420px; margin: 0 auto; }
+  .asof {
+    margin: 0 0 4px;
+    padding: 12px 14px;
+    background: var(--cream);
+    border-left: 3px solid var(--gold);
+    border-radius: 3px;
+    font-size: 0.92rem;
+    color: var(--ink-mid);
+  }
+  .keybox {
+    display: block;
+    padding: 10px 12px;
+    background: var(--dark);
+    color: #e8e1d3;
+    border-radius: 4px;
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    font-size: 0.74rem;
+    line-height: 1.5;
+    word-break: break-all;
+    white-space: pre-wrap;
+  }
+</style>
+<style>
+  .op-body ul, .op-body ol { margin: 0 0 1.15rem; padding-left: 1.3rem; }
+  .op-body li { font-size: 17px; line-height: 1.6; margin: 0 0 .5rem; }
+  .aside {
+    margin: 1.6rem 0 1.6rem; padding: 14px 18px 4px;
+    border: 1px solid var(--rule); border-left: 3px solid var(--gold);
+    border-radius: 3px; background: var(--cream);
+  }
+  .op-body .aside p { font-size: 16px; line-height: 1.6; margin: 0 0 .7rem; color: var(--ink-mid); }
+
+  /* The whole method as one column: what runs by itself, then the two things that are yours.
+     Drawn in the page rather than as a picture so it can never go out of date on its own. */
+  .flow { margin: 1.3rem 0 1.7rem; padding: 0; list-style: none; }
+  .flow li {
+    position: relative; margin: 0 0 22px; padding: 11px 16px;
+    border: 1px solid var(--rule); border-radius: 4px; background: #fff;
+    font-size: 16px; line-height: 1.45;
+  }
+  .flow li:not(:last-child)::after {
+    content: ""; position: absolute; left: 28px; bottom: -17px;
+    border-left: 7px solid transparent; border-right: 7px solid transparent;
+    border-top: 10px solid var(--gold);
+  }
+  .flow b { display: block; color: var(--ink-deep); }
+  .flow span { color: var(--ink-soft); font-size: 15px; }
+  .flow .yours { border-color: var(--gold); background: var(--cream); }
+  .flow-key { font-size: 14px; color: var(--ink-soft); margin: -0.6rem 0 1.6rem; }
+</style>
+
+<div class="op-page">
+  <article class="op">
+
+    <header class="op-mast">
+      <p class="op-eb">Network building, rethought</p>
+      <p class="op-wm"><a href="/">(I know a) Guy</a></p>
+    </header>
+
+    <div class="op-c">
+      <h1 class="op-t">One campaign, and the message that matters</h1>
+      <p class="op-dek">One campaign runs on its own and keeps your list filling. Your part is the thank-you - and that's where the meetings come from.</p>
+      <hr class="op-r">
+
+      <div class="op-body">
+
+        <p>Your Linked Helper machine runs one campaign. Just one. It sends your connection requests, keeps the people who accept, and hands them to Wingguy to be scored. You don't touch any of that.</p>
+
+        <p>What you do is thank the people worth thanking. Here's the whole thing, top to bottom.</p>
+
+        <ol class="flow">
+          <li><b>Your search</b><span>The people you'd like to know, as a LinkedIn search.</span></li>
+          <li><b>They're invited to connect</b><span>With a short note in your words.</span></li>
+          <li><b>Some accept</b><span>Anyone who doesn't simply drops out.</span></li>
+          <li><b>Their profile is read</b><span>Headline, About section, posts - and their email address.</span></li>
+          <li><b>They arrive in Wingguy and are scored</b><span>Against the attributes you've set.</span></li>
+          <li class="yours"><b>Thanks for Connecting, best first</b><span>Everyone who accepted, highest score at the top.</span></li>
+          <li class="yours"><b>You write to the ones worth it</b><span>Wingguy drafts it. You read it, change it, send it.</span></li>
+        </ol>
+        <p class="flow-key">The white boxes happen by themselves. The two at the bottom are yours.</p>
+
+        <h2 id="campaign">What the campaign does</h2>
+
+        <p>It's already built when you sign in to your machine. Four steps, one after the other:</p>
+
+        <ol>
+          <li><b>Invite.</b> It sends your connection request with a short note. The note starts out as mine, and you make it yours. Keep it an offer, not a pitch.</li>
+          <li><b>Check who accepted.</b> Anyone who hasn't accepted simply drops out. Nobody is chased.</li>
+          <li><b>Visit and extract.</b> For the ones who accepted, it visits their profile properly - so they see you've looked - and reads their headline, About section and posts. And because they're now a first-level connection, it picks up their email address as well.</li>
+          <li><b>Send to your database.</b> They land in Wingguy, in your own list.</li>
+        </ol>
+
+        <h2 id="together">We go through it together before it starts</h2>
+
+        <p>The campaign on your machine is a template, based on the one I run myself. It works - but it's mine. My note, my days, my numbers.</p>
+
+        <p>So before it sends anything, you and I go through it together. It takes one sitting, and you come away knowing what every setting does:</p>
+
+        <ul>
+          <li><b>The invitation note</b> - rewritten in your words, with your name on it.</li>
+          <li><b>How many go out at a time</b>, and how long it rests between batches.</li>
+          <li><b>Which days and hours</b> it sends on.</li>
+          <li><b>Your search</b> - who goes into it.</li>
+        </ul>
+
+        <p>It can't send anything until it has people in it, so nothing happens before we've done this. The pacing is already set to stay well inside LinkedIn's limits, and once we've set it for you, leave it as it is unless I say otherwise.</p>
+
+        <h2 id="scored">Then they're scored</h2>
+
+        <p>Everyone who arrives is scored against your attributes - the things that tell you whether this is the sort of person the method works with. Scoring runs once a day, so people who accept today have their score tomorrow. Nothing's broken if someone shows up without one.</p>
+
+        <p>You're given a set of attributes to begin with. Most people keep them close to as they are.</p>
+
+        <h2 id="thanks">Where the magic is</h2>
+
+        <p>Almost nobody sends a properly personal thank-you when someone connects. They send nothing, or the same line to everyone. So the person who does it well stands out straight away.</p>
+
+        <p>The reason nobody does it is the effort. You'd have to dig through your recent connections, remember who you'd already thanked, and write each one from scratch. The <b>Thanks for Connecting</b> screen in your portal does the remembering for you:</p>
+
+        <ul>
+          <li>It lists everyone who has accepted and hasn't been thanked yet, with their score beside them.</li>
+          <li>Sort by highest score, and the best people are at the top.</li>
+          <li>Click a name and their LinkedIn opens. Type <b>/wg</b> in the message box and Wingguy reads their profile and writes the message right there.</li>
+          <li>Read it, change what you like, and send it. Mark them <b>Messaged</b> and they leave the list.</li>
+          <li>Work down from the top. When the scores drop off, mark the rest <b>Skipped</b> and don't give them another thought.</li>
+        </ul>
+
+        <p>Your place is kept, so you can do three today and ten tomorrow.</p>
+
+        <p>That's the whole trick. Your effort goes to the best people, and only to them. <a href="/thanks-for-connecting-example">Here's what three of those messages look like</a>.</p>
+
+        <div class="aside" id="old-way">
+          <p><b>If you remember the old way</b></p>
+          <p>If you've been with me a while, you'll remember we used to do this the other way round. One campaign collected people, they were scored, and then you copied the top scorers across into a second campaign that invited them.</p>
+          <p>It worked. But it was a job you had to remember every week, with copying and pasting in the middle of it, and the honest truth is that people forgot.</p>
+          <p>Now nothing has to be remembered. Everyone in your search is invited, and the scoring happens after they accept. The filter hasn't gone - it's moved, from who you invite to who you write to. If the old campaigns are still on your machine, leave them paused.</p>
+        </div>
+
+        <h2 id="more">Linked Helper can do a lot more</h2>
+
+        <p>It can. Message sequences, several campaigns at once, all sorts of things. We start with one campaign because one is enough to keep your diary full, and because you'll understand every part of it.</p>
+
+        <p>If there's a good reason to add something later, we'll add it then.</p>
+
+        <h2 id="your-part">Your part, week to week</h2>
+
+        <ul>
+          <li><b>Keep it fed.</b> When your campaign is running low on people, top up the search. In Claude, type <b>Help me with my first campaign</b> and it walks you through it.</li>
+          <li><b>Work the list.</b> Open Thanks for Connecting, start at the top, and thank the ones worth thanking. A few at a time is fine.</li>
+        </ul>
+
+        <p>Everything else runs by itself.</p>
+
+      </div>
+
+      <footer class="op-foot">
+        <p>Haven't opened your machine yet? <a href="/open-your-machine">Here's how to get in</a>.</p>
+        <p class="op-sign">- (I know a) Guy</p>
+      </footer>
+    </div>
+
+    <div class="op-bar"></div>
+  </article>
+</div>

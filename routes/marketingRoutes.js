@@ -140,6 +140,19 @@ const PAGES = {
       'Open your link, type the code from your email, sign in to Linked Helper and LinkedIn - '
       + 'then the machine finishes setting itself up. About ten minutes, with pictures.',
   },
+  // The ONE campaign, and why only one (30 Sep 2026). For a new client it is the explanation of
+  // what their machine is doing; for the clients who remember score-first-then-invite it is the
+  // explanation of what changed, in a boxed note of its own. It also says the campaign on the
+  // machine is a TEMPLATE of Guy's own and is gone through with him before it starts - the
+  // template carries his invitation note and his name. No screenshot of a campaign on purpose:
+  // a real one shows real people's names.
+  campaign: {
+    file: 'your-campaign.html',
+    title: 'One campaign, and the message that matters - I Know A Guy',
+    description:
+      'One campaign invites everyone in your search and scores whoever accepts. '
+      + 'Your part is the thank-you - Thanks for Connecting, best first.',
+  },
   // A made-up introduction email in the real introduction-emails-html layout.
   // Linked as a "Picture:" from the playbook topic "The inner circle" - the
   // chat can only send text, so this is where a client sees what one looks like.
@@ -292,6 +305,7 @@ module.exports = function mountMarketingSite(app) {
   router.get('/the-numbers', servePage(PAGES.numbers));
   router.get('/your-machine', servePage(PAGES.machine));
   router.get('/open-your-machine', servePage(PAGES.openMachine));
+  router.get('/your-campaign', servePage(PAGES.campaign));
   router.get('/introduction-example', servePage(PAGES.introExample));
   router.get('/follow-ups-example', servePage(PAGES.followupsExample));
   router.get('/thanks-for-connecting-example', servePage(PAGES.thanksExample));

@@ -58,20 +58,26 @@ NOTE_NAME = "Your machine is ready - read me.txt"
 NOTE = """Your Linked Helper machine is set up.
 
 {history}
-Your campaign is built. It has nobody in it yet - it needs your search.
+Your campaign is built. It is a template based on my own, and it has
+nobody in it yet, so it will not send anything.
 
-What to do next: in Claude, start a new chat and type
+What happens next: you and I go through it together before it starts -
+the invitation note, how many go out at a time, which days, and your
+search. Send me a message and we will find a time.
 
-    Help me with my first campaign
-
-and it will walk you through putting your search in and making the
-invitation note sound like you.
+How the campaign works, worth reading first:
+    knowaguy.com.au/your-campaign
 
 You can close this browser tab whenever you like. Linked Helper keeps
 running on the machine.
 
 - Guy
 """
+# THE CAMPAIGN IS NOT SELF-SERVE, ON PURPOSE (Guy, 30 Sep 2026). The machine builds it, but what
+# it builds is a copy of Guy's own campaign - his invitation note, signed with his name, his
+# batch size, his days. The first version of this note told the client to carry on by themselves
+# with their Claude; their invitations would have gone out under Guy's name. Getting INTO the
+# machine needs nobody. Making the campaign theirs is a sitting with Guy.
 
 
 def say(*a):
