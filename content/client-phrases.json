@@ -105,6 +105,11 @@
       "phrase": "open my Linked Helper machine",
       "tool": "wingguy_open_machine",
       "where": ["content/site/open-your-machine.html"]
+    },
+    {
+      "phrase": "put this file on my machine",
+      "tool": "wingguy_send_file_to_machine",
+      "where": ["content/site/open-your-machine.html"]
     }
   ],
   "near_misses": [
