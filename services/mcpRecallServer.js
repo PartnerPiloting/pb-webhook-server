@@ -22,7 +22,7 @@ const express = require('express');
 
 const clientService = require('./clientService');
 const { findLeadByEmail } = require('./inboundEmailService');
-const { getMeetingsForLead, getParticipantsForMeeting, findMeetingsByFathomRecordingId } = require('./recallWebhookDb');
+const { getMeetingsForLead, getParticipantsForMeeting, findMeetingsByFathomRecordingId, findMeetingsForCoach, getMeetingById } = require('./recallWebhookDb');
 const { normalizeFathomApiTranscript } = require('./fathomIngestService');
 const { registerWingguyRulesTools } = require('./wingguyRulesMcp');
 const { registerWingguyBookingTools } = require('./wingguyBookingMcp');
@@ -153,6 +153,50 @@ async function runRecallLatestTranscript({ email, after }, coachClientId = DEFAU
     '',
   ].filter(Boolean).join('\n');
   return { text: header + transcript };
+}
+
+/**
+ * "Get me the transcript of my last call with Guy" - find a stored call by name, title word or date,
+ * across EVERY call this client has, not only calls filed under a lead. Serves the newest match in
+ * full and lists the other matches so the model can ask for a different one by meeting_id.
+ */
+async function runRecallFindTranscript({ query, after, before, meeting_id }, coachClientId = DEFAULT_COACH_CLIENT_ID) {
+  const includeUnowned = coachClientId === DEFAULT_COACH_CLIENT_ID;
+  let pick = null;
+  let others = [];
+  if (meeting_id != null && String(meeting_id).trim()) {
+    pick = await getMeetingById(meeting_id, coachClientId);
+    const owned = pick && (pick.coach_client_id ? pick.coach_client_id === coachClientId : includeUnowned);
+    if (!owned) {
+      return { text: `No stored call #${meeting_id} for this client.`, isError: true };
+    }
+  } else {
+    const words = String(query || '').split(/\s+/).filter((w) => w.length > 1);
+    const rows = await findMeetingsForCoach(coachClientId, { words, after, before, limit: 10, includeUnowned });
+    if (!rows.length) {
+      return {
+        text: `No stored call matched${words.length ? ` "${words.join(' ')}"` : ''}${after || before ? ' in that date range' : ''}. `
+          + 'Try fewer words (just a first name), a wider date range, or no query at all to see the most recent calls.',
+      };
+    }
+    pick = await getMeetingById(rows[0].id, coachClientId);
+    others = rows.slice(1);
+  }
+  const when = pick.meeting_start || pick.created_at;
+  const durMin = pick.duration_seconds ? Math.round(pick.duration_seconds / 60) : null;
+  const transcript = await replaceParticipantLabels(pick.transcript_text || '', pick.id);
+  const header = [
+    `Meeting: ${pick.title || 'Meeting'} (#${pick.id})`,
+    when ? `Date: ${new Date(when).toISOString()}` : '',
+    durMin ? `Duration: ${durMin} min` : '',
+    pick.source ? `Recorded by: ${pick.source}` : '',
+    others.length
+      ? `Other matching calls (ask again with meeting_id for one of these):\n${others.map((r) => `  - #${r.id} "${r.title || 'Meeting'}" ${new Date(r.meeting_start || r.created_at).toISOString()}`).join('\n')}`
+      : '',
+    '---',
+    '',
+  ].filter(Boolean).join('\n');
+  return { text: header + (transcript || '(empty transcript)') };
 }
 
 async function fathomFetchMeetings(apiKey, { includeTranscript = false, createdAfter } = {}) {
@@ -289,7 +333,21 @@ function asMcpResult(out) {
 // SDK server + Streamable HTTP mount
 // ---------------------------------------------------------------------------
 
-function createRecallMcpServer(coachClientId = DEFAULT_COACH_CLIENT_ID) {
+/**
+ * Does this tenant record on Fathom? The two fathom_* tools only work with a Fathom key; offered to a
+ * Fireflies or Wispr client they are a wrong turn that ends in "no Fathom API key" (Rick Wong,
+ * 29 Sep 2026). A lookup failure keeps them on - hiding a working tool is the worse miss.
+ */
+async function tenantHasFathom(coachClientId) {
+  try {
+    const c = await clientService.getClientById(coachClientId);
+    return !!(c && c.fathomApiKey);
+  } catch {
+    return true;
+  }
+}
+
+function createRecallMcpServer(coachClientId = DEFAULT_COACH_CLIENT_ID, { hasFathom = true } = {}) {
   // Server-level instructions sit ABOVE every tool description - the one steer the model reads
   // before it has looked at a single tool. Added 19 Sep 2026 after "help me set up my Linked
   // Helper machine" (the sentence a client's email told them to type) was answered from the
@@ -314,7 +372,7 @@ function createRecallMcpServer(coachClientId = DEFAULT_COACH_CLIENT_ID) {
     {
       title: 'Latest transcript for a lead (reviewed store)',
       description:
-        'Fetches the latest meeting transcript for a lead from the reviewed transcript STORE (meetings already filed and split per person). Use when asked for a transcript for a specific person (by email). If the result looks wrong (missing, empty, or contains a different person\'s call), fall back to fathom_transcript to pull the raw recording straight from Fathom. If it answers "no lead" or "no meetings" but adds a BUT line about a PARKED meeting, relay that to the human and offer the door it names (wingguy_create_lead or wingguy_update_lead with that email) - the meeting exists; only the address is missing. Never conclude the call was not recorded.',
+        'Fetches the latest meeting transcript for a LEAD (by email) from the reviewed transcript STORE (meetings already filed and split per person). For "my last call", a call with someone who is not a lead (Guy, a colleague, a client), or a call you can only describe by name, title or date, use recall_find_transcript instead - it searches every stored call. If the result looks wrong (missing, empty, or contains a different person\'s call), try recall_find_transcript' + (hasFathom ? ', then fathom_transcript to pull the raw recording straight from Fathom' : '') + '. If it answers "no lead" or "no meetings" but adds a BUT line about a PARKED meeting, relay that to the human and offer the door it names (wingguy_create_lead or wingguy_update_lead with that email) - the meeting exists; only the address is missing. Never conclude the call was not recorded.',
       inputSchema: {
         email: z.string().describe('The lead\'s email address (must match their Airtable record)'),
         after: z.string().optional().describe('Optional ISO 8601 date — only return meetings on or after this date/time'),
@@ -326,6 +384,26 @@ function createRecallMcpServer(coachClientId = DEFAULT_COACH_CLIENT_ID) {
     },
   );
 
+  server.registerTool(
+    'recall_find_transcript',
+    {
+      title: 'Find a stored call transcript (by name, title or date)',
+      description:
+        'Finds a call in this client\'s transcript STORE - every recorded call, whichever recorder captured it (Fathom, Fireflies, Wispr, imports), including calls with people who are not leads. Use for "the transcript of my last call", "my call with Guy on Friday", "what did we discuss yesterday". Returns the newest matching call in full, plus a list of other matches (ask again with meeting_id for one of those). query = a name or a word from the title (every word must match); leave it out to get the most recent call. Convert relative dates ("last Friday") to ISO dates for after/before.',
+      inputSchema: {
+        query: z.string().optional().describe('A person\'s name or a word from the call title, e.g. "Guy" or "Andrew McCallum". Omit for the most recent call.'),
+        after: z.string().optional().describe('Optional ISO 8601 date - only calls on or after this'),
+        before: z.string().optional().describe('Optional ISO 8601 date - only calls before this'),
+        meeting_id: z.union([z.number(), z.string()]).optional().describe('A meeting number (#1234) from an earlier result, to fetch that exact call'),
+      },
+    },
+    async (args) => {
+      try { return asMcpResult(await runRecallFindTranscript(args, coachClientId)); }
+      catch (e) { return { content: [{ type: 'text', text: `Error: ${e.message}` }], isError: true }; }
+    },
+  );
+
+  if (hasFathom) {
   server.registerTool(
     'fathom_list_meetings',
     {
@@ -360,6 +438,7 @@ function createRecallMcpServer(coachClientId = DEFAULT_COACH_CLIENT_ID) {
       catch (e) { return { content: [{ type: 'text', text: `Fathom API error: ${e.message}` }], isError: true }; }
     },
   );
+  }
 
   // Wingguy rules-store tools (the write-door from chat — "update my rules").
   // ⚠ First NON-transcript tools on this connector → the roadmap's rename-to-"Wingguy" trigger.
@@ -398,7 +477,7 @@ function mountRecallMcp(app, log = console) {
     if (!coachClientId) {
       return res.status(401).json({ jsonrpc: '2.0', id: req.body?.id ?? null, error: { code: -32001, message: 'unauthorized' } });
     }
-    const server = createRecallMcpServer(coachClientId);
+    const server = createRecallMcpServer(coachClientId, { hasFathom: await tenantHasFathom(coachClientId) });
     try {
       const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
       await server.connect(transport);
@@ -426,7 +505,7 @@ function mountRecallMcp(app, log = console) {
       const transport = new SSEServerTransport(`${BASE}/${encodeURIComponent(req.params.token)}/messages`, res);
       sseTransports[transport.sessionId] = transport;
       res.on('close', () => { delete sseTransports[transport.sessionId]; });
-      const server = createRecallMcpServer(coachClientId);
+      const server = createRecallMcpServer(coachClientId, { hasFathom: await tenantHasFathom(coachClientId) });
       await server.connect(transport);
     } catch (err) {
       log.error && log.error('mcpRecallServer SSE error:', err.message);
@@ -457,7 +536,7 @@ function mountRecallMcp(app, log = console) {
     res.status(405).json({ jsonrpc: '2.0', id: null, error: { code: -32000, message: 'Method not allowed.' } });
   });
 
-  log.info && log.info(`mcpRecallServer: mounted ${BASE}/:token (streamable POST, SDK) — recall_latest_transcript + fathom tools`);
+  log.info && log.info(`mcpRecallServer: mounted ${BASE}/:token (streamable POST, SDK) — recall_latest_transcript + recall_find_transcript + fathom tools (Fathom tenants only)`);
 }
 
 module.exports = { mountRecallMcp, BASE };

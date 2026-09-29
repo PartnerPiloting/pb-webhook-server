@@ -1881,6 +1881,66 @@ async function listMeetingsForCoach(coachClientId, { limit = 25 } = {}) {
   }
 }
 
+/**
+ * Find a tenant's stored meetings by what a person would say: a name, a word from the title, a date
+ * window. Searches EVERY meeting the tenant owns, not only those filed under a lead - a client's
+ * calls with Guy, a colleague or anyone not in their leads base are never linked to a lead, and
+ * before this they were unreachable from chat (Rick Wong, 29 Sep 2026: "transcript of my last call"
+ * ended at the Fathom tool's error because he is on Fireflies).
+ *
+ * Each word must match the title, a participant's name/email, or a speaker label in the transcript
+ * ("[00:01:02] Guy Wilson: ..."). No words = newest first. Split parents are left out (their
+ * children carry the words). Only meetings with a transcript body are returned.
+ */
+function escapeRegexForPg(s) {
+  return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+async function findMeetingsForCoach(coachClientId, { words = [], after, before, limit = 10, includeUnowned = false } = {}) {
+  const p = getPool();
+  if (!p) return [];
+  const params = [String(coachClientId).trim()];
+  const where = [
+    includeUnowned ? '(m.coach_client_id = $1 OR m.coach_client_id IS NULL)' : 'm.coach_client_id = $1',
+    `(m.status_reason IS NULL OR m.status_reason NOT LIKE 'Auto-split into%')`,
+    `COALESCE(LENGTH(TRIM(m.transcript_text)), 0) > 0`,
+  ];
+  for (const w of words.map((x) => String(x).trim()).filter(Boolean).slice(0, 6)) {
+    params.push(`%${w}%`);
+    const like = `$${params.length}`;
+    params.push(`(^|\\n)(\\[[^]\\n]*\\]\\s*)?[^:\\n]{0,60}${escapeRegexForPg(w)}[^:\\n]{0,60}:`);
+    const rx = `$${params.length}`;
+    where.push(`(m.title ILIKE ${like}
+      OR EXISTS (SELECT 1 FROM recall_meeting_participants pp WHERE pp.meeting_id = m.id
+                 AND (pp.verified_name ILIKE ${like} OR pp.verified_email ILIKE ${like}))
+      OR m.transcript_text ~* ${rx})`);
+  }
+  if (after && !isNaN(Date.parse(after))) {
+    params.push(new Date(after).toISOString());
+    where.push(`COALESCE(m.meeting_start, m.created_at) >= $${params.length}`);
+  }
+  if (before && !isNaN(Date.parse(before))) {
+    params.push(new Date(before).toISOString());
+    where.push(`COALESCE(m.meeting_start, m.created_at) < $${params.length}`);
+  }
+  params.push(Math.min(Math.max(Number(limit) || 10, 1), 50));
+  const client = await p.connect();
+  try {
+    await ensureSchema(client);
+    const r = await client.query(
+      `SELECT m.id, m.title, m.source, m.meeting_start, m.created_at, m.duration_seconds
+       FROM recall_meetings m
+       WHERE ${where.join('\n         AND ')}
+       ORDER BY COALESCE(m.meeting_start, m.created_at) DESC, m.id DESC
+       LIMIT $${params.length}`,
+      params,
+    );
+    return r.rows;
+  } finally {
+    client.release();
+  }
+}
+
 /** Delete ONE meeting the tenant owns. Returns the provider ids so the caller can tombstone. */
 async function deleteMeetingForCoach(meetingId, coachClientId) {
   const mid = typeof meetingId === 'string' ? parseInt(meetingId, 10) : Number(meetingId);
@@ -1930,6 +1990,7 @@ module.exports = {
   getPool,
   persistRecallWebhookEvent,
   listMeetingsForCoach,
+  findMeetingsForCoach,
   deleteMeetingForCoach,
   purgeMeetingsForCoach,
   getRecallWebhookDbSummary,
