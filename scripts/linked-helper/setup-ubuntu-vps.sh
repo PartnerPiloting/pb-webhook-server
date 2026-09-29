@@ -257,7 +257,12 @@ LH_BIN=$LH_BIN
 REPORT_URL=$REPORT_URL
 REPORT_SECRET=$REPORT_SECRET
 EOF
-chmod 644 /etc/linked-helper-machine.conf  # watchdog runs as $LH_USER; holds no secrets
+# Writable by the desktop user, on purpose (29 Sep 2026). LH_ACCOUNT_ID above is a placeholder
+# on any machine built before its owner has signed in; the watchdog, which runs as $LH_USER,
+# writes the real number here once they have. Owned by root and read-only, that needed someone
+# to ssh in and patch it by hand after every first sign-in.
+chown root:"$LH_USER" /etc/linked-helper-machine.conf
+chmod 664 /etc/linked-helper-machine.conf
 # REPORT_URL and REPORT_SECRET are optional, which means an unattended build happily
 # writes them EMPTY - and the conf then reads "REPORT_URL=" with nothing after it, which
 # at a glance looks configured. Guy's own machine was built that way on 1 Sep 2026, nine

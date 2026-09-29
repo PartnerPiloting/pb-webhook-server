@@ -98,6 +98,30 @@ is `NOT OPEN`, regardless of what processes exist.
 **3. A fixed 60 s wait after starting landed mid-load** ("Initializing.../Loading...") and wasted the
 cycle. Now polls up to ~3 min until the state settles to IDLE or RUNNING.
 
+**4. It restarted Linked Helper under anyone trying to sign in (found 29 Sep 2026, Roland Illyes).**
+Rule 2 meant "no instance window = kill and restart". A machine nobody has signed in to never has
+an instance window, so that was every cycle - Roland's Linked Helper had been killed and restarted
+every few minutes for two weeks, and anyone signing in on it would have had the window vanish
+mid-password. Three rules now, in `lh-watchdog.py`:
+
+| The machine is... | The watchdog... | Machine Status reads |
+|---|---|---|
+| never signed in (no `Partitions/linked-helper-account-<id>-main`) | keeps the Launcher open and waits; kills nothing | `WAITING FOR SIGN-IN` |
+| signed in, instance closed, **someone on the screen** | holds off for up to 30 minutes (an import needs the instance closed), then restarts anyway | `NOT OPEN - IN USE` |
+| signed in, instance closed, nobody there | restarts it, as before | `NOT OPEN`, then what it became |
+
+The 30-minute limit is deliberate: a browser tab left open for days must not stop a dead Linked
+Helper being restarted.
+
+**5. It learns the account number (29 Sep 2026).** A machine is built before its owner signs in,
+so `LH_ACCOUNT_ID` starts as a placeholder (`000000`, `1`). Once they sign in, the watchdog reads
+the real number from the partition folder and writes it into `/etc/linked-helper-machine.conf` and
+the desktop autostart - the hand-patch-and-reboot step after every first sign-in is gone. It only
+adopts when there is exactly one account on the machine; it never guesses between two. The config
+file is `root:lh 664` for this. **A machine built before 29 Sep needs that permission set once**
+(`chown root:lh /etc/linked-helper-machine.conf; chmod 664 ...`) and the current watchdog copied on;
+until then its status says `account-learned:<id> (config locked)` every cycle.
+
 **Proven after the fix:** LH killed outright -> watchdog started it -> waited for settle -> pressed
 "Start campaigns runner" -> `Running campaigns... | LinkedIn logged in`. The first press right after
 a cold start can return `NOT FOUND` (screen still drawing); the next 5-minute cycle gets it.

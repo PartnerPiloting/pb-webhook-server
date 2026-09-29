@@ -11,8 +11,27 @@ Every run (systemd timer, 5 min):
      can never press Stop.
   4. If REPORT_URL is set -> POST a small JSON status (best-effort; failures logged).
 
+LEAVING A PERSON ALONE (29 Sep 2026). Step 1 used to fire whenever there was no instance window,
+by killing Linked Helper and starting it again. On a machine nobody has signed in to yet there
+is never an instance window, so that was every cycle: found on Roland Illyes's machine, where
+Linked Helper had been killed and restarted every few minutes for two weeks - which is also
+what anyone trying to sign in on it would have had happen under their hands. Three rules now:
+  - NEVER SIGNED IN (no account has ever been opened here): keep the Launcher open and wait.
+    Nothing is killed. State reads WAITING FOR SIGN-IN.
+  - SOMEONE IS ON THE SCREEN and the instance is closed: they are probably in the middle of
+    something (signing in, an import - which needs the instance closed). Hold off, but only for
+    HOLD_OFF_S: a browser tab left open for days must not stop a dead Linked Helper being
+    restarted, because nobody noticing is the failure this whole thing exists to prevent.
+  - Otherwise: the restart, exactly as before.
+
+LEARNING THE ACCOUNT (29 Sep 2026). A machine is built before its owner has signed in, so its
+config carries a placeholder account number (000000, 1). Once they sign in, the real number is
+on disk as a partition folder. The watchdog adopts it - into the config and the desktop
+autostart - so the machine comes back from its nightly reboot as the right account without
+anybody patching it by hand.
+
 Config: /etc/linked-helper-machine.conf (written by setup-ubuntu-vps.sh).
-Status: WRITTEN 2026-08-29, NOT YET RUN ON A REAL VPS.
+Status: PROVEN - running on every machine since 1 Sep 2026.
 """
 import asyncio
 import json
@@ -24,6 +43,11 @@ import time
 import urllib.request
 
 CONF = "/etc/linked-helper-machine.conf"
+LH_DATA = os.path.expanduser("~/.config/linked-helper")
+AUTOSTART = os.path.expanduser("~/.config/autostart/linked-helper.desktop")
+HOLD_OFF_FILE = os.path.expanduser("~/.cache/lh-watchdog-hold-off")
+HOLD_OFF_S = 30 * 60        # how long a person on the screen can keep a closed instance closed
+VNC_PORT = 5900
 
 
 def load_conf():
@@ -98,6 +122,99 @@ def parse_title(t):
     return {"state": state, "linkedin": linkedin,
             "account": m.group(1) if m else None,
             "version": v.group(1) if v else None}
+
+
+def known_accounts(data_dir=None):
+    """Every Linked Helper account that has ever been opened on this machine.
+
+    Linked Helper keeps one partition folder per account (linked-helper-account-<id>-main) from
+    the first time that account is opened. None = nobody has signed in here yet.
+    """
+    try:
+        names = os.listdir(os.path.join(data_dir or LH_DATA, "Partitions"))
+    except OSError:
+        return []
+    ids = set()
+    for n in names:
+        m = re.match(r"^linked-helper-account-(\d+)-main$", n)
+        if m:
+            ids.add(m.group(1))
+    return sorted(ids, key=int)
+
+
+def account_to_adopt(conf_id, accounts):
+    """The real account number, when the config's one is a placeholder. None = leave it alone.
+
+    Only ever adopts when there is exactly ONE account on the machine and the config names
+    none of them - two accounts and no match is a question for a person, not a guess.
+    """
+    have = str(conf_id or "").strip()
+    if have in accounts or len(accounts) != 1:
+        return None
+    return accounts[0]
+
+
+def adopt_account(conf, real, actions):
+    """Write the real account number where the machine starts from. Best-effort, and loud."""
+    conf["LH_ACCOUNT_ID"] = real                     # this run uses it whatever happens below
+    try:
+        with open(CONF) as f:
+            lines = f.read().splitlines()
+        lines = [("LH_ACCOUNT_ID=" + real) if l.startswith("LH_ACCOUNT_ID=") else l for l in lines]
+        with open(CONF, "w") as f:
+            f.write("\n".join(lines) + "\n")
+        actions.append("account-learned:" + real)
+    except OSError as e:
+        # An older build left the config owned by root. The autostart below still gets fixed,
+        # and this says so every cycle until someone makes the file writable.
+        actions.append("account-learned:" + real + " (config locked)")
+        print(f"could not write {CONF}: {e}")
+    try:
+        with open(AUTOSTART) as f:
+            s = f.read()
+        fixed = re.sub(r"--start-account-id=\S+", "--start-account-id=" + real, s)
+        if fixed != s:
+            with open(AUTOSTART, "w") as f:
+                f.write(fixed)
+    except OSError as e:
+        print(f"could not update {AUTOSTART}: {e}")
+
+
+def someone_is_watching():
+    """An open connection to the screen - Remote Desktop or the web page. Local check only.
+
+    Fails towards NO: a wrong "yes" postpones restarting a dead Linked Helper.
+    """
+    try:
+        out = sh(f"ss -tn state established '( sport = :{VNC_PORT} )' 2>/dev/null")
+    except Exception:
+        return False
+    return len([l for l in out.splitlines() if str(VNC_PORT) in l]) > 0
+
+
+def hold_off(now=None):
+    """True while a person on the screen is still inside their HOLD_OFF_S. Starts the clock on
+    first call; clear_hold_off() resets it."""
+    now = now or time.time()
+    try:
+        with open(HOLD_OFF_FILE) as f:
+            since = float(f.read().strip())
+    except (OSError, ValueError):
+        since = now
+        try:
+            os.makedirs(os.path.dirname(HOLD_OFF_FILE), exist_ok=True)
+            with open(HOLD_OFF_FILE, "w") as f:
+                f.write(str(since))
+        except OSError:
+            return False     # cannot keep time, so cannot promise an end - do not hold off
+    return (now - since) < HOLD_OFF_S
+
+
+def clear_hold_off():
+    try:
+        os.remove(HOLD_OFF_FILE)
+    except OSError:
+        pass
 
 
 def start_lh(conf):
@@ -199,9 +316,29 @@ def main():
     health = parse_title(instance_title())
     print(f"health: {health}")
 
+    accounts = known_accounts()
+    real = account_to_adopt(conf.get("LH_ACCOUNT_ID"), accounts)
+    if real:
+        print(f"config says account {conf.get('LH_ACCOUNT_ID')}, this machine has {real} - adopting it")
+        adopt_account(conf, real, actions)
+
+    if health["state"] != "NOT OPEN":
+        clear_hold_off()
+    elif not accounts:
+        # Nobody has ever signed in here. Keep the Launcher up for them and wait - see the header.
+        if not lh_pids():
+            actions.append("opened-launcher")
+            start_lh(conf)
+        health["state"] = "WAITING FOR SIGN-IN"
+        print("nobody has signed in on this machine yet - leaving the Launcher alone")
+    elif someone_is_watching() and hold_off():
+        health["state"] = "NOT OPEN - IN USE"
+        print("no instance window, but someone is on the screen - holding off")
+
     # Decide from the WINDOW, not from process presence: stray child processes
     # with no instance window used to leave the watchdog doing nothing at all.
     if health["state"] == "NOT OPEN":
+        clear_hold_off()
         actions.append("started-lh")
         print("no Linked Helper instance window - starting it")
         subprocess.run("pkill -f '[l]inked-helper' || true", shell=True)
