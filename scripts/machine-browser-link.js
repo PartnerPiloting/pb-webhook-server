@@ -23,7 +23,8 @@
  * talk to Cloudflare, it only reads the Machine Link field):
  *   CLOUDFLARE_API_TOKEN    permissions: Account > Cloudflare Tunnel: Edit, Account > Access: Apps
  *                           and Policies: Edit, Account > Access: Organizations, Identity
- *                           Providers, and Groups: Edit, Zone > DNS: Edit (the machine domain only)
+ *                           Providers, and Groups: Edit, Zone > DNS: Edit and Zone > Zone: Read
+ *                           (the machine domain only)
  *   CLOUDFLARE_ACCOUNT_ID
  *   MACHINE_LINK_DOMAIN     the domain bought for this, e.g. example.com
  */
@@ -43,15 +44,37 @@ const {
 
 const FIELD_LINK = 'Machine Link';
 const FIELD_EMAILS = 'Machine Link Emails';
-const SSH_KEY = path.join(os.homedir(), '.ssh', 'wg_clients_ed25519');
+
+// HOW WE GET ONTO A MACHINE. Every client machine: root, with the shared client-machines key.
+// Guy's own machine is the exception - it was built on 1 Sep 2026, before the client method
+// existed, so it is user `ubuntu` (then sudo) with its own key. That key must never go onto a
+// client machine, which is why the two are kept apart here rather than "tidied" into one.
+// --ssh-user= and --ssh-key= (a file name in ~/.ssh) override either for a one-off.
+const DEFAULT_LOGIN = { user: 'root', key: 'wg_clients_ed25519' };
+const OWN_LOGINS = { 'Guy-Wilson': { user: 'ubuntu', key: 'lh_vps_ed25519' } };
+
+function machineLogin(clientId, args) {
+  const arg = (name) => (args.find((a) => a.startsWith(`--${name}=`)) || '').slice(name.length + 3);
+  const known = OWN_LOGINS[clientId] || DEFAULT_LOGIN;
+  const user = arg('ssh-user') || known.user;
+  const key = path.join(os.homedir(), '.ssh', path.basename(arg('ssh-key') || known.key));
+  if (!/^[a-z_][a-z0-9_-]*$/.test(user)) throw new Error(`--ssh-user does not look like a user name: "${user}"`);
+  return {
+    user,
+    key,
+    // Where the install files land, and how to run them as root from there.
+    home: user === 'root' ? '/root' : `/home/${user}`,
+    sudo: user === 'root' ? '' : 'sudo ',
+  };
+}
 
 function fail(msg, code = 1) {
   console.error(msg);
   process.exit(code);
 }
 
-function ssh(address, remoteCommand) {
-  return spawnSync('ssh', ['-i', SSH_KEY, '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=15', `root@${address}`, remoteCommand],
+function ssh(login, address, remoteCommand) {
+  return spawnSync('ssh', ['-i', login.key, '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=15', `${login.user}@${address}`, remoteCommand],
     { stdio: ['ignore', 'inherit', 'inherit'] });
 }
 
@@ -79,12 +102,13 @@ function ssh(address, remoteCommand) {
   const emails = allowedEmails(client.clientEmailAddress, coachEmail, extras);
   const hostname = machineHostname(client.clientId, domain);
   const address = tailscaleAddress(raw['Machine Tailscale']);
+  const login = machineLogin(client.clientId, args);
 
   console.log(`\n${client.clientName || client.clientId}`);
   console.log(`  link      ${machineLink(client.clientId, domain)}`);
   console.log(`  tunnel    ${tunnelName(client.clientId)}`);
   console.log(`  allowed   ${emails.join(', ') || 'NOBODY'}`);
-  console.log(`  machine   ${raw['Machine Tailscale'] || 'not reporting yet'}\n`);
+  console.log(`  machine   ${raw['Machine Tailscale'] || 'not reporting yet'} (as ${login.user})\n`);
 
   if (flag('plan')) {
     console.log('Plan only - nothing was changed.');
@@ -100,7 +124,7 @@ function ssh(address, remoteCommand) {
   if (flag('remove')) {
     await removeMachineLink({ call, accountId, clientId: client.clientId, domain, log });
     await base(MASTER_TABLES.CLIENTS).update(client.id, { [FIELD_LINK]: '' });
-    if (address) ssh(address, 'test -f /root/lh-browser-access.sh && bash /root/lh-browser-access.sh --remove');
+    if (address) ssh(login, address, `test -f ${login.home}/lh-browser-access.sh && ${login.sudo}bash ${login.home}/lh-browser-access.sh --remove`);
     console.log(`\n${hostname} is gone. The machine itself is untouched.`);
     return;
   }
@@ -128,13 +152,13 @@ function ssh(address, remoteCommand) {
 
   if (!address) fail(`${client.clientId} has no 100.x address in Machine Tailscale - cannot reach the machine to install.`);
   const src = path.join(__dirname, 'linked-helper');
-  const copy = spawnSync('scp', ['-i', SSH_KEY, '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=15',
-    path.join(src, 'lh-browser-access.sh'), path.join(src, 'lh-browser-page.html'), `root@${address}:/root/`],
+  const copy = spawnSync('scp', ['-i', login.key, '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=15',
+    path.join(src, 'lh-browser-access.sh'), path.join(src, 'lh-browser-page.html'), `${login.user}@${address}:${login.home}/`],
   { stdio: ['ignore', 'inherit', 'inherit'] });
   if (copy.status !== 0) fail('Could not copy the install script to the machine (is Tailscale on, on this laptop?).');
   // The token is base64 (letters, digits, =, -, _) so single quotes are safe around it.
   if (!/^[A-Za-z0-9=_-]+$/.test(made.tunnelToken)) fail('The tunnel token has characters in it that were not expected - not sending it to a shell.');
-  const run = ssh(address, `TUNNEL_TOKEN='${made.tunnelToken}' bash /root/lh-browser-access.sh`);
+  const run = ssh(login, address, `${login.sudo}TUNNEL_TOKEN='${made.tunnelToken}' bash ${login.home}/lh-browser-access.sh`);
   if (run.status !== 0) fail('The install on the machine did not finish - read the lines above.');
 
   console.log(`\nDONE. Open ${made.link} - sign in with ${coachEmail || 'your email'}, and you should see ${client.clientName || client.clientId}'s Linked Helper screen.`);
