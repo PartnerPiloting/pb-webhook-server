@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<!--
+  The page a client sees when they open their Linked Helper machine in a web browser.
+  Installed by lh-browser-access.sh as index.html beside noVNC's own core/ folder.
+
+  Deliberately NOT noVNC's stock vnc.html: that page opens on a Connect button and a settings
+  drawer, and asks for "a password" the client has never heard of. This one has no controls to
+  get wrong - it connects by itself, fits the machine's screen to the window, and reconnects by
+  itself after the nightly restart.
+
+  The screen password arrives from machine.json (written on the machine by the install script).
+  That is not the lock on the door: the only road to this page is the Cloudflare tunnel, and the
+  tunnel only lets through people who have passed the emailed code.
+-->
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Linked Helper machine</title>
+<style>
+  html, body { height: 100%; margin: 0; background: #1f2933; overflow: hidden;
+    font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+  #screen { position: fixed; inset: 0; }
+  #note { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center;
+    justify-content: center; gap: 10px; color: #e5e7eb; text-align: center; padding: 24px;
+    background: #1f2933; }
+  #note.hidden { display: none; }
+  #note h1 { font-size: 22px; font-weight: 600; margin: 0; }
+  #note p { font-size: 15px; line-height: 1.5; margin: 0; max-width: 460px; color: #9ca3af; }
+  #paste { position: fixed; top: 0; left: 50%; transform: translateX(-50%); z-index: 5;
+    border: 0; border-radius: 0 0 8px 8px; padding: 5px 14px; font-size: 12.5px; cursor: pointer;
+    background: rgba(31, 41, 51, .82); color: #e5e7eb; opacity: .55; }
+  #paste:hover, #paste:focus { opacity: 1; }
+  #paste.hidden { display: none; }
+</style>
+</head>
+<body>
+<div id="screen"></div>
+<button id="paste" class="hidden" type="button" title="Copies what is on your own computer's clipboard onto the machine. Then press Ctrl+V on the machine.">Paste from my computer</button>
+<div id="note">
+  <h1 id="note-title">Opening your Linked Helper machine...</h1>
+  <p id="note-body">This takes a few seconds.</p>
+</div>
+
+<script type="module">
+import RFB from './core/rfb.js';
+
+const RETRY_SECONDS = 5;
+const note = document.getElementById('note');
+const noteTitle = document.getElementById('note-title');
+const noteBody = document.getElementById('note-body');
+const pasteButton = document.getElementById('paste');
+let rfb = null;
+let password = '';
+
+function say(title, body) {
+  noteTitle.textContent = title;
+  noteBody.textContent = body;
+  note.classList.remove('hidden');
+}
+
+function connect() {
+  const scheme = location.protocol === 'https:' ? 'wss' : 'ws';
+  rfb = new RFB(document.getElementById('screen'), `${scheme}://${location.host}/websockify`,
+    { credentials: { password } });
+  // The machine's screen is one fixed size. Fit it to whatever window it is opened in, and never
+  // ask the machine to change size - Linked Helper is running on that screen.
+  rfb.scaleViewport = true;
+  rfb.resizeSession = false;
+  rfb.focusOnClick = true;
+
+  rfb.addEventListener('connect', () => {
+    note.classList.add('hidden');
+    pasteButton.classList.remove('hidden');
+    rfb.focus();
+  });
+  rfb.addEventListener('disconnect', () => {
+    pasteButton.classList.add('hidden');
+    say('Reconnecting to your Linked Helper machine...',
+      'If this is around 3 am Brisbane time the machine is doing its nightly restart - it is back within a few minutes. Leave this tab open and it reconnects by itself.');
+    setTimeout(connect, RETRY_SECONDS * 1000);
+  });
+  rfb.addEventListener('credentialsrequired', () => {
+    say('This machine needs a hand', 'It did not accept its own screen password. Tell Guy - this is one for him to fix.');
+  });
+  rfb.addEventListener('securityfailure', () => {
+    say('This machine needs a hand', 'It did not accept its own screen password. Tell Guy - this is one for him to fix.');
+  });
+}
+
+// Copy and paste INTO the machine. The browser only hands over the clipboard on a click, so this
+// is a button rather than something automatic.
+pasteButton.addEventListener('click', async () => {
+  const label = pasteButton.textContent;
+  try {
+    const text = await navigator.clipboard.readText();
+    if (!text) throw new Error('empty');
+    rfb.clipboardPasteFrom(text);
+    pasteButton.textContent = 'Ready - now press Ctrl+V on the machine';
+  } catch (_e) {
+    pasteButton.textContent = 'Your browser would not share the clipboard';
+  }
+  setTimeout(() => { pasteButton.textContent = label; }, 4000);
+  if (rfb) rfb.focus();
+});
+
+fetch('machine.json', { cache: 'no-store' })
+  .then((r) => r.json())
+  .then((conf) => { password = conf.password || ''; connect(); })
+  .catch(() => say('This machine needs a hand', 'Its browser page is not set up properly. Tell Guy - this is one for him to fix.'));
+</script>
+</body>
+</html>

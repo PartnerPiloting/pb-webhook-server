@@ -54,6 +54,13 @@ def machine_info():
         info["public_ip"] = sh("curl -4 -s --max-time 5 https://api.ipify.org 2>/dev/null")
         info["disk_pct"] = sh("df --output=pcent / | tail -1 | tr -dc '0-9'")
         info["launcher"] = sh("wmctrl -l | grep -o 'Launcher v[0-9.]*' | head -1 | sed 's/Launcher v//'")
+        # The client's way in through a web browser (lh-browser-access.sh): the page AND the
+        # tunnel must both be running. Blank when this machine has no web link installed, so a
+        # machine still on the desktop icon says nothing rather than crying DOWN.
+        if sh("systemctl is-enabled lh-browser.service 2>/dev/null") == "enabled":
+            page = sh("systemctl is-active lh-browser.service 2>/dev/null")
+            tunnel = sh("systemctl is-active cloudflared.service 2>/dev/null")
+            info["browser"] = "up" if (page == "active" and tunnel == "active") else "down"
     except Exception as e:
         info["error"] = str(e)[:80]
     return info

@@ -291,6 +291,16 @@ const MASTER_FIELDS = [
     type: 'date',
     description: 'The day the client double-clicked the Remote Desktop icon on their OWN laptop and saw their Linked Helper machine (Tailscale on their laptop under their own account, the machine shared to them, the .rdp from scripts/make-client-rdp.js). Set by hand at the machine session - checklist step 14. Blank with Machine Tailscale filled = the client has no way into their own machine; the onboarding preflight flags it. Added 2026-09-26 after Sam Noble was told "icon on your desktop" and there was none.',
     options: { dateFormat: { name: 'iso' } }
+  },
+  {
+    name: 'Machine Link',
+    type: 'url',
+    description: 'The web address that opens the client\'s Linked Helper machine in a browser (email, one-time code, then the desktop) - what the client uses INSTEAD of Tailscale and the Remote Desktop icon. Written by scripts/machine-browser-link.js, which also builds the Cloudflare side; never typed by hand. Handed out by the My Wingguy page, the extension updater (desktop shortcut) and the wingguy_open_machine tool. Blank = this client is still on the icon, or has no machine. Added 2026-09-29 after two calls in a row failed on the client\'s Tailscale setup.'
+  },
+  {
+    name: 'Machine Link Emails',
+    type: 'singleLineText',
+    description: 'EXTRA people allowed to open this client\'s Machine Link, comma-separated emails - an assistant, or the client\'s personal address when their work mail swallows the code email. The client\'s own Client Email Address and their coach are always allowed and do not go here. After changing it, re-run scripts/machine-browser-link.js <Client-ID> - the field is the record, Cloudflare is what enforces it. Added 2026-09-29.'
   }
 ];
 

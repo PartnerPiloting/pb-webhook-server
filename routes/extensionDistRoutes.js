@@ -158,9 +158,16 @@ router.get('/file', requireClient, (req, res) => {
  * The client's desktop icon for their Linked Helper machine (a Remote Desktop file), built from
  * the address the machine itself reported to their row. The updater keeps it on the desktop, so
  * it is already there when the onboarding call switches it on. { rdp: null } = no machine yet.
+ *
+ * A client with a Machine Link (29 Sep 2026) gets { link } and NO rdp: their way in is a web
+ * page, so the updater puts a shortcut to it on the desktop and takes the Remote Desktop icon
+ * away. rdp is null on purpose - an updater too old to know about links then places nothing,
+ * rather than an icon that cannot connect because the client has no Tailscale.
  */
 router.get('/machine-icon', requireClient, (req, res) => {
   const raw = (req.wgClient.rawRecord && req.wgClient.rawRecord._rawJson && req.wgClient.rawRecord._rawJson.fields) || {};
+  const link = String(raw['Machine Link'] || '').trim();
+  if (/^https:\/\/[a-z0-9.-]+\/?$/i.test(link)) return res.json({ ok: true, link, rdp: null });
   const address = tailscaleAddress(raw['Machine Tailscale']);
   if (!address) return res.json({ ok: true, rdp: null });
   return res.json({ ok: true, address, rdp: buildRdpFile({ address }) });

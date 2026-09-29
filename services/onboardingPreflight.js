@@ -267,7 +267,13 @@ async function runPreflight(clientId) {
     // The client's own way into their machine (added 2026-09-26). Only once there IS a machine.
     const machineBuilt = present(raw14['Machine Tailscale']);
     const iconProven = raw14['Machine Icon Proven'] || '';
+    // A web link (added 2026-09-29) replaces the icon for that client - same proof field, since
+    // it answers the same question: has the client got into their own machine, themselves?
+    const machineLink = raw14['Machine Link'] || '';
     const iconLine = !machineBuilt ? ''
+      : machineLink ? (iconProven
+        ? ` · web link proven ${iconProven}`
+        : ` · WEB LINK NOT PROVEN - have them open ${machineLink} on their own computer (email, then the code), then set Machine Icon Proven - checklist step 14`)
       : iconProven ? ` · desktop icon proven ${iconProven}`
       : ' · NO DESKTOP ICON PROVEN - the updater places the icon itself; switch it on with the Tailscale share link and it records the proof (old updater? paste their install line) - checklist step 14';
     step(14, 'linked helper + VPS', MANUAL,

@@ -56,7 +56,7 @@ $script:CadenceTag = "hourly-1"
 # with the one the server holds on each run and replaces itself when they differ (Update-Self).
 # Before 2026-09-26 an installed copy never changed, so improvements only reached machines that
 # were re-installed by hand.
-$script:UpdaterVersion = "2026-09-26.1"
+$script:UpdaterVersion = "2026-09-29.1"
 
 # Extra fields for this run's check-in (the machine icon step fills them in).
 $script:CheckinExtra = @{}
@@ -151,11 +151,34 @@ function Sync-MachineIcon($server, $headers) {
   # Then the PROOF: can this laptop actually reach the machine's Remote Desktop port? The first
   # time it can, the server fills in Machine Icon Proven - nobody has to remember to.
   # Wrapped: nothing here may ever cost the extension update.
+  #
+  # THE WEB LINK (2026-09-29). A client whose machine opens in a browser gets a shortcut to that
+  # page instead, and the Remote Desktop icon is taken away - two icons, one of which cannot
+  # connect, is worse than one. There is nothing to probe: the page is on the internet, and the
+  # only real proof is the client signing in, which this script cannot see.
   try {
     $icon = Invoke-RestMethod -Uri "$server/extension/dist/machine-icon" -Headers $headers -TimeoutSec 30
-    if (-not $icon -or -not $icon.rdp) { return }   # no machine built yet - nothing to place
     $desktop = [Environment]::GetFolderPath('Desktop')
     $file = Join-Path $desktop "Linked Helper machine.rdp"
+    if ($icon -and $icon.link) {
+      $shortcut = Join-Path $desktop "Linked Helper machine.url"
+      $wanted = "[InternetShortcut]`r`nURL=$($icon.link)`r`nIconFile=$env:SystemRoot\System32\shell32.dll`r`nIconIndex=15`r`n"
+      $have = $null
+      if (Test-Path $shortcut) { $have = Get-Content $shortcut -Raw }
+      if ($have -ne $wanted) {
+        [System.IO.File]::WriteAllText($shortcut, $wanted, [System.Text.Encoding]::ASCII)
+        Write-Log "Machine link placed on the desktop ($($icon.link))."
+        $script:CheckinExtra["icon"] = "link-placed"
+      } else {
+        $script:CheckinExtra["icon"] = "link-present"
+      }
+      if (Test-Path $file) {
+        Remove-Item -Path $file -Force
+        Write-Log "Old Remote Desktop icon removed - the machine opens from the web link now."
+      }
+      return
+    }
+    if (-not $icon -or -not $icon.rdp) { return }   # no machine built yet - nothing to place
     $current = $null
     if (Test-Path $file) { $current = Get-Content $file -Raw }
     if ($current -ne $icon.rdp) {

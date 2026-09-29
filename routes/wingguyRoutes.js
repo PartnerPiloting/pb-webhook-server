@@ -1669,6 +1669,14 @@ module.exports = function mountWingguy(app) {
     };
   }
 
+  // The client's Linked Helper machine, for the My Wingguy page: the web link that opens it, or
+  // null when they have no link (no machine, or still on the desktop icon). The page shows the
+  // door only when there is somewhere for it to lead.
+  router.get('/machine', (req, res) => {
+    const link = String((req.client && req.client.machineLink) || '').trim();
+    return res.json({ ok: true, link: /^https:\/\/[a-z0-9.-]+\/?$/i.test(link) ? link : null });
+  });
+
   // What changed lately — client-layer instruction changes with before/after and notes attached.
   router.get('/setup/changes', async (req, res) => {
     const tenantId = req.client.clientId;

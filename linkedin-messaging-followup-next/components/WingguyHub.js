@@ -11,9 +11,10 @@
  * than a plain page ever could, and none of these counts have been verified per-client yet.
  */
 
-import React, { Suspense } from 'react';
+import React, { Suspense, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { usePageAuth } from './WingguyReview';
+import { getBackendBase } from '../services/api';
 
 const DOORS = [
   {
@@ -42,10 +43,36 @@ const DOORS = [
   },
 ];
 
+/**
+ * The way into the client's Linked Helper machine (29 Sep 2026): a web link that opens its
+ * desktop in a browser tab. Only drawn for a client who HAS a link - a door that leads nowhere
+ * is worse than no door - and a failed lookup draws nothing rather than an error, because this
+ * page works perfectly well without it.
+ */
+function useMachineLink({ token, client, devKey, hasAuth, ready }) {
+  const [link, setLink] = useState(null);
+  useEffect(() => {
+    if (!ready || !hasAuth) return undefined;
+    let cancelled = false;
+    const headers = {};
+    if (token) headers['x-portal-token'] = token;
+    if (client) headers['x-client-id'] = client;
+    if (devKey) headers['x-dev-key'] = devKey;
+    fetch(`${getBackendBase()}/api/wingguy/machine`, { headers })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => { if (!cancelled && data && data.ok && data.link) setLink(data.link); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [token, client, devKey, hasAuth, ready]);
+  return link;
+}
+
 function WingguyHubInner() {
   const searchParams = useSearchParams();
-  const { query: q } = usePageAuth(searchParams);
+  const auth = usePageAuth(searchParams);
+  const { query: q } = auth;
   const href = (path) => (q ? `${path}?${q}` : path);
+  const machineLink = useMachineLink(auth);
 
   return (
     <div className="flex flex-col gap-8 max-w-[1240px]">
@@ -62,6 +89,26 @@ function WingguyHubInner() {
           Set up and running
         </div>
       </header>
+
+      {machineLink && (
+        <a
+          href={machineLink}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="group flex flex-wrap items-center justify-between gap-x-8 gap-y-3 rounded-[14px] border border-slate-200 bg-white px-7 py-5 transition duration-150 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_8px_28px_rgba(31,41,51,.08)] focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-700 focus-visible:ring-offset-2"
+        >
+          <div className="flex flex-col gap-1">
+            <div className="font-serif text-[21px] leading-snug text-slate-900">Your Linked Helper machine</div>
+            <p className="text-[15px] leading-relaxed text-slate-600">
+              Opens in a new tab. The first time, it asks for your email and sends you a code.
+            </p>
+          </div>
+          <div className="inline-flex items-center gap-1.5 text-sm font-bold text-blue-600">
+            Open my Linked Helper machine{' '}
+            <span aria-hidden="true" className="transition-transform duration-150 group-hover:translate-x-1">&rarr;</span>
+          </div>
+        </a>
+      )}
 
       <div className="grid gap-5 lg:grid-cols-3">
         {DOORS.map((d) => (

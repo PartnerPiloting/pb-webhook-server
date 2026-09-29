@@ -157,6 +157,8 @@ async function getAllClients() {
                 // the machine's watchdog reports with this secret; last-seen is the fleet signal.
                 const machineReportSecret = record.get('Machine Report Secret') || null;
                 const machineLastSeen = record.get('Machine Last Seen') || null;
+                // The client's own way in: their machine in a web browser (scripts/machine-browser-link.js).
+                const machineLink = record.get('Machine Link') || null;
                 // Capture policy (services/capturePolicyStore.js): blank fields = fully open =
                 // pre-policy behaviour. 'Leads Only' = a transcript is fetched only when someone
                 // on the call is already a lead; hold minutes = the veto window before fetching.
@@ -296,6 +298,7 @@ async function getAllClients() {
                     firefliesWebhookSecret: firefliesWebhookSecret,
                     machineReportSecret: machineReportSecret,
                     machineLastSeen: machineLastSeen,
+                    machineLink: machineLink,
                     captureMode: captureMode,
                     captureHoldMinutes: captureHoldMinutes,
                     followupBrief: followupBrief,

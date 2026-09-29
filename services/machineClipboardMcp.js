@@ -22,6 +22,11 @@
  * One definition, BOTH transports (same pattern as captureControlMcp):
  *   - the SDK server (services/mcpRecallServer.js -> /mcp2/:token, claude.ai)
  *   - the legacy hand-rolled endpoint (routes/recallWebhookRoutes.js -> /mcp/:token, Claude Code)
+ *
+ * ALSO HERE (29 Sep 2026): wingguy_open_machine - "open my Linked Helper machine". It hands over
+ * the web link that opens the machine in a browser (services/machineBrowserLink.js). Same two
+ * callers, same coach gate, so it lives beside the clipboard tool rather than in a file of its own.
+ * Claude cannot show the screen in the chat - the tool's whole job is the link and what to expect.
  */
 
 const { z } = require('zod');
@@ -43,7 +48,7 @@ async function resolveTarget(query, tenant) {
     let me = null;
     try { me = await clientService.getClientById(tenant); } catch (_e) { /* handled below */ }
     if (!me) return { error: `Couldn't find your own record ("${tenant}").` };
-    return { clientId: me.clientId, clientName: me.clientName || me.clientId, own: true };
+    return { clientId: me.clientId, clientName: me.clientName || me.clientId, own: true, record: me };
   }
 
   let all;
@@ -110,9 +115,63 @@ async function runSendToMachine(args = {}, tenant = TENANT) {
   };
 }
 
+/** The same "is it awake?" check as freshnessNote, worded for someone about to open the screen. */
+function machineAwakeNote(record) {
+  const seen = record?.machineLastSeen;
+  if (!seen) return ' Note: that machine has never reported in, so the link may open onto nothing.';
+  const mins = Math.round((Date.now() - new Date(seen).getTime()) / 60000);
+  if (mins > 15) return ` Note: that machine was last heard from ${mins} minutes ago, so it may be off.`;
+  return '';
+}
+
+async function runOpenMachine(args = {}, tenant = TENANT) {
+  const target = await resolveTarget(args.client, tenant);
+  if (target.error) return { text: target.error, isError: true };
+
+  const link = target.record && target.record.machineLink;
+  const whose = target.own ? 'your Linked Helper machine' : `${target.clientName}'s Linked Helper machine`;
+  if (!link) {
+    // No link is not the same as no machine - say which, and never invent an address.
+    const built = !!(target.record && target.record.machineLastSeen);
+    return {
+      text: built
+        ? `There is no web link for ${whose} yet - it is still opened with the "Linked Helper machine" icon on the desktop. Guy is the one who switches the web link on.`
+        : `There is no Linked Helper machine on record for ${target.own ? 'you' : target.clientName} yet. Guy sets that up - ask him.`,
+    };
+  }
+  return {
+    text:
+      `Here is the link to ${whose}:\n\n${link}\n\n`
+      + 'Give the person this link exactly as it is, as a clickable link. It opens in any web browser - nothing to install.\n\n'
+      + 'What happens when they click it:\n'
+      + '1. A sign-in page asks for their email address. They use the one Guy has on file for them.\n'
+      + '2. A six-digit code arrives in that inbox within a minute (check junk if not). They type it in.\n'
+      + '3. The machine\'s desktop opens in the browser tab, with Linked Helper on it.\n\n'
+      + 'It remembers them on that browser for about a month, so most days it opens straight to the desktop. '
+      + 'If the sign-in page says the email is not allowed, or no code arrives, that is one for Guy - he controls who is on the list. '
+      + 'You cannot see or show the machine\'s screen in this chat; the link is the way in.'
+      + (target.own ? '' : machineAwakeNote(target.record)),
+  };
+}
+
 // ---------------------------------------------------------------------------
 
 const TOOL_DEFS = [
+  {
+    name: 'wingguy_open_machine',
+    description:
+      "Get the web link that opens a Linked Helper machine in a browser. Use this whenever someone says 'open my Linked Helper machine', 'open my machine', 'how do I get into my machine', 'I need to look at Linked Helper', 'where is the link to my machine', or otherwise wants to see or work on the always-on computer that runs their Linked Helper. It returns their own personal link and what to expect when they click it (their email, then a one-time code, then the desktop). Never guess or build this address yourself, and never answer from memory - each client's link is their own. With no client named it is the caller's own machine; a coach can name one of their own clients.",
+    zodSchema: {
+      client: z.string().optional().describe('Coaches only: which of your clients\' machines (name or client id). Leave out for your own machine.'),
+    },
+    jsonSchema: {
+      type: 'object',
+      properties: {
+        client: { type: 'string', description: 'Coaches only: which of your clients\' machines. Leave out for your own.' },
+      },
+    },
+    run: runOpenMachine,
+  },
   {
     name: 'wingguy_send_to_machine',
     description:

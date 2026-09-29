@@ -104,6 +104,11 @@ function statusLine(body) {
   } else {
     parts.push('backup NOT INSTALLED');
   }
+  // The client's web link (29 Sep 2026). Only machines that have one report it, so a machine
+  // still on the desktop icon stays quiet. DOWN here means the client cannot get in - and
+  // without this line the first person to find out would be the client.
+  if (m.browser === 'up') parts.push('web link ok');
+  else if (m.browser === 'down') parts.push('web link DOWN');
   return parts.join(' | ').slice(0, 250);
 }
 

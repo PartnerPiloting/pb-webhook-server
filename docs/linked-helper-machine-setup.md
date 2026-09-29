@@ -216,6 +216,61 @@ machine's name does not resolve the same on their side). xrdp.ini carries the sc
 the double-click lands straight on the Linked Helper screen. Done and proven at the machine session,
 then `Machine Icon Proven` is set on their row - steps in `docs/wingguy-onboarding-checklist.md`,
 "The client's desktop icon".
+
+#### The client's web link - replacing the icon (started 29 Sep 2026, NOT yet the fleet method)
+
+**Status: built 29 Sep 2026, being proven on ONE machine (Roland Illyes) first.** Until a client
+has signed in through it on their own computer, the icon above stays the method for everyone else.
+
+**What it does:** the client clicks a link, types their email, gets a one-time code, and their
+machine's desktop opens in a browser tab. Nothing installed on their side, no Tailscale account,
+works on Windows, Mac and iPad. Guy's own way in (Tailscale + RDP, above) does not change.
+
+**Why:** every step a client took to reach their own machine was a place to fail, and on two calls
+in a row it did - Rick Wong's Tailscale signup with a work email landed on a paid trial, and Roland
+Illyes picked "Linux" when adding his Windows laptop, so it never joined and the icon said "not
+available on the network".
+
+**How it is made:**
+
+| Piece | Where | What it is |
+|---|---|---|
+| The page | on the machine, `lh-browser.service` | noVNC + websockify on `127.0.0.1:6080`, showing the same x11vnc screen RDP shows |
+| The road | on the machine, `cloudflared.service` | an OUTBOUND tunnel to Cloudflare - no port is opened, ufw is untouched |
+| The lock | Cloudflare Access | email + one-time code; only the emails on that machine's list get a code |
+| The address | `https://<client-id>.<MACHINE_LINK_DOMAIN>` | a domain bought for this alone - NOT knowaguy.com.au |
+
+One command does all of it, from the laptop, with Tailscale on:
+
+```
+node scripts/machine-browser-link.js <Client-ID> --plan      # what it would do, touches nothing
+node scripts/machine-browser-link.js <Client-ID> --install   # Cloudflare side + the machine + Machine Link on their row
+node scripts/machine-browser-link.js <Client-ID> --add=someone@example.com   # allow one more person
+node scripts/machine-browser-link.js <Client-ID> --remove    # the client has left
+```
+
+It needs `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` and `MACHINE_LINK_DOMAIN` in `.env.local`
+on the laptop (the header of the script lists the token's permissions). The server never talks to
+Cloudflare - it only reads the **Machine Link** field the script writes.
+
+**Who can open a machine:** the client's `Client Email Address`, their coach, and anyone in
+`Machine Link Emails` on their row. The code is EMAILED, so a work inbox that swallows it (Rick's
+Proofpoint) locks the client out - add their personal address with `--add`.
+
+**Where the client finds the link:** the My Wingguy page ("Open my Linked Helper machine"), a
+shortcut the extension updater puts on their desktop (and it removes the old Remote Desktop icon),
+or by asking their Claude (`wingguy_open_machine`).
+
+**Health:** a machine with the web link reports `web link ok` / `web link DOWN` at the end of
+Machine Status. Machines without one say nothing.
+
+**Proof is the same field:** `Machine Icon Proven` = the day the CLIENT opened it themselves. Guy
+opening it proves the plumbing, not that the client can get in.
+
+⚠ Copy and paste into the machine: the page has a "Paste from my computer" button (unproven as of
+29 Sep), and `wingguy_send_to_machine` works exactly as before.
+⚠ An existing machine needs the current `lh-watchdog.py` copied on to report web link health.
+
 ⚠ Auth keys expire (90 days max) and should be **revoked after use** - they only add machines, and
 revoking does not disconnect machines already joined.
 
