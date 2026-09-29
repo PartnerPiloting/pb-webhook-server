@@ -207,6 +207,34 @@ async function ensureMachineLink({ call, accountId, clientId, domain, emails, lo
   return { link: `https://${hostname}`, hostname, tunnelId: tunnel.id, tunnelToken, emails };
 }
 
+// THE 50-PERSON CLIFF (29 Sep 2026). Cloudflare's free plan covers 50 people. A person counts
+// from the first time they sign in until they are removed - being on an allowed list does not
+// count. Past 50 it is not the extra people who are charged but EVERYONE (about US$7 each a
+// month), so 51 people costs more than 350 dollars, not 7. Guy chose to stay on Cloudflare's
+// check and be warned early rather than build our own lock now.
+const FREE_PEOPLE = 50;
+const WARN_AT = 40;
+
+/** One line about how close the account is to the free limit. `warn` = time to act. */
+function seatLine(count) {
+  const n = Number(count) || 0;
+  if (n > FREE_PEOPLE) return { warn: true, text: `${n} people have signed in - OVER the ${FREE_PEOPLE} that are free. Every one of them is now being charged for. Remove people who have left, today.` };
+  if (n >= WARN_AT) return { warn: true, text: `${n} of ${FREE_PEOPLE} free places used. Past ${FREE_PEOPLE}, EVERY person is charged for, not just the extras - time to remove people who have left, and to build our own sign-in check.` };
+  return { warn: false, text: `${n} of ${FREE_PEOPLE} free places used.` };
+}
+
+/** How many people currently hold a place. Best-effort: a failed count must never fail a build. */
+async function countPeople({ call, accountId }) {
+  try {
+    const users = await call('GET', `/accounts/${accountId}/access/users?per_page=100`);
+    // Only someone Cloudflare says holds NO place is left out. Anything unclear is counted:
+    // warning a little early is harmless, a count that reads low is the whole danger.
+    return users.filter((u) => u.access_seat !== false).length;
+  } catch (_e) {
+    return null;
+  }
+}
+
 /** Take a machine's link away - the client has left. Leaves the machine itself alone. */
 async function removeMachineLink({ call, accountId, clientId, domain, log = () => {} }) {
   const hostname = machineHostname(clientId, domain);
@@ -230,6 +258,6 @@ async function removeMachineLink({ call, accountId, clientId, domain, log = () =
 module.exports = {
   machineSlug, machineHostname, machineLink, tunnelName, allowedEmails,
   accessAppBody, accessPolicyBody, tunnelConfigBody, dnsRecordBody, teamNameFromAuthDomain,
-  cloudflare, ensureMachineLink, removeMachineLink,
-  POLICY_NAME, SESSION_DURATION,
+  cloudflare, ensureMachineLink, removeMachineLink, seatLine, countPeople,
+  POLICY_NAME, SESSION_DURATION, FREE_PEOPLE, WARN_AT,
 };

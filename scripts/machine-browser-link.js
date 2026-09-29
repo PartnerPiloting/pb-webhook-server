@@ -38,6 +38,7 @@ const { MASTER_TABLES } = require('../constants/airtableUnifiedConstants');
 const { tailscaleAddress } = require('../services/clientMachineRdp');
 const {
   machineHostname, machineLink, tunnelName, allowedEmails, cloudflare, ensureMachineLink, removeMachineLink,
+  seatLine, countPeople,
 } = require('../services/machineBrowserLink');
 
 const FIELD_LINK = 'Machine Link';
@@ -112,6 +113,13 @@ function ssh(address, remoteCommand) {
   if (add) fields[FIELD_EMAILS] = extras.join(', ');
   await base(MASTER_TABLES.CLIENTS).update(client.id, fields, { typecast: true });
   log(`wrote ${FIELD_LINK} on the ${client.clientId} row`);
+
+  // Said every run, so the free limit can never arrive as a surprise.
+  const people = await countPeople({ call, accountId });
+  if (people !== null) {
+    const seats = seatLine(people);
+    console.log(seats.warn ? `\n*** ${seats.text} ***` : `  - ${seats.text}`);
+  }
 
   if (!flag('install')) {
     console.log(`\nCloudflare side done. The machine still needs its half - re-run with --install${address ? '' : ' (once the machine is reporting its Tailscale address)'}.`);

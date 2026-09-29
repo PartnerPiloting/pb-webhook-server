@@ -9,7 +9,7 @@ const assert = require('assert');
 const {
   machineSlug, machineHostname, machineLink, tunnelName, allowedEmails,
   accessAppBody, accessPolicyBody, tunnelConfigBody, teamNameFromAuthDomain,
-  ensureMachineLink, removeMachineLink, POLICY_NAME,
+  ensureMachineLink, removeMachineLink, seatLine, countPeople, POLICY_NAME,
 } = require('../services/machineBrowserLink');
 
 let failures = 0;
@@ -61,6 +61,22 @@ check('the tunnel reaches the machine only, checks the sign-in itself, and ends 
 check('team name is read from the auth domain', () => {
   assert.strictEqual(teamNameFromAuthDomain('guys-team.cloudflareaccess.com'), 'guys-team');
   assert.throws(() => teamNameFromAuthDomain(''));
+});
+
+check('the free limit: quiet under 40, a warning from 40, louder past 50', () => {
+  assert.strictEqual(seatLine(13).warn, false);
+  assert.strictEqual(seatLine(39).warn, false);
+  assert.strictEqual(seatLine(40).warn, true);
+  assert.ok(/EVERY person/.test(seatLine(40).text));
+  assert.strictEqual(seatLine(51).warn, true);
+  assert.ok(/OVER/.test(seatLine(51).text));
+});
+
+check('people are counted generously, and a failed count is null - never zero', async () => {
+  const some = async () => [{ access_seat: true }, { access_seat: false }, {}, { access_seat: true }];
+  assert.strictEqual(await countPeople({ call: some, accountId: 'a' }), 3);
+  const broken = async () => { throw new Error('no'); };
+  assert.strictEqual(await countPeople({ call: broken, accountId: 'a' }), null);
 });
 
 /** A pretend Cloudflare that remembers what it was given. */
