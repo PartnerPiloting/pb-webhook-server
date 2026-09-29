@@ -94,6 +94,12 @@
       "phrase": "draft the follow-up from my last call",
       "tool": "wingguy_dossier",
       "where": ["linkedin-messaging-followup-next/app/start-here/page.tsx"]
+    },
+    {
+      "phrase": "Help me with my first campaign",
+      "tool": "wingguy_learn",
+      "topic": "YOUR FIRST CAMPAIGN",
+      "where": ["scripts/linked-helper/lh-first-run.py"]
     }
   ],
   "near_misses": [

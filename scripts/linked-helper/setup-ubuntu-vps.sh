@@ -358,6 +358,16 @@ install -m 755 "$SRC_DIR/lh-build-campaigns.sh" /usr/local/bin/lh-build-campaign
 install -d -m 755 /usr/local/share/linked-helper/campaigns
 install -m 644 "$SRC_DIR"/campaigns/*.json /usr/local/share/linked-helper/campaigns/
 
+echo "== first run (the machine finishes its own setup once its owner has signed in) =="
+# After the owner signs in to Linked Helper and LinkedIn, this brings their history across from
+# an export waiting in their Home folder, and builds the campaign - so nobody has to be told
+# they have signed in. Runs every 3 minutes until it has finished, then removes its own cron
+# line. lh-lhd2.py is what does the import; it is installed here as well as by the backup
+# section below because a machine with no backup credentials still needs it. See lh-first-run.py.
+install -m 755 "$SRC_DIR/lh-first-run.py" /usr/local/bin/lh-first-run.py
+install -m 755 "$SRC_DIR/lh-lhd2.py" /usr/local/bin/lh-lhd2.py
+echo "*/3 * * * * root flock -n /run/lh-first-run.lock /usr/local/bin/lh-first-run.py >> /var/log/lh-first-run.log 2>&1" > /etc/cron.d/lh-first-run
+
 echo "== nightly backup to cloud storage (02:30, before the reboot) =="
 # rclone needs a one-time OAuth token per storage account. Get it on a machine
 # with a browser: `rclone authorize "drive" <client_id> <client_secret>`, then

@@ -122,6 +122,35 @@ file is `root:lh 664` for this. **A machine built before 29 Sep needs that permi
 (`chown root:lh /etc/linked-helper-machine.conf; chmod 664 ...`) and the current watchdog copied on;
 until then its status says `account-learned:<id> (config locked)` every cycle.
 
+### The machine finishes its own setup (29 Sep 2026 - UNPROVEN until Roland Illyes's first run)
+
+**Why:** after a client signed in, three jobs were left and all three needed Guy - the import, the
+account number, the campaign. Guy: "the problem with this approach is that I need to be involved."
+
+**What happens now.** The client signs in to Linked Helper and to LinkedIn - the two things only
+they can do. Within about three minutes `lh-first-run.py` (root, from `/etc/cron.d/lh-first-run`)
+notices, and:
+
+1. imports their old copy's export, if a `.lhd2` for THEIR account is waiting in Home, Desktop or
+   Downloads (Linked Helper closes and reopens once - the client's page tells them to expect it);
+2. builds the connect campaign;
+3. leaves "Your machine is ready - read me.txt" on the desktop and a box on the screen;
+4. removes its own cron line.
+
+**The import replaces what is on the machine, so it is fenced:** only an export whose header names
+this machine's account; only when the machine has NO campaigns (one it cannot read counts as having
+some); a safety export first, kept in `/var/backups/lh-first-run/`; two tries at most.
+
+**How Guy sees it, since nobody tells him:** Machine Status ends `setup waiting - ...`, then
+`setup done - history imported, campaign built`, or `setup STOPPED - <why>`. Log:
+`/var/log/lh-first-run.log`. State: `/var/lib/lh-first-run.json`. Dry run: `lh-first-run.py --plan`.
+
+**Putting an export where it will be found:** copy it to `/home/lh/` as user `lh`. Any file name.
+
+**An existing machine** needs `lh-first-run.py`, `lh-lhd2.py`, the current `lh-watchdog.py` and the
+cron line copied on - `setup-ubuntu-vps.sh` does all of it for a new build. ⚠ Roland's machine had
+no `lh-lhd2.py` at all until 29 Sep, so its nightly supported-format export had never run either.
+
 **Proven after the fix:** LH killed outright -> watchdog started it -> waited for settle -> pressed
 "Start campaigns runner" -> `Running campaigns... | LinkedIn logged in`. The first press right after
 a cold start can return `NOT FOUND` (screen still drawing); the next 5-minute cycle gets it.

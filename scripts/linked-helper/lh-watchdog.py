@@ -46,6 +46,7 @@ CONF = "/etc/linked-helper-machine.conf"
 LH_DATA = os.path.expanduser("~/.config/linked-helper")
 AUTOSTART = os.path.expanduser("~/.config/autostart/linked-helper.desktop")
 HOLD_OFF_FILE = os.path.expanduser("~/.cache/lh-watchdog-hold-off")
+RESTART_NOW = os.path.expanduser("~/.cache/lh-watchdog-restart-now")
 HOLD_OFF_S = 30 * 60        # how long a person on the screen can keep a closed instance closed
 VNC_PORT = 5900
 
@@ -296,6 +297,30 @@ def backup_state():
         return {}
 
 
+def restart_wanted():
+    """True once, when lh-first-run.py has left its flag. Reading it uses it up."""
+    if not os.path.exists(RESTART_NOW):
+        return False
+    try:
+        os.remove(RESTART_NOW)
+    except OSError:
+        pass
+    return True
+
+
+def first_run_state():
+    """One line from lh-first-run.py about the machine finishing its own setup, for a week after
+    it last changed - long enough to be seen, not so long it becomes wallpaper. Best-effort."""
+    path = "/var/lib/lh-first-run.json"
+    try:
+        if time.time() - os.path.getmtime(path) > 7 * 86400:
+            return ""
+        with open(path) as f:
+            return str(json.load(f).get("summary") or "")[:90]
+    except Exception:
+        return ""
+
+
 def report(conf, payload):
     if not conf.get("REPORT_URL"):
         return
@@ -331,6 +356,10 @@ def main():
             start_lh(conf)
         health["state"] = "WAITING FOR SIGN-IN"
         print("nobody has signed in on this machine yet - leaving the Launcher alone")
+    elif restart_wanted():
+        # lh-first-run.py has just finished an import and needs Linked Helper back NOW. The person
+        # on the screen is who that was done for, so there is nobody to hold off for.
+        print("restart asked for by the first-run job - not holding off")
     elif someone_is_watching() and hold_off():
         health["state"] = "NOT OPEN - IN USE"
         print("no instance window, but someone is on the screen - holding off")
@@ -374,6 +403,7 @@ def main():
                   "account_id": conf.get("LH_ACCOUNT_ID"),
                   "health": health, "actions": actions, "ts": int(time.time()),
                   "backup": backup_state(),
+                  "setup": first_run_state(),
                   "machine": machine_info() if conf.get("REPORT_URL") else {}})
 
     # Non-zero exit makes failures visible in systemd/journalctl.

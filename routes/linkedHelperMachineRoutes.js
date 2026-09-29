@@ -109,6 +109,11 @@ function statusLine(body) {
   // without this line the first person to find out would be the client.
   if (m.browser === 'up') parts.push('web link ok');
   else if (m.browser === 'down') parts.push('web link DOWN');
+  // The machine finishing its own setup after the owner's first sign-in (lh-first-run.py,
+  // 29 Sep 2026). Nobody is told when a client signs in, by design - this line is how it is seen.
+  // The machine stops sending it a week after the last change.
+  const setup = clip(body.setup, 90);
+  if (setup) parts.push(`setup ${setup}`);
   return parts.join(' | ').slice(0, 250);
 }
 
