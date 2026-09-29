@@ -221,4 +221,37 @@ router.get('/webhooks/lh-machine/:clientId/clipboard', async (req, res) => {
   return res.json({ ok: true, clipboard: body });
 });
 
+/**
+ * A file for this machine to fetch (services/machineFileStore.js, 30 Sep 2026). Polled by
+ * lh-clipboard.py on the same cadence as the clipboard. What is handed over is a LINK - the
+ * machine does the fetching, so nothing large ever passes through this server. Handed over once:
+ * the row is marked fetching, so the next poll two seconds later starts nothing.
+ */
+router.get('/webhooks/lh-machine/:clientId/files', async (req, res) => {
+  const client = await authenticateMachine(req, res);
+  if (!client) return undefined;
+  let job = null;
+  try {
+    job = await require('../services/machineFileStore').takeForMachine(client.clientId);
+  } catch (e) {
+    log.error(`LH-MACHINE file read failed for ${client.clientId}: ${e.message}`);
+    return res.status(500).json({ ok: false, error: 'read failed' });
+  }
+  if (job) log.info(`LH-MACHINE ${client.clientId} collected a ${job.service || 'file'} link (${job.id})`);
+  return res.json({ ok: true, file: job });
+});
+
+/**
+ * The machine saying how the fetch went - arrived, how big and whose export, or why not. This
+ * is what the person is told when they ask "did my file arrive?", so a failure here matters as
+ * much as a success: a link that needs a sign-in fetches a web page, and only the machine knows.
+ */
+router.post('/webhooks/lh-machine/:clientId/files', express.json({ limit: '16kb' }), async (req, res) => {
+  const client = await authenticateMachine(req, res);
+  if (!client) return undefined;
+  const body = (req.body && typeof req.body === 'object') ? req.body : {};
+  const recorded = await require('../services/machineFileStore').reportFromMachine(client.clientId, clip(body.id, 40), body);
+  return res.json({ ok: true, recorded });
+});
+
 module.exports = router;

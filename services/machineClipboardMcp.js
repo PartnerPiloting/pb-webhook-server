@@ -155,8 +155,114 @@ async function runOpenMachine(args = {}, tenant = TENANT) {
 }
 
 // ---------------------------------------------------------------------------
+// A FILE ONTO THE MACHINE (30 Sep 2026). A chat can hand over text, never a file - so the person
+// gives a share link and the machine fetches the file itself. Why, and which links: see
+// services/machineFileLink.js. Guy's ask, the night the web link went live: a client should be
+// able to move their old Linked Helper across without him in the middle of it.
+
+const mb = (bytes) => (bytes >= 1048576 ? `${(bytes / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`);
+
+/**
+ * The Linked Helper account the machine is signed in to, as the machine last reported it - or
+ * null. A machine nobody has signed in to yet reports a placeholder (000000, 1), which is not an
+ * account and must never be compared against one.
+ */
+function machineAccount(record) {
+  const fields = (record && record.rawRecord && record.rawRecord._rawJson && record.rawRecord._rawJson.fields) || {};
+  const id = String(fields['LH Account ID'] || '').trim();
+  return /^\d{4,}$/.test(id) && !/^0+$/.test(id) ? id : null;
+}
+
+/** What happened to the last file, in words for the person who sent it. */
+function fileStatusText(row, whose, target) {
+  if (!row) return `Nothing has been sent to ${whose} in the last few days.`;
+  const d = row.detail || {};
+  if (row.status === 'arrived') {
+    const what = d.kind === 'linked-helper-export'
+      ? `a genuine Linked Helper export${d.account ? ` for account ${d.account}` : ''}${d.version ? ` (made by version ${d.version})` : ''}`
+      : (d.kind === 'csv' ? 'a CSV file' : 'a file');
+    const where = d.folder || 'the Downloads folder';
+    let next = `It is in ${where} on the machine.`;
+    if (d.kind === 'linked-helper-export') {
+      const mine = machineAccount(target.record);
+      next += (mine && d.account && mine !== String(d.account))
+        ? ` Note: the machine is signed in to account ${mine}, and this export is for ${d.account} - it will NOT be brought in. Check it is the right export.`
+        : ' If nobody has signed in to Linked Helper on the machine yet, it is brought in automatically a few minutes after they sign in to Linked Helper and LinkedIn. If the machine is already set up and running, nothing is overwritten - tell Guy if this export is meant to replace what is there.';
+    }
+    return `It arrived on ${whose}: "${d.name || 'the file'}", ${d.bytes ? mb(d.bytes) : 'size unknown'} - ${what}. ${next}`;
+  }
+  if (row.status === 'failed') {
+    return `The file did NOT arrive on ${whose}. The machine said: ${d.error || 'no reason given'}.\n\n`
+      + 'The usual cause is a link that needs a sign-in. In OneDrive, Google Drive or Dropbox, set the link so that ANYONE WITH THE LINK can view it, copy the new link, and send that. Some company accounts do not allow that - a personal Google Drive or Dropbox works.';
+  }
+  if (row.status === 'fetching') return `${whose[0].toUpperCase()}${whose.slice(1)} has picked the link up and is fetching the file now. A big export can take a few minutes - ask again shortly.`;
+  if (row.gave_up) return `The link was never collected - ${whose} did not check in within the hour, so it is probably switched off or not reporting. Tell Guy.`;
+  return `The link is waiting for ${whose} to collect it. That takes a few seconds if its screen is open in a browser tab, and up to five minutes if not.`;
+}
+
+async function runSendFile(args = {}, tenant = TENANT) {
+  const store = require('./machineFileStore');
+  const { resolveShareLink } = require('./machineFileLink');
+
+  const target = await resolveTarget(args.client, tenant);
+  if (target.error) return { text: target.error, isError: true };
+  const whose = target.own ? 'your Linked Helper machine' : `${target.clientName}'s Linked Helper machine`;
+
+  const url = String(args.url || '').trim();
+  if (!url) {
+    const row = await store.statusForMachine(target.clientId);
+    return { text: fileStatusText(row, whose, target) };
+  }
+
+  if (!(target.record && target.record.machineLastSeen)) {
+    return { text: `There is no Linked Helper machine on record for ${target.own ? 'you' : target.clientName} yet, so there is nowhere to send a file. Guy sets the machine up - ask him.` };
+  }
+
+  let link;
+  try {
+    link = resolveShareLink(url);
+  } catch (e) {
+    if (e.refused) return { text: e.message };
+    throw e;
+  }
+  try {
+    await store.putForMachine(target.clientId, link, tenant);
+  } catch (e) {
+    return { text: `Couldn't leave that for the machine: ${e.message}`, isError: true };
+  }
+  return {
+    text:
+      `Done - ${whose} has been given the ${link.service} link and will fetch the file itself.\n\n`
+      + 'It collects the link within a few seconds if its screen is open in a browser tab, or within five minutes if not. '
+      + 'The file is saved to the Downloads folder on the machine. It is only saved - nothing is opened or run.\n\n'
+      + 'IMPORTANT: this is queued, not delivered. Call this tool again WITHOUT a url in a minute or two to find out whether it arrived, and tell the person what it says - '
+      + 'a link that needs a sign-in fetches a web page instead of the file, and only the machine can find that out. '
+      + 'For it to work the link must be set so that anyone with the link can view it.\n\n'
+      + 'Only Linked Helper exports (.lhd2) and CSV files are kept. This replaces any link sent earlier that has not been collected.'
+      + machineAwakeNote(target.record),
+  };
+}
+
+// ---------------------------------------------------------------------------
 
 const TOOL_DEFS = [
+  {
+    name: 'wingguy_send_file_to_machine',
+    description:
+      "Put a FILE onto a Linked Helper machine, from a share link. Use this whenever someone wants to get a file from their own computer onto the machine - most often the export of their old Linked Helper (a .lhd2 file) when they are moving across, or a CSV list: 'put this file on my machine', 'send my Linked Helper export to my machine', 'here is the link to my backup', 'get this onto my VPS'. You cannot receive a file in a chat, so the person puts the file in OneDrive, Google Drive or Dropbox, shares it so ANYONE WITH THE LINK can view it, and pastes that link here; the machine then fetches the file itself and saves it to its Downloads folder. Pass the link as url. Call it with NO url to find out what happened to the last file sent - 'did my file arrive?' - and always do that a minute or two after sending, because sending only queues it. Only links from OneDrive, Google Drive and Dropbox are accepted, and only .lhd2 and .csv files are kept; nothing is ever opened or run. With no client named it is the caller's own machine; a coach can name one of their own clients.",
+    zodSchema: {
+      url: z.string().optional().describe('The share link to the file, exactly as copied from OneDrive, Google Drive or Dropbox. Leave out to ask what happened to the last file sent.'),
+      client: z.string().optional().describe('Coaches only: which of your clients\' machines (name or client id). Leave out for your own machine.'),
+    },
+    jsonSchema: {
+      type: 'object',
+      properties: {
+        url: { type: 'string', description: 'The share link to the file, exactly as copied. Leave out to ask what happened to the last file sent.' },
+        client: { type: 'string', description: 'Coaches only: which of your clients\' machines. Leave out for your own.' },
+      },
+    },
+    run: runSendFile,
+  },
   {
     name: 'wingguy_open_machine',
     description:
