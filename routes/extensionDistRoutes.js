@@ -175,7 +175,7 @@ router.get('/machine-icon', requireClient, (req, res) => {
 
 /**
  * POST /extension/dist/checkin
- * Body: { version, action, agent, machine, note }. The version reported is what is ON DISK
+ * Body: { version, action, agent, machine, note, updater }. The version reported is what is ON DISK
  * after the run, not what we hoped to deliver — a machine claiming an old version is the
  * signal we want. Never fails the run: a monitoring write must not break delivery.
  */
@@ -188,6 +188,7 @@ router.post('/checkin', requireClient, async (req, res) => {
     agent: b.agent,
     machine: b.machine,
     note: b.note,
+    updater: b.updater,
   });
   // THE ICON PROOF (2026-09-26): the updater on the client's own laptop reached their machine's
   // Remote Desktop port - Tailscale is on, the share is accepted, the icon will connect. The first

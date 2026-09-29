@@ -52,6 +52,11 @@ async function ensureSchema(client) {
       checked_in_at TIMESTAMPTZ NOT NULL DEFAULT now()
     )
   `);
+  // WHICH UPDATER a machine is running (2026-09-30). The script has sent this since it learned to
+  // update itself, and it was being dropped - so there was no way to tell a machine that will
+  // collect an updater fix on its own from one installed before 2026-09-26, which never will.
+  // Blank = a copy that old: it needs its install line pasted once.
+  await client.query('ALTER TABLE wingguy_extension_checkins ADD COLUMN IF NOT EXISTS updater TEXT');
   // One row per client per run keeps this small; the useful query is always "latest per client".
   await client.query(`
     CREATE INDEX IF NOT EXISTS idx_wingguy_extension_checkins_client
@@ -64,7 +69,7 @@ async function ensureSchema(client) {
  * Record one run. Never throws — a monitoring write must not be able to fail a delivery.
  * action: 'updated' | 'current' | 'error'
  */
-async function recordCheckin({ clientId, version, action, agent, machine, note }) {
+async function recordCheckin({ clientId, version, action, agent, machine, note, updater }) {
   const p = getPool();
   if (!p || !clientId) return false;
   let client;
@@ -73,8 +78,8 @@ async function recordCheckin({ clientId, version, action, agent, machine, note }
     await ensureSchema(client);
     await client.query(
       `INSERT INTO wingguy_extension_checkins
-         (client_id, version, action, agent, machine, note)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
+         (client_id, version, action, agent, machine, note, updater)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
       [
         String(clientId),
         version ? String(version).slice(0, 40) : null,
@@ -82,6 +87,7 @@ async function recordCheckin({ clientId, version, action, agent, machine, note }
         agent ? String(agent).slice(0, 120) : null,
         machine ? String(machine).slice(0, 120) : null,
         note ? String(note).slice(0, 500) : null,
+        updater ? String(updater).slice(0, 40) : null,
       ]
     );
     return true;
@@ -105,7 +111,7 @@ async function latestPerClient() {
     await ensureSchema(client);
     const { rows } = await client.query(`
       SELECT DISTINCT ON (client_id)
-             client_id, version, action, agent, machine, note, checked_in_at
+             client_id, version, action, agent, machine, note, updater, checked_in_at
         FROM wingguy_extension_checkins
        ORDER BY client_id, checked_in_at DESC
     `);
@@ -133,7 +139,7 @@ async function latestForClient(clientId) {
     client = await p.connect();
     await ensureSchema(client);
     const { rows } = await client.query(
-      `SELECT client_id, version, action, agent, machine, note, checked_in_at
+      `SELECT client_id, version, action, agent, machine, note, updater, checked_in_at
          FROM wingguy_extension_checkins
         WHERE client_id = $1
         ORDER BY checked_in_at DESC

@@ -44,7 +44,7 @@ machine pulls from us into a fixed local folder.
 |---|---|
 | `routes/extensionDistRoutes.js` | Serves the file list and each file; takes check-ins. Portal-token gated. |
 | `services/extensionDistStore.js` | The `wingguy_extension_checkins` table. Lazy pool, CREATE-IF-NOT-EXISTS. |
-| `scripts/extension-updater/wingguy-update.ps1` | Windows: install + daily update. |
+| `scripts/extension-updater/wingguy-update.ps1` | Windows: install + hourly update. |
 | `scripts/extension-updater/wingguy-update.sh` | macOS: same logic, launchd. **UNPROVEN** - see below. |
 | `scripts/extension-fleet.js` | Who is on what version, and who has gone quiet. |
 | `services/extensionInstallCommand.js` | Builds the ready-to-paste install line. The ONE place its shape lives. |
@@ -178,9 +178,26 @@ for ~10 weeks because nobody noticed, not because nobody could fix it).
   Guy's own machine in a normal PowerShell as himself (2026-09-03), so it would have failed on
   every client machine too. `schtasks` creates in the user's own context and works unelevated;
   proven on that same machine. **Do not switch back.** The arguments are carried in a
-  `run-update.cmd` launcher so the `/TR` value is one quoted path with nothing to escape - a
-  `/TR` full of nested quotes is the classic way to get a task that registers happily and then
-  fails silently every night.
+  `run-update.cmd` launcher so the `/TR` value stays short - a `/TR` full of nested quotes is the
+  classic way to get a task that registers happily and then fails silently every night.
+- ⚠ **The hourly task runs `wscript.exe "...\run-update.vbs"`, not the .cmd (since 2026-09-30).**
+  A task that runs a .cmd gets a console window, so a black box flashed on screen every hour on
+  every machine that was on. `-WindowStyle Hidden` inside the .cmd cannot fix it - the window
+  belongs to the .cmd and is up before PowerShell starts - and the task's own "Hidden" setting
+  only hides the task in the list. wscript has no window and starts the .cmd hidden, waits for
+  it, and hands back its exit code. Measured on Guy's machine by sampling the desktop's windows
+  during a run: the old way opened a Windows Terminal window, the new way opened none.
+  Where Windows Script Host is switched off (`Enabled = 0` in the registry) the task falls back
+  to the .cmd: a flash beats an updater that never runs.
+- ⚠ **`schtasks` is called through `Start-Process` with ONE argument string** (`Invoke-Schtasks`).
+  Called the ordinary way, PowerShell re-quotes the `/TR` value and a path with a space in it is
+  cut at the space: the task registers, and runs `C:\Users\Dean`. Proven 2026-09-30 - which means
+  any machine whose Windows user name has a space in it never had a working scheduled run, only
+  the login run. After creating the task the script reads it back and checks it runs the whole
+  path. **Do not remove that check.**
+- **Which machines have which updater** is in the check-in (`updater` column, shown by
+  `scripts/extension-fleet.js`). "updater OLD" = installed before 2026-09-26, so it never updates
+  itself and still has the old schedule and the flash: paste its install line once.
 - ⚠ **A denied scheduled-task registration used to look like success.**
   `Register-ScheduledTask` raises a NON-TERMINATING CIM error, which sails past
   `$ErrorActionPreference='Stop'` - the script logged "registered" and cheerfully downloaded

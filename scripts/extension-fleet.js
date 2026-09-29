@@ -35,10 +35,12 @@ function ageLabel(ts) {
     const flag = r.action === 'error' ? 'ERROR ' : (stale ? 'STALE ' : '      ');
     console.log(
       `  ${flag}${String(r.client_id).padEnd(18)} ${String(r.version || '?').padEnd(9)} ` +
-      `${String(r.action || '').padEnd(8)} ${ageLabel(r.checked_in_at).padEnd(9)} ${r.machine || ''}` +
+      `${String(r.action || '').padEnd(8)} ${ageLabel(r.checked_in_at).padEnd(9)} ${String(r.machine || '').padEnd(16)} ` +
+      (r.agent === 'windows-ps' ? (r.updater ? `updater ${r.updater}` : 'updater OLD') : '') +
       (r.note ? `\n         note: ${r.note}` : '')
     );
   }
-  console.log('\nSTALE = no check-in for 3+ days: that machine has stopped collecting updates.\n');
+  console.log('\nSTALE = no check-in for 3+ days: that machine has stopped collecting updates.');
+  console.log('updater OLD = installed before 2026-09-26: it updates the extension but never itself. Paste its install line once.\n');
   process.exit(0);
 })().catch((e) => { console.error('FLEET ERROR:', e.message); process.exit(1); });

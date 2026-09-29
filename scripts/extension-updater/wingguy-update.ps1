@@ -50,16 +50,40 @@ function Write-Log($msg) {
 
 # THE CADENCE, in one place. Bump the tag whenever the schedule below changes and every machine
 # re-registers itself on its next run - see Set-UpdateSchedule.
-$script:CadenceTag = "hourly-1"
+$script:CadenceTag = "hourly-2"   # hourly-2 (2026-09-30): same cadence, launched with nothing on screen
 
 # THE UPDATER'S OWN VERSION. Bump it whenever this file changes: every installed copy compares it
 # with the one the server holds on each run and replaces itself when they differ (Update-Self).
 # Before 2026-09-26 an installed copy never changed, so improvements only reached machines that
 # were re-installed by hand.
-$script:UpdaterVersion = "2026-09-29.1"
+$script:UpdaterVersion = "2026-09-30.1"
 
 # Extra fields for this run's check-in (the machine icon step fills them in).
 $script:CheckinExtra = @{}
+
+function Test-ScriptHostAvailable {
+  # Windows Script Host can be switched off by policy or by a security product (Enabled = 0).
+  # Where it is, wscript puts up an error box instead of running anything, so the hidden launch
+  # must not be used there - a window that flashes is better than an updater that never runs.
+  if (-not (Test-Path (Join-Path $env:SystemRoot "System32\wscript.exe"))) { return $false }
+  foreach ($key in 'HKCU:\Software\Microsoft\Windows Script Host\Settings', 'HKLM:\Software\Microsoft\Windows Script Host\Settings') {
+    try {
+      $enabled = (Get-ItemProperty -Path $key -Name Enabled -ErrorAction Stop).Enabled
+      if ("$enabled" -eq "0") { return $false }
+    } catch { }   # key or value absent = not switched off
+  }
+  return $true
+}
+
+function Invoke-Schtasks($argLine) {
+  # ONE STRING, passed as written. PowerShell re-quotes the arguments of a native command, and
+  # 5.1 and 7 do it differently, so a /TR value with a quoted path inside it arrives mangled:
+  # registered the old way, a path with a space in it ("C:\Users\Dean Hobin\...") became a task
+  # that runs "C:\Users\Dean" - it registers happily and never works (proven 2026-09-30).
+  # Start-Process hands the line over untouched in both.
+  $p = Start-Process -FilePath "schtasks.exe" -ArgumentList $argLine -Wait -PassThru -WindowStyle Hidden
+  return $p.ExitCode
+}
 
 function Set-UpdateSchedule($scriptHome, $taskName) {
   # WHY HOURLY AND NOT DAILY (Guy, 2026-09-17). It was daily at 3am plus a login run. That is fine
@@ -73,11 +97,37 @@ function Set-UpdateSchedule($scriptHome, $taskName) {
   # their home router, so the only real question was ever how often the machine asks.
   $launcher = Join-Path $scriptHome "run-update.cmd"
   if (-not (Test-Path $launcher)) { return $false }   # not an installed machine; nothing to schedule
-  $tr = '"' + $launcher + '"'
+
+  # NOTHING ON SCREEN (Guy, 2026-09-30). The task used to run the .cmd itself, and a .cmd always
+  # gets a console window - so a black box flashed up every hour, on the hour-and-five, on every
+  # machine that was switched on. "-WindowStyle Hidden" inside the .cmd cannot help: the window
+  # belongs to the .cmd and is on screen before PowerShell has started. The task now runs
+  # wscript, which has no window of its own, and wscript starts the .cmd hidden - the same chain
+  # the login run has used since 2026-09-03. Measured on Guy's machine: the old way opened a
+  # Windows Terminal window, this way opened none.
+  #
+  # It WAITS for the .cmd and hands back its exit code, so the task's "last result" still tells
+  # the truth and two runs can never overlap.
+  $command = '\"' + $launcher + '\"'
+  $runs = "run-update.cmd"
+  if (Test-ScriptHostAvailable) {
+    $hidden = Join-Path $scriptHome "run-update.vbs"
+    $vbs = 'WScript.Quit CreateObject("WScript.Shell").Run("""' + $launcher + '""", 0, True)'
+    Set-Content -Path $hidden -Value $vbs -Encoding ascii
+    $command = 'wscript.exe \"' + $hidden + '\"'
+    $runs = "run-update.vbs"
+  }
+
   # /SC HOURLY /MO 1 = every hour, from $st onward. A few minutes past the hour rather than on it.
-  schtasks /Create /TN $taskName /TR $tr /SC HOURLY /MO 1 /ST 00:05 /F | Out-Null
-  schtasks /Query /TN $taskName 2>&1 | Out-Null
+  $argLine = '/Create /TN "' + $taskName + '" /TR "' + $command + '" /SC HOURLY /MO 1 /ST 00:05 /F'
+  if ((Invoke-Schtasks $argLine) -ne 0) { return $false }
+
+  # VERIFY what was registered, not just that something was: the task must exist AND run the
+  # file we meant, whole. A mangled path registers without complaint.
+  $registered = (& schtasks.exe /Query /TN $taskName /XML 2>$null) -join "`n"
   if ($LASTEXITCODE -ne 0) { return $false }
+  if ($registered -notmatch [regex]::Escape((Join-Path $scriptHome $runs))) { return $false }
+
   Set-Content -Path (Join-Path $scriptHome "schedule.tag") -Value $script:CadenceTag -Encoding ascii
   return $true
 }
@@ -256,9 +306,9 @@ if ($Install) {
   # (2026-09-03). schtasks creates a task in the user's own context and works unelevated; proven
   # on that same machine minutes later. Do not switch back.
   #
-  # A .cmd launcher carries the arguments so the /TR value is ONE quoted path with nothing to
-  # escape. Building a /TR full of nested quotes is the classic way to get a task that registers
-  # happily and then fails silently every night.
+  # A .cmd launcher carries the arguments so the /TR value stays short. Building a /TR full of
+  # nested quotes is the classic way to get a task that registers happily and then fails silently
+  # every night. The task does not run this .cmd directly - see Set-UpdateSchedule.
   $launcher = Join-Path $scriptHome "run-update.cmd"
   $launcherBody = @"
 @echo off
