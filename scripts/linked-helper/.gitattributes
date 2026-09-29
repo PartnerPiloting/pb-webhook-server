@@ -1,2 +1,11 @@
-scripts/linked-helper/*.sh text eol=lf
-scripts/linked-helper/*.py text eol=lf
+# Everything in this folder is copied onto Linux machines, usually from a Windows checkout, so
+# it must keep LF endings whatever the checkout's own setting is.
+#
+# Patterns here are relative to THIS folder. Until 29 Sep 2026 they were written with the full
+# path (scripts/linked-helper/*.py), which matches nothing from inside the folder - so the .py
+# files were checked out CRLF on Windows and copied to machines that way. Python reads a CRLF
+# file happily, which is why nobody noticed; a script run by its own first line would not start.
+*.sh text eol=lf
+*.py text eol=lf
+*.json text eol=lf
+*.html text eol=lf
