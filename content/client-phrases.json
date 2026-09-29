@@ -99,7 +99,12 @@
       "phrase": "Help me with my first campaign",
       "tool": "wingguy_learn",
       "topic": "YOUR FIRST CAMPAIGN",
-      "where": ["scripts/linked-helper/lh-first-run.py"]
+      "where": ["scripts/linked-helper/lh-first-run.py", "content/site/open-your-machine.html"]
+    },
+    {
+      "phrase": "open my Linked Helper machine",
+      "tool": "wingguy_open_machine",
+      "where": ["content/site/open-your-machine.html"]
     }
   ],
   "near_misses": [

@@ -1,0 +1,266 @@
+<style>
+  /* The editorial shell the one-pagers use (routes/onePagerRoutes.js) rather
+     than the homepage's teal/paper palette - deliberately. This page is a
+     letter to somebody who has already had the conversation, and it is sent
+     alongside /series/nodes, so matching THAT is what matters. Single-theme,
+     like the rest of the site: every colour is painted explicitly. */
+  :root {
+    color-scheme: light;
+    --ground:   #e9e2d3;
+    --card:     #fbf9f3;
+    --ink:      #2c2823;
+    --ink-deep: #221f1a;
+    --ink-soft: #6f6558;
+    --ink-mid:  #4a423a;
+    --rule:     #e2dccd;
+    --rule-sc:  #efe9dc;
+    --dark:     #211d18;
+    --gold:     #c49a5e;
+    --gold-ink: #9a6a2f;
+    --cream:    #f3ede1;
+  }
+
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: Georgia, "Iowan Old Style", "Palatino Linotype", "Times New Roman", serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .op-page { padding: 28px 16px 52px; }
+
+  .op {
+    max-width: 640px;
+    margin: 0 auto 22px;
+    background: var(--card);
+    border-radius: 6px;
+    overflow: hidden;
+    box-shadow: 0 1px 3px rgba(0,0,0,.10);
+  }
+
+  .op-mast { background: var(--dark); padding: 34px 40px 30px; }
+  .op-eb {
+    font-size: 11px; letter-spacing: .22em; text-transform: uppercase;
+    color: var(--gold); margin: 0 0 12px;
+  }
+  .op-wm { font-size: 30px; margin: 0; font-weight: 400; }
+  .op-wm a { color: var(--cream); text-decoration: none; }
+
+  .op-c { padding: 34px 40px 8px; }
+
+  .op-t {
+    font-size: 28px; line-height: 1.25; margin: 0 0 12px;
+    color: var(--ink-deep); font-weight: 400; text-wrap: balance;
+  }
+  .op-dek {
+    font-style: italic; color: var(--ink-soft); font-size: 18px;
+    line-height: 1.5; margin: 0 0 20px; text-wrap: balance;
+  }
+  .op-r { border: 0; border-top: 1px solid var(--rule); margin: 0 0 22px; }
+
+  .op-body p { font-size: 17px; line-height: 1.66; margin: 0 0 1.15rem; }
+  .op-body h2 {
+    font-size: 21px; line-height: 1.3; margin: 1.9rem 0 .4rem;
+    color: var(--ink-deep); font-weight: 400; text-wrap: balance;
+  }
+  .op-body strong { font-weight: 700; }
+  .op-body em { font-style: italic; }
+  .op-body a { color: var(--gold-ink); }
+  .op-body a:focus-visible { outline: 2px solid var(--gold-ink); outline-offset: 2px; }
+
+  /* The price, stated once. Three lines, hairline rules, gold on the total -
+     enough structure to be found at a glance, not enough to read as an invoice. */
+  .price { margin: 1.4rem 0 1.15rem; }
+  .price dl { margin: 0; display: grid; grid-template-columns: 1fr auto; }
+  .price dt, .price dd {
+    margin: 0; padding: 9px 0; font-size: 16.5px; line-height: 1.45;
+    border-bottom: 1px solid var(--rule-sc);
+  }
+  .price dd {
+    text-align: right; padding-left: 18px;
+    font-variant-numeric: tabular-nums; color: var(--ink-mid);
+    white-space: nowrap;
+  }
+  .price dt.total, .price dd.total {
+    border-bottom: 0; border-top: 1px solid var(--gold);
+    padding-top: 12px; margin-top: 2px; color: var(--ink-deep);
+  }
+  .price dd.total { font-weight: 700; }
+
+  .op-foot {
+    padding: 18px 40px 6px; border-top: 1px solid var(--rule);
+    margin-top: 1.6rem; font-size: 14px; line-height: 1.6; color: var(--ink-soft);
+  }
+  .op-foot a { color: var(--gold-ink); }
+  .op-sign { margin: .9rem 0 0; }
+  .op-bar { background: var(--dark); height: 34px; }
+
+  @media (max-width: 520px) {
+    .op-mast, .op-c, .op-foot { padding-left: 22px; padding-right: 22px; }
+    .op-t { font-size: 24px; }
+    .op-wm { font-size: 26px; }
+    .price dt, .price dd { font-size: 16px; }
+  }
+</style>
+<style>
+  /* Screenshots. Every one is dated in its caption, because a stale picture of
+     somebody else's website is worse than no picture at all - people believe
+     the image over the words. The caveat at the top of the page and the date
+     under each shot are the whole reason this page can exist safely. */
+  .shot { margin: 22px 0 26px; }
+  .shot img {
+    display: block;
+    width: 100%;
+    height: auto;
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    background: #fff;
+  }
+  .shot figcaption {
+    margin-top: 8px;
+    font-size: 0.86rem;
+    line-height: 1.45;
+    color: var(--ink-soft);
+  }
+  .shot figcaption b { color: var(--ink-mid); }
+  .shot-narrow img { max-width: 420px; margin: 0 auto; }
+  .asof {
+    margin: 0 0 4px;
+    padding: 12px 14px;
+    background: var(--cream);
+    border-left: 3px solid var(--gold);
+    border-radius: 3px;
+    font-size: 0.92rem;
+    color: var(--ink-mid);
+  }
+  .keybox {
+    display: block;
+    padding: 10px 12px;
+    background: var(--dark);
+    color: #e8e1d3;
+    border-radius: 4px;
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    font-size: 0.74rem;
+    line-height: 1.5;
+    word-break: break-all;
+    white-space: pre-wrap;
+  }
+</style>
+<style>
+  /* Numbered steps and lists - this page is a sequence, which /your-machine is not. */
+  .step {
+    display: inline-block; min-width: 1.7em; height: 1.7em; line-height: 1.7em;
+    text-align: center; border-radius: 50%; background: var(--gold); color: #fff;
+    font-size: 15px; font-weight: 700; margin-right: .45em;
+    font-family: -apple-system, "Segoe UI", Arial, sans-serif;
+  }
+  .op-body ul { margin: 0 0 1.15rem; padding-left: 1.2rem; }
+  .op-body li { font-size: 17px; line-height: 1.6; margin: 0 0 .45rem; }
+  .shot-narrow img { max-width: 440px; }
+</style>
+
+<div class="op-page">
+  <article class="op">
+
+    <header class="op-mast">
+      <p class="op-eb">Network building, rethought</p>
+      <p class="op-wm"><a href="/">(I know a) Guy</a></p>
+    </header>
+
+    <div class="op-c">
+      <h1 class="op-t">Getting into your Linked Helper machine</h1>
+      <p class="op-dek">About ten minutes of your time, and nothing to install. Once you've signed in, the machine finishes setting itself up.</p>
+      <hr class="op-r">
+
+      <div class="op-body">
+
+        <p class="asof">These pictures were taken on <b>29 and 30 September 2026</b>. If what you're looking at doesn't match, go by what your Claude tells you rather than by the picture.</p>
+
+        <p>Your Linked Helper machine lives in a data centre. You look at it through your web browser, from any computer. There's no app to install and nothing to keep running.</p>
+
+        <h2 id="before">Before you start</h2>
+
+        <p>If Linked Helper is still running on your own computer, <b>pause its campaigns first</b>. We don't want two copies working your LinkedIn account at the same time. Don't uninstall it yet.</p>
+
+        <h2 id="link"><span class="step">1</span>Open your link</h2>
+
+        <p>Ask your Claude. Start a new chat and type <b>open my Linked Helper machine</b>. It hands you your own link - click it.</p>
+
+        <figure class="shot shot-narrow">
+          <img src="/assets/open-machine-claude.png" alt="A Claude chat. The question is open my linked helper machine. The answer gives a link and says to enter your email and the six-digit code.">
+          <figcaption><b>What Claude says, 29 September 2026.</b> This one is mine - yours will show your own name in the link.</figcaption>
+        </figure>
+
+        <p>The link is also in the email I sent you, so you can simply click that. Bookmark it once it's open and you won't need either again.</p>
+
+        <h2 id="code"><span class="step">2</span>Show it's you</h2>
+
+        <p>The first time, a page asks for your <b>email address</b>. Use the one I have on file for you - the one my emails arrive at. Then click <b>Send login code</b>.</p>
+
+        <figure class="shot shot-narrow">
+          <img src="/assets/open-machine-sign-in.png" alt="A sign-in page headed Cloudflare Access, with the word Wingguy, an email box and a blue button marked Send login code.">
+          <figcaption><b>The sign-in page, 30 September 2026.</b> It says Cloudflare because they run the lock on the door. The word <b>Wingguy</b> tells you it's mine, and it will show your name where this one shows mine.</figcaption>
+        </figure>
+
+        <p>A <b>six-digit code</b> arrives in your inbox, usually within a minute. Type it into the page. If it hasn't turned up, check your junk folder.</p>
+
+        <p>It remembers you on that browser for about a month, so most days the link opens straight to your machine. When the month is up it asks for a fresh code. That's normal - nothing is broken.</p>
+
+        <h2 id="linked-helper"><span class="step">3</span>Sign in to Linked Helper</h2>
+
+        <p>Your machine's screen opens in the browser tab, with Linked Helper waiting for you. Give it a few seconds to appear.</p>
+
+        <figure class="shot">
+          <img src="/assets/open-machine-linked-helper.jpg" alt="The machine's screen showing the Linked Helper sign-in window, with boxes for email and password and a Sign in button, outlined in gold.">
+          <figcaption><b>Your machine, 29 September 2026.</b> Sign in with your <b>Linked Helper</b> email and password - the account your licence is on, not your LinkedIn login.</figcaption>
+        </figure>
+
+        <h2 id="linkedin"><span class="step">4</span>Sign in to LinkedIn</h2>
+
+        <p>Linked Helper then opens a LinkedIn window. Sign in the way you normally would. LinkedIn hasn't seen this machine before, so it will <b>text a code to your phone</b> - have it beside you.</p>
+
+        <p>You only do this once. After that the machine stays signed in.</p>
+
+        <h2 id="wait"><span class="step">5</span>Leave it for ten minutes</h2>
+
+        <p>That's your part done. The machine finishes the job by itself - you don't need to tell me, and there's nothing to click.</p>
+
+        <p>Within a few minutes <b>Linked Helper will close and open again on its own</b>. That's the machine bringing your history across from your old copy, so it knows who you've already contacted. Then it builds your campaign. Let it go - don't sign in again unless it asks you to.</p>
+
+        <p>When it's finished, a box appears on the screen saying <b>Your Linked Helper machine is set up</b>, and the same note is left on the machine's desktop.</p>
+
+        <h2 id="campaign"><span class="step">6</span>Give your campaign some people</h2>
+
+        <p>Your campaign is built, but it has nobody in it yet. In Claude, start a new chat and type <b>Help me with my first campaign</b>. It walks you through putting your search in and making the invitation note sound like you.</p>
+
+        <p>From there it runs on its own. Everyone who accepts is scored, and you work through them on the <b>Thanks for Connecting</b> screen in your portal, highest score first.</p>
+
+        <h2 id="coming-and-going">Coming and going</h2>
+
+        <ul>
+          <li>When you've finished looking, <b>just close the tab</b>. Linked Helper keeps running on the machine.</li>
+          <li>Don't close Linked Helper itself, and don't sign out of LinkedIn inside it. If you do by accident, the machine restarts Linked Helper by itself within about five minutes. A LinkedIn sign-out is the one thing it can't fix on its own, so let me know.</li>
+          <li>If I happen to be looking at your machine at the same time, we see the same screen and share the mouse. Nothing breaks - one of us just waits.</li>
+        </ul>
+
+        <h2 id="stuck">If something doesn't work</h2>
+
+        <ul>
+          <li><b>No code in your inbox?</b> Check junk first. Some work email systems block it - tell me and I'll add your personal address as well.</li>
+          <li><b>It says your email isn't allowed?</b> You've typed a different address from the one I have on file. Try your other one, or tell me which you'd rather use.</li>
+          <li><b>The page says Reconnecting?</b> In the small hours the machine restarts itself. Leave the tab open and it comes back within a few minutes.</li>
+          <li><b>Still stuck?</b> Text me on 0414 975 509 with a photo of what you're seeing.</li>
+        </ul>
+
+      </div>
+
+      <footer class="op-foot">
+        <p>Not sure why you're doing any of this? <a href="/a-day-in-the-life">Here's what it's all for</a>.</p>
+        <p class="op-sign">- (I know a) Guy</p>
+      </footer>
+    </div>
+
+    <div class="op-bar"></div>
+  </article>
+</div>

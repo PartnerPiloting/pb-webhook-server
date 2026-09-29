@@ -128,6 +128,18 @@ const PAGES = {
       'The three Binary Lane screens worth seeing before you meet them - choosing the machine, '
       + 'adding the key so Guy can build it, and the one number to send back.',
   },
+  // Getting INTO the machine once it is built, by web link (29 Sep 2026): the link, the emailed
+  // code, the two sign-ins, then leaving the machine to finish its own setup. Sent by link in the
+  // email that gives a client their machine link. Written so the client needs nobody - which is
+  // why it says what they will SEE while the machine works (Linked Helper closing and reopening),
+  // the one moment somebody would otherwise stop and ask. Pictures never show a client's name.
+  openMachine: {
+    file: 'open-your-machine.html',
+    title: 'Getting into your Linked Helper machine - I Know A Guy',
+    description:
+      'Open your link, type the code from your email, sign in to Linked Helper and LinkedIn - '
+      + 'then the machine finishes setting itself up. About ten minutes, with pictures.',
+  },
   // A made-up introduction email in the real introduction-emails-html layout.
   // Linked as a "Picture:" from the playbook topic "The inner circle" - the
   // chat can only send text, so this is where a client sees what one looks like.
@@ -279,6 +291,7 @@ module.exports = function mountMarketingSite(app) {
   // Sent by link, never linked from the site's own navigation.
   router.get('/the-numbers', servePage(PAGES.numbers));
   router.get('/your-machine', servePage(PAGES.machine));
+  router.get('/open-your-machine', servePage(PAGES.openMachine));
   router.get('/introduction-example', servePage(PAGES.introExample));
   router.get('/follow-ups-example', servePage(PAGES.followupsExample));
   router.get('/thanks-for-connecting-example', servePage(PAGES.thanksExample));
