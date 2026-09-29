@@ -45,31 +45,181 @@ function reinjectLinkedInTabs() {
 chrome.runtime.onInstalled.addListener(reinjectLinkedInTabs);
 chrome.runtime.onStartup.addListener(reinjectLinkedInTabs);
 
+// ---- Whose extension is this? (0.3.29, Guy 2026-09-30) ------------------------------------------
+// The extension used to take its sign-in from whichever Portal page loaded last, no questions asked.
+// Anyone who opens more than one person's Portal in the same browser (Guy, every week) had their
+// extension quietly become the last client they looked at: the next /wg drafted as that client, on
+// that client's Claude key and diary, and saved the conversation into that client's leads. Two
+// guards, both failing towards "leave things as they are":
+//   1. THE OWNER STAYS. A different sign-in cannot replace the one held, unless the server says both
+//      belong to the same client (a re-issued link). Changing owner takes a deliberate Disconnect.
+//   2. THE LINKEDIN NAME MUST AGREE. Every call that reads or writes as the client carries the name
+//      on the LinkedIn page; when the server says that is a different person, the call is refused.
+// The comparison itself lives on the server (services/wingguyIdentity.js) - nothing here decides
+// who is who.
+const storageGet = (keys) => new Promise((resolve) => chrome.storage.local.get(keys, resolve));
+const storageSet = (obj) => new Promise((resolve) => chrome.storage.local.set(obj, resolve));
+const OWNER_KEYS = ['ownerClientId', 'ownerName', 'identityVerdict'];
+
+// Ask the server who a sign-in belongs to (and, given a LinkedIn name, whether it agrees).
+// Resolves { clientId, clientName, matches, message } or { invalid: true } when the server rejects
+// the sign-in outright; throws on anything else (no network, server down, older server).
+async function askIdentity(creds, viewerName) {
+  const env = creds.environment || 'production';
+  const base = WINGGUY_ENDPOINTS[env] || WINGGUY_ENDPOINTS.production;
+  const headers = {
+    'Content-Type': 'application/json',
+    'x-client-id': creds.clientId,
+    'x-portal-token': creds.portalToken
+  };
+  if (creds.devKey) headers['x-dev-key'] = creds.devKey;
+  const response = await fetch(`${base}/identity`, {
+    method: 'POST', headers, body: JSON.stringify({ viewerName: viewerName || '' })
+  });
+  if (response.status === 401 || response.status === 403) return { invalid: true };
+  if (!response.ok) throw new Error(`identity check failed: ${response.status}`);
+  return response.json();
+}
+
+// Guard 1. Returns what the Portal page's script is told: { success } or { success:false, locked }.
+async function acceptOrRefuseSignIn({ clientId, portalToken, devKey, environment }) {
+  if (!clientId || !portalToken) return { success: false, error: 'incomplete sign-in' };
+  const env = environment || 'production';
+  const incoming = { clientId, portalToken, devKey, environment: env };
+  const held = await storageGet(['clientId', 'portalToken', 'devKey', 'environment', 'ownerClientId', 'ownerName']);
+
+  const save = async (who) => {
+    await storageSet({
+      clientId, portalToken, devKey, environment: env, lastAuthTime: Date.now(),
+      ownerClientId: (who && who.clientId) || '',
+      ownerName: (who && who.clientName) || '',
+      identityVerdict: null
+    });
+    console.log('[Wingguy][bg] signed in as', (who && who.clientName) || clientId);
+    // Notify any open LinkedIn tabs that auth is ready
+    chrome.tabs.query({ url: 'https://www.linkedin.com/*' }, (tabs) => {
+      tabs.forEach(tab => {
+        chrome.tabs.sendMessage(tab.id, { type: 'AUTH_READY' }).catch(() => {});
+      });
+    });
+    return { success: true };
+  };
+  const named = (who) => (who && !who.invalid && who.clientId ? who : null);
+
+  // Nothing held: first link, a new browser profile, or Disconnect was used. Take it.
+  if (!held.clientId || !held.portalToken) {
+    return save(named(await askIdentity(incoming).catch(() => null)));
+  }
+
+  // The same sign-in again (every Portal page load). Nothing to decide; learn the owner's name if
+  // this copy was linked before 0.3.29 and never recorded it.
+  if (held.clientId === clientId && held.portalToken === portalToken && (held.environment || 'production') === env) {
+    if (!held.ownerClientId) {
+      const who = named(await askIdentity(incoming).catch(() => null));
+      if (who) await storageSet({ ownerClientId: who.clientId, ownerName: who.clientName || '' });
+    }
+    await storageSet({ lastAuthTime: Date.now() });
+    return { success: true };
+  }
+
+  // A DIFFERENT sign-in. Only the server can say whether it is the same person with a new link.
+  let newWho = null;
+  try { newWho = await askIdentity(incoming); } catch (_) { newWho = null; }
+  let heldWho = held.ownerClientId ? { clientId: held.ownerClientId, clientName: held.ownerName } : null;
+  let heldDead = false;
+  if (!heldWho) {
+    try {
+      const w = await askIdentity(held);
+      if (w && w.invalid) heldDead = true; else heldWho = named(w);
+    } catch (_) { /* cannot tell - keep what is held */ }
+  }
+  if (named(newWho) && heldWho && newWho.clientId === heldWho.clientId) return save(newWho);
+  // The held link no longer works at all and a good one has arrived: nothing worth protecting.
+  if (named(newWho) && heldDead) return save(newWho);
+
+  console.warn('[Wingguy][bg] kept the sign-in already held; refused a different one from the Portal',
+    { held: (heldWho && heldWho.clientName) || held.clientId, offered: (named(newWho) && newWho.clientName) || clientId });
+  return {
+    success: false,
+    locked: true,
+    heldName: (heldWho && heldWho.clientName) || held.clientId,
+    offeredName: (named(newWho) && newWho.clientName) || clientId
+  };
+}
+
+// Guard 2. Null = carry on (names agree, or it cannot be told); otherwise the refusal to send back.
+// Remembered per sign-in + LinkedIn name so an ordinary turn costs no extra call; a changed sign-in
+// or a different LinkedIn account is a different key, so a verdict can never outlive its facts.
+const VERDICT_TTL_MS = 12 * 60 * 60 * 1000;
+async function identityVerdict(viewerName) {
+  const viewer = String(viewerName || '').trim();
+  const held = await storageGet(['clientId', 'portalToken', 'devKey', 'environment', 'identityVerdict']);
+  if (!held.clientId || !held.portalToken) return null;
+  const key = `${held.environment || 'production'}|${held.portalToken}|${viewer.toLowerCase()}`;
+  const v = held.identityVerdict;
+  // A refusal is re-asked after a minute, so a corrected record lets its owner straight back in.
+  if (v && v.key === key && (Date.now() - v.at) < (v.matches === false ? 60 * 1000 : VERDICT_TTL_MS)) return v;
+  let who = null;
+  try { who = await askIdentity(held, viewer); } catch (_) { return null; }
+  if (!who || who.invalid) return null; // a rejected sign-in is the ordinary calls' error to report
+  const fresh = {
+    key, at: Date.now(),
+    viewerName: viewer,
+    clientId: who.clientId,
+    clientName: who.clientName || '',
+    matches: who.matches === false ? false : (who.matches === true ? true : null),
+    message: who.message || ''
+  };
+  const extra = who.clientId ? { ownerClientId: who.clientId, ownerName: who.clientName || '' } : {};
+  await storageSet({ identityVerdict: fresh, ...extra });
+  return fresh;
+}
+
+// Every message that reads or writes AS the client. Page reads (hidden-tab scrapes, selectors) and
+// the sign-in plumbing are not here: they touch nobody's records.
+const ACTS_AS_CLIENT = new Set([
+  'LOOKUP_LEAD', 'QUICK_UPDATE', 'CREATE_LEAD',
+  'WINGGUY_GET_TEMPLATES', 'WINGGUY_DRAFT_THANKS', 'WINGGUY_DRAFT_REPLY',
+  'WG_BOOKING_PREFS', 'WG_CAL_AVAILABILITY', 'WG_CAL_QUICKPICK', 'WG_CAL_LOOKUP', 'WG_BOOK',
+  'WG_CHAT', 'WG_LEAD_CONTACT', 'WG_EDIT_PAIR', 'WG_ENRICH_FROM_PROFILE'
+]);
+
 // Listen for messages from content scripts and popup
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  
+  if (message && ACTS_AS_CLIENT.has(message.type) && message._viewer) {
+    identityVerdict(message._viewer)
+      .catch(() => null)
+      .then((v) => {
+        if (v && v.matches === false) {
+          sendResponse({ success: false, identityMismatch: true, error: v.message || 'Wingguy is signed in as someone else.' });
+          return;
+        }
+        if (handleMessage(message, sender, sendResponse) !== true) sendResponse({ success: false, error: 'Unknown request.' });
+      });
+    return true;
+  }
+  return handleMessage(message, sender, sendResponse);
+});
+
+function handleMessage(message, sender, sendResponse) {
+
   // Portal broadcasts auth credentials
   if (message.type === 'AUTH_BROADCAST') {
-    const { clientId, portalToken, devKey, environment } = message;
-    chrome.storage.local.set({
-      clientId,
-      portalToken,
-      devKey,
-      environment: environment || 'production',
-      lastAuthTime: Date.now()
-    }, () => {
-      console.log('[NA Extension] Auth credentials saved from portal');
-      // Notify any open LinkedIn tabs that auth is ready
-      chrome.tabs.query({ url: 'https://www.linkedin.com/*' }, (tabs) => {
-        tabs.forEach(tab => {
-          chrome.tabs.sendMessage(tab.id, { type: 'AUTH_READY' }).catch(() => {});
-        });
-      });
-      sendResponse({ success: true });
-    });
+    acceptOrRefuseSignIn(message)
+      .then(sendResponse)
+      .catch((e) => sendResponse({ success: false, error: e.message }));
     return true; // Keep channel open for async response
   }
-  
+
+  // Who Wingguy is signed in as, and whether the LinkedIn page agrees - for the panel's
+  // "Drafting as" line and its wrong-person card.
+  if (message.type === 'WG_IDENTITY') {
+    identityVerdict(message._viewer)
+      .then((v) => sendResponse({ success: true, data: v || { matches: null, clientName: '' } }))
+      .catch(() => sendResponse({ success: true, data: { matches: null, clientName: '' } }));
+    return true;
+  }
+
   // Check if authenticated
   if (message.type === 'CHECK_AUTH') {
     chrome.storage.local.get(['clientId', 'portalToken', 'environment'], (data) => {
@@ -81,10 +231,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     });
     return true;
   }
-  
+
   // Get auth credentials for API calls
   if (message.type === 'GET_AUTH') {
-    chrome.storage.local.get(['clientId', 'portalToken', 'devKey', 'environment'], (data) => {
+    chrome.storage.local.get(['clientId', 'portalToken', 'devKey', 'environment', 'ownerName'], (data) => {
       sendResponse(data);
     });
     return true;
@@ -147,7 +297,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   // Clear stored auth
   if (message.type === 'CLEAR_AUTH') {
-    chrome.storage.local.remove(['clientId', 'portalToken', 'devKey', 'environment', 'lastAuthTime'], () => {
+    chrome.storage.local.remove(['clientId', 'portalToken', 'devKey', 'environment', 'lastAuthTime', ...OWNER_KEYS], () => {
       sendResponse({ success: true });
     });
     return true;
@@ -262,7 +412,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   // Wingguy Slice 2 (chat agent): one turn of the tool-using booking chat. Returns
   // { reply, draft, booked, messages } — the panel resends `messages` each turn.
   if (message.type === 'WG_CHAT') {
-    wingguyChat(message.payload)
+    wingguyChat({ ...(message.payload || {}), viewerName: message._viewer || '' })
       .then(data => sendResponse({ success: true, data }))
       .catch(error => sendResponse({ success: false, error: error.message }));
     return true;
@@ -339,7 +489,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     })().then(sendResponse);
     return true;
   }
-});
+}
 
 const sleepBg = (ms) => new Promise((r) => setTimeout(r, ms));
 

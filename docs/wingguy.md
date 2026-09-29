@@ -230,6 +230,14 @@ proposes, code writes, curated categories; **edit-authority by layer — foundat
 send) · build `dev`→staging→main behind off-by-default flags (exception: Fathom backend-only work runs on
 `main`, guarded by design + kill-switch).
 
+**Whose extension is it (0.3.29, 2026-09-30).** The extension KEEPS ITS OWNER: a different person's Portal
+cannot replace the sign-in it holds (same client with a re-issued link is fine; changing owner takes
+Disconnect in the popup first). Every call that acts as the client carries the name on the LinkedIn page,
+and a definite mismatch is refused in the worker and again at `/api/wingguy/chat`. The comparison lives in
+ONE place, `services/wingguyIdentity.js`, asked through `POST /api/wingguy/identity` - the extension holds
+no copy of it. Everything uncertain (name unreadable, check unreachable) carries on; only a sure "no"
+blocks. The panel header says who it is drafting as. Viewing a client's Portal is unaffected.
+
 **Capture / transcript.** Migrating **Recall.ai → Fathom** (Fathom = client-owned capture + "ready" webhook;
 capture cost stays the client's). `recall_*` names = the **source-agnostic store**, NOT Recall.ai. Back-to-
 back **splitter is required** (calendar-anchored + speaker-transition; serial cut, overlap accepted). **Post-call / connector work ALWAYS uses the FULL transcript; the summary-default cost optimisation is EXTENSION-ONLY and never touches the post-call flow.**
@@ -5222,3 +5230,38 @@ never the coach's) and check_availability reads it whether or not the model pass
 propose_times REFUSES while a readable lead link exists (one slot via book_meeting, never a list) and
 falls open when the link is unreadable. Also fixed: the panel's notBefore regex had lost its
 backslashes on the way in (never matched). tests/wingguy-lead-booking-link-panel.test.js.
+
+## The extension keeps its owner + the LinkedIn name must agree (0.3.29, 2026-09-30)
+
+**What went wrong.** Guy ran /wg on his own lead (Shiva Farabi) and the draft came back signed "Cheers,
+Steve", offering Google Meet and Steve Nelson's free times. His extension had become Steve's. Cause:
+`content-portal.js` hands the Portal page's sign-in to the worker on every page load and the worker
+overwrote what it held, no questions asked - and the Portal remembers the last `?token=` link, so the
+next plain Portal visit was still that client. Guy opens client Portal links every week; clients only
+ever open their own, so only his machine was exposed. The green "connected" toast never said as whom,
+and the panel never said who it was drafting as.
+
+**What a slip costs.** The draft runs on the CLIENT's Claude key and diary, and the conversation is
+saved into the CLIENT's leads base. A sweep of all 24 client bases for Notes with Guy as the sender
+found two: Shiva Farabi in Steve Nelson's (30 Sep) and Max Dagenais in Dean Hobin's (9 Sep, via the
+capture-rescue card's "add them"). Both removed 30 Sep. The sweep cannot see slips that left no
+conversation behind, so two is a floor.
+
+**The fix.** (1) Owner lock in `background.js` (`acceptOrRefuseSignIn`): nothing held = take it; same
+sign-in = quiet yes; a different one is accepted only when the server resolves both to the same client,
+or the held link is rejected outright. Server unreachable = keep what is held. (2) Identity gate: the
+content script's `bg()` stamps every message with `selfNavName()`; the worker refuses the
+`ACTS_AS_CLIENT` set on a mismatch, `/chat` refuses again before the enrich step writes anything, and
+the capture path shows a plain notice instead of the rescue card. (3) "drafting as <name>" in the panel
+header; the popup shows the name rather than the client id.
+
+**Matching rule, and why it is lenient.** Surname agrees, or a longer part of the LinkedIn name is in
+the LinkedIn URL on the record. A shared first name alone is never enough (Guy Wilson / Guy McPhee).
+Checked against every Wingguy client's real LinkedIn sender name before shipping - all pass, including
+"Julian Davis (FILP)". A refusal is re-asked after a minute so a corrected record lets its owner back in.
+
+**Deliberately NOT built.** A "draft as this client" switch for Guy. Asked, not requested. Incognito
+stays the way to look at a client's Portal: the extension is not allowed there, so nothing is handed over.
+
+**Tests.** `tests/wingguy-identity.test.js` (the rule) and `tests/wingguy-extension-owner-lock.test.js`
+(runs the real `background.js` in a sandbox with a fake browser and server).

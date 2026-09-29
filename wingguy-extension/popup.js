@@ -40,7 +40,7 @@ function updateUI() {
       // Update client name
       const clientNameEl = document.getElementById('client-name');
       if (clientNameEl) {
-        clientNameEl.textContent = data.clientId || 'Unknown';
+        clientNameEl.textContent = data.ownerName || data.clientId || 'Unknown';
       }
       
       // Update environment badge

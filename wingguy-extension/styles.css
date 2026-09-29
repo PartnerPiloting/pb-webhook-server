@@ -88,6 +88,8 @@
   font-weight: 800; font-size: 12px; letter-spacing: 0.08em;
   color: var(--wingguy-teal-dark);
 }
+/* "· drafting as Guy Wilson" beside CONTEXT: ordinary case and weight, so it reads as a name. */
+.wingguy-context-as { font-weight: 500; letter-spacing: 0; text-transform: none; color: #475569; }
 .wingguy-context-sub { display: flex; flex-direction: column; gap: 8px; }
 .wingguy-context-who { font-size: 13px; }
 .wingguy-x {

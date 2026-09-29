@@ -867,13 +867,20 @@
     return names;
   }
 
-  // The signed-in user's own name, from the global-nav "Me" avatar alt. Used ONLY to refuse
-  // obviously-self /in/ links in the URL pick below — never to choose one.
+  // The signed-in user's own name, from the global-nav "Me" avatar alt. Used to refuse
+  // obviously-self /in/ links in the URL pick below — never to choose one — and (0.3.29) sent with
+  // every call that acts as the client, so a Wingguy signed in as somebody else is refused.
+  // The messaging surface can live in a same-origin iframe with no nav of its own, so fall back to
+  // the top page. '' when it can't be read, which every caller treats as "can't tell".
   function selfNavName() {
-    for (const sel of ['img.global-nav__me-photo', '.global-nav__me img[alt]', '[class*="global-nav__me"] img[alt]']) {
-      const img = document.querySelector(sel);
-      const t = cleanText(img && img.getAttribute('alt'));
-      if (looksLikeName(t)) return t;
+    const docs = [document];
+    try { if (window.top && window.top !== window && window.top.document) docs.push(window.top.document); } catch (_) { /* cross-origin parent */ }
+    for (const doc of docs) {
+      for (const sel of ['img.global-nav__me-photo', '.global-nav__me img[alt]', '[class*="global-nav__me"] img[alt]']) {
+        const img = doc.querySelector(sel);
+        const t = cleanText(img && img.getAttribute('alt'));
+        if (looksLikeName(t)) return t;
+      }
     }
     return '';
   }
@@ -1904,12 +1911,20 @@
   }
 
   // ---- background bridge ----------------------------------------------------
+  // Every message carries the name on this LinkedIn page (_viewer). The worker checks it against
+  // who Wingguy is signed in as before anything is read or written as the client (0.3.29).
   function bg(message) {
     return new Promise((resolve, reject) => {
-      chrome.runtime.sendMessage(message, (resp) => {
+      let viewer = '';
+      try { viewer = selfNavName(); } catch (_) { viewer = ''; }
+      chrome.runtime.sendMessage({ ...message, _viewer: viewer }, (resp) => {
         if (chrome.runtime.lastError) return reject(new Error(chrome.runtime.lastError.message));
         if (!resp) return reject(new Error('No response from background.'));
-        if (resp.success === false) return reject(new Error(resp.error || 'Request failed.'));
+        if (resp.success === false) {
+          const err = new Error(resp.error || 'Request failed.');
+          if (resp.identityMismatch) err.identityMismatch = true;
+          return reject(err);
+        }
         resolve(resp.data !== undefined ? resp.data : resp);
       });
     });
@@ -2213,6 +2228,10 @@
       } catch (e) { console.log('[Wingguy] edit-pair error (non-fatal):', e.message); }
     } catch (e) {
       console.log('[Wingguy] capture failed:', e.message);
+      // Wingguy is signed in as somebody else: this conversation belongs in nobody's Portal but the
+      // person on LinkedIn, so no rescue card - offering to "add them" is exactly how Guy's own
+      // lead was once added to a client's base. Say why, once, and stop.
+      if (e && e.identityMismatch) { showCaptureToast(`Not saved. ${e.message}`, true); return; }
       showCaptureRescue({
         reason: `Couldn't save to the Portal: ${e.message}`,
         thread,
@@ -2522,7 +2541,7 @@
       <div id="${PANEL_ID}" class="wingguy-modal" role="dialog" aria-label="Wingguy">
         <div class="wingguy-modal-head">
           <div class="wingguy-context">
-            <span class="wingguy-context-label">CONTEXT</span>
+            <span class="wingguy-context-label">CONTEXT <span class="wingguy-context-as" id="wingguy-context-as"></span></span>
             <span class="wingguy-context-sub" id="wingguy-context-sub"></span>
           </div>
           <button class="wingguy-x" title="Close (Esc)" id="wingguy-close">×</button>
@@ -2609,6 +2628,14 @@
     if (!auth) { renderRefreshCard(); return; }
     if (!auth.authenticated) { renderConnectCard(); return; }
 
+    // Who is Wingguy signed in as, and is that the person on this LinkedIn? Asked BEFORE the page
+    // is read, because the read is what saves the thread and creates leads. Only a definite "no"
+    // stops here - a name that can't be read, or a check that can't be made, carries on as before.
+    let who = null;
+    try { who = await bg({ type: 'WG_IDENTITY' }); } catch (_) { who = null; }
+    if (who && who.matches === false) { renderWrongPersonCard(who); return; }
+    setDraftingAs(who && who.clientName);
+
     const profile = await scrapeProfile();
     if (!profile.name && !profile.headline && !profile.about && !profile.pageText) {
       setBody(`<div class="wingguy-warn">Couldn't read anything from this page. Make sure you're on a person's /in/ profile, then reopen.</div>`);
@@ -2654,6 +2681,28 @@
       <div class="wingguy-row"><button class="wingguy-primary" id="wingguy-refresh-page">Refresh this page</button></div>
     `);
     body?.querySelector('#wingguy-refresh-page')?.addEventListener('click', () => location.reload());
+  }
+
+  // Always-on answer to "who is this drafting as?" - the one thing the panel never used to say, which
+  // is how a draft signed with a client's name got as far as the Insert button (Guy, 2026-09-30).
+  function setDraftingAs(name) {
+    const el = document.getElementById('wingguy-context-as');
+    if (el) el.textContent = name ? `· drafting as ${name}` : '';
+  }
+
+  // Wingguy is signed in as one person and LinkedIn as another. Nothing has been read, drafted or
+  // saved at this point. The fix is Disconnect (the toolbar icon) and then their own Portal - spelt
+  // out, because the owner is now kept on purpose and opening a Portal alone will not switch it.
+  // No "Open my Portal" button here on purpose: the Portal remembers the last link it was opened
+  // with, so in the browser where this happened the button would reopen the WRONG person's Portal.
+  function renderWrongPersonCard(who) {
+    setDraftingAs('');
+    setContextSub('');
+    setBody(`
+      <div class="wingguy-warn">This LinkedIn is signed in as ${escapeHtml(who.viewerName || 'someone else')}, but Wingguy here is signed in as ${escapeHtml(who.clientName || 'another account')}.</div>
+      <p class="wingguy-muted">Nothing has been drafted or saved. To put it right:</p>
+      <p class="wingguy-muted">1. Click the Wingguy icon in the browser toolbar and choose Disconnect.<br>2. Open your own Portal link - the one that was sent to you.<br>3. Come back to this tab and type /wg again.</p>
+    `);
   }
 
   // This browser has never had the Portal open (fresh install, new browser profile, or Disconnect was

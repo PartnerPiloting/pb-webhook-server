@@ -45,6 +45,15 @@
               hasShownNotification = true;
               showSyncNotification();
             }
+          } else if (response?.locked) {
+            // 0.3.29: this Portal belongs to someone other than the extension's owner, so the
+            // extension kept its owner. The Portal page itself is unaffected - say so once, by name,
+            // because the old green "connected" toast never said WHO it had connected as.
+            console.log('[Wingguy] extension kept its sign-in:', response.heldName);
+            if (!hasShownNotification) {
+              hasShownNotification = true;
+              showSyncNotification(`Wingguy extension stays signed in as ${response.heldName}`, '#475569');
+            }
           }
         });
       }
@@ -54,7 +63,7 @@
   }
   
   // Show a brief notification that sync occurred
-  function showSyncNotification() {
+  function showSyncNotification(text, colour) {
     const existing = document.getElementById('na-extension-sync-toast');
     if (existing) existing.remove();
     
@@ -64,7 +73,7 @@
       position: fixed;
       bottom: 20px;
       right: 20px;
-      background: #22c55e;
+      background: ${colour || '#22c55e'};
       color: white;
       padding: 12px 20px;
       border-radius: 8px;
@@ -74,7 +83,7 @@
       z-index: 999999;
       animation: na-slide-in 0.3s ease-out;
     `;
-    toast.innerHTML = '✓ LinkedIn extension connected';
+    toast.textContent = text || '✓ LinkedIn extension connected';
     
     // Add animation keyframes
     const style = document.createElement('style');

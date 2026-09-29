@@ -32,6 +32,7 @@ const { getBookingPrefs } = require('../config/wingguyBookingPrefs');
 const { createBookingEvent } = require('../services/wingguyCalendar');
 const { runWingguyChatTurn } = require('../services/wingguyChat');
 const wingguyLeads = require('../services/wingguyLeads');
+const wingguyIdentity = require('../services/wingguyIdentity');
 const clientService = require('../services/clientService');
 const { canonicalLinkedinSlug, slugPrefilterFormula, findExactSlugMatch } = require('../utils/linkedinCanonical');
 const wingguyStore = require('../services/wingguyRulesStore');
@@ -505,6 +506,41 @@ module.exports = function mountWingguy(app) {
 
   // Everything below requires an authenticated client...
   router.use(authenticateUserWithTestMode);
+
+  // Who is this sign-in, and is it the person on LinkedIn? (Guy, 2026-09-30 - see
+  // services/wingguyIdentity.js for the two slips that prompted it.) The extension calls this for
+  // two jobs: to decide whether a DIFFERENT Portal sign-in may replace the one it holds (it may
+  // not, unless both resolve to the same client), and to check the name on the LinkedIn page
+  // against the client before anything is drafted or saved. Sits ABOVE the Wingguy-enabled gate on
+  // purpose: a sign-in has to be nameable even when that client has no Wingguy, or the extension
+  // could not tell whose it was. Returns names only - nothing a Portal page does not already show.
+  router.post('/identity', async (req, res) => {
+    try {
+      const viewerName = String((req.body && req.body.viewerName) || '').trim().slice(0, 120);
+      const record = await clientService.getClientById(req.client.clientId);
+      const clientName = (record && record.clientName) || req.client.clientName || req.client.clientId;
+      const v = wingguyIdentity.viewerMatchesClient({
+        viewerName,
+        clientName,
+        linkedinUrl: record && record.coachLinkedInUrl,
+      });
+      if (v.matches === false) {
+        logger.warn(`[Wingguy] IDENTITY MISMATCH: LinkedIn is "${viewerName}", extension is signed in as ${req.client.clientId}`);
+      }
+      res.json({
+        ok: true,
+        clientId: req.client.clientId,
+        clientName,
+        viewerName,
+        matches: v.matches,
+        message: v.matches === false ? wingguyIdentity.mismatchMessage({ viewerName, clientName }) : '',
+      });
+    } catch (e) {
+      logger.error(`[Wingguy] identity failed: ${e.message}`);
+      res.status(500).json({ ok: false, error: e.message });
+    }
+  });
+
   // ...and, for Slice 1, that client must be the owner.
   router.use(requireOwner);
   // An assistant's key only opens this section if their row has "My Wingguy" ticked - enforced
@@ -758,6 +794,23 @@ module.exports = function mountWingguy(app) {
     try {
       const coach = await clientService.getClientById(req.client.clientId);
       if (!coach) return res.status(500).json({ ok: false, error: 'coach record not found' });
+
+      // Back door of the identity check: the extension refuses before it gets here, but a draft
+      // written as the wrong person must not depend on the browser copy being current. Runs BEFORE
+      // the enrich step, which is what writes to the lead's record. No viewerName (older extension)
+      // or an unreadable one = cannot tell = carry on.
+      const who = wingguyIdentity.viewerMatchesClient({
+        viewerName: (req.body && req.body.viewerName) || '',
+        clientName: coach.clientName,
+        linkedinUrl: coach.coachLinkedInUrl,
+      });
+      if (who.matches === false) {
+        logger.warn(`[Wingguy] chat REFUSED, identity mismatch: LinkedIn is "${req.body.viewerName}", signed in as ${coach.clientId}`);
+        return res.status(409).json({
+          ok: false,
+          error: wingguyIdentity.mismatchMessage({ viewerName: req.body.viewerName, clientName: coach.clientName }),
+        });
+      }
 
       // Enrich the scraped profile with the lead's stored Portal record (About/headline the messaging DOM
       // lacks + CRM-only context: AI assessment, your notes, status, follow-up date, do-not-FUP flag).
