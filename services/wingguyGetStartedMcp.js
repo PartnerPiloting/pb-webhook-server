@@ -818,6 +818,24 @@ async function runLearnOwnerDoor(args, tenant) {
   return { text: parts.join('\n') };
 }
 
+const OPEN_MACHINE_TOPIC = /^OPEN YOUR LINKED HELPER MACHINE\b/i;
+// "Get into my machine" and "access my VPS" are the same request as "open", but the title
+// matcher scores them onto the SETTING IT UP topic (or nothing at all - no title says VPS).
+// Only consulted for a client who has a link, so it cannot change anyone else's answer.
+const OPEN_MACHINE_ASK = /\b(open|get (in ?to|on ?to)|access|connect to|log ?in ?to|remote (in ?to|on ?to))\b.*\b(machine|vps|server|linked ?helper)\b/i;
+
+/** The caller's own machine link answer, or null when they have no link (or the lookup fails). */
+async function machineLinkAnswer(tenant) {
+  try {
+    const me = await clientService.getClientById(tenant);
+    if (!me || !me.machineLink) return null;
+    const out = await require('./machineClipboardMcp').runOpenMachine({}, tenant);
+    return out && !out.isError ? out.text : null;
+  } catch (_e) {
+    return null; // the written topic is still a true answer for most clients - never fail the serve
+  }
+}
+
 async function runLearn(args = {}, tenant = TENANT) {
   // Guy's doors first - progress reports, nudges, the gap list.
   if (args.client || args.set_nudge || args.clear_nudge || args.gaps || args.propose_nudges) {
@@ -865,6 +883,14 @@ async function runLearn(args = {}, tenant = TENANT) {
     });
   }
 
+  if (OPEN_MACHINE_ASK.test(topicArg)) {
+    const linked = await machineLinkAnswer(tenant);
+    if (linked) {
+      await learning.stamp(tenant, 'topic', 'OPEN YOUR LINKED HELPER MACHINE (web link)');
+      return withMemoryFooter({ text: linked });
+    }
+  }
+
   const topic = findPlaybookTopic(pb.topics, topicArg);
   if (!topic) {
     // A miss IS the signal: this exact question is a playbook topic waiting to be written.
@@ -879,6 +905,19 @@ async function runLearn(args = {}, tenant = TENANT) {
 
   await learning.stamp(tenant, 'topic', topic.title);
   await learning.markNudgeDoneIfTopicMatches(tenant, topic.title);
+
+  // A CLIENT WITH A WEB LINK GETS THEIR LINK, NOT THE ICON TOPIC (29 Sep 2026).
+  // The night the web link went live, Guy typed "open my vps", his Claude came here (as the
+  // connector tells it to for anything about the machine), and this served the desktop-icon
+  // topic: Tailscale, the ^ arrow, the square of dots - to the one person who had just been
+  // given a link instead. A correct topic for the wrong client. Until every machine has moved
+  // and the playbook topic is rewritten, the client's own record decides: a Machine Link on
+  // their row means the link is the answer, and the icon topic is served only to those still
+  // on the icon. One source for the wording - wingguy_open_machine's own answer.
+  if (OPEN_MACHINE_TOPIC.test(topic.title)) {
+    const linked = await machineLinkAnswer(tenant);
+    if (linked) return withMemoryFooter({ text: linked });
+  }
 
   const footer = [
     '---',

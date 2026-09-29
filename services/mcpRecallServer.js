@@ -363,7 +363,9 @@ function createRecallMcpServer(coachClientId = DEFAULT_COACH_CLIENT_ID, { hasFat
         + "connection, the Anthropic key, scoring, campaigns, the portal), call wingguy_learn FIRST and present its answer "
         + "as Guy's own words. Never answer those from memory, from past chats, or from general knowledge about computers "
         + "or LinkedIn - Guy runs a specific setup with specific suppliers, and an answer that is right in general is wrong "
-        + "for this client, and they cannot tell the difference. If wingguy_learn does not cover it, say so and point them to Guy.",
+        + "for this client, and they cannot tell the difference. If wingguy_learn does not cover it, say so and point them to Guy. "
+        + "One exception: when they want to OPEN, see or get into their Linked Helper machine (they may call it their VPS or "
+        + "server), call wingguy_open_machine - it returns their own link, which is what they are asking for.",
     },
   );
 

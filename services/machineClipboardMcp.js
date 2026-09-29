@@ -231,4 +231,4 @@ async function legacyToolCall(toolName, args, tenant = TENANT) {
   }
 }
 
-module.exports = { registerMachineClipboardTools, legacyToolList, legacyToolCall, TOOL_DEFS };
+module.exports = { registerMachineClipboardTools, legacyToolList, legacyToolCall, TOOL_DEFS, runOpenMachine };
