@@ -31,7 +31,7 @@ The businesses that escape it make one mental shift: they stop treating their ne
 <!-- ENDING:CLIENT -->
 So here's the question worth sitting with this week: **if your network heard from you just as reliably in your busiest month as in your quietest one - what would that make possible?** What work would you say yes to? What would you never again have to accept out of desperation?
 
-Maybe you're already pushing back: you've been nagged about networking before, and it never seemed worth the hours it demanded. Fair - under the old way of doing it, it usually wasn't. That's the part we've quietly changed. Treating your network as infrastructure used to mean cloning yourself; now the right process and the right tools carry almost all of the load, and it fits inside a normal working week. That's the possibility this series is about - more on how next time.
+Here's the good news: you've already made the shift. The system we set up together is your infrastructure. It keeps finding the right people and keeping them warm in your busiest month, exactly as it does in your quietest - so the famine doesn't get a chance to build. What's left for you is the part only you can do: the conversations, and the relationships that come out of them. That part fits inside a normal working week. Next email, the first step - choosing who you actually want in your network.
 <!-- /ENDING:CLIENT -->
 
 <!-- ENDING:PROSPECT -->
@@ -40,4 +40,5 @@ So here's the question worth sitting with: **if your network heard from you just
 Maybe you're already pushing back: you've been nagged about networking before, and it never seemed worth the hours it demanded. Fair - under the old way of doing it, it usually wasn't. That's the part we've quietly changed. Treating your network as infrastructure used to mean cloning yourself; now the right process and the right tools carry almost all of the load, and it fits inside a normal working week. That's the possibility this series is about - more on how next time.
 <!-- /ENDING:PROSPECT -->
 
-<!-- Approved final by Guy 2026-07-03 ("absolutely perfect, wouldn't change anything") after reviewing the formatted HTML render. Ending revised + re-approved 2026-07-06: names the "not worth the hours" dismissal and claims ownership ("the part WE'VE quietly changed" - Guy's wording) while keeping tools off-stage per the staged-reveal principle. -->
+<!-- Approved final by Guy 2026-07-03 ("absolutely perfect, wouldn't change anything") after reviewing the formatted HTML render. Ending revised + re-approved 2026-07-06: names the "not worth the hours" dismissal and claims ownership ("the part WE'VE quietly changed" - Guy's wording) while keeping tools off-stage per the staged-reveal principle. Client ending rewritten + approved 2026-09-30 (client run #4): a client has already bought, so it tells them they've already made the shift (their system is the infrastructure) and hands over to step 1; prospect ending unchanged. -->
+
