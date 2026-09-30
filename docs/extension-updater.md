@@ -195,9 +195,23 @@ for ~10 weeks because nobody noticed, not because nobody could fix it).
   any machine whose Windows user name has a space in it never had a working scheduled run, only
   the login run. After creating the task the script reads it back and checks it runs the whole
   path. **Do not remove that check.**
+- ⚠ **The hourly task is registered from a definition file, so it runs on battery (since
+  2026-09-30).** A task made with `schtasks /Create /SC HOURLY` is born "start only on mains
+  power", and schtasks has no switch for it - so on a laptop on its battery the hourly run was
+  skipped every hour, silently. Found on Roland's laptop: his browser was talking to the server
+  either side of 16:05 and 17:05 on 29 Sep and 09:05 on 30 Sep, and the updater ran at none of
+  them; in three weeks only his login run ever checked in. Guy's PC is docked, which hid it.
+  `Set-ScheduledTask` cannot change it unelevated ("The parameter is incorrect"), but
+  `schtasks /Create /XML` can, as the normal user (`Register-UpdateTaskFromDefinition`). The
+  definition also sets "run as soon as possible after a missed start" and a one-hour limit.
+  If the definition is refused, the task is registered the plain way - mains only, but it runs.
+  NOT yet seen: a run actually firing on battery. The setting is read back; the behaviour is
+  Windows' own.
 - **Which machines have which updater** is in the check-in (`updater` column, shown by
   `scripts/extension-fleet.js`). "updater OLD" = installed before 2026-09-26, so it never updates
-  itself and still has the old schedule and the flash: paste its install line once.
+  itself and still has the old schedule and the flash: paste its install line once. From
+  2026-09-30.2 the value ends in `full` (runs on battery, catches up after sleep) or `plain`
+  (mains only - the definition file was refused on that machine).
 - ⚠ **A denied scheduled-task registration used to look like success.**
   `Register-ScheduledTask` raises a NON-TERMINATING CIM error, which sails past
   `$ErrorActionPreference='Stop'` - the script logged "registered" and cheerfully downloaded

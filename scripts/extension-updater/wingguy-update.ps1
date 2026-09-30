@@ -50,13 +50,13 @@ function Write-Log($msg) {
 
 # THE CADENCE, in one place. Bump the tag whenever the schedule below changes and every machine
 # re-registers itself on its next run - see Set-UpdateSchedule.
-$script:CadenceTag = "hourly-2"   # hourly-2 (2026-09-30): same cadence, launched with nothing on screen
+$script:CadenceTag = "hourly-3"   # hourly-2 (2026-09-30): nothing on screen. hourly-3 (same day): runs on battery too
 
 # THE UPDATER'S OWN VERSION. Bump it whenever this file changes: every installed copy compares it
 # with the one the server holds on each run and replaces itself when they differ (Update-Self).
 # Before 2026-09-26 an installed copy never changed, so improvements only reached machines that
 # were re-installed by hand.
-$script:UpdaterVersion = "2026-09-30.1"
+$script:UpdaterVersion = "2026-09-30.2"
 
 # Extra fields for this run's check-in (the machine icon step fills them in).
 $script:CheckinExtra = @{}
@@ -108,28 +108,120 @@ function Set-UpdateSchedule($scriptHome, $taskName) {
   #
   # It WAITS for the .cmd and hands back its exit code, so the task's "last result" still tells
   # the truth and two runs can never overlap.
-  $command = '\"' + $launcher + '\"'
-  $runs = "run-update.cmd"
+  $program = $launcher
+  $arguments = ""
   if (Test-ScriptHostAvailable) {
     $hidden = Join-Path $scriptHome "run-update.vbs"
     $vbs = 'WScript.Quit CreateObject("WScript.Shell").Run("""' + $launcher + '""", 0, True)'
     Set-Content -Path $hidden -Value $vbs -Encoding ascii
-    $command = 'wscript.exe \"' + $hidden + '\"'
-    $runs = "run-update.vbs"
+    $program = "wscript.exe"
+    $arguments = '"' + $hidden + '"'
   }
+  $runs = $launcher
+  if ($arguments) { $runs = $hidden }
 
-  # /SC HOURLY /MO 1 = every hour, from $st onward. A few minutes past the hour rather than on it.
-  $argLine = '/Create /TN "' + $taskName + '" /TR "' + $command + '" /SC HOURLY /MO 1 /ST 00:05 /F'
-  if ((Invoke-Schtasks $argLine) -ne 0) { return $false }
-
-  # VERIFY what was registered, not just that something was: the task must exist AND run the
-  # file we meant, whole. A mangled path registers without complaint.
-  $registered = (& schtasks.exe /Query /TN $taskName /XML 2>$null) -join "`n"
-  if ($LASTEXITCODE -ne 0) { return $false }
-  if ($registered -notmatch [regex]::Escape((Join-Path $scriptHome $runs))) { return $false }
+  # ON BATTERY TOO (2026-09-30). A task made with "schtasks /Create /SC HOURLY" is born with
+  # "start only on mains power" switched on, and schtasks has no switch to turn it off. So on a
+  # laptop running on its battery the hourly run was skipped, every hour, in silence: Roland's
+  # laptop was in use either side of 16:05 and 17:05 on 29 Sep and of 09:05 on 30 Sep, and ran
+  # none of them - only his login run ever checked in. Guy's PC sits on a dock, which is why it
+  # never showed. The one way to set it without admin rights is to hand schtasks the whole task
+  # as a definition file, so that is tried first. It also turns on "run as soon as possible after
+  # a missed start" - a laptop asleep at five past catches up when it wakes instead of waiting
+  # for the next hour - and caps a run at one hour so a stuck one cannot block the rest.
+  $how = "full"
+  if (-not (Register-UpdateTaskFromDefinition $taskName $program $arguments $scriptHome $runs)) {
+    # The plain way, exactly as before. Mains-only, but it is a task that runs.
+    $how = "plain"
+    $command = '\"' + $launcher + '\"'
+    if ($arguments) { $command = 'wscript.exe \"' + $hidden + '\"' }
+    # /SC HOURLY /MO 1 = every hour, from $st onward. A few minutes past the hour rather than on it.
+    $argLine = '/Create /TN "' + $taskName + '" /TR "' + $command + '" /SC HOURLY /MO 1 /ST 00:05 /F'
+    if ((Invoke-Schtasks $argLine) -ne 0) { return $false }
+    if (-not (Test-UpdateTask $taskName $runs)) { return $false }
+  }
+  # Kept on disk so EVERY check-in can say which kind of task this machine has, not just the
+  # one run that registered it - the only way to know from the server that a laptop we cannot
+  # see is now allowed to run on battery.
+  Set-Content -Path (Join-Path $scriptHome "schedule.how") -Value $how -Encoding ascii
 
   Set-Content -Path (Join-Path $scriptHome "schedule.tag") -Value $script:CadenceTag -Encoding ascii
   return $true
+}
+
+function Test-UpdateTask($taskName, $runs) {
+  # VERIFY what was registered, not just that something was: the task must exist AND run the
+  # file we meant, whole. A mangled path registers without complaint. Asked of Windows directly
+  # first, because text read back from schtasks passes through the console's code page and a
+  # name with an accent in it does not survive that.
+  try {
+    $action = (Get-ScheduledTask -TaskName $taskName -ErrorAction Stop).Actions | Select-Object -First 1
+    return ("$($action.Execute) $($action.Arguments)").Contains($runs)
+  } catch { }
+  $registered = (& schtasks.exe /Query /TN $taskName /XML 2>$null) -join "`n"
+  if ($LASTEXITCODE -ne 0) { return $false }
+  return ($registered.Contains($runs) -or $registered.Contains([System.Security.SecurityElement]::Escape($runs)))
+}
+
+function Register-UpdateTaskFromDefinition($taskName, $program, $arguments, $scriptHome, $runs) {
+  # Returns $true only when the task is registered, runs the file we meant, AND is proven to be
+  # allowed on battery. Anything less and the caller registers it the plain way instead.
+  # Written as UTF-16 from real strings - never round-tripped through schtasks' own output.
+  $file = Join-Path $scriptHome "task-definition.xml"
+  try {
+    $esc = { param($s) [System.Security.SecurityElement]::Escape([string]$s) }
+    $sid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+    $argumentsLine = ""
+    if ($arguments) { $argumentsLine = "<Arguments>$(& $esc $arguments)</Arguments>" }
+    $definition = @"
+<?xml version="1.0" encoding="UTF-16"?>
+<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <RegistrationInfo>
+    <Description>Keeps the Wingguy browser extension up to date.</Description>
+  </RegistrationInfo>
+  <Principals>
+    <Principal id="Author">
+      <UserId>$sid</UserId>
+      <LogonType>InteractiveToken</LogonType>
+      <RunLevel>LeastPrivilege</RunLevel>
+    </Principal>
+  </Principals>
+  <Settings>
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+    <StartWhenAvailable>true</StartWhenAvailable>
+    <ExecutionTimeLimit>PT1H</ExecutionTimeLimit>
+    <Enabled>true</Enabled>
+  </Settings>
+  <Triggers>
+    <TimeTrigger>
+      <StartBoundary>2026-01-01T00:05:00</StartBoundary>
+      <Enabled>true</Enabled>
+      <Repetition>
+        <Interval>PT1H</Interval>
+      </Repetition>
+    </TimeTrigger>
+  </Triggers>
+  <Actions Context="Author">
+    <Exec>
+      <Command>$(& $esc $program)</Command>
+      $argumentsLine
+    </Exec>
+  </Actions>
+</Task>
+"@
+    [System.IO.File]::WriteAllText($file, $definition, [System.Text.Encoding]::Unicode)
+    $code = Invoke-Schtasks ('/Create /TN "' + $taskName + '" /XML "' + $file + '" /F')
+    if ($code -ne 0) { return $false }
+    if (-not (Test-UpdateTask $taskName $runs)) { return $false }
+    $settings = (Get-ScheduledTask -TaskName $taskName -ErrorAction Stop).Settings
+    return (-not $settings.DisallowStartIfOnBatteries)
+  } catch {
+    return $false
+  } finally {
+    Remove-Item -Path $file -Force -ErrorAction SilentlyContinue
+  }
 }
 
 function Sync-UpdateSchedule($taskName) {
@@ -162,6 +254,9 @@ function Send-Checkin($server, $token, $payload) {
   try {
     foreach ($k in $script:CheckinExtra.Keys) { $payload[$k] = $script:CheckinExtra[$k] }
     $payload["updater"] = $script:UpdaterVersion
+    # "full" = the task runs on battery and catches up after sleep; "plain" = mains only.
+    $howFile = Join-Path (Join-Path $env:LOCALAPPDATA "Wingguy") "schedule.how"
+    if (Test-Path $howFile) { $payload["updater"] = "$($script:UpdaterVersion) $((Get-Content $howFile -Raw).Trim())" }
     Invoke-RestMethod -Method Post -Uri "$server/extension/dist/checkin" -Headers @{ "x-portal-token" = $token } -ContentType "application/json" -Body ($payload | ConvertTo-Json -Compress) -TimeoutSec 20 | Out-Null
   } catch { Write-Log "check-in failed (ignored): $($_.Exception.Message)" }
 }
