@@ -155,7 +155,7 @@ Requires=display-manager.service
 User=$LH_USER
 Environment=DISPLAY=:0
 ExecStartPre=/bin/sh -c 'for i in \$(seq 1 60); do [ -S /tmp/.X11-unix/X0 ] && exit 0; sleep 2; done; exit 1'
-ExecStart=/usr/bin/x11vnc -display :0 -auth guess -rfbauth $LH_HOME/.vnc/passwd -localhost -forever -shared -noxdamage
+ExecStart=/usr/bin/x11vnc -display :0 -auth guess -rfbauth $LH_HOME/.vnc/passwd -localhost -forever -shared -noxdamage -noprimary
 Restart=always
 RestartSec=5
 [Install]

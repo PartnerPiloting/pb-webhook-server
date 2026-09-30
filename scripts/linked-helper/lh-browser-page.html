@@ -27,16 +27,20 @@
   #note.hidden { display: none; }
   #note h1 { font-size: 22px; font-weight: 600; margin: 0; }
   #note p { font-size: 15px; line-height: 1.5; margin: 0; max-width: 460px; color: #9ca3af; }
-  #paste { position: fixed; top: 0; left: 50%; transform: translateX(-50%); z-index: 5;
-    border: 0; border-radius: 0 0 8px 8px; padding: 5px 14px; font-size: 12.5px; cursor: pointer;
+  #bar { position: fixed; top: 0; left: 50%; transform: translateX(-50%); z-index: 5; display: flex; gap: 6px; }
+  #bar button { border: 0; border-radius: 0 0 8px 8px; padding: 5px 14px; font-size: 12.5px; cursor: pointer;
     background: rgba(31, 41, 51, .82); color: #e5e7eb; opacity: .55; }
-  #paste:hover, #paste:focus { opacity: 1; }
-  #paste.hidden { display: none; }
+  #bar button:hover, #bar button:focus { opacity: 1; }
+  #copy { background: #1155cc !important; opacity: 1 !important; }
+  .hidden { display: none !important; }
 </style>
 </head>
 <body>
 <div id="screen"></div>
-<button id="paste" class="hidden" type="button" title="Copies what is on your own computer's clipboard onto the machine. Then press Ctrl+V on the machine.">Paste from my computer</button>
+<div id="bar">
+  <button id="paste" class="hidden" type="button" title="Copies what is on your own computer's clipboard onto the machine. Usually you can just press Ctrl+V (Cmd+V on a Mac) instead.">Paste from my computer</button>
+  <button id="copy" class="hidden" type="button" title="Puts what you just copied on the machine onto your own computer's clipboard.">Copy to my computer</button>
+</div>
 <div id="note">
   <h1 id="note-title">Opening your Linked Helper machine...</h1>
   <p id="note-body">This takes a few seconds.</p>
@@ -50,8 +54,10 @@ const note = document.getElementById('note');
 const noteTitle = document.getElementById('note-title');
 const noteBody = document.getElementById('note-body');
 const pasteButton = document.getElementById('paste');
+const copyButton = document.getElementById('copy');
 let rfb = null;
 let password = '';
+let connectedAt = 0;
 
 function say(title, body) {
   noteTitle.textContent = title;
@@ -72,10 +78,13 @@ function connect() {
   rfb.addEventListener('connect', () => {
     note.classList.add('hidden');
     pasteButton.classList.remove('hidden');
+    connectedAt = Date.now();
     rfb.focus();
   });
+  rfb.addEventListener('clipboard', (e) => fromMachine(e.detail.text));
   rfb.addEventListener('disconnect', () => {
     pasteButton.classList.add('hidden');
+    copyButton.classList.add('hidden');
     say('Reconnecting to your Linked Helper machine...',
       'If this is around 3 am Brisbane time the machine is doing its nightly restart - it is back within a few minutes. Leave this tab open and it reconnects by itself.');
     setTimeout(connect, RETRY_SECONDS * 1000);
@@ -88,8 +97,92 @@ function connect() {
   });
 }
 
-// Copy and paste INTO the machine. The browser only hands over the clipboard on a click, so this
-// is a button rather than something automatic.
+// ---- Copy and paste, both ways, so it feels like another window on your own computer ----
+//
+// Ctrl+V (Cmd+V on a Mac) on the machine first puts YOUR computer's clipboard onto the machine,
+// then pastes. Ctrl+C (Cmd+C) on the machine lands on YOUR computer's clipboard. The browser asks
+// "allow clipboard?" the first time. Where a browser refuses (Safari is strict), the buttons at the
+// top do the same job with one click.
+//
+// Why Cmd needs help: noVNC sends a Mac's Cmd key to the machine as Alt (the TigerVNC habit), and
+// on Linux Alt+C / Alt+V do nothing. So Cmd+C / Cmd+V are turned into Ctrl+C / Ctrl+V here.
+const IS_MAC = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+const KEY = { ctrl: 0xffe3, alt: 0xffe9, c: 0x0063, v: 0x0076 };
+const COPY_WINDOW_MS = 5000;   // a clipboard change this soon after Ctrl/Cmd+C is the copy they asked for
+let copyAskedAt = 0;
+let ctrlHeld = false;
+let lastSentIn = null;         // what we just pasted in - the machine echoes it back; ignore that
+let pendingOut = '';
+
+function pressOnMachine(letterKey, letterCode, releaseAltFirst) {
+  if (releaseAltFirst) rfb.sendKey(KEY.alt, 'MetaLeft', false);   // the Cmd noVNC already sent as Alt
+  if (ctrlHeld && !releaseAltFirst) {
+    rfb.sendKey(letterKey, letterCode);                              // Ctrl is already down on the machine
+  } else {
+    rfb.sendKey(KEY.ctrl, 'ControlLeft', true);
+    rfb.sendKey(letterKey, letterCode);
+    rfb.sendKey(KEY.ctrl, 'ControlLeft', false);
+  }
+}
+
+async function pasteIntoMachine(cmd) {
+  try {
+    const text = await navigator.clipboard.readText();
+    if (text) { lastSentIn = text; rfb.clipboardPasteFrom(text); }
+  } catch (_e) { /* refused - paste whatever the machine already holds */ }
+  setTimeout(() => pressOnMachine(KEY.v, 'KeyV', cmd), 60);
+}
+
+async function fromMachine(text) {
+  // The machine announces what it already holds as soon as we connect - that is not a copy.
+  if (!text || text === lastSentIn || Date.now() - connectedAt < 3000) return;
+  pendingOut = text;
+  if (Date.now() - copyAskedAt < COPY_WINDOW_MS) {
+    try {
+      await navigator.clipboard.writeText(text);
+      copyButton.classList.add('hidden');
+      return;
+    } catch (_e) { /* no permission without a click - fall through to the button */ }
+  }
+  copyButton.classList.remove('hidden');
+}
+
+window.addEventListener('keyup', (e) => {
+  if (e.key === 'Control') ctrlHeld = false;
+}, true);
+
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'Control') ctrlHeld = true;
+  if (!rfb || e.repeat || e.altKey || e.shiftKey) return;
+  if (document.activeElement === pasteButton || document.activeElement === copyButton) return;
+  const cmd = IS_MAC && e.metaKey && !e.ctrlKey;
+  if (!(e.ctrlKey || cmd)) return;
+  if (e.code === 'KeyV') {
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    pasteIntoMachine(cmd);
+  } else if (e.code === 'KeyC') {
+    copyAskedAt = Date.now();
+    if (cmd) {                     // Ctrl+C goes through untouched; Cmd+C is turned into Ctrl+C
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      pressOnMachine(KEY.c, 'KeyC', true);
+    }
+  }
+}, true);
+
+copyButton.addEventListener('click', async () => {
+  try {
+    await navigator.clipboard.writeText(pendingOut);
+    copyButton.textContent = 'Copied - paste it anywhere on your computer';
+  } catch (_e) {
+    copyButton.textContent = 'Your browser would not allow it';
+  }
+  setTimeout(() => { copyButton.classList.add('hidden'); copyButton.textContent = 'Copy to my computer'; }, 2500);
+  if (rfb) rfb.focus();
+});
+
+// The button for pasting in: the fallback where Ctrl+V's automatic version is refused.
 pasteButton.addEventListener('click', async () => {
   const label = pasteButton.textContent;
   try {
