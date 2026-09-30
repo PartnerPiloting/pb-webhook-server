@@ -1,6 +1,6 @@
 ---
 slug: who-do-i-reach-out-to
-title: Who do I even reach out to?
+title: Who should I reach out to?
 dek: "The cursor is blinking in the LinkedIn search box. Here's what to type - and the frame that makes the answer obvious."
 series: network-building-rethought
 order: 32
@@ -8,7 +8,7 @@ status: final
 audience: outsider-safe
 ---
 
-# Who do I even reach out to?
+# Who should I reach out to?
 
 You've decided to build your network on purpose. You've even got a rough picture of the twenty people you'd choose. Then you open LinkedIn, the cursor blinks in the search box, and the whole grand plan comes down to one embarrassingly practical question:
 
@@ -30,8 +30,16 @@ And when I reach out to them, the note - you get 300 characters - isn't about wh
 
 I can hear the objection: "reaching out to people who'll never buy - isn't that a waste of time?" It would be, if relationships went nowhere. But a properly built relationship knows exactly who to introduce you to - that's the whole point of choosing people embedded where your clients live. And for what it's worth, the practical problem with this approach isn't silence. A colleague of mine, three weeks into exactly this: 180 reach-outs, replies from more than one in five, meetings stacking up back to back. The problem you'll actually have is keeping up.
 
+<!-- ENDING:CLIENT -->
+So this week, write one sentence describing the person positioned to trust and recommend you - what they do, where they sit, what they'd need to see to take you seriously. Then look at the search your campaign is running. Does it find *that* person, or has it drifted towards your buyer? If it has, just hit reply and we'll adjust it together.
+
+The search finds them. But a search can only see job titles - it can't see how someone thinks. That's the next filter, and it's the one that changes everything.
+<!-- /ENDING:CLIENT -->
+
+<!-- ENDING:PROSPECT -->
 So this week, before you type anything: write one sentence describing the person positioned to trust and recommend you - what they do, where they sit, what they'd need to see to take you seriously. Then go to the search box and type *that* - not your buyer.
 
 The search finds them. What makes them take the call - and what you say in the twenty seconds after they connect - is where we go next.
+<!-- /ENDING:PROSPECT -->
 
-<!-- Approved final by Guy 2026-07-06 ("step 2 is great now"). First draft 2026-07-06. Built from arc notes: pointy-end/search-box framing, trust-and-refer thesis, fractional worked example (300-char note, "they instantly get it - it's gold", node-signal line), "let me find out about what you do", waste-of-time objection, give-first congruence (wingguy.md), Alasdair's stats anonymised as "a colleague of mine" (180/22%/back-to-back). Jump-ahead rule applied: builds-on welcome pointer up front, compressed why carried in-body. Grapevine/seed-2-3-fractionals expansion deliberately left for #70. Ending = application (write the sentence, type THAT) + tease into #35. Upstream-of-scoring point kept implicit (search thesis = human decision) - system/tooling never mentioned, outsider-safe. -->
+<!-- Approved final by Guy 2026-07-06 ("step 2 is great now"). First draft 2026-07-06. Built from arc notes: pointy-end/search-box framing, trust-and-refer thesis, fractional worked example (300-char note, "they instantly get it - it's gold", node-signal line), "let me find out about what you do", waste-of-time objection, give-first congruence (wingguy.md), Alasdair's stats anonymised as "a colleague of mine" (180/22%/back-to-back). Jump-ahead rule applied: builds-on welcome pointer up front, compressed why carried in-body. Grapevine/seed-2-3-fractionals expansion deliberately left for #70. Ending = application (write the sentence, type THAT) + tease into #35. Upstream-of-scoring point kept implicit (search thesis = human decision) - system/tooling never mentioned, outsider-safe. 2026-09-30 (Guy, client run #6): retitled "Who should I reach out to?"; ending SPLIT - client ending checks the campaign search they already have against the one-sentence description and hands to scoring (#7 in the client run); prospect ending = the original, unchanged (prospect pass to come separately). -->

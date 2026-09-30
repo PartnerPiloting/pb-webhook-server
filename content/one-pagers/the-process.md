@@ -24,7 +24,7 @@ The old way is to turn up wherever there's a room and work with whoever happens 
 ## 2. Find them on LinkedIn
 
 Reaching out starts on LinkedIn. Its search lets you narrow the whole professional world by the hard criteria it can see - role, industry, years of experience - down to the right kind of people. That's the first filter, and it's the easy half of the job.
-→ *Who do I even reach out to?*
+→ *Who should I reach out to?*
 
 ## 3. Score them on attitude
 
