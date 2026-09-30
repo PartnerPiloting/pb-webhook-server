@@ -19,7 +19,7 @@ Don't try to master it. A map doesn't teach you the ground - it just shows you w
 ## 1. Choose who's worth knowing
 
 The old way is to work with whoever happens to be in the room. This flips it: you decide, on purpose, who belongs in your network before you meet anyone - not the people who might buy from you, but the ones positioned to know your work and recommend you. And you choose them less for their job title than for how they *think*.
-→ *Choose, Don't Collect*
+→ *Choose Rather Than Collect*
 
 ## 2. Reach out, and thank them properly
 

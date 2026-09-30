@@ -138,7 +138,7 @@ function titleSlugMap() {
   return map;
 }
 
-// Turn the map's arrow lines ("→ <em>Choose, Don't Collect</em>") into real
+// Turn the map's arrow lines ("→ <em>Choose Rather Than Collect</em>") into real
 // links to the matching piece. Titles in the arrows are the frontmatter titles.
 function linkifyStepPointers(html) {
   const map = titleSlugMap();
