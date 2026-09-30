@@ -241,19 +241,26 @@ one is five promises in an email that all work first go.
   REPORT_URL/REPORT_SECRET are in the machine's /etc/linked-helper-machine.conf. If those fields
   are blank a day after the build, the reporting is not wired, not the machine dead. Never type
   them by hand.
-- **The client's desktop icon is part of that same session, not a follow-up (Guy 2026-09-26).**
-  Every client ends up needing to open their own machine, and "later, optional" meant it never
-  happened - Sam Noble was told "icon on your desktop" and had none. Before the call ends: paste the
-  machine's Tailscale share link (Machines -> `...` -> Share -> Copy share link) in the Zoom chat -
-  link FIRST, it walks them through account, accept and app download; they sign the app in with the
-  SAME account they accepted with - then they double-click the icon, which the
-  Wingguy updater has ALREADY put on their desktop (since 26 Sep 2026, once the machine is built).
-  Not there = an old or missing updater: paste their install line on their laptop and it appears
-  within a minute; last resort `node scripts/make-client-rdp.js <Client-ID>` via the Zoom chat
-  (never email - Outlook blocks .rdp). `Machine Icon Proven` fills itself in the first time their
-  laptop reaches the machine; set it by hand only for a client not on the updater. When prepping a
-  machine call, remind Guy of this (the box at the top of checklist step 14). The preflight's step 14 line flags any built machine with the date blank. Never
-  write "icon on your desktop" in an email unless that date is set.
+  (`Remote Access Method` is GUY's road into the machine - it stays "Tailscale RDP" even though the
+  client now gets in by web link.)
+- **The client gets into their machine by a WEB LINK (Guy 2026-09-29) - this replaces the desktop
+  icon and the client-side Tailscale of 26 Sep.** `https://<client-id>.mywingguy.com` -> their
+  email -> a six-digit code -> the machine's screen in a browser tab. Built with
+  `node scripts/machine-browser-link.js <Client-ID> --install`, which writes `Machine Link` on
+  their row. When prepping anything to do with a machine: (1) check the row has a `Machine Link`
+  and `Machine Status` ends `web link ok`; (2) check the address the client will TYPE is allowed -
+  it is their `Client Email Address` plus `Machine Link Emails`, and Guy's emails do not always go
+  to the address on the row (`--add=` fixes it); (3) point them at knowaguy.com.au/open-your-machine
+  and knowaguy.com.au/your-campaign. `Machine Icon Proven` is still the proof field = the day the
+  CLIENT opened it themselves; the preflight's step 14 line flags a built machine with it blank.
+  Never write "icon on your desktop", or tell a client to install Tailscale, in an email.
+- **The machine call is no longer for signing in - it is for the campaign (Guy 2026-09-30).** The
+  client signs in to Linked Helper and LinkedIn alone through their link, and the machine brings
+  across any waiting history and builds the ONE connect campaign by itself (`Machine Status` ends
+  `setup waiting` / `setup done` / `setup STOPPED - why`). That campaign is a template carrying
+  Guy's note and Guy's name, so the sitting with Guy - note, batch size, days, search - happens
+  BEFORE it starts. In Guy's words: the machine move is self-serve, the campaign is not. As at
+  30 Sep 2026 no client has yet been through the self-serve sign-in; say so rather than promise it.
 - **Suggested-prompts calibration (Guy 2026-08-23):** the wrap email's literal prompts-in-quotes
   are picked as TWO that exercise what this session just plumbed + ONE that points at the next
   step so it never lands cold. Use Wingguy Learning topics as the pointing device ("ask Wingguy:

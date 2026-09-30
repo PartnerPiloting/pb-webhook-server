@@ -16,11 +16,14 @@ closes that hole - and the client never has to open it.
 
 **The shape, in one paragraph.** The client buys the machine - the playbook topic YOUR LINKED
 HELPER MACHINE walks them through it in ten minutes; concierge clients do it in step 5 of the run
-sheet with Guy driving. Guy builds it alone with one command. It joins Tailscale by name, Linked
-Helper autostarts, the watchdog restarts it and presses the runner, the backup lands in Drive at
-02:30 and a daily watcher emails Guy if it stops, and the machine writes its own health onto the
-client's record. Then one short call where the client signs in to LinkedIn on it, and the standard
-campaigns go in by script.
+sheet with Guy driving. Guy builds it alone with one command, and a second command gives the client
+a web link to it. It joins Tailscale by name (Guy's own way in), Linked Helper autostarts, the
+watchdog restarts it and presses the runner, the backup lands in Drive at 02:30 and a daily watcher
+emails Guy if it stops, and the machine writes its own health onto the client's record. The client
+then opens their link and signs in to Linked Helper and LinkedIn by themselves - no call needed -
+and the machine imports any waiting history and builds the ONE connect campaign on its own. What
+still takes a sitting with Guy is making that campaign theirs before it starts: the note, the
+batch size, the days, the search (since 29-30 Sep 2026).
 
 ---
 
@@ -32,7 +35,8 @@ the client in their own account on their own card, so it is theirs and the exit 
 speed - the client's own if it is on the list), the newest Ubuntu LTS, hostname `linkedinhelper`,
 the wg_clients SSH key added at purchase. The client-facing purchase walk-through is the playbook
 topic YOUR LINKED HELPER MACHINE; the concierge run sheet buys it in step 5. No proxy - one client
-per VPS is its own Australian IP. Access for everyone is RDP over Tailscale (below).
+per VPS is its own Australian IP. Guy's access is RDP over Tailscale; the client's is a web link
+(both below).
 (History: the 29 Aug direction was an OVH Sydney VPS at about A$7, and Guy's own machine was built
 there on 1 Sep; Binary Lane replaced it from the first client build on 9 Sep 2026.)
 
@@ -224,8 +228,18 @@ ARCHIVED campaign does not count, so re-running after an archive creates it fres
 only archive). It refuses while an action is mid-flight ("Running campaign #N" in the title).
 
 **It is a post-login step, not part of the unattended build:** the campaign attaches to the
-LinkedIn account row that only exists after the client has logged in once. Run it, then walk the
-client through what was built on a screen share - that replaces the old "download a template" step.
+LinkedIn account row that only exists after the client has logged in once. Since 29 Sep 2026 nobody
+has to run it by hand on a new machine - `lh-first-run.py` runs it within minutes of the client's
+first sign-in (see "The machine finishes its own setup"). Run it yourself only on a machine that
+was already signed in before then, or to build a second campaign by name.
+
+**The built campaign is a TEMPLATE, and it goes through with Guy before it starts (Guy, 30 Sep
+2026).** Recipe 03 is Guy's own campaign: his connection note signed with his name, 25 invitations
+a batch with a 6-hour rest, Tuesday to Thursday 10:00-13:00 and Saturday 07:00-11:00 machine-local.
+It cannot send while its queue is empty, so nothing goes out before the sitting - but started
+un-reviewed it would send under Guy's name. The machine move is self-serve; the campaign is not.
+The client's page for it is knowaguy.com.au/your-campaign. Whether `create` leaves the campaign
+paused is NOT yet checked - `lh-campaigns.py list` prints paused/running.
 
 Source of truth for the recipes = `scripts/linked-helper/campaigns/` in the repo. Recipe 1 = visit
 and extract (from Guy's campaign 33 + the playbook), 2 = TOP SCORERS (Guy's campaign 32, his own
@@ -246,7 +260,11 @@ from a probe.** They are @electron/remote proxies; enumerating them raised "An o
 cloned" in the main process, a modal error box appeared, DevTools hung and the instance exited
 (Guy's box, 11 Sep 2026). The watchdog's normal path recovered it, LinkedIn stayed logged in.
 
-### Access: Tailscale, not an open port (settled 1 Sep 2026)
+### Access: Tailscale for Guy, a web link for the client
+
+**Two roads, independent of each other.** Guy reaches every machine by RDP over Tailscale (settled
+1 Sep 2026, below). The client reaches their own machine by a web link (decided 29 Sep 2026,
+further below). Clients no longer install Tailscale or get a Remote Desktop icon.
 
 **Every machine joins a Tailscale private network and is reached by NAME** - `lh-guy-wilson`,
 `lh-julian-davis` - never by address. Pass `TS_AUTHKEY` to the setup script and it joins itself.
@@ -262,18 +280,24 @@ user, thirty client machines, still cheap.
 Guy's laptop and the Sydney machine joined 1 Sep 2026; latency Brisbane->Sydney measured at 61 ms.
 His desktop shortcut (`Sydney Linked Helper.rdp`) points at `lh-guy-wilson`.
 
-**Every client gets the same kind of icon on their own laptop (since 26 Sep 2026)** - Tailscale
-installed under their OWN account, the one machine shared to them, and a `.rdp` built by
-`node scripts/make-client-rdp.js <Client-ID>` pointing at the machine's 100.x address (a shared
-machine's name does not resolve the same on their side). xrdp.ini carries the screen password, so
-the double-click lands straight on the Linked Helper screen. Done and proven at the machine session,
-then `Machine Icon Proven` is set on their row - steps in `docs/wingguy-onboarding-checklist.md`,
-"The client's desktop icon".
+**SUPERSEDED 29 Sep 2026 - the client's desktop icon (26-29 Sep 2026).** For three days the method
+was an icon on the client's own laptop: Tailscale installed under their OWN account, the one machine
+shared to them, and a `.rdp` built by `node scripts/make-client-rdp.js <Client-ID>` pointing at the
+machine's 100.x address. It failed on two calls running, so it was replaced by the web link below.
+Kept here only because one machine (Julian Davis) has no link yet as at 30 Sep 2026 - do not set it
+up for anyone new.
 
-#### The client's web link - replacing the icon (started 29 Sep 2026, NOT yet the fleet method)
+#### The client's web link - the client's way in since 29 Sep 2026
 
-**Status: built 29 Sep 2026, being proven on ONE machine (Roland Illyes) first.** Until a client
-has signed in through it on their own computer, the icon above stays the method for everyone else.
+**Status as at 30 Sep 2026: the method for every machine.** Five of the six machines have a link
+(Guy, Roland Illyes, Rick Wong, Sam Noble, Matthew Bulat); Julian Davis is the one still to move.
+It survived the 03:00 reboot and strangers are turned away at the sign-in page. **NOT yet proven: a
+client signing in through it on their own computer** - Guy has opened Roland's and his own; no
+client has. `Machine Icon Proven` on a client's row is that proof.
+
+**It is a second command after the build, not part of it.** `setup-ubuntu-vps.sh` installs the
+watchdog, the first-run job and the clipboard-and-file agent; the link is
+`machine-browser-link.js --install`, below. Folding it into the build is owed.
 
 **What it does:** the client clicks a link, types their email, gets a one-time code, and their
 machine's desktop opens in a browser tab. Nothing installed on their side, no Tailscale account,
@@ -310,9 +334,31 @@ Cloudflare - it only reads the **Machine Link** field the script writes.
 `Machine Link Emails` on their row. The code is EMAILED, so a work inbox that swallows it (Rick's
 Proofpoint) locks the client out - add their personal address with `--add`.
 
+⚠ **Before telling a client about their link, check the address they will type is on the list.**
+The client's page says "use the one my emails arrive at" - and that is not always the address on
+their row. Matthew Bulat's row holds his Workspace address while every email goes to his Gmail
+(found 30 Sep 2026). `--plan` prints the allowed list; `--add=` fixes it.
+
 **Where the client finds the link:** the My Wingguy page ("Open my Linked Helper machine"), a
 shortcut the extension updater puts on their desktop (and it removes the old Remote Desktop icon),
-or by asking their Claude (`wingguy_open_machine`).
+or by asking their Claude (`wingguy_open_machine`; `wingguy_learn` hands a client with a link their
+link too, for the machine topic and for "open my machine / VPS / server").
+
+**The client's pages:** knowaguy.com.au/open-your-machine (six steps with pictures, the client
+needs nobody) and knowaguy.com.au/your-campaign (the one campaign, and the sitting with Guy).
+
+**Getting a file onto the machine from a share link (built 30 Sep 2026).** For the few clients
+moving off a copy of Linked Helper on their own computer: they put their export in OneDrive, Google
+Drive or Dropbox, share it so anyone with the link can view, and tell their Claude "put this file on
+my machine" with the link (`wingguy_send_file_to_machine`; with no link it reports what happened to
+the last one). The server stores the LINK, never the file (`services/machineFileStore.js`, one row
+per client, collected within 60 minutes or it lapses). The machine's clipboard agent
+(`lh-clipboard.py`) fetches it into `~/Downloads`, keeps only a `.lhd2` or a CSV judged by its
+contents, and never runs anything; `lh-first-run.py` then finds it there. Any other host is refused.
+Proven: the whole chain on Roland's machine with a link that was refused as a web page. NOT proven:
+a real export fetched from a real share link. ⚠ A machine with an older `lh-clipboard.py` never
+collects - the link sits "waiting". This is a short-term tool: a new client starts on a clean
+machine with nothing to bring across.
 
 **Health:** a machine with the web link reports `web link ok` / `web link DOWN` at the end of
 Machine Status. Machines without one say nothing.
@@ -322,7 +368,12 @@ opening it proves the plumbing, not that the client can get in.
 
 ⚠ Copy and paste into the machine: the page has a "Paste from my computer" button (unproven as of
 29 Sep), and `wingguy_send_to_machine` works exactly as before.
-⚠ An existing machine needs the current `lh-watchdog.py` copied on to report web link health.
+⚠ An existing machine needs the current `lh-watchdog.py` copied on to report web link health -
+`--install` does not replace it. As at 30 Sep 2026 Guy's own machine still has the old one.
+⚠ An older build may have `password=ask` in xrdp.ini, and `lh-browser-access.sh` then refuses ("no
+screen password in xrdp.ini") - Sam Noble's did. Put the machine's own screen password in, after
+proving it matches `~lh/.vnc/passwd`. There is no checked-in "bring an existing machine up to date"
+script yet; it is owed.
 
 ⚠ Auth keys expire (90 days max) and should be **revoked after use** - they only add machines, and
 revoking does not disconnect machines already joined.

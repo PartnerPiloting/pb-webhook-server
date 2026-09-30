@@ -293,8 +293,9 @@ Who: Guy alone, same day
 Why: The computer bought in step 5 becomes {{first}}'s Linked Helper machine. It restarts itself, backs itself up, and tells the record how it's doing every five minutes.
 
 Do:
-- Guy: one command on the fresh machine, scripts/linked-helper/setup-ubuntu-vps.sh, installs Linked Helper, remote access, the watchdog, the nightly backup and the nightly reboot. Pass the Tailscale auth key, the rclone token and the machine report secret. Full detail in docs/linked-helper-machine-setup.md, Part 5.
-- Guy: it joins Tailscale by name, lh-{{first}}, and reports its own health onto the record.
+- Guy: one command on the fresh machine, scripts/linked-helper/setup-ubuntu-vps.sh, installs Linked Helper, remote access, the watchdog, the nightly backup and the nightly reboot. Pass the Tailscale auth key, the rclone token and the machine report secret. Full detail in docs/linked-helper-machine-setup.md.
+- Guy: it joins Tailscale by name, lh-{{first}}, and reports its own health onto the record. That is your way in.
+- Guy: give {{first}} their own way in - node scripts/machine-browser-link.js with their Client ID and --install. It makes a web link that opens the machine in a browser, and writes it onto the record. Check the email address {{first}} will type is on the allowed list.
 - Guy: set the two fields the machine can't fill in itself - Remote Access Method = Tailscale RDP, Remote Access Consent Date = today's date. Everything else writes itself.
 
 Worked when: The record shows Machine Status and Machine Last Seen filling in by themselves, and stopping Linked Helper by hand brings it back within a few minutes.
@@ -313,8 +314,8 @@ Do:
 - Guy: sit with {{first}} through the interview - their voice, their offer, what they'd never say. Together, not homework.
 - Guy: show {{first}} the LinkedIn draft from step 12 on someone they know. It's a starting point, not an oracle - {{first}}'s edit is what teaches it.
 - Guy: start the targeting conversation - who is {{first}} looking for, and how would they find them.
-- Guy: last ten minutes, open the machine's screen.
-- {{first}}: sign into LinkedIn on it - your password, and any code sent to your phone.
+- Guy: last ten minutes, have {{first}} open the machine from their own link - their email, then the six-digit code sent to it.
+- {{first}}: sign into LinkedIn on it - your password, and any code sent to your phone. The machine then builds the campaign by itself within a few minutes.
 - Guy: put in the Linked Helper licence. Pro, annual, one licence per LinkedIn account, with the promo code.
 - Guy: a recorder left over from step 14 gets sorted here.
 
@@ -331,7 +332,7 @@ Why: From here {{first}}'s side of Linked Helper is topping up the campaign when
 
 Do:
 - Guy: only once everything above is proven and {{first}}'s targeting has settled. Nothing is lost by waiting - the Linked Helper trial only starts when the first campaign launches.
-- Guy: build campaign 1 together from the targeting conversation - the standard campaigns go in by script - and prove a connection lands in the database, scored overnight.
+- Guy: go through the campaign together. The machine has already built it - one campaign, a template carrying your note and your name. Rewrite the note in {{first}}'s words, set how many go out and on which days, put the search in from the targeting conversation, and only then start it. Prove a connection lands in the database, scored overnight.
 - Guy: show {{first}} the one thing they do from here - open Linked Helper, top up the campaign, glance at how it's going.
 - Guy: set Email Series Start Date to today and Coaching Status to Graduated. The weekly drumbeat hands over to the email series.
 - Guy: point your people at {{first}}, as promised. That's where the referrals come from.

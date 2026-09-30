@@ -127,8 +127,9 @@ your database goes in last, once everything above is proven, your targeting has 
 settle, and your profile says connector. Nothing is lost by waiting - the trial only starts when the
 first campaign launches. The machine it runs on - a small always-on computer in an Australian
 data centre, yours, about $20 a month - is bought earlier, in ten minutes with your own Claude
-walking you through it, and built by me; this is the session where you sign in to LinkedIn on it,
-and leave with an icon on your own desktop that opens it.
+walking you through it, and built by me. You get a link that opens it in your web browser, and you
+sign in to Linked Helper and LinkedIn on it in your own time; this is the session where we go
+through your campaign together before it starts.
 From here the journey stops being plumbing and starts being strategy.
 
 ## STEP AUTO - what the join page does by itself (added 2026-09-06)
@@ -943,23 +944,24 @@ is in and their history is attached - they'll get scored once we have their prof
 
 ## STEP 14 EXPANDED - Linked Helper, last on purpose, and where it should run [live]
 
-> **⚠ GUY - BEFORE EVERY MACHINE CALL: THE DESKTOP ICON (added 26 Sep 2026)**
+> **⚠ GUY - BEFORE EVERY MACHINE CALL: THE WEB LINK (29 Sep 2026 - replaces the desktop icon)**
 >
-> "The icon" = a Remote Desktop file on the client's desktop that opens their Linked Helper
-> machine. **It puts itself there.** Once their machine is built, the Wingguy updater on their
-> laptop (the one that keeps the extension current) drops "Linked Helper machine" on their desktop
-> within the hour. So it should already be there when the call starts - the call only switches it on.
+> The client gets into their Linked Helper machine by a **link in their web browser**:
+> `https://<client-id>.mywingguy.com` -> their email -> a six-digit code -> the machine's screen.
+> Nothing installed, no Tailscale on their side. Your own way in (Tailscale + Remote Desktop) is
+> unchanged.
 >
-> - **Not there?** Their updater is an older copy (anyone installed before 26 Sep - Sam included)
->   or has never been installed. Take control of their laptop and paste their install line from
->   the run sheet (`node scripts/extension-install-command.js <Client-ID>`). It upgrades the
->   updater and the icon appears within a minute. Last resort: `node scripts/make-client-rdp.js
->   <Client-ID>` and drag the file into the Zoom chat.
-> - **Switching it on** = the Tailscale share link (steps below). Until they accept it, the icon
->   is harmless - it just won't connect.
-> - **The proof records itself.** The first time the updater on their laptop can reach the
->   machine, `Machine Icon Proven` fills in on their row. Still have them double-click it once
->   while you watch - that is the real test.
+> - **Is the link built?** Their row has a `Machine Link`. If not:
+>   `node scripts/machine-browser-link.js <Client-ID> --install` (it is a second command after the
+>   build, not part of it).
+> - **Will their code arrive?** The code goes to the address on their row. If they will type a
+>   different one, or their work inbox blocks it, add it first: `--add=their@address`.
+> - **They do not need you to sign in.** Send them knowaguy.com.au/open-your-machine - they sign
+>   in to Linked Helper and LinkedIn alone, and the machine builds the campaign by itself.
+>   `Machine Status` on their row ends `setup waiting` / `setup done` / `setup STOPPED - why`.
+> - **What the call IS for:** going through the campaign together before it starts (below).
+> - **The proof:** `Machine Icon Proven` = the day the CLIENT opened the link themselves. Same
+>   field as before. As at 30 Sep 2026 no client has done it yet - watch the first ones.
 
 This is the closing move of onboarding for new clients (decided 2026-08-22), and it deliberately
 comes after everything else. The early sessions build trust through the Wingguy plumbing; by the
@@ -978,18 +980,18 @@ you've already been giving it - and remember, it's changeable, so we aim roughly
       LinkedIn profile).
 - [ ] Confirm their profile says connector (headline + About, connector first) - the first thing
       every new connection does is look them up.
-- [ ] Then the hookup: Linked Helper install, the search URL into Campaign 1, webhook into their
-      leads base. The trial clock only starts at first campaign launch, so all the prep above is
-      free.
+- [ ] Then the campaign, together. It is already built on their machine - ONE connect campaign,
+      a template based on yours, with your note and your name on it. Go through it with them:
+      the note rewritten in their words, how many go out and the rest between batches, which days
+      and hours, and their search URL in. Only then start it. The trial clock only starts at first
+      campaign launch, so all the prep above is free. Their page: knowaguy.com.au/your-campaign.
 - [ ] **Set "Email Series Start Date" on their Clients row** (Master Clients base) - convention is
       this session's date. The client email drip starts from that date and takes over the weekly
       drumbeat when the onboarding sessions stop, covering the collection quiet zone. Blank = the
       series never starts for them. (Until the drip send loop is built, the date is recorded but
       nothing sends - set it anyway so launch day is on the record.)
-- [ ] **Their desktop icon, proven on the call** - the Tailscale share link (which installs
-      Tailscale on their laptop as it goes), the .rdp from `node scripts/make-client-rdp.js <Client-ID>`, one double-click that
-      lands on their Linked Helper screen. Then set `Machine Icon Proven`. Steps: "The client's
-      desktop icon" below.
+- [ ] **Their web link, proven by them** - they open it on their own computer and see their
+      Linked Helper screen. Then set `Machine Icon Proven`. Steps: "The client's web link" below.
 
 **Check it worked:** first profiles land in their leads base and get scored overnight.
 
@@ -1035,25 +1037,56 @@ Machine setup detail, if it goes ahead: `docs/linked-helper-machine-setup.md` on
 not depend on anyone clicking anything - the Launcher's "open and run campaigns" is a command we can
 issue.
 
-### The smooth path - decided 10 Sep 2026 after Rick Wong's build ran 2.5 hours
+### The smooth path - decided 10 Sep 2026, made self-serve 29-30 Sep 2026
 
-Only ~15 minutes of a VPS build truly needs the client present (Linked Helper account, LinkedIn
-sign-in, the texted code). Everything else is you alone, or friction. The shape from here:
+Nothing in a machine build needs the client on a call any more. The one sitting that remains is
+the campaign. The shape from here:
 
 | Who | What | How long |
 |---|---|---|
 | Client, by email | Buys the Binary Lane machine, guided by their own Claude via the playbook topic "Your Linked Helper machine". Sends the IP (+ password if they reset one) by text or Zoom chat, never email. | ~10 min, no call |
-| You, solo | `setup-ubuntu-vps.sh`, Tailscale via the `tailscale up` login link (no auth key), watchdog, backup. Screen size: read the client's monitor size from `/var/log/xrdp.log` the first time they connect, if they ever do, and set the dummy modeline to match. | ~20 min, no client |
-| Both, one call | You open Remote Desktop, share your screen on Zoom, hand the client remote control. They sign in to Linked Helper and LinkedIn and read the texted code. Password fields are dots. Tick "Restart after updates". | ~15 min |
-| Both, same call | **Their desktop icon - required, not optional (since 26 Sep 2026).** See "The client's desktop icon" below. | ~10 min |
+| You, solo | `setup-ubuntu-vps.sh`, Tailscale via the `tailscale up` login link (no auth key), watchdog, backup. Then `node scripts/machine-browser-link.js <Client-ID> --install` for their web link. | ~25 min, no client |
+| Client, alone | Opens their link, signs in to Linked Helper and to LinkedIn (LinkedIn texts them a code). Page: knowaguy.com.au/open-your-machine. | ~10 min, no call |
+| The machine, alone | Within a few minutes of the sign-in it brings across any waiting history and builds the ONE connect campaign. Their row's `Machine Status` says `setup done`. | ~10 min, nobody |
+| Both, one sitting | **The campaign, together, before it starts** - the note, the batch size, the days, the search. It is a template carrying your note and your name until you do. | ~30 min |
 
 Buying the machine stays with the client - it is what makes it theirs. Don't take that on too.
 
-### The client's desktop icon - part of the machine session (decided 26 Sep 2026)
+⚠ As at 30 Sep 2026 the self-serve sign-in and the machine finishing itself are built and installed
+but NOT yet proven by a real client run - Roland Illyes is first. Until one has gone through, be
+reachable when a client says they are about to sign in.
+
+### The client's web link (decided 29 Sep 2026)
 
 Every client ends up needing to open their own machine - to top up a campaign, or just to see it
-running. Until 26 Sep this was a "later, optional" follow-up, so it never happened: Sam Noble was
-emailed "icon on your desktop" and there wasn't one. Now it is done on the same call, and proven.
+running. They do it through a link in their browser. How it is made, and what can go wrong, is in
+`docs/linked-helper-machine-setup.md`, "The client's web link".
+
+- [ ] **Build it:** `node scripts/machine-browser-link.js <Client-ID> --install` from the laptop,
+      Tailscale on. It writes `Machine Link` on their row and prints how many of Cloudflare's 50
+      free people are used.
+- [ ] **Check the address they will type is allowed.** `--plan` prints the list. It is their
+      `Client Email Address` plus anything in `Machine Link Emails`. If your emails reach them at a
+      different address, or their work inbox is strict, `--add=` it BEFORE you tell them.
+- [ ] **Check their row** reads `web link ok` at the end of `Machine Status`. No such words on a
+      machine with a link = it has an old watchdog; copy the current `lh-watchdog.py` on.
+- [ ] **Tell them** - the link, knowaguy.com.au/open-your-machine, and knowaguy.com.au/your-campaign.
+      They can also type "open my Linked Helper machine" in their Claude, or use the button on
+      their My Wingguy page.
+- [ ] **Prove it:** they open it on their own computer. Then `Machine Icon Proven` = that date.
+      You opening it proves the plumbing, not that they can get in.
+
+**Mac and iPad:** it is a web page, so it works on both. iPad shows the screen but our page has no
+on-screen keyboard yet.
+
+**Only one person on the screen at a time.** If you are both connected you see the same screen and
+fight over the mouse - say so, so nobody is surprised.
+
+### SUPERSEDED 29 Sep 2026 - the client's desktop icon (26-29 Sep 2026)
+
+Replaced by the web link above after it failed on two calls running (a Tailscale signup that
+landed on a paid trial; a laptop added as the wrong kind of device). Kept only because Julian
+Davis has no link yet as at 30 Sep 2026. Do not set this up for anyone new.
 
 - [ ] **Ask which account they'll use** - one they own personally and will keep: Gmail, or a
       personal Microsoft account. Not a work address, and never yours. Their own account is what
@@ -1078,13 +1111,9 @@ emailed "icon on your desktop" and there wasn't one. Now it is done on the same 
       run now). Set it by hand only if they are not on the updater. The preflight flags any built
       machine with it blank.
 
-**Mac:** the same file opens in Microsoft's free Windows App (Mac App Store). UNPROVEN - walk the
-first Mac client through it live, then write down what actually happened here.
+**Mac:** the same file opens in Microsoft's free Windows App (Mac App Store). Never proven.
 
-**Only one person on the screen at a time.** If you are both connected you see the same screen and
-fight over the mouse - say so, so nobody is surprised.
-
-**The pre-session email (template, Guy's voice):**
+### The pre-session email (template, Guy's voice) - CURRENT
 
 > **Subject:** Your Linked Helper machine - about ten minutes of your time
 >
@@ -1120,9 +1149,10 @@ fight over the mouse - say so, so nobody is surprised.
 > systems mangle these things, and I'd rather not find that out on our call.
 >
 > Once I have what you send, I build the machine on my own - desktop, Linked Helper, the
-> self-restart, the nightly backup, and the monitoring that tells me if it ever stops. Then one
-> short call, about fifteen minutes, where you sign in to LinkedIn on it. That's the only bit that
-> needs you, because LinkedIn texts you a code the first time it sees a new machine.
+> self-restart, the nightly backup, and the monitoring that tells me if it ever stops. Then I send
+> you a link that opens it in your web browser, and you sign in to LinkedIn on it in your own
+> time. That's the only bit that needs you, because LinkedIn texts you a code the first time it
+> sees a new machine.
 >
 > Cheers
 > Guy
