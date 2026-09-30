@@ -549,15 +549,16 @@ and why each step is there.
 
 **First, two things to get straight about the app.** Linked Helper has a **launcher** (dark blue
 icon) and an **instance** (aqua icon). The launcher is where your licence lives; the instance is your
-actual LinkedIn account working away. You always go through the launcher to start your instance -
-worth pinning both to your taskbar, because if the machine restarts you'll need the launcher again to
-bring everything back up. And you'll enter **two sets of credentials**: one to register with Linked
-Helper itself, and once, your LinkedIn login. Expect LinkedIn to ask you to confirm on your phone the
-first time. In practice you never have to enter it again.
+actual LinkedIn account working away. On your Linked Helper machine both are started for you, and
+they come back by themselves if the machine restarts. And you'll enter **two sets of credentials**:
+one to register with Linked Helper itself, and once, your LinkedIn login. Expect LinkedIn to ask you
+to confirm on your phone the first time. In practice you never have to enter it again.
 
-**Then the campaign - it's already built.** Your Linked Helper machine comes with it made, so
-there's nothing to build from scratch. What we do together is make it yours, and make sure you know
-what each step does:
+**Then the campaign - it's already built.** Your Linked Helper machine makes it for you once you've
+signed in, so there's nothing to build from scratch. It's a template, based on the one I run
+myself - my note, my days, my numbers. So before it sends anything, you and I go through it
+together: the note, how many go out at a time, which days, and your search. It can't send anything
+until it has people in it, so nothing happens before we've done that. Here's what each step does:
 
 1. **Invite.** It sends your connection request with a short note. The note starts out as mine, and
    we rewrite it together in your words. Keep it an offer, not a pitch - something like "I'm
@@ -565,11 +566,14 @@ what each step does:
    think you'd be easy to recommend."
 2. **Check who accepted.** Anyone who hasn't accepted simply drops out.
 3. **Visit and extract.** For the ones who accepted, it visits their profile properly - so they see
-   you've viewed them - and pulls off their headline, About section and posts.
+   you've viewed them - and pulls off their headline, About section and posts. And because they're
+   now a first-level connection, it picks up their email address as well.
 4. **Send to your database.** The pipe into your own database - the address has your name in it.
 
-The pacing is already set to stay well inside LinkedIn's limits. Leave it as it is unless I say
-otherwise.
+The pacing is already set to stay well inside LinkedIn's limits. Once we've set it for you, leave
+it as it is unless I say otherwise.
+
+The whole thing on one page, with a picture: https://knowaguy.com.au/your-campaign
 
 **One distinction that trips everyone up: collecting is not running.** When you paste your search URL
 in, Linked Helper starts *collecting* - building the queue of who's in that search. That's shallow
@@ -686,48 +690,50 @@ accounts get held for a quick look now and then and it's easy for me to sort out
 accounts is not.
 
 **The rest is my job.** I build the whole thing on my own - the desktop, Linked Helper, the
-self-restart, the nightly backup, the monitoring. You don't install anything for that. Then one
-short call, about half an hour, where you sign in to LinkedIn on it - LinkedIn texts you a code the
-first time it sees a new machine - and you leave with an icon on your own desktop that opens it.
+self-restart, the nightly backup, the monitoring. You don't install anything for that. Then I send
+you a link that opens your machine in your web browser. You sign in to Linked Helper and to
+LinkedIn on it in your own time - LinkedIn texts you a code the first time it sees a new machine -
+and the machine finishes setting itself up. It's about ten minutes, and there are pictures of every
+step: https://knowaguy.com.au/open-your-machine
 
 Two small things in the meantime: don't sign in to LinkedIn anywhere new, and don't buy a Linked
 Helper licence yet - that decision comes later and there's a separate topic on it.
 
 **The machine itself is set and forget.** It runs on its own, restarts itself, backs itself up, and I
-keep an eye on it. Your part is the campaigns - setting up new ones, and topping them up when they're
-running low so it never runs dry. That's what the icon on your desktop is for - see OPEN YOUR LINKED HELPER MACHINE. I'll help you
-with the campaigns for as long as you want it.
+keep an eye on it. Your part is the campaign - we go through it together before it starts, and
+after that you top it up when it's running low so it never runs dry. That's what your link is
+for - see OPEN YOUR LINKED HELPER MACHINE. I'll help you with the campaign for as long as you want
+it.
 
 ---
 
-## OPEN YOUR LINKED HELPER MACHINE - THE ICON ON YOUR DESKTOP
+## OPEN YOUR LINKED HELPER MACHINE - A LINK IN YOUR BROWSER
 
-Your Linked Helper machine lives in a data centre, but you can look at it any time. There's an icon
-on your desktop called **Linked Helper machine** - double-click it and a window opens showing the
-machine's screen, with Linked Helper on it. That's where you set up new campaigns and top up the
-ones that are running low.
+Your Linked Helper machine lives in a data centre, but you can look at it any time. You open it
+from a link, in your web browser, on any computer. There's nothing to install and nothing to keep
+running on your laptop. That's where you top up your campaign when it's running low, or just see
+that it's working.
 
-Picture: https://knowaguy.com.au/your-machine#icon
+Pictures of every step: https://knowaguy.com.au/open-your-machine
 
-We set this up together on the call where you signed in to LinkedIn on the machine. If you don't
-have the icon, we haven't done that part yet - tell me and we'll do it next time we talk. It takes
-about ten minutes.
+**Getting your link.** When your machine is built I email you the link. From then on, typing
+**open my Linked Helper machine** in a new chat hands it to you, and it's on your My Wingguy page
+too. Bookmark it once it's open. If you haven't had a link from me, your machine isn't ready yet -
+tell me and I'll let you know where it's up to.
 
-**What we set up on that call, so you know what the pieces are:**
+**The first time:**
 
-- **Tailscale** - a small app on your laptop that makes a private, locked connection to your
-  machine. You signed in to it with your own Google account, so it's yours. It lives by your clock,
-  usually tucked behind the little ^ arrow. It needs to be running and signed in for the desktop
-  icon to work.
-- **I shared your machine with you** - just yours. Nobody else can see it, and you can't see
-  anyone else's.
-- **The icon itself** - a Remote Desktop file that points at your machine. No password to
-  remember - it opens straight onto the Linked Helper screen.
+- The page asks for your email address. Use the one my emails arrive at, then click **Send login
+  code**.
+- A six-digit code lands in your inbox, usually within a minute. Type it in.
+- Your machine's screen opens in the browser tab. Give it a few seconds.
+
+It remembers you on that browser for about a month. After that it asks for a fresh code. That's
+normal - nothing is broken.
 
 **Using it:**
 
-- Double-click the icon. The window might take a few seconds to show the screen.
-- When you've finished, just close the window. Closing it doesn't stop anything - Linked Helper
+- When you've finished, just close the tab. Closing it doesn't stop anything - Linked Helper
   keeps running on the machine, the same as before you looked.
 - Don't close Linked Helper itself, and don't sign out of LinkedIn inside it. If you do by
   accident, don't worry - the machine restarts Linked Helper by itself within about five minutes.
@@ -735,18 +741,20 @@ about ten minutes.
 - If I happen to be looking at your machine at the same time, we see the same screen and share
   the mouse. Nothing breaks - one of us just waits.
 
-**If the icon doesn't open your machine:**
+**If it doesn't open:**
 
-- **Check Tailscale first.** Windows usually hides it: click the little **^** arrow next to your
-  clock, and it's the square of dots. Click that. If it says you're signed out or disconnected, sign
-  in or switch it on, then try the desktop icon again. This is nearly always it.
-  Picture: https://knowaguy.com.au/your-machine#tailscale
-- **Icon gone from your desktop?** Ask me and I'll send you another one. There's nothing on it you
-  can lose.
+- **No code in your inbox?** Check junk first. Some work email systems block it - tell me and I'll
+  add your personal address as well.
+- **It says your email isn't allowed?** You've typed a different address from the one I have for
+  you. Try your other one, or tell me which you'd rather use.
+- **The page says Reconnecting?** In the small hours the machine restarts itself. Leave the tab
+  open and it comes back within a few minutes.
 - Still stuck? Text me on 0414 975 509 with a photo of what you're seeing.
 
-**On a Mac:** the same icon opens in Microsoft's free **Windows App** from the App Store. Install
-that first and it takes over from there.
+**If you were given an icon on your desktop instead.** That was the earlier way in, and I'm moving
+everyone across to a link, a machine at a time. Until yours is moved the icon still works, as long
+as Tailscale is running on your laptop - it's the small square of dots behind the **^** arrow next
+to your clock. Pictures: https://knowaguy.com.au/your-machine#icon
 
 ---
 

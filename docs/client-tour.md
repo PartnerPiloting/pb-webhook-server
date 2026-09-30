@@ -103,23 +103,25 @@ called *what do you do* - the detail's all in there.
 Step one of the plumbing is Linked Helper, and at this stage there are only a few things you need
 to know about it.
 
-It's the app that does your LinkedIn legwork - visiting profiles, sending your connection requests,
-and feeding everyone it finds into your own database. We chose it because its whole design is
+It's the app that does your LinkedIn legwork - sending your connection requests, visiting the
+people who accept, and feeding them into your own database. We chose it because its whole design is
 safety: it works through a real browser, the way a person would, deliberately slowly. The people
 behind it are specialists in doing this without your account getting flagged.
 
-What it needs from you is a home. It's an application on a computer, not a website - and it wants a
-machine that stays on, because a lot of its work happens overnight, deliberately, so it's never on
-your LinkedIn at the same time you are. An old laptop left plugged in is perfect. It can be a
-machine you remote into, or one in the corner of the office.
+What it needs is a home. It's an application on a computer, not a website, so it has to be
+running for anything to happen. On a laptop it stops every time the lid closes or Windows restarts,
+and nobody notices for weeks. So it lives on a small always-on computer in an Australian data
+centre - your own, in your name, for about $21.50 a month.
 
-And one habit from day one: **keep an eye that it's running.** It's an application - if it stops,
-your whole pipeline quietly stops being fed. The classic culprit is a Windows update restarting the
-machine overnight. Get into the rhythm of checking it every day or two.
+You buy it, which takes about ten minutes with me walking you through each screen. Guy builds it.
+Then you open it from a link in your web browser and sign in. From there it restarts itself and
+backs itself up, and Guy keeps an eye on it - so if it ever stalls, it's something he fixes rather
+than something you discover.
 
-**Your move this week:** decide which machine it'll live on, download Linked Helper, and have your
-logins handy. Don't start a campaign yet - the 14-day free trial only starts its clock when you
-launch your first campaign, so there's no hurry at all.
+**Your move this week:** buy the machine. Ask me to *help me set up my Linked Helper machine* and
+we'll go one screen at a time. Don't buy a Linked Helper licence yet, and don't start a campaign -
+the 14-day free trial only starts its clock when you launch your first campaign, so there's no
+hurry at all.
 
 When you want the full story, ask me about *the plumbing* and *linked helper - the trial and which
 version*.
