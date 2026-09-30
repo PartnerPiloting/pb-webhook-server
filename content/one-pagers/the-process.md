@@ -1,7 +1,7 @@
 ---
 slug: the-process
 title: The whole process on one page
-dek: "Everything, start to finish, at a glance. Don't try to master it - just see the shape of the journey you're on."
+dek: "Everything, start to finish, at a glance."
 series: network-building-rethought
 order: 12
 status: final
@@ -56,14 +56,14 @@ This is where most good conversations quietly die - "let's stay in touch," with 
 Do this with enough of the right people and something shifts. You're not networking alone any more - you've got a web of people who all think this way, recommending each other, growing each other's networks. That's the whole game: not you chasing work, but work arriving on a recommendation.
 → *Building nodes*
 
-## 9. Practice the "I know a guy" principle
+## 9. Practise the "I know a guy" principle
 
 This is the one you can start today, wherever you are in the steps above. When someone mentions a problem, a gap, a person they're trying to reach, be the one who says "I know a guy" - and make the introduction freely, expecting nothing back. And the more you build your network, the more guys you know - so the longer you do this, the more often you're the one with the answer. Do that often enough and you become the person everyone wants to know: the natural centre of a network, not a name on the edge of it.
 → *Become the person who knows a guy*
 
 ## 10. Increase your intelligence with Wingguy
 
-You've watched the intelligence at work all through these steps - the thank-you it designs, the call it arranges around your calendar. That's Wingguy, and this is where you switch it on for yourself: the extension and the MCP. Wingguy knows your calendar, finds your free slots and books the call; it reads each LinkedIn message, works out what it's about and what should happen next, and drafts the response. And you can just ask it: "prep me for today's calls" and it briefs you from every past meeting; "draft the follow-up" and it writes it - because it knows your calendar, your transcripts and your email, not only your LinkedIn. It's less like using a tool than increasing your own intelligence - the reason a day that used to cost hours now costs minutes. Take it on, and every step above starts running itself.
+You've watched the intelligence at work all through these steps - the thank-you it designs, the call it arranges around your calendar. That's Wingguy, and this is where you learn to lean on it. Wingguy knows your calendar, finds your free slots and books the call; it reads each LinkedIn message, works out what it's about and what should happen next, and drafts the response. And you can just ask it: "prep me for today's calls" and it briefs you from every past meeting; "draft the follow-up" and it writes it - because it knows your calendar, your transcripts and your email, not only your LinkedIn. It's less like using a tool than increasing your own intelligence - the reason a day that used to cost hours now costs minutes. Take it on, and every step above starts running itself.
 → *Increase your intelligence with Wingguy*
 
 ---

@@ -9,7 +9,8 @@
 //
 // Inbox identity (settled 2026-07-19, PROSPECT-SERIES-PLAN.md):
 //   From:    Guy · I Know a Guy <guy@knowaguy.com.au>
-//   Subject: #N · <piece title>          (no brand prefix - the From carries it)
+//   Subject: I Know A Guy - <title>     (brand prefix - Guy, 2026-09-28; was
+//            "#N · <title>" with no prefix until then)
 //   Preheader: Network building, rethought · part N of 19
 //
 // The From address is at the ROOT domain while the message is signed by the

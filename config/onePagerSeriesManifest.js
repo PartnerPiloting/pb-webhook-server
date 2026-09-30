@@ -31,8 +31,12 @@ const prospect = [
   'imagine-if',                  // finale (prospect-only)
 ];
 
+// Clients also get a standalone email #1 first - the orientation, "What you've
+// actually joined" (onePagerEmail.js, 2026-09-28) - so this list is emails
+// #2..#23 (numbers below are list positions), and the map goes out in short
+// form: one line per step, each linked to its piece.
 const client = [
-  'the-process',                 // 1  the map - orientation
+  'the-process',                 // 1  the map (short form in email)
   'revisit-your-big-picture',    // 2  why you're here
   'feast-or-famine',             // 3  core paradigm
   'choose-the-room',             // 4  step 1

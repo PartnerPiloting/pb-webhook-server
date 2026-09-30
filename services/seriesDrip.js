@@ -78,7 +78,7 @@ async function runDrip({ dryRun = false, limit = DEFAULT_BATCH, cadenceDays = CA
       continue;
     }
 
-    const subject = `#${email.position} · ${email.subject}`;
+    const subject = `I Know A Guy - ${email.subject}`; // brand prefix: Guy, 2026-09-28
     const preheader = `Network building, rethought · part ${email.position} of ${email.total}`;
 
     if (dryRun) {
