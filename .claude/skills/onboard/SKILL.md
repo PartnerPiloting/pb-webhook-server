@@ -254,6 +254,11 @@ one is five promises in an email that all work first go.
   and knowaguy.com.au/your-campaign. `Machine Icon Proven` is still the proof field = the day the
   CLIENT opened it themselves; the preflight's step 14 line flags a built machine with it blank.
   Never write "icon on your desktop", or tell a client to install Tailscale, in an email.
+- **A machine build never pauses for Guy (Guy 2026-10-01).** Steve Nelson's build finished in 20
+  minutes, then sat for hours waiting on a Tailscale login-link click and an email address. Mint
+  the join key yourself - `TS_AUTHKEY=$(node scripts/tailscale-auth-key.js <Client-ID>)` - and
+  never use the `tailscale up` login link. Build the web link with the addresses already on the
+  row; a missing one is `--add=`ed later. Finish everything, THEN tell Guy what is still owed.
 - **The machine call is no longer for signing in - it is for the campaign (Guy 2026-09-30).** The
   client signs in to Linked Helper and LinkedIn alone through their link, and the machine brings
   across any waiting history and builds the ONE connect campaign by itself (`Machine Status` ends

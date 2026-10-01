@@ -271,6 +271,20 @@ further below). Clients no longer install Tailscale or get a Remote Desktop icon
 RDP is then firewalled to the tailnet interface only, so **port 3389 is never exposed to the
 internet**.
 
+**The key is minted per build, by script (1 Oct 2026):**
+`TS_AUTHKEY=$(node scripts/tailscale-auth-key.js <Client-ID>)` from the laptop. It prints a
+single-use, pre-approved key that lasts an hour and joins the machine under `tag:lh-machine`.
+Behind it is a Tailscale OAuth client in `.env.local` (`TAILSCALE_OAUTH_CLIENT_ID` /
+`TAILSCALE_OAUTH_CLIENT_SECRET`), which does not expire. `--check` proves the credential without
+minting. Do NOT fall back to the `tailscale up` login link: it needs Guy to click it, and Steve
+Nelson's build sat finished-but-unreachable for hours on 1 Oct 2026 waiting for exactly that.
+
+**A build never pauses for a person (Guy, 1 Oct 2026).** Run it end to end - join, restart, check
+Linked Helper opens, web link, check the row is reporting - with what is on the client's record.
+Anything still owed (an extra sign-in address, a field only Guy can set) goes in a list at the END
+and is added afterwards; `machine-browser-link.js --add=` changes who is allowed without touching
+the machine. Missing information is a follow-up, not a stop.
+
 Why this is not optional: IP-allowlisting locked Guy out **twice in one afternoon** as his home
 address changed. On a client's home broadband it would be worse, and an internet-facing RDP port is
 among the most brute-forced things there is. Tailscale's free tier covers 100 devices; when this
@@ -375,8 +389,10 @@ screen password in xrdp.ini") - Sam Noble's did. Put the machine's own screen pa
 proving it matches `~lh/.vnc/passwd`. There is no checked-in "bring an existing machine up to date"
 script yet; it is owed.
 
-⚠ Auth keys expire (90 days max) and should be **revoked after use** - they only add machines, and
-revoking does not disconnect machines already joined.
+⚠ Auth keys expire (90 days max), which is why none is kept on file - `scripts/tailscale-auth-key.js`
+mints a one-hour, single-use key per build (above). A key made by hand in the admin page should be
+**revoked after use** - keys only add machines, and revoking does not disconnect machines already
+joined.
 
 ★ **Splashtop is being dropped** - no Linux build via team deployment (checked live: Windows and Mac
 only), and Tailscale + RDP does the same job for free on both platforms.

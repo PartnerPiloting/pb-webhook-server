@@ -1045,7 +1045,7 @@ the campaign. The shape from here:
 | Who | What | How long |
 |---|---|---|
 | Client, by email | Buys the Binary Lane machine, guided by their own Claude via the playbook topic "Your Linked Helper machine". Sends the IP (+ password if they reset one) by text or Zoom chat, never email. | ~10 min, no call |
-| You, solo | `setup-ubuntu-vps.sh`, Tailscale via the `tailscale up` login link (no auth key), watchdog, backup. Then `node scripts/machine-browser-link.js <Client-ID> --install` for their web link. | ~25 min, no client |
+| You, solo | `setup-ubuntu-vps.sh` with `TS_AUTHKEY=$(node scripts/tailscale-auth-key.js <Client-ID>)` so it joins Tailscale by itself (no login link to click), watchdog, backup. Then `node scripts/machine-browser-link.js <Client-ID> --install` for their web link. Runs end to end without stopping - anything still owed is listed at the end. | ~25 min, no client |
 | Client, alone | Opens their link, signs in to Linked Helper and to LinkedIn (LinkedIn texts them a code). Page: knowaguy.com.au/open-your-machine. | ~10 min, no call |
 | The machine, alone | Within a few minutes of the sign-in it brings across any waiting history and builds the ONE connect campaign. Their row's `Machine Status` says `setup done`. | ~10 min, nobody |
 | Both, one sitting | **The campaign, together, before it starts** - the note, the batch size, the days, the search. It is a template carrying your note and your name until you do. | ~30 min |
@@ -1068,6 +1068,8 @@ running. They do it through a link in their browser. How it is made, and what ca
 - [ ] **Check the address they will type is allowed.** `--plan` prints the list. It is their
       `Client Email Address` plus anything in `Machine Link Emails`. If your emails reach them at a
       different address, or their work inbox is strict, `--add=` it BEFORE you tell them.
+      Never hold the build for an address you don't have yet - build the link with what is on the
+      row, and `--add=` the other one when it arrives (it does not touch the machine).
 - [ ] **Check their row** reads `web link ok` at the end of `Machine Status`. No such words on a
       machine with a link = it has an old watchdog; copy the current `lh-watchdog.py` on.
 - [ ] **Tell them** - the link, knowaguy.com.au/open-your-machine, and knowaguy.com.au/your-campaign.

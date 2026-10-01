@@ -293,7 +293,7 @@ Who: Guy alone, same day
 Why: The computer bought in step 5 becomes {{first}}'s Linked Helper machine. It restarts itself, backs itself up, and tells the record how it's doing every five minutes.
 
 Do:
-- Guy: one command on the fresh machine, scripts/linked-helper/setup-ubuntu-vps.sh, installs Linked Helper, remote access, the watchdog, the nightly backup and the nightly reboot. Pass the Tailscale auth key, the rclone token and the machine report secret. Full detail in docs/linked-helper-machine-setup.md.
+- Guy: one command on the fresh machine, scripts/linked-helper/setup-ubuntu-vps.sh, installs Linked Helper, remote access, the watchdog, the nightly backup and the nightly reboot. Pass a Tailscale auth key (node scripts/tailscale-auth-key.js with their Client ID mints one), the rclone token and the machine report secret. Full detail in docs/linked-helper-machine-setup.md.
 - Guy: it joins Tailscale by name, lh-{{first}}, and reports its own health onto the record. That is your way in.
 - Guy: give {{first}} their own way in - node scripts/machine-browser-link.js with their Client ID and --install. It makes a web link that opens the machine in a browser, and writes it onto the record. Check the email address {{first}} will type is on the allowed list.
 - Guy: set the two fields the machine can't fill in itself - Remote Access Method = Tailscale RDP, Remote Access Consent Date = today's date. Everything else writes itself.
