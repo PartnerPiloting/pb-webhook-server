@@ -245,9 +245,18 @@ router.get('/installer.sh', requireClient, serveUpdater('wingguy-update.sh', 'te
  * machine, 2026-10-01), and the default for new clients. A person clicking a button and getting a
  * file is what no antivirus objects to; the hidden hourly updater is what they distrust.
  *
- * The zip holds a SINGLE top-level folder, `wingguy-extension/`, with manifest.json directly
- * inside it - so Extract All gives one clean folder to Load unpacked, and the "which nested
- * folder?" trap (the reason the updater lane has no zip) cannot happen.
+ * The zip holds the extension's files AT ITS ROOT (manifest.json at the top level), with NO
+ * wrapping folder. That is deliberate, and it is the opposite of what feels natural: Windows
+ * "Extract All" already creates a destination folder, so a zip that also wraps its contents in a
+ * folder gives a folder inside a folder - the "which one do I load?" trap that is the reason the
+ * updater lane has no zip. Files at the root extract straight into whatever folder the client
+ * names, and the instructions name ONE: C:\Wingguy - the same folder the background updater uses.
+ *
+ * ONE FIXED FOLDER FOR BOTH LANES (Guy, 2026-10-01 - "bulletproof, not band-aids"). A loaded
+ * extension points at exactly one folder; Chrome's refresh re-reads THAT folder. If an update is
+ * unzipped anywhere else, refresh reloads the old files and nothing says so. So every install and
+ * every update goes to C:\Wingguy, files replaced in place - precisely what the updater does. A
+ * client can move between the two lanes with nothing to redo.
  *
  * Gated by the same Portal Token as everything here. The portal page fetches this WITH the token
  * header and saves the blob, so the token never rides in a URL. We also record the download as a
@@ -258,9 +267,8 @@ router.get('/download', requireClient, async (req, res) => {
   try {
     const { version } = buildList();
     const zip = new AdmZip();
-    // addLocalFolder with a second arg nests everything under that folder name, giving the single
-    // clean top-level folder we want.
-    zip.addLocalFolder(EXT_DIR, 'wingguy-extension');
+    // No second argument: files at the zip root, no wrapping folder - see the note above on why.
+    zip.addLocalFolder(EXT_DIR);
     const buf = zip.toBuffer();
 
     const fileName = `wingguy-extension-${version}.zip`;

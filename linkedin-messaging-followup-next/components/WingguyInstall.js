@@ -77,9 +77,16 @@ function FirstTimeSteps() {
           gets that message. It&rsquo;s safe. Click Keep.
         </div>
       </Step>
-      <Step n={2} title="Unzip it">
-        Find the file in your Downloads, right-click it, choose <b>Extract All</b>, then <b>Extract</b>.
-        You&rsquo;ll get a folder called <Code>wingguy-extension</Code>. Leave it where it is.
+      <Step n={2} title="Unzip it into one fixed folder">
+        Find the file in your Downloads, right-click it and choose <b>Extract All</b>. In the box that
+        asks where to put it, delete what&rsquo;s there and type <Code>C:\Wingguy</Code>, then click
+        <b>Extract</b>.
+        <div className="mt-[10px] rounded-[10px] bg-slate-50 px-[13px] py-[11px] text-[13.5px] text-slate-600">
+          <b className="font-semibold text-slate-900">Why that folder matters.</b> Wingguy lives in
+          <Code>C:\Wingguy</Code> from now on - every update goes to the same place, so there is never
+          a question of where it went. (On a Mac, use a folder called <Code>Wingguy</Code> in your home
+          folder.)
+        </div>
       </Step>
       <Step n={3} title="Open your extensions page">
         In Chrome, type <Code>chrome://extensions</Code> into the address bar and press Enter.
@@ -90,8 +97,8 @@ function FirstTimeSteps() {
         <DeveloperModeShot />
       </Step>
       <Step n={5} title="Load the folder">
-        Click <b>Load unpacked</b> (top-left), then choose the <Code>wingguy-extension</Code> folder
-        from step 2 and click Select. Wingguy is now in your browser.
+        Click <b>Load unpacked</b> (top-left), go to <Code>C:\Wingguy</Code> and click <b>Select Folder</b>.
+        Wingguy is now in your browser.
       </Step>
       <Step n={6} last title="Switch it on for you">
         Open this portal once in that browser so the extension knows it&rsquo;s you. Then open any
@@ -107,17 +114,20 @@ function UpdateSteps() {
       <Step n={1} title="Download the new version">
         Click the button above to get the latest file.
       </Step>
-      <Step n={2} title="Replace the old files">
-        Unzip it the same way, into the <b>same place as before</b>, so the new <Code>wingguy-extension</Code>
-        folder replaces the old one. If Windows asks &ldquo;replace these files?&rdquo;, say yes to all.
+      <Step n={2} title="Unzip it into the same folder">
+        Right-click the file, choose <b>Extract All</b>, type <Code>C:\Wingguy</Code> as the destination
+        - exactly as the first time - and click <b>Extract</b>. Windows will ask whether to replace the
+        files that are already there: choose <b>Replace the files in the destination</b>.
         <div className="mt-[10px] rounded-[10px] bg-slate-50 px-[13px] py-[11px] text-[13.5px] text-slate-600">
-          This is the one fiddly bit. If you&rsquo;re not sure where it went last time, don&rsquo;t guess -
-          message me and we&rsquo;ll do it together in two minutes.
+          Same folder every time is the whole trick - it&rsquo;s what lets the next step pick up the new
+          version. Not sure? Message me and we&rsquo;ll do it together in two minutes.
         </div>
       </Step>
       <Step n={3} last title="Refresh it">
-        Go to <Code>chrome://extensions</Code> and click the little refresh icon on the Wingguy card
-        (or just close and reopen Chrome). Developer mode stays on from last time - nothing to re-set.
+        Go to <Code>chrome://extensions</Code> and click the little circular-arrow <b>refresh</b> icon on
+        the Wingguy card (or just close and reopen Chrome). It re-reads <Code>C:\Wingguy</Code> and
+        picks up the new version. Developer mode stays on from last time - nothing to re-set, and
+        you stay signed in.
       </Step>
     </ol>
   );
