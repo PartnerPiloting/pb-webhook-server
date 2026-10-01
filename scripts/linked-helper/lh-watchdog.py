@@ -390,6 +390,13 @@ def main():
             # a loop implicitly and raises RuntimeError, which crashed the watchdog on every
             # IDLE cycle on the first Binary Lane build (Julian Davis, 9 Sep 2026).
             result = asyncio.run(press_start(ws_url))
+            # Straight after a start the button is not drawn yet: Rick Wong's machine 1 Oct 2026
+            # got NOT FOUND and his campaign waited another whole round. Try again a few times.
+            tries = 1
+            while result == "NOT FOUND" and "started-lh" in actions and tries < 4:
+                time.sleep(15)
+                tries += 1
+                result = asyncio.run(press_start(ws_url))
             actions.append(f"press:{result}")
             print(f"press result: {result}")
             time.sleep(20)

@@ -32,6 +32,11 @@
     background: rgba(31, 41, 51, .82); color: #e5e7eb; opacity: .55; }
   #bar button:hover, #bar button:focus { opacity: 1; }
   #copy { background: #1155cc !important; opacity: 1 !important; }
+  #banner { position: fixed; top: 44px; left: 50%; transform: translateX(-50%); z-index: 6;
+    max-width: min(560px, calc(100vw - 32px)); box-sizing: border-box; padding: 12px 18px;
+    border-radius: 10px; background: #1155cc; color: #fff; font-size: 15px; line-height: 1.45;
+    text-align: center; box-shadow: 0 6px 24px rgba(0, 0, 0, .35); }
+  #banner b { display: block; font-size: 16px; margin-bottom: 2px; }
   .hidden { display: none !important; }
 </style>
 </head>
@@ -41,6 +46,7 @@
   <button id="paste" class="hidden" type="button" title="Copies what is on your own computer's clipboard onto the machine. Usually you can just press Ctrl+V (Cmd+V on a Mac) instead.">Paste from my computer</button>
   <button id="copy" class="hidden" type="button" title="Puts what you just copied on the machine onto your own computer's clipboard.">Copy to my computer</button>
 </div>
+<div id="banner" class="hidden" role="status" aria-live="polite"><b id="banner-title"></b><span id="banner-body"></span></div>
 <div id="note">
   <h1 id="note-title">Opening your Linked Helper machine...</h1>
   <p id="note-body">This takes a few seconds.</p>
@@ -196,6 +202,57 @@ pasteButton.addEventListener('click', async () => {
   setTimeout(() => { pasteButton.textContent = label; }, 4000);
   if (rfb) rfb.focus();
 });
+
+// ---- What the machine is doing, when Linked Helper is not on the screen ----
+//
+// lh-wake.py on the machine writes status.json every few seconds. When Linked Helper is closed
+// (it closes itself to install an update every day or two) and someone has this page open, the
+// machine starts it straight away - this banner tells them so, instead of leaving them looking at
+// an empty desktop and wondering what to do (Rick Wong, 1 Oct 2026).
+const banner = document.getElementById('banner');
+const bannerTitle = document.getElementById('banner-title');
+const bannerBody = document.getElementById('banner-body');
+const STATUS_SECONDS = 5;
+const SLOW_START_S = 6 * 60;      // the watchdog's start takes up to ~3 min; past this, say so
+const STALE_S = 60;               // a status.json that stops changing means lh-wake is not running
+// Ages are worked out on the MACHINE's clock (s.at - s.since) and staleness by when we last saw
+// s.at move - never by comparing with this computer's clock, which can be minutes out.
+let lastAt = 0;
+let lastAtSeen = 0;
+
+function showBanner(title, body) {
+  bannerTitle.textContent = title;
+  bannerBody.textContent = body;
+  banner.classList.remove('hidden');
+}
+
+async function checkStatus() {
+  try {
+    const r = await fetch('status.json?t=' + Date.now(), { cache: 'no-store' });
+    if (!r.ok) throw new Error('no status');
+    const s = await r.json();
+    if (s.at !== lastAt) { lastAt = s.at; lastAtSeen = Date.now(); }
+    if (!connectedAt || Date.now() - lastAtSeen > STALE_S * 1000) {
+      banner.classList.add('hidden');
+    } else if (s.state === 'starting' || s.state === 'closed') {
+      if ((s.at || 0) - (s.since || 0) > SLOW_START_S) {
+        showBanner('Linked Helper is taking longer than usual to start',
+          'If it is still not back in a few minutes, let Guy know.');
+      } else {
+        showBanner('Starting Linked Helper for you',
+          'It closes now and then to update itself. This takes about a minute - you don\'t need to do anything.');
+      }
+    } else if (s.state === 'paused') {
+      showBanner('Linked Helper is switched off for a moment',
+        'Your machine is being worked on. It comes back by itself - you don\'t need to do anything.');
+    } else {
+      banner.classList.add('hidden');
+    }
+  } catch (_e) {
+    banner.classList.add('hidden');   // an older machine with no status.json: the page as before
+  }
+}
+setInterval(checkStatus, STATUS_SECONDS * 1000);
 
 fetch('machine.json', { cache: 'no-store' })
   .then((r) => r.json())

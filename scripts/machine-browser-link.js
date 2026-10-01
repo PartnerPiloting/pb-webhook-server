@@ -153,7 +153,8 @@ function ssh(login, address, remoteCommand) {
   if (!address) fail(`${client.clientId} has no 100.x address in Machine Tailscale - cannot reach the machine to install.`);
   const src = path.join(__dirname, 'linked-helper');
   const copy = spawnSync('scp', ['-i', login.key, '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=15',
-    path.join(src, 'lh-browser-access.sh'), path.join(src, 'lh-browser-page.html'), `${login.user}@${address}:${login.home}/`],
+    path.join(src, 'lh-browser-access.sh'), path.join(src, 'lh-browser-page.html'), path.join(src, 'lh-wake.py'),
+    `${login.user}@${address}:${login.home}/`],
   { stdio: ['ignore', 'inherit', 'inherit'] });
   if (copy.status !== 0) fail('Could not copy the install script to the machine (is Tailscale on, on this laptop?).');
   // The token is base64 (letters, digits, =, -, _) so single quotes are safe around it.

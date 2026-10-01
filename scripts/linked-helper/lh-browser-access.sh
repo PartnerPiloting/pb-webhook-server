@@ -38,8 +38,8 @@ SRC_DIR="$(cd "$(dirname "$0")" && pwd)"
 [ "$(id -u)" = 0 ] || { echo "Run as root"; exit 1; }
 
 if [ "${1:-}" = "--remove" ]; then
-  systemctl disable --now lh-browser.service 2>/dev/null || true
-  rm -f /etc/systemd/system/lh-browser.service
+  systemctl disable --now lh-browser.service lh-wake.service 2>/dev/null || true
+  rm -f /etc/systemd/system/lh-browser.service /etc/systemd/system/lh-wake.service /usr/local/bin/lh-wake.py
   if command -v cloudflared >/dev/null 2>&1; then
     cloudflared service uninstall 2>/dev/null || true
   fi
@@ -52,6 +52,7 @@ fi
 systemctl is-enabled x11vnc.service >/dev/null 2>&1 || {
   echo "x11vnc.service is not on this machine - build it with setup-ubuntu-vps.sh first"; exit 1; }
 [ -f "$SRC_DIR/lh-browser-page.html" ] || { echo "lh-browser-page.html must sit beside this script"; exit 1; }
+[ -f "$SRC_DIR/lh-wake.py" ] || { echo "lh-wake.py must sit beside this script"; exit 1; }
 
 echo "== packages (noVNC + websockify) =="
 export DEBIAN_FRONTEND=noninteractive
@@ -113,6 +114,32 @@ fi
 if ss -tln | grep -E ":$WEB_PORT " | grep -v -q '127.0.0.1'; then
   echo "FAILED: port $WEB_PORT is listening on more than this machine - stopping it"
   systemctl disable --now lh-browser.service; exit 1
+fi
+
+echo "== lh-wake (opening the link starts a closed Linked Helper, and the page says so) =="
+# Root, because it asks the watchdog SERVICE to run now - the watchdog stays the one thing that
+# starts Linked Helper. See lh-wake.py for the why (Rick Wong, 1 Oct 2026).
+install -m 755 "$SRC_DIR/lh-wake.py" /usr/local/bin/lh-wake.py
+cat > /etc/systemd/system/lh-wake.service <<EOF
+[Unit]
+Description=Linked Helper machine - start a closed Linked Helper when someone opens the web link
+After=lh-browser.service
+[Service]
+Environment=LH_USER=$LH_USER WEB_DIR=$WEB_DIR
+ExecStart=/usr/bin/python3 /usr/local/bin/lh-wake.py
+Restart=always
+RestartSec=5
+[Install]
+WantedBy=multi-user.target
+EOF
+systemctl daemon-reload
+systemctl enable lh-wake.service >/dev/null 2>&1
+systemctl restart lh-wake.service
+sleep 7
+if [ -s "$WEB_DIR/status.json" ]; then
+  echo "lh-wake is running: $(cat "$WEB_DIR/status.json")"
+else
+  echo "FAILED: lh-wake wrote no status.json - journalctl -u lh-wake"; exit 1
 fi
 
 if [ -z "$TUNNEL_TOKEN" ]; then
