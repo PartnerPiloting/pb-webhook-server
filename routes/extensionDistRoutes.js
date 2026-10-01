@@ -22,9 +22,10 @@ const express = require('express');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const AdmZip = require('adm-zip');
 
 const clientService = require('../services/clientService');
-const { recordCheckin } = require('../services/extensionDistStore');
+const { recordCheckin, latestForClient } = require('../services/extensionDistStore');
 const { tailscaleAddress, buildRdpFile } = require('../services/clientMachineRdp');
 const { MASTER_TABLES } = require('../constants/airtableUnifiedConstants');
 const { createSafeLogger } = require('../utils/loggerHelper');
@@ -236,5 +237,92 @@ function serveUpdater(fileName, contentType) {
 
 router.get('/installer', requireClient, serveUpdater('wingguy-update.ps1', 'text/plain'));
 router.get('/installer.sh', requireClient, serveUpdater('wingguy-update.sh', 'text/plain'));
+
+/**
+ * GET /extension/dist/download
+ * The extension as ONE zip, for the portal "Install the extension" page - the lane for a client
+ * whose antivirus refuses the background updater (Bitdefender shut it down on Steve Nelson's
+ * machine, 2026-10-01), and the default for new clients. A person clicking a button and getting a
+ * file is what no antivirus objects to; the hidden hourly updater is what they distrust.
+ *
+ * The zip holds a SINGLE top-level folder, `wingguy-extension/`, with manifest.json directly
+ * inside it - so Extract All gives one clean folder to Load unpacked, and the "which nested
+ * folder?" trap (the reason the updater lane has no zip) cannot happen.
+ *
+ * Gated by the same Portal Token as everything here. The portal page fetches this WITH the token
+ * header and saves the blob, so the token never rides in a URL. We also record the download as a
+ * check-in (action 'downloaded') so the portal can later tell this client they are a version
+ * behind - best-effort, and it never fails the download.
+ */
+router.get('/download', requireClient, async (req, res) => {
+  try {
+    const { version } = buildList();
+    const zip = new AdmZip();
+    // addLocalFolder with a second arg nests everything under that folder name, giving the single
+    // clean top-level folder we want.
+    zip.addLocalFolder(EXT_DIR, 'wingguy-extension');
+    const buf = zip.toBuffer();
+
+    const fileName = `wingguy-extension-${version}.zip`;
+    res.set('Content-Type', 'application/zip');
+    res.set('Content-Disposition', `attachment; filename="${fileName}"`);
+    res.set('Content-Length', String(buf.length));
+    res.send(buf);
+
+    // Monitoring only - mark what version this client just took, so the nag knows. A machine on
+    // the background updater reports its real on-disk version separately; this covers the
+    // portal-download machines that never run the updater.
+    try {
+      await recordCheckin({
+        clientId: req.wgClient.clientId,
+        version,
+        action: 'downloaded',
+        agent: 'portal',
+        machine: 'portal-download',
+      });
+    } catch (e) {
+      log.warn(`download check-in skipped for ${req.wgClient.clientId}: ${e.message}`);
+    }
+  } catch (e) {
+    log.error(`download failed for ${req.wgClient && req.wgClient.clientId}: ${e.message}`);
+    res.status(500).json({ ok: false, error: 'could not build the download' });
+  }
+});
+
+/**
+ * GET /extension/dist/portal-status
+ * Drives the portal install page and the "you're a version behind" nag. Returns the current
+ * version and the last version we have seen this client on (their latest check-in - a background
+ * updater's real on-disk version, or the version they last downloaded from the portal).
+ *
+ *   installed = null  -> never seen; the page shows the first-time, six-step instructions.
+ *   installed = X     -> seen; behind = (X !== current). The page shows the short update steps,
+ *                        and the nag bar appears when behind.
+ *
+ * Best-effort: any failure still returns the current version with installed = null, so the page
+ * degrades to "here is how to install it" rather than an error.
+ */
+router.get('/portal-status', requireClient, async (req, res) => {
+  const { version } = buildList();
+  let installed = null;
+  let lastSeen = null;
+  try {
+    const row = await latestForClient(req.wgClient.clientId);
+    if (row && row.version) {
+      installed = String(row.version);
+      lastSeen = row.checked_in_at || null;
+    }
+  } catch (e) {
+    log.warn(`portal-status read skipped for ${req.wgClient.clientId}: ${e.message}`);
+  }
+  res.json({
+    ok: true,
+    current: version,
+    installed,
+    behind: Boolean(installed) && installed !== version,
+    neverInstalled: !installed,
+    lastSeen,
+  });
+});
 
 module.exports = router;

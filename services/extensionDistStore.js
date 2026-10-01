@@ -181,6 +181,10 @@ function darkMachineAlerts({ coachClientId, clients = [], checkins = [], now = D
     if (!c.wingguyEnabled) continue;
     const r = latest.get(String(c.clientId).trim());
     if (!r) continue;
+    // A portal-download client has no hourly updater (2026-10-01 lane), so silence is the normal
+    // state of that lane, not a dead machine. Skip it - the portal page nags them about versions
+    // instead. An error row still matters and is handled above by action === 'error'.
+    if (r.agent === 'portal' || r.action === 'downloaded') continue;
     const at = new Date(r.checked_in_at).getTime();
     if (!Number.isFinite(at)) continue;
     const sinceMs = now - at;

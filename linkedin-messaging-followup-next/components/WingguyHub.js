@@ -67,12 +67,73 @@ function useMachineLink({ token, client, devKey, hasAuth, ready }) {
   return link;
 }
 
+/**
+ * The extension's version against the current one (29 Sep 2026 lane change): drives the install
+ * door and the "a new version is ready" nag. installed=null means we have never seen this client
+ * on any version - the door says "install it". Best-effort: a failed lookup leaves it null, and
+ * the door falls back to a plain "Install the extension" rather than an error.
+ */
+function useExtensionStatus({ token, client, devKey, hasAuth, ready }) {
+  const [status, setStatus] = useState(null);
+  useEffect(() => {
+    if (!ready || !hasAuth) return undefined;
+    let cancelled = false;
+    const headers = {};
+    if (token) headers['x-portal-token'] = token;
+    if (client) headers['x-client-id'] = client;
+    if (devKey) headers['x-dev-key'] = devKey;
+    fetch(`${getBackendBase()}/extension/dist/portal-status`, { headers })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => { if (!cancelled && data && data.ok) setStatus(data); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [token, client, devKey, hasAuth, ready]);
+  return status;
+}
+
+function ExtensionCard({ status, href }) {
+  const behind = status && status.behind;
+  const upToDate = status && !status.behind && !status.neverInstalled;
+  const base = 'group flex flex-wrap items-center justify-between gap-x-8 gap-y-3 rounded-[14px] border px-7 py-5 transition duration-150 hover:-translate-y-0.5 hover:shadow-[0_8px_28px_rgba(31,41,51,.08)] focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2';
+  const tone = behind
+    ? 'border-amber-300 bg-amber-50 hover:border-amber-400 focus-visible:ring-amber-600'
+    : 'border-slate-200 bg-white hover:border-slate-300 focus-visible:ring-slate-700';
+  let title = 'Install the extension';
+  let body = 'The Wingguy window on LinkedIn - get it into your browser in a couple of minutes.';
+  let cta = 'Install it';
+  if (behind) {
+    title = 'A new version of your extension is ready';
+    body = `You're on ${status.installed} - the current one is ${status.current}. Updating takes about 30 seconds.`;
+    cta = 'Update it';
+  } else if (upToDate) {
+    title = 'Your extension is up to date';
+    body = `Running version ${status.current}. Reinstall it, or set it up on another computer, from here.`;
+    cta = 'Open';
+  }
+  return (
+    <a href={href('/my-wingguy/install')} className={`${base} ${tone}`}>
+      <div className="flex flex-col gap-1">
+        <div className="flex items-center gap-2 font-serif text-[21px] leading-snug text-slate-900">
+          {behind && <span className="inline-block h-[9px] w-[9px] rounded-full bg-amber-500" aria-hidden="true" />}
+          {title}
+        </div>
+        <p className="text-[15px] leading-relaxed text-slate-600">{body}</p>
+      </div>
+      <div className={`inline-flex items-center gap-1.5 text-sm font-bold ${behind ? 'text-amber-700' : 'text-blue-600'}`}>
+        {cta}{' '}
+        <span aria-hidden="true" className="transition-transform duration-150 group-hover:translate-x-1">&rarr;</span>
+      </div>
+    </a>
+  );
+}
+
 function WingguyHubInner() {
   const searchParams = useSearchParams();
   const auth = usePageAuth(searchParams);
   const { query: q } = auth;
   const href = (path) => (q ? `${path}?${q}` : path);
   const machineLink = useMachineLink(auth);
+  const extStatus = useExtensionStatus(auth);
 
   return (
     <div className="flex flex-col gap-8 max-w-[1240px]">
@@ -109,6 +170,8 @@ function WingguyHubInner() {
           </div>
         </a>
       )}
+
+      <ExtensionCard status={extStatus} href={href} />
 
       <div className="grid gap-5 lg:grid-cols-3">
         {DOORS.map((d) => (

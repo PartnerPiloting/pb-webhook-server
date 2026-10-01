@@ -36,6 +36,13 @@ check('a coached client silent 5 days is flagged, with machine, days and version
   assert.match(out[0].line, /Client A's machine \(A-LAPTOP\) has not checked in for 5 days - last seen on 0\.3\.19/);
 });
 
+check('a portal-download client, silent, is NOT a dark machine (no updater to go dark)', () => {
+  // The portal lane (2026-10-01) records one 'downloaded' check-in per download and never again.
+  // Silence there is the normal state, not a dead machine - skip it, both by agent and by action.
+  assert.deepEqual(run([client()], [checkin({ agent: 'portal', action: 'downloaded', machine: 'portal-download' })]), []);
+  assert.deepEqual(run([client()], [checkin({ action: 'downloaded', machine: 'portal-download' })]), []);
+});
+
 check('checked in yesterday = nothing', () => {
   assert.deepEqual(run([client()], [checkin({ checked_in_at: daysAgo(1) })]), []);
 });
