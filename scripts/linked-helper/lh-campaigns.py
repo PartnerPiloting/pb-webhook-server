@@ -379,8 +379,14 @@ def build_payload(recipe, c, li_account, name_override=None):
 # ---------------------------------------------------------------- the running instance
 
 def instance_title(c):
+    # Only switch user when we are not already the desktop user. lh-first-run.py runs this
+    # builder AS that user, and "sudo -u lh" from lh needs a password it does not have - the
+    # refusal went to /dev/null and the build reported "no instance window" with Linked Helper
+    # open and signed in (Guy McPhee's first run, 30 Sep 2026).
     user = c.get("LH_USER", "lh")
-    return sh(f"sudo -u {user} DISPLAY=:0 xdotool search --name 'Instance #' getwindowname %@ 2>/dev/null | head -1 || true")
+    import pwd   # here, not at the top: Windows has no pwd, and `plan` runs on the laptop
+    as_user = "" if pwd.getpwuid(os.geteuid()).pw_name == user else f"sudo -u {user} "
+    return sh(f"{as_user}env DISPLAY=:0 xdotool search --name 'Instance #' getwindowname %@ 2>/dev/null | head -1 || true")
 
 
 def devtools_ports():
