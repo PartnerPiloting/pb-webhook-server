@@ -16,7 +16,7 @@ const check = async (name, fn) => {
   catch (e) { failures++; console.error(`  ✗ ${name}\n    ${e.message}`); }
 };
 
-const { canPush, pushArgs, pushEntry } = require('../routes/wingguyDraftRoutes');
+const { canPush, pushArgs, pushEntry, askMessages } = require('../routes/wingguyDraftRoutes');
 
 const email = {
   name: 'Erin Email', channel: 'email', email: 'erin@example.com',
@@ -87,6 +87,34 @@ const fakeStore = (row) => ({ findAwaitingDraftTo: async () => row });
     const out = await pushEntry('Test-Tenant', email, { mailTools: mail.tools, store: fakeStore(null) });
     assert.strictEqual(out.ok, false);
     assert.ok(/NOT created/.test(out.error));
+  });
+
+  await check('Push again files another copy even with one on record', async () => {
+    const mail = fakeMail();
+    const out = await pushEntry('Test-Tenant', email, { again: true, mailTools: mail.tools, store: fakeStore({ id: 7 }) });
+    assert.deepStrictEqual(out, { ok: true, already: false });
+    assert.strictEqual(mail.calls.length, 1);
+  });
+
+  await check('wording rewritten in Discuss is what gets pushed, to the stored recipient and thread', async () => {
+    const mail = fakeMail();
+    await pushEntry('Test-Tenant', email, { again: true, text: 'Hi Erin,\n\nNew wording - see https://example.com/x.\n\nGuy', mailTools: mail.tools, store: fakeStore(null) });
+    const a = mail.calls[0].args;
+    assert.strictEqual(a.html_body, '<p>Hi Erin,</p><p>New wording - see <a href="https://example.com/x">https://example.com/x</a>.</p><p>Guy</p>');
+    assert.deepStrictEqual(a.to, [{ email: 'erin@example.com', name: 'Erin Email' }]);
+    assert.strictEqual(a.reply_to_message_id, 'msg123');
+  });
+
+  await check('Discuss: the first question carries the draft on screen', () => {
+    const m = askMessages(email, [{ role: 'user', content: 'make it shorter' }]);
+    assert.strictEqual(m.length, 1);
+    assert.ok(m[0].content.includes('It was episode 12.') && m[0].content.endsWith('make it shorter'));
+  });
+
+  await check('Discuss: junk roles are dropped and the last turn must be the human', () => {
+    assert.deepStrictEqual(askMessages(email, [{ role: 'system', content: 'x' }, { role: 'assistant', content: 'hi' }]), []);
+    const m = askMessages(linkedin, [{ role: 'user', content: 'q1' }, { role: 'assistant', content: 'a1' }, { role: 'user', content: 'q2' }]);
+    assert.deepStrictEqual(m.map((x) => x.role), ['user', 'assistant', 'user']);
   });
 
   await check('LinkedIn entry is refused without touching the mailbox', async () => {

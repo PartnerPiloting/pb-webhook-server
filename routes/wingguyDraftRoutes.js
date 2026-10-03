@@ -1,24 +1,24 @@
 // routes/wingguyDraftRoutes.js
 //
-// GET /wingguy/draft?c=<tenant>&n=<person>&s=<sig> — the read-only draft page behind the queue's
-// [draft] links (services/wingguyDraftLink.js mints and signs them). One person, one page: the
-// memory-jog, the pre-written message, a copy button, and the LinkedIn profile link. Deliberately
-// READ-ONLY — tweaking, sending, parking and dropping stay in chat, so this page can never drift
-// from the stores it reads. noindex, no external assets, link-only + HMAC-signed.
+// GET /wingguy/draft?c=<tenant>&n=<person>&s=<sig> — the draft page behind the queue's [draft]
+// links (services/wingguyDraftLink.js mints and signs them). One person, one page: the memory-jog,
+// the pre-written message, a copy button, and the LinkedIn profile link. Parking and dropping stay
+// in chat, so this page never drifts from the stores it reads. noindex, no external assets,
+// link-only + HMAC-signed.
 //
-// ONE EXCEPTION (Guy 2026-10-03): POST /wingguy/draft/push — the "Push to email drafts" button on EMAIL
-// entries. Copy-paste is the wrong tool for email (find the thread, hit reply, paste), so the button
-// files the stored reply in the coach's own mailbox via the SAME wingguy_create_draft the chat uses:
-// threaded, asset-gated, Follow-Up Date stamped — the record stays right, nothing is ever sent.
-// One click, one draft: an unsent draft-ledger row to that person answers "already in your drafts".
+// Two things the page DOES do (Guy 2026-10-03), both through doors that already exist:
+//   POST /wingguy/draft/push — "Push to email drafts" on EMAIL entries. Files the wording on screen
+//     in the coach's own mailbox via the SAME wingguy_create_draft the chat uses: threaded,
+//     asset-gated, Follow-Up Date stamped, never sent. The recipient always comes from the stored
+//     entry. A first push is refused when an unsent draft to that person is already on record;
+//     "Push again" is the human's deliberate second copy.
+//   POST /wingguy/draft/ask — the Discuss box. The SAME one-person agent as the portal's Ask box
+//     (services/wingguyFollowupsAsk.js: dossier, live calendar, mailbox), told what draft is on
+//     screen. A draft it writes replaces the one on the page, ready to copy or push. One brain,
+//     two windows — no second chat logic lives here.
 
 const express = require('express');
 const { verify } = require('../services/wingguyDraftLink');
-
-// The portal's Follow-Ups tab opens the Ask box on ?ask=<person> (FollowUpsQueue.js). The portal
-// remembers its own login, so this page hands over nothing but the name.
-const PORTAL_BASE = (process.env.PORTAL_BASE_URL || 'https://pb-webhook-server.vercel.app').replace(/\/$/, '');
-const discussUrl = (name) => `${PORTAL_BASE}/followups?ask=${encodeURIComponent(name)}`;
 
 function esc(s) {
   return String(s == null ? '' : s)
@@ -44,6 +44,7 @@ function fullPage(title, inner) {
   .jog, .why { margin: 0; line-height: 1.55; }
   .draft { white-space: pre-wrap; line-height: 1.6; background: #faf9f6; border: 1px solid #eceae4;
            border-radius: 8px; padding: 16px 18px; margin: 0; font-family: inherit; }
+  .draft.fresh { border-color: #2f7d4f; background: #f3faf5; }
   button { margin-top: 12px; padding: 9px 18px; font-size: .95rem; border: 1px solid #1c1b19;
            border-radius: 7px; background: #1c1b19; color: #fff; cursor: pointer; }
   button:active { transform: translateY(1px); }
@@ -51,7 +52,15 @@ function fullPage(title, inner) {
   button:disabled { opacity: .55; cursor: default; }
   .pushmsg { font-size: .88rem; line-height: 1.5; margin: 10px 0 0; }
   .pushmsg.bad { color: #a4321f; }
-  .discuss { margin: 18px 0 0; font-size: .92rem; line-height: 1.5; }
+  .chat { margin-top: 18px; border-top: 1px solid #eceae4; padding-top: 14px; }
+  .chat .msg { font-size: .93rem; line-height: 1.55; margin: 0 0 10px; white-space: pre-wrap; }
+  .chat .you { color: #5d5a53; }
+  .chat .you::before { content: "You: "; font-weight: 600; }
+  .chat .bad { color: #a4321f; }
+  .chat form { display: flex; gap: 8px; align-items: flex-end; }
+  .chat textarea { flex: 1; font: inherit; font-size: .95rem; padding: 9px 11px; border: 1px solid #cfcbc2;
+                   border-radius: 7px; resize: vertical; min-height: 42px; }
+  .chat form button { margin: 0; }
   .note { font-size: .82rem; color: #8a857b; line-height: 1.5; margin-top: 22px; }
 </style>
 </head><body><div class="wrap"><div class="card">${inner}</div></div></body></html>`;
@@ -83,16 +92,27 @@ async function findEntry(tenant, name) {
   return null;
 }
 
-/** An email entry the button can file: a channel=email entry with an address and stored wording. */
-function canPush(it) {
-  return !!(it && it.channel === 'email' && (it.draftHtml || it.replyToMessageId)
-    && String(it.email || '').trim() && (it.draftHtml || it.draftText));
+/** An email person the button can file a draft to — with stored wording, or wording from the box. */
+function canPush(it, text) {
+  return !!(it && it.channel === 'email' && String(it.email || '').trim()
+    && (String(text || '').trim() || it.draftHtml || it.draftText));
 }
 
-/** Arguments for wingguy_create_draft, built ONLY from the stored entry — the page never picks a "to". */
-function pushArgs(it) {
-  const html = it.draftHtml
-    || `<p>${esc(it.draftText).replace(/\n{2,}/g, '</p><p>').replace(/\n/g, '<br>')}</p>`;
+/** Plain wording (the page's draft box) as simple email HTML: paragraphs, line breaks, live links. */
+function textToHtml(text) {
+  const body = esc(String(text || '').trim())
+    .replace(/(https?:\/\/[^\s<]+[^\s<.,;:!?)])/g, '<a href="$1">$1</a>')
+    .replace(/\n{2,}/g, '</p><p>').replace(/\n/g, '<br>');
+  return `<p>${body}</p>`;
+}
+
+/**
+ * Arguments for wingguy_create_draft. Recipient, subject and thread come ONLY from the stored
+ * entry — the page never picks a "to". `text` (the wording on screen after a Discuss rewrite)
+ * replaces the stored body when given.
+ */
+function pushArgs(it, text) {
+  const html = String(text || '').trim() ? textToHtml(text) : (it.draftHtml || textToHtml(it.draftText));
   const subject = it.pushSubject
     || (it.threadSubject ? (/^re:/i.test(it.threadSubject) ? it.threadSubject : `Re: ${it.threadSubject}`) : 'Picking our conversation back up');
   const args = { to: [{ email: String(it.email).trim(), name: it.name }], subject, html_body: html };
@@ -106,8 +126,8 @@ function ledgerStore() {
 }
 
 /** Is an unsent draft to this person already sitting in the mailbox? Best-effort — a miss is "no". */
-async function alreadyPushed(tenant, it, deps = {}) {
-  const store = deps.store !== undefined ? deps.store : ledgerStore();
+async function alreadyPushed(tenant, it, opts = {}) {
+  const store = opts.store !== undefined ? opts.store : ledgerStore();
   if (!store) return false;
   try { return !!(await store.findAwaitingDraftTo({ tenantId: tenant, toEmail: it.email })); }
   catch (_) { return false; }
@@ -116,20 +136,22 @@ async function alreadyPushed(tenant, it, deps = {}) {
 const inFlight = new Set(); // tenant|person mid-push — a double-click must not file two drafts
 
 /**
- * File one entry's stored reply as a draft in the coach's mailbox.
+ * File a draft to one entry's person in the coach's mailbox.
+ * @param {Object} [opts]  text: wording on screen (else the stored draft) · again: the human asked
+ *                         for another copy, skip the already-there check · mailTools/store: test seams
  * @returns {{ok:boolean, already?:boolean, error?:string}}
  */
-async function pushEntry(tenant, it, deps = {}) {
-  if (!canPush(it)) return { ok: false, error: 'This entry has no email draft to push.' };
+async function pushEntry(tenant, it, opts = {}) {
+  if (!canPush(it, opts.text)) return { ok: false, error: 'This entry has no email draft to push.' };
   const key = `${String(tenant).toLowerCase()}|${String(it.name).toLowerCase()}`;
   if (inFlight.has(key)) return { ok: true, already: true };
   inFlight.add(key);
   try {
-    if (await alreadyPushed(tenant, it, deps)) return { ok: true, already: true };
-    const mailTools = deps.mailTools || require('../services/wingguyMailMcp').TOOL_DEFS;
+    if (!opts.again && await alreadyPushed(tenant, it, opts)) return { ok: true, already: true };
+    const mailTools = opts.mailTools || require('../services/wingguyMailMcp').TOOL_DEFS;
     const def = mailTools.find((d) => d.name === 'wingguy_create_draft');
     if (!def) return { ok: false, error: 'The draft tool is not available.' };
-    const out = await def.run(pushArgs(it), tenant);
+    const out = await def.run(pushArgs(it, opts.text), tenant);
     if (out && out.isError) return { ok: false, error: String(out.text || 'The draft was not created.') };
     return { ok: true, already: false };
   } catch (e) {
@@ -139,19 +161,160 @@ async function pushEntry(tenant, it, deps = {}) {
   }
 }
 
+const MAX_TURNS = 40;          // messages kept per conversation
+const MAX_MSG_CHARS = 6000;
+
+/**
+ * The conversation as the Ask agent should see it: clean roles, capped, and the FIRST question
+ * carrying the draft that is on screen — "make it shorter" means nothing without it. Pure.
+ */
+function askMessages(it, messages) {
+  const clean = (Array.isArray(messages) ? messages : [])
+    .filter((m) => m && (m.role === 'user' || m.role === 'assistant') && String(m.content || '').trim())
+    .slice(-MAX_TURNS)
+    .map((m) => ({ role: m.role, content: String(m.content).slice(0, MAX_MSG_CHARS) }));
+  while (clean.length && clean[0].role !== 'user') clean.shift();
+  if (!clean.length || clean[clean.length - 1].role !== 'user') return [];
+  if (it.draftText) {
+    clean[0] = {
+      role: 'user',
+      content: `(I am looking at the prepared draft page for ${it.name}. The draft on screen reads:\n"""\n${it.draftText}\n"""\nWhen I ask for a change, give me the full new wording in a draft block.)\n\n${clean[0].content}`,
+    };
+  }
+  return clean;
+}
+
+/**
+ * The page's own script. Written as a real function and inlined with toString(), so it is
+ * syntax-checked with this file and needs no escaping inside a template string.
+ */
+/* eslint-disable no-undef */
+function pageScript() {
+  var $ = function (id) { return document.getElementById(id); };
+  var qs = location.search;
+  var draftEl = $('draft'), copyBtn = $('copybtn'), pushBtn = $('pushbtn'), pushMsg = $('pushmsg');
+  var edited = false, messages = [], busy = false;
+
+  function post(path, body) {
+    return fetch(path + qs, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) })
+      .then(function (r) { return r.json(); });
+  }
+  function copyTo(btn, text) {
+    var label = btn.textContent;
+    navigator.clipboard.writeText(text).then(function () {
+      btn.textContent = 'Copied ✓';
+      setTimeout(function () { btn.textContent = label; }, 1500);
+    });
+  }
+  if (copyBtn) copyBtn.onclick = function () { copyTo(copyBtn, draftEl.innerText); };
+
+  function say(text, bad) { if (pushMsg) { pushMsg.className = bad ? 'pushmsg bad' : 'pushmsg'; pushMsg.textContent = text; } }
+  function armPush(label, again) { pushBtn.textContent = label; pushBtn.dataset.again = again ? '1' : ''; pushBtn.disabled = false; }
+  if (pushBtn) pushBtn.onclick = function () {
+    var was = pushBtn.textContent, again = pushBtn.dataset.again === '1';
+    pushBtn.disabled = true; pushBtn.textContent = 'Pushing…'; say('');
+    post('/wingguy/draft/push', { again: again, text: edited ? draftEl.innerText : '' }).then(function (j) {
+      if (!j || !j.ok) throw new Error((j && j.error) || 'The draft was not created.');
+      armPush('Push again to email drafts', true);
+      say(j.already
+        ? 'One is already in your email drafts. Push again adds another copy - delete the old one in your mailbox if you do.'
+        : 'In your email drafts ✓ - threaded under their last message. Nothing has been sent.');
+    }).catch(function (e) {
+      armPush(was, again);
+      say(e.message + ' You can still copy the message.', true);
+    });
+  };
+
+  // ---- Discuss ----
+  var chat = $('chat'), log = $('chatlog'), form = $('chatform'), box = $('chatbox'), discussBtn = $('discussbtn');
+  if (!chat) return;
+  function line(cls, text) {
+    var p = document.createElement('p'); p.className = 'msg ' + cls; p.textContent = text; log.appendChild(p); return p;
+  }
+  function showDraft(text) {
+    if (draftEl) {
+      draftEl.textContent = text; draftEl.className = 'draft fresh'; edited = true;
+      if (pushBtn) armPush('Push this version to email drafts', true);
+      say('');
+      return 'New wording is in the draft box above.';
+    }
+    var pre = document.createElement('pre'); pre.className = 'draft fresh'; pre.textContent = text; log.appendChild(pre);
+    var b = document.createElement('button'); b.textContent = 'Copy message'; b.onclick = function () { copyTo(b, text); }; log.appendChild(b);
+    return '';
+  }
+  function showReply(reply) {
+    var out = [], last = 0, m, re = /```(draft|park)[^\n]*\n([\s\S]*?)\n?```/g;
+    while ((m = re.exec(reply))) {
+      out.push(reply.slice(last, m.index).trim());
+      if (m[1] === 'draft') out.push(showDraft(m[2].trim()));
+      else out.push('Suggested park date: ' + m[2].trim().split('\n')[0] + ' - to park, tell your Wingguy chat.');
+      last = re.lastIndex;
+    }
+    out.push(reply.slice(last).trim());
+    var text = out.filter(Boolean).join('\n\n');
+    if (text) line('them', text);
+  }
+  function send(q) {
+    if (busy || !q) return;
+    busy = true; box.value = '';
+    line('you', q);
+    messages.push({ role: 'user', content: q });
+    var wait = line('them', 'Thinking…');
+    post('/wingguy/draft/ask', { messages: messages }).then(function (j) {
+      wait.remove();
+      if (!j || !j.ok) throw new Error((j && j.error) || 'No answer came back.');
+      messages.push({ role: 'assistant', content: j.reply });
+      showReply(j.reply);
+    }).catch(function (e) {
+      wait.remove(); messages.pop();
+      line('bad', e.message + ' Try again.');
+      box.value = q;
+    }).then(function () { busy = false; box.focus(); });
+  }
+  discussBtn.onclick = function () { chat.hidden = false; discussBtn.hidden = true; box.focus(); };
+  form.onsubmit = function (ev) { ev.preventDefault(); send(box.value.trim()); };
+  box.onkeydown = function (ev) { if (ev.key === 'Enter' && !ev.shiftKey) { ev.preventDefault(); send(box.value.trim()); } };
+}
+/* eslint-enable no-undef */
+
 module.exports = function mountWingguyDraft(app) {
   const router = express.Router();
+  const json = express.json({ limit: '300kb' });
 
-  // c/n/s ride the query string (same signed link as the page) so this needs no body parser.
-  router.post('/wingguy/draft/push', async (req, res) => {
+  // c/n/s ride the query string — the same signed link as the page. Resolves the entry or answers.
+  async function entryFor(req, res) {
     const { c, n, s } = req.query || {};
-    if (!c || !n || !s || !verify(c, n, s)) return res.status(403).json({ ok: false, error: 'This link is missing or has an invalid signature.' });
+    if (!c || !n || !s || !verify(c, n, s)) { res.status(403).json({ ok: false, error: 'This link is missing or has an invalid signature.' }); return null; }
     let found;
     try { found = await findEntry(c, n); }
-    catch (e) { return res.status(500).json({ ok: false, error: `The draft store could not be read: ${e.message}` }); }
-    if (!found) return res.status(404).json({ ok: false, error: `${n} isn't in the prepared queue any more - ask your Wingguy chat for a fresh list.` });
-    const out = await pushEntry(c, found.it);
+    catch (e) { res.status(500).json({ ok: false, error: `The draft store could not be read: ${e.message}` }); return null; }
+    if (!found) { res.status(404).json({ ok: false, error: `${n} isn't in the prepared queue any more - ask your Wingguy chat for a fresh list.` }); return null; }
+    return { tenant: c, it: found.it };
+  }
+
+  router.post('/wingguy/draft/push', json, async (req, res) => {
+    const e = await entryFor(req, res);
+    if (!e) return undefined;
+    const body = req.body || {};
+    const out = await pushEntry(e.tenant, e.it, { again: body.again === true, text: String(body.text || '').slice(0, 20000) });
     return res.status(out.ok ? 200 : 422).json(out);
+  });
+
+  router.post('/wingguy/draft/ask', json, async (req, res) => {
+    const e = await entryFor(req, res);
+    if (!e) return undefined;
+    const messages = askMessages(e.it, (req.body || {}).messages);
+    if (!messages.length) return res.status(400).json({ ok: false, error: 'Type a question first.' });
+    try {
+      const coach = await require('../services/clientService').getClientById(e.tenant);
+      if (!coach) return res.status(404).json({ ok: false, error: 'This account could not be found.' });
+      const { answerAboutPerson } = require('../services/wingguyFollowupsAsk');
+      const r = await answerAboutPerson({ coach, person: { name: e.it.name, email: e.it.email, linkedin: e.it.linkedin }, messages });
+      if (!r.ok) return res.status(r.blocked || r.keyError ? 402 : 422).json({ ok: false, error: String(r.error || 'No answer came back.') });
+      return res.json({ ok: true, reply: r.reply });
+    } catch (err) {
+      return res.status(500).json({ ok: false, error: err.message });
+    }
   });
 
   router.get('/wingguy/draft', async (req, res) => {
@@ -167,8 +330,9 @@ module.exports = function mountWingguyDraft(app) {
     }
     const { it } = found;
     const isEmail = it.channel === 'email' && (it.draftHtml || it.replyToMessageId);
-    const pushable = canPush(it);
+    const pushable = canPush(it) && !!it.draftText;
     const already = pushable ? await alreadyPushed(c, it) : false;
+    const discussBtn = `<button id="discussbtn" class="second">Discuss</button>`;
     const parts = [`<h1>${esc(it.name)}</h1>`];
     const links = [];
     if (it.linkedin) links.push(`<a href="${esc(it.linkedin)}" target="_blank" rel="noopener">LinkedIn profile</a>`);
@@ -178,29 +342,30 @@ module.exports = function mountWingguyDraft(app) {
     if (it.draftText) {
       parts.push(`<p class="label">${isEmail ? 'Ready-made reply (email)' : 'Ready-made message (paste into LinkedIn)'}</p>`);
       parts.push(`<pre class="draft" id="draft">${esc(it.draftText)}</pre>`);
-      parts.push(`<button id="copybtn" onclick="copyDraft()">Copy message</button>`);
-      parts.push(`<script>function copyDraft(){navigator.clipboard.writeText(document.getElementById('draft').innerText).then(function(){var b=document.getElementById('copybtn');b.textContent='Copied \\u2713';setTimeout(function(){b.textContent='Copy message';},1500);});}</script>`);
+      parts.push(`<button id="copybtn">Copy message</button>`);
       if (pushable) {
         parts.push(already
-          ? `<button id="pushbtn" class="second" disabled>Already in your email drafts ✓</button>`
-          : `<button id="pushbtn" class="second" onclick="pushDraft()">Push to email drafts</button>`);
-        parts.push(`<p class="pushmsg" id="pushmsg"></p>`);
-        parts.push(`<script>function pushDraft(){var b=document.getElementById('pushbtn'),m=document.getElementById('pushmsg');b.disabled=true;b.textContent='Pushing\\u2026';m.className='pushmsg';m.textContent='';fetch('/wingguy/draft/push'+location.search,{method:'POST'}).then(function(r){return r.json();}).then(function(j){if(j&&j.ok){b.textContent=j.already?'Already in your email drafts \\u2713':'In your email drafts \\u2713';m.textContent='It is in the Drafts folder of your connected email, threaded under their last message. Nothing has been sent.';}else{throw new Error((j&&j.error)||'The draft was not created.');}}).catch(function(e){b.disabled=false;b.textContent='Push to email drafts';m.className='pushmsg bad';m.textContent=e.message+' You can still copy the message, or ask your Wingguy chat.';});}</script>`);
+          ? `<button id="pushbtn" class="second" data-again="1">Push again to email drafts</button>`
+          : `<button id="pushbtn" class="second">Push to email drafts</button>`);
       }
+      parts.push(discussBtn);
+      if (pushable) parts.push(`<p class="pushmsg" id="pushmsg">${already ? 'One is already in your email drafts. Push again adds another copy - delete the old one in your mailbox if you do.' : ''}</p>`);
     } else if (it.wgAngle) {
       // LinkedIn person: no pre-written message BY DESIGN (Guy 2026-08-01) — the reply is drafted
       // live in the thread with /wg, where the conversation and the calendar are both current.
       // The overnight homework is the angle.
       parts.push(`<p class="label">How to reply</p><p class="why">Open the LinkedIn thread and type <strong>/wg</strong> — it writes the message live from the real conversation and your real calendar.</p>`);
       parts.push(`<p class="label">Suggested angle</p><p class="why">${esc(it.wgAngle)}</p>`);
+      parts.push(discussBtn.replace(' class="second"', ''));
     } else {
-      parts.push(`<p class="label">Draft</p><p class="why">No pre-written message is stored on this entry${it.draftError ? ` (generation failed: ${esc(it.draftError)})` : ''} — ask your Wingguy chat for ${esc(it.name)} by name; the overnight dossier usually carries one.</p>`);
+      parts.push(`<p class="label">Draft</p><p class="why">No pre-written message is stored on this entry${it.draftError ? ` (generation failed: ${esc(it.draftError)})` : ''} — ask for one below.</p>`);
+      parts.push(discussBtn.replace(' class="second"', ''));
     }
-    // Wrong or stale draft? The page cannot fix it — the Ask box can (dossier, live calendar,
-    // redraft, push). One chat, not two: this only links to it (Guy 2026-10-03).
-    parts.push(`<p class="discuss"><a href="${esc(discussUrl(it.name))}" target="_blank" rel="noopener">Discuss this draft</a> - opens the Ask box for ${esc(it.name)} in your portal: question it, get it rewritten with times from your live calendar, then push that version.</p>`);
-    if (pushable && it.draftText) parts.push(`<p class="note">Push to email drafts files this reply in the Drafts folder of your connected email, threaded under ${esc(it.name)}'s last message - it never sends. Tweak the wording there. To park ${esc(it.name)} to a date, or drop them from follow-ups, tell your Wingguy chat - that's where the record is kept.</p>`);
-    else parts.push(`<p class="note">This page is read-only. To tweak the wording, send it${isEmail ? ' to Gmail' : ''}, park ${esc(it.name)} to a date, or drop them from follow-ups, tell your Wingguy chat — that's where the record is kept.</p>`);
+    // The Discuss box (Guy 2026-10-03: "a simple discuss button like we have in /wg").
+    const first = esc(String(it.name).split(' ')[0]);
+    parts.push(`<div class="chat" id="chat" hidden><div id="chatlog"></div><form id="chatform"><textarea id="chatbox" rows="2" placeholder="Ask about ${first}, or say what to change - e.g. shorter, or offer three times next week"></textarea><button type="submit">Send</button></form></div>`);
+    parts.push(`<p class="note">${pushable ? `Push to email drafts files the wording above in the Drafts folder of your connected email, threaded under ${esc(it.name)}'s last message - it never sends. ` : ''}Discuss knows ${first}'s history and your live calendar. To park ${esc(it.name)} to a date, or drop them from follow-ups, tell your Wingguy chat - that's where the record is kept.</p>`);
+    parts.push(`<script>(${pageScript.toString()})();</script>`);
     res.status(200).setHeader('Content-Type', 'text/html; charset=utf-8');
     return res.end(fullPage(`${it.name} — draft`, parts.join('\n')));
   });
@@ -209,7 +374,8 @@ module.exports = function mountWingguyDraft(app) {
 };
 
 // Test seams.
-module.exports.discussUrl = discussUrl;
 module.exports.canPush = canPush;
 module.exports.pushArgs = pushArgs;
 module.exports.pushEntry = pushEntry;
+module.exports.askMessages = askMessages;
+module.exports.textToHtml = textToHtml;
