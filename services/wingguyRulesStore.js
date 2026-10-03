@@ -1969,6 +1969,33 @@ async function getAwaitingDrafts({ tenantId = DEFAULT_TENANT, limit = 10 } = {})
   }
 }
 
+/**
+ * The newest still-unsent draft-ledger row to one person, or null - the draft page's "one click, one
+ * draft" check (routes/wingguyDraftRoutes.js). Windowed so a draft deleted by hand in the mail client
+ * does not block a fresh push forever.
+ */
+async function findAwaitingDraftTo({ tenantId = DEFAULT_TENANT, toEmail, sinceDays = 7 } = {}) {
+  const lead = String(toEmail || '').trim().toLowerCase();
+  if (!lead) return null;
+  const p = getPool();
+  if (!p) throw new Error('DATABASE_URL not set');
+  const client = await p.connect();
+  try {
+    await ensureSchema(client);
+    const r = await client.query(
+      `SELECT id, created_at, draft_id, thread_id, subject
+       FROM wingguy_draft_ledger
+       WHERE tenant_id = $1 AND to_email = $2 AND status = 'awaiting-send'
+         AND created_at > now() - ($3 || ' days')::interval
+       ORDER BY created_at DESC, id DESC LIMIT 1`,
+      [(tenantId || DEFAULT_TENANT).trim(), lead, String(Math.max(Number(sinceDays) || 7, 1))],
+    );
+    return r.rows[0] || null;
+  } finally {
+    client.release();
+  }
+}
+
 /** Close out one draft-ledger row: paired (edit filed) | no-diff (sent as drafted) | expired. */
 async function settleDraftRecord({ tenantId = DEFAULT_TENANT, id, status }) {
   if (!['paired', 'no-diff', 'expired'].includes(status)) throw new Error(`settleDraftRecord: invalid status "${status}"`);
@@ -2061,6 +2088,7 @@ module.exports = {
   // draft ledger (the email half of learn-from-my-edit)
   recordDraftBody,
   getAwaitingDrafts,
+  findAwaitingDraftTo,
   settleDraftRecord,
   // rulebook hygiene (structural sweep)
   rulebookHygiene,
