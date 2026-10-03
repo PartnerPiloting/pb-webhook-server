@@ -576,6 +576,29 @@ export default function FollowUpsQueue() {
     }
   }, [clientId, expanded, stories]);
 
+  // Deep link from the draft page's "Discuss this draft": /followups?ask=<person> opens that
+  // person's Ask box once the queue has loaded. Once only - after that the screen is the user's.
+  const [askLinkDone, setAskLinkDone] = useState(false);
+  useEffect(() => {
+    if (askLinkDone || loading || typeof window === 'undefined') return;
+    const want = (new URLSearchParams(window.location.search).get('ask') || '').trim();
+    if (!want) { setAskLinkDone(true); return; }
+    if (error) return;
+    setAskLinkDone(true);
+    const it = items.find((i) => keyOf(i) === want.toLowerCase());
+    if (!it) {
+      setNotice(`${want} isn't in your follow-ups right now - they may have replied, been parked or been dropped.`);
+      setTimeout(() => setNotice(null), 8000);
+      return;
+    }
+    setTierFilter('all');
+    if (expanded !== keyOf(it)) toggleStory(it);
+    setTimeout(() => {
+      const row = document.querySelector(`[data-ask-key="${CSS.escape(keyOf(it))}"]`);
+      if (row) row.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 300);
+  }, [askLinkDone, loading, error, items, expanded, toggleStory]);
+
   // One question about one person. The server rebuilds its tool loop each turn from the text
   // conversation we keep here, so a follow-up ("what did he say about Teams?") reads naturally.
   const askAbout = useCallback(async (it, question) => {
@@ -785,7 +808,7 @@ export default function FollowUpsQueue() {
                   const story = stories[key];
                   const isBusy = busy.has(key);
                   return (
-                    <li key={key} className={isBusy ? 'opacity-40 pointer-events-none' : ''}>
+                    <li key={key} data-ask-key={key} className={isBusy ? 'opacity-40 pointer-events-none' : ''}>
                       <div className="py-3 flex items-start gap-4">
                         <div className="w-5 shrink-0 pt-1">
                           <input type="checkbox" className="accent-blue-600 h-4 w-4" checked={selected.has(key)} onChange={() => toggleSelect(key)} />

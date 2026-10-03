@@ -15,6 +15,11 @@
 const express = require('express');
 const { verify } = require('../services/wingguyDraftLink');
 
+// The portal's Follow-Ups tab opens the Ask box on ?ask=<person> (FollowUpsQueue.js). The portal
+// remembers its own login, so this page hands over nothing but the name.
+const PORTAL_BASE = (process.env.PORTAL_BASE_URL || 'https://pb-webhook-server.vercel.app').replace(/\/$/, '');
+const discussUrl = (name) => `${PORTAL_BASE}/followups?ask=${encodeURIComponent(name)}`;
+
 function esc(s) {
   return String(s == null ? '' : s)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -46,6 +51,7 @@ function fullPage(title, inner) {
   button:disabled { opacity: .55; cursor: default; }
   .pushmsg { font-size: .88rem; line-height: 1.5; margin: 10px 0 0; }
   .pushmsg.bad { color: #a4321f; }
+  .discuss { margin: 18px 0 0; font-size: .92rem; line-height: 1.5; }
   .note { font-size: .82rem; color: #8a857b; line-height: 1.5; margin-top: 22px; }
 </style>
 </head><body><div class="wrap"><div class="card">${inner}</div></div></body></html>`;
@@ -190,6 +196,9 @@ module.exports = function mountWingguyDraft(app) {
     } else {
       parts.push(`<p class="label">Draft</p><p class="why">No pre-written message is stored on this entry${it.draftError ? ` (generation failed: ${esc(it.draftError)})` : ''} — ask your Wingguy chat for ${esc(it.name)} by name; the overnight dossier usually carries one.</p>`);
     }
+    // Wrong or stale draft? The page cannot fix it — the Ask box can (dossier, live calendar,
+    // redraft, push). One chat, not two: this only links to it (Guy 2026-10-03).
+    parts.push(`<p class="discuss"><a href="${esc(discussUrl(it.name))}" target="_blank" rel="noopener">Discuss this draft</a> - opens the Ask box for ${esc(it.name)} in your portal: question it, get it rewritten with times from your live calendar, then push that version.</p>`);
     if (pushable && it.draftText) parts.push(`<p class="note">Push to email drafts files this reply in the Drafts folder of your connected email, threaded under ${esc(it.name)}'s last message - it never sends. Tweak the wording there. To park ${esc(it.name)} to a date, or drop them from follow-ups, tell your Wingguy chat - that's where the record is kept.</p>`);
     else parts.push(`<p class="note">This page is read-only. To tweak the wording, send it${isEmail ? ' to Gmail' : ''}, park ${esc(it.name)} to a date, or drop them from follow-ups, tell your Wingguy chat — that's where the record is kept.</p>`);
     res.status(200).setHeader('Content-Type', 'text/html; charset=utf-8');
@@ -200,6 +209,7 @@ module.exports = function mountWingguyDraft(app) {
 };
 
 // Test seams.
+module.exports.discussUrl = discussUrl;
 module.exports.canPush = canPush;
 module.exports.pushArgs = pushArgs;
 module.exports.pushEntry = pushEntry;

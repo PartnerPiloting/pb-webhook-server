@@ -303,7 +303,14 @@ async function triage(client, items, contexts, todayIso) {
 // ---------------------------------------------------------------------------
 
 const DRAFT_SYSTEM_PREFIX = `You write a short reply email in the coach's own voice, following the coach's RULEBOOK below. Ground every fact in the supplied exchange — never invent. Keep it brief and human. Return ONLY the email body as simple HTML (<p> paragraphs, <a href> for any links) — no subject, no commentary.
-HARD RULE — NO SPECIFIC MEETING TIMES: you are drafting offline with no access to the coach's calendar, so NEVER offer concrete days/dates/times ("Tuesday 10am", "Thursday next week"). Propose the meeting and either ask what suits them or say the coach will follow with times. Concrete slots come later from a live calendar check with the lead's timezone handled.`;
+HARD RULE — NO SPECIFIC MEETING TIMES: you are drafting offline with no access to the coach's calendar, so NEVER offer concrete days/dates/times ("Tuesday 10am", "Thursday next week"). Propose the meeting and either ask what suits them or say the coach will follow with times. Concrete slots come later from a live calendar check with the lead's timezone handled.
+HARD RULE — PAST TIMES ARE DEAD: compare every meeting time in the exchange against today's date (given below). A time the coach offered that has already passed is gone — NEVER ask whether it "still works", never call it still on offer, never say "those times". If the offered times have lapsed, say so plainly in a few words if it helps ("those times have come and gone") and ask what suits them now.`;
+
+// Bumped when the drafting rules change in a way that makes STORED email drafts wrong. A stored
+// draft written under an older version is not reused (canReuseEntry) — a re-prep limited to the
+// people who actually carry an email draft, not the global re-prep an entrySig bump costs.
+// 2 (2026-10-03, the Storm Jarvie draft): asked whether three lapsed slots "still work".
+const DRAFT_VERSION = 2;
 
 // A clock time in a draft = an offered slot. The HARD RULE above already bans offered times, but
 // an instruction alone loses to the model's generation default (the em-dash lesson) — proven live
@@ -417,6 +424,7 @@ function canReuseEntry(prev, sig, nowMs) {
   if (!prev || prev.sig !== sig) return false;
   if (!prev.builtAt || (nowMs - Date.parse(prev.builtAt)) > REFRESH_DAYS * 86400000) return false;
   if (prev.draftError || prev.draftPending) return false;
+  if (prev.draftHtml && (prev.draftV || 1) < DRAFT_VERSION) return false;
   return true;
 }
 
@@ -576,6 +584,7 @@ async function prepareFollowupBrief(tenant) {
             try {
               const html = await writeDraft(llm, rulesText, item, ctx, v.draft_instruction || 'Reply appropriately to their last message.', sweep.coach.timezone);
               entry.draftHtml = html;
+              entry.draftV = DRAFT_VERSION;
               // draftPlainText, NOT a whitespace-collapse: draftText is what the human reads (chat)
               // and pastes (the draft page renders it pre-wrap) — the paragraph breaks must survive,
               // exactly as the /wg panel keeps them (Guy, 2026-08-01, the Farhad one-blob draft).
@@ -772,4 +781,4 @@ function formatBrief(row) {
   return lines.join('\n');
 }
 
-module.exports = { prepareFollowupBrief, getBrief, setStatus, formatBrief, linkedInTail, linkedInLastWord, gatherPersonContext, writeDraft, draftPlainText, entrySig, canReuseEntry, refreshEntry, unbookedEntry, reconcileParkDate, _setPool, STALE_HOURS, REFRESH_DAYS };
+module.exports = { prepareFollowupBrief, getBrief, setStatus, formatBrief, linkedInTail, linkedInLastWord, gatherPersonContext, writeDraft, draftPlainText, entrySig, canReuseEntry, DRAFT_VERSION, DRAFT_SYSTEM_PREFIX, refreshEntry, unbookedEntry, reconcileParkDate, _setPool, STALE_HOURS, REFRESH_DAYS };

@@ -15,7 +15,7 @@ const check = async (name, fn) => {
   catch (e) { failures++; console.error(`  ✗ ${name}\n    ${e.message}`); }
 };
 
-const { entrySig, canReuseEntry, refreshEntry, REFRESH_DAYS } = require('../services/wingguyFollowupBrief');
+const { entrySig, canReuseEntry, refreshEntry, REFRESH_DAYS, DRAFT_VERSION, DRAFT_SYSTEM_PREFIX } = require('../services/wingguyFollowupBrief');
 
 const MS_DAY = 86400000;
 const nowMs = Date.UTC(2026, 7, 24, 4, 0, 0); // 2026-08-24
@@ -34,7 +34,7 @@ const freshPrev = (over = {}) => ({
   name: 'Sarah Example', email: 'sarah@example.com', linkedin: 'https://linkedin.com/in/sarah',
   tier: 'cadence', engineWhy: 'you messaged last, 28d silent', gated: false,
   verdict: 'draft', whyLine: 'thread went quiet after her question', jog: 'runs a design studio',
-  draftText: 'Hi Sarah…', draftHtml: '<p>Hi Sarah…</p>', draftError: null, draftPending: false,
+  draftText: 'Hi Sarah…', draftHtml: '<p>Hi Sarah…</p>', draftError: null, draftPending: false, draftV: DRAFT_VERSION,
   ...over,
 });
 
@@ -56,6 +56,15 @@ const freshPrev = (over = {}) => ({
   });
 
   console.log('canReuseEntry()');
+  await check('stored email draft from before the current drafting rules → re-prepped', () => {
+    assert.strictEqual(canReuseEntry(freshPrev({ draftV: undefined }), entrySig(item()), nowMs), false);
+  });
+  await check('entry with no email draft is not touched by a drafting-rules bump', () => {
+    assert.strictEqual(canReuseEntry(freshPrev({ draftHtml: null, draftText: null, draftV: undefined }), entrySig(item()), nowMs), true);
+  });
+  await check('drafter is told lapsed times are dead', () => {
+    assert.ok(/PAST TIMES ARE DEAD/.test(DRAFT_SYSTEM_PREFIX));
+  });
   await check('unchanged + fresh + finished → reused', () => {
     assert.strictEqual(canReuseEntry(freshPrev(), entrySig(item()), nowMs), true);
   });
