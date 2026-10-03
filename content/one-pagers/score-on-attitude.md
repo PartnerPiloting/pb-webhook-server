@@ -14,30 +14,48 @@ You've run the search: LinkedIn narrowed down to the right *kind* of people - th
 
 But here's the uncomfortable truth about that list. It's a list of the right kind of people. It is not a list of the right people.
 
-Put two fractional CFOs side by side. Same title, same sector, same years on the clock - on paper, identical. One thinks in relationships: generous with introductions, genuinely curious about what you do, plays the long game. The other collects contacts like business cards and only ever gets in touch when he wants something. One will become a real node in your network. The other will quietly drain your time. And nothing on their profiles - not the headline, not the job history, not one thing LinkedIn lets you filter on - tells you which is which.
+## Same title, different person
 
-That's the trouble with credentials: they tell you what someone has *done*. They can't tell you how they *think*. And how they think - their attitude - is the single best predictor of whether they'll ever become a great connection.
+Put two fractional CFOs side by side. Same title, same sector, same years on the clock - on paper, identical.
 
-So attitude is the filter that matters most. And it's the one almost everyone skips.
+One thinks in relationships: generous with introductions, genuinely curious about what you do, plays the long game. The other collects contacts like business cards and only gets in touch when he wants something. One will become a real node in your network. The other will quietly drain your time.
 
-Not because they don't know it matters - deep down, everyone does. They skip it because, until recently, there was no way to actually run it. You can eyeball attitude on a handful of profiles if you've got a spare afternoon and years of pattern-recognition in your gut. Across two hundred search results? No chance. So people give up, treat the whole list the same, and hope.
+And nothing on their profiles - not the headline, not the job history, not one thing LinkedIn lets you filter on - tells you which is which.
 
-Here's the shift: **attitude is now something you can score.**
+Credentials tell you what someone has *done*. They can't tell you how they *think*. And how they think - their attitude - is the best predictor there is of whether they'll ever become a great connection.
 
-The system reads each person's profile with AI and scores it - not on their job title, but on the markers of the right mindset. Do they think long-term about relationships? Do they share what they know? Do they talk about other people as warmly as they talk about themselves - or is it all "me"? The things you'd pick up in a good conversation, read straight off the page, for every single person on your list.
+## Why everyone skips it
 
-Two things make that score *yours* rather than some generic rating. First, you shape it - you add your own attributes and tune what counts as a green flag and what counts as a red one, because you know your world better than any default ever could. Second, you don't start from a blank page: from the day you begin, it already carries mine - the attributes I've distilled, the hard way, from years of working out who's worth reaching out to and who isn't. You inherit the pattern-recognition, then you make it your own.
+Not because they don't know it matters. Deep down, everyone does. They skip it because, until recently, there was no way to run it. You can eyeball attitude on a handful of profiles if you've got a spare afternoon. Across two hundred people? No chance. So people treat the whole list the same, and hope.
 
-And once attitude is a number, you can finally *use* it. Two ways to play it, and both are right.
+## Attitude, scored
 
-You can **score first, then reach out** - run the score across your search results and start at the top, so your very first message goes to the person most likely to become a real connection, not just whoever the search happened to surface first.
+Here's the shift: **attitude is now something you can score.** The system reads each person's profile with AI and scores it on the markers you saw in the last email - the things you'd pick up in a good conversation, read straight off the page, for every single person.
 
-Or you can **reach out, then let the score tell you where to lean in** - message your filtered list, let everyone get scored as they land, and use the score to decide where your real energy goes. The high scorers get your genuine, handcrafted attention; the rest get a lighter touch. You've only got so many good minutes in a week - the score makes sure they land on the right people.
+Two things make that score *yours*:
+
+- **You start with mine.** From day one it carries the attributes I've distilled, the hard way, from years of working out who's worth knowing.
+- **Then you shape it.** Add your own attributes, tune what counts as a green flag and a red one - you know your world better than any default.
+
+## Two ways to use it
+
+- **Reach out, then let the score tell you where to lean in.** Your requests go out, and everyone who accepts gets scored as they arrive. The high scorers get your genuine, handcrafted attention; the rest get a lighter touch. You've only got so many good minutes in a week - the score makes sure they land on the right people.
+- **Or score first, then reach out** - for a very narrow audience, where every request counts. Score the whole search, and start at the top.
 
 Either way, you've stopped guessing. That's the whole of this step: the difference between working a list, and working the *right* list.
 
+<!-- ENDING:CLIENT -->
+So this week, open your Thanks for Connecting screen and sort by highest score. Spend your best effort - your real curiosity, your twenty genuine seconds - on the top few first.
+
+Which is exactly where we go next: how do you make that first message land?
+<!-- /ENDING:CLIENT -->
+
+<!-- ENDING:PROSPECT -->
 So this week, before you fire off a single message, stop treating your search results as one flat pile of names. Let the score sort them. Then spend your best effort - your real curiosity, your twenty genuine seconds - on the people it tells you are worth it.
 
 Which is exactly where we go next: for the people who make the cut, how do you make that first message land?
+<!-- /ENDING:PROSPECT -->
+
+<!-- Reviewed by Guy 2026-10-03 (client #8): broken up like #7 (subheads, lists, short paragraphs); attitude questions no longer repeated straight after #7 (refers back to "the last email"); the two ways reordered - reach out then score first (the one-campaign method), score-first only for a narrow audience; client ending sends them to Thanks for Connecting sorted by score (old ending was score-first). Prospect ending kept. -->
 
 <!-- Approved final by Guy 2026-07-07. First draft 2026-07-06. #33, map step 3 (scoring / "the secret sauce"). Built from banked material: three facets (concept of scoring; AI + configurable/add-your-own-attributes; ships with Guy's proven attributes) + the two paths (score-then-contact / contact-then-score-to-prioritise) + guardrails (NEVER sounds like a LinkedIn feature - it's what LinkedIn can't do; base system NOT Wingguy, so no upsell / prospect-safe; low-scorer handling framed gently as "where your energy goes", not "ignore them" - the blunt version stays in #35). Penny-drop: attitude is the filter that matters most AND the one everyone skips (unrunnable at scale) - now scoreable. Opens off #32's search (builds-on box for jumpers); ends teasing #35 (thank-you). Title is a provocative working title - Guy may retitle (alts: "Score them on attitude" / "The best predictor is the one you can't see" / "What a CV can't tell you"). -->
