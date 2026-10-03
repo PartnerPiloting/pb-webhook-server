@@ -234,3 +234,49 @@ these down to match section 5's instinct.
 - Still applies from section 5: name the concrete noun ("chrome://extensions", "Load unpacked"),
   never a vague gesture at the same thing.
 
+
+## 7. Search and message starter ("who to reach out to, and what to say") - STANDARD, every client
+*Real example: Steve Nelson, written 3 Oct 2026 for sending Tue 6 Oct (draft 1a100322d348085e,
+"Before this afternoon - who to reach out to, and what to say").*
+
+**What it does:** gives a client who has just had their first campaign built a personal first
+draft of their search and their connection message, plus the perspective that decides both.
+Left alone, a new client builds a prospect search and writes a pitch, or stalls on the homework.
+
+**When:** between the session where the campaign is built and the session where it is launched.
+Send it the MORNING OF the launch session (Guy, 3 Oct: a client who works last-minute buries
+anything sent days ahead). Under rule 1 of the edit pass it therefore carries no real homework -
+"pick the one closest to how you'd say it" is the whole ask; the rewriting happens on the call.
+
+**Built fresh each time from THAT client's calls** (`recall_find_transcript` on their name - read
+the discovery call as well as the onboarding sessions; the business detail is in the early ones):
+who they serve, in their own words, and one fact of theirs that makes the perspective land
+(Steve: 24HBP grew through its advisers' own networks and referrals).
+
+**Shape, in order:**
+1. One warm line on the last session.
+2. **The perspective - fixed in substance, short:** the aim isn't to find clients on LinkedIn, it
+   is good conversations with great people; the bigger prize is people who look after the same
+   clients from a different angle and will introduce you; that is how you get talked about when
+   you're not in the room. Say "same clients, different service", never just "same swimming lane"
+   (reads as "go and meet your competitors"). No "inner circle" claim the client can't yet back -
+   they haven't benefited in week one. When the perspective page exists, shrink this to one line
+   plus the link.
+3. **Who to go after first, and why** - experienced people (10+ years) who serve the same clients
+   with a different service, rather than the end clients themselves. Tie it to their fact.
+4. **A first-cut search**, as bullets: title Boolean, geography (start local, so a coffee is
+   possible), years of experience more than 10, 2nd degree, recent updates = posted on LinkedIn.
+5. **Three connection messages to react to** - each COUNTED and under 300 characters with a long
+   first name in place; curious, not selling; in the client's voice, signed with their name. One
+   of the three is the honest week-one version of the circle idea ("getting to know experienced
+   advisers who ... are happy to introduce each other when it fits").
+6. "These are starting points, not answers. Pick the one closest to how you'd say it and rewrite
+   it in your own words." Plus the days-and-hours question.
+7. "We'll tighten the search and the message together [this afternoon], then switch it on."
+
+**Guy checks it before it goes - always.** The titles and filters are a suggestion nobody has
+run; a wrong search quietly sends a client after the wrong people for weeks. Tell Guy plainly
+which parts came from the client's own words and which are Claude's suggestion.
+
+**Not in it:** builders-go-to-Guy (that belongs after their first good calls, not before the
+first invite), the network maths, or anything about how good the drafting is.

@@ -125,6 +125,11 @@ through who I should be looking for and how to build my search"*. The LH trial c
 at first campaign launch, so nothing burns while LH waits. Clients already mid-journey on the old
 LH-first order (Luke, Matthew) finish that way, but still get the prep question.
 
+**Between the campaign-build session and the launch session, every client gets the search and
+message starter** - a personal first-cut search plus three connection messages built from their
+own calls, sent the morning of the launch session. Pattern: section 7 of
+[email-templates.md](email-templates.md). Guy checks it before it goes.
+
 ## The session arc - onboarding is a SERIES, not one big call
 
 Clients get ~30-minute weekly sessions, so the checklist's steps spread across several of them.
