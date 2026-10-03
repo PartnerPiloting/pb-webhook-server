@@ -6,7 +6,7 @@
 // READ-ONLY — tweaking, sending, parking and dropping stay in chat, so this page can never drift
 // from the stores it reads. noindex, no external assets, link-only + HMAC-signed.
 //
-// ONE EXCEPTION (Guy 2026-10-03): POST /wingguy/draft/push — the "Push to drafts" button on EMAIL
+// ONE EXCEPTION (Guy 2026-10-03): POST /wingguy/draft/push — the "Push to email drafts" button on EMAIL
 // entries. Copy-paste is the wrong tool for email (find the thread, hit reply, paste), so the button
 // files the stored reply in the coach's own mailbox via the SAME wingguy_create_draft the chat uses:
 // threaded, asset-gated, Follow-Up Date stamped — the record stays right, nothing is ever sent.
@@ -176,10 +176,10 @@ module.exports = function mountWingguyDraft(app) {
       parts.push(`<script>function copyDraft(){navigator.clipboard.writeText(document.getElementById('draft').innerText).then(function(){var b=document.getElementById('copybtn');b.textContent='Copied \\u2713';setTimeout(function(){b.textContent='Copy message';},1500);});}</script>`);
       if (pushable) {
         parts.push(already
-          ? `<button id="pushbtn" class="second" disabled>Already in your drafts ✓</button>`
-          : `<button id="pushbtn" class="second" onclick="pushDraft()">Push to drafts</button>`);
+          ? `<button id="pushbtn" class="second" disabled>Already in your email drafts ✓</button>`
+          : `<button id="pushbtn" class="second" onclick="pushDraft()">Push to email drafts</button>`);
         parts.push(`<p class="pushmsg" id="pushmsg"></p>`);
-        parts.push(`<script>function pushDraft(){var b=document.getElementById('pushbtn'),m=document.getElementById('pushmsg');b.disabled=true;b.textContent='Pushing\\u2026';m.className='pushmsg';m.textContent='';fetch('/wingguy/draft/push'+location.search,{method:'POST'}).then(function(r){return r.json();}).then(function(j){if(j&&j.ok){b.textContent=j.already?'Already in your drafts \\u2713':'In your drafts \\u2713';m.textContent='It is in the Drafts folder of your connected email, threaded under their last message. Nothing has been sent.';}else{throw new Error((j&&j.error)||'The draft was not created.');}}).catch(function(e){b.disabled=false;b.textContent='Push to drafts';m.className='pushmsg bad';m.textContent=e.message+' You can still copy the message, or ask your Wingguy chat.';});}</script>`);
+        parts.push(`<script>function pushDraft(){var b=document.getElementById('pushbtn'),m=document.getElementById('pushmsg');b.disabled=true;b.textContent='Pushing\\u2026';m.className='pushmsg';m.textContent='';fetch('/wingguy/draft/push'+location.search,{method:'POST'}).then(function(r){return r.json();}).then(function(j){if(j&&j.ok){b.textContent=j.already?'Already in your email drafts \\u2713':'In your email drafts \\u2713';m.textContent='It is in the Drafts folder of your connected email, threaded under their last message. Nothing has been sent.';}else{throw new Error((j&&j.error)||'The draft was not created.');}}).catch(function(e){b.disabled=false;b.textContent='Push to email drafts';m.className='pushmsg bad';m.textContent=e.message+' You can still copy the message, or ask your Wingguy chat.';});}</script>`);
       }
     } else if (it.wgAngle) {
       // LinkedIn person: no pre-written message BY DESIGN (Guy 2026-08-01) — the reply is drafted
@@ -190,7 +190,7 @@ module.exports = function mountWingguyDraft(app) {
     } else {
       parts.push(`<p class="label">Draft</p><p class="why">No pre-written message is stored on this entry${it.draftError ? ` (generation failed: ${esc(it.draftError)})` : ''} — ask your Wingguy chat for ${esc(it.name)} by name; the overnight dossier usually carries one.</p>`);
     }
-    if (pushable && it.draftText) parts.push(`<p class="note">Push to drafts files this reply in the Drafts folder of your connected email, threaded under ${esc(it.name)}'s last message - it never sends. Tweak the wording there. To park ${esc(it.name)} to a date, or drop them from follow-ups, tell your Wingguy chat - that's where the record is kept.</p>`);
+    if (pushable && it.draftText) parts.push(`<p class="note">Push to email drafts files this reply in the Drafts folder of your connected email, threaded under ${esc(it.name)}'s last message - it never sends. Tweak the wording there. To park ${esc(it.name)} to a date, or drop them from follow-ups, tell your Wingguy chat - that's where the record is kept.</p>`);
     else parts.push(`<p class="note">This page is read-only. To tweak the wording, send it${isEmail ? ' to Gmail' : ''}, park ${esc(it.name)} to a date, or drop them from follow-ups, tell your Wingguy chat — that's where the record is kept.</p>`);
     res.status(200).setHeader('Content-Type', 'text/html; charset=utf-8');
     return res.end(fullPage(`${it.name} — draft`, parts.join('\n')));
