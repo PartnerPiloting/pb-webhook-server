@@ -301,6 +301,35 @@ const MASTER_FIELDS = [
     name: 'Machine Link Emails',
     type: 'singleLineText',
     description: 'EXTRA people allowed to open this client\'s Machine Link, comma-separated emails - an assistant, or the client\'s personal address when their work mail swallows the code email. The client\'s own Client Email Address and their coach are always allowed and do not go here. After changing it, re-run scripts/machine-browser-link.js <Client-ID> - the field is the record, Cloudflare is what enforces it. Added 2026-09-29.'
+  },
+  {
+    name: 'Reconnect',
+    type: 'singleSelect',
+    description: 'Yes = this client has the Reconnect and Potential disconnects sections on the Follow-Ups screen (docs/RECONNECT-BUILD-PLAN.md). Blank = off: nothing is read, scored or shown. Added 2026-10-05.',
+    options: { choices: [{ name: 'Yes' }] }
+  },
+  {
+    name: 'Reconnect Daily Number',
+    type: 'number',
+    description: 'How many people the Reconnect section shows each morning. Blank = 20. A portion, never padded - fewer show when fewer qualify. Added 2026-10-05.',
+    options: { precision: 0 }
+  },
+  {
+    name: 'Unipile LinkedIn Account ID',
+    type: 'singleLineText',
+    description: 'The Unipile account_id of this client\'s LINKEDIN connection - a separate account from Unipile Account ID (mail and calendar). Read by services/linkedinNetworkSync.js, which never falls back to any other account. Blank = LinkedIn is not connected. Added 2026-10-05.'
+  },
+  {
+    name: 'LinkedIn Connected At',
+    type: 'dateTime',
+    description: 'When the client connected LinkedIn to Unipile. The connection is for one month from here unless LinkedIn Feed = Yes. Added 2026-10-05.',
+    options: { timeZone: 'Australia/Brisbane', dateFormat: { name: 'iso' }, timeFormat: { name: '24hour' } }
+  },
+  {
+    name: 'LinkedIn Feed',
+    type: 'singleSelect',
+    description: 'Yes = keep the LinkedIn connection on Unipile past the first month (the client pays the monthly pass-through). Blank = it is disconnected a month after LinkedIn Connected At. Added 2026-10-05.',
+    options: { choices: [{ name: 'Yes' }] }
   }
 ];
 

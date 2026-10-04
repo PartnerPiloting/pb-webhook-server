@@ -179,6 +179,14 @@ async function getAllClients() {
                 // 2026-07-22 for the Nylas->Unipile migration.
                 const unipileAccountId = record.get('Unipile Account ID') || null;
                 const emailProvider = record.get('Email Provider') || null;
+                // Reconnect (docs/RECONNECT-BUILD-PLAN.md): the client's LinkedIn on Unipile is a SEPARATE
+                // account from their mail-and-calendar one, connected for one month at onboarding
+                // (kept only when LinkedIn Feed = Yes). Reconnect = Yes switches the feature on.
+                const unipileLinkedinAccountId = record.get('Unipile LinkedIn Account ID') || null;
+                const linkedinConnectedAt = record.get('LinkedIn Connected At') || null;
+                const linkedinFeed = record.get('LinkedIn Feed') || null;
+                const reconnect = record.get('Reconnect') || null;
+                const reconnectDailyNumber = Number(record.get('Reconnect Daily Number')) || 0;
                 // Stripe cutover stage 2: the join key to Stripe. When set, billing looks the
                 // customer up by this id instead of guessing by email (billingRoutes.js).
                 const stripeCustomerId = record.get('Stripe Customer ID') || null;
@@ -308,6 +316,11 @@ async function getAllClients() {
                     // Unipile (Nylas replacement): account id (covers calendar + email) + the
                     // per-tenant email backend selector
                     unipileAccountId: unipileAccountId,
+                    unipileLinkedinAccountId: unipileLinkedinAccountId,
+                    linkedinConnectedAt: linkedinConnectedAt,
+                    linkedinFeed: linkedinFeed,
+                    reconnect: reconnect,
+                    reconnectDailyNumber: reconnectDailyNumber,
                     stripeCustomerId: stripeCustomerId,
                     stripeSubscriptionId: stripeSubscriptionId,
                     billingSource: billingSource,
