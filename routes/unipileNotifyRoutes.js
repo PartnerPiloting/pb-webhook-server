@@ -29,4 +29,20 @@ router.post('/notify/:token', async (req, res) => {
   }
 });
 
+// The LinkedIn link's callback (Reconnect). Its own path and its own token purpose - a mail token
+// is refused here, and this handler writes only the two LinkedIn fields.
+router.post('/notify-linkedin/:token', async (req, res) => {
+  const clientId = hosted.verifyNotifyToken(req.params.token, { purpose: hosted.LINKEDIN_PURPOSE });
+  if (!clientId) return res.status(403).json({ success: false, error: 'bad or expired token' });
+  const logger = createLogger({ runId: 'UNIPILE', clientId, operation: 'unipile_notify_linkedin' });
+  try {
+    const result = await hosted.handleLinkedinNotify(req.params.token, req.body || {}, { logger });
+    if (!result.ok) logger.warn(`unipile linkedin notify ignored for ${clientId}: ${result.reason}`);
+    return res.json({ success: true, applied: result.ok, reason: result.ok ? undefined : result.reason });
+  } catch (e) {
+    logger.error(`unipile linkedin notify failed for ${clientId}: ${e.message}`, e.stack);
+    return res.status(500).json({ success: false, error: e.message });
+  }
+});
+
 module.exports = router;

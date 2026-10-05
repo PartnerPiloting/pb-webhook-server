@@ -207,6 +207,19 @@ the Reconnect pool). "Never replied" is never a reason for a suggestion.
 
 - A LinkedIn connect link, minted the way the mail-and-calendar link already is
   (`services/unipileHostedAuth.js`).
+  **BUILT 5 Oct 2026:** `mintHostedLink(clientId, { linkedin: true })`; callback
+  `POST /api/unipile/notify-linkedin/:token` (its own path and its own token purpose, so it can
+  never be confused with the mail-and-calendar callback) writes only `Unipile LinkedIn Account ID`
+  and `LinkedIn Connected At`. Mint it from the clients board
+  (`POST /api/client-board/:clientId/linkedin-link`) or `node scripts/linkedin-connect-link.js
+  --tenant=X`. Send it DAYS before the session - Unipile starts pulling history the moment they
+  connect (Guy's took 3h15m for the first 3,000 conversations and doubled over two days).
+  How smooth Guy wants onboarding (5 Oct): the client does three things - click Connect, answer a
+  few questions for their description and look at 30 samples, say yes to the counts. Everything
+  else runs by itself: the copy starts when LinkedIn connects and re-checks daily until it stops
+  growing; Guy is told when a client is ready; the connection is switched off after a month. A
+  Reconnect page under My Wingguy explains it and shows their own progress; Claude chat does the
+  talking parts; Guy sees each client's progress on his board. NOT built yet beyond the link.
 - A nightly check that disconnects LinkedIn one month after `LinkedIn Connected At` unless
   `LinkedIn Feed` = Yes, and tells Guy it did.
 - **Writing the client's paragraph, in the session:** Claude asks the client a few questions in

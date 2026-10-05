@@ -70,4 +70,22 @@ router.post('/:clientId/unipile-link', authenticateUserWithTestMode, coachOnly, 
   }
 });
 
+// Mint the "connect your LinkedIn" link for one client (Reconnect - docs/RECONNECT-BUILD-PLAN.md).
+// On approval Unipile calls /api/unipile/notify-linkedin and the client's record gets its
+// LinkedIn account id and connected date by itself. Mail and calendar are not touched.
+router.post('/:clientId/linkedin-link', authenticateUserWithTestMode, coachOnly, async (req, res) => {
+  const coachClientId = req.client.clientId;
+  const { clientId } = req.params;
+  const logger = createLogger({ runId: 'BOARD', clientId, operation: 'client_board_linkedin_link' });
+  try {
+    const link = await board.mintLinkedinLink(coachClientId, clientId);
+    logger.info(`linkedin link minted for ${clientId} (expires ${link.expiresAt})`);
+    res.json({ success: true, ...link });
+  } catch (e) {
+    if (e.code === 'FORBIDDEN') return res.status(403).json({ success: false, error: 'Not your client' });
+    logger.error(`linkedin link failed: ${e.message}`, e.stack);
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
 module.exports = router;

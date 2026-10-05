@@ -24,6 +24,15 @@
 // Payload shape confirmed against Unipile's docs (developer.unipile.com/docs/hosted-auth):
 //   { "status": "CREATION_SUCCESS", "account_id": "e54m8LR22bA7G5qsAc8w", "name": "<our name>" }
 // with status "RECONNECTED" for reconnect-type links.
+//
+// LINKEDIN (Reconnect, 5 Oct 2026 - docs/RECONNECT-BUILD-PLAN.md brick 6): the same link for a
+// client's LinkedIn, so connecting it stops being a screen-share. It is a SEPARATE connection from
+// mail-and-calendar and must never be mistaken for it:
+//   - its callback has its own path (/notify-linkedin/) and its token is signed for the purpose
+//     'linkedin', so a mail token is refused there and a LinkedIn token is refused on /notify/;
+//   - handleLinkedinNotify() writes ONLY Unipile LinkedIn Account ID + LinkedIn Connected At. It
+//     never touches Unipile Account ID or the provider fields - doing so would point the client's
+//     mail and calendar at their LinkedIn account.
 
 const crypto = require('crypto');
 const { CLIENT_FIELDS } = require('../constants/airtableUnifiedConstants');
@@ -35,6 +44,8 @@ const OK_STATUSES = new Set(['CREATION_SUCCESS', 'RECONNECTED']);
 // promise in the checklist. MAIL (plain IMAP) is deliberately not offered here: it has no calendar
 // behind it, and a client on hosting-only mail needs the conversation, not a chooser.
 const DEFAULT_PROVIDERS = ['GOOGLE', 'OUTLOOK'];
+const LINKEDIN_PROVIDERS = ['LINKEDIN'];
+const LINKEDIN_PURPOSE = 'linkedin';
 
 function env() {
   const dsn = String(process.env.UNIPILE_DSN || '').replace(/^https?:\/\//, '').replace(/\/$/, '');
@@ -57,21 +68,25 @@ function sign(payload, key) {
   return crypto.createHmac('sha256', key).update(payload).digest('hex').slice(0, 32);
 }
 
+// What is signed. A purpose rides in the signature only (the token text keeps its shape), so the
+// default - no purpose - is byte-for-byte what mail-and-calendar links have always carried.
+const signed = (payload, purpose) => (purpose ? `${payload}|${purpose}` : payload);
+
 /** A signed, expiring token bound to one client id. base64url so it sits cleanly in a URL path. */
-function signNotifyToken(clientId, { now = Date.now(), key = secret(), ttlMs = NOTIFY_TTL_MS } = {}) {
+function signNotifyToken(clientId, { now = Date.now(), key = secret(), ttlMs = NOTIFY_TTL_MS, purpose = '' } = {}) {
   if (!key) throw new Error('UNIPILE_API_KEY is not set - cannot sign a notify token');
   if (!clientId || /\./.test(clientId)) throw new Error('client id missing or contains a dot');
   const payload = `${clientId}.${now + ttlMs}`;
-  return Buffer.from(`${payload}.${sign(payload, key)}`).toString('base64url');
+  return Buffer.from(`${payload}.${sign(signed(payload, purpose), key)}`).toString('base64url');
 }
 
 /** @returns {string|null} the client id the token was minted for, or null if forged/expired. */
-function verifyNotifyToken(token, { now = Date.now(), key = secret() } = {}) {
+function verifyNotifyToken(token, { now = Date.now(), key = secret(), purpose = '' } = {}) {
   try {
     if (!key) return null;
     const [clientId, exp, sig] = Buffer.from(String(token || ''), 'base64url').toString('utf8').split('.');
     if (!clientId || !exp || !sig) return null;
-    const expected = sign(`${clientId}.${exp}`, key);
+    const expected = sign(signed(`${clientId}.${exp}`, purpose), key);
     if (sig.length !== expected.length || !crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) return null;
     if (now > Number(exp)) return null;
     return clientId;
@@ -100,7 +115,12 @@ async function mintHostedLink(clientId, deps = {}) {
   if (!apiKey || !base) throw new Error('Unipile is not configured on this server (UNIPILE_DSN / UNIPILE_API_KEY)');
   const doFetch = deps.fetch || fetch;
   const now = deps.now || Date.now();
-  const notifyUrl = `${publicBase()}/api/unipile/notify/${signNotifyToken(clientId, { now })}`;
+  // deps.linkedin switches the WHOLE link: provider, callback path and token purpose together.
+  const linkedin = !!deps.linkedin;
+  const notifyUrl = linkedin
+    ? `${publicBase()}/api/unipile/notify-linkedin/${signNotifyToken(clientId, { now, purpose: LINKEDIN_PURPOSE })}`
+    : `${publicBase()}/api/unipile/notify/${signNotifyToken(clientId, { now })}`;
+  if (linkedin) deps = { ...deps, providers: LINKEDIN_PROVIDERS };
   const body = buildLinkRequest(clientId, { now, providers: deps.providers, apiUrl, notifyUrl });
 
   const res = await doFetch(`${base}/hosted/accounts/link`, {
@@ -161,6 +181,61 @@ async function handleNotify(token, body, deps = {}) {
   return { ok: true, clientId, accountId, status, fields };
 }
 
+/** What a LinkedIn approval writes - and all it writes. */
+function linkedinConnectedFields(accountId, now = Date.now()) {
+  return { 'Unipile LinkedIn Account ID': accountId, 'LinkedIn Connected At': new Date(now).toISOString() };
+}
+
+/** Ask Unipile what kind of account this is. '' when it cannot be read. */
+async function defaultAccountType(accountId) {
+  const { apiKey, base } = env();
+  if (!apiKey || !base) return '';
+  try {
+    const res = await fetch(`${base}/accounts/${encodeURIComponent(accountId)}`, { headers: { 'X-API-KEY': apiKey, Accept: 'application/json' } });
+    if (!res.ok) return '';
+    const j = await res.json();
+    return String((j && j.type) || '').toUpperCase();
+  } catch (_) { return ''; }
+}
+
+/**
+ * Handle Unipile's callback for a LINKEDIN link. Same contract as handleNotify.
+ * @param {object} deps  { clientService, updateFields, accountType(accountId), now, logger }
+ */
+async function handleLinkedinNotify(token, body, deps = {}) {
+  const now = deps.now || Date.now();
+  const log = deps.logger || { info() {}, warn() {} };
+  const clientId = verifyNotifyToken(token, { now, purpose: LINKEDIN_PURPOSE });
+  if (!clientId) return { ok: false, reason: 'bad or expired token' };
+
+  const status = String((body && body.status) || '');
+  const accountId = String((body && body.account_id) || '').trim();
+  const name = String((body && body.name) || '').trim();
+  if (!OK_STATUSES.has(status)) return { ok: false, clientId, reason: `ignored status ${status || '(none)'}` };
+  if (!accountId) return { ok: false, clientId, reason: 'no account_id in payload' };
+  if (name && name !== clientId) return { ok: false, clientId, reason: `payload name ${name} does not match token client ${clientId}` };
+
+  const cs = deps.clientService || require('./clientService');
+  const client = await cs.getClientById(clientId);
+  if (!client) return { ok: false, clientId, reason: 'client not found' };
+  const recordId = client.recordId || client.id;
+  if (!recordId) return { ok: false, clientId, reason: 'client has no record id' };
+  // The id of their mail-and-calendar connection can never be their LinkedIn one.
+  if (client.unipileAccountId && String(client.unipileAccountId).trim() === accountId) {
+    return { ok: false, clientId, reason: 'that account id is already this client\'s mail-and-calendar connection' };
+  }
+  // The link only offers LinkedIn, so anything else coming back is refused. An unreadable type
+  // is let through: the id is recorded and the first read of it fails loudly if it is wrong.
+  const type = await (deps.accountType || defaultAccountType)(accountId);
+  if (type && type !== 'LINKEDIN') return { ok: false, clientId, reason: `account is ${type}, not LinkedIn` };
+
+  const fields = linkedinConnectedFields(accountId, now);
+  const update = deps.updateFields || defaultUpdateFields;
+  await update(recordId, fields);
+  log.info(`unipile notify: ${clientId} connected LINKEDIN account ${accountId} (${status})`);
+  return { ok: true, clientId, accountId, status, fields };
+}
+
 async function defaultUpdateFields(recordId, fields) {
   const Airtable = require('airtable');
   const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process.env.MASTER_CLIENTS_BASE_ID);
@@ -170,6 +245,10 @@ async function defaultUpdateFields(recordId, fields) {
 module.exports = {
   mintHostedLink,
   handleNotify,
+  handleLinkedinNotify,
+  linkedinConnectedFields,
+  LINKEDIN_PROVIDERS,
+  LINKEDIN_PURPOSE,
   signNotifyToken,
   verifyNotifyToken,
   buildLinkRequest,

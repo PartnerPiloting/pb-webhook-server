@@ -466,4 +466,17 @@ async function mintUnipileLink(coachClientId, clientId) {
   return mintHostedLink(clientId);
 }
 
-module.exports = { getBoard, getCardDetail, mintUnipileLink, buildLinks, OWED_PHASES };
+/** Mint the "connect your LinkedIn" link for one of the coach's clients (Reconnect). */
+async function mintLinkedinLink(coachClientId, clientId) {
+  const client = await clientService.getClientById(clientId);
+  // A coach may mint one for their own client, or for themselves.
+  if (!client || (client.coach !== coachClientId && clientId !== coachClientId)) {
+    const err = new Error('not your client');
+    err.code = 'FORBIDDEN';
+    throw err;
+  }
+  const { mintHostedLink } = require('./unipileHostedAuth');
+  return mintHostedLink(clientId, { linkedin: true });
+}
+
+module.exports = { getBoard, getCardDetail, mintUnipileLink, mintLinkedinLink, buildLinks, OWED_PHASES };
