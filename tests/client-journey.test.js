@@ -95,6 +95,7 @@ const cj = require('../services/clientJourney');
     assert.strictEqual(cj.onNewJourney({ clientId: 'Guy-Wilson' }, 'Guy-Wilson'), true);
     assert.strictEqual(cj.onNewJourney({ clientId: 'New', unipileLinkedinAccountId: 'li-1' }, 'Guy-Wilson'), true);
     assert.strictEqual(cj.onNewJourney({ clientId: 'New', reconnect: 'Yes' }, 'Guy-Wilson'), true);
+    assert.strictEqual(cj.onNewJourney({ clientId: 'BrandNew', clientJourney: 'Yes' }, 'Guy-Wilson'), true, 'a new client sees it from day one');
     assert.strictEqual(cj.onNewJourney({ clientId: 'Old', followupBrief: 'Yes', unipileAccountId: 'mail-1' }, 'Guy-Wilson'), false);
     assert.strictEqual(cj.onNewJourney(null, 'Guy-Wilson'), false);
   });

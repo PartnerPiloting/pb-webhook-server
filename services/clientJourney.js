@@ -129,11 +129,12 @@ async function gatherFacts(client, deps = {}) {
  * client who was set up before Reconnect existed is not shown it: for them it would announce a
  * feature Guy has not offered them, with "you are here" on it. They see it from the moment they are
  * on the new road: their LinkedIn is connected, or their Reconnect list is on. The owner always
- * sees it. (Widening this to every client is Guy's call, client by client or all at once.)
+ * sees it. A NEW client sees it from day one (Guy, 6 Oct 2026): the join chain sets Client Journey
+ * = Yes on their record. Setting that field on an existing client is how Guy widens it, one at a time.
  */
 function onNewJourney(client, ownerId) {
   if (!client) return false;
-  return client.clientId === ownerId || present(client.unipileLinkedinAccountId) || yes(client.reconnect);
+  return client.clientId === ownerId || yes(client.clientJourney) || present(client.unipileLinkedinAccountId) || yes(client.reconnect);
 }
 
 /** The journey for one client, ready for the page. */

@@ -345,6 +345,12 @@ const MASTER_FIELDS = [
     options: { precision: 0 }
   },
   {
+    name: 'Client Journey',
+    type: 'singleSelect',
+    description: 'Yes = this client is shown the eight-stop journey (content/client-journey.json) with their own progress at the top of their Start Here page, from day one. Set to Yes automatically for every NEW client. Blank on clients who were set up before Reconnect existed - for them the journey would announce Reconnect before Guy has offered it; they are shown it anyway once their LinkedIn is connected or their Reconnect list is on. Added 2026-10-06.',
+    options: { choices: [{ name: 'Yes' }] }
+  },
+  {
     name: 'Reconnect Disconnects',
     type: 'singleSelect',
     description: 'Yes = this client also has the optional disconnects extra: the Disconnect button on Reconnect rows and the Potential disconnects section, with approved people removed overnight by their Linked Helper machine. Blank = hidden entirely. Most clients never need it - only those near LinkedIn\'s 30,000 connection limit. Needs Reconnect = Yes and the removal campaign built on their machine. Added 2026-10-05.',

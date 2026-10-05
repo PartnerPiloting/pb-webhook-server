@@ -194,6 +194,8 @@ async function getAllClients() {
                 const lhAccountId = record.get('LH Account ID') || null;
                 // The machine's own one-line report of itself, e.g. "RUNNING | LinkedIn logged in | LH 2.130".
                 const machineStatus = record.get('Machine Status') || null;
+                // Yes = shown the eight-stop journey on Start Here from day one (services/clientJourney.js).
+                const clientJourney = record.get('Client Journey') || null;
                 // Stripe cutover stage 2: the join key to Stripe. When set, billing looks the
                 // customer up by this id instead of guessing by email (billingRoutes.js).
                 const stripeCustomerId = record.get('Stripe Customer ID') || null;
@@ -332,6 +334,7 @@ async function getAllClients() {
                     reconnectDisconnects: reconnectDisconnects,
                     lhAccountId: lhAccountId,
                     machineStatus: machineStatus,
+                    clientJourney: clientJourney,
                     stripeCustomerId: stripeCustomerId,
                     stripeSubscriptionId: stripeSubscriptionId,
                     billingSource: billingSource,
