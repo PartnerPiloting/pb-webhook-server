@@ -113,10 +113,13 @@ async function gatherFacts(client, deps = {}) {
     f.voiceDone = rules.length > 0 && filled === essentials.length;
     f.voiceStarted = filled > 0;
   } catch (_) { /* the instructions store is down - voice stays 'todo' rather than guessing */ }
-  // "Really going" = the machine itself reports that LinkedIn is logged in on it. The account
-  // number on the record is NOT that signal: it is typed in from an export before anyone has signed
-  // in (Roland Illyes showed stop 8 as done on 5 Oct 2026 with a machine nobody had signed in to).
-  f.leadsArriving = f.machineSeen && /linkedin\s+logged\s*in/i.test(String(client.machineStatus || ''));
+  // "Really going" = the machine reports its Linked Helper as RUNNING or IDLE, which it only does
+  // once someone has signed in on it (before that it says WAITING FOR SIGN-IN). Two signals that
+  // look right and are NOT used: the account number on the record (typed in from an export before
+  // anyone signs in - Roland Illyes read "done" on 5 Oct 2026 with nobody signed in), and the
+  // "LinkedIn ok / LOGGED OUT" part of the status (it reads LOGGED OUT whenever the runner is
+  // mid-task on a profile page - Guy's own working machine read LOGGED OUT the same night).
+  f.leadsArriving = f.machineSeen && /^\s*(RUNNING|IDLE)\b/.test(String(client.machineStatus || ''));
   return f;
 }
 

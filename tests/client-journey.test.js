@@ -76,7 +76,7 @@ const cj = require('../services/clientJourney');
   await check('facts come from the record and the stores; a store that is down claims nothing', async () => {
     const db = { query: async (sql) => ({ rows: /extension_checkins|chat_metrics/.test(sql) ? [{}] : [] }) };
     const store = { getActiveRules: async () => { throw new Error('down'); }, getVariables: async () => [], getAssets: async () => [] };
-    const f = await cj.gatherFacts({ clientId: 'T', anthropicApiKey: 'sk-x', followupBrief: 'Yes', machineLastSeen: '2026-10-05T00:00:00Z', lhAccountId: '123', machineStatus: 'RUNNING | LinkedIn logged in | LH 2.130' }, { db, store, fields: { VARIABLE_FIELDS: [], ASSET_FIELDS: [], VOICE_FIELDS: [] } });
+    const f = await cj.gatherFacts({ clientId: 'T', anthropicApiKey: 'sk-x', followupBrief: 'Yes', machineLastSeen: '2026-10-05T00:00:00Z', lhAccountId: '123', machineStatus: 'RUNNING | LinkedIn LOGGED OUT | LH 2.130.55' }, { db, store, fields: { VARIABLE_FIELDS: [], ASSET_FIELDS: [], VOICE_FIELDS: [] } });
     assert.strictEqual(f.usedClaude, true);
     assert.strictEqual(f.extensionSeen, true);
     assert.strictEqual(f.hasKey, true);
@@ -87,7 +87,7 @@ const cj = require('../services/clientJourney');
   await check('an account number typed onto the record is not a running machine', async () => {
     const db = { query: async () => ({ rows: [] }) };
     const deps = { db, store: { getActiveRules: async () => [], getVariables: async () => [], getAssets: async () => [] }, fields: { VARIABLE_FIELDS: [], ASSET_FIELDS: [], VOICE_FIELDS: [] } };
-    const built = await cj.gatherFacts({ clientId: 'T', machineLastSeen: '2026-10-05T00:00:00Z', lhAccountId: '571651', machineStatus: 'WAITING | LinkedIn not logged in' }, deps);
+    const built = await cj.gatherFacts({ clientId: 'T', machineLastSeen: '2026-10-05T00:00:00Z', lhAccountId: '571651', machineStatus: 'WAITING FOR SIGN-IN | LinkedIn unknown | Launcher 2.130.53' }, deps);
     assert.strictEqual(built.leadsArriving, false);
     assert.strictEqual(cj.statusFromFacts(built).newpeople, 'started');
   });
