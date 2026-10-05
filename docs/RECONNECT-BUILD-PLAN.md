@@ -222,6 +222,16 @@ him without it.
 
 ## Side job, not blocking - prove Linked Helper removals
 
+**Stage one PROVEN 5 Oct 2026** on Guy's own machine: recipe
+`scripts/linked-helper/campaigns/04-remove-connections.json` built campaign 45 "Remove approved
+connections" with the existing builder - one `RemoveFromFirstConnection` action (settings null), 5
+at a time, four hours apart, 09:00-17:00; paused, nobody in it. Found in Linked Helper's own code
+and NOT yet run: `callWrite("people.actions.importPeopleFromUrls", actionId, 0, text, true,
+liAccountId)` adds people to an action's queue from profile links (0 = Target; the campaign-level
+call uses 1 = Target, 0 = ExcludeList). Stage two waits on Guy naming one connection to remove.
+Guy wants the finished version to be: tick, Approve, and the approved people go to this campaign
+by themselves - no copy and paste.
+
 On Guy's own machine, in two stages: (1) the script builds a removal campaign, paused and empty;
 (2) one real removal of a connection Guy names. Needs access to his Linked Helper machine first,
 which has never been set up. If it never works, brick 5's paste-the-list route stands.
