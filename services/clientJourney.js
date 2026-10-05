@@ -117,8 +117,9 @@ async function gatherFacts(client, deps = {}) {
   // once someone has signed in on it (before that it says WAITING FOR SIGN-IN). Two signals that
   // look right and are NOT used: the account number on the record (typed in from an export before
   // anyone signs in - Roland Illyes read "done" on 5 Oct 2026 with nobody signed in), and the
-  // "LinkedIn ok / LOGGED OUT" part of the status (it reads LOGGED OUT whenever the runner is
-  // mid-task on a profile page - Guy's own working machine read LOGGED OUT the same night).
+  // "LinkedIn ok / LOGGED OUT" part of the status (it read LOGGED OUT whenever the runner was
+  // mid-task on a profile page - Guy's own working machine read LOGGED OUT the same night. The
+  // watchdog was fixed on 6 Oct 2026, but a machine still on an older copy keeps saying it).
   f.leadsArriving = f.machineSeen && /^\s*(RUNNING|IDLE)\b/.test(String(client.machineStatus || ''));
   return f;
 }

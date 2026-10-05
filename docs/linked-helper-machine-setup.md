@@ -628,15 +628,32 @@ Guy Wilson | Linked Helper 2 Instance #16045 | 2.130.28 | Running campaigns... |
 ```
 
 Four signals in one string: **which account** (`Instance #16045`), **which version**, **runner state**
-(`Idle` vs `Running campaigns...`), and **whether the LinkedIn session is still alive**
-(`LinkedIn logged in`) - that last one catches a logged-out session, which would otherwise be
-completely silent.
+(`Idle` vs `Running campaigns...`), and **whether the LinkedIn session is still alive** - that last
+one catches a logged-out session, which would otherwise be completely silent.
+
+⚠ **The last part of the title names the page Linked Helper is on, and `LinkedIn logged in` is only
+one of the signed-in wordings** - the one for a page with no name of its own. Mid-task it reads
+`LinkedIn "Veronica Mesce" profile page (...)`, which is just as signed in. The watchdog used to
+treat everything except `LinkedIn logged in` as LOGGED OUT, so on 5 Oct 2026 Machine Status said
+Guy's and Sam Noble's working machines were logged out. Fixed 6 Oct 2026. The full list, read out of
+Linked Helper's own program (2.130.55):
+
+| The title ends with | Machine Status says |
+|---|---|
+| `LinkedIn logged in`, `"<name>" profile page`, `"<name>" organization page`, `messaging page`, `settings page`, `loading profile page...`, `loading messaging page...` (and the same under `SalesNavigator`) | `LinkedIn ok` |
+| `LinkedIn login page`, `signup page`, `authwall page`, `home page` | `LinkedIn LOGGED OUT` |
+| `LinkedIn restricted account page` | `LinkedIn RESTRICTED` |
+| `LinkedIn checkpoint challenge page`, `captcha puzzle page`, `enter phone to confirm its you page`, `check add phone page`, `check manage account` | `LinkedIn CHALLENGE` - LinkedIn wants a person |
+| anything else (`Loading...`, `Navigating...`, `LinkedIn logging in...`, a wording from a later version) | `LinkedIn unknown` - never guessed into LOGGED OUT |
+
+The reader is `linkedin_state()` in `lh-watchdog.py`, with a copy in `lh-first-run.py`;
+`python tests/lh-linkedin-state.test.py` checks every wording and that the two copies agree.
 
 ```powershell
 $t=(Get-Process linked-helper | Where-Object {$_.MainWindowTitle -like '*Instance*'}).MainWindowTitle
 $id=if($t -match 'Instance #(\d+)'){$Matches[1]}
 $st=if($t -match 'Running campaigns'){'RUNNING'}elseif($t -match '\| Idle \|'){'IDLE'}else{'UNKNOWN'}
-$li=if($t -match 'LinkedIn logged in'){'ok'}else{'LOGGED OUT'}
+$li=if($t -match '\| LinkedIn (logged in|".*" (profile|organization) page|(loading )?messaging page|settings page|loading profile page)'){'ok'}elseif($t -match '\| LinkedIn (login|signup|authwall|home) page'){'LOGGED OUT'}else{'unknown'}
 "account=$id runner=$st linkedin=$li"
 ```
 

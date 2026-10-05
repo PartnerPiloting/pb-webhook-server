@@ -108,6 +108,46 @@ def instance_title():
     return out.split(None, 3)[3] if len(out.split(None, 3)) == 4 else out
 
 
+# What the last part of the instance window title says about LinkedIn. The wording is Linked
+# Helper's own, read out of its program on 6 Oct 2026 (version 2.130.55): the title ends with the
+# page the built-in browser is on, and "LinkedIn logged in (...)" is only what it says on a page
+# with no name of its own. Mid-task it says LinkedIn "Veronica Mesce" profile page (...), which
+# is just as signed in - and reading that as LOGGED OUT told Guy two working machines were
+# signed out (5 Oct 2026). So: LOGGED OUT only when the title SAYS so; anything else is unknown.
+# lh-watchdog.py and lh-first-run.py each carry a copy; tests/lh-linkedin-state.test.py fails
+# if the two ever disagree.
+_LI_PRODUCTS = r"(?:LinkedIn|SalesNavigator|Recruiter|Talent)"
+_LI_SIGNED_IN = re.compile(
+    r"^" + _LI_PRODUCTS + r" (?:logged in|loading profile page|\".*\" profile page|"
+    r"\".*\" organization page|loading messaging page|messaging page|settings page)")
+_LI_SIGNED_OUT = re.compile(r"^LinkedIn (?:login|signup|authwall|home) page")
+_LI_RESTRICTED = re.compile(r"^LinkedIn restricted account page")
+_LI_CHALLENGE = re.compile(
+    r"^LinkedIn (?:checkpoint challenge page|captcha puzzle page|"
+    r"enter phone to confirm its you page|check add phone page|check manage account)")
+
+
+def linkedin_state(title):
+    """ok / LOGGED OUT / RESTRICTED / CHALLENGE / unknown, from the instance window title.
+
+    A person's name or a campaign's name can itself contain " | ", so every " | LinkedIn ..."
+    in the title is tried, last first, and the first one that says something wins.
+    """
+    t = title or ""
+    starts = [m.start(1) for m in re.finditer(r"\| (" + _LI_PRODUCTS + r" )", t)]
+    for at in reversed(starts):
+        tail = t[at:]
+        if _LI_SIGNED_IN.match(tail):
+            return "ok"
+        if _LI_SIGNED_OUT.match(tail):
+            return "LOGGED OUT"
+        if _LI_RESTRICTED.match(tail):
+            return "RESTRICTED"
+        if _LI_CHALLENGE.match(tail):
+            return "CHALLENGE"
+    return "unknown"
+
+
 def parse_title(t):
     if not t:
         return {"state": "NOT OPEN", "linkedin": "unknown", "account": None, "version": None}
@@ -119,8 +159,7 @@ def parse_title(t):
         state = "IDLE"
     else:
         state = "UNKNOWN"
-    linkedin = "ok" if "LinkedIn logged in" in t else "LOGGED OUT"
-    return {"state": state, "linkedin": linkedin,
+    return {"state": state, "linkedin": linkedin_state(t),
             "account": m.group(1) if m else None,
             "version": v.group(1) if v else None}
 
