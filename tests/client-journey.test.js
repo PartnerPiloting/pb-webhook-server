@@ -76,13 +76,27 @@ const cj = require('../services/clientJourney');
   await check('facts come from the record and the stores; a store that is down claims nothing', async () => {
     const db = { query: async (sql) => ({ rows: /extension_checkins|chat_metrics/.test(sql) ? [{}] : [] }) };
     const store = { getActiveRules: async () => { throw new Error('down'); }, getVariables: async () => [], getAssets: async () => [] };
-    const f = await cj.gatherFacts({ clientId: 'T', anthropicApiKey: 'sk-x', followupBrief: 'Yes', machineLastSeen: '2026-10-05T00:00:00Z', lhAccountId: '123' }, { db, store, fields: { VARIABLE_FIELDS: [], ASSET_FIELDS: [], VOICE_FIELDS: [] } });
+    const f = await cj.gatherFacts({ clientId: 'T', anthropicApiKey: 'sk-x', followupBrief: 'Yes', machineLastSeen: '2026-10-05T00:00:00Z', lhAccountId: '123', machineStatus: 'RUNNING | LinkedIn logged in | LH 2.130' }, { db, store, fields: { VARIABLE_FIELDS: [], ASSET_FIELDS: [], VOICE_FIELDS: [] } });
     assert.strictEqual(f.usedClaude, true);
     assert.strictEqual(f.extensionSeen, true);
     assert.strictEqual(f.hasKey, true);
     assert.strictEqual(f.voiceDone, undefined);
     assert.strictEqual(f.leadsArriving, true);
     assert.strictEqual(f.linkedinConnected, false);
+  });
+  await check('an account number typed onto the record is not a running machine', async () => {
+    const db = { query: async () => ({ rows: [] }) };
+    const deps = { db, store: { getActiveRules: async () => [], getVariables: async () => [], getAssets: async () => [] }, fields: { VARIABLE_FIELDS: [], ASSET_FIELDS: [], VOICE_FIELDS: [] } };
+    const built = await cj.gatherFacts({ clientId: 'T', machineLastSeen: '2026-10-05T00:00:00Z', lhAccountId: '571651', machineStatus: 'WAITING | LinkedIn not logged in' }, deps);
+    assert.strictEqual(built.leadsArriving, false);
+    assert.strictEqual(cj.statusFromFacts(built).newpeople, 'started');
+  });
+  await check('who is shown it: the owner and clients on the new road - not clients set up before Reconnect', () => {
+    assert.strictEqual(cj.onNewJourney({ clientId: 'Guy-Wilson' }, 'Guy-Wilson'), true);
+    assert.strictEqual(cj.onNewJourney({ clientId: 'New', unipileLinkedinAccountId: 'li-1' }, 'Guy-Wilson'), true);
+    assert.strictEqual(cj.onNewJourney({ clientId: 'New', reconnect: 'Yes' }, 'Guy-Wilson'), true);
+    assert.strictEqual(cj.onNewJourney({ clientId: 'Old', followupBrief: 'Yes', unipileAccountId: 'mail-1' }, 'Guy-Wilson'), false);
+    assert.strictEqual(cj.onNewJourney(null, 'Guy-Wilson'), false);
   });
   await check('journeyFor returns the page-ready journey, or null for an unknown client', async () => {
     const db = { query: async () => ({ rows: [] }) };

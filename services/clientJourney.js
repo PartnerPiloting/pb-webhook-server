@@ -113,10 +113,23 @@ async function gatherFacts(client, deps = {}) {
     f.voiceDone = rules.length > 0 && filled === essentials.length;
     f.voiceStarted = filled > 0;
   } catch (_) { /* the instructions store is down - voice stays 'todo' rather than guessing */ }
-  // Their machine reports the Linked Helper account it is running only once someone has signed in
-  // on it - so a machine with an account number is a machine that is really going.
-  f.leadsArriving = f.machineSeen && present(client.lhAccountId);
+  // "Really going" = the machine itself reports that LinkedIn is logged in on it. The account
+  // number on the record is NOT that signal: it is typed in from an export before anyone has signed
+  // in (Roland Illyes showed stop 8 as done on 5 Oct 2026 with a machine nobody had signed in to).
+  f.leadsArriving = f.machineSeen && /linkedin\s+logged\s*in/i.test(String(client.machineStatus || ''));
   return f;
+}
+
+/**
+ * Who is shown the journey. It describes the NEW way of onboarding, with Reconnect second - so a
+ * client who was set up before Reconnect existed is not shown it: for them it would announce a
+ * feature Guy has not offered them, with "you are here" on it. They see it from the moment they are
+ * on the new road: their LinkedIn is connected, or their Reconnect list is on. The owner always
+ * sees it. (Widening this to every client is Guy's call, client by client or all at once.)
+ */
+function onNewJourney(client, ownerId) {
+  if (!client) return false;
+  return client.clientId === ownerId || present(client.unipileLinkedinAccountId) || yes(client.reconnect);
 }
 
 /** The journey for one client, ready for the page. */
@@ -128,4 +141,4 @@ async function journeyFor(clientId, deps = {}) {
   return buildJourney(loadJourney(), statusFromFacts(facts));
 }
 
-module.exports = { loadJourney, statusFromFacts, buildJourney, gatherFacts, journeyFor };
+module.exports = { loadJourney, statusFromFacts, buildJourney, gatherFacts, journeyFor, onNewJourney };

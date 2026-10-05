@@ -546,7 +546,11 @@ module.exports = function mountWingguy(app) {
   // their journey before anything is switched on for them. Read-only.
   router.get('/journey', async (req, res) => {
     try {
-      const journey = await require('../services/clientJourney').journeyFor(req.client.clientId);
+      const cj = require('../services/clientJourney');
+      const record = await clientService.getClientById(req.client.clientId);
+      // journey: null draws nothing - see onNewJourney for who is shown it and why.
+      if (!cj.onNewJourney(record, OWNER_CLIENT_ID)) return res.json({ ok: true, journey: null });
+      const journey = await cj.journeyFor(req.client.clientId);
       if (!journey) return res.status(404).json({ ok: false, error: 'client not found' });
       res.json({ ok: true, journey });
     } catch (e) {

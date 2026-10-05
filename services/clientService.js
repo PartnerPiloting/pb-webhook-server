@@ -192,6 +192,8 @@ async function getAllClients() {
                 // The Linked Helper account their machine reports once someone has signed in on it
                 // (routes/linkedHelperMachineRoutes.js). Read by services/clientJourney.js.
                 const lhAccountId = record.get('LH Account ID') || null;
+                // The machine's own one-line report of itself, e.g. "RUNNING | LinkedIn logged in | LH 2.130".
+                const machineStatus = record.get('Machine Status') || null;
                 // Stripe cutover stage 2: the join key to Stripe. When set, billing looks the
                 // customer up by this id instead of guessing by email (billingRoutes.js).
                 const stripeCustomerId = record.get('Stripe Customer ID') || null;
@@ -329,6 +331,7 @@ async function getAllClients() {
                     reconnectLeadCutOff: reconnectLeadCutOff,
                     reconnectDisconnects: reconnectDisconnects,
                     lhAccountId: lhAccountId,
+                    machineStatus: machineStatus,
                     stripeCustomerId: stripeCustomerId,
                     stripeSubscriptionId: stripeSubscriptionId,
                     billingSource: billingSource,
