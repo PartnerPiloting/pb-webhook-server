@@ -222,6 +222,40 @@ router.get('/webhooks/lh-machine/:clientId/clipboard', async (req, res) => {
 });
 
 /**
+ * Reconnect removals (docs/RECONNECT-BUILD-PLAN.md): the profile links of the people this client
+ * approved for disconnection and that this machine has not collected yet. Polled by lh-removals.py
+ * shortly before the removal campaign's night window, behind the same per-client secret - a machine
+ * can only ever collect its own client's list. GET hands the list over; POST { queued: [keys] } is
+ * the machine confirming it has put them in the campaign, and only then are they marked handed over.
+ * Empty for a client without the disconnects switch.
+ */
+router.get('/webhooks/lh-machine/:clientId/removals', async (req, res) => {
+  const client = await authenticateMachine(req, res);
+  if (!client) return undefined;
+  try {
+    const people = await require('../services/reconnectDisconnects').pendingForMachine(client);
+    if (people.length) log.info(`LH-MACHINE ${client.clientId} collected ${people.length} removal(s)`);
+    return res.json({ ok: true, people });
+  } catch (e) {
+    log.error(`LH-MACHINE removals read failed for ${client.clientId}: ${e.message}`);
+    return res.status(500).json({ ok: false, error: 'read failed' });
+  }
+});
+
+router.post('/webhooks/lh-machine/:clientId/removals', express.json({ limit: '256kb' }), async (req, res) => {
+  const client = await authenticateMachine(req, res);
+  if (!client) return undefined;
+  try {
+    const r = await require('../services/reconnectDisconnects').markQueued(client.clientId, (req.body || {}).queued);
+    log.info(`LH-MACHINE ${client.clientId} confirmed ${r.count || 0} removal(s) queued`);
+    return res.json(r);
+  } catch (e) {
+    log.error(`LH-MACHINE removals confirm failed for ${client.clientId}: ${e.message}`);
+    return res.status(500).json({ ok: false, error: 'write failed' });
+  }
+});
+
+/**
  * A file for this machine to fetch (services/machineFileStore.js, 30 Sep 2026). Polled by
  * lh-clipboard.py on the same cadence as the clipboard. What is handed over is a LINK - the
  * machine does the fetching, so nothing large ever passes through this server. Handed over once:

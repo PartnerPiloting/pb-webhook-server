@@ -345,6 +345,12 @@ const MASTER_FIELDS = [
     options: { precision: 0 }
   },
   {
+    name: 'Reconnect Disconnects',
+    type: 'singleSelect',
+    description: 'Yes = this client also has the optional disconnects extra: the Disconnect button on Reconnect rows and the Potential disconnects section, with approved people removed overnight by their Linked Helper machine. Blank = hidden entirely. Most clients never need it - only those near LinkedIn\'s 30,000 connection limit. Needs Reconnect = Yes and the removal campaign built on their machine. Added 2026-10-05.',
+    options: { choices: [{ name: 'Yes' }] }
+  },
+  {
     name: 'Reconnect Daily Number',
     type: 'number',
     description: 'How many people the Reconnect section shows each morning. Blank = 20. A portion, never padded - fewer show when fewer qualify. Added 2026-10-05.',

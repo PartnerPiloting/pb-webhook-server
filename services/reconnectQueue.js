@@ -191,6 +191,8 @@ async function ensureSchema(db) {
     );
     -- disconnect: when the client told us they had removed the person themselves (brick 5).
     ALTER TABLE reconnect_state ADD COLUMN IF NOT EXISTS removed_at TIMESTAMPTZ;
+    -- disconnect: when the approved person was handed to the client's Linked Helper machine.
+    ALTER TABLE reconnect_state ADD COLUMN IF NOT EXISTS queued_at TIMESTAMPTZ;
   `);
   schemaReady = true;
 }
@@ -267,6 +269,8 @@ async function buildReconnect(tenantId, liveItems = [], { more = 0, nowMs = Date
       handedOver: handedOver.length,
       items: portion.map((p) => toItem(p, todayIso)),
       waiting, dailyNumber: number, moreStep: MORE_STEP,
+      // Disconnects is its own switch (Guy, 5 Oct 2026): most clients never need it. Off = no button.
+      disconnects: disconnectsOn(client),
     };
   } catch (e) {
     console.error(`[reconnectQueue] ${tenantId}: ${e.message}`);
@@ -278,8 +282,12 @@ async function buildReconnect(tenantId, liveItems = [], { more = 0, nowMs = Date
  * One click from the Reconnect list. `never` also sets Cease FUP on the lead - the same stop as a
  * Drop on the live list (a new message from them still surfaces there).
  */
-async function reconnectAction(tenantId, key, action, { nowMs = Date.now() } = {}) {
+async function reconnectAction(tenantId, key, action, { nowMs = Date.now(), clientOverride } = {}) {
   const STATUS = { done: 'done', skip: 'skipped', never: 'never', disconnect: 'disconnect' };
+  if (action === 'disconnect') {
+    const c = clientOverride || await require('./clientService').getClientById(tenantId);
+    if (!disconnectsOn(c)) return { ok: false, error: 'disconnects_not_enabled' };
+  }
   const status = STATUS[action];
   const personKey = String(key || '').trim();
   if (!status || !personKey) return { ok: false, error: 'invalid_action' };
@@ -299,14 +307,22 @@ async function reconnectAction(tenantId, key, action, { nowMs = Date.now() } = {
     leadsCache.delete(tenantId);
   }
   const until = action === 'skip' ? new Date(nowMs + SKIP_DAYS * MS_DAY).toISOString().slice(0, 10) : null;
+  // DISCONNECT is the client's own decision about one person they are looking at, so it is
+  // approved on the click (Guy, 5 Oct 2026) - no second review. It is not handed to Linked Helper
+  // until that night's pick-up, and until then it can be undone (reconnectDisconnects 'keep').
   await db.query(
-    `INSERT INTO reconnect_state (tenant_id, person_key, lead_rec_id, status, until, source, acted_at)
-     VALUES ($1, $2, $3, $4, $5::date, $6, now())
+    `INSERT INTO reconnect_state (tenant_id, person_key, lead_rec_id, status, until, source, approved_at, acted_at)
+     VALUES ($1, $2, $3, $4, $5::date, $6, $7::timestamptz, now())
      ON CONFLICT (tenant_id, person_key) DO UPDATE SET lead_rec_id = EXCLUDED.lead_rec_id, status = EXCLUDED.status,
-       until = EXCLUDED.until, source = EXCLUDED.source, acted_at = EXCLUDED.acted_at`,
-    [tenantId, personKey, leadRecId, status, until, action === 'disconnect' ? 'client' : null]
+       until = EXCLUDED.until, source = EXCLUDED.source, approved_at = EXCLUDED.approved_at, acted_at = EXCLUDED.acted_at`,
+    [tenantId, personKey, leadRecId, status, until, action === 'disconnect' ? 'client' : null, action === 'disconnect' ? new Date(nowMs).toISOString() : null]
   );
   return { ok: true, action, name, until };
+}
+
+/** Is the optional disconnects extra switched on for this client? */
+function disconnectsOn(client) {
+  return !!client && String(client.reconnect || '').trim() === 'Yes' && String(client.reconnectDisconnects || '').trim() === 'Yes';
 }
 
 /** The line chat adds under the queue. '' when the list is off or empty. */
@@ -317,7 +333,7 @@ function reconnectNote(rc) {
 }
 
 module.exports = {
-  buildReconnect, reconnectAction, reconnectNote,
+  buildReconnect, reconnectAction, reconnectNote, disconnectsOn,
   eligible, rank, pickPortion, splitOwnership, toItem, newestNoteMs, todayIn,
   ensureSchema, _setPool, _getPool: getPool, QUIET_DAYS, MORE_STEP, ENDING_CHIP,
 };

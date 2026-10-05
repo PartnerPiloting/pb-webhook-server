@@ -24,7 +24,7 @@ const DONE_NOTE = {
   done: 'done',
   skip: 'skipped for 90 days',
   never: 'dropped - no timer will chase them again',
-  disconnect: 'moved to potential disconnects',
+  disconnect: 'will be disconnected tonight - Undo is in the list below until then',
 };
 
 export default function ReconnectSection({ data, post, onReplace, onFlagged }) {
@@ -81,8 +81,9 @@ export default function ReconnectSection({ data, post, onReplace, onFlagged }) {
       <p className="text-sm text-gray-600 mb-3">
         People you already know whose old conversation is worth picking up. Click a name to open their profile,
         open the message thread and type <span className="font-medium">/wg</span>. Then <span className="font-medium">Done</span>,
-        <span className="font-medium"> Skip 90 days</span>, <span className="font-medium">Never</span> or
-        <span className="font-medium"> Potential disconnect</span>. Anyone you do not get to stays at the top tomorrow.
+        <span className="font-medium"> Skip 90 days</span> or <span className="font-medium">Never</span>
+        {data.disconnects ? <>, or <span className="font-medium">Disconnect</span> to remove them from your connections tonight</> : null}.
+        Anyone you do not get to stays at the top tomorrow.
       </p>
       {notice && <div className="text-sm text-emerald-700 mb-2">{notice}</div>}
       {error && <div className="text-sm text-red-600 mb-2">{error}</div>}
@@ -125,7 +126,11 @@ export default function ReconnectSection({ data, post, onReplace, onFlagged }) {
                     <button className={BTN} disabled={isBusy} onClick={() => act(it, 'done')} title="You have written to them, or dealt with it">Done</button>
                     <button className={BTN} disabled={isBusy} onClick={() => act(it, 'skip')} title="Not now - back on the list in 90 days">Skip 90 days</button>
                     <button className={BTN} disabled={isBusy} onClick={() => act(it, 'never')} title="Same as Drop: never chase them again. A new message from them still shows up.">Never</button>
-                    <button className={`${BTN} text-red-700 border-red-200 hover:bg-red-50`} disabled={isBusy} onClick={() => act(it, 'disconnect')} title="Put them on the Potential disconnects list. Nothing is removed until you approve it.">Potential disconnect</button>
+                    {/* Only for a client with the disconnects extra switched on. One click, no confirm box:
+                        nothing reaches Linked Helper until tonight, and Undo sits in the list below until then. */}
+                    {data.disconnects && (
+                      <button className={`${BTN} text-red-700 border-red-200 hover:bg-red-50`} disabled={isBusy} onClick={() => act(it, 'disconnect')} title="Remove them from your LinkedIn connections tonight. You can undo it in the list below until then.">Disconnect</button>
+                    )}
                   </div>
                 </div>
               </li>

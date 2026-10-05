@@ -286,14 +286,21 @@ step skips who is already there.
    only those approaching LinkedIn's 30,000 limit. Its own switch on the master record, off by
    default; off means no Potential disconnects section and no Disconnect button. Guy's board shows
    each client's connection count and flags anyone near the limit, so he knows who to offer it to.
-   *Section BUILT but currently shown to anyone with Reconnect on (only Guy); the separate switch,
-   the count and the flag NOT BUILT.*
+   *BUILT 5 Oct 2026: the switch is the master field `Reconnect Disconnects` (needs Reconnect = Yes
+   too). The count and near-the-limit flag are in the board API; not yet on the board screen.*
 7. **The Disconnect button.** On a Reconnect row, "Potential disconnect" becomes **Disconnect**:
    one click, the person goes to that night's removal, and sits in a "going tonight" line with an
    Undo until midnight - no confirm box. Approve on the suggestions list feeds the same Linked
    Helper campaign by itself, with progress shown instead of copy-the-links. Removals run midnight
-   to 5am so they never compete with a person using LinkedIn by day. *Night campaign and
-   add-by-command PROVEN on Guy's machine; the removal itself not yet seen; the wiring NOT BUILT.*
+   to 5am so they never compete with a person using LinkedIn by day. *BUILT 5 Oct 2026. Screen: the row button is
+   Disconnect (approved on the click); the section shows "Going tonight" with Undo, then a count of
+   people Linked Helper has. Hand-off: the client's machine runs
+   `scripts/linked-helper/lh-removals.py` nightly at 23:50 - it collects the approved links from
+   `GET /webhooks/lh-machine/:clientId/removals` (its own secret), builds the campaign from recipe
+   04 if missing, queues them, starts the campaign, and confirms with a POST; only then does Undo go.
+   NOT YET: the removal itself seen working; the machine script installed with its cron switched on
+   (Guy's machine first, after the overnight test); reporting back when each person is actually
+   gone, so "with Linked Helper" never counts down yet.*
 8. **The month ends by itself.** Five days before, Guy gets an email. On the last day Wingguy does
    a final top-up (collect, read anything newly quiet past 90 days, add those at or over the
    client's cut-off), switches the LinkedIn connection off so the charge stops, and emails Guy what

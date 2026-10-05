@@ -8,8 +8,9 @@
 // Review is by exception (Guy, 5 Oct 2026 - ticking 193 people one at a time was too slow): everyone
 // starts TICKED, each row has its own Keep, and one Approve takes whoever is still ticked.
 //
-// NOTHING HERE REMOVES ANYONE FROM LINKEDIN. Approve records the decision; the approved people
-// then sit in a short list of profile links for the client to act on.
+// Approved people (from Approve here, or the Disconnect button on a Reconnect row) wait in "Going
+// tonight" with an Undo. That night the client's own Linked Helper machine collects them and removes
+// them between midnight and 5am, about ten a night. Once it has collected someone, Undo is gone.
 
 import React, { useCallback, useEffect, useState } from 'react';
 
@@ -42,7 +43,8 @@ export default function DisconnectSection({ get, post, refreshKey }) {
   if (!data) return null;
   const pending = data.pending || [];
   const approved = data.approved || [];
-  if (!pending.length && !approved.length) return null;
+  const handedOver = Number(data.handedOver) || 0;
+  if (!pending.length && !approved.length && !handedOver) return null;
 
   const toggle = (key) => setSelected((prev) => { const n = new Set(prev); if (n.has(key)) n.delete(key); else n.add(key); return n; });
   const chosen = pending.filter((p) => selected.has(p.key));
@@ -66,20 +68,12 @@ export default function DisconnectSection({ get, post, refreshKey }) {
     if (!chosen.length) return;
     const ok = window.confirm(
       `Approve ${chosen.length} ${chosen.length === 1 ? 'person' : 'people'} for removal?\n\n` +
-      'Nothing is removed from LinkedIn by this - they move to your approved list.\n' +
+      'They move to "Going tonight". Linked Helper starts removing them after midnight, about ten a night, and you can undo any of them until then.\n' +
       'Removing a connection also deletes any endorsements and recommendations between you, for good.'
     );
     if (ok) run('approve', chosen.map((p) => p.key), `${chosen.length} approved for removal.`);
   };
 
-  const copyLinks = async () => {
-    const text = approved.map((p) => p.linkedin).filter(Boolean).join('\n');
-    try { await navigator.clipboard.writeText(text); setNotice(`${approved.length} profile links copied.`); } catch (_) { setError('Could not copy - select the names and copy them by hand.'); }
-  };
-
-  const markRemoved = () => {
-    if (window.confirm(`Have you removed all ${approved.length} from LinkedIn? This clears the approved list.`)) run('removed', [], 'Approved list cleared.');
-  };
 
   return (
     <div className="bg-white border rounded p-4">
@@ -92,7 +86,7 @@ export default function DisconnectSection({ get, post, refreshKey }) {
         )}
         {approved.length > 0 && (
           <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-600 border border-gray-300">
-            {approved.length} approved, not yet removed
+            {approved.length} going tonight
           </span>
         )}
         {pending.length > 0 && (
@@ -101,7 +95,7 @@ export default function DisconnectSection({ get, post, refreshKey }) {
       </div>
       <p className="text-sm text-gray-600 mb-3">
         Connections you may not want to keep - the ones you flagged, and ones whose conversation read as a no or as them
-        selling to you. Highest profile score first. Everyone starts ticked except high scorers ({data.highScore || 70} and over):
+        selling to you, plus anyone you pressed Disconnect on. Highest profile score first. Everyone starts ticked except high scorers ({data.highScore || 70} and over):
         press <span className="font-medium">Keep</span> on anyone you want to hold on to, then approve the rest together. Nothing is removed until you approve, and nobody you connected with in the last
         year is ever suggested.
       </p>
@@ -111,13 +105,24 @@ export default function DisconnectSection({ get, post, refreshKey }) {
       {approved.length > 0 && (
         <div className="border rounded p-3 mb-3 bg-gray-50">
           <div className="text-sm text-gray-800 mb-2">
-            <span className="font-medium">{approved.length} approved for removal.</span> Remove them on LinkedIn, or paste the
-            links into Linked Helper, then clear the list.
+            <span className="font-medium">Going tonight ({approved.length}).</span> Linked Helper collects these tonight and removes
+            them between midnight and 5am, about ten a night. Undo any of them before then.
           </div>
-          <div className="flex items-center gap-2 flex-wrap">
-            <button className={BTN} disabled={busy} onClick={copyLinks}>Copy profile links</button>
-            <button className={BTN} disabled={busy} onClick={markRemoved}>I have removed these</button>
-          </div>
+          <ul className="space-y-1">
+            {approved.map((p) => (
+              <li key={p.key} className="flex items-center gap-2 text-sm">
+                {p.linkedin ? (
+                  <a href={p.linkedin} target="_blank" rel="noopener noreferrer" className="text-blue-700 hover:underline">{p.name}</a>
+                ) : <span>{p.name}</span>}
+                <button className="text-sm text-blue-700 hover:underline disabled:opacity-50" disabled={busy} onClick={() => run('keep', [p.key], `${p.name} will stay connected.`)}>Undo</button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {handedOver > 0 && (
+        <div className="text-sm text-gray-600 mb-3">
+          {handedOver} with Linked Helper, being removed overnight.
         </div>
       )}
 
