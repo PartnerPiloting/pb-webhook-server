@@ -19,6 +19,7 @@ const { z } = require('zod');
 const { DateTime } = require('luxon');
 const wingguyCalendar = require('./wingguyCalendar');
 const leadBookingLink = require('./wingguyLeadBookingLink');
+const { resolveLeadTimezone } = require('./leadLocationResolver');
 const { getBookingPrefs } = require('../config/wingguyBookingPrefs');
 // NOTE: coachingClientLookupService + clientService are required LAZILY inside runBookMeeting —
 // their Airtable config crashes at module load when env vars are absent (local test runs).
@@ -258,7 +259,7 @@ async function runCheckTime({ date, time, side, lead_location, duration_mins } =
   };
 }
 
-async function runBookMeeting({ start_iso, duration_mins, lead_name, lead_email, lead_linkedin, confirm_double_book, meeting_link } = {}, tenant = TENANT) {
+async function runBookMeeting({ start_iso, duration_mins, lead_name, lead_email, lead_linkedin, lead_location, confirm_double_book, meeting_link } = {}, tenant = TENANT) {
   const name = String(lead_name || '').trim();
   if (!name) return { text: 'Error: lead_name is required (it titles the invite and matches any HOLD events).', isError: true };
   const linkOverride = String(meeting_link || '').trim();
@@ -275,6 +276,7 @@ async function runBookMeeting({ start_iso, duration_mins, lead_name, lead_email,
   let email = String(lead_email || '').trim();
   let emailSource = 'given';
   let linkedin = String(lead_linkedin || '').trim();
+  let leadLocationFromCrm = '';
   if (!email) {
     const found = await lookupLeadContactByName(name, { clientId: tenant });
     if (!found.lead || !found.lead.email) {
@@ -287,6 +289,7 @@ async function runBookMeeting({ start_iso, duration_mins, lead_name, lead_email,
     email = found.lead.email;
     emailSource = `CRM (${found.lead.leadName})`;
     if (!linkedin) linkedin = found.lead.linkedinProfileUrl || '';
+    leadLocationFromCrm = found.lead.location || '';
   }
 
   const result = await wingguyCalendar.bookMeetingGuarded(coach, {
@@ -299,11 +302,191 @@ async function runBookMeeting({ start_iso, duration_mins, lead_name, lead_email,
     meetingLink: linkOverride || undefined,
   });
   if (!result.ok) return { text: `NOT booked. ${result.error}`, isError: true };
+
+  // Both clocks worked out HERE, for the meeting's own date (2026-10-05): the old closing line asked
+  // the chat to do the lead-side conversion itself — the one step code exists to keep away from it.
+  let leadLocation = String(lead_location || '').trim() || leadLocationFromCrm;
+  if (!leadLocation && emailSource === 'given') {
+    try {
+      const found = await lookupLeadContactByName(name, { clientId: tenant });
+      leadLocation = (found.lead && found.lead.location) || '';
+    } catch (_) { /* no location is reported as unknown below, never guessed */ }
+  }
+  const coachTz = coach.timezone || 'Australia/Brisbane';
   return {
     text:
-      `Booked: "${result.title}" — start ${result.start} (${result.durationMins} mins), invite emailed to ${email} [email source: ${emailSource}].\n` +
+      `Booked: "${result.title}" — ${result.durationMins} mins, invite emailed to ${email} [email source: ${emailSource}].\n` +
+      `WHEN: ${clocksLine(result.start, coachTz, leadTzFor(leadLocation))}\n` +
       (linkOverride ? `Invite carries the one-off ${wingguyCalendar.meetingPlatformLabel(linkOverride)} link (${linkOverride}) instead of the coach's standing link — confirm that's the link the human meant.\n` : '') +
-      `Now restate the exact date+time to the human in the COACH's timezone AND the lead's, so a wrong-hour booking is caught immediately.`,
+      `Restate the WHEN line to the human exactly as written (it was worked out in code for this date) — never convert a time yourself — so a wrong-hour booking is caught immediately.`,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Reschedule / cancel a booked meeting (2026-10-05)
+// ---------------------------------------------------------------------------
+
+function leadTzFor(location) {
+  const r = resolveLeadTimezone(String(location || ''));
+  return r.detected ? r.timezone : null;
+}
+
+// One instant on BOTH clocks, in words, from code — for the meeting's own date (daylight saving
+// starts/ends between booking and meeting, so "today's" gap is never the right one).
+function clocksLine(iso, coachTz, leadTz) {
+  const coach = `${wingguyCalendar.formatInTz(iso, coachTz)} ${wingguyCalendar.tzCity(coachTz)} time`;
+  if (!leadTz) return `${coach} · lead's clock UNKNOWN (no recognised location on file) — do not state a lead-side time; ask where they are based`;
+  if (leadTz === coachTz) return `${coach} (the lead is on the same clock)`;
+  const gap = wingguyCalendar.clockGapMins(iso, coachTz, leadTz);
+  if (gap === 0) return `${coach} = the same time in ${wingguyCalendar.tzCity(leadTz)} (same clock on this date)`;
+  return `${coach} = ${wingguyCalendar.formatInTz(iso, leadTz)} ${wingguyCalendar.tzCity(leadTz)} time (${wingguyCalendar.clockGapLabel(gap, coachTz, leadTz)} on this date)`;
+}
+
+// Who the lead is, for matching their meeting: every email we know for them (given + CRM) and
+// where they're based. A name the CRM can't pin to one person stops here — never guess.
+async function resolveLeadForMeeting(tenant, { lead_name, lead_email, lead_location }, deps = {}) {
+  const name = String(lead_name || '').trim();
+  const given = String(lead_email || '').trim();
+  if (!name && !given) return { error: 'Give lead_name (and lead_email if you have it) so the meeting can be found.' };
+  let found = null;
+  if (name) {
+    try {
+      const lookup = deps.lookupLeadContactByName || require('./coachingClientLookupService').lookupLeadContactByName;
+      found = await lookup(name, { clientId: tenant });
+    } catch (e) {
+      if (!given) return { error: `CRM lookup for "${name}" failed (${e.message}) — pass lead_email.` };
+    }
+  }
+  const crmEmails = [...new Set(((found && found.matches) || []).map((m) => String(m.email || '').trim().toLowerCase()).filter(Boolean))];
+  if (!given && crmEmails.length > 1) {
+    return { error: `More than one CRM lead matches "${name}" (${crmEmails.join(', ')}). Ask the human which one and pass lead_email.` };
+  }
+  const emails = [...new Set([given, found && found.lead && found.lead.email].map((e) => String(e || '').trim().toLowerCase()).filter(Boolean))];
+  if (!emails.length) return { error: `No email on file for "${name}" — the meeting is matched by the lead's invite email. Ask the human for it and pass lead_email.` };
+  const location = String(lead_location || '').trim() || (found && found.lead && found.lead.location) || '';
+  return { name: name || (found && found.lead && found.lead.leadName) || '', emails, location };
+}
+
+function guestsOf(ev) {
+  return (ev.attendees || []).filter((a) => !a.self && a.email).map((a) => a.email).join(', ');
+}
+
+function notFoundText(r, lead, date, coachTz, leadTz) {
+  const who = `${lead.name || 'the lead'} (${lead.emails.join(', ')})`;
+  if (r.reason === 'gone') return `NOTHING CHANGED. That event_id is no longer an upcoming meeting with ${who}. Re-run without confirm to see what is on the calendar now.`;
+  if (r.reason === 'none') {
+    return `NOTHING CHANGED. No upcoming meeting with ${who} found ${date ? `on ${date}` : 'in the next ~13 weeks'} on the coach's calendar (only events the lead is INVITED to count). ` +
+      'Check the name, the date, or whether it was booked under another email (pass that as lead_email). Never pick a meeting yourself.';
+  }
+  return `NOTHING CHANGED. ${r.matches.length} upcoming meetings with ${who} match — the tool will not guess:\n` +
+    r.matches.map((m) => `  - "${m.summary}" — ${clocksLine(m.start, coachTz, leadTz)} — event_id=${m.id}`).join('\n') +
+    '\nAsk the human which one, then call again with that event_id (or current_date).';
+}
+
+function hoursFlags(iso, tz, prefs, len) {
+  const flags = [];
+  const eMin = wingguyCalendar.hhmmToMin(prefs.earliestStart);
+  const lMin = wingguyCalendar.hhmmToMin(prefs.lastStart);
+  const cMin = wingguyCalendar.minutesInTz(iso, tz);
+  if (eMin != null && lMin != null && cMin != null && (cMin < eMin || cMin > lMin)) flags.push('the new time is OUTSIDE the coach\'s booking hours — get an explicit yes for that too');
+  if (wingguyCalendar.inLunch(iso, tz, prefs, len)) flags.push('the new time hits the coach\'s lunch hold');
+  if (wingguyCalendar.isWeekendInTz(iso, tz) && prefs.excludeWeekends) flags.push('the new time is on a WEEKEND');
+  return flags;
+}
+
+async function loadCoach(tenant, deps) {
+  const getClient = deps.getClientById || require('./clientService').getClientById;
+  return getClient(tenant);
+}
+
+async function runRescheduleMeeting({ lead_name, lead_email, lead_location, current_date, new_start_iso, duration_mins, confirm, event_id, confirm_double_book } = {}, tenant = TENANT, deps = {}) {
+  if (!String(new_start_iso || '').trim()) return { text: 'Error: new_start_iso is required — take it from wingguy_check_time (startISO) or wingguy_check_availability (a slot\'s time). Never build it yourself.', isError: true };
+  if (confirm && !event_id) return { text: 'Error: confirm=true needs the event_id the preview showed — run without confirm first and show the human the match.', isError: true };
+  const coach = await loadCoach(tenant, deps);
+  if (!coach) return { text: `Server config error: coach client "${tenant}" not found.`, isError: true };
+  const lead = await resolveLeadForMeeting(tenant, { lead_name, lead_email, lead_location }, deps);
+  if (lead.error) return { text: `NOTHING CHANGED. ${lead.error}`, isError: true };
+
+  const coachTz = coach.timezone || 'Australia/Brisbane';
+  const leadTz = leadTzFor(lead.location);
+  const prefs = getBookingPrefs(tenant);
+  const resched = deps.rescheduleMeetingGuarded || wingguyCalendar.rescheduleMeetingGuarded;
+  const r = await resched(coach, {
+    leadEmails: lead.emails,
+    leadName: lead.name,
+    date: current_date || undefined,
+    eventId: event_id || undefined,
+    newStartISO: new_start_iso,
+    durationMins: duration_mins,
+    confirmDoubleBook: !!confirm_double_book,
+    apply: !!confirm,
+  }, deps);
+
+  if (r.reason) return { text: notFoundText(r, lead, current_date, coachTz, leadTz), isError: true };
+  if (!r.event) return { text: `NOTHING CHANGED. ${r.error}`, isError: true };
+  const ev = r.event;
+  const was = `WAS: ${clocksLine(r.oldStart, coachTz, leadTz)}`;
+  const now = r.newStart ? `NEW: ${clocksLine(r.newStart, coachTz, leadTz)} (${r.durationMins} mins)` : '';
+  if (!r.ok) return { text: `NOTHING CHANGED. ${r.error}\nMeeting: "${ev.summary}" with ${guestsOf(ev)} — event_id=${ev.id}\n${was}${now ? `\n${now}` : ''}`, isError: true };
+
+  if (!r.applied) {
+    const flags = hoursFlags(r.newStart, coachTz, prefs, r.durationMins);
+    if (r.clashes.length) flags.push(`the new time CLASHES with: ${r.clashes.map((c) => `${c.summary} (${c.display})`).join('; ')} — moving there needs the human's explicit OK to double-book (then pass confirm_double_book=true)`);
+    if (!leadTz) flags.push('lead timezone UNKNOWN — do not tell the human or the lead a lead-side time');
+    return {
+      text:
+        `PREVIEW — nothing has changed yet.\n` +
+        `Matched: "${ev.summary}" with ${guestsOf(ev)} — event_id=${ev.id}\n` +
+        `${was}\n${now}\n` +
+        (flags.length ? `⚠ ${flags.join('\n⚠ ')}\n` : '') +
+        `Show the human this match and both times exactly as written. Only after they explicitly say yes, call wingguy_reschedule_meeting again with the same arguments plus confirm=true and event_id="${ev.id}". The invite is MOVED (one "updated" notice to the lead; meeting link, title and description unchanged).`,
+    };
+  }
+  return {
+    text:
+      `MOVED: "${ev.summary}" (event_id=${ev.id}) — the lead's existing invite was updated, so they get one "updated" notice. Meeting link, title and description are unchanged.\n` +
+      `${was}\n${now}\n` +
+      `Restate the WAS and NEW lines to the human exactly as written — never convert a time yourself. Any "HOLD: ${lead.name}" events are being cleared.`,
+  };
+}
+
+async function runCancelMeeting({ lead_name, lead_email, lead_location, current_date, confirm, event_id } = {}, tenant = TENANT, deps = {}) {
+  if (confirm && !event_id) return { text: 'Error: confirm=true needs the event_id the preview showed — run without confirm first and show the human the match.', isError: true };
+  const coach = await loadCoach(tenant, deps);
+  if (!coach) return { text: `Server config error: coach client "${tenant}" not found.`, isError: true };
+  const lead = await resolveLeadForMeeting(tenant, { lead_name, lead_email, lead_location }, deps);
+  if (lead.error) return { text: `NOTHING CHANGED. ${lead.error}`, isError: true };
+
+  const coachTz = coach.timezone || 'Australia/Brisbane';
+  const leadTz = leadTzFor(lead.location);
+  const cancel = deps.cancelMeetingGuarded || wingguyCalendar.cancelMeetingGuarded;
+  const r = await cancel(coach, {
+    leadEmails: lead.emails,
+    leadName: lead.name,
+    date: current_date || undefined,
+    eventId: event_id || undefined,
+    apply: !!confirm,
+  }, deps);
+
+  if (r.reason) return { text: notFoundText(r, lead, current_date, coachTz, leadTz), isError: true };
+  const ev = r.event;
+  const when = `WHEN: ${clocksLine(r.oldStart, coachTz, leadTz)}`;
+  if (!r.ok) return { text: `NOTHING CHANGED. ${r.error}\nMeeting: "${ev.summary}" with ${guestsOf(ev)} — event_id=${ev.id}\n${when}`, isError: true };
+  if (!r.applied) {
+    return {
+      text:
+        `PREVIEW — nothing has changed yet.\n` +
+        `Matched: "${ev.summary}" with ${guestsOf(ev)} — event_id=${ev.id}\n${when}\n` +
+        `Show the human this match exactly as written. Only after they explicitly say yes, call wingguy_cancel_meeting again with the same arguments plus confirm=true and event_id="${ev.id}". The event is deleted from the coach's calendar.`,
+    };
+  }
+  return {
+    text:
+      `CANCELLED: "${ev.summary}" (event_id=${ev.id}) is off the coach's calendar.\n${when}\n` +
+      (r.notified
+        ? 'The calendar sent the lead a cancellation notice.'
+        : 'This calendar service does NOT reliably email the lead a cancellation — tell the coach, and offer to draft a short note to the lead.') +
+      ` Any "HOLD: ${lead.name}" events are being cleared.`,
   };
 }
 
@@ -311,7 +494,14 @@ async function runBookMeeting({ start_iso, duration_mins, lead_name, lead_email,
 // Definitions — one source of truth for names/descriptions/schemas
 // ---------------------------------------------------------------------------
 
-const SOON_DESC = 'Set true ONLY when the coach explicitly asks for today/tomorrow — normally everything before the day after tomorrow is withheld (his one-clear-day rule). Past times never appear regardless.';
+const BOOK_LOCATION_DESC = 'The lead\'s location (as on LinkedIn) - only for the confirmation line that states the time on the lead\'s clock. Omit to use the CRM\'s.';
+const MOVE_NAME_DESC = 'The lead\'s full name as in the CRM - drives the CRM email lookup used to find their meeting.';
+const MOVE_EMAIL_DESC = 'The lead\'s invite email. Pass it when you know it (or when the CRM name is ambiguous); the meeting is matched by this being an attendee.';
+const MOVE_LOCATION_DESC = 'The lead\'s location (as on LinkedIn) - for stating times on the lead\'s clock. Omit to use the CRM\'s.';
+const MOVE_DATE_DESC = 'The date the meeting is CURRENTLY on, YYYY-MM-DD in the coach\'s timezone, when known ("tomorrow\'s call" -> resolve against today). Omit to search the lead\'s upcoming meetings.';
+const CONFIRM_DESC = 'Set true ONLY after the human has explicitly said yes in chat to the match and times the preview showed. Omit for the preview (which changes nothing).';
+const EVENT_ID_DESC = 'Required with confirm=true: the event_id the preview showed (or the one the human chose from a list of several).';
+const SOON_DESC ='Set true ONLY when the coach explicitly asks for today/tomorrow — normally everything before the day after tomorrow is withheld (his one-clear-day rule). Past times never appear regardless.';
 const LUNCH_DESC = 'Set true ONLY when the coach explicitly wants a lunch-time meeting — otherwise his lunch hold is stripped.';
 const WEEKEND_DESC = 'Set true ONLY when the coach explicitly wants a weekend meeting — weekdays-only is enforced otherwise.';
 const FAR_WEEKS_DESC = 'Set true ONLY when the coach explicitly wants times beyond next week (e.g. "book them for when I\'m back from holidays") — normally the window is THIS week + NEXT week, with later days appearing only as flagged fallbacks when the near window can\'t fill the options.';
@@ -401,6 +591,7 @@ const TOOL_DEFS = [
       duration_mins: z.number().optional().describe('Meeting length in minutes; omit for the coach\'s default'),
       confirm_double_book: z.boolean().optional().describe('Set true ONLY after the human has explicitly OK\'d booking over a reported clash. Normally omit — the tool refuses clashes and tells you what they are.'),
       meeting_link: z.string().optional().describe(MEETING_LINK_DESC),
+      lead_location: z.string().optional().describe(BOOK_LOCATION_DESC),
     },
     jsonSchema: {
       type: 'object',
@@ -412,10 +603,67 @@ const TOOL_DEFS = [
         duration_mins: { type: 'number', description: 'Meeting length in minutes; omit for the coach\'s default' },
         confirm_double_book: { type: 'boolean', description: 'Set true ONLY after the human has explicitly OK\'d booking over a reported clash. Normally omit — the tool refuses clashes and tells you what they are.' },
         meeting_link: { type: 'string', description: MEETING_LINK_DESC },
+        lead_location: { type: 'string', description: BOOK_LOCATION_DESC },
       },
       required: ['start_iso', 'lead_name'],
     },
     run: runBookMeeting,
+  },
+  {
+    name: 'wingguy_reschedule_meeting',
+    description: 'MOVE a lead\'s ALREADY-BOOKED meeting to a new time ("move Meenakshi to next Tuesday 3pm", "push my call with X to Thursday", "X can\'t make tomorrow - she asked for Friday 2pm instead"). ALWAYS use this - never raw calendar edits, and never delete-and-rebook with wingguy_book_meeting. It MOVES the existing invite: the lead gets ONE "updated" notice and the meeting link, title and description stay exactly as they were. TWO STEPS, every time: (1) call WITHOUT confirm - it finds the lead\'s meeting (by lead_name / lead_email, narrowed by current_date when known), and returns the matched event, the OLD and NEW times on both the coach\'s and the lead\'s clock, plus any clash or off-hours flag; NOTHING changes. Show the human that match. If it finds no meeting, or more than one, it stops - ask the human, never guess or pick. (2) ONLY after the human explicitly confirms in chat, call again with the same arguments plus confirm=true and the event_id from step 1. new_start_iso must come from wingguy_check_time (startISO - for a time the lead named, side="lead" with their location) or wingguy_check_availability (a slot\'s "time") - never hand-built. Refuses a clashing new time unless confirm_double_book is true after the human\'s explicit OK. Only ever touches an event the lead is invited to - never a HOLD or anyone else\'s meeting.',
+    zodSchema: {
+      lead_name: z.string().describe(MOVE_NAME_DESC),
+      lead_email: z.string().optional().describe(MOVE_EMAIL_DESC),
+      lead_location: z.string().optional().describe(MOVE_LOCATION_DESC),
+      current_date: z.string().optional().describe(MOVE_DATE_DESC),
+      new_start_iso: z.string().describe('The NEW start ISO - from wingguy_check_time (startISO) or wingguy_check_availability (slot "time"). Never build this yourself.'),
+      duration_mins: z.number().optional().describe('New length in minutes. Omit to keep the meeting\'s current length.'),
+      confirm: z.boolean().optional().describe(CONFIRM_DESC),
+      event_id: z.string().optional().describe(EVENT_ID_DESC),
+      confirm_double_book: z.boolean().optional().describe('Set true ONLY after the human has explicitly OK\'d moving onto a reported clash. Normally omit.'),
+    },
+    jsonSchema: {
+      type: 'object',
+      properties: {
+        lead_name: { type: 'string', description: MOVE_NAME_DESC },
+        lead_email: { type: 'string', description: MOVE_EMAIL_DESC },
+        lead_location: { type: 'string', description: MOVE_LOCATION_DESC },
+        current_date: { type: 'string', description: MOVE_DATE_DESC },
+        new_start_iso: { type: 'string', description: 'The NEW start ISO - from wingguy_check_time (startISO) or wingguy_check_availability (slot "time"). Never build this yourself.' },
+        duration_mins: { type: 'number', description: 'New length in minutes. Omit to keep the meeting\'s current length.' },
+        confirm: { type: 'boolean', description: CONFIRM_DESC },
+        event_id: { type: 'string', description: EVENT_ID_DESC },
+        confirm_double_book: { type: 'boolean', description: 'Set true ONLY after the human has explicitly OK\'d moving onto a reported clash. Normally omit.' },
+      },
+      required: ['lead_name', 'new_start_iso'],
+    },
+    run: runRescheduleMeeting,
+  },
+  {
+    name: 'wingguy_cancel_meeting',
+    description: 'CANCEL a lead\'s ALREADY-BOOKED meeting ("cancel my call with X", "X has pulled out of Thursday", "take Meenakshi off my calendar"). ALWAYS use this - never raw calendar deletes - so the right event goes and nothing else does. If the lead wants a DIFFERENT time instead, use wingguy_reschedule_meeting (it moves the invite rather than cancelling). TWO STEPS, every time: (1) call WITHOUT confirm - it finds the lead\'s meeting (by lead_name / lead_email, narrowed by current_date when known) and shows it on both clocks; NOTHING changes. If it finds no meeting, or more than one, it stops - ask the human, never guess. (2) ONLY after the human explicitly confirms in chat, call again with the same arguments plus confirm=true and the event_id from step 1. Only ever touches an event the lead is invited to - never a HOLD or anyone else\'s meeting. The result says whether the calendar emailed the lead a cancellation; when it did not, offer to draft a note.',
+    zodSchema: {
+      lead_name: z.string().describe(MOVE_NAME_DESC),
+      lead_email: z.string().optional().describe(MOVE_EMAIL_DESC),
+      lead_location: z.string().optional().describe(MOVE_LOCATION_DESC),
+      current_date: z.string().optional().describe(MOVE_DATE_DESC),
+      confirm: z.boolean().optional().describe(CONFIRM_DESC),
+      event_id: z.string().optional().describe(EVENT_ID_DESC),
+    },
+    jsonSchema: {
+      type: 'object',
+      properties: {
+        lead_name: { type: 'string', description: MOVE_NAME_DESC },
+        lead_email: { type: 'string', description: MOVE_EMAIL_DESC },
+        lead_location: { type: 'string', description: MOVE_LOCATION_DESC },
+        current_date: { type: 'string', description: MOVE_DATE_DESC },
+        confirm: { type: 'boolean', description: CONFIRM_DESC },
+        event_id: { type: 'string', description: EVENT_ID_DESC },
+      },
+      required: ['lead_name'],
+    },
+    run: runCancelMeeting,
   },
 ];
 
@@ -463,4 +711,4 @@ async function legacyToolCall(toolName, args, tenant = TENANT) {
 // (content/client-phrases.json). Must run before export - see utils/clientPhrases.js for the why.
 require('../utils/clientPhrases').applyClientPhrases(TOOL_DEFS);
 
-module.exports = { registerWingguyBookingTools, legacyToolList, legacyToolCall, TOOL_DEFS, runCheckAvailability, runListEvents };
+module.exports = { registerWingguyBookingTools, legacyToolList, legacyToolCall, TOOL_DEFS, runCheckAvailability, runListEvents, runRescheduleMeeting, runCancelMeeting, clocksLine };

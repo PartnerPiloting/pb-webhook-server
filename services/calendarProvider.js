@@ -385,24 +385,135 @@ async function createViaNylas(coach, details) {
   return { ok: true, eventId: ev.id, htmlLink: ev.html_link || '', provider: 'nylas' };
 }
 
-/* ---- DELETE: remove an event by id (Nylas only — used to clear Wingguy offer HOLDs) ------------- */
-async function deleteCalendarEvent(coach, eventId) {
+/* ---- UPDATE: move an existing event to a new time (2026-10-05, the reschedule tool) -------------
+ * A reschedule MOVES the event rather than delete-and-recreate, so the lead gets ONE "updated"
+ * notice and keeps the same invite (and the Recall auto-join cache follows the same event id).
+ * ONLY the start/end are sent — title, description, meeting link and guests stay exactly as they
+ * were. `notifyParticipants` defaults true (the lead must hear about the new time). */
+async function updateCalendarEventTime(coach, eventId, details) {
   const provider = activeProvider(coach);
-  if (provider === 'zoho') return deleteViaZoho(coach, eventId);
-  if (provider === 'unipile') return deleteViaUnipile(coach, eventId);
+  if (!eventId) return { ok: false, error: 'eventId required', provider };
+  const startSec = Math.floor(new Date(details && details.startISO).getTime() / 1000);
+  const endSec = Math.floor(new Date(details && details.endISO).getTime() / 1000);
+  if (!startSec || !endSec || endSec <= startSec) return { ok: false, error: 'invalid start/end time', provider };
+  if (provider === 'nylas') return updateTimeViaNylas(coach, eventId, details);
+  if (provider === 'unipile') return updateTimeViaUnipile(coach, eventId, details);
+  if (provider === 'zoho') return updateTimeViaZoho(coach, eventId, details);
+  return { ok: false, error: `update-event not supported on provider '${provider}' (Google service account is read-only — use Nylas, Unipile or Zoho)`, provider };
+}
+
+// Nylas v3 PUT is a partial update: fields not sent are left alone. VERIFY-LIVE on first use.
+async function updateTimeViaNylas(coach, eventId, details) {
+  const apiKey = process.env.NYLAS_API_KEY;
+  const grantId = (coach && coach.nylasGrantId) || process.env.NYLAS_GRANT_ID;
+  const apiUri = (process.env.NYLAS_API_URI || 'https://api.us.nylas.com').replace(/\/$/, '');
+  const calendarId = details.calendarId || (coach && coach.nylasCalendarId) || process.env.NYLAS_CALENDAR_ID || 'primary';
+  if (!apiKey || !grantId) return { ok: false, error: 'NYLAS_API_KEY / grant not configured', provider: 'nylas' };
+  const u = new URL(`${apiUri}/v3/grants/${grantId}/events/${encodeURIComponent(eventId)}`);
+  u.searchParams.set('calendar_id', calendarId);
+  u.searchParams.set('notify_participants', details.notifyParticipants === false ? 'false' : 'true');
+  const body = {
+    when: {
+      start_time: Math.floor(new Date(details.startISO).getTime() / 1000),
+      end_time: Math.floor(new Date(details.endISO).getTime() / 1000),
+    },
+  };
+  let res;
+  try {
+    res = await fetch(u.toString(), {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify(body),
+    });
+  } catch (e) {
+    return { ok: false, error: `nylas request failed: ${e.message}`, provider: 'nylas' };
+  }
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    return { ok: false, error: `nylas HTTP ${res.status}: ${text.slice(0, 200)}`, provider: 'nylas' };
+  }
+  return { ok: true, provider: 'nylas' };
+}
+
+// Unipile PATCH /calendars/{cal}/events/{id} (partial update; `notify` DEFAULTS FALSE like create,
+// so it must be sent true or the lead never hears). Same wall-clock + IANA shape create proved.
+async function updateTimeViaUnipile(coach, eventId, details) {
+  const { apiKey, base, accountId } = unipileEnv(coach);
+  if (!apiKey || !base || !accountId) return { ok: false, error: 'UNIPILE_API_KEY / UNIPILE_DSN / account not configured', provider: 'unipile' };
+  try {
+    const calendarId = details.calendarId || await unipileWriteCalendarId(coach);
+    const tz = coach.timezone || 'UTC';
+    const toWall = (iso) => DateTime.fromISO(new Date(iso).toISOString(), { zone: 'utc' }).setZone(tz).toFormat("yyyy-MM-dd'T'HH:mm:ss");
+    const body = {
+      start: { date_time: toWall(details.startISO), time_zone: tz },
+      end: { date_time: toWall(details.endISO), time_zone: tz },
+      notify: details.notifyParticipants !== false,
+    };
+    const u = new URL(`${unipileEventsPath(base, calendarId)}/${encodeURIComponent(eventId)}`);
+    u.searchParams.set('account_id', accountId);
+    const res = await fetch(u.toString(), {
+      method: 'PATCH',
+      headers: { ...unipileHeaders(apiKey), 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) return { ok: false, error: `unipile HTTP ${res.status}: ${(await res.text().catch(() => '')).slice(0, 200)}`, provider: 'unipile' };
+    return { ok: true, provider: 'unipile' };
+  } catch (e) {
+    return { ok: false, error: `unipile update failed: ${e.message}`, provider: 'unipile' };
+  }
+}
+
+// Zoho PUT needs the event's CURRENT etag (mandatory, changes on every edit) plus dateandtime, so
+// read the single event first. Title is re-sent unchanged in case Zoho treats it as required.
+// VERIFY-LIVE on Julian's account, like the rest of the Zoho adapter.
+async function updateTimeViaZoho(coach, eventId, details) {
+  try {
+    const accessToken = await getZohoAccessToken(coach);
+    const uid = await getZohoCalendarUid(coach, accessToken);
+    const { calendarBase } = zohoHosts(coach.calendarProviderDomain);
+    const evUrl = `${calendarBase}/api/v1/calendars/${encodeURIComponent(uid)}/events/${encodeURIComponent(eventId)}`;
+    const getRes = await fetch(evUrl, { headers: zohoAuthHeaders(accessToken) });
+    if (!getRes.ok) return { ok: false, error: `zoho read-before-update HTTP ${getRes.status}: ${(await getRes.text()).slice(0, 200)}`, provider: 'zoho' };
+    const got = await getRes.json();
+    const current = (got.events && got.events[0]) || got.event || got;
+    if (!current || current.etag == null) return { ok: false, error: 'zoho event has no etag — cannot update safely', provider: 'zoho' };
+    const eventData = {
+      etag: current.etag,
+      dateandtime: { start: isoToZoho(details.startISO), end: isoToZoho(details.endISO) },
+      notify_attendee: details.notifyParticipants === false ? 0 : 1,
+    };
+    if (current.title) eventData.title = current.title;
+    const u = new URL(evUrl);
+    u.searchParams.set('eventdata', JSON.stringify(eventData));
+    const res = await fetch(u.toString(), { method: 'PUT', headers: zohoAuthHeaders(accessToken) });
+    if (!res.ok) return { ok: false, error: `zoho HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`, provider: 'zoho' };
+    return { ok: true, provider: 'zoho' };
+  } catch (e) {
+    return { ok: false, error: `zoho update failed: ${e.message}`, provider: 'zoho' };
+  }
+}
+
+/* ---- DELETE: remove an event by id (clears Wingguy offer HOLDs; cancels a booked meeting) --------
+ * opts.notify: tell the guests (a real cancellation). Defaults FALSE — HOLD cleanup must stay
+ * silent. Nylas honours it; Unipile's delete has no notify option and Zoho's is unverified, so the
+ * result carries `notified` = whether a cancellation notice is KNOWN to have gone out. */
+async function deleteCalendarEvent(coach, eventId, opts = {}) {
+  const provider = activeProvider(coach);
+  if (provider === 'zoho') return deleteViaZoho(coach, eventId, opts);
+  if (provider === 'unipile') return deleteViaUnipile(coach, eventId, opts);
   if (provider !== 'nylas') {
     return { ok: false, error: `delete-event not supported on provider '${provider}' (use Nylas, Unipile or Zoho)`, provider };
   }
   const apiKey = process.env.NYLAS_API_KEY;
   const grantId = (coach && coach.nylasGrantId) || process.env.NYLAS_GRANT_ID;
   const apiUri = (process.env.NYLAS_API_URI || 'https://api.us.nylas.com').replace(/\/$/, '');
-  const calendarId = (coach && coach.nylasCalendarId) || process.env.NYLAS_CALENDAR_ID || 'primary';
+  const calendarId = opts.calendarId || (coach && coach.nylasCalendarId) || process.env.NYLAS_CALENDAR_ID || 'primary';
   if (!apiKey || !grantId) return { ok: false, error: 'NYLAS_API_KEY / grant not configured', provider: 'nylas' };
   if (!eventId) return { ok: false, error: 'eventId required', provider: 'nylas' };
 
   const u = new URL(`${apiUri}/v3/grants/${grantId}/events/${encodeURIComponent(eventId)}`);
   u.searchParams.set('calendar_id', calendarId);
-  u.searchParams.set('notify_participants', 'false');
+  u.searchParams.set('notify_participants', opts.notify ? 'true' : 'false');
   let res;
   try {
     res = await fetch(u.toString(), { method: 'DELETE', headers: { Authorization: `Bearer ${apiKey}`, Accept: 'application/json' } });
@@ -413,7 +524,7 @@ async function deleteCalendarEvent(coach, eventId) {
     const body = await res.text().catch(() => '');
     return { ok: false, error: `nylas HTTP ${res.status}: ${body.slice(0, 200)}`, provider: 'nylas' };
   }
-  return { ok: true, provider: 'nylas' };
+  return { ok: true, provider: 'nylas', notified: !!opts.notify };
 }
 
 /* ---- Unipile (per-tenant account; the Nylas REPLACEMENT — validated live 2026-07-22) ------------
@@ -650,17 +761,17 @@ async function createViaUnipile(coach, details) {
   }
 }
 
-async function deleteViaUnipile(coach, eventId) {
+async function deleteViaUnipile(coach, eventId, opts = {}) {
   const { apiKey, base, accountId } = unipileEnv(coach);
   if (!apiKey || !base || !accountId) return { ok: false, error: 'UNIPILE_API_KEY / UNIPILE_DSN / account not configured', provider: 'unipile' };
   if (!eventId) return { ok: false, error: 'eventId required', provider: 'unipile' };
   try {
-    const calendarId = await unipileWriteCalendarId(coach);
+    const calendarId = opts.calendarId || await unipileWriteCalendarId(coach);
     const u = new URL(`${unipileEventsPath(base, calendarId)}/${encodeURIComponent(eventId)}`);
     u.searchParams.set('account_id', accountId);
     const res = await fetch(u.toString(), { method: 'DELETE', headers: unipileHeaders(apiKey) });
     if (!res.ok) return { ok: false, error: `unipile HTTP ${res.status}: ${(await res.text().catch(() => '')).slice(0, 200)}`, provider: 'unipile' };
-    return { ok: true, provider: 'unipile' };
+    return { ok: true, provider: 'unipile', notified: false };
   } catch (e) {
     return { ok: false, error: `unipile delete failed: ${e.message}`, provider: 'unipile' };
   }
@@ -910,7 +1021,7 @@ async function createViaZoho(coach, details) {
   }
 }
 
-async function deleteViaZoho(coach, eventId) {
+async function deleteViaZoho(coach, eventId, opts = {}) {
   try {
     if (!eventId) return { ok: false, error: 'eventId required', provider: 'zoho' };
     const accessToken = await getZohoAccessToken(coach);
@@ -918,17 +1029,18 @@ async function deleteViaZoho(coach, eventId) {
     const { calendarBase } = zohoHosts(coach.calendarProviderDomain);
     // VERIFY-LIVE: Zoho DELETE may require the event's etag as a query param; if a live 400/412 shows
     // that, fetch the event for its etag first. Kept simple until tested against a real account.
+    // Whether Zoho emails a cancellation on delete is unverified — so `notified` stays false.
     const u = new URL(`${calendarBase}/api/v1/calendars/${encodeURIComponent(uid)}/events/${encodeURIComponent(eventId)}`);
     const res = await fetch(u.toString(), { method: 'DELETE', headers: zohoAuthHeaders(accessToken) });
     if (!res.ok) return { ok: false, error: `zoho HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`, provider: 'zoho' };
-    return { ok: true, provider: 'zoho' };
+    return { ok: true, provider: 'zoho', notified: false };
   } catch (e) {
     return { ok: false, error: `zoho delete failed: ${e.message}`, provider: 'zoho' };
   }
 }
 
 module.exports = {
-  getMeetingsInWindow, createCalendarEvent, deleteCalendarEvent, activeProvider, listCalendars, coachSelfEmail,
+  getMeetingsInWindow, createCalendarEvent, updateCalendarEventTime, deleteCalendarEvent, activeProvider, listCalendars, coachSelfEmail,
   mapNylasEvent, mapNylasStatus, mapUnipileEvent, mapUnipileStatus, listUnipileCalendars,
   mapZohoEvent, mapZohoStatus, zohoToISO, isoToZoho, zohoHosts,
   parseReadIds, dedupEvents, allDaySpan, zohoDateOnly, googleAllDayNormalise,

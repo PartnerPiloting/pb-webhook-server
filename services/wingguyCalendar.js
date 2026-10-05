@@ -14,7 +14,7 @@
 const { DateTime } = require('luxon');
 const { resolveLeadTimezone } = require('./leadLocationResolver');
 const { getBookingPrefs } = require('../config/wingguyBookingPrefs');
-const { createCalendarEvent, deleteCalendarEvent, getMeetingsInWindow, googleAllDayNormalise } = require('./calendarProvider');
+const { createCalendarEvent, updateCalendarEventTime, deleteCalendarEvent, getMeetingsInWindow, googleAllDayNormalise } = require('./calendarProvider');
 
 const DEFAULT_TZ = 'Australia/Brisbane';
 const DAYS_TO_SCAN = 49;     // ~7 weeks ahead — the visibility CEILING (free/busy fetch window). Widened from 21
@@ -782,6 +782,132 @@ async function deleteOfferHolds(coach, { leadName }) {
 // (createOfferHolds — the automatic hold writer — was REMOVED here 2026-07-06, same day it shipped.
 // If auto-holds ever return, the git history of this file has the accumulate-and-dedupe version.)
 
+// ── Reschedule / cancel a BOOKED meeting (2026-10-05) ───────────────────────────────────────────
+// When a lead moves or cancels, Wingguy changes the calendar itself so no manual delete is left for
+// the coach to remember (Meenakshi, 5 Oct: "can we do next Tuesday 3pm?"). A move UPDATES the
+// existing event — one "updated" notice, same invite, same link/title/description — never
+// delete-and-recreate. Safety, all in code:
+//   - only an event that has THIS lead as a (non-self) attendee, by email, is ever a candidate —
+//     so a HOLD (no guest), another lead's HOLD, or any unrelated event can never be touched;
+//   - zero or several matches → stop and list; never guess;
+//   - the confirmed call must name the exact event id the preview showed;
+//   - the new time gets the same clash guard as book_meeting (incl. confirm-to-double-book), minus
+//     the meeting's own current slot and the lead's own HOLDs.
+// Reads and writes go through the coach's WRITE provider (same as holds) so events carry ids.
+
+const MOVE_WINDOW_DAYS = DAYS_TO_SCAN + 42; // how far ahead "their next meeting" is looked for (~13 weeks)
+
+function normEmail(e) { return String(e || '').trim().toLowerCase(); }
+
+/** Pure: the events that are THIS lead's upcoming booked meetings. */
+function matchLeadMeetings(events, { leadEmails, nowMs = Date.now() } = {}) {
+  const want = new Set((leadEmails || []).map(normEmail).filter(Boolean));
+  if (!want.size) return [];
+  return (events || [])
+    .filter((e) => e && e.id && !e.allDay && !isHoldSummary(e.summary))
+    .filter((e) => Date.parse(e.start) > nowMs)
+    .filter((e) => (e.attendees || []).some((a) => a && !a.self && want.has(normEmail(a.email))))
+    .sort((a, b) => Date.parse(a.start) - Date.parse(b.start));
+}
+
+/** This lead's upcoming meetings — on `date` (YYYY-MM-DD, coach's tz) or across the move window. */
+async function findLeadMeetings(coach, { leadEmails, date } = {}, deps = {}) {
+  const read = deps.getMeetingsInWindow || getMeetingsInWindow;
+  const tz = (coach && coach.timezone) || DEFAULT_TZ;
+  const nowMs = deps.nowMs != null ? deps.nowMs : Date.now();
+  let from; let to;
+  if (date) {
+    from = DateTime.fromISO(`${String(date).trim()}T00:00`, { zone: tz });
+    if (!from.isValid) throw new Error(`"${date}" is not a date — use YYYY-MM-DD`);
+    to = from.plus({ days: 1 });
+  } else {
+    from = DateTime.fromMillis(nowMs);
+    to = from.plus({ days: MOVE_WINDOW_DAYS });
+  }
+  const { events, error } = await read(coachForHolds(coach), from.toJSDate(), to.toJSDate());
+  if (error) throw new Error(`calendar read failed: ${error}`);
+  return matchLeadMeetings(events, { leadEmails, nowMs });
+}
+
+// Exactly one meeting, or a reason why not. With eventId: that one (it must still be a match).
+function pickLeadMeeting(matches, eventId) {
+  if (eventId) {
+    const ev = matches.find((m) => m.id === eventId);
+    return ev ? { ev } : { reason: 'gone' };
+  }
+  if (!matches.length) return { reason: 'none' };
+  if (matches.length > 1) return { reason: 'many' };
+  return { ev: matches[0] };
+}
+
+/**
+ * Move a lead's booked meeting. apply=false → a preview (nothing changes); apply=true → acts.
+ * Returns { ok, applied, event, oldStart, oldEnd, newStart, newEnd, durationMins, clashes, reason?, matches?, error? }.
+ */
+async function rescheduleMeetingGuarded(coach, { leadEmails, leadName, date, eventId, newStartISO, durationMins, confirmDoubleBook, apply }, deps = {}) {
+  const clashesFor = deps.getClashesForISO || getClashesForISO;
+  const update = deps.updateCalendarEventTime || updateCalendarEventTime;
+  const clearHolds = deps.deleteOfferHolds || deleteOfferHolds;
+  const tz = (coach && coach.timezone) || DEFAULT_TZ;
+  const nowMs = deps.nowMs != null ? deps.nowMs : Date.now();
+
+  const newStartMs = Date.parse(newStartISO);
+  if (!Number.isFinite(newStartMs)) return { ok: false, error: 'new start time is not a valid ISO — take it from wingguy_check_time or wingguy_check_availability' };
+  if (newStartMs <= nowMs) return { ok: false, error: 'the new time is in the past' };
+
+  const matches = await findLeadMeetings(coach, { leadEmails, date }, deps);
+  const pick = pickLeadMeeting(matches, eventId);
+  if (!pick.ev) return { ok: false, reason: pick.reason, matches };
+  const ev = pick.ev;
+
+  const oldLen = Math.round((Date.parse(ev.end) - Date.parse(ev.start)) / 60000);
+  const len = Number(durationMins) > 0 ? Number(durationMins) : (oldLen > 0 ? oldLen : 30);
+  const newStart = new Date(newStartMs).toISOString();
+  const newEnd = new Date(newStartMs + len * 60000).toISOString();
+  if (Date.parse(ev.start) === newStartMs && oldLen === len) {
+    return { ok: false, event: ev, error: 'the meeting is already at that time — nothing to move' };
+  }
+
+  // The meeting's own current slot is not a clash with its new one, and neither are the lead's holds.
+  const ownDisplay = formatInTz(ev.start, tz);
+  const clashes = (await clashesFor(coach.clientId, newStart, len))
+    .filter((c) => !isHoldForLead(c.summary, leadName))
+    .filter((c) => !(c.summary === ev.summary && c.display === ownDisplay));
+
+  const base = { event: ev, oldStart: ev.start, oldEnd: ev.end, newStart, newEnd, durationMins: len, clashes };
+  if (!apply) return { ok: true, applied: false, ...base };
+  if (clashes.length && !confirmDoubleBook) {
+    return {
+      ok: false, clash: true, ...base,
+      error: `That time clashes with: ${clashes.map((c) => `${c.summary} (${c.display})`).join('; ')}. Tell the human and, if they still want it, call again with confirm_double_book:true.`,
+    };
+  }
+  const r = await update(coachForHolds(coach), ev.id, { startISO: newStart, endISO: newEnd, calendarId: ev.calendarId, notifyParticipants: true });
+  if (!r.ok) return { ok: false, ...base, error: `calendar update failed: ${r.error}` };
+  if (leadName) {
+    Promise.resolve(clearHolds(coach, { leadName })).catch((e) => console.warn(`[wingguyCalendar] hold cleanup failed: ${e.message}`));
+  }
+  return { ok: true, applied: true, provider: r.provider, ...base };
+}
+
+/** Cancel a lead's booked meeting. apply=false → preview; apply=true → deletes it, telling the lead where the provider can. */
+async function cancelMeetingGuarded(coach, { leadEmails, leadName, date, eventId, apply }, deps = {}) {
+  const del = deps.deleteCalendarEvent || deleteCalendarEvent;
+  const clearHolds = deps.deleteOfferHolds || deleteOfferHolds;
+  const matches = await findLeadMeetings(coach, { leadEmails, date }, deps);
+  const pick = pickLeadMeeting(matches, eventId);
+  if (!pick.ev) return { ok: false, reason: pick.reason, matches };
+  const ev = pick.ev;
+  const base = { event: ev, oldStart: ev.start, oldEnd: ev.end };
+  if (!apply) return { ok: true, applied: false, ...base };
+  const r = await del(coachForHolds(coach), ev.id, { notify: true, calendarId: ev.calendarId });
+  if (!r.ok) return { ok: false, ...base, error: `calendar delete failed: ${r.error}` };
+  if (leadName) {
+    Promise.resolve(clearHolds(coach, { leadName })).catch((e) => console.warn(`[wingguyCalendar] hold cleanup failed: ${e.message}`));
+  }
+  return { ok: true, applied: true, provider: r.provider, notified: !!r.notified, ...base };
+}
+
 /* ---- "What's on my calendar?" (read-only listing) ------------------------
  * Distinct from the availability pipeline: that answers "when is he FREE" (and applies his booking
  * rules); this answers "what is actually ON his calendar". It reads through the SAME provider seam
@@ -834,6 +960,9 @@ async function listEventsForCoach(clientId, { range, date, endDate } = {}) {
 module.exports = {
   getAvailabilityForCoach, createBookingEvent, checkProposedTime, getClashesForISO, clashingSlots, overlappingEvents, buildDaysFromBusy, meetingPlatformLabel,
   deleteOfferHolds, isHoldForLead, isHoldSummary, holdTitle,
+  // reschedule / cancel a booked meeting (2026-10-05)
+  matchLeadMeetings, findLeadMeetings, rescheduleMeetingGuarded, cancelMeetingGuarded,
+  formatInTz, wallClockToISO,
   // shared offer-time pipeline + booking guard (used by the panel agent AND the connector tools)
   filterAvailability, bookMeetingGuarded, fmtSlot, tzCity, clockGapMins, clockGapLabel, inLunch, hhmmToMin, minutesInTz, earliestOfferDate, dateStrInTz, isWeekendInTz, firstFarWeekDate, offerWindowInfo,
   // read-only calendar listing (provider-agnostic) + its display helper
