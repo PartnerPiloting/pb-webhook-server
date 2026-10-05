@@ -12,16 +12,19 @@
 //   - The LinkedIn account id comes ONLY from the client's own record (`Unipile LinkedIn Account ID`).
 //     No env fallback, ever - a fallback would read one tenant's inbox into another's store.
 //   - Conversations live in Postgres only. Airtable gets the people worth working (brick 3).
-//   - Sales Navigator threads identify people by a different id (ACwA...) from classic threads and
-//     the connections list (ACoA...). There is no id mapping, so the two copies of a person are
-//     merged by name against the connections list, and only when that is safe (see resolveSalesNav).
-//     Messages keep the RAW attendee id, so a later, better merge never has to rewrite them.
+//   - The Sales Navigator inbox is NOT used (Guy, 5 Oct 2026: too much complication for what it
+//     adds; clients are told Wingguy works from the ordinary inbox). Its threads identify people by
+//     a different id (ACwA...) from classic threads and the connections list (ACoA...), with no id
+//     mapping. The salesNav option below is the one switch: when on, the two copies of a person are
+//     merged by name, only when that is safe (see resolveSalesNav), and messages keep the RAW
+//     attendee id so a later, better merge never has to rewrite them.
 
 const { Pool } = require('pg');
 const { createLogger } = require('../utils/contextLogger');
 
 const MS_DAY = 86400000;
 const ORG_FOLDER = 'INBOX_LINKEDIN_ORGANIZATION';
+const SALES_NAV_FOLDER = 'INBOX_LINKEDIN_SALES_NAVIGATOR';
 const PAGE_LIMIT = 250;
 // The connections list is the one call here whose pace on a big network is unobserved, so it is
 // read gently and can be capped or skipped by the caller.
@@ -122,7 +125,7 @@ function resolveSalesNav(attendee, relationsByName) {
  * Turn one account's Unipile rows into the two things we store.
  * @returns {{ people: object[], messages: object[], summary: object }}
  */
-function buildNetwork({ chats = [], attendees = [], messages = [], relations = [], nowMs = Date.now() } = {}) {
+function buildNetwork({ chats = [], attendees = [], messages = [], relations = [], nowMs = Date.now(), salesNav = false } = {}) {
   const attBy = new Map();
   for (const a of attendees) if (a && a.provider_id && !a.is_self) attBy.set(a.provider_id, a);
   const chatBy = new Map();
@@ -139,6 +142,7 @@ function buildNetwork({ chats = [], attendees = [], messages = [], relations = [
     if (!pid || !at) continue;
     const inbox = (c.folder || []).find((f) => String(f).startsWith('INBOX_')) || '';
     if (inbox === ORG_FOLDER) continue;
+    if (inbox === SALES_NAV_FOLDER && !salesNav) continue;
     const folder = inbox.replace('INBOX_LINKEDIN_', '') || null;
     const mine = m.is_sender === 1 || m.is_sender === true;
     let b = raw.get(pid);
@@ -326,7 +330,7 @@ async function writeNetwork(db, tenantId, { people, messages }, { fullPeople = t
  * @param {string} tenantId  client id (e.g. 'Guy-Wilson')
  * @param {{dryRun?: boolean, relations?: boolean, relationsMaxPages?: number}} opts
  */
-async function syncLinkedinNetwork(tenantId, { dryRun = false, relations = true, relationsMaxPages } = {}) {
+async function syncLinkedinNetwork(tenantId, { dryRun = false, relations = true, relationsMaxPages, salesNav = false } = {}) {
   const logger = createLogger({ runId: 'LI-SYNC', clientId: tenantId, operation: 'linkedin_network_sync' });
   const clientService = require('./clientService');
   const client = await clientService.getClientById(tenantId);
@@ -336,7 +340,7 @@ async function syncLinkedinNetwork(tenantId, { dryRun = false, relations = true,
 
   const read = await readUnipile(accountId, { relations, relationsMaxPages, logger });
   if (!read.inboxComplete) return { ok: false, error: 'inbox read stopped before the end - nothing written' };
-  const built = buildNetwork(read);
+  const built = buildNetwork({ ...read, salesNav });
   const result = { ok: true, dryRun, relationsComplete: read.relationsComplete, summary: built.summary };
   if (dryRun) return result;
 

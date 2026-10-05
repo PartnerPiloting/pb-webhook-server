@@ -53,16 +53,21 @@ tables, all keyed by client:
 is first used.)
 
 The connections list gives each person's id and vanity link together, which fixes lead matching
-(it was by name only). Sales Nav threads use a different id with no mapping to the classic one, so
-a Sales Nav copy of a person is merged onto the connection by name, and only when that is safe:
-one connection has the name and Sales Nav says they are 1st-degree, or the headlines also agree.
-Anyone else stays a separate person until Unipile answers the id-mapping question. Messages keep
-the raw id, so a better merge later rewrites nothing.
+(it was by name only).
+
+**The Sales Navigator inbox is not used (Guy's decision, 5 Oct 2026).** It made things more
+complicated than it was worth: its threads carry a different id with no mapping to the ordinary
+one, so the same person shows up twice. Clients are told Wingguy works from the ordinary LinkedIn
+inbox. Known cost: on Guy's own data, 26 of the 100 best reconnects had their thread only in the
+Sales Navigator inbox, and a person who replied only there reads as "never replied" - so nobody
+may be suggested for disconnect on "never replied" alone without this being revisited. The code
+keeps one switch (`--sales-nav`) that reads it and merges by name when safe; it is off.
+Sales Navigator itself is still needed for SEARCH (the signals tier).
 
 **BUILT 5 Oct 2026** (`services/linkedinNetworkSync.js`, `scripts/linkedin-network-sync.js`,
 `tests/linkedin-network-sync.test.js`). Run over Guy's stored prototype data it reproduces the
-prototype exactly: 4,449 people with messages, 2,923 never spoke, 648 they spoke last, 878
-replied then quiet. NOT yet run against Unipile or Postgres.
+prototype exactly with the Sales Navigator switch on: 4,449 people with messages, 2,923 never
+spoke, 648 they spoke last, 878 replied then quiet. NOT yet run against Unipile or Postgres.
 
 New master fields: `Reconnect` (the switch), `Reconnect Daily Number` (default 20),
 `LinkedIn Feed` (Yes = stay connected past the month), `Unipile LinkedIn Account ID`,

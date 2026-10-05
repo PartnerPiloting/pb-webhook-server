@@ -7,6 +7,7 @@
  *   node scripts/linkedin-network-sync.js --tenant=Client-Id --dry-run   # count only, write nothing
  *   node scripts/linkedin-network-sync.js --tenant=Client-Id             # read and store
  *     --no-relations          skip the connections list (inbox only)
+ *     --sales-nav             also read the Sales Navigator inbox (off by default - not used)
  *     --relations-pages=N     stop the connections list after N pages (100 people a page)
  *
  * Always --dry-run first on a new account and read the counts.
@@ -26,6 +27,7 @@ if (!tenant) { console.error('[linkedin-network-sync] --tenant=Client-Id is requ
     dryRun: args.includes('--dry-run'),
     relations: !args.includes('--no-relations'),
     relationsMaxPages: Number(val('relations-pages')) || undefined,
+    salesNav: args.includes('--sales-nav'),
   });
   const secs = Math.round((Date.now() - started) / 1000);
   if (!r.ok) { console.error(`[linkedin-network-sync] FAILED in ${secs}s - ${r.error}`); process.exit(1); }

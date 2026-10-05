@@ -99,7 +99,7 @@ const person = (net, key) => net.people.find((p) => p.person_key === key);
 
   await check('a Sales Navigator thread merges onto the connection and keeps its raw id on the messages', () => {
     const net = buildNetwork({
-      nowMs,
+      nowMs, salesNav: true,
       relations: [rel('ACoA-sam', 'Sam', 'Sample', 'Founder at Widgets', 'sam-sample')],
       chats: [chat('c1', 'ACoA-sam'), chat('c2', 'ACwA-sam', SALES)],
       attendees: [att('ACoA-sam', 'Sam Sample'), att('ACwA-sam', 'Sam Sample', 'Founder at Widgets')],
@@ -119,7 +119,7 @@ const person = (net, key) => net.people.find((p) => p.person_key === key);
 
   await check('an unmatched Sales Navigator person stands alone, with no member id', () => {
     const net = buildNetwork({
-      nowMs, relations: [rel('ACoA-x', 'Someone', 'Else')],
+      nowMs, salesNav: true, relations: [rel('ACoA-x', 'Someone', 'Else')],
       chats: [chat('c1', 'ACwA-stranger', SALES)], attendees: [att('ACwA-stranger', 'Stan Stranger', '', 'DISTANCE_2')],
       messages: [msg('m1', 'c1', '2024-06-01T00:00:00.000Z', false)],
     });
@@ -128,6 +128,17 @@ const person = (net, key) => net.people.find((p) => p.person_key === key);
     assert.strictEqual(s.sales_nav_id, 'ACwA-stranger');
     assert.strictEqual(s.is_connection, false);
     assert.strictEqual(net.summary.unmergedSalesNav, 1);
+  });
+
+  await check('the Sales Navigator inbox is left out unless asked for', () => {
+    const net = buildNetwork({
+      nowMs, chats: [chat('c1', 'ACoA-a'), chat('c2', 'ACwA-b', SALES)],
+      attendees: [att('ACoA-a', 'Ann A'), att('ACwA-b', 'Bob B')],
+      messages: [msg('m1', 'c1', '2025-03-01T00:00:00.000Z', false), msg('m2', 'c2', '2025-03-01T00:00:00.000Z', false)],
+    });
+    assert.strictEqual(net.people.length, 1);
+    assert.strictEqual(net.messages.length, 1);
+    assert.strictEqual(net.people[0].person_key, 'ACoA-a');
   });
 
   console.log('resolveSalesNav');
