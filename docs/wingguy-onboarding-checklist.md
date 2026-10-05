@@ -33,6 +33,46 @@ of a client.
 
 ---
 
+## THE ORDER OF PLAY FROM 6 OCTOBER 2026 - eight stops, Reconnect second
+
+**Decided by Guy, 5-6 Oct 2026.** A new client now STARTS with Reconnect - waking up the people
+they already know on LinkedIn - because it gets them into real conversations in days, with people
+who already said yes once, before anything fiddly is set up. That pulls three things EARLIER than
+the numbered steps below had them (their Claude key, their instructions, the extension) and pushes
+calendar, email and the recorder back a session. Linked Helper stays last.
+
+**The step NUMBERS below have not changed** - they are names now, not the running order. The
+preflight, the Client Tasks and the onboard skill all refer to steps by number, so the numbers
+stay put and THIS table is the order. Two steps are new: 15 and 16.
+
+The one written version of the eight stops - what the client sees on their Start Here page, with
+their own progress - is `content/client-journey.json`. Change names or order THERE, and here.
+
+| Stop (what the client sees) | When | Steps, by number |
+|---|---|---|
+| 1 Wingguy joins your Claude | Session one | 0 [solo], 1 |
+| 2 Reconnect | Starts session one | **15** - show the journey, they click the LinkedIn link ON the call |
+| 3 Your key and your voice | Homework before session two | 11, 6 |
+| 4 Wingguy inside LinkedIn | Session two | 9, 10, **16**, 12 (the /wg demo is on a real Reconnect row) |
+| 5 Calendar and email | Session three | 2, 3, 4, 5 |
+| 6 Your calls, remembered | Session three | 7, 8 |
+| 7 Your daily rhythm | From session two on | 13 |
+| 8 New connections | Last, on purpose | 14 |
+
+**What this changes on the day:**
+- **Session one ends with one click, not a hook-up.** Connector, the journey page, the LinkedIn
+  link. Their history starts arriving that night (3,000 conversations a day, newest first) and you
+  get a "ready for a session" email. Do not wait for the whole history - the first batch is plenty.
+- **The homework email after session one carries BOTH the Claude key and the instructions.**
+  Session two cannot run without them: the reading runs on their key, and the standing rule holds -
+  never demo drafting before step 6, or the first message they see will not sound like them.
+- **Session two is the wow.** Extension in, their Reconnect list switched on, and their first real
+  messages sent to people who know them.
+- **Existing clients** (set up before this) are not on this road. They are offered Reconnect one at
+  a time, when Guy chooses; setting `Client Journey` = Yes on their record shows them the journey.
+
+---
+
 ## THE OVERVIEW - the whole journey, one paragraph per step
 
 **Reordered 2026-09-06.** The rules session moved from step 2 to step 6 and became homework; the
@@ -1161,6 +1201,65 @@ Davis has no link yet as at 30 Sep 2026. Do not set this up for anyone new.
 
 
 ---
+
+## STEP 15 EXPANDED - Reconnect: they connect their LinkedIn [live, session one]
+
+**Say to the client:** "Before we set anything else up, we start with the people you already know.
+Over the years you've had hundreds of conversations on LinkedIn that just stopped. This finds the
+ones worth picking up and gives you twenty a day. All I need from you today is one click."
+
+**You do:** share your screen on the journey page (their portal's Start Here, or "Your Wingguy
+Journey") and talk through stop 2. Then paste the link into the meeting chat.
+
+**The client does:** clicks the link, signs in to LinkedIn on the page it opens, approves.
+
+**Claude does:** mints the link when you ask ("get me the LinkedIn link for <client>" - or the
+Reconnect panel on My Clients: choose the client, Get link). It lasts 24 hours. When they approve,
+their record gets its LinkedIn account id and the date by itself.
+
+**Check it worked:** ask Claude "has <client>'s LinkedIn connected?" - `Unipile LinkedIn Account ID`
+is on their record. Their mail and calendar connection is untouched; this is a separate one.
+
+**Watch out:**
+- Do it ON the call. The clock on their history starts at the click - a link sent "for later" is a
+  session two with nothing to read.
+- It only READS. If they ask: it never posts, connects, messages or changes anything. Sales
+  Navigator's inbox is not used - Wingguy works from the ordinary one.
+- The connection is for one month (it switches itself off, with a warning email to you five days
+  before). Their list keeps working after that.
+- No client has clicked one of these links yet as at 6 Oct 2026 - watch the first one land.
+
+## STEP 16 EXPANDED - Reconnect: their description, the samples, two yeses [live, session two]
+
+**Say to the client:** "Your conversations are in. Now you tell Wingguy, in your own words, who you
+want to hear from again - and it shows you thirty of your own conversations scored, so you can say
+where it's got it wrong."
+
+**You do:** nothing but steer. Have them share THEIR screen and their own Claude.
+
+**The client does:** says **"set up my reconnect list"** in their Claude. Answers the questions,
+reads the draft description, looks at the thirty samples and says which are wrong. Then says yes
+twice: once to read all their conversations (the cost is shown first - a few dollars on their own
+key), once to choose how many people to bring in.
+
+**Claude does:** everything else - the sample, saving the description, the full read (it runs for
+some minutes; use them to show the Follow-Ups screen), the counts at cut-off 3 and at cut-off 4,
+bringing the people in and switching the list on.
+
+**Check it worked:** their Follow-Ups screen shows a Reconnect section with twenty people. Open one
+together and do the first /wg (that is step 12).
+
+**Watch out:**
+- Needs first: their Claude key (step 11), their instructions (step 6), the extension (steps 9-10),
+  and their history started (step 15). "Their history has not arrived yet" from the tool means
+  step 15 did not take.
+- Do not rush the samples. The description decides the quality of their list for months; a vague
+  one gives a poor list.
+- The cut-off: with big numbers, 4 is plenty. It can be lowered later.
+- Older conversations keep arriving for a week or so and are read and added by themselves.
+- Disconnects are NOT part of this. That is an optional extra for a client near LinkedIn's 30,000
+  limit - its own switch (`Reconnect Disconnects`), off by default. The Reconnect panel on My
+  Clients flags who is near the limit.
 
 ## THE EXTENSION UPDATE FOLDER - delivery that survives updates
 

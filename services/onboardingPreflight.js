@@ -7,7 +7,11 @@
 // record, the rules store, the transcript store, the calendar seam and env - never from a stored
 // checklist, because a stored ledger drifts and the live system cannot.
 //
-// Journey = docs/wingguy-onboarding-checklist.md steps 0-14 (renumbered 2026-09-06). MANUAL steps
+// Journey = docs/wingguy-onboarding-checklist.md steps 0-16. The NUMBERS are names, not the order:
+// since 6 Oct 2026 the running order is the eight stops (content/client-journey.json and the
+// checklist's "THE ORDER OF PLAY") - Reconnect (steps 15 and 16) comes second, in sessions one and
+// two. Each step's evidence says which session it now belongs to where that moved.
+// (Steps 0-14 were renumbered 2026-09-06.) MANUAL steps
 // cannot be probed from here - their proof lives on the client's screen - so they come back as
 // reminders and never as 'done'. Returns:
 //   { clientId, clientName, steps: [{ n, name, verdict: 'done'|'owed'|'manual', evidence }],
@@ -282,6 +286,35 @@ async function runPreflight(clientId) {
       + iconLine);
   } catch (e) {
     step(14, 'linked helper + VPS', MANUAL, `the CLOSING step for new clients (series-date probe failed: ${e.message})`);
+  }
+
+  // ---- STEPS 15 + 16: Reconnect - SECOND on the journey since 6 Oct 2026 ----------
+  // 15 = they clicked the LinkedIn link in session one. 16 = the setup conversation in session two
+  // (description, samples, two yeses), which switches their list on.
+  try {
+    const collect = (await require('./linkedinCollect').statusByTenant())[clientId] || null;
+    const connected = present(client.unipileLinkedinAccountId);
+    const everConnected = connected || !!collect;
+    const where = collect
+      ? `history ${collect.state}: ${Number(collect.conversations || 0).toLocaleString('en-AU')} conversations, ${Number(collect.connections || 0).toLocaleString('en-AU')} connections${collect.nearLimit ? ' - NEAR THE 30,000 LIMIT (offer disconnects)' : ''}`
+      : 'no history collected yet';
+    step(15, 'reconnect: LinkedIn', everConnected ? DONE : OWED,
+      everConnected
+        ? `SESSION ONE - ${connected ? 'LinkedIn connected' : 'LinkedIn was connected (the month has ended)'} · ${where}`
+        : 'SESSION ONE - not connected. Show the journey, then have them click the LinkedIn link ON the call ("get me the LinkedIn link for <client>", or the Reconnect panel on My Clients)');
+    const on = String(client.reconnect || '').trim() === 'Yes';
+    let described = false;
+    try { described = present((await require('./conversationScore').loadProfile(clientId)).who); } catch (_) { /* store down */ }
+    step(16, 'reconnect: list on', on ? DONE : OWED,
+      on
+        ? `SESSION TWO - Reconnect list is ON (cut-off ${client.reconnectLeadCutOff || 3})`
+        : `SESSION TWO - list not on. In THEIR Claude: "set up my reconnect list" (description ${described ? 'saved' : 'not written yet'}). Needs step 15, step 11 (key), step 6 (voice) and steps 9-10 (extension) first`);
+    if (everConnected && !on && collect && Number(collect.messages) > 0) {
+      warnings.push('step 16: their LinkedIn history is IN and the Reconnect list is not on - this is the session-two job; they are waiting on you');
+    }
+  } catch (e) {
+    step(15, 'reconnect: LinkedIn', OWED, `probe failed: ${e.message}`);
+    step(16, 'reconnect: list on', OWED, `probe failed: ${e.message}`);
   }
 
   return { clientId, clientName: client.clientName, steps, warnings };

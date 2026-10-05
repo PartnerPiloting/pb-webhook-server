@@ -111,7 +111,34 @@ client.
 
 Then place the client on the journey: which checklist step is DONE / IN FLIGHT / NEXT.
 
-## The journey order - Wingguy first, Linked Helper LAST (decided 2026-08-22)
+## The journey order from 6 Oct 2026 - eight stops, RECONNECT SECOND, Linked Helper last
+
+**This is the running order for every NEW client (Guy, 5-6 Oct 2026).** The checklist's step
+numbers are names, not the order - its "THE ORDER OF PLAY" section and
+`content/client-journey.json` (what the client sees on Start Here, with their own progress) are the
+order:
+
+1. **Wingguy joins your Claude** - session one: steps 0, 1.
+2. **Reconnect** - starts session one: step 15. Show the journey page, then they click the LinkedIn
+   link ON the call ("get me the LinkedIn link for <client>" / the Reconnect panel on My Clients).
+3. **Your key and your voice** - HOMEWORK before session two: steps 11 and 6. The post-session-one
+   email carries BOTH. Session two cannot run without them.
+4. **Wingguy inside LinkedIn** - session two: steps 9, 10, then 16 (in THEIR Claude: "set up my
+   reconnect list" - description, 30 samples, two yeses) and 12 (the /wg demo on a real Reconnect row).
+5. **Calendar and email** - session three: steps 2, 3, 4, 5.
+6. **Your calls, remembered** - session three: steps 7, 8.
+7. **Your daily rhythm** - from session two on: step 13.
+8. **New connections** - last: step 14.
+
+So session one ends on ONE click (the LinkedIn link), not a calendar hook-up; a "ready for a
+session" email reaches Guy when their first batch of history is in (overnight); and session two's
+wow is their first real messages to people who already know them. When placing a client, use this
+order - a client with step 15 done and step 16 owed is on SESSION TWO whatever else is unfinished.
+Existing clients (set up before this) are NOT moved onto it: Reconnect is offered to them one at a
+time when Guy chooses, and `Client Journey` = Yes on their record shows them the journey.
+Reference: docs/RECONNECT-BUILD-PLAN.md ("The client process" and "The whole client journey").
+
+### Still true within that order - Linked Helper LAST (decided 2026-08-22)
 
 For NEW clients, checklist steps 0-13 (the Wingguy plumbing, through to the extension and the
 feature tour) fill the early sessions and the Linked Helper hookup + first campaign are the
