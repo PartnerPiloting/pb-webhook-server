@@ -153,7 +153,7 @@ function toItem(p, todayIso) {
     why: p.why || '',
     pickUpOn: p.pick_up_on || '',
     quietDays: p.quietDays,
-    profileScore: profile == null || profile === '' ? null : Number(profile),
+    profileScore: profile == null || profile === '' ? null : Math.round(Number(profile)),
     carried: !!p.shown_on && day(p.shown_on) !== todayIso,
   };
 }
