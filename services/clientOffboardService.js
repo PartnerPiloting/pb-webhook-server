@@ -314,4 +314,4 @@ async function runLapseOffboardSweep({ dryRun = false, logger = defaultLogger, n
   return { checked: rows.length, offboarded, skipped };
 }
 
-module.exports = { planOffboard, planText, runOffboard, runLapseOffboardSweep, LAPSE_GRACE_DAYS };
+module.exports = { planOffboard, planText, runOffboard, runLapseOffboardSweep, deleteUnipileAccount, LAPSE_GRACE_DAYS };

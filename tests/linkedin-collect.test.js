@@ -86,6 +86,63 @@ const iso = (ms) => new Date(ms).toISOString();
     for (const k of ['ready', 'complete', 'stalled']) assert.ok(!/[—–]/.test(lc.buildEmail(k, c).text), 'short dashes only');
   });
 
+  console.log('the month end');
+  const D = 24 * H;
+  const conn = (daysAgo, extra = {}) => ({ clientId: 'Pat-Client', clientName: 'Pat Client', recordId: 'recPat', unipileAccountId: 'mail-1', unipileLinkedinAccountId: 'li-1', linkedinConnectedAt: iso(T0 - daysAgo * D), ...extra });
+
+  await check('nothing before day 25; a warning from day 25, once; the end at day 30', () => {
+    assert.strictEqual(lc.monthEndStep(conn(10), null, T0), null);
+    assert.strictEqual(lc.monthEndStep(conn(25.5), null, T0), 'warn');
+    assert.strictEqual(lc.monthEndStep(conn(27), { notified_ending_at: iso(T0) }, T0), null);
+    assert.strictEqual(lc.monthEndStep(conn(30.1), { notified_ending_at: iso(T0) }, T0), 'end');
+  });
+  await check('a client paying to keep the connection is left alone, and so is one with no date', () => {
+    assert.strictEqual(lc.monthEndStep(conn(45, { linkedinFeed: 'Yes' }), null, T0), null);
+    assert.strictEqual(lc.monthEndStep({ clientId: 'X' }, null, T0), null);
+  });
+  const monthDb = (row) => { const calls = []; return { calls, query: async (sql, params) => { calls.push({ sql, params }); if (/SELECT \* FROM linkedin_collect_status/.test(sql)) return { rows: row ? [row] : [] }; if (/min\(sent_at\)/.test(sql)) return { rows: [{ oldest: null }] }; return { rows: [], rowCount: 1 }; } }; };
+
+  await check('day 25: Guy is warned with the date, and nothing is switched off', async () => {
+    const db = monthDb(null); lc._setPool(db);
+    const mails = []; let removed = false;
+    const r = await lc.monthEnd(conn(26), { nowMs: T0, deps: { sendAlertEmail: async (s, h, to, o) => mails.push({ s, t: o.text }), deleteUnipileAccount: async () => { removed = true; } } });
+    assert.strictEqual(r.step, 'warn');
+    assert.strictEqual(mails.length, 1);
+    assert.ok(mails[0].s.includes('ends on') && mails[0].t.includes('LinkedIn Feed'));
+    assert.strictEqual(removed, false);
+    assert.ok(db.calls.some((c) => /notified_ending_at/.test(c.sql)));
+  });
+  await check('day 30: last collect and top-up FIRST, then switch off, clear the record, email', async () => {
+    const db = monthDb({ tenant_id: 'Pat-Client', account_id: 'li-1', state: 'complete', messages: 900, notified_ending_at: iso(T0 - 5 * D) }); lc._setPool(db);
+    const order = []; const mails = []; let cleared = null;
+    const r = await lc.monthEnd(conn(31, { reconnect: 'Yes' }), { nowMs: T0, deps: {
+      sync: async (t, o) => { order.push(`collect relations=${o.relations}`); return { ok: true, relationsComplete: true, summary: { messages: 950, withMessages: 210, connections: 900 } }; },
+      score: async () => { order.push('read'); return { ok: true, read: 12, costUsd: 0.05 }; },
+      leads: async () => { order.push('leads'); return { ok: true, created: 4, updated: 1 }; },
+      deleteUnipileAccount: async (id) => { order.push(`switch off ${id}`); return 'deleted'; },
+      updateMaster: async (f) => { order.push('clear record'); cleared = f; },
+      sendAlertEmail: async (s, h, to, o) => { order.push('email'); mails.push(o.text); },
+    } });
+    assert.deepStrictEqual(order, ['collect relations=true', 'read', 'leads', 'switch off li-1', 'clear record', 'email']);
+    assert.deepStrictEqual(cleared, { 'Unipile LinkedIn Account ID': null });
+    assert.strictEqual(r.ok, true);
+    assert.ok(mails[0].includes('read 12 conversations and added 4 people'));
+  });
+  await check('it will never switch off the mail-and-calendar connection', async () => {
+    lc._setPool(monthDb(null));
+    let removed = false;
+    const r = await lc.monthEnd(conn(31, { unipileLinkedinAccountId: 'mail-1' }), { nowMs: T0, deps: { deleteUnipileAccount: async () => { removed = true; }, sendAlertEmail: async () => {} } });
+    assert.strictEqual(r.ok, false);
+    assert.strictEqual(removed, false);
+  });
+  await check('a dry run says what it would do and does none of it', async () => {
+    const db = monthDb(null); lc._setPool(db);
+    let touched = false;
+    const r = await lc.monthEnd(conn(31), { nowMs: T0, dryRun: true, deps: { deleteUnipileAccount: async () => { touched = true; }, sendAlertEmail: async () => { touched = true; } } });
+    assert.deepStrictEqual({ step: r.step, dryRun: r.dryRun }, { step: 'end', dryRun: true });
+    assert.strictEqual(touched, false);
+  });
+
   console.log('collectOne');
   const fakeDb = (row) => {
     const calls = [];

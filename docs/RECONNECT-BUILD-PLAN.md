@@ -310,7 +310,12 @@ step skips who is already there.
    a final top-up (collect, read anything newly quiet past 90 days, add those at or over the
    client's cut-off), switches the LinkedIn connection off so the charge stops, and emails Guy what
    it added. Automatic - a gate that waits for a click gets forgotten and costs money. A client
-   paying to keep the connection (LinkedIn Feed = Yes) is skipped. *NOT BUILT.*
+   paying to keep the connection (LinkedIn Feed = Yes) is skipped. *BUILT 5 Oct 2026 inside the daily
+   job (`linkedinCollect.monthEnd`): warning email at day 25, and at day 30 a forced last collect and
+   top-up, then the connection is deleted at Unipile, `Unipile LinkedIn Account ID` is cleared and
+   Guy is emailed. It refuses to act if that id is the client's mail-and-calendar connection. NOT
+   YET seen for real - nothing is a month old until early November; Guy's own connection (3 Oct)
+   will be the first, so his warning email is due about 28 Oct.*
 
 DONE 5 Oct 2026: the five lead fields are on every client base and the template (125 added, 0
 errors). The client's description is saved as their own setup value `reconnect_looking_for`

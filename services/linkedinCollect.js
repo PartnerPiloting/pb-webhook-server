@@ -17,6 +17,14 @@
 // numbers - a stall part-way looks the same from here, and Guy can tell which it is. Unipile's
 // SYNC_SUCCESS webhook should replace this guess once its behaviour is confirmed.
 //
+// THE MONTH ENDS BY ITSELF (Guy, 5 Oct 2026). A client's LinkedIn connection is for one month - each
+// one is a charge to Guy every month it stays. Five days before the month is up Guy is emailed; on
+// the day, after one last collect and top-up, the connection is switched off at Unipile and taken
+// off the client's record, and Guy is emailed what the last top-up added. It is automatic because
+// a switch-off that waits for a click gets forgotten and costs money. A client paying to keep the
+// connection (LinkedIn Feed = Yes) is left alone. The client's list carries on working - Wingguy
+// has its own copy.
+//
 // Rules this file keeps:
 //   - It NEVER calls Unipile's /accounts/{id}/sync route. A run of that route ends the automatic
 //     daily continuation for the account.
@@ -36,6 +44,9 @@ const QUIET_HOURS_FOR_COMPLETE = 47;   // two daily runs with no growth
 const STALL_HOURS = 24;
 const RELATIONS_EVERY_HOURS = 7 * 24;
 const NEAR_LIMIT = 25000;              // LinkedIn stops at 30,000 connections
+const MONTH_DAYS = 30;
+const WARN_DAYS = 5;
+const MS_DAY = 24 * MS_HOUR;
 
 // ---------------------------------------------------------------------------
 // Pure: what a run means
@@ -76,6 +87,22 @@ function nextStatus(prev, { messages, nowMs, connectedAtMs }) {
   return out;
 }
 
+/**
+ * Where a client is in their month. null = nothing to do; 'warn' = five days to go and Guy has not
+ * been told; 'end' = the month is up.
+ */
+function monthEndStep(client, prev, nowMs) {
+  if (String((client && client.linkedinFeed) || '').trim() === 'Yes') return null;
+  const at = client && client.linkedinConnectedAt ? new Date(client.linkedinConnectedAt).getTime() : 0;
+  if (!at) return null;
+  const days = (nowMs - at) / MS_DAY;
+  if (days >= MONTH_DAYS) return 'end';
+  if (days >= MONTH_DAYS - WARN_DAYS && !(prev && prev.notified_ending_at)) return 'warn';
+  return null;
+}
+
+const endsOn = (client) => new Date(new Date(client.linkedinConnectedAt).getTime() + MONTH_DAYS * MS_DAY).toISOString().slice(0, 10);
+
 /** Read the connections list on the first run, weekly, and when the history completes. */
 function wantRelations(prev, nowMs) {
   if (!prev || !prev.last_relations_at) return true;
@@ -99,6 +126,18 @@ function buildEmail(kind, c) {
     return {
       subject: `Reconnect: ${who}'s LinkedIn history has stopped growing`,
       text: `Nothing new has arrived for ${who} for two days, so their history is being treated as complete.\n\n${numbers}\n\nIf that looks too short for how long they have been on LinkedIn, the collecting may have stalled part-way - tell Claude and it will check with Unipile.`,
+    };
+  }
+  if (kind === 'ending') {
+    return {
+      subject: `Reconnect: ${who}'s LinkedIn connection ends on ${c.endsOn}`,
+      text: `${who}'s LinkedIn connection is a month old on ${c.endsOn}. On that day Wingguy does one last collect and top-up, then switches the connection off so the charge for it stops.\n\nNothing is needed from you. Their Reconnect list carries on working - Wingguy has its own copy of their history.\n\nTo keep it connected instead (they pay for it), tell Claude before then and it will set LinkedIn Feed to Yes on their record.`,
+    };
+  }
+  if (kind === 'ended') {
+    return {
+      subject: `Reconnect: ${who}'s LinkedIn connection has been switched off`,
+      text: `${who}'s month is up, so their LinkedIn connection has been switched off and the charge for it has stopped.\n\n${c.lastTopUp}\n\nTheir Reconnect list carries on working.`,
     };
   }
   return {
@@ -143,6 +182,9 @@ async function ensureSchema(db) {
       notified_stalled_at  TIMESTAMPTZ,
       last_error           TEXT
     );
+    -- the month end: when Guy was warned, and when the connection was switched off.
+    ALTER TABLE linkedin_collect_status ADD COLUMN IF NOT EXISTS notified_ending_at TIMESTAMPTZ;
+    ALTER TABLE linkedin_collect_status ADD COLUMN IF NOT EXISTS disconnected_at TIMESTAMPTZ;
   `);
 }
 
@@ -168,7 +210,7 @@ async function statusByTenant() {
 // One client, then all of them
 // ---------------------------------------------------------------------------
 
-async function collectOne(client, { nowMs = Date.now(), dryRun = false, deps = {} } = {}) {
+async function collectOne(client, { nowMs = Date.now(), dryRun = false, force = false, deps = {} } = {}) {
   const tenantId = client.clientId;
   const db = getPool();
   if (!db) return { tenantId, ok: false, error: 'DATABASE_URL not configured' };
@@ -177,11 +219,12 @@ async function collectOne(client, { nowMs = Date.now(), dryRun = false, deps = {
   const accountId = String(client.unipileLinkedinAccountId || '').trim();
   // A different account id on the record means they reconnected: start their story again.
   const fresh = prev && prev.account_id && prev.account_id !== accountId ? null : prev;
-  if (fresh && fresh.state === 'complete' && String(client.linkedinFeed || '').trim() !== 'Yes') {
+  // force = the last collect before the month-end switch-off, which a finished client still gets.
+  if (!force && fresh && fresh.state === 'complete' && String(client.linkedinFeed || '').trim() !== 'Yes') {
     return { tenantId, ok: true, skipped: 'complete', state: 'complete' };
   }
 
-  const relations = wantRelations(fresh, nowMs);
+  const relations = force || wantRelations(fresh, nowMs);
   const sync = deps.sync || require('./linkedinNetworkSync').syncLinkedinNetwork;
   let run;
   try { run = await sync(tenantId, { dryRun, relations }); } catch (e) { run = { ok: false, error: e.message }; }
@@ -263,6 +306,57 @@ async function topUp(tenantId, deps = {}) {
 }
 
 /**
+ * The month end for one client (see the top of this file). Returns null when there is nothing to
+ * do, else { step: 'warn' | 'end', ... }. Never throws.
+ */
+async function monthEnd(client, { nowMs = Date.now(), dryRun = false, deps = {} } = {}) {
+  const tenantId = client.clientId;
+  const db = getPool();
+  if (!db) return null;
+  await ensureSchema(db);
+  const prev = await getStatus(db, tenantId);
+  const step = monthEndStep(client, prev, nowMs);
+  if (!step) return null;
+  if (dryRun) return { step, dryRun: true, endsOn: endsOn(client) };
+  const send = deps.sendAlertEmail || require('./emailNotificationService').sendAlertEmail;
+  const mail = async (kind, extra) => {
+    const m = buildEmail(kind, { tenantId, clientName: client.clientName, endsOn: endsOn(client), ...extra });
+    await send(m.subject, `<p>${m.text.replace(/\n\n/g, '</p><p>').replace(/\n/g, '<br>')}</p>`, null, { text: m.text });
+  };
+  const stamp = (col) => db.query(
+    `INSERT INTO linkedin_collect_status (tenant_id, ${col}) VALUES ($1, now())
+     ON CONFLICT (tenant_id) DO UPDATE SET ${col} = now()`, [tenantId]);
+  try {
+    if (step === 'warn') {
+      await mail('ending');
+      await stamp('notified_ending_at');
+      return { step, endsOn: endsOn(client) };
+    }
+    const accountId = String(client.unipileLinkedinAccountId || '').trim();
+    // Never the mail-and-calendar connection: switching THAT off would cut the client's email.
+    if (!accountId || accountId === String(client.unipileAccountId || '').trim()) return { step, ok: false, error: 'no separate LinkedIn connection on the record - nothing switched off' };
+    const last = await collectOne(client, { nowMs, force: true, deps });
+    const t = last.topUp;
+    const lastTopUp = !last.ok ? `The last collect failed (${last.error}), so nothing new was added at the end.`
+      : t && t.ok ? `The last top-up read ${t.read} conversations and added ${t.created} people to their list.`
+        : 'Nothing new was added at the end.';
+    const remove = deps.deleteUnipileAccount || require('./clientOffboardService').deleteUnipileAccount;
+    const outcome = await remove(accountId);
+    const update = deps.updateMaster || (async (fields) => {
+      const Airtable = require('airtable');
+      const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process.env.MASTER_CLIENTS_BASE_ID);
+      await base('Clients').update(client.recordId || client.id, fields);
+      try { require('./clientService').clearCache(); } catch (_) { /* next read refreshes it */ }
+    });
+    await update({ 'Unipile LinkedIn Account ID': null });
+    await stamp('disconnected_at');
+    await db.query("UPDATE linkedin_collect_status SET state = 'complete' WHERE tenant_id = $1", [tenantId]);
+    await mail('ended', { lastTopUp });
+    return { step, ok: true, unipile: outcome, lastTopUp };
+  } catch (e) { return { step, ok: false, error: e.message }; }
+}
+
+/**
  * The daily run: every client with a LinkedIn connection on file, one after another.
  * @param {{dryRun?: boolean, only?: string}} opts  only = one client id
  */
@@ -275,6 +369,9 @@ async function runCollectDaily({ dryRun = false, only = '', nowMs = Date.now() }
   for (const client of due) {
     try {
       const r = await collectOne(client, { nowMs, dryRun });
+      // The month end comes after the day's collect, so a warning or switch-off never skips it.
+      const m = await monthEnd(client, { nowMs, dryRun });
+      if (m) r.monthEnd = m;
       results.push(r);
       logger.info(`${client.clientId}: ${r.ok ? `${r.skipped ? 'skipped (complete)' : r.state}${r.notify ? `, notify ${r.notify}` : ''}` : `FAILED ${r.error}`}`);
     } catch (e) {
@@ -285,4 +382,4 @@ async function runCollectDaily({ dryRun = false, only = '', nowMs = Date.now() }
   return { ok: true, dryRun, clients: due.length, results };
 }
 
-module.exports = { runCollectDaily, collectOne, topUp, nextStatus, wantRelations, buildEmail, statusByTenant, ensureSchema, _setPool, NEAR_LIMIT };
+module.exports = { runCollectDaily, collectOne, topUp, monthEnd, monthEndStep, MONTH_DAYS, WARN_DAYS, nextStatus, wantRelations, buildEmail, statusByTenant, ensureSchema, _setPool, NEAR_LIMIT };
