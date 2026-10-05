@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { getBackendBase, getAuthenticatedHeaders } from '../services/api';
 import { getClientBoard, getClientBoardDetail } from '../services/clientBoardApi';
 import { buildAuthUrl, getCurrentClientId } from '../utils/clientUtils';
+import ReconnectBoardPanel from './ReconnectBoardPanel';
 import {
   UsersIcon, ExclamationTriangleIcon, KeyIcon, ClipboardDocumentIcon, CheckIcon,
   ArrowRightIcon, ChevronDownIcon, ChevronUpIcon, ArrowPathIcon, EyeIcon, PlusCircleIcon,
@@ -504,6 +505,13 @@ const CoachedClients = () => {
       {!strip.calendarRead && (
         <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded p-2">Your calendar did not read, so &ldquo;next session&rdquo; is blank everywhere. Last sessions still come from the transcript store.</p>
       )}
+
+      {/* Reconnect: the connect link, and where each connected client is up to - see ReconnectBoardPanel.js */}
+      <ReconnectBoardPanel
+        clients={[...groups.onboarding, ...groups.running, ...groups.paused]
+          .map((c) => ({ clientId: c.clientId, clientName: c.clientName }))
+          .sort((a, b) => String(a.clientName).localeCompare(String(b.clientName)))}
+      />
 
       <section className="flex flex-col gap-3">
         <div className="flex items-baseline gap-3 pt-2">
