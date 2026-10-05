@@ -806,9 +806,14 @@ and all you really want to do is test the plumbing and see that it works end to 
 that the scoring won't be far out with the attributes you've been given, so a test run will tell you
 what you need to know without you having to get this perfect first.
 
-**Then you tweak.** Once things are flowing, go on and adjust the scoring properly, in Settings in
-your portal. Have a look at the template you've been given and it'll be obvious how - you'll see the
-shape of it, and changing it from there is straightforward.
+**Then you tweak - and the easiest way is to ask your Claude.** Once things are flowing, say
+"rebuild my scoring" and tell it who you're looking for - in your own words, or paste in a list
+you've already written. It drafts the whole set, shows you exactly what would change, and only puts
+it in when you say yes. It keeps a copy of what was there, so you can always go back. Then ask it to
+test the new scoring on some of your existing leads - nothing is saved, you just see who comes out on
+top. If the top of the list looks like the people you most want to talk to, you're done. If not, tell
+it what's off and go again. You can still change attributes one at a time in Settings in your portal
+if you'd rather.
 
 Two things to know before you go in there. **There's a fixed number of attribute slots**, so you
 don't add new ones - you repurpose the ones you have. Look down the list, find one that doesn't

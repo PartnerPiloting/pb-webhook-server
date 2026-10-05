@@ -113,7 +113,8 @@
     },
     {
       "phrase": "rebuild my scoring",
-      "tool": "wingguy_scoring_get"
+      "tool": "wingguy_scoring_get",
+      "where": ["docs/client-playbook.md"]
     }
   ],
   "near_misses": [
