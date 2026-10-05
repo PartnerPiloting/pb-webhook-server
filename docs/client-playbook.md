@@ -851,9 +851,9 @@ It doesn't matter whose calendar and email you use - Gmail, Microsoft, even Zoho
 system translates "book a meeting" or "draft an email" into whatever your particular setup is, so
 use what you already use.
 
-On the recorder itself: **Guy's pick is Granola.** It's botless - no robot joins your call - and
-it captures every meeting you're in, whoever set it up and whatever platform it's on. There's a
-whole topic on transcripts with the full story - ask for it.
+On the recorder itself: **Guy's pick is Fathom.** The transcripts are free, it's reliable, and
+when you're the host it captures every meeting without you lifting a finger. There's a whole topic
+on transcripts with the full story - ask for it.
 
 **And then the important one: your instructions.**
 

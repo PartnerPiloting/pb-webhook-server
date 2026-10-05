@@ -80,12 +80,69 @@ Ready when you are - just say "continue" and we'll take the first step.
 
 ---
 
+## RECONNECT - THE PEOPLE YOU ALREADY KNOW
+
+Here's where we start - and it's not with strangers.
+
+Over the years you've had hundreds of conversations on LinkedIn that simply stopped. Someone said
+"happy to chat", or sent you a booking link, or asked you to try them after their trip - and life
+got in the way, yours or theirs. Those people already said yes to you once. Guy reckons they're the
+best place to begin: a reply from someone who knows you is far more likely than one from a
+stranger, and there's nothing to set up first.
+
+So here's what happens. Guy sends you a link and you connect your LinkedIn - two minutes, and it
+only lets me read. I never post, connect or send anything. Your old conversations then arrive by
+themselves, the most recent first. In your next session with Guy you tell me, in your own words,
+who you want to hear from again and who you don't. I score thirty of your real conversations so
+you can tell me where I've got it wrong, and when it looks right I read the rest. You'll see what
+that costs before you say yes - it's a few dollars, once.
+
+What you get is a short list every morning on your Follow-Ups screen: twenty people, each with the
+reason they're there and something specific to pick up on. You open the thread, I draft the
+message, you read it and press send. Nothing ever goes out without you.
+
+**Your move:** when Guy sends the link, click it and sign in. That's all for now - the rest you
+and Guy do together. Once your conversations have arrived, say **"set up my reconnect list"**.
+
+---
+
+## WINGGUY ITSELF - CONNECTING YOUR WORLD
+
+Now we make what I write sound like you - because from the next step on I'll be drafting real
+messages to people you know, and a draft that doesn't sound like you is worse than no draft.
+
+Two things do that. First, **your own Claude key.** I run on your Claude account, not Guy's, so
+the writing is yours and so is the small bill for it. Guy sends you one email that walks you
+through setting it up.
+
+And then the important one: **your instructions.** They're how my drafting becomes *your* voice -
+your spelling, your sign-off, the words you'd never use, what to pick out of someone's profile.
+Setting them up is a guided conversation you and Guy usually kick off together, and from then on
+you change them any time by just telling me.
+
+The same goes for the links I put in your emails - each one goes out only when your instructions
+say when it earns its place. The topic on *your links* explains what to put in your library and how
+to tell me when each one should go.
+
+A little later, with Guy, three more connections open up the full thing: your **calendar** (so I
+can offer real times and book meetings without ever double-booking you), your **email** (so I can
+draft your follow-ups in your own mailbox - and be clear: I never send anything, you always press
+send), and your **transcripts** (there's a whole beat coming on why that one matters more than
+people expect). It doesn't matter whose calendar or email you use - Gmail, Microsoft, Zoho - it
+all translates underneath.
+
+**Your move:** set up your key from Guy's email, and say **"let's set up my instructions"** - it
+walks you through a piece at a time, and you can stop and resume whenever you like. And tell Guy
+which calendar and email you use, so he's ready to connect them.
+
+---
+
 ## WHAT YOU DO - AND YOUR PROFILE
 
-First move: your own front door.
+Before your first messages go out: your own front door.
 
-When someone interesting gets a connection request from you, the first thing they do is look at
-your profile. So before we send anyone anywhere near it, it needs to say the right thing - and the
+When someone hears from you - an old contact you've just written to, or later a new connection
+request - the first thing they do is look at your profile. So before we send anyone anywhere near it, it needs to say the right thing - and the
 right thing is **connector first, what you do second**. You're deliberately building a network of
 capable people and helping them find each other; whatever you sell comes after that.
 
@@ -95,6 +152,120 @@ perfectly good answer, as long as your profile says what you're building instead
 **Your move this week:** get your headline and your About section saying connector-first. If you
 want the full thinking while you do it, ask me for the topic on *your LinkedIn profile* and the one
 called *what do you do* - the detail's all in there.
+
+---
+
+## FIRST MESSAGES - WORKING YOUR LIST
+
+Time for the part everything else has been feeding: real messages to real people.
+
+You start with your Reconnect list. On your Follow-Ups screen in the portal, each person comes
+with the reason they're there - "agreed to a chat, you never replied" - and one thing to pick up
+on. Click their name, open the message thread and type **/wg**. I read the old conversation and
+draft the message: one specific thing from their side, then a small ask. You read it, change what
+you like, and press send. About a minute each. Not someone you want a conversation with? Skip
+them, no deliberation. Guy reckons you'll be startled how good the drafts are.
+
+Later, when new connections start arriving, the same move works on them. They come up on your
+Thanks for Connecting screen with their score beside them. Low score? Skip. High score? Open their
+profile and make the judgement no score can make for you: is this someone I actually want a
+conversation with? For your yeses I write the thanks-for-connecting message - tailored to
+something true on their profile, ending with the ask: *how about a quick Zoom?*
+
+**Your move:** work your first twenty - open the thread, /wg, read, send. The topics on *working your list in the portal* and *thanks for connecting* are the
+ones to pull up alongside.
+
+---
+
+## MEETINGS - BOOKING THEM, RUNNING THEM, AND THE ONE THAT MATTERS
+
+When someone says "sure, send me some times", I check your calendar and draft the reply - three
+specific times, not a booking link, because specific times get more yeses. They pick one, I book
+it, invite out, your meeting link on it.
+
+The call itself is half an hour and easy - you're not selling, you're asking questions. Record it,
+prepare for it by asking me to prep you, and then the one move that separates people who build
+networks from people who just have nice chats: **book the second meeting before you leave the
+first.** "How about we catch up next week?" - there and then. The first call was their turn; the
+second is where they find out what you're building, and it's exactly where most networkers let it
+all slip away.
+
+And you're not doing this alone. You're part of Guy's inner circle - people building their networks
+the same way, listening out for each other, and meeting by introduction. When you think "they
+should meet so-and-so", I'll draft the introduction from one line. The topics on *the inner circle*
+and *making introductions* explain how it works.
+
+**Your move:** run your first discovery call end to end - booked by me, recorded, second meeting
+in the diary before you hang up. The topics on *getting the meeting in the diary*, *the first
+meeting*, *the second meeting* and *the two sides* are the deep dives.
+
+---
+
+## TRANSCRIPTS - THE HABIT THAT PAYS FOR EVERYTHING
+
+This one deserves its own beat, because it's the single most valuable habit in the whole system
+once your meetings start.
+
+When I have the transcript of a call, I've heard what you said and what they said. So your
+follow-up email drafts itself from what was *actually discussed* - the specifics, the links you
+offered to send. Your prep for the next meeting comes ready-made. And my drafting picks up your
+tone from how you actually speak. A meeting without a transcript still happened - but it
+evaporates. At two meetings a week you'll remember; at eight you won't, and nobody would.
+
+**Guy's pick is Fathom.** The transcripts are free, he's used it for a long time, and it's
+reliable. When you're the host it simply turns up, meeting after meeting, with nothing to remember
+on the day. On a call someone else is hosting it joins as a notetaker they have to let in - a small
+ask - until the version with no bot on the call arrives, which Fathom are working on.
+
+**Your move:** set up Fathom and let it capture your next few calls - that's it, the habit is the
+whole job. The full story is in the topic on *transcripts*.
+
+---
+
+## YOUR RHYTHM - THE FOLLOW-UP LIST AND YOUR PACE
+
+This is the beat that turns all of this from a project into a habit.
+
+Every morning, or every couple of days, say **"show me my follow-ups"**. You'll get one list, in
+order: who replied and is owed an answer, who's gone quiet since a good call, who you parked and
+is due back - with the messages already drafted. You read, tweak, say yes, they drop off. Ten
+minutes, and nothing quietly slips. Guy reckons this is the single most valuable thing the system
+does for you once you're running - the follow-up is where a pile of nice conversations either
+becomes a network, or becomes a list of people you once met.
+
+Under that list on your Follow-Ups screen sits your Reconnect list - twenty more people each
+morning, for as long as there are good ones left.
+
+And pick your pace: a number of discovery calls a week you'd actually enjoy. We tune the searches
+and the volume until that number happens, steadily. Consistency beats intensity - that's the whole
+game.
+
+**Your move:** pick your weekly number, tell Guy, and make "show me my follow-ups" your morning
+habit.
+
+Say **"continue"** when you're ready for the last stretch: bringing new people in.
+
+---
+
+## WHO YOU'RE AFTER - AND THE SEARCH
+
+So far you've been working the people you already know. Now we bring new ones in - and the first
+question decides how good everything downstream is: who are you looking for?
+
+Think capability first: the years of experience, the industries that matter to you, and ideally
+people who are already in front of the audience you'd like to reach. You're choosing people worth
+knowing - the scoring will help you rank them later, but the search decides who's in the room at
+all.
+
+Then the search itself gets built on LinkedIn - you'll need a paid LinkedIn account for this - and
+here's the good news: you don't work out the search syntax alone. You build it in a conversation
+with Claude, look at the actual people it returns, and tune it until the right faces are coming
+back. When you're happy, the URL of that search is what feeds Linked Helper.
+
+**Your move:** have the conversation. Ask me for *finding your audience with claude* and it will
+walk you through building the search properly - then eyeball who comes back before you commit.
+The topics on *who you're looking for* and *your linkedin subscription and the search* have the
+full thinking.
 
 ---
 
@@ -125,27 +296,6 @@ hurry at all.
 
 When you want the full story, ask me about *the plumbing* and *linked helper - the trial and which
 version*.
-
----
-
-## WHO YOU'RE AFTER - AND THE SEARCH
-
-Now the question that decides how good everything downstream is: who are you looking for?
-
-Think capability first: the years of experience, the industries that matter to you, and ideally
-people who are already in front of the audience you'd like to reach. You're choosing people worth
-knowing - the scoring will help you rank them later, but the search decides who's in the room at
-all.
-
-Then the search itself gets built on LinkedIn - you'll need a paid LinkedIn account for this - and
-here's the good news: you don't work out the search syntax alone. You build it in a conversation
-with Claude, look at the actual people it returns, and tune it until the right faces are coming
-back. When you're happy, the URL of that search is what feeds Linked Helper.
-
-**Your move:** have the conversation. Ask me for *finding your audience with claude* and it will
-walk you through building the search properly - then eyeball who comes back before you commit.
-The topics on *who you're looking for* and *your linkedin subscription and the search* have the
-full thinking.
 
 ---
 
@@ -183,116 +333,6 @@ out with the starters.
 **Your move:** have a glance at the attributes you've been given, change anything that's obviously
 wrong for you, and move on. Once things are flowing you'll tweak them properly - the topic on
 *your scoring attributes* covers how.
-
----
-
-## WINGGUY ITSELF - CONNECTING YOUR WORLD
-
-Now we wire up the assistant you're talking to right now - because I can do a lot more than answer
-questions.
-
-Three connections open up the full thing: your **calendar** (so I can offer real times and book
-meetings without ever double-booking you), your **email** (so I can draft your follow-ups in your
-own mailbox - and be clear: I never send anything, you always press send), and your **transcripts**
-(the next beat is entirely about why that one matters more than people expect). It doesn't matter
-whose calendar or email you use - Gmail, Microsoft, Zoho - it all translates underneath.
-
-And then the important one: **your instructions.** They're how my drafting becomes *your* voice -
-your spelling, your sign-off, the words you'd never use, what to pick out of someone's profile.
-Setting them up is a guided conversation you and Guy usually kick off together, and from then on
-you change them any time by just telling me.
-
-The same goes for the links I put in your emails - each one goes out only when your instructions
-say when it earns its place. The topic on *your links* explains what to put in your library and how
-to tell me when each one should go.
-
-**Your move:** tell Guy which calendar and email you use so he can connect them, and when you're
-ready, say **"let's set up my instructions"** - it walks you through a piece at a time, and you
-can stop and resume whenever you like.
-
----
-
-## TRANSCRIPTS - THE HABIT THAT PAYS FOR EVERYTHING
-
-This one deserves its own beat, because it's the single most valuable habit in the whole system
-once your meetings start.
-
-When I have the transcript of a call, I've heard what you said and what they said. So your
-follow-up email drafts itself from what was *actually discussed* - the specifics, the links you
-offered to send. Your prep for the next meeting comes ready-made. And my drafting picks up your
-tone from how you actually speak. A meeting without a transcript still happened - but it
-evaporates. At two meetings a week you'll remember; at eight you won't, and nobody would.
-
-The trap is platform borders: plenty of recorders only work reliably where you're the host, and
-you don't control where other people host. **Guy's pick is Granola** - botless, so no robot joins
-the call, and it captures whatever meeting you're in, any platform, whoever set it up. Nothing to
-remember on the day. One piece of good manners: since there's no bot announcing itself, be upfront
-that you take notes of your meetings.
-
-**Your move:** install Granola and let it capture your next few calls - that's it, the habit is
-the whole job. The full story, including why Guy moved off a free recorder, is in the topic on
-*transcripts*.
-
----
-
-## FIRST MESSAGES - WORKING YOUR LIST
-
-Time for the part everything else has been feeding: real messages to real people.
-
-In your portal, your people come up with their score beside them. Low score? Skip, no deliberation.
-High score? Open their profile and make the judgement no score can make for you: is this someone I
-actually want a conversation with? Then, for your yeses, you set me to write the
-thanks-for-connecting message - tailored to something true on their profile, ending with the ask:
-*how about a quick Zoom?* That message decides most of your results, and Guy reckons you'll be
-startled how good it is.
-
-**Your move:** work your first batch - skim the list, pick your yeses, send your first tailored
-messages. The topics on *working your list in the portal* and *thanks for connecting* are the
-ones to pull up alongside.
-
----
-
-## MEETINGS - BOOKING THEM, RUNNING THEM, AND THE ONE THAT MATTERS
-
-When someone says "sure, send me some times", I check your calendar and draft the reply - three
-specific times, not a booking link, because specific times get more yeses. They pick one, I book
-it, invite out, your meeting link on it.
-
-The call itself is half an hour and easy - you're not selling, you're asking questions. Record it,
-prepare for it by asking me to prep you, and then the one move that separates people who build
-networks from people who just have nice chats: **book the second meeting before you leave the
-first.** "How about we catch up next week?" - there and then. The first call was their turn; the
-second is where they find out what you're building, and it's exactly where most networkers let it
-all slip away.
-
-And you're not doing this alone. You're part of Guy's inner circle - people building their networks
-the same way, listening out for each other, and meeting by introduction. When you think "they
-should meet so-and-so", I'll draft the introduction from one line. The topics on *the inner circle*
-and *making introductions* explain how it works.
-
-**Your move:** run your first discovery call end to end - booked by me, recorded, second meeting
-in the diary before you hang up. The topics on *getting the meeting in the diary*, *the first
-meeting*, *the second meeting* and *the two sides* are the deep dives.
-
----
-
-## YOUR RHYTHM - THE FOLLOW-UP LIST AND YOUR PACE
-
-Last beat - the one that turns all of this from a project into a habit.
-
-Every morning, or every couple of days, say **"show me my follow-ups"**. You'll get one list, in
-order: who replied and is owed an answer, who's gone quiet since a good call, who you parked and
-is due back - with the messages already drafted. You read, tweak, say yes, they drop off. Ten
-minutes, and nothing quietly slips. Guy reckons this is the single most valuable thing the system
-does for you once you're running - the follow-up is where a pile of nice conversations either
-becomes a network, or becomes a list of people you once met.
-
-And pick your pace: a number of discovery calls a week you'd actually enjoy. We tune the searches
-and the volume until that number happens, steadily. Consistency beats intensity - that's the whole
-game.
-
-**Your move:** pick your weekly number, tell Guy, and make "show me my follow-ups" your morning
-habit.
 
 That's the tour. From here, ask me anything, any time - "where are we up to?" always works, and
 the whole of Wingguy Learning is on hand whenever you're curious. Enjoy it.

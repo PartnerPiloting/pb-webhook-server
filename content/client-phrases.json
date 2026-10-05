@@ -115,6 +115,11 @@
       "phrase": "rebuild my scoring",
       "tool": "wingguy_scoring_get",
       "where": ["docs/client-playbook.md"]
+    },
+    {
+      "phrase": "set up my reconnect list",
+      "tool": "wingguy_reconnect_setup",
+      "where": ["docs/client-tour.md"]
     }
   ],
   "near_misses": [
