@@ -432,6 +432,10 @@ async function getCardDetail(coachClientId, clientId) {
       managedClaudeKey: !!client.managedClaudeKey,
       hasAnthropicKey: !!client.anthropicApiKey,
       unipileConnected: !!client.unipileAccountId,
+      // Reconnect: is their LinkedIn connected, and is the list switched on (services/linkedinCollect.js
+      // holds where the collecting is up to - see getReconnectStatus below).
+      linkedinConnected: !!client.unipileLinkedinAccountId,
+      reconnectOn: String(client.reconnect || '').trim() === 'Yes',
       calendarProvider: client.calendarProvider || null,
       emailProvider: client.emailProvider || null,
       loginEmail: client.clientEmailAddress || null,
@@ -479,4 +483,25 @@ async function mintLinkedinLink(coachClientId, clientId) {
   return mintHostedLink(clientId, { linkedin: true });
 }
 
-module.exports = { getBoard, getCardDetail, mintUnipileLink, mintLinkedinLink, buildLinks, OWED_PHASES };
+/**
+ * Where each of the coach's clients is up to with Reconnect: collecting state, how many
+ * connections they have, and whether they are near LinkedIn's limit (who to offer disconnects to).
+ * One row per client who has connected LinkedIn; [] when nobody has.
+ */
+async function getReconnectStatus(coachClientId) {
+  const all = await clientService.getAllClients();
+  const mine = all.filter((c) => c.coach === coachClientId || c.clientId === coachClientId);
+  const byTenant = await require('./linkedinCollect').statusByTenant();
+  return mine.filter((c) => c.unipileLinkedinAccountId || byTenant[c.clientId]).map((c) => {
+    const s = byTenant[c.clientId] || {};
+    return {
+      clientId: c.clientId, clientName: c.clientName,
+      state: s.state || 'waiting', reconnectOn: String(c.reconnect || '').trim() === 'Yes',
+      connections: Number(s.connections) || 0, nearLimit: !!s.nearLimit,
+      conversations: Number(s.conversations) || 0, oldestMsgAt: s.oldest_msg_at || null,
+      lastRunAt: s.last_run_at || null, lastError: s.last_error || null,
+    };
+  });
+}
+
+module.exports = { getBoard, getCardDetail, mintUnipileLink, mintLinkedinLink, getReconnectStatus, buildLinks, OWED_PHASES };

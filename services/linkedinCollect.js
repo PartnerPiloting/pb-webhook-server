@@ -1,0 +1,269 @@
+// services/linkedinCollect.js
+// Reconnect (docs/RECONNECT-BUILD-PLAN.md, "The client process", step 2): collect each connected
+// client's LinkedIn history BY ITSELF, a day at a time, and tell Guy where each client is up to.
+//
+// How Unipile fills an inbox (Pierre, Unipile support, 5 Oct 2026): at most 3,000 conversations per
+// 24 hours, newest first, continuing by itself every day until the history is complete. So this
+// runs once a day and, for every client with a LinkedIn connection on file, takes Wingguy's own
+// copy of whatever has arrived (services/linkedinNetworkSync.js - it only ever adds).
+//
+// Nobody waits for the whole history (Guy, 5 Oct 2026). The states, in order:
+//   waiting    - connected, nothing has arrived yet
+//   ready      - the first batch is in: the client can have their session   -> EMAIL to Guy
+//   collecting - older history is still arriving each day
+//   complete   - nothing new for two days running                           -> EMAIL to Guy
+//   stalled    - connected more than a day ago and still nothing            -> EMAIL to Guy
+// "complete" is judged by the count standing still, so the email says exactly that and gives the
+// numbers - a stall part-way looks the same from here, and Guy can tell which it is. Unipile's
+// SYNC_SUCCESS webhook should replace this guess once its behaviour is confirmed.
+//
+// Rules this file keeps:
+//   - It NEVER calls Unipile's /accounts/{id}/sync route. A run of that route ends the automatic
+//     daily continuation for the account.
+//   - The connections list is read through LinkedIn, so it is read on the first run, weekly after
+//     that, and once more when the history completes - not every day.
+//   - One client failing never stops the others; the error is kept on that client's row.
+//   - It only collects. Reading and adding people for a client who has said yes is the next step
+//     (it needs their description saved as an instruction first).
+
+const { Pool } = require('pg');
+const { createLogger } = require('../utils/contextLogger');
+
+const MS_HOUR = 3600000;
+const QUIET_HOURS_FOR_COMPLETE = 47;   // two daily runs with no growth
+const STALL_HOURS = 24;
+const RELATIONS_EVERY_HOURS = 7 * 24;
+const NEAR_LIMIT = 25000;              // LinkedIn stops at 30,000 connections
+
+// ---------------------------------------------------------------------------
+// Pure: what a run means
+// ---------------------------------------------------------------------------
+
+/**
+ * Decide the new state from the previous row and this run's counts.
+ * @returns {{ state, firstBatchAt, lastGrowthAt, completeAt, notify: null|'ready'|'complete'|'stalled' }}
+ */
+function nextStatus(prev, { messages, nowMs, connectedAtMs }) {
+  const p = prev || {};
+  const had = Number(p.messages) || 0;
+  const now = new Date(nowMs).toISOString();
+  const out = {
+    state: p.state || 'waiting',
+    firstBatchAt: p.first_batch_at || null,
+    lastGrowthAt: p.last_growth_at || null,
+    completeAt: p.complete_at || null,
+    notify: null,
+  };
+  if (!messages) {
+    const waited = connectedAtMs ? (nowMs - connectedAtMs) / MS_HOUR : 0;
+    if (waited >= STALL_HOURS) { out.state = 'stalled'; if (!p.notified_stalled_at) out.notify = 'stalled'; } else out.state = 'waiting';
+    return out;
+  }
+  if (messages > had) {
+    out.lastGrowthAt = now;
+    out.completeAt = null;
+    if (!out.firstBatchAt) { out.firstBatchAt = now; out.state = 'ready'; if (!p.notified_ready_at) out.notify = 'ready'; } else out.state = 'collecting';
+    return out;
+  }
+  const quietHours = out.lastGrowthAt ? (nowMs - new Date(out.lastGrowthAt).getTime()) / MS_HOUR : Infinity;
+  if (quietHours >= QUIET_HOURS_FOR_COMPLETE) {
+    out.state = 'complete';
+    if (!out.completeAt) out.completeAt = now;
+    if (!p.notified_complete_at) out.notify = 'complete';
+  } else if (out.state === 'waiting' || out.state === 'stalled') out.state = 'ready';
+  return out;
+}
+
+/** Read the connections list on the first run, weekly, and when the history completes. */
+function wantRelations(prev, nowMs) {
+  if (!prev || !prev.last_relations_at) return true;
+  return (nowMs - new Date(prev.last_relations_at).getTime()) / MS_HOUR >= RELATIONS_EVERY_HOURS;
+}
+
+const fmt = (n) => Number(n || 0).toLocaleString('en-AU');
+const dayOf = (v) => (v ? new Date(v).toISOString().slice(0, 10) : 'unknown');
+
+/** The email for one event. Plain, short, and says what to do. */
+function buildEmail(kind, c) {
+  const who = c.clientName || c.tenantId;
+  const numbers = `${fmt(c.connections)} connections, ${fmt(c.conversations)} conversations with messages, going back to ${dayOf(c.oldestMsgAt)}.`;
+  if (kind === 'ready') {
+    return {
+      subject: `Reconnect: ${who} is ready for a session`,
+      text: `${who}'s first batch of LinkedIn history is in.\n\n${numbers}\n\nThey can have their Reconnect session now. Older conversations keep arriving each day (about 3,000 a day) and are collected without anyone doing anything.`,
+    };
+  }
+  if (kind === 'complete') {
+    return {
+      subject: `Reconnect: ${who}'s LinkedIn history has stopped growing`,
+      text: `Nothing new has arrived for ${who} for two days, so their history is being treated as complete.\n\n${numbers}\n\nIf that looks too short for how long they have been on LinkedIn, the collecting may have stalled part-way - tell Claude and it will check with Unipile.`,
+    };
+  }
+  return {
+    subject: `Reconnect: ${who} connected LinkedIn but no history has arrived`,
+    text: `${who} connected their LinkedIn more than a day ago and no conversations have arrived yet.\n\nWorth a look before their session: the connection may have failed on their side, or Unipile may not have started. Tell Claude and it will check.`,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Store
+// ---------------------------------------------------------------------------
+
+let pool;
+function getPool() {
+  if (pool) return pool;
+  const url = (process.env.DATABASE_URL || '').trim();
+  if (!url) return null;
+  pool = new Pool({ connectionString: url, ssl: { rejectUnauthorized: false } });
+  return pool;
+}
+/** Test seam. */
+function _setPool(fake) { pool = fake; }
+
+async function ensureSchema(db) {
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS linkedin_collect_status (
+      tenant_id            TEXT PRIMARY KEY,
+      account_id           TEXT,
+      state                TEXT NOT NULL DEFAULT 'waiting',
+      connections          INTEGER NOT NULL DEFAULT 0,
+      conversations        INTEGER NOT NULL DEFAULT 0,   -- people with at least one message
+      messages             INTEGER NOT NULL DEFAULT 0,
+      oldest_msg_at        TIMESTAMPTZ,
+      first_batch_at       TIMESTAMPTZ,
+      last_growth_at       TIMESTAMPTZ,
+      complete_at          TIMESTAMPTZ,
+      last_relations_at    TIMESTAMPTZ,
+      last_run_at          TIMESTAMPTZ,
+      runs                 INTEGER NOT NULL DEFAULT 0,
+      notified_ready_at    TIMESTAMPTZ,
+      notified_complete_at TIMESTAMPTZ,
+      notified_stalled_at  TIMESTAMPTZ,
+      last_error           TEXT
+    );
+  `);
+}
+
+async function getStatus(db, tenantId) {
+  const r = await db.query('SELECT * FROM linkedin_collect_status WHERE tenant_id = $1', [tenantId]);
+  return r.rows[0] || null;
+}
+
+/** Every client's row, for the board. {} when the store is down. */
+async function statusByTenant() {
+  const db = getPool();
+  if (!db) return {};
+  try {
+    await ensureSchema(db);
+    const r = await db.query('SELECT tenant_id, state, connections, conversations, messages, oldest_msg_at, first_batch_at, complete_at, last_run_at, last_error FROM linkedin_collect_status');
+    const out = {};
+    for (const row of r.rows) out[row.tenant_id] = { ...row, nearLimit: Number(row.connections) >= NEAR_LIMIT };
+    return out;
+  } catch (_) { return {}; }
+}
+
+// ---------------------------------------------------------------------------
+// One client, then all of them
+// ---------------------------------------------------------------------------
+
+async function collectOne(client, { nowMs = Date.now(), dryRun = false, deps = {} } = {}) {
+  const tenantId = client.clientId;
+  const db = getPool();
+  if (!db) return { tenantId, ok: false, error: 'DATABASE_URL not configured' };
+  await ensureSchema(db);
+  const prev = await getStatus(db, tenantId);
+  const accountId = String(client.unipileLinkedinAccountId || '').trim();
+  // A different account id on the record means they reconnected: start their story again.
+  const fresh = prev && prev.account_id && prev.account_id !== accountId ? null : prev;
+  if (fresh && fresh.state === 'complete' && String(client.linkedinFeed || '').trim() !== 'Yes') {
+    return { tenantId, ok: true, skipped: 'complete', state: 'complete' };
+  }
+
+  const relations = wantRelations(fresh, nowMs);
+  const sync = deps.sync || require('./linkedinNetworkSync').syncLinkedinNetwork;
+  let run;
+  try { run = await sync(tenantId, { dryRun, relations }); } catch (e) { run = { ok: false, error: e.message }; }
+  if (!run.ok) {
+    if (!dryRun) {
+      await db.query(
+        `INSERT INTO linkedin_collect_status (tenant_id, account_id, last_run_at, runs, last_error) VALUES ($1, $2, $3, 1, $4)
+         ON CONFLICT (tenant_id) DO UPDATE SET last_run_at = EXCLUDED.last_run_at, runs = linkedin_collect_status.runs + 1, last_error = EXCLUDED.last_error`,
+        [tenantId, accountId, new Date(nowMs).toISOString(), String(run.error || 'failed').slice(0, 500)]
+      );
+    }
+    return { tenantId, ok: false, error: run.error };
+  }
+
+  const s = run.summary || {};
+  const messages = Number(s.messages) || 0;
+  const connectedAtMs = client.linkedinConnectedAt ? new Date(client.linkedinConnectedAt).getTime() : 0;
+  const next = nextStatus(fresh, { messages, nowMs, connectedAtMs });
+  // A capped or skipped connections read keeps the last full count.
+  const connections = run.relationsComplete ? Number(s.connections) || 0 : Number((fresh && fresh.connections) || 0);
+  const result = { tenantId, ok: true, state: next.state, notify: next.notify, messages, conversations: Number(s.withMessages) || 0, connections, relationsRead: !!run.relationsComplete };
+  if (dryRun) return result;
+
+  const oldest = await db.query('SELECT min(sent_at) AS oldest FROM linkedin_messages WHERE tenant_id = $1', [tenantId]);
+  const oldestMsgAt = oldest.rows[0] && oldest.rows[0].oldest ? new Date(oldest.rows[0].oldest).toISOString() : null;
+
+  // Guy is not emailed about a client already working their list - "ready" would be noise.
+  let notified = null;
+  const alreadyOn = String(client.reconnect || '').trim() === 'Yes';
+  if (next.notify && !(next.notify === 'ready' && alreadyOn)) {
+    const mail = buildEmail(next.notify, { tenantId, clientName: client.clientName, connections, conversations: result.conversations, oldestMsgAt });
+    try {
+      const send = deps.sendAlertEmail || require('./emailNotificationService').sendAlertEmail;
+      await send(mail.subject, `<p>${mail.text.replace(/\n\n/g, '</p><p>').replace(/\n/g, '<br>')}</p>`, null, { text: mail.text });
+      notified = next.notify;
+    } catch (e) { result.emailError = e.message; }
+  } else if (next.notify) notified = next.notify; // recorded so it is not reconsidered every day
+
+  const nowIso = new Date(nowMs).toISOString();
+  await db.query(
+    `INSERT INTO linkedin_collect_status (tenant_id, account_id, state, connections, conversations, messages, oldest_msg_at,
+       first_batch_at, last_growth_at, complete_at, last_relations_at, last_run_at, runs,
+       notified_ready_at, notified_complete_at, notified_stalled_at, last_error)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,1,$13,$14,$15,NULL)
+     ON CONFLICT (tenant_id) DO UPDATE SET account_id = EXCLUDED.account_id, state = EXCLUDED.state, connections = EXCLUDED.connections,
+       conversations = EXCLUDED.conversations, messages = EXCLUDED.messages, oldest_msg_at = EXCLUDED.oldest_msg_at,
+       first_batch_at = EXCLUDED.first_batch_at, last_growth_at = EXCLUDED.last_growth_at, complete_at = EXCLUDED.complete_at,
+       last_relations_at = EXCLUDED.last_relations_at, last_run_at = EXCLUDED.last_run_at, runs = linkedin_collect_status.runs + 1,
+       notified_ready_at = EXCLUDED.notified_ready_at, notified_complete_at = EXCLUDED.notified_complete_at,
+       notified_stalled_at = EXCLUDED.notified_stalled_at, last_error = NULL`,
+    [
+      tenantId, accountId, next.state, connections, result.conversations, messages, oldestMsgAt,
+      next.firstBatchAt, next.lastGrowthAt, next.completeAt,
+      run.relationsComplete ? nowIso : ((fresh && fresh.last_relations_at) || null), nowIso,
+      notified === 'ready' ? nowIso : ((fresh && fresh.notified_ready_at) || null),
+      notified === 'complete' ? nowIso : ((fresh && fresh.notified_complete_at) || null),
+      notified === 'stalled' ? nowIso : ((fresh && fresh.notified_stalled_at) || null),
+    ]
+  );
+  result.emailed = !!notified && !(notified === 'ready' && alreadyOn) && !result.emailError;
+  return result;
+}
+
+/**
+ * The daily run: every client with a LinkedIn connection on file, one after another.
+ * @param {{dryRun?: boolean, only?: string}} opts  only = one client id
+ */
+async function runCollectDaily({ dryRun = false, only = '', nowMs = Date.now() } = {}) {
+  const logger = createLogger({ runId: 'LI-COLLECT', clientId: only || 'ALL', operation: 'linkedin_collect_daily' });
+  const clientService = require('./clientService');
+  const all = await clientService.getAllClients();
+  const due = (all || []).filter((c) => String(c.unipileLinkedinAccountId || '').trim() && (!only || c.clientId === only));
+  const results = [];
+  for (const client of due) {
+    try {
+      const r = await collectOne(client, { nowMs, dryRun });
+      results.push(r);
+      logger.info(`${client.clientId}: ${r.ok ? `${r.skipped ? 'skipped (complete)' : r.state}${r.notify ? `, notify ${r.notify}` : ''}` : `FAILED ${r.error}`}`);
+    } catch (e) {
+      results.push({ tenantId: client.clientId, ok: false, error: e.message });
+      logger.error(`${client.clientId}: ${e.message}`);
+    }
+  }
+  return { ok: true, dryRun, clients: due.length, results };
+}
+
+module.exports = { runCollectDaily, collectOne, nextStatus, wantRelations, buildEmail, statusByTenant, ensureSchema, _setPool, NEAR_LIMIT };

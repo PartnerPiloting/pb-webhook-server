@@ -260,8 +260,15 @@ step skips who is already there.
    Unipile says the history is complete. Guy is told by BOTH an email and a status on his clients
    board (waiting for LinkedIn / first batch in - ready for a session / collecting older history /
    complete). Two emails matter: "ready for a session" (first batch in) and "history complete";
-   plus one if it stalls. Neither Guy nor the client does anything. *Copy BY HAND; the daily check,
-   the email and the board status NOT BUILT.*
+   plus one if it stalls. Neither Guy nor the client does anything. *BUILT 5 Oct 2026:
+   `services/linkedinCollect.js` + `scripts/linkedin-collect-daily.js` (run it once a day as a
+   Render cron job), table `linkedin_collect_status`, the three emails, and
+   `GET /api/client-board/reconnect/status` (state, connection count, near-the-limit flag at 25,000).
+   "Complete" is judged by two days with nothing new, so the email says so and gives the numbers -
+   Unipile's SYNC_SUCCESS webhook should replace that guess once its behaviour is confirmed. The
+   connections list is read on the first run and weekly, not daily. NOT BUILT: the status shown ON
+   the board screen, and the automatic read-and-add for a client who has said yes (needs their
+   description saved as an instruction first).*
 3. **The description and the 30 samples - in the session, with Guy there.** In the client's own
    Claude chat through their Wingguy connection ("set up my reconnect list"), and only once their
    history is collected and Guy has opened it for them. *BY HAND (Claude Code runs the sample job);

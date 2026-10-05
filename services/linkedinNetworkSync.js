@@ -291,6 +291,8 @@ async function readUnipile(accountId, { relations = true, relationsMaxPages, log
 const MESSAGE_COLS = 'message_id text, chat_id text, attendee_id text, sent_at timestamptz, is_sender boolean, body text, message_type text, folder text';
 const PEOPLE_COLS = 'person_key text, member_id text, sales_nav_id text, public_identifier text, profile_url text, name text, first_name text, last_name text, headline text, is_connection boolean, connected_at timestamptz, msgs_in integer, msgs_out integer, first_msg_at timestamptz, last_msg_at timestamptz, last_in_at timestamptz, last_dir text, folders text';
 const PEOPLE_NAMES = PEOPLE_COLS.split(', ').map((c) => c.split(' ')[0]);
+// What only the connections list knows about a person (see writeNetwork).
+const FROM_CONNECTIONS = new Set(['member_id', 'public_identifier', 'profile_url', 'name', 'first_name', 'last_name', 'headline', 'is_connection', 'connected_at']);
 
 async function writeNetwork(db, tenantId, { people, messages }, { fullPeople = true } = {}) {
   const syncedAt = new Date().toISOString();
@@ -305,7 +307,14 @@ async function writeNetwork(db, tenantId, { people, messages }, { fullPeople = t
     );
     newMessages += r.rowCount || 0;
   }
-  const sets = PEOPLE_NAMES.filter((c) => c !== 'person_key').map((c) => `${c} = EXCLUDED.${c}`).join(', ');
+  // A run that did not read the whole connections list (the daily collect skips it most days)
+  // knows less about each person than the row already holds - no vanity link, no date connected.
+  // So it must never overwrite those with what it has: it keeps what is there.
+  const sets = PEOPLE_NAMES.filter((c) => c !== 'person_key').map((c) => {
+    if (fullPeople || !FROM_CONNECTIONS.has(c)) return `${c} = EXCLUDED.${c}`;
+    if (c === 'is_connection') return 'is_connection = linkedin_people.is_connection OR EXCLUDED.is_connection';
+    return `${c} = COALESCE(linkedin_people.${c}, EXCLUDED.${c})`;
+  }).join(', ');
   for (let i = 0; i < people.length; i += WRITE_CHUNK) {
     await db.query(
       `INSERT INTO linkedin_people (tenant_id, ${PEOPLE_NAMES.join(', ')}, synced_at)

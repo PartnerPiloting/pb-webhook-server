@@ -70,6 +70,15 @@ router.post('/:clientId/unipile-link', authenticateUserWithTestMode, coachOnly, 
   }
 });
 
+// Where each client is up to with Reconnect - collecting state, connection count, near the limit.
+router.get('/reconnect/status', authenticateUserWithTestMode, coachOnly, async (req, res) => {
+  try {
+    res.json({ success: true, clients: await board.getReconnectStatus(req.client.clientId) });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
 // Mint the "connect your LinkedIn" link for one client (Reconnect - docs/RECONNECT-BUILD-PLAN.md).
 // On approval Unipile calls /api/unipile/notify-linkedin and the client's record gets its
 // LinkedIn account id and connected date by itself. Mail and calendar are not touched.

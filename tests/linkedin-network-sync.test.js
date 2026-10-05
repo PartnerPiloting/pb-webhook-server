@@ -182,6 +182,18 @@ const person = (net, key) => net.people.find((p) => p.person_key === key);
     await writeNetwork(db, 'T', net, { fullPeople: false });
     assert.ok(!db.calls.some((c) => /DELETE/.test(c.sql)));
   });
+  await check('a run without the connections list keeps what the row already knows about a person', async () => {
+    const db = fakeDb();
+    await writeNetwork(db, 'T', net, { fullPeople: false });
+    const sql = db.calls.find((c) => /INSERT INTO linkedin_people/.test(c.sql)).sql;
+    assert.ok(/public_identifier = COALESCE\(linkedin_people\.public_identifier, EXCLUDED\.public_identifier\)/.test(sql));
+    assert.ok(/connected_at = COALESCE\(linkedin_people\.connected_at, EXCLUDED\.connected_at\)/.test(sql));
+    assert.ok(/is_connection = linkedin_people\.is_connection OR EXCLUDED\.is_connection/.test(sql));
+    assert.ok(/msgs_in = EXCLUDED\.msgs_in/.test(sql), 'message counts always take the new value');
+    const full = fakeDb();
+    await writeNetwork(full, 'T', net, { fullPeople: true });
+    assert.ok(/public_identifier = EXCLUDED\.public_identifier/.test(full.calls.find((c) => /INSERT INTO linkedin_people/.test(c.sql)).sql));
+  });
   await check('NUL bytes are stripped before they reach Postgres', () => {
     assert.strictEqual(net.messages[0].body, 'nulbyte');
   });
