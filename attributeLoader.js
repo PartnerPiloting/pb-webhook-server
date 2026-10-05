@@ -14,7 +14,8 @@ const TABLE_NAME = process.env.ATTR_TABLE_NAME || "Scoring Attributes";
 /* ---------- helper: strip markdown + collapse whitespace -------- */
 function clean(text = "") {
   return String(text)
-    .replace(/[*`_~#>\-]|(?:\r?\n|\r)/g, " ")    // remove md chars & newlines
+    .replace(/^[ \t]*[-•][ \t]+/gm, "")         // drop bullet markers only - hyphens inside text ("0-5", "12-week") are meaning
+    .replace(/[*`_~#>]|(?:\r?\n|\r)/g, " ")    // remove md chars & newlines
     .replace(/\s+/g, " ")                      // collapse runs of spaces
     .trim();
 }
@@ -88,11 +89,9 @@ async function loadAttributes(logger = null, clientId = null) {
         return; 
       }
 
-      let instructions = clean(r.get("Instructions") || "");
-      instructions = instructions.replace(
-        /Scoring Range[\s\S]*?\bpts?\b[^]*?(?=\s[A-Z0-9]{1,2}\b|$)/i,
-        ""
-      ).trim();
+      // Score bands stay in: they are what calibrates the AI. (A May 2025 token trim stripped text
+      // after "Scoring Range" here, which cut the opening band off every seeded row.)
+      const instructions = clean(r.get("Instructions") || "");
 
       const common = {
         label,
