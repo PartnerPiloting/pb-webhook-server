@@ -67,7 +67,13 @@ Sales Navigator itself is still needed for SEARCH (the signals tier).
 **BUILT 5 Oct 2026** (`services/linkedinNetworkSync.js`, `scripts/linkedin-network-sync.js`,
 `tests/linkedin-network-sync.test.js`). Run over Guy's stored prototype data it reproduces the
 prototype exactly with the Sales Navigator switch on: 4,449 people with messages, 2,923 never
-spoke, 648 they spoke last, 878 replied then quiet. NOT yet run against Unipile or Postgres.
+spoke, 648 they spoke last, 878 replied then quiet.
+
+**RUN LIVE on Guy's account 5 Oct 2026.** Stored and checked by query: 8,374 connections (all with
+date connected and profile link), 21,454 ordinary-inbox messages across 5,905 people, oldest July
+2019. The pool brick 2 reads (connected, replied at least once, quiet 90+ days) is 1,735. These
+are about double the prototype's figures because Unipile's copy of the inbox grew from 3,000 to
+6,001 conversations between 3 and 5 October without anything being asked of it.
 
 New master fields: `Reconnect` (the switch), `Reconnect Daily Number` (default 20),
 `LinkedIn Feed` (Yes = stay connected past the month), `Unipile LinkedIn Account ID`,
@@ -103,6 +109,13 @@ Changes from the prototype:
 - A thread is re-read only when it changes, so the read is paid for once.
 - Plain `json_schema` output (the repo's zod is too old for the SDK helper).
 - Runs as a Render one-off job, never as a chat tool call (it would time out).
+
+**BUILT 5 Oct 2026** (`services/conversationScore.js`, `scripts/conversation-score.js`,
+`tests/conversation-score.test.js`; table `linkedin_conversation_scores`). The paragraph is passed
+in by the job for now and the guidance is the default in the code; `loadProfile()` is the one
+place the instructions store takes over, which needs a new `reconnect` context in the store (so
+scoring guidance can never leak into message drafting). Everyone in the pool is read - ceased and
+parked people are filtered later, at the nightly pick, where that state is live.
 
 **Proof:** run on Guy's stored data and compare with the 4 Oct labels - about 850 threads read,
 about 190 at warmth 4-5. Cost was about US$3.30 for Guy; expect US$12-20 on Matt's key.
