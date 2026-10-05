@@ -563,6 +563,80 @@
             },
             "timeZone": "utc"
           }
+        },
+        {
+          "name": "Conversation Score",
+          "type": "number",
+          "options": {
+            "precision": 0
+          }
+        },
+        {
+          "name": "Conversation Ending",
+          "type": "singleSelect",
+          "options": {
+            "choices": [
+              {
+                "name": "Left something open",
+                "color": "greenLight2"
+              },
+              {
+                "name": "Stalled after interest",
+                "color": "tealLight2"
+              },
+              {
+                "name": "Answered, then dropped",
+                "color": "cyanLight2"
+              },
+              {
+                "name": "Not now",
+                "color": "yellowLight2"
+              },
+              {
+                "name": "Closed politely",
+                "color": "grayLight2"
+              },
+              {
+                "name": "Declined",
+                "color": "redLight2"
+              },
+              {
+                "name": "Their pitch",
+                "color": "orangeLight2"
+              },
+              {
+                "name": "Moved to a call or email",
+                "color": "blueLight2"
+              },
+              {
+                "name": "Other",
+                "color": "grayLight1"
+              }
+            ]
+          }
+        },
+        {
+          "name": "Conversation Why",
+          "type": "singleLineText"
+        },
+        {
+          "name": "Pick Up On",
+          "type": "singleLineText"
+        },
+        {
+          "name": "Conversation Scored At",
+          "type": "dateTime",
+          "options": {
+            "dateFormat": {
+              "name": "iso",
+              "format": "YYYY-MM-DD"
+            },
+            "timeFormat": {
+              "name": "24hour",
+              "format": "HH:mm"
+            },
+            "timeZone": "utc"
+          }
         }
       ]
     },

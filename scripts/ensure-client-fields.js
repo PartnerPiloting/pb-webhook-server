@@ -79,6 +79,36 @@ const LEADS_FIELDS = [
     type: 'dateTime',
     description: "Engine-written timestamp of the moment Cease FUP was set (wingguy_cease_followups). The waiver line: a reply the lead was owed BEFORE this moment is considered deliberately let go and stops surfacing in follow-ups; an inbound NEWER than this still surfaces (a reply is a reply). Cleared when the lead is re-opened. Blank on leads ceased before the rollout = legacy always-surface behavior. Added 2026-07-28.",
     options: { dateFormat: { name: 'iso', format: 'YYYY-MM-DD' }, timeFormat: { name: '24hour', format: 'HH:mm' }, timeZone: 'utc' }
+  },
+  // --- Reconnect: the conversation score (services/conversationScore.js -> services/reconnectLeads.js).
+  // Written by the system only; added 2026-10-05. See docs/RECONNECT-BUILD-PLAN.md.
+  {
+    name: 'Conversation Score',
+    type: 'number',
+    description: 'Reconnect: 1-5, how worth writing to this person is, from an AI read of how their old LinkedIn conversation ended, judged against who the client is looking for. Separate from AI Score (the profile score). Written by services/reconnectLeads.js.',
+    options: { precision: 0 }
+  },
+  {
+    name: 'Conversation Ending',
+    type: 'singleSelect',
+    description: 'Reconnect: how the old LinkedIn conversation ended. The same fixed list for every client. Written by services/reconnectLeads.js.',
+    options: { choices: [{ name: 'Left something open', color: 'greenLight2' }, { name: 'Stalled after interest', color: 'tealLight2' }, { name: 'Answered, then dropped', color: 'cyanLight2' }, { name: 'Not now', color: 'yellowLight2' }, { name: 'Closed politely', color: 'grayLight2' }, { name: 'Declined', color: 'redLight2' }, { name: 'Their pitch', color: 'orangeLight2' }, { name: 'Moved to a call or email', color: 'blueLight2' }, { name: 'Other', color: 'grayLight1' }] }
+  },
+  {
+    name: 'Conversation Why',
+    type: 'singleLineText',
+    description: 'Reconnect: one line on why the conversation got the score it did. Written by services/reconnectLeads.js.'
+  },
+  {
+    name: 'Pick Up On',
+    type: 'singleLineText',
+    description: 'Reconnect: the specific thing from the old conversation a new message could pick up, in their terms. Blank when there is none. Written by services/reconnectLeads.js.'
+  },
+  {
+    name: 'Conversation Scored At',
+    type: 'dateTime',
+    description: 'Reconnect: when the conversation was last read and scored. Written by services/reconnectLeads.js.',
+    options: { dateFormat: { name: 'iso', format: 'YYYY-MM-DD' }, timeFormat: { name: '24hour', format: 'HH:mm' }, timeZone: 'utc' }
   }
 ];
 
@@ -307,6 +337,12 @@ const MASTER_FIELDS = [
     type: 'singleSelect',
     description: 'Yes = this client has the Reconnect and Potential disconnects sections on the Follow-Ups screen (docs/RECONNECT-BUILD-PLAN.md). Blank = off: nothing is read, scored or shown. Added 2026-10-05.',
     options: { choices: [{ name: 'Yes' }] }
+  },
+  {
+    name: 'Reconnect Lead Cut-Off',
+    type: 'number',
+    description: 'The lowest Conversation Score (1-5) at which someone who is not yet a lead is brought in as one. Blank = 3. Raise it for a client whose 4s and 5s alone are months of work. Added 2026-10-05.',
+    options: { precision: 0 }
   },
   {
     name: 'Reconnect Daily Number',

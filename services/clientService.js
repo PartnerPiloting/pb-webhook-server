@@ -187,6 +187,7 @@ async function getAllClients() {
                 const linkedinFeed = record.get('LinkedIn Feed') || null;
                 const reconnect = record.get('Reconnect') || null;
                 const reconnectDailyNumber = Number(record.get('Reconnect Daily Number')) || 0;
+                const reconnectLeadCutOff = Number(record.get('Reconnect Lead Cut-Off')) || 0;
                 // Stripe cutover stage 2: the join key to Stripe. When set, billing looks the
                 // customer up by this id instead of guessing by email (billingRoutes.js).
                 const stripeCustomerId = record.get('Stripe Customer ID') || null;
@@ -321,6 +322,7 @@ async function getAllClients() {
                     linkedinFeed: linkedinFeed,
                     reconnect: reconnect,
                     reconnectDailyNumber: reconnectDailyNumber,
+                    reconnectLeadCutOff: reconnectLeadCutOff,
                     stripeCustomerId: stripeCustomerId,
                     stripeSubscriptionId: stripeSubscriptionId,
                     billingSource: billingSource,

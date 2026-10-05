@@ -132,6 +132,19 @@ New lead fields: `Conversation Score`, `Conversation Ending`, `Conversation Why`
 `Conversation Scored At`. Rolled out the two-part way: `scripts/ensure-client-fields.js` for
 existing bases and the template, and `config/clientBaseSchema.json` for future ones.
 
+**BUILT 5 Oct 2026** (`services/reconnectLeads.js`, `scripts/reconnect-leads.js` - count only unless
+`--go`, `tests/reconnect-leads.test.js`). Two changes from the lines above, both deliberate:
+- **A new lead gets no messages in its Notes yet.** The nightly follow-up sweep reads Notes, and a
+  lead whose notes show they once spoke would land in the LIVE follow-up queue - hundreds of them
+  at once. The thread stays in `linkedin_messages` until brick 4 hands people quiet past 90 days
+  to the Reconnect list; then it can be written across.
+- **A name already in the base under a different link is "unsure"** - not created, not updated,
+  and counted in the report. A duplicate lead is worse than a missing one.
+An existing lead is matched on the profile link only (vanity slug or member id) and only ever
+gets the five conversation fields. The cut-off is the master field `Reconnect Lead Cut-Off`
+(blank = 3). New leads use the existing Source value "Existing Connection Added by PB" because
+the portal's lead form only knows the existing Source list.
+
 No profile score at this stage. It arrives later, free, the first time /wg is opened on the person.
 
 **Proof:** dry run on Guy's base first - "would create X, would update Y, would skip Z" - and Guy
