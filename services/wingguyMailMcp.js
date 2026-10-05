@@ -1920,7 +1920,7 @@ function draftMarker(state, src) {
  * re-check the LIVE world. Returns every actionable item (renderers paginate) plus what was
  * suppressed and why.
  */
-async function buildQueue(tenant = TENANT) {
+async function buildQueue(tenant = TENANT, { reconnectMore = 0 } = {}) {
   const briefStore = require('./wingguyFollowupBrief');
   const backlog = require('./wingguyBacklogAudit');
   const dismissed = require('./wingguyFollowupsDismissed');
@@ -1980,11 +1980,16 @@ async function buildQueue(tenant = TENANT) {
   // Never serve what the live world has already answered (see applyLiveQueueGates).
   const live = deduped.length ? await applyLiveQueueGates(deduped, tenant) : { items: deduped, suppressed: { booked: 0, ceased: 0, parked: 0, messaged: 0, items: [] } };
   await attachStorySignals(live.items, tenant, todayIso);
+  // Reconnect (docs/RECONNECT-BUILD-PLAN.md, brick 4): for a client with the switch on, people quiet
+  // past 90 days who are in the Reconnect pool leave THIS list for that one, so nobody shows twice.
+  // Off, or on any failure, the live list comes back whole and `reconnect` is null.
+  const rc = await require('./reconnectQueue').buildReconnect(tenant, live.items, { more: reconnectMore });
+  const reconnect = rc.enabled ? { items: rc.items, waiting: rc.waiting, dailyNumber: rc.dailyNumber, moreStep: rc.moreStep, handedOver: rc.handedOver } : null;
   // Dark machines (Guy 2026-09-13): a coached client's extension updater that has gone quiet for
   // three days rides on the queue, because the queue is what the coach reads each morning and the
   // updater itself never tells anyone. Best-effort - [] on any failure, never blocks the queue.
   const fleetAlerts = await require('./extensionDistStore').darkMachinesForCoach(tenant);
-  return { items: live.items, preGateCount, dismissedCount, suppressed: live.suppressed, briefPreparedAt, backlogCreatedAt, fleetAlerts, introChecks };
+  return { items: rc.live, preGateCount, dismissedCount, suppressed: live.suppressed, briefPreparedAt, backlogCreatedAt, fleetAlerts, introChecks, reconnect };
 }
 
 // Story-derived row signals, read from the stored dossiers (one query, tail only) and attached
@@ -2059,7 +2064,8 @@ async function runQueue({ page } = {}, tenant = TENANT) {
     : '';
   // Introductions gone quiet (2026-09-25, services/wingguyIntroductions.js) - worked out overnight
   // with the brief, served here because "my follow-ups" lands on the queue, not the brief.
-  const introNote = introChecksNote(q.introChecks);
+  // The Reconnect list rides the same tail note, so every return below carries it.
+  const introNote = introChecksNote(q.introChecks) + require('./reconnectQueue').reconnectNote(q.reconnect);
   if (!q.preGateCount) return { text: `${screenDoor}${fleetNote}The queue is empty — nothing actionable right now (parked people surface on their dates).${introNote}` };
   const deduped = q.items;
   const supp = q.suppressed;

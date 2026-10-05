@@ -165,6 +165,24 @@ says go before a single record is written.
   ending chip, the "pick up on" line and the tags.
 - Chat's `wingguy_queue` lists the same people.
 
+**BUILT 5 Oct 2026, first cut** (`services/reconnectQueue.js`, `components/ReconnectSection.js`,
+`tests/reconnect-queue.test.js`; table `reconnect_state`; routes `POST /api/followups/reconnect-action`
+and `/reconnect-more`). Guy's five decisions, all yes: quiet past 90 days moves from the live list
+to Reconnect; Never = Drop; people met and not since are on the list, labelled; a disconnect may be
+suggested for a decline or a pitch; clients, current or former, never appear.
+- The list is worked out when the queue is loaded, not by a nightly job: the first load of the
+  client's day stamps that day's portion, and it only shrinks after that.
+- The hand-over is conservative: a live row leaves only if the person is in the Reconnect pool AND
+  the row shows more than 90 quiet days. A row with no quiet-days figure stays live and that
+  person is kept off Reconnect - nobody shows twice, nobody vanishes. Due parks and
+  accepted-but-unbooked times always stay live.
+- "Written to since" is read from the lead's notes, so someone messaged without pressing Done
+  drops off the list by themselves.
+- NOT in this cut: the overnight "prepared in full" pass (recommendation, Ask box) - rows show the
+  conversation score's own reason and angle; the calendar check for a booked person; writing the
+  old thread into new leads' notes (needs the same hand-over applied before the overnight prep,
+  or several hundred extra people get triaged each night).
+
 **Proof:** Guy opens Follow-Ups on a real morning, sees 20, works them with /wg, and tomorrow's
 20 are right (unworked ones first, nobody he actioned).
 
@@ -207,7 +225,7 @@ Signals tier (Sales Nav job changers and posters), the connection-request dial, 
 ActiveCampaign push for Matt, automatic removals. Also owed: redraw the workflow diagram, which
 still shows the 3 Oct version.
 
-## Decisions needed from Guy before brick 4
+## Decisions - ALL ANSWERED YES by Guy, 5 Oct 2026 (kept for the record)
 
 1. **Who owns someone quiet for more than 90 days?** Today the live list has no time limit.
    Recommended: for clients with Reconnect switched on, anyone quiet past 90 days moves from the

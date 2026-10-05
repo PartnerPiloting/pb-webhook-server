@@ -150,6 +150,8 @@ module.exports = function mountWingguyFollowups(app) {
         // Coached clients whose extension updater has gone quiet (3+ days) or errored - the same
         // lines chat leads with. Empty for a client who coaches nobody.
         fleetAlerts: q.fleetAlerts || [],
+        // The Reconnect list (services/reconnectQueue.js) - null when the client's switch is off.
+        reconnect: q.reconnect || null,
       });
     } catch (e) {
       logger.error(`followupsScreen: queue error for ${clientId}: ${e?.message || e}`);
@@ -270,6 +272,39 @@ module.exports = function mountWingguyFollowups(app) {
     } catch (e) {
       logger.error(`followupsScreen: action error for ${clientId}: ${e?.message || e}`);
       res.status(500).json({ error: 'action_failed', details: e?.message || String(e) });
+    }
+  });
+
+  // Reconnect list (docs/RECONNECT-BUILD-PLAN.md, brick 4). One click per person: done | skip (90
+  // days) | never (= Drop: sets Cease FUP) | disconnect (onto the Potential disconnects list).
+  router.post('/reconnect-action', authenticateUserWithTestMode, async (req, res) => {
+    const clientId = getClientId(req);
+    const gate = await resolveGate(clientId);
+    if (!gate) return res.status(403).json({ error: 'feature_not_enabled' });
+    const { key, action } = req.body || {};
+    try {
+      const r = await require('../services/reconnectQueue').reconnectAction(clientId, key, action);
+      if (!r.ok) return res.status(400).json({ error: r.error, allowed: ['done', 'skip', 'never', 'disconnect'] });
+      return res.json(r);
+    } catch (e) {
+      logger.error(`followupsScreen: reconnect action error for ${clientId}: ${e?.message || e}`);
+      res.status(500).json({ error: 'action_failed', details: e?.message || String(e) });
+    }
+  });
+
+  // "Show more": adds the next few people to today's portion and returns the list. It rebuilds the
+  // queue because who is still on the live list decides who may be on this one.
+  router.post('/reconnect-more', authenticateUserWithTestMode, async (req, res) => {
+    const clientId = getClientId(req);
+    const gate = await resolveGate(clientId);
+    if (!gate) return res.status(403).json({ error: 'feature_not_enabled' });
+    try {
+      const rq = require('../services/reconnectQueue');
+      const q = await require('../services/wingguyMailMcp').buildQueue(clientId, { reconnectMore: rq.MORE_STEP });
+      return res.json({ ok: true, reconnect: q.reconnect || null });
+    } catch (e) {
+      logger.error(`followupsScreen: reconnect more error for ${clientId}: ${e?.message || e}`);
+      res.status(500).json({ error: 'more_failed', details: e?.message || String(e) });
     }
   });
 

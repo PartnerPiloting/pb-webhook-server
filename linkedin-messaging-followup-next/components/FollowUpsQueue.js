@@ -21,6 +21,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import HelpButton from './HelpButton';
+import ReconnectSection from './ReconnectSection';
 import { getCurrentClientId, getCurrentPortalToken, getCurrentDevKey } from "../utils/clientUtils";
 
 const RAW_API = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://pb-webhook-server.onrender.com/api/linkedin';
@@ -474,6 +475,7 @@ export default function FollowUpsQueue() {
   const [briefPreparedAt, setBriefPreparedAt] = useState(null);
   const [keyNotice, setKeyNotice] = useState(null);
   const [fleetAlerts, setFleetAlerts] = useState([]); // coached clients' machines gone dark
+  const [reconnect, setReconnect] = useState(null);   // the Reconnect list - null when the client's switch is off
   const [loading, setLoading] = useState(true);
   const [loadSecs, setLoadSecs] = useState(0);
   const [error, setError] = useState(null);
@@ -504,6 +506,7 @@ export default function FollowUpsQueue() {
       setBriefPreparedAt(data?.briefPreparedAt || null);
       setKeyNotice(data?.keyNotice || null);
       setFleetAlerts(Array.isArray(data?.fleetAlerts) ? data.fleetAlerts : []);
+      setReconnect(data?.reconnect || null);
     } catch (e) {
       setError(e?.message || 'Failed to load the queue');
       setItems([]);
@@ -917,6 +920,11 @@ export default function FollowUpsQueue() {
           )}
         </div>
       </div>
+
+      {/* Reconnect: a separate, stacked list - see ReconnectSection.js */}
+      {!loading && reconnect && (
+        <ReconnectSection data={reconnect} post={(path, body) => apiPost(path, body, clientId)} onReplace={setReconnect} />
+      )}
     </div>
   );
 }
