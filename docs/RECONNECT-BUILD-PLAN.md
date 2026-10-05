@@ -266,9 +266,11 @@ step skips who is already there.
    `GET /api/client-board/reconnect/status` (state, connection count, near-the-limit flag at 25,000).
    "Complete" is judged by two days with nothing new, so the email says so and gives the numbers -
    Unipile's SYNC_SUCCESS webhook should replace that guess once its behaviour is confirmed. The
-   connections list is read on the first run and weekly, not daily. NOT BUILT: the status shown ON
-   the board screen, and the automatic read-and-add for a client who has said yes (needs their
-   description saved as an instruction first).*
+   connections list is read on the first run and weekly, not daily. It is scheduled: `GET /api/cron/linkedin-collect` (answers 202, runs behind the
+   request, refuses a second run while one is going), hit once a day by a Render cron job.
+   THE TOP-UP IS BUILT: for a client whose Reconnect list is on, each day's arrivals are then read
+   and the good ones added at their cut-off, on their own key; a client not yet switched on is only
+   collected. NOT BUILT: the status shown ON the board screen.*
 3. **The description and the 30 samples - in the session, with Guy there.** In the client's own
    Claude chat through their Wingguy connection ("set up my reconnect list"), and only once their
    history is collected and Guy has opened it for them. *BY HAND (Claude Code runs the sample job);
@@ -298,9 +300,12 @@ step skips who is already there.
    it added. Automatic - a gate that waits for a click gets forgotten and costs money. A client
    paying to keep the connection (LinkedIn Feed = Yes) is skipped. *NOT BUILT.*
 
-Also owed before any other client: the five lead fields rolled out to every client base and the
-template (they exist on Guy's base only), and the client's description saved as one of their
-instructions (needs the new `reconnect` context in the instructions store).
+DONE 5 Oct 2026: the five lead fields are on every client base and the template (125 added, 0
+errors). The client's description is saved as their own setup value `reconnect_looking_for`
+(`conversationScore.saveWho`, or `scripts/conversation-score.js --save-who`), NOT as an instruction
+under a new `reconnect` category: adding a category means widening a CHECK constraint on the
+instructions table, the exact change that file records as having caused a live outage. A setup
+value needs no schema change and is never rendered into a drafting prompt by itself.
 
 ## Side job, not blocking - prove Linked Helper removals
 

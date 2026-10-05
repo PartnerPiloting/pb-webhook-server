@@ -94,6 +94,28 @@ const m = (when, mine, body) => ({ sent_at: when, is_sender: mine, body });
     assert.strictEqual(cs.spread(list, 500).length, 100);
   });
 
+  console.log('the saved paragraph');
+  const fakeStore = (value) => { const sets = []; return { sets, setVariable: async (a) => { sets.push(a); return { ok: true }; }, getVariables: async () => [{ var_key: 'first_name', value: 'Pat' }, { var_key: cs.WHO_KEY, value }] }; };
+
+  await check('a paragraph handed in wins; otherwise the saved one is read', async () => {
+    const store = fakeStore('  Saved paragraph.  ');
+    assert.strictEqual((await cs.loadProfile('T', { who: 'Draft paragraph.', store })).who, 'Draft paragraph.');
+    assert.strictEqual((await cs.loadProfile('T', { store })).who, 'Saved paragraph.');
+    assert.strictEqual((await cs.loadProfile('T', { store: fakeStore(null) })).who, '');
+  });
+  await check('saving and re-reading gives the same sig, so nothing already read counts as stale', async () => {
+    const text = 'I build a trusted network of established professionals.';
+    const store = fakeStore(text);
+    const saved = await cs.saveWho('T', `  ${text}\n`, { store });
+    assert.strictEqual(store.sets[0].varKey, cs.WHO_KEY);
+    assert.strictEqual(store.sets[0].value, text);
+    assert.strictEqual(saved.sig, cs.profileSig({ who: (await cs.loadProfile('T', { store })).who }));
+    assert.strictEqual(saved.sig, cs.profileSig({ who: text }));
+  });
+  await check('an empty paragraph is refused', async () => {
+    await assert.rejects(() => cs.saveWho('T', '   ', { store: fakeStore('') }));
+  });
+
   console.log('scoreBatch');
   const refFrom = (params) => [...params.messages[0].content.matchAll(/### ref (\w+)/g)].map((x) => x[1]);
   const reply = (items) => ({ stop_reason: 'end_turn', usage: { input_tokens: 10, output_tokens: 5 }, content: [{ type: 'text', text: JSON.stringify({ items }) }] });

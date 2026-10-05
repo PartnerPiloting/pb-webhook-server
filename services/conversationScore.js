@@ -11,8 +11,14 @@
 //   PER CLIENT - a short "who I am and who I'm looking for" paragraph. It is what makes the same
 //     thread a 2 for one client and a 4 for another.
 //   TUNABLE - the reading guidance (what a 5 is, what a polite closer is). DEFAULT_GUIDANCE below
-//     is the shared wording; loadProfile() is the one seam where the instructions store takes
-//     over from it.
+//     is the shared wording.
+//
+// WHERE THE DESCRIPTION LIVES: as the client's own setup value `reconnect_looking_for`, in the
+// same per-client store as their other fill-in-the-blanks (wingguyRulesStore variables). It was
+// going to be an instruction under a new "reconnect" category, but adding a category means
+// widening a CHECK constraint on the instructions table - the exact change that file records as
+// having caused a live outage. A setup value needs no schema change, is versioned in the same
+// history, and is never rendered into a drafting prompt by itself.
 //
 // Rules this file keeps:
 //   - The client's own Claude key, through resolveClientAnthropic. No key = refused, not billed
@@ -258,13 +264,33 @@ async function saveScores(db, tenantId, rows) {
   );
 }
 
+const WHO_KEY = 'reconnect_looking_for';
+
 /**
  * The client's paragraph and the reading guidance. `who` passed by the caller wins (that is how a
- * draft paragraph is tried on a sample before it is saved). THE SEAM: when the instructions store
- * carries these, read them here - nothing else in this file changes.
+ * draft paragraph is tried on a sample before it is saved); otherwise the saved one is read.
  */
-async function loadProfile(tenantId, { who } = {}) {
-  return { who: String(who || '').trim(), guidance: DEFAULT_GUIDANCE };
+async function loadProfile(tenantId, { who, store } = {}) {
+  let text = String(who || '').trim();
+  if (!text) {
+    try {
+      const rows = await (store || require('./wingguyRulesStore')).getVariables({ tenantId });
+      const row = (rows || []).find((r) => r.var_key === WHO_KEY);
+      text = String((row && row.value) || '').trim();
+    } catch (_) { /* store down - the caller reports "no paragraph yet" */ }
+  }
+  return { who: text, guidance: DEFAULT_GUIDANCE };
+}
+
+/** Save the client's paragraph. This is what lets the daily top-up read without anyone there. */
+async function saveWho(tenantId, who, { store } = {}) {
+  const text = String(who || '').trim();
+  if (!text) throw new Error('nothing to save - the paragraph is empty');
+  await (store || require('./wingguyRulesStore')).setVariable({
+    tenantId, varKey: WHO_KEY, value: text, actor: 'reconnect-setup',
+    description: 'Reconnect: who this client is and who they are looking for, in their own words. Read by the conversation score to judge which old LinkedIn conversations are worth picking up.',
+  });
+  return { ok: true, sig: profileSig({ who: text }) };
 }
 
 // ---------------------------------------------------------------------------
@@ -353,5 +379,5 @@ async function scoreConversations(tenantId, { who, dryRun = false, sample = 0, l
 
 module.exports = {
   scoreConversations, buildSystem, profileSig, threadSig, transcript, pickTodo, normaliseItem, spread,
-  scoreBatch, loadProfile, ensureSchema, _setPool, ENDINGS, DEFAULT_GUIDANCE, QUIET_DAYS,
+  scoreBatch, loadProfile, saveWho, WHO_KEY, ensureSchema, _setPool, ENDINGS, DEFAULT_GUIDANCE, QUIET_DAYS,
 };

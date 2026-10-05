@@ -13078,6 +13078,31 @@ router.get("/api/smart-followup/sweep", async (req, res) => {
 // When web-triggered sweep gets stuck (Render kills background after 202),
 // cron hits this endpoint to run the sweep in the request context.
 // ---------------------------------------------------------------
+// GET /api/cron/linkedin-collect
+// Daily: collect each connected client's LinkedIn history (services/linkedinCollect.js) - and, for
+// a client whose Reconnect list is on, read the new arrivals and add the good ones. It takes
+// minutes per client, so it answers 202 straight away and runs behind the request; a second call
+// while one is running is refused rather than doubled. ?dry=1 counts only. ?tenant=X does one.
+// Auth: Bearer PB_WEBHOOK_SECRET
+// ---------------------------------------------------------------
+let linkedinCollectRunning = false;
+router.get("/api/cron/linkedin-collect", async (req, res) => {
+  const auth = req.headers.authorization;
+  const secret = process.env.PB_WEBHOOK_SECRET;
+  if (!secret || auth !== `Bearer ${secret}`) {
+    return res.status(401).json({ ok: false, error: 'Unauthorized' });
+  }
+  if (linkedinCollectRunning) return res.status(409).json({ ok: false, error: 'already running' });
+  linkedinCollectRunning = true;
+  const opts = { dryRun: req.query.dry === '1', only: String(req.query.tenant || '') };
+  require('../services/linkedinCollect').runCollectDaily(opts)
+    .then((r) => console.log(`[linkedin-collect] done - ${r.clients} client(s): ${r.results.map((x) => `${x.tenantId}=${x.ok ? (x.skipped || x.state) : 'FAILED'}`).join(', ')}`))
+    .catch((e) => console.error(`[linkedin-collect] ${e.message}`))
+    .finally(() => { linkedinCollectRunning = false; });
+  return res.status(202).json({ ok: true, started: true, ...opts });
+});
+
+// ---------------------------------------------------------------
 // GET /api/cron/lh-backup-watch
 // Daily: is every Linked Helper machine's backup actually reaching Drive?
 // Emails Guy only when one is not - see services/lhBackupWatch.js for why this

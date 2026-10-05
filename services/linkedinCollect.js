@@ -23,8 +23,10 @@
 //   - The connections list is read through LinkedIn, so it is read on the first run, weekly after
 //     that, and once more when the history completes - not every day.
 //   - One client failing never stops the others; the error is kept on that client's row.
-//   - It only collects. Reading and adding people for a client who has said yes is the next step
-//     (it needs their description saved as an instruction first).
+//   - THE TOP-UP: for a client whose Reconnect list is switched on (they said both yeses in their
+//     session), each day's newly arrived conversations are then read and the good ones added at
+//     their cut-off - on their own Claude key, which their first yes covered. A client who is not
+//     switched on yet is only collected. A top-up failing never fails the collect.
 
 const { Pool } = require('pg');
 const { createLogger } = require('../utils/contextLogger');
@@ -240,7 +242,24 @@ async function collectOne(client, { nowMs = Date.now(), dryRun = false, deps = {
     ]
   );
   result.emailed = !!notified && !(notified === 'ready' && alreadyOn) && !result.emailError;
+  if (alreadyOn && messages) result.topUp = await topUp(tenantId, deps);
   return result;
+}
+
+/**
+ * Read whatever has not been read yet and add anyone at the client's cut-off. Both steps only
+ * ever add, so running this daily is safe. Never throws.
+ */
+async function topUp(tenantId, deps = {}) {
+  try {
+    const score = deps.score || require('./conversationScore').scoreConversations;
+    const read = await score(tenantId, {});
+    if (!read.ok) return { ok: false, step: 'read', error: read.error };
+    const leads = deps.leads || require('./reconnectLeads').syncReconnectLeads;
+    const added = await leads(tenantId, { dryRun: false });
+    if (!added.ok) return { ok: false, step: 'leads', read: read.read, error: added.error };
+    return { ok: true, read: read.read || 0, costUsd: read.costUsd || 0, created: added.created || 0, updated: added.updated || 0 };
+  } catch (e) { return { ok: false, error: e.message }; }
 }
 
 /**
@@ -266,4 +285,4 @@ async function runCollectDaily({ dryRun = false, only = '', nowMs = Date.now() }
   return { ok: true, dryRun, clients: due.length, results };
 }
 
-module.exports = { runCollectDaily, collectOne, nextStatus, wantRelations, buildEmail, statusByTenant, ensureSchema, _setPool, NEAR_LIMIT };
+module.exports = { runCollectDaily, collectOne, topUp, nextStatus, wantRelations, buildEmail, statusByTenant, ensureSchema, _setPool, NEAR_LIMIT };

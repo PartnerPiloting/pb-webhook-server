@@ -11,6 +11,8 @@
  *     --rescore          also re-read threads read under an older paragraph or guidance
  *     --who-b64=...      the client's "who I am looking for" paragraph, base64 (a job cannot take
  *                        free text safely) - how a draft paragraph is tried before it is saved
+ *     --save-who         SAVE that paragraph as the client's own (then stop). Once saved, every
+ *                        run reads it by itself and --who-b64 is no longer needed.
  *
  * Order for a new client: --dry-run, then --sample until the client agrees with the scores, then
  * the full read.
@@ -24,8 +26,14 @@ const tenant = val('tenant');
 if (!tenant) { console.error('[conversation-score] --tenant=Client-Id is required'); process.exit(1); }
 
 (async () => {
-  const { scoreConversations } = require('../services/conversationScore');
+  const { scoreConversations, saveWho } = require('../services/conversationScore');
   const started = Date.now();
+  if (args.includes('--save-who')) {
+    if (!val('who-b64')) { console.error('[conversation-score] --save-who needs --who-b64'); process.exit(1); }
+    const s = await saveWho(tenant, Buffer.from(val('who-b64'), 'base64').toString('utf8'));
+    console.log(`[conversation-score] SAVED the paragraph for ${tenant} (sig ${s.sig})`);
+    process.exit(0);
+  }
   const r = await scoreConversations(tenant, {
     who: val('who-b64') ? Buffer.from(val('who-b64'), 'base64').toString('utf8') : '',
     dryRun: args.includes('--dry-run'),

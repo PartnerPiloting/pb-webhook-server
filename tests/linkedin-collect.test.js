@@ -108,10 +108,44 @@ const iso = (ms) => new Date(ms).toISOString();
   await check('a client already working their list gets no "ready" email', async () => {
     lc._setPool(fakeDb(null));
     const mails = [];
-    const r = await lc.collectOne(client({ reconnect: 'Yes' }), { nowMs: T0, deps: { sync: okSync({ messages: 500, withMessages: 100, connections: 900 }), sendAlertEmail: async (s) => mails.push(s) } });
+    const r = await lc.collectOne(client({ reconnect: 'Yes' }), { nowMs: T0, deps: { sync: okSync({ messages: 500, withMessages: 100, connections: 900 }), sendAlertEmail: async (s) => mails.push(s), score: async () => ({ ok: true, read: 0 }), leads: async () => ({ ok: true }) } });
     assert.strictEqual(r.state, 'ready');
     assert.strictEqual(mails.length, 0);
     assert.strictEqual(r.emailed, false);
+  });
+  await check('a client whose list is ON gets the day\'s arrivals read and added', async () => {
+    lc._setPool(fakeDb({ tenant_id: 'Pat-Client', account_id: 'li-1', state: 'ready', messages: 500, first_batch_at: iso(T0), last_growth_at: iso(T0), notified_ready_at: iso(T0) }));
+    const order = [];
+    const r = await lc.collectOne(client({ reconnect: 'Yes' }), { nowMs: T0 + 24 * H, deps: {
+      sync: okSync({ messages: 900, withMessages: 200, connections: 900 }),
+      score: async () => { order.push('read'); return { ok: true, read: 40, costUsd: 0.16 }; },
+      leads: async (t, o) => { order.push(`leads dryRun=${o.dryRun}`); return { ok: true, created: 7, updated: 3 }; },
+    } });
+    assert.deepStrictEqual(order, ['read', 'leads dryRun=false']);
+    assert.deepStrictEqual(r.topUp, { ok: true, read: 40, costUsd: 0.16, created: 7, updated: 3 });
+  });
+  await check('a client who has NOT said yes is only collected - nothing is read or added', async () => {
+    lc._setPool(fakeDb(null));
+    let touched = false;
+    const r = await lc.collectOne(client(), { nowMs: T0, deps: {
+      sync: okSync({ messages: 900, withMessages: 200, connections: 900 }), sendAlertEmail: async () => {},
+      score: async () => { touched = true; return { ok: true }; }, leads: async () => { touched = true; return { ok: true }; },
+    } });
+    assert.strictEqual(touched, false);
+    assert.strictEqual(r.topUp, undefined);
+  });
+  await check('a top-up that fails does not fail the collect, and leads are not touched after a failed read', async () => {
+    lc._setPool(fakeDb(null));
+    let leadsCalled = false;
+    const r = await lc.collectOne(client({ reconnect: 'Yes' }), { nowMs: T0, deps: {
+      sync: okSync({ messages: 900, withMessages: 200, connections: 900 }),
+      score: async () => ({ ok: false, error: 'no paragraph yet' }), leads: async () => { leadsCalled = true; return { ok: true }; },
+    } });
+    assert.strictEqual(r.ok, true);
+    assert.strictEqual(r.topUp.ok, false);
+    assert.strictEqual(leadsCalled, false);
+    const thrown = await lc.topUp('T', { score: async () => { throw new Error('boom'); } });
+    assert.deepStrictEqual(thrown, { ok: false, error: 'boom' });
   });
   await check('a finished client is skipped - nothing is read', async () => {
     lc._setPool(fakeDb({ tenant_id: 'Pat-Client', account_id: 'li-1', state: 'complete', messages: 21000 }));
