@@ -107,7 +107,13 @@ export default function ReconnectSection({ data, post, onReplace, onFlagged }) {
                         <span className="font-semibold">{it.name}</span>
                       )}
                       <span className="text-xs text-gray-500">conversation {it.warmth}/5</span>
-                      <span className="text-xs text-gray-500">{it.profileScore == null ? 'profile not scored' : `profile ${it.profileScore}`}</span>
+                      {/* The profile score as a badge, not grey small print (Guy, 5 Oct 2026: he looked for it and did not see it). */}
+                      <span
+                        className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border ${it.profileScore == null ? 'bg-gray-50 text-gray-500 border-gray-200' : it.profileScore >= 70 ? 'bg-emerald-50 text-emerald-800 border-emerald-300' : 'bg-amber-50 text-amber-800 border-amber-300'}`}
+                        title="Their LinkedIn profile score - separate from the conversation score"
+                      >
+                        {it.profileScore == null ? 'Profile: not scored' : `Profile score ${it.profileScore}`}
+                      </span>
                       <span className="text-xs text-gray-500">quiet {it.quietDays} days</span>
                       {it.carried && <span className="text-xs text-amber-700">carried over</span>}
                     </div>
