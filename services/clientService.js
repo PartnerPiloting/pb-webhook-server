@@ -189,6 +189,9 @@ async function getAllClients() {
                 const reconnectDailyNumber = Number(record.get('Reconnect Daily Number')) || 0;
                 const reconnectLeadCutOff = Number(record.get('Reconnect Lead Cut-Off')) || 0;
                 const reconnectDisconnects = record.get('Reconnect Disconnects') || null;
+                // The Linked Helper account their machine reports once someone has signed in on it
+                // (routes/linkedHelperMachineRoutes.js). Read by services/clientJourney.js.
+                const lhAccountId = record.get('LH Account ID') || null;
                 // Stripe cutover stage 2: the join key to Stripe. When set, billing looks the
                 // customer up by this id instead of guessing by email (billingRoutes.js).
                 const stripeCustomerId = record.get('Stripe Customer ID') || null;
@@ -325,6 +328,7 @@ async function getAllClients() {
                     reconnectDailyNumber: reconnectDailyNumber,
                     reconnectLeadCutOff: reconnectLeadCutOff,
                     reconnectDisconnects: reconnectDisconnects,
+                    lhAccountId: lhAccountId,
                     stripeCustomerId: stripeCustomerId,
                     stripeSubscriptionId: stripeSubscriptionId,
                     billingSource: billingSource,

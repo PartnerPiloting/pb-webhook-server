@@ -324,6 +324,39 @@ under a new `reconnect` category: adding a category means widening a CHECK const
 instructions table, the exact change that file records as having caused a live outage. A setup
 value needs no schema change and is never rendered into a drafting prompt by itself.
 
+## The whole client journey - eight stops, Reconnect second (Guy, 5 Oct 2026)
+
+Reconnect is no longer a feature bolted on after onboarding - it is where onboarding STARTS, because
+it gets a client into real conversations in days with people who already know them. Guy agreed the
+order ("Okay, build it"):
+
+1. Wingguy joins your Claude - session one
+2. Reconnect - starts session one (they click the LinkedIn link ON the call), live in session two
+3. Your key and your voice - homework between sessions
+4. Wingguy inside LinkedIn - session two: the extension, the Reconnect setup, first messages
+5. Calendar and email - session three
+6. Your calls, remembered - session three
+7. Your daily rhythm - from session two on
+8. New connections (Linked Helper) - last, on purpose
+
+What moved: the Claude key, the voice setup and the extension come EARLIER than the checklist's
+steps 0-14 had them (Reconnect needs all three by session two); calendar, email and the recorder
+move back to session three.
+
+**ONE written journey: `content/client-journey.json`.** Stop names, order and wording live there and
+nowhere else. BUILT 5 Oct 2026: `services/clientJourney.js` (each stop done / started / to come,
+read live from the record and the stores - "done" only from a real signal - with one "you are
+here"), `GET /api/wingguy/journey`, and `components/ClientJourney.js` at the top of the portal's
+Start Here page, above "What Wingguy can do". A fully set-up client sees one line.
+
+**STILL IN THE OLD ORDER - owed, each needs Guy:**
+- the tour in Claude (`docs/client-tour.md`, 12 beats, Linked Helper fourth) - what "where are we up
+  to?" answers. Re-cutting it changes client-facing words, so the draft is shown to Guy first;
+- the coach's side: `docs/wingguy-onboarding-checklist.md` steps 0-14, `services/onboardingPreflight.js`,
+  the `onboard` skill and its email templates, `docs/onboarding-plumbing.html`.
+The talk-through page Guy shows on a call ("Your Wingguy Journey", the Artifact) has the same eight
+stops; once the portal page is proven it is the one clients are pointed to.
+
 ## Side job, not blocking - prove Linked Helper removals
 
 **Stage one PROVEN 5 Oct 2026** on Guy's own machine: recipe

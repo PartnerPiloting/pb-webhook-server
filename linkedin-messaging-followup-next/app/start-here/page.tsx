@@ -25,6 +25,7 @@ import React, { useState } from 'react';
 import ErrorBoundary from '../../components/ErrorBoundary';
 import EnvironmentValidator from '../../components/EnvironmentValidator';
 import Layout from '../../components/Layout';
+import ClientJourney from '../../components/ClientJourney';
 import { getClientProfile, buildAuthUrl } from '../../utils/clientUtils';
 
 export const dynamic = 'force-dynamic';
@@ -300,6 +301,10 @@ export default function StartHerePage() {
       <ErrorBoundary>
         <Layout>
           <div className="w-full pt-2">
+            {/* The eight-stop journey with this client's own progress (content/client-journey.json).
+                Above "What Wingguy can do": a client still being set up needs the map first; one who
+                is fully set up sees a single line and the rest of the page as before. */}
+            <ClientJourney />
             <WhatWingguyCanDo />
           </div>
         </Layout>

@@ -1,0 +1,103 @@
+{
+  "_what": "THE client journey - the eight stops a new client goes through, in order. The single written version: the portal's Start Here page draws it from here (services/clientJourney.js), and anything else that describes the journey to a client must take its stop names and order from this file.",
+  "_why": "Guy, 5 Oct 2026: there were several journeys - the onboarding checklist's steps 0-14, the tour's 12 beats, a one-off page - each in its own order, and a client could see one order on a page and another in chat. One list, one order. Reconnect is stop 2 on purpose: it gets a client into real conversations in days, with people who already know them, before anything fiddly is set up.",
+  "_rules": [
+    "Written TO the client, plain English, short spaced dash ' - ' only, Australian English.",
+    "A stop's key never changes once clients have seen it - progress is worked out per key (services/clientJourney.js).",
+    "Changing the ORDER or the NAMES is Guy's decision. Show him before committing."
+  ],
+  "title": "Your first weeks with Wingguy",
+  "lede": "Eight stops over a few weekly sessions. Each one switches on a piece of Wingguy, and each session ends with something working that was not working when you sat down.",
+  "whyFirst": {
+    "heading": "Why Reconnect comes first",
+    "line": "It gets you into real conversations in days, not weeks.",
+    "reasons": [
+      { "title": "They already said yes once", "text": "These people accepted you and wrote back. A reply from them is far more likely than from a stranger." },
+      { "title": "Nothing to set up first", "text": "No machine, no campaign, no waiting for new connections to accept. One link and it starts." },
+      { "title": "The clock starts now", "text": "Your old conversations take a day or so to arrive. Clicking the link in session one means they are waiting for you in session two." },
+      { "title": "You learn the method on friendly ground", "text": "The same screen and the same daily habit carry everything that comes later. Better to learn it with people who know you." }
+    ]
+  },
+  "stops": [
+    {
+      "key": "claude",
+      "name": "Wingguy joins your Claude",
+      "line": "One connection, and Claude knows your world.",
+      "when": "Session one",
+      "intro": "Everything else hangs off this. Once Wingguy is connected, your own Claude can see your leads, your conversations and your setup - and can walk you through any step of this journey.",
+      "happens": "We add Wingguy as a connection in your Claude account. It takes a few minutes, together on the call.",
+      "yourPart": "Sign in to Claude and approve the connection. After that, two phrases do most of the work: \"where are we up to?\" and \"continue\".",
+      "walkAway": "A Claude that answers questions about your own setup, in Guy's words, instead of guessing."
+    },
+    {
+      "key": "reconnect",
+      "name": "Reconnect",
+      "line": "Wake up the people you already know on LinkedIn.",
+      "when": "Starts session one",
+      "intro": "Over the years you have had hundreds of conversations on LinkedIn that simply stopped. Someone said \"happy to chat\", or sent a booking link, or asked you to try them after their trip - and life moved on. Reconnect finds those people and hands them to you, twenty at a time.",
+      "happens": "Wingguy reads your old conversations, works out how each one ended, and scores it from 1 to 5 for how worth picking up it is.",
+      "yourPart": "Click one link in session one. In session two, describe who you want to hear from and say yes twice.",
+      "walkAway": "A list of twenty people each morning, each with the reason they are there and something to mention."
+    },
+    {
+      "key": "voice",
+      "name": "Your key and your voice",
+      "line": "So what Wingguy writes sounds like you.",
+      "when": "Between sessions one and two",
+      "intro": "Two small pieces of homework. Both need to be in place before Wingguy writes a single word for you, because a draft that does not sound like you is worse than no draft.",
+      "happens": "Wingguy runs on your own Claude account, so you add a key for it. Then you fill in a short page about how you write and what you do.",
+      "yourPart": "Follow one email to set up your key. Then the essentials on the My Wingguy page, and a few voice pieces with a live example as you type.",
+      "walkAway": "Messages that start out sounding like you, and a bill for the writing that is yours and small."
+    },
+    {
+      "key": "linkedin",
+      "name": "Wingguy inside LinkedIn",
+      "line": "The extension, and your first real messages.",
+      "when": "Session two",
+      "intro": "This is the session where it becomes real. The extension puts Wingguy beside your LinkedIn messages, your Reconnect list switches on, and you send your first messages to people who already know you.",
+      "happens": "We install the Wingguy extension in your browser and prove it works. Then the Reconnect setup: your description, the 30 samples, your two yeses.",
+      "yourPart": "Open a thread, type /wg, read what it drafts, change what you like, and send. We do the first few together.",
+      "walkAway": "Your first reconnect messages sent, and a list waiting for you tomorrow morning."
+    },
+    {
+      "key": "calendar",
+      "name": "Calendar and email",
+      "line": "Booking meetings and drafting email for you.",
+      "when": "Session three",
+      "intro": "Once people start replying, the next job is getting a time in the diary without the back-and-forth.",
+      "happens": "One approval connects your calendar and your mailbox. Wingguy can then offer times that are really free, book the meeting, and draft the email.",
+      "yourPart": "Click approve, then we test it together: one real booking, one real draft.",
+      "walkAway": "Meetings booked from a conversation in a couple of lines. Emails arrive as drafts for you to send - never sent for you."
+    },
+    {
+      "key": "calls",
+      "name": "Your calls, remembered",
+      "line": "Every conversation kept and ready for next time.",
+      "when": "Session three",
+      "intro": "The habit that pays for everything. When your calls are recorded, Wingguy knows what was said, what was promised and what to follow up - so you never start a second conversation cold.",
+      "happens": "We connect your meeting recorder, then do a short dress rehearsal so you see a call go in and come out as notes on the right person.",
+      "yourPart": "Let the recorder join your calls. That is the whole habit.",
+      "walkAway": "A brief before each meeting, and follow-ups that mention what the two of you actually talked about."
+    },
+    {
+      "key": "rhythm",
+      "name": "Your daily rhythm",
+      "line": "One screen each morning. Twenty minutes.",
+      "when": "From session two on",
+      "intro": "Everything above lands on one screen. This is what using Wingguy looks like once the setting up is behind you.",
+      "happens": "Each morning the Follow-Ups screen shows who is owed a reply or a nudge, and under that your twenty Reconnect people.",
+      "yourPart": "About twenty minutes. Work down the list: write, park, drop, or done. Ask Wingguy about anyone you are unsure of.",
+      "walkAway": "Nobody forgotten, and a steady flow of conversations without having to remember who was where."
+    },
+    {
+      "key": "newpeople",
+      "name": "New connections",
+      "line": "Linked Helper brings new people in, steadily.",
+      "when": "Last, on purpose",
+      "intro": "Reconnect works the people you already have. Linked Helper brings in new ones. It comes last because it is the fiddliest piece, and by then you know exactly who you want and how you will talk to them.",
+      "happens": "Linked Helper runs on its own small machine, sending connection requests to the kind of people you chose. Everyone who accepts is scored and appears on your Thanks for Connecting screen.",
+      "yourPart": "Decide who you are after, sign in to the machine once, and we watch one full cycle work together before the session ends.",
+      "walkAway": "New people arriving every week, landing on the same screens and worked with the same habit you already have."
+    }
+  ]
+}

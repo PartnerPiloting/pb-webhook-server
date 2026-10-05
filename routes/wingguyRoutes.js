@@ -541,6 +541,20 @@ module.exports = function mountWingguy(app) {
     }
   });
 
+  // The client journey (content/client-journey.json) with where THIS client is up to on it - drawn
+  // at the top of Start Here. Above the Wingguy-enabled gate on purpose: a brand-new client sees
+  // their journey before anything is switched on for them. Read-only.
+  router.get('/journey', async (req, res) => {
+    try {
+      const journey = await require('../services/clientJourney').journeyFor(req.client.clientId);
+      if (!journey) return res.status(404).json({ ok: false, error: 'client not found' });
+      res.json({ ok: true, journey });
+    } catch (e) {
+      logger.error(`[Wingguy] journey failed: ${e.message}`);
+      res.status(500).json({ ok: false, error: e.message });
+    }
+  });
+
   // ...and, for Slice 1, that client must be the owner.
   router.use(requireOwner);
   // An assistant's key only opens this section if their row has "My Wingguy" ticked - enforced
