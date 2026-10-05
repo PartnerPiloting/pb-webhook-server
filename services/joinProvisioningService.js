@@ -442,6 +442,8 @@ async function stepFinishRow(job) {
     'Wingguy Enabled': 'Yes',
     'Thanks for Connecting': 'Yes',
     'Followup Brief': 'Yes',
+    // Every new client sees the eight-stop journey on Start Here from day one (Guy, 6 Oct 2026).
+    'Client Journey': 'Yes',
     'Top Scoring Leads': 'No',
     'Coach': COACH_ID,
     'Coaching Status': 'Active',

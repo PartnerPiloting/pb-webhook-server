@@ -10604,6 +10604,8 @@ router.post("/api/onboard-client", async (req, res) => {
       'Wingguy Enabled': 'Yes',
       'Thanks for Connecting': 'Yes',
       'Followup Brief': 'Yes',
+      // Every new client sees the eight-stop journey on Start Here from day one (Guy, 6 Oct 2026).
+      'Client Journey': 'Yes',
       // Top Scoring Leads starts hidden (Guy, 2026-09-25): one connect campaign is the method now.
       'Top Scoring Leads': 'No',
     };
