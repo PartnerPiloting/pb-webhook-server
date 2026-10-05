@@ -237,22 +237,40 @@ him without it.
 
 This is the target. Marked BUILT / BY HAND / NOT BUILT against each step as of 5 Oct.
 
+**How Unipile collects history (Pierre, Unipile support, 5 Oct 2026) - this shapes steps 1, 2 and 4:**
+the history sync takes at most 3,000 conversations per LinkedIn inbox per 24 hours, newest first,
+and carries on by itself every day until the whole history is in. It cannot be sped up per account.
+About 27,000 conversations is 9 to 10 days. NEVER call the `/accounts/{id}/sync` route to hurry it:
+when a run of that route finishes, the automatic daily continuation stops. Unipile's account status
+webhook (`SYNC_SUCCESS`) is the signal that an account's history is complete.
+
+**START WITH WHAT IS THERE (Guy, 5 Oct 2026).** Nobody waits for the whole history. The first day's
+3,000 conversations are the most recent ones - the best reconnect material, and already more than
+a client can work in months. The session goes ahead on that first batch, and each later day's
+older conversations are collected, read and added behind it without anyone doing anything. This
+works because every stage only adds: the copy appends, the read skips what it has read, the leads
+step skips who is already there.
+
 1. **Guy sends the connect link.** Connecting LinkedIn is done under Guy's direction, like the
-   calendar link - a link he gets from his side and sends when he chooses, a few days before the
-   session. It is NOT a button the client can press in their portal. *Link BUILT; a button for it on
+   calendar link - a link he gets from his side and sends when he chooses, a day or two before the
+   session (the first batch is in within hours). It is NOT a button the client can press in their portal. *Link BUILT; a button for it on
    Guy's clients board NOT BUILT (he asks Claude for the link).*
-2. **The history is collected by itself.** After the click, Wingguy checks daily how much history
-   has arrived and takes its copy when it stops growing. Guy is told by BOTH an email (ready, or
-   stuck - "stuck at 3,000 for three days") and a status on his clients board (waiting for LinkedIn
-   / collecting / ready). Neither Guy nor the client does anything. *Copy BY HAND; the daily check,
+2. **The history is collected by itself, a day at a time.** After the click, Wingguy takes its
+   copy once the first batch is in, and again each day as older conversations arrive, until
+   Unipile says the history is complete. Guy is told by BOTH an email and a status on his clients
+   board (waiting for LinkedIn / first batch in - ready for a session / collecting older history /
+   complete). Two emails matter: "ready for a session" (first batch in) and "history complete";
+   plus one if it stalls. Neither Guy nor the client does anything. *Copy BY HAND; the daily check,
    the email and the board status NOT BUILT.*
 3. **The description and the 30 samples - in the session, with Guy there.** In the client's own
    Claude chat through their Wingguy connection ("set up my reconnect list"), and only once their
    history is collected and Guy has opened it for them. *BY HAND (Claude Code runs the sample job);
    the chat tool NOT BUILT.*
-4. **Two yeses, same session.** Yes to the full read (count and estimated cost on their key shown
-   first). Then yes to the leads (counts shown; the cut-off - 3 and over, or 4 and over - is chosen
-   here with real numbers). The list then switches on by itself. While the read runs Guy shows them
+4. **Two yeses, same session.** Yes to the read - covering what is there now AND the older
+   conversations as they arrive, so the cost shown is the estimate for the whole history ("about
+   US$4 today, roughly US$20 in total over the next ten days"), not just day one. Then yes to the leads (counts shown; the cut-off - 3 and over, or 4 and over - is chosen
+   here with real numbers, and the same cut-off is used for each later day's arrivals). The list then
+   switches on by itself, and "more waiting" simply grows over the following days. While the read runs Guy shows them
    the Follow-Ups screen. *Each BY HAND as a job; the chat flow NOT BUILT.*
 5. **The Reconnect list is the whole first session.** *BUILT.*
 6. **Disconnects are an optional extra, not part of the journey.** Most clients will never use it -
