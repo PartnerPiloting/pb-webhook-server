@@ -28,8 +28,9 @@ export default function DisconnectSection({ get, post, refreshKey }) {
     try {
       const d = await get('/disconnects');
       setData(d && d.enabled ? d : null);
-      // Everyone starts ticked - the client unticks or keeps the exceptions.
-      setSelected(new Set(((d && d.pending) || []).map((p) => p.key)));
+      // Everyone starts ticked - the client unticks or keeps the exceptions. The one exception:
+      // a high profile score starts UNTICKED, so a strong profile is never approved by default.
+      setSelected(new Set(((d && d.pending) || []).filter((p) => !p.guard).map((p) => p.key)));
     } catch (_) {
       setData(null); // the section is optional - a failed load must never break the screen
     }
@@ -100,8 +101,8 @@ export default function DisconnectSection({ get, post, refreshKey }) {
       </div>
       <p className="text-sm text-gray-600 mb-3">
         Connections you may not want to keep - the ones you flagged, and ones whose conversation read as a no or as them
-        selling to you. Everyone starts ticked: press <span className="font-medium">Keep</span> on anyone you want to hold on
-        to, then approve the rest together. Nothing is removed until you approve, and nobody you connected with in the last
+        selling to you. Highest profile score first. Everyone starts ticked except high scorers ({data.highScore || 70} and over):
+        press <span className="font-medium">Keep</span> on anyone you want to hold on to, then approve the rest together. Nothing is removed until you approve, and nobody you connected with in the last
         year is ever suggested.
       </p>
       {notice && <div className="text-sm text-emerald-700 mb-2">{notice}</div>}
@@ -141,6 +142,7 @@ export default function DisconnectSection({ get, post, refreshKey }) {
                     ) : (
                       <span className="font-semibold">{p.name}</span>
                     )}
+                    <span className={`text-xs ${p.guard ? 'font-semibold text-emerald-700' : 'text-gray-500'}`}>{p.profileScore == null ? 'profile not scored' : `profile ${p.profileScore}`}</span>
                     {p.connectedOn && <span className="text-xs text-gray-500">connected {p.connectedOn}</span>}
                   </div>
                   {p.headline && <div className="text-xs text-gray-500 truncate">{p.headline}</div>}

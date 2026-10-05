@@ -13,6 +13,9 @@
 //   - Nobody connected in the last year is ever suggested, and a client (current or former) never is.
 //   - "Never replied" is NOT a reason. The Sales Navigator inbox is not read, so someone who only
 //     ever wrote there looks like they never replied. Suggestions come from a conversation we read.
+//   - The PROFILE score rides on every row and the list is ordered highest first (Guy, 5 Oct 2026),
+//     so a strong profile is seen before it is approved. Anyone at HIGH_SCORE or above is marked
+//     `guard` - the screen starts them unticked.
 //   - Removing a connection destroys endorsements and recommendations for good - the screen says so
 //     before the approve.
 
@@ -22,6 +25,8 @@ const MS_DAY = 86400000;
 const PROTECT_DAYS = 365;
 const SUGGEST = { declined: 'Declined', their_pitch: 'Their pitch' };
 const MAX_ROWS = 500;
+const HIGH_SCORE = 70;
+const SCORES_CACHE_MS = 5 * 60 * 1000;
 
 const nrm = (s) => String(s || '').toLowerCase().replace(/\s+/g, ' ').trim();
 
@@ -29,10 +34,13 @@ const nrm = (s) => String(s || '').toLowerCase().replace(/\s+/g, ' ').trim();
  * Sort the rows into what the screen shows. Pure.
  * Each row: person fields + the score's ending/why + the state row's status/source/approved_at/removed_at.
  */
-function planDisconnects(rows, { nowMs = Date.now(), clientNames = new Set() } = {}) {
+function planDisconnects(rows, { nowMs = Date.now(), clientNames = new Set(), scoresByLead = new Map() } = {}) {
   const pending = []; const approved = [];
   for (const r of rows) {
+    const raw = r.lead_rec_id ? scoresByLead.get(r.lead_rec_id) : null;
+    const profileScore = raw == null || raw === '' || Number.isNaN(Number(raw)) ? null : Math.round(Number(raw));
     const item = {
+      profileScore, guard: profileScore != null && profileScore >= HIGH_SCORE,
       key: r.person_key, name: r.name || '', headline: String(r.headline || '').split('\n')[0].slice(0, 160),
       linkedin: r.profile_url || null, why: r.why || '',
       connectedOn: r.connected_at ? new Date(r.connected_at).toISOString().slice(0, 10) : null,
@@ -49,8 +57,8 @@ function planDisconnects(rows, { nowMs = Date.now(), clientNames = new Set() } =
     if (r.connected_at && nowMs - new Date(r.connected_at).getTime() < PROTECT_DAYS * MS_DAY) continue;
     pending.push({ ...item, source: 'system', tag: SUGGEST[r.ending] });
   }
-  // The client's own picks first, then suggestions, each by name.
-  pending.sort((a, b) => (a.source === b.source ? 0 : a.source === 'client' ? -1 : 1) || a.name.localeCompare(b.name));
+  // Highest profile score first, so a strong profile is the first thing seen; unscored people last.
+  pending.sort((a, b) => ((b.profileScore ?? -1) - (a.profileScore ?? -1)) || a.name.localeCompare(b.name));
   approved.sort((a, b) => a.name.localeCompare(b.name));
   return { pending, approved };
 }
@@ -62,6 +70,17 @@ async function db() {
   return pool;
 }
 
+const scoresCache = new Map(); // tenantId -> { at, byId }
+/** Profile score (AI Score) for every lead that carries a conversation score, by record id. */
+async function loadProfileScores(base, tenantId) {
+  const hit = scoresCache.get(tenantId);
+  if (hit && Date.now() - hit.at < SCORES_CACHE_MS) return hit.byId;
+  const records = await base('Leads').select({ filterByFormula: '{Conversation Score} >= 1', fields: ['AI Score'] }).all();
+  const byId = new Map(records.map((r) => [r.id, r.fields['AI Score']]));
+  scoresCache.set(tenantId, { at: Date.now(), byId });
+  return byId;
+}
+
 /** { enabled:false } unless the client's Reconnect switch is on. */
 async function buildDisconnects(tenantId, { nowMs = Date.now() } = {}) {
   const clientService = require('./clientService');
@@ -70,7 +89,7 @@ async function buildDisconnects(tenantId, { nowMs = Date.now() } = {}) {
   const pool = await db();
   if (!pool) return { enabled: false };
   const r = await pool.query(
-    `SELECT p.person_key, p.name, p.headline, p.profile_url, p.connected_at, p.is_connection,
+    `SELECT p.person_key, p.lead_rec_id, p.name, p.headline, p.profile_url, p.connected_at, p.is_connection,
             s.ending, s.why, st.status, st.source, st.approved_at, st.removed_at
      FROM linkedin_people p
      LEFT JOIN linkedin_conversation_scores s ON s.tenant_id = p.tenant_id AND s.person_key = p.person_key
@@ -82,7 +101,13 @@ async function buildDisconnects(tenantId, { nowMs = Date.now() } = {}) {
   );
   const clients = await clientService.getAllClients();
   const clientNames = new Set((clients || []).map((c) => nrm(c.clientName)).filter(Boolean));
-  return { enabled: true, ...planDisconnects(r.rows, { nowMs, clientNames }) };
+  // The score is a safeguard, not a requirement: if the leads read fails the list still serves.
+  let scoresByLead = new Map();
+  try {
+    const base = client.airtableBaseId && clientService.getClientBase(client.airtableBaseId);
+    if (base) scoresByLead = await loadProfileScores(base, tenantId);
+  } catch (e) { console.error(`[reconnectDisconnects] ${tenantId}: profile scores unavailable - ${e.message}`); }
+  return { enabled: true, highScore: HIGH_SCORE, ...planDisconnects(r.rows, { nowMs, clientNames, scoresByLead }) };
 }
 
 /**
@@ -128,4 +153,4 @@ async function disconnectAction(tenantId, action, keys = []) {
   return { ok: true, action, count: known.rows.length };
 }
 
-module.exports = { buildDisconnects, disconnectAction, planDisconnects, PROTECT_DAYS };
+module.exports = { buildDisconnects, disconnectAction, planDisconnects, PROTECT_DAYS, HIGH_SCORE };

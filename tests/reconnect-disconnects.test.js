@@ -53,11 +53,18 @@ const plan = (rows, opts = {}) => planDisconnects(rows, { nowMs, ...opts });
     const r = plan(['kept', 'done', 'never', 'skipped'].map((status, i) => row(`p${i}`, { ending: 'declined', status })));
     assert.strictEqual(r.pending.length, 0);
   });
-  await check('the client\'s own flag is listed whatever the conversation said, and comes first', () => {
+  await check('the client\'s own flag is listed whatever the conversation said', () => {
     const r = plan([row('b', { ending: 'declined' }), row('a', { ending: 'not_now', status: 'disconnect', source: 'client', connected_at: '2026-06-01T00:00:00.000Z' })]);
     assert.deepStrictEqual(keys(r.pending), ['a', 'b']);
     assert.strictEqual(r.pending[0].tag, 'You flagged');
     assert.strictEqual(r.pending[0].source, 'client');
+  });
+  await check('highest profile score first, unscored last, and a high scorer is guarded', () => {
+    const rows = [row('a', { ending: 'declined' }), row('b', { ending: 'declined', lead_rec_id: 'recB' }), row('c', { ending: 'their_pitch', lead_rec_id: 'recC' }), row('d', { ending: 'declined', lead_rec_id: 'recD' })];
+    const r = plan(rows, { scoresByLead: new Map([['recB', 41.6], ['recC', 88.2], ['recD', '']]) });
+    assert.deepStrictEqual(keys(r.pending), ['c', 'b', 'a', 'd']);
+    assert.deepStrictEqual(r.pending.map((p) => p.profileScore), [88, 42, null, null]);
+    assert.deepStrictEqual(r.pending.map((p) => p.guard), [true, false, false, false]);
   });
   await check('approved people move to the approved list; removed ones are gone', () => {
     const r = plan([
