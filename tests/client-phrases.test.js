@@ -48,6 +48,7 @@ const MODULES = {
   'services/wingguyBookingMcp.js': require('../services/wingguyBookingMcp'),
   'services/wingguyRulesMcp.js': require('../services/wingguyRulesMcp'),
   'services/machineClipboardMcp.js': require('../services/machineClipboardMcp'),
+  'services/wingguyScoringMcp.js': require('../services/wingguyScoringMcp'),
 };
 
 function findTool(name) {

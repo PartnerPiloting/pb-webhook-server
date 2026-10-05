@@ -1296,6 +1296,8 @@ router.post('/mcp/:token', express.json(), async (req, res) => {
           ...require('../services/wingguyMailMcp').legacyToolList(),
           // Wingguy leads tool (CRM create door) — shared defs with /mcp2.
           ...require('../services/wingguyLeadsMcp').legacyToolList(),
+          // Scoring attributes (rebuild my scoring) — shared defs with /mcp2.
+          ...require('../services/wingguyScoringMcp').legacyToolList(),
           // Contacts warehouse lookup (who is X / their email) — shared defs with /mcp2.
           ...require('../services/wingguyContactsMcp').legacyToolList(),
           // Transcript-store import (write-door for missed captures) — shared defs with /mcp2.
@@ -1320,6 +1322,7 @@ router.post('/mcp/:token', express.json(), async (req, res) => {
         || await require('../services/wingguyBookingMcp').legacyToolCall(toolName, args)
         || await require('../services/wingguyMailMcp').legacyToolCall(toolName, args)
         || await require('../services/wingguyLeadsMcp').legacyToolCall(toolName, args)
+        || await require('../services/wingguyScoringMcp').legacyToolCall(toolName, args)
         || await require('../services/wingguyContactsMcp').legacyToolCall(toolName, args)
         || await require('../services/captureControlMcp').legacyToolCall(toolName, args)
         || await require('../services/machineClipboardMcp').legacyToolCall(toolName, args);

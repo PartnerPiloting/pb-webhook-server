@@ -409,8 +409,17 @@ async function updateAttributeWithClientBase(attributeId, data, clientBase, logg
 
 
 
+/* Drop cached attribute sets so the next scoring run reads the table fresh (after a
+   wingguy_scoring_commit / revert - otherwise a test started straight after a rebuild could
+   score with the old rows for up to 10 minutes). */
+function clearAttributeCache() {
+  cache = {};
+  cacheUntil = 0;
+}
+
 module.exports = { 
   loadAttributes, 
+  clearAttributeCache,
   loadAttributeForEditing, 
   loadAttributeForEditingWithClientBase,
   updateAttribute,

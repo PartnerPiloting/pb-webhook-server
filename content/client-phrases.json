@@ -110,6 +110,10 @@
       "phrase": "put this file on my machine",
       "tool": "wingguy_send_file_to_machine",
       "where": ["content/site/open-your-machine.html"]
+    },
+    {
+      "phrase": "rebuild my scoring",
+      "tool": "wingguy_scoring_get"
     }
   ],
   "near_misses": [
