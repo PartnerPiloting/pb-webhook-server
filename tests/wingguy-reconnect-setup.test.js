@@ -110,7 +110,10 @@ const DESC = 'I advise mid-size builders on procurement and I am looking for peo
     assert.ok(/60 people added/.test(r.text) && /Follow-Ups/.test(r.text));
   });
   await check('status then says there is nothing more to set up', async () => {
-    assert.ok(/Reconnect list is ON/.test((await runSetup({}, 'T')).text));
+    state.status.T.oldest_msg_at = new Date('2019-07-31T23:16:29.320Z'); // the store returns a Date, not a string
+    const text = (await runSetup({}, 'T')).text;
+    assert.ok(/Reconnect list is ON/.test(text));
+    assert.ok(/back to 2019-07-31\./.test(text), text.slice(0, 160));
   });
 
   console.log('the tool');

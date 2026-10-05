@@ -36,6 +36,9 @@ const ENDING_WORDS = {
 
 const reading = new Set(); // tenants with a read running in this process
 
+// The store hands a date back as a Date object, whose plain String() is "Wed Jul 31..." - always go through ISO.
+const dayOf = (v) => { const d = v ? new Date(v) : null; return d && !Number.isNaN(d.getTime()) ? d.toISOString().slice(0, 10) : 'unknown'; };
+
 async function context(tenant) {
   const clientService = require('./clientService');
   const client = await clientService.getClientById(tenant);
@@ -70,7 +73,7 @@ async function stepStatus(tenant) {
   const on = String(c.client.reconnect || '').trim() === 'Yes';
   const s = c.status;
   const lines = [
-    `LinkedIn history: ${Number(s.connections).toLocaleString('en-AU')} connections, ${Number(s.conversations).toLocaleString('en-AU')} conversations with messages, back to ${String(s.oldest_msg_at || '').slice(0, 10) || 'unknown'}. ${s.state === 'complete' ? 'The history is complete.' : 'Older history is still arriving each day and is added by itself.'}`,
+    `LinkedIn history: ${Number(s.connections).toLocaleString('en-AU')} connections, ${Number(s.conversations).toLocaleString('en-AU')} conversations with messages, back to ${dayOf(s.oldest_msg_at)}. ${s.state === 'complete' ? 'The history is complete.' : 'Older history is still arriving each day and is added by itself.'}`,
     profile.who ? `Their saved description: "${profile.who}"` : 'No description saved yet.',
   ];
   if (profile.who) {
