@@ -233,6 +233,50 @@ the Reconnect pool). "Never replied" is never a reason for a suggestion.
 How far back Matt's history can reach depends on Unipile's answer. Everything else is ready for
 him without it.
 
+## The client process, as agreed with Guy step by step (5 Oct 2026)
+
+This is the target. Marked BUILT / BY HAND / NOT BUILT against each step as of 5 Oct.
+
+1. **Guy sends the connect link.** Connecting LinkedIn is done under Guy's direction, like the
+   calendar link - a link he gets from his side and sends when he chooses, a few days before the
+   session. It is NOT a button the client can press in their portal. *Link BUILT; a button for it on
+   Guy's clients board NOT BUILT (he asks Claude for the link).*
+2. **The history is collected by itself.** After the click, Wingguy checks daily how much history
+   has arrived and takes its copy when it stops growing. Guy is told by BOTH an email (ready, or
+   stuck - "stuck at 3,000 for three days") and a status on his clients board (waiting for LinkedIn
+   / collecting / ready). Neither Guy nor the client does anything. *Copy BY HAND; the daily check,
+   the email and the board status NOT BUILT.*
+3. **The description and the 30 samples - in the session, with Guy there.** In the client's own
+   Claude chat through their Wingguy connection ("set up my reconnect list"), and only once their
+   history is collected and Guy has opened it for them. *BY HAND (Claude Code runs the sample job);
+   the chat tool NOT BUILT.*
+4. **Two yeses, same session.** Yes to the full read (count and estimated cost on their key shown
+   first). Then yes to the leads (counts shown; the cut-off - 3 and over, or 4 and over - is chosen
+   here with real numbers). The list then switches on by itself. While the read runs Guy shows them
+   the Follow-Ups screen. *Each BY HAND as a job; the chat flow NOT BUILT.*
+5. **The Reconnect list is the whole first session.** *BUILT.*
+6. **Disconnects are an optional extra, not part of the journey.** Most clients will never use it -
+   only those approaching LinkedIn's 30,000 limit. Its own switch on the master record, off by
+   default; off means no Potential disconnects section and no Disconnect button. Guy's board shows
+   each client's connection count and flags anyone near the limit, so he knows who to offer it to.
+   *Section BUILT but currently shown to anyone with Reconnect on (only Guy); the separate switch,
+   the count and the flag NOT BUILT.*
+7. **The Disconnect button.** On a Reconnect row, "Potential disconnect" becomes **Disconnect**:
+   one click, the person goes to that night's removal, and sits in a "going tonight" line with an
+   Undo until midnight - no confirm box. Approve on the suggestions list feeds the same Linked
+   Helper campaign by itself, with progress shown instead of copy-the-links. Removals run midnight
+   to 5am so they never compete with a person using LinkedIn by day. *Night campaign and
+   add-by-command PROVEN on Guy's machine; the removal itself not yet seen; the wiring NOT BUILT.*
+8. **The month ends by itself.** Five days before, Guy gets an email. On the last day Wingguy does
+   a final top-up (collect, read anything newly quiet past 90 days, add those at or over the
+   client's cut-off), switches the LinkedIn connection off so the charge stops, and emails Guy what
+   it added. Automatic - a gate that waits for a click gets forgotten and costs money. A client
+   paying to keep the connection (LinkedIn Feed = Yes) is skipped. *NOT BUILT.*
+
+Also owed before any other client: the five lead fields rolled out to every client base and the
+template (they exist on Guy's base only), and the client's description saved as one of their
+instructions (needs the new `reconnect` context in the instructions store).
+
 ## Side job, not blocking - prove Linked Helper removals
 
 **Stage one PROVEN 5 Oct 2026** on Guy's own machine: recipe
