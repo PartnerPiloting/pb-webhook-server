@@ -196,6 +196,13 @@ individual; one Approve. Approval only records the decision. Until the Linked He
 proven, approved names come out as a list to paste into Linked Helper or remove by hand.
 Standing protection: nobody connected in the last year is ever suggested.
 
+**BUILT 5 Oct 2026** (`services/reconnectDisconnects.js`, `components/DisconnectSection.js`,
+`tests/reconnect-disconnects.test.js`; routes `GET /api/followups/disconnects` and
+`POST /api/followups/disconnect-action` - approve | keep | removed). The section is collapsed until
+opened. Approve records the decision only; approved people sit in a short list with "Copy profile
+links" and "I have removed these". Keep takes someone off for good (a flagged person goes back to
+the Reconnect pool). "Never replied" is never a reason for a suggestion.
+
 ### Brick 6 - onboarding a client onto it
 
 - A LinkedIn connect link, minted the way the mail-and-calendar link already is

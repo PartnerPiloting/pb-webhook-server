@@ -308,6 +308,37 @@ module.exports = function mountWingguyFollowups(app) {
     }
   });
 
+  // Potential disconnects (docs/RECONNECT-BUILD-PLAN.md, brick 5): the client's own flags plus
+  // system suggestions, and the people already approved. Nothing here removes anyone from LinkedIn.
+  router.get('/disconnects', authenticateUserWithTestMode, async (req, res) => {
+    const clientId = getClientId(req);
+    const gate = await resolveGate(clientId);
+    if (!gate) return res.status(403).json({ error: 'feature_not_enabled' });
+    try {
+      const d = await require('../services/reconnectDisconnects').buildDisconnects(clientId);
+      return res.json({ ok: true, ...d });
+    } catch (e) {
+      logger.error(`followupsScreen: disconnects error for ${clientId}: ${e?.message || e}`);
+      res.status(500).json({ error: 'disconnects_failed', details: e?.message || String(e) });
+    }
+  });
+
+  // approve (keys) | keep (keys) | removed (clears the approved list once the client has acted on it).
+  router.post('/disconnect-action', authenticateUserWithTestMode, async (req, res) => {
+    const clientId = getClientId(req);
+    const gate = await resolveGate(clientId);
+    if (!gate) return res.status(403).json({ error: 'feature_not_enabled' });
+    const { action, keys } = req.body || {};
+    try {
+      const r = await require('../services/reconnectDisconnects').disconnectAction(clientId, action, keys);
+      if (!r.ok) return res.status(400).json({ error: r.error, allowed: ['approve', 'keep', 'removed'] });
+      return res.json(r);
+    } catch (e) {
+      logger.error(`followupsScreen: disconnect action error for ${clientId}: ${e?.message || e}`);
+      res.status(500).json({ error: 'action_failed', details: e?.message || String(e) });
+    }
+  });
+
   // The Ask box (2026-09-11): a question about ONE person, answered in a few sentences from the
   // stored story plus live calendar/mailbox reads through the shared tool functions. Its only
   // write is an unsent mailbox draft; a park comes back as a PROPOSAL (reply.proposal, and a

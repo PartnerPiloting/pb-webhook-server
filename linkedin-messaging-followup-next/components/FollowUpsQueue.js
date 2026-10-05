@@ -22,6 +22,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import HelpButton from './HelpButton';
 import ReconnectSection from './ReconnectSection';
+import DisconnectSection from './DisconnectSection';
 import { getCurrentClientId, getCurrentPortalToken, getCurrentDevKey } from "../utils/clientUtils";
 
 const RAW_API = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://pb-webhook-server.onrender.com/api/linkedin';
@@ -476,6 +477,7 @@ export default function FollowUpsQueue() {
   const [keyNotice, setKeyNotice] = useState(null);
   const [fleetAlerts, setFleetAlerts] = useState([]); // coached clients' machines gone dark
   const [reconnect, setReconnect] = useState(null);   // the Reconnect list - null when the client's switch is off
+  const [disconnectTick, setDisconnectTick] = useState(0); // bumped when a Reconnect row is flagged, so the list below reloads
   const [loading, setLoading] = useState(true);
   const [loadSecs, setLoadSecs] = useState(0);
   const [error, setError] = useState(null);
@@ -923,7 +925,12 @@ export default function FollowUpsQueue() {
 
       {/* Reconnect: a separate, stacked list - see ReconnectSection.js */}
       {!loading && reconnect && (
-        <ReconnectSection data={reconnect} post={(path, body) => apiPost(path, body, clientId)} onReplace={setReconnect} />
+        <ReconnectSection data={reconnect} post={(path, body) => apiPost(path, body, clientId)} onReplace={setReconnect} onFlagged={() => setDisconnectTick((n) => n + 1)} />
+      )}
+
+      {/* Potential disconnects: the third stacked list - see DisconnectSection.js */}
+      {!loading && reconnect && (
+        <DisconnectSection get={(path) => apiGet(path, clientId)} post={(path, body) => apiPost(path, body, clientId)} refreshKey={disconnectTick} />
       )}
     </div>
   );

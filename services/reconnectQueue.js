@@ -181,7 +181,7 @@ async function ensureSchema(db) {
       tenant_id   TEXT NOT NULL,
       person_key  TEXT NOT NULL,
       lead_rec_id TEXT,
-      status      TEXT,                 -- NULL (untouched) | done | skipped | never | disconnect
+      status      TEXT,                 -- NULL (untouched) | done | skipped | never | disconnect | kept
       until       DATE,                 -- skipped: back on the list after this day
       shown_on    DATE,                 -- the last day this person was put in a portion
       source      TEXT,                 -- disconnect: 'client' (their button) | 'system' (suggested)
@@ -189,6 +189,8 @@ async function ensureSchema(db) {
       acted_at    TIMESTAMPTZ,
       PRIMARY KEY (tenant_id, person_key)
     );
+    -- disconnect: when the client told us they had removed the person themselves (brick 5).
+    ALTER TABLE reconnect_state ADD COLUMN IF NOT EXISTS removed_at TIMESTAMPTZ;
   `);
   schemaReady = true;
 }
@@ -317,5 +319,5 @@ function reconnectNote(rc) {
 module.exports = {
   buildReconnect, reconnectAction, reconnectNote,
   eligible, rank, pickPortion, splitOwnership, toItem, newestNoteMs, todayIn,
-  ensureSchema, _setPool, QUIET_DAYS, MORE_STEP, ENDING_CHIP,
+  ensureSchema, _setPool, _getPool: getPool, QUIET_DAYS, MORE_STEP, ENDING_CHIP,
 };

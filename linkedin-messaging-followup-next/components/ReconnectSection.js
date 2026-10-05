@@ -27,7 +27,7 @@ const DONE_NOTE = {
   disconnect: 'moved to potential disconnects',
 };
 
-export default function ReconnectSection({ data, post, onReplace }) {
+export default function ReconnectSection({ data, post, onReplace, onFlagged }) {
   const [gone, setGone] = useState(() => new Set());   // keys actioned this session
   const [busy, setBusy] = useState(() => new Set());
   const [notice, setNotice] = useState(null);
@@ -44,6 +44,7 @@ export default function ReconnectSection({ data, post, onReplace }) {
       await post('/reconnect-action', { key: it.key, action });
       setGone((prev) => new Set(prev).add(it.key));
       setNotice(`${it.name}: ${DONE_NOTE[action]}.`);
+      if (action === 'disconnect' && onFlagged) onFlagged();
     } catch (e) {
       setError(`Could not save that for ${it.name}. Nothing was changed.`);
     } finally {
