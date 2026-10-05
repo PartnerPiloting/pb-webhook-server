@@ -29,6 +29,7 @@ const { registerWingguyBookingTools } = require('./wingguyBookingMcp');
 const { registerWingguyMailTools } = require('./wingguyMailMcp');
 const { registerWingguyLeadsTools } = require('./wingguyLeadsMcp');
 const { registerWingguyScoringTools } = require('./wingguyScoringMcp');
+const { registerWingguyReconnectTools } = require('./wingguyReconnectMcp');
 const { registerWingguyGetStartedTools } = require('./wingguyGetStartedMcp');
 const { registerRecallImportTools } = require('./recallImportMcp');
 const { registerCaptureControlTools } = require('./captureControlMcp');
@@ -452,6 +453,8 @@ function createRecallMcpServer(coachClientId = DEFAULT_COACH_CLIENT_ID, { hasFat
   registerWingguyLeadsTools(server, coachClientId);
   // Scoring attributes ("rebuild my scoring" - read, propose, commit with backup, revert, test).
   registerWingguyScoringTools(server, coachClientId);
+  // Reconnect setup ("set up my reconnect list" - description, sample, the two yeses).
+  registerWingguyReconnectTools(server, coachClientId);
   // Contacts warehouse ("who is Bob, what's their email?" - one lookup across every feed).
   registerWingguyContactsTools(server, coachClientId);
   // Transcript-store import (the write-door for missed captures — Zoom AI Companion etc.).

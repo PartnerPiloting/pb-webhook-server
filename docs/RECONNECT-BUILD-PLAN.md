@@ -273,14 +273,19 @@ step skips who is already there.
    collected. NOT BUILT: the status shown ON the board screen.*
 3. **The description and the 30 samples - in the session, with Guy there.** In the client's own
    Claude chat through their Wingguy connection ("set up my reconnect list"), and only once their
-   history is collected and Guy has opened it for them. *BY HAND (Claude Code runs the sample job);
-   the chat tool NOT BUILT.*
+   history is collected and Guy has opened it for them. *BUILT 5 Oct 2026: the chat tool `wingguy_reconnect_setup`
+   (`services/wingguyReconnectMcp.js`), steps status / sample / save_description. It works once the
+   first batch of history is in - that is the gate, since connecting is already Guy's step. NOT YET
+   run by a real client in a real chat.*
 4. **Two yeses, same session.** Yes to the read - covering what is there now AND the older
    conversations as they arrive, so the cost shown is the estimate for the whole history ("about
    US$4 today, roughly US$20 in total over the next ten days"), not just day one. Then yes to the leads (counts shown; the cut-off - 3 and over, or 4 and over - is chosen
    here with real numbers, and the same cut-off is used for each later day's arrivals). The list then
    switches on by itself, and "more waiting" simply grows over the following days. While the read runs Guy shows them
-   the Follow-Ups screen. *Each BY HAND as a job; the chat flow NOT BUILT.*
+   the Follow-Ups screen. *BUILT 5 Oct 2026 in the same tool: step `read` (figures first,
+   then confirm; runs behind the call, progress read from the store) and step `leads` (counts at
+   cut-off 3 and 4, then confirm + cut_off: saves the cut-off, brings people in, switches Reconnect
+   on). NOT YET run by a real client.*
 5. **The Reconnect list is the whole first session.** *BUILT.*
 6. **Disconnects are an optional extra, not part of the journey.** Most clients will never use it -
    only those approaching LinkedIn's 30,000 limit. Its own switch on the master record, off by
