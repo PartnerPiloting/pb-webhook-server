@@ -5,6 +5,9 @@
 // the ones the system suggests because the conversation read as a decline or as their pitch.
 // services/reconnectDisconnects.js decides who is listed - this file renders and sends clicks.
 //
+// Review is by exception (Guy, 5 Oct 2026 - ticking 193 people one at a time was too slow): everyone
+// starts TICKED, each row has its own Keep, and one Approve takes whoever is still ticked.
+//
 // NOTHING HERE REMOVES ANYONE FROM LINKEDIN. Approve records the decision; the approved people
 // then sit in a short list of profile links for the client to act on.
 
@@ -25,6 +28,8 @@ export default function DisconnectSection({ get, post, refreshKey }) {
     try {
       const d = await get('/disconnects');
       setData(d && d.enabled ? d : null);
+      // Everyone starts ticked - the client unticks or keeps the exceptions.
+      setSelected(new Set(((d && d.pending) || []).map((p) => p.key)));
     } catch (_) {
       setData(null); // the section is optional - a failed load must never break the screen
     }
@@ -95,8 +100,9 @@ export default function DisconnectSection({ get, post, refreshKey }) {
       </div>
       <p className="text-sm text-gray-600 mb-3">
         Connections you may not want to keep - the ones you flagged, and ones whose conversation read as a no or as them
-        selling to you. Tick the ones to go and approve them together. Nothing is removed until you approve, and nobody you
-        connected with in the last year is ever suggested.
+        selling to you. Everyone starts ticked: press <span className="font-medium">Keep</span> on anyone you want to hold on
+        to, then approve the rest together. Nothing is removed until you approve, and nobody you connected with in the last
+        year is ever suggested.
       </p>
       {notice && <div className="text-sm text-emerald-700 mb-2">{notice}</div>}
       {error && <div className="text-sm text-red-600 mb-2">{error}</div>}
@@ -122,9 +128,6 @@ export default function DisconnectSection({ get, post, refreshKey }) {
             <button className={`${BTN} text-red-700 border-red-200 hover:bg-red-50`} disabled={busy || !chosen.length} onClick={approve}>
               Approve {chosen.length || ''} for removal
             </button>
-            <button className={BTN} disabled={busy || !chosen.length} onClick={() => run('keep', chosen.map((p) => p.key), `${chosen.length} kept - they will not be suggested again.`)}>
-              Keep {chosen.length || ''}
-            </button>
           </div>
           <ul className="divide-y">
             {pending.map((p) => (
@@ -143,6 +146,7 @@ export default function DisconnectSection({ get, post, refreshKey }) {
                   {p.headline && <div className="text-xs text-gray-500 truncate">{p.headline}</div>}
                   {p.why && <div className="text-sm text-gray-800">{p.why}</div>}
                 </div>
+                <button className={`${BTN} shrink-0`} disabled={busy} onClick={() => run('keep', [p.key], `${p.name} kept - they will not be suggested again.`)} title="Take them off this list for good">Keep</button>
               </li>
             ))}
           </ul>
