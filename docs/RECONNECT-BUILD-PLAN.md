@@ -228,7 +228,12 @@ connections" with the existing builder - one `RemoveFromFirstConnection` action 
 at a time, four hours apart, 09:00-17:00; paused, nobody in it. Found in Linked Helper's own code
 and NOT yet run: `callWrite("people.actions.importPeopleFromUrls", actionId, 0, text, true,
 liAccountId)` adds people to an action's queue from profile links (0 = Target; the campaign-level
-call uses 1 = Target, 0 = ExcludeList). Stage two waits on Guy naming one connection to remove.
+call uses 1 = Target, 0 = ExcludeList). **Adding by command PROVEN 5 Oct 2026:** `lh-campaigns.py queue 45 -` put the one person Guy
+approved for the test (Alastair Ferguson) into the action's queue - 0 to 1, nobody else. Linked
+Helper had never seen him, so it made a new person from the link alone; it loads the profile when
+the action runs. The campaign was then started with `lh-campaigns.py start 45` (18:18 AEST, outside
+its 09:00-17:00 hours). STILL TO SEE: the removal itself, the next morning. New commands in the
+builder: `queue`, `start`, `pause`, `queued`.
 Guy wants the finished version to be: tick, Approve, and the approved people go to this campaign
 by themselves - no copy and paste.
 

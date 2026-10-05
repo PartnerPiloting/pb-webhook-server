@@ -34,6 +34,16 @@ Commands (run as root or the LH user; the DB is read with mode=ro, never written
                                                hours -> local), with a round-trip check
   lh-campaigns.py create <recipe.json> [--name NAME] [--compare ID] [--force]
                                                create it through the running instance
+  lh-campaigns.py queue <campaign-id> <links.txt | -> [--action-type TYPE]
+                                               add people to a campaign action's queue from
+                                               profile links, one per line ("-" = stdin). The
+                                               campaign must have exactly one action, or name
+                                               the action type. Same command as the UI's
+                                               "Add people by URL".
+  lh-campaigns.py pause <campaign-id>          pause a campaign
+  lh-campaigns.py start <campaign-id>          un-pause a campaign (it still only acts inside
+                                               its own working hours)
+  lh-campaigns.py queued <campaign-id>         who is in each action's queue and what happened
 
 Idempotent: `create` skips when a non-archived campaign of the same name exists.
 Refuses while an action is mid-flight (title says "Running campaign #N") unless --force;
@@ -456,6 +466,64 @@ async def run_create(ws_url, payload):
     return {"ok": False, "error": "timed out"}
 
 
+CALL_JS = r"""
+(async function(){
+  try {
+    var req = null;
+    self.webpackChunk_linked_helper_front.push([[Symbol('lh-campaigns')], {}, function(r){ req = r; }]);
+    if (!req || !req.m) return JSON.stringify({ok:false, error:'webpack require not exposed'});
+    var id = null;
+    for (var k in req.m) { if (String(req.m[k]).indexOf('async _callWriteImpl') > -1) { id = k; break; } }
+    if (!id) return JSON.stringify({ok:false, error:'data layer module not found by text'});
+    var ex = req(id), dl = null;
+    for (var kk of Object.keys(ex)) { var v = ex[kk]; if (v && typeof v === 'object' && typeof v.callWrite === 'function') { dl = v; break; } }
+    if (!dl) return JSON.stringify({ok:false, error:'data layer export has no callWrite'});
+    var args = __ARGS__;
+    var r = await dl.callWrite.apply(dl, [__METHOD__].concat(args));
+    var out; try { out = JSON.parse(JSON.stringify(r === undefined ? null : r)); } catch (e2) { out = Array.isArray(r) ? ('array of ' + r.length) : (typeof r); }
+    return JSON.stringify({ok:true, result: out}).slice(0, 4000);
+  } catch (e) {
+    return JSON.stringify({ok:false, error:String(e && e.message || e).slice(0, 600)});
+  }
+})()
+"""
+
+
+async def run_call(ws_url, method, args):
+    """One data-layer write: callWrite(method, *args). Same plumbing as run_create."""
+    import websockets
+    js = CALL_JS.replace("__METHOD__", json.dumps(method)).replace("__ARGS__", json.dumps(args))
+    async with websockets.connect(ws_url, max_size=2 ** 24, open_timeout=30, close_timeout=2) as ws:
+        await ws.send(json.dumps({"id": 1, "method": "Runtime.evaluate", "params": {
+            "expression": js, "returnByValue": True, "awaitPromise": True,
+            "timeout": CALL_TIMEOUT_S * 1000}}))
+        deadline = time.time() + CALL_TIMEOUT_S
+        while time.time() < deadline:
+            msg = json.loads(await asyncio.wait_for(ws.recv(), timeout=max(5, deadline - time.time())))
+            if msg.get("id") == 1:
+                if "error" in msg:
+                    return {"ok": False, "error": "devtools: " + json.dumps(msg["error"])[:400]}
+                res = msg.get("result", {})
+                if "exceptionDetails" in res:
+                    return {"ok": False, "error": json.dumps(res["exceptionDetails"])[:400]}
+                value = res.get("result", {}).get("value")
+                if not value:
+                    return {"ok": False, "error": "no value; raw reply: " + json.dumps(res)[:400]}
+                return json.loads(value)
+    return {"ok": False, "error": "timed out"}
+
+
+def live_call(c, method, args):
+    """Find the open instance and send one write. Returns the reply dict ({ok, result|error})."""
+    title = instance_title(c)
+    if not title:
+        return {"ok": False, "error": "no Linked Helper instance window - it must be open and logged in to LinkedIn"}
+    ws = find_ui_page()
+    if not ws:
+        return {"ok": False, "error": "could not find the instance interface page on any DevTools port"}
+    return asyncio.run(run_call(ws, method, args))
+
+
 # ---------------------------------------------------------------- commands
 
 def cmd_list(c):
@@ -648,6 +716,89 @@ def cmd_create(c, recipe_path, name=None, compare=None, force=False):
     return 0
 
 
+def campaign_action(con, cid, action_type=None):
+    """The one action of a campaign people are queued into. Refuses to guess between several."""
+    d = campaign_detail(con, cid)
+    if not d:
+        raise RuntimeError(f"no campaign {cid}")
+    acts = d["actions"]
+    if action_type:
+        acts = [a for a in acts if a.get("actionType") == action_type]
+    if len(acts) != 1:
+        raise RuntimeError(f"campaign {cid} has {len(acts)} matching action(s) - need exactly one (use --action-type)")
+    return d, acts[0]
+
+
+def queue_rows(con, action_id):
+    return [dict(r) for r in con.execute("SELECT * FROM action_target_people WHERE action_id = ?", (action_id,)).fetchall()]
+
+
+def cmd_queue(c, cid, src, action_type=None):
+    """Add people to a campaign action's queue from profile links. Adding never contacts LinkedIn
+    and never acts on anyone - the action does that later, in its own hours, if the campaign is running."""
+    text = sys.stdin.read() if src == "-" else open(src, encoding="utf-8").read()
+    links = [l.strip() for l in text.splitlines() if l.strip()]
+    links = list(dict.fromkeys(links))
+    if not links:
+        say("nothing to add - no links given")
+        return 0
+    bad = [l for l in links if "linkedin.com/in/" not in l]
+    if bad:
+        say(f"REFUSED: {len(bad)} line(s) are not LinkedIn profile links, e.g. {bad[0][:80]!r}")
+        return 1
+    with db(c) as con:
+        li, who = li_account_db_id(con, c)
+        d, act = campaign_action(con, cid, action_type)
+        before = len(queue_rows(con, act["id"]))
+    say(f"adding {len(links)} link(s) to campaign {cid} {d['name']!r}, action {act['id']} {act.get('actionType')} ({who}); {before} in the queue now")
+    # 0 = Target for an ACTION's list (the campaign-level call uses 1 = Target, 0 = exclude list).
+    r = live_call(c, "people.actions.importPeopleFromUrls", [act["id"], 0, "\n".join(links), True, li])
+    if not r.get("ok"):
+        say("FAILED:", r.get("error"))
+        return 1
+    say("linked helper replied:", json.dumps(r.get("result"))[:600])
+    time.sleep(2)
+    with db(c) as con:
+        after = len(queue_rows(con, act["id"]))
+    say(f"queue went from {before} to {after}")
+    return 0 if after >= before else 1
+
+
+def cmd_set_paused(c, cid, paused):
+    with db(c) as con:
+        li, _ = li_account_db_id(con, c)
+        d = campaign_detail(con, cid)
+    if not d:
+        say(f"FAILED: no campaign {cid}")
+        return 1
+    r = live_call(c, "campaigns.setCampaignPaused", [cid, bool(paused), li])
+    if not r.get("ok"):
+        say("FAILED:", r.get("error"))
+        return 1
+    time.sleep(2)
+    with db(c) as con:
+        now = campaign_detail(con, cid)
+    say(f"campaign {cid} {d['name']!r}: paused={now['is_paused']}")
+    return 0 if bool(now["is_paused"]) == bool(paused) else 1
+
+
+def cmd_queued(c, cid):
+    with db(c) as con:
+        d = campaign_detail(con, cid)
+        if not d:
+            say(f"FAILED: no campaign {cid}")
+            return 1
+        print(f"campaign {cid} {d['name']!r} paused={d['is_paused']}")
+        for a in d["actions"]:
+            rows = queue_rows(con, a["id"])
+            print(f"  action {a['id']} {a.get('actionType')}: {len(rows)} in the queue")
+            for r in rows[:50]:
+                pid = r.get("person_id")
+                ext = con.execute("SELECT external_id FROM person_external_ids WHERE person_id = ? LIMIT 3", (pid,)).fetchall() if pid else []
+                print("    ", {k: r[k] for k in r if k not in ("action_id",)}, [e[0] for e in ext])
+    return 0
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -660,6 +811,10 @@ def main():
     s = sub.add_parser("create"); s.add_argument("recipe"); s.add_argument("--name")
     s.add_argument("--compare", type=int, help="campaign id to diff the new one against")
     s.add_argument("--force", action="store_true", help="create even while an action is mid-flight")
+    s = sub.add_parser("queue"); s.add_argument("id", type=int); s.add_argument("links"); s.add_argument("--action-type")
+    s = sub.add_parser("pause"); s.add_argument("id", type=int)
+    s = sub.add_parser("start"); s.add_argument("id", type=int)
+    s = sub.add_parser("queued"); s.add_argument("id", type=int)
     args = p.parse_args()
     c = conf()
     try:
@@ -675,6 +830,14 @@ def main():
             return cmd_export(c, args.id, args.name, args.out)
         if args.cmd == "create":
             return cmd_create(c, args.recipe, args.name, args.compare, args.force)
+        if args.cmd == "queue":
+            return cmd_queue(c, args.id, args.links, args.action_type)
+        if args.cmd == "pause":
+            return cmd_set_paused(c, args.id, True)
+        if args.cmd == "start":
+            return cmd_set_paused(c, args.id, False)
+        if args.cmd == "queued":
+            return cmd_queued(c, args.id)
     except Exception as e:
         say("FAILED:", e)
         return 1
