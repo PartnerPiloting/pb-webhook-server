@@ -44,6 +44,9 @@ Commands (run as root or the LH user; the DB is read with mode=ro, never written
   lh-campaigns.py start <campaign-id>          un-pause a campaign (it still only acts inside
                                                its own working hours)
   lh-campaigns.py queued <campaign-id>         who is in each action's queue and what happened
+  lh-campaigns.py hours <campaign-id> <HH:MM-HH:MM> [--action-type TYPE]
+                                               set the hours one action may run, every day, in
+                                               the machine's LOCAL time (same as the UI's hours box)
 
 Idempotent: `create` skips when a non-archived campaign of the same name exists.
 Refuses while an action is mid-flight (title says "Running campaign #N") unless --force;
@@ -782,6 +785,27 @@ def cmd_set_paused(c, cid, paused):
     return 0 if bool(now["is_paused"]) == bool(paused) else 1
 
 
+def cmd_hours(c, cid, window, action_type=None):
+    m = re.fullmatch(r"(\d{1,2}:\d{2})-(\d{1,2}:\d{2})", window.strip())
+    if not m:
+        say("REFUSED: hours must look like 00:00-05:00")
+        return 1
+    with db(c) as con:
+        li, _ = li_account_db_id(con, c)
+        d, act = campaign_action(con, cid, action_type)
+    schedule = build_working_hours({"days": "all", "windows": [[m.group(1), m.group(2)]]}, local_offset_minutes())
+    say(f"setting campaign {cid} {d['name']!r} action {act['id']} {act.get('actionType')} to {window} local, every day")
+    r = live_call(c, "workingHours.saveWorkingHours", [schedule, {"type": "action", "campaignId": cid, "actionId": act["id"]}, li])
+    if not r.get("ok"):
+        say("FAILED:", r.get("error"))
+        return 1
+    time.sleep(2)
+    with db(c) as con:
+        _, now = campaign_action(con, cid, action_type)
+    say("database now shows:", "; ".join(hours_local(now["hours"], local_offset_minutes())) or "no hours rows")
+    return 0
+
+
 def cmd_queued(c, cid):
     with db(c) as con:
         d = campaign_detail(con, cid)
@@ -815,6 +839,7 @@ def main():
     s = sub.add_parser("pause"); s.add_argument("id", type=int)
     s = sub.add_parser("start"); s.add_argument("id", type=int)
     s = sub.add_parser("queued"); s.add_argument("id", type=int)
+    s = sub.add_parser("hours"); s.add_argument("id", type=int); s.add_argument("window"); s.add_argument("--action-type")
     args = p.parse_args()
     c = conf()
     try:
@@ -838,6 +863,8 @@ def main():
             return cmd_set_paused(c, args.id, False)
         if args.cmd == "queued":
             return cmd_queued(c, args.id)
+        if args.cmd == "hours":
+            return cmd_hours(c, args.id, args.window, args.action_type)
     except Exception as e:
         say("FAILED:", e)
         return 1

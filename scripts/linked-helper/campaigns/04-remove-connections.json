@@ -3,8 +3,9 @@
     "Reconnect - the removal campaign (docs/RECONNECT-BUILD-PLAN.md, bricks 5-6). One action:",
     "remove the people in its queue from the client's 1st-degree connections. It is built EMPTY and",
     "nobody is ever in it except people the client approved on the Potential disconnects list.",
-    "Pace: 5 at a time, four hours apart, inside the working day - about 10 to 15 removals a day,",
-    "well inside the 150-actions-a-day budget the whole account shares.",
+    "It runs in the MIDDLE OF THE NIGHT (Guy, 5 Oct 2026) so it never competes with a person using",
+    "LinkedIn by hand during the day: midnight to 5am, 5 at a time, two hours apart - up to 15",
+    "removals a night, well inside the 150-actions-a-day budget the whole account shares.",
     "Removing a connection cannot be undone and deletes endorsements and recommendations for good.",
     "The action takes no settings (Linked Helper allows null). Times are the MACHINE'S local time.",
     "NOT part of the default build - name it: lh-build-campaigns.sh remove-connections"
@@ -16,9 +17,9 @@
       "name": "",
       "actionType": "RemoveFromFirstConnection",
       "actionSettings": null,
-      "coolDownMinutes": 240,
+      "coolDownMinutes": 120,
       "maxActionResultsPerIteration": 5,
-      "workingHours": { "days": "all", "windows": [["09:00", "17:00"]] }
+      "workingHours": { "days": "all", "windows": [["00:00", "05:00"]] }
     }
   ]
 }
