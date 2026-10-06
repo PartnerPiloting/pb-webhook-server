@@ -230,7 +230,7 @@ function whoIsWhoBlock(coachName, leadName) {
   return `${s}\n\n`;
 }
 
-function buildContext({ profileBlock, convoBlock, leadEmail, coachName, leadName = '', prefs, campaignTemplate, voice, onFile = true, window = null, profileThin = false, clockLine = '' }) {
+function buildContext({ profileBlock, convoBlock, leadEmail, coachName, leadName = '', prefs, campaignTemplate, voice, onFile = true, window = null, profileThin = false, clockLine = '', stallLine = '' }) {
   const tplBlock = campaignTemplate && campaignTemplate.instructions
     ? `CAMPAIGN TEMPLATE — "${campaignTemplate.label || campaignTemplate.id}" (use this for the opener / warm-reply message; it's Guy's real structure & voice — match its beats and sign-off):\n${campaignTemplate.instructions}\n\n`
     : '';
@@ -268,6 +268,7 @@ function buildContext({ profileBlock, convoBlock, leadEmail, coachName, leadName
     `${profileBlock ? `LEAD PROFILE:\n${profileBlock}\n\n` : ''}` +
     thinBlock +
     `${convoBlock ? `LINKEDIN CONVERSATION SO FAR (oldest first):\n${convoBlock}\n\n` : ''}` +
+    `${stallLine ? `${stallLine}\n\n` : ''}` +
     `${tplBlock}` +
     `${voiceBlock}` +
     // The not-on-file wording used to send the model to Guy ("ask Guy to add it"), which is a dead end:
@@ -420,6 +421,76 @@ function cvTallyHook(draft) {
   if (!lines.length) return null;
   const m = lines[0].slice(0, 400).match(CV_TALLY_HOOK);
   return m ? m[0] : null;
+}
+
+// WHO SPOKE LAST (Anton Yuan, 2026-10-06). He said "Sure let's do it" on 15 Sep, Guy offered three
+// September times the same day, and Anton never answered. Three weeks later the panel drafted
+// "Great, Anton - let's lock something in" - a reply to a yes that had already been answered, with
+// fresh times as if the old ones never went out. Stage 6 ("they asked to meet") matched on his old
+// yes and nothing in the context said the ball was in HIS court. So: who spoke last is read from
+// DATA and named in the context, and a reply-style opener ("Great, Anton") is refused once when
+// there is nothing new to reply to. Fails OPEN: an unattributable sender or a group thread skips it.
+function isCoachSender(sender, coachName) {
+  const s = normName(sender);
+  return senderIs(s, coachName) || s === 'you' || s === 'me';
+}
+function lastSpoken(conversation = []) {
+  const list = Array.isArray(conversation) ? conversation : [];
+  for (let i = list.length - 1; i >= 0; i--) {
+    if (list[i] && String(list[i].text || '').trim()) return { msg: list[i], index: i };
+  }
+  return null;
+}
+/** The newest message is the coach's own - the lead has not answered it. */
+function coachSpokeLast({ conversation, coachName, group }) {
+  if (group) return false;
+  const last = lastSpoken(conversation);
+  if (!last) return false;
+  const s = normName(last.msg.sender);
+  if (!s || s === 'unknown') return false;
+  return isCoachSender(s, coachName);
+}
+const TIMES_OFFER = /would any of the following times work|(^|\n)\s*[-•*]\s*(mon|tue|wed|thu|fri|sat|sun)[a-z]*\.?\s+\d{1,2}/i;
+/** Coach offered times AFTER the lead's last message and the lead hasn't answered. Returns
+ * { day } (the offer's day label, may be '') or null. */
+function unansweredTimesOffer({ conversation, coachName, group }) {
+  if (!coachSpokeLast({ conversation, coachName, group })) return null;
+  const list = Array.isArray(conversation) ? conversation : [];
+  for (let i = list.length - 1; i >= 0; i--) {
+    const m = list[i];
+    if (!m || !String(m.text || '').trim()) continue;
+    if (!isCoachSender(m.sender, coachName)) return null; // reached the lead's last message
+    if (TIMES_OFFER.test(String(m.text))) return { day: String(m.day || '').trim() };
+  }
+  return null;
+}
+const REPLY_WORDS = 'great|perfect|awesome|brilliant|fantastic|excellent|lovely|wonderful|sounds good|happy days|good stuff|love it|love that|glad to hear|thanks|thank you|cheers';
+/** The draft opens as a REPLY ("Great, Anton -", "Hi Anton, Perfect -"). Returns the line, else
+ * null. "Thanks for connecting." is not a reply opener - only a reply word aimed at the lead's name,
+ * or a bare one ("Perfect -") straight after the greeting, counts. */
+function replyStyleOpener(draft, leadName) {
+  const lines = String(draft || '').replace(/\r/g, '').split('\n').map((l) => l.trim()).filter(Boolean);
+  if (!lines.length) return null;
+  const first = (normName(leadName).split(' ')[0] || '').replace(/[^a-z]/g, '');
+  const atLead = first ? new RegExp(`^(${REPLY_WORDS})\\s*[,!.\\-–—:]*\\s*${first}\\b`, 'i') : null;
+  const bare = new RegExp(`^(${REPLY_WORDS.replace('|thanks|thank you|cheers', '')})\\s*[,!.\\-–—:]`, 'i');
+  if (atLead && atLead.test(lines[0])) return lines[0];
+  if (bare.test(lines[0])) return lines[0];
+  const greeting = /^(hi|hey|hello|g'day|dear|morning|afternoon)\b/i.test(lines[0]) && lines[0].length < 40;
+  if (greeting) {
+    // "Hi Anton, great - ..." on one line, or the reply word opening the next line.
+    const rest = lines[0].replace(/^(hi|hey|hello|g'day|dear|morning|afternoon)\s+[^,\-–—]*[,\-–—]\s*/i, '');
+    if (rest && rest !== lines[0] && bare.test(rest)) return lines[0];
+    if (lines[1] && bare.test(lines[1])) return lines[1];
+  }
+  return null;
+}
+function replyOpenerRefusal(line, leadName, offer) {
+  const first = String(leadName || 'the lead').trim().split(/\s+/)[0];
+  return `REJECTED - draft NOT set. It opens "${line}", which reads as a reply - but the newest message in this thread is the coach's own and ${first} has not answered it, so there is nothing new to react to.`
+    + (offer ? ` The coach already offered times${offer.day ? ` (${offer.day})` : ''} and they went unanswered. This is a light RE-OFFER: "Hi ${first} -", one warm line that makes it easy to come back (things get buried, no stress), then fresh times. Do not pretend they just agreed, and do not say the old times "came and went".`
+      : ` This is a light nudge: "Hi ${first} -" and an easy reason to reply.`)
+    + ' Then call the tool again.';
 }
 
 /**
@@ -600,12 +671,25 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
     return { line };
   })();
 
+  // Who spoke last, from DATA (see coachSpokeLast above). Named in the context so the stage is not
+  // guessed from an old yes further up the thread.
+  const stallArgs = { conversation, coachName: coach.clientName, group: profile.group };
+  const timesStall = unansweredTimesOffer(stallArgs);
+  const ballWithLead = coachSpokeLast(stallArgs);
+  const leadFirst = String(profile.name || 'the lead').trim().split(/\s+/)[0];
+  const stallLine = timesStall
+    ? `⚠ TIMES ALREADY OFFERED, NO ANSWER: the newest message in the thread is the coach's own time offer${timesStall.day ? ` (${timesStall.day})` : ''}, and ${leadFirst} has not replied to it. Any yes from ${leadFirst} further up is OLD and was already answered by that offer - you are NOT replying to anything. Draft a RE-OFFER NUDGE (stage 6b): "Hi ${leadFirst} -", one warm line that makes coming back easy, then fresh times via propose_times. Never open "Great/Perfect/Thanks, ${leadFirst}".`
+    : ballWithLead
+      ? `NOTE: the newest message in the thread is the coach's own and ${leadFirst} has not answered it - there is nothing new to react to, so never open as a reply ("Great/Perfect/Thanks, ${leadFirst}").`
+      : '';
+  let replyOpenerGuardFired = false; // refuses at most ONCE per turn, like the hook guard
+
   const system = [
     ...(systemPrefixBlocks || [
       { type: 'text', text: WINGGUY_VOICE },
       { type: 'text', text: WINGGUY_AGENT_INSTRUCTIONS, cache_control: { type: 'ephemeral', ttl: '1h' } },
     ]),
-    { type: 'text', text: buildContext({ profileBlock, convoBlock, leadEmail, coachName: coach.clientName, leadName: profile.name, prefs, campaignTemplate, voice, onFile: !!leadRecordId, window: wingguyCalendar.offerWindowInfo(coach.timezone || coach.timeZone || 'Australia/Brisbane'), profileThin, clockLine: clock.line }) },
+    { type: 'text', text: buildContext({ profileBlock, convoBlock, leadEmail, coachName: coach.clientName, leadName: profile.name, prefs, campaignTemplate, voice, onFile: !!leadRecordId, window: wingguyCalendar.offerWindowInfo(coach.timezone || coach.timeZone || 'Australia/Brisbane'), profileThin, clockLine: clock.line, stallLine }) },
   ];
 
   const convo = messages.map((m) => ({ role: m.role, content: m.content }));
@@ -668,6 +752,12 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
         if (wrongWay) {
           console.warn(`WINGGUY-DIRECTION-GUARD refused "${wrongWay}" (times intro) for ${coach.clientId} → ${profile.name || 'lead'}`);
           return { ok: false, error: wrongWayRefusal(wrongWay, coach.clientName, profile.name) };
+        }
+        const replyLine = ballWithLead && !replyOpenerGuardFired ? replyStyleOpener(unescapeModelNewlines(input && input.intro), profile.name) : null;
+        if (replyLine) {
+          replyOpenerGuardFired = true;
+          console.warn(`WINGGUY-STALL-GUARD refused "${replyLine}" (times intro) for ${coach.clientId} → ${profile.name || 'lead'}`);
+          return { ok: false, error: replyOpenerRefusal(replyLine, profile.name, timesStall) };
         }
       }
       // CODE-OWNED time list: enforce order + Guy's hours + soft lunch-skip + lead-timezone formatting,
@@ -1015,6 +1105,14 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
         console.warn(`WINGGUY-DIRECTION-GUARD refused "${wrongWay}" for ${coach.clientId} → ${profile.name || 'lead'}`);
         return { ok: false, error: wrongWayRefusal(wrongWay, coach.clientName, profile.name) };
       }
+      if (ballWithLead && !replyOpenerGuardFired) {
+        const replyLine = replyStyleOpener(draft, profile.name);
+        if (replyLine) {
+          replyOpenerGuardFired = true;
+          console.warn(`WINGGUY-STALL-GUARD refused "${replyLine}" for ${coach.clientId} → ${profile.name || 'lead'}`);
+          return { ok: false, error: replyOpenerRefusal(replyLine, profile.name, timesStall) };
+        }
+      }
       // Stage-1 opener guard (see STAGE1_BANNED_OPENER above): refuse, explain, let the model redraft.
       if (isHandshakeOnly({ conversation, coachName: coach.clientName, leadName: profile.name, group: profile.group })) {
         const hit = bannedStage1Opener(draft);
@@ -1095,4 +1193,4 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
   return { ok: true, reply: assistantText, draft: currentDraft, booked: bookedEvent, enrichContact, messages: convo, model: MODEL_ID };
 }
 
-module.exports = { runWingguyChatTurn, AGENT_TOOLS, inLunch, chooseSignoff, getVoiceIdentity, whoIsWhoBlock, wrongWayGreeting, leadHasSpoken, coachHasAskedToMeet, bannedStage1Opener, isHandshakeOnly, detectLeadBookingLink, buildContext, jobLocationOffer, leadClockLine, cvTallyHook };
+module.exports = { runWingguyChatTurn, coachSpokeLast, unansweredTimesOffer, replyStyleOpener, AGENT_TOOLS, inLunch, chooseSignoff, getVoiceIdentity, whoIsWhoBlock, wrongWayGreeting, leadHasSpoken, coachHasAskedToMeet, bannedStage1Opener, isHandshakeOnly, detectLeadBookingLink, buildContext, jobLocationOffer, leadClockLine, cvTallyHook };
