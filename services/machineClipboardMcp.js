@@ -155,6 +155,32 @@ async function runOpenMachine(args = {}, tenant = TENANT) {
 }
 
 // ---------------------------------------------------------------------------
+// "OPEN MY PORTAL" (6 Oct 2026). Guy McPhee asked his Claude for his Wingguy portal on a call and
+// it said it didn't have it. The connector is reached with the client's own Portal Token, and the
+// portal link is that same token - so handing it back to its own caller gives away nothing the
+// caller does not already hold. Same coach gate as the machine link for "open Rick's portal".
+
+const PORTAL_BASE_URL = (process.env.PORTAL_BASE_URL || 'https://pb-webhook-server.vercel.app').replace(/\/$/, '');
+
+async function runOpenPortal(args = {}, tenant = TENANT) {
+  const target = await resolveTarget(args.client, tenant);
+  if (target.error) return { text: target.error, isError: true };
+
+  const token = target.record && target.record.portalToken;
+  const whose = target.own ? 'your Wingguy portal' : `${target.clientName}'s Wingguy portal`;
+  if (!token) {
+    return { text: `There is no portal link on record for ${target.own ? 'you' : target.clientName} yet. Guy sets that up - ask him.` };
+  }
+  return {
+    text:
+      `Here is the link to ${whose}:\n\n${PORTAL_BASE_URL}/?token=${encodeURIComponent(token)}\n\n`
+      + 'Give the person this link exactly as it is, as a clickable link. It opens in any web browser - no password, the link itself is the key. '
+      + 'Suggest they bookmark it so they never have to ask again.\n\n'
+      + 'This link is personal - anyone who has it can get into the portal - so they should not share it or post it anywhere.',
+  };
+}
+
+// ---------------------------------------------------------------------------
 // A FILE ONTO THE MACHINE (30 Sep 2026). A chat can hand over text, never a file - so the person
 // gives a share link and the machine fetches the file itself. Why, and which links: see
 // services/machineFileLink.js. Guy's ask, the night the web link went live: a client should be
@@ -279,6 +305,21 @@ const TOOL_DEFS = [
     run: runOpenMachine,
   },
   {
+    name: 'wingguy_open_portal',
+    description:
+      "Get the web link to someone's Wingguy portal - the website where they work their leads (Thanks for Connecting, New Leads, Follow-Ups, Settings, My Wingguy). Use this whenever someone says 'open my portal', 'open Wingguy', 'where is my portal', 'what's the link to my portal', 'take me to my leads', 'open my Wingguy page', 'I've lost my portal link', or otherwise wants to get into the Wingguy website - and a coach may ask for a client's by name ('open Roland's portal'). This is NOT the Linked Helper machine (that is wingguy_open_machine). It returns their own personal link. Never guess or build this address yourself, and never answer from memory - each person's link is their own. With no client named it is the caller's own portal; a coach can name one of their own clients.",
+    zodSchema: {
+      client: z.string().optional().describe('Coaches only: which of your clients\' portals (name or client id). Leave out for your own.'),
+    },
+    jsonSchema: {
+      type: 'object',
+      properties: {
+        client: { type: 'string', description: 'Coaches only: which of your clients\' portals. Leave out for your own.' },
+      },
+    },
+    run: runOpenPortal,
+  },
+  {
     name: 'wingguy_send_to_machine',
     description:
       "Put text on the clipboard of a Linked Helper machine, so it can be pasted there. Use this whenever someone has something on their own computer - a LinkedIn search URL, a line of settings, a message - that they need INSIDE the Linked Helper machine, because copy and paste does not cross that remote desktop connection. The text lands on the machine's clipboard within seconds while someone is connected to its screen; they then press Ctrl+V as normal. With no client named it goes to your own machine; a coach can name one of their own clients to send to theirs. It replaces anything already waiting, and expires if nobody collects it.",
@@ -341,4 +382,4 @@ async function legacyToolCall(toolName, args, tenant = TENANT) {
 // (content/client-phrases.json). Must run before export - see utils/clientPhrases.js for the why.
 require('../utils/clientPhrases').applyClientPhrases(TOOL_DEFS);
 
-module.exports = { registerMachineClipboardTools, legacyToolList, legacyToolCall, TOOL_DEFS, runOpenMachine };
+module.exports = { registerMachineClipboardTools, legacyToolList, legacyToolCall, TOOL_DEFS, runOpenMachine, runOpenPortal };

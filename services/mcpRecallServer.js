@@ -367,7 +367,9 @@ function createRecallMcpServer(coachClientId = DEFAULT_COACH_CLIENT_ID, { hasFat
         + "or LinkedIn - Guy runs a specific setup with specific suppliers, and an answer that is right in general is wrong "
         + "for this client, and they cannot tell the difference. If wingguy_learn does not cover it, say so and point them to Guy. "
         + "One exception: when they want to OPEN, see or get into their Linked Helper machine (they may call it their VPS or "
-        + "server), call wingguy_open_machine - it returns their own link, which is what they are asking for.",
+        + "server), call wingguy_open_machine - it returns their own link, which is what they are asking for. "
+        + "Likewise when they want to OPEN or find their Wingguy portal (the website where they work their leads), call "
+        + "wingguy_open_portal - it returns their own portal link.",
     },
   );
 
