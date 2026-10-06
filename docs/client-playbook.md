@@ -581,6 +581,13 @@ and fast, just a list. The campaign then works through that queue doing the deep
 They're separate, they can run at the same time, and you can stop collecting whenever you like or
 empty the queue and start again if you don't like who turned up.
 
+**And if collecting stops with "Out of 'Load LinkedIn search results' credits" - that's not a fault.**
+Linked Helper reads your search one page at a time, about ten people a page, and only lets itself
+load about 95 pages a day to keep you looking human. When it stops, it keeps everyone it has
+already collected and shows a countdown to when it can carry on. Don't raise the limit in Settings.
+If your search was under about 950 people, it has most likely already got them all - just start the
+campaign. If it was bigger, press Collect again the next day and it picks up where it left off.
+
 **Finally, prove it works.** Once your search is in and the campaign is started, we watch for the
 first acceptances to land in your portal. That confirms the pipe is connected - which is exactly the
 sort of thing that's silently wrong otherwise. Give it a day or two; people have to accept first.
