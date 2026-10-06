@@ -2023,8 +2023,21 @@
   // profile behind it → the wrong-person guard refused the save (Jason, 2026-07-06). Reset on every
   // schedule (null when unknown) so a stale anchor can't pin a later capture to the wrong conversation.
   let lastSendAnchor = null;
+  // WHO the latest send was to, read at the moment of sending. If the send's own box is gone by capture
+  // time, the capture may only fall back to a conversation with this same person — never to whatever
+  // else is open. A bubble that popped up from someone else (Dan) was being captured in place of the
+  // thread just sent to (Peter), and the rescue card then talked about the wrong person (Guy, 2026-10-06).
+  let lastSendWho = null;
   function scheduleCapture(anchorEl) {
     lastSendAnchor = anchorEl || null;
+    lastSendWho = null;
+    try {
+      const sendConvo = (anchorEl && anchorEl.isConnected && closestConversationContainer(anchorEl)) || activeThreadContainer();
+      if (sendConvo) {
+        const h = scrapeMessagingHeader(sendConvo);
+        if (h && (slugOfInUrl(h.profileUrl) || h.name)) lastSendWho = { slug: slugOfInUrl(h.profileUrl), name: String(h.name || '').trim() };
+      }
+    } catch (e) { console.log('[Wingguy] could not read who the send was to (non-fatal):', e.message); }
     // TRAILING debounce: fire once ~1.8s after the LAST send in a burst. Sending a message often fires
     // several sends in a row (emoji reactions + a text message; button-click + Enter both fire) — a
     // leading debounce would snapshot after the FIRST and miss the final message. Resetting the timer on
@@ -2048,12 +2061,28 @@
       // the send's own element (exact) → the live focused box → ANY open conversation container (a send
       // can only come from a composer, so if one exists the send happened in a thread) → page URL only
       // when there's genuinely no thread on the page.
-      const findConvo = () =>
-        (lastSendAnchor && lastSendAnchor.isConnected && closestConversationContainer(lastSendAnchor)) ||
-        activeThreadContainer() ||
-        document.querySelector(CONVO_SELECTORS()) ||
-        newUiConvoFromDocument();
+      // When we know who the send was to, every fallback below must be a thread with THAT person.
+      const sameAsSent = (c) => {
+        if (!c || !lastSendWho) return !!c;
+        const h = scrapeMessagingHeader(c);
+        const slug = slugOfInUrl(h && h.profileUrl);
+        if (lastSendWho.slug && slug) return slug === lastSendWho.slug;
+        return !!lastSendWho.name && String((h && h.name) || '').trim().toLowerCase() === lastSendWho.name.toLowerCase();
+      };
+      const findConvo = () => {
+        const exact = lastSendAnchor && lastSendAnchor.isConnected && closestConversationContainer(lastSendAnchor);
+        if (exact) return exact;
+        const candidates = [activeThreadContainer(), ...document.querySelectorAll(CONVO_SELECTORS()), newUiConvoFromDocument()];
+        return candidates.find((c) => c && sameAsSent(c)) || null;
+      };
       let convo = findConvo();
+      if (!convo && lastSendWho) {
+        // The thread just sent to has closed, and the only conversations still open are other people's.
+        const who = lastSendWho.name || 'that person';
+        console.log(`[Wingguy] capture skipped — the conversation with ${who} closed before it could be read`);
+        showCaptureToast(`Couldn't save your conversation with ${who} - it closed before Wingguy could read it. Reopen it and Wingguy will save it next time you send.`);
+        return;
+      }
       hdr = convo ? scrapeMessagingHeader(convo) : { profileUrl: location_origin_path(), name: '' };
       let profileUrl = hdr.profileUrl;
       // The header can be mid-render right after a send — one quick retry before giving up.
