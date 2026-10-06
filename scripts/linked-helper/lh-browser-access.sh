@@ -61,6 +61,9 @@ apt-get install -y -qq novnc websockify >/dev/null
 [ -f /usr/share/novnc/core/rfb.js ] || { echo "noVNC installed but core/rfb.js is missing"; exit 1; }
 
 echo "== the page =="
+# Older builds (Sam Noble, Julian Davis) have password=ask in xrdp.ini, so on a re-run the
+# password already in machine.json is the only copy on the machine - keep it before clearing.
+OLD_MACHINE_JSON="$(cat "$WEB_DIR/machine.json" 2>/dev/null || true)"
 # Our own page plus a COPY of noVNC's engine. A copy, not a link to /usr/share/novnc: the folder
 # websockify serves should hold exactly what we mean to serve and nothing else.
 rm -rf "$WEB_DIR"
@@ -72,13 +75,20 @@ install -m 644 "$SRC_DIR/lh-browser-page.html" "$WEB_DIR/index.html"
 # The screen password, for the page to hand to x11vnc. Read from where setup-ubuntu-vps.sh
 # already keeps it (xrdp.ini) so nobody has to type it again, and written as JSON by python so a
 # password with quotes or backslashes in it survives.
-WEB_DIR="$WEB_DIR" python3 - <<'PY'
+WEB_DIR="$WEB_DIR" OLD_MACHINE_JSON="$OLD_MACHINE_JSON" python3 - <<'PY'
 import json
 import os
 import re
 s = open('/etc/xrdp/xrdp.ini').read()
 m = re.search(r'\[LinkedHelperConsole\][^\[]*?\npassword=([^\n]*)', s, flags=re.S)
 pw = m.group(1).strip() if m else ''
+if not pw or pw == 'ask':
+    try:
+        pw = json.loads(os.environ.get('OLD_MACHINE_JSON') or '{}').get('password', '')
+    except ValueError:
+        pw = ''
+    if pw:
+        print('screen password kept from the existing machine.json (xrdp.ini has none)')
 if not pw or pw == 'ask':
     raise SystemExit('no screen password in /etc/xrdp/xrdp.ini [LinkedHelperConsole] - re-run setup-ubuntu-vps.sh')
 path = os.path.join(os.environ['WEB_DIR'], 'machine.json')
@@ -142,6 +152,10 @@ else
   echo "FAILED: lh-wake wrote no status.json - journalctl -u lh-wake"; exit 1
 fi
 
+if [ -z "$TUNNEL_TOKEN" ] && systemctl is-active --quiet cloudflared 2>/dev/null; then
+  echo "tunnel already running - left as it is (an update, not a new link)"
+  exit 0
+fi
 if [ -z "$TUNNEL_TOKEN" ]; then
   echo
   echo "WARNING: no TUNNEL_TOKEN given - the page is installed but there is NO road to it from"

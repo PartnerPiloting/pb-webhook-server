@@ -43,7 +43,8 @@ def open_means_nothing_to_say():
 
 
 def never_signed_in_is_left_alone():
-    # The Launcher IS what they should be looking at - signing in. Never wake, never banner.
+    # The Launcher IS what they should be looking at - signing in. Never wake. (The page shows
+    # a "sign in in the Linked Helper window" banner for this state.)
     assert d(has_account=False) == ("sign-in", False)
 
 
@@ -68,6 +69,38 @@ def one_wake_then_let_the_start_finish():
     assert d(last_wake_ago_s=wk.REWAKE_S) == ("starting", True)
 
 
+def matthew_6_oct_website_titles():
+    # The two Firefox windows on Matthew Bulat's screen, 6 Oct 2026.
+    assert wk.on_lh_website("Linked Helper 2 — Mozilla Firefox")
+    assert wk.on_lh_website("Linked Helper | One of the Best LinkedIn automation tool for safe lead generation 2026 - Free trial — Mozilla Firefox")
+    assert not wk.on_lh_website("Sign in - Google Accounts — Mozilla Firefox")
+    assert not wk.on_lh_website("Linked Helper 2 Launcher v2.130.53")
+    assert not wk.on_lh_website("")
+
+
+def r(state="sign-in", watching=True, on_site_for_s=60, last_raise_ago_s=None):
+    return wk.should_raise_launcher(state, watching, on_site_for_s, last_raise_ago_s)
+
+
+def launcher_comes_back_over_the_website():
+    assert r() is True
+    # Time for a Google sign-in round trip, which passes through the website.
+    assert r(on_site_for_s=wk.SITE_GRACE_S - 1) is False
+    # Once, then leave them be for a while - no tug of war.
+    assert r(last_raise_ago_s=20) is False
+    assert r(last_raise_ago_s=wk.RERAISE_S) is True
+
+
+def only_before_sign_in_and_only_when_someone_is_looking():
+    assert r(state="ready") is False
+    assert r(state="starting") is False
+    assert r(watching=False) is False
+    assert r(on_site_for_s=None) is False
+
+
+check("Matthew's website windows are recognised, Google's sign-in is not", matthew_6_oct_website_titles)
+check("on the website before signing in -> Launcher back to the front", launcher_comes_back_over_the_website)
+check("only before sign-in, only with someone looking", only_before_sign_in_and_only_when_someone_is_looking)
 check("Rick's evening: closed, someone looking -> wake now", rick_1_oct)
 check("open -> no banner, nothing to do", open_means_nothing_to_say)
 check("nobody has signed in -> leave the Launcher alone", never_signed_in_is_left_alone)

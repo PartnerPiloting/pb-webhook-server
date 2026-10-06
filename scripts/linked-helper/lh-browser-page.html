@@ -131,11 +131,24 @@ function pressOnMachine(letterKey, letterCode, releaseAltFirst) {
   }
 }
 
+// Firefox and Safari are stricter than Chrome and Edge about a page reading the clipboard - name
+// the fix rather than just failing.
+const REFUSED = 'Your browser blocked the paste - try Chrome or Edge';
+
+function flashPasteButton(text) {
+  const label = 'Paste from my computer';
+  pasteButton.textContent = text;
+  setTimeout(() => { pasteButton.textContent = label; }, 5000);
+}
+
 async function pasteIntoMachine(cmd) {
   try {
     const text = await navigator.clipboard.readText();
     if (text) { lastSentIn = text; rfb.clipboardPasteFrom(text); }
-  } catch (_e) { /* refused - paste whatever the machine already holds */ }
+  } catch (_e) {
+    // Refused - paste whatever the machine already holds, and say why the paste may be wrong.
+    flashPasteButton(REFUSED);
+  }
   setTimeout(() => pressOnMachine(KEY.v, 'KeyV', cmd), 60);
 }
 
@@ -190,16 +203,14 @@ copyButton.addEventListener('click', async () => {
 
 // The button for pasting in: the fallback where Ctrl+V's automatic version is refused.
 pasteButton.addEventListener('click', async () => {
-  const label = pasteButton.textContent;
   try {
     const text = await navigator.clipboard.readText();
     if (!text) throw new Error('empty');
     rfb.clipboardPasteFrom(text);
-    pasteButton.textContent = 'Ready - now press Ctrl+V on the machine';
+    flashPasteButton('Ready - now press Ctrl+V on the machine');
   } catch (_e) {
-    pasteButton.textContent = 'Your browser would not share the clipboard';
+    flashPasteButton(REFUSED);
   }
-  setTimeout(() => { pasteButton.textContent = label; }, 4000);
   if (rfb) rfb.focus();
 });
 
@@ -242,6 +253,11 @@ async function checkStatus() {
         showBanner('Starting Linked Helper for you',
           'It closes now and then to update itself. This takes about a minute - you don\'t need to do anything.');
       }
+    } else if (s.state === 'sign-in') {
+      // Matthew Bulat, 6 Oct 2026: lost on the Linked Helper website, whose buttons assume the
+      // app is not installed. lh-wake.py also brings the Launcher back to the front.
+      showBanner('Sign in inside the dark Linked Helper window',
+        'Use your Linked Helper email and password there. If you see "Open on remote machine" or "Go to Downloads", you are on the Linked Helper website - close it. Linked Helper is already installed on this machine.');
     } else if (s.state === 'paused') {
       showBanner('Linked Helper is switched off for a moment',
         'Your machine is being worked on. It comes back by itself - you don\'t need to do anything.');
@@ -253,6 +269,31 @@ async function checkStatus() {
   }
 }
 setInterval(checkStatus, STATUS_SECONDS * 1000);
+
+// ---- A tab open when this page is replaced picks up the new one by itself ----
+//
+// The screen reconnects by itself, but the PAGE never reloads - so a tab opened before an update
+// kept the old page, and Guy and Matthew Bulat had to be told "Ctrl+Shift+R" mid-call to get copy
+// and paste (6 Oct 2026). Change PAGE_VERSION whenever this file changes; every open tab then
+// notices within a minute and reloads itself. Tried once per version, so a stubborn cache can
+// never put it into a reload loop.
+const PAGE_VERSION = '2026-10-06.1';
+const VERSION_CHECK_SECONDS = 60;
+
+async function checkPageVersion() {
+  try {
+    const r = await fetch('index.html?t=' + Date.now(), { cache: 'no-store' });
+    if (!r.ok) return;
+    const m = (await r.text()).match(/const PAGE_VERSION = '([^']+)'/);
+    if (!m || m[1] === PAGE_VERSION) return;
+    let tried = null;
+    try { tried = sessionStorage.getItem('lh-page-reloaded-for'); } catch (_e) { /* storage off */ }
+    if (tried === m[1]) return;
+    try { sessionStorage.setItem('lh-page-reloaded-for', m[1]); } catch (_e) { /* storage off */ }
+    location.reload();
+  } catch (_e) { /* the machine is restarting - try again next round */ }
+}
+setInterval(checkPageVersion, VERSION_CHECK_SECONDS * 1000);
 
 fetch('machine.json', { cache: 'no-store' })
   .then((r) => r.json())

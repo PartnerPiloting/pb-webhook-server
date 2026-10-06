@@ -97,9 +97,6 @@ if ! swapon --show | grep -q .; then
   grep -q swappiness /etc/sysctl.conf || echo "vm.swappiness=10" >> /etc/sysctl.conf
 fi
 
-echo "== a browser, so LH can open help/verification links =="
-apt-get install -y -qq firefox 2>/dev/null || true
-
 echo "== headless X: dummy monitor 1920x1080 =="
 mkdir -p /etc/X11/xorg.conf.d
 cat > /etc/X11/xorg.conf.d/10-dummy.conf <<'EOF'
@@ -248,6 +245,10 @@ apt-get install -y -qq /tmp/linked-helper.deb
 LH_BIN="$(command -v linked-helper || echo /opt/linked-helper/linked-helper)"
 [ -x "$LH_BIN" ] || LH_BIN="$(dpkg -L linked-helper 2>/dev/null | grep -E '/linked-helper$' | head -1)"
 echo "LH binary: $LH_BIN"
+
+echo "== Firefox - Mozilla's own, so 'Sign in with Google' gets back to Linked Helper =="
+# Ubuntu's Snap Firefox cannot hand the linked-helper:// link back (Matthew Bulat, 6 Oct 2026).
+LH_USER="$LH_USER" bash "$(cd "$(dirname "$0")" && pwd)/lh-firefox.sh"
 
 echo "== machine config =="
 cat > /etc/linked-helper-machine.conf <<EOF
