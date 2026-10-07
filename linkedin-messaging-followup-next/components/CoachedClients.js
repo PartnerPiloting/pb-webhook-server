@@ -265,8 +265,8 @@ const CoachedClients = () => {
     const tasks = d.data?.tasks || [];
     const steps = d.data?.preflight?.steps || [];
     const warnings = d.data?.preflight?.warnings || [];
-    const MARK = { done: 'text-green-700', owed: 'text-amber-700', manual: 'text-gray-500' };
-    const WORD = { done: 'DONE', owed: 'OWED', manual: 'MANUAL' };
+    const MARK = { done: 'text-green-700', owed: 'text-amber-700', manual: 'text-gray-500', unknown: 'text-slate-500' };
+    const WORD = { done: 'DONE', owed: 'OWED', manual: 'MANUAL', unknown: "CAN'T CHECK" };
     return (
       <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 grid grid-cols-1 md:grid-cols-2 gap-5">
         <div className="flex flex-col gap-3">

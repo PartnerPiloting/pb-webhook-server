@@ -13,6 +13,9 @@ Ask only if genuinely ambiguous.
   lines, every one of them - never from memory notes or a connector alone. Notes go stale the
   moment a session happens; the preflight reads the live record. (7 Oct 2026: a status answered
   from notes missed Roland's missing recorder, which the preflight lists as step 7 OWED.)
+  Run it ON THE SERVER as a Render one-off job (memory: reference_render_jobs_exec) - Guy's laptop
+  has no database, so a local run marks steps 3, 6 and 9 "CAN'T CHECK". Never report a CAN'T CHECK
+  step as missing.
 - **PRE** - a session is coming up (usually tomorrow or today). Output: record fixed, agenda, pre-session email draft.
 - **LIVE** - Guy is on the call now, narrating ("we're at step 3", "he just clicked the link"). Act immediately, answer tersely, fix records live.
 - **WRAP** - the session just happened. Output: state updated, follow-up email draft, owed-items list.

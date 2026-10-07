@@ -14,7 +14,7 @@
 // (Steps 0-14 were renumbered 2026-09-06.) MANUAL steps
 // cannot be probed from here - their proof lives on the client's screen - so they come back as
 // reminders and never as 'done'. Returns:
-//   { clientId, clientName, steps: [{ n, name, verdict: 'done'|'owed'|'manual', evidence }],
+//   { clientId, clientName, steps: [{ n, name, verdict: 'done'|'owed'|'manual'|'unknown', evidence }],
 //     warnings: [string] }
 
 const cs = require('./clientService');
@@ -48,6 +48,7 @@ async function runPreflight(clientId) {
   const DONE = 'done';
   const OWED = 'owed';
   const MANUAL = 'manual';
+  const UNKNOWN = 'unknown'; // this run could not reach the evidence - never reported as owed
 
   // ---- STEP 0: what the join page left behind ---------------------------------
   try {
@@ -317,7 +318,37 @@ async function runPreflight(clientId) {
     step(16, 'reconnect: list on', OWED, `probe failed: ${e.message}`);
   }
 
-  return { clientId, clientName: client.clientName, steps, warnings };
+  // ---- CAN'T CHECK beats OWED (7 Oct 2026) ----------------------------------------
+  // Run somewhere without the database (Guy's laptop has no DATABASE_URL) the store probes come
+  // back empty, and "nothing found" printed as OWED - Roland's 27 instructions read as 0 and his
+  // working extension as missing. A step whose evidence this run could not reach is never OWED:
+  // it says so, and so does every warning that leaned on it.
+  const reach = {
+    database: present(process.env.DATABASE_URL),
+    unipile: present(process.env.UNIPILE_API_KEY) && present(process.env.UNIPILE_DSN),
+  };
+  const NEEDS = { 3: 'unipile', 6: 'database', 9: 'database', 15: 'database' }; // 16 is judged from the record (Reconnect = Yes)
+  const unreachable = new Set();
+  for (const s of steps) {
+    if (s.verdict !== OWED) continue;
+    const missing = NEEDS[s.n] && !reach[NEEDS[s.n]] ? NEEDS[s.n] : null;
+    const probeFailed = /^probe failed:/.test(String(s.evidence || ''));
+    if (!missing && !probeFailed) continue;
+    s.verdict = UNKNOWN;
+    s.evidence = missing
+      ? `can't check from here - no ${missing === 'database' ? 'database' : 'Unipile'} connection on this machine. Run it on the server (a Render one-off job) for the real answer.`
+      : `can't check - ${s.evidence}`;
+    unreachable.add(s.n);
+  }
+  // Step 7 can be DONE on the record alone, but its filed count comes from the store.
+  const s7 = steps.find((x) => x.n === 7);
+  if (!reach.database && s7 && s7.verdict === DONE) { s7.evidence += ' (filed count not checkable here - no database)'; unreachable.add(7); }
+  const kept = warnings.filter((w) => { const m = /^step (\d+)/i.exec(w); return !(m && unreachable.has(Number(m[1]))); });
+  if (unreachable.size) {
+    kept.unshift(`steps ${[...unreachable].join(', ')} could NOT be fully checked from here (no ${reach.database ? 'Unipile' : 'database'} connection) - read them as unknown, never as missing. Run it on the server for the real answer.`);
+  }
+
+  return { clientId, clientName: client.clientName, steps, warnings: kept };
 }
 
 module.exports = { runPreflight };

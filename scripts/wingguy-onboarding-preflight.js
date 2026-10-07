@@ -14,7 +14,7 @@ require('dotenv').config();
 
 const { runPreflight } = require('../services/onboardingPreflight');
 
-const MARK = { done: '✅ DONE  ', owed: '👉 OWED  ', manual: '○ MANUAL' };
+const MARK = { done: '✅ DONE  ', owed: '👉 OWED  ', manual: '○ MANUAL', unknown: "❔ CAN'T CHECK" };
 
 const clientId = process.argv[2];
 if (!clientId) {
