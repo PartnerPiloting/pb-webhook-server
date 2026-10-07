@@ -652,11 +652,14 @@ Granola captures on the client's own computer - no bot - so it works on any plat
 are a guest, not the host. The pipe is live and per-client (own key, own webhook, own secret).
 
 **The client does:** gets on Granola (granola.ai) - **the API key needs Granola's Business plan**,
-check before promising anything - and creates an **API key** in Granola's settings.
+check before promising anything - creates an **API key** in Granola's settings, and pastes it into
+their portal: **Settings -> Your Meeting Recorder -> Granola -> Connect**. Wingguy tests the key,
+registers its webhook with Granola and stores the signing secret in the same step - you get the
+"Granola: <client> is connected" email.
 
-**You do:**
+**You do:** nothing, usually. Fallback only (they cannot use the portal):
 
-- [ ] Paste the key into the **Granola API Key** field on their row.
+- [ ] Paste the key into the **Granola API Key** field on their row, and set **Transcript Provider** = Granola.
 - [ ] Run the registration script (Render one-off job):
       `node scripts/register-granola-webhook.js --client=<Client-ID>`. It prints a **signing
       secret, shown once** - paste it into **Granola Webhook Secret** on their row. The
@@ -677,7 +680,13 @@ straight swap, and their phone app covers face-to-face meetings too.
 its own docs were wrong on two counts that day - trust what is on the client's screen over what
 is written here, and update this when it drifts.**
 
-**Before the call (you):** mint the signing secret yourself, 16-32 chars, and have it ready. Do
+**The portal does most of this now (7 Oct 2026):** the client pastes their Fireflies API key into
+**Settings -> Your Meeting Recorder -> Fireflies -> Connect**. Wingguy tests it, mints the signing
+secret, sets Transcript Provider, and shows them the webhook link and secret with Copy buttons and
+the Fireflies steps below. Walk them through that last step on the call. The manual route below is
+the fallback.
+
+**Before the call (you, fallback only):** mint the signing secret yourself, 16-32 chars, and have it ready. Do
 not make the client invent one live.
 
 **The client does:**

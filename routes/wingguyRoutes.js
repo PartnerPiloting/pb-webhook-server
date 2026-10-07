@@ -1286,78 +1286,122 @@ module.exports = function mountWingguy(app) {
     }
   });
 
-  // --- "Your meeting recorder" - portal self-service for the Fathom API key ---------------------
-  // Same shape as the Claude key: write-only value, masked status, tested against Fathom BEFORE it
-  // is stored, so the client sees proof ("your last recording was ...") rather than "saved". The
-  // coach is emailed when a client connects. See services/fathomKey.js.
+  // --- "Your meeting recorder" - portal self-service for the recorder key ----------------------
+  // Fathom, Granola or Fireflies. Same shape as the Claude key: write-only value, masked status,
+  // tested with the recorder BEFORE anything is stored, so the client sees proof rather than
+  // "saved". Granola's webhook is registered and its secret stored in the same step; Fireflies
+  // gets a minted secret plus our URL to paste on their side. The coach is emailed on connect.
+  // See services/recorderKeys.js.
 
-  const fathomKey = require('../services/fathomKey');
+  const recorderKeys = require('../services/recorderKeys');
 
-  const fathomStatus = (key, lastRecording) => ({
-    ok: true,
-    hasKey: !!String(key || '').trim(),
-    masked: fathomKey.maskFathomKey(key),
-    lastRecording: lastRecording || null,
-  });
+  function recorderStatus(client, lastRecording, working) {
+    const provider = recorderKeys.currentProvider(client);
+    const p = recorderKeys.PROVIDERS[provider];
+    const key = String(client[p.clientKey] || '').trim();
+    const out = { ok: true, provider, label: p.label, hasKey: !!key, masked: recorderKeys.maskKey(key), lastRecording: lastRecording || null, working: working === undefined ? null : working };
+    // Fireflies is the one recorder where the client pastes OUR values into THEIR settings.
+    if (provider === 'fireflies' && key) {
+      out.webhookUrl = recorderKeys.webhookUrl('fireflies', client.clientId);
+      out.webhookSecret = String(client.firefliesWebhookSecret || '');
+    }
+    return out;
+  }
 
-  router.get('/setup/fathom-key', async (req, res) => {
-    let client = req.client;
-    try { client = (await clientService.getClientById(req.client.clientId)) || req.client; } catch (_) { /* cached record */ }
-    const key = String(client.fathomApiKey || '').trim();
-    if (!key) return res.json(fathomStatus(''));
-    // Show the newest recording as live proof; a failed look still reports the key as on file.
-    const probe = await fathomKey.probeFathomKey(key);
-    return res.json({ ...fathomStatus(key, probe.ok ? probe.lastRecording : null), working: probe.ok ? true : (probe.reason === 'rejected' ? false : null) });
-  });
+  async function freshClient(req) {
+    try { return (await clientService.getClientById(req.client.clientId)) || req.client; } catch (_) { return req.client; }
+  }
 
-  router.post('/setup/fathom-key', async (req, res) => {
+  async function recorderGet(req, res) {
+    const client = await freshClient(req);
+    const provider = recorderKeys.currentProvider(client);
+    const key = String(client[recorderKeys.PROVIDERS[provider].clientKey] || '').trim();
+    if (!key) return res.json(recorderStatus(client));
+    // Live proof on every visit; a failed look still reports the key as on file.
+    const probe = await recorderKeys.probe(provider, key);
+    return res.json(recorderStatus(client, probe.ok ? probe.lastRecording : null, probe.ok ? true : (probe.reason === 'rejected' ? false : null)));
+  }
+
+  async function recorderPost(req, res, forced) {
     const tenantId = req.client.clientId;
+    const provider = forced || String((req.body && req.body.provider) || 'fathom').trim().toLowerCase();
+    const p = recorderKeys.PROVIDERS[provider];
+    if (!p) return res.status(400).json({ ok: false, error: 'Choose Fathom, Granola or Fireflies.' });
     const key = String((req.body && req.body.key) || '').trim();
     if (!key) return res.status(400).json({ ok: false, error: 'Paste your key first.' });
-    if (!fathomKey.looksLikeFathomKey(key)) {
-      return res.status(400).json({ ok: false, error: 'That does not look like a Fathom API key - copy it exactly from Fathom (Settings, then API Access). Nothing was saved.' });
+    if (!recorderKeys.looksLikeKey(key)) {
+      return res.status(400).json({ ok: false, error: `That does not look like a ${p.label} API key - copy it exactly from ${p.label}. Nothing was saved.` });
     }
-    const probe = await fathomKey.probeFathomKey(key);
+    const probe = await recorderKeys.probe(provider, key);
     if (!probe.ok) {
       if (probe.reason === 'rejected') {
-        return res.status(400).json({ ok: false, error: 'Fathom rejected that key - it looks mistyped or deleted. Copy it again from Fathom (Settings, then API Access) and paste it here. Nothing was saved.' });
+        return res.status(400).json({ ok: false, error: `${p.label} rejected that key - it looks mistyped or deleted. Copy it again from ${p.label} and paste it here. Nothing was saved.` });
       }
       if (probe.reason === 'transient') {
-        return res.status(503).json({ ok: false, error: 'Fathom is busy right now - nothing saved. Try again in a minute.' });
+        return res.status(503).json({ ok: false, error: `${p.label} is busy right now - nothing saved. Try again in a minute.` });
       }
-      logger.error(`[Wingguy] fathom-key probe failed for ${tenantId}: HTTP ${probe.status}`);
-      return res.status(500).json({ ok: false, error: 'Could not check that key with Fathom - nothing saved. Try again shortly.' });
+      logger.error(`[Wingguy] recorder-key probe failed for ${tenantId} (${provider}): HTTP ${probe.status}`);
+      return res.status(500).json({ ok: false, error: `Could not check that key with ${p.label} - nothing saved. Try again shortly.${provider === 'granola' ? ' (Granola keys need the Business plan.)' : ''}` });
     }
-    const hadKey = !!String(req.client.fathomApiKey || '').trim();
+    let secret = '';
+    if (provider === 'granola') {
+      const reg = await recorderKeys.registerGranolaWebhook(key, tenantId);
+      if (!reg.ok) {
+        logger.error(`[Wingguy] granola webhook registration failed for ${tenantId}: ${reg.error}`);
+        return res.status(500).json({ ok: false, error: 'Granola accepted the key, but would not let Wingguy connect to your notes - nothing saved. Check you are on the Granola Business plan, then try again.' });
+      }
+      secret = reg.secret;
+    } else if (provider === 'fireflies') {
+      secret = recorderKeys.mintFirefliesSecret();
+    }
+    const before = recorderKeys.currentProvider(req.client);
+    const hadKey = !!String(req.client[p.clientKey] || '').trim();
     try {
-      await clientService.updateClientFathomKey(tenantId, key);
+      await clientService.updateClientRecorderFields(tenantId, recorderKeys.connectFields(provider, key, secret));
     } catch (e) {
-      logger.error(`[Wingguy] fathom-key save failed for ${tenantId}: ${e.message}`);
-      return res.status(500).json({ ok: false, error: 'The key checked out with Fathom but could not be saved. Try again shortly.' });
+      logger.error(`[Wingguy] recorder-key save failed for ${tenantId} (${provider}): ${e.message}`);
+      return res.status(500).json({ ok: false, error: `The key checked out with ${p.label} but could not be saved. Try again shortly.` });
     }
-    logger.info(`[Wingguy] fathom-key ${hadKey ? 'replaced' : 'saved'} for ${tenantId} (…${key.slice(-4)})${pageName(req) ? ` by ${pageName(req)}` : ''}`);
+    logger.info(`[Wingguy] recorder-key ${provider} ${hadKey ? 'replaced' : 'saved'} for ${tenantId} (…${key.slice(-4)})${pageName(req) ? ` by ${pageName(req)}` : ''}`);
     // Tell the coach - this used to be their job, so they should know it is done.
     try {
       const who = req.client.clientName || tenantId;
       const last = probe.lastRecording;
-      const lastLine = last ? `Their newest Fathom recording is "${last.title}"${last.at ? ` (${String(last.at).slice(0, 10)})` : ''}.` : 'Their Fathom account has no recordings yet, so the first call they record will be the proof.';
-      const text = `${who} ${hadKey ? 'replaced' : 'added'} their Fathom key in the portal, and Fathom accepted it.\n\n${lastLine}\n\nNothing needed from you - their recorded calls now file into Wingguy by themselves, within about 5 minutes of each call ending.`;
-      await require('../services/emailNotificationService').sendAlertEmail(`Fathom: ${who} is connected`, `<p>${text.replace(/\n\n/g, '</p><p>')}</p>`, null, { text });
-    } catch (e) { logger.warn(`[Wingguy] fathom-key coach email failed for ${tenantId}: ${e.message}`); }
-    return res.json({ ...fathomStatus(key, probe.lastRecording), working: true });
-  });
+      const lines = [`${who} ${hadKey ? 'replaced' : 'added'} their ${p.label} key in the portal, and ${p.label} accepted it.${before !== provider ? ` (Their recorder was ${recorderKeys.PROVIDERS[before].label} - that connection has been removed.)` : ''}`];
+      if (last) lines.push(`Their newest ${p.label} recording is "${last.title}"${last.at ? ` (${String(last.at).slice(0, 10)})` : ''}.`);
+      if (provider === 'fathom') lines.push('Nothing needed from you - their recorded calls now file into Wingguy by themselves, within about 5 minutes of each call ending.');
+      if (provider === 'granola') lines.push('Wingguy registered its webhook with Granola and stored the signing secret - nothing needed from you. Their next Granola note will file by itself.');
+      if (provider === 'fireflies') lines.push('One step is still theirs: pasting the webhook link and signing secret (shown on their page) into Fireflies - Settings, Webhooks. Until they do, nothing arrives. Fireflies only sends meetings they organise.');
+      const text = lines.join('\n\n');
+      await require('../services/emailNotificationService').sendAlertEmail(`${p.label}: ${who} is connected`, `<p>${text.replace(/\n\n/g, '</p><p>')}</p>`, null, { text });
+    } catch (e) { logger.warn(`[Wingguy] recorder-key coach email failed for ${tenantId}: ${e.message}`); }
+    const after = { ...req.client, transcriptProvider: p.label, [p.clientKey]: key };
+    if (provider === 'fireflies') after.firefliesWebhookSecret = secret;
+    return res.json(recorderStatus(after, probe.lastRecording, true));
+  }
 
-  router.delete('/setup/fathom-key', async (req, res) => {
+  async function recorderDelete(req, res, forced) {
     const tenantId = req.client.clientId;
+    const client = await freshClient(req);
+    const provider = forced || recorderKeys.currentProvider(client);
     try {
-      await clientService.updateClientFathomKey(tenantId, '');
-      logger.info(`[Wingguy] fathom-key removed for ${tenantId}${pageName(req) ? ` by ${pageName(req)}` : ''}`);
-      return res.json(fathomStatus(''));
+      await clientService.updateClientRecorderFields(tenantId, recorderKeys.disconnectFields(provider));
+      logger.info(`[Wingguy] recorder-key ${provider} removed for ${tenantId}${pageName(req) ? ` by ${pageName(req)}` : ''}`);
+      const p = recorderKeys.PROVIDERS[provider];
+      return res.json(recorderStatus({ ...client, [p.clientKey]: '' }));
     } catch (e) {
-      logger.error(`[Wingguy] fathom-key removal failed for ${tenantId}: ${e.message}`);
-      return res.status(500).json({ ok: false, error: 'Could not remove the key. Try again shortly.' });
+      logger.error(`[Wingguy] recorder-key removal failed for ${tenantId}: ${e.message}`);
+      return res.status(500).json({ ok: false, error: 'Could not disconnect. Try again shortly.' });
     }
-  });
+  }
+
+  router.get('/setup/recorder-key', recorderGet);
+  router.post('/setup/recorder-key', (req, res) => recorderPost(req, res));
+  router.delete('/setup/recorder-key', (req, res) => recorderDelete(req, res));
+  // The first, Fathom-only door (same day) - kept so a page loaded before the deploy still works.
+  router.get('/setup/fathom-key', recorderGet);
+  router.post('/setup/fathom-key', (req, res) => recorderPost(req, res, 'fathom'));
+  router.delete('/setup/fathom-key', (req, res) => recorderDelete(req, res, 'fathom'));
 
   // --- "How your Wingguy works" — the browse + change + add doors (stage 3) ---------------------
   // The page shows every instruction in plain English and lets the client push back on any of

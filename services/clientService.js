@@ -1838,18 +1838,17 @@ async function updateClientAnthropicKey(clientId, key) {
 }
 
 /**
- * Set or clear a client's Fathom API key (portal self-service, 7 Oct 2026 - services/fathomKey.js).
- * The caller has already tested the key against Fathom. Pass '' to remove it.
+ * Write a client's recorder fields (portal self-service, 7 Oct 2026 - services/recorderKeys.js
+ * builds the fields; the caller has already tested the key with the recorder).
  */
-async function updateClientFathomKey(clientId, key) {
+async function updateClientRecorderFields(clientId, fields) {
     const base = initializeClientsBase();
     const client = await getClientById(clientId);
     if (!client) throw new Error(`Client ${clientId} not found`);
-    const clean = String(key || '').trim();
-    await base('Clients').update([{ id: client.id, fields: { 'Fathom API Key': clean } }]);
+    await base('Clients').update([{ id: client.id, fields }], { typecast: true });
     clientsCache = null;
     clientsCacheTimestamp = null;
-    logger.info(`Fathom key ${clean ? 'updated' : 'removed'} for client ${clientId} (portal self-service)`);
+    logger.info(`Recorder fields updated for client ${clientId} (portal self-service): ${Object.keys(fields).join(', ')}`);
     return true;
 }
 
@@ -1885,7 +1884,7 @@ async function noteClientKeyFailure(clientId, reason) {
 }
 
 module.exports = {
-    updateClientFathomKey,
+    updateClientRecorderFields,
     getAllClients,
     getAllActiveClients,
     getActiveClients,  // Add the new function

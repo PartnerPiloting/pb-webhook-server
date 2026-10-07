@@ -9,7 +9,7 @@ import AIEditModal from './AIEditModal';
 import HelpButton from './HelpButton';
 import RescorePanel from './RescorePanel';
 import ClaudeKeySection from './ClaudeKeySection';
-import FathomKeySection from './FathomKeySection';
+import RecorderKeySection from './RecorderKeySection';
 import { ArrowPathIcon } from '@heroicons/react/24/outline';
 
 // Component that uses useSearchParams wrapped in Suspense
@@ -732,7 +732,7 @@ const SettingsWithParams = () => {
                 </div>
               </div>
 
-              {/* Your meeting recorder (Fathom key self-service, 7 Oct 2026) */}
+              {/* Your meeting recorder (Fathom / Granola / Fireflies key self-service, 7 Oct 2026) */}
               <div
                 className="bg-white rounded-lg border border-gray-200 p-6 hover:border-blue-300 cursor-pointer transition-colors"
                 onClick={() => setCurrentView('recorder')}
@@ -748,10 +748,10 @@ const SettingsWithParams = () => {
                   </div>
                 </div>
                 <p className="text-sm text-gray-500 mb-4">
-                  Connect Fathom so your calls come into Wingguy by themselves - for drafting from the call and prep before the next one.
+                  Connect Fathom, Granola or Fireflies so your calls come into Wingguy by themselves - for drafting from the call and prep before the next one.
                 </p>
                 <div className="flex items-center text-sm text-rose-600 font-medium">
-                  Connect Fathom →
+                  Connect Recorder →
                 </div>
               </div>
 
@@ -845,7 +845,7 @@ const SettingsWithParams = () => {
     );
   }
 
-  // Your meeting recorder view (FathomKeySection)
+  // Your meeting recorder view (RecorderKeySection)
   if (currentView === 'recorder') {
     return (
       <div className="space-y-6">
@@ -861,7 +861,7 @@ const SettingsWithParams = () => {
             <div>
               <h2 className="text-2xl font-bold text-gray-900">Your Meeting Recorder</h2>
               <p className="mt-1 text-sm text-gray-500">
-                Fathom records your calls; Wingguy reads the transcripts so you never have to hold a call in your head
+                Your recorder captures your calls; Wingguy reads the transcripts so you never have to hold a call in your head
               </p>
             </div>
           </div>
@@ -871,9 +871,9 @@ const SettingsWithParams = () => {
           <div className="bg-white rounded-lg border border-gray-200 p-6">
             <div className="flex items-center space-x-3 mb-4">
               <MicrophoneIcon className="h-6 w-6 text-rose-600" />
-              <h3 className="text-lg font-semibold text-gray-900">Connect Fathom</h3>
+              <h3 className="text-lg font-semibold text-gray-900">Connect your recorder</h3>
             </div>
-            <FathomKeySection authHeaders={claudeKeyAuthHeaders} />
+            <RecorderKeySection authHeaders={claudeKeyAuthHeaders} />
           </div>
         </div>
       </div>
