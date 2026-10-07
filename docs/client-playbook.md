@@ -1109,6 +1109,47 @@ Picture: https://knowaguy.com.au/thanks-for-connecting-example
 
 ---
 
+## CAMPAIGN INSTRUCTIONS - A DIFFERENT THANK-YOU FOR EACH CAMPAIGN
+
+Most people run one campaign, and one way of thanking people is all they need. But once you're
+running two - say one aimed at founders and one at businesses supplying into defence - the
+thanks-for-connecting that suits one crowd can fall flat with the other. That's what campaign
+instructions are for.
+
+**How Wingguy knows where someone came from.** Linked Helper records which campaign brought each
+person in, and that name sits on their record in your database. When you type /wg, Wingguy checks it
+first. If you've given that campaign its own instructions, it uses them for that person. If you
+haven't, it uses your normal instructions - which is exactly right for most people.
+
+**Setting one up.** Do it in Claude, in plain words:
+
+> "For my Linked Helper campaign called *Defence suppliers*, my thanks-for-connecting should mention
+> sovereign capability and audit readiness, and keep it short."
+
+Claude shows you what it's about to save, next to what you've got now, and saves nothing until you
+say yes. From then on, every /wg on someone from that campaign uses it. Check what's set any time -
+"what instructions do I have for my Defence suppliers campaign?" - and change or remove it the same
+way.
+
+**Use the campaign's name exactly as Linked Helper spells it.** Copy it straight from there. Wingguy
+matches on that name and never guesses - "Defence" won't find a campaign called "Defence suppliers -
+Qld". That's deliberate: a near miss writes the message for the wrong crowd, and the person reading
+it can tell.
+
+**Only write what's different.** Your voice, your sign-off, the words you'd never use - those already
+carry across every campaign. A campaign instruction should be the one or two things that change for
+that crowd: what you lead with, what you're curious about, what you'd mention. Keep it short.
+
+**How to tell it's working.** When /wg writes the draft, the label at the top of the Wingguy window
+shows which campaign it used - your campaign's name, or "General" when it's on your normal
+instructions. If it says General for someone you know came from that campaign, the names don't
+match - check the spelling.
+
+One thing it doesn't do yet: the quick reply to someone who's already written back uses your normal
+instructions. By then the conversation matters more than the campaign anyway.
+
+---
+
 ## GETTING THE MEETING IN THE DIARY
 
 They've said yes to a Zoom, probably with something like "sure, send me some times."
