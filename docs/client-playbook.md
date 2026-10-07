@@ -1121,6 +1121,10 @@ person in, and that name sits on their record in your database. When you type /w
 first. If you've given that campaign its own instructions, it uses them for that person. If you
 haven't, it uses your normal instructions - which is exactly right for most people.
 
+**See your campaigns first.** In Claude, ask "what campaigns do I have?" It lists every Linked
+Helper campaign your recent leads came from - exactly as Linked Helper spells it - how many people
+each one brought in, and which already have their own instructions.
+
 **Setting one up.** Do it in Claude, in plain words:
 
 > "For my Linked Helper campaign called *Defence suppliers*, my thanks-for-connecting should mention
@@ -1131,10 +1135,10 @@ say yes. From then on, every /wg on someone from that campaign uses it. Check wh
 "what instructions do I have for my Defence suppliers campaign?" - and change or remove it the same
 way.
 
-**Use the campaign's name exactly as Linked Helper spells it.** Copy it straight from there. Wingguy
-matches on that name and never guesses - "Defence" won't find a campaign called "Defence suppliers -
-Qld". That's deliberate: a near miss writes the message for the wrong crowd, and the person reading
-it can tell.
+**You don't need the exact name - Claude checks it with you.** Wingguy matches on the campaign's
+name exactly and never guesses, because a near miss writes the message for the wrong crowd and the
+person reading it can tell. So rather than trusting what you typed, Claude shows you your list and
+you pick the one you mean.
 
 **Only write what's different.** Your voice, your sign-off, the words you'd never use - those already
 carry across every campaign. A campaign instruction should be the one or two things that change for
@@ -1142,8 +1146,8 @@ that crowd: what you lead with, what you're curious about, what you'd mention. K
 
 **How to tell it's working.** When /wg writes the draft, the label at the top of the Wingguy window
 shows which campaign it used - your campaign's name, or "General" when it's on your normal
-instructions. If it says General for someone you know came from that campaign, the names don't
-match - check the spelling.
+instructions. If it says General for someone you know came from that campaign, ask "what campaigns do I
+have?" and check that one shows as having its own instructions.
 
 One thing it doesn't do yet: the quick reply to someone who's already written back uses your normal
 instructions. By then the conversation matters more than the campaign anyway.

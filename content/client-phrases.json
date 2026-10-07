@@ -120,6 +120,11 @@
       "phrase": "set up my reconnect list",
       "tool": "wingguy_reconnect_setup",
       "where": ["docs/client-tour.md"]
+    },
+    {
+      "phrase": "what campaigns do I have?",
+      "tool": "wingguy_campaigns",
+      "where": ["docs/client-playbook.md"]
     }
   ],
   "near_misses": [

@@ -682,7 +682,7 @@ async function runReferrals(args = {}, tenant = TENANT) {
 const LAYER_DESC = 'Rule layer: "client" (this tenant\'s own rule — the default) · "foundation" (platform-wide, ALL tenants read it — reserved for Guy/platform calls) · "template" (the de-personalised seed for new clients; not runtime-read). If it\'s unclear whether a change is personal or platform-wide, ASK the human — never guess foundation.';
 const DIVERGENCE_DESC = '"active" (default) = everything currently applying. "divergence" = how this client differs from the shared set, in TWO sections: CHANGED (a shared instruction they replaced with their own version - both bodies side by side, flagged if the standard has moved since) and ADDED (their own instructions with no shared version behind them - shown in full, newest first). Other filters are ignored for divergence.';
 const TIER_DESC = 'FOUNDATION ONLY. "standard" (default) = shared and improved centrally, but a client MAY save their own version, which then replaces it for them. "locked" = a guardrail: no client can override it, ever. Locking is deliberate and rare — never set it without the human explicitly asking. Omitted on an edit = the existing tier is kept (editing a locked rule\'s wording never unlocks it).';
-const CAMPAIGN_DESC = 'Campaign slug (e.g. "tks", "frac"). A campaign version of a rule_key OVERRIDES the generic version when that campaign is in play; with no campaign (or no campaign version) the generic applies. Omit for the generic/fallback version. Campaign is detected FIRST from the Linked Helper campaign that sent the lead, then from the thread (the user\'s own prior outbound vs the campaign-markers rule); an explicit campaign named by the human always wins. INSTRUCTIONS FOR ONE LINKED HELPER CAMPAIGN: the slug is that campaign\'s Linked Helper name lowercased, with every run of non-letters/digits turned into a single hyphen ("Defence suppliers - Qld" -> "defence-suppliers-qld") - tagging an instruction with it is all it takes for /wg to use it on that campaign\'s leads. Ask the human for the exact Linked Helper campaign name; never guess it.';
+const CAMPAIGN_DESC = 'Campaign slug (e.g. "tks", "frac"). A campaign version of a rule_key OVERRIDES the generic version when that campaign is in play; with no campaign (or no campaign version) the generic applies. Omit for the generic/fallback version. Campaign is detected FIRST from the Linked Helper campaign that sent the lead, then from the thread (the user\'s own prior outbound vs the campaign-markers rule); an explicit campaign named by the human always wins. INSTRUCTIONS FOR ONE LINKED HELPER CAMPAIGN: call wingguy_campaigns FIRST, show the human the list and let them pick, then pass that campaign\'s tag exactly as listed - tagging an instruction with it is all it takes for /wg to use it on that campaign\'s leads. Never type or guess a tag yourself: matching is exact, and a near miss silently does nothing.';
 const CONTEXT_DESC = `Where the rule applies: ${store.CONTEXTS.join(' | ')}`;
 const TYPE_DESC = `What kind of rule: ${store.RULE_TYPES.join(' | ')}`;
 
@@ -698,7 +698,26 @@ const VOCAB = ' WORDING: when speaking to the human, call these their "instructi
 // over as a photocopy, with nothing in between.
 const THREE_KINDS = ' THREE KINDS OF INSTRUCTION: (1) FIXED — shared guardrails that cannot be changed by anyone (layer=foundation, tier=locked). (2) STANDARD — shared, and improved centrally so everyone gets better over time, BUT the client can save their own version, which then replaces it for them alone (layer=foundation, tier=standard). (3) YOURS — the client\'s own, nobody else has it (layer=client). When a client has their own version of a STANDARD instruction, only THEIR version applies — the two never stack.';
 
+const CAMPAIGNS_DAYS_DESC = 'How far back to read leads, in days (default 120, max 365).';
+const CAMPAIGNS_MAX_DESC = 'Most leads to read, newest first (default 1000, max 2000).';
+
 const TOOL_DEFS = [
+  {
+    name: 'wingguy_campaigns',
+    description: 'Lists the Linked Helper campaigns this client\'s leads came from - each campaign\'s exact name, how many recent leads it brought in, its tag, and whether it already has its own instructions. CALL IT FIRST whenever the human wants instructions for one campaign ("for my X campaign..."), asks "what campaigns do I have?", or names a campaign - then show them the list and let THEM pick. Its tag is the campaign value for wingguy_rule_propose / wingguy_rule_get. Campaign matching is exact, so never type a tag yourself. Read-only.' + VOCAB,
+    zodSchema: {
+      days: z.number().optional().describe(CAMPAIGNS_DAYS_DESC),
+      max: z.number().optional().describe(CAMPAIGNS_MAX_DESC),
+    },
+    jsonSchema: {
+      type: 'object',
+      properties: {
+        days: { type: 'number', description: CAMPAIGNS_DAYS_DESC },
+        max: { type: 'number', description: CAMPAIGNS_MAX_DESC },
+      },
+    },
+    run: (args, tenant) => require('./lhCampaignNames').runListCampaigns(args, tenant),
+  },
   {
     name: 'wingguy_rules_list',
     description: 'Lists the active Wingguy rules (the shared rulebook both surfaces read), grouped by KIND and showing exactly what reaches the model. Start here when the user says "update my instructions" / "update my rules", asks what their instructions say, or you need to find a rule\'s key. Filterable by context, layer, or campaign. USE view="divergence" for "what have I changed?" / "what\'s different about mine?" / "show me standard vs mine" / "what have I added?" — it answers in two parts: what they CHANGED (their version next to the current shared one, flagged if the standard has moved on since) and what they ADDED (their own instructions with no shared version behind them, in full, newest first). Additions matter: each one is something the shared set did not cover. AMBIGUITY: if the human says "review my instructions"/"review the rules" it could mean this OR reviewing their recent draft edits (wingguy_edit_review) — ask ONE short question offering both, with counts if you have them; but if there are no pending edits, skip the question and just list.' + VOCAB + THREE_KINDS,
