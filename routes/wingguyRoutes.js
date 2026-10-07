@@ -488,6 +488,33 @@ async function enrichProfileFromPortal(req, profile = {}) {
   }
 }
 
+// The Linked Helper campaign that sent this lead (campaign_name in {Raw Profile Data}), for
+// campaign detection on surfaces that don't run the full enrich (POST /draft-thanks). READ-ONLY and
+// exact profile-URL match only - a name match could hand the draft another person's campaign.
+// Never throws: no match or an error means no campaign name, and detection falls through to the
+// marker phrases exactly as before.
+async function attachLhCampaign(req, profile = {}) {
+  try {
+    if (!profile || profile.lhCampaignName || profile.rawProfileData) return profile;
+    if (!req.client || !req.client.airtableBaseId) return profile;
+    const slug = canonicalLinkedinSlug(String(profile.profileUrl || ''));
+    if (!slug) return profile;
+    const base = clientService.getClientBase(req.client.airtableBaseId);
+    if (!base) return profile;
+    const candidates = await base('Leads').select({
+      filterByFormula: slugPrefilterFormula(slug),
+      fields: ['LinkedIn Profile URL', 'Raw Profile Data'],
+      maxRecords: 50,
+    }).firstPage();
+    const rec = findExactSlugMatch(candidates, slug)[0];
+    const raw = rec && rec.fields && rec.fields['Raw Profile Data'];
+    return raw ? { ...profile, rawProfileData: raw } : profile;
+  } catch (e) {
+    logger.warn(`[Wingguy] campaign lookup failed (detecting without it): ${e.message}`);
+    return profile;
+  }
+}
+
 module.exports = function mountWingguy(app) {
   const router = express.Router();
   logger.info(`[Wingguy] Mounted. ENABLED=${ENABLED}, model=${WINGGUY_DRAFT_MODEL_ID}`);
@@ -606,7 +633,7 @@ module.exports = function mountWingguy(app) {
     const tenantId = req.client.clientId;
     const autoDetected = !requestedTemplateId || requestedTemplateId === 'auto';
     const templateId = autoDetected
-      ? await rulesSource.detectTemplate(profile, conversation, { tenantId })
+      ? await rulesSource.detectTemplate(await attachLhCampaign(req, profile), conversation, { tenantId })
       : requestedTemplateId;
     const template = await rulesSource.getTemplate(templateId, { tenantId });
     if (!template) {

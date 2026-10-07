@@ -116,6 +116,30 @@ const SYNTH_VARS = [{ var_key: 'spelling', value: 'Australian' }];
     });
   });
 
+  await check('Linked Helper campaign names: parsed per slug, marker parser unaffected', () => {
+    const body = '**blue** markers:\n- "blue skies ahead"\n\n**blue** linked helper campaigns:\n- "Blue Sky Search"\n- "Blue v2"\n\n**red** linked helper campaign:\n- "Seeing Red"';
+    assert.deepStrictEqual(source.parseLhCampaignNames(body), { blue: ['blue sky search', 'blue v2'], red: ['seeing red'] });
+    assert.deepStrictEqual(source.parseCampaignMarkers(body), { blue: ['blue skies ahead'] });
+  });
+
+  await check('campaign name -> slug; campaign_name read from Raw Profile Data (JSON, object, clipped)', () => {
+    assert.strictEqual(source.campaignSlugFromName('Defence suppliers - Qld'), 'defence-suppliers-qld');
+    assert.strictEqual(source.campaignSlugFromName('  '), '');
+    assert.strictEqual(source.lhCampaignNameOf({ rawProfileData: JSON.stringify({ id: 'x', campaign_name: 'Blue Sky Search' }) }), 'Blue Sky Search');
+    assert.strictEqual(source.lhCampaignNameOf({ rawProfileData: { campaign_name: 'Obj Campaign' } }), 'Obj Campaign');
+    assert.strictEqual(source.lhCampaignNameOf({ rawProfileData: '{"a":1,"campaign_name":"Clipped One","summary":"cut off he' }), 'Clipped One');
+    assert.strictEqual(source.lhCampaignNameOf({ lhCampaignName: 'Explicit' }), 'Explicit');
+    assert.strictEqual(source.lhCampaignNameOf({}), '');
+  });
+
+  await check('campaignFromLhName: registry mapping, else tagged slug, else null', () => {
+    const lhNames = { blue: ['blue sky search'] };
+    assert.strictEqual(source.campaignFromLhName('Blue Sky Search', { lhNames, tagged: [] }), 'blue');
+    assert.strictEqual(source.campaignFromLhName('Defence Suppliers', { lhNames, tagged: ['defence-suppliers'] }), 'defence-suppliers');
+    assert.strictEqual(source.campaignFromLhName('Visit 2nd level contacts', { lhNames, tagged: ['defence-suppliers'] }), null);
+    assert.strictEqual(source.campaignFromLhName('', { lhNames, tagged: [] }), null);
+  });
+
   // -------------------------------------------------------------------------
   console.log(' store mode');
   process.env.WINGGUY_RULES_SOURCE = 'store';
@@ -148,6 +172,34 @@ const SYNTH_VARS = [{ var_key: 'spelling', value: 'Australian' }];
     const aliased = await source.getTemplate('tks');
     assert.strictEqual(aliased.id, 'generic');
     assert.strictEqual(await source.getTemplate('nope'), null);
+  });
+
+  await check('detectTemplate: the Linked Helper campaign wins over marker phrases', async () => {
+    const LH_RULES = [
+      ...SYNTH_RULES.filter((r) => r.rule_key !== 'campaign-markers'),
+      { ...SYNTH_RULES[1], body: SYNTH_RULES[1].body + '\n\n**red** linked helper campaigns:\n- "Seeing Red Search"' },
+      { rule_key: 'first-message', tenant_id: 'Guy-Wilson', layer: 'client', context: 'outreach', rule_type: 'voice', campaign: 'defence-suppliers', version: 1, body: 'Defence campaign message shape.', status: 'active' },
+    ];
+    store.__setTestPool(new FakeReadPool({ rules: LH_RULES, variables: SYNTH_VARS }));
+    try {
+      const raw = (name) => JSON.stringify({ id: 'someone', campaign_name: name });
+      // registry mapping beats a marker hit for another campaign
+      assert.strictEqual(await source.detectTemplate({ about: 'blue skies ahead', rawProfileData: raw('Seeing Red Search') }, []), 'red');
+      // no registry entry, but instructions are tagged with the name's slug
+      assert.strictEqual(await source.detectTemplate({ rawProfileData: raw('Defence Suppliers') }, []), 'defence-suppliers');
+      // an unknown campaign name never picks a campaign - falls through to markers, then generic
+      assert.strictEqual(await source.detectTemplate({ about: 'blue skies ahead', rawProfileData: raw('Visit 2nd level contacts') }, []), 'blue');
+      assert.strictEqual(await source.detectTemplate({ rawProfileData: raw('Visit 2nd level contacts') }, []), 'generic');
+      // a tagged campaign is a real template: listed, and getTemplate accepts it
+      const ids = (await source.listTemplates()).map((t) => t.id);
+      assert.deepStrictEqual(ids, ['generic', 'blue', 'defence-suppliers', 'red']);
+      assert.strictEqual((await source.getTemplate('defence-suppliers')).label, 'Defence Suppliers');
+      const blocks = await source.draftSystem('defence-suppliers');
+      assert.ok(blocks[1].text.includes('Defence campaign message shape.'), 'tagged campaign body missing');
+      assert.ok(!blocks[1].text.includes('Generic first message shape.'), 'generic body should be shadowed');
+    } finally {
+      store.__setTestPool(new FakeReadPool({ rules: SYNTH_RULES, variables: SYNTH_VARS }));
+    }
   });
 
   await check('draftSystem(blue) = [harness, rulebook (cached)]; campaign SHADOWS generic; vars resolve', async () => {

@@ -25,8 +25,10 @@
 //
 // Campaign ids: config mode keeps tks/frac. Store mode uses the seeded campaigns —
 // generic (= the old tks, campaign NULL in the store) / frac / broker / financial-planner —
-// detected from the campaign-markers rule (the registry the import drafted; edit it through
-// the door, never here). 'tks' arriving from a stale extension is aliased to generic.
+// detected from the Linked Helper campaign that sent the lead, then the campaign-markers rule
+// (the registry the import drafted; edit it through the door, never here). Any campaign tag on
+// the tenant's instructions is a campaign too. 'tks' arriving from a stale extension is aliased
+// to generic.
 
 const configTemplates = require('../config/wingguyTemplates');
 const store = require('./wingguyRulesStore');
@@ -122,17 +124,121 @@ function detectionContext(profile = {}, conversation = []) {
   ].filter(Boolean).join('\n').toLowerCase();
 }
 
-async function getCampaignMarkers(tenantId) {
+async function getCampaignMarkersBody(tenantId) {
   // shadowed: a tenant who keeps their own campaign-markers instruction over the shared one must
   // get THEIRS here, not whichever row the raw union happened to return first.
   const rules = await store.getActiveRules({ tenantId, contexts: ['global'], shadowed: true });
   const markersRule = rules.find((r) => r.rule_key === 'campaign-markers');
-  return markersRule ? parseCampaignMarkers(markersRule.body) : {};
+  return markersRule ? markersRule.body : '';
 }
 
-/** Store-mode detection: most marker matches wins; tie or no signal = generic (= correct). */
+async function getCampaignMarkers(tenantId) {
+  return parseCampaignMarkers(await getCampaignMarkersBody(tenantId));
+}
+
+// ---------------------------------------------------------------------------
+// Campaign detection from the Linked Helper campaign (2026-10-07, Ashley Knowles' question)
+// ---------------------------------------------------------------------------
+// Phrase markers only work when the coach has listed their own wording, and every client
+// starts with an empty list - so for clients, detection was always generic. But Linked Helper
+// already tells us the campaign: every lead it sends carries `campaign_name` in
+// {Raw Profile Data}. That is a fact, not a guess, so it is checked FIRST:
+//   1. the campaign-markers registry maps the Linked Helper name to a slug:
+//        **frac** linked helper campaigns:
+//        - "Fractional in profile"
+//   2. otherwise the name itself becomes the slug ("Defence suppliers" -> defence-suppliers),
+//      and it is in play only if the tenant has instructions tagged with that campaign.
+//   3. otherwise (no Linked Helper name, or one with no instructions) the marker phrases run
+//      exactly as before, then generic.
+// An unknown campaign name never picks a campaign on its own - it just falls through.
+
+/**
+ * Parse the "linked helper campaigns" sections of the campaign-markers body into
+ * { slug: [lowercased Linked Helper campaign names] }. Same section rules as parseCampaignMarkers.
+ */
+function parseLhCampaignNames(body) {
+  const out = {};
+  let current = null;
+  for (const raw of String(body || '').split('\n')) {
+    const line = raw.trim();
+    if (!line) continue;
+    const header = line.match(/^\*\*([a-z0-9-]+)\*\*\s*linked\s*helper\s*campaigns?\s*:/i);
+    if (header) {
+      current = header[1].toLowerCase();
+      if (!out[current]) out[current] = [];
+      continue;
+    }
+    const bullet = line.match(/^-\s*(.+)$/);
+    if (bullet && current) {
+      const name = bullet[1].replace(/^[\s"“”']+|[\s"“”']+$/g, '').toLowerCase();
+      if (name) out[current].push(name);
+      continue;
+    }
+    current = null;
+  }
+  return out;
+}
+
+/** "Defence suppliers - Qld" -> "defence-suppliers-qld". The tag a campaign's instructions carry. */
+function campaignSlugFromName(name) {
+  return String(name || '').toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 60)
+    .replace(/-+$/g, '');
+}
+
+/**
+ * The Linked Helper campaign that sent this lead, from the enriched profile ({Raw Profile Data},
+ * JSON string or object) or an explicit lhCampaignName. Empty string when there is none.
+ */
+function lhCampaignNameOf(profile = {}) {
+  if (profile.lhCampaignName) return String(profile.lhCampaignName).trim();
+  const raw = profile.rawProfileData;
+  if (!raw) return '';
+  if (typeof raw === 'object') return String(raw.campaign_name || '').trim();
+  try {
+    const parsed = JSON.parse(raw);
+    return String((parsed && parsed.campaign_name) || '').trim();
+  } catch (_) {
+    // A clipped or hand-edited cell is not valid JSON - read the one field we need directly.
+    const m = String(raw).match(/"campaign_name"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+    return m ? m[1].replace(/\\"/g, '"').trim() : '';
+  }
+}
+
+/** Every campaign tag the tenant's active instructions carry (their own and shared). */
+async function getTaggedCampaigns(tenantId) {
+  const rules = await store.getActiveRules({ tenantId });
+  return [...new Set(rules.map((r) => String(r.campaign || '').toLowerCase().trim()).filter(Boolean))];
+}
+
+/** Slug for this lead's Linked Helper campaign, or null when it names nothing the tenant set up. */
+function campaignFromLhName(name, { lhNames = {}, tagged = [] } = {}) {
+  const wanted = String(name || '').toLowerCase().trim();
+  if (!wanted) return null;
+  for (const [slug, names] of Object.entries(lhNames)) {
+    if (names.includes(wanted)) return slug;
+  }
+  const slug = campaignSlugFromName(wanted);
+  return slug && tagged.includes(slug) ? slug : null;
+}
+
+/**
+ * Store-mode detection. The Linked Helper campaign first (a fact); then marker phrases - most
+ * matches wins; tie or no signal = generic (= correct).
+ */
 async function detectCampaignFromStore(profile, conversation, tenantId) {
-  const markers = await getCampaignMarkers(tenantId);
+  const body = await getCampaignMarkersBody(tenantId);
+  const lhName = lhCampaignNameOf(profile || {});
+  if (lhName) {
+    const fromLh = campaignFromLhName(lhName, {
+      lhNames: parseLhCampaignNames(body),
+      tagged: await getTaggedCampaigns(tenantId),
+    });
+    if (fromLh) return fromLh;
+  }
+  const markers = parseCampaignMarkers(body);
   const haystack = detectionContext(profile, conversation);
   let best = null;
   let bestCount = 0;
@@ -161,17 +267,29 @@ function campaignLabel(slug) {
 // ---------------------------------------------------------------------------
 
 /** The quick-pick button set. Config: the config list. Store: generic + the registry's campaigns. */
+/** Every campaign the tenant has: registry entries (phrases or Linked Helper names) + tagged instructions. */
+async function knownCampaigns(tenantId) {
+  const body = await getCampaignMarkersBody(tenantId);
+  const markers = parseCampaignMarkers(body);
+  const lhNames = parseLhCampaignNames(body);
+  const tagged = await getTaggedCampaigns(tenantId);
+  const slugs = [...new Set([...Object.keys(markers), ...Object.keys(lhNames), ...tagged])]
+    .filter((slug) => slug && slug !== 'generic' && slug !== 'tks')
+    .sort();
+  return { slugs, markers, lhNames };
+}
+
 async function listTemplates({ tenantId = DEFAULT_TENANT } = {}) {
   if (getSource() === 'config') return configTemplates.listTemplates();
-  const markers = await getCampaignMarkers(tenantId);
-  const campaigns = Object.keys(markers).sort();
+  const { slugs, markers, lhNames } = await knownCampaigns(tenantId);
   return [
     { id: 'generic', label: 'General', useWhen: 'Any worthwhile new connection — the default.', detectionKeywords: [], isDefault: true },
-    ...campaigns.map((slug) => ({
+    ...slugs.map((slug) => ({
       id: slug,
       label: campaignLabel(slug),
-      useWhen: `The ${campaignLabel(slug).toLowerCase()} campaign — detected from its marker phrases in the thread.`,
-      detectionKeywords: markers[slug],
+      useWhen: `The ${campaignLabel(slug).toLowerCase()} campaign — detected from the Linked Helper campaign that sent the lead, or its marker phrases in the thread.`,
+      detectionKeywords: markers[slug] || [],
+      linkedHelperCampaigns: lhNames[slug] || [],
       isDefault: false,
     })),
   ];
@@ -192,7 +310,7 @@ async function detectTemplate(profile, conversation, { tenantId = DEFAULT_TENANT
 async function getTemplate(id, { tenantId = DEFAULT_TENANT } = {}) {
   if (getSource() === 'config') return configTemplates.getTemplate(id);
   const slug = String(id || '').toLowerCase().trim() === 'tks' ? 'generic' : String(id || '').toLowerCase().trim();
-  const valid = new Set(['generic', ...Object.keys(await getCampaignMarkers(tenantId))]);
+  const valid = new Set(['generic', ...(await knownCampaigns(tenantId)).slugs]);
   if (!valid.has(slug)) return null;
   return { id: slug, label: campaignLabel(slug), useWhen: '', detectionKeywords: [], isDefault: slug === 'generic', instructions: null, signoff: null, store: true };
 }
@@ -335,6 +453,10 @@ module.exports = {
   shadowCompare,
   // exported for tests
   parseCampaignMarkers,
+  parseLhCampaignNames,
+  campaignSlugFromName,
+  lhCampaignNameOf,
+  campaignFromLhName,
   storeCampaignArg,
   SURFACE_CONTEXTS,
   STORE_DRAFT_HARNESS,
