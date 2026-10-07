@@ -123,9 +123,9 @@ diary and your mail, so you already know what you're setting up and why.
 transcript of the call we just had" and see the job it does, you'll get it - that's not just work
 off your plate, it's the strain of holding the call in your head, gone. Then before your next call
 you'll say "prep me for my meetings" and Wingguy pulls the transcript from last time and clues you
-in. After those two moments you will not want a single transcript to ever be missed - and that's why
-we recommend Granola: it takes notes right on your computer, no bot in your calls, and it works on
-any platform, even when you're not the host. (See the expanded step before promising it.)
+in. After those two moments you will not want a single transcript to ever be missed. We use Fathom:
+free, reliable on Zoom, and you connect it yourself in two minutes - paste one key into your
+portal and it shows you your latest recording as proof. (See the expanded step before promising it.)
 
 **Step 8 - The dress rehearsal (10 minutes). [live]** We prove the whole chain works: Wingguy offers
 times for a real lead, books a test meeting, the invite arrives with your link on it, and we cancel
@@ -588,39 +588,73 @@ say" guardrails.
 
 ---
 
-## STEP 7 EXPANDED - the meeting recorder (Granola) [live]
+## STEP 7 EXPANDED - the meeting recorder (Fathom) [live]
+
+**Fathom is the standard from 7 Oct 2026** (it was Granola until Guy dropped his own Granola on
+10 Sep). Granola and Fireflies stay as alternatives for the cases below - each has its own lane.
 
 **Why this step earns its place - two moments sell it:** the first time the client says *"draft
 an email based on the transcript of the call we just had"* and sees the job it does - that's not
 just work off their plate, it's the mental strain of holding the call in their head, gone. And
 the first time they say *"prep me for my meetings"* and Wingguy pulls the transcript from last
 time and clues them in before they walk in. After those two, they will never want a transcript
-missed - which is the whole pitch for Granola: the recorder that doesn't miss.
-
-**Why Granola first:** Granola captures the meeting on the client's own computer - no bot joins
-the call. That means it works identically on Zoom, Meet and Teams, works when the client is a
-guest rather than the host, never puts an extra "participant" in the meeting for a lead to
-wonder about, and produces one tidy note per meeting. Just as important on our side: the Granola
-pipe was built per-client from day one - each client's own key, own webhook, own signing secret -
-so it's the one lane that's genuinely ready for every client.
+missed.
 
 **Say to the client:** "One more connection, and it's the sleeper hit: your meeting recorder.
-Here's what it feels like. You finish a call, and you say to Wingguy: 'draft an email based on
-the transcript of the call we just had' - and watch the job it does. That's not just work off
-your plate, it's the strain gone too: you don't have to hold the whole call in your head any
-more. Then before your next meeting you say 'prep me for my meetings' and it pulls the
-transcript from last time and clues you in. Once you've felt those two, you won't want a single
-transcript to ever be missed - and that's why we recommend Granola: it takes notes straight on
-your computer, no bot joining your calls, and it works whatever the platform - even when you're
-the guest."
+You finish a call and say to Wingguy 'draft an email based on the transcript of the call we just
+had' - and watch the job it does. Then before your next meeting you say 'prep me for my meetings'
+and it pulls the transcript from last time and clues you in. Once you've felt those two, you
+won't want a single transcript missed. We use Fathom - the free plan is all you need."
 
-**The client does (Granola):**
+**The client does (about ten minutes, on the call):**
 
-1. Gets set up on Granola (granola.ai) if they aren't already. **The API key needs Granola's
-   Business plan** - check what they're on before promising anything.
-2. In Granola's settings, creates an **API key** and gives it to you.
+1. Signs in at **fathom.video** with the **same Google or Microsoft account their calendar is
+   on** - that is the calendar Fathom watches to know which meetings to join.
+2. Connects their calendar if Fathom asks (otherwise it is in Settings).
+3. **Installs the Fathom desktop app** - Settings -> Fathom apps -> Download. The Fathom icon must
+   be sitting down by the clock. **This is the step that gets missed:** an account without the app
+   records nothing, and nobody finds out until a transcript is not there.
+4. **Connects Fathom to Wingguy themselves:** in Fathom, Settings -> scroll to **API Access** ->
+   **Add +** -> **Generate API Key** -> name it Wingguy -> copy it (shown once). Then in their
+   portal, **Settings -> Your Meeting Recorder**, paste it and press **Connect**. The steps are on
+   that page too. Direct link to send them: `https://pb-webhook-server.vercel.app/settings?token=<their token>&view=recorder`
+   ("get me <client>'s portal link" gives you the token).
 
-**You do (Granola):**
+**You do:** nothing, usually. The portal tests the key with Fathom before saving it, shows the
+client their own newest recording as proof, and emails you "Fathom: <client> is connected". From
+then on the 5-minute poller files their calls by itself - no webhook, no secret, nothing to run.
+
+- [ ] Fallback only (client cannot use the portal): they email you the key, you paste it into
+      **Fathom API Key** on their Master Clients row. Never take a key through chat.
+
+**Check it worked - prove it on the call, never send them away hoping:**
+
+- [ ] The green "Fathom is connected - your latest recording is ..." line on their Settings page.
+- [ ] Step 8: their notetaker turns up in your waiting room. Admit it; within about 5 minutes of
+      the call ending the transcript files under their name ("what was my last meeting?").
+
+**Watch out:**
+
+1. **Calendar before Fathom - the order is load-bearing.** Wingguy works out who a call was with
+   from the client's calendar, so a recorder connected before the calendar (step 2) files
+   transcripts against nobody. Never swap these steps.
+2. **Their back catalogue comes too.** The poller takes their latest 25 recordings, so earlier
+   Fathom calls file in the first few minutes. Usually a bonus - tell them it is coming.
+3. **Someone has to admit the bot.** On their own Zoom it joins itself; on someone else's call the
+   host has to let "Fathom Notetaker" in - until Fathom's bot-free version reaches Windows.
+4. **Zoom is solid; Meet and Teams are not.** Fathom's Teams bot has never fired in Guy's own store,
+   and it dropped out of a Meet call mid-way once. A client who lives in Teams or is mostly a
+   guest on other people's calls -> Granola (below).
+
+### The Granola lane - for guest-heavy and Teams/Meet clients
+
+Granola captures on the client's own computer - no bot - so it works on any platform and when they
+are a guest, not the host. The pipe is live and per-client (own key, own webhook, own secret).
+
+**The client does:** gets on Granola (granola.ai) - **the API key needs Granola's Business plan**,
+check before promising anything - and creates an **API key** in Granola's settings.
+
+**You do:**
 
 - [ ] Paste the key into the **Granola API Key** field on their row.
 - [ ] Run the registration script (Render one-off job):
@@ -628,23 +662,13 @@ the guest."
       secret, shown once** - paste it into **Granola Webhook Secret** on their row. The
       connection is not live until that paste happens.
 
-**Check it worked:** after their next recorded meeting, the client asks Wingguy *"what was my
-last meeting?"* and sees the note come back. (Until then, ask Claude to confirm the webhook
-registration listed cleanly: `--list` on the same script.)
-
-**Watch out:**
-
-1. **Calendar before Granola - the order is load-bearing.** Wingguy works out who a meeting was
-   with by looking at the client's calendar, so Granola connected before the calendar (step 2)
-   just files orphan notes. Never swap these steps.
-2. **The first client through is the proving run.** The pipe is live on prod but its switches
-   ship dark and the note shape hasn't been verified against a real client note yet. Until a
-   first real note has filed cleanly, say "we're switching it on now", not "it works".
-3. **Business plan.** No Business plan, no API key, no pipe - check before setting expectations.
+**Check it worked:** after their next recorded meeting, they ask Wingguy *"what was my last
+meeting?"* and the note comes back. (Until then, `--list` on the same script confirms the webhook
+registered cleanly.) Same calendar-first rule as Fathom.
 
 ### The Fireflies lane - PROVEN 2026-08-21 (Rick Wong, first client through)
 
-Fireflies is the one non-Granola recorder with a real pipe. It is a bot-joining tool, and
+Fireflies is the third recorder with a real pipe. It is a bot-joining tool, and
 **Fireflies only fires for meetings the account OWNS** (organiser) - a client who is a guest on
 someone else's Fireflies call gets nothing. For a client already living in Fireflies it is a
 straight swap, and their phone app covers face-to-face meetings too.
@@ -700,15 +724,14 @@ flow and it turns "configured" into "proven" while they are still on the screen.
 
 ---
 
-**If they push for a different recorder (Otter, Fireflies, whatever they already use):**
+**If they push for a different recorder (Otter, tl;dv, whatever they already use):**
 
-1. **Re-sell the why, once - EXCEPT for Fireflies, which now has its own lane above.** The point
-   was never the brand - it's that no transcript is ever missed. The other tools have no pipe into
-   Wingguy, so their transcripts go nowhere: no draft-from-the-call, no prep-me, no history. And most of them work by sending a bot into the
-   call - the thing Granola exists to avoid.
+1. **Re-sell the why, once.** The point was never the brand - it's that no transcript is ever
+   missed. Fathom, Granola and Fireflies have pipes into Wingguy; the others do not, so their
+   transcripts go nowhere: no draft-from-the-call, no prep-me, no history.
 2. **If they still insist, don't fight it - stack instead.** They keep their tool for whatever
-   they like about it, and run Granola alongside. Granola captures on their computer, so it
-   doesn't clash with a bot tool at all - both can sit on the same call. They give up nothing;
+   they like about it, and run Fathom (or Granola, which has no bot) alongside - both can sit on
+   the same call. They give up nothing;
    Wingguy stays fed.
 3. **The escape hatch, framed honestly:** the odd transcript from elsewhere can be pasted into
    chat and Wingguy will file it ("here's the transcript from my call, file it" - it's the same
@@ -716,7 +739,7 @@ flow and it turns "configured" into "proven" while they are still on the screen.
    before they build a workflow on it: export the transcript from their tool, paste it in, give
    the lead's email so it links to the right person (no email, no link - the note is invisible
    next time they ask about that person), and if the paste arrives without speaker labels
-   there's a confirm step on the review screen before the summary exists. Granola has done all
+   there's a confirm step on the review screen before the summary exists. Fathom has done all
    of that before they've stood up from the call. Offer the paste door as a patch, not a plan -
    every manual step is a missed transcript waiting to happen. (Your side: imported rows have no
    tidy delete, so real transcripts only - never demo it with a test paste.)
@@ -838,8 +861,7 @@ it has to happen in whichever browser they're actually using.
 
 **Sent as homework, not walked through live (2026-09-06).** It is fifteen minutes of the client
 clicking around a website that is not ours, and it goes better at their own pace than on a call
-with you waiting. Send it as an email after step 10, and paste the key onto their row when it
-comes back. Everything below is the content of that email, plus your half.
+with you waiting. Send it as an email after step 10; they paste the key into their portal themselves. Everything below is the content of that email, plus your half.
 
 **Skip this entirely for managed-plan clients** (Managed Claude Key = Yes). This step is only for
 clients who run their drafting on their own key - the default.
@@ -857,7 +879,8 @@ servers too. That runs on a Claude key that's yours, not mine. You'll set it up 
 console: it takes about fifteen minutes, most of which is them, not you. The important part - and the
 reason you can relax about it - is that YOU put a monthly spend limit on it, a number you choose, and
 you can revoke it with one click any time. Worst case in the whole world is a bill the size of the cap
-you set. Send me the key when you've got it and we're done."
+you set. When you've got it, paste it into your portal - Settings, then Your Claude Key - and
+we're done."
 
 **The steps in the email** (write them one per line, in this order - the console shifts its layout occasionally, so
 these are the *concepts*; the labels may sit a click away):
@@ -873,13 +896,16 @@ these are the *concepts*; the labels may sit a click away):
    step that makes the whole thing safe; don't let them skip it.
 5. Creates an **API key** inside that workspace, and copies it. **It's shown once** - if they click
    away before copying, they just make a new one.
-6. Sends the key to you (it starts with `sk-ant-`). Ask them not to paste it into anything public;
-   if they're ever uneasy about it later, they can revoke it and make a fresh one in ten seconds.
+6. **Pastes it into their portal** - Settings -> **Your Claude Key** -> paste -> Save key. Wingguy
+   tests it with Anthropic before saving (catching the classic trap: a real key on an account with
+   no credit) and says plainly if it fails. Ask them not to paste it anywhere else; if they're ever
+   uneasy, they revoke it and paste a fresh one in the same box.
 
 **You do:**
 
-- [ ] Paste the key into the **Anthropic API Key** field on their Master Clients row. That's the
-      whole install - this stored key is the ONLY client lane (the extension's browser-key field
+- [ ] Usually nothing - their portal paste puts it on the **Anthropic API Key** field of their
+      Master Clients row. Fallback only (they cannot use the portal): they email it, you paste it
+      there. Either way, that's the whole install - this stored key is the ONLY client lane (the extension's browser-key field
       was removed 2026-08-05; platform key serves just the owner and Managed-plan clients), so from
       now on their overnight brief and extension drafting run on their key automatically.
 - [ ] Only now flip **Followup Brief = Yes** (if they're getting the overnight brief). Order matters

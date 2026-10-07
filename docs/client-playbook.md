@@ -1287,9 +1287,11 @@ group: account made, calendar connected, no app, and three weeks of calls that n
    tray, down by the clock. Not there means nothing gets recorded - so check.
 4. **Admit it.** On a Zoom call, "your name's Fathom Notetaker" turns up in the waiting room. Let it
    in. On someone else's call, ask the host to - most don't blink.
-5. **Send me your key.** Settings, API Access, generate an API key, and email it to me. I put it on
-   your record, and from then on your calls file themselves into the system - nothing else for you
-   to do.
+5. **Connect it to Wingguy.** In Fathom: Settings, scroll down to API Access, Add +, Generate API
+   Key, and copy it. Then in your Wingguy portal go to Settings, Your Meeting Recorder, paste it and
+   press Connect. Wingguy checks it with Fathom on the spot and shows you your latest recording -
+   that's your proof. From then on your calls file themselves into the system - nothing else for
+   you to do.
 6. **Prove it on our next call.** If the notetaker appears in my waiting room, you're done.
 
 The free plan is all you need - transcripts are the fuel, and those are included. The one limit is
