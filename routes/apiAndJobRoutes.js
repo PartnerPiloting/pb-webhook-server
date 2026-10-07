@@ -11,6 +11,7 @@ const backfillLeadEmailsUpload = multer({
 const fetch = (...args) =>
   import("node-fetch").then(({ default: f }) => f(...args));
 const dirtyJSON = require('dirty-json');
+const { rescoreDefaults } = require('../config/rescoreDefaults');
 const { logErrorWithStackTrace } = require('../utils/errorHandler');
 
 // ---------------------------------------------------------------
@@ -10608,6 +10609,8 @@ router.post("/api/onboard-client", async (req, res) => {
       'Client Journey': 'Yes',
       // Top Scoring Leads starts hidden (Guy, 2026-09-25): one connect campaign is the method now.
       'Top Scoring Leads': 'No',
+      // Re-score Leads for everyone (Guy, 5 Oct 2026) - same allowance the 5 Oct roll-out gave.
+      ...rescoreDefaults(),
     };
     
     // Add optional fields if provided
