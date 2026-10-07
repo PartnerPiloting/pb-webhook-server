@@ -122,6 +122,11 @@
       "where": ["docs/client-tour.md"]
     },
     {
+      "phrase": "refresh my follow-ups",
+      "tool": "wingguy_prepare_brief",
+      "where": ["services/wingguyFollowupBrief.js"]
+    },
+    {
       "phrase": "what campaigns do I have?",
       "tool": "wingguy_campaigns",
       "where": ["docs/client-playbook.md"]

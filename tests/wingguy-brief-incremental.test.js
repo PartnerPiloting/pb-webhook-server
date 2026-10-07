@@ -15,7 +15,7 @@ const check = async (name, fn) => {
   catch (e) { failures++; console.error(`  ✗ ${name}\n    ${e.message}`); }
 };
 
-const { entrySig, canReuseEntry, refreshEntry, REFRESH_DAYS, DRAFT_VERSION, DRAFT_SYSTEM_PREFIX } = require('../services/wingguyFollowupBrief');
+const { entrySig, canReuseEntry, refreshEntry, briefKeyNotice, REFRESH_DAYS, DRAFT_VERSION, DRAFT_SYSTEM_PREFIX } = require('../services/wingguyFollowupBrief');
 
 const MS_DAY = 86400000;
 const nowMs = Date.UTC(2026, 7, 24, 4, 0, 0); // 2026-08-24
@@ -56,6 +56,23 @@ const freshPrev = (over = {}) => ({
   });
 
   console.log('canReuseEntry()');
+  await check('a story whose triage failed is never reused (flagged, or a bare pre-flag row)', () => {
+    assert.strictEqual(canReuseEntry(freshPrev({ triageFailed: true }), entrySig(item()), nowMs), false);
+    assert.strictEqual(canReuseEntry(freshPrev({ verdict: 'attention', recommendation: null, jog: '' }), entrySig(item()), nowMs), false);
+    // a real attention verdict carries advice, so it still reuses
+    assert.strictEqual(canReuseEntry(freshPrev({ verdict: 'attention', recommendation: 'Needs your call - she asked about pricing.' }), entrySig(item()), nowMs), true);
+  });
+
+  await check('briefKeyNotice: out of credit and revoked each get the fix; anything else is silent', () => {
+    const credit = briefKeyNotice({ status: 'error', error: 'Anthropic key rejected (billing): this client\'s stored Anthropic key is over its spend limit / out of credit.' });
+    assert.ok(/out of credit/.test(credit) && /refresh my follow-ups/.test(credit));
+    const revoked = briefKeyNotice({ status: 'error', error: 'Anthropic key rejected (revoked): this client\'s stored Anthropic key is revoked or invalid.' });
+    assert.ok(/revoked or invalid/.test(revoked) && /new key/.test(revoked));
+    assert.strictEqual(briefKeyNotice({ status: 'error', error: 'Airtable timed out' }), null);
+    assert.strictEqual(briefKeyNotice({ status: 'ready', error: null }), null);
+    assert.strictEqual(briefKeyNotice(null), null);
+  });
+
   await check('stored email draft from before the current drafting rules → re-prepped', () => {
     assert.strictEqual(canReuseEntry(freshPrev({ draftV: undefined }), entrySig(item()), nowMs), false);
   });

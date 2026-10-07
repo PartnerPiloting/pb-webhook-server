@@ -422,6 +422,12 @@ function unbookedEntry(item, sig) {
  */
 function canReuseEntry(prev, sig, nowMs) {
   if (!prev || prev.sig !== sig) return false;
+  // A story whose triage never ran is not a story - reusing it froze an advice-less row in place
+  // until that person's thread changed (Ashley Knowles, 7 Oct 2026: 38 of 39 rows bare after one
+  // out-of-credit night). triageFailed marks them from now on; the second test catches the rows
+  // degraded before the flag existed (triage always writes a recommendation or a jog).
+  if (prev.triageFailed) return false;
+  if (prev.verdict === 'attention' && !prev.recommendation && !prev.jog) return false;
   if (!prev.builtAt || (nowMs - Date.parse(prev.builtAt)) > REFRESH_DAYS * 86400000) return false;
   if (prev.draftError || prev.draftPending) return false;
   if (prev.draftHtml && (prev.draftV || 1) < DRAFT_VERSION) return false;
@@ -515,6 +521,7 @@ async function prepareFollowupBrief(tenant) {
     const llm = lane.llm;
     const todayIso = new Date().toISOString().slice(0, 10);
     const byKey = new Map();
+    const triageFailedKeys = new Set();
     for (let i = 0; i < toPrep.length; i += TRIAGE_BATCH) {
       const batchItems = toPrep.slice(i, i + TRIAGE_BATCH).map((t) => t.item);
       const batchCtx = contexts.slice(i, i + TRIAGE_BATCH);
@@ -522,7 +529,15 @@ async function prepareFollowupBrief(tenant) {
         const verdicts = await triage(llm, batchItems, batchCtx, todayIso);
         for (const v of verdicts) byKey.set(String(v.key || '').toLowerCase(), v);
         console.log(`[followupBrief] triaged ${Math.min(i + TRIAGE_BATCH, toPrep.length)}/${toPrep.length}`);
-      } catch (e) { console.warn(`[followupBrief] triage batch at ${i} failed (engine-signal fallback for those people): ${e.message}`); }
+      } catch (e) {
+        // A rejected or out-of-credit key fails EVERY batch and every draft the same way. Falling
+        // back would quietly store a brief of bare rows that looks prepared; throwing reaches the
+        // handler below, which keeps the previous brief, records "fix your key" for the screen
+        // and the chat, and emails Guy.
+        if (require('../config/anthropicClient').anthropicKeyError(e)) throw e;
+        for (const t of batchItems) triageFailedKeys.add(t.key);
+        console.warn(`[followupBrief] triage batch at ${i} failed (engine-signal fallback for those people): ${e.message}`);
+      }
     }
 
     // Voice rules rendered ONCE for all drafts.
@@ -554,6 +569,7 @@ async function prepareFollowupBrief(tenant) {
         gated: !!item.gated,
         channel: ctx.channel,
         verdict: v.verdict || 'attention',
+        triageFailed: triageFailedKeys.has(item.key) || undefined, // never reused - re-prepped next run
         recommendation: v.recommendation || null, // the advice headline ("I'd drop her — …"); screen + chat lead with it
         whyLine: v.why_line || item.why,
         jog: v.jog || '',
@@ -781,4 +797,17 @@ function formatBrief(row) {
   return lines.join('\n');
 }
 
-module.exports = { prepareFollowupBrief, getBrief, setStatus, formatBrief, linkedInTail, linkedInLastWord, gatherPersonContext, writeDraft, draftPlainText, entrySig, canReuseEntry, DRAFT_VERSION, DRAFT_SYSTEM_PREFIX, refreshEntry, unbookedEntry, reconcileParkDate, _setPool, STALE_HOURS, REFRESH_DAYS };
+/**
+ * The Follow-Ups screen's line for a brief that stopped on a rejected Anthropic key, or null.
+ * Reads the error the prepare handler stored ("Anthropic key rejected (billing|revoked) ...").
+ */
+function briefKeyNotice(brief) {
+  if (!brief || brief.status !== 'error') return null;
+  const err = String(brief.error || '');
+  if (!/Anthropic key rejected/i.test(err)) return null;
+  return /\(revoked\)/i.test(err)
+    ? 'Anthropic turned down your Claude key last night - it looks revoked or invalid. Make a new key in your Anthropic Console and update it in Settings, then ask Wingguy to "refresh my follow-ups".'
+    : 'your Anthropic account is out of credit (or over its spend limit), so last night\'s preparation stopped. Top it up in your Anthropic Console under Billing, then ask Wingguy to "refresh my follow-ups".';
+}
+
+module.exports = { prepareFollowupBrief, getBrief, setStatus, briefKeyNotice, formatBrief, linkedInTail, linkedInLastWord, gatherPersonContext, writeDraft, draftPlainText, entrySig, canReuseEntry, DRAFT_VERSION, DRAFT_SYSTEM_PREFIX, refreshEntry, unbookedEntry, reconcileParkDate, _setPool, STALE_HOURS, REFRESH_DAYS };

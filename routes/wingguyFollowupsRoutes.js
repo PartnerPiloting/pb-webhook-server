@@ -126,6 +126,15 @@ module.exports = function mountWingguyFollowups(app) {
         const lane = resolveClientAnthropic(gate.client);
         if (lane.lane === 'none-blocked') keyNotice = lane.message;
       } catch (_) { /* notice is best-effort */ }
+      // The key exists but Anthropic refused it last night (out of credit, or revoked) - the
+      // overnight run stopped and recorded why. Without this the rows just look unprepared and
+      // nobody knows the fix is a top-up (Ashley Knowles, 7 Oct 2026).
+      if (!keyNotice) {
+        try {
+          const fb = require('../services/wingguyFollowupBrief');
+          keyNotice = fb.briefKeyNotice(await fb.getBrief(clientId));
+        } catch (_) { /* notice is best-effort */ }
+      }
 
       res.json({
         ok: true,
