@@ -1,6 +1,6 @@
 ---
 name: onboard
-description: Run a client onboarding move - "onboard <client>" (or /onboard <client>). Works out where that client is in the journey, sets every record field it can, and preps or wraps sessions with email drafts in Guy's voice. Use whenever Guy says he's onboarding someone, has an onboarding session coming up, or has just finished one.
+description: Run a client onboarding move - "onboard <client>" (or /onboard <client>). Works out where that client is in the journey, sets every record field it can, and preps or wraps sessions with email drafts in Guy's voice. Use whenever Guy says he's onboarding someone, has an onboarding session coming up, or has just finished one - AND whenever he asks where a client is up to, what is left or owed, or what is missing in their setup ("where are we up to with Roland?").
 ---
 
 # Onboard a client - the one door
@@ -8,6 +8,11 @@ description: Run a client onboarding move - "onboard <client>" (or /onboard <cli
 One command, any time: **"onboard <client>"**. Work out from context which move applies and run it.
 Ask only if genuinely ambiguous.
 
+- **STATUS** - "where are we up to with <client>?", "what's left for <client>?". ALWAYS run the
+  preflight (`node scripts/wingguy-onboarding-preflight.js <Client-ID>`) and answer from its OWED
+  lines, every one of them - never from memory notes or a connector alone. Notes go stale the
+  moment a session happens; the preflight reads the live record. (7 Oct 2026: a status answered
+  from notes missed Roland's missing recorder, which the preflight lists as step 7 OWED.)
 - **PRE** - a session is coming up (usually tomorrow or today). Output: record fixed, agenda, pre-session email draft.
 - **LIVE** - Guy is on the call now, narrating ("we're at step 3", "he just clicked the link"). Act immediately, answer tersely, fix records live.
 - **WRAP** - the session just happened. Output: state updated, follow-up email draft, owed-items list.
