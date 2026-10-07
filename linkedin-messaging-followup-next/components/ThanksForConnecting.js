@@ -100,13 +100,17 @@ function formatScore(score) {
   return Number.isFinite(n) ? Math.round(n) : String(score);
 }
 
-export default function ThanksForConnecting() {
+// `embedded` (2026-10-07): rendered as the "New connections to welcome" section of the Today page
+// (components/TodayPage.js) - the page owns the title and the fold, so the header card is skipped,
+// and the list opens highest score first (Guy to Owen, 7 Oct: work down from the best, Skip the
+// 31s at the bottom). `onCount` reports the outstanding number for the folded header.
+export default function ThanksForConnecting({ embedded = false, onCount = null } = {}) {
   const clientId = useMemo(() => buildClientId(), []);
   const [view, setView] = useState('outstanding'); // 'outstanding' | 'all'
   const [items, setItems] = useState([]);
   const [outstandingCount, setOutstandingCount] = useState(0);
   const [windowDays, setWindowDays] = useState(null); // null = use client's configured default
-  const [sortDir, setSortDir] = useState('oldest'); // 'oldest' | 'newest' | 'score'
+  const [sortDir, setSortDir] = useState(embedded ? 'score' : 'oldest'); // 'oldest' | 'newest' | 'score'
   const [truncated, setTruncated] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -132,6 +136,8 @@ export default function ThanksForConnecting() {
   }, [clientId]);
 
   useEffect(() => { load(view, windowDays); }, [view, windowDays, load]);
+
+  useEffect(() => { if (onCount && !loading) onCount(outstandingCount); }, [onCount, loading, outstandingCount]);
 
   // Apply a status. In Outstanding view the row leaves the queue (optimistic remove + undo).
   const setStatus = useCallback(async (item, newStatus) => {
@@ -209,26 +215,30 @@ export default function ThanksForConnecting() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className={embedded ? 'space-y-3' : 'space-y-6'}>
       {/* Header */}
-      <div className="bg-white border rounded p-4">
-        <div className="flex items-center gap-2 mb-1">
-          <h2 className="font-semibold text-lg">Thanks for Connecting</h2>
-          <HelpButton area="thanks_for_connecting" className="ml-1" title="Help: Thanks for Connecting" />
-          {outstandingCount > 0 && (
-            <span className="ml-1 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-800 border border-blue-300">
-              {outstandingCount} to thank
-            </span>
-          )}
-        </div>
-        <p className="text-sm text-gray-600">
-          Welcome your recent connections. Click a name to open their LinkedIn profile, send your
-          note, then tick <span className="font-medium">Messaged</span> — or <span className="font-medium">Skipped</span> to
-          leave it to the automated sequence.
-        </p>
+      <div className={embedded ? '' : 'bg-white border rounded p-4'}>
+        {!embedded && (
+          <div className="flex items-center gap-2 mb-1">
+            <h2 className="font-semibold text-lg">Thanks for Connecting</h2>
+            <HelpButton area="thanks_for_connecting" className="ml-1" title="Help: Thanks for Connecting" />
+            {outstandingCount > 0 && (
+              <span className="ml-1 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-800 border border-blue-300">
+                {outstandingCount} to thank
+              </span>
+            )}
+          </div>
+        )}
+        {!embedded && (
+          <p className="text-sm text-gray-600">
+            Welcome your recent connections. Click a name to open their LinkedIn profile, send your
+            note, then tick <span className="font-medium">Messaged</span> — or <span className="font-medium">Skipped</span> to
+            leave it to the automated sequence.
+          </p>
+        )}
 
         {/* View toggle */}
-        <div className="mt-3 flex items-center gap-2">
+        <div className={`${embedded ? '' : 'mt-3 '}flex items-center gap-2`}>
           <button
             className={`px-3 py-1.5 rounded text-sm border ${view === 'outstanding' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'}`}
             onClick={() => setView('outstanding')}
@@ -271,8 +281,8 @@ export default function ThanksForConnecting() {
       </div>
 
       {/* List */}
-      <div className="bg-white border rounded">
-        <div className="p-4">
+      <div className={embedded ? '' : 'bg-white border rounded'}>
+        <div className={embedded ? '' : 'p-4'}>
           {error && <div className="mb-3 text-sm text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2" role="alert">{error}</div>}
 
           {truncated && (
@@ -284,8 +294,8 @@ export default function ThanksForConnecting() {
           {loading && <div className="text-gray-500 py-8 text-center">Loading your recent connections…</div>}
 
           {!loading && items.length === 0 && (
-            <div className="py-12 text-center">
-              <div className="text-4xl mb-2">🎉</div>
+            <div className={embedded ? 'py-6 text-center' : 'py-12 text-center'}>
+              {!embedded && <div className="text-4xl mb-2">🎉</div>}
               <div className="text-gray-800 font-medium">
                 {view === 'outstanding' ? "All caught up — nobody waiting to be thanked." : 'No recent connections in this window.'}
               </div>

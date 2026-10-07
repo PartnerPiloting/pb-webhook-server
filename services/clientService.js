@@ -244,6 +244,10 @@ async function getAllClients() {
                 // Top Scoring Leads tab: blank/Yes = shown (every client before 2026-09-25), No = hidden.
                 // New clients are provisioned with No - the method is now the one connect campaign.
                 const topScoringLeadsHidden = record.get('Top Scoring Leads') === 'No';
+                // Today layout (Owen's call, 7 Oct 2026): three tabs - Today / Leads / Setup and help - with
+                // the queue, Thanks for Connecting and Reconnect folded onto ONE page. Yes = the new tabs;
+                // blank/No = the old tab row. Per client so it can be rolled out (and back) one at a time.
+                const todayLayout = record.get('Today Layout') === 'Yes';
                 const connectionLookbackDays = Number(record.get('Connection Lookback Days')) || null;
                 // The email of the LinkedIn/Linked Helper account allowed to post into this client's
                 // webhook (LH announces it as my_email on every payload). Optional field; when blank
@@ -358,6 +362,7 @@ async function getAllClients() {
                     // "Thanks for Connecting" worklist gate + lookback (per-client rollout)
                     thanksForConnectingEnabled: thanksForConnectingEnabled,
                     topScoringLeadsHidden: topScoringLeadsHidden,
+                    todayLayout: todayLayout,
                     connectionLookbackDays: connectionLookbackDays,
                     // LH sender guard: which LinkedIn account may post into this client's webhook
                     lhAccountEmail: lhAccountEmail,

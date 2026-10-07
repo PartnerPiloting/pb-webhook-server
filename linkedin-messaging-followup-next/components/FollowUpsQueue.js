@@ -18,6 +18,13 @@
 // as a confirm card ("Park Deon until 24 Nov?") whose button calls the SAME /action park the row's
 // button does. Confirm-then-act, never silent: dates are where the model drifts, and a visible
 // date on the card catches that before it is written.
+//
+// 2026-10-07 (Owen: "a whole bunch of options, and you don't really know where to start"): the
+// same component also renders as ONE SECTION of the Today page (components/TodayPage.js) via the
+// `section` prop - 'owed' = people waiting on you (reply owed + needs judgement), 'quiet' = people
+// you are chasing (went quiet, drop/park recommended) plus Reconnect. Today loads /queue ONCE and
+// hands the payload to both sections through `preloaded`, so the live check runs once, not twice.
+// Without `section` this is the standalone /followups screen, unchanged.
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import HelpButton from './HelpButton';
@@ -105,6 +112,12 @@ function effectiveKind(it) {
   if (it.kind === 'draft' && !it.unbooked && it.lastDir === 'you') return 'reopen';
   return it.kind;
 }
+// Which Today section a row belongs to: the ball is in YOUR court ('owed') or theirs ('quiet').
+function sectionOf(it) {
+  const k = effectiveKind(it);
+  return (k === 'draft' || k === 'attention') ? 'owed' : 'quiet';
+}
+export { apiGet, apiPost, buildClientId, effectiveKind, sectionOf };
 function tierChip(it) {
   if (it.kind === 'drop') return { label: 'DROP RECOMMENDED', cls: 'bg-red-100 text-red-700' };
   if (it.kind === 'park') return { label: 'PARK RECOMMENDED', cls: 'bg-sky-100 text-sky-800' };
@@ -469,8 +482,9 @@ function ParkPopover({ recommended, onPick, onClose }) {
   );
 }
 
-export default function FollowUpsQueue() {
+export default function FollowUpsQueue({ section = null, preloaded = null, preloadError = null, onCount = null } = {}) {
   const clientId = useMemo(() => buildClientId(), []);
+  const managed = !!section; // a Today section: the page owns the fetch, this renders its slice
   const [items, setItems] = useState([]);
   const [hidden, setHidden] = useState({ counts: {}, items: [] });
   const [briefPreparedAt, setBriefPreparedAt] = useState(null);
@@ -493,6 +507,15 @@ export default function FollowUpsQueue() {
   const [showHidden, setShowHidden] = useState(false);
   const [busy, setBusy] = useState(() => new Set());  // keys with an action in flight
 
+  const applyData = useCallback((data) => {
+    setItems(Array.isArray(data?.items) ? data.items : []);
+    setHidden(data?.hidden || { counts: {}, items: [] });
+    setBriefPreparedAt(data?.briefPreparedAt || null);
+    setKeyNotice(data?.keyNotice || null);
+    setFleetAlerts(Array.isArray(data?.fleetAlerts) ? data.fleetAlerts : []);
+    setReconnect(data?.reconnect || null);
+  }, []);
+
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -503,12 +526,7 @@ export default function FollowUpsQueue() {
     const tick = setInterval(() => setLoadSecs((s) => s + 1), 1000);
     try {
       const data = await apiGet('/queue', clientId);
-      setItems(Array.isArray(data?.items) ? data.items : []);
-      setHidden(data?.hidden || { counts: {}, items: [] });
-      setBriefPreparedAt(data?.briefPreparedAt || null);
-      setKeyNotice(data?.keyNotice || null);
-      setFleetAlerts(Array.isArray(data?.fleetAlerts) ? data.fleetAlerts : []);
-      setReconnect(data?.reconnect || null);
+      applyData(data);
     } catch (e) {
       setError(e?.message || 'Failed to load the queue');
       setItems([]);
@@ -516,17 +534,34 @@ export default function FollowUpsQueue() {
       clearInterval(tick);
       setLoading(false);
     }
-  }, [clientId]);
+  }, [clientId, applyData]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { if (!managed) load(); }, [managed, load]);
+
+  // Today section: the payload (or its failure) arrives from the page; nothing is fetched here.
+  useEffect(() => {
+    if (!managed) return;
+    if (preloadError) { setError(preloadError); setItems([]); setLoading(false); return; }
+    if (preloaded) { applyData(preloaded); setLoading(false); }
+  }, [managed, preloaded, preloadError, applyData]);
+
+  // The rows this instance owns: everything standalone, one side of the court as a section.
+  const mine = useMemo(() => (section ? items.filter((it) => sectionOf(it) === section) : items), [items, section]);
+
+  // Tell the Today page how many are here (its folded header shows the number before it is opened).
+  useEffect(() => {
+    if (!onCount || loading) return;
+    const extra = section === 'quiet' && reconnect ? (reconnect.items || []).length : 0;
+    onCount(mine.length + extra);
+  }, [onCount, loading, mine.length, section, reconnect]);
 
   const visible = useMemo(() => {
-    let list = items;
+    let list = mine;
     if (tierFilter !== 'all') list = list.filter((it) => effectiveKind(it) === tierFilter);
     if (sortMode === 'quiet') list = [...list].sort((a, b) => (b.quietDays ?? -1) - (a.quietDays ?? -1));
     else if (sortMode === 'recent') list = [...list].sort((a, b) => (a.quietDays ?? 1e9) - (b.quietDays ?? 1e9));
     return list;
-  }, [items, tierFilter, sortMode]);
+  }, [mine, tierFilter, sortMode]);
 
   const hiddenTotal = useMemo(() => Object.values(hidden?.counts || {}).reduce((a, b) => a + (Number(b) || 0), 0), [hidden]);
 
@@ -681,14 +716,18 @@ export default function FollowUpsQueue() {
     setSelected((prev) => { const n = new Set(prev); if (n.has(key)) n.delete(key); else n.add(key); return n; });
   }, []);
 
+  // As a Today section the page supplies the title and the fold; the notices that belong to the
+  // whole queue (machine check, paused key, hidden people) show once, on the first section only.
+  const showNotices = !section || section === 'owed';
+
   return (
-    <div className="space-y-6">
+    <div className={section ? 'space-y-3' : 'space-y-6'}>
       {/* Header */}
-      <div className="bg-white border rounded p-4">
+      <div className={section ? '' : 'bg-white border rounded p-4'}>
         <div className="flex items-center gap-2 mb-1 flex-wrap">
-          <h2 className="font-semibold text-lg">Follow-Ups</h2>
-          <HelpButton area="followups" className="ml-1" title="Help: Follow-Ups" />
-          {items.length > 0 && (
+          {!section && <h2 className="font-semibold text-lg">Follow-Ups</h2>}
+          {!section && <HelpButton area="followups" className="ml-1" title="Help: Follow-Ups" />}
+          {!section && items.length > 0 && (
             <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-800 border border-blue-300">
               {items.length} to action
             </span>
@@ -698,7 +737,7 @@ export default function FollowUpsQueue() {
               {cleared} cleared this session
             </span>
           )}
-          {hiddenTotal > 0 && (
+          {showNotices && hiddenTotal > 0 && (
             <button
               className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-800 border border-amber-300 hover:bg-amber-100"
               onClick={() => setShowHidden((s) => !s)}
@@ -708,15 +747,17 @@ export default function FollowUpsQueue() {
             </button>
           )}
         </div>
-        <p className="text-sm text-gray-600">
-          Everyone you owe a reply or a nudge. Click a name to open LinkedIn, <span className="font-medium">Ask</span> what
-          is going on, then <span className="font-medium">Draft</span>, <span className="font-medium">Done</span>,
-          <span className="font-medium"> Park</span> or <span className="font-medium">Drop</span>. Ceased, booked and
-          already-messaged people are removed automatically.
-          {briefPreparedAt ? <span className="text-gray-400"> Overnight brief prepared {formatDate(briefPreparedAt)}.</span> : null}
-        </p>
+        {!section && (
+          <p className="text-sm text-gray-600">
+            Everyone you owe a reply or a nudge. Click a name to open LinkedIn, <span className="font-medium">Ask</span> what
+            is going on, then <span className="font-medium">Draft</span>, <span className="font-medium">Done</span>,
+            <span className="font-medium"> Park</span> or <span className="font-medium">Drop</span>. Ceased, booked and
+            already-messaged people are removed automatically.
+            {briefPreparedAt ? <span className="text-gray-400"> Overnight brief prepared {formatDate(briefPreparedAt)}.</span> : null}
+          </p>
+        )}
 
-        {fleetAlerts.length > 0 && (
+        {showNotices && fleetAlerts.length > 0 && (
           <div className="mt-3 text-sm text-red-800 bg-red-50 border border-red-200 rounded px-3 py-2">
             <div className="font-semibold">Machine check</div>
             {fleetAlerts.map((a) => (
@@ -725,14 +766,14 @@ export default function FollowUpsQueue() {
           </div>
         )}
 
-        {keyNotice && (
+        {showNotices && keyNotice && (
           <div className="mt-3 text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded px-3 py-2">
             <span className="font-semibold">Drafts and the overnight brief are paused: </span>
             {keyNotice} The queue below still works - only the AI-prepared parts are waiting on the key.
           </div>
         )}
 
-        {showHidden && hidden?.items?.length > 0 && (
+        {showNotices && showHidden && hidden?.items?.length > 0 && (
           <div className="mt-3 text-xs text-gray-600 bg-amber-50 border border-amber-200 rounded px-3 py-2">
             <div className="font-semibold text-amber-800 mb-1">Removed by the live check:</div>
             <div className="flex flex-wrap gap-x-4 gap-y-0.5">
@@ -759,24 +800,26 @@ export default function FollowUpsQueue() {
                 <option value="recent">Most recent first</option>
               </select>
             </label>
-            <label className="flex items-center gap-2 text-xs text-gray-500">
-              Show
-              <select className="border rounded px-2 py-1 text-sm text-gray-700" value={tierFilter} onChange={(e) => setTierFilter(e.target.value)}>
-                <option value="all">Everything</option>
-                <option value="draft">Replies owed</option>
-                <option value="drop">Drops recommended</option>
-                <option value="reopen">Went quiet</option>
-                <option value="park">Parks recommended</option>
-                <option value="attention">Needs judgement</option>
-              </select>
-            </label>
+            {!section && (
+              <label className="flex items-center gap-2 text-xs text-gray-500">
+                Show
+                <select className="border rounded px-2 py-1 text-sm text-gray-700" value={tierFilter} onChange={(e) => setTierFilter(e.target.value)}>
+                  <option value="all">Everything</option>
+                  <option value="draft">Replies owed</option>
+                  <option value="drop">Drops recommended</option>
+                  <option value="reopen">Went quiet</option>
+                  <option value="park">Parks recommended</option>
+                  <option value="attention">Needs judgement</option>
+                </select>
+              </label>
+            )}
           </div>
         </div>
       </div>
 
       {/* List */}
-      <div className="bg-white border rounded">
-        <div className="p-4">
+      <div className={section ? '' : 'bg-white border rounded'}>
+        <div className={section ? '' : 'p-4'}>
           {error && <div className="mb-3 text-sm text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2" role="alert">{error}</div>}
           {notice && <div className="mb-3 text-sm text-emerald-800 bg-emerald-50 border border-emerald-200 rounded px-3 py-2">{notice}</div>}
 
@@ -788,12 +831,14 @@ export default function FollowUpsQueue() {
           )}
 
           {!loading && visible.length === 0 && (
-            <div className="py-12 text-center">
-              <div className="text-4xl mb-2">🎉</div>
+            <div className={section ? 'py-6 text-center' : 'py-12 text-center'}>
+              {!section && <div className="text-4xl mb-2">🎉</div>}
               <div className="text-gray-800 font-medium">
-                {items.length === 0 ? 'Queue clear — nothing actionable right now.' : 'Nothing in this view — change the filter to see the rest.'}
+                {mine.length === 0
+                  ? (section === 'owed' ? 'Nobody is waiting on you.' : section === 'quiet' ? 'Nobody to chase right now.' : 'Queue clear — nothing actionable right now.')
+                  : 'Nothing in this view — change the filter to see the rest.'}
               </div>
-              {items.length === 0 && <div className="text-gray-500 text-sm mt-1">Parked people surface on their dates; new replies appear as they land.</div>}
+              {mine.length === 0 && <div className="text-gray-500 text-sm mt-1">Parked people surface on their dates; new replies appear as they land.</div>}
             </div>
           )}
 
@@ -923,13 +968,14 @@ export default function FollowUpsQueue() {
         </div>
       </div>
 
-      {/* Reconnect: a separate, stacked list - see ReconnectSection.js */}
-      {!loading && reconnect && (
+      {/* Reconnect: a separate, stacked list - see ReconnectSection.js. On Today it lives under
+          "Worth picking up again" (section 'quiet'), never under the people waiting on you. */}
+      {!loading && reconnect && section !== 'owed' && (
         <ReconnectSection data={reconnect} post={(path, body) => apiPost(path, body, clientId)} onReplace={setReconnect} onFlagged={() => setDisconnectTick((n) => n + 1)} />
       )}
 
       {/* Potential disconnects: the third stacked list - see DisconnectSection.js */}
-      {!loading && reconnect && (
+      {!loading && reconnect && section !== 'owed' && (
         <DisconnectSection get={(path) => apiGet(path, clientId)} post={(path, body) => apiPost(path, body, clientId)} refreshKey={disconnectTick} />
       )}
     </div>

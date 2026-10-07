@@ -196,6 +196,17 @@ const MASTER_FIELDS = [
     }
   },
   {
+    name: 'Today Layout',
+    type: 'singleSelect',
+    description: 'Per-client switch for the three-tab portal (Today / Leads / Setup and help). Yes = the client sees ONE working page (replies waiting on them, new connections to welcome, conversations worth picking up again - each folded with a count) plus Leads and Setup and help. Blank/No = the old row of tabs. Owen Pyrah\'s suggestion, 7 Oct 2026. Roll out one client at a time; flip back to No to restore the old tabs.',
+    options: {
+      choices: [
+        { name: 'Yes', color: 'greenBright' },
+        { name: 'No', color: 'grayBright' }
+      ]
+    }
+  },
+  {
     name: 'Followup Brief',
     type: 'singleSelect',
     description: 'Per-client switch for the overnight PREPARED follow-up brief (services/wingguyFollowupBrief.js): Yes = the nightly cron prepares this client\'s brief (sweep + read their threads + triage + pre-write reply drafts, stored for instant serving in their Wingguy chat). Blank/No = not prepared automatically (they can still trigger it on demand in chat). Opt-in by design. Added 2026-07-23.',

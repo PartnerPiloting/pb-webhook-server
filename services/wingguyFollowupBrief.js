@@ -250,6 +250,7 @@ THE LAST WORD line, when present, is mechanical fact: whose message currently en
 - When such a person has never met the coach (no CALL OUTCOME block) and the silence is 28 days or more, a LinkedIn nudge sent from the thread is automatically the goodbye — the system ceases further follow-ups the moment it goes out. Say so: "one /wg touch — the send is the goodbye, nothing to track afterwards".
 - recommendation: ONE sentence of direct advice in the coach's ear, first person, verdict first with the reason from the record ("I'd drop her — loved the model but she's product-first and months from budget; let her come back to you", "I'd park him to 16 Oct — he asked you to try again after the audit"). This is the headline the coach reads; it must stand alone. Every verdict here is a RECOMMENDATION the coach clicks — nothing happens automatically, so say it as advice, never as a done deed.
 - why_line: ONE short factual line — plain, specific, human ("she said September sounds good", "asked which podcast episode you meant"). Not a category label.
+- WORDING (Owen, 7 Oct 2026: "who's the coach?"): the client reads recommendation, why_line, jog and draft_instruction as notes to THEMSELVES. Never write "the coach" or "coach" there — it is "you"/"your" ("you offered three times", "your wrap email covered it"). "Coach" is a label in this prompt only.
 - jog: 1-2 sentences of memory-jog — who this is and where things stand, from the record only. For someone the coach has MET, open with the call and its outcome ("Call 13 Aug went well, but…") — the call is the part they cannot remember.
 
 Return ONLY a JSON array, one object per person, same order as given:
@@ -378,7 +379,7 @@ function entrySig(item) {
   // s3 (2026-09-26, the Owen Senior morning): re-prep so every stored recommendation gains the
   // one-sided-thread doctrine — a pleasantry-only replier who ignored the pitch gets "drop" or
   // "one nudge, then let go", never an open-ended "I'd follow up".
-  return `s3|${item.tier}|${s.lastInboundMs || 0}|${s.lastOutboundMs || 0}|${item.lead.reconnectOn || ''}|${s.acceptedSlot || ''}`;
+  return `s4|${item.tier}|${s.lastInboundMs || 0}|${s.lastOutboundMs || 0}|${item.lead.reconnectOn || ''}|${s.acceptedSlot || ''}`;
 }
 
 /**

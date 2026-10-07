@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import { getEnvLabel, initializeClient, getClientProfile, getCurrentClientId, buildAuthUrl } from '../utils/clientUtils.js';
-import { MagnifyingGlassIcon, CalendarDaysIcon, UserPlusIcon, TrophyIcon, CogIcon, BookOpenIcon, QuestionMarkCircleIcon, PencilSquareIcon, CalendarIcon, UsersIcon, WrenchScrewdriverIcon, CreditCardIcon, SparklesIcon, EnvelopeIcon, MicrophoneIcon, HandRaisedIcon } from '@heroicons/react/24/outline';
+import { MagnifyingGlassIcon, CalendarDaysIcon, UserPlusIcon, TrophyIcon, CogIcon, BookOpenIcon, QuestionMarkCircleIcon, PencilSquareIcon, CalendarIcon, UsersIcon, WrenchScrewdriverIcon, CreditCardIcon, SparklesIcon, EnvelopeIcon, MicrophoneIcon, HandRaisedIcon, SunIcon } from '@heroicons/react/24/outline';
 import ClientCodeEntry from './ClientCodeEntry';
 import UploadEmailsModal from './UploadEmailsModal';
 
@@ -39,11 +39,19 @@ const useClientInitialization = () => {
 };
 
 // Primary navigation tabs (URL params preserved)
-const NavigationWithParams = ({ pathname, showThanksForConnecting = false, showWingguy = false, showFollowupsScreen = false, hideTopScoringLeads = false, assistantFunctions = null }) => {
+const NavigationWithParams = ({ pathname, showThanksForConnecting = false, showWingguy = false, showFollowupsScreen = false, hideTopScoringLeads = false, todayLayout = false, assistantFunctions = null }) => {
   const searchParams = useSearchParams();
   const serviceLevel = parseInt(searchParams.get('level') || '2', 10);
   const clientParam = searchParams.get('client') || searchParams.get('testClient') || '';
-  const nav = [
+  // The three-tab layout (Owen Pyrah, 7 Oct 2026 - master "Today Layout" = Yes). One page to work
+  // the network top to bottom, one for looking people up, one for setup. Every old URL still
+  // resolves; `under` lists the old paths each tab stays lit for, so /followups keeps Today lit.
+  const todayNav = [
+    { name: 'Today', href: '/today', icon: SunIcon, description: 'Your networking, top to bottom', minLevel: 1, under: ['/today', '/followups', '/follow-up', '/thanks-for-connecting'] },
+    { name: 'Leads', href: '/leads', icon: MagnifyingGlassIcon, description: 'Look someone up, new leads', minLevel: 1, fn: 'Lead Search & Update', under: ['/leads', '/', '/new-leads', '/top-scoring-leads'] },
+    { name: 'Setup and help', href: '/setup', icon: CogIcon, description: 'How it works, your setup', minLevel: 1, under: ['/setup', '/start-here', '/my-wingguy', '/settings'] },
+  ];
+  const nav = todayLayout ? todayNav : [
     // FIRST on purpose (Guy, 25 Sep 2026): the tab bar reads as the full list of what a client can do, and
     // most of Wingguy has no tab. Was "Start Here"; the URL stays /start-here so old links still land.
     { name: 'What Wingguy can do', href: '/start-here', icon: BookOpenIcon, description: 'Everything it does, and where', minLevel: 1 },
@@ -84,9 +92,8 @@ const NavigationWithParams = ({ pathname, showThanksForConnecting = false, showW
           const Icon = item.icon;
           // Sub-pages count as the tab being active: /my-wingguy/setup must keep "My Wingguy"
           // highlighted, the same way a client expects a section to stay lit while inside it.
-          const isActive = item.href === '/'
-            ? pathname === '/'
-            : (pathname === item.href || pathname.startsWith(`${item.href}/`));
+          const lit = (p) => (p === '/' ? pathname === '/' : (pathname === p || pathname.startsWith(`${p}/`)));
+          const isActive = item.under ? item.under.some(lit) : lit(item.href);
           // The Wingguy pages are standalone (no portal session) - their auth is the query
           // string itself. The portal usually cleans ?token= off its own URL after login, so
           // for this tab the link is rebuilt from the stored auth rather than the bare params.
@@ -152,6 +159,7 @@ const Layout = ({ children }) => {
   const helpArea = useMemo(() => {
     if (!pathname) return 'global';
     if (pathname === '/' || pathname.startsWith('/lead') || pathname.startsWith('/new-lead')) return 'lead_search_and_update';
+    if (pathname.startsWith('/today') || pathname.startsWith('/followups')) return 'followups';
     if (pathname.startsWith('/follow-up')) return 'lead_follow_up';
     if (pathname.startsWith('/new-leads')) return 'new_lead';
     if (pathname.startsWith('/top-scoring-leads')) return 'top_scoring_leads';
@@ -341,7 +349,7 @@ const Layout = ({ children }) => {
       <div className="w-full px-4 sm:px-6 lg:px-8 py-8">
         {/* Navigation Tabs */}
         <Suspense fallback={<div>Loading navigation...</div>}>
-          <NavigationWithParams pathname={pathname} showThanksForConnecting={clientProfile?.features?.thanksForConnecting === true} showWingguy={clientProfile?.features?.wingguy === true} showFollowupsScreen={clientProfile?.features?.followupsScreen === true} hideTopScoringLeads={clientProfile?.features?.topScoringLeadsHidden === true} assistantFunctions={clientProfile?.assistant?.functions || null} />
+          <NavigationWithParams pathname={pathname} showThanksForConnecting={clientProfile?.features?.thanksForConnecting === true} showWingguy={clientProfile?.features?.wingguy === true} showFollowupsScreen={clientProfile?.features?.followupsScreen === true} hideTopScoringLeads={clientProfile?.features?.topScoringLeadsHidden === true} todayLayout={clientProfile?.features?.todayLayout === true} assistantFunctions={clientProfile?.assistant?.functions || null} />
         </Suspense>
 
         {/* Main Content */}
