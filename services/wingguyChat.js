@@ -84,13 +84,13 @@ const AGENT_TOOLS = [
   },
   {
     name: 'propose_times',
-    description: 'Use THIS (not propose_message) whenever you are offering the lead one or more meeting times. Pass intro + outro text in Guy\'s voice, plus slotTimes = the chosen slots\' "time" ISO values from check_availability (choose each slot by its "label", then pass that slot\'s "time"). The system SORTS them earliest-first, DROPS any outside Guy\'s booking hours or in his lunch hold, formats them in the lead\'s timezone, and assembles the final message — so you don\'t format or order the list yourself. It returns "offeredTimes": the exact date+time lines it wrote into the draft — when you tell Guy what you offered, QUOTE those, never restate the dates from memory (that is how the summary and the real draft drift apart). If it reports it dropped slots and too few remain, pick replacement slots and call again. If the lead\'s timezone differs from Guy\'s, note that in your intro/outro. It also RE-READS GUY\'S CALENDAR and refuses the WHOLE list if he is not actually free at any of those times — so every slotTime must come from a check_availability result you can see, never a time you worked out yourself and never one just because the lead asked for that day. If it refuses, do NOT retry the same times or hand-pick around them: call check_availability again and offer what it actually returns, and if the lead\'s preferred day has nothing on it, say so plainly in your intro and offer the days Guy does have.',
+    description: 'Use THIS (not propose_message) whenever you are offering the lead one or more meeting times. Pass intro + outro text in Guy\'s voice, plus slotTimes = the chosen slots\' "time" ISO values from check_availability (choose each slot by its "label", then pass that slot\'s "time"). The system SORTS them earliest-first, DROPS any outside Guy\'s booking hours or in his lunch hold, formats them in the lead\'s timezone, and assembles the final message — so you don\'t format or order the list yourself. It returns "offeredTimes": the exact date+time lines it wrote into the draft — when you tell Guy what you offered, QUOTE those, never restate the dates from memory (that is how the summary and the real draft drift apart). If it reports it dropped slots and too few remain, pick replacement slots and call again. It writes the "(all times are … time)" line and the closing invite line itself - add neither. It refuses when nobody in the thread has raised a call yet (a warm reply to a network note is a yes to the network, not a meeting - ask first with propose_message), unless Guy asks you for times. It also RE-READS GUY\'S CALENDAR and refuses the WHOLE list if he is not actually free at any of those times — so every slotTime must come from a check_availability result you can see, never a time you worked out yourself and never one just because the lead asked for that day. If it refuses, do NOT retry the same times or hand-pick around them: call check_availability again and offer what it actually returns, and if the lead\'s preferred day has nothing on it, say so plainly in your intro and offer the days Guy does have.',
     input_schema: {
       type: 'object',
       properties: {
         intro: { type: 'string', description: 'Opening line(s) before the times, in Guy\'s voice.' },
         slotTimes: { type: 'array', items: { type: 'string' }, description: 'ISO start times chosen from check_availability (the slot "time" field).' },
-        outro: { type: 'string', description: 'Closing line(s) after the times, e.g. "Just let me know what suits and I\'ll send a Zoom link."' },
+        outro: { type: 'string', description: 'Optional extra closing words after the times - usually leave it empty. The system appends the invite line itself ("Let me know which suits and I\'ll send a calendar invite with the Zoom link..." naming the on-file email, or asking for one) and drops any invite/which-suits line you write.' },
         includeLunch: { type: 'boolean', description: 'Set true ONLY when Guy explicitly wants to offer a lunch-time slot — otherwise lunch (12:00–12:45) is dropped from the list.' },
         includeSoon: { type: 'boolean', description: 'Set true ONLY when Guy explicitly asked for today/tomorrow — otherwise slots before the day after tomorrow are dropped (his one-clear-day rule). Past times are always dropped.' },
         includeWeekends: { type: 'boolean', description: 'Set true ONLY when Guy explicitly wants a weekend slot — otherwise weekend slots are dropped.' },
@@ -516,6 +516,48 @@ function isHandshakeOnly({ conversation, coachName, leadName, group }) {
   return !leadHasSpoken(conversation, coachName, leadName) && !coachHasAskedToMeet(conversation, coachName);
 }
 
+// NO TIME LIST BEFORE ANYONE HAS RAISED A CALL (Guy, 2026-10-07 — Andrew Wheater). The coach's
+// handshake note ("I'm building a network…") asked for nothing; Andrew replied "would love to be
+// involved, anything I can do to help" — a yes to the NETWORK, not to a meeting — and the panel went
+// straight to three times. Stage 3 in the rulebook already says "don't push specific times unless they
+// asked to meet"; the model read the warm yes as stage 6 anyway. So, in code: propose_times refuses
+// until a call has been mentioned by EITHER side (any sender, so group threads and odd sender names
+// fail open). The one other door is Guy himself asking for times in the panel chat — the hidden
+// kickoff starts with "(" and never counts.
+// A time list already in the thread counts too - older offers carried no call word (Anton, 15 Sep).
+const TIMES_OFFERED = /(all times are|following times|times work for you)/i;
+function meetingRaisedInThread(conversation = []) {
+  return (Array.isArray(conversation) ? conversation : []).some((m) => {
+    const t = String((m && m.text) || '');
+    return MEETING_ASK.test(t) || TIMES_OFFERED.test(t);
+  });
+}
+const COACH_TIMES_ASK = /\b(times?|book|booking|zoom|teams|call|meet|meeting|slots?|availability|calendar|diary|today|tomorrow|next week|mon(day)?|tue(s(day)?)?|wed(nesday)?|thu(rs(day)?)?|fri(day)?|\d{1,2}(:\d{2})?\s?(am|pm))\b/i;
+function coachAskedForTimes(messages = []) {
+  return (Array.isArray(messages) ? messages : []).some((m) => {
+    if (!m || m.role !== 'user' || typeof m.content !== 'string') return false;
+    const t = m.content.trim();
+    return !!t && !t.startsWith('(') && COACH_TIMES_ASK.test(t);
+  });
+}
+
+// CODE-OWNED invite line under a time list (Guy, 2026-10-07 — Andrew Wheater). The rulebook's
+// on-file example was a fragment ("...and I'll send a calendar invite ... to jane@company.com"), the
+// model copied it verbatim, and the draft read "(all times are Sydney time)" followed by a line
+// starting "and I'll send". Same fix as the connecting line above the list: code writes the sentence,
+// from the address it actually holds. Any invite/which-suits line the model wrote is dropped so the
+// draft never promises the invite twice; anything else in its outro stays, above this line.
+const INVITE_PROMISE = /(calendar invite|send (you )?(an? |the )?(invite|zoom|teams|link)|which (one )?suits|what suits|let me know which|best email)/i;
+function inviteLine(email) {
+  return email
+    ? `Let me know which suits and I'll send a calendar invite with the Zoom link to ${email} - just say if there's a better address.`
+    : "Let me know which suits and I'll send a calendar invite with the Zoom link - what's the best email to send it to?";
+}
+function withInviteLine(outro, email) {
+  const kept = String(outro || '').split('\n').filter((l) => !INVITE_PROMISE.test(l)).join('\n').trim();
+  return [kept, inviteLine(email)].filter(Boolean).join('\n\n');
+}
+
 // When the record's location can't be pinned to one timezone, the current role on the LinkedIn page
 // usually can. Twice on 2026-09-16 Guy answered "which city?" himself by scrolling to Experience and
 // reading the location under the current job — an explicit field, so this turns the cold question
@@ -747,6 +789,10 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
       if (leadLinkState && leadLinkState.ok) {
         return { ok: false, error: `STOPPED - the lead sent their own booking link (${leadLinkState.url}) and Wingguy read it, so a list of times is the wrong move. check_availability already returned only the times BOTH are free: pick ONE (lightest day, mid-morning first), tell Guy which and why, and on his yes call book_meeting. If that result had no days, say so and let Guy choose which side bends.` };
       }
+      if (!meetingRaisedInThread(conversation) && !coachAskedForTimes(messages)) {
+        console.warn(`WINGGUY-NO-ASK-GUARD refused a time list for ${coach.clientId} → ${profile.name || 'lead'} (no call raised in the thread)`);
+        return { ok: false, error: `STOPPED - nobody has raised a call in this thread yet, so NO time list was built and the draft was NOT touched. ${leadFirst} said yes to the network (or replied warmly), not to a meeting - offering times now books them into something they never agreed to. Draft the warm reply instead with propose_message (stage 3): react to what they actually said, then end on the meeting ask from the campaign template, e.g. "Would you be up for a quick Zoom in the next couple of weeks to talk about potential two-way collaboration?" Tell Guy in one line that you asked first rather than sending times, and that if he wants to offer times anyway he only has to say so.` };
+      }
       {
         const wrongWay = wrongWayGreeting(unescapeModelNewlines(input && input.intro), coach.clientName, profile.name);
         if (wrongWay) {
@@ -893,6 +939,7 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
         }
         outro = parts.join('\n').trim();
       }
+      outro = withInviteLine(outro, currentLeadEmail);
       currentDraft = [intro, bullets, outro].filter(Boolean).join('\n\n') + (voice && voice.signoff ? `\n\n${voice.signoff}` : '');
       // Echo back the EXACT lines written into the draft so the model's chat summary to Guy is grounded in
       // what was actually rendered — not re-derived from memory (which is how the summary said "Wed 8 July"
@@ -1193,4 +1240,4 @@ async function runWingguyChatTurn({ coach, profile = {}, conversation = [], mess
   return { ok: true, reply: assistantText, draft: currentDraft, booked: bookedEvent, enrichContact, messages: convo, model: MODEL_ID };
 }
 
-module.exports = { runWingguyChatTurn, coachSpokeLast, unansweredTimesOffer, replyStyleOpener, AGENT_TOOLS, inLunch, chooseSignoff, getVoiceIdentity, whoIsWhoBlock, wrongWayGreeting, leadHasSpoken, coachHasAskedToMeet, bannedStage1Opener, isHandshakeOnly, detectLeadBookingLink, buildContext, jobLocationOffer, leadClockLine, cvTallyHook };
+module.exports = { runWingguyChatTurn, meetingRaisedInThread, coachAskedForTimes, withInviteLine, coachSpokeLast, unansweredTimesOffer, replyStyleOpener, AGENT_TOOLS, inLunch, chooseSignoff, getVoiceIdentity, whoIsWhoBlock, wrongWayGreeting, leadHasSpoken, coachHasAskedToMeet, bannedStage1Opener, isHandshakeOnly, detectLeadBookingLink, buildContext, jobLocationOffer, leadClockLine, cvTallyHook };
