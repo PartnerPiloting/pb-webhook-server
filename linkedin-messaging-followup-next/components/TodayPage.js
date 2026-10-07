@@ -63,7 +63,15 @@ function Section({ id, title, blurb, count, open, onToggle, children }) {
 
 function TodayInner() {
   const searchParams = useSearchParams();
-  const profile = useMemo(() => getClientProfile(), []);
+  // The profile lands a beat after the first paint (Layout fills it after auth), so read it in an
+  // effect rather than once at mount - otherwise the greeting never gets the name.
+  const [profile, setProfile] = useState(() => getClientProfile());
+  useEffect(() => {
+    if (profile?.clientName) return undefined;
+    const t = setInterval(() => { const p = getClientProfile(); if (p?.clientName) { setProfile(p); clearInterval(t); } }, 250);
+    const stop = setTimeout(() => clearInterval(t), 10000);
+    return () => { clearInterval(t); clearTimeout(stop); };
+  }, [profile]);
   const features = profile?.features || {};
   const hasQueue = features.followupsScreen === true;
   const hasWelcome = features.thanksForConnecting === true;

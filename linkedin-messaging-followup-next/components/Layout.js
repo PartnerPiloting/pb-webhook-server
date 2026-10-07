@@ -234,7 +234,9 @@ const Layout = ({ children }) => {
       {/* Header */}
       <header className="bg-white shadow-sm border-b border-gray-200">
         <div className="w-full px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
+          {/* min-h, not h: a two-line title (long name, or the staging "(S)") used to overflow the
+              fixed 64px and get clipped at the top of the window (Guy, 7 Oct 2026). */}
+          <div className="flex justify-between items-center min-h-16 py-2 gap-4">
             <div className="flex items-center">
               <h1 className="text-xl font-semibold text-gray-900">
                 {(() => {
